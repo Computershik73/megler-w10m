@@ -22,6 +22,7 @@
 #define test_libcore mg_dvmt_libcore
 #define test_libcore_link_all mg_dvmt_libcore_link_all
 #define test_libcore_nio mg_dvmt_libcore_nio
+#define test_hooks mg_dvmt_hooks
 #define g_libcore mg_dvmt_on_libcore
 
 extern int g_checks, g_failed;
@@ -94,6 +95,11 @@ struct mg_dvm_stats;
 void test_libcore(const mg_dvm_test_config *config, u64 started_ns, const struct mg_dvm_stats *at_start);
 void test_libcore_link_all(void);
 void test_libcore_nio(void);
+/*
+ * mg_dvm_tests_hooks.c, on libcore: methods an app hooks through Xposed's XposedBridge (hooks.dex among the fixtures);
+ * with a guest library like Aliucord's libaliuhook.so where guest code can run. The process's first hooks: run last.
+ */
+void test_hooks(const char *fixtures, const char *guest_dir);
 /* mg_dvm_tests_real.c: a real app's DEX. */
 void test_real_apk(const char *apk);
 

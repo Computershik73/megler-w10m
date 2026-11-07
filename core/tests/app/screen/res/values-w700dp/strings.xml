@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- A size the app's resources are made for: a change of width across 700 dp relaunches Main, one that stays on a side does not. -->
+    <string name="width_class">wide</string>
+</resources>

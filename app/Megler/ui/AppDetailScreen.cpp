@@ -12,11 +12,14 @@
 #include "player/Session.h"
 #include "shell/AppPackage.h"
 #include "shell/Files.h"
+#include "shell/Platform.h"
 #include "shell/ShellLog.h"
 #include "shell/Strings.h"
 #include "ui/AppShell.h"
 #include "ui/Components.h"
 #include "ui/SeparateApps.h"
+
+#include <winrt/Windows.ApplicationModel.DataTransfer.h>
 
 namespace megler::app::ui {
 
@@ -180,7 +183,7 @@ private:
 
     /// The app as an app of the phone's own (ui/SeparateApps.h): whether it is installed and from which Megler; Install or
     /// Update (Material's filled button), its own settings (tonal), Uninstall (a text button in the error colour); and, when
-    /// neither Windows's deployment engine nor the Device Portal installed a package made, Windows's installer.
+    /// Windows's deployment engine did not install a package made, Windows's installer, and its certificate.
     UIElement phoneSection(const ApkEntry& entry) {
         const auto& p = palette();
         const ApkReport& r = entry.report;
@@ -194,8 +197,8 @@ private:
         else if (s.installed == separateApps::Installed::no)
             state = "Not installed on this phone.";
         else
-            state = separateApps::portalProblem().empty() ? "Asking Windows whether it is installed…"
-                                                          : "Megler can't tell whether it is installed: " + separateApps::portalProblem();
+            state = separateApps::listProblem().empty() ? "Asking Windows whether it is installed…"
+                                                        : "Megler can't tell whether it is installed: " + separateApps::listProblem();
 
         const std::string id = id_, package = r.package, title = entry.title();
         const bool installed = s.installed == separateApps::Installed::yes;
@@ -246,18 +249,38 @@ private:
                                "Uninstall", true, [this, package] { separateApps::uninstall(shell_, package); });
             }, p.error));
         }
-        // The package made, when neither the deployment engine nor the portal installed it: Windows's own installer, as a file
-        // manager opens a package.
+        auto trust = hstack(0);
+        trust.Margin(ThicknessHelper::FromLengths(-12, -12, 0, 0));
+        // The package made, when the deployment engine did not install it: Windows's own installer, as a file manager opens a
+        // package, and its certificate, which Windows has to trust (shell/AppPackage.h, untrustedCertificate). (Not on an Xbox,
+        // which has no installer of packages for an app to hand one to: its Device Portal is all there is.)
+#if !defined(MEGLER_XBOX)
         if (!s.made.appx.empty() && !installed) {
             const std::wstring appx = s.made.appx, certificate = s.made.certificate;
             add(more, textButton("Open the Package", [this, appx] { openFile(appx); }));
-            add(more, textButton("Open the Certificate", [this, certificate] { openFile(certificate); }));
+            if (platform::isMobile()) {
+                add(more, textButton("Open the Certificate", [this, certificate] { openFile(certificate); }));
+            } else {
+                // Desktop Windows opens no certificate an app hands it ("Windows didn't open it"), and only an administrator
+                // can make the machine trust one: the command that does, for PowerShell run as administrator, and the
+                // certificate in File Explorer, where it opens with Install Certificate. (A row of their own: four buttons
+                // are wider than Megler's window.)
+                add(trust, textButton("Copy the Command", [this] { copyTrustCommand(); }));
+                add(trust, textButton("Show the Certificate", [this] { showCertificate(); }));
+            }
         }
+#endif
         if (more.Children().Size()) add(column, more);
+        if (trust.Children().Size()) add(column, trust);
 
+#if defined(MEGLER_XBOX)
+        const char* installedBy = " in a package with the app's name and icon, made here and installed through the console's Device Portal.";
+#else
+        const char* installedBy = " in a package with the app's name and icon, made here and installed by Windows as the Store installs an app.";
+#endif
         std::string footer = r.ready() ? std::string("An app of the phone's own: Megler and this ") + (entry.splitsDir.empty() ? "APK" : "app's APKs") +
-                                             " in a package with the app's name and icon, made here and installed by Windows as the Store installs "
-                                             "an app. It starts straight into the app, in a process of its own with its own memory; its /sdcard is "
+                                             installedBy +
+                                             " It starts straight into the app, in a process of its own with its own memory; its /sdcard is "
                                              "shared with the other apps. The first time, the app's data in Megler goes along with it."
                                        : "This app can't run here: " + r.status();
         footer += " App Settings are this app's own: render size, language and region, location.";
@@ -290,6 +313,31 @@ private:
         appPackage::openWithSystem(path, [this, weak](bool ok) {
             if (!weak.lock()) return;
             opened_ = ok ? "Handed to Windows." : "Windows didn't open it.";
+            rebuild();
+        });
+    }
+
+    void copyTrustCommand() {
+        using namespace winrt::Windows::ApplicationModel::DataTransfer;
+        const std::string command = appPackage::trustCommand();
+        try {
+            DataPackage data;
+            data.SetText(hs(command));
+            Clipboard::SetContent(data);
+            opened_ = "Copied. Paste it into PowerShell run as administrator, then install again: " + command;
+        } catch (const hresult_error& e) {
+            shellLog::write("ui: the command could not be copied: " + narrow(e.message()));
+            opened_ = "Run this in PowerShell as administrator, then install again: " + command;
+        }
+        rebuild();
+    }
+
+    void showCertificate() {
+        const std::weak_ptr<Page> weak = shared_from_this();
+        appPackage::showSigningCertificate([this, weak](bool ok) {
+            if (!weak.lock()) return;
+            opened_ = ok ? "In File Explorer: open MeglerApps.cer, Install Certificate, Local Machine, place it in Trusted People, then install again."
+                         : "Windows didn't show it. The certificate is " + narrow(appPackage::signingCertificate()) + ".";
             rebuild();
         });
     }

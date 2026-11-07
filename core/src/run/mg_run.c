@@ -17,6 +17,7 @@
 #include "../mg_core.h"
 #include "../host/mg_host.h"
 #include "../ld/mg_ld.h"
+#include "../ndk/mg_sensors.h"
 
 static megler_run_config g_config;
 static char *g_apk_path;
@@ -39,6 +40,62 @@ void mg_run_set_error(const char *fmt, ...)
 
 const char *mg_run_last_error(void) { return g_error; }
 const megler_run_config *mg_run_config(void) { return &g_config; }
+
+/* ------------------------------------------------------ the surface (mg_run.h) */
+
+static mg_lock g_surface_lock = MG_LOCK_INIT;
+static mg_surface g_surface;
+/* The last orientation a game asked for (megler_display_host.orientation), said once for each change; -2: none said yet. */
+static volatile i32 g_requested = -2;
+
+void mg_run_surface(mg_surface *out)
+{
+    mg_lock_acquire(&g_surface_lock);
+    *out = g_surface;
+    mg_lock_release(&g_surface_lock);
+}
+
+void mg_run_surface_start(int width, int height, int density_dpi, int rotation)
+{
+    mg_lock_acquire(&g_surface_lock);
+    g_surface.width = width;
+    g_surface.height = height;
+    g_surface.density_dpi = density_dpi;
+    g_surface.rotation = rotation & 3;
+    mg_lock_release(&g_surface_lock);
+}
+
+void mg_run_set_surface(int width, int height, int density_dpi, int rotation)
+{
+    mg_surface was;
+    bool changed;
+    if (width <= 0 || height <= 0) return;
+    rotation &= 3;
+    mg_lock_acquire(&g_surface_lock);
+    was = g_surface;
+    if (density_dpi <= 0) density_dpi = was.density_dpi;
+    changed = width != was.width || height != was.height || density_dpi != was.density_dpi || rotation != was.rotation;
+    if (changed) {
+        g_surface.width = width;
+        g_surface.height = height;
+        g_surface.density_dpi = density_dpi;
+        g_surface.rotation = rotation;
+        g_surface.seq++;
+    }
+    mg_lock_release(&g_surface_lock);
+    if (!changed) return;
+    mg_info("run: the surface is %dx%d at %d dpi, turned %d degrees (it was %dx%d at %d dpi, %d)", width, height, density_dpi, rotation * 90, was.width,
+            was.height, was.density_dpi, was.rotation * 90);
+    if (g_active && g_driver && g_driver->resize) g_driver->resize();
+}
+
+void mg_run_orientation_requested(int requested)
+{
+    const megler_display_host *d = &g_config.display;
+    if (mg_atomic_xchg(&g_requested, requested) == requested) return;
+    mg_info("run: the app asks for the screen held %d (Android's SCREEN_ORIENTATION_*)%s", requested, d->orientation ? "" : "; the shell takes no such request");
+    if (d->orientation) d->orientation(d->user, requested);
+}
 bool mg_run_active(void) { return g_active != 0; }
 u32 mg_run_frames(void) { return (u32)g_frames; }
 void mg_run_count_frame(void) { mg_atomic_add(&g_frames, 1); }
@@ -55,6 +112,8 @@ void mg_run_ended(int status, const char *reason)
     /* What the app wrote into shared file mappings reaches the files (bionic/mg_libc_mem.c). */
     mg_mem_write_back();
     mg_atomic_xchg(&g_active, 0);
+    /* The phone's sensors no longer read for it (ndk/mg_sensors.c). */
+    mg_sensors_end();
     mg_info("run: the app has ended (status %d%s%s)", status, reason ? ", " : "", reason ? reason : "");
     if (g_config.on_exit) g_config.on_exit(g_config.user, status, reason);
 }
@@ -515,14 +574,18 @@ bool mg_run_start(const megler_run_config *config)
         mg_info("run: the app is in %d APKs, its base and the split%s %s", g_config.split_count + 1, g_config.split_count == 1 ? "" : "s", names);
     }
 
+    /* The phone's sensors, for its SensorManager and its native code's ASensorManager (ndk/mg_sensors.c). */
+    mg_sensors_set_host(&g_config.sensors);
     /* Each app gets its own Android data directories under ours, and all of them one shared storage. */
     mg_run_files(megler_data_dir(), megler_storage_dir(), info.package, &g_config.storage);
 
     mg_guest_exit_hook = on_guest_exit;
     mg_core_set_crash_hook(on_crash);
+    /* The surface the drivers read from now on: the config's until megler_set_surface says otherwise. */
+    mg_run_surface_start(config->width, config->height, config->density_dpi, config->rotation);
     mg_atomic_xchg(&g_active, 1);
-    mg_info("run: %s (%s) with the %s driver, %dx%d at %d dpi", info.package, info.label[0] ? info.label : "no label", g_driver->name,
-            config->width, config->height, config->density_dpi);
+    mg_info("run: %s (%s) with the %s driver, %dx%d at %d dpi, turned %d degrees", info.package, info.label[0] ? info.label : "no label", g_driver->name,
+            config->width, config->height, config->density_dpi, (config->rotation & 3) * 90);
     mg_bionic_hang_watch_start();
     if (mg_flag("trace-cpu")) mg_bionic_cpu_trace_start();
     if (mg_flag("trace-native-stacks")) mg_bionic_native_stacks_start();
@@ -547,8 +610,18 @@ void mg_run_key(int android_keycode, bool down)
     if (g_active && g_driver && g_driver->key) g_driver->key(android_keycode, down);
 }
 
+int mg_run_back(unsigned quiet_ms, unsigned max_ms)
+{
+    if (g_active && g_driver && g_driver->back) return g_driver->back(quiet_ms, max_ms);
+    mg_run_key(4, true);
+    mg_run_key(4, false);
+    return MEGLER_BACK_TAKEN;
+}
+
 void mg_run_set_paused(bool paused)
 {
+    /* Android hands an app in the background no sensor events: the phone's are stopped meanwhile. */
+    mg_sensors_set_paused(paused);
     if (g_active && g_driver && g_driver->set_paused) g_driver->set_paused(paused);
 }
 

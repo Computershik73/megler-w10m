@@ -543,6 +543,12 @@ void tick(ui::AppShell& shell) {
             back.second = int(back.ms / 1000);
             back.x = 4; // AKEYCODE_BACK
             keys.push_back(back);
+            // Back on its first screen sends the app to the back, as on Android 12: a stop ends it, and the run.
+            Tap stop = back;
+            stop.ms = from + 16000;
+            stop.second = int(stop.ms / 1000);
+            stop.x = -1;
+            keys.push_back(stop);
         }
     }
 #endif
@@ -571,7 +577,11 @@ void tick(ui::AppShell& shell) {
             }
         }
         for (Tap& t : keys) {
-            if (t.stage == 0 && elapsedMs >= t.ms) {
+            if (t.stage == 0 && elapsedMs >= t.ms && t.x < 0) {
+                session::stop();
+                t.stage = 3;
+                autoLine(format("play: %d s, the app stopped", seconds));
+            } else if (t.stage == 0 && elapsedMs >= t.ms) {
                 megler_key(t.x, true);
                 t.stage = 1;
                 autoLine(format("play: %d s, key %d", seconds, t.x));

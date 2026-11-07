@@ -28,7 +28,7 @@
  *       Android root the benchmark of mg_dvm_bench.c on its libcore, each item run for about that long (300 ms)
  *   mg_tests --apk <file>...
  *       what the layer makes of real APKs: the report the shell shows, and the icon
- *   mg_tests --java <hello | demos | natives | crash | data | gc | gl | webview> <apk> <data dir> <android root> [picture dir | -] [verbose] [WIDTHxHEIGHT@DPI]
+ *   mg_tests --java <hello | demos | natives | crash | data | gc | gl | webview | screen> <apk> <data dir> <android root> [picture dir | -] [verbose] [WIDTHxHEIGHT@DPI]
  *       start one of the Java test apps (core/tests/app) through megler_run on that Android root, with a stand-in
  *       for the shell's drawing; check what it logs and draws, touch it, press Back; write each picture as a BMP
  *   mg_tests --java app <apk> <data dir> <android root> <picture dir | -> <verbose> <WIDTHxHEIGHT@DPI> [tap:X,Y | drag:X,Y,X2,Y2 | wait:MS | back | key:CODE]...
@@ -61,6 +61,16 @@
  *       core's camera for android.hardware.Camera: the PC's first camera opened, a few pictures taken at its smallest size and
  *       checked, focus and the light where it has them, stop and close. A PC without a camera says so and has nothing to
  *       check. Only in the build tools/build-tests.sh win makes; any other says so and does nothing
+ *   mg_tests --sensors-windows <scratch dir>
+ *       the shell's sensors (app/Megler/player/SensorHost.cpp: Windows.Devices.Sensors) through megler_sensor_host, under the
+ *       core's sensors for SensorManager and ASensorManager: what this PC has, each read for a moment, its first event said as
+ *       Android's. A PC without sensors says so and has nothing to check. Only in the build tools/build-tests.sh win makes;
+ *       any other says so and does nothing
+ *   mg_tests --portal-windows <address> <user> <password> <scratch dir> <received dir> <mock's log>
+ *       the Xbox build's client of the console's Device Portal (app/Megler/shell/DevicePortal.cpp) against a portal of the
+ *       tests' own at that address (tools/device-portal-mock.py, which tools/build-tests.sh win starts): its handshake, user
+ *       name and password, CSRF token, an install, a refused one, the list of the packages, an uninstall. Only in the build
+ *       tools/build-tests.sh win makes; any other says so and does nothing
  *   mg_tests --bundles <test apps dir> <scratch dir> [real bundles dir]
  *       bundles of split APKs (.apks, .xapk, .apkm) unpacked as the shell unpacks them, and the APK report of what comes out
  *       (mg_bundle_tests.c): the test app `splits` in the folder of the test apps (build/guest/java), and the real bundles
@@ -87,6 +97,7 @@
 #include "../src/mg_core.h"
 #include "../src/jni/mg_jni.h"
 #include "../src/ld/mg_ld.h"
+#include "../src/ndk/mg_sensors.h"
 #include "mg_codec_tests.h"
 #include "mg_gfx_record.h"
 #include "mg_gfx_scenes.h"
@@ -114,8 +125,8 @@ static int load_mode(int argc, char **argv)
         last = lib;
         mg_ld_get_stats(lib, &st);
         printf("%s: %u Thumb, %u ARM functions; %u unresolved; %u thread-pointer reads (%u failed), %u accesses through a register "
-               "led out, %u PLT entries, %u direct system calls\n", argv[i], st.thumb_functions, st.arm_functions, st.unresolved, st.tp_reads,
-               st.tp_reads_failed, st.tp_led_out, st.plt_entries, st.svc_sites);
+               "led out, %u PLT entries, %u direct system calls (%u led out)\n", argv[i], st.thumb_functions, st.arm_functions, st.unresolved,
+               st.tp_reads, st.tp_reads_failed, st.tp_led_out, st.plt_entries, st.svc_sites, st.svc_led_out);
         fn = mg_ld_sym(lib, "OpenSSL_version");
         if (fn) printf("  OpenSSL_version(0): %s\n", MG_GFN(const char *(*)(int), fn)(0));
         fn = mg_ld_sym(lib, "SHA256");
@@ -150,6 +161,12 @@ static int load_mode(int argc, char **argv)
     /* MG_TESTS_LOAD_WAIT_MS: a while longer for what the libraries' init functions started on threads of their own. Go's
        runtime, loaded as a library, starts itself on one (_rt0_arm_lib), and the process ended before it ran. */
     if (getenv("MG_TESTS_LOAD_WAIT_MS")) mg_sleep_ns((u64)atoi(getenv("MG_TESTS_LOAD_WAIT_MS")) * 1000000u);
+    {
+        /* (ARM svc of a library of Go's, led out to the core: how many were made, and how many of them on goroutines' stacks.) */
+        u32 made = 0, on_block = 0;
+        mg_core_svc_calls(&made, &on_block);
+        if (made) printf("system calls led out: %u made, %u of them on a stack for them (not the thread's own)\n", (unsigned)made, (unsigned)on_block);
+    }
     /* MG_TESTS_LOAD_CALL=NAME[:ARG][,NAME[:ARG]...]: functions of the last library loaded, as `long NAME(long ARG)`, called on
        this thread after the wait, and what each returned -- a Go library's exports, which come into its runtime from a
        thread it did not make (cgocallback, needm). */
@@ -955,6 +972,95 @@ static int camera_windows_mode(int argc, char **argv)
 #endif
 }
 
+/* ------------------------------------------------------ --sensors-windows */
+
+#ifdef MG_SENSORS_WINDOWS
+/* mg_sensors_windows.cpp: the shell's own megler_sensor_host. */
+MG_HOSTAPI const megler_sensor_host *mg_sensors_windows_host(void);
+MG_HOSTAPI void mg_sensors_windows_summary(char *out, size_t size);
+#endif
+
+/*
+ * This PC's sensors through the shell's host and the core's, as an app's SensorManager uses them: listed, each started at
+ * 100 ms and read for up to two seconds -- its first event said as Android's, the events' times going forward -- and
+ * stopped. A PC without sensors says so and has nothing to check.
+ */
+static int sensors_windows_mode(int argc, char **argv)
+{
+#ifdef MG_SENSORS_WINDOWS
+    megler_config config;
+    char summary[1500];
+    mg_sensor_queue *q;
+    int checks = 0, failed = 0, i, n;
+    (void)argc;
+    memset(&config, 0, sizeof(config));
+    config.data_dir = argv[2];
+    config.package_dir = argv[2];
+    megler_init(&config);
+    mg_sensors_set_host(mg_sensors_windows_host());
+    mg_sensors_windows_summary(summary, sizeof(summary));
+    printf("  Windows' sensors: %s\n", summary);
+    n = mg_sensors_count();
+    if (n == 0) {
+        printf("(no sensors on this PC: --sensors-windows has nothing to read, and nothing is checked)\n0 checks, 0 failed\n");
+        return 0;
+    }
+    q = mg_sensor_queue_create("the tests", false);
+    for (i = 0; i < n; i++) {
+        const mg_sensor *s = mg_sensors_at(i);
+        mg_sensor_event e;
+        u64 until = mg_time_monotonic_ns() + 2000000000ull;
+        i64 last = 0;
+        int events = 0;
+        bool forward = true;
+        mg_sensor_queue_enable(q, s->handle, 100000);
+        while (mg_time_monotonic_ns() < until) {
+            if (mg_sensor_queue_read(q, &e, 1, 100) != 1) continue;
+            if (e.handle != s->handle) continue;
+            if (events++ == 0)
+                printf("  %s (%s by %s): %.4g %.4g %.4g %.4g %.4g, accuracy %d\n", s->string_type, s->name, s->vendor, e.values[0], e.values[1], e.values[2],
+                       e.values[3], e.values[4], e.accuracy);
+            if (e.timestamp <= last) forward = false;
+            last = e.timestamp;
+        }
+        mg_sensor_queue_disable(q, s->handle);
+        printf("  %s %s: %d events in two seconds%s\n", events ? "ok" : "FAIL", s->string_type, events, forward ? "" : ", NOT in order");
+        checks++;
+        if (!events || !forward) failed++;
+    }
+    mg_sensor_queue_destroy(q);
+    printf("%d checks, %d failed\n", checks, failed);
+    return failed ? 1 : 0;
+#else
+    (void)argc;
+    (void)argv;
+    printf("(the shell's sensors -- Windows.Devices.Sensors -- are not in this build of the tests: --sensors-windows does nothing here; tools/build-tests.sh win runs it)\n");
+    return 0;
+#endif
+}
+
+/* ------------------------------------------------------- --portal-windows */
+
+#ifdef MG_PORTAL_WINDOWS
+/* mg_portal_windows.cpp: the Xbox build's Device Portal client against the mock portal at `address`. */
+MG_HOSTAPI int mg_portal_windows_run(const char *address, const char *user, const char *password, const char *scratch, const char *received,
+                                     const char *mock_log, int *checks);
+#endif
+
+static int portal_windows_mode(char **argv)
+{
+#ifdef MG_PORTAL_WINDOWS
+    int checks = 0;
+    const int failed = mg_portal_windows_run(argv[2], argv[3], argv[4], argv[5], argv[6], argv[7], &checks);
+    printf("%d checks, %d failed\n", checks, failed);
+    return failed ? 1 : 0;
+#else
+    (void)argv;
+    printf("(the Xbox build's Device Portal client is not in this build of the tests: --portal-windows does nothing here; tools/build-tests.sh win runs it)\n");
+    return 0;
+#endif
+}
+
 #if defined(MG_CORE_ELF)
 /* On desktop Windows the tests are part of the core's ELF, and Megler's test program calls this (host/win32/mg_desktop_tests.c). */
 MEGLER_API int mg_tests_main(int argc, char **argv)
@@ -966,6 +1072,8 @@ int main(int argc, char **argv)
     if (argc >= 3 && !strcmp(argv[1], "--storage-windows")) return storage_windows_mode(argv);
     if (argc >= 4 && !strcmp(argv[1], "--codec-windows")) return codec_windows_mode(argc, argv);
     if (argc >= 3 && !strcmp(argv[1], "--camera-windows")) return camera_windows_mode(argc, argv);
+    if (argc >= 3 && !strcmp(argv[1], "--sensors-windows")) return sensors_windows_mode(argc, argv);
+    if (argc >= 8 && !strcmp(argv[1], "--portal-windows")) return portal_windows_mode(argv);
     if (argc >= 5 && !strcmp(argv[1], "--gfx-replay")) return gfx_replay_mode(argc, argv);
     if (argc >= 7 && !strcmp(argv[1], "--gfx-record")) {
         megler_config config;

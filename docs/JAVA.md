@@ -14,9 +14,9 @@ work. The third put an Android framework on top -- the one in `core/framework`,
 built here from its sources -- and a driver that starts an app with it: **an APK that
 is Java alone starts through `megler_run`, its `Application` and `Activity` run,
 its layout is inflated from its resources, measured, laid out and drawn, the
-picture reaches the window host, a touch runs a listener, and Back takes it
-down.** That is *proven* under qemu-arm, with a stand-in for the shell's
-drawing.
+picture reaches the window host, a touch runs a listener, and Back sends it
+to the back as Android 12 does.** That is *proven* under qemu-arm, with a
+stand-in for the shell's drawing.
 
 **Nothing of it has run on a phone**, and the shell has not yet got its half:
 the drawing (`megler_gfx_host`: Direct2D, DirectWrite and WIC behind a C
@@ -382,8 +382,20 @@ stand-in for the shell's drawing, and checks (47 checks):
   touch beside the button is no press.
 - **Pause and resume** from the shell (`megler_set_paused`): `onPause`,
   `onResume`.
-- **Back**: `onPause`, `onStop`, `onDestroy` in that order, the main loop
-  ends, and the app is reported ended with status 0.
+- **Back** on the first screen (`megler_back`, since 670): as on Android 12
+  and later the task goes to the back and nothing finishes, which
+  `megler_back` answers MEGLER_BACK_LEAVE (the shell then leaves the Back to
+  the system, which takes the window away). The test app hands its Back on,
+  as React Native's and Flutter's activities do, and goes to the back 900 ms
+  later the first time -- past the 400 ms `megler_back` waits for an app
+  that showed nothing new, so that Back is the app's and the next, a moment
+  later, the system's at once -- and after 150 ms the second, within the
+  wait. Hidden then, the activity has `onPause` and `onStop`; shown again,
+  `onRestart`, `onStart`, `onResume`. A third Back the app takes as
+  CoolReader does, finishing its activity 100 ms later: `megler_back`
+  answers MEGLER_BACK_ENDED (the shell closes as the app goes), and
+  `onDestroy`, the main loop ends, and the app is reported ended with
+  status 0.
 
 Each picture is written as a BMP into `build/java-pictures`
 (`hello-1-started.bmp`, `hello-2-pressed.bmp`, `hello-3-pressed-twice.bmp`,
@@ -1117,6 +1129,45 @@ leaves "en-US". And in the data app, the `locale` step: `Locale`,
 `LocaleList`, the configuration and `TelephonyManager` must agree. The
 harness starts the first run in "en-US" and the second in "ru-RU", and reads
 the tag and the country off the app's line.
+
+### The screen resized and turned (the app under qemu-arm)
+
+`core/tests/app/screen`, run with the other test apps by `tools/build-tests.sh
+arm` (`mg_tests --java screen`). The test calls `megler_set_surface` as the shell
+does when a PC's window is resized or a phone turned, and reads what the app
+says. `Main` takes no configuration change itself; `Handled` takes every change
+of the screen (its manifest's `android:configChanges`), asks for the screen held
+upright (`android:screenOrientation="sensorPortrait"`) and is exported;
+`values-w700dp` is a size the app's resources are made for.
+
+1. 480 x 800 at 160 dpi, upright: `Main` types into its field, its halves red
+   and blue side by side in the picture; the shell heard -1 (nothing asked).
+2. Turned to 800 x 480, 90 degrees: the Application, its `ComponentCallbacks`
+   and a display listener hear it; `Main` is relaunched -- paused and stopped
+   with `isChangingConfigurations`, its state saved with the field's text, its
+   retained object kept, destroyed with `getChangingConfigurations` 0x480
+   (orientation and screen size) -- and the one made again has the count, the
+   retained object and the field's text back, with a configuration, metrics,
+   `Display.getRotation` and the `w700dp` string of the new size; the picture
+   is 800 x 480 with its halves where they belong.
+3. Narrowed to 750 x 480: the screen's size alone changed and crosses no size
+   of the app's resources, so `Main` is neither relaunched nor told (it takes
+   no change itself); its views hear the new configuration and are laid out
+   at the new size.
+4. Narrowed to 600 x 480, across 700 dp: `Main` is relaunched (0x400) and
+   says `narrow`.
+5. `Handled`, started as another app would start it (`megler_start_activity`),
+   covers `Main`; the shell heard 7. Turned upright, 480 x 800: `Handled` hears
+   `onConfigurationChanged` and is not relaunched; `Main`, stopped, is left as
+   it is.
+6. A tap: `Handled` asks for landscape (`setRequestedOrientation`); the shell
+   heard 0.
+7. Back: `Handled` finishes and `Main` comes back to an upright screen it was
+   not made for: it is relaunched now, from stopped (no pause, no stop), with
+   its state; the shell heard -1 again.
+
+63 checks. The pictures go to `build/java-pictures` (`screen-1-upright` to
+`screen-4-back`).
 
 ### Real apps (qemu-arm; nothing here is run by default)
 
@@ -2016,6 +2067,80 @@ Benchmark on x64 in ns a turn: a small object made (its constructor ends in
 `Object.<init>`) 61.5 to 53.6; `ArrayList`'s iterator 88.8 to 76.4;
 `Integer.valueOf` 91.8 to 77.6; `HashMap.get` 272 to 262.
 
+### Methods an app hooks: Xposed's XposedBridge
+
+Aliucord (Discord patched by Aliucord Manager) carries Aliuhook
+(github.com/Aliucord/hook): Xposed's API in Java -- `XposedBridge.hookMethod`,
+`XC_MethodHook`'s callbacks before and after a method,
+`invokeOriginalMethod` -- over LSPlant, which hooks a method on ART by
+rewriting ART's own structures (libart.so's symbols, the method's
+`ArtMethod`) and a class it makes at run time. There is no ART here: on
+0.1.0.669 Aliucord ended at its start, the library's `JNI_OnLoad` having
+returned JNI_ERR ("failed to open /system/lib/libart.so") under
+XposedBridge's static initialiser. The runtime hooks methods itself
+(`mg_dvm_hook.c`), as the first Xposed did on Dalvik, and XposedBridge's nine
+natives are its own: registered for the class by name, which comes before any
+library's function, while the library -- known by the native it exports,
+`Java_de_robv_android_xposed_XposedBridge_hook0` -- is loaded without its
+`JNI_OnLoad` (`mg_dvm_jvm.c`).
+
+The contract is LSPlant's, which Aliuhook's Java builds on.
+`hook0(context, original, callback)` makes every call of `original` (a
+`Method` or a `Constructor`) a call of `context.callback(Object[] args)`: the
+arguments boxed, the object first for an instance method. What the callback
+returns is the call's value -- unboxed for a primitive (null throws a
+`NullPointerException`, an object that is no such box a
+`ClassCastException`), checked against the class the method returns for an
+object -- and what it throws, the call throws. `hook0` hands back the
+backup: a `Method` whose `invoke` runs the original body on the object it is
+given, past the hook; a `Method` even for a constructor, whose body it runs
+on the object. Null when the method cannot be hooked (abstract, hooked
+already), and XposedBridge says "Failed to hook method". `unhook0`,
+`isHooked0`, `allocateInstance0` (JNI's `AllocObject`), `invokeConstructor0`
+(a constructor run on an object there already) and `makeClassInheritable0`
+(no `final` on the class, its constructors protected) do what Aliuhook's do;
+`deoptimize0`, `disableProfileSaver` and `disableHiddenApiRestrictions` are
+about ART, and say true.
+
+A hooked method keeps its bytecode, so that a frame already running it runs
+on, and is marked (`mg_dvm_method.hooked`). Every way into a method looks at
+the mark before anything else and calls the hook (`mg_dvm_hook_call`): the
+interpreter's invoke, before an intrinsic or a trivial body is done in place;
+compiled code's calls (`mg_dvm_jit_invoke`; the quick way declines a hooked
+method); the calls from C (`mg_dvm_invoke`: reflection, JNI, the runtime's
+own). A static method's class is initialised first, as for any call. The
+backup is a copy of the method -- a struct of its own, private so that
+nothing dispatches it again, in no class's tables, never hooked -- with the
+same body, made at the method's first hook and kept for good, as calls of it
+may be running. In compiled code a call done in place looks at the mark once
+the app has hooked anything; the code compiled before that, which does not,
+is forgotten then, and a method hooked when a call of it is compiled is not
+done in place ([JIT.md](JIT.md)). A frame inside such code at that moment
+goes on in it until it hands the frame back or returns; in Aliucord the
+first hook comes in `Application.onCreate`, before much is hot. The hooks'
+contexts and their backups' `Method` objects are roots of the collector.
+
+Where nothing is hooked it costs a byte read by each call, the interpreter's,
+compiled code's (the quick way and the general one) and those from C, and
+nothing in compiled code itself. A hooked call boxes its arguments, makes an
+array, calls the callback, and Aliuhook's callback calls the backup through
+`Method.invoke`, which unboxes them again: as on ART, a hook is for code that
+is not hot.
+
+`test_hooks` (`core/tests/mg_dvm_tests_hooks.c`, on libcore) runs `hooks.dex`
+(`core/tests/dvm/hooks`, compiled by `tools/dvm-hooks-fixture.sh` and kept
+in the repository): an instance method, static ones with an argument of each
+kind, a constructor (called by `new`, `Constructor.newInstance`, a
+subclass's constructor and `invokeConstructor0`), an interface's default
+method, a native method; called from bytecode with every instruction watched
+and not, through reflection and through JNI, by a subclass and by an
+override's super call, from loops the JIT compiled before the first hook and
+after it; arguments and results changed, exceptions each way, unhooked, on
+two threads at once; and a hook that nothing but the runtime keeps, across
+collections. Where guest code runs, `libt_xposed.so` (`t_xposed.c`), which
+stands in for libaliuhook.so, is loaded and none of its functions is called.
+It passes under qemu-arm and on the PC; no phone has run it, nor Aliucord.
+
 ### Exceptions
 
 One exception can be pending on a thread, for bytecode and native code alike.
@@ -2216,6 +2341,23 @@ and a client with the platform's trust is refused by the same server; and an
 https URL by name ("localhost", which the test certificate names) through
 Android's own HTTP client (`com.android.okhttp`, behind `URL.openConnection`)
 gets 200 and the body.
+
+An app's own network security configuration (its manifest's
+`android:networkSecurityConfig`) is trusted as Android 9 trusts it, by
+Android's package `android.security.net.config`
+(`core/framework-overlay/android/security/net/config`;
+`NetworkSecurityConfigProvider.java` says how). Before the app's code runs,
+`megler.AppRunner` makes the app's configuration the default and puts the
+provider `AndroidNSSP` first; its `TrustManagerFactory` gives a
+`RootTrustManager` that checks each server by the configuration of its host:
+conscrypt's `TrustManagerImpl` over that configuration's anchors (the root's
+cacerts, the app's certificates in `res/raw`; there are no user ones here),
+then its pins. Russian apps need it: Ozon and VTB's bank trust the Russian
+Trusted Root CA, which Android 9 does not have, from their own `res/raw`. The
+data app's steps "network-trust", "network-trust-domains" and
+"network-trust-pins" show it with a test authority of the app's own: trusted
+for localhost and the names its configuration gives it, 127.0.0.1 refused,
+pins matched, missed, expired and overridden.
 
 What follows is what stands in where conscrypt's library is not in the root
 (an Android root made before the library was built, or the PC's own build of
@@ -2457,7 +2599,12 @@ no native code or has it for 32-bit ARM.
   `megler_key` and `megler_set_paused` only queue (256 events; a move may be
   dropped when the queue is full, what ends a gesture is not), so everything
   that happens to the app happens on its main thread. Back is one event, when
-  the key comes up; other keys pass as they are. `megler_set_focused` has no
+  the key comes up; other keys pass as they are. `megler_back` sends it
+  numbered and waits for what the app did with it: `AppRunner.back`
+  answers once the key has been through the app (it went to the back,
+  ended its last activity, asked for a frame -- a page or a dialog went --
+  or none of these), and `moveTaskToBack` (Android 12's Back on a task's
+  root activity among its callers) says the app went to the back. `megler_set_focused` has no
   counterpart in the framework and is not passed on.
 - **Moves are batched, as Android batches them** (since 667). A finger's
   move is kept, not dispatched (`AppRunner.moveBatched`). The moves after it
@@ -2507,21 +2654,21 @@ no native code or has it for 32-bit ARM.
 - **What is not answered yet** answers "no" in a way the framework's Java
   already handles, said once in the log for each class, with the methods that
   first asked (so that it can be told whether the app wants it or the
-  framework's own start-up touched it; `megler.Sensors.available`, which the
-  framework asks at every start, is answered "no" without a word):
-  `megler.Web` (an empty rectangle), `megler.Sensors` (not available). Also not asked of the
+  framework's own start-up touched it): `megler.Web` (an empty rectangle).
+  (The sensors, `megler.Sensors`, are answered now: "Sensors", below.) Also not asked of the
   shell yet: the keyboard, the clipboard (it is the app's own), sharing,
   opening a URL, insets (zero), dark mode (no), vibration.
-- **Which way up.** The surface is whatever `megler_run_config` says, upright or
-  on its side, and the framework lays out for it; nothing in the driver
-  assumes either. What the app *asks* for is known twice: before it runs,
-  from the manifest (`megler_apk_report`'s `"orientation"`: the launcher
-  activity's `android:screenOrientation` as `landscape`, `portrait` or
-  `unspecified`, an alias taking its target's), and while it runs, when the
-  framework calls `Native.setOrientation` for an activity's attribute or for
-  `setRequestedOrientation`. The second is only logged: there is no call of
-  the shell's to pass it to, and a surface cannot change its size under a
-  running app yet.
+- **Which way up.** The surface is whatever `megler_run_config` says as the
+  app starts, upright or on its side, and whatever `megler_set_surface` says
+  after that (its size, density and rotation: "The screen resized and turned",
+  below); nothing in the driver assumes either shape. What the app *asks* for
+  is known twice: before it runs, from the manifest (`megler_apk_report`'s
+  `"orientation"`: the launcher activity's `android:screenOrientation` as
+  `landscape`, `portrait` or `unspecified`, an alias taking its target's), and
+  while it runs: the activity in front's `android:screenOrientation` or
+  `setRequestedOrientation`, which `megler.AppRunner.updateOrientation` works
+  out as the activities come and go and `Native.setOrientation` hands to the
+  shell (`megler_display_host.orientation`) when it changes.
 
 ### An app's native libraries
 
@@ -3044,6 +3191,92 @@ where the framework's code, written for iOS, leaned on CoreGraphics without sayi
   directly, through a list and in a node, on the stand-in and, in the
   Windows build, on the shell: the same pixels every way.
 
+### The screen resized and turned
+
+The app's screen changes under it: a phone turned, a PC's window resized or
+maximized. Android makes that a configuration change, and so does the
+framework here. The contract is in `megler.h` (`megler_display_host`,
+`megler_set_surface`).
+
+- **The core.** `megler_set_surface(width, height, density_dpi, rotation)`
+  keeps the surface as it now is (`mg_run_surface`, `run/mg_run.c`: the run
+  config's until then); every driver reads its size, density and rotation
+  there. The Java driver's `screenWidth`, `screenHeight`, `density` and
+  `displayRotation` say it as it is now, and its main loop finds a change at
+  its next poll, as it finds the battery's (`surface_news`): the NDK's
+  `AConfiguration` is made the new size's and the framework is handed an
+  event (`EV_SURFACE`, 11).
+- **The configuration.** `megler.Screen` (new) does with the event what
+  `ActivityThread` does with a new configuration. Every `Resources` of the
+  app's (the app's, the system's, those of configuration contexts and of the
+  packages it hosts: `Resources.sAll`) takes the screen's orientation,
+  `screenWidthDp`, `screenHeightDp`, `smallestScreenWidthDp`, `screenLayout`
+  and `densityDpi`, and `DisplayMetrics` the new size; the rest of their
+  configuration stays, an app's own locale with it. The Application, the
+  callbacks registered with it or with a context, the running services and
+  the content providers hear `onConfigurationChanged`.
+- **The activities.** Each activity on the screen meets the change now, a
+  stopped one when it comes back (`AppRunner.ensureConfiguration`, as
+  `ActivityRecord.ensureActivityConfiguration`): Back to it, a `CLEAR_TOP`
+  that brings it back, the host's window shown again. One whose
+  `android:configChanges` takes all that changed (and, for an app made for
+  Android 3.1 or before, the screen's sizes always) hears
+  `onConfigurationChanged`, which goes on to its fragments, its window and its
+  action bar. Any other is relaunched (`AppRunner.relaunch`, as
+  `handleRelaunchActivity`): paused, stopped, its state saved -- its views'
+  too, each with an id (`Activity.onSaveInstanceState` puts the window's
+  hierarchy in, as Android's does) -- its retained object kept
+  (`onRetainNonConfigurationInstance`: androidx keeps its ViewModels in it),
+  destroyed with `isChangingConfigurations` and `getChangingConfigurations`
+  saying why; then the same component made again at its place in the stack,
+  with the state in `onCreate` and `onRestoreInstanceState`, the retained
+  object in `getLastNonConfigurationInstance` until it resumes, and its
+  lifecycle state back (resumed; paused when it was under a translucent one;
+  started for a result to come). Activities it had asked for results have the
+  new one as their caller. `Activity.recreate` goes the same way; it had made
+  the new activity on top of the stack, resumed, whatever the old one had
+  been, and dropped what it retained.
+- **Sizes the resources are made for.** As Android's
+  `SizeConfigurationBuckets`, a change of the screen's size, smallest size or
+  layout relaunches an activity only when it crosses a size the app's
+  resources are made for (`w600dp`, `h480dp`, `sw720dp`, a screen layout's
+  size or length: `ResTable.meglerSizeBuckets`; `getSizeConfigurations` says
+  them too). Otherwise the activity is not relaunched and, unless it takes
+  the change, not told: its views are laid out again. So dragging a PC's
+  window does not restart an app that has no such resources. A change of
+  orientation or density always counts.
+- **The windows.** Every window is laid out again at the new size with its
+  insets worked out again, the views of the windows that were there before
+  the change hear it (`View.dispatchConfigurationChanged`), and the whole
+  screen is drawn again into a bitmap of the new size
+  (`ViewRoot.screenChanged`). The pictures that follow are of the new size; the
+  window of views and OpenGL frames composed in the core follows them
+  (`mg_java_gl.c`, `window_resized`). An activity's window added under one
+  above it in the stack goes under that one's windows.
+- **The display.** `Display.getRotation` says the rotation (`Display`,
+  overlaid), and `DisplayManager`'s listeners, which were dropped, hear
+  `onDisplayChanged` on their handlers. A screen turned upside down changes
+  no configuration: only these say it.
+- **Which way up the app wants it.** The activity in front's
+  `android:screenOrientation` or `setRequestedOrientation`, "behind" and an
+  activity that does not fill the screen and asks nothing (translucent or
+  floating) leaving it to the one below (`AppRunner.updateOrientation`), goes
+  to the shell when it changes (`Native.setOrientation`,
+  `megler_display_host.orientation`). It was only logged, from the window's
+  first `getWindow`.
+
+The shell's side (`ui/PlayerScreen.cpp`, `player/DisplayHost.cpp`): the wish
+becomes Windows' `DisplayOrientations` for `AutoRotationPreferences` -- an app
+that asks for nothing turns with the phone; a game, whose engine says nothing,
+lies down as before -- and the surface follows the window once its size has
+held for a poll (at once when the display turned), with the start's density
+for a Java app, as Android keeps a window's density when it is resized. A
+window that does not turn by itself (a PC's) and is not of the shape the app
+asks for is turned, and otherwise (an Xbox's television) the app gets a
+surface of its shape in its middle, letterboxed. The core's NDK drivers
+follow it too (docs/ARCHITECTURE.md, "Graphics"). Tested by the screen app
+("The screen resized and turned", above).
+
 ### The phone's bars
 
 A Java app's status bar and navigation bar are the phone's own, as on
@@ -3503,7 +3736,16 @@ What a Java app asks of the phone beyond its window goes to the shell through
   - Megler asks the user, then installs the APK as one picked in the Library.
     In an app's own package, the APK is copied into the shared folder's
     `incoming\`, and Megler is opened with `megler:install?name=` (its package
-    family name as the target).
+    family name as the target). The scheme of these links is the protocol the
+    package declares (`appPackage::linkScheme`, read from its manifest; an
+    app's package has its Megler's, `megler` for the release's), and Megler's
+    family name is the one the app's package was made by (`megler=` in its
+    `MeglerApp.ini`; the release's, `Megler_<publisher id>`, for a package
+    made before Megler wrote it there): every app's package declares the
+    protocol too, and a test
+    identity's Play Store (MeglerTest, `meglertest:`) that sent `megler:` to
+    `Megler_<publisher id>`, which was not there, had Windows ask which of the
+    release Megler and its apps should open it.
   - A session of several APKs (a base and its splits, as Google Play installs
     an app built as a bundle) is handed over as one `.apks` of them, a ZIP of
     the APKs stored as they are, which Megler's installer unpacks as it does a
@@ -3513,7 +3755,7 @@ What a Java app asks of the phone beyond its window goes to the shell through
   but only once none of its activities has been resumed for ten seconds while
   its process runs ("Self-update ready to be installed, waiting for market to
   close"; it checks every ten seconds). An app of the phone's own is suspended
-  within a second of being left, and ends on Back, so such an update never
+  within a second of being left, Back on its first screen included, so such an update never
   goes in, and Play Store starts over at its next start. At the same version
   it compares the variants by their derived APK id
   (`com.android.vending.derived.apk.id`, which Google's bundletool writes into
@@ -3523,9 +3765,20 @@ What a Java app asks of the phone beyond its window goes to the shell through
   there (package 662). Play Store's own `ApplicationInfo.metaData` now has its
   derived APK id as the newest there is (`megler.GooglePackages.ownMetaData`),
   and it skips the variant ("Local Derived Apk Id ... > Server Derived Apk
-  Id"). Not done: an update to a newer version, which the server will offer
-  in time, is still downloaded at each start and waits the same way; Play
-  Store gets newer through Megler's package or an APK added to the library.
+  Id"). With that id the server offers it no binary at all, a newer version
+  neither. Tried on a Lumia 650 with package 669: Play Store told it was
+  52.9.21 (the flag `older-self` of its own package, which
+  `megler.GooglePackages.ownVersionCode` reads) got "Server Version
+  [version=-1...]"; with the flag `real-derived-id` as well (its APK's own id,
+  1), the same Play Store was offered 53.7.23, whole, with no patch from the
+  53.7.23 it has, so the server had read the 52.9.21 of its user agent. So
+  Play Store does not update itself under Megler, and no newer version brings
+  the downloads back: it gets newer through Megler's package (the Phonesky.apk
+  it brings) or an APK added to the library. Installing its own updates would
+  need its process kept running in the background for the ten seconds and
+  more, and the install handed to Megler from there, where an app of the
+  phone's own cannot open Megler; Play Store had 450 MB of private memory
+  committed a minute after its start on that 1 GB phone.
   On the Lumia 650 every patch was refused besides ("bad base file hash"):
   Play Store's own APK there had two bits of its own, which Megler mends since
   0.1.0.668 (docs/PER-APP-PACKAGES.md, "The Google APKs Megler brings").
@@ -4651,8 +4904,8 @@ native code is.
   give two classes one name, and classes are not unloaded.
 - Of the framework's native side only `megler.Native` and `megler.Gfx` are there
   (see "The Java driver"): no database, no sound from Java, no web view, no
-  sensors, no video, no keyboard. (Out of date: databases, the keyboard and
-  OpenGL ES from Java are there now, each in its section above.)
+  sensors, no video, no keyboard. (Out of date: databases, the keyboard,
+  OpenGL ES from Java and the sensors are there now, each in its section.)
 - **OpenGL ES from Java on a phone has not run.** Under qemu and on the PC it
   runs on a stand-in that draws. A `SurfaceView` that the app's *native*
   code draws on is there now (above, "A SurfaceView drawn by native code"),
@@ -5465,9 +5718,19 @@ on a looper thread of its own and takes it back with `next()`.
   permitted for an app written for Android 8.1 or earlier and not for a later
   one. Android's WebView asks this for every http:// request
   (`net::ERR_CLEARTEXT_NOT_PERMITTED` when it says no), so no http page loaded
-  in any app. The data app, written for Android 9 and saying nothing in its
-  manifest, is refused it (its step "cleartext"); the WebView test app says
+  in any app. The answer comes from the configuration TLS goes by
+  (`android/security/net/config`, below). The data app, written for Android 9,
+  whose configuration permits it for `sub.megler.test` and its subdomains alone,
+  is refused it elsewhere (its step "cleartext"); the WebView test app says
   `usesCleartextTraffic="true"` and loads its pages over http.
+
+- `android/security/net/config/`, Android's network security configuration,
+  of which the framework had `ApplicationConfig` as a signature alone: the
+  app's XML read at its first use, its trust anchors, pins and cleartext for
+  each host, and the provider `AndroidNSSP` whose `RootTrustManager` TLS goes
+  by (`NetworkSecurityConfigProvider.java` says why; see the TLS paragraphs
+  under "On libcore" above). conscrypt's classes it builds on are compile-time
+  stubs in `core/framework/stubs/com/android/org/conscrypt`.
 
 - `android/app/compat/CompatChanges.java`, new: Android 11's system API for
   whether a compatibility change is on for the app, which the WebView's glue
@@ -5701,8 +5964,8 @@ test apps are that file's layouts, styles and nine-patches.
 | `megler.MediaCodecNative` | `MediaCodec` | (done) `drivers/mg_java_media.c` over the shell's decoders (`megler_codec_host`): "Decoders for MediaCodec", below |
 | `android.opengl.GLES*`, `EGLNative` | generated calls into ANGLE | (done) `drivers/mg_java_gles.c`, generated by `tools/gles-natives.py` from the declarations and Khronos' prototypes, and `drivers/mg_java_gl.c`: "OpenGL ES from Java"; the picture over OpenGL is composed in the core |
 | `megler.Web` | `WebView` | (done) not the shell's: Android's System WebView, Chromium, whose library runs as the app's code and draws in software ("The WebView") |
-| `megler.Sensors` | sensors | `Windows.Devices.Sensors` |
-| the keyboard, clipboard, sharing, URLs, orientation, insets | `megler.Native`'s calls to the host | calls of the shell's that `megler.h` does not have yet |
+| `megler.Sensors` | sensors | (done) `drivers/mg_java_sensors.c` over `ndk/mg_sensors.c` and the shell's sensors (`megler_sensor_host`, `player/SensorHost.cpp`: Windows.Devices.Sensors): "Sensors", below |
+| the keyboard, clipboard, sharing, URLs, orientation, insets | `megler.Native`'s calls to the host | (done but the clipboard, which is the app's own) `megler_keyboard_host`, `megler_system_host`, `megler_set_insets`; the screen's way up and its size: `megler_display_host` and `megler_set_surface` ("The screen resized and turned") |
 
 ### The microphone
 
@@ -5763,6 +6026,67 @@ once the call has ended; the microphone then hears as a call does
 (Communications, the echo taken out). The data app's step `audio-route` goes
 to the earpiece, the loudspeaker and back; the harness checks the shell was
 told each.
+
+### Sensors
+
+`SensorManager` hands out the phone's sensors as Android's own
+`SystemSensorManager` does (the overlay's `android.hardware.SensorManager`
+and `Sensor`, over `megler.Sensors`, `drivers/mg_java_sensors.c`). What they
+are made of -- Windows' sensors, in Android's units and signs, with Android's
+times -- is the core's, for Java and native code alike (ARCHITECTURE.md,
+"Sensors"). No permission is asked: on Android none of these needs one
+(`BODY_SENSORS` is the heart rate's).
+
+- **The list**: `getSensorList` by type (unmodifiable, as Android's),
+  `getDefaultSensor` by Android's rule -- the proximity's default is the one
+  that wakes the device, and there is no other -- and each `Sensor`'s name,
+  vendor, version, type, string type, maximum range, resolution, power, least
+  and greatest delay, reporting mode, whether it wakes the device, handle; its
+  `toString` is Android's. It is asked of the core when the app first wants
+  it, not at the app's start.
+- **Listeners**: `registerListener` at a `SENSOR_DELAY_*` (0, 20, 66.667 and
+  200 ms) or a period in microseconds, on the listener's handler's thread or
+  the main thread's; the same sensor twice for a listener is refused, and a
+  listener's thread is the one it first registered with, as on Android. Each
+  sensor runs in the core's queue for the framework at the shortest period its
+  listeners want; one thread of the framework's, "SensorEventThread", waits on
+  that queue and posts each event to the listeners of its sensor whose own
+  period has gone by since their last (four fifths of it), at most a hundred
+  of a sensor's waiting on a listener's thread that does not take them (the
+  newest lost, as Android's socket loses them). A listener's `SensorEvent` is
+  one object for each of its sensors, its values as many as
+  `Sensor.getMaxLengthValuesArray` says (the rotation vector's three for an app
+  made for Android 4.2 or before, five after); `onAccuracyChanged` comes before
+  the first event and whenever the accuracy changes, as Android's
+  `dispatchSensorEvent` calls it. Nothing is delivered for a sensor a listener
+  has removed. `flush` ends with `onFlushCompleted` for each of the listener's
+  sensors after the events already queued.
+- While the app is paused no events come: the core keeps Windows' sensors
+  stopped.
+- **Not there**: sensors that trigger once (`requestTriggerSensor` is false:
+  Windows has no significant motion), dynamic sensors, direct channels, data
+  injection. Android 1.x's `SensorListener` is served as Android's
+  `LegacySensorManager` serves it (its old signs), for a display that is not
+  turned.
+
+The data app's step `sensors`, on the stand-in for the shell's sensors
+(`core/tests/mg_sensor_standin.c`: one of each kind, each reading a known
+value in Windows' units and signs): the eleven listed, by type, with the
+stand-in's names, ranges and least delays; the proximity the default that
+wakes the device; every sensor's first event on the main thread in Android's
+units and signs to the last digit (the accelerometer's (0.25, -0.5, -0.75) g
+as (-2.45, 4.90, 7.35) m/s², the gyrometer's degrees as radians, the
+orientation's quaternion with w made positive, the inclinometer's pitch 30,
+roll -20, yaw 300 as azimuth 70.31, pitch -31.57, roll 17.23), each after
+`onAccuracyChanged`, its time read after the listener was registered and
+before it was handed over; the accelerometer at `SENSOR_DELAY_GAME` no
+sooner than 16 ms apart, in order, while the stand-in reads every 5 ms; a
+flush of all eleven; then the listener removed and every one of Windows'
+sensors stopped (the harness checks the stand-in's counts). The natives app's
+step `sensors` does the same from native code: the list and the defaults
+through libandroid, a queue on the main thread's looper with a callback
+(found by `dlsym` of `ASensorManager_getInstanceForPackage`, as NativeActivity's
+sample glue finds it), the accelerometer at 20 ms and the light.
 
 ### Sound from Java
 

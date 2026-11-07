@@ -280,9 +280,10 @@ N(Field_setDouble) { field_set(c, 'D'); }
 
 /* ---------------------------------------------------- methods, constructors */
 
-static mg_jobj *make_executable(mg_dvm_method *m)
+/* A Method or Constructor object (`as` names which) of a method. */
+static mg_jobj *make_executable_as(mg_dvm_method *m, const char *as)
 {
-    mg_dvm_class *ec = mg_dvm_find_class(m->name[0] == '<' ? "java/lang/reflect/Constructor" : "java/lang/reflect/Method");
+    mg_dvm_class *ec = mg_dvm_find_class(as);
     mg_jobj *o = ec ? mg_dvm_alloc_object(ec) : NULL;
     mg_jvalue v;
     if (!o) return NULL;
@@ -294,6 +295,11 @@ static mg_jobj *make_executable(mg_dvm_method *m)
     put_obj(o, "declaringClassOfOverriddenMethod", mg_dvm_mirror(m->cls));
     put_int(o, "dexMethodIndex", (i32)m->idx);
     return o;
+}
+
+static mg_jobj *make_executable(mg_dvm_method *m)
+{
+    return make_executable_as(m, m->name[0] == '<' ? "java/lang/reflect/Constructor" : "java/lang/reflect/Method");
 }
 
 static mg_dvm_method *method_from(mg_jobj *o) { return (mg_dvm_method *)o->native; }
@@ -425,19 +431,13 @@ N(Executable_noClasses) { c->ret.l = mg_dvm_new_array("[Ljava/lang/Class;", 0); 
 N(reflect_null) { c->ret.l = NULL; }
 N(reflect_false) { c->ret.z = 0; }
 
-/*
- * A call through reflection: the arguments come as objects, each unboxed to
- * what the parameter is; what the method throws comes back wrapped in an
- * InvocationTargetException, as Java says.
- */
-static bool invoke_boxed(mg_dvm_method *target, const mg_dvm_method *declared, mg_jobj *self, mg_jobj *args, mg_jvalue *ret)
+/* A call's arguments given as objects, each unboxed to what the parameter is (mg_dvm_internal.h). */
+bool mg_dvm_reflect_args(const mg_dvm_method *declared, mg_jobj *args, mg_jvalue *params, u32 cap)
 {
-    mg_jvalue params[64], wrapped;
     const char *p = declared->sig + 1;
     char desc[512];
     u32 n = args ? args->u.oarr.len : 0, i;
-    mg_jobj *e;
-    if (n != declared->nparams || n > MG_COUNT(params)) return mg_dvm_throw("java/lang/IllegalArgumentException", "Wrong number of arguments; expected %d, got %u", (int)declared->nparams, (unsigned)n);
+    if (n != declared->nparams || n > cap) return mg_dvm_throw("java/lang/IllegalArgumentException", "Wrong number of arguments; expected %d, got %u", (int)declared->nparams, (unsigned)n);
     for (i = 0; i < n; i++) {
         mg_jobj *a = args->u.oarr.v[i];
         mg_jvalue v;
@@ -455,6 +455,19 @@ static bool invoke_boxed(mg_dvm_method *target, const mg_dvm_method *declared, m
         kind = unbox(a, &v);
         if (!kind || !widen(kind, v, desc[0], &params[i])) return mg_dvm_throw("java/lang/IllegalArgumentException", "method %s.%s argument %u has type %s, got %s", declared->cls->name, declared->name, (unsigned)i + 1, desc, a ? mg_dvm_class_of(a)->name : "null");
     }
+    return true;
+}
+
+/*
+ * A call through reflection: the arguments come as objects, each unboxed to
+ * what the parameter is; what the method throws comes back wrapped in an
+ * InvocationTargetException, as Java says.
+ */
+static bool invoke_boxed(mg_dvm_method *target, const mg_dvm_method *declared, mg_jobj *self, mg_jobj *args, mg_jvalue *ret)
+{
+    mg_jvalue params[64], wrapped;
+    mg_jobj *e;
+    if (!mg_dvm_reflect_args(declared, args, params, MG_COUNT(params))) return false;
     if (mg_dvm_invoke(target, self, params, ret)) return true;
     e = mg_dvm_pending();
     mg_dvm_clear_pending();
@@ -541,6 +554,16 @@ N(Constructor_newInstanceFromSerialization)
 mg_jobj *mg_dvm_reflect_box(char kind, mg_jvalue v) { return box(kind, v); }
 mg_jobj *mg_dvm_reflect_method(mg_dvm_method *m) { return make_executable(m); }
 mg_jobj *mg_dvm_reflect_field(mg_dvm_field *f) { return make_field(f); }
+/* And for mg_dvm_hook.c. */
+mg_jobj *mg_dvm_reflect_backup(mg_dvm_method *m) { return make_executable_as(m, "java/lang/reflect/Method"); }
+
+bool mg_dvm_reflect_unbox(mg_jobj *o, char kind, mg_jvalue *out)
+{
+    mg_jvalue v;
+    char held = unbox(o, &v);
+    out->j = 0;
+    return held && widen(held, v, kind, out);
+}
 
 mg_dvm_method *mg_dvm_reflected_method(mg_jobj *o)
 {

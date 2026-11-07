@@ -47,11 +47,12 @@ void forget();
 std::string unavailable();
 
 /// UI thread. Starts `apk` with a surface of `width` x `height` pixels shown
-/// in `panel`; megler_run itself is called on a worker thread, so that the UI
-/// thread stays free for the swap chain the app's render thread will ask it
-/// to take (WindowHost). False when a run is already there.
+/// in `panel`, turned `rotation` quarter turns from the screen's natural way up
+/// (Android's Surface.ROTATION_*); megler_run itself is called on a worker
+/// thread, so that the UI thread stays free for the swap chain the app's render
+/// thread will ask it to take (WindowHost). False when a run is already there.
 bool start(const ApkEntry& apk, winrt::Windows::UI::Xaml::Controls::SwapChainPanel const& panel, int width, int height,
-           int densityDpi);
+           int densityDpi, int rotation);
 
 /// The run's screen and its sound, or null before start().
 std::shared_ptr<WindowHost> window();
@@ -61,8 +62,9 @@ std::shared_ptr<AudioHost> audio();
 void stop();
 /// Surface pixels, y down. phase: 0 down, 1 move, 2 up, 3 cancel.
 void touch(int phase, int pointer, float x, float y);
-/// AKEYCODE_BACK, pressed and released.
-void backKey();
+/// AKEYCODE_BACK, pressed and released, and what the app did with it: MEGLER_BACK_TAKEN (and for a Back that is not
+/// the app's), MEGLER_BACK_LEAVE (it went to the back: the system is to have the Back), MEGLER_BACK_ENDED (it ended).
+int backKey();
 /// The touch keyboard's half of text entry, for a Java app (megler.h's
 /// megler_text_commit and its neighbours): text the user typed, as UTF-8; an
 /// editing key (MEGLER_TEXT_*); the user put the keyboard away; how many of
@@ -74,6 +76,10 @@ void keyboardHeight(int pixels);
 /// How many of the surface's pixels the phone's bars cover at each edge, for a Java app (megler_set_insets): it keeps its
 /// content off them. Kept by the core for the app that starts next.
 void setInsets(int left, int top, int right, int bottom);
+/// The app's surface is another size, density or rotation now (megler_set_surface): the window was resized or the phone
+/// turned. Said while the app is still starting, it is kept and told once megler_run has returned, the config having
+/// had the size of before.
+void setSurface(int width, int height, int densityDpi, int rotation);
 
 // The app's place on the phone, from the application's and the window's
 // events. Android has one "paused": here it is suspended or not visible.

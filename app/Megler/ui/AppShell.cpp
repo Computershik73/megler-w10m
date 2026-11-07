@@ -210,30 +210,29 @@ void AppShell::applyVisibleBounds() {
         currentStack().pages.back()->barsCover(covered.Left, covered.Top, covered.Right, covered.Bottom);
 }
 
-void AppShell::applyFullScreen(bool fullScreen, bool upright, bool hideStatus, bool hideNavigation, bool lightStatus) {
-    upright = fullScreen && upright;
+void AppShell::applyFullScreen(bool fullScreen, unsigned orientations, bool hideStatus, bool hideNavigation, bool lightStatus) {
+    orientations = fullScreen ? orientations : 0;
     // The phone hides its navigation bar only in full-screen mode, and that hides the status bar too.
     hideNavigation = fullScreen && hideNavigation;
     hideStatus = fullScreen && (hideStatus || hideNavigation);
     lightStatus = fullScreen && lightStatus;
-    if (fullScreen == fullScreen_ && upright == upright_ && hideStatus == hideStatus_ && hideNavigation == hideNavigation_ &&
+    if (fullScreen == fullScreen_ && orientations == orientations_ && hideStatus == hideStatus_ && hideNavigation == hideNavigation_ &&
         lightStatus == lightStatus_)
         return;
-    const bool turn = fullScreen != fullScreen_ || upright != upright_;
+    const bool turn = fullScreen != fullScreen_ || orientations != orientations_;
     fullScreen_ = fullScreen;
-    upright_ = upright;
+    orientations_ = orientations;
     hideStatus_ = hideStatus;
     hideNavigation_ = hideNavigation;
     lightStatus_ = lightStatus;
     using namespace winrt::Windows::Graphics::Display;
     if (turn) {
         try {
-            // The library is a portrait screen, games are landscape ones, and an
-            // app that is not a game is upright unless it says otherwise. Off a
-            // phone there is nothing to turn back to: no preference.
-            DisplayInformation::AutoRotationPreferences(
-                fullScreen && !upright ? (DisplayOrientations::Landscape | DisplayOrientations::LandscapeFlipped)
-                                       : (platform::isMobile() ? DisplayOrientations::Portrait : DisplayOrientations::None));
+            // The library is a portrait screen; a full-screen page says which ways up it may be shown -- the player as its
+            // app asks (a game lying down, an app as its activity in front wants it, or as the phone is held), 0 being
+            // any. Off a phone there is nothing to turn back to: no preference.
+            DisplayInformation::AutoRotationPreferences(fullScreen ? DisplayOrientations(orientations)
+                                                                   : (platform::isMobile() ? DisplayOrientations::Portrait : DisplayOrientations::None));
         } catch (const hresult_error& e) {
             shellLog::write("ui: AutoRotationPreferences failed: " + narrow(e.message()));
         }
@@ -268,8 +267,16 @@ void AppShell::applyFullScreen(bool fullScreen, bool upright, bool hideStatus, b
         } catch (...) {
         }
     }
+    // (The log's words for the old two: "upright" and "landscape".)
+    const char* held = orientations == 0                                  ? "as the phone is held"
+                       : orientations == unsigned(DisplayOrientations::Portrait) ? "upright"
+                       : !(orientations & (unsigned(DisplayOrientations::Portrait) | unsigned(DisplayOrientations::PortraitFlipped)))
+                           ? "landscape"
+                       : !(orientations & (unsigned(DisplayOrientations::Landscape) | unsigned(DisplayOrientations::LandscapeFlipped)))
+                           ? "upright, either way up"
+                           : "turned as the phone is";
     shellLog::write(!fullScreen ? std::string("ui: back to portrait")
-                                : std::string(upright ? "ui: upright, full screen" : "ui: landscape, full screen") +
+                                : std::string("ui: ") + held + format(" (DisplayOrientations %u), full screen", orientations) +
                                       (hideNavigation ? (entered ? ", the phone's bars hidden" : ", the phone's bars hidden (full-screen mode refused)")
                                        : hideStatus   ? ", the status bar hidden, the navigation bar shown"
                                                       : ", the phone's bars shown"));
@@ -385,7 +392,7 @@ void AppShell::refreshChrome() {
     auto& stack = currentStack();
     auto page = stack.pages.back();
     const bool full = page->fullScreen();
-    applyFullScreen(full, page->upright(), page->hideStatusBar(), page->hideNavigationBar(), page->lightStatusBar());
+    applyFullScreen(full, page->orientations(), page->hideStatusBar(), page->hideNavigationBar(), page->lightStatusBar());
     setVisible(navigationBar_, !full);
     setVisible(tabBar_, !full);
     const bool canGoBack = stack.pages.size() > 1;
@@ -429,6 +436,7 @@ bool AppShell::goBack() {
         return true;
     }
     if (currentStack().pages.back()->handleBack()) return true;
+    if (currentStack().pages.back()->backIsTheSystems()) return false;
     if (currentStack().pages.size() > 1) {
         pop();
         return true;
@@ -438,6 +446,13 @@ bool AppShell::goBack() {
         return true;
     }
     return false;
+}
+
+void AppShell::quitAndClose() {
+    if (!currentStack().pages.back()->quitAndClose()) {
+        shellLog::write("ui: no app runs: Megler closes");
+        Application::Current().Exit();
+    }
 }
 
 void AppShell::selectTab(int tab) {
@@ -525,8 +540,8 @@ void AppShell::updateDisplayRequest() {
     const session::State state = session::snapshot().state;
     // And while packages are installed: an app's own package made and installed (or updated, or uninstalled), each of
     // Update All's, and Megler's own update from Pictures\Megler or GitHub, its download too (ui/Ota.h). A phone that locks
-    // meanwhile suspends Megler, and an install ends with no result (the owner asked for it, 2026-11-02; the Device
-    // Portal's upload, where Windows's deployment engine refuses, the most), and the download stops.
+    // meanwhile suspends Megler, and an install ends with no result (the owner asked for it, 2026-11-02, when the Device
+    // Portal's upload took minutes), and the download stops.
     const bool installing = !separateApps::working().empty() || appPackage::selfUpdating() || ota::busy();
     // And always, while Megler is in front, under the flag keep-screen-on (LocalState\flags): a phone left waiting for the
     // next package, which is copied to it and installed from it, or for a test, is not to lock meanwhile.
@@ -604,7 +619,12 @@ void AppShell::dialog(DialogSpec spec, std::function<void(int, std::string)> don
     }
     if (!spec.message.empty()) add(column, text(spec.message, font::bodyMedium, weightNormal(), p.onSurfaceVariant));
     dialogField_ = nullptr;
-    if (spec.field) {
+    dialogSecret_ = nullptr;
+    if (spec.field && spec.secret) {
+        auto field = passwordField(dialogSecret_, spec.fieldPlaceholder);
+        field.Margin(ThicknessHelper::FromLengths(0, 16, 0, 0));
+        add(column, field);
+    } else if (spec.field) {
         auto field = textField(dialogField_, spec.fieldText, spec.fieldPlaceholder);
         field.Margin(ThicknessHelper::FromLengths(0, 16, 0, 0));
         add(column, field);
@@ -652,6 +672,7 @@ void AppShell::dialog(DialogSpec spec, std::function<void(int, std::string)> don
         dialogField_.SelectAll();
         dialogField_.Focus(FocusState::Programmatic);
     }
+    if (dialogSecret_) dialogSecret_.Focus(FocusState::Programmatic);
 }
 
 void AppShell::dialogWhenFree(DialogSpec spec, std::function<void(int, std::string)> done) {
@@ -668,11 +689,14 @@ void AppShell::dialogWhenFree(DialogSpec spec, std::function<void(int, std::stri
 
 void AppShell::closeDialog(int button) {
     if (!dialogOpen_) return;
-    const std::string typed = dialogField_ ? narrow(std::wstring(dialogField_.Text())) : std::string();
+    const std::string typed = dialogField_    ? narrow(std::wstring(dialogField_.Text()))
+                              : dialogSecret_ ? narrow(std::wstring(dialogSecret_.Password()))
+                                              : std::string();
     uint32_t at = 0;
     if (dialogLayer_ && root_.Children().IndexOf(dialogLayer_, at)) root_.Children().RemoveAt(at);
     dialogLayer_ = nullptr;
     dialogField_ = nullptr;
+    dialogSecret_ = nullptr;
     dialogOpen_ = false;
     auto done = std::move(dialogDone_);
     dialogDone_ = nullptr;
@@ -916,7 +940,7 @@ void AppShell::importApk(std::function<void(std::string, std::string)> done) {
     // Taken before the picker opens: a second picker while one is up throws.
     if (import_->active) return;
     // (Nothing is installed while Megler does not know which of its apps are installed: it says why.)
-    if (!separateApps::requirePortal(*this)) return;
+    if (!separateApps::requireList(*this)) return;
     *import_ = ImportProgress();
     import_->active = true;
     std::weak_ptr<AppShell> weak = weak_from_this();
@@ -928,7 +952,7 @@ void AppShell::importApk(std::function<void(std::string, std::string)> done) {
 void AppShell::installApkFile(winrt::Windows::Storage::StorageFile const& file) {
     const std::string name = narrow(file.Name());
     shellLog::write("import: " + name + " opened in Megler");
-    if (!separateApps::requirePortal(*this)) return;
+    if (!separateApps::requireList(*this)) return;
     if (import_->active) {
         alert("Another APK Is on Its Way", "Megler is installing an APK already. Open " + name + " again when it is done.");
         return;
@@ -950,8 +974,8 @@ void AppShell::installApkFile(winrt::Windows::Storage::StorageFile const& file) 
             });
 }
 
-void AppShell::installApkPath(const std::wstring& path, const std::string& name, const std::string& from, bool portalAsked) {
-    if (!portalAsked) shellLog::write("import: " + from + " asks to install " + name + " (" + narrow(path) + ")");
+void AppShell::installApkPath(const std::wstring& path, const std::string& name, const std::string& from, bool listAsked) {
+    if (!listAsked) shellLog::write("import: " + from + " asks to install " + name + " (" + narrow(path) + ")");
     /*
      * An APK an app's own package handed over (the shared folder's incoming\, player/SystemHost.cpp) goes once its request is
      * answered, whatever the answer: the library has a copy of its own (or its base and splits) by then, and an app that
@@ -964,25 +988,25 @@ void AppShell::installApkPath(const std::wstring& path, const std::string& name,
     };
     /*
      * Nothing is installed while Megler does not know which of its apps are installed. Megler started or woken by an app's
-     * request has not asked for the list yet (Windows's package manager's, the Device Portal's where Windows will not
-     * answer), or asked long ago: it is asked for first, and the request goes on once it comes, the app's installer session
-     * waiting for the outcome. Only a list that cannot be had then has the app that asked told so, and the shell say why.
-     * Woken by Play Store's request for WhatsApp, after Play Store's request to uninstall the one installed before had
-     * started it, Megler answered at once that the portal "has not answered yet" (576).
+     * request has not asked for the list yet (Windows's package manager's), or asked long ago: it is asked for first, and
+     * the request goes on once it comes, the app's installer session waiting for the outcome. Only a list that cannot be had
+     * then has the app that asked told so, and the shell say why. Woken by Play Store's request for WhatsApp, after Play
+     * Store's request to uninstall the one installed before had started it, Megler answered at once that the Device Portal,
+     * which listed the apps then, "has not answered yet" (576).
      */
-    if (separateApps::portal() != separateApps::Portal::on && !portalAsked) {
+    if (separateApps::list() != separateApps::List::ready && !listAsked) {
         shellLog::write("import: " + name + " waits for the list of the installed apps");
         std::weak_ptr<AppShell> weak = weak_from_this();
-        separateApps::askPortal(*this, [weak, path, name, from] {
+        separateApps::askList(*this, [weak, path, name, from] {
             if (auto self = weak.lock()) self->installApkPath(path, name, from, true);
         });
         return;
     }
-    if (separateApps::portal() != separateApps::Portal::on) {
-        const std::string why = separateApps::portal() == separateApps::Portal::off ? separateApps::portalProblem() : "it has not answered yet";
-        phoneAppsList::installOutcome(name, "failed", "Not installed: neither Windows nor the phone's Device Portal told Megler which apps are installed (" +
-                                                        why + "). Turn the portal on, with its Authentication off, in Settings › Update & security › For developers.");
-        separateApps::requirePortal(*this);
+    if (separateApps::list() != separateApps::List::ready) {
+        const std::string why = separateApps::list() == separateApps::List::unavailable ? separateApps::listProblem() : "it has not answered yet";
+        phoneAppsList::installOutcome(name, "failed", "Not installed: " + appPackage::packageLister() + " did not tell Megler which apps are installed (" +
+                                                        why + ").");
+        separateApps::requireList(*this);
         drop();
         return;
     }
@@ -1038,8 +1062,7 @@ bool AppShell::playStoreCanStart(const std::string& package) {
         confirm("Install Google Play Services First",
                 "Google Play Store runs with Google Play services, which Megler has built in. Open Megler, install Google Play services "
                 "from its Library, then start Google Play Store again.",
-                "Open Megler", false,
-                [] { winrt::Windows::System::Launcher::LaunchUriAsync(winrt::Windows::Foundation::Uri(L"megler:library")); });
+                "Open Megler", false, [] { systemHost::openMegler(L"library"); });
         return false;
     }
     std::string gms;

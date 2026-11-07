@@ -234,6 +234,16 @@ MG_HOSTAPI void mg_thread_set_end_hook(void (MG_HOSTCB *fn)(void));
 MG_HOSTAPI void mg_thread_yield(void);
 MG_HOSTAPI void mg_sleep_ns(u64 ns);
 MG_HOSTAPI int mg_cpu_count(void);
+#if MG_ARCH_ARM32
+/*
+ * Whether the processor divides in hardware in Thumb state (SDIV, UDIV). The ARMv7 cores of Windows's phones and a
+ * Surface 2's Cortex-A15 do; a Surface RT's Cortex-A9 (Tegra 3, under desktop Windows 10 build 15035: docs/RT.md) does
+ * not: Windows traps either there and emulates it, some 80 cycles a time (Microsoft's ARM32 ABI conventions), and Linux
+ * -- qemu-arm playing a Cortex-A9 -- takes it for an undefined instruction. The JIT's int division and what /proc/cpuinfo
+ * and AT_HWCAP tell an app follow it.
+ */
+MG_HOSTAPI bool mg_cpu_arm_divide(void);
+#endif
 
 #if MG_HOST_WINDOWS
 typedef struct mg_lock { void *srw; } mg_lock;        /* SRWLOCK */
@@ -740,6 +750,12 @@ MG_HOSTAPI bool mg_host_probe_breakpoints(char *out, size_t size);
 
 /* The feature level of a Direct3D 11 device (an ID3D11Device *), as D3D_FEATURE_LEVEL numbers it (0x9300, 0xb100); 0 where there is no Direct3D. */
 MG_HOSTAPI int mg_host_d3d11_feature_level(void *device);
+/*
+ * The highest feature level the graphics processor's own Direct3D 11 offers (D3D_DRIVER_TYPE_HARDWARE), numbered so; asked
+ * of Direct3D with no device made. 0 where there is no Direct3D (posix) or no such device. 9_1 on a Surface RT's and a
+ * Surface 2's Tegra (docs/RT.md), below the 9_3 ANGLE needs; 9_3 and up on every phone's.
+ */
+MG_HOSTAPI int mg_host_d3d11_hardware_level(void);
 /* Why a Direct3D 11 device is gone (an HRESULT such as DXGI_ERROR_DEVICE_HUNG), or 0 while it is still there. */
 MG_HOSTAPI u32 mg_host_d3d11_removed_reason(void *device);
 /*

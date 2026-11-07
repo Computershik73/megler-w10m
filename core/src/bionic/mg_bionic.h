@@ -95,6 +95,7 @@ const mg_sym *mg_opensles_table(void);
 const mg_sym *mg_media_table(void);    /* ndk/mg_media.c */
 const mg_sym *mg_aaudio_table(void);   /* ndk/mg_aaudio.c */
 const mg_sym *mg_ahb_table(void);      /* ndk/mg_ahb.c: AHardwareBuffer */
+const mg_sym *mg_sensors_table(void);  /* ndk/mg_sensors.c: ASensorManager and its queues */
 /* The device's API level as native code is told it (the property ro.build.version.sdk, 28 unless a driver has said otherwise). */
 int mg_sdk_level(void);
 const mg_sym *mg_java_ndk_table(void); /* drivers/mg_java_ndk.c: libjnigraphics, on the Java framework's Bitmap; ANativeWindow_fromSurface */

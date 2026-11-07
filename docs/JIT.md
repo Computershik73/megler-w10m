@@ -54,15 +54,17 @@ next. Calls stay exits at first: the interpreter does the call, and the code is 
 
 The libcore and DVM tests run under qemu-arm, which executes the Thumb-2 the JIT writes. They are run with the
 threshold at 0, so that every method with a loop is compiled at its first jump back, and must pass as they do
-interpreted. The benchmark (`tools/dvm-bench.sh arm`) gives the speed under qemu, interpreted and compiled; the
-phone's Self-test gives the phone's.
+interpreted. With `QEMU_CPU=cortex-a9` (and `WSLENV=QEMU_CPU`, which hands it to WSL) qemu plays a Surface RT's
+processor, which has no SDIV: the tests then take the JIT's division by a call. The benchmark (`tools/dvm-bench.sh
+arm`) gives the speed under qemu, interpreted and compiled; the phone's Self-test gives the phone's.
 
 ## Where it stands
 
 `core/src/dvm/mg_dvm_jit.c` compiles: moves and constants (`const-wide` and `const-string` of a string already made
-included); int arithmetic and logic in every form (division and remainder with the divisor checked, the shifts' counts
-masked); long arithmetic (add, sub, mul, and, or, xor, the three shifts by any count, neg, not, `int-to-long`,
-`long-to-int`, `cmp-long`); float and double arithmetic in VFP (add, sub, mul, div, neg, `cmpl` and `cmpg`, the
+included); int arithmetic and logic in every form (division and remainder with the divisor checked, by SDIV, or by a
+call of the runtime's on a processor without it, a Surface RT's Cortex-A9; the shifts' counts masked); long arithmetic
+(add, sub, mul, and, or, xor, the three shifts by any count, neg, not, `int-to-long`, `long-to-int`, `cmp-long`);
+float and double arithmetic in VFP (add, sub, mul, div, neg, `cmpl` and `cmpg`, the
 conversions between int, float and double, toward zero and saturated as Java says); and by calls of small functions of
 the runtime's, a long's division and remainder (the divisor checked), a float's and a double's remainder, a long's
 conversions to and from them; `if-*`, `if-*z`, `goto`, `packed-switch` and `sparse-switch` of up to 64
@@ -92,6 +94,17 @@ call trace on, too little of the host's stack or of the frame stack's segment le
 happened. Under qemu-arm a call went from 117-138 ns to 99-125 ns, HashMap.get from 2060 to about 1700, Integer.valueOf
 from 740 to about 600; the flag no-fast-calls leaves every call to the general way. The log's line of the JIT counts the
 calls each way.
+
+An app that hooks methods (Xposed's XposedBridge: docs/JAVA.md, "Methods an app hooks") must not have a hooked method's
+body done in place. A call of a method hooked by then is not compiled in place, nor tried the quick way when it names the
+method itself, and the quick way declines a hooked method; and once the app has hooked anything (`mg_dvm_jit_hooks_on`)
+every call compiled in place first loads its method's mark and goes the general way, which calls the hook, when it is set:
+five instructions more, only in such an app. The code compiled before the first hook, whose calls in place do not look, is
+forgotten then (the JIT keeps the list of the methods it published): its methods are interpreted until they are hot again.
+It is never freed, as a thread may be inside it, and goes on there until it hands the frame back or returns. `test_hooks`
+(mg_dvm_tests_hooks.c) compiles loops that call a getter in place before the first hook and after it, and hooks the getter
+under the code that does it: built without the look or without the forgetting, six of its checks fail (a loop of 2000
+calls saw its hook once, at its turn in the interpreter).
 
 A method is compiled when the jumps back it takes and the calls of it made by then reach 1000. Its code is entered at the
 head of a loop compiled whole -- a loop that hands back at every turn costs more than it saves -- and at its start, for

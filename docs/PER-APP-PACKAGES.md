@@ -101,7 +101,12 @@ fail.
   A package's publisher id is computed from the Publisher string, not the key,
   so packages signed with a key made on the phone are of the same publisher as
   Megler itself, and share its publisher cache folder. The phone has to trust the
-  certificate: the Device Portal's install takes it with the package.
+  certificate. The phone's Device Portal installed it with the first package it was
+  sent, which Megler did until 2026-11-07 where Windows's deployment engine refused
+  a package; now, where Windows refuses one for its certificate (0x800b0109,
+  `appPackage::untrustedCertificate`), the app's page says so and offers the
+  certificate to Windows's own installer of certificates (**Open the
+  Certificate**), and the user installs it once.
 - No code integrity catalog (`AppxMetadata/CodeIntegrity.cat`) is made, and
   the phone does not want one: the probe packed and signed this way (MeglerProbeC,
   `tools/appx-phone-check.py` builds it) was installed on the HP Elite x3 by
@@ -117,7 +122,7 @@ package of makeappx's and signtool's and one of `appx-tool`'s pass it;
 the certificate's root not being trusted on the PC (as it should, and not at a
 digest). On the phone such a package installs and runs (above).
 
-## Installing: Windows's deployment engine, the Device Portal where it refuses
+## Installing: Windows's deployment engine
 
 Since 0.1.0.614 an app's package, and since 0.1.0.612 Megler's own update from
 `Pictures\Megler`, are installed by Windows's deployment engine
@@ -132,14 +137,39 @@ developer's packages and refuses one more with 0x80073d11
 (ERROR_DEV_SIDELOAD_LIMIT_EXCEEDED). A Megler 575 could not install Aurora Store
 so, and a Lumia 650 had 20 developer's packages (the portal's PackageOrigin 5),
 Megler's and its four apps' among them, installed so by 0.1.0.612 to 0.1.0.639.
-The Device Portal installs only a developer's package. Uninstalling is
-`RemovePackageAsync`. The Device
-Portal's upload, used before and still where the engine refuses, went through
-Megler's memory: a phone of 1 GB lets an app have 390 MB, and a Lumia 650's
-Megler 574 sending a Megler of 356 MB was ended by Windows with nothing said.
-Through the engine the Lumia 650 updated Megler in under a minute and installed
-Google Play services' package (277 MB) in 16 s, where the portal had taken
-almost 4 minutes.
+The packages are listed by `PackageManager.FindPackagesForUser` (the restricted
+capability `packageQuery`) and uninstalled by `RemovePackageAsync`.
+
+The engine is the only way since 2026-11-07 (the owner's wish): Megler asks the
+phone's Device Portal nothing, and needs neither the portal nor its
+authentication turned off. Before, the portal (`https://127.0.0.1`, the phone's
+own) was what Megler installed through up to 0.1.0.611, and then what it fell
+back on where the engine refused a package or the package manager would not list
+or uninstall them. It gave nothing
+the engine does not: it installs only a developer's package, which the engine's
+last tries are too; its upload went through Megler's memory, and a phone of 1 GB
+lets an app have 390 MB, so that a Lumia 650's Megler 574 sending a Megler of
+356 MB was ended by Windows with nothing said; its list of the packages took 11 s
+on an HP Elite x3, more than a minute on a Lumia 650, and at times never came on
+a Lumia 950 XL, where the package manager answers at once. Through the engine the
+Lumia 650 updated Megler in under a minute and installed Google Play services'
+package (277 MB) in 16 s, where the portal had taken almost 4 minutes. The one
+thing the portal did besides was to install the certificate the apps' packages
+are signed with along with the first of them (above, "Making and signing a
+package"); it did so only where all four of the engine's tries had been refused,
+for a developer's package needs no certificate the phone trusts on a phone in
+Developer mode (as Microsoft says of WinAppDeployCmd, which installs one and
+installs no certificate), and the Store's way does. Where Windows refuses a
+package for its certificate now, the user installs the certificate once from
+the app's page. A package Windows refuses stays made, for Windows's installer
+(below).
+
+An Xbox is the exception: there the Xbox's build (`tools/build-appx.sh x64
+--xbox`) installs, lists and
+uninstalls the apps' packages and its own update through the console's own
+Device Portal, `https://localhost:11443`, as DesktopMode_uwp's installer does
+([XBOX.md](XBOX.md)). Only that build has the portal's client
+(`shell/DevicePortal.cpp`).
 
 ## Megler as the place the apps are managed from
 
@@ -150,24 +180,20 @@ installed as an app of the phone's own, and Megler is where that is done
 
 - which apps are installed, and by which Megler, is asked of Windows's package
   manager (`PackageManager.FindPackagesForUser`, the restricted capability
-  `packageQuery`, at once), else of the Device Portal
-  (`/api/app/packagemanager/packages`, 11 s on an HP Elite x3, more than a minute
-  on a Lumia 650), when the library or an app's page is
+  `packageQuery`, at once) when the library or an app's page is
   shown and after every action: a package of Megler's publisher whose name begins
   `MeglerApp.` is an app's, its version the version of the Megler that made it. Each
   row of the library says Installed, Installed and made by another Megler (to
-  update), or Not installed; a portal that cannot be asked is said above the
-  list;
+  update), or Not installed; a list that cannot be had is said above the list;
 - a package carries the Megler that made it, so an update of Megler updates none:
   above the list, **Update All** makes and installs again every app made by
   another Megler;
 - an app's page has the section **On This Phone**: its state, **Install** (or
   **Update**, **Install Again**), which makes the package and installs it
-  through the portal in one go, **App Settings** (below), and **Uninstall**
-  (`DELETE /api/app/packagemanager/package`: the package goes with its
-  LocalState; its part of the shared storage stays). When the portal does not
-  install a package made, the page offers it to Windows's installer, and its
-  certificate;
+  by Windows's deployment engine in one go, **App Settings** (below), and
+  **Uninstall** (`RemovePackageAsync`: the package goes with its LocalState; its
+  part of the shared storage stays). When Windows does not install a package
+  made, the page offers it to Windows's installer, and its certificate;
 - the actions go one at a time on a worker thread, whichever page is shown.
 
 **The APK, kept once** (since 0.1.0.360). An app container may not open a file
@@ -179,12 +205,12 @@ the shell for a new handle at each open, so that each has a position of its
 own): the report, the icon, a bundle's unpacking and the package's making read
 the picked file where it is (`shell/PickedFile.cpp`). **Install APK** in the
 library picks an APK and installs it at once: read where it is, made into a
-package, installed through the portal. A bundle (`.apks`, `.xapk`) is unpacked
+package, installed by Windows's deployment engine. A bundle (`.apks`, `.xapk`) is unpacked
 from where it is into its base and splits in `LocalState\apks`, then installed
 from them.
 
 After an install, the package made (`LocalState\packages\<identity>.appx`) is
-removed; it stays only when the portal did not install it, for Windows's
+removed; it stays only when Windows did not install it, for Windows's
 installer. Megler keeps no copy of the app's APK: the one in the shared folder,
 which the installed package's app reads (above), is the library's entry from
 then on (`Library::adopt`), its report and icon cached as before, and an update
@@ -233,26 +259,28 @@ the private files alone: its part of the storage is the app's already.
 
 Two things are asked for before anything else (the owner's wish, 2026-11-02):
 
-- **The Device Portal on.** Megler installs every app's package, Update All's and
-  its own update through the phone's Device Portal, and without it an install
-  went as far as making the package and then failed. Nothing is installed while
-  the portal has not answered (`separateApps::requirePortal`): picking an APK,
-  opening one, an app's request (Play Store's: it is told "Not installed: ...
-  the Device Portal is off"), Install and Update All each say how to turn it on
-  (Settings › Update & security › For developers: Developer mode, then Device
-  Portal, with a button that opens that page) and ask the portal again for the
-  next try. The portal's Authentication must be off there too: Megler asks the
-  portal on the phone itself and sends no user name and password, and a portal
-  that asks for them answers 401, which Megler says as "The Device Portal asks
-  for a user name and password: turn its Authentication off ...".
-  An app's request waits for the portal's answer first when Megler has not
-  had one (`separateApps::askPortal`): Megler started or woken by the request
-  itself has not asked the portal yet, and Play Store's installer session
-  waits for the outcome meanwhile. Woken by Play Store's request for WhatsApp,
-  after Play Store's request to uninstall the one installed before had
-  started it, Megler said at once that the portal "has not answered yet",
-  and Play Store showed the install as failed (576). The app that asked is
-  told the portal is off only when it does not answer then.
+- **The list of the installed apps.** Megler lists, installs and uninstalls
+  every app's package, Update All's and its own update through Windows's
+  package manager (above), and without the list an install went as far as
+  making the package and then failed. Nothing is installed while the list has
+  not come (`separateApps::requireList`): picking an APK, opening one, an
+  app's request (Play Store's: it is told "Not installed: Windows's package
+  manager did not tell Megler which apps are installed ..."), Install and
+  Update All each wait for it, or say why it could not be had, and ask for it
+  again for the next try. There is nothing for the user to turn on: the
+  restricted capabilities `packageQuery` and `packageManagement` are in
+  Megler's manifest. (Until 2026-11-07 the list came from the phone's Device
+  Portal where Windows would not give it, and this said to turn the portal on
+  in Settings › Update & security › For developers and its Authentication off;
+  neither is needed any more.)
+  An app's request waits for the list first when Megler has not had one
+  (`separateApps::askList`): Megler started or woken by the request itself has
+  not asked for it yet, and Play Store's installer session waits for the
+  outcome meanwhile. Woken by Play Store's request for WhatsApp, after Play
+  Store's request to uninstall the one installed before had started it, Megler
+  said at once that the portal, which listed the apps then, "has not answered
+  yet", and Play Store showed the install as failed (576). The app that asked
+  is told the list could not be had only when it does not come then.
 - **Google's own Google Play services before Google Play Store.** Play Store
   starts, in its own package or when an app asks for it, only once Google's own
   Google Play services, which Megler has built in, is installed as an app of its
@@ -271,8 +299,8 @@ Two things are asked for before anything else (the owner's wish, 2026-11-02):
      170 MB) are copied once for each build of Megler to
      `<shared>\android\<Megler's version>`, a file `complete` written last; every
      app package of that build reads them there, so a package carries none.
-     Whenever Megler has the Device Portal's list of the packages (after its
-     jobs, Update All's too, and when the list is asked for again), it removes
+     Whenever Megler has the list of the packages (after its jobs, Update
+     All's too, and when the list is asked for again), it removes
      the folders of older builds that no installed package is of
      (`removeUnusedAndroidRoots`), `complete` first: after Update All, all of
      them. Until 0.1.0.459 none was removed, and each build that made a
@@ -369,20 +397,17 @@ bytes as come after each place; the two tails are found at each build by
 and written to `appx-template\resources.txt`. The file so made is byte for
 byte the one makepri makes for that name (checked on the PC for Total
 Commander's and for names with capitals, digits, `.` and `-`).
-- Installing it through the Device Portal sends the package and the certificate
-  to `https://127.0.0.1/api/app/packagemanager/package` with Windows's own HTTP
-  client (`Windows.Web.Http`), after a GET of `/api/os/info` for the portal's
-  CSRF cookie, and asks `/api/app/packagemanager/state` every two seconds
-  until it says how it went. The cookies are handled by hand, as
-  `tools/phone.py` sends them: those of the GET's `Set-Cookie` go back in the
-  `Cookie` header, and the `CSRF-Token` one in `X-CSRF-Token` too (left to the
-  HTTP client's own cookies, 353's install was refused 403); what the portal
-  answered, cookies and refusals, is in the log. The portal's certificate, which
-  the phone made for itself, is taken as it is (untrusted, wrong name, expired,
-  incomplete chain), there only. A portal that asks for a user name and
-  password is said to; none is sent yet.
-- **Open the Package (Windows Installer)** and **Open the Certificate**, when the
-  portal did not install it, hand the file to Windows (`Launcher.LaunchFileAsync`), as a file manager would. On the
+- Until 2026-11-07 a package the deployment engine refused (and before
+  0.1.0.612 every one) was sent with the certificate to the phone's own Device
+  Portal, `https://127.0.0.1/api/app/packagemanager/package`, with Windows's own
+  HTTP client, after a GET of `/api/os/info` for the portal's CSRF cookie, and
+  `/api/app/packagemanager/state` was asked until it said how it went; the
+  phone's build has none of that now (above, "Installing"). The Xbox's build
+  installs so still, through the console's portal ([XBOX.md](XBOX.md)).
+- **Open the Package (Windows Installer)** and **Open the Certificate**, when
+  Windows's deployment engine did not install it, hand the file to Windows
+  (`Launcher.LaunchFileAsync`), as a file manager would: the package to its
+  installer, the certificate to Windows's installer of certificates. On the
   HP Elite x3 (353) Windows's installer installed a package so.
 
 A package with `MeglerApp.ini` in its install folder is one app's
@@ -392,7 +417,11 @@ A package with `MeglerApp.ini` in its install folder is one app's
   folder since 0.1.0.645, the package's `app` folder before) instead of
   `LocalState\apks`, and leaves it as it is;
 - the shell opens the app as soon as the library has it, into the player (or
-  its page, when it cannot run here), and Back after the app has ended leaves;
+  its page, when it cannot run here), and Back after the app has ended leaves
+  (Back on the app's first screen, where the app goes to the back as on
+  Android 12, is the system's, which takes the window away and leaves the app
+  as it is; one that ends its last activity with Back closes Megler as it
+  ends);
   until then it shows the splash screen's picture on black, as Windows showed
   it a moment before (`ui/StartScreen.cpp`), not Megler's library;
 - the core is given the shared folder as `megler_config.storage_dir`
@@ -531,6 +560,59 @@ three copies of the 279 MB Google Play services, each the same byte for byte
 The check took 279 s there, Update All's twelve packages going on beside it;
 Play Store, started after, read its own APK as `DMRUOL...` (the flag in its
 package).
+
+**Google's APKs for each processor.** Megler runs the native code of its own
+processor alone (32-bit ARM on a phone; x86_64, x86 or arm64-v8a on desktop
+Windows, [DESKTOP.md](DESKTOP.md)), and Google builds Google Play services in a
+variant for each processor -- APKMirror lists them by architecture and Android
+version, the six digits in brackets after the version saying both: `100300`
+armeabi-v7a for Android 9 and later, `100400` arm64-v8a + armeabi-v7a, `040700`
+x86 and `040800` x86 + x86_64 for Android 7 and later (there is no x86 build
+for Android 9). The variant for a 64-bit processor carries a few libraries of
+the 32-bit one beside its own, for 32-bit apps that load its code: the
+arm64-v8a variant 8 armeabi-v7a libraries of its 40, the x86_64 one 8 x86
+libraries. The phones' packages carried the arm64-v8a variant (26.41.30,
+264130013) until 2026-11-07, and the phones' logs said `libgmscore.so` and
+`libleveldbjni.so` were not found. `tools/build-appx.sh` now checks each APK it
+bundles (`tools/bitgapps-check.py`): it must be the app its name says, with
+its native code wholly of the package's processor (as many libraries of its
+ABI as of any other). Google Play Store (53.7.23, 11 libraries of each ABI),
+microG (0.3.17, 6 of each) and Google Services Framework (no native code) are
+the same APK for every package.
+
+The bundles since then are Google Play services 26.41.31, the nearest release
+APKMirror has for all four processors, of a variant that stores its DEX files
+(mapped from the APK, not inflated into each app's data, `dvm/mg_dvm_apk.c`)
+where one is built: `100300` (armeabi-v7a) and `100400` (arm64-v8a) for Android
+9 and later, as before. For x86 and x86_64 the only ones are for Android 7 and
+later (`040700`, `040800`), which deflate their DEX files (each app inflates
+them once into its `dex` folder), and for Android 12 and later (`190700`,
+`190800`), which store them but are built for API 31: Megler's libcore is
+Android 9's, the R8 back-ports of the Java 9 to 11 methods Android added at
+API 30 (`List.of` and its kin) are not in them, and APKMirror lists them as
+signed with a second, newer key of Google's beside the old one. Read for what
+they call, 26.41.31's Android 7 build calls 111 methods of the system's that
+Megler's Android root does not have, its Android 9 build 214; of them 14 and 17
+of `java.*`, the 14 among the 17 (`Stream.toList`, `takeWhile` and their like,
+which Google's code calls on the Android versions that have them).
+
+**A later APK of Megler's than the one installed.** Update All makes an app's
+next package from the APK the app has (its folder in the shared folder), so a
+later Megler's Google Play services never reached a phone that had installed
+an earlier one's: the phones would have kept the arm64-v8a variant.
+`bundledApks::replacementFor` compares an installed Google Play services
+(Google's, not microG's) or Google Play Store with the one Megler's package
+brings when the two files differ, by their reports, and the package's takes
+the installed one's place when it is of a later version (264131009 after
+264130013), or of the same release (version codes equal but for their last
+three digits, the variant) with more libraries of this processor -- the x86
+variant after the x86_64 one on a PC where x86 Megler followed x64 Megler. Its
+package is then made from Megler's APK (a new folder of the shared folder,
+copied from the package's own), its report is the library's once the package
+is installed, and the old folder goes with the next listing. An older APK is
+never put over a later one, as Android keeps an update of a system app over an
+older system image; and an APK of the library's that is not installed yet is
+installed as it is, the user's choice.
 
 ## What follows (not done yet)
 

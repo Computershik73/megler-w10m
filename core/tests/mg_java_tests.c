@@ -48,6 +48,14 @@
  * found, and what Android would tell it of its splits. Checked besides: the picture only a split has, in the window; and
  * the .xapk's expansion file, which the app finds in its own Android/obb.
  *
+ * `screen` has its surface resized and turned from the host's side, as the shell does for a PC's window and a phone turned
+ * (megler_set_surface): an activity that takes no configuration change is made again with its saved state, its views' and
+ * what it retained, unless a size changed across none of the sizes its resources are made for; one that takes them all hears
+ * onConfigurationChanged; one that is stopped meets the change as it comes back; the application, its callbacks and a display
+ * listener hear it; the configuration, the metrics, the display's rotation and the resources chosen follow, and the pictures
+ * come at the new size with the views laid out for it. And what the app asks of the screen's way up -- its manifest's
+ * android:screenOrientation, setRequestedOrientation -- reaches a stand-in for the shell (megler_display_host).
+ *
  * `app` is any APK at all, or a bundle of split APKs, unpacked first as for `splits`: started, left to itself until it is
  * still, its picture written, then whatever the script on the command line says -- a
  * touch, a wait, Back, each followed by another picture -- and a summary of
@@ -77,6 +85,7 @@
 #include "../src/zip/mg_zip.h"
 #include "mg_camera_standin.h"
 #include "mg_location_standin.h"
+#include "mg_sensor_standin.h"
 #include "mg_codec_standin.h"
 #include "mg_gfx_standin.h"
 #include "mg_gl_standin.h"
@@ -567,6 +576,20 @@ static MEGLER_CB void bars_wanted(void *user, int bars)
     mg_lock_release(&g_bars_lock);
 }
 
+/* How the app asked for the screen to be held (megler_display_host.orientation, on one of its threads), in order: ",-1,7,0". */
+static char g_orientations_heard[128];
+static mg_lock g_orientations_lock = MG_LOCK_INIT;
+
+static MEGLER_CB void display_orientation(void *user, int requested)
+{
+    size_t n;
+    (void)user;
+    mg_lock_acquire(&g_orientations_lock);
+    n = strlen(g_orientations_heard);
+    if (n + 8 < sizeof(g_orientations_heard)) snprintf(g_orientations_heard + n, sizeof(g_orientations_heard) - n, ",%d", requested);
+    mg_lock_release(&g_orientations_lock);
+}
+
 /* What the app's media session told (megler_media_session_host), in order: "state=3 actions=6;meta=Song/Band/Record 256x128 ff336699;". */
 static char g_media_heard[512];
 static mg_lock g_media_lock = MG_LOCK_INIT;
@@ -903,6 +926,8 @@ static bool start(const char *apk, const char *android_root)
     cfg.keyboard.hide = keyboard_hide;
     cfg.bars.wanted = bars_wanted;
     g_bars_heard[0] = 0;
+    cfg.display.orientation = display_orientation;
+    g_orientations_heard[0] = 0;
     cfg.media_session.state = media_state;
     cfg.media_session.metadata = media_metadata;
     g_media_heard[0] = 0;
@@ -918,6 +943,8 @@ static bool start(const char *apk, const char *android_root)
     if (g_camera_app) cfg.camera = *mg_camera_standin();
     /* The phone in Moscow, the location on (mg_location_standin.c). */
     cfg.location = *mg_location_standin();
+    /* A device with one of each sensor, each reading a known value in Windows' units and signs (mg_sensor_standin.c). */
+    cfg.sensors = *mg_sensor_standin();
     /*
      * A microphone that hears a ramp (mic_start), and a SIM of the country the run's language and region are in, as a
      * phone's is -- the US in the first run (en-US), Russia in the second (ru-RU): the data app's steps microphone,
@@ -1033,18 +1060,32 @@ static bool start(const char *apk, const char *android_root)
     return false;
 }
 
-/* Back, and the app's end: the activity taken down in order, the main loop ended, status 0. */
-static void back_and_end(const char *destroyed_line, int *at)
+/* The user's stop, and the app's end: the activity taken down in order, the main loop ended, status 0. */
+static void stop_and_end(const char *destroyed_line, int *at)
 {
     int tries;
-    megler_key(4, true);
-    megler_key(4, false);
+    megler_stop();
     expect_line(destroyed_line, at, 30);
     for (tries = 0; tries < 3000 && running(); tries++) mg_sleep_ns(10000000ull);
     CHECK(g_exited);
     CHECK(g_exited && g_status == 0);
     if (g_exited) say("  the app ended with status %d%s%s", g_status, g_reason[0] ? ": " : "", g_reason);
-    else say("  the app did not end after Back");
+    else say("  the app did not end after the stop");
+}
+
+/*
+ * Back on the app's first screen, and its end. As on Android 12 and later, Back sends the task of a root activity to the
+ * back and nothing finishes: megler_back says so, the shell's cue to give the Back to the system, which takes the window
+ * away. Hidden then and shown again, the app goes on; the user's stop ends it.
+ */
+static void back_and_end(const char *destroyed_line, int *at)
+{
+    const int answer = megler_back(400, 10000);
+    CHECK(answer == MEGLER_BACK_LEAVE && running());
+    if (answer != MEGLER_BACK_LEAVE) say("  Back on the first screen: answered %d, not to the back", answer);
+    megler_set_paused(true);
+    megler_set_paused(false);
+    stop_and_end(destroyed_line, at);
 }
 
 /* --------------------------------------------------------------- measuring */
@@ -1077,6 +1118,158 @@ static void profile_end(const char *step)
     say("  the profile of \"%s\":", step);
     /* The twenty methods that cost most; MG_JAVA_PROFILE_TOP asks for more (every method that ran, with a large number). */
     mg_dvm_profile_report(getenv("MG_JAVA_PROFILE_TOP") && atoi(getenv("MG_JAVA_PROFILE_TOP")) > 0 ? atoi(getenv("MG_JAVA_PROFILE_TOP")) : 20, profile_line, NULL);
+}
+
+/* ----------------------------------------------------------------- screen */
+
+/*
+ * Whether the last picture is `w` x `h` and its two halves are the two colours: left and right (across), or top and bottom --
+ * what the screen app's activities draw, laid out at the surface's size. Looked at in its lower part, below the field at the
+ * top left.
+ */
+static bool halves(int w, int h, u32 first, u32 second, bool across)
+{
+    bool sized;
+    mg_lock_acquire(&W.lock);
+    sized = W.width == w && W.height == h;
+    mg_lock_release(&W.lock);
+    if (!sized) return false;
+    if (across)
+        return pixel(w / 4, h * 3 / 4) == first && pixel(w / 2 - 3, h * 3 / 4) == first && pixel(w / 2 + 3, h * 3 / 4) == second && pixel(w - 4, h * 3 / 4) == second;
+    return pixel(w / 2, h / 4) == first && pixel(w / 2, h / 2 - 3) == first && pixel(w / 2, h / 2 + 3) == second && pixel(w / 2, h - 4) == second;
+}
+
+/* Waits up to five seconds for the orientations the app asked for to be `want`; whether they are. */
+static bool orientations_heard(const char *want)
+{
+    char heard[sizeof(g_orientations_heard)];
+    int tries;
+    for (tries = 0; tries < 250; tries++) {
+        mg_lock_acquire(&g_orientations_lock);
+        mg_strlcpy(heard, g_orientations_heard, sizeof(heard));
+        mg_lock_release(&g_orientations_lock);
+        if (!strcmp(heard, want)) return true;
+        mg_sleep_ns(20000000ull);
+    }
+    say("  the orientations the app asked for: \"%s\", not \"%s\"", heard, want);
+    return false;
+}
+
+#define RED 0xFF0000u
+#define BLUE 0x0000FFu
+#define GREEN 0x00C000u
+#define YELLOW 0xFFFF00u
+
+static int run_screen(void)
+{
+    int at = -1, mark;
+    /* Upright, as it starts: Main's halves side by side, the field typed into, the screen held as the system likes (it asks nothing). */
+    expect_line("I/ScreenTest: App.onCreate w=480 h=800 sw=480 orientation=1 dpi=160", &at, 120);
+    expect_line("I/ScreenTest: Main.onCreate count=1 state=none retained=none", &at, 60);
+    expect_line("I/ScreenTest: Main.config w=480 h=800 sw=480 orientation=1 dpi=160 rotation=0 metrics=480x800 res=narrow", &at, 30);
+    expect_line("I/ScreenTest: Main.onResume", &at, 30);
+    settle();
+    CHECK(halves(480, 800, RED, BLUE, true));
+    write_picture("screen-1-upright");
+    CHECK(orientations_heard(",-1"));
+
+    /*
+     * Turned a quarter anticlockwise, as a phone is into landscape: the application and its callbacks hear the new configuration,
+     * Main, which takes none, is made again -- paused, stopped, its state saved with the field's text, what it retains kept,
+     * destroyed as it changes configurations (orientation and screen size, 0x480) -- and the one made again has them all back,
+     * in a configuration, metrics and resources (values-w700dp) of the new size, and the display turned. The display listener
+     * hears it, and the picture comes at the new size.
+     */
+    say("  the surface turned: 800 x 480, 90 degrees");
+    megler_set_surface(800, 480, 160, 1);
+    expect_line("I/ScreenTest: App.callbacks w=800 h=480 sw=480 orientation=2 dpi=160", &at, 30);
+    expect_line("I/ScreenTest: App.onConfigurationChanged w=800 h=480 sw=480 orientation=2 dpi=160", &at, 10);
+    expect_line("I/ScreenTest: Main.onPause changing=true", &at, 10);
+    expect_line("I/ScreenTest: Main.onStop changing=true", &at, 10);
+    expect_line("I/ScreenTest: Main.onSaveInstanceState field=typed", &at, 10);
+    expect_line("I/ScreenTest: Main.onRetain", &at, 10);
+    expect_line("I/ScreenTest: Main.onDestroy changing=true changes=0x480", &at, 10);
+    expect_line("I/ScreenTest: Main.onCreate count=2 state=saved retained=kept1", &at, 30);
+    expect_line("I/ScreenTest: Main.config w=800 h=480 sw=480 orientation=2 dpi=160 rotation=1 metrics=800x480 res=wide", &at, 10);
+    expect_line("I/ScreenTest: Main.onStart", &at, 10);
+    expect_line("I/ScreenTest: Main.onRestoreInstanceState field=typed", &at, 10);
+    expect_line("I/ScreenTest: Main.onResume", &at, 10);
+    CHECK(wait_line("I/ScreenTest: App.display 0 rotation=1 size=800x480", 0, 10) >= 0);
+    settle();
+    CHECK(halves(800, 480, RED, BLUE, true));
+    write_picture("screen-2-turned");
+
+    /*
+     * Narrower, as a PC's window dragged, staying over 700 dp: the screen's size is all that changed, and it crosses none of the
+     * sizes the app's resources are made for, so Main is not made again, nor told (it takes no change itself): its views hear the
+     * new configuration and are laid out at the new size.
+     */
+    say("  the surface resized: 750 x 480");
+    mark = at;
+    megler_set_surface(750, 480, 160, 1);
+    expect_line("I/ScreenTest: App.onConfigurationChanged w=750 h=480 sw=480 orientation=2 dpi=160", &at, 30);
+    expect_line("I/ScreenTest: Main.right.view onConfigurationChanged w=750 h=480 sw=480 orientation=2 dpi=160", &at, 10);
+    expect_line("I/ScreenTest: Main.right.view size 375x480", &at, 10);
+    settle();
+    CHECK(find_line("I/ScreenTest: Main.onCreate", mark + 1) < 0 && find_line("I/ScreenTest: Main.onPause", mark + 1) < 0);
+    CHECK(find_line("I/ScreenTest: Main.onConfigurationChanged", 0) < 0);
+    CHECK(halves(750, 480, RED, BLUE, true));
+
+    /* Narrower still, across 700 dp: a size its resources are made for, and Main is made again (the screen's size alone, 0x400), narrow now. */
+    say("  the surface resized: 600 x 480");
+    megler_set_surface(600, 480, 160, 1);
+    expect_line("I/ScreenTest: Main.onDestroy changing=true changes=0x400", &at, 30);
+    expect_line("I/ScreenTest: Main.onCreate count=3 state=saved retained=kept2", &at, 30);
+    expect_line("I/ScreenTest: Main.config w=600 h=480 sw=480 orientation=2 dpi=160 rotation=1 metrics=600x480 res=narrow", &at, 10);
+    expect_line("I/ScreenTest: Main.onResume", &at, 10);
+    settle();
+    CHECK(halves(600, 480, RED, BLUE, true));
+
+    /*
+     * Handled, started as another app would start it, covers Main: its manifest asks for the screen held upright (sensorPortrait,
+     * 7), which the shell hears. Then the screen turned upright, as the shell turns it: Handled takes every change itself and hears
+     * onConfigurationChanged, its views laid out again; Main, stopped, is not made again yet.
+     */
+    megler_start_activity("megler.test.screen.Handled");
+    expect_line("I/ScreenTest: Handled.onCreate w=600 h=480 sw=480 orientation=2 dpi=160 requested=7", &at, 30);
+    expect_line("I/ScreenTest: Handled.onResume", &at, 10);
+    CHECK(orientations_heard(",-1,7"));
+    settle();
+    CHECK(halves(600, 480, GREEN, YELLOW, false));
+    say("  the surface turned upright: 480 x 800");
+    mark = at;
+    megler_set_surface(480, 800, 160, 0);
+    expect_line("I/ScreenTest: Handled.onConfigurationChanged w=480 h=800 sw=480 orientation=1 dpi=160 rotation=0 metrics=480x800 res=narrow", &at, 30);
+    expect_line("I/ScreenTest: Handled.bottom.view onConfigurationChanged w=480 h=800 sw=480 orientation=1 dpi=160", &at, 10);
+    settle();
+    CHECK(find_line("I/ScreenTest: Handled.onCreate", mark + 1) < 0 && find_line("I/ScreenTest: Main.onCreate count=4", 0) < 0);
+    CHECK(halves(480, 800, GREEN, YELLOW, false));
+    write_picture("screen-3-handled");
+
+    /* A tap: Handled asks for landscape (setRequestedOrientation), which the shell hears. */
+    tap(240, 600);
+    expect_line("I/ScreenTest: Handled.asked landscape requested=0", &at, 30);
+    CHECK(orientations_heard(",-1,7,0"));
+
+    /*
+     * Back: Handled finishes, and Main comes back to a screen upright where it was made for one lying down: it is made again now,
+     * from where it was, stopped (no pause, no stop), with its state; the screen is again as Main wants it, which is nothing.
+     */
+    megler_back(400, 10000);
+    expect_line("I/ScreenTest: Main.onSaveInstanceState field=typed", &at, 30);
+    expect_line("I/ScreenTest: Main.onDestroy changing=true changes=0x480", &at, 10);
+    expect_line("I/ScreenTest: Main.onCreate count=4 state=saved retained=kept3", &at, 10);
+    expect_line("I/ScreenTest: Main.config w=480 h=800 sw=480 orientation=1 dpi=160 rotation=0 metrics=480x800 res=narrow", &at, 10);
+    expect_line("I/ScreenTest: Main.onRestoreInstanceState field=typed", &at, 10);
+    expect_line("I/ScreenTest: Main.onResume", &at, 10);
+    CHECK(orientations_heard(",-1,7,0,-1"));
+    settle();
+    CHECK(halves(480, 800, RED, BLUE, true));
+    write_picture("screen-4-back");
+    CHECK(find_line("I/ScreenTest: Handled.onDestroy changing=false", 0) >= 0);
+    if (g_failed) say_app_lines("I/ScreenTest:");
+    stop_and_end("I/ScreenTest: Main.onDestroy changing=false", &at);
+    return g_failed;
 }
 
 /* ------------------------------------------------------------------ hello */
@@ -1276,13 +1469,42 @@ static int run_hello(void)
         CHECK(pixel(130, g_screen_h - 90) == 0x00A0A0 && pixel(10, g_screen_h - 90) != 0x00A0A0 && pixel(100, g_screen_h - 20) == 0x40A040);
     }
 
-    /* Back: down in order, and out. */
-    megler_key(4, true);
-    megler_key(4, false);
+    /*
+     * Back on the first screen, as React Native's and Flutter's activities take it: handed on, and the task sent to the back
+     * a while later -- the first time after 900 ms, past what megler_back waits for an app that showed nothing new, so that
+     * Back is the app's and the next, a moment later, the system's without reaching the app; then after 150 ms, within the
+     * wait. Nothing finished: hidden then, the activity is paused and stopped, shown again started and resumed; and the
+     * user's stop takes it down.
+     */
+    {
+        int answer = megler_back(400, 10000);
+        expect_line("I/HelloTest: back 1 handed on for 900 ms", &at, 10);
+        CHECK(answer == MEGLER_BACK_TAKEN);
+        expect_line("java: the app went to the back with no Back waiting", &at, 10);
+        answer = megler_back(400, 10000);
+        CHECK(answer == MEGLER_BACK_LEAVE && find_line("I/HelloTest: back 2", at) < 0);
+        answer = megler_back(400, 10000);
+        expect_line("I/HelloTest: back 2 handed on for 150 ms", &at, 10);
+        CHECK(answer == MEGLER_BACK_LEAVE && running());
+        say("  Back on the first screen: the app's and then the system's when the app went to the back late, the system's when soon");
+    }
+    megler_set_paused(true);
     expect_line("I/HelloTest: onPause", &at, 30);
     expect_line("I/HelloTest: onStop", &at, 30);
-    at--;
-    back_and_end("I/HelloTest: onDestroy presses=12", &at);
+    megler_set_paused(false);
+    expect_line("I/HelloTest: onResume", &at, 30);
+    /* And Back once more, which the app takes as CoolReader does, finishing its activity a moment later: megler_back says it
+       ended, the shell's cue to close as the app goes. */
+    {
+        int tries;
+        const int answer = megler_back(400, 10000);
+        expect_line("I/HelloTest: back 3 finishes in 100 ms", &at, 10);
+        CHECK(answer == MEGLER_BACK_ENDED);
+        expect_line("I/HelloTest: onDestroy presses=12", &at, 30);
+        for (tries = 0; tries < 3000 && running(); tries++) mg_sleep_ns(10000000ull);
+        CHECK(g_exited && g_status == 0 && !g_reason[0]);
+        if (g_exited) say("  Back that the app ends with: the app ended with status %d%s%s", g_status, g_reason[0] ? ": " : "", g_reason);
+    }
     say_app_lines("/HelloTest: ");
     return g_failed;
 }
@@ -1987,7 +2209,7 @@ static int run_natives(void)
     static const char *const steps[] = { "load", "registered", "primitives", "stack-mix", "overloads", "arrays", "bounds", "strings", "callback", "throw-native",
                                          "throw-java", "find-class", "references", "reflection", "monitor", "thread", "thread-daemon", "needed-library", "asset",
                                          "bitmap", "direct-buffer", "configuration", "library-folder", "loaded-once", "own-file", "missing-library",
-                                         "missing-method", "looper-watched", "gc-held", "system-icu", "abi", "device", "string-alloc", "many-args", "deep-callbacks" };
+                                         "missing-method", "looper-watched", "sensors", "gc-held", "system-icu", "abi", "device", "string-alloc", "many-args", "deep-callbacks" };
     int at = -1, layout, pic[4], i;
     char want[120];
     memset(pic, 0, sizeof(pic));
@@ -2005,6 +2227,9 @@ static int run_natives(void)
     expect_line(want, &at, 60);
     /* The descriptor the library watches on the main thread's looper: its callback comes with a later turn of the message loop. */
     expect_line("I/NativesTest: looper ok", &at, 30);
+    /* The library's sensor queue on that looper (the stand-in's sensors, mg_sensor_standin.c): its events in Android's units and
+       signs, at the rate it asked for, then the queue ended. */
+    CHECK(wait_line("I/NativesTest: sensors-events ok", 0, 60) >= 0);
     /* Loaded three times over by the app, loaded once. */
     CHECK(find_line("JNI_OnLoad call 2", 0) < 0);
     layout = wait_line("I/NativesTest: layout focus=true", 0, 30);
@@ -2338,10 +2563,13 @@ static int run_data(void)
                                          "environment", "own-folders", "volumes", "space", "permissions", "download", "list-root",
                                          /* And the battery, the time zone, TLS (conscrypt's: a TLS server and client of the app's own on loopback,
                                             and an https URL through Android's HTTP client; or, where its library is not in the Android root, the
-                                            stand-in that fails politely), Android's key store's key pairs and their X.509 certificates (and
-                                            an attestation challenge refused, and a key no provider takes refused at once), and the list of decoders: the stand-in's
-                                            H.264, AAC and MP3 (mg_codec_standin.c), and no H.265. */
-                                         "battery", "connectivity", "dns-servers", "system-libs", "apache-http-legacy", "apache-http-client", "preloaded-drawables", "location", "timezone", "locale", "phone-number", "tls", "tls-loopback", "tls-https", "keystore", "keystore-certificates", "keystore-foreign-key", "path-op", "base64-streams", "piped-streams", "codecs",
+                                            stand-in that fails politely), the app's network security configuration (an authority of its own
+                                            trusted for the names it gives it, the rest refused, pins), Android's key store's key pairs and their
+                                            X.509 certificates (and an attestation challenge refused, and a key no provider takes refused at once),
+                                            and the list of decoders: the stand-in's H.264, AAC and MP3 (mg_codec_standin.c), and no H.265. And
+                                            the phone's sensors, the stand-in's (mg_sensor_standin.c), listed and listened to. */
+                                         "battery", "connectivity", "dns-servers", "system-libs", "apache-http-legacy", "apache-http-client", "preloaded-drawables", "location", "sensors", "timezone", "locale", "phone-number", "tls", "tls-loopback", "tls-https",
+                                         "network-trust", "network-trust-domains", "network-trust-pins", "keystore", "keystore-certificates", "keystore-foreign-key", "path-op", "base64-streams", "piped-streams", "codecs",
                                          /* And what Android's WebView asks of the platform before it shows a page, each answered as Android
                                             answers it: the app's id within its user (UserHandle.getAppId), whether cleartext HTTP is
                                             permitted (NetworkSecurityPolicy), a compatibility change's state for the app's target
@@ -2372,7 +2600,7 @@ static int run_data(void)
                                             makes one. And a proxy of an interface of 600 methods. And sound from Java: an
                                             AudioTrack written to, a MediaPlayer of a WAV and of an Ogg Vorbis asset, a SoundPool. */
                                          "xml", "asset-fd", "tasks", "wrapper-receiver", "viewgroup-flag", "text-drawables", "pfd-dup", "pfd-parcel",
-                                         "theme-selfref", "queue-next", "storage-stats", "broadcast-explicit", "service-stop-thread", "start-ids", "process-scope", "job-scheduler", "downloads", "rollback-service", "art-manager", "progress-subclass", "telephony", "microphone", "biometric", "ordered-broadcast", "hardware-accelerated", "descendant-invalidated", "image-matrix-before-layout", "delegate-last-scope", "asset-manager-manifest", "big-asset", "path-iterator", "mutable-context", "exec", "crc32c", "nine-patch-constructors", "subscription-ids", "filter-categories", "arrays-ranges", "thread-stack", "icu-number", "audio-route", "expand-template", "list-fragment", "fragment-saved-state", "stub-said", "handler-thread", "managed-dialog", "input-format", "dialog-of-stopped", "zip-path-validator", "list-row-click", "animation-listener", "circular-reveal", "animator-values", "observer-merged", "typeface-descriptor", "device-provisioned", "users", "start-asked", "pending-intent-creator", "pending-intent-flags", "alarm-replace-cancel", "messenger-forwarded", "insets-builder", "insets-consumed", "insets-siblings", "broadcast-handler", "prefs-spaced-key", "account-removed", "sync", "package-installer", "batch-operations", "wifi", "media-metadata", "playback-state", "remote-user-info", "theme-accent", "phone-apps", "phone-apps-activities", "phone-apps-signatures", "install-intent", "install-session", "install-splits", "bitmap-bytes", "adaptive-icon", "idle-handler", "uri-builder", "many-interfaces", "proxy-many-methods", "apk-path", "maps-paths", "apk-optimization",
+                                         "theme-selfref", "queue-next", "storage-stats", "broadcast-explicit", "service-stop-thread", "start-ids", "process-scope", "job-scheduler", "downloads", "rollback-service", "art-manager", "progress-subclass", "telephony", "microphone", "biometric", "ordered-broadcast", "hardware-accelerated", "descendant-invalidated", "image-matrix-before-layout", "delegate-last-scope", "asset-manager-manifest", "big-asset", "path-iterator", "mutable-context", "exec", "crc32c", "nine-patch-constructors", "subscription-ids", "filter-categories", "arrays-ranges", "thread-stack", "icu-number", "audio-route", "expand-template", "list-fragment", "fragment-saved-state", "stub-said", "handler-thread", "managed-dialog", "input-format", "dialog-of-stopped", "zip-path-validator", "list-row-click", "animation-listener", "circular-reveal", "animator-values", "observer-merged", "typeface-descriptor", "device-provisioned", "users", "start-asked", "pending-intent-creator", "pending-intent-flags", "alarm-replace-cancel", "messenger-forwarded", "insets-builder", "insets-consumed", "insets-siblings", "broadcast-handler", "prefs-spaced-key", "account-removed", "sync", "package-installer", "batch-operations", "wifi", "media-metadata", "playback-state", "remote-user-info", "theme-accent", "phone-apps", "phone-apps-activities", "phone-apps-signatures", "install-intent", "install-session", "install-splits", "bitmap-bytes", "adaptive-icon", "idle-handler", "uri-builder", "html-tag-handler", "stats-manager", "credential-manager", "many-interfaces", "proxy-many-methods", "apk-path", "maps-paths", "apk-optimization",
                                          "audio-track", "media-player", "media-player-ogg", "sound-pool",
                                          /* And MediaCodec over the stand-in for the shell's decoders: H.264 shown on a Surface in display
                                             order, a flush, parameter sets in a codec-config buffer, the asynchronous mode, AAC with an
@@ -2410,6 +2638,11 @@ static int run_data(void)
         say("  TLS: %s", with ? "conscrypt's (its library is in the Android root)" : "the runtime's stand-in, which has none");
         CHECK(find_line(with ? "I/DataTest: tls-is conscrypt provider=com.android.org.conscrypt.OpenSSLProvider" : "I/DataTest: tls-is none provider=megler.security.RuntimeProvider", 0) >= 0);
     }
+    /* The app's network security configuration, said in the log once as it was read (android.security.net.config.XmlConfigSource):
+       the base configuration with Android's authorities alone (its debug-overrides not counted), and a <domain-config> inside
+       another, taking cleartext and the anchors from it. */
+    CHECK(find_line("I/NetworkSecurityConfig: the app's network security configuration xml/network_security_config: base-config: cleartext refused, anchors system;", 0) >= 0);
+    CHECK(find_line("; domain-config of nested.sub.megler.test: cleartext permitted, anchors @raw/trust_test_ca;", 0) >= 0);
     /*
      * What requestPermissions asked comes back by a message of its own, after the method that asked has returned. In the first
      * run the user is asked about the storage, the messages, the phone, the calls and the camera, one after another, and the
@@ -2446,6 +2679,30 @@ static int run_data(void)
         CHECK(starts >= 1 && stops == starts);
         CHECK(find_line("location: on: the app may have it", 0) >= 0 && find_line("location: the phone's location is followed, every 1000 ms", 0) >= 0
               && find_line("location: no longer followed", 0) >= 0);
+    }
+    /*
+     * The phone's sensors, asked for in the step "sensors": every sensor's first event in Android's units and signs, the
+     * accelerometer's at the rate asked for, a flush of all, then the listener removed -- each of the stand-in's sensors
+     * started (the accelerometer every 20 ms, SENSOR_DELAY_GAME) and none left running.
+     */
+    CHECK(wait_line("I/DataTest: sensors-events ok", 0, 60) >= 0);
+    {
+        int kind, tries, starts = 0, ms = 0;
+        bool running = true;
+        for (tries = 0; tries < 40 && running; tries++) {
+            running = false;
+            for (kind = MEGLER_SENSOR_ACCELEROMETER; kind <= MEGLER_SENSOR_BAROMETER; kind++) running |= mg_sensor_standin_running(kind);
+            if (running) mg_sleep_ns(100000000ull);
+        }
+        CHECK(!running);
+        mg_sensor_standin_counts(MEGLER_SENSOR_ACCELEROMETER, &starts, NULL, &ms);
+        CHECK(starts >= 1 && ms == 20);
+        for (kind = MEGLER_SENSOR_ACCELEROMETER; kind <= MEGLER_SENSOR_BAROMETER; kind++) {
+            mg_sensor_standin_counts(kind, &starts, NULL, NULL);
+            CHECK(starts >= 1);
+        }
+        CHECK(find_line("sensors: the device has 11: accelerometer, magnetic_field, orientation, gyroscope, light, pressure, proximity, gravity, ", 0) >= 0
+              && find_line("sensors: accelerometer: Test Accelerometer by Megler Tests, of the accelerometer; 39.23 at most, in steps of 0.002394, 10000 us apart", 0) >= 0);
     }
     /* The broadcasts of the step "broadcast-explicit", once delivered: the relayed one, which names Target, reached Target alone. */
     CHECK(wait_line("I/DataTest: broadcast-relay ok relay=1 target=1 off=0 remote=0 here=1 registered=1", 0, 30) >= 0);
@@ -3261,6 +3518,7 @@ int mg_tests_java_run(const char *which, const char *apk, const char *android_ro
         else if (!strcmp(which, "webview")) run_webview();
         else if (!strcmp(which, "camera")) run_camera();
         else if (!strcmp(which, "splits")) run_splits();
+        else if (!strcmp(which, "screen")) run_screen();
         else if (g_any_app) run_app();
         else run_hello();
         if (running()) {

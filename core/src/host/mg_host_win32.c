@@ -1320,6 +1320,11 @@ int mg_cpu_count(void)
     return si.dwNumberOfProcessors > 0 ? (int)si.dwNumberOfProcessors : 1;
 }
 
+#if defined(_M_ARM)
+/* (Windows's kernel reads it from the processor's ID_ISAR0 for every process: a word of the shared user data.) */
+bool mg_cpu_arm_divide(void) { return IsProcessorFeaturePresent(PF_ARM_DIVIDE_INSTRUCTION_AVAILABLE) != 0; }
+#endif
+
 void mg_lock_init(mg_lock *l) { InitializeSRWLock((PSRWLOCK)&l->srw); }
 void mg_lock_acquire(mg_lock *l) { AcquireSRWLockExclusive((PSRWLOCK)&l->srw); }
 bool mg_lock_try(mg_lock *l) { return TryAcquireSRWLockExclusive((PSRWLOCK)&l->srw) != 0; }
@@ -4581,6 +4586,19 @@ bool mg_host_probe_breakpoints(char *out, size_t size)
 int mg_host_d3d11_feature_level(void *device)
 {
     return device ? (int)ID3D11Device_GetFeatureLevel((ID3D11Device *)device) : 0;
+}
+
+int mg_host_d3d11_hardware_level(void)
+{
+    /* With no device asked for, Direct3D says the first level of the list the driver offers (S_FALSE) and makes nothing. A
+       Windows that does not know 11_1 refuses a list with it (E_INVALIDARG): asked again without. */
+    static const D3D_FEATURE_LEVEL levels[] = { D3D_FEATURE_LEVEL_11_1, D3D_FEATURE_LEVEL_11_0, D3D_FEATURE_LEVEL_10_1, D3D_FEATURE_LEVEL_10_0,
+                                                D3D_FEATURE_LEVEL_9_3,  D3D_FEATURE_LEVEL_9_2,  D3D_FEATURE_LEVEL_9_1 };
+    D3D_FEATURE_LEVEL level = (D3D_FEATURE_LEVEL)0;
+    HRESULT hr = D3D11CreateDevice(NULL, D3D_DRIVER_TYPE_HARDWARE, NULL, 0, levels, (UINT)MG_COUNT(levels), D3D11_SDK_VERSION, NULL, &level, NULL);
+    if (hr == E_INVALIDARG)
+        hr = D3D11CreateDevice(NULL, D3D_DRIVER_TYPE_HARDWARE, NULL, 0, levels + 1, (UINT)MG_COUNT(levels) - 1, D3D11_SDK_VERSION, NULL, &level, NULL);
+    return SUCCEEDED(hr) ? (int)level : 0;
 }
 
 u32 mg_host_d3d11_removed_reason(void *device)

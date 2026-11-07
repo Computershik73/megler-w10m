@@ -160,4 +160,27 @@ public class MainActivity extends Activity {
         super.onDestroy();
         Log.i("HelloTest", "onDestroy presses=" + presses);
     }
+
+    /*
+     * Back as React Native's and Flutter's activities take it: handed on, and the platform's Back -- the task to the back,
+     * this being its root -- done a while later: the first time later than the shell waits for it, then soon.
+     */
+    private int backs;
+    @Override
+    public void onBackPressed() {
+        // The third Back is taken as CoolReader takes it: the activity finished a moment later, and the app ends.
+        if (++backs == 3) {
+            Log.i("HelloTest", "back 3 finishes in 100 ms");
+            new Handler().postDelayed(this::finish, 100);
+            return;
+        }
+        final int delay = backs == 1 ? 900 : 150;
+        Log.i("HelloTest", "back " + backs + " handed on for " + delay + " ms");
+        new Handler().postDelayed(new Runnable() {
+            @Override
+            public void run() {
+                MainActivity.super.onBackPressed();
+            }
+        }, delay);
+    }
 }

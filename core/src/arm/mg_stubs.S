@@ -208,6 +208,147 @@ mg_stub_on_stack:
     mov     sp, r4
     pop     {r4, pc}
 
+@ mg_stub_svc_entry: the way out of an ARM `svc 0` of a library's own, which the loader leads out of its code
+@ (arm/mg_patch.c, a library of Go's), from the site's piece of island:
+@
+@     push {r12, lr}; ldr r12, =mg_stub_svc_entry+1; blx r12; b 1f; udf (a trap); 1: pop {r12, lr}; b <site + 4>
+@
+@ lr the piece's way back, sp the guest's less the piece's two words, every other register, the flags and the VFP
+@ registers as at the svc. The call is made by mg_arm_svc_call(regs, block, on_block) (mg_slot_svc_call: mg_core.c) on a
+@ stack with room for it, and the piece goes on with r0 its result (-errno on failure) and nothing else changed.
+@
+@ The block is the thread's (ld/mg_tls.c: slot 15 of the guest's thread pointer, MG_TCB_SYSCALL), its words (MG_SC_*,
+@ mg_stubs.h, by their offsets here) at the top of a stack of its own for system calls. On the thread's own stack the
+@ call is made below the guest's sp, as the trap's handler made it. On any other -- a goroutine's, of two to eight
+@ kilobytes, below which Windows laid the trap's records and the handler its 5.6 KB frame -- it is made on the block's,
+@ the TEB told so while it is there (mg_slot_svc_teb: Windows), as a fiber's switch tells it. A thread without a block
+@ goes back to the piece's trap, which the fault handler answers as before.
+    .align 2
+    .global mg_stub_svc_entry
+    .thumb_func
+mg_stub_svc_entry:
+    push    {r0, r1}
+    mrs     r0, apsr                        @ the guest's flags, before anything here sets them
+    .global mg_stub_svc_tp
+mg_stub_svc_tp:
+    mrc     p15, 0, r1, c13, c0, 2          @ the host's thread register and the guest's thread pointer's offset from it:
+    ldr.w   r1, [r1, #0]                    @ (both written in at the start as the host keeps them, mg_stubs.c)
+    cbz     r1, 9f
+    ldr     r1, [r1, #60]                   @ its slot MG_TCB_SYSCALL: the block
+    cbnz    r1, 8f
+9:  msr     APSR_nzcvqg, r0                 @ no block: the piece's trap, everything as at the svc
+    pop     {r0, r1}
+    add.w   lr, lr, #4
+    bx      lr
+8:  str     r0, [r1, #36]                   @ MG_SC_FLAGS
+    str     lr, [r1, #4]                    @ MG_SC_BACK
+    mov     r12, r1
+    pop     {r0, r1}
+    mov     lr, sp
+    str     lr, [r12, #0]                   @ MG_SC_GUEST_SP: the guest's, less the piece's two words
+    str     r0, [r12, #40]                  @ MG_SC_R0: r0 put by, for a register to work with
+    @ Which stack. The block's already (nothing under the call runs the guest's code: not expected): it stays there.
+    ldr     r0, [r12, #20]                  @ MG_SC_BASE
+    cmp     lr, r0
+    blo     1f
+    cmp     lr, r12
+    blo     2f
+1:  ldr     r0, mg_slot_svc_teb             @ Windows: the thread's own stack is the one its TEB says
+    cbz     r0, 3f
+    mrc     p15, 0, r0, c13, c0, 2
+    ldr.w   r0, [r0, #0xe0c]                @ DeallocationStack
+    str     r0, [r12, #8]                   @ MG_SC_OWN_LO
+    mrc     p15, 0, r0, c13, c0, 2
+    ldr     r0, [r0, #4]                    @ NtTib.StackBase
+    str     r0, [r12, #12]                  @ MG_SC_OWN_HI
+3:  ldr     r0, [r12, #8]
+    cmp     lr, r0
+    blo     4f
+    ldr     r0, [r12, #12]
+    cmp     lr, r0
+    bhs     4f
+2:  movs    r0, #0                          @ the thread's own: the call below the guest's sp
+    b       5f
+4:  mov     sp, r12                         @ another (a goroutine's): the block's, below its words
+    ldr     r0, mg_slot_svc_teb
+    cbz     r0, 6f
+    push    {r1}
+    mrc     p15, 0, r0, c13, c0, 2          @ the TEB's three of its stack kept in the block, the block's in their place
+    ldr     r1, [r0, #4]
+    str     r1, [r12, #24]                  @ MG_SC_SAVED_BASE
+    ldr     r1, [r0, #8]
+    str     r1, [r12, #28]                  @ MG_SC_SAVED_LIMIT
+    ldr.w   r1, [r0, #0xe0c]
+    str     r1, [r12, #32]                  @ MG_SC_SAVED_DEALLOC
+    str     r12, [r0, #4]                   @ StackBase: the block
+    ldr     r1, [r12, #16]                  @ MG_SC_LIMIT
+    str     r1, [r0, #8]                    @ StackLimit
+    ldr     r1, [r12, #20]
+    str.w   r1, [r0, #0xe0c]                @ DeallocationStack: its reservation
+    pop     {r1}
+6:  movs    r0, #1
+5:  str     r0, [r12, #44]                  @ MG_SC_ON_BLOCK
+    ldr     r0, [r12, #40]
+    @ The guest's registers r0..r15 as an array -- sp the one at the svc, pc the piece's way back -- which the call reads,
+    @ and which the collector finds on the thread's own stack as it found the trap's.
+    sub     sp, sp, #64
+    stm     sp, {r0-r11}
+    mov     r4, sp
+    mov     r5, r12
+    ldr     r0, [r5, #0]
+    ldr     r1, [r0]                        @ r12 and lr, where the piece put them
+    ldr     r2, [r0, #4]
+    adds    r0, r0, #8
+    str     r1, [r4, #48]
+    str     r0, [r4, #52]
+    str     r2, [r4, #56]
+    ldr     r0, [r5, #4]
+    str     r0, [r4, #60]
+    @ The VFP registers a call may change and the status register, kept; the stack 8-aligned for the call.
+    vmrs    r0, fpscr
+    mov     r1, sp
+    bic     r1, r1, #7
+    mov     sp, r1
+    push    {r0, r1}
+    vpush   {d0-d7}
+    vpush   {d16-d31}
+    mov     r0, r4
+    mov     r1, r5
+    ldr     r2, [r5, #44]
+    ldr     r3, mg_slot_svc_call
+    blx     r3
+    vpop    {d16-d31}
+    vpop    {d0-d7}
+    pop     {r1, r2}
+    vmsr    fpscr, r1
+    str     r0, [r4]                        @ the result, r0's
+    ldr     r0, [r5, #44]
+    cbz     r0, 7f
+    ldr     r0, mg_slot_svc_teb
+    cbz     r0, 7f
+    mrc     p15, 0, r0, c13, c0, 2          @ the TEB's own three back
+    ldr     r1, [r5, #24]
+    str     r1, [r0, #4]
+    ldr     r1, [r5, #28]
+    str     r1, [r0, #8]
+    ldr     r1, [r5, #32]
+    str.w   r1, [r0, #0xe0c]
+7:  @ Back to the piece: the guest's registers, flags and sp (r12 and lr the piece takes back itself).
+    ldr     lr, [r5, #4]
+    ldr     r12, [r5, #0]
+    ldr     r0, [r5, #36]
+    msr     APSR_nzcvqg, r0
+    ldm     r4, {r0-r11}
+    mov     sp, r12
+    bx      lr
+    .align 2
+    .global mg_slot_svc_call
+mg_slot_svc_call:
+    .word   0
+    .global mg_slot_svc_teb
+mg_slot_svc_teb:
+    .word   0
+
     .align 2
     .global mg_stub_end
 mg_stub_end:

@@ -183,6 +183,31 @@ result (negative Linux errno on failure) to `r0`, and resumes after the instruct
 Guest errno, sp and the other registers are preserved. Unknown numbers return
 `-ENOSYS` rather than entering the host kernel.
 
+A trap's handler runs on the stack the `svc` was made on, below its `sp`: Windows
+has no other stack for an exception's records, and the core's fault handler has a
+frame of 5.6 KB. On a thread's own stack that is room enough. **Go's runtime**
+makes its calls on its goroutines' stacks, of two to eight kilobytes cut from its
+heap, and the handler wrote far below such a stack, into the stacks and the heap
+under it or into memory that is not there: MCO Advanced's `libgojni.so` (Go 1.27.2,
+its Tailscale) ended with no word of the core's a tenth of a second into its
+runtime's start (package 669); under qemu its first seconds make 53 calls on such
+stacks, with 1448 to 7164 bytes below `sp`. So in a library of Go's (its build ID
+note) each ARM `svc 0` is **led out** instead (`arm/mg_patch.c`, `lead_out_svc`):
+a branch to a piece of the library's island that puts `r12` and `lr` by on the
+guest's stack (eight bytes, where the kernel writes none) and calls
+`mg_stub_svc_entry` (`arm/mg_stubs.S`). The entry finds the thread's block for
+system calls through the guest's thread pointer (slot `MG_TCB_SYSCALL`,
+`ld/mg_tls.c`: 128 KB at the top of which its words are, given to every thread
+once such a library is loaded), and makes the call (`mg_arm_svc_call`, which
+dispatches as the trap does) below the guest's `sp` where that is on the thread's
+own stack, as the trap did, and on the block's stack where it is not, the TEB
+told that stack (`StackBase`, `StackLimit`, `DeallocationStack`) while it is
+there, as a fiber's switch tells it. Every register but `r0`, the flags (NZCVQ
+and GE) and the VFP registers a call may change are as they were after it; the
+piece goes back to the instruction after the site. A thread with no block takes
+the piece's own trap, which the handler answers as before. The log says
+"N of its M system calls by number led out to the core".
+
 **Go's runtime**, loaded as a library (WhatsApp's `libgojni.so`, Psiphon's
 tunnel core), has no libc calls of its own on Linux and calls the kernel by
 number for everything: these come here. It installs handlers for the faults'
@@ -261,7 +286,8 @@ code still need interception support.
 Chromium's wrapper at `libwebviewchromium.so+0x2489a50` loads `0x000f0002`
 (`__ARM_NR_cacheflush`) from a literal and executes SVC at `+0x2489a58`.
 It now reaches the existing cache-flush shim. Its `push {r7}` leaves the guest
-stack at 4 mod 8; dispatch runs on the OS exception-handler stack. ARM/Thumb
+stack at 4 mod 8; dispatch runs below it, Windows' exception dispatcher aligning
+the records it lays there (above). ARM/Thumb
 tests under qemu cover this shape, the shim's synthetic pid (which detects
 accidental pass-through to Linux), raw errors and unchanged errno. The Windows
 exception path with this wrapper still needs a phone run.
@@ -460,7 +486,10 @@ ANGLE turns OpenGL ES into Direct3D 11, and most GLES calls are bound straight t
 ANGLE's functions. This layer adds the display, the window, and the float adapters.
 
 - The display is made as an ANGLE Direct3D 11 display, falling back to feature level
-  9_3, which most Windows phones are. At 9_3 ANGLE gives OpenGL ES 2.0 only.
+  9_3, which most Windows phones are. At 9_3 ANGLE gives OpenGL ES 2.0 only. Where
+  the graphics processor is below 9_3 -- a Surface RT's or a Surface 2's 9_1, which
+  ANGLE cannot use (docs/RT.md) -- and only there, a third attempt makes it on WARP,
+  Direct3D in software: OpenGL ES, slowly. No phone is below 9_3.
   The WebView's Chromium, whose GPU thread draws while the app's threads do, gets a
   second display with a Direct3D device of its own (`eglGetDisplay` called from
   `libwebviewchromium.so`): ANGLE's Direct3D 11 renderer, one to a display, does not
@@ -473,6 +502,21 @@ ANGLE's functions. This layer adds the display, the window, and the float adapte
   `SwapChainPanel` in the app's XAML.
 - `ANativeWindow_setBuffersGeometry` sets the size frames are rendered at, as on
   Android.
+- The surface can change size while the app runs (`megler_set_surface`: a PC's
+  window resized, a phone turned; `run/mg_run.c` keeps it as `mg_run_surface`,
+  which every driver reads). A pbuffer over the shell's texture cannot grow, so
+  a NativeActivity's window is made again at the new size -- `onNativeWindowDestroyed`,
+  then `onNativeWindowCreated` with the new window, as Android does when an
+  activity's surface is made again, which `android_native_app_glue` answers with
+  a new EGL window surface (a new texture of the shell's, `acquire_target`) --
+  then `onContentRectChanged` and `onConfigurationChanged`; it is never
+  relaunched, its library being loaded once in the process. Unity is given its
+  surface again (`nativeRecreateGfxState`, as UnityPlayer does when its
+  SurfaceView changes). The JNI's `Display`, `DisplayMetrics` and the NDK's
+  `AConfiguration` say the new size and rotation; a screen turned upside down
+  changes only the rotation. `Activity.setRequestedOrientation` through JNI goes
+  to the shell (`megler_display_host`). A Java app's side is docs/JAVA.md's
+  "The screen resized and turned".
 - In a Java app, the window of a `SurfaceView`'s `Surface` (from
   `ANativeWindow_fromSurface`) is drawn on as the view would be from Java:
   "Native code on a SurfaceView", under "OpenGL ES from an app's Java" below.
@@ -960,6 +1004,128 @@ pictures, 9 checks. *Expected:* that a phone's
 cameras are found as source groups, open after the prompt, and stream NV12
 in memory at the sizes they list, turned as said above. None of it has run on
 a phone.
+
+## Sensors
+
+An app's `android.hardware.SensorManager` and its native code's
+`ASensorManager` (libandroid) get the phone's sensors through a call of the
+shell's, `megler_sensor_host` in `megler.h`: what the device has, start one
+at an interval, stop it; what each reads comes back through
+`megler_sensor_push`, as Windows reads it. The core (`ndk/mg_sensors.c`)
+makes Android's sensors of those, one of each of Windows' kinds:
+
+| Windows (`Windows.Devices.Sensors`) | Android | made so |
+|---|---|---|
+| `Accelerometer`, g | `TYPE_ACCELEROMETER`, m/s² | every axis -9.80665 times Windows' |
+| `Accelerometer` of `AccelerometerReadingType.Gravity` | `TYPE_GRAVITY` | the same |
+| `Accelerometer` of `AccelerometerReadingType.Linear` | `TYPE_LINEAR_ACCELERATION` | the same |
+| `Gyrometer`, degrees a second | `TYPE_GYROSCOPE`, rad/s | times π/180 |
+| `Magnetometer`, µT | `TYPE_MAGNETIC_FIELD`, µT | as it is; its `DirectionalAccuracy` the event's accuracy |
+| `OrientationSensor` (absolute), its quaternion | `TYPE_ROTATION_VECTOR` | x, y, z, w as they are (w kept positive, the same rotation), heading accuracy -1 |
+| `OrientationSensor` for relative readings | `TYPE_GAME_ROTATION_VECTOR` | the same, four values |
+| `Inclinometer`, pitch, roll, yaw | `TYPE_ORIENTATION` (deprecated) | the rotation they make taken apart again as Android's old sensor's azimuth, pitch, roll |
+| `LightSensor`, lux | `TYPE_LIGHT` | as it is; reports changes |
+| `ProximitySensor`: near or not, the distance in mm if it says | `TYPE_PROXIMITY`, cm | near at a distance: that /10; near: 0; far: the maximum range (`MaxDistanceInMillimeters`, else 5 cm); reports changes, wakes the device as Android's default does |
+| `Barometer`, hPa | `TYPE_PRESSURE`, hPa | as it is |
+
+**Axes and signs.** Both systems give a sensor's values on the device's own
+axes as its natural (native) orientation has them -- x to the right, y up, z
+out of the screen -- and neither turns them with the display: on a phone
+that is upright, on a laptop or a tablet made for landscape that is
+landscape, on both sides alike. What differs is the accelerometer's sign:
+Windows' points along gravity, Android's against it. The Windows hardware
+lab kit's accelerometer tests expect (0, -1, 0) g standing upright, (+1, 0, 0)
+turned a quarter clockwise, (0, 0, -1) lying face up and (0, 0, +1) face
+down; Windows' own overview says a device lying face up reads -1 g on Z.
+Android's SensorEvent reads +9.81 on z lying face up and +9.81 on y upright.
+So every axis is turned, and scaled -- which is also what Chromium's Windows
+sensors do for the web's accelerometer ("change sign of values, to report
+'reaction force'"). The gyroscope needs no turning: the lab kit's gyro tests
+expect z below -40 degrees a second turning the device clockwise lying face
+up, y below -40 turning it clockwise looked at from above while upright, x
+above 40 turning it clockwise looked at from above while on its side with x
+pointing down: counterclockwise is positive looking from an axis's end, the
+right-hand rule, Android's own. The magnetic field is a vector both measure
+the same way. The quaternion is the device's rotation from the earth's frame
+(east, north, up): Chromium hands Windows' quaternion to the web's
+AbsoluteOrientationSensor as it is, and Android's rotation vector to the same
+as it is. The inclinometer's angles are, by the same token, the web's
+DeviceOrientation angles (Chromium hands yaw, pitch and roll over as alpha,
+beta and gamma): yaw about z counterclockwise, then pitch about x, then roll
+about y, which the core composes into the rotation and takes apart as AOSP's
+OrientationSensor does: azimuth clockwise from north 0..360, pitch about x
+-180..180, positive when z turns towards y (-90 standing upright), roll about
+y -90..90, positive when x turns towards z.
+
+**Times.** An event's time is when Windows read it: the reading's
+`Timestamp` is Windows' clock (UTC), moved onto the monotonic clock that is
+Android's `elapsedRealtimeNanos` and `CLOCK_BOOTTIME` by how long ago it was,
+up to a second (one older, or from a clock ahead, is now), and never at or
+before the sensor's previous event. The same reading handed over twice
+(the one a sensor has when it starts, then the same as its first change)
+is one event.
+
+**Rates.** The core keeps queues of events: the Java framework's one and one
+for each `ASensorEventQueue`. Each of Windows' sensors runs at the shortest
+period a queue wants of it (`ReportInterval`, never below the sensor's
+`MinimumReportInterval`), and each queue is given its sensor's events no
+sooner than four fifths of its own period apart (so that a sensor's jitter
+does not halve the rate), as Android runs its sensors at the fastest a
+client asks and hands each about what it asked for. Periods are clamped as
+Android's SensorService clamps them, to the sensor's least (`minDelay`, from
+`MinimumReportInterval`) and to a second. A queue holds 256 events; one that
+is not read loses its oldest.
+
+**Paused.** While the app is paused (`megler_set_paused`: the shell hid it or
+the phone was locked) Windows' sensors are stopped and nothing is delivered,
+as Android delivers no sensor events to an app in the background; they run
+again as they were when it is resumed, and stop for good when it ends.
+
+**Native code.** libandroid's sensor functions are all there:
+`ASensorManager_getInstance` and `...ForPackage`, the list, the default sensor
+(and `...Ex`), `createEventQueue` -- which adds the queue's descriptor to the
+looper it is given, for input, with the app's identifier or callback, as
+Android's does, so that `ALooper_pollAll` returns or calls back when events
+wait -- `enableSensor` (at 200 ms, Android's own default, until
+`setEventRate`), `registerSensor`, `disableSensor`, `hasEvents`, `getEvents`
+(never waiting; 0 when there are none), `destroyEventQueue`, every `ASensor_*`
+(name, vendor, type, string type, resolution, min delay, reporting mode,
+wake-up, handle). An event is the NDK's `ASensorEvent`, 104 bytes on every ABI,
+its vector's accuracy in the byte after the three values. Direct channels and
+dynamic sensors are not there (none of these sensors has one).
+
+**What the device has** is what Windows has: the shell (`player/SensorHost.cpp`)
+asks Windows for each kind once, on a thread of its own in the multithreaded
+apartment, as the app starts; each with its device's name and maker where
+Windows has them (else "Windows" for the maker), and its least interval.
+What Windows does not say -- a sensor's range, except the proximity's,
+its resolution, its power -- is a typical phone part's (8 g, 2000 degrees a
+second, 4912 µT, 10000 lux, 1100 hPa). Start and stop are queued to that
+thread and return at once (the core calls them on the app's threads, its main
+thread among them); start subscribes to `ReadingChanged` and hands over the
+reading the sensor has (`GetCurrentReading`), which is how a light or a
+proximity, which report changes only, tells an app what it reads now.
+Readings come on Windows' threads and go to the core as they are.
+
+*Proven:* under qemu and on this PC, on a stand-in for the shell's sensors
+(`core/tests/mg_sensor_standin.c`, one of each kind, each reading a known
+value in Windows' units and signs): the core's tests (`mg_sensor_tests.c`: the
+list, every conversion, times, rates, two queues, pause, flush, a queue
+nobody reads, the descriptor, libandroid's functions called as native code
+calls them), the data app's step `sensors` (Java: the list, every sensor's
+first event to the last digit on the main thread, `onAccuracyChanged`,
+`SENSOR_DELAY_GAME`'s rate, a flush) and the natives app's step `sensors`
+(native code: a queue on the main thread's looper with a callback). That
+`SensorHost.cpp` builds into the phone's package and into the PC's test
+program, whose `--sensors-windows` lists this PC's sensors through it and the
+core's -- none on the PC this was written on, which it says. *Expected:* that a
+phone's sensors are found and read as said, with the signs above; none of it
+has run on a phone. A Lumia 650 has an accelerometer, a light sensor and a
+proximity sensor and no gyrometer or magnetometer: Windows' fusion makes its
+orientation sensor, inclinometer, gravity and linear acceleration of a
+gyrometer and a magnetometer, so an app there should see those three alone
+(whatever Windows does make of them, the app gets). A PC without sensors
+offers none, and an app sees an empty list.
 
 ## Files and the shared storage
 

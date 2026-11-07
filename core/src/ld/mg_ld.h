@@ -172,6 +172,7 @@ typedef struct mg_ld_stats {
     u32 unresolved;
     u32 svc_sites;         /* direct system calls intercepted */
     u32 tp_led_out;        /* x86_64: accesses of the thread pointer's segment through a register, led out to the island */
+    u32 svc_led_out;       /* 32-bit ARM: of svc_sites, ARM ones of a library of Go's led out to the core (arm/mg_patch.c), not traps */
 } mg_ld_stats;
 void mg_ld_get_stats(const mg_lib *lib, mg_ld_stats *out);
 /* The committed memory of the libraries the loader mapped: their segments, as read from their files. */

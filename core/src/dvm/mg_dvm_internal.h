@@ -177,6 +177,12 @@ struct mg_dvm_method {
      */
     u16 jit_backs;
     volatile u8 jit_state;
+    /*
+     * 1: the app has hooked it (mg_dvm_hook.c, Xposed's XposedBridge): every call of it, however made, goes to the hook,
+     * which runs the original body through a copy of the method if it will. Its own body is left as it is, for the frames
+     * running it. (In the byte the struct had spare.)
+     */
+    volatile u8 hooked;
     struct mg_dvm_jit_code *volatile jit;
     /*
      * What the whole body is when it is one of the trivial shapes a call does in place (mg_dvm_interp.c, "trivial
@@ -686,6 +692,8 @@ struct mg_dvm_jit_code {
      * no handlers, not synchronized, no intrinsic. NULL: calls of it go the general way.
      */
     const void *fast;
+    /* Calls it does in place (inline_call): code forgotten once an app hooks methods, which such a call compiled before does not look at. */
+    u32 in_place;
     /*
      * Where the code is entered, in the order of their pcs: the heads of the loops compiled whole and the method's start,
      * each with its halfword in the code +1. (A table by pc took four bytes for every instruction of the method, for the
@@ -711,6 +719,14 @@ static inline u32 mg_dvm_jit_entry(const mg_dvm_jit_code *c, u32 pc)
 extern u32 g_dvm_jit_threshold;      /* jumps back before a method is compiled; 0 off (the flag no-jit, or no JIT on this host) */
 extern u32 g_dvm_jit_in_place;       /* calls of trivial methods compiled to be done in the code (inline_call), for the tests */
 void mg_dvm_jit_start(bool on, u32 threshold, bool trace);
+/*
+ * An app hooks methods (mg_dvm_hook.c): from now on a call compiled to be done in place (inline_call) looks first at whether
+ * its method is hooked, and the code compiled before, whose calls do not, is forgotten -- its methods interpreted until they
+ * are hot again. The first call does it; the others nothing. And all compiled code forgotten so (a class made inheritable:
+ * a call compiled as of a method nothing could override may have an override now). How many methods' code it was.
+ */
+u32 mg_dvm_jit_hooks_on(void);
+u32 mg_dvm_jit_forget_all(void);
 /* What the JIT has made so far, for the log: methods compiled (and of them waiting for their page), refused, its code and the pages it is on. */
 typedef struct mg_dvm_jit_stats {
     u32 methods, waiting, refused;
@@ -915,6 +931,18 @@ mg_jobj *mg_dvm_reflect_field(mg_dvm_field *f);
 /* The other way: the runtime's method or field of a Method, Constructor or Field object; NULL for anything else. */
 mg_dvm_method *mg_dvm_reflected_method(mg_jobj *o);
 mg_dvm_field *mg_dvm_reflected_field(mg_jobj *o);
+/* What a box holds as a primitive of kind `kind`, widened as Java widens it; false for null, an object that is no box, a box that does not widen to it. */
+bool mg_dvm_reflect_unbox(mg_jobj *o, char kind, mg_jvalue *out);
+/*
+ * The arguments of a call of `m` given as objects (an Object[], or null for none), unboxed as Method.invoke unboxes them:
+ * one value per parameter into `params` (room for `cap`). False with IllegalArgumentException pending when they do not fit.
+ */
+bool mg_dvm_reflect_args(const mg_dvm_method *m, mg_jobj *args, mg_jvalue *params, u32 cap);
+/*
+ * The Method object of a hook's backup (mg_dvm_hook.c): a Method even for a constructor's copy, as LSPlant hands one back,
+ * so that Method.invoke runs its body on the object it is given (Constructor.newInstance would make another).
+ */
+mg_jobj *mg_dvm_reflect_backup(mg_dvm_method *m);
 /*
  * mg_dvm_art.c: a thread that native code made and attaches (JNI's
  * AttachCurrentThread) gets its java.lang.Thread now, with the name and group
@@ -930,6 +958,22 @@ bool mg_dvm_class_is_app(const mg_dvm_class *c);
 void mg_dvm_art_annot_start(void);
 /* mg_dvm_jvm.c: libjavacore.so and libopenjdk.so from <root>/lib, where guest code can run; and libopenjdkjvm.so's functions for them. */
 bool mg_dvm_load_libcore_natives(const char *root);
+
+/* ----------------------------------------------------------- mg_dvm_hook.c */
+
+/*
+ * Methods an app hooks, as Xposed's XposedBridge hooks them (Aliucord's Aliuhook, which does it with LSPlant on ART): every
+ * call of a hooked method -- from bytecode, from compiled code, through reflection, through JNI -- calls the hook's callback
+ * with the arguments boxed, and a copy of the method runs the original. mg_dvm_hook_call is that call, made where a call
+ * finds the method hooked: `argv` the call's registers as an invoke has them (the object first), or `params` one value per
+ * parameter as a call from C has them, the object in `self`. The method's value in *result as the interpreter keeps one;
+ * false with the exception pending.
+ */
+bool mg_dvm_hook_call(mg_dvm_thread *t, mg_dvm_method *m, mg_jobj *self, const mg_dvm_reg *argv, const mg_jvalue *params, mg_jvalue *result);
+/* On libcore: XposedBridge's natives, the runtime's own. */
+void mg_dvm_hook_start(void);
+/* For the collector: what the hooks keep, each hook's context and its backup's Method. Read without a lock (the world is stopped). */
+void mg_dvm_hook_roots(void (*fn)(mg_jobj *o, void *user), void *user);
 
 /* What a piece of the runtime's own memory is for, in mg_dvm_stats. */
 enum { DVM_META_OTHER, DVM_META_CLASS, DVM_META_METHOD, DVM_META_FIELD, DVM_META_VTABLE, DVM_META_DEX, DVM_META_NAME, DVM_META_POOL };

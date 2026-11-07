@@ -3,6 +3,7 @@
 #include "player/Session.h"
 
 #include "player/BarsHost.h"
+#include "player/DisplayHost.h"
 #include "player/MediaControls.h"
 #include "player/SystemHost.h"
 #include "library/PhoneAppsList.h"
@@ -17,6 +18,7 @@
 #include "player/PermissionHost.h"
 #include "player/PhoneEvents.h"
 #include "player/PhoneState.h"
+#include "player/SensorHost.h"
 #include "player/StorageHost.h"
 
 #include "shell/AppPackage.h"
@@ -53,6 +55,13 @@ bool gSuspended = false, gVisible = true, gFocused = true;
 // system media controls stand for it: player/MediaControls.cpp); an engine's game is not, whether or not it stops its
 // own sound when paused.
 bool gBackgroundAudio = false;
+
+// The surface the app was started with or last told of (megler_set_surface), and one asked for while it was still
+// starting, which is told once megler_run has returned (width 0: none).
+struct Surface {
+    int width = 0, height = 0, dpi = 0, rotation = 0;
+};
+Surface gSurface, gSurfaceWaiting;
 
 // What the app was last told, and the order it is told in: held across the
 // calls, by the one thread telling.
@@ -188,7 +197,7 @@ std::shared_ptr<AudioHost> audio() {
 }
 
 bool start(const ApkEntry& apk, winrt::Windows::UI::Xaml::Controls::SwapChainPanel const& panel, int width, int height,
-           int densityDpi) {
+           int densityDpi, int rotation) {
     std::shared_ptr<WindowHost> window;
     std::shared_ptr<AudioHost> audio;
     {
@@ -204,6 +213,8 @@ bool start(const ApkEntry& apk, winrt::Windows::UI::Xaml::Controls::SwapChainPan
         window = gWindow = std::make_shared<WindowHost>(panel, width, height);
         audio = gAudio = std::make_shared<AudioHost>();
         gBackgroundAudio = apk.report.engine == "java";
+        gSurface = Surface{width, height, densityDpi, rotation};
+        gSurfaceWaiting = Surface{};
         // The other apps the phone has, for a launcher (library/PhoneAppsList.h), where the folder is there.
         const std::wstring apps = phoneAppsList::folder();
         gAppsDir = !apps.empty() && files::exists(apps + L"\\apps.txt") ? narrow(apps) : std::string();
@@ -219,9 +230,9 @@ bool start(const ApkEntry& apk, winrt::Windows::UI::Xaml::Controls::SwapChainPan
     audio->prepare(44100);
     // The phone's time zone and battery, which an app asks the layer for.
     phoneState::tell();
-    shellLog::write(format("session: starting %s (%s%s) at %dx%d, %d dpi", apk.id.c_str(), apk.report.package.c_str(),
+    shellLog::write(format("session: starting %s (%s%s) at %dx%d, %d dpi, turned %d degrees", apk.id.c_str(), apk.report.package.c_str(),
                            apk.report.splits.empty() ? "" : format(", with %u splits", unsigned(apk.report.splits.size())).c_str(), width, height,
-                           densityDpi));
+                           densityDpi, rotation * 90));
     // Google Play Store with Google's own Google Play services always, which it waits for to be installed (AppShell::playStoreCanStart):
     // with microG's its front page had no Android ID ("Server error").
     const bool playStore = apk.report.package == "com.android.vending";
@@ -229,7 +240,7 @@ bool start(const ApkEntry& apk, winrt::Windows::UI::Xaml::Controls::SwapChainPan
     // (megler_appx_capabilities; -1, a report that names no permissions: both, as before).
     const int capabilities = apk.report.capabilities();
     const bool messages = capabilities < 0 || (capabilities & MEGLER_APPX_CAP_CHAT), calls = capabilities < 0 || (capabilities & MEGLER_APPX_CAP_CALL_HISTORY);
-    std::thread([window, audio, width, height, densityDpi, playStore, messages, calls] {
+    std::thread([window, audio, width, height, densityDpi, rotation, playStore, messages, calls] {
         // The flags a diagnosis over USB asked for, in place before the run reads them (shell/PicturesDiag.h).
         picturesDiag::waitForFlags();
         megler_run_config config = {};
@@ -248,12 +259,27 @@ bool start(const ApkEntry& apk, winrt::Windows::UI::Xaml::Controls::SwapChainPan
         config.gms_apk_path = servicePath.empty() ? nullptr : servicePath.c_str();
         const std::string gsfPath = narrow(appPackage::gsfApk());
         config.gsf_apk_path = gsfPath.empty() ? nullptr : gsfPath.c_str();
+        /*
+         * Held open, with no one let delete them, as long as the app runs: the core opens Google Play services' APK only when
+         * the app first wants it, and Megler, registering Google Play services' next copy (Update All), removes the copies no
+         * one has open. Play Store and Gmail, started during an Update All with the copy registered a second before, found
+         * it gone when they first wanted it ("the file cannot be opened"): no Google Play services for as long as they ran,
+         * "Authentication required" in Play Store and "NO_NETWORK" in Gmail. (Others may still read and write them: the
+         * check of the bundled APKs mends a copy in place, files::mend.)
+         */
+        for (const std::string* held : {&servicePath, &gsfPath}) {
+            if (held->empty()) continue;
+            const HANDLE h = CreateFile2(widen(*held).c_str(), GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE, OPEN_EXISTING, nullptr);
+            if (h == INVALID_HANDLE_VALUE) shellLog::write(format("session: %s could not be held open (error %lu)", held->c_str(), GetLastError()));
+            // (Never closed: the process ends with the app.)
+        }
         config.splits_dir = gSplitsDir.empty() ? nullptr : gSplitsDir.c_str();
         config.split_apks = nullptr;
         config.split_count = 0;
         config.width = width;
         config.height = height;
         config.density_dpi = densityDpi;
+        config.rotation = rotation;
         config.window = window->callbacks();
         config.audio = audio->callbacks();
         config.media = MediaHost::shared().callbacks();
@@ -271,6 +297,9 @@ bool start(const ApkEntry& apk, winrt::Windows::UI::Xaml::Controls::SwapChainPan
         config.microphone = MicrophoneHost::shared().callbacks();
         // A Java app's BiometricPrompt and FingerprintManager: Windows Hello (player/BiometricHost.h).
         config.biometric = biometricHost::callbacks();
+        // A Java app's SensorManager and native code's ASensorManager: Windows.Devices.Sensors (player/SensorHost.h); what
+        // the device has is looked for from here on, while the app starts.
+        config.sensors = SensorHost::shared().callbacks();
         // For an app that is Java: its drawing, and where Android's libcore and the framework are -- NULL is the folder
         // `android` of the installed package, which is where tools/build-appx.sh --libcore (or --java) puts them. An app
         // with a native engine uses neither.
@@ -289,12 +318,15 @@ bool start(const ApkEntry& apk, winrt::Windows::UI::Xaml::Controls::SwapChainPan
         config.keyboard = KeyboardHost::shared().callbacks();
         // The phone's bars a Java app wants hidden (player/BarsHost.h); what they cover goes back through setInsets.
         config.bars = BarsHost::shared().callbacks();
+        // Which way up the app wants its screen (player/DisplayHost.h); the surface's new size goes back through setSurface.
+        config.display = DisplayHost::shared().callbacks();
         config.media_session = mediaControls::callbacks();
         config.system = systemHost::callbacks();
         config.apps_dir = gAppsDir.empty() ? nullptr : gAppsDir.c_str();
         config.on_exit = &onExit;
         config.user = nullptr;
         const bool started = megler_run(&config);
+        Surface waiting;
         {
             std::lock_guard<std::mutex> lock(gMutex);
             if (!started) {
@@ -308,6 +340,14 @@ bool start(const ApkEntry& apk, winrt::Windows::UI::Xaml::Controls::SwapChainPan
             if (gSnapshot.state != State::starting) return;
             gSnapshot.state = State::running;
             shellLog::write("session: running");
+            waiting = gSurfaceWaiting;
+            gSurfaceWaiting = Surface{};
+        }
+        // The window was resized or turned while the app was starting: its surface follows now (megler_run took the size of before).
+        if (waiting.width > 0) {
+            shellLog::write(format("session: the surface asked for while the app started: %dx%d, %d dpi, turned %d degrees", waiting.width,
+                                   waiting.height, waiting.dpi, waiting.rotation * 90));
+            megler_set_surface(waiting.width, waiting.height, waiting.dpi, waiting.rotation);
         }
         // The phone's text messages and calls from now on, for the app (megler_sms_received, megler_call_logged): those its
         // permissions ask for. An app that asks for neither has Windows asked for neither store.
@@ -341,14 +381,22 @@ void touch(int phase, int pointer, float x, float y) {
  */
 static std::atomic<unsigned long long> gShownAt{0};
 
-void backKey() {
+/*
+ * The app is given Back, and its answer waited for (megler_back): an app that went to the back with it (Android 12's Back on
+ * its first screen) leaves the Back to the system, which takes the window away as it does a phone app's on its first page;
+ * the app stays as it was until it is shown again. 0.4 s for an app that showed nothing new (React Native's, Flutter's: their
+ * Back goes on to JavaScript or Dart), 1.5 s at most for an answer from a busy main thread.
+ */
+int backKey() {
     const unsigned long long shown = gShownAt.load();
     if (shown && GetTickCount64() - shown < 1000) {
         shellLog::write("session: a Back as the window came back, the one that brought it back: not the app's");
-        return;
+        return MEGLER_BACK_TAKEN;
     }
-    megler_key(androidKeyBack, true);
-    megler_key(androidKeyBack, false);
+    const int answer = megler_back(400, 1500);
+    if (answer == MEGLER_BACK_LEAVE) shellLog::write("session: the app went to the back with Back: the system has the Back, and takes the window away");
+    else if (answer == MEGLER_BACK_ENDED) shellLog::write("session: the app ended its last activity with Back");
+    return answer;
 }
 
 // (Like touch: the core takes these from any thread and ignores them when no Java app runs.)
@@ -363,6 +411,21 @@ void keyboardClosed() { megler_keyboard_closed(); }
 void keyboardHeight(int pixels) { megler_keyboard_height(pixels < 0 ? 0 : pixels); }
 
 void setInsets(int left, int top, int right, int bottom) { megler_set_insets(left, top, right, bottom); }
+
+void setSurface(int width, int height, int densityDpi, int rotation) {
+    {
+        std::lock_guard<std::mutex> lock(gMutex);
+        if (gSurface.width == width && gSurface.height == height && gSurface.dpi == densityDpi && gSurface.rotation == rotation) return;
+        gSurface = Surface{width, height, densityDpi, rotation};
+        if (gSnapshot.state == State::starting) {
+            gSurfaceWaiting = gSurface;
+            return;
+        }
+        if (gSnapshot.state != State::running) return;
+    }
+    // (Like touch: the core takes it from any thread, and it returns at once.)
+    megler_set_surface(width, height, densityDpi, rotation);
+}
 
 void setSuspended(bool suspended) {
     {

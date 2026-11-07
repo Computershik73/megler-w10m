@@ -7,8 +7,9 @@
 // touches XAML; they change state, and the poll shows it.
 //
 // The player is a Page too, but a full-screen one: while it is on top there
-// is no navigation bar and no tab bar, the display is turned to landscape,
-// and hardware Back goes to the running app.
+// is no navigation bar and no tab bar, the display is turned the ways the
+// running app allows (landscape for a game), and hardware Back goes to the
+// running app.
 #pragma once
 
 #include <deque>
@@ -32,10 +33,12 @@ public:
     /// The navigation bar's trailing item, or null. Asked again after every
     /// refresh, so it can change with state.
     virtual winrt::Windows::UI::Xaml::UIElement toolbarItem() { return nullptr; }
-    /// The whole screen, in landscape, without the shell's bars, under the phone's.
+    /// The whole screen, without the shell's bars, under the phone's.
     virtual bool fullScreen() { return false; }
-    /// For a full-screen page: upright instead of in landscape.
-    virtual bool upright() { return false; }
+    /// For a full-screen page: the ways up the display may show it, Windows' DisplayOrientations (Landscape 1, Portrait 2,
+    /// LandscapeFlipped 4, PortraitFlipped 8), or 0 for whichever way the device is held. Asked again at every
+    /// refreshChrome (the player's app may ask for another).
+    virtual unsigned orientations() { return 1 | 4; }
     /// For a full-screen page: the phone's status bar and navigation bar hidden (the phone hides its navigation bar only in
     /// full-screen mode, which hides the status bar too), and the status bar's icons dark, for a light bar under them.
     virtual bool hideStatusBar() { return fullScreen(); }
@@ -46,6 +49,12 @@ public:
     virtual void barsCover(double left, double top, double right, double bottom) {}
     /// Hardware Back while this page is on top. True: the page took it.
     virtual bool handleBack() { return false; }
+    /// After handleBack said false: the Back is the system's, which takes Megler's window away, rather than the shell's
+    /// (no page popped, no tab changed) -- a running app that went to the back with it.
+    virtual bool backIsTheSystems() { return false; }
+    /// The flag ui-quit (ui/UiShots.h): the page's running app stopped, and Megler closed once it has ended. False: the
+    /// page has no app running, and Megler is closed at once.
+    virtual bool quitAndClose() { return false; }
     /// Every poll while visible, and right after being shown.
     virtual void refresh() {}
     virtual void appeared() {}
@@ -80,6 +89,8 @@ public:
     /// another tab back to the Library. False when there is nothing to go
     /// back to (the system then leaves the app).
     bool goBack();
+    /// The flag ui-quit: the running app stopped as its Quit stops it, then Megler closed; Megler closed at once without one.
+    void quitAndClose();
     void selectTab(int tab);
     /// Re-reads the current page's title, toolbar item and full-screen wish.
     void refreshChrome();
@@ -93,6 +104,7 @@ public:
     struct DialogSpec {
         std::string title, message;
         bool field = false;                  // a text field under the text
+        bool secret = false;                 // ... a password's, its characters not shown (fieldText is not put in it)
         std::string fieldText, fieldPlaceholder;
         std::vector<std::string> fieldSuggestions; // chips under the field, each putting itself in it
         std::vector<std::string> buttons;    // at the dialog's end, the confirming one last
@@ -126,8 +138,8 @@ public:
     /// once the user says yes in Material's dialog.
     void installApkFile(winrt::Windows::Storage::StorageFile const& file);
     /// An APK at a path of Megler's own that an Android app (`from`, its name) asked to install: likewise, after a yes. Once
-    /// the Device Portal has been asked (`portalAsked`), when it was not on.
-    void installApkPath(const std::wstring& path, const std::string& name, const std::string& from, bool portalAsked = false);
+    /// the list of the installed apps has been asked for (`listAsked`), when it was not there.
+    void installApkPath(const std::wstring& path, const std::string& name, const std::string& from, bool listAsked = false);
     /// Another app the phone has that an Android app (`from`, its name) asked to uninstall: after a yes, its own package and
     /// Megler's copy of it go; a no is told to the app that asked (library/PhoneAppsList.h).
     void uninstallApp(const std::string& package, const std::string& from);
@@ -146,7 +158,7 @@ private:
     void buildTabBar();
     void closeDialog(int button);
     void showTop();
-    void applyFullScreen(bool fullScreen, bool upright, bool hideStatus, bool hideNavigation, bool lightStatus);
+    void applyFullScreen(bool fullScreen, unsigned orientations, bool hideStatus, bool hideNavigation, bool lightStatus);
     void applyVisibleBounds();
     void poll();
     void updateDisplayRequest();
@@ -156,7 +168,7 @@ private:
     int selectedTab_ = 0;
     bool dialogOpen_ = false;
     bool fullScreen_ = false;
-    bool upright_ = false;
+    unsigned orientations_ = 0; // a full-screen page's DisplayOrientations, as last asked of the display
     bool hideStatus_ = false, hideNavigation_ = false, lightStatus_ = false;
     bool displayRequestActive_ = false;
     bool singleAppOpened_ = false;  // an app's own package: its app has been opened (shell/AppPackage.h)
@@ -181,6 +193,7 @@ private:
     std::vector<winrt::Windows::UI::Xaml::Controls::TextBlock> tabLabels_;
     winrt::Windows::UI::Xaml::Controls::Grid dialogLayer_{nullptr};
     winrt::Windows::UI::Xaml::Controls::TextBox dialogField_{nullptr};
+    winrt::Windows::UI::Xaml::Controls::PasswordBox dialogSecret_{nullptr};
     std::function<void(int, std::string)> dialogDone_;
     std::deque<std::pair<DialogSpec, std::function<void(int, std::string)>>> waitingDialogs_; // dialogWhenFree's, in turn
     winrt::Windows::UI::Xaml::DispatcherTimer timer_{nullptr};

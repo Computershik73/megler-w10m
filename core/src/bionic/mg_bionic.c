@@ -1524,6 +1524,7 @@ void mg_bionic_init(void)
     mg_bionic_register(mg_media_table());
     mg_bionic_register(mg_aaudio_table());
     mg_bionic_register(mg_ahb_table());
+    mg_bionic_register(mg_sensors_table());
     mg_bionic_register(mg_java_ndk_table());
     make_hookable_exports();
 }

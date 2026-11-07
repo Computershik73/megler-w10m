@@ -21,6 +21,8 @@ bool mg_core_can_run(void);
 /* How often a thread was interrupted on a rewritten PLT entry and rescued (arm/mg_patch.c), and how often a write-and-execute page changed sides. */
 u32 mg_core_plt_rescues(void);
 u32 mg_core_wx_flips(void);
+/* 32-bit ARM: the system calls of ARM svc led out of their libraries (mg_arm_svc_call) so far, and how many of them were made on a stack for them, not the thread's own. */
+void mg_core_svc_calls(u32 *made, u32 *on_block);
 /*
  * Whether this device keeps a thread in ARM (not Thumb) state, as the probe
  * last found it: 1 it does, -1 it does not, 0 not measured yet. Kept in a file

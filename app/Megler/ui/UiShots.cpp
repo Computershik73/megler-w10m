@@ -176,7 +176,11 @@ void poll(AppShell& shell) {
             const auto entries = Library::instance().entries();
             if (n >= 0 && size_t(n) < entries.size()) shell.push(makeAppDetailScreen(shell, entries[size_t(n)].id));
         } else if (flag.rfind(L"ui-back-", 0) == 0) {
-            shell.goBack();
+            // (A Back the phone's button would leave to the system -- the app went to the back with it -- does nothing
+            // more here: only the button has Windows take the window away. ui-quit closes an app.)
+            if (!shell.goBack()) shellLog::write("ui: the Back is the system's now; only the phone's button has Windows take the window away");
+        } else if (flag.rfind(L"ui-quit-", 0) == 0) {
+            shell.quitAndClose();
         } else if (flag.rfind(L"ui-dialog-", 0) == 0) {
             // The dialog up now (the first start's question, an alert) answered with its button n, from the left.
             const int n = lastNumber(flag);

@@ -39,7 +39,10 @@ static struct {
     mg_thread *thread;
     volatile i32 started;              /* 0 starting, 1 running, -1 failed */
     volatile i32 stop, paused, focused;
+    volatile i32 resized;              /* megler_set_surface: the render thread makes the engine's surface again before its next frame */
 } U;
+
+static void configuration_screen(int width, int height);
 
 /* A native of the player's, wherever this version of Unity registered it; NULL, said once, when it has none. */
 static void *native_of(const char *cls, const char *name, const char *sig)
@@ -208,6 +211,29 @@ static MG_HOSTCB void unity_main(void *arg)
             was_paused = false;
             mg_info("unity: resumed");
             continue;
+        }
+        if (U.resized && mg_atomic_xchg(&U.resized, 0)) {
+            /*
+             * The surface is another size or turned: what UnityPlayer does when its SurfaceView's surface changes -- the engine
+             * given its surface again (nativeRecreateGfxState), which makes its EGL window surface again at the window's new
+             * size, and told it changed -- with the display, the metrics and the configuration it asks saying the new size.
+             */
+            mg_jvalue g[2];
+            mg_surface sf;
+            mg_run_surface(&sf);
+            mg_jni_android_set_screen(sf.width, sf.height, sf.density_dpi, sf.rotation);
+            /* (Turned upside down, the surface is the same size: only the display's rotation says it, as on Android.) */
+            if (sf.width != U.window->width || sf.height != U.window->height) {
+                configuration_screen(sf.width, sf.height);
+                U.window->width = sf.width;
+                U.window->height = sf.height;
+                mg_info("unity: the surface is %dx%d now, turned %d degrees: the engine's graphics state is made again", sf.width, sf.height, sf.rotation * 90);
+                g[0].j = g[1].j = 0;
+                g[0].i = 0;
+                g[1].l = U.surface;
+                mg_jni_call_native(surface, U.player, surface_sig, legacy_surface ? g + 1 : g);
+                if (mg_jni_native(PLAYER, "nativeSendSurfaceChangedEvent", NULL)) call("nativeSendSurfaceChangedEvent", "()V", NULL);
+            }
         }
         in_deliver();
         keep = mg_jni_call_native(render, U.player, "()Z", NULL);
@@ -476,6 +502,15 @@ static void ret_self(mg_jcall *c);
 
 static void ctx_resources(mg_jcall *c) { c->ret.l = g_resources; }
 static void res_configuration(mg_jcall *c) { c->ret.l = g_configuration; }
+/* The configuration's orientation as the surface is shaped (the render thread, after megler_set_surface). */
+static void configuration_screen(int width, int height)
+{
+    mg_jvalue v;
+    if (!g_configuration) return;
+    v.j = 0;
+    v.i = width > height ? 2 : 1;
+    mg_jni_set_field(g_configuration, "orientation", 'I', v);
+}
 static void res_metrics(mg_jcall *c)
 {
     mg_jobj *dm = mg_jni_new_object("android/util/DisplayMetrics");
@@ -734,9 +769,13 @@ static void unity_java_setup(const mg_apk_info *info)
     v.j = 0; v.l = mg_jni_android_app_info(); mg_jni_set_field(g_package_info, "applicationInfo", 'L', v);
     v.j = 0; v.l = g_bundle; mg_jni_set_field(mg_jni_android_app_info(), "metaData", 'L', v);
 
-    /* A phone held sideways with nothing attached: landscape, no hardware keyboard, a touch screen. */
+    /* A phone with nothing attached, held as the surface is shaped (sideways for most games): no hardware keyboard, a touch screen. */
     g_configuration = keep(mg_jni_new_object("android/content/res/Configuration"));
-    v.j = 0; v.i = 2; mg_jni_set_field(g_configuration, "orientation", 'I', v);
+    {
+        mg_surface sf;
+        mg_run_surface(&sf);
+        v.j = 0; v.i = sf.height > sf.width ? 1 : 2; mg_jni_set_field(g_configuration, "orientation", 'I', v);
+    }
     v.i = 1; mg_jni_set_field(g_configuration, "keyboard", 'I', v);
     v.i = 2; mg_jni_set_field(g_configuration, "hardKeyboardHidden", 'I', v);
     v.i = 3; mg_jni_set_field(g_configuration, "touchscreen", 'I', v);
@@ -1078,7 +1117,8 @@ static bool un_start(const megler_run_config *config, const mg_apk_info *info)
 static void un_set_paused(bool paused) { mg_atomic_xchg(&U.paused, paused ? 1 : 0); }
 static void un_set_focused(bool focused) { mg_atomic_xchg(&U.focused, focused ? 1 : 0); }
 static void un_stop(void) { mg_atomic_xchg(&U.stop, 1); }
+static void un_resize(void) { mg_atomic_xchg(&U.resized, 1); }
 
 const mg_driver mg_driver_unity = {
-    "unity", un_start, un_touch, un_key, un_set_paused, un_set_focused, un_stop,
+    "unity", un_start, un_touch, un_key, un_set_paused, un_set_focused, un_stop, NULL, un_resize,
 };

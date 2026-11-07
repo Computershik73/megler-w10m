@@ -156,7 +156,7 @@ bool installApkThunk(void*, const char* hostPath, const char* name) {
             phoneAppsList::installOutcome(file, "failed", "The APK could not be handed to Megler: the copy into the shared folder failed.");
             return;
         }
-        const std::wstring uri = L"megler:install?name=" + escaped(file);
+        const std::wstring uri = appPackage::linkScheme() + L":install?name=" + escaped(file);
         onUi([uri] { openIn(meglerFamilyName(), uri, nullptr); });
     }).detach();
     return true;
@@ -177,7 +177,7 @@ bool uninstallAppThunk(void*, const char* package) {
         return true;
     }
     // An app's own package: Megler, which has the library and the packages, is opened on it.
-    const std::wstring uri = L"megler:uninstall?package=" + escaped(p);
+    const std::wstring uri = appPackage::linkScheme() + L":uninstall?package=" + escaped(p);
     onUi([uri] { openIn(meglerFamilyName(), uri, nullptr); });
     return true;
 }
@@ -254,9 +254,9 @@ int askUser(const std::string& title, const std::string& message, const std::vec
     return state->button;
 }
 
-std::wstring meglerFamilyName() {
-    return L"Megler_" + std::wstring(winrt::Windows::ApplicationModel::Package::Current().Id().PublisherId());
-}
+std::wstring meglerFamilyName() { return appPackage::meglerFamilyName(); }
+
+void openMegler(const std::wstring& what) { openIn(meglerFamilyName(), appPackage::linkScheme() + L":" + what, nullptr); }
 
 std::wstring appFamilyName(const std::string& package) {
     char identity[64];
@@ -266,7 +266,7 @@ std::wstring appFamilyName(const std::string& package) {
 
 void launch(const std::string& package, const std::string& activity) {
     // The activity's class goes with it: microG's sign-in, which Play Store's AccountManager asks for, is not microG's launcher.
-    const std::wstring uri = L"megler:run?package=" + escaped(package) + (activity.empty() ? L"" : L"&activity=" + escaped(activity));
+    const std::wstring uri = appPackage::linkScheme() + L":run?package=" + escaped(package) + (activity.empty() ? L"" : L"&activity=" + escaped(activity));
     const std::wstring own = appFamilyName(package);
     shellLog::write("system: starting " + package + (activity.empty() ? "" : "/" + activity));
     // Its own package first; without one, Megler, which plays it from its library.

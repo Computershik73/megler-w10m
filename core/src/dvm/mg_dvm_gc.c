@@ -875,6 +875,7 @@ static void mark(void)
     }
     mg_dvm_threads_each(exact_thread_roots, NULL);
     mg_dvm_proxy_roots(reach_ref, NULL);
+    mg_dvm_hook_roots(reach_ref, NULL);
     mg_dvm_object_roots(reach_ref, NULL);
     t1 = mg_time_monotonic_ns();
     mg_jni_gc_roots(reach_counted, &G.jni_roots);
@@ -1263,6 +1264,7 @@ static void roots_pushed(roots_took *took, bool strings)
     t1 = mg_time_monotonic_ns();
     mg_dvm_threads_each(exact_thread_roots, NULL);
     mg_dvm_proxy_roots(reach_ref, NULL);
+    mg_dvm_hook_roots(reach_ref, NULL);
     mg_dvm_object_roots(reach_ref, NULL);
     t2 = mg_time_monotonic_ns();
     mg_jni_gc_roots(reach_counted, &G.jni_roots);

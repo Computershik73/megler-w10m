@@ -59,8 +59,9 @@ public final class GooglePackages {
      * has been resumed for ten seconds while its process runs ("waiting for market to close"); an app of the phone's own is
      * suspended within a second of being left and ends on Back. The update never went in, every start downloaded it again, and
      * the tries left 291 MB on a Lumia 650 (package 662). Told this, it skips the variant ("Local Derived Apk Id ... > Server
-     * Derived Apk Id"). A newer version on the server is still downloaded and waits the same way (docs/JAVA.md, "Installing,
-     * and the phone's other apps").
+     * Derived Apk Id"). The server then offers no binary at all, a newer version neither (package 669, the flags below), so
+     * Play Store gets newer only with Megler's package or an APK added to the library (docs/JAVA.md, "Installing, and the
+     * phone's other apps").
      */
     public static android.os.Bundle ownMetaData(String pkg, android.os.Bundle meta) {
         final String derived = "com.android.vending.derived.apk.id";
@@ -75,10 +76,10 @@ public final class GooglePackages {
      * its manifest has it.
      *
      * Why. A test of Play Store's own updates. Play Store sends its version to Google's server in its user agent and compares
-     * the server's offer with it, so a Play Store that says it is older is offered the current release, as it will be offered
-     * the next one. That says whether the server offers a newer version to a Play Store whose derived APK id is the newest there
-     * is (ownMetaData), and lets such an update be tried end to end. The flag real-derived-id leaves that id as the APK has it,
-     * to compare.
+     * the server's offer with it, so a Play Store that says it is older stands for one the next release has overtaken. The flag
+     * real-derived-id leaves its derived APK id as the APK has it, to compare. On a Lumia 650 (package 669) the server offered
+     * such a Play Store nothing with the newest derived id (ownMetaData), and with the APK's own id 53.7.23, whole: no patch
+     * from the 53.7.23 it has, so it had read the 52.9.21.
      */
     private static int sOlderSelf = -1;
     private static boolean olderSelf(String pkg) {

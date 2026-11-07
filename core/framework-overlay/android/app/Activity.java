@@ -39,6 +39,17 @@
 // what Android's rules settle and has the user asked for the rest, and the answers come to onRequestPermissionsResult, the
 // activity paused and resumed around them where an answer changed (meglerPermissionsResult); a second request while one
 // is answered is told it was cancelled, as on Android. shouldShowRequestPermissionRationale is true once the user said no.
+//
+// And the configuration changes of a screen resized or turned (megler.Screen, megler.AppRunner.ensureConfiguration): the
+// activity knows the configuration it last met (meglerCurrentConfig) and the changes its manifest takes (meglerHandledChanges:
+// android:configChanges, and the screen's sizes for an app made for Android 3.1 or before, as ActivityInfo.getRealConfigChanged);
+// it hears onConfigurationChanged when it takes all that changed, which goes on to its fragments, its window and its action
+// bar as Android's does; when it is made again, its retained object (onRetainNonConfigurationInstance: androidx keeps its
+// ViewModels in it) reaches the new one's getLastNonConfigurationInstance until that one resumes, isChangingConfigurations
+// and getChangingConfigurations say why the old one goes, and the state it saves holds its views' (onSaveInstanceState puts
+// the window's hierarchy in, onRestoreInstanceState gives it back: a field's text, a list's place), as Android's does. And
+// setRequestedOrientation, and the manifest's android:screenOrientation, are told to the shell by megler.AppRunner as the
+// activity is or comes in front (updateOrientation), not when its window is first asked for.
 // Everything else is the original's, unchanged.
 package android.app;
 
@@ -82,6 +93,12 @@ public class Activity extends ContextThemeWrapper implements Window.Callback, Ke
     private void fragmentHost(int state) { mFragmentHost = state; if (mFragments != null) mFragments.meglerHostState(state); }
     private int mRequestedOrientation = -1;
     private megler.Manifest.Component mInfo;
+    /* The configuration this activity last met (megler.Screen: at its creation, and at each change it took), and what changed
+       when it is made again for one (getChangingConfigurations). */
+    private Configuration mCurrentConfig;
+    private int mChangingConfigFlags;
+    /* What the activity it was made again from retained (onRetainNonConfigurationInstance), until it resumes. */
+    private Object mLastNonConfig;
 
     public Activity() { super(null, 0); }
 
@@ -126,6 +143,7 @@ public class Activity extends ContextThemeWrapper implements Window.Callback, Ke
         // <fragment> and FragmentContainerView there)
         getLayoutInflater().setPrivateFactory(this);
         each(c -> c.onActivityPreCreated(this, state));
+        mCurrentConfig = new Configuration(megler.Screen.configuration());
         mCalled = false;
         mFragmentHost = FragmentManager.HOST_CREATED;
         onCreate(state);
@@ -151,6 +169,7 @@ public class Activity extends ContextThemeWrapper implements Window.Callback, Ke
     public final void meglerRestart() { onRestart(); }
     public final void meglerResume() {
         each(c -> c.onActivityPreResumed(this));
+        mLastNonConfig = null;             /* as Activity.performResume: only onCreate and onStart had it */
         mCalled = false;
         onResume();
         mResumed = true;
@@ -247,9 +266,48 @@ public class Activity extends ContextThemeWrapper implements Window.Callback, Ke
         }
         for (Application.ActivityLifecycleCallbacks c : callbacks()) c.onActivityDestroyed(this);
     }
-    protected void onSaveInstanceState(Bundle out) { for (Application.ActivityLifecycleCallbacks c : callbacks()) c.onActivitySaveInstanceState(this, out); }
+    protected void onSaveInstanceState(Bundle out) {
+        /* as Android's: the window's views first (each with an id saves what it shows), then the callbacks */
+        Bundle views = meglerSaveViews();
+        if (views != null) out.putBundle(WINDOW_HIERARCHY_TAG, views);
+        for (Application.ActivityLifecycleCallbacks c : callbacks()) c.onActivitySaveInstanceState(this, out);
+    }
     public void onSaveInstanceState(Bundle out, android.os.PersistableBundle p) { onSaveInstanceState(out); }
-    protected void onRestoreInstanceState(Bundle state) {}
+    protected void onRestoreInstanceState(Bundle state) {
+        Bundle views = state != null ? state.getBundle(WINDOW_HIERARCHY_TAG) : null;
+        if (views != null) meglerRestoreViews(views);
+    }
+    private static final String WINDOW_HIERARCHY_TAG = "android:viewHierarchyState", VIEWS_TAG = "android:views", FOCUSED_ID_TAG = "android:focusedViewId";
+    /* The window's views' state, as PhoneWindow.saveHierarchyState: each view with an id that saves something, and the focused one; null with no window. */
+    private Bundle meglerSaveViews() {
+        View decor = mWindow != null ? mWindow.peekDecorView() : null;
+        if (decor == null) return null;
+        try {
+            android.util.SparseArray<android.os.Parcelable> states = new android.util.SparseArray<>();
+            decor.saveHierarchyState(states);
+            Bundle b = new Bundle();
+            b.putSparseParcelableArray(VIEWS_TAG, states);
+            View focused = decor.findFocus();
+            if (focused != null && focused.getId() != View.NO_ID) b.putInt(FOCUSED_ID_TAG, focused.getId());
+            return b;
+        } catch (RuntimeException e) {
+            android.util.Log.w("Megler", "the views of " + getClass().getName() + " could not save their state", e);
+            return null;
+        }
+    }
+    private void meglerRestoreViews(Bundle b) {
+        View decor = mWindow != null ? mWindow.peekDecorView() : null;
+        if (decor == null) return;
+        try {
+            android.util.SparseArray<android.os.Parcelable> states = b.getSparseParcelableArray(VIEWS_TAG);
+            if (states != null) decor.restoreHierarchyState(states);
+            int id = b.getInt(FOCUSED_ID_TAG, View.NO_ID);
+            View focused = id != View.NO_ID ? decor.findViewById(id) : null;
+            if (focused != null) focused.requestFocus();
+        } catch (RuntimeException e) {
+            android.util.Log.w("Megler", "the views of " + getClass().getName() + " could not have their state back", e);
+        }
+    }
     protected void onNewIntent(Intent i) {}
     /** A new intent for this activity (singleTop, or brought back by CLEAR_TOP): as Android, paused around onNewIntent when it is up. */
     public void meglerNewIntent(Intent i) {
@@ -263,7 +321,13 @@ public class Activity extends ContextThemeWrapper implements Window.Callback, Ke
     protected void onUserLeaveHint() {}
     public void onUserInteraction() {}
     public void onRequestPermissionsResult(int request, String[] perms, int[] results) {}
-    public void onConfigurationChanged(Configuration c) { mCalled = true; }
+    public void onConfigurationChanged(Configuration c) {
+        mCalled = true;
+        /* as Android's: the fragments, the window and the action bar hear it too */
+        if (mFragments != null) for (Fragment f : new ArrayList<>(mFragments.mAdded)) f.onConfigurationChanged(c);
+        if (mWindow != null) mWindow.onConfigurationChanged(c);
+        if (mActionBar != null) mActionBar.onConfigurationChanged(c);
+    }
     public void onLowMemory() { mCalled = true; }
     public void onTrimMemory(int level) { mCalled = true; }
     public void onMultiWindowModeChanged(boolean m) {}
@@ -275,7 +339,7 @@ public class Activity extends ContextThemeWrapper implements Window.Callback, Ke
     public void onLocalVoiceInteractionStarted() {}
     public CharSequence onCreateDescription() { return null; }
     public Object onRetainNonConfigurationInstance() { return null; }
-    public Object getLastNonConfigurationInstance() { return null; }
+    public Object getLastNonConfigurationInstance() { return mLastNonConfig; }
     private ArrayList<Application.ActivityLifecycleCallbacks> callbacks() {
         ArrayList<Application.ActivityLifecycleCallbacks> r = new ArrayList<>(mLifecycleCallbacks);
         if (mApplication != null) r.addAll(mApplication.meglerLifecycleCallbacks());
@@ -311,6 +375,39 @@ public class Activity extends ContextThemeWrapper implements Window.Callback, Ke
     public final Bundle meglerSaveState() { Bundle b = new Bundle(); onSaveInstanceState(b); return b; }
     public final void meglerRestoreState(Bundle b) { if (b != null) onRestoreInstanceState(b); }
     public final void meglerChanging(boolean changing) { mChangingConfigurations = changing; }
+    /* Made again for these configuration changes (0: recreate): isChangingConfigurations and getChangingConfigurations say so. */
+    public final void meglerChanging(int changes) { mChangingConfigurations = true; mChangingConfigFlags = changes; }
+    /* What it retains for the activity made again in its place (onRetainNonConfigurationInstance), and that one's having it. */
+    public final Object meglerRetain() { return onRetainNonConfigurationInstance(); }
+    public final void meglerSetRetained(Object retained) { mLastNonConfig = retained; }
+    /* The manifest's component it was started as (null for one an app made itself). */
+    public final megler.Manifest.Component meglerInfo() { return mInfo; }
+    /* The configuration it last met (megler.Screen); null before it is created. */
+    public final Configuration meglerCurrentConfig() { return mCurrentConfig; }
+    /*
+     * The configuration changes it takes itself rather than being made again, as ActivityInfo.getRealConfigChanged: its
+     * manifest's android:configChanges, and the screen's size and smallest size for an app made for Android 3.1 or before,
+     * which Android 3.2 brought in and such an app cannot have named.
+     */
+    public final int meglerHandledChanges() {
+        int handled = mInfo != null ? mInfo.configChanges : 0;
+        if (megler.Manifest.targetSdk > 0 && megler.Manifest.targetSdk < 13) handled |= 0x400 | 0x800;
+        return handled;
+    }
+    /*
+     * It meets a configuration (megler.AppRunner.ensureConfiguration): kept as the one it last met, and, when `report`, heard
+     * through onConfigurationChanged, as ActivityThread.performActivityConfigurationChanged has it.
+     */
+    public final void meglerConfigurationChanged(Configuration c, boolean report) {
+        mCurrentConfig = new Configuration(c);
+        if (!report) return;
+        mCalled = false;
+        onConfigurationChanged(new Configuration(c));
+        if (!mCalled) throw new SuperNotCalledException("Activity " + getClass().getName() + " did not call through to super.onConfigurationChanged()");
+        each(cb -> cb.onActivityConfigurationChanged(this));
+    }
+    /* The activity whose request for a result started this one: the one made again in its place, after a configuration change. */
+    public final void meglerSetCaller(Activity caller) { mCaller = caller; }
 
     // ---- the window
     public Window getWindow() {
@@ -321,7 +418,6 @@ public class Activity extends ContextThemeWrapper implements Window.Callback, Ke
             mWindow.meglerSetActivityWindow(true);
             mWindow.setTitle(mTitle);
             if (mInfo != null && mInfo.windowSoftInputMode != 0) mWindow.setSoftInputMode(mInfo.windowSoftInputMode);
-            if (mRequestedOrientation >= 0) megler.Native.setOrientation(mRequestedOrientation);
         }
         return mWindow;
     }
@@ -374,7 +470,11 @@ public class Activity extends ContextThemeWrapper implements Window.Callback, Ke
         if (v) makeVisible();
         else if (mWindow != null && mWindow.peekDecorView() != null) mWindow.peekDecorView().setVisibility(View.INVISIBLE);
     }
-    public void setRequestedOrientation(int o) { mRequestedOrientation = o; megler.Native.setOrientation(o); }
+    public void setRequestedOrientation(int o) {
+        if (o == mRequestedOrientation) return;
+        mRequestedOrientation = o;
+        megler.AppRunner.updateOrientation();
+    }
     public int getRequestedOrientation() { return mRequestedOrientation; }
     public void setShowWhenLocked(boolean b) {}
     public void setTurnScreenOn(boolean b) {}
@@ -458,7 +558,7 @@ public class Activity extends ContextThemeWrapper implements Window.Callback, Ke
     public void finishAfterTransition() { finish(); }
     public void finishActivity(int request) {}
     public void finishFromChild(Activity child) { finish(); }
-    public boolean moveTaskToBack(boolean nonRoot) { megler.Native.exit(); return true; }
+    public boolean moveTaskToBack(boolean nonRoot) { return megler.AppRunner.moveTaskToBack(this, nonRoot); }
     public boolean navigateUpTo(Intent up) { finish(); return true; }
     public boolean navigateUpToFromChild(Activity child, Intent up) { return navigateUpTo(up); }
     public boolean onNavigateUp() { if (mInfo != null && mInfo.parentActivity != null) { finish(); return true; } return false; }
@@ -607,6 +707,9 @@ public class Activity extends ContextThemeWrapper implements Window.Callback, Ke
     public void onBackPressed() {
         if (mActionBar != null && mActionBar.collapseActionView()) return;
         if (mFragments != null && mFragments.popBackStackImmediate()) return;
+        // Android 12 and later: Back on the task's root activity sends the task to the back, as Home does, instead of
+        // finishing it (ActivityClientController.onBackPressed); the activity is stopped, not destroyed (megler.AppRunner).
+        if (isTaskRoot()) { megler.AppRunner.moveTaskToBack(this, true); return; }
         finishAfterTransition();
     }
     public boolean onSearchRequested() { return false; }
@@ -685,7 +788,7 @@ public class Activity extends ContextThemeWrapper implements Window.Callback, Ke
             public android.os.IBinder getAssistToken() { return null; }
             public android.view.autofill.AutofillManager.AutofillClient getAutofillClient() { return null; }
             public android.app.ComponentCaller getCaller() { return null; }
-            public int getChangingConfigurations() { return 0; }
+            public int getChangingConfigurations() { return mChangingConfigurations ? mChangingConfigFlags : 0; }
             public android.view.contentcapture.ContentCaptureManager.ContentCaptureClient getContentCaptureClient() { return null; }
             public android.transition.Scene getContentScene() { return null; }
             public android.transition.TransitionManager getContentTransitionManager() { return (android.transition.TransitionManager) megler.Fill.get(meglerFill, "ContentTransitionManager"); }

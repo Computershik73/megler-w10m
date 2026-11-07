@@ -109,10 +109,11 @@ bool mg_bionic_is_system_lib(const char *soname);
 /* Guest thread-local storage (ld/mg_tls.c). */
 #define MG_TCB_SLOTS 16
 /*
- * x86_64: the last of the block's slots, which no bionic has, holds the thread's stack for the system calls of libraries'
- * own (x86/mg_patch_x86.c), once a library has one: every thread's block gets it then (mg_tls_syscall_stacks), the
- * block of a thread made later as it is made. mg_patch_syscall_stack_new makes one (the thread's own stack's bounds where
- * the host's thread block does not say them, NULL where they are not known), _free gives it back.
+ * x86_64 and 32-bit ARM: the last of the block's slots, which no bionic has, holds the thread's stack for the system calls
+ * of libraries' own led out to the core (x86/mg_patch_x86.c; arm/mg_patch.c, a library of Go's), once a library has one:
+ * every thread's block gets it then (mg_tls_syscall_stacks), the block of a thread made later as it is made.
+ * mg_patch_syscall_stack_new makes one (the thread's own stack's bounds where the host's thread block does not say them,
+ * NULL where they are not known), _free gives it back.
  */
 #define MG_TCB_SYSCALL 15
 void mg_tls_syscall_stacks(void);

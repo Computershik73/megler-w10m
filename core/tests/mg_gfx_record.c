@@ -594,10 +594,9 @@ int mg_gfx_record_run(const char *which, const char *apk, const char *android_ro
         quiet();
         printf("  the button at %d,%d pressed: %d pictures so far\n", g_button[0] + g_button[2] / 2, g_button[1] + g_button[3] / 2, (int)g_pictures);
     }
-    if (!g_exited) {
-        megler_key(4, true);
-        megler_key(4, false);
-    }
+    /* The app ended by the user's stop, its activities taken down and their canvases freed: Back on its first screen sends
+       it to the back now, as on Android 12, and it would not end. */
+    if (!g_exited) megler_stop();
     for (tries = 0; tries < 3000 && !g_exited; tries++) mg_sleep_ns(10000000ull);
     /* The app's last calls (its canvases freed) may still be coming: the file is closed under the lock, and what comes after is not kept. */
     mg_sleep_ns(200000000ull);
@@ -608,7 +607,7 @@ int mg_gfx_record_run(const char *which, const char *apk, const char *android_ro
     printf("  %s: %u calls recorded in %u KB (%u canvases made, %u drawings of text, %u of bitmaps, %u image files decoded), %d pictures shown; the app %s%s%s\n",
            record_file, (unsigned)R.records, (unsigned)(R.bytes >> 10), (unsigned)R.by_kind[R_CANVAS_NEW], (unsigned)R.by_kind[R_TEXT], (unsigned)R.by_kind[R_BITMAP],
            (unsigned)R.by_kind[R_DECODE], (int)g_pictures, g_exited ? "ended" : "did NOT end", g_reason[0] ? ": " : "", g_reason);
-    return g_pictures > 0 && g_exited && !g_reason[0] ? 0 : 1;
+    return g_pictures > 0 && g_exited && (!g_reason[0] || !strcmp(g_reason, "stopped")) ? 0 : 1;
 }
 
 /* ------------------------------------------------------------------ replaying */

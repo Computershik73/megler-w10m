@@ -63,6 +63,19 @@
 #       likewise and run as --camera-windows: the PC's first camera opened
 #       through the core's camera code and a few pictures taken, or, on a PC
 #       without one, a line that says so.
+#       And the shell's sensors for an app's SensorManager and ASensorManager
+#       (app/Megler/player/SensorHost.cpp: Windows.Devices.Sensors), built in
+#       likewise and run as --sensors-windows: the PC's sensors listed through
+#       the core's and each read a moment, or, on a PC without them, a line
+#       that says so.
+#       And the Xbox build's client of the console's Device Portal
+#       (app/Megler/shell/DevicePortal.cpp), built in likewise and run as
+#       --portal-windows against tools/device-portal-mock.py, a portal of the
+#       tests' own that answers as an Xbox's does (Basic authentication, the
+#       CSRF token, an install as a form of files, its state, the list of the
+#       packages, an uninstall), over TLS with a certificate made here by
+#       openssl for another name (plain HTTP where there is no openssl), where
+#       Python is.
 #
 # Both builds unpack bundles of split APKs as the shell does (mg_tests
 # --bundles, core/tests/mg_bundle_tests.c): the test app `splits` as an .apks
@@ -98,7 +111,10 @@
 # Android's System WebView on pages of the app's own server, where the
 # Android root carries the WebView (tools/webview-fetch.sh). And `camera`, the
 # old android.hardware.Camera on a stand-in for the shell's cameras, twice: the
-# second time with every camera refused. Their
+# second time with every camera refused. And `screen`, whose surface is resized
+# and turned from the host's side (megler_set_surface), as a PC's window or a
+# phone turned does it: its activities made again or told, the pictures at the
+# new size. Their
 # pictures are written to build/java-pictures as BMP files. Each is then run
 # once more with its calls of the shell's drawing recorded
 # (build/gfx-records/<app>.rec), for the Windows build to draw again.
@@ -209,7 +225,7 @@ EOF
     # Bundles of split APKs, unpacked as the shell unpacks them.
     MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL="*" wsl.exe -- bash -c "rm -rf $WB/scratch-bundles && qemu-arm -L /usr/arm-linux-gnueabihf $WB/mg_tests --bundles '$WROOT/build/guest/java' $WB/scratch-bundles '$WROOT/build/bundles' 2>&1; STATUS=\$?; rm -rf $WB/scratch-bundles; exit \$STATUS" || STATUS=1
     if [ "$JAVA" = 1 ]; then
-      for app in hello demos natives crash gc gl; do
+      for app in hello demos natives crash gc gl screen; do
         if [ ! -f "$ROOT/build/guest/java/$app.apk" ]; then
           echo "(the Java test app $app is not run: build/guest/java/$app.apk was not built -- its native library needs the NDK, see tools/build-test-app.sh)"
           continue
@@ -220,7 +236,7 @@ EOF
       # Optional real microG integration, including a conflicting client GMS class.
       # Fetch the pinned upstream APK with tools/microg-fetch.sh first.
       if [ -f "$ROOT/build/microg/GmsCore.apk" ] && [ -f "$ROOT/build/guest/java/microg.apk" ]; then
-        MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL="*" wsl.exe -- bash -c "cp '$WROOT/build/guest/java/microg.apk' $WB/microg.apk && cp '$WROOT/build/microg/GmsCore.apk' $WB/GmsCore.apk && MG_JAVA_GMS_APK=$WB/GmsCore.apk qemu-arm -L /usr/arm-linux-gnueabihf $WB/mg_tests --java microg $WB/microg.apk $WB/java-data-microg $WB/android-root - 2>&1" || STATUS=1
+        MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL="*" wsl.exe -- bash -c "cp '$WROOT/build/guest/java/microg.apk' $WB/microg.apk && rm -rf $WB/java-data-microg && cp '$WROOT/build/microg/GmsCore.apk' $WB/GmsCore.apk && MG_JAVA_GMS_APK=$WB/GmsCore.apk qemu-arm -L /usr/arm-linux-gnueabihf $WB/mg_tests --java microg $WB/microg.apk $WB/java-data-microg $WB/android-root - 2>&1" || STATUS=1
       fi
       # The app in several APKs, from each of its bundles: unpacked as the shell unpacks one, for a screen of 320 dpi, and run.
       for bundle in apks xapk; do
@@ -414,10 +430,11 @@ elif [ "$MODE" = win ]; then
   for s in "${SRCS[@]}"; do ALL+=("$(w "$ROOT/$s")"); done
   ZALL=()
   for s in "${ZSRCS[@]}"; do ZALL+=("$(w "$ROOT/$s")"); done
-  # (MG_GFX_WINDOWS, MG_STORAGE_WINDOWS, MG_CODEC_WINDOWS, MG_CAMERA_WINDOWS: this build has the shell's drawing, its storage
-  # host, its decoders and its cameras in it; mg_tests_main.c's --gfx-windows, --storage-windows, --codec-windows and
-  # --camera-windows modes.)
-  "$VC/bin/Hostx64/x64/cl.exe" /nologo /c "$OPT" /MT /W3 /std:c11 /utf-8 /MP /D_CRT_SECURE_NO_WARNINGS /D_CRT_NONSTDC_NO_WARNINGS /DMG_GFX_WINDOWS /DMG_STORAGE_WINDOWS /DMG_CODEC_WINDOWS /DMG_CAMERA_WINDOWS "${SQLITE_CL[@]}" "${WEBP_CL[@]}" \
+  # (MG_GFX_WINDOWS, MG_STORAGE_WINDOWS, MG_CODEC_WINDOWS, MG_CAMERA_WINDOWS, MG_SENSORS_WINDOWS, MG_PORTAL_WINDOWS: this build has
+  # the shell's drawing, its storage host, its decoders, its cameras, its sensors and the Xbox build's Device Portal client in
+  # it; mg_tests_main.c's --gfx-windows, --storage-windows, --codec-windows, --camera-windows, --sensors-windows and
+  # --portal-windows modes.)
+  "$VC/bin/Hostx64/x64/cl.exe" /nologo /c "$OPT" /MT /W3 /std:c11 /utf-8 /MP /D_CRT_SECURE_NO_WARNINGS /D_CRT_NONSTDC_NO_WARNINGS /DMG_GFX_WINDOWS /DMG_STORAGE_WINDOWS /DMG_CODEC_WINDOWS /DMG_CAMERA_WINDOWS /DMG_SENSORS_WINDOWS /DMG_PORTAL_WINDOWS "${SQLITE_CL[@]}" "${WEBP_CL[@]}" \
     "/I$(w "$ROOT/core/third_party/zlib")" "/Fo$(w "$OUT/obj")\\" "${ALL[@]}" | grep -v -E '^[A-Za-z0-9_]+\.c$' || true
   "$VC/bin/Hostx64/x64/cl.exe" /nologo /c /O1 /MT /w /MP /D_CRT_SECURE_NO_WARNINGS /D_CRT_NONSTDC_NO_WARNINGS \
     "/Fo$(w "$OUT/zobj")\\" "${ZALL[@]}" | grep -v -E '^[A-Za-z0-9_]+\.c$' || true
@@ -454,17 +471,22 @@ elif [ "$MODE" = win ]; then
   # transforms), likewise, with the lines that hand them to the tests (core/tests/mg_codec_windows.cpp), and its reader of
   # whole files (player/MediaHost.cpp), for the files of sound alone a Java app's MediaPlayer and SoundPool hand it; the
   # shell's log they write to is mg_storage_windows.cpp's. And the shell's cameras (player/CameraHost.cpp:
-  # Windows.Media.Capture), with the lines that hand them to the tests (core/tests/mg_camera_windows.cpp).
+  # Windows.Media.Capture), with the lines that hand them to the tests (core/tests/mg_camera_windows.cpp). And the shell's
+  # sensors (player/SensorHost.cpp: Windows.Devices.Sensors), likewise (core/tests/mg_sensors_windows.cpp). And the Xbox
+  # build's Device Portal client (shell/DevicePortal.cpp: Windows.Web.Http), with the tests that drive it against the mock
+  # portal (core/tests/mg_portal_windows.cpp); no package but the Xbox's has the client (tools/build-appx.sh --xbox).
   STORAGE_SRC=("$(w "$ROOT/app/Megler/player/StorageHost.cpp")" "$(w "$ROOT/app/Megler/shell/Strings.cpp")" "$(w "$ROOT/core/tests/mg_storage_windows.cpp")"
                "$(w "$ROOT/app/Megler/player/CodecHost.cpp")" "$(w "$ROOT/core/tests/mg_codec_windows.cpp")"
                "$(w "$ROOT/app/Megler/player/MediaHost.cpp")"
-               "$(w "$ROOT/app/Megler/player/CameraHost.cpp")" "$(w "$ROOT/core/tests/mg_camera_windows.cpp")")
+               "$(w "$ROOT/app/Megler/player/CameraHost.cpp")" "$(w "$ROOT/core/tests/mg_camera_windows.cpp")"
+               "$(w "$ROOT/app/Megler/player/SensorHost.cpp")" "$(w "$ROOT/core/tests/mg_sensors_windows.cpp")"
+               "$(w "$ROOT/app/Megler/shell/DevicePortal.cpp")" "$(w "$ROOT/core/tests/mg_portal_windows.cpp")")
   mkdir -p "$OUT/storageobj"
   rm -f "$OUT/storageobj/"*.obj
   INCLUDE="$INCLUDE;$(w "$SDK/Include/$SDKV/winrt");$(w "$SDK/Include/$SDKV/cppwinrt")" \
     "$VC/bin/Hostx64/x64/cl.exe" "${GFX_FLAGS[@]}" /Zc:__cplusplus /bigobj /DWINAPI_FAMILY=WINAPI_FAMILY_APP /O1 /MP "/Fo$(w "$OUT/storageobj")\\" "${STORAGE_SRC[@]}" \
     | grep -v -E '^[A-Za-z0-9_]+\.cpp$' || true
-  for obj in StorageHost Strings mg_storage_windows CodecHost mg_codec_windows MediaHost CameraHost mg_camera_windows; do
+  for obj in StorageHost Strings mg_storage_windows CodecHost mg_codec_windows MediaHost CameraHost mg_camera_windows SensorHost mg_sensors_windows DevicePortal mg_portal_windows; do
     [ -f "$OUT/storageobj/$obj.obj" ] || { echo "compile failed: $obj.cpp" >&2; exit 1; }
   done
   # (MEGLER_TESTS_MAP=1: a linker map beside it, mg_tests.map, which tools/dvm-bench.sh profile reads.)
@@ -528,6 +550,40 @@ elif [ "$MODE" = win ]; then
     # The shell's cameras: the PC's first camera through the core's camera code, a few pictures taken; a PC without one says so.
     rm -rf "$OUT/scratch-camera"
     "$OUT/mg_tests.exe" --camera-windows "$(w "$OUT/scratch-camera")" || STATUS=1
+    # The shell's sensors: what this PC has through the core's sensors, each read a moment; a PC without them says so.
+    rm -rf "$OUT/scratch-sensors"
+    "$OUT/mg_tests.exe" --sensors-windows "$(w "$OUT/scratch-sensors")" || STATUS=1
+    # The Xbox build's Device Portal client, against a portal of the tests' own (tools/device-portal-mock.py) on a port of
+    # its choosing on 127.0.0.1: over TLS with a certificate openssl makes here for another name, nothing vouching for it, as
+    # the console's own is; the first two questions of the install's state answered 204, as another client's install
+    # would be. Without Python it is said and left out.
+    PORTAL="$OUT/scratch-portal"
+    rm -rf "$PORTAL" && mkdir -p "$PORTAL"
+    if command -v python > /dev/null; then
+      TLS=()
+      if command -v openssl > /dev/null &&
+         openssl req -x509 -newkey rsa:2048 -nodes -keyout "$(w "$PORTAL/key.pem")" -out "$(w "$PORTAL/cert.pem")" -days 2 \
+           -subj "/CN=xbox-mock.invalid" > /dev/null 2>&1; then
+        TLS=(--cert "$(w "$PORTAL/cert.pem")" --key "$(w "$PORTAL/key.pem")")
+      else
+        echo "(no openssl: the mock Device Portal answers over plain HTTP)"
+      fi
+      python -I "$(w "$ROOT/tools/device-portal-mock.py")" --ready "$(w "$PORTAL/ready")" --user portal-test --password "mock-pw-1" \
+        --received "$(w "$PORTAL/received")" --busy-first 2 --log "$(w "$PORTAL/mock.log")" ${TLS[@]+"${TLS[@]}"} &
+      MOCK=$!
+      for _ in $(seq 100); do [ -f "$PORTAL/ready" ] && break; sleep 0.1; done
+      if [ -f "$PORTAL/ready" ]; then
+        "$OUT/mg_tests.exe" --portal-windows "$(tr -d '\r\n' < "$PORTAL/ready")" portal-test "mock-pw-1" "$(w "$PORTAL")" "$(w "$PORTAL/received")" \
+          "$(w "$PORTAL/mock.log")" || STATUS=1
+      else
+        echo "the mock Device Portal did not start (tools/device-portal-mock.py)" >&2
+        STATUS=1
+      fi
+      kill "$MOCK" 2> /dev/null || true
+      wait "$MOCK" 2> /dev/null || true
+    else
+      echo "(no Python: the Xbox build's Device Portal client was not run against the mock portal)"
+    fi
     # The Java test apps' own drawing, as `tools/build-tests.sh arm` recorded it under qemu: drawn again by the stand-in,
     # which must give the recorded pictures back pixel for pixel, and then by the shell's drawing, into
     # build/gfx-pictures/app-<app>-N.png -- the app's views as a phone's Direct2D and DirectWrite would draw them, laid

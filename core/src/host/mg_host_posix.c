@@ -541,6 +541,12 @@ int mg_cpu_count(void)
     return n > 0 ? (int)n : 1;
 }
 
+#if defined(__arm__)
+#include <sys/auxv.h>
+/* HWCAP_IDIVT, which qemu-arm sets as the processor it plays has it: not for -cpu cortex-a9, a Surface RT's. */
+bool mg_cpu_arm_divide(void) { return (getauxval(AT_HWCAP) & (1ul << 18)) != 0; }
+#endif
+
 void mg_lock_init(mg_lock *l) { pthread_mutex_init(&l->m, NULL); }
 void mg_lock_acquire(mg_lock *l) { pthread_mutex_lock(&l->m); }
 bool mg_lock_try(mg_lock *l) { return pthread_mutex_trylock(&l->m) == 0; }
@@ -1930,6 +1936,8 @@ int mg_host_d3d11_feature_level(void *device)
     (void)device;
     return 0;
 }
+
+int mg_host_d3d11_hardware_level(void) { return 0; }
 
 void mg_random(void *buf, size_t n)
 {

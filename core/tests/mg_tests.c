@@ -20,6 +20,7 @@
 #include "mg_codec_standin.h"
 #include "mg_gfx_tests.h"
 #include "mg_net_tests.h"
+#include "mg_sensor_tests.h"
 #include "mg_storage_tests.h"
 #include "mg_tests.h"
 
@@ -3348,6 +3349,22 @@ static void test_library(mg_lib *lib, const char *what, const char *scratch)
     (void)scratch;
     CHECK_INT(FN(lib, int (*)(const char *), "t_files")(buf), 1);
     CHECK_INT(FN(lib, int (*)(void), "t_proc")(), 1);
+#if MG_ARCH_ARM32
+    /* AT_HWCAP says SDIV (idiva, idivt) and VFPv4 where the processor has SDIV, and neither where it has not -- a Surface
+       RT's Cortex-A9, as qemu-arm -cpu cortex-a9 plays it: an app that chose its code by them would fault there on VFPv4's
+       instructions, or be trapped at every division. NEON either way. */
+    {
+        gulong words[64];
+        size_t n = mg_bionic_auxv_words(words, MG_COUNT(words)), i;
+        unsigned long hwcap = 0;
+        for (i = 0; i + 1 < n; i += 2)
+            if (words[i] == 16) hwcap = (unsigned long)words[i + 1];
+        say("  AT_HWCAP 0x%lx: the processor %s SDIV", hwcap, mg_cpu_arm_divide() ? "has" : "has no");
+        CHECK_INT((hwcap >> 18) & 1, mg_cpu_arm_divide() ? 1 : 0);
+        CHECK_INT((hwcap >> 16) & 1, mg_cpu_arm_divide() ? 1 : 0);
+        CHECK_INT((hwcap >> 12) & 1, 1);
+    }
+#endif
     CHECK_INT(FN(lib, int (*)(void), "t_boot_id")(), 1);
     CHECK_INT(FN(lib, int (*)(void), "t_proc_status")(), 1);
     CHECK_INT(FN(lib, int (*)(void), "t_smaps")(), 4);
@@ -3504,7 +3521,31 @@ static void test_go_stack(void)
     if (!go) return;
     CHECK(mg_ld_lib_is_go(go));
     mg_ld_get_stats(go, &st);
+#if MG_ARCH_ARM32
+    /* Its Thumb svc a trap; its four ARM ones, Go's runtime's way, led out to the core (arm/mg_patch.c). */
+    CHECK_INT(st.svc_sites, 5);
+    CHECK_INT(st.svc_led_out, 4);
+    {
+        /*
+         * Made so, on the thread's own stack and on a goroutine's of two kilobytes with no memory below it, here and on four
+         * threads of their own (t_go_arm_svc): registers, flags and VFP registers kept, nothing written below the
+         * goroutine's sp but the way out's 16 bytes; the 500 calls on goroutines' stacks made on the threads' stacks for
+         * system calls. A trap's handler ran below such a stack's sp, where Windows laid the trap's records: MCO
+         * Advanced's libgojni.so ended so as its runtime started (package 669).
+         */
+        u32 made0 = 0, on0 = 0, made = 0, on = 0;
+        mg_core_svc_calls(&made0, &on0);
+        CHECK_INT(FN(go, long (*)(void), "t_go_arm_svc")(), 0);
+        mg_core_svc_calls(&made, &on);
+        say("  ARM svc led out: %u calls, %u of them on a stack for system calls", made - made0, on - on0);
+        CHECK(made - made0 == 1305 && on - on0 >= 500 && on - on0 < made - made0);
+    }
+#else
     CHECK_INT(st.svc_sites, 1);
+#endif
+    /* prctl by number: the names Go's runtime gives its mappings refused as a kernel without them refuses them (EINVAL),
+       a thread's name set and read as libc's prctl does it (MCO Advanced's libgojni.so, package 669). */
+    CHECK_INT(FN(go, long (*)(void), "t_go_prctl")(), 0);
     CHECK_INT(FN(go, long (*)(long), "t_go_heap_new")(3), 14);
     mg_mmap_given_back(&given0, &again0);
     mg_mmap_usage(&anon0, NULL);
@@ -4399,6 +4440,7 @@ int mg_tests_run(const char *libdir, const char *scratch, mg_test_sink sink, voi
     test_host(scratch);
     g_failed += mg_storage_tests_run(scratch, g_sink, g_sink_user, &g_checks);
     g_failed += mg_net_tests_run(g_sink, g_sink_user, &g_checks);
+    g_failed += mg_sensor_tests_run(g_sink, g_sink_user, &g_checks);
     test_zip(scratch);
     test_sqlite(scratch);
     test_textures();

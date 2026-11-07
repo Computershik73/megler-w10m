@@ -1,9 +1,16 @@
 #!/usr/bin/env bash
 # Builds, packs and signs the Megler app package.
 #
-#   tools/build-appx.sh [arm|x64|arm64|x86] [--auto MODES] [--libcore] [--java] [--bitgapps ZIP] [--gms APK] [--play-store APK] [--clean] [--no-pack]
+#   tools/build-appx.sh [arm|x64|arm64|x86] [--rt] [--xbox] [--auto MODES] [--libcore] [--java] [--bitgapps ZIP] [--gms APK] [--play-store APK] [--microg APK] [--clean] [--no-pack]
 #
 #   arm        (default) the shipping package for Windows 10 Mobile, ARM32
+#   --rt       with arm: the same package for desktop Windows 10 on 32-bit ARM
+#              instead -- build 10.0.15035, the one such Windows there is, on
+#              Windows RT's tablets (Surface RT, Surface 2) and on Lumias
+#              (docs/RT.md): the phone's binaries and files, and its manifest
+#              with one TargetDeviceFamily, Windows.Desktop from 10.0.15035.0,
+#              in place of the phone's two from 15063; named
+#              Megler_<version>_RT_ARM.appx (docs/RELEASES.md)
 #   x64, arm64, x86
 #              the package for desktop Windows 10 and 11 on that processor
 #              (docs/DESKTOP.md), which runs Android code of that processor:
@@ -11,6 +18,18 @@
 #              beside Megler.exe (tools/build-desktop.sh <arch> app makes it
 #              and Megler.exe's half of it); the Android root is that ABI's
 #              (tools/dvm-android-root.sh --abi). No ANGLE yet.
+#   --xbox     (tools/build-appx.sh x64 --xbox, and any other option x64's
+#              takes) the package for an Xbox in Developer Mode
+#              (docs/XBOX.md): x64's Megler, with the client of the console's
+#              own Device Portal compiled in (MEGLER_XBOX: shell/DevicePortal.cpp),
+#              through which it installs the apps' packages and its own
+#              update, as DesktopMode_uwp's installer does on a console;
+#              its manifest the Xbox's (the device family Windows.Xbox alone,
+#              without the phone's text messages and call history, with
+#              expandedResources: a game's share of the processor and the
+#              graphics processor). Its objects
+#              in build/appx-xbox-x64; the package
+#              Megler_<version>_Xbox_x64.appx (docs/RELEASES.md).
 #   --auto MODES  an unattended on-device run at start-up (app/Megler/auto,
 #              tools/phone.py auto): `probe` runs megler_probe, `selftest` runs
 #              megler_selftest, or `probe,selftest`; `gfx` draws the scenes of
@@ -55,20 +74,31 @@
 #   --bitgapps ZIP  include the GMS, GSF and Play Store APKs from a locally
 #              supplied BiTGApps archive in bitgapps/; implies --java. The
 #              archive and its extracted APKs are not stored in the repository.
+#              For every processor: the archive's GSF has no native code; its
+#              GMS and Play Store are 32-bit ARM's, so a desktop package needs
+#              --gms and --play-store of its own processor.
 #   --gms APK, --play-store APK  with --bitgapps: these APKs of Google Play
 #              services and Play Store take the place of the archive's (its
 #              GSF stays), as bitgapps/PrebuiltGmsCore.apk and Phonesky.apk,
 #              which the library offers. Not stored in the repository either.
+#              Google Play services comes in a variant for each processor
+#              (APKMirror: armeabi-v7a, arm64-v8a + armeabi-v7a, x86,
+#              x86 + x86_64): the package's processor's is wanted -- the
+#              arm64-v8a variant's armeabi-v7a code is 8 of its 40 libraries,
+#              and the x86_64 variant's x86 code likewise. tools/bitgapps-check.py
+#              refuses an APK whose native code is not wholly the package's
+#              processor's (docs/PER-APP-PACKAGES.md, "Google's APKs for each
+#              processor").
 #   --microg APK  with --bitgapps: microG's Google Play services, as
 #              bitgapps/MicroGGmsCore.apk, which the library publishes for
 #              the apps set to microG (Settings, Google Services).
 #   --clean    recompile everything
 #   --no-pack  stop after staging (no makeappx, no signing)
 #
-# The output: app/Megler/AppPackages/Megler_<version>_<ARCH>.appx, the
-# certificate to trust (Megler.cer) beside it, the staged folder under
-# build/appx-<arch>/stage, and the linker map kept as
-# build/maps/Megler_<version>.map.
+# The output: app/Megler/AppPackages/Megler_<version>_<ARCH>.appx (_RT_ARM
+# with --rt), the certificate to trust (Megler.cer) beside it, the staged
+# folder under build/appx-<arch>/stage (build/appx-arm for --rt too: the
+# same objects), and the linker map kept as build/maps/Megler_<version>.map.
 #
 # Why a script and not MSBuild (podium-w10m's and gecko-w10m's tools/build-appx.sh
 # learned it first): MSBuild's appx signing fails here with APPX0107, so the
@@ -116,8 +146,10 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 APP="$ROOT/app/Megler"
 ARCH=arm
+RT=0
 CLEAN=0
 PACK=1
+XBOX=0
 AUTO_PROBE=0
 AUTO_SELFTEST=0
 AUTO_PLAY=0
@@ -136,6 +168,8 @@ while [ $# -gt 0 ]; do
   arg="$1"; shift
   case "$arg" in
     arm|x64|arm64|x86) ARCH="$arg" ;;
+    --xbox) XBOX=1 ;;
+    --rt) RT=1 ;;
     --auto|--auto=*)
       if [ "$arg" = --auto ]; then
         [ $# -gt 0 ] || { echo "--auto needs probe, selftest or probe,selftest" >&2; exit 2; }
@@ -169,10 +203,12 @@ while [ $# -gt 0 ]; do
     --play-store=*) PLAY_STORE_APK="${arg#--play-store=}" ;;
     --clean) CLEAN=1 ;;
     --no-pack) PACK=0 ;;
-    -h|--help) sed -n '2,41p' "$0"; exit 0 ;;
+    -h|--help) sed -n '2,53p' "$0"; exit 0 ;;
     *) echo "unknown argument: $arg" >&2; exit 2 ;;
   esac
 done
+# (An Xbox is an x64 machine: its Megler is x64's, with all else that x64's takes.)
+if [ "$XBOX" = 1 ] && [ "$ARCH" != x64 ]; then echo "--xbox goes with x64" >&2; exit 2; fi
 AUTO_MODES=""
 [ "$AUTO_PROBE" = 1 ] && AUTO_MODES="probe"
 [ "$AUTO_SELFTEST" = 1 ] && AUTO_MODES="${AUTO_MODES:+$AUTO_MODES,}selftest"
@@ -187,14 +223,15 @@ if [ "$AUTO_SELFTEST" = 1 ] && [ "$AUTO_PLAY" = 1 ]; then echo "--auto: selftest
 if [ "$AUTO_JAVA" = 1 ] && { [ "$AUTO_SELFTEST" = 1 ] || [ "$AUTO_PLAY" = 1 ]; }; then echo "--auto: java cannot go with selftest or play" >&2; exit 2; fi
 # The Java test app is of no use without what it runs on.
 if [ "$AUTO_JAVA" = 1 ]; then JAVA=1; fi
+# (Windows RT's tablets are 32-bit ARM; the desktop packages of the other processors are Windows.Universal already.)
+if [ "$RT" = 1 ] && [ "$ARCH" != arm ]; then echo "--rt goes with arm: desktop Windows on 32-bit ARM" >&2; exit 2; fi
 if [ -n "$BITGAPPS" ]; then
-  [ "$ARCH" = arm ] || { echo "--bitgapps requires arm" >&2; exit 2; }
   [ -f "$BITGAPPS" ] || { echo "--bitgapps archive not found: $BITGAPPS" >&2; exit 2; }
   JAVA=1
 fi
-for apk in "$GMS_APK" "$PLAY_STORE_APK"; do
+for apk in "$GMS_APK" "$PLAY_STORE_APK" "$MICROG_APK"; do
   [ -z "$apk" ] && continue
-  [ -n "$BITGAPPS" ] || { echo "--gms and --play-store go with --bitgapps (whose GSF is used)" >&2; exit 2; }
+  [ -n "$BITGAPPS" ] || { echo "--gms, --play-store and --microg go with --bitgapps (whose GSF is used)" >&2; exit 2; }
   [ -f "$apk" ] || { echo "APK not found: $apk" >&2; exit 2; }
 done
 if [ "$JAVA" = 1 ]; then LIBCORE=1; fi
@@ -241,6 +278,8 @@ export VSLANG=1033
 export MSYS2_ARG_CONV_EXCL="*"
 
 BUILD="$ROOT/build/appx-$ARCH"
+# (The Xbox's in a folder of its own: its shell is compiled with MEGLER_XBOX, and has the portal's client.)
+[ "$XBOX" = 1 ] && BUILD="$ROOT/build/appx-xbox-$ARCH"
 OBJ="$BUILD/obj"
 STAGE="$BUILD/stage"
 OUT="$APP/AppPackages"
@@ -248,7 +287,7 @@ OUT="$APP/AppPackages"
 mkdir -p "$OBJ" "$OUT"
 JOBS="${MEGLER_JOBS:-$(nproc 2>/dev/null || echo 4)}"
 
-echo "=== Megler for $([ "$DESKTOP" = 1 ] && echo "desktop Windows" || echo "Windows 10 Mobile"): $ARCH${AUTO_MODES:+, auto run: $AUTO_MODES} ==="
+echo "=== Megler for $([ "$XBOX" = 1 ] && echo "Xbox (Developer Mode)" || { [ "$DESKTOP" = 1 ] && echo "desktop Windows"; } || { [ "$RT" = 1 ] && echo "desktop Windows 10 on 32-bit ARM (Windows RT's tablets, build 15035)"; } || echo "Windows 10 Mobile"): $ARCH${AUTO_MODES:+, auto run: $AUTO_MODES} ==="
 echo "    MSVC $(basename "$VC"), headers SDK $SDKV, libraries SDK $SDKV_LIB"
 
 # MARK: Compile
@@ -370,8 +409,10 @@ if [ "$(cat "$AUTO_CONFIG/AutoConfig.h" 2>/dev/null)" != "$AUTO_HEADER" ]; then
 fi
 SHELL_FLAGS=("${CXX[@]}" /std:c++20 /W3 /bigobj "/I$(w "$APP")" "/I$(w "$ROOT/core/include")" "/I$(w "$AUTO_CONFIG")"
              "/Fp$(w "$OBJ/shell/pch.pch")")
-# (Desktop: the shell loads the core's ELF before it calls it, shell/Platform.cpp.)
+# (Desktop: the shell loads the core's ELF before it calls it, shell/Platform.cpp. Xbox: it installs through the console's
+# Device Portal, shell/AppPackage.cpp.)
 [ "$DESKTOP" = 1 ] && SHELL_FLAGS+=(/DMG_ELF_HOST=1)
+[ "$XBOX" = 1 ] && SHELL_FLAGS+=(/DMEGLER_XBOX=1)
 mkdir -p "$OBJ/shell"
 SHELL_HEADERS="$(newest_mtime "$APP" '*.h')"
 MEGLER_H="$(stat -c %Y "$ROOT/core/include/megler.h")"
@@ -384,7 +425,11 @@ if [ ! -f "$OBJ/shell/pch.pch" ] || [ "$APP/pch.h" -nt "$OBJ/shell/pch.pch" ]; t
   find "$OBJ/shell" -name '*.obj' ! -name pch.obj -delete
   echo "    precompiled header"
 fi
-mapfile -t SHELL_SRC < <(find "$APP" -name '*.cpp' ! -name pch.cpp ! -name GfxHost.cpp ! -path '*/AppPackages/*' | sort)
+# The client of an Xbox's Device Portal (shell/DevicePortal.cpp) is the Xbox's package's alone: a phone's and a PC's Megler
+# install through Windows's deployment engine and have not a word of it (an object of it left in the folder goes too).
+SKIP_SHELL=(! -name DevicePortal.cpp)
+if [ "$XBOX" = 1 ]; then SKIP_SHELL=(); else rm -f "$OBJ/shell/DevicePortal.obj"; fi
+mapfile -t SHELL_SRC < <(find "$APP" -name '*.cpp' ! -name pch.cpp ! -name GfxHost.cpp "${SKIP_SHELL[@]}" ! -path '*/AppPackages/*' | sort)
 # Shell file names are unique across its folders, so one object folder does.
 compile_group "$OBJ/shell" "$SHELL_HEADERS" "${SHELL_FLAGS[@]}" /Yu"pch.h" -- "${SHELL_SRC[@]}"
 # A Java app's drawing (player/GfxHost.cpp: Direct2D, DirectWrite, WIC) is plain COM with no WinRT in it and is also
@@ -495,12 +540,66 @@ sed -e "/<Identity/,/\/>/ s/Version=\"[0-9.]*\"/Version=\"$VERSION\"/" \
     -e "/<Identity/,/\/>/ s/ProcessorArchitecture=\"[a-z0-9]*\"/ProcessorArchitecture=\"$PKGARCH\"/" \
     "$APP/Package.appxmanifest" > "$STAGE/AppxManifest.xml"
 grep -q "Version=\"$VERSION\"" "$STAGE/AppxManifest.xml" || { echo "couldn't set the version in the manifest" >&2; exit 1; }
-echo "=== stage: version $VERSION ($PKGARCH) ==="
+# The Xbox's manifest: Megler's, for the device family Windows.Xbox alone (the console's Windows of 2020 and later, which every
+# Xbox in Developer Mode has: Developer Mode keeps it up to date; and not a PC, whose package is the plain x64 one), without
+# the capabilities of a phone's text messages and call history, which an Xbox has not got, and with expandedResources, which
+# on an Xbox runs an app with a game's share of the processor and the graphics processor instead of an app's (the apps' own
+# packages, made from this manifest on the console, keep it: core/src/appx/mg_appx_manifest.c keeps a capability it does
+# not know).
+if [ "$XBOX" = 1 ]; then
+  python - "$(w "$STAGE/AppxManifest.xml")" <<'PY' || { echo "the Xbox's manifest could not be made" >&2; exit 1; }
+import re, sys
+path = sys.argv[1]
+text = open(path, encoding="utf-8").read()
+families = re.findall(r'^[ \t]*<TargetDeviceFamily [^>]*/>\r?\n', text, re.M)
+assert families, "no TargetDeviceFamily"
+text = text.replace(families[0], '    <TargetDeviceFamily Name="Windows.Xbox" MinVersion="10.0.19041.0" MaxVersionTested="10.0.22621.0" />\n', 1)
+for extra in families[1:]:
+    text = text.replace(extra, "", 1)
+text = text.replace("<!-- Windows 10 Mobile 1703 (Creators Update) and later. -->",
+                    "<!-- An Xbox in Developer Mode (docs/XBOX.md). -->", 1)
+for gone in (r'<uap:Capability Name="chat" />', r'<uap2:Capability Name="phoneCallHistoryPublic" />'):
+    text, n = re.subn(r'^[ \t]*' + re.escape(gone) + r'\r?\n', "", text, flags=re.M)
+    assert n == 1, gone
+# (And the comment that spoke of them.)
+text = re.sub(r"^[ \t]*<!-- The phone's text messages and calls.*?-->\r?\n", "", text, count=1, flags=re.M | re.S)
+text, n = re.subn(r'(^[ \t]*<rescap:Capability Name="codeGeneration" />\r?\n)', r'\1    <rescap:Capability Name="expandedResources" />\n', text, flags=re.M)
+assert n == 1, "codeGeneration"
+text, n = re.subn(r'Description="[^"]*"', 'Description="Android apps on Xbox"', text, count=1)
+assert n == 1, "Description"
+# (Well formed still, or makepri says only that the manifest is "not found or invalid".)
+import xml.etree.ElementTree
+xml.etree.ElementTree.fromstring(text.encode("utf-8"))
+open(path, "w", encoding="utf-8", newline="").write(text)
+PY
+  grep -q 'Name="Windows.Xbox"' "$STAGE/AppxManifest.xml" || { echo "the Xbox's manifest has no Windows.Xbox" >&2; exit 1; }
+fi
+if [ "$RT" = 1 ]; then
+  # Desktop Windows 10 on 32-bit ARM is build 15035 (docs/RT.md), whose deployment engine refuses a package none of whose
+  # device families it is or starts by then -- the phone's are from 15063 (0x80073CFD, "the package requires OS version
+  # 10.0.15063.0 or higher").
+  # The rest of the manifest is in the schema 15035 knows, 14393's (the SDK's 10.0.14393.0 headers have it): uap, uap2
+  # and uap3, mp, restricted capabilities, the publisher cache folder. Windows.Desktop alone: no phone takes this package,
+  # and an app's own package made from it (core/src/appx/mg_appx_manifest.c) says the same.
+  sed -i -e '/<TargetDeviceFamily Name="Windows.Mobile"/d' \
+         -e 's|<TargetDeviceFamily Name="Windows.Universal" MinVersion="[0-9.]*"|<TargetDeviceFamily Name="Windows.Desktop" MinVersion="10.0.15035.0"|' \
+         -e 's|<!-- Windows 10 Mobile 1703 (Creators Update) and later. -->|<!-- Desktop Windows 10 on 32-bit ARM from build 15035: the Windows RT package, docs/RT.md. -->|' \
+         "$STAGE/AppxManifest.xml"
+  if [ "$(grep -c '<TargetDeviceFamily ' "$STAGE/AppxManifest.xml")" != 1 ] ||
+     ! grep -q '<TargetDeviceFamily Name="Windows.Desktop" MinVersion="10.0.15035.0"' "$STAGE/AppxManifest.xml"; then
+    echo "--rt: the manifest's device family could not be made Windows.Desktop from 10.0.15035.0" >&2
+    exit 1
+  fi
+  # (Well-formed still: makepri says no more than "manifest not found or invalid".)
+  python -c "import sys, xml.dom.minidom; xml.dom.minidom.parse(sys.argv[1])" "$(w "$STAGE/AppxManifest.xml")" ||
+    { echo "--rt: the manifest made is not well-formed XML" >&2; exit 1; }
+fi
+echo "=== stage: version $VERSION ($PKGARCH$([ "$RT" = 1 ] && echo ", Windows.Desktop from 10.0.15035.0")) ==="
 # The map of this very build, to put names to addresses in a phone's log, and
 # what it was built as.
 mkdir -p "$ROOT/build/maps"
 cp "$BUILD/link/Megler.map" "$ROOT/build/maps/Megler_$VERSION.map"
-echo "arch=$PKGARCH auto=${AUTO_MODES:-none} java=$JAVA libcore=$LIBCORE" > "$ROOT/build/maps/Megler_$VERSION.txt"
+echo "arch=$PKGARCH xbox=$XBOX auto=${AUTO_MODES:-none} java=$JAVA libcore=$LIBCORE$([ "$RT" = 1 ] && echo " rt=1")" > "$ROOT/build/maps/Megler_$VERSION.txt"
 echo "    map: build/maps/Megler_$VERSION.map"
 
 cp "$BUILD/link/Megler.exe" "$STAGE/"
@@ -612,6 +711,20 @@ if [ -n "$BITGAPPS" ]; then
     echo "    instead: PrebuiltGmsCore.apk is $(basename "$GMS_APK") ($(stat -c %s "$GMS_APK") bytes, sha256 $(sha256sum "$GMS_APK" | cut -d' ' -f1))"
   [ -n "$PLAY_STORE_APK" ] && cp "$PLAY_STORE_APK" "$STAGE/bitgapps/Phonesky.apk" &&
     echo "    instead: Phonesky.apk is $(basename "$PLAY_STORE_APK") ($(stat -c %s "$PLAY_STORE_APK") bytes, sha256 $(sha256sum "$PLAY_STORE_APK" | cut -d' ' -f1))"
+  # (Writable: cp makes the copy of a read-only APK read-only, and a stage registered as it is then has Megler's copies of it
+  # read-only too, which it cannot write to compare them with it -- microG was not published, and no app had it.)
+  chmod u+w "$STAGE"/bitgapps/*.apk
+  # Each the app its name says, and of this processor: Megler runs its own processor's code alone, and Google Play services'
+  # variant for arm64-v8a, which a phone's package once carried, has 8 of its 40 libraries for armeabi-v7a.
+  python "$(w "$ROOT/tools/bitgapps-check.py")" "$ABI" "$(w "$STAGE/bitgapps")" ||
+    { echo "--bitgapps: an APK above is not for $ABI: give that of $ABI (--gms, --play-store, --microg)" >&2; exit 1; }
+  # Google's sign-in (Google Play services' MinuteMaid) is a web page in a WebView: the processor's System WebView must be in
+  # the Android root (tools/webview-fetch.sh <abi> puts it in build/webview). The desktop packages had none -- build/webview
+  # held 32-bit ARM's alone -- and Play Store's Sign In came back at once ("this phone's Android root has no WebView").
+  if [ ! -f "$STAGE/android/app/webview/webview.apk" ]; then
+    echo "    WARNING: no WebView in the Android root: Google's sign-in cannot open (tools/webview-fetch.sh $ABI)" >&2
+    if [ "$PACK" = 1 ]; then echo "--bitgapps: refusing to pack Google's apps without a WebView to sign in with" >&2; exit 1; fi
+  fi
 fi
 
 # MARK: ANGLE
@@ -778,6 +891,11 @@ if [ "$DESKTOP" = 1 ]; then
     rm -f "$STAGE"/libEGL.dll "$STAGE"/libGLESv2.dll
     echo "    WARNING: ANGLE is NOT in this package: $ANGLE_WHY" >&2
     echo "    WARNING: the app will say \"ANGLE missing\" and no Android app can draw with OpenGL ES" >&2
+    # (As the phone's: a package that brings Google's apps is one to hand out.)
+    if [ -n "$BITGAPPS" ] && [ "$PACK" = 1 ]; then
+      echo "--bitgapps: refusing to pack an unusable app without ANGLE" >&2
+      exit 1
+    fi
   fi
 fi
 
@@ -818,6 +936,10 @@ echo "    staged $(find "$STAGE" -type f | wc -l) files, $(du -sk "$STAGE" | cut
 
 if [ "$PACK" = 1 ]; then
   case "$ARCH" in arm) ARCHNAME=ARM ;; arm64) ARCHNAME=ARM64 ;; *) ARCHNAME="$ARCH" ;; esac
+  # (A package for another Windows than the phone's or the PC's carries its Windows in its name: docs/RELEASES.md.)
+  [ "$XBOX" = 1 ] && ARCHNAME="Xbox_$ARCHNAME"
+  # (_ARM is Windows 10 Mobile's alone: another Windows on 32-bit ARM says its own name, docs/RELEASES.md.)
+  [ "$RT" = 1 ] && ARCHNAME=RT_ARM
   PKG="$OUT/Megler_${VERSION}_${ARCHNAME}.appx"
   echo "=== pack ==="
   rm -f "$PKG"

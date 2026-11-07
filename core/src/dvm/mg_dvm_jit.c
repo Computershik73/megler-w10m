@@ -52,11 +52,17 @@ typedef char jit_ctx_layout[offsetof(mg_dvm_jit_ctx, regs) == JIT_CTX_REGS && of
                                 ? 1
                                 : -1];
 
+/* Whether the processor has SDIV (mg_cpu_arm_divide): not a Surface RT's Cortex-A9, where Windows traps each one and
+   emulates it (some 80 cycles more than the runtime's division by a call) and qemu-arm faults on it. */
+static bool g_jit_sdiv = true;
+
 void mg_dvm_jit_start(bool on, u32 threshold, bool trace)
 {
     g_dvm_jit_threshold = on ? (threshold ? threshold : 1) : 0;
     g_jit_trace = trace;
-    mg_info("jit: %s", on ? "methods whose loops are hot are compiled to Thumb-2 (docs/JIT.md)" : "off: everything is interpreted");
+    g_jit_sdiv = mg_cpu_arm_divide();
+    mg_info("jit: %s%s", on ? "methods whose loops are hot are compiled to Thumb-2 (docs/JIT.md)" : "off: everything is interpreted",
+            on && !g_jit_sdiv ? "; the processor has no SDIV (a Cortex-A9): an int's division is a call" : "");
 }
 
 /* ------------------------------------------------------------------ the emitter */
@@ -172,8 +178,31 @@ static void cmp_imm(emitter *e, int rn, u32 imm8) { e16(e, 0x2800 | ((u32)rn << 
 /* The three-register data processing of int arithmetic: rd = rn op rm. */
 enum { OP_ADD, OP_SUB, OP_RSB, OP_MUL, OP_DIV, OP_REM, OP_AND, OP_OR, OP_XOR, OP_SHL, OP_SHR, OP_USHR };
 
+/*
+ * An int's division and remainder where the processor has no SDIV (g_jit_sdiv): calls of these, with Java's answers for
+ * MIN_VALUE / -1 (the divisor is never 0 there: checked before, or a literal that is not).
+ */
+static i32 jit_div_int(i32 a, i32 b) { return a == INT32_MIN && b == -1 ? a : a / b; }
+static i32 jit_rem_int(i32 a, i32 b) { return a == INT32_MIN && b == -1 ? 0 : a % b; }
+static void call_c(emitter *e, mg_addr fn);
+
+/* mov rd, rm (MOV register, T1: any two of r0-r15). */
+static void mov_reg(emitter *e, int rd, int rm) { e16(e, 0x4600 | (((u32)rd & 8) << 4) | ((u32)rm << 3) | ((u32)rd & 7)); }
+
 static void data_op(emitter *e, int op, int rd, int rn, int rm)
 {
+    if ((op == OP_DIV || op == OP_REM) && !g_jit_sdiv) {
+        /* rn into r0 and rm into r1 (rm kept in r12 first where it is r0), the call, its result into rd. */
+        if (rm == R0) {
+            mov_reg(e, R12, R0);
+            rm = R12;
+        }
+        if (rn != R0) mov_reg(e, R0, rn);
+        if (rm != R1) mov_reg(e, R1, rm);
+        call_c(e, op == OP_DIV ? (mg_addr)jit_div_int : (mg_addr)jit_rem_int);
+        if (rd != R0) mov_reg(e, rd, R0);
+        return;
+    }
     switch (op) {
     case OP_ADD: e32(e, 0xEB00 | (u32)rn, ((u32)rd << 8) | (u32)rm); break;
     case OP_SUB: e32(e, 0xEBA0 | (u32)rn, ((u32)rd << 8) | (u32)rm); break;
@@ -691,6 +720,8 @@ static void compile_invoke(emitter *e, u32 pc)
  * the flag no-fast-calls leaves out.
  */
 static int g_fast_calls = -1;          /* (under g_jit_lock, as compile is) */
+/* An app hooks methods (mg_dvm_hook.c, mg_dvm_jit_hooks_on): a call done in place looks at its method's mark first (inline_call). */
+static volatile bool g_jit_hooks;
 
 static void fast_invoke(emitter *e, const mg_dvm_method *m, u32 pc)
 {
@@ -742,11 +773,11 @@ static void fast_invoke(emitter *e, const mg_dvm_method *m, u32 pc)
     }
     /*
      * A method named here that is known by now never to go the quick way goes the general way at once (String.equals and
-     * hashCode, intrinsics, cost half as much again tried first): an intrinsic, a native method, one with handlers or
-     * synchronized, one compiled with no entry at its start.
+     * hashCode, intrinsics, cost half as much again tried first): an intrinsic, a hooked one, a native method, one with
+     * handlers or synchronized, one compiled with no entry at its start.
      */
     known = kind == DVM_FAST_STATIC || kind == DVM_FAST_DIRECT;
-    if (known && (ref->intrinsic || !ref->insns || ref->ntries || (ref->flags & DVM_ACC_SYNCHRONIZED) || (ref->jit && !ref->jit->fast))) {
+    if (known && (ref->intrinsic || ref->hooked || !ref->insns || ref->ntries || (ref->flags & DVM_ACC_SYNCHRONIZED) || (ref->jit && !ref->jit->fast))) {
         compile_invoke(e, pc);
         return;
     }
@@ -850,7 +881,9 @@ static bool intrinsic_in_code(emitter *e, u8 id, u32 count, u32 a0, u32 a1, u32 
  * found (the loop ran interpreted before it was compiled). A virtual call checks that the object's class has that very
  * method in its slot. An object that is null, of a class that overrides the method, or without the getter's or setter's
  * field slot goes by mg_dvm_jit_invoke, which throws or runs the method as the interpreter would. False, with nothing
- * emitted: not such a call, which goes by mg_dvm_jit_invoke whole.
+ * emitted: not such a call, which goes by mg_dvm_jit_invoke whole -- a hooked method's too (mg_dvm_hook.c). Once an app
+ * hooks methods, a method may be hooked after the call is compiled: the call looks at its mark first, and a hooked one goes
+ * by mg_dvm_jit_invoke, which calls its hook (code compiled before, without that look, was forgotten then: forget).
  */
 static bool inline_call(emitter *e, const mg_dvm_method *m, u32 pc)
 {
@@ -862,8 +895,8 @@ static bool inline_call(emitter *e, const mg_dvm_method *m, u32 pc)
     int kind = (int)(op - (range ? 0x74u : 0x6eu)), fk = 0;
     const mg_dvm_method *target;
     const mg_dvm_field *fld = NULL;
-    u32 fails[4];
-    u8 conds[4];
+    u32 fails[6];
+    u8 conds[6];
     u8 intrinsic;
     if (kind != DVM_INVOKE_VIRTUAL && kind != DVM_INVOKE_DIRECT && kind != DVM_INVOKE_STATIC) return false;
     if (range) {
@@ -877,7 +910,7 @@ static bool inline_call(emitter *e, const mg_dvm_method *m, u32 pc)
     }
     target = idx < d->nmeth ? d->mcache[idx] : NULL;
     if (!target || ((target->flags & DVM_ACC_STATIC) != 0) != (kind == DVM_INVOKE_STATIC)) return false;
-    if ((target->cls->flags & DVM_ACC_INTERFACE) || target->stub) return false;
+    if ((target->cls->flags & DVM_ACC_INTERFACE) || target->stub || target->hooked) return false;
     if (kind == DVM_INVOKE_STATIC ? target->cls->state != DVM_CS_INITIALIZED : !count) return false;
     intrinsic = target->intrinsic;
     shape = target->shape;
@@ -907,6 +940,14 @@ static bool inline_call(emitter *e, const mg_dvm_method *m, u32 pc)
         fk = k_field_kind[sop - (SHAPE_OF(shape) == SHAPE_SETTER ? 0x59 : 0x52)];
         break;
     default: return false;
+    }
+    if (g_jit_hooks) {
+        /* The method hooked since (mg_dvm_hook.c): by mg_dvm_jit_invoke, which calls the hook. */
+        mov_imm(e, R1, (u32)(mg_addr)target);
+        ldrb_imm(e, R1, R1, (u32)offsetof(mg_dvm_method, hooked));
+        cmp_imm(e, R1, 0);
+        conds[nfails] = C_NE;
+        fails[nfails++] = local_branch(e);
     }
     if (kind != DVM_INVOKE_STATIC) {
         ldr_v(e, R0, self);
@@ -1368,6 +1409,10 @@ static struct {
 } g_waiting[MG_PAGE / 32];
 static u32 g_nwaiting;
 
+/* The methods whose code is published, for forgetting it (forget). Under g_jit_lock. */
+static mg_dvm_method **g_compiled;
+static u32 g_ncompiled, g_capcompiled;
+
 static void publish(mg_dvm_method *m, mg_dvm_jit_code *c)
 {
     /* Its start for the calls that go the quick way (mg_dvm_jit_fast), where such a call needs nothing more. */
@@ -1375,6 +1420,11 @@ static void publish(mg_dvm_method *m, mg_dvm_jit_code *c)
         u32 at = mg_dvm_jit_entry(c, 0);
         if (at) c->fast = c->pages + (size_t)(at - 1) * 2 + 1;
     }
+    if (g_ncompiled == g_capcompiled) {
+        g_capcompiled = g_capcompiled ? g_capcompiled * 2 : 256;
+        g_compiled = (mg_dvm_method **)mg_realloc(g_compiled, sizeof(*g_compiled) * g_capcompiled);
+    }
+    g_compiled[g_ncompiled++] = m;
     /* Published whole: the code and its tables before the pointer (an interlocked exchange is a barrier). */
     mg_atomic_cas_ptr((void *volatile *)&m->jit, NULL, c);
     m->jit_state = 1;
@@ -1592,6 +1642,7 @@ static mg_dvm_jit_code *compile(mg_dvm_method *m)
     c = (mg_dvm_jit_code *)calloc(1, sizeof(*c) + sizeof(c->entries[0]) * i);
     if (!c) goto out;
     c->size = bytes;
+    c->in_place = e.in_place;
     for (pc = 0; pc < m->ninsns; pc++)
         if (target[pc] && code_at[pc]) {
             c->entries[c->nentries].pc = pc;
@@ -1636,6 +1687,72 @@ void mg_dvm_jit_census(mg_dvm_jit_stats *out)
     out->calls_general = g_dvm_calls_general;
 }
 
+/*
+ * Under g_jit_lock: the code of the methods that do calls in place (or of all of them) forgotten, the methods interpreted
+ * until they are hot again and compiled anew. The code itself stays where it is, never freed: a thread may be running it
+ * (a frame that is, or that called out from it, goes on in it until it hands the frame back or returns). Those waiting for
+ * their page are taken off the list of it, unpublished. How many methods' code it was.
+ */
+static u32 forget(bool all)
+{
+    u32 i, kept = 0, n = 0, published = 0;
+    for (i = 0; i < g_ncompiled; i++) {
+        mg_dvm_method *m = g_compiled[i];
+        mg_dvm_jit_code *c = m->jit;
+        if (!c) continue;
+        if (!all && !c->in_place) {
+            g_compiled[kept++] = m;
+            continue;
+        }
+        m->jit = NULL;
+        m->jit_backs = 0;
+        m->jit_state = 0;
+        published++;
+    }
+    g_ncompiled = kept;
+    for (i = 0, kept = 0; i < g_nwaiting; i++) {
+        if (!all && !g_waiting[i].c->in_place) {
+            g_waiting[kept++] = g_waiting[i];
+            continue;
+        }
+        g_waiting[i].m->jit_backs = 0;
+        g_waiting[i].m->jit_state = 0;
+        free(g_waiting[i].c);
+        n++;
+    }
+    g_nwaiting = kept;
+    mg_atomic_add(&g_jit_methods, -(i32)published);
+    return n + published;
+}
+
+u32 mg_dvm_jit_hooks_on(void)
+{
+    u32 n = 0;
+    bool first = false;
+    if (g_jit_hooks) return 0;
+    mg_lock_acquire(&g_jit_lock);
+    if (!g_jit_hooks) {
+        g_jit_hooks = true;
+        first = true;
+        n = forget(false);
+    }
+    mg_lock_release(&g_jit_lock);
+    if (first)
+        mg_info("jit: the app hooks methods: a call compiled to be done in place looks at its method's hook first, and the code of %u methods "
+                "compiled before, whose calls do not, is forgotten (compiled again when hot)",
+                (unsigned)n);
+    return n;
+}
+
+u32 mg_dvm_jit_forget_all(void)
+{
+    u32 n;
+    mg_lock_acquire(&g_jit_lock);
+    n = forget(true);
+    mg_lock_release(&g_jit_lock);
+    return n;
+}
+
 int mg_dvm_jit_enter(mg_dvm_thread *t, mg_dvm_frame *f, mg_dvm_method *m, mg_dvm_reg *regs, u32 pc, u32 *next, mg_jvalue *res)
 {
     mg_dvm_jit_code *c = m->jit;
@@ -1667,6 +1784,8 @@ void mg_dvm_jit_start(bool on, u32 threshold, bool trace)
 }
 
 void mg_dvm_jit_census(mg_dvm_jit_stats *out) { memset(out, 0, sizeof(*out)); }
+u32 mg_dvm_jit_hooks_on(void) { return 0; }
+u32 mg_dvm_jit_forget_all(void) { return 0; }
 
 int mg_dvm_jit_enter(mg_dvm_thread *t, mg_dvm_frame *f, mg_dvm_method *m, mg_dvm_reg *regs, u32 pc, u32 *next, mg_jvalue *res)
 {

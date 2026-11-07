@@ -54,7 +54,7 @@
 #define MAX_SPLITS 10
 
 /* The phases of an event as megler.AppRunner.deliver reads them. */
-enum { EV_DOWN = 0, EV_MOVE = 1, EV_UP = 2, EV_CANCEL = 3, EV_KEY = 4, EV_BACK = 5, EV_HOST_PAUSE = 6, EV_TEXT = 7, EV_INSETS = 8, EV_PHONE = 10 };
+enum { EV_DOWN = 0, EV_MOVE = 1, EV_UP = 2, EV_CANCEL = 3, EV_KEY = 4, EV_BACK = 5, EV_HOST_PAUSE = 6, EV_TEXT = 7, EV_INSETS = 8, EV_PHONE = 10, EV_SURFACE = 11 };
 
 #define MAX_TEXT 512
 #define MAX_PHONE 64
@@ -110,6 +110,9 @@ static struct {
     /* The battery as the app was last told of it by a broadcast (at the start: as it was then), and the core's count of its changes at that time. */
     mg_battery battery;
     u32 battery_changes;
+    /* The surface's change (mg_surface.seq) the app was last told of, by an EV_SURFACE event; and the orientation it last asked the shell for (-2: none yet). */
+    u32 surface_seq;
+    volatile i32 orientation;
 } J;
 
 static i32 bits_of(float f)
@@ -557,9 +560,35 @@ N(Native_nothing) { (void)c; }
 N(Native_dataDir) { c->ret.l = mg_dvm_new_string(mg_fs_internal_dir()); }
 N(Native_externalDir) { c->ret.l = mg_dvm_new_string(mg_fs_external_dir()); }
 N(Native_packageName) { c->ret.l = mg_dvm_new_string(J.package); }
-N(Native_screenWidth) { c->ret.i = J.config->width; }
-N(Native_screenHeight) { c->ret.i = J.config->height; }
-N(Native_density) { c->ret.f = (float)(J.config->density_dpi > 0 ? J.config->density_dpi : 160) / 160.0f; }
+/*
+ * The screen as it is now (mg_run_surface: megler_run_config's until megler_set_surface says otherwise), for DisplayMetrics,
+ * Configuration, Display and the windows' layout; the framework asks again when an EV_SURFACE event says it changed.
+ */
+N(Native_screenWidth)
+{
+    mg_surface s;
+    mg_run_surface(&s);
+    c->ret.i = s.width;
+}
+N(Native_screenHeight)
+{
+    mg_surface s;
+    mg_run_surface(&s);
+    c->ret.i = s.height;
+}
+N(Native_density)
+{
+    mg_surface s;
+    mg_run_surface(&s);
+    c->ret.f = (float)(s.density_dpi > 0 ? s.density_dpi : 160) / 160.0f;
+}
+/* displayRotation(): Display.getRotation's Surface.ROTATION_0 to _270, which way up the surface is drawn. */
+N(Native_displayRotation)
+{
+    mg_surface s;
+    mg_run_surface(&s);
+    c->ret.i = s.rotation & 3;
+}
 N(Native_uptimeNanos) { c->ret.j = (i64)mg_time_monotonic_ns(); }
 /* flag(name): a switch for trying something on the phone (mg_flag): a file of that name in the data folder's flags. */
 N(Native_flag) { c->ret.z = mg_flag(text_of(c->args[0].l)); }
@@ -629,12 +658,30 @@ static void requested_activity(void)
     }
 }
 
+static void push_event(int phase, int id, i32 x, i32 y);
+
+/*
+ * The surface changed since the app was last told (megler_set_surface, from any thread): an EV_SURFACE event after what is
+ * queued, which megler.AppRunner hands to megler.Screen -- the configuration change, the windows laid out again -- and the
+ * NDK's AConfiguration of the app's native code made the new size's. Looked for at every poll, as the battery is, so that a
+ * change said while the app was still starting is not lost: the framework reads the size itself as it starts.
+ */
+static void surface_news(void)
+{
+    mg_surface s;
+    mg_run_surface(&s);
+    if (s.seq == J.surface_seq) return;
+    J.surface_seq = s.seq;
+    mg_configuration_set(s.width, s.height, s.density_dpi > 0 ? s.density_dpi : 160);
+    push_event(EV_SURFACE, (int)s.seq, 0, 0);
+}
+
 /*
  * pollInput(): what has happened since the last call, as int[1 + 6n] --
  * n, then (phase, id, x bits, y bits) for each, then each timestamp as two words. Called by the main
  * loop between messages, so this is also where a stop asked from outside
  * reaches the app: every activity is finished, on the thread they live on.
- * And where news of the battery does.
+ * And where news of the battery and of the surface does.
  */
 N(Native_pollInput)
 {
@@ -645,6 +692,7 @@ N(Native_pollInput)
         if (mg_dvm_pending()) return;
     }
     if (mg_battery_changes() != J.battery_changes) battery_news();
+    surface_news();
     requested_activity();
     mg_lock_acquire(&J.lock);
     n = J.nevents;
@@ -1137,7 +1185,21 @@ N(Native_appInstall)
     const char *name = text_of(c->args[0].l);
     c->ret.l = apps_package_ok(name) ? apps_file(mg_sprintf("%s/installs/%s.txt", J.config->apps_dir, name)) : NULL;
 }
-N(Native_setOrientation) { mg_note_once("java: the app asked for orientation %d; the surface stays as the shell made it", (int)c->args[0].i); }
+/*
+ * setOrientation(requested): how the activity in front wants the screen held, Android's SCREEN_ORIENTATION_* (megler.AppRunner
+ * says it as activities come and go and as one calls setRequestedOrientation, "behind" already resolved), to the shell
+ * (megler_display_host.orientation) when it changes. The shell turns the screen or gives the app another surface, which
+ * comes back as megler_set_surface.
+ */
+N(Native_setOrientation)
+{
+    const megler_display_host *d = &J.config->display;
+    int requested = c->args[0].i;
+    if (mg_atomic_xchg(&J.orientation, requested) == requested) return;
+    mg_info("java: the app asks for the screen held %d (Android's SCREEN_ORIENTATION_*)%s", requested,
+            d->orientation ? "" : "; the shell takes no such request, and the screen stays as it is");
+    if (d->orientation) d->orientation(d->user, requested);
+}
 
 /*
  * exit(): the framework calls it when the last activity is gone. The main
@@ -1173,13 +1235,84 @@ N(Native_thrownInService)
 /* threadNice(int): Process.setThreadPriority for the calling thread (mg_gthread_set_nice). */
 N(Native_threadNice) { mg_gthread_set_nice(mg_gthread_self(), c->args[0].i); }
 
+static void back_wake(void);
+
 N(Native_exit)
 {
     mg_jvalue looper;
     (void)c;
     mg_atomic_xchg(&J.exited, 1);
+    /* A Back being waited for (java_back) hears of the end: an app that finishes itself a moment after its Back. */
+    back_wake();
     looper.j = 0;
     if (mg_dvm_call_static("android/os/Looper", "getMainLooper", "()Landroid/os/Looper;", NULL, &looper) && looper.l) mg_dvm_call_virtual(looper.l, "quit", "()V", NULL, NULL);
+}
+
+/*
+ * The phone's Back and what the app did with it (megler_back). The shell's Back waits for the main thread's answer:
+ * AppRunner.back says, once the key has been through the app, whether the app went to the back (moveTaskToBack, and
+ * Android 12's Back on a task's root activity), ended its last activity, changed what it shows, or none of these; an app
+ * of the last kind -- React Native's and Flutter's, whose Back goes on to JavaScript or Dart -- is given quiet_ms more to
+ * go to the back from there. When it goes to the back with no Back waiting (later, or by itself), the next Back within
+ * five seconds is the system's at once, unless a finger has touched the app since.
+ */
+enum { BACK_TAKEN = 0, BACK_QUIET = 1, BACK_TO_BACK = 2, BACK_ENDED = 3 };   /* AppRunner.back's answers */
+static struct {
+    mg_lock lock;
+    mg_cond cond;
+    volatile i32 ready;                /* 2 once the lock and the condition are made */
+    u32 sent;                          /* the last Back sent, by number (never 0: megler_key's Back is 0) */
+    u32 answered;                      /* the last one the main thread answered, and how */
+    int answer;
+    u32 left;                          /* the Back that was being waited for when the app went to the back */
+    bool waiting;
+    u64 late_ns;                       /* when the app went to the back with no Back waiting; 0: not since the last Back or touch */
+} B;
+
+static void back_init(void)
+{
+    if (B.ready == 2) return;
+    if (mg_atomic_cas(&B.ready, 0, 1) == 0) {
+        mg_lock_init(&B.lock);
+        mg_cond_init(&B.cond);
+        mg_atomic_xchg(&B.ready, 2);
+        return;
+    }
+    while (B.ready != 2) mg_thread_yield();
+}
+
+static void back_wake(void)
+{
+    if (B.ready != 2) return;
+    mg_lock_acquire(&B.lock);
+    mg_cond_broadcast(&B.cond);
+    mg_lock_release(&B.lock);
+}
+
+/* Native.backDone(seq, answer): what the app did with Back number seq, as AppRunner.back found once it had been through. */
+N(Native_backDone)
+{
+    back_init();
+    mg_lock_acquire(&B.lock);
+    B.answered = (u32)c->args[0].i;
+    B.answer = c->args[1].i;
+    mg_cond_broadcast(&B.cond);
+    mg_lock_release(&B.lock);
+}
+
+/* Native.toBack(): the app went to the back (AppRunner.moveTaskToBack). */
+N(Native_toBack)
+{
+    bool late;
+    (void)c;
+    back_init();
+    mg_lock_acquire(&B.lock);
+    late = !B.waiting;
+    if (late) B.late_ns = mg_time_monotonic_ns();
+    else B.left = B.sent;
+    mg_cond_broadcast(&B.cond);
+    mg_lock_release(&B.lock);
+    if (late) mg_info("java: the app went to the back with no Back waiting: the next Back within five seconds is the system's");
 }
 
 static const mg_jhle k_native[] = {
@@ -1220,6 +1353,7 @@ static const mg_jhle k_native[] = {
     { "megler/Native", "screenWidth", NULL, Native_screenWidth },
     { "megler/Native", "screenHeight", NULL, Native_screenHeight },
     { "megler/Native", "density", NULL, Native_density },
+    { "megler/Native", "displayRotation", NULL, Native_displayRotation },
     { "megler/Native", "setContentView", NULL, Native_nothing },
     { "megler/Native", "pollInput", NULL, Native_pollInput },
     { "megler/Native", "pollText", NULL, Native_pollText },
@@ -1249,6 +1383,8 @@ static const mg_jhle k_native[] = {
     { "megler/Native", "vibrate", NULL, Native_nothing },
     { "megler/Native", "openUrl", NULL, Native_openUrl },
     { "megler/Native", "exit", NULL, Native_exit },
+    { "megler/Native", "backDone", NULL, Native_backDone },
+    { "megler/Native", "toBack", NULL, Native_toBack },
     { "megler/Native", "threadNice", NULL, Native_threadNice },
     { "megler/Native", "uptimeNanos", NULL, Native_uptimeNanos },
     { "megler/Native", "frameMark", NULL, Native_frameMark },
@@ -1263,11 +1399,11 @@ static const mg_jhle k_native[] = {
 /* ------------------------------------------- what is not answered yet */
 
 /*
- * The framework's other native classes: web views and sensors. Neither is
- * written here yet. Each of their methods answers zero, false or null, said
- * once in the log for the class, and the framework's own Java makes of that
- * what an app can live with: a sensor is not available, a web view an empty
- * rectangle. (Databases, megler.Sqlite, are mg_java_sqlite.c; sound, megler.Audio,
+ * The framework's other native classes: web views. Not written here yet. Each
+ * of their methods answers zero, false or null, said once in the log for the
+ * class, and the framework's own Java makes of that what an app can live with:
+ * a web view an empty rectangle. (Databases, megler.Sqlite, are mg_java_sqlite.c;
+ * sensors, megler.Sensors, mg_java_sensors.c; sound, megler.Audio,
  * mg_java_audio.c; the decoders behind MediaCodec, megler.MediaCodecNative,
  * mg_java_media.c; OpenGL ES and EGL, mg_java_gl.c and mg_java_gles.c, whose
  * tables are registered after this one: the entries here for their classes are
@@ -1294,17 +1430,8 @@ N(Absent)
         k += (size_t)snprintf(who + k, sizeof(who) - k, "%s%s.%s", n ? " < " : "", up->m->cls->name, up->m->name);
     mg_warn("java: %s is not there yet: its native methods answer nothing (first asked by %s)", cls ? cls->name : "a class of the framework", who[0] ? who : "the layer");
 }
-/*
- * Sensors.available(type): no, and that is no gap to report. The framework's SensorManager asks it for every kind of sensor
- * when the class is first used, which is at every app's start (ContextImpl's table of system services names the class).
- * "There is no such sensor" is the true answer until there are sensors; an app that registers a listener still meets the
- * line above.
- */
-N(Sensors_available) { c->ret.j = 0; }
 static const mg_jhle k_absent[] = {
-    { "megler/Sensors", "available", NULL, Sensors_available },
     { "megler/Web", NULL, NULL, Absent },
-    { "megler/Sensors", NULL, NULL, Absent },
     { "megler/EGLNative", NULL, NULL, Absent },
     { "android/opengl/GLES10", NULL, NULL, Absent },
     { "android/opengl/GLES10Ext", NULL, NULL, Absent },
@@ -1622,7 +1749,11 @@ static void meter_line(const char *what, const meter_window *w, u64 now)
     mg_java_gfx_stats(&bitmap_bytes, &bitmaps);
     /* And what RenderNodes and Pictures take: their display lists, which are the core's memory as bitmaps are. */
     mg_java_gfx_list_stats(&list_bytes, NULL, &nodes);
-    screen = (u64)(J.config->width > 0 ? J.config->width : 0) * (u64)(J.config->height > 0 ? J.config->height : 0);
+    {
+        mg_surface sf;
+        mg_run_surface(&sf);
+        screen = (u64)(sf.width > 0 ? sf.width : 0) * (u64)(sf.height > 0 ? sf.height : 0);
+    }
     of[0] = 0;
     if (w->drawn != n) snprintf(of, sizeof(of), " of %u frames", (unsigned)n);
     if (w->drawn && screen)
@@ -2164,6 +2295,7 @@ static MG_HOSTCB void main_thread(void *arg)
         mg_dvm_register(mg_java_camera_natives());
         mg_java_location_set_host(&J.config->location);
         mg_dvm_register(mg_java_location_natives());
+        mg_dvm_register(mg_java_sensors_natives());
         mg_java_gfx_set_host(&J.config->gfx);
         mg_java_gfx_set_present(present, NULL);
         mg_java_gfx_set_present_canvas(present_canvas, NULL);
@@ -2172,8 +2304,13 @@ static MG_HOSTCB void main_thread(void *arg)
         /* What C keeps of the app's objects across calls: the collector keeps it too. */
         mg_dvm_add_root(&J.clipboard);
         mg_dvm_register(mg_java_gfx_natives());
-        /* OpenGL ES and EGL from Java, and the window they are shown in: composed by the shell where it can. */
-        mg_java_gl_start(J.config->width, J.config->height, show);
+        /* OpenGL ES and EGL from Java, and the window they are shown in: composed by the shell where it can. (At the surface's
+           size as the app starts; the composing follows the views' picture when the surface changes, mg_java_gl_views.) */
+        {
+            mg_surface sf;
+            mg_run_surface(&sf);
+            mg_java_gl_start(sf.width, sf.height, show);
+        }
         mg_java_gl_set_shell(&J.config->gfx);
         mg_dvm_register(mg_java_gles_natives());
         mg_dvm_register(mg_java_gl_natives());
@@ -2299,8 +2436,20 @@ static bool java_start(const megler_run_config *config, const mg_apk_info *info)
         mg_run_set_error("the manifest names no launcher activity");
         return false;
     }
-    /* The device as the NDK describes it to the app's native code (AConfiguration): this surface. */
-    mg_configuration_set(config->width, config->height, config->density_dpi > 0 ? config->density_dpi : 160);
+    /*
+     * The surface the app starts on: mg_run_start made it the config's, and a test that starts this driver without megler_run
+     * has it made so here. A change from now on is the app's news at its next poll (surface_news), one said before this
+     * included, for the framework reads the size as it starts.
+     */
+    if (!mg_run_active()) mg_run_surface_start(config->width, config->height, config->density_dpi, config->rotation);
+    J.orientation = -2;
+    {
+        mg_surface sf;
+        mg_run_surface(&sf);
+        J.surface_seq = sf.seq;
+        /* The device as the NDK describes it to the app's native code (AConfiguration): this surface. */
+        mg_configuration_set(sf.width, sf.height, sf.density_dpi > 0 ? sf.density_dpi : 160);
+    }
     /* A stack the size Android gives an app's main thread would be 8 MB; bytecode's frames are not on it, and 4 is room for libcore's native code. */
     J.main = mg_thread_start(main_thread, NULL, 4u << 20, "android-main");
     return J.main != NULL;
@@ -2331,6 +2480,12 @@ static void push_event(int phase, int id, i32 x, i32 y)
 static void java_touch(int phase, int pointer_id, float x, float y)
 {
     if (phase < EV_DOWN || phase > EV_CANCEL) return;
+    /* A finger on the app: a Back after it is the app's again, whatever it said of going to the back before. */
+    if (phase == EV_DOWN && B.ready == 2 && B.late_ns) {
+        mg_lock_acquire(&B.lock);
+        B.late_ns = 0;
+        mg_lock_release(&B.lock);
+    }
     push_event(phase, pointer_id, bits_of(x), bits_of(y));
 }
 
@@ -2480,4 +2635,58 @@ static void java_stop(void)
     mg_atomic_cas(&J.stop, 0, 1);
 }
 
-const mg_driver mg_driver_java = { "java", java_start, java_touch, java_key, java_set_paused, NULL, java_stop };
+static int java_back(unsigned quiet_ms, unsigned max_ms)
+{
+    const u64 ms = 1000000ull, start = mg_time_monotonic_ns();
+    u64 quiet_from = 0;
+    int verdict = MEGLER_BACK_TAKEN;
+    bool answered;
+    u32 seq;
+    if (!java_runs()) return MEGLER_BACK_TAKEN;
+    back_init();
+    mg_lock_acquire(&B.lock);
+    if (B.late_ns && start - B.late_ns < 5000 * ms) {
+        B.late_ns = 0;
+        mg_lock_release(&B.lock);
+        mg_info("java: Back after the app went to the back by itself: the system's, not the app's");
+        return MEGLER_BACK_LEAVE;
+    }
+    B.late_ns = 0;
+    seq = ++B.sent;
+    if (!seq) seq = ++B.sent;
+    B.waiting = true;
+    mg_lock_release(&B.lock);
+    push_event(EV_BACK, (int)seq, 0, 0);
+    mg_lock_acquire(&B.lock);
+    for (;;) {
+        u64 now = mg_time_monotonic_ns(), until = start + (u64)max_ms * ms;
+        if (B.left == seq) {
+            verdict = MEGLER_BACK_LEAVE;
+            break;
+        }
+        /* The app ended while its Back was waited for: one that finishes its last activity a moment after the key
+           (CoolReader posts it), which said it had shown nothing new. */
+        if (J.exited) {
+            verdict = MEGLER_BACK_ENDED;
+            break;
+        }
+        if (B.answered == seq) {
+            if (B.answer == BACK_TO_BACK) verdict = MEGLER_BACK_LEAVE;
+            else if (B.answer == BACK_ENDED) verdict = MEGLER_BACK_ENDED;
+            if (B.answer != BACK_QUIET) break;
+            if (!quiet_from) quiet_from = now;
+            if (quiet_from + (u64)quiet_ms * ms < until) until = quiet_from + (u64)quiet_ms * ms;
+        }
+        /* No answer in time, or nothing more within quiet_ms of a quiet one: the app's. */
+        if (now >= until) break;
+        mg_cond_wait_ns(&B.cond, &B.lock, until - now);
+    }
+    answered = B.answered == seq;
+    B.waiting = false;
+    mg_lock_release(&B.lock);
+    mg_info("java: Back: %s, in %u ms", verdict == MEGLER_BACK_LEAVE ? "the app went to the back" : verdict == MEGLER_BACK_ENDED ? "the app ended its last activity"
+            : quiet_from ? "the app showed nothing new" : answered ? "the app took it" : "no answer in time", (unsigned)((mg_time_monotonic_ns() - start) / ms));
+    return verdict;
+}
+
+const mg_driver mg_driver_java = { "java", java_start, java_touch, java_key, java_set_paused, NULL, java_stop, java_back, NULL };

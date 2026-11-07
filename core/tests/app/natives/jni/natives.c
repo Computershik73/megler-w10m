@@ -15,6 +15,7 @@
 #include <android/configuration.h>
 #include <android/log.h>
 #include <android/looper.h>
+#include <android/sensor.h>
 #include <dlfcn.h>
 #include <pthread.h>
 #include <stdint.h>
@@ -22,6 +23,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/system_properties.h>
+#include <time.h>
 #include <unistd.h>
 
 #define TAG "NativesLib"
@@ -637,6 +639,121 @@ JNIEXPORT jint JNICALL Java_megler_test_natives_Lib_watchLooper(JNIEnv *env, jcl
     g_looper_report = (*env)->NewGlobalRef(env, report);
     if (ALooper_addFd(looper, g_pipe[0], ALOOPER_POLL_CALLBACK, ALOOPER_EVENT_INPUT, on_readable, NULL) != 1) return -2;
     return write(g_pipe[1], "L", 1) == 1 ? 1 : -3;
+}
+
+/* ------------------------------------------------------------- the sensors */
+
+/*
+ * The phone's sensors as native code has them, on the tests' stand-in (core/tests/mg_sensor_standin.c): the list and its
+ * defaults described, then an event queue on this thread's looper, as NativeActivity's glue makes one, with the
+ * accelerometer at 50 a second and the light. Its callback reads what comes until it has three of the accelerometer's and
+ * one of the light's, checks them -- Android's values, the vector's accuracy, times on CLOCK_BOOTTIME (elapsedRealtimeNanos)
+ * that go forward at about the rate asked for -- tells Java, and ends the queue.
+ */
+static ASensorManager *g_sensor_manager;
+static ASensorEventQueue *g_sensor_queue;
+static const ASensor *g_sensor_accel, *g_sensor_light;
+static jobject g_sensor_report;
+static int g_sensor_accels, g_sensor_lights, g_sensor_bad;
+static int64_t g_sensor_last, g_sensor_gap = INT64_MAX;
+static char g_sensor_why[160];
+
+static int sensor_near(float a, float b) { return a - b < 0.001f && b - a < 0.001f; }
+
+static int64_t boottime_ns(void)
+{
+    struct timespec ts;
+    clock_gettime(CLOCK_BOOTTIME, &ts);
+    return (int64_t)ts.tv_sec * 1000000000 + ts.tv_nsec;
+}
+
+static int on_sensors(int fd, int events, void *data)
+{
+    ASensorEvent e;
+    JNIEnv *env = NULL;
+    (void)fd;
+    (void)events;
+    (void)data;
+    while (ASensorEventQueue_getEvents(g_sensor_queue, &e, 1) > 0) {
+        int64_t now = boottime_ns();
+        int good = e.version == (int)sizeof(ASensorEvent) && e.timestamp <= now && now - e.timestamp < 5000000000LL;
+        if (e.type == ASENSOR_TYPE_ACCELEROMETER) {
+            good = good && sensor_near(e.acceleration.x, -2.4516625f) && sensor_near(e.acceleration.y, 4.903325f) && sensor_near(e.acceleration.z, 7.3549875f)
+                   && e.acceleration.status == ASENSOR_STATUS_ACCURACY_HIGH;
+            if (g_sensor_accels > 0) {
+                if (e.timestamp <= g_sensor_last) good = 0;
+                if (e.timestamp - g_sensor_last < g_sensor_gap) g_sensor_gap = e.timestamp - g_sensor_last;
+            }
+            g_sensor_last = e.timestamp;
+            g_sensor_accels++;
+        } else if (e.type == ASENSOR_TYPE_LIGHT) {
+            good = good && sensor_near(e.light, 321.5f);
+            g_sensor_lights++;
+        } else {
+            good = 0;
+        }
+        if (!good && !g_sensor_bad++)
+            snprintf(g_sensor_why, sizeof(g_sensor_why), "type %d values %g %g %g status %d at %lld ns", (int)e.type, e.data[0], e.data[1], e.data[2],
+                     (int)e.acceleration.status, (long long)(boottime_ns() - e.timestamp));
+    }
+    if (g_sensor_accels < 3 || g_sensor_lights < 1) return 1;
+    ASensorEventQueue_disableSensor(g_sensor_queue, g_sensor_accel);
+    ASensorEventQueue_disableSensor(g_sensor_queue, g_sensor_light);
+    ASensorManager_destroyEventQueue(g_sensor_manager, g_sensor_queue);
+    g_sensor_queue = NULL;
+    if ((*g_vm)->GetEnv(g_vm, (void **)&env, JNI_VERSION_1_6) == JNI_OK && g_sensor_report) {
+        char text[300];
+        jmethodID m = (*env)->GetMethodID(env, (*env)->GetObjectClass(env, g_sensor_report), "onSensors", "(ZLjava/lang/String;)V");
+        int ok = !g_sensor_bad && g_sensor_gap >= 16000000;
+        snprintf(text, sizeof(text), "accelerometer %d light %d gap %lld us%s%s", g_sensor_accels, g_sensor_lights, (long long)(g_sensor_gap / 1000),
+                 g_sensor_bad ? " bad: " : "", g_sensor_why);
+        (*env)->CallVoidMethod(env, g_sensor_report, m, (jboolean)ok, (*env)->NewStringUTF(env, text));
+        if ((*env)->ExceptionCheck(env)) (*env)->ExceptionClear(env);
+        (*env)->DeleteGlobalRef(env, g_sensor_report);
+        g_sensor_report = NULL;
+    }
+    return 0;
+}
+
+/* 1 when the list is as the stand-in's and the queue runs; a negative number for the first thing that was not. */
+JNIEXPORT jint JNICALL Java_megler_test_natives_Lib_watchSensors(JNIEnv *env, jclass cls, jobject report)
+{
+    /* As NativeActivity's sample glue asks for the manager: by name, for the package where Android has that (API 26). */
+    typedef ASensorManager *(*for_package_fn)(const char *);
+    void *android = dlopen("libandroid.so", RTLD_NOW);
+    for_package_fn for_package = android ? (for_package_fn)dlsym(android, "ASensorManager_getInstanceForPackage") : NULL;
+    const ASensor *proximity;
+    ASensorList list = NULL;
+    ALooper *looper;
+    int n;
+    (void)cls;
+    if (!for_package) return -1;
+    g_sensor_manager = for_package("megler.test.natives");
+    if (!g_sensor_manager || g_sensor_manager != ASensorManager_getInstance()) return -2;
+    n = ASensorManager_getSensorList(g_sensor_manager, &list);
+    if (n != 11 || !list || ASensor_getType(list[0]) != ASENSOR_TYPE_ACCELEROMETER) return -3;
+    g_sensor_accel = ASensorManager_getDefaultSensor(g_sensor_manager, ASENSOR_TYPE_ACCELEROMETER);
+    g_sensor_light = ASensorManager_getDefaultSensor(g_sensor_manager, ASENSOR_TYPE_LIGHT);
+    if (!g_sensor_accel || !g_sensor_light || g_sensor_accel != list[0]) return -4;
+    if (strcmp(ASensor_getName(g_sensor_accel), "Test Accelerometer") || strcmp(ASensor_getVendor(g_sensor_accel), "Megler Tests")
+        || strcmp(ASensor_getStringType(g_sensor_accel), "android.sensor.accelerometer") || ASensor_getMinDelay(g_sensor_accel) != 10000
+        || !sensor_near(ASensor_getResolution(g_sensor_accel), 0.0023942f) || ASensor_getReportingMode(g_sensor_accel) != AREPORTING_MODE_CONTINUOUS
+        || ASensor_isWakeUpSensor(g_sensor_accel))
+        return -5;
+    /* The proximity's default wakes the device; one that does not, there is none. */
+    proximity = ASensorManager_getDefaultSensor(g_sensor_manager, ASENSOR_TYPE_PROXIMITY);
+    if (!proximity || !ASensor_isWakeUpSensor(proximity) || ASensorManager_getDefaultSensorEx(g_sensor_manager, ASENSOR_TYPE_PROXIMITY, false)
+        || ASensor_getMinDelay(proximity) != 0 || ASensor_getReportingMode(proximity) != AREPORTING_MODE_ON_CHANGE)
+        return -6;
+    looper = ALooper_forThread();
+    if (!looper) return -7;
+    g_sensor_report = (*env)->NewGlobalRef(env, report);
+    g_sensor_queue = ASensorManager_createEventQueue(g_sensor_manager, looper, ALOOPER_POLL_CALLBACK, on_sensors, NULL);
+    if (!g_sensor_queue) return -8;
+    if (ASensorEventQueue_enableSensor(g_sensor_queue, g_sensor_accel) != 0 || ASensorEventQueue_setEventRate(g_sensor_queue, g_sensor_accel, 20000) != 0
+        || ASensorEventQueue_enableSensor(g_sensor_queue, g_sensor_light) != 0)
+        return -9;
+    return 1;
 }
 
 /* ---------------------------------------------------- objects held across a collection */

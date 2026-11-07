@@ -83,6 +83,9 @@ void mg_input_queue_key(mg_input_queue *q, int keycode, bool down);
  */
 void mg_looper_java_thread(void);
 bool mg_looper_poll_thread(void);
+/* ALooper_addFd and ALooper_removeFd, for the NDK's other objects that watch a descriptor on an app's looper (mg_sensors.c's event queues). */
+int mg_looper_add_fd(void *looper, int fd, int ident, int events, mg_addr callback, void *data);
+int mg_looper_remove_fd(void *looper, int fd);
 
 /* ----------------------------------------------------------- AAssetManager */
 

@@ -312,10 +312,12 @@ public class Main extends Activity {
         apacheHttpLegacy();
         preloadedDrawables();
         location();
+        sensors();
         timezone();
         locale();
         phoneNumber();
         tls();
+        networkTrust();
         keystore(run);
         keystoreCertificates(run);
         keystoreForeignKey();
@@ -2199,6 +2201,123 @@ public class Main extends Activity {
     }
 
     /*
+     * The phone's sensors (the tests' stand-in has one of each kind Windows has, each reading a known value in Windows' units
+     * and signs): the list as Android describes it, the proximity the default that wakes the device, and each sensor's first
+     * event in Android's units and signs -- the accelerometer's z +7.35 m/s^2 where Windows reads -0.75 g -- on the main
+     * thread, with onAccuracyChanged before it, its time on elapsedRealtimeNanos's clock (read after the listener was
+     * registered, and before it is handed over: the main thread runs the other steps first, which under qemu takes long
+     * enough for a hundred of a sensor's events to wait, the most a listener's thread is sent); the accelerometer's next ones at
+     * about the rate asked for (SENSOR_DELAY_GAME, 20 ms, while the stand-in reads every 5 ms); then a flush of all eleven,
+     * after which the listener is removed. What came is one line, "sensors-events".
+     */
+    private void sensors() {
+        step("sensors", () -> {
+            final android.hardware.SensorManager sm = (android.hardware.SensorManager) getSystemService(Context.SENSOR_SERVICE);
+            java.util.List<android.hardware.Sensor> all = sm.getSensorList(android.hardware.Sensor.TYPE_ALL);
+            android.hardware.Sensor accel = sm.getDefaultSensor(android.hardware.Sensor.TYPE_ACCELEROMETER);
+            android.hardware.Sensor prox = sm.getDefaultSensor(android.hardware.Sensor.TYPE_PROXIMITY);
+            StringBuilder types = new StringBuilder();
+            for (android.hardware.Sensor s : all) types.append(s.getType()).append(',');
+            boolean listed = all.size() == 11 && "1,2,3,4,5,6,8,9,10,11,15,".equals(types.toString()) && accel != null
+                    && "Test Accelerometer".equals(accel.getName()) && "Megler Tests".equals(accel.getVendor()) && accel.getMinDelay() == 10000
+                    && Math.abs(accel.getMaximumRange() - 39.2266f) < 0.001f && accel.getReportingMode() == android.hardware.Sensor.REPORTING_MODE_CONTINUOUS
+                    && !accel.isWakeUpSensor() && "android.sensor.accelerometer".equals(accel.getStringType()) && prox != null && prox.isWakeUpSensor()
+                    && prox.getMinDelay() == 0 && prox.getMaximumRange() == 5f
+                    && sm.getDefaultSensor(android.hardware.Sensor.TYPE_PROXIMITY, false) == null
+                    && sm.getSensorList(android.hardware.Sensor.TYPE_GYROSCOPE).size() == 1
+                    && sm.getDefaultSensor(android.hardware.Sensor.TYPE_HEART_RATE) == null
+                    && "Rotation Vector Sensor".equals(sm.getDefaultSensor(android.hardware.Sensor.TYPE_ROTATION_VECTOR).getName());
+            final SensorCheck check = new SensorCheck(sm, android.os.SystemClock.elapsedRealtimeNanos());
+            boolean registered = true;
+            for (android.hardware.Sensor s : all)
+                registered &= sm.registerListener(check, s, s == accel ? android.hardware.SensorManager.SENSOR_DELAY_GAME : android.hardware.SensorManager.SENSOR_DELAY_NORMAL);
+            // (The same sensor again for the same listener is refused, as on Android.)
+            boolean again = sm.registerListener(check, accel, android.hardware.SensorManager.SENSOR_DELAY_FASTEST);
+            detail = "types=" + types + " accel=" + accel + " prox=" + prox + " registered=" + registered + " again=" + again;
+            return listed && registered && !again;
+        });
+    }
+
+    /** What sensors() hears: each sensor's first event against the stand-in's reading, the accelerometer's for their rate. */
+    private static final class SensorCheck implements android.hardware.SensorEventListener2 {
+        private final android.hardware.SensorManager sm;
+        private final long registered;
+        private final java.util.TreeMap<Integer, String> first = new java.util.TreeMap<>();
+        private int accelEvents, accuracyCalls, flushed;
+        private long lastAccel, minGap = Long.MAX_VALUE;
+        private boolean ordered = true, flushing, done;
+
+        SensorCheck(android.hardware.SensorManager sm, long registered) {
+            this.sm = sm;
+            this.registered = registered;
+        }
+
+        /** Android's values for each sensor of the stand-in's (core/tests/mg_sensor_standin.c), and their accuracy. */
+        private static float[] expected(int type) {
+            switch (type) {
+            case android.hardware.Sensor.TYPE_ACCELEROMETER: return new float[] { -2.4516625f, 4.903325f, 7.3549875f, 3 };
+            case android.hardware.Sensor.TYPE_MAGNETIC_FIELD: return new float[] { 20f, -30f, -40f, 2 };
+            case android.hardware.Sensor.TYPE_ORIENTATION: return new float[] { 70.3141f, -31.5667f, 17.2294f, 3 };
+            case android.hardware.Sensor.TYPE_GYROSCOPE: return new float[] { 1.5707963f, -0.7853982f, 3.1415927f, 3 };
+            case android.hardware.Sensor.TYPE_LIGHT: return new float[] { 321.5f, 3 };
+            case android.hardware.Sensor.TYPE_PRESSURE: return new float[] { 1013.25f, 3 };
+            case android.hardware.Sensor.TYPE_PROXIMITY: return new float[] { 3f, 3 };
+            case android.hardware.Sensor.TYPE_GRAVITY: return new float[] { 0f, 5.88399f, 7.84532f, 3 };
+            case android.hardware.Sensor.TYPE_LINEAR_ACCELERATION: return new float[] { -0.980665f, -1.96133f, 2.941995f, 3 };
+            case android.hardware.Sensor.TYPE_ROTATION_VECTOR: return new float[] { -0.1f, -0.2f, -0.3f, 0.92736185f, -1f, 3 };
+            case android.hardware.Sensor.TYPE_GAME_ROTATION_VECTOR: return new float[] { 0f, 0f, 0.6f, 0.8f, 3 };
+            default: return null;
+            }
+        }
+
+        @Override
+        public void onAccuracyChanged(android.hardware.Sensor s, int accuracy) {
+            accuracyCalls++;
+        }
+
+        @Override
+        public void onSensorChanged(android.hardware.SensorEvent e) {
+            if (done) return;
+            long now = android.os.SystemClock.elapsedRealtimeNanos();
+            int type = e.sensor.getType();
+            if (type == android.hardware.Sensor.TYPE_ACCELEROMETER) {
+                if (accelEvents > 0) {
+                    if (e.timestamp <= lastAccel) ordered = false;
+                    minGap = Math.min(minGap, e.timestamp - lastAccel);
+                }
+                lastAccel = e.timestamp;
+                accelEvents++;
+            }
+            if (!first.containsKey(type)) {
+                float[] want = expected(type);
+                boolean good = want != null && e.values.length == want.length - 1 && e.accuracy == (int) want[want.length - 1]
+                        && e.timestamp <= now && e.timestamp >= registered - 50_000_000L && android.os.Looper.myLooper() == android.os.Looper.getMainLooper();
+                for (int i = 0; good && i < e.values.length; i++) good = Math.abs(e.values[i] - want[i]) < 0.001f;
+                first.put(type, good ? "ok" : Arrays.toString(e.values) + "/" + e.accuracy + "@" + (e.timestamp - registered));
+            }
+            if (!flushing && first.size() == 11 && accelEvents >= 6) {
+                flushing = true;
+                if (!sm.flush(this)) finish("flush=false");
+            }
+        }
+
+        @Override
+        public void onFlushCompleted(android.hardware.Sensor s) {
+            if (++flushed == 11) finish("");
+        }
+
+        private void finish(String why) {
+            done = true;
+            sm.unregisterListener(this);
+            boolean all = true;
+            for (String v : first.values()) all &= "ok".equals(v);
+            boolean good = why.isEmpty() && all && ordered && minGap >= 16_000_000L && accuracyCalls == 11 && flushed == 11;
+            Log.i("DataTest", "sensors-events " + (good ? "ok" : "FAILED " + why) + " first=" + first + " accel=" + accelEvents + " gap=" + minGap / 1000
+                    + "us ordered=" + ordered + " accuracy-calls=" + accuracyCalls + " flushed=" + flushed);
+        }
+    }
+
+    /*
      * The name servers of the network in use, as a resolver of an app's own asks for them (c-ares, inside 2GIS's map library):
      * ConnectivityManager's LinkProperties of the active network. The host's (/etc/resolv.conf under qemu, the phone's
      * interfaces on Windows), each a literal address.
@@ -2419,6 +2538,23 @@ public class Main extends Activity {
             + "z9HYDYREfE1Ss5ArAiA+Y1r8tv+lwWIh8fhqvc3nS+gF3Y67jscJtaox+zq1/Q==";
     private static final String TLS_KEY = "MIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQgxyjM+eEJTgNZNj8S0HvPUp/EYUsW7SCywlDYtxPU9QKhRANCAASSOKxorFlV2PxAaplm"
             + "g0VzCo6g5dcgejzgpERSfmqrUCxTzAdCDQLxcLOZCYgMKwUHK2eyrVByyAtXT+l2f5t3";
+
+    /**
+     * The key and certificate of the TLS server of the network security configuration's steps: EC P-256, for localhost and
+     * 127.0.0.1, serverAuth, issued by the test authority "Megler Test Root CA" (res/raw/trust_test_cas.pem, after "Megler Test
+     * Other CA", which issued nothing; alone in res/raw/trust_test_ca.der), all three valid from 2026 to 2126. Made with
+     * openssl 3.5: ecparam -genkey for each key; req, then x509 -req -signkey with basicConstraints CA:true for the two
+     * authorities, and -CA for the server with CA:false and its two names as subjectAltName. The pins in
+     * res/xml/network_security_config.xml are the SHA-256 of each one's key: x509 -pubkey | pkey -pubin -outform DER | dgst -sha256.
+     */
+    private static final String TRUST_CERT = "MIIB1DCCAXqgAwIBAgIITUVHTEVSAAMwCgYIKoZIzj0EAwIwNTEcMBoGA1UEAwwTTWVnbGVyIFRlc3QgUm9vdCBDQTEVMBMGA1UECgwM"
+            + "TWVnbGVyIHRlc3RzMCAXDTI2MDEwMTAwMDAwMFoYDzIxMjYwMTAxMDAwMDAwWjAUMRIwEAYDVQQDDAlsb2NhbGhvc3QwWTATBgcqhkjOPQIBBggqhkjOPQMB"
+            + "BwNCAATMftIn9+WMWAYJ2Ullz8TWBI++crUYxLTJV9h8XjBSRseMzKJITb1gnFKApOyl8T8Q8YedJaINdZnS/PG/Bgnyo4GSMIGPMAwGA1UdEwEB/wQCMAAw"
+            + "DgYDVR0PAQH/BAQDAgeAMBMGA1UdJQQMMAoGCCsGAQUFBwMBMBoGA1UdEQQTMBGCCWxvY2FsaG9zdIcEfwAAATAdBgNVHQ4EFgQUz/EiqbIAPGY07vzsM/RL"
+            + "0yh+pFowHwYDVR0jBBgwFoAUOJ5HrJ20l/4sBLxKbzLlevgXp5cwCgYIKoZIzj0EAwIDSAAwRQIgcjh7yte3QFMPpx66VoUdkAyu3j3gYA3/3sc4OQdOrA4C"
+            + "IQCy6wv6mB/9FlKzDDapaMPKv8cZrsQJXbtwu6e4gp60Jg==";
+    private static final String TRUST_KEY = "MIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQg7J/43nN/3nmLHwGjhJgTr9rIJWTiUeSl0++gK2Q6I7ShRANCAATMftIn"
+            + "9+WMWAYJ2Ullz8TWBI++crUYxLTJV9h8XjBSRseMzKJITb1gnFKApOyl8T8Q8YedJaINdZnS/PG/Bgny";
 
     /** Whether the TLS this app has is conscrypt's (its native library is in the Android root) or the runtime's stand-in, which has none. */
     private boolean conscrypt;
@@ -2680,6 +2816,202 @@ public class Main extends Activity {
         detail = "code=" + code + " suite=" + suite + " body=" + body + " request=" + request[0];
         Log.i("DataTest", "tls-https-said " + detail);
         return code == 200 && "megler!".equals(body) && suite != null && suite.startsWith("TLS_ECDHE_ECDSA_") && "GET /hello HTTP/1.1".equals(request[0]);
+    }
+
+    /**
+     * The app's network security configuration for TLS (res/xml/network_security_config.xml), as Android 9 has it: an authority
+     * of the app's own trusted for the names it gives it, as Ozon trusts the Russian Trusted Root CA. A TLS server of the app's
+     * on 127.0.0.1 has a certificate that authority issued; each connection to it gives the server a name, the peer's, which
+     * chooses the configuration. Without TLS (no conscrypt) the steps hold, as there is nothing to connect with.
+     */
+    private void networkTrust() {
+        step("network-trust", () -> !conscrypt || offMain(this::networkTrustDefault));
+        step("network-trust-domains", () -> !conscrypt || offMain(this::networkTrustDomains));
+        step("network-trust-pins", () -> !conscrypt || offMain(this::networkTrustPins));
+    }
+
+    /**
+     * The configuration's provider first among the security providers, and the platform's trust manager the configuration's
+     * (RootTrustManager). localhost trusted through Android's HttpsURLConnection with its default socket factory, and through a
+     * context of the app's own over the default TrustManagerFactory; the host-aware check (X509TrustManagerExtensions, as
+     * OkHttp's chain cleaner makes it) gives the chain ending in the authority. 127.0.0.1, which only the base configuration
+     * names (Android's authorities, and no debug-overrides for an app that is not debuggable), refused. Two names of one
+     * configuration are trusted alike, localhost and 127.0.0.1 are not (isSameTrustConfiguration). And a KeyStore given to the
+     * factory is a configuration of its own: its certificate trusted for every host.
+     */
+    private boolean networkTrustDefault() throws Exception {
+        String first = java.security.Security.getProviders()[0].getName();
+        javax.net.ssl.TrustManagerFactory tmf = javax.net.ssl.TrustManagerFactory.getInstance(javax.net.ssl.TrustManagerFactory.getDefaultAlgorithm());
+        tmf.init((java.security.KeyStore) null);
+        javax.net.ssl.X509TrustManager platform = (javax.net.ssl.X509TrustManager) tmf.getTrustManagers()[0];
+        java.security.cert.X509Certificate leaf = trustCertificate(), authority = trustAuthority();
+        javax.net.ssl.SSLServerSocket server = trustServer();
+        try {
+            javax.net.ssl.HttpsURLConnection c = (javax.net.ssl.HttpsURLConnection) new java.net.URL("https://localhost:" + server.getLocalPort() + "/trust").openConnection();
+            c.setConnectTimeout(5000);
+            c.setReadTimeout(10000);
+            String https;
+            try {
+                https = c.getResponseCode() + " " + readAll(c.getInputStream());
+            } catch (java.io.IOException e) {
+                https = "failed: " + rootMessage(e);
+            } finally {
+                c.disconnect();
+            }
+            javax.net.ssl.SSLContext own = javax.net.ssl.SSLContext.getInstance("TLS");
+            own.init(null, tmf.getTrustManagers(), null);
+            String byOwn = trustAs(server, own.getSocketFactory(), "localhost");
+            String byAddress = trustAs(server, (javax.net.ssl.SSLSocketFactory) javax.net.ssl.SSLSocketFactory.getDefault(), "127.0.0.1");
+            android.net.http.X509TrustManagerExtensions extensions = new android.net.http.X509TrustManagerExtensions(platform);
+            java.security.cert.X509Certificate[] served = { leaf };
+            java.util.List<java.security.cert.X509Certificate> chain = extensions.checkServerTrusted(served, "ECDHE_ECDSA", "localhost");
+            String elsewhere;
+            try {
+                extensions.checkServerTrusted(served, "ECDHE_ECDSA", "127.0.0.1");
+                elsewhere = "trusted";
+            } catch (java.security.cert.CertificateException e) {
+                elsewhere = "refused";
+            }
+            boolean sameSub = extensions.isSameTrustConfiguration("a.sub.megler.test", "sub.megler.test");
+            boolean sameAddress = extensions.isSameTrustConfiguration("localhost", "127.0.0.1");
+            java.security.KeyStore store = java.security.KeyStore.getInstance(java.security.KeyStore.getDefaultType());
+            store.load(null, null);
+            store.setCertificateEntry("authority", authority);
+            javax.net.ssl.TrustManagerFactory stored = javax.net.ssl.TrustManagerFactory.getInstance(javax.net.ssl.TrustManagerFactory.getDefaultAlgorithm());
+            stored.init(store);
+            javax.net.ssl.X509TrustManager storedTrust = (javax.net.ssl.X509TrustManager) stored.getTrustManagers()[0];
+            String byStore;
+            try {
+                storedTrust.checkServerTrusted(served, "ECDHE_ECDSA");
+                byStore = "trusted";
+            } catch (java.security.cert.CertificateException e) {
+                byStore = "refused: " + rootMessage(e);
+            }
+            detail = "first=" + first + " trust=" + platform.getClass().getName() + " https=" + https + " own=" + byOwn + " address=" + byAddress
+                    + " chain=" + chain.size() + " ending " + chain.get(chain.size() - 1).getSubjectX500Principal().getName() + " elsewhere=" + elsewhere
+                    + " same=" + sameSub + "/" + sameAddress + " store=" + byStore + " " + storedTrust.getAcceptedIssuers().length;
+            Log.i("DataTest", "network-trust-said " + detail);
+            return "AndroidNSSP".equals(first) && "android.security.net.config.RootTrustManager".equals(platform.getClass().getName())
+                    && "200 trusted!".equals(https) && "trusted".equals(byOwn) && byAddress.startsWith("refused: Trust anchor for certification path not found")
+                    && chain.size() == 2 && chain.get(1).equals(authority) && "refused".equals(elsewhere) && sameSub && !sameAddress
+                    && "trusted".equals(byStore) && storedTrust.getAcceptedIssuers().length == 1;
+        } finally {
+            server.close();
+        }
+    }
+
+    /**
+     * Names a <domain> covers: sub.megler.test itself and two levels under it (includeSubdomains), whose anchor is the authority
+     * read from DER; nested.sub.megler.test, a <domain-config> inside that one without anchors of its own, which takes its
+     * parent's; localhost written in another case. megler.test, above them, refused.
+     */
+    private boolean networkTrustDomains() throws Exception {
+        javax.net.ssl.SSLServerSocket server = trustServer();
+        try {
+            javax.net.ssl.SSLSocketFactory f = (javax.net.ssl.SSLSocketFactory) javax.net.ssl.SSLSocketFactory.getDefault();
+            String sub = trustAs(server, f, "sub.megler.test"), deep = trustAs(server, f, "a.b.sub.megler.test"), nested = trustAs(server, f, "nested.sub.megler.test"),
+                    cased = trustAs(server, f, "LocalHost"), above = trustAs(server, f, "megler.test");
+            detail = "sub=" + sub + " deep=" + deep + " nested=" + nested + " cased=" + cased + " above=" + above;
+            Log.i("DataTest", "network-trust-domains-said " + detail);
+            return "trusted".equals(sub) && "trusted".equals(deep) && "trusted".equals(nested) && "trusted".equals(cased)
+                    && above.startsWith("refused: Trust anchor for certification path not found");
+        } finally {
+            server.close();
+        }
+    }
+
+    /**
+     * Pins: the authority's key pinned, trusted; only a key the chain does not have pinned, refused; that pin expired, trusted;
+     * the authority's anchor overriding pins, trusted; the server's own key pinned, trusted.
+     */
+    private boolean networkTrustPins() throws Exception {
+        javax.net.ssl.SSLServerSocket server = trustServer();
+        try {
+            javax.net.ssl.SSLSocketFactory f = (javax.net.ssl.SSLSocketFactory) javax.net.ssl.SSLSocketFactory.getDefault();
+            String pinned = trustAs(server, f, "pinned.sub.megler.test"), bad = trustAs(server, f, "badpin.megler.test"),
+                    expired = trustAs(server, f, "expired.megler.test"), overridden = trustAs(server, f, "override.megler.test"),
+                    leafPin = trustAs(server, f, "leafpin.megler.test");
+            detail = "pinned=" + pinned + " bad=" + bad + " expired=" + expired + " overridden=" + overridden + " leaf=" + leafPin;
+            Log.i("DataTest", "network-trust-pins-said " + detail);
+            return "trusted".equals(pinned) && "refused: Pin verification failed".equals(bad) && "trusted".equals(expired)
+                    && "trusted".equals(overridden) && "trusted".equals(leafPin);
+        } finally {
+            server.close();
+        }
+    }
+
+    private static java.security.cert.X509Certificate trustCertificate() throws Exception {
+        return (java.security.cert.X509Certificate) java.security.cert.CertificateFactory.getInstance("X.509")
+                .generateCertificate(new java.io.ByteArrayInputStream(java.util.Base64.getDecoder().decode(TRUST_CERT)));
+    }
+
+    /** The test authority, as the app's DER resource has it. */
+    private java.security.cert.X509Certificate trustAuthority() throws Exception {
+        try (java.io.InputStream in = getResources().openRawResource(R.raw.trust_test_ca)) {
+            return (java.security.cert.X509Certificate) java.security.cert.CertificateFactory.getInstance("X.509").generateCertificate(in);
+        }
+    }
+
+    /** The TLS server of the network security configuration's steps, on 127.0.0.1 until it is closed: an HTTP GET is answered
+     *  "trusted!", any other line "pong"; a client that refuses its certificate ends that connection alone. */
+    private static javax.net.ssl.SSLServerSocket trustServer() throws Exception {
+        java.security.PrivateKey key = java.security.KeyFactory.getInstance("EC").generatePrivate(new java.security.spec.PKCS8EncodedKeySpec(java.util.Base64.getDecoder().decode(TRUST_KEY)));
+        java.security.KeyStore keys = java.security.KeyStore.getInstance(java.security.KeyStore.getDefaultType());
+        keys.load(null, null);
+        keys.setKeyEntry("server", key, new char[0], new java.security.cert.Certificate[] { trustCertificate() });
+        javax.net.ssl.KeyManagerFactory kmf = javax.net.ssl.KeyManagerFactory.getInstance(javax.net.ssl.KeyManagerFactory.getDefaultAlgorithm());
+        kmf.init(keys, new char[0]);
+        javax.net.ssl.SSLContext context = javax.net.ssl.SSLContext.getInstance("TLS");
+        context.init(kmf.getKeyManagers(), null, null);
+        final javax.net.ssl.SSLServerSocket server = (javax.net.ssl.SSLServerSocket) context.getServerSocketFactory()
+                .createServerSocket(0, 16, java.net.InetAddress.getByName("127.0.0.1"));
+        Thread t = new Thread(() -> {
+            while (!server.isClosed()) {
+                try (java.net.Socket c = server.accept()) {
+                    c.setSoTimeout(10000);
+                    java.io.BufferedReader r = new java.io.BufferedReader(new java.io.InputStreamReader(c.getInputStream(), "ISO-8859-1"));
+                    String line = r.readLine();
+                    java.io.OutputStream o = c.getOutputStream();
+                    if (line != null && line.startsWith("GET ")) {
+                        for (String h; (h = r.readLine()) != null && !h.isEmpty();) { }
+                        o.write("HTTP/1.0 200 OK\r\nContent-Type: text/plain\r\nContent-Length: 8\r\nConnection: close\r\n\r\ntrusted!".getBytes("ISO-8859-1"));
+                    } else {
+                        o.write("pong\n".getBytes("ISO-8859-1"));
+                    }
+                    o.flush();
+                } catch (java.io.IOException e) {
+                    // a client that refused the certificate, or the server closed
+                }
+            }
+        }, "trust-server");
+        t.setDaemon(true);
+        t.start();
+        return server;
+    }
+
+    /**
+     * A connection to the trust server under the name `host`: a socket to 127.0.0.1 with TLS laid over it for that name, the
+     * peer's. "trusted" when the handshake is made and the server answers, else what refused it.
+     */
+    private static String trustAs(javax.net.ssl.SSLServerSocket server, javax.net.ssl.SSLSocketFactory factory, String host) throws java.io.IOException {
+        java.net.Socket plain = new java.net.Socket();
+        plain.connect(new java.net.InetSocketAddress(java.net.InetAddress.getByName("127.0.0.1"), server.getLocalPort()), 5000);
+        try (javax.net.ssl.SSLSocket s = (javax.net.ssl.SSLSocket) factory.createSocket(plain, host, server.getLocalPort(), true)) {
+            s.setSoTimeout(10000);
+            s.startHandshake();
+            s.getOutputStream().write("ping\n".getBytes("UTF-8"));
+            s.getOutputStream().flush();
+            String back = new java.io.BufferedReader(new java.io.InputStreamReader(s.getInputStream(), "UTF-8")).readLine();
+            return "pong".equals(back) ? "trusted" : "answered " + back;
+        } catch (javax.net.ssl.SSLHandshakeException e) {
+            return "refused: " + rootMessage(e);
+        }
+    }
+
+    /** The message of what was first thrown: a refused certificate's reason under the handshake's exception. */
+    private static String rootMessage(Throwable t) {
+        while (t.getCause() != null && t.getCause() != t) t = t.getCause();
+        return t.getMessage();
     }
 
     /**
@@ -3536,14 +3868,19 @@ public class Main extends Activity {
     }
 
     /**
-     * Cleartext HTTP, as Android's network security policy decides it for this app: written for Android 9 and saying nothing in
-     * its manifest (no usesCleartextTraffic, no network security configuration), it is refused, for any host. The WebView
-     * asks this of every http:// request; the framework refused it to every app.
+     * Cleartext HTTP, as Android's network security policy decides it for this app, from the network security configuration
+     * its TLS goes by too (res/xml/network_security_config.xml). Written for Android 9, with a base configuration that says
+     * nothing of cleartext, it is refused to example.com and to localhost, whose own configuration says nothing of it either,
+     * and so to every host taken together; permitted to a subdomain of sub.megler.test, whose configuration permits it, and to
+     * nested.sub.megler.test, whose configuration inside that one takes it from there. The WebView asks this of every http://
+     * request; the framework refused it to every app.
      */
     private void cleartext() {
         step("cleartext", () -> {
             android.security.NetworkSecurityPolicy p = android.security.NetworkSecurityPolicy.getInstance();
-            return !p.isCleartextTrafficPermitted() && !p.isCleartextTrafficPermitted("example.com") && p == android.security.NetworkSecurityPolicy.getInstance();
+            return !p.isCleartextTrafficPermitted() && !p.isCleartextTrafficPermitted("example.com") && !p.isCleartextTrafficPermitted("localhost")
+                    && p.isCleartextTrafficPermitted("a.sub.megler.test") && p.isCleartextTrafficPermitted("nested.sub.megler.test")
+                    && p == android.security.NetworkSecurityPolicy.getInstance();
         });
     }
 
@@ -4385,6 +4722,109 @@ public class Main extends Activity {
             android.net.Uri bare = new android.net.Uri.Builder().encodedPath("a/b").build();
             detail = u + " path=" + u.getPath() + " hierarchical=" + u.isHierarchical() + "; " + bare + " path=" + bare.getPath();
             return "max:/:chat-list".equals(u.toString()) && "/:chat-list".equals(u.getPath()) && u.isHierarchical() && "a/b".equals(bare.getPath());
+        });
+        step("html-tag-handler", () -> {
+            // Html.fromHtml as Android's: the spans of the elements it knows, a paragraph's line breaks after it, elements left
+            // open ended with the text, character references read; and a TagHandler is given html and body before the rest,
+            // with the reader, whose ContentHandler it takes to read an element's attributes (VTB's way: its handleTag called
+            // getContentHandler() on the reader, which was null here).
+            final java.util.ArrayList<String> tags = new java.util.ArrayList<>();
+            final String[] attr = { null };
+            final class Attrs implements android.text.Html.TagHandler, org.xml.sax.ContentHandler {
+                org.xml.sax.ContentHandler wrapped;
+                public void handleTag(boolean opening, String tag, android.text.Editable out, org.xml.sax.XMLReader reader) {
+                    tags.add((opening ? "+" : "-") + tag);
+                    if (wrapped == null) {
+                        wrapped = reader.getContentHandler();
+                        reader.setContentHandler(this);
+                    }
+                }
+                public void startElement(String uri, String local, String q, org.xml.sax.Attributes a) throws org.xml.sax.SAXException {
+                    if ("mark".equals(local)) attr[0] = a.getValue("", "data-x");
+                    wrapped.startElement(uri, local, q, a);
+                }
+                public void endElement(String uri, String local, String q) throws org.xml.sax.SAXException { wrapped.endElement(uri, local, q); }
+                public void characters(char[] ch, int s, int l) throws org.xml.sax.SAXException { wrapped.characters(ch, s, l); }
+                public void setDocumentLocator(org.xml.sax.Locator l) {}
+                public void startDocument() {}
+                public void endDocument() {}
+                public void startPrefixMapping(String p, String u) {}
+                public void endPrefixMapping(String p) {}
+                public void ignorableWhitespace(char[] ch, int s, int l) {}
+                public void processingInstruction(String t, String d) {}
+                public void skippedEntity(String n) {}
+            }
+            android.text.Spanned custom = android.text.Html.fromHtml("<mark data-x=\"7\">a</mark>b", null, new Attrs());
+            android.text.Spanned styled = android.text.Html.fromHtml("<b>bold</b> and <i>it</i><br>next", 0);
+            android.text.style.StyleSpan[] styles = styled.getSpans(0, styled.length(), android.text.style.StyleSpan.class);
+            boolean stylesOk = styles.length == 2 && styles[0].getStyle() == android.graphics.Typeface.BOLD && styled.getSpanStart(styles[0]) == 0
+                    && styled.getSpanEnd(styles[0]) == 4 && styles[1].getStyle() == android.graphics.Typeface.ITALIC && styled.getSpanStart(styles[1]) == 9
+                    && styled.getSpanEnd(styles[1]) == 11;
+            String legacy = android.text.Html.fromHtml("<p>one</p><p>two</p>", android.text.Html.FROM_HTML_MODE_LEGACY).toString();
+            String compact = android.text.Html.fromHtml("<p>one</p><p>two</p>", android.text.Html.FROM_HTML_MODE_COMPACT).toString();
+            android.text.Spanned list = android.text.Html.fromHtml("<ul><li>a</li><li>b</li></ul>", 0);
+            int bullets = list.getSpans(0, list.length(), android.text.style.BulletSpan.class).length;
+            String refs = android.text.Html.fromHtml("&lt;b&gt; &amp; &copy;&#169;&#xA9;&nbsp;x").toString();
+            android.text.Spanned link = android.text.Html.fromHtml("<a href=\"https://example.com/?a=1&amp;b=2\">l</a>");
+            android.text.style.URLSpan[] urls = link.getSpans(0, link.length(), android.text.style.URLSpan.class);
+            android.text.Spanned open = android.text.Html.fromHtml("<b>x<i>y");
+            int openStyles = open.getSpans(0, open.length(), android.text.style.StyleSpan.class).length;
+            detail = "tags=" + tags + " attr=" + attr[0] + " custom=" + custom + " styled=" + styled.toString().replace("\n", "\\n") + " styles=" + stylesOk
+                    + " legacy=" + legacy.replace("\n", "\\n") + " compact=" + compact.replace("\n", "\\n") + " list=" + list.toString().replace("\n", "\\n")
+                    + " bullets=" + bullets + " refs=" + refs + " url=" + (urls.length == 1 ? urls[0].getURL() : "none") + " open=" + open + "/" + openStyles;
+            return "[+html, +body, +mark, -mark, -body, -html]".equals(tags.toString()) && "7".equals(attr[0]) && "ab".equals(custom.toString())
+                    && "bold and it\nnext".equals(styled.toString()) && stylesOk && "one\n\ntwo\n\n".equals(legacy) && "one\ntwo\n".equals(compact)
+                    && "a\n\nb\n\n".equals(list.toString()) && bullets == 2 && "<b> & \u00A9\u00A9\u00A9\u00A0x".equals(refs)
+                    && urls.length == 1 && "https://example.com/?a=1&b=2".equals(urls[0].getURL()) && "xy".equals(open.toString()) && openStyles == 2;
+        });
+        step("stats-manager", () -> {
+            // statsd's manager, which Google Play services hands its anomaly configurations (a system API: by reflection): there
+            // by its name and by its class, and each call says statsd is not running, with StatsUnavailableException, as Android
+            // says it then.
+            Class<?> c = Class.forName("android.app.StatsManager");
+            Object byName = getSystemService("stats"), byClass = getSystemService(c);
+            String thrown = null;
+            try {
+                c.getMethod("addConfig", long.class, byte[].class).invoke(byName, 1L, new byte[0]);
+            } catch (java.lang.reflect.InvocationTargetException e) {
+                thrown = e.getCause().getClass().getName();
+            }
+            detail = "byName=" + byName + " byClass=" + byClass + " thrown=" + thrown;
+            return c.isInstance(byName) && byName == byClass && "android.app.StatsManager$StatsUnavailableException".equals(thrown);
+        });
+        step("credential-manager", () -> {
+            // Android 14's Credential Manager with no credential provider, as a sign-in screen asks it (an API 34 class: by
+            // reflection): getCredential answers on the executor given that there is no credential -- the type AndroidX turns into
+            // NoCredentialException --, createCredential that there is nothing to create one with, clearCredentialState that it
+            // is cleared. Avito's sign-in waited for ever on a getCredential that never answered.
+            Class<?> cm = Class.forName("android.credentials.CredentialManager"), receiver = Class.forName("android.os.OutcomeReceiver");
+            Object manager = getSystemService(cm);
+            final java.util.List<String> heard = java.util.Collections.synchronizedList(new java.util.ArrayList<String>());
+            final java.util.concurrent.CountDownLatch answered = new java.util.concurrent.CountDownLatch(3);
+            java.lang.reflect.InvocationHandler h = (proxy, m, a) -> {
+                if ("onError".equals(m.getName())) {
+                    heard.add("error " + a[0].getClass().getMethod("getType").invoke(a[0]));
+                    answered.countDown();
+                } else if ("onResult".equals(m.getName())) {
+                    heard.add("result " + a[0]);
+                    answered.countDown();
+                }
+                return null;
+            };
+            Object callback = java.lang.reflect.Proxy.newProxyInstance(receiver.getClassLoader(), new Class<?>[] { receiver }, h);
+            java.util.concurrent.Executor direct = Runnable::run;
+            Class<?> getRequest = Class.forName("android.credentials.GetCredentialRequest"), createRequest = Class.forName("android.credentials.CreateCredentialRequest"),
+                    clearRequest = Class.forName("android.credentials.ClearCredentialStateRequest");
+            cm.getMethod("getCredential", android.content.Context.class, getRequest, android.os.CancellationSignal.class, java.util.concurrent.Executor.class, receiver)
+                    .invoke(manager, this, null, new android.os.CancellationSignal(), direct, callback);
+            cm.getMethod("createCredential", android.content.Context.class, createRequest, android.os.CancellationSignal.class, java.util.concurrent.Executor.class, receiver)
+                    .invoke(manager, this, null, null, direct, callback);
+            cm.getMethod("clearCredentialState", clearRequest, android.os.CancellationSignal.class, java.util.concurrent.Executor.class, receiver)
+                    .invoke(manager, null, null, direct, callback);
+            boolean all = answered.await(5, java.util.concurrent.TimeUnit.SECONDS);
+            detail = "manager=" + (manager != null) + " heard=" + heard;
+            return manager != null && all && heard.equals(java.util.Arrays.asList("error android.credentials.GetCredentialException.TYPE_NO_CREDENTIAL",
+                    "error android.credentials.CreateCredentialException.TYPE_NO_CREATE_OPTIONS", "result null"));
         });
     }
 

@@ -273,7 +273,9 @@ MEGLER_API char *megler_bundle_unpack(const char *bundle_path, const char *apk_p
  *                    bytes, in memory B, G, R, A, colour already multiplied by
  *                    alpha, the top row first, `stride` bytes from one row to
  *                    the next (DXGI_FORMAT_B8G8R8A8_UNORM, row 0 the top: no
- *                    flip). Width and height are megler_run_config's.
+ *                    flip). Width and height are the surface's: megler_run_config's,
+ *                    and after megler_set_surface its (a picture drawn before it may
+ *                    still come at the old size).
  *                    COPY IT BEFORE RETURNING: the memory is the app's own
  *                    bitmap and is drawn into again as soon as this returns.
  *                    Then show the copy, on the shell's own thread or this
@@ -1460,6 +1462,49 @@ typedef struct megler_system_bars_host {
 } megler_system_bars_host;
 
 /*
+ * The app's screen -- its size, its density and which way up it is -- for every app, as Android has them in its
+ * configuration (Configuration.orientation, screenWidthDp, screenHeightDp, smallestScreenWidthDp, screenLayout,
+ * densityDpi), in DisplayMetrics, WindowMetrics and Display.getRotation, and as a game's AConfiguration and ANativeWindow.
+ *
+ * The app asks, through megler_display_host in megler_run_config:
+ *   orientation(requested)  how the activity in front wants the screen held, as Android's
+ *                 ActivityInfo.SCREEN_ORIENTATION_* says it (MEGLER_ORIENTATION_*): from its manifest's
+ *                 android:screenOrientation as it comes to the front and from Activity.setRequestedOrientation -- a Java
+ *                 app's, or a game's through JNI (Unity's). "behind" is never said: what the activity under it wants is
+ *                 said instead. Called when it changes, on one of the app's threads, and must return at once; the shell
+ *                 turns the screen on its own thread (Windows' DisplayInformation.AutoRotationPreferences) or, where the
+ *                 window does not turn (a PC's), gives the app a surface of the shape it asked for, letterboxed, as
+ *                 Android does on a large screen. Left NULL, the app runs and the screen is as the shell keeps it.
+ * The shell tells:
+ *   megler_set_surface(width, height, density_dpi, rotation)  the app's surface is now `width` x `height` pixels at
+ *                 `density_dpi`, drawn `rotation` quarter turns from the screen's natural way up (Android's
+ *                 Surface.ROTATION_0 to _270: 1 is a phone upright by nature turned a quarter anticlockwise, Windows'
+ *                 DisplayOrientations.Landscape on it): the window was resized, or the phone turned. Any thread; it
+ *                 returns at once. A Java app's windows are laid out again at the new size, and its activities have
+ *                 Android's configuration change: one whose android:configChanges takes all that changed hears
+ *                 onConfigurationChanged, the others are made again with the state they saved, as ActivityThread
+ *                 relaunches them (one that is not on the screen, when it comes back to it); a change of size that
+ *                 crosses none of the sizes the app's resources are made for (w600dp, sw720dp...) relaunches nothing,
+ *                 as on Android. A game's window is made again at a new size, and the game hears onConfigurationChanged.
+ *                 A screen only turned upside down changes no configuration: the display's rotation says it. The
+ *                 pictures after it are of the new size; one already on its way may still be of the old. Call it when a
+ *                 resize has settled, not at every step of a drag: each call is a configuration change, which may
+ *                 relaunch the activity. Until it is called the surface is megler_run_config's.
+ */
+enum {
+    MEGLER_ORIENTATION_UNSPECIFIED = -1, MEGLER_ORIENTATION_LANDSCAPE = 0, MEGLER_ORIENTATION_PORTRAIT = 1, MEGLER_ORIENTATION_USER = 2,
+    MEGLER_ORIENTATION_BEHIND = 3, MEGLER_ORIENTATION_SENSOR = 4, MEGLER_ORIENTATION_NOSENSOR = 5, MEGLER_ORIENTATION_SENSOR_LANDSCAPE = 6,
+    MEGLER_ORIENTATION_SENSOR_PORTRAIT = 7, MEGLER_ORIENTATION_REVERSE_LANDSCAPE = 8, MEGLER_ORIENTATION_REVERSE_PORTRAIT = 9,
+    MEGLER_ORIENTATION_FULL_SENSOR = 10, MEGLER_ORIENTATION_USER_LANDSCAPE = 11, MEGLER_ORIENTATION_USER_PORTRAIT = 12,
+    MEGLER_ORIENTATION_FULL_USER = 13, MEGLER_ORIENTATION_LOCKED = 14
+};
+
+typedef struct megler_display_host {
+    void *user;
+    void (MEGLER_CB *orientation)(void *user, int requested);
+} megler_display_host;
+
+/*
  * What a Java app asks of the phone beyond its own window. Each call comes on the app's thread and must return at once; the
  * shell does it on its own thread. Any call left NULL: the app runs, and the log says what it asked.
  *   open_url     A link to open, UTF-8: what the app starts with Intent.ACTION_VIEW (or SENDTO, DIAL) when none of its own
@@ -1597,6 +1642,73 @@ typedef struct megler_biometric_host {
     void (MEGLER_CB *cancel)(void *user);
 } megler_biometric_host;
 
+/*
+ * The phone's sensors (Windows.Devices.Sensors), for an app's android.hardware.SensorManager and the NDK's ASensorManager.
+ * The shell says what the device has and hands over what each sensor reads as Windows reads it; the core makes Android's
+ * sensors of them -- Android's types, units, axes and times (core/src/ndk/mg_sensors.c) -- and keeps them stopped while the
+ * app is paused, as Android sends no events to an app in the background.
+ *
+ * A sensor is one of Windows', MEGLER_SENSOR_*, its values as its reading has them:
+ *   ACCELEROMETER     Accelerometer, AccelerometerReadingType Standard: AccelerationX, Y, Z in g, gravity in them, which
+ *                     points the way Windows has it: -1 on Z lying face up, -1 on Y standing upright.
+ *   GRAVITY           Accelerometer of AccelerometerReadingType Gravity: the gravity alone, the same way.
+ *   LINEAR_ACCELERATION  Accelerometer of AccelerometerReadingType Linear: without the gravity, the same way.
+ *   GYROMETER         Gyrometer: AngularVelocityX, Y, Z in degrees a second, positive counterclockwise seen from the axis's end.
+ *   MAGNETOMETER      Magnetometer: MagneticFieldX, Y, Z in microteslas.
+ *   ORIENTATION       OrientationSensor (absolute: north by the magnetometer): its Quaternion's X, Y, Z, W.
+ *   RELATIVE_ORIENTATION  OrientationSensor for relative readings (no magnetometer, its heading arbitrary): the same.
+ *   INCLINOMETER      Inclinometer: PitchDegrees, RollDegrees, YawDegrees.
+ *   LIGHT             LightSensor: IlluminanceInLux.
+ *   PROXIMITY         ProximitySensor: 1 when something is near (IsDetected) and 0 when not, then the distance to it in
+ *                     millimetres (DistanceInMillimeters), or -1 when the sensor does not say one.
+ *   BAROMETER         Barometer: StationPressureInHectopascals.
+ * The axes are the device's own, as its native orientation has them (x to the right, y up, z out of the screen), never
+ * turned with the display. `accuracy` is MEGLER_SENSOR_ACCURACY_*, Windows' MagnetometerAccuracy, where the reading has
+ * one (the magnetometer's DirectionalAccuracy, the orientation's and the inclinometer's YawAccuracy); UNKNOWN elsewhere.
+ * `time_ns` is when it was read, the reading's Timestamp, in nanoseconds since 1970 (UTC); 0 for now.
+ *
+ * The host is asked, on any of the app's threads, and must not wait on the app:
+ *   list(info, max)   what the device has: up to max sensors described into info, their count returned. Asked once, when
+ *                     the app first wants to know; it may wait until the shell has looked.
+ *   start(kind, interval_ms)  that sensor reported every interval_ms, or as often as it can when that is shorter than it
+ *                     can (0: as often as it can), until stop. Asked again with another interval when the app wants
+ *                     another. Returns at once: what it reads comes through megler_sensor_push, from any thread, the first
+ *                     reading as soon as there is one (a sensor that reports only changes: the reading it has now).
+ *   stop(kind)
+ * May be left zero: the app is told the device has no sensors.
+ */
+enum {
+    MEGLER_SENSOR_ACCELEROMETER = 1, MEGLER_SENSOR_GRAVITY = 2, MEGLER_SENSOR_LINEAR_ACCELERATION = 3, MEGLER_SENSOR_GYROMETER = 4,
+    MEGLER_SENSOR_MAGNETOMETER = 5, MEGLER_SENSOR_ORIENTATION = 6, MEGLER_SENSOR_RELATIVE_ORIENTATION = 7, MEGLER_SENSOR_INCLINOMETER = 8,
+    MEGLER_SENSOR_LIGHT = 9, MEGLER_SENSOR_PROXIMITY = 10, MEGLER_SENSOR_BAROMETER = 11
+};
+enum { MEGLER_SENSOR_ACCURACY_UNKNOWN = 0, MEGLER_SENSOR_ACCURACY_UNRELIABLE = 1, MEGLER_SENSOR_ACCURACY_APPROXIMATE = 2, MEGLER_SENSOR_ACCURACY_HIGH = 3 };
+
+typedef struct megler_sensor_info {
+    int kind;                /* MEGLER_SENSOR_* */
+    char name[64];           /* UTF-8: its device's name as Windows has it */
+    char vendor[64];         /* UTF-8: who made it, where Windows says; else empty */
+    int min_interval_ms;     /* the shortest interval it reports at (MinimumReportInterval); 0 for one that reports changes only */
+    double max_range;        /* the most it reads, in its reading's unit (the proximity's MaxDistanceInMillimeters); 0: not said */
+    double resolution;       /* the least step it reads, likewise; 0: not said */
+} megler_sensor_info;
+
+typedef struct megler_sensor_sample {
+    int kind;
+    int accuracy;
+    double values[4];
+    long long time_ns;
+} megler_sensor_sample;
+
+typedef struct megler_sensor_host {
+    void *user;
+    int (MEGLER_CB *list)(void *user, megler_sensor_info *info, int max);
+    void (MEGLER_CB *start)(void *user, int kind, int interval_ms);
+    void (MEGLER_CB *stop)(void *user, int kind);
+} megler_sensor_host;
+/* What a sensor read, from any thread. Nothing happens when no app runs or none wants that sensor. */
+MEGLER_API void megler_sensor_push(const megler_sensor_sample *sample);
+
 typedef struct megler_run_config {
     const char *apk_path;
     /* Optional installed microG APK. Opened as the service package; no copy in each client. */
@@ -1612,9 +1724,13 @@ typedef struct megler_run_config {
     const char *splits_dir;
     const char *const *split_apks;
     int split_count;
-    /* The surface the app draws to, in pixels, and the density Android should report (160 is 1:1; a phone is 320-480). */
+    /* The surface the app draws to, in pixels, and the density Android should report (160 is 1:1; a phone is 320-480), as it
+       starts: megler_set_surface changes them while it runs. */
     int width, height;
     int density_dpi;
+    /* Which way up the surface is drawn as the app starts, in quarter turns from the screen's natural way up (Android's
+       Surface.ROTATION_*; see megler_display_host). */
+    int rotation;
     megler_window_host window;
     megler_audio_host audio;
     megler_media_host media;
@@ -1630,6 +1746,8 @@ typedef struct megler_run_config {
     megler_microphone_host microphone;
     /* The phone's check of its user for a Java app's BiometricPrompt (see megler_biometric_host). May be left zero: none. */
     megler_biometric_host biometric;
+    /* The phone's sensors for an app's SensorManager and ASensorManager (see megler_sensor_host). May be left zero: none. */
+    megler_sensor_host sensors;
     /*
      * Drawing for an app whose user interface is Java (see megler_gfx_host). All of it may be left NULL: such an app still starts,
      * lays its views out and takes input, but nothing is drawn (its bitmaps hold only what the layer does itself: erasing, single
@@ -1648,6 +1766,8 @@ typedef struct megler_run_config {
     megler_keyboard_host keyboard;
     /* The bars a Java app wants hidden (see megler_system_bars_host). May be left NULL. */
     megler_system_bars_host bars;
+    /* Which way up the app wants its screen (see megler_display_host). May be left NULL. */
+    megler_display_host display;
     /* What a Java app's media session says it plays (see megler_media_session_host). May be left NULL. */
     megler_media_session_host media_session;
     /* What a Java app asks of the phone beyond its window: links, sharing, installing, other apps (see megler_system_host). May be left NULL. */
@@ -1707,6 +1827,23 @@ MEGLER_API bool megler_probe_breakpoints(char *out, size_t size);
 MEGLER_API void megler_touch(int phase, int pointer_id, float x, float y);
 /* An Android key code (AKEYCODE_BACK is 4), pressed or released. */
 MEGLER_API void megler_key(int android_keycode, bool down);
+/*
+ * The phone's Back key for a Java app, pressed and released, and what the app did with it, waited for at most max_ms:
+ *   MEGLER_BACK_TAKEN  the app took it: a page or a dialog went, it changed what it shows, or it showed nothing new within
+ *                      quiet_ms of having had the key (or did not answer in time);
+ *   MEGLER_BACK_LEAVE  the app went to the back with it, as Android 12 and later send a task whose root activity is given
+ *                      Back (and as moveTaskToBack does): nothing finished, and the window is the system's to take away --
+ *                      the shell lets the system have its Back -- the activities stopped while it is hidden and started
+ *                      again when it is shown;
+ *   MEGLER_BACK_ENDED  the app finished its last activity with it, and ends.
+ * quiet_ms is how long an app that showed nothing new is given: one whose Back goes on to JavaScript or Dart (React Native,
+ * Flutter) sends itself to the back from there a little later. One that does it later than that, or calls moveTaskToBack
+ * by itself, has the next Back -- within five seconds and with no touch between -- answered MEGLER_BACK_LEAVE at once,
+ * without the app. Blocks the calling thread (the shell's UI thread is fine: the app's main thread answers, and the host
+ * functions it calls meanwhile never wait for that thread). For an app that is not Java: megler_key(4) twice, TAKEN.
+ */
+enum { MEGLER_BACK_TAKEN = 0, MEGLER_BACK_LEAVE = 1, MEGLER_BACK_ENDED = 2 };
+MEGLER_API int megler_back(unsigned quiet_ms, unsigned max_ms);
 /* The touch keyboard's half of text entry, for a Java app: see megler_keyboard_host. Any thread. */
 MEGLER_API void megler_text_commit(const char *utf8);
 MEGLER_API void megler_text_key(int key);
@@ -1714,6 +1851,8 @@ MEGLER_API void megler_keyboard_closed(void);
 MEGLER_API void megler_keyboard_height(int pixels);
 /* How much of each edge of the surface the phone's bars cover, in pixels, for a Java app: see megler_system_bars_host. Any thread. */
 MEGLER_API void megler_set_insets(int left, int top, int right, int bottom);
+/* The app's surface resized or turned, for any app: see megler_display_host. Any thread. */
+MEGLER_API void megler_set_surface(int width, int height, int density_dpi, int rotation);
 /* The app went to the background or came back; lost or gained input focus. */
 MEGLER_API void megler_set_paused(bool paused);
 /*

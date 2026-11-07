@@ -282,6 +282,80 @@ draw functor on the graphics processor as on the phone. Its PartitionAlloc
 reserves pools of 16 GB with no access; mappings of 4 GB and more are the
 app's like any other since `MG_ALIGN_UP` keeps a 64-bit size's upper half.
 
+## Google's apps
+
+A desktop package brings Google Play services, Google Play Store, Google
+Services Framework and microG as the phone's does (`tools/build-appx.sh
+<arch> --java --bitgapps ZIP --gms APK --play-store APK --microg APK`), and the
+shell offers them the same way: the library lists Google Play services and
+Play Store, the first start asks whether Google Play is wanted and installs
+both as apps of their own, and microG is published for the apps set to it.
+What differs:
+
+- **Google Play services of the processor**: Google's variant for it
+  (APKMirror's `x86 + x86_64` for x64, `x86` for x86, `arm64-v8a +
+  armeabi-v7a` for ARM64; [PER-APP-PACKAGES.md](PER-APP-PACKAGES.md), "Google's
+  APKs for each processor"). `tools/bitgapps-check.py` refuses an APK whose
+  native code is not wholly the package's processor's. The x86 builds Google
+  makes are for Android 7 and later (or 12), which deflate their DEX files:
+  each app inflates them once into its `dex` folder (103 MB).
+- **The WebView**: Google's sign-in is Google Play services' MinuteMaid, a web
+  page in a WebView, so the package's Android root must have the processor's
+  (`tools/webview-fetch.sh <abi>` before building); `build-appx.sh` refuses
+  Google's apps without it. Released desktop packages had none -- `build/webview`
+  held 32-bit ARM's alone -- and Play Store's Sign In came back at once ("this
+  phone's Android root has no WebView package").
+- **The certificate of the apps' packages**: desktop Windows installs Google
+  Play services' and Play Store's packages only once `LocalState\signing\
+  MeglerApps.cer` is trusted for the machine (0x800b0109 until then), which an
+  administrator does once (`Import-Certificate ... Cert:\LocalMachine\
+  TrustedPeople`). Windows opens no certificate an app hands it, so an app's
+  page offers **Copy the Command** (that command, for PowerShell run as
+  administrator) and **Show the Certificate** (its folder in File Explorer,
+  where it opens with Install Certificate); Google Play's installs wait for the
+  user meanwhile, and the Library says so. A test identity (MeglerTest) has a
+  certificate of its own.
+
+## The window
+
+Megler's window on a PC opens phone-shaped (400 x 760) and is the user's to
+resize, maximize or put in full screen; the running app's surface follows it,
+as an Android app's window follows a freeform window on a Chromebook or in
+Samsung DeX (`ui/PlayerScreen.cpp`, docs/JAVA.md "The screen resized and
+turned").
+
+- **Resizing.** The surface follows the window once its size has held for a
+  poll of the player (250 to 500 ms): while it is dragged the app's last
+  picture is scaled into the window, undistorted, and touches map onto it;
+  then the app is told the new size (`megler_set_surface`). A Java app keeps
+  its density, as Android keeps a window's density when it is resized, so its
+  layout gets more room rather than larger text, and it has Android's
+  configuration change: an activity is relaunched only for a change of
+  orientation, or of a size its resources are made for (`w600dp`,
+  `sw720dp`...), else its views are laid out again where they are. A window
+  moved to a screen of another scale gives the app that screen's density.
+- **A game's surface** is the window's pixels within the Render Size setting
+  (the render cap, 1280 by default), however large the window grows: the
+  swap chain scales it up to the window. Its window is made again at the new
+  size (docs/ARCHITECTURE.md, "Graphics").
+- **An app that asks for an orientation.** Its window is turned when it is
+  not of that shape -- as wide as it was tall and as tall as it was wide
+  (`ApplicationView::TryResizeView`), as Chrome OS opens and turns an Android
+  app's window -- once for each wish the app has, never a window in full
+  screen. A window that is not turned, or that the user makes the other shape
+  again, gives the app a surface of its shape in its middle -- the window's
+  proportions turned the other way, as tall as the window for an app that
+  asks for portrait, as wide for one that asks for landscape -- letterboxed in
+  black, as Android shows such an app on a large screen. A game, which asks
+  for landscape, so opens in a landscape window.
+- **The rotation** an app is told is the display's own (`Display.getRotation`,
+  0 on a PC's monitor); a tablet turned turns the window too, the ways the app
+  allows (`AutoRotationPreferences`).
+- **An Xbox** has the whole television, which never changes size: an app
+  that asks for portrait gets the strip in the middle, and nothing else is
+  turned. **Windows RT**'s tablets are desktop Windows: the same as a PC's,
+  with the tablet's turning as above.
+
 ## Proven
 
 On this PC (x64, Windows 11 26300), 2026-11-05 and 06:
@@ -437,6 +511,32 @@ On this PC (x64, Windows 11 26300), 2026-11-05 and 06:
   5472, Linux x86_64 5482 and 5566 on libcore, ARM under qemu 5553, ARM64
   under qemu 5451 and 5535 on libcore, 0 failed each; the MSVC build 5118 and
   5182 on libcore, 0 failed (0415d152, the same but for tests of guest code).
+- Google's apps in the x64 package (2026-11-07, 0.1.0.942 under the test
+  identity MeglerTest, branch desktop-gms): Google Play services 26.41.31
+  (`040800`, x86_64), Play Store 53.7.23, microG 0.3.17. The library offered
+  both, the first start asked, and once the user had trusted the test
+  identity's certificate Windows's deployment engine installed both (options
+  0x1); Update All made them again for the next build without copying their
+  APKs. Play Store's own package started with Google's own Google Play
+  services, whose x86_64 libraries loaded under the core (`libgmscore.so`,
+  `libconscrypt_gmscore_jni.so`, its security provider installed,
+  `libleveldbjni.so`); the check-in succeeded
+  (`android.googleapis.com/checkin`); Play Store showed its page for no
+  account; Sign In opened Google's sign-in page in the x86_64 WebView, drawn
+  with OpenGL ES 3 through ANGLE; the user signed in with an account of theirs
+  through its two-step verification, and Play Store showed its home page.
+  The user installed Gmail from it: Play Store handed the bundle to its own
+  Megler (`meglertest:install`, opened in that package by name), which
+  unpacked it (a base and three splits), installed it as an app of its own in
+  2 s, and Play Store started it. The microG test app, as an app of its own
+  set to microG, ran with microG's and passed ("PASS isolated GmsCore
+  broker..."), microG's x86_64 `libconscrypt_gmscore_jni.so` loaded. In the
+  x86 package (0.1.0.943, MeglerTestX86) the x86 WebView ran the WebView test
+  app (pages, the JavaScript bridge, a redirect, input). Seen on the way: Google Play
+  services asks again and again for a module it may not download
+  (`Appsearch.optional`, "logged 6000 times" in two minutes), and some of
+  Chromium's TLS handshakes were reset (`net_error -101`) on this PC's
+  network.
 
 In developer mode the first start after the stage folder was registered again
 over an earlier build is refused the package's files ("core: not loaded: ...
