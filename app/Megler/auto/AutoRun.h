@@ -43,8 +43,8 @@
 //    takes its picture every five seconds (shot-NNN.bmp); copies what the
 //    app says in the log ("I/HelloTest: ...") into megler-auto.log; taps its
 //    button, twice, where the app's own log says the button is; presses
-//    Back, which ends the app and with it the run. Not with selftest or
-//    play.
+//    Back, which sends the app to the back as on Android 12, and then stops
+//    it, which ends the app and with it the run. Not with selftest or play.
 //
 // LocalState\megler-auto.log says what ran and ends with the line "AUTO DONE";
 // tools/phone.py auto installs such a build, launches it, waits for that line
