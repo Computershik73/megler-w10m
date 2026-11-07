@@ -9,6 +9,7 @@
 #ifndef MG_APPX_H
 #define MG_APPX_H
 
+#include "../../include/megler.h"
 #include "../mg_base.h"
 
 /* The signing key and its certificate: an RSA key of 2048 bits and a self-signed certificate for code signing whose
@@ -33,18 +34,18 @@ MG_HOSTAPI bool mg_appx_finish(mg_appx *a, const mg_appx_key *k, char *err, size
 /* The identity name of the package of the Android app `android_package` ("MeglerApp." and the package; mg_appx_manifest.c),
    into out (at least 51 bytes); false for a name that is not an Android package's. */
 MG_HOSTAPI bool mg_appx_app_identity(const char *android_package, char *out, size_t outlen);
-/* What such a package declares to Windows, as megler.h's MEGLER_APPX_CAP_* (the same values), made from the permissions the
-   Android app's manifest asks for and whether it has a receiver of Google Play services' SMS Retriever (mg_appx_manifest.c). */
+/* What such a package declares to Windows, megler.h's MEGLER_APPX_CAP_* by these names, made from the permissions the
+   Android app's manifest asks for and whether it uses Google Play services' SMS Retriever (mg_appx_manifest.c). */
 enum {
-    MG_APPX_CAP_NETWORK = 1,
-    MG_APPX_CAP_PICTURES = 2,
-    MG_APPX_CAP_VIDEOS = 4,
-    MG_APPX_CAP_MUSIC = 8,
-    MG_APPX_CAP_WEBCAM = 16,
-    MG_APPX_CAP_MICROPHONE = 32,
-    MG_APPX_CAP_LOCATION = 64,
-    MG_APPX_CAP_CHAT = 128,
-    MG_APPX_CAP_CALL_HISTORY = 256,
+    MG_APPX_CAP_NETWORK = MEGLER_APPX_CAP_NETWORK,
+    MG_APPX_CAP_PICTURES = MEGLER_APPX_CAP_PICTURES,
+    MG_APPX_CAP_VIDEOS = MEGLER_APPX_CAP_VIDEOS,
+    MG_APPX_CAP_MUSIC = MEGLER_APPX_CAP_MUSIC,
+    MG_APPX_CAP_WEBCAM = MEGLER_APPX_CAP_WEBCAM,
+    MG_APPX_CAP_MICROPHONE = MEGLER_APPX_CAP_MICROPHONE,
+    MG_APPX_CAP_LOCATION = MEGLER_APPX_CAP_LOCATION,
+    MG_APPX_CAP_CHAT = MEGLER_APPX_CAP_CHAT,
+    MG_APPX_CAP_CALL_HISTORY = MEGLER_APPX_CAP_CALL_HISTORY,
 };
 MG_HOSTAPI unsigned mg_appx_capabilities(const char *const *permissions, int count, bool sms_retriever);
 /* The manifest of that package, made from Megler's own (`megler`, the text of its AppxManifest.xml): its identity name,

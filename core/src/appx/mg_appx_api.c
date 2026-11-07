@@ -12,18 +12,6 @@ bool megler_appx_add_file(megler_appx *a, const char *name, const char *src_path
 bool megler_appx_add_data(megler_appx *a, const char *name, const void *data, size_t size) { return mg_appx_add_data(a, name, data, size); }
 bool megler_appx_finish(megler_appx *a, const megler_appx_key *key, char *err, size_t errlen) { return mg_appx_finish(a, key, err, errlen); }
 bool megler_appx_app_identity(const char *android_package, char *out, size_t outlen) { return mg_appx_app_identity(android_package, out, outlen); }
-/* (megler.h's MEGLER_APPX_CAP_* are mg_appx.h's MG_APPX_CAP_*: the two lists must say the same.) */
-typedef char megler_appx_caps_agree[(int)MEGLER_APPX_CAP_NETWORK == (int)MG_APPX_CAP_NETWORK &&
-                                    (int)MEGLER_APPX_CAP_PICTURES == (int)MG_APPX_CAP_PICTURES &&
-                                    (int)MEGLER_APPX_CAP_VIDEOS == (int)MG_APPX_CAP_VIDEOS &&
-                                    (int)MEGLER_APPX_CAP_MUSIC == (int)MG_APPX_CAP_MUSIC &&
-                                    (int)MEGLER_APPX_CAP_WEBCAM == (int)MG_APPX_CAP_WEBCAM &&
-                                    (int)MEGLER_APPX_CAP_MICROPHONE == (int)MG_APPX_CAP_MICROPHONE &&
-                                    (int)MEGLER_APPX_CAP_LOCATION == (int)MG_APPX_CAP_LOCATION &&
-                                    (int)MEGLER_APPX_CAP_CHAT == (int)MG_APPX_CAP_CHAT &&
-                                    (int)MEGLER_APPX_CAP_CALL_HISTORY == (int)MG_APPX_CAP_CALL_HISTORY
-                                        ? 1
-                                        : -1];
 unsigned megler_appx_capabilities(const char *const *permissions, int count, bool sms_retriever)
 {
     return mg_appx_capabilities(permissions, count, sms_retriever);
