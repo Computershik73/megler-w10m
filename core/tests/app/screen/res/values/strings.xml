@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Megler Screen</string>
+    <!-- What the screen's width is for the app's resources: below 700 dp this, at 700 and over values-w700dp's. -->
+    <string name="width_class">narrow</string>
+</resources>

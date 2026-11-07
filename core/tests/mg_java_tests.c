@@ -48,6 +48,14 @@
  * found, and what Android would tell it of its splits. Checked besides: the picture only a split has, in the window; and
  * the .xapk's expansion file, which the app finds in its own Android/obb.
  *
+ * `screen` has its surface resized and turned from the host's side, as the shell does for a PC's window and a phone turned
+ * (megler_set_surface): an activity that takes no configuration change is made again with its saved state, its views' and
+ * what it retained, unless a size changed across none of the sizes its resources are made for; one that takes them all hears
+ * onConfigurationChanged; one that is stopped meets the change as it comes back; the application, its callbacks and a display
+ * listener hear it; the configuration, the metrics, the display's rotation and the resources chosen follow, and the pictures
+ * come at the new size with the views laid out for it. And what the app asks of the screen's way up -- its manifest's
+ * android:screenOrientation, setRequestedOrientation -- reaches a stand-in for the shell (megler_display_host).
+ *
  * `app` is any APK at all, or a bundle of split APKs, unpacked first as for `splits`: started, left to itself until it is
  * still, its picture written, then whatever the script on the command line says -- a
  * touch, a wait, Back, each followed by another picture -- and a summary of
@@ -567,6 +575,20 @@ static MEGLER_CB void bars_wanted(void *user, int bars)
     mg_lock_release(&g_bars_lock);
 }
 
+/* How the app asked for the screen to be held (megler_display_host.orientation, on one of its threads), in order: ",-1,7,0". */
+static char g_orientations_heard[128];
+static mg_lock g_orientations_lock = MG_LOCK_INIT;
+
+static MEGLER_CB void display_orientation(void *user, int requested)
+{
+    size_t n;
+    (void)user;
+    mg_lock_acquire(&g_orientations_lock);
+    n = strlen(g_orientations_heard);
+    if (n + 8 < sizeof(g_orientations_heard)) snprintf(g_orientations_heard + n, sizeof(g_orientations_heard) - n, ",%d", requested);
+    mg_lock_release(&g_orientations_lock);
+}
+
 /* What the app's media session told (megler_media_session_host), in order: "state=3 actions=6;meta=Song/Band/Record 256x128 ff336699;". */
 static char g_media_heard[512];
 static mg_lock g_media_lock = MG_LOCK_INIT;
@@ -903,6 +925,8 @@ static bool start(const char *apk, const char *android_root)
     cfg.keyboard.hide = keyboard_hide;
     cfg.bars.wanted = bars_wanted;
     g_bars_heard[0] = 0;
+    cfg.display.orientation = display_orientation;
+    g_orientations_heard[0] = 0;
     cfg.media_session.state = media_state;
     cfg.media_session.metadata = media_metadata;
     g_media_heard[0] = 0;
@@ -1091,6 +1115,158 @@ static void profile_end(const char *step)
     say("  the profile of \"%s\":", step);
     /* The twenty methods that cost most; MG_JAVA_PROFILE_TOP asks for more (every method that ran, with a large number). */
     mg_dvm_profile_report(getenv("MG_JAVA_PROFILE_TOP") && atoi(getenv("MG_JAVA_PROFILE_TOP")) > 0 ? atoi(getenv("MG_JAVA_PROFILE_TOP")) : 20, profile_line, NULL);
+}
+
+/* ----------------------------------------------------------------- screen */
+
+/*
+ * Whether the last picture is `w` x `h` and its two halves are the two colours: left and right (across), or top and bottom --
+ * what the screen app's activities draw, laid out at the surface's size. Looked at in its lower part, below the field at the
+ * top left.
+ */
+static bool halves(int w, int h, u32 first, u32 second, bool across)
+{
+    bool sized;
+    mg_lock_acquire(&W.lock);
+    sized = W.width == w && W.height == h;
+    mg_lock_release(&W.lock);
+    if (!sized) return false;
+    if (across)
+        return pixel(w / 4, h * 3 / 4) == first && pixel(w / 2 - 3, h * 3 / 4) == first && pixel(w / 2 + 3, h * 3 / 4) == second && pixel(w - 4, h * 3 / 4) == second;
+    return pixel(w / 2, h / 4) == first && pixel(w / 2, h / 2 - 3) == first && pixel(w / 2, h / 2 + 3) == second && pixel(w / 2, h - 4) == second;
+}
+
+/* Waits up to five seconds for the orientations the app asked for to be `want`; whether they are. */
+static bool orientations_heard(const char *want)
+{
+    char heard[sizeof(g_orientations_heard)];
+    int tries;
+    for (tries = 0; tries < 250; tries++) {
+        mg_lock_acquire(&g_orientations_lock);
+        mg_strlcpy(heard, g_orientations_heard, sizeof(heard));
+        mg_lock_release(&g_orientations_lock);
+        if (!strcmp(heard, want)) return true;
+        mg_sleep_ns(20000000ull);
+    }
+    say("  the orientations the app asked for: \"%s\", not \"%s\"", heard, want);
+    return false;
+}
+
+#define RED 0xFF0000u
+#define BLUE 0x0000FFu
+#define GREEN 0x00C000u
+#define YELLOW 0xFFFF00u
+
+static int run_screen(void)
+{
+    int at = -1, mark;
+    /* Upright, as it starts: Main's halves side by side, the field typed into, the screen held as the system likes (it asks nothing). */
+    expect_line("I/ScreenTest: App.onCreate w=480 h=800 sw=480 orientation=1 dpi=160", &at, 120);
+    expect_line("I/ScreenTest: Main.onCreate count=1 state=none retained=none", &at, 60);
+    expect_line("I/ScreenTest: Main.config w=480 h=800 sw=480 orientation=1 dpi=160 rotation=0 metrics=480x800 res=narrow", &at, 30);
+    expect_line("I/ScreenTest: Main.onResume", &at, 30);
+    settle();
+    CHECK(halves(480, 800, RED, BLUE, true));
+    write_picture("screen-1-upright");
+    CHECK(orientations_heard(",-1"));
+
+    /*
+     * Turned a quarter anticlockwise, as a phone is into landscape: the application and its callbacks hear the new configuration,
+     * Main, which takes none, is made again -- paused, stopped, its state saved with the field's text, what it retains kept,
+     * destroyed as it changes configurations (orientation and screen size, 0x480) -- and the one made again has them all back,
+     * in a configuration, metrics and resources (values-w700dp) of the new size, and the display turned. The display listener
+     * hears it, and the picture comes at the new size.
+     */
+    say("  the surface turned: 800 x 480, 90 degrees");
+    megler_set_surface(800, 480, 160, 1);
+    expect_line("I/ScreenTest: App.callbacks w=800 h=480 sw=480 orientation=2 dpi=160", &at, 30);
+    expect_line("I/ScreenTest: App.onConfigurationChanged w=800 h=480 sw=480 orientation=2 dpi=160", &at, 10);
+    expect_line("I/ScreenTest: Main.onPause changing=true", &at, 10);
+    expect_line("I/ScreenTest: Main.onStop changing=true", &at, 10);
+    expect_line("I/ScreenTest: Main.onSaveInstanceState field=typed", &at, 10);
+    expect_line("I/ScreenTest: Main.onRetain", &at, 10);
+    expect_line("I/ScreenTest: Main.onDestroy changing=true changes=0x480", &at, 10);
+    expect_line("I/ScreenTest: Main.onCreate count=2 state=saved retained=kept1", &at, 30);
+    expect_line("I/ScreenTest: Main.config w=800 h=480 sw=480 orientation=2 dpi=160 rotation=1 metrics=800x480 res=wide", &at, 10);
+    expect_line("I/ScreenTest: Main.onStart", &at, 10);
+    expect_line("I/ScreenTest: Main.onRestoreInstanceState field=typed", &at, 10);
+    expect_line("I/ScreenTest: Main.onResume", &at, 10);
+    CHECK(wait_line("I/ScreenTest: App.display 0 rotation=1 size=800x480", 0, 10) >= 0);
+    settle();
+    CHECK(halves(800, 480, RED, BLUE, true));
+    write_picture("screen-2-turned");
+
+    /*
+     * Narrower, as a PC's window dragged, staying over 700 dp: the screen's size is all that changed, and it crosses none of the
+     * sizes the app's resources are made for, so Main is not made again, nor told (it takes no change itself): its views hear the
+     * new configuration and are laid out at the new size.
+     */
+    say("  the surface resized: 750 x 480");
+    mark = at;
+    megler_set_surface(750, 480, 160, 1);
+    expect_line("I/ScreenTest: App.onConfigurationChanged w=750 h=480 sw=480 orientation=2 dpi=160", &at, 30);
+    expect_line("I/ScreenTest: Main.right.view onConfigurationChanged w=750 h=480 sw=480 orientation=2 dpi=160", &at, 10);
+    expect_line("I/ScreenTest: Main.right.view size 375x480", &at, 10);
+    settle();
+    CHECK(find_line("I/ScreenTest: Main.onCreate", mark + 1) < 0 && find_line("I/ScreenTest: Main.onPause", mark + 1) < 0);
+    CHECK(find_line("I/ScreenTest: Main.onConfigurationChanged", 0) < 0);
+    CHECK(halves(750, 480, RED, BLUE, true));
+
+    /* Narrower still, across 700 dp: a size its resources are made for, and Main is made again (the screen's size alone, 0x400), narrow now. */
+    say("  the surface resized: 600 x 480");
+    megler_set_surface(600, 480, 160, 1);
+    expect_line("I/ScreenTest: Main.onDestroy changing=true changes=0x400", &at, 30);
+    expect_line("I/ScreenTest: Main.onCreate count=3 state=saved retained=kept2", &at, 30);
+    expect_line("I/ScreenTest: Main.config w=600 h=480 sw=480 orientation=2 dpi=160 rotation=1 metrics=600x480 res=narrow", &at, 10);
+    expect_line("I/ScreenTest: Main.onResume", &at, 10);
+    settle();
+    CHECK(halves(600, 480, RED, BLUE, true));
+
+    /*
+     * Handled, started as another app would start it, covers Main: its manifest asks for the screen held upright (sensorPortrait,
+     * 7), which the shell hears. Then the screen turned upright, as the shell turns it: Handled takes every change itself and hears
+     * onConfigurationChanged, its views laid out again; Main, stopped, is not made again yet.
+     */
+    megler_start_activity("megler.test.screen.Handled");
+    expect_line("I/ScreenTest: Handled.onCreate w=600 h=480 sw=480 orientation=2 dpi=160 requested=7", &at, 30);
+    expect_line("I/ScreenTest: Handled.onResume", &at, 10);
+    CHECK(orientations_heard(",-1,7"));
+    settle();
+    CHECK(halves(600, 480, GREEN, YELLOW, false));
+    say("  the surface turned upright: 480 x 800");
+    mark = at;
+    megler_set_surface(480, 800, 160, 0);
+    expect_line("I/ScreenTest: Handled.onConfigurationChanged w=480 h=800 sw=480 orientation=1 dpi=160 rotation=0 metrics=480x800 res=narrow", &at, 30);
+    expect_line("I/ScreenTest: Handled.bottom.view onConfigurationChanged w=480 h=800 sw=480 orientation=1 dpi=160", &at, 10);
+    settle();
+    CHECK(find_line("I/ScreenTest: Handled.onCreate", mark + 1) < 0 && find_line("I/ScreenTest: Main.onCreate count=4", 0) < 0);
+    CHECK(halves(480, 800, GREEN, YELLOW, false));
+    write_picture("screen-3-handled");
+
+    /* A tap: Handled asks for landscape (setRequestedOrientation), which the shell hears. */
+    tap(240, 600);
+    expect_line("I/ScreenTest: Handled.asked landscape requested=0", &at, 30);
+    CHECK(orientations_heard(",-1,7,0"));
+
+    /*
+     * Back: Handled finishes, and Main comes back to a screen upright where it was made for one lying down: it is made again now,
+     * from where it was, stopped (no pause, no stop), with its state; the screen is again as Main wants it, which is nothing.
+     */
+    megler_back(400, 10000);
+    expect_line("I/ScreenTest: Main.onSaveInstanceState field=typed", &at, 30);
+    expect_line("I/ScreenTest: Main.onDestroy changing=true changes=0x480", &at, 10);
+    expect_line("I/ScreenTest: Main.onCreate count=4 state=saved retained=kept3", &at, 10);
+    expect_line("I/ScreenTest: Main.config w=480 h=800 sw=480 orientation=1 dpi=160 rotation=0 metrics=480x800 res=narrow", &at, 10);
+    expect_line("I/ScreenTest: Main.onRestoreInstanceState field=typed", &at, 10);
+    expect_line("I/ScreenTest: Main.onResume", &at, 10);
+    CHECK(orientations_heard(",-1,7,0,-1"));
+    settle();
+    CHECK(halves(480, 800, RED, BLUE, true));
+    write_picture("screen-4-back");
+    CHECK(find_line("I/ScreenTest: Handled.onDestroy changing=false", 0) >= 0);
+    if (g_failed) say_app_lines("I/ScreenTest:");
+    stop_and_end("I/ScreenTest: Main.onDestroy changing=false", &at);
+    return g_failed;
 }
 
 /* ------------------------------------------------------------------ hello */
@@ -3311,6 +3487,7 @@ int mg_tests_java_run(const char *which, const char *apk, const char *android_ro
         else if (!strcmp(which, "webview")) run_webview();
         else if (!strcmp(which, "camera")) run_camera();
         else if (!strcmp(which, "splits")) run_splits();
+        else if (!strcmp(which, "screen")) run_screen();
         else if (g_any_app) run_app();
         else run_hello();
         if (running()) {
