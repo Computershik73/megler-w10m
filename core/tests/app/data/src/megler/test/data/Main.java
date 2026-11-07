@@ -1573,6 +1573,21 @@ public class Main extends Activity {
             detail = "sourceDir=" + source + " codePath=" + code + " there=" + new java.io.File(source).isFile();
             return source.equals("/data/app/" + getPackageName() + "-1/base.apk") && source.equals(code) && new java.io.File(source).isFile();
         });
+        step("maps-paths", () -> {
+            // /proc/self/maps as Android's has it: the APK mapped under its Android path, Android's own libraries where the
+            // system keeps them, and none of them in the app's own library folder (Zona takes such a one for an injected library).
+            String apk = "/data/app/" + getPackageName() + "-1/base.apk", own = "/data/app/" + getPackageName() + "-1/lib/";
+            boolean apkMapped = false, systemLib = false, foreign = false;
+            try (java.io.BufferedReader r = new java.io.BufferedReader(new java.io.FileReader("/proc/self/maps"))) {
+                for (String line; (line = r.readLine()) != null; ) {
+                    if (line.endsWith(" " + apk)) apkMapped = true;
+                    if (line.endsWith("/system/lib/libjavacore.so") || line.endsWith("/system/lib64/libjavacore.so")) systemLib = true;
+                    if (line.contains(own) && line.endsWith("/libjavacore.so")) foreign = true;
+                }
+            }
+            detail = "apk=" + apkMapped + " javacore in /system=" + systemLib + " in the app's folder=" + foreign;
+            return apkMapped && systemLib && !foreign;
+        });
         step("apk-optimization", () -> {
             Object info = Class.forName("dalvik.system.ApplicationRuntime")
                     .getMethod("getBaseApkOptimizationInfo").invoke(null);
