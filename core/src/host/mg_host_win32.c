@@ -1320,6 +1320,11 @@ int mg_cpu_count(void)
     return si.dwNumberOfProcessors > 0 ? (int)si.dwNumberOfProcessors : 1;
 }
 
+#if defined(_M_ARM)
+/* (Windows's kernel reads it from the processor's ID_ISAR0 for every process: a word of the shared user data.) */
+bool mg_cpu_arm_divide(void) { return IsProcessorFeaturePresent(PF_ARM_DIVIDE_INSTRUCTION_AVAILABLE) != 0; }
+#endif
+
 void mg_lock_init(mg_lock *l) { InitializeSRWLock((PSRWLOCK)&l->srw); }
 void mg_lock_acquire(mg_lock *l) { AcquireSRWLockExclusive((PSRWLOCK)&l->srw); }
 bool mg_lock_try(mg_lock *l) { return TryAcquireSRWLockExclusive((PSRWLOCK)&l->srw) != 0; }

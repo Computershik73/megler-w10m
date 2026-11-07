@@ -1,9 +1,16 @@
 #!/usr/bin/env bash
 # Builds, packs and signs the Megler app package.
 #
-#   tools/build-appx.sh [arm|x64|arm64|x86] [--auto MODES] [--libcore] [--java] [--bitgapps ZIP] [--gms APK] [--play-store APK] [--clean] [--no-pack]
+#   tools/build-appx.sh [arm|x64|arm64|x86] [--rt] [--auto MODES] [--libcore] [--java] [--bitgapps ZIP] [--gms APK] [--play-store APK] [--clean] [--no-pack]
 #
 #   arm        (default) the shipping package for Windows 10 Mobile, ARM32
+#   --rt       with arm: the same package for desktop Windows 10 on 32-bit ARM
+#              instead -- build 10.0.15035, the one such Windows there is, on
+#              Windows RT's tablets (Surface RT, Surface 2) and on Lumias
+#              (docs/RT.md): the phone's binaries and files, and its manifest
+#              with one TargetDeviceFamily, Windows.Desktop from 10.0.15035.0,
+#              in place of the phone's two from 15063; named
+#              Megler_<version>_RT_ARM.appx (docs/RELEASES.md)
 #   x64, arm64, x86
 #              the package for desktop Windows 10 and 11 on that processor
 #              (docs/DESKTOP.md), which runs Android code of that processor:
@@ -77,10 +84,10 @@
 #   --clean    recompile everything
 #   --no-pack  stop after staging (no makeappx, no signing)
 #
-# The output: app/Megler/AppPackages/Megler_<version>_<ARCH>.appx, the
-# certificate to trust (Megler.cer) beside it, the staged folder under
-# build/appx-<arch>/stage, and the linker map kept as
-# build/maps/Megler_<version>.map.
+# The output: app/Megler/AppPackages/Megler_<version>_<ARCH>.appx (_RT_ARM
+# with --rt), the certificate to trust (Megler.cer) beside it, the staged
+# folder under build/appx-<arch>/stage (build/appx-arm for --rt too: the
+# same objects), and the linker map kept as build/maps/Megler_<version>.map.
 #
 # Why a script and not MSBuild (podium-w10m's and gecko-w10m's tools/build-appx.sh
 # learned it first): MSBuild's appx signing fails here with APPX0107, so the
@@ -128,6 +135,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 APP="$ROOT/app/Megler"
 ARCH=arm
+RT=0
 CLEAN=0
 PACK=1
 XBOX=0
@@ -150,6 +158,7 @@ while [ $# -gt 0 ]; do
   case "$arg" in
     arm|x64|arm64|x86) ARCH="$arg" ;;
     --xbox) XBOX=1 ;;
+    --rt) RT=1 ;;
     --auto|--auto=*)
       if [ "$arg" = --auto ]; then
         [ $# -gt 0 ] || { echo "--auto needs probe, selftest or probe,selftest" >&2; exit 2; }
@@ -203,6 +212,8 @@ if [ "$AUTO_SELFTEST" = 1 ] && [ "$AUTO_PLAY" = 1 ]; then echo "--auto: selftest
 if [ "$AUTO_JAVA" = 1 ] && { [ "$AUTO_SELFTEST" = 1 ] || [ "$AUTO_PLAY" = 1 ]; }; then echo "--auto: java cannot go with selftest or play" >&2; exit 2; fi
 # The Java test app is of no use without what it runs on.
 if [ "$AUTO_JAVA" = 1 ]; then JAVA=1; fi
+# (Windows RT's tablets are 32-bit ARM; the desktop packages of the other processors are Windows.Universal already.)
+if [ "$RT" = 1 ] && [ "$ARCH" != arm ]; then echo "--rt goes with arm: desktop Windows on 32-bit ARM" >&2; exit 2; fi
 if [ -n "$BITGAPPS" ]; then
   [ "$ARCH" = arm ] || { echo "--bitgapps requires arm" >&2; exit 2; }
   [ -f "$BITGAPPS" ] || { echo "--bitgapps archive not found: $BITGAPPS" >&2; exit 2; }
@@ -266,7 +277,7 @@ OUT="$APP/AppPackages"
 mkdir -p "$OBJ" "$OUT"
 JOBS="${MEGLER_JOBS:-$(nproc 2>/dev/null || echo 4)}"
 
-echo "=== Megler for $([ "$XBOX" = 1 ] && echo "Xbox (Developer Mode)" || { [ "$DESKTOP" = 1 ] && echo "desktop Windows"; } || echo "Windows 10 Mobile"): $ARCH${AUTO_MODES:+, auto run: $AUTO_MODES} ==="
+echo "=== Megler for $([ "$XBOX" = 1 ] && echo "Xbox (Developer Mode)" || { [ "$DESKTOP" = 1 ] && echo "desktop Windows"; } || { [ "$RT" = 1 ] && echo "desktop Windows 10 on 32-bit ARM (Windows RT's tablets, build 15035)"; } || echo "Windows 10 Mobile"): $ARCH${AUTO_MODES:+, auto run: $AUTO_MODES} ==="
 echo "    MSVC $(basename "$VC"), headers SDK $SDKV, libraries SDK $SDKV_LIB"
 
 # MARK: Compile
@@ -553,12 +564,32 @@ open(path, "w", encoding="utf-8", newline="").write(text)
 PY
   grep -q 'Name="Windows.Xbox"' "$STAGE/AppxManifest.xml" || { echo "the Xbox's manifest has no Windows.Xbox" >&2; exit 1; }
 fi
-echo "=== stage: version $VERSION ($PKGARCH) ==="
+if [ "$RT" = 1 ]; then
+  # Desktop Windows 10 on 32-bit ARM is build 15035 (docs/RT.md), whose deployment engine refuses a package none of whose
+  # device families it is or starts by then -- the phone's are from 15063 (0x80073CFD, "the package requires OS version
+  # 10.0.15063.0 or higher").
+  # The rest of the manifest is in the schema 15035 knows, 14393's (the SDK's 10.0.14393.0 headers have it): uap, uap2
+  # and uap3, mp, restricted capabilities, the publisher cache folder. Windows.Desktop alone: no phone takes this package,
+  # and an app's own package made from it (core/src/appx/mg_appx_manifest.c) says the same.
+  sed -i -e '/<TargetDeviceFamily Name="Windows.Mobile"/d' \
+         -e 's|<TargetDeviceFamily Name="Windows.Universal" MinVersion="[0-9.]*"|<TargetDeviceFamily Name="Windows.Desktop" MinVersion="10.0.15035.0"|' \
+         -e 's|<!-- Windows 10 Mobile 1703 (Creators Update) and later. -->|<!-- Desktop Windows 10 on 32-bit ARM from build 15035: the Windows RT package, docs/RT.md. -->|' \
+         "$STAGE/AppxManifest.xml"
+  if [ "$(grep -c '<TargetDeviceFamily ' "$STAGE/AppxManifest.xml")" != 1 ] ||
+     ! grep -q '<TargetDeviceFamily Name="Windows.Desktop" MinVersion="10.0.15035.0"' "$STAGE/AppxManifest.xml"; then
+    echo "--rt: the manifest's device family could not be made Windows.Desktop from 10.0.15035.0" >&2
+    exit 1
+  fi
+  # (Well-formed still: makepri says no more than "manifest not found or invalid".)
+  python -c "import sys, xml.dom.minidom; xml.dom.minidom.parse(sys.argv[1])" "$(w "$STAGE/AppxManifest.xml")" ||
+    { echo "--rt: the manifest made is not well-formed XML" >&2; exit 1; }
+fi
+echo "=== stage: version $VERSION ($PKGARCH$([ "$RT" = 1 ] && echo ", Windows.Desktop from 10.0.15035.0")) ==="
 # The map of this very build, to put names to addresses in a phone's log, and
 # what it was built as.
 mkdir -p "$ROOT/build/maps"
 cp "$BUILD/link/Megler.map" "$ROOT/build/maps/Megler_$VERSION.map"
-echo "arch=$PKGARCH xbox=$XBOX auto=${AUTO_MODES:-none} java=$JAVA libcore=$LIBCORE" > "$ROOT/build/maps/Megler_$VERSION.txt"
+echo "arch=$PKGARCH xbox=$XBOX auto=${AUTO_MODES:-none} java=$JAVA libcore=$LIBCORE$([ "$RT" = 1 ] && echo " rt=1")" > "$ROOT/build/maps/Megler_$VERSION.txt"
 echo "    map: build/maps/Megler_$VERSION.map"
 
 cp "$BUILD/link/Megler.exe" "$STAGE/"
@@ -878,6 +909,8 @@ if [ "$PACK" = 1 ]; then
   case "$ARCH" in arm) ARCHNAME=ARM ;; arm64) ARCHNAME=ARM64 ;; *) ARCHNAME="$ARCH" ;; esac
   # (A package for another Windows than the phone's or the PC's carries its Windows in its name: docs/RELEASES.md.)
   [ "$XBOX" = 1 ] && ARCHNAME="Xbox_$ARCHNAME"
+  # (_ARM is Windows 10 Mobile's alone: another Windows on 32-bit ARM says its own name, docs/RELEASES.md.)
+  [ "$RT" = 1 ] && ARCHNAME=RT_ARM
   PKG="$OUT/Megler_${VERSION}_${ARCHNAME}.appx"
   echo "=== pack ==="
   rm -f "$PKG"

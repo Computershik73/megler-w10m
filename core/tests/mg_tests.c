@@ -3348,6 +3348,22 @@ static void test_library(mg_lib *lib, const char *what, const char *scratch)
     (void)scratch;
     CHECK_INT(FN(lib, int (*)(const char *), "t_files")(buf), 1);
     CHECK_INT(FN(lib, int (*)(void), "t_proc")(), 1);
+#if MG_ARCH_ARM32
+    /* AT_HWCAP says SDIV (idiva, idivt) and VFPv4 where the processor has SDIV, and neither where it has not -- a Surface
+       RT's Cortex-A9, as qemu-arm -cpu cortex-a9 plays it: an app that chose its code by them would fault there on VFPv4's
+       instructions, or be trapped at every division. NEON either way. */
+    {
+        gulong words[64];
+        size_t n = mg_bionic_auxv_words(words, MG_COUNT(words)), i;
+        unsigned long hwcap = 0;
+        for (i = 0; i + 1 < n; i += 2)
+            if (words[i] == 16) hwcap = (unsigned long)words[i + 1];
+        say("  AT_HWCAP 0x%lx: the processor %s SDIV", hwcap, mg_cpu_arm_divide() ? "has" : "has no");
+        CHECK_INT((hwcap >> 18) & 1, mg_cpu_arm_divide() ? 1 : 0);
+        CHECK_INT((hwcap >> 16) & 1, mg_cpu_arm_divide() ? 1 : 0);
+        CHECK_INT((hwcap >> 12) & 1, 1);
+    }
+#endif
     CHECK_INT(FN(lib, int (*)(void), "t_boot_id")(), 1);
     CHECK_INT(FN(lib, int (*)(void), "t_proc_status")(), 1);
     CHECK_INT(FN(lib, int (*)(void), "t_smaps")(), 4);

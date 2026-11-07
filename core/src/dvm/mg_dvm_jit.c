@@ -52,11 +52,17 @@ typedef char jit_ctx_layout[offsetof(mg_dvm_jit_ctx, regs) == JIT_CTX_REGS && of
                                 ? 1
                                 : -1];
 
+/* Whether the processor has SDIV (mg_cpu_arm_divide): not a Surface RT's Cortex-A9, where Windows traps each one and
+   emulates it (some 80 cycles more than the runtime's division by a call) and qemu-arm faults on it. */
+static bool g_jit_sdiv = true;
+
 void mg_dvm_jit_start(bool on, u32 threshold, bool trace)
 {
     g_dvm_jit_threshold = on ? (threshold ? threshold : 1) : 0;
     g_jit_trace = trace;
-    mg_info("jit: %s", on ? "methods whose loops are hot are compiled to Thumb-2 (docs/JIT.md)" : "off: everything is interpreted");
+    g_jit_sdiv = mg_cpu_arm_divide();
+    mg_info("jit: %s%s", on ? "methods whose loops are hot are compiled to Thumb-2 (docs/JIT.md)" : "off: everything is interpreted",
+            on && !g_jit_sdiv ? "; the processor has no SDIV (a Cortex-A9): an int's division is a call" : "");
 }
 
 /* ------------------------------------------------------------------ the emitter */
@@ -172,8 +178,31 @@ static void cmp_imm(emitter *e, int rn, u32 imm8) { e16(e, 0x2800 | ((u32)rn << 
 /* The three-register data processing of int arithmetic: rd = rn op rm. */
 enum { OP_ADD, OP_SUB, OP_RSB, OP_MUL, OP_DIV, OP_REM, OP_AND, OP_OR, OP_XOR, OP_SHL, OP_SHR, OP_USHR };
 
+/*
+ * An int's division and remainder where the processor has no SDIV (g_jit_sdiv): calls of these, with Java's answers for
+ * MIN_VALUE / -1 (the divisor is never 0 there: checked before, or a literal that is not).
+ */
+static i32 jit_div_int(i32 a, i32 b) { return a == INT32_MIN && b == -1 ? a : a / b; }
+static i32 jit_rem_int(i32 a, i32 b) { return a == INT32_MIN && b == -1 ? 0 : a % b; }
+static void call_c(emitter *e, mg_addr fn);
+
+/* mov rd, rm (MOV register, T1: any two of r0-r15). */
+static void mov_reg(emitter *e, int rd, int rm) { e16(e, 0x4600 | (((u32)rd & 8) << 4) | ((u32)rm << 3) | ((u32)rd & 7)); }
+
 static void data_op(emitter *e, int op, int rd, int rn, int rm)
 {
+    if ((op == OP_DIV || op == OP_REM) && !g_jit_sdiv) {
+        /* rn into r0 and rm into r1 (rm kept in r12 first where it is r0), the call, its result into rd. */
+        if (rm == R0) {
+            mov_reg(e, R12, R0);
+            rm = R12;
+        }
+        if (rn != R0) mov_reg(e, R0, rn);
+        if (rm != R1) mov_reg(e, R1, rm);
+        call_c(e, op == OP_DIV ? (mg_addr)jit_div_int : (mg_addr)jit_rem_int);
+        if (rd != R0) mov_reg(e, rd, R0);
+        return;
+    }
     switch (op) {
     case OP_ADD: e32(e, 0xEB00 | (u32)rn, ((u32)rd << 8) | (u32)rm); break;
     case OP_SUB: e32(e, 0xEBA0 | (u32)rn, ((u32)rd << 8) | (u32)rm); break;

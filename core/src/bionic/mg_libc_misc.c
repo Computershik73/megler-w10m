@@ -554,8 +554,10 @@ static unsigned long g_getauxval(unsigned long type)
         return (unsigned long)(mg_addr)(MG_ARCH_ARM32 ? "v7l" : MG_ARCH_ARM64 ? "aarch64" : MG_ARCH_X86_64 ? "x86_64" : "i686");
     case 16:                                       /* AT_HWCAP */
 #if MG_ARCH_ARM32
-        /* half thumb fastmult vfp edsp neon vfpv3 tls vfpv4 idiva idivt vfpd32 */
-        return 2u | 4u | 16u | 64u | 128u | 4096u | 8192u | 32768u | 65536u | (1u << 17) | (1u << 18) | (1u << 19);
+        /* half thumb fastmult vfp edsp neon vfpv3 tls vfpv4 idiva idivt vfpd32; without vfpv4, idiva and idivt on a
+           processor with no SDIV, a Surface RT's Cortex-A9 (mg_cpu_arm_divide), as /proc/cpuinfo says (mg_libc_io.c) */
+        return 2u | 4u | 16u | 64u | 128u | 4096u | 8192u | 32768u | (1u << 19) |
+               (mg_cpu_arm_divide() ? 65536u | (1u << 17) | (1u << 18) : 0u);
 #elif MG_ARCH_ARM64
         return 1u | 2u;                            /* fp asimd */
 #else

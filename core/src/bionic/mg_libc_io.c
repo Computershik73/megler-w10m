@@ -623,10 +623,15 @@ static char *synthetic(const char *g, size_t *size)
                        "CPU implementer\t: 0x51\nCPU architecture: 8\nCPU variant\t: 0xd\nCPU part\t: 0x805\nCPU revision\t: 14\n\n", i);
         tb_add(&t, "Hardware\t: Qualcomm Technologies, Inc\n");
 #else
+        /* (A processor with no SDIV is a Surface RT's Cortex-A9 (mg_cpu_arm_divide), which has no VFPv4 or LPAE either: an
+           app that chose VFPv4's code by them would fault on it, Windows emulating no floating point, and one that chose
+           SDIV would be trapped at every division. A phone's, and a Surface 2's Cortex-A15, have all three.) */
+        const bool divide = mg_cpu_arm_divide();
         for (i = 0; i < cpus; i++)
             tb_add(&t, "processor\t: %d\nmodel name\t: ARMv7 Processor rev 4 (v7l)\nBogoMIPS\t: 38.40\n"
-                       "Features\t: half thumb fastmult vfp edsp neon vfpv3 tls vfpv4 idiva idivt vfpd32 lpae\n"
-                       "CPU implementer\t: 0x41\nCPU architecture: 7\nCPU variant\t: 0x0\nCPU part\t: 0xd03\nCPU revision\t: 4\n\n", i);
+                       "Features\t: half thumb fastmult vfp edsp neon vfpv3 tls %s\n"
+                       "CPU implementer\t: 0x41\nCPU architecture: 7\nCPU variant\t: 0x0\nCPU part\t: %s\nCPU revision\t: 4\n\n",
+                   i, divide ? "vfpv4 idiva idivt vfpd32 lpae" : "vfpd32", divide ? "0xd03" : "0xc09");
         tb_add(&t, "Hardware\t: Qualcomm Technologies, Inc MSM\nRevision\t: 0000\nSerial\t\t: 0000000000000000\n");
 #endif
     } else if (!strcmp(g, "/proc/meminfo")) {
