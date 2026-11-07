@@ -93,6 +93,17 @@ happened. Under qemu-arm a call went from 117-138 ns to 99-125 ns, HashMap.get f
 from 740 to about 600; the flag no-fast-calls leaves every call to the general way. The log's line of the JIT counts the
 calls each way.
 
+An app that hooks methods (Xposed's XposedBridge: docs/JAVA.md, "Methods an app hooks") must not have a hooked method's
+body done in place. A call of a method hooked by then is not compiled in place, nor tried the quick way when it names the
+method itself, and the quick way declines a hooked method; and once the app has hooked anything (`mg_dvm_jit_hooks_on`)
+every call compiled in place first loads its method's mark and goes the general way, which calls the hook, when it is set:
+five instructions more, only in such an app. The code compiled before the first hook, whose calls in place do not look, is
+forgotten then (the JIT keeps the list of the methods it published): its methods are interpreted until they are hot again.
+It is never freed, as a thread may be inside it, and goes on there until it hands the frame back or returns. `test_hooks`
+(mg_dvm_tests_hooks.c) compiles loops that call a getter in place before the first hook and after it, and hooks the getter
+under the code that does it: built without the look or without the forgetting, six of its checks fail (a loop of 2000
+calls saw its hook once, at its turn in the interpreter).
+
 A method is compiled when the jumps back it takes and the calls of it made by then reach 1000. Its code is entered at the
 head of a loop compiled whole -- a loop that hands back at every turn costs more than it saves -- and at its start, for
 its calls, when the code there does some work before it hands anything back (four instructions in a row, or a return):

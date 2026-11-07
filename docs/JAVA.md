@@ -2016,6 +2016,80 @@ Benchmark on x64 in ns a turn: a small object made (its constructor ends in
 `Object.<init>`) 61.5 to 53.6; `ArrayList`'s iterator 88.8 to 76.4;
 `Integer.valueOf` 91.8 to 77.6; `HashMap.get` 272 to 262.
 
+### Methods an app hooks: Xposed's XposedBridge
+
+Aliucord (Discord patched by Aliucord Manager) carries Aliuhook
+(github.com/Aliucord/hook): Xposed's API in Java -- `XposedBridge.hookMethod`,
+`XC_MethodHook`'s callbacks before and after a method,
+`invokeOriginalMethod` -- over LSPlant, which hooks a method on ART by
+rewriting ART's own structures (libart.so's symbols, the method's
+`ArtMethod`) and a class it makes at run time. There is no ART here: on
+0.1.0.669 Aliucord ended at its start, the library's `JNI_OnLoad` having
+returned JNI_ERR ("failed to open /system/lib/libart.so") under
+XposedBridge's static initialiser. The runtime hooks methods itself
+(`mg_dvm_hook.c`), as the first Xposed did on Dalvik, and XposedBridge's nine
+natives are its own: registered for the class by name, which comes before any
+library's function, while the library -- known by the native it exports,
+`Java_de_robv_android_xposed_XposedBridge_hook0` -- is loaded without its
+`JNI_OnLoad` (`mg_dvm_jvm.c`).
+
+The contract is LSPlant's, which Aliuhook's Java builds on.
+`hook0(context, original, callback)` makes every call of `original` (a
+`Method` or a `Constructor`) a call of `context.callback(Object[] args)`: the
+arguments boxed, the object first for an instance method. What the callback
+returns is the call's value -- unboxed for a primitive (null throws a
+`NullPointerException`, an object that is no such box a
+`ClassCastException`), checked against the class the method returns for an
+object -- and what it throws, the call throws. `hook0` hands back the
+backup: a `Method` whose `invoke` runs the original body on the object it is
+given, past the hook; a `Method` even for a constructor, whose body it runs
+on the object. Null when the method cannot be hooked (abstract, hooked
+already), and XposedBridge says "Failed to hook method". `unhook0`,
+`isHooked0`, `allocateInstance0` (JNI's `AllocObject`), `invokeConstructor0`
+(a constructor run on an object there already) and `makeClassInheritable0`
+(no `final` on the class, its constructors protected) do what Aliuhook's do;
+`deoptimize0`, `disableProfileSaver` and `disableHiddenApiRestrictions` are
+about ART, and say true.
+
+A hooked method keeps its bytecode, so that a frame already running it runs
+on, and is marked (`mg_dvm_method.hooked`). Every way into a method looks at
+the mark before anything else and calls the hook (`mg_dvm_hook_call`): the
+interpreter's invoke, before an intrinsic or a trivial body is done in place;
+compiled code's calls (`mg_dvm_jit_invoke`; the quick way declines a hooked
+method); the calls from C (`mg_dvm_invoke`: reflection, JNI, the runtime's
+own). A static method's class is initialised first, as for any call. The
+backup is a copy of the method -- a struct of its own, private so that
+nothing dispatches it again, in no class's tables, never hooked -- with the
+same body, made at the method's first hook and kept for good, as calls of it
+may be running. In compiled code a call done in place looks at the mark once
+the app has hooked anything; the code compiled before that, which does not,
+is forgotten then, and a method hooked when a call of it is compiled is not
+done in place ([JIT.md](JIT.md)). A frame inside such code at that moment
+goes on in it until it hands the frame back or returns; in Aliucord the
+first hook comes in `Application.onCreate`, before much is hot. The hooks'
+contexts and their backups' `Method` objects are roots of the collector.
+
+Where nothing is hooked it costs a byte read by each call, the interpreter's,
+compiled code's (the quick way and the general one) and those from C, and
+nothing in compiled code itself. A hooked call boxes its arguments, makes an
+array, calls the callback, and Aliuhook's callback calls the backup through
+`Method.invoke`, which unboxes them again: as on ART, a hook is for code that
+is not hot.
+
+`test_hooks` (`core/tests/mg_dvm_tests_hooks.c`, on libcore) runs `hooks.dex`
+(`core/tests/dvm/hooks`, compiled by `tools/dvm-hooks-fixture.sh` and kept
+in the repository): an instance method, static ones with an argument of each
+kind, a constructor (called by `new`, `Constructor.newInstance`, a
+subclass's constructor and `invokeConstructor0`), an interface's default
+method, a native method; called from bytecode with every instruction watched
+and not, through reflection and through JNI, by a subclass and by an
+override's super call, from loops the JIT compiled before the first hook and
+after it; arguments and results changed, exceptions each way, unhooked, on
+two threads at once; and a hook that nothing but the runtime keeps, across
+collections. Where guest code runs, `libt_xposed.so` (`t_xposed.c`), which
+stands in for libaliuhook.so, is loaded and none of its functions is called.
+It passes under qemu-arm and on the PC; no phone has run it, nor Aliucord.
+
 ### Exceptions
 
 One exception can be pending on a thread, for bytecode and native code alike.
