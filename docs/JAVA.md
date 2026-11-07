@@ -3609,7 +3609,16 @@ What a Java app asks of the phone beyond its window goes to the shell through
   - Megler asks the user, then installs the APK as one picked in the Library.
     In an app's own package, the APK is copied into the shared folder's
     `incoming\`, and Megler is opened with `megler:install?name=` (its package
-    family name as the target).
+    family name as the target). The scheme of these links is the protocol the
+    package declares (`appPackage::linkScheme`, read from its manifest; an
+    app's package has its Megler's, `megler` for the release's), and Megler's
+    family name is the one the app's package was made by (`megler=` in its
+    `MeglerApp.ini`; the release's, `Megler_<publisher id>`, for a package
+    made before Megler wrote it there): every app's package declares the
+    protocol too, and a test
+    identity's Play Store (MeglerTest, `meglertest:`) that sent `megler:` to
+    `Megler_<publisher id>`, which was not there, had Windows ask which of the
+    release Megler and its apps should open it.
   - A session of several APKs (a base and its splits, as Google Play installs
     an app built as a bundle) is handed over as one `.apks` of them, a ZIP of
     the APKs stored as they are, which Megler's installer unpacks as it does a

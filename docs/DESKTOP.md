@@ -282,6 +282,40 @@ draw functor on the graphics processor as on the phone. Its PartitionAlloc
 reserves pools of 16 GB with no access; mappings of 4 GB and more are the
 app's like any other since `MG_ALIGN_UP` keeps a 64-bit size's upper half.
 
+## Google's apps
+
+A desktop package brings Google Play services, Google Play Store, Google
+Services Framework and microG as the phone's does (`tools/build-appx.sh
+<arch> --java --bitgapps ZIP --gms APK --play-store APK --microg APK`), and the
+shell offers them the same way: the library lists Google Play services and
+Play Store, the first start asks whether Google Play is wanted and installs
+both as apps of their own, and microG is published for the apps set to it.
+What differs:
+
+- **Google Play services of the processor**: Google's variant for it
+  (APKMirror's `x86 + x86_64` for x64, `x86` for x86, `arm64-v8a +
+  armeabi-v7a` for ARM64; [PER-APP-PACKAGES.md](PER-APP-PACKAGES.md), "Google's
+  APKs for each processor"). `tools/bitgapps-check.py` refuses an APK whose
+  native code is not wholly the package's processor's. The x86 builds Google
+  makes are for Android 7 and later (or 12), which deflate their DEX files:
+  each app inflates them once into its `dex` folder (103 MB).
+- **The WebView**: Google's sign-in is Google Play services' MinuteMaid, a web
+  page in a WebView, so the package's Android root must have the processor's
+  (`tools/webview-fetch.sh <abi>` before building); `build-appx.sh` refuses
+  Google's apps without it. Released desktop packages had none -- `build/webview`
+  held 32-bit ARM's alone -- and Play Store's Sign In came back at once ("this
+  phone's Android root has no WebView package").
+- **The certificate of the apps' packages**: desktop Windows installs Google
+  Play services' and Play Store's packages only once `LocalState\signing\
+  MeglerApps.cer` is trusted for the machine (0x800b0109 until then), which an
+  administrator does once (`Import-Certificate ... Cert:\LocalMachine\
+  TrustedPeople`). Windows opens no certificate an app hands it, so an app's
+  page offers **Copy the Command** (that command, for PowerShell run as
+  administrator) and **Show the Certificate** (its folder in File Explorer,
+  where it opens with Install Certificate); Google Play's installs wait for the
+  user meanwhile, and the Library says so. A test identity (MeglerTest) has a
+  certificate of its own.
+
 ## Proven
 
 On this PC (x64, Windows 11 26300), 2026-11-05 and 06:
@@ -437,6 +471,32 @@ On this PC (x64, Windows 11 26300), 2026-11-05 and 06:
   5472, Linux x86_64 5482 and 5566 on libcore, ARM under qemu 5553, ARM64
   under qemu 5451 and 5535 on libcore, 0 failed each; the MSVC build 5118 and
   5182 on libcore, 0 failed (0415d152, the same but for tests of guest code).
+- Google's apps in the x64 package (2026-11-07, 0.1.0.942 under the test
+  identity MeglerTest, branch desktop-gms): Google Play services 26.41.31
+  (`040800`, x86_64), Play Store 53.7.23, microG 0.3.17. The library offered
+  both, the first start asked, and once the user had trusted the test
+  identity's certificate Windows's deployment engine installed both (options
+  0x1); Update All made them again for the next build without copying their
+  APKs. Play Store's own package started with Google's own Google Play
+  services, whose x86_64 libraries loaded under the core (`libgmscore.so`,
+  `libconscrypt_gmscore_jni.so`, its security provider installed,
+  `libleveldbjni.so`); the check-in succeeded
+  (`android.googleapis.com/checkin`); Play Store showed its page for no
+  account; Sign In opened Google's sign-in page in the x86_64 WebView, drawn
+  with OpenGL ES 3 through ANGLE; the user signed in with an account of theirs
+  through its two-step verification, and Play Store showed its home page.
+  The user installed Gmail from it: Play Store handed the bundle to its own
+  Megler (`meglertest:install`, opened in that package by name), which
+  unpacked it (a base and three splits), installed it as an app of its own in
+  2 s, and Play Store started it. The microG test app, as an app of its own
+  set to microG, ran with microG's and passed ("PASS isolated GmsCore
+  broker..."), microG's x86_64 `libconscrypt_gmscore_jni.so` loaded. In the
+  x86 package (0.1.0.943, MeglerTestX86) the x86 WebView ran the WebView test
+  app (pages, the JavaScript bridge, a redirect, input). Seen on the way: Google Play
+  services asks again and again for a module it may not download
+  (`Appsearch.optional`, "logged 6000 times" in two minutes), and some of
+  Chromium's TLS handshakes were reset (`net_error -101`) on this PC's
+  network.
 
 In developer mode the first start after the stage folder was registered again
 over an earlier build is refused the package's files ("core: not loaded: ...

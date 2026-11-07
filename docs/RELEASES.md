@@ -33,6 +33,37 @@ Megler takes neither. Its assets:
   release that has one. Packages of one version for several Windows go into the one release of that version.
 - An asset's name is exactly that: no other words in it, no copies with other names (`Megler_X.Y.Z.N_ARM (1).appx`).
 
+## Google's apps in each package
+
+Every package brings Google Play services, Google Play Store, Google Services Framework and microG
+(`tools/build-appx.sh --bitgapps --gms --play-store --microg`), each package Google Play services of its own processor:
+Megler runs no other processor's code, and Google's variant for a 64-bit processor has a few of its libraries for the
+32-bit one only (docs/PER-APP-PACKAGES.md, "Google's APKs for each processor"). `tools/bitgapps-check.py` refuses
+any other.
+
+| Package | Google Play services (APKMirror's variant) |
+|---|---|
+| `_ARM` | armeabi-v7a, Android 9.0+, nodpi (`26.41.31 (100300-...)`, 264131009) |
+| `_ARM64` | arm64-v8a + armeabi-v7a, Android 9.0+, nodpi (`100400`, 264131013) |
+| `_x64` | x86 + x86_64, Android 7.0+, nodpi (`040800`, 264131008) |
+| `_x86` | x86, Android 7.0+, nodpi (`040700`, 264131007) |
+
+Google Play Store 53.7.23 (universal, Android 7.0+: 11 libraries of each processor), microG 0.3.17 (6 of each) and the
+BiTGApps archive's Google Services Framework (no native code) are the same file in every package. The APKs are not in
+the repository: whoever builds a release keeps them (the builds of 2026-11-07 took them from
+`Downloads\megler-google-apks\<abi>` and `...\universal`), and checks each one's signer before it goes in: Google's
+APKs `CN=Android, OU=Android, O=Google Inc.`, certificate SHA-256 `f0fd6c5b...2d60db83`; microG's `O=NOGAPPS Project`,
+`9bd06727...d14165`.
+
+Google's sign-in is a web page in Android's System WebView, so each package's Android root carries the WebView of its
+processor: `tools/webview-fetch.sh` (32-bit ARM's) and `tools/webview-fetch.sh x86_64|x86|arm64-v8a` before the
+builds; `tools/build-appx.sh` refuses Google's apps without it. (0.1.0.669's desktop packages had none, and Play Store's
+Sign In came back at once on them.)
+
+A phone that installed Google Play services from an earlier package's has it made from the later one at its next
+Update All (`bundledApks::replacementFor`): a later version, or another variant of the same release with more of the
+processor's libraries. An older one never replaces a later one.
+
 ## Publishing one
 
 1. Merge the work branch into `megler` with a merge commit, check that the merged tree is the branch's, tag

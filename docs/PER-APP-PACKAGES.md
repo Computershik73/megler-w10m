@@ -536,6 +536,59 @@ The check took 279 s there, Update All's twelve packages going on beside it;
 Play Store, started after, read its own APK as `DMRUOL...` (the flag in its
 package).
 
+**Google's APKs for each processor.** Megler runs the native code of its own
+processor alone (32-bit ARM on a phone; x86_64, x86 or arm64-v8a on desktop
+Windows, [DESKTOP.md](DESKTOP.md)), and Google builds Google Play services in a
+variant for each processor -- APKMirror lists them by architecture and Android
+version, the six digits in brackets after the version saying both: `100300`
+armeabi-v7a for Android 9 and later, `100400` arm64-v8a + armeabi-v7a, `040700`
+x86 and `040800` x86 + x86_64 for Android 7 and later (there is no x86 build
+for Android 9). The variant for a 64-bit processor carries a few libraries of
+the 32-bit one beside its own, for 32-bit apps that load its code: the
+arm64-v8a variant 8 armeabi-v7a libraries of its 40, the x86_64 one 8 x86
+libraries. The phones' packages carried the arm64-v8a variant (26.41.30,
+264130013) until 2026-11-07, and the phones' logs said `libgmscore.so` and
+`libleveldbjni.so` were not found. `tools/build-appx.sh` now checks each APK it
+bundles (`tools/bitgapps-check.py`): it must be the app its name says, with
+its native code wholly of the package's processor (as many libraries of its
+ABI as of any other). Google Play Store (53.7.23, 11 libraries of each ABI),
+microG (0.3.17, 6 of each) and Google Services Framework (no native code) are
+the same APK for every package.
+
+The bundles since then are Google Play services 26.41.31, the nearest release
+APKMirror has for all four processors, of a variant that stores its DEX files
+(mapped from the APK, not inflated into each app's data, `dvm/mg_dvm_apk.c`)
+where one is built: `100300` (armeabi-v7a) and `100400` (arm64-v8a) for Android
+9 and later, as before. For x86 and x86_64 the only ones are for Android 7 and
+later (`040700`, `040800`), which deflate their DEX files (each app inflates
+them once into its `dex` folder), and for Android 12 and later (`190700`,
+`190800`), which store them but are built for API 31: Megler's libcore is
+Android 9's, the R8 back-ports of the Java 9 to 11 methods Android added at
+API 30 (`List.of` and its kin) are not in them, and APKMirror lists them as
+signed with a second, newer key of Google's beside the old one. Read for what
+they call, 26.41.31's Android 7 build calls 111 methods of the system's that
+Megler's Android root does not have, its Android 9 build 214; of them 14 and 17
+of `java.*`, the 14 among the 17 (`Stream.toList`, `takeWhile` and their like,
+which Google's code calls on the Android versions that have them).
+
+**A later APK of Megler's than the one installed.** Update All makes an app's
+next package from the APK the app has (its folder in the shared folder), so a
+later Megler's Google Play services never reached a phone that had installed
+an earlier one's: the phones would have kept the arm64-v8a variant.
+`bundledApks::replacementFor` compares an installed Google Play services
+(Google's, not microG's) or Google Play Store with the one Megler's package
+brings when the two files differ, by their reports, and the package's takes
+the installed one's place when it is of a later version (264131009 after
+264130013), or of the same release (version codes equal but for their last
+three digits, the variant) with more libraries of this processor -- the x86
+variant after the x86_64 one on a PC where x86 Megler followed x64 Megler. Its
+package is then made from Megler's APK (a new folder of the shared folder,
+copied from the package's own), its report is the library's once the package
+is installed, and the old folder goes with the next listing. An older APK is
+never put over a later one, as Android keeps an update of a system app over an
+older system image; and an APK of the library's that is not installed yet is
+installed as it is, the user's choice.
+
 ## What follows (not done yet)
 
 - What is left of Megler in each package, some 12 MB (`Megler.exe`, ANGLE, the
