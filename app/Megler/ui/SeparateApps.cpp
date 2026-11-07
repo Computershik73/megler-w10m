@@ -9,6 +9,7 @@
 #endif
 #include "shell/BundledApks.h"
 #include "shell/Files.h"
+#include "shell/LogMirror.h"
 #include "shell/PickedFile.h"
 #include "shell/Platform.h"
 #include "shell/ShellLog.h"
@@ -200,6 +201,8 @@ void listInstalled() {
     if (ok) appPackage::removeUnusedAndroidRoots(apps);
     if (ok) registerInstalledServices(apps);
     if (ok) removeUnusedApks(apps);
+    // And the logs' copies of the packages that are gone (shell/LogMirror.h), which would grow in number for ever.
+    if (ok) logMirror::removeUninstalled(apps);
     appPackage::removeUnusedServiceCopies();
     appPackage::removeOldHandedApks();
     appPackage::logSharedSpace();
