@@ -1509,6 +1509,7 @@ public class Main extends Activity {
         wifi();
         mediaMetadata();
         playbackState();
+        remoteUserInfo();
         themeAccent();
         phoneApps();
         installs();
@@ -4314,6 +4315,21 @@ public class Main extends Activity {
                     && back.getActions() == (android.media.session.PlaybackState.ACTION_PLAY_PAUSE | android.media.session.PlaybackState.ACTION_SEEK_TO)
                     && back.getCustomActions().size() == 1 && "like".equals(back.getCustomActions().get(0).getAction())
                     && "Like".contentEquals(back.getCustomActions().get(0).getName());
+        });
+    }
+
+    /**
+     * The platform's MediaSessionManager.RemoteUserInfo made by the app, as AndroidX Media makes one on API 28 and later when a
+     * controller registers its callback (Deezer ended at its start with an InstantiationError: the class was an empty
+     * abstract one): what it was made of comes back, and two of the same are equal.
+     */
+    private void remoteUserInfo() {
+        step("remote-user-info", () -> {
+            android.media.session.MediaSessionManager.RemoteUserInfo u = new android.media.session.MediaSessionManager.RemoteUserInfo("megler.test.data", 12, 10077);
+            android.media.session.MediaSessionManager.RemoteUserInfo same = new android.media.session.MediaSessionManager.RemoteUserInfo("megler.test.data", 12, 10077);
+            detail = u.getPackageName() + " " + u.getPid() + " " + u.getUid();
+            return "megler.test.data".equals(u.getPackageName()) && u.getPid() == 12 && u.getUid() == 10077 && u.equals(same) && u.hashCode() == same.hashCode()
+                    && !u.equals(new android.media.session.MediaSessionManager.RemoteUserInfo("megler.test.data", 13, 10077));
         });
     }
 
