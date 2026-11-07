@@ -97,8 +97,11 @@ MEGLER_API void megler_free(void *p);
  *                                      (<uses-permission>, <uses-permission-sdk-23>), each once, in its order
  *     "permissionMaxSdk": [0, 28],     android:maxSdkVersion of each, place for place: the last Android it is asked
  *                                      on, 0 for every one
- *     "smsRetriever": true,            the manifest has a receiver of Google Play services' SMS Retriever (its
- *                                      SMS_RETRIEVED, or the permission only Google Play services holds); absent when not
+ *     "smsRetriever": true,            the app uses Google Play services' SMS Retriever: its manifest has a receiver of
+ *                                      it (its SMS_RETRIEVED, or the permission only Google Play services holds), or its
+ *                                      code names one of those or the class SmsRetriever (an app that registers its
+ *                                      receiver at run time); absent when neither
+ *     "smsRetrieverInCode": true,      found in its code (the DEX files, read only when the manifest says nothing of it)
  *     "abis": ["armeabi-v7a", "arm64-v8a"],
  *     "abi": "armeabi-v7a",            the one that would be used; absent when there is none
  *     "runnable": true,                false: "reason" says why not (no 32-bit ARM code, no native code at all, ...)
@@ -1963,7 +1966,7 @@ MEGLER_API bool megler_appx_finish(megler_appx *a, const megler_appx_key *key, c
 MEGLER_API bool megler_appx_app_identity(const char *android_package, char *out, size_t outlen);
 /*
  * What that package declares to Windows, from the permissions the Android app's manifest asks for (megler_apk_report's
- * "permissions") and whether it has a receiver of Google Play services' SMS Retriever ("smsRetriever"): a mask of these, each
+ * "permissions") and whether it uses Google Play services' SMS Retriever ("smsRetriever"): a mask of these, each
  * the capabilities named after it, Megler's own needs in every package added:
  *   NETWORK       internetClient, internetClientServer, privateNetworkClientServer: INTERNET
  *   PICTURES      picturesLibrary: every package (Megler's diagnosis folder Pictures\Megler\diag; an app's own pictures)

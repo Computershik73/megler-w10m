@@ -509,6 +509,7 @@ static bool g_portrait;
 /* Not one of the test apps: nothing is known of what its manifest says. */
 static bool g_any_app;
 static bool g_crash_app;
+static bool g_microg_app;
 /* The camera app: it alone has cameras (the stand-in), so that the others still see a phone without one. */
 static bool g_camera_app;
 static volatile i32 g_exited;
@@ -962,6 +963,7 @@ static bool start(const char *apk, const char *android_root)
                                            "\"android.permission.READ_CALL_LOG\",\"android.permission.READ_EXTERNAL_STORAGE\",\"android.permission.WRITE_EXTERNAL_STORAGE\","
                                            "\"android.permission.CAMERA\",\"android.permission.READ_CONTACTS\",\"android.permission.VIBRATE\"],"
                                            "\"permissionMaxSdk\":[0,0,0,0,0,28,0,0,0],\"smsRetriever\":true"));
+            CHECK(report && !strstr(report, "smsRetrieverInCode"));
             if (report) {
                 /* (The names as the shell reads them, for megler_appx_capabilities: the messages, the call history, the camera and the libraries.) */
                 static const char *const names[] = { "android.permission.RECEIVE_SMS", "android.permission.READ_EXTERNAL_STORAGE", "android.permission.CAMERA",
@@ -970,6 +972,12 @@ static bool start(const char *apk, const char *android_root)
                                                                  MG_APPX_CAP_WEBCAM | MG_APPX_CAP_CALL_HISTORY));
             }
         }
+        /*
+         * An app that registers the SMS Retriever's receiver at run time and whose manifest says nothing of it (the microG test
+         * app, as a bank's app): found in its code. The other test apps name it nowhere; the data app has it in its manifest.
+         */
+        if (g_microg_app) CHECK(report && strstr(report, "\"smsRetriever\":true,\"smsRetrieverInCode\":true"));
+        else if (!g_data_app && !g_any_app) CHECK(report && !strstr(report, "smsRetriever"));
         megler_free(report);
     }
     {
@@ -3163,6 +3171,7 @@ int mg_tests_java_run(const char *which, const char *apk, const char *android_ro
     g_crash_app = !strcmp(which, "crash");
     g_camera_app = !strcmp(which, "camera");
     g_data_app = !strcmp(which, "data");
+    g_microg_app = !strcmp(which, "microg");
     /* The data app runs with the phone's look told (megler_set_theme): a cobalt accent and a light theme; its step theme-accent checks what an app sees of it. */
     if (!strcmp(which, "data")) megler_set_theme(0xFF0063B1u, false);
     /* The camera app's second run: every camera refused, as Windows refuses Megler the camera when the user has said no. */

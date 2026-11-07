@@ -53,6 +53,7 @@ typedef struct mg_apk_info {
      * Whether the manifest has a receiver of Google Play services' SMS Retriever: its action SMS_RETRIEVED, or the permission
      * only Google Play services holds as the receiver's. Such an app is handed the text message with its code by Google Play
      * services, which the app hosts here and which hears the phone's messages for it, and needs no SMS permission of its own.
+     * (The report looks in the app's code too, for an app that registers its receiver at run time: report() in mg_apk.c.)
      */
     bool sms_retriever;
     char engine[32];

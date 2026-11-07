@@ -424,7 +424,7 @@ own, nothing else:
 | `ACCESS_FINE_LOCATION`, `ACCESS_COARSE_LOCATION`, `ACCESS_BACKGROUND_LOCATION` | `location` |
 | `READ_EXTERNAL_STORAGE`, `WRITE_EXTERNAL_STORAGE`, `MANAGE_EXTERNAL_STORAGE`, `MANAGE_MEDIA` | `picturesLibrary`, `videosLibrary`, `musicLibrary` |
 | `READ_MEDIA_IMAGES`; `READ_MEDIA_VIDEO`; `READ_MEDIA_VISUAL_USER_SELECTED`, `ACCESS_MEDIA_LOCATION`; `READ_MEDIA_AUDIO` | `picturesLibrary`; `videosLibrary`; both; `musicLibrary` |
-| `RECEIVE_SMS`, `READ_SMS`, or a receiver of Google Play services' SMS Retriever (the report's `smsRetriever`) | `chat` |
+| `RECEIVE_SMS`, `READ_SMS`, or Google Play services' SMS Retriever, a receiver of it in the manifest or its names in the app's code (the report's `smsRetriever`) | `chat` |
 | `READ_PHONE_STATE`, `READ_CALL_LOG` | `phoneCallHistoryPublic` |
 | every package | `picturesLibrary` (Megler's diagnosis folder `Pictures\Megler\diag`, `shell/PicturesDiag.h`; and an app's own pictures, which Android 10 and later let it save without asking), `codeGeneration`, `packageQuery` (the shell checks the Google Play services package is still installed), `backgroundMediaPlayback` (no permission on Android) |
 | no package of an app's | `documentsLibrary` and `removableStorage`, reached only with file types declared, and an app's package declares none; `packageManagement`, Megler's alone |

@@ -855,7 +855,9 @@ Java's calls arrive there.
   unpaused. In the second run no one is asked. Then a platform `Fragment`'s
   request, answered to the fragment. The report the shell reads of the app
   names its permissions, the last Android each is asked on and its receiver of
-  Google Play services' SMS Retriever (the test's `start`).
+  Google Play services' SMS Retriever (the test's `start`); the microG test
+  app's report finds the SMS Retriever in its code, which registers the receiver
+  at run time, and the other test apps' name it nowhere.
 - `download`: a file written to the public Download folder is there, reads
   back, is listed in its folder, has the same length by the path's other
   name (`/sdcard/Download/...`), and the second run finds what the first
@@ -3346,9 +3348,12 @@ is the code, which its `FlashCallReceiver` hears as `PHONE_STATE` RINGING with
 the caller's number. Under Megler neither came (package 482).
 
 - **The shell** watches Windows' chat message store (the `chat` capability),
-  for an app whose manifest asks for `RECEIVE_SMS` or `READ_SMS` or has a
-  receiver of Google Play services' SMS Retriever, and the call history for
-  one that asks for `READ_PHONE_STATE` or `READ_CALL_LOG`: the store of what an
+  for an app whose manifest asks for `RECEIVE_SMS` or `READ_SMS`, or that uses
+  Google Play services' SMS Retriever -- a receiver of it in its manifest, or
+  its names in its code (a bank's app registers that receiver at run time and
+  asks for no SMS permission: the report reads the app's DEX files for the
+  SMS Retriever's action, its sender permission and its class) -- and the call
+  history for one that asks for `READ_PHONE_STATE` or `READ_CALL_LOG`: the store of what an
   app does not ask for is never opened, and its own package does not declare
   the capability (docs/PER-APP-PACKAGES.md, "What a package declares").
   A message the store says was made, incoming and after the app's start, is

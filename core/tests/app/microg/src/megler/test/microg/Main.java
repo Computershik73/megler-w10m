@@ -150,6 +150,17 @@ public class Main extends Activity {
                 }
             }, new IntentFilter(flaggedAction), 0);
             sendBroadcast(new Intent(flaggedAction));
+            /*
+             * The receiver of Google Play services' SMS Retriever, registered at run time with the permission only Google Play
+             * services holds, as a bank's app waits for its code (SmsRetriever.SMS_RETRIEVED_ACTION, SEND_PERMISSION), and its
+             * manifest saying nothing of it: the report finds it in this code (the test's C side, start()).
+             */
+            BroadcastReceiver codeReceiver = new BroadcastReceiver() {
+                @Override public void onReceive(Context context, Intent intent) {}
+            };
+            registerReceiver(codeReceiver, new IntentFilter("com.google.android.gms.auth.api.phone.SMS_RETRIEVED"),
+                    "com.google.android.gms.auth.api.phone.permission.SEND", null);
+            unregisterReceiver(codeReceiver);
             if ("1".equals(System.getenv("MG_MICROG_DROIDGUARD_HANDLE_TEST"))) {
                 ClassLoader loader = gms.getClassLoader();
                 Class<?> prefs = Class.forName("org.microg.gms.droidguard.core.DroidGuardPreferences", true, loader);
