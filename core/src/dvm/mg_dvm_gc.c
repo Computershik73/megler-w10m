@@ -196,15 +196,23 @@ static bool memory_pressed(void)
 
 static void spill(marker *k);
 
+/*
+ * Whether the bytes marked are counted: by a collection that stops the app, whose budget is half of what it marked, and
+ * by a census. One alongside the app does not count them (the heap says what lives), and so reads nothing of an object
+ * it only pushes at a stop: each was a read of its own of memory nothing else was reading -- the classes' Class objects
+ * and the interned strings among them, Spotify's 45,000 and 60,000 -- on a Lumia 650 whose memory was half compressed.
+ */
+static bool g_counting = true;
+
 /* An object reached: marked, and its references to follow later. `o` is an object's start, or anything else (ignored: nothing is read of it before the heap has said it is an object). */
 static void reach(marker *k, void *o)
 {
     if (!o || !(g_parallel || g_alongside ? mg_dvm_heap_set_mark_shared(o) : mg_dvm_heap_set_mark(o))) return;
     k->marked++;
-    k->marked_bytes += MG_DVM_OBJ(o)->size;
-    if (k->counting_conservative) {
-        k->conservative++;
-        k->conservative_bytes += MG_DVM_OBJ(o)->size;
+    if (k->counting_conservative) k->conservative++;
+    if (g_counting) {
+        k->marked_bytes += MG_DVM_OBJ(o)->size;
+        if (k->counting_conservative) k->conservative_bytes += MG_DVM_OBJ(o)->size;
     }
     if (k->n == k->cap && k != &G.main) spill(k);
     if (k->n < k->cap) k->stack[k->n++] = o;
@@ -1058,6 +1066,7 @@ static bool collect(const char *reason, bool sweep, mg_dvm_gc_result *out)
     }
     t_collecting = true;
     g_busy = 1;
+    g_counting = true;
     t0 = mg_time_monotonic_ns();
     g_collector = mg_dvm_self();
     mg_dvm_lock();
@@ -1329,6 +1338,7 @@ static void collect_alongside(void)
     helpers_start();
     t_collecting = true;
     g_collector = NULL;
+    g_counting = false;
     /* The arenas' write watch started again before the first stop, the app running (mg_dvm_heap_watch_restart). */
     tw = mg_time_monotonic_ns();
     mg_dvm_heap_watch_restart();
