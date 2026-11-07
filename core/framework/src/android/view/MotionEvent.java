@@ -18,6 +18,16 @@ public final class MotionEvent extends InputEvent {
     private float[] rxs, rys;           /* on the screen */
     private long downTime, eventTime;
     private float[] axisScroll;
+    /*
+     * The samples a batched move gathered before its current one, oldest first (getHistorySize, getHistorical*): hcount of
+     * them, each `count` pointers wide (hxs[sample * count + pointer]), in the receiving view's coordinates and on the
+     * screen, and their times. Megler's driver batches the moves that come between two frames into one event, as Android
+     * does (megler.AppRunner.touch), and VelocityTracker reads every sample. At most MAX_HISTORY, the oldest dropped.
+     */
+    private static final int MAX_HISTORY = 256;
+    private int hcount;
+    private long[] htimes;
+    private float[] hxs, hys, hrxs, hrys;
 
     private MotionEvent() {}
     /** Megler's driver: a whole event at once, in screen coordinates. */
@@ -43,12 +53,22 @@ public final class MotionEvent extends InputEvent {
         return e;
     }
     public static MotionEvent obtain(MotionEvent o) {
+        MotionEvent e = obtainNoHistory(o);
+        if (o.hcount > 0) {
+            int n = o.hcount * o.count;
+            e.hcount = o.hcount;
+            e.htimes = java.util.Arrays.copyOf(o.htimes, o.hcount);
+            e.hxs = java.util.Arrays.copyOf(o.hxs, n); e.hys = java.util.Arrays.copyOf(o.hys, n);
+            e.hrxs = java.util.Arrays.copyOf(o.hrxs, n); e.hrys = java.util.Arrays.copyOf(o.hrys, n);
+        }
+        return e;
+    }
+    public static MotionEvent obtainNoHistory(MotionEvent o) {
         MotionEvent e = new MotionEvent();
         e.downTime = o.downTime; e.eventTime = o.eventTime; e.action = o.action; e.count = o.count; e.ids = o.ids.clone(); e.xs = o.xs.clone(); e.ys = o.ys.clone();
         e.rxs = o.rxs.clone(); e.rys = o.rys.clone(); e.source = o.source; e.buttonState = o.buttonState; e.flags = o.flags; e.metaState = o.metaState;
         return e;
     }
-    public static MotionEvent obtainNoHistory(MotionEvent o) { return obtain(o); }
     public final MotionEvent copy() { return obtain(this); }
     public final void recycle() {}
     public final int getAction() { return action; }
@@ -99,16 +119,97 @@ public final class MotionEvent extends InputEvent {
     public final int getButtonState() { return buttonState; }
     public final void setButtonState(int b) { buttonState = b; }
     public final int getActionButton() { return 0; }
-    public final int getHistorySize() { return 0; }
-    public final float getHistoricalX(int h) { return getX(); }
-    public final float getHistoricalY(int h) { return getY(); }
-    public final float getHistoricalX(int p, int h) { return getX(p); }
-    public final float getHistoricalY(int p, int h) { return getY(p); }
-    public final float getHistoricalAxisValue(int axis, int p, int h) { return getAxisValue(axis, p); }
-    public final float getHistoricalAxisValue(int axis, int h) { return getAxisValue(axis, 0); }
-    public final float getHistoricalPressure(int p, int h) { return getPressure(); }
-    public final long getHistoricalEventTime(int h) { return eventTime; }
-    public final void getHistoricalPointerCoords(int p, int h, PointerCoords out) { getPointerCoords(p, out); }
+    public final int getHistorySize() { return hcount; }
+    public final float getHistoricalX(int h) { return getHistoricalX(0, h); }
+    public final float getHistoricalY(int h) { return getHistoricalY(0, h); }
+    /* (A sample out of range is the current one, as these were before there was a history: Android's throws.) */
+    public final float getHistoricalX(int p, int h) { return h >= 0 && h < hcount ? hxs[h * count + p] : getX(p); }
+    public final float getHistoricalY(int p, int h) { return h >= 0 && h < hcount ? hys[h * count + p] : getY(p); }
+    public final float getHistoricalAxisValue(int axis, int p, int h) {
+        if (axis == AXIS_X) return getHistoricalX(p, h);
+        if (axis == AXIS_Y) return getHistoricalY(p, h);
+        if (axis == AXIS_PRESSURE) return 1f;
+        return getAxisValue(axis, p);
+    }
+    public final float getHistoricalAxisValue(int axis, int h) { return getHistoricalAxisValue(axis, 0, h); }
+    public final float getHistoricalPressure(int p, int h) { return 1f; }
+    public final float getHistoricalPressure(int h) { return 1f; }
+    public final long getHistoricalEventTime(int h) { return h >= 0 && h < hcount ? htimes[h] : eventTime; }
+    public final long getHistoricalEventTimeNanos(int h) { return getHistoricalEventTime(h) * 1000000L; }
+    public final void getHistoricalPointerCoords(int p, int h, PointerCoords out) {
+        getPointerCoords(p, out);
+        out.x = getHistoricalX(p, h); out.y = getHistoricalY(p, h); out.pressure = 1f;
+    }
+    /* Megler: a sample's place on the screen, for VelocityTracker, which goes by the screen. */
+    final float meglerHistoricalRawX(int p, int h) { return h >= 0 && h < hcount ? hrxs[h * count + p] : getRawX(p); }
+    final float meglerHistoricalRawY(int p, int h) { return h >= 0 && h < hcount ? hrys[h * count + p] : getRawY(p); }
+
+    /** Android's: the current sample into the history, and pointer 0 at (x, y) of this event's coordinates the current. */
+    public final void addBatch(long eventTime, float x, float y, float pressure, float size, int metaState) {
+        float[] nx = xs.clone(), ny = ys.clone();
+        nx[0] = x; ny[0] = y;
+        addSample(eventTime, nx, ny, false);
+        this.metaState = metaState;
+    }
+    /** Android's: the current sample into the history, and every pointer where `coords` says the current. */
+    public final void addBatch(long eventTime, PointerCoords[] coords, int metaState) {
+        float[] nx = xs.clone(), ny = ys.clone();
+        for (int i = 0; i < count && i < coords.length; i++) { nx[i] = coords[i].x; ny[i] = coords[i].y; }
+        addSample(eventTime, nx, ny, false);
+        this.metaState = metaState;
+    }
+    /** Android's: another move of the same pointers, its samples after this one's; false (nothing added) for anything else. */
+    public final boolean addBatch(MotionEvent e) {
+        if (e == null || getActionMasked() != ACTION_MOVE || e.getActionMasked() != ACTION_MOVE || e.count != count || e.source != source) return false;
+        for (int i = 0; i < count; i++) if (e.ids[i] != ids[i]) return false;
+        for (int h = 0; h < e.hcount; h++) {
+            float[] nx = new float[count], ny = new float[count];
+            System.arraycopy(e.hrxs, h * count, nx, 0, count); System.arraycopy(e.hrys, h * count, ny, 0, count);
+            addSample(e.htimes[h], nx, ny, true);
+        }
+        addSample(e.eventTime, e.rxs.clone(), e.rys.clone(), true);
+        return true;
+    }
+    /** Megler's driver: one more sample of a batched move, its pointers -- the same ones, in the same order -- at (sx, sy) on the screen. */
+    public final void meglerAddSample(long eventTime, float[] sx, float[] sy) { addSample(eventTime, sx, sy, true); }
+    /** Megler's driver: whether this event's pointers are the first n of `pointerIds`, in that order. */
+    public final boolean meglerSamePointers(int[] pointerIds, int n) {
+        if (n != count) return false;
+        for (int i = 0; i < n; i++) if (ids[i] != pointerIds[i]) return false;
+        return true;
+    }
+    /*
+     * The current sample into the history and (nx, ny) the current one, at `t`: in this event's coordinates, or on the
+     * screen (`screen`), the other of the two kept as far from them as the current sample's are.
+     */
+    private void addSample(long t, float[] nx, float[] ny, boolean screen) {
+        int n = count;
+        if (hcount == MAX_HISTORY) {
+            System.arraycopy(htimes, 1, htimes, 0, hcount - 1);
+            System.arraycopy(hxs, n, hxs, 0, (hcount - 1) * n); System.arraycopy(hys, n, hys, 0, (hcount - 1) * n);
+            System.arraycopy(hrxs, n, hrxs, 0, (hcount - 1) * n); System.arraycopy(hrys, n, hrys, 0, (hcount - 1) * n);
+            hcount--;
+        }
+        if (htimes == null || hcount == htimes.length) {
+            int cap = htimes == null ? 4 : Math.min(MAX_HISTORY, htimes.length * 2);
+            htimes = htimes == null ? new long[cap] : java.util.Arrays.copyOf(htimes, cap);
+            hxs = hxs == null ? new float[cap * n] : java.util.Arrays.copyOf(hxs, cap * n);
+            hys = hys == null ? new float[cap * n] : java.util.Arrays.copyOf(hys, cap * n);
+            hrxs = hrxs == null ? new float[cap * n] : java.util.Arrays.copyOf(hrxs, cap * n);
+            hrys = hrys == null ? new float[cap * n] : java.util.Arrays.copyOf(hrys, cap * n);
+        }
+        int at = hcount * n;
+        htimes[hcount] = eventTime;
+        System.arraycopy(xs, 0, hxs, at, n); System.arraycopy(ys, 0, hys, at, n);
+        System.arraycopy(rxs, 0, hrxs, at, n); System.arraycopy(rys, 0, hrys, at, n);
+        hcount++;
+        for (int i = 0; i < n; i++) {
+            float dx = rxs[i] - xs[i], dy = rys[i] - ys[i];
+            if (screen) { rxs[i] = nx[i]; rys[i] = ny[i]; xs[i] = nx[i] - dx; ys[i] = ny[i] - dy; }
+            else { xs[i] = nx[i]; ys[i] = ny[i]; rxs[i] = nx[i] + dx; rys[i] = ny[i] + dy; }
+        }
+        eventTime = t;
+    }
     public final long getDownTime() { return downTime; }
     public final void setDownTime(long t) { downTime = t; }
     public final long getEventTime() { return eventTime; }
@@ -123,11 +224,16 @@ public final class MotionEvent extends InputEvent {
     public final int getDeviceId() { return 1; }
     public final InputDevice getDevice() { return InputDevice.getDevice(1); }
     public final int getDisplayId() { return 0; }
-    public final void offsetLocation(float dx, float dy) { if (dx != 0 || dy != 0) for (int i = 0; i < count; i++) { xs[i] += dx; ys[i] += dy; } }
+    public final void offsetLocation(float dx, float dy) {
+        if (dx == 0 && dy == 0) return;
+        for (int i = 0; i < count; i++) { xs[i] += dx; ys[i] += dy; }
+        for (int i = 0, n = hcount * count; i < n; i++) { hxs[i] += dx; hys[i] += dy; }
+    }
     public final void setLocation(float x, float y) { offsetLocation(x - xs[0], y - ys[0]); }
     public final void transform(android.graphics.Matrix m) {
         float[] p = new float[2];
         for (int i = 0; i < count; i++) { p[0] = xs[i]; p[1] = ys[i]; m.mapPoints(p); xs[i] = p[0]; ys[i] = p[1]; }
+        for (int i = 0, n = hcount * count; i < n; i++) { p[0] = hxs[i]; p[1] = hys[i]; m.mapPoints(p); hxs[i] = p[0]; hys[i] = p[1]; }
     }
     public final void applyTransform(android.graphics.Matrix m) { transform(m); }
     /** Megler: a mouse wheel or trackpad scroll. */
@@ -140,12 +246,24 @@ public final class MotionEvent extends InputEvent {
     public final MotionEvent split(int idBits) {
         int n = 0;
         for (int i = 0; i < count; i++) if ((idBits & (1 << ids[i])) != 0) n++;
-        MotionEvent e = obtain(this);
+        MotionEvent e = obtainNoHistory(this);
         e.count = n; e.ids = new int[n]; e.xs = new float[n]; e.ys = new float[n]; e.rxs = new float[n]; e.rys = new float[n];
         int k = 0, newIndex = -1, am = getActionMasked(), ai = getActionIndex();
         for (int i = 0; i < count; i++) if ((idBits & (1 << ids[i])) != 0) {
             if (i == ai) newIndex = k;
             e.ids[k] = ids[i]; e.xs[k] = xs[i]; e.ys[k] = ys[i]; e.rxs[k] = rxs[i]; e.rys[k] = rys[i]; k++;
+        }
+        if (hcount > 0 && n > 0) {
+            e.hcount = hcount;
+            e.htimes = java.util.Arrays.copyOf(htimes, hcount);
+            e.hxs = new float[hcount * n]; e.hys = new float[hcount * n]; e.hrxs = new float[hcount * n]; e.hrys = new float[hcount * n];
+            for (int h = 0; h < hcount; h++) {
+                int j = 0;
+                for (int i = 0; i < count; i++) if ((idBits & (1 << ids[i])) != 0) {
+                    e.hxs[h * n + j] = hxs[h * count + i]; e.hys[h * n + j] = hys[h * count + i];
+                    e.hrxs[h * n + j] = hrxs[h * count + i]; e.hrys[h * n + j] = hrys[h * count + i]; j++;
+                }
+            }
         }
         if (am == ACTION_POINTER_DOWN || am == ACTION_POINTER_UP) {
             if (newIndex < 0) e.action = ACTION_MOVE;
@@ -270,16 +388,11 @@ public final class MotionEvent extends InputEvent {
     public static android.view.MotionEvent obtain(long p0, long p1, int p2, int p3, android.view.MotionEvent.PointerProperties[] p4, android.view.MotionEvent.PointerCoords[] p5, int p6, int p7, float p8, float p9, int p10, int p11, int p12, int p13, int p14) { return null; }
     public static android.view.MotionEvent obtain(long p0, long p1, int p2, int p3, android.view.MotionEvent.PointerProperties[] p4, android.view.MotionEvent.PointerCoords[] p5, int p6, int p7, float p8, float p9, int p10, int p11, int p12, int p13, int p14, int p15) { return null; }
     public static java.lang.String toolTypeToString(int p0) { return null; }
-    public void addBatch(long p0, float p1, float p2, float p3, float p4, int p5) {}
-    public void addBatch(long p0, android.view.MotionEvent.PointerCoords[] p1, int p2) {}
-    public boolean addBatch(android.view.MotionEvent p0) { return false; }
     public void cancel() {}
     public android.view.MotionEvent clampNoHistory(float p0, float p1, float p2, float p3) { return this; }
     public int getClassification() { return 0; }
-    public long getHistoricalEventTimeNanos(int p0) { return 0L; }
     public float getHistoricalOrientation(int p0) { return 0f; }
     public float getHistoricalOrientation(int p0, int p1) { return 0f; }
-    public float getHistoricalPressure(int p0) { return 0f; }
     public float getHistoricalSize(int p0) { return 0f; }
     public float getHistoricalSize(int p0, int p1) { return 0f; }
     public float getHistoricalToolMajor(int p0) { return 0f; }

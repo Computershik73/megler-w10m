@@ -16,17 +16,25 @@ public final class VelocityTracker {
         if (am == MotionEvent.ACTION_DOWN) clear();
         // Keep the small interval within this gesture. A float cannot represent
         // individual milliseconds once the device has been up for several hours.
-        float t = e.getEventTime() - e.getDownTime();
+        long down = e.getDownTime();
+        // A batched move's earlier samples first, oldest first, as Android's tracker takes them (megler.AppRunner batches moves).
+        for (int s = 0; s < e.getHistorySize(); s++) add(e, s, e.getHistoricalEventTime(s) - down);
+        add(e, -1, e.getEventTime() - down);
+        mActive = e.getPointerId(0);
+    }
+    /* Sample `s` of the event's history (-1: its current one), `t` ms into the gesture, for each of its pointers. */
+    private void add(MotionEvent e, int s, float t) {
         for (int i = 0; i < e.getPointerCount(); i++) {
             int id = e.getPointerId(i);
             float[] h = mHist.get(id);
             if (h == null) { h = new float[N * 3]; mHist.put(id, h); }
             int c = mCount.get(id);
             int k = (c % N) * 3;
-            h[k] = t; h[k + 1] = e.getRawX(i); h[k + 2] = e.getRawY(i);
+            h[k] = t;
+            h[k + 1] = s < 0 ? e.getRawX(i) : e.meglerHistoricalRawX(i, s);
+            h[k + 2] = s < 0 ? e.getRawY(i) : e.meglerHistoricalRawY(i, s);
             mCount.put(id, c + 1);
         }
-        mActive = e.getPointerId(0);
     }
     public void computeCurrentVelocity(int units) { computeCurrentVelocity(units, Float.MAX_VALUE); }
     public void computeCurrentVelocity(int units, float max) {
