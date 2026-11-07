@@ -3,6 +3,7 @@
 #include "player/Session.h"
 
 #include "player/BarsHost.h"
+#include "player/DisplayHost.h"
 #include "player/MediaControls.h"
 #include "player/SystemHost.h"
 #include "library/PhoneAppsList.h"
@@ -53,6 +54,13 @@ bool gSuspended = false, gVisible = true, gFocused = true;
 // system media controls stand for it: player/MediaControls.cpp); an engine's game is not, whether or not it stops its
 // own sound when paused.
 bool gBackgroundAudio = false;
+
+// The surface the app was started with or last told of (megler_set_surface), and one asked for while it was still
+// starting, which is told once megler_run has returned (width 0: none).
+struct Surface {
+    int width = 0, height = 0, dpi = 0, rotation = 0;
+};
+Surface gSurface, gSurfaceWaiting;
 
 // What the app was last told, and the order it is told in: held across the
 // calls, by the one thread telling.
@@ -188,7 +196,7 @@ std::shared_ptr<AudioHost> audio() {
 }
 
 bool start(const ApkEntry& apk, winrt::Windows::UI::Xaml::Controls::SwapChainPanel const& panel, int width, int height,
-           int densityDpi) {
+           int densityDpi, int rotation) {
     std::shared_ptr<WindowHost> window;
     std::shared_ptr<AudioHost> audio;
     {
@@ -204,6 +212,8 @@ bool start(const ApkEntry& apk, winrt::Windows::UI::Xaml::Controls::SwapChainPan
         window = gWindow = std::make_shared<WindowHost>(panel, width, height);
         audio = gAudio = std::make_shared<AudioHost>();
         gBackgroundAudio = apk.report.engine == "java";
+        gSurface = Surface{width, height, densityDpi, rotation};
+        gSurfaceWaiting = Surface{};
         // The other apps the phone has, for a launcher (library/PhoneAppsList.h), where the folder is there.
         const std::wstring apps = phoneAppsList::folder();
         gAppsDir = !apps.empty() && files::exists(apps + L"\\apps.txt") ? narrow(apps) : std::string();
@@ -219,9 +229,9 @@ bool start(const ApkEntry& apk, winrt::Windows::UI::Xaml::Controls::SwapChainPan
     audio->prepare(44100);
     // The phone's time zone and battery, which an app asks the layer for.
     phoneState::tell();
-    shellLog::write(format("session: starting %s (%s%s) at %dx%d, %d dpi", apk.id.c_str(), apk.report.package.c_str(),
+    shellLog::write(format("session: starting %s (%s%s) at %dx%d, %d dpi, turned %d degrees", apk.id.c_str(), apk.report.package.c_str(),
                            apk.report.splits.empty() ? "" : format(", with %u splits", unsigned(apk.report.splits.size())).c_str(), width, height,
-                           densityDpi));
+                           densityDpi, rotation * 90));
     // Google Play Store with Google's own Google Play services always, which it waits for to be installed (AppShell::playStoreCanStart):
     // with microG's its front page had no Android ID ("Server error").
     const bool playStore = apk.report.package == "com.android.vending";
@@ -229,7 +239,7 @@ bool start(const ApkEntry& apk, winrt::Windows::UI::Xaml::Controls::SwapChainPan
     // (megler_appx_capabilities; -1, a report that names no permissions: both, as before).
     const int capabilities = apk.report.capabilities();
     const bool messages = capabilities < 0 || (capabilities & MEGLER_APPX_CAP_CHAT), calls = capabilities < 0 || (capabilities & MEGLER_APPX_CAP_CALL_HISTORY);
-    std::thread([window, audio, width, height, densityDpi, playStore, messages, calls] {
+    std::thread([window, audio, width, height, densityDpi, rotation, playStore, messages, calls] {
         // The flags a diagnosis over USB asked for, in place before the run reads them (shell/PicturesDiag.h).
         picturesDiag::waitForFlags();
         megler_run_config config = {};
@@ -268,6 +278,7 @@ bool start(const ApkEntry& apk, winrt::Windows::UI::Xaml::Controls::SwapChainPan
         config.width = width;
         config.height = height;
         config.density_dpi = densityDpi;
+        config.rotation = rotation;
         config.window = window->callbacks();
         config.audio = audio->callbacks();
         config.media = MediaHost::shared().callbacks();
@@ -303,12 +314,15 @@ bool start(const ApkEntry& apk, winrt::Windows::UI::Xaml::Controls::SwapChainPan
         config.keyboard = KeyboardHost::shared().callbacks();
         // The phone's bars a Java app wants hidden (player/BarsHost.h); what they cover goes back through setInsets.
         config.bars = BarsHost::shared().callbacks();
+        // Which way up the app wants its screen (player/DisplayHost.h); the surface's new size goes back through setSurface.
+        config.display = DisplayHost::shared().callbacks();
         config.media_session = mediaControls::callbacks();
         config.system = systemHost::callbacks();
         config.apps_dir = gAppsDir.empty() ? nullptr : gAppsDir.c_str();
         config.on_exit = &onExit;
         config.user = nullptr;
         const bool started = megler_run(&config);
+        Surface waiting;
         {
             std::lock_guard<std::mutex> lock(gMutex);
             if (!started) {
@@ -322,6 +336,14 @@ bool start(const ApkEntry& apk, winrt::Windows::UI::Xaml::Controls::SwapChainPan
             if (gSnapshot.state != State::starting) return;
             gSnapshot.state = State::running;
             shellLog::write("session: running");
+            waiting = gSurfaceWaiting;
+            gSurfaceWaiting = Surface{};
+        }
+        // The window was resized or turned while the app was starting: its surface follows now (megler_run took the size of before).
+        if (waiting.width > 0) {
+            shellLog::write(format("session: the surface asked for while the app started: %dx%d, %d dpi, turned %d degrees", waiting.width,
+                                   waiting.height, waiting.dpi, waiting.rotation * 90));
+            megler_set_surface(waiting.width, waiting.height, waiting.dpi, waiting.rotation);
         }
         // The phone's text messages and calls from now on, for the app (megler_sms_received, megler_call_logged): those its
         // permissions ask for. An app that asks for neither has Windows asked for neither store.
@@ -385,6 +407,21 @@ void keyboardClosed() { megler_keyboard_closed(); }
 void keyboardHeight(int pixels) { megler_keyboard_height(pixels < 0 ? 0 : pixels); }
 
 void setInsets(int left, int top, int right, int bottom) { megler_set_insets(left, top, right, bottom); }
+
+void setSurface(int width, int height, int densityDpi, int rotation) {
+    {
+        std::lock_guard<std::mutex> lock(gMutex);
+        if (gSurface.width == width && gSurface.height == height && gSurface.dpi == densityDpi && gSurface.rotation == rotation) return;
+        gSurface = Surface{width, height, densityDpi, rotation};
+        if (gSnapshot.state == State::starting) {
+            gSurfaceWaiting = gSurface;
+            return;
+        }
+        if (gSnapshot.state != State::running) return;
+    }
+    // (Like touch: the core takes it from any thread, and it returns at once.)
+    megler_set_surface(width, height, densityDpi, rotation);
+}
 
 void setSuspended(bool suspended) {
     {
