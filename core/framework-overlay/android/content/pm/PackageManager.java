@@ -24,7 +24,9 @@
 // for ACTION_CREATE_SHORTCUT), and getDrawable their icons. And canRequestPackageInstalls is true: an app store may hand an APK
 // to Megler's installer (megler.Installs), which asks the user. And
 // getDefaultActivityIcon is the platform's sym_def_app_icon, where it was a
-// transparent colour with no size.
+// transparent colour with no size. And the app's permissions are megler.Permissions':
+// checkPermission and getPackageInfo's requestedPermissionsFlags say which it holds
+// (every one was granted, whatever its name), getPermissionInfo which are dangerous.
 package android.content.pm;
 
 import android.content.ComponentName;
@@ -115,7 +117,8 @@ public class PackageManager {
         if (splits != null) { p.splitNames = splits.clone(); p.splitRevisionCodes = new int[splits.length]; }
         p.requestedPermissions = megler.Manifest.permissions.toArray(new String[0]);
         p.requestedPermissionsFlags = new int[p.requestedPermissions.length];
-        java.util.Arrays.fill(p.requestedPermissionsFlags, PackageInfo.REQUESTED_PERMISSION_GRANTED);
+        for (int i = 0; i < p.requestedPermissions.length; i++)
+            if (megler.Permissions.check(p.requestedPermissions[i]) == PERMISSION_GRANTED) p.requestedPermissionsFlags[i] = PackageInfo.REQUESTED_PERMISSION_GRANTED;
         if ((flags & GET_ACTIVITIES) != 0) { p.activities = new ActivityInfo[megler.Manifest.activities.size()]; for (int i = 0; i < p.activities.length; i++) p.activities[i] = activity(megler.Manifest.activities.get(i)); }
         if ((flags & GET_RECEIVERS) != 0) { p.receivers = new ActivityInfo[megler.Manifest.receivers.size()]; for (int i = 0; i < p.receivers.length; i++) p.receivers[i] = activity(megler.Manifest.receivers.get(i)); }
         if ((flags & GET_SERVICES) != 0) { p.services = new ServiceInfo[megler.Manifest.services.size()]; for (int i = 0; i < p.services.length; i++) p.services[i] = service(megler.Manifest.services.get(i)); }
@@ -229,9 +232,22 @@ public class PackageManager {
         return l.toArray(new FeatureInfo[0]);
     }
     public String[] getSystemSharedLibraryNames() { return new String[] { "org.apache.http.legacy" }; }
-    public int checkPermission(String perm, String pkg) { return PERMISSION_GRANTED; }
+    /* The app's own as megler.Permissions has them; Google's packages hold theirs, as a phone's system apps; another app's are
+       not known here, and are granted as before. */
+    public int checkPermission(String perm, String pkg) { return mine(pkg) ? megler.Permissions.check(perm) : PERMISSION_GRANTED; }
     public boolean isPermissionRevokedByPolicy(String perm, String pkg) { return false; }
-    public PermissionInfo getPermissionInfo(String name, int flags) throws NameNotFoundException { PermissionInfo p = new PermissionInfo(); p.name = name; return p; }
+    /* A dangerous permission of Android's says so, with its group (megler.Permissions), as Android's does: an app that asks
+       which of its permissions it must request reads protectionLevel. */
+    public PermissionInfo getPermissionInfo(String name, int flags) throws NameNotFoundException {
+        PermissionInfo p = new PermissionInfo();
+        p.name = name;
+        String group = megler.Permissions.groupOf(name);
+        if (group != null) {
+            p.protectionLevel = PermissionInfo.PROTECTION_DANGEROUS;
+            p.group = "android.permission-group." + group.toUpperCase(java.util.Locale.ROOT);
+        }
+        return p;
+    }
     public int checkSignatures(String a, String b) { return SIGNATURE_MATCH; }
     public int checkSignatures(int a, int b) { return SIGNATURE_MATCH; }
     public boolean hasSigningCertificate(String pkg, byte[] cert, int type) { return true; }

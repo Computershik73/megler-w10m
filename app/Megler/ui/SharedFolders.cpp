@@ -2,6 +2,8 @@
 
 #include "ui/SharedFolders.h"
 
+#include "library/Library.h"
+#include "player/PermissionHost.h"
 #include "player/StorageHost.h"
 #include "shell/AppPackage.h"
 #include "shell/Files.h"
@@ -139,6 +141,24 @@ winrt::fire_and_forget offerEach(std::vector<Folder> folders, std::function<void
 }
 
 }  // namespace
+
+bool wantedBy(const ApkReport& report) {
+    if (!report.permissionsKnown) return true;
+    static const char* const storage[] = {"READ_EXTERNAL_STORAGE", "WRITE_EXTERNAL_STORAGE", "MANAGE_EXTERNAL_STORAGE", "READ_MEDIA_IMAGES",
+                                          "READ_MEDIA_VIDEO", "READ_MEDIA_AUDIO", "READ_MEDIA_VISUAL_USER_SELECTED"};
+    bool asks = false;
+    for (const char* name : storage)
+        for (const auto& p : report.permissions) asks = asks || p == std::string("android.permission.") + name;
+    if (!asks) {
+        shellLog::write("shared folders: none offered, " + report.package + " asks for no storage");
+        return false;
+    }
+    if (permissionHost::kept(report.package, "storage") == MEGLER_PERMISSION_DENIED_FIXED) {
+        shellLog::write("shared folders: none offered, " + report.package + " was refused the storage for good");
+        return false;
+    }
+    return true;
+}
 
 void publish() {
     if (appPackage::isSingleApp() || listFile().empty() || !StorageHost::shared().searched()) return;

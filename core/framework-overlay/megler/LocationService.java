@@ -3,7 +3,8 @@
 // delivered to them.
 //
 // One thread of the layer's, "megler-location", runs while an app wants the location. It asks whether the app may have it --
-// the first time, Windows asks the user, which this thread waits for, never the app's -- then has the shell follow it at
+// the first time, Windows asks the user, which this thread waits for, never the app's, and only for an app that holds a
+// location permission (megler.Permissions; mayAsk) -- then has the shell follow it at
 // the shortest interval asked for, and four times a second hands each request a fix newer than its last one, once its
 // minimum time has gone by and the phone has moved its minimum distance: to a listener on its Looper or Executor, to a
 // PendingIntent as KEY_LOCATION_CHANGED, or once to getCurrentLocation's consumer (null after 30 seconds without one). A
@@ -13,8 +14,7 @@
 // All four providers -- gps, network, passive, fused -- are the same fixes, each named as asked for (passive: as found).
 // getLastKnownLocation is the newest fix the shell has; when there is none, the location is followed for half a minute so
 // that the next call finds one, as on a phone something has always just asked. Until the user has been asked, the location
-// counts as on (they are asked in the background then), so that an app that first checks isProviderEnabled("gps") goes on
-// to ask for it.
+// counts as on, so that an app that first checks isProviderEnabled("gps") goes on to ask for it; nothing is asked then.
 //
 // The log says each request as it comes, whose it is (the listener's class, the PendingIntent's package, the consumer's class)
 // and how often, and the first fix each is handed: whether an app that finds no location asked at all, and whether a fix
@@ -62,7 +62,6 @@ public final class LocationService {
     private static final ArrayList<Request> REQUESTS = new ArrayList<>();
     private static Thread sWorker;
     private static long sWarmUntil;
-    private static boolean sAsking;
     private static int sSaid;
 
     private LocationService() {}
@@ -76,30 +75,25 @@ public final class LocationService {
         return false;
     }
 
-    /** Whether the location is on for the app: on, or not asked yet (asked now, in the background). */
+    /**
+     * Whether the location is on for the app: on, or not decided yet, so that an app that first checks isProviderEnabled("gps")
+     * goes on to ask for it. Nothing is asked here. It was, in the background: Google Play services in an app asks this of
+     * every provider, and Windows asked the user for the location for apps that never wanted it.
+     */
     public static boolean enabled() {
         int a = LocationNative.access(false);
-        if (a == LocationNative.UNKNOWN) {
-            askInBackground();
-            return true;
-        }
-        return a == LocationNative.ON;
+        return a == LocationNative.ON || a == LocationNative.UNKNOWN;
     }
 
-    private static void askInBackground() {
-        synchronized (LOCK) {
-            if (sAsking) return;
-            sAsking = true;
-        }
-        Thread t = new Thread(() -> {
-            try {
-                LocationNative.access(true);
-            } finally {
-                synchronized (LOCK) { sAsking = false; }
-            }
-        }, "megler-location-ask");
-        t.setDaemon(true);
-        t.start();
+    /**
+     * Whether Windows may ask the user for the location as it is wanted: only for an app that holds a location permission
+     * (megler.Permissions: granted, or with the install), whoever in it wants the location. Google Play services in the app,
+     * which follows the location for its own ends too, never has the user asked for an app that did not ask; an app that
+     * did is asked when it requests the permission.
+     */
+    private static boolean mayAsk() {
+        return Permissions.check("android.permission.ACCESS_FINE_LOCATION") == Permissions.GRANTED
+            || Permissions.check("android.permission.ACCESS_COARSE_LOCATION") == Permissions.GRANTED;
     }
 
     /** The newest fix, named for `provider`; null when there is none (then the location is followed a while) or it is off. */
@@ -242,7 +236,7 @@ public final class LocationService {
 
     private static void follow() {
         int started = -1;
-        int access = LocationNative.access(true);
+        int access = LocationNative.access(mayAsk());
         long accessAt = SystemClock.elapsedRealtime();
         try {
             for (;;) {

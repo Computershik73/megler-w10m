@@ -3,6 +3,7 @@
 #include "player/SystemHost.h"
 
 #include "library/PhoneAppsList.h"
+#include "player/PermissionHost.h"
 
 #include "shell/AppPackage.h"
 #include "shell/Files.h"
@@ -10,6 +11,10 @@
 #include "shell/Strings.h"
 
 #include <winrt/Windows.ApplicationModel.DataTransfer.h>
+
+#include <chrono>
+#include <condition_variable>
+#include <memory>
 
 namespace megler::app::systemHost {
 
@@ -199,6 +204,7 @@ megler_system_host callbacks() {
     host.install_apk = &installApkThunk;
     host.launch_app = &launchAppThunk;
     host.uninstall_app = &uninstallAppThunk;
+    host.permission = &permissionHost::thunk;
     return host;
 }
 
@@ -206,6 +212,46 @@ void setRunningApp(const std::string& label, const std::string& package) {
     std::lock_guard<std::mutex> lock(gMutex);
     gLabel = label.empty() ? std::string("The app") : label;
     gPackage = package;
+}
+
+std::string runningLabel() {
+    std::lock_guard<std::mutex> lock(gMutex);
+    return gLabel;
+}
+
+std::string runningPackage() {
+    std::lock_guard<std::mutex> lock(gMutex);
+    return gPackage;
+}
+
+int askUser(const std::string& title, const std::string& message, const std::vector<std::string>& buttons) {
+    struct State {
+        std::mutex mutex;
+        std::condition_variable cv;
+        bool done = false;
+        int button = -1;
+    };
+    auto state = std::make_shared<State>();
+    {
+        std::lock_guard<std::mutex> lock(gMutex);
+        if (!gDispatcher || !gHooks.ask) return -1;
+    }
+    onUi([state, title, message, buttons] {
+        auto finish = [state](int button) {
+            std::lock_guard<std::mutex> lock(state->mutex);
+            state->button = button;
+            state->done = true;
+            state->cv.notify_all();
+        };
+        if (auto h = hooks(); h.ask) h.ask(title, message, buttons, finish);
+        else finish(-1);
+    });
+    std::unique_lock<std::mutex> lock(state->mutex);
+    if (!state->cv.wait_for(lock, std::chrono::minutes(10), [&state] { return state->done; })) {
+        shellLog::write("system: no answer to \"" + title + "\" within ten minutes: taken as put away");
+        return -1;
+    }
+    return state->button;
 }
 
 std::wstring meglerFamilyName() {

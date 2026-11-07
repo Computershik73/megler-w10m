@@ -51,6 +51,14 @@ bool mg_zip_pread(const mg_zip *z, u64 offset, void *buf, size_t n);
 /* Every entry whose name starts with `prefix`. */
 void mg_zip_each(const mg_zip *z, const char *prefix, void (*cb)(const mg_zip_entry *e, void *user), void *user);
 /*
+ * An entry's bytes handed to `piece` as they are inflated, a megabyte or less at a time, never all in memory; `piece` returns
+ * false to stop there. True when the entry was read to its end and its size and CRC-32 are the archive's, or `piece` stopped
+ * it; false, with the reason in `err`, when it is damaged or cannot be read. For an app's code read for a name in it (the
+ * report's SMS Retriever, core/src/apk/mg_apk.c): a DEX file of an app is tens of megabytes.
+ */
+bool mg_zip_stream(const mg_zip *z, const mg_zip_entry *e, bool (*piece)(void *user, const u8 *data, size_t n), void *user, char *err,
+                   size_t errlen);
+/*
  * An entry written out to a file of the host's (made, or emptied first), a piece at a time: neither its compressed nor its
  * inflated bytes are ever all in memory, for an APK inside a bundle of APKs is hundreds of megabytes. Its CRC-32 is checked.
  * `progress`, when given, is called after each piece with the bytes written so far. False, with the file removed and the

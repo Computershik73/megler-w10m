@@ -87,9 +87,14 @@ public class Fragment implements android.content.ComponentCallbacks2, View.OnCre
     public void startActivityForResult(Intent i, int r) { mActivity.startActivityForResult(i, r); }
     public void startActivityForResult(Intent i, int r, Bundle o) { mActivity.startActivityForResult(i, r, o); }
     public void onActivityResult(int r, int res, Intent d) {}
-    public final void requestPermissions(String[] p, int r) { mActivity.requestPermissions(p, r); }
+    /* A fragment's request is answered to the fragment, as Android's FragmentHostCallback has it (megler.Permissions); one not
+       attached to an activity is refused, as Android refuses it. */
+    public final void requestPermissions(String[] p, int r) {
+        if (mActivity == null) throw new IllegalStateException("Fragment " + this + " not attached to Activity");
+        mActivity.meglerRequestPermissions(p, r, this);
+    }
     public void onRequestPermissionsResult(int r, String[] p, int[] g) {}
-    public boolean shouldShowRequestPermissionRationale(String p) { return false; }
+    public boolean shouldShowRequestPermissionRationale(String p) { return mActivity != null && mActivity.shouldShowRequestPermissionRationale(p); }
     public LayoutInflater onGetLayoutInflater(Bundle s) { return mActivity.getLayoutInflater(); }
     public void onInflate(Context c, android.util.AttributeSet a, Bundle s) { mCalled = true; }
     public void onInflate(Activity a, android.util.AttributeSet at, Bundle s) { mCalled = true; }

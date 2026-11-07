@@ -8,6 +8,7 @@
 #include "megler.h"
 
 #include "library/Library.h"
+#include "player/PermissionHost.h"
 #include "player/Session.h"
 #include "shell/AppPackage.h"
 #include "shell/Files.h"
@@ -278,6 +279,8 @@ private:
             asked = files::write(shared + L"\\clear-data\\" + widen(package), "") || asked;
         }
         shellLog::write("app page: clear the data of " + package + (asked ? ", asked" : ", could not be asked"));
+        // And the user's answers to its permissions, as Android's Clear storage resets them (its next start does it as well).
+        if (asked) permissionHost::forgetAll(package);
         shell_.alert(asked ? "Data Will Be Cleared" : "Couldn't Clear the Data",
                      asked ? title + "'s data goes the next time it starts." : "Megler couldn't write the request in its storage.");
     }

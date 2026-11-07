@@ -169,6 +169,19 @@ UIElement AppShell::root() {
         hooks.cannotLaunch = [weak](const std::string& why) {
             if (auto self = weak.lock()) self->alert("Couldn't Start the App", why);
         };
+        // A permission the app requests that Megler asks the user for itself (player/PermissionHost.h), in its turn.
+        hooks.ask = [weak](const std::string& title, const std::string& message, const std::vector<std::string>& buttons, std::function<void(int)> done) {
+            auto self = weak.lock();
+            if (!self) {
+                done(-1);
+                return;
+            }
+            DialogSpec spec;
+            spec.title = title;
+            spec.message = message;
+            spec.buttons = buttons;
+            self->dialogWhenFree(std::move(spec), [done](int button, std::string) { done(button); });
+        };
         systemHost::attach(std::move(hooks));
     }
 
@@ -462,7 +475,7 @@ void AppShell::poll() {
         ota::tick(*this);
         // An app's own package opens its app as soon as the library has it read: straight into the player when it can
         // run here, else its page, which says why not. Before the player, Megler's folders the app has not got are offered
-        // (ui/SharedFolders.h), once the phone's folders are known.
+        // (ui/SharedFolders.h), once the phone's folders are known, to an app that asks for the storage.
         if (appPackage::isSingleApp() && !singleAppOpened_) {
             const auto entry = Library::instance().find(appPackage::singleAppId());
             if (entry && entry->analysed && (!entry->report.ready() || StorageHost::shared().searched())) {
@@ -472,11 +485,14 @@ void AppShell::poll() {
                 if (entry->report.ready() && playStoreCanStart(entry->report.package)) {
                     // The app's private files Megler handed over when it made this package, taken first (shell/AppPackage.h).
                     std::weak_ptr<AppShell> weak = weak_from_this();
+                    const bool offerFolders = sharedFolders::wantedBy(entry->report);
                     runInBackground([] { appPackage::takeHandover(); },
-                                    [weak, id] {
-                                        sharedFolders::offer(false, [weak, id](int, int) {
+                                    [weak, id, offerFolders] {
+                                        auto play = [weak, id](int, int) {
                                             if (auto self = weak.lock()) self->push(makePlayerScreen(*self, id));
-                                        });
+                                        };
+                                        if (offerFolders) sharedFolders::offer(false, play);
+                                        else play(0, 0);
                                     });
                 } else {
                     push(makeAppDetailScreen(*this, id));
@@ -638,6 +654,18 @@ void AppShell::dialog(DialogSpec spec, std::function<void(int, std::string)> don
     }
 }
 
+void AppShell::dialogWhenFree(DialogSpec spec, std::function<void(int, std::string)> done) {
+    if (!root_) {
+        if (done) done(-1, std::string());
+        return;
+    }
+    if (dialogOpen_) {
+        waitingDialogs_.emplace_back(std::move(spec), std::move(done));
+        return;
+    }
+    dialog(std::move(spec), std::move(done));
+}
+
 void AppShell::closeDialog(int button) {
     if (!dialogOpen_) return;
     const std::string typed = dialogField_ ? narrow(std::wstring(dialogField_.Text())) : std::string();
@@ -649,6 +677,12 @@ void AppShell::closeDialog(int button) {
     auto done = std::move(dialogDone_);
     dialogDone_ = nullptr;
     if (done) done(button, typed);
+    // The next that waited its turn (dialogWhenFree), unless the answer opened another.
+    if (!dialogOpen_ && !waitingDialogs_.empty()) {
+        auto next = std::move(waitingDialogs_.front());
+        waitingDialogs_.pop_front();
+        dialog(std::move(next.first), std::move(next.second));
+    }
 }
 
 void AppShell::alert(std::string title, std::string message) {

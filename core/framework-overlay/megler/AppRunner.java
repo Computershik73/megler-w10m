@@ -566,6 +566,8 @@ public final class AppRunner {
         ViewRoot.hostHidden(pause);
         // a result another app's activity left for this one comes first, as onActivityResult comes before onResume
         if (!pause) AppResults.resumed();
+        // and what the shell said of the permission groups is asked again: the user may have changed Windows' settings meanwhile
+        if (!pause) Permissions.forget();
         Activity a = top();
         if (pause) {
             if (a != null && a.isResumedMegler()) a.meglerPause();

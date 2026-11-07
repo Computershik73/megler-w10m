@@ -7,7 +7,7 @@
 // message and the call, and the app never heard of them.
 //
 // What an app is given is what came while it ran, nothing older, and as Android gives it to an app that holds the
-// permission (the app's manifest asks for it; Megler grants what the manifest asks): SMS_RECEIVED to receivers that hold
+// permission (the app's manifest asks for it and the user let it have it: megler.Permissions): SMS_RECEIVED to receivers that hold
 // RECEIVE_SMS, content://sms to READ_SMS, PHONE_STATE to READ_PHONE_STATE (the number to READ_CALL_LOG as well), and
 // content://call_log to READ_CALL_LOG. Google Play services, which an app hosts here, holds them as it does on a phone.
 package megler;
@@ -53,12 +53,13 @@ public final class Phone {
 
     // ---- who holds what
 
-    /** Whether the package of a context holds a permission: the app as its manifest asks, Google Play services as it does on a phone. */
+    /** Whether the package of a context holds a permission: the app as its manifest asks and the user let it (megler.Permissions:
+     *  RECEIVE_SMS and the rest are dangerous), Google Play services as it does on a phone. */
     public static boolean holds(Context c, String permission) {
         if (permission == null) return true;
         String pkg = c != null ? c.getPackageName() : null;
         if (GooglePackages.GMS.equals(pkg)) return true;
-        return Manifest.permissions.contains(permission);
+        return Permissions.check(permission) == Permissions.GRANTED;
     }
 
     // ---- the store: what came while the app ran

@@ -831,14 +831,33 @@ Java's calls arrive there.
   asked -- the long calls, the old int ones multiplied as longs,
   `java.io.File`. `StorageStatsManager.getTotalBytes(UUID_DEFAULT)` is not
   less than what is there and less than twice it; `getFreeBytes` within it.
-- `permissions`: the two storage permissions are granted, asked five ways
-  (`checkSelfPermission`, `checkCallingOrSelfPermission`, `checkPermission`
-  with the app's own pid and uid, `PackageManager.checkPermission`, and no
-  rationale to show); `requestPermissions` returns and
-  `onRequestPermissionsResult` comes afterwards, by a message on the main
-  thread, with both granted. The framework answers every permission this way,
-  not these two only: `checkPermission` is `PERMISSION_GRANTED` whatever the
-  name, and nothing is ever asked of the user.
+- `permissions`: Android's runtime permissions ("Permissions", in Design),
+  asked five ways (`checkSelfPermission`, `checkCallingOrSelfPermission`,
+  `checkPermission` with the app's own pid and uid,
+  `PackageManager.checkPermission`, `getPackageInfo`'s
+  `requestedPermissionsFlags`) and `shouldShowRequestPermissionRationale`.
+  Before the request: `VIBRATE`, normal, granted with the install;
+  `READ_CALENDAR`, not in the manifest, denied; `WRITE_EXTERNAL_STORAGE`,
+  asked for only up to Android 9 (`maxSdkVersion` 28), denied and not among
+  `requestedPermissions`; `READ_CONTACTS` granted, the shell granting a group
+  it has nothing behind; the dangerous ones not yet in the first run, and in
+  the second as the first left them; `getPermissionInfo` says `CAMERA` is
+  dangerous, of the group `CAMERA`, and `VIBRATE` normal. Then one request of
+  nine, and a second while it is answered, told at once it was cancelled
+  (empty arrays). The C side answers for the user (`system_permission`, the
+  shell's `megler_system_host.permission`, its answers kept in a file of the
+  data folder): every group allowed but the camera. The answer comes later,
+  on the main thread: in the first run, the user asked about the storage, the
+  messages, the phone, the calls and the camera, one after another, the
+  activity paused around the answer and resumed after it, as Android's
+  permission dialog does; with the rationale shown the camera is asked for
+  again and refused for good, and a third request asks no one and is answered
+  unpaused. In the second run no one is asked. Then a platform `Fragment`'s
+  request, answered to the fragment. The report the shell reads of the app
+  names its permissions, the last Android each is asked on and its receiver of
+  Google Play services' SMS Retriever (the test's `start`); the microG test
+  app's report finds the SMS Retriever in its code, which registers the receiver
+  at run time, and the other test apps' name it nowhere.
 - `download`: a file written to the public Download folder is there, reads
   back, is listed in its folder, has the same length by the path's other
   name (`/sdcard/Download/...`), and the second run finds what the first
@@ -3261,6 +3280,68 @@ Once the keyboard is put away, each dialog is back where it was.
 it is final), the selection handles and the copy and paste bar (the
 framework's), and telling the shell where the cursor is on the screen.
 
+### Permissions
+
+An app's permissions are Android's runtime permissions, as a phone of Android 6
+and later has them (`megler.Permissions`; before, every permission was granted
+whatever its name and nothing was asked of anyone). For one permission:
+
+- not in the manifest, or asked for only up to an Android before the one Megler
+  says it is (`android:maxSdkVersion` below 34: `megler.Manifest` leaves it out,
+  as Android's package parser does): denied;
+- not dangerous -- normal, signature, the app's own, the special ones
+  (`SYSTEM_ALERT_WINDOW`, `REQUEST_INSTALL_PACKAGES`), whose Settings screens are
+  Megler's to answer: granted with the install;
+- dangerous, of an app that targets Android 5.1 or older (or has no
+  `<uses-sdk>`), or of Google's own packages (Play Store, Google Play services,
+  its services framework), which a phone has as system apps: granted with the
+  install;
+- any other dangerous one: its group's (Android 14's groups), as the shell keeps
+  it (`megler_system_host.permission`, `Native.permission`): granted, denied
+  (`shouldShowRequestPermissionRationale` true, the app may ask again), denied
+  for good, or undecided.
+
+`requestPermissions` (an activity's or a platform `Fragment`'s) settles what
+those rules settle and asks the shell, on a thread of its own, for each group
+that is undecided or denied once, one after another; the answers come to
+`onRequestPermissionsResult` on the main thread, the activity paused around
+them and resumed after where an answer changed (Android's permission dialog
+is an activity over the app's), not where none did, so that an app that asks
+again in `onResume` when it is told no does not ask for ever. A second request
+while one is answered is told at once that it was cancelled, as on Android.
+`checkPermission` and its kind (`ContextImpl`), `PackageManager.checkPermission`,
+`getPackageInfo`'s `requestedPermissionsFlags` and `getPermissionInfo`'s
+protection level say the same. What the shell said of a group is kept until the
+app comes back to the front (`AppRunner.hostPause`), where the user may have
+changed Windows' settings meanwhile.
+
+Google Play services' and its services framework's own contexts (`MicroG`,
+`Gsf`) hold every permission, as their system apps do on a phone: their checks
+of themselves are theirs, not the app's. `megler.Phone` gives the phone's
+messages and calls to the app as it holds them. The location (`LocationService`)
+has Windows ask the user only for an app that holds a location permission:
+`isProviderEnabled` asked Windows in the background, and Google Play services in
+an app that never wanted the location asks it of every provider, so Windows
+asked such an app's user for the location. Nothing else is refused where an app
+did not request a permission it was not given: the camera, the microphone and
+the files are Windows' to refuse, as before (an app that opens the camera
+without requesting it has Windows ask, the first time).
+
+The shell (`player/PermissionHost.h`) decides a group three ways: the camera,
+the microphone and the location by Windows' privacy settings of the app's own
+package, and Windows' own question when the app requests one; the storage, the
+media, the text messages, the phone and the call history by Megler's own
+question (Allow, Don't Allow), kept in the app's settings, a second no for
+good; and the contacts, the calendar, the body sensors, nearby devices,
+notifications and physical activity granted with no one asked, since Megler
+gives an app none of those of the phone's. An app's App Settings list its
+groups, what was said, and change Megler's answers. Clearing an app's data
+(Clear Data on its page in Megler, or Clear storage on Android's app info
+screen in the app) forgets Megler's answers too, as Android's Clear storage
+resets an app's permissions: the shell does it as the clear is asked and as
+the app next starts with one waiting (`megler_clear_data_asked`). Windows'
+own answers stay; they are changed in its privacy settings.
+
 ### The phone's text messages and calls
 
 What comes to the phone while an app runs is the app's as Android gives it,
@@ -3271,8 +3352,18 @@ reads through `SMS_RECEIVED`, or by a flash call, a missed call whose number
 is the code, which its `FlashCallReceiver` hears as `PHONE_STATE` RINGING with
 the caller's number. Under Megler neither came (package 482).
 
-- **The shell** watches Windows' chat message store (the `chat` capability):
-  a message the store says was made, incoming and after the app's start, is
+- **The shell** watches Windows' chat message store (the `chat` capability),
+  for an app whose manifest asks for `RECEIVE_SMS` or `READ_SMS`, or that uses
+  Google Play services' SMS Retriever -- a receiver of it in its manifest, or
+  its names in its code (a bank's app registers that receiver at run time and
+  asks for no SMS permission: the report reads the DEX files of an app that
+  carries Google Play services' client, the meta-data
+  `com.google.android.gms.version`, for the SMS Retriever's action, its sender
+  permission and its class) -- and the call
+  history for one that asks for `READ_PHONE_STATE` or `READ_CALL_LOG`: the store of what an
+  app does not ask for is never opened, and its own package does not declare
+  the capability (docs/PER-APP-PACKAGES.md, "What a package declares").
+  A message the store says was made, incoming and after the app's start, is
   told with its sender, text and time. Windows says when a call's state changes
   but not who calls, so when one is over the call history is read
   (`phoneCallHistoryPublic`), a moment later and once more, and the calls that
@@ -3298,15 +3389,19 @@ the caller's number. Under Megler neither came (package 482).
   `registerTelephonyCallback` with a `CallStateListener`) hear the same.
   `TelephonyManager.EXTRA_STATE_*` were null in the framework and are Android's
   strings now.
-- Permissions are the app's manifest's (Megler grants what it asks, by
-  `uses-permission` and by `uses-permission-sdk-23`, which Android 6 and later
-  grant: WhatsApp asks for `READ_CALL_LOG` so, and was given `PHONE_STATE`
-  without the number until `megler.Manifest` read that tag too, package 483);
-  Google Play services, which the app hosts, holds them as on a phone. The store is
+- Permissions are the app's manifest's (by `uses-permission` and by
+  `uses-permission-sdk-23`, which Android 6 and later honour: WhatsApp asks for
+  `READ_CALL_LOG` so, and was given `PHONE_STATE` without the number until
+  `megler.Manifest` read that tag too, package 483), as the user let the app
+  have them: all four are dangerous ("Permissions", in Design), and an app of
+  Android 6 and later hears nothing until it has requested them and been let
+  have them. Google Play services, which the app hosts, holds them as on a
+  phone. The store is
   an SQLite database in memory with Android's columns, so an app's projection,
   selection and order work as they would.
 
-The data app's `phoneEvents` registers for all of it and the test's C side
+The data app's `phoneEvents` registers for all of it (its step `permissions`
+has had the four permissions requested and allowed by then) and the test's C side
 gives it a message from a number, a longer one from a sender with a name in
 Russian that holds the token, and a missed call: the sender, time and text read
 back from the PDUs, the inbox row, the token's PendingIntent, RINGING with the
@@ -5931,8 +6026,9 @@ in the overlay's list above).
   (one at the back), `.any`, `.front`, `.autofocus` and `.flash` from them:
   a back camera's focus and light are known once it has been opened (the
   shell keeps what it saw), and until then focus is taken as there and a
-  light as not. The CAMERA permission is granted as every permission is
-  here (`checkSelfPermission`, `requestPermissions` answering granted).
+  light as not. The CAMERA permission is a dangerous one ("Permissions", in
+  Design): an app requests it and Windows asks the user, once; the camera
+  test app's stand-in for the shell grants it.
 - **Opening.** `open(n)` connects; as on Android 9, whose `native_setup`
   answers `EACCES` whenever the camera service gives no camera, every
   failure -- refused, held by something else, no such camera -- is a

@@ -1051,6 +1051,23 @@ N(Native_uninstallApp)
     c->ret.z = s->uninstall_app ? s->uninstall_app(s->user, package) : false;
 }
 
+/*
+ * permission(group, ask): whether the app may have what a dangerous permission group guards, MEGLER_PERMISSION_*, as the shell
+ * keeps it (megler_system_host.permission); with `ask`, the user asked first, this thread waiting (megler.Permissions asks
+ * on a thread of its own). A shell without it grants every group. What was asked, and the answer, is said in the log.
+ */
+N(Native_permission)
+{
+    static const char *const said[] = { "undecided", "granted", "denied", "denied for good" };
+    const megler_system_host *s = &J.config->system;
+    const char *group = text_of(c->args[0].l);
+    bool ask = c->args[1].i != 0;
+    int answer = s->permission ? s->permission(s->user, group, ask) : MEGLER_PERMISSION_GRANTED;
+    if (answer < MEGLER_PERMISSION_UNDECIDED || answer > MEGLER_PERMISSION_DENIED_FIXED) answer = MEGLER_PERMISSION_UNDECIDED;
+    if (ask) mg_info("java: the app asks for the permission group %s: %s%s", group, said[answer], s->permission ? "" : " (nothing here asks the user)");
+    c->ret.i = answer;
+}
+
 /* appsList(): apps.txt of the apps the phone has (megler_run_config.apps_dir), or null when there is none. */
 N(Native_appsList)
 {
@@ -1213,6 +1230,7 @@ static const mg_jhle k_native[] = {
     { "megler/Native", "installApk", NULL, Native_installApk },
     { "megler/Native", "launchApp", NULL, Native_launchApp },
     { "megler/Native", "uninstallApp", NULL, Native_uninstallApp },
+    { "megler/Native", "permission", NULL, Native_permission },
     { "megler/Native", "appsList", NULL, Native_appsList },
     { "megler/Native", "appIcon", NULL, Native_appIcon },
     { "megler/Native", "appActivities", NULL, Native_appActivities },

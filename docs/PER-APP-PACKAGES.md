@@ -286,8 +286,9 @@ Two things are asked for before anything else (the owner's wish, 2026-11-02):
      cut and given one; a phone product id made from the Android package (the
      same each time, so that a package made again is an update); and the
      app's label for the shown names (`core/src/appx/mg_appx_manifest.c`).
-     Capabilities, dependencies, the entry point and the publisher cache
-     folder stay Megler's. Where the app's icon is drawn on the logos (below),
+     Its capabilities are those the app's permissions need and Megler's own
+     (below, "What a package declares"). Dependencies, the entry point and the
+     publisher cache folder stay Megler's. Where the app's icon is drawn on the logos (below),
      the tile's background is `transparent`, the phone's own colour; the
      splash screen keeps Megler's black.
   4. `resources.pri`, below.
@@ -403,13 +404,52 @@ A package with `MeglerApp.ini` in its install folder is one app's
 - the Java driver is given `<shared>\android\<version>` from `MeglerApp.ini` as
   the Android root, and the fonts from there.
 
+**What a package declares.** Windows lists an app under each capability its
+package declares (Settings › Privacy) and asks the user for a device's the
+first time the app opens it. Until this was chosen, every app's package
+declared all of Megler's: a calculator was listed with the text messages and
+the call history, and one whose Google Play services looked for the location
+had Windows ask for it. Now `megler_appx_capabilities` (`core/src/appx/
+mg_appx_manifest.c`) makes the list from the permissions the app's manifest asks
+for (the report's `permissions`, `maxSdkVersion` notwithstanding: an app that
+asks for `WRITE_EXTERNAL_STORAGE` up to Android 9 alone saves its pictures
+through MediaStore on later ones), and the package declares those and Megler's
+own, nothing else:
+
+| Android | Windows |
+|---|---|
+| `INTERNET` | `internetClient`, `internetClientServer`, `privateNetworkClientServer` |
+| `CAMERA` | `webcam` |
+| `RECORD_AUDIO` | `microphone` |
+| `ACCESS_FINE_LOCATION`, `ACCESS_COARSE_LOCATION`, `ACCESS_BACKGROUND_LOCATION` | `location` |
+| `READ_EXTERNAL_STORAGE`, `WRITE_EXTERNAL_STORAGE`, `MANAGE_EXTERNAL_STORAGE`, `MANAGE_MEDIA` | `picturesLibrary`, `videosLibrary`, `musicLibrary` |
+| `READ_MEDIA_IMAGES`; `READ_MEDIA_VIDEO`; `READ_MEDIA_VISUAL_USER_SELECTED`, `ACCESS_MEDIA_LOCATION`; `READ_MEDIA_AUDIO` | `picturesLibrary`; `videosLibrary`; both; `musicLibrary` |
+| `RECEIVE_SMS`, `READ_SMS`, or Google Play services' SMS Retriever, a receiver of it in the manifest or its names in the app's code (the report's `smsRetriever`) | `chat` |
+| `READ_PHONE_STATE`, `READ_CALL_LOG` | `phoneCallHistoryPublic` |
+| every package | `picturesLibrary` (Megler's diagnosis folder `Pictures\Megler\diag`, `shell/PicturesDiag.h`; and an app's own pictures, which Android 10 and later let it save without asking), `codeGeneration`, `packageQuery` (the shell checks the Google Play services package is still installed), `backgroundMediaPlayback` (no permission on Android) |
+| no package of an app's | `documentsLibrary` and `removableStorage`, reached only with file types declared, and an app's package declares none; `packageManagement`, Megler's alone |
+
+A capability Megler's manifest has that this does not know is kept. A report an
+older core made names no permissions, and the package then declares all of
+Megler's, as before; Update All after an update of Megler reads every app again.
+At run time the same list decides what the shell watches for the app: the text
+messages and the call history only where its package declares them
+(`player/PhoneEvents.h`). An app's permissions themselves are Android's runtime
+ones (docs/JAVA.md, "Permissions"): the user is asked when the app requests one,
+by Windows for the camera, the microphone and the location, by Megler for the
+rest, and an app's App Settings list them.
+
 **The phone's folders** (`ui/SharedFolders.cpp`). Music, Pictures, Movies and
-DCIM come from capabilities, which every package of Megler's declares alike. The
+DCIM come from the libraries' capabilities, which a package declares as above:
+an app that asks for no storage has the shared storage's own folders there
+(Pictures is the phone's in every package). The
 Documents and Downloads folders and a memory card come in only through the
 folder picker (`player/StorageHost.h`), and Windows remembers a picked folder
 for the one package it was picked in (`FutureAccessList`): no other package of
 the publisher, not even with the publisher cache folder, gets it. So each
-separate app has to be given each such folder by the user once:
+separate app that asks for the storage has to be given each such folder by the
+user once (an app that asks for none is not offered them, and one the user
+refused the storage for good neither):
 
 - Megler writes the folders added in its Settings (their names in `/sdcard` and
   their paths) to `<shared>\folders.txt`, once its search of the phone's folders

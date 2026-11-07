@@ -146,6 +146,26 @@ void setApp(const std::string& package, const std::string& key, const std::optio
     if (package == gOwnPackage) gOwn = values;
 }
 
+int eraseApp(const std::string& package, const std::string& prefix) {
+    std::lock_guard<std::mutex> lock(gMutex);
+    const std::wstring path = appPath(package);
+    if (path.empty()) return 0;
+    Values values = readFile(path);
+    int erased = 0;
+    for (auto it = values.begin(); it != values.end();) {
+        if (it->first.compare(0, prefix.size(), prefix) == 0) {
+            it = values.erase(it);
+            erased++;
+        } else {
+            ++it;
+        }
+    }
+    if (!erased) return 0;
+    writeFile(path, values);
+    if (package == gOwnPackage) gOwn = values;
+    return erased;
+}
+
 } // namespace megler::app::settings
 
 namespace megler::app::settings::location {
