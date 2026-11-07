@@ -533,8 +533,8 @@ void AppShell::updateDisplayRequest() {
     const session::State state = session::snapshot().state;
     // And while packages are installed: an app's own package made and installed (or updated, or uninstalled), each of
     // Update All's, and Megler's own update from Pictures\Megler or GitHub, its download too (ui/Ota.h). A phone that locks
-    // meanwhile suspends Megler, and an install ends with no result (the owner asked for it, 2026-11-02; the Device
-    // Portal's upload, where Windows's deployment engine refuses, the most), and the download stops.
+    // meanwhile suspends Megler, and an install ends with no result (the owner asked for it, 2026-11-02, when the Device
+    // Portal's upload took minutes), and the download stops.
     const bool installing = !separateApps::working().empty() || appPackage::selfUpdating() || ota::busy();
     // And always, while Megler is in front, under the flag keep-screen-on (LocalState\flags): a phone left waiting for the
     // next package, which is copied to it and installed from it, or for a test, is not to lock meanwhile.
@@ -924,7 +924,7 @@ void AppShell::importApk(std::function<void(std::string, std::string)> done) {
     // Taken before the picker opens: a second picker while one is up throws.
     if (import_->active) return;
     // (Nothing is installed while Megler does not know which of its apps are installed: it says why.)
-    if (!separateApps::requirePortal(*this)) return;
+    if (!separateApps::requireList(*this)) return;
     *import_ = ImportProgress();
     import_->active = true;
     std::weak_ptr<AppShell> weak = weak_from_this();
@@ -936,7 +936,7 @@ void AppShell::importApk(std::function<void(std::string, std::string)> done) {
 void AppShell::installApkFile(winrt::Windows::Storage::StorageFile const& file) {
     const std::string name = narrow(file.Name());
     shellLog::write("import: " + name + " opened in Megler");
-    if (!separateApps::requirePortal(*this)) return;
+    if (!separateApps::requireList(*this)) return;
     if (import_->active) {
         alert("Another APK Is on Its Way", "Megler is installing an APK already. Open " + name + " again when it is done.");
         return;
@@ -958,8 +958,8 @@ void AppShell::installApkFile(winrt::Windows::Storage::StorageFile const& file) 
             });
 }
 
-void AppShell::installApkPath(const std::wstring& path, const std::string& name, const std::string& from, bool portalAsked) {
-    if (!portalAsked) shellLog::write("import: " + from + " asks to install " + name + " (" + narrow(path) + ")");
+void AppShell::installApkPath(const std::wstring& path, const std::string& name, const std::string& from, bool listAsked) {
+    if (!listAsked) shellLog::write("import: " + from + " asks to install " + name + " (" + narrow(path) + ")");
     /*
      * An APK an app's own package handed over (the shared folder's incoming\, player/SystemHost.cpp) goes once its request is
      * answered, whatever the answer: the library has a copy of its own (or its base and splits) by then, and an app that
@@ -972,25 +972,25 @@ void AppShell::installApkPath(const std::wstring& path, const std::string& name,
     };
     /*
      * Nothing is installed while Megler does not know which of its apps are installed. Megler started or woken by an app's
-     * request has not asked for the list yet (Windows's package manager's, the Device Portal's where Windows will not
-     * answer), or asked long ago: it is asked for first, and the request goes on once it comes, the app's installer session
-     * waiting for the outcome. Only a list that cannot be had then has the app that asked told so, and the shell say why.
-     * Woken by Play Store's request for WhatsApp, after Play Store's request to uninstall the one installed before had
-     * started it, Megler answered at once that the portal "has not answered yet" (576).
+     * request has not asked for the list yet (Windows's package manager's), or asked long ago: it is asked for first, and
+     * the request goes on once it comes, the app's installer session waiting for the outcome. Only a list that cannot be had
+     * then has the app that asked told so, and the shell say why. Woken by Play Store's request for WhatsApp, after Play
+     * Store's request to uninstall the one installed before had started it, Megler answered at once that the Device Portal,
+     * which listed the apps then, "has not answered yet" (576).
      */
-    if (separateApps::portal() != separateApps::Portal::on && !portalAsked) {
+    if (separateApps::list() != separateApps::List::ready && !listAsked) {
         shellLog::write("import: " + name + " waits for the list of the installed apps");
         std::weak_ptr<AppShell> weak = weak_from_this();
-        separateApps::askPortal(*this, [weak, path, name, from] {
+        separateApps::askList(*this, [weak, path, name, from] {
             if (auto self = weak.lock()) self->installApkPath(path, name, from, true);
         });
         return;
     }
-    if (separateApps::portal() != separateApps::Portal::on) {
-        const std::string why = separateApps::portal() == separateApps::Portal::off ? separateApps::portalProblem() : "it has not answered yet";
-        phoneAppsList::installOutcome(name, "failed", "Not installed: neither Windows nor the phone's Device Portal told Megler which apps are installed (" +
-                                                        why + "). Turn the portal on, with its Authentication off, in Settings › Update & security › For developers.");
-        separateApps::requirePortal(*this);
+    if (separateApps::list() != separateApps::List::ready) {
+        const std::string why = separateApps::list() == separateApps::List::unavailable ? separateApps::listProblem() : "it has not answered yet";
+        phoneAppsList::installOutcome(name, "failed", "Not installed: " + appPackage::packageLister() + " did not tell Megler which apps are installed (" +
+                                                        why + ").");
+        separateApps::requireList(*this);
         drop();
         return;
     }

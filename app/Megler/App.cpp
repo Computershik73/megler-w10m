@@ -118,8 +118,7 @@ struct App : ApplicationT<App, Markup::IXamlMetadataProvider> {
         copySystemDlls();
         ensureContent();
         Window::Current().Activate();
-        // A newer Megler copied to the phone's Pictures\Megler: installed by Windows's deployment engine (the phone's own
-        // Device Portal where the engine refuses).
+        // A newer Megler copied to the phone's Pictures\Megler: installed by Windows's deployment engine.
         appPackage::installCopiedUpdate();
     }
 

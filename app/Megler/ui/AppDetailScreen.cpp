@@ -180,7 +180,7 @@ private:
 
     /// The app as an app of the phone's own (ui/SeparateApps.h): whether it is installed and from which Megler; Install or
     /// Update (Material's filled button), its own settings (tonal), Uninstall (a text button in the error colour); and, when
-    /// neither Windows's deployment engine nor the Device Portal installed a package made, Windows's installer.
+    /// Windows's deployment engine did not install a package made, Windows's installer, and its certificate.
     UIElement phoneSection(const ApkEntry& entry) {
         const auto& p = palette();
         const ApkReport& r = entry.report;
@@ -194,8 +194,8 @@ private:
         else if (s.installed == separateApps::Installed::no)
             state = "Not installed on this phone.";
         else
-            state = separateApps::portalProblem().empty() ? "Asking Windows whether it is installed…"
-                                                          : "Megler can't tell whether it is installed: " + separateApps::portalProblem();
+            state = separateApps::listProblem().empty() ? "Asking Windows whether it is installed…"
+                                                        : "Megler can't tell whether it is installed: " + separateApps::listProblem();
 
         const std::string id = id_, package = r.package, title = entry.title();
         const bool installed = s.installed == separateApps::Installed::yes;
@@ -246,8 +246,8 @@ private:
                                "Uninstall", true, [this, package] { separateApps::uninstall(shell_, package); });
             }, p.error));
         }
-        // The package made, when neither the deployment engine nor the portal installed it: Windows's own installer, as a file
-        // manager opens a package.
+        // The package made, when the deployment engine did not install it: Windows's own installer, as a file manager opens a
+        // package, and its certificate, which Windows has to trust (shell/AppPackage.h, untrustedCertificate).
         if (!s.made.appx.empty() && !installed) {
             const std::wstring appx = s.made.appx, certificate = s.made.certificate;
             add(more, textButton("Open the Package", [this, appx] { openFile(appx); }));

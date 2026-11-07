@@ -193,7 +193,7 @@ public:
         if (!shown.empty() && shown != updateShown_) {
             updateShown_ = shown;
             // (Windows's deployment engine closed a Lumia 650's Megler 646 nine seconds after it was given 648. A few minutes,
-            // as this said, were the Device Portal's, which installs only where the engine refuses.)
+            // as this said, were the Device Portal's, which installed Megler's updates before the engine did.)
             updateText_.Text(hs(updating.empty() ? failed
                                                  : "Megler " + updating + " is being installed. Windows closes Megler when it takes it, as a "
                                                    "rule within a minute: leave the phone on, then open Megler again."));
@@ -253,7 +253,7 @@ private:
         // The apps made by another Megler, to update, while nothing is being done; and whether the list could be had.
         auto top = vstack(0);
         // Which apps carry another Megler is known once Windows has listed the apps' packages, two seconds after the start on
-        // a Lumia 650 (the Device Portal, where Windows will not, takes more than a minute there): said meanwhile, so that
+        // a Lumia 650 (the Device Portal, which listed them before, took more than a minute there): said meanwhile, so that
         // Update All's coming is expected (the owner's wish, 2026-11-04).
         if (separateApps::checking()) {
             auto column = vstack(0);
@@ -295,8 +295,8 @@ private:
             box.Margin(ThicknessHelper::FromLengths(0, 8, 0, 8));
             add(top, box);
         }
-        if (!separateApps::portalProblem().empty()) {
-            auto warning = warningCard("Megler can't tell which apps are installed: " + separateApps::portalProblem());
+        if (!separateApps::listProblem().empty()) {
+            auto warning = warningCard("Megler can't tell which apps are installed: " + separateApps::listProblem());
             warning.Margin(ThicknessHelper::FromLengths(0, 8, 0, 8));
             add(top, warning);
         }

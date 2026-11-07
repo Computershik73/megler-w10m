@@ -299,7 +299,7 @@ void downloadAndInstall(Found f) {
         gStep = Step::installing;
         gSummary = "Megler " + f.version + " is being installed";
     }
-    const appPackage::PortalResult result = appPackage::installOwnUpdate(appx, certificate, f.version, "downloaded from GitHub (" + f.tag + ")");
+    const appPackage::InstallResult result = appPackage::installOwnUpdate(appx, certificate, f.version, "downloaded from GitHub (" + f.tag + ")");
     std::lock_guard<std::mutex> lock(gMutex);
     // (Installed, this Megler is closed by Windows before it gets here, as a rule.)
     gSummary = result.ok ? "Megler " + f.version + " installed: open Megler again" : "Megler " + f.version + " was not installed: " + result.said;

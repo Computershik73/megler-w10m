@@ -39,7 +39,7 @@ bool gCopying = false;  // a copy of the bundle's is being put in the library
 
 std::wstring bundleFile(const wchar_t* name) { return platform::installDirectory() + L"\\bitgapps\\" + name; }
 
-/// Google's own (the registered app, else the portal's list says its package is installed), or Google Play Store.
+/// Google's own (the registered app, else the list of the apps' packages says its package is installed), or Google Play Store.
 bool installed(const std::string& package) {
     if (package == gmsPackage && appPackage::hasGoogleServices()) return true;
     return separateApps::status(package).installed == separateApps::Installed::yes;
@@ -116,10 +116,10 @@ void restore(AppShell& shell, Bundled& b) {
         });
 }
 
-/// Once Google Play is wanted: what of it is not installed, installed (Google Play services first), when the portal has
-/// listed the phone's apps and nothing else is being installed.
+/// Once Google Play is wanted: what of it is not installed, installed (Google Play services first), when Windows has listed
+/// the phone's apps and nothing else is being installed.
 void ensureInstalled(AppShell& shell) {
-    const bool listed = separateApps::portal() == separateApps::Portal::on && separateApps::portalProblem().empty();
+    const bool listed = separateApps::list() == separateApps::List::ready && separateApps::listProblem().empty();
     if ((installed(gmsPackage) && installed(storePackage)) || !listed) return;
     if (!separateApps::working().empty() || gCopying) return;
     for (Bundled& b : gBundled) {
@@ -154,7 +154,7 @@ bool bundled() {
 }
 
 void tick(AppShell& shell) {
-    // (Not while Megler sends its own update to the portal: it closes in a moment, and the next one asks.)
+    // (Not while Megler installs its own update: it closes in a moment, and the next one asks.)
     if (appPackage::isSingleApp() || !bundled() || appPackage::selfUpdating()) return;
     switch (choice()) {
     case Choice::unasked:
