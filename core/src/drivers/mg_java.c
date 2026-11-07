@@ -1173,11 +1173,15 @@ N(Native_thrownInService)
 /* threadNice(int): Process.setThreadPriority for the calling thread (mg_gthread_set_nice). */
 N(Native_threadNice) { mg_gthread_set_nice(mg_gthread_self(), c->args[0].i); }
 
+static void back_wake(void);
+
 N(Native_exit)
 {
     mg_jvalue looper;
     (void)c;
     mg_atomic_xchg(&J.exited, 1);
+    /* A Back being waited for (java_back) hears of the end: an app that finishes itself a moment after its Back. */
+    back_wake();
     looper.j = 0;
     if (mg_dvm_call_static("android/os/Looper", "getMainLooper", "()Landroid/os/Looper;", NULL, &looper) && looper.l) mg_dvm_call_virtual(looper.l, "quit", "()V", NULL, NULL);
 }
@@ -1213,6 +1217,14 @@ static void back_init(void)
         return;
     }
     while (B.ready != 2) mg_thread_yield();
+}
+
+static void back_wake(void)
+{
+    if (B.ready != 2) return;
+    mg_lock_acquire(&B.lock);
+    mg_cond_broadcast(&B.cond);
+    mg_lock_release(&B.lock);
 }
 
 /* Native.backDone(seq, answer): what the app did with Back number seq, as AppRunner.back found once it had been through. */
@@ -2574,6 +2586,12 @@ static int java_back(unsigned quiet_ms, unsigned max_ms)
         u64 now = mg_time_monotonic_ns(), until = start + (u64)max_ms * ms;
         if (B.left == seq) {
             verdict = MEGLER_BACK_LEAVE;
+            break;
+        }
+        /* The app ended while its Back was waited for: one that finishes its last activity a moment after the key
+           (CoolReader posts it), which said it had shown nothing new. */
+        if (J.exited) {
+            verdict = MEGLER_BACK_ENDED;
             break;
         }
         if (B.answered == seq) {

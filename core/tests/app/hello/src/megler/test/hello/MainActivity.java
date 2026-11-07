@@ -168,7 +168,13 @@ public class MainActivity extends Activity {
     private int backs;
     @Override
     public void onBackPressed() {
-        final int delay = ++backs == 1 ? 900 : 150;
+        // The third Back is taken as CoolReader takes it: the activity finished a moment later, and the app ends.
+        if (++backs == 3) {
+            Log.i("HelloTest", "back 3 finishes in 100 ms");
+            new Handler().postDelayed(this::finish, 100);
+            return;
+        }
+        final int delay = backs == 1 ? 900 : 150;
         Log.i("HelloTest", "back " + backs + " handed on for " + delay + " ms");
         new Handler().postDelayed(new Runnable() {
             @Override

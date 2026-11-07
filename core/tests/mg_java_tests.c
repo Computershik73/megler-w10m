@@ -1314,7 +1314,18 @@ static int run_hello(void)
     expect_line("I/HelloTest: onStop", &at, 30);
     megler_set_paused(false);
     expect_line("I/HelloTest: onResume", &at, 30);
-    stop_and_end("I/HelloTest: onDestroy presses=12", &at);
+    /* And Back once more, which the app takes as CoolReader does, finishing its activity a moment later: megler_back says it
+       ended, the shell's cue to close as the app goes. */
+    {
+        int tries;
+        const int answer = megler_back(400, 10000);
+        expect_line("I/HelloTest: back 3 finishes in 100 ms", &at, 10);
+        CHECK(answer == MEGLER_BACK_ENDED);
+        expect_line("I/HelloTest: onDestroy presses=12", &at, 30);
+        for (tries = 0; tries < 3000 && running(); tries++) mg_sleep_ns(10000000ull);
+        CHECK(g_exited && g_status == 0 && !g_reason[0]);
+        if (g_exited) say("  Back that the app ends with: the app ended with status %d%s%s", g_status, g_reason[0] ? ": " : "", g_reason);
+    }
     say_app_lines("/HelloTest: ");
     return g_failed;
 }

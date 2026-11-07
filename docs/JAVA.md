@@ -391,7 +391,9 @@ stand-in for the shell's drawing, and checks (47 checks):
   that showed nothing new, so that Back is the app's and the next, a moment
   later, the system's at once -- and after 150 ms the second, within the
   wait. Hidden then, the activity has `onPause` and `onStop`; shown again,
-  `onRestart`, `onStart`, `onResume`; and the user's stop (`megler_stop`)
+  `onRestart`, `onStart`, `onResume`. A third Back the app takes as
+  CoolReader does, finishing its activity 100 ms later: `megler_back`
+  answers MEGLER_BACK_ENDED (the shell closes as the app goes), and
   `onDestroy`, the main loop ends, and the app is reported ended with
   status 0.
 
