@@ -1130,6 +1130,45 @@ leaves "en-US". And in the data app, the `locale` step: `Locale`,
 harness starts the first run in "en-US" and the second in "ru-RU", and reads
 the tag and the country off the app's line.
 
+### The screen resized and turned (the app under qemu-arm)
+
+`core/tests/app/screen`, run with the other test apps by `tools/build-tests.sh
+arm` (`mg_tests --java screen`). The test calls `megler_set_surface` as the shell
+does when a PC's window is resized or a phone turned, and reads what the app
+says. `Main` takes no configuration change itself; `Handled` takes every change
+of the screen (its manifest's `android:configChanges`), asks for the screen held
+upright (`android:screenOrientation="sensorPortrait"`) and is exported;
+`values-w700dp` is a size the app's resources are made for.
+
+1. 480 x 800 at 160 dpi, upright: `Main` types into its field, its halves red
+   and blue side by side in the picture; the shell heard -1 (nothing asked).
+2. Turned to 800 x 480, 90 degrees: the Application, its `ComponentCallbacks`
+   and a display listener hear it; `Main` is relaunched -- paused and stopped
+   with `isChangingConfigurations`, its state saved with the field's text, its
+   retained object kept, destroyed with `getChangingConfigurations` 0x480
+   (orientation and screen size) -- and the one made again has the count, the
+   retained object and the field's text back, with a configuration, metrics,
+   `Display.getRotation` and the `w700dp` string of the new size; the picture
+   is 800 x 480 with its halves where they belong.
+3. Narrowed to 750 x 480: the screen's size alone changed and crosses no size
+   of the app's resources, so `Main` is neither relaunched nor told (it takes
+   no change itself); its views hear the new configuration and are laid out
+   at the new size.
+4. Narrowed to 600 x 480, across 700 dp: `Main` is relaunched (0x400) and
+   says `narrow`.
+5. `Handled`, started as another app would start it (`megler_start_activity`),
+   covers `Main`; the shell heard 7. Turned upright, 480 x 800: `Handled` hears
+   `onConfigurationChanged` and is not relaunched; `Main`, stopped, is left as
+   it is.
+6. A tap: `Handled` asks for landscape (`setRequestedOrientation`); the shell
+   heard 0.
+7. Back: `Handled` finishes and `Main` comes back to an upright screen it was
+   not made for: it is relaunched now, from stopped (no pause, no stop), with
+   its state; the shell heard -1 again.
+
+63 checks. The pictures go to `build/java-pictures` (`screen-1-upright` to
+`screen-4-back`).
+
 ### Real apps (qemu-arm; nothing here is run by default)
 
 `mg_tests --java app <apk> <data dir> <android root> <picture dir> <verbose>
@@ -2620,16 +2659,17 @@ no native code or has it for 32-bit ARM.
   `megler.Web` (an empty rectangle), `megler.Sensors` (not available). Also not asked of the
   shell yet: the keyboard, the clipboard (it is the app's own), sharing,
   opening a URL, insets (zero), dark mode (no), vibration.
-- **Which way up.** The surface is whatever `megler_run_config` says, upright or
-  on its side, and the framework lays out for it; nothing in the driver
-  assumes either. What the app *asks* for is known twice: before it runs,
-  from the manifest (`megler_apk_report`'s `"orientation"`: the launcher
-  activity's `android:screenOrientation` as `landscape`, `portrait` or
-  `unspecified`, an alias taking its target's), and while it runs, when the
-  framework calls `Native.setOrientation` for an activity's attribute or for
-  `setRequestedOrientation`. The second is only logged: there is no call of
-  the shell's to pass it to, and a surface cannot change its size under a
-  running app yet.
+- **Which way up.** The surface is whatever `megler_run_config` says as the
+  app starts, upright or on its side, and whatever `megler_set_surface` says
+  after that (its size, density and rotation: "The screen resized and turned",
+  below); nothing in the driver assumes either shape. What the app *asks* for
+  is known twice: before it runs, from the manifest (`megler_apk_report`'s
+  `"orientation"`: the launcher activity's `android:screenOrientation` as
+  `landscape`, `portrait` or `unspecified`, an alias taking its target's), and
+  while it runs: the activity in front's `android:screenOrientation` or
+  `setRequestedOrientation`, which `megler.AppRunner.updateOrientation` works
+  out as the activities come and go and `Native.setOrientation` hands to the
+  shell (`megler_display_host.orientation`) when it changes.
 
 ### An app's native libraries
 
@@ -3151,6 +3191,92 @@ where the framework's code, written for iOS, leaned on CoreGraphics without sayi
   glyph of a face from a file's bytes, 224 px high under a scale of 0.46),
   directly, through a list and in a node, on the stand-in and, in the
   Windows build, on the shell: the same pixels every way.
+
+### The screen resized and turned
+
+The app's screen changes under it: a phone turned, a PC's window resized or
+maximized. Android makes that a configuration change, and so does the
+framework here. The contract is in `megler.h` (`megler_display_host`,
+`megler_set_surface`).
+
+- **The core.** `megler_set_surface(width, height, density_dpi, rotation)`
+  keeps the surface as it now is (`mg_run_surface`, `run/mg_run.c`: the run
+  config's until then); every driver reads its size, density and rotation
+  there. The Java driver's `screenWidth`, `screenHeight`, `density` and
+  `displayRotation` say it as it is now, and its main loop finds a change at
+  its next poll, as it finds the battery's (`surface_news`): the NDK's
+  `AConfiguration` is made the new size's and the framework is handed an
+  event (`EV_SURFACE`, 11).
+- **The configuration.** `megler.Screen` (new) does with the event what
+  `ActivityThread` does with a new configuration. Every `Resources` of the
+  app's (the app's, the system's, those of configuration contexts and of the
+  packages it hosts: `Resources.sAll`) takes the screen's orientation,
+  `screenWidthDp`, `screenHeightDp`, `smallestScreenWidthDp`, `screenLayout`
+  and `densityDpi`, and `DisplayMetrics` the new size; the rest of their
+  configuration stays, an app's own locale with it. The Application, the
+  callbacks registered with it or with a context, the running services and
+  the content providers hear `onConfigurationChanged`.
+- **The activities.** Each activity on the screen meets the change now, a
+  stopped one when it comes back (`AppRunner.ensureConfiguration`, as
+  `ActivityRecord.ensureActivityConfiguration`): Back to it, a `CLEAR_TOP`
+  that brings it back, the host's window shown again. One whose
+  `android:configChanges` takes all that changed (and, for an app made for
+  Android 3.1 or before, the screen's sizes always) hears
+  `onConfigurationChanged`, which goes on to its fragments, its window and its
+  action bar. Any other is relaunched (`AppRunner.relaunch`, as
+  `handleRelaunchActivity`): paused, stopped, its state saved -- its views'
+  too, each with an id (`Activity.onSaveInstanceState` puts the window's
+  hierarchy in, as Android's does) -- its retained object kept
+  (`onRetainNonConfigurationInstance`: androidx keeps its ViewModels in it),
+  destroyed with `isChangingConfigurations` and `getChangingConfigurations`
+  saying why; then the same component made again at its place in the stack,
+  with the state in `onCreate` and `onRestoreInstanceState`, the retained
+  object in `getLastNonConfigurationInstance` until it resumes, and its
+  lifecycle state back (resumed; paused when it was under a translucent one;
+  started for a result to come). Activities it had asked for results have the
+  new one as their caller. `Activity.recreate` goes the same way; it had made
+  the new activity on top of the stack, resumed, whatever the old one had
+  been, and dropped what it retained.
+- **Sizes the resources are made for.** As Android's
+  `SizeConfigurationBuckets`, a change of the screen's size, smallest size or
+  layout relaunches an activity only when it crosses a size the app's
+  resources are made for (`w600dp`, `h480dp`, `sw720dp`, a screen layout's
+  size or length: `ResTable.meglerSizeBuckets`; `getSizeConfigurations` says
+  them too). Otherwise the activity is not relaunched and, unless it takes
+  the change, not told: its views are laid out again. So dragging a PC's
+  window does not restart an app that has no such resources. A change of
+  orientation or density always counts.
+- **The windows.** Every window is laid out again at the new size with its
+  insets worked out again, the views of the windows that were there before
+  the change hear it (`View.dispatchConfigurationChanged`), and the whole
+  screen is drawn again into a bitmap of the new size
+  (`ViewRoot.screenChanged`). The pictures that follow are of the new size; the
+  window of views and OpenGL frames composed in the core follows them
+  (`mg_java_gl.c`, `window_resized`). An activity's window added under one
+  above it in the stack goes under that one's windows.
+- **The display.** `Display.getRotation` says the rotation (`Display`,
+  overlaid), and `DisplayManager`'s listeners, which were dropped, hear
+  `onDisplayChanged` on their handlers. A screen turned upside down changes
+  no configuration: only these say it.
+- **Which way up the app wants it.** The activity in front's
+  `android:screenOrientation` or `setRequestedOrientation`, "behind" and an
+  activity that does not fill the screen and asks nothing (translucent or
+  floating) leaving it to the one below (`AppRunner.updateOrientation`), goes
+  to the shell when it changes (`Native.setOrientation`,
+  `megler_display_host.orientation`). It was only logged, from the window's
+  first `getWindow`.
+
+The shell's side (`ui/PlayerScreen.cpp`, `player/DisplayHost.cpp`): the wish
+becomes Windows' `DisplayOrientations` for `AutoRotationPreferences` -- an app
+that asks for nothing turns with the phone; a game, whose engine says nothing,
+lies down as before -- and the surface follows the window once its size has
+held for a poll (at once when the display turned), with the start's density
+for a Java app, as Android keeps a window's density when it is resized. A
+window that does not turn by itself (a PC's) and is not of the shape the app
+asks for is turned, and otherwise (an Xbox's television) the app gets a
+surface of its shape in its middle, letterboxed. The core's NDK drivers
+follow it too (docs/ARCHITECTURE.md, "Graphics"). Tested by the screen app
+("The screen resized and turned", above).
 
 ### The phone's bars
 
@@ -5840,7 +5966,7 @@ test apps are that file's layouts, styles and nine-patches.
 | `android.opengl.GLES*`, `EGLNative` | generated calls into ANGLE | (done) `drivers/mg_java_gles.c`, generated by `tools/gles-natives.py` from the declarations and Khronos' prototypes, and `drivers/mg_java_gl.c`: "OpenGL ES from Java"; the picture over OpenGL is composed in the core |
 | `megler.Web` | `WebView` | (done) not the shell's: Android's System WebView, Chromium, whose library runs as the app's code and draws in software ("The WebView") |
 | `megler.Sensors` | sensors | `Windows.Devices.Sensors` |
-| the keyboard, clipboard, sharing, URLs, orientation, insets | `megler.Native`'s calls to the host | calls of the shell's that `megler.h` does not have yet |
+| the keyboard, clipboard, sharing, URLs, orientation, insets | `megler.Native`'s calls to the host | (done but the clipboard, which is the app's own) `megler_keyboard_host`, `megler_system_host`, `megler_set_insets`; the screen's way up and its size: `megler_display_host` and `megler_set_surface` ("The screen resized and turned") |
 
 ### The microphone
 

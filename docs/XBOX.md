@@ -141,7 +141,10 @@ cookies' names (never their values), each refusal, each install.
 - **The screen.** A XAML app on an Xbox is drawn at 200 percent on 1920 by
   1080: 960 by 540 of its pixels, within the television's safe area (the
   library: `UseVisible`), the player on the whole of it. The phone-shaped
-  window Megler opens on a PC is not asked for there.
+  window Megler opens on a PC is not asked for there, and the window is never
+  resized or turned: an app that asks for portrait gets a surface of that
+  shape in the middle of the television, letterboxed (docs/DESKTOP.md, "The
+  window").
 - **Memory and graphics.** Microsoft's table of an Xbox's resources: an app
   in front has 1 GB of memory, a share of two to four processor cores and of
   45 percent of the graphics processor, Direct3D 11 at feature level 10.1 on
