@@ -25,7 +25,8 @@
  * handed back, branches and their targets, the code's memory and its publishing. What each instruction becomes is a back
  * end's (the emit_* functions, and the branches they write): Thumb-2 on 32-bit ARM, the phone and the ARM tests under
  * qemu-arm (mg_dvm_jit_thumb2.h); A64 on ARM64, desktop Windows on a Snapdragon and the arm64 tests under qemu-aarch64
- * (mg_dvm_jit_a64.h). Where there is no back end (MG_DVM_JIT), nothing is compiled.
+ * (mg_dvm_jit_a64.h); x86-64 under System V where the core is of Android's ABI, desktop Windows' core and the Linux tests
+ * (mg_dvm_jit_x86.h). Where there is no back end (MG_DVM_JIT), nothing is compiled.
  */
 #include "mg_dvm_internal.h"
 #include "../mg_core.h"
@@ -50,11 +51,13 @@ typedef char jit_array_len_same[offsetof(mg_jobj, u.arr.len) == offsetof(mg_jobj
 
 /* ------------------------------------------------------------------ the emitter */
 
-/* What the code is written in units of: Thumb-2's halfwords, A64's words. */
+/* What the code is written in units of: Thumb-2's halfwords, A64's words, x86's bytes. */
 #if MG_ARCH_ARM32
 typedef u16 jit_unit;
 #elif MG_ARCH_ARM64
 typedef u32 jit_unit;
+#else
+typedef u8 jit_unit;
 #endif
 
 typedef struct fixup {
@@ -175,6 +178,8 @@ typedef struct inline_plan {
 #include "mg_dvm_jit_thumb2.h"
 #elif MG_ARCH_ARM64
 #include "mg_dvm_jit_a64.h"
+#else
+#include "mg_dvm_jit_x86.h"
 #endif
 
 /* ------------------------------------------------------------------ the compiler */
