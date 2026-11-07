@@ -197,15 +197,18 @@ winrt::fire_and_forget openCalls() {
 
 } // namespace
 
-void start() {
+void start(bool messages, bool calls) {
     {
         std::lock_guard<std::mutex> lock(gMutex);
         if (gStarted) return;
         gStarted = true;
         gSince = nowMs();
     }
-    openMessages();
-    openCalls();
+    if (messages) openMessages();
+    if (calls) openCalls();
+    if (!messages || !calls)
+        shellLog::write(std::string("phone: ") + (!messages && !calls ? "neither text messages nor calls" : !messages ? "no text messages" : "no calls") +
+                        " watched: the app's permissions ask for none");
 }
 
 void check() {
