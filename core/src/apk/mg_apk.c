@@ -325,6 +325,8 @@ static bool arsc_raw(const arsc *a, u32 id, u8 *type, u32 *data, char *text, siz
 #define ATTR_VERSION_CODE 0x0101021bu
 #define ATTR_VERSION_NAME 0x0101021cu
 #define ATTR_TARGET_SDK 0x01010270u
+#define ATTR_MAX_SDK 0x01010271u
+#define ATTR_PERMISSION 0x01010006u
 #define ATTR_IS_FEATURE_SPLIT 0x0101055bu
 #define ATTR_IS_SPLIT_REQUIRED 0x01010591u
 #define ATTR_REQUIRED_SPLIT_TYPES 0x0101064eu
@@ -395,6 +397,25 @@ static void add_meta(mg_apk_meta *list, int *n, int cap, const char *name, const
     ++*n;
 }
 
+/* A permission the manifest asks for, once: asked again (by uses-permission-sdk-23 as well), the widest maxSdkVersion stays. */
+static void add_permission(mg_apk_info *info, const char *name, int max_sdk)
+{
+    int i;
+    if (!name[0] || strlen(name) >= sizeof(info->permissions[0])) return;
+    for (i = 0; i < info->npermissions; i++) {
+        if (strcmp(info->permissions[i], name)) continue;
+        if (!max_sdk || (info->permission_max_sdk[i] && max_sdk > info->permission_max_sdk[i])) info->permission_max_sdk[i] = max_sdk;
+        return;
+    }
+    if (info->npermissions >= MG_APK_MAX_PERMISSIONS) return;
+    mg_strlcpy(info->permissions[info->npermissions], name, sizeof(info->permissions[0]));
+    info->permission_max_sdk[info->npermissions++] = max_sdk;
+}
+
+/* Google Play services' SMS Retriever, as a receiver of an app's manifest names it (mg_apk_info.sms_retriever). */
+#define SMS_RETRIEVED_ACTION "com.google.android.gms.auth.api.phone.SMS_RETRIEVED"
+#define SMS_RETRIEVER_SENDER "com.google.android.gms.auth.api.phone.permission.SEND"
+
 static void start_element(manifest_ctx *c, const char *tag, const attr *attrs, int nattrs)
 {
     mg_apk_info *info = c->info;
@@ -403,7 +424,10 @@ static void start_element(manifest_ctx *c, const char *tag, const attr *attrs, i
     for (i = 0; i < nattrs; i++) {
         if (attrs[i].id == ATTR_NAME || (!attrs[i].id && !strcmp(attrs[i].name, "name"))) name = &attrs[i];
         if (attrs[i].id == ATTR_VALUE || (!attrs[i].id && !strcmp(attrs[i].name, "value"))) value = &attrs[i];
+        /* A receiver only Google Play services' SMS Retriever may send to; or (below) one for its action. */
+        if (attrs[i].id == ATTR_PERMISSION && !strcmp(tag, "receiver") && !strcmp(attrs[i].text, SMS_RETRIEVER_SENDER)) info->sms_retriever = true;
     }
+    if (name && !strcmp(tag, "action") && !strcmp(name->text, SMS_RETRIEVED_ACTION)) info->sms_retriever = true;
     if (!strcmp(tag, "manifest")) {
         for (i = 0; i < nattrs; i++) {
             if (!attrs[i].id && !strcmp(attrs[i].name, "package")) mg_strlcpy(info->package, attrs[i].text, sizeof(info->package));
@@ -425,6 +449,12 @@ static void start_element(manifest_ctx *c, const char *tag, const attr *attrs, i
             if (attrs[i].id == ATTR_MIN_SDK) info->min_sdk = (int)attrs[i].data;
             if (attrs[i].id == ATTR_TARGET_SDK) info->target_sdk = (int)attrs[i].data;
         }
+    } else if (!c->in_application && name && name->type == 0x03 &&
+               (!strcmp(tag, "uses-permission") || !strcmp(tag, "uses-permission-sdk-23") || !strcmp(tag, "uses-permission-sdk-m"))) {
+        int max_sdk = 0;
+        for (i = 0; i < nattrs; i++)
+            if (attrs[i].id == ATTR_MAX_SDK && attrs[i].type >= 0x10 && attrs[i].type <= 0x1f) max_sdk = (int)attrs[i].data;
+        add_permission(info, name->text, max_sdk);
     } else if (!strcmp(tag, "application")) {
         c->in_application = true;
         for (i = 0; i < nattrs; i++) {
@@ -1300,6 +1330,25 @@ static char *report(const char *apk_path, char *const *splits, int nsplits, cons
     mg_jint(&j, info->min_sdk);
     mg_jkey(&j, "targetSdk", false);
     mg_jint(&j, info->target_sdk);
+    /* The permissions the manifest asks for, and the last Android each is asked on (0: every one), place for place. */
+    mg_jkey(&j, "permissions", false);
+    mg_jraw(&j, "[");
+    for (i = 0; i < info->npermissions; i++) {
+        if (i) mg_jraw(&j, ",");
+        mg_jstr(&j, info->permissions[i]);
+    }
+    mg_jraw(&j, "]");
+    mg_jkey(&j, "permissionMaxSdk", false);
+    mg_jraw(&j, "[");
+    for (i = 0; i < info->npermissions; i++) {
+        if (i) mg_jraw(&j, ",");
+        mg_jint(&j, info->permission_max_sdk[i]);
+    }
+    mg_jraw(&j, "]");
+    if (info->sms_retriever) {
+        mg_jkey(&j, "smsRetriever", false);
+        mg_jraw(&j, "true");
+    }
     if (info->nuses_libraries) {
         mg_jkey(&j, "usesLibraries", false);
         mg_jraw(&j, "[");

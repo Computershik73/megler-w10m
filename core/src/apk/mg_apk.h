@@ -17,6 +17,8 @@ enum { MG_APK_UNSPECIFIED = 0, MG_APK_LANDSCAPE, MG_APK_PORTRAIT };
 
 /* As many split APKs as an app is read with (the Java driver opens ten of them: drivers/mg_java.c). */
 #define MG_APK_MAX_SPLITS 16
+/* As many of the permissions a manifest asks for as are kept: Google Play services asks for some two hundred, an app for fifty. */
+#define MG_APK_MAX_PERMISSIONS 256
 
 typedef struct mg_apk_info {
     char error[200];               /* why the APK could not be read at all */
@@ -38,6 +40,21 @@ typedef struct mg_apk_info {
     int nuses_libraries;
     /* The manifest's sharedUserId, empty when none: "android.uid.system" for an app of the platform's own (Settings). */
     char shared_user_id[96];
+    /*
+     * The permissions the manifest asks for (<uses-permission>, <uses-permission-sdk-23>), each once, in its order, with
+     * android:maxSdkVersion, the last Android each is asked on (0: every one). What the package of the app's own declares to
+     * Windows is made from them (core/src/appx/mg_appx_manifest.c). A name too long for its place is left out: none of the
+     * platform's is.
+     */
+    char permissions[MG_APK_MAX_PERMISSIONS][96];
+    int permission_max_sdk[MG_APK_MAX_PERMISSIONS];
+    int npermissions;
+    /*
+     * Whether the manifest has a receiver of Google Play services' SMS Retriever: its action SMS_RETRIEVED, or the permission
+     * only Google Play services holds as the receiver's. Such an app is handed the text message with its code by Google Play
+     * services, which the app hosts here and which hears the phone's messages for it, and needs no SMS permission of its own.
+     */
+    bool sms_retriever;
     char engine[32];
     bool supported, runnable;
     char reason[240];

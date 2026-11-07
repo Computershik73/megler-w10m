@@ -93,6 +93,12 @@ MEGLER_API void megler_free(void *p);
  *     "label": "Example Game",         the application's name, when it is a plain string
  *     "versionName": "1.2.3", "versionCode": 123,
  *     "minSdk": 16, "targetSdk": 28,
+ *     "permissions": ["android.permission.INTERNET", "android.permission.CAMERA"],   what the manifest asks for
+ *                                      (<uses-permission>, <uses-permission-sdk-23>), each once, in its order
+ *     "permissionMaxSdk": [0, 28],     android:maxSdkVersion of each, place for place: the last Android it is asked
+ *                                      on, 0 for every one
+ *     "smsRetriever": true,            the manifest has a receiver of Google Play services' SMS Retriever (its
+ *                                      SMS_RETRIEVED, or the permission only Google Play services holds); absent when not
  *     "abis": ["armeabi-v7a", "arm64-v8a"],
  *     "abi": "armeabi-v7a",            the one that would be used; absent when there is none
  *     "runnable": true,                false: "reason" says why not (no 32-bit ARM code, no native code at all, ...)
