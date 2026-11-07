@@ -204,19 +204,29 @@ void guarded(F&& f) {
 
 // ------------------------------------------------------------------ looking
 
-/// The name of the sensor's device, and its maker where Windows says (the device node's DEVPKEY_Device_Manufacturer).
+/// The name of the sensor's part and its maker, as its device node has them (the node's name, and DEVPKEY_Device_Manufacturer):
+/// the sensor interface's own name is its device container's, which on a phone is the phone's ("mc-00119cf05bb0"). A node
+/// without a friendly name is named by its driver's description, "Cube ST Accelerometer Driver": the part is what precedes
+/// " Driver".
 void describe(Found& f, const winrt::hstring& deviceId) {
     static const winrt::hstring instanceKey = L"System.Devices.DeviceInstanceId", makerKey = L"{a45c254e-df1c-4efd-8020-67d146a850e0} 13";
     try {
         const DeviceInformation d = DeviceInformation::CreateFromIdAsync(deviceId, {instanceKey}).get();
-        copyText(f.info.name, sizeof(f.info.name), narrow(d.Name()));
+        std::string name = narrow(d.Name());
         const auto instance = d.Properties().TryLookup(instanceKey);
         const winrt::hstring instanceId = instance ? winrt::unbox_value_or<winrt::hstring>(instance, L"") : winrt::hstring();
         if (!instanceId.empty()) {
-            const DeviceInformation device = DeviceInformation::CreateFromIdAsync(instanceId, {makerKey}, DeviceInformationKind::Device).get();
-            const auto maker = device.Properties().TryLookup(makerKey);
-            if (maker) copyText(f.info.vendor, sizeof(f.info.vendor), narrow(winrt::unbox_value_or<winrt::hstring>(maker, L"")));
+            try {
+                const DeviceInformation device = DeviceInformation::CreateFromIdAsync(instanceId, {makerKey}, DeviceInformationKind::Device).get();
+                if (const std::string part = narrow(device.Name()); !part.empty()) name = part;
+                const auto maker = device.Properties().TryLookup(makerKey);
+                if (maker) copyText(f.info.vendor, sizeof(f.info.vendor), narrow(winrt::unbox_value_or<winrt::hstring>(maker, L"")));
+            } catch (const winrt::hresult_error&) {
+            }
         }
+        static const std::string driver = " Driver";
+        if (name.size() > driver.size() && name.compare(name.size() - driver.size(), driver.size(), driver) == 0) name.resize(name.size() - driver.size());
+        copyText(f.info.name, sizeof(f.info.name), name);
     } catch (const winrt::hresult_error&) {
     }
 }
