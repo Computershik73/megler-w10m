@@ -209,6 +209,41 @@ std::vector<std::wstring> copiesIn(const std::wstring& library, const std::wstri
     return out;
 }
 
+/// The flag test-copies: how this phone copies a file. The package's largest Google APK is copied three times as Megler made
+/// every copy before (files::copy and files::flush alone) to LocalState\test-copies.apk, and each copy compared with it as
+/// the disk holds it (describe), then removed. A Lumia 650 got copies of Google Play services wrong twice, a bit each time
+/// (625, 632), and Google Play Store's once.
+void testCopies(const std::vector<std::wstring>& bundle, const std::wstring& shared) {
+    std::wstring largest;
+    for (const auto& original : bundle)
+        if (largest.empty() || files::size(original) > files::size(largest)) largest = original;
+    const std::wstring local = platform::localStateDirectory(), copy = local + L"\\test-copies.apk";
+    ULARGE_INTEGER room = {};
+    if (largest.empty() || !GetDiskFreeSpaceExW(local.c_str(), &room, nullptr, nullptr) || room.QuadPart < files::size(largest) + (300ull << 20)) {
+        shellLog::write("bundled apks: test-copies: no room for a copy of " + (largest.empty() ? std::string("an APK") : shown(largest, shared)) + " (" +
+                        formattedByteCount(room.QuadPart) + " free)");
+        return;
+    }
+    files::makeDirectory(local + L"\\bundled-apks");
+    unsigned wrong = 0, made = 0;
+    for (int i = 1; i <= 3; i++) {
+        const ULONGLONG began = GetTickCount64();
+        if (!files::copy(largest, copy) || !files::flush(copy)) {
+            shellLog::write(format("bundled apks: test-copies: copy %d of %s could not be made (error %lu)", i, shown(largest, shared).c_str(), GetLastError()));
+            break;
+        }
+        const ULONGLONG copied = GetTickCount64();
+        const int64_t differ = describe(largest, copy, format("test copy %d", i), local + L"\\bundled-apks\\test-" + widen(std::to_string(i)) + L".pages", shared);
+        shellLog::write(format("bundled apks: test-copies: copy %d of %s made in %.1f s and compared in %.1f s: %s", i, shown(largest, shared).c_str(),
+                               double(copied - began) / 1000.0, double(GetTickCount64() - copied) / 1000.0,
+                               differ < 0 ? "could not be read" : differ ? "differs" : "the same byte for byte"));
+        made++;
+        wrong += differ != 0;
+    }
+    files::remove(copy);
+    shellLog::write(format("bundled apks: test-copies: %u of %u copies differ", wrong, made));
+}
+
 void check(const std::wstring& library, const std::wstring& shared, bool asked, const std::string& version) {
     // (Its reads and writes after everything else's: an app starting, Update All.)
     SetThreadPriority(GetCurrentThread(), THREAD_MODE_BACKGROUND_BEGIN);
@@ -256,6 +291,7 @@ void check(const std::wstring& library, const std::wstring& shared, bool asked, 
                            mendedCopies ? format("%u mended", mendedCopies).c_str() : "each as the package's"));
     // (Not once for the build while a copy that differs could not be mended: again at the next start.)
     if (whole) files::write(local + L"\\bundled-apks-checked.txt", version);
+    if (files::exists(local + L"\\flags\\test-copies")) testCopies(bundle, shared);
     SetThreadPriority(GetCurrentThread(), THREAD_MODE_BACKGROUND_END);
 }
 
@@ -285,7 +321,9 @@ void checkLater() {
     }
     const std::string version = platform::packageVersion();
     std::string checked;
-    if (!asked && files::read(local + L"\\bundled-apks-checked.txt", checked) && checked == version) return;
+    if (!asked && !files::exists(local + L"\\flags\\test-copies") && files::read(local + L"\\bundled-apks-checked.txt", checked) &&
+        checked == version)
+        return;
     if (!files::exists(platform::installDirectory() + L"\\bitgapps")) return;
     std::thread([library = local + L"\\apks", shared, asked, version] { check(library, shared, asked, version); }).detach();
 }
