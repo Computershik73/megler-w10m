@@ -188,8 +188,13 @@ bash tools/build-appx.sh arm --java # → app/Megler/AppPackages/Megler_<ver>_AR
 
 ## On the phone
 
-The phone must be interop-unlocked (for `codeGeneration`), in Developer mode, and
-trust the package's certificate (`AppPackages/Megler.cer`). A package you do not build
+The phone must be fully interop-unlocked, in Developer mode, and trust the package's
+certificate (`AppPackages/Megler.cer`). Fully: the basic unlock grants `codeGeneration`,
+without which no Android code runs; the capability part of it -- in Interop Tools ›
+Unlock, **Interop/Cap Unlock** and **New Capability Engine Unlock**, then a restart --
+grants `packageManagement`, without which Windows refuses every package Megler installs,
+the apps' own and its own updates (0x80070005, access denied; Megler then says so and
+what to do). A package you do not build
 yourself is on [the latest release](https://github.com/Computershik73/megler-w10m/releases/latest),
 with its `Megler.cer`.
 
