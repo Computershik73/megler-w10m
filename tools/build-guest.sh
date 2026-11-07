@@ -27,7 +27,8 @@
 #   libt_xposed.so     stands in for Aliucord's libaliuhook.so: XposedBridge's natives by their JNI names, a JNI_OnLoad
 #                      that fails (t_xposed.c); the runtime loads it without the one and answers the others itself
 #   libt_svc.so, libt_svc_diag.so, libt_svc_arm.so
-#                      armeabi-v7a only: direct ARM EABI system calls (t_svc.c), Thumb and ARM
+#                      armeabi-v7a: direct ARM EABI system calls (t_svc.c), Thumb and ARM; arm64-v8a: libt_svc.so and
+#                      libt_svc_diag.so, svc 0 led out to the core, and left traps by the flag trap-svc
 #   libt_aaudio.so     AAudio looked up by name
 #   libt_go.so         every ABI but x86: one of Go's by its build ID note, a goroutine's stack in its heap given back
 #                      with madvise by number (t_go.c); x86's own system calls (int 0x80) are not led out to the core
@@ -111,6 +112,10 @@ if [ "$ABI" = armeabi-v7a ]; then
   "$CLANG" "${COMMON[@]}" -mthumb -Wl,--hash-style=both   -Wl,-soname,libt_svc.so -o "$(w "$OUT/libt_svc.so")" "$(w "$SRC/t_svc.c")" "${SYS[@]}"
   "$CLANG" "${COMMON[@]}" -mthumb -Wl,--hash-style=both   -Wl,-soname,libt_svc_diag.so -o "$(w "$OUT/libt_svc_diag.so")" "$(w "$SRC/t_svc.c")" "${SYS[@]}"
   "$CLANG" "${COMMON[@]}" -marm -Wl,--hash-style=both   -Wl,-soname,libt_svc_arm.so -o "$(w "$OUT/libt_svc_arm.so")" "$(w "$SRC/t_svc.c")" "${SYS[@]}"
+elif [ "$ABI" = arm64-v8a ]; then
+  # ARM64's svc 0 led out to the core through pieces of island (arm64/mg_patch_arm64.c), and the flag trap-svc's traps.
+  "$CLANG" "${COMMON[@]}" -Wl,--hash-style=both   -Wl,-soname,libt_svc.so -o "$(w "$OUT/libt_svc.so")" "$(w "$SRC/t_svc.c")" "${SYS[@]}"
+  "$CLANG" "${COMMON[@]}" -Wl,--hash-style=both   -Wl,-soname,libt_svc_diag.so -o "$(w "$OUT/libt_svc_diag.so")" "$(w "$SRC/t_svc.c")" "${SYS[@]}"
 fi
 # AAudio looked up by name, as an app that decodes its own sound does (core/src/ndk/mg_aaudio.c).
 "$CLANG" "${COMMON[@]}" ${THUMB[@]+"${THUMB[@]}"} -Wl,--hash-style=both   -Wl,-soname,libt_aaudio.so -o "$(w "$OUT/libt_aaudio.so")" "$(w "$SRC/t_aaudio.c")" "${SYS[@]}"
