@@ -4440,6 +4440,21 @@ public class Main extends Activity {
                     && "a\n\nb\n\n".equals(list.toString()) && bullets == 2 && "<b> & \u00A9\u00A9\u00A9\u00A0x".equals(refs)
                     && urls.length == 1 && "https://example.com/?a=1&b=2".equals(urls[0].getURL()) && "xy".equals(open.toString()) && openStyles == 2;
         });
+        step("stats-manager", () -> {
+            // statsd's manager, which Google Play services hands its anomaly configurations (a system API: by reflection): there
+            // by its name and by its class, and each call says statsd is not running, with StatsUnavailableException, as Android
+            // says it then.
+            Class<?> c = Class.forName("android.app.StatsManager");
+            Object byName = getSystemService("stats"), byClass = getSystemService(c);
+            String thrown = null;
+            try {
+                c.getMethod("addConfig", long.class, byte[].class).invoke(byName, 1L, new byte[0]);
+            } catch (java.lang.reflect.InvocationTargetException e) {
+                thrown = e.getCause().getClass().getName();
+            }
+            detail = "byName=" + byName + " byClass=" + byClass + " thrown=" + thrown;
+            return c.isInstance(byName) && byName == byClass && "android.app.StatsManager$StatsUnavailableException".equals(thrown);
+        });
     }
 
     /**

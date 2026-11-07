@@ -152,6 +152,8 @@ public final class Services {
         case Context.KEYGUARD_SERVICE: return new android.app.KeyguardManager();
         case Context.USER_SERVICE: return new android.os.UserManager();
         case Context.USAGE_STATS_SERVICE: return new android.app.usage.UsageStatsManager(ContextImpl.app(), null);
+        /* statsd's, which is not here: each call throws StatsUnavailableException (Google Play services' anomaly configurations). */
+        case "stats": return new android.app.StatsManager(ContextImpl.app());
         case Context.BATTERY_SERVICE: return new android.os.BatteryManager();
         case Context.STORAGE_SERVICE: return new android.os.storage.StorageManager();
         case Context.TELEPHONY_SERVICE: return new android.telephony.TelephonyManager();
