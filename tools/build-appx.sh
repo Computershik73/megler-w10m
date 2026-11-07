@@ -629,6 +629,13 @@ if [ -n "$BITGAPPS" ]; then
   # variant for arm64-v8a, which a phone's package once carried, has 8 of its 40 libraries for armeabi-v7a.
   python "$(w "$ROOT/tools/bitgapps-check.py")" "$ABI" "$(w "$STAGE/bitgapps")" ||
     { echo "--bitgapps: an APK above is not for $ABI: give that of $ABI (--gms, --play-store, --microg)" >&2; exit 1; }
+  # Google's sign-in (Google Play services' MinuteMaid) is a web page in a WebView: the processor's System WebView must be in
+  # the Android root (tools/webview-fetch.sh <abi> puts it in build/webview). The desktop packages had none -- build/webview
+  # held 32-bit ARM's alone -- and Play Store's Sign In came back at once ("this phone's Android root has no WebView").
+  if [ ! -f "$STAGE/android/app/webview/webview.apk" ]; then
+    echo "    WARNING: no WebView in the Android root: Google's sign-in cannot open (tools/webview-fetch.sh $ABI)" >&2
+    if [ "$PACK" = 1 ]; then echo "--bitgapps: refusing to pack Google's apps without a WebView to sign in with" >&2; exit 1; fi
+  fi
 fi
 
 # MARK: ANGLE
