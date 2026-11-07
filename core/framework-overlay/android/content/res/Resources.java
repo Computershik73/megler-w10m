@@ -64,6 +64,13 @@
 // later must -- is read where it lies in the APK, through a buffer over the file (megler.Native.mapApkFile), not copied into
 // the heap. Spotify's is 49.8 MB: read, it was a fifth of the heap on a Lumia 650, and the collector, keeping within what the
 // phone had free, ran every second or two (package 664).
+//
+// And the screen's changes (megler.Screen: the shell resized or turned the app's surface): every Resources the app has --
+// its own, the system's, those of configuration contexts and of the packages it hosts -- is known (sAll) and takes the
+// screen's new orientation, sizes, layout and density, and DisplayMetrics of the new size, as Android's ResourcesManager
+// applies a new configuration to all of an app's resources (meglerScreenChanged). And the sizes the app's resources are made
+// for (w600dp, h480dp, sw720dp, the screen layout's size and length), which Android's SizeConfigurationBuckets keeps for
+// deciding whether a change of size relaunches an activity (meglerSizeBuckets); getSizeConfigurations says them too.
 package android.content.res;
 
 import android.graphics.Typeface;
@@ -116,6 +123,45 @@ public class Resources {
         updateCfg();
         loadTables();
         if (a.meglerPackageApk() != 0) mPackageTable = packageTable(a.meglerPackageApk());
+        synchronized (sAll) {
+            // (Those gone are dropped as the list grows: an app that makes a configuration context's Resources at every
+            // getResources, as some apps' locale wrappers do, would have it grow without end.)
+            if (sAll.size() >= 32 && (sAll.size() & 31) == 0) sAll.removeIf(r -> r.get() == null);
+            sAll.add(new java.lang.ref.WeakReference<>(this));
+        }
+    }
+
+    // ---- Megler: the screen's changes (see the top of the file)
+    /** Every Resources made, while it lives. */
+    private static final java.util.ArrayList<java.lang.ref.WeakReference<Resources>> sAll = new java.util.ArrayList<>();
+    /**
+     * The screen was resized or turned: every Resources there is takes `screen` (a configuration of the screen's fields alone,
+     * the others undefined) and the metrics of the new size. Their other fields -- an app's own locale, put in with
+     * updateConfiguration -- stay as they are.
+     */
+    public static void meglerScreenChanged(Configuration screen, DisplayMetrics m) {
+        java.util.ArrayList<Resources> live = new java.util.ArrayList<>();
+        synchronized (sAll) {
+            for (java.util.Iterator<java.lang.ref.WeakReference<Resources>> i = sAll.iterator(); i.hasNext();) {
+                Resources r = i.next().get();
+                if (r == null) i.remove();
+                else live.add(r);
+            }
+        }
+        for (Resources r : live) r.updateConfiguration(screen, m);
+    }
+    private static int[][] sBuckets;
+    /**
+     * The sizes the app's resources are made for, as Android's SizeConfigurationBuckets keeps them: the widths (w<N>dp), the
+     * heights (h<N>dp) and the smallest widths (sw<N>dp) its configurations name, each sorted, and whether any names a screen
+     * layout size (small, large...) or length (long, notlong) -- { widths, heights, smallest, { size, long } }.
+     */
+    public static int[][] meglerSizeBuckets() {
+        synchronized (sLock) {
+            loadTables();
+            if (sBuckets == null) sBuckets = sApp.meglerSizeBuckets();
+            return sBuckets;
+        }
     }
     /*
      * Another package's table (Google Play services', its framework's: megler.MicroG, megler.Gsf), read once for each of
@@ -800,8 +846,16 @@ public class Resources {
     public java.lang.String getLastResourceResolution() { return null; }
     public java.util.List getLoaders() { return new java.util.ArrayList(); }
     public android.util.LongSparseArray getPreloadedDrawables() { return sPreloadedDrawables != null && sPreloadedDrawables.length > 0 ? sPreloadedDrawables[0] : null; }
-    public android.content.res.Configuration[] getSizeAndUiModeConfigurations() { return null; }
-    public android.content.res.Configuration[] getSizeConfigurations() { return null; }
+    public android.content.res.Configuration[] getSizeAndUiModeConfigurations() { return getSizeConfigurations(); }
+    /* The sizes the app's resources are made for, one configuration for each (meglerSizeBuckets), as Android's AssetManager lists them. */
+    public android.content.res.Configuration[] getSizeConfigurations() {
+        int[][] b = meglerSizeBuckets();
+        java.util.ArrayList<Configuration> list = new java.util.ArrayList<>();
+        for (int w : b[0]) { Configuration c = new Configuration(); c.screenWidthDp = w; list.add(c); }
+        for (int h : b[1]) { Configuration c = new Configuration(); c.screenHeightDp = h; list.add(c); }
+        for (int sw : b[2]) { Configuration c = new Configuration(); c.smallestScreenWidthDp = sw; list.add(c); }
+        return list.toArray(new Configuration[0]);
+    }
     public boolean hasOverrideDisplayAdjustments() { return false; }
     public android.content.res.XmlResourceParser loadXmlResourceParser(java.lang.String p0, int p1, int p2, java.lang.String p3, boolean p4) { return null; }
     public void parseBundleExtra(java.lang.String p0, android.util.AttributeSet p1, android.os.Bundle p2) {}

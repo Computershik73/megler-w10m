@@ -1,6 +1,7 @@
 // Overlay of core/framework/src/android/content/res/ResTable.java (tools/build-framework.sh).
-// It differs in how a resource is found by its name (identifier and indexNames, and the map they keep); the rest is the
-// original's, unchanged.
+// It differs in how a resource is found by its name (identifier and indexNames, and the map they keep), and it can say the
+// sizes its configurations are made for (meglerSizeBuckets, for a change of the screen's size: megler.Screen); the rest is
+// the original's, unchanged.
 //
 // Why. The original answers the first Resources.getIdentifier of a package by indexing the whole package: every entry of
 // every configuration of every type, each put into one map twice, as "type/name" and with its dots turned to underscores.
@@ -340,6 +341,29 @@ public final class ResTable {
         v.density = en.density;
         return name;
     }
+
+    /**
+     * Megler: the sizes this table's configurations are made for, for Android's SizeConfigurationBuckets (Resources.meglerSizeBuckets):
+     * { widths dp, heights dp, smallest widths dp, { 1 if any names a screen layout size, 1 if any names its length } }.
+     */
+    public int[][] meglerSizeBuckets() {
+        java.util.TreeSet<Integer> w = new java.util.TreeSet<>(), h = new java.util.TreeSet<>(), sw = new java.util.TreeSet<>();
+        boolean size = false, lng = false;
+        for (Package p : packages) {
+            for (Type t : p.types) {
+                if (t == null) continue;
+                for (TypeChunk tc : t.configs) {
+                    if (tc.cfg[Config.WIDTH_DP] != 0) w.add(tc.cfg[Config.WIDTH_DP]);
+                    if (tc.cfg[Config.HEIGHT_DP] != 0) h.add(tc.cfg[Config.HEIGHT_DP]);
+                    if (tc.cfg[Config.SMALLEST_W] != 0) sw.add(tc.cfg[Config.SMALLEST_W]);
+                    size |= (tc.cfg[Config.LAYOUT] & 0xf) != 0;
+                    lng |= (tc.cfg[Config.LAYOUT] & 0x30) != 0;
+                }
+            }
+        }
+        return new int[][] { ints(w), ints(h), ints(sw), { size ? 1 : 0, lng ? 1 : 0 } };
+    }
+    private static int[] ints(java.util.Set<Integer> s) { int[] r = new int[s.size()]; int i = 0; for (int v : s) r[i++] = v; return r; }
 
     public Package pkg(int id) { return byId[(id >>> 24) & 255]; }
     public String typeName(int id) { Package p = pkg(id); if (p == null) return null; Type t = p.types[(id >>> 16) & 255]; return t == null ? null : t.name; }

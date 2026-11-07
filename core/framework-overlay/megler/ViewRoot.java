@@ -44,6 +44,13 @@
 // top edge while the user typed into it. And it gave a dialog the part of it the keyboard covered as an inset, which a view
 // that fits system windows turned into padding, making the dialog taller still. An activity was always resized.
 //
+// And in the screen's changes (screenChanged: the shell resized or turned the app's surface, megler.Screen): every window is laid
+// out again at the new size with its insets worked out again, its views hear the new configuration
+// (View.dispatchConfigurationChanged, as ViewRootImpl.performConfigurationChange does it) when there is one, and the whole
+// screen is drawn again, into a bitmap of the new size. And an activity's own window that is added while another activity
+// is above it in the stack -- one made again for a configuration change under a translucent one -- goes under that one's
+// windows, as Android keeps an activity's windows in their task's order (add).
+//
 // And in the phone's bars (updateBars, at every frame): which of them the top activity window wants hidden -- its
 // FLAG_FULLSCREEN, its views' system UI visibility, what its WindowInsetsController hid -- is told to the shell
 // (Native.systemBars), which hides the phone's status and navigation bars accordingly and says the insets that follow; the
@@ -122,9 +129,14 @@ public final class ViewRoot implements ViewParent {
         ViewRoot r = new ViewRoot(v, lp);
         // An activity's own window goes under the windows it already opened (a dialog shown from onCreate is added before the
         // activity's window, which comes after onResume): on Android a dialog stays above the activity it belongs to.
+        // So does one under an activity above it in the stack (megler.AppRunner): one made again for a configuration change while
+        // a translucent activity was on top of it.
         int at = sRoots.size();
         android.app.Activity owner = lp != null && lp.type == WindowManager.LayoutParams.TYPE_BASE_APPLICATION ? activityOf(v.getContext()) : null;
-        if (owner != null) for (int i = 0; i < sRoots.size(); i++) if (activityOf(sRoots.get(i).mView.getContext()) == owner) { at = i; break; }
+        if (owner != null) for (int i = 0; i < sRoots.size(); i++) {
+            android.app.Activity o = activityOf(sRoots.get(i).mView.getContext());
+            if (o == owner || (o != null && AppRunner.isAbove(o, owner))) { at = i; break; }
+        }
         boolean under = at < sRoots.size();
         // A dialog of an activity that is stopped comes up hidden, and shows when the activity is on the screen again.
         android.app.Activity of = r.ofToken() ? activityOf(v.getContext()) : null;
@@ -440,6 +452,27 @@ public final class ViewRoot implements ViewParent {
         for (ViewRoot v : sRoots) v.requestApplyInsets();
     }
     public static void setImeHeight(int h) { if (h != sImeBottom) { sImeBottom = h; for (ViewRoot v : sRoots) v.requestApplyInsets(); } }
+    /**
+     * The screen was resized or turned (megler.Screen): every window is laid out again at the new size, its insets worked out
+     * again and its panning for the keyboard forgotten, and the whole screen drawn again; the views of the windows that were
+     * there before it (`before`: those of an activity made again for it are gone, its new ones made for it) are told of the
+     * new configuration when there is one (`configChanged`).
+     */
+    public static void screenChanged(android.content.res.Configuration c, boolean configChanged, java.util.List<ViewRoot> before) {
+        for (ViewRoot r : new ArrayList<>(sRoots)) {
+            if (r.mRemoved) continue;
+            if (configChanged && before.contains(r)) {
+                try { r.mView.dispatchConfigurationChanged(new android.content.res.Configuration(c)); }
+                catch (RuntimeException e) { android.util.Log.e("ViewRoot", "a view's onConfigurationChanged threw", e); throw e; }
+            }
+            r.mInsetsDirty = true;
+            r.mLayoutRequested = true;
+            r.mDirtyAll = true;
+            r.mPan = 0;
+        }
+        fullRedraw("the screen was resized or turned");
+        scheduleFrame();
+    }
     public static int imeHeight() { return sImeBottom; }
     public static int[] screenInsetsMegler() { return sInsets; }
     public static WindowInsets screenInsets() { return WindowInsets.meglerOf(sInsets[0], sInsets[1], sInsets[2], sInsets[3], sImeBottom, cutout()); }

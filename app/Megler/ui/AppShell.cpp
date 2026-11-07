@@ -210,30 +210,29 @@ void AppShell::applyVisibleBounds() {
         currentStack().pages.back()->barsCover(covered.Left, covered.Top, covered.Right, covered.Bottom);
 }
 
-void AppShell::applyFullScreen(bool fullScreen, bool upright, bool hideStatus, bool hideNavigation, bool lightStatus) {
-    upright = fullScreen && upright;
+void AppShell::applyFullScreen(bool fullScreen, unsigned orientations, bool hideStatus, bool hideNavigation, bool lightStatus) {
+    orientations = fullScreen ? orientations : 0;
     // The phone hides its navigation bar only in full-screen mode, and that hides the status bar too.
     hideNavigation = fullScreen && hideNavigation;
     hideStatus = fullScreen && (hideStatus || hideNavigation);
     lightStatus = fullScreen && lightStatus;
-    if (fullScreen == fullScreen_ && upright == upright_ && hideStatus == hideStatus_ && hideNavigation == hideNavigation_ &&
+    if (fullScreen == fullScreen_ && orientations == orientations_ && hideStatus == hideStatus_ && hideNavigation == hideNavigation_ &&
         lightStatus == lightStatus_)
         return;
-    const bool turn = fullScreen != fullScreen_ || upright != upright_;
+    const bool turn = fullScreen != fullScreen_ || orientations != orientations_;
     fullScreen_ = fullScreen;
-    upright_ = upright;
+    orientations_ = orientations;
     hideStatus_ = hideStatus;
     hideNavigation_ = hideNavigation;
     lightStatus_ = lightStatus;
     using namespace winrt::Windows::Graphics::Display;
     if (turn) {
         try {
-            // The library is a portrait screen, games are landscape ones, and an
-            // app that is not a game is upright unless it says otherwise. Off a
-            // phone there is nothing to turn back to: no preference.
-            DisplayInformation::AutoRotationPreferences(
-                fullScreen && !upright ? (DisplayOrientations::Landscape | DisplayOrientations::LandscapeFlipped)
-                                       : (platform::isMobile() ? DisplayOrientations::Portrait : DisplayOrientations::None));
+            // The library is a portrait screen; a full-screen page says which ways up it may be shown -- the player as its
+            // app asks (a game lying down, an app as its activity in front wants it, or as the phone is held), 0 being
+            // any. Off a phone there is nothing to turn back to: no preference.
+            DisplayInformation::AutoRotationPreferences(fullScreen ? DisplayOrientations(orientations)
+                                                                   : (platform::isMobile() ? DisplayOrientations::Portrait : DisplayOrientations::None));
         } catch (const hresult_error& e) {
             shellLog::write("ui: AutoRotationPreferences failed: " + narrow(e.message()));
         }
@@ -268,8 +267,16 @@ void AppShell::applyFullScreen(bool fullScreen, bool upright, bool hideStatus, b
         } catch (...) {
         }
     }
+    // (The log's words for the old two: "upright" and "landscape".)
+    const char* held = orientations == 0                                  ? "as the phone is held"
+                       : orientations == unsigned(DisplayOrientations::Portrait) ? "upright"
+                       : !(orientations & (unsigned(DisplayOrientations::Portrait) | unsigned(DisplayOrientations::PortraitFlipped)))
+                           ? "landscape"
+                       : !(orientations & (unsigned(DisplayOrientations::Landscape) | unsigned(DisplayOrientations::LandscapeFlipped)))
+                           ? "upright, either way up"
+                           : "turned as the phone is";
     shellLog::write(!fullScreen ? std::string("ui: back to portrait")
-                                : std::string(upright ? "ui: upright, full screen" : "ui: landscape, full screen") +
+                                : std::string("ui: ") + held + format(" (DisplayOrientations %u), full screen", orientations) +
                                       (hideNavigation ? (entered ? ", the phone's bars hidden" : ", the phone's bars hidden (full-screen mode refused)")
                                        : hideStatus   ? ", the status bar hidden, the navigation bar shown"
                                                       : ", the phone's bars shown"));
@@ -385,7 +392,7 @@ void AppShell::refreshChrome() {
     auto& stack = currentStack();
     auto page = stack.pages.back();
     const bool full = page->fullScreen();
-    applyFullScreen(full, page->upright(), page->hideStatusBar(), page->hideNavigationBar(), page->lightStatusBar());
+    applyFullScreen(full, page->orientations(), page->hideStatusBar(), page->hideNavigationBar(), page->lightStatusBar());
     setVisible(navigationBar_, !full);
     setVisible(tabBar_, !full);
     const bool canGoBack = stack.pages.size() > 1;

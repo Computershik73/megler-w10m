@@ -7,8 +7,9 @@
 // touches XAML; they change state, and the poll shows it.
 //
 // The player is a Page too, but a full-screen one: while it is on top there
-// is no navigation bar and no tab bar, the display is turned to landscape,
-// and hardware Back goes to the running app.
+// is no navigation bar and no tab bar, the display is turned the ways the
+// running app allows (landscape for a game), and hardware Back goes to the
+// running app.
 #pragma once
 
 #include <deque>
@@ -32,10 +33,12 @@ public:
     /// The navigation bar's trailing item, or null. Asked again after every
     /// refresh, so it can change with state.
     virtual winrt::Windows::UI::Xaml::UIElement toolbarItem() { return nullptr; }
-    /// The whole screen, in landscape, without the shell's bars, under the phone's.
+    /// The whole screen, without the shell's bars, under the phone's.
     virtual bool fullScreen() { return false; }
-    /// For a full-screen page: upright instead of in landscape.
-    virtual bool upright() { return false; }
+    /// For a full-screen page: the ways up the display may show it, Windows' DisplayOrientations (Landscape 1, Portrait 2,
+    /// LandscapeFlipped 4, PortraitFlipped 8), or 0 for whichever way the device is held. Asked again at every
+    /// refreshChrome (the player's app may ask for another).
+    virtual unsigned orientations() { return 1 | 4; }
     /// For a full-screen page: the phone's status bar and navigation bar hidden (the phone hides its navigation bar only in
     /// full-screen mode, which hides the status bar too), and the status bar's icons dark, for a light bar under them.
     virtual bool hideStatusBar() { return fullScreen(); }
@@ -155,7 +158,7 @@ private:
     void buildTabBar();
     void closeDialog(int button);
     void showTop();
-    void applyFullScreen(bool fullScreen, bool upright, bool hideStatus, bool hideNavigation, bool lightStatus);
+    void applyFullScreen(bool fullScreen, unsigned orientations, bool hideStatus, bool hideNavigation, bool lightStatus);
     void applyVisibleBounds();
     void poll();
     void updateDisplayRequest();
@@ -165,7 +168,7 @@ private:
     int selectedTab_ = 0;
     bool dialogOpen_ = false;
     bool fullScreen_ = false;
-    bool upright_ = false;
+    unsigned orientations_ = 0; // a full-screen page's DisplayOrientations, as last asked of the display
     bool hideStatus_ = false, hideNavigation_ = false, lightStatus_ = false;
     bool displayRequestActive_ = false;
     bool singleAppOpened_ = false;  // an app's own package: its app has been opened (shell/AppPackage.h)

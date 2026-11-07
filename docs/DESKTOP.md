@@ -316,6 +316,46 @@ What differs:
   user meanwhile, and the Library says so. A test identity (MeglerTest) has a
   certificate of its own.
 
+## The window
+
+Megler's window on a PC opens phone-shaped (400 x 760) and is the user's to
+resize, maximize or put in full screen; the running app's surface follows it,
+as an Android app's window follows a freeform window on a Chromebook or in
+Samsung DeX (`ui/PlayerScreen.cpp`, docs/JAVA.md "The screen resized and
+turned").
+
+- **Resizing.** The surface follows the window once its size has held for a
+  poll of the player (250 to 500 ms): while it is dragged the app's last
+  picture is scaled into the window, undistorted, and touches map onto it;
+  then the app is told the new size (`megler_set_surface`). A Java app keeps
+  its density, as Android keeps a window's density when it is resized, so its
+  layout gets more room rather than larger text, and it has Android's
+  configuration change: an activity is relaunched only for a change of
+  orientation, or of a size its resources are made for (`w600dp`,
+  `sw720dp`...), else its views are laid out again where they are. A window
+  moved to a screen of another scale gives the app that screen's density.
+- **A game's surface** is the window's pixels within the Render Size setting
+  (the render cap, 1280 by default), however large the window grows: the
+  swap chain scales it up to the window. Its window is made again at the new
+  size (docs/ARCHITECTURE.md, "Graphics").
+- **An app that asks for an orientation.** Its window is turned when it is
+  not of that shape -- as wide as it was tall and as tall as it was wide
+  (`ApplicationView::TryResizeView`), as Chrome OS opens and turns an Android
+  app's window -- once for each wish the app has, never a window in full
+  screen. A window that is not turned, or that the user makes the other shape
+  again, gives the app a surface of its shape in its middle -- the window's
+  proportions turned the other way, as tall as the window for an app that
+  asks for portrait, as wide for one that asks for landscape -- letterboxed in
+  black, as Android shows such an app on a large screen. A game, which asks
+  for landscape, so opens in a landscape window.
+- **The rotation** an app is told is the display's own (`Display.getRotation`,
+  0 on a PC's monitor); a tablet turned turns the window too, the ways the app
+  allows (`AutoRotationPreferences`).
+- **An Xbox** has the whole television, which never changes size: an app
+  that asks for portrait gets the strip in the middle, and nothing else is
+  turned. **Windows RT**'s tablets are desktop Windows: the same as a PC's,
+  with the tablet's turning as above.
+
 ## Proven
 
 On this PC (x64, Windows 11 26300), 2026-11-05 and 06:

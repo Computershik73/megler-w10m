@@ -48,6 +48,11 @@ public final class AppResults {
 
     // ---- the caller's side
 
+    /** An activity made again in its place (AppRunner.relaunch: a configuration change, recreate): a result it waits for is the new one's. */
+    static void replaced(Activity old, Activity now) {
+        if (sAwaited != null && sAwaited.caller == old) sAwaited.caller = now;
+    }
+
     /** `caller` asked for the result of `pkg`'s `activity` (request code `request`), which the shell is starting. */
     static void await(Activity caller, int request, String pkg, String activity) {
         File dir = folder(pkg);

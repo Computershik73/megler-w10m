@@ -54,7 +54,7 @@
 #define MAX_SPLITS 10
 
 /* The phases of an event as megler.AppRunner.deliver reads them. */
-enum { EV_DOWN = 0, EV_MOVE = 1, EV_UP = 2, EV_CANCEL = 3, EV_KEY = 4, EV_BACK = 5, EV_HOST_PAUSE = 6, EV_TEXT = 7, EV_INSETS = 8, EV_PHONE = 10 };
+enum { EV_DOWN = 0, EV_MOVE = 1, EV_UP = 2, EV_CANCEL = 3, EV_KEY = 4, EV_BACK = 5, EV_HOST_PAUSE = 6, EV_TEXT = 7, EV_INSETS = 8, EV_PHONE = 10, EV_SURFACE = 11 };
 
 #define MAX_TEXT 512
 #define MAX_PHONE 64
@@ -110,6 +110,9 @@ static struct {
     /* The battery as the app was last told of it by a broadcast (at the start: as it was then), and the core's count of its changes at that time. */
     mg_battery battery;
     u32 battery_changes;
+    /* The surface's change (mg_surface.seq) the app was last told of, by an EV_SURFACE event; and the orientation it last asked the shell for (-2: none yet). */
+    u32 surface_seq;
+    volatile i32 orientation;
 } J;
 
 static i32 bits_of(float f)
@@ -557,9 +560,35 @@ N(Native_nothing) { (void)c; }
 N(Native_dataDir) { c->ret.l = mg_dvm_new_string(mg_fs_internal_dir()); }
 N(Native_externalDir) { c->ret.l = mg_dvm_new_string(mg_fs_external_dir()); }
 N(Native_packageName) { c->ret.l = mg_dvm_new_string(J.package); }
-N(Native_screenWidth) { c->ret.i = J.config->width; }
-N(Native_screenHeight) { c->ret.i = J.config->height; }
-N(Native_density) { c->ret.f = (float)(J.config->density_dpi > 0 ? J.config->density_dpi : 160) / 160.0f; }
+/*
+ * The screen as it is now (mg_run_surface: megler_run_config's until megler_set_surface says otherwise), for DisplayMetrics,
+ * Configuration, Display and the windows' layout; the framework asks again when an EV_SURFACE event says it changed.
+ */
+N(Native_screenWidth)
+{
+    mg_surface s;
+    mg_run_surface(&s);
+    c->ret.i = s.width;
+}
+N(Native_screenHeight)
+{
+    mg_surface s;
+    mg_run_surface(&s);
+    c->ret.i = s.height;
+}
+N(Native_density)
+{
+    mg_surface s;
+    mg_run_surface(&s);
+    c->ret.f = (float)(s.density_dpi > 0 ? s.density_dpi : 160) / 160.0f;
+}
+/* displayRotation(): Display.getRotation's Surface.ROTATION_0 to _270, which way up the surface is drawn. */
+N(Native_displayRotation)
+{
+    mg_surface s;
+    mg_run_surface(&s);
+    c->ret.i = s.rotation & 3;
+}
 N(Native_uptimeNanos) { c->ret.j = (i64)mg_time_monotonic_ns(); }
 /* flag(name): a switch for trying something on the phone (mg_flag): a file of that name in the data folder's flags. */
 N(Native_flag) { c->ret.z = mg_flag(text_of(c->args[0].l)); }
@@ -629,12 +658,30 @@ static void requested_activity(void)
     }
 }
 
+static void push_event(int phase, int id, i32 x, i32 y);
+
+/*
+ * The surface changed since the app was last told (megler_set_surface, from any thread): an EV_SURFACE event after what is
+ * queued, which megler.AppRunner hands to megler.Screen -- the configuration change, the windows laid out again -- and the
+ * NDK's AConfiguration of the app's native code made the new size's. Looked for at every poll, as the battery is, so that a
+ * change said while the app was still starting is not lost: the framework reads the size itself as it starts.
+ */
+static void surface_news(void)
+{
+    mg_surface s;
+    mg_run_surface(&s);
+    if (s.seq == J.surface_seq) return;
+    J.surface_seq = s.seq;
+    mg_configuration_set(s.width, s.height, s.density_dpi > 0 ? s.density_dpi : 160);
+    push_event(EV_SURFACE, (int)s.seq, 0, 0);
+}
+
 /*
  * pollInput(): what has happened since the last call, as int[1 + 6n] --
  * n, then (phase, id, x bits, y bits) for each, then each timestamp as two words. Called by the main
  * loop between messages, so this is also where a stop asked from outside
  * reaches the app: every activity is finished, on the thread they live on.
- * And where news of the battery does.
+ * And where news of the battery and of the surface does.
  */
 N(Native_pollInput)
 {
@@ -645,6 +692,7 @@ N(Native_pollInput)
         if (mg_dvm_pending()) return;
     }
     if (mg_battery_changes() != J.battery_changes) battery_news();
+    surface_news();
     requested_activity();
     mg_lock_acquire(&J.lock);
     n = J.nevents;
@@ -1137,7 +1185,21 @@ N(Native_appInstall)
     const char *name = text_of(c->args[0].l);
     c->ret.l = apps_package_ok(name) ? apps_file(mg_sprintf("%s/installs/%s.txt", J.config->apps_dir, name)) : NULL;
 }
-N(Native_setOrientation) { mg_note_once("java: the app asked for orientation %d; the surface stays as the shell made it", (int)c->args[0].i); }
+/*
+ * setOrientation(requested): how the activity in front wants the screen held, Android's SCREEN_ORIENTATION_* (megler.AppRunner
+ * says it as activities come and go and as one calls setRequestedOrientation, "behind" already resolved), to the shell
+ * (megler_display_host.orientation) when it changes. The shell turns the screen or gives the app another surface, which
+ * comes back as megler_set_surface.
+ */
+N(Native_setOrientation)
+{
+    const megler_display_host *d = &J.config->display;
+    int requested = c->args[0].i;
+    if (mg_atomic_xchg(&J.orientation, requested) == requested) return;
+    mg_info("java: the app asks for the screen held %d (Android's SCREEN_ORIENTATION_*)%s", requested,
+            d->orientation ? "" : "; the shell takes no such request, and the screen stays as it is");
+    if (d->orientation) d->orientation(d->user, requested);
+}
 
 /*
  * exit(): the framework calls it when the last activity is gone. The main
@@ -1291,6 +1353,7 @@ static const mg_jhle k_native[] = {
     { "megler/Native", "screenWidth", NULL, Native_screenWidth },
     { "megler/Native", "screenHeight", NULL, Native_screenHeight },
     { "megler/Native", "density", NULL, Native_density },
+    { "megler/Native", "displayRotation", NULL, Native_displayRotation },
     { "megler/Native", "setContentView", NULL, Native_nothing },
     { "megler/Native", "pollInput", NULL, Native_pollInput },
     { "megler/Native", "pollText", NULL, Native_pollText },
@@ -1686,7 +1749,11 @@ static void meter_line(const char *what, const meter_window *w, u64 now)
     mg_java_gfx_stats(&bitmap_bytes, &bitmaps);
     /* And what RenderNodes and Pictures take: their display lists, which are the core's memory as bitmaps are. */
     mg_java_gfx_list_stats(&list_bytes, NULL, &nodes);
-    screen = (u64)(J.config->width > 0 ? J.config->width : 0) * (u64)(J.config->height > 0 ? J.config->height : 0);
+    {
+        mg_surface sf;
+        mg_run_surface(&sf);
+        screen = (u64)(sf.width > 0 ? sf.width : 0) * (u64)(sf.height > 0 ? sf.height : 0);
+    }
     of[0] = 0;
     if (w->drawn != n) snprintf(of, sizeof(of), " of %u frames", (unsigned)n);
     if (w->drawn && screen)
@@ -2237,8 +2304,13 @@ static MG_HOSTCB void main_thread(void *arg)
         /* What C keeps of the app's objects across calls: the collector keeps it too. */
         mg_dvm_add_root(&J.clipboard);
         mg_dvm_register(mg_java_gfx_natives());
-        /* OpenGL ES and EGL from Java, and the window they are shown in: composed by the shell where it can. */
-        mg_java_gl_start(J.config->width, J.config->height, show);
+        /* OpenGL ES and EGL from Java, and the window they are shown in: composed by the shell where it can. (At the surface's
+           size as the app starts; the composing follows the views' picture when the surface changes, mg_java_gl_views.) */
+        {
+            mg_surface sf;
+            mg_run_surface(&sf);
+            mg_java_gl_start(sf.width, sf.height, show);
+        }
         mg_java_gl_set_shell(&J.config->gfx);
         mg_dvm_register(mg_java_gles_natives());
         mg_dvm_register(mg_java_gl_natives());
@@ -2364,8 +2436,20 @@ static bool java_start(const megler_run_config *config, const mg_apk_info *info)
         mg_run_set_error("the manifest names no launcher activity");
         return false;
     }
-    /* The device as the NDK describes it to the app's native code (AConfiguration): this surface. */
-    mg_configuration_set(config->width, config->height, config->density_dpi > 0 ? config->density_dpi : 160);
+    /*
+     * The surface the app starts on: mg_run_start made it the config's, and a test that starts this driver without megler_run
+     * has it made so here. A change from now on is the app's news at its next poll (surface_news), one said before this
+     * included, for the framework reads the size as it starts.
+     */
+    if (!mg_run_active()) mg_run_surface_start(config->width, config->height, config->density_dpi, config->rotation);
+    J.orientation = -2;
+    {
+        mg_surface sf;
+        mg_run_surface(&sf);
+        J.surface_seq = sf.seq;
+        /* The device as the NDK describes it to the app's native code (AConfiguration): this surface. */
+        mg_configuration_set(sf.width, sf.height, sf.density_dpi > 0 ? sf.density_dpi : 160);
+    }
     /* A stack the size Android gives an app's main thread would be 8 MB; bytecode's frames are not on it, and 4 is room for libcore's native code. */
     J.main = mg_thread_start(main_thread, NULL, 4u << 20, "android-main");
     return J.main != NULL;
@@ -2605,4 +2689,4 @@ static int java_back(unsigned quiet_ms, unsigned max_ms)
     return verdict;
 }
 
-const mg_driver mg_driver_java = { "java", java_start, java_touch, java_key, java_set_paused, NULL, java_stop, java_back };
+const mg_driver mg_driver_java = { "java", java_start, java_touch, java_key, java_set_paused, NULL, java_stop, java_back, NULL };

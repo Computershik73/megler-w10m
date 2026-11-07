@@ -1,0 +1,10 @@
+    // Megler: members added to the original's android.content.ContentResolver (tools/build-framework.sh, "X.java.members").
+    // The app's content providers, each once (a provider of several authorities is under each of them): a configuration change
+    // reaches them as it reaches the application (megler.Screen), as ActivityThread tells every provider of the process.
+    public static java.util.List<ContentProvider> meglerProviders() {
+        java.util.ArrayList<ContentProvider> all = new java.util.ArrayList<>();
+        synchronized (sProviders) {
+            for (ContentProvider p : sProviders.values()) if (!all.contains(p)) all.add(p);
+        }
+        return all;
+    }

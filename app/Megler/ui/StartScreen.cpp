@@ -20,7 +20,7 @@ public:
 
     std::string title() override { return {}; }
     bool fullScreen() override { return true; }
-    bool upright() override { return true; }
+    unsigned orientations() override { return 2; } // DisplayOrientations::Portrait
 
     UIElement view() override {
         if (view_) return view_;

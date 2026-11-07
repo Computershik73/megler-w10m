@@ -41,7 +41,7 @@ typedef struct g_activity {
     const char *obbPath;
 } g_activity;
 
-enum { REQ_NONE = 0, REQ_PAUSE, REQ_RESUME, REQ_FOCUS, REQ_BLUR, REQ_STOP };
+enum { REQ_NONE = 0, REQ_PAUSE, REQ_RESUME, REQ_FOCUS, REQ_BLUR, REQ_STOP, REQ_RESIZE };
 
 static struct {
     g_activity activity;
@@ -56,6 +56,7 @@ static struct {
     int nrequests;
     bool paused, focused, finishing;
     volatile i32 started;              /* 0 starting, 1 running, -1 failed */
+    int density;                       /* the screen's density the app was last told of (resized) */
 } N;
 
 #define CALL0(slot) do { if (N.callbacks.slot) MG_GFN(void (*)(g_activity *), N.callbacks.slot)(&N.activity); } while (0)
@@ -67,6 +68,42 @@ static void request(int what)
     if (N.nrequests < (int)MG_COUNT(N.requests)) N.requests[N.nrequests++] = what;
     mg_cond_signal(&N.cond);
     mg_lock_release(&N.lock);
+}
+
+/*
+ * The surface is another size or turned (megler_set_surface), on the activity's main thread. Android hands a NativeActivity whose
+ * manifest takes the change its window resized, whose next buffer has the new size, and relaunches one whose manifest does not.
+ * Here the window is made again at the new size -- onNativeWindowDestroyed, then onNativeWindowCreated with a window of that
+ * size, as Android does when an activity's surface is made again (android_native_app_glue's APP_CMD_TERM_WINDOW and
+ * INIT_WINDOW, which every such app answers, its EGL window surface made again on the new window: the one it had is a picture
+ * of the old size and cannot grow) -- then onContentRectChanged and onConfigurationChanged. It is never relaunched: its
+ * library is loaded once in the process, and a game made again in it would find its own statics as the first one left them.
+ */
+static void resized(void)
+{
+    mg_surface s;
+    mg_nwindow *old = N.window;
+    i32 rect[4];
+    bool sized, dense;
+    mg_run_surface(&s);
+    mg_jni_android_set_screen(s.width, s.height, s.density_dpi, s.rotation);
+    /* (Turned upside down, the screen is the same size: Android changes no configuration for it, and only the display's rotation says it.) */
+    sized = old && (old->width != s.width || old->height != s.height);
+    dense = s.density_dpi > 0 && s.density_dpi != N.density;
+    if (s.density_dpi > 0) N.density = s.density_dpi;
+    if (!sized && !dense) return;
+    if (sized) {
+        mg_info("native-activity: the window is made again at %dx%d (it was %dx%d)", s.width, s.height, old->width, old->height);
+        CALL1(onNativeWindowDestroyed, old);
+        N.window = mg_nwindow_create(s.width, s.height);
+        mg_nwindow_release(old);
+        CALL1(onNativeWindowCreated, N.window);
+    }
+    rect[0] = rect[1] = 0;
+    rect[2] = s.width;
+    rect[3] = s.height;
+    CALL1(onContentRectChanged, rect);
+    CALL0(onConfigurationChanged);
 }
 
 static MG_HOSTCB void main_thread(void *arg)
@@ -117,6 +154,8 @@ static MG_HOSTCB void main_thread(void *arg)
         } else if ((what == REQ_FOCUS || what == REQ_BLUR) && N.focused != (what == REQ_FOCUS)) {
             N.focused = what == REQ_FOCUS;
             if (N.callbacks.onWindowFocusChanged) MG_GFN(void (*)(g_activity *, int), N.callbacks.onWindowFocusChanged)(&N.activity, N.focused);
+        } else if (what == REQ_RESIZE) {
+            resized();
         } else if (what == REQ_STOP) {
             break;
         }
@@ -159,6 +198,7 @@ static bool na_start(const megler_run_config *config, const mg_apk_info *info)
     }
 
     N.window = mg_nwindow_create(config->width, config->height);
+    N.density = config->density_dpi;
     N.queue = mg_input_queue_create();
     N.activity.callbacks = &N.callbacks;
     N.activity.vm = mg_jni_vm();
@@ -185,9 +225,10 @@ static void na_key(int keycode, bool down) { mg_input_queue_key(N.queue, keycode
 static void na_set_paused(bool paused) { request(paused ? REQ_PAUSE : REQ_RESUME); }
 static void na_set_focused(bool focused) { request(focused ? REQ_FOCUS : REQ_BLUR); }
 static void na_stop(void) { request(REQ_STOP); }
+static void na_resize(void) { request(REQ_RESIZE); }
 
 const mg_driver mg_driver_native_activity = {
-    "native-activity", na_start, na_touch, na_key, na_set_paused, na_set_focused, na_stop,
+    "native-activity", na_start, na_touch, na_key, na_set_paused, na_set_focused, na_stop, NULL, na_resize,
 };
 
 /* ------------------------------------------- what the app calls back with */

@@ -3,8 +3,9 @@
 // android:appComponentFactory), as Android 9's ActivityThread makes it, not from its class directly. Facebook's factory holds
 // a component back until the code it loads after the start is there. And a service stopped from another thread is destroyed
 // on the main thread, as on Android, and a start has its id when it is asked for (postStart). And a service the manifest puts in
-// another process (android:process) is made in that process's class scope, with its Application (megler.Processes). Everything
-// else is the original's, unchanged.
+// another process (android:process) is made in that process's class scope, with its Application (megler.Processes). And the
+// services running can be listed (running), for a configuration change they hear (megler.Screen). Everything else is the
+// original's, unchanged.
 package megler;
 
 import android.app.Service;
@@ -21,6 +22,8 @@ public final class Services {
     /* The id of the latest start of each of the app's services (postStart). */
     private static final HashMap<String, Integer> sLastStart = new HashMap<>();
     private Services() {}
+    /** The app's services that are running now (main thread). */
+    public static java.util.List<Service> running() { return new java.util.ArrayList<>(sRunning.values()); }
     private static Manifest.Component find(Intent i) {
         String pkg = i.getComponent() == null ? i.getPackage() : i.getComponent().getPackageName();
         if (pkg != null && !pkg.equals(Native.packageName())) return null;

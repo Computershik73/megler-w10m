@@ -1,4 +1,7 @@
     // Megler: members added to the original's megler.Native (tools/build-framework.sh, "X.java.members").
+    // Which way up the screen is drawn, Display.getRotation's Surface.ROTATION_0 to _270 (megler_set_surface, the core's
+    // mg_run_surface); screenWidth, screenHeight and density say the surface as it is now, and change with it (megler.Screen).
+    public static native int displayRotation();
     // The battery, asked of the core (mg_battery_read, core/src/run/mg_run.h), which is the one place that knows it: the
     // original's framework had a full battery written into the two classes that answer an app (megler.Broadcasts and
     // android.os.BatteryManager, both overlaid here to ask this instead).

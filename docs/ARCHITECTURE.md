@@ -502,6 +502,21 @@ ANGLE's functions. This layer adds the display, the window, and the float adapte
   `SwapChainPanel` in the app's XAML.
 - `ANativeWindow_setBuffersGeometry` sets the size frames are rendered at, as on
   Android.
+- The surface can change size while the app runs (`megler_set_surface`: a PC's
+  window resized, a phone turned; `run/mg_run.c` keeps it as `mg_run_surface`,
+  which every driver reads). A pbuffer over the shell's texture cannot grow, so
+  a NativeActivity's window is made again at the new size -- `onNativeWindowDestroyed`,
+  then `onNativeWindowCreated` with the new window, as Android does when an
+  activity's surface is made again, which `android_native_app_glue` answers with
+  a new EGL window surface (a new texture of the shell's, `acquire_target`) --
+  then `onContentRectChanged` and `onConfigurationChanged`; it is never
+  relaunched, its library being loaded once in the process. Unity is given its
+  surface again (`nativeRecreateGfxState`, as UnityPlayer does when its
+  SurfaceView changes). The JNI's `Display`, `DisplayMetrics` and the NDK's
+  `AConfiguration` say the new size and rotation; a screen turned upside down
+  changes only the rotation. `Activity.setRequestedOrientation` through JNI goes
+  to the shell (`megler_display_host`). A Java app's side is docs/JAVA.md's
+  "The screen resized and turned".
 - In a Java app, the window of a `SurfaceView`'s `Surface` (from
   `ANativeWindow_fromSurface`) is drawn on as the view would be from Java:
   "Native code on a SurfaceView", under "OpenGL ES from an app's Java" below.

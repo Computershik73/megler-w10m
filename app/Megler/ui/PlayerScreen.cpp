@@ -1,4 +1,4 @@
-// The player: a running app's screen, full-screen and in landscape.
+// The player: a running app's screen, full-screen, turned as the app asks.
 //
 // A SwapChainPanel the app's frames are shown in (player/WindowHost.h), with
 // a transparent layer over it that takes the touches. The frames arrive
@@ -11,6 +11,22 @@
 // panel of 2560x1440 is four times the pixels of 1280x720, for a GPU of the
 // games' own day. The swap chain is scaled back up to the panel.
 //
+// Which way up: the app says how it wants the screen held -- its manifest's
+// android:screenOrientation before it runs (the APK's report), then its
+// activity in front's (megler_display_host, player/DisplayHost.h) -- and the
+// phone's display is turned the ways that allows (AutoRotationPreferences,
+// through ui/AppShell.cpp): a game lying down, an app that asks for nothing
+// as the phone is held. When the window then changes -- the phone turned, a
+// PC's window resized or maximized -- the surface follows it once its size
+// has held for a poll (followWindow): the same density and pixels for a DIP
+// as at the start, the rotation from DisplayInformation, megler_set_surface,
+// and the bars' and the keyboard's insets told again for the new size; the
+// app has Android's configuration change of it. Meanwhile the last picture is
+// letterboxed into the new window, undistorted, and touches map onto it. A
+// window that does not turn (a PC's, an Xbox's) and is not of the shape an
+// app that asks for one wants gives it a surface of that shape in its middle
+// (areaFor), as Android letterboxes such an app on a large screen.
+//
 // Hardware Back is the app's (AKEYCODE_BACK). The way out is a menu with
 // Quit, opened by three quick taps in the top left corner (or Escape, on a
 // keyboard): a phone has no other button to give it.
@@ -18,6 +34,7 @@
 
 #include "library/Library.h"
 #include "player/BarsHost.h"
+#include "player/DisplayHost.h"
 #include "player/KeyboardHost.h"
 #include "player/MediaControls.h"
 #include "player/Session.h"
@@ -35,6 +52,7 @@
 #include <winrt/Windows.Storage.AccessCache.h>
 #include <winrt/Windows.UI.Text.Core.h>
 
+#include <cmath>
 #include <map>
 
 namespace megler::app::ui {
@@ -131,8 +149,14 @@ public:
     PlayerScreen(AppShell& shell, std::string apkId) : Page(shell), id_(std::move(apkId)) {
         if (const auto entry = Library::instance().find(id_)) {
             title_ = entry->title();
-            upright_ = entry->report.upright();
             java_ = entry->report.engine == "java";
+            // How the app asks to be held until it says so itself (its manifest's, as the report reduces it): a game lying down
+            // whatever it says, as games always were here; an app as the phone is held. The app's own wish, once its activity
+            // is up, comes through orientationWanted.
+            const std::string& o = entry->report.orientation;
+            wish_ = o == "landscape" ? MEGLER_ORIENTATION_SENSOR_LANDSCAPE : o == "portrait" ? MEGLER_ORIENTATION_PORTRAIT
+                    : java_                ? MEGLER_ORIENTATION_UNSPECIFIED
+                                           : MEGLER_ORIENTATION_SENSOR_LANDSCAPE;
         }
         // A game has the whole screen; a Java app has the phone's bars, as on Android, until its window asks them away.
         bars_ = java_ ? 0 : MEGLER_BAR_STATUS | MEGLER_BAR_NAVIGATION;
@@ -149,7 +173,7 @@ public:
 
     std::string title() override { return title_; }
     bool fullScreen() override { return true; }
-    bool upright() override { return upright_; }
+    unsigned orientations() override { return orientationsFor(wish_); }
     // The bars the app wants hidden (BarsHost); the navigation bar comes back while the keyboard is up (showNavigationBar).
     bool hideNavigationBar() override { return (bars_ & MEGLER_BAR_NAVIGATION) && !navigationBarShown_; }
     bool hideStatusBar() override { return (bars_ & MEGLER_BAR_STATUS) || hideNavigationBar(); }
@@ -258,6 +282,10 @@ public:
 
         root.SizeChanged([this](auto&&, SizeChangedEventArgs const& e) {
             if (auto window = session::window()) window->setPanelSize(e.NewSize().Width, e.NewSize().Height);
+            // The display turned (the window's shape with it): the surface follows at once, not after the next poll, as
+            // nothing drags a phone's window. A PC's window being resized settles first (refresh).
+            const bool turned = (e.NewSize().Width > e.NewSize().Height) != (windowW_ > windowH_);
+            if (started_ && turned && windowW_ > 0) followWindow(true);
         });
         host_ = root;
         view_ = root;
@@ -302,7 +330,8 @@ public:
         const session::Snapshot snap = session::snapshot();
         running_ = snap.state == session::State::running;
         if (snap.state == session::State::idle && !started_) {
-            waitForLandscape();
+            turnWindow();
+            waitForShape();
             busyText_.Text(hs("Starting " + title_ + "…"));
         }
         const auto window = session::window();
@@ -317,6 +346,7 @@ public:
             const auto heardFrom = session::audio();
             mediaControls::heard(heardFrom && heardFrom->audibleWithin(600));
         }
+        if (started_ && (snap.state == session::State::starting || running_)) followWindow(false);
         const bool waitingForFrame = (snap.state == session::State::starting || snap.state == session::State::running) && frames == 0;
         const bool stopping = running_ && snap.stopRequested;
         setVisible(busyOverlay_, !ended && (!started_ || waitingForFrame || stopping));
@@ -343,17 +373,19 @@ public:
 private:
     // MARK: Starting
 
-    /// Play turned the display to landscape as this page was shown; the
-    /// surface's size is the panel's once that has happened -- the same size
-    /// twice in a row, wider than tall. A device that does not turn (a
-    /// desktop window) is taken as it is after three seconds.
+    /// Play turned the display as this page was shown (landscape for a
+    /// game, as the app's manifest asks for an app); the surface's size is
+    /// the panel's once that has happened -- the same size twice in a row,
+    /// of the shape asked for. A device that does not turn (a desktop
+    /// window) is taken as it is after three seconds, the app's surface of
+    /// its shape in it (areaFor).
     ///
     /// A locked phone does not turn either (the app runs under the lock
     /// screen, which is upright). For a run nobody watches there, the flag
     /// "as-landscape" (a file of that name in the flags folder) gives the
     /// app the surface it would have had: what is on the glass is then
     /// stretched, and the pictures an auto run takes are right.
-    void waitForLandscape() {
+    void waitForShape() {
         const double width = host_.ActualWidth(), height = host_.ActualHeight();
         ++waited_;
         const bool settled = width > 0 && height > 0 && width == lastWidth_ && height == lastHeight_;
@@ -362,16 +394,199 @@ private:
         if (!settled) return;
         // (An upright app waits the same way for the display to be upright: it is, coming from the library, unless the
         // phone was lying on its side under a game a moment ago.)
-        if (upright_ ? height >= width : width > height) {
+        if (shapeFits(width, height)) {
             start(width, height);
         } else if (waited_ >= 12) {
-            if (!upright_ && files::exists(platform::localStateDirectory() + L"\\flags\\as-landscape")) {
+            if (landscapeOnly(orientations()) && files::exists(platform::localStateDirectory() + L"\\flags\\as-landscape")) {
                 shellLog::write("player: the screen did not turn; the app gets a landscape surface all the same (the flag as-landscape)");
                 start(height, width);
             } else {
                 start(width, height);
             }
         }
+    }
+
+    // MARK: Which way up, and the window's changes
+
+    /// Windows' DisplayOrientations (Landscape 1, Portrait 2, LandscapeFlipped 4, PortraitFlipped 8; 0: as the device is held)
+    /// for how an Android app asks to be held (SCREEN_ORIENTATION_*). Android's landscape is the phone turned a quarter
+    /// anticlockwise, which is Windows' Landscape on a phone upright by nature (Display.getRotation's ROTATION_90).
+    static unsigned orientationsFor(int wish) {
+        switch (wish) {
+        case MEGLER_ORIENTATION_LANDSCAPE: return 1;
+        case MEGLER_ORIENTATION_PORTRAIT: return 2;
+        case MEGLER_ORIENTATION_REVERSE_LANDSCAPE: return 4;
+        case MEGLER_ORIENTATION_REVERSE_PORTRAIT: return 8;
+        case MEGLER_ORIENTATION_SENSOR_LANDSCAPE:
+        case MEGLER_ORIENTATION_USER_LANDSCAPE: return 1 | 4;
+        case MEGLER_ORIENTATION_SENSOR_PORTRAIT:
+        case MEGLER_ORIENTATION_USER_PORTRAIT: return 2 | 8;
+        case MEGLER_ORIENTATION_SENSOR:
+        case MEGLER_ORIENTATION_FULL_SENSOR: return 1 | 2 | 4 | 8;
+        case MEGLER_ORIENTATION_NOSENSOR: {
+            // The device's own way up, whatever its sensor says.
+            try {
+                return winrt::Windows::Graphics::Display::DisplayInformation::GetForCurrentView().NativeOrientation() ==
+                               winrt::Windows::Graphics::Display::DisplayOrientations::Landscape
+                           ? 1u
+                           : 2u;
+            } catch (const hresult_error&) {
+                return 2;
+            }
+        }
+        case MEGLER_ORIENTATION_LOCKED: {
+            // Held as it is now.
+            try {
+                const unsigned now = unsigned(winrt::Windows::Graphics::Display::DisplayInformation::GetForCurrentView().CurrentOrientation());
+                return now ? now : 0u;
+            } catch (const hresult_error&) {
+                return 0;
+            }
+        }
+        default: return 0; // unspecified, user, fullUser: as the user lets the phone turn
+        }
+    }
+
+    static bool portraitOnly(unsigned o) { return o && !(o & (1 | 4)); }
+    static bool landscapeOnly(unsigned o) { return o && !(o & (2 | 8)); }
+
+    /// Whether a window of this size is of the shape the app asks for (any shape, for an app that asks for none).
+    bool shapeFits(double width, double height) {
+        const unsigned want = orientations();
+        return (!portraitOnly(want) || height >= width) && (!landscapeOnly(want) || width > height);
+    }
+
+    /// The part of the window the app's surface is made for, in DIPs: the whole of it, unless the window does not turn (a
+    /// PC's, an Xbox's) and is not of the shape the app asks for: then a strip of that shape in its middle, of the window's
+    /// proportions turned the other way (as tall as the window for an app that asks for portrait, as wide for one that asks
+    /// for landscape), as Android letterboxes an app of one orientation on a large screen. A phone's window turns instead.
+    winrt::Windows::Foundation::Size areaFor(double width, double height) {
+        const unsigned want = orientations();
+        if (platform::isMobile() || width <= 0 || height <= 0) return {float(width), float(height)};
+        if (portraitOnly(want) && width > height) return {float(height * height / width), float(height)};
+        if (landscapeOnly(want) && height > width) return {float(width), float(width * width / height)};
+        return {float(width), float(height)};
+    }
+
+    /// Android's rotation of the display now (Surface.ROTATION_*): quarter turns of the picture from the screen's natural way
+    /// up, as DXGI_MODE_ROTATION has them for DisplayInformation's CurrentOrientation against its NativeOrientation -- a phone
+    /// upright by nature turned into Landscape is 1, into LandscapeFlipped 3.
+    static int currentRotation() {
+        using winrt::Windows::Graphics::Display::DisplayOrientations;
+        try {
+            auto info = winrt::Windows::Graphics::Display::DisplayInformation::GetForCurrentView();
+            const bool portraitNative = info.NativeOrientation() == DisplayOrientations::Portrait;
+            switch (info.CurrentOrientation()) {
+            case DisplayOrientations::Landscape: return portraitNative ? 1 : 0;
+            case DisplayOrientations::Portrait: return portraitNative ? 0 : 3;
+            case DisplayOrientations::LandscapeFlipped: return portraitNative ? 3 : 2;
+            case DisplayOrientations::PortraitFlipped: return portraitNative ? 2 : 1;
+            default: return 0;
+            }
+        } catch (const hresult_error&) {
+            return 0;
+        }
+    }
+
+    /// The app asked for the screen held otherwise (its activity in front's, SCREEN_ORIENTATION_*; UI thread): the display
+    /// turns the ways that allows, and the surface follows the window as it turns -- or, where it does not turn, takes the
+    /// shape asked for at the next poll.
+    void orientationWanted(int requested) {
+        if (requested == wish_ || requested == MEGLER_ORIENTATION_BEHIND) return;
+        shellLog::write(format("player: the app wants the screen held %d (Android's SCREEN_ORIENTATION_*): DisplayOrientations %u", requested,
+                               orientationsFor(requested)));
+        wish_ = requested;
+        shell_.refreshChrome();
+        turnWindow();
+    }
+
+    /// A window that does not turn by itself (a PC's) and is not of the shape the app asks for is turned: as wide as it was
+    /// tall and as tall as it was wide (ApplicationView::TryResizeView), as Chrome OS opens and turns an Android app's window
+    /// to the orientation it asks for. Once for each wish, and never a window in full-screen mode or an Xbox's, which has
+    /// the television; where Windows will not, the app's surface is a strip of its shape in the window (areaFor).
+    void turnWindow() {
+        if (platform::isMobile() || platform::isXbox() || !host_ || turnedFor_ == wish_) return;
+        const double width = host_.ActualWidth(), height = host_.ActualHeight();
+        if (width <= 0 || height <= 0) return; // (not laid out yet: asked again at the next poll)
+        turnedFor_ = wish_;
+        if (shapeFits(width, height)) return;
+        try {
+            auto view = winrt::Windows::UI::ViewManagement::ApplicationView::GetForCurrentView();
+            if (view.IsFullScreenMode()) return;
+            const auto bounds = view.VisibleBounds();
+            const bool turned = view.TryResizeView(winrt::Windows::Foundation::Size(bounds.Height, bounds.Width));
+            shellLog::write(format("player: the window, %.0fx%.0f DIPs, is turned for the app's wish (%d): %s", double(bounds.Width), double(bounds.Height), wish_,
+                                   turned ? "done" : "Windows would not; the app's surface is a strip of its shape in it"));
+        } catch (const hresult_error& e) {
+            shellLog::write("player: the window could not be turned: " + narrow(e.message()));
+        }
+    }
+
+    /// The window as it is now, once its size has held for a poll (or at once, `now`, when the display turned): the app's
+    /// surface made of it as at the start (areaFor; the start's pixels for a DIP and density, other ones only when the
+    /// window went to a screen of another scale), told to the app with the display's rotation when it is another surface
+    /// (megler_set_surface), and the insets of the phone's bars and of the keyboard told again for it. On a phone, a window
+    /// not of the shape the app asks for is one the display has not turned yet: the surface stays until it has.
+    void followWindow(bool now) {
+        if (pixelsPerDip_ <= 0 || !host_) return;
+        const double width = host_.ActualWidth(), height = host_.ActualHeight();
+        if (width <= 0 || height <= 0) return;
+        const bool held = width == seenWidth_ && height == seenHeight_;
+        seenWidth_ = width;
+        seenHeight_ = height;
+        if (!held && !now) return;
+        if (platform::isMobile() && !shapeFits(width, height)) return;
+        double scale = startScale_, rawDpi = 0, logicalDpi = 96;
+        try {
+            auto info = winrt::Windows::Graphics::Display::DisplayInformation::GetForCurrentView();
+            scale = info.RawPixelsPerViewPixel();
+            rawDpi = info.RawDpiX();
+            logicalDpi = info.LogicalDpi();
+        } catch (const hresult_error&) {
+        }
+        const auto area = areaFor(width, height);
+        double ppd = pixelsPerDip_, dpi = density_;
+        if (java_) {
+            // A Java app keeps its pixels for a DIP and its density, as Android keeps a window's density when it is resized --
+            // unless the window went to a screen of another scale, which is another density.
+            if (scale > 0 && startScale_ > 0 && std::abs(scale - startScale_) > 0.01) {
+                ppd = pixelsPerDip_ * scale / startScale_;
+                dpi = density_ * scale / startScale_;
+            }
+        } else {
+            // A game: the panel's own pixels and density, within the render cap, as at the start -- however large the window
+            // grows (a PC's, maximized), and back to the panel's full pixels when it is small again.
+            ppd = scale > 0 ? scale : 1.0;
+            dpi = rawDpi > 0 ? rawDpi : logicalDpi * 160.0 / 96.0;
+            const double longer = std::max(double(area.Width), double(area.Height)) * ppd;
+            if (cap_ > 0 && longer > cap_) {
+                ppd *= cap_ / longer;
+                dpi *= cap_ / longer;
+            }
+        }
+        const int surfaceWidth = std::max(2, int(area.Width * ppd + 0.5) & ~1), surfaceHeight = std::max(2, int(area.Height * ppd + 0.5) & ~1);
+        const int density = std::max(120, std::min(640, int(dpi + 0.5))), rotation = currentRotation();
+        const bool windowChanged = width != windowW_ || height != windowH_;
+        windowW_ = width;
+        windowH_ = height;
+        if (surfaceWidth == surfaceW_ && surfaceHeight == surfaceH_ && density == surfaceDpi_ && rotation == rotation_) {
+            // (The same surface in another window, letterboxed elsewhere in it: what the bars cover of it is told again.)
+            if (windowChanged) tellInsets();
+            return;
+        }
+        shellLog::write(format("player: the window is %.0fx%.0f DIPs, turned %d degrees: the app's surface is %dx%d at %d dpi (it was %dx%d at %d dpi, %d degrees)",
+                               width, height, rotation * 90, surfaceWidth, surfaceHeight, density, surfaceW_, surfaceH_, surfaceDpi_, rotation_ * 90));
+        // (A gesture does not go on across it: Android cancels one as its window changes.)
+        releaseAllTouches();
+        surfaceW_ = surfaceWidth;
+        surfaceH_ = surfaceHeight;
+        surfaceDpi_ = density;
+        rotation_ = rotation;
+        session::setSurface(surfaceWidth, surfaceHeight, density, rotation);
+        // What the bars and the keyboard cover of the new surface (the last told was of the old one).
+        for (int& inset : insets_) inset = -1;
+        tellInsets();
+        if (keyboardUp_ && occludedDips_ > 0) tellKeyboardHeight(occludedDips_);
     }
 
     void start(double width, double height) {
@@ -394,6 +609,20 @@ private:
         } catch (const hresult_error&) {
         }
         if (scale <= 0) scale = 1.0;
+        // The window the surface is made of, and the part of it the surface is for (all of it, but on a window that does not
+        // turn and is not of the shape the app asks for: areaFor).
+        windowW_ = host_.ActualWidth();
+        windowH_ = host_.ActualHeight();
+        seenWidth_ = windowW_;
+        seenHeight_ = windowH_;
+        const double panelWidth = width, panelHeight = height;
+        const auto area = areaFor(width, height);
+        if (area.Width != float(width) || area.Height != float(height))
+            shellLog::write(format("player: the window, %.0fx%.0f DIPs, does not turn and is not of the shape the app asks for: its surface is for %.0fx%.0f "
+                                   "of it, in its middle",
+                                   width, height, double(area.Width), double(area.Height)));
+        width = area.Width;
+        height = area.Height;
         const double pixelWidth = width * scale, pixelHeight = height * scale;
         const auto flags = platform::localStateDirectory() + L"\\flags\\";
         const bool measure = files::exists(flags + L"trace-fps");
@@ -418,14 +647,25 @@ private:
         // it 560, and its apps would be 411 units wide, as they are here.)
         const double dpi = (java_ ? 160.0 * scale : (rawDpi > 0 ? rawDpi : logicalDpi * 160.0 / 96.0)) * shrink;
         const int density = std::max(120, std::min(640, int(dpi + 0.5)));
+        const int rotation = currentRotation();
         shellLog::write(format("player: panel %.0fx%.0f DIPs at scale %.2f (%.0fx%.0f pixels, %.0f dpi), render cap %d -> surface %dx%d, "
-                               "density %d",
-                               width, height, scale, pixelWidth, pixelHeight, rawDpi, cap, surfaceWidth, surfaceHeight, density));
-        if (!session::start(*entry, panel_, surfaceWidth, surfaceHeight, density)) {
+                               "density %d, turned %d degrees",
+                               width, height, scale, pixelWidth, pixelHeight, rawDpi, cap, surfaceWidth, surfaceHeight, density, rotation * 90));
+        // What the surface follows the window with from now on (followWindow): the same pixels for a DIP and the same density,
+        // as Android keeps a window's density when it is resized -- the render cap is the start's.
+        pixelsPerDip_ = scale * shrink;
+        density_ = dpi;
+        cap_ = cap;
+        startScale_ = scale;
+        surfaceW_ = surfaceWidth;
+        surfaceH_ = surfaceHeight;
+        surfaceDpi_ = density;
+        rotation_ = rotation;
+        if (!session::start(*entry, panel_, surfaceWidth, surfaceHeight, density, rotation)) {
             failBeforeStart("An app has already run since Megler was opened. Close Megler and open it again to play.");
             return;
         }
-        if (auto window = session::window()) window->setPanelSize(float(width), float(height));
+        if (auto window = session::window()) window->setPanelSize(float(panelWidth), float(panelHeight));
         // What the phone's bars cover, now that the surface's size is known (the core keeps it for the app's start).
         tellInsets();
     }
@@ -681,12 +921,15 @@ private:
         shell_.refreshChrome();
     }
 
-    /// What the phone's bars cover of the app's picture (barsCover, in view pixels), in the surface's pixels.
+    /// What the phone's bars cover of the app's picture (barsCover, in view pixels), in the surface's pixels: of the surface
+    /// the app was last told of, where it is shown in the window it was made for. While the window has changed and the
+    /// surface has not followed yet (followWindow), nothing: what the bars cover then is told with the new surface.
     void tellInsets() {
         const auto window = session::window();
-        if (!window || !touchLayer_) return;
+        if (!window || !touchLayer_ || surfaceW_ <= 0 || surfaceH_ <= 0) return;
+        if (host_ && (host_.ActualWidth() != windowW_ || host_.ActualHeight() != windowH_)) return;
         const float layerWidth = float(touchLayer_.ActualWidth()), layerHeight = float(touchLayer_.ActualHeight());
-        const float surfaceWidth = float(window->surfaceWidth()), surfaceHeight = float(window->surfaceHeight());
+        const float surfaceWidth = float(surfaceW_), surfaceHeight = float(surfaceH_);
         const auto shown = WindowHost::letterbox(layerWidth, layerHeight, surfaceWidth, surfaceHeight);
         if (shown.width <= 0 || shown.height <= 0) return;
         // How much of the picture a bar that covers `covered` of the window's edge covers, the picture starting `from` that edge.
@@ -713,6 +956,7 @@ private:
         keyboardAttached_ = true;
         KeyboardHost::shared().attach([this](int kind, int flags, int enter) { showKeyboard(kind, flags, enter); }, [this] { putKeyboardAway(false); });
         BarsHost::shared().attach([this](int bars) { barsWanted(bars); });
+        DisplayHost::shared().attach([this](int requested) { orientationWanted(requested); });
         makeEditContext();
         try {
             auto pane = winrt::Windows::UI::ViewManagement::InputPane::GetForCurrentView();
@@ -732,6 +976,7 @@ private:
             paneHiding_ = pane.Hiding([this](auto&&, winrt::Windows::UI::ViewManagement::InputPaneVisibilityEventArgs const& e) {
                 e.EnsuredFocusedElementInView(true);
                 keyboardUp_ = false;
+                occludedDips_ = 0;
                 showNavigationBar(false);
                 session::keyboardHeight(0);
                 // Put away by the user (its own key, or Back, which Windows gives the keyboard first): the app did not ask.
@@ -799,6 +1044,7 @@ private:
         keyboardAttached_ = false;
         KeyboardHost::shared().detach();
         BarsHost::shared().detach();
+        DisplayHost::shared().detach();
         try {
             auto pane = winrt::Windows::UI::ViewManagement::InputPane::GetForCurrentView();
             if (paneShowing_) pane.Showing(paneShowing_);
@@ -1027,12 +1273,13 @@ private:
         return common < keyboardStartLength || keyboardText_.size() > 200;
     }
 
-    /// How much of the app's picture the keyboard covers, in the surface's pixels.
+    /// How much of the app's picture the keyboard covers, in the pixels of the surface the app was last told of.
     void tellKeyboardHeight(float occludedDips) {
+        occludedDips_ = occludedDips;
         const auto window = session::window();
-        if (!window || !touchLayer_) return;
+        if (!window || !touchLayer_ || surfaceW_ <= 0 || surfaceH_ <= 0) return;
         const float layerWidth = float(touchLayer_.ActualWidth()), layerHeight = float(touchLayer_.ActualHeight());
-        const float surfaceWidth = float(window->surfaceWidth()), surfaceHeight = float(window->surfaceHeight());
+        const float surfaceWidth = float(surfaceW_), surfaceHeight = float(surfaceH_);
         const auto shown = WindowHost::letterbox(layerWidth, layerHeight, surfaceWidth, surfaceHeight);
         if (shown.height <= 0) return;
         const float covered = std::min(std::max((shown.y + shown.height) - (layerHeight - occludedDips), 0.0f), shown.height);
@@ -1158,8 +1405,17 @@ private:
     bool backLeaves_ = false;    // the app went to the back with the last Back: it is the system's
     int waited_ = 0;
     double lastWidth_ = 0, lastHeight_ = 0;
-    bool upright_ = false; // the app is held upright, not in landscape
+    int wish_ = MEGLER_ORIENTATION_UNSPECIFIED; // how the app wants the screen held: Android's SCREEN_ORIENTATION_* (orientationWanted)
+    int turnedFor_ = -100;                      // the wish a PC's window was last turned for (turnWindow)
     bool java_ = false;    // an app drawn through the shell, not a game
+    // The surface as the app was last told of it (start, followWindow), and what it follows the window with: the pixels for
+    // a DIP of the window and the density as at the start, and the display's scale then.
+    int surfaceW_ = 0, surfaceH_ = 0, surfaceDpi_ = 0, rotation_ = 0;
+    double pixelsPerDip_ = 0, density_ = 0, startScale_ = 0;
+    int cap_ = 0;                          // the render cap the app was started with (a game's surface keeps within it)
+    double windowW_ = 0, windowH_ = 0;     // the window that surface was made of, in DIPs
+    double seenWidth_ = 0, seenHeight_ = 0; // the window at the last poll: a size that held for a poll is followed
+    float occludedDips_ = 0;               // what the keyboard covers of the window now (0: it is not up)
     std::chrono::steady_clock::time_point stopAsked_{};
     std::chrono::steady_clock::time_point rateAnchorTime_ = std::chrono::steady_clock::now();
     uint32_t rateAnchorFrames_ = 0;

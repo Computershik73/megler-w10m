@@ -13,6 +13,8 @@ extern "C" {
  * activity object. `activity_class` is a JNI name ("com/example/MainActivity").
  */
 mg_jobj *mg_jni_android_setup(const char *activity_class, const char *package, const char *apk_host_path, int width, int height, int density_dpi);
+/* The screen resized or turned (megler_set_surface): what the Display, DisplayMetrics and the NDK's AConfiguration say from now on. */
+void mg_jni_android_set_screen(int width, int height, int density_dpi, int rotation);
 mg_jobj *mg_jni_android_activity(void);
 /* The objects a driver adds answers to: the default Display, the app's ApplicationInfo. */
 mg_jobj *mg_jni_android_display(void);
