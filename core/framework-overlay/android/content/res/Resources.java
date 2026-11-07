@@ -123,7 +123,12 @@ public class Resources {
         updateCfg();
         loadTables();
         if (a.meglerPackageApk() != 0) mPackageTable = packageTable(a.meglerPackageApk());
-        synchronized (sAll) { sAll.add(new java.lang.ref.WeakReference<>(this)); }
+        synchronized (sAll) {
+            // (Those gone are dropped as the list grows: an app that makes a configuration context's Resources at every
+            // getResources, as some apps' locale wrappers do, would have it grow without end.)
+            if (sAll.size() >= 32 && (sAll.size() & 31) == 0) sAll.removeIf(r -> r.get() == null);
+            sAll.add(new java.lang.ref.WeakReference<>(this));
+        }
     }
 
     // ---- Megler: the screen's changes (see the top of the file)
