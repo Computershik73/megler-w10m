@@ -1332,6 +1332,10 @@ static mg_lib *load_lib(const char *name, bool runtime, const char *host_path)
         if (lib->stats.unresolved) mg_warn("ld: %s: %u imports are not provided", lib->name, lib->stats.unresolved);
 #if MG_ARCH_ARM32
         if (lib->stats.tp_reads_failed) mg_err("ld: %s: %u thread-pointer reads are out of an island's reach", lib->name, lib->stats.tp_reads_failed);
+        /* (arm/mg_patch.c: a library of Go's, whose calls are made on its goroutines' small stacks.) */
+        if (lib->stats.svc_led_out)
+            mg_info("ld: %s: %u of its %u system calls by number led out to the core, made on a stack of the thread's for them", lib->name,
+                    lib->stats.svc_led_out, lib->stats.svc_sites);
 #elif MG_ARCH_X86_64 || MG_ARCH_X86
         /* (x86/mg_patch_x86.c: libcrypto's 16 were all data among its code -- ChaCha's "expand 32-byte k", AES's tables.) */
         if (lib->stats.tp_reads_failed)

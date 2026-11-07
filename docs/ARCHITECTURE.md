@@ -183,6 +183,31 @@ result (negative Linux errno on failure) to `r0`, and resumes after the instruct
 Guest errno, sp and the other registers are preserved. Unknown numbers return
 `-ENOSYS` rather than entering the host kernel.
 
+A trap's handler runs on the stack the `svc` was made on, below its `sp`: Windows
+has no other stack for an exception's records, and the core's fault handler has a
+frame of 5.6 KB. On a thread's own stack that is room enough. **Go's runtime**
+makes its calls on its goroutines' stacks, of two to eight kilobytes cut from its
+heap, and the handler wrote far below such a stack, into the stacks and the heap
+under it or into memory that is not there: MCO Advanced's `libgojni.so` (Go 1.27.2,
+its Tailscale) ended with no word of the core's a tenth of a second into its
+runtime's start (package 669); under qemu its first seconds make 53 calls on such
+stacks, with 1448 to 7164 bytes below `sp`. So in a library of Go's (its build ID
+note) each ARM `svc 0` is **led out** instead (`arm/mg_patch.c`, `lead_out_svc`):
+a branch to a piece of the library's island that puts `r12` and `lr` by on the
+guest's stack (eight bytes, where the kernel writes none) and calls
+`mg_stub_svc_entry` (`arm/mg_stubs.S`). The entry finds the thread's block for
+system calls through the guest's thread pointer (slot `MG_TCB_SYSCALL`,
+`ld/mg_tls.c`: 128 KB at the top of which its words are, given to every thread
+once such a library is loaded), and makes the call (`mg_arm_svc_call`, which
+dispatches as the trap does) below the guest's `sp` where that is on the thread's
+own stack, as the trap did, and on the block's stack where it is not, the TEB
+told that stack (`StackBase`, `StackLimit`, `DeallocationStack`) while it is
+there, as a fiber's switch tells it. Every register but `r0`, the flags (NZCVQ
+and GE) and the VFP registers a call may change are as they were after it; the
+piece goes back to the instruction after the site. A thread with no block takes
+the piece's own trap, which the handler answers as before. The log says
+"N of its M system calls by number led out to the core".
+
 **Go's runtime**, loaded as a library (WhatsApp's `libgojni.so`, Psiphon's
 tunnel core), has no libc calls of its own on Linux and calls the kernel by
 number for everything: these come here. It installs handlers for the faults'
@@ -261,7 +286,8 @@ code still need interception support.
 Chromium's wrapper at `libwebviewchromium.so+0x2489a50` loads `0x000f0002`
 (`__ARM_NR_cacheflush`) from a literal and executes SVC at `+0x2489a58`.
 It now reaches the existing cache-flush shim. Its `push {r7}` leaves the guest
-stack at 4 mod 8; dispatch runs on the OS exception-handler stack. ARM/Thumb
+stack at 4 mod 8; dispatch runs below it, Windows' exception dispatcher aligning
+the records it lays there (above). ARM/Thumb
 tests under qemu cover this shape, the shim's synthetic pid (which detects
 accidental pass-through to Linux), raw errors and unchanged errno. The Windows
 exception path with this wrapper still needs a phone run.

@@ -114,8 +114,8 @@ static int load_mode(int argc, char **argv)
         last = lib;
         mg_ld_get_stats(lib, &st);
         printf("%s: %u Thumb, %u ARM functions; %u unresolved; %u thread-pointer reads (%u failed), %u accesses through a register "
-               "led out, %u PLT entries, %u direct system calls\n", argv[i], st.thumb_functions, st.arm_functions, st.unresolved, st.tp_reads,
-               st.tp_reads_failed, st.tp_led_out, st.plt_entries, st.svc_sites);
+               "led out, %u PLT entries, %u direct system calls (%u led out)\n", argv[i], st.thumb_functions, st.arm_functions, st.unresolved,
+               st.tp_reads, st.tp_reads_failed, st.tp_led_out, st.plt_entries, st.svc_sites, st.svc_led_out);
         fn = mg_ld_sym(lib, "OpenSSL_version");
         if (fn) printf("  OpenSSL_version(0): %s\n", MG_GFN(const char *(*)(int), fn)(0));
         fn = mg_ld_sym(lib, "SHA256");
@@ -150,6 +150,12 @@ static int load_mode(int argc, char **argv)
     /* MG_TESTS_LOAD_WAIT_MS: a while longer for what the libraries' init functions started on threads of their own. Go's
        runtime, loaded as a library, starts itself on one (_rt0_arm_lib), and the process ended before it ran. */
     if (getenv("MG_TESTS_LOAD_WAIT_MS")) mg_sleep_ns((u64)atoi(getenv("MG_TESTS_LOAD_WAIT_MS")) * 1000000u);
+    {
+        /* (ARM svc of a library of Go's, led out to the core: how many were made, and how many of them on goroutines' stacks.) */
+        u32 made = 0, on_block = 0;
+        mg_core_svc_calls(&made, &on_block);
+        if (made) printf("system calls led out: %u made, %u of them on a stack for them (not the thread's own)\n", (unsigned)made, (unsigned)on_block);
+    }
     /* MG_TESTS_LOAD_CALL=NAME[:ARG][,NAME[:ARG]...]: functions of the last library loaded, as `long NAME(long ARG)`, called on
        this thread after the wait, and what each returned -- a Go library's exports, which come into its runtime from a
        thread it did not make (cgocallback, needm). */

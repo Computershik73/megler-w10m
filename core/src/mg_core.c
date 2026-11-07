@@ -19,7 +19,7 @@ bool mg_mmap_app_trap(mg_addr pc);
 bool mg_probe_fix_fault(mg_fault *f);
 #endif
 
-static volatile i32 g_plt_rescues, g_wx_flips;
+static volatile i32 g_plt_rescues, g_wx_flips, g_svc_calls, g_svc_on_block;
 static bool g_inited, g_can_run;
 static void (*g_crash_hook)(const char *report);
 static void (*g_fault_detail)(char *out, size_t cap);
@@ -126,6 +126,60 @@ static void registers_line(const mg_fault *f, char *out, size_t cap)
     if (n + 24 < cap) snprintf(out + n, cap - n, " %s %08x", MG_ARCH_ARM32 ? "cpsr" : MG_ARCH_ARM64 ? "pstate" : "flags", f->cpsr ? *f->cpsr : 0);
 }
 
+#if MG_ARCH_ARM32
+/* The flag trace-syscalls: each system call of a library's own said, with its number, its first four arguments, what it gives and whose. */
+static void trace_syscall(u32 nr, const u32 args[4], u32 result, mg_addr pc)
+{
+    static volatile i32 traced = -1, lines;
+    if (traced < 0 && megler_data_dir()[0]) traced = mg_flag("trace-syscalls") ? 1 : 0;
+    if (traced > 0 && mg_atomic_add(&lines, 1) <= 30000) {
+        const char *where = NULL;
+        const void *s = NULL, *b = NULL;
+        mg_ld_symbol_at((const void *)pc, &where, &s, &b);
+        mg_info("syscall %u(0x%x, 0x%x, 0x%x, 0x%x) = %d on thread %u at %s+0x%x", (unsigned)nr, (unsigned)args[0], (unsigned)args[1],
+                (unsigned)args[2], (unsigned)args[3], (int)result, (unsigned)mg_thread_self_id(), where ? where : "?", (unsigned)(pc - (mg_addr)b));
+    }
+}
+
+/*
+ * A system call of an ARM svc 0 led out of its library (arm/mg_patch.c, arm/mg_stubs.S's mg_stub_svc_entry), on the
+ * thread's stack for system calls (`on_block`) or its own: regs r0..r15 as at the svc, r15 the piece's way back, whose
+ * branch three words on goes to the instruction after the site. The site is what the call is said to be made at
+ * (mg_bionic_syscall_site: madvise asks whose it is). On Windows the thread's record (mg_gthread) may be made by the
+ * call, with the bounds Windows says of the thread's stack, which while the TEB says the block's are that one's: it is
+ * given the thread's own. Elsewhere the block learns the thread's own stack, where it was not told it when it was made.
+ */
+u32 mg_arm_svc_call(u32 *regs, mg_addr *block, u32 on_block)
+{
+    u32 b = mg_rd32((const void *)(mg_addr)(regs[15] + 12)), args[4], result;
+#if MG_HOST_WINDOWS
+    void **tp = on_block ? (void **)mg_guest_tp_get() : NULL;
+    bool made = tp && !tp[1];
+#endif
+    regs[15] = regs[15] + 16 + (u32)((i32)(b << 8) >> 6);
+    memcpy(args, regs, sizeof(args));
+    mg_atomic_add(&g_svc_calls, 1);
+    if (on_block) mg_atomic_add(&g_svc_on_block, 1);
+    result = mg_bionic_syscall_raw(regs);
+#if MG_HOST_WINDOWS
+    if (made && tp[1]) {
+        mg_gthread *g = (mg_gthread *)tp[1];
+        g->stack_lo = (void *)block[MG_SC_SAVED_DEALLOC];
+        g->stack_hi = (void *)block[MG_SC_SAVED_BASE];
+    }
+#else
+    if (on_block && !block[MG_SC_OWN_HI]) {
+        void *lo = NULL, *hi = NULL;
+        mg_thread_stack_bounds(&lo, &hi);
+        block[MG_SC_OWN_LO] = (mg_addr)lo;
+        block[MG_SC_OWN_HI] = (mg_addr)hi;
+    }
+#endif
+    trace_syscall(regs[7], args, result, regs[15]);
+    return result;
+}
+#endif
+
 static MG_HOSTCB bool on_fault(mg_fault *f)
 {
     const char *lib = NULL, *sym;
@@ -154,19 +208,13 @@ static MG_HOSTCB bool on_fault(mg_fault *f)
         int reg;
         /* A patched svc's UDF, or an svc left as the file has it, stopped at its hardware breakpoint. */
         if (mg_patch_svc_target(pc, &target)) {
-            /* The flag trace-syscalls: each one said, with its number, its first four arguments, what it gives and whose. */
-            static volatile i32 traced = -1, lines;
-            u32 nr = f->regs[7], a0 = f->regs[0], a1 = f->regs[1], a2 = f->regs[2], a3 = f->regs[3];
+            u32 nr = f->regs[7], args[4];
+            args[0] = f->regs[0];
+            args[1] = f->regs[1];
+            args[2] = f->regs[2];
+            args[3] = f->regs[3];
             f->regs[0] = mg_bionic_syscall_raw(f->regs);
-            if (traced < 0 && megler_data_dir()[0]) traced = mg_flag("trace-syscalls") ? 1 : 0;
-            if (traced > 0 && mg_atomic_add(&lines, 1) <= 30000) {
-                const char *where = NULL;
-                const void *s = NULL, *b = NULL;
-                mg_ld_symbol_at((const void *)pc, &where, &s, &b);
-                mg_info("syscall %u(0x%x, 0x%x, 0x%x, 0x%x) = %d on thread %u at %s+0x%x", (unsigned)nr, (unsigned)a0, (unsigned)a1,
-                        (unsigned)a2, (unsigned)a3, (int)f->regs[0], (unsigned)mg_thread_self_id(), where ? where : "?",
-                        (unsigned)(pc - (mg_addr)b));
-            }
+            trace_syscall(nr, args, f->regs[0], pc);
             mg_fault_resume_at(f, target);
             return true;
         }
@@ -584,6 +632,13 @@ void mg_core_set_arm_state(int state)
 bool mg_core_can_run(void) { return g_can_run; }
 u32 mg_core_plt_rescues(void) { return (u32)g_plt_rescues; }
 u32 mg_core_wx_flips(void) { return (u32)g_wx_flips; }
+
+void mg_core_svc_calls(u32 *made, u32 *on_block)
+{
+    *made = (u32)g_svc_calls;
+    *on_block = (u32)g_svc_on_block;
+}
+
 void mg_core_set_crash_hook(void (*hook)(const char *report)) { g_crash_hook = hook; }
 void mg_core_set_fault_detail(void (*detail)(char *out, size_t cap)) { g_fault_detail = detail; }
 void mg_core_thread_detail(char *out, size_t cap)
