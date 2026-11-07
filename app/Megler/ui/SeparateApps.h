@@ -37,6 +37,7 @@ struct Status {
     bool queued = false;                      // an action of it is waiting or going on
     std::string step;                         // what is being done, or how the last action ended
     appPackage::Made made;                    // the last package made of it here
+    bool accessDenied = false;                // its last install or uninstall was refused for access (InstallResult::accessDenied)
 };
 
 /// Asks which are installed (appPackage::installedApps), on a worker thread (once at a time). UI thread.
@@ -62,6 +63,9 @@ std::vector<std::string> outdatedIds();
 void updateAll(AppShell& shell);
 /// What is going on, "Updating Instagram (2 of 3): Packing…"; empty when nothing is.
 std::string working();
+/// Whether Windows refused an install or an uninstall for access since Megler started, and has done none since: Megler has
+/// not got packageManagement (appPackage::accessDeniedText), and the Library says so once for all its apps.
+bool installsRefused();
 
 /// The list of the apps' packages, which Windows's package manager gives (on an Xbox, the console's Device Portal:
 /// appPackage::installedApps): ready once it came (or once its lister has answered at all), unavailable when it could not be

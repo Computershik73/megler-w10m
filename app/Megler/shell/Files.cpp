@@ -70,6 +70,31 @@ bool read(const std::wstring& path, std::string& out) {
     return ok;
 }
 
+bool readRange(const std::wstring& path, uint64_t at, uint64_t n, std::string& out) {
+    out.clear();
+    HANDLE h = open(path, GENERIC_READ, OPEN_EXISTING);
+    if (h == INVALID_HANDLE_VALUE) return false;
+    LARGE_INTEGER pos = {};
+    pos.QuadPart = LONGLONG(at);
+    bool ok = SetFilePointerEx(h, pos, nullptr, FILE_BEGIN) != 0;
+    char buffer[65536];
+    while (ok && out.size() < n) {
+        DWORD got = 0;
+        const DWORD want = DWORD(std::min<uint64_t>(sizeof(buffer), n - out.size()));
+        if (!ReadFile(h, buffer, want, &got, nullptr)) ok = false;
+        else if (got == 0) break;
+        else out.append(buffer, got);
+    }
+    CloseHandle(h);
+    return ok;
+}
+
+uint64_t lastWrite(const std::wstring& path) {
+    WIN32_FILE_ATTRIBUTE_DATA data = {};
+    if (!GetFileAttributesExW(path.c_str(), GetFileExInfoStandard, &data)) return 0;
+    return (uint64_t(data.ftLastWriteTime.dwHighDateTime) << 32) | data.ftLastWriteTime.dwLowDateTime;
+}
+
 bool write(const std::wstring& path, std::string_view data) {
     HANDLE h = open(path, GENERIC_WRITE, CREATE_ALWAYS);
     if (h == INVALID_HANDLE_VALUE) return false;

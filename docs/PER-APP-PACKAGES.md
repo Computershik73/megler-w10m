@@ -140,6 +140,30 @@ Megler's and its four apps' among them, installed so by 0.1.0.612 to 0.1.0.639.
 The packages are listed by `PackageManager.FindPackagesForUser` (the restricted
 capability `packageQuery`) and uninstalled by `RemovePackageAsync`.
 
+A phone needs its full interop unlock for this, the capability part included:
+`packageManagement` is a restricted capability, and Windows 10 Mobile grants it
+to a sideloaded app only once Interop Tools' Unlock has **Interop/Cap Unlock** and
+**New Capability Engine Unlock** turned on and the phone has been restarted. The
+basic unlock alone grants `codeGeneration` (Android code runs, and Megler warns
+where it does not) and lets the package manager list the packages, but every
+install is refused at once: a user's phone with Megler 0.1.0.671 refused all four
+tries with `0x80070005 Access is denied.`, which the app's page said as it was.
+Since then a refusal for access at every try (`E_ACCESSDENIED`, thrown by the call
+or in its result) is an outcome of its own (`InstallResult::accessDenied`), said
+once a run in the log, and the shell says what happened and what to do instead of
+Windows's words (`appPackage::accessDeniedText`): on the app's page, with Open the
+Package and Open the Certificate as before (Windows's own installer installs the
+package meanwhile); in the Library, once for all the apps, Update All's included;
+for Google Play's installs at the first start, which then wait for Megler's next
+start instead of being made and refused again every minute; for an uninstall; and
+for Megler's own update, whose package is then left in (or, downloaded from
+GitHub, moved to) `Pictures\Megler`, where the phone's file manager opens it and
+Megler tries it again at each start, so that the start after the unlock installs
+it. Desktop Windows grants a sideloaded package its restricted capabilities as a
+rule; where it refuses this one, the shell says so, without Interop Tools. The
+last refusal of any kind is kept in `LocalState\install-refusal.txt`, which Save
+All Logs takes along and its summary says ([STATUS.md](STATUS.md), "Logs").
+
 The engine is the only way since 2026-11-07 (the owner's wish): Megler asks the
 phone's Device Portal nothing, and needs neither the portal nor its
 authentication turned off. Before, the portal (`https://127.0.0.1`, the phone's

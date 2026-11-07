@@ -304,9 +304,15 @@ void downloadAndInstall(Found f) {
         gSummary = "Megler " + f.version + " is being installed";
     }
     const appPackage::InstallResult result = appPackage::installOwnUpdate(appx, certificate, f.version, "downloaded from GitHub (" + f.tag + ")");
+    // Refused for access (Megler has not got packageManagement): the package goes to Pictures\Megler, where the file manager
+    // opens it with Windows's own installer and Megler tries it again at each start, and the Library says why and what to do.
+    // Left in LocalState\update, it was out of the user's reach, and the next offer would have downloaded it again.
+    if (!result.ok && result.accessDenied) appPackage::keepRefusedUpdate(appx, certificate, f.version);
     std::lock_guard<std::mutex> lock(gMutex);
     // (Installed, this Megler is closed by Windows before it gets here, as a rule.)
-    gSummary = result.ok ? "Megler " + f.version + " installed: open Megler again" : "Megler " + f.version + " was not installed: " + result.said;
+    gSummary = result.ok             ? "Megler " + f.version + " installed: open Megler again"
+               : result.accessDenied ? appPackage::selfUpdateFailure()
+                                     : "Megler " + f.version + " was not installed: " + result.said;
     gStep = Step::idle;
 }
 
@@ -492,6 +498,15 @@ void tick(AppShell& shell) {
     case Step::found: {
         if (shell.dialogShown() || appPackage::selfUpdating() || !gFound) return;
         if (gFound->version == gDeclined && !gForced) {
+            gStep = Step::idle;
+            return;
+        }
+        // Not downloaded again by itself where Windows refused its last try for access: its package waits in Pictures\Megler,
+        // tried at each start (appPackage::keepRefusedUpdate). Check Now offers it all the same.
+        if (appPackage::updateRefusedForAccess(gFound->version) && !gForced) {
+            // (What the Library says, where this start's try from Pictures\Megler said it; else the way round without it.)
+            const std::string failed = appPackage::selfUpdateFailure();
+            gSummary = !failed.empty() ? failed : appPackage::ownUpdateRefusedText(gFound->version, gFound->file, false);
             gStep = Step::idle;
             return;
         }

@@ -20,6 +20,7 @@
 #include "player/Session.h"
 #include "shell/AppPackage.h"
 #include "shell/Files.h"
+#include "shell/LogMirror.h"
 #include "shell/PicturesDiag.h"
 #include "shell/Platform.h"
 #include "shell/Settings.h"
@@ -49,6 +50,9 @@ struct App : ApplicationT<App, Markup::IXamlMetadataProvider> {
         }
         shellLog::write("Megler for Windows 10 Mobile " + platform::packageVersion() + " (" + platform::architecture() + ", " +
                         platform::deviceFamily() + " " + platform::osVersion() + ")");
+        // The logs' copies in the shared folder, where Save All Logs finds every package's: the runs before, which the log has
+        // just put aside, and this run's as it goes (shell/LogMirror.h).
+        logMirror::start();
 
         UnhandledException([](auto&&, UnhandledExceptionEventArgs const& e) {
             shellLog::write("FATAL: unhandled XAML exception: " + narrow(e.Message()));
@@ -76,6 +80,8 @@ struct App : ApplicationT<App, Markup::IXamlMetadataProvider> {
             // And what the app wrote into its files' shared mappings, to the files: Windows may end it while it is suspended.
             megler_settle_files();
             shellLog::flush();
+            // (And the log's copy in the shared folder, for Save All Logs: Windows may end the app while it is suspended.)
+            logMirror::now();
             // (And the log where a diagnosis over USB asked for it: shell/PicturesDiag.h.)
             picturesDiag::exportNow();
         });
@@ -90,6 +96,7 @@ struct App : ApplicationT<App, Markup::IXamlMetadataProvider> {
             CoreApplication::Exiting([](auto&&, auto&&) {
                 shellLog::write("app: exiting");
                 shellLog::flush();
+                logMirror::now();
             });
         } catch (const hresult_error&) {
         }

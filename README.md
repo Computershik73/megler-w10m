@@ -188,8 +188,13 @@ bash tools/build-appx.sh arm --java # → app/Megler/AppPackages/Megler_<ver>_AR
 
 ## On the phone
 
-The phone must be interop-unlocked (for `codeGeneration`), in Developer mode, and
-trust the package's certificate (`AppPackages/Megler.cer`). A package you do not build
+The phone must be fully interop-unlocked, in Developer mode, and trust the package's
+certificate (`AppPackages/Megler.cer`). Fully: the basic unlock grants `codeGeneration`,
+without which no Android code runs; the capability part of it -- in Interop Tools ›
+Unlock, **Interop/Cap Unlock** and **New Capability Engine Unlock**, then a restart --
+grants `packageManagement`, without which Windows refuses every package Megler installs,
+the apps' own and its own updates (0x80070005, access denied; Megler then says so and
+what to do). A package you do not build
 yourself is on [the latest release](https://github.com/Computershik73/megler-w10m/releases/latest),
 with its `Megler.cer`.
 
@@ -207,7 +212,10 @@ the portal need not be on for it, nor its authentication off. Then, in Megler:
 3. **Update All** after Megler itself is updated: each app's own package is rebuilt.
 
 **Device › Probe** and **Device › Self-test** check what this phone allows and run the
-core's tests on it; the **Log** says what each app does.
+core's tests on it; the **Log** says what each app does, and its **Save All Logs** puts
+Megler's and every app's logs into one ZIP in `Pictures\Megler\logs`, for a problem
+report: the phone's file manager and a PC over USB find it there, and Share sends it
+([docs/STATUS.md](docs/STATUS.md), "Logs").
 
 ## On an Xbox
 

@@ -18,6 +18,11 @@ bool makeDirectories(const std::wstring& path);
 
 /// The whole file; false when it cannot be opened.
 bool read(const std::wstring& path, std::string& out);
+/// At most `n` bytes of the file from `at` (fewer at its end); false when it cannot be opened or read. Another process may be
+/// writing it meanwhile: a log being appended to.
+bool readRange(const std::wstring& path, uint64_t at, uint64_t n, std::string& out);
+/// When the file was last written, as a FILETIME's 100 ns since 1601 (UTC); 0 for none.
+uint64_t lastWrite(const std::wstring& path);
 /// Creates or replaces the file.
 bool write(const std::wstring& path, std::string_view data);
 /// Opens, appends and closes: the Device Portal refuses to copy a file some
