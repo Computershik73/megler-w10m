@@ -2217,6 +2217,23 @@ https URL by name ("localhost", which the test certificate names) through
 Android's own HTTP client (`com.android.okhttp`, behind `URL.openConnection`)
 gets 200 and the body.
 
+An app's own network security configuration (its manifest's
+`android:networkSecurityConfig`) is trusted as Android 9 trusts it, by
+Android's package `android.security.net.config`
+(`core/framework-overlay/android/security/net/config`;
+`NetworkSecurityConfigProvider.java` says how). Before the app's code runs,
+`megler.AppRunner` makes the app's configuration the default and puts the
+provider `AndroidNSSP` first; its `TrustManagerFactory` gives a
+`RootTrustManager` that checks each server by the configuration of its host:
+conscrypt's `TrustManagerImpl` over that configuration's anchors (the root's
+cacerts, the app's certificates in `res/raw`; there are no user ones here),
+then its pins. Russian apps need it: Ozon and VTB's bank trust the Russian
+Trusted Root CA, which Android 9 does not have, from their own `res/raw`. The
+data app's steps "network-trust", "network-trust-domains" and
+"network-trust-pins" show it with a test authority of the app's own: trusted
+for localhost and the names its configuration gives it, 127.0.0.1 refused,
+pins matched, missed, expired and overridden.
+
 What follows is what stands in where conscrypt's library is not in the root
 (an Android root made before the library was built, or the PC's own build of
 the tests, which cannot load ARM libraries).
@@ -5465,9 +5482,19 @@ on a looper thread of its own and takes it back with `next()`.
   permitted for an app written for Android 8.1 or earlier and not for a later
   one. Android's WebView asks this for every http:// request
   (`net::ERR_CLEARTEXT_NOT_PERMITTED` when it says no), so no http page loaded
-  in any app. The data app, written for Android 9 and saying nothing in its
-  manifest, is refused it (its step "cleartext"); the WebView test app says
+  in any app. The answer comes from the configuration TLS goes by
+  (`android/security/net/config`, below). The data app, written for Android 9,
+  whose configuration permits it for `sub.megler.test` and its subdomains alone,
+  is refused it elsewhere (its step "cleartext"); the WebView test app says
   `usesCleartextTraffic="true"` and loads its pages over http.
+
+- `android/security/net/config/`, Android's network security configuration,
+  of which the framework had `ApplicationConfig` as a signature alone: the
+  app's XML read at its first use, its trust anchors, pins and cleartext for
+  each host, and the provider `AndroidNSSP` whose `RootTrustManager` TLS goes
+  by (`NetworkSecurityConfigProvider.java` says why; see the TLS paragraphs
+  under "On libcore" above). conscrypt's classes it builds on are compile-time
+  stubs in `core/framework/stubs/com/android/org/conscrypt`.
 
 - `android/app/compat/CompatChanges.java`, new: Android 11's system API for
   whether a compatibility change is on for the app, which the WebView's glue

@@ -316,6 +316,7 @@ public class Main extends Activity {
         locale();
         phoneNumber();
         tls();
+        networkTrust();
         keystore(run);
         keystoreCertificates(run);
         keystoreForeignKey();
@@ -2420,6 +2421,23 @@ public class Main extends Activity {
     private static final String TLS_KEY = "MIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQgxyjM+eEJTgNZNj8S0HvPUp/EYUsW7SCywlDYtxPU9QKhRANCAASSOKxorFlV2PxAaplm"
             + "g0VzCo6g5dcgejzgpERSfmqrUCxTzAdCDQLxcLOZCYgMKwUHK2eyrVByyAtXT+l2f5t3";
 
+    /**
+     * The key and certificate of the TLS server of the network security configuration's steps: EC P-256, for localhost and
+     * 127.0.0.1, serverAuth, issued by the test authority "Megler Test Root CA" (res/raw/trust_test_cas.pem, after "Megler Test
+     * Other CA", which issued nothing; alone in res/raw/trust_test_ca.der), all three valid from 2026 to 2126. Made with
+     * openssl 3.5: ecparam -genkey for each key; req, then x509 -req -signkey with basicConstraints CA:true for the two
+     * authorities, and -CA for the server with CA:false and its two names as subjectAltName. The pins in
+     * res/xml/network_security_config.xml are the SHA-256 of each one's key: x509 -pubkey | pkey -pubin -outform DER | dgst -sha256.
+     */
+    private static final String TRUST_CERT = "MIIB1DCCAXqgAwIBAgIITUVHTEVSAAMwCgYIKoZIzj0EAwIwNTEcMBoGA1UEAwwTTWVnbGVyIFRlc3QgUm9vdCBDQTEVMBMGA1UECgwM"
+            + "TWVnbGVyIHRlc3RzMCAXDTI2MDEwMTAwMDAwMFoYDzIxMjYwMTAxMDAwMDAwWjAUMRIwEAYDVQQDDAlsb2NhbGhvc3QwWTATBgcqhkjOPQIBBggqhkjOPQMB"
+            + "BwNCAATMftIn9+WMWAYJ2Ullz8TWBI++crUYxLTJV9h8XjBSRseMzKJITb1gnFKApOyl8T8Q8YedJaINdZnS/PG/Bgnyo4GSMIGPMAwGA1UdEwEB/wQCMAAw"
+            + "DgYDVR0PAQH/BAQDAgeAMBMGA1UdJQQMMAoGCCsGAQUFBwMBMBoGA1UdEQQTMBGCCWxvY2FsaG9zdIcEfwAAATAdBgNVHQ4EFgQUz/EiqbIAPGY07vzsM/RL"
+            + "0yh+pFowHwYDVR0jBBgwFoAUOJ5HrJ20l/4sBLxKbzLlevgXp5cwCgYIKoZIzj0EAwIDSAAwRQIgcjh7yte3QFMPpx66VoUdkAyu3j3gYA3/3sc4OQdOrA4C"
+            + "IQCy6wv6mB/9FlKzDDapaMPKv8cZrsQJXbtwu6e4gp60Jg==";
+    private static final String TRUST_KEY = "MIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQg7J/43nN/3nmLHwGjhJgTr9rIJWTiUeSl0++gK2Q6I7ShRANCAATMftIn"
+            + "9+WMWAYJ2Ullz8TWBI++crUYxLTJV9h8XjBSRseMzKJITb1gnFKApOyl8T8Q8YedJaINdZnS/PG/Bgny";
+
     /** Whether the TLS this app has is conscrypt's (its native library is in the Android root) or the runtime's stand-in, which has none. */
     private boolean conscrypt;
 
@@ -2680,6 +2698,202 @@ public class Main extends Activity {
         detail = "code=" + code + " suite=" + suite + " body=" + body + " request=" + request[0];
         Log.i("DataTest", "tls-https-said " + detail);
         return code == 200 && "megler!".equals(body) && suite != null && suite.startsWith("TLS_ECDHE_ECDSA_") && "GET /hello HTTP/1.1".equals(request[0]);
+    }
+
+    /**
+     * The app's network security configuration for TLS (res/xml/network_security_config.xml), as Android 9 has it: an authority
+     * of the app's own trusted for the names it gives it, as Ozon trusts the Russian Trusted Root CA. A TLS server of the app's
+     * on 127.0.0.1 has a certificate that authority issued; each connection to it gives the server a name, the peer's, which
+     * chooses the configuration. Without TLS (no conscrypt) the steps hold, as there is nothing to connect with.
+     */
+    private void networkTrust() {
+        step("network-trust", () -> !conscrypt || offMain(this::networkTrustDefault));
+        step("network-trust-domains", () -> !conscrypt || offMain(this::networkTrustDomains));
+        step("network-trust-pins", () -> !conscrypt || offMain(this::networkTrustPins));
+    }
+
+    /**
+     * The configuration's provider first among the security providers, and the platform's trust manager the configuration's
+     * (RootTrustManager). localhost trusted through Android's HttpsURLConnection with its default socket factory, and through a
+     * context of the app's own over the default TrustManagerFactory; the host-aware check (X509TrustManagerExtensions, as
+     * OkHttp's chain cleaner makes it) gives the chain ending in the authority. 127.0.0.1, which only the base configuration
+     * names (Android's authorities, and no debug-overrides for an app that is not debuggable), refused. Two names of one
+     * configuration are trusted alike, localhost and 127.0.0.1 are not (isSameTrustConfiguration). And a KeyStore given to the
+     * factory is a configuration of its own: its certificate trusted for every host.
+     */
+    private boolean networkTrustDefault() throws Exception {
+        String first = java.security.Security.getProviders()[0].getName();
+        javax.net.ssl.TrustManagerFactory tmf = javax.net.ssl.TrustManagerFactory.getInstance(javax.net.ssl.TrustManagerFactory.getDefaultAlgorithm());
+        tmf.init((java.security.KeyStore) null);
+        javax.net.ssl.X509TrustManager platform = (javax.net.ssl.X509TrustManager) tmf.getTrustManagers()[0];
+        java.security.cert.X509Certificate leaf = trustCertificate(), authority = trustAuthority();
+        javax.net.ssl.SSLServerSocket server = trustServer();
+        try {
+            javax.net.ssl.HttpsURLConnection c = (javax.net.ssl.HttpsURLConnection) new java.net.URL("https://localhost:" + server.getLocalPort() + "/trust").openConnection();
+            c.setConnectTimeout(5000);
+            c.setReadTimeout(10000);
+            String https;
+            try {
+                https = c.getResponseCode() + " " + readAll(c.getInputStream());
+            } catch (java.io.IOException e) {
+                https = "failed: " + rootMessage(e);
+            } finally {
+                c.disconnect();
+            }
+            javax.net.ssl.SSLContext own = javax.net.ssl.SSLContext.getInstance("TLS");
+            own.init(null, tmf.getTrustManagers(), null);
+            String byOwn = trustAs(server, own.getSocketFactory(), "localhost");
+            String byAddress = trustAs(server, (javax.net.ssl.SSLSocketFactory) javax.net.ssl.SSLSocketFactory.getDefault(), "127.0.0.1");
+            android.net.http.X509TrustManagerExtensions extensions = new android.net.http.X509TrustManagerExtensions(platform);
+            java.security.cert.X509Certificate[] served = { leaf };
+            java.util.List<java.security.cert.X509Certificate> chain = extensions.checkServerTrusted(served, "ECDHE_ECDSA", "localhost");
+            String elsewhere;
+            try {
+                extensions.checkServerTrusted(served, "ECDHE_ECDSA", "127.0.0.1");
+                elsewhere = "trusted";
+            } catch (java.security.cert.CertificateException e) {
+                elsewhere = "refused";
+            }
+            boolean sameSub = extensions.isSameTrustConfiguration("a.sub.megler.test", "sub.megler.test");
+            boolean sameAddress = extensions.isSameTrustConfiguration("localhost", "127.0.0.1");
+            java.security.KeyStore store = java.security.KeyStore.getInstance(java.security.KeyStore.getDefaultType());
+            store.load(null, null);
+            store.setCertificateEntry("authority", authority);
+            javax.net.ssl.TrustManagerFactory stored = javax.net.ssl.TrustManagerFactory.getInstance(javax.net.ssl.TrustManagerFactory.getDefaultAlgorithm());
+            stored.init(store);
+            javax.net.ssl.X509TrustManager storedTrust = (javax.net.ssl.X509TrustManager) stored.getTrustManagers()[0];
+            String byStore;
+            try {
+                storedTrust.checkServerTrusted(served, "ECDHE_ECDSA");
+                byStore = "trusted";
+            } catch (java.security.cert.CertificateException e) {
+                byStore = "refused: " + rootMessage(e);
+            }
+            detail = "first=" + first + " trust=" + platform.getClass().getName() + " https=" + https + " own=" + byOwn + " address=" + byAddress
+                    + " chain=" + chain.size() + " ending " + chain.get(chain.size() - 1).getSubjectX500Principal().getName() + " elsewhere=" + elsewhere
+                    + " same=" + sameSub + "/" + sameAddress + " store=" + byStore + " " + storedTrust.getAcceptedIssuers().length;
+            Log.i("DataTest", "network-trust-said " + detail);
+            return "AndroidNSSP".equals(first) && "android.security.net.config.RootTrustManager".equals(platform.getClass().getName())
+                    && "200 trusted!".equals(https) && "trusted".equals(byOwn) && byAddress.startsWith("refused: Trust anchor for certification path not found")
+                    && chain.size() == 2 && chain.get(1).equals(authority) && "refused".equals(elsewhere) && sameSub && !sameAddress
+                    && "trusted".equals(byStore) && storedTrust.getAcceptedIssuers().length == 1;
+        } finally {
+            server.close();
+        }
+    }
+
+    /**
+     * Names a <domain> covers: sub.megler.test itself and two levels under it (includeSubdomains), whose anchor is the authority
+     * read from DER; nested.sub.megler.test, a <domain-config> inside that one without anchors of its own, which takes its
+     * parent's; localhost written in another case. megler.test, above them, refused.
+     */
+    private boolean networkTrustDomains() throws Exception {
+        javax.net.ssl.SSLServerSocket server = trustServer();
+        try {
+            javax.net.ssl.SSLSocketFactory f = (javax.net.ssl.SSLSocketFactory) javax.net.ssl.SSLSocketFactory.getDefault();
+            String sub = trustAs(server, f, "sub.megler.test"), deep = trustAs(server, f, "a.b.sub.megler.test"), nested = trustAs(server, f, "nested.sub.megler.test"),
+                    cased = trustAs(server, f, "LocalHost"), above = trustAs(server, f, "megler.test");
+            detail = "sub=" + sub + " deep=" + deep + " nested=" + nested + " cased=" + cased + " above=" + above;
+            Log.i("DataTest", "network-trust-domains-said " + detail);
+            return "trusted".equals(sub) && "trusted".equals(deep) && "trusted".equals(nested) && "trusted".equals(cased)
+                    && above.startsWith("refused: Trust anchor for certification path not found");
+        } finally {
+            server.close();
+        }
+    }
+
+    /**
+     * Pins: the authority's key pinned, trusted; only a key the chain does not have pinned, refused; that pin expired, trusted;
+     * the authority's anchor overriding pins, trusted; the server's own key pinned, trusted.
+     */
+    private boolean networkTrustPins() throws Exception {
+        javax.net.ssl.SSLServerSocket server = trustServer();
+        try {
+            javax.net.ssl.SSLSocketFactory f = (javax.net.ssl.SSLSocketFactory) javax.net.ssl.SSLSocketFactory.getDefault();
+            String pinned = trustAs(server, f, "pinned.sub.megler.test"), bad = trustAs(server, f, "badpin.megler.test"),
+                    expired = trustAs(server, f, "expired.megler.test"), overridden = trustAs(server, f, "override.megler.test"),
+                    leafPin = trustAs(server, f, "leafpin.megler.test");
+            detail = "pinned=" + pinned + " bad=" + bad + " expired=" + expired + " overridden=" + overridden + " leaf=" + leafPin;
+            Log.i("DataTest", "network-trust-pins-said " + detail);
+            return "trusted".equals(pinned) && "refused: Pin verification failed".equals(bad) && "trusted".equals(expired)
+                    && "trusted".equals(overridden) && "trusted".equals(leafPin);
+        } finally {
+            server.close();
+        }
+    }
+
+    private static java.security.cert.X509Certificate trustCertificate() throws Exception {
+        return (java.security.cert.X509Certificate) java.security.cert.CertificateFactory.getInstance("X.509")
+                .generateCertificate(new java.io.ByteArrayInputStream(java.util.Base64.getDecoder().decode(TRUST_CERT)));
+    }
+
+    /** The test authority, as the app's DER resource has it. */
+    private java.security.cert.X509Certificate trustAuthority() throws Exception {
+        try (java.io.InputStream in = getResources().openRawResource(R.raw.trust_test_ca)) {
+            return (java.security.cert.X509Certificate) java.security.cert.CertificateFactory.getInstance("X.509").generateCertificate(in);
+        }
+    }
+
+    /** The TLS server of the network security configuration's steps, on 127.0.0.1 until it is closed: an HTTP GET is answered
+     *  "trusted!", any other line "pong"; a client that refuses its certificate ends that connection alone. */
+    private static javax.net.ssl.SSLServerSocket trustServer() throws Exception {
+        java.security.PrivateKey key = java.security.KeyFactory.getInstance("EC").generatePrivate(new java.security.spec.PKCS8EncodedKeySpec(java.util.Base64.getDecoder().decode(TRUST_KEY)));
+        java.security.KeyStore keys = java.security.KeyStore.getInstance(java.security.KeyStore.getDefaultType());
+        keys.load(null, null);
+        keys.setKeyEntry("server", key, new char[0], new java.security.cert.Certificate[] { trustCertificate() });
+        javax.net.ssl.KeyManagerFactory kmf = javax.net.ssl.KeyManagerFactory.getInstance(javax.net.ssl.KeyManagerFactory.getDefaultAlgorithm());
+        kmf.init(keys, new char[0]);
+        javax.net.ssl.SSLContext context = javax.net.ssl.SSLContext.getInstance("TLS");
+        context.init(kmf.getKeyManagers(), null, null);
+        final javax.net.ssl.SSLServerSocket server = (javax.net.ssl.SSLServerSocket) context.getServerSocketFactory()
+                .createServerSocket(0, 16, java.net.InetAddress.getByName("127.0.0.1"));
+        Thread t = new Thread(() -> {
+            while (!server.isClosed()) {
+                try (java.net.Socket c = server.accept()) {
+                    c.setSoTimeout(10000);
+                    java.io.BufferedReader r = new java.io.BufferedReader(new java.io.InputStreamReader(c.getInputStream(), "ISO-8859-1"));
+                    String line = r.readLine();
+                    java.io.OutputStream o = c.getOutputStream();
+                    if (line != null && line.startsWith("GET ")) {
+                        for (String h; (h = r.readLine()) != null && !h.isEmpty();) { }
+                        o.write("HTTP/1.0 200 OK\r\nContent-Type: text/plain\r\nContent-Length: 8\r\nConnection: close\r\n\r\ntrusted!".getBytes("ISO-8859-1"));
+                    } else {
+                        o.write("pong\n".getBytes("ISO-8859-1"));
+                    }
+                    o.flush();
+                } catch (java.io.IOException e) {
+                    // a client that refused the certificate, or the server closed
+                }
+            }
+        }, "trust-server");
+        t.setDaemon(true);
+        t.start();
+        return server;
+    }
+
+    /**
+     * A connection to the trust server under the name `host`: a socket to 127.0.0.1 with TLS laid over it for that name, the
+     * peer's. "trusted" when the handshake is made and the server answers, else what refused it.
+     */
+    private static String trustAs(javax.net.ssl.SSLServerSocket server, javax.net.ssl.SSLSocketFactory factory, String host) throws java.io.IOException {
+        java.net.Socket plain = new java.net.Socket();
+        plain.connect(new java.net.InetSocketAddress(java.net.InetAddress.getByName("127.0.0.1"), server.getLocalPort()), 5000);
+        try (javax.net.ssl.SSLSocket s = (javax.net.ssl.SSLSocket) factory.createSocket(plain, host, server.getLocalPort(), true)) {
+            s.setSoTimeout(10000);
+            s.startHandshake();
+            s.getOutputStream().write("ping\n".getBytes("UTF-8"));
+            s.getOutputStream().flush();
+            String back = new java.io.BufferedReader(new java.io.InputStreamReader(s.getInputStream(), "UTF-8")).readLine();
+            return "pong".equals(back) ? "trusted" : "answered " + back;
+        } catch (javax.net.ssl.SSLHandshakeException e) {
+            return "refused: " + rootMessage(e);
+        }
+    }
+
+    /** The message of what was first thrown: a refused certificate's reason under the handshake's exception. */
+    private static String rootMessage(Throwable t) {
+        while (t.getCause() != null && t.getCause() != t) t = t.getCause();
+        return t.getMessage();
     }
 
     /**
@@ -3536,14 +3750,19 @@ public class Main extends Activity {
     }
 
     /**
-     * Cleartext HTTP, as Android's network security policy decides it for this app: written for Android 9 and saying nothing in
-     * its manifest (no usesCleartextTraffic, no network security configuration), it is refused, for any host. The WebView
-     * asks this of every http:// request; the framework refused it to every app.
+     * Cleartext HTTP, as Android's network security policy decides it for this app, from the network security configuration
+     * its TLS goes by too (res/xml/network_security_config.xml). Written for Android 9, with a base configuration that says
+     * nothing of cleartext, it is refused to example.com and to localhost, whose own configuration says nothing of it either,
+     * and so to every host taken together; permitted to a subdomain of sub.megler.test, whose configuration permits it, and to
+     * nested.sub.megler.test, whose configuration inside that one takes it from there. The WebView asks this of every http://
+     * request; the framework refused it to every app.
      */
     private void cleartext() {
         step("cleartext", () -> {
             android.security.NetworkSecurityPolicy p = android.security.NetworkSecurityPolicy.getInstance();
-            return !p.isCleartextTrafficPermitted() && !p.isCleartextTrafficPermitted("example.com") && p == android.security.NetworkSecurityPolicy.getInstance();
+            return !p.isCleartextTrafficPermitted() && !p.isCleartextTrafficPermitted("example.com") && !p.isCleartextTrafficPermitted("localhost")
+                    && p.isCleartextTrafficPermitted("a.sub.megler.test") && p.isCleartextTrafficPermitted("nested.sub.megler.test")
+                    && p == android.security.NetworkSecurityPolicy.getInstance();
         });
     }
 
