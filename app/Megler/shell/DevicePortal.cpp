@@ -9,7 +9,6 @@
 #include <winrt/Windows.Security.Cryptography.h>
 
 #include <chrono>
-#include <map>
 
 namespace megler::app::devicePortal {
 
@@ -103,6 +102,15 @@ void takeCookies(HttpResponseMessage const& response, std::map<std::wstring, std
 
 }  // namespace
 
+void Client::remember(HttpResponseMessage const& response) {
+    takeCookies(response, jar_);
+    cookies_.clear();
+    for (const auto& [name, value] : jar_) {
+        cookies_ += (cookies_.empty() ? L"" : L"; ") + name + L"=" + value;
+        if (name == L"CSRF-Token") token_ = value;
+    }
+}
+
 Answer Client::open() {
     if (opened_) return {true, 200, true, {}};
     try {
@@ -123,13 +131,7 @@ Answer Client::open() {
         filter.CookieUsageBehavior(HttpCookieUsageBehavior::NoCookies);
         client_ = HttpClient(filter);
         const auto info = client_.SendRequestAsync(request(HttpMethod::Get(), L"/api/os/info")).get();
-        std::map<std::wstring, std::wstring> jar;
-        takeCookies(info, jar);
-        cookies_.clear();
-        for (const auto& [name, value] : jar) {
-            cookies_ += (cookies_.empty() ? L"" : L"; ") + name + L"=" + value;
-            if (name == L"CSRF-Token") token_ = value;
-        }
+        remember(info);
         if (!info.IsSuccessStatusCode()) return refused(info, "Megler's first question");
         opened_ = true;
         shellLog::write("device portal: " + narrow(address_) + " answered; its cookies: " + cookieNames() + (token_.empty() ? ", no CSRF token" : ", a CSRF token"));
@@ -192,6 +194,7 @@ Answer Client::install(const std::wstring& package, const std::vector<std::wstri
          */
         for (int i = 0;; i++) {
             const auto state = client_.SendRequestAsync(request(HttpMethod::Get(), L"/api/app/packagemanager/state")).get();
+            remember(state);
             if (state.StatusCode() != HttpStatusCode::NoContent) break;
             if (i >= 60) return {false, 204, true, "The Device Portal was installing another package for a minute: try again when it is done."};
             if (i == 0) progress("The Device Portal is installing another package: waiting…");
@@ -231,6 +234,7 @@ Answer Client::install(const std::wstring& package, const std::vector<std::wstri
             }
         }
         const auto answer = sending.get();
+        remember(answer);
         if (!answer.IsSuccessStatusCode()) return refused(answer, "the package");
         // (Its answer may be the result itself, a refusal among them.)
         {
@@ -248,6 +252,7 @@ Answer Client::install(const std::wstring& package, const std::vector<std::wstri
         while (!late()) {
             Sleep(pollMs);
             const auto state = client_.SendRequestAsync(request(HttpMethod::Get(), L"/api/app/packagemanager/state")).get();
+            remember(state);
             if (state.StatusCode() == HttpStatusCode::NoContent) continue;
             const std::string body = narrow(state.Content().ReadAsStringAsync().get());
             JsonObject json{nullptr};
@@ -275,6 +280,7 @@ Answer Client::uninstall(const std::string& fullName) {
         const auto answer = client_.SendRequestAsync(request(HttpMethod::Delete(),
                                                              L"/api/app/packagemanager/package?package=" + std::wstring(Uri::EscapeComponent(widen(fullName)))))
                                 .get();
+        remember(answer);
         if (!answer.IsSuccessStatusCode()) return refused(answer, "the uninstall of " + fullName);
         shellLog::write("device portal: " + fullName + " uninstalled");
         return {true, int(answer.StatusCode()), true, "Uninstalled."};
@@ -295,6 +301,7 @@ Answer Client::packages(std::vector<Package>& out, unsigned timeoutSeconds) {
             return a;
         }
         const auto answer = listing.get();
+        remember(answer);
         if (!answer.IsSuccessStatusCode()) return refused(answer, "the list of the packages");
         JsonObject json{nullptr};
         if (!JsonObject::TryParse(answer.Content().ReadAsStringAsync().get(), json))

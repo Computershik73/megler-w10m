@@ -1,5 +1,6 @@
-// The Xbox's own Windows Device Portal, as Megler reaches it on the console it runs on (docs/XBOX.md): the one way an app
-// there has to install packages -- Megler's own update and the apps' own packages -- to list them and to uninstall them.
+// The Xbox's own Windows Device Portal, as Megler reaches it on the console it runs on (docs/XBOX.md): the way an app there
+// installs packages -- Megler's own update and the apps' own packages -- lists them and uninstalls them, as DesktopMode_uwp's
+// App Installer does, Windows's deployment engine being no app's to use there as far as anyone has found.
 // Only the Xbox's build has this file (tools/build-appx.sh x64 --xbox, which defines MEGLER_XBOX); a phone's and a PC's
 // Megler install through Windows's deployment engine (shell/AppPackage.h) and never ask a Device Portal anything.
 //
@@ -16,6 +17,7 @@
 
 #include <cstdint>
 #include <functional>
+#include <map>
 #include <string>
 #include <vector>
 
@@ -74,10 +76,13 @@ private:
     std::wstring address_;
     Credentials credentials_;
     bool opened_ = false;
-    std::wstring cookies_, token_;
+    std::map<std::wstring, std::wstring> jar_;  // the cookies handed out, by name
+    std::wstring cookies_, token_;              // ... as the Cookie header sends them, and the CSRF token among them
     winrt::Windows::Web::Http::HttpClient client_{nullptr};
 
     winrt::Windows::Web::Http::HttpRequestMessage request(winrt::Windows::Web::Http::HttpMethod const& method, const std::wstring& path);
+    /// The cookies `response` hands out kept, a later one of a name in place of the earlier: every answer may renew them.
+    void remember(winrt::Windows::Web::Http::HttpResponseMessage const& response);
     Answer refused(winrt::Windows::Web::Http::HttpResponseMessage const& response, const std::string& what);
     Answer unreachable(winrt::hresult_error const& e);
 };
