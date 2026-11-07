@@ -101,16 +101,33 @@ at 2048, which a Surface 2's 1920x1080 still fits.
 
 **ANGLE does not.** gecko-w10m's ANGLE asks Direct3D for 11_1 down to 10_0 and then 9_3 (Renderer11.cpp, "GeckoW10m":
 for the Adreno 3xx of the Lumia 550, 650 and 950), and Megler's EGL asks it for a display as Direct3D 11 and then at
-9_3, and stops there: "software rendering is not worth trying on a phone" (core/src/ndk/mg_egl.c, make_display). On a
-9_1 device neither is made, and an app that draws with OpenGL ES gets no display. Microsoft's ANGLE says the same of
-the Surface RT -- it needs WARP, Direct3D in software
+9_3 (core/src/ndk/mg_egl.c, make_display): on a 9_1 device neither is made. Microsoft's ANGLE says the same of the
+Surface RT -- it needs WARP, Direct3D in software
 ([Initializing ANGLE on D3D11 Feature Level 9](https://github.com/Microsoft/angle/wiki/Initializing-ANGLE-on-D3D11-Feature-Level-9))
 -- and RetroArch for these devices draws through ANGLE on WARP at about 5 pictures a second
-([RetroArch-ARM](https://github.com/basharast/RetroArch-ARM)). A third try in make_display, its device type
-`EGL_PLATFORM_ANGLE_DEVICE_TYPE_D3D_WARP_ANGLE`, made only where the graphics processor's own level is below 9_3 (so
-never on a phone), would give these tablets OpenGL ES in software; it is not made yet. A Lumia on 15035 without its
-graphics driver (the WFAv7 installer leaves drivers out) should have the Basic Render Driver, which is WARP, and ANGLE
-on it in software -- inferred, not seen. Java apps' own pictures (Direct2D) do not need ANGLE.
+([RetroArch-ARM](https://github.com/basharast/RetroArch-ARM)).
+
+**So, there, WARP.** make_display has a third attempt, the device type `EGL_PLATFORM_ANGLE_DEVICE_TYPE_D3D_WARP_ANGLE`,
+made only once the two have failed and only where the graphics processor's own Direct3D is below 9_3
+(`mg_host_d3d11_hardware_level`, asked of Direct3D with no device made). Every phone is 9_3 or more, and takes the path
+it always took: "software rendering is not worth trying on a phone" still holds there. The log says it once: "egl: the
+graphics processor has feature level 9_1: OpenGL ES drawn in software by WARP, slowly". The flag `egl-level-9_1` takes
+the processor for 9_1 whatever it is, to try that way on a machine with more.
+
+- **Checked** with the tests' stand-in for ANGLE playing a 9_1 processor (it makes a display only on WARP; the display
+  choice in mg_gl_tests.c, run by `tools/build-tests.sh win` and `arm` and `tools/build-desktop.sh x64 tests`): without
+  the flag no display and no attempt in software, on this PC's 11_1 as on a phone; with it the third attempt's display,
+  the line said once; on a processor the stand-in does not refuse, the first attempt's, flag or no flag.
+- **And with ANGLE itself**: Megler's x64 build of gecko-w10m's ANGLE (`tools/build-angle.py --arch x64`), given the
+  third attempt's attributes as make_display gives them -- through eglGetPlatformDisplayEXT, and through EGL 1.5's
+  eglGetPlatformDisplay with the features the app's display is made without -- made a display on the Microsoft Basic
+  Render Driver (WARP: vendor 0x1414, device 0x8C), feature level 12_1, OpenGL ES 3.0, and a pbuffer cleared red read
+  back red (its keyed mutex held, as the core holds it). The ARM32 build of the same ANGLE has not been tried on WARP,
+  and WARP's feature level on 32-bit ARM Windows is its own.
+
+A Lumia on 15035 without its graphics driver (the WFAv7 installer leaves drivers out) should get the Basic Render
+Driver, which is WARP, from the first attempt -- inferred, not seen. Java apps' own pictures (Direct2D) do not need
+ANGLE.
 
 ## The processor
 
@@ -174,7 +191,10 @@ Nothing here has run on 15035; there is no such device at hand. Still to be seen
   ([capabilities](https://learn.microsoft.com/en-us/windows/apps/package-and-deploy/app-capability-declarations));
 - that Megler starts: XAML and the shell on 15035, the core's executable memory, its vectored exception handler and
   its stops of threads (the collector's) on that kernel;
-- the shell's pictures on the Tegra drivers at 9_1, and what OpenGL ES apps do with no ANGLE display there;
+- the shell's pictures on the Tegra drivers at 9_1, that Direct3D there says 9_1 when asked with no device (and the
+  WARP attempt follows), how the frames of WARP's device reach the window (a shared handle of WARP's texture is
+  expected not to open on the Tegra's device: the shell then refuses the frame and the core reads it back,
+  player/GfxHost.cpp's "gl-shared"), and how slowly OpenGL ES apps draw on WARP on four Cortex-A9;
 - that Windows says no to PF_ARM_DIVIDE_INSTRUCTION_AVAILABLE on a Tegra 3 (and yes on a phone, whose Self-test says
   "the processor has SDIV");
 - memory: 2 GB in a Surface RT and a Surface 2 (3 GB in a Lumia 950 or 950 XL), and a 32-bit process's 2 GB of

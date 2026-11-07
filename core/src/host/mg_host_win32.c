@@ -4588,6 +4588,19 @@ int mg_host_d3d11_feature_level(void *device)
     return device ? (int)ID3D11Device_GetFeatureLevel((ID3D11Device *)device) : 0;
 }
 
+int mg_host_d3d11_hardware_level(void)
+{
+    /* With no device asked for, Direct3D says the first level of the list the driver offers (S_FALSE) and makes nothing. A
+       Windows that does not know 11_1 refuses a list with it (E_INVALIDARG): asked again without. */
+    static const D3D_FEATURE_LEVEL levels[] = { D3D_FEATURE_LEVEL_11_1, D3D_FEATURE_LEVEL_11_0, D3D_FEATURE_LEVEL_10_1, D3D_FEATURE_LEVEL_10_0,
+                                                D3D_FEATURE_LEVEL_9_3,  D3D_FEATURE_LEVEL_9_2,  D3D_FEATURE_LEVEL_9_1 };
+    D3D_FEATURE_LEVEL level = (D3D_FEATURE_LEVEL)0;
+    HRESULT hr = D3D11CreateDevice(NULL, D3D_DRIVER_TYPE_HARDWARE, NULL, 0, levels, (UINT)MG_COUNT(levels), D3D11_SDK_VERSION, NULL, &level, NULL);
+    if (hr == E_INVALIDARG)
+        hr = D3D11CreateDevice(NULL, D3D_DRIVER_TYPE_HARDWARE, NULL, 0, levels + 1, (UINT)MG_COUNT(levels) - 1, D3D11_SDK_VERSION, NULL, &level, NULL);
+    return SUCCEEDED(hr) ? (int)level : 0;
+}
+
 u32 mg_host_d3d11_removed_reason(void *device)
 {
     return device ? (u32)ID3D11Device_GetDeviceRemovedReason((ID3D11Device *)device) : 0;

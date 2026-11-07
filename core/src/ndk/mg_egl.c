@@ -170,9 +170,25 @@ typedef struct made_display {
  */
 static const char *const k_app_features_off[] = { "allowTranslateUniformBlockToStructuredBuffer", NULL };
 
+/*
+ * The feature level of the graphics processor's own Direct3D where it is below the 9_3 ANGLE needs -- a Surface RT's and a
+ * Surface 2's Tegra drivers offer 9_1 (docs/RT.md) -- and 0 where it is not: 9_3 and up, as every phone's, or no Direct3D at
+ * all. The flag egl-level-9_1 takes it for 9_1 whatever it is, to try that way on a machine that has more.
+ */
+static int below_9_3(void)
+{
+    const int level = mg_flag("egl-level-9_1") ? 0x9100 : mg_host_d3d11_hardware_level();
+    return level > 0 && level < 0x9300 ? level : 0;
+}
+static bool g_said_software;
+
 static void make_display(made_display *m)
 {
-    /* What a feature-level-10+ GPU takes, then what a 9_3 phone needs; software rendering is not worth trying on a phone. */
+    /*
+     * What a feature-level-10+ GPU takes, then what a 9_3 phone needs. Software rendering is not worth trying on a phone: WARP,
+     * Direct3D in software, is the third attempt, made only once those two have failed on a graphics processor below 9_3
+     * (below_9_3), which no phone's is -- a Surface RT's or a Surface 2's, whose ANGLE has no other way to draw.
+     */
     static const EGLint by_default[] = {
         EGL_PLATFORM_ANGLE_TYPE_ANGLE, EGL_PLATFORM_ANGLE_TYPE_D3D11_ANGLE,
         EGL_PLATFORM_ANGLE_ENABLE_AUTOMATIC_TRIM_ANGLE, 1,
@@ -185,9 +201,16 @@ static void make_display(made_display *m)
         EGL_PLATFORM_ANGLE_ENABLE_AUTOMATIC_TRIM_ANGLE, 1,
         EGL_NONE,
     };
+    static const EGLint warp[] = {
+        EGL_PLATFORM_ANGLE_TYPE_ANGLE, EGL_PLATFORM_ANGLE_TYPE_D3D11_ANGLE,
+        EGL_PLATFORM_ANGLE_DEVICE_TYPE_ANGLE, EGL_PLATFORM_ANGLE_DEVICE_TYPE_D3D_WARP_ANGLE,
+        EGL_PLATFORM_ANGLE_ENABLE_AUTOMATIC_TRIM_ANGLE, 1,
+        EGL_NONE,
+    };
     static const struct { const EGLint *attribs; const char *name; } tries[] = {
         { by_default, "Direct3D 11" },
         { level_9_3, "Direct3D 11 at feature level 9_3" },
+        { warp, "Direct3D 11 on WARP, in software" },
     };
     fn_platform_display get = A(fn_platform_display, "eglGetPlatformDisplayEXT");
     /* EGL 1.5's, whose attributes are as wide as a pointer: the features turned off are a list of names. */
@@ -198,6 +221,15 @@ static void make_display(made_display *m)
     if (!get || !init) return;
     for (i = 0; i < MG_COUNT(tries); i++) {
         EGLDisplay d;
+        if (tries[i].attribs == warp) {
+            const int level = below_9_3();
+            if (!level) break;
+            if (!g_said_software) {
+                g_said_software = true;
+                mg_warn("egl: the graphics processor has feature level %d_%d: OpenGL ES drawn in software by WARP, slowly", level >> 12,
+                        (level >> 8) & 15);
+            }
+        }
         /* Said before it is tried: this is the first thing ANGLE does on a device, and where a bad package would end the process. */
         mg_info("egl: asking ANGLE for a display%s%s as %s%s", m->whose ? " for " : "", m->whose ? m->whose : "", tries[i].name,
                 get_attrib ? ", without its allowTranslateUniformBlockToStructuredBuffer" : "");
@@ -343,6 +375,15 @@ static void shell_release_target(void)
 }
 
 static void make_display_job(void *p) { make_display((made_display *)p); }
+
+bool mg_egl_display_try(char *how, size_t size)
+{
+    made_display m;
+    memset(&m, 0, sizeof(m));
+    make_display(&m);
+    mg_strlcpy(how, m.how, size);
+    return m.d != NULL;
+}
 
 /*
  * The version the guest is told. EGL 1.5 makes fence syncs part of EGL itself, and what is built on EGL takes 1.5 to
