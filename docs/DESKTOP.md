@@ -131,8 +131,9 @@ before the code is made executable:
   piece. A syscall with no such place around it (a jump into it, a jump or a
   return on both sides) is left and said.
 - **ARM64** (`arm64/mg_patch_arm64.c`): `mrs xN, tpidr_el0` becomes
-  `ldr xN, [x18, #0x1480+8*slot]` (x18 is the TEB, and Android's compiler
-  leaves it alone), the canary following through the guest's own block --
+  `ldr xN, [x18, #0x1480+8*slot]` (x18 is the TEB, and Android's compilers
+  leave it alone since Android 10 -- not Android 9's: below, "ARM64's system
+  calls, its stacks, and x18"), the canary following through the guest's own block --
   which every thread is given before its first call into guest code
   (`mg_code_entry`): a Java thread's first native method found the slot empty
   otherwise; `svc #0` becomes a branch to a piece of the library's island that
@@ -248,8 +249,18 @@ fault or a call left a trap at the bottom of a stack an app sized for its own
 code still finds room there for Windows' exception frame and the core's
 handler.
 
-**What the reporter's machine is asked.** On Windows ARM64 alone, two things
-said in the log, once each:
+**What the reporter's machine is asked.** As each ARM64 library is loaded,
+the instructions of its code that write x18 are counted and said, on every
+host (a warning on Windows): `ld: <library>: N instructions write x18, the
+first at +0x<offset>: ...`. Android's compilers keep x18 since Android 10;
+Android 9's did not, and the Android root's arm64 `libcrypto.so` -- Android
+9's own, which `tools/android9-natives.sh` copies where it builds the rest --
+writes it in 772 instructions of ordinary C (X25519, AES, DES, MD5, BN,
+poly1305, the TLS PRF), which every TLS connection of a Java app's runs
+through Conscrypt; none of the libraries built here does. A thread that has
+run one has x18 that is not its TEB until its next exception, or its next
+call into Windows, ends the process. On Windows ARM64 alone, two things more,
+once each:
 
 - a fault of guest code with less than 64 KB between its sp and the bottom of
   its thread's stack: `fault: thread <id> faulted at <library>+0x<offset>
@@ -510,8 +521,8 @@ On this PC (x64, Windows 11 26300), 2026-11-05 and 06:
   lr changed at every 97th stop failed it (165 of 16,273 stops in the loop,
   and 165 of 16,202).
 - `tools/build-tests.sh arm64`: ARM64's core and tests as one static program
-  of the NDK's bionic, under qemu-aarch64 in WSL with the POSIX host: 5624
-  checks, 0 failed, and 5773 checks, 0 failed on Android's libcore with
+  of the NDK's bionic, under qemu-aarch64 in WSL with the POSIX host: 5627
+  checks, 0 failed, and 5776 checks, 0 failed on Android's libcore with
   arm64-v8a's natives (2026-11-08, branch arm64-svc-islands). ELF64, the
   patched TPIDR_EL0 reads (through the island there, bionic's own thread
   pointer being the host's), TLS descriptors, svc led out to the core
@@ -526,7 +537,10 @@ On this PC (x64, Windows 11 26300), 2026-11-05 and 06:
   that keep registers, and one that took its way back from the thread's
   block after the call, as x86_64's and ARM32's entries do, went back from
   the call the handler's call was made inside to that call's place and
-  ended at the mark in x30), AAPCS64's native calls, faults; the signalled
+  ended at the mark in x30), the writes of x18 the loader counts (ten of
+  ten kinds in t_svc64_x18_writer, none in clang's code for Android, 772 in
+  Android 9's arm64 libcrypto.so loaded by `mg_tests --load`), AAPCS64's
+  native calls, faults; the signalled
   thread's own x0-x28 (but x18), fp and lr at every stop in its loop (0 of
   63,814), and a failure where the host reported x19 and lr changed at every
   97th stop (160 of 16,044). (A run of the tests once hung in t_threads, every
@@ -637,16 +651,21 @@ folder the package's access.
 4. **WebView on ARM64**: fetched and packed as x86_64's and x86's are, and not
    run on an ARM64 device.
 5. **ARM64 on a device**: what is Windows' alone -- the TPIDR_EL0 reads
-   patched through x18, x18 left alone by the guest's code (Android 9's
-   prebuilt libcrypto among others), the context of a faulting, stopped or
-   interrupted thread; and of the system calls led out, the own stack told by
-   the TEB, the TEB told the stack for system calls while a goroutine's call
-   is made there, and a call left a trap dispatched by Windows. The rest runs
-   under qemu-aarch64 (above). The first such machine, GitHub issue 4's, ended
-   in RtlDispatchException with x18 not the TEB at +0xA0, which leading the
+   patched through x18, the context of a faulting, stopped or interrupted
+   thread; and of the system calls led out, the own stack told by the TEB, the
+   TEB told the stack for system calls while a goroutine's call is made
+   there, and a call left a trap dispatched by Windows. The rest runs under
+   qemu-aarch64 (above). The first such machine, GitHub issue 4's, ended in
+   RtlDispatchException with x18 not the TEB at +0xA0, which leading the
    calls out does not mend by itself (a thread takes far fewer exceptions,
-   but one with x18 so still ends at its next): the two lines above ("What
-   the reporter's machine is asked") are to find out where it goes bad.
+   but one with x18 so still ends at its next). x18 is not left alone by all
+   guest code: Android 9's prebuilt arm64 `libcrypto.so` in the Android root
+   writes it in 772 places (above, "What the reporter's machine is asked"),
+   and an app's library made by a compiler of before Android 10 may as well
+   (the loader says which). Built here with the NDK from BoringSSL's sources
+   at Android 9's tag, as the other natives are (`tools/android9-sources.sh`
+   fetches its headers alone so far), libcrypto would keep x18; an app's own
+   library cannot be rebuilt.
 6. **Ping in a desktop app container**: Windows gives an app container no
    ICMP echo at all -- IcmpCreateFile fails with ERROR_ACCESS_DENIED whatever
    the package's capabilities (the NSI service turns away the echo's
