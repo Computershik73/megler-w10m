@@ -70,6 +70,7 @@ static const u16 g_abi_nr[][2] = {
     {131, 186},    /* sigaltstack */
     {137, 266},    /* statfs64, statfs here */
     {138, 267},    /* fstatfs64, fstatfs here */
+    {157, 172},    /* prctl */
     {160, 75},     /* setrlimit */
     {186, 224},    /* gettid */
     {200, 238},    /* tkill */
@@ -175,6 +176,7 @@ static const u16 g_abi_nr[][2] = {
     {160, 122},    /* uname */
     {163, 191},    /* ugetrlimit, getrlimit here */
     {164, 75},     /* setrlimit */
+    {167, 172},    /* prctl */
     {168, 345},    /* getcpu */
     {169, 78},     /* gettimeofday */
     {172, 20},     /* getpid */
@@ -253,6 +255,7 @@ static const u16 g_abi_nr[][2] = {
     {158, 158},    /* sched_yield */
     {162, 162},    /* nanosleep */
     {168, 168},    /* poll */
+    {172, 172},    /* prctl */
     {174, 174},    /* rt_sigaction */
     {175, 175},    /* rt_sigprocmask */
     {180, 180},    /* pread64 */

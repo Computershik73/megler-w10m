@@ -107,11 +107,11 @@ long t_go_on_stack(void *top, long (*fn)(long), long arg);
 long t_go_syscall3(long nr, long a, long b, long c);
 
 #if defined(__arm__)
-enum { NR_madvise = 220 };
+enum { NR_madvise = 220, NR_prctl = 172 };
 #elif defined(__x86_64__)
-enum { NR_madvise = 28 };
+enum { NR_madvise = 28, NR_prctl = 157 };
 #else
-enum { NR_madvise = 233 };
+enum { NR_madvise = 233, NR_prctl = 167 };
 #endif
 
 enum { HEAP = 512 * 1024, STACK = 256 * 1024 };
@@ -173,4 +173,25 @@ void t_go_heap_free(void)
 {
     if (g_heap) munmap(g_heap, HEAP);
     g_heap = 0;
+}
+
+/*
+ * prctl by number, as Go's runtime (1.25 on) names each mapping it makes, PR_SET_VMA's PR_SET_VMA_ANON_NAME: refused with
+ * EINVAL, as a kernel without names for anonymous memory refuses it, which is what makes Go stop asking. PR_SET_NAME and
+ * PR_GET_NAME as libc's prctl takes them, the thread's name put back after. 0, or which of them failed.
+ */
+long t_go_prctl(void)
+{
+    static const char named[] = "t_go_named";
+    char was[16], now[16];
+    unsigned i;
+    if (t_go_syscall3(NR_prctl, 0x53564d41, 0, (long)g_heap) != -22) return 1;
+    if (t_go_syscall3(NR_prctl, 16, (long)was, 0) != 0) return 2;
+    if (t_go_syscall3(NR_prctl, 15, (long)named, 0) != 0) return 3;
+    memset(now, 0, sizeof(now));
+    if (t_go_syscall3(NR_prctl, 16, (long)now, 0) != 0) return 4;
+    for (i = 0; i < sizeof(named); i++)
+        if (now[i] != named[i]) return 5;
+    t_go_syscall3(NR_prctl, 15, (long)was, 0);
+    return 0;
 }

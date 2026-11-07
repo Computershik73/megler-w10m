@@ -3505,6 +3505,9 @@ static void test_go_stack(void)
     CHECK(mg_ld_lib_is_go(go));
     mg_ld_get_stats(go, &st);
     CHECK_INT(st.svc_sites, 1);
+    /* prctl by number: the names Go's runtime gives its mappings refused as a kernel without them refuses them (EINVAL),
+       a thread's name set and read as libc's prctl does it (MCO Advanced's libgojni.so, package 669). */
+    CHECK_INT(FN(go, long (*)(void), "t_go_prctl")(), 0);
     CHECK_INT(FN(go, long (*)(long), "t_go_heap_new")(3), 14);
     mg_mmap_given_back(&given0, &again0);
     mg_mmap_usage(&anon0, NULL);
