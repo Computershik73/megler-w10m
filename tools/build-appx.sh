@@ -622,6 +622,9 @@ if [ -n "$BITGAPPS" ]; then
     echo "    instead: PrebuiltGmsCore.apk is $(basename "$GMS_APK") ($(stat -c %s "$GMS_APK") bytes, sha256 $(sha256sum "$GMS_APK" | cut -d' ' -f1))"
   [ -n "$PLAY_STORE_APK" ] && cp "$PLAY_STORE_APK" "$STAGE/bitgapps/Phonesky.apk" &&
     echo "    instead: Phonesky.apk is $(basename "$PLAY_STORE_APK") ($(stat -c %s "$PLAY_STORE_APK") bytes, sha256 $(sha256sum "$PLAY_STORE_APK" | cut -d' ' -f1))"
+  # (Writable: cp makes the copy of a read-only APK read-only, and a stage registered as it is then has Megler's copies of it
+  # read-only too, which it cannot write to compare them with it -- microG was not published, and no app had it.)
+  chmod u+w "$STAGE"/bitgapps/*.apk
   # Each the app its name says, and of this processor: Megler runs its own processor's code alone, and Google Play services'
   # variant for arm64-v8a, which a phone's package once carried, has 8 of its 40 libraries for armeabi-v7a.
   python "$(w "$ROOT/tools/bitgapps-check.py")" "$ABI" "$(w "$STAGE/bitgapps")" ||
