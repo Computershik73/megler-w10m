@@ -1531,6 +1531,7 @@ public class Main extends Activity {
             return installer != null && installer == getPackageManager().getPackageInstaller()
                     && installer.getMySessions() != null && installer.getMySessions().isEmpty();
         });
+        batchOperations();
         wifi();
         mediaMetadata();
         playbackState();
@@ -4138,6 +4139,68 @@ public class Main extends Activity {
             boolean cast = ManyInterfaces.I300.class.isAssignableFrom(ManyInterfaces.Impl.class);
             detail = "I0=" + first + " I505=" + at505 + " I599=" + last + " I300 assignable=" + cast;
             return first && at505 && last && cast;
+        });
+    }
+
+    /**
+     * A batch of operations (ContentProviderOperation), as Viber resets its data with one: they were signatures alone, every
+     * builder null, and Viber ended at its welcome screen. Applied to a provider of a few rows of its own: two inserts, the
+     * second given the first's id, an update and an assertion that find their rows by such references, and a delete. Then to
+     * an authority no provider has: its delete removes nothing, and its insert fails as a provider's refused insert does.
+     */
+    private void batchOperations() {
+        step("batch-operations", () -> {
+            final java.util.ArrayList<String[]> rows = new java.util.ArrayList<>();                     /* each { _id, name, parent } */
+            android.content.ContentProvider p = new android.content.ContentProvider() {
+                private boolean matches(String[] r, String s, String[] a) { return s == null || r[0].equals(a[0]); }   /* "_id=?" */
+                @Override public boolean onCreate() { return true; }
+                @Override public String getType(android.net.Uri u) { return null; }
+                @Override public android.database.Cursor query(android.net.Uri u, String[] proj, String s, String[] a, String o) {
+                    android.database.MatrixCursor c = new android.database.MatrixCursor(proj);
+                    for (String[] r : rows) {
+                        if (!matches(r, s, a)) continue;
+                        Object[] out = new Object[proj.length];
+                        for (int i = 0; i < proj.length; i++) out[i] = "name".equals(proj[i]) ? r[1] : "parent".equals(proj[i]) ? r[2] : r[0];
+                        c.addRow(out);
+                    }
+                    return c;
+                }
+                @Override public android.net.Uri insert(android.net.Uri u, android.content.ContentValues v) {
+                    rows.add(new String[] { String.valueOf(rows.size() + 1), v.getAsString("name"), v.getAsString("parent") });
+                    return android.content.ContentUris.withAppendedId(u, rows.size());
+                }
+                @Override public int update(android.net.Uri u, android.content.ContentValues v, String s, String[] a) {
+                    int n = 0;
+                    for (String[] r : rows) if (matches(r, s, a)) { r[1] = v.getAsString("name"); n++; }
+                    return n;
+                }
+                @Override public int delete(android.net.Uri u, String s, String[] a) {
+                    int n = 0;
+                    for (java.util.Iterator<String[]> i = rows.iterator(); i.hasNext(); ) if (matches(i.next(), s, a)) { i.remove(); n++; }
+                    return n;
+                }
+            };
+            android.net.Uri table = android.net.Uri.parse("content://megler.test.rows/rows");
+            java.util.ArrayList<android.content.ContentProviderOperation> ops = new java.util.ArrayList<>();
+            ops.add(android.content.ContentProviderOperation.newInsert(table).withValue("name", "first").build());
+            ops.add(android.content.ContentProviderOperation.newInsert(table).withValue("name", "second").withValueBackReference("parent", 0).build());
+            ops.add(android.content.ContentProviderOperation.newUpdate(table).withValue("name", "changed").withSelection("_id=?", null)
+                    .withSelectionBackReference(0, 1).withExpectedCount(1).build());
+            ops.add(android.content.ContentProviderOperation.newAssertQuery(table).withValue("name", "first").withSelection("_id=?", null)
+                    .withSelectionBackReference(0, 0).withExpectedCount(1).build());
+            ops.add(android.content.ContentProviderOperation.newDelete(table).withSelection("_id=?", new String[] { "1" }).build());
+            android.content.ContentProviderResult[] r = p.applyBatch(ops);
+            boolean applied = r.length == 5 && "content://megler.test.rows/rows/1".equals(String.valueOf(r[0].uri)) && "content://megler.test.rows/rows/2".equals(String.valueOf(r[1].uri))
+                    && r[2].count == 1 && r[3].count == 1 && r[4].count == 1 && rows.size() == 1 && "changed".equals(rows.get(0)[1]) && "1".equals(rows.get(0)[2]);
+            // An authority nobody provides here: as a provider with no rows answers.
+            java.util.ArrayList<android.content.ContentProviderOperation> none = new java.util.ArrayList<>();
+            none.add(android.content.ContentProviderOperation.newDelete(android.net.Uri.parse("content://megler.test.none/rows")).build());
+            android.content.ContentProviderResult[] deleted = getContentResolver().applyBatch("megler.test.none", none);
+            none.add(android.content.ContentProviderOperation.newInsert(android.net.Uri.parse("content://megler.test.none/rows")).withValue("name", "x").build());
+            String refused = null;
+            try { getContentResolver().applyBatch("megler.test.none", none); } catch (android.content.OperationApplicationException e) { refused = e.getMessage(); }
+            detail = java.util.Arrays.toString(r) + " rows=" + rows.size() + " none=" + java.util.Arrays.toString(deleted) + " refused=" + refused;
+            return applied && deleted.length == 1 && deleted[0].count == 0 && refused != null;
         });
     }
 

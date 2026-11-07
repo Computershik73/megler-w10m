@@ -67,6 +67,27 @@ public class ContentResolver {
     public final int update(Uri u, ContentValues v, String sel, String[] args) { ContentProvider p = provider(u); return p == null ? 0 : p.update(u, v, sel, args); }
     public final int delete(Uri u, String sel, String[] args) { ContentProvider p = provider(u); return p == null ? 0 : p.delete(u, sel, args); }
     public final int bulkInsert(Uri u, ContentValues[] v) { int n = 0; for (ContentValues c : v) if (insert(u, c) != null) n++; return n; }
+    /*
+     * A batch of operations, to the provider of the authority, as Android's: it was null whatever the batch, and Viber's
+     * reset of its data built it of operations that were null too. An authority no provider here has -- the phone's
+     * contacts, another app's -- is answered as a provider of no rows answers: deletes and updates of nothing, an assertion
+     * of none, an insert that fails (OperationApplicationException, which the caller must catch); Android names it unknown
+     * with an IllegalArgumentException only where no app of the phone provides it.
+     */
+    public ContentProviderResult[] applyBatch(String authority, ArrayList<ContentProviderOperation> ops) throws android.os.RemoteException, OperationApplicationException {
+        java.util.Objects.requireNonNull(authority, "authority");
+        java.util.Objects.requireNonNull(ops, "operations");
+        ContentProvider p = byAuthority(authority);
+        return p != null ? p.applyBatch(authority, ops) : NO_ROWS.applyBatch(authority, ops);
+    }
+    private static final ContentProvider NO_ROWS = new ContentProvider() {
+        @Override public boolean onCreate() { return true; }
+        @Override public Cursor query(Uri u, String[] proj, String sel, String[] args, String sort) { return systemEmpty(u, proj); }
+        @Override public String getType(Uri u) { return null; }
+        @Override public Uri insert(Uri u, ContentValues v) { return null; }
+        @Override public int delete(Uri u, String sel, String[] args) { return 0; }
+        @Override public int update(Uri u, ContentValues v, String sel, String[] args) { return 0; }
+    };
     public final Bundle call(Uri u, String method, String arg, Bundle extras) { ContentProvider p = provider(u); return p == null ? null : p.call(method, arg, extras); }
     public final Bundle call(String authority, String method, String arg, Bundle extras) { ContentProvider p; synchronized (sProviders) { p = sProviders.get(authority); } return p == null ? null : p.call(method, arg, extras); }
     public final java.io.InputStream openInputStream(Uri u) throws java.io.FileNotFoundException {
@@ -250,7 +271,6 @@ public class ContentResolver {
     public static void validateSyncExtrasBundle(android.os.Bundle p0) {}
     public static android.content.ContentResolver wrap(android.content.ContentProvider p0) { return null; }
     public static android.content.ContentResolver wrap(android.content.ContentProviderClient p0) { return null; }
-    public android.content.ContentProviderResult[] applyBatch(java.lang.String p0, java.util.ArrayList p1) { return null; }
     public void cancelSync(android.net.Uri p0) {}
     public android.net.Uri canonicalizeOrElse(android.net.Uri p0) { return null; }
     public int checkUriPermission(android.net.Uri p0, int p1, int p2) { return 0; }
