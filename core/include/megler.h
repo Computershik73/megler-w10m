@@ -1471,7 +1471,22 @@ typedef struct megler_system_bars_host {
  *   uninstall_app  Another app the phone has, to uninstall: an Android package (an app store's Uninstall,
  *                PackageInstaller.uninstall; ACTION_DELETE of package:<name>). True: the shell asks the user. It is gone
  *                when apps_dir's apps.txt no longer has it; installs/<package>.uninstall.txt says when the user said no.
+ *   permission   Whether the app may have what one of Android's dangerous permission groups guards: `group` is the group's
+ *                name in small letters ("location", "camera", "microphone", "storage", "read_media_visual",
+ *                "read_media_aural", "sms", "phone", "call_log", "contacts", "calendar", "sensors", "nearby_devices",
+ *                "notifications", "activity_recognition"). MEGLER_PERMISSION_GRANTED; _DENIED, the user said no and may be
+ *                asked again; _DENIED_FIXED, no, and not to be asked again (Windows' own setting, or a second no); or
+ *                _UNDECIDED, never asked. With `ask` false the answer comes at once and nothing is asked; that comes on
+ *                any of the app's threads, its main thread too. With `ask` true the user is asked first if they have not
+ *                decided or have said no once -- Windows' own question for the camera, the microphone and the location,
+ *                the shell's for the rest -- and the call waits for the answer (_UNDECIDED: the question was put away
+ *                unanswered); it comes on a thread of the app's that may wait, never its main thread. The shell keeps
+ *                what the user said, for the app, from run to run; it may grant a group it has nothing behind at once.
+ *                The framework (megler.Permissions) asks it of a group whose permissions the app's manifest asks for and
+ *                whose answer Android's rules do not settle by themselves. Left NULL: every group is granted, nothing asked.
  */
+enum { MEGLER_PERMISSION_UNDECIDED = 0, MEGLER_PERMISSION_GRANTED = 1, MEGLER_PERMISSION_DENIED = 2, MEGLER_PERMISSION_DENIED_FIXED = 3 };
+
 typedef struct megler_system_host {
     void *user;
     void (MEGLER_CB *open_url)(void *user, const char *uri);
@@ -1479,6 +1494,7 @@ typedef struct megler_system_host {
     bool (MEGLER_CB *install_apk)(void *user, const char *host_path, const char *name);
     bool (MEGLER_CB *launch_app)(void *user, const char *package, const char *activity);
     bool (MEGLER_CB *uninstall_app)(void *user, const char *package);
+    int (MEGLER_CB *permission)(void *user, const char *group, bool ask);
 } megler_system_host;
 
 /*

@@ -905,5 +905,9 @@ public final class MicroG {
         @Override public void sendBroadcast(Intent i) { Broadcasts.send(this, i); }
         @Override public void sendBroadcast(Intent i, String permission) { Broadcasts.send(this, i); }
         @Override public void sendOrderedBroadcast(Intent i, String permission) { Broadcasts.send(this, i); }
+        // Google Play services holds its permissions as a phone's system app does, whatever the app it is in holds: its own
+        // checks (the location it uses for itself, the accounts, the text messages its SMS Retriever hears) are its own. The
+        // app's context answers for the app (megler.Permissions); this one, a wrapper of it, would have answered for the app too.
+        @Override public int checkPermission(String permission, int pid, int uid) { return PackageManager.PERMISSION_GRANTED; }
     }
 }

@@ -21,6 +21,8 @@ public final class Manifest {
     public static String packageName, applicationClass, versionName, appComponentFactory;
     public static int versionCode, minSdk = 21, targetSdk = 34, appTheme, appLabel, appIcon, appFlags;
     public static boolean debuggable, largeHeap, hardwareAccelerated = true, extractNativeLibs = true;
+    /** Whether the manifest has <uses-sdk>: one without is an app of Android 1's, whose target is that (megler.Permissions). */
+    public static boolean usesSdk;
     public static Bundle appMetaData = new Bundle();
     public static final ArrayList<Component> activities = new ArrayList<>(), services = new ArrayList<>(), receivers = new ArrayList<>(), providers = new ArrayList<>();
     public static final ArrayList<String> permissions = new ArrayList<>(), libraries = new ArrayList<>();
@@ -61,11 +63,22 @@ public final class Manifest {
                     versionName = p.getAttributeValue(NS, "versionName");
                     break;
                 case "uses-sdk":
+                    usesSdk = true;
                     minSdk = p.getAttributeIntValue(NS, "minSdkVersion", 21);
                     targetSdk = p.getAttributeIntValue(NS, "targetSdkVersion", minSdk);
                     break;
-                /* (uses-permission-sdk-23 asks only on Android 6 and later, which this is: WhatsApp asks for READ_CALL_LOG so) */
-                case "uses-permission": case "uses-permission-sdk-23": case "uses-permission-sdk-m": permissions.add(p.getAttributeValue(NS, "name")); break;
+                /*
+                 * (uses-permission-sdk-23 asks only on Android 6 and later, which this is: WhatsApp asks for READ_CALL_LOG so.) Each
+                 * once, and as Android's package parser takes them: one whose android:maxSdkVersion is below the Android this is
+                 * (Build.VERSION.SDK_INT) is not asked for here -- WRITE_EXTERNAL_STORAGE up to 28 and READ_EXTERNAL_STORAGE up to
+                 * 32, of apps that ask for the media permissions on later ones (megler.Permissions denies it).
+                 */
+                case "uses-permission": case "uses-permission-sdk-23": case "uses-permission-sdk-m": {
+                    String name = p.getAttributeValue(NS, "name");
+                    int max = p.getAttributeIntValue(NS, "maxSdkVersion", 0);
+                    if (name != null && (max <= 0 || max >= android.os.Build.VERSION.SDK_INT) && !permissions.contains(name)) permissions.add(name);
+                    break;
+                }
                 case "uses-library": libraries.add(p.getAttributeValue(NS, "name")); break;
                 case "application":
                     inApp = true;

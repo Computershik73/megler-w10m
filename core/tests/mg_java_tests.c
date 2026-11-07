@@ -63,6 +63,7 @@
 
 #include "../include/megler.h"
 #include "../src/apk/mg_apk.h"
+#include "../src/appx/mg_appx.h"
 #include "../src/bionic/mg_bionic.h"
 #include "../src/drivers/mg_driver.h"
 #include "../src/drivers/mg_java.h"
@@ -746,6 +747,57 @@ static MEGLER_CB int bio_verify(void *user, const char *message)
     return strstr(message, "Sign in") ? MEGLER_BIOMETRIC_VERIFIED : MEGLER_BIOMETRIC_CANCELED;
 }
 
+/*
+ * The user's answers to the permission groups the app asks for (megler_system_host.permission), as the shell keeps them: in a
+ * file of the data folder, so that the data app's second run finds what its first left. For the data app the user lets it
+ * have every group but the camera, which is refused each time it is asked, the second time for good; the contacts are
+ * granted with no one asked, as the shell grants a group it has nothing behind. Every other app has every group granted, as
+ * before there were questions. What was asked is said in g_permissions_asked, each group followed by ';'.
+ */
+static bool g_data_app;
+static char g_permissions_asked[256];
+
+static int permission_kept(const char *group)
+{
+    char *path = mg_sprintf("%s/test-permissions.txt", megler_data_dir()), *text, *at;
+    size_t size = 0, glen = strlen(group);
+    int state = MEGLER_PERMISSION_UNDECIDED;
+    text = (char *)mg_file_read_all(path, &size);
+    free(path);
+    if (!text) return state;
+    text = (char *)realloc(text, size + 1);
+    if (!text) return state;
+    text[size] = 0;
+    /* "group=state" lines; the last one of a group counts. */
+    for (at = text; (at = strstr(at, group)) != NULL; at += glen)
+        if ((at == text || at[-1] == '\n') && at[glen] == '=') state = atoi(at + glen + 1);
+    free(text);
+    return state;
+}
+
+static MEGLER_CB int system_permission(void *user, const char *group, bool ask)
+{
+    int state;
+    (void)user;
+    if (!g_data_app) return MEGLER_PERMISSION_GRANTED;
+    if (!strcmp(group, "contacts")) return MEGLER_PERMISSION_GRANTED;
+    state = permission_kept(group);
+    if (ask && state != MEGLER_PERMISSION_GRANTED && state != MEGLER_PERMISSION_DENIED_FIXED) {
+        char *path = mg_sprintf("%s/test-permissions.txt", megler_data_dir());
+        FILE *f;
+        size_t n = strlen(g_permissions_asked);
+        snprintf(g_permissions_asked + n, sizeof(g_permissions_asked) - n, "%s;", group);
+        state = strcmp(group, "camera") ? MEGLER_PERMISSION_GRANTED : state == MEGLER_PERMISSION_DENIED ? MEGLER_PERMISSION_DENIED_FIXED : MEGLER_PERMISSION_DENIED;
+        f = fopen(path, "ab");
+        if (f) {
+            fprintf(f, "%s=%d\n", group, state);
+            fclose(f);
+        }
+        free(path);
+    }
+    return state;
+}
+
 static MEGLER_CB bool system_launch(void *user, const char *package, const char *activity)
 {
     char t[200];
@@ -856,7 +908,9 @@ static bool start(const char *apk, const char *android_root)
     cfg.system.install_apk = system_install;
     cfg.system.launch_app = system_launch;
     cfg.system.uninstall_app = system_uninstall;
+    cfg.system.permission = system_permission;
     g_system_heard[0] = 0;
+    g_permissions_asked[0] = 0;
     cfg.apps_dir = phone_apps_fixture();
     /* Decoders for MediaCodec that decode nothing but take samples only as a real one must have them (mg_codec_standin.c). */
     cfg.codec = *mg_codec_standin();
@@ -899,6 +953,23 @@ static bool start(const char *apk, const char *android_root)
         /* The app whose launcher entries are aliases, the first one disabled: what is started is what the enabled one stands for. */
         if (g_crash_app) CHECK(report && strstr(report, "\"activity\":\"megler.test.crash.First\""));
         if (!g_any_app) CHECK(report && strstr(report, g_portrait ? "\"orientation\":\"portrait\"" : "\"orientation\":\"unspecified\""));
+        /*
+         * The permissions its manifest asks for, in its order, with the last Android each is asked on; and its receiver of
+         * Google Play services' SMS Retriever: what the app's own package declares to Windows is made of them.
+         */
+        if (g_data_app) {
+            CHECK(report && strstr(report, "\"permissions\":[\"android.permission.RECEIVE_SMS\",\"android.permission.READ_SMS\",\"android.permission.READ_PHONE_STATE\","
+                                           "\"android.permission.READ_CALL_LOG\",\"android.permission.READ_EXTERNAL_STORAGE\",\"android.permission.WRITE_EXTERNAL_STORAGE\","
+                                           "\"android.permission.CAMERA\",\"android.permission.READ_CONTACTS\",\"android.permission.VIBRATE\"],"
+                                           "\"permissionMaxSdk\":[0,0,0,0,0,28,0,0,0],\"smsRetriever\":true"));
+            if (report) {
+                /* (The names as the shell reads them, for megler_appx_capabilities: the messages, the call history, the camera and the libraries.) */
+                static const char *const names[] = { "android.permission.RECEIVE_SMS", "android.permission.READ_EXTERNAL_STORAGE", "android.permission.CAMERA",
+                                                     "android.permission.READ_PHONE_STATE" };
+                CHECK(mg_appx_capabilities(names, 4, false) == (MG_APPX_CAP_CHAT | MG_APPX_CAP_PICTURES | MG_APPX_CAP_VIDEOS | MG_APPX_CAP_MUSIC |
+                                                                 MG_APPX_CAP_WEBCAM | MG_APPX_CAP_CALL_HISTORY));
+            }
+        }
         megler_free(report);
     }
     {
@@ -2318,8 +2389,25 @@ static int run_data(void)
         say("  TLS: %s", with ? "conscrypt's (its library is in the Android root)" : "the runtime's stand-in, which has none");
         CHECK(find_line(with ? "I/DataTest: tls-is conscrypt provider=com.android.org.conscrypt.OpenSSLProvider" : "I/DataTest: tls-is none provider=megler.security.RuntimeProvider", 0) >= 0);
     }
-    /* What requestPermissions asked comes back by a message of its own, after the method that asked has returned. */
-    expect_line("I/DataTest: permission-result ok after done=true", &at, 30);
+    /*
+     * What requestPermissions asked comes back by a message of its own, after the method that asked has returned. In the first
+     * run the user is asked about the storage, the messages, the phone, the calls and the camera, one after another, and the
+     * activity is paused around the answer and resumed after it; the camera, refused, is asked for again after the rationale,
+     * refused for good, and then a third time with no one asked. In the second run what the first left is kept: no one asked.
+     */
+    if (run == 2 && want == 2) {
+        expect_line("I/DataTest: permission-result ok after done=true paused=false rationale=false", &at, 30);
+    } else {
+        expect_line("I/DataTest: permission-result ok after done=true paused=true rationale=true", &at, 30);
+        CHECK(wait_line("I/DataTest: permission-resumed", 0, 30) >= 0);
+        CHECK(wait_line("I/DataTest: permission-again denied=true paused=true rationale=false", 0, 30) >= 0);
+    }
+    CHECK(wait_line("I/DataTest: permission-for-good denied=true paused=false rationale=false", 0, 30) >= 0);
+    /* A fragment's request, answered to the fragment. */
+    CHECK(wait_line("I/DataTest: permission-fragment ok", 0, 30) >= 0);
+    say("  the user was asked about: %s", g_permissions_asked[0] ? g_permissions_asked : "nothing");
+    CHECK(!strcmp(g_permissions_asked, run == 2 && want == 2 ? "" : "storage;sms;phone;call_log;camera;camera;"));
+    CHECK(find_line("permissions: the app requests READ_EXTERNAL_STORAGE ", 0) >= 0);
     /* So does the battery's sticky broadcast to a receiver registered for it, once. */
     expect_line("I/DataTest: battery-received ok", &at, 30);
     /* And the network's sticky broadcast (CONNECTIVITY_ACTION), once, to the receiver registered for it. */
@@ -3074,6 +3162,7 @@ int mg_tests_java_run(const char *which, const char *apk, const char *android_ro
     if (g_any_app && getenv("MG_JAVA_SPLITS")) g_splits_dir = mg_strdup(getenv("MG_JAVA_SPLITS"));
     g_crash_app = !strcmp(which, "crash");
     g_camera_app = !strcmp(which, "camera");
+    g_data_app = !strcmp(which, "data");
     /* The data app runs with the phone's look told (megler_set_theme): a cobalt accent and a light theme; its step theme-accent checks what an app sees of it. */
     if (!strcmp(which, "data")) megler_set_theme(0xFF0063B1u, false);
     /* The camera app's second run: every camera refused, as Windows refuses Megler the camera when the user has said no. */

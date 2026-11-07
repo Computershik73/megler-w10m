@@ -1837,12 +1837,41 @@ public class Main extends Activity {
                     && sold >= data.getTotalBytes() && sold < 2 * data.getTotalBytes() + 1000 && left > 0 && left <= sold;
         });
         step("permissions", () -> {
-            String read = android.Manifest.permission.READ_EXTERNAL_STORAGE, write = android.Manifest.permission.WRITE_EXTERNAL_STORAGE;
-            int granted = android.content.pm.PackageManager.PERMISSION_GRANTED;
-            requestPermissions(new String[] { read, write }, 77);
-            return checkSelfPermission(read) == granted && checkSelfPermission(write) == granted && checkCallingOrSelfPermission(write) == granted
-                    && checkPermission(write, android.os.Process.myPid(), android.os.Process.myUid()) == granted
-                    && getPackageManager().checkPermission(write, getPackageName()) == granted && !shouldShowRequestPermissionRationale(write);
+            String read = android.Manifest.permission.READ_EXTERNAL_STORAGE, write = android.Manifest.permission.WRITE_EXTERNAL_STORAGE,
+                   camera = android.Manifest.permission.CAMERA, vibrate = android.Manifest.permission.VIBRATE, contacts = android.Manifest.permission.READ_CONTACTS,
+                   calendar = android.Manifest.permission.READ_CALENDAR, sms = android.Manifest.permission.RECEIVE_SMS;
+            int granted = android.content.pm.PackageManager.PERMISSION_GRANTED, denied = android.content.pm.PackageManager.PERMISSION_DENIED;
+            android.content.pm.PackageManager pm = getPackageManager();
+            android.content.pm.PackageInfo info = pm.getPackageInfo(getPackageName(), android.content.pm.PackageManager.GET_PERMISSIONS);
+            java.util.List<String> asked = Arrays.asList(info.requestedPermissions);
+            int readFlags = info.requestedPermissionsFlags[asked.indexOf(read)], vibrateFlags = info.requestedPermissionsFlags[asked.indexOf(vibrate)];
+            android.content.pm.PermissionInfo cameraInfo = pm.getPermissionInfo(camera, 0), vibrateInfo = pm.getPermissionInfo(vibrate, 0);
+            /* What the user said in the first run is the shell's to keep: the second finds the storage and the messages granted. */
+            boolean first = run == 1;
+            detail = "read=" + checkSelfPermission(read) + " sms=" + checkSelfPermission(sms) + " camera=" + checkSelfPermission(camera) + " write=" + checkSelfPermission(write)
+                    + " contacts=" + checkSelfPermission(contacts) + " calendar=" + checkSelfPermission(calendar) + " vibrate=" + checkSelfPermission(vibrate)
+                    + " rationale=" + shouldShowRequestPermissionRationale(camera) + " asked=" + asked + " flags=" + readFlags + "/" + vibrateFlags
+                    + " info=" + cameraInfo.protectionLevel + "/" + cameraInfo.group + "/" + vibrateInfo.protectionLevel;
+            /*
+             * Before the request: a normal permission granted with the install; one the manifest does not ask for, and one asked for
+             * only up to Android 9, denied and not even among those it asks for; the contacts granted (the shell has nothing behind
+             * them); the dangerous ones of the run before as the user left them, of the first run not yet; no rationale before a no.
+             */
+            boolean held = checkSelfPermission(vibrate) == granted && checkSelfPermission(calendar) == denied && checkSelfPermission(write) == denied
+                    && checkSelfPermission(contacts) == granted && checkSelfPermission(read) == (first ? denied : granted)
+                    && checkSelfPermission(sms) == (first ? denied : granted) && checkSelfPermission(camera) == denied
+                    && !shouldShowRequestPermissionRationale(camera) && !shouldShowRequestPermissionRationale(vibrate)
+                    && checkCallingOrSelfPermission(vibrate) == granted && checkPermission(read, android.os.Process.myPid(), android.os.Process.myUid()) == (first ? denied : granted)
+                    && pm.checkPermission(read, getPackageName()) == (first ? denied : granted) && pm.checkPermission(calendar, getPackageName()) == denied
+                    && asked.contains(read) && !asked.contains(write) && (vibrateFlags & android.content.pm.PackageInfo.REQUESTED_PERMISSION_GRANTED) != 0
+                    && ((readFlags & android.content.pm.PackageInfo.REQUESTED_PERMISSION_GRANTED) != 0) == !first
+                    && cameraInfo.protectionLevel == android.content.pm.PermissionInfo.PROTECTION_DANGEROUS && "android.permission-group.CAMERA".equals(cameraInfo.group)
+                    && vibrateInfo.protectionLevel == android.content.pm.PermissionInfo.PROTECTION_NORMAL;
+            /* The request (answered later, onRequestPermissionsResult); and a second while it is answered, told at once it was cancelled. */
+            requestPermissions(PERMISSIONS, 77);
+            cancelled = false;
+            requestPermissions(new String[] { camera }, 78);
+            return held && cancelled;
         });
         step("download", () -> {
             File dir = android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_DOWNLOADS), file = new File(dir, "megler-data-test.txt");
@@ -3950,6 +3979,12 @@ public class Main extends Activity {
     @Override
     protected void onResume() {
         super.onResume();
+        resumedNow = true;
+        /* Resumed after the permissions' answer it was paused around (onRequestPermissionsResult). */
+        if (resumeAwaited) {
+            resumeAwaited = false;
+            Log.i("DataTest", "permission-resumed");
+        }
         if (sScreens == 1) {
             sScreens = 2;
             startActivity(new android.content.Intent("android.settings.APPLICATION_DETAILS_SETTINGS", android.net.Uri.parse("package:" + getPackageName())));
@@ -4831,12 +4866,64 @@ public class Main extends Activity {
                 + battery.getIntExtra("temperature", -1) + " present=" + battery.getBooleanExtra("present", false) + " technology=" + battery.getStringExtra("technology");
     }
 
+    /*
+     * What the step "permissions" requests, and what it is to be told: the storage, the messages, the phone and the calls the
+     * user lets the app have (the test's C side answers for the user); WRITE_EXTERNAL_STORAGE, asked for only up to Android 9,
+     * denied with no one asked; the camera refused; VIBRATE, normal, granted; READ_CALENDAR, not in the manifest, denied.
+     */
+    private static final String[] PERMISSIONS = { android.Manifest.permission.READ_EXTERNAL_STORAGE, android.Manifest.permission.WRITE_EXTERNAL_STORAGE,
+                                                  android.Manifest.permission.RECEIVE_SMS, android.Manifest.permission.READ_SMS, android.Manifest.permission.READ_PHONE_STATE,
+                                                  android.Manifest.permission.READ_CALL_LOG, android.Manifest.permission.CAMERA, android.Manifest.permission.VIBRATE,
+                                                  android.Manifest.permission.READ_CALENDAR };
+    private static final int[] TOLD = { 0, -1, 0, 0, 0, 0, -1, 0, -1 };
+    private boolean cancelled, resumeAwaited, resumedNow;
+
+    @Override
+    protected void onPause() {
+        super.onPause();
+        resumedNow = false;
+    }
+
+    /*
+     * The answers, as Android gives them: later, on the main thread, the activity paused around them where the user was asked
+     * (Android's permission dialog is an activity over this one) and not where no one was. After the first no to the camera the
+     * app may explain itself (the rationale) and ask again; a second no is for good, and a third request asks no one. Then a
+     * fragment's request, answered to the fragment.
+     */
     @Override
     public void onRequestPermissionsResult(int request, String[] permissions, int[] results) {
-        boolean all = request == 77 && permissions.length == 2 && results.length == 2;
-        for (int r : results) all &= r == android.content.pm.PackageManager.PERMISSION_GRANTED;
-        /* Delivered as Android delivers it: later, on the main thread, not from inside requestPermissions. */
-        Log.i("DataTest", "permission-result " + (all && android.os.Looper.myLooper() == android.os.Looper.getMainLooper() ? "ok" : "FAILED") + " after done=" + doneLogged);
+        boolean main = android.os.Looper.myLooper() == android.os.Looper.getMainLooper(), paused = !resumedNow;
+        String camera = android.Manifest.permission.CAMERA;
+        boolean rationale = shouldShowRequestPermissionRationale(camera);
+        if (request == 78) {
+            cancelled = permissions.length == 0 && results.length == 0;
+            return;
+        }
+        if (request == 77) {
+            boolean all = main && Arrays.equals(permissions, PERMISSIONS) && Arrays.equals(results, TOLD);
+            Log.i("DataTest", "permission-result " + (all ? "ok" : "FAILED " + Arrays.toString(results)) + " after done=" + doneLogged + " paused=" + paused
+                    + " rationale=" + rationale);
+            resumeAwaited = paused;
+            requestPermissions(new String[] { camera }, rationale ? 79 : 80);
+        } else if (request == 79) {
+            Log.i("DataTest", "permission-again denied=" + (results.length == 1 && results[0] == -1) + " paused=" + paused + " rationale=" + rationale);
+            requestPermissions(new String[] { camera }, 80);
+        } else if (request == 80) {
+            Log.i("DataTest", "permission-for-good denied=" + (results.length == 1 && results[0] == -1) + " paused=" + paused + " rationale=" + rationale);
+            PermissionAsker asker = new PermissionAsker();
+            getFragmentManager().beginTransaction().add(asker, "permissions").commitNow();
+            asker.requestPermissions(new String[] { android.Manifest.permission.VIBRATE }, 81);
+        } else {
+            Log.i("DataTest", "permission-result FAILED: request " + request + " came to the activity");
+        }
+    }
+
+    /* A fragment's request is answered to the fragment, not to its activity. */
+    public static class PermissionAsker extends android.app.Fragment {
+        @Override
+        public void onRequestPermissionsResult(int request, String[] permissions, int[] results) {
+            Log.i("DataTest", "permission-fragment " + (request == 81 && permissions.length == 1 && results.length == 1 && results[0] == 0 ? "ok" : "FAILED"));
+        }
     }
 
     private boolean doneLogged, insetsLogged;
