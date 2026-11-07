@@ -151,8 +151,41 @@ bool writeAt(HANDLE h, uint64_t at, const char* data, DWORD n) {
 
 } // namespace
 
-bool mend(const std::wstring& source, const std::wstring& copy, uint64_t& mended) {
-    const DWORD chunk = 1u << 20;
+DiskFile::DiskFile(const std::wstring& path) : handle_(INVALID_HANDLE_VALUE) {
+    CREATEFILE2_EXTENDED_PARAMETERS params = {};
+    params.dwSize = sizeof(params);
+    params.dwFileAttributes = FILE_ATTRIBUTE_NORMAL;
+    params.dwFileFlags = FILE_FLAG_NO_BUFFERING | FILE_FLAG_SEQUENTIAL_SCAN;
+    handle_ = CreateFile2(path.c_str(), GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, OPEN_EXISTING, &params);
+    uncached_ = handle_ != INVALID_HANDLE_VALUE;
+    if (!uncached_) handle_ = open(path, GENERIC_READ, OPEN_EXISTING);
+    LARGE_INTEGER size = {};
+    if (handle_ != INVALID_HANDLE_VALUE && GetFileSizeEx(handle_, &size)) size_ = uint64_t(size.QuadPart);
+    // (A page is a whole number of any sector a phone's or a PC's disk has.)
+    buffer_ = static_cast<char*>(VirtualAlloc(nullptr, chunk, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE));
+}
+
+DiskFile::~DiskFile() {
+    if (handle_ != INVALID_HANDLE_VALUE) CloseHandle(handle_);
+    if (buffer_) VirtualFree(buffer_, 0, MEM_RELEASE);
+}
+
+bool DiskFile::isOpen() const { return handle_ != INVALID_HANDLE_VALUE; }
+
+bool DiskFile::read(uint64_t at, char* out, uint32_t n) {
+    if (handle_ == INVALID_HANDLE_VALUE || !buffer_ || n > chunk || at > size_ || n > size_ - at) return false;
+    // Uncached, a read asks for whole sectors and is given what there is of them up to the file's end.
+    const DWORD asked = uncached_ ? DWORD((n + 4095u) & ~4095u) : DWORD(n);
+    LARGE_INTEGER pos = {};
+    pos.QuadPart = LONGLONG(at);
+    DWORD got = 0;
+    if (!SetFilePointerEx(handle_, pos, nullptr, FILE_BEGIN) || !ReadFile(handle_, buffer_, asked, &got, nullptr) || got < n) return false;
+    memcpy(out, buffer_, n);
+    return true;
+}
+
+bool mend(const std::wstring& source, const std::wstring& copy, uint64_t& mended, std::vector<uint64_t>* chunks) {
+    const DWORD chunk = DiskFile::chunk;
     mended = 0;
     HANDLE from = open(source, GENERIC_READ, OPEN_EXISTING);
     if (from == INVALID_HANDLE_VALUE) return false;
@@ -161,26 +194,35 @@ bool mend(const std::wstring& source, const std::wstring& copy, uint64_t& mended
         CloseHandle(from);
         return false;
     }
+    DiskFile disk(copy);
     LARGE_INTEGER sizeFrom = {}, sizeTo = {};
-    bool ok = GetFileSizeEx(from, &sizeFrom) && GetFileSizeEx(to, &sizeTo) && sizeFrom.QuadPart == sizeTo.QuadPart;
+    bool ok = disk.isOpen() && GetFileSizeEx(from, &sizeFrom) && GetFileSizeEx(to, &sizeTo) && sizeFrom.QuadPart == sizeTo.QuadPart;
     std::vector<char> a(chunk), b(chunk), again(chunk);
     for (uint64_t at = 0; ok && at < uint64_t(sizeFrom.QuadPart); at += chunk) {
         const DWORD n = DWORD(std::min<uint64_t>(chunk, uint64_t(sizeFrom.QuadPart) - at));
-        ok = readAt(from, at, a.data(), n) && readAt(to, at, b.data(), n);
+        ok = readAt(from, at, a.data(), n) && disk.read(at, b.data(), n);
         if (!ok || !memcmp(a.data(), b.data(), n)) continue;
         // The source read twice alike first, so that what is written is the file's and not a reading's mistake; then the
-        // chunk written, put on the disk and read back.
+        // chunk written, put on the disk and read back from there.
         bool fixed = false;
         for (int tries = 0; tries < 3 && !fixed; tries++) {
             if (!readAt(from, at, a.data(), n) || !readAt(from, at, again.data(), n) || memcmp(a.data(), again.data(), n)) continue;
-            fixed = writeAt(to, at, a.data(), n) && FlushFileBuffers(to) && readAt(to, at, b.data(), n) && !memcmp(a.data(), b.data(), n);
+            fixed = writeAt(to, at, a.data(), n) && FlushFileBuffers(to) && disk.read(at, b.data(), n) && !memcmp(a.data(), b.data(), n);
         }
         ok = fixed;
-        if (fixed) mended += n;
+        if (fixed) {
+            mended += n;
+            if (chunks) chunks->push_back(at);
+        }
     }
     CloseHandle(from);
     CloseHandle(to);
     return ok;
+}
+
+bool copyWhole(const std::wstring& from, const std::wstring& to, uint64_t& mended) {
+    mended = 0;
+    return copy(from, to) && flush(to) && mend(from, to, mended);
 }
 
 std::vector<std::wstring> list(const std::wstring& directory, const std::wstring& pattern) {

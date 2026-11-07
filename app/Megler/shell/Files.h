@@ -36,10 +36,38 @@ bool flush(const std::wstring& path);
 /// the whole size first, and what was never written of it reads as zeros).
 bool sameEnd(const std::wstring& a, const std::wstring& b, uint32_t bytes);
 /// Whether `copy` now holds `source`'s bytes, every 1 MB chunk of it compared and those that differ written again from
-/// `source` (read twice alike first), put on the disk and read back; `mended`: how many bytes were written so. A Lumia 650's
-/// copies of Google Play services' 277 MB APK came out twice with a byte wrong in their middle, each time in a DEX file
-/// of it that no app could then use (packages 625 and 632).
-bool mend(const std::wstring& source, const std::wstring& copy, uint64_t& mended);
+/// `source` (read twice alike first), put on the disk and read back; `mended`: how many bytes were written so, and
+/// `chunks`, when given, the offset of each chunk that was. A Lumia 650's copies of Google Play services' 277 MB APK came
+/// out twice with a byte wrong in their middle, each time in a DEX file of it that no app could then use (packages 625 and
+/// 632). The copy is read as the disk holds it (DiskFile): a page Windows still has in memory from the writing reads right
+/// whatever went to the disk.
+bool mend(const std::wstring& source, const std::wstring& copy, uint64_t& mended, std::vector<uint64_t>* chunks = nullptr);
+/// `from` copied to `to` (replacing it), put on the disk, and made byte for byte `from`'s (mend; `mended` as there): how
+/// every copy of an APK is made that apps run from.
+bool copyWhole(const std::wstring& from, const std::wstring& to, uint64_t& mended);
+
+/// A file read as the disk holds it, past Windows's cache of it (FILE_FLAG_NO_BUFFERING: whole sectors, into memory of
+/// its own aligned to a page); as any file where the file system will not open it so.
+class DiskFile {
+public:
+    explicit DiskFile(const std::wstring& path);
+    ~DiskFile();
+    DiskFile(const DiskFile&) = delete;
+    DiskFile& operator=(const DiskFile&) = delete;
+    bool isOpen() const;
+    /// Whether the disk itself is read (else Windows's cache may answer).
+    bool uncached() const { return uncached_; }
+    uint64_t size() const { return size_; }
+    /// `n` bytes at `at` (a multiple of 4096), at most a chunk and within the file.
+    bool read(uint64_t at, char* out, uint32_t n);
+    static constexpr uint32_t chunk = 1u << 20;
+
+private:
+    void* handle_;
+    bool uncached_ = false;
+    uint64_t size_ = 0;
+    char* buffer_ = nullptr;
+};
 
 /// The names (not paths) of the files in `directory` matching `pattern` ("*.apk").
 std::vector<std::wstring> list(const std::wstring& directory, const std::wstring& pattern);
