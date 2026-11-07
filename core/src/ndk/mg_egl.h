@@ -68,6 +68,11 @@ void *mg_egl_host(const char *name);
  * "no such function".
  */
 void mg_egl_set_provider(void *(*resolve)(const char *name));
+/*
+ * For the tests: a display made as the app's is made (mg_egl.c, make_display: its attempts, WARP's on a graphics processor
+ * below 9_3 among them), apart from the app's own and anew at each call; which attempt made it, in `how`. False when none.
+ */
+bool mg_egl_display_try(char *how, size_t size);
 
 /*
  * A pbuffer's DXGI keyed mutex, which ANGLE shares its pbuffers' textures with (NULL when it has none), and that mutex acquired

@@ -1937,6 +1937,8 @@ int mg_host_d3d11_feature_level(void *device)
     return 0;
 }
 
+int mg_host_d3d11_hardware_level(void) { return 0; }
+
 void mg_random(void *buf, size_t n)
 {
     int fd = open("/dev/urandom", O_RDONLY | O_CLOEXEC);

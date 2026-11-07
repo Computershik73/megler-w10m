@@ -54,6 +54,14 @@ void mg_gl_standin_set_dwell(u64 ns);
 /* Back to nothing made and nothing counted; whether GL_EXT_read_format_bgra is listed, and whether version 1 is made. */
 void mg_gl_standin_reset(bool bgra, bool es1);
 /*
+ * The graphics processor the stand-in plays, as a Direct3D feature level (0x9100): below 0x9300 -- a Surface RT's or a
+ * Surface 2's 9_1 -- eglInitialize makes a display only where it was asked for on WARP (EGL_PLATFORM_ANGLE_DEVICE_TYPE_ANGLE
+ * of EGL_PLATFORM_ANGLE_DEVICE_TYPE_D3D_WARP_ANGLE), as ANGLE there; 0 (as after mg_gl_standin_reset), any display. And the
+ * displays asked for since the last time this was asked, and how many of them on WARP.
+ */
+void mg_gl_standin_set_level(int level);
+void mg_gl_standin_displays(int *asked, int *warp);
+/*
  * The complete mode: a driver of OpenGL ES 2.0 alone in which every function of EGL 1.4 and OpenGL ES 2.0 is there, those it
  * does not draw with doing nothing (mg_gl_standin.c, "complete mode"), for an app with a GL stack of its own over the
  * system's: the WebView's Chromium. Off unless asked for, and left as it is by mg_gl_standin_reset.

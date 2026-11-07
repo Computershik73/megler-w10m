@@ -254,6 +254,53 @@ static void test_bound(void)
 }
 
 /*
+ * Which attempt makes the app's display (mg_egl.c, make_display) on a graphics processor below the 9_3 ANGLE needs -- a
+ * Surface RT's or a Surface 2's 9_1, which the stand-in plays by making a display only on WARP: none where this machine's
+ * own processor is 9_3 or more, as every phone's (nothing is tried in software there), and WARP's, the third, with the flag
+ * egl-level-9_1, which takes the processor for 9_1. A processor the stand-in does not refuse gets the first attempt's
+ * display, as before.
+ */
+static void test_display_choice(void)
+{
+    char how[48], flags[700], flag[700];
+    const char *data = megler_data_dir();
+    const int own = mg_host_d3d11_hardware_level();
+    const bool own_below = own > 0 && own < 0x9300;
+    int asked = 0, warp = 0;
+    FILE *f;
+    say("the app's display on a graphics processor below 9_3 (this machine's own: %d_%d%s)", own >> 12, (own >> 8) & 15,
+        own ? "" : ", no Direct3D");
+    mg_gl_standin_reset(true, false);
+    CHECK(mg_egl_display_try(how, sizeof(how)) && !strcmp(how, "Direct3D 11"));
+    mg_gl_standin_displays(&asked, &warp);
+    CHECK(asked == 1 && warp == 0);
+    /* 9_1, the flag off: no display, two attempts and none in software -- unless this machine's own processor is below 9_3. */
+    mg_gl_standin_set_level(0x9100);
+    CHECK(mg_egl_display_try(how, sizeof(how)) == own_below);
+    mg_gl_standin_displays(&asked, &warp);
+    CHECK(asked == (own_below ? 3 : 2) && warp == (own_below ? 1 : 0));
+    if (!data || !*data) {
+        say("  (no data folder for the flag egl-level-9_1: the third attempt is not tried)");
+    } else {
+        snprintf(flags, sizeof(flags), "%s/flags", data);
+        snprintf(flag, sizeof(flag), "%s/flags/egl-level-9_1", data);
+        mg_path_mkdirs(flags);
+        f = fopen(flag, "w");
+        if (f) fclose(f);
+        CHECK(mg_egl_display_try(how, sizeof(how)) && !strcmp(how, "Direct3D 11 on WARP, in software"));
+        mg_gl_standin_displays(&asked, &warp);
+        CHECK(asked == 3 && warp == 1);
+        /* And a processor the stand-in does not refuse, the flag on: the first attempt's, as before. */
+        mg_gl_standin_set_level(0);
+        CHECK(mg_egl_display_try(how, sizeof(how)) && !strcmp(how, "Direct3D 11"));
+        mg_gl_standin_displays(&asked, &warp);
+        CHECK(asked == 1 && warp == 0);
+        mg_path_remove(flag, NULL);
+    }
+    mg_gl_standin_reset(true, false);
+}
+
+/*
  * The EGL version an app is told: the tests' stand-ins for ANGLE say EGL 1.5 and name no fence syncs (EGL_KHR_fence_sync),
  * as ANGLE over Direct3D 11 does on the phone; EGL 1.5 has them, so the app is told 1.4 (mg_egl.c, tell_version).
  */
@@ -1455,6 +1502,7 @@ int mg_gl_natives_tests_run(mg_test_sink sink, void *user, int *checks)
     }
     test_bound();
     mg_egl_set_provider(mg_gl_standin);
+    test_display_choice();
     mg_gl_standin_reset(true, false);
     mg_java_gl_reset();
     test_version();

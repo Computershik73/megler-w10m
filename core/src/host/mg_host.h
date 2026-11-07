@@ -750,6 +750,12 @@ MG_HOSTAPI bool mg_host_probe_breakpoints(char *out, size_t size);
 
 /* The feature level of a Direct3D 11 device (an ID3D11Device *), as D3D_FEATURE_LEVEL numbers it (0x9300, 0xb100); 0 where there is no Direct3D. */
 MG_HOSTAPI int mg_host_d3d11_feature_level(void *device);
+/*
+ * The highest feature level the graphics processor's own Direct3D 11 offers (D3D_DRIVER_TYPE_HARDWARE), numbered so; asked
+ * of Direct3D with no device made. 0 where there is no Direct3D (posix) or no such device. 9_1 on a Surface RT's and a
+ * Surface 2's Tegra (docs/RT.md), below the 9_3 ANGLE needs; 9_3 and up on every phone's.
+ */
+MG_HOSTAPI int mg_host_d3d11_hardware_level(void);
 /* Why a Direct3D 11 device is gone (an HRESULT such as DXGI_ERROR_DEVICE_HUNG), or 0 while it is still there. */
 MG_HOSTAPI u32 mg_host_d3d11_removed_reason(void *device);
 /*

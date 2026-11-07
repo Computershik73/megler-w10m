@@ -486,7 +486,10 @@ ANGLE turns OpenGL ES into Direct3D 11, and most GLES calls are bound straight t
 ANGLE's functions. This layer adds the display, the window, and the float adapters.
 
 - The display is made as an ANGLE Direct3D 11 display, falling back to feature level
-  9_3, which most Windows phones are. At 9_3 ANGLE gives OpenGL ES 2.0 only.
+  9_3, which most Windows phones are. At 9_3 ANGLE gives OpenGL ES 2.0 only. Where
+  the graphics processor is below 9_3 -- a Surface RT's or a Surface 2's 9_1, which
+  ANGLE cannot use (docs/RT.md) -- and only there, a third attempt makes it on WARP,
+  Direct3D in software: OpenGL ES, slowly. No phone is below 9_3.
   The WebView's Chromium, whose GPU thread draws while the app's threads do, gets a
   second display with a Direct3D device of its own (`eglGetDisplay` called from
   `libwebviewchromium.so`): ANGLE's Direct3D 11 renderer, one to a display, does not

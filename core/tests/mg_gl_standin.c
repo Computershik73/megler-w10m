@@ -100,18 +100,47 @@ static bool complete_integer(u32 name, i32 *v);
 
 /* ------------------------------------------------------------------- EGL */
 
+/*
+ * The graphics processor played (mg_gl_standin_set_level): below 9_3, eglInitialize makes a display only where it was asked
+ * for on WARP (EGL_PLATFORM_ANGLE_DEVICE_TYPE_ANGLE, 0x3209, given EGL_PLATFORM_ANGLE_DEVICE_TYPE_D3D_WARP_ANGLE, 0x320B), as
+ * ANGLE on a 9_1 Tegra. The displays asked for since mg_gl_standin_displays was last asked, and those on WARP.
+ */
+static int g_level, g_displays, g_displays_warp;
+static bool g_last_warp;
+static void display_asked(bool warp)
+{
+    g_displays++;
+    if (warp) g_displays_warp++;
+    g_last_warp = warp;
+}
+void mg_gl_standin_set_level(int level) { g_level = level; }
+void mg_gl_standin_displays(int *asked, int *warp)
+{
+    *asked = g_displays;
+    *warp = g_displays_warp;
+    g_displays = g_displays_warp = 0;
+}
+
 /* Another display for another native display, as ANGLE makes one (the core asks for the WebView's with EGL_D3D11_ONLY_DISPLAY_ANGLE, -3). */
+static void *platform_display(void *native) { return (void *)(mg_addr)(native == (void *)(mg_addr)-3 ? 0xD16 : 0xD15); }
 static MG_GLAPI void *e_GetPlatformDisplay(unsigned platform, void *native, const int *attribs)
 {
-    (void)platform; (void)attribs;
-    return (void *)(mg_addr)(native == (void *)(mg_addr)-3 ? 0xD16 : 0xD15);
+    bool warp = false;
+    size_t i;
+    (void)platform;
+    for (i = 0; attribs && attribs[i] != 0x3038; i += 2)
+        if (attribs[i] == 0x3209 && attribs[i + 1] == 0x320B) warp = true;
+    display_asked(warp);
+    return platform_display(native);
 }
 static MG_GLAPI void *e_GetDisplay(void *native) { (void)native; return (void *)(mg_addr)0xD15; }
 /* EGL 1.5's: as above, and the features asked to be turned off for the app's display (EGL_FEATURE_OVERRIDES_DISABLED_ANGLE) kept. */
 static char g_app_features_off[200];
 static MG_GLAPI void *e_GetPlatformDisplayAttrib(unsigned platform, void *native, const intptr_t *attribs)
 {
+    bool warp = false;
     size_t i;
+    (void)platform;
     if (native != (void *)(mg_addr)-3) {
         g_app_features_off[0] = 0;
         for (i = 0; attribs && attribs[i] != 0x3038; i += 2)
@@ -123,12 +152,17 @@ static MG_GLAPI void *e_GetPlatformDisplayAttrib(unsigned platform, void *native
                 }
             }
     }
-    return e_GetPlatformDisplay(platform, native, NULL);
+    for (i = 0; attribs && attribs[i] != 0x3038; i += 2)
+        if (attribs[i] == 0x3209 && attribs[i + 1] == 0x320B) warp = true;
+    display_asked(warp);
+    return platform_display(native);
 }
 const char *mg_gl_standin_app_features_off(void) { return g_app_features_off; }
 static MG_GLAPI unsigned e_Initialize(void *d, int *major, int *minor)
 {
     (void)d;
+    /* (A processor below 9_3 has no display but WARP's.) */
+    if (g_level && g_level < 0x9300 && !g_last_warp) return 0;
     if (major) *major = 1;
     if (minor) *minor = 5;
     return 1;
@@ -1364,6 +1398,8 @@ void mg_gl_standin_reset(bool bgra, bool es1)
     memset(&S.stats, 0, sizeof(S.stats));
     S.bgra = bgra;
     S.es1 = es1;
+    g_level = g_displays = g_displays_warp = 0;
+    g_last_warp = false;
     mg_lock_release(&g_lock);
 }
 
