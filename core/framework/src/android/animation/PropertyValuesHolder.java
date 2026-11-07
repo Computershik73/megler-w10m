@@ -36,7 +36,12 @@ public class PropertyValuesHolder implements Cloneable {
     public void setPropertyName(String n) { mName = n; }
     public String getPropertyName() { return mName; }
     public void setProperty(Property p) { mProperty = p; }
-    public Object getAnimatedValue() { return mAnimated; }
+    /* A float's or an int's holder gives 0 until it is first worked out, as Android's Float- and IntPropertyValuesHolder: never null. */
+    public Object getAnimatedValue() {
+        if (mAnimated == null && mType == float.class) return 0f;
+        if (mAnimated == null && mType == int.class) return 0;
+        return mAnimated;
+    }
 
     void calculate(float f) {
         if (mValues == null || mValues.length == 0) return;

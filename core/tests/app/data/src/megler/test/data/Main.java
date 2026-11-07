@@ -1267,6 +1267,24 @@ public class Main extends Activity {
             detail = "reveal ended " + ended[0] + " at radius " + radius[0] + ", the set ended " + ended[1];
             return ended[0] == 1 && ended[1] == 1 && radius[0] == 112f;
         });
+        // An animator's value as Android gives it: 0 before it first runs, and, run once and given new values, the new start
+        // value already in its start listeners (it went on as initialised, and they read null).
+        step("animator-values", () -> {
+            android.animation.ValueAnimator a = android.animation.ValueAnimator.ofFloat(0, 1);
+            Object before = a.getAnimatedValue();
+            a.setDuration(50);
+            a.start();
+            a.end();
+            a.setValues(android.animation.PropertyValuesHolder.ofFloat("x", 5, 10));
+            final Object[] atStart = new Object[1];
+            a.addListener(new android.animation.AnimatorListenerAdapter() {
+                @Override public void onAnimationStart(android.animation.Animator x) { atStart[0] = ((android.animation.ValueAnimator) x).getAnimatedValue(); }
+            });
+            a.start();
+            a.end();
+            detail = "before " + before + ", at the second start " + atStart[0] + ", at its end " + a.getAnimatedValue();
+            return Float.valueOf(0f).equals(before) && atStart[0] instanceof Float && Float.valueOf(10f).equals(a.getAnimatedValue());
+        });
         // A typeface built from a font file open on a descriptor (Typeface.Builder(FileDescriptor), as Google Play services
         // loads its downloaded fonts): made, and the descriptor still open after.
         step("typeface-descriptor", () -> {
