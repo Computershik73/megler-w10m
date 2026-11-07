@@ -1,8 +1,9 @@
 // Overlay of core/framework/src/megler/GooglePackages.java (tools/build-framework.sh).
 // It differs in one more package it answers for, the System WebView of the Android root, com.android.webview: installed,
 // with the version and the files its APK has (android.webkit.WebView.getCurrentWebViewPackage, which reads them from the
-// APK's manifest). And in Play Store's own meta-data, its derived APK id the newest there is (ownMetaData, which says why).
-// The rest is the original's, the made-up com.google.android.webview included.
+// APK's manifest). And in Play Store's own meta-data, its derived APK id the newest there is (ownMetaData, which says why), and
+// in two flags of Play Store's that test its own updates (ownVersionCode). The rest is the original's, the made-up
+// com.google.android.webview included.
 //
 // Why. The package manager knows the app and, through this class, the packages it pretends are installed; every other name
 // is NameNotFoundException. The WebView is a package of its own whose code runs in the app, and its code asks the package
@@ -63,11 +64,30 @@ public final class GooglePackages {
      */
     public static android.os.Bundle ownMetaData(String pkg, android.os.Bundle meta) {
         final String derived = "com.android.vending.derived.apk.id";
-        if (!VENDING.equals(pkg) || meta == null || !meta.containsKey(derived)) return meta;
+        if (!VENDING.equals(pkg) || meta == null || !meta.containsKey(derived) || Native.flag("real-derived-id")) return meta;
         android.os.Bundle b = new android.os.Bundle(meta);
         b.putInt(derived, Integer.MAX_VALUE);
         return b;
     }
+    /*
+     * Megler: the version of the app's own package (PackageManager.getPackageInfo of itself): Play Store's that of an older
+     * release, 52.9.21 (85292100), when its flag older-self is set; any other package's, and Play Store's without the flag, as
+     * its manifest has it.
+     *
+     * Why. A test of Play Store's own updates. Play Store sends its version to Google's server in its user agent and compares
+     * the server's offer with it, so a Play Store that says it is older is offered the current release, as it will be offered
+     * the next one. That says whether the server offers a newer version to a Play Store whose derived APK id is the newest there
+     * is (ownMetaData), and lets such an update be tried end to end. The flag real-derived-id leaves that id as the APK has it,
+     * to compare.
+     */
+    private static int sOlderSelf = -1;
+    private static boolean olderSelf(String pkg) {
+        if (!VENDING.equals(pkg)) return false;
+        if (sOlderSelf < 0) sOlderSelf = Native.flag("older-self") ? 1 : 0;
+        return sOlderSelf == 1;
+    }
+    public static int ownVersionCode(String pkg, int code) { return olderSelf(pkg) ? 85292100 : code; }
+    public static String ownVersionName(String pkg, String name) { return olderSelf(pkg) ? "52.9.21-24 [0] [PR] 968642861" : name; }
     /*
      * The uid Google Play services and Google Services Framework share, as on Android (com.google.uid.shared): not the app's.
      * Google Play services finds the service a consent screen goes through (DefaultAuthDelegateService), takes the first

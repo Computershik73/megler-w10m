@@ -11,7 +11,9 @@
 // Apache HTTP client, where both said nothing.
 // And getPackageInfo names the app's split APKs (splitNames, splitRevisionCodes),
 // as ApplicationInfo does: an app in several APKs that checks for its splits by
-// this way of asking found none, where the original left them empty.
+// this way of asking found none, where the original left them empty. Its version
+// is the manifest's, but for Play Store's under a flag that tests its own updates
+// (megler.GooglePackages.ownVersionCode).
 // And the other apps the phone has (megler.PhoneApps), which a launcher lists and
 // starts: queryIntentActivities of the launcher's intent (MAIN, LAUNCHER) has
 // them after the app's own, and getPackageInfo, getApplicationInfo,
@@ -101,7 +103,8 @@ public class PackageManager {
         }
         megler.Manifest.read();
         PackageInfo p = new PackageInfo();
-        p.packageName = pkg; p.versionCode = megler.Manifest.versionCode; p.versionName = megler.Manifest.versionName != null ? megler.Manifest.versionName : "1.0";
+        p.packageName = pkg; p.versionCode = megler.GooglePackages.ownVersionCode(pkg, megler.Manifest.versionCode);
+        p.versionName = megler.GooglePackages.ownVersionName(pkg, megler.Manifest.versionName != null ? megler.Manifest.versionName : "1.0");
         p.applicationInfo = ApplicationInfo.self();
         if (megler.GooglePackages.VENDING.equals(pkg) || megler.GooglePackages.GMS.equals(pkg)) {
             p.signatures = new Signature[] { megler.GooglePackages.signature() };
