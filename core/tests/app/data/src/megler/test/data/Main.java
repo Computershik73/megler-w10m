@@ -1518,6 +1518,7 @@ public class Main extends Activity {
         launcherLoading();
         uriBuilder();
         manyInterfaces();
+        proxyManyMethods();
         step("apk-path", () -> {
             // The APK as Android names it, whatever the file is called where the shell keeps it.
             String source = getApplicationInfo().sourceDir, code = getPackageCodePath();
@@ -4112,6 +4113,20 @@ public class Main extends Activity {
             boolean cast = ManyInterfaces.I300.class.isAssignableFrom(ManyInterfaces.Impl.class);
             detail = "I0=" + first + " I505=" + at505 + " I599=" + last + " I300 assignable=" + cast;
             return first && at505 && last && cast;
+        });
+    }
+
+    /**
+     * A proxy of an interface of 600 methods, as imo's settings are a proxy of one of 1968 (imo ended at its start when there
+     * could be no more than 512): made, and its first and last methods reach the handler.
+     */
+    private void proxyManyMethods() {
+        step("proxy-many-methods", () -> {
+            ManyMethods p = (ManyMethods) java.lang.reflect.Proxy.newProxyInstance(getClassLoader(), new Class<?>[] { ManyMethods.class },
+                    (proxy, m, args) -> Integer.parseInt(m.getName().substring(1)));
+            int first = p.m0(), last = p.m599();
+            detail = "m0=" + first + " m599=" + last;
+            return first == 0 && last == 599;
         });
     }
 
