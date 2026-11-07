@@ -4674,6 +4674,40 @@ public class Main extends Activity {
             detail = "byName=" + byName + " byClass=" + byClass + " thrown=" + thrown;
             return c.isInstance(byName) && byName == byClass && "android.app.StatsManager$StatsUnavailableException".equals(thrown);
         });
+        step("credential-manager", () -> {
+            // Android 14's Credential Manager with no credential provider, as a sign-in screen asks it (an API 34 class: by
+            // reflection): getCredential answers on the executor given that there is no credential -- the type AndroidX turns into
+            // NoCredentialException --, createCredential that there is nothing to create one with, clearCredentialState that it
+            // is cleared. Avito's sign-in waited for ever on a getCredential that never answered.
+            Class<?> cm = Class.forName("android.credentials.CredentialManager"), receiver = Class.forName("android.os.OutcomeReceiver");
+            Object manager = getSystemService(cm);
+            final java.util.List<String> heard = java.util.Collections.synchronizedList(new java.util.ArrayList<String>());
+            final java.util.concurrent.CountDownLatch answered = new java.util.concurrent.CountDownLatch(3);
+            java.lang.reflect.InvocationHandler h = (proxy, m, a) -> {
+                if ("onError".equals(m.getName())) {
+                    heard.add("error " + a[0].getClass().getMethod("getType").invoke(a[0]));
+                    answered.countDown();
+                } else if ("onResult".equals(m.getName())) {
+                    heard.add("result " + a[0]);
+                    answered.countDown();
+                }
+                return null;
+            };
+            Object callback = java.lang.reflect.Proxy.newProxyInstance(receiver.getClassLoader(), new Class<?>[] { receiver }, h);
+            java.util.concurrent.Executor direct = Runnable::run;
+            Class<?> getRequest = Class.forName("android.credentials.GetCredentialRequest"), createRequest = Class.forName("android.credentials.CreateCredentialRequest"),
+                    clearRequest = Class.forName("android.credentials.ClearCredentialStateRequest");
+            cm.getMethod("getCredential", android.content.Context.class, getRequest, android.os.CancellationSignal.class, java.util.concurrent.Executor.class, receiver)
+                    .invoke(manager, this, null, new android.os.CancellationSignal(), direct, callback);
+            cm.getMethod("createCredential", android.content.Context.class, createRequest, android.os.CancellationSignal.class, java.util.concurrent.Executor.class, receiver)
+                    .invoke(manager, this, null, null, direct, callback);
+            cm.getMethod("clearCredentialState", clearRequest, android.os.CancellationSignal.class, java.util.concurrent.Executor.class, receiver)
+                    .invoke(manager, null, null, direct, callback);
+            boolean all = answered.await(5, java.util.concurrent.TimeUnit.SECONDS);
+            detail = "manager=" + (manager != null) + " heard=" + heard;
+            return manager != null && all && heard.equals(java.util.Arrays.asList("error android.credentials.GetCredentialException.TYPE_NO_CREDENTIAL",
+                    "error android.credentials.CreateCredentialException.TYPE_NO_CREATE_OPTIONS", "result null"));
+        });
     }
 
     /**
