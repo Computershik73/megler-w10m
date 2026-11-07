@@ -362,13 +362,13 @@ bool metered() {
 }
 
 void offer(AppShell& shell, const Found& f) {
-    const bool phone = platform::deviceFamily() == "Windows.Mobile";
+    const bool phone = platform::deviceFamily() == "Windows.Mobile", xbox = platform::isXbox();
     AppShell::DialogSpec spec;
     spec.title = "Megler " + f.version;
     const std::string news = whatsNew(f.notes);
     spec.message = format("A newer Megler is on GitHub: %s (this one is %s). Its package for this %s (%s) is %s%s: Megler downloads it, checks it and "
                           "installs it. Megler closes while Windows installs it, a few minutes%s; then open Megler again.",
-                          f.version.c_str(), appPackage::meglerVersion().c_str(), phone ? "phone" : "computer", packageSuffix().c_str(),
+                          f.version.c_str(), appPackage::meglerVersion().c_str(), phone ? "phone" : xbox ? "console" : "computer", packageSuffix().c_str(),
                           formattedByteCount(f.size).c_str(), metered() ? ", over a connection paid for by the byte" : "",
                           phone ? " (leave the phone on)" : "") +
                    (news.empty() ? std::string() : "\n\nWhat's new:\n" + news);
@@ -401,6 +401,9 @@ std::string packageSuffix() {
             arch = winrt::Windows::ApplicationModel::Package::Current().Id().Architecture();
         } catch (...) {
         }
+        // An Xbox's own (tools/build-appx.sh x64 --xbox: its manifest the console's, its installs its Device Portal's), the
+        // console being x64; taken by the desktop's x64 Megler too, should one have been put on a console.
+        if (family == "Windows.Xbox") return std::string(arch == ProcessorArchitecture::X64 ? "Xbox_x64" : "");
         switch (arch) {
         case ProcessorArchitecture::Arm:
             // The phone's own; a 32-bit ARM Megler on desktop Windows (an ARM64 computer runs it) takes the desktop's, ARM64.
