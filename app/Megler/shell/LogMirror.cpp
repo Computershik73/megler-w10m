@@ -89,11 +89,11 @@ bool copyLog(const std::wstring& from, const std::wstring& to) {
     return copyWhole(from, to);
 }
 
-/// The folder made, and filled as it is at a start: the runs before, the running log begun.
-void begin() {
+/// The folder made, and filled as it is at a start: the runs before, the running log begun. False where it could not be made.
+bool begin() {
     if (!files::makeDirectories(gDir)) {
         fail("the folder " + narrow(gDir) + " could not be made");
-        return;
+        return false;
     }
     // As shellLog::initialize turned LocalState's: the copy of the run before is megler.prev.log now.
     if (files::exists(mirrored(L"megler.log"))) {
@@ -106,6 +106,7 @@ void begin() {
     gCopied = 0;
     gCapped = false;
     files::write(mirrored(L"package.txt"), packageText());
+    return true;
 }
 
 /// megler.log's lines that are new since the last pass, appended: up to capBytes, and there a line that says the rest comes
@@ -165,7 +166,7 @@ void run() {
     } catch (...) {
     }
     SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_BELOW_NORMAL);
-    bool begun = false;
+    bool made = false;  // the folder was made and filled, at the last begin()
     uint64_t asked = 0;
     {
         // Out of the way of the start, the busiest time of a phone's storage (an app's libraries, its classes, Google Play
@@ -177,15 +178,17 @@ void run() {
     for (;;) {
         try {
             // (Again where the folder went meanwhile: Megler removes a package's folder when it is not in the list of the
-            // installed ones, and one installed after the list was made may be running.)
-            if (!begun || !files::exists(gDir)) {
-                if (begun) shellLog::write("logs: " + narrow(gDir) + " was gone: begun again");
-                begin();
-                begun = true;
+            // installed ones, and one installed after the list was made may be running. Where it cannot be made at all, the
+            // pass is left out: fail() has said why, three times at most.)
+            if (!made || !files::exists(gDir)) {
+                if (made) shellLog::write("logs: " + narrow(gDir) + " was gone: begun again");
+                made = begin();
             }
-            shellLog::flush();
-            followLog();
-            copyOthers();
+            if (made) {
+                shellLog::flush();
+                followLog();
+                copyOthers();
+            }
         } catch (...) {
             fail("the mirror's pass failed");
         }
