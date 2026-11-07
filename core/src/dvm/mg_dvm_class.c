@@ -1064,6 +1064,8 @@ mg_dvm_method *mg_dvm_virtual_target(mg_dvm_method *m, mg_jobj *self)
 {
     mg_dvm_class *rc = mg_dvm_class_of(self);
     mg_dvm_method *t;
+    /* A private method is itself, an interface's too (and a hook's backup, which is private: mg_dvm_hook.c). */
+    if (m->flags & DVM_ACC_PRIVATE) return m;
     if (!(m->cls->flags & DVM_ACC_INTERFACE)) {
         if (m->vidx < 0) return m;                               /* private, a constructor: itself */
         if (m->vidx < rc->nvtab) return rc->vtab[m->vidx];
