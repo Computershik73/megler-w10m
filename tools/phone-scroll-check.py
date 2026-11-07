@@ -33,7 +33,7 @@ spec.loader.exec_module(flags)
 spec = importlib.util.spec_from_file_location('report', Path(__file__).with_name('phone-perf-report.py'))
 report = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(report)
-prefix = ('MeglerApp.' + args.app.replace('_', '-'))[:41]
+prefix = phone.app_identity_prefix(args.app)
 if args.package:
     identity, version, architecture, resource, publisher = args.package.rsplit('_', 4)
     if not identity.startswith(prefix):

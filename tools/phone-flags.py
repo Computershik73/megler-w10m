@@ -30,9 +30,9 @@ PFN = None  # the package whose flags these are: Megler's, or an app's own
 
 
 def app_package(android_package):
-    """The full name of the package Megler made of `android_package`. Its identity name is "MeglerApp." and the package,
-    '_' made '-', filled or cut to 50 characters (core/src/appx/mg_appx_manifest.c): the first 41 are the package's."""
-    prefix = ("MeglerApp." + android_package.replace("_", "-"))[:41]
+    """The full name of the package Megler made of `android_package`, by the beginning of its identity name
+    (phone.app_identity_prefix)."""
+    prefix = phone.app_identity_prefix(android_package)
     pkgs = json.loads(phone.get("/api/app/packagemanager/packages"))["InstalledPackages"]
     found = [p["PackageFullName"] for p in pkgs if p["PackageFullName"].split("_")[0].startswith(prefix)]
     if len(found) != 1:
