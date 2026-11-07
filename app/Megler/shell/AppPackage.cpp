@@ -5,6 +5,7 @@
 #include "megler.h"
 #include "library/Library.h"
 #include "player/Session.h"
+#include "shell/BundledApks.h"
 #include "shell/Files.h"
 #include "shell/PickedFile.h"
 #include "shell/Platform.h"
@@ -299,12 +300,19 @@ std::string keepInShared(const ApkEntry& entry, const std::string& identity, con
         if (!files::makeDirectories(part)) return format("The APK's folder in the shared folder could not be made (error %lu).", GetLastError());
         uint64_t mended = 0;
         const auto put = [&mended](const std::wstring& from, const std::wstring& to) {
-            return files::copy(from, to) && files::flush(to) && files::sameEnd(from, to, 1u << 20) && files::mend(from, to, mended);
+            uint64_t more = 0;
+            const bool whole = files::copyWhole(from, to, more);
+            mended += more;
+            return whole;
         };
+        // The library's copy of an APK Megler's package brings (bitgapps) is not copied on: the package's own is. A Lumia 650's
+        // copy of Google Play Store, made before copies were compared with what they were made from, had bytes of its own,
+        // and its app's APK in the shared folder took them along byte for byte (shell/BundledApks.h).
+        const std::wstring bundled = picked ? std::wstring() : bundledApks::originalOf(entry.path);
         std::string error;
         if (picked)
             error = picked->copyTo(part + L"\\app.apk");
-        else if (!put(entry.path, part + L"\\app.apk"))
+        else if (!put(bundled.empty() ? entry.path : bundled, part + L"\\app.apk"))
             error = format("The APK could not be copied to the shared folder (error %lu).", GetLastError());
         if (error.empty() && !splits.empty() && !files::makeDirectory(part + L"\\app.apk.splits"))
             error = format("The folder of the split APKs in the shared folder could not be made (error %lu).", GetLastError());
@@ -320,7 +328,8 @@ std::string keepInShared(const ApkEntry& entry, const std::string& identity, con
         if (mended)
             shellLog::write(format("app package: %llu bytes of the APK's copy in the shared folder differed after the copy, and were written again",
                                    (unsigned long long)mended));
-        shellLog::write("app package: the APK copied to " + narrow(folder) + ", " + formattedByteCount(entry.size));
+        shellLog::write("app package: the APK copied to " + narrow(folder) + ", " + formattedByteCount(entry.size) +
+                        (bundled.empty() ? std::string() : ", from Megler's package's " + narrow(bundled.substr(bundled.find_last_of(L'\\') + 1))));
     }
     // Small: each written beside and moved into place.
     const std::wstring cached = Library::instance().directory() + L"\\" + widen(entry.id);
@@ -722,9 +731,10 @@ bool registerServiceApk(const ApkEntry& entry, const std::string& installedFullN
     // classes in it (package 625: TikTok Lite's advertising ID failed).
     // And byte for byte: the next copy, made so, came out with a byte wrong in the middle of another DEX file of it (632); what
     // differs is written again from the APK (files::mend).
+    // (From Megler's package's own APK where the entry is a copy of one: shell/BundledApks.h.)
+    const std::wstring bundled = bundledApks::originalOf(entry.path);
     uint64_t mended = 0;
-    if (!files::copy(entry.path, apk + L".part") || !files::flush(apk + L".part") || !files::sameEnd(entry.path, apk + L".part", 1u << 20) ||
-        !files::mend(entry.path, apk + L".part", mended) || !files::move(apk + L".part", apk)) {
+    if (!files::copyWhole(bundled.empty() ? entry.path : bundled, apk + L".part", mended) || !files::move(apk + L".part", apk)) {
         shellLog::write("microG: the shared copy of " + narrow(entry.path) + " could not be made whole");
         files::remove(apk + L".part");
         return false;
