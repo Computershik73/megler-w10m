@@ -302,6 +302,15 @@ struct mg_dvm_frame {
  * with 15 MB of its 2 GB left in one piece (package 506).
  */
 #define DVM_STACK_SEGS 12
+/*
+ * The host's stack, for Java called from native code (a native method calling back) deeper than a thread's own stack goes:
+ * a stack of DVM_C_STACK_BYTES of its own, committed, with 64 KB below it never committed (so that running out of it is a
+ * fault and not a write into whatever lies there), made when the call would have thrown StackOverflowError and let go when
+ * it returns; at most DVM_C_STACKS on a thread at once (mg_dvm_interp.c, on_more_stack). Where the host has the stub that
+ * moves a call to another stack (32-bit ARM, mg_stubs.S).
+ */
+#define DVM_C_STACKS 8
+#define DVM_C_STACK_BYTES (512u * 1024u)
 typedef struct mg_dvm_stack_seg {
     mg_dvm_reg *base;
     size_t words, committed;
@@ -384,7 +393,14 @@ struct mg_dvm_thread {
     u32 made_sample;                   /* bytes made since its last sample of where objects are made (mg_dvm_made_say) */
     /* For the collector: the thread as the host knows it, to stop it; its C stack's limits, [stack_lo, stack_hi). */
     mg_thread *host;
-    mg_addr stack_lo, stack_hi;
+    volatile mg_addr stack_lo, stack_hi;
+    /*
+     * The stacks it went on from, where Java called from native code ran out of the thread's own and went on in a stack of
+     * its own (mg_dvm_invoke): for each below the current one, the part still in use, [outer_lo, outer_hi), for the
+     * collector to scan too. stack_lo and stack_hi are then the current one's.
+     */
+    volatile mg_addr outer_lo[DVM_C_STACKS], outer_hi[DVM_C_STACKS];
+    volatile int nouter;
 };
 
 /*

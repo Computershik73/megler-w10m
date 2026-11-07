@@ -266,6 +266,12 @@ MG_HOSTAPI void mg_futex_wake(volatile i32 *addr, bool all);
 /* The calling thread's stack: [lo, hi). */
 MG_HOSTAPI void mg_thread_stack_bounds(void **lo, void **hi);
 /*
+ * The limits of the stack the calling thread now runs on, as the host's own code goes by them (Windows' stack probes and
+ * unwinder read the thread's NT_TIB), set to [lo, hi); what they were is put in *was_lo and *was_hi when not NULL. For a
+ * thread that goes on in a stack of another's memory (mg_dvm_invoke's on_more_stack) and back. Nothing on POSIX.
+ */
+MG_HOSTAPI void mg_thread_stack_limits(void *lo, void *hi, void **was_lo, void **was_hi);
+/*
  * Makes all of the calling thread's stack usable at once, for a thread about
  * to run Android code. Windows hands a stack out a page at a time, to code
  * that feels its way down (every frame bigger than a page probes each page

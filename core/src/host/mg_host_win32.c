@@ -1168,6 +1168,15 @@ void mg_thread_stack_bounds(void **lo, void **hi)
     *hi = (void *)high;
 }
 
+void mg_thread_stack_limits(void *lo, void *hi, void **was_lo, void **was_hi)
+{
+    NT_TIB *tib = (NT_TIB *)NtCurrentTeb();
+    if (was_lo) *was_lo = tib->StackLimit;
+    if (was_hi) *was_hi = tib->StackBase;
+    tib->StackLimit = lo;
+    tib->StackBase = hi;
+}
+
 void mg_thread_whole_stack(void)
 {
     NT_TIB *tib = (NT_TIB *)NtCurrentTeb();

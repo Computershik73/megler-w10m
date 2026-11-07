@@ -379,5 +379,35 @@ public class Main extends Activity {
             detail = "" + r;
             return r == 3139533;
         });
+        step("deep-callbacks", () -> {
+            /*
+             * Native code and Java calling each other 150 levels deep on a thread of the default stack, as Meta's FlexLayout
+             * measures a layout (Instagram, Messenger and Facebook Lite ended at their sign-in screens with "StackOverflowError: 22
+             * calls from native code deep"): Android's threads have 1 MB for it.
+             */
+            /* At the bottom a collection on that thread, then one by this thread while that one waits there, then garbage made
+               where what the collections lost would be: each level's string, held by its native frame alone, must be as it was. */
+            final int[] got = { -2 };
+            final Throwable[] failed = new Throwable[1];
+            final java.util.concurrent.CountDownLatch atBottom = new java.util.concurrent.CountDownLatch(1), collected = new java.util.concurrent.CountDownLatch(1);
+            final String[] junk = new String[512];
+            Lib.deepest = () -> {
+                System.gc();
+                atBottom.countDown();
+                try { collected.await(); } catch (InterruptedException e) { throw new RuntimeException(e); }
+                for (int k = 0; k < 20000; k++) junk[k % junk.length] = "garbage of the layout " + k;
+            };
+            Thread t = new Thread(() -> {
+                try { got[0] = Lib.down(150); } catch (Throwable e) { failed[0] = e; }
+            }, "deep-layout");
+            t.start();
+            atBottom.await();
+            System.gc();
+            collected.countDown();
+            t.join();
+            Lib.deepest = null;
+            detail = "depth " + got[0] + (failed[0] != null ? " " + failed[0] : "");
+            return got[0] == 150 && failed[0] == null;
+        });
     }
 }

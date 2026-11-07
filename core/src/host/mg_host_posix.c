@@ -588,6 +588,15 @@ void mg_futex_wake(volatile i32 *addr, bool all)
 /* A thread's stack is all there from the start here (and the first thread's grows wherever it is touched). */
 void mg_thread_whole_stack(void) { }
 
+/* Nothing of the host's own goes by a thread's stack limits here. */
+void mg_thread_stack_limits(void *lo, void *hi, void **was_lo, void **was_hi)
+{
+    (void)lo;
+    (void)hi;
+    if (was_lo) *was_lo = NULL;
+    if (was_hi) *was_hi = NULL;
+}
+
 void mg_thread_stack_bounds(void **lo, void **hi)
 {
     pthread_attr_t a;
