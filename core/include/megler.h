@@ -1483,12 +1483,13 @@ typedef struct megler_system_bars_host {
  *                 returns at once. A Java app's windows are laid out again at the new size, and its activities have
  *                 Android's configuration change: one whose android:configChanges takes all that changed hears
  *                 onConfigurationChanged, the others are made again with the state they saved, as ActivityThread
- *                 relaunches them -- an activity that is not on the screen when it comes back -- and a change of size
- *                 that crosses none of the sizes the app's resources are made for (w600dp, sw720dp...) relaunches
- *                 nothing, as on Android. A game's window is made again at the new size and the game hears
- *                 onConfigurationChanged. The pictures after it are of the new size; one already on its way may still be
- *                 of the old. Call it when a resize has settled, not at every step of a drag: each call is a configuration
- *                 change, which may relaunch the activity. Until it is called the surface is megler_run_config's.
+ *                 relaunches them (one that is not on the screen, when it comes back to it); a change of size that
+ *                 crosses none of the sizes the app's resources are made for (w600dp, sw720dp...) relaunches nothing,
+ *                 as on Android. A game's window is made again at a new size, and the game hears onConfigurationChanged.
+ *                 A screen only turned upside down changes no configuration: the display's rotation says it. The
+ *                 pictures after it are of the new size; one already on its way may still be of the old. Call it when a
+ *                 resize has settled, not at every step of a drag: each call is a configuration change, which may
+ *                 relaunch the activity. Until it is called the surface is megler_run_config's.
  */
 enum {
     MEGLER_ORIENTATION_UNSPECIFIED = -1, MEGLER_ORIENTATION_LANDSCAPE = 0, MEGLER_ORIENTATION_PORTRAIT = 1, MEGLER_ORIENTATION_USER = 2,
