@@ -384,7 +384,11 @@ if [ ! -f "$OBJ/shell/pch.pch" ] || [ "$APP/pch.h" -nt "$OBJ/shell/pch.pch" ]; t
   find "$OBJ/shell" -name '*.obj' ! -name pch.obj -delete
   echo "    precompiled header"
 fi
-mapfile -t SHELL_SRC < <(find "$APP" -name '*.cpp' ! -name pch.cpp ! -name GfxHost.cpp ! -path '*/AppPackages/*' | sort)
+# The client of an Xbox's Device Portal (shell/DevicePortal.cpp) is the Xbox's package's alone: a phone's and a PC's Megler
+# install through Windows's deployment engine and have not a word of it (an object of it left in the folder goes too).
+SKIP_SHELL=(! -name DevicePortal.cpp)
+rm -f "$OBJ/shell/DevicePortal.obj"
+mapfile -t SHELL_SRC < <(find "$APP" -name '*.cpp' ! -name pch.cpp ! -name GfxHost.cpp "${SKIP_SHELL[@]}" ! -path '*/AppPackages/*' | sort)
 # Shell file names are unique across its folders, so one object folder does.
 compile_group "$OBJ/shell" "$SHELL_HEADERS" "${SHELL_FLAGS[@]}" /Yu"pch.h" -- "${SHELL_SRC[@]}"
 # A Java app's drawing (player/GfxHost.cpp: Direct2D, DirectWrite, WIC) is plain COM with no WinRT in it and is also
