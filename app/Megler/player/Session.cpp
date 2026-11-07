@@ -248,6 +248,20 @@ bool start(const ApkEntry& apk, winrt::Windows::UI::Xaml::Controls::SwapChainPan
         config.gms_apk_path = servicePath.empty() ? nullptr : servicePath.c_str();
         const std::string gsfPath = narrow(appPackage::gsfApk());
         config.gsf_apk_path = gsfPath.empty() ? nullptr : gsfPath.c_str();
+        /*
+         * Held open, with no one let delete them, as long as the app runs: the core opens Google Play services' APK only when
+         * the app first wants it, and Megler, registering Google Play services' next copy (Update All), removes the copies no
+         * one has open. Play Store and Gmail, started during an Update All with the copy registered a second before, found
+         * it gone when they first wanted it ("the file cannot be opened"): no Google Play services for as long as they ran,
+         * "Authentication required" in Play Store and "NO_NETWORK" in Gmail. (Others may still read and write them: the
+         * check of the bundled APKs mends a copy in place, files::mend.)
+         */
+        for (const std::string* held : {&servicePath, &gsfPath}) {
+            if (held->empty()) continue;
+            const HANDLE h = CreateFile2(widen(*held).c_str(), GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE, OPEN_EXISTING, nullptr);
+            if (h == INVALID_HANDLE_VALUE) shellLog::write(format("session: %s could not be held open (error %lu)", held->c_str(), GetLastError()));
+            // (Never closed: the process ends with the app.)
+        }
         config.splits_dir = gSplitsDir.empty() ? nullptr : gSplitsDir.c_str();
         config.split_apks = nullptr;
         config.split_count = 0;
