@@ -4386,6 +4386,60 @@ public class Main extends Activity {
             detail = u + " path=" + u.getPath() + " hierarchical=" + u.isHierarchical() + "; " + bare + " path=" + bare.getPath();
             return "max:/:chat-list".equals(u.toString()) && "/:chat-list".equals(u.getPath()) && u.isHierarchical() && "a/b".equals(bare.getPath());
         });
+        step("html-tag-handler", () -> {
+            // Html.fromHtml as Android's: the spans of the elements it knows, a paragraph's line breaks after it, elements left
+            // open ended with the text, character references read; and a TagHandler is given html and body before the rest,
+            // with the reader, whose ContentHandler it takes to read an element's attributes (VTB's way: its handleTag called
+            // getContentHandler() on the reader, which was null here).
+            final java.util.ArrayList<String> tags = new java.util.ArrayList<>();
+            final String[] attr = { null };
+            final class Attrs implements android.text.Html.TagHandler, org.xml.sax.ContentHandler {
+                org.xml.sax.ContentHandler wrapped;
+                public void handleTag(boolean opening, String tag, android.text.Editable out, org.xml.sax.XMLReader reader) {
+                    tags.add((opening ? "+" : "-") + tag);
+                    if (wrapped == null) {
+                        wrapped = reader.getContentHandler();
+                        reader.setContentHandler(this);
+                    }
+                }
+                public void startElement(String uri, String local, String q, org.xml.sax.Attributes a) throws org.xml.sax.SAXException {
+                    if ("mark".equals(local)) attr[0] = a.getValue("", "data-x");
+                    wrapped.startElement(uri, local, q, a);
+                }
+                public void endElement(String uri, String local, String q) throws org.xml.sax.SAXException { wrapped.endElement(uri, local, q); }
+                public void characters(char[] ch, int s, int l) throws org.xml.sax.SAXException { wrapped.characters(ch, s, l); }
+                public void setDocumentLocator(org.xml.sax.Locator l) {}
+                public void startDocument() {}
+                public void endDocument() {}
+                public void startPrefixMapping(String p, String u) {}
+                public void endPrefixMapping(String p) {}
+                public void ignorableWhitespace(char[] ch, int s, int l) {}
+                public void processingInstruction(String t, String d) {}
+                public void skippedEntity(String n) {}
+            }
+            android.text.Spanned custom = android.text.Html.fromHtml("<mark data-x=\"7\">a</mark>b", null, new Attrs());
+            android.text.Spanned styled = android.text.Html.fromHtml("<b>bold</b> and <i>it</i><br>next", 0);
+            android.text.style.StyleSpan[] styles = styled.getSpans(0, styled.length(), android.text.style.StyleSpan.class);
+            boolean stylesOk = styles.length == 2 && styles[0].getStyle() == android.graphics.Typeface.BOLD && styled.getSpanStart(styles[0]) == 0
+                    && styled.getSpanEnd(styles[0]) == 4 && styles[1].getStyle() == android.graphics.Typeface.ITALIC && styled.getSpanStart(styles[1]) == 9
+                    && styled.getSpanEnd(styles[1]) == 11;
+            String legacy = android.text.Html.fromHtml("<p>one</p><p>two</p>", android.text.Html.FROM_HTML_MODE_LEGACY).toString();
+            String compact = android.text.Html.fromHtml("<p>one</p><p>two</p>", android.text.Html.FROM_HTML_MODE_COMPACT).toString();
+            android.text.Spanned list = android.text.Html.fromHtml("<ul><li>a</li><li>b</li></ul>", 0);
+            int bullets = list.getSpans(0, list.length(), android.text.style.BulletSpan.class).length;
+            String refs = android.text.Html.fromHtml("&lt;b&gt; &amp; &copy;&#169;&#xA9;&nbsp;x").toString();
+            android.text.Spanned link = android.text.Html.fromHtml("<a href=\"https://example.com/?a=1&amp;b=2\">l</a>");
+            android.text.style.URLSpan[] urls = link.getSpans(0, link.length(), android.text.style.URLSpan.class);
+            android.text.Spanned open = android.text.Html.fromHtml("<b>x<i>y");
+            int openStyles = open.getSpans(0, open.length(), android.text.style.StyleSpan.class).length;
+            detail = "tags=" + tags + " attr=" + attr[0] + " custom=" + custom + " styled=" + styled.toString().replace("\n", "\\n") + " styles=" + stylesOk
+                    + " legacy=" + legacy.replace("\n", "\\n") + " compact=" + compact.replace("\n", "\\n") + " list=" + list.toString().replace("\n", "\\n")
+                    + " bullets=" + bullets + " refs=" + refs + " url=" + (urls.length == 1 ? urls[0].getURL() : "none") + " open=" + open + "/" + openStyles;
+            return "[+html, +body, +mark, -mark, -body, -html]".equals(tags.toString()) && "7".equals(attr[0]) && "ab".equals(custom.toString())
+                    && "bold and it\nnext".equals(styled.toString()) && stylesOk && "one\n\ntwo\n\n".equals(legacy) && "one\ntwo\n".equals(compact)
+                    && "a\n\nb\n\n".equals(list.toString()) && bullets == 2 && "<b> & \u00A9\u00A9\u00A9\u00A0x".equals(refs)
+                    && urls.length == 1 && "https://example.com/?a=1&b=2".equals(urls[0].getURL()) && "xy".equals(open.toString()) && openStyles == 2;
+        });
     }
 
     /**
