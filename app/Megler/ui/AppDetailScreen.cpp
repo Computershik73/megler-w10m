@@ -251,6 +251,8 @@ private:
         }
         // The package made, when neither the deployment engine nor the portal installed it: Windows's own installer, as a file
         // manager opens a package.
+        auto trust = hstack(0);
+        trust.Margin(ThicknessHelper::FromLengths(-12, -12, 0, 0));
         if (!s.made.appx.empty() && !installed) {
             const std::wstring appx = s.made.appx, certificate = s.made.certificate;
             add(more, textButton("Open the Package", [this, appx] { openFile(appx); }));
@@ -259,12 +261,14 @@ private:
             } else {
                 // Desktop Windows opens no certificate an app hands it ("Windows didn't open it"), and only an administrator
                 // can make the machine trust one: the command that does, for PowerShell run as administrator, and the
-                // certificate in File Explorer, where it opens with Install Certificate.
-                add(more, textButton("Copy the Command", [this] { copyTrustCommand(); }));
-                add(more, textButton("Show the Certificate", [this] { showCertificate(); }));
+                // certificate in File Explorer, where it opens with Install Certificate. (A row of their own: four buttons
+                // are wider than Megler's window.)
+                add(trust, textButton("Copy the Command", [this] { copyTrustCommand(); }));
+                add(trust, textButton("Show the Certificate", [this] { showCertificate(); }));
             }
         }
         if (more.Children().Size()) add(column, more);
+        if (trust.Children().Size()) add(column, trust);
 
         std::string footer = r.ready() ? std::string("An app of the phone's own: Megler and this ") + (entry.splitsDir.empty() ? "APK" : "app's APKs") +
                                              " in a package with the app's name and icon, made here and installed by Windows as the Store installs "
