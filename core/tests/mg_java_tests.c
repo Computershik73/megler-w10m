@@ -1582,7 +1582,11 @@ static int run_demos(void)
         all[3] = W.height;
         moved = count_changed(list, all);
         CHECK(moved == 0);
-        if (moved) say("  (%d pixels are not where they were before the drag)", moved);
+        if (moved) {
+            int box[4];
+            if (changed_box(list, box)) say("  (%d pixels are not where they were before the drag, within %d,%d %dx%d)", moved, box[0], box[1], box[2], box[3]);
+            write_picture("demos-5-drag-moved");
+        }
         CHECK(find_line("list: clicked row", 0) < 0);
         {
             /*
@@ -1610,7 +1614,11 @@ static int run_demos(void)
             }
             moved = count_changed(list, all);
             CHECK(moved == 0);
-            if (moved) say("  (%d pixels are not where they were before the batched moves)", moved);
+            if (moved) {
+                int box[4];
+                if (changed_box(list, box)) say("  (%d pixels are not where they were before the batched moves, within %d,%d %dx%d)", moved, box[0], box[1], box[2], box[3]);
+                write_picture("demos-5-batched-moved");
+            }
             CHECK(find_line("list: clicked row", 0) < 0);
         }
     }
