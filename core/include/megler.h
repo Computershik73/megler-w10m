@@ -1479,8 +1479,9 @@ typedef struct megler_system_bars_host {
  *                _UNDECIDED, never asked. With `ask` false the answer comes at once and nothing is asked; that comes on
  *                any of the app's threads, its main thread too. With `ask` true the user is asked first if they have not
  *                decided or have said no once -- Windows' own question for the camera, the microphone and the location,
- *                the shell's for the rest -- and the call waits for the answer (_UNDECIDED: the question was put away
- *                unanswered); it comes on a thread of the app's that may wait, never its main thread. The shell keeps
+ *                the shell's for the rest -- and the call waits for the answer (what it was before, when the question was
+ *                put away unanswered or could not be put); it comes on a thread of the app's that may wait, never its main
+ *                thread. The shell keeps
  *                what the user said, for the app, from run to run; it may grant a group it has nothing behind at once.
  *                The framework (megler.Permissions) asks it of a group whose permissions the app's manifest asks for and
  *                whose answer Android's rules do not settle by themselves. Left NULL: every group is granted, nothing asked.
