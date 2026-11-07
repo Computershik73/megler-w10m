@@ -193,9 +193,13 @@ trust the package's certificate (`AppPackages/Megler.cer`). A package you do not
 yourself is on [the latest release](https://github.com/Computershik73/megler-w10m/releases/latest),
 with its `Megler.cer`.
 
-Install the package with the Device Portal (`python tools/phone.py install`), or copy it
-with its `Megler.cer` into the phone's `Pictures\Megler` folder: Megler installs the newest
-package it finds there when it starts. Then, in Megler:
+The first time, install the package from a PC through the phone's Device Portal
+(`python tools/phone.py install`), or open it in the phone's file manager, which hands it
+to Windows's App Installer. After that Megler updates itself: from GitHub (Settings ›
+Updates), or from a newer package copied with its `Megler.cer` into the phone's
+`Pictures\Megler` folder, which it installs when it starts. Megler installs its updates and
+the apps' packages through Windows's deployment engine and asks the Device Portal nothing:
+the portal need not be on for it, nor its authentication off. Then, in Megler:
 
 1. **Add APK** (or open an APK, `.apks` or `.xapk` from the phone's file manager), or open
    Google Play from the library and install from there.
