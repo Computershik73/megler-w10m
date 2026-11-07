@@ -34,6 +34,8 @@ void mg_run_files(const char *data_dir, const char *storage_dir, const char *pac
  * private folder and its own Android/data folder go, and the ask; true then.
  */
 bool mg_run_clear_data_if_asked(const char *data_dir, const char *storage_dir, const char *package);
+/* Whether such an ask waits for the app's next start (megler_clear_data_asked). */
+bool mg_run_clear_data_asked(const char *storage_dir, const char *package);
 /*
  * The host folder that holds an app's own part of the shared storage (its Android/data/<package> and Android/obb/<package>
  * are under it, as under /storage/emulated/0): <data_dir>/apps/<package>/sdcard, malloc'd. Where mg_run_files mounts it,

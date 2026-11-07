@@ -145,6 +145,8 @@ void megler_start_activity(const char *activity_class) { mg_java_start_activity(
 void megler_sms_received(const char *from, const char *body, int64_t time_ms) { mg_java_phone_sms(from, body, time_ms); }
 void megler_call_logged(const char *number, int64_t time_ms, int type, int duration_s) { mg_java_phone_call(number, time_ms, type, duration_s); }
 
+bool megler_clear_data_asked(const char *package) { return g_data_dir[0] && mg_run_clear_data_asked(megler_storage_dir(), package); }
+
 bool megler_ask_clear_data(const char *package)
 {
     char *dir, *path;

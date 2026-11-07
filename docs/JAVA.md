@@ -3335,7 +3335,12 @@ question (Allow, Don't Allow), kept in the app's settings, a second no for
 good; and the contacts, the calendar, the body sensors, nearby devices,
 notifications and physical activity granted with no one asked, since Megler
 gives an app none of those of the phone's. An app's App Settings list its
-groups, what was said, and change Megler's answers.
+groups, what was said, and change Megler's answers. Clearing an app's data
+(Clear Data on its page in Megler, or Clear storage on Android's app info
+screen in the app) forgets Megler's answers too, as Android's Clear storage
+resets an app's permissions: the shell does it as the clear is asked and as
+the app next starts with one waiting (`megler_clear_data_asked`). Windows'
+own answers stay; they are changed in its privacy settings.
 
 ### The phone's text messages and calls
 

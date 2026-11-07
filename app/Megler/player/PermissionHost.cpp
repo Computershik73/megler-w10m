@@ -310,6 +310,13 @@ void keep(const std::string& package, const std::string& group, int state) {
     settings::setApp(package, "megler.permission." + group, name[0] ? std::optional<std::string>(name) : std::nullopt);
 }
 
+void forgetAll(const std::string& package) {
+    if (package.empty()) return;
+    const int forgotten = settings::eraseApp(package, "megler.permission.");
+    shellLog::write("permissions: " + package + "'s data is cleared: " +
+                    (forgotten ? std::to_string(forgotten) + " answer(s) forgotten, the app asks again" : std::string("no answers kept to forget")));
+}
+
 int windows(const std::string& group) {
     int state = MEGLER_PERMISSION_UNDECIDED;
     inMta([&] { state = windowsNow(group); });

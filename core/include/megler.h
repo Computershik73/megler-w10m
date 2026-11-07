@@ -1744,6 +1744,9 @@ MEGLER_API void megler_start_activity(const char *activity_class);
  * Android's app info screen. True when the ask is written. Needs megler_init.
  */
 MEGLER_API bool megler_ask_clear_data(const char *package);
+/* Whether such an ask waits for the app's next start: the shell forgets then what it keeps of the app's own, as Android's
+   Clear storage does -- the user's answers to its permissions (player/PermissionHost.h). Needs megler_init. */
+MEGLER_API bool megler_clear_data_asked(const char *package);
 /* Frames presented since the app started. */
 MEGLER_API uint32_t megler_frames(void);
 

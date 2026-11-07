@@ -52,6 +52,10 @@ std::vector<Group> groupsOf(const ApkReport& report);
 int kept(const std::string& package, const std::string& group);
 /// Kept: GRANTED, DENIED, DENIED_FIXED; UNDECIDED forgets, and the app asks again.
 void keep(const std::string& package, const std::string& group, int state);
+/// Every answer kept for the app forgotten, as Android's Clear storage resets an app's permissions: when its data is to be
+/// cleared (megler_ask_clear_data from its page in Megler; megler_clear_data_asked at its start, for the app's own Clear
+/// storage). Windows' own answers (the location, the camera, the microphone) are Windows' to change, in its privacy settings.
+void forgetAll(const std::string& package);
 
 /// What Windows' privacy settings say of this process's package for a group Windows decides: MEGLER_PERMISSION_*.
 int windows(const std::string& group);

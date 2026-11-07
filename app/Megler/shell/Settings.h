@@ -29,6 +29,9 @@ void setMegler(const std::string& key, const std::string& value);
 std::optional<std::string> app(const std::string& package, const std::string& key);
 /// Sets the app's own, or, with nothing, has it go by Megler's again.
 void setApp(const std::string& package, const std::string& key, const std::optional<std::string>& value);
+/// Takes out every key of the app's own that begins with `prefix`, in one write: its permission answers, when its data is
+/// cleared (player/PermissionHost.h). How many went.
+int eraseApp(const std::string& package, const std::string& prefix);
 
 /// The longer side of the surface an app draws to, in pixels: 960, 1280,
 /// 1600, or 0 for the panel's own size. A phone's 2560x1440 is four times the

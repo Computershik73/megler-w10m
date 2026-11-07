@@ -14,6 +14,7 @@
 #include "player/LocationHost.h"
 #include "player/MicrophoneHost.h"
 #include "player/MediaHost.h"
+#include "player/PermissionHost.h"
 #include "player/PhoneEvents.h"
 #include "player/PhoneState.h"
 #include "player/StorageHost.h"
@@ -204,6 +205,9 @@ bool start(const ApkEntry& apk, winrt::Windows::UI::Xaml::Controls::SwapChainPan
         gAppsDir = !apps.empty() && files::exists(apps + L"\\apps.txt") ? narrow(apps) : std::string();
     }
     systemHost::setRunningApp(apk.title(), apk.report.package);
+    // The app's data to be cleared as it starts (Android's Clear storage, megler_ask_clear_data): the user's answers to its
+    // permissions go with it, as Android resets them; the core clears the files when it starts the app.
+    if (megler_clear_data_asked(apk.report.package.c_str())) permissionHost::forgetAll(apk.report.package);
     audio->setMedia(gBackgroundAudio);
     // The sound output takes a second and a half to build the first time:
     // begun now, at the rate the core's mixer runs at, it is there before the
