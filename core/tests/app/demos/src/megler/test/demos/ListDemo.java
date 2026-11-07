@@ -11,6 +11,7 @@ import android.os.Handler;
 import android.os.Looper;
 import android.os.SystemClock;
 import android.util.Log;
+import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.ViewTreeObserver;
@@ -31,6 +32,8 @@ public class ListDemo extends Activity implements AdapterView.OnItemClickListene
     private boolean shown, chain = true;
     /* Rows the adapter has been asked for (getView), from the start. */
     private int bound;
+    /* A finger's moves on the list: the events they came in, and the samples in them (each event's history and itself). */
+    private int moveEvents, moveSamples;
 
     private static void say(String what) {
         Log.i("DemoTest", what);
@@ -48,6 +51,22 @@ public class ListDemo extends Activity implements AdapterView.OnItemClickListene
             }
         });
         list.setOnItemClickListener(this);
+        // How a finger's moves come: Megler batches those that come between two frames into one event (its history).
+        list.setOnTouchListener(new View.OnTouchListener() {
+            @Override
+            public boolean onTouch(View v, MotionEvent e) {
+                if (e.getActionMasked() == MotionEvent.ACTION_DOWN) moveEvents = moveSamples = 0;
+                if (e.getActionMasked() == MotionEvent.ACTION_MOVE) {
+                    moveEvents++;
+                    moveSamples += e.getHistorySize() + 1;
+                    // The samples in order, the last the event's own place.
+                    for (int h = 0; h < e.getHistorySize(); h++)
+                        if (e.getHistoricalEventTime(h) > (h + 1 < e.getHistorySize() ? e.getHistoricalEventTime(h + 1) : e.getEventTime())) say("list: a move's samples out of order");
+                }
+                if (e.getActionMasked() == MotionEvent.ACTION_UP) say("list: a finger's moves came as " + moveEvents + " events of " + moveSamples + " samples");
+                return false;
+            }
+        });
         setContentView(list);
         say("list: created with " + list.getAdapter().getCount() + " rows");
     }

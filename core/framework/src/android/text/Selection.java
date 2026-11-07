@@ -8,10 +8,18 @@ public class Selection {
     private Selection() {}
     public static final int getSelectionStart(CharSequence t) { return t instanceof Spanned ? ((Spanned) t).getSpanStart(SELECTION_START) : -1; }
     public static final int getSelectionEnd(CharSequence t) { return t instanceof Spanned ? ((Spanned) t).getSpanStart(SELECTION_END) : -1; }
+    /*
+     * As Android's: a selection already where it is asked to be is left alone, and the start is moved as an intermediate
+     * change (SPAN_INTERMEDIATE), so that a TextView tells onSelectionChanged once, when both ends are in place. Both spans
+     * were set every time, and TextView told each: WhatsApp's MentionableEntry calls setSelection from its own
+     * onSelectionChanged, with the very ends it was told when the cursor is in no mention, and that called it again, until a
+     * StackOverflowError 12315 frames deep ended WhatsApp.
+     */
     public static void setSelection(Spannable t, int start, int stop) {
         int len = t.length();
         start = Math.max(0, Math.min(start, len)); stop = Math.max(0, Math.min(stop, len));
-        t.setSpan(SELECTION_START, start, start, Spanned.SPAN_POINT_POINT);
+        if (getSelectionStart(t) == start && getSelectionEnd(t) == stop) return;
+        t.setSpan(SELECTION_START, start, start, Spanned.SPAN_POINT_POINT | Spanned.SPAN_INTERMEDIATE);
         t.setSpan(SELECTION_END, stop, stop, Spanned.SPAN_POINT_POINT);
     }
     public static final void setSelection(Spannable t, int index) { setSelection(t, index, index); }

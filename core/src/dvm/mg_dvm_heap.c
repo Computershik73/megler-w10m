@@ -83,6 +83,8 @@ static u64 g_small_bytes, g_large_bytes, g_reserved, g_bare;
 /* Spare blocks kept committed, ready for the next classes asked for (8 MB); the others' memory goes back (see the top). */
 #define SPARE_COMMITTED 128u
 static u32 g_objects;                  /* cells in use and large objects */
+/* No mark is set: from a sweep, which clears every block's as it goes, until a marking starts (mg_dvm_heap_clear_marks). */
+static bool g_marks_clear = true;
 static mg_addr g_lo = ~(mg_addr)0, g_hi;   /* every object lies in [g_lo, g_hi) */
 
 /*
@@ -441,12 +443,29 @@ bool mg_dvm_heap_is_marked(const void *o)
 }
 
 void mg_dvm_heap_alloc_black(bool on) { mg_atomic_xchg(&g_black, on ? 1 : 0); }
+bool mg_dvm_heap_black(void) { return g_black != 0; }
 bool mg_dvm_heap_watched(void) { return g_watch; }
 
+/*
+ * Every arena's write watch started again: before the first stop of a collection alongside the app, the app running (a
+ * page written between this and that stop is looked at again at the second stop, for nothing). It was done with the world
+ * stopped, for every page the app had written since the last collection, in each first stop of Spotify's on a Lumia 650:
+ * 85 to 105 ms each, every 3 to 5 s (package 664). The arenas are listed under the heap's lock and watched again outside
+ * it, so that what allocates does not wait meanwhile; one made after it is watched from its start.
+ */
 void mg_dvm_heap_watch_restart(void)
 {
-    u32 pages[ARENA_SIZE / MG_PAGE], i;
-    for (i = 0; i < g_narenas; i++) mg_mem_written_pages(g_arenas[i], ARENA_SIZE, pages, (int)MG_COUNT(pages));
+    u32 pages[ARENA_SIZE / MG_PAGE], i, n;
+    u8 **arenas;
+    if (!g_watch) return;
+    mg_lock_acquire(&g_heap_lock);
+    n = g_narenas;
+    arenas = n ? (u8 **)malloc(sizeof(*arenas) * n) : NULL;
+    if (arenas) memcpy(arenas, g_arenas, sizeof(*arenas) * n);
+    mg_lock_release(&g_heap_lock);
+    if (!arenas) return;
+    for (i = 0; i < n; i++) mg_mem_written_pages(arenas[i], ARENA_SIZE, pages, (int)MG_COUNT(pages), true);
+    free(arenas);
 }
 
 /* The marked objects of block `b` any of whose bytes lie in [lo, hi). */
@@ -463,13 +482,69 @@ static void marked_in(block *b, u8 *lo, u8 *hi, void (*fn)(void *o))
         if (b->mark[c >> 5] & b->inuse[c >> 5] & (1u << (c & 31))) fn(b->first + (size_t)c * b->cell);
 }
 
+/* Pages the arenas have (with the heap's lock held): what mg_dvm_heap_written_list may give, at the most. */
+u32 mg_dvm_heap_pages(void) { return g_narenas * (ARENA_SIZE / MG_PAGE); }
+
+/*
+ * The pages of the heap's blocks in use written since the watch was started again -- every page of them where the arenas
+ * are not watched -- into `out` (room for mg_dvm_heap_pages()), for the collector's threads to share
+ * (mg_dvm_heap_marked_on); how many. The world stopped. Large objects are not in it (mg_dvm_heap_each_marked_large).
+ */
+u32 mg_dvm_heap_written_list(u8 **out, u32 cap)
+{
+    u32 pages[ARENA_SIZE / MG_PAGE], i, got = 0;
+    int n, k;
+    for (i = 0; i < g_narenas; i++) {
+        u8 *a = g_arenas[i];
+        n = g_watch ? mg_mem_written_pages(a, ARENA_SIZE, pages, (int)MG_COUNT(pages), false) : -1;
+        if (n < 0) {
+            for (k = 0; k < (int)(ARENA_SIZE / MG_PAGE); k++) {
+                block *b = (block *)(void *)(a + ((size_t)k * MG_PAGE / BLOCK_SIZE) * BLOCK_SIZE);
+                if (b->cls >= 0 && got < cap) out[got++] = a + (size_t)k * MG_PAGE;
+            }
+            continue;
+        }
+        for (k = 0; k < n; k++) {
+            block *b = (block *)(void *)(a + ((size_t)pages[k] * MG_PAGE / BLOCK_SIZE) * BLOCK_SIZE);
+            if (b->cls >= 0 && got < cap) out[got++] = a + (size_t)pages[k] * MG_PAGE;
+        }
+    }
+    return got;
+}
+
+/* `fn` for every marked object any of whose bytes lie on `page` (one mg_dvm_heap_written_list gave). */
+void mg_dvm_heap_marked_on(u8 *page, void (*fn)(void *o, void *user), void *user)
+{
+    block *b = block_of((mg_addr)page);
+    u8 *end, *lo = page, *hi = page + MG_PAGE;
+    u32 c, last;
+    if (!b) return;
+    end = b->first + (size_t)b->bump * b->cell;
+    if (lo < b->first) lo = b->first;
+    if (hi > end) hi = end;
+    if (lo >= hi) return;
+    c = cell_index(b, (size_t)(lo - b->first));
+    last = cell_index(b, (size_t)(hi - 1 - b->first));
+    for (; c <= last; c++)
+        if (b->mark[c >> 5] & b->inuse[c >> 5] & (1u << (c & 31))) fn(b->first + (size_t)c * b->cell, user);
+}
+
+/* `fn` for every marked large object: the C heap's memory, which nothing watches. The world stopped. */
+void mg_dvm_heap_each_marked_large(void (*fn)(void *o))
+{
+    u32 i;
+    for (i = 0; i < g_nlarge; i++)
+        if (g_large[i].mark) fn(g_large[i].start);
+}
+
 u32 mg_dvm_heap_each_written(void (*fn)(void *o))
 {
     u32 pages[ARENA_SIZE / MG_PAGE], i, written = 0;
     int n, k;
     for (i = 0; i < g_narenas; i++) {
         u8 *a = g_arenas[i];
-        n = g_watch ? mg_mem_written_pages(a, ARENA_SIZE, pages, (int)MG_COUNT(pages)) : -1;
+        /* (The watch is not started again here: the next collection does, before its first stop.) */
+        n = g_watch ? mg_mem_written_pages(a, ARENA_SIZE, pages, (int)MG_COUNT(pages), false) : -1;
         if (n < 0) {
             /* Not watched (or the host would not say): every page of it. */
             for (k = 0; k < (int)ARENA_BLOCKS; k++) {
@@ -492,15 +567,23 @@ u32 mg_dvm_heap_each_written(void (*fn)(void *o))
     return written;
 }
 
+/*
+ * Every mark cleared, for a marking that starts now: nothing to do after a sweep, which cleared them; otherwise (a census
+ * marked, or a collection alongside the app was given up) every block's and every large object's. It went over every block
+ * of the heap at each first stop of a collection alongside the app, Spotify's 3,000 and more (package 664).
+ */
 void mg_dvm_heap_clear_marks(void)
 {
     u32 i, k;
-    for (i = 0; i < g_narenas; i++)
-        for (k = 0; k < ARENA_BLOCKS; k++) {
-            block *b = (block *)(void *)(g_arenas[i] + (size_t)k * BLOCK_SIZE);
-            if (b->cls >= 0) memset(b->mark, 0, MARK_BYTES);
-        }
-    for (i = 0; i < g_nlarge; i++) g_large[i].mark = 0;
+    if (!g_marks_clear) {
+        for (i = 0; i < g_narenas; i++)
+            for (k = 0; k < ARENA_BLOCKS; k++) {
+                block *b = (block *)(void *)(g_arenas[i] + (size_t)k * BLOCK_SIZE);
+                if (b->cls >= 0) memset(b->mark, 0, MARK_BYTES);
+            }
+        for (i = 0; i < g_nlarge; i++) g_large[i].mark = 0;
+    }
+    g_marks_clear = false;
 }
 
 u32 mg_dvm_heap_objects(void) { return g_objects; }
@@ -619,6 +702,7 @@ u32 mg_dvm_heap_sweep(void (*dying)(void *o), bool poison, u64 *freed_objects, u
         else free(l->start);
     }
     g_nlarge = kept;
+    g_marks_clear = true;
     /* Spare blocks past the first few: their memory past the header's page back to the host. */
     {
         block *b;

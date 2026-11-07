@@ -137,12 +137,15 @@ bool megler_settle_databases(int ms)
     }
     return true;
 }
-void megler_settle_files(void) { mg_mem_write_back_all(0); }
+/* (A second at most for the lock: Windows gives the suspending app little time, and the UI thread is the one asking.) */
+void megler_settle_files(void) { mg_mem_write_back_all_until(mg_time_monotonic_ns() + 1000000000ull); }
 void megler_set_focused(bool focused) { mg_run_set_focused(focused); }
 void megler_stop(void) { mg_run_stop(); }
 void megler_start_activity(const char *activity_class) { mg_java_start_activity(activity_class); }
 void megler_sms_received(const char *from, const char *body, int64_t time_ms) { mg_java_phone_sms(from, body, time_ms); }
 void megler_call_logged(const char *number, int64_t time_ms, int type, int duration_s) { mg_java_phone_call(number, time_ms, type, duration_s); }
+
+bool megler_clear_data_asked(const char *package) { return g_data_dir[0] && mg_run_clear_data_asked(megler_storage_dir(), package); }
 
 bool megler_ask_clear_data(const char *package)
 {

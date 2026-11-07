@@ -36,10 +36,17 @@ public class ValueAnimator extends Animator {
     public static ValueAnimator ofPropertyValuesHolder(PropertyValuesHolder... v) { ValueAnimator a = new ValueAnimator(); a.setValues(v); return a; }
     public static ValueAnimator ofObject(TypeEvaluator e, Object... v) { ValueAnimator a = new ValueAnimator(); a.setObjectValues(v); a.setEvaluator(e); return a; }
 
-    public void setIntValues(int... v) { if (mValues != null && mValues.length > 0) mValues[0].setIntValues(v); else setValues(PropertyValuesHolder.ofInt("", v)); }
-    public void setFloatValues(float... v) { if (mValues != null && mValues.length > 0) mValues[0].setFloatValues(v); else setValues(PropertyValuesHolder.ofFloat("", v)); }
-    public void setObjectValues(Object... v) { if (mValues != null && mValues.length > 0) mValues[0].setObjectValues(v); else setValues(PropertyValuesHolder.ofObject("", null, v)); }
-    public void setValues(PropertyValuesHolder... v) { mValues = v; mValuesMap = new HashMap<>(); for (PropertyValuesHolder h : v) mValuesMap.put(h.getPropertyName(), h); }
+    /*
+     * New values are worked out afresh at the next start, as Android's setters have it (mInitialized cleared): an animator
+     * started once and given new holders went on as initialised, and its start listeners read a value the new holders had
+     * never worked out, null. (YouTube's watch panel, package 606, ended with a NullPointerException in a listener of its
+     * animator's start, when a video was opened on one phone and when the panel was minimised on another; that this was
+     * the null is likely, not proven.)
+     */
+    public void setIntValues(int... v) { if (mValues != null && mValues.length > 0) mValues[0].setIntValues(v); else setValues(PropertyValuesHolder.ofInt("", v)); mInitialized = false; }
+    public void setFloatValues(float... v) { if (mValues != null && mValues.length > 0) mValues[0].setFloatValues(v); else setValues(PropertyValuesHolder.ofFloat("", v)); mInitialized = false; }
+    public void setObjectValues(Object... v) { if (mValues != null && mValues.length > 0) mValues[0].setObjectValues(v); else setValues(PropertyValuesHolder.ofObject("", null, v)); mInitialized = false; }
+    public void setValues(PropertyValuesHolder... v) { mValues = v; mValuesMap = new HashMap<>(); for (PropertyValuesHolder h : v) mValuesMap.put(h.getPropertyName(), h); mInitialized = false; }
     public PropertyValuesHolder[] getValues() { return mValues; }
     public void setEvaluator(TypeEvaluator e) { if (mValues != null && mValues.length > 0) mValues[0].setEvaluator(e); }
     @Override public ValueAnimator setDuration(long d) { if (d < 0) throw new IllegalArgumentException("Animators cannot have negative duration: " + d); mDuration = d; return this; }

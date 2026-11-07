@@ -79,8 +79,20 @@ struct ApkReport {
     std::vector<std::string> notes;
     /// For an app in several APKs: the splits it is read with, and those its bundle's unpacking left out.
     std::vector<std::string> splits, splitsLeftOut;
+    /// The permissions its manifest asks for, and the last Android each is asked on (0: every one), place for place; and
+    /// whether it has a receiver of Google Play services' SMS Retriever. A report made by an older core has none of these:
+    /// permissionsKnown is false then, and what the app may have is not known (everything of Megler's, as before).
+    bool permissionsKnown = false;
+    std::vector<std::string> permissions;
+    std::vector<int> permissionMaxSdk;
+    bool smsRetriever = false;
 
     static ApkReport parse(const std::string& json);
+    /// Whether its manifest asks for `permission` on the Android Megler says it is (14: a permission whose maxSdkVersion is
+    /// below that is not asked for). Not known: true.
+    bool asks(const std::string& permission) const;
+    /// What its own package declares to Windows (megler_appx_capabilities: MEGLER_APPX_CAP_*); not known: -1, all of Megler's.
+    int capabilities() const;
     /// Whether Play can be offered.
     bool ready() const { return valid && ok && runnable && supported; }
     /// "Ready", or in one line why not.

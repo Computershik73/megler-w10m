@@ -218,7 +218,9 @@ enum { SHAPE_UNKNOWN, SHAPE_REGULAR, SHAPE_EMPTY, SHAPE_CONST, SHAPE_GETTER, SHA
 enum {
     INTR_NONE, INTR_STRING_CHARAT, INTR_STRING_LENGTH, INTR_STRING_ISEMPTY, INTR_STRING_EQUALS, INTR_STRING_HASHCODE, INTR_ARRAYCOPY,
     INTR_MIN_I, INTR_MAX_I, INTR_ABS_I, INTR_MIN_J, INTR_MAX_J, INTR_ABS_J, INTR_SQRT, INTR_GETCLASS, INTR_CURRENT_THREAD,
-    INTR_REFERENT, INTR_CLASS_ISINSTANCE, INTR_CLASS_ASSIGNABLE,
+    INTR_REFERENT, INTR_CLASS_ISINSTANCE, INTR_CLASS_ASSIGNABLE, INTR_OBJECT_HASHCODE, INTR_IDENTITY_HASHCODE,
+    INTR_PEEK_BYTE, INTR_PEEK_SHORT, INTR_PEEK_INT, INTR_PEEK_LONG, INTR_PEEK_BYTES, INTR_POKE_BYTE, INTR_POKE_SHORT, INTR_POKE_INT,
+    INTR_POKE_LONG, INTR_POKE_BYTES, INTR_RAW_BITS32, INTR_RAW_BITS64,
 };
 /* java.lang.ref.Reference's referent field's slot, for INTR_REFERENT (Reference.getReferent); ~0 when it has none. */
 extern u32 g_dvm_referent_slot;
@@ -300,6 +302,15 @@ struct mg_dvm_frame {
  * with 15 MB of its 2 GB left in one piece (package 506).
  */
 #define DVM_STACK_SEGS 12
+/*
+ * The host's stack, for Java called from native code (a native method calling back) deeper than a thread's own stack goes:
+ * a stack of DVM_C_STACK_BYTES of its own, committed, with 64 KB below it never committed (so that running out of it is a
+ * fault and not a write into whatever lies there), made when the call would have thrown StackOverflowError and let go when
+ * it returns; at most DVM_C_STACKS on a thread at once (mg_dvm_interp.c, on_more_stack). Where the host has the stub that
+ * moves a call to another stack (32-bit ARM, mg_stubs.S).
+ */
+#define DVM_C_STACKS 8
+#define DVM_C_STACK_BYTES (512u * 1024u)
 typedef struct mg_dvm_stack_seg {
     mg_dvm_reg *base;
     size_t words, committed;
@@ -382,7 +393,14 @@ struct mg_dvm_thread {
     u32 made_sample;                   /* bytes made since its last sample of where objects are made (mg_dvm_made_say) */
     /* For the collector: the thread as the host knows it, to stop it; its C stack's limits, [stack_lo, stack_hi). */
     mg_thread *host;
-    mg_addr stack_lo, stack_hi;
+    volatile mg_addr stack_lo, stack_hi;
+    /*
+     * The stacks it went on from, where Java called from native code ran out of the thread's own and went on in a stack of
+     * its own (mg_dvm_invoke): for each below the current one, the part still in use, [outer_lo, outer_hi), for the
+     * collector to scan too. stack_lo and stack_hi are then the current one's.
+     */
+    volatile mg_addr outer_lo[DVM_C_STACKS], outer_hi[DVM_C_STACKS];
+    volatile int nouter;
 };
 
 /*
@@ -663,6 +681,12 @@ struct mg_dvm_jit_code {
     /* 0: handed back at ctx->pc; 1: an exception is pending, thrown at ctx->pc; 2: returned, its value in ctx->result */
     int (*run)(mg_dvm_jit_ctx *ctx, const void *entry);
     /*
+     * The method's start, entered as `run`'s entry, for the calls compiled code makes the quick way (mg_dvm_jit_fast): set
+     * when the code has an entry there and a call of the method needs nothing of the general way's (mg_dvm_jit_invoke) --
+     * no handlers, not synchronized, no intrinsic. NULL: calls of it go the general way.
+     */
+    const void *fast;
+    /*
      * Where the code is entered, in the order of their pcs: the heads of the loops compiled whole and the method's start,
      * each with its halfword in the code +1. (A table by pc took four bytes for every instruction of the method, for the
      * one to three entries most have.)
@@ -691,10 +715,28 @@ void mg_dvm_jit_start(bool on, u32 threshold, bool trace);
 typedef struct mg_dvm_jit_stats {
     u32 methods, waiting, refused;
     u64 code_bytes, page_bytes;
+    u64 calls_fast, calls_declined, calls_general; /* calls compiled code made: g_dvm_calls_* */
 } mg_dvm_jit_stats;
+/* Calls compiled code made (mg_dvm_interp.c): the quick way, those the quick way left to the general way, and the general
+   way's own; counted without a lock, near enough for the log. */
+extern volatile u64 g_dvm_calls_fast, g_dvm_calls_declined, g_dvm_calls_general;
 void mg_dvm_jit_census(mg_dvm_jit_stats *out);
 /* mg_dvm_interp.c: an invoke done for compiled code; 0 done, 1 thrown, 2 the interpreter's to do (nothing done). */
 int mg_dvm_jit_invoke(mg_dvm_thread *t, mg_dvm_frame *f, u32 pc, mg_jvalue *res);
+/*
+ * What a call site of compiled code tells mg_dvm_jit_fast of its call (mg_dvm_jit.c, fast_invoke): the kind of call in bits
+ * 28-29 (DVM_FAST_*); then, for a range, its first register in bits 0-15 and its count in 16-23, with DVM_FAST_RANGE; else up
+ * to five registers' numbers a nibble each in bits 0-19, the first first, and their count in bits 20-23.
+ */
+#define DVM_FAST_RANGE 0x80000000u
+enum { DVM_FAST_STATIC, DVM_FAST_DIRECT, DVM_FAST_VIRTUAL, DVM_FAST_INTERFACE };
+/*
+ * mg_dvm_interp.c: a call compiled code makes the quick way -- into a method with compiled code at its start (its code's
+ * `fast`), a frame pushed and the code run with no more than that -- `m` the method itself (static, direct, final) or the
+ * one the invoke names (virtual, interface: the object's class says which). 0 done, the value in ctx->result; 1 thrown
+ * (pending); 3 not done, nothing having happened: the call goes the general way (mg_dvm_jit_invoke).
+ */
+int mg_dvm_jit_fast(mg_dvm_jit_ctx *ctx, mg_dvm_method *m, u32 desc, u32 pc);
 /* mg_dvm_interp.c: const-class, the monitors, check-cast, instance-of, new-instance, new-array, aput-object for compiled code; the same answers. */
 int mg_dvm_jit_op(mg_dvm_thread *t, mg_dvm_frame *f, u32 pc);
 int mg_dvm_jit_enter(mg_dvm_thread *t, mg_dvm_frame *f, mg_dvm_method *m, mg_dvm_reg *regs, u32 pc, u32 *next, mg_jvalue *res);
@@ -815,10 +857,12 @@ void mg_dvm_heap_clear_marks(void);
 void mg_dvm_heap_each_marked(void (*fn)(void *o));
 /*
  * Marking alongside the app (mg_dvm_gc.c): objects made while `on` are made marked; whether the arenas' pages are watched
- * for writes; the watch started again (the world stopped); and, the world stopped, `fn` for every marked object on a page
- * written since then -- every marked one where not watched -- and every marked large object: how many pages that was.
+ * for writes; the watch started again (before the first stop, the app running); and, the world stopped, `fn` for every
+ * marked object on a page written since then -- every marked one where not watched -- and every marked large object: how
+ * many pages that was.
  */
 void mg_dvm_heap_alloc_black(bool on);
+bool mg_dvm_heap_black(void);
 /* Whether this thread holds the runtime's lock (mg_dvm_lock). */
 bool mg_dvm_lock_mine(void);
 /*
@@ -830,6 +874,11 @@ void mg_dvm_gc_fields_gone(mg_jobj *o);
 bool mg_dvm_heap_watched(void);
 void mg_dvm_heap_watch_restart(void);
 u32 mg_dvm_heap_each_written(void (*fn)(void *o));
+/* The same in pieces, for the collector's threads to share (mg_dvm_heap.c). */
+u32 mg_dvm_heap_pages(void);
+u32 mg_dvm_heap_written_list(u8 **out, u32 cap);
+void mg_dvm_heap_marked_on(u8 *page, void (*fn)(void *o, void *user), void *user);
+void mg_dvm_heap_each_marked_large(void (*fn)(void *o));
 /* ...and the sweep, shared among the collector's threads (mg_dvm_gc_share); how many there were. */
 u32 mg_dvm_heap_sweep(void (*dying)(void *o), bool poison, u64 *freed_objects, u64 *freed_bytes);
 /*

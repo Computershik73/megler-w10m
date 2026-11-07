@@ -227,6 +227,8 @@ bool mg_dvm_gc_busy(void);
  */
 void mg_dvm_gc_set_alongside(bool on);
 void mg_dvm_gc_alongside_wait(void);
+/* The calling thread is the app's main thread (megler.Native.mainStarted): it waits for a collection alongside the app later. */
+void mg_dvm_gc_main_thread(void);
 /* Where objects were made since the last call, sampled every 256 KB each thread makes: a line in the log, and the samples forgotten. */
 void mg_dvm_made_say(void);
 /* Bytes of the objects in the heap now (live since the last collection, and what was made after it). */

@@ -190,5 +190,7 @@ public final class Gsf {
         @Override public Context createPackageContext(String pkg, int flags) throws android.content.pm.PackageManager.NameNotFoundException {
             return getPackageName().equals(pkg) ? this : super.createPackageContext(pkg, flags);
         }
+        // Its permissions as a phone's system app holds them, not the app's it is in (megler.Permissions; as MicroG's context).
+        @Override public int checkPermission(String permission, int pid, int uid) { return android.content.pm.PackageManager.PERMISSION_GRANTED; }
     }
 }

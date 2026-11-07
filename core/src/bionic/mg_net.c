@@ -1187,6 +1187,7 @@ static gssize g_sendto(int fd, const void *buf, size_t n, int flags, const void 
     i32 r;
     HOLD_OR_FAIL(fd, s, held, nonblock, -1)
     r = send_any(s, buf, mg_rw_count(n), flags, to, tolen, nonblock);
+    mg_fd_moved(held);
     mg_fd_let_go(held);
     return r;
 }
@@ -1198,6 +1199,7 @@ static gssize g_recvfrom(int fd, void *buf, size_t n, int flags, void *from, u32
     i32 r;
     HOLD_OR_FAIL(fd, s, held, nonblock, -1)
     r = recv_any(s, buf, mg_rw_count(n), flags, from, fromlen, NULL, nonblock);
+    mg_fd_moved(held);
     mg_fd_let_go(held);
     return r;
 }
@@ -1278,6 +1280,7 @@ static gssize g_sendmsg(int fd, const g_msghdr *m, int flags)
     i32 r;
     HOLD_OR_FAIL(fd, s, held, nonblock, -1)
     r = sendmsg_held(s, m, flags, nonblock);
+    mg_fd_moved(held);
     mg_fd_let_go(held);
     return r;
 }
@@ -1287,6 +1290,7 @@ static gssize g_recvmsg(int fd, g_msghdr *m, int flags)
     i32 r;
     HOLD_OR_FAIL(fd, s, held, nonblock, -1)
     r = recvmsg_held(s, m, flags, nonblock);
+    mg_fd_moved(held);
     mg_fd_let_go(held);
     return r;
 }
@@ -1301,6 +1305,7 @@ static int g_sendmmsg(int fd, g_mmsghdr *v, unsigned count, int flags)
         if (r < 0) break;
         v[i].len = (u32)r;
     }
+    mg_fd_moved(held);
     mg_fd_let_go(held);
     return i ? (int)i : -1;
 }
@@ -1316,6 +1321,7 @@ static int g_recvmmsg(int fd, g_mmsghdr *v, unsigned count, int flags, const voi
         if (r < 0) break;
         v[i].len = (u32)r;
     }
+    mg_fd_moved(held);
     mg_fd_let_go(held);
     if (i) *mg_errno_ptr() = 0;
     return i ? (int)i : -1;
@@ -1474,6 +1480,7 @@ static int g_accept4(int fd, void *addr, u32 *addrlen, int flags)
             if ((e = sock_wait(s, MG_SOCK_IN, deadline, s->rcvtimeo)) != 0) break;
         }
     }
+    mg_fd_moved(held);
     mg_fd_let_go(held);
     if (e) return fail(e);
     nfd = sock_register(n, flags);

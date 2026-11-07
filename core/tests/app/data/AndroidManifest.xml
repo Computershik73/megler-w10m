@@ -9,6 +9,15 @@
     <uses-permission android:name="android.permission.READ_SMS" />
     <uses-permission android:name="android.permission.READ_PHONE_STATE" />
     <uses-permission-sdk-23 android:name="android.permission.READ_CALL_LOG" />
+    <!-- Main's step "permissions", which requests them and the four above at run time: the storage, which the user lets the app
+         have, and the camera, which the user refuses twice, the second time for good; the contacts, which the shell grants with
+         no one asked (it has nothing behind them); a normal one, granted with the install; and WRITE_EXTERNAL_STORAGE asked
+         for only up to Android 9, which is no permission of the app's on the Android Megler says it is. -->
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="28" />
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-permission android:name="android.permission.READ_CONTACTS" />
+    <uses-permission android:name="android.permission.VIBRATE" />
     <application android:label="@string/app_name">
         <!-- Android's legacy Apache HTTP client on the app's class path, as Instagram asks for it (Main's step "apache-http-legacy"). -->
         <uses-library android:name="org.apache.http.legacy" android:required="false" />
@@ -31,9 +40,12 @@
         <activity android:name=".Main$Answer" android:exported="true" />
         <!-- A translucent activity over Main, as TikTok Lite's consent dialog is (Main's "translucent-over", F11). -->
         <activity android:name=".Main$Clear" android:theme="@android:style/Theme.Translucent.NoTitleBar" android:exported="false" />
+        <!-- (Off also names Google Play services' SMS Retriever's action, as an app that hears its code so has a receiver for it:
+             the report says so, and the app's own package declares the text messages for it: the test's C side, start().) -->
         <receiver android:name=".Main$Off" android:enabled="false" android:exported="false">
             <intent-filter>
                 <action android:name="megler.test.RELAY" />
+                <action android:name="com.google.android.gms.auth.api.phone.SMS_RETRIEVED" />
             </intent-filter>
         </receiver>
         <!-- An empty process name is the app's own process, as on Android (Play Store's AccountRemovedBroadcastReceiver has one). -->
@@ -49,6 +61,7 @@
         <service android:name=".Main$Again" android:exported="false" />
         <service android:name=".Main$Elsewhere" android:exported="false" android:process=":elsewhere" />
         <service android:name=".Main$Work" android:exported="false" android:permission="android.permission.BIND_JOB_SERVICE" />
+        <service android:name=".Main$EngineWork" android:exported="false" android:permission="android.permission.BIND_JOB_SERVICE" />
         <!-- A sync adapter and the provider it syncs (Main's step "sync"), as Gmail has them. -->
         <provider android:name=".Main$Synced" android:authorities="megler.test.sync" android:exported="false" />
         <service android:name=".Main$SyncService" android:exported="false">

@@ -699,7 +699,10 @@ static void test_clear_data(const char *base)
         free(dir);
         free(p);
     }
+    /* The ask is seen before it is done (the shell forgets the app's permission answers then), and is not once done. */
+    CHECK(mg_run_clear_data_asked(data, "org.megler.test.cleared") && !mg_run_clear_data_asked(data, "org.megler.test.kept"));
     CHECK(mg_run_clear_data_if_asked(data, data, "org.megler.test.cleared"));
+    CHECK(!mg_run_clear_data_asked(data, "org.megler.test.cleared"));
     for (i = 0; i < MG_COUNT(made); i++) {
         bool kept = strstr(made[i], "/obb/") || strstr(made[i], "test.kept");
         p = mg_sprintf("%s/%s", data, made[i]);

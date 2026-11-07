@@ -633,8 +633,8 @@ static void proxy_invoke(mg_jcall *c)
 N(Proxy_generateProxy)
 {
     mg_jobj *name = c->args[0].l, *ifaces = c->args[1].l, *methods = c->args[3].l;
-    mg_dvm_class *super = mg_dvm_find_class("java/lang/reflect/Proxy"), *list[64], *made;
-    mg_dvm_method *like[512];
+    mg_dvm_class *super = mg_dvm_find_class("java/lang/reflect/Proxy"), **list, *made;
+    mg_dvm_method **like;
     char internal[300];
     const char *dotted = mg_dvm_string_utf8(name);
     i32 i, n, nm, slot;
@@ -645,15 +645,24 @@ N(Proxy_generateProxy)
     }
     n = ifaces->u.oarr.len;
     nm = methods->u.oarr.len;
-    if (n > (i32)MG_COUNT(list) || nm > (i32)MG_COUNT(like) || strlen(dotted) >= sizeof(internal)) {
-        mg_dvm_throw("java/lang/IllegalArgumentException", "a proxy of %d interfaces and %d methods", (int)n, (int)nm);
+    /*
+     * As many interfaces and methods as Java allows (Proxy itself refuses more than 65535 interfaces). There were at most
+     * 64 and 512 here: imo's settings (package 582) are a proxy of one interface of 1968 methods, and the app ended at its
+     * start with "a proxy of 1 interfaces and 1968 methods".
+     */
+    if (strlen(dotted) >= sizeof(internal)) {
+        mg_dvm_throw("java/lang/IllegalArgumentException", "a proxy class name of %d characters", (int)strlen(dotted));
         return;
     }
     for (k = 0; dotted[k]; k++) internal[k] = dotted[k] == '.' ? '/' : dotted[k];
     internal[k] = 0;
+    list = (mg_dvm_class **)mg_alloc(sizeof(*list) * ((size_t)n + 1));
+    like = (mg_dvm_method **)mg_alloc(sizeof(*like) * ((size_t)nm + 1));
     for (i = 0; i < n; i++) {
         list[i] = ifaces->u.oarr.v[i] ? mg_dvm_mirror_class(ifaces->u.oarr.v[i]) : NULL;
         if (!list[i]) {
+            free(list);
+            free(like);
             mg_dvm_throw("java/lang/NullPointerException", "a proxy of a null interface");
             return;
         }
@@ -661,11 +670,15 @@ N(Proxy_generateProxy)
     for (i = 0; i < nm; i++) {
         like[i] = methods->u.oarr.v[i] ? method_from(methods->u.oarr.v[i]) : NULL;
         if (!like[i]) {
+            free(list);
+            free(like);
             mg_dvm_throw("java/lang/NullPointerException", "a proxy of a null method");
             return;
         }
     }
     made = mg_dvm_make_proxy_class(internal, super, list, n, like, nm, proxy_invoke, proxy_construct, "(Ljava/lang/reflect/InvocationHandler;)V");
+    free(list);
+    free(like);
     slot = mg_atomic_add(&g_nproxies, 1) - 1;
     if (!made || slot >= MAX_PROXIES) {
         mg_atomic_add(&g_nproxies, -1);

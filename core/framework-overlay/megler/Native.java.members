@@ -35,6 +35,11 @@
      */
     public static native void frameMark(int phase, int redrawn);
     /**
+     * The app's main thread begins to run the app (megler.AppRunner.run, first): the Java driver's sampler watches it from now
+     * on, where its time goes and what it waits on (core/src/drivers/mg_java.c, hot_main), not only from its first frame.
+     */
+    public static native void mainStarted();
+    /**
      * The rectangle of the screen's bitmap that the next Gfx.present on this thread has changed, [left, right) x [top, bottom):
      * the rest is as it was in the picture presented before. Told to the shell where it can take it
      * (megler_window_host.present_pixels_part). Called by megler.ViewRoot.drawAll before it presents part of the screen.
@@ -48,6 +53,12 @@
      * among them, the same number for the same path again; -1 when it cannot be read (core/src/drivers/mg_java.c).
      */
     public static native int addApk(String path);
+    /**
+     * A file of APK number `apk` that the APK stores rather than deflates, as a direct buffer over the file where it lies in
+     * the APK, read only and never copied; null for one that is deflated or cannot be viewed (readApkFile reads it then).
+     * android.content.res.Resources keeps an app's resources.arsc so, 49.8 MB of Spotify's that sat in its heap.
+     */
+    public static native java.nio.ByteBuffer mapApkFile(int apk, String path);
     /** The names of the entries of APK number `apk` that lie under `prefix` ("assets/x/"): a file's own name, a folder's name once. */
     public static native String[] listApkFiles(int apk, String prefix);
     /** The phone's name servers now, as text, the network's in use first (core: mg_net_dns_servers): android.net.LinkProperties.getDnsServers. */
@@ -89,6 +100,10 @@
     public static native byte[] appInstall(String name);
     /** Another app the phone has, to uninstall (megler_system_host.uninstall_app): true when the shell asks the user. */
     public static native boolean uninstallApp(String packageName);
+    /** Whether the app may have what a dangerous permission group guards (megler_system_host.permission, megler.Permissions):
+     *  0 undecided, 1 granted, 2 denied (may be asked again), 3 denied for good. With `ask` the user is asked first and this
+     *  thread waits, as long as they take: never on the main thread. A shell without it grants every group. */
+    public static native int permission(String group, boolean ask);
     /** A colour of Material You's palettes made from a seed (megler_palette_tone): palette 0 neutral 1 ... 5 error, tone 0 to 100. */
     public static native int paletteTone(int seed, int palette, int tone);
     /** What that session plays: title, artist, album (or null), and a picture of at most 256x256 as ARGB pixels, or null. */

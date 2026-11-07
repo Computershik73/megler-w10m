@@ -196,15 +196,23 @@ static bool memory_pressed(void)
 
 static void spill(marker *k);
 
+/*
+ * Whether the bytes marked are counted: by a collection that stops the app, whose budget is half of what it marked, and
+ * by a census. One alongside the app does not count them (the heap says what lives), and so reads nothing of an object
+ * it only pushes at a stop: each was a read of its own of memory nothing else was reading -- the classes' Class objects
+ * and the interned strings among them, Spotify's 45,000 and 60,000 -- on a Lumia 650 whose memory was half compressed.
+ */
+static bool g_counting = true;
+
 /* An object reached: marked, and its references to follow later. `o` is an object's start, or anything else (ignored: nothing is read of it before the heap has said it is an object). */
 static void reach(marker *k, void *o)
 {
     if (!o || !(g_parallel || g_alongside ? mg_dvm_heap_set_mark_shared(o) : mg_dvm_heap_set_mark(o))) return;
     k->marked++;
-    k->marked_bytes += MG_DVM_OBJ(o)->size;
-    if (k->counting_conservative) {
-        k->conservative++;
-        k->conservative_bytes += MG_DVM_OBJ(o)->size;
+    if (k->counting_conservative) k->conservative++;
+    if (g_counting) {
+        k->marked_bytes += MG_DVM_OBJ(o)->size;
+        if (k->counting_conservative) k->conservative_bytes += MG_DVM_OBJ(o)->size;
     }
     if (k->n == k->cap && k != &G.main) spill(k);
     if (k->n < k->cap) k->stack[k->n++] = o;
@@ -219,7 +227,7 @@ static void reach_ref(mg_jobj *o, void *user)
 }
 
 /* A word that may point into an object. */
-static void reach_word(mg_addr w) { reach(&G.main, mg_dvm_heap_find(w)); }
+static void reach_word(marker *k, mg_addr w) { reach(k, mg_dvm_heap_find(w)); }
 
 /* A reference object whose referent is decided about after marking, kept in the list; false when it has no room left. */
 static bool found_add(mg_jobj *r)
@@ -233,11 +241,11 @@ static bool found_add(mg_jobj *r)
     return false;
 }
 
-static void scan_words(mg_addr from, mg_addr to)
+static void scan_words(marker *k, mg_addr from, mg_addr to)
 {
     mg_addr p;
     from = MG_ALIGN_UP(from, sizeof(mg_addr));
-    for (p = from; p + sizeof(mg_addr) <= to; p += sizeof(mg_addr)) reach_word(*(const mg_addr *)p);
+    for (p = from; p + sizeof(mg_addr) <= to; p += sizeof(mg_addr)) reach_word(k, *(const mg_addr *)p);
 }
 
 static void follow(marker *k, void *p)
@@ -304,6 +312,7 @@ void mg_dvm_gc_fields_gone(mg_jobj *o)
 }
 
 static void follow_main(void *p) { follow(&G.main, p); }
+static void follow_by(void *p, void *k) { follow((marker *)k, p); }
 
 /* ------------------------------------------------------ marking in parallel */
 
@@ -491,6 +500,20 @@ static void string_root(mg_jobj *s, void *user);
 /* The round pushes the roots and follows nothing (class_roots_pushed): each thread's stack goes to the pool. */
 static bool g_roots_only;
 
+/* What a thread pushed, nothing followed, to the pool (the rounds that push roots alone). */
+static void pool_put(marker *k)
+{
+    mg_lock_acquire(&g_mark_lock);
+    if (g_npool + k->n <= g_pool_cap) {
+        memcpy(g_pool + g_npool, k->stack, sizeof(void *) * k->n);
+        g_npool += k->n;
+    } else {
+        G.overflow = true;
+    }
+    k->n = 0;
+    mg_lock_release(&g_mark_lock);
+}
+
 static void roots_round(void *arg, int worker)
 {
     marker *k = &g_markers[worker];
@@ -507,15 +530,7 @@ static void roots_round(void *arg, int worker)
         }
     }
     if (g_roots_only) {
-        mg_lock_acquire(&g_mark_lock);
-        if (g_npool + k->n <= g_pool_cap) {
-            memcpy(g_pool + g_npool, k->stack, sizeof(void *) * k->n);
-            g_npool += k->n;
-        } else {
-            G.overflow = true;
-        }
-        k->n = 0;
-        mg_lock_release(&g_mark_lock);
+        pool_put(k);
         return;
     }
     mark_shared(k);
@@ -592,7 +607,7 @@ static void exact_thread_roots(mg_dvm_thread *t, void *user)
     reach_ref(t->pending, NULL);
     reach_ref(t->peer, NULL);
     reach_ref(t->waiting_monitor, NULL);
-    reach_word((mg_addr)t->scratch.l);
+    reach_word(&G.main, (mg_addr)t->scratch.l);
 }
 
 /*
@@ -676,39 +691,95 @@ static void resume_threads(void)
  */
 static void scan_frames(mg_dvm_thread *t, void *user)
 {
+    marker *k = user ? (marker *)user : &G.main;
     mg_dvm_reg *top;
     int i;
-    (void)user;
     if (!t->stack) return;
     for (i = 0; i < t->nsegs && i < DVM_STACK_SEGS; i++) {
         mg_dvm_reg *base = t->segs[i].base, *end = t->segs[i].sp;
-        if (base && end > base && end <= base + t->segs[i].committed) scan_words((mg_addr)base, (mg_addr)end);
+        if (base && end > base && end <= base + t->segs[i].committed) scan_words(k, (mg_addr)base, (mg_addr)end);
     }
     top = t->sp + 64 < t->stack + t->stack_committed ? t->sp + 64 : t->stack + t->stack_committed;
-    if (top > t->stack) scan_words((mg_addr)t->stack, (mg_addr)top);
+    if (top > t->stack) scan_words(k, (mg_addr)t->stack, (mg_addr)top);
+}
+
+/* The parts still in use of the stacks a thread went on from (mg_dvm_invoke's on_more_stack): each from where it left it to its top. */
+static void outer_stacks_scanned(marker *k, mg_dvm_thread *t)
+{
+    int j, n = t->nouter;
+    for (j = 0; j < n && j < DVM_C_STACKS; j++)
+        if (t->outer_hi[j] > t->outer_lo[j]) scan_words(k, t->outer_lo[j], t->outer_hi[j]);
 }
 
 static MG_NOINLINE void scan_own_stack(void)
 {
     volatile mg_addr here = 0;
     mg_dvm_thread *t = g_collector;
-    if (t && t->stack_hi) scan_words((mg_addr)&here, t->stack_hi);
+    if (t && t->stack_hi) scan_words(&G.main, (mg_addr)&here, t->stack_hi);
+    if (t) outer_stacks_scanned(&G.main, t);
+}
+
+/* A stopped thread's registers, and its C stack from where it was stopped to its base (and the stacks it went on from). */
+static void stopped_scanned(marker *k, int i)
+{
+    const mg_thread_regs *r = &g_stopped[i].regs;
+    mg_dvm_thread *t = g_stopped[i].t;
+    mg_addr lo = t->stack_lo, hi = t->stack_hi;
+    int j;
+    for (j = 0; j < r->n; j++) reach_word(k, r->r[j]);
+    /* (And, of a thread running a signal's handler, the registers of the code the signal interrupted: mg_host.h.) */
+    for (j = 0; j < r->n_was; j++) reach_word(k, r->was[j]);
+    if (r->sp >= lo && r->sp < hi) scan_words(k, r->sp, hi);
+    outer_stacks_scanned(k, t);
+}
+
+/*
+ * The scans shared, where there are helpers: each thread takes the next stopped thread's registers and C stack, or the next
+ * thread's frame stack, and pushes what the words point to, nothing followed (as class_roots_pushed). On the collecting
+ * thread alone, the 162 threads of Spotify's process (Google Play services' among them) took 18.8 ms of a collection that
+ * stopped it; one alongside the app scans them at both its stops, and the threads were 220 (package 664).
+ */
+static mg_dvm_thread *g_frames[MAX_STOPPED + 1];
+static int g_nframes;
+static volatile i32 g_scan_next;
+
+static void frames_listed(mg_dvm_thread *t, void *user)
+{
+    if (g_nframes < (int)MG_COUNT(g_frames)) g_frames[g_nframes++] = t;
+    else *(bool *)user = true;
+}
+
+static void stacks_round(void *arg, int worker)
+{
+    marker *k = &g_markers[worker];
+    (void)arg;
+    for (;;) {
+        i32 p = mg_atomic_add(&g_scan_next, 1) - 1;
+        if (p < g_nstopped) stopped_scanned(k, p);
+        else if (p < g_nstopped + g_nframes) scan_frames(g_frames[p - g_nstopped], k);
+        else break;
+    }
+    pool_put(k);
 }
 
 static void conservative_roots(void)
 {
-    int i, k;
+    int i;
     jmp_buf registers;
+    bool over = false;
     /* The collector's own registers, onto its stack, and its stack from here to its base. */
     if (setjmp(registers) == 0) scan_own_stack();
-    for (i = 0; i < g_nstopped; i++) {
-        const mg_thread_regs *r = &g_stopped[i].regs;
-        mg_dvm_thread *t = g_stopped[i].t;
-        for (k = 0; k < r->n; k++) reach_word(r->r[k]);
-        /* (And, of a thread running a signal's handler, the registers of the code the signal interrupted: mg_host.h.) */
-        for (k = 0; k < r->n_was; k++) reach_word(r->was[k]);
-        if (r->sp >= t->stack_lo && r->sp < t->stack_hi) scan_words(r->sp, t->stack_hi);
+    if (g_nhelpers) {
+        g_nframes = 0;
+        mg_dvm_threads_each(frames_listed, &over);
+        if (!over) {
+            g_scan_next = 0;
+            shared(stacks_round);
+            G.main.n = g_npool;
+            return;
+        }
     }
+    for (i = 0; i < g_nstopped; i++) stopped_scanned(&G.main, i);
     mg_dvm_threads_each(scan_frames, NULL);
 }
 
@@ -1008,6 +1079,7 @@ static bool collect(const char *reason, bool sweep, mg_dvm_gc_result *out)
     }
     t_collecting = true;
     g_busy = 1;
+    g_counting = true;
     t0 = mg_time_monotonic_ns();
     g_collector = mg_dvm_self();
     mg_dvm_lock();
@@ -1118,12 +1190,14 @@ bool mg_dvm_gc_census(mg_dvm_gc_result *out)
  * the collector's own thread and its helpers while the app runs. Yandex Maps' collections stopped it for 150 to 250 ms
  * every few seconds while its map was moved, most of it marking 700,000 objects (package 537).
  *
- *  - The first stop: the marks cleared, the arenas' write watch started again, new objects made marked from now on (they
- *    live: mg_dvm_heap_alloc_black), and every root pushed -- the classes' statics, the interned strings, the threads', the
- *    JNI layer's, C's, the frames and C stacks scanned conservatively -- nothing followed yet.
+ *  - Just before it, the app running: the arenas' write watch started again (mg_dvm_heap_watch_restart).
+ *  - The first stop: the marks cleared (unless a sweep left them so), new objects made marked from now on (they live:
+ *    mg_dvm_heap_alloc_black), and every root pushed -- the classes' statics, the interned strings, the threads', the JNI
+ *    layer's, C's, the frames and C stacks scanned conservatively -- nothing followed yet.
  *  - Alongside: everything they reach marked, by the helpers too, while the app's threads run and make objects.
- *  - The second stop: every root pushed again, and every marked object on a page of the heap written since the first stop
- *    followed again -- an app's thread that stored a reference into an object already followed wrote that page -- with every
+ *  - The second stop: every root pushed again (the interned strings excepted: roots_pushed), and every marked object on a
+ *    page of the heap written since the first stop followed again -- an app's thread that stored a reference into an object
+ *    already followed wrote that page -- with every
  *    marked large object and object with fields by name (memory nothing watches), then everything that reaches marked; the
  *    references decided about, as in a stopped collection. Then the sweep, the heap locked, as before.
  *
@@ -1155,37 +1229,55 @@ static bool alongside_on(void)
  * The classes' statics and the interned strings pushed by the collecting thread and the helpers at once, nothing followed,
  * into the collecting thread's stack. One thread pushing them took some 40 ms of each stop of Yandex Maps' (package 539).
  */
-static void class_roots_pushed(void)
+static void class_roots_pushed(bool strings)
 {
     if (!g_nhelpers) {
         mg_dvm_each_linked_locked(class_roots, NULL);
-        mg_dvm_interned_each(string_root, NULL);
+        if (strings) mg_dvm_interned_each(string_root, NULL);
         return;
     }
     g_root_next = 0;
     g_root_class_parts = (mg_dvm_class_buckets() + ROOT_BUCKETS - 1) / ROOT_BUCKETS;
-    g_root_string_parts = (mg_dvm_interned_slots() + ROOT_SLOTS - 1) / ROOT_SLOTS;
+    g_root_string_parts = strings ? (mg_dvm_interned_slots() + ROOT_SLOTS - 1) / ROOT_SLOTS : 0;
     g_roots_only = true;
     shared(roots_round);
     g_roots_only = false;
     G.main.n = g_npool;
 }
 
-static void roots_pushed(void)
+/* What a stop's roots took, for the line of a collection alongside the app. */
+typedef struct roots_took {
+    u64 classes_ns, exact_ns, jni_ns, stacks_ns;
+} roots_took;
+
+/*
+ * Every root pushed, nothing followed. `strings`: the interned strings too -- at the first stop; at the second every string
+ * the table holds is marked already (one put in meanwhile is marked as it is put, mg_dvm_intern_string), and reading the
+ * table again went over Spotify's 60,000 strings and the slots between them for nothing (package 664).
+ */
+static void roots_pushed(roots_took *took, bool strings)
 {
+    u64 t0 = mg_time_monotonic_ns(), t1, t2;
     u32 i;
-    class_roots_pushed();
+    class_roots_pushed(strings);
+    t1 = mg_time_monotonic_ns();
     mg_dvm_threads_each(exact_thread_roots, NULL);
     mg_dvm_proxy_roots(reach_ref, NULL);
     mg_dvm_object_roots(reach_ref, NULL);
+    t2 = mg_time_monotonic_ns();
     mg_jni_gc_roots(reach_counted, &G.jni_roots);
+    took->jni_ns = mg_time_monotonic_ns() - t2;
     for (i = 0; i < (u32)g_nroots && i < MAX_ROOTS; i++)
         if (g_roots[i]) reach_ref(*g_roots[i], NULL);
     for (i = 0; i < g_nto_finalize; i++) reach_ref(g_to_finalize[i], NULL);
     reach_ref(g_pending_refs, NULL);
+    t2 = mg_time_monotonic_ns();
+    took->classes_ns = t1 - t0;
+    took->exact_ns = t2 - t1;
     G.main.counting_conservative = true;
     conservative_roots();
     G.main.counting_conservative = false;
+    took->stacks_ns = mg_time_monotonic_ns() - t2;
 }
 
 /* The runtime's locks the collection holds while the world is stopped, so that no stopped thread holds one. */
@@ -1205,6 +1297,30 @@ static void locks_give(bool heap_too)
     if (heap_too) mg_dvm_heap_unlock();
 }
 
+/*
+ * The second stop's written pages shared: each thread takes the next few pages, follows the marked objects on them into its
+ * own stack, and then marks with the others from there (mark_shared). What the app made while the marking went on is on
+ * such pages, made marked, and is followed there: on the collecting thread alone, the 12,000 pages Spotify wrote while its
+ * first collections marked took 270 to 335 ms of their second stops on a Lumia 650 (package 665).
+ */
+#define WRITTEN_CHUNK 8
+static u8 **g_written;
+static u32 g_nwritten;
+static volatile i32 g_written_next;
+
+static void written_round(void *arg, int worker)
+{
+    marker *k = &g_markers[worker];
+    (void)arg;
+    for (;;) {
+        u32 at = (u32)(mg_atomic_add(&g_written_next, WRITTEN_CHUNK) - WRITTEN_CHUNK), end, i;
+        if (at >= g_nwritten) break;
+        end = at + WRITTEN_CHUNK < g_nwritten ? at + WRITTEN_CHUNK : g_nwritten;
+        for (i = at; i < end; i++) mg_dvm_heap_marked_on(g_written[i], follow_by, k);
+    }
+    mark_shared(k);
+}
+
 static void follow_with_fields(void)
 {
     u32 i;
@@ -1216,22 +1332,34 @@ static void follow_with_fields(void)
 
 static void collect_alongside(void)
 {
-    u64 t0, t1, t2, t3, t4, t5, t6, t7;
-    u32 objects, written = 0;
+    /* (tw the write watch started again, tm the marks cleared, tp the written pages' objects followed, td what they reach, tq the references.) */
+    u64 t0, t1, t2, t3, t4, t5, t7, tw, tm = 0, tp = 0, td = 0, tq = 0;
+    u64 faults0, faults1 = 0, faults2 = 0, faults3 = 0;   /* the process's page faults at each stop's start and end */
+    u32 objects, written = 0, npages = 0;
+    u8 **pages = NULL;
     u64 live = 0;
     void **stack;
     mg_jobj **found;
     char makers[200], large[600];
     bool ok;
     mg_dvm_gc_result r;
+    roots_took first, second;
     memset(&r, 0, sizeof(r));
+    memset(&first, 0, sizeof(first));
+    memset(&second, 0, sizeof(second));
     makers[0] = large[0] = 0;
     mg_lock_acquire(&g_gc_lock);
     helpers_start();
     t_collecting = true;
     g_collector = NULL;
+    g_counting = false;
+    /* The arenas' write watch started again before the first stop, the app running (mg_dvm_heap_watch_restart). */
+    tw = mg_time_monotonic_ns();
+    mg_dvm_heap_watch_restart();
     /* The first stop. */
     t0 = mg_time_monotonic_ns();
+    tw = t0 - tw;
+    faults0 = mg_mem_page_faults();
     locks_take();
     objects = mg_dvm_heap_objects();
     stack = (void **)malloc(sizeof(void *) * ((size_t)objects + 64));
@@ -1258,11 +1386,13 @@ static void collect_alongside(void)
         ok = !g_stop_failed;
         if (ok) {
             say_makers(makers, sizeof(makers));
+            tm = mg_time_monotonic_ns();
             mg_dvm_heap_clear_marks();
-            mg_dvm_heap_watch_restart();
+            tm = mg_time_monotonic_ns() - tm;
             mg_dvm_heap_alloc_black(true);
-            roots_pushed();
+            roots_pushed(&first, true);
         }
+        faults1 = mg_mem_page_faults();
         resume_threads();
         g_busy = 0;
     } else {
@@ -1291,22 +1421,42 @@ static void collect_alongside(void)
     /* The second stop. */
     locks_take();
     t4 = mg_time_monotonic_ns();
+    /* (A list with room for every page the heap has, for the written ones to be shared: made before anything is stopped.) */
+    npages = mg_dvm_heap_pages();
+    if (g_nhelpers) pages = (u8 **)malloc(sizeof(u8 *) * ((size_t)npages + 1));
     g_busy = 1;
+    faults2 = mg_mem_page_faults();
     stop_threads();
     t5 = mg_time_monotonic_ns();
     ok = !g_stop_failed;
     if (ok) {
-        roots_pushed();
-        written = mg_dvm_heap_each_written(follow_main);
-        follow_with_fields();
+        roots_pushed(&second, false);
+        tp = mg_time_monotonic_ns();
+        if (pages) {
+            /* The marked large objects and the objects with fields by name on this thread, into the pool; the pages shared. */
+            mg_dvm_heap_each_marked_large(follow_main);
+            follow_with_fields();
+            g_written = pages;
+            g_nwritten = written = mg_dvm_heap_written_list(pages, npages);
+            g_written_next = 0;
+            shared(written_round);
+        } else {
+            written = mg_dvm_heap_each_written(follow_main);
+            follow_with_fields();
+        }
+        td = mg_time_monotonic_ns();
+        tp = td - tp;
         drain();
         while (G.overflow) {
             G.overflow = false;
             heap_rescan_marked();
         }
+        tq = mg_time_monotonic_ns();
+        td = tq - td;
         if (g_referent >= 0) process_references(false);
+        tq = mg_time_monotonic_ns() - tq;
     }
-    t6 = mg_time_monotonic_ns();
+    faults3 = mg_mem_page_faults();
     resume_threads();
     t7 = mg_time_monotonic_ns();
     locks_give(false);
@@ -1333,17 +1483,25 @@ static void collect_alongside(void)
     if (ok) {
         mg_atomic_add(&g_collections, 1);
         g_pause_ns += (t2 - t0) + (t7 - t4) + r.sweep_ns;
-        mg_info("gc: alongside the app: stopped %.1f ms and %.1f ms (to stop %.1f and %.1f; the roots, then %u written pages' objects and what "
-                "they reach, %.1f); marked alongside in %.1f ms by %u threads; sweep %.1f by %u; freed %.1f MB (%u objects), live %.1f MB "
-                "(%u objects in all); %u threads stopped%s%s",
-                (double)(t2 - t0) / 1e6, (double)(t7 - t4) / 1e6, (double)(t1 - t0) / 1e6, (double)(t5 - t4) / 1e6, (unsigned)written,
-                (double)(t6 - t5) / 1e6, (double)(t3 - t2) / 1e6, (unsigned)G.markers, (double)r.sweep_ns / 1e6, (unsigned)r.sweepers,
-                (double)r.freed_bytes / 1048576.0, (unsigned)r.freed_objects, (double)live / 1048576.0, (unsigned)mg_dvm_heap_objects(),
-                (unsigned)g_nstopped, makers[0] ? "; made since the last by " : "", makers);
+        /* (What each stop's time went to, part by part: the stops of Spotify's on a Lumia 650 were 85 to 180 ms, package 664.) */
+        mg_info("gc: alongside the app: stopped %.1f ms and %.1f ms (to stop %.1f and %.1f; at the first the marks %.1f, the classes and "
+                "strings %.1f, the other exact roots %.1f -- the JNI layer's %.1f --, the stacks %.1f; at the second the classes and strings "
+                "%.1f, the other exact roots %.1f -- the JNI layer's %.1f --, the stacks %.1f, %u written pages' objects %.1f, what they reach "
+                "%.1f, the references %.1f; page faults %u and %u); the write watch started again before in %.1f; marked alongside in %.1f ms "
+                "by %u threads; sweep %.1f by %u; freed %.1f MB (%u objects), live %.1f MB (%u objects in all); %u threads stopped%s%s",
+                (double)(t2 - t0) / 1e6, (double)(t7 - t4) / 1e6, (double)(t1 - t0) / 1e6, (double)(t5 - t4) / 1e6, (double)tm / 1e6,
+                (double)first.classes_ns / 1e6, (double)first.exact_ns / 1e6, (double)first.jni_ns / 1e6, (double)first.stacks_ns / 1e6,
+                (double)second.classes_ns / 1e6, (double)second.exact_ns / 1e6, (double)second.jni_ns / 1e6, (double)second.stacks_ns / 1e6,
+                (unsigned)written, (double)tp / 1e6, (double)td / 1e6, (double)tq / 1e6, (unsigned)(faults1 - faults0),
+                (unsigned)(faults3 - faults2), (double)tw / 1e6, (double)(t3 - t2) / 1e6,
+                (unsigned)G.markers, (double)r.sweep_ns / 1e6, (unsigned)r.sweepers, (double)r.freed_bytes / 1048576.0,
+                (unsigned)r.freed_objects, (double)live / 1048576.0, (unsigned)mg_dvm_heap_objects(), (unsigned)g_nstopped,
+                makers[0] ? "; made since the last by " : "", makers);
     }
     t_collecting = false;
     free(stack);
     free(found);
+    free(pages);
     mg_lock_release(&g_gc_lock);
     if (ok && (g_pending_refs || g_nto_finalize)) reference_work();
 }
@@ -1389,6 +1547,11 @@ static bool cycle_ask(void)
 }
 
 static bool cycle_busy(void) { return g_cycle_running || g_cycle_asked; }
+
+/* The app's main thread, which waits for a collection alongside the app a budget later than the others (mg_dvm_gc). */
+static MG_THREAD_LOCAL bool t_main;
+
+void mg_dvm_gc_main_thread(void) { t_main = true; }
 
 void mg_dvm_gc_alongside_wait(void)
 {
@@ -1465,9 +1628,18 @@ bool mg_dvm_gc(const char *reason, mg_dvm_gc_result *out)
     if (!out && !strcmp(reason, "allocation") && alongside_on() && cycle_ask()) {
         /*
          * Asked for, and the app goes on. One that makes three budgets' worth before the collection ends waits for it, so
-         * that the heap does not grow without end while it marks.
+         * that the heap does not grow without end while it marks; where memory is pressed, one budget's worth, which is what
+         * the collection was asked at: a thread that makes anything more waits.
+         *
+         * The app's main thread one budget's worth later than the others. It waited with them: Spotify on a Lumia 650 was
+         * pressed at every collection, one each 3 to 5 s while its lists moved, and its main thread stood in each until the
+         * collection ended -- the marking alongside, the second stop and the sweep, 0.5 to 0.7 s -- a fifth of its time in
+         * all, the frames and the touches waiting meanwhile (package 664). It makes 1 to 2 MB in such a time; the other
+         * threads, Google Play services' among them (a third of what was made), still wait.
          */
-        if ((u64)(u32)g_since > (memory_pressed() ? 1 : 3) * g_budget) mg_dvm_gc_alongside_wait();
+        u64 times = memory_pressed() ? 1 : 3;
+        if (t_main) times++;
+        if ((u64)(u32)g_since > times * g_budget) mg_dvm_gc_alongside_wait();
         return true;
     }
     mg_dvm_gc_alongside_wait();

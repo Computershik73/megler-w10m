@@ -303,28 +303,22 @@ u8 *mg_zip_read(const mg_zip *z, const mg_zip_entry *e, size_t limit, size_t *si
     return out;
 }
 
-bool mg_zip_extract(const mg_zip *z, const mg_zip_entry *e, const char *path, void (*progress)(void *user, u64 written), void *user,
-                    char *err, size_t errlen)
+bool mg_zip_stream(const mg_zip *z, const mg_zip_entry *e, bool (*piece)(void *user, const u8 *data, size_t n), void *user, char *err,
+                   size_t errlen)
 {
     enum { IN_PIECE = 256 * 1024, OUT_PIECE = 1024 * 1024 };
-    mg_file *out;
     u8 *in = NULL, *buf = NULL;
-    u64 src = 0, left, written = 0;
+    u64 src = 0, left, handed = 0;
     uLong crc = crc32(0L, Z_NULL, 0);
     z_stream s;
-    bool inflating = false, ok = false;
-    int ferr = 0, r = Z_OK;
+    bool inflating = false, ok = false, stopped = false;
+    int r = Z_OK;
     const char *why = "the entry is damaged";
     if (!entry_data(z, e, &src) || (e->method != 0 && e->method != 8) || (e->method == 0 && e->csize != e->usize)) {
         fail(err, errlen, e->method != 0 && e->method != 8 ? "the entry is compressed in a way this reader does not know" : why);
         return false;
     }
     memset(&s, 0, sizeof(s));
-    out = mg_file_open(path, MG_O_WRITE | MG_O_CREATE | MG_O_TRUNC, &ferr);
-    if (!out) {
-        fail(err, errlen, "the file cannot be made");
-        return false;
-    }
     in = (u8 *)malloc(IN_PIECE);
     buf = (u8 *)malloc(OUT_PIECE);
     if (!in || !buf) {
@@ -362,28 +356,72 @@ bool mg_zip_extract(const mg_zip *z, const mg_zip_entry *e, const char *path, vo
             produced = OUT_PIECE - s.avail_out;
         }
         if (produced) {
-            if (written + produced > e->usize) goto done;
-            if (mg_file_write(out, buf, produced, &ferr) != (i64)produced) {
-                why = "the file cannot be written (is the storage full?)";
-                goto done;
-            }
+            if (handed + produced > e->usize) goto done;
             crc = crc32(crc, buf, (uInt)produced);
-            written += produced;
-            if (progress) progress(user, written);
+            handed += produced;
+            if (!piece(user, buf, produced)) {
+                stopped = true;
+                break;
+            }
         }
         if (e->method == 8 && r == Z_STREAM_END) break;
     }
-    ok = written == e->usize && (u32)crc == e->crc;
+    ok = stopped || (handed == e->usize && (u32)crc == e->crc);
     if (!ok) why = "the entry is damaged (its size or its CRC is not what the archive says)";
 done:
     if (inflating) inflateEnd(&s);
     free(in);
     free(buf);
-    mg_file_close(out);
-    if (!ok) {
-        mg_path_remove(path, NULL);
-        fail(err, errlen, why);
+    if (!ok) fail(err, errlen, why);
+    return ok;
+}
+
+/* mg_zip_extract's pieces, written to its file as they come. */
+typedef struct extract_to {
+    mg_file *out;
+    void (*progress)(void *user, u64 written);
+    void *user;
+    u64 written;
+    bool failed;
+} extract_to;
+
+static bool extract_piece(void *user, const u8 *data, size_t n)
+{
+    extract_to *x = (extract_to *)user;
+    int ferr = 0;
+    if (mg_file_write(x->out, data, n, &ferr) != (i64)n) {
+        x->failed = true;
+        return false;
     }
+    x->written += n;
+    if (x->progress) x->progress(x->user, x->written);
+    return true;
+}
+
+bool mg_zip_extract(const mg_zip *z, const mg_zip_entry *e, const char *path, void (*progress)(void *user, u64 written), void *user,
+                    char *err, size_t errlen)
+{
+    extract_to x;
+    u64 src = 0;
+    int ferr = 0;
+    bool ok;
+    /* (Looked at before the file is made, so that an entry that cannot be read leaves none.) */
+    if (!entry_data(z, e, &src) || (e->method != 0 && e->method != 8) || (e->method == 0 && e->csize != e->usize)) {
+        fail(err, errlen, e->method != 0 && e->method != 8 ? "the entry is compressed in a way this reader does not know" : "the entry is damaged");
+        return false;
+    }
+    memset(&x, 0, sizeof(x));
+    x.out = mg_file_open(path, MG_O_WRITE | MG_O_CREATE | MG_O_TRUNC, &ferr);
+    if (!x.out) {
+        fail(err, errlen, "the file cannot be made");
+        return false;
+    }
+    x.progress = progress;
+    x.user = user;
+    ok = mg_zip_stream(z, e, extract_piece, &x, err, errlen) && !x.failed;
+    if (x.failed) fail(err, errlen, "the file cannot be written (is the storage full?)");
+    mg_file_close(x.out);
+    if (!ok) mg_path_remove(path, NULL);
     return ok;
 }
 

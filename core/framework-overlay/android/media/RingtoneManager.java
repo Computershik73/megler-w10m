@@ -1,7 +1,8 @@
 // Overlay of core/framework/gen-src/android/media/RingtoneManager.java (tools/build-framework.sh).
 // It differs in getDefaultUri, getDefaultType and isDefault, which are Android's: the generated stub's getDefaultUri gave
 // null for every type, and an app that writes the default sound's address into its settings (4PDA in its Application's
-// attachBaseContext, Uri.toString) stopped at its start with a NullPointerException. The default addresses are
+// attachBaseContext, Uri.toString) stopped at its start with a NullPointerException, as Gmail's account set-up did
+// (com.android.emailcommon Account makes a string of the notification's). The default addresses are
 // Settings.System's, as on Android; the rest is the generated stub's (no sounds: getRingtone gives null, as Android does when
 // it cannot open one).
 package android.media;

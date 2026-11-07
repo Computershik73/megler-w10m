@@ -11,7 +11,9 @@
 // Apache HTTP client, where both said nothing.
 // And getPackageInfo names the app's split APKs (splitNames, splitRevisionCodes),
 // as ApplicationInfo does: an app in several APKs that checks for its splits by
-// this way of asking found none, where the original left them empty.
+// this way of asking found none, where the original left them empty. Its version
+// is the manifest's, but for Play Store's under a flag that tests its own updates
+// (megler.GooglePackages.ownVersionCode).
 // And the other apps the phone has (megler.PhoneApps), which a launcher lists and
 // starts: queryIntentActivities of the launcher's intent (MAIN, LAUNCHER) has
 // them after the app's own, and getPackageInfo, getApplicationInfo,
@@ -22,7 +24,9 @@
 // for ACTION_CREATE_SHORTCUT), and getDrawable their icons. And canRequestPackageInstalls is true: an app store may hand an APK
 // to Megler's installer (megler.Installs), which asks the user. And
 // getDefaultActivityIcon is the platform's sym_def_app_icon, where it was a
-// transparent colour with no size.
+// transparent colour with no size. And the app's permissions are megler.Permissions':
+// checkPermission and getPackageInfo's requestedPermissionsFlags say which it holds
+// (every one was granted, whatever its name), getPermissionInfo which are dangerous.
 package android.content.pm;
 
 import android.content.ComponentName;
@@ -101,7 +105,7 @@ public class PackageManager {
             p.signatures = new Signature[] { new Signature("") };
             return p;
         }
-        if (!mine(pkg) && megler.GooglePackages.is(pkg)) return megler.GooglePackages.packageInfo(pkg);
+        if (!mine(pkg) && megler.GooglePackages.is(pkg)) return megler.GooglePackages.packageInfo(pkg, flags);
         if (!mine(pkg)) {
             // Another app the phone has (megler.PhoneApps), or none.
             megler.PhoneApps.App other = megler.PhoneApps.find(pkg);
@@ -110,7 +114,8 @@ public class PackageManager {
         }
         megler.Manifest.read();
         PackageInfo p = new PackageInfo();
-        p.packageName = pkg; p.versionCode = megler.Manifest.versionCode; p.versionName = megler.Manifest.versionName != null ? megler.Manifest.versionName : "1.0";
+        p.packageName = pkg; p.versionCode = megler.GooglePackages.ownVersionCode(pkg, megler.Manifest.versionCode);
+        p.versionName = megler.GooglePackages.ownVersionName(pkg, megler.Manifest.versionName != null ? megler.Manifest.versionName : "1.0");
         p.applicationInfo = ApplicationInfo.self();
         if (megler.GooglePackages.VENDING.equals(pkg) || megler.GooglePackages.GMS.equals(pkg)) {
             p.signatures = new Signature[] { megler.GooglePackages.signature() };
@@ -121,7 +126,8 @@ public class PackageManager {
         if (splits != null) { p.splitNames = splits.clone(); p.splitRevisionCodes = new int[splits.length]; }
         p.requestedPermissions = megler.Manifest.permissions.toArray(new String[0]);
         p.requestedPermissionsFlags = new int[p.requestedPermissions.length];
-        java.util.Arrays.fill(p.requestedPermissionsFlags, PackageInfo.REQUESTED_PERMISSION_GRANTED);
+        for (int i = 0; i < p.requestedPermissions.length; i++)
+            if (megler.Permissions.check(p.requestedPermissions[i]) == PERMISSION_GRANTED) p.requestedPermissionsFlags[i] = PackageInfo.REQUESTED_PERMISSION_GRANTED;
         if ((flags & GET_ACTIVITIES) != 0) { p.activities = new ActivityInfo[megler.Manifest.activities.size()]; for (int i = 0; i < p.activities.length; i++) p.activities[i] = activity(megler.Manifest.activities.get(i)); }
         if ((flags & GET_RECEIVERS) != 0) { p.receivers = new ActivityInfo[megler.Manifest.receivers.size()]; for (int i = 0; i < p.receivers.length; i++) p.receivers[i] = activity(megler.Manifest.receivers.get(i)); }
         if ((flags & GET_SERVICES) != 0) { p.services = new ServiceInfo[megler.Manifest.services.size()]; for (int i = 0; i < p.services.length; i++) p.services[i] = service(megler.Manifest.services.get(i)); }
@@ -164,8 +170,13 @@ public class PackageManager {
     public ServiceInfo getServiceInfo(ComponentName c, ComponentInfoFlags flags) throws NameNotFoundException { return getServiceInfo(c, 0); }
     public ProviderInfo getProviderInfo(ComponentName c, int flags) throws NameNotFoundException { for (megler.Manifest.Component p : megler.Manifest.providers) if (p.name.equals(c.getClassName())) return provider(p); throw new NameNotFoundException(c.toString()); }
     public ProviderInfo resolveContentProvider(String authority, int flags) {
-        // (microG's own first when it is the Google Play services here, as megler.GmsProviders answers: its GServices.)
-        android.content.pm.PackageInfo gms = megler.MicroG.packageInfo(megler.GooglePackages.GMS);
+        // The app's own first: asked for one of its providers, Google Play services were read whole for theirs (2.7 s and more
+        // on a Lumia 650), which no app's authority is.
+        for (megler.Manifest.Component p : megler.Manifest.providers)
+            if (p.authorities != null && java.util.Arrays.asList(p.authorities.split(";")).contains(authority)) return provider(p);
+        // (microG's own first when it is the Google Play services here, as megler.GmsProviders answers: its GServices. Only for
+        // an authority that may be theirs: Spotify's question for another had GmsCore read whole, 3.8 s on a Lumia 650.)
+        android.content.pm.PackageInfo gms = megler.MicroG.mayBeGmsAuthority(authority) ? megler.MicroG.packageInfo(megler.GooglePackages.GMS) : null;
         boolean microg = megler.MicroG.isMicroG();
         if (microg && gms != null && gms.providers != null) for (ProviderInfo p : gms.providers)
             if (p.authority != null && java.util.Arrays.asList(p.authority.split(";")).contains(authority)) return p;
@@ -174,8 +185,6 @@ public class PackageManager {
             if (p.authority != null && java.util.Arrays.asList(p.authority.split(";")).contains(authority)) return p;
         if (!microg && gms != null && gms.providers != null) for (ProviderInfo p : gms.providers)
             if (p.authority != null && java.util.Arrays.asList(p.authority.split(";")).contains(authority)) return p;
-        for (megler.Manifest.Component p : megler.Manifest.providers)
-            if (p.authorities != null && java.util.Arrays.asList(p.authorities.split(";")).contains(authority)) return provider(p);
         return null;
     }
     public List<ProviderInfo> queryContentProviders(String process, int uid, int flags) { ArrayList<ProviderInfo> l = new ArrayList<>(); for (megler.Manifest.Component p : megler.Manifest.providers) l.add(provider(p)); return l; }
@@ -232,9 +241,22 @@ public class PackageManager {
         return l.toArray(new FeatureInfo[0]);
     }
     public String[] getSystemSharedLibraryNames() { return new String[] { "org.apache.http.legacy" }; }
-    public int checkPermission(String perm, String pkg) { return PERMISSION_GRANTED; }
+    /* The app's own as megler.Permissions has them; Google's packages hold theirs, as a phone's system apps; another app's are
+       not known here, and are granted as before. */
+    public int checkPermission(String perm, String pkg) { return mine(pkg) ? megler.Permissions.check(perm) : PERMISSION_GRANTED; }
     public boolean isPermissionRevokedByPolicy(String perm, String pkg) { return false; }
-    public PermissionInfo getPermissionInfo(String name, int flags) throws NameNotFoundException { PermissionInfo p = new PermissionInfo(); p.name = name; return p; }
+    /* A dangerous permission of Android's says so, with its group (megler.Permissions), as Android's does: an app that asks
+       which of its permissions it must request reads protectionLevel. */
+    public PermissionInfo getPermissionInfo(String name, int flags) throws NameNotFoundException {
+        PermissionInfo p = new PermissionInfo();
+        p.name = name;
+        String group = megler.Permissions.groupOf(name);
+        if (group != null) {
+            p.protectionLevel = PermissionInfo.PROTECTION_DANGEROUS;
+            p.group = "android.permission-group." + group.toUpperCase(java.util.Locale.ROOT);
+        }
+        return p;
+    }
     public int checkSignatures(String a, String b) { return SIGNATURE_MATCH; }
     public int checkSignatures(int a, int b) { return SIGNATURE_MATCH; }
     public boolean hasSigningCertificate(String pkg, byte[] cert, int type) { return true; }
@@ -350,7 +372,7 @@ public class PackageManager {
         // Google Play services' and Google Services Framework's own uid (megler.GooglePackages.sharedUid): theirs alone.
         if (uid == megler.GooglePackages.SHARED_UID && uid != android.os.Process.myUid()) {
             java.util.ArrayList<String> google = new java.util.ArrayList<>();
-            if (megler.MicroG.packageInfo(megler.GooglePackages.GMS) != null) google.add(megler.GooglePackages.GMS);
+            if (megler.MicroG.installed()) google.add(megler.GooglePackages.GMS);
             if (megler.Gsf.packageInfo(megler.GooglePackages.GSF) != null) google.add(megler.GooglePackages.GSF);
             return google.isEmpty() ? null : google.toArray(new String[0]);
         }
@@ -359,7 +381,7 @@ public class PackageManager {
         java.util.ArrayList<String> out = new java.util.ArrayList<>();
         out.add(megler.Native.packageName());
         if (uid == android.os.Process.myUid()) {
-            if (megler.MicroG.packageInfo(megler.GooglePackages.GMS) != null && !out.contains(megler.GooglePackages.GMS)) out.add(megler.GooglePackages.GMS);
+            if (megler.MicroG.installed() && !out.contains(megler.GooglePackages.GMS)) out.add(megler.GooglePackages.GMS);
             if (megler.Gsf.packageInfo(megler.GooglePackages.GSF) != null && !out.contains(megler.GooglePackages.GSF)) out.add(megler.GooglePackages.GSF);
         }
         return out.toArray(new String[0]);

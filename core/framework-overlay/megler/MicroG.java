@@ -16,7 +16,8 @@ public final class MicroG {
     /** The folder of the services every app shares (core/src/run/mg_run.c). */
     public static final String SHARED = "/data/megler-services";
     private static final String NS = "http://schemas.android.com/apk/res/android";
-    private static MicroG instance;
+    /* Read without the class's lock (loaded): get() holds it while GmsCore is read, for seconds. */
+    private static volatile MicroG instance;
     private static boolean checked;
     private final PackageInfo info = new PackageInfo();
     private final ArrayList<Entry> services = new ArrayList<>();
@@ -55,16 +56,35 @@ public final class MicroG {
         Intent intent;
         Binding(Running r, Intent i) { running = r; intent = i; }
     }
+    /*
+     * GmsCore read whole -- its resources, and its manifest's 395 services, 80 receivers and 41 providers with their filters, 1
+     * MB of binary XML -- the first time something of it is used here: 2.7 to 3.8 s of an app's start on a Lumia 650. Every
+     * app paid that as it started, AIDA64 and Apktool M too, before what is asked of GmsCore without its components
+     * (installed, hosts, activity's first checks, packageInfoBasic, isMicroG) stopped reading it: where it still is, the log
+     * says what asked for it first.
+     */
     private static synchronized MicroG get() {
         if (GooglePackages.GMS.equals(Native.packageName())) return null;
         if (!checked) {
             checked = true;
-            if (new File(APK).isFile()) try { instance = new MicroG(); }
+            if (new File(APK).isFile()) try {
+                long began = SystemClock.uptimeMillis();
+                instance = new MicroG();
+                android.util.Log.i("MicroG", "GmsCore read whole for this app in " + (SystemClock.uptimeMillis() - began) + " ms, first wanted by:",
+                                   new Throwable("what asked"));
+            }
             catch (Exception e) { android.util.Log.e("MicroG", "Cannot read " + APK, e); }
         }
         return instance;
     }
-    public static boolean installed() { return get() != null; }
+    /**
+     * GmsCore as read already (get), or nothing: what is asked of it then is not worth reading it for. Not under the class's
+     * lock, which get() holds while it reads GmsCore: Spotify's and Gmail's main threads spent 28 to 31% of ten seconds of
+     * their start waiting here (hosts, for each activity) while another thread read it.
+     */
+    private static MicroG loaded() { return instance; }
+    /** Whether Google Play services are here: their APK is (not read for it). */
+    public static boolean installed() { return !GooglePackages.GMS.equals(Native.packageName()) && new File(APK).isFile(); }
 
     /**
      * The activity of GmsCore's an intent of this app opens, when it is for GmsCore's package (by its component, or its package
@@ -76,13 +96,15 @@ public final class MicroG {
      * GmsCore's sign-in finds its next screen so (PRE_ADD_ACCOUNT).
      */
     public static Manifest.Component activity(Intent i) {
-        MicroG g = get();
-        if (g == null || i == null || PhoneApps.isLauncherIntent(i)) return null;
+        // (What tells an intent is none of GmsCore's first: every activity an app starts is asked of here.)
+        if (i == null || PhoneApps.isLauncherIntent(i)) return null;
         String pkg = i.getComponent() != null ? i.getComponent().getPackageName() : i.getPackage();
         if (pkg == null) {
             String action = i.getAction();
             if (action == null || action.startsWith("android.") || Manifest.resolve(i) != null) return null;
         } else if (!GooglePackages.GMS.equals(pkg)) return null;
+        MicroG g = get();
+        if (g == null) return null;
         java.util.ArrayList<Manifest.Component> on = new java.util.ArrayList<>();
         for (Manifest.Component c : g.activities) if (enabled(c)) on.add(c);
         return Manifest.resolveIn(on, i);
@@ -96,8 +118,9 @@ public final class MicroG {
         return s == android.content.pm.PackageManager.COMPONENT_ENABLED_STATE_ENABLED
             || (s == android.content.pm.PackageManager.COMPONENT_ENABLED_STATE_DEFAULT && c.enabled);
     }
-    /** Whether a component is one of GmsCore's activities (activity), which run in its scope here. */
-    public static boolean hosts(Manifest.Component c) { MicroG g = get(); return g != null && c != null && g.activities.contains(c); }
+    /** Whether a component is one of GmsCore's activities (activity), which run in its scope here: asked of every activity an
+        app starts, and none is until GmsCore was read for one (activity), so it is not read for the answer. */
+    public static boolean hosts(Manifest.Component c) { MicroG g = loaded(); return g != null && c != null && g.activities.contains(c); }
     /** An activity of GmsCore's, made in its class scope, its Application made first as for anything of GmsCore's that runs here. */
     public static Activity newActivity(String cls) throws Exception {
         MicroG g = get();
@@ -115,6 +138,104 @@ public final class MicroG {
         MicroG g = get();
         return g != null ? g.info : null;
     }
+    /**
+     * packageInfo for what wants none of GmsCore's components -- its version, signatures and application: an app's check that
+     * Google Play services are there and new enough (GoogleApiAvailability), PackageManager.getApplicationInfo -- from its
+     * manifest's first tags alone (basic) until GmsCore is read whole; its services, receivers and providers are then null.
+     */
+    public static PackageInfo packageInfoBasic(String pkg) {
+        if (!GooglePackages.GMS.equals(pkg)) return null;
+        MicroG g = loaded();
+        return g != null ? g.info : basic();
+    }
+    private static PackageInfo sBasic;
+    private static boolean sBasicRead, sBasicMicroG;
+    private static final Object sBasicLock = new Object();
+    /* GmsCore's PackageInfo from its manifest's tags up to <application>, read from its APK alone (not its resources), and
+       whether it is microG's (its manifest names org.microg's classes). Under a lock of its own: the class's is get()'s. */
+    private static PackageInfo basic() {
+        synchronized (sBasicLock) { return basicLocked(); }
+    }
+    private static PackageInfo basicLocked() {
+        if (sBasicRead) return sBasic;
+        sBasicRead = true;
+        if (!installed()) return null;
+        long began = SystemClock.uptimeMillis();
+        try (java.util.zip.ZipFile zip = new java.util.zip.ZipFile(APK)) {
+            java.util.zip.ZipEntry entry = zip.getEntry("AndroidManifest.xml");
+            if (entry == null) return null;
+            byte[] manifest;
+            try (java.io.InputStream in = zip.getInputStream(entry); java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream()) {
+                byte[] buf = new byte[65536]; int n;
+                while ((n = in.read(buf)) != -1) out.write(buf, 0, n);
+                manifest = out.toByteArray();
+            }
+            PackageInfo info = new PackageInfo();
+            ApplicationInfo a = newApplicationInfo();
+            info.applicationInfo = a;
+            XmlBlock.Parser p = new XmlBlock(manifest, APK).newParser();
+            int event;
+            while ((event = p.next()) != org.xmlpull.v1.XmlPullParser.END_DOCUMENT) {
+                if (event != org.xmlpull.v1.XmlPullParser.START_TAG) continue;
+                String tag = p.getName();
+                if ("manifest".equals(tag)) {
+                    info.packageName = p.getAttributeValue(null, "package");
+                    if (!GooglePackages.GMS.equals(info.packageName)) throw new IllegalArgumentException("Not GmsCore: " + info.packageName);
+                    info.versionCode = p.getAttributeIntValue(NS, "versionCode", 0);
+                    info.versionName = p.getAttributeValue(NS, "versionName");
+                } else if ("uses-sdk".equals(tag)) {
+                    a.minSdkVersion = p.getAttributeIntValue(NS, "minSdkVersion", 19);
+                    a.targetSdkVersion = p.getAttributeIntValue(NS, "targetSdkVersion", a.minSdkVersion);
+                } else if ("application".equals(tag)) {
+                    a.className = full(p.getAttributeValue(NS, "name"));
+                    a.enabled = p.getAttributeBooleanValue(NS, "enabled", true);
+                    break;
+                }
+            }
+            info.signatures = new Signature[] {GooglePackages.signature()};
+            info.signingInfo = new SigningInfo(info.signatures);
+            sBasicMicroG = contains(manifest, "org.microg.");
+            sBasic = info;
+            android.util.Log.i("MicroG", "GmsCore " + info.versionName + (sBasicMicroG ? " (microG's)" : "") + " from its manifest's first tags, in " +
+                                         (SystemClock.uptimeMillis() - began) + " ms");
+        } catch (Exception e) {
+            android.util.Log.e("MicroG", "Cannot read the manifest of " + APK, e);
+        }
+        return sBasic;
+    }
+    /* Whether a binary XML's bytes hold `text`, in UTF-8 or UTF-16 (its string pool's two forms). */
+    private static boolean contains(byte[] bytes, String text) {
+        return indexOf(bytes, text.getBytes(java.nio.charset.StandardCharsets.UTF_8)) >= 0
+            || indexOf(bytes, text.getBytes(java.nio.charset.StandardCharsets.UTF_16LE)) >= 0;
+    }
+    private static int indexOf(byte[] bytes, byte[] what) {
+        outer:
+        for (int i = 0; i + what.length <= bytes.length; i++) {
+            for (int j = 0; j < what.length; j++) if (bytes[i + j] != what[j]) continue outer;
+            return i;
+        }
+        return -1;
+    }
+    /* GmsCore's application as this app sees it, before its manifest says its class, SDK levels and whether it is enabled. */
+    private static ApplicationInfo newApplicationInfo() {
+        ApplicationInfo a = new ApplicationInfo();
+        a.packageName = a.processName = GooglePackages.GMS;
+        a.sourceDir = a.publicSourceDir = APK;
+        // microG's state is one for all apps, as on Android: the services' shared folder (mg_run.c), which microG's own app has
+        // for its private files too. Where there is none, it is this app's own.
+        File shared = new File(SHARED);
+        a.dataDir = shared.isDirectory() ? new File(shared, GooglePackages.GMS).getPath() : new File(Native.dataDir(), "megler-services/" + GooglePackages.GMS).getPath();
+        // And its two storages' folders, as Android names them: the device protected one is where its contexts keep it
+        // (PackageContext.getDataDir). GmsCore's DataDirPermissionsHelper makes a File of each when the phone has started, and with null
+        // its executor's thread ended on a NullPointerException.
+        a.credentialProtectedDataDir = a.dataDir;
+        a.deviceProtectedDataDir = new File(a.dataDir, "device_protected").getPath();
+        a.nativeLibraryDir = APK + "!/lib/" + Abis.PRIMARY;
+        a.enabled = true; a.uid = GooglePackages.sharedUid();
+        a.flags = ApplicationInfo.FLAG_SYSTEM | ApplicationInfo.FLAG_INSTALLED | ApplicationInfo.FLAG_HAS_CODE;
+        a.metaData = new Bundle();
+        return a;
+    }
     public static Context context(String pkg) {
         if (!GooglePackages.GMS.equals(pkg)) return null;
         MicroG g = get();
@@ -122,17 +243,28 @@ public final class MicroG {
     }
     /** Whether the Google Play services hosted here are microG's (its classes are org.microg's), not Google's own. */
     public static boolean isMicroG() {
-        MicroG g = get();
-        return g != null && g.microg();
+        MicroG g = loaded();
+        if (g != null) return g.microg();
+        if (basic() == null) return false;
+        synchronized (sBasicLock) { return sBasicMicroG; }
     }
     private boolean microg() {
         for (Receiver r : receivers) if (r.info.name.startsWith("org.microg.")) return true;
         for (ProviderInfo p : providers) if (p.name != null && p.name.startsWith("org.microg.")) return true;
         return false;
     }
+    /**
+     * Whether a provider's authority may be Google Play services': theirs are com.google's -- all 49 of Google's own 26.41, all
+     * but microG's subscribedfeeds of its -- so another is not worth reading GmsCore for (until it was read for something else).
+     */
+    public static boolean mayBeGmsAuthority(String authority) {
+        return authority != null && (loaded() != null || authority.startsWith("com.google.") || "subscribedfeeds".equals(authority));
+    }
     public static ContentProvider provider(String authority) {
+        // (Every authority but the app's own and Android's few asks here: ContentResolver.)
+        if (!mayBeGmsAuthority(authority)) return null;
         MicroG g = get();
-        if (g == null || authority == null) return null;
+        if (g == null) return null;
         g.attachOnMain();
         synchronized (g.runningProviders) {
             for (ProviderInfo info : g.providers) {
@@ -165,22 +297,8 @@ public final class MicroG {
             while ((n = in.read(buf)) != -1) out.write(buf, 0, n);
             manifest = out.toByteArray();
         }
-        ApplicationInfo a = new ApplicationInfo();
-        a.packageName = a.processName = GooglePackages.GMS;
-        a.sourceDir = a.publicSourceDir = APK;
-        // microG's state is one for all apps, as on Android: the services' shared folder (mg_run.c), which microG's own app has
-        // for its private files too. Where there is none, it is this app's own.
-        File shared = new File(SHARED);
-        a.dataDir = shared.isDirectory() ? new File(shared, GooglePackages.GMS).getPath() : new File(Native.dataDir(), "megler-services/" + GooglePackages.GMS).getPath();
-        // And its two storages' folders, as Android names them: the device protected one is where its contexts keep it
-        // (PackageContext.getDataDir). GmsCore's DataDirPermissionsHelper makes a File of each when the phone has started, and with null
-        // its executor's thread ended on a NullPointerException.
-        a.credentialProtectedDataDir = a.dataDir;
-        a.deviceProtectedDataDir = new File(a.dataDir, "device_protected").getPath();
-        a.nativeLibraryDir = APK + "!/lib/" + Abis.PRIMARY;
-        a.enabled = true; a.uid = GooglePackages.sharedUid();
-        a.flags = ApplicationInfo.FLAG_SYSTEM | ApplicationInfo.FLAG_INSTALLED | ApplicationInfo.FLAG_HAS_CODE;
-        a.metaData = new Bundle(); info.applicationInfo = a;
+        ApplicationInfo a = newApplicationInfo();
+        info.applicationInfo = a;
         XmlBlock.Parser p = new XmlBlock(manifest, APK).newParser();
         Entry current = null; Receiver receiver = null; IntentFilter filter = null; boolean inApp = false;
         int event;
@@ -319,7 +437,17 @@ public final class MicroG {
         }
         return best;
     }
-    public static ServiceInfo resolve(Intent i) { MicroG g = get(); Entry e = g == null ? null : g.find(i, false); return e == null ? null : e.info; }
+    public static ServiceInfo resolve(Intent i) {
+        if (!mayBeGms(i)) return null;
+        MicroG g = get(); Entry e = g == null ? null : g.find(i, false); return e == null ? null : e.info;
+    }
+    /* Whether an intent may be for GmsCore: it names no package, or GmsCore's. One for another package's component (the app's
+       own services, every one of which PackageManager and Context ask of here first) is not worth reading GmsCore for. */
+    private static boolean mayBeGms(Intent i) {
+        if (i == null) return false;
+        String pkg = i.getComponent() != null ? i.getComponent().getPackageName() : i.getPackage();
+        return pkg == null || GooglePackages.GMS.equals(pkg);
+    }
     /**
      * What PackageManager.queryIntentServices lists of GmsCore's: as on Android, exported or not (exported matters to a
      * binding), and a disabled one only with MATCH_DISABLED_COMPONENTS. GmsCore tells an unlocked user so: it asks for its own
@@ -330,6 +458,7 @@ public final class MicroG {
      */
     public static List<ServiceInfo> query(Intent i, int flags) {
         ArrayList<ServiceInfo> out = new ArrayList<>(), hidden = new ArrayList<>();
+        if (!mayBeGms(i)) return out;
         MicroG g = get();
         if (g == null || i == null || !g.info.applicationInfo.enabled) return out;
         boolean disabled = (flags & PackageManager.MATCH_DISABLED_COMPONENTS) != 0;
@@ -580,6 +709,7 @@ public final class MicroG {
     }
 
     public static boolean bind(Context from, Intent intent, ServiceConnection conn) {
+        if (!mayBeGms(intent)) return false;
         MicroG g = get(); Entry e = g == null ? null : g.find(intent, GooglePackages.GMS.equals(from.getPackageName()));
         if (e == null) {
             // a binding meant for Google Play services that none of its services takes: said, as the caller often says only that
@@ -650,7 +780,9 @@ public final class MicroG {
         try { return (String) Intent.class.getMethod("getIdentifier").invoke(i); } catch (Throwable t) { return null; }
     }
     public static boolean unbind(ServiceConnection conn) {
-        MicroG g = get(); if (g == null) return false;
+        // (Nothing is bound to GmsCore before it was read: Android System WebView's unbinding of its own service had Aurora
+        // Store read it whole, 4.5 s on a Lumia 650.)
+        MicroG g = loaded(); if (g == null) return false;
         Binding b;
         synchronized (g.bindings) { b = g.bindings.remove(conn); }
         if (b == null) return false;
@@ -670,6 +802,7 @@ public final class MicroG {
         }
     }
     public static ComponentName start(Context from, Intent intent) {
+        if (!mayBeGms(intent)) return null;
         MicroG g = get(); Entry e = g == null ? null : g.find(intent, GooglePackages.GMS.equals(from.getPackageName()));
         if (e == null) return null;
         Intent copy = new Intent(intent);
@@ -772,5 +905,9 @@ public final class MicroG {
         @Override public void sendBroadcast(Intent i) { Broadcasts.send(this, i); }
         @Override public void sendBroadcast(Intent i, String permission) { Broadcasts.send(this, i); }
         @Override public void sendOrderedBroadcast(Intent i, String permission) { Broadcasts.send(this, i); }
+        // Google Play services holds its permissions as a phone's system app does, whatever the app it is in holds: its own
+        // checks (the location it uses for itself, the accounts, the text messages its SMS Retriever hears) are its own. The
+        // app's context answers for the app (megler.Permissions); this one, a wrapper of it, would have answered for the app too.
+        @Override public int checkPermission(String permission, int pid, int uid) { return PackageManager.PERMISSION_GRANTED; }
     }
 }

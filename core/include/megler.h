@@ -93,6 +93,16 @@ MEGLER_API void megler_free(void *p);
  *     "label": "Example Game",         the application's name, when it is a plain string
  *     "versionName": "1.2.3", "versionCode": 123,
  *     "minSdk": 16, "targetSdk": 28,
+ *     "permissions": ["android.permission.INTERNET", "android.permission.CAMERA"],   what the manifest asks for
+ *                                      (<uses-permission>, <uses-permission-sdk-23>), each once, in its order
+ *     "permissionMaxSdk": [0, 28],     android:maxSdkVersion of each, place for place: the last Android it is asked
+ *                                      on, 0 for every one
+ *     "smsRetriever": true,            the app uses Google Play services' SMS Retriever: its manifest has a receiver of
+ *                                      it (its SMS_RETRIEVED, or the permission only Google Play services holds), or its
+ *                                      code names one of those or the class SmsRetriever (an app that registers its
+ *                                      receiver at run time); absent when neither
+ *     "smsRetrieverInCode": true,      found in its code (the DEX files, read only when the manifest says nothing of it
+ *                                      and has Google Play services' com.google.android.gms.version meta-data)
  *     "abis": ["armeabi-v7a", "arm64-v8a"],
  *     "abi": "armeabi-v7a",            the one that would be used; absent when there is none
  *     "runnable": true,                false: "reason" says why not (no 32-bit ARM code, no native code at all, ...)
@@ -1465,7 +1475,23 @@ typedef struct megler_system_bars_host {
  *   uninstall_app  Another app the phone has, to uninstall: an Android package (an app store's Uninstall,
  *                PackageInstaller.uninstall; ACTION_DELETE of package:<name>). True: the shell asks the user. It is gone
  *                when apps_dir's apps.txt no longer has it; installs/<package>.uninstall.txt says when the user said no.
+ *   permission   Whether the app may have what one of Android's dangerous permission groups guards: `group` is the group's
+ *                name in small letters ("location", "camera", "microphone", "storage", "read_media_visual",
+ *                "read_media_aural", "sms", "phone", "call_log", "contacts", "calendar", "sensors", "nearby_devices",
+ *                "notifications", "activity_recognition"). MEGLER_PERMISSION_GRANTED; _DENIED, the user said no and may be
+ *                asked again; _DENIED_FIXED, no, and not to be asked again (Windows' own setting, or a second no); or
+ *                _UNDECIDED, never asked. With `ask` false the answer comes at once and nothing is asked; that comes on
+ *                any of the app's threads, its main thread too. With `ask` true the user is asked first if they have not
+ *                decided or have said no once -- Windows' own question for the camera, the microphone and the location,
+ *                the shell's for the rest -- and the call waits for the answer (what it was before, when the question was
+ *                put away unanswered or could not be put); it comes on a thread of the app's that may wait, never its main
+ *                thread. The shell keeps
+ *                what the user said, for the app, from run to run; it may grant a group it has nothing behind at once.
+ *                The framework (megler.Permissions) asks it of a group whose permissions the app's manifest asks for and
+ *                whose answer Android's rules do not settle by themselves. Left NULL: every group is granted, nothing asked.
  */
+enum { MEGLER_PERMISSION_UNDECIDED = 0, MEGLER_PERMISSION_GRANTED = 1, MEGLER_PERMISSION_DENIED = 2, MEGLER_PERMISSION_DENIED_FIXED = 3 };
+
 typedef struct megler_system_host {
     void *user;
     void (MEGLER_CB *open_url)(void *user, const char *uri);
@@ -1473,6 +1499,7 @@ typedef struct megler_system_host {
     bool (MEGLER_CB *install_apk)(void *user, const char *host_path, const char *name);
     bool (MEGLER_CB *launch_app)(void *user, const char *package, const char *activity);
     bool (MEGLER_CB *uninstall_app)(void *user, const char *package);
+    int (MEGLER_CB *permission)(void *user, const char *group, bool ask);
 } megler_system_host;
 
 /*
@@ -1718,6 +1745,9 @@ MEGLER_API void megler_start_activity(const char *activity_class);
  * Android's app info screen. True when the ask is written. Needs megler_init.
  */
 MEGLER_API bool megler_ask_clear_data(const char *package);
+/* Whether such an ask waits for the app's next start: the shell forgets then what it keeps of the app's own, as Android's
+   Clear storage does -- the user's answers to its permissions (player/PermissionHost.h). Needs megler_init. */
+MEGLER_API bool megler_clear_data_asked(const char *package);
 /* Frames presented since the app started. */
 MEGLER_API uint32_t megler_frames(void);
 
@@ -1938,11 +1968,40 @@ MEGLER_API bool megler_appx_finish(megler_appx *a, const megler_appx_key *key, c
 /* The identity name of the package of the Android app `android_package` ("MeglerApp." and the package), into out (at least
    51 bytes); false for a name that is not an Android package's. */
 MEGLER_API bool megler_appx_app_identity(const char *android_package, char *out, size_t outlen);
+/*
+ * What that package declares to Windows, from the permissions the Android app's manifest asks for (megler_apk_report's
+ * "permissions") and whether it uses Google Play services' SMS Retriever ("smsRetriever"): a mask of these, each
+ * the capabilities named after it, Megler's own needs in every package added:
+ *   NETWORK       internetClient, internetClientServer, privateNetworkClientServer: INTERNET
+ *   PICTURES      picturesLibrary: every package (Megler's diagnosis folder Pictures\Megler\diag; an app's own pictures)
+ *   VIDEOS        videosLibrary: the storage permissions, READ_MEDIA_VIDEO (and its visual ones)
+ *   MUSIC         musicLibrary: the storage permissions, READ_MEDIA_AUDIO
+ *   WEBCAM        webcam: CAMERA
+ *   MICROPHONE    microphone: RECORD_AUDIO
+ *   LOCATION      location: ACCESS_FINE_LOCATION, ACCESS_COARSE_LOCATION, ACCESS_BACKGROUND_LOCATION
+ *   CHAT          chat: RECEIVE_SMS, READ_SMS, or Google Play services' SMS Retriever
+ *   CALL_HISTORY  phoneCallHistoryPublic: READ_PHONE_STATE, READ_CALL_LOG
+ * Megler's other capabilities are every package's (codeGeneration, packageQuery, backgroundMediaPlayback) or no app's
+ * (documentsLibrary and removableStorage, which want file types declared; packageManagement).
+ */
+enum {
+    MEGLER_APPX_CAP_NETWORK = 1,
+    MEGLER_APPX_CAP_PICTURES = 2,
+    MEGLER_APPX_CAP_VIDEOS = 4,
+    MEGLER_APPX_CAP_MUSIC = 8,
+    MEGLER_APPX_CAP_WEBCAM = 16,
+    MEGLER_APPX_CAP_MICROPHONE = 32,
+    MEGLER_APPX_CAP_LOCATION = 64,
+    MEGLER_APPX_CAP_CHAT = 128,
+    MEGLER_APPX_CAP_CALL_HISTORY = 256,
+};
+MEGLER_API unsigned megler_appx_capabilities(const char *const *permissions, int count, bool sms_retriever);
 /* That package's manifest, made from Megler's (the text of its AppxManifest.xml): the identity name, phone product id and
-   shown names changed, and the tile's and the splash screen's background colours when given ("#rrggbb" or "transparent";
-   NULL keeps Megler's), all else Megler's. A string to free with megler_free, or NULL (err says why). */
+   shown names changed, the tile's and the splash screen's background colours when given ("#rrggbb" or "transparent";
+   NULL keeps Megler's), its capabilities those of `capabilities` (megler_appx_capabilities; -1 keeps all of Megler's), all
+   else Megler's. A string to free with megler_free, or NULL (err says why). */
 MEGLER_API char *megler_appx_app_manifest(const char *megler_manifest, const char *android_package, const char *label, const char *tile_color,
-                             const char *splash_color, char *err, size_t errlen);
+                             const char *splash_color, int capabilities, char *err, size_t errlen);
 /* That package's resources.pri, from the one Megler carries made for a placeholder name as long (appx-template\resources.pri,
    whose resources.txt says the placeholder and the two tails; tools/build-appx.sh): into `out`, as large as `pri`. False
    (err says why) when the template is not such a file. */

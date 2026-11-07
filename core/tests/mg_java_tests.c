@@ -63,6 +63,7 @@
 
 #include "../include/megler.h"
 #include "../src/apk/mg_apk.h"
+#include "../src/appx/mg_appx.h"
 #include "../src/bionic/mg_bionic.h"
 #include "../src/drivers/mg_driver.h"
 #include "../src/drivers/mg_java.h"
@@ -508,6 +509,7 @@ static bool g_portrait;
 /* Not one of the test apps: nothing is known of what its manifest says. */
 static bool g_any_app;
 static bool g_crash_app;
+static bool g_microg_app;
 /* The camera app: it alone has cameras (the stand-in), so that the others still see a phone without one. */
 static bool g_camera_app;
 static volatile i32 g_exited;
@@ -746,6 +748,57 @@ static MEGLER_CB int bio_verify(void *user, const char *message)
     return strstr(message, "Sign in") ? MEGLER_BIOMETRIC_VERIFIED : MEGLER_BIOMETRIC_CANCELED;
 }
 
+/*
+ * The user's answers to the permission groups the app asks for (megler_system_host.permission), as the shell keeps them: in a
+ * file of the data folder, so that the data app's second run finds what its first left. For the data app the user lets it
+ * have every group but the camera, which is refused each time it is asked, the second time for good; the contacts are
+ * granted with no one asked, as the shell grants a group it has nothing behind. Every other app has every group granted, as
+ * before there were questions. What was asked is said in g_permissions_asked, each group followed by ';'.
+ */
+static bool g_data_app;
+static char g_permissions_asked[256];
+
+static int permission_kept(const char *group)
+{
+    char *path = mg_sprintf("%s/test-permissions.txt", megler_data_dir()), *text, *at;
+    size_t size = 0, glen = strlen(group);
+    int state = MEGLER_PERMISSION_UNDECIDED;
+    text = (char *)mg_file_read_all(path, &size);
+    free(path);
+    if (!text) return state;
+    text = (char *)realloc(text, size + 1);
+    if (!text) return state;
+    text[size] = 0;
+    /* "group=state" lines; the last one of a group counts. */
+    for (at = text; (at = strstr(at, group)) != NULL; at += glen)
+        if ((at == text || at[-1] == '\n') && at[glen] == '=') state = atoi(at + glen + 1);
+    free(text);
+    return state;
+}
+
+static MEGLER_CB int system_permission(void *user, const char *group, bool ask)
+{
+    int state;
+    (void)user;
+    if (!g_data_app) return MEGLER_PERMISSION_GRANTED;
+    if (!strcmp(group, "contacts")) return MEGLER_PERMISSION_GRANTED;
+    state = permission_kept(group);
+    if (ask && state != MEGLER_PERMISSION_GRANTED && state != MEGLER_PERMISSION_DENIED_FIXED) {
+        char *path = mg_sprintf("%s/test-permissions.txt", megler_data_dir());
+        FILE *f;
+        size_t n = strlen(g_permissions_asked);
+        snprintf(g_permissions_asked + n, sizeof(g_permissions_asked) - n, "%s;", group);
+        state = strcmp(group, "camera") ? MEGLER_PERMISSION_GRANTED : state == MEGLER_PERMISSION_DENIED ? MEGLER_PERMISSION_DENIED_FIXED : MEGLER_PERMISSION_DENIED;
+        f = fopen(path, "ab");
+        if (f) {
+            fprintf(f, "%s=%d\n", group, state);
+            fclose(f);
+        }
+        free(path);
+    }
+    return state;
+}
+
 static MEGLER_CB bool system_launch(void *user, const char *package, const char *activity)
 {
     char t[200];
@@ -856,7 +909,9 @@ static bool start(const char *apk, const char *android_root)
     cfg.system.install_apk = system_install;
     cfg.system.launch_app = system_launch;
     cfg.system.uninstall_app = system_uninstall;
+    cfg.system.permission = system_permission;
     g_system_heard[0] = 0;
+    g_permissions_asked[0] = 0;
     cfg.apps_dir = phone_apps_fixture();
     /* Decoders for MediaCodec that decode nothing but take samples only as a real one must have them (mg_codec_standin.c). */
     cfg.codec = *mg_codec_standin();
@@ -899,6 +954,30 @@ static bool start(const char *apk, const char *android_root)
         /* The app whose launcher entries are aliases, the first one disabled: what is started is what the enabled one stands for. */
         if (g_crash_app) CHECK(report && strstr(report, "\"activity\":\"megler.test.crash.First\""));
         if (!g_any_app) CHECK(report && strstr(report, g_portrait ? "\"orientation\":\"portrait\"" : "\"orientation\":\"unspecified\""));
+        /*
+         * The permissions its manifest asks for, in its order, with the last Android each is asked on; and its receiver of
+         * Google Play services' SMS Retriever: what the app's own package declares to Windows is made of them.
+         */
+        if (g_data_app) {
+            CHECK(report && strstr(report, "\"permissions\":[\"android.permission.RECEIVE_SMS\",\"android.permission.READ_SMS\",\"android.permission.READ_PHONE_STATE\","
+                                           "\"android.permission.READ_CALL_LOG\",\"android.permission.READ_EXTERNAL_STORAGE\",\"android.permission.WRITE_EXTERNAL_STORAGE\","
+                                           "\"android.permission.CAMERA\",\"android.permission.READ_CONTACTS\",\"android.permission.VIBRATE\"],"
+                                           "\"permissionMaxSdk\":[0,0,0,0,0,28,0,0,0],\"smsRetriever\":true"));
+            CHECK(report && !strstr(report, "smsRetrieverInCode"));
+            if (report) {
+                /* (The names as the shell reads them, for megler_appx_capabilities: the messages, the call history, the camera and the libraries.) */
+                static const char *const names[] = { "android.permission.RECEIVE_SMS", "android.permission.READ_EXTERNAL_STORAGE", "android.permission.CAMERA",
+                                                     "android.permission.READ_PHONE_STATE" };
+                CHECK(mg_appx_capabilities(names, 4, false) == (MG_APPX_CAP_CHAT | MG_APPX_CAP_PICTURES | MG_APPX_CAP_VIDEOS | MG_APPX_CAP_MUSIC |
+                                                                 MG_APPX_CAP_WEBCAM | MG_APPX_CAP_CALL_HISTORY));
+            }
+        }
+        /*
+         * An app that registers the SMS Retriever's receiver at run time and whose manifest says nothing of it (the microG test
+         * app, as a bank's app): found in its code. The other test apps name it nowhere; the data app has it in its manifest.
+         */
+        if (g_microg_app) CHECK(report && strstr(report, "\"smsRetriever\":true,\"smsRetrieverInCode\":true"));
+        else if (!g_data_app && !g_any_app) CHECK(report && !strstr(report, "smsRetriever"));
         megler_free(report);
     }
     {
@@ -1172,6 +1251,30 @@ static int run_hello(void)
     expect_line("I/HelloTest: onPause draws=true", &at, 30);
     megler_set_paused(false);
     expect_line("I/HelloTest: onResume", &at, 30);
+    {
+        /*
+         * A view that draws as Compose's does (Layers, in the bottom left corner): its nodes changed thirty times once the app
+         * is shown again, the view invalidated whole each time. No frame drawn in part may miss anything (the count of misses
+         * at the end), none may reach the view's own green field below its nodes (what changed is found node by node, call by
+         * call: megler.Gfx.damage), and the last picture shows the bar's yellow part 120 long and the square, opaque, moved
+         * 120 along.
+         */
+        int from, line, parts = 0, low = 0, l, t, r, b;
+        expect_line("I/HelloTest: layers started", &at, 30);
+        from = at;
+        expect_line("I/HelloTest: layers steps=30", &at, 60);
+        for (line = find_line("D/ViewRoot: drawn in part ", from); line >= 0 && line < at; line = find_line("D/ViewRoot: drawn in part ", line + 1)) {
+            if (sscanf(strstr(line_at(line), "drawn in part ") + 14, "%d,%d-%d,%d", &l, &t, &r, &b) != 4) continue;
+            parts++;
+            if (b > g_screen_h - 60) low++;
+        }
+        settle();
+        write_picture("hello-4-layers");
+        say("  a view drawn as Compose's: %d frames drawn in part while its nodes changed, %d of them reaching its own field", parts, low);
+        CHECK(parts > 0 && low == 0);
+        CHECK(pixel(10, g_screen_h - 115) == 0xE0A000 && pixel(150, g_screen_h - 115) == 0x2050A0);
+        CHECK(pixel(130, g_screen_h - 90) == 0x00A0A0 && pixel(10, g_screen_h - 90) != 0x00A0A0 && pixel(100, g_screen_h - 20) == 0x40A040);
+    }
 
     /* Back: down in order, and out. */
     megler_key(4, true);
@@ -1211,6 +1314,10 @@ static void type_into_fields(const int row[4], int *at)
     expect_line("I/Megler: keyboard: the first thing the keyboard sent, typed text (1 character), finds no view with the focus: it goes nowhere", at, 30);
     tap(row[0] + row[2] / 2, row[1] + row[3] * 7 + row[3] / 2);
     expect_line("I/DemoTest: list: clicked row 7 \"typing\"", at, 30);
+    /* A field that sets its selection again in its onSelectionChanged, as WhatsApp's MentionableEntry does: told once a
+       selection has moved, with its new ends, and not when it stays (it was told of each end, again and again, until the
+       stack ran out). */
+    expect_line("I/DemoTest: typing: selection calls=3 3,3 8,8 11,11 at 11,11", at, 30);
     expect_line("I/DemoTest: typing: created", at, 30);
     layout = wait_line("I/DemoTest: typing: layout name=", *at, 30);
     CHECK(layout >= 0 && rect_in(line_at(layout), "name", name) && rect_in(line_at(layout), "number", number) && rect_in(line_at(layout), "secret", secret)
@@ -1558,8 +1665,45 @@ static int run_demos(void)
         all[3] = W.height;
         moved = count_changed(list, all);
         CHECK(moved == 0);
-        if (moved) say("  (%d pixels are not where they were before the drag)", moved);
+        if (moved) {
+            int box[4];
+            if (changed_box(list, box)) say("  (%d pixels are not where they were before the drag, within %d,%d %dx%d)", moved, box[0], box[1], box[2], box[3]);
+            write_picture("demos-5-drag-moved");
+        }
         CHECK(find_line("list: clicked row", 0) < 0);
+        {
+            /*
+             * Moves that come faster than the frames go out batched (AppRunner.moveBatched): thirty moves of 2 pixels up
+             * sent at once, held and lifted, then thirty down. The list has every move as a sample (an event's history and
+             * itself), in fewer events, and is where it was. (Not up and back in one batch: the event's own place would be
+             * where the finger came down, and the list, which reads only that, would take it for a tap.)
+             */
+            int burst, events = 0, samples = 0, from, got;
+            for (burst = 0; burst < 2; burst++) {
+                int dir = burst == 0 ? -1 : 1, start = burst == 0 ? y0 : y0 - 60;
+                from = g_nlines;
+                megler_touch(0, 1, (float)x, (float)start);
+                for (k = 1; k <= 30; k++) megler_touch(1, 1, (float)x, (float)(start + dir * 2 * k));
+                mg_sleep_ns(150000000ull);
+                megler_touch(2, 1, (float)x, (float)(start + dir * 60));
+                got = wait_line("I/DemoTest: list: a finger's moves came as ", from, 30);
+                events = samples = 0;
+                if (got >= 0) sscanf(strstr(line_at(got), "came as ") + 8, "%d events of %d samples", &events, &samples);
+                say("  thirty moves at once came to the list as %d events of %d samples", events, samples);
+                CHECK(samples == 30);
+                CHECK(events >= 1 && events < 30);
+                CHECK(find_line("list: a move's samples out of order", from) < 0);
+                settle();
+            }
+            moved = count_changed(list, all);
+            CHECK(moved == 0);
+            if (moved) {
+                int box[4];
+                if (changed_box(list, box)) say("  (%d pixels are not where they were before the batched moves, within %d,%d %dx%d)", moved, box[0], box[1], box[2], box[3]);
+                write_picture("demos-5-batched-moved");
+            }
+            CHECK(find_line("list: clicked row", 0) < 0);
+        }
     }
 
     /* A finger on the first row: the list runs down from there. The dialog first, which waits for its own button. */
@@ -1843,7 +1987,7 @@ static int run_natives(void)
     static const char *const steps[] = { "load", "registered", "primitives", "stack-mix", "overloads", "arrays", "bounds", "strings", "callback", "throw-native",
                                          "throw-java", "find-class", "references", "reflection", "monitor", "thread", "thread-daemon", "needed-library", "asset",
                                          "bitmap", "direct-buffer", "configuration", "library-folder", "loaded-once", "own-file", "missing-library",
-                                         "missing-method", "looper-watched", "gc-held", "system-icu", "abi", "device", "string-alloc", "many-args" };
+                                         "missing-method", "looper-watched", "gc-held", "system-icu", "abi", "device", "string-alloc", "many-args", "deep-callbacks" };
     int at = -1, layout, pic[4], i;
     char want[120];
     memset(pic, 0, sizeof(pic));
@@ -2224,10 +2368,11 @@ static int run_data(void)
                                             Handler, which hears on its thread, preferences whose keys have spaces, and an
                                             account removed, told as Android 8 tells it. And the platform's
                                             MediaMetadata through a Parcel, as MediaMetadataCompat makes it, and PlaybackState with a
-                                            custom action, as PlaybackStateCompat makes it. And sound from Java: an
+                                            custom action, as PlaybackStateCompat makes it, and a RemoteUserInfo, as AndroidX Media
+                                            makes one. And a proxy of an interface of 600 methods. And sound from Java: an
                                             AudioTrack written to, a MediaPlayer of a WAV and of an Ogg Vorbis asset, a SoundPool. */
                                          "xml", "asset-fd", "tasks", "wrapper-receiver", "viewgroup-flag", "text-drawables", "pfd-dup", "pfd-parcel",
-                                         "theme-selfref", "queue-next", "storage-stats", "broadcast-explicit", "service-stop-thread", "start-ids", "process-scope", "job-scheduler", "downloads", "rollback-service", "art-manager", "progress-subclass", "telephony", "microphone", "biometric", "ordered-broadcast", "hardware-accelerated", "descendant-invalidated", "image-matrix-before-layout", "delegate-last-scope", "asset-manager-manifest", "big-asset", "path-iterator", "mutable-context", "exec", "crc32c", "nine-patch-constructors", "subscription-ids", "filter-categories", "arrays-ranges", "thread-stack", "icu-number", "audio-route", "expand-template", "list-fragment", "fragment-saved-state", "stub-said", "handler-thread", "managed-dialog", "input-format", "dialog-of-stopped", "zip-path-validator", "list-row-click", "animation-listener", "typeface-descriptor", "device-provisioned", "users", "start-asked", "pending-intent-creator", "pending-intent-flags", "alarm-replace-cancel", "messenger-forwarded", "insets-builder", "insets-consumed", "insets-siblings", "broadcast-handler", "prefs-spaced-key", "account-removed", "sync", "package-installer", "wifi", "media-metadata", "playback-state", "theme-accent", "phone-apps", "phone-apps-activities", "phone-apps-signatures", "install-intent", "install-session", "install-splits", "bitmap-bytes", "adaptive-icon", "idle-handler", "uri-builder", "many-interfaces", "apk-path", "apk-optimization",
+                                         "theme-selfref", "queue-next", "storage-stats", "broadcast-explicit", "service-stop-thread", "start-ids", "process-scope", "job-scheduler", "downloads", "rollback-service", "art-manager", "progress-subclass", "telephony", "microphone", "biometric", "ordered-broadcast", "hardware-accelerated", "descendant-invalidated", "image-matrix-before-layout", "delegate-last-scope", "asset-manager-manifest", "big-asset", "path-iterator", "mutable-context", "exec", "crc32c", "nine-patch-constructors", "subscription-ids", "filter-categories", "arrays-ranges", "thread-stack", "icu-number", "audio-route", "expand-template", "list-fragment", "fragment-saved-state", "stub-said", "handler-thread", "managed-dialog", "input-format", "dialog-of-stopped", "zip-path-validator", "list-row-click", "animation-listener", "circular-reveal", "animator-values", "observer-merged", "typeface-descriptor", "device-provisioned", "users", "start-asked", "pending-intent-creator", "pending-intent-flags", "alarm-replace-cancel", "messenger-forwarded", "insets-builder", "insets-consumed", "insets-siblings", "broadcast-handler", "prefs-spaced-key", "account-removed", "sync", "package-installer", "batch-operations", "wifi", "media-metadata", "playback-state", "remote-user-info", "theme-accent", "phone-apps", "phone-apps-activities", "phone-apps-signatures", "install-intent", "install-session", "install-splits", "bitmap-bytes", "adaptive-icon", "idle-handler", "uri-builder", "many-interfaces", "proxy-many-methods", "apk-path", "maps-paths", "apk-optimization",
                                          "audio-track", "media-player", "media-player-ogg", "sound-pool",
                                          /* And MediaCodec over the stand-in for the shell's decoders: H.264 shown on a Surface in display
                                             order, a flush, parameter sets in a codec-config buffer, the asynchronous mode, AAC with an
@@ -2265,8 +2410,25 @@ static int run_data(void)
         say("  TLS: %s", with ? "conscrypt's (its library is in the Android root)" : "the runtime's stand-in, which has none");
         CHECK(find_line(with ? "I/DataTest: tls-is conscrypt provider=com.android.org.conscrypt.OpenSSLProvider" : "I/DataTest: tls-is none provider=megler.security.RuntimeProvider", 0) >= 0);
     }
-    /* What requestPermissions asked comes back by a message of its own, after the method that asked has returned. */
-    expect_line("I/DataTest: permission-result ok after done=true", &at, 30);
+    /*
+     * What requestPermissions asked comes back by a message of its own, after the method that asked has returned. In the first
+     * run the user is asked about the storage, the messages, the phone, the calls and the camera, one after another, and the
+     * activity is paused around the answer and resumed after it; the camera, refused, is asked for again after the rationale,
+     * refused for good, and then a third time with no one asked. In the second run what the first left is kept: no one asked.
+     */
+    if (run == 2 && want == 2) {
+        expect_line("I/DataTest: permission-result ok after done=true paused=false rationale=false", &at, 30);
+    } else {
+        expect_line("I/DataTest: permission-result ok after done=true paused=true rationale=true", &at, 30);
+        CHECK(wait_line("I/DataTest: permission-resumed", 0, 30) >= 0);
+        CHECK(wait_line("I/DataTest: permission-again denied=true paused=true rationale=false", 0, 30) >= 0);
+    }
+    CHECK(wait_line("I/DataTest: permission-for-good denied=true paused=false rationale=false", 0, 30) >= 0);
+    /* A fragment's request, answered to the fragment. */
+    CHECK(wait_line("I/DataTest: permission-fragment ok", 0, 30) >= 0);
+    say("  the user was asked about: %s", g_permissions_asked[0] ? g_permissions_asked : "nothing");
+    CHECK(!strcmp(g_permissions_asked, run == 2 && want == 2 ? "" : "storage;sms;phone;call_log;camera;camera;"));
+    CHECK(find_line("permissions: the app requests READ_EXTERNAL_STORAGE ", 0) >= 0);
     /* So does the battery's sticky broadcast to a receiver registered for it, once. */
     expect_line("I/DataTest: battery-received ok", &at, 30);
     /* And the network's sticky broadcast (CONNECTIVITY_ACTION), once, to the receiver registered for it. */
@@ -2334,6 +2496,8 @@ static int run_data(void)
     /* The jobs of the step "job-scheduler", run: the one scheduled with its extra, the one given work with both pieces, in order. */
     CHECK(wait_line("I/DataTest: job 41 said=hello", 0, 30) >= 0);
     CHECK(wait_line("I/DataTest: job 42 work=one,two,", 0, 30) >= 0);
+    /* And a service that is no JobService but gives its JobServiceEngine's binder, as AndroidX's JobIntentService: its work taken through the engine. */
+    CHECK(wait_line("I/DataTest: job 43 work=three,four, through its engine", 0, 30) >= 0);
     /* The download of the step "downloads": done, its row and file with the server's five bytes, the cookie sent, its cursor's
        observer told. */
     CHECK(wait_line("I/DataTest: downloads ok status=200 bytes=5 body=hello cookie=true observed=true file=5", 0, 30) >= 0);
@@ -2342,6 +2506,9 @@ static int run_data(void)
     /* The view animation of the step "animation-listener": its listener told through the view's handler, after the frames that
        started and ended it, not inside its parent's dispatchDraw (Animation.fireStart; Telegram's settings ended the app). */
     CHECK(wait_line("I/DataTest: animation-listener heard=start end", 0, 30) >= 0);
+    /* The one-shot listener of the step "observer-merged", on the observer a view had before it was in a window: run once, that
+       observer dead by then, while a listener left in place heard several layouts. */
+    CHECK(wait_line("I/DataTest: observer-merged runs=1 dead=true layouts=several", 0, 30) >= 0);
     /* The PendingIntent the step "pending-intent-flags" sent: the one it asked for first, with the extras FLAG_UPDATE_CURRENT gave. */
     CHECK(wait_line("I/DataTest: pending-intent-sent ok v=3", 0, 30) >= 0);
     /* The alarms of the step "alarm-replace-cancel": the one set twice went off once, the cancelled one never, the repeating one
@@ -3021,6 +3188,8 @@ int mg_tests_java_run(const char *which, const char *apk, const char *android_ro
     if (g_any_app && getenv("MG_JAVA_SPLITS")) g_splits_dir = mg_strdup(getenv("MG_JAVA_SPLITS"));
     g_crash_app = !strcmp(which, "crash");
     g_camera_app = !strcmp(which, "camera");
+    g_data_app = !strcmp(which, "data");
+    g_microg_app = !strcmp(which, "microg");
     /* The data app runs with the phone's look told (megler_set_theme): a cobalt accent and a light theme; its step theme-accent checks what an app sees of it. */
     if (!strcmp(which, "data")) megler_set_theme(0xFF0063B1u, false);
     /* The camera app's second run: every camera refused, as Windows refuses Megler the camera when the user has said no. */

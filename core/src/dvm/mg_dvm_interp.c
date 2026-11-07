@@ -14,6 +14,8 @@
  * How registers hold values is in mg_dvm_internal.h (mg_dvm_reg).
  */
 #include "mg_dvm_internal.h"
+#include "../arm/mg_stubs.h"
+#include "../bionic/mg_bionic.h"
 #include "../ld/mg_ld.h"
 
 #include "../mg_core.h"
@@ -637,6 +639,16 @@ void mg_dvm_intrinsics_start(void)
     mark_intrinsic("java/lang/Class", "isInstance", "(Ljava/lang/Object;)Z", false, INTR_CLASS_ISINSTANCE);
     mark_intrinsic("java/lang/Class", "isAssignableFrom", "(Ljava/lang/Class;)Z", false, INTR_CLASS_ASSIGNABLE);
     /*
+     * Object.hashCode, Object.identityHashCode and System.identityHashCode: libcore's bytecode is two calls for a hash,
+     * hashCode calling identityHashCode, which reads the 28 bits from shadow$_monitor_ (DVM_HASH_WORD). Compose's maps and
+     * sets (androidx.collection's ScatterMap) hash their state objects at every frame, and the two were 7 to 9% of Spotify's
+     * main thread (package 657). The same 28 bits, in place. Object.hashCode only where a call lands on Object's own: the
+     * intrinsic is the target's, so a class's hashCode of its own is called as it always was.
+     */
+    mark_intrinsic("java/lang/Object", "hashCode", "()I", false, INTR_OBJECT_HASHCODE);
+    mark_intrinsic("java/lang/Object", "identityHashCode", "(Ljava/lang/Object;)I", true, INTR_IDENTITY_HASHCODE);
+    mark_intrinsic("java/lang/System", "identityHashCode", "(Ljava/lang/Object;)I", true, INTR_IDENTITY_HASHCODE);
+    /*
      * Reference.getReferent, what WeakReference.get and SoftReference.get call: a native method that found the field by its
      * name at every call, 5% of Yandex Maps' main thread (package 530). Its slot read in place.
      */
@@ -649,6 +661,42 @@ void mg_dvm_intrinsics_start(void)
             mark_intrinsic("java/lang/ref/Reference", "getReferent", "()Ljava/lang/Object;", false, INTR_REFERENT);
         }
     }
+    /*
+     * libcore.io.Memory's reads and writes of memory by its address, what a direct ByteBuffer's get and put come down to:
+     * native methods of libjavacore, each a call into the guest library through the JNI layer. Resources reads an app's
+     * resources.arsc where it lies in the APK, through such a buffer (megler.Native.mapApkFile), a few of them a value.
+     * Done in place, in the byte order of the machine as the natives do it (the Java around them swaps); the arrays' forms
+     * only where the array and its bounds are right, else the native's own exception.
+     */
+    if (mg_dvm_class_exists("libcore/io/Memory")) {
+        mark_intrinsic("libcore/io/Memory", "peekByte", "(J)B", true, INTR_PEEK_BYTE);
+        mark_intrinsic("libcore/io/Memory", "peekShortNative", "(J)S", true, INTR_PEEK_SHORT);
+        mark_intrinsic("libcore/io/Memory", "peekIntNative", "(J)I", true, INTR_PEEK_INT);
+        mark_intrinsic("libcore/io/Memory", "peekLongNative", "(J)J", true, INTR_PEEK_LONG);
+        mark_intrinsic("libcore/io/Memory", "peekByteArray", "(J[BII)V", true, INTR_PEEK_BYTES);
+        mark_intrinsic("libcore/io/Memory", "pokeByte", "(JB)V", true, INTR_POKE_BYTE);
+        mark_intrinsic("libcore/io/Memory", "pokeShortNative", "(JS)V", true, INTR_POKE_SHORT);
+        mark_intrinsic("libcore/io/Memory", "pokeIntNative", "(JI)V", true, INTR_POKE_INT);
+        mark_intrinsic("libcore/io/Memory", "pokeLongNative", "(JJ)V", true, INTR_POKE_LONG);
+        mark_intrinsic("libcore/io/Memory", "pokeByteArray", "(J[BII)V", true, INTR_POKE_BYTES);
+    }
+    /*
+     * A float's or a double's bits as they are, and back: native methods too, and Math.round calls floatToRawIntBits for
+     * every float it rounds -- a native call each, in Spotify's main thread at every frame (View.getLocationInWindow rounds
+     * two). The register holds the bits whatever their type: the value is the argument.
+     */
+    mark_intrinsic("java/lang/Float", "floatToRawIntBits", "(F)I", true, INTR_RAW_BITS32);
+    mark_intrinsic("java/lang/Float", "intBitsToFloat", "(I)F", true, INTR_RAW_BITS32);
+    mark_intrinsic("java/lang/Double", "doubleToRawLongBits", "(D)J", true, INTR_RAW_BITS64);
+    mark_intrinsic("java/lang/Double", "longBitsToDouble", "(J)D", true, INTR_RAW_BITS64);
+}
+
+/* A byte array's elements [off, off + n) where the array is one and they are in it; NULL otherwise (the native then throws). */
+static u8 *bytes_in(mg_jobj *a, i32 off, i32 n)
+{
+    if (!a || a->kind != MG_J_PRIM_ARRAY || a->u.arr.esz != 1 || off < 0 || n < 0 || (u32)off > a->u.arr.len || (u32)n > a->u.arr.len - (u32)off)
+        return NULL;
+    return (u8 *)a->u.arr.data + off;
 }
 
 /* System.arraycopy's work when nothing about it can throw: false to have the method called instead. */
@@ -758,6 +806,61 @@ static bool intrinsic(mg_dvm_thread *t, u8 id, const mg_dvm_reg *a, mg_jvalue *r
         r->i = mg_dvm_assignable(from, c);
         return true;
     }
+    case INTR_OBJECT_HASHCODE:
+    case INTR_IDENTITY_HASHCODE:
+        /* (null: the bytecode's own answer, System's 0 or Object's exception) */
+        if (!s) return false;
+        r->i = (i32)(mg_dvm_identity_hash(s) & 0x0FFFFFFFu);
+        return true;
+    case INTR_PEEK_BYTE: r->i = *(const i8 *)(mg_addr)mg_dvm_get_wide(a, 0); return true;
+    case INTR_PEEK_SHORT: {
+        i16 v;
+        memcpy(&v, (const void *)(mg_addr)mg_dvm_get_wide(a, 0), sizeof(v));
+        r->i = v;
+        return true;
+    }
+    case INTR_PEEK_INT: {
+        i32 v;
+        memcpy(&v, (const void *)(mg_addr)mg_dvm_get_wide(a, 0), sizeof(v));
+        r->i = v;
+        return true;
+    }
+    case INTR_PEEK_LONG: {
+        i64 v;
+        memcpy(&v, (const void *)(mg_addr)mg_dvm_get_wide(a, 0), sizeof(v));
+        r->j = v;
+        return true;
+    }
+    case INTR_PEEK_BYTES: {
+        u8 *to = bytes_in((mg_jobj *)a[2], (i32)(u32)a[3], (i32)(u32)a[4]);
+        if (!to) return false;
+        memmove(to, (const void *)(mg_addr)mg_dvm_get_wide(a, 0), (size_t)(u32)a[4]);
+        return true;
+    }
+    case INTR_POKE_BYTE: *(i8 *)(mg_addr)mg_dvm_get_wide(a, 0) = (i8)(u32)a[2]; return true;
+    case INTR_POKE_SHORT: {
+        i16 v = (i16)(u32)a[2];
+        memcpy((void *)(mg_addr)mg_dvm_get_wide(a, 0), &v, sizeof(v));
+        return true;
+    }
+    case INTR_POKE_INT: {
+        i32 v = (i32)(u32)a[2];
+        memcpy((void *)(mg_addr)mg_dvm_get_wide(a, 0), &v, sizeof(v));
+        return true;
+    }
+    case INTR_POKE_LONG: {
+        i64 v = mg_dvm_get_wide(a, 2);
+        memcpy((void *)(mg_addr)mg_dvm_get_wide(a, 0), &v, sizeof(v));
+        return true;
+    }
+    case INTR_POKE_BYTES: {
+        const u8 *from = bytes_in((mg_jobj *)a[2], (i32)(u32)a[3], (i32)(u32)a[4]);
+        if (!from) return false;
+        memmove((void *)(mg_addr)mg_dvm_get_wide(a, 0), from, (size_t)(u32)a[4]);
+        return true;
+    }
+    case INTR_RAW_BITS32: r->i = (i32)(u32)a[0]; return true;
+    case INTR_RAW_BITS64: r->j = mg_dvm_get_wide(a, 0); return true;
     default: return false;
     }
 }
@@ -1449,6 +1552,7 @@ int mg_dvm_jit_invoke(mg_dvm_thread *t, mg_dvm_frame *f, u32 pc, mg_jvalue *res)
     mg_dvm_frame *nf;
     bool ok;
     res->j = 0;
+    g_dvm_calls_general++;
     if (g_dvm.slow || t->c_depth >= DVM_MAX_C_DEPTH - 8 || (t->c_stack_low && (mg_addr)&five < t->c_stack_low + 32u * 1024u)) return 2;
     if (op >= 0x6e && op <= 0x72) {
         u16 list = insns[pc + 2];
@@ -1586,6 +1690,101 @@ int mg_dvm_jit_invoke(mg_dvm_thread *t, mg_dvm_frame *f, u32 pc, mg_jvalue *res)
     return ok ? 0 : 1;
 }
 
+/*
+ * A call compiled code makes the quick way (mg_dvm_jit.c, fast_invoke; mg_dvm_internal.h): what mg_dvm_jit_invoke does for
+ * a call into compiled code, less what the call site and the callee's publishing settled once for all -- the instruction
+ * decoded and its method resolved (`m`, `desc`), the method's start entry looked up and whether a call of it needs anything
+ * else (its code's `fast`: no handlers, not synchronized, no intrinsic). A call cost some 120 ns under qemu-arm, 25 turns of
+ * an arithmetic loop, and Compose's code is mostly calls (Spotify's main thread, package 660). Whatever is not plain goes
+ * the general way, nothing having happened: a null object (which throws there), a method not compiled at its start or of
+ * another shape, instructions watched, the profile or the call trace on, too little left of the host's stack or of the
+ * frame stack's segment.
+ */
+volatile u64 g_dvm_calls_fast, g_dvm_calls_declined, g_dvm_calls_general;
+
+#define FAST_DECLINE                                                                 \
+    {                                                                                \
+        g_dvm_calls_declined++;                                                      \
+        return 3;                                                                    \
+    }
+
+int mg_dvm_jit_fast(mg_dvm_jit_ctx *ctx, mg_dvm_method *m, u32 desc, u32 pc)
+{
+    mg_dvm_thread *t = ctx->t;
+    mg_dvm_frame *f = ctx->f, *nf;
+    const mg_dvm_reg *regs = ctx->regs;
+    const bool range = (desc & DVM_FAST_RANGE) != 0;
+    const u32 count = range ? (desc >> 16) & 0xFFu : (desc >> 20) & 0xFu, kind = (desc >> 28) & 3u;
+    mg_dvm_method *target = m;
+    mg_dvm_jit_code *c;
+    mg_dvm_jit_ctx callee;
+    mg_dvm_reg *to;
+    u32 k, words;
+    int r;
+    if (kind != DVM_FAST_STATIC) {
+        mg_jobj *self = (mg_jobj *)regs[range ? (desc & 0xFFFFu) : (desc & 0xFu)];
+        if (!self) FAST_DECLINE
+        if (kind == DVM_FAST_VIRTUAL) {
+            mg_dvm_class *rc = mg_dvm_class_of(self);
+            if ((u32)m->vidx >= (u32)rc->nvtab) FAST_DECLINE
+            target = rc->vtab[m->vidx];
+        } else if (kind == DVM_FAST_INTERFACE) {
+            mg_dvm_class *rc = mg_dvm_class_of(self);
+            target = rc->icache[(u32)(((mg_addr)m->name >> 3) ^ ((mg_addr)m->sig >> 5)) % DVM_ICACHE];
+            if (!target || target->name != m->name || target->sig != m->sig) FAST_DECLINE
+        }
+    }
+    c = target->jit;
+    if (!c || !c->fast || target->stub || target->shape != SHAPE_REGULAR || count != target->ins) FAST_DECLINE
+    if (g_dvm.slow || g_dvm.profiling || g_call_trace || t->c_depth >= DVM_MAX_C_DEPTH - 8) FAST_DECLINE
+    words = target->regs;
+    if ((t->c_stack_low && (mg_addr)&callee < t->c_stack_low + 32u * 1024u) || words + FRAME_WORDS > (size_t)(t->stack_end - t->sp)) FAST_DECLINE
+    g_dvm_calls_fast++;
+    f->pc = pc;
+    nf = (mg_dvm_frame *)(void *)t->sp;
+    nf->prev = t->top;
+    nf->m = target;
+    nf->regs = t->sp + FRAME_WORDS;
+    nf->pc = 0;
+    nf->prof_start = t->prof_total;
+    nf->entry = true;
+    nf->sync = NULL;
+    /* (The locals as the stack has them, as mg_dvm_jit_invoke leaves them: DVM_LOCALS_AS_THEY_ARE.) */
+    to = nf->regs + (words - count);
+    if (range) {
+        const mg_dvm_reg *from = regs + (desc & 0xFFFFu);
+        for (k = 0; k < count; k++) to[k] = from[k];
+    } else {
+        for (k = 0; k < count; k++) to[k] = regs[(desc >> (4 * k)) & 0xFu];
+    }
+    t->sp += FRAME_WORDS + words;
+    t->top = nf;
+    t->depth++;
+    t->c_depth++;
+    t->running = target;
+    callee.regs = nf->regs;
+    callee.slow = ctx->slow;
+    callee.pc = 0;
+    callee.t = t;
+    callee.f = nf;
+    callee.unused = 0;
+    r = c->run(&callee, c->fast);
+    if (r == 0) {
+        /* Handed back inside it: the interpreter goes on with it to its return (an entry frame, which it pops then). */
+        bool ok;
+        nf->pc = callee.pc;
+        ok = interpret(t, nf, &ctx->result);
+        t->c_depth--;
+        t->running = f->m;
+        return ok ? 0 : 1;
+    }
+    if (r == 2) ctx->result = callee.result;
+    pop_frame(t);
+    t->c_depth--;
+    t->running = f->m;
+    return r == 2 ? 0 : 1;
+}
+
 /* A type an instruction names, resolved as RESOLVE_TYPE does; NULL with an exception pending. */
 static mg_dvm_class *jit_type(mg_dvm_dex *dex, u32 idx)
 {
@@ -1692,20 +1891,115 @@ int mg_dvm_jit_op(mg_dvm_thread *t, mg_dvm_frame *f, u32 pc)
     }
 }
 
+static MG_NOINLINE bool invoke_here(mg_dvm_thread *t, mg_dvm_method *m, mg_jobj *self, const mg_jvalue *params, mg_jvalue *ret);
+
+#if MG_HOST_ARM32
+/*
+ * Java called from native code deeper than the thread's own stack goes goes on in a stack of its own (DVM_C_STACK_BYTES),
+ * where it would have thrown StackOverflowError. A Java thread's stack is 160 KB (Thread_nativeCreate), and Meta's
+ * FlexLayout measures a layout through native code that calls back into Java for each child, and back into native code:
+ * every level costs a few kilobytes of it, and Instagram (package 575) and Messenger (582) ended at their sign-in screens
+ * with "StackOverflowError: 22 calls from native code deep" and "24 calls" on the thread BackgroundLayoutPreparer, Facebook
+ * Lite (575) dropped what it laid out after a few letters were typed ("34 calls"). Android gives a thread 1 MB.
+ *
+ * The stub (mg_stubs.S, on_stack) moves the call to the new stack and back. While it runs there, the thread's stack limits
+ * are the new stack's -- c_stack_low for the guard above, stack_lo and stack_hi for the collector, the host's own
+ * (mg_thread_stack_limits) -- and the part of the stack below it still in use is in outer_lo/outer_hi, which the collector
+ * scans as well. The order of the writes leaves every state the collector may stop the thread in scannable: the stack
+ * pointer either within [stack_lo, stack_hi) or outside both of them. A fault inside it is not taken back to a guard set
+ * outside it (mg_jni_call_native_guarded), which would leave the stack's limits behind.
+ */
+typedef void (*on_stack_fn)(void *arg, void (*fn)(void *), void *top);
+typedef struct more_stack {
+    mg_dvm_thread *t;
+    mg_dvm_method *m;
+    mg_jobj *self;
+    const mg_jvalue *params;
+    mg_jvalue *ret;
+    mg_addr lo, hi;
+    bool ok;
+} more_stack;
+
+static void on_more_stack_run(void *arg)
+{
+    more_stack *s = (more_stack *)arg;
+    mg_dvm_thread *t = s->t;
+    mg_addr lo = t->stack_lo, hi = t->stack_hi, low = t->c_stack_low, min = t->c_stack_min;
+    void *was_lo = NULL, *was_hi = NULL;
+    mg_gthread *gt = mg_guest_tp_get() ? mg_gthread_self() : NULL;
+    mg_addr *guard = gt ? gt->fault_guard : NULL;
+    mg_thread_stack_limits((void *)s->lo, (void *)s->hi, &was_lo, &was_hi);
+    if (gt) gt->fault_guard = NULL;
+    /* (The top first: until the bottom is the new stack's too, the stack pointer is outside the limits, or within the new.) */
+    t->stack_hi = s->hi;
+    t->stack_lo = s->lo;
+    t->c_stack_low = s->lo + 48u * 1024u;
+    t->c_stack_min = s->hi;
+    s->ok = invoke_here(t, s->m, s->self, s->params, s->ret);
+    /* (Back in the other order, for the same reason.) */
+    t->stack_lo = lo;
+    t->stack_hi = hi;
+    t->c_stack_low = low;
+    t->c_stack_min = min;
+    if (gt) gt->fault_guard = guard;
+    mg_thread_stack_limits(was_lo, was_hi, NULL, NULL);
+}
+
+static bool on_more_stack(mg_dvm_thread *t, mg_dvm_method *m, mg_jobj *self, const mg_jvalue *params, mg_jvalue *ret, bool *ok)
+{
+    static volatile i32 said;
+    void *stub = mg_stub(MG_STUB_ON_STACK);
+    const size_t below = 65536;
+    more_stack s;
+    u8 *base;
+    int n = t->nouter;
+    if (!stub || n >= DVM_C_STACKS || !t->stack_hi) return false;
+    base = (u8 *)mg_mem_reserve(DVM_C_STACK_BYTES + below);
+    if (!base) return false;
+    if (!mg_mem_commit(base + below, DVM_C_STACK_BYTES, MG_PROT_RW)) {
+        mg_mem_release(base, DVM_C_STACK_BYTES + below);
+        return false;
+    }
+    s.t = t;
+    s.m = m;
+    s.self = self;
+    s.params = params;
+    s.ret = ret;
+    s.lo = (mg_addr)(base + below);
+    s.hi = s.lo + DVM_C_STACK_BYTES;
+    s.ok = false;
+    if (mg_atomic_add(&said, 1) <= 3)
+        mg_info("dvm: Java called from native code %d deep (%s.%s) went on in a stack of its own of %u KB: the thread's ran out",
+                t->c_depth, m->cls->name, m->name, (unsigned)(DVM_C_STACK_BYTES >> 10));
+    /* What of this stack is in use while the call runs on the other: from a little below here to its top. */
+    t->outer_lo[n] = (mg_addr)&s - 512 > t->stack_lo ? (mg_addr)&s - 512 : t->stack_lo;
+    t->outer_hi[n] = t->stack_hi;
+    t->nouter = n + 1;
+    MG_GFN(on_stack_fn, stub)(&s, on_more_stack_run, (void *)s.hi);
+    t->nouter = n;
+    mg_mem_release(base, DVM_C_STACK_BYTES + below);
+    *ok = s.ok;
+    return true;
+}
+#endif
+
 bool mg_dvm_invoke(mg_dvm_method *m, mg_jobj *self, const mg_jvalue *params, mg_jvalue *ret)
 {
     mg_dvm_thread *t = mg_dvm_self();
-    mg_dvm_frame *f;
     mg_jvalue local;
-    bool ok = false;
     if ((mg_addr)&local < t->c_stack_min) t->c_stack_min = (mg_addr)&local;
     if (!ret) ret = &local;
     ret->j = 0;
     /*
      * This is real recursion on the host's stack, once for each time C stands between two pieces of bytecode. It is bounded by
-     * count, and by what the host said is the low end of this thread's stack (a thread made with a small one).
+     * count, and by what the host said is the low end of this thread's stack (a thread made with a small one): there it goes
+     * on in a stack of its own where the host can (on_more_stack), else it is a StackOverflowError.
      */
     if (t->overflowing ? t->c_depth >= DVM_MAX_C_DEPTH + 8 : (t->c_depth >= DVM_MAX_C_DEPTH || (mg_addr)&local < t->c_stack_low)) {
+#if MG_HOST_ARM32
+        bool ok = false;
+        if (!t->overflowing && t->c_depth < DVM_MAX_C_DEPTH && on_more_stack(t, m, self, params, ret, &ok)) return ok;
+#endif
         /* While the error is being made, its own constructor gets a little further than anything else may go. */
         if (t->overflowing) return false;
         t->overflowing = true;
@@ -1713,6 +2007,14 @@ bool mg_dvm_invoke(mg_dvm_method *m, mg_jobj *self, const mg_jvalue *params, mg_
         t->overflowing = false;
         return false;
     }
+    return invoke_here(t, m, self, params, ret);
+}
+
+/* The call itself, on whichever stack. */
+static MG_NOINLINE bool invoke_here(mg_dvm_thread *t, mg_dvm_method *m, mg_jobj *self, const mg_jvalue *params, mg_jvalue *ret)
+{
+    mg_dvm_frame *f;
+    bool ok = false;
     if (t->c_depth++ == 0) t->steps_left = g_dvm.step_limit;
     if (!m->insns) {
         if (m->flags & DVM_ACC_NATIVE) ok = invoke_native(t, m, self, NULL, params, ret);

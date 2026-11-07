@@ -5,7 +5,10 @@
 //    the drawable's bounds, or this view's box as its parent draws it. On the way up the rectangle goes through each view's
 //    transform, its position and its parent's scrolling, and is clipped where a parent clips its children; a rectangle that
 //    is clipped away, or a view that is not visible (Android's skipInvalidate), asks for nothing. A view with an Animation on
-//    the way asks for the whole window, since its transformation is known only while it is drawn.
+//    the way asks for the whole window, since its transformation is known only while it is drawn. But a view that draws
+//    through a list of its own and is invalidated whole -- invalidate(), a rectangle round all of it, invalidateDrawable --
+//    asks for no rectangle: what changed in it is left to the frame walk (meglerDefer, megler.Gfx.damage), as Android's
+//    renderer finds it node by node.
 //  - drawFromParent skips a child whose box lies outside the canvas's clip while the window draws only part of itself.
 //  - drawFromParent has the screen's canvas (megler.ViewRoot.ScreenCanvas) say the child's size while the child draws: on
 //    Android a view draws into a display list of its own size (its RenderNode's RecordingCanvas, hardware acceleration
@@ -28,6 +31,8 @@
 //    decides (ViewRootImpl's sDefaultContentInsetsApplier). AppCompat marks its own content root so (FitWindowsLinearLayout,
 //    fitsSystemWindows in its layout). The original did nothing with it, and that root kept Instagram's content off both
 //    bars while Instagram, laid out under them, kept off them too: an empty band at the top and at the bottom of its feed.
+//  - setRevealClip is kept, and drawFromParent clips the view to its circle, as Android's RenderNode does for a circular
+//    reveal (ViewAnimationUtils, overlaid). The original did nothing with it.
 //
 // Why. The original's invalidate asked the window to be drawn again whole, and the window cleared the screen and drew every
 // view, so a blinking cursor cost a whole screen. ViewRoot (overlaid) now keeps each window's dirty rectangle and draws only
@@ -203,6 +208,7 @@ public class View implements Drawable.Callback, KeyEvent.Callback {
     private ViewTreeObserver mFloatingObserver;
     private WindowInsets mLastInsets;
     private Rect mClipBounds;
+    private float[] mRevealClip;                   /* setRevealClip's circle: its centre and radius, or null */
     private int mLayerType;
     private Paint mLayerPaint;
     private android.graphics.RenderEffect mRenderEffect;
@@ -707,7 +713,8 @@ public class View implements Drawable.Callback, KeyEvent.Callback {
     public void invalidateDrawable(Drawable d) {
         if (!verifyDrawable(d)) return;
         mPrivateFlags |= PFLAG_DIRTY;
-        // Megler: the view's box, and the drawable's own bounds where they reach out of it
+        // Megler: what changed left to the frame walk (meglerDefer), or the view's box with the drawable's own bounds where they reach out of it
+        if (meglerDefer()) return;
         Rect b = d.getDirtyBounds();
         if (b == null) meglerDirty(0, 0, getWidth(), getHeight(), true);
         else meglerDirty(Math.min(0, b.left), Math.min(0, b.top), Math.max(getWidth(), b.right), Math.max(getHeight(), b.bottom), true);
@@ -816,9 +823,38 @@ public class View implements Drawable.Callback, KeyEvent.Callback {
     public void getDrawingRect(Rect out) { out.set(mScrollX, mScrollY, mScrollX + getWidth(), mScrollY + getHeight()); }
     public final boolean getLocalVisibleRect(Rect r) { Point o = new Point(); if (getGlobalVisibleRect(r, o)) { r.offset(-o.x, -o.y); return true; } return false; }
     public final boolean getGlobalVisibleRect(Rect r) { return getGlobalVisibleRect(r, null); }
+    /*
+     * Megler: where no view on the way up is transformed, one walk: each ancestor's place in the window is this view's less
+     * the offsets below it. The original walked up again from every ancestor, a walk for each, and through a transformed
+     * view it still does (meglerGlobalVisibleRectWalks). Spotify asks for every view it shows, to log what is seen, all the
+     * time: once its main thread spent 34 s on input and messages and drew one frame, a fifth of it the collector's
+     * (package 663); getLocationInWindow likewise makes nothing now where nothing is transformed.
+     */
     public boolean getGlobalVisibleRect(Rect r, Point globalOffset) {
         int w = getWidth(), h = getHeight();
         if (w <= 0 || h <= 0) return false;
+        int x = 0, y = 0;
+        for (View v = this; v != null; v = v.mParent) {
+            if (!v.hasIdentityMatrix()) return meglerGlobalVisibleRectWalks(r, globalOffset);
+            x += v.mLeft;
+            y += v.mTop;
+            if (v.mParent != null) {
+                x -= v.mParent.mScrollX;
+                y -= v.mParent.mScrollY;
+            }
+        }
+        r.set(x, y, x + w, y + h);
+        if (globalOffset != null) globalOffset.set(x - mScrollX, y - mScrollY);
+        for (View v = this; v.mParent != null; v = v.mParent) {
+            View p = v.mParent;
+            x -= v.mLeft - p.mScrollX;
+            y -= v.mTop - p.mScrollY;
+            if (!r.intersect(x, y, x + p.getWidth(), y + p.getHeight())) return false;
+        }
+        return mRoot == null || r.intersect(0, 0, mRoot.width(), mRoot.height());
+    }
+    private boolean meglerGlobalVisibleRectWalks(Rect r, Point globalOffset) {
+        int w = getWidth(), h = getHeight();
         int[] loc = new int[2];
         getLocationInWindow(loc);
         r.set(loc[0], loc[1], loc[0] + w, loc[1] + h);
@@ -833,16 +869,26 @@ public class View implements Drawable.Callback, KeyEvent.Callback {
     }
     public void getLocationOnScreen(int[] out) { getLocationInWindow(out); if (mRoot != null) { out[0] += mRoot.windowX(); out[1] += mRoot.windowY(); } }
     public void getLocationInWindow(int[] out) {
-        float[] p = { 0, 0 };
-        View v = this;
-        while (v != null) {
-            if (!v.hasIdentityMatrix()) v.getMatrix().mapPoints(p);
-            p[0] += v.mLeft; p[1] += v.mTop;
-            View parent = v.mParent;
-            if (parent != null) { p[0] -= parent.mScrollX; p[1] -= parent.mScrollY; }
-            v = parent;
+        float x = 0, y = 0;
+        float[] p = null;
+        for (View v = this; v != null; v = v.mParent) {
+            if (!v.hasIdentityMatrix()) {
+                if (p == null) p = new float[2];
+                p[0] = x;
+                p[1] = y;
+                v.getMatrix().mapPoints(p);
+                x = p[0];
+                y = p[1];
+            }
+            x += v.mLeft;
+            y += v.mTop;
+            if (v.mParent != null) {
+                x -= v.mParent.mScrollX;
+                y -= v.mParent.mScrollY;
+            }
         }
-        out[0] = Math.round(p[0]); out[1] = Math.round(p[1]);
+        out[0] = Math.round(x);
+        out[1] = Math.round(y);
     }
     public void getLocationInSurface(int[] out) { getLocationInWindow(out); }
     public void getWindowVisibleDisplayFrame(Rect r) { if (mRoot != null) mRoot.visibleDisplayFrame(r); else r.set(0, 0, megler.Native.screenWidth(), megler.Native.screenHeight()); }
@@ -1051,15 +1097,42 @@ public class View implements Drawable.Callback, KeyEvent.Callback {
        override to invalidate their drawables (whose invalidateSelf comes back through invalidateDrawable) */
     private void invalidateMegler() {
         mPrivateFlags |= PFLAG_DIRTY;
-        meglerDirty(0, 0, getWidth(), getHeight(), true);
+        if (!meglerDefer()) meglerDirty(0, 0, getWidth(), getHeight(), true);
     }
     public void invalidate() { invalidateMegler(); }
     public void invalidate(Rect dirty) {
-        mPrivateFlags |= PFLAG_DIRTY;
-        if (dirty == null) meglerDirty(0, 0, getWidth(), getHeight(), true);
-        else meglerDirty(dirty.left - mScrollX, dirty.top - mScrollY, dirty.right - mScrollX, dirty.bottom - mScrollY, true);
+        if (dirty == null) invalidateMegler();
+        else meglerInvalidate(dirty.left, dirty.top, dirty.right, dirty.bottom);
     }
-    public void invalidate(int l, int t, int r, int b) { mPrivateFlags |= PFLAG_DIRTY; meglerDirty(l - mScrollX, t - mScrollY, r - mScrollX, b - mScrollY, true); }
+    public void invalidate(int l, int t, int r, int b) { meglerInvalidate(l, t, r, b); }
+    /** Megler: a rectangle of the view's content invalidated; one round all of the view's box as invalidate(). */
+    private void meglerInvalidate(int l, int t, int r, int b) {
+        mPrivateFlags |= PFLAG_DIRTY;
+        l -= mScrollX;
+        t -= mScrollY;
+        r -= mScrollX;
+        b -= mScrollY;
+        if (l <= 0 && t <= 0 && r >= getWidth() && b >= getHeight() && meglerDefer()) return;
+        meglerDirty(l, t, r, b, true);
+    }
+    /*
+     * Megler: the view's whole box invalidated, where it draws through a list of its own that was recorded before: what of it
+     * changed is left to the frame walk (megler.Gfx.damage), which, once the list is recorded again, compares it with the one
+     * the last frame drew call by call, and the nodes it draws with theirs, and has only what changed drawn again -- not the
+     * whole box. Compose's view (AndroidComposeView) invalidates itself whole for a change of any of its layers, and Spotify
+     * drew a third of the screen again in every frame for its progress bar (package 662); a view that invalidates itself
+     * whole to move a caret or a highlight did as much. False, and the box asked for as before, for a view with no list yet,
+     * one that is not visible (which asks for nothing), and everywhere with the flag no-node-damage.
+     */
+    private boolean meglerDefer() {
+        android.graphics.RenderNode n = mMeglerNode;
+        if (n == null || mRoot == null || !n.hasDisplayList() || (mVisibility != VISIBLE && mAnimation == null) || !megler.ViewRoot.meglerNodeDamage())
+            return false;
+        meglerListInvalid();
+        n.meglerDefer();
+        megler.ViewRoot.scheduleFrame();
+        return true;
+    }
     /** This view's box as its parent draws it: what changes when it moves, is transformed, shows or hides. */
     void invalidateParent() { meglerDirty(0, 0, getWidth(), getHeight(), false); }
     /*
@@ -1245,6 +1318,7 @@ public class View implements Drawable.Callback, KeyEvent.Callback {
         // Megler: while the window draws only part of itself, a child wholly outside that part is not drawn
         if (megler.ViewRoot.meglerDrawingPart() && parent.getClipChildren() && c.quickReject(0, 0, w, h)) { c.restoreToCount(save); return; }
         if (mClipBounds != null) c.clipRect(mClipBounds);
+        if (mRevealClip != null) { Path p = new Path(); p.addCircle(mRevealClip[0], mRevealClip[1], mRevealClip[2], Path.Direction.CW); c.clipPath(p); }
         if (getClipToOutline() && mOutlineProvider != null) {
             Outline o = new Outline();
             mOutlineProvider.getOutline(this, o);
@@ -1314,6 +1388,8 @@ public class View implements Drawable.Callback, KeyEvent.Callback {
         if (sMeglerLists < 0) sMeglerLists = megler.Native.flag("no-view-lists") ? 0 : 1;
         return sMeglerLists > 0;
     }
+    /** Megler: whether views draw through lists of their own, for megler.ViewRoot. */
+    public static boolean meglerViewLists() { return meglerListsOn(); }
 
     /** Whether this view draws through a list of its own: not a surface's, a texture's or a WebView's. */
     boolean meglerListable() {
@@ -1337,6 +1413,7 @@ public class View implements Drawable.Callback, KeyEvent.Callback {
         if (n == null) {
             n = new android.graphics.RenderNode(getClass().getName());
             n.setClipToBounds(false);
+            n.meglerSetView();
             mMeglerNode = n;
         }
         if (!mMeglerListValid || !n.hasDisplayList() || n.getWidth() != w || n.getHeight() != h) meglerRecord(n, w, h);
@@ -2183,7 +2260,13 @@ public class View implements Drawable.Callback, KeyEvent.Callback {
         invalidate();
     }
     public void setRequestedFrameRate(float p0) { meglerFill = megler.Fill.put(meglerFill, "RequestedFrameRate", Float.valueOf(p0)); }
-    public void setRevealClip(boolean p0, float p1, float p2, float p3) {}
+    /** A circle the view is drawn clipped to (drawFromParent), as Android's RevealAnimator sets one (ViewAnimationUtils, overlaid). */
+    public void setRevealClip(boolean clip, float x, float y, float radius) {
+        if (!clip && mRevealClip == null) return;
+        mRevealClip = clip ? new float[] { x, y, Math.max(0, radius) } : null;
+        invalidate();
+        invalidateParent();
+    }
     public void setScrollBarDefaultDelayBeforeFade(int p0) { meglerFill = megler.Fill.put(meglerFill, "ScrollBarDefaultDelayBeforeFade", Integer.valueOf(p0)); }
     public void setScrollBarFadeDuration(int p0) { meglerFill = megler.Fill.put(meglerFill, "ScrollBarFadeDuration", Integer.valueOf(p0)); }
     public void setScrollCaptureCallback(android.view.ScrollCaptureCallback p0) {}

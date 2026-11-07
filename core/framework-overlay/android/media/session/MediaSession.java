@@ -94,9 +94,25 @@ public final class MediaSession {
         PlaybackState s = mPlaybackState;
         megler.Native.mediaSessionState(s != null ? s.getState() : PlaybackState.STATE_NONE, s != null ? s.getActions() : 0);
     }
+    /*
+     * What the phone was told last (one set of media controls for the app): told again only when something of it changed.
+     * Spotify sets its metadata many times a second while it plays, its picture a new Bitmap each time, and each time the
+     * picture was scaled to a new Bitmap left to the collector (its pixels the core's memory, which the collector does not
+     * see) and handed to the shell, which made a PNG of it: Spotify's process grew from 723 to 824 MB in ten seconds of AI
+     * DJ on a Lumia 650 and Windows ended it (652).
+     */
+    private static String sToldTitle, sToldArtist, sToldAlbum;
+    private static long sToldArtKey;
+    private static int[] sToldPixels;
+    private static int sToldWidth, sToldHeight;
+    private static boolean sTold;
     private void tellMetadata() {
         MediaMetadata m = mMetadata;
-        if (m == null) { megler.Native.mediaSessionMetadata(null, null, null, null, 0, 0); return; }
+        if (m == null) {
+            synchronized (MediaSession.class) { sTold = false; sToldPixels = null; sToldArtKey = 0; }
+            megler.Native.mediaSessionMetadata(null, null, null, null, 0, 0);
+            return;
+        }
         String title = first(m, MediaMetadata.METADATA_KEY_TITLE, MediaMetadata.METADATA_KEY_DISPLAY_TITLE);
         String artist = first(m, MediaMetadata.METADATA_KEY_ARTIST, MediaMetadata.METADATA_KEY_ALBUM_ARTIST, MediaMetadata.METADATA_KEY_DISPLAY_SUBTITLE);
         String album = first(m, MediaMetadata.METADATA_KEY_ALBUM);
@@ -105,21 +121,56 @@ public final class MediaSession {
             try { art = m.getBitmap(key); } catch (RuntimeException e) { art = null; }
             if (art != null) break;
         }
-        int[] pixels = null;
-        int w = 0, h = 0;
-        if (art != null && art.getWidth() > 0 && art.getHeight() > 0) {
-            try {
-                float scale = Math.min(1f, 256f / Math.max(art.getWidth(), art.getHeight()));
-                w = Math.max(1, Math.round(art.getWidth() * scale));
-                h = Math.max(1, Math.round(art.getHeight() * scale));
-                Bitmap b = scale < 1f ? Bitmap.createScaledBitmap(art, w, h, true) : art;
-                pixels = new int[w * h];
-                b.getPixels(pixels, 0, w, 0, 0, w, h);
-            } catch (RuntimeException e) {
-                pixels = null; w = h = 0;
+        long key = art != null && !art.isRecycled() && art.getWidth() > 0 && art.getHeight() > 0 ? artKey(art) : 0;
+        int[] pixels;
+        int w, h;
+        synchronized (MediaSession.class) {
+            if (sTold && key == sToldArtKey && java.util.Objects.equals(title, sToldTitle) && java.util.Objects.equals(artist, sToldArtist)
+                && java.util.Objects.equals(album, sToldAlbum)) return;
+            if (!sTold || key != sToldArtKey) {
+                sToldPixels = null;
+                sToldWidth = sToldHeight = 0;
+                if (key != 0) {
+                    try {
+                        float scale = Math.min(1f, 256f / Math.max(art.getWidth(), art.getHeight()));
+                        int sw = Math.max(1, Math.round(art.getWidth() * scale)), sh = Math.max(1, Math.round(art.getHeight() * scale));
+                        Bitmap b = scale < 1f ? Bitmap.createScaledBitmap(art, sw, sh, true) : art;
+                        int[] p = new int[sw * sh];
+                        b.getPixels(p, 0, sw, 0, 0, sw, sh);
+                        // (The scaled copy is this method's own: its pixels go now, not when the collector comes to it.)
+                        if (b != art) b.recycle();
+                        sToldPixels = p;
+                        sToldWidth = sw;
+                        sToldHeight = sh;
+                    } catch (RuntimeException e) {
+                        sToldPixels = null;
+                        sToldWidth = sToldHeight = 0;
+                    }
+                }
+                sToldArtKey = key;
             }
+            sToldTitle = title;
+            sToldArtist = artist;
+            sToldAlbum = album;
+            sTold = true;
+            pixels = sToldPixels;
+            w = sToldWidth;
+            h = sToldHeight;
         }
         megler.Native.mediaSessionMetadata(title, artist, album, pixels, w, h);
+    }
+    /* A picture's fingerprint, cheap: its size and 64 of its pixels on a grid. The same artwork set again as a new Bitmap, as
+       Spotify does, has the same one. Never 0. */
+    private static long artKey(Bitmap art) {
+        int w = art.getWidth(), h = art.getHeight();
+        long k = w * 31L + h;
+        try {
+            for (int y = 0; y < 8; y++)
+                for (int x = 0; x < 8; x++) k = k * 1000003L + art.getPixel(x * (w - 1) / 7, y * (h - 1) / 7);
+        } catch (RuntimeException e) {
+            k = k * 1000003L + System.identityHashCode(art);
+        }
+        return k == 0 ? 1 : k;
     }
     private static String first(MediaMetadata m, String... keys) {
         for (String k : keys) {

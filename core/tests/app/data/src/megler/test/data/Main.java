@@ -410,6 +410,10 @@ public class Main extends Activity {
             android.app.job.JobInfo queue = new android.app.job.JobInfo.Builder(42, work).build();
             js.enqueue(queue, new android.app.job.JobWorkItem(new android.content.Intent("one")));
             js.enqueue(queue, new android.app.job.JobWorkItem(new android.content.Intent("two")));
+            // And work for a service that is no JobService but has an engine, as AndroidX's JobIntentService has.
+            android.app.job.JobInfo engined = new android.app.job.JobInfo.Builder(43, new android.content.ComponentName(this, EngineWork.class)).build();
+            js.enqueue(engined, new android.app.job.JobWorkItem(new android.content.Intent("three")));
+            js.enqueue(engined, new android.app.job.JobWorkItem(new android.content.Intent("four")));
             detail = "result=" + r + " pending=" + pending + " latency=" + (pending != null ? pending.getMinLatencyMillis() : -1);
             return r == android.app.job.JobScheduler.RESULT_SUCCESS && pending != null && Work.class.getName().equals(pending.getService().getClassName())
                 && pending.getMinLatencyMillis() == 100;
@@ -1272,6 +1276,79 @@ public class Main extends Activity {
             child.startAnimation(fade);
             return true;
         });
+        // A circular reveal played with another animator in an AnimatorSet, as Jamfish plays one as each song begins (the
+        // reveal was null, and the set ended the app with a NullPointerException): it is an animator of the radius, and it
+        // and the set run to their ends.
+        step("circular-reveal", () -> {
+            android.view.View v = new android.view.View(this);
+            v.layout(0, 0, 100, 50);
+            android.animation.Animator reveal = android.view.ViewAnimationUtils.createCircularReveal(v, 50, 25, 0, 112);
+            final int[] ended = new int[2];
+            final float[] radius = new float[1];
+            if (reveal == null) return false;
+            ((android.animation.ValueAnimator) reveal).addUpdateListener(a -> radius[0] = (Float) a.getAnimatedValue());
+            reveal.addListener(new android.animation.AnimatorListenerAdapter() {
+                @Override public void onAnimationEnd(android.animation.Animator a) { ended[0]++; }
+            });
+            android.animation.AnimatorSet set = new android.animation.AnimatorSet();
+            set.play(reveal).with(android.animation.ValueAnimator.ofFloat(0, 1));
+            set.setDuration(50);
+            set.addListener(new android.animation.AnimatorListenerAdapter() {
+                @Override public void onAnimationEnd(android.animation.Animator a) { ended[1]++; }
+            });
+            set.start();
+            set.end();
+            detail = "reveal ended " + ended[0] + " at radius " + radius[0] + ", the set ended " + ended[1];
+            return ended[0] == 1 && ended[1] == 1 && radius[0] == 112f;
+        });
+        // An animator's value as Android gives it: 0 before it first runs, and, run once and given new values, the new start
+        // value already in its start listeners (it went on as initialised, and they read null).
+        step("animator-values", () -> {
+            android.animation.ValueAnimator a = android.animation.ValueAnimator.ofFloat(0, 1);
+            Object before = a.getAnimatedValue();
+            a.setDuration(50);
+            a.start();
+            a.end();
+            a.setValues(android.animation.PropertyValuesHolder.ofFloat("x", 5, 10));
+            final Object[] atStart = new Object[1];
+            a.addListener(new android.animation.AnimatorListenerAdapter() {
+                @Override public void onAnimationStart(android.animation.Animator x) { atStart[0] = ((android.animation.ValueAnimator) x).getAnimatedValue(); }
+            });
+            a.start();
+            a.end();
+            detail = "before " + before + ", at the second start " + atStart[0] + ", at its end " + a.getAnimatedValue();
+            return Float.valueOf(0f).equals(before) && atStart[0] instanceof Float && Float.valueOf(10f).equals(a.getAnimatedValue());
+        });
+        // A view's observer taken before the view is in a window is dead once it is (merged into the window's): a one-shot
+        // listener added to it removes itself through the view's observer then, as AndroidX's OneShotPreDrawListener and
+        // YouTube's TraceableOnGlobalLayoutListener do, and is run once (it stayed in the window's, run at every layout), while
+        // one left in place hears several layouts. Said after them.
+        step("observer-merged", () -> {
+            final android.view.View v = new android.view.View(this);
+            final android.view.ViewTreeObserver before = v.getViewTreeObserver();
+            final int[] runs = new int[2];
+            final boolean[] deadWhenRun = new boolean[1];
+            final android.view.ViewTreeObserver.OnGlobalLayoutListener layouts = () -> runs[1]++;
+            before.addOnGlobalLayoutListener(layouts);
+            before.addOnGlobalLayoutListener(new android.view.ViewTreeObserver.OnGlobalLayoutListener() {
+                @Override public void onGlobalLayout() {
+                    runs[0]++;
+                    deadWhenRun[0] = !before.isAlive();
+                    if (before.isAlive()) before.removeOnGlobalLayoutListener(this);
+                    else v.getViewTreeObserver().removeOnGlobalLayoutListener(this);
+                }
+            });
+            ((android.view.ViewGroup) text.getParent()).addView(v, new android.view.ViewGroup.LayoutParams(10, 10));
+            v.postDelayed(() -> {
+                // (Three more global layouts told by hand, as a view's code may: dispatchOnGlobalLayout is public.)
+                android.view.ViewTreeObserver now = v.getViewTreeObserver();
+                for (int k = 0; k < 3; k++) now.dispatchOnGlobalLayout();
+                now.removeOnGlobalLayoutListener(layouts);
+                Log.i("DataTest", "observer-merged runs=" + runs[0] + " dead=" + deadWhenRun[0] + " layouts=" + (runs[1] >= 3 ? "several" : String.valueOf(runs[1])));
+                ((android.view.ViewGroup) v.getParent()).removeView(v);
+            }, 500);
+            return true;
+        });
         // A typeface built from a font file open on a descriptor (Typeface.Builder(FileDescriptor), as Google Play services
         // loads its downloaded fonts): made, and the descriptor still open after.
         step("typeface-descriptor", () -> {
@@ -1536,9 +1613,11 @@ public class Main extends Activity {
             return installer != null && installer == getPackageManager().getPackageInstaller()
                     && installer.getMySessions() != null && installer.getMySessions().isEmpty();
         });
+        batchOperations();
         wifi();
         mediaMetadata();
         playbackState();
+        remoteUserInfo();
         themeAccent();
         phoneApps();
         installs();
@@ -1547,11 +1626,27 @@ public class Main extends Activity {
         launcherLoading();
         uriBuilder();
         manyInterfaces();
+        proxyManyMethods();
         step("apk-path", () -> {
             // The APK as Android names it, whatever the file is called where the shell keeps it.
             String source = getApplicationInfo().sourceDir, code = getPackageCodePath();
             detail = "sourceDir=" + source + " codePath=" + code + " there=" + new java.io.File(source).isFile();
             return source.equals("/data/app/" + getPackageName() + "-1/base.apk") && source.equals(code) && new java.io.File(source).isFile();
+        });
+        step("maps-paths", () -> {
+            // /proc/self/maps as Android's has it: the APK mapped under its Android path, Android's own libraries where the
+            // system keeps them, and none of them in the app's own library folder (Zona takes such a one for an injected library).
+            String apk = "/data/app/" + getPackageName() + "-1/base.apk", own = "/data/app/" + getPackageName() + "-1/lib/";
+            boolean apkMapped = false, systemLib = false, foreign = false;
+            try (java.io.BufferedReader r = new java.io.BufferedReader(new java.io.FileReader("/proc/self/maps"))) {
+                for (String line; (line = r.readLine()) != null; ) {
+                    if (line.endsWith(" " + apk)) apkMapped = true;
+                    if (line.endsWith("/system/lib/libjavacore.so") || line.endsWith("/system/lib64/libjavacore.so")) systemLib = true;
+                    if (line.contains(own) && line.endsWith("/libjavacore.so")) foreign = true;
+                }
+            }
+            detail = "apk=" + apkMapped + " javacore in /system=" + systemLib + " in the app's folder=" + foreign;
+            return apkMapped && systemLib && !foreign;
         });
         step("apk-optimization", () -> {
             Object info = Class.forName("dalvik.system.ApplicationRuntime")
@@ -1867,12 +1962,41 @@ public class Main extends Activity {
                     && sold >= data.getTotalBytes() && sold < 2 * data.getTotalBytes() + 1000 && left > 0 && left <= sold;
         });
         step("permissions", () -> {
-            String read = android.Manifest.permission.READ_EXTERNAL_STORAGE, write = android.Manifest.permission.WRITE_EXTERNAL_STORAGE;
-            int granted = android.content.pm.PackageManager.PERMISSION_GRANTED;
-            requestPermissions(new String[] { read, write }, 77);
-            return checkSelfPermission(read) == granted && checkSelfPermission(write) == granted && checkCallingOrSelfPermission(write) == granted
-                    && checkPermission(write, android.os.Process.myPid(), android.os.Process.myUid()) == granted
-                    && getPackageManager().checkPermission(write, getPackageName()) == granted && !shouldShowRequestPermissionRationale(write);
+            String read = android.Manifest.permission.READ_EXTERNAL_STORAGE, write = android.Manifest.permission.WRITE_EXTERNAL_STORAGE,
+                   camera = android.Manifest.permission.CAMERA, vibrate = android.Manifest.permission.VIBRATE, contacts = android.Manifest.permission.READ_CONTACTS,
+                   calendar = android.Manifest.permission.READ_CALENDAR, sms = android.Manifest.permission.RECEIVE_SMS;
+            int granted = android.content.pm.PackageManager.PERMISSION_GRANTED, denied = android.content.pm.PackageManager.PERMISSION_DENIED;
+            android.content.pm.PackageManager pm = getPackageManager();
+            android.content.pm.PackageInfo info = pm.getPackageInfo(getPackageName(), android.content.pm.PackageManager.GET_PERMISSIONS);
+            java.util.List<String> asked = Arrays.asList(info.requestedPermissions);
+            int readFlags = info.requestedPermissionsFlags[asked.indexOf(read)], vibrateFlags = info.requestedPermissionsFlags[asked.indexOf(vibrate)];
+            android.content.pm.PermissionInfo cameraInfo = pm.getPermissionInfo(camera, 0), vibrateInfo = pm.getPermissionInfo(vibrate, 0);
+            /* What the user said in the first run is the shell's to keep: the second finds the storage and the messages granted. */
+            boolean first = run == 1;
+            detail = "read=" + checkSelfPermission(read) + " sms=" + checkSelfPermission(sms) + " camera=" + checkSelfPermission(camera) + " write=" + checkSelfPermission(write)
+                    + " contacts=" + checkSelfPermission(contacts) + " calendar=" + checkSelfPermission(calendar) + " vibrate=" + checkSelfPermission(vibrate)
+                    + " rationale=" + shouldShowRequestPermissionRationale(camera) + " asked=" + asked + " flags=" + readFlags + "/" + vibrateFlags
+                    + " info=" + cameraInfo.protectionLevel + "/" + cameraInfo.group + "/" + vibrateInfo.protectionLevel;
+            /*
+             * Before the request: a normal permission granted with the install; one the manifest does not ask for, and one asked for
+             * only up to Android 9, denied and not even among those it asks for; the contacts granted (the shell has nothing behind
+             * them); the dangerous ones of the run before as the user left them, of the first run not yet; no rationale before a no.
+             */
+            boolean held = checkSelfPermission(vibrate) == granted && checkSelfPermission(calendar) == denied && checkSelfPermission(write) == denied
+                    && checkSelfPermission(contacts) == granted && checkSelfPermission(read) == (first ? denied : granted)
+                    && checkSelfPermission(sms) == (first ? denied : granted) && checkSelfPermission(camera) == denied
+                    && !shouldShowRequestPermissionRationale(camera) && !shouldShowRequestPermissionRationale(vibrate)
+                    && checkCallingOrSelfPermission(vibrate) == granted && checkPermission(read, android.os.Process.myPid(), android.os.Process.myUid()) == (first ? denied : granted)
+                    && pm.checkPermission(read, getPackageName()) == (first ? denied : granted) && pm.checkPermission(calendar, getPackageName()) == denied
+                    && asked.contains(read) && !asked.contains(write) && (vibrateFlags & android.content.pm.PackageInfo.REQUESTED_PERMISSION_GRANTED) != 0
+                    && ((readFlags & android.content.pm.PackageInfo.REQUESTED_PERMISSION_GRANTED) != 0) == !first
+                    && cameraInfo.protectionLevel == android.content.pm.PermissionInfo.PROTECTION_DANGEROUS && "android.permission-group.CAMERA".equals(cameraInfo.group)
+                    && vibrateInfo.protectionLevel == android.content.pm.PermissionInfo.PROTECTION_NORMAL;
+            /* The request (answered later, onRequestPermissionsResult); and a second while it is answered, told at once it was cancelled. */
+            requestPermissions(PERMISSIONS, 77);
+            cancelled = false;
+            requestPermissions(new String[] { camera }, 78);
+            return held && cancelled;
         });
         step("download", () -> {
             File dir = android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_DOWNLOADS), file = new File(dir, "megler-data-test.txt");
@@ -3269,6 +3393,31 @@ public class Main extends Activity {
         @Override public boolean onStopJob(android.app.job.JobParameters p) { return false; }
     }
 
+    /**
+     * The job 43 of the step "job-scheduler": a plain Service whose onBind gives its JobServiceEngine's binder, which takes its
+     * work on a thread of its own and ends when there is no more, as AndroidX's JobIntentService does on API 26 and later.
+     */
+    public static final class EngineWork extends android.app.Service {
+        private android.app.job.JobServiceEngine engine;
+        @Override public void onCreate() {
+            engine = new android.app.job.JobServiceEngine(this) {
+                @Override public boolean onStartJob(final android.app.job.JobParameters p) {
+                    new Thread(() -> {
+                        StringBuilder got = new StringBuilder();
+                        for (android.app.job.JobWorkItem w; (w = p.dequeueWork()) != null; ) {
+                            got.append(w.getIntent().getAction()).append(',');
+                            p.completeWork(w);
+                        }
+                        Log.i("DataTest", "job " + p.getJobId() + " work=" + got + " through its engine");
+                    }).start();
+                    return true;
+                }
+                @Override public boolean onStopJob(android.app.job.JobParameters p) { return false; }
+            };
+        }
+        @Override public android.os.IBinder onBind(android.content.Intent i) { return engine.getBinder(); }
+    }
+
     public static final class Again extends android.app.Service {
         private static int made;
         private String said = "";
@@ -3980,6 +4129,12 @@ public class Main extends Activity {
     @Override
     protected void onResume() {
         super.onResume();
+        resumedNow = true;
+        /* Resumed after the permissions' answer it was paused around (onRequestPermissionsResult). */
+        if (resumeAwaited) {
+            resumeAwaited = false;
+            Log.i("DataTest", "permission-resumed");
+        }
         if (sScreens == 1) {
             sScreens = 2;
             startActivity(new android.content.Intent("android.settings.APPLICATION_DETAILS_SETTINGS", android.net.Uri.parse("package:" + getPackageName())));
@@ -4141,6 +4296,82 @@ public class Main extends Activity {
             boolean cast = ManyInterfaces.I300.class.isAssignableFrom(ManyInterfaces.Impl.class);
             detail = "I0=" + first + " I505=" + at505 + " I599=" + last + " I300 assignable=" + cast;
             return first && at505 && last && cast;
+        });
+    }
+
+    /**
+     * A batch of operations (ContentProviderOperation), as Viber resets its data with one: they were signatures alone, every
+     * builder null, and Viber ended at its welcome screen. Applied to a provider of a few rows of its own: two inserts, the
+     * second given the first's id, an update and an assertion that find their rows by such references, and a delete. Then to
+     * an authority no provider has: its delete removes nothing, and its insert fails as a provider's refused insert does.
+     */
+    private void batchOperations() {
+        step("batch-operations", () -> {
+            final java.util.ArrayList<String[]> rows = new java.util.ArrayList<>();                     /* each { _id, name, parent } */
+            android.content.ContentProvider p = new android.content.ContentProvider() {
+                private boolean matches(String[] r, String s, String[] a) { return s == null || r[0].equals(a[0]); }   /* "_id=?" */
+                @Override public boolean onCreate() { return true; }
+                @Override public String getType(android.net.Uri u) { return null; }
+                @Override public android.database.Cursor query(android.net.Uri u, String[] proj, String s, String[] a, String o) {
+                    android.database.MatrixCursor c = new android.database.MatrixCursor(proj);
+                    for (String[] r : rows) {
+                        if (!matches(r, s, a)) continue;
+                        Object[] out = new Object[proj.length];
+                        for (int i = 0; i < proj.length; i++) out[i] = "name".equals(proj[i]) ? r[1] : "parent".equals(proj[i]) ? r[2] : r[0];
+                        c.addRow(out);
+                    }
+                    return c;
+                }
+                @Override public android.net.Uri insert(android.net.Uri u, android.content.ContentValues v) {
+                    rows.add(new String[] { String.valueOf(rows.size() + 1), v.getAsString("name"), v.getAsString("parent") });
+                    return android.content.ContentUris.withAppendedId(u, rows.size());
+                }
+                @Override public int update(android.net.Uri u, android.content.ContentValues v, String s, String[] a) {
+                    int n = 0;
+                    for (String[] r : rows) if (matches(r, s, a)) { r[1] = v.getAsString("name"); n++; }
+                    return n;
+                }
+                @Override public int delete(android.net.Uri u, String s, String[] a) {
+                    int n = 0;
+                    for (java.util.Iterator<String[]> i = rows.iterator(); i.hasNext(); ) if (matches(i.next(), s, a)) { i.remove(); n++; }
+                    return n;
+                }
+            };
+            android.net.Uri table = android.net.Uri.parse("content://megler.test.rows/rows");
+            java.util.ArrayList<android.content.ContentProviderOperation> ops = new java.util.ArrayList<>();
+            ops.add(android.content.ContentProviderOperation.newInsert(table).withValue("name", "first").build());
+            ops.add(android.content.ContentProviderOperation.newInsert(table).withValue("name", "second").withValueBackReference("parent", 0).build());
+            ops.add(android.content.ContentProviderOperation.newUpdate(table).withValue("name", "changed").withSelection("_id=?", null)
+                    .withSelectionBackReference(0, 1).withExpectedCount(1).build());
+            ops.add(android.content.ContentProviderOperation.newAssertQuery(table).withValue("name", "first").withSelection("_id=?", null)
+                    .withSelectionBackReference(0, 0).withExpectedCount(1).build());
+            ops.add(android.content.ContentProviderOperation.newDelete(table).withSelection("_id=?", new String[] { "1" }).build());
+            android.content.ContentProviderResult[] r = p.applyBatch(ops);
+            boolean applied = r.length == 5 && "content://megler.test.rows/rows/1".equals(String.valueOf(r[0].uri)) && "content://megler.test.rows/rows/2".equals(String.valueOf(r[1].uri))
+                    && r[2].count == 1 && r[3].count == 1 && r[4].count == 1 && rows.size() == 1 && "changed".equals(rows.get(0)[1]) && "1".equals(rows.get(0)[2]);
+            // An authority nobody provides here: as a provider with no rows answers.
+            java.util.ArrayList<android.content.ContentProviderOperation> none = new java.util.ArrayList<>();
+            none.add(android.content.ContentProviderOperation.newDelete(android.net.Uri.parse("content://megler.test.none/rows")).build());
+            android.content.ContentProviderResult[] deleted = getContentResolver().applyBatch("megler.test.none", none);
+            none.add(android.content.ContentProviderOperation.newInsert(android.net.Uri.parse("content://megler.test.none/rows")).withValue("name", "x").build());
+            String refused = null;
+            try { getContentResolver().applyBatch("megler.test.none", none); } catch (android.content.OperationApplicationException e) { refused = e.getMessage(); }
+            detail = java.util.Arrays.toString(r) + " rows=" + rows.size() + " none=" + java.util.Arrays.toString(deleted) + " refused=" + refused;
+            return applied && deleted.length == 1 && deleted[0].count == 0 && refused != null;
+        });
+    }
+
+    /**
+     * A proxy of an interface of 600 methods, as imo's settings are a proxy of one of 1968 (imo ended at its start when there
+     * could be no more than 512): made, and its first and last methods reach the handler.
+     */
+    private void proxyManyMethods() {
+        step("proxy-many-methods", () -> {
+            ManyMethods p = (ManyMethods) java.lang.reflect.Proxy.newProxyInstance(getClassLoader(), new Class<?>[] { ManyMethods.class },
+                    (proxy, m, args) -> Integer.parseInt(m.getName().substring(1)));
+            int first = p.m0(), last = p.m599();
+            detail = "m0=" + first + " m599=" + last;
+            return first == 0 && last == 599;
         });
     }
 
@@ -4344,6 +4575,21 @@ public class Main extends Activity {
                     && back.getActions() == (android.media.session.PlaybackState.ACTION_PLAY_PAUSE | android.media.session.PlaybackState.ACTION_SEEK_TO)
                     && back.getCustomActions().size() == 1 && "like".equals(back.getCustomActions().get(0).getAction())
                     && "Like".contentEquals(back.getCustomActions().get(0).getName());
+        });
+    }
+
+    /**
+     * The platform's MediaSessionManager.RemoteUserInfo made by the app, as AndroidX Media makes one on API 28 and later when a
+     * controller registers its callback (Deezer ended at its start with an InstantiationError: the class was an empty
+     * abstract one): what it was made of comes back, and two of the same are equal.
+     */
+    private void remoteUserInfo() {
+        step("remote-user-info", () -> {
+            android.media.session.MediaSessionManager.RemoteUserInfo u = new android.media.session.MediaSessionManager.RemoteUserInfo("megler.test.data", 12, 10077);
+            android.media.session.MediaSessionManager.RemoteUserInfo same = new android.media.session.MediaSessionManager.RemoteUserInfo("megler.test.data", 12, 10077);
+            detail = u.getPackageName() + " " + u.getPid() + " " + u.getUid();
+            return "megler.test.data".equals(u.getPackageName()) && u.getPid() == 12 && u.getUid() == 10077 && u.equals(same) && u.hashCode() == same.hashCode()
+                    && !u.equals(new android.media.session.MediaSessionManager.RemoteUserInfo("megler.test.data", 13, 10077));
         });
     }
 
@@ -4861,12 +5107,64 @@ public class Main extends Activity {
                 + battery.getIntExtra("temperature", -1) + " present=" + battery.getBooleanExtra("present", false) + " technology=" + battery.getStringExtra("technology");
     }
 
+    /*
+     * What the step "permissions" requests, and what it is to be told: the storage, the messages, the phone and the calls the
+     * user lets the app have (the test's C side answers for the user); WRITE_EXTERNAL_STORAGE, asked for only up to Android 9,
+     * denied with no one asked; the camera refused; VIBRATE, normal, granted; READ_CALENDAR, not in the manifest, denied.
+     */
+    private static final String[] PERMISSIONS = { android.Manifest.permission.READ_EXTERNAL_STORAGE, android.Manifest.permission.WRITE_EXTERNAL_STORAGE,
+                                                  android.Manifest.permission.RECEIVE_SMS, android.Manifest.permission.READ_SMS, android.Manifest.permission.READ_PHONE_STATE,
+                                                  android.Manifest.permission.READ_CALL_LOG, android.Manifest.permission.CAMERA, android.Manifest.permission.VIBRATE,
+                                                  android.Manifest.permission.READ_CALENDAR };
+    private static final int[] TOLD = { 0, -1, 0, 0, 0, 0, -1, 0, -1 };
+    private boolean cancelled, resumeAwaited, resumedNow;
+
+    @Override
+    protected void onPause() {
+        super.onPause();
+        resumedNow = false;
+    }
+
+    /*
+     * The answers, as Android gives them: later, on the main thread, the activity paused around them where the user was asked
+     * (Android's permission dialog is an activity over this one) and not where no one was. After the first no to the camera the
+     * app may explain itself (the rationale) and ask again; a second no is for good, and a third request asks no one. Then a
+     * fragment's request, answered to the fragment.
+     */
     @Override
     public void onRequestPermissionsResult(int request, String[] permissions, int[] results) {
-        boolean all = request == 77 && permissions.length == 2 && results.length == 2;
-        for (int r : results) all &= r == android.content.pm.PackageManager.PERMISSION_GRANTED;
-        /* Delivered as Android delivers it: later, on the main thread, not from inside requestPermissions. */
-        Log.i("DataTest", "permission-result " + (all && android.os.Looper.myLooper() == android.os.Looper.getMainLooper() ? "ok" : "FAILED") + " after done=" + doneLogged);
+        boolean main = android.os.Looper.myLooper() == android.os.Looper.getMainLooper(), paused = !resumedNow;
+        String camera = android.Manifest.permission.CAMERA;
+        boolean rationale = shouldShowRequestPermissionRationale(camera);
+        if (request == 78) {
+            cancelled = permissions.length == 0 && results.length == 0;
+            return;
+        }
+        if (request == 77) {
+            boolean all = main && Arrays.equals(permissions, PERMISSIONS) && Arrays.equals(results, TOLD);
+            Log.i("DataTest", "permission-result " + (all ? "ok" : "FAILED " + Arrays.toString(results)) + " after done=" + doneLogged + " paused=" + paused
+                    + " rationale=" + rationale);
+            resumeAwaited = paused;
+            requestPermissions(new String[] { camera }, rationale ? 79 : 80);
+        } else if (request == 79) {
+            Log.i("DataTest", "permission-again denied=" + (results.length == 1 && results[0] == -1) + " paused=" + paused + " rationale=" + rationale);
+            requestPermissions(new String[] { camera }, 80);
+        } else if (request == 80) {
+            Log.i("DataTest", "permission-for-good denied=" + (results.length == 1 && results[0] == -1) + " paused=" + paused + " rationale=" + rationale);
+            PermissionAsker asker = new PermissionAsker();
+            getFragmentManager().beginTransaction().add(asker, "permissions").commitNow();
+            asker.requestPermissions(new String[] { android.Manifest.permission.VIBRATE }, 81);
+        } else {
+            Log.i("DataTest", "permission-result FAILED: request " + request + " came to the activity");
+        }
+    }
+
+    /* A fragment's request is answered to the fragment, not to its activity. */
+    public static class PermissionAsker extends android.app.Fragment {
+        @Override
+        public void onRequestPermissionsResult(int request, String[] permissions, int[] results) {
+            Log.i("DataTest", "permission-fragment " + (request == 81 && permissions.length == 1 && results.length == 1 && results[0] == 0 ? "ok" : "FAILED"));
+        }
     }
 
     private boolean doneLogged, insetsLogged;

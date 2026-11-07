@@ -35,6 +35,8 @@ i32 mg_fd_held_pread(void *held, void *buf, u32 n, u64 offset);
 /* Whether two held files are one: the same open file, or files of the same guest path (another descriptor of it). */
 bool mg_fd_held_same(const void *a, const void *b);
 void mg_fd_let_go(void *held);
+/* Data went through a held socket: an edge-triggered epoll set reports it anew (mg_libc_io.c, epoll_check). */
+void mg_fd_moved(void *held);
 i64 mg_fd_seek(int fd, i64 offset, int whence);
 int mg_fd_close(int fd);
 /*

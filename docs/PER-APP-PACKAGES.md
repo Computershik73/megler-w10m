@@ -286,8 +286,9 @@ Two things are asked for before anything else (the owner's wish, 2026-11-02):
      cut and given one; a phone product id made from the Android package (the
      same each time, so that a package made again is an update); and the
      app's label for the shown names (`core/src/appx/mg_appx_manifest.c`).
-     Capabilities, dependencies, the entry point and the publisher cache
-     folder stay Megler's. Where the app's icon is drawn on the logos (below),
+     Its capabilities are those the app's permissions need and Megler's own
+     (below, "What a package declares"). Dependencies, the entry point and the
+     publisher cache folder stay Megler's. Where the app's icon is drawn on the logos (below),
      the tile's background is `transparent`, the phone's own colour; the
      splash screen keeps Megler's black.
   4. `resources.pri`, below.
@@ -403,13 +404,52 @@ A package with `MeglerApp.ini` in its install folder is one app's
 - the Java driver is given `<shared>\android\<version>` from `MeglerApp.ini` as
   the Android root, and the fonts from there.
 
+**What a package declares.** Windows lists an app under each capability its
+package declares (Settings › Privacy) and asks the user for a device's the
+first time the app opens it. Until this was chosen, every app's package
+declared all of Megler's: a calculator was listed with the text messages and
+the call history, and one whose Google Play services looked for the location
+had Windows ask for it. Now `megler_appx_capabilities` (`core/src/appx/
+mg_appx_manifest.c`) makes the list from the permissions the app's manifest asks
+for (the report's `permissions`, `maxSdkVersion` notwithstanding: an app that
+asks for `WRITE_EXTERNAL_STORAGE` up to Android 9 alone saves its pictures
+through MediaStore on later ones), and the package declares those and Megler's
+own, nothing else:
+
+| Android | Windows |
+|---|---|
+| `INTERNET` | `internetClient`, `internetClientServer`, `privateNetworkClientServer` |
+| `CAMERA` | `webcam` |
+| `RECORD_AUDIO` | `microphone` |
+| `ACCESS_FINE_LOCATION`, `ACCESS_COARSE_LOCATION`, `ACCESS_BACKGROUND_LOCATION` | `location` |
+| `READ_EXTERNAL_STORAGE`, `WRITE_EXTERNAL_STORAGE`, `MANAGE_EXTERNAL_STORAGE`, `MANAGE_MEDIA` | `picturesLibrary`, `videosLibrary`, `musicLibrary` |
+| `READ_MEDIA_IMAGES`; `READ_MEDIA_VIDEO`; `READ_MEDIA_VISUAL_USER_SELECTED`, `ACCESS_MEDIA_LOCATION`; `READ_MEDIA_AUDIO` | `picturesLibrary`; `videosLibrary`; both; `musicLibrary` |
+| `RECEIVE_SMS`, `READ_SMS`, or Google Play services' SMS Retriever, a receiver of it in the manifest or its names in the app's code (the report's `smsRetriever`) | `chat` |
+| `READ_PHONE_STATE`, `READ_CALL_LOG` | `phoneCallHistoryPublic` |
+| every package | `picturesLibrary` (Megler's diagnosis folder `Pictures\Megler\diag`, `shell/PicturesDiag.h`; and an app's own pictures, which Android 10 and later let it save without asking), `codeGeneration`, `packageQuery` (the shell checks the Google Play services package is still installed), `backgroundMediaPlayback` (no permission on Android) |
+| no package of an app's | `documentsLibrary` and `removableStorage`, reached only with file types declared, and an app's package declares none; `packageManagement`, Megler's alone |
+
+A capability Megler's manifest has that this does not know is kept. A report an
+older core made names no permissions, and the package then declares all of
+Megler's, as before; Update All after an update of Megler reads every app again.
+At run time the same list decides what the shell watches for the app: the text
+messages and the call history only where its package declares them
+(`player/PhoneEvents.h`). An app's permissions themselves are Android's runtime
+ones (docs/JAVA.md, "Permissions"): the user is asked when the app requests one,
+by Windows for the camera, the microphone and the location, by Megler for the
+rest, and an app's App Settings list them.
+
 **The phone's folders** (`ui/SharedFolders.cpp`). Music, Pictures, Movies and
-DCIM come from capabilities, which every package of Megler's declares alike. The
+DCIM come from the libraries' capabilities, which a package declares as above:
+an app that asks for no storage has the shared storage's own folders there
+(Pictures is the phone's in every package). The
 Documents and Downloads folders and a memory card come in only through the
 folder picker (`player/StorageHost.h`), and Windows remembers a picked folder
 for the one package it was picked in (`FutureAccessList`): no other package of
 the publisher, not even with the publisher cache folder, gets it. So each
-separate app has to be given each such folder by the user once:
+separate app that asks for the storage has to be given each such folder by the
+user once (an app that asks for none is not offered them, and one the user
+refused the storage for good neither):
 
 - Megler writes the folders added in its Settings (their names in `/sdcard` and
   their paths) to `<shared>\folders.txt`, once its search of the phone's folders
@@ -427,6 +467,70 @@ separate app has to be given each such folder by the user once:
 
 Flags (`LocalState\flags`) are each package's own: `tools/phone-flags.py --app
 <Android package>` sets those of an app's own package.
+
+**The Google APKs Megler brings** (`shell/BundledApks.cpp`). Megler's package
+carries Google Play services, Google Play Store, Google Services Framework and
+microG's Google Play services in its `bitgapps` folder, and Megler copies them:
+into the library (`LocalState\apks\bitgapps-*.apk`), from there into an app's
+folder of the shared folder (`apks\<identity>\<token>\app.apk`), and into
+`<shared>\services` (`gsf`, `microg`, and Google Play services' copy for each
+install of it, `registerServiceApk`). The apps run from those copies, and a byte
+wrong in one stays wrong. On a Lumia 650, Google Play Store hashed its own APK
+as `8xSmBxCuqpRxccCNeBfkQfAGRjU` (SHA-1, as it prints it) where the package's
+`Phonesky.apk` is `DMRUOLPpLf0DK7_5xdCCavX_PrE`, so it refused every patch of
+itself ("SU: Cannot patch com.android.vending:85372300, bad base file hash");
+its APK in the shared folder had come byte for byte (0.1.0.645) from the
+library's copy, which a plain copy had made before copies were compared with
+anything. The same phone's copies of Google Play services had come out twice
+with a bit wrong in a DEX file (0.1.0.625 and 632).
+
+- Every copy of a bundled APK is made byte for byte: copied, put on the disk,
+  and compared chunk by chunk with the package's as the disk holds it
+  (`FILE_FLAG_NO_BUFFERING`, past Windows's cache, which just after a copy
+  still has the pages it wrote), a chunk that differs written again
+  (`files::copyWhole`, `files::mend`). An app's APK, and the services' copy of
+  Google Play services, are copied from the package's own APK, not from the
+  library's, where the library's is a copy of one (`bundledApks::originalOf`).
+- Once for each build of Megler (`LocalState\bundled-apks-checked.txt`), a
+  thread of its own at background priority compares every APK Megler keeps
+  (the library's, each folder of `<shared>\apks`, `<shared>\services`) that is
+  a copy of one of the package's -- of its size, and with its last 64 KB, the
+  ZIP's central directory, differing in 64 bytes at most (another APK's differs
+  in thousands) -- with that one, and mends it where it differs. The log says
+  each copy mended and where, and at the end `bundled apks: N copies of the
+  package's M Google APKs compared with them in S s`. A copy that differs and
+  cannot be mended has it done again at the next start.
+- The flag `check-bundled-apks` (Megler's) has the check done at every start,
+  and the log say each file's SHA-1 and SHA-256, each byte of a copy that
+  differs (a copy's first 16 one by one; then how many bytes, bits and zeros,
+  in how many pages, and whether each chunk that differed read alike three
+  times), and the copy's differing pages are kept in
+  `LocalState\bundled-apks\<n>.pages` (an 8-byte offset, then the page). In an
+  app's own package (`phone-flags.py --app`), the same flag has the log say the
+  size and digests of the app's own APK as that app reads it. The flag
+  `test-copies` copies the package's largest Google APK three times as copies
+  were made before (CopyFile2 and a flush), compares each with it so, and
+  removes it: whether a phone gets copies wrong.
+
+On the Lumia 650 (0.1.0.668, 2026-11-07) the first check found Google Play
+Store's APK in the shared folder 2 bits off the package's: SHA-1
+`8xSmBxCuqpRxccCNeBfkQfAGRjU` before, as Play Store had said, and
+`DMRUOLPpLf0DK7_5xdCCavX_PrE` once mended. Google Play services' (made the same
+way, by 645 from the library's copy of 2026-11-01) was 3 bits off, all in its
+`resources.arsc`. Play Store's two were in stored libraries for x86 and x86-64
+(`lib/x86/libcronet.156.0.8078.39.so`, `lib/x86_64/libtensorflowlite_jni.so`),
+which nothing here loads, which is why only its patching noticed. All five were
+the same bit at the same place of a 4 KB page: bit 3 (the value 8) of the byte
+at 0x80D, a 1 become 0; the DEX file of 632's damaged copy summed 8 short as
+well. That is this phone's memory -- one cell that loses a 1, in a page of
+memory that whatever the phone copies passes through in turn -- not Megler's
+copying, and nothing but comparing a copy with its source as the disk holds it
+finds it. It does not lose it every time: the same start's `test-copies` made
+three copies of the 279 MB Google Play services, each the same byte for byte
+(7 to 12 s to copy and 10 to 11 s to compare each, at background priority).
+The check took 279 s there, Update All's twelve packages going on beside it;
+Play Store, started after, read its own APK as `DMRUOL...` (the flag in its
+package).
 
 ## What follows (not done yet)
 

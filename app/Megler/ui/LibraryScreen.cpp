@@ -90,14 +90,14 @@ public:
         // minutes (a Lumia 650's, from 574 to 610).
         updateText_ = text("", font::bodyMedium, weightNormal(), p.onSurface);
         updateText_.TextWrapping(TextWrapping::Wrap);
-        ProgressBar updateBar;
-        updateBar.IsIndeterminate(true);
-        updateBar.Foreground(brush(p.primary));
-        updateBar.Background(brush(p.secondaryContainer));
-        updateBar.Margin(ThicknessHelper::FromLengths(0, 12, 0, 0));
+        updateBar_ = ProgressBar();
+        updateBar_.IsIndeterminate(true);
+        updateBar_.Foreground(brush(p.primary));
+        updateBar_.Background(brush(p.secondaryContainer));
+        updateBar_.Margin(ThicknessHelper::FromLengths(0, 12, 0, 0));
         auto updateColumn = vstack(0);
         add(updateColumn, updateText_);
-        add(updateColumn, updateBar);
+        add(updateColumn, updateBar_);
         updateCard_ = card(updateColumn, 12, 16);
         updateCard_.Margin(ThicknessHelper::FromLengths(0, 8, 0, 8));
         setVisible(updateCard_, false);
@@ -184,11 +184,20 @@ public:
         }
         addButton_.IsEnabled(!import.active);
         const std::string updating = appPackage::selfUpdateVersion();
-        setVisible(updateCard_, !updating.empty());
-        if (!updating.empty() && updating != updateShown_) {
-            updateShown_ = updating;
-            updateText_.Text(hs("Megler " + updating + " is being installed. Megler closes when Windows takes it, and Windows installs it, "
-                                "which takes a few minutes (more on a phone of 1 GB): leave the phone on, then open Megler again."));
+        // And why it was not installed, which went with nothing said: a Lumia 650's owner saw the card "for a second", and
+        // nothing more (its copy of 650 in Pictures\Megler was damaged).
+        const std::string failed = updating.empty() ? appPackage::selfUpdateFailure() : std::string();
+        setVisible(updateCard_, !updating.empty() || !failed.empty());
+        setVisible(updateBar_, !updating.empty());
+        const std::string shown = updating.empty() ? failed : updating;
+        if (!shown.empty() && shown != updateShown_) {
+            updateShown_ = shown;
+            // (Windows's deployment engine closed a Lumia 650's Megler 646 nine seconds after it was given 648. A few minutes,
+            // as this said, were the Device Portal's, which installs only where the engine refuses.)
+            updateText_.Text(hs(updating.empty() ? failed
+                                                 : "Megler " + updating + " is being installed. Windows closes Megler when it takes it, as a "
+                                                   "rule within a minute: leave the phone on, then open Megler again."));
+            updateText_.Foreground(brush(updating.empty() ? palette().error : palette().onSurface));
         }
         std::string otaVersion;
         uint64_t otaGot = 0, otaTotal = 0;
@@ -241,10 +250,11 @@ private:
             listHost_.Content(empty);
             return;
         }
-        // The apps made by another Megler, to update, while nothing is being done; and whether the portal could be asked.
+        // The apps made by another Megler, to update, while nothing is being done; and whether the list could be had.
         auto top = vstack(0);
-        // Which apps carry another Megler is known once the portal has listed the phone's apps, seconds after the start (more
-        // on a Lumia 650): said meanwhile, so that Update All's coming is expected (the owner's wish, 2026-11-04).
+        // Which apps carry another Megler is known once Windows has listed the apps' packages, two seconds after the start on
+        // a Lumia 650 (the Device Portal, where Windows will not, takes more than a minute there): said meanwhile, so that
+        // Update All's coming is expected (the owner's wish, 2026-11-04).
         if (separateApps::checking()) {
             auto column = vstack(0);
             auto line = text("Please wait: checking whether the apps installed on the phone carry this Megler…", font::bodyMedium,
@@ -344,6 +354,7 @@ private:
     Border workCard_{nullptr};
     Border updateCard_{nullptr};
     TextBlock updateText_{nullptr};
+    ProgressBar updateBar_{nullptr};
     std::string updateShown_;
     TextBlock workText_{nullptr};
     Button addButton_{nullptr};

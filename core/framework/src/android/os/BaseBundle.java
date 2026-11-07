@@ -30,6 +30,8 @@ public class BaseBundle {
     public double getDouble(String k) { return getDouble(k, 0); }
     public double getDouble(String k, double d) { Object v = map.get(k); return v instanceof Double ? (Double) v : d; }
     public void putString(String k, String v) { map.put(k, v); }
+    /* Android's, which a batch's operations put their extras by (ContentProviderOperation); it took nothing. */
+    public void putObject(String k, Object v) { map.put(k, v); }
     public String getString(String k) { Object v = map.get(k); return v instanceof String ? (String) v : null; }
     public String getString(String k, String d) { String v = getString(k); return v == null ? d : v; }
     public void putBooleanArray(String k, boolean[] v) { map.put(k, v); }
@@ -54,7 +56,6 @@ public class BaseBundle {
     public boolean isParcelled() { return false; }
     public boolean isValueParceled(java.lang.String p0) { return false; }
     public boolean kindofEquals(android.os.BaseBundle p0) { return false; }
-    public void putObject(java.lang.String p0, java.lang.Object p1) {}
     public void setHasIntent(boolean p0) {}
     // ---- end of generated members
 }

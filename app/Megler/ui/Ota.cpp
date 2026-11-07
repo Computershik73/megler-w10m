@@ -56,6 +56,16 @@ std::wstring askedFile() { return platform::localStateDirectory() + L"\\ota-aske
 
 std::string userAgent() { return "Megler/" + appPackage::meglerVersion() + " (" + platform::deviceFamily() + ")"; }
 
+/// A client that keeps nothing it fetches in Megler's internet cache (its package's AC\INetCache): HttpClient keeps what it
+/// can there, and the 373 MB package of 639 that the OTA downloaded stayed in that cache on a Lumia 650 (package 663).
+HttpClient uncachedClient() {
+    using namespace winrt::Windows::Web::Http::Filters;
+    HttpBaseProtocolFilter filter;
+    filter.CacheControl().WriteBehavior(HttpCacheWriteBehavior::NoCache);
+    filter.CacheControl().ReadBehavior(HttpCacheReadBehavior::MostRecent);
+    return HttpClient(filter);
+}
+
 std::string clock() {
     const std::time_t now = std::time(nullptr);
     std::tm local = {};
@@ -166,7 +176,7 @@ void ask() {
     std::string error;
     std::optional<Found> found;
     try {
-        HttpClient client;
+        HttpClient client = uncachedClient();
         client.DefaultRequestHeaders().UserAgent().TryParseAdd(widen(userAgent()));
         client.DefaultRequestHeaders().Accept().TryParseAdd(L"application/vnd.github+json");
         HttpResponseMessage response = client.GetAsync(Uri(releasesUrl)).get();
@@ -202,7 +212,7 @@ void ask() {
 /// The package downloaded into `path` (a worker thread), as it comes: its size and SHA-256 checked against GitHub's.
 bool fetch(const std::string& url, const std::wstring& path, uint64_t size, const std::string& sha256, std::string& error) {
     try {
-        HttpClient client;
+        HttpClient client = uncachedClient();
         client.DefaultRequestHeaders().UserAgent().TryParseAdd(widen(userAgent()));
         HttpResponseMessage response = client.GetAsync(Uri(widen(url)), HttpCompletionOption::ResponseHeadersRead).get();
         if (!response.IsSuccessStatusCode()) {
@@ -296,8 +306,33 @@ void downloadAndInstall(Found f) {
     gStep = Step::idle;
 }
 
-/// What the last start's downloads left, of this Megler or older (the folder keeps nothing once its Megler is installed).
+/// The files of 4 MB or more in Megler's internet cache (AC\INetCache, beside LocalState) removed: the packages HttpClient kept
+/// there before the OTA asked it not to (uncachedClient). Windows never let 639's go: 373 MB of a Lumia 650's last 600.
+void tidyInternetCache() {
+    const std::wstring local = platform::localStateDirectory();
+    const size_t slash = local.find_last_of(L'\\');
+    if (slash == std::wstring::npos) return;
+    const std::wstring cache = local.substr(0, slash) + L"\\AC\\INetCache";
+    uint64_t freed = 0;
+    int removed = 0;
+    for (const auto& folder : files::listFolders(cache, L"*")) {
+        const std::wstring dir = cache + L"\\" + folder;
+        for (const auto& name : files::list(dir, L"*")) {
+            const std::wstring path = dir + L"\\" + name;
+            const uint64_t size = files::size(path);
+            if (size >= (uint64_t(4) << 20) && files::remove(path)) {
+                freed += size;
+                removed++;
+            }
+        }
+    }
+    if (removed) shellLog::write(format("ota: %d files HttpClient had kept in Megler's internet cache removed, %s", removed, formattedByteCount(freed).c_str()));
+}
+
+/// What the last start's downloads left, of this Megler or older (the folder keeps nothing once its Megler is installed),
+/// and what Megler's internet cache kept of them.
 void tidy() {
+    tidyInternetCache();
     const std::wstring folder = updateFolder();
     const std::string current = appPackage::meglerVersion();
     for (const auto& name : files::list(folder, L"*")) {

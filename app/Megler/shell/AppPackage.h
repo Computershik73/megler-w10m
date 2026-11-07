@@ -38,6 +38,9 @@ inline const char* singleAppId() { return "app.apk"; }
 
 /// The publisher cache folder "shared", which every package of Megler's publisher has; empty when Windows gives none.
 std::wstring sharedFolder();
+/// What a package that declares `capabilities` (megler_appx_capabilities' MEGLER_APPX_CAP_*; -1, all of Megler's) is let
+/// have, in words: "the network, the pictures library, the camera".
+std::string describeCapabilities(int capabilities);
 /// Remember an installed microG APK for clients of the same publisher; no service APK is bundled into each client.
 bool registerServiceApk(const ApkEntry& entry, const std::string& installedFullName, bool replace = false);
 void unregisterServiceApk(const std::string& installedFullName);
@@ -126,14 +129,17 @@ bool olderVersion(const std::string& a, const std::string& b);
 PortalResult installOwnUpdate(const std::wstring& appx, const std::wstring& certificate, const std::string& version, const std::string& from);
 
 /// Megler's own update, copied to the phone over USB (MTP) into Pictures\Megler: the newest Megler_<version>_ARM.appx there,
-/// when it is newer than this Megler, installed with the Megler.cer beside it through the phone's own Device Portal, which
-/// closes this Megler to replace it. Tried once for each version (LocalState\update-tried-<version>). Megler's own package
-/// only, not an app's. Off the UI thread: started on a thread of its own.
+/// when it is newer than this Megler, installed with the Megler.cer beside it by Windows's deployment engine (installOwnUpdate),
+/// which closes this Megler to replace it. Tried once for each file (LocalState\update-tried-<version>): a file copied there
+/// again is tried anew. Megler's own package only, not an app's. Off the UI thread: started on a thread of its own.
 void installCopiedUpdate();
-/// Whether installCopiedUpdate is sending the newer Megler to the portal now (the screen is kept on meanwhile: ui/AppShell).
+/// Whether installCopiedUpdate is installing the newer Megler now (the screen is kept on meanwhile: ui/AppShell).
 bool selfUpdating();
 /// The version installCopiedUpdate is installing ("0.1.0.610"), empty when it is not: the Library says so.
 std::string selfUpdateVersion();
+/// Why the newer Megler in Pictures\Megler was not installed, as the Library says it: that the copy is damaged and is to be
+/// copied again, or Windows's reason. Empty when nothing failed.
+std::string selfUpdateFailure();
 /// Megler: the Android files of older builds in the shared folder (<shared>\android\<version>, on desktop Windows
 /// <version>-<ABI>, some 170 MB each) that no
 /// package in `installed` (the Device Portal's whole list) is of any more -- after Update All, every older build's. Slow:

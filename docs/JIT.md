@@ -81,6 +81,18 @@ in its slot (not for a final method or class, which nothing overrides); an overr
 field go by `mg_dvm_jit_invoke`. So do the intrinsics that are a few instructions: String.length, isEmpty and charAt (a
 null string or an index out of bounds by the call, which throws), Math.min, max and abs of ints, Math.sqrt.
 
+Any other call is tried the quick way first (`fast_invoke`; `mg_dvm_jit_fast` in mg_dvm_interp.c): the method resolved
+when the caller is compiled and the arguments' registers packed into a word, so that nothing of the invoke is decoded or
+looked up again; a static or direct call, or a virtual one of a method nothing overrides, names the method itself, and its
+code having a start for such calls is asked in the code before any C is called; a virtual call finds its method by the
+object's class's vtable, an interface call by the class's cache. The method's code says, when it is published, whether a
+call of it needs nothing more than a frame pushed and its start run (its code's `fast`: no handlers, not synchronized, no
+intrinsic). What is not so -- a null object, a method not compiled at its start, instructions watched, the profile or the
+call trace on, too little of the host's stack or of the frame stack's segment left -- goes the general way, nothing having
+happened. Under qemu-arm a call went from 117-138 ns to 99-125 ns, HashMap.get from 2060 to about 1700, Integer.valueOf
+from 740 to about 600; the flag no-fast-calls leaves every call to the general way. The log's line of the JIT counts the
+calls each way.
+
 A method is compiled when the jumps back it takes and the calls of it made by then reach 1000. Its code is entered at the
 head of a loop compiled whole -- a loop that hands back at every turn costs more than it saves -- and at its start, for
 its calls, when the code there does some work before it hands anything back (four instructions in a row, or a return):

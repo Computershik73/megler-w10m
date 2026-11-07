@@ -4,6 +4,7 @@
 
 #include "library/Library.h"
 #include "shell/AppPackage.h"
+#include "shell/BundledApks.h"
 #include "shell/Files.h"
 #include "shell/Platform.h"
 #include "shell/Settings.h"
@@ -103,10 +104,7 @@ void restore(AppShell& shell, Bundled& b) {
     const std::wstring source = bundleFile(b.file), target = Library::instance().directory() + L"\\" + widen(id);
     auto copied = std::make_shared<bool>(false);
     shell.runInBackground(
-        [source, target, copied] {
-            *copied = files::copy(source, target + L".part") && files::move(target + L".part", target);
-            if (!*copied) files::remove(target + L".part");
-        },
+        [source, target, copied] { *copied = bundledApks::copy(source, target); },
         [id, copied] {
             gCopying = false;
             if (!*copied) {

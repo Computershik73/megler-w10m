@@ -1,7 +1,9 @@
 // Overlay of core/framework/src/megler/GooglePackages.java (tools/build-framework.sh).
 // It differs in one more package it answers for, the System WebView of the Android root, com.android.webview: installed,
 // with the version and the files its APK has (android.webkit.WebView.getCurrentWebViewPackage, which reads them from the
-// APK's manifest). The rest is the original's, the made-up com.google.android.webview included.
+// APK's manifest). And in Play Store's own meta-data, its derived APK id the newest there is (ownMetaData, which says why), and
+// in two flags of Play Store's that test its own updates (ownVersionCode). The rest is the original's, the made-up
+// com.google.android.webview included.
 //
 // Why. The package manager knows the app and, through this class, the packages it pretends are installed; every other name
 // is NameNotFoundException. The WebView is a package of its own whose code runs in the app, and its code asks the package
@@ -47,6 +49,46 @@ public final class GooglePackages {
     }
     public static android.content.pm.Signature signature() { return new android.content.pm.Signature(CERT); }
     /*
+     * Megler: the meta-data of the app's own package (ApplicationInfo.self): Play Store's with its derived APK id
+     * (com.android.vending.derived.apk.id, the variant of a bundle Google's bundletool writes into each APK it makes) the newest
+     * there is; any other package's, and the rest of Play Store's, as its manifest has them.
+     *
+     * Why. Play Store asks Google's server for its own binary and, at the same version, compares the variants. Megler brings the
+     * standalone APK (derived id 1) and the server names the split APKs for this phone (derived id 5 on a Lumia 650), so Play
+     * Store downloaded them, about 70 MB, to install itself again. It installs such an update only once none of its activities
+     * has been resumed for ten seconds while its process runs ("waiting for market to close"); an app of the phone's own is
+     * suspended within a second of being left and ends on Back. The update never went in, every start downloaded it again, and
+     * the tries left 291 MB on a Lumia 650 (package 662). Told this, it skips the variant ("Local Derived Apk Id ... > Server
+     * Derived Apk Id"). A newer version on the server is still downloaded and waits the same way (docs/JAVA.md, "Installing,
+     * and the phone's other apps").
+     */
+    public static android.os.Bundle ownMetaData(String pkg, android.os.Bundle meta) {
+        final String derived = "com.android.vending.derived.apk.id";
+        if (!VENDING.equals(pkg) || meta == null || !meta.containsKey(derived) || Native.flag("real-derived-id")) return meta;
+        android.os.Bundle b = new android.os.Bundle(meta);
+        b.putInt(derived, Integer.MAX_VALUE);
+        return b;
+    }
+    /*
+     * Megler: the version of the app's own package (PackageManager.getPackageInfo of itself): Play Store's that of an older
+     * release, 52.9.21 (85292100), when its flag older-self is set; any other package's, and Play Store's without the flag, as
+     * its manifest has it.
+     *
+     * Why. A test of Play Store's own updates. Play Store sends its version to Google's server in its user agent and compares
+     * the server's offer with it, so a Play Store that says it is older is offered the current release, as it will be offered
+     * the next one. That says whether the server offers a newer version to a Play Store whose derived APK id is the newest there
+     * is (ownMetaData), and lets such an update be tried end to end. The flag real-derived-id leaves that id as the APK has it,
+     * to compare.
+     */
+    private static int sOlderSelf = -1;
+    private static boolean olderSelf(String pkg) {
+        if (!VENDING.equals(pkg)) return false;
+        if (sOlderSelf < 0) sOlderSelf = Native.flag("older-self") ? 1 : 0;
+        return sOlderSelf == 1;
+    }
+    public static int ownVersionCode(String pkg, int code) { return olderSelf(pkg) ? 85292100 : code; }
+    public static String ownVersionName(String pkg, String name) { return olderSelf(pkg) ? "52.9.21-24 [0] [PR] 968642861" : name; }
+    /*
      * The uid Google Play services and Google Services Framework share, as on Android (com.google.uid.shared): not the app's.
      * Google Play services finds the service a consent screen goes through (DefaultAuthDelegateService), takes the first
      * package of that service's uid and asks whether Google signed it; with the app's uid that package was the app, and it
@@ -59,7 +101,7 @@ public final class GooglePackages {
     public static int versionCode(String pkg) { return VENDING.equals(pkg) ? 84651730 : WEBVIEW.equals(pkg) ? 733920700 : 270000000; }
     public static String versionName(String pkg) { return VENDING.equals(pkg) ? "46.5.17-31 [0] [PR] 750000000" : WEBVIEW.equals(pkg) ? "140.0.7339.207" : "27.00.00 (190400-750000000)"; }
     public static android.content.pm.ApplicationInfo applicationInfo(String pkg) {
-        android.content.pm.PackageInfo microg = MicroG.packageInfo(pkg);
+        android.content.pm.PackageInfo microg = MicroG.packageInfoBasic(pkg);
         if (microg != null) return microg.applicationInfo;
         android.content.pm.PackageInfo gsf = Gsf.packageInfo(pkg);
         if (gsf != null) return gsf.applicationInfo;
@@ -73,8 +115,13 @@ public final class GooglePackages {
         a.dataDir = "/data/user/0/" + pkg;
         return a;
     }
-    public static android.content.pm.PackageInfo packageInfo(String pkg) {
-        android.content.pm.PackageInfo microg = MicroG.packageInfo(pkg);
+    public static android.content.pm.PackageInfo packageInfo(String pkg) { return packageInfo(pkg, ~0); }
+    /** As PackageManager.getPackageInfo(pkg, flags) gives it: Google Play services' read whole only where `flags` ask for its
+        components (megler.MicroG.packageInfoBasic). */
+    public static android.content.pm.PackageInfo packageInfo(String pkg, int flags) {
+        final int components = android.content.pm.PackageManager.GET_ACTIVITIES | android.content.pm.PackageManager.GET_RECEIVERS
+                             | android.content.pm.PackageManager.GET_SERVICES | android.content.pm.PackageManager.GET_PROVIDERS;
+        android.content.pm.PackageInfo microg = (flags & components) != 0 ? MicroG.packageInfo(pkg) : MicroG.packageInfoBasic(pkg);
         if (microg != null) return microg;
         android.content.pm.PackageInfo gsf = Gsf.packageInfo(pkg);
         if (gsf != null) return gsf;

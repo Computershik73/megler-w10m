@@ -1169,23 +1169,28 @@ static void hang_report(hang_thread *threads, hang_holder *holders, const u32 *h
     }
 }
 
+/* The mappings' lock's holder (mg_libc_mem.c): Aurora Store's sign-in page stood still with it held (650). */
+extern volatile u32 g_region_lock_owner;
+extern volatile u64 g_region_lock_at;
+extern const char *volatile g_region_lock_site;
+
 static MG_HOSTCB void hang_observer(void *unused)
 {
     hang_thread *threads = (hang_thread *)mg_alloc(sizeof(hang_thread) * HANG_THREADS);
     hang_holder *holders = (hang_holder *)mg_alloc(sizeof(hang_holder) * 2);
     char *text = (char *)mg_alloc(64u * 1024u);
-    u32 said_log = 0, said_threads = 0;
-    u64 said_log_at = 0, said_threads_at = 0;
+    u32 said_log = 0, said_threads = 0, said_regions = 0;
+    u64 said_log_at = 0, said_threads_at = 0, said_regions_at = 0;
     int reports = 0;
     (void)unused;
     while (reports < 5) {
-        u32 log_owner = 0, thread_owner;
-        u64 log_since = 0, thread_since, now;
+        u32 log_owner = 0, thread_owner, region_owner;
+        u64 log_since = 0, thread_since, region_since, now;
         char line[300], what[900];
         u32 holder_ids[2];
-        const char *site;
+        const char *site, *region_site;
         size_t at = 0;
-        bool log_stuck, threads_stuck;
+        bool log_stuck, threads_stuck, regions_stuck;
         mg_sleep_ns(2000000000ull);
         now = mg_time_monotonic_ns();
         log_stuck = mg_log_holder(&log_owner, &log_since, line, sizeof(line)) && now - log_since >= HANG_SECONDS * 1000000000ull;
@@ -1193,10 +1198,15 @@ static MG_HOSTCB void hang_observer(void *unused)
         thread_since = g_thread_lock_at;
         site = g_thread_lock_site;
         threads_stuck = thread_owner && thread_owner == g_thread_lock_owner && now - thread_since >= HANG_SECONDS * 1000000000ull;
+        region_owner = g_region_lock_owner;
+        region_since = g_region_lock_at;
+        region_site = g_region_lock_site;
+        regions_stuck = region_owner && region_owner == g_region_lock_owner && now - region_since >= HANG_SECONDS * 1000000000ull;
         /* Once for each stand-still: the same holder since the same moment is the one already said. */
         if (log_stuck && log_owner == said_log && log_since == said_log_at) log_stuck = false;
         if (threads_stuck && thread_owner == said_threads && thread_since == said_threads_at) threads_stuck = false;
-        if (!log_stuck && !threads_stuck) continue;
+        if (regions_stuck && region_owner == said_regions && region_since == said_regions_at) regions_stuck = false;
+        if (!log_stuck && !threads_stuck && !regions_stuck) continue;
         what[0] = 0;
         holder_ids[0] = holder_ids[1] = 0;
         if (mg_log_holder(&log_owner, &log_since, line, sizeof(line)) && now - log_since >= HANG_SECONDS * 1000000000ull) {
@@ -1215,6 +1225,14 @@ static MG_HOSTCB void hang_observer(void *unused)
             said_threads = thread_owner;
             said_threads_at = thread_since;
             holder_ids[1] = thread_owner;
+        }
+        if (regions_stuck) {
+            at = hang_add(what, sizeof(what), at, "the mappings' lock held %.1f s by host thread %u, taken in %s; ", (double)(now - region_since) / 1e9,
+                          (unsigned)region_owner, region_site ? region_site : "?");
+            said_regions = region_owner;
+            said_regions_at = region_since;
+            if (!holder_ids[1]) holder_ids[1] = region_owner;
+            else if (!holder_ids[0]) holder_ids[0] = region_owner;
         }
         hang_add(what, sizeof(what), at, "the app stands still");
         hang_report(threads, holders, holder_ids, what, text, 64u * 1024u);

@@ -682,6 +682,100 @@ static void compile_invoke(emitter *e, u32 pc)
 }
 
 /*
+ * An invoke tried the quick way first: mg_dvm_jit_fast(ctx, m, desc, pc), the method resolved here once (the interpreter's
+ * calls resolved it before the loop was compiled) and the arguments' registers packed into `desc` (mg_dvm_internal.h). A
+ * static or direct call, or a virtual one of a method nothing overrides (final, or of a final class), names the method
+ * itself; another virtual call, or an interface call, the one to look up by the object's class. 1 back is an exception
+ * pending (out, thrown here); 3, a call it did not make, goes the general way (compile_invoke). Not for invoke-super, a
+ * String constructor (new String's result replaces the object), a static method of a class not initialised by now, a call
+ * the flag no-fast-calls leaves out.
+ */
+static int g_fast_calls = -1;          /* (under g_jit_lock, as compile is) */
+
+static void fast_invoke(emitter *e, const mg_dvm_method *m, u32 pc)
+{
+    const u16 *insns = m->insns;
+    mg_dvm_dex *d = m->cls->dex;
+    u16 w = insns[pc];
+    u32 op = w & 0xFF, idx = insns[pc + 1], count, desc, kind, done, slow[2], nslow = 0, i;
+    bool range = op >= 0x74, known;
+    int ik = (int)(op - (range ? 0x74u : 0x6eu));
+    const mg_dvm_method *ref = idx < d->nmeth ? d->mcache[idx] : NULL;
+    if (g_fast_calls < 0) {
+        g_fast_calls = !mg_flag("no-fast-calls");
+        mg_info("jit: %s", g_fast_calls ? "calls into compiled code go the quick way where they can (mg_dvm_jit_fast)"
+                                        : "the flag no-fast-calls: every call goes the general way");
+    }
+    if (!g_fast_calls || !ref || ((ref->flags & DVM_ACC_STATIC) != 0) != (ik == DVM_INVOKE_STATIC)) {
+        compile_invoke(e, pc);
+        return;
+    }
+    switch (ik) {
+    case DVM_INVOKE_STATIC:
+        kind = ref->insns && ref->cls->state == DVM_CS_INITIALIZED ? DVM_FAST_STATIC : 9;
+        break;
+    case DVM_INVOKE_DIRECT:
+        kind = ref->insns && ref->cls != g_dvm.c_string ? DVM_FAST_DIRECT : 9;
+        break;
+    case DVM_INVOKE_VIRTUAL:
+        if (ref->cls->flags & DVM_ACC_INTERFACE) kind = 9;
+        else if ((ref->flags | ref->cls->flags) & DVM_ACC_FINAL) kind = ref->insns ? DVM_FAST_DIRECT : 9;
+        else kind = ref->vidx >= 0 ? DVM_FAST_VIRTUAL : 9;
+        break;
+    case DVM_INVOKE_INTERFACE:
+        kind = (ref->cls->flags & DVM_ACC_INTERFACE) ? DVM_FAST_INTERFACE : 9;
+        break;
+    default:                                                     /* super */
+        kind = 9;
+        break;
+    }
+    if (range) {
+        count = (u32)w >> 8;
+        desc = DVM_FAST_RANGE | (count << 16) | insns[pc + 2];
+    } else {
+        count = (u32)w >> 12;
+        desc = insns[pc + 2] | ((((u32)w >> 8) & 0xFu) << 16) | (count << 20);
+    }
+    if (kind == 9 || count > (range ? 255u : 5u) || (kind != DVM_FAST_STATIC && !count)) {
+        compile_invoke(e, pc);
+        return;
+    }
+    /*
+     * A method named here that is known by now never to go the quick way goes the general way at once (String.equals and
+     * hashCode, intrinsics, cost half as much again tried first): an intrinsic, a native method, one with handlers or
+     * synchronized, one compiled with no entry at its start.
+     */
+    known = kind == DVM_FAST_STATIC || kind == DVM_FAST_DIRECT;
+    if (known && (ref->intrinsic || !ref->insns || ref->ntries || (ref->flags & DVM_ACC_SYNCHRONIZED) || (ref->jit && !ref->jit->fast))) {
+        compile_invoke(e, pc);
+        return;
+    }
+    desc |= kind << 28;
+    mov_imm(e, R1, (u32)(mg_addr)ref);
+    if (known) {
+        /* Its code there yet, with its start for the quick way: asked here, with no call when not. */
+        ldr_imm(e, R0, R1, (u32)offsetof(mg_dvm_method, jit));
+        cmp_imm(e, R0, 0);
+        slow[nslow++] = local_branch(e);
+        ldr_imm(e, R0, R0, (u32)offsetof(mg_dvm_jit_code, fast));
+        cmp_imm(e, R0, 0);
+        slow[nslow++] = local_branch(e);
+    }
+    e16(e, 0x4628);                                             /* mov r0, r5 */
+    mov_imm(e, R2, desc);
+    mov_imm(e, R3, pc);
+    mov_imm(e, R12, (u32)(mg_addr)mg_dvm_jit_fast);
+    e16(e, 0x47E0);                                             /* blx r12 */
+    cmp_imm(e, R0, 1);
+    fix(e, FIX_THROW, pc, C_EQ);
+    cmp_imm(e, R0, 3);
+    done = local_branch(e);
+    for (i = 0; i < nslow; i++) local_to(e, slow[i], C_EQ);
+    compile_invoke(e, pc);
+    local_to(e, done, C_NE);
+}
+
+/*
  * The intrinsics that are a few instructions (mg_dvm_interp.c, "intrinsics"), in the code: String.length, isEmpty and
  * charAt, Math.min, max and abs of ints, Math.sqrt. A null string or an index out of its bounds goes by the call
  * (mg_dvm_jit_invoke), which throws as the interpreter would; the others cannot fail. False, with nothing emitted, for the
@@ -1036,7 +1130,7 @@ static bool compile_insn(emitter *e, const mg_dvm_method *m, u32 pc)
         return true;
     case 0x6e: case 0x6f: case 0x70: case 0x71: case 0x72:
     case 0x74: case 0x75: case 0x76: case 0x77: case 0x78:
-        if (!inline_call(e, m, pc)) compile_invoke(e, pc);
+        if (!inline_call(e, m, pc)) fast_invoke(e, m, pc);
         return true;
     case 0x7d:                                                   /* neg-long: 0 - (hi:lo) */
         ldr_v(e, R0, b4);
@@ -1276,6 +1370,11 @@ static u32 g_nwaiting;
 
 static void publish(mg_dvm_method *m, mg_dvm_jit_code *c)
 {
+    /* Its start for the calls that go the quick way (mg_dvm_jit_fast), where such a call needs nothing more. */
+    if (!m->ntries && !(m->flags & DVM_ACC_SYNCHRONIZED) && !m->intrinsic) {
+        u32 at = mg_dvm_jit_entry(c, 0);
+        if (at) c->fast = c->pages + (size_t)(at - 1) * 2 + 1;
+    }
     /* Published whole: the code and its tables before the pointer (an interlocked exchange is a barrier). */
     mg_atomic_cas_ptr((void *volatile *)&m->jit, NULL, c);
     m->jit_state = 1;
@@ -1532,6 +1631,9 @@ void mg_dvm_jit_census(mg_dvm_jit_stats *out)
     out->code_bytes = g_code_bytes;
     out->page_bytes = g_page_bytes;
     mg_lock_release(&g_jit_lock);
+    out->calls_fast = g_dvm_calls_fast;
+    out->calls_declined = g_dvm_calls_declined;
+    out->calls_general = g_dvm_calls_general;
 }
 
 int mg_dvm_jit_enter(mg_dvm_thread *t, mg_dvm_frame *f, mg_dvm_method *m, mg_dvm_reg *regs, u32 pc, u32 *next, mg_jvalue *res)

@@ -796,6 +796,82 @@ static void scene_bitmaps_nearest(pic *p)
     pic_done(&s);
 }
 
+/* A rounded rectangle as the core's path_round_rect makes a view's outline: straight sides and a cubic in each corner. */
+static void pb_round_rect(pathbuf *b, float l, float t, float r, float bt, float rad)
+{
+    const float q = 0.5522847f * rad;
+    pb_move(b, l + rad, t);
+    pb_line(b, r - rad, t);
+    pb_cubic(b, r - rad + q, t, r, t + rad - q, r, t + rad);
+    pb_line(b, r, bt - rad);
+    pb_cubic(b, r, bt - rad + q, r - rad + q, bt, r - rad, bt);
+    pb_line(b, l + rad, bt);
+    pb_cubic(b, l + rad - q, bt, l, bt - rad + q, l, bt - rad);
+    pb_line(b, l, t + rad);
+    pb_cubic(b, l, t + rad - q, l + rad - q, t, l + rad, t);
+    pb_close(b);
+}
+
+/*
+ * Clips that are one rounded rectangle, as views' outlines make them (Compose's tiles): the host draws what keeps off the
+ * corners with the box alone, a colour or a rectangle or a bitmap that reaches them filled through the rounded rectangle,
+ * and a rounded rectangle that is the clip's own with no clip (GfxHost.cpp, Clip::round), the rest by a layer. (The stand-in
+ * clips by a path's box: checked by pixels, check_clips_round.)
+ */
+static void scene_clips_round(pic *p)
+{
+    pic s;
+    saved a;
+    pathbuf v;
+    megler_gfx_paint green = paint_of(0xFF20A040u), red = paint_of(0xFFC02040u), plain = paint_of(0xFF000000u), blue = paint_of(0xFF2040C0u);
+    small_picture(&s, p->g);
+    plain.flags = 0;
+    color(p, 0xFFFFFFFFu, MEGLER_GFX_BLEND_SRC);
+    /* A tile: a colour over all of it, a picture at its left reaching two corners, a bar inside off them. */
+    a = save(p);
+    memset(&v, 0, sizeof(v));
+    pb_round_rect(&v, 20, 20, 220, 100, 12);
+    clip_path(p, v.v, v.n, MEGLER_GFX_WINDING, MEGLER_GFX_CLIP_INTERSECT);
+    color(p, 0xFF303030u, MEGLER_GFX_BLEND_SRC_OVER);
+    bitmap(p, &s, 0, 0, 4, 4, 20, 20, 100, 100, &plain);
+    rect(p, 120, 50, 200, 70, &green, NULL);
+    restore(p, a);
+    /* Under a matrix that scales and moves: a rounded rectangle that is the clip's own, a rectangle reaching the lower corners. */
+    a = save(p);
+    translate(p, 260, 20);
+    scale(p, 2, 2);
+    memset(&v, 0, sizeof(v));
+    pb_round_rect(&v, 0, 0, 100, 50, 10);
+    clip_path(p, v.v, v.n, MEGLER_GFX_WINDING, MEGLER_GFX_CLIP_INTERSECT);
+    round_rect(p, 0, 0, 100, 50, 10, 10, &red, NULL);
+    rect(p, -10, 25, 110, 60, &green, NULL);
+    restore(p, a);
+    /* What still goes by a layer: an oval reaching the corners; and a rectangle off whole pixels, inside a clip narrowed by a box. */
+    a = save(p);
+    memset(&v, 0, sizeof(v));
+    pb_round_rect(&v, 20, 130, 220, 220, 20);
+    clip_path(p, v.v, v.n, MEGLER_GFX_WINDING, MEGLER_GFX_CLIP_INTERSECT);
+    clip_rect(p, 20, 130, 180, 220, MEGLER_GFX_CLIP_INTERSECT);
+    color(p, 0xFF606060u, MEGLER_GFX_BLEND_SRC_OVER);
+    p->g->draw_oval(p->g->user, p->cv, 10, 120, 120, 230, &blue, NULL);
+    rect(p, 100.5f, 140.25f, 230, 230, &red, NULL);
+    restore(p, a);
+    pic_done(&s);
+}
+
+static void check_clips_round(pic *p)
+{
+    /* The tile: its corners outside the rounded rectangle white, the picture's first cell, the colour and the bar inside. */
+    CHECK(at(p, 21, 21) == 0xFFFFFFFFu && at(p, 219, 21) == 0xFFFFFFFFu && at(p, 21, 99) == 0xFFFFFFFFu && at(p, 219, 99) == 0xFFFFFFFFu);
+    CHECK(at(p, 30, 30) == 0xFFFF0000u && at(p, 150, 30) == 0xFF303030u && at(p, 160, 60) == 0xFF20A040u && at(p, 210, 90) == 0xFF303030u);
+    /* Scaled twice and moved: the corners outside white, the clip's own rounded rectangle red above, the rectangle green below. */
+    CHECK(at(p, 261, 21) == 0xFFFFFFFFu && at(p, 459, 21) == 0xFFFFFFFFu && at(p, 261, 119) == 0xFFFFFFFFu && at(p, 459, 119) == 0xFFFFFFFFu);
+    CHECK(at(p, 360, 40) == 0xFFC02040u && at(p, 360, 110) == 0xFF20A040u && at(p, 275, 110) == 0xFF20A040u);
+    /* By a layer: the corners outside white, the oval blue, the rectangle red, the box's cut at x = 180 white beyond it. */
+    CHECK(at(p, 21, 131) == 0xFFFFFFFFu && at(p, 21, 219) == 0xFFFFFFFFu && at(p, 60, 175) == 0xFF2040C0u && at(p, 150, 180) == 0xFFC02040u &&
+          at(p, 170, 135) == 0xFF606060u && at(p, 190, 175) == 0xFFFFFFFFu);
+}
+
 static void scene_layer_alpha(pic *p)
 {
     float bounds[4] = { 40, 30, 200, 150 };
@@ -3180,6 +3256,7 @@ int mg_gfx_scenes_run(const mg_gfx_scenes_config *config, mg_test_sink sink, voi
     check_images();
     alone("24-shadows-filters", scene_shadows_filters, check_shadows, 480, 360);
     alone("25-layer-blur", scene_layer_blur, check_layer_blur, 480, 240);
+    alone("26-clips-round", scene_clips_round, check_clips_round, 480, 240);
     check_odd_values();
     check_threads();
     measure_costs();

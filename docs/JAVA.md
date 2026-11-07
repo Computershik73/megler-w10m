@@ -831,14 +831,33 @@ Java's calls arrive there.
   asked -- the long calls, the old int ones multiplied as longs,
   `java.io.File`. `StorageStatsManager.getTotalBytes(UUID_DEFAULT)` is not
   less than what is there and less than twice it; `getFreeBytes` within it.
-- `permissions`: the two storage permissions are granted, asked five ways
-  (`checkSelfPermission`, `checkCallingOrSelfPermission`, `checkPermission`
-  with the app's own pid and uid, `PackageManager.checkPermission`, and no
-  rationale to show); `requestPermissions` returns and
-  `onRequestPermissionsResult` comes afterwards, by a message on the main
-  thread, with both granted. The framework answers every permission this way,
-  not these two only: `checkPermission` is `PERMISSION_GRANTED` whatever the
-  name, and nothing is ever asked of the user.
+- `permissions`: Android's runtime permissions ("Permissions", in Design),
+  asked five ways (`checkSelfPermission`, `checkCallingOrSelfPermission`,
+  `checkPermission` with the app's own pid and uid,
+  `PackageManager.checkPermission`, `getPackageInfo`'s
+  `requestedPermissionsFlags`) and `shouldShowRequestPermissionRationale`.
+  Before the request: `VIBRATE`, normal, granted with the install;
+  `READ_CALENDAR`, not in the manifest, denied; `WRITE_EXTERNAL_STORAGE`,
+  asked for only up to Android 9 (`maxSdkVersion` 28), denied and not among
+  `requestedPermissions`; `READ_CONTACTS` granted, the shell granting a group
+  it has nothing behind; the dangerous ones not yet in the first run, and in
+  the second as the first left them; `getPermissionInfo` says `CAMERA` is
+  dangerous, of the group `CAMERA`, and `VIBRATE` normal. Then one request of
+  nine, and a second while it is answered, told at once it was cancelled
+  (empty arrays). The C side answers for the user (`system_permission`, the
+  shell's `megler_system_host.permission`, its answers kept in a file of the
+  data folder): every group allowed but the camera. The answer comes later,
+  on the main thread: in the first run, the user asked about the storage, the
+  messages, the phone, the calls and the camera, one after another, the
+  activity paused around the answer and resumed after it, as Android's
+  permission dialog does; with the rationale shown the camera is asked for
+  again and refused for good, and a third request asks no one and is answered
+  unpaused. In the second run no one is asked. Then a platform `Fragment`'s
+  request, answered to the fragment. The report the shell reads of the app
+  names its permissions, the last Android each is asked on and its receiver of
+  Google Play services' SMS Retriever (the test's `start`); the microG test
+  app's report finds the SMS Retriever in its code, which registers the receiver
+  at run time, and the other test apps' name it nowhere.
 - `download`: a file written to the public Download folder is there, reads
   back, is listed in its folder, has the same length by the path's other
   name (`/sdcard/Download/...`), and the second run finds what the first
@@ -1426,6 +1445,19 @@ cut the file to English and Russian and to the densities round a phone's
 and an app holds 27 MB less from its first moment. (The last row also has the
 two test apps' later selves, which link a few more classes.)
 
+**Resources read where they lie.** Since package 665 `Resources` does not read
+a `resources.arsc` that its APK stores (rather than deflates) into a `byte[]`
+at all: `megler.Native.mapApkFile` maps the file's bytes where they lie in the
+APK, read only, and gives them as a direct `ByteBuffer`, which `ResTable` reads
+as it read the array (`ResTable(ByteBuffer, dynamicId)`; the buffer's reads are
+intrinsics, "Calls done in place: intrinsics"). An app built for Android 11 or
+later must store the file, and most do; one that deflates it is read into the
+heap as before. Spotify's is 49.8 MB: in a `byte[]` it was a fifth of its heap
+on a Lumia 650, memory the phone did not have, and the collector ran every
+second or two to keep the rest within what was free (package 664). The log
+says `java: resources.arsc of <apk> viewed where it is in the APK, <size> MB,
+not read into the heap` for each table so read.
+
 Linking is lazy and has to stay so: a class is linked when something first
 needs it, and a start links 256 of 7617. Linking them all costs 12.5 MB more on
 the phone's word size (21.8 MB on a 64-bit PC) and buys nothing. The 2 MB at the
@@ -1616,6 +1648,43 @@ Apktool M under qemu after its licence, with the old lists fixed: before,
 That was a running `AnimationDrawable` in its closed drawer, off the screen.
 After: 8 frames every 5.6 s at 16 ms each, idle 97%, redrawn 3% of the
 screen a frame.
+
+### What the nodes changed (package 663)
+
+The views' rectangles are not enough for Compose. Its view
+(`AndroidComposeView`) invalidates itself whole for a change of any of its
+graphics layers, and Spotify drew a third of the screen again in every frame
+for its progress bar. Android's renderer finds its damage node by node
+(HWUI's `DamageAccumulator`). The frame walk does the same
+(`core/src/drivers/mg_java_gfx.c`, `G_damage`; `megler.Gfx.damage`):
+- `drawAll` records every window whole, by reference to the views' lists.
+  Once the nodes have the frame's properties, it walks what the frame draws,
+  with the matrix and clip each node is drawn with.
+- Each node keeps where the walk last found it. A node moved, changed in its
+  properties (`rnSet` counts real changes in `ver`) or new damages where it
+  was and where it is. A View's node does too: a ListView's rows are moved
+  by `offsetTopAndBottom`, which says only where a row now is.
+- A node whose list is another is compared call by call. Each side keeps its
+  own matrices and clips. A call that differs, or is drawn elsewhere, damages
+  where it drew and where it draws. A list of another shape, or with more
+  than 24 calls changed, damages the whole node. `rnEnd` keeps the old list
+  when the new one is the same, bytes and all (a bitmap's call carries the
+  bitmap's version).
+- What changed in a View's own list is the View's to say, by its rectangles.
+  But a View invalidated whole (`invalidate()`, a rectangle round all of it,
+  `invalidateDrawable`) leaves that to the walk (`View.meglerDefer`,
+  `Gfx.rnDefer`).
+- The render thread clips the frame to the part and clears it there. It
+  leaves out a node drawn once in the frame whose box, as the walk found it,
+  is nowhere in the part.
+
+The flag `no-node-damage` draws the views' rectangles alone, as before. The
+log says every 5 s what the walk found (`gfx: the frame walk`) and how many
+nodes the render thread left out. The natives' test `test_walk` checks the
+rectangles of each kind of change, and that every frame drawn in part by
+them equals the frame drawn whole. The hello app's `Layers` is a view drawn
+as Compose's is: its frames drawn in part must miss nothing and must not
+reach its own unchanged drawing.
 
 ### Measured, not tests
 
@@ -1875,7 +1944,16 @@ classes are there:
 - `System.arraycopy`;
 - `Math.min`, `max` and `abs` of `int` and `long`, and `Math.sqrt`;
 - `Object.getClass`;
-- `Thread.currentThread`.
+- `Thread.currentThread`;
+- `libcore.io.Memory`'s reads and writes of memory by its address (`peekByte`,
+  `peekShortNative`, `peekIntNative`, `peekLongNative`, `peekByteArray` and the
+  `poke` methods that match them): native calls of libjavacore's, each through
+  the JNI layer, and what a direct `ByteBuffer`'s `get` and `put` come down to.
+  `Resources` reads an app's `resources.arsc` through one ("Resources read
+  where they lie", in "What a run costs");
+- `Float.floatToRawIntBits` and `intBitsToFloat`, `Double.doubleToRawLongBits`
+  and `longBitsToDouble`: native calls too, and `Math.round` calls the first
+  for every float it rounds.
 
 **An intrinsic only does the ordinary case.** For anything else it declines,
 and the method is called as before:
@@ -2381,6 +2459,18 @@ no native code or has it for 32-bit ARM.
   that happens to the app happens on its main thread. Back is one event, when
   the key comes up; other keys pass as they are. `megler_set_focused` has no
   counterpart in the framework and is not passed on.
+- **Moves are batched, as Android batches them** (since 667). A finger's
+  move is kept, not dispatched (`AppRunner.moveBatched`). The moves after it
+  join it as its history (`MotionEvent.getHistorySize`, `getHistoricalX`
+  and the rest; `addBatch`), and the one event goes out at the next frame,
+  first in it (`Choreographer.CALLBACK_INPUT`). Anything else that comes (a
+  finger down or up, a key, the host's pause) has the kept moves go out
+  first, so the order holds. `VelocityTracker` reads every sample of the
+  history, so a fling is as fast as the finger was. Before, every move went
+  out on its own: `pollInput` hands over all that came while the main thread
+  was busy. Spotify on a Lumia 650 took 50 to 200 ms a move in its scroll
+  listeners and worked through hundreds of them, one stretch of 25.6 s
+  without a frame, and its list answered a finger seconds late.
 - **Frames are the framework's business**: its `Choreographer` and `ViewRoot`
   draw when something was invalidated, into a bitmap the size of the screen,
   and call `Gfx.present`. That is `megler_window_host.present_pixels`: the
@@ -3190,6 +3280,68 @@ Once the keyboard is put away, each dialog is back where it was.
 it is final), the selection handles and the copy and paste bar (the
 framework's), and telling the shell where the cursor is on the screen.
 
+### Permissions
+
+An app's permissions are Android's runtime permissions, as a phone of Android 6
+and later has them (`megler.Permissions`; before, every permission was granted
+whatever its name and nothing was asked of anyone). For one permission:
+
+- not in the manifest, or asked for only up to an Android before the one Megler
+  says it is (`android:maxSdkVersion` below 34: `megler.Manifest` leaves it out,
+  as Android's package parser does): denied;
+- not dangerous -- normal, signature, the app's own, the special ones
+  (`SYSTEM_ALERT_WINDOW`, `REQUEST_INSTALL_PACKAGES`), whose Settings screens are
+  Megler's to answer: granted with the install;
+- dangerous, of an app that targets Android 5.1 or older (or has no
+  `<uses-sdk>`), or of Google's own packages (Play Store, Google Play services,
+  its services framework), which a phone has as system apps: granted with the
+  install;
+- any other dangerous one: its group's (Android 14's groups), as the shell keeps
+  it (`megler_system_host.permission`, `Native.permission`): granted, denied
+  (`shouldShowRequestPermissionRationale` true, the app may ask again), denied
+  for good, or undecided.
+
+`requestPermissions` (an activity's or a platform `Fragment`'s) settles what
+those rules settle and asks the shell, on a thread of its own, for each group
+that is undecided or denied once, one after another; the answers come to
+`onRequestPermissionsResult` on the main thread, the activity paused around
+them and resumed after where an answer changed (Android's permission dialog
+is an activity over the app's), not where none did, so that an app that asks
+again in `onResume` when it is told no does not ask for ever. A second request
+while one is answered is told at once that it was cancelled, as on Android.
+`checkPermission` and its kind (`ContextImpl`), `PackageManager.checkPermission`,
+`getPackageInfo`'s `requestedPermissionsFlags` and `getPermissionInfo`'s
+protection level say the same. What the shell said of a group is kept until the
+app comes back to the front (`AppRunner.hostPause`), where the user may have
+changed Windows' settings meanwhile.
+
+Google Play services' and its services framework's own contexts (`MicroG`,
+`Gsf`) hold every permission, as their system apps do on a phone: their checks
+of themselves are theirs, not the app's. `megler.Phone` gives the phone's
+messages and calls to the app as it holds them. The location (`LocationService`)
+has Windows ask the user only for an app that holds a location permission:
+`isProviderEnabled` asked Windows in the background, and Google Play services in
+an app that never wanted the location asks it of every provider, so Windows
+asked such an app's user for the location. Nothing else is refused where an app
+did not request a permission it was not given: the camera, the microphone and
+the files are Windows' to refuse, as before (an app that opens the camera
+without requesting it has Windows ask, the first time).
+
+The shell (`player/PermissionHost.h`) decides a group three ways: the camera,
+the microphone and the location by Windows' privacy settings of the app's own
+package, and Windows' own question when the app requests one; the storage, the
+media, the text messages, the phone and the call history by Megler's own
+question (Allow, Don't Allow), kept in the app's settings, a second no for
+good; and the contacts, the calendar, the body sensors, nearby devices,
+notifications and physical activity granted with no one asked, since Megler
+gives an app none of those of the phone's. An app's App Settings list its
+groups, what was said, and change Megler's answers. Clearing an app's data
+(Clear Data on its page in Megler, or Clear storage on Android's app info
+screen in the app) forgets Megler's answers too, as Android's Clear storage
+resets an app's permissions: the shell does it as the clear is asked and as
+the app next starts with one waiting (`megler_clear_data_asked`). Windows'
+own answers stay; they are changed in its privacy settings.
+
 ### The phone's text messages and calls
 
 What comes to the phone while an app runs is the app's as Android gives it,
@@ -3200,8 +3352,18 @@ reads through `SMS_RECEIVED`, or by a flash call, a missed call whose number
 is the code, which its `FlashCallReceiver` hears as `PHONE_STATE` RINGING with
 the caller's number. Under Megler neither came (package 482).
 
-- **The shell** watches Windows' chat message store (the `chat` capability):
-  a message the store says was made, incoming and after the app's start, is
+- **The shell** watches Windows' chat message store (the `chat` capability),
+  for an app whose manifest asks for `RECEIVE_SMS` or `READ_SMS`, or that uses
+  Google Play services' SMS Retriever -- a receiver of it in its manifest, or
+  its names in its code (a bank's app registers that receiver at run time and
+  asks for no SMS permission: the report reads the DEX files of an app that
+  carries Google Play services' client, the meta-data
+  `com.google.android.gms.version`, for the SMS Retriever's action, its sender
+  permission and its class) -- and the call
+  history for one that asks for `READ_PHONE_STATE` or `READ_CALL_LOG`: the store of what an
+  app does not ask for is never opened, and its own package does not declare
+  the capability (docs/PER-APP-PACKAGES.md, "What a package declares").
+  A message the store says was made, incoming and after the app's start, is
   told with its sender, text and time. Windows says when a call's state changes
   but not who calls, so when one is over the call history is read
   (`phoneCallHistoryPublic`), a moment later and once more, and the calls that
@@ -3227,15 +3389,19 @@ the caller's number. Under Megler neither came (package 482).
   `registerTelephonyCallback` with a `CallStateListener`) hear the same.
   `TelephonyManager.EXTRA_STATE_*` were null in the framework and are Android's
   strings now.
-- Permissions are the app's manifest's (Megler grants what it asks, by
-  `uses-permission` and by `uses-permission-sdk-23`, which Android 6 and later
-  grant: WhatsApp asks for `READ_CALL_LOG` so, and was given `PHONE_STATE`
-  without the number until `megler.Manifest` read that tag too, package 483);
-  Google Play services, which the app hosts, holds them as on a phone. The store is
+- Permissions are the app's manifest's (by `uses-permission` and by
+  `uses-permission-sdk-23`, which Android 6 and later honour: WhatsApp asks for
+  `READ_CALL_LOG` so, and was given `PHONE_STATE` without the number until
+  `megler.Manifest` read that tag too, package 483), as the user let the app
+  have them: all four are dangerous ("Permissions", in Design), and an app of
+  Android 6 and later hears nothing until it has requested them and been let
+  have them. Google Play services, which the app hosts, holds them as on a
+  phone. The store is
   an SQLite database in memory with Android's columns, so an app's projection,
   selection and order work as they would.
 
-The data app's `phoneEvents` registers for all of it and the test's C side
+The data app's `phoneEvents` registers for all of it (its step `permissions`
+has had the four permissions requested and allowed by then) and the test's C side
 gives it a message from a number, a longer one from a sender with a name in
 Russian that holds the token, and a missed call: the sender, time and text read
 back from the PDUs, the inbox row, the token's PendingIntent, RINGING with the
@@ -3342,6 +3508,27 @@ What a Java app asks of the phone beyond its window goes to the shell through
     an app built as a bundle) is handed over as one `.apks` of them, a ZIP of
     the APKs stored as they are, which Megler's installer unpacks as it does a
     bundle from the file manager.
+- **Play Store's own updates.** Play Store asks Google's server for its own
+  binary, downloads it, and installs it through a session of its own package,
+  but only once none of its activities has been resumed for ten seconds while
+  its process runs ("Self-update ready to be installed, waiting for market to
+  close"; it checks every ten seconds). An app of the phone's own is suspended
+  within a second of being left, and ends on Back, so such an update never
+  goes in, and Play Store starts over at its next start. At the same version
+  it compares the variants by their derived APK id
+  (`com.android.vending.derived.apk.id`, which Google's bundletool writes into
+  each APK it makes of a bundle): Megler brings the standalone APK (id 1), and
+  the server named the split APKs for a Lumia 650 (id 5). So every start
+  downloaded them again, about 70 MB, and the tries left 291 MB of files
+  there (package 662). Play Store's own `ApplicationInfo.metaData` now has its
+  derived APK id as the newest there is (`megler.GooglePackages.ownMetaData`),
+  and it skips the variant ("Local Derived Apk Id ... > Server Derived Apk
+  Id"). Not done: an update to a newer version, which the server will offer
+  in time, is still downloaded at each start and waits the same way; Play
+  Store gets newer through Megler's package or an APK added to the library.
+  On the Lumia 650 every patch was refused besides ("bad base file hash"):
+  Play Store's own APK there had two bits of its own, which Megler mends since
+  0.1.0.668 (docs/PER-APP-PACKAGES.md, "The Google APKs Megler brings").
 - **Other apps: launchers.** The shell lists the apps of Megler's library that
   can run in the shared folder (`library/PhoneAppsList.cpp`):
   `phone-apps\apps.txt` has each app's package, launcher activity, label and
@@ -5839,8 +6026,9 @@ in the overlay's list above).
   (one at the back), `.any`, `.front`, `.autofocus` and `.flash` from them:
   a back camera's focus and light are known once it has been opened (the
   shell keeps what it saw), and until then focus is taken as there and a
-  light as not. The CAMERA permission is granted as every permission is
-  here (`checkSelfPermission`, `requestPermissions` answering granted).
+  light as not. The CAMERA permission is a dangerous one ("Permissions", in
+  Design): an app requests it and Windows asks the user, once; the camera
+  test app's stand-in for the shell grants it.
 - **Opening.** `open(n)` connects; as on Android 9, whose `native_setup`
   answers `EACCES` whenever the camera service gives no camera, every
   failure -- refused, held by something else, no such camera -- is a
@@ -6061,17 +6249,25 @@ of them free. Three things follow.
 
 **Threads are cheap here and must stay so.** A Java thread costs a host stack
 and a frame stack. The host stack can be small, since Java frames are not on it:
-256 KB (or what a thread asks for above that, for native code that wants a deep
+160 KB (or what a thread asks for above that, for native code that wants a deep
 stack). `mg_thread_whole_stack` commits it whole for Android code, so it is
 memory, not only addresses, which Windows counts against the app's limit. It
 once gave 1 MB; the interpreter recurses in C only where C stands between two
 pieces of bytecode (`mg_dvm_invoke`), and the guard there (`c_stack_low`, 48 KB
-above the bottom) turns running out into a catchable `StackOverflowError`. The
+above the bottom) turns running out into a catchable `StackOverflowError` --
+except where native code and Java call each other deeper than that, as Meta's
+FlexLayout does to measure a layout (Instagram, Messenger and Facebook Lite
+stopped at "22 calls from native code deep"): on 32-bit ARM the call goes on in
+a stack of 512 KB of its own, made then and let go when it returns
+(`on_more_stack`, the stub `on_stack` of `mg_stubs.S`), whose part below the
+collector scans as well (`outer_lo`, `outer_hi`); the natives test app runs
+such a layout 150 deep, with collections at its bottom. The
 deepest any thread's host stack was seen to use, measured over a heavy app of
 213 threads (`java: addresses by kind` reports it, and the data app's run says
-it): 23 KB; the data app itself 7 KB. So 256 KB is a tenfold margin and 768 KB
+it): 23 KB; the data app itself 7 KB. So 256 KB was a tenfold margin and 768 KB
 a thread less than the 1 MB before it -- Yandex Maps' 253 threads held 253 MB
-of host stacks, now some 65 (package 498 → 499). The frame stack is 384 KB of
+of host stacks, then some 65 (package 498 → 499) -- and 160 KB still leaves
+112 KB above the guard (c7053436). The frame stack is 384 KB of
 addresses for an ordinary thread, reserved at once and committed as it grows:
 64 KB first, doubled as frames need it (`stack_grow`). A thread's state is not
 freed when the thread ends yet; the host layer has no hook for that.

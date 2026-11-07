@@ -29,8 +29,8 @@ struct Job {
 
 std::mutex gMutex;
 unsigned gGeneration = 1;
-bool gListing = false;               // the portal is being asked
-bool gListed = false;                // it answered at least once
+bool gListing = false;               // the list of the apps' packages is being asked for
+bool gListed = false;                // it came at least once
 bool gPortalReachable = false;       // info answered, independently of its package list
 std::string gProblem;                // why it could not be asked last
 std::vector<appPackage::InstalledApp> gInstalled;
@@ -38,7 +38,7 @@ std::map<std::string, Status> gStatus; // the actions' part (queued, step, made)
 std::deque<Job> gJobs;
 bool gWorking = false;
 std::string gWorkingLine;
-std::vector<std::function<void()>> gPortalWaiters; // what waits for the portal's answer (askPortal)
+std::vector<std::function<void()>> gPortalWaiters; // what waits for the list (askPortal)
 int gDone = 0, gTotal = 0;           // of the jobs since the worker started
 
 std::string identityOf(const std::string& package) {
@@ -137,7 +137,8 @@ void removeUnusedApks(const std::vector<appPackage::InstalledApp>& installed) {
     appPackage::removeUnusedSharedApks(installed, used);
 }
 
-/// The portal's list, asked again. Off the UI thread.
+/// The list of the apps' packages, asked for again: Windows's package manager's, the Device Portal's where Windows will not
+/// answer (appPackage::installedApps). Off the UI thread.
 void list() {
     std::vector<appPackage::InstalledApp> apps;
     std::string error;
@@ -255,7 +256,7 @@ void run(Job& job, int number, int total) {
         const bool servicePublished = appPackage::registerServiceApk(inShared, made.fullName, true);
         if (!servicePublished) shellLog::write("microG: installed, but its shared service APK could not be published; launch microG to retry");
         // Installed: the package made is the installed one now, and goes (Windows's installer is not wanted for it). The
-        // app is listed as installed at once; the portal's list is asked again once the queue is done.
+        // app is listed as installed at once; the list is asked for again once the queue is done.
         files::remove(made.appx);
         {
             std::lock_guard<std::mutex> lock(gMutex);
@@ -305,7 +306,7 @@ void run(Job& job, int number, int total) {
     }
 }
 
-/// A listing of the portal's ended: what waited for its answer goes on. UI thread.
+/// A listing ended: what waited for it goes on. UI thread.
 void portalAnswered() {
     std::vector<std::function<void()>> waiters;
     {
@@ -315,7 +316,7 @@ void portalAnswered() {
     for (auto& then : waiters) then();
 }
 
-/// The worker: the jobs one after another, then the portal's list again. UI thread.
+/// The worker: the jobs one after another, then the list again. UI thread.
 void startWorker(AppShell& shell) {
     {
         std::lock_guard<std::mutex> lock(gMutex);
@@ -427,29 +428,51 @@ Portal portal() {
     return gListed ? Portal::on : Portal::unknown;
 }
 
-bool requirePortal(AppShell& shell) {
+bool requirePortal(AppShell& shell, std::function<void()> retry) {
     const Portal state = portal();
     if (state == Portal::on) return true;
+    /*
+     * Asked for before the first list came: done once it has. The flag ui-update-all is acted on a second after the start,
+     * and a Lumia 650's Megler 648 acted on it 156 ms before Windows listed the apps' packages: it said "Asking the Device
+     * Portal", and Update All waited for the owner's tap, 18 s later.
+     */
+    if (state == Portal::unknown && retry) {
+        shellLog::write("separate apps: waiting for the list of the installed apps");
+        std::weak_ptr<AppShell> weak = shell.weak_from_this();
+        askPortal(shell, [weak, retry = std::move(retry)] {
+            auto self = weak.lock();
+            if (!self) return;
+            // (Once: a list still not known has the shell say so.)
+            if (portal() == Portal::unknown)
+                requirePortal(*self);
+            else
+                retry();
+        });
+        return false;
+    }
     refresh(shell);  // asked again, for the next try
+    // (The list of the apps' packages comes from Windows's package manager, which installs them too; the phone's Device Portal
+    // is asked only where Windows will not answer. Said so: the user saw "Asking the Device Portal" long after Megler had
+    // stopped installing through it.)
     if (state == Portal::unknown) {
-        shell.alert("Asking the Device Portal", "Megler installs apps through the phone's Device Portal and is asking it whether it is on. "
-                                                "Try again in a moment.");
+        shell.alert("Looking at the Installed Apps", "Megler is asking Windows which of its apps are installed, which it needs to know before it "
+                                                     "installs one. Try again in a moment.");
         return false;
     }
     const std::string why = portalProblem();
-    shellLog::write("separate apps: nothing installed while the Device Portal is off: " + why);
+    shellLog::write("separate apps: nothing installed while no list of the installed apps can be had: " + why);
     shell.confirm("Turn On the Device Portal",
-                  "Megler installs apps through the phone's Device Portal, which did not answer (" + why +
-                      "). In Settings › Update & security › For developers, turn on Developer mode, then Device Portal, and turn the "
-                      "portal's Authentication off: Megler asks the portal on this phone itself, without a user name and password. "
-                      "Then try again.",
+                  "Windows did not tell Megler which of its apps are installed, nor did the phone's Device Portal, which Megler asks where "
+                  "Windows will not (" + why + "). In Settings › Update & security › For developers, turn on Developer mode, then Device "
+                  "Portal, and turn the portal's Authentication off: Megler asks the portal on this phone itself, without a user name and "
+                  "password. Then try again.",
                   "Open Settings", false,
                   [] { winrt::Windows::System::Launcher::LaunchUriAsync(winrt::Windows::Foundation::Uri(L"ms-settings:developers")); });
     return false;
 }
 
 void install(AppShell& shell, const std::string& apkId, bool whenRead) {
-    if (!requirePortal(shell)) return;
+    if (!requirePortal(shell, [&shell, apkId, whenRead] { install(shell, apkId, whenRead); })) return;
     const auto entry = Library::instance().find(apkId);
     if (!entry || (!whenRead && entry->report.package.empty())) return;
     shellLog::write("separate apps: install " + apkId);
@@ -462,7 +485,7 @@ void install(AppShell& shell, const std::string& apkId, bool whenRead) {
 }
 
 void installPicked(AppShell& shell, std::shared_ptr<PickedFile> picked, const std::string& apkId) {
-    if (!requirePortal(shell)) return;
+    if (!requirePortal(shell, [&shell, picked, apkId] { installPicked(shell, picked, apkId); })) return;
     shellLog::write("separate apps: install " + picked->name() + " where it is, as " + apkId);
     Job job;
     job.id = apkId;
@@ -496,7 +519,8 @@ std::vector<std::string> outdatedIds() {
 }
 
 void updateAll(AppShell& shell) {
-    if (!requirePortal(shell)) return;
+    // (Which apps are outdated is known from the list: asked for before it came, as the flag ui-update-all is, it waits.)
+    if (!requirePortal(shell, [&shell] { updateAll(shell); })) return;
     const auto ids = outdatedIds();
     shellLog::write(format("separate apps: update all, %u", unsigned(ids.size())));
     for (const auto& id : ids) install(shell, id);

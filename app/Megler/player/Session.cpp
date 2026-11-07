@@ -14,6 +14,7 @@
 #include "player/LocationHost.h"
 #include "player/MicrophoneHost.h"
 #include "player/MediaHost.h"
+#include "player/PermissionHost.h"
 #include "player/PhoneEvents.h"
 #include "player/PhoneState.h"
 #include "player/StorageHost.h"
@@ -119,6 +120,11 @@ megler_gfx_host gfxCallbacks() {
         shellLog::write("flag: gfx-video-drawn is on: a TextureView's video is drawn among the views, not laid under them");
         gfx.setVideoUnder(false);
     }
+    // The flag "gfx-profile": where the drawing's time goes, call by call (GfxHost.cpp, "The calls profiled").
+    if (files::exists(platform::localStateDirectory() + L"\\flags\\gfx-profile")) {
+        shellLog::write("flag: gfx-profile is on");
+        gfx.setProfiling(true);
+    }
     return gfx.callbacks();
 }
 
@@ -203,6 +209,9 @@ bool start(const ApkEntry& apk, winrt::Windows::UI::Xaml::Controls::SwapChainPan
         gAppsDir = !apps.empty() && files::exists(apps + L"\\apps.txt") ? narrow(apps) : std::string();
     }
     systemHost::setRunningApp(apk.title(), apk.report.package);
+    // The app's data to be cleared as it starts (Android's Clear storage, megler_ask_clear_data): the user's answers to its
+    // permissions go with it, as Android resets them; the core clears the files when it starts the app.
+    if (megler_clear_data_asked(apk.report.package.c_str())) permissionHost::forgetAll(apk.report.package);
     audio->setMedia(gBackgroundAudio);
     // The sound output takes a second and a half to build the first time:
     // begun now, at the rate the core's mixer runs at, it is there before the
@@ -216,7 +225,11 @@ bool start(const ApkEntry& apk, winrt::Windows::UI::Xaml::Controls::SwapChainPan
     // Google Play Store with Google's own Google Play services always, which it waits for to be installed (AppShell::playStoreCanStart):
     // with microG's its front page had no Android ID ("Server error").
     const bool playStore = apk.report.package == "com.android.vending";
-    std::thread([window, audio, width, height, densityDpi, playStore] {
+    // What the app's own package declares to Windows of the phone's messages and calls, which are watched for it alone
+    // (megler_appx_capabilities; -1, a report that names no permissions: both, as before).
+    const int capabilities = apk.report.capabilities();
+    const bool messages = capabilities < 0 || (capabilities & MEGLER_APPX_CAP_CHAT), calls = capabilities < 0 || (capabilities & MEGLER_APPX_CAP_CALL_HISTORY);
+    std::thread([window, audio, width, height, densityDpi, playStore, messages, calls] {
         // The flags a diagnosis over USB asked for, in place before the run reads them (shell/PicturesDiag.h).
         picturesDiag::waitForFlags();
         megler_run_config config = {};
@@ -296,8 +309,9 @@ bool start(const ApkEntry& apk, winrt::Windows::UI::Xaml::Controls::SwapChainPan
             gSnapshot.state = State::running;
             shellLog::write("session: running");
         }
-        // The phone's text messages and calls from now on, for the app (megler_sms_received, megler_call_logged).
-        phoneEvents::start();
+        // The phone's text messages and calls from now on, for the app (megler_sms_received, megler_call_logged): those its
+        // permissions ask for. An app that asks for neither has Windows asked for neither store.
+        phoneEvents::start(messages, calls);
         // Should the phone have been locked, or the app left, meanwhile.
         tell();
     }).detach();
@@ -320,7 +334,19 @@ void touch(int phase, int pointer, float x, float y) {
     megler_touch(phase, pointer, x, y);
 }
 
+/*
+ * A Back within a second of the window's coming back is taken for the one that brought it back, and not given to the app. On a
+ * phone, Back on the Start screen returns to the app last shown, and the press reached that app too: Spotify on a Lumia 650
+ * was given Back 0.7 s after it was resumed so, finished its main activity, and Megler said it had ended (653).
+ */
+static std::atomic<unsigned long long> gShownAt{0};
+
 void backKey() {
+    const unsigned long long shown = gShownAt.load();
+    if (shown && GetTickCount64() - shown < 1000) {
+        shellLog::write("session: a Back as the window came back, the one that brought it back: not the app's");
+        return;
+    }
     megler_key(androidKeyBack, true);
     megler_key(androidKeyBack, false);
 }
@@ -349,6 +375,7 @@ void setSuspended(bool suspended) {
 void setVisible(bool visible) {
     {
         std::lock_guard<std::mutex> lock(gMutex);
+        if (visible && !gVisible) gShownAt.store(GetTickCount64());
         gVisible = visible;
     }
     tell();

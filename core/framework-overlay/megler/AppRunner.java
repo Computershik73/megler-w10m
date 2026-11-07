@@ -100,6 +100,8 @@ public final class AppRunner {
     }
 
     public static void run(String activityClass, String applicationClass) throws Exception {
+        // Watched from here, Application.onCreate and all: an app that stays on "starting" says in the log where its main thread is.
+        Native.mainStarted();
         android.webkit.MimeTypeMap.meglerInstallDefault();
         KeyStoreProvider.install();
         Looper.prepareMainLooper();
@@ -129,6 +131,7 @@ public final class AppRunner {
         applyInsets();
         app.onCreate();
         Syncs.started();
+        Installs.sweep(app);
         Manifest.Component launcher = Manifest.activity(activityClass);
         Intent main = new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER);
         // started through the launcher's alias, the activity's component is the alias (Android compares that, not the class, when
@@ -309,7 +312,10 @@ public final class AppRunner {
         final Manifest.Component hosted = MicroG.activity(i);
         if (hosted != null) {
             final Activity caller = from instanceof Activity ? (Activity) from : top();
-            final Intent intent = new Intent(i);
+            // Its extras in GmsCore's class scope, as a Parcel between two processes makes them (megler.Processes.forLoader):
+            // Spotify's SignInHubActivity (play-services-auth, the app's classes) handed GmsCore's sign-in its own
+            // SignInConfiguration, which GmsCore cast to its class of that name: ClassCastException, and the sign-in never came.
+            final Intent intent = Processes.forLoader(new Intent(i), MicroG.gmsLoader());
             if (intent.getComponent() == null) intent.setComponent(new ComponentName(GooglePackages.GMS, hosted.name));
             final String cls = "activity-alias".equals(hosted.kind) && hosted.parentActivity != null ? hosted.parentActivity : hosted.name;
             android.util.Log.d("Megler", "startActivity " + i + " -> Google Play services' " + cls + ", here");
@@ -426,7 +432,14 @@ public final class AppRunner {
         if (back) {
             a.meglerHideFinished();
             Activity caller = a.meglerCaller();
-            if (caller != null && a.meglerRequestCode() >= 0 && caller == below) below.meglerActivityResult(a.meglerRequestCode(), a.meglerResultCode(), a.meglerResultData());
+            // The result in the caller's class scope where the activity was of another's (Google Play services' hosted here),
+            // as a Parcel between two processes makes it: GmsCore's sign-in hands its own GoogleSignInAccount back to the app's
+            // SignInHubActivity, which has a class of that name of its own (megler.Processes.forLoader).
+            if (caller != null && a.meglerRequestCode() >= 0 && caller == below) {
+                Intent data = a.meglerResultData();
+                if (a.getClass().getClassLoader() != below.getClass().getClassLoader()) data = Processes.forLoader(data, below.getClass().getClassLoader());
+                below.meglerActivityResult(a.meglerRequestCode(), a.meglerResultCode(), data);
+            }
             if (!below.isResumedMegler()) {
                 if (!below.meglerVisible()) { below.meglerRestart(); below.meglerStart(); }
                 below.meglerResume();
@@ -517,6 +530,8 @@ public final class AppRunner {
             int phase = ev[1 + 4 * k], id = ev[2 + 4 * k];
             float x = Float.intBitsToFloat(ev[3 + 4 * k]), y = Float.intBitsToFloat(ev[4 + 4 * k]);
             try {
+                // Anything but a finger: the moves kept before it go out first (moveBatched).
+                if (phase >= 4) movesDispatched();
                 if (phase == 5) { back(); continue; }
                 if (phase == 6) { hostPause(id != 0); continue; }
                 if (phase == 7) { InputMethods.deliverPending(); continue; }
@@ -561,15 +576,46 @@ public final class AppRunner {
         h |= ViewRoot.dispatchKey(new KeyEvent(t, t, KeyEvent.ACTION_UP, KeyEvent.KEYCODE_BACK, 0));
         if (!h && a != null) a.meglerBack();
     }
+    /** The activities the host's hidden window stopped (hostPause), in the stack's order: started again as it comes back. */
+    private static final ArrayList<Activity> sStoppedByHost = new ArrayList<>();
     private static void hostPause(boolean pause) {
         if (pause == sPausedByHost) return;
         sPausedByHost = pause;
+        // Nothing laid out or drawn while the host's window is hidden, as Android draws no stopped app's windows.
+        ViewRoot.hostHidden(pause);
         // a result another app's activity left for this one comes first, as onActivityResult comes before onResume
         if (!pause) AppResults.resumed();
+        // and what the shell said of the permission groups is asked again: the user may have changed Windows' settings meanwhile
+        if (!pause) Permissions.forget();
         Activity a = top();
-        if (a == null) return;
-        if (pause) { if (a.isResumedMegler()) a.meglerPause(); }
-        else if (!a.isResumedMegler()) a.meglerResume();
+        if (pause) {
+            if (a != null && a.isResumedMegler()) a.meglerPause();
+            /*
+             * The host pauses the app only when its window is hidden whole (minimized, the screen off, the app suspended), and
+             * the activities still started stop then, as Android stops those no one sees; Compose's recomposer stops its frame
+             * clock at ON_STOP. Minimized and playing, Spotify drew 15 to 25 frames a second for no one, its main thread 80 to
+             * 97% busy (package 657).
+             */
+            for (int i = sStack.size() - 1; i >= 0; i--) {
+                Activity s = sStack.get(i);
+                if (!s.meglerStarted() || s.isFinishing()) continue;
+                s.meglerStop(true);
+                sStoppedByHost.add(0, s);
+            }
+            return;
+        }
+        // Those it stopped start again, the lowest first, unless they went meanwhile or another covered them (a stop of the
+        // stack's own, which hides their windows); then the top one resumes.
+        ArrayList<Activity> stopped = new ArrayList<>(sStoppedByHost);
+        sStoppedByHost.clear();
+        for (Activity s : stopped) {
+            if (!sStack.contains(s) || s.isFinishing() || s.meglerStarted() || s.meglerWindowsHidden()) continue;
+            s.meglerRestart();
+            s.meglerStart();
+        }
+        if (a == null || a.isFinishing()) return;
+        if (!a.meglerStarted()) { a.meglerRestart(); a.meglerStart(); }
+        if (!a.isResumedMegler()) a.meglerResume();
     }
     private static void touch(int phase, int id, float x, float y, long now) {
         int idx = -1;
@@ -583,12 +629,14 @@ public final class AppRunner {
         } else if (phase == 1) {
             if (idx < 0) return;
             xs[idx] = x; ys[idx] = y;
-            action = MotionEvent.ACTION_MOVE;
+            moveBatched(now);
+            return;
         } else {
             if (idx < 0) return;
             xs[idx] = x; ys[idx] = y;
             action = phase == 3 ? MotionEvent.ACTION_CANCEL : down == 1 ? MotionEvent.ACTION_UP : MotionEvent.ACTION_POINTER_UP | (idx << 8);
         }
+        movesDispatched();
         MotionEvent e = MotionEvent.meglerObtain(downTime, now, action, down, java.util.Arrays.copyOf(ids, down), java.util.Arrays.copyOf(xs, down), java.util.Arrays.copyOf(ys, down));
         ViewRoot.dispatchTouch(e);
         if (phase >= 2) {
@@ -597,5 +645,39 @@ public final class AppRunner {
             if (phase == 3) down = 0;
         }
     }
+    /*
+     * Moves batched as Android batches them (its InputEventReceiver's consumeBatchedInputEvents): a move is kept rather than
+     * dispatched, the moves after it are added to it as its history (MotionEvent.meglerAddSample), and the one event goes out
+     * at the next frame, first in it (Choreographer.CALLBACK_INPUT); anything else -- a finger down or up, a key, the host's
+     * pause -- has the moves before it go out first. Each move went out on its own: pollInput hands over all that came while
+     * the main thread was busy, and Spotify on a Lumia 650, whose scroll listeners took 50 to 200 ms a move, worked through a
+     * backlog of hundreds of them -- one stretch of 25.6 s without a frame was input alone, and its list answered a finger
+     * seconds late (package 666).
+     */
+    private static MotionEvent sMoves;
+    private static boolean sMovesAsked;
+    private static final Runnable sMovesAtFrame = () -> { sMovesAsked = false; movesDispatched(); };
+
+    private static void moveBatched(long now) {
+        if (sMoves != null && sMoves.meglerSamePointers(ids, down)) {
+            sMoves.meglerAddSample(now, xs, ys);
+        } else {
+            movesDispatched();
+            sMoves = MotionEvent.meglerObtain(downTime, now, MotionEvent.ACTION_MOVE, down, java.util.Arrays.copyOf(ids, down), java.util.Arrays.copyOf(xs, down), java.util.Arrays.copyOf(ys, down));
+        }
+        if (!sMovesAsked) {
+            sMovesAsked = true;
+            android.view.Choreographer.getMainThreadInstance().postCallback(android.view.Choreographer.CALLBACK_INPUT, sMovesAtFrame, null);
+        }
+    }
+
+    /** The moves kept so far (moveBatched) out now: at the frame, and before anything that came after them. */
+    private static void movesDispatched() {
+        MotionEvent m = sMoves;
+        if (m == null) return;
+        sMoves = null;
+        ViewRoot.dispatchTouch(m);
+    }
+
     static final class ViewRootDispatch { static void key(KeyEvent e) { if (!ViewRoot.dispatchKey(e)) { Activity a = top(); if (a != null) a.dispatchKeyEvent(e); } } }
 }

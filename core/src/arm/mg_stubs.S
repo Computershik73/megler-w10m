@@ -192,6 +192,22 @@ mg_stub_arm_count:
     bx      lr
     .thumb
 
+@ void on_stack(void *arg, void (*fn)(void *), void *top)
+@ Calls fn(arg) with the stack pointer at top (8-byte aligned), and returns on
+@ the stack it was called on, kept in r4 meanwhile. For Java called from native
+@ code when the thread's own stack has run out (mg_dvm_invoke): the calls go on
+@ in a stack of their own.
+    .align 2
+    .global mg_stub_on_stack
+    .thumb_func
+mg_stub_on_stack:
+    push    {r4, lr}
+    mov     r4, sp
+    mov     sp, r2
+    blx     r1
+    mov     sp, r4
+    pop     {r4, pc}
+
     .align 2
     .global mg_stub_end
 mg_stub_end:

@@ -169,6 +169,19 @@ UIElement AppShell::root() {
         hooks.cannotLaunch = [weak](const std::string& why) {
             if (auto self = weak.lock()) self->alert("Couldn't Start the App", why);
         };
+        // A permission the app requests that Megler asks the user for itself (player/PermissionHost.h), in its turn.
+        hooks.ask = [weak](const std::string& title, const std::string& message, const std::vector<std::string>& buttons, std::function<void(int)> done) {
+            auto self = weak.lock();
+            if (!self) {
+                done(-1);
+                return;
+            }
+            DialogSpec spec;
+            spec.title = title;
+            spec.message = message;
+            spec.buttons = buttons;
+            self->dialogWhenFree(std::move(spec), [done](int button, std::string) { done(button); });
+        };
         systemHost::attach(std::move(hooks));
     }
 
@@ -462,7 +475,7 @@ void AppShell::poll() {
         ota::tick(*this);
         // An app's own package opens its app as soon as the library has it read: straight into the player when it can
         // run here, else its page, which says why not. Before the player, Megler's folders the app has not got are offered
-        // (ui/SharedFolders.h), once the phone's folders are known.
+        // (ui/SharedFolders.h), once the phone's folders are known, to an app that asks for the storage.
         if (appPackage::isSingleApp() && !singleAppOpened_) {
             const auto entry = Library::instance().find(appPackage::singleAppId());
             if (entry && entry->analysed && (!entry->report.ready() || StorageHost::shared().searched())) {
@@ -472,11 +485,14 @@ void AppShell::poll() {
                 if (entry->report.ready() && playStoreCanStart(entry->report.package)) {
                     // The app's private files Megler handed over when it made this package, taken first (shell/AppPackage.h).
                     std::weak_ptr<AppShell> weak = weak_from_this();
+                    const bool offerFolders = sharedFolders::wantedBy(entry->report);
                     runInBackground([] { appPackage::takeHandover(); },
-                                    [weak, id] {
-                                        sharedFolders::offer(false, [weak, id](int, int) {
+                                    [weak, id, offerFolders] {
+                                        auto play = [weak, id](int, int) {
                                             if (auto self = weak.lock()) self->push(makePlayerScreen(*self, id));
-                                        });
+                                        };
+                                        if (offerFolders) sharedFolders::offer(false, play);
+                                        else play(0, 0);
                                     });
                 } else {
                     push(makeAppDetailScreen(*this, id));
@@ -507,10 +523,10 @@ void AppShell::updateDisplayRequest() {
     // dims and locks after its timeout otherwise, and a locked phone
     // suspends us.
     const session::State state = session::snapshot().state;
-    // And while packages are installed: an app's own package made and installed (or updated, or uninstalled) through the
-    // portal, each of Update All's, and Megler's own update from Pictures\Megler or GitHub, its download too (ui/Ota.h). A
-    // phone that locks meanwhile suspends Megler, and the portal's upload ends with no result (the owner asked for it,
-    // 2026-11-02), and the download stops.
+    // And while packages are installed: an app's own package made and installed (or updated, or uninstalled), each of
+    // Update All's, and Megler's own update from Pictures\Megler or GitHub, its download too (ui/Ota.h). A phone that locks
+    // meanwhile suspends Megler, and an install ends with no result (the owner asked for it, 2026-11-02; the Device
+    // Portal's upload, where Windows's deployment engine refuses, the most), and the download stops.
     const bool installing = !separateApps::working().empty() || appPackage::selfUpdating() || ota::busy();
     // And always, while Megler is in front, under the flag keep-screen-on (LocalState\flags): a phone left waiting for the
     // next package, which is copied to it and installed from it, or for a test, is not to lock meanwhile.
@@ -638,6 +654,18 @@ void AppShell::dialog(DialogSpec spec, std::function<void(int, std::string)> don
     }
 }
 
+void AppShell::dialogWhenFree(DialogSpec spec, std::function<void(int, std::string)> done) {
+    if (!root_) {
+        if (done) done(-1, std::string());
+        return;
+    }
+    if (dialogOpen_) {
+        waitingDialogs_.emplace_back(std::move(spec), std::move(done));
+        return;
+    }
+    dialog(std::move(spec), std::move(done));
+}
+
 void AppShell::closeDialog(int button) {
     if (!dialogOpen_) return;
     const std::string typed = dialogField_ ? narrow(std::wstring(dialogField_.Text())) : std::string();
@@ -649,6 +677,12 @@ void AppShell::closeDialog(int button) {
     auto done = std::move(dialogDone_);
     dialogDone_ = nullptr;
     if (done) done(button, typed);
+    // The next that waited its turn (dialogWhenFree), unless the answer opened another.
+    if (!dialogOpen_ && !waitingDialogs_.empty()) {
+        auto next = std::move(waitingDialogs_.front());
+        waitingDialogs_.pop_front();
+        dialog(std::move(next.first), std::move(next.second));
+    }
 }
 
 void AppShell::alert(std::string title, std::string message) {
@@ -881,7 +915,7 @@ winrt::fire_and_forget pickAndInstall(std::weak_ptr<AppShell> weakShell, std::sh
 void AppShell::importApk(std::function<void(std::string, std::string)> done) {
     // Taken before the picker opens: a second picker while one is up throws.
     if (import_->active) return;
-    // (Nothing is installed while the Device Portal is off: it says how to turn it on.)
+    // (Nothing is installed while Megler does not know which of its apps are installed: it says why.)
     if (!separateApps::requirePortal(*this)) return;
     *import_ = ImportProgress();
     import_->active = true;
@@ -929,14 +963,15 @@ void AppShell::installApkPath(const std::wstring& path, const std::string& name,
         if (handed) files::remove(path);
     };
     /*
-     * Nothing is installed while the Device Portal is off. Megler started or woken by an app's request has not asked the
-     * portal yet, or asked it long ago: it is asked first, and the request goes on once it answers, the app's installer
-     * session waiting for the outcome. Only a portal that does not answer then has the app that asked told so, and the
-     * shell say how to turn it on. Woken by Play Store's request for WhatsApp, after Play Store's request to uninstall the
-     * one installed before had started it, Megler answered at once that the portal "has not answered yet" (576).
+     * Nothing is installed while Megler does not know which of its apps are installed. Megler started or woken by an app's
+     * request has not asked for the list yet (Windows's package manager's, the Device Portal's where Windows will not
+     * answer), or asked long ago: it is asked for first, and the request goes on once it comes, the app's installer session
+     * waiting for the outcome. Only a list that cannot be had then has the app that asked told so, and the shell say why.
+     * Woken by Play Store's request for WhatsApp, after Play Store's request to uninstall the one installed before had
+     * started it, Megler answered at once that the portal "has not answered yet" (576).
      */
     if (separateApps::portal() != separateApps::Portal::on && !portalAsked) {
-        shellLog::write("import: " + name + " waits for the Device Portal's answer");
+        shellLog::write("import: " + name + " waits for the list of the installed apps");
         std::weak_ptr<AppShell> weak = weak_from_this();
         separateApps::askPortal(*this, [weak, path, name, from] {
             if (auto self = weak.lock()) self->installApkPath(path, name, from, true);
@@ -945,8 +980,8 @@ void AppShell::installApkPath(const std::wstring& path, const std::string& name,
     }
     if (separateApps::portal() != separateApps::Portal::on) {
         const std::string why = separateApps::portal() == separateApps::Portal::off ? separateApps::portalProblem() : "it has not answered yet";
-        phoneAppsList::installOutcome(name, "failed", "Not installed: Megler installs through the phone's Device Portal, which did not answer (" + why +
-                                                        "). Turn it on, with its Authentication off, in Settings › Update & security › For developers.");
+        phoneAppsList::installOutcome(name, "failed", "Not installed: neither Windows nor the phone's Device Portal told Megler which apps are installed (" +
+                                                        why + "). Turn the portal on, with its Authentication off, in Settings › Update & security › For developers.");
         separateApps::requirePortal(*this);
         drop();
         return;

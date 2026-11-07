@@ -28,6 +28,19 @@
     /** The bytes the node's list takes. */
     public static native long rnBytes(long node);
     /**
+     * A View's own node whose whole box was invalidated (android.view.View, overlaid): what of it changed is left to the frame
+     * walk (damage), not the whole box drawn again. `recording`: said while the node's list is being recorded, for the list
+     * recorded after it.
+     */
+    public static native void rnDefer(long node, boolean recording);
+    /**
+     * The frame the recording canvas `rec` has recorded so far, walked node by node before it is handed over
+     * (core/src/drivers/mg_java_gfx.c, G_damage): with `compare`, the rectangle of the screen (w x h) its nodes changed since
+     * the frame before in out[0..3], and true, or false when they changed nothing; without (a frame drawn whole), where every
+     * node is only noted. The render thread then leaves out the nodes that draw nowhere in the part drawn.
+     */
+    public static native boolean damage(long rec, int w, int h, int[] out, boolean compare);
+    /**
      * A layer put onto the picture blurred (megler.h, save_layer_blur): Android's radii in the matrix's units, and whether what lies
      * outside the layer is its edge carried on (Shader.TileMode CLAMP) rather than transparent (DECAL). For a view with
      * RenderEffect.createBlurEffect (android.view.View.drawFromParent).

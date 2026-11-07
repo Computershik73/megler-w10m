@@ -2,6 +2,9 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android" package="megler.test.microg" android:versionCode="1" android:versionName="1.0">
     <uses-sdk android:minSdkVersion="21" android:targetSdkVersion="28" />
     <application android:label="Megler microG check">
+        <!-- What every app that carries Google Play services' client libraries has in its manifest, which the report looks
+             for before it reads the app's code for the SMS Retriever (Main registers its receiver at run time). -->
+        <meta-data android:name="com.google.android.gms.version" android:value="12451000" />
         <activity android:name=".Main">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />

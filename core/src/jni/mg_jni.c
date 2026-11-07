@@ -51,6 +51,7 @@ typedef struct jfield {
     bool has_value, warned;            /* a static field's: whether anything ever gave it one, and whether its absence has been said */
     mg_dvm_field *dvm;                 /* the runtime's field, for a class it has: its value is in the object's slots, or the class's */
     struct jfield *next;
+    struct jfield *next_ref;           /* a stand-in's static field of reference type: the next such (g_static_refs) */
 } jfield;
 
 typedef struct jnative {
@@ -68,12 +69,10 @@ struct mg_jclass {
     jnative *natives;
     mg_dvm_class *dvm;                 /* while the runtime runs: its class of this name */
     bool foreign;                      /* ...which is only a stand-in: no DEX file defines the class, it is this layer's own */
-    mg_jclass *next;
     mg_jclass *hash_next;
 };
 
 #define CLASS_BUCKETS 1024
-static mg_jclass *g_classes;
 static mg_jclass *g_class_hash[CLASS_BUCKETS];
 static mg_lock g_jni_lock = MG_LOCK_INIT;
 static const mg_jhle *g_tables[32];
@@ -114,8 +113,6 @@ static mg_jclass *declare(const char *name)
         c->mirror.kind = MG_J_CLASS;
         c->mirror.permanent = true;
         c->mirror.u.klass.jc = c;
-        c->next = g_classes;
-        g_classes = c;
         c->hash_next = g_class_hash[h];
         g_class_hash[h] = c;
     }
@@ -172,9 +169,6 @@ static mg_jclass *jni_class_for(const char *name, const char *super, mg_dvm_clas
         c->mirror.refs = 1; c->mirror.kind = MG_J_CLASS; c->mirror.permanent = true;
         c->mirror.u.klass.jc = c;
         c->super = d->super ? d->super->jc : NULL;
-        mg_lock_acquire(&g_jni_lock);
-        c->next = g_classes; g_classes = c;
-        mg_lock_release(&g_jni_lock);
     } else c = declare(name);
     if (super && !c->super && strcmp(name, super)) c->super = declare(super);
     c->foreign = d->foreign;
@@ -592,6 +586,12 @@ static void args_from_va(const jmeth *m, va_list ap, mg_jvalue *out)
     }
 }
 
+/*
+ * The stand-in classes' static fields of reference type, roots of the collector's (mg_jni_gc_roots), newest first. It
+ * went over every field of every class this layer had: 5.5 ms of each stop of Spotify's on a Lumia 650, for none of them.
+ */
+static jfield *g_static_refs;
+
 static jfield *get_field(mg_jclass *cls, const char *name, const char *sig, bool is_static)
 {
     mg_dvm_field *df = NULL;
@@ -621,6 +621,10 @@ static jfield *get_field(mg_jclass *cls, const char *name, const char *sig, bool
     mg_lock_acquire(&g_jni_lock);
     f->next = cls->fields;
     cls->fields = f;
+    if (is_static && !df && f->kind == 'L') {
+        f->next_ref = g_static_refs;
+        g_static_refs = f;
+    }
     mg_lock_release(&g_jni_lock);
     return f;
 }
@@ -1500,16 +1504,14 @@ void mg_jni_gc_lock(bool take)
 void mg_jni_gc_roots(void (*fn)(mg_jobj *o, void *user), void *user)
 {
     const reflected *r;
-    const mg_jclass *c;
     const jfield *f;
     u32 i;
     for (i = 0; i < g_refs_cap; i++)
         if (g_refs[i].o && g_refs[i].o != REF_GONE && (g_refs[i].global > 0 || g_refs[i].weak > 0)) fn(g_refs[i].o, user);
     for (r = g_reflected; r; r = r->next)
         if (r->object) fn(r->object, user);
-    for (c = g_classes; c; c = c->next)
-        for (f = c->fields; f; f = f->next)
-            if (f->is_static && f->kind == 'L' && !f->dvm && f->value.l) fn(f->value.l, user);
+    for (f = g_static_refs; f; f = f->next_ref)
+        if (f->value.l) fn(f->value.l, user);
 }
 
 static mg_jobj *j_NewGlobalRef(JNIEnvP e, mg_jobj *o) { (void)e; ref_counted(o, 1, 0); return mg_jni_ref(o); }
@@ -1837,7 +1839,16 @@ static mg_jobj *j_NewObjectArray(JNIEnvP e, i32 len, mg_jobj *cls, mg_jobj *init
     else snprintf(name, sizeof(name), "[L%s;", ec->name);
     if (g_dvm.running) {
         if (!ec->dvm) bind_class(ec);
-        a = mg_dvm_new_array(name, len);
+        /*
+         * The array of the element's own class scope, as reflection's Array.newInstance makes it: it was looked for in the
+         * app's, which has no class of another scope. Chromium's WebView, a scope of its own, makes an AppWebMessagePort[]
+         * in native code for each message a page posts, and Zona (package 573) ended at the first, its ad's, with a
+         * NoClassDefFoundError for that array thrown on the main thread.
+         */
+        if (ec->dvm && ec->dvm->scope) {
+            mg_dvm_class *ac = mg_dvm_find_class_scope(name, ec->dvm->scope);
+            a = ac ? mg_dvm_alloc_array(ac, len) : NULL;
+        } else a = mg_dvm_new_array(name, len);
         for (i = 0; a && i < len; i++) a->u.oarr.v[i] = init && init->dvm ? init : NULL;
         return a;
     }

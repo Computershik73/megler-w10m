@@ -42,6 +42,11 @@
 #define MG_UWP 0
 #endif
 
+#if MG_UWP
+/* Left out of the app partition by the SDK's headers, in the phone's kernelbase like any other. */
+WINBASEAPI HMODULE WINAPI GetModuleHandleW(LPCWSTR lpModuleName);
+#endif
+
 /* ---------------------------------------------------------------- memory */
 
 static DWORD prot_of(int prot)
@@ -460,7 +465,7 @@ void mg_icache_flush(void *p, size_t size) { FlushInstructionCache(GetCurrentPro
 void *mg_mem_alloc(size_t size) { return valloc(NULL, size, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE); }
 void *mg_mem_alloc_watched(size_t size) { return valloc(NULL, size, MEM_RESERVE | MEM_COMMIT | MEM_WRITE_WATCH, PAGE_READWRITE); }
 
-int mg_mem_written_pages(void *p, size_t size, u32 *out, int max)
+int mg_mem_written_pages(void *p, size_t size, u32 *out, int max, bool reset)
 {
     enum { CHUNK = 256 };
     PVOID pages[CHUNK];
@@ -472,7 +477,7 @@ int mg_mem_written_pages(void *p, size_t size, u32 *out, int max)
         ULONG_PTR count = CHUNK;
         ULONG granularity = 0;
         ULONG_PTR i;
-        if (GetWriteWatch(WRITE_WATCH_FLAG_RESET, (u8 *)p + at, span, pages, &count, &granularity) != 0) return -1;
+        if (GetWriteWatch(reset ? WRITE_WATCH_FLAG_RESET : 0, (u8 *)p + at, span, pages, &count, &granularity) != 0) return -1;
         /* (Pages of the host's granularity, each that many of MG_PAGE.) */
         for (i = 0; i < count; i++) {
             u32 first = (u32)(((u8 *)pages[i] - (u8 *)p) / MG_PAGE), k, each = granularity > MG_PAGE ? granularity / MG_PAGE : 1;
@@ -505,6 +510,31 @@ u64 mg_mem_available(void)
         g_available_ms = now ? now : 1;
     }
     return (u64)g_available_kb << 10;
+}
+
+/*
+ * NtQueryInformationProcess's VM counters (ProcessVmCounters, 3), looked up once: what kernel32's GetProcessMemoryInfo
+ * reads, which an app's API set does not have. Nothing in it allocates or locks: the collector reads it with the world
+ * stopped.
+ */
+typedef LONG(NTAPI *query_process_fn)(HANDLE process, ULONG what, PVOID out, ULONG size, PULONG got);
+static query_process_fn g_query_process;
+static volatile LONG g_query_process_tried;
+
+u64 mg_mem_page_faults(void)
+{
+    struct {
+        SIZE_T peak_virtual, virtual_size;
+        ULONG page_faults;
+        SIZE_T peak_working_set, working_set, quota_peak_paged, quota_paged, quota_peak_nonpaged, quota_nonpaged, pagefile, peak_pagefile;
+    } vm;
+    if (!g_query_process_tried) {
+        HMODULE ntdll = GetModuleHandleW(L"ntdll.dll");
+        g_query_process = ntdll ? (query_process_fn)(void *)GetProcAddress(ntdll, "NtQueryInformationProcess") : NULL;
+        g_query_process_tried = 1;
+    }
+    if (!g_query_process || g_query_process(GetCurrentProcess(), 3, &vm, (ULONG)sizeof(vm), NULL) < 0) return 0;
+    return vm.page_faults;
 }
 
 /* --------------------------------------------------------------- threads */
@@ -1256,11 +1286,6 @@ u32 mg_thread_self_id(void) { return GetCurrentThreadId(); }
 u32 mg_thread_id(const mg_thread *t) { return t ? (u32)t->id : 0; }
 void mg_thread_yield(void) { SwitchToThread(); }
 
-#if WINAPI_FAMILY == WINAPI_FAMILY_APP
-/* Left out of the app partition by the SDK's headers, in the phone's kernelbase like any other. */
-WINBASEAPI HMODULE WINAPI GetModuleHandleW(LPCWSTR lpModuleName);
-#endif
-
 /*
  * Windows ends a wait on the next tick of its timer, and the tick is 15.6 ms
  * unless a process asks for a finer one: on the phone a sleep of one
@@ -1338,6 +1363,15 @@ void mg_thread_stack_bounds(void **lo, void **hi)
     GetCurrentThreadStackLimits(&low, &high);
     *lo = (void *)low;
     *hi = (void *)high;
+}
+
+void mg_thread_stack_limits(void *lo, void *hi, void **was_lo, void **was_hi)
+{
+    NT_TIB *tib = (NT_TIB *)NtCurrentTeb();
+    if (was_lo) *was_lo = tib->StackLimit;
+    if (was_hi) *was_hi = tib->StackBase;
+    tib->StackLimit = lo;
+    tib->StackBase = hi;
 }
 
 void mg_thread_whole_stack(void)

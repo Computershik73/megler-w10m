@@ -39,6 +39,21 @@ bool flag(const wchar_t* name) {
     return on;
 }
 
+uint64_t qpcNow() {
+    LARGE_INTEGER counter;
+    QueryPerformanceCounter(&counter);
+    return uint64_t(counter.QuadPart);
+}
+
+double millisecondsPerTick() {
+    static const double ms = [] {
+        LARGE_INTEGER frequency;
+        QueryPerformanceFrequency(&frequency);
+        return 1000.0 / double(frequency.QuadPart);
+    }();
+    return ms;
+}
+
 /// What the UI thread answers the render thread with.
 struct PanelAnswer {
     std::mutex mutex;
@@ -76,6 +91,7 @@ WindowHost::Rect WindowHost::letterbox(float areaWidth, float areaHeight, float 
 
 WindowHost::WindowHost(SwapChainPanel const& panel, int width, int height)
     : panel_(panel), dispatcher_(panel.Dispatcher()), surfaceWidth_(width), surfaceHeight_(height) {
+    directOff_ = flag(L"gfx-window-copy");
     setPanelSize(float(panel.ActualWidth()), float(panel.ActualHeight()));
 }
 
@@ -96,6 +112,8 @@ GfxHost::Window WindowHost::gfxWindow() {
     window.user = this;
     window.target = &WindowHost::gfxTarget;
     window.show = &WindowHost::gfxShow;
+    window.back = &WindowHost::gfxBack;
+    window.showBack = &WindowHost::gfxShowBack;
     return window;
 }
 
@@ -142,6 +160,8 @@ bool WindowHost::attach(ID3D11Device* device) {
     swapChain2_ = nullptr;
     swapChain_ = nullptr;
     context_ = nullptr;
+    doneQuery_ = nullptr;
+    queryIssued_ = queryFailed_ = false;
     device_.copy_from(device); // our own reference
     device_->GetImmediateContext(context_.put());
     featureLevel_ = device_->GetFeatureLevel();
@@ -224,6 +244,7 @@ bool WindowHost::createSwapChain(unsigned width, unsigned height) {
     swapChain_ = chain;
     swapChain2_ = nullptr;
     chain->QueryInterface(IID_PPV_ARGS(swapChain2_.put()));
+    directAge_ = 0;
     backBuffer_ = nullptr;
     hr = swapChain_->GetBuffer(0, IID_PPV_ARGS(backBuffer_.put()));
     if (FAILED(hr)) {
@@ -269,6 +290,9 @@ ID3D11Texture2D* WindowHost::acquire(int width, int height) {
     // The back buffers match the target, so present() is one CopyResource.
     if (UINT(width) != bufferWidth_ || UINT(height) != bufferHeight_) {
         backBuffer_ = nullptr;
+        directAge_ = 0;
+        // (GfxHost's bitmap over the back buffer too: ResizeBuffers fails while anything holds the buffers.)
+        GfxHost::shared().releaseWindowBack();
         {
             // (Flush lets go of what the context still holds of the old buffers;
             // it changes no pipeline state.)
@@ -312,8 +336,15 @@ void WindowHost::presentFrame() {
         }
         if (!path.empty()) writeScreenshot(path);
     }
+    // (The buffers get the target's pictures now, not the ones drawn straight into them.)
+    directAge_ = 0;
+    showsDirect_ = false;
+    checkGpu();
+    const uint64_t copying = qpcNow();
     context_->CopyResource(backBuffer_.get(), target_.get());
+    const uint64_t presenting = qpcNow();
     const HRESULT hr = swapChain_->Present(1, 0);
+    const uint64_t presented = qpcNow();
     if (FAILED(hr)) {
         // Said once per kind of failure, not sixty times a second.
         if (hr != lastPresentError_) {
@@ -325,23 +356,58 @@ void WindowHost::presentFrame() {
         }
         return;
     }
+    markShown();
+    afterPresent(false, presenting - copying, presented - presenting);
+}
+
+void WindowHost::checkGpu() {
+    if (!queryIssued_ || !doneQuery_) return;
+    ++statsChecked_;
+    if (context_->GetData(doneQuery_.get(), nullptr, 0, D3D11_ASYNC_GETDATA_DONOTFLUSH) == S_FALSE) ++statsGpuBehind_;
+}
+
+void WindowHost::markShown() {
+    if (queryFailed_ || !device_ || !context_) return;
+    if (!doneQuery_) {
+        D3D11_QUERY_DESC desc = {};
+        desc.Query = D3D11_QUERY_EVENT;
+        if (FAILED(device_->CreateQuery(&desc, doneQuery_.put()))) {
+            queryFailed_ = true;
+            return;
+        }
+    }
+    context_->End(doneQuery_.get());
+    queryIssued_ = true;
+}
+
+void WindowHost::afterPresent(bool direct, uint64_t copyTicks, uint64_t presentTicks) {
     lastPresentError_ = S_OK;
     ++presented_;
+    const uint64_t now = qpcNow();
+    const double ms = millisecondsPerTick();
     if (samplingFrames_.load()) {
         std::lock_guard<std::mutex> lock(frameSampleMutex_);
         if (samplingFrames_.load()) {
-            LARGE_INTEGER counter;
-            QueryPerformanceCounter(&counter);
-            const uint64_t now = uint64_t(counter.QuadPart);
-            static const double millisecondsPerTick = [] {
-                LARGE_INTEGER frequency;
-                QueryPerformanceFrequency(&frequency);
-                return 1000.0 / double(frequency.QuadPart);
-            }();
-            if (frameSampleLast_) frameSampleMs_.push_back(double(now - frameSampleLast_) * millisecondsPerTick);
+            if (frameSampleLast_) frameSampleMs_.push_back(double(now - frameSampleLast_) * ms);
             frameSampleLast_ = now;
         }
     }
+    if (!statsFrom_) statsFrom_ = now;
+    ++(direct ? statsDirect_ : statsCopied_);
+    if (!direct) statsCopyTicks_ += copyTicks;
+    statsPresentTicks_ += presentTicks;
+    const double seconds = double(now - statsFrom_) * ms / 1000.0;
+    if (seconds < 5.0) return;
+    const uint32_t shown = statsDirect_ + statsCopied_;
+    shellLog::write(format("window: %.1f s: %u pictures shown, %u of them drawn straight into the swap chain's buffers and %u copied "
+                           "there whole (%.1f ms each to ask for the copy); Present held the thread %.1f ms each; the graphics processor "
+                           "had not finished the picture before at %u of %u",
+                           seconds, unsigned(shown), unsigned(statsDirect_), unsigned(statsCopied_),
+                           statsCopied_ ? double(statsCopyTicks_) * ms / statsCopied_ : 0.0, double(statsPresentTicks_) * ms / shown,
+                           unsigned(statsGpuBehind_), unsigned(statsChecked_)));
+    statsFrom_ = now;
+    statsCopyTicks_ = statsPresentTicks_ = 0;
+    statsDirect_ = statsCopied_ = statsGpuBehind_ = statsChecked_ = 0;
 }
 
 void WindowHost::startFrameSample() {
@@ -374,9 +440,11 @@ void WindowHost::requestScreenshot(std::wstring path) {
 // On the app's render thread, like every other use of the device context.
 // The target's row 0 is the bottom of the picture, which is the order a BMP
 // keeps its rows in, and its bytes are blue, green, red, as a BMP's are.
-void WindowHost::writeScreenshot(const std::wstring& path) {
+void WindowHost::writeScreenshot(const std::wstring& path, ID3D11Texture2D* from) {
+    if (!from) from = target_.get();
+    if (!from) return;
     D3D11_TEXTURE2D_DESC td = {};
-    target_->GetDesc(&td);
+    from->GetDesc(&td);
     td.Usage = D3D11_USAGE_STAGING;
     td.BindFlags = 0;
     td.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
@@ -385,7 +453,7 @@ void WindowHost::writeScreenshot(const std::wstring& path) {
     HRESULT hr = device_->CreateTexture2D(&td, nullptr, staging.put());
     D3D11_MAPPED_SUBRESOURCE mapped = {};
     if (SUCCEEDED(hr)) {
-        context_->CopyResource(staging.get(), target_.get());
+        context_->CopyResource(staging.get(), from);
         hr = context_->Map(staging.get(), 0, D3D11_MAP_READ, 0, &mapped);
     }
     if (FAILED(hr)) {
@@ -454,6 +522,8 @@ void WindowHost::presentPixelsPart(void* user, const void* pixels, int width, in
 bool WindowHost::makeOwnDevice(unsigned width, unsigned height) {
     // The device the app's views are drawn on, where they are drawn on the graphics processor: their pictures are then
     // shown from there (gfxWindow), and the ones that come through memory go up to the same texture.
+    doneQuery_ = nullptr;
+    queryIssued_ = queryFailed_ = false;
     if (ID3D11Device* drawing = GfxHost::shared().device()) {
         device_.copy_from(drawing);
         device_->GetImmediateContext(context_.put());
@@ -500,10 +570,14 @@ void WindowHost::leaveLostDevice() {
     backBuffer_ = nullptr;
     swapChain2_ = nullptr;
     swapChain_ = nullptr;
+    doneQuery_ = nullptr;
+    queryIssued_ = queryFailed_ = false;
     context_ = nullptr;
     device_ = nullptr;
     sharedDevice_ = false;
     showsPixels_ = false;
+    showsDirect_ = false;
+    directAge_ = 0;
     bufferWidth_ = bufferHeight_ = 0;
     ownDeviceState_ = 0;
 }
@@ -544,6 +618,63 @@ void WindowHost::showTarget() {
         context_->CopyResource(backBuffer_.get(), target_.get());
         swapChain_->Present(0, 0);
     }
+}
+
+ID3D11Texture2D* WindowHost::gfxBack(void* user, int width, int height, int* age) {
+    return static_cast<WindowHost*>(user)->backTarget(width, height, age);
+}
+
+void WindowHost::gfxShowBack(void* user) { static_cast<WindowHost*>(user)->showBackBuffer(); }
+
+// GfxHost would draw the picture straight into the swap chain's back buffer: there is one to give once the target's way
+// has shown a picture on GfxHost's device (which makes the device and the swap chain), at this size.
+ID3D11Texture2D* WindowHost::backTarget(int width, int height, int* age) {
+    *age = 0;
+    if (directOff_ || width <= 0 || height <= 0) return nullptr;
+    std::lock_guard<std::mutex> lock(pixelsMutex_);
+    if (ownDeviceState_ <= 0 || !sharedDevice_ || noPresent_ || !GfxHost::shared().device()) return nullptr;
+    if (!swapChain_ || !backBuffer_ || bufferWidth_ != unsigned(width) || bufferHeight_ != unsigned(height)) return nullptr;
+    *age = directAge_.load();
+    return backBuffer_.get();
+}
+
+// ... and has drawn it: shown as it is, nothing copied.
+void WindowHost::showBackBuffer() {
+    std::lock_guard<std::mutex> lock(pixelsMutex_);
+    if (!swapChain_ || !backBuffer_) return;
+    DeviceLock device(*this);
+    if (!showsDirect_.exchange(true)) shellLog::write("window: the app's pictures go straight into the swap chain's buffers, with no copy of the whole");
+    // (The UI thread shows the target again at another panel size; it is not the picture now, and the next picture is.)
+    showsPixels_ = false;
+    if (transformDirty_.exchange(false)) applyTransform();
+    if (shotWanted_.exchange(false)) {
+        std::wstring path;
+        {
+            std::lock_guard<std::mutex> shot(shotMutex_);
+            path.swap(shotPath_);
+        }
+        // (The buffer has the whole picture now, before it is shown.)
+        if (!path.empty()) writeScreenshot(path, backBuffer_.get());
+    }
+    checkGpu();
+    const uint64_t presenting = qpcNow();
+    const HRESULT hr = swapChain_->Present(1, 0);
+    const uint64_t presented = qpcNow();
+    // A Present that said anything else (an occluded window's) may not have turned the buffers: the next pictures go whole.
+    if (hr == S_OK) directAge_ = std::min(directAge_.load() + 1, 3);
+    else directAge_ = 0;
+    if (FAILED(hr)) {
+        if (hr != lastPresentError_) {
+            lastPresentError_ = hr;
+            shellLog::write(format("window: Present failed, 0x%08X%s", unsigned(hr),
+                                   hr == DXGI_ERROR_DEVICE_REMOVED || hr == DXGI_ERROR_DEVICE_RESET
+                                       ? format(" (the device was lost, reason 0x%08X)", unsigned(device_->GetDeviceRemovedReason())).c_str()
+                                       : ""));
+        }
+        return;
+    }
+    markShown();
+    afterPresent(true, 0, presented - presenting);
 }
 
 void WindowHost::showPixels(const void* pixels, int width, int height, int stride) {
@@ -691,6 +822,7 @@ void WindowHost::showAgain() {
     if (!swapChain_ || !backBuffer_ || !target_ || noPresent_) return;
     if (transformDirty_.exchange(false)) applyTransform();
     DeviceLock device(*this);
+    directAge_ = 0;
     context_->CopyResource(backBuffer_.get(), target_.get());
     const HRESULT hr = swapChain_->Present(0, 0);
     if (FAILED(hr) && hr != lastPresentError_) {

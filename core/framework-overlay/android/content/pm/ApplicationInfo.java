@@ -4,6 +4,8 @@
 // manager records the ABI it installed the libraries for. The original left it null. The field is hidden API that
 // SoLoader reads by reflection first (SysUtil: "primaryCpuAbi") to know which of an app's libraries to load, before it
 // falls back to Build.SUPPORTED_ABIS; WhatsApp ended at its start when both said nothing usable (package 270).
+// And in the app's own meta-data passing through megler.GooglePackages.ownMetaData: Play Store's derived APK id is the newest
+// there is, so that it no longer downloads another variant of its own version at every start, which it could not install.
 // Everything else is the original's, unchanged.
 package android.content.pm;
 public class ApplicationInfo extends PackageItemInfo implements android.os.Parcelable {
@@ -78,7 +80,7 @@ public class ApplicationInfo extends PackageItemInfo implements android.os.Parce
             a.targetSdkVersion = megler.Manifest.targetSdk; a.minSdkVersion = megler.Manifest.minSdk;
             a.flags = FLAG_HAS_CODE | FLAG_INSTALLED | FLAG_ALLOW_BACKUP | FLAG_SUPPORTS_RTL | FLAG_HARDWARE_ACCELERATED | (megler.Manifest.debuggable ? FLAG_DEBUGGABLE : 0) | (megler.Manifest.largeHeap ? FLAG_LARGE_HEAP : 0)
                 | (megler.Manifest.extractNativeLibs ? FLAG_EXTRACT_NATIVE_LIBS : 0);   /* Qt looks for its plugins in nativeLibraryDir then */
-            a.metaData = megler.Manifest.appMetaData;
+            a.metaData = megler.GooglePackages.ownMetaData(a.packageName, megler.Manifest.appMetaData);
             a.appComponentFactory = megler.Manifest.appComponentFactory;
             a.uid = android.os.Process.myUid();
             sSelf = a;

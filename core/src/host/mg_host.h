@@ -89,11 +89,11 @@ MG_HOSTAPI void *mg_mem_alloc(size_t size);
  */
 MG_HOSTAPI void *mg_mem_alloc_watched(size_t size);
 /*
- * The pages of watched [p, p + size) written since the memory was made or this was last asked, as page numbers from `p`
- * into `out` (at most `max`), the watch started again for them: how many; -1 where the host cannot say (and every page is
- * to be taken for written). Pages of MG_PAGE bytes.
+ * The pages of watched [p, p + size) written since the memory was made or the watch was last started again, as page numbers
+ * from `p` into `out` (at most `max`): how many; -1 where the host cannot say (and every page is to be taken for written).
+ * `reset`: the watch started again for them. Pages of MG_PAGE bytes.
  */
-MG_HOSTAPI int mg_mem_written_pages(void *p, size_t size, u32 *out, int max);
+MG_HOSTAPI int mg_mem_written_pages(void *p, size_t size, u32 *out, int max, bool reset);
 
 /*
  * Memory that several mappings show at once: a section (a pagefile-backed file mapping on Windows, a memfd on Linux), the
@@ -129,6 +129,8 @@ MG_HOSTAPI void mg_mem_set_probe(u64 (MG_HOSTCB *limit)(void), u64 (MG_HOSTCB *u
  */
 MG_HOSTAPI u64 mg_mem_available(void);
 MG_HOSTAPI void mg_mem_set_available_probe(u64 (MG_HOSTCB *available)(void));
+/* The page faults the process has taken so far, the soft and the hard together; 0 where the host does not say. */
+MG_HOSTAPI u64 mg_mem_page_faults(void);
 
 /* --------------------------------------------------------------- threads */
 
@@ -274,6 +276,12 @@ MG_HOSTAPI bool mg_futex_wait(volatile i32 *addr, i32 expect, u64 timeout_ns);
 MG_HOSTAPI void mg_futex_wake(volatile i32 *addr, bool all);
 /* The calling thread's stack: [lo, hi). */
 MG_HOSTAPI void mg_thread_stack_bounds(void **lo, void **hi);
+/*
+ * The limits of the stack the calling thread now runs on, as the host's own code goes by them (Windows' stack probes and
+ * unwinder read the thread's NT_TIB), set to [lo, hi); what they were is put in *was_lo and *was_hi when not NULL. For a
+ * thread that goes on in a stack of another's memory (mg_dvm_invoke's on_more_stack) and back. Nothing on POSIX.
+ */
+MG_HOSTAPI void mg_thread_stack_limits(void *lo, void *hi, void **was_lo, void **was_hi);
 /*
  * Makes all of the calling thread's stack usable at once, for a thread about
  * to run Android code. Windows hands a stack out a page at a time, to code

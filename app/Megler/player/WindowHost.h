@@ -61,6 +61,20 @@
 // two (IDXGIDevice1::SetMaximumFrameLatency) is what makes Present hold the
 // app's thread when it runs ahead of the display.
 //
+// Once that has shown a picture, the next ones go straight into the swap
+// chain's back buffer (backTarget, GfxHost::Window::back), with no copy of the
+// whole picture from the target at every frame: the buffers take turns, so
+// each has the picture three back, and GfxHost draws into it the parts the
+// two pictures since changed with this one's (the whole picture until three
+// in a row have gone that way, directAge_). The target is then not the
+// picture: a screenshot is taken from the back buffer as the next picture is
+// shown, the UI thread does not show the last one again at another panel
+// size (the next picture does), and the target's way gets the whole picture
+// when it is taken again. The flag gfx-window-copy keeps the target's way.
+// Every five seconds the log says how the pictures went, how long Present
+// held the thread, and at how many of them the graphics processor had not
+// finished the picture before (an event query).
+//
 // One WindowHost lives from Play to the end of the process: one app runs per
 // process, and the core may call it for as long as the app's threads live.
 #pragma once
@@ -130,7 +144,15 @@ private:
     bool createSwapChain(unsigned width, unsigned height);
     ID3D11Texture2D* acquire(int width, int height);
     void presentFrame();
-    void writeScreenshot(const std::wstring& path);
+    /// After a Present that went: the counts, the frame sample, and every five seconds a line in the log. `direct`: the
+    /// picture was drawn straight into the back buffer; else copied there, taking `copyTicks`.
+    void afterPresent(bool direct, uint64_t copyTicks, uint64_t presentTicks);
+    /// Before a Present: whether the graphics processor has finished the picture before (counted), and after it the marker
+    /// for the next one to ask about (markShown).
+    void checkGpu();
+    void markShown();
+    /// From `from`, or the target when null.
+    void writeScreenshot(const std::wstring& path, ID3D11Texture2D* from = nullptr);
     void applyTransform();
     void describe();
 
@@ -146,8 +168,12 @@ private:
     // ... and those GfxHost draws on the graphics processor (gfxWindow), on the thread that draws them.
     static ID3D11Texture2D* gfxTarget(void* user, int width, int height);
     static void gfxShow(void* user);
+    static ID3D11Texture2D* gfxBack(void* user, int width, int height, int* age);
+    static void gfxShowBack(void* user);
     ID3D11Texture2D* pictureTarget(int width, int height);
     void showTarget();
+    ID3D11Texture2D* backTarget(int width, int height, int* age);
+    void showBackBuffer();
     /// The device was GfxHost's and is lost: everything made on it goes, and the next picture makes a device of this class's own.
     void leaveLostDevice();
     struct DeviceLock;
@@ -195,6 +221,17 @@ private:
     bool flippedStale_ = false;             // GfxHost drew into the texture since: flipped_ is not the picture any more
     bool sharedDevice_ = false;             // the device is GfxHost's: its context is used under Direct2D's lock
     uint64_t picturesDropped_ = 0;
+
+    // GfxHost's pictures straight into the back buffer (backTarget).
+    bool directOff_ = false;                // the flag gfx-window-copy: the target's way only
+    std::atomic<int> directAge_{0};         // pictures in a row that went straight in since anything else was shown, at most 3
+    std::atomic<bool> showsDirect_{false};  // the last picture went straight in: the target is not the picture
+
+    // What the log says of the pictures every five seconds (the threads that present, one at a time).
+    winrt::com_ptr<ID3D11Query> doneQuery_; // an event after the last Present: done, the graphics processor had finished it
+    bool queryIssued_ = false, queryFailed_ = false;
+    uint64_t statsFrom_ = 0, statsCopyTicks_ = 0, statsPresentTicks_ = 0;
+    uint32_t statsDirect_ = 0, statsCopied_ = 0, statsGpuBehind_ = 0, statsChecked_ = 0;
 };
 
 } // namespace megler::app

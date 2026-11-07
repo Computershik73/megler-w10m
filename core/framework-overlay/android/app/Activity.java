@@ -34,6 +34,11 @@
 //
 // And getComponentName: the component the activity was started as (the manifest's), not its class, which an app's component
 // factory chooses; AppRunner.recreate makes that component again, with the state the activity saved, as Android does.
+//
+// And requestPermissions, which answered every permission granted on the next message, asks: megler.Permissions settles
+// what Android's rules settle and has the user asked for the rest, and the answers come to onRequestPermissionsResult, the
+// activity paused and resumed around them where an answer changed (meglerPermissionsResult); a second request while one
+// is answered is told it was cancelled, as on Android. shouldShowRequestPermissionRationale is true once the user said no.
 // Everything else is the original's, unchanged.
 package android.app;
 
@@ -163,7 +168,11 @@ public class Activity extends ContextThemeWrapper implements Window.Callback, Ke
         each(c -> c.onActivityPostPaused(this));
         android.content.MeglerSharedPreferences.flushAll();      /* as QueuedWork after onPause */
     }
-    public final void meglerStop() {
+    public final void meglerStop() { meglerStop(false); }
+    /* keepWindows: stopped because the host's window is hidden whole (the app in the background, the screen off), as Android
+       stops an activity no one sees; its windows stay attached and laid out, and nothing is drawn while the host's window is
+       hidden (megler.ViewRoot.hostHidden). It starts again as the window comes back (AppRunner.hostPause). */
+    public final void meglerStop(boolean keepWindows) {
         if (mStarted) {                                  /* one that finished in onCreate never started, and does not stop */
             each(c -> c.onActivityPreStopped(this));
             fragmentHost(FragmentManager.HOST_ACTIVITY_CREATED);
@@ -171,6 +180,7 @@ public class Activity extends ContextThemeWrapper implements Window.Callback, Ke
             if (mLoaders != null) mLoaders.doStop();
             each(c -> c.onActivityPostStopped(this));
         }
+        if (keepWindows) return;
         if (mParent == null && mWindow != null && mWindow.peekDecorView() != null) { megler.ViewRoot r = megler.ViewRoot.of(mWindow.peekDecorView()); if (r != null) r.remove(); }
         /* its dialogs and popups hidden with it, as Android hides the windows of a token not visible (makeVisible shows them) */
         if (!mWindowsHidden) { mWindowsHidden = true; megler.ViewRoot.ownerStopped(this, true); }
@@ -275,6 +285,7 @@ public class Activity extends ContextThemeWrapper implements Window.Callback, Ke
     public void unregisterActivityLifecycleCallbacks(Application.ActivityLifecycleCallbacks c) { mLifecycleCallbacks.remove(c); }
     public boolean isResumed() { return mResumed; }
     public final boolean isResumedMegler() { return mResumed; }
+    public final boolean meglerStarted() { return mStarted; }
     public boolean isFinishing() { return mFinished; }
     public boolean isDestroyed() { return mDestroyed; }
     public boolean isChangingConfigurations() { return mChangingConfigurations; }
@@ -453,11 +464,39 @@ public class Activity extends ContextThemeWrapper implements Window.Callback, Ke
     public boolean onNavigateUp() { if (mInfo != null && mInfo.parentActivity != null) { finish(); return true; } return false; }
     public boolean shouldUpRecreateTask(Intent target) { return false; }
     public Intent getParentActivityIntent() { return mInfo != null && mInfo.parentActivity != null ? new Intent().setClassName(getPackageName(), mInfo.parentActivity) : null; }
-    public final void requestPermissions(String[] perms, int request) {
-        final int[] r = new int[perms.length];
-        mHandler.post(() -> onRequestPermissionsResult(request, perms, r));
+    /* A request of permissions is being answered (megler.Permissions): another meanwhile is told it was cancelled, as on Android. */
+    private boolean mHasCurrentPermissionsRequest;
+    public final void requestPermissions(String[] perms, int request) { meglerRequestPermissions(perms, request, null); }
+    /* Megler: a request, the activity's own or a fragment's (`fragment`, whose onRequestPermissionsResult hears it). */
+    public final void meglerRequestPermissions(String[] perms, int request, Object fragment) {
+        if (request < 0) throw new IllegalArgumentException("requestCode should be >= 0");
+        if (mHasCurrentPermissionsRequest) {
+            android.util.Log.w("Activity", "Can request only one set of permissions at a time");
+            // Dispatch the callback with empty arrays which means a cancellation.
+            if (fragment instanceof Fragment) ((Fragment) fragment).onRequestPermissionsResult(request, new String[0], new int[0]);
+            else onRequestPermissionsResult(request, new String[0], new int[0]);
+            return;
+        }
+        if (perms == null || perms.length == 0) throw new IllegalArgumentException("permission cannot be null or empty");
+        mHasCurrentPermissionsRequest = true;
+        megler.Permissions.request(this, perms.clone(), request, fragment);
     }
-    public boolean shouldShowRequestPermissionRationale(String p) { return false; }
+    /*
+     * Megler: what megler.Permissions answered, on the main thread. Where the user's answer changed something (`asked`) the
+     * activity is paused around it and resumed after it, as Android's permission dialog, an activity of its own over this
+     * one, pauses it and gives the result before onResume: an app that opens the camera in onResume once it may finds it
+     * may. An activity destroyed meanwhile hears nothing.
+     */
+    public final void meglerPermissionsResult(int request, String[] perms, int[] results, Object fragment, boolean asked) {
+        mHasCurrentPermissionsRequest = false;
+        if (mDestroyed) return;
+        boolean up = asked && isResumedMegler();
+        if (up) meglerPause();
+        if (fragment instanceof Fragment) ((Fragment) fragment).onRequestPermissionsResult(request, perms, results);
+        else onRequestPermissionsResult(request, perms, results);
+        if (up) meglerResume();
+    }
+    public boolean shouldShowRequestPermissionRationale(String p) { return megler.Permissions.shouldShowRationale(p); }
     public SharedPreferences getPreferences(int mode) { return getSharedPreferences(getLocalClassName(), mode); }
     public void runOnUiThread(Runnable r) { if (Looper.myLooper() == Looper.getMainLooper()) r.run(); else mHandler.post(r); }
     /*
@@ -688,7 +727,7 @@ public class Activity extends ContextThemeWrapper implements Window.Callback, Ke
             public void onWindowDismissed(boolean p0, boolean p1) {}
             public void requestFullscreenMode(int p0, android.os.OutcomeReceiver p1) {}
             public void requestOpenInBrowserEducation() {}
-            public void requestPermissions(java.lang.String[] p0, int p1, int p2) {}
+            public void requestPermissions(java.lang.String[] p0, int p1, int p2) { requestPermissions(p0, p1); }
             public void requestShowKeyboardShortcuts() {}
             public boolean requestVisibleBehind(boolean p0) { return false; }
             public void setActivityRecordInputSinkEnabled(boolean p0) {}
@@ -708,7 +747,7 @@ public class Activity extends ContextThemeWrapper implements Window.Callback, Ke
             public boolean setTranslucent(boolean p0) { return false; }
             public void setVrModeEnabled(boolean p0, android.content.ComponentName p1) {}
             public boolean shouldDockBigOverlays() { return false; }
-            public boolean shouldShowRequestPermissionRationale(java.lang.String p0, int p1) { return false; }
+            public boolean shouldShowRequestPermissionRationale(java.lang.String p0, int p1) { return shouldShowRequestPermissionRationale(p0); }
             public void showLockTaskEscapeMessage() {}
             public void startActivityAsCaller(android.content.Intent p0, android.os.Bundle p1, boolean p2, int p3) {}
             public void startActivityAsCaller(android.content.Intent p0, android.os.Bundle p1, boolean p2, int p3, int p4) {}

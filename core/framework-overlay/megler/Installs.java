@@ -29,6 +29,9 @@
 // (STATUS_FAILURE_ABORTED). Google Play showed "Uninstalling..." for ever: the call did nothing. Google Play itself asks
 // through PackageManager.deletePackage, with an IPackageDeleteObserver of its own (deleteObserved), which is told
 // packageDeleted as Android tells it: DELETE_SUCCEEDED, DELETE_FAILED_ABORTED for the user's no.
+//
+// What a run leaves when its process ends before a session's outcome -- the session's files, a handed APK's copy -- the next
+// run removes at its start (sweep).
 package megler;
 
 import android.content.Context;
@@ -368,5 +371,55 @@ public final class Installs {
         File[] kids = f.listFiles();
         if (kids != null) for (File k : kids) deleteTree(k);
         f.delete();
+    }
+
+    private static long sizeOf(File f) {
+        File[] kids = f.listFiles();
+        if (kids == null) return f.length();
+        long n = 0;
+        for (File k : kids) n += sizeOf(k);
+        return n;
+    }
+
+    /*
+     * What earlier runs of the app left in its cache, removed once at its start, off the main thread: a session's folder and
+     * its bundle (megler-session-<id>, .apks), which stay when the process ends before the session has its outcome -- Update
+     * All closes the app, the user leaves it -- and the copies of APKs install intents handed over (megler-install). Play
+     * Store kept a Gmail update's session so, 228 MB of a Lumia 650's last 600 (package 663). What this run has made since
+     * its start is newer than that, and stays.
+     */
+    public static void sweep(final Context app) {
+        final long started = System.currentTimeMillis();
+        Thread t = new Thread(() -> {
+            File cache = app.getCacheDir();
+            if (cache == null) return;
+            long freed = 0;
+            int count = 0;
+            File[] old = cache.listFiles((d, n) -> n.startsWith("megler-session-"));
+            if (old != null) for (File f : old) {
+                if (f.lastModified() >= started) continue;
+                String id = f.getName().substring("megler-session-".length());
+                if (id.endsWith(".apks")) id = id.substring(0, id.length() - 5);
+                try {
+                    synchronized (Installs.class) { if (sSessions.containsKey(Integer.parseInt(id))) continue; }
+                } catch (NumberFormatException e) {
+                    continue;
+                }
+                freed += sizeOf(f);
+                deleteTree(f);
+                count++;
+            }
+            File[] handed = new File(cache, "megler-install").listFiles();
+            if (handed != null) for (File f : handed) {
+                if (f.lastModified() >= started) continue;
+                freed += sizeOf(f);
+                deleteTree(f);
+                count++;
+            }
+            if (count > 0)
+                android.util.Log.i("Megler", "install: what " + count + " installs of earlier runs left in the cache removed, " + (freed >> 20) + " MB");
+        }, "Megler install sweep");
+        t.setPriority(Thread.MIN_PRIORITY);
+        t.start();
     }
 }

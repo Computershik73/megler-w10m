@@ -376,6 +376,22 @@ public abstract class AbsListView extends AdapterView<ListAdapter> implements Fi
         if (down) mFirstPosition += count;
         final int absIncrementalDeltaY = Math.abs(incrementalDeltaY);
         if (spaceAbove < absIncrementalDeltaY || spaceBelow < absIncrementalDeltaY) fillGap(down);
+        /*
+         * Megler: a step that brought the first row in (or the last) from beyond the list's edge carried it past the padding --
+         * fillGap lays a row where the rows next to it end, and the clamp above knew only the rows there before the step --
+         * so the rows go back to the edge and the other end is filled again, as Android's correctTooHigh and correctTooLow do.
+         * A drag of the demos list up and back stopped with its first row 20 pixels below the top, a gap above it, when
+         * its moves came batched (package 667): one step spanned the edge.
+         */
+        final int nowCount = getChildCount();
+        if (nowCount > 0 && !down && mFirstPosition == 0) {
+            final int gap = getChildAt(0).getTop() - listPadding.top;
+            if (gap > 0) { offsetChildrenTopAndBottom(-gap); fillGap(true); }
+        } else if (nowCount > 0 && down && mFirstPosition + nowCount == mItemCount) {
+            final int gap = end - getChildAt(nowCount - 1).getBottom();
+            final int room = mFirstPosition > 0 ? gap : Math.min(gap, listPadding.top - getChildAt(0).getTop());
+            if (gap > 0 && room > 0) { offsetChildrenTopAndBottom(room); fillGap(false); }
+        }
         mRecycler.fullyDetachScrapViews();
         mBlockLayoutRequests = false;
         if (mSelectorPosition != INVALID_POSITION) { View s = getChildAt(mSelectorPosition - mFirstPosition); if (s != null) positionSelector(s); else mSelectorRect.setEmpty(); }

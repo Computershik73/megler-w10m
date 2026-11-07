@@ -29,6 +29,7 @@
 #include <sys/epoll.h>
 #include <sys/ioctl.h>
 #include <sys/mman.h>
+#include <sys/resource.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
 #include <sys/statvfs.h>
@@ -205,12 +206,13 @@ void *mg_mem_alloc_watched(size_t size)
     return NULL;
 }
 
-int mg_mem_written_pages(void *p, size_t size, u32 *out, int max)
+int mg_mem_written_pages(void *p, size_t size, u32 *out, int max, bool reset)
 {
     (void)p;
     (void)size;
     (void)out;
     (void)max;
+    (void)reset;
     return -1;
 }
 
@@ -223,6 +225,12 @@ u64 mg_mem_usage(void) { return g_usage ? g_usage() : 0; }
 static u64 (*g_available_probe)(void);
 void mg_mem_set_available_probe(u64 (*available)(void)) { g_available_probe = available; }
 u64 mg_mem_available(void) { return g_available_probe ? g_available_probe() : 0; }
+
+u64 mg_mem_page_faults(void)
+{
+    struct rusage u;
+    return getrusage(RUSAGE_SELF, &u) == 0 ? (u64)u.ru_minflt + (u64)u.ru_majflt : 0;
+}
 
 /* --------------------------------------------------------------- threads */
 
@@ -638,6 +646,15 @@ static void fault_stack_take(void)
 
 /* A thread's stack is all there from the start here (and the first thread's grows wherever it is touched); its faults get a stack of their own. */
 void mg_thread_whole_stack(void) { fault_stack_take(); }
+
+/* Nothing of the host's own goes by a thread's stack limits here. */
+void mg_thread_stack_limits(void *lo, void *hi, void **was_lo, void **was_hi)
+{
+    (void)lo;
+    (void)hi;
+    if (was_lo) *was_lo = NULL;
+    if (was_hi) *was_hi = NULL;
+}
 
 void mg_thread_stack_bounds(void **lo, void **hi)
 {

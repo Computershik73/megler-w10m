@@ -5,6 +5,7 @@
 #include "megler.h"
 #include "library/Library.h"
 #include "player/Session.h"
+#include "shell/BundledApks.h"
 #include "shell/Files.h"
 #include "shell/PickedFile.h"
 #include "shell/Platform.h"
@@ -104,6 +105,26 @@ std::string oneLine(std::string s) {
         if (c == '\r' || c == '\n') c = ' ';
     return s;
 }
+
+}  // namespace
+
+std::string describeCapabilities(int capabilities) {
+    if (capabilities < 0) return "every capability of Megler's";
+    static const struct {
+        int cap;
+        const char* what;
+    } names[] = {{MEGLER_APPX_CAP_NETWORK, "the network"},          {MEGLER_APPX_CAP_PICTURES, "the pictures library"},
+                 {MEGLER_APPX_CAP_VIDEOS, "the videos library"},     {MEGLER_APPX_CAP_MUSIC, "the music library"},
+                 {MEGLER_APPX_CAP_WEBCAM, "the camera"},             {MEGLER_APPX_CAP_MICROPHONE, "the microphone"},
+                 {MEGLER_APPX_CAP_LOCATION, "the location"},         {MEGLER_APPX_CAP_CHAT, "text messages"},
+                 {MEGLER_APPX_CAP_CALL_HISTORY, "the call history"}};
+    std::string out;
+    for (const auto& n : names)
+        if (capabilities & n.cap) out += (out.empty() ? "" : ", ") + std::string(n.what);
+    return out.empty() ? "none of the phone's" : out;
+}
+
+namespace {
 
 /// The logos of a package (Megler's are Assets\*.png, drawn by Assets\make-assets.ps1): each file, its size, and how much of
 /// its shorter side the icon takes. The same names and sizes as Megler's, which resources.pri's template lists.
@@ -299,12 +320,19 @@ std::string keepInShared(const ApkEntry& entry, const std::string& identity, con
         if (!files::makeDirectories(part)) return format("The APK's folder in the shared folder could not be made (error %lu).", GetLastError());
         uint64_t mended = 0;
         const auto put = [&mended](const std::wstring& from, const std::wstring& to) {
-            return files::copy(from, to) && files::flush(to) && files::sameEnd(from, to, 1u << 20) && files::mend(from, to, mended);
+            uint64_t more = 0;
+            const bool whole = files::copyWhole(from, to, more);
+            mended += more;
+            return whole;
         };
+        // The library's copy of an APK Megler's package brings (bitgapps) is not copied on: the package's own is. A Lumia 650's
+        // copy of Google Play Store, made before copies were compared with what they were made from, had bytes of its own,
+        // and its app's APK in the shared folder took them along byte for byte (shell/BundledApks.h).
+        const std::wstring bundled = picked ? std::wstring() : bundledApks::originalOf(entry.path);
         std::string error;
         if (picked)
             error = picked->copyTo(part + L"\\app.apk");
-        else if (!put(entry.path, part + L"\\app.apk"))
+        else if (!put(bundled.empty() ? entry.path : bundled, part + L"\\app.apk"))
             error = format("The APK could not be copied to the shared folder (error %lu).", GetLastError());
         if (error.empty() && !splits.empty() && !files::makeDirectory(part + L"\\app.apk.splits"))
             error = format("The folder of the split APKs in the shared folder could not be made (error %lu).", GetLastError());
@@ -320,7 +348,8 @@ std::string keepInShared(const ApkEntry& entry, const std::string& identity, con
         if (mended)
             shellLog::write(format("app package: %llu bytes of the APK's copy in the shared folder differed after the copy, and were written again",
                                    (unsigned long long)mended));
-        shellLog::write("app package: the APK copied to " + narrow(folder) + ", " + formattedByteCount(entry.size));
+        shellLog::write("app package: the APK copied to " + narrow(folder) + ", " + formattedByteCount(entry.size) +
+                        (bundled.empty() ? std::string() : ", from Megler's package's " + narrow(bundled.substr(bundled.find_last_of(L'\\') + 1))));
     }
     // Small: each written beside and moved into place.
     const std::wstring cached = Library::instance().directory() + L"\\" + widen(entry.id);
@@ -459,8 +488,13 @@ Made make(const ApkEntry& entry, const std::function<void(const std::string&)>& 
     std::string meglerManifest;
     if (!files::read(install + L"\\AppxManifest.xml", meglerManifest)) return fail("Megler's own manifest could not be read.");
     const std::string label = oneLine(entry.title());
+    // What the package declares to Windows: what the app's permissions need and Megler's own, not everything Megler declares
+    // (megler_appx_capabilities). A report an older core made says nothing of the permissions: Megler's, as before.
+    const int capabilities = r.capabilities();
+    shellLog::write("app package: " + r.package + " declares " + describeCapabilities(capabilities) + " to Windows, from " +
+                    (r.permissionsKnown ? std::to_string(r.permissions.size()) + " permissions of its manifest" : std::string("a report that names no permissions")));
     char* manifest = megler_appx_app_manifest(meglerManifest.c_str(), r.package.c_str(), label.c_str(), logos.empty() ? nullptr : "transparent",
-                                            nullptr, err, sizeof(err));
+                                            nullptr, capabilities, err, sizeof(err));
     if (!manifest) return fail(std::string("The manifest could not be made: ") + err);
     const std::string manifestText(manifest);
     megler_free(manifest);
@@ -722,9 +756,10 @@ bool registerServiceApk(const ApkEntry& entry, const std::string& installedFullN
     // classes in it (package 625: TikTok Lite's advertising ID failed).
     // And byte for byte: the next copy, made so, came out with a byte wrong in the middle of another DEX file of it (632); what
     // differs is written again from the APK (files::mend).
+    // (From Megler's package's own APK where the entry is a copy of one: shell/BundledApks.h.)
+    const std::wstring bundled = bundledApks::originalOf(entry.path);
     uint64_t mended = 0;
-    if (!files::copy(entry.path, apk + L".part") || !files::flush(apk + L".part") || !files::sameEnd(entry.path, apk + L".part", 1u << 20) ||
-        !files::mend(entry.path, apk + L".part", mended) || !files::move(apk + L".part", apk)) {
+    if (!files::copyWhole(bundled.empty() ? entry.path : bundled, apk + L".part", mended) || !files::move(apk + L".part", apk)) {
         shellLog::write("microG: the shared copy of " + narrow(entry.path) + " could not be made whole");
         files::remove(apk + L".part");
         return false;
@@ -1225,13 +1260,43 @@ void openWithSystem(const std::wstring& path, std::function<void(bool)> done) {
 
 static std::atomic<bool> gSelfUpdating{false};
 static std::mutex gSelfUpdateMutex;
-static std::string gSelfUpdateTo;
+static std::string gSelfUpdateTo, gSelfUpdateFailure;
 
 bool selfUpdating() { return gSelfUpdating; }
 
 std::string selfUpdateVersion() {
     std::lock_guard<std::mutex> lock(gSelfUpdateMutex);
     return gSelfUpdating ? gSelfUpdateTo : std::string();
+}
+
+std::string selfUpdateFailure() {
+    std::lock_guard<std::mutex> lock(gSelfUpdateMutex);
+    return gSelfUpdateFailure;
+}
+
+namespace {
+/*
+ * Whether Windows refused a package for its data, as a copy damaged on its way to the phone is: invalid data, a block map
+ * or a block's hash that does not match, a CRC, a digest the signature does not match. A Lumia 650's copy of 650 made over
+ * USB had the right size and other bytes; Windows's installer said 0x8007000d, and Megler, which had tried it, said nothing.
+ */
+bool damagedCopy(std::string said) {
+    std::transform(said.begin(), said.end(), said.begin(), [](unsigned char c) { return char(std::tolower(c)); });
+    for (const char* code : {"0x8007000d", "0x80080205", "0x80080206", "0x80080207", "0x80070017", "0x80096010"})
+        if (said.find(code) != std::string::npos) return true;
+    return false;
+}
+
+/// The newer Megler in Pictures\Megler as `file` not installed for `said`: what the Library says (selfUpdateFailure).
+void rememberFailure(const std::string& file, const std::string& version, const std::string& said) {
+    const std::string text = damagedCopy(said)
+                                 ? "Megler " + version + " was not installed: Windows found the data of Pictures\\Megler\\" + file +
+                                       " invalid, as in a copy damaged on its way to the phone. Delete it there, copy it to the phone "
+                                       "again, and open Megler."
+                                 : "Megler " + version + " in Pictures\\Megler was not installed: " + said;
+    std::lock_guard<std::mutex> lock(gSelfUpdateMutex);
+    gSelfUpdateFailure = text;
+}
 }
 
 PortalResult installOwnUpdate(const std::wstring& appx, const std::wstring& certificate, const std::string& version, const std::string& from) {
@@ -1259,21 +1324,33 @@ PortalResult installOwnUpdate(const std::wstring& appx, const std::wstring& cert
      */
     const auto step = [](const std::string& said) { shellLog::write("update: " + said); };
     PortalResult result = installWithPackageManager(made.appx, step);
-    if (!result.ok) {
-        shellLog::write("update: " + result.said + ": through the Device Portal instead");
-        result = installThroughPortal(made, step);
-    }
-    shellLog::write("update: " + std::string(result.ok ? "installed: " : "not installed: ") + result.said);
+    // A damaged copy is not a result either: it is tried again at the next start (Windows refuses it at once), in case a good
+    // one was copied in its place. Not sent to the portal, in vain.
+    const bool damaged = !result.ok && damagedCopy(result.said);
     // A portal that could not be reached, or dropped the connection while the package went (0x80072eff, 512), said nothing
     // of the package: that try is one without a result, made again.
-    const bool unreached = !result.ok && result.said.rfind("The Device Portal could not be reached", 0) == 0;
-    files::append(tried, std::string(unreached ? "no result: " : "result: ") + (result.ok ? "installed: " : "not installed: ") + result.said + "\r\n");
+    bool unreached = false;
+    if (!result.ok && !damaged) {
+        shellLog::write("update: " + result.said + ": through the Device Portal instead");
+        const std::string engine = result.said;
+        result = installThroughPortal(made, step);
+        unreached = !result.ok && result.said.rfind("The Device Portal could not be reached", 0) == 0;
+        // (Both said: the engine's reason was lost behind the portal's.)
+        if (!result.ok) result.said = engine + ". The Device Portal: " + result.said;
+    }
+    shellLog::write("update: " + std::string(result.ok ? "installed: " : "not installed: ") + result.said);
+    files::append(tried, std::string(unreached ? "no result: " : damaged ? "damaged: " : "result: ") + (result.ok ? "installed: " : "not installed: ") +
+                             result.said + "\r\n");
     return result;
 }
 
 void installCopiedUpdate() {
     if (isSingleApp()) return;
     std::thread([] {
+        {
+            std::lock_guard<std::mutex> lock(gSelfUpdateMutex);
+            gSelfUpdateFailure.clear();
+        }
         try {
             auto item = KnownFolders::PicturesLibrary().TryGetItemAsync(L"Megler").get();
             auto folder = item ? item.try_as<StorageFolder>() : nullptr;
@@ -1294,20 +1371,58 @@ void installCopiedUpdate() {
                 }
             }
             if (best.empty() || !olderVersion(versionString(), best)) return;
+            const std::string name = narrow(std::wstring(bestFile.Name()));
+            // The file's size and times: what tells a file copied there again from the one tried.
+            std::string file;
+            try {
+                const auto properties = bestFile.GetBasicPropertiesAsync().get();
+                file = format("%llu bytes, made %llu, changed %llu", static_cast<unsigned long long>(properties.Size()),
+                              static_cast<unsigned long long>(bestFile.DateCreated().time_since_epoch().count()),
+                              static_cast<unsigned long long>(properties.DateModified().time_since_epoch().count()));
+            } catch (hresult_error const&) {
+            }
             /*
              * A try is written down before it is made, and its result after: a package the installer refused is not tried again.
              * A try that has no result -- this Megler was closed, or suspended while it sent the package, which the portal
              * takes a minute for -- is made again at the next start, three times in all. 508's first try had no result, and
              * every start after it said "tried once already" (the second, made by hand, ended when the owner went to another app).
+             * The tries are the file's: one copied there again since (of another size or time) is tried anew, and one Windows
+             * found damaged at every start, in case a good copy was put in its place with the same size and times. A Lumia
+             * 650's copy of 650 was damaged on its way over USB, Windows refused it (0x8007000d), and a good copy put in its
+             * place would not have been tried.
              */
             const std::wstring tried = platform::localStateDirectory() + L"\\update-tried-" + widen(best);
             std::string record;
             if (files::read(tried, record)) {
+                const size_t line = record.rfind("\nfile: ");
+                const size_t at = line != std::string::npos ? line + 1 : record.rfind("file: ", 0) == 0 ? 0 : std::string::npos;
+                const std::string triedFile = at == std::string::npos ? std::string() : record.substr(at + 6, record.find('\r', at) - (at + 6));
+                const size_t damaged = record.rfind("\ndamaged: ");
+                if (damaged != std::string::npos && record.find(" installs ", damaged) == std::string::npos) {
+                    shellLog::write("update: " + name + " in Pictures\\Megler was damaged when tried: tried again, in case it was copied again");
+                    files::remove(tried);
+                    record.clear();
+                } else if (!file.empty() && triedFile != file) {
+                    shellLog::write("update: " + name + " in Pictures\\Megler is not the file tried before (" +
+                                    (triedFile.empty() ? std::string("that one's not written down") : triedFile) + "): tried anew");
+                    files::remove(tried);
+                    record.clear();
+                }
+            }
+            if (!record.empty()) {
                 int tries = 0;
                 for (size_t at = record.find(" installs "); at != std::string::npos; at = record.find(" installs ", at + 1)) tries++;
-                if (record.find("\nresult: ") != std::string::npos || tries >= 3) {
+                const size_t result = record.rfind("\nresult: ");
+                if (result != std::string::npos || tries >= 3) {
                     shellLog::write(format("update: Megler %s in Pictures\\Megler was tried %d time%s already (%s)", best.c_str(), tries,
                                            tries == 1 ? "" : "s", narrow(tried).c_str()));
+                    // Said in the Library too, at every start: the owner saw an update begin "for a second", and nothing more.
+                    const size_t from = result == std::string::npos ? result : result + 9;
+                    const std::string outcome = from == std::string::npos ? std::string() : record.substr(from, record.find('\r', from) - from);
+                    if (outcome.rfind("not installed: ", 0) == 0)
+                        rememberFailure(name, best, outcome.substr(15));
+                    else if (outcome.empty())
+                        rememberFailure(name, best, "none of its three tries ended (Megler was closed or suspended meanwhile)");
                     return;
                 }
                 shellLog::write(format("update: the try %d of Megler %s did not end (this Megler was closed or suspended while it sent it): tried again",
@@ -1318,7 +1433,10 @@ void installCopiedUpdate() {
                 shellLog::write("update: Megler " + best + " is in Pictures\\Megler without Megler.cer beside it: not installed");
                 return;
             }
-            installOwnUpdate(std::wstring(bestFile.Path()), std::wstring(certificate.Path()), best, "found in Pictures\\Megler");
+            if (!file.empty()) files::append(tried, "file: " + file + "\r\n");
+            const PortalResult result =
+                installOwnUpdate(std::wstring(bestFile.Path()), std::wstring(certificate.Path()), best, "found in Pictures\\Megler");
+            if (!result.ok) rememberFailure(name, best, result.said);
         } catch (hresult_error const& e) {
             shellLog::write(format("update: Pictures\\Megler could not be read: 0x%08x ", unsigned(e.code())) + narrow(e.message()));
         }

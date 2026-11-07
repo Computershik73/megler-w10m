@@ -358,6 +358,18 @@ static void remove_tree(const char *path, struct tree *t)
  * done with the app stopped. Its private folder goes, and its own Android/data folder in the shared storage; its Android/obb
  * stays, as on Android. Then the ask goes.
  */
+bool mg_run_clear_data_asked(const char *storage_dir, const char *package)
+{
+    char *ask;
+    mg_stat st;
+    bool there;
+    if (!package || !package[0] || strchr(package, '/')) return false;
+    ask = mg_sprintf("%s/clear-data/%s", storage_dir, package);
+    there = mg_path_stat(ask, &st, NULL);
+    free(ask);
+    return there;
+}
+
 bool mg_run_clear_data_if_asked(const char *data_dir, const char *storage_dir, const char *package)
 {
     char *ask = mg_sprintf("%s/clear-data/%s", storage_dir, package), *internal, *own, *external;
