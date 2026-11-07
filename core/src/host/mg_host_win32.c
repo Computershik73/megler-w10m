@@ -550,6 +550,10 @@ struct mg_thread {
     /* An interruption under way (mg_thread_interrupt): what the thread was doing, to go back to. */
     volatile LONG interrupted;
     CONTEXT was;
+#if defined(_M_ARM64)
+    /* Its TEB, taken as it started: what x18 is in every function of its (x18_check). 0 for one the layer did not see start. */
+    DWORD64 teb;
+#endif
 };
 
 static MG_THREAD_LOCAL mg_thread *t_current;
@@ -601,6 +605,9 @@ static DWORD WINAPI thread_main(LPVOID p)
     InterlockedIncrement(&g_live_threads);
     t->id = GetCurrentThreadId();
     t->self = own_handle();
+#if defined(_M_ARM64)
+    t->teb = (DWORD64)(DWORD_PTR)NtCurrentTeb();
+#endif
     t_current = t;
     t->fn(t->arg);
     if (g_end_hook) g_end_hook();
@@ -632,6 +639,9 @@ mg_thread *mg_thread_current(void)
         mg_thread *t = (mg_thread *)mg_alloc(sizeof(*t));
         t->id = GetCurrentThreadId();
         t->self = own_handle();
+#if defined(_M_ARM64)
+        t->teb = (DWORD64)(DWORD_PTR)NtCurrentTeb();
+#endif
         t_current = t;
     }
     return t_current;
@@ -655,6 +665,75 @@ u64 mg_process_cpu_ns(void)
     FILETIME created, ended, kernel, user;
     if (!GetProcessTimes(GetCurrentProcess(), &created, &ended, &kernel, &user)) return 0;
     return (filetime_100ns(&kernel) + filetime_100ns(&user)) * 100ull;
+}
+
+/* -------------------------------------------- x18 of a stopped thread, Windows ARM64 */
+
+/*
+ * Every function of Windows' on ARM64 reads the thread's TEB through x18, and KiUserExceptionDispatcher does not put it
+ * back: a thread whose x18 is something else ends at its next exception, in RtlDispatchException, before any handler of
+ * the core's runs (GitHub issue 4: `ldr x8, [x18, #0x60]` at +0xA0, Spotify on a Snapdragon X Elite). Android's compilers
+ * leave x18 alone, and so is the core compiled (-ffixed-x18): where it goes bad is not known. So each time a thread is
+ * stopped and its registers read -- the collector's stops (mg_thread_suspend), a signal's (mg_thread_interrupt) -- its
+ * X18 is compared with its TEB, taken as it started; a pc where they differ is put in a table, once, and said
+ * (mg_thread_set_x18_report) when no thread is stopped: nothing may be logged while one is, it may hold the log's lock.
+ * That is after the last mg_thread_resume of the stops under way, and at the end of an interruption. A comparison and,
+ * rarely, an interlocked exchange: cheap enough for every stop.
+ */
+#if defined(_M_ARM64)
+enum { X18_PLACES = 32 };
+static struct x18_place {
+    volatile LONG64 pc;                /* 0: the place is free */
+    DWORD64 x18, teb;
+    DWORD thread;
+    volatile LONG ready, said;
+} g_x18_places[X18_PLACES];
+static volatile LONG g_x18_stops, g_x18_unsaid, g_stops_out;
+static void (*volatile g_x18_report)(mg_addr pc, mg_addr x18, mg_addr teb, u32 thread, u32 stops);
+
+/* `t` stopped, `c` its registers: whether x18 is not its TEB. Nothing allocated or logged here. */
+static bool x18_check(const mg_thread *t, const CONTEXT *c)
+{
+    int i;
+    if (!t->teb || c->X18 == t->teb) return false;
+    InterlockedIncrement(&g_x18_stops);
+    for (i = 0; i < X18_PLACES && c->Pc; i++) {
+        struct x18_place *p = &g_x18_places[i];
+        LONG64 was = InterlockedCompareExchange64(&p->pc, (LONG64)c->Pc, 0);
+        if (was == (LONG64)c->Pc) break;
+        if (was) continue;
+        p->x18 = c->X18;
+        p->teb = t->teb;
+        p->thread = t->id;
+        InterlockedExchange(&p->ready, 1);
+        InterlockedIncrement(&g_x18_unsaid);
+        break;
+    }
+    return true;
+}
+
+/* What x18_check found and has not said, said: called where the caller has no thread stopped. */
+static void x18_say(void)
+{
+    void (*report)(mg_addr, mg_addr, mg_addr, u32, u32) = g_x18_report;
+    int i;
+    if (!g_x18_unsaid || !report) return;
+    for (i = 0; i < X18_PLACES; i++) {
+        struct x18_place *p = &g_x18_places[i];
+        if (!p->ready || InterlockedCompareExchange(&p->said, 1, 0) != 0) continue;
+        InterlockedDecrement(&g_x18_unsaid);
+        report((mg_addr)p->pc, (mg_addr)p->x18, (mg_addr)p->teb, (u32)p->thread, (u32)g_x18_stops);
+    }
+}
+#endif
+
+void mg_thread_set_x18_report(void (*fn)(mg_addr pc, mg_addr x18, mg_addr teb, u32 thread, u32 stops))
+{
+#if defined(_M_ARM64)
+    g_x18_report = fn;
+#else
+    (void)fn;
+#endif
 }
 
 /* -------------------------------------------- interrupting a thread in guest code */
@@ -807,6 +886,9 @@ bool mg_thread_interrupt(mg_thread *t)
     bool done = false;
     BOOL read;
     HANDLE h;
+#if defined(_M_ARM64)
+    bool x18_bad;
+#endif
     if (!t || !g_interrupt_fn || !g_interrupt_in_guest || t->id == GetCurrentThreadId()) return false;
     h = self_take(t);
     if (!h) {
@@ -831,6 +913,9 @@ bool mg_thread_interrupt(mg_thread *t)
         InterlockedIncrement(&g_ctx_read);
         if (ctx.ContextFlags & CONTEXT_EXCEPTION_REPORTING) InterlockedIncrement(&g_ctx_said);
     }
+#if defined(_M_ARM64)
+    x18_bad = read && x18_check(t, &ctx);
+#endif
     if (!read) {
         InterlockedExchange(&g_int_error, (LONG)GetLastError());
         InterlockedIncrement(&g_int_get_failed);
@@ -838,6 +923,11 @@ bool mg_thread_interrupt(mg_thread *t)
         InterlockedIncrement(&g_int_elsewhere);
     } else if (stopped_in_kernel(&ctx)) {
         InterlockedIncrement(&g_int_in_kernel);
+#if defined(_M_ARM64)
+    } else if (x18_bad) {
+        /* (Not sent to the landing, whose exception would end the process at once with x18 so, before the table is said.) */
+        InterlockedIncrement(&g_int_elsewhere);
+#endif
     } else {
         ctx.ContextFlags = CONTEXT_FULL;
         t->was = ctx;
@@ -879,6 +969,10 @@ bool mg_thread_interrupt(mg_thread *t)
     if (!done) InterlockedExchange(&t->interrupted, 0);
     ResumeThread(h);
     self_give(t);
+#if defined(_M_ARM64)
+    /* (The caller, the signals' pump, has no thread stopped; none other may have either.) */
+    if (!g_stops_out) x18_say();
+#endif
     return done;
 }
 #else
@@ -1194,6 +1288,11 @@ bool mg_thread_suspend(mg_thread *t, mg_thread_regs *out)
     return false;
 #endif
     out->n = context_regs(&ctx, out->r);
+#if defined(_M_ARM64)
+    /* (Stopped until mg_thread_resume, which says what x18_check found once no thread is.) */
+    x18_check(t, &ctx);
+    InterlockedIncrement(&g_stops_out);
+#endif
     /*
      * A thread in an interruption: from the redirect (mg_thread_interrupt) until the landing's exception has put them into
      * the context NtContinue takes back, on its stack (on_exception, which clears `interrupted` after), the registers of
@@ -1211,9 +1310,13 @@ bool mg_thread_suspend(mg_thread *t, mg_thread_regs *out)
 void mg_thread_resume(mg_thread *t)
 {
     HANDLE h = t ? self_take(t) : NULL;
-    if (!h) return;
-    ResumeThread(h);
-    self_give(t);
+    if (h) {
+        ResumeThread(h);
+        self_give(t);
+    }
+#if defined(_M_ARM64)
+    if (t && InterlockedDecrement(&g_stops_out) <= 0) x18_say();
+#endif
 }
 
 #if WINAPI_FAMILY == WINAPI_FAMILY_APP
@@ -1245,6 +1348,10 @@ int mg_thread_snapshot_id(u32 id, mg_thread_regs *regs, mg_addr *words, int max_
     }
     ResumeThread(h);
     CloseHandle(h);
+#if defined(_M_ARM64)
+    /* (Its stop counted by mg_thread_suspend, its end here.) */
+    if (InterlockedDecrement(&g_stops_out) <= 0) x18_say();
+#endif
     return n;
 }
 

@@ -137,6 +137,20 @@ MG_HOSTAPI u64 mg_mem_page_faults(void);
 typedef struct mg_thread mg_thread;
 typedef void (MG_HOSTCB *mg_thread_fn)(void *arg);
 
+/*
+ * What a thread of the app's (a guest pthread, a Java thread) gets beyond the stack it asks for: 64 KB on Windows ARM64,
+ * nothing elsewhere. There a fault, or a system call of an app's own left a trap (arm64/mg_patch_arm64.c), is an exception
+ * dispatched on the thread's own stack below its sp -- KiUserExceptionDispatcher's CONTEXT and record (0x3b0 bytes),
+ * RtlDispatchException's 0x2a0, the vectored handlers' frames and the core's fault handler's 5.6 KB -- where Android's
+ * kernel takes nothing of the thread's stack: an app that sizes a stack for what its own code needs leaves none of that
+ * at the bottom of it, and the process ended in RtlDispatchException's first store into its frame (GitHub issue 4).
+ */
+#if MG_ARCH_ARM64 && MG_HOST_WINDOWS
+#define MG_STACK_FAULT_ROOM ((size_t)64 << 10)
+#else
+#define MG_STACK_FAULT_ROOM ((size_t)0)
+#endif
+
 MG_HOSTAPI mg_thread *mg_thread_start(mg_thread_fn fn, void *arg, size_t stack_size, const char *name);
 MG_HOSTAPI void mg_thread_join(mg_thread *t);     /* frees t */
 MG_HOSTAPI void mg_thread_detach(mg_thread *t);   /* frees t */
@@ -229,6 +243,14 @@ MG_HOSTAPI void mg_thread_suspend_report(char *out, size_t size);
  * (posix: always).
  */
 MG_HOSTAPI int mg_thread_snapshot_id(u32 id, mg_thread_regs *regs, mg_addr *words, int max_words);
+/*
+ * Windows ARM64 alone: each time a thread is stopped and its registers read (mg_thread_suspend, mg_thread_interrupt), x18
+ * is compared with the thread's TEB, recorded as it started; a pc where they differed is given to `fn` once, with x18,
+ * the TEB, the thread's id and how many stops have found them different so far -- not while a thread is stopped (the
+ * stopped one may hold the log's lock), but once none is: after the last mg_thread_resume, at the end of an interruption.
+ * Nothing elsewhere.
+ */
+MG_HOSTAPI void mg_thread_set_x18_report(void (MG_HOSTCB *fn)(mg_addr pc, mg_addr x18, mg_addr teb, u32 thread, u32 stops));
 /* Called on a thread started by mg_thread_start as it ends (its function returned, or mg_thread_exit): the collector forgets it. */
 MG_HOSTAPI void mg_thread_set_end_hook(void (MG_HOSTCB *fn)(void));
 MG_HOSTAPI void mg_thread_yield(void);

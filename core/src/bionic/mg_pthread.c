@@ -542,7 +542,8 @@ static int g_create(mg_gthread **out, const g_attr *attr, mg_addr start, void *a
     t->tid = mg_gthread_take_tid(t);
     /* Before the thread runs: pthread_create's caller may use the id at once, and so may the new thread. */
     *out = t;
-    t->host = mg_thread_start(thread_main, t, stack, "guest");
+    /* (And on Windows ARM64 room below what the app asked for, for an exception's frame and the fault handler: mg_host.h.) */
+    t->host = mg_thread_start(thread_main, t, stack + MG_STACK_FAULT_ROOM, "guest");
     if (!t->host) {
         mg_gthread_release_tid(t->tid);
         free(t);

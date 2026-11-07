@@ -3542,6 +3542,10 @@ static void test_go_stack(void)
     }
 #else
     CHECK_INT(st.svc_sites, 1);
+#if MG_ARCH_ARM64
+    /* (Led out to the core, as every library's svc on ARM64: arm64/mg_patch_arm64.c.) */
+    CHECK_INT(st.svc_led_out, 1);
+#endif
 #endif
     /* prctl by number: the names Go's runtime gives its mappings refused as a kernel without them refuses them (EINVAL),
        a thread's name set and read as libc's prctl does it (MCO Advanced's libgojni.so, package 669). */
@@ -3690,6 +3694,74 @@ static void test_guest(const char *libdir, const char *scratch)
             for (k = 0; k < 16; k += 2) {
                 trapped |= mg_rd16(fn + k) == 0xDEA5;
                 left |= mg_rd16(fn + k) == 0xDF00;
+                CHECK(!mg_patch_svc_target((mg_addr)(fn + k), &target));
+            }
+            CHECK(trapped && !left);
+        }
+    }
+#elif MG_ARCH_ARM64
+    /*
+     * ARM64's svc 0 of a library's own, led out to the core through pieces of its island (arm64/mg_patch_arm64.c), not a
+     * trap: on Windows a trap is an exception on the guest's stack, dispatched by ntdll's code (GitHub issue 4). What each
+     * call must come to is in core/tests/guest/t_svc.c: results, errno, every register but x0 as the kernel keeps them,
+     * a signal's handler with a call of its own inside one, goroutines' stacks, and the piece's trap where a thread has
+     * no stack for system calls. Counted: 1310 led out (5 + 1 + 2 + 100 + 4 * 300 + 2), the 500 on goroutines' stacks and
+     * the signal let through on one made on the threads' stacks for system calls; the trap's call is not counted.
+     */
+    {
+        mg_lib *svc;
+        mg_patch_set_trap_svc(false);
+        svc = mg_ld_load("libt_svc.so");
+        CHECK(svc != NULL);
+        if (svc) {
+            int saved = *mg_errno_ptr();
+            u32 made0 = 0, on0 = 0, made = 0, on = 0;
+            say("guest library: ARM64's svc led out to the core");
+            mg_ld_get_stats(svc, &st);
+            CHECK_INT(st.svc_sites, 3);
+            CHECK_INT(st.svc_led_out, 3);
+            /* The writes of x18 the loader counts and says (Windows' TEB): t_svc64_x18_writer's ten, never run; none in
+               the code clang makes for Android, which keeps x18 (libt_basic.so). */
+            CHECK_INT(st.x18_writes, 10);
+            {
+                mg_ld_stats b;
+                mg_ld_get_stats(basic, &b);
+                CHECK_INT(b.x18_writes, 0);
+            }
+            *mg_errno_ptr() = 123;
+            mg_core_svc_calls(&made0, &on0);
+            CHECK_INT(FN(svc, long (*)(void), "t_svc64_results")(), 0);
+            CHECK_INT(FN(svc, long (*)(void), "t_svc64_regs")(), 0);
+            CHECK_INT(FN(svc, long (*)(void), "t_svc64_signal")(), 0);
+            CHECK_INT(FN(svc, long (*)(void), "t_svc64_stacks")(), 0);
+            CHECK_INT(FN(svc, long (*)(void), "t_svc64_fallback")(), 0);
+            mg_core_svc_calls(&made, &on);
+            say("  %u calls led out, %u of them on a stack for system calls", made - made0, on - on0);
+            CHECK(made - made0 == 1310 && on - on0 >= 501 && on - on0 < made - made0);
+            CHECK_INT(*mg_errno_ptr(), 123);
+            *mg_errno_ptr() = saved;
+        }
+    }
+    /* The flag trap-svc: every site a trap that is not answered (UDF 0xa5), none led out, none a dispatch trap. */
+    {
+        mg_lib *svc;
+        mg_patch_set_trap_svc(true);
+        svc = mg_ld_load("libt_svc_diag.so");
+        mg_patch_set_trap_svc(false);
+        CHECK(svc != NULL);
+        if (svc) {
+            const u8 *fn = (const u8 *)SYM(svc, "t_svc64_call");
+            bool trapped = false, left = false;
+            mg_addr target;
+            int k;
+            mg_ld_get_stats(svc, &st);
+            CHECK_INT(st.svc_sites, 3);
+            CHECK_INT(st.svc_led_out, 0);
+            CHECK_INT(st.x18_writes, 10);
+            CHECK(fn != NULL);
+            for (k = 0; fn && k < 36; k += 4) {
+                trapped |= mg_rd32(fn + k) == 0x000000A5u;
+                left |= mg_rd32(fn + k) == 0xD4000001u;
                 CHECK(!mg_patch_svc_target((mg_addr)(fn + k), &target));
             }
             CHECK(trapped && !left);

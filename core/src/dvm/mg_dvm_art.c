@@ -608,8 +608,17 @@ N(Thread_nativeCreate)
      * Direct3D found no room left for a texture and the app ended in GL_OUT_OF_MEMORY (packages 489, 522). Compiled code's
      * calls (mg_dvm_jit_invoke) stop going deeper on this stack 32 KB above the guard. A thread that asks for more than 160 KB
      * still gets what it asked, for native code that wants a deep stack of its own.
+     *
+     * That is the phone's, whose memory is why it is small. On the 64-bit processors (desktop Windows' x64 and ARM64) a Java
+     * thread has at least 1 MB, ART's own default: a page of a stack costs memory only once it is touched -- committed whole,
+     * the untouched rest is the commit's alone -- and a 64-bit process has addresses to spare, where an app's native code
+     * expects a Java thread's stack to be as deep as on Android. On Windows ARM64 each gets 64 KB more for an exception's
+     * frame and the fault handler at its bottom (MG_STACK_FAULT_ROOM, mg_host.h).
      */
-    th = mg_thread_start(thread_main, s, stack > (160 << 10) ? (size_t)stack : (size_t)160 << 10, "java");
+    {
+        size_t least = MG_GUEST_LP64 ? (size_t)1 << 20 : (size_t)160 << 10;
+        th = mg_thread_start(thread_main, s, (stack > (i64)least ? (size_t)stack : least) + MG_STACK_FAULT_ROOM, "java");
+    }
     if (!th) {
         free(s);
         set_long(peer, "nativePeer", 0);
