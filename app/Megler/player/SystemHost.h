@@ -48,8 +48,11 @@ int askUser(const std::string& title, const std::string& message, const std::vec
 /// UI thread: another app the phone has started -- its own package if it has one, else Megler with it (megler:run). With an
 /// activity's class, that activity of it (megler:run's activity; its own package starts it, ui/AppShell.cpp).
 void launch(const std::string& package, const std::string& activity = std::string());
-/// The family name of Megler's own package, and of an app's own package.
+/// The family name of Megler's own package (appPackage::meglerFamilyName), and of an app's own package.
 std::wstring meglerFamilyName();
 std::wstring appFamilyName(const std::string& package);
+/// UI thread: Megler's own package opened on its link `what` ("library"), in that package alone: every app's own package
+/// declares the links' protocol too, and a link opened with no package named had Windows ask which of them should open it.
+void openMegler(const std::wstring& what);
 
 } // namespace megler::app::systemHost

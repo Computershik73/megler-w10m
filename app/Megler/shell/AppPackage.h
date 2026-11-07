@@ -30,9 +30,18 @@ struct SingleApp {
     std::string label;
     std::wstring apkFolder;    // the folder with app.apk and its report (in the shared folder; in the install folder before 645)
     std::wstring androidRoot;  // Android's libcore and framework, in the shared folder
+    std::wstring megler;       // the package family name of the Megler that made it; empty in a package made before 0.1.0.940
 };
 const SingleApp& single();
 inline bool isSingleApp() { return !single().package.empty(); }
+
+/// The scheme of the links by which a package of Megler's asks another (megler:install, megler:run...): the protocol this
+/// package declares, which an app's own package has from the Megler that made it -- "megler" for the release's Megler,
+/// another for a test identity's (meglertest) -- read from its manifest once.
+const std::wstring& linkScheme();
+/// The package family name of Megler's own package: this one's in Megler, the one that made it in an app's own package (its
+/// MeglerApp.ini; the release's name, Megler_<publisher id>, for a package made before that was written there).
+std::wstring meglerFamilyName();
 /// The id the library gives the packaged APK.
 inline const char* singleAppId() { return "app.apk"; }
 
