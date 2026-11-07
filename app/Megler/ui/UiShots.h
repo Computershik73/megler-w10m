@@ -7,7 +7,9 @@
 //   ui-shot-<name>          a picture of the window as it is now: LocalState\shot-ui-<name>.bmp (tools/phone.py shots)
 //   ui-tab-<name>-<n>       the tab n (0 Library, 1 Device, 2 Log, 3 Settings)
 //   ui-open-<name>-<n>      the library's app number n (from 0), its page
-//   ui-back-<name>          Back, as the phone's button
+//   ui-back-<name>          Back, as the phone's button (an app on its first screen goes to the back with it, as on
+//                           Android 12: only the button has Windows take the window away then; ui-quit closes it)
+//   ui-quit-<name>          the running app stopped as its Quit stops it, and Megler closed once it has ended
 //   ui-dialog-<name>-<n>    the dialog up now answered with its button n, from the left (Google Play's question: 0 microG, 1 Google Play)
 //   ui-update-all           Update All (ui/SeparateApps.h): each app package made by another Megler made and installed again
 //   ui-update-<package>     the same for the one app of that Android package (ui-update-com.here.app.maps), outdated or not

@@ -451,7 +451,11 @@ public final class ViewRoot implements ViewParent {
     static int screenH() { return Native.screenHeight(); }
 
     // ---- the frame
+    /* Frames asked for, counted, also those asked for while one is: AppRunner.back's way of telling that Back changed what the app shows. */
+    private static int sFrameRequests;
+    public static int frameRequests() { return sFrameRequests; }
     public static void scheduleFrame() {
+        sFrameRequests++;
         if (sScheduled) return;
         sScheduled = true;
         Choreographer.getMainThreadInstance().postCallback(Choreographer.CALLBACK_TRAVERSAL, ViewRoot::doFrame, null);

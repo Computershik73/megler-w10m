@@ -120,6 +120,7 @@ bool megler_running(void) { return mg_run_active(); }
 const char *megler_last_error(void) { return mg_run_last_error(); }
 void megler_touch(int phase, int pointer_id, float x, float y) { mg_run_touch(phase, pointer_id, x, y); }
 void megler_key(int android_keycode, bool down) { mg_run_key(android_keycode, down); }
+int megler_back(unsigned quiet_ms, unsigned max_ms) { return mg_run_back(quiet_ms, max_ms); }
 /* Text entry is the Java driver's alone: its framework has the text fields. For any other app these do nothing. */
 void megler_text_commit(const char *utf8) { mg_java_text(utf8); }
 void megler_text_key(int key) { mg_java_text_key(key); }

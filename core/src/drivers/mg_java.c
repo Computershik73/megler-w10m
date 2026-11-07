@@ -1182,6 +1182,65 @@ N(Native_exit)
     if (mg_dvm_call_static("android/os/Looper", "getMainLooper", "()Landroid/os/Looper;", NULL, &looper) && looper.l) mg_dvm_call_virtual(looper.l, "quit", "()V", NULL, NULL);
 }
 
+/*
+ * The phone's Back and what the app did with it (megler_back). The shell's Back waits for the main thread's answer:
+ * AppRunner.back says, once the key has been through the app, whether the app went to the back (moveTaskToBack, and
+ * Android 12's Back on a task's root activity), ended its last activity, changed what it shows, or none of these; an app
+ * of the last kind -- React Native's and Flutter's, whose Back goes on to JavaScript or Dart -- is given quiet_ms more to
+ * go to the back from there. When it goes to the back with no Back waiting (later, or by itself), the next Back within
+ * five seconds is the system's at once, unless a finger has touched the app since.
+ */
+enum { BACK_TAKEN = 0, BACK_QUIET = 1, BACK_TO_BACK = 2, BACK_ENDED = 3 };   /* AppRunner.back's answers */
+static struct {
+    mg_lock lock;
+    mg_cond cond;
+    volatile i32 ready;                /* 2 once the lock and the condition are made */
+    u32 sent;                          /* the last Back sent, by number (never 0: megler_key's Back is 0) */
+    u32 answered;                      /* the last one the main thread answered, and how */
+    int answer;
+    u32 left;                          /* the Back that was being waited for when the app went to the back */
+    bool waiting;
+    u64 late_ns;                       /* when the app went to the back with no Back waiting; 0: not since the last Back or touch */
+} B;
+
+static void back_init(void)
+{
+    if (B.ready == 2) return;
+    if (mg_atomic_cas(&B.ready, 0, 1) == 0) {
+        mg_lock_init(&B.lock);
+        mg_cond_init(&B.cond);
+        mg_atomic_xchg(&B.ready, 2);
+        return;
+    }
+    while (B.ready != 2) mg_thread_yield();
+}
+
+/* Native.backDone(seq, answer): what the app did with Back number seq, as AppRunner.back found once it had been through. */
+N(Native_backDone)
+{
+    back_init();
+    mg_lock_acquire(&B.lock);
+    B.answered = (u32)c->args[0].i;
+    B.answer = c->args[1].i;
+    mg_cond_broadcast(&B.cond);
+    mg_lock_release(&B.lock);
+}
+
+/* Native.toBack(): the app went to the back (AppRunner.moveTaskToBack). */
+N(Native_toBack)
+{
+    bool late;
+    (void)c;
+    back_init();
+    mg_lock_acquire(&B.lock);
+    late = !B.waiting;
+    if (late) B.late_ns = mg_time_monotonic_ns();
+    else B.left = B.sent;
+    mg_cond_broadcast(&B.cond);
+    mg_lock_release(&B.lock);
+    if (late) mg_info("java: the app went to the back with no Back waiting: the next Back within five seconds is the system's");
+}
+
 static const mg_jhle k_native[] = {
     { "megler/Native", "log", NULL, Native_log },
     { "megler/Native", "thrownInService", NULL, Native_thrownInService },
@@ -1249,6 +1308,8 @@ static const mg_jhle k_native[] = {
     { "megler/Native", "vibrate", NULL, Native_nothing },
     { "megler/Native", "openUrl", NULL, Native_openUrl },
     { "megler/Native", "exit", NULL, Native_exit },
+    { "megler/Native", "backDone", NULL, Native_backDone },
+    { "megler/Native", "toBack", NULL, Native_toBack },
     { "megler/Native", "threadNice", NULL, Native_threadNice },
     { "megler/Native", "uptimeNanos", NULL, Native_uptimeNanos },
     { "megler/Native", "frameMark", NULL, Native_frameMark },
@@ -2331,6 +2392,12 @@ static void push_event(int phase, int id, i32 x, i32 y)
 static void java_touch(int phase, int pointer_id, float x, float y)
 {
     if (phase < EV_DOWN || phase > EV_CANCEL) return;
+    /* A finger on the app: a Back after it is the app's again, whatever it said of going to the back before. */
+    if (phase == EV_DOWN && B.ready == 2 && B.late_ns) {
+        mg_lock_acquire(&B.lock);
+        B.late_ns = 0;
+        mg_lock_release(&B.lock);
+    }
     push_event(phase, pointer_id, bits_of(x), bits_of(y));
 }
 
@@ -2480,4 +2547,52 @@ static void java_stop(void)
     mg_atomic_cas(&J.stop, 0, 1);
 }
 
-const mg_driver mg_driver_java = { "java", java_start, java_touch, java_key, java_set_paused, NULL, java_stop };
+static int java_back(unsigned quiet_ms, unsigned max_ms)
+{
+    const u64 ms = 1000000ull, start = mg_time_monotonic_ns();
+    u64 quiet_from = 0;
+    int verdict = MEGLER_BACK_TAKEN;
+    bool answered;
+    u32 seq;
+    if (!java_runs()) return MEGLER_BACK_TAKEN;
+    back_init();
+    mg_lock_acquire(&B.lock);
+    if (B.late_ns && start - B.late_ns < 5000 * ms) {
+        B.late_ns = 0;
+        mg_lock_release(&B.lock);
+        mg_info("java: Back after the app went to the back by itself: the system's, not the app's");
+        return MEGLER_BACK_LEAVE;
+    }
+    B.late_ns = 0;
+    seq = ++B.sent;
+    if (!seq) seq = ++B.sent;
+    B.waiting = true;
+    mg_lock_release(&B.lock);
+    push_event(EV_BACK, (int)seq, 0, 0);
+    mg_lock_acquire(&B.lock);
+    for (;;) {
+        u64 now = mg_time_monotonic_ns(), until = start + (u64)max_ms * ms;
+        if (B.left == seq) {
+            verdict = MEGLER_BACK_LEAVE;
+            break;
+        }
+        if (B.answered == seq) {
+            if (B.answer == BACK_TO_BACK) verdict = MEGLER_BACK_LEAVE;
+            else if (B.answer == BACK_ENDED) verdict = MEGLER_BACK_ENDED;
+            if (B.answer != BACK_QUIET) break;
+            if (!quiet_from) quiet_from = now;
+            if (quiet_from + (u64)quiet_ms * ms < until) until = quiet_from + (u64)quiet_ms * ms;
+        }
+        /* No answer in time, or nothing more within quiet_ms of a quiet one: the app's. */
+        if (now >= until) break;
+        mg_cond_wait_ns(&B.cond, &B.lock, until - now);
+    }
+    answered = B.answered == seq;
+    B.waiting = false;
+    mg_lock_release(&B.lock);
+    mg_info("java: Back: %s, in %u ms", verdict == MEGLER_BACK_LEAVE ? "the app went to the back" : verdict == MEGLER_BACK_ENDED ? "the app ended its last activity"
+            : quiet_from ? "the app showed nothing new" : answered ? "the app took it" : "no answer in time", (unsigned)((mg_time_monotonic_ns() - start) / ms));
+    return verdict;
+}
+
+const mg_driver mg_driver_java = { "java", java_start, java_touch, java_key, java_set_paused, NULL, java_stop, java_back };

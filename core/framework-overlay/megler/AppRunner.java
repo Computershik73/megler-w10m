@@ -532,7 +532,7 @@ public final class AppRunner {
             try {
                 // Anything but a finger: the moves kept before it go out first (moveBatched).
                 if (phase >= 4) movesDispatched();
-                if (phase == 5) { back(); continue; }
+                if (phase == 5) { back(id); continue; }
                 if (phase == 6) { hostPause(id != 0); continue; }
                 if (phase == 7) { InputMethods.deliverPending(); continue; }
                 if (phase == 8) { applyInsets(); continue; }
@@ -567,14 +567,42 @@ public final class AppRunner {
         ViewRoot.setInsets(in[0], in[1], in[2], in[3]);
         if (in.length > 4) ViewRoot.setImeHeight(in[4]);
     }
-    private static void back() {
-        ViewRoot r = ViewRoot.top();
-        Activity a = top();
-        if (r != null && a != null && r.getView() == a.getWindow().peekDecorView()) { a.meglerBack(); return; }
-        long t = SystemClock.uptimeMillis();
-        boolean h = ViewRoot.dispatchKey(new KeyEvent(t, t, KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_BACK, 0));
-        h |= ViewRoot.dispatchKey(new KeyEvent(t, t, KeyEvent.ACTION_UP, KeyEvent.KEYCODE_BACK, 0));
-        if (!h && a != null) a.meglerBack();
+    /*
+     * The shell's Back, numbered (megler_back; 0 for megler_key's), through the top window and its activity, and then what
+     * the app did with it, which the shell waits for: went to the back (moveTaskToBack below, during it), ended its last
+     * activity, changed what it shows (a frame asked for meanwhile: a page or a dialog went), or none of these yet -- a React
+     * Native or Flutter app's Back goes on to JavaScript or Dart, which may send it to the back a little later.
+     */
+    private static boolean sBackLeaves;
+    private static void back(int seq) {
+        int frames = ViewRoot.frameRequests();
+        sBackLeaves = false;
+        try {
+            ViewRoot r = ViewRoot.top();
+            Activity a = top();
+            if (r != null && a != null && r.getView() == a.getWindow().peekDecorView()) { a.meglerBack(); return; }
+            long t = SystemClock.uptimeMillis();
+            boolean h = ViewRoot.dispatchKey(new KeyEvent(t, t, KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_BACK, 0));
+            h |= ViewRoot.dispatchKey(new KeyEvent(t, t, KeyEvent.ACTION_UP, KeyEvent.KEYCODE_BACK, 0));
+            if (!h && a != null) a.meglerBack();
+        } finally {
+            Native.backDone(seq, sBackLeaves ? 2 : sStack.isEmpty() ? 3 : ViewRoot.frameRequests() != frames ? 0 : 1);
+            sBackLeaves = false;
+        }
+    }
+    /*
+     * The app's task to the back (Activity.moveTaskToBack, and Android 12's Back on a task's root activity): nothing finishes,
+     * as after Home on Android. Only the system can take the window away, as its answer to the phone's Back key: a Back being
+     * answered says so (back above), and one asked for at another time makes the shell's next Back the system's
+     * (Native.toBack). The activities are stopped when the window is hidden (hostPause) and started again when it comes back.
+     * This ended the app before: Discord and TikTok Lite went with the user's Back on their first screen, and opening them
+     * again was a cold start (package 669).
+     */
+    public static boolean moveTaskToBack(Activity a, boolean nonRoot) {
+        if (!nonRoot && !isRoot(a)) return false;
+        sBackLeaves = true;
+        Native.toBack();
+        return true;
     }
     /** The activities the host's hidden window stopped (hostPause), in the stack's order: started again as it comes back. */
     private static final ArrayList<Activity> sStoppedByHost = new ArrayList<>();

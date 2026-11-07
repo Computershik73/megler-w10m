@@ -14,9 +14,9 @@ work. The third put an Android framework on top -- the one in `core/framework`,
 built here from its sources -- and a driver that starts an app with it: **an APK that
 is Java alone starts through `megler_run`, its `Application` and `Activity` run,
 its layout is inflated from its resources, measured, laid out and drawn, the
-picture reaches the window host, a touch runs a listener, and Back takes it
-down.** That is *proven* under qemu-arm, with a stand-in for the shell's
-drawing.
+picture reaches the window host, a touch runs a listener, and Back sends it
+to the back as Android 12 does.** That is *proven* under qemu-arm, with a
+stand-in for the shell's drawing.
 
 **Nothing of it has run on a phone**, and the shell has not yet got its half:
 the drawing (`megler_gfx_host`: Direct2D, DirectWrite and WIC behind a C
@@ -382,8 +382,18 @@ stand-in for the shell's drawing, and checks (47 checks):
   touch beside the button is no press.
 - **Pause and resume** from the shell (`megler_set_paused`): `onPause`,
   `onResume`.
-- **Back**: `onPause`, `onStop`, `onDestroy` in that order, the main loop
-  ends, and the app is reported ended with status 0.
+- **Back** on the first screen (`megler_back`, since 670): as on Android 12
+  and later the task goes to the back and nothing finishes, which
+  `megler_back` answers MEGLER_BACK_LEAVE (the shell then leaves the Back to
+  the system, which takes the window away). The test app hands its Back on,
+  as React Native's and Flutter's activities do, and goes to the back 900 ms
+  later the first time -- past the 400 ms `megler_back` waits for an app
+  that showed nothing new, so that Back is the app's and the next, a moment
+  later, the system's at once -- and after 150 ms the second, within the
+  wait. Hidden then, the activity has `onPause` and `onStop`; shown again,
+  `onRestart`, `onStart`, `onResume`; and the user's stop (`megler_stop`)
+  `onDestroy`, the main loop ends, and the app is reported ended with
+  status 0.
 
 Each picture is written as a BMP into `build/java-pictures`
 (`hello-1-started.bmp`, `hello-2-pressed.bmp`, `hello-3-pressed-twice.bmp`,
@@ -2457,7 +2467,12 @@ no native code or has it for 32-bit ARM.
   `megler_key` and `megler_set_paused` only queue (256 events; a move may be
   dropped when the queue is full, what ends a gesture is not), so everything
   that happens to the app happens on its main thread. Back is one event, when
-  the key comes up; other keys pass as they are. `megler_set_focused` has no
+  the key comes up; other keys pass as they are. `megler_back` sends it
+  numbered and waits for what the app did with it: `AppRunner.back`
+  answers once the key has been through the app (it went to the back,
+  ended its last activity, asked for a frame -- a page or a dialog went --
+  or none of these), and `moveTaskToBack` (Android 12's Back on a task's
+  root activity among its callers) says the app went to the back. `megler_set_focused` has no
   counterpart in the framework and is not passed on.
 - **Moves are batched, as Android batches them** (since 667). A finger's
   move is kept, not dispatched (`AppRunner.moveBatched`). The moves after it
@@ -3513,7 +3528,7 @@ What a Java app asks of the phone beyond its window goes to the shell through
   but only once none of its activities has been resumed for ten seconds while
   its process runs ("Self-update ready to be installed, waiting for market to
   close"; it checks every ten seconds). An app of the phone's own is suspended
-  within a second of being left, and ends on Back, so such an update never
+  within a second of being left, Back on its first screen included, so such an update never
   goes in, and Play Store starts over at its next start. At the same version
   it compares the variants by their derived APK id
   (`com.android.vending.derived.apk.id`, which Google's bundletool writes into

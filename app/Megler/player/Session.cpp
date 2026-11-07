@@ -341,14 +341,22 @@ void touch(int phase, int pointer, float x, float y) {
  */
 static std::atomic<unsigned long long> gShownAt{0};
 
-void backKey() {
+/*
+ * The app is given Back, and its answer waited for (megler_back): an app that went to the back with it (Android 12's Back on
+ * its first screen) leaves the Back to the system, which takes the window away as it does a phone app's on its first page;
+ * the app stays as it was until it is shown again. 0.4 s for an app that showed nothing new (React Native's, Flutter's: their
+ * Back goes on to JavaScript or Dart), 1.5 s at most for an answer from a busy main thread.
+ */
+int backKey() {
     const unsigned long long shown = gShownAt.load();
     if (shown && GetTickCount64() - shown < 1000) {
         shellLog::write("session: a Back as the window came back, the one that brought it back: not the app's");
-        return;
+        return MEGLER_BACK_TAKEN;
     }
-    megler_key(androidKeyBack, true);
-    megler_key(androidKeyBack, false);
+    const int answer = megler_back(400, 1500);
+    if (answer == MEGLER_BACK_LEAVE) shellLog::write("session: the app went to the back with Back: the system has the Back, and takes the window away");
+    else if (answer == MEGLER_BACK_ENDED) shellLog::write("session: the app ended its last activity with Back");
+    return answer;
 }
 
 // (Like touch: the core takes these from any thread and ignores them when no Java app runs.)

@@ -458,7 +458,7 @@ public class Activity extends ContextThemeWrapper implements Window.Callback, Ke
     public void finishAfterTransition() { finish(); }
     public void finishActivity(int request) {}
     public void finishFromChild(Activity child) { finish(); }
-    public boolean moveTaskToBack(boolean nonRoot) { megler.Native.exit(); return true; }
+    public boolean moveTaskToBack(boolean nonRoot) { return megler.AppRunner.moveTaskToBack(this, nonRoot); }
     public boolean navigateUpTo(Intent up) { finish(); return true; }
     public boolean navigateUpToFromChild(Activity child, Intent up) { return navigateUpTo(up); }
     public boolean onNavigateUp() { if (mInfo != null && mInfo.parentActivity != null) { finish(); return true; } return false; }
@@ -607,6 +607,9 @@ public class Activity extends ContextThemeWrapper implements Window.Callback, Ke
     public void onBackPressed() {
         if (mActionBar != null && mActionBar.collapseActionView()) return;
         if (mFragments != null && mFragments.popBackStackImmediate()) return;
+        // Android 12 and later: Back on the task's root activity sends the task to the back, as Home does, instead of
+        // finishing it (ActivityClientController.onBackPressed); the activity is stopped, not destroyed (megler.AppRunner).
+        if (isTaskRoot()) { megler.AppRunner.moveTaskToBack(this, true); return; }
         finishAfterTransition();
     }
     public boolean onSearchRequested() { return false; }

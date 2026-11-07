@@ -61,8 +61,9 @@ std::shared_ptr<AudioHost> audio();
 void stop();
 /// Surface pixels, y down. phase: 0 down, 1 move, 2 up, 3 cancel.
 void touch(int phase, int pointer, float x, float y);
-/// AKEYCODE_BACK, pressed and released.
-void backKey();
+/// AKEYCODE_BACK, pressed and released, and what the app did with it: MEGLER_BACK_TAKEN (and for a Back that is not
+/// the app's), MEGLER_BACK_LEAVE (it went to the back: the system is to have the Back), MEGLER_BACK_ENDED (it ended).
+int backKey();
 /// The touch keyboard's half of text entry, for a Java app (megler.h's
 /// megler_text_commit and its neighbours): text the user typed, as UTF-8; an
 /// editing key (MEGLER_TEXT_*); the user put the keyboard away; how many of

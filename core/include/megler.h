@@ -1707,6 +1707,23 @@ MEGLER_API bool megler_probe_breakpoints(char *out, size_t size);
 MEGLER_API void megler_touch(int phase, int pointer_id, float x, float y);
 /* An Android key code (AKEYCODE_BACK is 4), pressed or released. */
 MEGLER_API void megler_key(int android_keycode, bool down);
+/*
+ * The phone's Back key for a Java app, pressed and released, and what the app did with it, waited for at most max_ms:
+ *   MEGLER_BACK_TAKEN  the app took it: a page or a dialog went, it changed what it shows, or it showed nothing new within
+ *                      quiet_ms of having had the key (or did not answer in time);
+ *   MEGLER_BACK_LEAVE  the app went to the back with it, as Android 12 and later send a task whose root activity is given
+ *                      Back (and as moveTaskToBack does): nothing finished, and the window is the system's to take away --
+ *                      the shell lets the system have its Back -- the activities stopped while it is hidden and started
+ *                      again when it is shown;
+ *   MEGLER_BACK_ENDED  the app finished its last activity with it, and ends.
+ * quiet_ms is how long an app that showed nothing new is given: one whose Back goes on to JavaScript or Dart (React Native,
+ * Flutter) sends itself to the back from there a little later. One that does it later than that, or calls moveTaskToBack
+ * by itself, has the next Back -- within five seconds and with no touch between -- answered MEGLER_BACK_LEAVE at once,
+ * without the app. Blocks the calling thread (the shell's UI thread is fine: the app's main thread answers, and the host
+ * functions it calls meanwhile never wait for that thread). For an app that is not Java: megler_key(4) twice, TAKEN.
+ */
+enum { MEGLER_BACK_TAKEN = 0, MEGLER_BACK_LEAVE = 1, MEGLER_BACK_ENDED = 2 };
+MEGLER_API int megler_back(unsigned quiet_ms, unsigned max_ms);
 /* The touch keyboard's half of text entry, for a Java app: see megler_keyboard_host. Any thread. */
 MEGLER_API void megler_text_commit(const char *utf8);
 MEGLER_API void megler_text_key(int key);

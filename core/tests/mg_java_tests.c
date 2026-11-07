@@ -1033,18 +1033,32 @@ static bool start(const char *apk, const char *android_root)
     return false;
 }
 
-/* Back, and the app's end: the activity taken down in order, the main loop ended, status 0. */
-static void back_and_end(const char *destroyed_line, int *at)
+/* The user's stop, and the app's end: the activity taken down in order, the main loop ended, status 0. */
+static void stop_and_end(const char *destroyed_line, int *at)
 {
     int tries;
-    megler_key(4, true);
-    megler_key(4, false);
+    megler_stop();
     expect_line(destroyed_line, at, 30);
     for (tries = 0; tries < 3000 && running(); tries++) mg_sleep_ns(10000000ull);
     CHECK(g_exited);
     CHECK(g_exited && g_status == 0);
     if (g_exited) say("  the app ended with status %d%s%s", g_status, g_reason[0] ? ": " : "", g_reason);
-    else say("  the app did not end after Back");
+    else say("  the app did not end after the stop");
+}
+
+/*
+ * Back on the app's first screen, and its end. As on Android 12 and later, Back sends the task of a root activity to the
+ * back and nothing finishes: megler_back says so, the shell's cue to give the Back to the system, which takes the window
+ * away. Hidden then and shown again, the app goes on; the user's stop ends it.
+ */
+static void back_and_end(const char *destroyed_line, int *at)
+{
+    const int answer = megler_back(400, 10000);
+    CHECK(answer == MEGLER_BACK_LEAVE && running());
+    if (answer != MEGLER_BACK_LEAVE) say("  Back on the first screen: answered %d, not to the back", answer);
+    megler_set_paused(true);
+    megler_set_paused(false);
+    stop_and_end(destroyed_line, at);
 }
 
 /* --------------------------------------------------------------- measuring */
@@ -1276,13 +1290,31 @@ static int run_hello(void)
         CHECK(pixel(130, g_screen_h - 90) == 0x00A0A0 && pixel(10, g_screen_h - 90) != 0x00A0A0 && pixel(100, g_screen_h - 20) == 0x40A040);
     }
 
-    /* Back: down in order, and out. */
-    megler_key(4, true);
-    megler_key(4, false);
+    /*
+     * Back on the first screen, as React Native's and Flutter's activities take it: handed on, and the task sent to the back
+     * a while later -- the first time after 900 ms, past what megler_back waits for an app that showed nothing new, so that
+     * Back is the app's and the next, a moment later, the system's without reaching the app; then after 150 ms, within the
+     * wait. Nothing finished: hidden then, the activity is paused and stopped, shown again started and resumed; and the
+     * user's stop takes it down.
+     */
+    {
+        int answer = megler_back(400, 10000);
+        expect_line("I/HelloTest: back 1 handed on for 900 ms", &at, 10);
+        CHECK(answer == MEGLER_BACK_TAKEN);
+        expect_line("java: the app went to the back with no Back waiting", &at, 10);
+        answer = megler_back(400, 10000);
+        CHECK(answer == MEGLER_BACK_LEAVE && find_line("I/HelloTest: back 2", at) < 0);
+        answer = megler_back(400, 10000);
+        expect_line("I/HelloTest: back 2 handed on for 150 ms", &at, 10);
+        CHECK(answer == MEGLER_BACK_LEAVE && running());
+        say("  Back on the first screen: the app's and then the system's when the app went to the back late, the system's when soon");
+    }
+    megler_set_paused(true);
     expect_line("I/HelloTest: onPause", &at, 30);
     expect_line("I/HelloTest: onStop", &at, 30);
-    at--;
-    back_and_end("I/HelloTest: onDestroy presses=12", &at);
+    megler_set_paused(false);
+    expect_line("I/HelloTest: onResume", &at, 30);
+    stop_and_end("I/HelloTest: onDestroy presses=12", &at);
     say_app_lines("/HelloTest: ");
     return g_failed;
 }

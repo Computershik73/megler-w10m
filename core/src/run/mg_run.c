@@ -547,6 +547,14 @@ void mg_run_key(int android_keycode, bool down)
     if (g_active && g_driver && g_driver->key) g_driver->key(android_keycode, down);
 }
 
+int mg_run_back(unsigned quiet_ms, unsigned max_ms)
+{
+    if (g_active && g_driver && g_driver->back) return g_driver->back(quiet_ms, max_ms);
+    mg_run_key(4, true);
+    mg_run_key(4, false);
+    return MEGLER_BACK_TAKEN;
+}
+
 void mg_run_set_paused(bool paused)
 {
     if (g_active && g_driver && g_driver->set_paused) g_driver->set_paused(paused);

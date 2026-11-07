@@ -160,4 +160,21 @@ public class MainActivity extends Activity {
         super.onDestroy();
         Log.i("HelloTest", "onDestroy presses=" + presses);
     }
+
+    /*
+     * Back as React Native's and Flutter's activities take it: handed on, and the platform's Back -- the task to the back,
+     * this being its root -- done a while later: the first time later than the shell waits for it, then soon.
+     */
+    private int backs;
+    @Override
+    public void onBackPressed() {
+        final int delay = ++backs == 1 ? 900 : 150;
+        Log.i("HelloTest", "back " + backs + " handed on for " + delay + " ms");
+        new Handler().postDelayed(new Runnable() {
+            @Override
+            public void run() {
+                MainActivity.super.onBackPressed();
+            }
+        }, delay);
+    }
 }

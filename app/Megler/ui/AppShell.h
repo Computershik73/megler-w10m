@@ -46,6 +46,12 @@ public:
     virtual void barsCover(double left, double top, double right, double bottom) {}
     /// Hardware Back while this page is on top. True: the page took it.
     virtual bool handleBack() { return false; }
+    /// After handleBack said false: the Back is the system's, which takes Megler's window away, rather than the shell's
+    /// (no page popped, no tab changed) -- a running app that went to the back with it.
+    virtual bool backIsTheSystems() { return false; }
+    /// The flag ui-quit (ui/UiShots.h): the page's running app stopped, and Megler closed once it has ended. False: the
+    /// page has no app running, and Megler is closed at once.
+    virtual bool quitAndClose() { return false; }
     /// Every poll while visible, and right after being shown.
     virtual void refresh() {}
     virtual void appeared() {}
@@ -80,6 +86,8 @@ public:
     /// another tab back to the Library. False when there is nothing to go
     /// back to (the system then leaves the app).
     bool goBack();
+    /// The flag ui-quit: the running app stopped as its Quit stops it, then Megler closed; Megler closed at once without one.
+    void quitAndClose();
     void selectTab(int tab);
     /// Re-reads the current page's title, toolbar item and full-screen wish.
     void refreshChrome();

@@ -429,6 +429,7 @@ bool AppShell::goBack() {
         return true;
     }
     if (currentStack().pages.back()->handleBack()) return true;
+    if (currentStack().pages.back()->backIsTheSystems()) return false;
     if (currentStack().pages.size() > 1) {
         pop();
         return true;
@@ -438,6 +439,13 @@ bool AppShell::goBack() {
         return true;
     }
     return false;
+}
+
+void AppShell::quitAndClose() {
+    if (!currentStack().pages.back()->quitAndClose()) {
+        shellLog::write("ui: no app runs: Megler closes");
+        Application::Current().Exit();
+    }
 }
 
 void AppShell::selectTab(int tab) {

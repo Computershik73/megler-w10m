@@ -163,8 +163,20 @@ public:
         tellInsets();
     }
 
+    bool backIsTheSystems() override { return backLeaves_; }
+
+    bool quitAndClose() override {
+        const session::State state = session::snapshot().state;
+        if (state != session::State::running && state != session::State::starting) return false;
+        shellLog::write("ui: the app quits, and Megler closes once it has ended");
+        exitWhenEnded_ = true;
+        quit();
+        return true;
+    }
+
     bool handleBack() override {
         const session::State state = session::snapshot().state;
+        backLeaves_ = false;
         if (state == session::State::running) {
             if (settingsShown_)
                 showSettings(false);
@@ -172,8 +184,16 @@ public:
                 showMenu(false);
             else if (keyboardUp_)
                 putKeyboardAway(true); // while the keyboard is up, Back is the keyboard's, as on Android
-            else
-                session::backKey();
+            else {
+                const int answer = session::backKey();
+                // The app went to the back: the system's Back takes the window away, the app kept as it is.
+                if (answer == MEGLER_BACK_LEAVE) {
+                    backLeaves_ = true;
+                    return false;
+                }
+                // It ended with it: in its own package, Megler goes as soon as it has ended, as a second Back did before.
+                if (answer == MEGLER_BACK_ENDED && appPackage::isSingleApp()) exitWhenEnded_ = true;
+            }
             return true;
         }
         // Nothing to go back to while the app is being started.
@@ -308,6 +328,10 @@ public:
         if (ended && settingsShown_) showSettings(false);
         if (ended && menuShown_) showMenu(false);
         if (settingsShown_ && settings_) settings_->refresh();
+        if (ended && exitWhenEnded_) {
+            Application::Current().Exit();
+            return;
+        }
         if (ended && !endShown_) showEnd(snap);
         if (menuShown_ && window) {
             const auto audio = session::audio();
@@ -1130,6 +1154,8 @@ private:
     bool menuShown_ = false;
     bool settingsShown_ = false; // an app's own package: its settings are over the menu
     bool endShown_ = false;
+    bool exitWhenEnded_ = false; // the app ended its last activity with Back in its own package, or the flag ui-quit stopped it
+    bool backLeaves_ = false;    // the app went to the back with the last Back: it is the system's
     int waited_ = 0;
     double lastWidth_ = 0, lastHeight_ = 0;
     bool upright_ = false; // the app is held upright, not in landscape

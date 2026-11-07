@@ -392,7 +392,11 @@ A package with `MeglerApp.ini` in its install folder is one app's
   folder since 0.1.0.645, the package's `app` folder before) instead of
   `LocalState\apks`, and leaves it as it is;
 - the shell opens the app as soon as the library has it, into the player (or
-  its page, when it cannot run here), and Back after the app has ended leaves;
+  its page, when it cannot run here), and Back after the app has ended leaves
+  (Back on the app's first screen, where the app goes to the back as on
+  Android 12, is the system's, which takes the window away and leaves the app
+  as it is; one that ends its last activity with Back closes Megler as it
+  ends);
   until then it shows the splash screen's picture on black, as Windows showed
   it a moment before (`ui/StartScreen.cpp`), not Megler's library;
 - the core is given the shared folder as `megler_config.storage_dir`

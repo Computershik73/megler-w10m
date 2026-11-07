@@ -15,6 +15,7 @@ const char *mg_run_last_error(void);
 void mg_run_set_error(const char *fmt, ...) MG_PRINTF(1, 2);
 void mg_run_touch(int phase, int pointer_id, float x, float y);
 void mg_run_key(int android_keycode, bool down);
+int mg_run_back(unsigned quiet_ms, unsigned max_ms);
 void mg_run_set_paused(bool paused);
 void mg_run_set_focused(bool focused);
 void mg_run_stop(void);

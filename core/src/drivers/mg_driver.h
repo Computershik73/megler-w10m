@@ -24,6 +24,8 @@ typedef struct mg_driver {
     void (*set_paused)(bool paused);
     void (*set_focused)(bool focused);
     void (*stop)(void);
+    /* megler_back: Back, and what the app did with it (MEGLER_BACK_*); NULL where only megler_key has it. */
+    int (*back)(unsigned quiet_ms, unsigned max_ms);
 } mg_driver;
 
 const mg_driver *mg_driver_find(const char *engine);
