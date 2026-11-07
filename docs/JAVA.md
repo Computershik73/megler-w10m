@@ -3356,8 +3356,10 @@ the caller's number. Under Megler neither came (package 482).
   for an app whose manifest asks for `RECEIVE_SMS` or `READ_SMS`, or that uses
   Google Play services' SMS Retriever -- a receiver of it in its manifest, or
   its names in its code (a bank's app registers that receiver at run time and
-  asks for no SMS permission: the report reads the app's DEX files for the
-  SMS Retriever's action, its sender permission and its class) -- and the call
+  asks for no SMS permission: the report reads the DEX files of an app that
+  carries Google Play services' client, the meta-data
+  `com.google.android.gms.version`, for the SMS Retriever's action, its sender
+  permission and its class) -- and the call
   history for one that asks for `READ_PHONE_STATE` or `READ_CALL_LOG`: the store of what an
   app does not ask for is never opened, and its own package does not declare
   the capability (docs/PER-APP-PACKAGES.md, "What a package declares").

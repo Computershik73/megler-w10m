@@ -521,6 +521,7 @@ static void start_element(manifest_ctx *c, const char *tag, const attr *attrs, i
             add_meta(info->meta, &info->nmeta, (int)MG_COUNT(info->meta), name->text, text);
             /* What Google Play's own library checks at an app's start (its "missing splits" check): the base is not whole alone. */
             if (!strcmp(name->text, "com.android.vending.splits.required") && !strcmp(text, "true")) info->split_required = true;
+            if (!strcmp(name->text, "com.google.android.gms.version")) info->google_client = true;
         }
     }
 }
@@ -1390,8 +1391,11 @@ static char *report(const char *apk_path, char *const *splits, int nsplits, cons
         free(info);
         return j.s;
     }
-    /* An app whose manifest has no receiver of the SMS Retriever may still use it, from its code. */
-    if (!info->sms_retriever) {
+    /*
+     * An app whose manifest has no receiver of the SMS Retriever may still use it, from its code -- if it carries Google Play
+     * services' client libraries at all: the rest (games, tools) are not read, which on a phone saves seconds a large app.
+     */
+    if (!info->sms_retriever && info->google_client) {
         retriever_scan scan;
         u64 t0 = mg_time_monotonic_ns();
         retriever_code = retriever_in_code(apk_path, splits, nsplits, &scan);

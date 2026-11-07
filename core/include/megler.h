@@ -101,7 +101,8 @@ MEGLER_API void megler_free(void *p);
  *                                      it (its SMS_RETRIEVED, or the permission only Google Play services holds), or its
  *                                      code names one of those or the class SmsRetriever (an app that registers its
  *                                      receiver at run time); absent when neither
- *     "smsRetrieverInCode": true,      found in its code (the DEX files, read only when the manifest says nothing of it)
+ *     "smsRetrieverInCode": true,      found in its code (the DEX files, read only when the manifest says nothing of it
+ *                                      and has Google Play services' com.google.android.gms.version meta-data)
  *     "abis": ["armeabi-v7a", "arm64-v8a"],
  *     "abi": "armeabi-v7a",            the one that would be used; absent when there is none
  *     "runnable": true,                false: "reason" says why not (no 32-bit ARM code, no native code at all, ...)

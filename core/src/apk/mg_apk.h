@@ -56,6 +56,11 @@ typedef struct mg_apk_info {
      * (The report looks in the app's code too, for an app that registers its receiver at run time: report() in mg_apk.c.)
      */
     bool sms_retriever;
+    /*
+     * Whether the app carries Google Play services' client libraries: the meta-data com.google.android.gms.version, which
+     * every one of them puts in the manifest it is merged into. One without them cannot call the SMS Retriever.
+     */
+    bool google_client;
     char engine[32];
     bool supported, runnable;
     char reason[240];
