@@ -61,10 +61,11 @@ __attribute__((naked)) int t_svc_cacheflush(void *start, unsigned length)
  *                     it held it back: its handler runs inside the call and makes a call of its own by svc on the same
  *                     thread, while the first one's words are in use
  *   t_svc64_stacks    on a goroutine's stack of the caller's, two kilobytes with no memory below its page, a hundred
- *                     calls: nothing written below its sp but the piece's 16 bytes, nothing above it (1000 + the byte), as
- *                     the call is made on the thread's stack for system calls; the same on four threads of their own,
- *                     each with 200 calls on its own stack before; and signal 10's handler with its call of its own on
- *                     such a stack
+ *                     calls: nothing written below its sp but the piece's 16 bytes, nothing above it (12; 13 a call's
+ *                     result wrong), as the call is made on the thread's stack for system calls; the same on four
+ *                     threads of their own, each with 200 calls on its own stack before (21 + the thread); and signal
+ *                     10's handler with its call of its own on such a stack (30 + t_svc64_signal's step, 40 a byte
+ *                     written)
  *   t_svc64_fallback  the thread's stack for system calls taken away (the guest thread pointer's slot 15,
  *                     MG_TCB_SYSCALL): the entry sends the thread to the piece's trap, and the fault handler makes the
  *                     call as it made every one before, the registers kept all the same
