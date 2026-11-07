@@ -24,6 +24,8 @@
 #                      global-dynamic TLS -- the loader's paths libt_basic_arm.so takes on ARM, here on RELA (and x86's REL)
 #   libt_dep.so        needs libt_basic.so: its calls go through a PLT
 #   libt_jni.so        native methods of a class the Dalvik runtime's tests have in DEX
+#   libt_xposed.so     stands in for Aliucord's libaliuhook.so: XposedBridge's natives by their JNI names, a JNI_OnLoad
+#                      that fails (t_xposed.c); the runtime loads it without the one and answers the others itself
 #   libt_svc.so, libt_svc_diag.so, libt_svc_arm.so
 #                      armeabi-v7a only: direct ARM EABI system calls (t_svc.c), Thumb and ARM
 #   libt_aaudio.so     AAudio looked up by name
@@ -103,6 +105,8 @@ fi
   -Wl,-soname,libt_dep.so -o "$(w "$OUT/libt_dep.so")" "$(w "$SRC/t_dep.c")" "-L$(w "$OUT")" -lt_basic "${SYS[@]}"
 # Native methods for the Dalvik runtime's tests: softfp on armeabi-v7a, as an app's library is.
 "$CLANG" "${COMMON[@]}" ${THUMB[@]+"${THUMB[@]}"} -Wl,--hash-style=both   -Wl,-soname,libt_jni.so -o "$(w "$OUT/libt_jni.so")" "$(w "$SRC/t_jni.c")" "${SYS[@]}"
+# And one that stands in for Aliucord's libaliuhook.so: loaded without its JNI_OnLoad, its natives the runtime's own.
+"$CLANG" "${COMMON[@]}" ${THUMB[@]+"${THUMB[@]}"} -Wl,--hash-style=both   -Wl,-soname,libt_xposed.so -o "$(w "$OUT/libt_xposed.so")" "$(w "$SRC/t_xposed.c")" "${SYS[@]}"
 if [ "$ABI" = armeabi-v7a ]; then
   "$CLANG" "${COMMON[@]}" -mthumb -Wl,--hash-style=both   -Wl,-soname,libt_svc.so -o "$(w "$OUT/libt_svc.so")" "$(w "$SRC/t_svc.c")" "${SYS[@]}"
   "$CLANG" "${COMMON[@]}" -mthumb -Wl,--hash-style=both   -Wl,-soname,libt_svc_diag.so -o "$(w "$OUT/libt_svc_diag.so")" "$(w "$SRC/t_svc.c")" "${SYS[@]}"

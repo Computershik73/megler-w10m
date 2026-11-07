@@ -682,6 +682,8 @@ int mg_dvm_tests_run(const mg_dvm_test_config *config, mg_test_sink sink, void *
         if (config->apk) test_real_apk(config->apk);
         if (g_libcore) test_libcore_nio();
         if (g_libcore) test_libcore_link_all();
+        /* (Last: from the first hook on, compiled code looks at hooks, and what was compiled before is forgotten.) */
+        if (g_libcore) test_hooks(config->fixtures, config->guest_dir);
         mg_dvm_set_trace(0);
     } else {
         say("  (the fixtures are made by tools/build-dvm-fixtures.sh and looked for in %s)", config->fixtures);

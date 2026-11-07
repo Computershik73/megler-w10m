@@ -15,6 +15,8 @@
 #                                    (tools/dvm-d8-fixture.sh rebuilds them, and needs a JDK and d8)
 #       bench.dex                    the interpreter's benchmark, copied from core/tests/dvm/bench likewise
 #                                    (tools/dvm-bench-fixture.sh rebuilds it)
+#       hooks.dex                    the runtime's hooks as Xposed's XposedBridge uses them, copied from
+#                                    core/tests/dvm/hooks likewise (tools/dvm-hooks-fixture.sh rebuilds it)
 #
 # Python is all it needs.
 set -euo pipefail
@@ -50,3 +52,5 @@ keep core/tests/dvm/d8/expected.txt "$OUT/expected.txt"
 for f in lib.dex lib-expected.txt lib-android.txt; do [ -f "core/tests/dvm/d8/$f" ] && keep "core/tests/dvm/d8/$f" "$OUT/$f"; done
 # The interpreter's benchmark (core/tests/mg_dvm_bench.c), kept compiled like d8t.dex (tools/dvm-bench-fixture.sh).
 [ -f core/tests/dvm/bench/bench.dex ] && keep core/tests/dvm/bench/bench.dex "$OUT/bench.dex"
+# The runtime's hooks, Xposed's XposedBridge (core/tests/mg_dvm_tests_hooks.c), kept compiled likewise (tools/dvm-hooks-fixture.sh).
+[ -f core/tests/dvm/hooks/hooks.dex ] && keep core/tests/dvm/hooks/hooks.dex "$OUT/hooks.dex"
