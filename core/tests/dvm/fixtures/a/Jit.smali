@@ -961,3 +961,166 @@
     :done
     return v0
 .end method
+
+# Ints made by compiled code are kept as the interpreter keeps them, zero-extended where a register is 64 bits wide, so
+# that if-eq, if-ne and if-nez, which compare whole registers, find them equal to the same ints made otherwise: -1 and
+# MIN_VALUE out of arithmetic, an int[], a field, int-to-byte, float-to-int, cmp-long, cmpl-float and a compiled call,
+# against constants -- in the compiled loop, and after it in the interpreter, to which fill-array-data hands the frame
+# back. 0 when all agree, else the number of the first that did not.
+.method public static upperHalves(I)I
+    .registers 16
+    const/4 v0, 0x1
+    new-array v1, v0, [I
+    const/4 v2, -0x5
+    const/4 v3, 0x0
+    aput v2, v1, v3
+    new-instance v4, Lt/JitPoint;
+    invoke-direct {v4}, Lt/JitPoint;-><init>()V
+    const/high16 v2, -0x80000000
+    iput v2, v4, Lt/JitPoint;->i:I
+    const/4 v5, 0x0
+    :loop
+    if-ge v5, p0, :done
+    const/16 v15, 0x1
+    sub-int v6, v5, v5
+    add-int/lit8 v6, v6, -0x1
+    const/4 v7, -0x1
+    if-ne v6, v7, :bad
+    const/16 v15, 0x2
+    aget v8, v1, v3
+    const/4 v9, -0x5
+    if-ne v8, v9, :bad
+    const/16 v15, 0x3
+    iget v8, v4, Lt/JitPoint;->i:I
+    const/high16 v9, -0x80000000
+    if-ne v8, v9, :bad
+    const/16 v15, 0x4
+    const/16 v8, 0xff
+    int-to-byte v8, v8
+    if-ne v8, v7, :bad
+    const/16 v15, 0x5
+    const/high16 v8, -0x40400000
+    float-to-int v8, v8
+    if-ne v8, v7, :bad
+    const/16 v15, 0x6
+    const-wide/16 v10, 0x0
+    const-wide/16 v12, 0x1
+    cmp-long v8, v10, v12
+    if-ne v8, v7, :bad
+    const/16 v15, 0x7
+    const/high16 v9, 0x7fc00000
+    cmpl-float v8, v9, v9
+    if-ne v8, v7, :bad
+    const/16 v15, 0x8
+    invoke-static {v5}, Lt/Jit;->minusOne(I)I
+    move-result v8
+    if-ne v8, v7, :bad
+    const/16 v15, 0x9
+    add-int/2addr v8, v0
+    if-nez v8, :bad
+    add-int/lit8 v5, v5, 0x1
+    goto :loop
+    :done
+    fill-array-data v1, :one
+    const/16 v15, 0xa
+    const/4 v14, -0x1
+    if-ne v6, v14, :bad
+    const/16 v15, 0xb
+    if-ne v7, v14, :bad
+    const/16 v15, 0xc
+    invoke-static {v5}, Lt/Jit;->minusOne(I)I
+    move-result v8
+    if-ne v8, v14, :bad
+    const/16 v15, 0x0
+    :bad
+    return v15
+    :one
+    .array-data 4
+        0x1
+    .end array-data
+.end method
+
+# -1, not trivially (so that a call of it runs its code, which with the threshold at 1 is compiled at its first call).
+.method public static minusOne(I)I
+    .registers 2
+    sub-int v0, p0, p0
+    add-int/lit8 v0, v0, -0x1
+    return v0
+.end method
+
+# A compiled method's int returned to an interpreted caller (no loop here, and C calls it): zero-extended too. 0 when so.
+.method public static upperCaller()I
+    .registers 4
+    const/4 v0, 0x3
+    invoke-static {v0}, Lt/Jit;->minusOne(I)I
+    move-result v1
+    const/4 v2, -0x1
+    if-ne v1, v2, :bad
+    const/4 v0, 0x0
+    return v0
+    :bad
+    const/4 v0, 0x1
+    return v0
+.end method
+
+# A frame of 300 registers: longs and ints computed in registers past 63, where A64's register pairs (LDP, STP) no longer
+# reach, and moved to and from registers past 255 (move/16, move-wide/16), in a compiled loop. jit_big_frame in
+# mg_dvm_tests.c says the same in C.
+.method public static bigFrame(IJ)J
+    .registers 300
+    move/16 v1, v297
+    move-wide/16 v100, v298
+    const/4 v0, 0x0
+    const-wide v102, 0x5851f42d4c957f2dL
+    const-wide v104, 0x14057b7ef767814fL
+    :loop
+    if-ge v0, v1, :done
+    mul-long v100, v100, v102
+    add-long v100, v100, v104
+    add-int/lit8 v150, v0, 0x7
+    mul-int v151, v150, v150
+    shl-long v106, v100, v151
+    xor-long v100, v100, v106
+    ushr-long v106, v100, v150
+    xor-long v100, v100, v106
+    move-wide/16 v290, v100
+    move-wide/16 v108, v290
+    sub-long v100, v108, v104
+    add-int/lit8 v0, v0, 0x1
+    goto :loop
+    :done
+    move-wide/16 v2, v100
+    return-wide v2
+.end method
+
+# Reads a[2 - i] for i from 0 on: at the fourth turn, compiled by then, the index is -1, past the bounds as the code's
+# unsigned compare sees it, and ArrayIndexOutOfBoundsException is thrown from inside the compiled loop.
+.method public static readDown([I)I
+    .registers 5
+    const/4 v0, 0x0
+    const/4 v1, 0x0
+    :loop
+    const/4 v2, 0x2
+    sub-int v2, v2, v1
+    aget v3, p0, v2
+    add-int/2addr v0, v3
+    add-int/lit8 v1, v1, 0x1
+    goto :loop
+.end method
+
+# Sums o.i over an array of JitPoints: a null among them, met by the compiled loop, throws NullPointerException there.
+.method public static fieldOfNull([Lt/JitPoint;)I
+    .registers 6
+    const/4 v0, 0x0
+    const/4 v1, 0x0
+    array-length v2, p0
+    :loop
+    if-ge v1, v2, :done
+    aget-object v3, p0, v1
+    iget v4, v3, Lt/JitPoint;->i:I
+    add-int/2addr v0, v4
+    add-int/lit8 v1, v1, 0x1
+    goto :loop
+    :done
+    return v0
+.end method

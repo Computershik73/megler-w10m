@@ -131,12 +131,27 @@ smali = []
 cases = []
 
 
-def method(name, sig, registers, body):
+def ins_words(sig):
+    """The registers a method's parameters take: two for a long or a double."""
+    return sum(2 if k in 'JD' else 1 for k in sig[1:sig.index(')')])
+
+
+def emit(name, sig, registers, body):
     smali.append('.method public static %s%s' % (name, sig))
     smali.append('    .registers %d' % registers)
-    smali.extend('    ' + line if not line.startswith(':') else '    ' + line for line in body)
+    smali.extend('    ' + line for line in body)
     smali.append('.end method')
     smali.append('')
+
+
+def method(name, sig, registers, body):
+    emit(name, sig, registers, body)
+    # Its twin for the JIT (mg_dvm_tests.c, test_ops_jit): the same body in the second turn of a loop, which a JIT whose
+    # threshold is 1 compiles at its first jump back -- the instruction then runs as compiled code, whose answer must be
+    # Java's as much as the interpreter's. Its counter is a register more after the method's own locals (pc 1 the loop's head).
+    k = 'v%d' % (registers - ins_words(sig))
+    emit(name + '_jit', sig, registers + 1, ['const/4 %s, 0x0' % k, ':jit_loop', 'if-eqz %s, :jit_skip' % k] + body +
+         [':jit_skip', 'add-int/lit8 %s, %s, 0x1' % (k, k), 'goto :jit_loop'])
 
 
 def enc(kind, v):
