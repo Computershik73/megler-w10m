@@ -1321,6 +1321,7 @@ static void collect_alongside(void)
 {
     /* (tw the write watch started again, tm the marks cleared, tp the written pages' objects followed, td what they reach, tq the references.) */
     u64 t0, t1, t2, t3, t4, t5, t7, tw, tm = 0, tp = 0, td = 0, tq = 0;
+    u64 faults0, faults1 = 0, faults2 = 0, faults3 = 0;   /* the process's page faults at each stop's start and end */
     u32 objects, written = 0, npages = 0;
     u8 **pages = NULL;
     u64 live = 0;
@@ -1345,6 +1346,7 @@ static void collect_alongside(void)
     /* The first stop. */
     t0 = mg_time_monotonic_ns();
     tw = t0 - tw;
+    faults0 = mg_mem_page_faults();
     locks_take();
     objects = mg_dvm_heap_objects();
     stack = (void **)malloc(sizeof(void *) * ((size_t)objects + 64));
@@ -1377,6 +1379,7 @@ static void collect_alongside(void)
             mg_dvm_heap_alloc_black(true);
             roots_pushed(&first, true);
         }
+        faults1 = mg_mem_page_faults();
         resume_threads();
         g_busy = 0;
     } else {
@@ -1409,6 +1412,7 @@ static void collect_alongside(void)
     npages = mg_dvm_heap_pages();
     if (g_nhelpers) pages = (u8 **)malloc(sizeof(u8 *) * ((size_t)npages + 1));
     g_busy = 1;
+    faults2 = mg_mem_page_faults();
     stop_threads();
     t5 = mg_time_monotonic_ns();
     ok = !g_stop_failed;
@@ -1439,6 +1443,7 @@ static void collect_alongside(void)
         if (g_referent >= 0) process_references(false);
         tq = mg_time_monotonic_ns() - tq;
     }
+    faults3 = mg_mem_page_faults();
     resume_threads();
     t7 = mg_time_monotonic_ns();
     locks_give(false);
@@ -1469,12 +1474,13 @@ static void collect_alongside(void)
         mg_info("gc: alongside the app: stopped %.1f ms and %.1f ms (to stop %.1f and %.1f; at the first the marks %.1f, the classes and "
                 "strings %.1f, the other exact roots %.1f -- the JNI layer's %.1f --, the stacks %.1f; at the second the classes and strings "
                 "%.1f, the other exact roots %.1f -- the JNI layer's %.1f --, the stacks %.1f, %u written pages' objects %.1f, what they reach "
-                "%.1f, the references %.1f); the write watch started again before in %.1f; marked alongside in %.1f ms by %u threads; sweep "
-                "%.1f by %u; freed %.1f MB (%u objects), live %.1f MB (%u objects in all); %u threads stopped%s%s",
+                "%.1f, the references %.1f; page faults %u and %u); the write watch started again before in %.1f; marked alongside in %.1f ms "
+                "by %u threads; sweep %.1f by %u; freed %.1f MB (%u objects), live %.1f MB (%u objects in all); %u threads stopped%s%s",
                 (double)(t2 - t0) / 1e6, (double)(t7 - t4) / 1e6, (double)(t1 - t0) / 1e6, (double)(t5 - t4) / 1e6, (double)tm / 1e6,
                 (double)first.classes_ns / 1e6, (double)first.exact_ns / 1e6, (double)first.jni_ns / 1e6, (double)first.stacks_ns / 1e6,
                 (double)second.classes_ns / 1e6, (double)second.exact_ns / 1e6, (double)second.jni_ns / 1e6, (double)second.stacks_ns / 1e6,
-                (unsigned)written, (double)tp / 1e6, (double)td / 1e6, (double)tq / 1e6, (double)tw / 1e6, (double)(t3 - t2) / 1e6,
+                (unsigned)written, (double)tp / 1e6, (double)td / 1e6, (double)tq / 1e6, (unsigned)(faults1 - faults0),
+                (unsigned)(faults3 - faults2), (double)tw / 1e6, (double)(t3 - t2) / 1e6,
                 (unsigned)G.markers, (double)r.sweep_ns / 1e6, (unsigned)r.sweepers, (double)r.freed_bytes / 1048576.0,
                 (unsigned)r.freed_objects, (double)live / 1048576.0, (unsigned)mg_dvm_heap_objects(), (unsigned)g_nstopped,
                 makers[0] ? "; made since the last by " : "", makers);

@@ -29,6 +29,7 @@
 #include <sys/epoll.h>
 #include <sys/ioctl.h>
 #include <sys/mman.h>
+#include <sys/resource.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
 #include <sys/statvfs.h>
@@ -224,6 +225,12 @@ u64 mg_mem_usage(void) { return g_usage ? g_usage() : 0; }
 static u64 (*g_available_probe)(void);
 void mg_mem_set_available_probe(u64 (*available)(void)) { g_available_probe = available; }
 u64 mg_mem_available(void) { return g_available_probe ? g_available_probe() : 0; }
+
+u64 mg_mem_page_faults(void)
+{
+    struct rusage u;
+    return getrusage(RUSAGE_SELF, &u) == 0 ? (u64)u.ru_minflt + (u64)u.ru_majflt : 0;
+}
 
 /* --------------------------------------------------------------- threads */
 

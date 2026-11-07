@@ -129,6 +129,8 @@ MG_HOSTAPI void mg_mem_set_probe(u64 (MG_HOSTCB *limit)(void), u64 (MG_HOSTCB *u
  */
 MG_HOSTAPI u64 mg_mem_available(void);
 MG_HOSTAPI void mg_mem_set_available_probe(u64 (MG_HOSTCB *available)(void));
+/* The page faults the process has taken so far, the soft and the hard together; 0 where the host does not say. */
+MG_HOSTAPI u64 mg_mem_page_faults(void);
 
 /* --------------------------------------------------------------- threads */
 

@@ -42,6 +42,11 @@
 #define MG_UWP 0
 #endif
 
+#if MG_UWP
+/* Left out of the app partition by the SDK's headers, in the phone's kernelbase like any other. */
+WINBASEAPI HMODULE WINAPI GetModuleHandleW(LPCWSTR lpModuleName);
+#endif
+
 /* ---------------------------------------------------------------- memory */
 
 static DWORD prot_of(int prot)
@@ -505,6 +510,31 @@ u64 mg_mem_available(void)
         g_available_ms = now ? now : 1;
     }
     return (u64)g_available_kb << 10;
+}
+
+/*
+ * NtQueryInformationProcess's VM counters (ProcessVmCounters, 3), looked up once: what kernel32's GetProcessMemoryInfo
+ * reads, which an app's API set does not have. Nothing in it allocates or locks: the collector reads it with the world
+ * stopped.
+ */
+typedef LONG(NTAPI *query_process_fn)(HANDLE process, ULONG what, PVOID out, ULONG size, PULONG got);
+static query_process_fn g_query_process;
+static volatile LONG g_query_process_tried;
+
+u64 mg_mem_page_faults(void)
+{
+    struct {
+        SIZE_T peak_virtual, virtual_size;
+        ULONG page_faults;
+        SIZE_T peak_working_set, working_set, quota_peak_paged, quota_paged, quota_peak_nonpaged, quota_nonpaged, pagefile, peak_pagefile;
+    } vm;
+    if (!g_query_process_tried) {
+        HMODULE ntdll = GetModuleHandleW(L"ntdll.dll");
+        g_query_process = ntdll ? (query_process_fn)(void *)GetProcAddress(ntdll, "NtQueryInformationProcess") : NULL;
+        g_query_process_tried = 1;
+    }
+    if (!g_query_process || g_query_process(GetCurrentProcess(), 3, &vm, (ULONG)sizeof(vm), NULL) < 0) return 0;
+    return vm.page_faults;
 }
 
 /* --------------------------------------------------------------- threads */
@@ -1058,11 +1088,6 @@ void mg_thread_exit(void)
 u32 mg_thread_self_id(void) { return GetCurrentThreadId(); }
 u32 mg_thread_id(const mg_thread *t) { return t ? (u32)t->id : 0; }
 void mg_thread_yield(void) { SwitchToThread(); }
-
-#if WINAPI_FAMILY == WINAPI_FAMILY_APP
-/* Left out of the app partition by the SDK's headers, in the phone's kernelbase like any other. */
-WINBASEAPI HMODULE WINAPI GetModuleHandleW(LPCWSTR lpModuleName);
-#endif
 
 /*
  * Windows ends a wait on the next tick of its timer, and the tick is 15.6 ms
