@@ -38,6 +38,7 @@
 #include "../bionic/mg_bionic.h"
 #include "../host/mg_host.h"
 #include "../ld/mg_ld_internal.h"
+#include "mg_stubs.h"
 
 /* (32-bit ARM's alone: x86/mg_patch_x86.c is the x86 processors'.) */
 #if MG_ARCH_ARM32
@@ -89,6 +90,11 @@ static bool is_a32_tp_read(const u8 *p, int *reg)
     return *reg != 13 && *reg != 15;
 }
 
+/*
+ * Island space the loader keeps for a library (ld/mg_ld.c, island_estimate, 16 bytes for each one counted): a thread
+ * pointer's read its 12 bytes, and an ARM svc 0 the 32 of its way out, whether or not the library is one whose calls are
+ * led out (that is not known yet).
+ */
 u32 mg_patch_count_tp_reads(const u8 *bytes, size_t size)
 {
     u32 n = 0;
@@ -97,6 +103,7 @@ u32 mg_patch_count_tp_reads(const u8 *bytes, size_t size)
     for (i = 0; i + 4 <= size; i += 2) {
         if (is_t32_tp_read(bytes + i, &reg)) n++;
         else if (!(i & 3) && is_a32_tp_read(bytes + i, &reg)) n++;
+        else if (!(i & 3) && mg_rd32(bytes + i) == 0xEF000000u) n += 2;
     }
     return n;
 }
@@ -245,8 +252,10 @@ static void patch_plt(mg_lib *lib, u8 *seg, size_t size)
 /*
  * Never execute a recognised Linux SVC on the host. Replace it with UDF and
  * record its exact address so the fault handler can dispatch r7/r0..r5 and
- * resume after it. The OS supplies an aligned handler stack even when the
- * guest used push {r7}; no C call is made on that guest stack.
+ * resume after it. Windows lays the trap's records below the guest's sp,
+ * aligned even when the guest used push {r7}, and the handler runs below them:
+ * room enough on a thread's own stack, none on a goroutine's, whence a library
+ * of Go's has its ARM svc led out to the core instead (lead_out_svc, below).
  *
  * Executable segments also contain literal pools and Thumb-2 second halves.
  * Keep the Thumb r7-producer check instead of replacing every DF00 halfword.
@@ -276,23 +285,107 @@ static volatile i32 g_trap_svc = -1;
 
 void mg_patch_set_trap_svc(bool on) { g_trap_svc = on ? 1 : 0; }
 
+/* A registered svc trap at `at` (its UDF written by the caller): mg_patch_svc_target answers it. NULL on allocation failure. */
+static mg_svc_site *record_svc_site(mg_lib *lib, u8 *at, bool thumb)
+{
+    mg_svc_site *site = (mg_svc_site *)malloc(sizeof(*site));
+    if (!site) return NULL;
+    site->pc = (mg_addr)at | (thumb ? 1u : 0u);
+    site->watched = false;
+    site->tp_reg = -1;
+    site->next = lib->svc_sites;
+    lib->svc_sites = site;
+    return site;
+}
+
 static void patch_svc_site(mg_lib *lib, u8 *at, bool thumb, bool trap)
 {
-    mg_svc_site *site = trap ? NULL : malloc(sizeof(*site));
+    mg_svc_site *site = trap ? NULL : record_svc_site(lib, at, thumb);
     lib->stats.svc_sites++;
-    if (site) {
-        site->pc = (mg_addr)at | (thumb ? 1u : 0u);
-        site->watched = false;
-        site->tp_reg = -1;
-        site->next = lib->svc_sites;
-        lib->svc_sites = site;
-    } else if (!trap) {
-        /* Fail closed: never leave a host system call behind on allocation failure. */
-        mg_err("ld: %s: cannot record direct system call; it will fault", lib->name);
-    }
+    /* Fail closed: never leave a host system call behind on allocation failure. */
+    if (!site && !trap) mg_err("ld: %s: cannot record direct system call; it will fault", lib->name);
     if (thumb) mg_wr16(at, site ? 0xDEA6 : 0xDEA5);
     else mg_wr32(at, site ? 0xE7F00AF6u : 0xE7F00AF5u);
 }
+
+/*
+ * An ARM svc 0 of a library of Go's, led out of its code to the core rather than made a trap. A trap's handler runs on
+ * the stack the svc was made on, below its sp: Windows lays the exception's records there (it has no other stack for
+ * them) and the core's fault handler its frame of 5.6 KB, then the call's own. Go's runtime makes its calls by number on
+ * its goroutines' stacks, of two to eight kilobytes, cut from its heap: the trap's handler wrote far below such a stack,
+ * into the goroutine stacks and heap beneath it, or ran into memory that is not there, and the process ended with no word
+ * of the core's. MCO Advanced's libgojni.so (Go 1.27.2, its Tailscale) died so about a tenth of a second into its runtime's
+ * start, twice (package 669): under qemu-arm its first seconds make 53 calls on such stacks, with 1448 to 7164 bytes
+ * below sp.
+ *
+ * The site becomes a branch to a piece of the library's island,
+ *
+ *         push  {r12, lr}
+ *         ldr   r12, [pc, #16]          ; mg_stub_svc_entry (arm/mg_stubs.S), Thumb
+ *         blx   r12
+ *         b     1f                      ; its way back
+ *         udf                           ; the trap, where a thread with no stack for the call is sent back to
+ *     1:  pop   {r12, lr}
+ *         b     <the site + 4>
+ *         .word mg_stub_svc_entry + 1
+ *
+ * which writes eight bytes below the guest's sp, as the kernel would write none; the entry makes the call on the thread's
+ * stack for system calls (ld/mg_tls.c, MG_TCB_SYSCALL), or on its own stack where the guest's sp already is. Every register
+ * but r0, the flags and the VFP registers are as they were after it, as the kernel keeps them. Only Go's libraries'
+ * (mg_ld_lib_is_go), whose code is all ARM: elsewhere an svc runs on the thread's own stack, and stays the trap it was.
+ * False where it cannot be done (no island within a branch's reach, no entry): the site is then made a trap.
+ */
+static bool lead_out_svc(mg_lib *lib, u8 *at)
+{
+    void *entry = mg_stub(MG_STUB_SVC_ENTRY);
+    u8 *piece;
+    if (!entry) return false;
+    piece = mg_island_alloc(lib, (mg_addr)at, 32, (1u << 25) - 64);
+    if (!piece) return false;
+    mg_wr32(piece + 0, 0xE92D5000u);           /* push {r12, lr} */
+    mg_wr32(piece + 4, 0xE59FC010u);           /* ldr r12, [pc, #16] */
+    mg_wr32(piece + 8, 0xE12FFF3Cu);           /* blx r12 */
+    mg_wr32(piece + 12, 0xEA000000u);          /* b piece + 20 */
+    mg_wr32(piece + 16, 0xE7F00AF6u);          /* the registered trap */
+    mg_wr32(piece + 20, 0xE8BD5000u);          /* pop {r12, lr} */
+    mg_wr32(piece + 28, (u32)(mg_addr)entry);
+    if (!a32_b(piece + 24, (mg_addr)piece + 24, (mg_addr)at + 4) || !record_svc_site(lib, piece + 16, false)) return false;
+    /* (The site last: untouched until the piece is whole, made a trap by the caller otherwise.) */
+    if (!a32_b(at, (mg_addr)at, (mg_addr)piece)) {
+        mg_svc_site *site = lib->svc_sites;
+        lib->svc_sites = site->next;
+        free(site);
+        return false;
+    }
+    lib->stats.svc_sites++;
+    lib->stats.svc_led_out++;
+    return true;
+}
+
+/*
+ * A thread's stack for system calls led out (MG_TCB_SYSCALL, mg_stubs.h's MG_SC_* words at its top, the stack below
+ * them): 128 KB reserved and committed, its lowest page left out, as a guard.
+ */
+enum { SC_STACK = 128 * 1024 };
+
+void *mg_patch_syscall_stack_new(void *own_lo, void *own_hi)
+{
+    u8 *base = (u8 *)mg_mem_reserve(SC_STACK);
+    mg_addr *block;
+    if (!base || !mg_mem_commit(base + MG_PAGE, SC_STACK - MG_PAGE, MG_PROT_RW)) {
+        if (base) mg_mem_release(base, SC_STACK);
+        mg_err("ld: no stack for a thread's system calls: its calls of a library's own are traps on the stack they are made on");
+        return NULL;
+    }
+    block = (mg_addr *)(base + SC_STACK - MG_SC_WORDS * sizeof(mg_addr));
+    block[MG_SC_OWN_LO] = (mg_addr)own_lo;
+    block[MG_SC_OWN_HI] = (mg_addr)own_hi;
+    block[MG_SC_LIMIT] = (mg_addr)(base + MG_PAGE);
+    block[MG_SC_BASE] = (mg_addr)base;
+    return block;
+}
+
+void mg_patch_syscall_stack_free(void *block) { mg_mem_release((u8 *)block + MG_SC_WORDS * sizeof(mg_addr) - SC_STACK, SC_STACK); }
 
 /* The first halfword of a 32-bit Thumb instruction. */
 static bool is_t32_first(u16 h) { return (h >> 11) >= 0x1D; }
@@ -331,13 +424,16 @@ static void patch_svc(mg_lib *lib, u8 *seg, size_t size)
 {
     size_t i;
     bool trap;
+    u32 led_out = lib->stats.svc_led_out;
     if (g_trap_svc < 0) g_trap_svc = mg_flag("trap-svc") ? 1 : 0;
     trap = g_trap_svc > 0;
     for (i = 2; i + 2 <= size; i += 2)
         if (mg_rd16(seg + i) == 0xDF00 && t_svc_numbered(seg, i) && in_code(lib, seg + i, 2)) patch_svc_site(lib, seg + i, true, trap);
     for (i = (size_t)(MG_ALIGN_UP((mg_addr)seg, 4) - (mg_addr)seg); i + 4 <= size; i += 4)
-        if (mg_rd32(seg + i) == 0xEF000000u && in_code(lib, seg + i, 4))
+        if (mg_rd32(seg + i) == 0xEF000000u && in_code(lib, seg + i, 4) && !(!trap && lib->go && lead_out_svc(lib, seg + i)))
             patch_svc_site(lib, seg + i, false, trap);
+    /* Every thread a stack for them from now on: those there already, and each one made later (ld/mg_tls.c). */
+    if (lib->stats.svc_led_out != led_out) mg_tls_syscall_stacks();
 }
 
 bool mg_patch_svc_target(mg_addr pc, mg_addr *target)

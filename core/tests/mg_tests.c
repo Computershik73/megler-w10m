@@ -3504,7 +3504,31 @@ static void test_go_stack(void)
     if (!go) return;
     CHECK(mg_ld_lib_is_go(go));
     mg_ld_get_stats(go, &st);
+#if MG_ARCH_ARM32
+    /* Its Thumb svc a trap; its four ARM ones, Go's runtime's way, led out to the core (arm/mg_patch.c). */
+    CHECK_INT(st.svc_sites, 5);
+    CHECK_INT(st.svc_led_out, 4);
+    {
+        /*
+         * Made so, on the thread's own stack and on a goroutine's of two kilobytes with no memory below it, here and on four
+         * threads of their own (t_go_arm_svc): registers, flags and VFP registers kept, nothing written below the
+         * goroutine's sp but the way out's 16 bytes; the 500 calls on goroutines' stacks made on the threads' stacks for
+         * system calls. A trap's handler ran below such a stack's sp, where Windows laid the trap's records: MCO
+         * Advanced's libgojni.so ended so as its runtime started (package 669).
+         */
+        u32 made0 = 0, on0 = 0, made = 0, on = 0;
+        mg_core_svc_calls(&made0, &on0);
+        CHECK_INT(FN(go, long (*)(void), "t_go_arm_svc")(), 0);
+        mg_core_svc_calls(&made, &on);
+        say("  ARM svc led out: %u calls, %u of them on a stack for system calls", made - made0, on - on0);
+        CHECK(made - made0 == 1305 && on - on0 >= 500 && on - on0 < made - made0);
+    }
+#else
     CHECK_INT(st.svc_sites, 1);
+#endif
+    /* prctl by number: the names Go's runtime gives its mappings refused as a kernel without them refuses them (EINVAL),
+       a thread's name set and read as libc's prctl does it (MCO Advanced's libgojni.so, package 669). */
+    CHECK_INT(FN(go, long (*)(void), "t_go_prctl")(), 0);
     CHECK_INT(FN(go, long (*)(long), "t_go_heap_new")(3), 14);
     mg_mmap_given_back(&given0, &again0);
     mg_mmap_usage(&anon0, NULL);

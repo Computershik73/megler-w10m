@@ -567,10 +567,21 @@ static unsigned long g_getauxval(unsigned long type)
     }
 }
 
+/*
+ * prctl, from libc and by number (172). PR_SET_VMA (its PR_SET_VMA_ANON_NAME: a name for a range of anonymous memory) is
+ * refused with EINVAL, as a kernel without CONFIG_ANON_VMA_NAME refuses it: Go's runtime (1.25 on) names every mapping
+ * it makes so, by number, and stops asking after an EINVAL, and only after that (it ignores any other error). MCO
+ * Advanced's libgojni.so (Go 1.27.2) asked as it started, and "syscall(172) is not supported" was all the log said of it
+ * (package 669).
+ */
 static int g_prctl(int option, unsigned long a, unsigned long b, unsigned long c, unsigned long d)
 {
     (void)b; (void)c; (void)d;
     mg_trace("prctl(%d, 0x%lx)", option, a);
+    if (option == 0x53564d41) {                                                                                             /* PR_SET_VMA */
+        mg_set_errno(GE_INVAL);
+        return -1;
+    }
     if (option == 15 && a) mg_strlcpy(mg_gthread_self()->name, (const char *)(mg_addr)a, sizeof(mg_gthread_self()->name));   /* PR_SET_NAME */
     if (option == 16 && a) mg_strlcpy((char *)(mg_addr)a, mg_gthread_self()->name, 16);                                    /* PR_GET_NAME */
     return 0;
@@ -948,6 +959,8 @@ static long g_syscall(long nr, long a, long b, long c, long d, long e, long f)
     case 185:                                                                                                            /* capset */
         mg_set_errno(GE_PERM);
         return -1;
+    /* prctl as libc's: Go's runtime names its mappings by number (see g_prctl). */
+    case 172: return g_prctl((int)a, (unsigned long)b, (unsigned long)c, (unsigned long)d, (unsigned long)e);          /* prctl */
     default:
         mg_note_once("syscall(%ld) is not supported", nr);
         mg_set_errno(GE_NOSYS);
