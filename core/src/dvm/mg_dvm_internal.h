@@ -858,6 +858,11 @@ void mg_dvm_gc_fields_gone(mg_jobj *o);
 bool mg_dvm_heap_watched(void);
 void mg_dvm_heap_watch_restart(void);
 u32 mg_dvm_heap_each_written(void (*fn)(void *o));
+/* The same in pieces, for the collector's threads to share (mg_dvm_heap.c). */
+u32 mg_dvm_heap_pages(void);
+u32 mg_dvm_heap_written_list(u8 **out, u32 cap);
+void mg_dvm_heap_marked_on(u8 *page, void (*fn)(void *o, void *user), void *user);
+void mg_dvm_heap_each_marked_large(void (*fn)(void *o));
 /* ...and the sweep, shared among the collector's threads (mg_dvm_gc_share); how many there were. */
 u32 mg_dvm_heap_sweep(void (*dying)(void *o), bool poison, u64 *freed_objects, u64 *freed_bytes);
 /*

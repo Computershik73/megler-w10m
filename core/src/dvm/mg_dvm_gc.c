@@ -304,6 +304,7 @@ void mg_dvm_gc_fields_gone(mg_jobj *o)
 }
 
 static void follow_main(void *p) { follow(&G.main, p); }
+static void follow_by(void *p, void *k) { follow((marker *)k, p); }
 
 /* ------------------------------------------------------ marking in parallel */
 
@@ -1274,6 +1275,30 @@ static void locks_give(bool heap_too)
     if (heap_too) mg_dvm_heap_unlock();
 }
 
+/*
+ * The second stop's written pages shared: each thread takes the next few pages, follows the marked objects on them into its
+ * own stack, and then marks with the others from there (mark_shared). What the app made while the marking went on is on
+ * such pages, made marked, and is followed there: on the collecting thread alone, the 12,000 pages Spotify wrote while its
+ * first collections marked took 270 to 335 ms of their second stops on a Lumia 650 (package 665).
+ */
+#define WRITTEN_CHUNK 8
+static u8 **g_written;
+static u32 g_nwritten;
+static volatile i32 g_written_next;
+
+static void written_round(void *arg, int worker)
+{
+    marker *k = &g_markers[worker];
+    (void)arg;
+    for (;;) {
+        u32 at = (u32)(mg_atomic_add(&g_written_next, WRITTEN_CHUNK) - WRITTEN_CHUNK), end, i;
+        if (at >= g_nwritten) break;
+        end = at + WRITTEN_CHUNK < g_nwritten ? at + WRITTEN_CHUNK : g_nwritten;
+        for (i = at; i < end; i++) mg_dvm_heap_marked_on(g_written[i], follow_by, k);
+    }
+    mark_shared(k);
+}
+
 static void follow_with_fields(void)
 {
     u32 i;
@@ -1287,7 +1312,8 @@ static void collect_alongside(void)
 {
     /* (tw the write watch started again, tm the marks cleared, tp the written pages' objects followed, td what they reach, tq the references.) */
     u64 t0, t1, t2, t3, t4, t5, t7, tw, tm = 0, tp = 0, td = 0, tq = 0;
-    u32 objects, written = 0;
+    u32 objects, written = 0, npages = 0;
+    u8 **pages = NULL;
     u64 live = 0;
     void **stack;
     mg_jobj **found;
@@ -1369,6 +1395,9 @@ static void collect_alongside(void)
     /* The second stop. */
     locks_take();
     t4 = mg_time_monotonic_ns();
+    /* (A list with room for every page the heap has, for the written ones to be shared: made before anything is stopped.) */
+    npages = mg_dvm_heap_pages();
+    if (g_nhelpers) pages = (u8 **)malloc(sizeof(u8 *) * ((size_t)npages + 1));
     g_busy = 1;
     stop_threads();
     t5 = mg_time_monotonic_ns();
@@ -1376,8 +1405,18 @@ static void collect_alongside(void)
     if (ok) {
         roots_pushed(&second, false);
         tp = mg_time_monotonic_ns();
-        written = mg_dvm_heap_each_written(follow_main);
-        follow_with_fields();
+        if (pages) {
+            /* The marked large objects and the objects with fields by name on this thread, into the pool; the pages shared. */
+            mg_dvm_heap_each_marked_large(follow_main);
+            follow_with_fields();
+            g_written = pages;
+            g_nwritten = written = mg_dvm_heap_written_list(pages, npages);
+            g_written_next = 0;
+            shared(written_round);
+        } else {
+            written = mg_dvm_heap_each_written(follow_main);
+            follow_with_fields();
+        }
         td = mg_time_monotonic_ns();
         tp = td - tp;
         drain();
@@ -1433,6 +1472,7 @@ static void collect_alongside(void)
     t_collecting = false;
     free(stack);
     free(found);
+    free(pages);
     mg_lock_release(&g_gc_lock);
     if (ok && (g_pending_refs || g_nto_finalize)) reference_work();
 }

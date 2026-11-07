@@ -482,6 +482,61 @@ static void marked_in(block *b, u8 *lo, u8 *hi, void (*fn)(void *o))
         if (b->mark[c >> 5] & b->inuse[c >> 5] & (1u << (c & 31))) fn(b->first + (size_t)c * b->cell);
 }
 
+/* Pages the arenas have (with the heap's lock held): what mg_dvm_heap_written_list may give, at the most. */
+u32 mg_dvm_heap_pages(void) { return g_narenas * (ARENA_SIZE / MG_PAGE); }
+
+/*
+ * The pages of the heap's blocks in use written since the watch was started again -- every page of them where the arenas
+ * are not watched -- into `out` (room for mg_dvm_heap_pages()), for the collector's threads to share
+ * (mg_dvm_heap_marked_on); how many. The world stopped. Large objects are not in it (mg_dvm_heap_each_marked_large).
+ */
+u32 mg_dvm_heap_written_list(u8 **out, u32 cap)
+{
+    u32 pages[ARENA_SIZE / MG_PAGE], i, got = 0;
+    int n, k;
+    for (i = 0; i < g_narenas; i++) {
+        u8 *a = g_arenas[i];
+        n = g_watch ? mg_mem_written_pages(a, ARENA_SIZE, pages, (int)MG_COUNT(pages), false) : -1;
+        if (n < 0) {
+            for (k = 0; k < (int)(ARENA_SIZE / MG_PAGE); k++) {
+                block *b = (block *)(void *)(a + ((size_t)k * MG_PAGE / BLOCK_SIZE) * BLOCK_SIZE);
+                if (b->cls >= 0 && got < cap) out[got++] = a + (size_t)k * MG_PAGE;
+            }
+            continue;
+        }
+        for (k = 0; k < n; k++) {
+            block *b = (block *)(void *)(a + ((size_t)pages[k] * MG_PAGE / BLOCK_SIZE) * BLOCK_SIZE);
+            if (b->cls >= 0 && got < cap) out[got++] = a + (size_t)pages[k] * MG_PAGE;
+        }
+    }
+    return got;
+}
+
+/* `fn` for every marked object any of whose bytes lie on `page` (one mg_dvm_heap_written_list gave). */
+void mg_dvm_heap_marked_on(u8 *page, void (*fn)(void *o, void *user), void *user)
+{
+    block *b = block_of((mg_addr)page);
+    u8 *end, *lo = page, *hi = page + MG_PAGE;
+    u32 c, last;
+    if (!b) return;
+    end = b->first + (size_t)b->bump * b->cell;
+    if (lo < b->first) lo = b->first;
+    if (hi > end) hi = end;
+    if (lo >= hi) return;
+    c = cell_index(b, (size_t)(lo - b->first));
+    last = cell_index(b, (size_t)(hi - 1 - b->first));
+    for (; c <= last; c++)
+        if (b->mark[c >> 5] & b->inuse[c >> 5] & (1u << (c & 31))) fn(b->first + (size_t)c * b->cell, user);
+}
+
+/* `fn` for every marked large object: the C heap's memory, which nothing watches. The world stopped. */
+void mg_dvm_heap_each_marked_large(void (*fn)(void *o))
+{
+    u32 i;
+    for (i = 0; i < g_nlarge; i++)
+        if (g_large[i].mark) fn(g_large[i].start);
+}
+
 u32 mg_dvm_heap_each_written(void (*fn)(void *o))
 {
     u32 pages[ARENA_SIZE / MG_PAGE], i, written = 0;
