@@ -475,7 +475,7 @@ void AppShell::poll() {
         ota::tick(*this);
         // An app's own package opens its app as soon as the library has it read: straight into the player when it can
         // run here, else its page, which says why not. Before the player, Megler's folders the app has not got are offered
-        // (ui/SharedFolders.h), once the phone's folders are known.
+        // (ui/SharedFolders.h), once the phone's folders are known, to an app that asks for the storage.
         if (appPackage::isSingleApp() && !singleAppOpened_) {
             const auto entry = Library::instance().find(appPackage::singleAppId());
             if (entry && entry->analysed && (!entry->report.ready() || StorageHost::shared().searched())) {
@@ -485,11 +485,14 @@ void AppShell::poll() {
                 if (entry->report.ready() && playStoreCanStart(entry->report.package)) {
                     // The app's private files Megler handed over when it made this package, taken first (shell/AppPackage.h).
                     std::weak_ptr<AppShell> weak = weak_from_this();
+                    const bool offerFolders = sharedFolders::wantedBy(entry->report);
                     runInBackground([] { appPackage::takeHandover(); },
-                                    [weak, id] {
-                                        sharedFolders::offer(false, [weak, id](int, int) {
+                                    [weak, id, offerFolders] {
+                                        auto play = [weak, id](int, int) {
                                             if (auto self = weak.lock()) self->push(makePlayerScreen(*self, id));
-                                        });
+                                        };
+                                        if (offerFolders) sharedFolders::offer(false, play);
+                                        else play(0, 0);
                                     });
                 } else {
                     push(makeAppDetailScreen(*this, id));
