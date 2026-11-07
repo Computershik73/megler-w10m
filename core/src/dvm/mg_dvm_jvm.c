@@ -220,6 +220,17 @@ static void set_java_loaded(mg_lib *lib)
  * for the loader the library is loaded for. An exception JNI_OnLoad leaves
  * stays pending when the library is otherwise loaded, and is what
  * System.loadLibrary then throws; that too is ART's.
+ *
+ * One kind of library is loaded without its JNI_OnLoad: an Xposed bridge
+ * over LSPlant, Aliucord's libaliuhook.so, known by the native method it
+ * exports under its JNI name, Java_de_robv_android_xposed_XposedBridge_hook0.
+ * LSPlant hooks methods by rewriting ART's own (libart.so's symbols, its
+ * ArtMethod), and its start in that JNI_OnLoad returns JNI_ERR where there is
+ * no ART ("failed to open /system/lib/libart.so"), which ended Aliucord in
+ * XposedBridge's static initialiser. The runtime hooks methods itself
+ * (mg_dvm_hook.c), and XposedBridge's natives are its own, registered for the
+ * class, which comes before any library's function: the library is loaded
+ * (its constructors run, what it needs too) and nothing of it is called.
  */
 static bool load_native(const char *name_or_path, bool runtime, char *why, size_t why_size)
 {
@@ -260,6 +271,15 @@ static bool load_native(const char *name_or_path, bool runtime, char *why, size_
     set_java_loaded(lib);
     onload = mg_ld_sym(lib, "JNI_OnLoad");
     if (!onload || mg_ld_lib_of(onload) != lib) return true;    /* a library need not have one */
+    if (!runtime) {
+        void *hook0 = mg_ld_sym(lib, "Java_de_robv_android_xposed_XposedBridge_hook0");
+        if (hook0 && mg_ld_lib_of(hook0) == lib) {
+            mg_info("dvm: %s is an Xposed bridge over LSPlant, which needs ART: its JNI_OnLoad is not run, and XposedBridge's natives are the "
+                    "runtime's own (mg_dvm_hook.c)",
+                    name_or_path);
+            return true;
+        }
+    }
     was_frame = t->onload_frame;
     was_running = t->onload_running;
     was_app = t->onload_app;
