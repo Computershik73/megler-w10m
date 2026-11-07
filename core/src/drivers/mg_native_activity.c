@@ -56,6 +56,7 @@ static struct {
     int nrequests;
     bool paused, focused, finishing;
     volatile i32 started;              /* 0 starting, 1 running, -1 failed */
+    int density;                       /* the screen's density the app was last told of (resized) */
 } N;
 
 #define CALL0(slot) do { if (N.callbacks.slot) MG_GFN(void (*)(g_activity *), N.callbacks.slot)(&N.activity); } while (0)
@@ -83,9 +84,15 @@ static void resized(void)
     mg_surface s;
     mg_nwindow *old = N.window;
     i32 rect[4];
+    bool sized, dense;
     mg_run_surface(&s);
     mg_jni_android_set_screen(s.width, s.height, s.density_dpi, s.rotation);
-    if (old && (old->width != s.width || old->height != s.height)) {
+    /* (Turned upside down, the screen is the same size: Android changes no configuration for it, and only the display's rotation says it.) */
+    sized = old && (old->width != s.width || old->height != s.height);
+    dense = s.density_dpi > 0 && s.density_dpi != N.density;
+    if (s.density_dpi > 0) N.density = s.density_dpi;
+    if (!sized && !dense) return;
+    if (sized) {
         mg_info("native-activity: the window is made again at %dx%d (it was %dx%d)", s.width, s.height, old->width, old->height);
         CALL1(onNativeWindowDestroyed, old);
         N.window = mg_nwindow_create(s.width, s.height);
@@ -191,6 +198,7 @@ static bool na_start(const megler_run_config *config, const mg_apk_info *info)
     }
 
     N.window = mg_nwindow_create(config->width, config->height);
+    N.density = config->density_dpi;
     N.queue = mg_input_queue_create();
     N.activity.callbacks = &N.callbacks;
     N.activity.vm = mg_jni_vm();

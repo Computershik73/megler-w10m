@@ -222,15 +222,18 @@ static MG_HOSTCB void unity_main(void *arg)
             mg_surface sf;
             mg_run_surface(&sf);
             mg_jni_android_set_screen(sf.width, sf.height, sf.density_dpi, sf.rotation);
-            configuration_screen(sf.width, sf.height);
-            U.window->width = sf.width;
-            U.window->height = sf.height;
-            mg_info("unity: the surface is %dx%d now, turned %d degrees: the engine's graphics state is made again", sf.width, sf.height, sf.rotation * 90);
-            g[0].j = g[1].j = 0;
-            g[0].i = 0;
-            g[1].l = U.surface;
-            mg_jni_call_native(surface, U.player, surface_sig, legacy_surface ? g + 1 : g);
-            if (mg_jni_native(PLAYER, "nativeSendSurfaceChangedEvent", NULL)) call("nativeSendSurfaceChangedEvent", "()V", NULL);
+            /* (Turned upside down, the surface is the same size: only the display's rotation says it, as on Android.) */
+            if (sf.width != U.window->width || sf.height != U.window->height) {
+                configuration_screen(sf.width, sf.height);
+                U.window->width = sf.width;
+                U.window->height = sf.height;
+                mg_info("unity: the surface is %dx%d now, turned %d degrees: the engine's graphics state is made again", sf.width, sf.height, sf.rotation * 90);
+                g[0].j = g[1].j = 0;
+                g[0].i = 0;
+                g[1].l = U.surface;
+                mg_jni_call_native(surface, U.player, surface_sig, legacy_surface ? g + 1 : g);
+                if (mg_jni_native(PLAYER, "nativeSendSurfaceChangedEvent", NULL)) call("nativeSendSurfaceChangedEvent", "()V", NULL);
+            }
         }
         in_deliver();
         keep = mg_jni_call_native(render, U.player, "()Z", NULL);
