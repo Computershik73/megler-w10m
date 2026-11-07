@@ -334,6 +334,12 @@ public class Main extends Activity {
             detail = "watchLooper=" + r;
             return r == 1;
         });
+        step("sensors", () -> {
+            /* The phone's sensors through the NDK (jni/natives.c, watchSensors): its events come later, on this thread's looper. */
+            int r = Lib.watchSensors(new Lib.SensorReport());
+            detail = "watchSensors=" + r;
+            return r == 1;
+        });
         step("gc-held", () -> {
             /* Twice: the global reference made in the first call must hold across the second's collection too. */
             int first = Lib.holdAcrossGc(), second = Lib.holdAcrossGc();

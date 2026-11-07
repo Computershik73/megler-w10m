@@ -77,6 +77,7 @@
 #include "../src/zip/mg_zip.h"
 #include "mg_camera_standin.h"
 #include "mg_location_standin.h"
+#include "mg_sensor_standin.h"
 #include "mg_codec_standin.h"
 #include "mg_gfx_standin.h"
 #include "mg_gl_standin.h"
@@ -918,6 +919,8 @@ static bool start(const char *apk, const char *android_root)
     if (g_camera_app) cfg.camera = *mg_camera_standin();
     /* The phone in Moscow, the location on (mg_location_standin.c). */
     cfg.location = *mg_location_standin();
+    /* A device with one of each sensor, each reading a known value in Windows' units and signs (mg_sensor_standin.c). */
+    cfg.sensors = *mg_sensor_standin();
     /*
      * A microphone that hears a ramp (mic_start), and a SIM of the country the run's language and region are in, as a
      * phone's is -- the US in the first run (en-US), Russia in the second (ru-RU): the data app's steps microphone,
@@ -2030,7 +2033,7 @@ static int run_natives(void)
     static const char *const steps[] = { "load", "registered", "primitives", "stack-mix", "overloads", "arrays", "bounds", "strings", "callback", "throw-native",
                                          "throw-java", "find-class", "references", "reflection", "monitor", "thread", "thread-daemon", "needed-library", "asset",
                                          "bitmap", "direct-buffer", "configuration", "library-folder", "loaded-once", "own-file", "missing-library",
-                                         "missing-method", "looper-watched", "gc-held", "system-icu", "abi", "device", "string-alloc", "many-args", "deep-callbacks" };
+                                         "missing-method", "looper-watched", "sensors", "gc-held", "system-icu", "abi", "device", "string-alloc", "many-args", "deep-callbacks" };
     int at = -1, layout, pic[4], i;
     char want[120];
     memset(pic, 0, sizeof(pic));
@@ -2048,6 +2051,9 @@ static int run_natives(void)
     expect_line(want, &at, 60);
     /* The descriptor the library watches on the main thread's looper: its callback comes with a later turn of the message loop. */
     expect_line("I/NativesTest: looper ok", &at, 30);
+    /* The library's sensor queue on that looper (the stand-in's sensors, mg_sensor_standin.c): its events in Android's units and
+       signs, at the rate it asked for, then the queue ended. */
+    CHECK(wait_line("I/NativesTest: sensors-events ok", 0, 60) >= 0);
     /* Loaded three times over by the app, loaded once. */
     CHECK(find_line("JNI_OnLoad call 2", 0) < 0);
     layout = wait_line("I/NativesTest: layout focus=true", 0, 30);

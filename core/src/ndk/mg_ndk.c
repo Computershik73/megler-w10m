@@ -235,6 +235,13 @@ static int g_looper_poll_all(int timeout_ms, int *out_fd, int *out_events, void 
     return r;
 }
 
+int mg_looper_add_fd(void *looper, int fd, int ident, int events, mg_addr callback, void *data)
+{
+    return g_looper_add_fd((mg_looper *)looper, fd, ident, events, callback, data);
+}
+
+int mg_looper_remove_fd(void *looper, int fd) { return g_looper_remove_fd((mg_looper *)looper, fd); }
+
 bool mg_looper_poll_thread(void)
 {
     if (!t_looper) return false;
@@ -669,20 +676,7 @@ static int g_cfg_diff(const g_config *a, const g_config *b) { return memcmp(a, b
 
 /* ============================================================== the rest */
 
-/* Sensors: none. An app that asks gets "no such sensor" and plays without. */
-static int g_sensor_manager_tag;
-static void *g_sensor_manager(void) { return &g_sensor_manager_tag; }
-static void *g_sensor_manager_pkg(const char *pkg) { (void)pkg; return &g_sensor_manager_tag; }
-static void *g_sensor_null(void *m, int type) { (void)m; (void)type; return NULL; }
-static int g_sensor_list(void *m, void **list) { (void)m; if (list) *list = NULL; return 0; }
-static void *g_sensor_queue(void *m, void *looper, int ident, mg_addr cb, void *data) { (void)m; (void)looper; (void)ident; (void)cb; (void)data; return &g_sensor_manager_tag; }
-static int g_sensor_int(void *a, void *b) { (void)a; (void)b; return -1; }
-static int g_sensor_has_events(void *q) { (void)q; return -1; }
-/* There are no sensors, so no ASensor to ask; these answer for a NULL one. */
-static int g_sensor_zero(const void *s) { (void)s; return 0; }
-static const char *g_sensor_text(const void *s) { (void)s; return ""; }
-static gfloat g_sensor_fzero(const void *s) { (void)s; return mg_gfb(0.0f); }
-static gssize g_sensor_events(void *q, void *events, size_t n) { (void)q; (void)events; (void)n; return 0; }
+/* (Sensors, ASensorManager and the rest, are mg_sensors.c's.) */
 
 /*
  * ASharedMemory (API 26): the descriptor layer's shared memory (mg_fd_shm_create). Chromium's linker keeps a copy of its
@@ -905,14 +899,6 @@ const mg_sym mg_tab_ndk[] = {
     N("AConfiguration_getSmallestScreenWidthDp", g_cfg_smallest_dp), N("AConfiguration_getLayoutDirection", g_cfg_zero),
     N("AConfiguration_setOrientation", g_cfg_set), N("AConfiguration_setDensity", g_cfg_set), N("AConfiguration_setSdkVersion", g_cfg_set),
     N("AConfiguration_setLanguage", g_cfg_set_str), N("AConfiguration_setCountry", g_cfg_set_str),
-    N("ASensorManager_getInstance", g_sensor_manager), N("ASensorManager_getInstanceForPackage", g_sensor_manager_pkg),
-    N("ASensorManager_getDefaultSensor", g_sensor_null), N("ASensorManager_getSensorList", g_sensor_list),
-    N("ASensorManager_createEventQueue", g_sensor_queue), N("ASensorManager_destroyEventQueue", g_sensor_int),
-    N("ASensorEventQueue_enableSensor", g_sensor_int), N("ASensorEventQueue_disableSensor", g_sensor_int),
-    N("ASensorEventQueue_setEventRate", g_sensor_int), N("ASensorEventQueue_getEvents", g_sensor_events),
-    N("ASensorEventQueue_hasEvents", g_sensor_has_events),
-    N("ASensor_getType", g_sensor_zero), N("ASensor_getMinDelay", g_sensor_zero), N("ASensor_getResolution", g_sensor_fzero),
-    N("ASensor_getName", g_sensor_text), N("ASensor_getVendor", g_sensor_text), N("ASensor_getStringType", g_sensor_text),
     N("ATrace_isEnabled", g_trace_enabled), N("ATrace_beginSection", g_trace_begin), N("ATrace_endSection", g_trace_end),
     MG_END
 };
