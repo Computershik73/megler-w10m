@@ -161,7 +161,8 @@ GitHub, moved to) `Pictures\Megler`, where the phone's file manager opens it and
 Megler tries it again at each start, so that the start after the unlock installs
 it. Desktop Windows grants a sideloaded package its restricted capabilities as a
 rule; where it refuses this one, the shell says so, without Interop Tools. The
-last refusal of any kind is kept in `LocalState\install-refusal.txt`.
+last refusal of any kind is kept in `LocalState\install-refusal.txt`, which Save
+All Logs takes along and its summary says ([STATUS.md](STATUS.md), "Logs").
 
 The engine is the only way since 2026-11-07 (the owner's wish): Megler asks the
 phone's Device Portal nothing, and needs neither the portal nor its

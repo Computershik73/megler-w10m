@@ -212,7 +212,10 @@ the portal need not be on for it, nor its authentication off. Then, in Megler:
 3. **Update All** after Megler itself is updated: each app's own package is rebuilt.
 
 **Device › Probe** and **Device › Self-test** check what this phone allows and run the
-core's tests on it; the **Log** says what each app does.
+core's tests on it; the **Log** says what each app does, and its **Save All Logs** puts
+Megler's and every app's logs into one ZIP in `Pictures\Megler\logs`, for a problem
+report: the phone's file manager and a PC over USB find it there, and Share sends it
+([docs/STATUS.md](docs/STATUS.md), "Logs").
 
 ## On an Xbox
 
