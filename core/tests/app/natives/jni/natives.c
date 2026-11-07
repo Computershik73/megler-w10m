@@ -785,3 +785,31 @@ JNIEXPORT jint JNICALL Java_megler_test_natives_Lib_manyArgs(JNIEnv *env, jclass
     b = (*env)->CallStaticIntMethodA(env, cls, m, v);
     return a == b ? a : -1;
 }
+
+/*
+ * One level of a layout measured by native code that calls back into Java for each child, as Meta's FlexLayout does
+ * (FlexLayoutNative.jni_calculateLayout <-> FlexLayoutNativeMeasureCallback.measureNative): Lib.down(n - 1), from a frame
+ * of a native layout's size, holding a string of its own that only this frame refers to while Java runs below it
+ * (where the collector runs: Lib.deepest). A million more when the string is not what it was after.
+ */
+JNIEXPORT jint JNICALL Java_megler_test_natives_Lib_pingPong(JNIEnv *env, jclass cls, jint n)
+{
+    volatile char frame[384];
+    char want[32];
+    const char *got;
+    jmethodID down = (*env)->GetStaticMethodID(env, cls, "down", "(I)I");
+    jstring mine;
+    jint r;
+    int same;
+    frame[0] = (char)n;
+    frame[sizeof(frame) - 1] = (char)n;
+    if (!down) return -1;
+    snprintf(want, sizeof(want), "level %d of the layout", (int)n);
+    mine = (*env)->NewStringUTF(env, want);
+    r = (*env)->CallStaticIntMethod(env, cls, down, n - 1);
+    if ((*env)->ExceptionCheck(env)) return -1;
+    got = (*env)->GetStringUTFChars(env, mine, NULL);
+    same = got && !strcmp(got, want);
+    if (got) (*env)->ReleaseStringUTFChars(env, mine, got);
+    return r + (frame[0] == frame[sizeof(frame) - 1] && same ? 0 : 1000000);
+}

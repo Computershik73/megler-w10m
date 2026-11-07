@@ -396,7 +396,7 @@ static void smaps_details(textbuf *t, u32 size, int prot)
            (unsigned)(size >> 10), (prot & PF_R) ? " rd" : "", (prot & PF_W) ? " wr" : "", (prot & PF_X) ? " ex" : "");
 }
 
-/* The folder of an APK's libraries for the ABI: lib/arm, lib/arm64, lib/x86, lib/x86_64. */
+/* The folder of an APK's libraries for the ABI: lib/arm, lib/arm64, lib/x86, lib/x86_64; and the system's, lib or lib64. */
 #if MG_ARCH_ARM32
 #define G_LIB_ISA "arm"
 #elif MG_ARCH_ARM64
@@ -406,25 +406,69 @@ static void smaps_details(textbuf *t, u32 size, int prot)
 #else
 #define G_LIB_ISA "x86"
 #endif
+#if MG_ARCH_ARM64 || MG_ARCH_X86_64
+#define G_SYSTEM_LIB "/system/lib64/"
+#else
+#define G_SYSTEM_LIB "/system/lib/"
+#endif
 
-/* A loaded library's segments, as the kernel's maps has them: addresses of eight hex digits at least, as many as they take. */
+/*
+ * A loaded library's segments, as the kernel's maps has them: addresses of eight hex digits at least, as many as they take.
+ * The app's own libraries are its APK's (/data/app/<package>-1/lib/<isa>/), and Android's own, which the runtime loads from
+ * its root (libjavacore.so, libicuuc.so, libcrypto.so and the rest: mg_ld_load_runtime), the system's, where Android keeps
+ * them. They were all named the app's: Zona (package 573) looks in maps for libraries in its folder that its APK does not
+ * have, called Android's eight "EXTRA .SO FOUND", and was then served the same decoy video for every film.
+ */
 static int maps_one(mg_addr bias, const char *name, const void *phdr, unsigned phnum, void *user)
 {
     maps_out *o = (maps_out *)user;
     textbuf *t = o->t;
     const ElfW(Phdr) *ph = (const ElfW(Phdr) *)phdr;
+    const mg_lib *lib = NULL;
     unsigned i;
+    for (i = 0; i < phnum && !lib; i++)
+        if (ph[i].p_type == PT_LOAD) lib = mg_ld_lib_of((const void *)(bias + (mg_addr)ph[i].p_vaddr));
     for (i = 0; i < phnum; i++) {
         mg_addr lo, hi;
         if (ph[i].p_type != PT_LOAD) continue;
         lo = (mg_addr)MG_ALIGN_DOWN(ph[i].p_vaddr, MG_PAGE);
         hi = (mg_addr)MG_ALIGN_UP(ph[i].p_vaddr + ph[i].p_memsz, MG_PAGE);
-        tb_add(t, "%08llx-%08llx %c%c%cp %08llx 103:01 %u /data/app/%s-1/lib/" G_LIB_ISA "/%s\n", (unsigned long long)(bias + lo),
-               (unsigned long long)(bias + hi), (ph[i].p_flags & PF_R) ? 'r' : '-', (ph[i].p_flags & PF_W) ? 'w' : '-',
-               (ph[i].p_flags & PF_X) ? 'x' : '-', (unsigned long long)MG_ALIGN_DOWN(ph[i].p_offset, MG_PAGE), 1000 + i, g_package, name);
+        tb_add(t, "%08llx-%08llx %c%c%cp %08llx 103:01 %u ", (unsigned long long)(bias + lo), (unsigned long long)(bias + hi), (ph[i].p_flags & PF_R) ? 'r' : '-',
+               (ph[i].p_flags & PF_W) ? 'w' : '-', (ph[i].p_flags & PF_X) ? 'x' : '-', (unsigned long long)MG_ALIGN_DOWN(ph[i].p_offset, MG_PAGE), 1000 + i);
+        if (lib && mg_ld_lib_is_runtime(lib)) tb_add(t, G_SYSTEM_LIB "%s\n", name);
+        else tb_add(t, "/data/app/%s-1/lib/" G_LIB_ISA "/%s\n", g_package, name);
         if (o->details) smaps_details(t, (u32)(hi - lo), (int)ph[i].p_flags);
     }
     return 0;
+}
+
+static int g_open(const char *path, int flags, int mode);
+static int g_close(int fd);
+
+/*
+ * The app's APK as maps shows it on Android, where the runtime maps its base.apk to read its resources and code: the first
+ * 64 KB of it, mapped read-only and shared (a view of the file) the first time maps is read, and kept. Zona looks for the
+ * APK's path in such a line to check its signature, and with none ("apkPath = ", "isGoodApk = 0") took itself for tampered.
+ */
+static void maps_apk(textbuf *t, bool details)
+{
+    static volatile i32 state;                     /* 0 not tried, 1 being mapped, 2 done */
+    static void *at;
+    if (mg_atomic_cas(&state, 0, 1) == 0) {
+        char *path = mg_sprintf("/data/app/%s-1/base.apk", g_package);
+        int fd = g_open(path, 0 /* O_RDONLY */, 0);
+        if (fd >= 0) {
+            void *p = mg_g_mmap2(NULL, 65536, 1 /* PROT_READ */, 1 /* MAP_SHARED */, fd, 0);
+            if (p && p != (void *)(mg_addr)-1) at = p;
+            g_close(fd);
+        }
+        free(path);
+        mg_atomic_xchg(&state, 2);
+    }
+    if (state != 2 || !at) return;
+    tb_add(t, "%08llx-%08llx r--s 00000000 103:01 999 /data/app/%s-1/base.apk\n", (unsigned long long)(mg_addr)at,
+           (unsigned long long)((mg_addr)at + 65536), g_package);
+    if (details) smaps_details(t, 65536, PF_R);
 }
 
 /*
@@ -595,6 +639,7 @@ static char *synthetic(const char *g, size_t *size)
         maps_out o;
         o.t = &t;
         o.details = g[11] == 's';
+        maps_apk(&t, o.details);
         mg_ld_iterate(maps_one, &o);
         /* (With no library loaded yet, smaps still says the page size, of a region of the app's heap.) */
         if (o.details && !t.n) {

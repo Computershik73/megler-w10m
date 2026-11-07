@@ -116,6 +116,17 @@ public class Lib {
 
     static native int manyArgs(Object[] names);
 
+    /* A layout n levels deep, each measured by native code that calls back here for the next (pingPong), with three Java calls between; deepest run at the bottom. */
+    static native int pingPong(int n);
+    static Runnable deepest;
+    static int down(int n) {
+        if (n > 0) return measure(n);
+        if (deepest != null) deepest.run();
+        return 0;
+    }
+    private static int measure(int n) { return 1 + child(n); }
+    private static int child(int n) { return pingPong(n); }
+
     /* Registered by JNI_OnLoad. */
     static native int addInts(int a, int b);
     native int instanceTimes(int k);

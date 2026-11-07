@@ -1235,6 +1235,10 @@ static void type_into_fields(const int row[4], int *at)
     expect_line("I/Megler: keyboard: the first thing the keyboard sent, typed text (1 character), finds no view with the focus: it goes nowhere", at, 30);
     tap(row[0] + row[2] / 2, row[1] + row[3] * 7 + row[3] / 2);
     expect_line("I/DemoTest: list: clicked row 7 \"typing\"", at, 30);
+    /* A field that sets its selection again in its onSelectionChanged, as WhatsApp's MentionableEntry does: told once a
+       selection has moved, with its new ends, and not when it stays (it was told of each end, again and again, until the
+       stack ran out). */
+    expect_line("I/DemoTest: typing: selection calls=3 3,3 8,8 11,11 at 11,11", at, 30);
     expect_line("I/DemoTest: typing: created", at, 30);
     layout = wait_line("I/DemoTest: typing: layout name=", *at, 30);
     CHECK(layout >= 0 && rect_in(line_at(layout), "name", name) && rect_in(line_at(layout), "number", number) && rect_in(line_at(layout), "secret", secret)
@@ -1904,7 +1908,7 @@ static int run_natives(void)
     static const char *const steps[] = { "load", "registered", "primitives", "stack-mix", "overloads", "arrays", "bounds", "strings", "callback", "throw-native",
                                          "throw-java", "find-class", "references", "reflection", "monitor", "thread", "thread-daemon", "needed-library", "asset",
                                          "bitmap", "direct-buffer", "configuration", "library-folder", "loaded-once", "own-file", "missing-library",
-                                         "missing-method", "looper-watched", "gc-held", "system-icu", "abi", "device", "string-alloc", "many-args" };
+                                         "missing-method", "looper-watched", "gc-held", "system-icu", "abi", "device", "string-alloc", "many-args", "deep-callbacks" };
     int at = -1, layout, pic[4], i;
     char want[120];
     memset(pic, 0, sizeof(pic));
@@ -2285,10 +2289,11 @@ static int run_data(void)
                                             Handler, which hears on its thread, preferences whose keys have spaces, and an
                                             account removed, told as Android 8 tells it. And the platform's
                                             MediaMetadata through a Parcel, as MediaMetadataCompat makes it, and PlaybackState with a
-                                            custom action, as PlaybackStateCompat makes it. And sound from Java: an
+                                            custom action, as PlaybackStateCompat makes it, and a RemoteUserInfo, as AndroidX Media
+                                            makes one. And a proxy of an interface of 600 methods. And sound from Java: an
                                             AudioTrack written to, a MediaPlayer of a WAV and of an Ogg Vorbis asset, a SoundPool. */
                                          "xml", "asset-fd", "tasks", "wrapper-receiver", "viewgroup-flag", "text-drawables", "pfd-dup", "pfd-parcel",
-                                         "theme-selfref", "queue-next", "storage-stats", "broadcast-explicit", "service-stop-thread", "start-ids", "process-scope", "job-scheduler", "downloads", "rollback-service", "art-manager", "progress-subclass", "telephony", "microphone", "biometric", "ordered-broadcast", "hardware-accelerated", "image-matrix-before-layout", "delegate-last-scope", "asset-manager-manifest", "big-asset", "path-iterator", "mutable-context", "exec", "crc32c", "nine-patch-constructors", "subscription-ids", "filter-categories", "arrays-ranges", "thread-stack", "icu-number", "audio-route", "expand-template", "list-fragment", "fragment-saved-state", "stub-said", "handler-thread", "managed-dialog", "input-format", "dialog-of-stopped", "zip-path-validator", "list-row-click", "animation-listener", "typeface-descriptor", "device-provisioned", "users", "start-asked", "pending-intent-creator", "pending-intent-flags", "alarm-replace-cancel", "messenger-forwarded", "insets-builder", "insets-consumed", "insets-siblings", "broadcast-handler", "prefs-spaced-key", "account-removed", "sync", "package-installer", "wifi", "media-metadata", "playback-state", "theme-accent", "phone-apps", "phone-apps-activities", "phone-apps-signatures", "install-intent", "install-session", "install-splits", "bitmap-bytes", "adaptive-icon", "idle-handler", "uri-builder", "many-interfaces", "apk-path", "apk-optimization",
+                                         "theme-selfref", "queue-next", "storage-stats", "broadcast-explicit", "service-stop-thread", "start-ids", "process-scope", "job-scheduler", "downloads", "rollback-service", "art-manager", "progress-subclass", "telephony", "microphone", "biometric", "ordered-broadcast", "hardware-accelerated", "image-matrix-before-layout", "delegate-last-scope", "asset-manager-manifest", "big-asset", "path-iterator", "mutable-context", "exec", "crc32c", "nine-patch-constructors", "subscription-ids", "filter-categories", "arrays-ranges", "thread-stack", "icu-number", "audio-route", "expand-template", "list-fragment", "fragment-saved-state", "stub-said", "handler-thread", "managed-dialog", "input-format", "dialog-of-stopped", "zip-path-validator", "list-row-click", "animation-listener", "circular-reveal", "animator-values", "observer-merged", "typeface-descriptor", "device-provisioned", "users", "start-asked", "pending-intent-creator", "pending-intent-flags", "alarm-replace-cancel", "messenger-forwarded", "insets-builder", "insets-consumed", "insets-siblings", "broadcast-handler", "prefs-spaced-key", "account-removed", "sync", "package-installer", "batch-operations", "wifi", "media-metadata", "playback-state", "remote-user-info", "theme-accent", "phone-apps", "phone-apps-activities", "phone-apps-signatures", "install-intent", "install-session", "install-splits", "bitmap-bytes", "adaptive-icon", "idle-handler", "uri-builder", "many-interfaces", "proxy-many-methods", "apk-path", "maps-paths", "apk-optimization",
                                          "audio-track", "media-player", "media-player-ogg", "sound-pool",
                                          /* And MediaCodec over the stand-in for the shell's decoders: H.264 shown on a Surface in display
                                             order, a flush, parameter sets in a codec-config buffer, the asynchronous mode, AAC with an
@@ -2395,6 +2400,8 @@ static int run_data(void)
     /* The jobs of the step "job-scheduler", run: the one scheduled with its extra, the one given work with both pieces, in order. */
     CHECK(wait_line("I/DataTest: job 41 said=hello", 0, 30) >= 0);
     CHECK(wait_line("I/DataTest: job 42 work=one,two,", 0, 30) >= 0);
+    /* And a service that is no JobService but gives its JobServiceEngine's binder, as AndroidX's JobIntentService: its work taken through the engine. */
+    CHECK(wait_line("I/DataTest: job 43 work=three,four, through its engine", 0, 30) >= 0);
     /* The download of the step "downloads": done, its row and file with the server's five bytes, the cookie sent, its cursor's
        observer told. */
     CHECK(wait_line("I/DataTest: downloads ok status=200 bytes=5 body=hello cookie=true observed=true file=5", 0, 30) >= 0);
@@ -2403,6 +2410,9 @@ static int run_data(void)
     /* The view animation of the step "animation-listener": its listener told through the view's handler, after the frames that
        started and ended it, not inside its parent's dispatchDraw (Animation.fireStart; Telegram's settings ended the app). */
     CHECK(wait_line("I/DataTest: animation-listener heard=start end", 0, 30) >= 0);
+    /* The one-shot listener of the step "observer-merged", on the observer a view had before it was in a window: run once, that
+       observer dead by then, while a listener left in place heard several layouts. */
+    CHECK(wait_line("I/DataTest: observer-merged runs=1 dead=true layouts=several", 0, 30) >= 0);
     /* The PendingIntent the step "pending-intent-flags" sent: the one it asked for first, with the extras FLAG_UPDATE_CURRENT gave. */
     CHECK(wait_line("I/DataTest: pending-intent-sent ok v=3", 0, 30) >= 0);
     /* The alarms of the step "alarm-replace-cancel": the one set twice went off once, the cancelled one never, the repeating one

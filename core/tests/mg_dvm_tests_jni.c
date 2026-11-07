@@ -420,6 +420,13 @@ static void test_scoped_throw(const char *fixtures)
     e = mg_dvm_pending();
     CHECK(e && mg_dvm_class_of(e) == theirs && mg_dvm_is_instance(e, g_dvm.c_throwable));
     CHECK_STR(thrown(), "d8t.Main$Oops: from scope 13");
+    /*
+     * NewObjectArray of such a class: an array of that scope, of that class (it was looked for in the app's scope, and
+     * Chromium's WebView ended with a NoClassDefFoundError for its AppWebMessagePort[]).
+     */
+    e = J(172, mg_jobj *(*)(ENV, i32, mg_jobj *, mg_jobj *))(E, 3, mg_dvm_mirror(theirs), NULL);   /* NewObjectArray */
+    CHECK_STR(thrown(), "");
+    CHECK(e && mg_dvm_array_length(e) == 3 && mg_dvm_class_of(e)->component == theirs && mg_dvm_class_of(e)->scope == SCOPE);
 }
 
 void test_jni(const char *guest_dir, const char *fixtures)

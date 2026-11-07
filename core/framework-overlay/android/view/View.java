@@ -31,6 +31,8 @@
 //    decides (ViewRootImpl's sDefaultContentInsetsApplier). AppCompat marks its own content root so (FitWindowsLinearLayout,
 //    fitsSystemWindows in its layout). The original did nothing with it, and that root kept Instagram's content off both
 //    bars while Instagram, laid out under them, kept off them too: an empty band at the top and at the bottom of its feed.
+//  - setRevealClip is kept, and drawFromParent clips the view to its circle, as Android's RenderNode does for a circular
+//    reveal (ViewAnimationUtils, overlaid). The original did nothing with it.
 //
 // Why. The original's invalidate asked the window to be drawn again whole, and the window cleared the screen and drew every
 // view, so a blinking cursor cost a whole screen. ViewRoot (overlaid) now keeps each window's dirty rectangle and draws only
@@ -206,6 +208,7 @@ public class View implements Drawable.Callback, KeyEvent.Callback {
     private ViewTreeObserver mFloatingObserver;
     private WindowInsets mLastInsets;
     private Rect mClipBounds;
+    private float[] mRevealClip;                   /* setRevealClip's circle: its centre and radius, or null */
     private int mLayerType;
     private Paint mLayerPaint;
     private android.graphics.RenderEffect mRenderEffect;
@@ -1266,6 +1269,7 @@ public class View implements Drawable.Callback, KeyEvent.Callback {
         // Megler: while the window draws only part of itself, a child wholly outside that part is not drawn
         if (megler.ViewRoot.meglerDrawingPart() && parent.getClipChildren() && c.quickReject(0, 0, w, h)) { c.restoreToCount(save); return; }
         if (mClipBounds != null) c.clipRect(mClipBounds);
+        if (mRevealClip != null) { Path p = new Path(); p.addCircle(mRevealClip[0], mRevealClip[1], mRevealClip[2], Path.Direction.CW); c.clipPath(p); }
         if (getClipToOutline() && mOutlineProvider != null) {
             Outline o = new Outline();
             mOutlineProvider.getOutline(this, o);
@@ -2207,7 +2211,13 @@ public class View implements Drawable.Callback, KeyEvent.Callback {
         invalidate();
     }
     public void setRequestedFrameRate(float p0) { meglerFill = megler.Fill.put(meglerFill, "RequestedFrameRate", Float.valueOf(p0)); }
-    public void setRevealClip(boolean p0, float p1, float p2, float p3) {}
+    /** A circle the view is drawn clipped to (drawFromParent), as Android's RevealAnimator sets one (ViewAnimationUtils, overlaid). */
+    public void setRevealClip(boolean clip, float x, float y, float radius) {
+        if (!clip && mRevealClip == null) return;
+        mRevealClip = clip ? new float[] { x, y, Math.max(0, radius) } : null;
+        invalidate();
+        invalidateParent();
+    }
     public void setScrollBarDefaultDelayBeforeFade(int p0) { meglerFill = megler.Fill.put(meglerFill, "ScrollBarDefaultDelayBeforeFade", Integer.valueOf(p0)); }
     public void setScrollBarFadeDuration(int p0) { meglerFill = megler.Fill.put(meglerFill, "ScrollBarFadeDuration", Integer.valueOf(p0)); }
     public void setScrollCaptureCallback(android.view.ScrollCaptureCallback p0) {}

@@ -1839,7 +1839,16 @@ static mg_jobj *j_NewObjectArray(JNIEnvP e, i32 len, mg_jobj *cls, mg_jobj *init
     else snprintf(name, sizeof(name), "[L%s;", ec->name);
     if (g_dvm.running) {
         if (!ec->dvm) bind_class(ec);
-        a = mg_dvm_new_array(name, len);
+        /*
+         * The array of the element's own class scope, as reflection's Array.newInstance makes it: it was looked for in the
+         * app's, which has no class of another scope. Chromium's WebView, a scope of its own, makes an AppWebMessagePort[]
+         * in native code for each message a page posts, and Zona (package 573) ended at the first, its ad's, with a
+         * NoClassDefFoundError for that array thrown on the main thread.
+         */
+        if (ec->dvm && ec->dvm->scope) {
+            mg_dvm_class *ac = mg_dvm_find_class_scope(name, ec->dvm->scope);
+            a = ac ? mg_dvm_alloc_array(ac, len) : NULL;
+        } else a = mg_dvm_new_array(name, len);
         for (i = 0; a && i < len; i++) a->u.oarr.v[i] = init && init->dvm ? init : NULL;
         return a;
     }

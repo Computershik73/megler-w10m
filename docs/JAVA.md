@@ -6153,17 +6153,25 @@ of them free. Three things follow.
 
 **Threads are cheap here and must stay so.** A Java thread costs a host stack
 and a frame stack. The host stack can be small, since Java frames are not on it:
-256 KB (or what a thread asks for above that, for native code that wants a deep
+160 KB (or what a thread asks for above that, for native code that wants a deep
 stack). `mg_thread_whole_stack` commits it whole for Android code, so it is
 memory, not only addresses, which Windows counts against the app's limit. It
 once gave 1 MB; the interpreter recurses in C only where C stands between two
 pieces of bytecode (`mg_dvm_invoke`), and the guard there (`c_stack_low`, 48 KB
-above the bottom) turns running out into a catchable `StackOverflowError`. The
+above the bottom) turns running out into a catchable `StackOverflowError` --
+except where native code and Java call each other deeper than that, as Meta's
+FlexLayout does to measure a layout (Instagram, Messenger and Facebook Lite
+stopped at "22 calls from native code deep"): on 32-bit ARM the call goes on in
+a stack of 512 KB of its own, made then and let go when it returns
+(`on_more_stack`, the stub `on_stack` of `mg_stubs.S`), whose part below the
+collector scans as well (`outer_lo`, `outer_hi`); the natives test app runs
+such a layout 150 deep, with collections at its bottom. The
 deepest any thread's host stack was seen to use, measured over a heavy app of
 213 threads (`java: addresses by kind` reports it, and the data app's run says
-it): 23 KB; the data app itself 7 KB. So 256 KB is a tenfold margin and 768 KB
+it): 23 KB; the data app itself 7 KB. So 256 KB was a tenfold margin and 768 KB
 a thread less than the 1 MB before it -- Yandex Maps' 253 threads held 253 MB
-of host stacks, now some 65 (package 498 → 499). The frame stack is 384 KB of
+of host stacks, then some 65 (package 498 → 499) -- and 160 KB still leaves
+112 KB above the guard (c7053436). The frame stack is 384 KB of
 addresses for an ordinary thread, reserved at once and committed as it grows:
 64 KB first, doubled as frames need it (`stack_grow`). A thread's state is not
 freed when the thread ends yet; the host layer has no hook for that.

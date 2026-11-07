@@ -703,21 +703,32 @@ static void scan_frames(mg_dvm_thread *t, void *user)
     if (top > t->stack) scan_words(k, (mg_addr)t->stack, (mg_addr)top);
 }
 
+/* The parts still in use of the stacks a thread went on from (mg_dvm_invoke's on_more_stack): each from where it left it to its top. */
+static void outer_stacks_scanned(marker *k, mg_dvm_thread *t)
+{
+    int j, n = t->nouter;
+    for (j = 0; j < n && j < DVM_C_STACKS; j++)
+        if (t->outer_hi[j] > t->outer_lo[j]) scan_words(k, t->outer_lo[j], t->outer_hi[j]);
+}
+
 static MG_NOINLINE void scan_own_stack(void)
 {
     volatile mg_addr here = 0;
     mg_dvm_thread *t = g_collector;
     if (t && t->stack_hi) scan_words(&G.main, (mg_addr)&here, t->stack_hi);
+    if (t) outer_stacks_scanned(&G.main, t);
 }
 
-/* A stopped thread's registers, and its C stack from where it was stopped to its base. */
+/* A stopped thread's registers, and its C stack from where it was stopped to its base (and the stacks it went on from). */
 static void stopped_scanned(marker *k, int i)
 {
     const mg_thread_regs *r = &g_stopped[i].regs;
     mg_dvm_thread *t = g_stopped[i].t;
+    mg_addr lo = t->stack_lo, hi = t->stack_hi;
     int j;
     for (j = 0; j < r->n; j++) reach_word(k, r->r[j]);
-    if (r->sp >= t->stack_lo && r->sp < t->stack_hi) scan_words(k, r->sp, t->stack_hi);
+    if (r->sp >= lo && r->sp < hi) scan_words(k, r->sp, hi);
+    outer_stacks_scanned(k, t);
 }
 
 /*

@@ -14,6 +14,8 @@
  * How registers hold values is in mg_dvm_internal.h (mg_dvm_reg).
  */
 #include "mg_dvm_internal.h"
+#include "../arm/mg_stubs.h"
+#include "../bionic/mg_bionic.h"
 #include "../ld/mg_ld.h"
 
 #include "../mg_core.h"
@@ -1889,20 +1891,115 @@ int mg_dvm_jit_op(mg_dvm_thread *t, mg_dvm_frame *f, u32 pc)
     }
 }
 
+static MG_NOINLINE bool invoke_here(mg_dvm_thread *t, mg_dvm_method *m, mg_jobj *self, const mg_jvalue *params, mg_jvalue *ret);
+
+#if MG_HOST_ARM32
+/*
+ * Java called from native code deeper than the thread's own stack goes goes on in a stack of its own (DVM_C_STACK_BYTES),
+ * where it would have thrown StackOverflowError. A Java thread's stack is 160 KB (Thread_nativeCreate), and Meta's
+ * FlexLayout measures a layout through native code that calls back into Java for each child, and back into native code:
+ * every level costs a few kilobytes of it, and Instagram (package 575) and Messenger (582) ended at their sign-in screens
+ * with "StackOverflowError: 22 calls from native code deep" and "24 calls" on the thread BackgroundLayoutPreparer, Facebook
+ * Lite (575) dropped what it laid out after a few letters were typed ("34 calls"). Android gives a thread 1 MB.
+ *
+ * The stub (mg_stubs.S, on_stack) moves the call to the new stack and back. While it runs there, the thread's stack limits
+ * are the new stack's -- c_stack_low for the guard above, stack_lo and stack_hi for the collector, the host's own
+ * (mg_thread_stack_limits) -- and the part of the stack below it still in use is in outer_lo/outer_hi, which the collector
+ * scans as well. The order of the writes leaves every state the collector may stop the thread in scannable: the stack
+ * pointer either within [stack_lo, stack_hi) or outside both of them. A fault inside it is not taken back to a guard set
+ * outside it (mg_jni_call_native_guarded), which would leave the stack's limits behind.
+ */
+typedef void (*on_stack_fn)(void *arg, void (*fn)(void *), void *top);
+typedef struct more_stack {
+    mg_dvm_thread *t;
+    mg_dvm_method *m;
+    mg_jobj *self;
+    const mg_jvalue *params;
+    mg_jvalue *ret;
+    mg_addr lo, hi;
+    bool ok;
+} more_stack;
+
+static void on_more_stack_run(void *arg)
+{
+    more_stack *s = (more_stack *)arg;
+    mg_dvm_thread *t = s->t;
+    mg_addr lo = t->stack_lo, hi = t->stack_hi, low = t->c_stack_low, min = t->c_stack_min;
+    void *was_lo = NULL, *was_hi = NULL;
+    mg_gthread *gt = mg_guest_tp_get() ? mg_gthread_self() : NULL;
+    mg_addr *guard = gt ? gt->fault_guard : NULL;
+    mg_thread_stack_limits((void *)s->lo, (void *)s->hi, &was_lo, &was_hi);
+    if (gt) gt->fault_guard = NULL;
+    /* (The top first: until the bottom is the new stack's too, the stack pointer is outside the limits, or within the new.) */
+    t->stack_hi = s->hi;
+    t->stack_lo = s->lo;
+    t->c_stack_low = s->lo + 48u * 1024u;
+    t->c_stack_min = s->hi;
+    s->ok = invoke_here(t, s->m, s->self, s->params, s->ret);
+    /* (Back in the other order, for the same reason.) */
+    t->stack_lo = lo;
+    t->stack_hi = hi;
+    t->c_stack_low = low;
+    t->c_stack_min = min;
+    if (gt) gt->fault_guard = guard;
+    mg_thread_stack_limits(was_lo, was_hi, NULL, NULL);
+}
+
+static bool on_more_stack(mg_dvm_thread *t, mg_dvm_method *m, mg_jobj *self, const mg_jvalue *params, mg_jvalue *ret, bool *ok)
+{
+    static volatile i32 said;
+    void *stub = mg_stub(MG_STUB_ON_STACK);
+    const size_t below = 65536;
+    more_stack s;
+    u8 *base;
+    int n = t->nouter;
+    if (!stub || n >= DVM_C_STACKS || !t->stack_hi) return false;
+    base = (u8 *)mg_mem_reserve(DVM_C_STACK_BYTES + below);
+    if (!base) return false;
+    if (!mg_mem_commit(base + below, DVM_C_STACK_BYTES, MG_PROT_RW)) {
+        mg_mem_release(base, DVM_C_STACK_BYTES + below);
+        return false;
+    }
+    s.t = t;
+    s.m = m;
+    s.self = self;
+    s.params = params;
+    s.ret = ret;
+    s.lo = (mg_addr)(base + below);
+    s.hi = s.lo + DVM_C_STACK_BYTES;
+    s.ok = false;
+    if (mg_atomic_add(&said, 1) <= 3)
+        mg_info("dvm: Java called from native code %d deep (%s.%s) went on in a stack of its own of %u KB: the thread's ran out",
+                t->c_depth, m->cls->name, m->name, (unsigned)(DVM_C_STACK_BYTES >> 10));
+    /* What of this stack is in use while the call runs on the other: from a little below here to its top. */
+    t->outer_lo[n] = (mg_addr)&s - 512 > t->stack_lo ? (mg_addr)&s - 512 : t->stack_lo;
+    t->outer_hi[n] = t->stack_hi;
+    t->nouter = n + 1;
+    MG_GFN(on_stack_fn, stub)(&s, on_more_stack_run, (void *)s.hi);
+    t->nouter = n;
+    mg_mem_release(base, DVM_C_STACK_BYTES + below);
+    *ok = s.ok;
+    return true;
+}
+#endif
+
 bool mg_dvm_invoke(mg_dvm_method *m, mg_jobj *self, const mg_jvalue *params, mg_jvalue *ret)
 {
     mg_dvm_thread *t = mg_dvm_self();
-    mg_dvm_frame *f;
     mg_jvalue local;
-    bool ok = false;
     if ((mg_addr)&local < t->c_stack_min) t->c_stack_min = (mg_addr)&local;
     if (!ret) ret = &local;
     ret->j = 0;
     /*
      * This is real recursion on the host's stack, once for each time C stands between two pieces of bytecode. It is bounded by
-     * count, and by what the host said is the low end of this thread's stack (a thread made with a small one).
+     * count, and by what the host said is the low end of this thread's stack (a thread made with a small one): there it goes
+     * on in a stack of its own where the host can (on_more_stack), else it is a StackOverflowError.
      */
     if (t->overflowing ? t->c_depth >= DVM_MAX_C_DEPTH + 8 : (t->c_depth >= DVM_MAX_C_DEPTH || (mg_addr)&local < t->c_stack_low)) {
+#if MG_HOST_ARM32
+        bool ok = false;
+        if (!t->overflowing && t->c_depth < DVM_MAX_C_DEPTH && on_more_stack(t, m, self, params, ret, &ok)) return ok;
+#endif
         /* While the error is being made, its own constructor gets a little further than anything else may go. */
         if (t->overflowing) return false;
         t->overflowing = true;
@@ -1910,6 +2007,14 @@ bool mg_dvm_invoke(mg_dvm_method *m, mg_jobj *self, const mg_jvalue *params, mg_
         t->overflowing = false;
         return false;
     }
+    return invoke_here(t, m, self, params, ret);
+}
+
+/* The call itself, on whichever stack. */
+static MG_NOINLINE bool invoke_here(mg_dvm_thread *t, mg_dvm_method *m, mg_jobj *self, const mg_jvalue *params, mg_jvalue *ret)
+{
+    mg_dvm_frame *f;
+    bool ok = false;
     if (t->c_depth++ == 0) t->steps_left = g_dvm.step_limit;
     if (!m->insns) {
         if (m->flags & DVM_ACC_NATIVE) ok = invoke_native(t, m, self, NULL, params, ret);
