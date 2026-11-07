@@ -118,8 +118,7 @@ struct App : ApplicationT<App, Markup::IXamlMetadataProvider> {
         copySystemDlls();
         ensureContent();
         Window::Current().Activate();
-        // A newer Megler copied to the phone's Pictures\Megler: installed by Windows's deployment engine (the phone's own
-        // Device Portal where the engine refuses).
+        // A newer Megler copied to the phone's Pictures\Megler: installed by Windows's deployment engine.
         appPackage::installCopiedUpdate();
     }
 
@@ -177,8 +176,9 @@ struct App : ApplicationT<App, Markup::IXamlMetadataProvider> {
         // Content stays out from under the status bar and the navigation bar
         // (the player takes the whole display back: ui/AppShell.cpp).
         view.SetDesiredBoundsMode(ApplicationViewBoundsMode::UseVisible);
-        if (!platform::isMobile()) {
-            // On a desktop (the x64 build) open phone-shaped.
+        if (!platform::isMobile() && !platform::isXbox()) {
+            // On a desktop (the x64 build) open phone-shaped. (An Xbox shows an app on the whole television, at 960 by 540
+            // of its pixels, whatever it asks.)
             using winrt::Windows::UI::ViewManagement::ApplicationViewWindowingMode;
             view.PreferredLaunchViewSize(winrt::Windows::Foundation::Size(400, 760));
             view.PreferredLaunchWindowingMode(ApplicationViewWindowingMode::PreferredLaunchViewSize);

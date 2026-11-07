@@ -61,6 +61,11 @@
  *       core's camera for android.hardware.Camera: the PC's first camera opened, a few pictures taken at its smallest size and
  *       checked, focus and the light where it has them, stop and close. A PC without a camera says so and has nothing to
  *       check. Only in the build tools/build-tests.sh win makes; any other says so and does nothing
+ *   mg_tests --portal-windows <address> <user> <password> <scratch dir> <received dir> <mock's log>
+ *       the Xbox build's client of the console's Device Portal (app/Megler/shell/DevicePortal.cpp) against a portal of the
+ *       tests' own at that address (tools/device-portal-mock.py, which tools/build-tests.sh win starts): its handshake, user
+ *       name and password, CSRF token, an install, a refused one, the list of the packages, an uninstall. Only in the build
+ *       tools/build-tests.sh win makes; any other says so and does nothing
  *   mg_tests --bundles <test apps dir> <scratch dir> [real bundles dir]
  *       bundles of split APKs (.apks, .xapk, .apkm) unpacked as the shell unpacks them, and the APK report of what comes out
  *       (mg_bundle_tests.c): the test app `splits` in the folder of the test apps (build/guest/java), and the real bundles
@@ -961,6 +966,28 @@ static int camera_windows_mode(int argc, char **argv)
 #endif
 }
 
+/* ------------------------------------------------------- --portal-windows */
+
+#ifdef MG_PORTAL_WINDOWS
+/* mg_portal_windows.cpp: the Xbox build's Device Portal client against the mock portal at `address`. */
+MG_HOSTAPI int mg_portal_windows_run(const char *address, const char *user, const char *password, const char *scratch, const char *received,
+                                     const char *mock_log, int *checks);
+#endif
+
+static int portal_windows_mode(char **argv)
+{
+#ifdef MG_PORTAL_WINDOWS
+    int checks = 0;
+    const int failed = mg_portal_windows_run(argv[2], argv[3], argv[4], argv[5], argv[6], argv[7], &checks);
+    printf("%d checks, %d failed\n", checks, failed);
+    return failed ? 1 : 0;
+#else
+    (void)argv;
+    printf("(the Xbox build's Device Portal client is not in this build of the tests: --portal-windows does nothing here; tools/build-tests.sh win runs it)\n");
+    return 0;
+#endif
+}
+
 #if defined(MG_CORE_ELF)
 /* On desktop Windows the tests are part of the core's ELF, and Megler's test program calls this (host/win32/mg_desktop_tests.c). */
 MEGLER_API int mg_tests_main(int argc, char **argv)
@@ -972,6 +999,7 @@ int main(int argc, char **argv)
     if (argc >= 3 && !strcmp(argv[1], "--storage-windows")) return storage_windows_mode(argv);
     if (argc >= 4 && !strcmp(argv[1], "--codec-windows")) return codec_windows_mode(argc, argv);
     if (argc >= 3 && !strcmp(argv[1], "--camera-windows")) return camera_windows_mode(argc, argv);
+    if (argc >= 8 && !strcmp(argv[1], "--portal-windows")) return portal_windows_mode(argv);
     if (argc >= 5 && !strcmp(argv[1], "--gfx-replay")) return gfx_replay_mode(argc, argv);
     if (argc >= 7 && !strcmp(argv[1], "--gfx-record")) {
         megler_config config;

@@ -135,9 +135,10 @@
     <uap3:Capability Name="backgroundMediaPlayback" />
     <!-- Making an Android library's code executable. -->
     <rescap:Capability Name="codeGeneration" />
-    <!-- Packages installed by Windows's deployment engine itself (shell/AppPackage.cpp, installWithPackageManager), which
-         reads them from where they lie: Megler's own update from Pictures\Megler, which the Device Portal's upload, sent
-         from Megler's memory, could not install on a phone of 1 GB. As the stores for Windows 10 Mobile install apps. -->
+    <!-- Packages installed, listed and uninstalled by Windows's deployment engine itself (shell/AppPackage.cpp,
+         installWithPackageManager), which reads them from where they lie: Megler's own update and the apps' own packages,
+         as the stores for Windows 10 Mobile install apps. The phone's Device Portal, whose upload went through Megler's
+         memory and could not install Megler's own update on a phone of 1 GB, is asked nothing. -->
     <rescap:Capability Name="packageManagement" />
     <rescap:Capability Name="packageQuery" />
     <!-- The phone's cameras for an Android app's android.hardware.Camera

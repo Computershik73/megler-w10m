@@ -1,6 +1,6 @@
 // The package of one Android app (docs/PER-APP-PACKAGES.md): made here from Megler's own files and the app's APK, signed
-// (core/src/appx, megler.h), and installed through the phone's Device Portal or by the system's installer; and, inside such
-// a package, what it is.
+// (core/src/appx, megler.h), and installed by Windows's deployment engine or by the system's installer -- on an Xbox, through
+// the console's own Device Portal (docs/XBOX.md); and, inside such a package, what it is.
 //
 // Such a package is Megler with a file MeglerApp.ini in its install folder, which says the app (its Android package and
 // label), where its APK is (with the library's report and icon of it beside), and where Android's libcore and framework
@@ -85,48 +85,65 @@ struct Made {
 /// shared one, its private files to the shared folder's handover\<package>, for takeHandover. `progress` is told each step.
 Made make(const ApkEntry& entry, const std::function<void(const std::string&)>& progress, const PickedFile* picked = nullptr);
 
-/// What the Device Portal did: whether it did it, and what it said, or why it did not.
-struct PortalResult {
+/// What an install or an uninstall did: whether it was done, and what Windows (on an Xbox, the console's Device Portal) said,
+/// or why it was not done.
+struct InstallResult {
     bool ok = false;
     std::string said;
 };
 
-/// Installs `made` through the phone's own Device Portal, https://127.0.0.1 (its certificate, which the phone made for
-/// itself, taken as it is), with the certificate. Off the UI thread.
-PortalResult installThroughPortal(const Made& made, const std::function<void(const std::string&)>& progress);
+/// Installs `made` by Windows's deployment engine (installWithPackageManager); on an Xbox, through the console's own Device
+/// Portal (shell/DevicePortal.h), the way an app installs packages there (DesktopMode_uwp's). Off the UI thread.
+InstallResult install(const Made& made, const std::function<void(const std::string&)>& progress);
 /// A package installed by Windows's deployment engine itself (PackageManager.AddPackageAsync, the restricted capability
 /// packageManagement), which reads it where it lies: nothing of it goes through Megler's memory. Installed as the Store
 /// installs an app, and as a developer's package (of which a phone takes only so many) only where that is refused. An update
 /// of Megler's own package closes Megler. Not installed, with what Windows said, when every option was refused. Off the UI
 /// thread.
-PortalResult installWithPackageManager(const std::wstring& path, const std::function<void(const std::string&)>& progress);
+InstallResult installWithPackageManager(const std::wstring& path, const std::function<void(const std::string&)>& progress);
+/// Whether `said` (an install's refusal) is Windows not trusting the certificate the package is signed with
+/// (CERT_E_UNTRUSTEDROOT, CERT_E_CHAINING, TRUST_E_NOSIGNATURE's kin): the certificate is to be installed for the machine.
+bool untrustedCertificate(const std::string& said);
 
 /// An app's own package installed on the phone.
 struct InstalledApp {
     std::string identity;  // its identity name, "MeglerApp...." (megler_appx_app_identity)
     std::string version;   // its version, which is that of the Megler that made it: "0.1.0.358"
-    std::string fullName;  // its full name, what the Device Portal uninstalls it by
+    std::string fullName;  // its full name, which it is uninstalled by
 };
-/// The apps' own packages of Megler's publisher installed on the phone, as Windows's package manager lists them, else the
-/// Device Portal; false, with why, when neither could be asked. Off the UI thread.
+/// The apps' own packages of Megler's publisher installed on the phone, as Windows's package manager lists them (the
+/// restricted capability packageQuery; on an Xbox, as the console's Device Portal lists them); false, with why, when they
+/// could not be listed. `reachable` is told as soon as the lister has answered at all, before a list that takes its time.
+/// Off the UI thread.
 bool installedApps(std::vector<InstalledApp>& out, std::string& error, const std::function<void()>& reachable = {});
-/// Whether Windows's package manager has answered here (the restricted capabilities packageQuery and packageManagement):
-/// packages are listed, installed and uninstalled by it, without the Device Portal.
-bool packageManagerWorks();
-/// Uninstalls one through the Device Portal: the package goes, with the app's own LocalState; what it has in the shared
-/// folder stays. Off the UI thread.
-PortalResult uninstallThroughPortal(const InstalledApp& app);
+/// What lists, installs and uninstalls the apps' packages here, for a sentence: "Windows's package manager", on an Xbox
+/// "the Xbox's Device Portal".
+std::string packageLister();
+/// Uninstalls one by Windows's package manager (packageManagement; on an Xbox, through its Device Portal): the package goes,
+/// with the app's own LocalState; what it has in the shared folder stays. Off the UI thread.
+InstallResult uninstall(const InstalledApp& app);
+
+#if defined(MEGLER_XBOX)
+/// Whether the Xbox's Device Portal asked, the last time, for a user name and password Megler has not got, or refused those
+/// it was given (which are forgotten then): the Library asks for them (ui/SeparateApps.cpp).
+bool portalWantsSignIn();
+/// The way to the Xbox's Device Portal, in sentences for the user where it could not be reached: the portal turned on in Dev
+/// Home, and Megler let reach the console's own address (CheckNetIsolation's loopback exemption, from an SSH session, after
+/// every start of the console).
+std::string portalHelp();
+#endif
 
 /// This Megler's version, "0.1.0.358": the version of every package it makes.
 std::string meglerVersion();
 /// Whether version `a` ("0.1.0.354") is older than `b` ("0.1.0.358").
 bool olderVersion(const std::string& a, const std::string& b);
 
-/// A newer package of Megler's own at `appx`, its certificate at `certificate`, installed: through Windows's deployment
-/// engine, which reads it where it lies and closes this Megler, else through the phone's own Device Portal. The try and
-/// its result are written down (LocalState\update-tried-<version>), the screen kept on meanwhile (selfUpdating), and `from`
-/// says in the log where the package came from. Off the UI thread: the Pictures folder's update and GitHub's (ui/Ota.h).
-PortalResult installOwnUpdate(const std::wstring& appx, const std::wstring& certificate, const std::string& version, const std::string& from);
+/// A newer package of Megler's own at `appx`, its certificate at `certificate`, installed by Windows's deployment engine,
+/// which reads it where it lies and closes this Megler (on an Xbox, through the console's Device Portal, which closes it
+/// likewise). The try and its result are written down (LocalState\update-tried-<version>), the screen kept on meanwhile
+/// (selfUpdating), and `from` says in the log where the package came from. Off the UI thread: the Pictures folder's update
+/// and GitHub's (ui/Ota.h).
+InstallResult installOwnUpdate(const std::wstring& appx, const std::wstring& certificate, const std::string& version, const std::string& from);
 
 /// Megler's own update, copied to the phone over USB (MTP) into Pictures\Megler: the newest Megler_<version>_ARM.appx there,
 /// when it is newer than this Megler, installed with the Megler.cer beside it by Windows's deployment engine (installOwnUpdate),
@@ -142,7 +159,7 @@ std::string selfUpdateVersion();
 std::string selfUpdateFailure();
 /// Megler: the Android files of older builds in the shared folder (<shared>\android\<version>, on desktop Windows
 /// <version>-<ABI>, some 170 MB each) that no
-/// package in `installed` (the Device Portal's whole list) is of any more -- after Update All, every older build's. Slow:
+/// package in `installed` (installedApps' whole list) is of any more -- after Update All, every older build's. Slow:
 /// off the UI thread.
 void removeUnusedAndroidRoots(const std::vector<InstalledApp>& installed);
 

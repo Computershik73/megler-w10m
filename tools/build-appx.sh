@@ -11,6 +11,18 @@
 #              beside Megler.exe (tools/build-desktop.sh <arch> app makes it
 #              and Megler.exe's half of it); the Android root is that ABI's
 #              (tools/dvm-android-root.sh --abi). No ANGLE yet.
+#   --xbox     (tools/build-appx.sh x64 --xbox, and any other option x64's
+#              takes) the package for an Xbox in Developer Mode
+#              (docs/XBOX.md): x64's Megler, with the client of the console's
+#              own Device Portal compiled in (MEGLER_XBOX: shell/DevicePortal.cpp),
+#              through which it installs the apps' packages and its own
+#              update, as DesktopMode_uwp's installer does on a console;
+#              its manifest the Xbox's (the device family Windows.Xbox alone,
+#              without the phone's text messages and call history, with
+#              expandedResources: a game's share of the processor and the
+#              graphics processor). Its objects
+#              in build/appx-xbox-x64; the package
+#              Megler_<version>_Xbox_x64.appx (docs/RELEASES.md).
 #   --auto MODES  an unattended on-device run at start-up (app/Megler/auto,
 #              tools/phone.py auto): `probe` runs megler_probe, `selftest` runs
 #              megler_selftest, or `probe,selftest`; `gfx` draws the scenes of
@@ -118,6 +130,7 @@ APP="$ROOT/app/Megler"
 ARCH=arm
 CLEAN=0
 PACK=1
+XBOX=0
 AUTO_PROBE=0
 AUTO_SELFTEST=0
 AUTO_PLAY=0
@@ -136,6 +149,7 @@ while [ $# -gt 0 ]; do
   arg="$1"; shift
   case "$arg" in
     arm|x64|arm64|x86) ARCH="$arg" ;;
+    --xbox) XBOX=1 ;;
     --auto|--auto=*)
       if [ "$arg" = --auto ]; then
         [ $# -gt 0 ] || { echo "--auto needs probe, selftest or probe,selftest" >&2; exit 2; }
@@ -169,10 +183,12 @@ while [ $# -gt 0 ]; do
     --play-store=*) PLAY_STORE_APK="${arg#--play-store=}" ;;
     --clean) CLEAN=1 ;;
     --no-pack) PACK=0 ;;
-    -h|--help) sed -n '2,41p' "$0"; exit 0 ;;
+    -h|--help) sed -n '2,53p' "$0"; exit 0 ;;
     *) echo "unknown argument: $arg" >&2; exit 2 ;;
   esac
 done
+# (An Xbox is an x64 machine: its Megler is x64's, with all else that x64's takes.)
+if [ "$XBOX" = 1 ] && [ "$ARCH" != x64 ]; then echo "--xbox goes with x64" >&2; exit 2; fi
 AUTO_MODES=""
 [ "$AUTO_PROBE" = 1 ] && AUTO_MODES="probe"
 [ "$AUTO_SELFTEST" = 1 ] && AUTO_MODES="${AUTO_MODES:+$AUTO_MODES,}selftest"
@@ -241,6 +257,8 @@ export VSLANG=1033
 export MSYS2_ARG_CONV_EXCL="*"
 
 BUILD="$ROOT/build/appx-$ARCH"
+# (The Xbox's in a folder of its own: its shell is compiled with MEGLER_XBOX, and has the portal's client.)
+[ "$XBOX" = 1 ] && BUILD="$ROOT/build/appx-xbox-$ARCH"
 OBJ="$BUILD/obj"
 STAGE="$BUILD/stage"
 OUT="$APP/AppPackages"
@@ -248,7 +266,7 @@ OUT="$APP/AppPackages"
 mkdir -p "$OBJ" "$OUT"
 JOBS="${MEGLER_JOBS:-$(nproc 2>/dev/null || echo 4)}"
 
-echo "=== Megler for $([ "$DESKTOP" = 1 ] && echo "desktop Windows" || echo "Windows 10 Mobile"): $ARCH${AUTO_MODES:+, auto run: $AUTO_MODES} ==="
+echo "=== Megler for $([ "$XBOX" = 1 ] && echo "Xbox (Developer Mode)" || { [ "$DESKTOP" = 1 ] && echo "desktop Windows"; } || echo "Windows 10 Mobile"): $ARCH${AUTO_MODES:+, auto run: $AUTO_MODES} ==="
 echo "    MSVC $(basename "$VC"), headers SDK $SDKV, libraries SDK $SDKV_LIB"
 
 # MARK: Compile
@@ -370,8 +388,10 @@ if [ "$(cat "$AUTO_CONFIG/AutoConfig.h" 2>/dev/null)" != "$AUTO_HEADER" ]; then
 fi
 SHELL_FLAGS=("${CXX[@]}" /std:c++20 /W3 /bigobj "/I$(w "$APP")" "/I$(w "$ROOT/core/include")" "/I$(w "$AUTO_CONFIG")"
              "/Fp$(w "$OBJ/shell/pch.pch")")
-# (Desktop: the shell loads the core's ELF before it calls it, shell/Platform.cpp.)
+# (Desktop: the shell loads the core's ELF before it calls it, shell/Platform.cpp. Xbox: it installs through the console's
+# Device Portal, shell/AppPackage.cpp.)
 [ "$DESKTOP" = 1 ] && SHELL_FLAGS+=(/DMG_ELF_HOST=1)
+[ "$XBOX" = 1 ] && SHELL_FLAGS+=(/DMEGLER_XBOX=1)
 mkdir -p "$OBJ/shell"
 SHELL_HEADERS="$(newest_mtime "$APP" '*.h')"
 MEGLER_H="$(stat -c %Y "$ROOT/core/include/megler.h")"
@@ -384,7 +404,11 @@ if [ ! -f "$OBJ/shell/pch.pch" ] || [ "$APP/pch.h" -nt "$OBJ/shell/pch.pch" ]; t
   find "$OBJ/shell" -name '*.obj' ! -name pch.obj -delete
   echo "    precompiled header"
 fi
-mapfile -t SHELL_SRC < <(find "$APP" -name '*.cpp' ! -name pch.cpp ! -name GfxHost.cpp ! -path '*/AppPackages/*' | sort)
+# The client of an Xbox's Device Portal (shell/DevicePortal.cpp) is the Xbox's package's alone: a phone's and a PC's Megler
+# install through Windows's deployment engine and have not a word of it (an object of it left in the folder goes too).
+SKIP_SHELL=(! -name DevicePortal.cpp)
+if [ "$XBOX" = 1 ]; then SKIP_SHELL=(); else rm -f "$OBJ/shell/DevicePortal.obj"; fi
+mapfile -t SHELL_SRC < <(find "$APP" -name '*.cpp' ! -name pch.cpp ! -name GfxHost.cpp "${SKIP_SHELL[@]}" ! -path '*/AppPackages/*' | sort)
 # Shell file names are unique across its folders, so one object folder does.
 compile_group "$OBJ/shell" "$SHELL_HEADERS" "${SHELL_FLAGS[@]}" /Yu"pch.h" -- "${SHELL_SRC[@]}"
 # A Java app's drawing (player/GfxHost.cpp: Direct2D, DirectWrite, WIC) is plain COM with no WinRT in it and is also
@@ -495,12 +519,46 @@ sed -e "/<Identity/,/\/>/ s/Version=\"[0-9.]*\"/Version=\"$VERSION\"/" \
     -e "/<Identity/,/\/>/ s/ProcessorArchitecture=\"[a-z0-9]*\"/ProcessorArchitecture=\"$PKGARCH\"/" \
     "$APP/Package.appxmanifest" > "$STAGE/AppxManifest.xml"
 grep -q "Version=\"$VERSION\"" "$STAGE/AppxManifest.xml" || { echo "couldn't set the version in the manifest" >&2; exit 1; }
+# The Xbox's manifest: Megler's, for the device family Windows.Xbox alone (the console's Windows of 2020 and later, which every
+# Xbox in Developer Mode has: Developer Mode keeps it up to date; and not a PC, whose package is the plain x64 one), without
+# the capabilities of a phone's text messages and call history, which an Xbox has not got, and with expandedResources, which
+# on an Xbox runs an app with a game's share of the processor and the graphics processor instead of an app's (the apps' own
+# packages, made from this manifest on the console, keep it: core/src/appx/mg_appx_manifest.c keeps a capability it does
+# not know).
+if [ "$XBOX" = 1 ]; then
+  python - "$(w "$STAGE/AppxManifest.xml")" <<'PY' || { echo "the Xbox's manifest could not be made" >&2; exit 1; }
+import re, sys
+path = sys.argv[1]
+text = open(path, encoding="utf-8").read()
+families = re.findall(r'^[ \t]*<TargetDeviceFamily [^>]*/>\r?\n', text, re.M)
+assert families, "no TargetDeviceFamily"
+text = text.replace(families[0], '    <TargetDeviceFamily Name="Windows.Xbox" MinVersion="10.0.19041.0" MaxVersionTested="10.0.22621.0" />\n', 1)
+for extra in families[1:]:
+    text = text.replace(extra, "", 1)
+text = text.replace("<!-- Windows 10 Mobile 1703 (Creators Update) and later. -->",
+                    "<!-- An Xbox in Developer Mode (docs/XBOX.md). -->", 1)
+for gone in (r'<uap:Capability Name="chat" />', r'<uap2:Capability Name="phoneCallHistoryPublic" />'):
+    text, n = re.subn(r'^[ \t]*' + re.escape(gone) + r'\r?\n', "", text, flags=re.M)
+    assert n == 1, gone
+# (And the comment that spoke of them.)
+text = re.sub(r"^[ \t]*<!-- The phone's text messages and calls.*?-->\r?\n", "", text, count=1, flags=re.M | re.S)
+text, n = re.subn(r'(^[ \t]*<rescap:Capability Name="codeGeneration" />\r?\n)', r'\1    <rescap:Capability Name="expandedResources" />\n', text, flags=re.M)
+assert n == 1, "codeGeneration"
+text, n = re.subn(r'Description="[^"]*"', 'Description="Android apps on Xbox"', text, count=1)
+assert n == 1, "Description"
+# (Well formed still, or makepri says only that the manifest is "not found or invalid".)
+import xml.etree.ElementTree
+xml.etree.ElementTree.fromstring(text.encode("utf-8"))
+open(path, "w", encoding="utf-8", newline="").write(text)
+PY
+  grep -q 'Name="Windows.Xbox"' "$STAGE/AppxManifest.xml" || { echo "the Xbox's manifest has no Windows.Xbox" >&2; exit 1; }
+fi
 echo "=== stage: version $VERSION ($PKGARCH) ==="
 # The map of this very build, to put names to addresses in a phone's log, and
 # what it was built as.
 mkdir -p "$ROOT/build/maps"
 cp "$BUILD/link/Megler.map" "$ROOT/build/maps/Megler_$VERSION.map"
-echo "arch=$PKGARCH auto=${AUTO_MODES:-none} java=$JAVA libcore=$LIBCORE" > "$ROOT/build/maps/Megler_$VERSION.txt"
+echo "arch=$PKGARCH xbox=$XBOX auto=${AUTO_MODES:-none} java=$JAVA libcore=$LIBCORE" > "$ROOT/build/maps/Megler_$VERSION.txt"
 echo "    map: build/maps/Megler_$VERSION.map"
 
 cp "$BUILD/link/Megler.exe" "$STAGE/"
@@ -818,6 +876,8 @@ echo "    staged $(find "$STAGE" -type f | wc -l) files, $(du -sk "$STAGE" | cut
 
 if [ "$PACK" = 1 ]; then
   case "$ARCH" in arm) ARCHNAME=ARM ;; arm64) ARCHNAME=ARM64 ;; *) ARCHNAME="$ARCH" ;; esac
+  # (A package for another Windows than the phone's or the PC's carries its Windows in its name: docs/RELEASES.md.)
+  [ "$XBOX" = 1 ] && ARCHNAME="Xbox_$ARCHNAME"
   PKG="$OUT/Megler_${VERSION}_${ARCHNAME}.appx"
   echo "=== pack ==="
   rm -f "$PKG"

@@ -63,6 +63,8 @@ DWORD WINAPI threadEntry(void* parameter) {
 
 bool isMobile() { return deviceFamily() == "Windows.Mobile"; }
 
+bool isXbox() { return deviceFamily() == "Windows.Xbox"; }
+
 std::string deviceFamily() {
     try {
         return narrow(winrt::Windows::System::Profile::AnalyticsInfo::VersionInfo().DeviceFamily());

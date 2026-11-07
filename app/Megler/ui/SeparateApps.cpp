@@ -4,8 +4,12 @@
 
 #include "megler.h"
 #include "library/Library.h"
+#if defined(MEGLER_XBOX)
+#include "shell/DevicePortal.h"
+#endif
 #include "shell/Files.h"
 #include "shell/PickedFile.h"
+#include "shell/Platform.h"
 #include "shell/ShellLog.h"
 #include "shell/Strings.h"
 #include "ui/AppShell.h"
@@ -31,14 +35,14 @@ std::mutex gMutex;
 unsigned gGeneration = 1;
 bool gListing = false;               // the list of the apps' packages is being asked for
 bool gListed = false;                // it came at least once
-bool gPortalReachable = false;       // info answered, independently of its package list
-std::string gProblem;                // why it could not be asked last
+bool gReachable = false;             // its lister answered, whether or not its list came
+std::string gProblem;                // why it could not be had last
 std::vector<appPackage::InstalledApp> gInstalled;
 std::map<std::string, Status> gStatus; // the actions' part (queued, step, made), by Android package
 std::deque<Job> gJobs;
 bool gWorking = false;
 std::string gWorkingLine;
-std::vector<std::function<void()>> gPortalWaiters; // what waits for the list (askPortal)
+std::vector<std::function<void()>> gListWaiters; // what waits for the list (askList)
 int gDone = 0, gTotal = 0;           // of the jobs since the worker started
 
 std::string identityOf(const std::string& package) {
@@ -137,18 +141,18 @@ void removeUnusedApks(const std::vector<appPackage::InstalledApp>& installed) {
     appPackage::removeUnusedSharedApks(installed, used);
 }
 
-/// The list of the apps' packages, asked for again: Windows's package manager's, the Device Portal's where Windows will not
-/// answer (appPackage::installedApps). Off the UI thread.
-void list() {
+/// The list of the apps' packages, asked for again: Windows's package manager's, on an Xbox its Device Portal's
+/// (appPackage::installedApps). Off the UI thread.
+void listInstalled() {
     std::vector<appPackage::InstalledApp> apps;
     std::string error;
     {
         std::lock_guard<std::mutex> lock(gMutex);
-        gPortalReachable = false;
+        gReachable = false;
     }
     const bool ok = appPackage::installedApps(apps, error, [] {
         std::lock_guard<std::mutex> lock(gMutex);
-        gPortalReachable = true;
+        gReachable = true;
         gGeneration++;
     });
     {
@@ -225,28 +229,31 @@ void run(Job& job, int number, int total) {
             std::lock_guard<std::mutex> lock(gMutex);
             gStatus[package].made = made;
         }
-        // Windows's deployment engine reads the package where it lies; the Device Portal is sent it from Megler's memory, which
-        // a phone of 1 GB allows 390 MB of (shell/AppPackage.h): the portal only where the engine refuses.
+        // Windows's deployment engine reads the package where it lies; on an Xbox, the console's portal is sent it (shell/AppPackage.h).
         const auto step = [&](const std::string& said) { setStep(package, stepOf(said)); };
-        appPackage::PortalResult result = appPackage::installWithPackageManager(made.appx, step);
-        if (!result.ok) {
-            shellLog::write("separate apps: " + result.said + ": through the Device Portal instead");
-            const std::string engine = result.said;
-            result = appPackage::installThroughPortal(made, step);
-            // The portal installs only a developer's package: why the engine refused the Store's way is said too.
-            if (!result.ok) result.said = engine + ". The Device Portal: " + result.said;
-        }
+        const appPackage::InstallResult result = appPackage::install(made, step);
         if (!result.ok) {
             const std::string kept = job.picked ? keepCopy(job, package) : std::string();
-            // CERT_E_UNTRUSTEDROOT: Windows trusts no certificate of Megler's making unless it is installed for the machine, which
-            // an app may not do. On a phone the Device Portal installs it with the first package; desktop Windows has no portal.
-            const bool untrusted = result.said.find("0x800b0109") != std::string::npos;
-            setStep(package, result.said +
-                                 (untrusted ? " Windows does not trust the certificate Megler signs apps' packages with: open the certificate "
-                                              "(below), choose Install Certificate, Local Machine, Place all certificates in the following "
-                                              "store, Trusted People, and install the app again."
-                                            : " The package is made: Windows's installer can install it (below).") +
+#if defined(MEGLER_XBOX)
+            // (An Xbox has no installer of its own for a package Megler made: what the console's portal said is all there is.)
+            setStep(package, result.said + (kept.empty() ? std::string() : " (" + kept + ")"));
+#else
+            /*
+             * CERT_E_UNTRUSTEDROOT: Windows trusts no certificate of Megler's making (its key is this phone's own, in
+             * LocalState) unless it is installed for the machine, which an app may not do. Until 2026-11-07 the phone's Device
+             * Portal, asked where the engine refused, installed it with the first package; now the user installs it once,
+             * through Windows's own installer of certificates, which the app's page hands the file to.
+             */
+            const bool untrusted = appPackage::untrustedCertificate(result.said);
+            const std::string trust =
+                platform::isMobile()
+                    ? " Windows does not trust the certificate Megler signs apps' packages with: open the certificate (below), let Windows "
+                      "install it, and install the app again."
+                    : " Windows does not trust the certificate Megler signs apps' packages with: open the certificate (below), choose Install "
+                      "Certificate, Local Machine, Place all certificates in the following store, Trusted People, and install the app again.";
+            setStep(package, result.said + (untrusted ? trust : " The package is made: Windows's installer can install it (below).") +
                                  (kept.empty() ? std::string() : " (" + kept + ")"));
+#endif
             return;
         }
         // The APK as the installed package's app reads it, in the shared folder (that of a package made before is gone now).
@@ -294,7 +301,7 @@ void run(Job& job, int number, int total) {
             }
         }
         setStep(job.package, stepOf("Uninstalling…"));
-        const appPackage::PortalResult result = appPackage::uninstallThroughPortal(app);
+        const appPackage::InstallResult result = appPackage::uninstall(app);
         if (result.ok) {
             std::lock_guard<std::mutex> lock(gMutex);
             gInstalled.erase(std::remove_if(gInstalled.begin(), gInstalled.end(),
@@ -307,11 +314,11 @@ void run(Job& job, int number, int total) {
 }
 
 /// A listing ended: what waited for it goes on. UI thread.
-void portalAnswered() {
+void listAnswered() {
     std::vector<std::function<void()>> waiters;
     {
         std::lock_guard<std::mutex> lock(gMutex);
-        waiters.swap(gPortalWaiters);
+        waiters.swap(gListWaiters);
     }
     for (auto& then : waiters) then();
 }
@@ -349,7 +356,7 @@ void startWorker(AppShell& shell) {
                 std::lock_guard<std::mutex> lock(gMutex);
                 gListing = true;
             }
-            list();
+            listInstalled();
         },
         [shellPointer] {
             {
@@ -358,7 +365,7 @@ void startWorker(AppShell& shell) {
                 gWorkingLine.clear();
                 gGeneration++;
             }
-            portalAnswered();
+            listAnswered();
             // Asked for while the last was going on.
             startWorker(*shellPointer);
         });
@@ -389,13 +396,13 @@ void refresh(AppShell& shell) {
         if (gListing || gWorking) return;
         gListing = true;
     }
-    shell.runInBackground([] { list(); }, [] { portalAnswered(); });
+    shell.runInBackground([] { listInstalled(); }, [] { listAnswered(); });
 }
 
-void askPortal(AppShell& shell, std::function<void()> then) {
+void askList(AppShell& shell, std::function<void()> then) {
     {
         std::lock_guard<std::mutex> lock(gMutex);
-        gPortalWaiters.push_back(std::move(then));
+        gListWaiters.push_back(std::move(then));
     }
     // (A listing or the worker under way runs them as it ends.)
     refresh(shell);
@@ -406,7 +413,7 @@ unsigned generation() {
     return gGeneration;
 }
 
-std::string portalProblem() {
+std::string listProblem() {
     std::lock_guard<std::mutex> lock(gMutex);
     return gProblem;
 }
@@ -421,58 +428,110 @@ Status status(const std::string& androidPackage) {
     return statusLocked(androidPackage);
 }
 
-Portal portal() {
-    std::lock_guard<std::mutex> lock(gMutex);
-    if (gPortalReachable) return Portal::on;
-    if (!gProblem.empty()) return Portal::off;
-    return gListed ? Portal::on : Portal::unknown;
+#if defined(MEGLER_XBOX)
+namespace {
+
+void askPortalSignIn(AppShell& shell) {
+    /*
+     * The user name and password of the console's Device Portal (Dev Home, Remote access settings, where its authentication
+     * is on), one field at a time: a dialog has one. Kept in Windows's credential locker (shell/DevicePortal.h), forgotten
+     * when the portal refuses them, and the list asked for again with them at once.
+     */
+    AppShell::DialogSpec name;
+    name.title = "The Xbox's Device Portal";
+    name.message = "The console's Device Portal, through which Megler installs its apps on an Xbox, asks for its user name and password: "
+                   "those set in Dev Home (Remote access settings). Its user name:";
+    name.field = true;
+    name.fieldText = devicePortal::savedCredentials().user;
+    name.fieldPlaceholder = "User name";
+    name.buttons = {"Cancel", "Next"};
+    std::weak_ptr<AppShell> weak = shell.weak_from_this();
+    shell.dialog(std::move(name), [weak](int button, std::string user) {
+        auto self = weak.lock();
+        if (!self || button != 1 || user.empty()) return;
+        AppShell::DialogSpec password;
+        password.title = "The Xbox's Device Portal";
+        password.message = "The password of the Device Portal's user " + user + ":";
+        password.field = true;
+        password.secret = true;
+        password.fieldPlaceholder = "Password";
+        password.buttons = {"Cancel", "Sign In"};
+        self->dialog(std::move(password), [weak, user](int button, std::string word) {
+            auto self = weak.lock();
+            if (!self || button != 1) return;
+            devicePortal::saveCredentials({user, word});
+            shellLog::write("separate apps: the Xbox's Device Portal's user name and password given, for " + user);
+            refresh(*self);
+        });
+    });
 }
 
-bool requirePortal(AppShell& shell, std::function<void()> retry) {
-    const Portal state = portal();
-    if (state == Portal::on) return true;
+} // namespace
+#endif
+
+List list() {
+    std::lock_guard<std::mutex> lock(gMutex);
+    if (gReachable) return List::ready;
+    if (!gProblem.empty()) return List::unavailable;
+    return gListed ? List::ready : List::unknown;
+}
+
+bool requireList(AppShell& shell, std::function<void()> retry) {
+    const List state = list();
+    if (state == List::ready) return true;
     /*
      * Asked for before the first list came: done once it has. The flag ui-update-all is acted on a second after the start,
      * and a Lumia 650's Megler 648 acted on it 156 ms before Windows listed the apps' packages: it said "Asking the Device
      * Portal", and Update All waited for the owner's tap, 18 s later.
      */
-    if (state == Portal::unknown && retry) {
+    if (state == List::unknown && retry) {
         shellLog::write("separate apps: waiting for the list of the installed apps");
         std::weak_ptr<AppShell> weak = shell.weak_from_this();
-        askPortal(shell, [weak, retry = std::move(retry)] {
+        askList(shell, [weak, retry = std::move(retry)] {
             auto self = weak.lock();
             if (!self) return;
             // (Once: a list still not known has the shell say so.)
-            if (portal() == Portal::unknown)
-                requirePortal(*self);
+            if (list() == List::unknown)
+                requireList(*self);
             else
                 retry();
         });
         return false;
     }
     refresh(shell);  // asked again, for the next try
-    // (The list of the apps' packages comes from Windows's package manager, which installs them too; the phone's Device Portal
-    // is asked only where Windows will not answer. Said so: the user saw "Asking the Device Portal" long after Megler had
-    // stopped installing through it.)
-    if (state == Portal::unknown) {
+    if (state == List::unknown) {
         shell.alert("Looking at the Installed Apps", "Megler is asking Windows which of its apps are installed, which it needs to know before it "
                                                      "installs one. Try again in a moment.");
         return false;
     }
-    const std::string why = portalProblem();
+    const std::string why = listProblem();
     shellLog::write("separate apps: nothing installed while no list of the installed apps can be had: " + why);
-    shell.confirm("Turn On the Device Portal",
-                  "Windows did not tell Megler which of its apps are installed, nor did the phone's Device Portal, which Megler asks where "
-                  "Windows will not (" + why + "). In Settings › Update & security › For developers, turn on Developer mode, then Device "
-                  "Portal, and turn the portal's Authentication off: Megler asks the portal on this phone itself, without a user name and "
-                  "password. Then try again.",
-                  "Open Settings", false,
-                  [] { winrt::Windows::System::Launcher::LaunchUriAsync(winrt::Windows::Foundation::Uri(L"ms-settings:developers")); });
+#if defined(MEGLER_XBOX)
+    // The Xbox's Device Portal, which lists, installs and uninstalls the apps' packages on a console: its user name and
+    // password asked for where it wants them, else what it said and the way to it (appPackage::portalHelp, in `why` where
+    // it was not reached at all).
+    if (appPackage::portalWantsSignIn()) {
+        askPortalSignIn(shell);
+        return false;
+    }
+    shell.alert("The Xbox's Device Portal", "The console's Device Portal did not tell Megler which of its apps are installed: " + why +
+                                                " Megler installs nothing until it answers. Then try again.");
+#else
+    /*
+     * Windows's package manager, which lists, installs and uninstalls the apps' packages, did not answer. Until 2026-11-07
+     * the phone's Device Portal was asked then, and this said to turn the portal on; nothing is asked of the portal any more,
+     * and there is nothing to turn on: the restricted capabilities packageQuery and packageManagement are in Megler's
+     * manifest, and Windows grants them when it installs Megler.
+     */
+    shell.alert("Windows Did Not List the Apps",
+                "Windows's package manager did not tell Megler which of its apps are installed (" + why + "). Megler lists, installs and "
+                "uninstalls its apps through it, and installs nothing until it answers. Try again in a moment.");
+#endif
     return false;
 }
 
 void install(AppShell& shell, const std::string& apkId, bool whenRead) {
-    if (!requirePortal(shell, [&shell, apkId, whenRead] { install(shell, apkId, whenRead); })) return;
+    if (!requireList(shell, [&shell, apkId, whenRead] { install(shell, apkId, whenRead); })) return;
     const auto entry = Library::instance().find(apkId);
     if (!entry || (!whenRead && entry->report.package.empty())) return;
     shellLog::write("separate apps: install " + apkId);
@@ -485,7 +544,7 @@ void install(AppShell& shell, const std::string& apkId, bool whenRead) {
 }
 
 void installPicked(AppShell& shell, std::shared_ptr<PickedFile> picked, const std::string& apkId) {
-    if (!requirePortal(shell, [&shell, picked, apkId] { installPicked(shell, picked, apkId); })) return;
+    if (!requireList(shell, [&shell, picked, apkId] { installPicked(shell, picked, apkId); })) return;
     shellLog::write("separate apps: install " + picked->name() + " where it is, as " + apkId);
     Job job;
     job.id = apkId;
@@ -520,7 +579,7 @@ std::vector<std::string> outdatedIds() {
 
 void updateAll(AppShell& shell) {
     // (Which apps are outdated is known from the list: asked for before it came, as the flag ui-update-all is, it waits.)
-    if (!requirePortal(shell, [&shell] { updateAll(shell); })) return;
+    if (!requireList(shell, [&shell] { updateAll(shell); })) return;
     const auto ids = outdatedIds();
     shellLog::write(format("separate apps: update all, %u", unsigned(ids.size())));
     for (const auto& id : ids) install(shell, id);

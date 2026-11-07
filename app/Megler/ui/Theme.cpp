@@ -119,7 +119,7 @@ const wchar_t* styleTemplate = LR"(
 </ResourceDictionary>)";
 
 // A text box with none of the system's own chrome (whose focused field is white in the dark theme): its text alone, the
-// field around it being textField's.
+// field around it being textField's. A password box likewise (passwordField).
 const wchar_t* textBoxStyle = LR"(
 <ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
@@ -127,6 +127,18 @@ const wchar_t* textBoxStyle = LR"(
     <Setter Property="Template">
       <Setter.Value>
         <ControlTemplate TargetType="TextBox">
+          <ScrollViewer x:Name="ContentElement" Margin="{TemplateBinding Padding}" Foreground="{TemplateBinding Foreground}"
+                        HorizontalScrollMode="Auto" VerticalScrollMode="Auto" HorizontalScrollBarVisibility="Hidden"
+                        VerticalScrollBarVisibility="Hidden" IsTabStop="False" ZoomMode="Disabled"
+                        AutomationProperties.AccessibilityView="Raw"/>
+        </ControlTemplate>
+      </Setter.Value>
+    </Setter>
+  </Style>
+  <Style x:Key="MeglerPasswordBox" TargetType="PasswordBox">
+    <Setter Property="Template">
+      <Setter.Value>
+        <ControlTemplate TargetType="PasswordBox">
           <ScrollViewer x:Name="ContentElement" Margin="{TemplateBinding Padding}" Foreground="{TemplateBinding Foreground}"
                         HorizontalScrollMode="Auto" VerticalScrollMode="Auto" HorizontalScrollBarVisibility="Hidden"
                         VerticalScrollBarVisibility="Hidden" IsTabStop="False" ZoomMode="Disabled"
@@ -546,6 +558,53 @@ Grid textField(TextBox& box, std::string_view initial, std::string_view placehol
     weak_ref<TextBox> weak = t;
     t.TextChanged([weak, hint](auto&&, auto&&) {
         if (auto s = weak.get()) setVisible(hint, s.Text().empty());
+    });
+    const Color focused = p.primary, idle = p.onSurfaceVariant;
+    t.GotFocus([line, focused](auto&&, auto&&) {
+        line.Height(2);
+        line.Background(brush(focused));
+    });
+    t.LostFocus([line, idle](auto&&, auto&&) {
+        line.Height(1);
+        line.Background(brush(idle));
+    });
+    g.Children().Append(t);
+    box = t;
+    return g;
+}
+
+Grid passwordField(PasswordBox& box, std::string_view placeholder) {
+    const auto& p = palette();
+    Grid g;
+    g.MinHeight(56);
+    Border back;
+    back.Background(brush(p.surfaceContainerHighest));
+    back.CornerRadius(CornerRadius{4, 4, 0, 0});
+    g.Children().Append(back);
+    Border line;
+    line.Height(1);
+    line.VerticalAlignment(VerticalAlignment::Bottom);
+    line.Background(brush(p.onSurfaceVariant));
+    g.Children().Append(line);
+    auto hint = text(placeholder, font::bodyLarge, weightNormal(), p.onSurfaceVariant);
+    hint.TextWrapping(TextWrapping::NoWrap);
+    hint.VerticalAlignment(VerticalAlignment::Center);
+    hint.Margin(ThicknessHelper::FromLengths(16, 0, 16, 0));
+    hint.IsHitTestVisible(false);
+    g.Children().Append(hint);
+    PasswordBox t;
+    auto resources = Application::Current().Resources();
+    for (auto const& merged : resources.MergedDictionaries())
+        if (merged.HasKey(box_value(L"MeglerPasswordBox"))) t.Style(merged.Lookup(box_value(L"MeglerPasswordBox")).as<Style>());
+    t.FontFamily(roboto());
+    t.FontSize(font::bodyLarge);
+    t.Foreground(brush(p.onSurface));
+    t.SelectionHighlightColor(brush(p.primary));
+    t.Padding(ThicknessHelper::FromLengths(16, 0, 16, 0));
+    t.VerticalAlignment(VerticalAlignment::Center);
+    weak_ref<PasswordBox> weak = t;
+    t.PasswordChanged([weak, hint](auto&&, auto&&) {
+        if (auto s = weak.get()) setVisible(hint, s.Password().empty());
     });
     const Color focused = p.primary, idle = p.onSurfaceVariant;
     t.GotFocus([line, focused](auto&&, auto&&) {

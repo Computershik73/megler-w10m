@@ -101,6 +101,7 @@ public:
     struct DialogSpec {
         std::string title, message;
         bool field = false;                  // a text field under the text
+        bool secret = false;                 // ... a password's, its characters not shown (fieldText is not put in it)
         std::string fieldText, fieldPlaceholder;
         std::vector<std::string> fieldSuggestions; // chips under the field, each putting itself in it
         std::vector<std::string> buttons;    // at the dialog's end, the confirming one last
@@ -134,8 +135,8 @@ public:
     /// once the user says yes in Material's dialog.
     void installApkFile(winrt::Windows::Storage::StorageFile const& file);
     /// An APK at a path of Megler's own that an Android app (`from`, its name) asked to install: likewise, after a yes. Once
-    /// the Device Portal has been asked (`portalAsked`), when it was not on.
-    void installApkPath(const std::wstring& path, const std::string& name, const std::string& from, bool portalAsked = false);
+    /// the list of the installed apps has been asked for (`listAsked`), when it was not there.
+    void installApkPath(const std::wstring& path, const std::string& name, const std::string& from, bool listAsked = false);
     /// Another app the phone has that an Android app (`from`, its name) asked to uninstall: after a yes, its own package and
     /// Megler's copy of it go; a no is told to the app that asked (library/PhoneAppsList.h).
     void uninstallApp(const std::string& package, const std::string& from);
@@ -189,6 +190,7 @@ private:
     std::vector<winrt::Windows::UI::Xaml::Controls::TextBlock> tabLabels_;
     winrt::Windows::UI::Xaml::Controls::Grid dialogLayer_{nullptr};
     winrt::Windows::UI::Xaml::Controls::TextBox dialogField_{nullptr};
+    winrt::Windows::UI::Xaml::Controls::PasswordBox dialogSecret_{nullptr};
     std::function<void(int, std::string)> dialogDone_;
     std::deque<std::pair<DialogSpec, std::function<void(int, std::string)>>> waitingDialogs_; // dialogWhenFree's, in turn
     winrt::Windows::UI::Xaml::DispatcherTimer timer_{nullptr};

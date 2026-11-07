@@ -165,7 +165,7 @@ core/             the layer, portable C11
   tests/          the tests, and guest/ and app/: Android libraries and apps for them
 app/Megler/       the C++/WinRT shell: library, player, Direct2D drawing, sound, codecs
 tools/            build-appx.sh, build-tests.sh, build-framework.sh, phone.py
-docs/             ARCHITECTURE.md, STATUS.md, JAVA.md, JIT.md, MICROG.md, PER-APP-PACKAGES.md
+docs/             ARCHITECTURE.md, STATUS.md, JAVA.md, JIT.md, MICROG.md, PER-APP-PACKAGES.md, DESKTOP.md, XBOX.md
 ```
 
 ## Build
@@ -193,9 +193,13 @@ trust the package's certificate (`AppPackages/Megler.cer`). A package you do not
 yourself is on [the latest release](https://github.com/Computershik73/megler-w10m/releases/latest),
 with its `Megler.cer`.
 
-Install the package with the Device Portal (`python tools/phone.py install`), or copy it
-with its `Megler.cer` into the phone's `Pictures\Megler` folder: Megler installs the newest
-package it finds there when it starts. Then, in Megler:
+The first time, install the package from a PC through the phone's Device Portal
+(`python tools/phone.py install`), or open it in the phone's file manager, which hands it
+to Windows's App Installer. After that Megler updates itself: from GitHub (Settings ›
+Updates), or from a newer package copied with its `Megler.cer` into the phone's
+`Pictures\Megler` folder, which it installs when it starts. Megler installs its updates and
+the apps' packages through Windows's deployment engine and asks the Device Portal nothing:
+the portal need not be on for it, nor its authentication off. Then, in Megler:
 
 1. **Add APK** (or open an APK, `.apks` or `.xapk` from the phone's file manager), or open
    Google Play from the library and install from there.
@@ -204,6 +208,14 @@ package it finds there when it starts. Then, in Megler:
 
 **Device › Probe** and **Device › Self-test** check what this phone allows and run the
 core's tests on it; the **Log** says what each app does.
+
+## On an Xbox
+
+An Xbox in Developer Mode takes `Megler_<version>_Xbox_x64.appx` (`bash tools/build-appx.sh
+x64 --xbox --java`), installed from a PC through the console's Device Portal. There Megler
+installs the apps' packages and its own updates through that portal, as DesktopMode_uwp's
+installer does on a console, and has to be let reach it after every start of the console:
+[docs/XBOX.md](docs/XBOX.md) says how, and what is not checked on a console yet.
 
 ## Author
 

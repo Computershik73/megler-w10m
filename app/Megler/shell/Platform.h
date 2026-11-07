@@ -12,6 +12,8 @@
 namespace megler::app::platform {
 
 bool isMobile();
+/// An Xbox (in Developer Mode, the only way Megler is on one): a television, a gamepad, the console's Device Portal.
+bool isXbox();
 std::string deviceFamily();
 std::string osVersion();
 std::string packageVersion();

@@ -24,7 +24,7 @@ Choice choice();
 /// Whether this Megler brings Google Play services and Google Play Store.
 bool bundled();
 /// Megler, at every poll (UI thread): the question at the first start; once Google Play is wanted, its Google Play
-/// services and Google Play Store installed when the portal says they are not, one after the other.
+/// services and Google Play Store installed when Windows says they are not, one after the other.
 void tick(AppShell& shell);
 /// What the Library says while Google Play is wanted and not installed yet; empty otherwise.
 std::string pending();
