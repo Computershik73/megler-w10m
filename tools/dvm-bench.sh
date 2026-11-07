@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # The interpreter's benchmark (core/tests/mg_dvm_bench.c) on this PC and under qemu-arm, on Android's libcore:
 #
-#   tools/dvm-bench.sh [win|arm|arm64|both] [milliseconds an item, 300]
+#   tools/dvm-bench.sh [win|arm|arm64|x64|x86|both] [milliseconds an item, 300]
 #
 #   win   the test program built for x64 with /O2, as the app is built (into build/tests-win-o2): the interpreter's own
 #         speed on this machine, the steadiest of the numbers. libcore's native libraries do not run here; none of the
@@ -10,9 +10,12 @@
 #         is not the phone's speed but moves with it.
 #   arm64 the arm64 test program tools/build-tests.sh arm64 builds (clang -O1), under qemu-aarch64, on Android's libcore
 #         with arm64-v8a's natives: what qemu makes of A64, an ARM64 PC's own speed even less than qemu-arm the phone's.
+#   x64, x86  desktop Windows' test program (tools/build-desktop.sh <arch> tests: the core an ELF of Android's ABI, clang
+#         -O2), run here on Android's libcore with that processor's natives: the speed of desktop Megler's own core.
 #
-# The JIT compiles what is hot in the ARM programs (docs/JIT.md); MEGLER_JIT_THRESHOLD, when set, is handed to them (0:
-# everything interpreted; 1000 the runtime's own), so that one run can be put beside the other.
+# The JIT compiles what is hot in the ARM programs and the desktop ones (docs/JIT.md), not in win's (MSVC's convention is
+# not the JIT's); MEGLER_JIT_THRESHOLD, when set, is handed to them (0: everything interpreted; 1000 the runtime's own), so
+# that one run can be put beside the other.
 #
 # Each prints the table: for each item, nanoseconds a turn, instructions a turn, millions of instructions a second.
 #
@@ -55,6 +58,13 @@ if [ "$MODE" = arm ] || [ "$MODE" = both ]; then
   WROOT="/mnt/${ROOT:1:1}${ROOT:2}"
   echo "== qemu-arm, gcc -O1"
   MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL="*" wsl.exe -- bash -c "mkdir -p $WB/android-root && cp -ru '$WROOT/build/android9/root/.' $WB/android-root/ && qemu-arm -L /usr/arm-linux-gnueabihf $WB/mg_tests --dvm-bench '$WROOT/build/guest/armeabi-v7a/dvm' $WB/android-root $MS 2>&1"
+fi
+if [ "$MODE" = x64 ] || [ "$MODE" = x86 ]; then
+  ABI="$([ "$MODE" = x64 ] && echo x86_64 || echo x86)"
+  bash "$ROOT/tools/build-desktop.sh" "$MODE" tests --no-run > /dev/null
+  bash "$ROOT/tools/dvm-android-root.sh" --abi "$ABI" > /dev/null
+  echo "== $MODE, the core's ELF (clang -O2)${MEGLER_JIT_THRESHOLD:+, MEGLER_JIT_THRESHOLD=$MEGLER_JIT_THRESHOLD}"
+  "$ROOT/build/desktop-$MODE/mg_tests.exe" --dvm-bench "$(cygpath -w "$ROOT/build/guest/armeabi-v7a/dvm")" "$(cygpath -w "$ROOT/build/android9/root-$ABI")" "$MS"
 fi
 if [ "$MODE" = arm64 ]; then
   bash "$ROOT/tools/build-tests.sh" arm64 --no-run > /dev/null
