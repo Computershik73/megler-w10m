@@ -180,12 +180,64 @@ u32 mg_arm_svc_call(u32 *regs, mg_addr *block, u32 on_block)
 }
 #endif
 
+static void where_name(mg_addr a, char *out, size_t size);
+
+#if MG_ARCH_ARM64 && MG_HOST_WINDOWS
+/*
+ * What Windows ARM64 is asked, for GitHub issue 4 (apps with ARM64 code ended in ntdll's RtlDispatchException as they
+ * started, on a Snapdragon X Elite): two things said in the log, each once. Both cheap: they are looked at on every fault,
+ * and at every stop of a thread.
+ *
+ * A fault of guest code -- a system call left a trap among them -- with less than 64 KB between its sp and the bottom of
+ * its thread's stack, once a thread: the dispatch of an exception takes some 8 KB of the stack below sp before any handler
+ * runs (mg_host.h, MG_STACK_FAULT_ROOM), and the process ended where that was not there.
+ */
+static void stack_room_said(const mg_fault *f, mg_addr pc)
+{
+    static volatile i32 said[64];
+    void *lo = NULL, *hi = NULL;
+    mg_addr sp = f->regs[MG_REG_SP];
+    char where[160];
+    u32 tid;
+    int i;
+    mg_thread_stack_bounds(&lo, &hi);
+    if (sp < (mg_addr)lo || sp >= (mg_addr)hi || sp - (mg_addr)lo >= 64 * 1024) return;
+    tid = mg_thread_self_id();
+    for (i = 0; i < (int)MG_COUNT(said); i++) {
+        i32 was = mg_atomic_cas(&said[i], 0, (i32)tid);
+        if (was == (i32)tid) return;
+        if (!was) break;
+    }
+    if (i == (int)MG_COUNT(said)) return;
+    where_name(pc, where, sizeof(where));
+    mg_warn("fault: thread %u faulted at %s with %u KB of its stack left below sp (%u KB in all)", (unsigned)tid, where,
+            (unsigned)((sp - (mg_addr)lo) >> 10), (unsigned)(((mg_addr)hi - (mg_addr)lo) >> 10));
+}
+
+/*
+ * A thread found, as the core stopped it (the collector's mg_thread_suspend, a signal's mg_thread_interrupt), with x18 other
+ * than its TEB, once a pc (host/mg_host_win32.c, which says it once no thread is stopped): every function of Windows' reads
+ * the TEB through x18, KiUserExceptionDispatcher does not put it back, and the thread's next exception ends the process in
+ * RtlDispatchException, before any handler of the core's runs. The pc is the code that wrote it, or code after it.
+ */
+static MG_HOSTCB void x18_said(mg_addr pc, mg_addr x18, mg_addr teb, u32 thread, u32 stops)
+{
+    char where[160];
+    where_name(pc, where, sizeof(where));
+    mg_err("x18: thread %u was stopped at %s with x18 %016llx, not its TEB %016llx (%u such stops so far)", (unsigned)thread, where,
+           (unsigned long long)x18, (unsigned long long)teb, (unsigned)stops);
+}
+#endif
+
 static MG_HOSTCB bool on_fault(mg_fault *f)
 {
     const char *lib = NULL, *sym;
     const void *sym_addr = NULL, *base = NULL;
     char report[4000];
     mg_addr pc = f->regs ? MG_CODE_ADDR(f->regs[MG_REG_PC]) : 0;
+#if MG_ARCH_ARM64 && MG_HOST_WINDOWS
+    if (f->regs && pc && mg_ld_is_guest_code(pc)) stack_room_said(f, pc);
+#endif
 #if MG_HOST_ARM32
     /* The kernel's user helpers, which Windows has no page of (arm/mg_kuser.h): a call of one, or a read of their version. */
     if (f->kind == MG_FAULT_ACCESS && f->regs && (f->address & 0xfffff000u) == 0xffff0000u) {
@@ -498,7 +550,7 @@ static void where_name(mg_addr a, char *out, size_t size)
     else if (mg_host_module_at(a, module, sizeof(module), &base) && a != base)
         snprintf(out, size, "%s+0x%x", module, (unsigned)(a - base));
     else
-        snprintf(out, size, "%08x", (unsigned)a);
+        snprintf(out, size, "%0*llx", (int)(sizeof(mg_addr) * 2), (unsigned long long)a);
 }
 
 bool megler_dump_module(const char *module, const char *path)
@@ -588,6 +640,9 @@ bool mg_core_init(void)
     }
 #endif
     mg_fault_set_handler(on_fault);
+#if MG_ARCH_ARM64 && MG_HOST_WINDOWS
+    mg_thread_set_x18_report(x18_said);
+#endif
 #if MG_GUEST_CODE
     {
         /* Asked for now, while few thread-local slots are taken: on Windows the slot has to be one of the first 64, which live in the TEB itself. */

@@ -243,6 +243,14 @@ MG_HOSTAPI void mg_thread_suspend_report(char *out, size_t size);
  * (posix: always).
  */
 MG_HOSTAPI int mg_thread_snapshot_id(u32 id, mg_thread_regs *regs, mg_addr *words, int max_words);
+/*
+ * Windows ARM64 alone: each time a thread is stopped and its registers read (mg_thread_suspend, mg_thread_interrupt), x18
+ * is compared with the thread's TEB, recorded as it started; a pc where they differed is given to `fn` once, with x18,
+ * the TEB, the thread's id and how many stops have found them different so far -- not while a thread is stopped (the
+ * stopped one may hold the log's lock), but once none is: after the last mg_thread_resume, at the end of an interruption.
+ * Nothing elsewhere.
+ */
+MG_HOSTAPI void mg_thread_set_x18_report(void (MG_HOSTCB *fn)(mg_addr pc, mg_addr x18, mg_addr teb, u32 thread, u32 stops));
 /* Called on a thread started by mg_thread_start as it ends (its function returned, or mg_thread_exit): the collector forgets it. */
 MG_HOSTAPI void mg_thread_set_end_hook(void (MG_HOSTCB *fn)(void));
 MG_HOSTAPI void mg_thread_yield(void);
