@@ -282,6 +282,14 @@ draw functor on the graphics processor as on the phone. Its PartitionAlloc
 reserves pools of 16 GB with no access; mappings of 4 GB and more are the
 app's like any other since `MG_ALIGN_UP` keeps a 64-bit size's upper half.
 
+## Java's bytecode
+
+The Dalvik runtime's JIT ([JIT.md](JIT.md)) compiles what is hot of an app's bytecode on ARM64 as on the phone: its A64
+back end follows AAPCS64 and never touches x18, Windows' TEB there; its code goes on pages of the host's (VirtualProtect,
+with the RWX probe's answer) and FlushInstructionCache makes it runnable. On x64 and x86 the bytecode is interpreted. The
+A64 is proven under qemu-aarch64 (the arm64 suites with every loop compiled, and with the JIT off); on an ARM64 machine it
+is built (the package) and not yet run.
+
 ## Google's apps
 
 A desktop package brings Google Play services, Google Play Store, Google

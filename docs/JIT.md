@@ -1,7 +1,7 @@
 # A JIT for the Dalvik interpreter
 
-The plan for compiling an app's hot bytecode to Thumb-2, written before the code. What is built so far is said at the
-end; this file follows the work.
+The plan for compiling an app's hot bytecode to Thumb-2, written before the code, and then to A64 for the PCs on ARM64.
+What is built so far is said at the end; this file follows the work.
 
 ## Why
 
@@ -26,20 +26,50 @@ machine code is a few cycles.
 
 - **What is compiled.** A method, whole, the first time its back-edge count passes a threshold (loops are what is hot;
   a method called often but without loops gains less and is left for later). Each instruction the compiler knows becomes
-  a few Thumb-2 instructions; each it does not becomes an exit: "go on in the interpreter at this pc". A method whose
-  every instruction is an exit is not kept.
+  a few of the processor's (Thumb-2's, A64's); each it does not becomes an exit: "go on in the interpreter at this pc".
+  A method whose every instruction is an exit is not kept.
 - **Entries.** The code can be entered at pc 0 and at every branch target (a loop's head): the interpreter, at a jump
   back (where it already looks at `g_dvm.slow`, SAFEPOINT), finds the method's code and jumps in at the target. Entering
   at a loop's head is on-stack replacement for free: the frame is the state.
 - **Exits.** An exit stores the pc to go on at and returns. The interpreter reloads `pc` and continues its loop.
-- **The calling convention.** `int code(mg_dvm_reg *regs, const void *entry, u32 *pc_out, mg_dvm_thread *t)`: r4 holds
-  `regs` throughout, r5 the thread, r6 `pc_out`. Returns 0 (go on at `*pc_out`).
+- **The calling convention.** `int code(mg_dvm_jit_ctx *ctx, const void *entry)`: the context holds the frame's
+  registers, the address of `g_dvm.slow`, the pc to go on at, the thread, the frame, and the last call's result; a
+  callee-saved register holds the frame's registers throughout (r4 on Thumb-2, x19 on A64), another the context (r5,
+  x20). Returns 0 (go on at `ctx->pc`), 1 (an exception pending, thrown at `ctx->pc`) or 2 (returned, the value in
+  `ctx->result`).
 - **Watching.** While `g_dvm.slow` is set (a trace, a step limit, the profile) nothing compiled runs: the watched loop
   never enters code, and compiled code checks the flag at each jump back and exits there.
 - **Memory.** Code goes in executable pages of its own (the package has rescap:codeGeneration; the patcher writes code
   the same way), flushed with FlushInstructionCache on Windows and `__builtin___clear_cache` under Linux.
 - **Turning it off.** The flag `no-jit` (a file in LocalState\flags) keeps everything interpreted; `trace-jit` says each
   method compiled, its size, and how often each of its exits is taken.
+
+## The back ends
+
+`core/src/dvm/mg_dvm_jit.c` is the front end, which every processor shares: the walk over a method's bytecode, which
+instructions are compiled and which handed back, the decisions that need the runtime (a field resolved, a class
+initialised, a call done in place or the quick way, a switch's table), branches and their targets, the code's memory and
+its publishing. A back end writes each instruction's code (its `emit_*` functions) and the branches: `mg_dvm_jit_thumb2.h`
+for 32-bit ARM, `mg_dvm_jit_a64.h` for ARM64 (`MG_DVM_JIT` says where there is one). A branch takes as many of the
+back end's units as it says for its condition, so that a processor of variable-length instructions fits too. The split
+changed nothing on the phone: the 3842 methods the ARM32 suites compile with the threshold at 1 came out byte for byte as
+before it (the pointers movw and movt load aside, which another build has elsewhere).
+
+**A64** (desktop Windows on ARM64, and the arm64 tests under qemu-aarch64) follows AAPCS64: x19 holds the frame's
+registers, x20 the context and x21 the slow flag's address, all three callee-saved; x29 and x30 make a frame record; x0-x3
+and x9-x11 hold values and d0, d1 floating point, nothing kept in them from one instruction to the next, and never a
+reference in a vector register (the collector reads x0-x28, fp and lr of a thread it stops). x18 is never touched: it is
+the TEB on Windows, and code that changes it crashes Windows' exception dispatch (GitHub issue #4). A register of the frame
+is 64 bits there: an int is computed in a W register, whose write clears the upper half, and stored whole, so that if-eq
+and if-eqz, which compare whole registers as the interpreter does (a reference is 64 bits), find it as the interpreter
+keeps it; a long or a double is its two registers' low halves, each zero-extended. Java's semantics come with the
+instructions: W and X arithmetic wraps; LSLV, LSRV and ASRV take the count modulo 32 or 64; SDIV gives MIN_VALUE for
+MIN_VALUE / -1, and MSUB the remainder, 0; FCVTZS rounds toward zero, saturates and makes NaN 0, so that d2i, f2i, d2l and
+f2l, and the conversions from a long, are an instruction each, where Thumb-2 calls the runtime for a long's; cmpl and cmpg
+are FCMP, CSET and CSNEG (an unordered compare satisfies LT but not MI); cmp-long is CMP, CSET and CSNEG; if-eqz and
+if-nez are CBZ and CBNZ. A divisor of zero is a CBZ to the exit, and the interpreter throws; a float's or a double's
+remainder is fmod's, by a call. A64 compiles all that Thumb-2 does, and a long's division, remainder and conversions in
+the code.
 
 ## The first instructions
 
@@ -57,6 +87,21 @@ threshold at 0, so that every method with a loop is compiled at its first jump b
 interpreted. With `QEMU_CPU=cortex-a9` (and `WSLENV=QEMU_CPU`, which hands it to WSL) qemu plays a Surface RT's
 processor, which has no SDIV: the tests then take the JIT's division by a call. The benchmark (`tools/dvm-bench.sh
 arm`) gives the speed under qemu, interpreted and compiled; the phone's Self-test gives the phone's.
+
+The arm64 tests run the A64 the same way under qemu-aarch64 (`tools/build-tests.sh arm64`; MEGLER_JIT_THRESHOLD reaches
+the program when WSLENV names it): the core's and Android's libcore, with the JIT's own threshold, with it at 1 and with
+it at 0 (off), and `MEGLER_JIT_THRESHOLD=0 tools/dvm-bench.sh arm64` beside `tools/dvm-bench.sh arm64`. What only an
+ARM64 machine says is said under "Where it stands".
+
+Every arithmetic instruction is checked compiled as well as interpreted: tools/dvm-ops.py gives each of `t.Ops`'
+methods a twin that does its instruction in the second turn of a loop, which the JIT compiles at the first jump back, and
+`test_ops_jit` (mg_dvm_tests.c) runs the 1991 cases through the twins -- Java's answers worked out in Python: shifts by
+32, 33, 63, 64 and negative counts, MIN_VALUE / -1 and % -1, NaN and out-of-range conversions to int and long, a float's
+remainder, cmpl and cmpg of NaN, cmp-long's edges, divisors of zero -- and checks that each twin's loop was compiled whole,
+so that none ran interpreted unnoticed. `t.Jit` adds what the twins do not reach: ints made in compiled code compared
+whole with if-ne and if-nez, in the code and in the interpreter after a hand-back, and returned to an interpreted caller
+(upperHalves, upperCaller); a frame of 300 registers, past A64's register pairs' reach and past move/16's 255 (bigFrame);
+a negative index (readDown) and a null object (fieldOfNull) met by compiled loops.
 
 ## Where it stands
 
@@ -121,5 +166,18 @@ System.arraycopy 225 to 145, Math.min, max, abs 385 to 272; nothing slower. The 
 compiled instruction and hand-back, calls of each kind with their results, a callee's exception caught in the loop,
 recursion 3000 deep through compiled calls, long arithmetic against C, and both switches; the whole main suite passes with
 every loop compiled (MEGLER_JIT_THRESHOLD=1).
+
+A64 (`mg_dvm_jit_a64.h`) compiles all of that too, and a long's division, remainder and conversions in the code. The arm64
+suites pass under qemu-aarch64 at the JIT's own threshold, with every loop compiled (MEGLER_JIT_THRESHOLD=1) and with
+the JIT off (0): 7635 checks, and 7789 on Android's libcore, none failed. Under qemu-aarch64 (ns a turn, interpreted then
+compiled; `tools/dvm-bench.sh arm64`): int arithmetic 221 to 6.4, long and double arithmetic 377 to 27, iget and iput 413
+to 19, sget and sput 215 to 4.9, aget and aput of an int[256] 395 to 24, String.charAt 320 to 9.6, String.indexOf 139 to
+3.7, Math.min, max, abs 632 to 12, invoke-static 284 to 113, HashMap.get 4706 to 1924, Integer.valueOf 1346 to 627; an
+exception thrown and caught 362 to 385, within qemu's noise. What only an ARM64 machine running Windows can say: that the
+code lives with Windows' x18 and its exception dispatch (nothing in it names x18 -- its registers are x0-x3, x9-x11, x16,
+x19-x21, x29 and x30 -- and a fault under it reaches the core's vectored handler, which needs no unwind information, of
+which the code's frames have none, as the core's ELF's have none), pages made executable by VirtualProtect and
+FlushInstructionCache on a processor with real caches (qemu keeps none to flush), ARM's weaker ordering of memory between
+threads (qemu on an x86 PC is stronger), and its speed.
 
 Next: what the phone's logs say is handed back most.
