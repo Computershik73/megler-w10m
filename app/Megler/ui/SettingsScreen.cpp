@@ -9,6 +9,8 @@
 // Megler" at the top of each choice.
 #include "pch.h"
 
+#include "library/Library.h"
+#include "player/PermissionHost.h"
 #include "player/PhoneState.h"
 #include "player/Session.h"
 #include "player/StorageHost.h"
@@ -264,6 +266,77 @@ private:
             if (!ok) shell_.runOnUiThread([this, weak, tag] {
                 if (weak.lock()) shell_.alert("Not Changed", "\"" + tag + "\" is not a language and region as BCP 47 writes them, such as de-DE.");
             });
+        });
+    }
+
+    /// An app's permissions (player/PermissionHost.h): each of Android's groups its manifest asks for, what was said of it,
+    /// and the way to change it -- Megler's question's answer here, Windows' in Windows' privacy settings. And what its own
+    /// package declares to Windows (megler_appx_capabilities).
+    UIElement permissionsSection() {
+        std::optional<ApkEntry> entry;
+        for (const auto& e : Library::instance().entries())
+            if (e.report.package == scope_.package) {
+                entry = e;
+                break;
+            }
+        std::vector<UIElement> rows;
+        if (!entry || !entry->report.permissionsKnown) {
+            rows.push_back(listItem("Not Known Yet", "Megler has not read which permissions the app asks for: the Library reads it again once Megler is updated"));
+            return listSection("Permissions", rows);
+        }
+        const std::string label = scope_.label.empty() ? scope_.package : scope_.label;
+        for (const auto& group : permissionHost::groupsOf(entry->report)) {
+            // ("the camera" heads its row as "Camera")
+            std::string title = group.what.compare(0, 4, "the ") == 0 ? group.what.substr(4) : group.what;
+            if (!title.empty() && title[0] >= 'a' && title[0] <= 'z') title[0] = char(title[0] - 'a' + 'A');
+            if (group.decider == permissionHost::Decider::none) {
+                rows.push_back(listItem(title, "Allowed: Megler gives an app none of the phone's " + group.what + ", so there is nothing to refuse"));
+                continue;
+            }
+            if (group.decider == permissionHost::Decider::windows) {
+                // Windows' answer is the package's own: known here only in the app's own package.
+                std::string said = "Windows asks when the app first wants it";
+                if (scope_.own) {
+                    const int state = permissionHost::windows(group.name);
+                    if (state == MEGLER_PERMISSION_GRANTED) said = "Allowed by Windows";
+                    if (state == MEGLER_PERMISSION_DENIED_FIXED) said = "Not allowed by Windows";
+                } else {
+                    said = "Windows decides, in its privacy settings";
+                }
+                const std::wstring page = permissionHost::windowsSettingsPage(group.name);
+                rows.push_back(button(listItem(title, said + " (tap: Windows' settings)"),
+                                      [page] { winrt::Windows::System::Launcher::LaunchUriAsync(winrt::Windows::Foundation::Uri(page)); }, ButtonKind::plain,
+                                      title));
+                continue;
+            }
+            const int state = permissionHost::kept(scope_.package, group.name);
+            const std::string said = state == MEGLER_PERMISSION_GRANTED    ? "Allowed"
+                                     : state == MEGLER_PERMISSION_DENIED   ? "Not allowed; the app may ask again"
+                                     : state == MEGLER_PERMISSION_DENIED_FIXED ? "Not allowed"
+                                                                               : "Asked when the app wants it";
+            rows.push_back(button(listItem(title, said), [this, group, label] { changePermission(group, label); }, ButtonKind::plain, title));
+        }
+        if (rows.empty()) rows.push_back(listItem("None", "The app asks for no permission the user is asked about"));
+        return listSection("Permissions", rows,
+                           "What the app asks for that Android asks the user about, and what was said. Its own package declares " +
+                               appPackage::describeCapabilities(entry->report.capabilities()) + " to Windows, and nothing else." + applies());
+    }
+
+    /// A permission group Megler asks about: allowed, not allowed (for good), or asked again when the app wants it.
+    void changePermission(const permissionHost::Group& group, const std::string& label) {
+        AppShell::DialogSpec spec;
+        spec.title = "Permission: " + group.what;
+        spec.message = "Whether " + label + " may have " + group.what + ". \"Ask\" has it asked again the next time the app wants it.";
+        spec.buttons = {"Ask", "Don't Allow", "Allow"};
+        const std::weak_ptr<SettingsBody> weak = weak_from_this();
+        const std::string package = scope_.package, name = group.name;
+        shell_.dialog(std::move(spec), [weak, package, name](int button, std::string) {
+            auto self = weak.lock();
+            if (!self || button < 0) return;
+            const int state = button == 2 ? MEGLER_PERMISSION_GRANTED : button == 1 ? MEGLER_PERMISSION_DENIED_FIXED : MEGLER_PERMISSION_UNDECIDED;
+            permissionHost::keep(package, name, state);
+            shellLog::write("settings: " + package + "'s permission " + name + (button == 2 ? " allowed" : button == 1 ? " not allowed" : " to be asked again"));
+            self->rebuild();
         });
     }
 
@@ -553,6 +626,7 @@ private:
             add(column, about);
         }
 
+        if (forApp()) add(column, permissionsSection());
         add(column, renderSection());
         add(column, servicesSection());
         add(column, localeSection());
