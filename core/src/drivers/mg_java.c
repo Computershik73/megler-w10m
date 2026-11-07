@@ -2697,4 +2697,4 @@ static int java_back(unsigned quiet_ms, unsigned max_ms)
     return verdict;
 }
 
-const mg_driver mg_driver_java = { "java", java_start, java_touch, java_key, java_set_paused, NULL, java_stop, java_back };
+const mg_driver mg_driver_java = { "java", java_start, java_touch, java_key, java_set_paused, NULL, java_stop, java_back, NULL };

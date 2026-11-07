@@ -1,4 +1,9 @@
     // Megler: members added to the original's megler.ContextImpl (tools/build-framework.sh, "X.java.members").
+    // The configuration changed (megler.Screen): the callbacks registered with this context hear it, as those registered with
+    // a context's application do on Android -- the original kept them and never called them.
+    public void meglerConfigurationChanged(Configuration c) {
+        for (ComponentCallbacks cb : new java.util.ArrayList<>(mCallbacks)) cb.onConfigurationChanged(c);
+    }
     // The app's own folders on the shared storage other than its files: Android/obb/<package> and Android/media/<package>,
     // made when first asked for, as Android makes them. The original's Context answers both from getExternalFilesDir:
     // getObbDir() was Android/data/<package> -- the parent of the files folder, where an app that unpacks its expansion file
