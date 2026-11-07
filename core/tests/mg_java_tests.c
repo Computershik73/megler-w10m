@@ -2390,8 +2390,9 @@ static int run_data(void)
                                             stand-in that fails politely), the app's network security configuration (an authority of its own
                                             trusted for the names it gives it, the rest refused, pins), Android's key store's key pairs and their
                                             X.509 certificates (and an attestation challenge refused, and a key no provider takes refused at once),
-                                            and the list of decoders: the stand-in's H.264, AAC and MP3 (mg_codec_standin.c), and no H.265. */
-                                         "battery", "connectivity", "dns-servers", "system-libs", "apache-http-legacy", "apache-http-client", "preloaded-drawables", "location", "timezone", "locale", "phone-number", "tls", "tls-loopback", "tls-https",
+                                            and the list of decoders: the stand-in's H.264, AAC and MP3 (mg_codec_standin.c), and no H.265. And
+                                            the phone's sensors, the stand-in's (mg_sensor_standin.c), listed and listened to. */
+                                         "battery", "connectivity", "dns-servers", "system-libs", "apache-http-legacy", "apache-http-client", "preloaded-drawables", "location", "sensors", "timezone", "locale", "phone-number", "tls", "tls-loopback", "tls-https",
                                          "network-trust", "network-trust-domains", "network-trust-pins", "keystore", "keystore-certificates", "keystore-foreign-key", "path-op", "base64-streams", "piped-streams", "codecs",
                                          /* And what Android's WebView asks of the platform before it shows a page, each answered as Android
                                             answers it: the app's id within its user (UserHandle.getAppId), whether cleartext HTTP is
@@ -2502,6 +2503,30 @@ static int run_data(void)
         CHECK(starts >= 1 && stops == starts);
         CHECK(find_line("location: on: the app may have it", 0) >= 0 && find_line("location: the phone's location is followed, every 1000 ms", 0) >= 0
               && find_line("location: no longer followed", 0) >= 0);
+    }
+    /*
+     * The phone's sensors, asked for in the step "sensors": every sensor's first event in Android's units and signs, the
+     * accelerometer's at the rate asked for, a flush of all, then the listener removed -- each of the stand-in's sensors
+     * started (the accelerometer every 20 ms, SENSOR_DELAY_GAME) and none left running.
+     */
+    CHECK(wait_line("I/DataTest: sensors-events ok", 0, 60) >= 0);
+    {
+        int kind, tries, starts = 0, ms = 0;
+        bool running = true;
+        for (tries = 0; tries < 40 && running; tries++) {
+            running = false;
+            for (kind = MEGLER_SENSOR_ACCELEROMETER; kind <= MEGLER_SENSOR_BAROMETER; kind++) running |= mg_sensor_standin_running(kind);
+            if (running) mg_sleep_ns(100000000ull);
+        }
+        CHECK(!running);
+        mg_sensor_standin_counts(MEGLER_SENSOR_ACCELEROMETER, &starts, NULL, &ms);
+        CHECK(starts >= 1 && ms == 20);
+        for (kind = MEGLER_SENSOR_ACCELEROMETER; kind <= MEGLER_SENSOR_BAROMETER; kind++) {
+            mg_sensor_standin_counts(kind, &starts, NULL, NULL);
+            CHECK(starts >= 1);
+        }
+        CHECK(find_line("sensors: the device has 11: accelerometer, magnetic_field, orientation, gyroscope, light, pressure, proximity, gravity, ", 0) >= 0
+              && find_line("sensors: accelerometer: Test Accelerometer by Megler Tests, of the accelerometer; 39.23 at most, in steps of 0.002394, 10000 us apart", 0) >= 0);
     }
     /* The broadcasts of the step "broadcast-explicit", once delivered: the relayed one, which names Target, reached Target alone. */
     CHECK(wait_line("I/DataTest: broadcast-relay ok relay=1 target=1 off=0 remote=0 here=1 registered=1", 0, 30) >= 0);
