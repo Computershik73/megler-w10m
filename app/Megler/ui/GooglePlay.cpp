@@ -45,6 +45,10 @@ bool installed(const std::string& package) {
     return separateApps::status(package).installed == separateApps::Installed::yes;
 }
 
+/// Whether the last install of it was refused because Windows does not trust the certificate of Megler's apps' packages
+/// (CERT_E_UNTRUSTEDROOT, ui/SeparateApps.cpp).
+bool untrusted(const separateApps::Status& s) { return s.step.find("0x800b0109") != std::string::npos; }
+
 /// The library's entry of Google's own Google Play services (not microG's) or of Google Play Store.
 std::optional<ApkEntry> entryOf(const std::string& package) {
     for (const ApkEntry& e : Library::instance().entries())
@@ -78,9 +82,11 @@ void ask(AppShell& shell) {
         "Megler brings Google Play services and Google Play Store. With them, apps sign in with Google and install from Google "
         "Play. Megler installs both now, and apps run with microG until Google Play services is installed.\n\n"
         "Without them, apps run with microG, which takes far less memory. Google Play services can still be installed from "
-        "the Library later.\n\n"
-        "On phones with 1 GB of memory or less, Google Play Store can be slow. A store such as Aurora Store installs apps "
-        "from Google Play without it." +
+        "the Library later." +
+        // (A phone's memory alone: desktop Windows has gigabytes for it.)
+        std::string(platform::isMobile() ? "\n\nOn phones with 1 GB of memory or less, Google Play Store can be slow. A store such as Aurora Store "
+                                           "installs apps from Google Play without it."
+                                         : "") +
         std::string(littleMemory ? format(" This phone has %s.", formattedByteCount(memory).c_str()) : "");
     spec.buttons = {"Use microG", "Install Google Play"};
     std::weak_ptr<AppShell> weak = shell.weak_from_this();
@@ -132,6 +138,10 @@ void ensureInstalled(AppShell& shell) {
         if (!entry->analysed || !entry->report.ready()) return;
         const separateApps::Status s = separateApps::status(b.package);
         if (s.queued || s.installed != separateApps::Installed::no) return;
+        // Refused for the certificate Megler signs apps' packages with, which Windows trusts only once the user has installed
+        // it for the machine (desktop Windows; a phone's Device Portal installs it): not made and refused again every minute,
+        // but once the user installs it from the Library (pending() says how), which tries again.
+        if (untrusted(s)) return;
         const ULONGLONG now = GetTickCount64();
         if (b.installAsked && now - b.installAsked < retryMs) return;
         b.installAsked = now;
@@ -171,6 +181,11 @@ void tick(AppShell& shell) {
 std::string pending() {
     if (appPackage::isSingleApp() || !bundled() || choice() != Choice::wanted) return {};
     if (installed(gmsPackage) && installed(storePackage)) return {};
+    for (const Bundled& b : gBundled)
+        if (!installed(b.package) && untrusted(separateApps::status(b.package)))
+            return "Google Play was chosen, but Windows does not trust the certificate Megler signs its apps' packages with, and "
+                   "refused them. Trust it once, as administrator (Google Play services' page below says how), then install Google "
+                   "Play services there. Apps run with microG until Google Play services is installed.";
     return "Google Play was chosen: Megler installs its Google Play services, then Google Play Store. Apps run with microG "
            "until Google Play services is installed.";
 }
