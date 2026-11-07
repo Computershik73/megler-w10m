@@ -3523,9 +3523,20 @@ What a Java app asks of the phone beyond its window goes to the shell through
   there (package 662). Play Store's own `ApplicationInfo.metaData` now has its
   derived APK id as the newest there is (`megler.GooglePackages.ownMetaData`),
   and it skips the variant ("Local Derived Apk Id ... > Server Derived Apk
-  Id"). Not done: an update to a newer version, which the server will offer
-  in time, is still downloaded at each start and waits the same way; Play
-  Store gets newer through Megler's package or an APK added to the library.
+  Id"). With that id the server offers it no binary at all, a newer version
+  neither. Tried on a Lumia 650 with package 669: Play Store told it was
+  52.9.21 (the flag `older-self` of its own package, which
+  `megler.GooglePackages.ownVersionCode` reads) got "Server Version
+  [version=-1...]"; with the flag `real-derived-id` as well (its APK's own id,
+  1), the same Play Store was offered 53.7.23, whole, with no patch from the
+  53.7.23 it has, so the server had read the 52.9.21 of its user agent. So
+  Play Store does not update itself under Megler, and no newer version brings
+  the downloads back: it gets newer through Megler's package (the Phonesky.apk
+  it brings) or an APK added to the library. Installing its own updates would
+  need its process kept running in the background for the ten seconds and
+  more, and the install handed to Megler from there, where an app of the
+  phone's own cannot open Megler; Play Store had 450 MB of private memory
+  committed a minute after its start on that 1 GB phone.
   On the Lumia 650 every patch was refused besides ("bad base file hash"):
   Play Store's own APK there had two bits of its own, which Megler mends since
   0.1.0.668 (docs/PER-APP-PACKAGES.md, "The Google APKs Megler brings").
