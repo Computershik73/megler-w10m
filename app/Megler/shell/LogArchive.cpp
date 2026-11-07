@@ -346,7 +346,6 @@ void save() {
             saved = StorageFile::GetFileFromPathAsync(path).get().CopyAsync(logs, widen(name), NameCollisionOption::ReplaceExisting).get();
             files::remove(path);
             result.where = "Pictures\\Megler\\logs";
-            shellLog::write("logs: " + narrow(std::wstring(saved.Path())) + format(" saved, %u files, ", count) + formattedByteCount(result.size));
         } catch (hresult_error const& e) {
             saved = nullptr;
             // (An app's own package declares the Pictures library only where its app's permissions want it.)
@@ -355,8 +354,7 @@ void save() {
                                 "sends it. Megler's own Log screen saves all logs to Pictures\\Megler\\logs."
                               : format("The ZIP could not be copied to Pictures\\Megler\\logs (0x%08x ", unsigned(e.code())) +
                                     narrow(e.message()) + "), so it is in LocalState\\logs: Share sends it.";
-            shellLog::write("logs: " + narrow(path) + " saved, not copied to Pictures\\Megler\\logs: " + format("0x%08x ", unsigned(e.code())) +
-                            narrow(e.message()));
+            shellLog::write("logs: the ZIP was not copied to Pictures\\Megler\\logs: " + format("0x%08x ", unsigned(e.code())) + narrow(e.message()));
         }
     }
     if (!saved) {
@@ -366,6 +364,8 @@ void save() {
         } catch (...) {
         }
     }
+    shellLog::write("logs: saved " + (saved ? narrow(std::wstring(saved.Path())) : narrow(path)) + format(", %u files, ", count) +
+                    formattedByteCount(result.size));
     std::lock_guard<std::mutex> lock(gMutex);
     gFile = saved;
     result.saved = true;
