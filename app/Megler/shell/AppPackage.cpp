@@ -18,7 +18,11 @@
 #include <winrt/Windows.Graphics.Imaging.h>
 #include <winrt/Windows.Management.Deployment.h>
 
+#include <activation.h>
+#include <roapi.h>
+
 #include <atomic>
+#include <thread>
 
 namespace megler::app::appPackage {
 
@@ -695,6 +699,81 @@ InstallResult installWithPackageManager(const std::wstring& path, const std::fun
     if (denied) sayRefusedForAccess();
     rememberRefusal(path, refused);
     return refused;
+}
+
+namespace {
+
+/// One way of asking the deployment engine, said: FindPackagesForUser's count, and AddPackageAsync's answer to a package
+/// that is not there -- an error of its own where the engine takes Megler's call, 0x80070005 where it refuses Megler.
+std::string probeOne(winrt::Windows::Management::Deployment::PackageManager const& manager) {
+    using namespace winrt::Windows::Management::Deployment;
+    std::string said;
+    try {
+        unsigned count = 0;
+        for (auto const& p : manager.FindPackagesForUser(L"")) {
+            (void)p;
+            count++;
+        }
+        said += format("lists %u packages", count);
+    } catch (hresult_error const& e) {
+        said += format("list refused 0x%08x", unsigned(e.code()));
+    }
+    try {
+        const std::wstring missing = L"file:///" + platform::localStateDirectory() + L"/no-such-package.appx";
+        std::wstring uri = missing;
+        std::replace(uri.begin(), uri.end(), L'\\', L'/');
+        const DeploymentResult result = manager.AddPackageAsync(winrt::Windows::Foundation::Uri(uri), nullptr, DeploymentOptions::None).get();
+        said += format("; a missing package: 0x%08x ", unsigned(result.ExtendedErrorCode())) + narrow(result.ErrorText()).substr(0, 80);
+    } catch (hresult_error const& e) {
+        said += format("; a missing package: thrown 0x%08x ", unsigned(e.code())) + narrow(e.message()).substr(0, 80);
+    }
+    return said;
+}
+
+}  // namespace
+
+void probeDeployment(const char* when) {
+    if (!files::exists(platform::localStateDirectory() + L"\\flags\\diag-deploy")) return;
+    const std::string label = when;
+    std::thread([label] {
+        using namespace winrt::Windows::Management::Deployment;
+        try {
+            winrt::init_apartment();
+        } catch (...) {
+        }
+        std::string line = "deploy probe (" + label + "): ";
+        try {
+            line += "C++/WinRT's: " + probeOne(PackageManager());
+        } catch (hresult_error const& e) {
+            line += format("C++/WinRT's: not made 0x%08x", unsigned(e.code()));
+        }
+        // A factory of its own, past C++/WinRT's cache of them.
+        try {
+            winrt::com_ptr<::IActivationFactory> factory;
+            const winrt::hstring name = L"Windows.Management.Deployment.PackageManager";
+            winrt::check_hresult(RoGetActivationFactory(static_cast<HSTRING>(winrt::get_abi(name)), __uuidof(::IActivationFactory), factory.put_void()));
+            winrt::com_ptr<::IInspectable> made;
+            winrt::check_hresult(factory->ActivateInstance(made.put()));
+            line += "; a fresh factory's: " + probeOne(made.as<PackageManager>());
+        } catch (hresult_error const& e) {
+            line += format("; a fresh factory's: not made 0x%08x", unsigned(e.code()));
+        }
+        // One made on a thread of its own, new now.
+        std::string other;
+        std::thread([&other] {
+            try {
+                winrt::init_apartment();
+            } catch (...) {
+            }
+            try {
+                other = probeOne(PackageManager());
+            } catch (hresult_error const& e) {
+                other = format("not made 0x%08x", unsigned(e.code()));
+            }
+        }).join();
+        line += "; a new thread's: " + other;
+        shellLog::write(line);
+    }).detach();
 }
 
 #if defined(MEGLER_XBOX)

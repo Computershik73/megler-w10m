@@ -129,6 +129,7 @@ struct App : ApplicationT<App, Markup::IXamlMetadataProvider> {
         });
         Resuming([this](auto&&, auto&&) {
             shellLog::write("app: resuming");
+            appPackage::probeDeployment("resumed");
             if (shell_) shell_->resuming();
             session::setSuspended(false);
             // A call takes the screen, and may have come and gone while Megler was suspended under it.
@@ -173,6 +174,7 @@ struct App : ApplicationT<App, Markup::IXamlMetadataProvider> {
 
     void OnLaunched(LaunchActivatedEventArgs const& args) {
         shellLog::write("app: launched (previous state " + std::to_string(int(args.PreviousExecutionState())) + ")");
+        appPackage::probeDeployment("launched");
         // A diagnosis asked for over USB: its flags in place before an app runs, the log copied out (shell/PicturesDiag.h).
         startStep("looking for a diagnosis asked for over USB", [] { picturesDiag::start(); });
         copySystemDlls();
@@ -186,6 +188,7 @@ struct App : ApplicationT<App, Markup::IXamlMetadataProvider> {
     /// package hands over to install, an app a launcher starts.
     void OnActivated(IActivatedEventArgs const& args) {
         shellLog::write(format("app: activated (kind %d)", int(args.Kind())));
+        appPackage::probeDeployment("activated");
         ensureContent();
         activate();
         if (args.Kind() == ActivationKind::Protocol && shell_) shell_->openLink(args.as<ProtocolActivatedEventArgs>().Uri());
