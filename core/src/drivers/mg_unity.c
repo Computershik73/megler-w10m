@@ -211,6 +211,11 @@ static void init_jni(void)
     }
     mg_jni_call_native(fn, U.player, sig, a);
     mg_info("unity: initJni%s done (%s's)", sig, cls);
+    /* What else this version registered there: the next question when a new one misbehaves. */
+    {
+        char said[1500];
+        if (mg_jni_natives_said(cls, said, sizeof(said))) mg_info("unity: %s's natives: %s", cls, said);
+    }
 }
 
 /* What the UI thread is to do as the app starts, and what came of it. */
