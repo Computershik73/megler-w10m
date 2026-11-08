@@ -850,6 +850,73 @@ bool mg_dvm_heap_large_report(char *out, size_t cap, int top)
     return true;
 }
 
+/*
+ * What the live objects are, all of them, small and large: their bytes by class, the most first, the first `top` of them, and
+ * what is left ("[B 31.2 MB in 840, java/lang/String 6.1 MB in 98012, ...; 2310 other classes 20.4 MB"), just after a
+ * collection's sweep, when every object still in use is one that lived (the sweep cleared the marks). False, and nothing
+ * written, while the objects take less than `min_bytes`. With the heap's lock held, by the collector (its table is one of
+ * its own). TikTok Lite's live objects went from 5 to 105 MB in its first minute on a Lumia 650 (0.1.0.675), and nothing
+ * said what they were: the large objects' report named 29 MB of them.
+ */
+typedef struct class_tally { const mg_dvm_class *c; u64 bytes; u32 n; } class_tally;
+static class_tally g_tally[4096];
+static u32 g_ntally;
+
+static void tally(const mg_dvm_class *c, u64 bytes, u64 *rest_bytes)
+{
+    u32 h = (u32)(((uintptr_t)c >> 3) * 2654435761u) & (MG_COUNT(g_tally) - 1);
+    while (g_tally[h].c && g_tally[h].c != c) h = (h + 1) & (MG_COUNT(g_tally) - 1);
+    if (!g_tally[h].c) {
+        /* (Three quarters full at most: the rest, past that, said together.) */
+        if (g_ntally >= MG_COUNT(g_tally) / 4 * 3) {
+            *rest_bytes += bytes;
+            return;
+        }
+        g_tally[h].c = c;
+        g_ntally++;
+    }
+    g_tally[h].bytes += bytes;
+    g_tally[h].n++;
+}
+
+bool mg_dvm_heap_class_report(char *out, size_t cap, int top, u64 min_bytes)
+{
+    u64 rest = 0, untallied = 0;
+    u32 i, k, c, classes;
+    size_t n = 0;
+    if (!cap) return false;
+    out[0] = 0;
+    if (g_small_bytes + g_large_bytes < min_bytes) return false;
+    memset(g_tally, 0, sizeof(g_tally));
+    g_ntally = 0;
+    for (i = 0; i < g_narenas; i++)
+        for (k = 0; k < ARENA_BLOCKS; k++) {
+            const block *b = (const block *)(const void *)(g_arenas[i] + (size_t)k * BLOCK_SIZE);
+            if (b->cls < 0) continue;
+            for (c = 0; c < b->bump; c++)
+                if (b->inuse[c >> 5] & (1u << (c & 31)))
+                    tally(mg_dvm_class_of((const mg_jobj *)(const void *)(b->first + (size_t)c * b->cell)), b->cell, &untallied);
+        }
+    for (i = 0; i < g_nlarge; i++) tally(mg_dvm_class_of((const mg_jobj *)(const void *)g_large[i].start), g_large[i].size, &untallied);
+    classes = g_ntally;
+    for (; top > 0 && n + 96 < cap; top--) {
+        u32 best = MG_COUNT(g_tally);
+        for (i = 0; i < MG_COUNT(g_tally); i++)
+            if (g_tally[i].c && g_tally[i].n && (best == MG_COUNT(g_tally) || g_tally[i].bytes > g_tally[best].bytes)) best = i;
+        if (best == MG_COUNT(g_tally)) break;
+        n += (size_t)snprintf(out + n, cap - n, "%s%s %.1f MB in %u", n ? ", " : "", g_tally[best].c->name ? g_tally[best].c->name : "?",
+                              (double)g_tally[best].bytes / 1048576.0, (unsigned)g_tally[best].n);
+        g_tally[best].n = 0;
+        classes--;
+    }
+    for (i = 0; i < MG_COUNT(g_tally); i++)
+        if (g_tally[i].c && g_tally[i].n) rest += g_tally[i].bytes;
+    rest += untallied;
+    if (n + 64 < cap && rest)
+        snprintf(out + n, cap - n, "; %u other classes%s %.1f MB", (unsigned)classes, untallied ? " and more" : "", (double)rest / 1048576.0);
+    return n > 0;
+}
+
 void mg_dvm_heap_each_marked(void (*fn)(void *o))
 {
     u32 i, k, c;

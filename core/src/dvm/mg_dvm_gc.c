@@ -1261,6 +1261,19 @@ static void say_makers(char *out, size_t n)
 static void reference_work(void);
 
 static u64 g_large_said_ns;
+/*
+ * And what all the live objects are, by class (mg_dvm_heap_class_report): said when they take 48 MB or more and 16 MB more
+ * than when it was last said, at most once a minute -- some 1.5 million objects counted while the heap is locked.
+ */
+static u64 g_classes_said_ns, g_classes_said_live;
+static bool classes_report(char *out, size_t cap, u64 now, u64 live)
+{
+    if (now - g_classes_said_ns < 60000000000ull || live < g_classes_said_live + ((u64)16 << 20)) return false;
+    if (!mg_dvm_heap_class_report(out, cap, 10, (u64)48 << 20)) return false;
+    g_classes_said_ns = now;
+    g_classes_said_live = live;
+    return true;
+}
 
 static bool cycle_busy(void);
 
@@ -1295,11 +1308,11 @@ static void stop_failed_said(const char *reason)
 
 static bool collect(const char *reason, bool sweep, mg_dvm_gc_result *out)
 {
-    char large[600];
+    char large[600], classes[900];
     u64 t0, t1 = 0, t2 = 0, t3;
     u32 objects;
     bool ok, clear_soft = !strcmp(reason, "out of memory");
-    large[0] = 0;
+    large[0] = classes[0] = 0;
     memset(out, 0, sizeof(*out));
     if (!g_dvm.running || t_collecting) {
         mg_strlcpy(out->not_collected, !g_dvm.running ? "the runtime is not running" : "this thread is collecting already", sizeof(out->not_collected));
@@ -1384,10 +1397,12 @@ static bool collect(const char *reason, bool sweep, mg_dvm_gc_result *out)
         mg_atomic_xchg(&g_native_since, 0);
         /* What the large objects are, when they are many (at most once in 30 s): Play Store's took 156 MB. */
         if (t3 - g_large_said_ns > 30000000000ull && mg_dvm_heap_large_report(large, sizeof(large), 6)) g_large_said_ns = t3;
+        classes_report(classes, sizeof(classes), t3, out->live_bytes);
     }
     mg_dvm_heap_unlock();
     g_busy = 0;
     if (large[0]) mg_info("gc: the large objects (over 2 KB each) by class: %s", large);
+    if (classes[0]) mg_info("gc: the live objects by class: %s", classes);
     if (ok) {
         mg_atomic_add(&g_collections, 1);
         g_pause_ns += out->stop_ns + out->mark_ns + out->sweep_ns;
@@ -1567,7 +1582,7 @@ static void collect_alongside(void)
     u64 faults0, faults1 = 0, faults2 = 0, faults3 = 0;   /* the process's page faults at each stop's start and end */
     u32 objects, written = 0, released = 0, since0 = 0, native0 = 0, followed = 0;
     u64 held = 0, black = 0, traced = 0;
-    char makers[200], large[600];
+    char makers[200], large[600], classes[900];
     bool ok, hurried;
     mg_dvm_gc_result r;
     mg_dvm_heap_info hi;
@@ -1576,7 +1591,7 @@ static void collect_alongside(void)
     memset(&hi, 0, sizeof(hi));
     memset(&first, 0, sizeof(first));
     memset(&second, 0, sizeof(second));
-    makers[0] = large[0] = 0;
+    makers[0] = large[0] = classes[0] = 0;
     mg_lock_acquire(&g_gc_lock);
     helpers_start();
     t_collecting = true;
@@ -1690,6 +1705,7 @@ static void collect_alongside(void)
         mg_atomic_add(&g_since, -(i32)since0);
         mg_atomic_add(&g_native_since, -(i32)native0);
         if (t8 - g_large_said_ns > 30000000000ull && mg_dvm_heap_large_report(large, sizeof(large), 6)) g_large_said_ns = t8;
+        classes_report(classes, sizeof(classes), t8, traced);
     }
     mg_dvm_heap_unlock();
     g_busy = 0;
@@ -1698,6 +1714,7 @@ static void collect_alongside(void)
         stop_failed_said("alongside, at the second stop");
     }
     if (large[0]) mg_info("gc: the large objects (over 2 KB each) by class: %s", large);
+    if (classes[0]) mg_info("gc: the live objects by class: %s", classes);
     if (ok) {
         mg_atomic_add(&g_collections, 1);
         g_pause_ns += (t2 - t0) + (t7 - t4) + r.sweep_ns;

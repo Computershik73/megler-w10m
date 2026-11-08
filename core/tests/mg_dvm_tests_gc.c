@@ -350,6 +350,37 @@ static void test_gc_gives_back(void)
 }
 
 /*
+ * What all the live objects are, by class (mg_dvm_heap_class_report), as a collection's marks say it after its sweep: 36
+ * arrays of 1 MB and 40,000 small int arrays, held by one root, the byte arrays first and the int arrays named too; nothing
+ * said below the least it is asked for. (TikTok Lite's live objects grew to 105 MB on a Lumia 650, and only its large ones
+ * were named, 0.1.0.675.)
+ */
+static mg_jobj *g_classes_held;
+static void test_gc_class_report(void)
+{
+    mg_dvm_gc_result r;
+    char report[900], none[64];
+    bool said, below;
+    int i;
+    say("the collector: the live objects by class");
+    g_classes_held = mg_dvm_new_array("[Ljava/lang/Object;", 36 + 40000);
+    mg_dvm_add_root(&g_classes_held);
+    for (i = 0; i < 36; i++) g_classes_held->u.oarr.v[i] = mg_dvm_new_array("[B", 1 << 20);
+    for (i = 0; i < 40000; i++) g_classes_held->u.oarr.v[36 + i] = mg_dvm_new_array("[I", 16);
+    CHECK(mg_dvm_gc("test classes", &r));
+    mg_dvm_heap_lock();
+    said = mg_dvm_heap_class_report(report, sizeof(report), 10, 0);
+    below = mg_dvm_heap_class_report(none, sizeof(none), 10, (u64)1 << 40);
+    mg_dvm_heap_unlock();
+    say("  the live objects by class: %s", said ? report : "(not said)");
+    CHECK(said && !strncmp(report, "[B ", 3) && atof(report + 3) >= 36.0);
+    CHECK(strstr(report, ", [I ") != NULL);
+    CHECK(!below && !none[0]);
+    /* (The root stays, holding nothing.) */
+    g_classes_held = NULL;
+}
+
+/*
  * The budget a collection leaves (budget_after): half of what lived, at least the least; with the machine's free memory known,
  * no more than half of what it has beyond 96 MB, and the least when it has less. TikTok Lite on a Lumia 650 was given the
  * least by the app's limit, which Windows let it pass, and collected every 0.8 s (package 619). And with the process's free
@@ -624,6 +655,7 @@ void test_gc(void)
     mg_dvm_made_say();
     mg_dvm_made_say();
     test_gc_gives_back();
+    test_gc_class_report();
     test_gc_budget_by_free_memory();
     test_gc_heap_near_live();
 }
