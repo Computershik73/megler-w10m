@@ -1556,6 +1556,17 @@ static void type_into_fields(const int row[4], int *at)
     CHECK(count_colour(name, 0x102030) == 0);
     /* The keyboard comes up and says how much it covers before anything is typed, as a phone's shell does. */
     megler_keyboard_height(g_screen_h * 2 / 5);
+    /* It comes as an inset animation of the keyboard's type (WindowInsetsAnimation, through the views' callbacks, as
+       React Native's keyboard controller is moved by): prepared, started with the bounds none and its height, frames of
+       its progress, ended. */
+    {
+        char start[128];
+        snprintf(start, sizeof(start), "I/DemoTest: typing: ime start lower=0 upper=%d duration=250", g_screen_h * 2 / 5);
+        expect_line("I/DemoTest: typing: ime prepare type=8", at, 30);
+        expect_line(start, at, 30);
+        expect_line("I/DemoTest: typing: ime end type=8 fraction=1.0 steps=several", at, 30);
+        CHECK(find_line("I/MeglerViews: the keyboard comes as an inset animation of 250 ms to the views' callbacks (WindowInsetsAnimation)", 0) >= 0);
+    }
     settle();
     /* Text, as the keyboard commits it. */
     megler_text_commit("Hello");

@@ -315,6 +315,42 @@ public abstract class ViewGroup extends View implements ViewParent, ViewManager 
         for (int i = 0; i < mChildrenCount; i++) { r = mChildren[i].dispatchApplyWindowInsets(r); if (r.isConsumed()) break; }
         return r;
     }
+    /*
+     * Inset animations (the keyboard's, megler.ViewRoot) go down the tree as on Android: this view's callback first, then the
+     * children, unless that callback's dispatch mode is DISPATCH_MODE_STOP. (The original's were stubs that stopped at once.)
+     */
+    private boolean insetsAnimationStops() {
+        WindowInsetsAnimation.Callback cb = meglerInsetsAnimationCallback();
+        return cb != null && cb.getDispatchMode() == WindowInsetsAnimation.Callback.DISPATCH_MODE_STOP;
+    }
+    @Override public boolean hasWindowInsetsAnimationCallback() {
+        if (super.hasWindowInsetsAnimationCallback()) return true;
+        if (insetsAnimationStops()) return false;
+        for (int i = 0; i < mChildrenCount; i++) if (mChildren[i].hasWindowInsetsAnimationCallback()) return true;
+        return false;
+    }
+    @Override public void dispatchWindowInsetsAnimationPrepare(WindowInsetsAnimation animation) {
+        super.dispatchWindowInsetsAnimationPrepare(animation);
+        if (insetsAnimationStops()) return;
+        for (int i = 0; i < mChildrenCount; i++) mChildren[i].dispatchWindowInsetsAnimationPrepare(animation);
+    }
+    @Override public WindowInsetsAnimation.Bounds dispatchWindowInsetsAnimationStart(WindowInsetsAnimation animation, WindowInsetsAnimation.Bounds bounds) {
+        bounds = super.dispatchWindowInsetsAnimationStart(animation, bounds);
+        if (insetsAnimationStops()) return bounds;
+        for (int i = 0; i < mChildrenCount; i++) mChildren[i].dispatchWindowInsetsAnimationStart(animation, bounds);
+        return bounds;
+    }
+    @Override public WindowInsets dispatchWindowInsetsAnimationProgress(WindowInsets insets, java.util.List<WindowInsetsAnimation> running) {
+        insets = super.dispatchWindowInsetsAnimationProgress(insets, running);
+        if (insetsAnimationStops()) return insets;
+        for (int i = 0; i < mChildrenCount; i++) mChildren[i].dispatchWindowInsetsAnimationProgress(insets, running);
+        return insets;
+    }
+    @Override public void dispatchWindowInsetsAnimationEnd(WindowInsetsAnimation animation) {
+        super.dispatchWindowInsetsAnimationEnd(animation);
+        if (insetsAnimationStops()) return;
+        for (int i = 0; i < mChildrenCount; i++) mChildren[i].dispatchWindowInsetsAnimationEnd(animation);
+    }
     void onChildVisibilityChanged(View child, int old, int now) {}
     @Override protected void dispatchSetPressed(boolean p) { for (int i = 0; i < mChildrenCount; i++) { View c = mChildren[i]; if (!p || (!c.isClickable() && !c.isLongClickable())) c.setPressed(p); } }
     @Override protected void dispatchSetSelected(boolean s) { for (int i = 0; i < mChildrenCount; i++) mChildren[i].setSelected(s); }
@@ -696,10 +732,6 @@ public abstract class ViewGroup extends View implements ViewParent, ViewManager 
     public void dispatchProvideContentCaptureStructure() {}
     public void dispatchProvideStructure(android.view.ViewStructure p0) {}
     public void dispatchScrollCaptureSearch(android.graphics.Rect p0, android.graphics.Point p1, java.util.function.Consumer p2) {}
-    public void dispatchWindowInsetsAnimationEnd(android.view.WindowInsetsAnimation p0) {}
-    public void dispatchWindowInsetsAnimationPrepare(android.view.WindowInsetsAnimation p0) {}
-    public android.view.WindowInsets dispatchWindowInsetsAnimationProgress(android.view.WindowInsets p0, java.util.List p1) { return null; }
-    public android.view.WindowInsetsAnimation.Bounds dispatchWindowInsetsAnimationStart(android.view.WindowInsetsAnimation p0, android.view.WindowInsetsAnimation.Bounds p1) { return null; }
     public void dispatchWindowSystemUiVisiblityChanged(int p0) {}
     protected void encodeProperties(android.view.ViewHierarchyEncoder p0) {}
     public void findAutofillableViewsByTraversal(java.util.List p0) {}
@@ -717,7 +749,6 @@ public abstract class ViewGroup extends View implements ViewParent, ViewManager 
     public int getTransientViewCount() { return 0; }
     public int getTransientViewIndex(int p0) { return 0; }
     protected boolean hasHoveredChild() { return false; }
-    public boolean hasWindowInsetsAnimationCallback() { return false; }
     protected void internalSetPadding(int p0, int p1, int p2, int p3) {}
     public boolean isAlwaysDrawnWithCacheEnabled() { return false; }
     public boolean isAnimationCacheEnabled() { return false; }

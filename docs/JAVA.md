@@ -3516,6 +3516,26 @@ with a keyboard over 500 of the 800 rows:
 
 Once the keyboard is put away, each dialog is back where it was.
 
+**The keyboard's coming and going is an inset animation** of
+`WindowInsets.Type.ime()`, run through the views' callbacks
+(`View.setWindowInsetsAnimationCallback`) as Android 11's `InsetsController`
+runs it (`megler.ViewRoot`, `ImeAnimation`): `onPrepare` with the insets as
+they were; the window's new insets (`onApplyWindowInsets`) and its layout;
+`onStart`, at the end of that frame, with the bounds -- none and the
+keyboard's height; `onProgress` at each frame of its 250 ms with the insets at
+that point (decelerating); `onEnd`. A `ViewGroup` hands each call on to its
+children unless its own callback's dispatch mode is `DISPATCH_MODE_STOP`, and
+a new change ends the one running. `WindowInsetsAnimation` and its `Bounds`
+were stubs that kept nothing (an overlay now), and the callback was never
+kept: AndroidX's `WindowInsetsAnimationCompat` uses these on Android 11 and
+later (Megler says 14), and React Native's keyboard controller
+(`react-native-keyboard-controller`, which Discord's login and registration
+screens are built on) moves what is above the keyboard only as such an
+animation tells it. The log says the first one: "MeglerViews: the keyboard
+comes as an inset animation of 250 ms to the views' callbacks". The demos
+app's typing screen has a callback that says each call, and the test checks
+them when the keyboard comes up.
+
 **Not there:** composing text (a keyboard that composes sends each piece when
 it is final), the selection handles and the copy and paste bar (the
 framework's), and telling the shell where the cursor is on the screen.
