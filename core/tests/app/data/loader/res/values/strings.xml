@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The loader APK's resources (core/tests/app/data/loader/AndroidManifest.xml says what it is for); with res/drawable/loader_mark.png,
+     4 x 4 pixels of (16, 32, 48), as a module's texture. -->
+<resources>
+    <string name="loader_greeting">from the loader</string>
+    <color name="loader_color">#FF102030</color>
+</resources>

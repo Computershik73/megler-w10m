@@ -1690,6 +1690,32 @@ public class Main extends Activity {
                     && Boolean.FALSE.equals(info.getClass().getMethod("isVerified").invoke(info))
                     && Boolean.FALSE.equals(info.getClass().getMethod("isFullyCompiled").invoke(info));
         });
+        insetFraction();
+        workSource();
+        resourcesLoader();
+        locationRequest();
+        // A provider's file through a ContentProviderClient, as Google Play services' DynamiteLoader reads its modules'
+        // Chimera configuration (acquireUnstableContentProviderClient(uri).openFile(uri, "r")): the provider's own file comes.
+        step("provider-client-file", () -> {
+            try (java.io.FileOutputStream o = new java.io.FileOutputStream(new java.io.File(getFilesDir(), "provider-config"))) {
+                o.write("chimera config".getBytes("UTF-8"));
+            }
+            android.net.Uri uri = android.net.Uri.parse("content://megler.test.sync/config");
+            android.content.ContentProviderClient client = getContentResolver().acquireUnstableContentProviderClient(uri);
+            android.os.ParcelFileDescriptor pfd = client == null ? null : client.openFile(uri, "r");
+            if (client != null) client.release();
+            String read = null;
+            if (pfd != null) {
+                try (java.io.FileInputStream in = new java.io.FileInputStream(pfd.getFileDescriptor())) {
+                    byte[] b = new byte[64];
+                    int n = in.read(b);
+                    read = n > 0 ? new String(b, 0, n, "UTF-8") : "";
+                }
+                pfd.close();
+            }
+            detail = "client=" + client + " read=" + read;
+            return "chimera config".equals(read);
+        });
         sound();
         mediaCodec();
         network();
@@ -3820,6 +3846,11 @@ public class Main extends Activity {
         @Override public android.net.Uri insert(android.net.Uri u, android.content.ContentValues v) { return null; }
         @Override public int delete(android.net.Uri u, String s, String[] a) { return 0; }
         @Override public int update(android.net.Uri u, android.content.ContentValues v, String s, String[] a) { return 0; }
+        /** "content://megler.test.sync/config": the file Main's step provider-client-file wrote, read-only (as Google Play services' Chimera configuration). */
+        @Override public android.os.ParcelFileDescriptor openFile(android.net.Uri u, String mode) throws java.io.FileNotFoundException {
+            if (!"/config".equals(u.getPath())) throw new java.io.FileNotFoundException(String.valueOf(u));
+            return android.os.ParcelFileDescriptor.open(new java.io.File(getContext().getFilesDir(), "provider-config"), android.os.ParcelFileDescriptor.MODE_READ_ONLY);
+        }
     }
 
     /** The service of Main's sync adapter, which hands out the adapter's binder as Android's sync adapters do. */
@@ -4905,6 +4936,181 @@ public class Main extends Activity {
             detail = "mask " + box + " layer " + layer + " middle " + Integer.toHexString(middle) + " inset " + android.graphics.drawable.AdaptiveIconDrawable.getExtraInsetFraction();
             return !mask.isEmpty() && box.width() > 90 && box.width() <= 101 && layer.left == -25 && layer.right == 125 && middle == 0xFF0000FF
                     && android.graphics.drawable.AdaptiveIconDrawable.getExtraInsetFraction() == 0.25f;
+        });
+    }
+
+    /**
+     * An <inset> whose insets are fractions of its bounds (res/drawable/inset_fraction.xml: a quarter on every side but the
+     * left, which is 8 pixels, round a shape of 80 x 40), inflated as Android 8 and later inflate it: in bounds of 200 x 100 the
+     * shape is at 8, 25 to 150, 75; the intrinsic size is the shape's made the part of the whole that the fractions leave
+     * (80 / 0.75 + 8 = 114, 40 / 0.5 = 80); the padding is the insets. And the inset of 0.01% WhatsApp's adaptive icon has round
+     * its foreground (res/drawable/inset_tiny.xml), which ended the app where the inflater took every inset for a dimension; and
+     * InsetDrawable(Drawable, float), a quarter on every side of 40 x 40.
+     */
+    private void insetFraction() {
+        step("inset-fraction", () -> {
+            android.graphics.drawable.Drawable d = getResources().getDrawable(R.drawable.inset_fraction, null);
+            android.graphics.drawable.Drawable tiny = getResources().getDrawable(R.drawable.inset_tiny, null);
+            if (!(d instanceof android.graphics.drawable.InsetDrawable) || !(tiny instanceof android.graphics.drawable.InsetDrawable)) {
+                detail = "drawables " + d + " " + tiny;
+                return false;
+            }
+            d.setBounds(0, 0, 200, 100);
+            android.graphics.Rect inner = new android.graphics.Rect(((android.graphics.drawable.InsetDrawable) d).getDrawable().getBounds());
+            android.graphics.Rect pad = new android.graphics.Rect();
+            boolean padded = d.getPadding(pad);
+            android.graphics.drawable.InsetDrawable made = new android.graphics.drawable.InsetDrawable(new android.graphics.drawable.ColorDrawable(0xFF0000FF), 0.25f);
+            made.setBounds(0, 0, 40, 40);
+            android.graphics.Rect madeInner = made.getDrawable().getBounds();
+            boolean nested = ((android.graphics.drawable.InsetDrawable) tiny).getDrawable() instanceof android.graphics.drawable.InsetDrawable;
+            detail = "inner " + inner + " intrinsic " + d.getIntrinsicWidth() + "x" + d.getIntrinsicHeight() + " padding " + pad + " made " + madeInner + " nested " + nested;
+            return inner.equals(new android.graphics.Rect(8, 25, 150, 75)) && d.getIntrinsicWidth() == 114 && d.getIntrinsicHeight() == 80
+                    && padded && pad.equals(new android.graphics.Rect(8, 25, 50, 25)) && madeInner.equals(new android.graphics.Rect(10, 10, 30, 30)) && nested;
+        });
+    }
+
+    /**
+     * A WorkSource through a Parcel as Google Play services' client library writes a location request's: its writeToParcel
+     * inside a field's header whose size is patched in after (SafeParcelWriter), read back with the CREATOR, as Google Play
+     * services' location service reads it. One with two uids and a name each and a work chain comes back equal, kept in the
+     * uids' order as Android keeps it; an empty one comes back empty, not null -- the null that ended every request of
+     * FusedLocationProviderClient in Google Play services' ImmutableWorkSource. (Most of WorkSource is system API, not in the
+     * SDK the app is built against: by reflection.)
+     */
+    private void workSource() {
+        step("work-source", () -> {
+            Class<android.os.WorkSource> c = android.os.WorkSource.class;
+            android.os.WorkSource ws = new android.os.WorkSource(), empty = new android.os.WorkSource();
+            java.lang.reflect.Method add = c.getMethod("add", int.class, String.class);
+            add.invoke(ws, 10123, "megler.test.b");
+            add.invoke(ws, 10045, "megler.test.a");
+            Object chain = c.getMethod("createWorkChain").invoke(ws);
+            chain.getClass().getMethod("addNode", int.class, String.class).invoke(chain, 10045, "location");
+            android.os.Parcel p = android.os.Parcel.obtain();
+            p.writeInt(0xFFFF0001);
+            int sizeAt = p.dataPosition();
+            p.writeInt(0);
+            int start = p.dataPosition();
+            ws.writeToParcel(p, 0);
+            int end = p.dataPosition();
+            p.setDataPosition(sizeAt);
+            p.writeInt(end - start);
+            p.setDataPosition(end);
+            empty.writeToParcel(p, 0);
+            p.setDataPosition(0);
+            p.readInt();
+            int size = p.readInt();
+            android.os.WorkSource back = android.os.WorkSource.CREATOR.createFromParcel(p);
+            android.os.WorkSource emptyBack = android.os.WorkSource.CREATOR.createFromParcel(p);
+            p.recycle();
+            int n = (Integer) c.getMethod("size").invoke(back);
+            int firstUid = (Integer) c.getMethod("getUid", int.class).invoke(back, 0);
+            String firstName = (String) c.getMethod("getPackageName", int.class).invoke(back, 0);
+            java.util.List<?> chains = (java.util.List<?>) c.getMethod("getWorkChains").invoke(back);
+            boolean emptyIs = emptyBack != null && (Boolean) c.getMethod("isEmpty").invoke(emptyBack);
+            detail = "size=" + size + " back=" + back + " empty=" + emptyBack;
+            return size > 0 && back != null && back.equals(ws) && !back.equals(empty) && n == 2 && firstUid == 10045 && "megler.test.a".equals(firstName)
+                    && chains != null && chains.size() == 1 && emptyIs && emptyBack.equals(empty);
+        });
+    }
+
+    /**
+     * A module's resources as Google Play services' DynamiteLoader makes them on Android 11 and later: the platform's own
+     * resources (getResourcesForApplication("android"), a Resources of their own, not the app's) with a ResourcesLoader of
+     * the module's APK added -- here the APK of resources alone the app carries (assets/loader.apk, package
+     * megler.test.loader, tools/build-test-app.sh). Its string is found by name in its package and read; its picture is
+     * decoded by BitmapFactory.decodeResource, as the Google Maps module reads its textures; its ids are its package's; the
+     * platform's own are still there; and the app's own resources do not have what the loader put over the platform's. (The
+     * loader classes are Android 11's, not in the SDK the app is built against: stubs/, and addLoaders by reflection.)
+     */
+    private void resourcesLoader() {
+        step("resources-loader", () -> {
+            java.io.File apk = new java.io.File(getFilesDir(), "loader.apk");
+            try (java.io.InputStream in = getAssets().open("loader.apk"); java.io.FileOutputStream out = new java.io.FileOutputStream(apk)) {
+                byte[] buf = new byte[8192];
+                for (int n; (n = in.read(buf)) > 0; ) out.write(buf, 0, n);
+            }
+            android.content.res.Resources platform = getPackageManager().getResourcesForApplication("android");
+            int before = platform.getIdentifier("loader_greeting", "string", "megler.test.loader");
+            android.content.res.loader.ResourcesLoader loader = new android.content.res.loader.ResourcesLoader();
+            try (android.os.ParcelFileDescriptor pfd = android.os.ParcelFileDescriptor.open(apk, android.os.ParcelFileDescriptor.MODE_READ_ONLY)) {
+                loader.addProvider(android.content.res.loader.ResourcesProvider.loadFromApk(pfd));
+            }
+            android.content.res.Resources.class.getMethod("addLoaders", android.content.res.loader.ResourcesLoader[].class)
+                    .invoke(platform, (Object) new android.content.res.loader.ResourcesLoader[] { loader });
+            int id = platform.getIdentifier("loader_greeting", "string", "megler.test.loader");
+            int markId = platform.getIdentifier("loader_mark", "drawable", "megler.test.loader");
+            int colorId = platform.getIdentifier("loader_color", "color", "megler.test.loader");
+            String text = id != 0 ? platform.getString(id) : null;
+            String pkg = id != 0 ? platform.getResourcePackageName(id) : null;
+            android.graphics.Bitmap mark = markId != 0 ? android.graphics.BitmapFactory.decodeResource(platform, markId) : null;
+            int color = colorId != 0 ? platform.getColor(colorId, null) : 0;
+            String own;
+            try {
+                own = getResources().getString(id);
+            } catch (android.content.res.Resources.NotFoundException e) {
+                own = "not found";
+            }
+            String ok = platform.getString(android.R.string.ok);
+            detail = "before=" + before + " id=0x" + Integer.toHexString(id) + " text=" + text + " package=" + pkg + " mark=" + (mark == null ? "null" : mark.getWidth() + "x" + mark.getHeight() + " " + Integer.toHexString(mark.getPixel(1, 1)))
+                    + " color=" + Integer.toHexString(color) + " own=" + own + " ok=" + ok + " same=" + (platform == getResources());
+            return before == 0 && id != 0 && (id >>> 24) == 0x7f && "from the loader".equals(text) && "megler.test.loader".equals(pkg)
+                    && mark != null && mark.getWidth() == 4 && mark.getPixel(1, 1) == 0xFF102030 && color == 0xFF102030
+                    && !"from the loader".equals(own) && ok != null && !ok.isEmpty() && platform != getResources();
+        });
+    }
+
+    /**
+     * A LocationRequest as Android 12 and later make one: the builder keeps the interval and the rest, the minimum update
+     * interval a sixth of the interval until one is set, "any number" of updates (Integer.MAX_VALUE) until one is set; one of
+     * the deprecated provider -- createFromDeprecatedProvider, as Google Play services' location engine asks for the passive
+     * provider (hidden: by reflection) -- names its provider and the quality the passive provider stands for (POWER_NONE); one
+     * goes through a Parcel and comes back equal. And a request of the passive interval through LocationManager (Android 12's
+     * requestLocationUpdates with a LocationRequest, by reflection) is handed a fix on the main thread and removed:
+     * "location-passive ok", which the test waits for. (LocationRequest is Android 12's: stubs/.)
+     */
+    private void locationRequest() {
+        step("location-request", () -> {
+            android.location.LocationRequest r = new android.location.LocationRequest.Builder(6000).setMaxUpdates(3).setMinUpdateDistanceMeters(10f).build();
+            android.location.LocationRequest any = new android.location.LocationRequest.Builder(6000).build();
+            Object deprecated = android.location.LocationRequest.class.getMethod("createFromDeprecatedProvider", String.class, long.class, float.class, boolean.class)
+                    .invoke(null, "passive", 0L, 0f, false);
+            String provider = (String) deprecated.getClass().getMethod("getProvider").invoke(deprecated);
+            int quality = (Integer) deprecated.getClass().getMethod("getQuality").invoke(deprecated);
+            android.os.Parcel p = android.os.Parcel.obtain();
+            r.writeToParcel(p, 0);
+            p.setDataPosition(0);
+            android.location.LocationRequest back = android.location.LocationRequest.CREATOR.createFromParcel(p);
+            p.recycle();
+            final android.location.LocationManager lm = (android.location.LocationManager) getSystemService(Context.LOCATION_SERVICE);
+            android.location.LocationRequest passive = new android.location.LocationRequest.Builder(android.location.LocationRequest.PASSIVE_INTERVAL).build();
+            lm.getClass().getMethod("requestLocationUpdates", String.class, android.location.LocationRequest.class, java.util.concurrent.Executor.class,
+                    android.location.LocationListener.class).invoke(lm, android.location.LocationManager.PASSIVE_PROVIDER, passive, getMainExecutor(),
+                    new android.location.LocationListener() {
+                        private int calls;
+
+                        @Override
+                        public void onLocationChanged(android.location.Location l) {
+                            if (++calls != 1) return;
+                            boolean good = Math.abs(l.getLatitude() - 55.7512) < 0.01 && android.os.Looper.myLooper() == android.os.Looper.getMainLooper();
+                            Log.i("DataTest", "location-passive " + (good ? "ok" : "FAILED " + l));
+                            lm.removeUpdates(this);
+                        }
+
+                        @Override
+                        public void onProviderEnabled(String provider) {}
+
+                        @Override
+                        public void onProviderDisabled(String provider) {}
+
+                        @Override
+                        public void onStatusChanged(String provider, int status, android.os.Bundle extras) {}
+                    });
+            detail = "built " + r + " minUpdate=" + r.getMinUpdateIntervalMillis() + " any.max=" + any.getMaxUpdates() + " deprecated " + deprecated + " provider=" + provider
+                    + " quality=" + quality + " back=" + back;
+            return r.getIntervalMillis() == 6000 && r.getMaxUpdates() == 3 && r.getMinUpdateIntervalMillis() == 1000
+                    && r.getQuality() == android.location.LocationRequest.QUALITY_BALANCED_POWER_ACCURACY && any.getMaxUpdates() == Integer.MAX_VALUE
+                    && "passive".equals(provider) && quality == 200 && r.equals(back);
         });
     }
 

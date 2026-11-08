@@ -71,6 +71,16 @@
 // applies a new configuration to all of an app's resources (meglerScreenChanged). And the sizes the app's resources are made
 // for (w600dp, h480dp, sw720dp, the screen layout's size and length), which Android's SizeConfigurationBuckets keeps for
 // deciding whether a change of size relaunches an activity (meglerSizeBuckets); getSizeConfigurations says them too.
+//
+// And resources loaders (Android 11's addLoaders, removeLoaders, clearLoaders, getLoaders; android.content.res.loader): the
+// resources of a loader's providers -- APKs, each a package of its own (meglerLoaderTable) -- come before these Resources'
+// own, the last loader added first and in it the last provider: an id one of them has is its value and its file, and its
+// names are found by getIdentifier. Only the Resources a loader is added to have it. And the platform's own resources
+// (meglerPlatform: PackageManager.getResourcesForApplication("android")) are a Resources of their own, with no app package:
+// an id of 0x7f is not found there unless a loader has it. Google Play services' DynamiteLoader makes a module's resources
+// so on Android 11 and later -- the platform's, and a loader of the module's APK -- and the stubs kept nothing, while
+// getResourcesForApplication("android") gave the app's own Resources: the Google Maps module's 0x7f ids were looked up in
+// the app's table, its textures were not there, and the map's GL thread ended on a null Bitmap (Transit, 0.1.0.671).
 package android.content.res;
 
 import android.graphics.Typeface;
@@ -98,6 +108,8 @@ public class Resources {
 
     private final AssetManager mAssets;
     private ResTable mPackageTable;
+    /** Megler: the platform's resources alone, with no app package (meglerPlatform; see the top of the file). */
+    private final boolean mPlatformOnly;
     private final DisplayMetrics mMetrics = new DisplayMetrics();
     private final Configuration mConfig = Configuration.meglerDevice();
     private ResTable.Config mCfg;
@@ -116,6 +128,7 @@ public class Resources {
     public Resources(AssetManager a) { this(a, null, null); }
     public Resources(AssetManager a, DisplayMetrics m, Configuration c) {
         mAssets = a;
+        mPlatformOnly = a.meglerPlatformOnly();
         mMetrics.setToDefaults();
         if (m != null) mMetrics.setTo(m);
         /* a configuration given here overrides the device's only where it says something (Android's updateFrom) */
@@ -232,8 +245,115 @@ public class Resources {
         return d != null ? new ResTable(d, dynamicId) : null;
     }
     private static byte[] emptyTable() { return new byte[] { 2, 0, 12, 0, 12, 0, 0, 0, 0, 0, 0, 0 }; }
-    private ResTable appTable() { return mPackageTable != null ? mPackageTable : sApp; }
-    ResTable table(int id) { int p = id >>> 24; if (p == 0x7f && mPackageTable != null) return mPackageTable; if (p == 1) return sFramework; ResTable lib = sLibs[p]; return lib != null ? lib : sApp; }
+    /** A table with nothing in it: the app package of the platform's own resources (meglerPlatform). */
+    private static ResTable sNone;
+    private static ResTable none() { synchronized (sLock) { if (sNone == null) sNone = new ResTable(emptyTable()); return sNone; } }
+    private ResTable appTable() { return mPackageTable != null ? mPackageTable : mPlatformOnly ? none() : sApp; }
+    ResTable table(int id) {
+        if (mLoaders.length != 0) {
+            android.content.res.loader.ResourcesProvider p = loaderOf(id);
+            if (p != null) return p.meglerTable();
+        }
+        int p = id >>> 24;
+        if (p == 0x7f && mPackageTable != null) return mPackageTable;
+        if (p == 1) return sFramework;
+        ResTable lib = sLibs[p];
+        return lib != null ? lib : mPlatformOnly ? none() : sApp;
+    }
+
+    // ---- Megler: resources loaders (see the top of the file)
+    private static final android.content.res.loader.ResourcesLoader[] NO_LOADERS = new android.content.res.loader.ResourcesLoader[0];
+    /** The loaders added, in order (copied on change: read without a lock at every lookup). */
+    private volatile android.content.res.loader.ResourcesLoader[] mLoaders = NO_LOADERS;
+    /** What a loader's providers changing does: what was cached of them is let go. */
+    private final android.content.res.loader.ResourcesLoader.UpdateCallbacks mLoaderChanged = l -> meglerFlush();
+    /** The provider of a loader whose table has this id, the last loader and provider added first; null when none has. */
+    private android.content.res.loader.ResourcesProvider loaderOf(int id) {
+        android.content.res.loader.ResourcesLoader[] loaders = mLoaders;
+        for (int i = loaders.length - 1; i >= 0; i--) {
+            android.content.res.loader.ResourcesProvider[] ps = loaders[i].meglerProviders();
+            for (int k = ps.length - 1; k >= 0; k--) {
+                ResTable t = ps[k].meglerTable();
+                if (t != null && t.find(id, mCfg) != null) return ps[k];
+            }
+        }
+        return null;
+    }
+    /** The id of a resource of a loader's by its name, in the package named (null: any), the last added first; 0 for none. */
+    private int loaderIdentifier(String pkg, String type, String name) {
+        android.content.res.loader.ResourcesLoader[] loaders = mLoaders;
+        for (int i = loaders.length - 1; i >= 0; i--) {
+            android.content.res.loader.ResourcesProvider[] ps = loaders[i].meglerProviders();
+            for (int k = ps.length - 1; k >= 0; k--) {
+                ResTable t = ps[k].meglerTable();
+                if (t == null || t.packages.isEmpty()) continue;
+                if (pkg != null && !pkg.equals(t.packages.get(0).name)) continue;
+                int id = t.identifier(null, type, name);
+                if (id != 0) return id;
+            }
+        }
+        return 0;
+    }
+    /** What these Resources made of resources is let go (their loaders changed). */
+    private void meglerFlush() {
+        synchronized (this) {
+            mDrawableCache.clear();
+            mColorCache.clear();
+            mFontCache.clear();
+            mBags = null;
+        }
+    }
+    /**
+     * Adds loaders whose resources come before these Resources' own, the last added first; one already there stays where it
+     * is. As Android's, only these Resources have them.
+     */
+    public void addLoaders(android.content.res.loader.ResourcesLoader... loaders) {
+        synchronized (this) {
+            java.util.ArrayList<android.content.res.loader.ResourcesLoader> now = new java.util.ArrayList<>(java.util.Arrays.asList(mLoaders));
+            for (android.content.res.loader.ResourcesLoader l : loaders) {
+                if (l == null || now.contains(l)) continue;
+                now.add(l);
+                l.registerOnProvidersChangedCallback(this, mLoaderChanged);
+            }
+            mLoaders = now.toArray(NO_LOADERS);
+        }
+        meglerFlush();
+    }
+    public void removeLoaders(android.content.res.loader.ResourcesLoader... loaders) {
+        synchronized (this) {
+            java.util.ArrayList<android.content.res.loader.ResourcesLoader> now = new java.util.ArrayList<>(java.util.Arrays.asList(mLoaders));
+            for (android.content.res.loader.ResourcesLoader l : loaders) {
+                if (l != null && now.remove(l)) l.unregisterOnProvidersChangedCallback(this);
+            }
+            mLoaders = now.toArray(NO_LOADERS);
+        }
+        meglerFlush();
+    }
+    public void clearLoaders() {
+        synchronized (this) {
+            for (android.content.res.loader.ResourcesLoader l : mLoaders) l.unregisterOnProvidersChangedCallback(this);
+            mLoaders = NO_LOADERS;
+        }
+        meglerFlush();
+    }
+    public java.util.List getLoaders() { return java.util.Collections.unmodifiableList(new java.util.ArrayList<>(java.util.Arrays.asList(mLoaders))); }
+    /** The table of an APK a ResourcesProvider has opened (megler.Native.addApk): its package as it is, 0x7f, read once. */
+    public static ResTable meglerLoaderTable(int apk) { return packageTable(apk); }
+    /** For the log: a table's package and how many types it has. */
+    public static String meglerDescribeTable(ResTable t) {
+        if (t == null || t.packages.isEmpty()) return "no resources";
+        ResTable.Package p = t.packages.get(0);
+        return "package " + p.name + " (0x" + Integer.toHexString(p.id) + ")";
+    }
+    /**
+     * The platform's own resources, a Resources of their own of the app's display and configuration, with no app package:
+     * PackageManager.getResourcesForApplication("android"), as Android's gives a Resources of framework-res.apk alone. A
+     * loader added to them puts its package where the app's would be (Google Play services' modules: see the top).
+     */
+    public static Resources meglerPlatform() {
+        Resources app = megler.ContextImpl.app() != null ? megler.ContextImpl.app().getResources() : getSystem();
+        return new Resources(AssetManager.meglerForPlatform(), app.getDisplayMetrics(), app.getConfiguration());
+    }
 
     // ---- Megler: shared libraries (see the top of the file)
     /** The tables of shared libraries by the package id each was given, and the core's number of each one's APK. */
@@ -258,7 +378,15 @@ public class Resources {
         }
     }
     /** The core's number of the APK that holds the files of a resource id: the platform's (1), a library's, or the app's (0). */
-    private int apkOf(int id) { int p = id >>> 24; if (p == 0x7f && mPackageTable != null) return mAssets.meglerPackageApk(); return p == 1 ? 1 : sLibs[p] != null ? sLibApks[p] : 0; }
+    private int apkOf(int id) {
+        if (mLoaders.length != 0) {
+            android.content.res.loader.ResourcesProvider lp = loaderOf(id);
+            if (lp != null) return lp.meglerApk();
+        }
+        int p = id >>> 24;
+        if (p == 0x7f && mPackageTable != null) return mAssets.meglerPackageApk();
+        return p == 1 ? 1 : sLibs[p] != null ? sLibApks[p] : 0;
+    }
     /** The table of the shared library of that package name, or null. */
     private static ResTable library(String packageName) {
         if (packageName == null) return null;
@@ -430,6 +558,11 @@ public class Resources {
         if (type == null) return 0;
         try { return Integer.parseInt(n); } catch (NumberFormatException e) {}
         if ("android".equals(pkg)) return sFramework.identifier("android", type, n);
+        // Megler: a loader's package first (see the top of the file)
+        if (mLoaders.length != 0) {
+            int fromLoader = loaderIdentifier(pkg, type, n);
+            if (fromLoader != 0) return fromLoader;
+        }
         // addAssetPath can also add a same-package resource archive (GMS's locale-filtered resources).
         // Its partial table must not hide styles and attributes still present in the base APK.
         if (pkg == null || pkg.equals(mAssets.meglerPackageName())) {
@@ -443,7 +576,13 @@ public class Resources {
         return id;
     }
     public String getResourceName(int id) { String t = getResourceTypeName(id), e = getResourceEntryName(id); return getResourcePackageName(id) + ":" + t + "/" + e; }
-    public String getResourcePackageName(int id) { ResTable.Package p = table(id).pkg(id); if (p == null) throw new NotFoundException("Unable to find resource ID #0x" + Integer.toHexString(id)); return (id >>> 24) == 0x7f ? mAssets.meglerPackageName() : p.name; }
+    public String getResourcePackageName(int id) {
+        ResTable t = table(id);
+        ResTable.Package p = t.pkg(id);
+        if (p == null) throw new NotFoundException("Unable to find resource ID #0x" + Integer.toHexString(id));
+        // (A loader's resource is its own package's, as Android names it.)
+        return (id >>> 24) == 0x7f && (t == sApp || t == mPackageTable) ? mAssets.meglerPackageName() : p.name;
+    }
     public String getResourceTypeName(int id) { String s = table(id).typeName(id); if (s == null) throw new NotFoundException("Unable to find resource ID #0x" + Integer.toHexString(id)); return s; }
     public String getResourceEntryName(int id) { String s = table(id).keyName(id, mCfg); if (s == null) throw new NotFoundException("Unable to find resource ID #0x" + Integer.toHexString(id)); return s; }
 
@@ -838,13 +977,10 @@ public class Resources {
     public static boolean resourceHasPackage(int p0) { return false; }
     public static int selectDefaultTheme(int p0, int p1) { return 0; }
     public static int selectSystemTheme(int p0, int p1, int p2, int p3, int p4, int p5) { return 0; }
-    public void addLoaders(android.content.res.loader.ResourcesLoader[] p0) {}
     public int applyConfigChanges(android.content.res.Configuration p0) { return 0; }
-    public void clearLoaders() {}
     public void dump(java.io.PrintWriter p0, java.lang.String p1) {}
     public void finishPreloading() {}
     public java.lang.String getLastResourceResolution() { return null; }
-    public java.util.List getLoaders() { return new java.util.ArrayList(); }
     public android.util.LongSparseArray getPreloadedDrawables() { return sPreloadedDrawables != null && sPreloadedDrawables.length > 0 ? sPreloadedDrawables[0] : null; }
     public android.content.res.Configuration[] getSizeAndUiModeConfigurations() { return getSizeConfigurations(); }
     /* The sizes the app's resources are made for, one configuration for each (meglerSizeBuckets), as Android's AssetManager lists them. */
@@ -861,7 +997,6 @@ public class Resources {
     public void parseBundleExtra(java.lang.String p0, android.util.AttributeSet p1, android.os.Bundle p2) {}
     public void parseBundleExtras(android.content.res.XmlResourceParser p0, android.os.Bundle p1) {}
     public void preloadFonts(int p0) {}
-    public void removeLoaders(android.content.res.loader.ResourcesLoader[] p0) {}
     public void setCallbacks(android.content.res.Resources.UpdateCallbacks p0) {}
     public void setLocaleConfig(android.app.LocaleConfig p0) {}
     public void startPreloading() {}

@@ -3574,7 +3574,26 @@ media, the text messages, the phone and the call history by Megler's own
 question (Allow, Don't Allow), kept in the app's settings, a second no for
 good; and the contacts, the calendar, the body sensors, nearby devices,
 notifications and physical activity granted with no one asked, since Megler
-gives an app none of those of the phone's. An app's App Settings list its
+gives an app none of those of the phone's. The location refused by the
+system -- the phone's location switched off, which Windows' consent says as
+`DeniedBySystem` -- is no refusal of the app's: Android grants or refuses an
+app's location permission whether the location is on or off, and the app,
+told the permission is its own and the location off (`LocationService`:
+`isLocationEnabled` and `isProviderEnabled` false, its listeners' providers
+disabled), asks the user to switch it on -- Android's location settings
+(`ACTION_LOCATION_SOURCE_SETTINGS`) open Windows' page of them
+(`ms-settings:privacy-location`, `AppRunner`), a caller that asked for a
+result hearing `RESULT_CANCELED` once it is in front again. Taken for a
+refusal for good, it left an app nothing to ask: VTB's request was "denied;
+no one asked", and VTB said that the geolocation was not available
+(0.1.0.671). What Windows says of
+the location (allowed, the user's no for this app, the system's no, not
+decided) is said in the log as it is first read and as it changes, by the
+permissions and by the location (`player/LocationHost.h`, which follows the
+consent while the app runs), and so is why no fix is handed while an app has
+requests (`LocationService`: the location off, Windows' no, no location
+device, no permission held and so nothing asked, Windows not answering yet,
+nothing found in 30 s of following). An app's App Settings list its
 groups, what was said, and change Megler's answers. Clearing an app's data
 (Clear Data on its page in Megler, or Clear storage on Android's app info
 screen in the app) forgets Megler's answers too, as Android's Clear storage
@@ -5201,6 +5220,43 @@ on a looper thread of its own and takes it back with `next()`.
   (The platform's own `AlertDialog`, which the demos app uses, is the
   framework's own and calls its listeners directly.) Found with the runtime's
   trace and the profile of a run: of the two listeners neither had run.
+- `android/os/WorkSource.java`, Android 14's in place of the generated stub,
+  which kept no uids, wrote nothing into a parcel and had a null `CREATOR`. A
+  location request of Google Play services' carries one: the client library
+  in the app writes it into the transaction with its `writeToParcel`, inside a
+  field whose size it patches in after (`SafeParcelWriter`), and Google Play
+  services reads it back with the `CREATOR` -- null for a field of no size.
+  Every `FusedLocationProviderClient` request then ended in Google Play
+  services with a `NullPointerException` in `ImmutableWorkSource`'s
+  constructor ("RegisterLocationCallback", "RegisterLocationListener" in its
+  trace), and the app had no fix while Megler's own `LocationManager` had one:
+  Transit, and the Google Maps "my location" layer (0.1.0.671). The data app's
+  step "work-source" writes one so and reads it back.
+- `android/location/LocationRequest.java`, Android 14's in place of the
+  generated stub: its `Builder(intervalMillis)` forgot the interval, its
+  factories made a request of nothing, `getMaxUpdates` said 0 where Android
+  says "any number" (`Integer.MAX_VALUE`), and it wrote nothing into a parcel.
+  Google Play services' location engine in the app asks for the passive
+  provider with `createFromDeprecatedProvider("passive", ...)`, which came out
+  a request of the fused provider every `Long.MAX_VALUE` ms that was never
+  handed a fix. `megler/LocationService.java` hands a request of the passive
+  interval every new fix without it setting how often the location is
+  followed, and `LocationManager` takes Android's "any number" of updates for
+  its own 0. The data app's step "location-request" builds requests, makes
+  one of the deprecated provider, puts one through a parcel, and has one of
+  the passive interval handed a fix.
+- `android/content/ContentProviderClient.java`: `openFile`, `openAssetFile`,
+  `openTypedAssetFile(Descriptor)`, `query` with a `Bundle`, `insert`,
+  `update` and `delete` with extras, `bulkInsert`, `call` with an authority,
+  `getStreamTypes`, `canonicalize`, `uncanonicalize` and `refresh` go to the
+  provider, where they were generated signatures answering null, 0 or false.
+  Google Play services' DynamiteLoader reads its modules' Chimera
+  configuration so (`content://com.google.android.gms.chimera/api/<n>`), and
+  gave up on each module it loads that way: "Failed to create module
+  context. java.io.IOException: Config file descriptor is null" -- the Google
+  Maps module's own Google certificates among them (0.1.0.671). The data
+  app's step "provider-client-file" reads its provider's file through a
+  client.
 - `android/app/usage/StorageStatsManager.java`, two methods in their two
   forms: `getTotalBytes` and `getFreeBytes` were signatures answering 0.
   Since Android 8 this is where an app asks how large the phone's storage is
@@ -5440,6 +5496,18 @@ on a looper thread of its own and takes it back with `next()`.
   and no layers the drawable took itself for a borderless one and drew its
   highlight as a disc of half its longer side: for a pressed row of a list, a
   grey disc as wide as the screen over the rows above and below.
+- `android/graphics/drawable/InsetDrawable.java` and `megler/ResInflate.java`:
+  an inset may be a fraction of the drawable's bounds as well as pixels, as
+  Android 8 and later have it (`InsetDrawable.InsetValue`): an `<inset>`'s
+  `android:inset="10%"` is read as a fraction, its type looked at first, as
+  `InsetDrawable.getInset` does, and the bounds, the intrinsic size and the
+  padding are Android's sums of both. The inflater read every inset with
+  `getDimensionPixelOffset`, which throws for a fraction on Android too, and
+  `InsetDrawable(Drawable, float)` made one with no inset. WhatsApp's adaptive
+  icon is inset by 0.01% round its foreground, and its Appearance screen
+  (Settings, Chats, Theme) ended the app: "Can't convert value at index 6 to
+  dimension: type=0x6" (0.1.0.671). The data app's step "inset-fraction"
+  inflates such insets and measures what they give.
 
 - `android/app/Activity.java`, two methods: `initWindowDecorActionBar` makes
   the window's decor before it asks whether the window has an action bar, as
@@ -5861,6 +5929,33 @@ on a looper thread of its own and takes it back with `next()`.
   WebView APK, finds its package as 0x2, one of its drawables and one of its
   strings by name and reads both, and opens its `assets/icudtl.dat` as a
   descriptor where it is stored, as Chromium maps its ICU data.
+
+- `android/content/res/loader/ResourcesLoader.java` and
+  `ResourcesProvider.java`, `android/content/res/Resources.java` and
+  `AssetManager.java`, `android/content/pm/PackageManager.java` and
+  `android/os/ParcelFileDescriptor.java`: Android 11's resources loaders. A
+  provider made from an APK (`ResourcesProvider.loadFromApk`, by the file its
+  descriptor was opened from; `loadFromSplit`) is that APK opened beside the
+  app's (`megler.Native.addApk`) with its table read as a package of its own
+  (0x7f), and a loader's providers come before a Resources' own resources
+  once it is added to them (`Resources.addLoaders`): an id one of them has is
+  its value and its file, `getIdentifier` finds its names in its package, and
+  only the Resources it was added to have it. And
+  `getResourcesForApplication("android")` is the platform's resources alone, a
+  `Resources` of their own with no app package (`Resources.meglerPlatform`),
+  as Android gives framework-res.apk's: it gave the app's own. Google Play
+  services' DynamiteLoader makes a module's resources so on Android 11 and
+  later (the platform's, and a loader of the module's APK), and the stubs kept
+  nothing: the Google Maps module's legacy renderer looked up its textures'
+  0x7f ids (`maps_dav_one_way_16_256` and twenty more) in the app's table,
+  `BitmapFactory.decodeResource` gave null, and the map's GL thread ended on
+  `Bitmap.getWidth()` of it (`gmm6.vector.gl.aj`): Transit's map stayed empty
+  (0.1.0.671). Not done: a provider of a directory or of a table alone
+  (empty, said in the log), and the loaders' assets through the Resources'
+  `AssetManager`. The data app's step "resources-loader" adds an APK of
+  resources alone that it carries (`assets/loader.apk`,
+  `core/tests/app/data/loader`, made by `tools/build-test-app.sh`) to the
+  platform's resources and reads a string, a colour and a picture of it.
 
 - `android/hardware/camera2/CameraManager.java`, `getCameraIdList` and
   `getCameraIdListNoLazy`, generated signatures that answered null: the

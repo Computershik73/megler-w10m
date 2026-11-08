@@ -2601,6 +2601,17 @@ static int run_data(void)
                                             AudioTrack written to, a MediaPlayer of a WAV and of an Ogg Vorbis asset, a SoundPool. */
                                          "xml", "asset-fd", "tasks", "wrapper-receiver", "viewgroup-flag", "text-drawables", "pfd-dup", "pfd-parcel",
                                          "theme-selfref", "queue-next", "storage-stats", "broadcast-explicit", "service-stop-thread", "start-ids", "process-scope", "job-scheduler", "downloads", "rollback-service", "art-manager", "progress-subclass", "telephony", "microphone", "biometric", "ordered-broadcast", "hardware-accelerated", "descendant-invalidated", "image-matrix-before-layout", "delegate-last-scope", "asset-manager-manifest", "big-asset", "path-iterator", "mutable-context", "exec", "crc32c", "nine-patch-constructors", "subscription-ids", "filter-categories", "arrays-ranges", "thread-stack", "icu-number", "audio-route", "expand-template", "list-fragment", "fragment-saved-state", "stub-said", "handler-thread", "managed-dialog", "input-format", "dialog-of-stopped", "zip-path-validator", "list-row-click", "animation-listener", "circular-reveal", "animator-values", "observer-merged", "typeface-descriptor", "device-provisioned", "users", "start-asked", "pending-intent-creator", "pending-intent-flags", "alarm-replace-cancel", "messenger-forwarded", "insets-builder", "insets-consumed", "insets-siblings", "broadcast-handler", "prefs-spaced-key", "account-removed", "sync", "package-installer", "batch-operations", "wifi", "media-metadata", "playback-state", "remote-user-info", "theme-accent", "phone-apps", "phone-apps-activities", "phone-apps-signatures", "install-intent", "install-session", "install-splits", "bitmap-bytes", "adaptive-icon", "idle-handler", "uri-builder", "html-tag-handler", "stats-manager", "credential-manager", "many-interfaces", "proxy-many-methods", "apk-path", "maps-paths", "apk-optimization",
+                                         /* And an <inset> whose insets are fractions of its bounds, WhatsApp's adaptive icon's 0.01% among them. */
+                                         "inset-fraction",
+                                         /* And a WorkSource through a Parcel and back, as a location request of Google Play services' carries one. */
+                                         "work-source",
+                                         /* And a module's resources as Google Play services' DynamiteLoader makes them: the platform's
+                                            with a ResourcesLoader of an APK of resources alone added (the app's assets/loader.apk). */
+                                         "resources-loader",
+                                         /* And a LocationRequest as Android 12 makes one, and a request of the passive interval through LocationManager. */
+                                         "location-request",
+                                         /* And a provider's file through a ContentProviderClient, as Google Play services' DynamiteLoader reads its configuration. */
+                                         "provider-client-file",
                                          "audio-track", "media-player", "media-player-ogg", "sound-pool",
                                          /* And MediaCodec over the stand-in for the shell's decoders: H.264 shown on a Surface in display
                                             order, a flush, parameter sets in a codec-config buffer, the asynchronous mode, AAC with an
@@ -2669,6 +2680,8 @@ static int run_data(void)
     /* The phone's location, asked for in the step "location": a fix delivered on the main thread, after which the listener is
        removed and the location no longer followed. */
     CHECK(wait_line("I/DataTest: location-update ok", 0, 30) >= 0);
+    /* And the request of the passive interval of the step "location-request": a fix, on the main thread, after which it is removed. */
+    CHECK(wait_line("I/DataTest: location-passive ok", 0, 30) >= 0);
     {
         int starts = 0, stops = 0, tries;
         for (tries = 0; tries < 40; tries++) {
