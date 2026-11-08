@@ -591,25 +591,20 @@ static mg_lock g_region_lock = MG_LOCK_INIT;
  * for it as the app was suspended. A thread that takes it again while it holds it is said at once: that is a thread
  * stuck for good (a fault met under the lock, whose handling maps).
  */
-volatile u32 g_region_lock_owner;
-volatile u64 g_region_lock_at;
-const char *volatile g_region_lock_site;
-static void region_taken(const char *site)
-{
-    g_region_lock_at = mg_time_monotonic_ns();
-    g_region_lock_site = site;
-    g_region_lock_owner = mg_thread_self_id();
-}
+static mg_holder g_region_hold = MG_HOLDER_INIT;
+static void region_taken(const char *site) { mg_holder_take(&g_region_hold, site); }
 static void region_wanted(const char *site)
 {
     static volatile i32 said;
-    if (g_region_lock_owner == mg_thread_self_id() && !mg_atomic_xchg(&said, 1))
+    if (mg_holder_mine(&g_region_hold) && !mg_atomic_xchg(&said, 1))
         mg_log(MG_LOG_ERROR, "mem: the mappings' lock is taken again in %s by the thread that holds it since %s: this thread stops for good",
-               site, g_region_lock_site ? g_region_lock_site : "?");
+               site, g_region_hold.what ? g_region_hold.what : "?");
 }
 #define mg_lock_acquire(l) ((l) == &g_region_lock ? (region_wanted(__func__), mg_lock_acquire(l), region_taken(__func__)) : mg_lock_acquire(l))
 #define mg_lock_try(l) ((l) == &g_region_lock ? (mg_lock_try(l) ? (region_taken(__func__), true) : false) : mg_lock_try(l))
-#define mg_lock_release(l) ((l) == &g_region_lock ? (void)(g_region_lock_owner = 0) : (void)0, mg_lock_release(l))
+#define mg_lock_release(l) ((l) == &g_region_lock ? mg_holder_let_go(&g_region_hold) : (void)0, mg_lock_release(l))
+
+bool mg_mem_lock_look(mg_hold_seen *seen) { return mg_holder_look(&g_region_hold, seen, NULL, 0); }
 
 void mg_g_mapped_addresses(u64 *spanned, u64 *reserved)
 {
@@ -746,7 +741,7 @@ static MG_HOSTCB void before_system_write(void *p, size_t size)
      * mprotect and madvise of the app's with it -- Aurora Store's and Gmail's Google sign-in pages stood still on a Lumia 650
      * (650; 651's hang report: "the mappings' lock is taken again in before_system_write ... since mg_mem_write_back_all").
      */
-    held = g_region_lock_owner == mg_thread_self_id();
+    held = mg_holder_mine(&g_region_hold);
     if (!held) mg_lock_acquire(&g_region_lock);
     for (r = g_regions; r; r = r->next) {
         u8 *lo, *hi;
@@ -891,10 +886,10 @@ bool mg_mem_write_back_all_until(u64 deadline)
         u32 i = 0;
         while (!mg_lock_try(&g_region_lock)) {
             if (mg_time_monotonic_ns() >= deadline) {
-                const char *site = g_region_lock_site;
+                mg_hold_seen seen;
+                mg_holder_look(&g_region_hold, &seen, NULL, 0);
                 mg_log(MG_LOG_WARN, "mem: the files' shared mappings were not all written back as the app was suspended: the mappings' lock is "
-                       "held by host thread %u, taken in %s %.1f s ago", (unsigned)g_region_lock_owner, site ? site : "?",
-                       g_region_lock_at ? (double)(mg_time_monotonic_ns() - g_region_lock_at) / 1e9 : 0.0);
+                       "held by host thread %u, taken in %s %.1f s ago", (unsigned)seen.owner, seen.what ? seen.what : "?", (double)seen.held_ns / 1e9);
                 return false;
             }
             mg_sleep_ns(2000000ull);

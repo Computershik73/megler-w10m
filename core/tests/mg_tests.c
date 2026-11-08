@@ -176,6 +176,76 @@ static void test_pread_threads(const char *scratch)
     free(path);
 }
 
+/*
+ * Who holds a lock, as the hang report reads it from its own thread (mg_base.c, mg_holder). It read its clock first and
+ * the holder's record after: a hold begun between the two was 2^64 ns old, "18446744073.7 s", and said as an app that
+ * stands still (Viber's write-back thread on 0.1.0.669, Tuya Smart's fault report on 671). A look reads the clock after
+ * the record, and gets the record whole -- one hold's owner, time and words, however fast the lock changes hands.
+ */
+typedef struct holder_race {
+    mg_holder *h;
+    volatile i32 stop;
+    volatile u32 host_id;
+    u32 rounds;
+} holder_race;
+
+static MG_HOSTCB void holder_racer(void *arg)
+{
+    holder_race *r = (holder_race *)arg;
+    r->host_id = mg_thread_self_id();
+    while (!r->stop) {
+        mg_holder_take(r->h, "the racer's hold");
+        mg_holder_let_go(r->h);
+        r->rounds++;
+    }
+}
+
+static void test_lock_holders(void)
+{
+    mg_holder h = MG_HOLDER_INIT;
+    mg_hold_seen seen;
+    char text[64];
+    u64 before;
+    say("a lock's holder, as the hang report looks at it");
+    CHECK(!mg_holder_look(&h, &seen, text, sizeof(text)) && seen.owner == 0 && seen.held_ns == 0 && text[0] == 0);
+    /* The clock read first, the hold begun after it: counted from that reading it wraps round; looked at, it is a moment old. */
+    before = mg_time_monotonic_ns();
+    mg_sleep_ns(2000000ull);
+    mg_holder_take(&h, "a test's hold");
+    CHECK(mg_holder_mine(&h));
+    CHECK(mg_holder_look(&h, &seen, text, sizeof(text)) && seen.owner == mg_thread_self_id() && !strcmp(text, "a test's hold"));
+    say("  a hold begun after the clock was read: %.6f s held as looked at; %.1f s counted from the reading (the old way)",
+        (double)seen.held_ns / 1e9, (double)(before - seen.since) / 1e9);
+    CHECK(seen.held_ns < 1000000000ull && before - seen.since > 1000000000ull * 1000000000ull && mg_held_ns(seen.since, before) == 0);
+    /* Held a while: as long as it was. */
+    mg_sleep_ns(60000000ull);
+    CHECK(mg_holder_look(&h, &seen, NULL, 0) && seen.held_ns >= 50000000ull && seen.held_ns < 30000000000ull);
+    mg_holder_let_go(&h);
+    CHECK(!mg_holder_mine(&h) && !mg_holder_look(&h, &seen, text, sizeof(text)) && seen.owner == 0 && text[0] == 0);
+    /* Taken and let go by another thread as fast as it can, looked at all the while: every look one hold's, whole. */
+    {
+        holder_race race;
+        mg_thread *t;
+        u32 looks = 0, held = 0, torn = 0;
+        u64 until;
+        memset(&race, 0, sizeof(race));
+        race.h = &h;
+        t = mg_thread_start(holder_racer, &race, 64u * 1024u, "holder-racer");
+        CHECK(t != NULL);
+        until = mg_time_monotonic_ns() + 300000000ull;
+        while (t && mg_time_monotonic_ns() < until) {
+            looks++;
+            if (!mg_holder_look(&h, &seen, text, sizeof(text))) continue;
+            held++;
+            if (seen.owner != race.host_id || strcmp(text, "the racer's hold") || seen.held_ns > 10000000000ull || !seen.since) torn++;
+        }
+        race.stop = 1;
+        if (t) mg_thread_join(t);
+        say("  %u looks while another thread took it %u times: %u found it held, %u of them not one hold's", looks, race.rounds, held, torn);
+        CHECK(race.rounds > 0 && torn == 0);
+    }
+}
+
 static void test_host(const char *scratch)
 {
     u8 *p;
@@ -4614,6 +4684,7 @@ int mg_tests_run(const char *libdir, const char *scratch, mg_test_sink sink, voi
     can_run = mg_core_init();
     mg_path_mkdirs(scratch);
     test_host(scratch);
+    test_lock_holders();
     g_failed += mg_storage_tests_run(scratch, g_sink, g_sink_user, &g_checks);
     g_failed += mg_net_tests_run(g_sink, g_sink_user, &g_checks);
     g_failed += mg_sensor_tests_run(g_sink, g_sink_user, &g_checks);

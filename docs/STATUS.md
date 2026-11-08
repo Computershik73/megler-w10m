@@ -337,15 +337,20 @@ it lives, and freed blocks kept poisoned before they are given back, 8192 of the
 a block written past its end, written after it was freed or freed twice is said,
 with the code that asked for it and that freed it; Windows' own heap says only
 c0000374 later, at another block; `bionic/mg_libc_mem.c`). Without any flag, on Windows, a
-watchdog looks every two seconds at who holds the log's lock and the guest
-threads' lock: one held by the same thread for ten seconds is an app that stands
+watchdog looks every two seconds at who holds the log's lock, the guest
+threads' lock and the mappings' lock: one held by the same thread for ten seconds is an app that stands
 still, whose core lines have stopped while the shell's go on (urent did, on the
 page after asking for its SMS code). Once for each such stand-still it says who
 holds which lock since when, the line that thread was writing or the function
 that took the threads' lock (and the thread `trace-profile` was stopping), and
 where every thread that runs guest code is, as `trace-native-stacks` says it:
 first as bare addresses in `LocalState\hang.txt`, then named there and in the
-log past its lock; at most five reports; `bionic/mg_bionic.c`. `trace-net` also says, when the app closes a connection,
+log past its lock; at most five reports; `bionic/mg_bionic.c`. Each holder's
+record is read whole and the clock after it (`mg_holder_look`, `mg_base.c`): read
+the other way round, a lock taken a moment after the watchdog's clock was read
+came out held 2^64 ns, "18446744073.7 s", and a stand-still that was none was
+reported -- Viber's file write-back thread between its passes (0.1.0.669), a
+fault's report writing its trace lines (Tuya Smart, 671). `trace-net` also says, when the app closes a connection,
 what went over it: the bytes and calls each way, the first sixteen bytes each
 way, when the first came in, the other end's close, errors and timeouts. Of a
 connection made it says which call the app learnt it by (`getsockopt SO_ERROR`,
