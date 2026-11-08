@@ -2524,6 +2524,7 @@ and finds no `Rounder`.
 framework/core-oj.dex, core-libart.dex, conscrypt.dex, okhttp.dex, bouncycastle.dex, apache-xml.dex
 framework/core-oj.jar, core-libart.jar       the jars as the device has them (no bytecode in them)
 framework/megler-framework.dex                  the Java framework (tools/build-framework.sh); for an app, not for libcore
+framework/megler-framework-classes2.dex ...     the rest of it, where it has outgrown one DEX file (65536 methods, fields or types)
 framework/framework-res.apk                   the platform's own resources, Android 9's; for an app
 lib/*.so                                      libcore's native libraries, 32-bit ARM, conscrypt's among them
 lib/libc.so, libz.so ...                      the names of the system's libraries the core answers, files that say so

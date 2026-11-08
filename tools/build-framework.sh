@@ -31,7 +31,9 @@
 # kept as they are; nothing regenerates them here.
 #
 #   out: build/framework/megler-framework.dex   (tools/dvm-android-root.sh puts
-#        it in the Android root as framework/megler-framework.dex)
+#        it in the Android root as framework/megler-framework.dex), and
+#        megler-framework-classes2.dex and on where the framework has outgrown
+#        one DEX file (65536 methods, fields or types)
 #
 # Nothing is rebuilt when the DEX file is newer than every source, unless
 # --force is given. Nothing is downloaded.
@@ -82,7 +84,22 @@ python "$ROOT/tools/list-stubs.py" "$(m "$OUT/classes")" "$(m "$OUT/sources.txt"
 # --min-api 26 as the original: interfaces keep their default and static methods; lambdas become classes.
 "$JDK/bin/java" -cp "$(m "$D8")" com.android.tools.r8.D8 --release --min-api 26 --lib "$(m "$LIB")" --output "$(m "$OUT/dex")" "$(m "$OUT/classes.jar")" 2> "$OUT/d8.log" \
   || { head -40 "$OUT/d8.log" >&2; echo "d8 failed (build/framework/d8.log)" >&2; exit 1; }
-[ ! -f "$OUT/dex/classes2.dex" ] || { echo "d8 wrote more than one DEX file: the framework has outgrown one, and the runtime is given one" >&2; exit 1; }
+# A DEX file holds 65536 methods, fields and types of each kind at most, and d8 writes another once the framework has
+# more (65514 methods in the first, 2026-11-08): the first is megler-framework.dex, the others megler-framework-
+# classes2.dex and on beside it, which the runtime adds after it (core/src/drivers/mg_java.c, add_framework_parts) --
+# none left of a build that wrote more of them.
+rm -f "$OUT"/megler-framework-classes*.dex
 mv "$OUT/dex/classes.dex" "$DEX"
+PARTS=1
+while [ -f "$OUT/dex/classes$((PARTS + 1)).dex" ]; do
+  PARTS=$((PARTS + 1))
+  mv "$OUT/dex/classes$PARTS.dex" "$OUT/megler-framework-classes$PARTS.dex"
+done
 rm -rf "$OUT/dex" "$OUT/classes" "$OUT/stubs" "$OUT/classes.jar"
-echo "built build/framework/megler-framework.dex ($(( $(stat -c%s "$DEX") / 1024 )) KB)"
+MORE=""
+if [ "$PARTS" = 2 ]; then
+  MORE=" and a second DEX file of it (megler-framework-classes2.dex, $(( $(stat -c%s "$OUT/megler-framework-classes2.dex") / 1024 )) KB)"
+elif [ "$PARTS" -gt 2 ]; then
+  MORE=" and $((PARTS - 1)) more DEX files of it (megler-framework-classes2.dex to classes$PARTS.dex, $(( $(cat "$OUT"/megler-framework-classes*.dex | wc -c) / 1024 )) KB)"
+fi
+echo "built build/framework/megler-framework.dex ($(( $(stat -c%s "$DEX") / 1024 )) KB)$MORE"

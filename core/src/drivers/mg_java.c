@@ -2255,6 +2255,29 @@ static void add_platform_framework(void)
     else mg_warn("java: an app of the platform's own, and Android 9's framework is not in the Android root (framework/platform-framework.dex)");
 }
 
+/*
+ * The framework's further DEX files, where it has outgrown one -- a DEX file holds 65536 methods, fields and types of each
+ * kind at most, and d8 writes megler-framework-classes2.dex and on beside megler-framework.dex once it has more
+ * (tools/build-framework.sh) -- after the first and before anything else: a class of Megler's framework is Megler's in
+ * whichever of them d8 put it, before Android 9's own for an app of the platform's.
+ */
+static int add_framework_parts(void)
+{
+    int n, added = 0;
+    for (n = 2; n < 10; n++) {
+        char *path = mg_sprintf("%s/framework/megler-framework-classes%d.dex", J.root, n);
+        mg_stat st;
+        bool there = mg_path_stat(path, &st, NULL) && !st.is_dir;
+        if (there) {
+            if (mg_dvm_add_dex_file(path)) added++;
+            else mg_err("java: the Java framework's DEX file %s cannot be added: the classes d8 put there are missing", path);
+        }
+        free(path);
+        if (!there) break;
+    }
+    return added;
+}
+
 /* The framework's methods that are signatures alone, beside it in the Android root: each one's first call is said (mg_dvm_stubs_load). */
 static void stubs_load(void)
 {
@@ -2275,7 +2298,8 @@ static MG_HOSTCB void main_thread(void *arg)
     why[0] = 0;
     if (!mg_dvm_start_android(J.root)) snprintf(why, sizeof(why), "the Java runtime did not start on the Android root %s", J.root);
     else if (stubs_load(), !mg_dvm_add_dex_file(framework)) snprintf(why, sizeof(why), "the Java framework is not in the Android root (%s)", framework);
-    else if (add_platform_framework(), mg_dvm_app_follows(), add_shared_libraries(), mg_dvm_add_apk(J.config->apk_path) < 1) snprintf(why, sizeof(why), "the APK has no classes.dex that can be read");
+    else if (add_framework_parts(), add_platform_framework(), mg_dvm_app_follows(), add_shared_libraries(), mg_dvm_add_apk(J.config->apk_path) < 1)
+        snprintf(why, sizeof(why), "the APK has no classes.dex that can be read");
     if (!why[0]) {
         mg_jvalue sdk;
         static const struct { const char *cls, *field, *prop; } build_props[] = {
