@@ -491,6 +491,10 @@ void AppShell::poll() {
         // An app's own package opens its app as soon as the library has it read: straight into the player when it can
         // run here, else its page, which says why not. Before the player, Megler's folders the app has not got are offered
         // (ui/SharedFolders.h), once the phone's folders are known, to an app that asks for the storage.
+        // Where what Megler put in the shared folder for it is not there (no shared folder, its APK or Android's files missing:
+        // the package and Megler on different storage, a memory card's and the phone's memory), the app is not opened, and its
+        // screen says why and what to do (ui/StartScreen.cpp): it showed the splash screen's picture for ever.
+        if (appPackage::isSingleApp() && !singleAppOpened_ && !appPackage::singleAppProblem().empty()) singleAppOpened_ = true;
         if (appPackage::isSingleApp() && !singleAppOpened_) {
             const auto entry = Library::instance().find(appPackage::singleAppId());
             if (entry && entry->analysed && (!entry->report.ready() || StorageHost::shared().searched())) {

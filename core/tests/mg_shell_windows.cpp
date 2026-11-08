@@ -253,6 +253,42 @@ void testPlacement(const std::wstring& root) {
           "the log's summary: " + placement::summary(root, gLocal, gShared));
 }
 
+/// What an app's own package lacks of what Megler put in the shared folder for it (shell/Placement.h, missingFor): none, an
+/// APK or Android's files not there -- a shared folder of another storage's has nothing of Megler's -- and what its screen says.
+void testMissing(const std::wstring& root) {
+    printf("an app's own package's files in the shared folder\n");
+    using placement::Missing;
+    const std::wstring shared = root + L"\\missing\\shared", folder = shared + L"\\apks\\MeglerApp.x\\0123", apk = folder + L"\\app.apk",
+                       android = shared + L"\\android\\0.1.0.0";
+    check(files::makeDirectories(folder) && files::makeDirectories(android) && files::write(apk, std::string("PK\3\4", 4) + "the rest") &&
+              files::write(android + L"\\complete", "0.1.0.0"),
+          "a shared folder as Megler fills it for an app");
+    check(placement::missingFor(shared, apk, android) == Missing::nothing, "all there: nothing missing");
+    check(placement::missingFor(std::wstring(), apk, android) == Missing::sharedFolder, "no shared folder");
+    check(placement::missingFor(shared, std::wstring(), android) == Missing::apk, "no APK to look for");
+    check(placement::missingFor(shared, apk, std::wstring()) == Missing::nothing, "no Android files named: not looked for");
+    files::remove(android + L"\\complete");
+    check(placement::missingFor(shared, apk, android) == Missing::androidFiles, "Android's files without their file complete");
+    files::write(android + L"\\complete", "0.1.0.0");
+    files::write(apk, "not a ZIP");
+    check(placement::missingFor(shared, apk, android) == Missing::apk, "an APK that is no ZIP");
+    files::remove(apk);
+    check(placement::missingFor(shared, apk, android) == Missing::apk, "an APK that is not there");
+    const std::wstring card = root + L"\\missing\\card-shared";
+    files::makeDirectories(card);
+    check(placement::missingFor(card, card + L"\\apks\\MeglerApp.x\\0123\\app.apk", card + L"\\android\\0.1.0.0") == Missing::apk,
+          "another storage's shared folder, with nothing of Megler's in it");
+    for (const Missing missing : {Missing::sharedFolder, Missing::apk, Missing::androidFiles}) {
+        const std::string text = placement::missingText(missing, "Telegram", shared, true);
+        check(text.rfind("Telegram can't start: ", 0) == 0 && text.find("Settings › System › Storage") != std::string::npos &&
+                  text.find("install the app again from Megler's Library") != std::string::npos,
+              "its screen says why and what to do: " + text);
+    }
+    check(placement::missingText(Missing::nothing, "Telegram", shared, true).empty(), "nothing missing, nothing said");
+    check(placement::missingText(Missing::apk, "Telegram", shared, false).find("Settings › Apps") != std::string::npos,
+          "on desktop Windows, the system drive and Settings › Apps");
+}
+
 void testFiles(const std::wstring& root) {
     printf("files\n");
     const std::wstring dir = root + L"\\files";
@@ -500,6 +536,7 @@ int wmain(int argc, wchar_t** argv) {
     printf("the shell's start and copies (shell/Files.cpp, ShellLog.cpp, Startup.cpp, BundledApks.cpp)\n");
     testPaths(root);
     testPlacement(root);
+    testMissing(root);
     testFiles(root);
     testLog();
     testStartup();

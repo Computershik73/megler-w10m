@@ -123,4 +123,37 @@ std::string summary(const std::wstring& install, const std::wstring& local, cons
            "; Windows on " + (n && n < MAX_PATH ? shownDrive(system) : std::string("a drive it does not say"));
 }
 
+Missing missingFor(const std::wstring& shared, const std::wstring& apk, const std::wstring& androidRoot) {
+    if (shared.empty()) return Missing::sharedFolder;
+    std::string head;
+    if (apk.empty() || !files::readRange(apk, 0, 4, head) || head != std::string("PK\3\4", 4)) return Missing::apk;
+    std::string complete;
+    if (!androidRoot.empty() && !files::read(androidRoot + L"\\complete", complete)) return Missing::androidFiles;
+    return Missing::nothing;
+}
+
+std::string missingText(Missing missing, const std::string& label, const std::wstring& shared, bool mobile) {
+    const std::string card = mobile ? "the memory card" : "another drive";
+    const std::string why = "As a rule, that is because the app and Megler are on different storage -- one on " + card + ", the other in the " +
+                            (mobile ? "phone's memory" : "system drive") + " -- and Windows gives each storage a shared folder of its own. ";
+    const std::string what = mobile ? "Keep the app and Megler on the same storage: move the app (or Megler) to the phone's memory in Settings › "
+                                      "System › Storage (the memory card, Apps & games, the app, Move), or install the app again from Megler's "
+                                      "Library."
+                                    : "Keep the app and Megler on the same drive: move the app (or Megler) to the system drive in Settings › Apps "
+                                      "(the app, Move), or install the app again from Megler's Library.";
+    switch (missing) {
+    case Missing::nothing:
+        return {};
+    case Missing::sharedFolder:
+        return label + " can't start: Windows gave it no shared folder, which is where Megler keeps Android's files and the app's APK for "
+                       "it. That happens when the app is installed on " + card + ". " + what;
+    case Missing::apk:
+        return label + " can't start: its APK is not in its shared folder, or can't be read there (" + narrow(shared) + "). " + why + what;
+    case Missing::androidFiles:
+        return label + " can't start: Android's files, which Megler puts in the shared folder for its apps, are not there (" + narrow(shared) +
+               "). " + why + what;
+    }
+    return {};
+}
+
 } // namespace megler::app::placement

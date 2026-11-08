@@ -346,7 +346,8 @@ const SingleApp& single() {
         const std::wstring shared = sharedFolder();
         // Since 645 the app's APK is in the shared folder (make: apk=shared:apks\<identity>\<token>); before, in the package.
         // Where Windows gave the package no shared folder (one on a memory card may have none), neither is anywhere: both left
-        // empty, and nothing is looked for at the drive's root ("" + "\apks\...").
+        // empty, and nothing is looked for at the drive's root ("" + "\apks\..."). The app's screen says why it cannot start
+        // (singleAppProblem).
         if (apk.rfind("shared:", 0) == 0)
             s.apkFolder = shared.empty() ? std::wstring() : shared + L"\\" + widen(apk.substr(7));
         else
@@ -359,6 +360,24 @@ const SingleApp& single() {
         return s;
     }();
     return app;
+}
+
+const std::string& singleAppProblem() {
+    static const std::string problem = [] {
+        const SingleApp& app = single();
+        if (app.package.empty()) return std::string();
+        const std::wstring shared = sharedFolder(), apk = app.apkFolder.empty() ? std::wstring() : app.apkFolder + L"\\app.apk";
+        const placement::Missing missing = placement::missingFor(shared, apk, app.androidRoot);
+        if (missing == placement::Missing::nothing) return std::string();
+        const char* what = missing == placement::Missing::sharedFolder ? "Windows gave it no shared folder"
+                           : missing == placement::Missing::apk        ? "its APK is not in the shared folder, or cannot be read there"
+                                                                       : "Android's files are not in the shared folder";
+        shellLog::write("app package: " + app.package + " cannot start: " + what + " (its APK looked for as " + narrow(apk) +
+                        ", Android's files in " + narrow(app.androidRoot) + "); " +
+                        placement::summary(platform::installDirectory(), platform::localStateDirectory(), shared));
+        return placement::missingText(missing, app.label.empty() ? app.package : app.label, shared, platform::isMobile());
+    }();
+    return problem;
 }
 
 const std::wstring& linkScheme() {

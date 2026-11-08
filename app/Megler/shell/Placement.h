@@ -41,4 +41,21 @@ bool onSystemDrive(const std::wstring& folder);
 /// the shared folder on C: (C:\Data\...\shared); Windows on C:".
 std::string summary(const std::wstring& install, const std::wstring& local, const std::wstring& shared);
 
+/// What an app's own package lacks of what Megler put in the shared folder for it, by what it finds there.
+enum class Missing {
+    nothing,
+    sharedFolder,  // Windows gave the package no shared folder
+    apk,           // the app's APK is not in it, or cannot be read there
+    androidFiles,  // Android's libcore and framework of the Megler that made it are not in it (no file `complete`)
+};
+/// What is missing for an app's own package whose shared folder is `shared`, its APK `apk` (MeglerApp.ini's apk=shared:..., in
+/// it; before 0.1.0.645 in the package's own install folder) and its Android files `androidRoot` (empty where MeglerApp.ini
+/// names none: not looked for). The APK is read, not only looked for: one of another storage's that Windows encrypted for
+/// another package is there and cannot be read.
+Missing missingFor(const std::wstring& shared, const std::wstring& apk, const std::wstring& androidRoot);
+/// What an app's own package says on its screen for `missing` (not nothing): what it lacks and why, and what to do -- keep the
+/// app and Megler on the same storage, the app (or Megler) moved to the phone's memory (on desktop Windows, to the system
+/// drive), or the app installed again from Megler.
+std::string missingText(Missing missing, const std::string& label, const std::wstring& shared, bool mobile);
+
 } // namespace megler::app::placement
