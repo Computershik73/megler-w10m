@@ -5886,6 +5886,33 @@ on a looper thread of its own and takes it back with `next()`.
   strings by name and reads both, and opens its `assets/icudtl.dat` as a
   descriptor where it is stored, as Chromium maps its ICU data.
 
+- `android/content/res/loader/ResourcesLoader.java` and
+  `ResourcesProvider.java`, `android/content/res/Resources.java` and
+  `AssetManager.java`, `android/content/pm/PackageManager.java` and
+  `android/os/ParcelFileDescriptor.java`: Android 11's resources loaders. A
+  provider made from an APK (`ResourcesProvider.loadFromApk`, by the file its
+  descriptor was opened from; `loadFromSplit`) is that APK opened beside the
+  app's (`megler.Native.addApk`) with its table read as a package of its own
+  (0x7f), and a loader's providers come before a Resources' own resources
+  once it is added to them (`Resources.addLoaders`): an id one of them has is
+  its value and its file, `getIdentifier` finds its names in its package, and
+  only the Resources it was added to have it. And
+  `getResourcesForApplication("android")` is the platform's resources alone, a
+  `Resources` of their own with no app package (`Resources.meglerPlatform`),
+  as Android gives framework-res.apk's: it gave the app's own. Google Play
+  services' DynamiteLoader makes a module's resources so on Android 11 and
+  later (the platform's, and a loader of the module's APK), and the stubs kept
+  nothing: the Google Maps module's legacy renderer looked up its textures'
+  0x7f ids (`maps_dav_one_way_16_256` and twenty more) in the app's table,
+  `BitmapFactory.decodeResource` gave null, and the map's GL thread ended on
+  `Bitmap.getWidth()` of it (`gmm6.vector.gl.aj`): Transit's map stayed empty
+  (0.1.0.671). Not done: a provider of a directory or of a table alone
+  (empty, said in the log), and the loaders' assets through the Resources'
+  `AssetManager`. The data app's step "resources-loader" adds an APK of
+  resources alone that it carries (`assets/loader.apk`,
+  `core/tests/app/data/loader`, made by `tools/build-test-app.sh`) to the
+  platform's resources and reads a string, a colour and a picture of it.
+
 - `android/hardware/camera2/CameraManager.java`, `getCameraIdList` and
   `getCameraIdListNoLazy`, generated signatures that answered null: the
   phone's cameras (camera2 under "The cameras" below), and an empty list,

@@ -1692,6 +1692,7 @@ public class Main extends Activity {
         });
         insetFraction();
         workSource();
+        resourcesLoader();
         sound();
         mediaCodec();
         network();
@@ -4982,6 +4983,52 @@ public class Main extends Activity {
             detail = "size=" + size + " back=" + back + " empty=" + emptyBack;
             return size > 0 && back != null && back.equals(ws) && !back.equals(empty) && n == 2 && firstUid == 10045 && "megler.test.a".equals(firstName)
                     && chains != null && chains.size() == 1 && emptyIs && emptyBack.equals(empty);
+        });
+    }
+
+    /**
+     * A module's resources as Google Play services' DynamiteLoader makes them on Android 11 and later: the platform's own
+     * resources (getResourcesForApplication("android"), a Resources of their own, not the app's) with a ResourcesLoader of
+     * the module's APK added -- here the APK of resources alone the app carries (assets/loader.apk, package
+     * megler.test.loader, tools/build-test-app.sh). Its string is found by name in its package and read; its picture is
+     * decoded by BitmapFactory.decodeResource, as the Google Maps module reads its textures; its ids are its package's; the
+     * platform's own are still there; and the app's own resources do not have what the loader put over the platform's. (The
+     * loader classes are Android 11's, not in the SDK the app is built against: stubs/, and addLoaders by reflection.)
+     */
+    private void resourcesLoader() {
+        step("resources-loader", () -> {
+            java.io.File apk = new java.io.File(getFilesDir(), "loader.apk");
+            try (java.io.InputStream in = getAssets().open("loader.apk"); java.io.FileOutputStream out = new java.io.FileOutputStream(apk)) {
+                byte[] buf = new byte[8192];
+                for (int n; (n = in.read(buf)) > 0; ) out.write(buf, 0, n);
+            }
+            android.content.res.Resources platform = getPackageManager().getResourcesForApplication("android");
+            int before = platform.getIdentifier("loader_greeting", "string", "megler.test.loader");
+            android.content.res.loader.ResourcesLoader loader = new android.content.res.loader.ResourcesLoader();
+            try (android.os.ParcelFileDescriptor pfd = android.os.ParcelFileDescriptor.open(apk, android.os.ParcelFileDescriptor.MODE_READ_ONLY)) {
+                loader.addProvider(android.content.res.loader.ResourcesProvider.loadFromApk(pfd));
+            }
+            android.content.res.Resources.class.getMethod("addLoaders", android.content.res.loader.ResourcesLoader[].class)
+                    .invoke(platform, (Object) new android.content.res.loader.ResourcesLoader[] { loader });
+            int id = platform.getIdentifier("loader_greeting", "string", "megler.test.loader");
+            int markId = platform.getIdentifier("loader_mark", "drawable", "megler.test.loader");
+            int colorId = platform.getIdentifier("loader_color", "color", "megler.test.loader");
+            String text = id != 0 ? platform.getString(id) : null;
+            String pkg = id != 0 ? platform.getResourcePackageName(id) : null;
+            android.graphics.Bitmap mark = markId != 0 ? android.graphics.BitmapFactory.decodeResource(platform, markId) : null;
+            int color = colorId != 0 ? platform.getColor(colorId, null) : 0;
+            String own;
+            try {
+                own = getResources().getString(id);
+            } catch (android.content.res.Resources.NotFoundException e) {
+                own = "not found";
+            }
+            String ok = platform.getString(android.R.string.ok);
+            detail = "before=" + before + " id=0x" + Integer.toHexString(id) + " text=" + text + " package=" + pkg + " mark=" + (mark == null ? "null" : mark.getWidth() + "x" + mark.getHeight() + " " + Integer.toHexString(mark.getPixel(1, 1)))
+                    + " color=" + Integer.toHexString(color) + " own=" + own + " ok=" + ok + " same=" + (platform == getResources());
+            return before == 0 && id != 0 && (id >>> 24) == 0x7f && "from the loader".equals(text) && "megler.test.loader".equals(pkg)
+                    && mark != null && mark.getWidth() == 4 && mark.getPixel(1, 1) == 0xFF102030 && color == 0xFF102030
+                    && !"from the loader".equals(own) && ok != null && !ok.isEmpty() && platform != getResources();
         });
     }
 

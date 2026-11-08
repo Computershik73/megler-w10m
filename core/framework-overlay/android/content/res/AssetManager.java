@@ -15,7 +15,10 @@
 // reads, as the framework-res's is 1), its resources.arsc is read by Resources.meglerAddLibrary, which gives its package the
 // next free package id from 0x02 up, as Android's AssetManager2 does, and its files are read through the same calls as the
 // app's own. There is one AssetManager's worth of APKs for the process, as there is one app: the list is static. A cookie is
-// 1 for the app's APK and 2 on for the libraries, in the order they were added. Everything else is the original's.
+// 1 for the app's APK and 2 on for the libraries, in the order they were added.
+//
+// And one of the platform's own resources alone (meglerForPlatform), for Resources.meglerPlatform: its Resources have no app
+// package, and it names the platform's package alone. Everything else is the original's.
 package android.content.res;
 
 import java.io.*;
@@ -35,6 +38,14 @@ public final class AssetManager implements AutoCloseable {
         return a;
     }
     int meglerPackageApk() { return mPackage == null ? 0 : mPackage.apk; }
+    /** The platform's own resources alone, no app package (Resources.meglerPlatform: getResourcesForApplication("android")). */
+    private boolean mPlatformOnly;
+    public static AssetManager meglerForPlatform() {
+        AssetManager a = new AssetManager();
+        a.mPlatformOnly = true;
+        return a;
+    }
+    boolean meglerPlatformOnly() { return mPlatformOnly; }
     String meglerPackageName() { return mPackage == null ? megler.Native.packageName() : mPackage.packageName; }
     private InputStream packageFile(String name) throws IOException {
         byte[] b = megler.Native.readApkFile(mPackage.apk, name);
@@ -232,6 +243,7 @@ public final class AssetManager implements AutoCloseable {
     public android.util.SparseArray<String> getAssignedPackageIdentifiers(boolean includeOverlays, boolean includeLoaders) {
         android.util.SparseArray<String> ids = new android.util.SparseArray<>();
         ids.put(0x01, "android");
+        if (mPlatformOnly) return ids;
         ids.put(0x7f, meglerPackageName());
         if (mPackage != null) return ids;
         for (Library lib : libraries()) if (lib.packageId != 0) ids.put(lib.packageId, lib.packageName);

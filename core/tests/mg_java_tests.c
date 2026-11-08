@@ -2605,6 +2605,9 @@ static int run_data(void)
                                          "inset-fraction",
                                          /* And a WorkSource through a Parcel and back, as a location request of Google Play services' carries one. */
                                          "work-source",
+                                         /* And a module's resources as Google Play services' DynamiteLoader makes them: the platform's
+                                            with a ResourcesLoader of an APK of resources alone added (the app's assets/loader.apk). */
+                                         "resources-loader",
                                          "audio-track", "media-player", "media-player-ogg", "sound-pool",
                                          /* And MediaCodec over the stand-in for the shell's decoders: H.264 shown on a Surface in display
                                             order, a flush, parameter sets in a codec-config buffer, the asynchronous mode, AAC with an

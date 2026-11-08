@@ -27,6 +27,9 @@
 // transparent colour with no size. And the app's permissions are megler.Permissions':
 // checkPermission and getPackageInfo's requestedPermissionsFlags say which it holds
 // (every one was granted, whatever its name), getPermissionInfo which are dangerous.
+// And getResourcesForApplication("android") is the platform's resources alone, a Resources of their own
+// (Resources.meglerPlatform), as Android gives framework-res.apk's: it gave the app's own Resources, to which Google Play
+// services' DynamiteLoader then added a module's resources (Resources.addLoaders) over the app's.
 package android.content.pm;
 
 import android.content.ComponentName;
@@ -279,7 +282,7 @@ public class PackageManager {
         try { return megler.ContextImpl.app().getResources().getDrawable(res); } catch (Exception e) { return null; }
     }
     public CharSequence getText(String pkg, int res, ApplicationInfo a) { try { return megler.ContextImpl.app().getResources().getText(res); } catch (Exception e) { return null; } }
-    public android.content.res.Resources getResourcesForApplication(String pkg) throws NameNotFoundException { android.content.Context external = megler.MicroG.context(pkg); if (external == null) external = megler.Gsf.context(pkg); if (external != null) return external.getResources(); if (!mine(pkg) && !"android".equals(pkg)) throw new NameNotFoundException(pkg); return megler.ContextImpl.app().getResources(); }
+    public android.content.res.Resources getResourcesForApplication(String pkg) throws NameNotFoundException { android.content.Context external = megler.MicroG.context(pkg); if (external == null) external = megler.Gsf.context(pkg); if (external != null) return external.getResources(); if ("android".equals(pkg)) return android.content.res.Resources.meglerPlatform(); if (!mine(pkg)) throw new NameNotFoundException(pkg); return megler.ContextImpl.app().getResources(); }
     public android.content.res.Resources getResourcesForApplication(ApplicationInfo a) throws NameNotFoundException { return getResourcesForApplication(a.packageName); }
     public android.content.res.Resources getResourcesForActivity(ComponentName c) { return megler.ContextImpl.app().getResources(); }
     public String getInstallerPackageName(String pkg) { return "com.android.vending"; }

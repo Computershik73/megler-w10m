@@ -16,6 +16,9 @@
 // microG's People service hands Play Store the account's picture so (IPeopleCallbacks.onParcelFileDescriptor), and Play
 // Store's stub stopped on a NullPointerException as it read it (no avatar).
 //
+// And the file it was opened from is said (meglerFile), for android.content.res.loader.ResourcesProvider.loadFromApk, which
+// opens an APK by its descriptor: Google Play services' modules' resources.
+//
 // Everything else is the original's, unchanged.
 package android.os;
 
@@ -81,6 +84,8 @@ public class ParcelFileDescriptor implements Parcelable, Closeable {
     private boolean mDetached;
     public int detachFd() { mDetached = true; return getFd(); }
     public long getStatSize() { return mFile != null ? mFile.length() : -1; }
+    /** Megler: the file this was opened from (open), or null: what ResourcesProvider.loadFromApk opens the APK by. */
+    public File meglerFile() { return mFile; }
     public void close() throws IOException { if (mOwner != null && !mDetached) mOwner.close(); }
     public void closeWithError(String msg) throws IOException { close(); }
     public void checkError() throws IOException {}
