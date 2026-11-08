@@ -1073,6 +1073,24 @@ result: Play Store sends its own receivers one when it takes an install up. The
 data app's step "ordered-broadcast" checks the order, the result passed on and
 added to from another thread, and the result receiver's thread.
 
+**Who sent a broadcast.** Android 14 tells a receiver who sent the broadcast
+(`BroadcastReceiver.getSentFromUid` and `getSentFromPackage`, and its
+`PendingResult`'s) when the sender shared it:
+`BroadcastOptions.makeBasic().setShareIdentityEnabled(true)`, whose
+`toBundle()` goes with the broadcast (`sendBroadcast(intent, permission,
+options)`, the ordered ones' overloads with options). The options' bundle
+came back empty here and both methods said no one, ever: Messenger sends its
+own receivers its broadcasts with its identity shared, and refused each one
+that came from no one ("InternalIntentScope: Access denied. ...
+StellaContactBroadcastReceiver cannot receive broadcasts from null", 21 times
+in a user's run of 673). The options now go into their bundle and come back
+out of it (the overlay's `BroadcastOptions`), and every receiver hears a
+broadcast with a `PendingResult` of its own (`megler.Broadcasts`), which has
+the sender -- the sending context's uid and package (`sharedSender`) --
+where the options share it, and no one (`Process.INVALID_UID`, null) where
+they do not, as on Android. The data app's step "broadcast-identity" sends
+with the identity shared, with options that do not share it, and with none.
+
 ### The time zone (the runtime on libcore and the app, under qemu-arm)
 
 The shell names the phone's time zone before it starts an app

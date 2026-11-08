@@ -934,6 +934,51 @@ public class Main extends Activity {
                     + " other=" + (other == null ? null : other.activityInfo.name);
             return homes == 0 && launcher != null && Main.class.getName().equals(launcher.activityInfo.name) && plain != null && other == null;
         });
+        // Who sent a broadcast, as Android 14 tells its receivers (getSentFromUid, getSentFromPackage, the receiver's and its
+        // PendingResult's): the app itself where the options it sent with share its identity (BroadcastOptions
+        // .setShareIdentityEnabled, through the options' bundle, which gives them back), no one where they do not or there are
+        // none. Messenger's own receivers refused its own broadcasts, which came from no one ("cannot receive broadcasts from null").
+        step("broadcast-identity", () -> {
+            Class<?> bo = Class.forName("android.app.BroadcastOptions");
+            Object shareOpts = bo.getMethod("makeBasic").invoke(null);
+            bo.getMethod("setShareIdentityEnabled", boolean.class).invoke(shareOpts, true);
+            android.os.Bundle shared = (android.os.Bundle) bo.getMethod("toBundle").invoke(shareOpts);
+            android.os.Bundle plain = (android.os.Bundle) bo.getMethod("toBundle").invoke(bo.getMethod("makeBasic").invoke(null));
+            boolean back = (Boolean) bo.getMethod("isShareIdentityEnabled").invoke(bo.getMethod("fromBundle", android.os.Bundle.class).invoke(null, shared));
+            final java.lang.reflect.Method uid = android.content.BroadcastReceiver.class.getMethod("getSentFromUid");
+            final java.lang.reflect.Method pkg = android.content.BroadcastReceiver.class.getMethod("getSentFromPackage");
+            final java.lang.reflect.Method resultUid = android.content.BroadcastReceiver.PendingResult.class.getMethod("getSentFromUid");
+            final java.lang.reflect.Method resultPkg = android.content.BroadcastReceiver.PendingResult.class.getMethod("getSentFromPackage");
+            final java.util.concurrent.LinkedBlockingQueue<String> heard = new java.util.concurrent.LinkedBlockingQueue<>();
+            android.os.HandlerThread ht = new android.os.HandlerThread("identity");
+            ht.start();
+            final String action = "megler.test.data.IDENTITY";
+            android.content.BroadcastReceiver r = new android.content.BroadcastReceiver() {
+                @Override public void onReceive(Context c, android.content.Intent i) {
+                    try {
+                        String mine = uid.invoke(this) + ":" + pkg.invoke(this);
+                        PendingResult p = goAsync();
+                        heard.add(mine + ":" + resultUid.invoke(p) + ":" + resultPkg.invoke(p));
+                        p.finish();
+                    } catch (ReflectiveOperationException e) {
+                        heard.add(e.toString());
+                    }
+                }
+            };
+            registerReceiver(r, new android.content.IntentFilter(action), null, new android.os.Handler(ht.getLooper()));
+            java.lang.reflect.Method withOptions = Context.class.getMethod("sendBroadcast", android.content.Intent.class, String.class, android.os.Bundle.class);
+            withOptions.invoke(this, new android.content.Intent(action), null, shared);
+            String first = heard.poll(10, java.util.concurrent.TimeUnit.SECONDS);
+            withOptions.invoke(this, new android.content.Intent(action), null, plain);
+            String second = heard.poll(10, java.util.concurrent.TimeUnit.SECONDS);
+            sendBroadcast(new android.content.Intent(action));
+            String third = heard.poll(10, java.util.concurrent.TimeUnit.SECONDS);
+            unregisterReceiver(r);
+            ht.quitSafely();
+            String me = android.os.Process.myUid() + ":" + getPackageName(), none = "-1:null";
+            detail = "back=" + back + " shared=" + first + " not=" + second + " plain=" + third;
+            return back && (me + ":" + me).equals(first) && (none + ":" + none).equals(second) && (none + ":" + none).equals(third);
+        });
         step("arrays-ranges", () -> {
             Class<?> a = java.util.Arrays.class;
             byte[] one = { 1, 2, 3, 4, 5 }, two = { 9, 2, 3, 4, 8 };
