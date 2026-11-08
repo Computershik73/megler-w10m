@@ -56,6 +56,10 @@
  * come at the new size with the views laid out for it. And what the app asks of the screen's way up -- its manifest's
  * android:screenOrientation, setRequestedOrientation -- reaches a stand-in for the shell (megler_display_host).
  *
+ * `first` is hello started as the player starts an app on a PC's window or on an Xbox's television (`pc`, `xbox`): the
+ * player's busy overlay must go at the app's first picture, whichever way it came and at whatever size, the surface changed
+ * and the bars' insets told as the app starts (an Xbox's), and the pictures after the change come at the new size.
+ *
  * `app` is any APK at all, or a bundle of split APKs, unpacked first as for `splits`: started, left to itself until it is
  * still, its picture written, then whatever the script on the command line says -- a
  * touch, a wait, Back, each followed by another picture -- and a summary of
@@ -202,11 +206,32 @@ static struct {
     long stale;
     /* Pictures shown from a canvas, unflushed (megler_gfx_host.present), as a shell that draws elsewhere than in memory shows them. */
     volatile i32 from_canvas;
-} W = { MG_LOCK_INIT, NULL, 0, 0, 0, 0, NULL, 0, 0, 0 };
+    /*
+     * The first picture, as the shell's window keeps it (app/Megler/player/WindowHost.h, firstPicture): when it came, its size,
+     * and its way -- from the canvas on the graphics processor (present_canvas, below) or through the memory.
+     */
+    u64 first_ns;
+    int first_width, first_height;
+    bool first_from_canvas;
+} W = { MG_LOCK_INIT, NULL, 0, 0, 0, 0, NULL, 0, 0, 0, 0, 0, 0, false };
+
+/* A picture is being shown from the canvas (present_canvas, one call at a time with the others): the first's way. */
+static volatile i32 g_canvas_showing;
+
+/* A picture came: counted as the shell's window counts them, as it comes (WindowHost::pictures); the first kept. */
+static void picture_came(int width, int height)
+{
+    if (W.pictures) return;
+    W.first_ns = mg_time_monotonic_ns();
+    W.first_width = width;
+    W.first_height = height;
+    W.first_from_canvas = g_canvas_showing != 0;
+}
 
 static MEGLER_CB void present_pixels(void *user, const void *pixels, int width, int height, int stride)
 {
     (void)user;
+    picture_came(width, height);
     mg_lock_acquire(&W.lock);
     if (W.width != width || W.height != height || W.stride != stride) {
         free(W.pixels);
@@ -243,6 +268,7 @@ static MEGLER_CB void present_pixels_part(void *user, const void *pixels, int wi
         present_pixels(user, pixels, width, height, stride);
         return;
     }
+    picture_came(width, height);
     mg_lock_acquire(&W.lock);
     for (row = 0; row < height; row++) {
         const u8 *s = src + (size_t)row * (size_t)stride;
@@ -370,6 +396,7 @@ static MEGLER_CB bool present_canvas(void *user, void *canvas, int x, int y, int
     const void *pixels;
     int w, h, stride, r;
     if (!mg_gfx_standin_pixels(canvas, &pixels, &w, &h, &stride)) return false;
+    mg_atomic_xchg(&g_canvas_showing, 1);
     mg_lock_acquire(&GL.lock);
     if (GL.used) {
         /* The shell composes the window: the views' picture is kept, as the shell's snapshot of it, and the window composed. */
@@ -385,12 +412,14 @@ static MEGLER_CB bool present_canvas(void *user, void *canvas, int x, int y, int
         gl_compose();
         mg_lock_release(&GL.lock);
         mg_atomic_add(&W.from_canvas, 1);
+        mg_atomic_xchg(&g_canvas_showing, 0);
         return true;
     }
     mg_lock_release(&GL.lock);
     if (x == 0 && y == 0 && width == w && height == h) present_pixels(user, pixels, w, h, stride);
     else present_pixels_part(user, pixels, w, h, stride, x, y, width, height);
     mg_atomic_add(&W.from_canvas, 1);
+    mg_atomic_xchg(&g_canvas_showing, 0);
     return true;
 }
 
@@ -1269,6 +1298,95 @@ static int run_screen(void)
     CHECK(find_line("I/ScreenTest: Handled.onDestroy changing=false", 0) >= 0);
     if (g_failed) say_app_lines("I/ScreenTest:");
     stop_and_end("I/ScreenTest: Main.onDestroy changing=false", &at);
+    return g_failed;
+}
+
+/* ------------------------------------------------------------------ first */
+
+/*
+ * `first`: hello started as the player starts an app, on a PC's window or on an Xbox's television (the script's first word,
+ * `pc` or `xbox`), and the player's busy overlay -- "Starting <app>..." -- as ui/PlayerScreen.cpp has it now: up from Play
+ * until the first picture has come, whichever way it came (WindowHost::pictures; the window here counts them as they come,
+ * as the shell's does), gone at the first. It used to wait for a Present that had succeeded, and on an Xbox it stayed up
+ * while the app drew (0.1.0.671). Polled here every 10 ms as the player polls every 250 (and is told at once besides).
+ *
+ * On a PC the window is the start's, a phone-shaped one at 125 percent (500 x 950 at 200 dpi, the command line's), with no
+ * bars over it. On an Xbox the player may start the app in the television's safe area -- 864 x 486 of the 960 x 540 an app
+ * has, at 200 percent: 1280 x 720 at 237 dpi within the render cap of 1280, the command line's -- before Windows has given
+ * the player the whole screen (UseCoreWindow): the surface then follows to the whole of it, 1422 x 800 at the same pixels
+ * for a DIP, and the safe area's margins are told as the bars' insets (48 and 27 DIPs: 71, 40, 71, 40 pixels) -- the
+ * surface asked for while the app starts, which the session tells the moment megler_run has returned, before the app's
+ * first picture. The overlay must go with the first picture all the same, whatever size it came at, and the pictures after
+ * the change come at the new size.
+ */
+static int g_first_xbox;
+
+/* Before megler_run, as the player's start tells them: the bars' insets (an Xbox's: none yet, its safe area not given). */
+static void first_before_run(void)
+{
+    megler_set_insets(0, 0, 0, 0);
+}
+
+static int run_first(void)
+{
+    const u64 play = g_start_ns, poll = 10000000ull;
+    u64 down = 0, now;
+    int polls = 0, root_w = 0, root_h = 0, line;
+    bool up_after_picture = false, down_before_picture = false;
+    say("  the player's start on %s: the surface %dx%d at %d dpi%s", g_first_xbox ? "an Xbox's television" : "a PC's window", g_screen_w, g_screen_h,
+        g_screen_dpi, g_first_xbox ? "; then the whole television, 1422x800, and the safe area's insets, as the app starts" : "");
+    if (g_first_xbox) {
+        /* What followWindow asks once the player has the whole television, held while megler_run ran and told the moment it returned. */
+        megler_set_insets(71, 40, 71, 40);
+        megler_set_surface(1422, 800, g_screen_dpi, 0);
+    }
+    /* The busy overlay, as the player decides it at each poll: the app started (or running), no picture yet; the app has not ended. */
+    for (;;) {
+        const i32 pictures = W.pictures;
+        const bool ended = !running();
+        const bool up = !ended && pictures == 0;
+        now = mg_time_monotonic_ns();
+        if (!up) {
+            down = now;
+            down_before_picture = pictures == 0;
+            break;
+        }
+        if (now - play > 120000000000ull) break;
+        polls++;
+        mg_sleep_ns(poll);
+    }
+    CHECK(down != 0);
+    CHECK(!down_before_picture);
+    CHECK(W.pictures >= 1 && W.first_ns != 0);
+    if (down && W.first_ns) {
+        /* Gone at the first poll after the first picture came: within 100 ms, a sleep of 10 ms being as long as Windows makes it
+           (the player's poll is 250 ms, and the window's word comes before it). */
+        CHECK(down >= W.first_ns && down - W.first_ns <= 100000000ull);
+        say("  the first picture came %.0f ms after Play, %dx%d, %s; the busy overlay went %.1f ms after it (%d polls of %d ms)",
+            (double)(W.first_ns - play) / 1e6, W.first_width, W.first_height,
+            W.first_from_canvas ? "drawn on the canvas and shown from it (megler_gfx_host.present: the shell's graphics processor)" : "through the memory (present_pixels)",
+            (double)(down - W.first_ns) / 1e6, polls, (int)(poll / 1000000ull));
+    }
+    /* And stays down: a picture shown, the app running, nothing stopping it. */
+    settle();
+    CHECK(running());
+    up_after_picture = running() && W.pictures == 0;
+    CHECK(!up_after_picture);
+    /* The app follows the surface it was told: on an Xbox the pictures after the change are the whole television's. */
+    if (g_first_xbox) {
+        CHECK(W.width == 1422 && W.height == 800);
+        CHECK(find_line("run: the surface is 1422x800", 0) >= 0);
+    } else {
+        CHECK(W.width == g_screen_w && W.height == g_screen_h);
+    }
+    line = wait_line("I/HelloTest: layout focus=true root=", 0, 30);
+    CHECK(line >= 0);
+    if (line >= 0) {
+        const char *p = strstr(line_at(line), "root=");
+        if (p && sscanf(p + 5, "%dx%d", &root_w, &root_h) == 2) say("  the app's root view: %dx%d of the picture's %dx%d", root_w, root_h, W.width, W.height);
+    }
+    write_picture(g_first_xbox ? "first-xbox" : "first-pc");
+    say("  %d pictures; the window's last %dx%d", (int)W.pictures, W.width, W.height);
     return g_failed;
 }
 
@@ -3507,8 +3625,12 @@ int mg_tests_java_run(const char *which, const char *apk, const char *android_ro
         }
         apk = base;
     }
+    /* `first`: the player's start on a PC (the script's `pc`) or an Xbox (`xbox`), what it tells the core before megler_run. */
+    g_first_xbox = !strcmp(which, "first") && g_script_count && !strcmp(g_script[0], "xbox");
+    if (!strcmp(which, "first")) first_before_run();
     if (start(apk, android_root)) {
-        if (!strcmp(which, "microg")) run_microg();
+        if (!strcmp(which, "first")) run_first();
+        else if (!strcmp(which, "microg")) run_microg();
         else if (!strcmp(which, "demos")) run_demos();
         else if (!strcmp(which, "natives")) run_natives();
         else if (!strcmp(which, "crash")) run_crash();
