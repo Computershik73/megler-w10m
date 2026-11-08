@@ -64,9 +64,11 @@ public final class Parcel {
      * restored by unmarshall and its creator), and Messenger, opening a conversation, read null for the list a photo
      * editor's layers had been written as, "Failed to restore", and ended ("Required value was null", in its composer's
      * camera configuration, 0.1.0.673). Bytes kept past the process (a file) find no table; their objects read as nulls,
-     * as before.
+     * as before. The tables kept hold what they name (a bundle, a bitmap written into the parcel) for as long as they are
+     * kept: 2048 of them, the last used, which an activity's state saved and restored is well within, so that an app that
+     * marshalls all the time keeps no more than that alive on a phone allowed 390 MB.
      */
-    private static final int MARSHALL_MARK = 0x8C0FFEE2, MARSHALL_END = 0x726C676D, MARSHALLED_KEPT = 16384;
+    private static final int MARSHALL_MARK = 0x8C0FFEE2, MARSHALL_END = 0x726C676D, MARSHALLED_KEPT = 2048;
     private static final java.util.LinkedHashMap<Integer, Object[]> MARSHALLED = new java.util.LinkedHashMap<Integer, Object[]>(64, 0.75f, true) {
         @Override protected boolean removeEldestEntry(Map.Entry<Integer, Object[]> e) { return size() > MARSHALLED_KEPT; }
     };
