@@ -297,6 +297,9 @@ void Library::load() {
             return std::any_of(pendingCopies_.begin(), pendingCopies_.end(), [&id](const bundledApks::Task& t) { return t.id == id; });
         };
         for (const auto& name : files::list(directory_, L"*.apk")) {
+            // (Windows matches a pattern against short names too, which a memory card's FAT always has: "*.apk" finds "x.apks"
+            // by its "X~1.APK".)
+            if (name.size() < 4 || _wcsicmp(name.c_str() + name.size() - 4, L".apk") != 0) continue;
             ApkEntry entry = copied(name);
             if (heldBack(entry.id)) entry.analysing = true;
             else if (stale || !entry.analysed) toRead.push_back(entry.id);
