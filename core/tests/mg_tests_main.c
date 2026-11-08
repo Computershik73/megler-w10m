@@ -1061,6 +1061,27 @@ static int portal_windows_mode(char **argv)
 #endif
 }
 
+/* ------------------------------------------------------- --window-windows */
+
+#ifdef MG_WINDOW_WINDOWS
+/* mg_window_windows.cpp: the shell's window (player/WindowHost.cpp) with no panel, its pictures as they come and the first. */
+MG_HOSTAPI int mg_window_windows_run(void (MEGLER_CB *line)(const char *text, void *user), int *checks);
+#endif
+
+static int window_windows_mode(void)
+{
+#ifdef MG_WINDOW_WINDOWS
+    int checks = 0, failed;
+    mg_core_init();
+    failed = mg_window_windows_run(print_line, &checks);
+    printf("%d checks, %d failed\n", checks, failed);
+    return failed ? 1 : 0;
+#else
+    printf("(the shell's window -- player/WindowHost.cpp -- is not in this build of the tests: --window-windows does nothing here; tools/build-tests.sh win runs it)\n");
+    return 0;
+#endif
+}
+
 #if defined(MG_CORE_ELF)
 /* On desktop Windows the tests are part of the core's ELF, and Megler's test program calls this (host/win32/mg_desktop_tests.c). */
 MEGLER_API int mg_tests_main(int argc, char **argv)
@@ -1074,6 +1095,7 @@ int main(int argc, char **argv)
     if (argc >= 3 && !strcmp(argv[1], "--camera-windows")) return camera_windows_mode(argc, argv);
     if (argc >= 3 && !strcmp(argv[1], "--sensors-windows")) return sensors_windows_mode(argc, argv);
     if (argc >= 8 && !strcmp(argv[1], "--portal-windows")) return portal_windows_mode(argv);
+    if (argc >= 2 && !strcmp(argv[1], "--window-windows")) return window_windows_mode();
     if (argc >= 5 && !strcmp(argv[1], "--gfx-replay")) return gfx_replay_mode(argc, argv);
     if (argc >= 7 && !strcmp(argv[1], "--gfx-record")) {
         megler_config config;
