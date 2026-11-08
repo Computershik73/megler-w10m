@@ -404,13 +404,24 @@ JNIEXPORT jint JNICALL Java_megler_test_natives_Lib_refs(JNIEnv *env, jclass cls
         if ((*env)->GetJavaVM(env, &vm) == 0 && vm == g_vm) bits |= 512;
     }
     if (!(*env)->ExceptionCheck(env)) bits |= 1024;
-    /* What kind of reference each is: the fresh string a local one, the object held globally a global one, nothing an invalid one... */
-    if ((*env)->GetObjectRefType(env, global) == JNIGlobalRefType && (*env)->GetObjectRefType(env, kept) == JNILocalRefType
-        && (*env)->GetObjectRefType(env, NULL) == JNIInvalidRefType) bits |= 2048;
+    /*
+     * What kind of reference each is: the fresh string a local one, an object held globally a global one, nothing an
+     * invalid one -- and this method's own parameter a local one though it is held globally too (`global`), as Chromium's
+     * JavaParamRef checks every parameter of its native methods (Ozon's Cronet). A reference is the object here, so a
+     * parameter is local while the method runs, whatever else refers to it.
+     */
+    {
+        jobject held = (*env)->NewStringUTF(env, "held"), held_global = (*env)->NewGlobalRef(env, held);
+        jweak held_weak = (*env)->NewWeakGlobalRef(env, held);
+        if ((*env)->GetObjectRefType(env, held_global) == JNIGlobalRefType && (*env)->GetObjectRefType(env, kept) == JNILocalRefType
+            && (*env)->GetObjectRefType(env, NULL) == JNIInvalidRefType && (*env)->GetObjectRefType(env, o) == JNILocalRefType) bits |= 2048;
+        (*env)->DeleteGlobalRef(env, held_global);
+        /* ...and once the global one is gone, the weak one is what holds it. */
+        if ((*env)->GetObjectRefType(env, held_weak) == JNIWeakGlobalRefType) bits |= 4096;
+        (*env)->DeleteWeakGlobalRef(env, held_weak);
+    }
     (*env)->DeleteLocalRef(env, local);
     (*env)->DeleteGlobalRef(env, global);
-    /* ...and once the global one is gone, the weak one is what holds it, and after that nothing but the caller's local one. */
-    if ((*env)->GetObjectRefType(env, weak) == JNIWeakGlobalRefType) bits |= 4096;
     (*env)->DeleteWeakGlobalRef(env, weak);
     if ((*env)->GetObjectRefType(env, o) == JNILocalRefType) bits |= 8192;
     return bits;

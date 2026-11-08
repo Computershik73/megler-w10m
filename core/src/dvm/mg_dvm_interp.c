@@ -527,6 +527,13 @@ static bool invoke_native(mg_dvm_thread *t, mg_dvm_method *m, mg_jobj *self, con
         if (timed) call_started = mg_time_ticks();
     }
     t->natives++;
+    /* What the method is handed, for JNI's GetObjectRefType while it runs; the call outside it put back after. */
+    mg_jobj *outer_target = t->native_target;
+    const mg_jvalue *outer_params = t->native_params;
+    const char *outer_shorty = t->native_shorty;
+    t->native_target = target;
+    t->native_params = params;
+    t->native_shorty = m->shorty;
     if (nat->native) {
         mg_jcall c;
         memset(&c, 0, sizeof(c));
@@ -571,6 +578,9 @@ static bool invoke_native(mg_dvm_thread *t, mg_dvm_method *m, mg_jobj *self, con
     } else {
         mg_dvm_throw("java/lang/UnsatisfiedLinkError", "%s.%s%s is in a library, and the way to it is gone", m->cls->name, m->name, m->sig);
     }
+    t->native_target = outer_target;
+    t->native_params = outer_params;
+    t->native_shorty = outer_shorty;
     --t->native_depth;
     if (timed) native_time(t, nat, call_started);
     else if (outermost) t->native_ticks += nat->meter_avg;

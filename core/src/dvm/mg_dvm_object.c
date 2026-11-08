@@ -155,6 +155,7 @@ static mg_dvm_thread *make_self(size_t words)
 }
 
 mg_dvm_thread *mg_dvm_self(void) { return t_self ? t_self : make_self(DVM_STACK_WORDS); }
+mg_dvm_thread *mg_dvm_self_existing(void) { return t_self; }
 mg_dvm_thread *mg_dvm_self_sized(size_t words) { return t_self ? t_self : make_self(words); }
 
 void mg_dvm_thread_census(u32 *threads, u32 *attached, u64 *frame_bytes, u64 *c_reserved, u64 *c_peak)
