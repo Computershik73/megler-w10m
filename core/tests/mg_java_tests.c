@@ -2583,6 +2583,13 @@ static void bars_and_insets(void)
     megler_set_insets(0, 0, 0, 0);
 }
 
+/* Whether `s` ends with `tail`. */
+static bool ends_with(const char *s, const char *tail)
+{
+    size_t n = strlen(s), m = strlen(tail);
+    return n >= m && !strcmp(s + n - m, tail);
+}
+
 /*
  * The app's media session, as the phone's media controls have it: its state (playing; play and pause allowed) and what it
  * plays (title, artist, album, and its picture made at most 256 on a side) come to the shell (megler_media_session_host);
@@ -2599,11 +2606,12 @@ static void media_session_keys(void)
         mg_lock_acquire(&g_media_lock);
         mg_strlcpy(heard, g_media_heard, sizeof(heard));
         mg_lock_release(&g_media_lock);
-        if (!strcmp(heard, want)) break;
+        if (ends_with(heard, want)) break;
         mg_sleep_ns(20000000ull);
     }
     say("  the media session told: %s", heard);
-    CHECK(!strcmp(heard, want));
+    /* (What it told last: the data app's step media-key-controller made a session of its own before, and released it.) */
+    CHECK(ends_with(heard, want));
     megler_key(87, true);
     megler_key(87, false);
     megler_key(127, true);
