@@ -3061,6 +3061,13 @@ static void test_proxies(void)
     m.fn = (void *)proxied_invoke;
     ((register_fn)table[215])(env, cls, &m, 1);
     CHECK(mg_jni_native(bridge, "invoke", invoke_sig) == (void *)proxied_invoke);
+    /* (A native found by its name alone, with the signature it was registered with, and the class's natives said: the Unity driver's initJni.) */
+    {
+        char said[400];
+        const char *sig = mg_jni_native_sig(bridge, "invoke");
+        CHECK(sig && !strcmp(sig, invoke_sig) && !mg_jni_native_sig(bridge, "noSuchNative"));
+        CHECK(mg_jni_natives_said(bridge, said, sizeof(said)) == 1 && !strncmp(said, "invoke(JLjava/lang/Class;", 25));
+    }
     new_id = ((static_id_fn)table[113])(env, cls, "newInterfaceProxy", "(J[Ljava/lang/Class;)Ljava/lang/Object;");
     off_id = ((static_id_fn)table[113])(env, cls, "disableInterfaceProxy", "(Ljava/lang/Object;)V");
     CHECK(new_id && off_id);
