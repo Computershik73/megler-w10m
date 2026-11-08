@@ -4462,6 +4462,19 @@ what was done:
   of that: some of a process's heaps are not serialized, one was walked while
   its owner used it and the app ended, and the walk held the process heap's lock
   for most of a second.
+- **And whose the sizes of allocation are**, where the core can tell
+  (`address_whose`, which the census calls for each private allocation): of
+  each of the four sizes, the owners with the most of them, in the form "599
+  of 1024 KB (the Java heap's arenas 420, thread stacks 170, others 9), 2 of
+  8192 KB (Go's runtime in libgojni.so)" (three owners a size at most;
+  "others": those no owner is known of). The owners: the Java heap's arenas;
+  an app's mapping by the library whose code made it (the place of a system
+  call by number, else libc's caller), and Go's runtime when that was a
+  library of Go's by number (`mg_mmap_whose`); a native library's image; the
+  runtime's frame stacks; the threads' stacks for system calls; and, of what
+  none of those is, an allocation with a guard page in it is a thread's
+  stack. WhatsApp's log said "1 of 528384 KB" and "599 of 1024 KB", and whose
+  they were took a disassembly and a guess (0.1.0.671).
 
 **An app's DEX files are views of files where they can be**
 (`mg_dvm_apk.c`), not memory of the process's, which Windows counts against

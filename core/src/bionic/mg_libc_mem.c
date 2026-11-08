@@ -558,6 +558,13 @@ typedef struct region {
     u32 gone_pages;
     /* Which pages the app made no-access itself (mmap or mprotect with PROT_NONE), a bit each: a fault there is the app's. */
     u8 *noaccess;
+    /*
+     * The library whose code mapped it (a system call's place by number, else libc's caller; NULL: none known, the layer's
+     * own among them), and whether that was Go's runtime, by number from a library of Go's: whose the census of the
+     * addresses says it is (mg_mmap_whose).
+     */
+    const mg_lib *maker;
+    bool go;
     struct region *next;
 } region;
 
@@ -1028,7 +1035,7 @@ static u8 *reserve_lined_up(size_t size, size_t align)
     return NULL;
 }
 
-static void *g_mmap_common(void *addr, size_t len, int prot, int flags, int fd, u64 offset)
+static void *g_mmap_common(void *addr, size_t len, int prot, int flags, int fd, u64 offset, mg_addr caller)
 {
     size_t size = MG_ALIGN_UP(len, MG_PAGE), reserve = MG_ALIGN_UP(len, 65536);
     region *r;
@@ -1148,6 +1155,12 @@ static void *g_mmap_common(void *addr, size_t len, int prot, int flags, int fd, 
         r->base = p;
         r->size = reserve;
         r->anon = (flags & G_MAP_ANONYMOUS) != 0;
+        {
+            /* Whose (mg_mmap_whose): the library of the system call's place by number, or of libc's caller. */
+            const mg_addr site = mg_bionic_syscall_site();
+            r->maker = mg_ld_lib_of((const void *)MG_CODE_ADDR(site ? site : caller));
+            r->go = site && r->maker && mg_ld_lib_is_go(r->maker);
+        }
         r->live = (u8 *)mg_alloc(reserve / MG_PAGE / 8 + 1);
         region_mark(r, 0, size, true);
         if (!(prot & 7)) noaccess_mark(r, 0, size, true);
@@ -1201,18 +1214,18 @@ static void *g_mmap_common(void *addr, size_t len, int prot, int flags, int fd, 
 /* (An off_t, a long: in 32-bit Android one past 2 GB is taken as unsigned, as it always was here.) */
 static void *g_mmap(void *addr, size_t len, int prot, int flags, int fd, goff offset)
 {
-    return g_mmap_common(addr, len, prot, flags, fd, (u64)(gulong)offset);
+    return g_mmap_common(addr, len, prot, flags, fd, (u64)(gulong)offset, (mg_addr)CALLER());
 }
 
 static void *g_mmap64(void *addr, size_t len, int prot, int flags, int fd, i64 offset)
 {
-    return g_mmap_common(addr, len, prot, flags, fd, (u64)offset);
+    return g_mmap_common(addr, len, prot, flags, fd, (u64)offset, (mg_addr)CALLER());
 }
 
 /* mmap2's offset is in pages. */
 void *mg_g_mmap2(void *addr, size_t len, int prot, int flags, int fd, u32 pgoffset)
 {
-    return g_mmap_common(addr, len, prot, flags, fd, (u64)pgoffset * MG_PAGE);
+    return g_mmap_common(addr, len, prot, flags, fd, (u64)pgoffset * MG_PAGE, (mg_addr)CALLER());
 }
 
 static int g_munmap(void *addr, size_t len)
@@ -1292,7 +1305,7 @@ static void *g_mremap(void *old, size_t old_size, size_t new_size, int flags)
         mg_set_errno(GE_NOMEM);
         return G_MAP_FAILED;
     }
-    p = g_mmap_common(NULL, n, G_PROT_READ | G_PROT_WRITE, 0x02 | G_MAP_ANONYMOUS, -1, 0);   /* MAP_PRIVATE */
+    p = g_mmap_common(NULL, n, G_PROT_READ | G_PROT_WRITE, 0x02 | G_MAP_ANONYMOUS, -1, 0, (mg_addr)CALLER());   /* MAP_PRIVATE */
     if (p == G_MAP_FAILED) return p;
     memcpy(p, old, o);
     g_munmap(old, o);
@@ -1783,6 +1796,42 @@ void mg_mmap_given_back(u64 *given, u64 *again)
     if (given) *given = g_given_back;
     if (again) *again = g_taken_again;
     mg_lock_release(&g_region_lock);
+}
+
+/*
+ * The census of the addresses (mg_host_address_census) asks whose an allocation is: an app's mapping is said by the
+ * library that made it -- Go's runtime in one, by number -- or as the app's, where none is known. The names are kept, one
+ * for each library and kind, since the census tells owners apart by their names' pointers. Under g_region_lock.
+ */
+static struct { const mg_lib *lib; bool go; char name[80]; } g_owner_names[24];
+static u32 g_nowner_names;
+
+static const char *owner_name(const mg_lib *lib, bool go)
+{
+    u32 i;
+    if (!lib) return "the app's mappings";
+    for (i = 0; i < g_nowner_names; i++)
+        if (g_owner_names[i].lib == lib && g_owner_names[i].go == go) return g_owner_names[i].name;
+    if (g_nowner_names == MG_COUNT(g_owner_names)) return "the app's mappings";
+    g_owner_names[i].lib = lib;
+    g_owner_names[i].go = go;
+    snprintf(g_owner_names[i].name, sizeof(g_owner_names[i].name), go ? "Go's runtime in %s" : "%s's mappings", mg_ld_lib_name(lib));
+    g_nowner_names++;
+    return g_owner_names[i].name;
+}
+
+const char *mg_mmap_whose(const void *base)
+{
+    region *r;
+    const char *name = NULL;
+    mg_lock_acquire(&g_region_lock);
+    for (r = g_regions; r; r = r->next)
+        if (r->base == (const u8 *)base && !r->view) {
+            name = owner_name(r->maker, r->go);
+            break;
+        }
+    mg_lock_release(&g_region_lock);
+    return name;
 }
 
 void mg_mmap_usage(u64 *anon, u64 *files)

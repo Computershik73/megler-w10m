@@ -877,6 +877,10 @@ typedef struct mg_dvm_heap_info {
     u32 large_objects, objects;
 } mg_dvm_heap_info;
 void mg_dvm_heap_stats(mg_dvm_heap_info *out);
+/* Whether `p` is the start of one of the heap's arenas (the census of the addresses asks whose an allocation is). */
+bool mg_dvm_heap_arena_at(const void *p);
+/* Whether a thread's frame stack, or a segment of one, starts in [base, base + size) (the same census asks). */
+bool mg_dvm_frames_in(const void *base, size_t size);
 /*
  * After a sweep, with the heap's lock held: arenas left empty given back to the host whole, the highest first, past the
  * spare blocks `keep` bytes and a few more take (the next collection's budget); how many.

@@ -1884,6 +1884,15 @@ static void test_shm_views(void)
     CHECK(mapped >= before + (SIZE + MB) / 1024 && mapped < before + (SIZE + MB) / 1024 + 64);
 }
 
+/* The census's owner of the test's 3 MB allocation (test_free_stretches): told apart by its name's pointer. */
+static const void *g_census_big;
+static const char k_census_big[] = "the test's 3 MB";
+static MG_HOSTCB const char *census_whose(const void *base, size_t size)
+{
+    (void)size;
+    return base && base == g_census_big ? k_census_big : NULL;
+}
+
 /* The largest free stretches of address space, which the crash report names (mg_host_free_stretches): largest first. */
 static void test_free_stretches(void)
 {
@@ -1897,24 +1906,36 @@ static void test_free_stretches(void)
         (unsigned)s[3], (unsigned)free_mb);
     CHECK(s[0] == largest && s[0] >= s[1] && s[1] >= s[2] && s[2] >= s[3] && s[0] + s[1] + s[2] + s[3] <= free_mb);
     {
-        /* What holds the addresses, by kind: the program's image, and private memory, a 3 MB allocation made here among it. */
+        /*
+         * What holds the addresses, by kind: the program's image, and private memory, a 3 MB allocation made here among it,
+         * named by the owner the census is told (the core's, mg_java.c's address_whose, names the Java heap's arenas, a
+         * library's mappings, Go's runtime's).
+         */
         mg_host_address_kinds k, after;
         void *big = mg_mem_reserve(3u << 20);
         u8 *small = (u8 *)malloc(8u << 20);
         int i;
-        bool seen = false;
+        bool seen = false, named = false;
+        g_census_big = big;
         CHECK(big && mg_mem_commit(big, 3u << 20, MG_PROT_RW) && small);
         if (small) memset(small, 1, 8u << 20);
-        CHECK(mg_host_address_census(&k));
-        for (i = 0; i < k.nsizes; i++) seen = seen || (k.sizes[i].kb == 3072 && k.sizes[i].count >= 1);
+        CHECK(mg_host_address_census(&k, census_whose));
+        for (i = 0; i < k.nsizes; i++)
+            if (k.sizes[i].kb == 3072 && k.sizes[i].count >= 1) {
+                int o;
+                seen = true;
+                for (o = 0; o < MG_ADDRESS_OWNERS; o++) named = named || (k.sizes[i].by[o].whose == k_census_big && k.sizes[i].by[o].count == 1);
+            }
         say("addresses by kind: images %u MB, views %u MB, private %u MB committed and %u reserved; threads the core started %u",
             (unsigned)k.images_mb, (unsigned)k.views_mb, (unsigned)k.private_mb, (unsigned)k.private_reserved_mb, (unsigned)mg_thread_live_count());
         CHECK(k.images_mb > 0 && k.private_mb >= 3 && k.nsizes > 0);
         /* (A 3 MB allocation is among the four sizes holding the most only where little else is; it is said, not checked.) */
         if (!seen) say("  (the 3 MB allocation is not among the four sizes that hold the most here)");
+        else CHECK(named);
         free(small);
         if (big) mg_mem_release(big, 3u << 20);
-        CHECK(mg_host_address_census(&after) && after.private_mb + 3 <= k.private_mb + 1);
+        g_census_big = NULL;
+        CHECK(mg_host_address_census(&after, NULL) && after.private_mb + 3 <= k.private_mb + 1);
     }
 }
 

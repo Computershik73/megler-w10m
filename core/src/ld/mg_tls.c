@@ -105,6 +105,25 @@ void mg_tls_syscall_stacks(void)
 }
 #endif
 
+bool mg_tls_syscall_stack_in(const void *base, size_t size)
+{
+#if (MG_ARCH_X86_64 || MG_ARCH_ARM64 || MG_ARCH_ARM32) && MG_GUEST_CODE
+    tls_block *b;
+    bool in = false;
+    mg_lock_acquire(&g_tls_lock);
+    for (b = g_blocks; b && !in; b = b->next) {
+        const u8 *s = (const u8 *)b->tcb[MG_TCB_SYSCALL];
+        in = s && s >= (const u8 *)base && s < (const u8 *)base + size;
+    }
+    mg_lock_release(&g_tls_lock);
+    return in;
+#else
+    (void)base;
+    (void)size;
+    return false;
+#endif
+}
+
 void **mg_tls_thread_pointer(void)
 {
     void **tp = (void **)mg_guest_tp_get();

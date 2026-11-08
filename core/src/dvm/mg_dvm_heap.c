@@ -879,3 +879,19 @@ void mg_dvm_heap_stats(mg_dvm_heap_info *out)
     out->objects = g_objects;
     mg_lock_release(&g_heap_lock);
 }
+
+bool mg_dvm_heap_arena_at(const void *p)
+{
+    mg_addr a = (mg_addr)p;
+    u32 lo = 0, hi;
+    mg_lock_acquire(&g_heap_lock);
+    hi = g_narenas;
+    while (lo < hi) {
+        u32 mid = (lo + hi) / 2;
+        if (a < (mg_addr)g_arenas[mid]) hi = mid;
+        else if (a > (mg_addr)g_arenas[mid]) lo = mid + 1;
+        else break;
+    }
+    mg_lock_release(&g_heap_lock);
+    return lo < hi;
+}
