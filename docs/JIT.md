@@ -1,6 +1,6 @@
 # A JIT for the Dalvik interpreter
 
-The plan for compiling an app's hot bytecode to Thumb-2, written before the code, and then to A64 and x86-64 for the
+The plan for compiling an app's hot bytecode to Thumb-2, written before the code, and then to A64, x86-64 and x86 for the
 PCs. What is built so far is said at the end; this file follows the work.
 
 ## Why
@@ -34,8 +34,8 @@ machine code is a few cycles.
 - **Exits.** An exit stores the pc to go on at and returns. The interpreter reloads `pc` and continues its loop.
 - **The calling convention.** `int code(mg_dvm_jit_ctx *ctx, const void *entry)`: the context holds the frame's
   registers, the address of `g_dvm.slow`, the pc to go on at, the thread, the frame, and the last call's result; a
-  callee-saved register holds the frame's registers throughout (r4 on Thumb-2, x19 on A64, rbx on x86-64), another the
-  context (r5, x20, r12). Returns 0 (go on at `ctx->pc`), 1 (an exception pending, thrown at
+  callee-saved register holds the frame's registers throughout (r4 on Thumb-2, x19 on A64, rbx and ebx on x86-64 and
+  x86), another the context (r5, x20, r12, esi). Returns 0 (go on at `ctx->pc`), 1 (an exception pending, thrown at
   `ctx->pc`) or 2 (returned, the value in `ctx->result`).
 - **Watching.** While `g_dvm.slow` is set (a trace, a step limit, the profile) nothing compiled runs: the watched loop
   never enters code, and compiled code checks the flag at each jump back and exits there.
@@ -50,7 +50,7 @@ machine code is a few cycles.
 instructions are compiled and which handed back, the decisions that need the runtime (a field resolved, a class
 initialised, a call done in place or the quick way, a switch's table), branches and their targets, the code's memory and
 its publishing. A back end writes each instruction's code (its `emit_*` functions) and the branches:
-`mg_dvm_jit_thumb2.h` for 32-bit ARM, `mg_dvm_jit_a64.h` for ARM64, `mg_dvm_jit_x86.h` for x86-64 (`MG_DVM_JIT`
+`mg_dvm_jit_thumb2.h` for 32-bit ARM, `mg_dvm_jit_a64.h` for ARM64, `mg_dvm_jit_x86.h` for x86-64 and x86 (`MG_DVM_JIT`
 says where there is one). A branch takes as many of the back end's units as it says for its condition: halfwords, words,
 or x86's bytes. The split changed nothing on the phone: the 3842 methods the ARM32 suites compile with the threshold at
 1 came out byte for byte as before it (the pointers movw and movt load aside, which another build has elsewhere).
@@ -86,6 +86,17 @@ of zero (an exit first, as everywhere) and on MIN_VALUE / -1, so a divisor of -1
 Shifts by CL take the count modulo 32 or 64, as Java does; cmpl and cmpg are UCOMISS or UCOMISD, which say unordered by
 PF; a float's or a double's remainder is fmod's, by a call.
 
+**x86** (the same file's 32-bit mode: desktop Windows' x86 core, i386's cdecl with Android's 16-byte stack alignment at
+calls) keeps ebx the frame's registers, esi the context, edi the slow flag's address and ebp a frame pointer, and 28
+bytes below them where the calls' arguments are written (the stack then 16-byte aligned at each call). A register of the
+frame is 32 bits, as on the phone, so a long is the 8 bytes of its two registers: add/adc, sub/sbb, the 64-bit product
+from MUL and two IMULs, SHLD/SHRD and SHL/SAR/SHR with a count of 32 and more mended (they take five bits of it),
+cmp-long by the high words signed and the low ones unsigned; a double is MOVSD's 8 bytes of the two registers, a float
+MOVSS's 4. What 32-bit x86 has no SSE2 instruction for -- a long's division and remainder, a long's conversions to and
+from float and double -- and a float's or a double's remainder are C: the division by a call that returns the long in
+edx:eax, the others by calls that read and write the frame's registers themselves, as i386's convention would return a
+float in x87's st(0), which the code never touches.
+
 ## The first instructions
 
 Moves and constants; int arithmetic and logic (`add`, `sub`, `mul`, `and`, `or`, `xor`, the shifts, their `/2addr`,
@@ -111,7 +122,7 @@ ARM64 machine says is said under "Where it stands".
 x86-64 runs here natively: `tools/build-tests.sh linux64` (WSL's gcc, System V, as the core's ELF has it) and
 `tools/build-desktop.sh x64 tests` (the core's ELF and Windows' host, as the package has them; `-- --dvm-android <root>`
 for libcore), with MEGLER_JIT_THRESHOLD in the environment at the JIT's own, 1 and 0; `tools/dvm-bench.sh x64` the same
-two ways.
+two ways. x86 runs here too, by WOW64: `tools/build-desktop.sh x86 tests` and `tools/dvm-bench.sh x86`.
 
 Every arithmetic instruction is checked compiled as well as interpreted: tools/dvm-ops.py gives each of `t.Ops`' methods
 a twin that does its instruction in the second turn of a loop, which the JIT compiles at the first jump back, and
@@ -209,5 +220,17 @@ long and double arithmetic 31 to 7.6, iget and iput 30 to 3.7, sget and sput 16 
 String.charAt 27 to 2.0, String.indexOf 12 to 0.9, Math.min, max, abs 48 to 2.9, invoke-static 28 to 15, HashMap.get 435
 to 237, Integer.valueOf 131 to 88; an exception made, thrown and caught 548 to 591, the one item slower, as under
 qemu-aarch64 (6389 to 6426).
+
+x86 (the same back end's 32-bit mode) compiles all that Thumb-2 does, a long's division and its conversions to and from
+float and double by C. Desktop x86's suites (WOW64) pass every Dalvik check at the JIT's own threshold, at 1 and at 0:
+7655 checks, and 7809 on libcore; the failures besides, none of the runtime's, are timing checks, the same with the JIT
+off. On this PC (ns a turn, interpreted then compiled; `tools/dvm-bench.sh x86`): int arithmetic 16.3 to 1.5, iget and
+iput 27 to 4.7, sget and sput 14 to 1.3, aget and aput 28 to 4.2, String.charAt 23 to 1.9, String.indexOf 9.0 to 0.8,
+Math.min, max, abs 43 to 3.5, ArrayList's iterator 104 to 54; but a long's and a double's loop only 25 to 22 (its
+long-to-double is a call of C here), and what a loop does by calls of C is slower compiled than interpreted, where x86's
+interpreter calls more cheaply than x64's: invoke-static 20.3 to 19.7, a final method 27 to 30, a synchronized static
+method 43 to 54, an exception made, thrown and caught 489 to 631, Math.sin 83 to 97, System.arraycopy 22 to 26. Next for
+x86: long-to-double in the code (SSE2 can, from the two halves), and a loop whose turns are mostly calls left to the
+interpreter there.
 
 Next: what the phone's logs say is handed back most.
