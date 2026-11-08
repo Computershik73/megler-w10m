@@ -47,6 +47,7 @@ std::string gWorkingLine;
 std::vector<std::function<void()>> gListWaiters; // what waits for the list (askList)
 int gDone = 0, gTotal = 0;           // of the jobs since the worker started
 bool gRefused = false;               // the last install or uninstall done or refused was refused for access (installsRefused)
+bool gSettling = false;              // the shared folder's APK folders are being settled (settleApks): the worker's jobs wait
 
 /// How an install or an uninstall of `package` ended, as far as access goes: refused for it (Megler has not got
 /// packageManagement), or not.
@@ -137,20 +138,28 @@ ApkEntry readPicked(const Job& job) {
     return entry;
 }
 
-/// The folders of apps' APKs in the shared folder that nothing reads any more (appPackage::removeUnusedSharedApks): those the
-/// library's entries are in kept, and only while no job is queued or running. (A package being made has a folder no
-/// installed package and no entry names yet; removeUnusedSharedApks leaves a folder of the last hour alone besides.) Off
-/// the UI thread.
-void removeUnusedApks(const std::vector<appPackage::InstalledApp>& installed) {
+/// The folders of apps' APKs in the shared folder set right with what is installed (appPackage::settleSharedApks): the
+/// installed packages' kept however they were installed, those the library's entries are in kept, the rest removed. Only
+/// while no job is queued or running, and a job asked for meanwhile waits for it (gSettling): the package made that waited
+/// for Windows's installer may be removed here, which a job of the same app would be writing again. (A package being made
+/// has a folder nothing names yet; a folder of the last hour is left alone besides.) Off the UI thread.
+void settleApks(const std::vector<appPackage::InstalledApp>& installed) {
     if (appPackage::isSingleApp()) return;
     {
         std::lock_guard<std::mutex> lock(gMutex);
-        if (gWorking || !gJobs.empty()) return;
+        if (gWorking || !gJobs.empty() || gSettling) return;
+        gSettling = true;
     }
-    std::vector<std::wstring> used;
+    struct Settled {
+        ~Settled() {
+            std::lock_guard<std::mutex> lock(gMutex);
+            gSettling = false;
+        }
+    } settled;
+    std::vector<std::wstring> read;
     for (const ApkEntry& entry : Library::instance().entries())
-        if (appPackage::inSharedApks(entry.path)) used.push_back(entry.path.substr(0, entry.path.find_last_of(L'\\')));
-    appPackage::removeUnusedSharedApks(installed, used);
+        if (appPackage::inSharedApks(entry.path)) read.push_back(entry.path.substr(0, entry.path.find_last_of(L'\\')));
+    appPackage::settleSharedApks(installed, read);
 }
 
 /// Google Play services installed as an app of its own (Google's or microG's) and not the apps' registered service: its
@@ -200,7 +209,7 @@ void listInstalled() {
     // the shared folder holds, once a run.
     if (ok) appPackage::removeUnusedAndroidRoots(apps);
     if (ok) registerInstalledServices(apps);
-    if (ok) removeUnusedApks(apps);
+    if (ok) settleApks(apps);
     // And the logs' copies of the packages that are gone (shell/LogMirror.h), which would grow in number for ever.
     if (ok) logMirror::removeUninstalled(apps);
     appPackage::removeUnusedServiceCopies();
@@ -327,9 +336,9 @@ void run(Job& job, int number, int total) {
         inShared.splitsDir = files::exists(Library::splitsDirFor(inShared.path)) ? Library::splitsDirFor(inShared.path) : std::wstring();
         const bool servicePublished = appPackage::registerServiceApk(inShared, made.fullName, true);
         if (!servicePublished) shellLog::write("microG: installed, but its shared service APK could not be published; launch microG to retry");
-        // Installed: the package made is the installed one now, and goes (Windows's installer is not wanted for it). The
-        // app is listed as installed at once; the list is asked for again once the queue is done.
-        files::remove(made.appx);
+        // Installed: the package made is the installed one now, and goes with its record (Windows's installer is not wanted for
+        // it). The app is listed as installed at once; the list is asked for again once the queue is done.
+        sharedApks::removeWaiting(made.appx);
         {
             std::lock_guard<std::mutex> lock(gMutex);
             gStatus[package].made = appPackage::Made();
@@ -406,6 +415,14 @@ void startWorker(AppShell& shell) {
     AppShell* shellPointer = &shell;
     shell.runInBackground(
         [] {
+            // (Not while a listing settles the shared folder's APK folders: settleApks, which no longer begins once this has.)
+            for (;;) {
+                {
+                    std::lock_guard<std::mutex> lock(gMutex);
+                    if (!gSettling) break;
+                }
+                Sleep(50);
+            }
             for (;;) {
                 Job job;
                 int number = 0, total = 0;

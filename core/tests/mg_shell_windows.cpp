@@ -1,6 +1,7 @@
 // The shell's start and its copies, tested on a PC: tools/build-tests.sh win builds this program (mg_shell_tests.exe)
-// from the very files the phone's package is built from -- shell/Files.cpp, ShellLog.cpp, Startup.cpp, BundledApks.cpp and
-// Strings.cpp -- with the few stand-ins below for the rest of the shell, and runs it on a scratch folder of its own:
+// from the very files the phone's package is built from -- shell/Files.cpp, ShellLog.cpp, Startup.cpp, BundledApks.cpp,
+// Placement.cpp, SharedApks.cpp and Strings.cpp -- with the few stand-ins below for the rest of the shell, and runs it on a
+// scratch folder of its own:
 //
 //   - paths that are not absolute (made from a folder Windows gave none of: a package on a memory card may have no shared
 //     folder) refused by every function of shell/Files.cpp, nothing made, written, listed or removed at a drive's root, and
@@ -15,7 +16,12 @@
 //   - bundledApks::plan on a library and a shared folder in each state a phone's can be in (a first start's, all copied,
 //     the stamp missing, a copy that is not the package's, microG's of another size, an installed app whose package
 //     is gone), and bundledApks::start's copies made on their thread, each said in the log before it begins and after,
-//     then the once-a-build check, which leaves out the copies just made.
+//     then the once-a-build check, which leaves out the copies just made;
+//   - which folders of the shared folder's apks an installed package reads and which go (shell/SharedApks.h): a package
+//     installed by Windows's own installer (Open the Package) or by Windows after Megler gave up on it, one waiting for
+//     Windows's installer, Megler's own installs, Update All, Google Play services from Megler's newer APK, packages made
+//     before Megler wrote down which folder a package reads; and on the disk, make's records, a listing read, decided and
+//     carried out, a folder whose APK an app has open left whole, each decision said once.
 //
 // A Lumia 630's Megler 0.1.0.671 was ended at every start while it made those copies on its UI thread before its window
 // was shown (library/Library.cpp); what is tested here is the way they are made since.
@@ -30,6 +36,7 @@
 #include "shell/Files.h"
 #include "shell/Placement.h"
 #include "shell/Platform.h"
+#include "shell/SharedApks.h"
 #include "shell/ShellLog.h"
 #include "shell/Startup.h"
 #include "shell/Strings.h"
@@ -451,6 +458,333 @@ void testStartup() {
     check(startup::processAge() > 0, format("the process's age is known (%llu ms)", (unsigned long long)startup::processAge()));
 }
 
+namespace shared {
+
+using sharedApks::App;
+using sharedApks::Installed;
+using sharedApks::Plan;
+using sharedApks::Token;
+
+constexpr uint64_t kMinute = 600000000ull, kHour = 60 * kMinute, kDay = 24 * kHour;
+// A time of 2026's, as GetSystemTimeAsFileTime gives one.
+constexpr uint64_t kNow = 0x01dd50e000000000ull;
+
+const std::wstring kCandy = L"MeglerApp.com.king.candycrushsaga.2a041e0408f22f6b";
+std::string full(const std::wstring& identity, const char* version) { return narrow(identity) + "_" + version + "_arm__7p434m16tbgc6"; }
+
+/// A folder's name as keepInShared makes it: the time its copy was begun at, then a process's id.
+std::wstring tokenAt(uint64_t time) {
+    return widen(format("%08lx%08lx-%08lx", (unsigned long)(time >> 32), (unsigned long)(time & 0xffffffffu), 0x1a2bul));
+}
+
+/// A folder begun at `begun`, whose made.txt names `made` and was written at `madeTime`.
+Token recorded(uint64_t begun, std::vector<std::string> made, uint64_t madeTime) {
+    Token t;
+    t.name = tokenAt(begun);
+    t.recorded = true;
+    t.made = std::move(made);
+    t.madeTime = madeTime;
+    return t;
+}
+
+/// A folder made up to 0.1.0.675, with no made.txt.
+Token unrecorded(uint64_t begun) {
+    Token t;
+    t.name = tokenAt(begun);
+    return t;
+}
+
+const sharedApks::Verdict* verdictOf(const Plan& p, const std::wstring& token) {
+    for (const auto& v : p.verdicts)
+        if (v.token == token) return &v;
+    return nullptr;
+}
+bool kept(const Plan& p, const std::wstring& token) { return verdictOf(p, token) && verdictOf(p, token)->keep; }
+bool removed(const Plan& p, const std::wstring& token) { return verdictOf(p, token) && !verdictOf(p, token)->keep; }
+std::string why(const Plan& p, const std::wstring& token) { return verdictOf(p, token) ? verdictOf(p, token)->why : std::string("(no verdict)"); }
+bool knownAs(const Plan& p, const std::wstring& token, const std::string& fullName, bool waitingDone) {
+    return p.known.size() == 1 && p.known[0].token == token && p.known[0].fullName == fullName && p.known[0].waitingDone == waitingDone;
+}
+
+} // namespace shared
+
+/*
+ * Which folders of the shared folder's apks an installed package reads, and which go (shell/SharedApks.h). Up to 0.1.0.675
+ * a folder installed.txt and the library did not name was removed an hour after it was begun, though a package Windows's
+ * own installer installed read it: a user's Candy Crush Saga (673), installed through Open the Package after Windows refused
+ * Megler's install, found no APK from 17:41 on. That case first; then each other way a package comes to be installed, and
+ * what still goes.
+ */
+void testSharedApks(const std::wstring& root) {
+    printf("the apps' APKs in the shared folder\n");
+    using namespace shared;
+    const std::string f676 = full(kCandy, "0.1.0.676"), f677 = full(kCandy, "0.1.0.677"), f673 = full(kCandy, "0.1.0.673");
+
+    check(sharedApks::begunAt(tokenAt(kNow - 3 * kHour)) == kNow - 3 * kHour && sharedApks::begunAt(L"01dd50e0") == 0 &&
+              sharedApks::begunAt(L"01dd50e00000000g-00001a2b") == 0 && sharedApks::begunAt(L"") == 0,
+          "a folder's time from its name; none from a name that has none");
+
+    // Open the Package: Megler made the package (the folder's made.txt names it) and Windows refused Megler's install; the
+    // library's entry is still Megler's own copy, and installed.txt names nothing. The package waits in LocalState\packages.
+    App candy;
+    candy.identity = kCandy;
+    candy.tokens = {recorded(kNow - 8 * kHour, {f676}, kNow - 8 * kHour)};
+    candy.waiting = true;
+    candy.waitingToken = candy.tokens[0].name;
+    candy.waitingFullName = f676;
+    const std::wstring opened = candy.tokens[0].name;
+    Plan p = sharedApks::plan({candy}, {}, kNow);
+    check(kept(p, opened) && why(p, opened).find("waits in LocalState\\packages for Windows's own installer") != std::string::npos && p.known.empty(),
+          "refused, not yet opened: the folder of the package waiting for Windows's installer is kept, eight hours on: " + why(p, opened));
+    // Windows's own installer installed it.
+    p = sharedApks::plan({candy}, {{narrow(kCandy), f676}}, kNow);
+    check(kept(p, opened) && why(p, opened) == "the installed " + f676 + " was made with it",
+          "Open the Package: the folder its made.txt names for the installed package is kept, eight hours on (" + why(p, opened) + ")");
+    check(knownAs(p, opened, f676, true) && p.forget.empty(),
+          "Open the Package: the installed package's folder is known (installed.txt to name it, the library to read it), and the package that "
+          "waited is the one installed (it goes)");
+    // Once installed.txt names it and the package made has gone, as apply leaves them.
+    App settled = candy;
+    settled.waiting = false;
+    settled.waitingToken.clear();
+    settled.waitingFullName.clear();
+    settled.installedToken = opened;
+    settled.installedTime = kNow;
+    p = sharedApks::plan({settled}, {{narrow(kCandy), f676}}, kNow + kDay);
+    check(kept(p, opened) && knownAs(p, opened, f676, false), "Open the Package, a day on: still the installed package's");
+    // The same without any record, as 673 left it: the installed package is kept whatever it reads (the code before removed it).
+    App old;
+    old.identity = kCandy;
+    old.tokens = {unrecorded(kNow - 8 * kHour)};
+    p = sharedApks::plan({old}, {{narrow(kCandy), f673}}, kNow);
+    check(kept(p, old.tokens[0].name) && why(p, old.tokens[0].name).find("may read this one") != std::string::npos && p.known.empty(),
+          "a package made up to 675, installed by another than Megler: the folder it may read is kept (" + why(p, old.tokens[0].name) + ")");
+    // An install Windows finished after Megler had given up on it (no record waiting: Megler's run ended), or one from a file
+    // manager: the same, by made.txt.
+    App late = candy;
+    late.waiting = false;
+    late.waitingToken.clear();
+    late.waitingFullName.clear();
+    p = sharedApks::plan({late}, {{narrow(kCandy), f676}}, kNow);
+    check(kept(p, opened) && knownAs(p, opened, f676, false), "installed after Megler gave up on it: known by made.txt alone");
+
+    // Megler's own install, then a newer APK of the app installed by Megler with the same Megler: the first folder's package
+    // was replaced by the second's (installed.txt written after it), so the first goes, though its made.txt names the same
+    // full name.
+    {
+        App app;
+        app.identity = kCandy;
+        app.tokens = {recorded(kNow - 10 * kHour, {f676}, kNow - 10 * kHour), recorded(kNow - 2 * kHour, {f676}, kNow - 2 * kHour)};
+        app.tokens[1].read = true;
+        app.installedToken = app.tokens[1].name;
+        app.installedTime = kNow - 2 * kHour + 5 * kMinute;
+        p = sharedApks::plan({app}, {{narrow(kCandy), f676}}, kNow);
+        check(removed(p, app.tokens[0].name) && why(p, app.tokens[0].name).find("before Megler installed that package from") != std::string::npos &&
+                  kept(p, app.tokens[1].name) && knownAs(p, app.tokens[1].name, f676, false),
+              "a newer APK installed by Megler: the older folder of the same full name goes (" + why(p, app.tokens[0].name) + ")");
+        // And one made after Megler's install of the same full name, which Windows's installer may have installed since, stays.
+        app.tokens.push_back(recorded(kNow - 90 * kMinute, {f676}, kNow - 90 * kMinute));
+        p = sharedApks::plan({app}, {{narrow(kCandy), f676}}, kNow);
+        check(kept(p, app.tokens[1].name) && kept(p, app.tokens[2].name) && p.known.empty() &&
+                  why(p, app.tokens[2].name).find("which of them it reads cannot be told") != std::string::npos,
+              "one made of the same full name after Megler's install: both kept, neither known for sure");
+    }
+
+    // Update All refused: the package of before is still installed and reads the same folder, which the new package waits with.
+    {
+        App app;
+        app.identity = kCandy;
+        app.tokens = {recorded(kNow - 5 * kDay, {f676, f677}, kNow - kHour)};
+        app.tokens[0].read = true;
+        app.installedToken = app.tokens[0].name;
+        app.installedTime = kNow - 5 * kDay + kMinute;
+        app.waiting = true;
+        app.waitingToken = app.tokens[0].name;
+        app.waitingFullName = f677;
+        p = sharedApks::plan({app}, {{narrow(kCandy), f676}}, kNow);
+        check(kept(p, app.tokens[0].name) && knownAs(p, app.tokens[0].name, f676, false), "Update All refused: the folder is the installed package's");
+        p = sharedApks::plan({app}, {{narrow(kCandy), f677}}, kNow);
+        check(kept(p, app.tokens[0].name) && knownAs(p, app.tokens[0].name, f677, true),
+              "then opened in Windows's installer: still that folder, and the package that waited is the one installed");
+    }
+
+    // Google Play services' package made from Megler's newer APK (a folder of its own), refused, then installed by Windows's
+    // installer: its folder is the installed package's; the one of before stays while the library reads it, and goes after.
+    {
+        const std::wstring gms = L"MeglerApp.com.google.android.gms.d1e2f3a4b5c6d7e8";
+        const std::string oldGms = full(gms, "0.1.0.676"), newGms = full(gms, "0.1.0.677");
+        App app;
+        app.identity = gms;
+        app.tokens = {recorded(kNow - 3 * kDay, {oldGms}, kNow - 3 * kDay), recorded(kNow - 3 * kHour, {newGms}, kNow - 3 * kHour)};
+        app.tokens[0].read = true;
+        app.installedToken = app.tokens[0].name;
+        app.installedTime = kNow - 3 * kDay + 3 * kMinute;
+        app.waiting = true;
+        app.waitingToken = app.tokens[1].name;
+        app.waitingFullName = newGms;
+        p = sharedApks::plan({app}, {{narrow(gms), newGms}}, kNow);
+        check(kept(p, app.tokens[1].name) && knownAs(p, app.tokens[1].name, newGms, true) && kept(p, app.tokens[0].name) &&
+                  why(p, app.tokens[0].name) == "the library reads it",
+              "Google Play services from Megler's newer APK, installed by Windows's installer: its folder known, the old one kept while the "
+              "library reads it");
+        app.tokens[0].read = false;
+        p = sharedApks::plan({app}, {{narrow(gms), newGms}}, kNow);
+        check(removed(p, app.tokens[0].name), "the old one goes once the library reads the new: " + why(p, app.tokens[0].name));
+    }
+
+    // Two folders made for the same full name, neither installed by Megler: which one the package reads cannot be told, and
+    // both stay.
+    {
+        App app;
+        app.identity = kCandy;
+        app.tokens = {recorded(kNow - 6 * kHour, {f676}, kNow - 6 * kHour), recorded(kNow - 4 * kHour, {f676}, kNow - 4 * kHour)};
+        p = sharedApks::plan({app}, {{narrow(kCandy), f676}}, kNow);
+        check(kept(p, app.tokens[0].name) && kept(p, app.tokens[1].name) && p.known.empty(), "two folders of the same full name: both kept, neither known");
+    }
+
+    // Packages made up to 0.1.0.675 (no made.txt): installed.txt's folder and any begun after it stay, one begun before it goes;
+    // with no installed.txt, all stay.
+    {
+        App app;
+        app.identity = kCandy;
+        app.tokens = {unrecorded(kNow - 3 * kDay), unrecorded(kNow - 2 * kDay), unrecorded(kNow - kDay)};
+        app.installedToken = app.tokens[1].name;
+        app.installedTime = kNow - 2 * kDay + 5 * kMinute;
+        p = sharedApks::plan({app}, {{narrow(kCandy), f673}}, kNow);
+        check(removed(p, app.tokens[0].name) && kept(p, app.tokens[1].name) && kept(p, app.tokens[2].name) && p.known.empty(),
+              "made up to 675, installed by Megler: the folder of before its install goes (" + why(p, app.tokens[0].name) +
+                  "), installed.txt's and the later one stay");
+        app.installedToken.clear();
+        app.installedTime = 0;
+        p = sharedApks::plan({app}, {{narrow(kCandy), f673}}, kNow);
+        check(kept(p, app.tokens[0].name) && kept(p, app.tokens[1].name) && kept(p, app.tokens[2].name),
+              "made up to 675, no installed.txt: every folder stays");
+        // A package Megler made since and Windows refused, waiting: kept too; and the old ones still, the installed one not
+        // being known.
+        app.tokens.push_back(recorded(kNow - 2 * kHour, {f677}, kNow - 2 * kHour));
+        app.waiting = true;
+        app.waitingToken = app.tokens[3].name;
+        app.waitingFullName = f677;
+        p = sharedApks::plan({app}, {{narrow(kCandy), f673}}, kNow);
+        check(kept(p, app.tokens[0].name) && kept(p, app.tokens[3].name), "made up to 675, a newer package refused since: all stay");
+        // Once the newer one is installed, it is known, and the old ones go.
+        p = sharedApks::plan({app}, {{narrow(kCandy), f677}}, kNow);
+        check(knownAs(p, app.tokens[3].name, f677, true) && removed(p, app.tokens[0].name) && removed(p, app.tokens[1].name) &&
+                  removed(p, app.tokens[2].name),
+              "and once it is installed, the old ones go");
+        // A package made up to 675 waits (no record beside it), its app not installed: what it may read stays.
+        App waiting;
+        waiting.identity = kCandy;
+        waiting.tokens = {unrecorded(kNow - 3 * kDay), unrecorded(kNow - kDay)};
+        waiting.waiting = true;
+        p = sharedApks::plan({waiting}, {}, kNow);
+        check(kept(p, waiting.tokens[0].name) && kept(p, waiting.tokens[1].name), "a package made up to 675 waiting, with no record: every folder stays");
+    }
+
+    // What goes: an app not installed, its installed.txt with it; but the library's, one begun within the hour, and one whose
+    // made.txt cannot be read stay. A copy that never finished goes.
+    {
+        App app;
+        app.identity = kCandy;
+        app.tokens = {recorded(kNow - 2 * kDay, {f676}, kNow - 2 * kDay), recorded(kNow - 30 * kMinute, {}, 0), unrecorded(kNow - 3 * kDay),
+                      unrecorded(kNow - 5 * kHour), recorded(kNow - 4 * kDay, {f676}, kNow - 4 * kDay)};
+        app.tokens[2].read = true;
+        app.tokens[3].name += L".part";
+        app.tokens[4].recorded = false;
+        app.tokens[4].made.clear();
+        app.tokens[4].unreadable = true;
+        app.installedToken = app.tokens[0].name;
+        app.installedTime = kNow - 2 * kDay;
+        p = sharedApks::plan({app}, {}, kNow);
+        check(removed(p, app.tokens[0].name) && why(p, app.tokens[0].name).find("is not installed") != std::string::npos && p.forget.size() == 1 &&
+                  p.known.empty(),
+              "not installed: its folder goes, and its installed.txt (" + why(p, app.tokens[0].name) + ")");
+        check(kept(p, app.tokens[1].name) && why(p, app.tokens[1].name).find("within the hour") != std::string::npos, "one begun within the hour stays");
+        check(kept(p, app.tokens[2].name) && why(p, app.tokens[2].name) == "the library reads it", "the library's stays");
+        check(removed(p, app.tokens[3].name) && why(p, app.tokens[3].name) == "a copy that never finished", "a copy that never finished goes");
+        check(kept(p, app.tokens[4].name) && why(p, app.tokens[4].name).find("could not be read") != std::string::npos,
+              "one whose made.txt cannot be read stays");
+        // Installed now as another package than any folder was made for (a package made by another Megler): the installed
+        // one is recognised nowhere, so what it may read stays.
+        p = sharedApks::plan({app}, {{narrow(kCandy), full(kCandy, "0.1.0.680")}}, kNow);
+        check(kept(p, app.tokens[0].name) && p.forget.empty(), "installed as a package no folder names: installed.txt's folder stays");
+    }
+
+    // On the disk: the records make writes, then a listing read, decided and carried out (look, plan, apply).
+    {
+        const std::wstring disk = root + L"\\shared-apks", apks = disk + L"\\apks", packages = root + L"\\shared-apks-packages";
+        files::removeTree(disk);
+        files::removeTree(packages);
+        files::makeDirectories(packages);
+        FILETIME ft;
+        GetSystemTimeAsFileTime(&ft);
+        const uint64_t now = (uint64_t(ft.dwHighDateTime) << 32) | ft.dwLowDateTime;
+        const std::wstring other = L"MeglerApp.com.example.gone.0123456789abcdef";
+        const std::wstring opened = tokenAt(now - 8 * kHour), older = tokenAt(now - 9 * kHour), open = tokenAt(now - 7 * kHour),
+                           gone = tokenAt(now - 2 * kDay), left = tokenAt(now - 3 * kHour) + L".part";
+        // (A folder of Candy Crush's, and one of the other app's.)
+        const auto ofCandy = [&](const std::wstring& token) { return apks + L"\\" + kCandy + L"\\" + token; };
+        const auto ofOther = [&](const std::wstring& token) { return apks + L"\\" + other + L"\\" + token; };
+        bool madeAll = true;
+        for (const std::wstring& folder : {ofCandy(opened), ofCandy(older), ofCandy(open), ofOther(gone), ofOther(left)})
+            madeAll = files::makeDirectories(folder) && makeFile(folder + L"\\app.apk", 4096, 7) && madeAll;
+        const std::wstring split = ofCandy(opened) + L"\\app.apk.splits\\split_config.armeabi_v7a.apk";
+        madeAll = files::makeDirectories(ofCandy(opened) + L"\\app.apk.splits") && makeFile(split, 1024, 8) && madeAll;
+        check(madeAll, "the folders made");
+        // make's records: made.txt, with a second package made with the same folder (Update All), and the record beside the
+        // package made.
+        const bool recordedAll = sharedApks::recordMade(ofCandy(opened), f676) && sharedApks::recordMade(ofCandy(opened), f677) &&
+                                 sharedApks::recordMade(ofCandy(opened), f676) && sharedApks::recordMade(ofCandy(older), f673) &&
+                                 sharedApks::recordMade(ofCandy(open), full(kCandy, "0.1.0.670")) &&
+                                 sharedApks::recordMade(ofOther(gone), full(other, "0.1.0.676"));
+        std::string text;
+        check(recordedAll && files::read(ofCandy(opened) + L"\\made.txt", text) && text == f676 + "\r\n" + f677 + "\r\n" &&
+                  !files::exists(ofCandy(opened) + L"\\made.txt.part"),
+              "recordMade: each full name once, a line each, written whole");
+        const std::wstring appx = packages + L"\\" + kCandy + L".appx";
+        makeFile(appx, 2048, 9);
+        check(sharedApks::recordWaiting(appx, L"apks\\" + kCandy + L"\\" + opened, f677) && files::read(appx + L".txt", text) &&
+                  text == "apk=apks\\" + narrow(kCandy) + "\\" + narrow(opened) + "\r\npackage=" + f677 + "\r\n",
+              "recordWaiting: the folder and the full name beside the package made");
+        // The library reads nothing here (its entries are Megler's own copies), and installed.txt names nothing: Windows's own
+        // installer installed 677's package. One folder's APK is open in an app.
+        const HANDLE held = CreateFile2((ofCandy(open) + L"\\app.apk").c_str(), GENERIC_READ, FILE_SHARE_READ, OPEN_EXISTING, nullptr);
+        std::vector<sharedApks::App> apps = sharedApks::look(disk, packages, {});
+        const auto found = std::find_if(apps.begin(), apps.end(), [&](const App& a) { return a.identity == kCandy; });
+        check(apps.size() == 2 && found != apps.end() && found->tokens.size() == 3 && found->waiting && found->waitingToken == opened &&
+                  found->waitingFullName == f677 && found->installedToken.empty(),
+              "look: both apps' folders, their records, and the package that waits");
+        // (The open folder was made for 670's package, which is not installed: it is to go, and stays whole while its APK is open.)
+        const Plan plan = sharedApks::plan(apps, {{narrow(kCandy), f677}}, now);
+        check(removed(plan, open) && removed(plan, older) && kept(plan, opened), "plan: the open folder and the older one go, the installed one stays");
+        sharedApks::apply(plan, disk, packages);
+        if (held != INVALID_HANDLE_VALUE) CloseHandle(held);
+        check(files::exists(ofCandy(opened) + L"\\app.apk") && files::exists(split), "apply: the installed package's folder is there, its splits with it");
+        check(!files::exists(ofCandy(older)), "apply: a folder made for a package no longer installed is gone");
+        check(held != INVALID_HANDLE_VALUE && files::exists(ofCandy(open) + L"\\app.apk") && files::exists(ofCandy(open) + L"\\made.txt"),
+              "apply: a folder whose APK an app has open stays whole, made.txt with it, for the next time");
+        check(!files::exists(apks + L"\\" + other), "apply: an app not installed has nothing left, its folder neither");
+        check(files::read(apks + L"\\" + kCandy + L"\\installed.txt", text) && text == narrow(opened),
+              "apply: installed.txt names the installed package's folder");
+        check(!files::exists(appx) && !files::exists(appx + L".txt"), "apply: the package that waited, installed now, is gone with its record");
+        const std::string log = writtenLog(), at = "app package: apks\\" + narrow(kCandy) + "\\";
+        check(log.find(at + narrow(opened) + " kept: the installed " + f677 + " was made with it") != std::string::npos &&
+                  log.find(at + narrow(older) + " removed (4 KB): the installed " + f677 + " was not made with it") != std::string::npos &&
+                  log.find(at + "installed.txt names " + narrow(opened) + " now") != std::string::npos &&
+                  log.find("its APK being open in an app") != std::string::npos &&
+                  log.find("folders of apps' APKs that nothing reads removed") != std::string::npos,
+              "the log says each folder kept or removed and why, and installed.txt written");
+        // A listing again: the open folder goes now, nothing else, and what was said is not said again.
+        apps = sharedApks::look(disk, packages, {});
+        sharedApks::apply(sharedApks::plan(apps, {{narrow(kCandy), f677}}, now), disk, packages);
+        const std::string again = writtenLog();
+        check(!files::exists(ofCandy(open)) && files::exists(ofCandy(opened) + L"\\app.apk"), "a listing again: the folder let go of goes, the installed one stays");
+        check(count(again, at + narrow(opened) + " kept: ") == 1 && count(again, "\\installed.txt names ") == 1, "a listing again: a decision said once a run");
+        files::removeTree(disk);
+        files::removeTree(packages);
+    }
+}
+
 using Kind = bundledApks::Task::Kind;
 
 std::string describe(const std::vector<bundledApks::Task>& tasks) {
@@ -581,7 +915,7 @@ int wmain(int argc, wchar_t** argv) {
         return 2;
     }
     shellLog::initialize(gLocal);
-    printf("the shell's start and copies (shell/Files.cpp, ShellLog.cpp, Startup.cpp, BundledApks.cpp)\n");
+    printf("the shell's start and copies (shell/Files.cpp, ShellLog.cpp, Startup.cpp, BundledApks.cpp, Placement.cpp, SharedApks.cpp)\n");
     testPaths(root);
     testPlacement(root);
     testMissing(root);
@@ -589,6 +923,7 @@ int wmain(int argc, wchar_t** argv) {
     testLog();
     testStartup();
     testBundled();
+    testSharedApks(root);
     shellLog::flush();
     printf("shell: %d checks, %d failed\n", gChecks, gFailed);
     return gFailed ? 1 : 0;
