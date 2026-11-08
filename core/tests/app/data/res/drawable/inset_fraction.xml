@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Main's step "inset-fraction": insets that are fractions of the bounds, as Android 8 and later read them. A quarter of the
+     bounds on every side, but for the left, which is 8 pixels; round a shape of 80 x 40 pixels. -->
+<inset xmlns:android="http://schemas.android.com/apk/res/android"
+    android:inset="25%"
+    android:insetLeft="8px">
+    <shape android:shape="rectangle">
+        <solid android:color="#FF00A040" />
+        <size android:width="80px" android:height="40px" />
+    </shape>
+</inset>

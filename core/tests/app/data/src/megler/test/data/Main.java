@@ -1690,6 +1690,7 @@ public class Main extends Activity {
                     && Boolean.FALSE.equals(info.getClass().getMethod("isVerified").invoke(info))
                     && Boolean.FALSE.equals(info.getClass().getMethod("isFullyCompiled").invoke(info));
         });
+        insetFraction();
         sound();
         mediaCodec();
         network();
@@ -4905,6 +4906,36 @@ public class Main extends Activity {
             detail = "mask " + box + " layer " + layer + " middle " + Integer.toHexString(middle) + " inset " + android.graphics.drawable.AdaptiveIconDrawable.getExtraInsetFraction();
             return !mask.isEmpty() && box.width() > 90 && box.width() <= 101 && layer.left == -25 && layer.right == 125 && middle == 0xFF0000FF
                     && android.graphics.drawable.AdaptiveIconDrawable.getExtraInsetFraction() == 0.25f;
+        });
+    }
+
+    /**
+     * An <inset> whose insets are fractions of its bounds (res/drawable/inset_fraction.xml: a quarter on every side but the
+     * left, which is 8 pixels, round a shape of 80 x 40), inflated as Android 8 and later inflate it: in bounds of 200 x 100 the
+     * shape is at 8, 25 to 150, 75; the intrinsic size is the shape's made the part of the whole that the fractions leave
+     * (80 / 0.75 + 8 = 114, 40 / 0.5 = 80); the padding is the insets. And the inset of 0.01% WhatsApp's adaptive icon has round
+     * its foreground (res/drawable/inset_tiny.xml), which ended the app where the inflater took every inset for a dimension; and
+     * InsetDrawable(Drawable, float), a quarter on every side of 40 x 40.
+     */
+    private void insetFraction() {
+        step("inset-fraction", () -> {
+            android.graphics.drawable.Drawable d = getResources().getDrawable(R.drawable.inset_fraction, null);
+            android.graphics.drawable.Drawable tiny = getResources().getDrawable(R.drawable.inset_tiny, null);
+            if (!(d instanceof android.graphics.drawable.InsetDrawable) || !(tiny instanceof android.graphics.drawable.InsetDrawable)) {
+                detail = "drawables " + d + " " + tiny;
+                return false;
+            }
+            d.setBounds(0, 0, 200, 100);
+            android.graphics.Rect inner = new android.graphics.Rect(((android.graphics.drawable.InsetDrawable) d).getDrawable().getBounds());
+            android.graphics.Rect pad = new android.graphics.Rect();
+            boolean padded = d.getPadding(pad);
+            android.graphics.drawable.InsetDrawable made = new android.graphics.drawable.InsetDrawable(new android.graphics.drawable.ColorDrawable(0xFF0000FF), 0.25f);
+            made.setBounds(0, 0, 40, 40);
+            android.graphics.Rect madeInner = made.getDrawable().getBounds();
+            boolean nested = ((android.graphics.drawable.InsetDrawable) tiny).getDrawable() instanceof android.graphics.drawable.InsetDrawable;
+            detail = "inner " + inner + " intrinsic " + d.getIntrinsicWidth() + "x" + d.getIntrinsicHeight() + " padding " + pad + " made " + madeInner + " nested " + nested;
+            return inner.equals(new android.graphics.Rect(8, 25, 150, 75)) && d.getIntrinsicWidth() == 114 && d.getIntrinsicHeight() == 80
+                    && padded && pad.equals(new android.graphics.Rect(8, 25, 50, 25)) && madeInner.equals(new android.graphics.Rect(10, 10, 30, 30)) && nested;
         });
     }
 

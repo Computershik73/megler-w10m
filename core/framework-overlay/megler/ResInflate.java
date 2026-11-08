@@ -1,7 +1,11 @@
 // Overlay of core/framework/src/megler/ResInflate.java (tools/build-framework.sh).
-// It differs in two places. The mask layer of a <ripple> is handed to the RippleDrawable before it is left out of the
+// It differs in three places. The mask layer of a <ripple> is handed to the RippleDrawable before it is left out of the
 // layers that are drawn. And an <adaptive-icon> is an AdaptiveIconDrawable (its background, foreground and monochrome
 // layers), where it was a LayerDrawable of its layers: launchers ask an icon whether it is adaptive, and draw it masked.
+// And an <inset>'s insets may be fractions of the drawable's bounds ("10%"), as Android 8 and later read them
+// (InsetDrawable.getInset: the value's type first, then a fraction or a dimension); the original read every one with
+// getDimensionPixelOffset, which throws for a fraction, and WhatsApp's adaptive icon, whose foreground is inset by 0.01%,
+// ended the app where its Appearance screen showed it (android/graphics/drawable/InsetDrawable.java says more).
 // Everything else is the original's, unchanged.
 //
 // Why. Android's commonest ripple is one with nothing in it but a mask -- item_background_material, which is
@@ -194,12 +198,17 @@ public final class ResInflate {
         case "inset": {
             TypedArray a = attrs(r, t, set, S.InsetDrawable);
             Drawable d = a.getDrawable(S.InsetDrawable_drawable);
-            int all = a.getDimensionPixelOffset(S.InsetDrawable_inset, 0);
-            int l = a.getDimensionPixelOffset(S.InsetDrawable_insetLeft, all), tp = a.getDimensionPixelOffset(S.InsetDrawable_insetTop, all);
-            int rt = a.getDimensionPixelOffset(S.InsetDrawable_insetRight, all), b = a.getDimensionPixelOffset(S.InsetDrawable_insetBottom, all);
+            // Megler: each inset a fraction of the bounds or pixels, as Android's InsetDrawable reads them (see the top of the file)
+            float[] fractions = new float[4];
+            int[] pixels = new int[4];
+            inset(a, S.InsetDrawable_inset, fractions, pixels, -1);
+            inset(a, S.InsetDrawable_insetLeft, fractions, pixels, 0);
+            inset(a, S.InsetDrawable_insetTop, fractions, pixels, 1);
+            inset(a, S.InsetDrawable_insetRight, fractions, pixels, 2);
+            inset(a, S.InsetDrawable_insetBottom, fractions, pixels, 3);
             a.recycle();
             if (d == null) d = child(r, p, t); else skip(p);
-            return new InsetDrawable(d, l, tp, rt, b);
+            return InsetDrawable.meglerInsets(d, fractions, pixels);
         }
         case "clip": {
             TypedArray a = attrs(r, t, set, S.ClipDrawable);
@@ -317,6 +326,28 @@ public final class ResInflate {
         }
     }
     private static float pct(String s) { if (s == null) return -1; s = s.trim(); try { return s.endsWith("%") ? Float.parseFloat(s.substring(0, s.length() - 1)) / 100f : Float.parseFloat(s); } catch (NumberFormatException e) { return -1; } }
+    /**
+     * Megler: an <inset>'s inset at index i into side (0 left, 1 top, 2 right, 3 bottom; -1 all four), as Android's
+     * InsetDrawable.getInset reads it: a fraction of the bounds ("10%"), or pixels -- where none of 0 pixels keeps what the
+     * side had, as there.
+     */
+    private static void inset(TypedArray a, int i, float[] fractions, int[] pixels, int side) {
+        if (!a.hasValue(i)) return;
+        TypedValue v = a.peekValue(i);
+        float f = 0;
+        int px = 0;
+        if (v != null && v.type == TypedValue.TYPE_FRACTION) {
+            f = v.getFraction(1f, 1f);
+            if (f >= 1f) throw new IllegalStateException("Fraction cannot be larger than 1");
+        } else {
+            px = a.getDimensionPixelOffset(i, 0);
+            if (px == 0) return;
+        }
+        for (int s = side < 0 ? 0 : side; s <= (side < 0 ? 3 : side); s++) {
+            fractions[s] = f;
+            pixels[s] = px;
+        }
+    }
     private static float fraction(TypedArray a, int i, float def) {
         TypedValue v = a.peekValue(i);
         if (v == null) return def;

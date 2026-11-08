@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Main's step "inset-fraction": the inset WhatsApp's adaptive icon has round its foreground (mipmap/icon), 0.01% of the bounds,
+     round a drawable it names. -->
+<inset xmlns:android="http://schemas.android.com/apk/res/android"
+    android:drawable="@drawable/inset_fraction"
+    android:inset="0.01%" />

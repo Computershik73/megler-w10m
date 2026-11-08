@@ -5440,6 +5440,18 @@ on a looper thread of its own and takes it back with `next()`.
   and no layers the drawable took itself for a borderless one and drew its
   highlight as a disc of half its longer side: for a pressed row of a list, a
   grey disc as wide as the screen over the rows above and below.
+- `android/graphics/drawable/InsetDrawable.java` and `megler/ResInflate.java`:
+  an inset may be a fraction of the drawable's bounds as well as pixels, as
+  Android 8 and later have it (`InsetDrawable.InsetValue`): an `<inset>`'s
+  `android:inset="10%"` is read as a fraction, its type looked at first, as
+  `InsetDrawable.getInset` does, and the bounds, the intrinsic size and the
+  padding are Android's sums of both. The inflater read every inset with
+  `getDimensionPixelOffset`, which throws for a fraction on Android too, and
+  `InsetDrawable(Drawable, float)` made one with no inset. WhatsApp's adaptive
+  icon is inset by 0.01% round its foreground, and its Appearance screen
+  (Settings, Chats, Theme) ended the app: "Can't convert value at index 6 to
+  dimension: type=0x6" (0.1.0.671). The data app's step "inset-fraction"
+  inflates such insets and measures what they give.
 
 - `android/app/Activity.java`, two methods: `initWindowDecorActionBar` makes
   the window's decor before it asks whether the window has an action bar, as
