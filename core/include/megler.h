@@ -1709,6 +1709,137 @@ typedef struct megler_sensor_host {
 /* What a sensor read, from any thread. Nothing happens when no app runs or none wants that sensor. */
 MEGLER_API void megler_sensor_push(const megler_sensor_sample *sample);
 
+/*
+ * Bluetooth Low Energy, the central's side, for an app's android.bluetooth: BluetoothAdapter, BluetoothLeScanner,
+ * BluetoothDevice.connectGatt and BluetoothGatt, their callbacks and broadcasts (core/src/run/mg_bluetooth.c; the
+ * framework's android.bluetooth over megler.Bluetooth). The shell has the radio (Windows.Devices.Bluetooth); the core
+ * keeps Android's side: the devices, the GATT objects, the callbacks on their threads, the status codes.
+ *
+ * Every call comes on one of the app's threads -- its main thread among them -- and returns at once; what it asked for
+ * comes back through megler_bluetooth_push, from any thread, as an event (MEGLER_BT_EVENT_*):
+ *   state(name, size)  what the radio is: MEGLER_BT_RADIO_NONE (none, or none that can be an LE central), OFF or ON, and its
+ *                  name (the phone's, as other devices see it) into `name`. Asked when the app first wants Bluetooth; it may
+ *                  wait until the shell has looked. A change comes as STATE.
+ *   scan(mode)     MEGLER_BT_SCAN_ACTIVE (asking for scan responses), PASSIVE, or OFF: each advertisement heard as an
+ *                  ADVERTISEMENT, until scan(OFF); a scan that cannot start, or stops by itself, as SCAN_FAILED.
+ *   connect(conn, address, type, auto)  a GATT connection to the device, numbered `conn` by the core: CONNECTION with value
+ *                  1 when it is made, or 0 with a status when it is not (Android's: 133 when it could not be made within
+ *                  30 s). With `auto`, it is made whenever the device is in range and made again after it drops, until
+ *                  disconnect; without, once. A connection that drops comes as CONNECTION 0 with Android's reason (8, the
+ *                  link's supervision timeout; 19, ended by the device).
+ *   disconnect(conn)  the connection ended from this side and no longer made again: CONNECTION 0 with status 0. Nothing
+ *                  else comes for that conn after it.
+ *   discover(conn) the device's services: SERVICES, the attributes in order -- a service, then its included services and its
+ *                  characteristics, each characteristic followed by its descriptors -- each with its handle.
+ *   read(conn, handle)  a characteristic's value or a descriptor's: READ with the bytes.
+ *   write(conn, handle, data, size, type)  MEGLER_BT_WRITE_REQUEST (with the device's response), COMMAND (without) or SIGNED
+ *                  (the bytes are the call's: the shell copies them before it returns): WRITTEN once the device answered
+ *                  or, without a response, once it is sent. A descriptor is written with a
+ *                  request. A characteristic's Client Characteristic Configuration descriptor (0x2902) is the subscription
+ *                  to it: bit 0 of its value notifications, bit 1 indications, neither none; from then on its notifications
+ *                  and indications come as CHANGED.
+ *   mtu(conn, mtu) the ATT MTU the app asks for: MTU with what is in force, at most what was asked (Windows negotiates its
+ *                  own as it connects).
+ *   rssi(conn)     the connection's signal strength: RSSI. May be NULL: the core answers with the last advertisement heard.
+ *   bond(address, type, create)  pairing (an app's createBond), or the pairing removed: BOND events, BONDING then BONDED or
+ *                  NONE (with Android's UNBOND_REASON_* as the status), and PAIRING on the way when the device asks for a
+ *                  PIN, a confirmation or a consent.
+ *   pairing_reply(address, answer, pin)  the answer to a PAIRING: MEGLER_BT_PAIR_REFUSE; ACCEPT, with the PIN (UTF-8 digits,
+ *                  copied) where one was asked for; or ASK_USER: the app said nothing, and the shell asks the user, as
+ *                  Android's own pairing dialog would.
+ *   settings()     the phone's Bluetooth settings shown, for the user to turn the radio on: an app's request to enable it.
+ * Statuses are Android's: 0 success; a GATT operation's ATT error as BluetoothGatt's GATT_* (5 insufficient authentication,
+ * 15 insufficient encryption ...); 133 GATT_ERROR when the device could not be reached; 257 GATT_FAILURE otherwise.
+ * May be left zero: the app is told the device has no Bluetooth.
+ */
+enum { MEGLER_BT_RADIO_NONE = 0, MEGLER_BT_RADIO_OFF = 1, MEGLER_BT_RADIO_ON = 2 };
+enum { MEGLER_BT_SCAN_OFF = 0, MEGLER_BT_SCAN_PASSIVE = 1, MEGLER_BT_SCAN_ACTIVE = 2 };
+/* An address's kind, as Windows' BluetoothAddressType and Android's BluetoothDevice.ADDRESS_TYPE_* number them. */
+enum { MEGLER_BT_ADDRESS_PUBLIC = 0, MEGLER_BT_ADDRESS_RANDOM = 1, MEGLER_BT_ADDRESS_UNKNOWN = 2 };
+enum { MEGLER_BT_WRITE_COMMAND = 0, MEGLER_BT_WRITE_REQUEST = 1, MEGLER_BT_WRITE_SIGNED = 2 };
+/* Android's BOND_* and PAIRING_VARIANT_*, as they are. */
+enum { MEGLER_BT_BOND_NONE = 10, MEGLER_BT_BOND_BONDING = 11, MEGLER_BT_BOND_BONDED = 12 };
+enum {
+    MEGLER_BT_PAIRING_PIN = 0, MEGLER_BT_PAIRING_PASSKEY = 1, MEGLER_BT_PAIRING_CONFIRMATION = 2, MEGLER_BT_PAIRING_CONSENT = 3,
+    MEGLER_BT_PAIRING_DISPLAY_PASSKEY = 4, MEGLER_BT_PAIRING_DISPLAY_PIN = 5
+};
+enum { MEGLER_BT_PAIR_REFUSE = 0, MEGLER_BT_PAIR_ACCEPT = 1, MEGLER_BT_PAIR_ASK_USER = 2 };
+enum {
+    MEGLER_BT_ATTR_SERVICE = 1,        /* a primary service; its handle is its first */
+    MEGLER_BT_ATTR_SECONDARY = 2,      /* a secondary service */
+    MEGLER_BT_ATTR_INCLUDED = 3,       /* a service the one before includes: its handle and UUID are that service's */
+    MEGLER_BT_ATTR_CHARACTERISTIC = 4, /* its handle is its value's */
+    MEGLER_BT_ATTR_DESCRIPTOR = 5
+};
+/*
+ * The events, with what each uses of megler_bluetooth_event:
+ *   STATE          value: MEGLER_BT_RADIO_*; name: the radio's name, or NULL for the same as before
+ *   ADVERTISEMENT  address, address_type, value: the RSSI in dBm, extra: 1 when the device takes connections; data: the
+ *                  advertisement's AD structures as they were sent (length, type, data) with the scan response's after them;
+ *                  time_ns: when it was heard (Windows' Timestamp, nanoseconds since 1970 UTC; 0 for now)
+ *   SCAN_FAILED    status: Android's ScanCallback.SCAN_FAILED_*
+ *   CONNECTION     conn, value: 1 connected, 0 not; status
+ *   SERVICES       conn, status, attributes and count
+ *   READ           conn, handle, status, data (none on a failure)
+ *   WRITTEN        conn, handle, status
+ *   CHANGED        conn, handle, data: a notification or an indication
+ *   MTU            conn, value: the MTU, status
+ *   RSSI           conn, value: dBm, status
+ *   BOND           address, address_type, value: MEGLER_BT_BOND_*, status: Android's UNBOND_REASON_* when it failed or was
+ *                  removed (0 otherwise); name where the shell knows it
+ *   PAIRING        address, address_type, value: MEGLER_BT_PAIRING_*, extra: the passkey to show or to confirm (else 0);
+ *                  answered with pairing_reply
+ *   PAIRED         address, address_type, name: a device the phone was paired with before; none of the app's broadcasts.
+ *                  The shell says each as it starts.
+ */
+enum {
+    MEGLER_BT_EVENT_STATE = 1, MEGLER_BT_EVENT_ADVERTISEMENT = 2, MEGLER_BT_EVENT_SCAN_FAILED = 3, MEGLER_BT_EVENT_CONNECTION = 4,
+    MEGLER_BT_EVENT_SERVICES = 5, MEGLER_BT_EVENT_READ = 6, MEGLER_BT_EVENT_WRITTEN = 7, MEGLER_BT_EVENT_CHANGED = 8,
+    MEGLER_BT_EVENT_MTU = 9, MEGLER_BT_EVENT_RSSI = 10, MEGLER_BT_EVENT_BOND = 11, MEGLER_BT_EVENT_PAIRING = 12,
+    MEGLER_BT_EVENT_PAIRED = 13
+};
+
+typedef struct megler_bluetooth_attribute {
+    int kind;               /* MEGLER_BT_ATTR_* */
+    int handle;
+    unsigned char uuid[16]; /* as it is written: 0000180f-0000-1000-8000-00805f9b34fb is 00 00 18 0f 00 00 10 00 80 00 ... fb */
+    int properties;         /* a characteristic's: the specification's bits, which are Android's PROPERTY_* (2 read, 8 write ...) */
+} megler_bluetooth_attribute;
+
+typedef struct megler_bluetooth_event {
+    int kind;                       /* MEGLER_BT_EVENT_* */
+    int conn;
+    unsigned long long address;     /* 48 bits: AA:BB:CC:DD:EE:FF is 0xAABBCCDDEEFF */
+    int address_type;               /* MEGLER_BT_ADDRESS_* */
+    int status;
+    int handle;
+    int value, extra;
+    const unsigned char *data;
+    int size;
+    const char *name;               /* UTF-8 */
+    const megler_bluetooth_attribute *attributes;
+    int count;
+    long long time_ns;
+} megler_bluetooth_event;
+
+typedef struct megler_bluetooth_host {
+    void *user;
+    int (MEGLER_CB *state)(void *user, char *name, int size);
+    void (MEGLER_CB *scan)(void *user, int mode);
+    void (MEGLER_CB *connect)(void *user, int conn, unsigned long long address, int address_type, bool auto_connect);
+    void (MEGLER_CB *disconnect)(void *user, int conn);
+    void (MEGLER_CB *discover)(void *user, int conn);
+    void (MEGLER_CB *read)(void *user, int conn, int handle);
+    void (MEGLER_CB *write)(void *user, int conn, int handle, const unsigned char *data, int size, int type);
+    void (MEGLER_CB *mtu)(void *user, int conn, int mtu);
+    void (MEGLER_CB *rssi)(void *user, int conn);
+    void (MEGLER_CB *bond)(void *user, unsigned long long address, int address_type, bool create);
+    void (MEGLER_CB *pairing_reply)(void *user, unsigned long long address, int answer, const char *pin);
+    void (MEGLER_CB *settings)(void *user);
+} megler_bluetooth_host;
+/* What the radio did, from any thread; everything it points to is copied before it returns. Nothing happens when no app runs. */
+MEGLER_API void megler_bluetooth_push(const megler_bluetooth_event *event);
+
 typedef struct megler_run_config {
     const char *apk_path;
     /* Optional installed microG APK. Opened as the service package; no copy in each client. */
@@ -1748,6 +1879,8 @@ typedef struct megler_run_config {
     megler_biometric_host biometric;
     /* The phone's sensors for an app's SensorManager and ASensorManager (see megler_sensor_host). May be left zero: none. */
     megler_sensor_host sensors;
+    /* The phone's Bluetooth LE radio for an app's android.bluetooth (see megler_bluetooth_host). May be left zero: none. */
+    megler_bluetooth_host bluetooth;
     /*
      * Drawing for an app whose user interface is Java (see megler_gfx_host). All of it may be left NULL: such an app still starts,
      * lays its views out and takes input, but nothing is drawn (its bitmaps hold only what the layer does itself: erasing, single

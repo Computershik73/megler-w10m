@@ -21,6 +21,7 @@
 #include "mg_gfx_tests.h"
 #include "mg_net_tests.h"
 #include "mg_sensor_tests.h"
+#include "mg_bluetooth_tests.h"
 #include "mg_storage_tests.h"
 #include "mg_tests.h"
 
@@ -4575,6 +4576,7 @@ int mg_tests_run(const char *libdir, const char *scratch, mg_test_sink sink, voi
     g_failed += mg_storage_tests_run(scratch, g_sink, g_sink_user, &g_checks);
     g_failed += mg_net_tests_run(g_sink, g_sink_user, &g_checks);
     g_failed += mg_sensor_tests_run(g_sink, g_sink_user, &g_checks);
+    g_failed += mg_bluetooth_tests_run(g_sink, g_sink_user, &g_checks);
     test_zip(scratch);
     test_sqlite(scratch);
     test_textures();
