@@ -298,7 +298,9 @@ bool copyWhole(const std::wstring& from, const std::wstring& to, uint64_t& mende
     }
     if (!copied && !copyFile(from, to, 0, progress)) return false;
     if (progress) progress(Stage::flushing, 0, total);
-    return flush(to) && mend(from, to, mended, nullptr, progress);
+    if (!flush(to)) return false;
+    if (progress) progress(Stage::comparing, 0, total);
+    return mend(from, to, mended, nullptr, progress);
 }
 
 std::vector<std::wstring> list(const std::wstring& directory, const std::wstring& pattern) {

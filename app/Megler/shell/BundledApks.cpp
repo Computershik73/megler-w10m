@@ -21,6 +21,39 @@ namespace {
 constexpr uint32_t kEnd = 65536;
 constexpr uint32_t kPage = 4096;
 
+std::mutex gProgressMutex;
+Progress gProgress;
+std::atomic<bool> gCopying{false};
+
+/// The copies copy() made whole in this run, which the check (check) need not read again.
+std::mutex gMadeMutex;
+std::vector<std::wstring> gMade;
+
+std::wstring lowered(std::wstring path) {
+    for (wchar_t& c : path) c = wchar_t(towlower(c));
+    return path;
+}
+
+void madeWhole(const std::wstring& path) {
+    std::lock_guard<std::mutex> lock(gMadeMutex);
+    gMade.push_back(lowered(path));
+}
+
+bool madeThisRun(const std::wstring& path) {
+    const std::wstring wanted = lowered(path);
+    std::lock_guard<std::mutex> lock(gMadeMutex);
+    return std::find(gMade.begin(), gMade.end(), wanted) != gMade.end();
+}
+
+/// The bytes free on the disk of the folder `path` is in; UINT64_MAX when Windows does not say.
+uint64_t freeFor(const std::wstring& path) {
+    ULARGE_INTEGER room = {};
+    const size_t slash = path.find_last_of(L'\\');
+    return slash != std::wstring::npos && GetDiskFreeSpaceExW(path.substr(0, slash).c_str(), &room, nullptr, nullptr) ? room.QuadPart : UINT64_MAX;
+}
+
+std::string seconds(ULONGLONG ms) { return format("%.1f s", double(ms) / 1000.0); }
+
 bool endsWith(const std::wstring& s, const wchar_t* tail) {
     const size_t n = wcslen(tail);
     return s.size() >= n && _wcsicmp(s.c_str() + s.size() - n, tail) == 0;
@@ -257,9 +290,14 @@ void check(const std::wstring& library, const std::wstring& shared, bool asked, 
         for (const auto& original : bundle) sayDigests("the package's", original, shared);
         files::makeDirectory(local + L"\\bundled-apks");
     }
-    unsigned compared = 0, mendedCopies = 0, index = 0;
+    unsigned compared = 0, mendedCopies = 0, index = 0, fresh = 0;
     bool whole = true;
     for (const auto& copy : copiesIn(library, shared)) {
+        // (One copy() made at this start was compared with the package's as it was made: a first start's are all such.)
+        if (!asked && madeThisRun(copy)) {
+            fresh++;
+            continue;
+        }
         const std::wstring original = originalAmong(bundle, copy);
         if (original.empty()) continue;
         compared++;
@@ -288,9 +326,10 @@ void check(const std::wstring& library, const std::wstring& shared, bool asked, 
                                of.c_str(), formattedByteCount(mended).c_str(), where.c_str()));
         if (asked) sayDigests("mended,", copy, shared);
     }
-    shellLog::write(format("bundled apks: %u copies of the package's %u Google APKs compared with them in %.1f s: %s", compared,
+    shellLog::write(format("bundled apks: %u copies of the package's %u Google APKs compared with them in %.1f s: %s%s", compared,
                            unsigned(bundle.size()), double(GetTickCount64() - began) / 1000.0,
-                           mendedCopies ? format("%u mended", mendedCopies).c_str() : "each as the package's"));
+                           mendedCopies ? format("%u mended", mendedCopies).c_str() : "each as the package's",
+                           fresh ? format(" (%u made at this start, and compared then, left out)", fresh).c_str() : ""));
     // (Not once for the build while a copy that differs could not be mended: again at the next start.)
     if (whole) files::write(local + L"\\bundled-apks-checked.txt", version);
     if (files::exists(local + L"\\flags\\test-copies")) testCopies(bundle, shared);
@@ -328,14 +367,134 @@ Replacement replacementFor(const ApkEntry& entry) {
     return {};
 }
 
-bool copy(const std::wstring& source, const std::wstring& target) {
+bool copy(const std::wstring& source, const std::wstring& target, const std::string& what) {
+    const std::wstring shared = appPackage::sharedFolder();
+    const std::string name = what.empty() ? narrow(source.substr(source.find_last_of(L'\\') + 1)) : what;
+    const uint64_t size = files::size(source), room = freeFor(target);
+    // (The copy, and room besides for what else is written there meanwhile: a phone whose disk is full is a phone in trouble.)
+    if (room != UINT64_MAX && room < size + (32ull << 20)) {
+        shellLog::write(format("bundled apks: %s is not copied to %s: it takes %s, and the disk has %s free", name.c_str(),
+                               shown(target, shared).c_str(), formattedByteCount(size).c_str(), formattedByteCount(room).c_str()));
+        SetLastError(ERROR_DISK_FULL);
+        return false;
+    }
+    shellLog::writeNow(format("bundled apks: copying %s, %s (%s), to %s, where the disk has %s free", name.c_str(), shown(source, shared).c_str(),
+                              formattedByteCount(size).c_str(), shown(target, shared).c_str(),
+                              room == UINT64_MAX ? "an unknown amount" : formattedByteCount(room).c_str()));
+    {
+        std::lock_guard<std::mutex> lock(gProgressMutex);
+        gProgress.active = true;
+        gProgress.what = name;
+        gProgress.stage = files::Stage::copying;
+        gProgress.done = 0;
+        gProgress.total = size;
+    }
+    // When each stage began (copying, putting it on the disk, comparing), and the last line said of how far it is.
+    const ULONGLONG began = GetTickCount64();
+    ULONGLONG at[3] = {began, 0, 0}, said = began;
+    const files::Progress told = [&](files::Stage stage, uint64_t done, uint64_t total) {
+        const ULONGLONG now = GetTickCount64();
+        if (!at[int(stage)]) at[int(stage)] = now;
+        {
+            std::lock_guard<std::mutex> lock(gProgressMutex);
+            gProgress.stage = stage;
+            gProgress.done = done;
+            gProgress.total = total;
+        }
+        if (now - said < 10000) return;
+        said = now;
+        shellLog::write(format("bundled apks: %s: %s of %s %s, %s after it began", name.c_str(), formattedByteCount(done).c_str(),
+                               formattedByteCount(total).c_str(),
+                               stage == files::Stage::copying ? "copied" : stage == files::Stage::flushing ? "put on the disk" : "compared",
+                               seconds(now - began).c_str()));
+    };
     uint64_t mended = 0;
-    const bool copied = files::copyWhole(source, target + L".part", mended) && files::move(target + L".part", target);
+    const bool copied = files::copyWhole(source, target + L".part", mended, told) && files::move(target + L".part", target);
+    const DWORD error = copied ? 0 : GetLastError();
     if (!copied) files::remove(target + L".part");
+    {
+        std::lock_guard<std::mutex> lock(gProgressMutex);
+        gProgress.active = false;
+    }
+    const ULONGLONG ended = GetTickCount64();
+    if (copied) {
+        madeWhole(target);
+        const ULONGLONG flushing = at[1] ? at[1] : ended, comparing = at[2] ? at[2] : ended;
+        const double copySeconds = double(flushing - began) / 1000.0;
+        shellLog::write(format("bundled apks: %s copied to %s in %s: %s to copy (%.1f MB/s), %s to put on the disk, %s to compare", name.c_str(),
+                               shown(target, shared).c_str(), seconds(ended - began).c_str(), seconds(flushing - began).c_str(),
+                               copySeconds > 0 ? double(size) / 1048576.0 / copySeconds : 0.0, seconds(comparing - flushing).c_str(),
+                               seconds(ended - comparing).c_str()));
+    } else {
+        shellLog::write(format("bundled apks: %s could not be copied to %s (error %lu), %s after it began", name.c_str(), shown(target, shared).c_str(),
+                               error, seconds(ended - began).c_str()));
+    }
     if (mended)
         shellLog::write(format("bundled apks: %s of the copy of %s differed from it after the copy, and was written again",
-                               formattedByteCount(mended).c_str(), shown(source, appPackage::sharedFolder()).c_str()));
+                               formattedByteCount(mended).c_str(), shown(source, shared).c_str()));
+    SetLastError(error);
     return copied;
+}
+
+Progress progress() {
+    std::lock_guard<std::mutex> lock(gProgressMutex);
+    return gProgress;
+}
+
+bool copying() { return gCopying.load(); }
+
+void start(std::vector<Task> tasks, std::function<void(const Task& task, bool copied)> done) {
+    if (tasks.empty()) {
+        checkLater();
+        return;
+    }
+    gCopying = true;
+    std::string list;
+    uint64_t bytes = 0;
+    for (const Task& task : tasks) {
+        list += (list.empty() ? "" : ", ") + task.what;
+        bytes += files::size(task.source);
+    }
+    shellLog::write(format("bundled apks: %u copies to make after the start, %s in all, on a thread of their own: %s", unsigned(tasks.size()),
+                           formattedByteCount(bytes).c_str(), list.c_str()));
+    std::thread([tasks = std::move(tasks), done = std::move(done)] {
+        // (Its reads and writes after everything else's: the window coming up, an app starting.)
+        SetThreadPriority(GetCurrentThread(), THREAD_MODE_BACKGROUND_BEGIN);
+        const ULONGLONG began = GetTickCount64();
+        unsigned made = 0;
+        for (size_t i = 0; i < tasks.size(); i++) {
+            const Task& task = tasks[i];
+            {
+                std::lock_guard<std::mutex> lock(gProgressMutex);
+                gProgress.index = int(i) + 1;
+                gProgress.count = int(tasks.size());
+            }
+            bool copied = false;
+            const size_t slash = task.target.find_last_of(L'\\');
+            if (slash != std::wstring::npos && !files::makeDirectories(task.target.substr(0, slash)))
+                shellLog::write(format("bundled apks: the folder for %s could not be made (error %lu)", task.what.c_str(), GetLastError()));
+            else
+                copied = copy(task.source, task.target, task.what);
+            made += copied;
+            try {
+                if (done) done(task, copied);
+            } catch (const std::exception& e) {
+                shellLog::write("bundled apks: what follows the copy of " + task.what + " failed: " + e.what());
+            } catch (const winrt::hresult_error& e) {
+                shellLog::write("bundled apks: what follows the copy of " + task.what + " failed: " + narrow(e.message()));
+            } catch (...) {
+                shellLog::write("bundled apks: what follows the copy of " + task.what + " failed");
+            }
+        }
+        {
+            std::lock_guard<std::mutex> lock(gProgressMutex);
+            gProgress = Progress();
+        }
+        shellLog::write(format("bundled apks: %u of %u copies made in %s", made, unsigned(tasks.size()), seconds(GetTickCount64() - began).c_str()));
+        gCopying = false;
+        SetThreadPriority(GetCurrentThread(), THREAD_MODE_BACKGROUND_END);
+        checkLater();
+    }).detach();
 }
 
 void checkLater() {

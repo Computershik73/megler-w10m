@@ -174,6 +174,67 @@ Installed installedOf(const std::string& marker) {
     return installed;
 }
 
+/// What of the package's Google APKs (its bitgapps folder) the library (`library`, LocalState\apks) and the shared folder
+/// (`shared`) lack, or have wrong: the copies to make, by names, sizes and the last 64 KB of two files -- what Library::load
+/// once copied there and then, on the UI thread before the window was shown. Google Services Framework first, a few
+/// megabytes; microG's Google Play services last, for apps set to it alone.
+std::vector<bundledApks::Task> bundledCopies(const std::wstring& library, const std::wstring& shared) {
+    using Kind = bundledApks::Task::Kind;
+    std::vector<bundledApks::Task> tasks;
+    const std::wstring bitgapps = platform::installDirectory() + L"\\bitgapps";
+    const auto what = [](const wchar_t* name) { return std::string(wcscmp(name, L"Phonesky.apk") ? "Google Play services" : "Google Play Store"); };
+    // GSF has no launcher activity, so it is a shared service APK rather than a Windows app.
+    // Publish it once for every client APPX of this publisher to mount from the same path.
+    const std::wstring gsfSource = bitgapps + L"\\GoogleServicesFramework.apk", gsfTarget = shared + L"\\services\\gsf\\GoogleServicesFramework.apk";
+    if (!shared.empty() && files::exists(gsfSource) && !files::exists(gsfTarget))
+        tasks.push_back({Kind::service, gsfSource, gsfTarget, std::string(), "Google Services Framework"});
+    // A locally bundled BiTGApps archive is offered once in the library.
+    // Removing one of these entries must not silently put it back on
+    // the next launch or replace an APK the user already installed.
+    const std::wstring stamp = library + L"\\bitgapps.added";
+    if (files::exists(bitgapps + L"\\PrebuiltGmsCore.apk") && !files::exists(stamp)) {
+        bool offering = false;
+        for (const wchar_t* name : {L"PrebuiltGmsCore.apk", L"Phonesky.apk"}) {
+            const std::wstring source = bitgapps + L"\\" + name, destination = library + L"\\bitgapps-" + name;
+            // (Through a .part, as every other copy here: one that does not finish -- Megler ended or suspended under it, the
+            // phone full -- is not taken for the APK.)
+            if (files::exists(destination) || files::exists(destination + L".installed") || !files::exists(source)) continue;
+            tasks.push_back({Kind::offer, source, destination, "bitgapps-" + narrow(name), what(name)});
+            offering = true;
+        }
+        if (!offering) {
+            files::write(stamp, "offered");
+            shellLog::write("library: offered locally bundled BiTGApps APKs");
+        }
+    }
+    /*
+     * A copy of the bundle's that never finished, which the first start made where it was to be, not through a
+     * .part (Megler before 576): the whole size, its end zeros. Its report was "Not a ZIP archive (no end
+     * record)", and Google Play services could not be installed from the library. Copied again when it is not the
+     * bundle's (its size and its end), which also brings the bundle's after an update of Megler.
+     */
+    for (const wchar_t* name : {L"PrebuiltGmsCore.apk", L"Phonesky.apk"}) {
+        const std::wstring own = library + L"\\bitgapps-" + name, source = bitgapps + L"\\" + name;
+        if (!files::exists(own) || files::exists(own + L".installed") || !files::exists(source) || files::sameEnd(own, source, 65536)) continue;
+        tasks.push_back({Kind::again, source, own, "bitgapps-" + narrow(name), what(name)});
+    }
+    // An older update could leave an .installed marker pointing at an APPX that Windows
+    // removed during replacement. Recover the bundled Google APK; otherwise Update tries
+    // to pack app.apk from the vanished APPX again.
+    for (const wchar_t* name : {L"PrebuiltGmsCore.apk", L"Phonesky.apk"}) {
+        const std::wstring own = library + L"\\bitgapps-" + name, source = bitgapps + L"\\" + name;
+        std::string text;
+        if (!files::read(own + L".installed", text) || appPackage::canRead(installedOf(text).apk) || !files::exists(source)) continue;
+        tasks.push_back({Kind::recover, source, own, "bitgapps-" + narrow(name), what(name)});
+    }
+    // microG's Google Play services, when the package brings them: published for apps set to them (shell/Settings.h,
+    // googleServices) beside Google's own; again when this build's differs in size from the one published.
+    const std::wstring microgSource = bitgapps + L"\\MicroGGmsCore.apk", microgTarget = shared + L"\\services\\microg\\GmsCore.apk";
+    if (!shared.empty() && files::exists(microgSource) && (!files::exists(microgTarget) || files::size(microgTarget) != files::size(microgSource)))
+        tasks.push_back({Kind::service, microgSource, microgTarget, std::string(), "microG's Google Play services"});
+    return tasks;
+}
+
 /// Copies an installed app's APK `apk` (in the shared folder, or in its package), and its splits, to `own` and own +
 /// ".splits": each beside its place and moved into it, so that nothing half copied is taken for the app. The splits are
 /// named by their folder's list, else by the app's report beside the APK: a package installed as the Store installs an app
@@ -257,38 +318,8 @@ void Library::load() {
                     shellLog::write("library: " + narrow(name) + " was replaced with this build's");
                 }
             }
-            // A locally bundled BiTGApps archive is offered once in the library.
-            // Removing one of these entries must not silently put it back on
-            // the next launch or replace an APK the user already installed.
-            const std::wstring bitgapps = platform::installDirectory() + L"\\bitgapps";
-            const std::wstring bitgappsStamp = directory_ + L"\\bitgapps.added";
-            // GSF has no launcher activity, so it is a shared service APK rather than a Windows app.
-            // Publish it once for every client APPX of this publisher to mount from the same path.
-            const std::wstring gsfSource = bitgapps + L"\\GoogleServicesFramework.apk";
-            const std::wstring shared = appPackage::sharedFolder();
-            if (!shared.empty() && files::exists(gsfSource)) {
-                const std::wstring gsfFolder = shared + L"\\services\\gsf";
-                const std::wstring gsfTarget = gsfFolder + L"\\GoogleServicesFramework.apk";
-                if (!files::exists(gsfTarget) && files::makeDirectories(gsfFolder)) {
-                    if (bundledApks::copy(gsfSource, gsfTarget))
-                        shellLog::write("library: published Google Services Framework in the shared service cache");
-                    else shellLog::write("library: could not publish Google Services Framework");
-                }
-            }
-            // microG's Google Play services, when the package brings them: published for apps set to them (shell/Settings.h,
-            // googleServices) beside Google's own; again when this build's differs in size from the one published.
-            const std::wstring microgSource = bitgapps + L"\\MicroGGmsCore.apk";
-            if (!shared.empty() && files::exists(microgSource)) {
-                const std::wstring microgFolder = shared + L"\\services\\microg";
-                const std::wstring microgTarget = microgFolder + L"\\GmsCore.apk";
-                if ((!files::exists(microgTarget) || files::size(microgTarget) != files::size(microgSource)) && files::makeDirectories(microgFolder)) {
-                    if (bundledApks::copy(microgSource, microgTarget))
-                        shellLog::write("library: published microG's Google Play services in the shared service cache");
-                    else shellLog::write("library: could not publish microG's Google Play services");
-                }
-            }
             // GSF is no app to start or to install as one: Google Play services and the Play Store use it from the shared
-            // folder (above), so the library does not list it, nor keep the copy an older Megler offered there.
+            // folder (bundledCopies), so the library does not list it, nor keep the copy an older Megler offered there.
             {
                 const std::wstring gsfCopy = directory_ + L"\\bitgapps-GoogleServicesFramework.apk";
                 if (files::exists(gsfCopy)) {
@@ -298,87 +329,27 @@ void Library::load() {
                     shellLog::write("library: Google Services Framework is used from the shared service cache, not listed");
                 }
             }
-            if (files::exists(bitgapps + L"\\PrebuiltGmsCore.apk") && !files::exists(bitgappsStamp)) {
-                bool copied = true;
-                for (const wchar_t* name : {L"PrebuiltGmsCore.apk", L"Phonesky.apk"}) {
-                    const std::wstring destination = directory_ + L"\\bitgapps-" + name;
-                    // (Through a .part, as every other copy here: one that does not finish -- Megler ended or suspended under
-                    // it, the phone full -- is not taken for the APK.)
-                    if (!files::exists(destination) && !bundledApks::copy(bitgapps + L"\\" + name, destination)) {
-                        copied = false;
-                        shellLog::write("library: could not offer BiTGApps " + narrow(name));
-                    }
-                }
-                if (copied) {
-                    files::write(bitgappsStamp, "offered");
-                    shellLog::write("library: offered locally bundled BiTGApps APKs");
-                }
-            }
-            /*
-             * A copy of the bundle's that never finished, which the first start made where it was to be, not through a
-             * .part (Megler before 576): the whole size, its end zeros. Its report was "Not a ZIP archive (no end
-             * record)", and Google Play services could not be installed from the library. Copied again when it is not the
-             * bundle's (its size and its end), which also brings the bundle's after an update of Megler.
-             */
-            for (const wchar_t* name : {L"PrebuiltGmsCore.apk", L"Phonesky.apk"}) {
-                const std::wstring own = directory_ + L"\\bitgapps-" + name;
-                const std::wstring source = bitgapps + L"\\" + name;
-                if (!files::exists(own) || files::exists(own + L".installed") || !files::exists(source) ||
-                    files::sameEnd(own, source, 65536))
-                    continue;
-                if (bundledApks::copy(source, own)) {
-                    files::remove(own + L".json");
-                    files::remove(own + L".icon");
-                    shellLog::write("library: bitgapps-" + narrow(name) + " was not this Megler's bundle's (a copy that never finished, or an older one): copied again");
-                } else {
-                    shellLog::write("library: bitgapps-" + narrow(name) + " is not the bundle's and could not be copied again");
-                }
-            }
-            // An older update could leave an .installed marker pointing at an APPX that Windows
-            // removed during replacement. Recover the bundled Google APK before listing entries;
-            // otherwise Update tries to pack app.apk from the vanished APPX again.
-            for (const wchar_t* name : {L"PrebuiltGmsCore.apk", L"Phonesky.apk"}) {
-                const std::wstring own = directory_ + L"\\bitgapps-" + name;
-                const std::wstring marker = own + L".installed";
-                std::string text;
-                if (!files::read(marker, text) || appPackage::canRead(installedOf(text).apk)) continue;
-                const std::wstring source = bitgapps + L"\\" + name;
-                if (!files::exists(source)) continue;
-                if (bundledApks::copy(source, own)) {
-                    files::remove(marker);
-                    files::remove(own + L".json");
-                    files::remove(own + L".icon");
-                    shellLog::write("library: recovered " + narrow(name) + " from this Megler's BiTGApps bundle");
-                } else {
-                    shellLog::write("library: could not recover " + narrow(name) + " from the BiTGApps bundle");
-                }
-            }
+            // The package's Google APKs where they are wanted: decided now, by names, sizes and the last 64 KB of two files,
+            // and copied after the window is shown, on a thread of their own (afterStart). A first start's are hundreds of
+            // megabytes, the better part of a minute on a slow phone, and Windows ends an app whose window it has not been
+            // shown in time: a Lumia 630's Megler 0.1.0.671 copied them here, on the UI thread before its window was shown,
+            // was ended at every start, and began them again at the next (each start removes the .part the last one left).
+            pendingCopies_ = bundledCopies(directory_, appPackage::sharedFolder());
         }
 
         std::string stamp;
         files::read(directory_ + L"\\reports.version", stamp);
         const bool stale = stamp != versionStamp();
         entries_.clear();
-        const auto copied = [this](const std::wstring& name) {
-            ApkEntry entry;
-            entry.id = narrow(name);
-            entry.path = directory_ + L"\\" + name;
-            entry.size = files::size(entry.path);
-            if (files::exists(splitsDirFor(entry.path))) {
-                entry.splitsDir = splitsDirFor(entry.path);
-                entry.size += files::folderSize(entry.splitsDir);
-            }
-            std::string json;
-            if (files::read(entry.path + L".json", json) && !json.empty()) {
-                entry.report = ApkReport::parse(json);
-                entry.analysed = entry.report.valid;
-            }
-            if (files::exists(entry.path + L".icon")) entry.iconPath = entry.path + L".icon";
-            return entry;
+        const auto copied = [this](const std::wstring& name) { return copyEntry(name); };
+        // (A copy of the library's that is to be made again after the start is read once it is: bundledCopied.)
+        const auto heldBack = [this](const std::string& id) {
+            return std::any_of(pendingCopies_.begin(), pendingCopies_.end(), [&id](const bundledApks::Task& t) { return t.id == id; });
         };
         for (const auto& name : files::list(directory_, L"*.apk")) {
             ApkEntry entry = copied(name);
-            if (stale || !entry.analysed) toRead.push_back(entry.id);
+            if (heldBack(entry.id)) entry.analysing = true;
+            else if (stale || !entry.analysed) toRead.push_back(entry.id);
             entries_.push_back(std::move(entry));
         }
         // The apps whose APK is an installed package's (Megler has no copy of it).
@@ -409,7 +380,8 @@ void Library::load() {
                 }
                 shellLog::write("library: " + id + "'s splits, in " + fullName + ", whose folders Megler is not shown, could not be copied back: " + error);
             }
-            if ((stale || !entry.analysed) && files::exists(entry.path)) toRead.push_back(entry.id);
+            if (heldBack(entry.id)) entry.analysing = true;
+            else if ((stale || !entry.analysed) && files::exists(entry.path)) toRead.push_back(entry.id);
             entries_.push_back(std::move(entry));
         }
         if (appPackage::single().package == "com.google.android.gms")
@@ -417,12 +389,109 @@ void Library::load() {
         refreshingAll_ = stale && !toRead.empty();
         if (stale && toRead.empty()) files::write(directory_ + L"\\reports.version", versionStamp());
         ++generation_;
-        shellLog::write(format("library: %u APKs in LocalState\\apks, %u to read%s", unsigned(entries_.size()),
-                               unsigned(toRead.size()), stale ? " (the reports are another build's)" : ""));
+        shellLog::write(format("library: %u APKs in LocalState\\apks, %u to read%s%s", unsigned(entries_.size()), unsigned(toRead.size()),
+                               stale ? " (the reports are another build's)" : "",
+                               pendingCopies_.empty() ? "" : format("; %u copies of the package's Google APKs to make once the window is shown",
+                                                                    unsigned(pendingCopies_.size())).c_str()));
     }
     for (const auto& id : toRead) queue(id);
-    // Megler's copies of the Google APKs its package brings, each compared with the package's (once for each build).
-    bundledApks::checkLater();
+}
+
+void Library::afterStart() {
+    std::vector<bundledApks::Task> copies;
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        if (startedCopies_) return;
+        startedCopies_ = true;
+        copies.swap(pendingCopies_);
+    }
+    using Kind = bundledApks::Task::Kind;
+    // The offers in the library: the stamp once each of them is made.
+    struct Offers {
+        int left = 0;
+        bool failed = false;
+    };
+    auto offers = std::make_shared<Offers>();
+    for (const auto& task : copies) offers->left += task.kind == Kind::offer;
+    const std::wstring stamp = directory_ + L"\\bitgapps.added";
+    // Each is made on bundledApks's thread, and what follows its copy is done there; then Megler's other copies of the
+    // package's APKs are compared with them (once for each build: bundledApks::checkLater).
+    bundledApks::start(std::move(copies), [this, offers, stamp](const bundledApks::Task& task, bool copied) {
+        const std::string file = narrow(task.source.substr(task.source.find_last_of(L'\\') + 1));
+        const std::wstring own = directory_ + L"\\" + widen(task.id);
+        switch (task.kind) {
+        case Kind::service:
+            shellLog::write(copied ? "library: published " + task.what + " in the shared service cache" : "library: could not publish " + task.what);
+            return;
+        case Kind::offer:
+            if (copied) {
+                bundledCopied(task.id);
+            } else {
+                offers->failed = true;
+                shellLog::write("library: could not offer BiTGApps " + file);
+            }
+            if (--offers->left == 0 && !offers->failed) {
+                files::write(stamp, "offered");
+                shellLog::write("library: offered locally bundled BiTGApps APKs");
+            }
+            return;
+        case Kind::again:
+            if (copied) {
+                files::remove(own + L".json");
+                files::remove(own + L".icon");
+                shellLog::write("library: " + task.id + " was not this Megler's bundle's (a copy that never finished, or an older one): copied again");
+                bundledCopied(task.id);
+            } else {
+                shellLog::write("library: " + task.id + " is not the bundle's and could not be copied again");
+                queue(task.id);
+            }
+            return;
+        case Kind::recover:
+            if (copied) {
+                files::remove(own + L".installed");
+                files::remove(own + L".json");
+                files::remove(own + L".icon");
+                shellLog::write("library: recovered " + file + " from this Megler's BiTGApps bundle");
+                bundledCopied(task.id);
+            } else {
+                shellLog::write("library: could not recover " + file + " from the BiTGApps bundle");
+                queue(task.id);
+            }
+            return;
+        }
+    });
+}
+
+ApkEntry Library::copyEntry(const std::wstring& name) const {
+    ApkEntry entry;
+    entry.id = narrow(name);
+    entry.path = directory_ + L"\\" + name;
+    entry.size = files::size(entry.path);
+    if (files::exists(splitsDirFor(entry.path))) {
+        entry.splitsDir = splitsDirFor(entry.path);
+        entry.size += files::folderSize(entry.splitsDir);
+    }
+    std::string json;
+    if (files::read(entry.path + L".json", json) && !json.empty()) {
+        entry.report = ApkReport::parse(json);
+        entry.analysed = entry.report.valid;
+    }
+    if (files::exists(entry.path + L".icon")) entry.iconPath = entry.path + L".icon";
+    return entry;
+}
+
+void Library::bundledCopied(const std::string& id) {
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        ApkEntry entry = copyEntry(widen(id));
+        auto existing = std::find_if(entries_.begin(), entries_.end(), [&](const ApkEntry& e) { return e.id == id; });
+        if (existing != entries_.end())
+            *existing = std::move(entry);
+        else
+            entries_.push_back(std::move(entry));
+        ++generation_;
+    }
+    queue(id);
 }
 
 std::vector<ApkEntry> Library::entries() const {

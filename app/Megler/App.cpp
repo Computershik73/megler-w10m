@@ -194,10 +194,16 @@ struct App : ApplicationT<App, Markup::IXamlMetadataProvider> {
         }
     }
 
-    /// The window shown: Windows takes the splash screen away at the first frame after this.
+    /// The window shown: Windows takes the splash screen away at the first frame after this. Then what the start leaves
+    /// for after it: the copies of the package's Google APKs, on a thread of their own (Library::afterStart).
     void activate() {
         startStep("showing the window", [] { Window::Current().Activate(); });
         startup::shown();
+        try {
+            Library::instance().afterStart();
+        } catch (...) {
+            shellLog::writeNow("FATAL: the copies of the package's APKs could not be begun: " + describe(std::current_exception()));
+        }
     }
 
     /// One step of the start, said before it begins (shell/Startup.h). What it throws is said as FATAL with the step, and
