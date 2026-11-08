@@ -193,6 +193,23 @@ void mg_dvm_frame_census(u64 *reserved, u64 *committed, u64 *deepest)
 }
 mg_dvm_thread *mg_dvm_self_attached(void) { return t_self ? t_self : make_self(DVM_STACK_ATTACHED_WORDS); }
 
+bool mg_dvm_frames_in(const void *base, size_t size)
+{
+    const u8 *lo = (const u8 *)base, *hi = lo + size;
+    mg_dvm_thread *t;
+    bool in = false;
+    int i;
+    mg_dvm_lock();
+    for (t = g_threads; t && !in; t = t->next) {
+        in = (t->stack && (const u8 *)t->stack >= lo && (const u8 *)t->stack < hi) ||
+             (t->spare.base && (const u8 *)t->spare.base >= lo && (const u8 *)t->spare.base < hi);
+        for (i = 0; i < t->nsegs && i < DVM_STACK_SEGS && !in; i++)
+            in = t->segs[i].base && (const u8 *)t->segs[i].base >= lo && (const u8 *)t->segs[i].base < hi;
+    }
+    mg_dvm_unlock();
+    return in;
+}
+
 /* --------------------------------------------------------------- allocation */
 
 static mg_jobj *g_out_of_memory;       /* made at the start, for when nothing more can be made */
@@ -1197,6 +1214,8 @@ void mg_dvm_object_dying(void *p)
         for (i = 0; i < o->j.nfields; i++) free(o->j.fields[i].name);
         free(o->j.fields);
     }
+    /* (A reference object no longer counts toward the collector's list of those it finds while marking.) */
+    if (o->cls && o->cls->gc_ref && o->j.kind == MG_J_OBJECT) mg_dvm_gc_reference_gone();
 }
 
 static monitor *monitor_of(mg_jobj *o)

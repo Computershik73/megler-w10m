@@ -339,6 +339,13 @@ void mg_mmap_given_back(u64 *given, u64 *again);
 /* What the app's mappings hold now, as far as they are its own (mapped, not made no-access, not given back): anonymous
    memory, and the copies of files mapped privately. Views of shared memory are not in it. */
 void mg_mmap_usage(u64 *anon, u64 *files);
+/* Go's runtime's reservations up front refused on a 32-bit host (mg_libc_mem.c, go_up_front_refused): how many, and their bytes. */
+void mg_mmap_go_refused(u32 *count, u64 *bytes);
+/*
+ * Whose the app's private mapping that starts at `base` is, said for the census of the addresses: "Go's runtime in <library>",
+ * "<library>'s mappings", "the app's mappings"; NULL when no mapping of the app's starts there.
+ */
+const char *mg_mmap_whose(const void *base);
 
 /* Android system properties, for __system_property_get. */
 int mg_sysprop_foreach(void (*visit)(const void *, void *), void *cookie);

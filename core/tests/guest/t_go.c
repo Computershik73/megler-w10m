@@ -1,13 +1,15 @@
 /*
- * A guest library that stands for one of Go's (tools/build-guest.sh: every ABI but x86, whose `int 0x80` of a library's
- * own is not led out to the core): it has Go's build ID note, which the loader takes a library of Go's by
- * (mg_ld_lib_is_go), and does what Go's runtime does with a goroutine's stack. A goroutine's stack is a piece of Go's
- * heap; Go's scavenger gives the heap's free pages back with madvise, by number from its own code, and soon puts a
- * goroutine on such pages again, whose first frame then touches them first on its own stack -- main.GoWork.func1 of a
+ * A guest library that stands for one of Go's (tools/build-guest.sh): it has Go's build ID note, which the loader takes a
+ * library of Go's by (mg_ld_lib_is_go), and does what Go's runtime does with a goroutine's stack. A goroutine's stack is a
+ * piece of Go's heap; Go's scavenger gives the heap's free pages back with madvise, by number from its own code, and soon
+ * puts a goroutine on such pages again, whose first frame then touches them first on its own stack -- main.GoWork.func1 of a
  * c-shared library's 1000 goroutines, `sub $0x10038,%rsp; movb $0,0x17(%rsp)`. Here: a heap of 512 KB mapped, a
  * goroutine's 256 KB stack at its top, a 64 KB frame on it (t_go_heap_new), the stack's pages or the rest of the heap's
  * given back as Go's runtime gives them back or as any other code does (t_go_give_back), the frame run on the stack again
- * (t_go_run), and what reads zero (t_go_nonzero). See core/tests/mg_tests.c, test_go_stack, for what each must come to.
+ * (t_go_run), and what reads zero (t_go_nonzero). See core/tests/mg_tests.c, test_go_stack, for what each must come to;
+ * not on x86, whose `int 0x80` of a library's own is not led out to the core but made at the fault it gives, on the stack
+ * it was made on. And, on every ABI, the reservations Go's runtime makes for its heap as it starts (t_go_reserve,
+ * test_go_reserve).
  */
 #include "t_abi.h"
 
@@ -57,7 +59,68 @@ __asm__(".text\n"
         "  movq %rcx, %rdx\n"
         "  syscall\n"
         "  ret\n"
-        ".size t_go_syscall3, .-t_go_syscall3\n");
+        ".size t_go_syscall3, .-t_go_syscall3\n"
+        ".globl t_go_syscall6\n.type t_go_syscall6, @function\n"
+        "t_go_syscall6:\n"
+        "  movq %rdi, %rax\n"
+        "  movq %rsi, %rdi\n"
+        "  movq %rdx, %rsi\n"
+        "  movq %rcx, %rdx\n"
+        "  movq %r8, %r10\n"
+        "  movq %r9, %r8\n"
+        "  movq 8(%rsp), %r9\n"
+        "  syscall\n"
+        "  ret\n"
+        ".size t_go_syscall6, .-t_go_syscall6\n");
+#elif defined(__i386__)
+/* (cdecl: everything on the stack. Linux's i386 calls: the number in eax, the arguments in ebx, ecx, edx, esi, edi, ebp.) */
+__asm__(".text\n"
+        ".globl t_go_on_stack\n.type t_go_on_stack, @function\n"
+        "t_go_on_stack:\n"
+        "  pushl %ebx\n"
+        "  movl %esp, %ebx\n"
+        "  movl 8(%ebx), %eax\n"
+        "  movl 12(%ebx), %ecx\n"
+        "  movl 16(%ebx), %edx\n"
+        "  movl %eax, %esp\n"
+        "  subl $12, %esp\n"
+        "  pushl %edx\n"
+        "  call *%ecx\n"
+        "  movl %ebx, %esp\n"
+        "  popl %ebx\n"
+        "  ret\n"
+        ".size t_go_on_stack, .-t_go_on_stack\n"
+        ".globl t_go_syscall3\n.type t_go_syscall3, @function\n"
+        "t_go_syscall3:\n"
+        "  pushl %ebx\n"
+        "  movl 8(%esp), %eax\n"
+        "  movl 12(%esp), %ebx\n"
+        "  movl 16(%esp), %ecx\n"
+        "  movl 20(%esp), %edx\n"
+        "  int $0x80\n"
+        "  popl %ebx\n"
+        "  ret\n"
+        ".size t_go_syscall3, .-t_go_syscall3\n"
+        ".globl t_go_syscall6\n.type t_go_syscall6, @function\n"
+        "t_go_syscall6:\n"
+        "  pushl %ebp\n"
+        "  pushl %edi\n"
+        "  pushl %esi\n"
+        "  pushl %ebx\n"
+        "  movl 20(%esp), %eax\n"
+        "  movl 24(%esp), %ebx\n"
+        "  movl 28(%esp), %ecx\n"
+        "  movl 32(%esp), %edx\n"
+        "  movl 36(%esp), %esi\n"
+        "  movl 40(%esp), %edi\n"
+        "  movl 44(%esp), %ebp\n"
+        "  int $0x80\n"
+        "  popl %ebx\n"
+        "  popl %esi\n"
+        "  popl %edi\n"
+        "  popl %ebp\n"
+        "  ret\n"
+        ".size t_go_syscall6, .-t_go_syscall6\n");
 #elif defined(__arm__)
 __asm__(".text\n"
         ".syntax unified\n"
@@ -173,9 +236,21 @@ __asm__(".text\n"
         "  mov x2, x3\n"
         "  svc #0\n"
         "  ret\n"
-        ".size t_go_syscall3, .-t_go_syscall3\n");
+        ".size t_go_syscall3, .-t_go_syscall3\n"
+        ".globl t_go_syscall6\n.type t_go_syscall6, %function\n"
+        "t_go_syscall6:\n"
+        "  mov x8, x0\n"
+        "  mov x0, x1\n"
+        "  mov x1, x2\n"
+        "  mov x2, x3\n"
+        "  mov x3, x4\n"
+        "  mov x4, x5\n"
+        "  mov x5, x6\n"
+        "  svc #0\n"
+        "  ret\n"
+        ".size t_go_syscall6, .-t_go_syscall6\n");
 #else
-#error "t_go.c: x86_64, armeabi-v7a and arm64-v8a only"
+#error "t_go.c: x86_64, x86, armeabi-v7a and arm64-v8a only"
 #endif
 
 long t_go_on_stack(void *top, long (*fn)(long), long arg);
@@ -185,14 +260,21 @@ long t_go_arm_getpid(void);
 void t_go_arm_keep(unsigned *out);
 long t_go_arm_sc6(long nr, long a, long b, long c, long d, long e, long f);
 long t_go_arm_on_stack(void *top);
+/* (Go's runtime's own way, ARM's svc 0 led out to the core, for the calls of six arguments.) */
+#define t_go_syscall6 t_go_arm_sc6
+#else
+long t_go_syscall6(long nr, long a, long b, long c, long d, long e, long f);
 #endif
 
+/* (mmap is mmap2 on the 32-bit ABIs, its offset in pages: Go's runtime calls that one.) */
 #if defined(__arm__)
-enum { NR_madvise = 220, NR_prctl = 172 };
+enum { NR_madvise = 220, NR_prctl = 172, NR_mmap = 192, NR_munmap = 91 };
 #elif defined(__x86_64__)
-enum { NR_madvise = 28, NR_prctl = 157 };
+enum { NR_madvise = 28, NR_prctl = 157, NR_mmap = 9, NR_munmap = 11 };
+#elif defined(__i386__)
+enum { NR_madvise = 219, NR_prctl = 172, NR_mmap = 192, NR_munmap = 91 };
 #else
-enum { NR_madvise = 233, NR_prctl = 167 };
+enum { NR_madvise = 233, NR_prctl = 167, NR_mmap = 222, NR_munmap = 215 };
 #endif
 
 enum { HEAP = 512 * 1024, STACK = 256 * 1024 };
@@ -359,5 +441,75 @@ long t_go_prctl(void)
     for (i = 0; i < sizeof(named); i++)
         if (now[i] != named[i]) return 5;
     t_go_syscall3(NR_prctl, 15, (long)was, 0);
+    return 0;
+}
+
+/*
+ * The reservations Go's runtime makes for its heap as it starts on a 32-bit processor (runtime/malloc.go, mallocinit, as Go
+ * 1.26.5 in WhatsApp's libgojni.so has it), all by number from its own code: its arenas' metadata, 0x242000 bytes; an arena
+ * of 512 MB, of 256 where that is not to be had, of 128 else, each asked with 4 MB more to line it up (sysReserveAligned),
+ * at a hint past the metadata; and as its heap grows, 4 MB at that hint (mheap.sysAlloc) -- or, the hint not followed,
+ * those let go and 8 MB asked anywhere, of which the 4 MB lined up are kept and the ends given back -- made readable and
+ * writable where it is used (sysMap, mmap with MAP_FIXED). Into `out`: [0] the metadata's address, [1..3] what each of the
+ * three arena reservations gave (an address, or -errno), [4] the 4 MB arena's address, [5] 0 when it took a write at each
+ * end and read it back, [6] what 64 MB reserved through libc's mmap gave (an address, or -1), [7] what 60 MB by number gave,
+ * [8] whether 8 MB asked anywhere by number came lined up on 4 MB (1), as Go's next arena is asked where its hint is not
+ * followed (or -errno). Everything given is let go again. 0, or the step that failed.
+ */
+static int sc_failed(long r) { return (unsigned long)r >= (unsigned long)-4095L; }
+
+long t_go_reserve(long *out)
+{
+    static const unsigned long arenas[3] = { 512ul << 20, 256ul << 20, 128ul << 20 };
+    const unsigned long align = 4ul << 20, meta_size = 0x242000;
+    unsigned long hint, v, kept;
+    volatile unsigned char *arena;
+    void *libc;
+    long i, r;
+    for (i = 0; i < 9; i++) out[i] = 0;
+    out[0] = t_go_syscall6(NR_mmap, 0, (long)meta_size, 0, 0x22, -1, 0);
+    if (sc_failed(out[0])) return 1;
+    hint = ((unsigned long)out[0] + meta_size + (256ul << 10) + align - 1) & ~(align - 1);
+    for (i = 0; i < 3; i++) {
+        out[1 + i] = t_go_syscall6(NR_mmap, (long)hint, (long)(arenas[i] + align), 0, 0x22, -1, 0);
+        if (!sc_failed(out[1 + i])) t_go_syscall6(NR_munmap, out[1 + i], (long)(arenas[i] + align), 0, 0, 0, 0);
+    }
+    /* The heap grows: 4 MB at the hint, or 8 anywhere with their ends given back. */
+    kept = align;
+    r = t_go_syscall6(NR_mmap, (long)hint, (long)align, 0, 0x22, -1, 0);
+    if (sc_failed(r)) return 2;
+    v = (unsigned long)r;
+    if (v != hint) {
+        unsigned long p, lined;
+        t_go_syscall6(NR_munmap, (long)v, (long)align, 0, 0, 0, 0);
+        r = t_go_syscall6(NR_mmap, 0, (long)(2 * align), 0, 0x22, -1, 0);
+        if (sc_failed(r)) return 3;
+        p = (unsigned long)r;
+        lined = (p + align - 1) & ~(align - 1);
+        if (lined == p) {
+            kept = 2 * align;
+        } else {
+            t_go_syscall6(NR_munmap, (long)p, (long)(lined - p), 0, 0, 0, 0);
+            t_go_syscall6(NR_munmap, (long)(lined + align), (long)(p + 2 * align - lined - align), 0, 0, 0, 0);
+        }
+        v = lined;
+    }
+    out[4] = (long)v;
+    if (t_go_syscall6(NR_mmap, (long)v, (long)align, 3, 0x32, -1, 0) != (long)v) return 4;
+    arena = (volatile unsigned char *)v;
+    arena[0] = 0x47;
+    arena[align - 1] = 0x6f;
+    out[5] = arena[0] == 0x47 && arena[align - 1] == 0x6f ? 0 : 1;
+    t_go_syscall6(NR_munmap, (long)v, (long)kept, 0, 0, 0, 0);
+    t_go_syscall6(NR_munmap, out[0], (long)meta_size, 0, 0, 0, 0);
+    /* Not Go's runtime's reservations: the same library through libc, and less than the least refused by number. */
+    libc = mmap(0, 64ul << 20, 0, 0x22, -1, 0);
+    out[6] = (long)libc;
+    if (libc != (void *)-1L) munmap(libc, 64ul << 20);
+    out[7] = t_go_syscall6(NR_mmap, 0, (long)(60ul << 20), 0, 0x22, -1, 0);
+    if (!sc_failed(out[7])) t_go_syscall6(NR_munmap, out[7], (long)(60ul << 20), 0, 0, 0, 0);
+    r = t_go_syscall6(NR_mmap, 0, (long)(2 * align), 0, 0x22, -1, 0);
+    out[8] = sc_failed(r) ? r : (long)(((unsigned long)r & (align - 1)) == 0);
+    if (!sc_failed(r)) t_go_syscall6(NR_munmap, r, (long)(2 * align), 0, 0, 0, 0);
     return 0;
 }

@@ -30,3 +30,47 @@ native initialization: the denied executable request at 15:13:26 was handled,
 and the app continued drawing through 15:13:54, with no native fault or app
 termination in that capture. Network timeouts remain in the log; sign-in and
 messaging have not been validated.
+
+## Out of addresses: Go's arena and a heap five times what lived (2026-11-08)
+
+On Megler 0.1.0.671 WhatsApp ended twice on the HP Elite x3, each time at the
+end of its 32-bit process's 2 GB of addresses (`elite-logs-1108`: run 1
+registering, run 2 restoring from Google Drive). Two things held them:
+
+- **Go's runtime in `libgojni.so`** (Psiphon's tunnel core, Go 1.26.5) staked
+  out its heap's arena up front as it started, as Go does on any 32-bit
+  processor: 516 MB in run 2 ("1 of 528384 KB" in the addresses' census) and,
+  where 516 were not to be had, 260 MB in run 1 ("1 of 266240 KB"), for a heap
+  of a few megabytes. Its arenas' metadata is 0x242000 bytes in that version,
+  not the "~258 MB" of the source's comment. Now refused on 32-bit hosts
+  ([ARCHITECTURE.md](ARCHITECTURE.md), "Go's heap's addresses").
+- **The Java heap** grew to 565 MB of blocks (run 1) and 377 (run 2) for some
+  80 to 95 MB that lived, as the collections that stopped the app at the end
+  found. Each collection alongside the app took what the heap held after it
+  for what lived, the 100 to 320 MB the app's threads (Google Play services'
+  among them) made while it marked, at the lowest priority, for 4 to 16 s; its
+  budget was half of that, and threads waited only at three budgets. Run 1:
+  made between collections 35, 44, 105, 193, 265 MB; marking 2.2, 4.3, 9.6,
+  11.2, 16.4 s; "live" 52, 103, 174, 256, 319 MB. The arenas were never given
+  back, so the addresses stayed at the most the heap had had. Then the mark
+  stack, allocated at each collection as long as the heap had objects (6 MB),
+  found no stretch of addresses that long: every collection was given up
+  ("not collected", 4706 times in 20 s of run 2) until an
+  `OutOfMemoryError`; in run 1 the XAML of Megler's permission question could
+  not get memory either. Now the budget comes from what the collection traced,
+  what was made while it marked counts toward the next, threads wait at two
+  budgets and a collection that falls behind marks at the usual priority, the
+  budget keeps within the free addresses, empty arenas go back whole, and the
+  mark stack is the collector's own, kept ([JAVA.md](JAVA.md), "When it runs"
+  and "The heap").
+
+What to look for in the next log of WhatsApp: the line "go: libgojni.so's
+runtime asked to reserve 516 MB up front: refused on a 32-bit Windows, Go
+reserves as it grows" once; no allocation of 528384 or 266240 KB in "addresses
+by kind" (Go's heap grows 4 MB at a time now, in allocations of 4096 or 8192
+KB, named "Go's runtime in libgojni.so" where they are among the four sizes
+that hold the most); in each "gc: alongside the app" line, "live N MB as
+traced" near what the collections that stop the app find, "the heap's blocks"
+within about three times that, the arenas "given back" when the app's garbage
+falls, the budget, and ", behind and hurried" where the app outran the
+marking; no "not collected" lines (or the thread and the reason they name).

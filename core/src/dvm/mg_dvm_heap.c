@@ -13,6 +13,10 @@
  * its first page (which has its header, all that the lists and the collector read of a spare block) is given back to the
  * host, and committed again, zero, when the block is given a class. The arenas stayed committed whole before, at the most
  * the heap had ever had: 350 MB in Play Store with Google Play services, which a collection had brought down to 200.
+ * Blocks are handed out lowest first (the lists a sweep makes), so that what lives gathers low and the arenas high up
+ * empty; an arena left empty past what the next collection's budget wants is given back whole, its addresses too
+ * (mg_dvm_heap_trim). The addresses stayed taken before, at the most the heap had ever had: 565 MB of WhatsApp's 2 GB for
+ * some 95 MB that lived, until its process could not get a megabyte more (HP Elite x3, 0.1.0.671).
  *
  * One lock covers it all. The collector takes it before it stops the other threads, so no thread can be stopped halfway
  * through the lists.
@@ -45,6 +49,7 @@ typedef struct block {
     u8 *first;                         /* the first cell */
     free_cell *free;                   /* cells given back, to hand out again */
     bool bare;                         /* a spare block whose memory past its first page went back to the host */
+    bool unwatched;                    /* its arena's pages are not watched for writes: every page counts as written (add_arena) */
     struct block *next;                /* the next block of the same class that has room */
     u32 inuse[BITMAP_WORDS];
     /*
@@ -80,6 +85,9 @@ static u32 g_nlarge, g_large_cap;
 static u8 g_class_of[MAX_SMALL / 16 + 1];
 static volatile i32 g_classes_ready;
 static u64 g_small_bytes, g_large_bytes, g_reserved, g_bare;
+/* Arenas given back to the host so far (mg_dvm_heap_trim); bytes made marked since the collector last turned that on. */
+static u32 g_released;
+static u64 g_black_bytes;
 /* Spare blocks kept committed, ready for the next classes asked for (8 MB); the others' memory goes back (see the top). */
 #define SPARE_COMMITTED 128u
 static u32 g_objects;                  /* cells in use and large objects */
@@ -123,18 +131,30 @@ static void classes_init(void)
 static bool add_arena(void)
 {
     u8 *a = NULL;
-    u32 *marks;
+    u32 *marks, error = 0;
     u32 i, at;
-    /* Watched for writes, where the host can, from the first arena on; one that cannot be leaves none taken for watched. */
-    if (!g_watch_tried || g_watch) a = (u8 *)mg_mem_alloc_watched(ARENA_SIZE);
+    bool unwatched = false;
+    /*
+     * Watched for writes, where the host can, from the first arena on. One that cannot be is had unwatched, and every page
+     * of it counts as written at a second stop (mg_dvm_heap_written_in); the next is watched again. The first such arena
+     * took the watch from every arena before, for good: each second stop of WhatsApp's after it looked at every marked
+     * object of a heap of 400 MB again, 1.4 to 1.6 s with the app stopped (0.1.0.671).
+     */
+    if (!g_watch_tried || g_watch) {
+        a = (u8 *)mg_mem_alloc_watched(ARENA_SIZE);
+        if (!a) error = mg_host_last_error();
+    }
     if (!g_watch_tried) {
         g_watch_tried = true;
         g_watch = a != NULL;
         mg_info("heap: %s", g_watch ? "the arenas' pages are watched for writes: the collector can mark alongside the app"
                                     : "the host does not watch the arenas' pages for writes: every collection stops the app while it marks");
     } else if (g_watch && !a) {
-        g_watch = false;
-        mg_warn("heap: an arena could not be watched for writes: collections stop the app while they mark from now on");
+        static volatile i32 said;
+        if (mg_atomic_add(&said, 1) < 4)
+            mg_warn("heap: an arena could not be watched for writes (error %u): every page of it counts as written at each second stop "
+                    "of a collection alongside the app", (unsigned)error);
+        unwatched = true;
     }
     if (!a) a = (u8 *)mg_mem_alloc(ARENA_SIZE);
     if (!a) return false;
@@ -166,11 +186,80 @@ static bool add_arena(void)
         block *b = (block *)(void *)(a + (size_t)(i - 1) * BLOCK_SIZE);
         b->magic = BLOCK_MAGIC;
         b->cls = -1;
+        b->unwatched = unwatched;
         b->mark = marks + (size_t)(i - 1) * BITMAP_WORDS;
         b->next = g_spare;
         g_spare = b;
     }
     return true;
+}
+
+/* Whether arena `a` has no block in use. */
+static bool arena_empty(u8 *a)
+{
+    u32 k;
+    for (k = 0; k < ARENA_BLOCKS; k++)
+        if (((block *)(void *)(a + (size_t)k * BLOCK_SIZE))->cls >= 0) return false;
+    return true;
+}
+
+/* Arena `i` of the sorted list given back to the host, an empty one: off the lists first (the caller makes the spare list again). */
+static void arena_release(u32 i)
+{
+    u8 *a = g_arenas[i];
+    u32 k;
+    for (k = 0; k < ARENA_BLOCKS; k++) {
+        block *b = (block *)(void *)(a + (size_t)k * BLOCK_SIZE);
+        if (b->bare) g_bare -= BLOCK_SIZE - MG_PAGE;
+    }
+    /* (The marks of its sixteen blocks are one allocation, the first block's: add_arena.) */
+    free(((block *)(void *)a)->mark);
+    if ((u64)(mg_addr)a + ARENA_SIZE <= ((u64)1 << 32)) g_arena_starting[(u32)((mg_addr)a >> ARENA_SHIFT)] = NULL;
+    memmove(&g_arenas[i], &g_arenas[i + 1], sizeof(*g_arenas) * (g_narenas - i - 1));
+    g_narenas--;
+    g_reserved -= ARENA_SIZE;
+    g_released++;
+    mg_mem_release(a, ARENA_SIZE);
+}
+
+/*
+ * The spare list made again, every spare block on it lowest first, and past the first SPARE_COMMITTED of them each one's
+ * memory after its header's page given back to the host (see the top). With the heap's lock held.
+ */
+static void spare_list_made(void)
+{
+    block *b;
+    u32 i, k, n = 0;
+    g_spare = NULL;
+    for (i = g_narenas; i-- > 0;)
+        for (k = ARENA_BLOCKS; k-- > 0;) {
+            b = (block *)(void *)(g_arenas[i] + (size_t)k * BLOCK_SIZE);
+            if (b->cls >= 0) continue;
+            b->next = g_spare;
+            g_spare = b;
+        }
+    for (b = g_spare; b; b = b->next)
+        if (!b->bare && ++n > SPARE_COMMITTED && mg_mem_decommit((u8 *)b + MG_PAGE, BLOCK_SIZE - MG_PAGE)) {
+            b->bare = true;
+            g_bare += BLOCK_SIZE - MG_PAGE;
+        }
+}
+
+u32 mg_dvm_heap_trim(u64 keep)
+{
+    u32 i, spare = 0, released = 0;
+    u64 keep_blocks = keep / BLOCK_SIZE + SPARE_COMMITTED;
+    block *b;
+    for (b = g_spare; b; b = b->next) spare++;
+    /* The highest first: blocks are handed out lowest first, and what lives gathers low. */
+    for (i = g_narenas; i-- > 0 && spare >= keep_blocks + ARENA_BLOCKS;) {
+        if (!arena_empty(g_arenas[i])) continue;
+        arena_release(i);
+        spare -= ARENA_BLOCKS;
+        released++;
+    }
+    if (released) spare_list_made();
+    return released;
 }
 
 /*
@@ -251,6 +340,7 @@ static void *small_alloc(size_t size)
             u32 old;
             do old = (u32)*word;
             while ((u32)mg_atomic_cas(word, (i32)old, (i32)(old | (1u << (index & 31)))) != old);
+            g_black_bytes += b->cell;
         }
         b->used++;
         g_objects++;
@@ -291,6 +381,7 @@ static void *large_alloc(size_t size)
     g_large[lo].start = p;
     g_large[lo].size = size;
     g_large[lo].mark = g_black ? 1 : 0;
+    if (g_black) g_black_bytes += size;
     g_nlarge++;
     mg_lock_release(&g_large_lock);
     g_objects++;
@@ -442,8 +533,14 @@ bool mg_dvm_heap_is_marked(const void *o)
     }
 }
 
-void mg_dvm_heap_alloc_black(bool on) { mg_atomic_xchg(&g_black, on ? 1 : 0); }
+void mg_dvm_heap_alloc_black(bool on)
+{
+    /* (Turned on with the world stopped and the heap's lock held, at a first stop: nothing is being made.) */
+    if (on) g_black_bytes = 0;
+    mg_atomic_xchg(&g_black, on ? 1 : 0);
+}
 bool mg_dvm_heap_black(void) { return g_black != 0; }
+u64 mg_dvm_heap_black_made(void) { return g_black_bytes; }
 bool mg_dvm_heap_watched(void) { return g_watch; }
 
 /*
@@ -464,7 +561,8 @@ void mg_dvm_heap_watch_restart(void)
     if (arenas) memcpy(arenas, g_arenas, sizeof(*arenas) * n);
     mg_lock_release(&g_heap_lock);
     if (!arenas) return;
-    for (i = 0; i < n; i++) mg_mem_written_pages(arenas[i], ARENA_SIZE, pages, (int)MG_COUNT(pages), true);
+    for (i = 0; i < n; i++)
+        if (!((block *)(void *)arenas[i])->unwatched) mg_mem_written_pages(arenas[i], ARENA_SIZE, pages, (int)MG_COUNT(pages), true);
     free(arenas);
 }
 
@@ -482,44 +580,14 @@ static void marked_in(block *b, u8 *lo, u8 *hi, void (*fn)(void *o))
         if (b->mark[c >> 5] & b->inuse[c >> 5] & (1u << (c & 31))) fn(b->first + (size_t)c * b->cell);
 }
 
-/* Pages the arenas have (with the heap's lock held): what mg_dvm_heap_written_list may give, at the most. */
-u32 mg_dvm_heap_pages(void) { return g_narenas * (ARENA_SIZE / MG_PAGE); }
+/* The arenas the heap has now (with the heap's lock held, or the world stopped): what mg_dvm_heap_written_in takes. */
+u32 mg_dvm_heap_arenas(void) { return g_narenas; }
 
-/*
- * The pages of the heap's blocks in use written since the watch was started again -- every page of them where the arenas
- * are not watched -- into `out` (room for mg_dvm_heap_pages()), for the collector's threads to share
- * (mg_dvm_heap_marked_on); how many. The world stopped. Large objects are not in it (mg_dvm_heap_each_marked_large).
- */
-u32 mg_dvm_heap_written_list(u8 **out, u32 cap)
+/* `fn` for every marked object any of whose bytes lie in [lo, lo + MG_PAGE) of block `b` (in use). */
+static void marked_on(block *b, u8 *lo, void (*fn)(void *o, void *user), void *user)
 {
-    u32 pages[ARENA_SIZE / MG_PAGE], i, got = 0;
-    int n, k;
-    for (i = 0; i < g_narenas; i++) {
-        u8 *a = g_arenas[i];
-        n = g_watch ? mg_mem_written_pages(a, ARENA_SIZE, pages, (int)MG_COUNT(pages), false) : -1;
-        if (n < 0) {
-            for (k = 0; k < (int)(ARENA_SIZE / MG_PAGE); k++) {
-                block *b = (block *)(void *)(a + ((size_t)k * MG_PAGE / BLOCK_SIZE) * BLOCK_SIZE);
-                if (b->cls >= 0 && got < cap) out[got++] = a + (size_t)k * MG_PAGE;
-            }
-            continue;
-        }
-        for (k = 0; k < n; k++) {
-            block *b = (block *)(void *)(a + ((size_t)pages[k] * MG_PAGE / BLOCK_SIZE) * BLOCK_SIZE);
-            if (b->cls >= 0 && got < cap) out[got++] = a + (size_t)pages[k] * MG_PAGE;
-        }
-    }
-    return got;
-}
-
-/* `fn` for every marked object any of whose bytes lie on `page` (one mg_dvm_heap_written_list gave). */
-void mg_dvm_heap_marked_on(u8 *page, void (*fn)(void *o, void *user), void *user)
-{
-    block *b = block_of((mg_addr)page);
-    u8 *end, *lo = page, *hi = page + MG_PAGE;
+    u8 *end = b->first + (size_t)b->bump * b->cell, *hi = lo + MG_PAGE;
     u32 c, last;
-    if (!b) return;
-    end = b->first + (size_t)b->bump * b->cell;
     if (lo < b->first) lo = b->first;
     if (hi > end) hi = end;
     if (lo >= hi) return;
@@ -527,6 +595,38 @@ void mg_dvm_heap_marked_on(u8 *page, void (*fn)(void *o, void *user), void *user
     last = cell_index(b, (size_t)(hi - 1 - b->first));
     for (; c <= last; c++)
         if (b->mark[c >> 5] & b->inuse[c >> 5] & (1u << (c & 31))) fn(b->first + (size_t)c * b->cell, user);
+}
+
+/*
+ * `fn` for every marked object on the pages of arena `i`'s blocks in use written since the watch was started again --
+ * every page of them where the arena is not watched -- for the collector's threads to share an arena at a time, with
+ * nothing allocated (it was a list of every page the heap had, made at each second stop); how many pages. The world
+ * stopped. Large objects are not in it (mg_dvm_heap_each_marked_large).
+ */
+u32 mg_dvm_heap_written_in(u32 i, void (*fn)(void *o, void *user), void *user)
+{
+    u32 pages[ARENA_SIZE / MG_PAGE], got = 0;
+    u8 *a;
+    int n, k;
+    if (i >= g_narenas) return 0;
+    a = g_arenas[i];
+    n = g_watch && !((block *)(void *)a)->unwatched ? mg_mem_written_pages(a, ARENA_SIZE, pages, (int)MG_COUNT(pages), false) : -1;
+    if (n < 0) {
+        for (k = 0; k < (int)(ARENA_SIZE / MG_PAGE); k++) {
+            block *b = (block *)(void *)(a + ((size_t)k * MG_PAGE / BLOCK_SIZE) * BLOCK_SIZE);
+            if (b->cls < 0) continue;
+            marked_on(b, a + (size_t)k * MG_PAGE, fn, user);
+            got++;
+        }
+        return got;
+    }
+    for (k = 0; k < n; k++) {
+        block *b = (block *)(void *)(a + ((size_t)pages[k] * MG_PAGE / BLOCK_SIZE) * BLOCK_SIZE);
+        if (b->cls < 0) continue;
+        marked_on(b, a + (size_t)pages[k] * MG_PAGE, fn, user);
+        got++;
+    }
+    return got;
 }
 
 /* `fn` for every marked large object: the C heap's memory, which nothing watches. The world stopped. */
@@ -544,7 +644,7 @@ u32 mg_dvm_heap_each_written(void (*fn)(void *o))
     for (i = 0; i < g_narenas; i++) {
         u8 *a = g_arenas[i];
         /* (The watch is not started again here: the next collection does, before its first stop.) */
-        n = g_watch ? mg_mem_written_pages(a, ARENA_SIZE, pages, (int)MG_COUNT(pages), false) : -1;
+        n = g_watch && !((block *)(void *)a)->unwatched ? mg_mem_written_pages(a, ARENA_SIZE, pages, (int)MG_COUNT(pages), false) : -1;
         if (n < 0) {
             /* Not watched (or the host would not say): every page of it. */
             for (k = 0; k < (int)ARENA_BLOCKS; k++) {
@@ -669,16 +769,18 @@ u32 mg_dvm_heap_sweep(void (*dying)(void *o), bool poison, u64 *freed_objects, u
     }
     g_objects -= (u32)*freed_objects;
     g_small_bytes -= *freed_bytes;
+    /*
+     * The lists of blocks with room made again from the highest block down, so that each hands out its lowest first: what
+     * lives gathers low, and the arenas high up empty, to be given back whole (mg_dvm_heap_trim). An empty block is a spare
+     * one, for any class (spare_list_made, below).
+     */
     for (cl = 0; cl < NCLASSES; cl++) g_room[cl] = NULL;
-    for (i = 0; i < g_narenas; i++)
-        for (k = 0; k < ARENA_BLOCKS; k++) {
+    for (i = g_narenas; i-- > 0;)
+        for (k = ARENA_BLOCKS; k-- > 0;) {
             block *b = (block *)(void *)(g_arenas[i] + (size_t)k * BLOCK_SIZE);
             if (b->cls < 0) continue;
             if (b->used == 0 && !poison) {
-                /* Empty: any class may have it. */
                 b->cls = -1;
-                b->next = g_spare;
-                g_spare = b;
             } else if (b->free || b->bump < b->ncells) {
                 b->next = g_room[b->cls];
                 g_room[b->cls] = b;
@@ -703,16 +805,8 @@ u32 mg_dvm_heap_sweep(void (*dying)(void *o), bool poison, u64 *freed_objects, u
     }
     g_nlarge = kept;
     g_marks_clear = true;
-    /* Spare blocks past the first few: their memory past the header's page back to the host. */
-    {
-        block *b;
-        u32 n = 0;
-        for (b = g_spare; b; b = b->next)
-            if (!b->bare && ++n > SPARE_COMMITTED && mg_mem_decommit((u8 *)b + MG_PAGE, BLOCK_SIZE - MG_PAGE)) {
-                b->bare = true;
-                g_bare += BLOCK_SIZE - MG_PAGE;
-            }
-    }
+    /* The spare blocks, lowest first; past the first few, their memory past the header's page back to the host. */
+    spare_list_made();
     return workers;
 }
 
@@ -778,7 +872,26 @@ void mg_dvm_heap_stats(mg_dvm_heap_info *out)
     out->small_bytes = g_small_bytes;
     out->large_bytes = g_large_bytes;
     out->reserved = g_reserved - g_bare;
+    out->addresses = g_reserved;
+    out->arenas = g_narenas;
+    out->released = g_released;
     out->large_objects = g_nlarge;
     out->objects = g_objects;
     mg_lock_release(&g_heap_lock);
+}
+
+bool mg_dvm_heap_arena_at(const void *p)
+{
+    mg_addr a = (mg_addr)p;
+    u32 lo = 0, hi;
+    mg_lock_acquire(&g_heap_lock);
+    hi = g_narenas;
+    while (lo < hi) {
+        u32 mid = (lo + hi) / 2;
+        if (a < (mg_addr)g_arenas[mid]) hi = mid;
+        else if (a > (mg_addr)g_arenas[mid]) lo = mid + 1;
+        else break;
+    }
+    mg_lock_release(&g_heap_lock);
+    return lo < hi;
 }

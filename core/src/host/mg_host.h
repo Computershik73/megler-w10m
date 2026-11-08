@@ -88,6 +88,8 @@ MG_HOSTAPI void *mg_mem_alloc(size_t size);
  * cannot, and mg_mem_alloc's memory is had instead. Released with mg_mem_release.
  */
 MG_HOSTAPI void *mg_mem_alloc_watched(size_t size);
+/* Why the host's last call on this thread failed, as the host numbers it (GetLastError, errno): for the log. */
+MG_HOSTAPI u32 mg_host_last_error(void);
 /*
  * The pages of watched [p, p + size) written since the memory was made or the watch was last started again, as page numbers
  * from `p` into `out` (at most `max`): how many; -1 where the host cannot say (and every page is to be taken for written).
@@ -810,15 +812,26 @@ MG_HOSTAPI bool mg_host_address_space(u32 *free_mb, u32 *largest_free_mb, u32 *r
  * (package 490). False where it cannot be walked. (The heaps are not asked: HeapSummary walks a heap, and of the process's
  * several some are not serialized -- walked while their owner used them, one was broken and the app ended, package 493 --
  * and it held the process heap's lock for most of a second.)
+ *
+ * And whose each size's allocations are, where it can be said: `whose` (the core's) names the owner of the allocation at
+ * `base` -- the Java heap's arenas, a library's mappings, Go's heap -- or gives NULL, and then one with a guard page in it
+ * is a thread's stack; a name is told apart from another by its pointer. WhatsApp's log said "1 of 528384 KB" and "599 of
+ * 1024 KB", and whose they were took a disassembly and a guess (HP Elite x3, 0.1.0.671).
  */
+#define MG_ADDRESS_OWNERS 3
 typedef struct mg_host_address_kinds {
     u32 images_mb, views_mb, private_mb, private_reserved_mb;
     int nsizes;
-    struct { u32 kb, count; } sizes[4];
+    struct {
+        u32 kb, count;
+        struct { const char *whose; u32 count; } by[MG_ADDRESS_OWNERS];   /* the owners with the most of them, the most first; NULL past the last */
+    } sizes[4];
 } mg_host_address_kinds;
+/* The owner of the private allocation at `base` of `size` bytes, as the core knows it, or NULL (mg_host_address_census). */
+typedef const char *(MG_HOSTCB *mg_address_whose_fn)(const void *base, size_t size);
 /* The threads mg_thread_start started that run now: each has the stack it was given, 1 MB of addresses or more. */
 MG_HOSTAPI u32 mg_thread_live_count(void);
-MG_HOSTAPI bool mg_host_address_census(mg_host_address_kinds *k);
+MG_HOSTAPI bool mg_host_address_census(mg_host_address_kinds *k, mg_address_whose_fn whose);
 /* The bytes of [base, base + size) reserved and not committed; 0 where the host cannot say. */
 MG_HOSTAPI u64 mg_host_reserved_in(const void *base, size_t size);
 /*

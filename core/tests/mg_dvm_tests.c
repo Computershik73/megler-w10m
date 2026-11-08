@@ -780,7 +780,12 @@ int mg_dvm_tests_run(const mg_dvm_test_config *config, mg_test_sink sink, void *
         CHECK(mg_dvm_start(NULL, 0));
     }
     CHECK(add_fixtures(config->fixtures));
-    if (!g_failed) {
+    if (!g_failed && getenv("MG_DVM_TESTS_ONLY") && !strcmp(getenv("MG_DVM_TESTS_ONLY"), "gc")) {
+        /* (MG_DVM_TESTS_ONLY=gc: the collector's tests alone, as its measurements are taken: mg_tests --dvm-only.) */
+        mg_dvm_set_trace(config->trace);
+        test_gc();
+        mg_dvm_set_trace(0);
+    } else if (!g_failed) {
         mg_dvm_set_trace(config->trace);
         test_ops();
         test_arith();

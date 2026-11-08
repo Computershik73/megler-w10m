@@ -201,6 +201,16 @@ the pages again at once -- zero, their memory the system's, their commit kept
 before. The tests' POSIX host takes its faults on a stack of their own
 (sigaltstack), which Windows has no counterpart of.
 
+On x86, a 32-bit process as the phone's is, Go's runtime's reservations of 64
+MB and more for its heap as it starts (an arena of 512, 256 or 128 MB) are
+refused as on the phone, made by number from a library of Go's -- its `int
+0x80`, which the core makes at the fault it gives, sets the call's place
+(ARCHITECTURE.md, "Go's heap's addresses"). On x86_64 and ARM64 they are left
+as they are: there Go reserves its arenas at its hints far above anything else.
+`libt_go.so` is built for x86 too now, for that test alone (`t_go_reserve`):
+its goroutines' stacks are not tried there, x86's own system calls not being
+led out to the core.
+
 ### ARM64's system calls, its stacks, and x18
 
 An `svc #0` of an app's ARM64 code was a UDF, and every system call of a

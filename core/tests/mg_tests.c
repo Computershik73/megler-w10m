@@ -1884,6 +1884,15 @@ static void test_shm_views(void)
     CHECK(mapped >= before + (SIZE + MB) / 1024 && mapped < before + (SIZE + MB) / 1024 + 64);
 }
 
+/* The census's owner of the test's 3 MB allocation (test_free_stretches): told apart by its name's pointer. */
+static const void *g_census_big;
+static const char k_census_big[] = "the test's 3 MB";
+static MG_HOSTCB const char *census_whose(const void *base, size_t size)
+{
+    (void)size;
+    return base && base == g_census_big ? k_census_big : NULL;
+}
+
 /* The largest free stretches of address space, which the crash report names (mg_host_free_stretches): largest first. */
 static void test_free_stretches(void)
 {
@@ -1897,24 +1906,36 @@ static void test_free_stretches(void)
         (unsigned)s[3], (unsigned)free_mb);
     CHECK(s[0] == largest && s[0] >= s[1] && s[1] >= s[2] && s[2] >= s[3] && s[0] + s[1] + s[2] + s[3] <= free_mb);
     {
-        /* What holds the addresses, by kind: the program's image, and private memory, a 3 MB allocation made here among it. */
+        /*
+         * What holds the addresses, by kind: the program's image, and private memory, a 3 MB allocation made here among it,
+         * named by the owner the census is told (the core's, mg_java.c's address_whose, names the Java heap's arenas, a
+         * library's mappings, Go's runtime's).
+         */
         mg_host_address_kinds k, after;
         void *big = mg_mem_reserve(3u << 20);
         u8 *small = (u8 *)malloc(8u << 20);
         int i;
-        bool seen = false;
+        bool seen = false, named = false;
+        g_census_big = big;
         CHECK(big && mg_mem_commit(big, 3u << 20, MG_PROT_RW) && small);
         if (small) memset(small, 1, 8u << 20);
-        CHECK(mg_host_address_census(&k));
-        for (i = 0; i < k.nsizes; i++) seen = seen || (k.sizes[i].kb == 3072 && k.sizes[i].count >= 1);
+        CHECK(mg_host_address_census(&k, census_whose));
+        for (i = 0; i < k.nsizes; i++)
+            if (k.sizes[i].kb == 3072 && k.sizes[i].count >= 1) {
+                int o;
+                seen = true;
+                for (o = 0; o < MG_ADDRESS_OWNERS; o++) named = named || (k.sizes[i].by[o].whose == k_census_big && k.sizes[i].by[o].count == 1);
+            }
         say("addresses by kind: images %u MB, views %u MB, private %u MB committed and %u reserved; threads the core started %u",
             (unsigned)k.images_mb, (unsigned)k.views_mb, (unsigned)k.private_mb, (unsigned)k.private_reserved_mb, (unsigned)mg_thread_live_count());
         CHECK(k.images_mb > 0 && k.private_mb >= 3 && k.nsizes > 0);
         /* (A 3 MB allocation is among the four sizes holding the most only where little else is; it is said, not checked.) */
         if (!seen) say("  (the 3 MB allocation is not among the four sizes that hold the most here)");
+        else CHECK(named);
         free(small);
         if (big) mg_mem_release(big, 3u << 20);
-        CHECK(mg_host_address_census(&after) && after.private_mb + 3 <= k.private_mb + 1);
+        g_census_big = NULL;
+        CHECK(mg_host_address_census(&after, NULL) && after.private_mb + 3 <= k.private_mb + 1);
     }
 }
 
@@ -3541,10 +3562,11 @@ static void test_go_stack(void)
         CHECK(made - made0 == 1305 && on - on0 >= 500 && on - on0 < made - made0);
     }
 #else
-    CHECK_INT(st.svc_sites, 1);
+    /* (Its calls of three arguments and of six: t_go_syscall3, t_go_syscall6.) */
+    CHECK_INT(st.svc_sites, 2);
 #if MG_ARCH_ARM64
     /* (Led out to the core, as every library's svc on ARM64: arm64/mg_patch_arm64.c.) */
-    CHECK_INT(st.svc_led_out, 1);
+    CHECK_INT(st.svc_led_out, 2);
 #endif
 #endif
     /* prctl by number: the names Go's runtime gives its mappings refused as a kernel without them refuses them (EINVAL),
@@ -3574,6 +3596,44 @@ static void test_go_stack(void)
     FN(go, void (*)(void), "t_go_heap_free")();
 }
 #endif
+
+/*
+ * The reservations Go's runtime makes for its heap as it starts (t_go_reserve: mallocinit's on a 32-bit processor, by
+ * number from the library's code). On a 32-bit host its arena's 516, 260 and 132 MB are refused with ENOMEM
+ * (bionic/mg_libc_mem.c, go_up_front_refused), as WhatsApp's libgojni.so took 516 MB of the phone's 2 GB so; its
+ * metadata's 2.3 MB, the 4 MB its heap then grows by, 60 MB by number and 64 MB through libc's mmap are not refused, and
+ * the 4 MB arena takes writes; 8 MB asked anywhere, as Go asks for its next arena where its hint is not followed, comes lined
+ * up on 4 MB, which Go then uses whole (go_lined_up). On a 64-bit host nothing is refused.
+ */
+static void test_go_reserve(void)
+{
+    mg_lib *go = mg_ld_load("libt_go.so");
+    long out[9];
+    u32 refused0 = 0, refused = 0;
+    u64 bytes0 = 0, bytes = 0;
+    int i;
+    say("guest library: the reservations Go's runtime makes for its heap as it starts");
+    CHECK(go && mg_ld_init(go));
+    if (!go) return;
+    mg_mmap_go_refused(&refused0, &bytes0);
+    CHECK_INT(FN(go, long (*)(long *), "t_go_reserve")(out), 0);
+    mg_mmap_go_refused(&refused, &bytes);
+    say("  the arena of 516, 260 and 132 MB: %ld, %ld, %ld; the heap's first 4 MB at %p; %u reservations refused (%u MB)", out[1], out[2], out[3],
+        (void *)out[4], refused - refused0, (unsigned)((bytes - bytes0) >> 20));
+    for (i = 1; i <= 3; i++) {
+        if (sizeof(void *) == 4) CHECK_INT(out[i], -12);
+        else CHECK((unsigned long)out[i] < (unsigned long)-4095L);
+    }
+    CHECK_INT(refused - refused0, sizeof(void *) == 4 ? 3 : 0);
+    CHECK(bytes - bytes0 == (sizeof(void *) == 4 ? (u64)(908u << 20) : 0));
+    CHECK((unsigned long)out[0] < (unsigned long)-4095L);
+    CHECK(out[4] && !((unsigned long)out[4] & ((4ul << 20) - 1)));
+    CHECK_INT(out[5], 0);
+    CHECK(out[6] != -1);
+    CHECK((unsigned long)out[7] < (unsigned long)-4095L);
+    if (sizeof(void *) == 4) CHECK_INT(out[8], 1);
+    else CHECK(out[8] == 0 || out[8] == 1);
+}
 
 static void test_guest(const char *libdir, const char *scratch)
 {
@@ -3808,6 +3868,7 @@ static void test_guest(const char *libdir, const char *scratch)
 #if !MG_ARCH_X86
     test_go_stack();
 #endif
+    test_go_reserve();
 }
 
 #if MG_ARCH_ARM32

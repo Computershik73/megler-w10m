@@ -206,6 +206,8 @@ void *mg_mem_alloc_watched(size_t size)
     return NULL;
 }
 
+u32 mg_host_last_error(void) { return (u32)errno; }
+
 int mg_mem_written_pages(void *p, size_t size, u32 *out, int max, bool reset)
 {
     (void)p;
@@ -1890,9 +1892,10 @@ bool mg_host_address_space(u32 *free_mb, u32 *largest_free_mb, u32 *reserved_mb,
 
 u32 mg_thread_live_count(void) { return 0; }
 
-bool mg_host_address_census(mg_host_address_kinds *k)
+bool mg_host_address_census(mg_host_address_kinds *k, mg_address_whose_fn whose)
 {
     (void)k;
+    (void)whose;
     return false;
 }
 

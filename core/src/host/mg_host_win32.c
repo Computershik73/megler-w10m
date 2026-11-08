@@ -464,6 +464,7 @@ void mg_mem_release(void *p, size_t size) { (void)size; VirtualFree(p, 0, MEM_RE
 void mg_icache_flush(void *p, size_t size) { FlushInstructionCache(GetCurrentProcess(), p, size); }
 void *mg_mem_alloc(size_t size) { return valloc(NULL, size, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE); }
 void *mg_mem_alloc_watched(size_t size) { return valloc(NULL, size, MEM_RESERVE | MEM_COMMIT | MEM_WRITE_WATCH, PAGE_READWRITE); }
+u32 mg_host_last_error(void) { return (u32)GetLastError(); }
 
 int mg_mem_written_pages(void *p, size_t size, u32 *out, int max, bool reset)
 {
@@ -4750,17 +4751,35 @@ bool mg_host_address_space(u32 *free_mb, u32 *largest_free_mb, u32 *reserved_mb,
     return true;
 }
 
-bool mg_host_address_census(mg_host_address_kinds *k)
+/* A private allocation's owner counted in its size's entry of the census: the first few owners each by name, the rest as none. */
+#define CENSUS_OWNERS 6
+typedef struct census_size {
+    u32 kb, count;
+    struct { const char *whose; u32 count; } by[CENSUS_OWNERS];
+} census_size;
+
+static void census_owner(census_size *s, const char *whose)
+{
+    int i;
+    for (i = 0; i < CENSUS_OWNERS && s->by[i].count && s->by[i].whose != whose; i++) {}
+    if (i == CENSUS_OWNERS) return;
+    s->by[i].whose = whose;
+    s->by[i].count++;
+}
+
+bool mg_host_address_census(mg_host_address_kinds *k, mg_address_whose_fn whose)
 {
     MEMORY_BASIC_INFORMATION info;
     SYSTEM_INFO si;
     u64 images = 0, views = 0, priv = 0, priv_reserved = 0, current = 0;
     void *base = NULL;
-    /* The private allocations by size (64 KB steps), and how many of each. */
-    struct { u32 kb, count; } seen[96];
-    int nseen = 0, i, j;
+    bool guarded = false;
+    /* The private allocations by size (64 KB steps), how many of each, and whose. */
+    census_size seen[96];
+    int nseen = 0, i, j, o;
     mg_addr at, end;
     memset(k, 0, sizeof(*k));
+    memset(seen, 0, sizeof(seen));
     GetNativeSystemInfo(&si);
     at = (mg_addr)si.lpMinimumApplicationAddress;
     end = (mg_addr)si.lpMaximumApplicationAddress;
@@ -4769,11 +4788,18 @@ bool mg_host_address_census(mg_host_address_kinds *k)
         /* An allocation of private memory ends where the next region is not of it. */
         if (base && (!more || info.Type != MEM_PRIVATE || info.State == MEM_FREE || info.AllocationBase != base)) {
             u32 kb = (u32)(((current + 0xFFFF) & ~(u64)0xFFFF) >> 10);
+            const char *owner = whose ? whose(base, (size_t)current) : NULL;
+            /* (A guard page in it and no owner the core knows: a thread's stack, which Windows hands out a page at a time.) */
+            if (!owner && guarded) owner = "thread stacks";
             for (i = 0; i < nseen && seen[i].kb != kb; i++) {}
-            if (i < nseen) seen[i].count++;
-            else if (nseen < (int)MG_COUNT(seen)) seen[nseen].kb = kb, seen[nseen++].count = 1;
+            if (i == nseen && nseen < (int)MG_COUNT(seen)) seen[nseen++].kb = kb;
+            if (i < nseen) {
+                seen[i].count++;
+                census_owner(&seen[i], owner);
+            }
             base = NULL;
             current = 0;
+            guarded = false;
         }
         if (!more) break;
         if (info.State == MEM_COMMIT) {
@@ -4786,6 +4812,7 @@ bool mg_host_address_census(mg_host_address_kinds *k)
         if (info.State != MEM_FREE && info.Type == MEM_PRIVATE) {
             base = info.AllocationBase;
             current += info.RegionSize;
+            if (info.State == MEM_COMMIT && (info.Protect & PAGE_GUARD)) guarded = true;
         }
         at = (mg_addr)info.BaseAddress + info.RegionSize;
     }
@@ -4793,7 +4820,7 @@ bool mg_host_address_census(mg_host_address_kinds *k)
     k->views_mb = (u32)(views >> 20);
     k->private_mb = (u32)(priv >> 20);
     k->private_reserved_mb = (u32)(priv_reserved >> 20);
-    /* The four sizes that hold the most. */
+    /* The four sizes that hold the most, and of each the owners with the most of them (none named: NULL, said as "others"). */
     for (j = 0; j < 4 && nseen; j++) {
         int best = -1;
         for (i = 0; i < nseen; i++)
@@ -4801,6 +4828,15 @@ bool mg_host_address_census(mg_host_address_kinds *k)
         if (best < 0) break;
         k->sizes[j].kb = seen[best].kb;
         k->sizes[j].count = seen[best].count;
+        for (o = 0; o < MG_ADDRESS_OWNERS; o++) {
+            int top = -1, b;
+            for (b = 0; b < CENSUS_OWNERS; b++)
+                if (seen[best].by[b].count && (top < 0 || seen[best].by[b].count > seen[best].by[top].count)) top = b;
+            if (top < 0) break;
+            k->sizes[j].by[o].whose = seen[best].by[top].whose;
+            k->sizes[j].by[o].count = seen[best].by[top].count;
+            seen[best].by[top].count = 0;
+        }
         seen[best].count = 0;
         k->nsizes = j + 1;
     }
