@@ -2720,7 +2720,7 @@ static int run_data(void)
                                             permitted (NetworkSecurityPolicy), a compatibility change's state for the app's target
                                             (CompatChanges), the WebView APK added to the app's resources as a shared library, and
                                             the cameras there are (none, as a device without one says). And Android 13's Safety
-                                            Center's class, whose service is null, as on a device without one. And an intent
+                                            Center's manager, there and saying it is off, as on a phone without one. And an intent
                                             written in XML, read as AndroidX's preferences read theirs (Intent.parseIntent). */
                                          "user-handle",
                                          "cleartext",

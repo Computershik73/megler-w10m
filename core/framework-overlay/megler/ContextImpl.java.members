@@ -54,3 +54,8 @@
     @Override public void sendOrderedBroadcastAsUser(android.content.Intent i, android.os.UserHandle u, String perm, int appOp, android.os.Bundle options, android.content.BroadcastReceiver r, android.os.Handler h, int code, String data, android.os.Bundle extras) {
         Broadcasts.sendOrdered(this, i, perm, r, h, code, data, extras);
     }
+    // Android 13's Safety Center's manager under its service name (Context.SAFETY_CENTER_SERVICE), as Android 13 and later
+    // register it on every phone, the Safety Center itself off on one without it: getSystemService(SafetyCenterManager.class)
+    // and getSystemService("safety_center") give one (made by byReflection), whose isSafetyCenterEnabled() is false
+    // (android/safetycenter/SafetyCenterManager.java says who asks). They gave null.
+    static { sNames.put(android.safetycenter.SafetyCenterManager.class, SAFETY_CENTER_SERVICE); }

@@ -4011,15 +4011,19 @@ public class Main extends Activity {
     }
 
     /**
-     * Android 13's Safety Center, as a device without one has it: the class is there, and Context.getSystemService of it is
-     * null (Play Store asks so on its sign-in screen, and ended on a NoClassDefFoundError where the class was missing).
+     * Android 13's Safety Center, as Android 13 and later have it on a phone without one: the class is there (Play Store asks
+     * for it on its sign-in screen, and ended on a NoClassDefFoundError where it was missing), Context.getSystemService gives
+     * the manager, by its class and by its name, and it says Safety Center is off (Google Play services 26 takes the manager
+     * with a null check that throws, on Android 14, before it asks isSafetyCenterEnabled).
      */
     private void safetyCenter() {
         step("safety-center", () -> {
             Class<?> c = Class.forName("android.safetycenter.SafetyCenterManager");
             Object m = getSystemService(c);
-            detail = "class=" + c.getName() + " service=" + m;
-            return m == null;
+            Object byName = getSystemService("safety_center");
+            Object enabled = m == null ? null : c.getMethod("isSafetyCenterEnabled").invoke(m);
+            detail = "class=" + c.getName() + " service=" + m + " by name=" + byName + " enabled=" + enabled;
+            return m != null && c.isInstance(m) && byName == m && Boolean.FALSE.equals(enabled);
         });
     }
 
