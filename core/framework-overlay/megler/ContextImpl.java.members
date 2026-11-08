@@ -22,19 +22,20 @@
     // The broadcasts with a result receiver, with options or a user, which the original's Context left doing nothing: each
     // to the receivers as sendBroadcast sends it, an ordered one in turn, its result from one to the next and at the end to
     // its result receiver (megler.Broadcasts.sendOrdered). Play Store sends its own receivers one as it takes an install up.
-    // The user, the app-op and the options do not matter here: there is one user, and every broadcast is the app's own.
+    // The user and the app-op do not matter here: there is one user, and every broadcast is the app's own. The options say
+    // whether the receivers are told who sent it (BroadcastOptions.setShareIdentityEnabled, megler.Broadcasts.sharedSender).
     @Override public void sendBroadcast(android.content.Intent i, String perm, int appOp) { Broadcasts.send(this, i, perm); }
-    @Override public void sendBroadcast(android.content.Intent i, String perm, android.os.Bundle options) { Broadcasts.send(this, i, perm); }
+    @Override public void sendBroadcast(android.content.Intent i, String perm, android.os.Bundle options) { Broadcasts.send(this, i, perm, options); }
     @Override public void sendBroadcastAsUser(android.content.Intent i, android.os.UserHandle u) { Broadcasts.send(this, i); }
     @Override public void sendBroadcastAsUser(android.content.Intent i, android.os.UserHandle u, String perm) { Broadcasts.send(this, i, perm); }
     @Override public void sendBroadcastAsUser(android.content.Intent i, android.os.UserHandle u, String perm, int appOp) { Broadcasts.send(this, i, perm); }
-    @Override public void sendBroadcastAsUser(android.content.Intent i, android.os.UserHandle u, String perm, android.os.Bundle options) { Broadcasts.send(this, i, perm); }
-    @Override public void sendOrderedBroadcast(android.content.Intent i, String perm, android.os.Bundle options) { Broadcasts.sendOrdered(this, i, perm, null, null, 0, null, null); }
+    @Override public void sendBroadcastAsUser(android.content.Intent i, android.os.UserHandle u, String perm, android.os.Bundle options) { Broadcasts.send(this, i, perm, options); }
+    @Override public void sendOrderedBroadcast(android.content.Intent i, String perm, android.os.Bundle options) { Broadcasts.sendOrdered(this, i, perm, options, null, null, 0, null, null); }
     @Override public void sendOrderedBroadcast(android.content.Intent i, String perm, android.content.BroadcastReceiver r, android.os.Handler h, int code, String data, android.os.Bundle extras) {
         Broadcasts.sendOrdered(this, i, perm, r, h, code, data, extras);
     }
     @Override public void sendOrderedBroadcast(android.content.Intent i, String perm, android.os.Bundle options, android.content.BroadcastReceiver r, android.os.Handler h, int code, String data, android.os.Bundle extras) {
-        Broadcasts.sendOrdered(this, i, perm, r, h, code, data, extras);
+        Broadcasts.sendOrdered(this, i, perm, options, r, h, code, data, extras);
     }
     @Override public void sendOrderedBroadcast(android.content.Intent i, String perm, String appOp, android.content.BroadcastReceiver r, android.os.Handler h, int code, String data, android.os.Bundle extras) {
         Broadcasts.sendOrdered(this, i, perm, r, h, code, data, extras);
@@ -43,7 +44,7 @@
         Broadcasts.sendOrdered(this, i, perm, r, h, code, data, extras);
     }
     @Override public void sendOrderedBroadcast(android.content.Intent i, int code, String perm, String appOp, android.content.BroadcastReceiver r, android.os.Handler h, String data, android.os.Bundle extras, android.os.Bundle options) {
-        Broadcasts.sendOrdered(this, i, perm, r, h, code, data, extras);
+        Broadcasts.sendOrdered(this, i, perm, options, r, h, code, data, extras);
     }
     @Override public void sendOrderedBroadcastAsUser(android.content.Intent i, android.os.UserHandle u, String perm, android.content.BroadcastReceiver r, android.os.Handler h, int code, String data, android.os.Bundle extras) {
         Broadcasts.sendOrdered(this, i, perm, r, h, code, data, extras);
@@ -52,7 +53,7 @@
         Broadcasts.sendOrdered(this, i, perm, r, h, code, data, extras);
     }
     @Override public void sendOrderedBroadcastAsUser(android.content.Intent i, android.os.UserHandle u, String perm, int appOp, android.os.Bundle options, android.content.BroadcastReceiver r, android.os.Handler h, int code, String data, android.os.Bundle extras) {
-        Broadcasts.sendOrdered(this, i, perm, r, h, code, data, extras);
+        Broadcasts.sendOrdered(this, i, perm, options, r, h, code, data, extras);
     }
     // Android 13's Safety Center's manager under its service name (Context.SAFETY_CENTER_SERVICE), as Android 13 and later
     // register it on every phone, the Safety Center itself off on one without it: getSystemService(SafetyCenterManager.class)

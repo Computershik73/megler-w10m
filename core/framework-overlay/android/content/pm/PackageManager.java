@@ -31,6 +31,11 @@
 // And getResourcesForApplication("android") is the platform's resources alone, a Resources of their own
 // (Resources.meglerPlatform), as Android gives framework-res.apk's: it gave the app's own Resources, to which Google Play
 // services' DynamiteLoader then added a module's resources (Resources.addLoaders) over the app's.
+// And Android 13's calls with a flags object (ResolveInfoFlags, ComponentInfoFlags, PackageInfoFlags, ApplicationInfoFlags)
+// are the calls with an int, the flags passed on: some passed 0 (getInstalledPackages gave no signatures asked for so),
+// and queryIntentServices, resolveService, resolveContentProvider, queryBroadcastReceivers, getReceiverInfo,
+// getProviderInfo, getPackageUid, getInstalledApplications and queryContentProviders with one were stubs that found
+// nothing -- Facebook Lite's queryIntentServices and resolveContentProvider, and Messenger's resolveContentProvider.
 package android.content.pm;
 
 import android.content.ComponentName;
@@ -153,7 +158,9 @@ public class PackageManager {
         }
         return ApplicationInfo.self();
     }
-    public ApplicationInfo getApplicationInfo(String pkg, ApplicationInfoFlags flags) throws NameNotFoundException { return getApplicationInfo(pkg, 0); }
+    /* Android 13's calls with a flags object are the calls with an int, the flags passed on (each gave 0, or was a stub that
+       found nothing: Facebook Lite's queryIntentServices and resolveContentProvider, Messenger's resolveContentProvider). */
+    public ApplicationInfo getApplicationInfo(String pkg, ApplicationInfoFlags flags) throws NameNotFoundException { return getApplicationInfo(pkg, (int) flags.getValue()); }
     public ActivityInfo getActivityInfo(ComponentName c, int flags) throws NameNotFoundException {
         if (!mine(c.getPackageName())) {
             // An activity of Google Play services, which runs here (megler.MicroG.activity): as GmsCore's manifest describes it.
@@ -168,10 +175,12 @@ public class PackageManager {
         if (m == null) throw new NameNotFoundException(c.toString());
         return activity(m);
     }
-    public ActivityInfo getActivityInfo(ComponentName c, ComponentInfoFlags flags) throws NameNotFoundException { return getActivityInfo(c, 0); }
+    public ActivityInfo getActivityInfo(ComponentName c, ComponentInfoFlags flags) throws NameNotFoundException { return getActivityInfo(c, (int) flags.getValue()); }
+    public ActivityInfo getReceiverInfo(ComponentName c, ComponentInfoFlags flags) throws NameNotFoundException { return getReceiverInfo(c, (int) flags.getValue()); }
+    public ProviderInfo getProviderInfo(ComponentName c, ComponentInfoFlags flags) throws NameNotFoundException { return getProviderInfo(c, (int) flags.getValue()); }
     public ActivityInfo getReceiverInfo(ComponentName c, int flags) throws NameNotFoundException { for (megler.Manifest.Component r : megler.Manifest.receivers) if (r.name.equals(c.getClassName())) return activity(r); throw new NameNotFoundException(c.toString()); }
     public ServiceInfo getServiceInfo(ComponentName c, int flags) throws NameNotFoundException { ServiceInfo external = megler.MicroG.resolve(new Intent().setComponent(c)); if (external != null) return external; for (megler.Manifest.Component s : megler.Manifest.services) if (s.name.equals(c.getClassName())) return service(s); throw new NameNotFoundException(c.toString()); }
-    public ServiceInfo getServiceInfo(ComponentName c, ComponentInfoFlags flags) throws NameNotFoundException { return getServiceInfo(c, 0); }
+    public ServiceInfo getServiceInfo(ComponentName c, ComponentInfoFlags flags) throws NameNotFoundException { return getServiceInfo(c, (int) flags.getValue()); }
     public ProviderInfo getProviderInfo(ComponentName c, int flags) throws NameNotFoundException { for (megler.Manifest.Component p : megler.Manifest.providers) if (p.name.equals(c.getClassName())) return provider(p); throw new NameNotFoundException(c.toString()); }
     public ProviderInfo resolveContentProvider(String authority, int flags) {
         // The app's own first: asked for one of its providers, Google Play services were read whole for theirs (2.7 s and more
@@ -191,7 +200,9 @@ public class PackageManager {
             if (p.authority != null && java.util.Arrays.asList(p.authority.split(";")).contains(authority)) return p;
         return null;
     }
+    public ProviderInfo resolveContentProvider(String authority, ComponentInfoFlags flags) { return resolveContentProvider(authority, (int) flags.getValue()); }
     public List<ProviderInfo> queryContentProviders(String process, int uid, int flags) { ArrayList<ProviderInfo> l = new ArrayList<>(); for (megler.Manifest.Component p : megler.Manifest.providers) l.add(provider(p)); return l; }
+    public List<ProviderInfo> queryContentProviders(String process, int uid, ComponentInfoFlags flags) { return queryContentProviders(process, uid, (int) flags.getValue()); }
     public boolean hasSystemFeature(String name) { return hasSystemFeature(name, 0); }
     public boolean hasSystemFeature(String name, int version) {
         if (name == null) return false;
@@ -314,10 +325,12 @@ public class PackageManager {
         }
         return l;
     }
-    public List<ResolveInfo> queryIntentActivities(Intent i, ResolveInfoFlags flags) { return queryIntentActivities(i, 0); }
+    public List<ResolveInfo> queryIntentActivities(Intent i, ResolveInfoFlags flags) { return queryIntentActivities(i, (int) flags.getValue()); }
     public ResolveInfo resolveActivity(Intent i, int flags) { List<ResolveInfo> l = queryIntentActivities(i, flags); return l.isEmpty() ? null : l.get(0); }
-    public ResolveInfo resolveActivity(Intent i, ResolveInfoFlags flags) { return resolveActivity(i, 0); }
+    public ResolveInfo resolveActivity(Intent i, ResolveInfoFlags flags) { return resolveActivity(i, (int) flags.getValue()); }
     public ResolveInfo resolveService(Intent i, int flags) { List<ResolveInfo> l = queryIntentServices(i, flags); return l.isEmpty() ? null : l.get(0); }
+    public ResolveInfo resolveService(Intent i, ResolveInfoFlags flags) { return resolveService(i, (int) flags.getValue()); }
+    public List<ResolveInfo> queryIntentServices(Intent i, ResolveInfoFlags flags) { return queryIntentServices(i, (int) flags.getValue()); }
     /** The app's own services the intent reaches; and an intent meant for Google Play services (push registration, its APIs)
      *  resolves to it, as it is installed (megler.GooglePackages) -- apps take the first answer without checking for none. */
     public List<ResolveInfo> queryIntentServices(Intent i, int flags) {
@@ -342,7 +355,9 @@ public class PackageManager {
         for (megler.Manifest.Component c : megler.Manifest.match(megler.Manifest.receivers, i)) { ResolveInfo r = new ResolveInfo(); r.activityInfo = activity(c); l.add(r); }
         return l;
     }
+    public List<ResolveInfo> queryBroadcastReceivers(Intent i, ResolveInfoFlags flags) { return queryBroadcastReceivers(i, (int) flags.getValue()); }
     public List<ResolveInfo> queryIntentContentProviders(Intent i, int flags) { return new ArrayList<>(); }
+    public List<ResolveInfo> queryIntentContentProviders(Intent i, ResolveInfoFlags flags) { return queryIntentContentProviders(i, (int) flags.getValue()); }
     public Intent getLaunchIntentForPackage(String pkg) {
         if (!mine(pkg)) {
             megler.PhoneApps.App other = megler.PhoneApps.find(pkg);
@@ -359,7 +374,8 @@ public class PackageManager {
         for (megler.PhoneApps.App a : megler.PhoneApps.all()) l.add(megler.PhoneApps.packageInfo(a, flags));
         return l;
     }
-    public List<PackageInfo> getInstalledPackages(PackageInfoFlags flags) { return getInstalledPackages(0); }
+    public List<PackageInfo> getInstalledPackages(PackageInfoFlags flags) { return getInstalledPackages((int) flags.getValue()); }
+    public List<ApplicationInfo> getInstalledApplications(ApplicationInfoFlags flags) { return getInstalledApplications((int) flags.getValue()); }
     public List<ApplicationInfo> getInstalledApplications(int flags) {
         ArrayList<ApplicationInfo> l = new ArrayList<>();
         l.add(ApplicationInfo.self());
@@ -403,6 +419,7 @@ public class PackageManager {
         return null;
     }
     public int getPackageUid(String pkg, int flags) throws NameNotFoundException { if (!mine(pkg) && megler.GooglePackages.is(pkg)) return megler.GooglePackages.applicationInfo(pkg).uid; if (!mine(pkg)) { megler.PhoneApps.App a = megler.PhoneApps.find(pkg); if (a != null) return a.uid; throw new NameNotFoundException(pkg); } return android.os.Process.myUid(); }
+    public int getPackageUid(String pkg, PackageInfoFlags flags) throws NameNotFoundException { return getPackageUid(pkg, (int) flags.getValue()); }
     /* components the app enabled or disabled (Instagram turns its own on in stages and checks each took), kept across launches */
     private static java.util.Properties sStates;
     private static synchronized java.util.Properties states() {
@@ -988,7 +1005,6 @@ public class PackageManager {
     public android.content.ComponentName getHomeActivities(java.util.List p0) { return null; }
     public java.lang.String getIncidentReportApproverPackageName() { return null; }
     public int getInstallReason(java.lang.String p0, android.os.UserHandle p1) { return 0; }
-    public java.util.List getInstalledApplications(android.content.pm.PackageManager.ApplicationInfoFlags p0) { return new java.util.ArrayList(); }
     public java.util.List getInstalledApplicationsAsUser(int p0, int p1) { return new java.util.ArrayList(); }
     public java.util.List getInstalledApplicationsAsUser(android.content.pm.PackageManager.ApplicationInfoFlags p0, int p1) { return new java.util.ArrayList(); }
     public java.util.List getInstalledModules(int p0) { return new java.util.ArrayList(); }
@@ -1019,7 +1035,6 @@ public class PackageManager {
     public android.content.pm.PackageInfo getPackageInfo(android.content.pm.VersionedPackage p0, android.content.pm.PackageManager.PackageInfoFlags p1) { return null; }
     public android.content.pm.PackageInfo getPackageInfoAsUser(java.lang.String p0, int p1, int p2) { return null; }
     public android.content.pm.PackageInfo getPackageInfoAsUser(java.lang.String p0, android.content.pm.PackageManager.PackageInfoFlags p1, int p2) { return null; }
-    public int getPackageUid(java.lang.String p0, android.content.pm.PackageManager.PackageInfoFlags p1) { return 0; }
     public int getPackageUidAsUser(java.lang.String p0, int p1) { return 0; }
     public int getPackageUidAsUser(java.lang.String p0, int p1, int p2) { return 0; }
     public int getPackageUidAsUser(java.lang.String p0, android.content.pm.PackageManager.PackageInfoFlags p1, int p2) { return 0; }
@@ -1036,8 +1051,6 @@ public class PackageManager {
     public android.content.pm.PackageManager.Property getProperty(java.lang.String p0, android.content.ComponentName p1) { return null; }
     public android.content.pm.PackageManager.Property getProperty(java.lang.String p0, java.lang.String p1) { return null; }
     public android.content.pm.PackageManager.Property getPropertyAsUser(java.lang.String p0, java.lang.String p1, java.lang.String p2, int p3) { return null; }
-    public android.content.pm.ProviderInfo getProviderInfo(android.content.ComponentName p0, android.content.pm.PackageManager.ComponentInfoFlags p1) { return null; }
-    public android.content.pm.ActivityInfo getReceiverInfo(android.content.ComponentName p0, android.content.pm.PackageManager.ComponentInfoFlags p1) { return null; }
     public android.content.res.Resources getResourcesForApplication(android.content.pm.ApplicationInfo p0, android.content.res.Configuration p1) { return null; }
     public android.content.res.Resources getResourcesForApplicationAsUser(java.lang.String p0, int p1) { return null; }
     public java.lang.String getRotationResolverPackageName() { return null; }
@@ -1091,13 +1104,11 @@ public class PackageManager {
     public java.util.List queryActivityProperty(java.lang.String p0) { return new java.util.ArrayList(); }
     public java.util.List queryApplicationProperty(java.lang.String p0) { return new java.util.ArrayList(); }
     public java.util.List queryBroadcastReceivers(android.content.Intent p0, int p1, int p2) { return new java.util.ArrayList(); }
-    public java.util.List queryBroadcastReceivers(android.content.Intent p0, android.content.pm.PackageManager.ResolveInfoFlags p1) { return new java.util.ArrayList(); }
     public java.util.List queryBroadcastReceiversAsUser(android.content.Intent p0, int p1, int p2) { return new java.util.ArrayList(); }
     public java.util.List queryBroadcastReceiversAsUser(android.content.Intent p0, int p1, android.os.UserHandle p2) { return new java.util.ArrayList(); }
     public java.util.List queryBroadcastReceiversAsUser(android.content.Intent p0, android.content.pm.PackageManager.ResolveInfoFlags p1, int p2) { return new java.util.ArrayList(); }
     public java.util.List queryBroadcastReceiversAsUser(android.content.Intent p0, android.content.pm.PackageManager.ResolveInfoFlags p1, android.os.UserHandle p2) { return new java.util.ArrayList(); }
     public java.util.List queryContentProviders(java.lang.String p0, int p1, int p2, java.lang.String p3) { return new java.util.ArrayList(); }
-    public java.util.List queryContentProviders(java.lang.String p0, int p1, android.content.pm.PackageManager.ComponentInfoFlags p2) { return new java.util.ArrayList(); }
     public java.util.List queryContentProviders(java.lang.String p0, int p1, android.content.pm.PackageManager.ComponentInfoFlags p2, java.lang.String p3) { return new java.util.ArrayList(); }
     public java.util.List queryInstrumentation(java.lang.String p0, int p1) { return new java.util.ArrayList(); }
     public java.util.List queryIntentActivitiesAsUser(android.content.Intent p0, int p1, int p2) { return new java.util.ArrayList(); }
@@ -1106,12 +1117,10 @@ public class PackageManager {
     public java.util.List queryIntentActivitiesAsUser(android.content.Intent p0, android.content.pm.PackageManager.ResolveInfoFlags p1, android.os.UserHandle p2) { return new java.util.ArrayList(); }
     public java.util.List queryIntentActivityOptions(android.content.ComponentName p0, java.util.List p1, android.content.Intent p2, android.content.pm.PackageManager.ResolveInfoFlags p3) { return new java.util.ArrayList(); }
     public java.util.List queryIntentActivityOptions(android.content.ComponentName p0, android.content.Intent[] p1, android.content.Intent p2, int p3) { return new java.util.ArrayList(); }
-    public java.util.List queryIntentContentProviders(android.content.Intent p0, android.content.pm.PackageManager.ResolveInfoFlags p1) { return new java.util.ArrayList(); }
     public java.util.List queryIntentContentProvidersAsUser(android.content.Intent p0, int p1, int p2) { return new java.util.ArrayList(); }
     public java.util.List queryIntentContentProvidersAsUser(android.content.Intent p0, int p1, android.os.UserHandle p2) { return new java.util.ArrayList(); }
     protected java.util.List queryIntentContentProvidersAsUser(android.content.Intent p0, android.content.pm.PackageManager.ResolveInfoFlags p1, int p2) { return new java.util.ArrayList(); }
     public java.util.List queryIntentContentProvidersAsUser(android.content.Intent p0, android.content.pm.PackageManager.ResolveInfoFlags p1, android.os.UserHandle p2) { return new java.util.ArrayList(); }
-    public java.util.List queryIntentServices(android.content.Intent p0, android.content.pm.PackageManager.ResolveInfoFlags p1) { return new java.util.ArrayList(); }
     public java.util.List queryIntentServicesAsUser(android.content.Intent p0, int p1, int p2) { return new java.util.ArrayList(); }
     public java.util.List queryIntentServicesAsUser(android.content.Intent p0, int p1, android.os.UserHandle p2) { return new java.util.ArrayList(); }
     public java.util.List queryIntentServicesAsUser(android.content.Intent p0, android.content.pm.PackageManager.ResolveInfoFlags p1, int p2) { return new java.util.ArrayList(); }
@@ -1137,11 +1146,9 @@ public class PackageManager {
     public android.content.pm.ResolveInfo resolveActivityAsUser(android.content.Intent p0, android.content.pm.PackageManager.ResolveInfoFlags p1, int p2) { return null; }
     public android.content.pm.ResolveInfo resolveActivityAsUser(android.content.Intent p0, java.lang.String p1, int p2, int p3) { return null; }
     public android.content.pm.ResolveInfo resolveActivityAsUser(android.content.Intent p0, java.lang.String p1, android.content.pm.PackageManager.ResolveInfoFlags p2, int p3) { return null; }
-    public android.content.pm.ProviderInfo resolveContentProvider(java.lang.String p0, android.content.pm.PackageManager.ComponentInfoFlags p1) { return null; }
     public android.content.pm.ProviderInfo resolveContentProviderAsUser(java.lang.String p0, int p1, int p2) { return null; }
     public android.content.pm.ProviderInfo resolveContentProviderAsUser(java.lang.String p0, android.content.pm.PackageManager.ComponentInfoFlags p1, int p2) { return null; }
     public android.content.pm.ProviderInfo resolveContentProviderForUid(java.lang.String p0, android.content.pm.PackageManager.ComponentInfoFlags p1, int p2) { return null; }
-    public android.content.pm.ResolveInfo resolveService(android.content.Intent p0, android.content.pm.PackageManager.ResolveInfoFlags p1) { return null; }
     public android.content.pm.ResolveInfo resolveServiceAsUser(android.content.Intent p0, int p1, int p2) { return null; }
     public android.content.pm.ResolveInfo resolveServiceAsUser(android.content.Intent p0, android.content.pm.PackageManager.ResolveInfoFlags p1, int p2) { return null; }
     public void revokeRuntimePermission(java.lang.String p0, java.lang.String p1, android.os.UserHandle p2) {}

@@ -17,6 +17,9 @@
 // reference into the table is now a mark word and the index, and a typed reader that finds no mark reads Android's layout.
 // And readBundle with a class loader gives the bundle that loader (Bundle.setClassLoader makes its objects of another
 // class scope again as the loader's, as Android unparcels a bundle with its loader).
+// And the bytes marshall gives carry the table of objects with them, and unmarshall gives a parcel its table back (see
+// marshall): Facebook keeps an activity's Parcelables as their marshalled bytes, and Messenger, restoring one in a parcel of
+// its own, read null for every object in it and ended.
 // Everything else is the original's, unchanged.
 package android.os;
 
@@ -50,10 +53,53 @@ public final class Parcel {
     private int put(int n) { int at = mPos; grow(at + n); mPos = at + n; if (mPos > mSize) mSize = mPos; return at; }
     private int take(int n) { int at = mPos; if (at + n > mSize) { mPos = mSize; return -1; } mPos = at + n; return at; }
     private static int pad(int n) { return (n + 3) & ~3; }
-    public byte[] marshall() { return java.util.Arrays.copyOf(mBuf, mSize); }
-    public void marshall(java.nio.ByteBuffer b) { b.put(mBuf, 0, mSize); }
-    public void unmarshall(byte[] d, int off, int len) { grow(len); System.arraycopy(d, off, mBuf, 0, len); mSize = len; mPos = 0; }
-    public void unmarshall(java.nio.ByteBuffer b) { int len = b.remaining(); grow(len); b.get(mBuf, 0, len); mSize = len; mPos = 0; }
+    /*
+     * marshall() and unmarshall(): the parcel's bytes, and with them its table of objects (lists, maps, bundles, Parcelables,
+     * CharSequences: whatever writeObj kept), which the bytes only point into. A parcel with objects is marshalled to its
+     * bytes and a trailer of 16 bytes -- a mark, a number, the objects' count, a mark -- and the table is kept under that
+     * number (MARSHALLED, at most MARSHALLED_KEPT of them, the oldest let go first); unmarshall takes the trailer off,
+     * and the parcel has the same objects again. Bytes without objects are as before, with no trailer. The objects went
+     * with the parcel that wrote them, and a parcel unmarshalled from its bytes read nulls where they had been: Facebook
+     * keeps an activity's Parcelables as their marshalled bytes (com.facebook.base.activity.parcel.OpaqueParcelable,
+     * restored by unmarshall and its creator), and Messenger, opening a conversation, read null for the list a photo
+     * editor's layers had been written as, "Failed to restore", and ended ("Required value was null", in its composer's
+     * camera configuration, 0.1.0.673). Bytes kept past the process (a file) find no table; their objects read as nulls,
+     * as before.
+     */
+    private static final int MARSHALL_MARK = 0x8C0FFEE2, MARSHALL_END = 0x726C676D, MARSHALLED_KEPT = 16384;
+    private static final java.util.LinkedHashMap<Integer, Object[]> MARSHALLED = new java.util.LinkedHashMap<Integer, Object[]>(64, 0.75f, true) {
+        @Override protected boolean removeEldestEntry(Map.Entry<Integer, Object[]> e) { return size() > MARSHALLED_KEPT; }
+    };
+    private static int sMarshalls = (int) System.nanoTime();
+    private static int word(byte[] b, int at) { return (b[at] & 255) | (b[at + 1] & 255) << 8 | (b[at + 2] & 255) << 16 | (b[at + 3] & 255) << 24; }
+    private static void putWord(byte[] b, int at, int v) { b[at] = (byte) v; b[at + 1] = (byte) (v >> 8); b[at + 2] = (byte) (v >> 16); b[at + 3] = (byte) (v >> 24); }
+    public byte[] marshall() {
+        if (mObjects.isEmpty()) return java.util.Arrays.copyOf(mBuf, mSize);
+        int key;
+        synchronized (MARSHALLED) {
+            key = ++sMarshalls;
+            MARSHALLED.put(key, mObjects.toArray());
+        }
+        byte[] out = java.util.Arrays.copyOf(mBuf, mSize + 16);
+        putWord(out, mSize, MARSHALL_MARK);
+        putWord(out, mSize + 4, key);
+        putWord(out, mSize + 8, mObjects.size());
+        putWord(out, mSize + 12, MARSHALL_END);
+        return out;
+    }
+    public void marshall(java.nio.ByteBuffer b) { b.put(marshall()); }
+    public void unmarshall(byte[] d, int off, int len) { grow(len); System.arraycopy(d, off, mBuf, 0, len); mSize = len; mPos = 0; unmarshalled(); }
+    public void unmarshall(java.nio.ByteBuffer b) { int len = b.remaining(); grow(len); b.get(mBuf, 0, len); mSize = len; mPos = 0; unmarshalled(); }
+    /* The table of the bytes just unmarshalled: what their trailer names, the trailer taken off; none without one. */
+    private void unmarshalled() {
+        mObjects.clear();
+        if (mSize < 16 || word(mBuf, mSize - 4) != MARSHALL_END || word(mBuf, mSize - 16) != MARSHALL_MARK) return;
+        int key = word(mBuf, mSize - 12), n = word(mBuf, mSize - 8);
+        mSize -= 16;
+        Object[] objects;
+        synchronized (MARSHALLED) { objects = MARSHALLED.get(key); }
+        if (objects != null && objects.length == n) mObjects.addAll(java.util.Arrays.asList(objects));
+    }
     public void appendFrom(Parcel p, int off, int len) {
         int at = put(len); System.arraycopy(p.mBuf, off, mBuf, at, len);
         if (!p.mObjects.isEmpty()) { /* references in the copied range keep pointing into p's table: copy it whole, shifted */

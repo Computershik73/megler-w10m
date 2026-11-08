@@ -168,9 +168,21 @@ public class MainActivity extends Activity {
     private int backs;
     @Override
     public void onBackPressed() {
-        // The third Back is taken as CoolReader takes it: the activity finished a moment later, and the app ends.
+        // The third Back goes home as Facebook's does on its sign-in and first-run screens: the phone's home screen looked for
+        // among the activities of other apps -- none of this one's is it -- and started. The app goes to the back.
         if (++backs == 3) {
-            Log.i("HelloTest", "back 3 finishes in 100 ms");
+            android.content.Intent home = new android.content.Intent(android.content.Intent.ACTION_MAIN).addCategory(android.content.Intent.CATEGORY_HOME)
+                    .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK);
+            int mine = 0;
+            for (android.content.pm.ResolveInfo r : getPackageManager().queryIntentActivities(home, 0))
+                if (getPackageName().equals(r.activityInfo.packageName)) mine++;
+            Log.i("HelloTest", "back 3 goes home, this app's activities for it: " + mine);
+            startActivity(home);
+            return;
+        }
+        // The fourth is taken as CoolReader takes it: the activity finished a moment later, and the app ends.
+        if (backs == 4) {
+            Log.i("HelloTest", "back 4 finishes in 100 ms");
             new Handler().postDelayed(this::finish, 100);
             return;
         }

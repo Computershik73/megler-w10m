@@ -24,6 +24,16 @@ public class Top extends Activity {
         text.setText("top " + step);
         setContentView(text);
         Log.i("CrashTest", "top onCreate " + step);
+        // Started without a result: no caller to answer, as on Android (getCallingActivity, getCallingPackage), though the
+        // app launched it (Android 14's getLaunchedFromPackage and getLaunchedFromUid).
+        String launched;
+        try {
+            launched = android.app.Activity.class.getMethod("getLaunchedFromPackage").invoke(this) + " uid="
+                    + ((Integer) android.app.Activity.class.getMethod("getLaunchedFromUid").invoke(this) == android.os.Process.myUid() ? "mine" : "other");
+        } catch (ReflectiveOperationException e) {
+            launched = e.toString();
+        }
+        Log.i("CrashTest", "top caller=" + getCallingActivity() + " package=" + getCallingPackage() + " launched=" + launched);
     }
 
     @Override

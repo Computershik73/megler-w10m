@@ -1073,6 +1073,24 @@ result: Play Store sends its own receivers one when it takes an install up. The
 data app's step "ordered-broadcast" checks the order, the result passed on and
 added to from another thread, and the result receiver's thread.
 
+**Who sent a broadcast.** Android 14 tells a receiver who sent the broadcast
+(`BroadcastReceiver.getSentFromUid` and `getSentFromPackage`, and its
+`PendingResult`'s) when the sender shared it:
+`BroadcastOptions.makeBasic().setShareIdentityEnabled(true)`, whose
+`toBundle()` goes with the broadcast (`sendBroadcast(intent, permission,
+options)`, the ordered ones' overloads with options). The options' bundle
+came back empty here and both methods said no one, ever: Messenger sends its
+own receivers its broadcasts with its identity shared, and refused each one
+that came from no one ("InternalIntentScope: Access denied. ...
+StellaContactBroadcastReceiver cannot receive broadcasts from null", 21 times
+in a user's run of 673). The options now go into their bundle and come back
+out of it (the overlay's `BroadcastOptions`), and every receiver hears a
+broadcast with a `PendingResult` of its own (`megler.Broadcasts`), which has
+the sender -- the sending context's uid and package (`sharedSender`) --
+where the options share it, and no one (`Process.INVALID_UID`, null) where
+they do not, as on Android. The data app's step "broadcast-identity" sends
+with the identity shared, with options that do not share it, and with none.
+
 ### The time zone (the runtime on libcore and the app, under qemu-arm)
 
 The shell names the phone's time zone before it starts an app
@@ -5822,6 +5840,33 @@ on a looper thread of its own and takes it back with `next()`.
   main thread a message later, never ran ("No responseUri present", 576).
   The crash app's `Gate` posts work from its `onPause` as it finishes, which
   finds it not destroyed.
+  And an intent for the phone's home screen, `ACTION_MAIN` with
+  `CATEGORY_HOME` (an app sending itself home), sends the app to the back as
+  `moveTaskToBack` does (`AppRunner.isHome`): the launcher coming in front
+  on Android is Windows' Start coming in front here, and nothing of the app
+  finishes. There was no home: the intent found the app's own launcher
+  activity, because the manifest's filters were matched without their
+  categories (`megler.Manifest.matches` now wants every category of the
+  intent in the filter, as `IntentFilter.matchCategories`). Facebook's Back
+  on Facebook Lite's sign-in screen and on Messenger's first-run screen goes
+  home through its launcher of activities of other signatures
+  (`DifferentKeyIntentScope`); it removed that one as its own, found nothing
+  else ("No matching different-signature components", twice), and went on as
+  without a home: Facebook Lite ended its process at its sign-in screen's
+  Back (status 0, three runs of a user's on 673), and Messenger finished its
+  first-run screen (`NeueNuxActivity`), its main activity below finished as
+  well, and the app ended. The hello app's third Back goes home so (none of
+  its own activities is the home) and the app goes to the back; the data
+  app's step "intent-categories" resolves the home, the launcher's intent and
+  an unknown category.
+
+- `android/app/Activity.java`, `getCallingActivity` and `getCallingPackage`:
+  who started the activity for a result, which its `setResult` answers, and
+  nobody when it was started without one, as on Android; they named whoever
+  started it. Android 14's `getLaunchedFromPackage` and `getLaunchedFromUid`
+  name the app itself for an activity it launched, for a result or not. The
+  crash app's `Gate`, started for a result, has `First` for its caller; its
+  `Top`, started without one, has none.
 
 - `android/widget/LinearLayout.java`, four statements: what a child with a
   weight and a size of 0 is given when the layout's own size is not exact.
@@ -6111,6 +6156,27 @@ on a looper thread of its own and takes it back with `next()`.
   and a file's descriptor, closes the originals, writes through the
   duplicate, detaches it and adopts it again.
 
+- `android/os/Parcel.java`, `marshall` and `unmarshall`, which carry the
+  parcel's table of objects with its bytes. A parcel here keeps what
+  Android would write out as bytes -- lists, maps, bundles, Parcelables,
+  CharSequences -- as objects in a table, and its bytes hold their numbers
+  in it. `marshall` gave the bytes alone, and a parcel unmarshalled from them
+  had no table: every object read back as null. Facebook keeps an activity's
+  Parcelables as their marshalled bytes
+  (`com.facebook.base.activity.parcel.OpaqueParcelable`) and restores them
+  with `unmarshall`, `setDataPosition(0)` and the creator: Messenger, opening
+  a conversation, read null for the list its photo editor's layers had been
+  written as ("ActivityParcelableHacks: Failed to restore"), and its
+  composer's camera configuration ended the app ("Required value was null",
+  a user's 12-minute run of 673). Now the bytes of a parcel with objects end
+  with a trailer of 16 bytes (a mark, a number, the objects' count, a mark),
+  the table is kept under the number (the last 16384 tables), and `unmarshall`
+  takes the trailer off and gives the parcel the same objects. A parcel
+  without objects marshals to its bytes alone, as before; bytes kept past the
+  process find no table and read nulls, as before. The data app's step
+  "parcel-marshall" writes a list and a bundle, marshals, unmarshals into
+  another parcel and reads them, and marshals a parcel of data alone.
+
 - `android/os/UserHandle.java`, the arithmetic of a uid, which is Android's:
   a uid is a user's id times `PER_USER_RANGE` plus an app's id, so
   `getAppId(uid)` is the remainder, `getUid(user, appId)` the sum, and
@@ -6217,6 +6283,18 @@ on a looper thread of its own and takes it back with `next()`.
   features): the phone's cameras through Android's old camera API, which VK
   mp3 mod's sign-in by QR code (budiyev's code-scanner over ZXing) and most
   scanners use. "The cameras" below has all of it.
+
+- `android/content/pm/PackageManager.java`, Android 13's calls with a flags
+  object (`ResolveInfoFlags`, `ComponentInfoFlags`, `PackageInfoFlags`,
+  `ApplicationInfoFlags`), which are the calls with an int, the flags passed
+  on. Some passed 0 (`getInstalledPackages` gave no signatures asked for that
+  way), and `queryIntentServices`, `resolveService`, `resolveContentProvider`,
+  `queryBroadcastReceivers`, `getReceiverInfo`, `getProviderInfo`,
+  `getPackageUid`, `getInstalledApplications` and `queryContentProviders`
+  with one were generated stubs that found nothing: Facebook Lite asks
+  `queryIntentServices` and `resolveContentProvider` so, and Messenger
+  `resolveContentProvider`. The data app's step "package-flags" asks each
+  for the app's own service, provider, receivers, uid and signatures.
 
 - `android/media/MediaMetadata.java`, in place of the generated stub, whose
   getters answered null and 0, whose `writeToParcel` wrote nothing and whose

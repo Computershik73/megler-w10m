@@ -918,6 +918,67 @@ public class Main extends Activity {
             detail = "none=" + none + " own=" + own + " missing=" + missing;
             return none == null && own == null && "megler.test.OTHER".equals(missing);
         });
+        // The same rule where the app's manifest is matched: every category of an intent must be its filter's. The phone's home
+        // screen (MAIN with CATEGORY_HOME) is no activity of this app's, whose launcher activity (MAIN with CATEGORY_LAUNCHER)
+        // was taken for it, and Facebook, looking for a home of another signature, found only itself and ended the app.
+        step("intent-categories", () -> {
+            android.content.pm.PackageManager pm = getPackageManager();
+            String own = getPackageName();
+            int homes = pm.queryIntentActivities(new android.content.Intent(android.content.Intent.ACTION_MAIN).addCategory(android.content.Intent.CATEGORY_HOME), 0).size();
+            android.content.pm.ResolveInfo launcher = pm.resolveActivity(new android.content.Intent(android.content.Intent.ACTION_MAIN)
+                    .addCategory(android.content.Intent.CATEGORY_LAUNCHER).setPackage(own), 0);
+            android.content.pm.ResolveInfo plain = pm.resolveActivity(new android.content.Intent(android.content.Intent.ACTION_MAIN).setPackage(own), 0);
+            android.content.pm.ResolveInfo other = pm.resolveActivity(new android.content.Intent(android.content.Intent.ACTION_MAIN)
+                    .addCategory("megler.test.NONE").setPackage(own), 0);
+            detail = "homes=" + homes + " launcher=" + (launcher == null ? null : launcher.activityInfo.name) + " plain=" + (plain == null ? null : plain.activityInfo.name)
+                    + " other=" + (other == null ? null : other.activityInfo.name);
+            return homes == 0 && launcher != null && Main.class.getName().equals(launcher.activityInfo.name) && plain != null && other == null;
+        });
+        // Who sent a broadcast, as Android 14 tells its receivers (getSentFromUid, getSentFromPackage, the receiver's and its
+        // PendingResult's): the app itself where the options it sent with share its identity (BroadcastOptions
+        // .setShareIdentityEnabled, through the options' bundle, which gives them back), no one where they do not or there are
+        // none. Messenger's own receivers refused its own broadcasts, which came from no one ("cannot receive broadcasts from null").
+        step("broadcast-identity", () -> {
+            Class<?> bo = Class.forName("android.app.BroadcastOptions");
+            Object shareOpts = bo.getMethod("makeBasic").invoke(null);
+            bo.getMethod("setShareIdentityEnabled", boolean.class).invoke(shareOpts, true);
+            android.os.Bundle shared = (android.os.Bundle) bo.getMethod("toBundle").invoke(shareOpts);
+            android.os.Bundle plain = (android.os.Bundle) bo.getMethod("toBundle").invoke(bo.getMethod("makeBasic").invoke(null));
+            boolean back = (Boolean) bo.getMethod("isShareIdentityEnabled").invoke(bo.getMethod("fromBundle", android.os.Bundle.class).invoke(null, shared));
+            final java.lang.reflect.Method uid = android.content.BroadcastReceiver.class.getMethod("getSentFromUid");
+            final java.lang.reflect.Method pkg = android.content.BroadcastReceiver.class.getMethod("getSentFromPackage");
+            final java.lang.reflect.Method resultUid = android.content.BroadcastReceiver.PendingResult.class.getMethod("getSentFromUid");
+            final java.lang.reflect.Method resultPkg = android.content.BroadcastReceiver.PendingResult.class.getMethod("getSentFromPackage");
+            final java.util.concurrent.LinkedBlockingQueue<String> heard = new java.util.concurrent.LinkedBlockingQueue<>();
+            android.os.HandlerThread ht = new android.os.HandlerThread("identity");
+            ht.start();
+            final String action = "megler.test.data.IDENTITY";
+            android.content.BroadcastReceiver r = new android.content.BroadcastReceiver() {
+                @Override public void onReceive(Context c, android.content.Intent i) {
+                    try {
+                        String mine = uid.invoke(this) + ":" + pkg.invoke(this);
+                        PendingResult p = goAsync();
+                        heard.add(mine + ":" + resultUid.invoke(p) + ":" + resultPkg.invoke(p));
+                        p.finish();
+                    } catch (ReflectiveOperationException e) {
+                        heard.add(e.toString());
+                    }
+                }
+            };
+            registerReceiver(r, new android.content.IntentFilter(action), null, new android.os.Handler(ht.getLooper()));
+            java.lang.reflect.Method withOptions = Context.class.getMethod("sendBroadcast", android.content.Intent.class, String.class, android.os.Bundle.class);
+            withOptions.invoke(this, new android.content.Intent(action), null, shared);
+            String first = heard.poll(10, java.util.concurrent.TimeUnit.SECONDS);
+            withOptions.invoke(this, new android.content.Intent(action), null, plain);
+            String second = heard.poll(10, java.util.concurrent.TimeUnit.SECONDS);
+            sendBroadcast(new android.content.Intent(action));
+            String third = heard.poll(10, java.util.concurrent.TimeUnit.SECONDS);
+            unregisterReceiver(r);
+            ht.quitSafely();
+            String me = android.os.Process.myUid() + ":" + getPackageName(), none = "-1:null";
+            detail = "back=" + back + " shared=" + first + " not=" + second + " plain=" + third;
+            return back && (me + ":" + me).equals(first) && (none + ":" + none).equals(second) && (none + ":" + none).equals(third);
+        });
         step("arrays-ranges", () -> {
             Class<?> a = java.util.Arrays.class;
             byte[] one = { 1, 2, 3, 4, 5 }, two = { 9, 2, 3, 4, 8 };
@@ -1704,6 +1765,8 @@ public class Main extends Activity {
         });
         insetFraction();
         workSource();
+        parcelMarshall();
+        packageFlags();
         resourcesLoader();
         locationRequest();
         // A provider's file through a ContentProviderClient, as Google Play services' DynamiteLoader reads its modules'
@@ -5149,6 +5212,82 @@ public class Main extends Activity {
             detail = "size=" + size + " back=" + back + " empty=" + emptyBack;
             return size > 0 && back != null && back.equals(ws) && !back.equals(empty) && n == 2 && firstUid == 10045 && "megler.test.a".equals(firstName)
                     && chains != null && chains.size() == 1 && emptyIs && emptyBack.equals(empty);
+        });
+    }
+
+    /**
+     * A Parcelable kept as its marshalled bytes, as Facebook keeps an activity's (OpaqueParcelable: writeToParcel into a parcel
+     * of its own, marshall), and restored from them in another parcel (unmarshall, setDataPosition(0), its creator): what it
+     * wrote as objects -- a list, a bundle -- comes back, the parcel's data the size it was written; bytes of a parcel without
+     * objects are its data alone. Messenger read null for the list its photo editor's layers were, and ended.
+     */
+    private void parcelMarshall() {
+        step("parcel-marshall", () -> {
+            android.os.Parcel w = android.os.Parcel.obtain();
+            java.util.ArrayList<String> layers = new java.util.ArrayList<>(java.util.Arrays.asList("text", "sticker"));
+            android.os.Bundle extra = new android.os.Bundle();
+            extra.putString("tool", "pen");
+            w.writeInt(7);
+            w.writeList(layers);
+            w.writeBundle(extra);
+            w.writeString("end");
+            int written = w.dataSize();
+            byte[] bytes = w.marshall();
+            w.recycle();
+            android.os.Parcel r = android.os.Parcel.obtain();
+            r.unmarshall(bytes, 0, bytes.length);
+            r.setDataPosition(0);
+            int size = r.dataSize(), seven = r.readInt();
+            java.util.ArrayList<?> back = r.readArrayList(getClassLoader());
+            android.os.Bundle b = r.readBundle(getClassLoader());
+            String end = r.readString();
+            r.recycle();
+            android.os.Parcel plain = android.os.Parcel.obtain();
+            plain.writeInt(1);
+            plain.writeString("only data");
+            int plainSize = plain.dataSize(), plainBytes = plain.marshall().length;
+            plain.recycle();
+            detail = "size=" + size + " of " + written + " list=" + back + " bundle=" + (b == null ? null : b.getString("tool")) + " end=" + end
+                    + " plain=" + plainBytes + " of " + plainSize;
+            return size == written && seven == 7 && layers.equals(back) && b != null && "pen".equals(b.getString("tool")) && "end".equals(end) && plainBytes == plainSize;
+        });
+    }
+
+    /**
+     * Android 13's PackageManager calls with a flags object answer as the calls with an int do: the app's own service, provider,
+     * receivers and uid found, its signatures given when asked for. Some were stubs that found nothing (Facebook Lite's
+     * queryIntentServices and resolveContentProvider, Messenger's resolveContentProvider), some passed no flags on. (The
+     * flags classes are not in the SDK the app is built against: by reflection.)
+     */
+    private void packageFlags() {
+        step("package-flags", () -> {
+            android.content.pm.PackageManager pm = getPackageManager();
+            Class<?> pmc = android.content.pm.PackageManager.class;
+            Class<?> rif = Class.forName("android.content.pm.PackageManager$ResolveInfoFlags"), cif = Class.forName("android.content.pm.PackageManager$ComponentInfoFlags");
+            Class<?> pif = Class.forName("android.content.pm.PackageManager$PackageInfoFlags"), aif = Class.forName("android.content.pm.PackageManager$ApplicationInfoFlags");
+            Object r0 = rif.getMethod("of", long.class).invoke(null, 0L), c0 = cif.getMethod("of", long.class).invoke(null, 0L);
+            Object p0 = pif.getMethod("of", long.class).invoke(null, 0L);
+            Object pSigned = pif.getMethod("of", long.class).invoke(null, (long) android.content.pm.PackageManager.GET_SIGNATURES);
+            Object aMeta = aif.getMethod("of", long.class).invoke(null, (long) android.content.pm.PackageManager.GET_META_DATA);
+            String own = getPackageName();
+            android.content.Intent service = new android.content.Intent().setClassName(own, Main.class.getName() + "$Twice");
+            android.content.Intent relay = new android.content.Intent("megler.test.RELAY");
+            java.util.List<?> services = (java.util.List<?>) pmc.getMethod("queryIntentServices", android.content.Intent.class, rif).invoke(pm, service, r0);
+            Object resolved = pmc.getMethod("resolveService", android.content.Intent.class, rif).invoke(pm, service, r0);
+            Object provider = pmc.getMethod("resolveContentProvider", String.class, cif).invoke(pm, "megler.test.sync", c0);
+            java.util.List<?> receivers = (java.util.List<?>) pmc.getMethod("queryBroadcastReceivers", android.content.Intent.class, rif).invoke(pm, relay, r0);
+            Object receiver = pmc.getMethod("getReceiverInfo", android.content.ComponentName.class, cif).invoke(pm, new android.content.ComponentName(own, Main.class.getName() + "$Relay"), c0);
+            int uid = (Integer) pmc.getMethod("getPackageUid", String.class, pif).invoke(pm, own, p0);
+            android.content.pm.PackageInfo signed = null;
+            for (Object o : (java.util.List<?>) pmc.getMethod("getInstalledPackages", pif).invoke(pm, pSigned))
+                if (own.equals(((android.content.pm.PackageInfo) o).packageName)) signed = (android.content.pm.PackageInfo) o;
+            java.util.List<?> apps = (java.util.List<?>) pmc.getMethod("getInstalledApplications", aif).invoke(pm, aMeta);
+            int intReceivers = pm.queryBroadcastReceivers(relay, 0).size();
+            boolean intSigned = pm.getPackageInfo(own, android.content.pm.PackageManager.GET_SIGNATURES).signatures != null;
+            detail = "services=" + services.size() + " resolved=" + (resolved != null) + " provider=" + (provider != null) + " receivers=" + receivers.size() + " of " + intReceivers
+                    + " receiver=" + (receiver != null) + " uid=" + uid + " signed=" + (signed == null ? "none" : signed.signatures != null) + " apps=" + apps.size();
+            return services.size() == 1 && resolved != null && provider != null && intReceivers > 0 && receivers.size() == intReceivers && receiver != null
+                    && uid == android.os.Process.myUid() && signed != null && (signed.signatures != null) == intSigned && !apps.isEmpty();
         });
     }
 
