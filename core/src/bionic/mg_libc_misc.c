@@ -227,13 +227,22 @@ static int g_clearenv(void)
     return 0;
 }
 
+/*
+ * An app's environment: what Android 9's init exports for every process it starts (init.environ.rc), which the zygote's
+ * children keep -- but BOOTCLASSPATH and SYSTEMSERVERCLASSPATH, whose jars are not where they would say, and DOWNLOAD_CACHE,
+ * whose folder is not there (android.os.Environment takes /cache without it) -- and HOME, TMPDIR and LANG of this layer's.
+ */
 void mg_env_init(void)
 {
     env_reserve();
     g_environ[0] = NULL;
     g_setenv("PATH", "/sbin:/system/sbin:/system/bin:/system/xbin", 1);
+    g_setenv("ANDROID_BOOTLOGO", "1", 1);
     g_setenv("ANDROID_ROOT", "/system", 1);
+    g_setenv("ANDROID_ASSETS", "/system/app", 1);
     g_setenv("ANDROID_DATA", "/data", 1);
+    g_setenv("ANDROID_STORAGE", "/storage", 1);
+    g_setenv("ASEC_MOUNTPOINT", "/mnt/asec", 1);
     g_setenv("EXTERNAL_STORAGE", mg_fs_external_dir(), 1);
     g_setenv("HOME", mg_fs_internal_dir(), 1);
     g_setenv("TMPDIR", "/data/local/tmp", 1);

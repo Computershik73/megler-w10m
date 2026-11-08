@@ -2254,6 +2254,14 @@ static void test_libc_odds(void)
         CHECK(aux && aux(9999) == 0 && *mg_errno_ptr() == GE_NOENT);
         CHECK(real && real("/proc/self/exe", path) == path && !strcmp(path, exe));
     }
+    /* The environment Android's init gives every process, as an app has it: its storage's root and the rest beside the data and the root. */
+    {
+        typedef char *(*getenv_fn)(const char *);
+        getenv_fn env = (getenv_fn)mg_bionic_find("getenv");
+        const char *storage = env ? env("ANDROID_STORAGE") : NULL, *assets = env ? env("ANDROID_ASSETS") : NULL, *data = env ? env("ANDROID_DATA") : NULL;
+        CHECK(storage && !strcmp(storage, "/storage") && assets && !strcmp(assets, "/system/app") && data && !strcmp(data, "/data"));
+        CHECK(env && env("ASEC_MOUNTPOINT") && env("ANDROID_BOOTLOGO") && env("ANDROID_ROOT") && env("EXTERNAL_STORAGE") && !env("BOOTCLASSPATH"));
+    }
     /*
      * malloc's blocks at bionic's alignment, 16 bytes but on 32-bit ARM 8 (x86-64's SSE stores fault on less: exteraGram's
      * libtmessages), through calloc and realloc too, the contents kept; memalign's at theirs. And of jemalloc's sizes, a
