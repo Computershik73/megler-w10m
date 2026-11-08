@@ -2610,6 +2610,8 @@ static int run_data(void)
                                          "resources-loader",
                                          /* And a LocationRequest as Android 12 makes one, and a request of the passive interval through LocationManager. */
                                          "location-request",
+                                         /* And a provider's file through a ContentProviderClient, as Google Play services' DynamiteLoader reads its configuration. */
+                                         "provider-client-file",
                                          "audio-track", "media-player", "media-player-ogg", "sound-pool",
                                          /* And MediaCodec over the stand-in for the shell's decoders: H.264 shown on a Surface in display
                                             order, a flush, parameter sets in a codec-config buffer, the asynchronous mode, AAC with an

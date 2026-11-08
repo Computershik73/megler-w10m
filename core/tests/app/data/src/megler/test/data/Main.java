@@ -1694,6 +1694,28 @@ public class Main extends Activity {
         workSource();
         resourcesLoader();
         locationRequest();
+        // A provider's file through a ContentProviderClient, as Google Play services' DynamiteLoader reads its modules'
+        // Chimera configuration (acquireUnstableContentProviderClient(uri).openFile(uri, "r")): the provider's own file comes.
+        step("provider-client-file", () -> {
+            try (java.io.FileOutputStream o = new java.io.FileOutputStream(new java.io.File(getFilesDir(), "provider-config"))) {
+                o.write("chimera config".getBytes("UTF-8"));
+            }
+            android.net.Uri uri = android.net.Uri.parse("content://megler.test.sync/config");
+            android.content.ContentProviderClient client = getContentResolver().acquireUnstableContentProviderClient(uri);
+            android.os.ParcelFileDescriptor pfd = client == null ? null : client.openFile(uri, "r");
+            if (client != null) client.release();
+            String read = null;
+            if (pfd != null) {
+                try (java.io.FileInputStream in = new java.io.FileInputStream(pfd.getFileDescriptor())) {
+                    byte[] b = new byte[64];
+                    int n = in.read(b);
+                    read = n > 0 ? new String(b, 0, n, "UTF-8") : "";
+                }
+                pfd.close();
+            }
+            detail = "client=" + client + " read=" + read;
+            return "chimera config".equals(read);
+        });
         sound();
         mediaCodec();
         network();
@@ -3824,6 +3846,11 @@ public class Main extends Activity {
         @Override public android.net.Uri insert(android.net.Uri u, android.content.ContentValues v) { return null; }
         @Override public int delete(android.net.Uri u, String s, String[] a) { return 0; }
         @Override public int update(android.net.Uri u, android.content.ContentValues v, String s, String[] a) { return 0; }
+        /** "content://megler.test.sync/config": the file Main's step provider-client-file wrote, read-only (as Google Play services' Chimera configuration). */
+        @Override public android.os.ParcelFileDescriptor openFile(android.net.Uri u, String mode) throws java.io.FileNotFoundException {
+            if (!"/config".equals(u.getPath())) throw new java.io.FileNotFoundException(String.valueOf(u));
+            return android.os.ParcelFileDescriptor.open(new java.io.File(getContext().getFilesDir(), "provider-config"), android.os.ParcelFileDescriptor.MODE_READ_ONLY);
+        }
     }
 
     /** The service of Main's sync adapter, which hands out the adapter's binder as Android's sync adapters do. */

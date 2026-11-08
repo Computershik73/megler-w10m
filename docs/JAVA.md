@@ -5226,6 +5226,18 @@ on a looper thread of its own and takes it back with `next()`.
   its own 0. The data app's step "location-request" builds requests, makes
   one of the deprecated provider, puts one through a parcel, and has one of
   the passive interval handed a fix.
+- `android/content/ContentProviderClient.java`: `openFile`, `openAssetFile`,
+  `openTypedAssetFile(Descriptor)`, `query` with a `Bundle`, `insert`,
+  `update` and `delete` with extras, `bulkInsert`, `call` with an authority,
+  `getStreamTypes`, `canonicalize`, `uncanonicalize` and `refresh` go to the
+  provider, where they were generated signatures answering null, 0 or false.
+  Google Play services' DynamiteLoader reads its modules' Chimera
+  configuration so (`content://com.google.android.gms.chimera/api/<n>`), and
+  gave up on each module it loads that way: "Failed to create module
+  context. java.io.IOException: Config file descriptor is null" -- the Google
+  Maps module's own Google certificates among them (0.1.0.671). The data
+  app's step "provider-client-file" reads its provider's file through a
+  client.
 - `android/app/usage/StorageStatsManager.java`, two methods in their two
   forms: `getTotalBytes` and `getFreeBytes` were signatures answering 0.
   Since Android 8 this is where an app asks how large the phone's storage is
