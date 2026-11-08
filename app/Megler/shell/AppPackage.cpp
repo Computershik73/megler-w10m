@@ -249,13 +249,20 @@ const SingleApp& single() {
         if (!files::read(install + L"\\MeglerApp.ini", text)) return s;
         s.package = iniValue(text, "package");
         s.label = iniValue(text, "label");
-        const std::string apk = iniValue(text, "apk");
+        const std::string apk = iniValue(text, "apk"), root = iniValue(text, "root");
         const std::wstring shared = sharedFolder();
         // Since 645 the app's APK is in the shared folder (make: apk=shared:apks\<identity>\<token>); before, in the package.
-        s.apkFolder = apk.rfind("shared:", 0) == 0 ? shared + L"\\" + widen(apk.substr(7)) : install + L"\\" + widen(apk);
-        if (!shared.empty()) s.androidRoot = shared + L"\\" + widen(iniValue(text, "root"));
+        // Where Windows gave the package no shared folder (one on a memory card may have none), neither is anywhere: both left
+        // empty, and nothing is looked for at the drive's root ("" + "\apks\...").
+        if (apk.rfind("shared:", 0) == 0)
+            s.apkFolder = shared.empty() ? std::wstring() : shared + L"\\" + widen(apk.substr(7));
+        else
+            s.apkFolder = install + L"\\" + widen(apk);
+        if (!shared.empty() && !root.empty()) s.androidRoot = shared + L"\\" + widen(root);
         s.megler = widen(iniValue(text, "megler"));
-        shellLog::write("app package: this is " + s.package + "'s own package; Android's files in " + narrow(s.androidRoot));
+        shellLog::write("app package: this is " + s.package + "'s own package; " +
+                        (shared.empty() ? std::string("Windows gave it no shared folder, where its APK and Android's files are")
+                                        : "Android's files in " + narrow(s.androidRoot) + ", its APK in " + narrow(s.apkFolder)));
         return s;
     }();
     return app;
@@ -337,6 +344,7 @@ std::string androidRootName() {
 /// its report, its icon and the build its report is of, as the library has them now. Empty, or why not.
 std::string keepInShared(const ApkEntry& entry, const std::string& identity, const std::vector<std::wstring>& splits,
                          const PickedFile* picked, const std::function<void(const std::string&)>& progress, std::wstring& folder) {
+    if (sharedFolder().empty()) return "Windows gives this Megler no shared folder to keep the APK in.";
     const std::wstring apks = sharedFolder() + L"\\apks\\" + widen(identity);
     if (entry.path.size() > apks.size() + 1 && _wcsnicmp(entry.path.c_str(), (apks + L"\\").c_str(), apks.size() + 1) == 0 &&
         files::exists(entry.path)) {
@@ -418,7 +426,14 @@ Made make(const ApkEntry& entry, const std::function<void(const std::string&)>& 
         if (splits.empty()) return fail("The app's split APKs are missing (" + narrow(entry.splitsDir) + ").");
     }
     const std::wstring shared = sharedFolder();
-    if (shared.empty()) return fail("Windows gives this Megler no shared folder (its manifest lacks the publisher cache folder).");
+    // (Its manifest declares the publisher cache folder: Windows gives none where Megler is installed on a memory card.)
+    if (shared.empty())
+        return fail(platform::isMobile()
+                        ? "Windows gives this Megler no shared folder, where an app's own package finds Android's files and its APK: as a rule "
+                          "because Megler is installed on the memory card. Move Megler to the phone's memory (Settings › System › Storage), "
+                          "then install the app."
+                        : "Windows gives this Megler no shared folder, where an app's own package finds Android's files and its APK: as a rule "
+                          "because Megler is installed on another drive than Windows's. Install Megler on the system drive, then install the app.");
     const std::wstring install = platform::installDirectory(), local = platform::localStateDirectory();
     const std::string version = versionString();
 
@@ -990,8 +1005,10 @@ bool registerServiceApk(const ApkEntry& entry, const std::string& installedFullN
 }
 
 void unregisterServiceApk(const std::string& installedFullName) {
+    const auto shared = sharedFolder();
+    if (shared.empty()) return;
     for (const wchar_t* kind : {L"\\services\\gms-package.txt", L"\\services\\microg-package.txt"}) {
-        const auto record = sharedFolder() + kind;
+        const auto record = shared + kind;
         std::string registered;
         if (files::read(record, registered) && iniValue(registered, "package") == installedFullName) files::remove(record);
     }
@@ -1382,8 +1399,9 @@ bool inSharedApks(const std::wstring& path) {
 
 void sharedApkInstalled(const Made& made) {
     const size_t slash = made.apkFolder.find_last_of(L'\\');
-    if (made.apkFolder.empty() || slash == std::wstring::npos) return;
-    const std::wstring dir = sharedFolder() + L"\\" + made.apkFolder.substr(0, slash), record = dir + L"\\installed.txt";
+    const std::wstring shared = sharedFolder();
+    if (made.apkFolder.empty() || slash == std::wstring::npos || shared.empty()) return;
+    const std::wstring dir = shared + L"\\" + made.apkFolder.substr(0, slash), record = dir + L"\\installed.txt";
     if (!files::write(record + L".part", narrow(made.apkFolder.substr(slash + 1))) || !files::move(record + L".part", record))
         shellLog::write(format("app package: %s could not be written (error %lu): the APK's folder stays while Megler's library reads it",
                                narrow(record).c_str(), GetLastError()));

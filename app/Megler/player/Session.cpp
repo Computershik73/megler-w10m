@@ -114,8 +114,9 @@ megler_gfx_host gfxCallbacks() {
     gfx.setLog([](const char* line, void*) { shellLog::write(line); }, nullptr);
     // Android's own fonts, where the package has them (tools/dvm-android-root.sh): an app's text is then as wide and
     // as tall as its layout was made for.
-    gfx.setFontFolder(((appPackage::isSingleApp() ? appPackage::single().androidRoot : platform::installDirectory() + L"\\android") +
-                       L"\\fonts").c_str());
+    // (An app's own package Windows gave no shared folder has no Android root: the system's fonts, none looked for at the drive's root.)
+    const std::wstring androidRoot = appPackage::isSingleApp() ? appPackage::single().androidRoot : platform::installDirectory() + L"\\android";
+    gfx.setFontFolder(androidRoot.empty() ? L"" : (androidRoot + L"\\fonts").c_str());
     if (files::exists(platform::localStateDirectory() + L"\\flags\\gfx-copy")) {
         shellLog::write("flag: gfx-copy is on");
         gfx.setCopying(true);

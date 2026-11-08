@@ -408,6 +408,14 @@ void testBundled() {
     tasks = bundledApks::plan(library, gShared, never);
     check(describe(tasks) == "again bitgapps-Phonesky.apk, service GmsCore.apk", "plan with that package there: " + describe(tasks));
 
+    // No shared folder (Windows gives a Megler on a memory card none): the library's offers alone, no service copied anywhere.
+    {
+        const std::wstring lone = gLocal + L"\\apks-no-shared";
+        files::makeDirectories(lone);
+        tasks = bundledApks::plan(lone, std::wstring(), never);
+        check(describe(tasks) == "offer bitgapps-PrebuiltGmsCore.apk, offer bitgapps-Phonesky.apk", "plan with no shared folder: " + describe(tasks));
+    }
+
     // A copy of what is not there: refused, said, and nothing left.
     check(!bundledApks::copy(bitgapps + L"\\None.apk", library + L"\\bitgapps-None.apk", "an APK the tests have not") &&
               !files::exists(library + L"\\bitgapps-None.apk") && !files::exists(library + L"\\bitgapps-None.apk.part"),

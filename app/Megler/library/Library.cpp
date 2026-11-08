@@ -170,7 +170,11 @@ Installed installedOf(const std::string& marker) {
     installed.fullName = marker.substr(0, marker.find_first_of("\r\n"));
     std::string folder;
     if (const size_t at = marker.find("\nshared="); at != std::string::npos) folder = marker.substr(at + 8, marker.find_first_of("\r\n", at + 8) - (at + 8));
-    installed.apk = folder.empty() ? appPackage::installedApk(installed.fullName) : appPackage::sharedFolder() + L"\\" + widen(folder) + L"\\app.apk";
+    // (No shared folder -- Windows gives a Megler on a memory card none -- has no APK of it: none, not one at the drive's root.)
+    const std::wstring shared = appPackage::sharedFolder();
+    installed.apk = folder.empty()   ? appPackage::installedApk(installed.fullName)
+                    : shared.empty() ? std::wstring()
+                                     : shared + L"\\" + widen(folder) + L"\\app.apk";
     return installed;
 }
 
@@ -218,6 +222,12 @@ void Library::load() {
         // An app's own package has its one APK, with its report, in the install folder (shell/AppPackage.h): read as it is.
         const bool single = appPackage::isSingleApp();
         directory_ = single ? appPackage::single().apkFolder : platform::localStateDirectory() + L"\\apks";
+        // (One Windows gave no shared folder, its APK's, has none to read: no entry, and its screen says why.)
+        if (directory_.empty()) {
+            shellLog::write("library: no folder to read the app's APK in (no shared folder)");
+            ++generation_;
+            return;
+        }
         if (!single) {
             files::makeDirectory(directory_);
             // A copy that never finished (the app was ended under the picker's stream), and a bundle's unpacking likewise.
@@ -608,7 +618,7 @@ void Library::work() {
             std::lock_guard<std::mutex> lock(mutex_);
             if (queue_.empty()) {
                 // Every report is this build's now.
-                if (refreshingAll_) files::write(directory_ + L"\\reports.version", versionStamp());
+                if (refreshingAll_ && !directory_.empty()) files::write(directory_ + L"\\reports.version", versionStamp());
                 refreshingAll_ = false;
                 working_ = false;
                 return;

@@ -1137,7 +1137,24 @@ void AppShell::openLink(winrt::Windows::Foundation::Uri const& uri) {
             shellLog::write("app: the link's name is not a file's of the shared folder's incoming: nothing installed");
             return;
         }
-        installApkPath(appPackage::sharedFolder() + L"\\incoming\\" + widen(name), name, "An app of the phone's own");
+        /*
+         * The app's own package put the APK in its shared folder, which is Megler's only where both are on the same storage:
+         * Windows gives a package on a memory card the card's (or none), and Megler in the phone's memory does not see it.
+         */
+        const std::wstring shared = appPackage::sharedFolder(), path = shared.empty() ? std::wstring() : shared + L"\\incoming\\" + widen(name);
+        if (path.empty() || !files::exists(path)) {
+            shellLog::write("app: " + name + " is not in " + (shared.empty() ? std::string("the shared folder: Windows gave Megler none") : narrow(path)) +
+                            ": the app that asked is likely on other storage than Megler (a memory card)");
+            phoneAppsList::installOutcome(name, "failed", "Megler did not find the APK in its shared folder: the app and Megler are on different storage.");
+            alert("Couldn't Install This APK",
+                  "An app of the phone's own asked Megler to install " + name + ", and Megler did not find it in its shared folder" +
+                      (shared.empty() ? std::string(" (Windows gave Megler none)") : std::string()) +
+                      ". As a rule, that is because the app and Megler are on different storage -- one on the memory card, the other in "
+                      "the phone's memory -- and Windows gives each storage a shared folder of its own. Keep them on the same storage: "
+                      "move the app (or Megler) to the phone's memory in Settings › System › Storage.");
+            return;
+        }
+        installApkPath(path, name, "An app of the phone's own");
     } else if (what == L"uninstall") {
         const std::string package = value(L"package");
         if (!package.empty()) uninstallApp(package, "An app of the phone's own");

@@ -185,7 +185,7 @@ std::string packages() {
 std::string lastRefusal() {
     std::string text;
     std::string from;
-    if (!files::read(platform::localStateDirectory() + L"\\install-refusal.txt", text) && appPackage::isSingleApp()) {
+    if (!files::read(platform::localStateDirectory() + L"\\install-refusal.txt", text) && appPackage::isSingleApp() && !logMirror::root().empty()) {
         const std::wstring family = appPackage::meglerFamilyName();
         const std::wstring megler = family.substr(0, family.rfind(L'_'));
         if (files::read(logMirror::root() + L"\\" + megler + L"\\install-refusal.txt", text)) from = "  (Megler's, from its logs in the shared folder)\r\n";
