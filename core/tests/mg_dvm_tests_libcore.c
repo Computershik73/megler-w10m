@@ -21,6 +21,7 @@
 #include "../src/bionic/mg_bionic.h"
 #include "../src/bionic/mg_fd.h"
 #include "../src/dvm/mg_dvm_internal.h"
+#include "../src/ld/mg_ld.h"
 #include "mg_dvm_tests.h"
 
 const char *mg_dvm_art_host_output(void);
@@ -413,6 +414,34 @@ void test_libcore(const mg_dvm_test_config *config, u64 started_ns, const mg_dvm
         CHECK(by_name > 0);
         CHECK_INT(unknown, 0);
     }
+#if MG_ARCH_ARM64
+    if (natives) {
+        /*
+         * No library of the Android root writes x18, which holds the thread's TEB on Windows on ARM64, as the loader counts
+         * such writes (arm64/mg_patch_arm64.c) -- conscrypt's three among them, which the program's digests, ciphers and
+         * TLS (lib_tls) have loaded by now. Android 9's own arm64 libcrypto.so, which the root carried until it was built
+         * from BoringSSL's sources (tools/android9-natives.sh), wrote it in 772 instructions every TLS connection ran
+         * through (GitHub issue 4).
+         */
+        static const char *const names[] = { "libcrypto.so", "libssl.so", "libjavacrypto.so", "libjavacore.so", "libopenjdk.so",
+                                             "libicuuc.so", "libicui18n.so", "libnativehelper.so", "libexpat.so" };
+        u32 writes = 0;
+        int found = 0;
+        size_t k;
+        for (k = 0; k < MG_COUNT(names); k++) {
+            mg_lib *lib = mg_ld_find_runtime_lib(names[k]);
+            mg_ld_stats st;
+            if (!lib) continue;
+            found++;
+            mg_ld_get_stats(lib, &st);
+            if (st.x18_writes) say("  %s writes x18 in %u instructions", names[k], (unsigned)st.x18_writes);
+            writes += st.x18_writes;
+        }
+        say("  the Android root's libraries: %d of %d loaded, writing x18 in %u instructions", found, (int)MG_COUNT(names), (unsigned)writes);
+        CHECK_INT(found, (int)MG_COUNT(names));
+        CHECK_INT(writes, 0);
+    }
+#endif
     mg_dvm_get_stats(&s);
     say("  the two programs, %u ms for the second: %u classes linked, %u initialised, %u objects (%u KB), %u KB of tables and classes",
         (unsigned)((mg_time_monotonic_ns() - t0) / 1000000ull), (unsigned)s.classes_linked, (unsigned)s.classes_initialised, (unsigned)s.objects,
