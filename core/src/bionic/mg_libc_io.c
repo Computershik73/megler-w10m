@@ -3545,9 +3545,9 @@ static int g_eventfd(unsigned initial, int flags) { return mg_fd_eventfd(initial
 static int g_eventfd_read(int fd, u64 *value) { return g_read(fd, value, 8) == 8 ? 0 : -1; }
 static int g_eventfd_write(int fd, u64 value) { return g_write(fd, &value, 8) == 8 ? 0 : -1; }
 /*
- * chmod, fchmodat and fchmod: of a file's mode its write bits are kept (mg_path_set_writable: Windows' read-only attribute,
- * the owner's write bit on a POSIX host), which stat, access and open then go by; the rest of the mode is not kept, and a
- * directory's not at all. File.setReadOnly and setWritable come here: Facebook makes each module it downloads read-only and
+ * chmod, fchmodat and fchmod: of a file's mode its owner's write bit is kept (mg_path_set_writable: Windows' read-only
+ * attribute, the owner's write bit on a POSIX host), which stat, access and open then go by; the rest of the mode is not
+ * kept, and a directory's not at all. File.setReadOnly and setWritable come here: Facebook makes each module it downloads read-only and
  * loads only one that is ("Downloaded module file must be read only"), and Android 14 loads code only from a file so. A file
  * that is not there is ENOENT; one of the system's (made up here) and a link the shell marked read-only are left as they
  * are. libc++'s std::filesystem::permissions calls fchmodat (Zalo's libc++_shared.so and libzinstant.so).
@@ -3564,7 +3564,8 @@ static int chmod_normal(const char *g, unsigned mode)
         mg_set_errno(GE_NOENT);
         return -1;
     }
-    ok = in_read_only(g) || mg_path_set_writable(h, (mode & 0222u) != 0, &err);
+    /* (The owner's write bit: the app owns its files, and Linux gives an owner without it no writing, whatever the group's.) */
+    ok = in_read_only(g) || mg_path_set_writable(h, (mode & 0200u) != 0, &err);
     free(h);
     if (!ok) {
         mg_set_errno(mg_errno_of(err));

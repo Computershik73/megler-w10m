@@ -1173,6 +1173,8 @@ static void test_file_modes(void)
     fd = C.open(file, T_RDONLY, 0);
     CHECK(fd >= 0 && C.fchmod(fd, 0440) == 0 && C.access(file, 2) == -1 && C.fchmod(fd, 0660) == 0 && C.access(file, 2) == 0);
     if (fd >= 0) C.close(fd);
+    /* The owner's write bit decides, as for the app that owns the file on Android: the group's is no writing for it. */
+    CHECK(C.chmod(file, 0464) == 0 && C.access(file, 2) == -1 && C.chmod(file, 0600) == 0 && C.access(file, 2) == 0);
     /* A directory keeps its mode (files are still made in it); a file that is not there is ENOENT. */
     CHECK(C.chmod(dir, 0500) == 0 && put(inside, "x") && C.unlink(inside) == 0);
     CHECK(C.chmod("/data/data/" PKG "/files/modes/none", 0444) == -1 && last_errno() == GE_NOENT);

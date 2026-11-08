@@ -1197,14 +1197,15 @@ of ASCII letters, as Android's storage does not tell `Music` from `music`.
 `statfs` and `statvfs` answer for every path with the real size and free room
 of the volume the data folder is on, in 4 KB blocks.
 
-A file's mode is not kept, but for its write bits: `chmod`, `fchmodat` and
-`fchmod` keep them as Windows' read-only attribute (the owner's write bit on a
-POSIX host: `mg_path_set_writable`), and `stat` (0440 for 0660), `access`
-with `W_OK` and an open for writing go by them, whoever the process is on the
-host. A read-only file is still removed and replaced (`mg_path_remove` and
-`mg_path_rename` clear the attribute first, as POSIX's unlink and rename look
-at the folder, not at the file), and the shell removes an app's folders with
-such files in them (`files::remove`). Facebook makes each module it downloads
+A file's mode is not kept, but for its owner's write bit (the app owns its
+files): `chmod`, `fchmodat` and `fchmod` keep it as Windows' read-only
+attribute (as the owner's write bit on a POSIX host: `mg_path_set_writable`),
+and `stat` (0440 for 0660), `access` with `W_OK` and an open for writing go by
+it, whoever the process is on the host: 0464 is read-only, as Linux gives an
+owner without its own write bit no writing. A read-only file is still removed
+and replaced (`mg_path_remove` and `mg_path_rename` clear the attribute first,
+as POSIX's unlink and rename look at the folder, not at the file), and the
+shell removes an app's folders with such files in them (`files::remove`). Facebook makes each module it downloads
 read-only (`File.setReadOnly`) and loads only one that is: "Downloaded module
 file must be read only ... read only:false" (0.1.0.671), and none of its
 language packs loaded. A directory's mode, a file's other bits and the files
