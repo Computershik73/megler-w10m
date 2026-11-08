@@ -170,7 +170,14 @@ static MG_GLAPI unsigned e_Initialize(void *d, int *major, int *minor)
 static MG_GLAPI unsigned e_True(void) { return 1; }
 static MG_GLAPI unsigned e_Terminate(void *d) { (void)d; return 1; }
 static MG_GLAPI unsigned e_BindAPI(unsigned api) { (void)api; return 1; }
-static MG_GLAPI int e_GetError(void) { return 0x3000; }
+/* The error of the last call that set one on this thread (only eglCreateContext does), given once, as EGL gives it. */
+static MG_THREAD_LOCAL int t_egl_error = 0x3000;
+static MG_GLAPI int e_GetError(void)
+{
+    int e = t_egl_error;
+    t_egl_error = 0x3000;
+    return e;
+}
 static MG_GLAPI const char *e_QueryString(void *d, int name)
 {
     (void)d;
@@ -236,19 +243,26 @@ static MG_GLAPI unsigned e_GetConfigAttrib(void *d, void *c, int attrib, int *va
 static MG_GLAPI void *e_CreateContext(void *d, void *c, void *share, const int *attribs)
 {
     sb_context *x;
-    int version = 1, i;
+    int version = 1, minor = 0, i;
     (void)d; (void)c; (void)share;
-    for (i = 0; attribs && attribs[i] != 0x3038; i += 2)
+    for (i = 0; attribs && attribs[i] != 0x3038; i += 2) {
         if (attribs[i] == 0x3098) version = attribs[i + 1];
+        if (attribs[i] == 0x30FB) minor = attribs[i + 1];
+    }
     mg_lock_acquire(&g_lock);
     if (version == 1 && !S.es1) {
         S.stats.refused_es1++;
         mg_lock_release(&g_lock);
         return NULL;
     }
-    /* The complete mode is a driver of OpenGL ES 2.0 alone (see there). */
-    if (version >= 3 && g_complete) {
+    /*
+     * The complete mode is a driver of OpenGL ES 2.0 alone (see there); the other makes 3.0 at most, as ANGLE over
+     * Direct3D 11 does. More is refused as they refuse it: EGL_BAD_MATCH.
+     */
+    if ((version >= 3 && g_complete) || version > 3 || (version == 3 && minor > 0)) {
+        S.stats.refused_versions++;
         mg_lock_release(&g_lock);
+        t_egl_error = 0x3009;
         return NULL;
     }
     x = (sb_context *)calloc(1, sizeof(*x));

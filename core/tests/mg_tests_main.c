@@ -66,6 +66,12 @@
  *       core's sensors for SensorManager and ASensorManager: what this PC has, each read for a moment, its first event said as
  *       Android's. A PC without sensors says so and has nothing to check. Only in the build tools/build-tests.sh win makes;
  *       any other says so and does nothing
+ *   mg_tests --bluetooth-windows <scratch dir>
+ *       the shell's Bluetooth (app/Megler/player/BluetoothHost.cpp: Windows.Devices.Bluetooth) through megler_bluetooth_host,
+ *       under the core's for android.bluetooth: this PC's radio, the devices it is paired with, and a passive scan of three
+ *       seconds -- nothing sent, connected to or paired with -- its advertisements counted, each device's first said. A PC
+ *       without Bluetooth, or with the radio off, says so and has nothing to check. Only in the build tools/build-tests.sh win
+ *       makes; any other says so and does nothing
  *   mg_tests --portal-windows <address> <user> <password> <scratch dir> <received dir> <mock's log>
  *       the Xbox build's client of the console's Device Portal (app/Megler/shell/DevicePortal.cpp) against a portal of the
  *       tests' own at that address (tools/device-portal-mock.py, which tools/build-tests.sh win starts): its handshake, user
@@ -98,6 +104,7 @@
 #include "../src/jni/mg_jni.h"
 #include "../src/ld/mg_ld.h"
 #include "../src/ndk/mg_sensors.h"
+#include "../src/run/mg_bluetooth.h"
 #include "mg_codec_tests.h"
 #include "mg_gfx_record.h"
 #include "mg_gfx_scenes.h"
@@ -125,8 +132,9 @@ static int load_mode(int argc, char **argv)
         last = lib;
         mg_ld_get_stats(lib, &st);
         printf("%s: %u Thumb, %u ARM functions; %u unresolved; %u thread-pointer reads (%u failed), %u accesses through a register "
-               "led out, %u PLT entries, %u direct system calls (%u led out), %u writes of x18\n", argv[i], st.thumb_functions, st.arm_functions,
-               st.unresolved, st.tp_reads, st.tp_reads_failed, st.tp_led_out, st.plt_entries, st.svc_sites, st.svc_led_out, st.x18_writes);
+               "led out, %u PLT entries, %u direct system calls (%u led out), %u writes of x18, %u reads of CTR_EL0\n", argv[i], st.thumb_functions,
+               st.arm_functions, st.unresolved, st.tp_reads, st.tp_reads_failed, st.tp_led_out, st.plt_entries, st.svc_sites, st.svc_led_out,
+               st.x18_writes, st.ctr_reads);
         fn = mg_ld_sym(lib, "OpenSSL_version");
         if (fn) printf("  OpenSSL_version(0): %s\n", MG_GFN(const char *(*)(int), fn)(0));
         fn = mg_ld_sym(lib, "SHA256");
@@ -1039,6 +1047,80 @@ static int sensors_windows_mode(int argc, char **argv)
 #endif
 }
 
+/* ---------------------------------------------------- --bluetooth-windows */
+
+#ifdef MG_BLUETOOTH_WINDOWS
+/* mg_bluetooth_windows.cpp: the shell's own megler_bluetooth_host. */
+MG_HOSTAPI const megler_bluetooth_host *mg_bluetooth_windows_host(void);
+MG_HOSTAPI void mg_bluetooth_windows_summary(char *out, size_t size);
+#endif
+
+/*
+ * This PC's Bluetooth through the shell's host and the core's, as an app's android.bluetooth uses them: the radio, then a
+ * passive scan of three seconds (nothing is sent: no scan request, no connection, no pairing) whose advertisements come
+ * through the core's queue, each device's first said. A PC without a radio, or with it off, says so and checks nothing.
+ */
+static int bluetooth_windows_mode(int argc, char **argv)
+{
+#ifdef MG_BLUETOOTH_WINDOWS
+    megler_config config;
+    char summary[1500], name[128];
+    int checks = 0, failed = 0, ads = 0, devices = 0, state, i;
+    u64 seen[64];
+    u64 until;
+    (void)argc;
+    memset(&config, 0, sizeof(config));
+    config.data_dir = argv[2];
+    config.package_dir = argv[2];
+    megler_init(&config);
+    mg_bluetooth_set_host(mg_bluetooth_windows_host());
+    mg_bluetooth_windows_summary(summary, sizeof(summary));
+    printf("  Windows' Bluetooth: %s\n", summary);
+    state = mg_bluetooth_state(name, sizeof(name));
+    if (state != MEGLER_BT_RADIO_ON) {
+        printf("(%s: --bluetooth-windows has nothing to listen to, and nothing is checked)\n0 checks, 0 failed\n",
+               state == MEGLER_BT_RADIO_OFF ? "this PC's Bluetooth radio is off" : "no Bluetooth LE radio on this PC");
+        mg_bluetooth_end();
+        return 0;
+    }
+    printf("  the radio is on, named \"%s\"; listening (passive) for three seconds\n", name);
+    mg_bluetooth_scan(MEGLER_BT_SCAN_PASSIVE);
+    until = mg_time_monotonic_ns() + 3000000000ull;
+    while (mg_time_monotonic_ns() < until) {
+        megler_bluetooth_event *e = mg_bluetooth_next(100);
+        char text[18];
+        if (!e) continue;
+        if (e->kind == MEGLER_BT_EVENT_ADVERTISEMENT) {
+            ads++;
+            for (i = 0; i < devices && seen[i] != e->address; i++) {
+            }
+            if (i == devices && devices < 64) {
+                seen[devices++] = e->address;
+                mg_bluetooth_address_text(e->address, text);
+                if (devices <= 8)
+                    printf("  heard %s (%s), %d dBm, %d bytes of advertisement%s\n", text, e->address_type == MEGLER_BT_ADDRESS_RANDOM ? "random" : "public",
+                           e->value, e->size, e->extra ? ", takes connections" : "");
+            }
+        } else if (e->kind == MEGLER_BT_EVENT_SCAN_FAILED) {
+            printf("  the scan failed: ScanCallback's code %d\n", e->status);
+            failed++;
+        }
+        mg_bluetooth_free(e);
+    }
+    mg_bluetooth_scan(MEGLER_BT_SCAN_OFF);
+    mg_bluetooth_end();
+    checks++;
+    printf("  %s %d advertisements from %d devices in three seconds (there may be none in range)\n", failed ? "FAIL" : "ok", ads, devices);
+    printf("%d checks, %d failed\n", checks, failed);
+    return failed ? 1 : 0;
+#else
+    (void)argc;
+    (void)argv;
+    printf("(the shell's Bluetooth -- Windows.Devices.Bluetooth -- is not in this build of the tests: --bluetooth-windows does nothing here; tools/build-tests.sh win runs it)\n");
+    return 0;
+#endif
+}
+
 /* ------------------------------------------------------- --portal-windows */
 
 #ifdef MG_PORTAL_WINDOWS
@@ -1061,6 +1143,27 @@ static int portal_windows_mode(char **argv)
 #endif
 }
 
+/* ------------------------------------------------------- --window-windows */
+
+#ifdef MG_WINDOW_WINDOWS
+/* mg_window_windows.cpp: the shell's window (player/WindowHost.cpp) with no panel, its pictures as they come and the first. */
+MG_HOSTAPI int mg_window_windows_run(void (MEGLER_CB *line)(const char *text, void *user), int *checks);
+#endif
+
+static int window_windows_mode(void)
+{
+#ifdef MG_WINDOW_WINDOWS
+    int checks = 0, failed;
+    mg_core_init();
+    failed = mg_window_windows_run(print_line, &checks);
+    printf("%d checks, %d failed\n", checks, failed);
+    return failed ? 1 : 0;
+#else
+    printf("(the shell's window -- player/WindowHost.cpp -- is not in this build of the tests: --window-windows does nothing here; tools/build-tests.sh win runs it)\n");
+    return 0;
+#endif
+}
+
 #if defined(MG_CORE_ELF)
 /* On desktop Windows the tests are part of the core's ELF, and Megler's test program calls this (host/win32/mg_desktop_tests.c). */
 MEGLER_API int mg_tests_main(int argc, char **argv)
@@ -1073,7 +1176,9 @@ int main(int argc, char **argv)
     if (argc >= 4 && !strcmp(argv[1], "--codec-windows")) return codec_windows_mode(argc, argv);
     if (argc >= 3 && !strcmp(argv[1], "--camera-windows")) return camera_windows_mode(argc, argv);
     if (argc >= 3 && !strcmp(argv[1], "--sensors-windows")) return sensors_windows_mode(argc, argv);
+    if (argc >= 3 && !strcmp(argv[1], "--bluetooth-windows")) return bluetooth_windows_mode(argc, argv);
     if (argc >= 8 && !strcmp(argv[1], "--portal-windows")) return portal_windows_mode(argv);
+    if (argc >= 2 && !strcmp(argv[1], "--window-windows")) return window_windows_mode();
     if (argc >= 5 && !strcmp(argv[1], "--gfx-replay")) return gfx_replay_mode(argc, argv);
     if (argc >= 7 && !strcmp(argv[1], "--gfx-record")) {
         megler_config config;

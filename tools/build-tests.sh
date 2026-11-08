@@ -68,6 +68,18 @@
 #       likewise and run as --sensors-windows: the PC's sensors listed through
 #       the core's and each read a moment, or, on a PC without them, a line
 #       that says so.
+#       And the shell's window (app/Megler/player/WindowHost.cpp), built in
+#       likewise and run as --window-windows: made with no panel (a test
+#       program has no XAML), its swap chains presented to and never shown,
+#       on this PC's graphics processor -- each way an app's picture comes
+#       counted as it comes, the first kept and said in the log with what its
+#       Present said, the player told of it at once (what the player's busy
+#       overlay goes by), and a picture whose Present is refused.
+#       And the shell's Bluetooth for an app's android.bluetooth
+#       (app/Megler/player/BluetoothHost.cpp: Windows.Devices.Bluetooth),
+#       built in likewise and run as --bluetooth-windows: the PC's radio
+#       and a passive scan of three seconds -- nothing connected to or
+#       paired with -- or, on a PC without a radio, a line that says so.
 #       And the Xbox build's client of the console's Device Portal
 #       (app/Megler/shell/DevicePortal.cpp), built in likewise and run as
 #       --portal-windows against tools/device-portal-mock.py, a portal of the
@@ -76,6 +88,14 @@
 #       packages, an uninstall), over TLS with a certificate made here by
 #       openssl for another name (plain HTTP where there is no openssl), where
 #       Python is.
+#       And, in a program of its own (mg_shell_tests.exe, from
+#       core/tests/mg_shell_windows.cpp), the shell's start and its copies:
+#       shell/Files.cpp's copies past the cache and their mending, the log's
+#       last words written out at once (ShellLog.cpp), the start's steps and
+#       watch (Startup.cpp), the plan and the making of the copies of the
+#       package's Google APKs after the window is shown (BundledApks.cpp), and
+#       the package volume every package Megler installs goes to, the one
+#       Megler itself is on (Placement.cpp: a memory card's or the phone's).
 #
 # Both builds unpack bundles of split APKs as the shell does (mg_tests
 # --bundles, core/tests/mg_bundle_tests.c): the test app `splits` as an .apks
@@ -114,7 +134,11 @@
 # second time with every camera refused. And `screen`, whose surface is resized
 # and turned from the host's side (megler_set_surface), as a PC's window or a
 # phone turned does it: its activities made again or told, the pictures at the
-# new size. Their
+# new size. And `gms-host`, which hosts a stand-in for Google's own Play
+# services (`gms-own`) and starts a service of theirs: their code is told it
+# runs in its application's process.
+# And `bluetooth`, Bluetooth LE's central side as MeshCore's app uses it, on a
+# stand-in for the shell's radio (core/tests/mg_bluetooth_standin.c). Their
 # pictures are written to build/java-pictures as BMP files. Each is then run
 # once more with its calls of the shell's drawing recorded
 # (build/gfx-records/<app>.rec), for the Windows build to draw again.
@@ -225,7 +249,7 @@ EOF
     # Bundles of split APKs, unpacked as the shell unpacks them.
     MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL="*" wsl.exe -- bash -c "rm -rf $WB/scratch-bundles && qemu-arm -L /usr/arm-linux-gnueabihf $WB/mg_tests --bundles '$WROOT/build/guest/java' $WB/scratch-bundles '$WROOT/build/bundles' 2>&1; STATUS=\$?; rm -rf $WB/scratch-bundles; exit \$STATUS" || STATUS=1
     if [ "$JAVA" = 1 ]; then
-      for app in hello demos natives crash gc gl screen; do
+      for app in hello demos natives crash gc gl screen bluetooth; do
         if [ ! -f "$ROOT/build/guest/java/$app.apk" ]; then
           echo "(the Java test app $app is not run: build/guest/java/$app.apk was not built -- its native library needs the NDK, see tools/build-test-app.sh)"
           continue
@@ -237,6 +261,12 @@ EOF
       # Fetch the pinned upstream APK with tools/microg-fetch.sh first.
       if [ -f "$ROOT/build/microg/GmsCore.apk" ] && [ -f "$ROOT/build/guest/java/microg.apk" ]; then
         MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL="*" wsl.exe -- bash -c "cp '$WROOT/build/guest/java/microg.apk' $WB/microg.apk && rm -rf $WB/java-data-microg && cp '$WROOT/build/microg/GmsCore.apk' $WB/GmsCore.apk && MG_JAVA_GMS_APK=$WB/GmsCore.apk qemu-arm -L /usr/arm-linux-gnueabihf $WB/mg_tests --java microg $WB/microg.apk $WB/java-data-microg $WB/android-root - 2>&1" || STATUS=1
+      fi
+      # Google's own Play services as an app hosts them, in a stand-in of theirs (gms-own: no microG in it): their code is told
+      # it runs in its application's process, its main one (mg_java_tests.c, run_gms_host).
+      if [ -f "$ROOT/build/guest/java/gms-own.apk" ] && [ -f "$ROOT/build/guest/java/gms-host.apk" ]; then
+        echo "the Java test app gms-host (build/guest/java/gms-host.apk), hosting the stand-in for Google's own Play services (gms-own.apk)"
+        MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL="*" wsl.exe -- bash -c "cp -u '$WROOT/build/guest/java/gms-host.apk' $WB/gms-host.apk && cp -u '$WROOT/build/guest/java/gms-own.apk' $WB/gms-own.apk && rm -rf $WB/java-data-gms-host && MG_JAVA_GMS_APK=$WB/gms-own.apk qemu-arm -L /usr/arm-linux-gnueabihf $WB/mg_tests --java gms-host $WB/gms-host.apk $WB/java-data-gms-host $WB/android-root - 2>&1" || STATUS=1
       fi
       # The app in several APKs, from each of its bundles: unpacked as the shell unpacks one, for a screen of 320 dpi, and run.
       for bundle in apks xapk; do
@@ -433,11 +463,12 @@ elif [ "$MODE" = win ]; then
   for s in "${SRCS[@]}"; do ALL+=("$(w "$ROOT/$s")"); done
   ZALL=()
   for s in "${ZSRCS[@]}"; do ZALL+=("$(w "$ROOT/$s")"); done
-  # (MG_GFX_WINDOWS, MG_STORAGE_WINDOWS, MG_CODEC_WINDOWS, MG_CAMERA_WINDOWS, MG_SENSORS_WINDOWS, MG_PORTAL_WINDOWS: this build has
-  # the shell's drawing, its storage host, its decoders, its cameras, its sensors and the Xbox build's Device Portal client in
-  # it; mg_tests_main.c's --gfx-windows, --storage-windows, --codec-windows, --camera-windows, --sensors-windows and
-  # --portal-windows modes.)
-  "$VC/bin/Hostx64/x64/cl.exe" /nologo /c "$OPT" /MT /W3 /std:c11 /utf-8 "$MP" /D_CRT_SECURE_NO_WARNINGS /D_CRT_NONSTDC_NO_WARNINGS /DMG_GFX_WINDOWS /DMG_STORAGE_WINDOWS /DMG_CODEC_WINDOWS /DMG_CAMERA_WINDOWS /DMG_SENSORS_WINDOWS /DMG_PORTAL_WINDOWS "${SQLITE_CL[@]}" "${WEBP_CL[@]}" \
+  # (MG_GFX_WINDOWS, MG_STORAGE_WINDOWS, MG_CODEC_WINDOWS, MG_CAMERA_WINDOWS, MG_SENSORS_WINDOWS, MG_BLUETOOTH_WINDOWS,
+  # MG_PORTAL_WINDOWS, MG_WINDOW_WINDOWS: this build has the shell's drawing, its storage host, its decoders, its
+  # cameras, its sensors, its Bluetooth, the Xbox build's Device Portal client and the shell's window in it;
+  # mg_tests_main.c's --gfx-windows, --storage-windows, --codec-windows, --camera-windows, --sensors-windows,
+  # --bluetooth-windows, --portal-windows and --window-windows modes.)
+  "$VC/bin/Hostx64/x64/cl.exe" /nologo /c "$OPT" /MT /W3 /std:c11 /utf-8 "$MP" /D_CRT_SECURE_NO_WARNINGS /D_CRT_NONSTDC_NO_WARNINGS /DMG_GFX_WINDOWS /DMG_STORAGE_WINDOWS /DMG_CODEC_WINDOWS /DMG_CAMERA_WINDOWS /DMG_SENSORS_WINDOWS /DMG_BLUETOOTH_WINDOWS /DMG_PORTAL_WINDOWS /DMG_WINDOW_WINDOWS "${SQLITE_CL[@]}" "${WEBP_CL[@]}" \
     "/I$(w "$ROOT/core/third_party/zlib")" "/Fo$(w "$OUT/obj")\\" "${ALL[@]}" | grep -v -E '^[A-Za-z0-9_]+\.c$' || true
   "$VC/bin/Hostx64/x64/cl.exe" /nologo /c /O1 /MT /w "$MP" /D_CRT_SECURE_NO_WARNINGS /D_CRT_NONSTDC_NO_WARNINGS \
     "/Fo$(w "$OUT/zobj")\\" "${ZALL[@]}" | grep -v -E '^[A-Za-z0-9_]+\.c$' || true
@@ -475,7 +506,8 @@ elif [ "$MODE" = win ]; then
   # whole files (player/MediaHost.cpp), for the files of sound alone a Java app's MediaPlayer and SoundPool hand it; the
   # shell's log they write to is mg_storage_windows.cpp's. And the shell's cameras (player/CameraHost.cpp:
   # Windows.Media.Capture), with the lines that hand them to the tests (core/tests/mg_camera_windows.cpp). And the shell's
-  # sensors (player/SensorHost.cpp: Windows.Devices.Sensors), likewise (core/tests/mg_sensors_windows.cpp). And the Xbox
+  # sensors (player/SensorHost.cpp: Windows.Devices.Sensors), likewise (core/tests/mg_sensors_windows.cpp). And its
+  # Bluetooth (player/BluetoothHost.cpp: Windows.Devices.Bluetooth), likewise (core/tests/mg_bluetooth_windows.cpp). And the Xbox
   # build's Device Portal client (shell/DevicePortal.cpp: Windows.Web.Http), with the tests that drive it against the mock
   # portal (core/tests/mg_portal_windows.cpp); no package but the Xbox's has the client (tools/build-appx.sh --xbox).
   STORAGE_SRC=("$(w "$ROOT/app/Megler/player/StorageHost.cpp")" "$(w "$ROOT/app/Megler/shell/Strings.cpp")" "$(w "$ROOT/core/tests/mg_storage_windows.cpp")"
@@ -483,13 +515,15 @@ elif [ "$MODE" = win ]; then
                "$(w "$ROOT/app/Megler/player/MediaHost.cpp")"
                "$(w "$ROOT/app/Megler/player/CameraHost.cpp")" "$(w "$ROOT/core/tests/mg_camera_windows.cpp")"
                "$(w "$ROOT/app/Megler/player/SensorHost.cpp")" "$(w "$ROOT/core/tests/mg_sensors_windows.cpp")"
-               "$(w "$ROOT/app/Megler/shell/DevicePortal.cpp")" "$(w "$ROOT/core/tests/mg_portal_windows.cpp")")
+               "$(w "$ROOT/app/Megler/player/BluetoothHost.cpp")" "$(w "$ROOT/core/tests/mg_bluetooth_windows.cpp")"
+               "$(w "$ROOT/app/Megler/shell/DevicePortal.cpp")" "$(w "$ROOT/core/tests/mg_portal_windows.cpp")"
+               "$(w "$ROOT/app/Megler/player/WindowHost.cpp")" "$(w "$ROOT/core/tests/mg_window_windows.cpp")")
   mkdir -p "$OUT/storageobj"
   rm -f "$OUT/storageobj/"*.obj
   INCLUDE="$INCLUDE;$(w "$SDK/Include/$SDKV/winrt");$(w "$SDK/Include/$SDKV/cppwinrt")" \
     "$VC/bin/Hostx64/x64/cl.exe" "${GFX_FLAGS[@]}" /Zc:__cplusplus /bigobj /DWINAPI_FAMILY=WINAPI_FAMILY_APP /O1 "$MP" "/Fo$(w "$OUT/storageobj")\\" "${STORAGE_SRC[@]}" \
     | grep -v -E '^[A-Za-z0-9_]+\.cpp$' || true
-  for obj in StorageHost Strings mg_storage_windows CodecHost mg_codec_windows MediaHost CameraHost mg_camera_windows SensorHost mg_sensors_windows DevicePortal mg_portal_windows; do
+  for obj in StorageHost Strings mg_storage_windows CodecHost mg_codec_windows MediaHost CameraHost mg_camera_windows SensorHost mg_sensors_windows BluetoothHost mg_bluetooth_windows DevicePortal mg_portal_windows WindowHost mg_window_windows; do
     [ -f "$OUT/storageobj/$obj.obj" ] || { echo "compile failed: $obj.cpp" >&2; exit 1; }
   done
   # (MEGLER_TESTS_MAP=1: a linker map beside it, mg_tests.map, which tools/dvm-bench.sh profile reads.)
@@ -502,6 +536,25 @@ elif [ "$MODE" = win ]; then
   "$VC/bin/Hostx64/x64/link.exe" /nologo ${MAPOPT[@]+"${MAPOPT[@]}"} "/OUT:$(w "$OUT/mg_tests.exe")" "$(w "$OUT/obj")\\*.obj" "$(w "$OUT/zobj")\\*.obj" "$(w "$OUT/gfxobj")\\*.obj" \
     "$(w "$OUT/storageobj")\\*.obj" bcrypt.lib synchronization.lib d2d1.lib d3d11.lib dwrite.lib ole32.lib oleaut32.lib ws2_32.lib iphlpapi.lib mfplat.lib mfreadwrite.lib mfuuid.lib
   echo "built $OUT/mg_tests.exe"
+  # The shell's start and its copies (shell/Files.cpp, ShellLog.cpp, Startup.cpp, BundledApks.cpp and Strings.cpp), and the
+  # package volume Megler installs onto (shell/Placement.cpp), the very
+  # files the phone's package is built from, in a program of their own with the tests that drive them
+  # (core/tests/mg_shell_windows.cpp): mg_tests.exe stands in for the shell's files and log, as its storage, codec and camera
+  # tests want, and these want the real ones. Compiled as for an app container, as the storage host is (onecore.lib: an app's
+  # VirtualAlloc is VirtualAllocFromApp).
+  SHELL_SRC=("$(w "$ROOT/app/Megler/shell/Files.cpp")" "$(w "$ROOT/app/Megler/shell/Strings.cpp")" "$(w "$ROOT/app/Megler/shell/ShellLog.cpp")"
+             "$(w "$ROOT/app/Megler/shell/Startup.cpp")" "$(w "$ROOT/app/Megler/shell/BundledApks.cpp")" "$(w "$ROOT/app/Megler/shell/Placement.cpp")"
+             "$(w "$ROOT/core/tests/mg_shell_windows.cpp")")
+  mkdir -p "$OUT/shellobj"
+  rm -f "$OUT/shellobj/"*.obj
+  INCLUDE="$INCLUDE;$(w "$SDK/Include/$SDKV/winrt");$(w "$SDK/Include/$SDKV/cppwinrt")" \
+    "$VC/bin/Hostx64/x64/cl.exe" "${GFX_FLAGS[@]}" /Zc:__cplusplus /bigobj /DWINAPI_FAMILY=WINAPI_FAMILY_APP /O1 "$MP" "/Fo$(w "$OUT/shellobj")\\" "${SHELL_SRC[@]}" \
+    | grep -v -E '^[A-Za-z0-9_]+\.cpp$' || true
+  for obj in Files Strings ShellLog Startup BundledApks Placement mg_shell_windows; do
+    [ -f "$OUT/shellobj/$obj.obj" ] || { echo "compile failed: $obj.cpp" >&2; exit 1; }
+  done
+  "$VC/bin/Hostx64/x64/link.exe" /nologo "/OUT:$(w "$OUT/mg_shell_tests.exe")" "$(w "$OUT/shellobj")\\*.obj" bcrypt.lib ole32.lib oleaut32.lib onecore.lib
+  echo "built $OUT/mg_shell_tests.exe"
   if [ "$RUN" = 1 ]; then
     rm -rf "$OUT/scratch"
     APK="${MEGLER_TEST_APK:-$USERPROFILE/Downloads/Hollow_Knight_22.10.2022_LQ.apk}"
@@ -530,10 +583,19 @@ elif [ "$MODE" = win ]; then
       echo "(with Android's own fonts)"
       MEGLER_GFX_FONTS="$(w "$ROOT/build/android9/root/fonts")" "$OUT/mg_tests.exe" --gfx-windows - || STATUS=1
     fi
+    # The shell's window (player/WindowHost.cpp) with no panel, on this PC's graphics processor: each way a picture of an
+    # app's comes -- drawn by the shell's drawing, in memory, a game's frame in ANGLE's texture -- counted as it comes, the
+    # first said in the log with what its Present said and the player told of it at once, which its busy overlay goes by;
+    # and a picture whose Present is refused (the flag fail-present).
+    "$OUT/mg_tests.exe" --window-windows || STATUS=1
     # The shell's storage host: the storage's tests once more, with Windows.Storage's own objects handing the handles over
     # instead of the stand-in, on folders under a scratch folder of its own.
     rm -rf "$OUT/scratch-storage"
     "$OUT/mg_tests.exe" --storage-windows "$(w "$OUT/scratch-storage")" || STATUS=1
+    # The shell's start and its copies: files copied past the cache and mended, the log's last words written out at once,
+    # the start's steps and watch, the plan of the copies of the package's Google APKs and their making after the start.
+    rm -rf "$OUT/scratch-shell"
+    "$OUT/mg_shell_tests.exe" "$(w "$OUT/scratch-shell")" || STATUS=1
     # The shell's decoders: the core's codec for MediaCodec over Media Foundation's own decoder transforms, fed the data
     # app's streams (H.264 and H.265 with B-pictures, AAC, MP3) and checked against what they hold; and timed on longer
     # streams of 720p and 1080p, made once into build/media-speed where Python and ffmpeg are (they are not kept in the
@@ -556,6 +618,10 @@ elif [ "$MODE" = win ]; then
     # The shell's sensors: what this PC has through the core's sensors, each read a moment; a PC without them says so.
     rm -rf "$OUT/scratch-sensors"
     "$OUT/mg_tests.exe" --sensors-windows "$(w "$OUT/scratch-sensors")" || STATUS=1
+    # The shell's Bluetooth: this PC's radio through the core's, and a passive scan of three seconds (nothing connected to or
+    # paired with); a PC without one says so.
+    rm -rf "$OUT/scratch-bluetooth"
+    "$OUT/mg_tests.exe" --bluetooth-windows "$(w "$OUT/scratch-bluetooth")" || STATUS=1
     # The Xbox build's Device Portal client, against a portal of the tests' own (tools/device-portal-mock.py) on a port of
     # its choosing on 127.0.0.1: over TLS with a certificate openssl makes here for another name, nothing vouching for it, as
     # the console's own is; the first two questions of the install's state answered 204, as another client's install

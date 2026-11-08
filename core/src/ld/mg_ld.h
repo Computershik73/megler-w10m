@@ -159,6 +159,17 @@ void mg_patch_set_trap_svc(bool on);
 bool mg_patch_svc_target(mg_addr pc, mg_addr *target);
 /* A thread-pointer read left as the file has it, at a hardware breakpoint: the register it sets, and where to go on. */
 bool mg_patch_tp_target(mg_addr pc, int *reg, mg_addr *target);
+/*
+ * ARM64: the cache's type that a read of CTR_EL0 gives an app's code (arm64/mg_patch_arm64.c), an ARMv8 core's: 64-byte
+ * lines of the instruction cache (IminLine 4) and of the data cache (DminLine 4), PIPT (L1Ip 3), reservations and
+ * write-backs of 64 bytes (ERG, CWG 4), neither cache coherent of itself (IDC, DIC 0), bit 31 set as the architecture
+ * has it.
+ */
+#define MG_ARM64_CTR_EL0 0x8444C004u
+/* ARM64: an instruction Linux lets user code run and Windows refuses (a read of CTR_EL0, cache maintenance by address), done to `regs`. */
+bool mg_patch_sys_emulate(u32 w, mg_addr *regs);
+/* The same for the instruction at `pc`, where it faulted: the thread then goes on after it. */
+bool mg_patch_sys_fault(mg_addr pc, mg_addr *regs);
 /* 0 quiet, 1 one line per library, 2 every unresolved import as well. */
 void mg_ld_set_verbosity(int v);
 
@@ -174,6 +185,7 @@ typedef struct mg_ld_stats {
     u32 tp_led_out;        /* x86_64: accesses of the thread pointer's segment through a register, led out to the island */
     u32 svc_led_out;       /* 32-bit ARM: of svc_sites, ARM ones of a library of Go's led out to the core (arm/mg_patch.c), not traps; ARM64: every one led out */
     u32 x18_writes;        /* ARM64: instructions of its code that write x18, Windows' TEB (arm64/mg_patch_arm64.c), less words its mapping symbols mark as data */
+    u32 ctr_reads;         /* ARM64: reads of CTR_EL0 made MG_ARM64_CTR_EL0's (Windows refuses them in user mode) */
 } mg_ld_stats;
 void mg_ld_get_stats(const mg_lib *lib, mg_ld_stats *out);
 /* The committed memory of the libraries the loader mapped: their segments, as read from their files. */

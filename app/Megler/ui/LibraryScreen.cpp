@@ -6,6 +6,7 @@
 
 #include "library/Library.h"
 #include "shell/AppPackage.h"
+#include "shell/BundledApks.h"
 #include "shell/Strings.h"
 #include "ui/AppShell.h"
 #include "ui/Components.h"
@@ -139,6 +140,26 @@ public:
         setVisible(importCard_, false);
         add(column_, importCard_);
 
+        // Megler's copies of the Google APKs its package brings, made after the window is shown (shell/BundledApks.h): a
+        // first start's are hundreds of megabytes, the better part of a minute on a slow phone.
+        bundledTitle_ = text("", font::titleMedium, weightMedium(), p.onSurface);
+        bundledBar_ = ProgressBar();
+        bundledBar_.Minimum(0);
+        bundledBar_.Maximum(1);
+        bundledBar_.Foreground(brush(p.primary));
+        bundledBar_.Background(brush(p.secondaryContainer));
+        bundledBar_.Margin(ThicknessHelper::FromLengths(0, 12, 0, 8));
+        bundledDetail_ = text("", font::bodyMedium, weightNormal(), p.onSurfaceVariant);
+        bundledDetail_.TextWrapping(TextWrapping::Wrap);
+        auto bundledColumn = vstack(0);
+        add(bundledColumn, bundledTitle_);
+        add(bundledColumn, bundledBar_);
+        add(bundledColumn, bundledDetail_);
+        bundledCard_ = card(bundledColumn, 12, 16);
+        bundledCard_.Margin(ThicknessHelper::FromLengths(0, 8, 0, 8));
+        setVisible(bundledCard_, false);
+        add(column_, bundledCard_);
+
         // What is being done to the apps on the phone (ui/SeparateApps.h), from the moment an APK is picked: refreshed at
         // every poll, whatever the list.
         workText_ = text("", font::bodyMedium, weightNormal(), p.onSurface);
@@ -183,6 +204,18 @@ public:
             importDetail_.Text(hs(formattedByteCount(import.copied) + " of " + formattedByteCount(import.total)));
         }
         addButton_.IsEnabled(!import.active);
+        const bundledApks::Progress bundled = bundledApks::progress();
+        setVisible(bundledCard_, bundled.active);
+        if (bundled.active) {
+            const char* doing = bundled.stage == files::Stage::copying    ? "Copying "
+                                : bundled.stage == files::Stage::flushing ? "Saving "
+                                                                          : "Checking the copy of ";
+            bundledTitle_.Text(hs(doing + bundled.what));
+            bundledBar_.Value(bundled.total ? double(bundled.done) / double(bundled.total) : 0);
+            bundledDetail_.Text(hs(formattedByteCount(bundled.done) + " of " + formattedByteCount(bundled.total) +
+                                   (bundled.count > 1 ? format(", copy %d of %d", bundled.index, bundled.count) : std::string()) +
+                                   ", from Megler's own package"));
+        }
         const std::string updating = appPackage::selfUpdateVersion();
         // And why it was not installed, which went with nothing said: a Lumia 650's owner saw the card "for a second", and
         // nothing more (its copy of 650 in Pictures\Megler was damaged).
@@ -364,6 +397,10 @@ private:
     TextBlock importTitle_{nullptr};
     ProgressBar importBar_{nullptr};
     TextBlock importDetail_{nullptr};
+    Border bundledCard_{nullptr};
+    TextBlock bundledTitle_{nullptr};
+    ProgressBar bundledBar_{nullptr};
+    TextBlock bundledDetail_{nullptr};
     ContentControl listHost_{nullptr};
     Border workCard_{nullptr};
     Border updateCard_{nullptr};

@@ -29,6 +29,11 @@
 // And the screens of Android's Settings an app opens -- the accounts, the app's info -- are Megler's own (megler.SystemScreens),
 // shown on top of the app as Android shows the Settings app's: they had opened nothing.
 //
+// And Android's location settings (android.settings.LOCATION_SOURCE_SETTINGS: an app's "turn the location on", after it was
+// told the location is off) open Windows' page of them (ms-settings:privacy-location), where the phone's location is switched
+// on; a caller that asked for a result hears RESULT_CANCELED once it is in front again, as from Android's Settings' Back. They
+// had opened nothing.
+//
 // And the app's network security configuration is put in place before its Application is made, where Android 9's
 // handleBindApplication does it (android.security.net.config.NetworkSecurityConfigProvider says why): the authorities its
 // XML names, Ozon's Russian Trusted Root CA among them, are trusted by TLS.
@@ -41,6 +46,14 @@
 // one on top of the stack, resumed, whatever the old one had been, and dropped what it retained). And how the activity in
 // front wants the screen held -- its android:screenOrientation or setRequestedOrientation, "behind" and an activity that
 // does not fill the screen leaving it to the one below -- is told to the shell as it changes (updateOrientation).
+//
+// And Android's screens about the Bluetooth radio an app starts (BluetoothAdapter.ACTION_REQUEST_ENABLE, the Bluetooth
+// settings) are the phone's Bluetooth settings, the request's result RESULT_OK once the radio is on (megler.Bluetooth).
+//
+// And the Application, once made, is put in ActivityThread's fields (mInitialApplication, mAllApplications:
+// ActivityThread.meglerApplicationMade) before its providers and its onCreate, as Android's handleBindApplication puts it
+// there: code that reads them by reflection on another thread while the Application starts finds it (android/app/
+// ActivityThread.java says who).
 //
 // Everything else is the original's, unchanged.
 package megler;
@@ -139,6 +152,8 @@ public final class AppRunner {
         try { app = sFactory.instantiateApplication(classLoader(), appCls != null ? appCls : Application.class.getName()); }
         catch (ClassNotFoundException e) { android.util.Log.w("Megler", "no application class " + appCls); app = new Application(); }
         sApp = app;
+        // (The process's from now on, for code that asks ActivityThread by reflection, its fields as well as its methods.)
+        android.app.ActivityThread.meglerApplicationMade(app);
         Application.meglerSet(app);
         ContextImpl.setApplication(app);
         app.meglerAttach(base);
@@ -459,6 +474,9 @@ public final class AppRunner {
             megler.PhoneApps.start(i);
             return;
         }
+        // Android's screens about the Bluetooth radio (BluetoothAdapter.ACTION_REQUEST_ENABLE and the like): the phone's
+        // Bluetooth settings, the result as the radio turns out (megler.Bluetooth.request).
+        if (Bluetooth.request(from instanceof Activity ? (Activity) from : top(), i, request)) return;
         Manifest.Component c = Manifest.resolve(i);
         android.util.Log.d("Megler", "startActivity " + i + (c != null ? " -> " + c.name : " (not an activity of this app)"));
         if (c != null) {
@@ -530,6 +548,19 @@ public final class AppRunner {
                 try { launch(screen, intent, caller, request, SystemScreens.component(screen)); }
                 catch (Throwable t) { android.util.Log.e("Megler", "starting " + screen + " failed", t); }
             });
+            return;
+        }
+        // Android's location settings (an app's "turn the location on"): Windows' page of them, where the phone's location is
+        // switched on; a caller that asked for a result hears the user backed out once it is in front again (windowsSettingsBack).
+        if ("android.settings.LOCATION_SOURCE_SETTINGS".equals(action)) {
+            android.util.Log.d("Megler", "startActivity " + i + " -> Windows' location settings (ms-settings:privacy-location)");
+            Native.openUrl("ms-settings:privacy-location");
+            final Activity caller = from instanceof Activity ? (Activity) from : top();
+            if (request >= 0 && caller != null) {
+                sWindowsCaller = caller;
+                sWindowsRequest = request;
+                sHandler.postDelayed(() -> windowsSettingsBack(true), 5000);
+            }
             return;
         }
         /* a screen of the system's (the account chooser, Settings pages, the permission dialog): Megler has none of them -- asked for a
@@ -728,6 +759,22 @@ public final class AppRunner {
         Native.toBack();
         return true;
     }
+    /** The activity that opened Windows' location settings for a result, and its request code (-1: none waits). */
+    private static Activity sWindowsCaller;
+    private static int sWindowsRequest = -1;
+    /**
+     * The answer of Windows' location settings to an activity that opened them for a result: RESULT_CANCELED, as Android's
+     * Settings answers its Back, when the app is in front again (hostPause) -- or after five seconds when the page never hid
+     * the app (fromTimer), so that the caller is not left waiting.
+     */
+    private static void windowsSettingsBack(boolean fromTimer) {
+        final Activity caller = sWindowsCaller;
+        if (caller == null || (fromTimer && sPausedByHost)) return;
+        final int request = sWindowsRequest;
+        sWindowsCaller = null;
+        sWindowsRequest = -1;
+        caller.meglerActivityResult(request, Activity.RESULT_CANCELED, null);
+    }
     /** The activities the host's hidden window stopped (hostPause), in the stack's order: started again as it comes back. */
     private static final ArrayList<Activity> sStoppedByHost = new ArrayList<>();
     private static void hostPause(boolean pause) {
@@ -737,6 +784,9 @@ public final class AppRunner {
         ViewRoot.hostHidden(pause);
         // a result another app's activity left for this one comes first, as onActivityResult comes before onResume
         if (!pause) AppResults.resumed();
+        if (!pause) windowsSettingsBack(false);
+        // (and a request to turn the Bluetooth radio on that showed the phone's settings: the radio as it is now)
+        if (!pause) Bluetooth.resumed();
         // and what the shell said of the permission groups is asked again: the user may have changed Windows' settings meanwhile
         if (!pause) Permissions.forget();
         Activity a = top();

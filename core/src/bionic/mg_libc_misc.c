@@ -227,13 +227,22 @@ static int g_clearenv(void)
     return 0;
 }
 
+/*
+ * An app's environment: what Android 9's init exports for every process it starts (init.environ.rc), which the zygote's
+ * children keep -- but BOOTCLASSPATH and SYSTEMSERVERCLASSPATH, whose jars are not where they would say, and DOWNLOAD_CACHE,
+ * whose folder is not there (android.os.Environment takes /cache without it) -- and HOME, TMPDIR and LANG of this layer's.
+ */
 void mg_env_init(void)
 {
     env_reserve();
     g_environ[0] = NULL;
     g_setenv("PATH", "/sbin:/system/sbin:/system/bin:/system/xbin", 1);
+    g_setenv("ANDROID_BOOTLOGO", "1", 1);
     g_setenv("ANDROID_ROOT", "/system", 1);
+    g_setenv("ANDROID_ASSETS", "/system/app", 1);
     g_setenv("ANDROID_DATA", "/data", 1);
+    g_setenv("ANDROID_STORAGE", "/storage", 1);
+    g_setenv("ASEC_MOUNTPOINT", "/mnt/asec", 1);
     g_setenv("EXTERNAL_STORAGE", mg_fs_external_dir(), 1);
     g_setenv("HOME", mg_fs_internal_dir(), 1);
     g_setenv("TMPDIR", "/data/local/tmp", 1);
@@ -499,9 +508,10 @@ static mg_addr vdso_image(void)
 static unsigned long g_getauxval(unsigned long type);
 char **mg_bionic_initial_argv(void)
 {
-    static mg_addr block[32];
+    static mg_addr block[34];
     static const unsigned long tags[] = { 6 /* AT_PAGESZ */, 15 /* AT_PLATFORM */, 16 /* AT_HWCAP */, 26 /* AT_HWCAP2 */,
-                                          25 /* AT_RANDOM */, 17 /* AT_CLKTCK */, 23 /* AT_SECURE */, 11, 12, 13, 14 /* uids, gids */ };
+                                          25 /* AT_RANDOM */, 17 /* AT_CLKTCK */, 23 /* AT_SECURE */, 11, 12, 13, 14 /* uids, gids */,
+                                          31 /* AT_EXECFN */ };
     static int made;
     if (!made) {
         int n = 0;
@@ -510,9 +520,8 @@ char **mg_bionic_initial_argv(void)
         block[n++] = 0;                                  /* argv's end */
         block[n++] = 0;                                  /* envp, empty */
         for (i = 0; i < MG_COUNT(tags); i++) {
-            unsigned long v = tags[i] == 17 ? 100 : tags[i] >= 11 && tags[i] <= 14 ? 10100 : g_getauxval(tags[i]);
             block[n++] = (mg_addr)tags[i];
-            block[n++] = (mg_addr)v;
+            block[n++] = (mg_addr)g_getauxval(tags[i]);
         }
         block[n] = vdso_image();
         if (block[n]) {
@@ -565,7 +574,19 @@ static unsigned long g_getauxval(unsigned long type)
 #endif
     case 25: return (unsigned long)(mg_addr)g_at_random;   /* AT_RANDOM */
     case 26: return 0;                             /* AT_HWCAP2: no ARMv8 crypto claimed */
-    default: return 0;
+    case 17: return 100;                           /* AT_CLKTCK */
+    case 11: case 12: case 13: case 14: return 10100;   /* AT_UID, AT_EUID, AT_GID, AT_EGID: the app's, as getuid says */
+    case 23: return 0;                             /* AT_SECURE */
+    /*
+     * AT_EXECFN: the path the process was started from, a string every Linux process has -- an app's is its zygote's. It was
+     * zero, and a caller that takes it for a string (the process's name for a crash report) read through null.
+     */
+    case 31: return (unsigned long)(mg_addr)(MG_GUEST_LP64 ? "/system/bin/app_process64" : "/system/bin/app_process32");
+    case 33: return 0;                             /* AT_SYSINFO_EHDR: as before, the vector's own alone (it makes the image) */
+    default:
+        /* Not in the vector: zero, and ENOENT, as bionic says it. */
+        mg_set_errno(GE_NOENT);
+        return 0;
     }
 }
 
@@ -901,7 +922,8 @@ static long g_syscall(long nr, long a, long b, long c, long d, long e, long f)
      * The files of Go's os package by number too: reads and writes at an offset (in the register pair after a pad), a
      * file's lock, its data synced, its size (after a pad), a directory's entries, a link read, a file's mode, owner and
      * times, a file system's size, the working directory. Psiphon keeps its data in a Bolt database, which opens, locks,
-     * reads, writes, syncs and grows its file so. A mode or an owner is not kept here: for a file that is there, done.
+     * reads, writes, syncs and grows its file so. An owner is not kept here (for a file that is there, done), and of a mode
+     * only its write bits (fchmodat, fchmod).
      */
     case 180: return ((pio_fn)mg_bionic_find("pread64"))((int)a, (void *)(mg_addr)b, (size_t)c, (i64)(((u64)(u32)f << 32) | (u32)e));   /* pread64 */
     case 181: return ((pio_fn)mg_bionic_find("pwrite64"))((int)a, (void *)(mg_addr)b, (size_t)c, (i64)(((u64)(u32)f << 32) | (u32)e));  /* pwrite64 */
@@ -912,7 +934,8 @@ static long g_syscall(long nr, long a, long b, long c, long d, long e, long f)
     case 332: return ((readlinkat_fn)mg_bionic_find("readlinkat"))((int)a, (const char *)(mg_addr)b, (char *)(mg_addr)c, (size_t)d);  /* readlinkat */
     case 94: return ((fd2_fn)mg_bionic_find("fchmod"))((int)a, (int)b);                                                  /* fchmod */
     case 95: case 207: return ((fcntl_fn)mg_bionic_find("fcntl"))((int)a, 1 /* F_GETFD */, 0) < 0 ? -1 : 0;              /* fchown, fchown32 */
-    case 325: case 333: return ((at_int_fn)mg_bionic_find("faccessat"))((int)a, (const char *)(mg_addr)b, 0 /* F_OK */, 0);  /* fchownat, fchmodat */
+    case 325: return ((at_int_fn)mg_bionic_find("faccessat"))((int)a, (const char *)(mg_addr)b, 0 /* F_OK */, 0);         /* fchownat */
+    case 333: return ((at_int_fn)mg_bionic_find("fchmodat"))((int)a, (const char *)(mg_addr)b, (int)c, 0);               /* fchmodat: its write bits kept */
     case 348: return ((utimensat_fn)mg_bionic_find("utimensat"))((int)a, (const char *)(mg_addr)b, (const void *)(mg_addr)c, (int)d);  /* utimensat */
     case 266: return ((path_buf_fn)mg_bionic_find("statfs64"))((const char *)(mg_addr)a, (void *)(mg_addr)c);          /* statfs64: path, size, buffer */
     case 267: return ((fd_buf_fn)mg_bionic_find("fstatfs64"))((int)a, (void *)(mg_addr)c);                              /* fstatfs64 */

@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Main's step "resources-impl": the style of values-night (see values/themes.xml). -->
+<resources>
+    <style name="ProbeTheme">
+        <item name="android:colorForeground">#FF222222</item>
+    </style>
+</resources>

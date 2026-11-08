@@ -136,16 +136,58 @@ int ofAccess(DeviceAccessStatus s) {
     }
 }
 
-/// Windows' consent of this package for a group it decides, nothing asked. The location's by the class of its consent, as
-/// Windows' own documentation checks it without asking (Geolocator's RequestAccessAsync would ask).
+/// Windows' location consent of this package, nothing asked: by the class of its consent, as Windows' own documentation
+/// checks it without asking (Geolocator's RequestAccessAsync would ask).
+DeviceAccessStatus locationConsent() {
+    const winrt::guid consentClass{0xBFA794E4, 0xF964, 0x4FDB, {0x90, 0xF6, 0x51, 0x05, 0x6B, 0xFE, 0x4B, 0x44}};
+    return DeviceAccessInformation::CreateFromDeviceClassId(consentClass).CurrentStatus();
+}
+
+/// Windows' consent of this package for a group it decides, nothing asked. The location refused by the system -- the phone's
+/// location switched off, or every app's -- is no refusal of the app's: Android grants or refuses an app's location
+/// permission whether the location is on or off, and an app told the permission is its own then asks the user to switch the
+/// location on (megler.LocationService tells it the location is off). Taken for a refusal for good, it left the app nothing
+/// to ask and nothing to say but that the location was not to be had (VTB, 0.1.0.671: "no one asked").
 int windowsNow(const std::string& group) {
     if (group == "location") {
         double latitude = 0, longitude = 0;
         if (settings::location::setPlace(latitude, longitude)) return MEGLER_PERMISSION_GRANTED;
-        const winrt::guid locationConsent{0xBFA794E4, 0xF964, 0x4FDB, {0x90, 0xF6, 0x51, 0x05, 0x6B, 0xFE, 0x4B, 0x44}};
-        return ofAccess(DeviceAccessInformation::CreateFromDeviceClassId(locationConsent).CurrentStatus());
+        const DeviceAccessStatus s = locationConsent();
+        return s == DeviceAccessStatus::DeniedBySystem ? MEGLER_PERMISSION_GRANTED : ofAccess(s);
     }
     return ofAccess(DeviceAccessInformation::CreateFromDeviceClass(group == "camera" ? DeviceClass::VideoCapture : DeviceClass::AudioCapture).CurrentStatus());
+}
+
+/// What Windows says of a group it decides, in words, for the log and the app's settings.
+std::string windowsSaidNow(const std::string& group) {
+    if (group == "location") {
+        double latitude = 0, longitude = 0;
+        if (settings::location::setPlace(latitude, longitude)) return "Allowed: a place set in Megler's Settings stands in for the phone's";
+        switch (locationConsent()) {
+        case DeviceAccessStatus::Allowed: return "Allowed by Windows";
+        case DeviceAccessStatus::DeniedByUser: return "Not allowed by Windows (Settings > Privacy > Location)";
+        case DeviceAccessStatus::DeniedBySystem: return "The phone's location is switched off: the app may have it once it is on";
+        default: return "Windows asks when the app first wants it";
+        }
+    }
+    const int state = windowsNow(group);
+    return state == MEGLER_PERMISSION_GRANTED ? "Allowed by Windows" : state == MEGLER_PERMISSION_DENIED_FIXED ? "Not allowed by Windows" : "Windows asks when the app first wants it";
+}
+
+/// Each answer of Windows' said once in the log, as it is first given and as it changes: why an app's location permission is
+/// what it is, even when nothing asks (a request of the app's answered from what Windows already said).
+void sayWindows(const std::string& group, const std::string& package) {
+    static std::mutex mutex;
+    static std::string said;
+    std::string now;
+    inMta([&] { now = windowsSaidNow(group); });
+    const std::string line = group + ": " + now;
+    {
+        std::lock_guard<std::mutex> lock(mutex);
+        if (said.find("|" + line + "|") != std::string::npos) return;
+        said += "|" + line + "|";
+    }
+    shellLog::write("permissions: " + package + "'s " + group + ", as Windows has it now: " + now);
 }
 
 /// Whether the phone has a camera (or a microphone): one it has not, Windows has nothing to ask about.
@@ -235,9 +277,10 @@ int askWindows(const std::string& group) {
         const int access = host.access(host.user, true);
         inMta([&] { now = windowsNow(group); });
         if (now != MEGLER_PERMISSION_UNDECIDED) return now;
-        return access == MEGLER_LOCATION_ON || access == MEGLER_LOCATION_NONE ? MEGLER_PERMISSION_GRANTED
-               : access == MEGLER_LOCATION_DENIED                            ? MEGLER_PERMISSION_DENIED_FIXED
-                                                                             : MEGLER_PERMISSION_UNDECIDED;
+        // (The location off is the app's to have once it is on, as windowsNow says.)
+        return access == MEGLER_LOCATION_ON || access == MEGLER_LOCATION_NONE || access == MEGLER_LOCATION_OFF ? MEGLER_PERMISSION_GRANTED
+               : access == MEGLER_LOCATION_DENIED                                                            ? MEGLER_PERMISSION_DENIED_FIXED
+                                                                                                             : MEGLER_PERMISSION_UNDECIDED;
     }
     bool device = true;
     inMta([&] { device = hasDevice(group); });
@@ -289,6 +332,7 @@ int MEGLER_CB thunk(void*, const char* name, bool ask) {
         } else {
             inMta([&] { state = windowsNow(group); });
         }
+        if (group == "location") sayWindows(group, package);
     } else {
         state = kept(package, group);
         if (ask && !package.empty() && state != MEGLER_PERMISSION_GRANTED && state != MEGLER_PERMISSION_DENIED_FIXED) state = askUser(*kind, package, state);
@@ -337,6 +381,12 @@ int windows(const std::string& group) {
     int state = MEGLER_PERMISSION_UNDECIDED;
     inMta([&] { state = windowsNow(group); });
     return state;
+}
+
+std::string windowsSaid(const std::string& group) {
+    std::string said;
+    inMta([&] { said = windowsSaidNow(group); });
+    return said;
 }
 
 std::wstring windowsSettingsPage(const std::string& group) {

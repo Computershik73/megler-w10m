@@ -21,6 +21,7 @@
 #include "mg_gfx_tests.h"
 #include "mg_net_tests.h"
 #include "mg_sensor_tests.h"
+#include "mg_bluetooth_tests.h"
 #include "mg_storage_tests.h"
 #include "mg_tests.h"
 
@@ -173,6 +174,135 @@ static void test_pread_threads(const char *scratch)
     }
     free(words);
     free(path);
+}
+
+/*
+ * Who holds a lock, as the hang report reads it from its own thread (mg_base.c, mg_holder). It read its clock first and
+ * the holder's record after: a hold begun between the two was 2^64 ns old, "18446744073.7 s", and said as an app that
+ * stands still (Viber's write-back thread on 0.1.0.669, Tuya Smart's fault report on 671). A look reads the clock after
+ * the record, and gets the record whole -- one hold's owner, time and words, however fast the lock changes hands.
+ */
+typedef struct holder_race {
+    mg_holder *h;
+    volatile i32 stop;
+    volatile u32 host_id;
+    u32 rounds;
+} holder_race;
+
+static MG_HOSTCB void holder_racer(void *arg)
+{
+    holder_race *r = (holder_race *)arg;
+    r->host_id = mg_thread_self_id();
+    while (!r->stop) {
+        mg_holder_take(r->h, "the racer's hold");
+        mg_holder_let_go(r->h);
+        r->rounds++;
+    }
+}
+
+static void test_lock_holders(void)
+{
+    mg_holder h = MG_HOLDER_INIT;
+    mg_hold_seen seen;
+    char text[64];
+    u64 before;
+    say("a lock's holder, as the hang report looks at it");
+    CHECK(!mg_holder_look(&h, &seen, text, sizeof(text)) && seen.owner == 0 && seen.held_ns == 0 && text[0] == 0);
+    /* The clock read first, the hold begun after it: counted from that reading it wraps round; looked at, it is a moment old. */
+    before = mg_time_monotonic_ns();
+    mg_sleep_ns(2000000ull);
+    mg_holder_take(&h, "a test's hold");
+    CHECK(mg_holder_mine(&h));
+    CHECK(mg_holder_look(&h, &seen, text, sizeof(text)) && seen.owner == mg_thread_self_id() && !strcmp(text, "a test's hold"));
+    say("  a hold begun after the clock was read: %.6f s held as looked at; %.1f s counted from the reading (the old way)",
+        (double)seen.held_ns / 1e9, (double)(before - seen.since) / 1e9);
+    CHECK(seen.held_ns < 1000000000ull && before - seen.since > 1000000000ull * 1000000000ull && mg_held_ns(seen.since, before) == 0);
+    /* Held a while: as long as it was. */
+    mg_sleep_ns(60000000ull);
+    CHECK(mg_holder_look(&h, &seen, NULL, 0) && seen.held_ns >= 50000000ull && seen.held_ns < 30000000000ull);
+    mg_holder_let_go(&h);
+    CHECK(!mg_holder_mine(&h) && !mg_holder_look(&h, &seen, text, sizeof(text)) && seen.owner == 0 && text[0] == 0);
+    /* Taken and let go by another thread as fast as it can, looked at all the while: every look one hold's, whole. */
+    {
+        holder_race race;
+        mg_thread *t;
+        u32 looks = 0, held = 0, torn = 0;
+        u64 until;
+        memset(&race, 0, sizeof(race));
+        race.h = &h;
+        t = mg_thread_start(holder_racer, &race, 64u * 1024u, "holder-racer");
+        CHECK(t != NULL);
+        until = mg_time_monotonic_ns() + 300000000ull;
+        while (t && mg_time_monotonic_ns() < until) {
+            looks++;
+            if (!mg_holder_look(&h, &seen, text, sizeof(text))) continue;
+            held++;
+            if (seen.owner != race.host_id || strcmp(text, "the racer's hold") || seen.held_ns > 10000000000ull || !seen.since) torn++;
+        }
+        race.stop = 1;
+        if (t) mg_thread_join(t);
+        say("  %u looks while another thread took it %u times: %u found it held, %u of them not one hold's", looks, race.rounds, held, torn);
+        CHECK(race.rounds > 0 && torn == 0);
+    }
+}
+
+/*
+ * The log's sink is called past the log's lock (mg_base.c): a sink that stands -- the shell's, writing a fault's report to
+ * its file line by line on a phone's busy flash -- holds up no other thread's line. Under the lock Tuya Smart's main
+ * thread waited in mg_logv while a fault's report wrote its trace lines (0.1.0.671).
+ */
+static volatile i32 g_stand_entered, g_stand_release, g_stand_other;
+static mg_log_sink g_stand_before;
+static void *g_stand_before_user;
+
+static void standing_sink(int level, const char *line, void *user)
+{
+    int i;
+    (void)user;
+    if (strstr(line, "a line whose sink stands")) {
+        mg_atomic_xchg(&g_stand_entered, 1);
+        /* (Two seconds at most: the test goes on either way.) */
+        for (i = 0; i < 1000 && !g_stand_release; i++) mg_sleep_ns(2000000ull);
+        mg_atomic_xchg(&g_stand_entered, 2);
+    } else if (strstr(line, "a line said meanwhile")) {
+        mg_atomic_xchg(&g_stand_other, 1);
+    }
+    if (g_stand_before) g_stand_before(level, line, g_stand_before_user);
+}
+
+static MG_HOSTCB void standing_logger(void *arg)
+{
+    (void)arg;
+    mg_log(MG_LOG_ERROR, "log test: a line whose sink stands (the tests' own, not an error)");
+}
+
+static void test_log_sink_past_lock(void)
+{
+    mg_thread *t;
+    mg_hold_seen seen;
+    char line[128];
+    u64 began, took;
+    int i;
+    bool held;
+    say("the log's sink is called past the log's lock");
+    mg_log_get_sink(&g_stand_before, &g_stand_before_user);
+    g_stand_entered = g_stand_release = g_stand_other = 0;
+    mg_log_set_sink(standing_sink, NULL);
+    t = mg_thread_start(standing_logger, NULL, 64u * 1024u, "log-stander");
+    CHECK(t != NULL);
+    for (i = 0; i < 1000 && t && g_stand_entered != 1; i++) mg_sleep_ns(2000000ull);
+    CHECK(g_stand_entered == 1);
+    /* While that sink stands: nobody holds the log's lock, and a line of this thread's goes through. */
+    held = mg_log_holder(&seen, line, sizeof(line));
+    began = mg_time_monotonic_ns();
+    mg_log(MG_LOG_ERROR, "log test: a line said meanwhile (the tests' own, not an error)");
+    took = mg_time_monotonic_ns() - began;
+    say("  a line said while another thread's sink stood: through in %.1f ms, the log's lock %s, the other sink still standing: %s",
+        (double)took / 1e6, held ? "held" : "free", g_stand_entered == 1 ? "yes" : "no");
+    CHECK(!held && g_stand_other == 1 && g_stand_entered == 1);
+    mg_atomic_xchg(&g_stand_release, 1);
+    if (t) mg_thread_join(t);
+    mg_log_set_sink(g_stand_before, g_stand_before_user);
 }
 
 static void test_host(const char *scratch)
@@ -1407,6 +1537,121 @@ static void test_mmap_file_written(const char *scratch)
 }
 
 /*
+ * A writable shared file mapping is written back with the mappings' lock let go (bionic/mg_libc_mem.c, write_back_out):
+ * while a write-back reads and writes its file, another thread maps and unmaps memory -- which takes that lock -- and the
+ * hang report finds nobody holding it. The write-back read every such file and wrote it under the lock, which every mmap,
+ * munmap, mprotect and madvise of the app's and the fault handler wait for (Viber's hang report on 0.1.0.669 named the
+ * write-back thread as its holder). msync, the 5-second pass, the suspension's and munmap each write back so, and the
+ * file has the bytes.
+ */
+typedef void *(*wb_mmap_fn)(void *, size_t, int, int, int, goff);
+typedef int (*wb_munmap_fn)(void *, size_t);
+static wb_mmap_fn g_wb_mmap;
+static wb_munmap_fn g_wb_munmap;
+static volatile i32 g_wb_calls, g_wb_mapped, g_wb_lock_free;
+
+static MG_HOSTCB void wb_mapper(void *arg)
+{
+    u8 *p = (u8 *)g_wb_mmap(NULL, 65536, 3, 0x22, -1, 0);        /* PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS */
+    (void)arg;
+    if (p && p != (u8 *)(mg_addr)-1) {
+        p[0] = 1;
+        if (g_wb_munmap(p, 65536) == 0) mg_atomic_xchg(&g_wb_mapped, 1);
+    }
+}
+
+/* At the first write-back of each step, as it is about to read and write its file: the lock free, and another thread's mmap through. */
+static void wb_io_hook(void)
+{
+    mg_hold_seen seen;
+    mg_thread *t;
+    int i;
+    if (mg_atomic_add(&g_wb_calls, 1) != 1) return;
+    g_wb_lock_free = !mg_mem_lock_look(&seen);
+    g_wb_mapped = 0;
+    t = mg_thread_start(wb_mapper, NULL, 256u * 1024u, "wb-mapper");
+    for (i = 0; i < 1000 && t && !g_wb_mapped; i++) mg_sleep_ns(2000000ull);
+    /* (Not joined: had the write-back held the lock, the other thread would wait for it, and this one for that.) */
+    if (t) mg_thread_detach(t);
+}
+
+/* Whether the file at `path` holds `text` at `at`. */
+static bool file_has(const char *path, u64 at, const char *text)
+{
+    char buf[64];
+    size_t n = strlen(text);
+    int err = 0;
+    mg_file *f = mg_file_open(path, MG_O_READ, &err);
+    bool same;
+    if (!f) return false;
+    same = mg_file_pread(f, buf, (u32)n, at, &err) == (i64)n && !memcmp(buf, text, n);
+    mg_file_close(f);
+    return same;
+}
+
+static void test_mmap_write_back_unlocked(const char *scratch)
+{
+    typedef int (*open_fn)(const char *, int, int);
+    typedef int (*msync_fn)(void *, size_t, int);
+    typedef int (*close_fn)(int);
+    typedef int (*unlink_fn)(const char *);
+    typedef int (*ftruncate_fn)(int, goff);
+    enum { RW = 3, SHARED = 0x01, PAGE = 4096 };
+    open_fn open_ = (open_fn)mg_bionic_find("open");
+    msync_fn msync_ = (msync_fn)mg_bionic_find("msync");
+    close_fn close_ = (close_fn)mg_bionic_find("close");
+    unlink_fn unlink_ = (unlink_fn)mg_bionic_find("unlink");
+    ftruncate_fn ftruncate_ = (ftruncate_fn)mg_bionic_find("ftruncate");
+    char *host = mg_sprintf("%s/store.bin", scratch);
+    const char *file = "/write-back-files/store.bin";
+    u8 *w;
+    int fd;
+    say("mmap: a shared file mapping is written back with the mappings' lock let go");
+    g_wb_mmap = (wb_mmap_fn)mg_bionic_find("mmap");
+    g_wb_munmap = (wb_munmap_fn)mg_bionic_find("munmap");
+    mg_fs_mount("/write-back-files", scratch);
+    CHECK(open_ && msync_ && close_ && unlink_ && ftruncate_ && g_wb_mmap && g_wb_munmap);
+    if (!open_ || !msync_ || !close_ || !unlink_ || !ftruncate_ || !g_wb_mmap || !g_wb_munmap) {
+        free(host);
+        return;
+    }
+    fd = open_(file, 02 | 0100 | 01000, 0600);                    /* O_RDWR | O_CREAT | O_TRUNC */
+    CHECK(fd >= 0 && ftruncate_(fd, 3 * PAGE) == 0);
+    w = fd >= 0 ? (u8 *)g_wb_mmap(NULL, 3 * PAGE, RW, SHARED, fd, 0) : NULL;
+    if (fd >= 0) close_(fd);                                      /* the mapping holds the file apart */
+    CHECK(w && w != (u8 *)(mg_addr)-1);
+    if (w && w != (u8 *)(mg_addr)-1) {
+        mg_mem_write_back_io_hook = wb_io_hook;
+        /* msync. */
+        memcpy(w + 10, "msync'd", 7);
+        g_wb_calls = 0;
+        CHECK(msync_(w, 3 * PAGE, 4 /* MS_SYNC */) == 0);
+        say("  msync: the write-back's file read and written %s the mappings' lock, another thread's mmap and munmap %s", g_wb_lock_free ? "without" : "UNDER",
+            g_wb_mapped ? "through meanwhile" : "NOT THROUGH");
+        CHECK(g_wb_calls >= 1 && g_wb_lock_free && g_wb_mapped && file_has(host, 10, "msync'd"));
+        /* The 5-second pass. */
+        memcpy(w + PAGE + 5, "the pass", 8);
+        g_wb_calls = 0;
+        mg_mem_write_back_all(4u << 20);
+        CHECK(g_wb_calls >= 1 && g_wb_lock_free && g_wb_mapped && file_has(host, PAGE + 5, "the pass"));
+        /* The suspension's, which waits no longer than it is told. */
+        memcpy(w + 2 * PAGE + 7, "suspended", 9);
+        g_wb_calls = 0;
+        CHECK(mg_mem_write_back_all_until(mg_time_monotonic_ns() + 5000000000ull));
+        CHECK(g_wb_calls >= 1 && g_wb_lock_free && g_wb_mapped && file_has(host, 2 * PAGE + 7, "suspended"));
+        /* munmap: the pages to the file first, then gone. */
+        memcpy(w + 100, "unmapped", 8);
+        g_wb_calls = 0;
+        CHECK(g_wb_munmap(w, 3 * PAGE) == 0);
+        CHECK(g_wb_calls >= 1 && g_wb_lock_free && g_wb_mapped && file_has(host, 100, "unmapped") && file_has(host, 10, "msync'd"));
+        mg_mem_write_back_io_hook = NULL;
+    }
+    CHECK(!mg_mem_file_copies());
+    unlink_(file);
+    free(host);
+}
+
+/*
  * What Zalo's libraries import of libc, libm and libz that was not there (each a stub that ended the app when called): POSIX
  * regular expressions (bionic/mg_regex.c), zlib's gzip files on the guest's files (bionic/mg_libz.c), j0 and j1,
  * eventfd_read and eventfd_write, fchmodat.
@@ -1997,6 +2242,7 @@ static void test_appx_manifest(void)
         "    <rescap:Capability Name=\"codeGeneration\" />\r\n    <rescap:Capability Name=\"packageManagement\" />\r\n"
         "    <rescap:Capability Name=\"packageQuery\" />\r\n    <!-- The devices. -->\r\n    <DeviceCapability Name=\"webcam\" />\r\n"
         "    <DeviceCapability Name=\"location\" />\r\n    <DeviceCapability Name=\"microphone\" />\r\n"
+        "    <DeviceCapability Name=\"bluetooth\" />\r\n"
         "    <DeviceCapability Name=\"bluetooth.rfcomm\">\r\n      <Device Id=\"any\"><Function Type=\"name:serialPort\" /></Device>\r\n"
         "    </DeviceCapability>\r\n  </Capabilities>\r\n"
         "  <Extensions><Extension Category=\"windows.publisherCacheFolders\" /></Extensions></Package>\r\n";
@@ -2006,6 +2252,8 @@ static void test_appx_manifest(void)
     static const char *const phone[] = { "android.permission.READ_PHONE_STATE", "android.permission.RECEIVE_SMS" };
     static const char *const devices[] = { "android.permission.ACCESS_COARSE_LOCATION", "android.permission.RECORD_AUDIO", "android.permission.READ_CALL_LOG",
                                            "android.permission.READ_MEDIA_VISUAL_USER_SELECTED" };
+    static const char *const bluetooth[] = { "android.permission.BLUETOOTH_SCAN", "android.permission.BLUETOOTH_CONNECT", "android.permission.INTERNET" };
+    static const char *const bluetooth_old[] = { "android.permission.BLUETOOTH", "android.permission.BLUETOOTH_ADMIN" };
     char err[200], name[64], name2[64];
     char *m, *m2;
     say("an app's own package: its manifest from Megler's");
@@ -2078,6 +2326,9 @@ static void test_appx_manifest(void)
     CHECK_INT((int)mg_appx_capabilities(NULL, 0, true), MG_APPX_CAP_PICTURES | MG_APPX_CAP_CHAT);
     CHECK_INT((int)mg_appx_capabilities(devices, (int)MG_COUNT(devices), false),
               MG_APPX_CAP_PICTURES | MG_APPX_CAP_VIDEOS | MG_APPX_CAP_LOCATION | MG_APPX_CAP_MICROPHONE | MG_APPX_CAP_CALL_HISTORY);
+    /* Bluetooth's: Android 12's permissions of nearby devices, and the Androids' before it. */
+    CHECK_INT((int)mg_appx_capabilities(bluetooth, (int)MG_COUNT(bluetooth), false), MG_APPX_CAP_PICTURES | MG_APPX_CAP_NETWORK | MG_APPX_CAP_BLUETOOTH);
+    CHECK_INT((int)mg_appx_capabilities(bluetooth_old, (int)MG_COUNT(bluetooth_old), false), MG_APPX_CAP_PICTURES | MG_APPX_CAP_BLUETOOTH);
     m = mg_appx_app_manifest(megler, "com.example.camera", "Camera", NULL, NULL, (int)mg_appx_capabilities(permissions, (int)MG_COUNT(permissions), false),
                              err, sizeof(err));
     CHECK(m != NULL);
@@ -2093,8 +2344,15 @@ static void test_appx_manifest(void)
     /* Nothing it did not ask for, and none of Megler's that no app's package has. */
     CHECK(!strstr(m, "videosLibrary") && !strstr(m, "documentsLibrary") && !strstr(m, "removableStorage") && !strstr(m, "\"chat\"") &&
           !strstr(m, "phoneCallHistoryPublic") && !strstr(m, "packageManagement") && !strstr(m, "\"location\"") && !strstr(m, "\"microphone\"") &&
+          !strstr(m, "Name=\"bluetooth\"") &&
           !strstr(m, "The network:") && !strstr(m, "The libraries.") && !strstr(m, "The devices."));
     CHECK(strstr(m, "Name=\"MeglerApp.com.example.camera.") != NULL && strstr(m, "<DisplayName>Camera</DisplayName>") != NULL);
+    free(m);
+    /* An app of Bluetooth LE (MeshCore's): the bluetooth device capability, in Megler's place for it. */
+    m = mg_appx_app_manifest(megler, "com.meshcore.mcoadvanced", "MCO A", NULL, NULL, (int)mg_appx_capabilities(bluetooth, (int)MG_COUNT(bluetooth), false), err,
+                             sizeof(err));
+    CHECK(m && strstr(m, "    <rescap:Capability Name=\"packageQuery\" />\r\n    <DeviceCapability Name=\"bluetooth\" />\r\n"
+                         "    <DeviceCapability Name=\"bluetooth.rfcomm\">") != NULL && !strstr(m, "DeviceCapability Name=\"webcam\""));
     free(m);
     /* An app that asks for nothing Windows guards: the pictures library and Megler's own alone, no network. */
     m = mg_appx_app_manifest(megler, "com.example.calculator", "Calculator", NULL, NULL, (int)mg_appx_capabilities(NULL, 0, false), err, sizeof(err));
@@ -2220,6 +2478,33 @@ static void test_libc_odds(void)
         u64 lim[2] = { 7, 7 };
         CHECK(get64 && get64(7, lim) == 0 && lim[0] == 1024 && lim[1] == 1024);
         CHECK(get64 && get64(9, lim) == 0 && lim[0] == ~(u64)0 && lim[1] == ~(u64)0);
+    }
+    /*
+     * getauxval: what every Linux process's vector has -- AT_EXECFN, the path it was started from, an app's its zygote's (it was
+     * zero: a string read through null), the clock's ticks, the app's ids -- and zero with ENOENT for what it has not. And the
+     * process's executable through realpath is what readlink says it links to.
+     */
+    {
+        typedef unsigned long (*auxval_fn)(unsigned long);
+        typedef char *(*realpath_fn)(const char *, char *);
+        auxval_fn aux = (auxval_fn)mg_bionic_find("getauxval");
+        realpath_fn real = (realpath_fn)mg_bionic_find("realpath");
+        const char *exe = MG_GUEST_LP64 ? "/system/bin/app_process64" : "/system/bin/app_process32";
+        static char path[4096];
+        CHECK(aux && aux(31) != 0 && aux(17) == 100 && aux(11) == 10100 && aux(14) == 10100);
+        /* (A string's address fits an unsigned long where the guest's ABI is the host's: not in MSVC's x64 build.) */
+        if (aux && sizeof(unsigned long) == sizeof(void *)) CHECK(!strcmp((const char *)(mg_addr)aux(31), exe));
+        *mg_errno_ptr() = 0;
+        CHECK(aux && aux(9999) == 0 && *mg_errno_ptr() == GE_NOENT);
+        CHECK(real && real("/proc/self/exe", path) == path && !strcmp(path, exe));
+    }
+    /* The environment Android's init gives every process, as an app has it: its storage's root and the rest beside the data and the root. */
+    {
+        typedef char *(*getenv_fn)(const char *);
+        getenv_fn env = (getenv_fn)mg_bionic_find("getenv");
+        const char *storage = env ? env("ANDROID_STORAGE") : NULL, *assets = env ? env("ANDROID_ASSETS") : NULL, *data = env ? env("ANDROID_DATA") : NULL;
+        CHECK(storage && !strcmp(storage, "/storage") && assets && !strcmp(assets, "/system/app") && data && !strcmp(data, "/data"));
+        CHECK(env && env("ASEC_MOUNTPOINT") && env("ANDROID_BOOTLOGO") && env("ANDROID_ROOT") && env("EXTERNAL_STORAGE") && !env("BOOTCLASSPATH"));
     }
     /*
      * malloc's blocks at bionic's alignment, 16 bytes but on 32-bit ARM 8 (x86-64's SSE stores fault on less: exteraGram's
@@ -2958,6 +3243,40 @@ typedef struct proxy_caller {
     proxied *p;
 } proxy_caller;
 
+/* What the main looper's thread found (test_proxies, at its end): its native looper, a descriptor watched on it, its callback's calls. */
+typedef struct ui_looper_probe {
+    int fd;
+    void *looper;
+    volatile i32 watched, added, called;
+    u32 thread, called_thread;
+} ui_looper_probe;
+
+/* ALooper's callback: the descriptor read, once; 0 takes it off the looper. */
+static int ui_looper_ready(int fd, int events, void *data)
+{
+    ui_looper_probe *p = (ui_looper_probe *)data;
+    u64 v;
+    (void)events;
+    mg_fd_read(fd, &v, 8);
+    p->called_thread = mg_thread_self_id();
+    mg_atomic_add(&p->called, 1);
+    return 0;
+}
+
+/* On the main looper's thread: its looper, and the descriptor watched on it, as native code that loads there does. */
+static void ui_looper_watch(void *arg)
+{
+    typedef void *(*for_thread_fn)(void);
+    typedef int (*add_fd_fn)(void *, int, int, int, void *, void *);
+    ui_looper_probe *p = (ui_looper_probe *)arg;
+    for_thread_fn for_thread = (for_thread_fn)mg_bionic_find("ALooper_forThread");
+    add_fd_fn add_fd = (add_fd_fn)mg_bionic_find("ALooper_addFd");
+    p->thread = mg_thread_self_id();
+    p->looper = for_thread ? for_thread() : NULL;
+    if (p->looper && add_fd) p->added = add_fd(p->looper, p->fd, 0, 1 /* ALOOPER_EVENT_INPUT */, (void *)ui_looper_ready, p);
+    mg_atomic_xchg(&p->watched, 1);
+}
+
 static MG_HOSTCB void proxy_caller_thread(void *arg)
 {
     proxy_caller *c = (proxy_caller *)arg;
@@ -2994,6 +3313,13 @@ static void test_proxies(void)
     m.fn = (void *)proxied_invoke;
     ((register_fn)table[215])(env, cls, &m, 1);
     CHECK(mg_jni_native(bridge, "invoke", invoke_sig) == (void *)proxied_invoke);
+    /* (A native found by its name alone, with the signature it was registered with, and the class's natives said: the Unity driver's initJni.) */
+    {
+        char said[400];
+        const char *sig = mg_jni_native_sig(bridge, "invoke");
+        CHECK(sig && !strcmp(sig, invoke_sig) && !mg_jni_native_sig(bridge, "noSuchNative"));
+        CHECK(mg_jni_natives_said(bridge, said, sizeof(said)) == 1 && !strncmp(said, "invoke(JLjava/lang/Class;", 25));
+    }
     new_id = ((static_id_fn)table[113])(env, cls, "newInterfaceProxy", "(J[Ljava/lang/Class;)Ljava/lang/Object;");
     off_id = ((static_id_fn)table[113])(env, cls, "disableInterfaceProxy", "(Ljava/lang/Object;)V");
     CHECK(new_id && off_id);
@@ -3072,6 +3398,33 @@ static void test_proxies(void)
             a[0].l = proxy;
             ((jni_void_a_fn)table[JNI_STATIC_VOID_A])(env, cls, off_id, a);
         }
+    }
+
+    /*
+     * The main thread's native looper (mg_jni_loop.c, looper_thread): ALooper_forThread there gives one, as on Android's UI
+     * thread, where Unity's engine takes it as it loads, and a descriptor watched on it with a callback has the callback run
+     * on that thread once it is ready -- and only then.
+     */
+    say("the main looper's thread: a native looper, whose descriptors' callbacks it runs");
+    {
+        ui_looper_probe probe;
+        u64 one = 1;
+        memset(&probe, 0, sizeof(probe));
+        probe.fd = mg_fd_eventfd(0, 04000);
+        CHECK(probe.fd >= 0);
+        mg_jni_loop_call(NULL, ui_looper_watch, &probe);
+        for (waited = 0; waited < 1000 && !probe.watched; waited++) mg_sleep_ns(2000000ull);
+        CHECK(probe.watched && probe.looper != NULL && probe.added == 1);
+        mg_sleep_ns(30000000ull);
+        CHECK_INT(probe.called, 0);
+        mg_fd_write(probe.fd, &one, 8);
+        for (waited = 0; waited < 1000 && !probe.called; waited++) mg_sleep_ns(2000000ull);
+        CHECK_INT(probe.called, 1);
+        CHECK(probe.called_thread == probe.thread && probe.thread != mg_thread_self_id());
+        say("  looper %p on the main thread %u; the callback ran %d times, on thread %u", probe.looper, (unsigned)probe.thread, (int)probe.called,
+            (unsigned)probe.called_thread);
+        mg_sleep_ns(30000000ull);
+        if (probe.fd >= 0) mg_fd_close(probe.fd);
     }
 }
 
@@ -3313,8 +3666,9 @@ static void test_library(mg_lib *lib, const char *what, const char *scratch)
         long long alone = FN(lib, long long (*)(int, int), "t_wait_herd")(0, 2000);
         long long herd = FN(lib, long long (*)(int, int), "t_wait_herd")(32, 2000);
         say("  2000 round trips over two pipes: %lld us with no other waiter, %lld us with 32 waiting elsewhere", alone, herd);
-        /* (Each change woke every waiter: 87 ms and 1.76 s.) */
-        CHECK(alone > 0 && herd > 0 && herd < alone * 3);
+        /* (Each change woke every waiter: 87 ms and 1.76 s. On a PC busy with other work the two take a millisecond or
+           three each, where its scheduling alone is a factor of three: 1056 and 3190 us once, so 20 ms passes too.) */
+        CHECK(alone > 0 && herd > 0 && (herd < alone * 3 || herd < 20000));
     }
     /* Four thousand megabytes mapped and unmapped in two pieces each: the addresses come back. */
     CHECK_INT(FN(lib, int (*)(int), "t_map_pieces")(4096), 0);
@@ -3388,6 +3742,7 @@ static void test_library(mg_lib *lib, const char *what, const char *scratch)
 #endif
     CHECK_INT(FN(lib, int (*)(void), "t_boot_id")(), 1);
     CHECK_INT(FN(lib, int (*)(void), "t_proc_status")(), 1);
+    CHECK_INT(FN(lib, int (*)(void), "t_proc_pid")(), 1);
     CHECK_INT(FN(lib, int (*)(void), "t_smaps")(), 4);
     CHECK_INT(FN(lib, int (*)(void), "t_props")(), 28);
     CHECK_INT(FN(lib, int (*)(void), "t_dl")(), 4);
@@ -3788,6 +4143,33 @@ static void test_guest(const char *libdir, const char *scratch)
                 mg_ld_stats b;
                 mg_ld_get_stats(basic, &b);
                 CHECK_INT(b.x18_writes, 0);
+            }
+            /*
+             * The reads of CTR_EL0, the cache's type, which Windows refuses in user mode (Telegram's WebView ended on V8's,
+             * GitHub issue 4): t_svc64_ctr's and t_svc64_flush's two (one into xzr) made MG_ARM64_CTR_EL0's, and the flush
+             * steps by the 64-byte lines it says. And what the fault handler does for one it finds (mg_patch_sys_emulate):
+             * the read, the data cache's cleans and the instruction cache's invalidation by address, nothing else.
+             */
+            CHECK_INT(st.ctr_reads, 3);
+            CHECK(FN(svc, u64 (*)(void), "t_svc64_ctr")() == MG_ARM64_CTR_EL0);
+            {
+                static u8 code[300];
+                CHECK(FN(svc, u64 (*)(void *, long), "t_svc64_flush")(code + 7, 250) == ((u64)64 << 32 | 64));
+            }
+            {
+                mg_addr regs[33];
+                static u8 line[128];
+                memset(regs, 0, sizeof(regs));
+                regs[3] = (mg_addr)(line + 70);
+                CHECK(mg_patch_sys_emulate(0xD53B0020u | 5u, regs) && regs[5] == MG_ARM64_CTR_EL0);          /* mrs x5, ctr_el0 */
+                CHECK(mg_patch_sys_emulate(0xD53B0020u | 31u, regs));                                        /* mrs xzr, ctr_el0 */
+                CHECK(mg_patch_sys_emulate(0xD50B7E20u | 3u, regs) && mg_patch_sys_emulate(0xD50B7B20u | 3u, regs) &&
+                      mg_patch_sys_emulate(0xD50B7A20u | 3u, regs));                                         /* dc civac, cvau, cvac */
+                CHECK(mg_patch_sys_emulate(0xD50B7520u | 3u, regs) && regs[3] == (mg_addr)(line + 70));      /* ic ivau, x3 */
+                CHECK(!mg_patch_sys_emulate(0xD50B7420u | 3u, regs));                                        /* dc zva: memory zeroed, not this */
+                CHECK(!mg_patch_sys_emulate(0xD5380000u | 1u, regs) && regs[1] == 0);                        /* mrs x1, midr_el1 */
+                CHECK(!mg_patch_sys_emulate(0xD53BD040u | 1u, regs));                                        /* mrs x1, tpidr_el0 */
+                CHECK(!mg_patch_sys_emulate(0xD503201Fu, regs));                                             /* nop */
             }
             *mg_errno_ptr() = 123;
             mg_core_svc_calls(&made0, &on0);
@@ -4572,9 +4954,12 @@ int mg_tests_run(const char *libdir, const char *scratch, mg_test_sink sink, voi
     can_run = mg_core_init();
     mg_path_mkdirs(scratch);
     test_host(scratch);
+    test_lock_holders();
+    test_log_sink_past_lock();
     g_failed += mg_storage_tests_run(scratch, g_sink, g_sink_user, &g_checks);
     g_failed += mg_net_tests_run(g_sink, g_sink_user, &g_checks);
     g_failed += mg_sensor_tests_run(g_sink, g_sink_user, &g_checks);
+    g_failed += mg_bluetooth_tests_run(g_sink, g_sink_user, &g_checks);
     test_zip(scratch);
     test_sqlite(scratch);
     test_textures();
@@ -4592,6 +4977,7 @@ int mg_tests_run(const char *libdir, const char *scratch, mg_test_sink sink, voi
     test_mmap_commit();
     test_mmap_file(scratch);
     test_mmap_file_written(scratch);
+    test_mmap_write_back_unlocked(scratch);
     test_libc_gaps(scratch);
     test_mmap_madvise(scratch);
     test_pread_threads(scratch);

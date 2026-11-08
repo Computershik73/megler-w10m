@@ -56,6 +56,10 @@
  * come at the new size with the views laid out for it. And what the app asks of the screen's way up -- its manifest's
  * android:screenOrientation, setRequestedOrientation -- reaches a stand-in for the shell (megler_display_host).
  *
+ * `first` is hello started as the player starts an app on a PC's window or on an Xbox's television (`pc`, `xbox`): the
+ * player's busy overlay must go at the app's first picture, whichever way it came and at whatever size, the surface changed
+ * and the bars' insets told as the app starts (an Xbox's), and the pictures after the change come at the new size.
+ *
  * `app` is any APK at all, or a bundle of split APKs, unpacked first as for `splits`: started, left to itself until it is
  * still, its picture written, then whatever the script on the command line says -- a
  * touch, a wait, Back, each followed by another picture -- and a summary of
@@ -86,6 +90,7 @@
 #include "mg_camera_standin.h"
 #include "mg_location_standin.h"
 #include "mg_sensor_standin.h"
+#include "mg_bluetooth_standin.h"
 #include "mg_codec_standin.h"
 #include "mg_gfx_standin.h"
 #include "mg_gl_standin.h"
@@ -202,11 +207,32 @@ static struct {
     long stale;
     /* Pictures shown from a canvas, unflushed (megler_gfx_host.present), as a shell that draws elsewhere than in memory shows them. */
     volatile i32 from_canvas;
-} W = { MG_LOCK_INIT, NULL, 0, 0, 0, 0, NULL, 0, 0, 0 };
+    /*
+     * The first picture, as the shell's window keeps it (app/Megler/player/WindowHost.h, firstPicture): when it came, its size,
+     * and its way -- from the canvas on the graphics processor (present_canvas, below) or through the memory.
+     */
+    u64 first_ns;
+    int first_width, first_height;
+    bool first_from_canvas;
+} W = { MG_LOCK_INIT, NULL, 0, 0, 0, 0, NULL, 0, 0, 0, 0, 0, 0, false };
+
+/* A picture is being shown from the canvas (present_canvas, one call at a time with the others): the first's way. */
+static volatile i32 g_canvas_showing;
+
+/* A picture came: counted as the shell's window counts them, as it comes (WindowHost::pictures); the first kept. */
+static void picture_came(int width, int height)
+{
+    if (W.pictures) return;
+    W.first_ns = mg_time_monotonic_ns();
+    W.first_width = width;
+    W.first_height = height;
+    W.first_from_canvas = g_canvas_showing != 0;
+}
 
 static MEGLER_CB void present_pixels(void *user, const void *pixels, int width, int height, int stride)
 {
     (void)user;
+    picture_came(width, height);
     mg_lock_acquire(&W.lock);
     if (W.width != width || W.height != height || W.stride != stride) {
         free(W.pixels);
@@ -243,6 +269,7 @@ static MEGLER_CB void present_pixels_part(void *user, const void *pixels, int wi
         present_pixels(user, pixels, width, height, stride);
         return;
     }
+    picture_came(width, height);
     mg_lock_acquire(&W.lock);
     for (row = 0; row < height; row++) {
         const u8 *s = src + (size_t)row * (size_t)stride;
@@ -370,6 +397,7 @@ static MEGLER_CB bool present_canvas(void *user, void *canvas, int x, int y, int
     const void *pixels;
     int w, h, stride, r;
     if (!mg_gfx_standin_pixels(canvas, &pixels, &w, &h, &stride)) return false;
+    mg_atomic_xchg(&g_canvas_showing, 1);
     mg_lock_acquire(&GL.lock);
     if (GL.used) {
         /* The shell composes the window: the views' picture is kept, as the shell's snapshot of it, and the window composed. */
@@ -385,12 +413,14 @@ static MEGLER_CB bool present_canvas(void *user, void *canvas, int x, int y, int
         gl_compose();
         mg_lock_release(&GL.lock);
         mg_atomic_add(&W.from_canvas, 1);
+        mg_atomic_xchg(&g_canvas_showing, 0);
         return true;
     }
     mg_lock_release(&GL.lock);
     if (x == 0 && y == 0 && width == w && height == h) present_pixels(user, pixels, w, h, stride);
     else present_pixels_part(user, pixels, w, h, stride, x, y, width, height);
     mg_atomic_add(&W.from_canvas, 1);
+    mg_atomic_xchg(&g_canvas_showing, 0);
     return true;
 }
 
@@ -521,6 +551,8 @@ static bool g_crash_app;
 static bool g_microg_app;
 /* The camera app: it alone has cameras (the stand-in), so that the others still see a phone without one. */
 static bool g_camera_app;
+/* The Bluetooth app: it alone has a radio (the stand-in), so that the others still see a phone without one. */
+static bool g_bluetooth_app;
 static volatile i32 g_exited;
 static int g_status;
 static char g_reason[1600];
@@ -945,6 +977,11 @@ static bool start(const char *apk, const char *android_root)
     cfg.location = *mg_location_standin();
     /* A device with one of each sensor, each reading a known value in Windows' units and signs (mg_sensor_standin.c). */
     cfg.sensors = *mg_sensor_standin();
+    /* A Bluetooth LE radio with a MeshCore radio and a beacon in range (mg_bluetooth_standin.c), as it starts. */
+    if (g_bluetooth_app) {
+        mg_bluetooth_standin_reset();
+        cfg.bluetooth = *mg_bluetooth_standin();
+    }
     /*
      * A microphone that hears a ramp (mic_start), and a SIM of the country the run's language and region are in, as a
      * phone's is -- the US in the first run (en-US), Russia in the second (ru-RU): the data app's steps microphone,
@@ -1272,6 +1309,95 @@ static int run_screen(void)
     return g_failed;
 }
 
+/* ------------------------------------------------------------------ first */
+
+/*
+ * `first`: hello started as the player starts an app, on a PC's window or on an Xbox's television (the script's first word,
+ * `pc` or `xbox`), and the player's busy overlay -- "Starting <app>..." -- as ui/PlayerScreen.cpp has it now: up from Play
+ * until the first picture has come, whichever way it came (WindowHost::pictures; the window here counts them as they come,
+ * as the shell's does), gone at the first. It used to wait for a Present that had succeeded, and on an Xbox it stayed up
+ * while the app drew (0.1.0.671). Polled here every 10 ms as the player polls every 250 (and is told at once besides).
+ *
+ * On a PC the window is the start's, a phone-shaped one at 125 percent (500 x 950 at 200 dpi, the command line's), with no
+ * bars over it. On an Xbox the player may start the app in the television's safe area -- 864 x 486 of the 960 x 540 an app
+ * has, at 200 percent: 1280 x 720 at 237 dpi within the render cap of 1280, the command line's -- before Windows has given
+ * the player the whole screen (UseCoreWindow): the surface then follows to the whole of it, 1422 x 800 at the same pixels
+ * for a DIP, and the safe area's margins are told as the bars' insets (48 and 27 DIPs: 71, 40, 71, 40 pixels) -- the
+ * surface asked for while the app starts, which the session tells the moment megler_run has returned, before the app's
+ * first picture. The overlay must go with the first picture all the same, whatever size it came at, and the pictures after
+ * the change come at the new size.
+ */
+static int g_first_xbox;
+
+/* Before megler_run, as the player's start tells them: the bars' insets (an Xbox's: none yet, its safe area not given). */
+static void first_before_run(void)
+{
+    megler_set_insets(0, 0, 0, 0);
+}
+
+static int run_first(void)
+{
+    const u64 play = g_start_ns, poll = 10000000ull;
+    u64 down = 0, now;
+    int polls = 0, root_w = 0, root_h = 0, line;
+    bool up_after_picture = false, down_before_picture = false;
+    say("  the player's start on %s: the surface %dx%d at %d dpi%s", g_first_xbox ? "an Xbox's television" : "a PC's window", g_screen_w, g_screen_h,
+        g_screen_dpi, g_first_xbox ? "; then the whole television, 1422x800, and the safe area's insets, as the app starts" : "");
+    if (g_first_xbox) {
+        /* What followWindow asks once the player has the whole television, held while megler_run ran and told the moment it returned. */
+        megler_set_insets(71, 40, 71, 40);
+        megler_set_surface(1422, 800, g_screen_dpi, 0);
+    }
+    /* The busy overlay, as the player decides it at each poll: the app started (or running), no picture yet; the app has not ended. */
+    for (;;) {
+        const i32 pictures = W.pictures;
+        const bool ended = !running();
+        const bool up = !ended && pictures == 0;
+        now = mg_time_monotonic_ns();
+        if (!up) {
+            down = now;
+            down_before_picture = pictures == 0;
+            break;
+        }
+        if (now - play > 120000000000ull) break;
+        polls++;
+        mg_sleep_ns(poll);
+    }
+    CHECK(down != 0);
+    CHECK(!down_before_picture);
+    CHECK(W.pictures >= 1 && W.first_ns != 0);
+    if (down && W.first_ns) {
+        /* Gone at the first poll after the first picture came: within 100 ms, a sleep of 10 ms being as long as Windows makes it
+           (the player's poll is 250 ms, and the window's word comes before it). */
+        CHECK(down >= W.first_ns && down - W.first_ns <= 100000000ull);
+        say("  the first picture came %.0f ms after Play, %dx%d, %s; the busy overlay went %.1f ms after it (%d polls of %d ms)",
+            (double)(W.first_ns - play) / 1e6, W.first_width, W.first_height,
+            W.first_from_canvas ? "drawn on the canvas and shown from it (megler_gfx_host.present: the shell's graphics processor)" : "through the memory (present_pixels)",
+            (double)(down - W.first_ns) / 1e6, polls, (int)(poll / 1000000ull));
+    }
+    /* And stays down: a picture shown, the app running, nothing stopping it. */
+    settle();
+    CHECK(running());
+    up_after_picture = running() && W.pictures == 0;
+    CHECK(!up_after_picture);
+    /* The app follows the surface it was told: on an Xbox the pictures after the change are the whole television's. */
+    if (g_first_xbox) {
+        CHECK(W.width == 1422 && W.height == 800);
+        CHECK(find_line("run: the surface is 1422x800", 0) >= 0);
+    } else {
+        CHECK(W.width == g_screen_w && W.height == g_screen_h);
+    }
+    line = wait_line("I/HelloTest: layout focus=true root=", 0, 30);
+    CHECK(line >= 0);
+    if (line >= 0) {
+        const char *p = strstr(line_at(line), "root=");
+        if (p && sscanf(p + 5, "%dx%d", &root_w, &root_h) == 2) say("  the app's root view: %dx%d of the picture's %dx%d", root_w, root_h, W.width, W.height);
+    }
+    write_picture(g_first_xbox ? "first-xbox" : "first-pc");
+    say("  %d pictures; the window's last %dx%d", (int)W.pictures, W.width, W.height);
+    return g_failed;
+}
+
 /* ------------------------------------------------------------------ hello */
 
 typedef struct cost {
@@ -1556,6 +1682,17 @@ static void type_into_fields(const int row[4], int *at)
     CHECK(count_colour(name, 0x102030) == 0);
     /* The keyboard comes up and says how much it covers before anything is typed, as a phone's shell does. */
     megler_keyboard_height(g_screen_h * 2 / 5);
+    /* It comes as an inset animation of the keyboard's type (WindowInsetsAnimation, through the views' callbacks, as
+       React Native's keyboard controller is moved by): prepared, started with the bounds none and its height, frames of
+       its progress, ended. */
+    {
+        char start[128];
+        snprintf(start, sizeof(start), "I/DemoTest: typing: ime start lower=0 upper=%d duration=250", g_screen_h * 2 / 5);
+        expect_line("I/DemoTest: typing: ime prepare type=8", at, 30);
+        expect_line(start, at, 30);
+        expect_line("I/DemoTest: typing: ime end type=8 fraction=1.0 steps=several", at, 30);
+        CHECK(find_line("I/MeglerViews: the keyboard comes as an inset animation of 250 ms to the views' callbacks (WindowInsetsAnimation)", 0) >= 0);
+    }
     settle();
     /* Text, as the keyboard commits it. */
     megler_text_commit("Hello");
@@ -2446,6 +2583,13 @@ static void bars_and_insets(void)
     megler_set_insets(0, 0, 0, 0);
 }
 
+/* Whether `s` ends with `tail`. */
+static bool ends_with(const char *s, const char *tail)
+{
+    size_t n = strlen(s), m = strlen(tail);
+    return n >= m && !strcmp(s + n - m, tail);
+}
+
 /*
  * The app's media session, as the phone's media controls have it: its state (playing; play and pause allowed) and what it
  * plays (title, artist, album, and its picture made at most 256 on a side) come to the shell (megler_media_session_host);
@@ -2462,11 +2606,12 @@ static void media_session_keys(void)
         mg_lock_acquire(&g_media_lock);
         mg_strlcpy(heard, g_media_heard, sizeof(heard));
         mg_lock_release(&g_media_lock);
-        if (!strcmp(heard, want)) break;
+        if (ends_with(heard, want)) break;
         mg_sleep_ns(20000000ull);
     }
     say("  the media session told: %s", heard);
-    CHECK(!strcmp(heard, want));
+    /* (What it told last: the data app's step media-key-controller made a session of its own before, and released it.) */
+    CHECK(ends_with(heard, want));
     megler_key(87, true);
     megler_key(87, false);
     megler_key(127, true);
@@ -2575,7 +2720,7 @@ static int run_data(void)
                                             permitted (NetworkSecurityPolicy), a compatibility change's state for the app's target
                                             (CompatChanges), the WebView APK added to the app's resources as a shared library, and
                                             the cameras there are (none, as a device without one says). And Android 13's Safety
-                                            Center's class, whose service is null, as on a device without one. And an intent
+                                            Center's manager, there and saying it is off, as on a phone without one. And an intent
                                             written in XML, read as AndroidX's preferences read theirs (Intent.parseIntent). */
                                          "user-handle",
                                          "cleartext",
@@ -2600,7 +2745,27 @@ static int run_data(void)
                                             makes one. And a proxy of an interface of 600 methods. And sound from Java: an
                                             AudioTrack written to, a MediaPlayer of a WAV and of an Ogg Vorbis asset, a SoundPool. */
                                          "xml", "asset-fd", "tasks", "wrapper-receiver", "viewgroup-flag", "text-drawables", "pfd-dup", "pfd-parcel",
-                                         "theme-selfref", "queue-next", "storage-stats", "broadcast-explicit", "service-stop-thread", "start-ids", "process-scope", "job-scheduler", "downloads", "rollback-service", "art-manager", "progress-subclass", "telephony", "microphone", "biometric", "ordered-broadcast", "hardware-accelerated", "descendant-invalidated", "image-matrix-before-layout", "delegate-last-scope", "asset-manager-manifest", "big-asset", "path-iterator", "mutable-context", "exec", "crc32c", "nine-patch-constructors", "subscription-ids", "filter-categories", "arrays-ranges", "thread-stack", "icu-number", "audio-route", "expand-template", "list-fragment", "fragment-saved-state", "stub-said", "handler-thread", "managed-dialog", "input-format", "dialog-of-stopped", "zip-path-validator", "list-row-click", "animation-listener", "circular-reveal", "animator-values", "observer-merged", "typeface-descriptor", "device-provisioned", "users", "start-asked", "pending-intent-creator", "pending-intent-flags", "alarm-replace-cancel", "messenger-forwarded", "insets-builder", "insets-consumed", "insets-siblings", "broadcast-handler", "prefs-spaced-key", "account-removed", "sync", "package-installer", "batch-operations", "wifi", "media-metadata", "playback-state", "remote-user-info", "theme-accent", "phone-apps", "phone-apps-activities", "phone-apps-signatures", "install-intent", "install-session", "install-splits", "bitmap-bytes", "adaptive-icon", "idle-handler", "uri-builder", "html-tag-handler", "stats-manager", "credential-manager", "many-interfaces", "proxy-many-methods", "apk-path", "maps-paths", "apk-optimization",
+                                         "theme-selfref", "queue-next", "storage-stats", "broadcast-explicit", "service-stop-thread", "start-ids", "process-scope", "job-scheduler", "downloads", "rollback-service", "art-manager", "progress-subclass", "telephony", "microphone", "biometric", "ordered-broadcast", "hardware-accelerated", "descendant-invalidated", "image-matrix-before-layout", "delegate-last-scope", "asset-manager-manifest", "big-asset", "path-iterator", "mutable-context", "exec", "crc32c", "nine-patch-constructors", "subscription-ids", "filter-categories", "arrays-ranges", "thread-stack", "icu-number", "audio-route", "expand-template", "list-fragment", "fragment-saved-state", "stub-said", "handler-thread", "managed-dialog", "input-format", "dialog-of-stopped", "zip-path-validator", "list-row-click", "animation-listener", "circular-reveal", "animator-values", "observer-merged", "typeface-descriptor", "device-provisioned", "users", "start-asked", "pending-intent-creator", "pending-intent-flags", "alarm-replace-cancel", "messenger-forwarded", "insets-builder", "insets-consumed", "insets-siblings", "broadcast-handler", "prefs-spaced-key", "account-removed", "sync", "package-installer", "batch-operations", "wifi", "media-metadata", "playback-state", "remote-user-info", "media-key-controller", "container-state", "context-params", "theme-accent", "phone-apps", "phone-apps-activities", "phone-apps-signatures", "install-intent", "install-session", "install-splits", "bitmap-bytes", "bitmap-reuse", "file-read-only", "component-state", "adaptive-icon", "idle-handler", "uri-builder", "html-tag-handler", "stats-manager", "credential-manager", "many-interfaces", "proxy-many-methods", "apk-path", "maps-paths", "apk-optimization",
+                                         /* And an <inset> whose insets are fractions of its bounds, WhatsApp's adaptive icon's 0.01% among them. */
+                                         "inset-fraction",
+                                         /* And a WorkSource through a Parcel and back, as a location request of Google Play services' carries one. */
+                                         "work-source",
+                                         /* And a module's resources as Google Play services' DynamiteLoader makes them: the platform's
+                                            with a ResourcesLoader of an APK of resources alone added (the app's assets/loader.apk). */
+                                         "resources-loader",
+                                         /* And a LocationRequest as Android 12 makes one, and a request of the passive interval through LocationManager. */
+                                         "location-request",
+                                         /* And a provider's file through a ContentProviderClient, as Google Play services' DynamiteLoader reads its configuration. */
+                                         "provider-client-file",
+                                         /* And a layout of layout, -v31 and -v33 inflated as the Settings library's main switch bar inflates its
+                                            own: the -v33 one Android 14 chooses, its frame there, with the dimensions and drawables of -v31 alone. */
+                                         "layout-api-level",
+                                         /* And Resources of the app's own over the implementation of the activity's (getImpl, setImpl, the hidden
+                                            Resources(ClassLoader)), as Tuya Smart's dynamic strings make them: alike in everything, a theme rebased. */
+                                         "resources-impl",
+                                         /* And the process's Application through ActivityThread's hidden fields, on a thread of the Application's
+                                            own while it is created, as Tuya Smart's library loader asks, and afterwards. */
+                                         "activity-thread-application",
                                          "audio-track", "media-player", "media-player-ogg", "sound-pool",
                                          /* And MediaCodec over the stand-in for the shell's decoders: H.264 shown on a Surface in display
                                             order, a flush, parameter sets in a codec-config buffer, the asynchronous mode, AAC with an
@@ -2643,6 +2808,8 @@ static int run_data(void)
        another, taking cleartext and the anchors from it. */
     CHECK(find_line("I/NetworkSecurityConfig: the app's network security configuration xml/network_security_config: base-config: cleartext refused, anchors system;", 0) >= 0);
     CHECK(find_line("; domain-config of nested.sub.megler.test: cleartext permitted, anchors @raw/trust_test_ca;", 0) >= 0);
+    /* The state of a component of a package the phone does not have (component-state) is Android's IllegalArgumentException, said once. */
+    CHECK(find_line("I/Megler: the enabled state of a component of com.facebook.appmanager, which the phone does not have: IllegalArgumentException, as Android answers", 0) >= 0);
     /*
      * What requestPermissions asked comes back by a message of its own, after the method that asked has returned. In the first
      * run the user is asked about the storage, the messages, the phone, the calls and the camera, one after another, and the
@@ -2669,6 +2836,8 @@ static int run_data(void)
     /* The phone's location, asked for in the step "location": a fix delivered on the main thread, after which the listener is
        removed and the location no longer followed. */
     CHECK(wait_line("I/DataTest: location-update ok", 0, 30) >= 0);
+    /* And the request of the passive interval of the step "location-request": a fix, on the main thread, after which it is removed. */
+    CHECK(wait_line("I/DataTest: location-passive ok", 0, 30) >= 0);
     {
         int starts = 0, stops = 0, tries;
         for (tries = 0; tries < 40; tries++) {
@@ -2817,6 +2986,9 @@ static int run_data(void)
     expect_line("I/DataTest: decor-reparent ok", &at, 30);
     /* An alert with a message taller than the screen fits on it, its button wholly there to be pressed. */
     expect_line("I/DataTest: dialog-tall ok", &at, 30);
+    /* A panel window's root view draws on the window's frame, hardware accelerated, and a SurfaceView straight in that root on
+       one that does not say so (megler.ViewRoot.ScreenCanvas): where a WebView in a window of its own is drawn by its functor. */
+    expect_line("I/DataTest: panel-root ok", &at, 30);
     /* And the battery an app reads is the core's (mg_battery_read): a full one on mains when nothing was set, in the second run the one set before it. */
     CHECK(find_line(run == 2 && want == 2 ? "I/DataTest: battery is level=37/100 status=3 plugged=0 health=2 voltage=3712 temperature=301 present=true technology=Li-poly capacity=37 charging=false"
                                            : "I/DataTest: battery is level=100/100 status=5 plugged=1 health=2 voltage=4200 temperature=250 present=true technology=Li-ion capacity=100 charging=true",
@@ -3227,6 +3399,56 @@ static int run_camera(void)
     return g_failed;
 }
 
+/*
+ * The Bluetooth LE app (core/tests/app/bluetooth) on the stand-in for the shell's radio (mg_bluetooth_standin.c), as MeshCore's
+ * app uses it: each step in order; the radio turned off when the app is ready for it, as a user would, and turned on again
+ * by the stand-in's user in the phone's settings, which the app's request to enable it shows; then what the stand-in was
+ * asked, and what the core said.
+ */
+static int run_bluetooth(void)
+{
+    static const char *const steps[] = { "adapter", "permissions", "names", "scan", "scan-legacy", "connect", "discover", "mtu", "notify", "write",
+                                         "write-no-response", "write-old", "read", "rssi", "bond-on-demand", "unbond", "bond-asked", "disconnect",
+                                         "dropped", "unreachable" };
+    mg_bluetooth_standin_counts n;
+    char text[120];
+    int at = -1, i;
+    expect_line("I/BluetoothTest: onCreate", &at, 120);
+    for (i = 0; i < (int)MG_COUNT(steps); i++) {
+        snprintf(text, sizeof(text), "I/BluetoothTest: %s ok", steps[i]);
+        expect_line(text, &at, 120);
+    }
+    expect_line("I/BluetoothTest: turn the radio off", &at, 60);
+    mg_bluetooth_standin_radio(false);
+    expect_line("I/BluetoothTest: radio-off ok", &at, 120);
+    expect_line("I/BluetoothTest: enable ok", &at, 120);
+    snprintf(text, sizeof(text), "I/BluetoothTest: done ok=%d failed=0", (int)MG_COUNT(steps) + 2);
+    expect_line(text, &at, 60);
+    mg_bluetooth_standin_get(&n);
+    say("  the stand-in: %d scans (%d active, %d stopped), %d connections asked for, %d left, %d bytes written, MTU %d asked, %d pairings (%d answered, "
+        "%d by the user, PIN \"%s\"), %d removed, the settings shown %d times",
+        n.scans, n.scans_active, n.scans_stopped, n.connects, n.connected, n.written, n.mtu_asked, n.bonds, n.pairing_answers, n.asked_user, n.pin, n.unbonds,
+        n.settings);
+    /* Both scans ran actively and stopped; every connection ended; the writes, the MTU, the pairings and the settings as the app made them. */
+    CHECK(n.scans == 2 && n.scans_active == 2 && n.scans_stopped == 2 && !n.scanning);
+    CHECK(n.connects == 3 && n.connected == 0 && n.connect_type == MEGLER_BT_ADDRESS_UNKNOWN);
+    CHECK(n.written == 15 && n.mtu_asked == 247);
+    CHECK(n.bonds == 2 && n.pairing_answers == 2 && n.asked_user == 1 && !strcmp(n.pin, "123456") && n.unbonds == 1 && n.settings == 1);
+    /* What the core said of it: the radio, the device heard, the connection, its database, the pairing's question and answers. */
+    CHECK(find_line("bluetooth: the radio is on (\"Test Radio\")", 0) >= 0);
+    CHECK(find_line("bluetooth: heard C0:FF:EE:00:00:01 (random) \"MeshCore-Test\", -50 dBm, takes connections", 0) >= 0);
+    CHECK(find_line("bluetooth: connection 1 to C0:FF:EE:00:00:01 (random)", 0) >= 0 && find_line("bluetooth: connection 1 to C0:FF:EE:00:00:01 made", 0) >= 0);
+    CHECK(find_line("bluetooth: connection 1: 3 services, 4 characteristics, 1 descriptors (status 0)", 0) >= 0);
+    CHECK(find_line("bluetooth: C0:FF:EE:00:00:01 asks for a PIN to pair", 0) >= 0);
+    CHECK(find_line("bluetooth: C0:FF:EE:00:00:01's pairing answered with the app's PIN", 0) >= 0
+          && find_line("bluetooth: C0:FF:EE:00:00:01's pairing not answered by the app: the user is asked", 0) >= 0);
+    CHECK(find_line("bluetooth: the radio is off", 0) >= 0 && find_line("bluetooth: the phone's Bluetooth settings shown", 0) >= 0);
+    CHECK(find_line(" FAILED", 0) < 0 && find_line("FATAL EXCEPTION", 0) < 0);
+    back_and_end("I/BluetoothTest: onDestroy", &at);
+    if (g_failed) say_app_lines("/BluetoothTest: ");
+    return g_failed;
+}
+
 /* Regression: a client and GmsCore carry incompatible classes of identical names. */
 static int run_microg(void)
 {
@@ -3268,6 +3490,23 @@ static int run_microg(void)
     CHECK(find_line("I/MicroG: device registration turned on (checkin_enable_service)", 0) >= 0);
     CHECK(find_line("GmsCheckinSvc: Started Google device registration", 0) >= 0);
     say_app_lines("/MicroGTest: ");
+    return g_failed;
+}
+
+/*
+ * Google's own Play services hosted in an app (their stand-in, the test app gms-own: a service of com.google.android.gms, no
+ * microG in it), run with MG_JAVA_GMS_APK naming it. Their code is told it runs in its application's process: the process
+ * name of its ApplicationInfo is the one Application.getProcessName gives it here, the app's. They take that process for
+ * their main one, the only one where GmsModuleFinder makes their module configuration again at once; in every app that
+ * hosted them the names differed, and each module scan asked for another, five a second, without end.
+ */
+static int run_gms_host(void)
+{
+    CHECK(wait_line("I/GmsOwnTest: main process true application=megler.test.gmshost current=megler.test.gmshost", 0, 600) >= 0);
+    CHECK(find_line("I/MicroG: Google Play services' application runs in this process, megler.test.gmshost, as its main one", 0) >= 0);
+    CHECK(find_line("I/GmsHostTest: started ComponentInfo{com.google.android.gms/megler.test.gmsown.Probe}", 0) >= 0);
+    CHECK(find_line("FATAL EXCEPTION", 0) < 0);
+    say_app_lines("/GmsOwnTest: ");
     return g_failed;
 }
 
@@ -3445,6 +3684,7 @@ int mg_tests_java_run(const char *which, const char *apk, const char *android_ro
     if (g_any_app && getenv("MG_JAVA_SPLITS")) g_splits_dir = mg_strdup(getenv("MG_JAVA_SPLITS"));
     g_crash_app = !strcmp(which, "crash");
     g_camera_app = !strcmp(which, "camera");
+    g_bluetooth_app = !strcmp(which, "bluetooth");
     g_data_app = !strcmp(which, "data");
     g_microg_app = !strcmp(which, "microg");
     /* The data app runs with the phone's look told (megler_set_theme): a cobalt accent and a light theme; its step theme-accent checks what an app sees of it. */
@@ -3507,8 +3747,13 @@ int mg_tests_java_run(const char *which, const char *apk, const char *android_ro
         }
         apk = base;
     }
+    /* `first`: the player's start on a PC (the script's `pc`) or an Xbox (`xbox`), what it tells the core before megler_run. */
+    g_first_xbox = !strcmp(which, "first") && g_script_count && !strcmp(g_script[0], "xbox");
+    if (!strcmp(which, "first")) first_before_run();
     if (start(apk, android_root)) {
-        if (!strcmp(which, "microg")) run_microg();
+        if (!strcmp(which, "first")) run_first();
+        else if (!strcmp(which, "microg")) run_microg();
+        else if (!strcmp(which, "gms-host")) run_gms_host();
         else if (!strcmp(which, "demos")) run_demos();
         else if (!strcmp(which, "natives")) run_natives();
         else if (!strcmp(which, "crash")) run_crash();
@@ -3519,6 +3764,7 @@ int mg_tests_java_run(const char *which, const char *apk, const char *android_ro
         else if (!strcmp(which, "camera")) run_camera();
         else if (!strcmp(which, "splits")) run_splits();
         else if (!strcmp(which, "screen")) run_screen();
+        else if (!strcmp(which, "bluetooth")) run_bluetooth();
         else if (g_any_app) run_app();
         else run_hello();
         if (running()) {

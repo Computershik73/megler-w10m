@@ -323,6 +323,74 @@ static void test_version(void)
     CHECK(version && !strncmp(version, "1.4", 3));
 }
 
+/* The core's log while a test listens: lines with "egl: " in them counted, by kind, and handed on to the sink that was there. */
+static mg_log_sink t_log_was;
+static void *t_log_was_user;
+static int t_versions_said, t_refusals_said;
+static char t_version_line[300];
+
+static void listen_egl(int level, const char *line, void *user)
+{
+    (void)user;
+    if (strstr(line, "egl: a context of OpenGL ES ")) {
+        t_versions_said++;
+        if (!t_version_line[0]) mg_strlcpy(t_version_line, line, sizeof(t_version_line));
+    }
+    if (strstr(line, "egl: eglCreateContext was refused")) t_refusals_said++;
+    if (t_log_was) t_log_was(level, line, t_log_was_user);
+}
+
+/*
+ * Contexts of a version above what the display makes, as the WebView's own ANGLE asks for them over this EGL: 3.2 and 3.1, each
+ * with its context lost on a reset and then without, before the 3.0 it gets. The stand-in refuses more than 3.0 as ANGLE over
+ * Direct3D 11 does, with EGL_BAD_MATCH, which the app reads with eglGetError; the log says each version once, as what it is,
+ * and not as a refusal to look into; 3.0 is made.
+ */
+static void test_context_versions(void)
+{
+    typedef void *(*fn_create)(void *, void *, void *, const int *);
+    void *(*get_display)(void *) = (void *(*)(void *))mg_egl_resolve("eglGetDisplay");
+    fn_create create = (fn_create)mg_egl_resolve("eglCreateContext");
+    unsigned (*destroy)(void *, void *) = (unsigned (*)(void *, void *))mg_egl_resolve("eglDestroyContext");
+    int (*get_error)(void) = (int (*)(void))mg_egl_resolve("eglGetError");
+    static const int asked[][9] = {
+        { 0x3098, 3, 0x30FB, 2, 0x31BD, 0x31BF, 0x3038 },     /* 3.2, lost on a reset (EGL 1.5's name) */
+        { 0x3098, 3, 0x30FB, 2, 0x3038 },
+        { 0x3098, 3, 0x30FB, 1, 0x31BD, 0x31BF, 0x3038 },
+        { 0x3098, 3, 0x30FB, 1, 0x3038 },
+    };
+    static const int es3[] = { 0x3098, 3, 0x30FB, 0, 0x31BD, 0x31BF, 0x3038 };
+    mg_gl_standin_stats st;
+    void *d, *ctx;
+    int errors[MG_COUNT(asked)], i, refused = 0;
+    say("EGL: contexts of OpenGL ES 3.2 and 3.1 refused as ANGLE over Direct3D 11 refuses them, said once each; 3.0 made");
+    CHECK(get_display && create && destroy && get_error);
+    if (!get_display || !create || !destroy || !get_error) return;
+    d = get_display(NULL);
+    mg_log_get_sink(&t_log_was, &t_log_was_user);
+    t_versions_said = t_refusals_said = 0;
+    t_version_line[0] = 0;
+    mg_log_set_sink(listen_egl, NULL);
+    for (i = 0; i < (int)MG_COUNT(asked); i++) {
+        ctx = create(d, NULL, NULL, asked[i]);
+        errors[i] = get_error();
+        if (!ctx) refused++;
+        else destroy(d, ctx);
+    }
+    ctx = create(d, NULL, NULL, es3);
+    mg_log_set_sink(t_log_was, t_log_was_user);
+    mg_gl_standin_stats_get(&st);
+    say("  %d of 4 refused, errors 0x%x 0x%x 0x%x 0x%x; the versions said %d times, refusals %d; 3.0: %s", refused, (unsigned)errors[0],
+        (unsigned)errors[1], (unsigned)errors[2], (unsigned)errors[3], t_versions_said, t_refusals_said, ctx ? "made" : "refused");
+    if (t_version_line[0]) say("  %s", t_version_line);
+    CHECK(refused == 4 && st.refused_versions >= 4);
+    for (i = 0; i < (int)MG_COUNT(asked); i++) CHECK_HEX(errors[i], 0x3009);
+    CHECK(t_versions_said == 2 && t_refusals_said == 0);
+    CHECK(strstr(t_version_line, "OpenGL ES 3.2 (lost on a reset) asked for and refused (EGL_BAD_MATCH): this display makes OpenGL ES 3.0 at most") != NULL);
+    CHECK(ctx != NULL);
+    if (ctx) destroy(d, ctx);
+}
+
 /*
  * Hardware buffers (ndk/mg_ahb.c) and EGL images of them (mg_egl.c), as Chromium's GPU service and the ANGLE inside it use
  * them, over the stand-in, whose textures keep their pixels and whose EGL images share them: a 4x2 R8G8B8A8 buffer laid out
@@ -1506,6 +1574,7 @@ int mg_gl_natives_tests_run(mg_test_sink sink, void *user, int *checks)
     mg_gl_standin_reset(true, false);
     mg_java_gl_reset();
     test_version();
+    test_context_versions();
     test_hardware_buffers();
     test_webview_display();
     mg_egl_webview_own_display(false);

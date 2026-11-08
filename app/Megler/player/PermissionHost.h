@@ -7,7 +7,11 @@
 //                                  (Geolocator.RequestAccessAsync; MediaCapture.InitializeAsync, which opens the camera or
 //                                  microphone for a moment), the first time. Windows asks only once: a no is for good, and
 //                                  Settings > Privacy changes it. A place set by hand in Megler's Settings is the app's to
-//                                  have; a phone without the camera or the microphone has nothing to refuse.
+//                                  have; a phone without the camera or the microphone has nothing to refuse. The location
+//                                  refused by the system (the phone's location switched off) is the app's to have, as an
+//                                  Android app's permission is whether the location is on or off: the app is told the
+//                                  location is off (player/LocationHost.h) and asks the user to switch it on. What Windows
+//                                  says of the location is said in the log as it is first read and as it changes.
 //   storage, read_media_visual, read_media_aural, sms, phone, call_log   Megler's: its own question, Allow or Don't Allow,
 //                                  over the app (ui/AppShell.h, dialogWhenFree), kept in the app's settings as
 //                                  megler.permission.<group> = granted, denied, denied-fixed (shell/Settings.h). A second no
@@ -15,9 +19,12 @@
 //                                  nothing. The app's Settings change it (ui/SettingsScreen.cpp, Permissions). Under the
 //                                  flag allow-permissions (LocalState\flags) every one is allowed with no one asked, for a
 //                                  run no one watches; the flag ui-dialog-<name>-1 answers one that is up (ui/UiShots.h).
-//   contacts, calendar, sensors, nearby_devices, notifications, activity_recognition   granted, no one asked: Megler gives an
-//                                  app none of the phone's contacts, calendar, body sensors, Bluetooth devices or
-//                                  notifications, so there is nothing for the user to refuse.
+//   contacts, calendar, sensors, notifications, activity_recognition   granted, no one asked: Megler gives an app none of the
+//                                  phone's contacts, calendar, body sensors or notifications, so there is nothing for the
+//                                  user to refuse.
+//   nearby_devices                 granted, no one asked: Bluetooth LE's devices (player/BluetoothHost.h), which Windows asks
+//                                  the user nothing for -- its privacy settings of "other devices" refuse them, where the
+//                                  user has said so there -- and which an app without them could not reach at all.
 //
 // What each asks for, and each answer, is in the log.
 #pragma once
@@ -57,8 +64,11 @@ void keep(const std::string& package, const std::string& group, int state);
 /// storage). Windows' own answers (the location, the camera, the microphone) are Windows' to change, in its privacy settings.
 void forgetAll(const std::string& package);
 
-/// What Windows' privacy settings say of this process's package for a group Windows decides: MEGLER_PERMISSION_*.
+/// What Windows' privacy settings say of this process's package for a group Windows decides: MEGLER_PERMISSION_*. The
+/// location switched off by the system is GRANTED: Android's location permission does not depend on the location's switch.
 int windows(const std::string& group);
+/// The same in words, for the app's settings: "Allowed by Windows", "The phone's location is switched off: ...".
+std::string windowsSaid(const std::string& group);
 /// Windows' privacy settings page of a group Windows decides ("ms-settings:privacy-webcam"), empty for another.
 std::wstring windowsSettingsPage(const std::string& group);
 

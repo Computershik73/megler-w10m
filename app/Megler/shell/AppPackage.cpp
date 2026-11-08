@@ -11,6 +11,7 @@
 #endif
 #include "shell/Files.h"
 #include "shell/PickedFile.h"
+#include "shell/Placement.h"
 #include "shell/Platform.h"
 #include "shell/ShellLog.h"
 #include "shell/Strings.h"
@@ -18,7 +19,13 @@
 #include <winrt/Windows.Graphics.Imaging.h>
 #include <winrt/Windows.Management.Deployment.h>
 
+#include <activation.h>
+#include <roapi.h>
+
 #include <atomic>
+#include <chrono>
+#include <mutex>
+#include <thread>
 
 namespace megler::app::appPackage {
 
@@ -107,6 +114,98 @@ std::string oneLine(std::string s) {
     for (char& c : s)
         if (c == '\r' || c == '\n') c = ' ';
     return s;
+}
+
+/*
+ * The package volume Megler's own package is installed on, which every package Megler installs goes to (installWithPackageManager):
+ * the phone's memory, or the memory card where Settings › System › Storage saves new apps there or Megler was moved there.
+ * Windows puts a package where its user saves new apps unless it is told a volume, and an app's package on another storage
+ * than Megler's gets that storage's publisher cache folder, or none: it found neither Android's files nor its APK there, and
+ * Megler, the other way round, none of the APKs it hands over (docs/PER-APP-PACKAGES.md, "A memory card"). Asked of Windows's
+ * package manager at each install (FindPackageVolumes, GetPackageVolumesAsync where that will not answer), the volume being
+ * the one whose store path holds Megler's install folder (placement::volumeHolding). Null where neither answers or no volume
+ * holds it: the package then goes where Windows puts new apps, as before. The log says which, the first time and whenever
+ * it is another.
+ */
+winrt::Windows::Management::Deployment::PackageVolume installVolume() {
+    using namespace winrt::Windows::Management::Deployment;
+    static std::mutex mutex;
+    static std::string said;  // the last said
+    std::vector<PackageVolume> volumes;
+    std::string why;
+    try {
+        for (auto const& volume : PackageManager().FindPackageVolumes()) volumes.push_back(volume);
+    } catch (hresult_error const& e) {
+        why = format("FindPackageVolumes: 0x%08x", unsigned(e.code()));
+        try {
+            for (auto const& volume : PackageManager().GetPackageVolumesAsync().get()) volumes.push_back(volume);
+        } catch (hresult_error const& again) {
+            why += format("; GetPackageVolumesAsync: 0x%08x", unsigned(again.code()));
+        }
+    }
+    std::vector<placement::Volume> places;
+    for (auto const& volume : volumes) {
+        placement::Volume place;
+        try {
+            place.name = volume.Name();
+            place.storePath = volume.PackageStorePath();
+            place.mountPoint = volume.MountPoint();
+        } catch (hresult_error const&) {
+        }
+        places.push_back(place);
+    }
+    const std::wstring install = platform::installDirectory();
+    const int at = placement::volumeHolding(places, install, placement::volumeOf(install));
+    std::string line;
+    if (at >= 0) {
+        bool system = false;
+        try {
+            system = volumes[at].IsSystemVolume();
+        } catch (hresult_error const&) {
+        }
+        line = "app package: packages are installed on Megler's own volume, " + narrow(places[at].storePath) + " (mounted at " +
+               narrow(places[at].mountPoint) + ", " + narrow(places[at].name) +
+               (system ? ", the system's)" : ", not the system's: a memory card or another drive)");
+    } else {
+        std::string listed;
+        for (const auto& place : places) listed += (listed.empty() ? "" : ", ") + narrow(place.storePath);
+        line = volumes.empty() ? "app package: Windows did not list its package volumes (" + why + "): packages go where Windows puts new apps"
+                               : "app package: none of the package volumes (" + listed + ") holds Megler's install folder " + narrow(install) +
+                                     ": packages go where Windows puts new apps";
+    }
+    {
+        std::lock_guard<std::mutex> lock(mutex);
+        if (line != said) {
+            said = line;
+            shellLog::write(line);
+        }
+    }
+    return at >= 0 ? volumes[at] : nullptr;
+}
+
+/*
+ * AddPackageAsync onto `volume` (installVolume), or as before where there is none. Where Windows has not that call or will not
+ * take a volume with it (E_NOINTERFACE, E_NOTIMPL or E_INVALIDARG thrown), as before too, said once; whatever else it throws
+ * or answers is the caller's, as it was.
+ */
+winrt::Windows::Management::Deployment::DeploymentResult addPackage(winrt::Windows::Management::Deployment::PackageManager const& manager,
+                                                                    winrt::Windows::Foundation::Uri const& package,
+                                                                    winrt::Windows::Management::Deployment::DeploymentOptions options,
+                                                                    winrt::Windows::Management::Deployment::PackageVolume const& volume) {
+    if (volume) {
+        try {
+            return manager.AddPackageAsync(package, nullptr, options, volume).get();
+        } catch (hresult_error const& e) {
+            const int32_t code = e.code();
+            if (code != E_NOINTERFACE && code != E_NOTIMPL && code != E_INVALIDARG) throw;
+            static std::atomic<bool> said{false};
+            if (!said.exchange(true))
+                shellLog::write(format("app package: Windows would not take a package volume with an install (0x%08x): packages go where "
+                                       "Windows puts new apps",
+                                       unsigned(code)));
+        }
+    }
+    return manager.AddPackageAsync(package, nullptr, options).get();
 }
 
 }  // namespace
@@ -243,16 +342,56 @@ const SingleApp& single() {
         if (!files::read(install + L"\\MeglerApp.ini", text)) return s;
         s.package = iniValue(text, "package");
         s.label = iniValue(text, "label");
-        const std::string apk = iniValue(text, "apk");
+        const std::string apk = iniValue(text, "apk"), root = iniValue(text, "root");
         const std::wstring shared = sharedFolder();
         // Since 645 the app's APK is in the shared folder (make: apk=shared:apks\<identity>\<token>); before, in the package.
-        s.apkFolder = apk.rfind("shared:", 0) == 0 ? shared + L"\\" + widen(apk.substr(7)) : install + L"\\" + widen(apk);
-        if (!shared.empty()) s.androidRoot = shared + L"\\" + widen(iniValue(text, "root"));
+        // Where Windows gave the package no shared folder (one on a memory card may have none), neither is anywhere: both left
+        // empty, and nothing is looked for at the drive's root ("" + "\apks\..."). The app's screen says why it cannot start
+        // (singleAppProblem).
+        if (apk.rfind("shared:", 0) == 0)
+            s.apkFolder = shared.empty() ? std::wstring() : shared + L"\\" + widen(apk.substr(7));
+        else
+            s.apkFolder = install + L"\\" + widen(apk);
+        if (!shared.empty() && !root.empty()) s.androidRoot = shared + L"\\" + widen(root);
         s.megler = widen(iniValue(text, "megler"));
-        shellLog::write("app package: this is " + s.package + "'s own package; Android's files in " + narrow(s.androidRoot));
+        shellLog::write("app package: this is " + s.package + "'s own package; " +
+                        (shared.empty() ? std::string("Windows gave it no shared folder, where its APK and Android's files are")
+                                        : "Android's files in " + narrow(s.androidRoot) + ", its APK in " + narrow(s.apkFolder)));
         return s;
     }();
     return app;
+}
+
+const std::string& singleAppProblem() {
+    static const std::string problem = [] {
+        const SingleApp& app = single();
+        if (app.package.empty()) return std::string();
+        const std::wstring shared = sharedFolder(), apk = app.apkFolder.empty() ? std::wstring() : app.apkFolder + L"\\app.apk";
+        const placement::Missing missing = placement::missingFor(shared, apk, app.androidRoot);
+        if (missing == placement::Missing::nothing) return std::string();
+        const char* what = missing == placement::Missing::sharedFolder ? "Windows gave it no shared folder"
+                           : missing == placement::Missing::apk        ? "its APK is not in the shared folder, or cannot be read there"
+                                                                       : "Android's files are not in the shared folder";
+        shellLog::write("app package: " + app.package + " cannot start: " + what + " (its APK looked for as " + narrow(apk) +
+                        ", Android's files in " + narrow(app.androidRoot) + "); " +
+                        placement::summary(platform::installDirectory(), platform::localStateDirectory(), shared));
+        return placement::missingText(missing, app.label.empty() ? app.package : app.label, shared, platform::isMobile());
+    }();
+    return problem;
+}
+
+const std::string& meglerOnCard() {
+    static const std::string text = [] {
+        if (isSingleApp()) return std::string();
+        const std::wstring install = platform::installDirectory(), shared = sharedFolder();
+        const bool onCard = platform::isMobile() && !placement::onSystemDrive(install);
+        const std::string said = placement::meglerOnCardText(onCard, shared.empty(), platform::isMobile());
+        if (!said.empty())
+            shellLog::write(std::string("app package: Megler ") + (onCard ? "is installed on the memory card" : "has no shared folder") +
+                            ": its apps may not reach its files; " + placement::summary(install, platform::localStateDirectory(), shared));
+        return said;
+    }();
+    return text;
 }
 
 const std::wstring& linkScheme() {
@@ -331,6 +470,7 @@ std::string androidRootName() {
 /// its report, its icon and the build its report is of, as the library has them now. Empty, or why not.
 std::string keepInShared(const ApkEntry& entry, const std::string& identity, const std::vector<std::wstring>& splits,
                          const PickedFile* picked, const std::function<void(const std::string&)>& progress, std::wstring& folder) {
+    if (sharedFolder().empty()) return "Windows gives this Megler no shared folder to keep the APK in.";
     const std::wstring apks = sharedFolder() + L"\\apks\\" + widen(identity);
     if (entry.path.size() > apks.size() + 1 && _wcsnicmp(entry.path.c_str(), (apks + L"\\").c_str(), apks.size() + 1) == 0 &&
         files::exists(entry.path)) {
@@ -412,7 +552,14 @@ Made make(const ApkEntry& entry, const std::function<void(const std::string&)>& 
         if (splits.empty()) return fail("The app's split APKs are missing (" + narrow(entry.splitsDir) + ").");
     }
     const std::wstring shared = sharedFolder();
-    if (shared.empty()) return fail("Windows gives this Megler no shared folder (its manifest lacks the publisher cache folder).");
+    // (Its manifest declares the publisher cache folder: Windows gives none where Megler is installed on a memory card.)
+    if (shared.empty())
+        return fail(platform::isMobile()
+                        ? "Windows gives this Megler no shared folder, where an app's own package finds Android's files and its APK: as a rule "
+                          "because Megler is installed on the memory card. Move Megler to the phone's memory (Settings › System › Storage), "
+                          "then install the app."
+                        : "Windows gives this Megler no shared folder, where an app's own package finds Android's files and its APK: as a rule "
+                          "because Megler is installed on another drive than Windows's. Install Megler on the system drive, then install the app.");
     const std::wstring install = platform::installDirectory(), local = platform::localStateDirectory();
     const std::string version = versionString();
 
@@ -618,10 +765,38 @@ Made make(const ApkEntry& entry, const std::function<void(const std::string&)>& 
  */
 namespace {
 
+/// One deployment at a time, whoever asks (an app's install, Update All's, Megler's own update).
+std::mutex gDeployMutex;
+/// Whether Megler's packages were seen installed on this phone when Windows refused an install for access: Megler has had
+/// its packageManagement capability then, and the refusal is not the interop unlock's (accessDeniedText).
+std::atomic<bool> gInstalledBefore{false};
+
+/// A PackageManager made from an activation factory of its own, past C++/WinRT's cache of them; null where it cannot be.
+winrt::Windows::Management::Deployment::PackageManager freshPackageManager() {
+    try {
+        winrt::com_ptr<::IActivationFactory> factory;
+        const winrt::hstring name = L"Windows.Management.Deployment.PackageManager";
+        if (FAILED(RoGetActivationFactory(static_cast<HSTRING>(winrt::get_abi(name)), __uuidof(::IActivationFactory), factory.put_void())))
+            return nullptr;
+        winrt::com_ptr<::IInspectable> made;
+        if (FAILED(factory->ActivateInstance(made.put()))) return nullptr;
+        return made.as<winrt::Windows::Management::Deployment::PackageManager>();
+    } catch (hresult_error const&) {
+        return nullptr;
+    }
+}
+
 /// Said once a run: why Windows refuses Megler every install, which each try's own line does not say.
 void sayRefusedForAccess() {
     static std::atomic<bool> said{false};
     if (said.exchange(true)) return;
+    if (gInstalledBefore) {
+        shellLog::write("app package: Windows refuses Megler every install for access (0x80070005 at every try), though Megler's packages "
+                        "are installed on this phone: Windows has granted it packageManagement before, and the refusal is this run's "
+                        "(it came after Megler was suspended and resumed, on a Lumia 950 whose interop unlock was whole); a new start "
+                        "of Megler installs again");
+        return;
+    }
     shellLog::write(platform::isMobile()
                         ? "app package: Windows refuses Megler every install for access (0x80070005 at every try): Megler has not got its "
                           "packageManagement capability, which Windows 10 Mobile grants a sideloaded app only with the capability part of the "
@@ -644,6 +819,14 @@ void rememberRefusal(const std::wstring& path, const InstallResult& result) {
 }  // namespace
 
 std::string accessDeniedText(const std::string& meanwhile) {
+    // Megler has installed packages here before: Windows has granted it the capability, and this run's refusal goes with a new
+    // start (a Lumia 950's installs were refused after Megler was suspended and resumed, its interop unlock whole).
+    if (gInstalledBefore)
+        return "Windows refused Megler this install (0x80070005, access denied), though Megler has installed apps on this phone "
+               "before. Close Megler fully (in the task view, swipe it away) and open it again: a new start installs. If every start "
+               "is refused, check the phone's interop unlock in Interop Tools \u203a Unlock (Interop/Cap Unlock and New Capability "
+               "Engine Unlock, then a restart). Until then, " +
+               meanwhile;
     if (platform::isMobile())
         return "Windows does not let Megler install apps on this phone (0x80070005, access denied): Megler's right to install packages "
                "is blocked. The phone's interop unlock is not complete: in Interop Tools › Unlock, turn on Interop/Cap Unlock and New "
@@ -664,29 +847,58 @@ InstallResult installWithPackageManager(const std::wstring& path, const std::fun
     std::replace(uri.begin(), uri.end(), L'\\', L'/');
     std::string said, asTheStore;
     bool denied = true;  // every try so far refused for access
+    std::lock_guard<std::mutex> one(gDeployMutex);
+    // (Onto the volume Megler itself is on, where there is one to name: installVolume, addPackage.)
+    const PackageVolume volume = installVolume();
+    bool first = true;
     for (const DeploymentOptions options : tries) {
         int32_t code = 0;
-        try {
-            PackageManager manager;
-            progress(format("Installing it through Windows's deployment engine (options 0x%x)…", unsigned(options)));
-            // (Said before it goes: an update of Megler's own package ends Megler as soon as it is installed.)
-            shellLog::flush();
-            const DeploymentResult result = manager.AddPackageAsync(winrt::Windows::Foundation::Uri(uri), nullptr, options).get();
-            if (result.ErrorText().empty()) {
-                shellLog::write(format("app package: %s installed by Windows's deployment engine (options 0x%x)",
-                                       narrow(path.substr(path.find_last_of(L'\\') + 1)).c_str(), unsigned(options)));
-                return {true, "Installed."};
+        /*
+         * Each set of options asked of C++/WinRT's PackageManager, and where that is refused for access, of one made from an
+         * activation factory of its own, at once and (the first set) again after 3 s: on a Lumia 650 resumed from suspension
+         * the first was refused (0x80070005) where the second, asked a moment later, took the call (the flag diag-deploy's
+         * probe, 0.1.0.674), and a Lumia 950's installs were refused at every try after a resume, each through the first.
+         */
+        for (int way = 0; way < (first ? 3 : 2); way++) {
+            try {
+                if (way == 2) std::this_thread::sleep_for(std::chrono::seconds(3));
+                PackageManager manager = way == 0 ? PackageManager() : freshPackageManager();
+                if (!manager) {
+                    shellLog::write("app package: no PackageManager from an activation factory of its own");
+                    break;
+                }
+                progress(format("Installing it through Windows's deployment engine (options 0x%x)…", unsigned(options)));
+                // (Said before it goes: an update of Megler's own package ends Megler as soon as it is installed.)
+                shellLog::flush();
+                const DeploymentResult result = addPackage(manager, winrt::Windows::Foundation::Uri(uri), options, volume);
+                if (result.ErrorText().empty()) {
+                    shellLog::write(format("app package: %s installed by Windows's deployment engine (options 0x%x%s)",
+                                           narrow(path.substr(path.find_last_of(L'\\') + 1)).c_str(), unsigned(options),
+                                           way ? ", asked of a PackageManager of a fresh activation factory after a refusal for access" : ""));
+                    return {true, "Installed."};
+                }
+                code = result.ExtendedErrorCode();
+                said = format("0x%08x ", unsigned(code)) + narrow(result.ErrorText());
+                shellLog::write(format("app package: the deployment engine refused it (options 0x%x%s): ", unsigned(options), way ? ", fresh" : "") +
+                                said);
+            } catch (hresult_error const& e) {
+                code = e.code();
+                said = format("0x%08x ", unsigned(code)) + narrow(e.message());
+                shellLog::write(format("app package: the deployment engine could not be asked (options 0x%x%s): ", unsigned(options), way ? ", fresh" : "") +
+                                said);
             }
-            code = result.ExtendedErrorCode();
-            said = format("0x%08x ", unsigned(code)) + narrow(result.ErrorText());
-            shellLog::write(format("app package: the deployment engine refused it (options 0x%x): ", unsigned(options)) + said);
-        } catch (hresult_error const& e) {
-            code = e.code();
-            said = format("0x%08x ", unsigned(code)) + narrow(e.message());
-            shellLog::write(format("app package: the deployment engine could not be asked (options 0x%x): ", unsigned(options)) + said);
+            if (code != E_ACCESSDENIED) break;
         }
+        first = false;
         denied = denied && code == E_ACCESSDENIED;
         if (!(unsigned(options) & 0x8000) && asTheStore.empty()) asTheStore = said;
+    }
+    // Refused for access every time: whether Megler's packages are installed here all the same (Windows has granted it the
+    // capability before, and the refusal is this run's), for what is said (accessDeniedText).
+    if (denied && !gInstalledBefore) {
+        std::vector<InstalledApp> apps;
+        std::string error;
+        if (installedApps(apps, error) && !apps.empty()) gInstalledBefore = true;
     }
     // What the Store's way was refused for first: a developer's deployment is refused for their number alone.
     const InstallResult refused{false, "Windows's deployment engine did not install it: as the Store installs, " + asTheStore +
@@ -695,6 +907,81 @@ InstallResult installWithPackageManager(const std::wstring& path, const std::fun
     if (denied) sayRefusedForAccess();
     rememberRefusal(path, refused);
     return refused;
+}
+
+namespace {
+
+/// One way of asking the deployment engine, said: FindPackagesForUser's count, and AddPackageAsync's answer to a package
+/// that is not there -- an error of its own where the engine takes Megler's call, 0x80070005 where it refuses Megler.
+std::string probeOne(winrt::Windows::Management::Deployment::PackageManager const& manager) {
+    using namespace winrt::Windows::Management::Deployment;
+    std::string said;
+    try {
+        unsigned count = 0;
+        for (auto const& p : manager.FindPackagesForUser(L"")) {
+            (void)p;
+            count++;
+        }
+        said += format("lists %u packages", count);
+    } catch (hresult_error const& e) {
+        said += format("list refused 0x%08x", unsigned(e.code()));
+    }
+    try {
+        const std::wstring missing = L"file:///" + platform::localStateDirectory() + L"/no-such-package.appx";
+        std::wstring uri = missing;
+        std::replace(uri.begin(), uri.end(), L'\\', L'/');
+        const DeploymentResult result = manager.AddPackageAsync(winrt::Windows::Foundation::Uri(uri), nullptr, DeploymentOptions::None).get();
+        said += format("; a missing package: 0x%08x ", unsigned(result.ExtendedErrorCode())) + narrow(result.ErrorText()).substr(0, 80);
+    } catch (hresult_error const& e) {
+        said += format("; a missing package: thrown 0x%08x ", unsigned(e.code())) + narrow(e.message()).substr(0, 80);
+    }
+    return said;
+}
+
+}  // namespace
+
+void probeDeployment(const char* when) {
+    if (!files::exists(platform::localStateDirectory() + L"\\flags\\diag-deploy")) return;
+    const std::string label = when;
+    std::thread([label] {
+        using namespace winrt::Windows::Management::Deployment;
+        try {
+            winrt::init_apartment();
+        } catch (...) {
+        }
+        std::string line = "deploy probe (" + label + "): ";
+        try {
+            line += "C++/WinRT's: " + probeOne(PackageManager());
+        } catch (hresult_error const& e) {
+            line += format("C++/WinRT's: not made 0x%08x", unsigned(e.code()));
+        }
+        // A factory of its own, past C++/WinRT's cache of them.
+        try {
+            winrt::com_ptr<::IActivationFactory> factory;
+            const winrt::hstring name = L"Windows.Management.Deployment.PackageManager";
+            winrt::check_hresult(RoGetActivationFactory(static_cast<HSTRING>(winrt::get_abi(name)), __uuidof(::IActivationFactory), factory.put_void()));
+            winrt::com_ptr<::IInspectable> made;
+            winrt::check_hresult(factory->ActivateInstance(made.put()));
+            line += "; a fresh factory's: " + probeOne(made.as<PackageManager>());
+        } catch (hresult_error const& e) {
+            line += format("; a fresh factory's: not made 0x%08x", unsigned(e.code()));
+        }
+        // One made on a thread of its own, new now.
+        std::string other;
+        std::thread([&other] {
+            try {
+                winrt::init_apartment();
+            } catch (...) {
+            }
+            try {
+                other = probeOne(PackageManager());
+            } catch (hresult_error const& e) {
+                other = format("not made 0x%08x", unsigned(e.code()));
+            }
+        }).join();
+        line += "; a new thread's: " + other;
+        shellLog::write(line);
+    }).detach();
 }
 
 #if defined(MEGLER_XBOX)
@@ -805,6 +1092,10 @@ bool registerServiceApk(const ApkEntry& entry, const std::string& installedFullN
     if (!entry.report.ok || installedFullName.empty() || installedFullName.find_first_not_of("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789._-") != std::string::npos || !canRead(entry.path)) return false;
     const auto shared = sharedFolder();
     if (shared.empty()) return false;
+    // (One at a time: Google Play services' own package asks after its start and again when its library reads it, and a
+    // second asking meanwhile copied the APK a second time, beside the first.)
+    static std::mutex registering;
+    std::lock_guard<std::mutex> lock(registering);
     // microG's and Google's own are each registered apart: an app takes the one it is set to (ui/SettingsScreen.cpp).
     const auto record = shared + (entry.report.microg ? L"\\services\\microg-package.txt" : L"\\services\\gms-package.txt");
     std::string previous;
@@ -842,8 +1133,10 @@ bool registerServiceApk(const ApkEntry& entry, const std::string& installedFullN
 }
 
 void unregisterServiceApk(const std::string& installedFullName) {
+    const auto shared = sharedFolder();
+    if (shared.empty()) return;
     for (const wchar_t* kind : {L"\\services\\gms-package.txt", L"\\services\\microg-package.txt"}) {
-        const auto record = sharedFolder() + kind;
+        const auto record = shared + kind;
         std::string registered;
         if (files::read(record, registered) && iniValue(registered, "package") == installedFullName) files::remove(record);
     }
@@ -1234,8 +1527,9 @@ bool inSharedApks(const std::wstring& path) {
 
 void sharedApkInstalled(const Made& made) {
     const size_t slash = made.apkFolder.find_last_of(L'\\');
-    if (made.apkFolder.empty() || slash == std::wstring::npos) return;
-    const std::wstring dir = sharedFolder() + L"\\" + made.apkFolder.substr(0, slash), record = dir + L"\\installed.txt";
+    const std::wstring shared = sharedFolder();
+    if (made.apkFolder.empty() || slash == std::wstring::npos || shared.empty()) return;
+    const std::wstring dir = shared + L"\\" + made.apkFolder.substr(0, slash), record = dir + L"\\installed.txt";
     if (!files::write(record + L".part", narrow(made.apkFolder.substr(slash + 1))) || !files::move(record + L".part", record))
         shellLog::write(format("app package: %s could not be written (error %lu): the APK's folder stays while Megler's library reads it",
                                narrow(record).c_str(), GetLastError()));

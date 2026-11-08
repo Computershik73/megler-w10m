@@ -124,8 +124,11 @@ Border warningCard(std::string_view message) {
 UIElement platformWarnings() {
     const bool canRun = platform::canRunAndroidCode();
     const bool angle = platform::angle().present;
-    if (canRun && angle) return nullptr;
+    // Megler on the memory card, or given no shared folder: its apps may not reach its files (shell/Placement.h).
+    const std::string& onCard = appPackage::meglerOnCard();
+    if (canRun && angle && onCard.empty()) return nullptr;
     auto column = vstack(0);
+    if (!onCard.empty()) column.Children().Append(warningCard(onCard));
     if (!canRun) {
 #if defined(_M_ARM)
         column.Children().Append(warningCard(

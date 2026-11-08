@@ -174,6 +174,7 @@ private:
     bool singleAppOpened_ = false;  // an app's own package: its app has been opened (shell/AppPackage.h)
     bool foldersPublished_ = false; // Megler: its added folders listed for the separate apps (ui/SharedFolders.h)
     bool storageShared_ = false;    // Megler: the copy of its storage to the shared folder has been started (shell/AppPackage.h)
+    bool placementSaid_ = false;    // Megler: whether it is on a memory card (appPackage::meglerOnCard) has been said, once a run
     std::shared_ptr<ImportProgress> import_;
     // APKs Android apps asked to install that the library has taken: its id and the name they came by, till it has them read
     std::vector<std::pair<std::string, std::string>> askedInstalls_;

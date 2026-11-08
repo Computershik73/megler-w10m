@@ -2872,8 +2872,9 @@ public class WebView extends AbsoluteLayout
 
     @Override
     protected void onDraw(Canvas canvas) {
-        // Megler: a canvas that says it is hardware-accelerated -- a view list's, the shell's on the graphics processor
-        // (View.drawFromParent, where megler.WebFunctors.on) -- is drawn by Chromium through the platform's draw functor
+        // Megler: a canvas that says it is hardware-accelerated -- a view list's, the shell's on the graphics processor, the
+        // window's frame where the WebView is a child of the window's root (View.drawFromParent, megler.ViewRoot.ScreenCanvas,
+        // where megler.WebFunctors.on) -- is drawn by Chromium through the platform's draw functor
         // (AwDrawFn, drivers/mg_java_webview.c): its page drawn with OpenGL ES on the WebView's render thread, a picture the
         // shell keeps (meglerDrawFunctor). Any other is given what the WebView draws through one bitmap of what the window
         // shows of the view, which Chromium draws into directly (the platform's software table). Drawn straight into the

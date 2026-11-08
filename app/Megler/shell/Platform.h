@@ -12,8 +12,15 @@
 namespace megler::app::platform {
 
 bool isMobile();
-/// An Xbox (in Developer Mode, the only way Megler is on one): a television, a gamepad, the console's Device Portal.
+/// An Xbox (in Developer Mode, the only way Megler is on one): a television, a gamepad, the console's Device Portal. Or a
+/// PC's Megler under the flag as-xbox (asXbox).
 bool isXbox();
+/// The flag "as-xbox" (a file of that name in LocalState\flags, read once a start) on a PC: Megler takes an Xbox's ways
+/// where the shell has ways of its own for one (isXbox) -- its window opened at 960 by 540, an Xbox's television in an
+/// app's pixels, and never resized or turned for an app's wish; the log's ZIP kept in LocalState -- to try them without a
+/// console. What Windows does otherwise on an Xbox (200 percent, the television's safe area) a PC does not. The package
+/// Megler updates itself with is still the PC's (ui/Ota.cpp goes by the device family).
+bool asXbox();
 std::string deviceFamily();
 std::string osVersion();
 std::string packageVersion();
@@ -24,6 +31,11 @@ const std::wstring& localStateDirectory();
 const std::wstring& installDirectory();
 /// "390 MB limit, 85 MB in use" from MemoryManager, or why not.
 std::string memorySummary();
+/// "NOKIA RM-976_1018, 512 MB of memory, 96.3 MB of it free": the device as Windows names it (EasClientDeviceInformation),
+/// and its memory (GlobalMemoryStatusEx).
+std::string deviceSummary();
+/// "LocalState's 1.20 GB free of 3.56 GB", and the package's and the shared folder's where they are on other disks.
+std::string diskSummary();
 /// Reads the app's memory use and limit for the core to hand to the app
 /// (Platform.cpp). On the shell's own thread: at start-up and on its tick.
 void sampleMemory();

@@ -123,23 +123,19 @@ static u8 g_tid_used[4096];             /* a bit per thread id; ids are reused, 
 static mg_gthread *g_tid_thread[32761];  /* the live thread of each id in use */
 static i32 g_tid_next = 1;
 /* Who holds g_thread_lock, since when and where (the hang report): taken and let go only through these two. */
-static volatile u32 g_thread_lock_owner;
-static volatile u64 g_thread_lock_at;
-static const char *volatile g_thread_lock_site;
+static mg_holder g_thread_hold = MG_HOLDER_INIT;
 /* The guest thread prof_sample is stopping while it holds the lock, 0 for none. */
 static volatile i32 g_prof_stopping;
 
 static void thread_lock(const char *site)
 {
     mg_lock_acquire(&g_thread_lock);
-    g_thread_lock_at = mg_time_monotonic_ns();
-    g_thread_lock_site = site;
-    g_thread_lock_owner = mg_thread_self_id();
+    mg_holder_take(&g_thread_hold, site);
 }
 
 static void thread_unlock(void)
 {
-    g_thread_lock_owner = 0;
+    mg_holder_let_go(&g_thread_hold);
     mg_lock_release(&g_thread_lock);
 }
 
@@ -994,10 +990,13 @@ void mg_bionic_profile_start(void)
 }
 
 /*
- * The hang report, in every run on Windows: a watchdog that looks every two seconds at who holds the log's lock and the
- * guest threads' lock. Nothing the layer does holds either for long, so one held by the same thread for ten seconds is an
- * app that stands still -- a deadlock, which says nothing of itself: the core's lines stop (each waits for the log's lock)
- * while the shell's go on. Once for each such stand-still it says who holds which lock since when and what it was doing
+ * The hang report, in every run on Windows: a watchdog that looks every two seconds at who holds the log's lock, the
+ * guest threads' lock and the mappings' (mg_libc_mem.c). Nothing the layer does holds any of them for long -- none is held
+ * across a file's reading or writing -- so one held by the same thread for ten seconds is an app that stands still -- a
+ * deadlock, which says nothing of itself: the core's lines stop (each waits for the log's lock) while the shell's go on.
+ * How long is read from each holder's record (mg_holder_look): the clock after the record, never before -- read first, a
+ * hold that began a moment after it came out 2^64 ns old, "18446744073.7 s", and was said as a stand-still that was
+ * none (Viber's write-back thread on 0.1.0.669, a fault's report on 671). Once for each such stand-still it says who holds which lock since when and what it was doing
  * (the line it was writing; the function that took the threads' lock, and the thread trace-profile was stopping), and
  * where each thread that runs guest code is: pc, lr and its stack's way back, as trace-native-stacks says. The threads are
  * found and stopped without either lock -- while another thread holds the threads' lock no thread's record can go, and
@@ -1169,13 +1168,9 @@ static void hang_report(hang_thread *threads, hang_holder *holders, const u32 *h
     }
 }
 
-/* The mappings' lock's holder (mg_libc_mem.c): Aurora Store's sign-in page stood still with it held (650). */
-extern volatile u32 g_region_lock_owner;
-extern volatile u64 g_region_lock_at;
-extern const char *volatile g_region_lock_site;
-
 static MG_HOSTCB void hang_observer(void *unused)
 {
+    const u64 limit = HANG_SECONDS * 1000000000ull;
     hang_thread *threads = (hang_thread *)mg_alloc(sizeof(hang_thread) * HANG_THREADS);
     hang_holder *holders = (hang_holder *)mg_alloc(sizeof(hang_holder) * 2);
     char *text = (char *)mg_alloc(64u * 1024u);
@@ -1184,55 +1179,48 @@ static MG_HOSTCB void hang_observer(void *unused)
     int reports = 0;
     (void)unused;
     while (reports < 5) {
-        u32 log_owner = 0, thread_owner, region_owner;
-        u64 log_since = 0, thread_since, region_since, now;
+        /* Each lock's holder as one hold: who, since when and for how long, read whole (mg_holder_look). */
+        mg_hold_seen log, thread, region;
         char line[300], what[900];
         u32 holder_ids[2];
-        const char *site, *region_site;
         size_t at = 0;
         bool log_stuck, threads_stuck, regions_stuck;
         mg_sleep_ns(2000000000ull);
-        now = mg_time_monotonic_ns();
-        log_stuck = mg_log_holder(&log_owner, &log_since, line, sizeof(line)) && now - log_since >= HANG_SECONDS * 1000000000ull;
-        thread_owner = g_thread_lock_owner;
-        thread_since = g_thread_lock_at;
-        site = g_thread_lock_site;
-        threads_stuck = thread_owner && thread_owner == g_thread_lock_owner && now - thread_since >= HANG_SECONDS * 1000000000ull;
-        region_owner = g_region_lock_owner;
-        region_since = g_region_lock_at;
-        region_site = g_region_lock_site;
-        regions_stuck = region_owner && region_owner == g_region_lock_owner && now - region_since >= HANG_SECONDS * 1000000000ull;
+        log_stuck = mg_log_holder(&log, line, sizeof(line)) && log.held_ns >= limit;
+        threads_stuck = mg_holder_look(&g_thread_hold, &thread, NULL, 0) && thread.held_ns >= limit;
+        regions_stuck = mg_mem_lock_look(&region) && region.held_ns >= limit;
         /* Once for each stand-still: the same holder since the same moment is the one already said. */
-        if (log_stuck && log_owner == said_log && log_since == said_log_at) log_stuck = false;
-        if (threads_stuck && thread_owner == said_threads && thread_since == said_threads_at) threads_stuck = false;
-        if (regions_stuck && region_owner == said_regions && region_since == said_regions_at) regions_stuck = false;
+        if (log_stuck && log.owner == said_log && log.since == said_log_at) log_stuck = false;
+        if (threads_stuck && thread.owner == said_threads && thread.since == said_threads_at) threads_stuck = false;
+        if (regions_stuck && region.owner == said_regions && region.since == said_regions_at) regions_stuck = false;
         if (!log_stuck && !threads_stuck && !regions_stuck) continue;
+        /* (A lock said before and still held is said again with the new one: the report is of the whole stand-still.) */
         what[0] = 0;
         holder_ids[0] = holder_ids[1] = 0;
-        if (mg_log_holder(&log_owner, &log_since, line, sizeof(line)) && now - log_since >= HANG_SECONDS * 1000000000ull) {
-            at = hang_add(what, sizeof(what), at, "the log's lock held %.1f s by host thread %u, writing \"%s\"; ", (double)(now - log_since) / 1e9,
-                          (unsigned)log_owner, line);
-            said_log = log_owner;
-            said_log_at = log_since;
-            holder_ids[0] = log_owner;
+        if (log.owner && log.held_ns >= limit) {
+            at = hang_add(what, sizeof(what), at, "the log's lock held %.1f s by host thread %u, writing \"%s\"; ", (double)log.held_ns / 1e9,
+                          (unsigned)log.owner, line);
+            said_log = log.owner;
+            said_log_at = log.since;
+            holder_ids[0] = log.owner;
         }
-        if (thread_owner && now - thread_since >= HANG_SECONDS * 1000000000ull) {
+        if (thread.owner && thread.held_ns >= limit) {
             i32 stopping = g_prof_stopping;
-            at = hang_add(what, sizeof(what), at, "the guest threads' lock held %.1f s by host thread %u, in %s", (double)(now - thread_since) / 1e9,
-                          (unsigned)thread_owner, site ? site : "?");
+            at = hang_add(what, sizeof(what), at, "the guest threads' lock held %.1f s by host thread %u, in %s", (double)thread.held_ns / 1e9,
+                          (unsigned)thread.owner, thread.what ? thread.what : "?");
             if (stopping) at = hang_add(what, sizeof(what), at, " (stopping guest thread %d for trace-profile)", (int)stopping);
             at = hang_add(what, sizeof(what), at, "; ");
-            said_threads = thread_owner;
-            said_threads_at = thread_since;
-            holder_ids[1] = thread_owner;
+            said_threads = thread.owner;
+            said_threads_at = thread.since;
+            holder_ids[1] = thread.owner;
         }
-        if (regions_stuck) {
-            at = hang_add(what, sizeof(what), at, "the mappings' lock held %.1f s by host thread %u, taken in %s; ", (double)(now - region_since) / 1e9,
-                          (unsigned)region_owner, region_site ? region_site : "?");
-            said_regions = region_owner;
-            said_regions_at = region_since;
-            if (!holder_ids[1]) holder_ids[1] = region_owner;
-            else if (!holder_ids[0]) holder_ids[0] = region_owner;
+        if (region.owner && region.held_ns >= limit) {
+            at = hang_add(what, sizeof(what), at, "the mappings' lock held %.1f s by host thread %u, taken in %s; ", (double)region.held_ns / 1e9,
+                          (unsigned)region.owner, region.what ? region.what : "?");
+            said_regions = region.owner;
+            said_regions_at = region.since;
+            if (!holder_ids[1]) holder_ids[1] = region.owner;
+            else if (!holder_ids[0]) holder_ids[0] = region.owner;
         }
         hang_add(what, sizeof(what), at, "the app stands still");
         hang_report(threads, holders, holder_ids, what, text, 64u * 1024u);

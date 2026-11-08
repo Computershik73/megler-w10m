@@ -1167,6 +1167,95 @@ gyrometer and a magnetometer, so an app there should see those three alone
 (whatever Windows does make of them, the app gets). A PC without sensors
 offers none, and an app sees an empty list.
 
+## Bluetooth LE
+
+An app's `android.bluetooth` -- its `BluetoothAdapter`, `BluetoothLeScanner`,
+`BluetoothDevice.connectGatt` and `BluetoothGatt` -- gets the phone's radio,
+Bluetooth Low Energy's central side, through a call of the shell's,
+`megler_bluetooth_host` in `megler.h`: the radio's state, a scan, a connection,
+its services, a read, a write, the MTU, a pairing and its answers. Each returns
+at once; what the radio did comes back through `megler_bluetooth_push`, from
+any thread, as an event, which the core (`run/mg_bluetooth.c`) queues for the
+framework's one thread for Bluetooth (`megler.Bluetooth`, "BluetoothEventThread")
+to hand to Android's object it is for (docs/JAVA.md, "Bluetooth LE"). The core
+keeps what Android answers without asking the radio: the radio's state and
+name, the devices heard or paired (an address's kind, public or random, as it
+was heard; a device's name as its advertisement gives it; its bond; the last
+advertisement's RSSI), the connections the app has open, and nothing of a
+connection the app has closed. Advertisements come by the dozen a second: no
+more than 256 wait for an app that does not take them, the newest dropped,
+while every answer the app asked for waits. The log says each device heard (the
+first 32), each connection made, dropped or ended, each device's database in
+numbers, each pairing's question and answer, and at the app's end how many
+advertisements, notifications and writes there were.
+
+**What MeshCore's app uses.** MCO Advanced (`com.meshcore.mcoadvanced`, Flutter
+and Go) talks to its LoRa radio through flutter_blue_plus 2.3 (its Android
+plugin, `com.jmx.flutter_blue_plus`, and bluetooth_low_energy's beside it):
+BluetoothManager's adapter and its state, Android 12's permissions, a scan
+with `ScanFilter`s and `ScanSettings` whose results it reads to the last byte
+(`ScanRecord.getBytes`, Android 13's `getAdvertisingDataMap`), `connectGatt`
+with `TRANSPORT_LE`, `discoverServices`, `requestMtu`, Android 13's
+`writeCharacteristic(c, value, type)` and `writeDescriptor(d, value)`,
+`setCharacteristicNotification` with the Client Characteristic Configuration
+descriptor written, Android 13's callbacks with the value, `readRemoteRssi`,
+`createBond`, `removeBond` and `BluetoothGatt.refresh` by reflection, and the
+broadcasts of the adapter's state, the bond and the pairing request, whose PIN
+it answers with `setPin`. MeshCore's companion radios speak the Nordic UART
+service (`6e400001-b5a3-f393-e0a9-e50e24dcca9e`: RX written, TX notified) and
+pair with a PIN.
+
+**The shell** (`player/BluetoothHost.cpp`, Windows.Devices.Bluetooth, from
+Windows 10 1703, whose GATT client reaches devices it is not paired with): on a
+thread of its own in the multithreaded apartment, as the app starts, Windows'
+default adapter -- one that cannot be an LE central is no radio -- its radio's
+state and every change after, the phone's name, and the LE devices it is paired
+with; the rest goes on in coroutines on Windows' threads, never on the UI
+thread.
+
+| Android | Windows |
+|---|---|
+| a scan (`startScan`, `startLeScan`) | `BluetoothLEAdvertisementWatcher`, active unless every scan is opportunistic; an advertisement and its scan response, two of Windows' events, are one record, the device's last of each, their AD structures as Windows got them; connectable from the advertisement's type |
+| `connectGatt` | `BluetoothLEDevice.FromBluetoothAddressAsync` (with the address's kind where it was heard), a `GattSession` with `MaintainConnection`, and the device's services asked for afresh, which makes Windows connect: connected once it has them, 133 when it could not reach the device; then `ConnectionStatusChanged`: a drop is Android's 8 (Windows says not why), and with `autoConnect` Windows makes the connection again whenever it can |
+| `discoverServices` | every service's characteristics and descriptors, uncached, by their attribute handles, which are Android's instance ids; a service Windows keeps to itself (HID) left out; a notifying characteristic whose Client Characteristic Configuration descriptor Windows does not list has one made up |
+| `readCharacteristic`, `writeCharacteristic`, the descriptors' | `ReadValueAsync`, `WriteValueWithResultAsync` (with or without response); Windows' status made Android's: the ATT error as it is, 133 unreachable, 257 refused |
+| the Client Characteristic Configuration descriptor written | `WriteClientCharacteristicConfigurationDescriptorWithResultAsync`, `ValueChanged` subscribed to first: each notification and indication is `onCharacteristicChanged` |
+| `requestMtu` | the session's `MaxPduSize` (waited for a moment while it is still 23), never more than asked |
+| `readRemoteRssi` | none: Windows tells no connection's signal; the core answers with the last advertisement's |
+| `createBond`, `removeBond` | Windows' pairing with a ceremony of Megler's (`DeviceInformationCustomPairing`), `UnpairAsync` |
+| `ACTION_REQUEST_ENABLE`, `enable()` | the phone's Bluetooth settings (`ms-settings:bluetooth`): Megler cannot turn the radio on |
+
+**Pairing.** As on Android, a read or a write the device refuses for want of
+pairing (`GATT_INSUFFICIENT_AUTHENTICATION` or `_ENCRYPTION`) while it is not
+bonded makes the radio pair, and the request is sent again once it is: the app
+hears `ACTION_BOND_STATE_CHANGED` (BONDING, then BONDED or NONE with its reason)
+and the answer. Each request of the device's during a pairing -- a PIN, the
+number it shows confirmed, a number to enter on it, a consent -- is Android's
+ordered `ACTION_PAIRING_REQUEST` with its variant (and the number); a receiver's
+`setPin` answers it. Where no receiver answers, the user is asked, as Android's
+own pairing dialog asks: Megler's question for a confirmation or a consent, and
+for a PIN Windows' own pairing, whose dialog asks for it (the app's ceremony is
+given up for Windows').
+
+*Proven:* under qemu, on a stand-in for the shell's radio
+(`core/tests/mg_bluetooth_standin.c`: a radio with a MeshCore radio of the
+Nordic UART service, which echoes what is written to it as a notification and
+answers one characteristic only once bonded with the PIN 123456, and a beacon):
+the core's tests (`mg_bluetooth_tests.c`: the state, the paired devices, the
+devices heard, a connection's events in order and none after it is closed, the
+RSSI from the last advertisement, advertisements dropped past the bound while
+the answers wait, nothing after the app's end) and the test app `bluetooth` in
+Java, as MeshCore's app uses it (docs/JAVA.md). `BluetoothHost.cpp` builds into
+the phone's package and the PC's, and into the PC's test program, whose
+`--bluetooth-windows` says this PC's radio through it and the core's and
+listens passively for three seconds (nothing sent, connected to or paired
+with) -- on the PC this was written on, which has no Bluetooth adapter, it
+says so. *Expected:* everything the shell does with a real device -- a scan's
+records, a connection, its database, writes, notifications, the MTU Windows
+negotiates, pairing with a PIN -- which only a phone (or a PC) with a MeshCore
+radio in range can show; whether Windows 10 Mobile takes a custom pairing
+ceremony, or a PIN must go through its own dialog.
+
 ## Files and the shared storage
 
 Android's paths are looked up in a mount table (`bionic/mg_libc_io.c`). What an
@@ -1196,6 +1285,22 @@ Below the shared storage a mount's name is matched without regard to the case
 of ASCII letters, as Android's storage does not tell `Music` from `music`.
 `statfs` and `statvfs` answer for every path with the real size and free room
 of the volume the data folder is on, in 4 KB blocks.
+
+A file's mode is not kept, but for its owner's write bit (the app owns its
+files): `chmod`, `fchmodat` and `fchmod` keep it as Windows' read-only
+attribute (as the owner's write bit on a POSIX host: `mg_path_set_writable`),
+and `stat` (0440 for 0660), `access` with `W_OK` and an open for writing go by
+it, whoever the process is on the host: 0464 is read-only, as Linux gives an
+owner without its own write bit no writing. A read-only file is still removed
+and replaced (`mg_path_remove` and `mg_path_rename` clear the attribute first,
+as POSIX's unlink and rename look at the folder, not at the file), and the
+shell removes an app's folders with such files in them (`files::remove`). Facebook makes each module it downloads
+read-only (`File.setReadOnly`) and loads only one that is: "Downloaded module
+file must be read only ... read only:false" (0.1.0.671), and none of its
+language packs loaded. A directory's mode, a file's other bits and the files
+of a link to one of the phone's folders are as they were. `test_file_modes`
+(`mg_storage_tests.c`), and the data app's step `file-read-only` through
+`java.io.File`.
 
 A rename is Linux's where Windows' would refuse it (`mg_host_win32.c`). Over a
 file that is open or mapped, the file in the way is put aside and removed

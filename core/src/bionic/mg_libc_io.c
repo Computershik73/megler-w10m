@@ -234,6 +234,27 @@ static char *without_alias(char *g)
 }
 
 /*
+ * /proc/<the app's own pid> and /proc/thread-self said as /proc/self, which they are on Linux: getpid() is 4242 here
+ * (bionic/mg_libc_misc.c), and the files made up for /proc/self are the process's. Tuya Smart's libthing_security.so
+ * reads /proc/<getpid()>/status, went on with fopen's NULL, and ended in fgets (0.1.0.673); Google Play services' safeboot
+ * said "Unable to access /proc/pid/status: /proc/4242/status". Takes `g`.
+ */
+static char *proc_self(char *g)
+{
+    static const char *const names[] = { "/proc/4242", "/proc/thread-self" };
+    size_t i;
+    for (i = 0; i < MG_COUNT(names); i++) {
+        size_t n = strlen(names[i]);
+        if (!strncmp(g, names[i], n) && (!g[n] || g[n] == '/')) {
+            char *out = mg_sprintf("/proc/self%s", g + n);
+            free(g);
+            return out;
+        }
+    }
+    return g;
+}
+
+/*
  * An absolute guest path with ".", ".." and doubled slashes resolved, and the
  * shared storage called by its one name; malloc'd.
  */
@@ -265,7 +286,7 @@ static char *normalize(const char *path)
     if (!n) out[n++] = '/';
     out[n] = 0;
     free(full);
-    return without_alias(out);
+    return without_alias(proc_self(out));
 }
 
 /* The mount a normalized path is in: the one with the longest prefix. */
@@ -1081,7 +1102,7 @@ static int g_open(const char *path, int flags, int mode)
         o->mem_size = n;
         o->type = OBJ_MEM;
     } else {
-        bool is_dir, asked = true;
+        bool is_dir, asked = true, read_only = false;
         int why = 0;
         h = host_of_normal(g);
         /*
@@ -1094,11 +1115,16 @@ static int g_open(const char *path, int flags, int mode)
             if (!is_dir) why = acc ? GE_ACCES : GE_NOENT;
         } else if (mg_path_is_foreign(h) && !(flags & G_O_DIRECTORY)) {
             is_dir = asked = false;
+        } else if (mg_path_stat(h, &st, NULL)) {
+            is_dir = st.is_dir;
+            read_only = st.read_only;
         } else {
             /* (A directory that is only the way to a mount is one with nothing of the host's behind it.) */
-            is_dir = mg_path_stat(h, &st, NULL) ? st.is_dir : leads_to_mount(g);
+            is_dir = leads_to_mount(g);
         }
         if (!why && !is_dir && (flags & G_O_DIRECTORY)) why = GE_NOTDIR;
+        /* A file made read-only (chmod) is not opened for writing, whoever this process is on the host (root under qemu). */
+        if (!why && !is_dir && acc && read_only) why = GE_ACCES;
         if (!why && !is_dir) {
             if (acc == 0) hf = MG_O_READ;
             else if (acc == 1) hf = MG_O_WRITE;
@@ -1551,8 +1577,17 @@ void *mg_fd_hold(int fd)
     }
     return o;
 }
-/* (A shared mapping's own pages, which it writes back under the mappings' lock: the file is written, and the other mappings of
-   it are given the bytes by the one writing back, mg_libc_mem.c.) */
+void *mg_fd_held_ref(void *held)
+{
+    gobj *o = (gobj *)held;
+    if (!o) return NULL;
+    mg_lock_acquire(&g_io_lock);
+    o->refs++;
+    mg_lock_release(&g_io_lock);
+    return o;
+}
+/* (A shared mapping's own pages, which a write-back copies and writes with the mappings' lock let go: the file is written, and
+   the other mappings of it are given the bytes by the one writing back, mg_libc_mem.c.) */
 i32 mg_fd_held_pwrite(void *held, const void *buf, u32 n, u64 offset)
 {
     gobj *o = (gobj *)held;
@@ -1909,7 +1944,8 @@ static void fill_stat(g_stat *out, const mg_stat *st, const char *gpath)
 #if !MG_GUEST_LP64
     out->st_ino32 = (u32)out->st_ino;              /* (the kernel's stat64 has it twice) */
 #endif
-    out->st_mode = st->is_dir ? (G_S_IFDIR | 0771) : (G_S_IFREG | 0660);
+    /* (A file made read-only by chmod -- its write bits taken away, mg_path_set_writable -- says so.) */
+    out->st_mode = st->is_dir ? (G_S_IFDIR | 0771) : (G_S_IFREG | (st->read_only ? 0440 : 0660));
     out->st_nlink = 1;
     out->st_uid = out->st_gid = 10100;
     out->st_size = (i64)st->size;
@@ -2047,12 +2083,17 @@ static int g_fstatat(int dirfd, const char *path, g_stat *out, int flags)
     return g_stat_path(path, out);
 }
 
-/* Everything that is there can be read. What cannot be written is what lies in a link the shell marked so. */
-static int access_of(const char *path, int mode, int r)
+/*
+ * Everything that is there can be read. What cannot be written is what lies in a link the shell marked so, and a file whose
+ * mode has no write bit: one made read-only by chmod (File.setReadOnly), or one of the system's (/proc's, 0444). Facebook
+ * makes each module it downloads read-only and checks File.canWrite before it loads one: "Downloaded module file must be read
+ * only", and no language pack of its own ever loaded.
+ */
+static int access_of(const char *path, int mode, int r, const g_stat *st)
 {
     if (r == 0 && (mode & 2)) {
         char *g = normalize(path);
-        bool no = in_read_only(g);
+        bool no = in_read_only(g) || (st && (st->st_mode & 0170000u) != G_S_IFDIR && !(st->st_mode & 0222u));
         free(g);
         if (no) {
             mg_set_errno(GE_ACCES);
@@ -2065,15 +2106,21 @@ static int access_of(const char *path, int mode, int r)
 static int g_access(const char *path, int mode)
 {
     g_stat st;
-    return access_of(path, mode, g_stat_path(path, &st));
+    return access_of(path, mode, g_stat_path(path, &st), &st);
 }
 
 static int g_faccessat(int dirfd, const char *path, int mode, int flags)
 {
     g_stat st;
     int r = g_fstatat(dirfd, path, &st, flags);
-    /* (A path relative to a directory other than the current one is not looked up again: such a one is only said to be there.) */
-    return dirfd == -100 || (path && path[0] == '/') ? access_of(path, mode, r) : r;
+    /* (A path relative to a directory other than the current one is not looked up again: such a one is only said to be there --
+       but a file of it with no write bit is not writable.) */
+    if (dirfd == -100 || (path && path[0] == '/')) return access_of(path, mode, r, &st);
+    if (r == 0 && (mode & 2) && (st.st_mode & 0170000u) != G_S_IFDIR && !(st.st_mode & 0222u)) {
+        mg_set_errno(GE_ACCES);
+        return -1;
+    }
+    return r;
 }
 
 /*
@@ -2268,14 +2315,28 @@ static char *g_getcwd(char *buf, size_t n)
     return buf;
 }
 
+static gssize g_readlink(const char *path, char *buf, size_t n);
+
 static char *g_realpath(const char *path, char *out)
 {
     g_stat st;
-    char *g;
+    char *g, link[256];
+    gssize k;
+    int was;
     if (!path) {
         mg_set_errno(GE_INVAL);
         return NULL;
     }
+    /* The one link there is, the process's executable, is what it names (readlink, below), as on Android: there is no such file here. */
+    was = *mg_errno_ptr();
+    k = g_readlink(path, link, sizeof(link) - 1);
+    if (k > 0) {
+        link[k] = 0;
+        if (!out) out = (char *)mg_g_malloc(4096);
+        if (out) mg_strlcpy(out, link, 4096);
+        return out;
+    }
+    *mg_errno_ptr() = was;
     if (g_stat_path(path, &st) != 0) return NULL;
     g = normalize(path);
     if (!out) out = (char *)mg_g_malloc(4096);
@@ -2298,7 +2359,6 @@ static gssize g_readlink(const char *path, char *buf, size_t n)
     return -1;
 }
 
-static int g_ok_path(const char *path, int a) { (void)path; (void)a; return 0; }
 static int g_ok_fd(int fd, int a) { (void)fd; (void)a; return 0; }
 static int g_chown(const char *path, int u, int g) { (void)path; (void)u; (void)g; return 0; }
 static int g_utime(const char *path, const void *times) { (void)path; (void)times; return 0; }
@@ -3529,17 +3589,79 @@ static int g_eventfd(unsigned initial, int flags) { return mg_fd_eventfd(initial
 static int g_eventfd_read(int fd, u64 *value) { return g_read(fd, value, 8) == 8 ? 0 : -1; }
 static int g_eventfd_write(int fd, u64 value) { return g_write(fd, &value, 8) == 8 ? 0 : -1; }
 /*
- * fchmodat: a file's mode is not kept here (as chmod's is not), so for a file that is there it is done, and for one that
- * is not it is ENOENT. libc++'s std::filesystem::permissions calls it (Zalo's libc++_shared.so and libzinstant.so).
+ * chmod, fchmodat and fchmod: of a file's mode its owner's write bit is kept (mg_path_set_writable: Windows' read-only
+ * attribute, the owner's write bit on a POSIX host), which stat, access and open then go by; the rest of the mode is not
+ * kept, and a directory's not at all. File.setReadOnly and setWritable come here: Facebook makes each module it downloads read-only and
+ * loads only one that is ("Downloaded module file must be read only"), and Android 14 loads code only from a file so. A file
+ * that is not there is ENOENT; one of the system's (made up here) and a link the shell marked read-only are left as they
+ * are. libc++'s std::filesystem::permissions calls fchmodat (Zalo's libc++_shared.so and libzinstant.so).
  */
-static int g_fchmodat(int dirfd, const char *path, unsigned mode, int flags)
+static int chmod_normal(const char *g, unsigned mode)
 {
-    (void)mode;
-    (void)flags;
-    return g_faccessat(dirfd, path, 0 /* F_OK */, 0);
+    char *h;
+    int err = 0;
+    bool ok;
+    if (!strncmp(g, "/dev/", 5) || is_synthetic(g)) return 0;
+    h = host_of_normal(g);
+    if (!h) {
+        if (leads_to_mount(g)) return 0;
+        mg_set_errno(GE_NOENT);
+        return -1;
+    }
+    /* (The owner's write bit: the app owns its files, and Linux gives an owner without it no writing, whatever the group's.) */
+    ok = in_read_only(g) || mg_path_set_writable(h, (mode & 0200u) != 0, &err);
+    free(h);
+    if (!ok) {
+        mg_set_errno(mg_errno_of(err));
+        return -1;
+    }
+    return 0;
 }
 
-static int g_fchmod(int fd, int mode) { (void)fd; (void)mode; return 0; }
+static int g_chmod(const char *path, unsigned mode)
+{
+    char *g;
+    int r;
+    if (!path || !*path) {
+        mg_set_errno(GE_NOENT);
+        return -1;
+    }
+    g = normalize(path);
+    r = chmod_normal(g, mode);
+    free(g);
+    return r;
+}
+
+static int g_fchmodat(int dirfd, const char *path, unsigned mode, int flags)
+{
+    (void)flags;
+    /* AT_FDCWD is -100. Relative to another directory: join the two paths, as openat does. */
+    if (dirfd != -100 && path && path[0] != '/') {
+        gobj *d = fd_get(dirfd);
+        char *full;
+        int r;
+        if (!d || !d->path) {
+            if (d) fd_put(d);
+            mg_set_errno(GE_BADF);
+            return -1;
+        }
+        full = mg_sprintf("%s/%s", d->path, path);
+        fd_put(d);
+        r = g_chmod(full, mode);
+        free(full);
+        return r;
+    }
+    return g_chmod(path, mode);
+}
+
+static int g_fchmod(int fd, int mode)
+{
+    int r = 0;
+    WITH_FD(fd, o, -1)
+    if (o->type == OBJ_FILE && o->path) r = chmod_normal(o->path, (unsigned)mode);
+    fd_put(o);
+    return r;
+}
 static int g_flock(int fd, int op) { (void)fd; (void)op; return 0; }
 static void g_sync(void) { }
 
@@ -3573,7 +3695,7 @@ const mg_sym mg_tab_io[] = {
     IO("unlink", g_unlink), IO("unlinkat", g_unlinkat), IO("rmdir", g_rmdir), IO("mkdir", g_mkdir), IO("mkdirat", g_mkdirat),
     IO("remove", g_remove), IO("rename", g_rename), IO("renameat", g_renameat),
     IO("chdir", g_chdir), IO("getcwd", g_getcwd), IO("realpath", g_realpath), IO("readlink", g_readlink),
-    IO("chmod", g_ok_path), IO("fchmod", g_fchmod), IO("chown", g_chown), IO("lchown", g_chown), IO("utime", g_utime),
+    IO("chmod", g_chmod), IO("fchmod", g_fchmod), IO("chown", g_chown), IO("lchown", g_chown), IO("utime", g_utime),
     IO("utimes", g_utime), IO("lutimes", g_utime), IO("futimes", g_futimes), IO("link", g_fail_link), IO("symlink", g_fail_link),
     IO("readlinkat", g_readlinkat), IO("symlinkat", g_symlinkat), IO("utimensat", g_utimensat), IO("futimens", g_futimens), IO("futimesat", g_futimesat),
     IO("umask", g_umask), IO("flock", g_flock),

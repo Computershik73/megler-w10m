@@ -22,6 +22,11 @@
 // and the ids in its values, its bags' keys and parents that name package 0 -- its own resources, as such a table refers to
 // them -- are given that package id when they are read (dynamic), as Android's DynamicRefTable does. The original read the
 // package under id 0 and left those ids as they were.
+//
+// And in which API level an app's resource is chosen for (find): its layouts, menus and XML documents for the level the app
+// is told (Config.REPORTED_SDK, Build.VERSION.SDK_INT's 34), whose structure its code reads; its other resources for the
+// platform resources' level, as android/content/res/Resources.java says why, and from up to the reported level where that
+// level has none.
 package android.content.res;
 
 import java.nio.ByteBuffer;
@@ -241,8 +246,12 @@ public final class ResTable {
         for (TypeChunk tc : t.configs) b.append(' ').append(tc.sparse ? "S" : "").append(tc.offset16 ? "16" : "").append('[').append(tc.entryCount).append(']').append(entryOffset(tc, id & 0xffff) >= 0 ? "has" : "-");
         return b.toString();
     }
-    /** The types of an app's resources that are chosen from a newer API level where none is of Android 9's (find). */
-    private static final java.util.Set<String> NEWER_TYPES = new java.util.HashSet<>(java.util.Arrays.asList("font", "style", "color"));
+    /**
+     * The types of an app's resources whose structure its code reads -- a layout's views, which it finds by id, a menu's items,
+     * an XML document's elements (a preference screen's keys) -- and which are therefore chosen for the API level the app is
+     * told (Config.REPORTED_SDK), as Android chooses every resource (find).
+     */
+    private static final java.util.Set<String> REPORTED_TYPES = new java.util.HashSet<>(java.util.Arrays.asList("layout", "menu", "xml"));
 
     /** The entry for id best matching the device configuration, or null. */
     public Entry find(int id, Config cfg) {
@@ -251,23 +260,38 @@ public final class ResTable {
         Type t = p.types[(id >>> 16) & 255];
         if (t == null) return null;
         int e = id & 0xffff;
-        TypeChunk best = pick(t, e, cfg);
-        if ((id >>> 24) != 1 && cfg.d[Config.SDK] < Config.FONT_SDK && NEWER_TYPES.contains(t.name)
-                && (best == null || "style".equals(t.name) && emptyBag(best, e))) {
+        boolean older = (id >>> 24) != 1 && cfg.d[Config.SDK] < Config.REPORTED_SDK;
+        /*
+         * An app's layout, menu or XML document is chosen for the API level its code is told, 34, where its other resources are
+         * chosen for the platform resources' (the head of Resources): the code that inflates a layout finds the views of the
+         * layout that level chooses on Android, and nothing tells it that another was chosen. Android's Settings library
+         * (Google Play services 26's Location accuracy screen) has its main switch bar in layout, layout-v31 and layout-v33:
+         * only -v31 and -v33 wrap the title and the switch in a frame (id/frame), and MainSwitchBar, seeing SDK_INT 31 or more,
+         * sets that frame enabled and activated -- chosen at 28, the layout had none, and the screen ended on a
+         * NullPointerException in MainSwitchBar.setEnabled. Such a layout names the platform's attributes, styles and ids
+         * by the numbers they have kept since they were made public; of those in the layouts, menus and XML of API 29 to 34
+         * that Google Play services, Maps, Files, Niagara and Device Info carry, not one was missing from Android 9's public
+         * resources.
+         */
+        TypeChunk best = pick(t, e, older && REPORTED_TYPES.contains(t.name) ? cfg.reported() : cfg);
+        if (older && (best == null || "style".equals(t.name) && emptyBag(best, e))) {
             /*
-             * A font, style or colour of the app's that it has only for API levels above the platform resources' (font-v29,
-             * values-v31 alone), or a style it has there and leaves empty for the older levels (no parent, no items): the
-             * app sees SDK_INT 34 and asks for it, and Android 9's choice has none, so the newest that suits the levels the
-             * app was told of is taken. What such a resource names of Android 12's system colours is those colours
+             * A resource of the app's that it has only for API levels above the platform resources' (font-v29, values-v31
+             * alone), or a style it has there and leaves empty for the older levels (no parent, no items): the app sees
+             * SDK_INT 34 and asks for it, and Android 9's choice has none, so the newest that suits the levels the app was told
+             * of is taken. What such a resource names of Android 12's system colours is those colours
              * (android.content.res.Resources, meglerValue and meglerBag), not what Android 9 has under their numbers. Where
              * a resource has a choice of Android 9's level with something in it, that one is still taken (the head of
              * Resources). Apple Music's toolbar text asks for its SF Pro font, which it has in font-v29 alone, and ended at
              * its start on "Resource ID #0x7f090009". Niagara Launcher applies its style MaterialYou to its theme once
              * SDK_INT is 31 or more, which has its 65 colours (accent1_0400, of which colorPrimary is made, and the rest) in
              * values-v31 and is empty in values, and ended at its start without them: "The style on this component requires
-             * your app theme to be Theme.AppCompat (or a descendant)".
+             * your app theme to be Theme.AppCompat (or a descendant)". It was done for fonts, styles and colours alone; a
+             * layout of the reported level names dimensions and drawables of its own level too (the Settings library's main
+             * switch bar: its margins, its height and its frame's background are in values-v31 and drawable-v31 alone), and
+             * every type is taken so now, where nothing of Android 9's level was found at all.
              */
-            TypeChunk newer = pick(t, e, cfg.withSdk(Config.FONT_SDK));
+            TypeChunk newer = pick(t, e, cfg.reported());
             if (newer != null && (best == null || !emptyBag(newer, e))) best = newer;
         }
         if (best == null) return null;
@@ -466,11 +490,21 @@ public final class ResTable {
             d[LAYOUT2] = 0x1;   /* not round */
         }
         private static int pack(String s) { return s == null || s.length() < 2 ? 0 : (s.charAt(0) & 0xff) | (s.charAt(1) & 0xff) << 8; }
-        /** The API level Build.VERSION.SDK_INT says, up to which an app's fonts, styles and colours are chosen when none suits Android 9's (find). */
-        static final int FONT_SDK = 34;
+        /**
+         * The API level Build.VERSION.SDK_INT says: an app's layouts, menus and XML documents are chosen for it, and its other
+         * resources up to it where none suits Android 9's (find).
+         */
+        static final int REPORTED_SDK = 34;
         private Config() {}
         /** This configuration at another API level. */
         Config withSdk(int sdk) { Config c = new Config(); System.arraycopy(d, 0, c.d, 0, N); c.d[SDK] = sdk; return c; }
+        /** This configuration at the reported API level, made once (find asks for it at every lookup of a layout). */
+        private Config reported;
+        Config reported() {
+            Config r = reported;
+            if (r == null) reported = r = d[SDK] >= REPORTED_SDK ? this : withSdk(REPORTED_SDK);
+            return r;
+        }
         public int density() { return d[DENSITY]; }
         /** Whether a resource configuration can be used on this device at all. */
         boolean matches(int[] c) {

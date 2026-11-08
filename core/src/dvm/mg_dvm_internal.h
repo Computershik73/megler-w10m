@@ -382,6 +382,14 @@ struct mg_dvm_thread {
      */
     int native_depth;
     volatile u64 native_ticks, natives, alloc_ticks, allocs, blocked_ticks;
+    /*
+     * The innermost native method's call on this thread while it runs (invoke_native): its receiver or class, and its
+     * parameters as passed with the method's shorty -- the references it was handed, which JNI says are local whatever
+     * else refers to the same objects (mg_jni.c, GetObjectRefType). NULL shorty outside of one.
+     */
+    mg_jobj *native_target;
+    const mg_jvalue *native_params;
+    const char *native_shorty;
     /* The monitor it waits to enter, published while it enters a contended one; read with this thread suspended and the VM
      * lock held (trace-monitors, and a report of the main thread standing in a wait). */
     mg_jobj *volatile waiting_monitor;
@@ -637,6 +645,8 @@ bool mg_dvm_add_dex_lazy(const void *data, size_t size, const char *label, int s
 void mg_dvm_dex_viewed(u64 bytes);
 
 mg_dvm_thread *mg_dvm_self(void);
+/* The calling thread's record where it has one already, else NULL: nothing is made. */
+mg_dvm_thread *mg_dvm_self_existing(void);
 /* The same for a thread of the app's own that attaches: made, if it is not yet, with the smaller frame stack. */
 mg_dvm_thread *mg_dvm_self_attached(void);
 /* The same for a thread Java starts, with a frame stack of `words` (DVM_STACK_JAVA_WORDS, or more for a stack asked for). */

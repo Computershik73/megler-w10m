@@ -12,6 +12,7 @@
 #include "player/GfxHost.h"
 #include "player/KeyboardHost.h"
 #include "player/BiometricHost.h"
+#include "player/BluetoothHost.h"
 #include "player/LocationHost.h"
 #include "player/MicrophoneHost.h"
 #include "player/MediaHost.h"
@@ -113,8 +114,9 @@ megler_gfx_host gfxCallbacks() {
     gfx.setLog([](const char* line, void*) { shellLog::write(line); }, nullptr);
     // Android's own fonts, where the package has them (tools/dvm-android-root.sh): an app's text is then as wide and
     // as tall as its layout was made for.
-    gfx.setFontFolder(((appPackage::isSingleApp() ? appPackage::single().androidRoot : platform::installDirectory() + L"\\android") +
-                       L"\\fonts").c_str());
+    // (An app's own package Windows gave no shared folder has no Android root: the system's fonts, none looked for at the drive's root.)
+    const std::wstring androidRoot = appPackage::isSingleApp() ? appPackage::single().androidRoot : platform::installDirectory() + L"\\android";
+    gfx.setFontFolder(androidRoot.empty() ? L"" : (androidRoot + L"\\fonts").c_str());
     if (files::exists(platform::localStateDirectory() + L"\\flags\\gfx-copy")) {
         shellLog::write("flag: gfx-copy is on");
         gfx.setCopying(true);
@@ -300,6 +302,9 @@ bool start(const ApkEntry& apk, winrt::Windows::UI::Xaml::Controls::SwapChainPan
         // A Java app's SensorManager and native code's ASensorManager: Windows.Devices.Sensors (player/SensorHost.h); what
         // the device has is looked for from here on, while the app starts.
         config.sensors = SensorHost::shared().callbacks();
+        // Its android.bluetooth: Bluetooth LE's central side over Windows.Devices.Bluetooth (player/BluetoothHost.h); the radio is
+        // looked at from here on, while the app starts.
+        config.bluetooth = BluetoothHost::shared().callbacks();
         // For an app that is Java: its drawing, and where Android's libcore and the framework are -- NULL is the folder
         // `android` of the installed package, which is where tools/build-appx.sh --libcore (or --java) puts them. An app
         // with a native engine uses neither.

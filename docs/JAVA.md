@@ -903,6 +903,19 @@ it is still a private copy, and the log says so. The storage tests map a file
 shared and writable, close its descriptor, write into the mapping, and read
 the file back after `msync` and after `munmap`.
 
+The file is read and written with the mappings' lock let go (`write_back_out`):
+a chunk of the mapping's pages is copied under it, and compared with the file
+and written where it differs past it, one write-back at a time under a lock of
+their own, which nothing else waits for. It was all done under the mappings'
+lock, which every `mmap`, `munmap`, `mprotect` and `madvise` of the app's and
+the fault handler's mending of a page wait for -- every 5 s for each such
+mapping, as long as the phone's flash took, which is far longer while another
+thread puts a file on the disk (Viber's hang report, 0.1.0.669, named the
+write-back thread as the lock's holder). `mg_tests`' "a shared file mapping is
+written back with the mappings' lock let go" maps memory on another thread while
+`msync`, the 5-second pass, the suspension's and `munmap` each read and write
+their file, and finds the lock free.
+
 **A file mapped shared shows what is written to it.** A shared mapping of a
 file that is the layer's copy (any but a read-only view from a read-only
 descriptor) holds the file, and what is written to the file through any
@@ -2524,6 +2537,7 @@ and finds no `Rounder`.
 framework/core-oj.dex, core-libart.dex, conscrypt.dex, okhttp.dex, bouncycastle.dex, apache-xml.dex
 framework/core-oj.jar, core-libart.jar       the jars as the device has them (no bytecode in them)
 framework/megler-framework.dex                  the Java framework (tools/build-framework.sh); for an app, not for libcore
+framework/megler-framework-classes2.dex ...     the rest of it, where it has outgrown one DEX file (65536 methods, fields or types)
 framework/framework-res.apk                   the platform's own resources, Android 9's; for an app
 lib/*.so                                      libcore's native libraries, 32-bit ARM, conscrypt's among them
 lib/libc.so, libz.so ...                      the names of the system's libraries the core answers, files that say so
@@ -3216,7 +3230,8 @@ framework here. The contract is in `megler.h` (`megler_display_host`,
 - **The configuration.** `megler.Screen` (new) does with the event what
   `ActivityThread` does with a new configuration. Every `Resources` of the
   app's (the app's, the system's, those of configuration contexts and of the
-  packages it hosts: `Resources.sAll`) takes the screen's orientation,
+  packages it hosts: each implementation of them once, `ResourcesImpl.sAll`,
+  as Android's `ResourcesManager` updates every `ResourcesImpl`) takes the screen's orientation,
   `screenWidthDp`, `screenHeightDp`, `smallestScreenWidthDp`, `screenLayout`
   and `densityDpi`, and `DisplayMetrics` the new size; the rest of their
   configuration stays, an app's own locale with it. The Application, the
@@ -3516,6 +3531,41 @@ with a keyboard over 500 of the 800 rows:
 
 Once the keyboard is put away, each dialog is back where it was.
 
+**From one field to the next.** An app that moves the focus to another field
+often puts the keyboard away for the one it leaves and asks for it again for
+the next at once (React Native's text inputs do), or the next field is of
+another kind, for which the shell leaves the text service's focus and takes
+it again. Windows tells of the keyboard's going only after the asking, and
+the shell took that for the user's putting it away: the app was told the
+keyboard was gone, and the keyboard's coming back was put away again "though
+the app had not asked for it" -- Discord's password field, after its e-mail
+field, never had a keyboard (0.1.0.573). A going Windows tells of within 0.7 s
+of the shell's own (`ownHide_`, `ui/PlayerScreen.cpp`), while the app wants
+the keyboard, is now taken for that: the keyboard is shown again for the field
+that asked, and the log says so once ("player: the keyboard went as the app
+moved from one field to another, and comes back for the field that asked for
+it"). Not tried on a phone yet.
+
+**The keyboard's coming and going is an inset animation** of
+`WindowInsets.Type.ime()`, run through the views' callbacks
+(`View.setWindowInsetsAnimationCallback`) as Android 11's `InsetsController`
+runs it (`megler.ViewRoot`, `ImeAnimation`): `onPrepare` with the insets as
+they were; the window's new insets (`onApplyWindowInsets`) and its layout;
+`onStart`, at the end of that frame, with the bounds -- none and the
+keyboard's height; `onProgress` at each frame of its 250 ms with the insets at
+that point (decelerating); `onEnd`. A `ViewGroup` hands each call on to its
+children unless its own callback's dispatch mode is `DISPATCH_MODE_STOP`, and
+a new change ends the one running. `WindowInsetsAnimation` and its `Bounds`
+were stubs that kept nothing (an overlay now), and the callback was never
+kept: AndroidX's `WindowInsetsAnimationCompat` uses these on Android 11 and
+later (Megler says 14), and React Native's keyboard controller
+(`react-native-keyboard-controller`, which Discord's login and registration
+screens are built on) moves what is above the keyboard only as such an
+animation tells it. The log says the first one: "MeglerViews: the keyboard
+comes as an inset animation of 250 ms to the views' callbacks". The demos
+app's typing screen has a callback that says each call, and the test checks
+them when the keyboard comes up.
+
 **Not there:** composing text (a keyboard that composes sends each piece when
 it is final), the selection handles and the copy and paste bar (the
 framework's), and telling the shell where the cursor is on the screen.
@@ -3572,9 +3622,29 @@ the microphone and the location by Windows' privacy settings of the app's own
 package, and Windows' own question when the app requests one; the storage, the
 media, the text messages, the phone and the call history by Megler's own
 question (Allow, Don't Allow), kept in the app's settings, a second no for
-good; and the contacts, the calendar, the body sensors, nearby devices,
-notifications and physical activity granted with no one asked, since Megler
-gives an app none of those of the phone's. An app's App Settings list its
+good; and the contacts, the calendar, the body sensors, notifications and
+physical activity granted with no one asked, since Megler gives an app none of
+those of the phone's, and nearby devices likewise, which are Bluetooth LE's
+("Bluetooth LE" below), Windows asking nothing for them. The location refused by the
+system -- the phone's location switched off, which Windows' consent says as
+`DeniedBySystem` -- is no refusal of the app's: Android grants or refuses an
+app's location permission whether the location is on or off, and the app,
+told the permission is its own and the location off (`LocationService`:
+`isLocationEnabled` and `isProviderEnabled` false, its listeners' providers
+disabled), asks the user to switch it on -- Android's location settings
+(`ACTION_LOCATION_SOURCE_SETTINGS`) open Windows' page of them
+(`ms-settings:privacy-location`, `AppRunner`), a caller that asked for a
+result hearing `RESULT_CANCELED` once it is in front again. Taken for a
+refusal for good, it left an app nothing to ask: VTB's request was "denied;
+no one asked", and VTB said that the geolocation was not available
+(0.1.0.671). What Windows says of
+the location (allowed, the user's no for this app, the system's no, not
+decided) is said in the log as it is first read and as it changes, by the
+permissions and by the location (`player/LocationHost.h`, which follows the
+consent while the app runs), and so is why no fix is handed while an app has
+requests (`LocationService`: the location off, Windows' no, no location
+device, no permission held and so nothing asked, Windows not answering yet,
+nothing found in 30 s of following). An app's App Settings list its
 groups, what was said, and change Megler's answers. Clearing an app's data
 (Clear Data on its page in Megler, or Clear storage on Android's app info
 screen in the app) forgets Megler's answers too, as Android's Clear storage
@@ -3852,6 +3922,24 @@ What a Java app asks of the phone beyond its window goes to the shell through
     `ACTION_PACKAGE_FULLY_REMOVED`. Each has the package as its data and its
     `EXTRA_UID`. Before, Google Play went on showing an app removed in Megler
     as installed.
+- **A package the phone does not have.** `getPackageInfo`,
+  `getApplicationInfo` and the like are `NameNotFoundException` for it, and
+  the enabled state of one of its components or of the application
+  (`getComponentEnabledSetting`, `getApplicationEnabledSetting`) is
+  `IllegalArgumentException` ("Unknown component: ComponentInfo{...}",
+  "Unknown package: ..."), as Android's package manager answers; the log says
+  so once a package ("the enabled state of a component of ..., which the phone
+  does not have"). The app, the platform (`android`), the Google packages and
+  the phone's other apps are the packages it has. Before, every name had
+  `COMPONENT_ENABLED_STATE_DEFAULT`. Facebook asks so whether Meta's App
+  Manager (`com.facebook.appmanager`, the updater of phones that came with
+  Meta's apps) is there: told the default, it took it to be there, found none
+  of its receivers, went on to the SIM (a European or Canadian one, or none),
+  and opened the terms of such phones ("Meta uses a preinstalled service to
+  update apps automatically", the screen `oxygen_preloads_terms_of_service`)
+  each time its sign-in began: at every start signed out on the HP Elite x3
+  (0.1.0.671), and on an Italian user's phone, which went from the sign-in
+  back to that screen again and again. The data app's step `component-state`.
 
 APKs, .apks and .xapk files also open in Megler from the phone's file
 manager (a file type association of Megler's package, taken out of an app's
@@ -3977,6 +4065,37 @@ of 16 x 16 at (8, 8) on a 32 x 32 canvas, whole and at half size; and three
 files that only begin like WebP. The MSVC ARM build of the 29 files is clean
 at `/W3`. *Not measured:* how long a large lossy picture takes without NEON on
 the phone.
+
+### A decode into a bitmap of the app's (inBitmap), and reconfigure
+
+`BitmapFactory` decodes into the bitmap an app gives it in `Options.inBitmap`
+and hands that same bitmap back, as Android's does: the decoded picture takes
+the place of the bitmap's own (`Bitmap.meglerTakeOver`, its native picture
+replaced; a display list that drew the old one keeps its reference), with the
+picture's size and config, while what the bitmap was made with
+(`getAllocationByteCount`) stays. A picture that needs more than that, or
+that cannot be decoded, is `IllegalArgumentException("Problem decoding into
+existing bitmap")`; a recycled bitmap is refused; an immutable one is passed
+over, said once, for a new bitmap. `Bitmap.reconfigure` gives a mutable bitmap
+another size and config within what it was made with (a new, empty picture of
+that size: Android leaves the old bytes, of no use in the new shape), and
+`setWidth`, `setHeight` and `setConfig` go through it. A JPEG asked for as
+`RGB_565` is `RGB_565` (two bytes a pixel in what an app reads of it), as
+Android's decoder gives it; everything else decodes to `ARGB_8888`.
+
+Both were missing (inBitmap ignored, reconfigure doing nothing), and every
+still picture of Fresco's failed: its decoder (`DefaultDecoder`) decodes into a
+bitmap of its pool and throws an `IllegalStateException` when the bitmap that
+comes back is another one -- Facebook's log on 0.1.0.671 had
+`onProducerFinishWithFailure ... stage: DecodeProducer ... IllegalStateException`
+for each picture, and Aliucord (Discord's old app, Fresco 2) showed no avatars.
+Fresco's pools make their bitmaps 1 x N in `RGB_565` and reconfigure them to a
+picture's or an animation frame's size (`ArtBitmapFactory`), so its animated
+pictures were drawn into a buffer one pixel wide. Glide reconfigures what its
+pool gives too, and retries without inBitmap on the `IllegalArgumentException`.
+The data app's step `bitmap-reuse` decodes a PNG into a pool's bitmap made as
+Fresco makes one, reconfigures it within and past what it was made with, and
+gives a bitmap too small and an immutable one.
 
 ### Databases: `megler.Sqlite` and the SQLite in the core
 
@@ -4188,7 +4307,29 @@ parameters, the picture handed over and the release with the tests' stand-in.
 `Bitmap`'s, the window's with `no-view-lists`, or any canvas where the draw
 functor is not there -- has the WebView draw in software, as it does on Android
 into a `Bitmap`'s canvas: `AwContents.onDraw` with `isHardwareAccelerated()`
-false. The overlay's `WebView.onDraw` draws every frame through one bitmap of
+false.
+
+Only there, as on Android. A WebView put straight into the root view of a
+window of the app's own -- King's popups in Candy Crush Saga: a panel window
+whose `PopupDialog$PopupDecorView` holds the WebView -- drew on the window's
+frame, which said it was not hardware-accelerated, so its pages were drawn in
+software while every other WebView's were on the graphics processor. Chromium's
+software draw cannot take a page's view transition (`startViewTransition`, a
+CSS `@view-transition`): it composes on a frame sink manager of its own
+(`SynchronousLayerTreeFrameSink`, Blink's
+`widget/compositing/android_webview`), made with no shared image interface
+provider, and the transition's save directive asks for one
+(`CompositorFrameSinkSupport::ProcessCompositorFrameTransitionDirective`,
+`BlitRequestsForViewTransition` on by default, then
+`FrameSinkManagerImpl::GetSharedImageInterface`, which only DCHECKs its
+provider: libwebviewchromium.so+0x3879a04 reads the provider's vtable through
+null, called from +0x3874010). The popup's page made one, and the app ended
+(package 673). A window's frame (`megler.ViewRoot.ScreenCanvas`) now says it is
+hardware-accelerated while the views draw through lists of their own, as a
+window's canvas does on Android, and not while a view without a list that is
+not drawn on the graphics processor draws into it, as a view list's does: the
+data app's `panel-root` checks both. A WebView drawn in software on Android
+(into a `Bitmap`) would end the same way on such a page. The overlay's `WebView.onDraw` draws every frame through one bitmap of
 what the window shows of the view, as the functor draws on Android, and puts
 that bitmap in the canvas it was given: a WebView sized to its page is many
 screens tall (a check: a WebView 20000 rows tall is drawn through 744), and a
@@ -4367,6 +4508,35 @@ other display is refused. Where ANGLE cannot make a second display, Chromium
 shares the app's, as before. The core's test `test_webview_display`
 (`mg_gl_tests.c`) asks for both displays and makes a buffer's image on the
 WebView's.
+
+**Its OpenGL ES version, and its frames' timing.** At every start the
+WebView's own ANGLE (its OpenGL ES back end over this layer's EGL) has its
+first context refused four times with `EGL_BAD_MATCH` before it has one:
+`DisplayEGL::initializeContext` (ANGLE's `chromium/6613`) asks for OpenGL ES
+3.2, 3.1, 3.0 and 2.0 in turn, each first with
+`EGL_CONTEXT_OPENGL_RESET_NOTIFICATION_STRATEGY` = `EGL_LOSE_CONTEXT_ON_RESET`
+and then without, and ANGLE over Direct3D 11 makes 3.0 at most at any feature
+level (`GetMaximumClientVersion` in `renderer11_utils.cpp`: "3.1 could
+theoretically be supported on FL 11.0+, but is not supported in ANGLE"), so
+3.2 and 3.1, with and without, are refused and 3.0 with its reset strategy is
+made. That is EGL's answer on Android too wherever the graphics processor has
+less than is asked (`EGL_KHR_create_context`); a phone's Adreno gives 3.2 at
+the first try. The log said it as four refusals to look into; it now says
+each version once as what it is (`context_refused` in `ndk/mg_egl.c`), and
+any other refusal with what was asked (the version, the reset strategy,
+robust access, flags, sharing). The WebView draws on the graphics processor
+with its 3.0 context afterwards (Zona: "draw functor 1 drawn 29 times").
+Dawn, Chromium's WebGPU, later asks for a 3.1 context of that ANGLE to find
+an OpenGL ES adapter and is refused by it ("Requested version is not
+supported"): there is no WebGPU here. And Chromium looks up Android 13's
+`AChoreographer_postVsyncCallback` and `AChoreographerFrameCallbackData_*`
+and says each is missing: this layer has no native `AChoreographer` at all
+(none of Android 7's or 10's functions either). The WebView's begin frames do
+not use it: `ExternalBeginFrameSourceAndroid` takes Java's `Choreographer`
+when it is the WebView's (`requires_align_with_java`), and the lookup only
+decides whether frames carry Android 13's deadlines; Flutter and the frame
+pacing of Unity's Swappy take Java's `Choreographer` too while there is no
+native one.
 
 **Out of memory.** Chromium ends an app it cannot get memory for in
 PartitionAlloc's `OnNoMemoryInternal`: the size it asked for goes into a
@@ -5201,6 +5371,43 @@ on a looper thread of its own and takes it back with `next()`.
   (The platform's own `AlertDialog`, which the demos app uses, is the
   framework's own and calls its listeners directly.) Found with the runtime's
   trace and the profile of a run: of the two listeners neither had run.
+- `android/os/WorkSource.java`, Android 14's in place of the generated stub,
+  which kept no uids, wrote nothing into a parcel and had a null `CREATOR`. A
+  location request of Google Play services' carries one: the client library
+  in the app writes it into the transaction with its `writeToParcel`, inside a
+  field whose size it patches in after (`SafeParcelWriter`), and Google Play
+  services reads it back with the `CREATOR` -- null for a field of no size.
+  Every `FusedLocationProviderClient` request then ended in Google Play
+  services with a `NullPointerException` in `ImmutableWorkSource`'s
+  constructor ("RegisterLocationCallback", "RegisterLocationListener" in its
+  trace), and the app had no fix while Megler's own `LocationManager` had one:
+  Transit, and the Google Maps "my location" layer (0.1.0.671). The data app's
+  step "work-source" writes one so and reads it back.
+- `android/location/LocationRequest.java`, Android 14's in place of the
+  generated stub: its `Builder(intervalMillis)` forgot the interval, its
+  factories made a request of nothing, `getMaxUpdates` said 0 where Android
+  says "any number" (`Integer.MAX_VALUE`), and it wrote nothing into a parcel.
+  Google Play services' location engine in the app asks for the passive
+  provider with `createFromDeprecatedProvider("passive", ...)`, which came out
+  a request of the fused provider every `Long.MAX_VALUE` ms that was never
+  handed a fix. `megler/LocationService.java` hands a request of the passive
+  interval every new fix without it setting how often the location is
+  followed, and `LocationManager` takes Android's "any number" of updates for
+  its own 0. The data app's step "location-request" builds requests, makes
+  one of the deprecated provider, puts one through a parcel, and has one of
+  the passive interval handed a fix.
+- `android/content/ContentProviderClient.java`: `openFile`, `openAssetFile`,
+  `openTypedAssetFile(Descriptor)`, `query` with a `Bundle`, `insert`,
+  `update` and `delete` with extras, `bulkInsert`, `call` with an authority,
+  `getStreamTypes`, `canonicalize`, `uncanonicalize` and `refresh` go to the
+  provider, where they were generated signatures answering null, 0 or false.
+  Google Play services' DynamiteLoader reads its modules' Chimera
+  configuration so (`content://com.google.android.gms.chimera/api/<n>`), and
+  gave up on each module it loads that way: "Failed to create module
+  context. java.io.IOException: Config file descriptor is null" -- the Google
+  Maps module's own Google certificates among them (0.1.0.671). The data
+  app's step "provider-client-file" reads its provider's file through a
+  client.
 - `android/app/usage/StorageStatsManager.java`, two methods in their two
   forms: `getTotalBytes` and `getFreeBytes` were signatures answering 0.
   Since Android 8 this is where an app asks how large the phone's storage is
@@ -5404,7 +5611,21 @@ on a looper thread of its own and takes it back with `next()`.
   (`control_checkable_material` asks the theme, the `-v31` theme answers with
   a colour that refers to it). Choosing as a phone with Android 9 chooses is
   the only choice that fits the resources that are there. The constant must
-  follow the Android root.
+  follow the Android root. But an app's layouts, menus and XML documents are
+  chosen for 34 (`ResTable.find`, `REPORTED_TYPES`): the app's code, told 34,
+  finds by id the views of the layout Android 14 chooses. Android's Settings
+  library keeps its main switch bar in `layout`, `layout-v31` and `layout-v33`,
+  and only the last two have a frame round the title and the switch, which
+  `MainSwitchBar.setEnabled` sets enabled and activated once `SDK_INT` is 31:
+  chosen at 28 the layout had no frame, and Google Play services' Location
+  accuracy screen ended on a `NullPointerException` there (0.1.0.673). Of the
+  platform's resources that the layouts, menus and XML of API 29 to 34 in
+  Google Play services, Maps, Files, Niagara and Device Info name, every one
+  is a public resource of Android 9's. And a resource of the app's that has no
+  choice of 28 at all is taken from up to 34, whatever its type (it was done
+  for fonts, styles and colours alone): such a layout names dimensions and
+  drawables of `values-v31` and `drawable-v31` alone. The data app's step
+  "layout-api-level" inflates such a layout as `MainSwitchBar` does.
 - `android/content/res/Resources.java`, besides: a theme attribute whose
   value names an attribute that names another with no end -- a style's item
   that names itself, as Android's `TextAppearance` does with
@@ -5423,7 +5644,8 @@ on a looper thread of its own and takes it back with `next()`.
   Android's: the value's asset cookie in the high word, its data (for a file,
   the string's index in the pool) in the low. Nothing is preloaded, so they
   start empty, but apps fill them by reflection, taking the field from
-  `Resources` where there is no `ResourcesImpl`, as here. Instagram 333 swaps
+  `ResourcesImpl` (from `Resources` where there is none, as there was here
+  until `ResourcesImpl` below; the fields are its now). Instagram 333 swaps
   each array element for a `LongSparseArray` of its own that answers its
   vector icons, whose values (`"I1801B8"`) name no file. Without the field it
   logged "Could not enable custom drawable support" and its main activity's
@@ -5431,6 +5653,26 @@ on a looper thread of its own and takes it back with `next()`.
   "preloaded-drawables" does as Instagram does with a platform drawable's key,
   gets its own drawable for it, and the file's again once the element is put
   back.
+- `android/content/res/ResourcesImpl.java` (a class the framework did not
+  have), `Resources.java` and `android/view/DisplayAdjustments.java` (another):
+  what a `Resources` is made of -- its `AssetManager`, configuration and
+  metrics and the configuration its resources are chosen for, the app
+  package's table, its loaders, the drawables, colours, fonts and bags made
+  of them -- is a `ResourcesImpl` of its own, as on Android 7 and later, in
+  Android's field `mResourcesImpl`; the hidden `getImpl()` gives it,
+  `setImpl(ResourcesImpl)` gives `Resources` another (the themes they made
+  are rebased onto it: `Theme.rebase` applies their styles again, where it
+  did nothing), and the hidden constructor `Resources(ClassLoader)` makes
+  `Resources` with none until then. Libraries make `Resources` of their own
+  over the platform's so, by reflection, to answer some lookups themselves:
+  Tuya Smart's dynamic strings for every activity
+  (`DynamicResourceContextThemeWrapper.getResources`), and the app ended at
+  its first activity on `NoSuchMethodException: getImpl []` (0.1.0.673).
+  The screen's changes now reach each implementation once
+  (`ResourcesImpl.meglerScreenChanged`), as Android's `ResourcesManager`
+  applies a configuration to every `ResourcesImpl`. The data app's step
+  "resources-impl" makes such `Resources` as Tuya does, and one of the
+  public constructor that answers a string itself, and finds them alike.
 - `android/graphics/drawable/RippleDrawable.java` and `megler/ResInflate.java`,
   a method and a statement: a ripple inflated from XML is told that it has a
   mask. Android's commonest ripple is nothing but a mask (the background of
@@ -5440,6 +5682,18 @@ on a looper thread of its own and takes it back with `next()`.
   and no layers the drawable took itself for a borderless one and drew its
   highlight as a disc of half its longer side: for a pressed row of a list, a
   grey disc as wide as the screen over the rows above and below.
+- `android/graphics/drawable/InsetDrawable.java` and `megler/ResInflate.java`:
+  an inset may be a fraction of the drawable's bounds as well as pixels, as
+  Android 8 and later have it (`InsetDrawable.InsetValue`): an `<inset>`'s
+  `android:inset="10%"` is read as a fraction, its type looked at first, as
+  `InsetDrawable.getInset` does, and the bounds, the intrinsic size and the
+  padding are Android's sums of both. The inflater read every inset with
+  `getDimensionPixelOffset`, which throws for a fraction on Android too, and
+  `InsetDrawable(Drawable, float)` made one with no inset. WhatsApp's adaptive
+  icon is inset by 0.01% round its foreground, and its Appearance screen
+  (Settings, Chats, Theme) ended the app: "Can't convert value at index 6 to
+  dimension: type=0x6" (0.1.0.671). The data app's step "inset-fraction"
+  inflates such insets and measures what they give.
 
 - `android/app/Activity.java`, two methods: `initWindowDecorActionBar` makes
   the window's decor before it asks whether the window has an action bar, as
@@ -5726,6 +5980,23 @@ on a looper thread of its own and takes it back with `next()`.
   fields it names and the framework lacks. The data app's step "tasks" reads
   its own task so.
 
+- `android/app/ActivityThread.java` and `megler/AppRunner.java`: Android's
+  hidden fields that hold the process's `ActivityThread` and `Application`,
+  `sCurrentActivityThread`, `mInitialApplication` and `mAllApplications`,
+  which code with no `Context` reads by reflection as well as the methods.
+  `AppRunner` puts the Application in them as soon as it has made it
+  (`ActivityThread.meglerApplicationMade`), before its providers and its
+  `onCreate`, as Android's `handleBindApplication` and
+  `LoadedApk.makeApplication` put it; `currentApplication()` and
+  `getApplication()` answer from `mInitialApplication`, as Android's do.
+  Tuya Smart's library loader (`ThingLibraryLoader.getContext`) reads
+  `currentActivityThread()`'s `mInitialApplication` on a worker thread while
+  the Application starts: there was no such field (`NoSuchFieldException`
+  in its log), it had no `Context`, and the thread ended on "context is
+  null" (0.1.0.673). The data app's Application (`DataApplication`) asks so
+  on a thread of its own in its `onCreate`, and the step
+  "activity-thread-application" checks what it found and every other way.
+
 - `android/app/DialogFragment.java`, in place of the generated stub, whose
   `show()` did nothing: `onCreateDialog` was never called and `getDialog()`
   was null. VK mp3 mod's sign-in, when VK asks for a confirmation code, shows
@@ -5861,6 +6132,33 @@ on a looper thread of its own and takes it back with `next()`.
   WebView APK, finds its package as 0x2, one of its drawables and one of its
   strings by name and reads both, and opens its `assets/icudtl.dat` as a
   descriptor where it is stored, as Chromium maps its ICU data.
+
+- `android/content/res/loader/ResourcesLoader.java` and
+  `ResourcesProvider.java`, `android/content/res/Resources.java` and
+  `AssetManager.java`, `android/content/pm/PackageManager.java` and
+  `android/os/ParcelFileDescriptor.java`: Android 11's resources loaders. A
+  provider made from an APK (`ResourcesProvider.loadFromApk`, by the file its
+  descriptor was opened from; `loadFromSplit`) is that APK opened beside the
+  app's (`megler.Native.addApk`) with its table read as a package of its own
+  (0x7f), and a loader's providers come before a Resources' own resources
+  once it is added to them (`Resources.addLoaders`): an id one of them has is
+  its value and its file, `getIdentifier` finds its names in its package, and
+  only the Resources it was added to have it. And
+  `getResourcesForApplication("android")` is the platform's resources alone, a
+  `Resources` of their own with no app package (`Resources.meglerPlatform`),
+  as Android gives framework-res.apk's: it gave the app's own. Google Play
+  services' DynamiteLoader makes a module's resources so on Android 11 and
+  later (the platform's, and a loader of the module's APK), and the stubs kept
+  nothing: the Google Maps module's legacy renderer looked up its textures'
+  0x7f ids (`maps_dav_one_way_16_256` and twenty more) in the app's table,
+  `BitmapFactory.decodeResource` gave null, and the map's GL thread ended on
+  `Bitmap.getWidth()` of it (`gmm6.vector.gl.aj`): Transit's map stayed empty
+  (0.1.0.671). Not done: a provider of a directory or of a table alone
+  (empty, said in the log), and the loaders' assets through the Resources'
+  `AssetManager`. The data app's step "resources-loader" adds an APK of
+  resources alone that it carries (`assets/loader.apk`,
+  `core/tests/app/data/loader`, made by `tools/build-test-app.sh`) to the
+  platform's resources and reads a string, a colour and a picture of it.
 
 - `android/hardware/camera2/CameraManager.java`, `getCameraIdList` and
   `getCameraIdListNoLazy`, generated signatures that answered null: the
@@ -6189,6 +6487,96 @@ step `sensors` does the same from native code: the list and the defaults
 through libandroid, a queue on the main thread's looper with a callback
 (found by `dlsym` of `ASensorManager_getInstanceForPackage`, as NativeActivity's
 sample glue finds it), the accelerometer at 20 ms and the light.
+
+### Bluetooth LE
+
+`android.bluetooth` is the phone's radio, Bluetooth Low Energy's central side,
+as Android 13 has it (the overlay's `BluetoothAdapter`, `BluetoothManager`,
+`BluetoothDevice`, `BluetoothGatt`, `BluetoothGattCallback`, the GATT service,
+characteristic and descriptor, and `android.bluetooth.le`'s `BluetoothLeScanner`,
+`ScanFilter`, `ScanSettings`, `ScanRecord`, `ScanResult`; `android.os.ParcelUuid`,
+a stub before; over `megler.Bluetooth`, `drivers/mg_java_bluetooth.c`, and the
+core's `run/mg_bluetooth.c`; ARCHITECTURE.md, "Bluetooth LE"). One thread of the
+framework's, "BluetoothEventThread", from the app's first use of Bluetooth (or
+a receiver of its broadcasts) on, takes what the radio did and hands it on:
+
+- **The adapter**: one, on or off as Windows' radio is (a phone without a radio
+  for LE has one that is always off, and no `android.hardware.bluetooth` nor
+  `.bluetooth_le` feature), named as the phone is, its address Android's for
+  every app since Android 6 (02:00:00:00:00:00); `ACTION_STATE_CHANGED` as the
+  radio turns, through `STATE_TURNING_ON` and `STATE_TURNING_OFF`; the scanner
+  while it is on; devices by their address; the paired ones. It cannot turn the
+  radio on: `ACTION_REQUEST_ENABLE` and `enable()` (an app of a target before
+  Android 13) show the phone's Bluetooth settings (`AppRunner.startActivity`),
+  and the request's result is `RESULT_OK` once the radio is on, `RESULT_CANCELED`
+  when the app is in front again with it off; `disable()` is refused, as for an
+  app on Android 13. No classic Bluetooth, no advertising (no peripheral role,
+  `getBluetoothLeAdvertiser` null, `openGattServer` null).
+- **Scans**: each of the app's scans hears, on the main thread, the
+  advertisements its filters pass (all of them with none): `onScanResult` for
+  each, or the first of a device's alone (`CALLBACK_TYPE_FIRST_MATCH`), or
+  `onBatchScanResults` every report delay; a record read as Android reads one
+  (flags, service UUIDs of every size, the local name, the power, the service
+  and manufacturer data, Android 13's map of every AD structure), its bytes as
+  the radio heard them, the advertisement's with the scan response's after. A
+  callback started twice hears `SCAN_FAILED_ALREADY_STARTED`; the radio turned
+  off ends every scan, unheard. Android 4.3's `startLeScan` is a scan of its own
+  with the raw record. An app of a target before Android 12 hears results
+  without the location as well, where Android 10 and later would ask it of the
+  app: the location is Windows' to grant.
+- **`BluetoothGatt`**: `connectGatt` (null with the radio off), `connect`,
+  `disconnect`, `close`; the services by their instance ids, which are the
+  device's handles; one request at a time, as Android's stack has it -- a read
+  while one is answered is refused, a write tried for a while and then answered
+  `ERROR_GATT_WRITE_REQUEST_BUSY`; Android 13's `writeCharacteristic` and
+  `writeDescriptor` with the value, and the old ones with the object's own value
+  and write type; a write without response answered once it is sent; the
+  notifications of a characteristic `setCharacteristicNotification` let through
+  (its Client Characteristic Configuration descriptor, written, subscribes at the
+  device); `requestMtu`, `readRemoteRssi`, the PHY's calls and the connection's
+  priority taken. Its callbacks come on the Handler `connectGatt` was given, else
+  in order on a thread of the framework's, "BluetoothGatt", as Android's come on
+  a binder thread; Android 13's forms with the value, which `BluetoothGattCallback`
+  hands to the old ones (setting the characteristic's value first) for an app
+  built before. A request the device refuses for want of pairing is sent again
+  once the radio has paired, as Android's stack does.
+- **Pairing**: `createBond`, `removeBond` (Android's hidden one, which apps call
+  by reflection), the bond as Windows has it (`getBondState`, `getBondedDevices`),
+  `ACTION_BOND_STATE_CHANGED` with the bond before and the reason, and the
+  ordered `ACTION_PAIRING_REQUEST`, whose PIN a receiver gives with `setPin`
+  (flutter_blue_plus does, with the PIN its app gave `createBond`); one no
+  receiver answers is the user's to answer, as Android's own dialog asks.
+- **Permissions**: an app that targets Android 12 needs `BLUETOOTH_SCAN` to scan
+  and `BLUETOOTH_CONNECT` for the adapter's name and for what touches a device,
+  else `SecurityException`, as there; the group, nearby devices, is granted with
+  no one asked (Windows asks nothing for Bluetooth LE).
+
+The test app `bluetooth`, on the stand-in for the shell's radio
+(`core/tests/mg_bluetooth_standin.c`: MeshCore-Test, a random address with the
+Nordic UART service, which echoes what is written to RX as a notification on TX
+and answers one characteristic only once bonded with the PIN 123456; a beacon;
+a device paired before), goes through what MeshCore's app does, in steps the
+harness reads (`run_bluetooth`): the adapter and its feature, Android 12's
+permissions requested, the adapter's name and address and the paired device;
+a scan filtered by the Nordic UART service (MeshCore-Test heard on the main
+thread with every field of its record, the beacon not; the same callback
+started again refused) and the old scan (both, with their raw records); a
+connection (its callback not on the main thread), the services with their
+handles, properties and write types, the MTU (185 of 247 asked), notifications
+on through Android 13's `writeDescriptor`, writes with and without response
+and the old way, each echoed as a notification with the value; two reads at
+once (the second refused); the RSSI; a read the device answers only bonded
+(BONDING, the PIN asked for and given by a receiver, BONDED, then the read
+answered), the bond removed by reflection, a bond whose PIN no receiver gives
+(the user asked); the connection ended, one the device drops (19), one to a
+device that never answers (133); the radio turned off by the harness
+(`STATE_TURNING_OFF`, `STATE_OFF`, no scanner, `connectGatt` null) and
+`ACTION_REQUEST_ENABLE` (the settings shown, where the stand-in's user turns it
+on: `STATE_TURNING_ON`, `STATE_ON`, `RESULT_OK`; asked again while on,
+`RESULT_OK` at once). The harness checks what the stand-in was asked -- two
+active scans, both stopped, every connection ended, the bytes written, the MTU,
+two pairings, one PIN given by the app and one by the user, the settings shown
+once -- and the core's lines in the log.
 
 ### Sound from Java
 

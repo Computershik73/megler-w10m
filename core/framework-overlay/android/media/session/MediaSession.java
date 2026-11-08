@@ -40,7 +40,18 @@ public final class MediaSession {
     protected void finalize() {}
     public java.lang.String getCallingPackage() { return (java.lang.String) meglerProps.get("CallingPackage"); }
     public android.media.session.MediaController getController() { return (android.media.session.MediaController) meglerProps.get("Controller"); }
-    public android.media.session.MediaSessionManager.RemoteUserInfo getCurrentControllerInfo() { return (android.media.session.MediaSessionManager.RemoteUserInfo) meglerProps.get("CurrentControllerInfo"); }
+    /*
+     * Who sent what the callback is being told, while it is (Android's MediaSession.Callback methods): for a key of the
+     * phone's media controls the system's, as Android's media session service tells a session of a key it sent itself --
+     * the package "android", the system's uid. Outside of them Android throws, and so does this. It gave null, and Spotify,
+     * which asks it in onPause, ended when the lock screen's pause was pressed (GitHub issue 4).
+     */
+    private android.media.session.MediaSessionManager.RemoteUserInfo mCurrentControllerInfo;
+    public android.media.session.MediaSessionManager.RemoteUserInfo getCurrentControllerInfo() {
+        android.media.session.MediaSessionManager.RemoteUserInfo info = mCurrentControllerInfo;
+        if (info == null) throw new IllegalStateException("This should be called inside of MediaSession.Callback methods");
+        return info;
+    }
     public android.media.session.MediaSession.Token getSessionToken() { return (android.media.session.MediaSession.Token) meglerProps.get("SessionToken"); }
     public boolean isActive() { return mActive; }
     public void notifyRemoteVolumeChanged(android.media.VolumeProvider p0) {}
@@ -195,7 +206,15 @@ public final class MediaSession {
         final Handler h = s.mHandler;
         final Intent i = new Intent(Intent.ACTION_MEDIA_BUTTON);
         i.putExtra(Intent.EXTRA_KEY_EVENT, e);
-        Runnable r = new Runnable() { public void run() { if (s.mCallback == cb) cb.onMediaButtonEvent(i); } };
+        Runnable r = new Runnable() {
+            public void run() {
+                if (s.mCallback != cb) return;
+                android.media.session.MediaSessionManager.RemoteUserInfo was = s.mCurrentControllerInfo;
+                s.mCurrentControllerInfo = new android.media.session.MediaSessionManager.RemoteUserInfo("android", android.os.Process.myPid(),
+                        android.os.Process.SYSTEM_UID);
+                try { cb.onMediaButtonEvent(i); } finally { s.mCurrentControllerInfo = was; }
+            }
+        };
         if (h != null) h.post(r); else r.run();
         return true;
     }

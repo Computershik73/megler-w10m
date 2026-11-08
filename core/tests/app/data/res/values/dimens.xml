@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Main's step "layout-api-level": a dimension of values and of values-v31, of which Megler takes values' (the app's values are
+     chosen at the platform resources' level, Android 9's: android/content/res/Resources.java says why). -->
+<resources>
+    <dimen name="switch_title_margin">24dp</dimen>
+</resources>

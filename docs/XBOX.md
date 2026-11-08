@@ -174,7 +174,89 @@ cookies' names (never their values), each refusal, each install.
   installed through the portal like any app's, Megler's files alone (their
   APKs are in the shared folder since 0.1.0.645): some 60 MB each sent.
 
+## The app's first picture, and "Starting <app>…"
+
+The first report from a console (0.1.0.671, F-Droid): the app started, the
+player stayed on its busy overlay -- "Starting F-Droid…" and the ring -- and
+the app's picture showed for a moment as Megler was closed. No log came with
+it. What the player had then could keep the overlay up while the app drew,
+each of which is gone now:
+
+- **The overlay went by the Presents that had succeeded** (WindowHost's
+  count of them): a picture that came and whose Present failed, or that the UI
+  thread put on the panel again at another panel size (a Present of its own,
+  which the count never saw), kept it up. It goes now by the pictures that
+  came, whichever way and whatever their Present said
+  (`WindowHost::pictures`): a game's frame in ANGLE's texture, the views drawn
+  in memory, drawn on the graphics processor into the window's texture or
+  straight into the swap chain's buffer. Every frame of every app reaches the
+  panel through `player/WindowHost.cpp` -- ANGLE never has a swap chain of its
+  own on it -- so there is no other way to count.
+- **It was set only at the player's poll**, every 250 ms on the UI thread, and
+  after the system's media controls had been asked: a call of theirs that
+  Windows refused threw out of the poll (AppShell catches it, "ui: refresh
+  failed") before the overlay was set, at every poll for as long as the call
+  failed. The window now tells the player at once, from the thread the first
+  picture came on (`onFirstPicture`, posted to the UI thread at high
+  priority); the poll sets the overlay before anything else; the media
+  controls' refusals are caught where they are made
+  (`player/MediaControls.cpp`).
+- **The surface changed as the app starts**: Windows gives the player the
+  whole television (UseCoreWindow) a moment after it opened in the safe area,
+  and the surface follows -- told the moment `megler_run` has returned, before
+  the app's first picture. That is fine: the first picture comes at the new
+  size, and the overlay goes with it (`mg_tests --java first ... xbox`,
+  below).
+
+What the console's log says now, in this order (the numbers an example's):
+the swap chain, with the panel it went to (`window: swap chain 1280x720 x3 on the drawing's (GfxHost)
+device (feature level 10_1); on a panel of 960x540 DIPs at 2.00x2.00 of the
+display's pixels for each`); the first picture (`window: the app's first
+picture, 1280x720, came 2410 ms after Play: the views drawn on the graphics
+processor into the window's texture, copied to the swap chain; Present put it
+on the screen` -- or `Present failed, 0x...: it is not on the screen`, or `it
+was not presented: ...`); and the overlay (`player: the busy overlay is hidden
+2412 ms after Play (at once, on the window's word): the app's first picture
+came at 2410 ms, ...`). With no picture of the app's on the screen 10 s after
+Play, and again at 60 s, the player says where the window stands (`player: 10 s
+after Play no picture of the app's is on the screen (the app runs): ...`):
+whether a swap chain was made and why not, how many pictures came, how many
+Presents went and failed, the last failure, the panel's size. A UI thread held
+up says so itself (`ui: the UI thread has not answered for N ms: ...`, with
+where it stands). If the overlay goes and the screen stays black, the first
+picture's line says whether Present put it there, and if it did, what is left
+is the console's composition of the panel.
+
+The flag `as-xbox` (a file of that name in Megler's `LocalState\flags`) has a
+PC's Megler take the Xbox's ways where the shell has its own
+(`platform::isXbox`, `platform::asXbox`): its window opened at 960 by 540,
+never turned for an app's wish, a portrait app's surface the strip in the
+middle. What Windows alone does on a console -- 200 percent, the safe area,
+Developer Mode's App or Game -- a PC does not; Megler's OTA stays the PC's. The
+flag `fail-present` takes every Present of the window as refused without
+calling it, for the player's way with pictures that cannot be shown.
+
 ## Proven
+
+On this PC, 2026-11-08, of the first picture (no console):
+
+- `tools/build-tests.sh win` runs `mg_tests --window-windows`: the shell's
+  `WindowHost` itself, with no panel, on this PC's graphics processor -- a Java
+  app's views drawn by the shell's drawing (into the window's texture, then
+  straight into the swap chain's buffer), drawn in memory (`present_pixels`,
+  `present_pixels_part`), a game's frame in a texture of a device standing for
+  ANGLE's, and a picture whose Present is refused (`fail-present`): each
+  counted as it came, the first kept and said in the log with Present's
+  answer, the player told once, on the thread it came on, and told at once
+  when it asks after; the window's state says the Presents that failed.
+- `tools/build-desktop.sh x64 tests`'s `mg_tests --java first <hello.apk> ...
+  pc` and `... xbox`: hello started as the player starts an app on a PC's
+  window (500x950 at 200 dpi) and on an Xbox's television (1280x720 at 237
+  dpi in the safe area, then the whole of it, 1422x800, and the safe area's
+  insets told as the app starts), the overlay as the player now decides it,
+  polled every 10 ms: gone at the first poll after the first picture (shown
+  from the canvas, as the shell's graphics processor shows it) in both, the
+  pictures after the change at the new size, the insets kept clear.
 
 On this PC, 2026-11-07:
 
@@ -201,6 +283,7 @@ ANGLE on the console's Direct3D 11); that the portal answers Megler on
 without it; its authentication and CSRF as the mock has them; that an app's
 package installs, is listed and starts from Dev Home or the console's
 collection, and whether it is registered for the signed-in user; Megler's own
-update through the portal (some 170 MB sent through Megler's memory); mouse
-mode in the player; whether `expandedResources` gives Megler a game's memory
+update through the portal (some 170 MB sent through Megler's memory); the
+player's first picture on the television and its busy overlay gone with it (the
+log's lines above); mouse mode in the player; whether `expandedResources` gives Megler a game's memory
 in Developer Mode, and Google's sign-in in Play Store's WebView within it.

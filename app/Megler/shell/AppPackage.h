@@ -34,6 +34,17 @@ struct SingleApp {
 };
 const SingleApp& single();
 inline bool isSingleApp() { return !single().package.empty(); }
+/// An app's own package: why its app cannot start from what Megler put in the shared folder for it -- Windows gave the package
+/// no shared folder, or its APK or Android's files are not there (or cannot be read), as when the package and Megler are on
+/// different storage, a memory card and the phone's memory -- in words for its screen, with what to do (placement::missingText,
+/// ui/StartScreen.cpp); the app is not opened then. Empty when nothing is missing, and in Megler. Looked at at the first call,
+/// which says it in the log with each folder and its drive.
+const std::string& singleAppProblem();
+/// Megler itself (not an app's own package) installed where its apps may not reach its files: on a phone, on the memory card
+/// (not on the drive Windows is on: placement::onSystemDrive), or anywhere with no shared folder. What it says once at its
+/// start and above the Library (placement::meglerOnCardText); empty when neither. Looked at at the first call, which says it in
+/// the log.
+const std::string& meglerOnCard();
 
 /// The scheme of the links by which a package of Megler's asks another (megler:install, megler:run...): the protocol this
 /// package declares, which an app's own package has from the Megler that made it -- "megler" for the release's Megler,
@@ -120,6 +131,12 @@ InstallResult install(const Made& made, const std::function<void(const std::stri
 /// of Megler's own package closes Megler. Not installed, with what Windows said, when every option was refused; written down
 /// then as the last refusal (LocalState\install-refusal.txt, which Save All Logs takes along). Off the UI thread.
 InstallResult installWithPackageManager(const std::wstring& path, const std::function<void(const std::string&)>& progress);
+/// Under the flag diag-deploy (LocalState\flags): whether Windows's deployment engine takes Megler's calls now, asked four
+/// ways on a thread of its own and said in the log as "deploy probe (<when>): ..." -- the engine's answer to a package that
+/// is not there (0x80070002 or the like where it takes the call, 0x80070005 where it refuses Megler), through C++/WinRT's
+/// PackageManager, one made from a fresh activation factory, one made on a new thread, and FindPackagesForUser. From the
+/// start and from each resume: installs were refused for access after Megler had been suspended and resumed.
+void probeDeployment(const char* when);
 /// Whether `said` (an install's refusal) is Windows not trusting the certificate the package is signed with
 /// (CERT_E_UNTRUSTEDROOT, CERT_E_CHAINING, TRUST_E_NOSIGNATURE's kin): the certificate is to be installed for the machine.
 bool untrustedCertificate(const std::string& said);

@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- An APK of resources alone, carried by the data app as assets/loader.apk (tools/build-test-app.sh, "loader"): what its step
+     "resources-loader" puts over the platform's resources with a ResourcesLoader, as Google Play services' DynamiteLoader puts a
+     module's. A package of its own, 0x7f as an app's is. -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="megler.test.loader" android:versionCode="1" android:versionName="1.0">
+    <uses-sdk android:minSdkVersion="21" android:targetSdkVersion="28" />
+    <application android:hasCode="false" />
+</manifest>

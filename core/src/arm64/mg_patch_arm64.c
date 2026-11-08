@@ -54,6 +54,15 @@
  * where the svc was). A site that is a trap is a UDF and recorded, as on 32-bit ARM: the fault handler (mg_core.c) does
  * the call and resumes after it. A signal restorer's svc (rt_sigreturn, 139 put in x8 just before it) is left alone.
  *
+ * A read of the cache's type, `mrs xN, ctr_el0`, is made a branch to a piece of island that puts MG_ARM64_CTR_EL0 in
+ * xN (movz, movk) and comes back. Linux lets user code read the register (SCTLR_EL1.UCT), and code that makes code reads
+ * it for the lines its cache maintenance steps by -- the WebView's V8 at every flush of what it compiled, compiler-rt's
+ * __clear_cache once -- and Windows refuses it in user mode: an illegal instruction, which ended Telegram as its
+ * reCAPTCHA's page started (GitHub issue 4, a Snapdragon X Elite). The value is an ARMv8 core's, 64-byte lines both ways,
+ * no line of either cache coherent of itself (IDC, DIC clear): the maintenance is made by address, as on the phone. Where
+ * Windows refuses that too (SCTLR_EL1.UCI), and for a read of CTR_EL0 the loader did not reach (code made at run time),
+ * the fault handler does what the instruction would (mg_patch_sys_fault).
+ *
  * Only the library's executable sections are walked, when its section headers say which they are (mg_lib's code), a
  * word at a time: ARM64's instructions are all four bytes and aligned, so no word is ever the inside of another.
  */
@@ -71,6 +80,15 @@
 #define SVC_UDF_TRAP 0x000000A5u        /* udf #0xa5: the flag trap-svc's, a fault where the svc was */
 #define MOV_X8_139 0xD2801168u          /* movz x8, #139: rt_sigreturn's number */
 #define MOV_W8_139 0x52801168u
+#define MRS_CTR_EL0 0xD53B0020u         /* mrs xN, ctr_el0: | N */
+/* Cache maintenance by address that user code makes (SYS #3, C7, Cm, #1, xN: | N): data cache cleans, the instruction cache's invalidation. */
+#define DC_CVAU 0xD50B7B20u
+#define DC_CVAC 0xD50B7A20u
+#define DC_CIVAC 0xD50B7E20u
+#define DC_CVAP 0xD50B7C20u
+#define DC_CVADP 0xD50B7D20u
+#define IC_IVAU 0xD50B7520u
+#define A64_NOP 0xD503201Fu
 
 static volatile i32 g_trap_svc = -1;
 
@@ -94,7 +112,7 @@ enum { SC_PIECE = 48 };
 
 /*
  * Island space the loader keeps for a library (ld/mg_ld.c, island_estimate, 16 bytes for each one counted): one thunk per
- * access of the thread pointer, where one is needed; a system call's piece for every svc 0.
+ * access of the thread pointer, where one is needed; a system call's piece for every svc 0; a read of CTR_EL0's piece.
  */
 u32 mg_patch_count_tp_reads(const u8 *bytes, size_t size)
 {
@@ -102,10 +120,77 @@ u32 mg_patch_count_tp_reads(const u8 *bytes, size_t size)
     u32 n = 0;
     for (i = 0; i + 4 <= size; i += 4) {
         u32 w = mg_rd32(bytes + i);
-        if ((w & ~31u) == MRS_TPIDR_EL0 || (w & ~31u) == MSR_TPIDR_EL0) n++;
+        if ((w & ~31u) == MRS_TPIDR_EL0 || (w & ~31u) == MSR_TPIDR_EL0 || (w & ~31u) == MRS_CTR_EL0) n++;
         else if (w == SVC_0) n += SC_PIECE / 16;
     }
     return n;
+}
+
+/* MOVZ and MOVK of a 64-bit register: a half-word at `shift` (0, 16, 32, 48). */
+static u32 movz_x(int rd, u32 imm16, int shift) { return 0xD2800000u | ((u32)(shift / 16) << 21) | ((imm16 & 0xFFFFu) << 5) | (u32)rd; }
+static u32 movk_x(int rd, u32 imm16, int shift) { return 0xF2800000u | ((u32)(shift / 16) << 21) | ((imm16 & 0xFFFFu) << 5) | (u32)rd; }
+
+/* The read of CTR_EL0 at `site` made a branch to a piece that puts MG_ARM64_CTR_EL0 in xN and comes back: false when it could not be. */
+static bool patch_ctr_read(mg_lib *lib, u8 *site, int rt)
+{
+    u8 *st;
+    if (rt == 31) {
+        mg_wr32(site, A64_NOP);         /* (a read into xzr is a read of nothing) */
+        return true;
+    }
+    st = mg_island_alloc(lib, (mg_addr)site, 12, 1u << 27);
+    if (!st) return false;
+    mg_wr32(st, movz_x(rt, MG_ARM64_CTR_EL0 & 0xFFFFu, 0));
+    mg_wr32(st + 4, movk_x(rt, MG_ARM64_CTR_EL0 >> 16, 16));
+    if (!a64_b(st + 8, (mg_addr)(st + 8), (mg_addr)(site + 4))) return false;
+    return a64_b(site, (mg_addr)site, (mg_addr)st);
+}
+
+/*
+ * What an instruction of user code that Linux lets run and Windows refuses in user mode does, done to the registers of
+ * the thread it faulted in: false when `w` is none of them (the fault is not one of these). A read of CTR_EL0 gives
+ * MG_ARM64_CTR_EL0, as the loader's pieces do; a data cache's clean by address is nothing to do here (no device reads
+ * the memory past the caches, and the instruction cache's invalidation that follows it on the way to running new code
+ * is made whole); the instruction cache's invalidation by address is Windows' FlushInstructionCache over the line
+ * MG_ARM64_CTR_EL0 says, which cleans the data cache's lines of it first. DC ZVA zeroes memory and is not among them
+ * (DCZID_EL0, which user code reads anywhere, says whether it may be used).
+ */
+bool mg_patch_sys_emulate(u32 w, mg_addr *regs)
+{
+    u32 rt = w & 31u, op = w & ~31u;
+    if (op == MRS_CTR_EL0) {
+        /* (Not into x18 on Windows, the thread's TEB, which the thread could not go on without.) */
+        if (rt != 31 && !(MG_HOST_WINDOWS && rt == 18)) regs[rt] = MG_ARM64_CTR_EL0;
+        return true;
+    }
+    if (op == DC_CVAU || op == DC_CVAC || op == DC_CIVAC || op == DC_CVAP || op == DC_CVADP) return true;
+    if (op == IC_IVAU) {
+        mg_addr line = 4u << (MG_ARM64_CTR_EL0 & 15u);
+        if (rt != 31) mg_icache_flush((void *)(regs[rt] & ~(line - 1)), (size_t)line);
+        return true;
+    }
+    return false;
+}
+
+bool mg_patch_sys_fault(mg_addr pc, mg_addr *regs)
+{
+    static volatile i32 said[3];
+    u32 w, op;
+    int kind;
+    if (!pc || (pc & 3) || !regs) return false;
+    w = mg_rd32((const void *)pc);
+    if (!mg_patch_sys_emulate(w, regs)) return false;
+    op = w & ~31u;
+    kind = op == MRS_CTR_EL0 ? 0 : op == IC_IVAU ? 2 : 1;
+    if (!said[kind] && !mg_atomic_xchg(&said[kind], 1)) {
+        const char *lib = NULL;
+        const void *base = NULL, *sym_addr = NULL;
+        mg_ld_symbol_at((const void *)pc, &lib, &sym_addr, &base);
+        mg_info("arm64: %s at %s+0x%llx is refused by Windows in user mode (an illegal instruction), which Linux runs: done here, "
+                "as is every one after it", kind == 0 ? "a read of CTR_EL0, the cache's type," : kind == 2 ? "the instruction cache's invalidation by address (IC IVAU)" : "a data cache's clean by address (DC)",
+                lib ? lib : "code made at run time", (unsigned long long)(lib && base ? pc - (mg_addr)base : pc));
+    }
+    return true;
 }
 
 /*
@@ -523,7 +608,8 @@ static bool in_data(const mg_lib *lib, mg_addr at)
 }
 
 /* Walks [lo, hi) of the library's code, a word at a time. */
-static void patch_range(mg_lib *lib, u8 *lo, u8 *hi, bool have, u32 where, u32 offset, bool trap, u32 *svc, u32 *failed, mg_addr *x18_first)
+static void patch_range(mg_lib *lib, u8 *lo, u8 *hi, bool have, u32 where, u32 offset, bool trap, u32 *svc, u32 *failed, mg_addr *x18_first,
+                        u32 *ctr_failed)
 {
     u8 *p = lib->base + MG_ALIGN_UP((mg_addr)(lo - lib->base), 4);
     for (; p + 4 <= hi; p += 4) {
@@ -532,7 +618,12 @@ static void patch_range(mg_lib *lib, u8 *lo, u8 *hi, bool have, u32 where, u32 o
             if (!*x18_first) *x18_first = (mg_addr)(p - lib->base);
             lib->stats.x18_writes++;
         }
-        if ((w & ~31u) == MRS_TPIDR_EL0 || (w & ~31u) == MSR_TPIDR_EL0) {
+        if ((w & ~31u) == MRS_CTR_EL0) {
+            /* (A word its mapping symbols mark as data is left as it is.) */
+            if (in_data(lib, (mg_addr)(p - lib->base))) continue;
+            if (patch_ctr_read(lib, p, (int)(w & 31u))) lib->stats.ctr_reads++;
+            else (*ctr_failed)++;
+        } else if ((w & ~31u) == MRS_TPIDR_EL0 || (w & ~31u) == MSR_TPIDR_EL0) {
             if (!have || !patch_tp_access(lib, p, (w & ~31u) == MSR_TPIDR_EL0, (int)(w & 31u), where, offset)) {
                 lib->stats.tp_reads_failed++;
                 if ((*failed)++ < 4)
@@ -554,7 +645,8 @@ static void patch_range(mg_lib *lib, u8 *lo, u8 *hi, bool have, u32 where, u32 o
 
 void mg_patch_segment(mg_lib *lib, u8 *seg, size_t size)
 {
-    u32 where = 0, offset = 0, svc = 0, failed = 0, led = lib->stats.svc_led_out, x18 = lib->stats.x18_writes;
+    u32 where = 0, offset = 0, svc = 0, failed = 0, led = lib->stats.svc_led_out, x18 = lib->stats.x18_writes, ctr = lib->stats.ctr_reads,
+        ctr_failed = 0;
     mg_addr x18_first = 0;
     bool have = mg_guest_tp_where(&where, &offset) && (where == 18 || where == 0) && offset % 8 == 0 && offset < 32768;
     bool trap;
@@ -563,15 +655,20 @@ void mg_patch_segment(mg_lib *lib, u8 *seg, size_t size)
     trap = g_trap_svc > 0;
     if (!have) mg_err("ld: %s: the host has no place for the guest's thread pointer; its reads are left as they are", lib->name);
     if (!lib->ncode) {
-        patch_range(lib, seg, seg + size, have, where, offset, trap, &svc, &failed, &x18_first);
+        patch_range(lib, seg, seg + size, have, where, offset, trap, &svc, &failed, &x18_first, &ctr_failed);
     } else {
         for (k = 0; k < lib->ncode; k++) {
             u8 *lo = lib->base + lib->code[k][0], *hi = lib->base + lib->code[k][1];
             if (lo < seg) lo = seg;
             if (hi > seg + size) hi = seg + size;
-            if (lo < hi) patch_range(lib, lo, hi, have, where, offset, trap, &svc, &failed, &x18_first);
+            if (lo < hi) patch_range(lib, lo, hi, have, where, offset, trap, &svc, &failed, &x18_first, &ctr_failed);
         }
     }
+    ctr = lib->stats.ctr_reads - ctr;
+    if (ctr || ctr_failed)
+        mg_log(ctr_failed ? MG_LOG_WARN : MG_LOG_INFO,
+               "ld: %s: %u reads of CTR_EL0, the cache's type, which Windows refuses in user mode, made an ARMv8 core's value "
+               "(64-byte lines)%s", lib->name, (unsigned)ctr, ctr_failed ? ", and some out of an island's reach: the fault handler answers those" : "");
     x18 = lib->stats.x18_writes - x18;
     if (x18)
         mg_log(MG_HOST_WINDOWS ? MG_LOG_WARN : MG_LOG_INFO,

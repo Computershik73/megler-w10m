@@ -35,6 +35,7 @@ Back. No real app has been tried.
 | Video from Java: `MediaPlayer` and `VideoView` draw a file's pictures on the app's `Surface` (`megler.Audio.decVideo` over the shell's Media Foundation reader), fitted or cropped, timed by the sound or by a clock of their own (docs/JAVA.md, "Sound from Java"; mayconus's work, docs/LUMIA-950XL.md) | **passes on a JVM** with stand-ins for the host (`tools/test-media-player.py`, 24 checks: sound alone, pictures alone, both, pause, seek while paused, looping, a cancelled preparation, HTTP headers, VideoView's deferred start) and **on a Lumia 950 XL** (the test app `core/tests/app/video`: 8 checks, an H.264/AAC MP4 and one with no sound) and **on the HP Elite x3** (0.1.0.583, the same app as an app of the phone's own: the 8 checks pass, but at the full 1440x2560 render size the screen shows about 5 of the films' 30 pictures a second, each picture's canvas flushed to memory). A source is read whole into memory (256 MiB at most); `MediaExtractor` is still a stub, so ExoPlayer gets nothing from it |
 | Cameras for a Java app's `android.hardware.Camera` (the overlay's class over `megler.CameraNative`, `drivers/mg_java_camera.c`, and the shell's `megler_camera_host` over Windows.Media.Capture, `player/CameraHost.cpp`; docs/JAVA.md, "The cameras") | **passes under qemu** with a stand-in for the shell's cameras (the core's 44 checks, on the PC as well; the test app `camera`, 38 checks: the parameters as Android keeps them, a preview on a `SurfaceView` and one on a `TextureView` checked in the window, turned and mirrored as Android shows them, frames in the app's buffers byte for byte and in their order, autofocus, the torch, the threads the callbacks come on; and 13 more with every camera refused, as when the user says no). The shell's host is built for the phone and into the PC's test program, whose `--camera-windows` opens this PC's one camera (DroidCam's virtual one) through it and takes ten pictures (9 checks). **On the phone** (package 267, VK mp3 mod's QR sign-in): the back camera opens and streams 640 x 640 at 30 a second, and every picture is drawn and read by ZXing, but the scanner showed white -- its frame's inverse path, now drawn as Android draws it (the camera test app frames its `TextureView` the same way); not yet tried again |
 | The phone's sensors for a Java app's `SensorManager` and native code's `ASensorManager` (`ndk/mg_sensors.c`, `drivers/mg_java_sensors.c`, the overlay's `SensorManager` and `Sensor`; the shell's `megler_sensor_host` over Windows.Devices.Sensors, `player/SensorHost.cpp`; ARCHITECTURE.md, "Sensors"): the accelerometer, gravity, linear acceleration, gyroscope, magnetic field, rotation vectors, the old orientation, light, proximity and pressure, in Android's units and signs | **passes under qemu** with a stand-in for the shell's sensors (the core's tests of the list, every conversion, the times, rates, pause, flush and libandroid's functions, on the PC as well; the data app's step `sensors` in Java and the natives app's in native code on the main thread's looper). The shell's host is built for the phone and into the PC's test program, whose `--sensors-windows` finds no sensors on this PC. **Not tried on a phone**: the signs are Windows' documented ones (the hardware lab kit's tests) and Chromium's mapping of the orientation sensor and the inclinometer |
+| Bluetooth LE's central side for a Java app's `android.bluetooth` (`run/mg_bluetooth.c`, `drivers/mg_java_bluetooth.c`, the overlay's `BluetoothAdapter`, `BluetoothDevice`, `BluetoothGatt` and `android.bluetooth.le`, `megler.Bluetooth`; the shell's `megler_bluetooth_host` over Windows.Devices.Bluetooth, `player/BluetoothHost.cpp`; the `bluetooth` capability in Megler's and the apps' packages; ARCHITECTURE.md, "Bluetooth LE"): the adapter and its state's broadcasts, scans with filters and the old one, GATT connections, services, reads, writes with and without response, notifications, the MTU, the RSSI, pairing with a PIN (the app's or the user's), the request to turn the radio on -- what MeshCore's app (flutter_blue_plus) calls | **passes under qemu** with a stand-in for the shell's radio (a MeshCore radio of the Nordic UART service that echoes writes as notifications and wants a PIN for one characteristic, a beacon): the core's tests (306 checks, on the PC as well) and the test app `bluetooth` (22 steps, 51 checks), which goes through what MeshCore's app does, Android 13's calls and callbacks. The shell's host is built for the phone and the PC and into the PC's test program, whose `--bluetooth-windows` listens passively (this PC has no Bluetooth adapter, which it says). **Not tried with a real device**: a MeshCore radio in range of a phone (or a PC) is what shows the connection, the database, the notifications, the MTU Windows negotiates and pairing with the radio's PIN |
 | Android's runtime permissions (`megler.Permissions`: normal ones with the install, dangerous ones asked when the app requests them, by Windows for the camera, the microphone and the location and by Megler's own question for the storage, the media, the messages, the phone and the calls, kept for each app; docs/JAVA.md, "Permissions"), and an app's own package declaring only the capabilities its permissions need (docs/PER-APP-PACKAGES.md, "What a package declares") | **passes under qemu** (the data app's step `permissions` and the answers after it, two runs on one data folder, with a stand-in for the shell's answers; the report's permissions; the manifest made with the capabilities, `test_appx_manifest`). The shell's side (`player/PermissionHost.cpp`: Windows' consent read and asked, Megler's dialog, App Settings' Permissions) is built, **not tried on a phone** |
 | The shared storage: one `/sdcard` for every app, the app's own `Android/data` and `obb` in it, and links to folders of the phone's own through handles the shell hands over | **passes under qemu and on PC** with a stand-in for the shell (`core/tests/mg_storage_tests.c`, 451 checks), and on PC with the shell's own host over Windows.Storage (`player/StorageHost.cpp`, the same checks; a test program is no app container). **On the phone** (HP Elite x3, 0.1.0.126, `tools/build-appx.sh arm --auto storage`): Music, Pictures, Movies and DCIM are found and answer, and the check's 102 steps pass -- 24 in each link, in a folder of its own: files made, written, read back, appended to, emptied, renamed, moved, removed, folders likewise, and a file moved from one link to another. One thing the PC did not show: an open straight after a close is at times refused with a sharing violation, something of Windows' own having the new file for a moment (2 steps of 102, different ones each run); the host asks again for up to a second. A folder is not moved into another folder by renaming (the app is told EXDEV, and copies). **Not tried**: the Settings section (the list, Add a Folder with the folder picker, the folders Windows remembers across starts), Documents, Downloads, a memory card |
 | libc's POSIX regular expressions (`regcomp`, `regexec`, `regerror`, `regfree`: basic and extended, the leftmost longest, back references, GNU's word escapes), zlib's gzip files on the guest's files (`gzopen`, `gzdopen`, `gzread`, `gzgets`, `gzwrite`, `gzputs`, `gzrewind`, `gzclose` and the rest), `j0` and `j1`, `eventfd_read` and `eventfd_write`, `fchmodat`: what Zalo's libraries import that was not there | **passes under qemu and on PC** (`test_libc_gaps`, 44 checks) |
@@ -215,6 +216,45 @@ is calling the library's own `JNIBridge.invoke` with a `java.lang.reflect.Method
 and the arguments boxed). Each loop is a thread; a Runnable or a Handler that is
 one of the app's own Java classes is noted and dropped, since no Java runs.
 
+**Where UnityPlayer's constructor runs, and with what.** On Android it runs on
+the main ("UI") thread: `NativeLoader.load` loads `libunity.so` and runs its
+`JNI_OnLoad` there, and the engine takes that thread's native looper
+(`ALooper_forThread`) to run its jobs for the UI thread through; then
+`initJni` hands it the player and the Context it asks Java through from then
+on. The driver did all of it on the engine's own thread, which had no looper
+("E/Unity: Couldn't retrieve native ALooper for UI thread"), and called
+`initJni` only by the two signatures it had seen, `(Context)` up to 2022 and
+`(Context, int)` in Unity 6.0, on `UnityPlayer` alone for the first. WOW
+(`com.kzapp.wowua`, Unity 6: it asks `shouldSetGameState`, Android 13's game
+state hints) registered it otherwise, and it was never called ("the engine has
+no ...initJni"): the engine went on with neither, called the player's
+`executeMainThreadJobs`, `initializeGoogleAr` and `shouldSetGameState` on null
+(the log names the class of null: "java/lang/Object.initializeGoogleAr()Z is
+not implemented"), and set up its crash handler -- the 128 KB alternate signal
+stack it maps with `MAP_STACK | MAP_GROWSDOWN` is the trace's last line, as in
+Unity 2019's `libunity.so` -- where it ended in `strlen(NULL)` called straight
+from `libunity.so`, no Java called and no file opened in between: most likely
+a string the handler keeps for its reports that `initJni` would have given it
+(the game's `libunity.so` was not at hand to say which). Now the constructor's
+part runs on the main
+looper's thread (`jni/mg_jni_loop.c`), whose threads say they are Java
+loopers (`mg_looper_java_thread`: a native looper for the asking) and run
+what native code watches on them between their events, every 8 ms at most
+while they have one; the engine's own thread has a native looper too, polled
+before each frame, as UnityPlayer's main thread has a `Looper`. `initJni` is
+called as the engine registered it, on whichever of the three classes,
+whatever its parameters: the Context for a Context or an activity, the player
+for a view, 0 for a number, null for the rest; where it registered none, the
+log lists the natives it did register on each class. The player is an object
+of the class the engine's natives are on (Unity 6's
+`UnityPlayerForActivityOrService`, which extends `UnityPlayer`). The flag
+`unity-load-here` loads the engine on its own thread as before. And
+`getauxval(AT_EXECFN)` -- the path a process was started from, which every
+Linux process has (an app's is its zygote's, `/system/bin/app_process32`),
+and code takes for a process's name in a crash report -- was zero; it is
+that path now, as `realpath("/proc/self/exe")` is (it was not found), and
+`getauxval` says ENOENT, as bionic does, for what the vector has not.
+
 Builds 0.1.0.29 to 0.1.0.47 all died 0.7 s into the first scene, and the log
 blamed the wrong thing for a day. What it was, since the same will happen to any
 engine:
@@ -287,6 +327,7 @@ Tools made for this, all still there: the trace (`mg_trace`: a ring of the last
 stack scan, thread and memory lines, the flags (`mg_flag`: a file's presence in
 `LocalState\flags`, put there through the Device Portal: `no-interrupt`,
 `no-render`, `late-render`, `no-egl`, `no-panel`, `early-present`, `no-present`,
+`fail-present` (every Present taken as refused, uncalled: docs/XBOX.md),
 `normal-priority`, `trace-gl`), `trace-gl` (every GL call through a generated
 thunk), `no-gl-turns` (the thunks that have two threads' calls of one ANGLE
 display take turns left out; `ndk/mg_egl.c`, "turns"), the unattended `play` mode, and `tools/phone-etw.py`. And for what an app
@@ -335,15 +376,20 @@ it lives, and freed blocks kept poisoned before they are given back, 8192 of the
 a block written past its end, written after it was freed or freed twice is said,
 with the code that asked for it and that freed it; Windows' own heap says only
 c0000374 later, at another block; `bionic/mg_libc_mem.c`). Without any flag, on Windows, a
-watchdog looks every two seconds at who holds the log's lock and the guest
-threads' lock: one held by the same thread for ten seconds is an app that stands
+watchdog looks every two seconds at who holds the log's lock, the guest
+threads' lock and the mappings' lock: one held by the same thread for ten seconds is an app that stands
 still, whose core lines have stopped while the shell's go on (urent did, on the
 page after asking for its SMS code). Once for each such stand-still it says who
 holds which lock since when, the line that thread was writing or the function
 that took the threads' lock (and the thread `trace-profile` was stopping), and
 where every thread that runs guest code is, as `trace-native-stacks` says it:
 first as bare addresses in `LocalState\hang.txt`, then named there and in the
-log past its lock; at most five reports; `bionic/mg_bionic.c`. `trace-net` also says, when the app closes a connection,
+log past its lock; at most five reports; `bionic/mg_bionic.c`. Each holder's
+record is read whole and the clock after it (`mg_holder_look`, `mg_base.c`): read
+the other way round, a lock taken a moment after the watchdog's clock was read
+came out held 2^64 ns, "18446744073.7 s", and a stand-still that was none was
+reported -- Viber's file write-back thread between its passes (0.1.0.669), a
+fault's report writing its trace lines (Tuya Smart, 671). `trace-net` also says, when the app closes a connection,
 what went over it: the bytes and calls each way, the first sixteen bytes each
 way, when the first came in, the other end's close, errors and timeouts. Of a
 connection made it says which call the app learnt it by (`getsockopt SO_ERROR`,
@@ -455,6 +501,43 @@ from the package's next start, and the part before the crash at once. A log over
 16 MB is copied as its last 16 MB, after a line that says so. Megler removes the
 folder of a package that is no longer installed whenever it lists the apps'
 packages.
+
+**No line waits for the disk but its own.** `megler.log` is written every 200 ms,
+and at once for a line that has to be on the disk before its thread goes on (a
+fault's report, its trace lines, `FATAL`, the core's word on a process about to
+end). On a phone such a write is a millisecond or more a line, and far longer
+while another thread puts a file on the disk (SQLite's fsync). It was made under
+the shell's log lock, and the core's lines came through the core's log lock, so
+every thread that logged meanwhile waited for the disk: Tuya Smart's main thread
+waited in `mg_logv` while a fault's report wrote its 161 trace lines one by one
+(0.1.0.671). The core now hands a line to the shell past its own lock
+(`mg_base.c`; `megler_log_fn` may be called from several threads at once), and
+the shell takes lines out of its buffer under its lock and writes them with only
+the writers' own lock held (`shell/ShellLog.cpp`): a thread waits for a write only
+when it writes too.
+
+**The start** (`App.cpp`, `shell/Startup.cpp`) says each of its steps before it
+begins, the log written out with it (`start: reading the library`), and until
+the window is shown a watch says at 2, 5, 10, 15, 20, 30, 45 and 60 s which step
+the start is on and where the UI thread stands (`megler_thread_where`);
+`start: the window is shown, N s after the launch` ends it. Windows ends an app
+whose window it has not been shown in time and tells the app nothing, so the last
+`start:` line is the step it was ended in, and the watch's last line how long it
+lived. A step that throws is said as `FATAL` with its exception and the start
+goes on (a page that says why where the screens could not be made), and
+`std::terminate` on the UI thread is said with its exception. What the core says
+of a process about to end (`host: abort() was called`, an exception nothing
+handled, a pure call) is written out at once, as a fault's report is; it waited
+for the writer before, and went with the process. The start's lines say too what
+the phone is (`phone:` its maker and model as Windows names them, its memory and
+how much is free) and the room on the disks Megler writes to (`disk:`), and the
+log says each step of the app's use of memory toward its limit as Windows counts
+it (`memory: Windows counts the app's use as high now`). **Passes on PC**:
+`mg_shell_tests.exe` (`tools/build-tests.sh win`). Made for a Lumia 630 whose
+Megler 0.1.0.671 closed at every start with its splash screen up, the log ending
+a second in, with nothing of what the UI thread was doing (it was copying the
+package's Google APKs: [PER-APP-PACKAGES.md](PER-APP-PACKAGES.md), "The Google
+APKs Megler brings").
 
 **Save All Logs** (the Log screen, in Megler and in an app's own package,
 `shell/LogArchive.cpp`) writes one ZIP, `megler-logs-<yyyyMMdd-HHmmss>.zip`, to

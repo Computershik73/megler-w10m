@@ -40,6 +40,8 @@
 // the app, since a newer core may run what an older one could not.
 #pragma once
 
+#include "shell/BundledApks.h"
+
 #include <cstdint>
 #include <deque>
 #include <mutex>
@@ -126,9 +128,14 @@ class Library {
 public:
     static Library& instance();
 
-    /// Lists LocalState\apks from the cache and queues what has to be read.
-    /// Once, on the UI thread, after megler_init.
+    /// Lists LocalState\apks from the cache and queues what has to be read, and decides which copies of the package's
+    /// Google APKs are to be made (afterStart makes them). Once, on the UI thread, after megler_init: nothing in it takes
+    /// long, for the window is not shown until it is done.
     void load();
+    /// Once the window is shown (App.cpp): the copies of the package's Google APKs that load() found missing or wrong,
+    /// made on a thread of their own (bundledApks::start), each listed and read as it is made; then Megler's other
+    /// copies of them compared (bundledApks::checkLater). Once.
+    void afterStart();
 
     std::vector<ApkEntry> entries() const;
     std::optional<ApkEntry> find(const std::string& id) const;
@@ -177,6 +184,10 @@ public:
 
 private:
     void queue(const std::string& id);
+    /// Under mutex_: the entry of the copy directory()\name, from the cache.
+    ApkEntry copyEntry(const std::wstring& name) const;
+    /// A copy of the package's APK just made here (afterStart): listed, or listed again, and read.
+    void bundledCopied(const std::string& id);
     /// Under mutex_: the entry at `it` goes, its copy, splits and cache with it.
     void eraseLocked(std::vector<ApkEntry>::iterator it);
     void work();
@@ -192,6 +203,9 @@ private:
     bool working_ = false;
     bool refreshingAll_ = false;
     unsigned generation_ = 1;
+    /// load()'s copies of the package's Google APKs, for afterStart.
+    std::vector<bundledApks::Task> pendingCopies_;
+    bool startedCopies_ = false;
 };
 
 } // namespace megler::app

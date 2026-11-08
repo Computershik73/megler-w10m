@@ -30,6 +30,8 @@ i32 mg_fd_pread(int fd, void *buf, u32 n, u64 offset);
  * writes back to (mg_libc_mem.c). NULL for a descriptor that is not open. Let go with mg_fd_let_go.
  */
 void *mg_fd_hold(int fd);
+/* Another hold of a held file (NULL for NULL), let go with mg_fd_let_go: a write-back's own, as the mapping that held it may go meanwhile. */
+void *mg_fd_held_ref(void *held);
 i32 mg_fd_held_pwrite(void *held, const void *buf, u32 n, u64 offset);
 i32 mg_fd_held_pread(void *held, void *buf, u32 n, u64 offset);
 /* Whether two held files are one: the same open file, or files of the same guest path (another descriptor of it). */

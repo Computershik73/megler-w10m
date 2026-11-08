@@ -1,6 +1,7 @@
 // Overlay of core/framework/src/android/content/res/Resources.java (tools/build-framework.sh).
-// It differs in these things. The class Bag (a style's items): put and indexOf find a key by hashing. And updateCfg: resources
-// are chosen for the API level of the platform's own resources (PLATFORM_RESOURCES_SDK), not for Build.VERSION.SDK_INT.
+// It differs in these things. The class Bag (a style's items): put and indexOf find a key by hashing. And the configuration
+// resources are chosen for (ResourcesImpl.updateCfg, the original's updateCfg): the API level of the platform's own resources
+// (PLATFORM_RESOURCES_SDK), not Build.VERSION.SDK_INT.
 // And a theme attribute whose value names an attribute that names another, with no end -- a style's item that names
 // itself, as Android's TextAppearance does with textColorHighlight -- is not there: resolveAttribute says false, as
 // AssetManager2's Theme::GetAttribute gives up after twenty steps, and obtainStyledAttributes leaves out such a value of the
@@ -19,10 +20,13 @@
 // control_checkable_material in Android 9, which asks the theme for a colour, which a -v31 theme answers with a colour that
 // refers to 0x01060064. Device Info's first layout with a MaterialCardView recursed 6095 frames deep through that circle
 // and ended the app. On a phone that really has Android 9, -v31 resources are never chosen; choosing as that phone does is
-// the only choice that fits the resources that are here. (The app's Java still sees SDK_INT 34.) An app's font, style or
-// colour that has no choice of that level at all (font-v29, values-v31 alone) is taken from the newest up to 34 instead
-// (ResTable.find), the app having asked for it because SDK_INT said so; and what an app's resource names of Android 12's
-// system colours is those colours (meglerValue, meglerBag), which Android 9 has private resources of its own under.
+// the only choice that fits the resources that are here. (The app's Java still sees SDK_INT 34.) An app's resource that has
+// no choice of that level at all (font-v29, values-v31 alone) is taken from the newest up to 34 instead (ResTable.find), the
+// app having asked for it because SDK_INT said so; and what an app's resource names of Android 12's system colours is those
+// colours (meglerValue, meglerBag), which Android 9 has private resources of its own under. But an app's layouts, menus and
+// XML documents are chosen for 34, as Android 14 chooses them (ResTable.find): the app's code, told 34, looks in them for
+// the views, items and keys that level's choice has, and the Settings library's main switch bar ended Google Play
+// services' Location accuracy screen when a frame of its -v31 layout was not there.
 //
 // Why. The original's Bag.put walks the whole bag for the key before adding it, and a style's bag is built by putting the
 // parent's items in one by one and then its own; indexOf walks it again for every attribute a view asks of its style. A
@@ -47,10 +51,18 @@
 // And the platform's preloaded drawables, sPreloadedDrawables (one LongSparseArray per layout direction) and
 // sPreloadedColorDrawables, which Android 7 to 9 keep in ResourcesImpl and look in before a drawable's file is read, by the
 // key Android makes of the value: its asset cookie in the high word and its data (a string's index in the pool) in the low.
-// Nothing is preloaded here, so they start empty; but apps put arrays of their own in by reflection, taking Resources's
-// field where there is no ResourcesImpl, as here. Instagram swaps each for a LongSparseArray that answers its vector icons,
-// whose values ("I1801B8") are no file: without the field it said "Could not enable custom drawable support" and ended in
-// its main activity's layout with "File I1801B8 not found".
+// Nothing is preloaded here, so they start empty; but apps put arrays of their own in by reflection, taking ResourcesImpl's
+// field (Resources's where there is no ResourcesImpl). Instagram swaps each for a LongSparseArray that answers its vector
+// icons, whose values ("I1801B8") are no file: without the field it said "Could not enable custom drawable support" and
+// ended in its main activity's layout with "File I1801B8 not found". They are ResourcesImpl's now, as on Android 7 to 9.
+//
+// And what Resources are made of -- the AssetManager, the configuration and metrics and the configuration chosen for, the app
+// package's table, the loaders, the caches -- is a ResourcesImpl of its own (mResourcesImpl), as on Android 7 and later, which
+// getImpl gives and setImpl replaces; Resources(ClassLoader) makes Resources with none until setImpl. Every lookup goes
+// through it, and Resources given the same implementation answer alike; the themes made of them are rebased onto the one
+// setImpl gives (Theme.rebase applies their styles again). Apps make Resources of their own over the platform's so, by
+// reflection: Tuya Smart's dynamic strings ended the app at its first activity on "NoSuchMethodException: getImpl []".
+// (ResourcesImpl.java says more.)
 //
 // And the accent colour: the platform's accent_device_default_light and _dark and accent_material_light and _dark, which
 // Android 9's DeviceDefault and Material themes give as colorAccent (and so colorControlActivated: switches, check boxes,
@@ -71,6 +83,16 @@
 // applies a new configuration to all of an app's resources (meglerScreenChanged). And the sizes the app's resources are made
 // for (w600dp, h480dp, sw720dp, the screen layout's size and length), which Android's SizeConfigurationBuckets keeps for
 // deciding whether a change of size relaunches an activity (meglerSizeBuckets); getSizeConfigurations says them too.
+//
+// And resources loaders (Android 11's addLoaders, removeLoaders, clearLoaders, getLoaders; android.content.res.loader): the
+// resources of a loader's providers -- APKs, each a package of its own (meglerLoaderTable) -- come before these Resources'
+// own, the last loader added first and in it the last provider: an id one of them has is its value and its file, and its
+// names are found by getIdentifier. Only the Resources a loader is added to have it. And the platform's own resources
+// (meglerPlatform: PackageManager.getResourcesForApplication("android")) are a Resources of their own, with no app package:
+// an id of 0x7f is not found there unless a loader has it. Google Play services' DynamiteLoader makes a module's resources
+// so on Android 11 and later -- the platform's, and a loader of the module's APK -- and the stubs kept nothing, while
+// getResourcesForApplication("android") gave the app's own Resources: the Google Maps module's 0x7f ids were looked up in
+// the app's table, its textures were not there, and the map's GL thread ended on a null Bitmap (Transit, 0.1.0.671).
 package android.content.res;
 
 import android.graphics.Typeface;
@@ -96,60 +118,59 @@ public class Resources {
     static final Object sLock = new Object();
     private static Resources sSystem;
 
-    private final AssetManager mAssets;
-    private ResTable mPackageTable;
-    private final DisplayMetrics mMetrics = new DisplayMetrics();
-    private final Configuration mConfig = Configuration.meglerDevice();
-    private ResTable.Config mCfg;
-    private final HashMap<Integer, Drawable.ConstantState> mDrawableCache = new HashMap<>();
-    /** The platform's preloaded drawables, by layout direction (LTR, RTL), and colour drawables: empty, for apps to fill (see above). Not final: apps set them. */
-    @SuppressWarnings({"unchecked", "rawtypes"})
-    private static android.util.LongSparseArray<Drawable.ConstantState>[] sPreloadedDrawables =
-        new android.util.LongSparseArray[] { new android.util.LongSparseArray<>(), new android.util.LongSparseArray<>() };
-    private static android.util.LongSparseArray<Drawable.ConstantState> sPreloadedColorDrawables = new android.util.LongSparseArray<>();
-    private final HashMap<Integer, ColorStateList> mColorCache = new HashMap<>();
-    private final HashMap<Integer, Typeface> mFontCache = new HashMap<>();
+    /**
+     * What these Resources are made of: the AssetManager, the configuration and metrics, the tables, the loaders and the caches
+     * (see the top of the file). Android's field, which apps also reach by reflection; null until setImpl for Resources made with
+     * Resources(ClassLoader), as on Android.
+     */
+    private ResourcesImpl mResourcesImpl;
+    /** The themes made of these Resources (newTheme), which setImpl rebases onto the implementation it gives, as Android's mThemeRefs. */
+    private final java.util.ArrayList<java.lang.ref.WeakReference<Theme>> mThemeRefs = new java.util.ArrayList<>();
     /** The class loader for the app's classes, as Android's Resources keeps it (apps' own Resources subclasses set it by reflection). */
     private ClassLoader mClassLoader = Resources.class.getClassLoader();
     public ClassLoader getClassLoader() { return mClassLoader; }
 
     public Resources(AssetManager a) { this(a, null, null); }
     public Resources(AssetManager a, DisplayMetrics m, Configuration c) {
-        mAssets = a;
-        mMetrics.setToDefaults();
-        if (m != null) mMetrics.setTo(m);
         /* a configuration given here overrides the device's only where it says something (Android's updateFrom) */
-        if (c != null) mConfig.updateFrom(c);
-        updateCfg();
-        loadTables();
-        if (a.meglerPackageApk() != 0) mPackageTable = packageTable(a.meglerPackageApk());
-        synchronized (sAll) {
-            // (Those gone are dropped as the list grows: an app that makes a configuration context's Resources at every
-            // getResources, as some apps' locale wrappers do, would have it grow without end.)
-            if (sAll.size() >= 32 && (sAll.size() & 31) == 0) sAll.removeIf(r -> r.get() == null);
-            sAll.add(new java.lang.ref.WeakReference<>(this));
-        }
+        setImpl(new ResourcesImpl(a, m, c, new android.view.DisplayAdjustments()));
     }
-
-    // ---- Megler: the screen's changes (see the top of the file)
-    /** Every Resources made, while it lives. */
-    private static final java.util.ArrayList<java.lang.ref.WeakReference<Resources>> sAll = new java.util.ArrayList<>();
     /**
-     * The screen was resized or turned: every Resources there is takes `screen` (a configuration of the screen's fields alone,
-     * the others undefined) and the metrics of the new size. Their other fields -- an app's own locale, put in with
-     * updateConfiguration -- stay as they are.
+     * Android's hidden constructor (7 and later): Resources with no implementation until setImpl gives them one -- an app's own
+     * Resources over the implementation of others, answering some lookups itself. The class loader is the one given, else the
+     * system's, as on Android.
      */
-    public static void meglerScreenChanged(Configuration screen, DisplayMetrics m) {
-        java.util.ArrayList<Resources> live = new java.util.ArrayList<>();
-        synchronized (sAll) {
-            for (java.util.Iterator<java.lang.ref.WeakReference<Resources>> i = sAll.iterator(); i.hasNext();) {
-                Resources r = i.next().get();
-                if (r == null) i.remove();
-                else live.add(r);
+    public Resources(ClassLoader classLoader) {
+        mClassLoader = classLoader != null ? classLoader : ClassLoader.getSystemClassLoader();
+    }
+    /** The implementation these Resources are made of (Android's hidden getImpl). */
+    public ResourcesImpl getImpl() { return mResourcesImpl; }
+    /**
+     * These Resources made of another implementation (Android's hidden setImpl): its assets, configuration, metrics, tables,
+     * loaders and caches. The themes made of them are rebased onto it, as Android rebases them.
+     */
+    public void setImpl(ResourcesImpl impl) {
+        if (impl == mResourcesImpl) return;
+        mResourcesImpl = impl;
+        java.util.ArrayList<Theme> themes = new java.util.ArrayList<>();
+        synchronized (mThemeRefs) {
+            for (java.util.Iterator<java.lang.ref.WeakReference<Theme>> i = mThemeRefs.iterator(); i.hasNext();) {
+                Theme t = i.next().get();
+                if (t == null) i.remove();
+                else themes.add(t);
             }
         }
-        for (Resources r : live) r.updateConfiguration(screen, m);
+        for (Theme t : themes) t.rebase();
     }
+    /** The adjustments of the display these Resources are for (Android's hidden getDisplayAdjustments). */
+    public android.view.DisplayAdjustments getDisplayAdjustments() { return mResourcesImpl.getDisplayAdjustments(); }
+
+    // ---- Megler: the screen's changes (see the top of the file)
+    /**
+     * The screen was resized or turned: every implementation of resources there is takes `screen` (a configuration of the
+     * screen's fields alone, the others undefined) and the metrics of the new size (ResourcesImpl.meglerScreenChanged).
+     */
+    public static void meglerScreenChanged(Configuration screen, DisplayMetrics m) { ResourcesImpl.meglerScreenChanged(screen, m); }
     private static int[][] sBuckets;
     /**
      * The sizes the app's resources are made for, as Android's SizeConfigurationBuckets keeps them: the widths (w<N>dp), the
@@ -170,6 +191,8 @@ public class Resources {
      * heap of every app it runs in, and of its 2 GB of addresses, which Yandex Maps ran out of (package 489).
      */
     private static final java.util.HashMap<Integer, ResTable> sPackageTables = new java.util.HashMap<>();
+    /** That package's table (ResourcesImpl: the table of an AssetManager of another package's). */
+    static ResTable meglerPackageTable(int apk) { return packageTable(apk); }
     private static ResTable packageTable(int apk) {
         synchronized (sLock) {
             ResTable t = sPackageTables.get(apk);
@@ -193,13 +216,10 @@ public class Resources {
         l.remove("");
         return l.toArray(new String[0]);
     }
-    private void updateCfg() {
-        String lang = mConfig.locale != null ? mConfig.locale.getLanguage() : "en", country = mConfig.locale != null ? mConfig.locale.getCountry() : "US";
-        mCfg = new ResTable.Config(lang, country, mConfig.screenWidthDp, mConfig.screenHeightDp, mMetrics.densityDpi,
-                                   (mConfig.uiMode & Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES, PLATFORM_RESOURCES_SDK);
-    }
     /** The API level of the framework-res.apk in the Android root: Android 9's. It must follow that file (see the head of this file). */
     static final int PLATFORM_RESOURCES_SDK = 28;
+    /** The app's tables and the platform's, read once (ResourcesImpl). */
+    static void meglerLoadTables() { loadTables(); }
     private static void loadTables() {
         synchronized (sLock) {
             if (sApp == null) {
@@ -232,8 +252,107 @@ public class Resources {
         return d != null ? new ResTable(d, dynamicId) : null;
     }
     private static byte[] emptyTable() { return new byte[] { 2, 0, 12, 0, 12, 0, 0, 0, 0, 0, 0, 0 }; }
-    private ResTable appTable() { return mPackageTable != null ? mPackageTable : sApp; }
-    ResTable table(int id) { int p = id >>> 24; if (p == 0x7f && mPackageTable != null) return mPackageTable; if (p == 1) return sFramework; ResTable lib = sLibs[p]; return lib != null ? lib : sApp; }
+    /** A table with nothing in it: the app package of the platform's own resources (meglerPlatform). */
+    private static ResTable sNone;
+    private static ResTable none() { synchronized (sLock) { if (sNone == null) sNone = new ResTable(emptyTable()); return sNone; } }
+    private ResTable appTable() { ResourcesImpl i = mResourcesImpl; return i.mPackageTable != null ? i.mPackageTable : i.mPlatformOnly ? none() : sApp; }
+    ResTable table(int id) {
+        ResourcesImpl i = mResourcesImpl;
+        if (i.mLoaders.length != 0) {
+            android.content.res.loader.ResourcesProvider p = loaderOf(id);
+            if (p != null) return p.meglerTable();
+        }
+        int p = id >>> 24;
+        if (p == 0x7f && i.mPackageTable != null) return i.mPackageTable;
+        if (p == 1) return sFramework;
+        ResTable lib = sLibs[p];
+        return lib != null ? lib : i.mPlatformOnly ? none() : sApp;
+    }
+
+    // ---- Megler: resources loaders (see the top of the file); they are the implementation's (ResourcesImpl.mLoaders)
+    /** The provider of a loader whose table has this id, the last loader and provider added first; null when none has. */
+    private android.content.res.loader.ResourcesProvider loaderOf(int id) {
+        ResourcesImpl impl = mResourcesImpl;
+        android.content.res.loader.ResourcesLoader[] loaders = impl.mLoaders;
+        for (int i = loaders.length - 1; i >= 0; i--) {
+            android.content.res.loader.ResourcesProvider[] ps = loaders[i].meglerProviders();
+            for (int k = ps.length - 1; k >= 0; k--) {
+                ResTable t = ps[k].meglerTable();
+                if (t != null && t.find(id, impl.mCfg) != null) return ps[k];
+            }
+        }
+        return null;
+    }
+    /** The id of a resource of a loader's by its name, in the package named (null: any), the last added first; 0 for none. */
+    private int loaderIdentifier(String pkg, String type, String name) {
+        android.content.res.loader.ResourcesLoader[] loaders = mResourcesImpl.mLoaders;
+        for (int i = loaders.length - 1; i >= 0; i--) {
+            android.content.res.loader.ResourcesProvider[] ps = loaders[i].meglerProviders();
+            for (int k = ps.length - 1; k >= 0; k--) {
+                ResTable t = ps[k].meglerTable();
+                if (t == null || t.packages.isEmpty()) continue;
+                if (pkg != null && !pkg.equals(t.packages.get(0).name)) continue;
+                int id = t.identifier(null, type, name);
+                if (id != 0) return id;
+            }
+        }
+        return 0;
+    }
+    /**
+     * Adds loaders whose resources come before these Resources' own, the last added first; one already there stays where it
+     * is. As Android's, only the Resources of this implementation have them (Android's AssetManagerUpdateHandler puts them in
+     * the implementation's AssetManager).
+     */
+    public void addLoaders(android.content.res.loader.ResourcesLoader... loaders) {
+        ResourcesImpl impl = mResourcesImpl;
+        synchronized (impl) {
+            java.util.ArrayList<android.content.res.loader.ResourcesLoader> now = new java.util.ArrayList<>(java.util.Arrays.asList(impl.mLoaders));
+            for (android.content.res.loader.ResourcesLoader l : loaders) {
+                if (l == null || now.contains(l)) continue;
+                now.add(l);
+                l.registerOnProvidersChangedCallback(impl, impl.mLoaderChanged);
+            }
+            impl.mLoaders = now.toArray(ResourcesImpl.NO_LOADERS);
+        }
+        impl.meglerFlush();
+    }
+    public void removeLoaders(android.content.res.loader.ResourcesLoader... loaders) {
+        ResourcesImpl impl = mResourcesImpl;
+        synchronized (impl) {
+            java.util.ArrayList<android.content.res.loader.ResourcesLoader> now = new java.util.ArrayList<>(java.util.Arrays.asList(impl.mLoaders));
+            for (android.content.res.loader.ResourcesLoader l : loaders) {
+                if (l != null && now.remove(l)) l.unregisterOnProvidersChangedCallback(impl);
+            }
+            impl.mLoaders = now.toArray(ResourcesImpl.NO_LOADERS);
+        }
+        impl.meglerFlush();
+    }
+    public void clearLoaders() {
+        ResourcesImpl impl = mResourcesImpl;
+        synchronized (impl) {
+            for (android.content.res.loader.ResourcesLoader l : impl.mLoaders) l.unregisterOnProvidersChangedCallback(impl);
+            impl.mLoaders = ResourcesImpl.NO_LOADERS;
+        }
+        impl.meglerFlush();
+    }
+    public java.util.List getLoaders() { return java.util.Collections.unmodifiableList(new java.util.ArrayList<>(java.util.Arrays.asList(mResourcesImpl.mLoaders))); }
+    /** The table of an APK a ResourcesProvider has opened (megler.Native.addApk): its package as it is, 0x7f, read once. */
+    public static ResTable meglerLoaderTable(int apk) { return packageTable(apk); }
+    /** For the log: a table's package and how many types it has. */
+    public static String meglerDescribeTable(ResTable t) {
+        if (t == null || t.packages.isEmpty()) return "no resources";
+        ResTable.Package p = t.packages.get(0);
+        return "package " + p.name + " (0x" + Integer.toHexString(p.id) + ")";
+    }
+    /**
+     * The platform's own resources, a Resources of their own of the app's display and configuration, with no app package:
+     * PackageManager.getResourcesForApplication("android"), as Android's gives a Resources of framework-res.apk alone. A
+     * loader added to them puts its package where the app's would be (Google Play services' modules: see the top).
+     */
+    public static Resources meglerPlatform() {
+        Resources app = megler.ContextImpl.app() != null ? megler.ContextImpl.app().getResources() : getSystem();
+        return new Resources(AssetManager.meglerForPlatform(), app.getDisplayMetrics(), app.getConfiguration());
+    }
 
     // ---- Megler: shared libraries (see the top of the file)
     /** The tables of shared libraries by the package id each was given, and the core's number of each one's APK. */
@@ -258,7 +377,16 @@ public class Resources {
         }
     }
     /** The core's number of the APK that holds the files of a resource id: the platform's (1), a library's, or the app's (0). */
-    private int apkOf(int id) { int p = id >>> 24; if (p == 0x7f && mPackageTable != null) return mAssets.meglerPackageApk(); return p == 1 ? 1 : sLibs[p] != null ? sLibApks[p] : 0; }
+    private int apkOf(int id) {
+        ResourcesImpl impl = mResourcesImpl;
+        if (impl.mLoaders.length != 0) {
+            android.content.res.loader.ResourcesProvider lp = loaderOf(id);
+            if (lp != null) return lp.meglerApk();
+        }
+        int p = id >>> 24;
+        if (p == 0x7f && impl.mPackageTable != null) return impl.mAssets.meglerPackageApk();
+        return p == 1 ? 1 : sLibs[p] != null ? sLibApks[p] : 0;
+    }
     /** The table of the shared library of that package name, or null. */
     private static ResTable library(String packageName) {
         if (packageName == null) return null;
@@ -269,24 +397,20 @@ public class Resources {
     }
 
     public static Resources getSystem() { synchronized (sLock) { if (sSystem == null) sSystem = new Resources(new AssetManager()); return sSystem; } }
-    public final AssetManager getAssets() { return mAssets; }
-    public DisplayMetrics getDisplayMetrics() { return mMetrics; }
-    public Configuration getConfiguration() { return mConfig; }
-    public void updateConfiguration(Configuration c, DisplayMetrics m) {
-        if (c != null) mConfig.updateFrom(c);
-        if (m != null) mMetrics.setTo(m);
-        updateCfg();
-        mDrawableCache.clear(); mColorCache.clear();
-    }
+    public final AssetManager getAssets() { return mResourcesImpl.mAssets; }
+    public DisplayMetrics getDisplayMetrics() { return mResourcesImpl.mMetrics; }
+    public Configuration getConfiguration() { return mResourcesImpl.mConfiguration; }
+    public void updateConfiguration(Configuration c, DisplayMetrics m) { mResourcesImpl.updateConfiguration(c, m); }
     public final void flushLayoutCache() {}
-    public ResTable.Config meglerConfig() { return mCfg; }
+    public ResTable.Config meglerConfig() { return mResourcesImpl.mCfg; }
 
     // ---- raw lookups
     /** The entry's value, references followed (when resolveRefs), into out; false when there is none. */
     public boolean meglerValue(int id, TypedValue out, boolean resolveRefs) {
+        ResTable.Config cfg = mResourcesImpl.mCfg;
         for (int depth = 0; depth < 20; depth++) {
             ResTable t = table(id);
-            ResTable.Entry e = t.find(id, mCfg);
+            ResTable.Entry e = t.find(id, cfg);
             if (e == null) return false;
             out.resourceId = id;
             out.changingConfigurations = 0;
@@ -298,7 +422,7 @@ public class Resources {
             if (isAccent(id)) { out.type = TypedValue.TYPE_INT_COLOR_ARGB8; out.data = sAccent; out.string = null; return true; }
             if (!resolveRefs || out.type != TypedValue.TYPE_REFERENCE || out.data == 0) return true;
             // (An app's resource that names one of Android 12's system colours means that colour: Android 9 has private
-            // resources of its own under those numbers, which no app can name. ResTable.find, NEWER_TYPES.)
+            // resources of its own under those numbers, which no app can name. ResTable.find.)
             if (t != sFramework && megler.SystemColors.has(out.data)) { systemColor(out.data, out); return true; }
             id = out.data;
         }
@@ -364,7 +488,7 @@ public class Resources {
         Bag cached = cache.get(id);
         if (cached != null) return cached;
         ResTable t = table(id);
-        ResTable.Entry e = t.find(id, mCfg);
+        ResTable.Entry e = t.find(id, mResourcesImpl.mCfg);
         if (e == null || !e.complex()) return null;
         Bag b = new Bag();
         int parent = t.bagParent(e);
@@ -387,8 +511,8 @@ public class Resources {
         cache.put(id, b);
         return b;
     }
-    private HashMap<Integer, Bag> mBags;
-    private HashMap<Integer, Bag> bagCache() { if (mBags == null) mBags = new HashMap<>(); return mBags; }
+    /** The implementation's bags by id (ResourcesImpl.mBags: Resources that share it share them, as an AssetManager's). */
+    private HashMap<Integer, Bag> bagCache() { ResourcesImpl i = mResourcesImpl; HashMap<Integer, Bag> b = i.mBags; if (b == null) i.mBags = b = new HashMap<>(); return b; }
     /** A bag's items, keyed by attribute (or array index). */
     public static final class Bag {
         public int n; public int[] keys = new int[8], types = new int[8], data = new int[8], dens = new int[8]; public CharSequence[] strings = new CharSequence[8];
@@ -430,9 +554,14 @@ public class Resources {
         if (type == null) return 0;
         try { return Integer.parseInt(n); } catch (NumberFormatException e) {}
         if ("android".equals(pkg)) return sFramework.identifier("android", type, n);
+        // Megler: a loader's package first (see the top of the file)
+        if (mResourcesImpl.mLoaders.length != 0) {
+            int fromLoader = loaderIdentifier(pkg, type, n);
+            if (fromLoader != 0) return fromLoader;
+        }
         // addAssetPath can also add a same-package resource archive (GMS's locale-filtered resources).
         // Its partial table must not hide styles and attributes still present in the base APK.
-        if (pkg == null || pkg.equals(mAssets.meglerPackageName())) {
+        if (pkg == null || pkg.equals(mResourcesImpl.mAssets.meglerPackageName())) {
             int own = appTable().identifier(null, type, n);
             if (own != 0) return own;
         }
@@ -443,9 +572,16 @@ public class Resources {
         return id;
     }
     public String getResourceName(int id) { String t = getResourceTypeName(id), e = getResourceEntryName(id); return getResourcePackageName(id) + ":" + t + "/" + e; }
-    public String getResourcePackageName(int id) { ResTable.Package p = table(id).pkg(id); if (p == null) throw new NotFoundException("Unable to find resource ID #0x" + Integer.toHexString(id)); return (id >>> 24) == 0x7f ? mAssets.meglerPackageName() : p.name; }
+    public String getResourcePackageName(int id) {
+        ResTable t = table(id);
+        ResTable.Package p = t.pkg(id);
+        if (p == null) throw new NotFoundException("Unable to find resource ID #0x" + Integer.toHexString(id));
+        // (A loader's resource is its own package's, as Android names it.)
+        ResourcesImpl i = mResourcesImpl;
+        return (id >>> 24) == 0x7f && (t == sApp || t == i.mPackageTable) ? i.mAssets.meglerPackageName() : p.name;
+    }
     public String getResourceTypeName(int id) { String s = table(id).typeName(id); if (s == null) throw new NotFoundException("Unable to find resource ID #0x" + Integer.toHexString(id)); return s; }
-    public String getResourceEntryName(int id) { String s = table(id).keyName(id, mCfg); if (s == null) throw new NotFoundException("Unable to find resource ID #0x" + Integer.toHexString(id)); return s; }
+    public String getResourceEntryName(int id) { String s = table(id).keyName(id, mResourcesImpl.mCfg); if (s == null) throw new NotFoundException("Unable to find resource ID #0x" + Integer.toHexString(id)); return s; }
 
     // ---- values
     private TypedValue value(int id) { TypedValue v = new TypedValue(); getValue(id, v, true); return v; }
@@ -458,7 +594,7 @@ public class Resources {
     }
     public CharSequence getText(int id, CharSequence def) { try { return id != 0 ? getText(id) : def; } catch (NotFoundException e) { return def; } }
     public String getString(int id) { return getText(id).toString(); }
-    public String getString(int id, Object... args) { return String.format(mConfig.locale, getString(id), args); }
+    public String getString(int id, Object... args) { return String.format(mResourcesImpl.mConfiguration.locale, getString(id), args); }
     public CharSequence getQuantityText(int id, int quantity) {
         Bag b = meglerBag(id);
         if (b == null) return getText(id);
@@ -475,7 +611,7 @@ public class Resources {
         return TypedValue.coerceToString(b.types[i], b.data[i]);
     }
     public String getQuantityString(int id, int quantity) { return getQuantityText(id, quantity).toString(); }
-    public String getQuantityString(int id, int quantity, Object... args) { return String.format(mConfig.locale, getQuantityString(id, quantity), args); }
+    public String getQuantityString(int id, int quantity, Object... args) { return String.format(mResourcesImpl.mConfiguration.locale, getQuantityString(id, quantity), args); }
     public CharSequence[] getTextArray(int id) {
         Bag b = meglerBag(id);
         if (b == null) throw new NotFoundException("Text array resource ID #0x" + Integer.toHexString(id));
@@ -506,9 +642,9 @@ public class Resources {
     public int getInteger(int id) { TypedValue v = value(id); if (v.type >= TypedValue.TYPE_FIRST_INT && v.type <= TypedValue.TYPE_LAST_INT) return v.data; throw new NotFoundException("Resource ID #0x" + Integer.toHexString(id) + " type #0x" + Integer.toHexString(v.type) + " is not valid"); }
     public boolean getBoolean(int id) { TypedValue v = value(id); if (v.type >= TypedValue.TYPE_FIRST_INT && v.type <= TypedValue.TYPE_LAST_INT) return v.data != 0; throw new NotFoundException("Resource ID #0x" + Integer.toHexString(id) + " is not a boolean"); }
     public float getFloat(int id) { TypedValue v = value(id); if (v.type == TypedValue.TYPE_FLOAT) return v.getFloat(); throw new NotFoundException("Resource ID #0x" + Integer.toHexString(id) + " is not a float"); }
-    public float getDimension(int id) { TypedValue v = value(id); if (v.type == TypedValue.TYPE_DIMENSION) return TypedValue.complexToDimension(v.data, mMetrics); throw new NotFoundException("Resource ID #0x" + Integer.toHexString(id) + " type #0x" + Integer.toHexString(v.type) + " is not valid"); }
-    public int getDimensionPixelOffset(int id) { TypedValue v = value(id); if (v.type == TypedValue.TYPE_DIMENSION) return TypedValue.complexToDimensionPixelOffset(v.data, mMetrics); throw new NotFoundException("Resource ID #0x" + Integer.toHexString(id) + " is not a dimension"); }
-    public int getDimensionPixelSize(int id) { TypedValue v = value(id); if (v.type == TypedValue.TYPE_DIMENSION) return TypedValue.complexToDimensionPixelSize(v.data, mMetrics); throw new NotFoundException("Resource ID #0x" + Integer.toHexString(id) + " is not a dimension"); }
+    public float getDimension(int id) { TypedValue v = value(id); if (v.type == TypedValue.TYPE_DIMENSION) return TypedValue.complexToDimension(v.data, mResourcesImpl.mMetrics); throw new NotFoundException("Resource ID #0x" + Integer.toHexString(id) + " type #0x" + Integer.toHexString(v.type) + " is not valid"); }
+    public int getDimensionPixelOffset(int id) { TypedValue v = value(id); if (v.type == TypedValue.TYPE_DIMENSION) return TypedValue.complexToDimensionPixelOffset(v.data, mResourcesImpl.mMetrics); throw new NotFoundException("Resource ID #0x" + Integer.toHexString(id) + " is not a dimension"); }
+    public int getDimensionPixelSize(int id) { TypedValue v = value(id); if (v.type == TypedValue.TYPE_DIMENSION) return TypedValue.complexToDimensionPixelSize(v.data, mResourcesImpl.mMetrics); throw new NotFoundException("Resource ID #0x" + Integer.toHexString(id) + " is not a dimension"); }
     public float getFraction(int id, int base, int pbase) { TypedValue v = value(id); if (v.type == TypedValue.TYPE_FRACTION) return TypedValue.complexToFraction(v.data, base, pbase); throw new NotFoundException("Resource ID #0x" + Integer.toHexString(id) + " is not a fraction"); }
     @Deprecated public int getColor(int id) { return getColor(id, null); }
     public int getColor(int id, Theme theme) {
@@ -533,7 +669,8 @@ public class Resources {
     public ColorStateList loadColorStateList(TypedValue v, int id, Theme theme) {
         if (v.type >= TypedValue.TYPE_FIRST_INT && v.type <= TypedValue.TYPE_LAST_INT) return ColorStateList.valueOf(v.data);
         if (v.type != TypedValue.TYPE_STRING || v.string == null) throw new NotFoundException("Resource ID #0x" + Integer.toHexString(id) + " is not a color");
-        ColorStateList c = theme == null ? mColorCache.get(id) : null;
+        HashMap<Integer, ColorStateList> cache = mResourcesImpl.mColorCache;
+        ColorStateList c = theme == null ? cache.get(id) : null;
         if (c != null) return c;
         String file = v.string.toString();
         try {
@@ -542,7 +679,7 @@ public class Resources {
         } catch (Exception e) {
             throw new NotFoundException("File " + file + " from color state list resource ID #0x" + Integer.toHexString(id), e);
         }
-        if (theme == null && id != 0) mColorCache.put(id, c);
+        if (theme == null && id != 0) cache.put(id, c);
         return c;
     }
 
@@ -558,7 +695,7 @@ public class Resources {
     /** A drawable value: a colour, an image file, or a drawable XML file. */
     public Drawable loadDrawable(TypedValue v, int id, Theme theme) {
         if (v.type >= TypedValue.TYPE_FIRST_COLOR_INT && v.type <= TypedValue.TYPE_LAST_COLOR_INT) {
-            Drawable p = meglerPreloaded(sPreloadedColorDrawables, v.data, theme);
+            Drawable p = meglerPreloaded(ResourcesImpl.sPreloadedColorDrawables, v.data, theme);
             return p != null ? p : new android.graphics.drawable.ColorDrawable(v.data);
         }
         if (v.type == TypedValue.TYPE_ATTRIBUTE && theme != null) { TypedValue r = new TypedValue(); if (theme.resolveAttribute(v.data, r, true)) return loadDrawable(r, r.resourceId, theme); }
@@ -567,10 +704,11 @@ public class Resources {
             throw new NotFoundException("Resource ID #0x" + Integer.toHexString(id) + " type #0x" + Integer.toHexString(v.type) + " is not valid");
         }
         int rid = v.resourceId != 0 ? v.resourceId : id;
-        Drawable.ConstantState cs = mDrawableCache.get(rid);
+        HashMap<Integer, Drawable.ConstantState> cache = mResourcesImpl.mDrawableCache;
+        Drawable.ConstantState cs = cache.get(rid);
         if (cs != null) return cs.newDrawable(this, theme);
-        android.util.LongSparseArray<Drawable.ConstantState>[] preloaded = sPreloadedDrawables;
-        int dir = mConfig.getLayoutDirection();
+        android.util.LongSparseArray<Drawable.ConstantState>[] preloaded = ResourcesImpl.sPreloadedDrawables;
+        int dir = mResourcesImpl.mConfiguration.getLayoutDirection();
         if (preloaded != null && dir >= 0 && dir < preloaded.length) {
             Drawable p = meglerPreloaded(preloaded[dir], (((long) v.assetCookie) << 32) | v.data, theme);
             if (p != null) return p;
@@ -586,7 +724,7 @@ public class Resources {
             n.initCause(e);
             throw n;
         }
-        if (d != null && !file.endsWith(".xml")) { Drawable.ConstantState s = d.getConstantState(); if (s != null) mDrawableCache.put(rid, s); }
+        if (d != null && !file.endsWith(".xml")) { Drawable.ConstantState s = d.getConstantState(); if (s != null) cache.put(rid, s); }
         return d;
     }
     /** A preloaded drawable of that key, made for these resources and given the theme, as ResourcesImpl.loadDrawable does; null when there is none. */
@@ -649,16 +787,17 @@ public class Resources {
         return new AssetFileDescriptor(path, fd, fdoff & 0xFFFFFFFFFFL, megler.Native.apkFileLength(apkOf(id), path));
     }
     /** The density a drawable resource's image was made for. */
-    public int meglerDrawableDensity(int id) { TypedValue v = new TypedValue(); return meglerValue(id, v, true) ? (v.density == 0 ? 160 : v.density == 0xffff ? mMetrics.densityDpi : v.density) : 160; }
+    public int meglerDrawableDensity(int id) { TypedValue v = new TypedValue(); return meglerValue(id, v, true) ? (v.density == 0 ? 160 : v.density == 0xffff ? mResourcesImpl.mMetrics.densityDpi : v.density) : 160; }
     public Typeface getFont(int id) {
-        Typeface t = mFontCache.get(id);
+        HashMap<Integer, Typeface> cache = mResourcesImpl.mFontCache;
+        Typeface t = cache.get(id);
         if (t != null) return t;
         TypedValue v = new TypedValue();
         getValue(id, v, true);
         String file = v.string == null ? "" : v.string.toString();
         if (file.endsWith(".xml")) t = megler.ResInflate.fontFamily(this, meglerXml(file, id));
         else t = Typeface.meglerFromData(meglerFile(file, id));
-        mFontCache.put(id, t);
+        cache.put(id, t);
         return t;
     }
 
@@ -668,7 +807,15 @@ public class Resources {
     public android.animation.Animator meglerLoadAnimator(int id) { return megler.ResInflate.animator(this, getAnimation(id)); }
 
     // ---- themes and attributes
-    public final Theme newTheme() { return new Theme(); }
+    public final Theme newTheme() {
+        Theme t = new Theme();
+        synchronized (mThemeRefs) {
+            // (Those gone are dropped as the list grows, as in ResourcesImpl's list.)
+            if (mThemeRefs.size() >= 32 && (mThemeRefs.size() & 31) == 0) mThemeRefs.removeIf(r -> r.get() == null);
+            mThemeRefs.add(new java.lang.ref.WeakReference<>(t));
+        }
+        return t;
+    }
     public TypedArray obtainAttributes(android.util.AttributeSet set, int[] attrs) { return new Theme().obtainStyledAttributes(set, attrs, 0, 0, false); }
     public int getConfigurationChangesMegler() { return 0; }
 
@@ -693,10 +840,20 @@ public class Resources {
             mKey = mKey * 31 + resId;
         }
         public void setTo(Theme o) { mAttrs.clear(); mAttrs.putAll(o.mAttrs); mApplied.clear(); mApplied.addAll(o.mApplied); mKey = o.mKey; }
-        public void rebase() {}
+        /**
+         * As Android's: the styles applied to the theme, in their order and with their force, applied again to its Resources as
+         * they are now -- their configuration, and the implementation setImpl gave them. It did nothing.
+         */
+        public void rebase() {
+            java.util.ArrayList<int[]> applied = new java.util.ArrayList<>(mApplied);
+            mAttrs.clear();
+            mApplied.clear();
+            mKey = 0;
+            for (int[] a : applied) applyStyle(a[0], a[1] != 0);
+        }
         @Override public String toString() {
             String probe = System.getenv("TL_RES_PROBE");
-            if (probe != null) for (String x : probe.split(",")) { int id = (int) Long.parseLong(x.replace("0x", ""), 16); ResTable t = table(id); ResTable.Entry e = t.find(id, mCfg); android.util.Log.d("ResProbe", x + ": " + t.meglerDescribe(id) + " table " + (t == sFramework ? "framework" : "app") + " entry " + (e == null ? "null" : "complex=" + e.complex() + " parent=0x" + Integer.toHexString(e.complex() ? t.bagParent(e) : 0) + " count=" + (e.complex() ? t.bagCount(e) : 0)) + " bag " + (meglerBag(id) == null ? "null" : meglerBag(id).n)); } StringBuilder b = new StringBuilder("Theme{"); for (int[] a : mApplied) { Bag g = meglerBag(a[0]); b.append("0x").append(Integer.toHexString(a[0])).append('(').append(g == null ? "missing" : g.n + " attrs").append(") "); } return b.append(mAttrs.size()).append(" attrs}").toString(); }
+            if (probe != null) for (String x : probe.split(",")) { int id = (int) Long.parseLong(x.replace("0x", ""), 16); ResTable t = table(id); ResTable.Entry e = t.find(id, mResourcesImpl.mCfg); android.util.Log.d("ResProbe", x + ": " + t.meglerDescribe(id) + " table " + (t == sFramework ? "framework" : "app") + " entry " + (e == null ? "null" : "complex=" + e.complex() + " parent=0x" + Integer.toHexString(e.complex() ? t.bagParent(e) : 0) + " count=" + (e.complex() ? t.bagCount(e) : 0)) + " bag " + (meglerBag(id) == null ? "null" : meglerBag(id).n)); } StringBuilder b = new StringBuilder("Theme{"); for (int[] a : mApplied) { Bag g = meglerBag(a[0]); b.append("0x").append(Integer.toHexString(a[0])).append('(').append(g == null ? "missing" : g.n + " attrs").append(") "); } return b.append(mAttrs.size()).append(" attrs}").toString(); }
         public int getChangingConfigurations() { return 0; }
         public int[] getAttributeResolutionStack(int defStyleAttr, int defStyleRes, int explicitStyleRes) { return new int[0]; }
         public int getExplicitStyle(android.util.AttributeSet set) { return set == null ? 0 : set.getStyleAttribute(); }
@@ -838,14 +995,11 @@ public class Resources {
     public static boolean resourceHasPackage(int p0) { return false; }
     public static int selectDefaultTheme(int p0, int p1) { return 0; }
     public static int selectSystemTheme(int p0, int p1, int p2, int p3, int p4, int p5) { return 0; }
-    public void addLoaders(android.content.res.loader.ResourcesLoader[] p0) {}
     public int applyConfigChanges(android.content.res.Configuration p0) { return 0; }
-    public void clearLoaders() {}
     public void dump(java.io.PrintWriter p0, java.lang.String p1) {}
     public void finishPreloading() {}
     public java.lang.String getLastResourceResolution() { return null; }
-    public java.util.List getLoaders() { return new java.util.ArrayList(); }
-    public android.util.LongSparseArray getPreloadedDrawables() { return sPreloadedDrawables != null && sPreloadedDrawables.length > 0 ? sPreloadedDrawables[0] : null; }
+    public android.util.LongSparseArray getPreloadedDrawables() { return mResourcesImpl.getPreloadedDrawables(); }
     public android.content.res.Configuration[] getSizeAndUiModeConfigurations() { return getSizeConfigurations(); }
     /* The sizes the app's resources are made for, one configuration for each (meglerSizeBuckets), as Android's AssetManager lists them. */
     public android.content.res.Configuration[] getSizeConfigurations() {
@@ -861,7 +1015,6 @@ public class Resources {
     public void parseBundleExtra(java.lang.String p0, android.util.AttributeSet p1, android.os.Bundle p2) {}
     public void parseBundleExtras(android.content.res.XmlResourceParser p0, android.os.Bundle p1) {}
     public void preloadFonts(int p0) {}
-    public void removeLoaders(android.content.res.loader.ResourcesLoader[] p0) {}
     public void setCallbacks(android.content.res.Resources.UpdateCallbacks p0) {}
     public void setLocaleConfig(android.app.LocaleConfig p0) {}
     public void startPreloading() {}

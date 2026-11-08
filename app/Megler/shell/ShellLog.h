@@ -25,11 +25,21 @@ void initialize(const std::wstring& localStateDirectory);
 
 /// A line of the shell's own.
 void write(const std::string& line);
+/// A line of the shell's own, and the log written out with it at once: one said before a step that may not end -- the
+/// process ended under it by Windows, which tells the process nothing -- is then the log's last.
+void writeNow(const std::string& line);
 /// The lines not in the file yet written out now (they go every 200 ms, and at
-/// once for a fault's report): before suspending and exiting.
+/// once for a fault's report and for the core's word of a process about to
+/// end): before suspending and exiting. The file is written with no lock held
+/// that a line being said waits for: only another write waits for a write.
 void flush();
-/// megler_config.log's sink: a line of the core's, from any thread.
+/// megler_config.log's sink: a line of the core's, from any thread, and from
+/// several at once (the core calls it past its log's lock).
 void core(int level, const char* line, void* user);
+/// For the tests (core/tests/mg_shell_windows.cpp): `hook` is called each time
+/// lines are written out, as the write begins -- where a disk that stands would
+/// hold the writer. None in the app.
+void setWriteHook(void (*hook)());
 
 std::string path();
 

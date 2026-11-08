@@ -848,6 +848,35 @@ static void *find_native(const char *cls, const char *name, const char *sig, boo
 
 void *mg_jni_native(const char *cls, const char *name, const char *sig) { return find_native(cls, name, sig, true); }
 
+const char *mg_jni_native_sig(const char *cls, const char *name)
+{
+    mg_jclass *c = mg_jni_class(cls, NULL);
+    const char *sig = NULL;
+    jnative *n;
+    mg_lock_acquire(&g_jni_lock);
+    for (n = c->natives; n && !sig; n = n->next)
+        if (!strcmp(n->name, name)) sig = n->sig;
+    mg_lock_release(&g_jni_lock);
+    return sig;
+}
+
+int mg_jni_natives_said(const char *cls, char *out, size_t size)
+{
+    mg_jclass *c = mg_jni_class(cls, NULL);
+    size_t at = 0;
+    int count = 0;
+    jnative *n;
+    if (size) out[0] = 0;
+    mg_lock_acquire(&g_jni_lock);
+    for (n = c->natives; n; n = n->next) {
+        if (at < size) at += (size_t)snprintf(out + at, size - at, "%s%s%s", count ? ", " : "", n->name, n->sig);
+        count++;
+    }
+    mg_lock_release(&g_jni_lock);
+    if (size && at >= size) out[size - 1] = 0;
+    return count;
+}
+
 static void native_tried(const char *cls, const char *name, const char *sig, char *out, size_t n)
 {
     char brief[1024], full[1024];
@@ -2027,11 +2056,29 @@ static i64 j_GetDirectBufferCapacity(JNIEnvP e, mg_jobj *o)
     if (real_buffer(o)) return mg_jni_get_field(o, "address").j ? mg_jni_get_field(o, "capacity").i : -1;
     return o && o->native && !strcmp(mg_jni_class_name(o), "java/nio/DirectByteBuffer") ? ((direct_buffer *)o->native)->capacity : -1;
 }
+/* Whether `o` is one of the references the native method running on this thread was handed: its receiver or class, or a parameter. */
+static bool handed_to_native(const mg_jobj *o)
+{
+    const mg_dvm_thread *t = g_dvm.running ? mg_dvm_self_existing() : NULL;
+    const char *s;
+    int i;
+    if (!t || !t->native_shorty) return false;
+    if (o == t->native_target) return true;
+    if (!t->native_params) return false;
+    for (s = t->native_shorty + 1, i = 0; *s; s++, i++)
+        if (*s == 'L' && t->native_params[i].l == o) return true;
+    return false;
+}
+
 /*
  * GetObjectRefType: 0 invalid, 1 local, 2 global, 3 weak global. A reference is the object's address here, so the kind is
  * not in the reference: what is kept is, for each object, how many global and how many weak global references native code
  * holds to it (ref_counted), and the answer is the strongest of those: global if there is one, weak if there is only that,
- * local otherwise. It is exact unless a library asks about a local reference to an object it also holds globally.
+ * local otherwise -- but local for a reference the running native method was handed, as Android's are, whatever else
+ * refers to the object. Chromium's JavaParamRef checks each parameter so (scoped_java_ref.cc, "Check failed: env &&
+ * env->GetObjectRefType(obj) == JNILocalRefType"), and its native code holds its Java peer globally and is handed it as the
+ * caller of every call: Ozon's Cronet ended there (0.1.0.671). It is exact unless a library asks about a local reference
+ * it got back from a call of its own to an object it also holds globally.
  */
 static i32 j_GetObjectRefType(JNIEnvP e, mg_jobj *o)
 {
@@ -2043,6 +2090,7 @@ static i32 j_GetObjectRefType(JNIEnvP e, mg_jobj *o)
     r = ref_find(o);
     if (r) kind = r->global > 0 ? 2 : r->weak > 0 ? 3 : 1;
     mg_lock_release(&g_refs_lock);
+    if (kind != 1 && handed_to_native(o)) kind = 1;
     return kind;
 }
 

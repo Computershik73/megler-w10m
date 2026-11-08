@@ -26,6 +26,12 @@
 # sources alone, as assets/module.dex: a module of its own, for a class loader
 # the app makes (the data app's step delegate-last-scope).
 #
+# An app with a loader/ folder (an AndroidManifest.xml and res/) carries an
+# APK of those resources alone, a package of its own made by aapt2, as
+# assets/loader.apk: what the data app's step resources-loader puts over the
+# platform's resources with a ResourcesLoader, as Google Play services'
+# DynamiteLoader puts a module's.
+#
 # An app with a stubs/ folder is compiled against those classes before
 # android.jar's, and they are not in its DEX file: the platform's classes as a
 # later Android has them, for code that calls what android.jar has not (the data
@@ -172,12 +178,23 @@ for app in "$APPS"/*/; do
       || { head -40 "$W/d8.log" >&2; echo "d8 failed for $name's module" >&2; exit 1; }
     MODULE="$(m "$W/module-dex/classes.dex")"
   fi
-  python - "$(m "$W/base.apk")" "$(m "$W/dex/classes.dex")" "$(m "$apk")" "$(m "$W/lib")" "$MODULE" <<'EOF'
+  LOADER=-
+  if [ -d "$app/loader" ]; then
+    # An APK of resources alone, a package of its own: what the app puts over the platform's resources with a ResourcesLoader.
+    "$BT/aapt2.exe" compile --dir "$(m "$app/loader/res")" -o "$(m "$W/loader-res.zip")"
+    "$BT/aapt2.exe" link -o "$(m "$W/loader.apk")" -I "$(m "$JAR")" --manifest "$(m "$app/loader/AndroidManifest.xml")" \
+      --min-sdk-version 21 --target-sdk-version 28 "$(m "$W/loader-res.zip")" 2>&1 | { grep -v "is compressed" || true; }
+    [ -f "$W/loader.apk" ] || { echo "aapt2 could not make $name's loader APK" >&2; exit 1; }
+    LOADER="$(m "$W/loader.apk")"
+  fi
+  python - "$(m "$W/base.apk")" "$(m "$W/dex/classes.dex")" "$(m "$apk")" "$(m "$W/lib")" "$MODULE" "$LOADER" <<'EOF'
 import os, shutil, sys, zipfile
-base, dex, out, libs, module = sys.argv[1:6]
+base, dex, out, libs, module, loader = sys.argv[1:7]
 shutil.copyfile(base, out)
 with zipfile.ZipFile(out, 'a', zipfile.ZIP_DEFLATED) as z:
     z.write(dex, 'classes.dex')
+    if loader != '-':
+        z.write(loader, 'assets/loader.apk', zipfile.ZIP_STORED)
     if module != '-':
         z.write(module, 'assets/module.dex')
         # 3 MB of a pattern that deflates well, byte i being (i * 31 + (i >> 12)) & 255: AssetManager.open inflates an

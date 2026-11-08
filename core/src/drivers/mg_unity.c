@@ -33,6 +33,9 @@
 
 #define PLAYER "com/unity3d/player/UnityPlayer"
 
+/* The classes the engine's natives are registered on: UnityPlayer's own, and Unity 6's hosts of the player, which extend it. */
+static const char *const k_players[] = { PLAYER, "com/unity3d/player/UnityPlayerForActivityOrService", "com/unity3d/player/UnityPlayerForGameActivity" };
+
 static struct {
     mg_jobj *activity, *player, *surface;
     mg_nwindow *window;
@@ -44,15 +47,22 @@ static struct {
 
 static void configuration_screen(int width, int height);
 
+/*
+ * A native of the player's on whichever of its classes this version registered it (Unity 6 registers the lifecycle natives
+ * on the class that hosts the player in an activity); any signature where `sig` is NULL. NULL, and nothing said, where it has none.
+ */
+static void *player_native(const char *name, const char *sig)
+{
+    void *fn = NULL;
+    size_t i;
+    for (i = 0; i < MG_COUNT(k_players) && !fn; i++) fn = mg_jni_native(k_players[i], name, sig);
+    return fn;
+}
+
 /* A native of the player's, wherever this version of Unity registered it; NULL, said once, when it has none. */
 static void *native_of(const char *cls, const char *name, const char *sig)
 {
-    void *fn = mg_jni_native(cls, name, sig);
-    /* Unity 6 registers the lifecycle natives on the class that hosts the player in an activity. */
-    if (!fn && !strcmp(cls, PLAYER)) {
-        fn = mg_jni_native("com/unity3d/player/UnityPlayerForActivityOrService", name, sig);
-        if (!fn) fn = mg_jni_native("com/unity3d/player/UnityPlayerForGameActivity", name, sig);
-    }
+    void *fn = !strcmp(cls, PLAYER) ? player_native(name, sig) : mg_jni_native(cls, name, sig);
     if (!fn) mg_note_once("unity: the engine has no %s.%s%s", cls, name, sig);
     return fn;
 }
@@ -112,6 +122,124 @@ static bool load_engine(void)
     return true;
 }
 
+/*
+ * The player is an object of the class its natives are on: UnityPlayer's, or in Unity 6 that of the host the player is made
+ * for (UnityPlayerForActivityOrService, UnityPlayerForGameActivity), which extends it: what the engine finds the player's
+ * class to be is what Java's would be.
+ */
+static void player_class(void)
+{
+    size_t i;
+    for (i = 1; i < MG_COUNT(k_players); i++)
+        if (!mg_jni_native_sig(PLAYER, "nativeRender") && mg_jni_native_sig(k_players[i], "nativeRender")) {
+            U.player->cls = mg_jni_class(k_players[i], PLAYER);
+            mg_info("unity: the engine's natives are %s's: the player is one", k_players[i]);
+            return;
+        }
+}
+
+/* Whether a class named in a signature is a Context (an Activity, the app's own activity among them) or a view (the player). */
+static bool is_context_class(const char *name, size_t n)
+{
+    static const char *const kinds[] = { "android/content/Context", "android/content/ContextWrapper", "android/view/ContextThemeWrapper", "android/app/Activity" };
+    size_t i;
+    for (i = 0; i < MG_COUNT(kinds); i++)
+        if (n == strlen(kinds[i]) && !strncmp(name, kinds[i], n)) return true;
+    return n > 8 && !strncmp(name + n - 8, "Activity", 8);
+}
+static bool is_view_class(const char *name, size_t n)
+{
+    static const char *const kinds[] = { "android/view/View", "android/view/ViewGroup", "android/widget/FrameLayout" };
+    size_t i;
+    for (i = 0; i < MG_COUNT(kinds); i++)
+        if (n == strlen(kinds[i]) && !strncmp(name, kinds[i], n)) return true;
+    return n >= strlen(PLAYER) && !strncmp(name, PLAYER, strlen(PLAYER));
+}
+
+/*
+ * initJni, the end of UnityPlayer's constructor: the engine keeps the player and the Context, which it asks Java through for
+ * as long as it runs. Each version has declared it its own way -- (Context) up to 2022, (Context, int) in Unity 6.0 -- and on
+ * one of three classes, and a version that declared it otherwise was never called: WOW (Unity 6) went on with no player and no
+ * Context, called UnityPlayer's executeMainThreadJobs, initializeGoogleAr and shouldSetGameState on null (the log's
+ * "java/lang/Object...is not implemented": the class of null), and ended in strlen(NULL) from libunity.so as its crash handler
+ * set itself up. So it is called as the engine registered it, whatever its parameters, with what UnityPlayer passes: the
+ * Context for a Context or an activity, the player for a view, 0 for a number (Unity 6's kind of host: 0, an activity), false,
+ * null for anything else. Where the engine registered none, the log says which natives it did register.
+ */
+static void init_jni(void)
+{
+    mg_jvalue a[8];
+    const char *sig = NULL, *cls = PLAYER, *p;
+    void *fn = NULL;
+    int n = 0;
+    size_t i;
+    for (i = 0; i < MG_COUNT(k_players) && !fn; i++) {
+        sig = mg_jni_native_sig(k_players[i], "initJni");
+        if (sig) {
+            cls = k_players[i];
+            fn = mg_jni_native(cls, "initJni", sig);
+        }
+    }
+    if (!fn) {
+        /* (Exported under its JNI name instead, which says no parameters: the Context alone, as before Unity 6.) */
+        sig = "(Landroid/content/Context;)V";
+        fn = mg_jni_native(PLAYER, "initJni", sig);
+    }
+    if (!fn) {
+        for (i = 0; i < MG_COUNT(k_players); i++) {
+            char said[1500];
+            if (mg_jni_natives_said(k_players[i], said, sizeof(said)))
+                mg_warn("unity: the engine registered no initJni; %s's natives: %s", k_players[i], said);
+        }
+        mg_note_once("unity: no initJni: the engine has no player and no Context, and the game may not get far");
+        return;
+    }
+    memset(a, 0, sizeof(a));
+    for (p = sig + 1; *p && *p != ')' && n < (int)MG_COUNT(a); n++) {
+        if (*p == '[') {
+            while (*p == '[') p++;
+            p = *p == 'L' && strchr(p, ';') ? strchr(p, ';') + 1 : p + (*p ? 1 : 0);
+        } else if (*p == 'L') {
+            const char *end = strchr(p, ';');
+            size_t len = end ? (size_t)(end - p - 1) : 0;
+            if (is_context_class(p + 1, len)) a[n].l = U.activity;
+            else if (is_view_class(p + 1, len)) a[n].l = U.player;
+            p = end ? end + 1 : p + strlen(p);
+        } else {
+            p++;
+        }
+    }
+    mg_jni_call_native(fn, U.player, sig, a);
+    mg_info("unity: initJni%s done (%s's)", sig, cls);
+    /* What else this version registered there: the next question when a new one misbehaves. */
+    {
+        char said[1500];
+        if (mg_jni_natives_said(cls, said, sizeof(said))) mg_info("unity: %s's natives: %s", cls, said);
+    }
+}
+
+/* What the UI thread is to do as the app starts, and what came of it. */
+typedef struct ui_start {
+    volatile i32 done;
+    bool ok;
+} ui_start;
+
+static void ui_start_engine(void *arg)
+{
+    ui_start *s = (ui_start *)arg;
+    mg_jvalue a[2];
+    s->ok = load_engine();
+    if (s->ok) {
+        player_class();
+        init_jni();
+        a[0].j = a[1].j = 0;
+        a[0].l = mg_jni_class_object("com/unity3d/player/UnityWebRequest");
+        if (player_native("nativeInitWebRequest", NULL)) call("nativeInitWebRequest", "(Ljava/lang/Class;)V", a);
+    }
+    mg_atomic_xchg(&s->done, 1);
+    mg_futex_wake(&s->done, true);
+}
+
 static MG_HOSTCB void unity_main(void *arg)
 {
     mg_jvalue a[2];
@@ -121,19 +249,26 @@ static MG_HOSTCB void unity_main(void *arg)
     unsigned calls = 0, notes = 0;
     (void)arg;
     if (mg_app_threads_give_way()) mg_thread_runs_app_code();
-    if (!load_engine()) {
-        mg_atomic_xchg(&U.started, -1);
-        return;
+    /* This is UnityPlayer's main thread, which has a Looper on Android: a native looper for the asking, its descriptors' callbacks run before each frame. */
+    mg_looper_java_thread();
+    {
+        /*
+         * UnityPlayer's constructor runs on the main ("UI") thread: the engine loaded (libmain's JNI_OnLoad, and NativeLoader.load,
+         * which loads libunity.so and the game's code and runs their JNI_OnLoad), initJni, the web requests' class. Here that is the
+         * main looper's thread (jni/mg_jni_loop.c), which has a native looper as Android's has: the engine takes the UI thread's
+         * looper as it loads, and runs its jobs for the UI thread through it; loaded on this thread, which had none, it said
+         * "Couldn't retrieve native ALooper for UI thread". The flag unity-load-here loads it on this thread, as before.
+         */
+        ui_start s;
+        memset(&s, 0, sizeof(s));
+        if (mg_flag("unity-load-here")) ui_start_engine(&s);
+        else mg_jni_loop_call(NULL, ui_start_engine, &s);
+        while (!s.done) mg_gwait(&s.done, 0, 100000000ull);
+        if (!s.ok) {
+            mg_atomic_xchg(&U.started, -1);
+            return;
+        }
     }
-
-    /* The end of UnityPlayer's constructor. */
-    a[0].j = a[1].j = 0;
-    a[0].l = U.activity;
-    if (mg_jni_native(PLAYER, "initJni", "(Landroid/content/Context;)V")) call("initJni", "(Landroid/content/Context;)V", a);
-    else call("initJni", "(Landroid/content/Context;I)V", a);       /* Unity 6: and the kind of host, 0 for an activity */
-    mg_info("unity: initJni done");
-    a[0].l = mg_jni_class_object("com/unity3d/player/UnityWebRequest");
-    if (mg_jni_native(PLAYER, "nativeInitWebRequest", NULL)) call("nativeInitWebRequest", "(Ljava/lang/Class;)V", a);
 
     /* What UnityPlayer queues for this thread once it has a surface, in the order it queues it. */
     a[0].j = 0;
@@ -154,7 +289,7 @@ static MG_HOSTCB void unity_main(void *arg)
     mg_atomic_xchg(&U.started, 1);
     mg_jni_call_native(surface, U.player, surface_sig, legacy_surface ? a + 1 : a);
     if (legacy_surface) mg_info("unity: surface attached through the legacy signature");
-    if (mg_jni_native(PLAYER, "nativeSendSurfaceChangedEvent", NULL)) call("nativeSendSurfaceChangedEvent", "()V", NULL);
+    if (player_native("nativeSendSurfaceChangedEvent", NULL)) call("nativeSendSurfaceChangedEvent", "()V", NULL);
     call("nativeResume", "()V", NULL);
     call_bool("nativeFocusChanged", true);
     mg_info("unity: resumed and focused; rendering");
@@ -232,10 +367,12 @@ static MG_HOSTCB void unity_main(void *arg)
                 g[0].i = 0;
                 g[1].l = U.surface;
                 mg_jni_call_native(surface, U.player, surface_sig, legacy_surface ? g + 1 : g);
-                if (mg_jni_native(PLAYER, "nativeSendSurfaceChangedEvent", NULL)) call("nativeSendSurfaceChangedEvent", "()V", NULL);
+                if (player_native("nativeSendSurfaceChangedEvent", NULL)) call("nativeSendSurfaceChangedEvent", "()V", NULL);
             }
         }
         in_deliver();
+        /* (What the engine watches on this thread's looper: its callbacks, as the thread's Looper would run them between messages.) */
+        mg_looper_poll_thread();
         keep = mg_jni_call_native(render, U.player, "()Z", NULL);
         if (!keep.z) {
             mg_info("unity: nativeRender returned false: the game asked to quit");
@@ -246,7 +383,7 @@ static MG_HOSTCB void unity_main(void *arg)
         if (was_focused) call_bool("nativeFocusChanged", false);
         call("nativePause", "()Z", NULL);
     }
-    if (mg_jni_native(PLAYER, "nativeDone", NULL)) call("nativeDone", "()Z", NULL);
+    if (player_native("nativeDone", NULL)) call("nativeDone", "()Z", NULL);
     mg_run_ended(0, "stopped");
 }
 
@@ -291,6 +428,8 @@ static const mg_jhle g_unity[] = {
     { PLAYER, "beginIndeterminateProgress", NULL, ret_void },
     { PLAYER, "initializeGoogleAr", NULL, ret_false },
     { PLAYER, "initializeGoogleVr", NULL, ret_false },
+    /* Android 13's game state hints (GameManager): none on the Android 9 the engine is told it runs on. */
+    { PLAYER, "shouldSetGameState", NULL, ret_false },
     { PLAYER, "loadLibrary", NULL, ret_true },
     { PLAYER, "getLaunchURL", NULL, ret_null },
     { PLAYER, "getClipboardText", NULL, ret_null },
@@ -934,12 +1073,19 @@ static void un_key(int keycode, bool down)
 /* On the engine's thread, before a frame: everything that has come since the last one. */
 static void in_deliver(void)
 {
-    void *inject = mg_jni_native(PLAYER, "nativeInjectEvent", "(Landroid/view/InputEvent;)Z");
-    const char *sig = "(Landroid/view/InputEvent;)Z";
-    if (!inject) {
-        /* Newer players take the event and the display it came from. */
-        sig = "(Landroid/view/InputEvent;I)Z";
-        inject = native_of(PLAYER, "nativeInjectEvent", sig);
+    /* (Looked for once: on whichever of the player's classes, by either signature.) */
+    static void *inject;
+    static const char *sig;
+    static bool looked;
+    if (!looked) {
+        looked = true;
+        sig = "(Landroid/view/InputEvent;)Z";
+        inject = player_native("nativeInjectEvent", sig);
+        if (!inject) {
+            /* Newer players take the event and the display it came from. */
+            sig = "(Landroid/view/InputEvent;I)Z";
+            inject = native_of(PLAYER, "nativeInjectEvent", sig);
+        }
     }
     for (;;) {
         mg_jvalue a[2];
@@ -1075,6 +1221,8 @@ static bool un_start(const megler_run_config *config, const mg_apk_info *info)
     mg_jni_class("android/view/ViewGroup", "android/view/View");
     mg_jni_class("android/widget/FrameLayout", "android/view/ViewGroup");
     mg_jni_class(PLAYER, "android/widget/FrameLayout");
+    mg_jni_class(k_players[1], PLAYER);
+    mg_jni_class(k_players[2], PLAYER);
     mg_jni_register(g_unity);
     mg_jni_class("android/view/InputEvent", "java/lang/Object");
     mg_jni_class(MOTION, "android/view/InputEvent");

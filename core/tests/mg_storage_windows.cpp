@@ -13,7 +13,8 @@
 //
 // Only tools/build-tests.sh win builds this file, with StorageHost.cpp itself
 // and the shell's Strings.cpp beside it. The rest of what StorageHost.cpp
-// uses of the shell is stood in for below.
+// uses of the shell is stood in for below, for the other hosts built in the
+// same way too (the window's, mg_window_windows.cpp).
 #include "pch.h"
 
 #include "player/StorageHost.h"
@@ -24,21 +25,40 @@
 #include "shell/Strings.h"
 
 #include <cstdio>
+#include <set>
+
+namespace {
+// What the shell's log said, for a test to look for (mg_shell_said), and the flags a test has put on (mg_shell_flag).
+std::mutex gMutex;
+std::vector<std::string> gSaid;
+std::set<std::wstring> gFlags;
+} // namespace
 
 namespace megler::app {
 
-// The shell's log: said as the tests say things.
+// The shell's log: said as the tests say things, and kept.
 namespace shellLog {
 void write(const std::string& line) {
     printf("  %s\n", line.c_str());
     fflush(stdout);
+    std::lock_guard<std::mutex> lock(gMutex);
+    gSaid.push_back(line);
 }
 } // namespace shellLog
 
-// LocalState, which a test program has none of: no flag is on, and the codec host's list of decoders that hung
-// (codec-hung.txt) is not there and is not written, nor is what the camera host learnt of the cameras (camera.txt).
+// LocalState, which a test program has none of: no flag is on but those a test puts on (mg_shell_flag: a path that ends
+// in flags\<name>), and the codec host's list of decoders that hung (codec-hung.txt) is not there and is not written, nor
+// is what the camera host learnt of the cameras (camera.txt).
 namespace files {
-bool exists(const std::wstring&) { return false; }
+bool exists(const std::wstring& path) {
+    std::lock_guard<std::mutex> lock(gMutex);
+    for (const std::wstring& name : gFlags)
+        for (const wchar_t* folder : {L"/flags/", L"\\flags\\"}) {
+            const std::wstring end = folder + name;
+            if (path.size() >= end.size() && path.compare(path.size() - end.size(), end.size(), end) == 0) return true;
+        }
+    return false;
+}
 bool read(const std::wstring&, std::string&) { return false; }
 bool write(const std::wstring&, std::string_view) { return false; }
 bool append(const std::wstring&, std::string_view) { return false; }
@@ -81,5 +101,24 @@ const megler_storage_host* mg_storage_windows_host(const char* const* names, con
 
 /// What the host was asked and which way Windows answered, in a line.
 void mg_storage_windows_summary(char* out, size_t size) { snprintf(out, size, "%s", megler::app::StorageHost::shared().summary().c_str()); }
+
+/// The shell's flag `name` (a file of LocalState\flags on a phone) on or off for the hosts built into the tests.
+void mg_shell_flag(const char* name, int on) {
+    std::lock_guard<std::mutex> lock(gMutex);
+    const std::wstring wide = megler::app::widen(name);
+    if (on)
+        gFlags.insert(wide);
+    else
+        gFlags.erase(wide);
+}
+
+/// How many lines of the shell's log since the program started have `fragment` in them.
+int mg_shell_said(const char* fragment) {
+    std::lock_guard<std::mutex> lock(gMutex);
+    int n = 0;
+    for (const std::string& line : gSaid)
+        if (line.find(fragment) != std::string::npos) n++;
+    return n;
+}
 
 } // extern "C"

@@ -335,26 +335,28 @@ public:
             busyText_.Text(hs("Starting " + title_ + "…"));
         }
         const auto window = session::window();
-        const uint32_t frames = window ? window->presented() : 0;
+        const uint32_t frames = window ? window->presented() : 0, pictures = window ? window->pictures() : 0;
+        // The busy overlay first: nothing after it here (the system's media controls, the display's questions) may keep it up.
+        showBusy(snap, pictures, "at the player's poll");
+        sayNoPicture(snap, window.get());
         measureFrameRate(frames);
 
         const bool ended = snap.state == session::State::exited || snap.state == session::State::failed;
-        // A Java app's sound goes on in the background only while the system media controls stand for it.
-        if (java_ && running_ && !mediaControls_) mediaControls::start(), mediaControls_ = true;
-        if (mediaControls_ && ended) mediaControls::stop(), mediaControls_ = false;
-        if (mediaControls_) {
-            const auto heardFrom = session::audio();
-            mediaControls::heard(heardFrom && heardFrom->audibleWithin(600));
+        // A Java app's sound goes on in the background only while the system media controls stand for it. (Windows' media
+        // controls may refuse: the app plays on without them, and the rest of this poll is done all the same.)
+        try {
+            if (java_ && running_ && !mediaControls_) mediaControls::start(), mediaControls_ = true;
+            if (mediaControls_ && ended) mediaControls::stop(), mediaControls_ = false;
+            if (mediaControls_) {
+                const auto heardFrom = session::audio();
+                mediaControls::heard(heardFrom && heardFrom->audibleWithin(600));
+            }
+        } catch (const hresult_error& e) {
+            if (!mediaControlsFailed_) shellLog::write(format("player: the system's media controls failed, 0x%08X: ", unsigned(e.code())) + narrow(e.message()));
+            mediaControlsFailed_ = true;
+            if (ended) mediaControls_ = false;
         }
         if (started_ && (snap.state == session::State::starting || running_)) followWindow(false);
-        const bool waitingForFrame = (snap.state == session::State::starting || snap.state == session::State::running) && frames == 0;
-        const bool stopping = running_ && snap.stopRequested;
-        setVisible(busyOverlay_, !ended && (!started_ || waitingForFrame || stopping));
-        if (stopping) {
-            busyText_.Text(hs("Stopping " + title_ + "…"));
-            // An app that does not answer the stop: the process can still be ended.
-            setVisible(closeWhileBusy_, std::chrono::steady_clock::now() - stopAsked_ > std::chrono::seconds(4));
-        }
         if (ended && settingsShown_) showSettings(false);
         if (ended && menuShown_) showMenu(false);
         if (settingsShown_ && settings_) settings_->refresh();
@@ -665,9 +667,89 @@ private:
             failBeforeStart("An app has already run since Megler was opened. Close Megler and open it again to play.");
             return;
         }
-        if (auto window = session::window()) window->setPanelSize(float(panelWidth), float(panelHeight));
+        playAt_ = std::chrono::steady_clock::now();
+        if (auto window = session::window()) {
+            window->setPanelSize(float(panelWidth), float(panelHeight));
+            // The busy overlay goes as soon as the app's first picture has come: the window says so from the thread the picture
+            // came on, and this posts it to the UI thread ahead of everything else waiting there (the poll would see it within
+            // 250 ms, but only when nothing else holds the UI thread up).
+            std::weak_ptr<Page> alive = weak_from_this();
+            winrt::Windows::UI::Core::CoreDispatcher dispatcher{nullptr};
+            try {
+                dispatcher = Window::Current().Dispatcher();
+            } catch (const hresult_error&) {
+            }
+            if (dispatcher)
+                window->onFirstPicture([alive, dispatcher] {
+                    try {
+                        dispatcher.RunAsync(winrt::Windows::UI::Core::CoreDispatcherPriority::High, [alive] {
+                            if (auto page = alive.lock()) static_cast<PlayerScreen*>(page.get())->firstPictureCame();
+                        });
+                    } catch (const hresult_error&) {
+                    }
+                });
+        }
         // What the phone's bars cover, now that the surface's size is known (the core keeps it for the app's start).
         tellInsets();
+    }
+
+    /// The busy overlay -- "Starting <app>..." -- is up from Play until the app's first picture has come, whichever way it
+    /// came and whether or not its Present put it on the screen (WindowHost::pictures), and again while the app is being
+    /// stopped; never once it has ended. At every poll, and at once when the window says the first picture has come.
+    ///
+    /// It went by the count of the Presents that had succeeded: on an Xbox it stayed up while the app ran (0.1.0.671), the
+    /// app's picture showing for a moment as Megler was closed. A picture that comes and is not shown is the window's to say
+    /// (its line in the log, with Present's answer); the overlay no longer stands in front of it.
+    void showBusy(const session::Snapshot& snap, uint32_t pictures, const char* how) {
+        const bool ended = snap.state == session::State::exited || snap.state == session::State::failed;
+        const bool waitingForPicture = (snap.state == session::State::starting || snap.state == session::State::running) && pictures == 0;
+        const bool stopping = snap.state == session::State::running && snap.stopRequested;
+        const bool up = !ended && (!started_ || waitingForPicture || stopping);
+        setVisible(busyOverlay_, up);
+        if (!up && started_ && pictures > 0 && !firstPictureSaid_) {
+            firstPictureSaid_ = true;
+            const auto window = session::window();
+            const WindowHost::FirstPicture first = window ? window->firstPicture() : WindowHost::FirstPicture{};
+            const double ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - playAt_).count();
+            std::string panel;
+            try {
+                panel = format("; the panel %.0fx%.0f DIPs at %.2f of the display's pixels for each", panel_.ActualWidth(), panel_.ActualHeight(),
+                               double(panel_.CompositionScaleX()));
+            } catch (const hresult_error&) {
+            }
+            const std::string shown = first.shown    ? std::string()
+                                      : !first.tried ? std::string(" (being shown)")
+                                      : first.result == S_FALSE ? " (not on the screen: it was not presented, " + first.why + ")"
+                                                                : format(" (not on the screen: its Present failed, 0x%08X)", unsigned(first.result));
+            shellLog::write(format("player: the busy overlay is hidden %.0f ms after Play (%s): the app's first picture came at %.0f ms, %dx%d, %s%s%s", ms,
+                                   how, first.ms, first.width, first.height, first.came ? WindowHost::wayName(first.way) : "?", shown.c_str(), panel.c_str()));
+        }
+        if (stopping) {
+            busyText_.Text(hs("Stopping " + title_ + "…"));
+            // An app that does not answer the stop: the process can still be ended.
+            setVisible(closeWhileBusy_, std::chrono::steady_clock::now() - stopAsked_ > std::chrono::seconds(4));
+        }
+    }
+
+    /// The window says the app's first picture has come (UI thread, posted from the thread it came on).
+    void firstPictureCame() {
+        const auto window = session::window();
+        if (!window) return;
+        showBusy(session::snapshot(), window->pictures(), "at once, on the window's word");
+    }
+
+    /// No picture of the app's on the screen 10 s after Play, and again at 60 s, while it starts or runs: where the window
+    /// stands, in the log -- whether any came, how, and what their Presents said (WindowHost::state).
+    void sayNoPicture(const session::Snapshot& snap, WindowHost* window) {
+        if (!started_ || !window || noPictureSaid_ >= 2) return;
+        if (snap.state != session::State::starting && snap.state != session::State::running) return;
+        const auto after = std::chrono::steady_clock::now() - playAt_;
+        if (after < std::chrono::seconds(noPictureSaid_ ? 60 : 10) || window->firstPicture().shown) return;
+        noPictureSaid_++;
+        shellLog::write(format("player: %lld s after Play no picture of the app's is on the screen (the app %s): ",
+                               (long long)std::chrono::duration_cast<std::chrono::seconds>(after).count(),
+                               snap.state == session::State::running ? "runs" : "is still starting") +
+                        window->state());
     }
 
     void failBeforeStart(const std::string& why) {
@@ -979,6 +1061,20 @@ private:
                 occludedDips_ = 0;
                 showNavigationBar(false);
                 session::keyboardHeight(0);
+                // Gone because the app moved from one field to the next: its own "put away" for the field it left, or the
+                // text service's focus taken from the field and given again for another kind of field, came just before it
+                // asked for the keyboard again, and Windows tells of that going after the asking. It is not the user's: the
+                // keyboard comes back for the field that wants it. (It was taken for the user's: the app was told the keyboard
+                // had been put away, the keyboard's coming back was put away again "though the app had not asked for it", and
+                // Discord's password field, after its e-mail field, never had a keyboard.)
+                if (keyboardWanted_ && std::chrono::steady_clock::now() - ownHide_ < std::chrono::milliseconds(700)) {
+                    if (!betweenFieldsSaid_) {
+                        betweenFieldsSaid_ = true;
+                        shellLog::write("player: the keyboard went as the app moved from one field to another, and comes back for the field that asked for it");
+                    }
+                    showKeyboardLater();
+                    return;
+                }
                 // Put away by the user (its own key, or Back, which Windows gives the keyboard first): the app did not ask.
                 if (keyboardWanted_) {
                     keyboardWanted_ = false;
@@ -1071,6 +1167,25 @@ private:
         shell_.refreshChrome();
     }
 
+    /// The keyboard shown again for the field that wants it, once the event that is being answered is over.
+    void showKeyboardLater() {
+        try {
+            std::weak_ptr<Page> alive = weak_from_this();
+            Window::Current().Dispatcher().RunAsync(winrt::Windows::UI::Core::CoreDispatcherPriority::Normal, [this, alive] {
+                if (alive.expired() || !keyboardWanted_) return; // gone, or put away meanwhile
+                try {
+                    if (editContext_ && !editFocused_) {
+                        editContext_.NotifyFocusEnter();
+                        editFocused_ = true;
+                    }
+                    winrt::Windows::UI::ViewManagement::InputPane::GetForCurrentView().TryShow();
+                } catch (const hresult_error&) {
+                }
+            });
+        } catch (const hresult_error&) {
+        }
+    }
+
     /// putKeyboardAway, once the event that is being answered is over.
     void putKeyboardAwayLater() {
         try {
@@ -1110,8 +1225,12 @@ private:
         typing_.kind = kind;
         keyboardWanted_ = true;
         try {
-            // A new scope is the text service's to read at the next focus: so the focus is left and taken again.
-            if (editFocused_) editContext_.NotifyFocusLeave();
+            // A new scope is the text service's to read at the next focus: so the focus is left and taken again (which may
+            // send the keyboard away for a moment: not the user's doing, the pane's hiding handler knows by ownHide_).
+            if (editFocused_) {
+                ownHide_ = std::chrono::steady_clock::now();
+                editContext_.NotifyFocusLeave();
+            }
             editFocused_ = false;
             editContext_.InputScope(scope);
             startKeyboardText();
@@ -1131,6 +1250,8 @@ private:
         if (!keyboardWanted_ && !keyboardUp_) return;
         typingTold();
         keyboardWanted_ = false;
+        // (The app's own: if it asks again at once, for the next field, the going Windows tells of afterwards is this one.)
+        if (!byUser) ownHide_ = std::chrono::steady_clock::now();
         if (byUser) session::keyboardClosed();
         try {
             winrt::Windows::UI::ViewManagement::InputPane::GetForCurrentView().TryHide();
@@ -1397,7 +1518,11 @@ private:
 
     bool started_ = false;
     bool running_ = false;
+    std::chrono::steady_clock::time_point playAt_{}; // when the app was started (start)
+    bool firstPictureSaid_ = false;                  // the log has said the busy overlay went with the app's first picture
+    int noPictureSaid_ = 0;                          // times the log said no picture was on the screen (sayNoPicture)
     bool mediaControls_ = false; // the system media controls stand for the app (a Java app's, while it runs)
+    bool mediaControlsFailed_ = false; // Windows' media controls refused something (said once)
     bool menuShown_ = false;
     bool settingsShown_ = false; // an app's own package: its settings are over the menu
     bool endShown_ = false;
@@ -1431,6 +1556,10 @@ private:
     bool keyboardWanted_ = false; // the app asked for the keyboard and has not been told it is gone
     bool keyboardUp_ = false;     // Windows says it is on the screen
     bool typingSaid_ = false;     // the log has said that typing reaches the app
+    // When the shell itself last sent the keyboard away (the app's put-away, or the field's focus left for another kind of
+    // field): a going Windows tells of soon after, while the app wants the keyboard again, is that one and not the user's.
+    std::chrono::steady_clock::time_point ownHide_{};
+    bool betweenFieldsSaid_ = false; // the log has said that once
     // What the keyboard did in the field being edited, counted (never what it typed): see typingTold.
     struct Typing {
         int kind = 0;             // MEGLER_KEYBOARD_*

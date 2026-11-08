@@ -25,9 +25,12 @@
 #include "shell/Platform.h"
 #include "shell/Settings.h"
 #include "shell/ShellLog.h"
+#include "shell/Startup.h"
 #include "shell/Strings.h"
 #include "ui/AppShell.h"
 #include "ui/Theme.h"
+
+#include <exception>
 
 using namespace winrt;
 using namespace winrt::Windows::ApplicationModel;
@@ -37,8 +40,39 @@ using namespace winrt::Windows::UI::Xaml;
 
 namespace megler::app {
 
+namespace {
+
+/// The core is up: the start's watch may ask it where the UI thread stands (megler_thread_where).
+std::atomic<bool> gCoreUp{false};
+
+/// What an exception says of itself, for the log.
+std::string describe(std::exception_ptr exception) {
+    try {
+        if (exception) std::rethrow_exception(exception);
+    } catch (const hresult_error& e) {
+        return format("WinRT error 0x%08X: ", unsigned(e.code())) + narrow(e.message());
+    } catch (const std::exception& e) {
+        return e.what();
+    } catch (...) {
+        return "an exception of another kind";
+    }
+    return "no exception";
+}
+
+/// std::terminate on the UI thread -- an exception out of a noexcept function or a fire_and_forget coroutine -- said, with
+/// the exception and the start's step, before abort() ends the process (whose own word the core says: "host: abort()").
+[[noreturn]] void onTerminate() {
+    shellLog::writeNow("FATAL: std::terminate on the UI thread (" + describe(std::current_exception()) + "), the start's step: " +
+                       startup::current());
+    abort();
+}
+
+} // namespace
+
 struct App : ApplicationT<App, Markup::IXamlMetadataProvider> {
     std::shared_ptr<ui::AppShell> shell_;
+    bool contentMade_ = false;
+    std::string startFailure_;
     winrt::Windows::System::Display::DisplayRequest autoRunDisplayRequest_{nullptr};
     winrt::Windows::ApplicationModel::ExtendedExecution::ExtendedExecutionSession extendedExecution_{nullptr};
 
@@ -50,6 +84,14 @@ struct App : ApplicationT<App, Markup::IXamlMetadataProvider> {
         }
         shellLog::write("Megler for Windows 10 Mobile " + platform::packageVersion() + " (" + platform::architecture() + ", " +
                         platform::deviceFamily() + " " + platform::osVersion() + ")");
+        // (Each thread has its own terminate handler: this is the UI thread's. Any thread's abort() the core says.)
+        std::set_terminate(&onTerminate);
+        // The start watched until the window is shown (shell/Startup.h): where the UI thread stands, once the core can say.
+        startup::launched([](unsigned thread) -> std::string {
+            if (!gCoreUp.load()) return std::string();
+            char where[3000];
+            return megler_thread_where(thread, where, sizeof(where)) ? std::string(where) : std::string("it could not be stopped to look");
+        });
         // The logs' copies in the shared folder, where Save All Logs finds every package's: the runs before, which the log has
         // just put aside, and this run's as it goes (shell/LogMirror.h).
         logMirror::start();
@@ -87,6 +129,7 @@ struct App : ApplicationT<App, Markup::IXamlMetadataProvider> {
         });
         Resuming([this](auto&&, auto&&) {
             shellLog::write("app: resuming");
+            appPackage::probeDeployment("resumed");
             if (shell_) shell_->resuming();
             session::setSuspended(false);
             // A call takes the screen, and may have come and gone while Megler was suspended under it.
@@ -113,6 +156,17 @@ struct App : ApplicationT<App, Markup::IXamlMetadataProvider> {
                     shellLog::write("memory: Windows changes the app's limit from " + formattedByteCount(e.OldLimit()) + " to " +
                                     formattedByteCount(e.NewLimit()) + "; " + platform::memorySummary());
                 });
+            // And each step of the app's use up toward its limit, as Windows counts it: an app over it is ended without a word,
+            // and the log's last lines then say how near it was.
+            winrt::Windows::System::MemoryManager::AppMemoryUsageIncreased([](auto&&, auto&&) {
+                using winrt::Windows::System::AppMemoryUsageLevel;
+                const AppMemoryUsageLevel level = winrt::Windows::System::MemoryManager::AppMemoryUsageLevel();
+                const char* said = level == AppMemoryUsageLevel::Low      ? "low"
+                                   : level == AppMemoryUsageLevel::Medium ? "medium"
+                                   : level == AppMemoryUsageLevel::High   ? "high"
+                                                                          : "over its limit";
+                shellLog::writeNow(std::string("memory: Windows counts the app's use as ") + said + " now: " + platform::memorySummary());
+            });
         } catch (const hresult_error& e) {
             shellLog::write("app: the background's events are not there: " + narrow(e.message()));
         }
@@ -120,11 +174,12 @@ struct App : ApplicationT<App, Markup::IXamlMetadataProvider> {
 
     void OnLaunched(LaunchActivatedEventArgs const& args) {
         shellLog::write("app: launched (previous state " + std::to_string(int(args.PreviousExecutionState())) + ")");
+        appPackage::probeDeployment("launched");
         // A diagnosis asked for over USB: its flags in place before an app runs, the log copied out (shell/PicturesDiag.h).
-        picturesDiag::start();
+        startStep("looking for a diagnosis asked for over USB", [] { picturesDiag::start(); });
         copySystemDlls();
         ensureContent();
-        Window::Current().Activate();
+        activate();
         // A newer Megler copied to the phone's Pictures\Megler: installed by Windows's deployment engine.
         appPackage::installCopiedUpdate();
     }
@@ -133,9 +188,10 @@ struct App : ApplicationT<App, Markup::IXamlMetadataProvider> {
     /// package hands over to install, an app a launcher starts.
     void OnActivated(IActivatedEventArgs const& args) {
         shellLog::write(format("app: activated (kind %d)", int(args.Kind())));
+        appPackage::probeDeployment("activated");
         ensureContent();
-        Window::Current().Activate();
-        if (args.Kind() == ActivationKind::Protocol) shell_->openLink(args.as<ProtocolActivatedEventArgs>().Uri());
+        activate();
+        if (args.Kind() == ActivationKind::Protocol && shell_) shell_->openLink(args.as<ProtocolActivatedEventArgs>().Uri());
     }
 
     /// An APK (or a bundle) opened in Megler from the phone's file manager or another app (Package.appxmanifest, the
@@ -143,12 +199,60 @@ struct App : ApplicationT<App, Markup::IXamlMetadataProvider> {
     void OnFileActivated(FileActivatedEventArgs const& args) {
         shellLog::write(format("app: opened with %u file(s)", unsigned(args.Files().Size())));
         ensureContent();
-        Window::Current().Activate();
+        activate();
         for (auto const& item : args.Files()) {
             if (auto file = item.try_as<winrt::Windows::Storage::StorageFile>()) {
-                shell_->installApkFile(file);
+                if (shell_) shell_->installApkFile(file);
                 break;
             }
+        }
+    }
+
+    /// The window shown: Windows takes the splash screen away at the first frame after this. Then what the start leaves
+    /// for after it: the copies of the package's Google APKs, on a thread of their own (Library::afterStart).
+    void activate() {
+        // (Activated again later -- a megler: link, a file opened in Megler -- it is no step of the start.)
+        if (startup::isShown()) {
+            Window::Current().Activate();
+            return;
+        }
+        startStep("showing the window", [] { Window::Current().Activate(); });
+        startup::shown();
+        try {
+            Library::instance().afterStart();
+        } catch (...) {
+            shellLog::writeNow("FATAL: the copies of the package's APKs could not be begun: " + describe(std::current_exception()));
+        }
+    }
+
+    /// One step of the start, said before it begins (shell/Startup.h). What it throws is said as FATAL with the step, and
+    /// the start goes on: a library that cannot be read, a theme that cannot be had, leave a window that says so, not none.
+    template <typename Step>
+    bool startStep(const char* what, Step&& run) {
+        startup::step(what);
+        try {
+            run();
+            return true;
+        } catch (...) {
+            const std::string why = describe(std::current_exception());
+            shellLog::writeNow(std::string("FATAL: the start's step \"") + what + "\" failed: " + why);
+            if (startFailure_.empty()) startFailure_ = std::string(what) + ": " + why;
+        }
+        return false;
+    }
+
+    /// What is shown when the screens could not be made: why, where the log is.
+    void showStartFailure() {
+        try {
+            using namespace winrt::Windows::UI::Xaml::Controls;
+            TextBlock text;
+            text.Text(hs("Megler could not start: " + startFailure_ + "\n\nIts log, megler.log in Megler's LocalState folder, says more."));
+            text.TextWrapping(TextWrapping::Wrap);
+            text.Margin(ThicknessHelper::FromUniformLength(24));
+            text.VerticalAlignment(VerticalAlignment::Center);
+            Window::Current().Content(text);
+        } catch (...) {
+            shellLog::writeNow("FATAL: not even the page that says why could be shown: " + describe(std::current_exception()));
         }
     }
 
@@ -166,36 +270,49 @@ struct App : ApplicationT<App, Markup::IXamlMetadataProvider> {
     }
 
     void ensureContent() {
-        if (shell_) return;
+        if (contentMade_) return;
+        contentMade_ = true;
         // The folder of the flag files (core: mg_flag; ui/UiShots.h): the Device Portal puts files into a folder, but makes none.
         files::makeDirectories(platform::localStateDirectory() + L"\\flags");
-        settings::load(platform::localStateDirectory(), appPackage::sharedFolder(), appPackage::single().package);
+        startStep("reading the settings", [] { settings::load(platform::localStateDirectory(), appPackage::sharedFolder(), appPackage::single().package); });
         // The core, before any screen asks it anything. Its answer -- can
         // Android code run here -- is in the log and on the screens.
-        platform::initializeCore();
+        startStep("starting the core", [] { platform::initializeCore(); });
+        gCoreUp = true;
         // (Apps' names are read in the phone's language.)
-        phoneState::tellLocale();
-        Library::instance().load();
+        startStep("telling the core the phone's language", [] { phoneState::tellLocale(); });
+        startStep("reading the library", [] { Library::instance().load(); });
 
-        using winrt::Windows::UI::ViewManagement::ApplicationView;
-        using winrt::Windows::UI::ViewManagement::ApplicationViewBoundsMode;
-        auto view = ApplicationView::GetForCurrentView();
-        // Content stays out from under the status bar and the navigation bar
-        // (the player takes the whole display back: ui/AppShell.cpp).
-        view.SetDesiredBoundsMode(ApplicationViewBoundsMode::UseVisible);
-        if (!platform::isMobile() && !platform::isXbox()) {
-            // On a desktop (the x64 build) open phone-shaped. (An Xbox shows an app on the whole television, at 960 by 540
-            // of its pixels, whatever it asks.)
-            using winrt::Windows::UI::ViewManagement::ApplicationViewWindowingMode;
-            view.PreferredLaunchViewSize(winrt::Windows::Foundation::Size(400, 760));
-            view.PreferredLaunchWindowingMode(ApplicationViewWindowingMode::PreferredLaunchViewSize);
-            view.TryResizeView(winrt::Windows::Foundation::Size(400, 760));
+        startStep("setting the window's bounds", [] {
+            using winrt::Windows::UI::ViewManagement::ApplicationView;
+            using winrt::Windows::UI::ViewManagement::ApplicationViewBoundsMode;
+            auto view = ApplicationView::GetForCurrentView();
+            // Content stays out from under the status bar and the navigation bar
+            // (the player takes the whole display back: ui/AppShell.cpp).
+            view.SetDesiredBoundsMode(ApplicationViewBoundsMode::UseVisible);
+            if (!platform::isMobile() && (!platform::isXbox() || platform::asXbox())) {
+                // On a desktop (the x64 build) open phone-shaped. (An Xbox shows an app on the whole television, at 960 by 540
+                // of its pixels, whatever it asks; a PC's Megler under the flag as-xbox opens its window so.)
+                using winrt::Windows::UI::ViewManagement::ApplicationViewWindowingMode;
+                const winrt::Windows::Foundation::Size size = platform::asXbox() ? winrt::Windows::Foundation::Size(960, 540)
+                                                                                 : winrt::Windows::Foundation::Size(400, 760);
+                view.PreferredLaunchViewSize(size);
+                view.PreferredLaunchWindowingMode(ApplicationViewWindowingMode::PreferredLaunchViewSize);
+                view.TryResizeView(size);
+            }
+        });
+
+        startStep("loading the screens' styles", [] { ui::installStyles(); });
+        const bool made = startStep("making the screens", [this] {
+            auto shell = std::make_shared<ui::AppShell>();
+            Window::Current().Content(shell->root());
+            shell_ = std::move(shell);
+        });
+        if (!made) {
+            shell_.reset();
+            showStartFailure();
         }
-
-        ui::installStyles();
-        shell_ = std::make_shared<ui::AppShell>();
         Window window = Window::Current();
-        window.Content(shell_->root());
 
         // What a running app hears of the window (player/Session.h).
         window.VisibilityChanged([](auto&&, winrt::Windows::UI::Core::VisibilityChangedEventArgs const& e) {

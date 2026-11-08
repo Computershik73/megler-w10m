@@ -10,6 +10,7 @@
 #include "shell/Checks.h"
 #include "shell/Files.h"
 #include "shell/PickedFile.h"
+#include "shell/Placement.h"
 #include "shell/Platform.h"
 #include "shell/ShellLog.h"
 #include "shell/Strings.h"
@@ -491,6 +492,10 @@ void AppShell::poll() {
         // An app's own package opens its app as soon as the library has it read: straight into the player when it can
         // run here, else its page, which says why not. Before the player, Megler's folders the app has not got are offered
         // (ui/SharedFolders.h), once the phone's folders are known, to an app that asks for the storage.
+        // Where what Megler put in the shared folder for it is not there (no shared folder, its APK or Android's files missing:
+        // the package and Megler on different storage, a memory card's and the phone's memory), the app is not opened, and its
+        // screen says why and what to do (ui/StartScreen.cpp): it showed the splash screen's picture for ever.
+        if (appPackage::isSingleApp() && !singleAppOpened_ && !appPackage::singleAppProblem().empty()) singleAppOpened_ = true;
         if (appPackage::isSingleApp() && !singleAppOpened_) {
             const auto entry = Library::instance().find(appPackage::singleAppId());
             if (entry && entry->analysed && (!entry->report.ready() || StorageHost::shared().searched())) {
@@ -512,6 +517,19 @@ void AppShell::poll() {
                 } else {
                     push(makeAppDetailScreen(*this, id));
                 }
+            }
+        }
+        // Megler on the memory card, or given no shared folder, says so once a run: its apps may not reach its files, and the
+        // phone's memory is where it should be (shell/Placement.h). The Library says it above its list as well (ui/Components.cpp).
+        if (!appPackage::isSingleApp() && !placementSaid_) {
+            placementSaid_ = true;
+            if (const std::string& onCard = appPackage::meglerOnCard(); !onCard.empty()) {
+                DialogSpec spec;
+                spec.title = platform::isMobile() && !placement::onSystemDrive(platform::installDirectory()) ? "Megler Is on the Memory Card"
+                                                                                                            : "Megler Has No Shared Folder";
+                spec.message = onCard;
+                spec.buttons = {"OK"};
+                dialogWhenFree(std::move(spec), nullptr);
             }
         }
         // Megler itself lists its added folders for the separate apps once the phone's folders are known (and Settings
@@ -1137,7 +1155,24 @@ void AppShell::openLink(winrt::Windows::Foundation::Uri const& uri) {
             shellLog::write("app: the link's name is not a file's of the shared folder's incoming: nothing installed");
             return;
         }
-        installApkPath(appPackage::sharedFolder() + L"\\incoming\\" + widen(name), name, "An app of the phone's own");
+        /*
+         * The app's own package put the APK in its shared folder, which is Megler's only where both are on the same storage:
+         * Windows gives a package on a memory card the card's (or none), and Megler in the phone's memory does not see it.
+         */
+        const std::wstring shared = appPackage::sharedFolder(), path = shared.empty() ? std::wstring() : shared + L"\\incoming\\" + widen(name);
+        if (path.empty() || !files::exists(path)) {
+            shellLog::write("app: " + name + " is not in " + (shared.empty() ? std::string("the shared folder: Windows gave Megler none") : narrow(path)) +
+                            ": the app that asked is likely on other storage than Megler (a memory card)");
+            phoneAppsList::installOutcome(name, "failed", "Megler did not find the APK in its shared folder: the app and Megler are on different storage.");
+            alert("Couldn't Install This APK",
+                  "An app of the phone's own asked Megler to install " + name + ", and Megler did not find it in its shared folder" +
+                      (shared.empty() ? std::string(" (Windows gave Megler none)") : std::string()) +
+                      ". As a rule, that is because the app and Megler are on different storage -- one on the memory card, the other in "
+                      "the phone's memory -- and Windows gives each storage a shared folder of its own. Keep them on the same storage: "
+                      "move the app (or Megler) to the phone's memory in Settings › System › Storage.");
+            return;
+        }
+        installApkPath(path, name, "An app of the phone's own");
     } else if (what == L"uninstall") {
         const std::string package = value(L"package");
         if (!package.empty()) uninstallApp(package, "An app of the phone's own");

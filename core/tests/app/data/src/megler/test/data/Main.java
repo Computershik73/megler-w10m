@@ -1650,10 +1650,15 @@ public class Main extends Activity {
         mediaMetadata();
         playbackState();
         remoteUserInfo();
+        mediaKeyController();
+        containerState();
+        contextParams();
         themeAccent();
         phoneApps();
         installs();
         bitmapBytes();
+        fileReadOnly();
+        componentState();
         adaptiveIcon();
         launcherLoading();
         uriBuilder();
@@ -1690,6 +1695,35 @@ public class Main extends Activity {
                     && Boolean.FALSE.equals(info.getClass().getMethod("isVerified").invoke(info))
                     && Boolean.FALSE.equals(info.getClass().getMethod("isFullyCompiled").invoke(info));
         });
+        insetFraction();
+        workSource();
+        resourcesLoader();
+        locationRequest();
+        // A provider's file through a ContentProviderClient, as Google Play services' DynamiteLoader reads its modules'
+        // Chimera configuration (acquireUnstableContentProviderClient(uri).openFile(uri, "r")): the provider's own file comes.
+        step("provider-client-file", () -> {
+            try (java.io.FileOutputStream o = new java.io.FileOutputStream(new java.io.File(getFilesDir(), "provider-config"))) {
+                o.write("chimera config".getBytes("UTF-8"));
+            }
+            android.net.Uri uri = android.net.Uri.parse("content://megler.test.sync/config");
+            android.content.ContentProviderClient client = getContentResolver().acquireUnstableContentProviderClient(uri);
+            android.os.ParcelFileDescriptor pfd = client == null ? null : client.openFile(uri, "r");
+            if (client != null) client.release();
+            String read = null;
+            if (pfd != null) {
+                try (java.io.FileInputStream in = new java.io.FileInputStream(pfd.getFileDescriptor())) {
+                    byte[] b = new byte[64];
+                    int n = in.read(b);
+                    read = n > 0 ? new String(b, 0, n, "UTF-8") : "";
+                }
+                pfd.close();
+            }
+            detail = "client=" + client + " read=" + read;
+            return "chimera config".equals(read);
+        });
+        layoutApiLevel();
+        resourcesImpl();
+        activityThreadApplication();
         sound();
         mediaCodec();
         network();
@@ -1863,6 +1897,34 @@ public class Main extends Activity {
             boolean fits = ok.isShown() && ok.getHeight() > 0 && at[1] >= 0 && at[1] + ok.getHeight() <= screen && decor.getHeight() <= screen;
             Log.i("DataTest", "dialog-tall " + (fits ? "ok" : "FAILED") + " button=" + at[1] + "+" + ok.getHeight() + " screen=" + screen + " dialog=" + decor.getHeight());
             dialog.dismiss();
+            panelRoot();
+        }, 500);
+    }
+
+    /**
+     * A window of the app's own over the activity (a panel, as King's popups are, with their WebView straight in the root): its
+     * root view draws on the window's frame, which is hardware accelerated as a window's canvas is on Android, and a SurfaceView
+     * straight in that root draws on one that does not say so, as one does in a list. (A WebView there whose page is drawn on
+     * the graphics processor is drawn by its draw functor then; it was drawn in software.) Said as either was seen in any frame.
+     */
+    private void panelRoot() {
+        final boolean[] seen = new boolean[4];
+        final android.widget.FrameLayout root = new android.widget.FrameLayout(this) {
+            @Override protected void onDraw(android.graphics.Canvas c) { seen[0] = true; seen[1] |= c.isHardwareAccelerated(); }
+        };
+        root.setWillNotDraw(false);
+        android.view.SurfaceView surface = new android.view.SurfaceView(this) {
+            @Override public void draw(android.graphics.Canvas c) { seen[2] = true; seen[3] |= c.isHardwareAccelerated(); super.draw(c); }
+        };
+        root.addView(surface, new android.widget.FrameLayout.LayoutParams(40, 40));
+        android.view.WindowManager.LayoutParams lp = new android.view.WindowManager.LayoutParams(200, 200,
+                android.view.WindowManager.LayoutParams.TYPE_APPLICATION_PANEL, 0, android.graphics.PixelFormat.TRANSLUCENT);
+        lp.token = getWindow().getDecorView().getWindowToken();
+        getWindowManager().addView(root, lp);
+        new android.os.Handler().postDelayed(() -> {
+            boolean ok = seen[0] && seen[1] && seen[2] && !seen[3];
+            Log.i("DataTest", "panel-root " + (ok ? "ok" : "FAILED") + " root=" + seen[0] + "/" + seen[1] + " surface=" + seen[2] + "/" + seen[3]);
+            getWindowManager().removeView(root);
         }, 500);
     }
 
@@ -3820,6 +3882,11 @@ public class Main extends Activity {
         @Override public android.net.Uri insert(android.net.Uri u, android.content.ContentValues v) { return null; }
         @Override public int delete(android.net.Uri u, String s, String[] a) { return 0; }
         @Override public int update(android.net.Uri u, android.content.ContentValues v, String s, String[] a) { return 0; }
+        /** "content://megler.test.sync/config": the file Main's step provider-client-file wrote, read-only (as Google Play services' Chimera configuration). */
+        @Override public android.os.ParcelFileDescriptor openFile(android.net.Uri u, String mode) throws java.io.FileNotFoundException {
+            if (!"/config".equals(u.getPath())) throw new java.io.FileNotFoundException(String.valueOf(u));
+            return android.os.ParcelFileDescriptor.open(new java.io.File(getContext().getFilesDir(), "provider-config"), android.os.ParcelFileDescriptor.MODE_READ_ONLY);
+        }
     }
 
     /** The service of Main's sync adapter, which hands out the adapter's binder as Android's sync adapters do. */
@@ -3973,15 +4040,19 @@ public class Main extends Activity {
     }
 
     /**
-     * Android 13's Safety Center, as a device without one has it: the class is there, and Context.getSystemService of it is
-     * null (Play Store asks so on its sign-in screen, and ended on a NoClassDefFoundError where the class was missing).
+     * Android 13's Safety Center, as Android 13 and later have it on a phone without one: the class is there (Play Store asks
+     * for it on its sign-in screen, and ended on a NoClassDefFoundError where it was missing), Context.getSystemService gives
+     * the manager, by its class and by its name, and it says Safety Center is off (Google Play services 26 takes the manager
+     * with a null check that throws, on Android 14, before it asks isSafetyCenterEnabled).
      */
     private void safetyCenter() {
         step("safety-center", () -> {
             Class<?> c = Class.forName("android.safetycenter.SafetyCenterManager");
             Object m = getSystemService(c);
-            detail = "class=" + c.getName() + " service=" + m;
-            return m == null;
+            Object byName = getSystemService("safety_center");
+            Object enabled = m == null ? null : c.getMethod("isSafetyCenterEnabled").invoke(m);
+            detail = "class=" + c.getName() + " service=" + m + " by name=" + byName + " enabled=" + enabled;
+            return m != null && c.isInstance(m) && byName == m && Boolean.FALSE.equals(enabled);
         });
     }
 
@@ -4649,6 +4720,97 @@ public class Main extends Activity {
                     && rgb.getByteCount() == 2 && (r.get(0) & 255) == 0x00 && (r.get(1) & 255) == 0xF8
                     && full.getByteCount() == 16 && Math.abs((f.get(0) & 255) - 0x80) <= 1 && (f.get(3) & 255) == 0x80 && f.position() == 16;
         });
+        /*
+         * A picture decoded into a bitmap of a pool, as Fresco decodes every still picture (DefaultDecoder): its pool makes a
+         * bitmap of 1 x N in RGB_565 for N bytes, hands it over in Options.inBitmap, and throws an IllegalStateException when
+         * the bitmap that comes back is another one -- Facebook, React Native's images and Aliucord showed none of theirs. The
+         * same bitmap comes back with the picture's size and pixels; reconfigure gives such a bitmap a frame's size, as
+         * Fresco's animated pictures do, within what it was made with; a bitmap too small, or recycled, is refused as on
+         * Android; an immutable one is passed over for a new bitmap.
+         */
+        step("bitmap-reuse", () -> {
+            android.graphics.Bitmap.Config argb = android.graphics.Bitmap.Config.ARGB_8888, rgb565 = android.graphics.Bitmap.Config.RGB_565;
+            android.graphics.Bitmap source = android.graphics.Bitmap.createBitmap(3, 2, argb);
+            source.eraseColor(0xFF0000FF);
+            source.setPixel(2, 1, 0xFF00FF00);
+            java.io.ByteArrayOutputStream png = new java.io.ByteArrayOutputStream();
+            source.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, png);
+            byte[] bytes = png.toByteArray();
+            android.graphics.Bitmap pool = android.graphics.Bitmap.createBitmap(1, 12, rgb565);  // 24 bytes: 3 x 2 x 4
+            android.graphics.BitmapFactory.Options o = new android.graphics.BitmapFactory.Options();
+            o.inBitmap = pool;
+            o.inMutable = true;
+            o.inPreferredConfig = argb;
+            android.graphics.Bitmap got = android.graphics.BitmapFactory.decodeStream(new java.io.ByteArrayInputStream(bytes), null, o);
+            boolean same = got == pool, shaped = got != null && got.getWidth() == 3 && got.getHeight() == 2 && got.getConfig() == argb && got.isMutable();
+            int corner = got != null ? got.getPixel(2, 1) : 0, first = got != null ? got.getPixel(0, 0) : 0;
+            int allocation = pool.getAllocationByteCount();
+            // reconfigure within the 24 bytes, and past them
+            pool.reconfigure(2, 3, argb);
+            boolean reshaped = pool.getWidth() == 2 && pool.getHeight() == 3 && pool.getByteCount() == 24 && pool.getAllocationByteCount() == 24;
+            boolean tooBig = false;
+            try { pool.reconfigure(5, 5, argb); } catch (IllegalArgumentException e) { tooBig = true; }
+            // a bitmap too small to hold the picture
+            android.graphics.BitmapFactory.Options small = new android.graphics.BitmapFactory.Options();
+            small.inBitmap = android.graphics.Bitmap.createBitmap(1, 1, argb);
+            boolean refused = false;
+            try { android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.length, small); } catch (IllegalArgumentException e) { refused = "Problem decoding into existing bitmap".equals(e.getMessage()); }
+            // an immutable one, passed over
+            android.graphics.BitmapFactory.Options fixed = new android.graphics.BitmapFactory.Options();
+            fixed.inBitmap = android.graphics.Bitmap.createBitmap(new int[6], 3, 2, argb);
+            android.graphics.Bitmap fresh = android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.length, fixed);
+            boolean passedOver = fresh != null && fresh != fixed.inBitmap && fresh.getWidth() == 3;
+            detail = "same=" + same + " shaped=" + shaped + " pixels=" + Integer.toHexString(first) + "," + Integer.toHexString(corner) + " allocation=" + allocation
+                    + " reshaped=" + reshaped + " tooBig=" + tooBig + " refused=" + refused + " passedOver=" + passedOver;
+            return same && shaped && first == 0xFF0000FF && corner == 0xFF00FF00 && allocation == 24 && reshaped && tooBig && refused && passedOver;
+        });
+    }
+
+    /**
+     * A file of the app's made read-only and writable again through java.io.File, as Facebook does with each module it downloads
+     * before it loads one ("Downloaded module file must be read only"): setReadOnly, canWrite, an output stream refused, and the
+     * file deleted all the same; setWritable gives its writing back. The write bits are kept by the core's chmod (Windows' read-only
+     * attribute on a phone), so they are still there when the app starts again.
+     */
+    private void fileReadOnly() {
+        step("file-read-only", () -> {
+            File f = new File(getFilesDir(), "module.zip");
+            try (java.io.FileOutputStream out = new java.io.FileOutputStream(f)) { out.write(new byte[] { 'P', 'K' }); }
+            boolean wasWritable = f.canWrite(), made = f.setReadOnly(), readOnly = !f.canWrite() && f.canRead();
+            boolean refused = false;
+            try (java.io.FileOutputStream out = new java.io.FileOutputStream(f, true)) { out.write(1); } catch (java.io.FileNotFoundException e) { refused = true; }
+            boolean writable = f.setWritable(true) && f.canWrite();
+            boolean again = f.setReadOnly() && !f.canWrite(), deleted = f.delete() && !f.exists();
+            detail = "wasWritable=" + wasWritable + " made=" + made + " readOnly=" + readOnly + " refused=" + refused + " writable=" + writable
+                    + " again=" + again + " deleted=" + deleted;
+            return wasWritable && made && readOnly && refused && writable && again && deleted;
+        });
+    }
+
+    /**
+     * The enabled state of a component and of an application: of the app's own, the platform's, Google Play services' and the
+     * phone's other app's, the default; of a package the phone does not have, IllegalArgumentException, as Android answers.
+     * Facebook asks so for Meta's App Manager, and took a default for the App Manager being there: it showed the terms of phones
+     * that came with Meta's apps at every start while signed out.
+     */
+    private void componentState() {
+        step("component-state", () -> {
+            android.content.pm.PackageManager pm = getPackageManager();
+            int own = pm.getComponentEnabledSetting(new android.content.ComponentName(this, Main.class));
+            int app = pm.getApplicationEnabledSetting(getPackageName()), platform = pm.getApplicationEnabledSetting("android");
+            int gms = pm.getComponentEnabledSetting(new android.content.ComponentName("com.google.android.gms", "com.google.android.gms.common.api.GoogleApiActivity"));
+            int other = pm.getComponentEnabledSetting(new android.content.ComponentName("com.example.other", "com.example.other.Main"));
+            String component = null, application = null;
+            try { pm.getComponentEnabledSetting(new android.content.ComponentName("com.facebook.appmanager", "com.facebook.oxygen.appmanager.firstparty.tos.ShouldAcceptTos")); }
+            catch (IllegalArgumentException e) { component = e.getMessage(); }
+            try { pm.getApplicationEnabledSetting("com.facebook.appmanager"); }
+            catch (IllegalArgumentException e) { application = e.getMessage(); }
+            detail = "own=" + own + " app=" + app + " platform=" + platform + " gms=" + gms + " other=" + other + " component=" + component
+                    + " application=" + application;
+            return own == 0 && app == 0 && platform == 0 && gms == 0 && other == 0
+                    && "Unknown component: ComponentInfo{com.facebook.appmanager/com.facebook.oxygen.appmanager.firstparty.tos.ShouldAcceptTos}".equals(component)
+                    && "Unknown package: com.facebook.appmanager".equals(application);
+        });
     }
 
     /**
@@ -4909,6 +5071,374 @@ public class Main extends Activity {
     }
 
     /**
+     * An <inset> whose insets are fractions of its bounds (res/drawable/inset_fraction.xml: a quarter on every side but the
+     * left, which is 8 pixels, round a shape of 80 x 40), inflated as Android 8 and later inflate it: in bounds of 200 x 100 the
+     * shape is at 8, 25 to 150, 75; the intrinsic size is the shape's made the part of the whole that the fractions leave
+     * (80 / 0.75 + 8 = 114, 40 / 0.5 = 80); the padding is the insets. And the inset of 0.01% WhatsApp's adaptive icon has round
+     * its foreground (res/drawable/inset_tiny.xml), which ended the app where the inflater took every inset for a dimension; and
+     * InsetDrawable(Drawable, float), a quarter on every side of 40 x 40.
+     */
+    private void insetFraction() {
+        step("inset-fraction", () -> {
+            android.graphics.drawable.Drawable d = getResources().getDrawable(R.drawable.inset_fraction, null);
+            android.graphics.drawable.Drawable tiny = getResources().getDrawable(R.drawable.inset_tiny, null);
+            if (!(d instanceof android.graphics.drawable.InsetDrawable) || !(tiny instanceof android.graphics.drawable.InsetDrawable)) {
+                detail = "drawables " + d + " " + tiny;
+                return false;
+            }
+            d.setBounds(0, 0, 200, 100);
+            android.graphics.Rect inner = new android.graphics.Rect(((android.graphics.drawable.InsetDrawable) d).getDrawable().getBounds());
+            android.graphics.Rect pad = new android.graphics.Rect();
+            boolean padded = d.getPadding(pad);
+            android.graphics.drawable.InsetDrawable made = new android.graphics.drawable.InsetDrawable(new android.graphics.drawable.ColorDrawable(0xFF0000FF), 0.25f);
+            made.setBounds(0, 0, 40, 40);
+            android.graphics.Rect madeInner = made.getDrawable().getBounds();
+            boolean nested = ((android.graphics.drawable.InsetDrawable) tiny).getDrawable() instanceof android.graphics.drawable.InsetDrawable;
+            detail = "inner " + inner + " intrinsic " + d.getIntrinsicWidth() + "x" + d.getIntrinsicHeight() + " padding " + pad + " made " + madeInner + " nested " + nested;
+            return inner.equals(new android.graphics.Rect(8, 25, 150, 75)) && d.getIntrinsicWidth() == 114 && d.getIntrinsicHeight() == 80
+                    && padded && pad.equals(new android.graphics.Rect(8, 25, 50, 25)) && madeInner.equals(new android.graphics.Rect(10, 10, 30, 30)) && nested;
+        });
+    }
+
+    /**
+     * A WorkSource through a Parcel as Google Play services' client library writes a location request's: its writeToParcel
+     * inside a field's header whose size is patched in after (SafeParcelWriter), read back with the CREATOR, as Google Play
+     * services' location service reads it. One with two uids and a name each and a work chain comes back equal, kept in the
+     * uids' order as Android keeps it; an empty one comes back empty, not null -- the null that ended every request of
+     * FusedLocationProviderClient in Google Play services' ImmutableWorkSource. (Most of WorkSource is system API, not in the
+     * SDK the app is built against: by reflection.)
+     */
+    private void workSource() {
+        step("work-source", () -> {
+            Class<android.os.WorkSource> c = android.os.WorkSource.class;
+            android.os.WorkSource ws = new android.os.WorkSource(), empty = new android.os.WorkSource();
+            java.lang.reflect.Method add = c.getMethod("add", int.class, String.class);
+            add.invoke(ws, 10123, "megler.test.b");
+            add.invoke(ws, 10045, "megler.test.a");
+            Object chain = c.getMethod("createWorkChain").invoke(ws);
+            chain.getClass().getMethod("addNode", int.class, String.class).invoke(chain, 10045, "location");
+            android.os.Parcel p = android.os.Parcel.obtain();
+            p.writeInt(0xFFFF0001);
+            int sizeAt = p.dataPosition();
+            p.writeInt(0);
+            int start = p.dataPosition();
+            ws.writeToParcel(p, 0);
+            int end = p.dataPosition();
+            p.setDataPosition(sizeAt);
+            p.writeInt(end - start);
+            p.setDataPosition(end);
+            empty.writeToParcel(p, 0);
+            p.setDataPosition(0);
+            p.readInt();
+            int size = p.readInt();
+            android.os.WorkSource back = android.os.WorkSource.CREATOR.createFromParcel(p);
+            android.os.WorkSource emptyBack = android.os.WorkSource.CREATOR.createFromParcel(p);
+            p.recycle();
+            int n = (Integer) c.getMethod("size").invoke(back);
+            int firstUid = (Integer) c.getMethod("getUid", int.class).invoke(back, 0);
+            String firstName = (String) c.getMethod("getPackageName", int.class).invoke(back, 0);
+            java.util.List<?> chains = (java.util.List<?>) c.getMethod("getWorkChains").invoke(back);
+            boolean emptyIs = emptyBack != null && (Boolean) c.getMethod("isEmpty").invoke(emptyBack);
+            detail = "size=" + size + " back=" + back + " empty=" + emptyBack;
+            return size > 0 && back != null && back.equals(ws) && !back.equals(empty) && n == 2 && firstUid == 10045 && "megler.test.a".equals(firstName)
+                    && chains != null && chains.size() == 1 && emptyIs && emptyBack.equals(empty);
+        });
+    }
+
+    /**
+     * A module's resources as Google Play services' DynamiteLoader makes them on Android 11 and later: the platform's own
+     * resources (getResourcesForApplication("android"), a Resources of their own, not the app's) with a ResourcesLoader of
+     * the module's APK added -- here the APK of resources alone the app carries (assets/loader.apk, package
+     * megler.test.loader, tools/build-test-app.sh). Its string is found by name in its package and read; its picture is
+     * decoded by BitmapFactory.decodeResource, as the Google Maps module reads its textures; its ids are its package's; the
+     * platform's own are still there; and the app's own resources do not have what the loader put over the platform's. (The
+     * loader classes are Android 11's, not in the SDK the app is built against: stubs/, and addLoaders by reflection.)
+     */
+    private void resourcesLoader() {
+        step("resources-loader", () -> {
+            java.io.File apk = new java.io.File(getFilesDir(), "loader.apk");
+            try (java.io.InputStream in = getAssets().open("loader.apk"); java.io.FileOutputStream out = new java.io.FileOutputStream(apk)) {
+                byte[] buf = new byte[8192];
+                for (int n; (n = in.read(buf)) > 0; ) out.write(buf, 0, n);
+            }
+            android.content.res.Resources platform = getPackageManager().getResourcesForApplication("android");
+            int before = platform.getIdentifier("loader_greeting", "string", "megler.test.loader");
+            android.content.res.loader.ResourcesLoader loader = new android.content.res.loader.ResourcesLoader();
+            try (android.os.ParcelFileDescriptor pfd = android.os.ParcelFileDescriptor.open(apk, android.os.ParcelFileDescriptor.MODE_READ_ONLY)) {
+                loader.addProvider(android.content.res.loader.ResourcesProvider.loadFromApk(pfd));
+            }
+            android.content.res.Resources.class.getMethod("addLoaders", android.content.res.loader.ResourcesLoader[].class)
+                    .invoke(platform, (Object) new android.content.res.loader.ResourcesLoader[] { loader });
+            int id = platform.getIdentifier("loader_greeting", "string", "megler.test.loader");
+            int markId = platform.getIdentifier("loader_mark", "drawable", "megler.test.loader");
+            int colorId = platform.getIdentifier("loader_color", "color", "megler.test.loader");
+            String text = id != 0 ? platform.getString(id) : null;
+            String pkg = id != 0 ? platform.getResourcePackageName(id) : null;
+            android.graphics.Bitmap mark = markId != 0 ? android.graphics.BitmapFactory.decodeResource(platform, markId) : null;
+            int color = colorId != 0 ? platform.getColor(colorId, null) : 0;
+            String own;
+            try {
+                own = getResources().getString(id);
+            } catch (android.content.res.Resources.NotFoundException e) {
+                own = "not found";
+            }
+            String ok = platform.getString(android.R.string.ok);
+            detail = "before=" + before + " id=0x" + Integer.toHexString(id) + " text=" + text + " package=" + pkg + " mark=" + (mark == null ? "null" : mark.getWidth() + "x" + mark.getHeight() + " " + Integer.toHexString(mark.getPixel(1, 1)))
+                    + " color=" + Integer.toHexString(color) + " own=" + own + " ok=" + ok + " same=" + (platform == getResources());
+            return before == 0 && id != 0 && (id >>> 24) == 0x7f && "from the loader".equals(text) && "megler.test.loader".equals(pkg)
+                    && mark != null && mark.getWidth() == 4 && mark.getPixel(1, 1) == 0xFF102030 && color == 0xFF102030
+                    && !"from the loader".equals(own) && ok != null && !ok.isEmpty() && platform != getResources();
+        });
+    }
+
+    /**
+     * A switch bar as Android's Settings library makes one (MainSwitchBar, the head of Google Play services' Location accuracy
+     * screen): a LinearLayout that inflates res/layout/switch_bar.xml into itself and finds its title, its switch and -- told
+     * SDK_INT 31 or more -- the frame round them that layout-v31 and -v33 have and layout has not. Android 14 chooses -v33's,
+     * whose title has three lines at most. The frame's sizes are dimensions of values-v31 alone, its background a selector of
+     * drawable-v31 alone, the title's style a style of values-v31 alone: all there. The bar's setEnabled and setChecked set the
+     * frame's state as MainSwitchBar's do; where the frame was missing, Google Play services ended on a NullPointerException
+     * in MainSwitchBar.setEnabled. The app's other resources are still chosen at Android 9's level: the title's margin, a
+     * dimension of values (24dp) and of values-v31 (16dp), is values'. And an XML document of xml and xml-v31 is -v31's.
+     */
+    private void layoutApiLevel() {
+        step("layout-api-level", () -> {
+            SwitchBar bar = new SwitchBar(this);
+            android.view.View frame = bar.frame;
+            android.widget.TextView title = bar.title;
+            android.widget.Switch sw = bar.sw;
+            if (frame == null || title == null || sw == null) {
+                detail = "frame " + frame + " title " + title + " switch " + sw;
+                return false;
+            }
+            bar.setEnabled(false);
+            boolean disabled = !frame.isEnabled() && !title.isEnabled() && !sw.isEnabled();
+            bar.setEnabled(true);
+            android.graphics.drawable.Drawable bg = frame.getBackground();
+            bar.setChecked(true);
+            android.graphics.drawable.Drawable on = bg == null ? null : bg.getCurrent();
+            boolean activated = frame.isActivated();
+            bar.setChecked(false);
+            android.graphics.drawable.Drawable off = bg == null ? null : bg.getCurrent();
+            float density = getResources().getDisplayMetrics().density;
+            int titleMargin = ((android.view.ViewGroup.MarginLayoutParams) title.getLayoutParams()).getMarginEnd();
+            String level = null;
+            try (android.content.res.XmlResourceParser p = getResources().getXml(R.xml.level_probe)) {
+                for (int t = p.next(); t != org.xmlpull.v1.XmlPullParser.END_DOCUMENT; t = p.next()) {
+                    if (t == org.xmlpull.v1.XmlPullParser.START_TAG) { level = p.getAttributeValue(null, "level"); break; }
+                }
+            }
+            detail = "SDK_INT " + android.os.Build.VERSION.SDK_INT + ", title lines " + title.getMaxLines() + ", disabled " + disabled
+                    + ", background " + bg + " on " + on + " off " + off + " activated " + activated + ", min height " + frame.getMinimumHeight()
+                    + " padding " + frame.getPaddingStart() + " title margin " + titleMargin + " density " + density + ", xml level " + level;
+            return android.os.Build.VERSION.SDK_INT >= 31 && frame.getId() == R.id.frame && title.getMaxLines() == 3 && disabled
+                    && bg instanceof android.graphics.drawable.StateListDrawable && on != null && off != null && on != off && activated
+                    && frame.getMinimumHeight() == Math.round(72 * density) && frame.getPaddingStart() == Math.round(20 * density)
+                    && titleMargin == Math.round(24 * density) && "31".equals(level);
+        });
+    }
+
+    /**
+     * Resources of the app's own over the implementation of the activity's, as Tuya Smart's dynamic strings make them for every
+     * activity (DynamicResourceContextThemeWrapper.getResources) and other libraries on Android 7 and later: getImpl of the
+     * activity's Resources, then setImpl of that implementation on Resources made with the hidden Resources(ClassLoader), and on
+     * a subclass made with the public constructor that answers one string itself -- hidden API, by reflection. Both then have
+     * the activity's AssetManager, configuration and metrics (the very objects) and its resources: strings, a dimension, a
+     * drawable, a platform colour, a layout inflated through a ContextThemeWrapper whose getResources gives the subclass (as
+     * Tuya's wrapper), whose theme is made of it; the subclass's own string is its own. A theme the subclass made before, while
+     * it had a night configuration of its own (ProbeTheme of values-night), is rebased onto the implementation it is given
+     * (ProbeTheme of values). And ResourcesImpl's getters, Resources' field mResourcesImpl, the class loader given, the loaders.
+     */
+    private void resourcesImpl() {
+        step("resources-impl", () -> {
+            final android.content.res.Resources base = getResources();
+            java.lang.reflect.Method getImpl = android.content.res.Resources.class.getDeclaredMethod("getImpl");
+            getImpl.setAccessible(true);
+            Object impl = getImpl.invoke(base);
+            Class<?> implClass = Class.forName("android.content.res.ResourcesImpl");
+            java.lang.reflect.Method setImpl = android.content.res.Resources.class.getDeclaredMethod("setImpl", implClass);
+            setImpl.setAccessible(true);
+            java.lang.reflect.Constructor<android.content.res.Resources> withLoader = android.content.res.Resources.class.getDeclaredConstructor(ClassLoader.class);
+            withLoader.setAccessible(true);
+            android.content.res.Resources plain = withLoader.newInstance(getClassLoader());
+            setImpl.invoke(plain, impl);
+            android.content.res.Configuration night = new android.content.res.Configuration(base.getConfiguration());
+            night.uiMode = (night.uiMode & ~android.content.res.Configuration.UI_MODE_NIGHT_MASK) | android.content.res.Configuration.UI_MODE_NIGHT_YES;
+            final DynamicStrings dynamic = new DynamicStrings(base.getAssets(), base.getDisplayMetrics(), night);
+            Object own = getImpl.invoke(dynamic);
+            android.content.res.Resources.Theme early = dynamic.newTheme();
+            early.applyStyle(R.style.ProbeTheme, true);
+            int before = foreground(early);
+            setImpl.invoke(dynamic, impl);
+            int rebased = foreground(early);
+            android.content.res.Resources.Theme day = base.newTheme();
+            day.applyStyle(R.style.ProbeTheme, true);
+            // As Tuya's wrapper: a ContextThemeWrapper whose getResources gives the subclass, its theme made of it.
+            android.view.ContextThemeWrapper wrapper = new android.view.ContextThemeWrapper(this, android.R.style.Theme_Material_Light) {
+                @Override public android.content.res.Resources getResources() { return dynamic; }
+            };
+            android.view.View inflated = android.view.LayoutInflater.from(wrapper).inflate(R.layout.switch_bar, null);
+            java.lang.reflect.Field field = android.content.res.Resources.class.getDeclaredField("mResourcesImpl");
+            field.setAccessible(true);
+            Object loaders = android.content.res.Resources.class.getMethod("getLoaders").invoke(plain);
+            Object loader = android.content.res.Resources.class.getMethod("getClassLoader").invoke(plain);
+            String name = base.getString(R.string.app_name);
+            detail = "impl " + impl + " (" + (impl == null ? null : impl.getClass().getName()) + "), own " + own + "; strings " + plain.getString(R.string.app_name)
+                    + " / " + dynamic.getString(R.string.app_name) + " / " + wrapper.getString(R.string.app_name) + "; foreground before " + Integer.toHexString(before)
+                    + " rebased " + Integer.toHexString(rebased) + " day " + Integer.toHexString(foreground(day)) + "; inflated frame "
+                    + (inflated == null ? null : inflated.findViewById(R.id.frame)) + "; loaders " + loaders + " class loader " + loader;
+            return impl != null && impl.getClass() == implClass && getImpl.invoke(plain) == impl && getImpl.invoke(dynamic) == impl && own != null && own != impl
+                    && field.get(base) == impl && field.get(dynamic) == impl
+                    && plain.getAssets() == base.getAssets() && plain.getConfiguration() == base.getConfiguration() && plain.getDisplayMetrics() == base.getDisplayMetrics()
+                    && dynamic.getConfiguration() == base.getConfiguration()
+                    && implClass.getMethod("getAssets").invoke(impl) == base.getAssets() && implClass.getMethod("getConfiguration").invoke(impl) == base.getConfiguration()
+                    && implClass.getMethod("getDisplayMetrics").invoke(impl) == base.getDisplayMetrics()
+                    && name.equals(plain.getString(R.string.app_name)) && "Dynamic".equals(dynamic.getString(R.string.app_name)) && "Dynamic".equals(wrapper.getString(R.string.app_name))
+                    && base.getString(R.string.sync_account_type).equals(dynamic.getString(R.string.sync_account_type))
+                    && dynamic.getDimensionPixelSize(R.dimen.switch_title_margin) == base.getDimensionPixelSize(R.dimen.switch_title_margin)
+                    && plain.getDrawable(R.drawable.inset_fraction, null) instanceof android.graphics.drawable.InsetDrawable
+                    && plain.getColor(android.R.color.white, null) == 0xFFFFFFFF
+                    && wrapper.getTheme().getResources() == dynamic && inflated != null && inflated.findViewById(R.id.frame) != null
+                    && before == 0xFF222222 && rebased == 0xFF111111 && foreground(day) == 0xFF111111
+                    && loaders instanceof java.util.List && ((java.util.List<?>) loaders).isEmpty() && loader == getClassLoader();
+        });
+    }
+
+    /**
+     * The process's Application as code that has no Context finds it, by Android's hidden ActivityThread: its field
+     * sCurrentActivityThread, which currentActivityThread() gives too; that one's mInitialApplication -- which Tuya Smart's
+     * library loader reads on a worker thread while its Application starts, and found no such field -- mAllApplications and
+     * getApplication(); currentApplication() and AppGlobals.getInitialApplication(). All are the app's Application, here and
+     * on the thread DataApplication.onCreate started, as Android sets them before the Application's onCreate.
+     */
+    private void activityThreadApplication() {
+        step("activity-thread-application", () -> {
+            Class<?> at = Class.forName("android.app.ActivityThread");
+            Object thread = at.getMethod("currentActivityThread").invoke(null);
+            java.lang.reflect.Field current = at.getDeclaredField("sCurrentActivityThread");
+            current.setAccessible(true);
+            java.lang.reflect.Field initial = at.getDeclaredField("mInitialApplication");
+            initial.setAccessible(true);
+            java.lang.reflect.Field all = at.getDeclaredField("mAllApplications");
+            all.setAccessible(true);
+            android.app.Application app = getApplication();
+            Object fromField = initial.get(thread);
+            java.util.List<?> apps = (java.util.List<?>) all.get(thread);
+            Object fromGetter = at.getMethod("getApplication").invoke(thread);
+            Object fromCurrent = at.getMethod("currentApplication").invoke(null);
+            Object fromGlobals = Class.forName("android.app.AppGlobals").getMethod("getInitialApplication").invoke(null);
+            detail = "application " + app + ", in its onCreate: " + DataApplication.seenInOnCreate + "; field " + fromField + ", all " + apps
+                    + ", getApplication " + fromGetter + ", currentApplication " + fromCurrent + ", AppGlobals " + fromGlobals;
+            return app instanceof DataApplication && "field true current true".equals(DataApplication.seenInOnCreate) && current.get(null) == thread
+                    && fromField == app && apps != null && apps.contains(app) && fromGetter == app && fromCurrent == app && fromGlobals == app;
+        });
+    }
+
+    /** The theme's android:colorForeground, 0 when it has none. */
+    private static int foreground(android.content.res.Resources.Theme t) {
+        android.util.TypedValue v = new android.util.TypedValue();
+        return t.resolveAttribute(android.R.attr.colorForeground, v, true) ? v.data : 0;
+    }
+
+    /** Resources that answer one string themselves, as Tuya's dynamic strings answer theirs, and leave the rest to the original's. */
+    static final class DynamicStrings extends android.content.res.Resources {
+        @SuppressWarnings("deprecation")
+        DynamicStrings(android.content.res.AssetManager a, android.util.DisplayMetrics m, android.content.res.Configuration c) {
+            super(a, m, c);
+        }
+
+        @Override
+        public CharSequence getText(int id) {
+            return id == R.string.app_name ? "Dynamic" : super.getText(id);
+        }
+    }
+
+    /** As the Settings library's MainSwitchBar: a LinearLayout that inflates its layout into itself and finds its views by id. */
+    static final class SwitchBar extends android.widget.LinearLayout {
+        final android.view.View frame;
+        final android.widget.TextView title;
+        final android.widget.Switch sw;
+
+        SwitchBar(Context c) {
+            super(c);
+            android.view.LayoutInflater.from(c).inflate(R.layout.switch_bar, this);
+            frame = findViewById(R.id.frame);
+            title = (android.widget.TextView) findViewById(R.id.switch_text);
+            sw = (android.widget.Switch) findViewById(android.R.id.switch_widget);
+        }
+
+        @Override
+        public void setEnabled(boolean enabled) {
+            super.setEnabled(enabled);
+            title.setEnabled(enabled);
+            sw.setEnabled(enabled);
+            if (android.os.Build.VERSION.SDK_INT >= 31) {
+                frame.setEnabled(enabled);
+                frame.setActivated(sw.isChecked());
+            }
+        }
+
+        void setChecked(boolean checked) {
+            sw.setChecked(checked);
+            if (android.os.Build.VERSION.SDK_INT >= 31) frame.setActivated(checked);
+        }
+    }
+
+    /**
+     * A LocationRequest as Android 12 and later make one: the builder keeps the interval and the rest, the minimum update
+     * interval a sixth of the interval until one is set, "any number" of updates (Integer.MAX_VALUE) until one is set; one of
+     * the deprecated provider -- createFromDeprecatedProvider, as Google Play services' location engine asks for the passive
+     * provider (hidden: by reflection) -- names its provider and the quality the passive provider stands for (POWER_NONE); one
+     * goes through a Parcel and comes back equal. And a request of the passive interval through LocationManager (Android 12's
+     * requestLocationUpdates with a LocationRequest, by reflection) is handed a fix on the main thread and removed:
+     * "location-passive ok", which the test waits for. (LocationRequest is Android 12's: stubs/.)
+     */
+    private void locationRequest() {
+        step("location-request", () -> {
+            android.location.LocationRequest r = new android.location.LocationRequest.Builder(6000).setMaxUpdates(3).setMinUpdateDistanceMeters(10f).build();
+            android.location.LocationRequest any = new android.location.LocationRequest.Builder(6000).build();
+            Object deprecated = android.location.LocationRequest.class.getMethod("createFromDeprecatedProvider", String.class, long.class, float.class, boolean.class)
+                    .invoke(null, "passive", 0L, 0f, false);
+            String provider = (String) deprecated.getClass().getMethod("getProvider").invoke(deprecated);
+            int quality = (Integer) deprecated.getClass().getMethod("getQuality").invoke(deprecated);
+            android.os.Parcel p = android.os.Parcel.obtain();
+            r.writeToParcel(p, 0);
+            p.setDataPosition(0);
+            android.location.LocationRequest back = android.location.LocationRequest.CREATOR.createFromParcel(p);
+            p.recycle();
+            final android.location.LocationManager lm = (android.location.LocationManager) getSystemService(Context.LOCATION_SERVICE);
+            android.location.LocationRequest passive = new android.location.LocationRequest.Builder(android.location.LocationRequest.PASSIVE_INTERVAL).build();
+            lm.getClass().getMethod("requestLocationUpdates", String.class, android.location.LocationRequest.class, java.util.concurrent.Executor.class,
+                    android.location.LocationListener.class).invoke(lm, android.location.LocationManager.PASSIVE_PROVIDER, passive, getMainExecutor(),
+                    new android.location.LocationListener() {
+                        private int calls;
+
+                        @Override
+                        public void onLocationChanged(android.location.Location l) {
+                            if (++calls != 1) return;
+                            boolean good = Math.abs(l.getLatitude() - 55.7512) < 0.01 && android.os.Looper.myLooper() == android.os.Looper.getMainLooper();
+                            Log.i("DataTest", "location-passive " + (good ? "ok" : "FAILED " + l));
+                            lm.removeUpdates(this);
+                        }
+
+                        @Override
+                        public void onProviderEnabled(String provider) {}
+
+                        @Override
+                        public void onProviderDisabled(String provider) {}
+
+                        @Override
+                        public void onStatusChanged(String provider, int status, android.os.Bundle extras) {}
+                    });
+            detail = "built " + r + " minUpdate=" + r.getMinUpdateIntervalMillis() + " any.max=" + any.getMaxUpdates() + " deprecated " + deprecated + " provider=" + provider
+                    + " quality=" + quality + " back=" + back;
+            return r.getIntervalMillis() == 6000 && r.getMaxUpdates() == 3 && r.getMinUpdateIntervalMillis() == 1000
+                    && r.getQuality() == android.location.LocationRequest.QUALITY_BALANCED_POWER_ACCURACY && any.getMaxUpdates() == Integer.MAX_VALUE
+                    && "passive".equals(provider) && quality == 200 && r.equals(back);
+        });
+    }
+
+    /**
      * Installing: an APK opened with ACTION_VIEW goes to Megler's installer (megler_system_host.install_apk), and so do a
      * PackageInstaller session's files when it is committed, which then sends its status, STATUS_SUCCESS, to the
      * PendingIntent it was given.
@@ -5053,6 +5583,123 @@ public class Main extends Activity {
      * controller registers its callback (Deezer ended at its start with an InstantiationError: the class was an empty
      * abstract one): what it was made of comes back, and two of the same are equal.
      */
+    /**
+     * A key of the phone's media controls reaches the active session's callback with who sent it there to be asked
+     * (getCurrentControllerInfo: the system, "android" with its uid), as Spotify asks it in onPause; outside of the callback
+     * the question throws, as on Android. (MediaSession.meglerMediaKey is what the player calls for the key: by reflection.)
+     */
+    private void mediaKeyController() {
+        step("media-key-controller", () -> {
+            android.os.HandlerThread ht = new android.os.HandlerThread("media keys");
+            ht.start();
+            final android.media.session.MediaSession session = new android.media.session.MediaSession(this, "media-key-controller");
+            final String[] seen = new String[1];
+            final java.util.concurrent.CountDownLatch paused = new java.util.concurrent.CountDownLatch(1);
+            session.setCallback(new android.media.session.MediaSession.Callback() {
+                @Override public void onPause() {
+                    try {
+                        android.media.session.MediaSessionManager.RemoteUserInfo u = session.getCurrentControllerInfo();
+                        seen[0] = u.getPackageName() + " uid " + u.getUid();
+                    } catch (RuntimeException e) {
+                        seen[0] = String.valueOf(e);
+                    }
+                    paused.countDown();
+                }
+            }, new android.os.Handler(ht.getLooper()));
+            session.setPlaybackState(new android.media.session.PlaybackState.Builder()
+                    .setState(android.media.session.PlaybackState.STATE_PLAYING, 0, 1f)
+                    .setActions(android.media.session.PlaybackState.ACTION_PAUSE | android.media.session.PlaybackState.ACTION_PLAY).build());
+            session.setActive(true);
+            boolean threw = false;
+            try { session.getCurrentControllerInfo(); } catch (IllegalStateException e) { threw = true; }
+            boolean taken = (Boolean) android.media.session.MediaSession.class.getMethod("meglerMediaKey", android.view.KeyEvent.class)
+                    .invoke(null, new android.view.KeyEvent(android.view.KeyEvent.ACTION_DOWN, android.view.KeyEvent.KEYCODE_MEDIA_PAUSE));
+            boolean called = paused.await(5, java.util.concurrent.TimeUnit.SECONDS);
+            // (The key's message done whole before the question is asked again: one posted after it.)
+            final java.util.concurrent.CountDownLatch drained = new java.util.concurrent.CountDownLatch(1);
+            new android.os.Handler(ht.getLooper()).post(drained::countDown);
+            drained.await(5, java.util.concurrent.TimeUnit.SECONDS);
+            boolean threwAfter = false;
+            try { session.getCurrentControllerInfo(); } catch (IllegalStateException e) { threwAfter = true; }
+            session.release();
+            ht.quit();
+            detail = "outside " + threw + ", key taken " + taken + ", onPause " + called + " saw " + seen[0] + ", after " + threwAfter;
+            return threw && taken && called && ("android uid " + android.os.Process.SYSTEM_UID).equals(seen[0]) && threwAfter;
+        });
+    }
+
+    /**
+     * A selector's constant state as Android's DrawableContainerState says it, as Spotify's SecondaryButtonView reads it: its
+     * children, the very drawables it draws (getChildren, getChild, getChildCount); a copy of it (newDrawable) of the same
+     * kind, with the same states and each child a copy of its own; a level list's and an animation's copies likewise.
+     */
+    private void containerState() {
+        step("container-state", () -> {
+            android.graphics.drawable.GradientDrawable pressed = new android.graphics.drawable.GradientDrawable();
+            pressed.setColor(0xFFFF0000);
+            android.graphics.drawable.GradientDrawable normal = new android.graphics.drawable.GradientDrawable();
+            normal.setColor(0xFF00FF00);
+            android.graphics.drawable.StateListDrawable s = new android.graphics.drawable.StateListDrawable();
+            s.addState(new int[] { android.R.attr.state_pressed }, pressed);
+            s.addState(new int[0], normal);
+            android.graphics.drawable.Drawable.ConstantState cs = s.getConstantState();
+            if (!(cs instanceof android.graphics.drawable.DrawableContainer.DrawableContainerState)) {
+                detail = "the selector's constant state is " + cs;
+                return false;
+            }
+            android.graphics.drawable.DrawableContainer.DrawableContainerState st = (android.graphics.drawable.DrawableContainer.DrawableContainerState) cs;
+            android.graphics.drawable.Drawable[] children = st.getChildren();
+            boolean live = children != null && children.length >= 2 && children[0] == pressed && children[1] == normal && st.getChildCount() == 2
+                    && st.getChild(1) == normal && st.canConstantState();
+            android.graphics.drawable.Drawable copy = cs.newDrawable();
+            boolean copied = false;
+            if (copy instanceof android.graphics.drawable.StateListDrawable && copy != s) {
+                copy.setState(new int[] { android.R.attr.state_pressed });
+                android.graphics.drawable.Drawable now = copy.getCurrent();
+                copy.setState(new int[0]);
+                android.graphics.drawable.Drawable rest = copy.getCurrent();
+                copied = now instanceof android.graphics.drawable.GradientDrawable && now != pressed && rest instanceof android.graphics.drawable.GradientDrawable
+                        && rest != normal && rest != now;
+            }
+            android.graphics.drawable.LevelListDrawable l = new android.graphics.drawable.LevelListDrawable();
+            android.graphics.drawable.ColorDrawable low = new android.graphics.drawable.ColorDrawable(0xFF0000FF), high = new android.graphics.drawable.ColorDrawable(0xFFFFFF00);
+            l.addLevel(0, 10, low);
+            l.addLevel(11, 20, high);
+            android.graphics.drawable.Drawable lc = l.getConstantState().newDrawable();
+            lc.setLevel(15);
+            boolean levels = lc instanceof android.graphics.drawable.LevelListDrawable && lc.getCurrent() instanceof android.graphics.drawable.ColorDrawable
+                    && ((android.graphics.drawable.ColorDrawable) lc.getCurrent()).getColor() == 0xFFFFFF00 && lc.getCurrent() != high;
+            android.graphics.drawable.AnimationDrawable a = new android.graphics.drawable.AnimationDrawable();
+            a.addFrame(new android.graphics.drawable.ColorDrawable(0xFF000001), 100);
+            a.addFrame(new android.graphics.drawable.ColorDrawable(0xFF000002), 200);
+            a.setOneShot(true);
+            android.graphics.drawable.Drawable ac = a.getConstantState().newDrawable();
+            boolean frames = ac instanceof android.graphics.drawable.AnimationDrawable && ((android.graphics.drawable.AnimationDrawable) ac).getNumberOfFrames() == 2
+                    && ((android.graphics.drawable.AnimationDrawable) ac).getDuration(1) == 200 && ((android.graphics.drawable.AnimationDrawable) ac).isOneShot();
+            detail = "children " + (children == null ? "null" : children.length) + " live " + live + ", copy " + copy + " " + copied + ", levels " + levels + ", frames " + frames;
+            return live && copied && levels && frames;
+        });
+    }
+
+    /**
+     * Android 12's Context.createContext(ContextParams), as Google Play services' Nearby UWB service asks it: a context of the
+     * attribution tag the parameters carry, from this activity and from the application. (API 31, past the SDK the app is
+     * built against: by reflection.)
+     */
+    private void contextParams() {
+        step("context-params", () -> {
+            Class<?> params = Class.forName("android.content.ContextParams"), builder = Class.forName("android.content.ContextParams$Builder");
+            Object b = builder.getConstructor().newInstance();
+            builder.getMethod("setAttributionTag", String.class).invoke(b, "megler-test");
+            Object made = builder.getMethod("build").invoke(b);
+            java.lang.reflect.Method create = android.content.Context.class.getMethod("createContext", params);
+            Object fromActivity = create.invoke(this, made), fromApp = create.invoke(getApplicationContext(), made);
+            detail = "from the activity " + fromActivity + ", from the application " + fromApp;
+            return fromActivity instanceof android.content.Context && fromApp instanceof android.content.Context
+                    && ((android.content.Context) fromApp).getPackageName().equals(getPackageName());
+        });
+    }
+
     private void remoteUserInfo() {
         step("remote-user-info", () -> {
             android.media.session.MediaSessionManager.RemoteUserInfo u = new android.media.session.MediaSessionManager.RemoteUserInfo("megler.test.data", 12, 10077);

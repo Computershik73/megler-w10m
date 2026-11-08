@@ -97,6 +97,42 @@ public class Typing extends Activity {
         return e;
     }
 
+    /*
+     * The keyboard's coming and going as an inset animation (Android 11's WindowInsetsAnimation, which React Native's keyboard
+     * controller moves its views by): what each call of the callback says -- prepared, started with its bounds, the frames of
+     * its progress counted, ended.
+     */
+    static final class ImeCallback extends android.view.WindowInsetsAnimation.Callback {
+        int steps;
+
+        ImeCallback() {
+            super(DISPATCH_MODE_CONTINUE_ON_SUBTREE);
+        }
+
+        @Override
+        public void onPrepare(android.view.WindowInsetsAnimation a) {
+            steps = 0;
+            Log.i("DemoTest", "typing: ime prepare type=" + a.getTypeMask());
+        }
+
+        @Override
+        public android.view.WindowInsetsAnimation.Bounds onStart(android.view.WindowInsetsAnimation a, android.view.WindowInsetsAnimation.Bounds b) {
+            Log.i("DemoTest", "typing: ime start lower=" + b.getLowerBound().bottom + " upper=" + b.getUpperBound().bottom + " duration=" + a.getDurationMillis());
+            return b;
+        }
+
+        @Override
+        public android.view.WindowInsets onProgress(android.view.WindowInsets insets, java.util.List<android.view.WindowInsetsAnimation> running) {
+            steps++;
+            return insets;
+        }
+
+        @Override
+        public void onEnd(android.view.WindowInsetsAnimation a) {
+            Log.i("DemoTest", "typing: ime end type=" + a.getTypeMask() + " fraction=" + a.getFraction() + " steps=" + (steps >= 2 ? "several" : String.valueOf(steps)));
+        }
+    }
+
     @Override
     protected void onCreate(Bundle state) {
         super.onCreate(state);
@@ -108,6 +144,12 @@ public class Typing extends Activity {
         secret = field(root, "secret", InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD, 0, 80);
         note = field(root, "note", InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_MULTI_LINE | InputType.TYPE_TEXT_FLAG_CAP_SENTENCES, 0, 200);
         setContentView(root);
+        // (Android 11's View.setWindowInsetsAnimationCallback, by reflection: the app is built against Android 10.)
+        try {
+            android.view.View.class.getMethod("setWindowInsetsAnimationCallback", android.view.WindowInsetsAnimation.Callback.class).invoke(root, new ImeCallback());
+        } catch (Exception e) {
+            Log.i("DemoTest", "typing: ime callback refused " + e);
+        }
         selectionTold();
         Log.i("DemoTest", "typing: created");
     }

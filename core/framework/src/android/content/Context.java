@@ -150,6 +150,9 @@ public abstract class Context {
     public Context createWindowContext(int type, Bundle options) { return this; }
     public Context createWindowContext(android.view.Display display, int type, Bundle options) { return this; }
     public Context createAttributionContext(String tag) { return this; }
+    /* Android 12's context of other parameters, which are its attribution here: Google Play services' Nearby UWB service asks
+       it on its API handler thread, and the NoSuchMethodError ended that thread's call (0.1.0.674). */
+    public Context createContext(ContextParams params) { return createAttributionContext(params == null ? null : params.getAttributionTag()); }
     public Context createContextForSplit(String split) { return this; }
     public android.view.Display getDisplay() { return ((android.view.WindowManager) getSystemService(WINDOW_SERVICE)).getDefaultDisplay(); }
     public int getDisplayId() { return 0; }

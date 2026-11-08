@@ -124,6 +124,10 @@ const char *mg_jni_reflected_sig(const mg_jobj *method);
 
 /* The native method a library registered (RegisterNatives) or exports under its JNI name; NULL when there is none. */
 void *mg_jni_native(const char *cls, const char *name, const char *sig);
+/* The signature a native method of that name was registered with on the class (the last one registered); NULL when none was. */
+const char *mg_jni_native_sig(const char *cls, const char *name);
+/* The natives registered on a class, as "name(sig), ...", newest first, into `out`; how many there are. */
+int mg_jni_natives_said(const char *cls, char *out, size_t size);
 /*
  * Of the classes a DEX file defines, while the Dalvik runtime runs: how many
  * native methods libraries have registered, how many entries of their tables

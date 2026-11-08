@@ -43,6 +43,9 @@
 // a dialog taller than that part went off the top: on the phone Apktool M's search dialog had its field above the screen's
 // top edge while the user typed into it. And it gave a dialog the part of it the keyboard covered as an inset, which a view
 // that fits system windows turned into padding, making the dialog taller still. An activity was always resized.
+// And the keyboard's coming and going runs as an inset animation of Type.ime() through the views' callbacks
+// (setImeHeight, ImeAnimation; View.setWindowInsetsAnimationCallback), as Android 11's InsetsController runs it: React
+// Native's keyboard controller moves what is above the keyboard only as such an animation tells it.
 //
 // And in the screen's changes (screenChanged: the shell resized or turned the app's surface, megler.Screen): every window is laid
 // out again at the new size with its insets worked out again, its views hear the new configuration
@@ -151,14 +154,18 @@ public final class ViewRoot implements ViewParent {
         return r;
     }
     private WindowInsets computeInsets() {
-        boolean full = mLp.type == WindowManager.LayoutParams.TYPE_BASE_APPLICATION || mLp.type == WindowManager.LayoutParams.TYPE_APPLICATION;
         mAdjust = adjustMode();
+        return insetsWithIme(sImeBottom);
+    }
+    /* The window's insets with a keyboard of `ime` pixels (the one there, or one on its way: ImeAnimation's progress). */
+    private WindowInsets insetsWithIme(int ime) {
+        boolean full = mLp.type == WindowManager.LayoutParams.TYPE_BASE_APPLICATION || mLp.type == WindowManager.LayoutParams.TYPE_APPLICATION;
         boolean resize = mAdjust == WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE;
         /* A dialog lies above the keyboard when it is resized and is moved, not shrunk, when it is panned: no part of it is an inset. */
         WindowInsets i;
         if (floatingAppWindow()) i = WindowInsets.meglerOf(0, 0, 0, 0, 0, null);
-        else if (full) i = WindowInsets.meglerOf(sInsets[0], sInsets[1], sInsets[2], sInsets[3], resize ? sImeBottom : 0, cutout());
-        else i = WindowInsets.meglerOf(0, 0, 0, 0, Math.max(0, sImeBottom - (screenH() - mY - mH)), null);
+        else if (full) i = WindowInsets.meglerOf(sInsets[0], sInsets[1], sInsets[2], sInsets[3], resize ? ime : 0, cutout());
+        else i = WindowInsets.meglerOf(0, 0, 0, 0, Math.max(0, ime - (screenH() - mY - mH)), null);
         /* The frame they are relative to (WindowInsets.getFrame): the screen for an activity's window, which fills it; another
            window's own size once it has been laid out, the screen's before. */
         return full || mW <= 0 || mH <= 0 ? i.meglerFrame(screenW(), screenH()) : i.meglerFrame(mW, mH);
@@ -451,7 +458,73 @@ public final class ViewRoot implements ViewParent {
         sInsets = new int[] { l, t, r, b };
         for (ViewRoot v : sRoots) v.requestApplyInsets();
     }
-    public static void setImeHeight(int h) { if (h != sImeBottom) { sImeBottom = h; for (ViewRoot v : sRoots) v.requestApplyInsets(); } }
+    public static void setImeHeight(int h) {
+        if (h == sImeBottom) return;
+        int from = sImeBottom;
+        sImeBottom = h;
+        for (ViewRoot v : new ArrayList<>(sRoots)) v.imeChanged(from, h);
+    }
+    /*
+     * The keyboard's coming and going as an inset animation of WindowInsets.Type.ime(), through the views' callbacks
+     * (View.setWindowInsetsAnimationCallback), as Android 11's InsetsController runs it for a window: onPrepare with the
+     * insets as they were; the window's insets changed (onApplyWindowInsets, a layout); onStart, once those are the window's,
+     * with the bounds -- none and the keyboard's height; onProgress at each frame of its 250 ms with the insets at that point;
+     * onEnd. Nothing ran such an animation here, and React Native's keyboard controller (react-native-keyboard-controller,
+     * which Discord's login and registration screens are built on) moves what is above the keyboard only as one tells it: its
+     * fields and buttons stayed under the keyboard. A window with no such callback has its insets changed, as before. A new
+     * change ends the one still running.
+     */
+    private static final long IME_ANIMATION_MS = 250;
+    private static boolean sImeAnimationSaid;
+    private ImeAnimation mImeAnimation;
+    private void imeChanged(int from, int to) {
+        if (mImeAnimation != null) mImeAnimation.end();
+        if (!mRemoved && mView.hasWindowInsetsAnimationCallback()) {
+            mImeAnimation = new ImeAnimation(from, to);
+            mView.dispatchWindowInsetsAnimationPrepare(mImeAnimation.animation);
+        }
+        requestApplyInsets();
+    }
+    private final class ImeAnimation {
+        final WindowInsetsAnimation animation = new WindowInsetsAnimation(WindowInsets.Type.ime(), new android.view.animation.DecelerateInterpolator(), IME_ANIMATION_MS);
+        final java.util.List<WindowInsetsAnimation> running = java.util.Collections.singletonList(animation);
+        final int from, to;
+        boolean started, ended;
+        long began;
+        final Choreographer.FrameCallback step = t -> progress();
+        ImeAnimation(int from, int to) { this.from = from; this.to = to; }
+        /* (From the frame that gave the window its new insets, after its layout.) */
+        void start() {
+            if (started || ended) return;
+            started = true;
+            if (mRemoved) { end(); return; }
+            if (!sImeAnimationSaid) {
+                sImeAnimationSaid = true;
+                android.util.Log.i("MeglerViews", "the keyboard " + (to > from ? "comes" : "goes") + " as an inset animation of " + IME_ANIMATION_MS
+                                   + " ms to the views' callbacks (WindowInsetsAnimation), from " + windowName());
+            }
+            mView.dispatchWindowInsetsAnimationStart(animation, new WindowInsetsAnimation.Bounds(Insets.NONE, Insets.of(0, 0, 0, Math.max(from, to))));
+            began = android.os.SystemClock.uptimeMillis();
+            Choreographer.getMainThreadInstance().postFrameCallback(step);
+        }
+        void progress() {
+            if (ended) return;
+            if (mRemoved) { end(); return; }
+            float f = Math.min(1f, (android.os.SystemClock.uptimeMillis() - began) / (float) IME_ANIMATION_MS);
+            animation.setFraction(f);
+            int ime = Math.round(from + (to - from) * animation.getInterpolatedFraction());
+            mView.dispatchWindowInsetsAnimationProgress(insetsWithIme(ime), running);
+            if (f < 1f) Choreographer.getMainThreadInstance().postFrameCallback(step);
+            else end();
+        }
+        void end() {
+            if (ended) return;
+            ended = true;
+            Choreographer.getMainThreadInstance().removeFrameCallback(step);
+            if (mImeAnimation == this) mImeAnimation = null;
+            if (started && !mRemoved) mView.dispatchWindowInsetsAnimationEnd(animation);
+        }
+    }
     /**
      * The screen was resized or turned (megler.Screen): every window is laid out again at the new size, its insets worked out
      * again and its panning for the keyboard forgotten, and the whole screen drawn again; the views of the windows that were
@@ -682,6 +755,11 @@ public final class ViewRoot implements ViewParent {
             mWindowInsets = computeInsets();
             mView.dispatchApplyWindowInsets(mWindowInsets);
             mLayoutRequested = true;
+            /* The keyboard's animation starts once the window has its new insets and has been laid out with them: at this frame's end. */
+            if (mImeAnimation != null && !mImeAnimation.started) {
+                final ImeAnimation a = mImeAnimation;
+                Choreographer.getMainThreadInstance().postCallback(Choreographer.CALLBACK_COMMIT, a::start, null);
+            }
         }
         if (!mLayoutRequested && !mView.isLayoutRequested()) {
             updatePan();
@@ -906,9 +984,21 @@ public final class ViewRoot implements ViewParent {
      * The screen's canvas. While a window's views draw on it, its width and height are the window's, and each view's own while
      * that view draws (View.drawFromParent): on Android a view draws into a display list of its own size, and an onDraw that
      * reads canvas.getWidth() means the view's width. Anything else of the canvas is the screen's, as before.
+     *
+     * The one that records the window's frames is hardware accelerated, as a window's canvas is on Android, while the views
+     * draw through lists of their own: a window's root view draws on it, and so does a child of the root that has no list of
+     * its own. A WebView whose page is drawn on the graphics processor is such a child where an app puts it straight into a
+     * window of its own (King's popups: a WebView in the root of a panel window, PopupDialog$PopupDecorView), and it was
+     * drawn in software there, where nothing else on the screen is. Chromium's software draw cannot take a page's view
+     * transition (its own frame sink manager has no shared images: ProcessCompositorFrameTransitionDirective called
+     * GetSharedImageInterface through a null provider), and Candy Crush Saga ended at its popup's first one. As
+     * RecordingCanvas, it says it is not while a view without a list that is not drawn on the graphics processor (a
+     * SurfaceView, a TextureView, a WebView drawn in software) draws into it (meglerSoftware). A screen canvas over a bitmap
+     * (checkPart's) never is.
      */
     public static final class ScreenCanvas extends Canvas {
         private int mViewW = -1, mViewH = -1, mScreenW = -1, mScreenH = -1;
+        private boolean mFrames, mSoftware;
 
         ScreenCanvas(Bitmap b) { super(b); }
         /* One that records the window's frames (drawAll), of the screen's size. */
@@ -919,6 +1009,16 @@ public final class ViewRoot implements ViewParent {
             meglerRecordFrame(w, h);
             mScreenW = w;
             mScreenH = h;
+            mFrames = true;
+        }
+
+        @Override public boolean isHardwareAccelerated() { return mFrames && !mSoftware && View.meglerViewLists(); }
+
+        /** Whether the canvas says it is not hardware accelerated from now on; what it said before (RecordingCanvas's). */
+        public boolean meglerSoftware(boolean on) {
+            boolean was = mSoftware;
+            mSoftware = on;
+            return was;
         }
 
         @Override public int getWidth() { return mViewW >= 0 ? mViewW : mScreenW >= 0 ? mScreenW : super.getWidth(); }

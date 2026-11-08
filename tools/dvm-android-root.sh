@@ -219,6 +219,14 @@ done
 FW="no Java framework"
 if [ -f "$ROOT/build/framework/megler-framework.dex" ]; then
   cp -u "$ROOT/build/framework/megler-framework.dex" "$OUT/framework/"
+  # Its further DEX files, where it has outgrown one (tools/build-framework.sh), and none that the last build did not write:
+  # the runtime adds every one that is there (core/src/drivers/mg_java.c, add_framework_parts).
+  for part in "$OUT/framework/"megler-framework-classes*.dex; do
+    if [ -f "$part" ] && [ ! -f "$ROOT/build/framework/$(basename "$part")" ]; then rm -f "$part"; fi
+  done
+  for part in "$ROOT/build/framework/"megler-framework-classes*.dex; do
+    if [ -f "$part" ]; then cp -u "$part" "$OUT/framework/"; fi
+  done
   # And the list of its methods that are signatures alone (tools/list-stubs.py), whose first calls the runtime says.
   [ ! -f "$ROOT/build/framework/megler-stubs.txt" ] || cp -u "$ROOT/build/framework/megler-stubs.txt" "$OUT/framework/"
   FW="the Java framework"
