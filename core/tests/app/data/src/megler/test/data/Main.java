@@ -1728,6 +1728,7 @@ public class Main extends Activity {
             detail = "client=" + client + " read=" + read;
             return "chimera config".equals(read);
         });
+        bitmapParcel();
         layoutApiLevel();
         resourcesImpl();
         activityThreadApplication();
@@ -5149,6 +5150,41 @@ public class Main extends Activity {
             detail = "size=" + size + " back=" + back + " empty=" + emptyBack;
             return size > 0 && back != null && back.equals(ws) && !back.equals(empty) && n == 2 && firstUid == 10045 && "megler.test.a".equals(firstName)
                     && chains != null && chains.size() == 1 && emptyIs && emptyBack.equals(empty);
+        });
+    }
+
+    /**
+     * Bitmaps through a Parcel as Google Play services' maps client writes a marker's picture (BitmapDescriptorFactory.fromBitmap:
+     * an int, then the bitmap's writeToParcel) and its maps module reads it (an int, then Bitmap.CREATOR): each comes out a
+     * bitmap of its own, of the same size, pixels, density and mutability, the parcel read to its end -- the module checks
+     * that -- and whole after the writer has recycled its own.
+     */
+    private void bitmapParcel() {
+        step("bitmap-parcel", () -> {
+            android.graphics.Bitmap mutable = android.graphics.Bitmap.createBitmap(3, 2, android.graphics.Bitmap.Config.ARGB_8888);
+            mutable.setPixel(0, 0, 0xFFFF0000);
+            mutable.setPixel(2, 1, 0xFF00FF00);
+            mutable.setDensity(320);
+            android.graphics.Bitmap fixed = android.graphics.Bitmap.createBitmap(new int[] { 0xFF0000FF, 0xFFFFFFFF }, 2, 1, android.graphics.Bitmap.Config.ARGB_8888);
+            android.os.Parcel p = android.os.Parcel.obtain();
+            for (android.graphics.Bitmap b : new android.graphics.Bitmap[] { mutable, fixed }) {
+                p.writeInt(1);
+                b.writeToParcel(p, 0);
+            }
+            p.setDataPosition(0);
+            android.graphics.Bitmap[] back = android.graphics.Bitmap.CREATOR.newArray(2);
+            for (int i = 0; i < back.length; i++) back[i] = p.readInt() != 0 ? android.graphics.Bitmap.CREATOR.createFromParcel(p) : null;
+            int left = p.dataAvail();
+            p.recycle();
+            mutable.recycle();
+            fixed.recycle();
+            android.graphics.Bitmap a = back[0], b = back[1];
+            detail = "back=" + java.util.Arrays.toString(back) + " left=" + left
+                    + (a == null || a.isRecycled() ? "" : " first " + a.getWidth() + "x" + a.getHeight() + " density=" + a.getDensity() + " mutable=" + a.isMutable());
+            return a != null && b != null && a != mutable && b != fixed && !a.isRecycled() && !b.isRecycled() && left == 0
+                    && a.getWidth() == 3 && a.getHeight() == 2 && a.getDensity() == 320 && a.isMutable() && a.getConfig() == android.graphics.Bitmap.Config.ARGB_8888
+                    && a.getPixel(0, 0) == 0xFFFF0000 && a.getPixel(2, 1) == 0xFF00FF00 && a.getPixel(1, 0) == 0
+                    && b.getWidth() == 2 && b.getHeight() == 1 && !b.isMutable() && b.getPixel(0, 0) == 0xFF0000FF && b.getPixel(1, 0) == 0xFFFFFFFF;
         });
     }
 

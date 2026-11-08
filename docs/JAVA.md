@@ -5447,6 +5447,20 @@ on a looper thread of its own and takes it back with `next()`.
   Maps module's own Google certificates among them (0.1.0.671). The data
   app's step "provider-client-file" reads its provider's file through a
   client.
+- `android/graphics/Bitmap.java`, `writeToParcel` and `CREATOR`: a bitmap
+  goes into a Parcel and the reader gets one of its own, the same pixels,
+  size, config, density and mutability, which stays when the writer recycles
+  its own, as on Android -- here the copy itself in the parcel's table of the
+  process's objects (`Parcel.writeValue`), not its bytes. `CREATOR` was null
+  and `writeToParcel` the interface's, which writes nothing. Google Play
+  services' maps client in an app writes a marker's picture so
+  (`BitmapDescriptorFactory.fromBitmap`: an int, then `writeToParcel`) and
+  its maps module reads it with `Bitmap.CREATOR`
+  (`IBitmapDescriptorFactoryDelegate`, transaction 6): Transit ended with a
+  `NullPointerException` ("Parcelable$Creator.createFromParcel ... on a null
+  object reference" in the module's `m6.ev.a`) as it put a bus route on its
+  map (0.1.0.675). The data app's step "bitmap-parcel" writes two so and
+  reads them back.
 - `android/app/usage/StorageStatsManager.java`, two methods in their two
   forms: `getTotalBytes` and `getFreeBytes` were signatures answering 0.
   Since Android 8 this is where an app asks how large the phone's storage is

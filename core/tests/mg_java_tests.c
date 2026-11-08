@@ -2757,6 +2757,8 @@ static int run_data(void)
                                          "location-request",
                                          /* And a provider's file through a ContentProviderClient, as Google Play services' DynamiteLoader reads its configuration. */
                                          "provider-client-file",
+                                         /* And bitmaps through a Parcel as a marker's picture goes from Google Play services' maps client to its module. */
+                                         "bitmap-parcel",
                                          /* And a layout of layout, -v31 and -v33 inflated as the Settings library's main switch bar inflates its
                                             own: the -v33 one Android 14 chooses, its frame there, with the dimensions and drawables of -v31 alone. */
                                          "layout-api-level",
