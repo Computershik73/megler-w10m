@@ -21,6 +21,12 @@ void mg_log_set_sink(mg_log_sink sink, void *user)
     g_sink_user = user;
 }
 
+mg_log_sink mg_log_get_sink(void **user)
+{
+    if (user) *user = g_sink_user;
+    return g_sink;
+}
+
 void mg_log_set_level(int min_level) { g_min_level = min_level; }
 
 void mg_logv(int level, const char *fmt, va_list ap)

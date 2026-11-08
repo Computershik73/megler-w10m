@@ -4495,6 +4495,35 @@ shares the app's, as before. The core's test `test_webview_display`
 (`mg_gl_tests.c`) asks for both displays and makes a buffer's image on the
 WebView's.
 
+**Its OpenGL ES version, and its frames' timing.** At every start the
+WebView's own ANGLE (its OpenGL ES back end over this layer's EGL) has its
+first context refused four times with `EGL_BAD_MATCH` before it has one:
+`DisplayEGL::initializeContext` (ANGLE's `chromium/6613`) asks for OpenGL ES
+3.2, 3.1, 3.0 and 2.0 in turn, each first with
+`EGL_CONTEXT_OPENGL_RESET_NOTIFICATION_STRATEGY` = `EGL_LOSE_CONTEXT_ON_RESET`
+and then without, and ANGLE over Direct3D 11 makes 3.0 at most at any feature
+level (`GetMaximumClientVersion` in `renderer11_utils.cpp`: "3.1 could
+theoretically be supported on FL 11.0+, but is not supported in ANGLE"), so
+3.2 and 3.1, with and without, are refused and 3.0 with its reset strategy is
+made. That is EGL's answer on Android too wherever the graphics processor has
+less than is asked (`EGL_KHR_create_context`); a phone's Adreno gives 3.2 at
+the first try. The log said it as four refusals to look into; it now says
+each version once as what it is (`context_refused` in `ndk/mg_egl.c`), and
+any other refusal with what was asked (the version, the reset strategy,
+robust access, flags, sharing). The WebView draws on the graphics processor
+with its 3.0 context afterwards (Zona: "draw functor 1 drawn 29 times").
+Dawn, Chromium's WebGPU, later asks for a 3.1 context of that ANGLE to find
+an OpenGL ES adapter and is refused by it ("Requested version is not
+supported"): there is no WebGPU here. And Chromium looks up Android 13's
+`AChoreographer_postVsyncCallback` and `AChoreographerFrameCallbackData_*`
+and says each is missing: this layer has no native `AChoreographer` at all
+(none of Android 7's or 10's functions either). The WebView's begin frames do
+not use it: `ExternalBeginFrameSourceAndroid` takes Java's `Choreographer`
+when it is the WebView's (`requires_align_with_java`), and the lookup only
+decides whether frames carry Android 13's deadlines; Flutter and the frame
+pacing of Unity's Swappy take Java's `Choreographer` too while there is no
+native one.
+
 **Out of memory.** Chromium ends an app it cannot get memory for in
 PartitionAlloc's `OnNoMemoryInternal`: the size it asked for goes into a
 global of its library, and it traps (bkpt, then udf, where the phone's report

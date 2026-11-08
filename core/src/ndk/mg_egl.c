@@ -67,7 +67,9 @@ typedef unsigned EGLBoolean, EGLenum;
 #define EGL_SUCCESS 0x3000
 #define EGL_NOT_INITIALIZED 0x3001
 #define EGL_BAD_ALLOC 0x3003
+#define EGL_BAD_ATTRIBUTE 0x3004
 #define EGL_BAD_DISPLAY 0x3008
+#define EGL_BAD_MATCH 0x3009
 #define EGL_BAD_NATIVE_WINDOW 0x300B
 #define EGL_BAD_SURFACE 0x300D
 #define EGL_DRAW 0x3059
@@ -84,6 +86,16 @@ typedef unsigned EGLBoolean, EGLenum;
 #define EGL_VERSION 0x3054
 #define EGL_EXTENSIONS 0x3055
 #define EGL_CONTEXT_CLIENT_VERSION 0x3098
+#define EGL_CONTEXT_MINOR_VERSION 0x30FB
+#define EGL_CONTEXT_FLAGS_KHR 0x30FC
+#define EGL_CONTEXT_OPENGL_ROBUST_ACCESS_EXT 0x30BF
+#define EGL_CONTEXT_OPENGL_RESET_NOTIFICATION_STRATEGY_EXT 0x3138
+#define EGL_CONTEXT_PRIORITY_LEVEL_IMG 0x3100
+#define EGL_CONTEXT_OPENGL_ROBUST_ACCESS 0x31B2
+#define EGL_CONTEXT_OPENGL_NO_ERROR_KHR 0x31B3
+#define EGL_CONTEXT_OPENGL_RESET_NOTIFICATION_STRATEGY 0x31BD
+#define EGL_NO_RESET_NOTIFICATION 0x31BE
+#define EGL_LOSE_CONTEXT_ON_RESET 0x31BF
 #define EGL_OPENGL_ES2_BIT 4
 #define EGL_OPENGL_ES3_BIT 0x40
 #define EGL_RENDERABLE_TYPE 0x3040
@@ -747,6 +759,76 @@ static void refused(const char *what, volatile i32 *said)
     if (n <= 10) mg_warn("egl: %s was refused (EGL error 0x%x)%s", what, (unsigned)e, n == 10 ? "; the next of these are not said" : "");
 }
 
+/* The OpenGL ES version a context was asked for (1.0 where nothing says, as EGL has it), and the rest of what was asked, as words. */
+static void context_asked(const EGLint *attribs, int *major, int *minor, char *rest, size_t n)
+{
+    size_t at = 0;
+    *major = 1;
+    *minor = 0;
+    rest[0] = 0;
+    for (; attribs && attribs[0] != EGL_NONE; attribs += 2) {
+        EGLint k = attribs[0], v = attribs[1];
+        char one[64];
+        one[0] = 0;
+        switch (k) {
+        case EGL_CONTEXT_CLIENT_VERSION: *major = v; break;     /* EGL_CONTEXT_MAJOR_VERSION too */
+        case EGL_CONTEXT_MINOR_VERSION: *minor = v; break;
+        case EGL_CONTEXT_OPENGL_RESET_NOTIFICATION_STRATEGY:
+        case EGL_CONTEXT_OPENGL_RESET_NOTIFICATION_STRATEGY_EXT:
+            snprintf(one, sizeof(one), ", %s on a reset", v == EGL_LOSE_CONTEXT_ON_RESET ? "lost" : v == EGL_NO_RESET_NOTIFICATION ? "not told" : "?");
+            break;
+        case EGL_CONTEXT_OPENGL_ROBUST_ACCESS:
+        case EGL_CONTEXT_OPENGL_ROBUST_ACCESS_EXT: snprintf(one, sizeof(one), ", robust access %s", v ? "on" : "off"); break;
+        case EGL_CONTEXT_FLAGS_KHR: snprintf(one, sizeof(one), ", flags 0x%x", (unsigned)v); break;
+        case EGL_CONTEXT_OPENGL_NO_ERROR_KHR: snprintf(one, sizeof(one), ", no errors %s", v ? "on" : "off"); break;
+        case EGL_CONTEXT_PRIORITY_LEVEL_IMG: snprintf(one, sizeof(one), ", priority 0x%x", (unsigned)v); break;
+        default: snprintf(one, sizeof(one), ", 0x%x = 0x%x", (unsigned)k, (unsigned)v); break;
+        }
+        if (one[0] && at < n) at += (size_t)snprintf(rest + at, n - at, "%s", one);
+    }
+    if (at >= n && n) rest[n - 1] = 0;
+}
+
+/*
+ * The highest OpenGL ES version ANGLE's display makes: 3.0 on Direct3D 11 from feature level 10_1 on (3.1 it does not do on
+ * Direct3D 11 at all: renderer11_utils.cpp, GetMaximumClientVersion), 2.0 below; 3.0 where the level is not known.
+ */
+static int display_es_version(void) { return !g_d3d_level || g_d3d_level >= 0xA100 ? 30 : 20; }
+
+/*
+ * eglCreateContext refused. Asked for a version of OpenGL ES above what the display makes, EGL refuses with EGL_BAD_MATCH,
+ * as Android's EGL does on a graphics processor that has less than what is asked (EGL_KHR_create_context), and whoever
+ * asked tries a lower one: the WebView's own ANGLE, which draws over this EGL, asks for 3.2, 3.1, 3.0 and 2.0 in turn, each
+ * first with its context lost on a reset and then without (DisplayEGL::initializeContext), so it is refused four times on
+ * every start before it has its 3.0 -- where Android's EGL on a phone's Adreno gives it 3.2 at once. That is said once for
+ * each version, as what it is. Any other refusal is said as before, with what was asked.
+ */
+static void context_refused(EGLContext share, const EGLint *attribs, volatile i32 *said)
+{
+    static volatile i32 versions_said;
+    typedef EGLint (*fn_error)(void);
+    fn_error err = A(fn_error, "eglGetError");
+    EGLint e = err ? err() : 0;
+    int major, minor, has = display_es_version();
+    char rest[200];
+    i32 n;
+    if (e && e != EGL_SUCCESS) g_error = e;
+    context_asked(attribs, &major, &minor, rest, sizeof(rest));
+    if (e == EGL_BAD_MATCH && major >= 2 && major * 10 + minor > has) {
+        i32 bit = (i32)1 << ((major & 3) * 4 + (minor & 3)), was = versions_said;
+        while (!(was & bit) && mg_atomic_cas(&versions_said, was, was | bit) != was) was = versions_said;
+        if (!(was & bit))
+            mg_info("egl: a context of OpenGL ES %d.%d%s asked for and refused (EGL_BAD_MATCH): this display makes OpenGL ES %d.%d at most, and "
+                    "EGL refuses more as Android's does on a graphics processor that has less; the app asks for a lower version next "
+                    "(the WebView's ANGLE: 3.2, 3.1, then 3.0, each with its context lost on a reset first)", major, minor, rest, has / 10, has % 10);
+        return;
+    }
+    n = mg_atomic_add(said, 1);
+    if (n <= 10)
+        mg_warn("egl: eglCreateContext was refused (EGL error 0x%x): OpenGL ES %d.%d%s%s%s", (unsigned)e, major, minor, rest, share ? ", sharing" : "",
+                n == 10 ? "; the next of these are not said" : "");
+}
+
 /* What EGL itself is to be given for a surface the app names. */
 static EGLSurface real_of(EGLSurface h)
 {
@@ -1042,7 +1124,7 @@ static EGLContext g_eglCreateContext(EGLDisplay d, EGLConfig config, EGLContext 
     }
     if (!g_blob_started) blob_cache_offer(d);
     made = real(d, no_config ? NULL : config, share, attribs);
-    if (!made) refused("eglCreateContext", &said);
+    if (!made) context_refused(share, attribs, &said);
     else live_add(d, made, share);
     mg_trace("eglCreateContext -> %p", made);
     return made;
@@ -2455,8 +2537,6 @@ static void *g_eglCreateImageKHR(EGLDisplay d, EGLContext ctx, EGLenum target, v
 #define EGL_SYNC_NATIVE_FENCE_FD_ANDROID 0x3145
 #define EGL_SYNC_NATIVE_FENCE_SIGNALED_ANDROID 0x3146
 #define EGL_NO_NATIVE_FENCE_FD_ANDROID (-1)
-#define EGL_BAD_ATTRIBUTE 0x3004
-#define EGL_BAD_MATCH 0x3009
 
 typedef struct fence {
     struct fence *next;

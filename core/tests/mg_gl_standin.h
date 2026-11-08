@@ -37,6 +37,7 @@ typedef struct mg_gl_standin_stats {
     i32 contexts, contexts_alive, surfaces, surfaces_alive;
     i32 clears, draws, reads, swaps;
     i32 refused_es1;                   /* version-1 contexts refused */
+    i32 refused_versions;              /* contexts of a version above what it makes (3.0, or 2.0 in the complete mode) refused */
     float clear[4];                    /* the last clear colour */
     i32 largest_es;                    /* the newest version a context was made for */
     i32 dropped;                       /* clears, draws and reads of a surface whose keyed mutex was not held: dropped */
