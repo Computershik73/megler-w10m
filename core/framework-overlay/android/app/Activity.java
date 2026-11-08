@@ -50,6 +50,10 @@
 // the window's hierarchy in, onRestoreInstanceState gives it back: a field's text, a list's place), as Android's does. And
 // setRequestedOrientation, and the manifest's android:screenOrientation, are told to the shell by megler.AppRunner as the
 // activity is or comes in front (updateOrientation), not when its window is first asked for.
+//
+// And getCallingActivity and getCallingPackage name who started the activity for a result -- none when it was started
+// without one, as on Android, where they named whoever started it; Android 14's getLaunchedFromUid and
+// getLaunchedFromPackage name that one, the app itself, whether for a result or not.
 // Everything else is the original's, unchanged.
 package android.app;
 
@@ -507,9 +511,13 @@ public class Activity extends ContextThemeWrapper implements Window.Callback, Ke
     public final Application getApplication() { return mApplication != null ? mApplication : Application.meglerGet(); }
     public ComponentName getComponentName() { return mComponent != null ? mComponent : new ComponentName(this, getClass()); }
     public String getLocalClassName() { String p = getPackageName(), c = getClass().getName(); return c.startsWith(p + ".") ? c.substring(p.length() + 1) : c; }
-    public String getCallingPackage() { return mCaller != null ? getPackageName() : null; }
-    public ComponentName getCallingActivity() { return mCaller != null ? mCaller.getComponentName() : null; }
-    public String getLaunchedFromPackage() { return getCallingPackage(); }
+    /* Who started it for a result, which setResult answers: none when it was started without one, as Android's are; who
+       launched it (Android 14's getLaunchedFromUid and getLaunchedFromPackage) whether or not, as Android tells an activity
+       launched by its own app. Both were the caller whenever there was one. */
+    public String getCallingPackage() { return mCaller != null && mRequestCode >= 0 ? getPackageName() : null; }
+    public ComponentName getCallingActivity() { return mCaller != null && mRequestCode >= 0 ? mCaller.getComponentName() : null; }
+    public String getLaunchedFromPackage() { return mCaller != null ? getPackageName() : null; }
+    public int getLaunchedFromUid() { return mCaller != null ? android.os.Process.myUid() : android.os.Process.INVALID_UID; }
     public int getTaskId() { return 1; }
     public final void setResult(int code) { mResultCode = code; mResultData = null; }
     public final void setResult(int code, Intent data) { mResultCode = code; mResultData = data; }
@@ -794,7 +802,6 @@ public class Activity extends ContextThemeWrapper implements Window.Callback, Ke
             public android.transition.TransitionManager getContentTransitionManager() { return (android.transition.TransitionManager) megler.Fill.get(meglerFill, "ContentTransitionManager"); }
             public android.app.ComponentCaller getCurrentCaller() { return null; }
             public android.app.ComponentCaller getInitialCaller() { return null; }
-            public int getLaunchedFromUid() { return 0; }
             public int getMaxNumPictureInPictureActions() { return 0; }
             public android.media.session.MediaController getMediaController() { return (android.media.session.MediaController) megler.Fill.get(meglerFill, "MediaController"); }
             public int getNextAutofillId() { return 0; }

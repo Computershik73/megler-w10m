@@ -5821,6 +5821,14 @@ on a looper thread of its own and takes it back with `next()`.
   app's step "intent-categories" resolves the home, the launcher's intent and
   an unknown category.
 
+- `android/app/Activity.java`, `getCallingActivity` and `getCallingPackage`:
+  who started the activity for a result, which its `setResult` answers, and
+  nobody when it was started without one, as on Android; they named whoever
+  started it. Android 14's `getLaunchedFromPackage` and `getLaunchedFromUid`
+  name the app itself for an activity it launched, for a result or not. The
+  crash app's `Gate`, started for a result, has `First` for its caller; its
+  `Top`, started without one, has none.
+
 - `android/widget/LinearLayout.java`, four statements: what a child with a
   weight and a size of 0 is given when the layout's own size is not exact.
   Android has two rules. For an app written for Android 7 or later the space
