@@ -3572,9 +3572,10 @@ the microphone and the location by Windows' privacy settings of the app's own
 package, and Windows' own question when the app requests one; the storage, the
 media, the text messages, the phone and the call history by Megler's own
 question (Allow, Don't Allow), kept in the app's settings, a second no for
-good; and the contacts, the calendar, the body sensors, nearby devices,
-notifications and physical activity granted with no one asked, since Megler
-gives an app none of those of the phone's. An app's App Settings list its
+good; and the contacts, the calendar, the body sensors, notifications and
+physical activity granted with no one asked, since Megler gives an app none of
+those of the phone's, and nearby devices likewise, which are Bluetooth LE's
+("Bluetooth LE" below), Windows asking nothing for them. An app's App Settings list its
 groups, what was said, and change Megler's answers. Clearing an app's data
 (Clear Data on its page in Megler, or Clear storage on Android's app info
 screen in the app) forgets Megler's answers too, as Android's Clear storage
@@ -6189,6 +6190,96 @@ step `sensors` does the same from native code: the list and the defaults
 through libandroid, a queue on the main thread's looper with a callback
 (found by `dlsym` of `ASensorManager_getInstanceForPackage`, as NativeActivity's
 sample glue finds it), the accelerometer at 20 ms and the light.
+
+### Bluetooth LE
+
+`android.bluetooth` is the phone's radio, Bluetooth Low Energy's central side,
+as Android 13 has it (the overlay's `BluetoothAdapter`, `BluetoothManager`,
+`BluetoothDevice`, `BluetoothGatt`, `BluetoothGattCallback`, the GATT service,
+characteristic and descriptor, and `android.bluetooth.le`'s `BluetoothLeScanner`,
+`ScanFilter`, `ScanSettings`, `ScanRecord`, `ScanResult`; `android.os.ParcelUuid`,
+a stub before; over `megler.Bluetooth`, `drivers/mg_java_bluetooth.c`, and the
+core's `run/mg_bluetooth.c`; ARCHITECTURE.md, "Bluetooth LE"). One thread of the
+framework's, "BluetoothEventThread", from the app's first use of Bluetooth (or
+a receiver of its broadcasts) on, takes what the radio did and hands it on:
+
+- **The adapter**: one, on or off as Windows' radio is (a phone without a radio
+  for LE has one that is always off, and no `android.hardware.bluetooth` nor
+  `.bluetooth_le` feature), named as the phone is, its address Android's for
+  every app since Android 6 (02:00:00:00:00:00); `ACTION_STATE_CHANGED` as the
+  radio turns, through `STATE_TURNING_ON` and `STATE_TURNING_OFF`; the scanner
+  while it is on; devices by their address; the paired ones. It cannot turn the
+  radio on: `ACTION_REQUEST_ENABLE` and `enable()` (an app of a target before
+  Android 13) show the phone's Bluetooth settings (`AppRunner.startActivity`),
+  and the request's result is `RESULT_OK` once the radio is on, `RESULT_CANCELED`
+  when the app is in front again with it off; `disable()` is refused, as for an
+  app on Android 13. No classic Bluetooth, no advertising (no peripheral role,
+  `getBluetoothLeAdvertiser` null, `openGattServer` null).
+- **Scans**: each of the app's scans hears, on the main thread, the
+  advertisements its filters pass (all of them with none): `onScanResult` for
+  each, or the first of a device's alone (`CALLBACK_TYPE_FIRST_MATCH`), or
+  `onBatchScanResults` every report delay; a record read as Android reads one
+  (flags, service UUIDs of every size, the local name, the power, the service
+  and manufacturer data, Android 13's map of every AD structure), its bytes as
+  the radio heard them, the advertisement's with the scan response's after. A
+  callback started twice hears `SCAN_FAILED_ALREADY_STARTED`; the radio turned
+  off ends every scan, unheard. Android 4.3's `startLeScan` is a scan of its own
+  with the raw record. An app of a target before Android 12 hears results
+  without the location as well, where Android 10 and later would ask it of the
+  app: the location is Windows' to grant.
+- **`BluetoothGatt`**: `connectGatt` (null with the radio off), `connect`,
+  `disconnect`, `close`; the services by their instance ids, which are the
+  device's handles; one request at a time, as Android's stack has it -- a read
+  while one is answered is refused, a write tried for a while and then answered
+  `ERROR_GATT_WRITE_REQUEST_BUSY`; Android 13's `writeCharacteristic` and
+  `writeDescriptor` with the value, and the old ones with the object's own value
+  and write type; a write without response answered once it is sent; the
+  notifications of a characteristic `setCharacteristicNotification` let through
+  (its Client Characteristic Configuration descriptor, written, subscribes at the
+  device); `requestMtu`, `readRemoteRssi`, the PHY's calls and the connection's
+  priority taken. Its callbacks come on the Handler `connectGatt` was given, else
+  in order on a thread of the framework's, "BluetoothGatt", as Android's come on
+  a binder thread; Android 13's forms with the value, which `BluetoothGattCallback`
+  hands to the old ones (setting the characteristic's value first) for an app
+  built before. A request the device refuses for want of pairing is sent again
+  once the radio has paired, as Android's stack does.
+- **Pairing**: `createBond`, `removeBond` (Android's hidden one, which apps call
+  by reflection), the bond as Windows has it (`getBondState`, `getBondedDevices`),
+  `ACTION_BOND_STATE_CHANGED` with the bond before and the reason, and the
+  ordered `ACTION_PAIRING_REQUEST`, whose PIN a receiver gives with `setPin`
+  (flutter_blue_plus does, with the PIN its app gave `createBond`); one no
+  receiver answers is the user's to answer, as Android's own dialog asks.
+- **Permissions**: an app that targets Android 12 needs `BLUETOOTH_SCAN` to scan
+  and `BLUETOOTH_CONNECT` for the adapter's name and for what touches a device,
+  else `SecurityException`, as there; the group, nearby devices, is granted with
+  no one asked (Windows asks nothing for Bluetooth LE).
+
+The test app `bluetooth`, on the stand-in for the shell's radio
+(`core/tests/mg_bluetooth_standin.c`: MeshCore-Test, a random address with the
+Nordic UART service, which echoes what is written to RX as a notification on TX
+and answers one characteristic only once bonded with the PIN 123456; a beacon;
+a device paired before), goes through what MeshCore's app does, in steps the
+harness reads (`run_bluetooth`): the adapter and its feature, Android 12's
+permissions requested, the adapter's name and address and the paired device;
+a scan filtered by the Nordic UART service (MeshCore-Test heard on the main
+thread with every field of its record, the beacon not; the same callback
+started again refused) and the old scan (both, with their raw records); a
+connection (its callback not on the main thread), the services with their
+handles, properties and write types, the MTU (185 of 247 asked), notifications
+on through Android 13's `writeDescriptor`, writes with and without response
+and the old way, each echoed as a notification with the value; two reads at
+once (the second refused); the RSSI; a read the device answers only bonded
+(BONDING, the PIN asked for and given by a receiver, BONDED, then the read
+answered), the bond removed by reflection, a bond whose PIN no receiver gives
+(the user asked); the connection ended, one the device drops (19), one to a
+device that never answers (133); the radio turned off by the harness
+(`STATE_TURNING_OFF`, `STATE_OFF`, no scanner, `connectGatt` null) and
+`ACTION_REQUEST_ENABLE` (the settings shown, where the stand-in's user turns it
+on: `STATE_TURNING_ON`, `STATE_ON`, `RESULT_OK`; asked again while on,
+`RESULT_OK` at once). The harness checks what the stand-in was asked -- two
+active scans, both stopped, every connection ended, the bytes written, the MTU,
+two pairings, one PIN given by the app and one by the user, the settings shown
+once -- and the core's lines in the log.
 
 ### Sound from Java
 
