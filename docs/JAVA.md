@@ -6245,6 +6245,18 @@ on a looper thread of its own and takes it back with `next()`.
   mp3 mod's sign-in by QR code (budiyev's code-scanner over ZXing) and most
   scanners use. "The cameras" below has all of it.
 
+- `android/content/pm/PackageManager.java`, Android 13's calls with a flags
+  object (`ResolveInfoFlags`, `ComponentInfoFlags`, `PackageInfoFlags`,
+  `ApplicationInfoFlags`), which are the calls with an int, the flags passed
+  on. Some passed 0 (`getInstalledPackages` gave no signatures asked for that
+  way), and `queryIntentServices`, `resolveService`, `resolveContentProvider`,
+  `queryBroadcastReceivers`, `getReceiverInfo`, `getProviderInfo`,
+  `getPackageUid`, `getInstalledApplications` and `queryContentProviders`
+  with one were generated stubs that found nothing: Facebook Lite asks
+  `queryIntentServices` and `resolveContentProvider` so, and Messenger
+  `resolveContentProvider`. The data app's step "package-flags" asks each
+  for the app's own service, provider, receivers, uid and signatures.
+
 - `android/media/MediaMetadata.java`, in place of the generated stub, whose
   getters answered null and 0, whose `writeToParcel` wrote nothing and whose
   `CREATOR` was null. AndroidX's `MediaMetadataCompat.getMediaMetadata()`

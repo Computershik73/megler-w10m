@@ -1759,6 +1759,7 @@ public class Main extends Activity {
         insetFraction();
         workSource();
         parcelMarshall();
+        packageFlags();
         resourcesLoader();
         locationRequest();
         // A provider's file through a ContentProviderClient, as Google Play services' DynamiteLoader reads its modules'
@@ -5242,6 +5243,44 @@ public class Main extends Activity {
             detail = "size=" + size + " of " + written + " list=" + back + " bundle=" + (b == null ? null : b.getString("tool")) + " end=" + end
                     + " plain=" + plainBytes + " of " + plainSize;
             return size == written && seven == 7 && layers.equals(back) && b != null && "pen".equals(b.getString("tool")) && "end".equals(end) && plainBytes == plainSize;
+        });
+    }
+
+    /**
+     * Android 13's PackageManager calls with a flags object answer as the calls with an int do: the app's own service, provider,
+     * receivers and uid found, its signatures given when asked for. Some were stubs that found nothing (Facebook Lite's
+     * queryIntentServices and resolveContentProvider, Messenger's resolveContentProvider), some passed no flags on. (The
+     * flags classes are not in the SDK the app is built against: by reflection.)
+     */
+    private void packageFlags() {
+        step("package-flags", () -> {
+            android.content.pm.PackageManager pm = getPackageManager();
+            Class<?> pmc = android.content.pm.PackageManager.class;
+            Class<?> rif = Class.forName("android.content.pm.PackageManager$ResolveInfoFlags"), cif = Class.forName("android.content.pm.PackageManager$ComponentInfoFlags");
+            Class<?> pif = Class.forName("android.content.pm.PackageManager$PackageInfoFlags"), aif = Class.forName("android.content.pm.PackageManager$ApplicationInfoFlags");
+            Object r0 = rif.getMethod("of", long.class).invoke(null, 0L), c0 = cif.getMethod("of", long.class).invoke(null, 0L);
+            Object p0 = pif.getMethod("of", long.class).invoke(null, 0L);
+            Object pSigned = pif.getMethod("of", long.class).invoke(null, (long) android.content.pm.PackageManager.GET_SIGNATURES);
+            Object aMeta = aif.getMethod("of", long.class).invoke(null, (long) android.content.pm.PackageManager.GET_META_DATA);
+            String own = getPackageName();
+            android.content.Intent service = new android.content.Intent().setClassName(own, Main.class.getName() + "$Twice");
+            android.content.Intent relay = new android.content.Intent("megler.test.RELAY");
+            java.util.List<?> services = (java.util.List<?>) pmc.getMethod("queryIntentServices", android.content.Intent.class, rif).invoke(pm, service, r0);
+            Object resolved = pmc.getMethod("resolveService", android.content.Intent.class, rif).invoke(pm, service, r0);
+            Object provider = pmc.getMethod("resolveContentProvider", String.class, cif).invoke(pm, "megler.test.sync", c0);
+            java.util.List<?> receivers = (java.util.List<?>) pmc.getMethod("queryBroadcastReceivers", android.content.Intent.class, rif).invoke(pm, relay, r0);
+            Object receiver = pmc.getMethod("getReceiverInfo", android.content.ComponentName.class, cif).invoke(pm, new android.content.ComponentName(own, Main.class.getName() + "$Relay"), c0);
+            int uid = (Integer) pmc.getMethod("getPackageUid", String.class, pif).invoke(pm, own, p0);
+            android.content.pm.PackageInfo signed = null;
+            for (Object o : (java.util.List<?>) pmc.getMethod("getInstalledPackages", pif).invoke(pm, pSigned))
+                if (own.equals(((android.content.pm.PackageInfo) o).packageName)) signed = (android.content.pm.PackageInfo) o;
+            java.util.List<?> apps = (java.util.List<?>) pmc.getMethod("getInstalledApplications", aif).invoke(pm, aMeta);
+            int intReceivers = pm.queryBroadcastReceivers(relay, 0).size();
+            boolean intSigned = pm.getPackageInfo(own, android.content.pm.PackageManager.GET_SIGNATURES).signatures != null;
+            detail = "services=" + services.size() + " resolved=" + (resolved != null) + " provider=" + (provider != null) + " receivers=" + receivers.size() + " of " + intReceivers
+                    + " receiver=" + (receiver != null) + " uid=" + uid + " signed=" + (signed == null ? "none" : signed.signatures != null) + " apps=" + apps.size();
+            return services.size() == 1 && resolved != null && provider != null && intReceivers > 0 && receivers.size() == intReceivers && receiver != null
+                    && uid == android.os.Process.myUid() && signed != null && (signed.signatures != null) == intSigned && !apps.isEmpty();
         });
     }
 
