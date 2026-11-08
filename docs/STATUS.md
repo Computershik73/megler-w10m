@@ -456,6 +456,29 @@ from the package's next start, and the part before the crash at once. A log over
 folder of a package that is no longer installed whenever it lists the apps'
 packages.
 
+**The start** (`App.cpp`, `shell/Startup.cpp`) says each of its steps before it
+begins, the log written out with it (`start: reading the library`), and until
+the window is shown a watch says at 2, 5, 10, 15, 20, 30, 45 and 60 s which step
+the start is on and where the UI thread stands (`megler_thread_where`);
+`start: the window is shown, N s after the launch` ends it. Windows ends an app
+whose window it has not been shown in time and tells the app nothing, so the last
+`start:` line is the step it was ended in, and the watch's last line how long it
+lived. A step that throws is said as `FATAL` with its exception and the start
+goes on (a page that says why where the screens could not be made), and
+`std::terminate` on the UI thread is said with its exception. What the core says
+of a process about to end (`host: abort() was called`, an exception nothing
+handled, a pure call) is written out at once, as a fault's report is; it waited
+for the writer before, and went with the process. The start's lines say too what
+the phone is (`phone:` its maker and model as Windows names them, its memory and
+how much is free) and the room on the disks Megler writes to (`disk:`), and the
+log says each step of the app's use of memory toward its limit as Windows counts
+it (`memory: Windows counts the app's use as high now`). **Passes on PC**:
+`mg_shell_tests.exe` (`tools/build-tests.sh win`). Made for a Lumia 630 whose
+Megler 0.1.0.671 closed at every start with its splash screen up, the log ending
+a second in, with nothing of what the UI thread was doing (it was copying the
+package's Google APKs: [PER-APP-PACKAGES.md](PER-APP-PACKAGES.md), "The Google
+APKs Megler brings").
+
 **Save All Logs** (the Log screen, in Megler and in an app's own package,
 `shell/LogArchive.cpp`) writes one ZIP, `megler-logs-<yyyyMMdd-HHmmss>.zip`, to
 `Pictures\Megler\logs`, which the phone's file manager shows and a PC reaches over
