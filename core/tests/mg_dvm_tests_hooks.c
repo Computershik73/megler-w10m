@@ -119,7 +119,7 @@ static void test_compiled(void)
     CHECK_INT(sum_twice(2000), 3998000);
     CHECK_INT(loop("sumAdds", t, 2000), 2005000);
     CHECK_STR(thrown(), "");
-#if defined(__arm__) || defined(_M_ARM)
+#if MG_DVM_JIT
     CHECK(values->jit && values->jit->in_place && values2->jit && values2->jit->in_place && g_dvm_jit_in_place > in_place);
     CHECK(twice->jit && !twice->jit->in_place && adds->jit && !adds->jit->in_place);
 #else
@@ -130,7 +130,7 @@ static void test_compiled(void)
     hook_on("twice", MODE_RESULT);
     hook_on("add", MODE_CALL);
     CHECK_STR(thrown(), "");
-#if defined(__arm__) || defined(_M_ARM)
+#if MG_DVM_JIT
     CHECK(!values->jit && !values2->jit && twice->jit && adds->jit);
 #endif
     CHECK_INT(loop("sumValues", t, 2000), 2000 * (3 + 1000));
@@ -140,14 +140,14 @@ static void test_compiled(void)
     CHECK_INT(loop("sumAdds", t, 2000), 2005000);
     CHECK_INT(calls_of("add"), 2000);
     CHECK_STR(thrown(), "");
-#if defined(__arm__) || defined(_M_ARM)
+#if MG_DVM_JIT
     CHECK(values->jit != NULL);
 #endif
     /* Compiled with hooks about, its getter not hooked: done in place, after a look at the hook. Then hooked: the same code. */
     CHECK_INT(loop("sumValues2", t, 2000), 6000);
     {
         mg_dvm_jit_code *code = values2->jit;
-#if defined(__arm__) || defined(_M_ARM)
+#if MG_DVM_JIT
         CHECK(code && code->in_place);
 #endif
         hook_on("getValue2", MODE_RESULT);
