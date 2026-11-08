@@ -22,6 +22,8 @@
 #include <roapi.h>
 
 #include <atomic>
+#include <chrono>
+#include <mutex>
 #include <thread>
 
 namespace megler::app::appPackage {
@@ -622,10 +624,38 @@ Made make(const ApkEntry& entry, const std::function<void(const std::string&)>& 
  */
 namespace {
 
+/// One deployment at a time, whoever asks (an app's install, Update All's, Megler's own update).
+std::mutex gDeployMutex;
+/// Whether Megler's packages were seen installed on this phone when Windows refused an install for access: Megler has had
+/// its packageManagement capability then, and the refusal is not the interop unlock's (accessDeniedText).
+std::atomic<bool> gInstalledBefore{false};
+
+/// A PackageManager made from an activation factory of its own, past C++/WinRT's cache of them; null where it cannot be.
+winrt::Windows::Management::Deployment::PackageManager freshPackageManager() {
+    try {
+        winrt::com_ptr<::IActivationFactory> factory;
+        const winrt::hstring name = L"Windows.Management.Deployment.PackageManager";
+        if (FAILED(RoGetActivationFactory(static_cast<HSTRING>(winrt::get_abi(name)), __uuidof(::IActivationFactory), factory.put_void())))
+            return nullptr;
+        winrt::com_ptr<::IInspectable> made;
+        if (FAILED(factory->ActivateInstance(made.put()))) return nullptr;
+        return made.as<winrt::Windows::Management::Deployment::PackageManager>();
+    } catch (hresult_error const&) {
+        return nullptr;
+    }
+}
+
 /// Said once a run: why Windows refuses Megler every install, which each try's own line does not say.
 void sayRefusedForAccess() {
     static std::atomic<bool> said{false};
     if (said.exchange(true)) return;
+    if (gInstalledBefore) {
+        shellLog::write("app package: Windows refuses Megler every install for access (0x80070005 at every try), though Megler's packages "
+                        "are installed on this phone: Windows has granted it packageManagement before, and the refusal is this run's "
+                        "(it came after Megler was suspended and resumed, on a Lumia 950 whose interop unlock was whole); a new start "
+                        "of Megler installs again");
+        return;
+    }
     shellLog::write(platform::isMobile()
                         ? "app package: Windows refuses Megler every install for access (0x80070005 at every try): Megler has not got its "
                           "packageManagement capability, which Windows 10 Mobile grants a sideloaded app only with the capability part of the "
@@ -648,6 +678,14 @@ void rememberRefusal(const std::wstring& path, const InstallResult& result) {
 }  // namespace
 
 std::string accessDeniedText(const std::string& meanwhile) {
+    // Megler has installed packages here before: Windows has granted it the capability, and this run's refusal goes with a new
+    // start (a Lumia 950's installs were refused after Megler was suspended and resumed, its interop unlock whole).
+    if (gInstalledBefore)
+        return "Windows refused Megler this install (0x80070005, access denied), though Megler has installed apps on this phone "
+               "before. Close Megler fully (in the task view, swipe it away) and open it again: a new start installs. If every start "
+               "is refused, check the phone's interop unlock in Interop Tools \u203a Unlock (Interop/Cap Unlock and New Capability "
+               "Engine Unlock, then a restart). Until then, " +
+               meanwhile;
     if (platform::isMobile())
         return "Windows does not let Megler install apps on this phone (0x80070005, access denied): Megler's right to install packages "
                "is blocked. The phone's interop unlock is not complete: in Interop Tools › Unlock, turn on Interop/Cap Unlock and New "
@@ -668,29 +706,56 @@ InstallResult installWithPackageManager(const std::wstring& path, const std::fun
     std::replace(uri.begin(), uri.end(), L'\\', L'/');
     std::string said, asTheStore;
     bool denied = true;  // every try so far refused for access
+    std::lock_guard<std::mutex> one(gDeployMutex);
+    bool first = true;
     for (const DeploymentOptions options : tries) {
         int32_t code = 0;
-        try {
-            PackageManager manager;
-            progress(format("Installing it through Windows's deployment engine (options 0x%x)…", unsigned(options)));
-            // (Said before it goes: an update of Megler's own package ends Megler as soon as it is installed.)
-            shellLog::flush();
-            const DeploymentResult result = manager.AddPackageAsync(winrt::Windows::Foundation::Uri(uri), nullptr, options).get();
-            if (result.ErrorText().empty()) {
-                shellLog::write(format("app package: %s installed by Windows's deployment engine (options 0x%x)",
-                                       narrow(path.substr(path.find_last_of(L'\\') + 1)).c_str(), unsigned(options)));
-                return {true, "Installed."};
+        /*
+         * Each set of options asked of C++/WinRT's PackageManager, and where that is refused for access, of one made from an
+         * activation factory of its own, at once and (the first set) again after 3 s: on a Lumia 650 resumed from suspension
+         * the first was refused (0x80070005) where the second, asked a moment later, took the call (the flag diag-deploy's
+         * probe, 0.1.0.674), and a Lumia 950's installs were refused at every try after a resume, each through the first.
+         */
+        for (int way = 0; way < (first ? 3 : 2); way++) {
+            try {
+                if (way == 2) std::this_thread::sleep_for(std::chrono::seconds(3));
+                PackageManager manager = way == 0 ? PackageManager() : freshPackageManager();
+                if (!manager) {
+                    shellLog::write("app package: no PackageManager from an activation factory of its own");
+                    break;
+                }
+                progress(format("Installing it through Windows's deployment engine (options 0x%x)…", unsigned(options)));
+                // (Said before it goes: an update of Megler's own package ends Megler as soon as it is installed.)
+                shellLog::flush();
+                const DeploymentResult result = manager.AddPackageAsync(winrt::Windows::Foundation::Uri(uri), nullptr, options).get();
+                if (result.ErrorText().empty()) {
+                    shellLog::write(format("app package: %s installed by Windows's deployment engine (options 0x%x%s)",
+                                           narrow(path.substr(path.find_last_of(L'\\') + 1)).c_str(), unsigned(options),
+                                           way ? ", asked of a PackageManager of a fresh activation factory after a refusal for access" : ""));
+                    return {true, "Installed."};
+                }
+                code = result.ExtendedErrorCode();
+                said = format("0x%08x ", unsigned(code)) + narrow(result.ErrorText());
+                shellLog::write(format("app package: the deployment engine refused it (options 0x%x%s): ", unsigned(options), way ? ", fresh" : "") +
+                                said);
+            } catch (hresult_error const& e) {
+                code = e.code();
+                said = format("0x%08x ", unsigned(code)) + narrow(e.message());
+                shellLog::write(format("app package: the deployment engine could not be asked (options 0x%x%s): ", unsigned(options), way ? ", fresh" : "") +
+                                said);
             }
-            code = result.ExtendedErrorCode();
-            said = format("0x%08x ", unsigned(code)) + narrow(result.ErrorText());
-            shellLog::write(format("app package: the deployment engine refused it (options 0x%x): ", unsigned(options)) + said);
-        } catch (hresult_error const& e) {
-            code = e.code();
-            said = format("0x%08x ", unsigned(code)) + narrow(e.message());
-            shellLog::write(format("app package: the deployment engine could not be asked (options 0x%x): ", unsigned(options)) + said);
+            if (code != E_ACCESSDENIED) break;
         }
+        first = false;
         denied = denied && code == E_ACCESSDENIED;
         if (!(unsigned(options) & 0x8000) && asTheStore.empty()) asTheStore = said;
+    }
+    // Refused for access every time: whether Megler's packages are installed here all the same (Windows has granted it the
+    // capability before, and the refusal is this run's), for what is said (accessDeniedText).
+    if (denied && !gInstalledBefore) {
+        std::vector<InstalledApp> apps;
+        std::string error;
+        if (installedApps(apps, error) && !apps.empty()) gInstalledBefore = true;
     }
     // What the Store's way was refused for first: a developer's deployment is refused for their number alone.
     const InstallResult refused{false, "Windows's deployment engine did not install it: as the Store installs, " + asTheStore +
