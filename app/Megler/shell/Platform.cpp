@@ -161,7 +161,10 @@ std::string diskSummary() {
     const std::wstring local = localStateDirectory(), install = installDirectory(), shared = appPackage::sharedFolder();
     std::string text = "LocalState's " + room(local);
     if (drive(install) != drive(local)) text += "; the package's " + room(install);
-    if (!shared.empty() && drive(shared) != drive(local)) text += "; the shared folder's " + room(shared);
+    // (A package installed on a memory card may be given no publisher's folder: the services' copies and the apps' shared
+    // storage then have nowhere to go.)
+    if (shared.empty()) text += "; no shared folder (Windows gave Megler no folder of its publisher's)";
+    else if (drive(shared) != drive(local)) text += "; the shared folder's " + room(shared);
     return text;
 }
 
