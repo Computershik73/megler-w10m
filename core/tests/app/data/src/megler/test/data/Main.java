@@ -918,6 +918,22 @@ public class Main extends Activity {
             detail = "none=" + none + " own=" + own + " missing=" + missing;
             return none == null && own == null && "megler.test.OTHER".equals(missing);
         });
+        // The same rule where the app's manifest is matched: every category of an intent must be its filter's. The phone's home
+        // screen (MAIN with CATEGORY_HOME) is no activity of this app's, whose launcher activity (MAIN with CATEGORY_LAUNCHER)
+        // was taken for it, and Facebook, looking for a home of another signature, found only itself and ended the app.
+        step("intent-categories", () -> {
+            android.content.pm.PackageManager pm = getPackageManager();
+            String own = getPackageName();
+            int homes = pm.queryIntentActivities(new android.content.Intent(android.content.Intent.ACTION_MAIN).addCategory(android.content.Intent.CATEGORY_HOME), 0).size();
+            android.content.pm.ResolveInfo launcher = pm.resolveActivity(new android.content.Intent(android.content.Intent.ACTION_MAIN)
+                    .addCategory(android.content.Intent.CATEGORY_LAUNCHER).setPackage(own), 0);
+            android.content.pm.ResolveInfo plain = pm.resolveActivity(new android.content.Intent(android.content.Intent.ACTION_MAIN).setPackage(own), 0);
+            android.content.pm.ResolveInfo other = pm.resolveActivity(new android.content.Intent(android.content.Intent.ACTION_MAIN)
+                    .addCategory("megler.test.NONE").setPackage(own), 0);
+            detail = "homes=" + homes + " launcher=" + (launcher == null ? null : launcher.activityInfo.name) + " plain=" + (plain == null ? null : plain.activityInfo.name)
+                    + " other=" + (other == null ? null : other.activityInfo.name);
+            return homes == 0 && launcher != null && Main.class.getName().equals(launcher.activityInfo.name) && plain != null && other == null;
+        });
         step("arrays-ranges", () -> {
             Class<?> a = java.util.Arrays.class;
             byte[] one = { 1, 2, 3, 4, 5 }, two = { 9, 2, 3, 4, 8 };

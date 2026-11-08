@@ -199,12 +199,17 @@ public final class Manifest {
         return p == null || p.isEmpty() ? pkg : p.startsWith(":") ? pkg + p : p;
     }
     private static boolean hasVal(java.util.List<String> list, String x) { for (String v : list) if (val(v).equals(x)) return true; return false; }
-    /** Android's intent-filter match: the action (an intent without one passes any filter that lists one), then the data --
-     *  an intent with a URI needs a filter naming its scheme (and host, when the filter names hosts), one without needs a
-     *  filter without schemes. */
+    /** Android's intent-filter match: the action (an intent without one passes any filter that lists one), the categories
+     *  (each one the intent names must be the filter's, IntentFilter.matchCategories), then the data -- an intent with a URI
+     *  needs a filter naming its scheme (and host, when the filter names hosts), one without needs a filter without schemes.
+     *  The categories were not looked at: an intent for the phone's home screen (MAIN with CATEGORY_HOME) found the app's own
+     *  launcher activity (MAIN with CATEGORY_LAUNCHER), which Facebook's Back on its sign-in and first-run screens, going home
+     *  through a launcher of another signature, refused as its own -- and then ended the app rather than going home. */
     static boolean matches(Filter f, android.content.Intent i) {
         String action = i.getAction();
         if (action != null ? !f.actions.contains(action) : f.actions.isEmpty()) return false;
+        java.util.Set<String> categories = i.getCategories();
+        if (categories != null) for (String c : categories) if (!hasVal(f.categories, c)) return false;
         android.net.Uri d = i.getData();
         if (d == null) return f.schemes.isEmpty() || i.getType() != null && !f.mimeTypes.isEmpty();
         if (f.schemes.isEmpty() || !hasVal(f.schemes, d.getScheme())) return false;

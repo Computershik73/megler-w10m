@@ -5783,6 +5783,25 @@ on a looper thread of its own and takes it back with `next()`.
   main thread a message later, never ran ("No responseUri present", 576).
   The crash app's `Gate` posts work from its `onPause` as it finishes, which
   finds it not destroyed.
+  And an intent for the phone's home screen, `ACTION_MAIN` with
+  `CATEGORY_HOME` (an app sending itself home), sends the app to the back as
+  `moveTaskToBack` does (`AppRunner.isHome`): the launcher coming in front
+  on Android is Windows' Start coming in front here, and nothing of the app
+  finishes. There was no home: the intent found the app's own launcher
+  activity, because the manifest's filters were matched without their
+  categories (`megler.Manifest.matches` now wants every category of the
+  intent in the filter, as `IntentFilter.matchCategories`). Facebook's Back
+  on Facebook Lite's sign-in screen and on Messenger's first-run screen goes
+  home through its launcher of activities of other signatures
+  (`DifferentKeyIntentScope`); it removed that one as its own, found nothing
+  else ("No matching different-signature components", twice), and went on as
+  without a home: Facebook Lite ended its process at its sign-in screen's
+  Back (status 0, three runs of a user's on 673), and Messenger finished its
+  first-run screen (`NeueNuxActivity`), its main activity below finished as
+  well, and the app ended. The hello app's third Back goes home so (none of
+  its own activities is the home) and the app goes to the back; the data
+  app's step "intent-categories" resolves the home, the launcher's intent and
+  an unknown category.
 
 - `android/widget/LinearLayout.java`, four statements: what a child with a
   weight and a size of 0 is given when the layout's own size is not exact.

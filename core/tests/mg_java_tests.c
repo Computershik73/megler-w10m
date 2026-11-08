@@ -1613,6 +1613,18 @@ static int run_hello(void)
         expect_line("I/HelloTest: back 2 handed on for 150 ms", &at, 10);
         CHECK(answer == MEGLER_BACK_LEAVE && running());
         say("  Back on the first screen: the app's and then the system's when the app went to the back late, the system's when soon");
+        /*
+         * A Back the app answers by starting the phone's home screen (ACTION_MAIN with CATEGORY_HOME), as Facebook's sign-in
+         * and first-run screens do, having looked for it among the activities of other apps: the home is none of this app's
+         * (its launcher activity's filter has CATEGORY_LAUNCHER, not CATEGORY_HOME), and starting it sends the app to the
+         * back, nothing finished. The app's own launcher activity answered for the home, and Facebook, finding only itself
+         * there, ended the app instead (Messenger and Facebook Lite, 0.1.0.673).
+         */
+        answer = megler_back(400, 10000);
+        expect_line("I/HelloTest: back 3 goes home, this app's activities for it: 0", &at, 10);
+        CHECK(answer == MEGLER_BACK_LEAVE && running());
+        CHECK(find_line("-> the phone's home: the app goes to the back", 0) >= 0);
+        CHECK(find_line("I/HelloTest: onDestroy", 0) < 0);
     }
     megler_set_paused(true);
     expect_line("I/HelloTest: onPause", &at, 30);
@@ -1624,7 +1636,7 @@ static int run_hello(void)
     {
         int tries;
         const int answer = megler_back(400, 10000);
-        expect_line("I/HelloTest: back 3 finishes in 100 ms", &at, 10);
+        expect_line("I/HelloTest: back 4 finishes in 100 ms", &at, 10);
         CHECK(answer == MEGLER_BACK_ENDED);
         expect_line("I/HelloTest: onDestroy presses=12", &at, 30);
         for (tries = 0; tries < 3000 && running(); tries++) mg_sleep_ns(10000000ull);
@@ -2745,7 +2757,7 @@ static int run_data(void)
                                             makes one. And a proxy of an interface of 600 methods. And sound from Java: an
                                             AudioTrack written to, a MediaPlayer of a WAV and of an Ogg Vorbis asset, a SoundPool. */
                                          "xml", "asset-fd", "tasks", "wrapper-receiver", "viewgroup-flag", "text-drawables", "pfd-dup", "pfd-parcel",
-                                         "theme-selfref", "queue-next", "storage-stats", "broadcast-explicit", "service-stop-thread", "start-ids", "process-scope", "job-scheduler", "downloads", "rollback-service", "art-manager", "progress-subclass", "telephony", "microphone", "biometric", "ordered-broadcast", "hardware-accelerated", "descendant-invalidated", "image-matrix-before-layout", "delegate-last-scope", "asset-manager-manifest", "big-asset", "path-iterator", "mutable-context", "exec", "crc32c", "nine-patch-constructors", "subscription-ids", "filter-categories", "arrays-ranges", "thread-stack", "icu-number", "audio-route", "expand-template", "list-fragment", "fragment-saved-state", "stub-said", "handler-thread", "managed-dialog", "input-format", "dialog-of-stopped", "zip-path-validator", "list-row-click", "animation-listener", "circular-reveal", "animator-values", "observer-merged", "typeface-descriptor", "device-provisioned", "users", "start-asked", "pending-intent-creator", "pending-intent-flags", "alarm-replace-cancel", "messenger-forwarded", "insets-builder", "insets-consumed", "insets-siblings", "broadcast-handler", "prefs-spaced-key", "account-removed", "sync", "package-installer", "batch-operations", "wifi", "media-metadata", "playback-state", "remote-user-info", "media-key-controller", "container-state", "context-params", "theme-accent", "phone-apps", "phone-apps-activities", "phone-apps-signatures", "install-intent", "install-session", "install-splits", "bitmap-bytes", "bitmap-reuse", "file-read-only", "component-state", "adaptive-icon", "idle-handler", "uri-builder", "html-tag-handler", "stats-manager", "credential-manager", "many-interfaces", "proxy-many-methods", "apk-path", "maps-paths", "apk-optimization",
+                                         "theme-selfref", "queue-next", "storage-stats", "broadcast-explicit", "service-stop-thread", "start-ids", "process-scope", "job-scheduler", "downloads", "rollback-service", "art-manager", "progress-subclass", "telephony", "microphone", "biometric", "ordered-broadcast", "hardware-accelerated", "descendant-invalidated", "image-matrix-before-layout", "delegate-last-scope", "asset-manager-manifest", "big-asset", "path-iterator", "mutable-context", "exec", "crc32c", "nine-patch-constructors", "subscription-ids", "filter-categories", "intent-categories", "arrays-ranges", "thread-stack", "icu-number", "audio-route", "expand-template", "list-fragment", "fragment-saved-state", "stub-said", "handler-thread", "managed-dialog", "input-format", "dialog-of-stopped", "zip-path-validator", "list-row-click", "animation-listener", "circular-reveal", "animator-values", "observer-merged", "typeface-descriptor", "device-provisioned", "users", "start-asked", "pending-intent-creator", "pending-intent-flags", "alarm-replace-cancel", "messenger-forwarded", "insets-builder", "insets-consumed", "insets-siblings", "broadcast-handler", "prefs-spaced-key", "account-removed", "sync", "package-installer", "batch-operations", "wifi", "media-metadata", "playback-state", "remote-user-info", "media-key-controller", "container-state", "context-params", "theme-accent", "phone-apps", "phone-apps-activities", "phone-apps-signatures", "install-intent", "install-session", "install-splits", "bitmap-bytes", "bitmap-reuse", "file-read-only", "component-state", "adaptive-icon", "idle-handler", "uri-builder", "html-tag-handler", "stats-manager", "credential-manager", "many-interfaces", "proxy-many-methods", "apk-path", "maps-paths", "apk-optimization",
                                          /* And an <inset> whose insets are fractions of its bounds, WhatsApp's adaptive icon's 0.01% among them. */
                                          "inset-fraction",
                                          /* And a WorkSource through a Parcel and back, as a location request of Google Play services' carries one. */
