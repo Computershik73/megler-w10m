@@ -5546,7 +5546,21 @@ on a looper thread of its own and takes it back with `next()`.
   (`control_checkable_material` asks the theme, the `-v31` theme answers with
   a colour that refers to it). Choosing as a phone with Android 9 chooses is
   the only choice that fits the resources that are there. The constant must
-  follow the Android root.
+  follow the Android root. But an app's layouts, menus and XML documents are
+  chosen for 34 (`ResTable.find`, `REPORTED_TYPES`): the app's code, told 34,
+  finds by id the views of the layout Android 14 chooses. Android's Settings
+  library keeps its main switch bar in `layout`, `layout-v31` and `layout-v33`,
+  and only the last two have a frame round the title and the switch, which
+  `MainSwitchBar.setEnabled` sets enabled and activated once `SDK_INT` is 31:
+  chosen at 28 the layout had no frame, and Google Play services' Location
+  accuracy screen ended on a `NullPointerException` there (0.1.0.673). Of the
+  platform's resources that the layouts, menus and XML of API 29 to 34 in
+  Google Play services, Maps, Files, Niagara and Device Info name, every one
+  is a public resource of Android 9's. And a resource of the app's that has no
+  choice of 28 at all is taken from up to 34, whatever its type (it was done
+  for fonts, styles and colours alone): such a layout names dimensions and
+  drawables of `values-v31` and `drawable-v31` alone. The data app's step
+  "layout-api-level" inflates such a layout as `MainSwitchBar` does.
 - `android/content/res/Resources.java`, besides: a theme attribute whose
   value names an attribute that names another with no end -- a style's item
   that names itself, as Android's `TextAppearance` does with

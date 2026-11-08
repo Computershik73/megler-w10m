@@ -1720,6 +1720,7 @@ public class Main extends Activity {
             detail = "client=" + client + " read=" + read;
             return "chimera config".equals(read);
         });
+        layoutApiLevel();
         sound();
         mediaCodec();
         network();
@@ -5153,6 +5154,84 @@ public class Main extends Activity {
                     && mark != null && mark.getWidth() == 4 && mark.getPixel(1, 1) == 0xFF102030 && color == 0xFF102030
                     && !"from the loader".equals(own) && ok != null && !ok.isEmpty() && platform != getResources();
         });
+    }
+
+    /**
+     * A switch bar as Android's Settings library makes one (MainSwitchBar, the head of Google Play services' Location accuracy
+     * screen): a LinearLayout that inflates res/layout/switch_bar.xml into itself and finds its title, its switch and -- told
+     * SDK_INT 31 or more -- the frame round them that layout-v31 and -v33 have and layout has not. Android 14 chooses -v33's,
+     * whose title has three lines at most. The frame's sizes are dimensions of values-v31 alone, its background a selector of
+     * drawable-v31 alone, the title's style a style of values-v31 alone: all there. The bar's setEnabled and setChecked set the
+     * frame's state as MainSwitchBar's do; where the frame was missing, Google Play services ended on a NullPointerException
+     * in MainSwitchBar.setEnabled. The app's other resources are still chosen at Android 9's level: the title's margin, a
+     * dimension of values (24dp) and of values-v31 (16dp), is values'. And an XML document of xml and xml-v31 is -v31's.
+     */
+    private void layoutApiLevel() {
+        step("layout-api-level", () -> {
+            SwitchBar bar = new SwitchBar(this);
+            android.view.View frame = bar.frame;
+            android.widget.TextView title = bar.title;
+            android.widget.Switch sw = bar.sw;
+            if (frame == null || title == null || sw == null) {
+                detail = "frame " + frame + " title " + title + " switch " + sw;
+                return false;
+            }
+            bar.setEnabled(false);
+            boolean disabled = !frame.isEnabled() && !title.isEnabled() && !sw.isEnabled();
+            bar.setEnabled(true);
+            android.graphics.drawable.Drawable bg = frame.getBackground();
+            bar.setChecked(true);
+            android.graphics.drawable.Drawable on = bg == null ? null : bg.getCurrent();
+            boolean activated = frame.isActivated();
+            bar.setChecked(false);
+            android.graphics.drawable.Drawable off = bg == null ? null : bg.getCurrent();
+            float density = getResources().getDisplayMetrics().density;
+            int titleMargin = ((android.view.ViewGroup.MarginLayoutParams) title.getLayoutParams()).getMarginEnd();
+            String level = null;
+            try (android.content.res.XmlResourceParser p = getResources().getXml(R.xml.level_probe)) {
+                for (int t = p.next(); t != org.xmlpull.v1.XmlPullParser.END_DOCUMENT; t = p.next()) {
+                    if (t == org.xmlpull.v1.XmlPullParser.START_TAG) { level = p.getAttributeValue(null, "level"); break; }
+                }
+            }
+            detail = "SDK_INT " + android.os.Build.VERSION.SDK_INT + ", title lines " + title.getMaxLines() + ", disabled " + disabled
+                    + ", background " + bg + " on " + on + " off " + off + " activated " + activated + ", min height " + frame.getMinimumHeight()
+                    + " padding " + frame.getPaddingStart() + " title margin " + titleMargin + " density " + density + ", xml level " + level;
+            return android.os.Build.VERSION.SDK_INT >= 31 && frame.getId() == R.id.frame && title.getMaxLines() == 3 && disabled
+                    && bg instanceof android.graphics.drawable.StateListDrawable && on != null && off != null && on != off && activated
+                    && frame.getMinimumHeight() == Math.round(72 * density) && frame.getPaddingStart() == Math.round(20 * density)
+                    && titleMargin == Math.round(24 * density) && "31".equals(level);
+        });
+    }
+
+    /** As the Settings library's MainSwitchBar: a LinearLayout that inflates its layout into itself and finds its views by id. */
+    static final class SwitchBar extends android.widget.LinearLayout {
+        final android.view.View frame;
+        final android.widget.TextView title;
+        final android.widget.Switch sw;
+
+        SwitchBar(Context c) {
+            super(c);
+            android.view.LayoutInflater.from(c).inflate(R.layout.switch_bar, this);
+            frame = findViewById(R.id.frame);
+            title = (android.widget.TextView) findViewById(R.id.switch_text);
+            sw = (android.widget.Switch) findViewById(android.R.id.switch_widget);
+        }
+
+        @Override
+        public void setEnabled(boolean enabled) {
+            super.setEnabled(enabled);
+            title.setEnabled(enabled);
+            sw.setEnabled(enabled);
+            if (android.os.Build.VERSION.SDK_INT >= 31) {
+                frame.setEnabled(enabled);
+                frame.setActivated(sw.isChecked());
+            }
+        }
+
+        void setChecked(boolean checked) {
+            sw.setChecked(checked);
+            if (android.os.Build.VERSION.SDK_INT >= 31) frame.setActivated(checked);
+        }
     }
 
     /**

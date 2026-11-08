@@ -1,0 +1,3 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Main's step "layout-api-level": the XML document of xml-v31, the one Android 12 and later choose. -->
+<level-probe level="31" />

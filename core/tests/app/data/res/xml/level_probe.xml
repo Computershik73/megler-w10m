@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Main's step "layout-api-level": an XML document of xml and of xml-v31 (as a preference screen of Google Play services' is):
+     the app, told API 34, reads -v31's. -->
+<level-probe level="0" />

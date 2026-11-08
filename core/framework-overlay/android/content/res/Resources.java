@@ -19,10 +19,13 @@
 // control_checkable_material in Android 9, which asks the theme for a colour, which a -v31 theme answers with a colour that
 // refers to 0x01060064. Device Info's first layout with a MaterialCardView recursed 6095 frames deep through that circle
 // and ended the app. On a phone that really has Android 9, -v31 resources are never chosen; choosing as that phone does is
-// the only choice that fits the resources that are here. (The app's Java still sees SDK_INT 34.) An app's font, style or
-// colour that has no choice of that level at all (font-v29, values-v31 alone) is taken from the newest up to 34 instead
-// (ResTable.find), the app having asked for it because SDK_INT said so; and what an app's resource names of Android 12's
-// system colours is those colours (meglerValue, meglerBag), which Android 9 has private resources of its own under.
+// the only choice that fits the resources that are here. (The app's Java still sees SDK_INT 34.) An app's resource that has
+// no choice of that level at all (font-v29, values-v31 alone) is taken from the newest up to 34 instead (ResTable.find), the
+// app having asked for it because SDK_INT said so; and what an app's resource names of Android 12's system colours is those
+// colours (meglerValue, meglerBag), which Android 9 has private resources of its own under. But an app's layouts, menus and
+// XML documents are chosen for 34, as Android 14 chooses them (ResTable.find): the app's code, told 34, looks in them for
+// the views, items and keys that level's choice has, and the Settings library's main switch bar ended Google Play
+// services' Location accuracy screen when a frame of its -v31 layout was not there.
 //
 // Why. The original's Bag.put walks the whole bag for the key before adding it, and a style's bag is built by putting the
 // parent's items in one by one and then its own; indexOf walks it again for every attribute a view asks of its style. A
@@ -426,7 +429,7 @@ public class Resources {
             if (isAccent(id)) { out.type = TypedValue.TYPE_INT_COLOR_ARGB8; out.data = sAccent; out.string = null; return true; }
             if (!resolveRefs || out.type != TypedValue.TYPE_REFERENCE || out.data == 0) return true;
             // (An app's resource that names one of Android 12's system colours means that colour: Android 9 has private
-            // resources of its own under those numbers, which no app can name. ResTable.find, NEWER_TYPES.)
+            // resources of its own under those numbers, which no app can name. ResTable.find.)
             if (t != sFramework && megler.SystemColors.has(out.data)) { systemColor(out.data, out); return true; }
             id = out.data;
         }
