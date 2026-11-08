@@ -759,7 +759,9 @@ What Megler does since 2026-11-08:
   (`list_handle`, `core/src/host/mg_host_win32.c`) and by the shell's check of
   its links (`player/StorageHost.cpp`) -- not tried: a PC's NTFS answers the
   first, and FAT and exFAT are thought to. The logs' mirror takes a copy's time to
-  two seconds. Each way round is said once in the log. Megler's own code made no
+  two seconds. The library takes from its listing of `*.apk` only names that end
+  so: Windows matches a pattern against short names too, which FAT always has
+  (`x.apks` is `X~1.APK`). Each way round is said once in the log. Megler's own code made no
   hard links, junctions, symbolic links or sparse files, and asked for no file
   ids; the core's POSIX rename (FileRenameInfoEx) went round a file system
   without it before (a file put aside, then the plain rename), and its locks
