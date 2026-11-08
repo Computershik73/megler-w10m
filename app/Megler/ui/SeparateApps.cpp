@@ -19,6 +19,8 @@
 #include <algorithm>
 #include <deque>
 #include <map>
+#include <optional>
+#include <set>
 
 namespace megler::app::ui::separateApps {
 
@@ -138,11 +140,93 @@ ApkEntry readPicked(const Job& job) {
     return entry;
 }
 
+/// Said in the log once a run: the same line at each listing is not said again.
+void sayOnce(const std::string& line) {
+    static std::mutex mutex;
+    static std::set<std::string> said;
+    {
+        std::lock_guard<std::mutex> lock(mutex);
+        if (!said.insert(line).second) return;
+    }
+    shellLog::write(line);
+}
+
+/// Whether the library's own copy `entry` is the APK `apk` (a folder's of the shared folder, which make copied from it byte
+/// for byte): of one size, its report (beside it) of the same package and version, and its last 64 KB, the ZIP's central
+/// directory, the same.
+bool sameApk(const ApkEntry& entry, const std::wstring& apk) {
+    const uint64_t size = files::size(apk);
+    if (!size || files::size(entry.path) != size) return false;
+    std::string json;
+    if (!files::read(apk + L".json", json)) return false;
+    const ApkReport report = ApkReport::parse(json);
+    return report.valid && report.package == entry.report.package && report.versionCode == entry.report.versionCode &&
+           files::sameEnd(entry.path, apk, 65536);
+}
+
+/*
+ * An installed package whose folder of the shared folder is known for sure (appPackage::settleSharedApks: the one folder whose
+ * made.txt names its full name), installed by another than Megler -- Windows's own installer (Open the Package), a file
+ * manager, Windows after Megler had given up on it -- taken as Megler's own install is (run): the library's entry of its app
+ * reads that APK (Library::adopt), so that Update All makes the next package from it, Uninstall copies it back first, and
+ * Google Play services' is registered for the apps (registerInstalledServices, after this); and the package made that waited
+ * for Windows's installer, which settleSharedApks removed, is no longer offered on the app's page. An entry that is Megler's
+ * copy of another APK (one picked since, to be installed) is left as it is, and none is made where the library has none (the
+ * user took the app out of it). Off the UI thread.
+ */
+void adoptInstalled(const sharedApks::Known& known, const std::vector<ApkEntry>& entries) {
+    const std::string identity = narrow(known.identity);
+    if (known.waitingDone) {
+        std::lock_guard<std::mutex> lock(gMutex);
+        for (auto& [package, s] : gStatus)
+            if (_stricmp(s.made.identity.c_str(), identity.c_str()) == 0) s.made = appPackage::Made();
+        gGeneration++;
+    }
+    const std::wstring folder = L"apks\\" + known.identity + L"\\" + known.token;
+    const std::wstring apk = appPackage::sharedFolder() + L"\\" + folder + L"\\app.apk";
+    std::optional<ApkEntry> entry;
+    for (const ApkEntry& e : entries)
+        if (!e.report.package.empty() && _stricmp(identityOf(e.report.package).c_str(), identity.c_str()) == 0) {
+            entry = e;
+            break;
+        }
+    if (!entry) {
+        sayOnce("separate apps: the installed " + known.fullName + " reads " + narrow(folder) +
+                "; the library has no entry of its app, and none is made");
+        return;
+    }
+    if (entry->installedPackage == known.fullName && _wcsicmp(entry->path.c_str(), apk.c_str()) == 0) return;
+    if (!files::exists(apk)) {
+        sayOnce("separate apps: the installed " + known.fullName + " reads " + narrow(folder) + ", which has no app.apk: " + entry->id +
+                " is left as it is");
+        return;
+    }
+    if (entry->installedPackage.empty() && !sameApk(*entry, apk)) {
+        sayOnce("separate apps: " + entry->id + " is Megler's copy of another APK than the installed " + known.fullName + " reads (" +
+                narrow(folder) + "): left as it is, to be installed");
+        return;
+    }
+    // An entry of another installed package's APK (Google Play services' of before, where its package was made from Megler's
+    // newer APK): its report and icon are those of the APK it reads now, from beside it.
+    if (!entry->installedPackage.empty() && _wcsicmp(entry->path.c_str(), apk.c_str()) != 0) {
+        const std::wstring own = Library::instance().directory() + L"\\" + widen(entry->id);
+        const std::pair<std::wstring, std::wstring> besides[] = {{apk + L".json", own + L".json"}, {apk + L".icon", own + L".icon"}};
+        for (const auto& [from, to] : besides)
+            if (files::exists(from) && (!files::copy(from, to + L".part") || !files::move(to + L".part", to)))
+                shellLog::write(format("separate apps: %s could not be copied for %s (error %lu)", narrow(from).c_str(), entry->id.c_str(),
+                                       GetLastError()));
+    }
+    shellLog::write("separate apps: the installed " + known.fullName + ", installed by another than Megler, reads " + narrow(folder) +
+                    ": the library's " + entry->id + " is its APK now");
+    Library::instance().adopt(entry->id, known.fullName, folder);
+}
+
 /// The folders of apps' APKs in the shared folder set right with what is installed (appPackage::settleSharedApks): the
-/// installed packages' kept however they were installed, those the library's entries are in kept, the rest removed. Only
-/// while no job is queued or running, and a job asked for meanwhile waits for it (gSettling): the package made that waited
-/// for Windows's installer may be removed here, which a job of the same app would be writing again. (A package being made
-/// has a folder nothing names yet; a folder of the last hour is left alone besides.) Off the UI thread.
+/// installed packages' kept however they were installed, those the library's entries are in kept, the rest removed; and an
+/// installed package that another than Megler installed taken as Megler's own install is (adoptInstalled). Only while no job
+/// is queued or running, and a job asked for meanwhile waits for it (gSettling): the package made that waited for Windows's
+/// installer may be removed here, which a job of the same app would be writing again. (A package being made has a folder
+/// nothing names yet; a folder of the last hour is left alone besides.) Off the UI thread.
 void settleApks(const std::vector<appPackage::InstalledApp>& installed) {
     if (appPackage::isSingleApp()) return;
     {
@@ -156,10 +240,11 @@ void settleApks(const std::vector<appPackage::InstalledApp>& installed) {
             gSettling = false;
         }
     } settled;
+    const std::vector<ApkEntry> entries = Library::instance().entries();
     std::vector<std::wstring> read;
-    for (const ApkEntry& entry : Library::instance().entries())
+    for (const ApkEntry& entry : entries)
         if (appPackage::inSharedApks(entry.path)) read.push_back(entry.path.substr(0, entry.path.find_last_of(L'\\')));
-    appPackage::settleSharedApks(installed, read);
+    for (const sharedApks::Known& known : appPackage::settleSharedApks(installed, read)) adoptInstalled(known, entries);
 }
 
 /// Google Play services installed as an app of its own (Google's or microG's) and not the apps' registered service: its
@@ -205,11 +290,12 @@ void listInstalled() {
         gGeneration++;
     }
     // What the packages no longer need: the Android files of builds none of them is of (after Update All, the older ones'),
-    // the copies of Google Play services' APK but the one registered, and the APKs apps handed over that were left. Then what
-    // the shared folder holds, once a run.
+    // the folders of apps' APKs none of them reads (an installed package another than Megler installed taken as Megler's
+    // own install first, so that Google Play services' is registered for the apps next), the copies of Google Play services'
+    // APK but the one registered, and the APKs apps handed over that were left. Then what the shared folder holds, once a run.
     if (ok) appPackage::removeUnusedAndroidRoots(apps);
-    if (ok) registerInstalledServices(apps);
     if (ok) settleApks(apps);
+    if (ok) registerInstalledServices(apps);
     // And the logs' copies of the packages that are gone (shell/LogMirror.h), which would grow in number for ever.
     if (ok) logMirror::removeUninstalled(apps);
     appPackage::removeUnusedServiceCopies();
