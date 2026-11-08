@@ -2,6 +2,9 @@
 // from the very files the phone's package is built from -- shell/Files.cpp, ShellLog.cpp, Startup.cpp, BundledApks.cpp and
 // Strings.cpp -- with the few stand-ins below for the rest of the shell, and runs it on a scratch folder of its own:
 //
+//   - paths that are not absolute (made from a folder Windows gave none of: a package on a memory card may have no shared
+//     folder) refused by every function of shell/Files.cpp, nothing made, written, listed or removed at a drive's root, and
+//     no drive's or volume's root removed whole;
 //   - files::same; files::copyWhole through Windows's cache and past it (COPY_FILE_NO_BUFFERING, from 8 MB), with what
 //     its progress is told; files::mend of a copy with a byte wrong;
 //   - the log: the core's word on a process about to end ("host: ..." at the error level) and writeNow's line are in the
@@ -135,6 +138,63 @@ struct Told {
         };
     }
 };
+
+/// Paths that are not absolute -- what is made from a folder Windows gave none of, as a package on a memory card may have no
+/// shared folder ("" + L"\\apks\\...") -- are refused, and nothing is made, written, listed or removed at a drive's root.
+void testPaths(const std::wstring& root) {
+    printf("paths that are not absolute\n");
+    const std::wstring atRoot = L"\\megler-shell-tests-" + std::to_wstring(GetCurrentProcessId());
+    check(!files::makeDirectories(atRoot + L"\\apks\\x") && GetLastError() == ERROR_BAD_PATHNAME,
+          "makeDirectories refuses a folder at the drive's root (as \"\" + \"\\apks\\...\" would be)");
+    check(!files::makeDirectory(atRoot) && GetLastError() == ERROR_BAD_PATHNAME, "makeDirectory refuses one");
+    check(!files::write(atRoot + L".txt", "x") && GetLastError() == ERROR_BAD_PATHNAME, "write refuses a file at the drive's root");
+    check(!files::append(atRoot + L".txt", "x") && GetLastError() == ERROR_BAD_PATHNAME, "append refuses one");
+    files::write(gLocal + L"\\paths.txt", "x");
+    check(!files::copy(gLocal + L"\\paths.txt", atRoot + L".txt") && GetLastError() == ERROR_BAD_PATHNAME, "copy refuses one");
+    uint64_t mended = 0;
+    check(!files::copyWhole(gLocal + L"\\paths.txt", atRoot + L".txt", mended) && GetLastError() == ERROR_BAD_PATHNAME, "copyWhole refuses one");
+    check(!files::move(gLocal + L"\\paths.txt", atRoot + L".txt") && GetLastError() == ERROR_BAD_PATHNAME && files::exists(gLocal + L"\\paths.txt"),
+          "move refuses one, and the file stays where it was");
+    check(GetFileAttributesW(atRoot.c_str()) == INVALID_FILE_ATTRIBUTES && GetFileAttributesW((atRoot + L".txt").c_str()) == INVALID_FILE_ATTRIBUTES,
+          "nothing was made at the drive's root");
+    // (Should any of it have been made after all, it goes.)
+    DeleteFileW((atRoot + L".txt").c_str());
+    RemoveDirectoryW((atRoot + L"\\apks\\x").c_str());
+    RemoveDirectoryW((atRoot + L"\\apks").c_str());
+    RemoveDirectoryW(atRoot.c_str());
+    // What is at the drive's root is not looked at either: Windows's own folder, there on this PC's drive.
+    std::string text;
+    check(!files::exists(L"\\Windows") && files::size(L"\\Windows\\win.ini") == 0 && !files::read(L"\\Windows\\win.ini", text),
+          "exists, size and read do not look at the drive's root (\\Windows)");
+    check(files::list(L"", L"*").empty() && files::listFolders(L"", L"*").empty() && files::listFolders(L"\\", L"*").empty() &&
+              files::list(L"\\Windows", L"*.ini").empty(),
+          "the lists of no folder and of the drive's root are empty");
+    check(!files::removeTree(L"") && GetLastError() == ERROR_BAD_PATHNAME && !files::removeTree(atRoot) && GetLastError() == ERROR_BAD_PATHNAME,
+          "removeTree refuses no folder and a folder at the drive's root");
+    // A drive's root is not removed whole: tried on a letter no drive has, so that nothing could go were it not refused.
+    wchar_t letter = 0;
+    const DWORD drives = GetLogicalDrives();
+    for (wchar_t c = L'Z'; c >= L'D' && !letter; c--)
+        if (!(drives & (1u << (c - L'A')))) letter = c;
+    if (letter) {
+        const std::wstring drive = std::wstring(1, letter) + L":\\";
+        bool refused = true;
+        for (const std::wstring& r : {drive, drive.substr(0, 2), L"\\\\?\\" + drive, std::wstring(L"\\\\?\\Volume{00000000-0000-0000-0000-000000000000}\\"),
+                                      std::wstring(L"\\\\no-such-server\\share")}) {
+            SetLastError(0);
+            refused = !files::removeTree(r) && GetLastError() == ERROR_BAD_PATHNAME && refused;
+        }
+        check(refused, "removeTree refuses a drive's root, a volume's and a share's (" + narrow(drive) + ", " + narrow(drive.substr(0, 2)) +
+                           ", \\\\?\\" + narrow(drive) + ", \\\\?\\Volume{...}\\, \\\\server\\share)");
+    }
+    check(count(writtenLog(), "files: a path that is not absolute was refused") == 1 &&
+              writtenLog().find("\"" + narrow(atRoot) + "\\apks\\x\"") != std::string::npos,
+          "the log says the first path refused, once");
+    // An absolute path is as it was.
+    check(files::makeDirectories(root + L"\\paths\\a\\b") && files::write(root + L"\\paths\\a\\b\\c.txt", "c") && files::removeTree(root + L"\\paths") &&
+              !files::exists(root + L"\\paths"),
+          "an absolute path is made, written and removed as before");
+}
 
 void testFiles(const std::wstring& root) {
     printf("files\n");
@@ -373,6 +433,7 @@ int wmain(int argc, wchar_t** argv) {
     }
     shellLog::initialize(gLocal);
     printf("the shell's start and copies (shell/Files.cpp, ShellLog.cpp, Startup.cpp, BundledApks.cpp)\n");
+    testPaths(root);
     testFiles(root);
     testLog();
     testStartup();

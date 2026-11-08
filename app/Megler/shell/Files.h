@@ -1,6 +1,12 @@
 // Files in the app's own folders (LocalState, the install folder), through the
 // Win32 calls an app container has: CreateFile2 and friends. Paths are UTF-16
 // with backslashes, as WinRT hands them out.
+//
+// Every function here refuses a path that is not absolute (ERROR_BAD_PATHNAME;
+// the first such path said in the log): one made from a folder Windows gave
+// none of -- the shared folder, which a package on a memory card may have none
+// of -- would be the current drive's root's ("" + L"\\apks\\..."). removeTree
+// refuses a drive's or a volume's root itself.
 #pragma once
 
 #include <cstdint>

@@ -2,12 +2,55 @@
 
 #include "shell/Files.h"
 
+#include "shell/ShellLog.h"
 #include "shell/Strings.h"
 
 namespace megler::app::files {
 namespace {
 
+std::atomic<bool> gSaidRefused{false};
+
+/*
+ * Whether `path` is one to be read, written or listed: absolute, on a drive ("C:\...") or by a volume's or a share's name
+ * ("\\?\...", "\\server\..."). A path made from a folder Windows did not give -- the shared folder, which a package on a memory
+ * card may have none of ("" + L"\\apks\\...") -- is relative to the current drive's root, which is no package's: it is refused
+ * with ERROR_BAD_PATHNAME, and the first such path is said in the log (an empty one, which stands for no file, is refused
+ * without a word). Nothing is then listed, written, made or removed at a drive's root.
+ */
+bool usable(const std::wstring& path) {
+    const auto separator = [](wchar_t c) { return c == L'\\' || c == L'/'; };
+    if ((path.size() >= 3 && iswalpha(path[0]) && path[1] == L':' && separator(path[2])) ||
+        (path.size() >= 3 && separator(path[0]) && separator(path[1]) && !separator(path[2])))
+        return true;
+    if (!path.empty() && !gSaidRefused.exchange(true))
+        shellLog::write("files: a path that is not absolute was refused, not used at the drive's root: \"" + narrow(path) +
+                        "\" (as one made from a folder Windows gave none of: a package on a memory card may have no shared folder); said once");
+    SetLastError(ERROR_BAD_PATHNAME);
+    return false;
+}
+
+/// Whether `path` is a drive's or a volume's root ("C:\", "\\?\C:\", "\\?\Volume{...}\", "\\server\share"), which no folder of
+/// the shell's is: removeTree refuses one.
+bool isRoot(std::wstring path) {
+    for (wchar_t& c : path)
+        if (c == L'/') c = L'\\';
+    while (!path.empty() && path.back() == L'\\') path.pop_back();
+    if (path.size() >= 4 && (path.compare(0, 4, L"\\\\?\\") == 0 || path.compare(0, 4, L"\\\\.\\") == 0)) {
+        path.erase(0, 4);
+        if (_wcsnicmp(path.c_str(), L"UNC\\", 4) == 0) path = L"\\\\" + path.substr(4);
+    }
+    if (path.size() <= 2) return true;  // "C:", or nothing
+    if (path[0] == L'\\' && path[1] == L'\\') {
+        // "\\server\share": a component more is a folder.
+        const size_t server = path.find(L'\\', 2);
+        return server == std::wstring::npos || path.find(L'\\', server + 1) == std::wstring::npos;
+    }
+    // "Volume{...}" (from "\\?\Volume{...}\"): no separator in it.
+    return path.find(L'\\') == std::wstring::npos;
+}
+
 HANDLE open(const std::wstring& path, DWORD access, DWORD disposition) {
+    if (!usable(path)) return INVALID_HANDLE_VALUE;
     CREATEFILE2_EXTENDED_PARAMETERS params = {};
     params.dwSize = sizeof(params);
     params.dwFileAttributes = FILE_ATTRIBUTE_NORMAL;
@@ -28,22 +71,24 @@ bool writeAll(HANDLE h, std::string_view data) {
 
 bool exists(const std::wstring& path) {
     WIN32_FILE_ATTRIBUTE_DATA data = {};
-    return GetFileAttributesExW(path.c_str(), GetFileExInfoStandard, &data) != 0;
+    return usable(path) && GetFileAttributesExW(path.c_str(), GetFileExInfoStandard, &data) != 0;
 }
 
 uint64_t size(const std::wstring& path) {
     WIN32_FILE_ATTRIBUTE_DATA data = {};
-    if (!GetFileAttributesExW(path.c_str(), GetFileExInfoStandard, &data)) return 0;
+    if (!usable(path) || !GetFileAttributesExW(path.c_str(), GetFileExInfoStandard, &data)) return 0;
     return (uint64_t(data.nFileSizeHigh) << 32) | data.nFileSizeLow;
 }
 
 bool makeDirectory(const std::wstring& path) {
+    if (!usable(path)) return false;
     return CreateDirectoryW(path.c_str(), nullptr) != 0 || GetLastError() == ERROR_ALREADY_EXISTS;
 }
 
 bool makeDirectories(const std::wstring& path) {
     // From the folder up, only as far as folders are missing: the ones above an app's own folders (C:\Data, ...) are
-    // not the app's to make, and asking for them may be refused rather than answered "already there".
+    // not the app's to make, and asking for them may be refused rather than answered "already there". (Never up to a drive's
+    // root, "C:", nor from a path that is not absolute: usable.)
     if (makeDirectory(path)) return true;
     if (GetLastError() != ERROR_PATH_NOT_FOUND) return false;
     const size_t slash = path.find_last_of(L'\\');
@@ -91,7 +136,7 @@ bool readRange(const std::wstring& path, uint64_t at, uint64_t n, std::string& o
 
 uint64_t lastWrite(const std::wstring& path) {
     WIN32_FILE_ATTRIBUTE_DATA data = {};
-    if (!GetFileAttributesExW(path.c_str(), GetFileExInfoStandard, &data)) return 0;
+    if (!usable(path) || !GetFileAttributesExW(path.c_str(), GetFileExInfoStandard, &data)) return 0;
     return (uint64_t(data.ftLastWriteTime.dwHighDateTime) << 32) | data.ftLastWriteTime.dwLowDateTime;
 }
 
@@ -114,6 +159,7 @@ bool append(const std::wstring& path, std::string_view data) {
 // A file an app made read-only (chmod, File.setReadOnly: the core keeps it as Windows' read-only attribute) goes all the same,
 // as POSIX's unlink takes one: an app's folders are removed whole (its data moved or cleared, a bundle unpacked again).
 bool remove(const std::wstring& path) {
+    if (!usable(path)) return false;
     if (DeleteFileW(path.c_str())) return true;
     if (GetLastError() != ERROR_ACCESS_DENIED) return false;
     const DWORD attributes = GetFileAttributesW(path.c_str());
@@ -123,11 +169,11 @@ bool remove(const std::wstring& path) {
 }
 
 bool move(const std::wstring& from, const std::wstring& to) {
-    return MoveFileExW(from.c_str(), to.c_str(), MOVEFILE_REPLACE_EXISTING) != 0;
+    return usable(from) && usable(to) && MoveFileExW(from.c_str(), to.c_str(), MOVEFILE_REPLACE_EXISTING) != 0;
 }
 
 bool copy(const std::wstring& from, const std::wstring& to) {
-    return SUCCEEDED(CopyFile2(from.c_str(), to.c_str(), nullptr));
+    return usable(from) && usable(to) && SUCCEEDED(CopyFile2(from.c_str(), to.c_str(), nullptr));
 }
 
 bool flush(const std::wstring& path) {
@@ -202,6 +248,7 @@ bool writeAt(HANDLE h, uint64_t at, const char* data, DWORD n) {
 } // namespace
 
 DiskFile::DiskFile(const std::wstring& path) : handle_(INVALID_HANDLE_VALUE) {
+    if (!usable(path)) return;
     CREATEFILE2_EXTENDED_PARAMETERS params = {};
     params.dwSize = sizeof(params);
     params.dwFileAttributes = FILE_ATTRIBUTE_NORMAL;
@@ -281,6 +328,7 @@ COPYFILE2_MESSAGE_ACTION CALLBACK copyProgress(const COPYFILE2_MESSAGE* message,
 
 /// CopyFile2 with `flags`, `progress` told of each chunk; whether it copied, and when not, its Win32 error for GetLastError.
 bool copyFile(const std::wstring& from, const std::wstring& to, DWORD flags, const Progress& progress) {
+    if (!usable(from) || !usable(to)) return false;
     COPYFILE2_EXTENDED_PARAMETERS params = {};
     params.dwSize = sizeof(params);
     params.dwCopyFlags = flags;
@@ -315,6 +363,7 @@ bool copyWhole(const std::wstring& from, const std::wstring& to, uint64_t& mende
 std::vector<std::wstring> list(const std::wstring& directory, const std::wstring& pattern) {
     std::vector<std::wstring> names;
     WIN32_FIND_DATAW found = {};
+    if (!usable(directory)) return names;
     HANDLE h = FindFirstFileExW((directory + L"\\" + pattern).c_str(), FindExInfoBasic, &found, FindExSearchNameMatch,
                                 nullptr, 0);
     if (h == INVALID_HANDLE_VALUE) return names;
@@ -328,6 +377,7 @@ std::vector<std::wstring> list(const std::wstring& directory, const std::wstring
 std::vector<std::wstring> listFolders(const std::wstring& directory, const std::wstring& pattern) {
     std::vector<std::wstring> names;
     WIN32_FIND_DATAW found = {};
+    if (!usable(directory)) return names;
     HANDLE h = FindFirstFileExW((directory + L"\\" + pattern).c_str(), FindExInfoBasic, &found, FindExSearchNameMatch, nullptr, 0);
     if (h == INVALID_HANDLE_VALUE) return names;
     do {
@@ -339,6 +389,11 @@ std::vector<std::wstring> listFolders(const std::wstring& directory, const std::
 }
 
 bool removeTree(const std::wstring& path) {
+    if (!usable(path)) return false;
+    if (isRoot(path)) {
+        SetLastError(ERROR_BAD_PATHNAME);
+        return false;
+    }
     bool ok = true;
     for (const auto& name : list(path, L"*")) ok = remove(path + L"\\" + name) && ok;
     for (const auto& name : listFolders(path, L"*")) ok = removeTree(path + L"\\" + name) && ok;
