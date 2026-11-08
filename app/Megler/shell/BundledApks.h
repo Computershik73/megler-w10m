@@ -35,6 +35,13 @@ struct Task {
     std::string what; // in words: "Google Play services"
 };
 
+/// What of the package's Google APKs (its bitgapps folder) the library (`library`, LocalState\apks) and the shared folder
+/// (`shared`) lack, or have wrong: the copies to make, in their order, decided by names, sizes and the last 64 KB of two
+/// files, nothing read whole -- Library::load's, on the UI thread before the window is shown. `installedGone` says of the
+/// text of an entry's .installed marker whether the APK it names is gone. Where the library's offers need no copy, their
+/// stamp (bitgapps.added) is written here.
+std::vector<Task> plan(const std::wstring& library, const std::wstring& shared, const std::function<bool(const std::string& marker)>& installedGone);
+
 /// The copy being made, for the library's card: what, which of how many (start's; 0 for another's), and how far.
 struct Progress {
     bool active = false;
