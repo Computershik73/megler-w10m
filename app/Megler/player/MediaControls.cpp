@@ -52,7 +52,12 @@ void onUi(std::function<void()> f) {
             std::lock_guard<std::mutex> lock(gMutex);
             if (generation != gGeneration) return;
         }
-        if (gControls) f();
+        if (!gControls) return;
+        try {
+            f();
+        } catch (winrt::hresult_error const& e) {
+            shellLog::write(format("media controls: the app's media session could not be told to them (0x%08X)", unsigned(e.code().value)));
+        }
     });
 }
 
@@ -68,7 +73,14 @@ const char* statusName(MediaPlaybackStatus s) {
 
 void show(MediaPlaybackStatus status, const char* why) {
     if (!gControls || status == gShown) return;
-    gControls.PlaybackStatus(status);
+    try {
+        gControls.PlaybackStatus(status);
+    } catch (winrt::hresult_error const& e) {
+        // (Taken as shown all the same: asked again at every poll, it would fail at every poll.)
+        shellLog::write(format("media controls: %s refused (0x%08X, %s)", statusName(status), unsigned(e.code().value), why));
+        gShown = status;
+        return;
+    }
     gShown = status;
     shellLog::write(format("media controls: %s (%s)", statusName(status), why));
 }
@@ -140,10 +152,14 @@ fire_and_forget showArt(std::vector<uint32_t> argb, int width, int height) {
         if (generation != gGeneration) co_return;
     }
     if (!gControls) co_return;
-    stream.Seek(0);
-    auto updater = gControls.DisplayUpdater();
-    updater.Thumbnail(RandomAccessStreamReference::CreateFromStream(stream));
-    updater.Update();
+    try {
+        stream.Seek(0);
+        auto updater = gControls.DisplayUpdater();
+        updater.Thumbnail(RandomAccessStreamReference::CreateFromStream(stream));
+        updater.Update();
+    } catch (winrt::hresult_error const& e) {
+        shellLog::write(format("media controls: the art was not taken (0x%08X)", unsigned(e.code().value)));
+    }
 }
 
 // What the controls were told last, on the UI thread: the same again is not told, and the same picture is not made a PNG again.
@@ -191,6 +207,11 @@ void metadataThunk(void*, const char* title, const char* artist, const char* alb
 
 } // namespace
 
+/*
+ * Windows' controls may refuse any of these calls where the device keeps them to itself (an Xbox's are the console's, its
+ * guide's): what failed is said, the controls are let go of, and the app runs on without them -- never an exception into
+ * the player's poll, which then left its busy overlay and its end undone at every poll after.
+ */
 void start() {
     if (gControls) return;
     try {
@@ -199,22 +220,39 @@ void start() {
         shellLog::write(format("media controls: not there (0x%08X); the app's sound stops in the background", unsigned(e.code().value)));
         return;
     }
-    {
-        std::lock_guard<std::mutex> lock(gMutex);
-        gDispatcher = winrt::Windows::UI::Core::CoreWindow::GetForCurrentThread().Dispatcher();
-        ++gGeneration;
+    try {
+        {
+            std::lock_guard<std::mutex> lock(gMutex);
+            gDispatcher = winrt::Windows::UI::Core::CoreWindow::GetForCurrentThread().Dispatcher();
+            ++gGeneration;
+        }
+        gTold = false; // (a session's controls start with nothing told)
+        gControls.IsEnabled(true);
+        gControls.IsPlayEnabled(true);
+        gControls.IsPauseEnabled(true);
+        gControls.IsStopEnabled(false);
+        gControls.IsNextEnabled(false);
+        gControls.IsPreviousEnabled(false);
+        // (A type, even with nothing else said: Windows then handles the sound as media.)
+        gControls.DisplayUpdater().Type(MediaPlaybackType::Music);
+        gControls.DisplayUpdater().Update();
+        gPressed = gControls.ButtonPressed(&onButton);
+    } catch (winrt::hresult_error const& e) {
+        shellLog::write(format("media controls: refused (0x%08X %s); the app's sound stops in the background", unsigned(e.code().value),
+                               narrow(e.message()).c_str()));
+        {
+            std::lock_guard<std::mutex> lock(gMutex);
+            gDispatcher = nullptr;
+            ++gGeneration;
+        }
+        try {
+            if (gPressed) gControls.ButtonPressed(gPressed);
+        } catch (winrt::hresult_error const&) {
+        }
+        gPressed = {};
+        gControls = nullptr;
+        return;
     }
-    gTold = false; // (a session's controls start with nothing told)
-    gControls.IsEnabled(true);
-    gControls.IsPlayEnabled(true);
-    gControls.IsPauseEnabled(true);
-    gControls.IsStopEnabled(false);
-    gControls.IsNextEnabled(false);
-    gControls.IsPreviousEnabled(false);
-    // (A type, even with nothing else said: Windows then handles the sound as media.)
-    gControls.DisplayUpdater().Type(MediaPlaybackType::Music);
-    gControls.DisplayUpdater().Update();
-    gPressed = gControls.ButtonPressed(&onButton);
     gShown = MediaPlaybackStatus::Closed;
     gSessionSaid = false;
     gHeardFor = gSilentFor = 0;
@@ -229,11 +267,16 @@ void stop() {
         ++gGeneration;
     }
     gTold = false;
-    gControls.ButtonPressed(gPressed);
-    gControls.PlaybackStatus(MediaPlaybackStatus::Closed);
-    gControls.DisplayUpdater().ClearAll();
-    gControls.DisplayUpdater().Update();
-    gControls.IsEnabled(false);
+    try {
+        gControls.ButtonPressed(gPressed);
+        gControls.PlaybackStatus(MediaPlaybackStatus::Closed);
+        gControls.DisplayUpdater().ClearAll();
+        gControls.DisplayUpdater().Update();
+        gControls.IsEnabled(false);
+    } catch (winrt::hresult_error const& e) {
+        shellLog::write(format("media controls: not all let go of (0x%08X)", unsigned(e.code().value)));
+    }
+    gPressed = {};
     gControls = nullptr;
     shellLog::write("media controls: off");
 }
