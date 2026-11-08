@@ -2766,6 +2766,9 @@ static int run_data(void)
                                          /* And the process's Application through ActivityThread's hidden fields, on a thread of the Application's
                                             own while it is created, as Tuya Smart's library loader asks, and afterwards. */
                                          "activity-thread-application",
+                                         /* And the hidden ServiceManager, every service one that is not there, as Shizuku's SystemServiceHelper
+                                            asks it (Morphe Manager ended at its start without the class). */
+                                         "service-manager",
                                          "audio-track", "media-player", "media-player-ogg", "sound-pool",
                                          /* And MediaCodec over the stand-in for the shell's decoders: H.264 shown on a Surface in display
                                             order, a flush, parameter sets in a codec-config buffer, the asynchronous mode, AAC with an

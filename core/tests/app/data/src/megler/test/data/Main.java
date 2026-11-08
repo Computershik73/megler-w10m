@@ -5339,6 +5339,23 @@ public class Main extends Activity {
             return app instanceof DataApplication && "field true current true".equals(DataApplication.seenInOnCreate) && current.get(null) == thread
                     && fromField == app && apps != null && apps.contains(app) && fromGetter == app && fromCurrent == app && fromGlobals == app;
         });
+        // The hidden ServiceManager, which Shizuku's SystemServiceHelper reaches by reflection for the system's binders (Sui asks it
+        // for "package"): there, and every name a service that is not there. Morphe Manager ended at its start without the class.
+        step("service-manager", () -> {
+            Class<?> sm = Class.forName("android.os.ServiceManager");
+            Object pkg = sm.getMethod("getService", String.class).invoke(null, "package");
+            Object checked = sm.getMethod("checkService", String.class).invoke(null, "activity");
+            String[] listed = (String[]) sm.getMethod("listServices").invoke(null);
+            boolean threw = false;
+            try {
+                sm.getMethod("getServiceOrThrow", String.class).invoke(null, "package");
+            } catch (java.lang.reflect.InvocationTargetException e) {
+                threw = "android.os.ServiceManager$ServiceNotFoundException".equals(e.getCause().getClass().getName());
+            }
+            detail = "getService " + pkg + ", checkService " + checked + ", listServices " + java.util.Arrays.toString(listed)
+                    + ", getServiceOrThrow threw " + threw;
+            return pkg == null && checked == null && listed != null && listed.length == 0 && threw;
+        });
     }
 
     /** The theme's android:colorForeground, 0 when it has none. */
