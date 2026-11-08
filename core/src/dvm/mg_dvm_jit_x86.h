@@ -45,7 +45,7 @@ typedef char jit_ctx_layout[offsetof(mg_dvm_jit_ctx, regs) == JIT_CTX_REGS && of
 static const char *jit_processor(void) { return ""; }
 
 enum { RAX, RCX, RDX, RBX, RSP, RBP, RSI, RDI, R8, R9, R10, R11, R12, R13, R14, R15 };
-enum { XMM0, XMM1 };
+enum { XMM0, XMM1, XMM2, XMM3 };
 #if X64
 enum { XREGS = RBX, XCTX = R12, XSLOW = R13, XTMP = R11 };
 #else
@@ -971,22 +971,9 @@ static void emit_fp_remainder(emitter *e, bool dbl, u32 vd, u32 va, u32 vb)
 }
 #else
 /*
- * What 32-bit x86 has no SSE instruction for -- a long's conversions to and from float and double -- and a float's and a
- * double's remainder, by calls of these, which read the frame's registers and write the result into them: i386's
- * convention returns a float or a double in x87's st(0), which the code leaves alone.
+ * A float's and a double's remainder, fmod's, by a call of this, which reads the frame's registers and writes the result
+ * into them: i386's convention returns a float or a double in x87's st(0), which the code leaves alone.
  */
-static void jit_long_convert(mg_dvm_reg *regs, u32 op, u32 va, u32 vb)
-{
-    i64 l;
-    float f;
-    double d;
-    switch (op) {
-    case 0x85: l = mg_dvm_get_wide(regs, vb); f = (float)l; memcpy(&regs[va], &f, 4); break;
-    case 0x86: l = mg_dvm_get_wide(regs, vb); d = (double)l; memcpy(&regs[va], &d, 8); break;
-    case 0x88: memcpy(&f, &regs[vb], 4); mg_dvm_put_wide(regs, va, f != f ? 0 : f >= 9223372036854775808.0f ? INT64_MAX : f <= -9223372036854775808.0f ? INT64_MIN : (i64)f); break;
-    default: memcpy(&d, &regs[vb], 8); mg_dvm_put_wide(regs, va, d != d ? 0 : d >= 9223372036854775808.0 ? INT64_MAX : d <= -9223372036854775808.0 ? INT64_MIN : (i64)d); break;
-    }
-}
 static void jit_fp_remainder(mg_dvm_reg *regs, u32 dbl, u32 vd, u32 va, u32 vb)
 {
     if (dbl) {
@@ -1004,7 +991,7 @@ static void jit_fp_remainder(mg_dvm_reg *regs, u32 dbl, u32 vd, u32 va, u32 vb)
     }
 }
 
-/* A call of one of those: its arguments at [esp], the frame's registers first. */
+/* A call of it: its arguments at [esp], the frame's registers first. */
 static void call_regs(emitter *e, mg_addr fn, u32 a, u32 b, u32 c, u32 d)
 {
     op_rm(e, 0, false, 0x89, XREGS, RSP, 0);                     /* mov [esp], ebx */
@@ -1019,7 +1006,188 @@ static void call_regs(emitter *e, mg_addr fn, u32 a, u32 b, u32 c, u32 d)
     call_c(e, fn);
 }
 
-static void emit_long_convert(emitter *e, u32 op, u32 va, u32 vb) { call_regs(e, (mg_addr)jit_long_convert, op, va, vb, 0); }
+/*
+ * A long's conversions to and from float and double, which 32-bit x86 has no instruction for, in SSE2 from the long's two
+ * words. The constants are powers of two, made where they are needed, as no constant lies in the code's memory: xmm<x> =
+ * the double whose high word is `hi` and low word 0 (MOVD, then PSLLQ by 32), through the general register `tmp`.
+ */
+static void double_hi(emitter *e, int x, u32 hi, int tmp)
+{
+    mov_i32(e, tmp, hi);
+    op_rr(e, 0x66, false, 0x6E0F, x, tmp);                       /* movd xmm<x>, tmp */
+    op_rr(e, 0x66, false, 0x730F, 6, x);                         /* psllq xmm<x>, 32 */
+    b1(e, 32);
+}
+enum { D_2P31 = 0x41E00000u, D_2P32 = 0x41F00000u, D_2P63 = 0x43E00000u, D_2PM32 = 0x3DF00000u };
+
+/* xmm<x> += the unsigned word in `r` (r changed; xmm<tmp_x> and xmm3 used): r less 2^31 converted signed, 2^31 added back, both exact. */
+static void add_unsigned(emitter *e, int x, int r, int tmp_x)
+{
+    alu_ri(e, false, G_XOR, r, (i32)0x80000000u);
+    op_rr(e, 0xF2, false, 0x2A0F, tmp_x, r);                     /* cvtsi2sd */
+    double_hi(e, XMM3, D_2P31, r);
+    op_rr(e, 0xF2, false, 0x580F, tmp_x, XMM3);                  /* addsd: the word, exact */
+    op_rr(e, 0xF2, false, 0x580F, x, tmp_x);
+}
+
+/*
+ * long-to-double: the high word, signed, times 2^32 and the low word, unsigned -- both exact -- added: the one rounding,
+ * which is the conversion's own. The result in xmm0.
+ */
+static void long_to_double(emitter *e, u32 vb)
+{
+    op_rm(e, 0xF2, false, 0x2A0F, XMM0, XREGS, at_v(vb + 1));   /* cvtsi2sd xmm0, [the high word] */
+    double_hi(e, XMM1, D_2P32, RAX);
+    op_rr(e, 0xF2, false, 0x590F, XMM0, XMM1);                   /* mulsd: exact */
+    ld_int(e, RAX, vb);
+    add_unsigned(e, XMM0, RAX, XMM1);
+}
+
+/*
+ * long-to-float: an int's CVTSI2SS where the long is one. Otherwise its magnitude made a double exactly, then CVTSD2SS
+ * once, and the sign put back: from 2^53 on a double would round the magnitude itself, and that second rounding could
+ * differ from the one Java makes, so there the bits under the thirteenth -- below the float's last bit and its rounding
+ * bit, where only "any of them set" counts -- are first made the twelfth bit alone when any is set, and the magnitude
+ * fits a double's 53 bits. The result in xmm0.
+ */
+static void long_to_float(emitter *e, u32 vb)
+{
+    u32 wide, done, positive, exact, same;
+    ld_int(e, RAX, vb);
+    ld_int(e, RDX, vb + 1);
+    mov_rr(e, false, RCX, RAX);
+    op_rr(e, 0, false, 0xC1, 7, RCX);                            /* sar ecx, 31 */
+    b1(e, 31);
+    alu_rr(e, false, G_CMP, RCX, RDX);
+    wide = local_branch(e, C_NE);
+    op_rr(e, 0xF3, false, 0x2A0F, XMM0, RAX);                    /* an int's: cvtsi2ss xmm0, eax */
+    done = local_branch(e, C_AL);
+    local_to(e, wide, C_NE);
+    mov_rr(e, false, RCX, RDX);                                  /* the sign, for the end */
+    test_rr(e, false, RDX, RDX);
+    positive = local_branch(e, X86_CC(CC_NS));
+    op_rr(e, 0, false, 0xF7, 3, RAX);                            /* the magnitude: neg eax; adc edx, 0; neg edx */
+    alu_ri(e, false, 2, RDX, 0);
+    op_rr(e, 0, false, 0xF7, 3, RDX);
+    local_to(e, positive, X86_CC(CC_NS));
+    alu_ri(e, false, G_CMP, RDX, 0x00200000);                    /* under 2^53: exact as it is */
+    exact = local_branch(e, C_LO);
+    op_rr(e, 0, false, 0xF7, 0, RAX);                            /* test eax, 0xfff */
+    b4(e, 0xFFF);
+    same = local_branch(e, C_EQ);
+    alu_ri(e, false, G_AND, RAX, (i32)0xFFFFF000u);
+    alu_ri(e, false, G_OR, RAX, 0x800);
+    local_to(e, exact, C_LO);
+    local_to(e, same, C_EQ);
+    /* both words unsigned: (hi - 2^31 + 2^31) * 2^32 + lo, exact */
+    alu_ri(e, false, G_XOR, RDX, (i32)0x80000000u);
+    op_rr(e, 0xF2, false, 0x2A0F, XMM0, RDX);
+    double_hi(e, XMM3, D_2P31, RDX);
+    op_rr(e, 0xF2, false, 0x580F, XMM0, XMM3);
+    double_hi(e, XMM1, D_2P32, RDX);
+    op_rr(e, 0xF2, false, 0x590F, XMM0, XMM1);
+    add_unsigned(e, XMM0, RAX, XMM1);
+    op_rr(e, 0xF2, false, 0x5A0F, XMM0, XMM0);                   /* cvtsd2ss: the one rounding */
+    test_rr(e, false, RCX, RCX);
+    positive = local_branch(e, X86_CC(CC_NS));
+    op_rr(e, 0x66, false, 0x7E0F, XMM0, RAX);                    /* movd eax, xmm0 */
+    alu_ri(e, false, G_XOR, RAX, (i32)0x80000000u);
+    op_rr(e, 0x66, false, 0x6E0F, XMM0, RAX);                    /* movd xmm0, eax */
+    local_to(e, positive, X86_CC(CC_NS));
+    local_to(e, done, C_AL);
+}
+
+/*
+ * edx:eax as Java converts the double in xmm0 to a long: 0 for NaN; MAX_VALUE or MIN_VALUE from 2^63 on in magnitude;
+ * else toward zero -- CVTTSD2SI where it fits an int, else the magnitude's high word (CVTTSD2SI of it times 2^-32, exact)
+ * and its low word (of what is left, exact and under 2^32: less 2^31 first where it is not under that), negated where the
+ * double is negative. ecx holds the sign.
+ */
+static void double_to_long(emitter *e)
+{
+    u32 nan, big, large, top, low_done, to_done[3], nd = 0, i, keep, keep2;
+    op_rr(e, 0x66, false, 0x2E0F, XMM0, XMM0);                   /* ucomisd xmm0, xmm0 */
+    nan = local_branch(e, X86_CC(CC_P));
+    op_rr(e, 0x66, false, 0x500F, RCX, XMM0);                    /* movmskpd ecx, xmm0: the sign */
+    alu_ri(e, false, G_AND, RCX, 1);
+    op_rr(e, 0x66, false, 0x760F, XMM1, XMM1);                   /* pcmpeqd xmm1, xmm1 */
+    op_rr(e, 0x66, false, 0x730F, 2, XMM1);                      /* psrlq xmm1, 1 */
+    b1(e, 1);
+    op_rr(e, 0x66, false, 0x540F, XMM1, XMM0);                   /* andpd xmm1, xmm0: the magnitude */
+    double_hi(e, XMM2, D_2P63, RAX);
+    op_rr(e, 0x66, false, 0x2E0F, XMM1, XMM2);
+    big = local_branch(e, X86_CC(CC_AE));
+    double_hi(e, XMM2, D_2P31, RAX);
+    op_rr(e, 0x66, false, 0x2E0F, XMM1, XMM2);
+    large = local_branch(e, X86_CC(CC_AE));
+    op_rr(e, 0xF2, false, 0x2C0F, RAX, XMM0);                    /* an int's: cvttsd2si eax, xmm0; cdq */
+    b1(e, 0x99);
+    to_done[nd++] = local_branch(e, C_AL);
+    local_to(e, large, X86_CC(CC_AE));
+    double_hi(e, XMM2, D_2PM32, RAX);
+    op_rr(e, 0x66, false, 0x280F, XMM3, XMM1);                   /* movapd xmm3, xmm1 */
+    op_rr(e, 0xF2, false, 0x590F, XMM3, XMM2);                   /* mulsd: exact */
+    op_rr(e, 0xF2, false, 0x2C0F, RDX, XMM3);                    /* cvttsd2si edx: the high word */
+    op_rr(e, 0xF2, false, 0x2A0F, XMM3, RDX);
+    double_hi(e, XMM2, D_2P32, RAX);
+    op_rr(e, 0xF2, false, 0x590F, XMM3, XMM2);
+    op_rr(e, 0xF2, false, 0x5C0F, XMM1, XMM3);                   /* subsd: what is left, exact */
+    double_hi(e, XMM2, D_2P31, RAX);
+    op_rr(e, 0x66, false, 0x2E0F, XMM1, XMM2);
+    top = local_branch(e, X86_CC(CC_AE));
+    op_rr(e, 0xF2, false, 0x2C0F, RAX, XMM1);
+    low_done = local_branch(e, C_AL);
+    local_to(e, top, X86_CC(CC_AE));
+    op_rr(e, 0xF2, false, 0x5C0F, XMM1, XMM2);
+    op_rr(e, 0xF2, false, 0x2C0F, RAX, XMM1);
+    alu_ri(e, false, G_XOR, RAX, (i32)0x80000000u);
+    local_to(e, low_done, C_AL);
+    test_rr(e, false, RCX, RCX);                                 /* negated where the double is negative */
+    keep = local_branch(e, C_EQ);
+    op_rr(e, 0, false, 0xF7, 3, RAX);
+    alu_ri(e, false, 2, RDX, 0);
+    op_rr(e, 0, false, 0xF7, 3, RDX);
+    local_to(e, keep, C_EQ);
+    to_done[nd++] = local_branch(e, C_AL);
+    local_to(e, big, X86_CC(CC_AE));                             /* 2^63 or more: MAX_VALUE, or MIN_VALUE where negative */
+    mov_i32(e, RAX, 0xFFFFFFFFu);
+    mov_i32(e, RDX, 0x7FFFFFFFu);
+    test_rr(e, false, RCX, RCX);
+    keep2 = local_branch(e, C_EQ);
+    mov_i32(e, RAX, 0);
+    mov_i32(e, RDX, 0x80000000u);
+    local_to(e, keep2, C_EQ);
+    to_done[nd++] = local_branch(e, C_AL);
+    local_to(e, nan, X86_CC(CC_P));                              /* NaN: 0 */
+    mov_i32(e, RAX, 0);
+    mov_i32(e, RDX, 0);
+    for (i = 0; i < nd; i++) local_to(e, to_done[i], C_AL);
+}
+
+/* long-to-float, long-to-double, float-to-long (the float made a double first, exactly), double-to-long. */
+static void emit_long_convert(emitter *e, u32 op, u32 va, u32 vb)
+{
+    switch (op) {
+    case 0x85:
+        long_to_float(e, vb);
+        st_float(e, XMM0, va);
+        break;
+    case 0x86:
+        long_to_double(e, vb);
+        st_double(e, XMM0, va);
+        break;
+    default:
+        if (op == 0x88) {
+            ld_float(e, XMM0, vb);
+            op_rr(e, 0xF3, false, 0x5A0F, XMM0, XMM0);           /* cvtss2sd */
+        } else {
+            ld_double(e, XMM0, vb);
+        }
+        double_to_long(e);
+        st_pair(e, va);
+        break;
+    }
+}
 
 static void emit_fp_remainder(emitter *e, bool dbl, u32 vd, u32 va, u32 vb)
 {

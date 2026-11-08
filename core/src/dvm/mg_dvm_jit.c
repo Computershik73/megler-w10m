@@ -38,6 +38,7 @@
 #include <string.h>
 
 u32 g_dvm_jit_threshold;
+u32 g_dvm_jit_call_work = MG_DVM_JIT_CALL_WORK;
 u32 g_dvm_jit_in_place;
 static bool g_jit_trace;
 static volatile i32 g_jit_methods, g_jit_refused;
@@ -81,6 +82,7 @@ typedef struct emitter {
     u32 nfx, capfx;
     u32 in_place;                      /* calls of trivial methods done in the code (inline_call) */
     bool failed;
+    bool dear;                         /* the instruction just compiled is a call that costs more compiled (dear_call) */
 } emitter;
 
 static void put_unit(emitter *e, u32 u)
@@ -354,6 +356,26 @@ static void fast_invoke(emitter *e, const mg_dvm_method *m, u32 pc)
 }
 
 /*
+ * Whether a call compiled code makes, not done in place, costs it more than the interpreter's own call, as far as is known
+ * here (worth_entering): a call of a method whose body runs in an interpreter loop of its own, which mg_dvm_jit_invoke
+ * starts on the host's stack where the interpreter's own call goes on in the loop it is in -- a method with handlers,
+ * whose exceptions the interpreter's loop decides about (a synchronized one among them where its body can throw, its
+ * monitor given back in a catch-all), or one the JIT refused or compiled without an entry at its start. Known for a static
+ * or direct call and a virtual one of a method nothing overrides; another call's method is known only when it is made.
+ */
+static bool dear_call(const mg_dvm_method *m, u32 pc)
+{
+    mg_dvm_dex *d = m->cls->dex;
+    u32 op = m->insns[pc] & 0xFF, idx = m->insns[pc + 1];
+    int kind = (int)(op - (op >= 0x74 ? 0x74u : 0x6eu));
+    const mg_dvm_method *ref = idx < d->nmeth ? d->mcache[idx] : NULL;
+    if (!ref || !ref->insns || ref->intrinsic || (ref->cls->flags & DVM_ACC_INTERFACE)) return false;
+    if (kind == DVM_INVOKE_VIRTUAL ? !((ref->flags | ref->cls->flags) & DVM_ACC_FINAL) : kind != DVM_INVOKE_STATIC && kind != DVM_INVOKE_DIRECT)
+        return false;
+    return ref->ntries || ref->jit_state == 2 || (ref->jit && !mg_dvm_jit_entry(ref->jit, 0));
+}
+
+/*
  * A call of a method whose whole body is trivial (mg_dvm_interp.c, "trivial methods": empty, a constant returned, a getter,
  * a setter, a static getter), done in the code as the interpreter's call does it in place, without mg_dvm_jit_invoke and
  * its C call: the method the invoke names, which the interpreter's calls resolved, and its shape, which its first call
@@ -501,7 +523,10 @@ static bool compile_insn(emitter *e, const mg_dvm_method *m, u32 pc)
     case 0xca: case 0xcf: emit_fp_remainder(e, op == 0xcf, a4, a4, b4); return true;                     /* and /2addr */
     case 0x6e: case 0x6f: case 0x70: case 0x71: case 0x72:
     case 0x74: case 0x75: case 0x76: case 0x77: case 0x78:
-        if (!inline_call(e, m, pc)) fast_invoke(e, m, pc);
+        if (!inline_call(e, m, pc)) {
+            fast_invoke(e, m, pc);
+            e->dear = dear_call(m, pc);
+        }
         return true;
     case 0x7b: case 0x7c: case 0x7d: case 0x7e: case 0x81: case 0x84: case 0x8d: case 0x8e: case 0x8f:
         emit_unary(e, op, a4, b4);     /* neg and not of ints and longs, int-to-long, long-to-int, int-to-byte, -char, -short */
@@ -600,8 +625,30 @@ static void mark_targets(const mg_dvm_method *m, u8 *target)
     }
 }
 
-/* The loop heads kept as entries: each target of a jump back whose loop, from the head to that jump, hands nothing back. */
-static void whole_loops(const mg_dvm_method *m, const u8 *handback, u8 *target)
+/*
+ * Whether a loop, from its head `from` to its jump back `to`, is worth entering compiled where a dear call (dear_call)
+ * costs that much more compiled (MG_DVM_JIT_CALL_WORK, as g_dvm_jit_call_work has it): each wants that many other
+ * instructions beside it, which compiled code does for less than the interpreter. Where calls cost no more (0), every one.
+ */
+static bool worth_entering(const mg_dvm_method *m, const u8 *dear, u32 from, u32 to)
+{
+    u32 pc, n = 0, calls = 0, work = g_dvm_jit_call_work;
+    if (!work) return true;
+    for (pc = from; pc <= to && pc < m->ninsns;) {
+        u32 units = mg_dvm_insn_units(m->insns, m->ninsns, pc);
+        if (!units) break;
+        n++;
+        calls += dear[pc];
+        pc += units;
+    }
+    return n - calls >= work * calls;
+}
+
+/*
+ * The loop heads kept as entries: each target of a jump back whose loop, from the head to that jump, hands nothing back,
+ * and is worth entering compiled (worth_entering).
+ */
+static void whole_loops(const mg_dvm_method *m, const u8 *handback, const u8 *dear, u8 *target)
 {
     const u16 *insns = m->insns;
     u8 *whole = (u8 *)calloc(m->ninsns, 1);
@@ -623,7 +670,7 @@ static void whole_loops(const mg_dvm_method *m, const u8 *handback, u8 *target)
             u32 head = (u32)((i32)pc + off);
             bool ok = true;
             for (k = head; k <= pc && ok; k++) ok = !handback[k];
-            if (ok) whole[head] = 1;
+            if (ok && worth_entering(m, dear, head, pc)) whole[head] = 1;
         }
         pc += n;
     }
@@ -802,7 +849,7 @@ static mg_dvm_jit_code *compile(mg_dvm_method *m)
     u32 *code_at = NULL, *exit_at = NULL, *back_at = NULL, *throw_at = NULL, pc, i, epilogue, thrown, returned, compiled = 0, exits = 0, loops = 0,
         calls = 0, run = 0;
     bool start;
-    u8 *target = NULL, *handback = NULL;
+    u8 *target = NULL, *handback = NULL, *dear = NULL;
     mg_dvm_jit_code *c = NULL;
     size_t bytes;
     if (!m->insns || m->regs > 1000 || m->ninsns == 0 || m->ninsns > 65535) return NULL;
@@ -812,8 +859,9 @@ static mg_dvm_jit_code *compile(mg_dvm_method *m)
     back_at = (u32 *)calloc(m->ninsns, sizeof(u32));
     target = (u8 *)calloc(m->ninsns, 1);
     handback = (u8 *)calloc(m->ninsns, 1);
+    dear = (u8 *)calloc(m->ninsns, 1);
     throw_at = (u32 *)calloc(m->ninsns, sizeof(u32));
-    if (!code_at || !exit_at || !back_at || !target || !handback || !throw_at) goto out;
+    if (!code_at || !exit_at || !back_at || !target || !handback || !dear || !throw_at) goto out;
     mark_targets(m, target);
     /* The way in, which goes on at its second argument: the entry. */
     emit_prologue(&e);
@@ -821,10 +869,12 @@ static mg_dvm_jit_code *compile(mg_dvm_method *m)
         u32 n = mg_dvm_insn_units(m->insns, m->ninsns, pc);
         if (!n) break;
         code_at[pc] = e.n + 1;
+        e.dear = false;
         if (compile_insn(&e, m, pc)) {
             u32 op = m->insns[pc] & 0xFF;
             compiled++;
             calls += (op >= 0x6e && op <= 0x72) || (op >= 0x74 && op <= 0x78);
+            dear[pc] = e.dear;
         } else {
             exits++;
             handback[pc] = 1;
@@ -836,10 +886,12 @@ static mg_dvm_jit_code *compile(mg_dvm_method *m)
     /*
      * Entered only at the head of a loop compiled whole, from its head to its jump back with no instruction handed back
      * in between: a loop whose body calls out (a call, an allocation) would go in and out at every turn, which costs more
-     * than what it saves (the benchmark's Math.min, Integer.valueOf: twice as slow). Those stay the interpreter's, and a
-     * method with no such loop is not kept: known before any code memory is taken.
+     * than what it saves (the benchmark's Math.min, Integer.valueOf: twice as slow). Those stay the interpreter's, and so
+     * does, where such a call costs more compiled than interpreted (MG_DVM_JIT_CALL_WORK: x86 and x86-64), a loop whose
+     * turns are mostly calls of methods whose bodies run in an interpreter loop of their own (dear_call). A method with no
+     * loop left is not kept: known before any code memory is taken.
      */
-    whole_loops(m, handback, target);
+    whole_loops(m, handback, dear, target);
     for (pc = 0; pc < m->ninsns; pc++) loops += target[pc];
     /*
      * Its start an entry too, for its calls, when the code there does some work before it hands anything back: four
@@ -918,6 +970,7 @@ out:
     free(throw_at);
     free(target);
     free(handback);
+    free(dear);
     free(e.b);
     free(e.fx);
     return c;

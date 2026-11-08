@@ -92,9 +92,16 @@ bytes below them where the calls' arguments are written (the stack then 16-byte 
 frame is 32 bits, as on the phone, so a long is the 8 bytes of its two registers: add/adc, sub/sbb, the 64-bit product
 from MUL and two IMULs, SHLD/SHRD and SHL/SAR/SHR with a count of 32 and more mended (they take five bits of it),
 cmp-long by the high words signed and the low ones unsigned; a double is MOVSD's 8 bytes of the two registers, a float
-MOVSS's 4. What 32-bit x86 has no SSE2 instruction for -- a long's division and remainder, a long's conversions to and
-from float and double -- and a float's or a double's remainder are C: the division by a call that returns the long in
-edx:eax, the others by calls that read and write the frame's registers themselves, as i386's convention would return a
+MOVSS's 4. A long's conversions to and from float and double, which 32-bit x86 has no instruction for, are SSE2's from
+the long's two words, their constants (powers of two) made in a register: long-to-double is the high word, signed, times
+2^32 plus the low word, unsigned, both exact, so that the addition's rounding is the one Java makes; long-to-float makes
+the magnitude a double exactly and rounds it once with CVTSD2SS -- from 2^53 on a double would round the magnitude
+first, and that rounding could differ from Java's single one (2^60 + 2^36 + 1 is above the halfway point, its double on
+it), so the bits under the float's rounding bit are first made one sticky bit; double- and float-to-long are CVTTSD2SI
+where the value fits an int, else the magnitude's high word (CVTTSD2SI of it times 2^-32) and low word (what is left,
+exact), negated where it was negative, with NaN 0 and 2^63 and beyond saturated. What SSE2 has nothing for -- a long's
+division and remainder, a float's or a double's remainder -- is C: the division by a call that returns the long in
+edx:eax, the remainder by a call that reads and writes the frame's registers itself, as i386's convention would return a
 float in x87's st(0), which the code never touches.
 
 ## The first instructions
@@ -126,13 +133,17 @@ two ways. x86 runs here too, by WOW64: `tools/build-desktop.sh x86 tests` and `t
 
 Every arithmetic instruction is checked compiled as well as interpreted: tools/dvm-ops.py gives each of `t.Ops`' methods
 a twin that does its instruction in the second turn of a loop, which the JIT compiles at the first jump back, and
-`test_ops_jit` (mg_dvm_tests.c) runs the 1991 cases through the twins -- Java's answers worked out in Python: shifts by
-32, 33, 63, 64 and negative counts, MIN_VALUE / -1 and % -1, NaN and out-of-range conversions to int and long, a float's
-remainder, cmpl and cmpg of NaN, cmp-long's edges, divisors of zero -- and checks that each twin's loop was compiled
-whole, so that none ran interpreted unnoticed. `t.Jit` adds what the twins do not reach: ints made in compiled code
-compared whole with if-ne and if-nez, in the code and in the interpreter after a hand-back, and returned to an
+`test_ops_jit` (mg_dvm_tests.c) runs the 2095 cases through the twins -- Java's answers worked out in Python: shifts by
+32, 33, 63, 64 and negative counts, MIN_VALUE / -1 and % -1, NaN and out-of-range conversions to int and long, a long's
+conversions at the edges of its words and of a double's precision (a long-to-float rounded once, as Java rounds it), a
+float's remainder, cmpl and cmpg of NaN, cmp-long's edges, divisors of zero -- and checks that each twin's loop was
+compiled whole, so that none ran interpreted unnoticed. `t.Jit` adds what the twins do not reach: ints made in compiled
+code compared whole with if-ne and if-nez, in the code and in the interpreter after a hand-back, and returned to an
 interpreted caller (upperHalves, upperCaller); a frame of 300 registers, past A64's register pairs' reach and past
-move/16's 255 (bigFrame); a negative index (readDown) and a null object (fieldOfNull) met by compiled loops.
+move/16's 255 (bigFrame); a negative index (readDown) and a null object (fieldOfNull) met by compiled loops. Its loops
+of calls are compiled whatever the processor (the measure of dear calls set to 0 for them, `g_dvm_jit_call_work`); the
+measure itself is seen last, by a loop of a synchronized method's calls (mostlyCalls), compiled except on x86 and
+x86-64.
 
 ## Where it stands
 
@@ -186,10 +197,26 @@ A method is compiled when the jumps back it takes and the calls of it made by th
 head of a loop compiled whole -- a loop that hands back at every turn costs more than it saves -- and at its start, for
 its calls, when the code there does some work before it hands anything back (four instructions in a row, or a return):
 the interpreter's call (do_invoke) and the compiled one (`mg_dvm_jit_invoke`) go in there, and a compiled return ends the
-call with no loop of the interpreter's. Code goes on pages of an arena of the process's: code under half a page on the
-page being filled, with other methods', which is made executable once the next does not fit or 200 ms after its first
-(the method interpreted meanwhile), larger code on pages of its own. The data app's 536 methods are 377 KB of code: 2.2 MB
-of pages each on its own, some 480 KB shared.
+call with no loop of the interpreter's.
+
+On x86 and x86-64 a loop compiled whole is entered only where its calls let it gain. A call compiled code makes of a
+method whose body runs in an interpreter loop of its own -- one with handlers, whose exceptions the interpreter's loop
+decides about (a synchronized method among them where its body can throw: a compiler gives back its monitor in a
+catch-all), or one the JIT refused or compiled without a start -- has `mg_dvm_jit_invoke` start that loop on the host's
+stack, where the interpreter's own call goes on in the loop it is in. The benchmark's loop around a call of a method
+that throws (refused: the throw is an exit before four instructions) was 14% slower compiled than interpreted on x86 and
+31% on x86-64, the least of three alternating runs each (558 to 634 ns a turn, 446 to 587). So such a call wants 8 other
+instructions in the loop beside it (`MG_DVM_JIT_CALL_WORK`; `dear_call` and `worth_entering` in mg_dvm_jit.c), as far as
+the call names its method (static, direct, a virtual one of a method nothing overrides): that loop is interpreted again,
+565 and 460 ns. Every other call leaves the loop as it is: a native method's too, also made through `mg_dvm_jit_invoke`,
+whose loop (Math.sin's) was no faster with its call counted so, rather slower (on x86-64 67 to 75 ns a turn against 59
+to 72). The ARM processors keep every loop: under qemu-aarch64 the exception's was not slower, and their speed is the
+phones' to say.
+
+Code goes on pages of an arena of the process's: code under half a page on the page being filled, with other methods',
+which is made executable once the next does not fit or 200 ms after its first (the method interpreted meanwhile), larger
+code on pages of its own. The data app's 536 methods are 377 KB of code: 2.2 MB of pages each on its own, some 480 KB
+shared.
 
 Under qemu-arm (ns a turn, interpreted then compiled): int arithmetic 141 to 5, iget and iput 217 to 15, sget and sput 119
 to 4, aget and aput of an int[256] 228 to 17, String.indexOf 81 to 3, String.charAt 256 to 97, String.hashCode 187 to 94,
@@ -200,7 +227,8 @@ every loop compiled (MEGLER_JIT_THRESHOLD=1).
 
 A64 (`mg_dvm_jit_a64.h`) compiles all of that too, and a long's division, remainder and conversions in the code. The
 arm64 suites pass under qemu-aarch64 at the JIT's own threshold, with every loop compiled (MEGLER_JIT_THRESHOLD=1) and
-with the JIT off (0): 7635 checks, and 7789 on Android's libcore, none failed. Under qemu-aarch64 (ns a turn,
+with the JIT off (0): 7635 checks, and 7789 on Android's libcore, none failed; with the conversions' edge cases and the
+measure of calls' test, 7846 and 8000 at the JIT's own threshold and at 1, none failed. Under qemu-aarch64 (ns a turn,
 interpreted then compiled; `tools/dvm-bench.sh arm64`): int arithmetic 221 to 6.4, long and double arithmetic 377 to 27,
 iget and iput 413 to 19, sget and sput 215 to 4.9, aget and aput of an int[256] 395 to 24, String.charAt 320 to 9.6,
 String.indexOf 139 to 3.7, Math.min, max, abs 632 to 12, invoke-static 284 to 113, HashMap.get 4706 to 1924,
@@ -212,25 +240,31 @@ executable by VirtualProtect and FlushInstructionCache on a processor with real 
 weaker ordering of memory between threads (qemu on an x86 PC is stronger), and its speed.
 
 x86-64 (`mg_dvm_jit_x86.h`) compiles all that A64 does. linux64's suites pass at the JIT's own threshold, at 1 and at 0:
-7666 checks, and 7820 on Android's libcore, none failed (its bundle tests' 25 known failures alike at each). Desktop
-x64's pass every Dalvik check at the three thresholds (7668 checks, and 7822 on libcore); their 23 or 24 failures, the
-same with the JIT off, are the guest signals' and the threads' stops, which Easy Anti-Cheat, running on this PC,
-disturbs. On this PC's x64 (ns a turn, interpreted then compiled; `tools/dvm-bench.sh x64`): int arithmetic 18.4 to 1.5,
-long and double arithmetic 31 to 7.6, iget and iput 30 to 3.7, sget and sput 16 to 1.2, aget and aput 29 to 4.2,
-String.charAt 27 to 2.0, String.indexOf 12 to 0.9, Math.min, max, abs 48 to 2.9, invoke-static 28 to 15, HashMap.get 435
-to 237, Integer.valueOf 131 to 88; an exception made, thrown and caught 548 to 591, the one item slower, as under
-qemu-aarch64 (6389 to 6426).
+7666 checks, and 7820 on Android's libcore, none failed (its bundle tests' 25 known failures alike at each); with the
+conversions' edge cases and the measure of calls, 7877 and 8031 at the JIT's own threshold and at 1, none failed.
+Desktop x64's pass every Dalvik check at the JIT's own threshold and at 1: 7879 checks, and 8033 on libcore (7668 and
+7822 at 0 too before the measure of calls); their 23 or 24 failures, the same with the JIT off, are the guest signals'
+and the threads' stops, which Easy Anti-Cheat, running on this PC, disturbs. On this PC's x64 (ns a turn, interpreted
+then compiled, the least of three alternating runs): int arithmetic 19.1 to 1.5, long and double arithmetic 30.9 to 8.0,
+iget and iput 29.7 to 3.7, sget and sput 14.5 to 1.2, aget and aput 29.2 to 4.5, String.charAt 25.4 to 2.2,
+String.indexOf 11.0 to 0.9, Math.min, max, abs 48.5 to 3.0, invoke-static 24.5 to 16.1, a synchronized static method
+46.5 to 36.1, HashMap.get 389 to 253, Integer.valueOf 130 to 82, an exception made, thrown and caught 597 to 557 (548 to
+591 in the first single run, 446 to 587 in alternating ones before the measure of calls); an exception thrown and caught
+27.0 to 28.0, within the runs' spread (27.0 to 31.4 against 28.0 to 30.7).
 
-x86 (the same back end's 32-bit mode) compiles all that Thumb-2 does, a long's division and its conversions to and from
-float and double by C. Desktop x86's suites (WOW64) pass every Dalvik check at the JIT's own threshold, at 1 and at 0:
-7655 checks, and 7809 on libcore; the failures besides, none of the runtime's, are timing checks, the same with the JIT
-off. On this PC (ns a turn, interpreted then compiled; `tools/dvm-bench.sh x86`): int arithmetic 16.3 to 1.5, iget and
-iput 27 to 4.7, sget and sput 14 to 1.3, aget and aput 28 to 4.2, String.charAt 23 to 1.9, String.indexOf 9.0 to 0.8,
-Math.min, max, abs 43 to 3.5, ArrayList's iterator 104 to 54; but a long's and a double's loop only 25 to 22 (its
-long-to-double is a call of C here), and what a loop does by calls of C is slower compiled than interpreted, where x86's
-interpreter calls more cheaply than x64's: invoke-static 20.3 to 19.7, a final method 27 to 30, a synchronized static
-method 43 to 54, an exception made, thrown and caught 489 to 631, Math.sin 83 to 97, System.arraycopy 22 to 26. Next for
-x86: long-to-double in the code (SSE2 can, from the two halves), and a loop whose turns are mostly calls left to the
-interpreter there.
+x86 (the same back end's 32-bit mode) compiles all that A64 does, a long's conversions in the code too; a long's
+division and remainder are calls of C there. Desktop x86's suites (WOW64) pass every Dalvik check at the JIT's own
+threshold and at 1: 7866 checks, and 8020 on libcore (7655 and 7809 at 0 too before the conversions were the code's);
+the failures besides, none of the runtime's, are timing checks and, in one run of four, the guest signals' and the
+threads' stops that x64's always show. On this PC (ns a turn, interpreted then compiled, the least of three alternating
+runs, as one item's runs differ by 5 to 10% here): int arithmetic 18.7 to 1.4, long and double arithmetic 29.9 to 10.3
+(25 to 22 while its long-to-double was a call of C), iget and iput 30.5 to 3.8, sget and sput 16.7 to 1.1, aget and aput
+31.9 to 4.4, String.charAt 26.4 to 2.0, String.indexOf 10.2 to 0.8, Math.min, max, abs 49.0 to 3.6, ArrayList's iterator
+119 to 51, invoke-static 25.5 to 20.1, a final method 34.3 to 19.8, System.arraycopy 24.8 to 19.3, Math.sin 101 to 94,
+HashMap.get 409 to 309, Integer.valueOf 142 to 108; an exception made, thrown and caught 621 to 643, and a synchronized
+static method 51 to 53, within the runs' spread (621 to 698 interpreted against 643 to 659; 51 to 79 against 53 to 61)
+-- the exception's 14% slower before the measure of calls. Single runs had first put a final method's call, a
+synchronized static method's, Math.sin and System.arraycopy slower compiled too (27 to 30, 43 to 54, 83 to 97, 22 to 26
+ns): alternating runs do not.
 
 Next: what the phone's logs say is handed back most.
