@@ -156,4 +156,23 @@ std::string missingText(Missing missing, const std::string& label, const std::ws
     return {};
 }
 
+std::string meglerOnCardText(bool onCard, bool noSharedFolder, bool mobile) {
+    onCard = onCard && mobile;
+    if (!onCard && !noSharedFolder) return {};
+    std::string text;
+    if (onCard)
+        text = "Megler is installed on the memory card. The apps it installs read Android's files and their APKs from Megler's shared folder, "
+               "which Windows keeps apart for each storage: an app in the phone's memory does not see the memory card's. Megler installs its "
+               "apps beside itself, on the memory card, but the phone's memory is where Megler should be: move it there in Settings › "
+               "System › Storage (the memory card, Apps & games, Megler, Move), set New apps will save to: This device, and install the apps "
+               "again from the Library.";
+    if (noSharedFolder)
+        text += std::string(text.empty() ? "" : " ") + "Windows gave Megler no shared folder" + (onCard ? " there" : "") +
+                ", where its apps find Android's files and their APKs: no app can be installed as an app of its own" +
+                (onCard   ? " until Megler is in the phone's memory."
+                 : mobile ? ". As a rule that is because Megler is on the memory card: move it to the phone's memory."
+                          : ". As a rule that is because Megler is installed on another drive than Windows's: install it on the system drive.");
+    return text;
+}
+
 } // namespace megler::app::placement

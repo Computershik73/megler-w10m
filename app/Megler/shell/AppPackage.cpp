@@ -380,6 +380,20 @@ const std::string& singleAppProblem() {
     return problem;
 }
 
+const std::string& meglerOnCard() {
+    static const std::string text = [] {
+        if (isSingleApp()) return std::string();
+        const std::wstring install = platform::installDirectory(), shared = sharedFolder();
+        const bool onCard = platform::isMobile() && !placement::onSystemDrive(install);
+        const std::string said = placement::meglerOnCardText(onCard, shared.empty(), platform::isMobile());
+        if (!said.empty())
+            shellLog::write(std::string("app package: Megler ") + (onCard ? "is installed on the memory card" : "has no shared folder") +
+                            ": its apps may not reach its files; " + placement::summary(install, platform::localStateDirectory(), shared));
+        return said;
+    }();
+    return text;
+}
+
 const std::wstring& linkScheme() {
     static const std::wstring scheme = [] {
         std::string manifest;

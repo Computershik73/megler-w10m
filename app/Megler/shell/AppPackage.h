@@ -40,6 +40,11 @@ inline bool isSingleApp() { return !single().package.empty(); }
 /// ui/StartScreen.cpp); the app is not opened then. Empty when nothing is missing, and in Megler. Looked at at the first call,
 /// which says it in the log with each folder and its drive.
 const std::string& singleAppProblem();
+/// Megler itself (not an app's own package) installed where its apps may not reach its files: on a phone, on the memory card
+/// (not on the drive Windows is on: placement::onSystemDrive), or anywhere with no shared folder. What it says once at its
+/// start and above the Library (placement::meglerOnCardText); empty when neither. Looked at at the first call, which says it in
+/// the log.
+const std::string& meglerOnCard();
 
 /// The scheme of the links by which a package of Megler's asks another (megler:install, megler:run...): the protocol this
 /// package declares, which an app's own package has from the Megler that made it -- "megler" for the release's Megler,

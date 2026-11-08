@@ -58,4 +58,9 @@ Missing missingFor(const std::wstring& shared, const std::wstring& apk, const st
 /// drive), or the app installed again from Megler.
 std::string missingText(Missing missing, const std::string& label, const std::wstring& shared, bool mobile);
 
+/// What Megler says once at its start, and above its Library, where it is installed on a phone's memory card (`onCard`: not on
+/// the drive Windows is on; a phone's only, `mobile`) or was given no shared folder (`noSharedFolder`): that its apps may not
+/// reach its files, and that the phone's memory is where Megler should be. Empty when neither.
+std::string meglerOnCardText(bool onCard, bool noSharedFolder, bool mobile);
+
 } // namespace megler::app::placement

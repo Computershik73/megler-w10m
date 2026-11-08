@@ -287,6 +287,17 @@ void testMissing(const std::wstring& root) {
     check(placement::missingText(Missing::nothing, "Telegram", shared, true).empty(), "nothing missing, nothing said");
     check(placement::missingText(Missing::apk, "Telegram", shared, false).find("Settings › Apps") != std::string::npos,
           "on desktop Windows, the system drive and Settings › Apps");
+    // What Megler says of itself at its start: on a phone's memory card, or with no shared folder.
+    check(placement::meglerOnCardText(false, false, true).empty() && placement::meglerOnCardText(true, false, false).empty(),
+          "Megler in the phone's memory, or on a PC's other drive with a shared folder, says nothing");
+    const std::string onCard = placement::meglerOnCardText(true, false, true);
+    check(onCard.find("Megler is installed on the memory card") != std::string::npos &&
+              onCard.find("the phone's memory is where Megler should be") != std::string::npos && onCard.find("Settings › System › Storage") != std::string::npos,
+          "Megler on the memory card: " + onCard);
+    const std::string none = placement::meglerOnCardText(true, true, true), pc = placement::meglerOnCardText(false, true, false);
+    check(none.find("Megler is installed on the memory card") != std::string::npos && none.find("no shared folder there") != std::string::npos &&
+              pc.find("no shared folder") != std::string::npos && pc.find("system drive") != std::string::npos,
+          "and with no shared folder, on a phone and on a PC: " + pc);
 }
 
 void testFiles(const std::wstring& root) {

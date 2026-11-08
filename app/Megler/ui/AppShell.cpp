@@ -10,6 +10,7 @@
 #include "shell/Checks.h"
 #include "shell/Files.h"
 #include "shell/PickedFile.h"
+#include "shell/Placement.h"
 #include "shell/Platform.h"
 #include "shell/ShellLog.h"
 #include "shell/Strings.h"
@@ -516,6 +517,19 @@ void AppShell::poll() {
                 } else {
                     push(makeAppDetailScreen(*this, id));
                 }
+            }
+        }
+        // Megler on the memory card, or given no shared folder, says so once a run: its apps may not reach its files, and the
+        // phone's memory is where it should be (shell/Placement.h). The Library says it above its list as well (ui/Components.cpp).
+        if (!appPackage::isSingleApp() && !placementSaid_) {
+            placementSaid_ = true;
+            if (const std::string& onCard = appPackage::meglerOnCard(); !onCard.empty()) {
+                DialogSpec spec;
+                spec.title = platform::isMobile() && !placement::onSystemDrive(platform::installDirectory()) ? "Megler Is on the Memory Card"
+                                                                                                            : "Megler Has No Shared Folder";
+                spec.message = onCard;
+                spec.buttons = {"OK"};
+                dialogWhenFree(std::move(spec), nullptr);
             }
         }
         // Megler itself lists its added folders for the separate apps once the phone's folders are known (and Settings
