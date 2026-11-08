@@ -27,8 +27,13 @@ public final class Bitmap implements android.os.Parcelable {
     private boolean mMutable, mRecycled, mHasAlpha = true, mPremultiplied = true;
     private int mDensity = android.util.DisplayMetrics.DENSITY_DEVICE_STABLE;
     private int mGeneration;
+    /* The bytes the bitmap was made with, in its config's form: what reconfigure and a decode into it (inBitmap) may use. */
+    private long mAllocation;
 
-    Bitmap(long nat, int w, int h, Config c, boolean mutable) { mNative = nat; mWidth = w; mHeight = h; mConfig = c == null ? Config.ARGB_8888 : c; mMutable = mutable; }
+    Bitmap(long nat, int w, int h, Config c, boolean mutable) {
+        mNative = nat; mWidth = w; mHeight = h; mConfig = c == null ? Config.ARGB_8888 : c; mMutable = mutable;
+        mAllocation = (long) w * h * pixelBytes(mConfig);
+    }
     /** The native bitmap. */
     public long meglerNative() { return mNative; }
     /** Changes each time it is drawn into, for caches. */
@@ -109,18 +114,62 @@ public final class Bitmap implements android.os.Parcelable {
     public int getScaledWidth(android.util.DisplayMetrics m) { return getScaledWidth(m.densityDpi); }
     public int getScaledHeight(android.util.DisplayMetrics m) { return getScaledHeight(m.densityDpi); }
     /** Bytes a pixel in the config's form. */
-    private int meglerPixelBytes() {
-        Config c = getConfig();
-        return c == Config.ALPHA_8 ? 1 : c == Config.RGB_565 || c == Config.ARGB_4444 ? 2 : 4;
-    }
+    private int meglerPixelBytes() { return pixelBytes(getConfig()); }
+    static int pixelBytes(Config c) { return c == Config.ALPHA_8 ? 1 : c == Config.RGB_565 || c == Config.ARGB_4444 ? 2 : 4; }
     public final int getRowBytes() { return mWidth * meglerPixelBytes(); }
     public final int getByteCount() { return mWidth * mHeight * meglerPixelBytes(); }
-    public final int getAllocationByteCount() { return getByteCount(); }
+    /* What the bitmap was made with, which stays as it is reconfigured smaller or decoded into, as on Android. (A copy whose
+       config was set after it was made counts at least its own bytes.) */
+    public final int getAllocationByteCount() { return (int) Math.min(Integer.MAX_VALUE, Math.max(mAllocation, (long) getByteCount())); }
     public ColorSpace getColorSpace() { return ColorSpace.get(ColorSpace.Named.SRGB); }
-    public void setConfig(Config c) { mConfig = c; }
-    public void reconfigure(int w, int h, Config c) {}
-    public void setWidth(int w) {}
-    public void setHeight(int h) {}
+    /*
+     * reconfigure, as Android's: the bitmap takes another size and config within what it was made with, for its pixels to be
+     * drawn and decoded again -- Fresco's pools hand out such bitmaps (made 1 x N in RGB_565, reconfigured to each picture's
+     * size), and its animated pictures draw every frame into one. It did nothing: such a bitmap stayed one pixel wide, and
+     * native code drew a frame into a buffer of that shape. The pixels are not kept (Android leaves them as they were in
+     * memory, of no use in the new shape): a new picture of the new size, empty, in the place of the old.
+     */
+    public void reconfigure(int w, int h, Config c) {
+        if (mRecycled) throw new IllegalStateException("Can't call reconfigure() on a recycled bitmap");
+        if (w <= 0 || h <= 0) throw new IllegalArgumentException("width and height must be > 0");
+        if (!mMutable) throw new IllegalStateException("only mutable bitmaps may be reconfigured");
+        if (c == null) c = mConfig;
+        if ((long) w * h * pixelBytes(c) > getAllocationByteCount()) throw new IllegalArgumentException("Bitmap not large enough to support new configuration");
+        if (w != mWidth || h != mHeight) {
+            long n = megler.Gfx.bmNew(w, h);
+            if (n == 0) throw new OutOfMemoryError("Bitmap " + w + "x" + h);
+            meglerReplace(n, w, h, c);
+        } else {
+            mConfig = c;
+            mGeneration++;
+        }
+    }
+    /*
+     * The bitmap's native picture replaced by another one of w x h (a decode into it, BitmapFactory's inBitmap, or reconfigure):
+     * the same Bitmap object, as Android hands back the one it was given. The old picture goes; a display list that drew it
+     * keeps its own reference until it is recorded again (megler.Gfx's lists count them).
+     */
+    void meglerReplace(long n, int w, int h, Config c) {
+        long old = mNative;
+        mNative = n;
+        mWidth = w;
+        mHeight = h;
+        mConfig = c == null ? Config.ARGB_8888 : c;
+        mGeneration++;
+        if (old != 0 && old != n) megler.Gfx.bmFree(old);
+    }
+    /* Takes another bitmap's native picture for its own (BitmapFactory decoding into this one); the other is left recycled. */
+    void meglerTakeOver(Bitmap from) {
+        long n = from.mNative;
+        from.mNative = 0;
+        from.mRecycled = true;
+        meglerReplace(n, from.mWidth, from.mHeight, from.mConfig);
+        mHasAlpha = from.mHasAlpha;
+        mDensity = from.mDensity;
+    }
+    public void setConfig(Config c) { reconfigure(mWidth, mHeight, c); }
+    public void setWidth(int w) { reconfigure(w, mHeight, mConfig); }
+    public void setHeight(int h) { reconfigure(mWidth, h, mConfig); }
     public void prepareToDraw() {}
     public boolean sameAs(Bitmap o) { if (o == null || o.mWidth != mWidth || o.mHeight != mHeight) return false; int[] a = new int[mWidth * mHeight], b = new int[a.length]; getPixels(a, 0, mWidth, 0, 0, mWidth, mHeight); o.getPixels(b, 0, mWidth, 0, 0, mWidth, mHeight); return java.util.Arrays.equals(a, b); }
 

@@ -3978,6 +3978,37 @@ files that only begin like WebP. The MSVC ARM build of the 29 files is clean
 at `/W3`. *Not measured:* how long a large lossy picture takes without NEON on
 the phone.
 
+### A decode into a bitmap of the app's (inBitmap), and reconfigure
+
+`BitmapFactory` decodes into the bitmap an app gives it in `Options.inBitmap`
+and hands that same bitmap back, as Android's does: the decoded picture takes
+the place of the bitmap's own (`Bitmap.meglerTakeOver`, its native picture
+replaced; a display list that drew the old one keeps its reference), with the
+picture's size and config, while what the bitmap was made with
+(`getAllocationByteCount`) stays. A picture that needs more than that, or
+that cannot be decoded, is `IllegalArgumentException("Problem decoding into
+existing bitmap")`; a recycled bitmap is refused; an immutable one is passed
+over, said once, for a new bitmap. `Bitmap.reconfigure` gives a mutable bitmap
+another size and config within what it was made with (a new, empty picture of
+that size: Android leaves the old bytes, of no use in the new shape), and
+`setWidth`, `setHeight` and `setConfig` go through it. A JPEG asked for as
+`RGB_565` is `RGB_565` (two bytes a pixel in what an app reads of it), as
+Android's decoder gives it; everything else decodes to `ARGB_8888`.
+
+Both were missing (inBitmap ignored, reconfigure doing nothing), and every
+still picture of Fresco's failed: its decoder (`DefaultDecoder`) decodes into a
+bitmap of its pool and throws an `IllegalStateException` when the bitmap that
+comes back is another one -- Facebook's log on 0.1.0.671 had
+`onProducerFinishWithFailure ... stage: DecodeProducer ... IllegalStateException`
+for each picture, and Aliucord (Discord's old app, Fresco 2) showed no avatars.
+Fresco's pools make their bitmaps 1 x N in `RGB_565` and reconfigure them to a
+picture's or an animation frame's size (`ArtBitmapFactory`), so its animated
+pictures were drawn into a buffer one pixel wide. Glide reconfigures what its
+pool gives too, and retries without inBitmap on the `IllegalArgumentException`.
+The data app's step `bitmap-reuse` decodes a PNG into a pool's bitmap made as
+Fresco makes one, reconfigures it within and past what it was made with, and
+gives a bitmap too small and an immutable one.
+
 ### Databases: `megler.Sqlite` and the SQLite in the core
 
 The framework's `android.database.sqlite` is Java over 29 native methods of

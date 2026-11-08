@@ -4649,6 +4649,50 @@ public class Main extends Activity {
                     && rgb.getByteCount() == 2 && (r.get(0) & 255) == 0x00 && (r.get(1) & 255) == 0xF8
                     && full.getByteCount() == 16 && Math.abs((f.get(0) & 255) - 0x80) <= 1 && (f.get(3) & 255) == 0x80 && f.position() == 16;
         });
+        /*
+         * A picture decoded into a bitmap of a pool, as Fresco decodes every still picture (DefaultDecoder): its pool makes a
+         * bitmap of 1 x N in RGB_565 for N bytes, hands it over in Options.inBitmap, and throws an IllegalStateException when
+         * the bitmap that comes back is another one -- Facebook, React Native's images and Aliucord showed none of theirs. The
+         * same bitmap comes back with the picture's size and pixels; reconfigure gives such a bitmap a frame's size, as
+         * Fresco's animated pictures do, within what it was made with; a bitmap too small, or recycled, is refused as on
+         * Android; an immutable one is passed over for a new bitmap.
+         */
+        step("bitmap-reuse", () -> {
+            android.graphics.Bitmap.Config argb = android.graphics.Bitmap.Config.ARGB_8888, rgb565 = android.graphics.Bitmap.Config.RGB_565;
+            android.graphics.Bitmap source = android.graphics.Bitmap.createBitmap(3, 2, argb);
+            source.eraseColor(0xFF0000FF);
+            source.setPixel(2, 1, 0xFF00FF00);
+            java.io.ByteArrayOutputStream png = new java.io.ByteArrayOutputStream();
+            source.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, png);
+            byte[] bytes = png.toByteArray();
+            android.graphics.Bitmap pool = android.graphics.Bitmap.createBitmap(1, 12, rgb565);  // 24 bytes: 3 x 2 x 4
+            android.graphics.BitmapFactory.Options o = new android.graphics.BitmapFactory.Options();
+            o.inBitmap = pool;
+            o.inMutable = true;
+            o.inPreferredConfig = argb;
+            android.graphics.Bitmap got = android.graphics.BitmapFactory.decodeStream(new java.io.ByteArrayInputStream(bytes), null, o);
+            boolean same = got == pool, shaped = got != null && got.getWidth() == 3 && got.getHeight() == 2 && got.getConfig() == argb && got.isMutable();
+            int corner = got != null ? got.getPixel(2, 1) : 0, first = got != null ? got.getPixel(0, 0) : 0;
+            int allocation = pool.getAllocationByteCount();
+            // reconfigure within the 24 bytes, and past them
+            pool.reconfigure(2, 3, argb);
+            boolean reshaped = pool.getWidth() == 2 && pool.getHeight() == 3 && pool.getByteCount() == 24 && pool.getAllocationByteCount() == 24;
+            boolean tooBig = false;
+            try { pool.reconfigure(5, 5, argb); } catch (IllegalArgumentException e) { tooBig = true; }
+            // a bitmap too small to hold the picture
+            android.graphics.BitmapFactory.Options small = new android.graphics.BitmapFactory.Options();
+            small.inBitmap = android.graphics.Bitmap.createBitmap(1, 1, argb);
+            boolean refused = false;
+            try { android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.length, small); } catch (IllegalArgumentException e) { refused = "Problem decoding into existing bitmap".equals(e.getMessage()); }
+            // an immutable one, passed over
+            android.graphics.BitmapFactory.Options fixed = new android.graphics.BitmapFactory.Options();
+            fixed.inBitmap = android.graphics.Bitmap.createBitmap(new int[6], 3, 2, argb);
+            android.graphics.Bitmap fresh = android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.length, fixed);
+            boolean passedOver = fresh != null && fresh != fixed.inBitmap && fresh.getWidth() == 3;
+            detail = "same=" + same + " shaped=" + shaped + " pixels=" + Integer.toHexString(first) + "," + Integer.toHexString(corner) + " allocation=" + allocation
+                    + " reshaped=" + reshaped + " tooBig=" + tooBig + " refused=" + refused + " passedOver=" + passedOver;
+            return same && shaped && first == 0xFF0000FF && corner == 0xFF00FF00 && allocation == 24 && reshaped && tooBig && refused && passedOver;
+        });
     }
 
     /**
