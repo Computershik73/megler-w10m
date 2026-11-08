@@ -386,7 +386,7 @@ static void test_context_versions(void)
     CHECK(refused == 4 && st.refused_versions >= 4);
     for (i = 0; i < (int)MG_COUNT(asked); i++) CHECK_HEX(errors[i], 0x3009);
     CHECK(t_versions_said == 2 && t_refusals_said == 0);
-    CHECK(strstr(t_version_line, "OpenGL ES 3.2, lost on a reset asked for and refused (EGL_BAD_MATCH): this display makes OpenGL ES 3.0 at most") != NULL);
+    CHECK(strstr(t_version_line, "OpenGL ES 3.2 (lost on a reset) asked for and refused (EGL_BAD_MATCH): this display makes OpenGL ES 3.0 at most") != NULL);
     CHECK(ctx != NULL);
     if (ctx) destroy(d, ctx);
 }

@@ -818,9 +818,10 @@ static void context_refused(EGLContext share, const EGLint *attribs, volatile i3
         i32 bit = (i32)1 << ((major & 3) * 4 + (minor & 3)), was = versions_said;
         while (!(was & bit) && mg_atomic_cas(&versions_said, was, was | bit) != was) was = versions_said;
         if (!(was & bit))
-            mg_info("egl: a context of OpenGL ES %d.%d%s asked for and refused (EGL_BAD_MATCH): this display makes OpenGL ES %d.%d at most, and "
+            mg_info("egl: a context of OpenGL ES %d.%d%s%s%s asked for and refused (EGL_BAD_MATCH): this display makes OpenGL ES %d.%d at most, and "
                     "EGL refuses more as Android's does on a graphics processor that has less; the app asks for a lower version next "
-                    "(the WebView's ANGLE: 3.2, 3.1, then 3.0, each with its context lost on a reset first)", major, minor, rest, has / 10, has % 10);
+                    "(the WebView's ANGLE: 3.2, 3.1, then 3.0, each with its context lost on a reset first)", major, minor, rest[0] ? " (" : "",
+                    rest[0] ? rest + 2 : "", rest[0] ? ")" : "", has / 10, has % 10);
         return;
     }
     n = mg_atomic_add(said, 1);
