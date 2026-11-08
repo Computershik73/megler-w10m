@@ -730,7 +730,7 @@ not its adapter (the caller is the core, which passes floats as the host does),
 and nothing is traced. The texture policy (`mg_gltex.c`) is the same for both.
 EGL is the core's too: its display (made on the layer's service thread), its
 configuration rules (no 10-bit configurations), contexts made without a
-configuration where ANGLE allows it.
+configuration where ANGLE allows it (all but OpenGL ES 1's, below).
 
 **The GLES classes** (`android.opengl.GLES10` to `GLES32`) declare 832 native
 methods in the framework. They are mechanical and generated:
@@ -756,8 +756,20 @@ configuration, 8 bits a channel, 24 bits of depth and 8 of stencil; the Java sid
 offers the app several configurations (8888, 888, 565, each with and without
 depth and stencil) so that a chooser looking for an exact match finds one, and
 all of them are that one underneath. A version-1 context (`GL10`, the default of
-`GLSurfaceView`) is asked of ANGLE and, where ANGLE has no OpenGL ES 1, is a
-version-2 one, said in the log.
+`GLSurfaceView`) is ANGLE's OpenGL ES 1: its front end makes version 1 itself,
+drawing the fixed-function pipeline with OpenGL ES 3 shaders of its own, but
+only for a context made with a configuration -- one made without, as every
+other version is made here (`EGL_KHR_no_config_context`), it refuses with
+`EGL_BAD_MATCH`. So a version-1 context, the Java side's or native code's, is
+made with the configuration its window surface is made with (`mg_egl.c`,
+`context_config`: the app's own where it is 8888 and not multisampled, else
+the 8888 one like it), with which ANGLE finds the surface compatible. Where an
+EGL makes no version 1 at all, the Java side's is a version-2 one, said in the
+log, whose fixed-function calls do nothing. Up to 0.1.0.675 version-1
+contexts were made without a configuration too, and ANGLE refused them all:
+native code's failed, and the Java side's were version 2 -- Google Maps'
+legacy renderer, which is OpenGL ES 1 throughout (`GL10`, `GL11`), drew
+Transit's map black.
 
 **`GLSurfaceView`.** `megler.Native.startGL(view, renderer, version)` starts a GL
 thread of the layer's own for that view (C, in `mg_java_gl.c`), a thread of the

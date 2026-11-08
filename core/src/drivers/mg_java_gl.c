@@ -502,7 +502,8 @@ static gl_ctx *ctx_new(int version, const gl_ctx *share)
     attribs[1] = v;
     h = E.create_context(E.display, E.config, share ? share->handle : NULL, attribs);
     if (!h && v == 1) {
-        /* Android always has OpenGL ES 1; ANGLE may not. An app that asks for it (GL10; a GLSurfaceView's default) gets 2, whose drawing calls of 1 do nothing. */
+        /* Android always has OpenGL ES 1. ANGLE makes it, with this configuration (ndk/mg_egl.c, context_config); an EGL that does not
+           gives an app that asks for it (GL10; a GLSurfaceView's default) 2, whose drawing calls of 1 do nothing. */
         mg_note_once("java: this OpenGL ES has no version 1: an app's version-1 contexts (GL10, a GLSurfaceView's default) are version 2, where the fixed-function calls do nothing");
         v = 2;
         attribs[1] = 2;

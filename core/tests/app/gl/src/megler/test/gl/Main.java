@@ -317,7 +317,7 @@ public class Main extends Activity {
                 gl.glClear(GL10.GL_COLOR_BUFFER_BIT);
                 swapped &= egl.eglSwapBuffers(d, s);
             }
-            Log.i(T, "egl10 swapped 5 ok=" + swapped + " error=" + egl.eglGetError());
+            Log.i(T, "egl10 swapped 5 ok=" + swapped + " error=" + egl.eglGetError() + " gl=" + gl.glGetString(GL10.GL_VERSION));
             while (!stop) {
                 try {
                     Thread.sleep(50);

@@ -3230,12 +3230,25 @@ static int run_gl(void)
     expect_line("I/GlTest: request-render frames=1", &at, 60);
     expect_line("I/GlTest: event on GLThread ", &at, 60);
     CHECK(strstr(line_at(at), "current=true vendor=Megler") != NULL);
-    /* EGL10 and GL10 from the app's own thread on the bottom SurfaceView: a 565 configuration found by exact match, a version-1 context. */
+    /*
+     * EGL10 and GL10 from the app's own thread on the bottom SurfaceView: a 565 configuration found by exact match, a version-1
+     * context -- of OpenGL ES 1 where EGL makes it, as ANGLE does, with the configuration of the surface (ndk/mg_egl.c), and
+     * of 2, said, where it does not (the stand-in in the readback run).
+     */
     line = wait_line("I/GlTest: egl10 configs=6 exact565=true made=true surface=", 0, 60);
     snprintf(text, sizeof(text), "surface=%dx%d egl=1.4", egl[2], egl[3]);
     CHECK(line >= 0 && strstr(line_at(line), text));
-    CHECK(wait_line("I/GlTest: egl10 swapped 5 ok=true error=12288", 0, 60) >= 0);
-    CHECK(find_line("java: this OpenGL ES has no version 1", 0) >= 0);
+    line = wait_line("I/GlTest: egl10 swapped 5 ok=true error=12288", 0, 60);
+    CHECK(line >= 0);
+    if (line >= 0) say("  %s", strstr(line_at(line), "egl10 swapped"));
+    if (GL.refuse) {
+        CHECK(line >= 0 && strstr(line_at(line), "gl=OpenGL ES 2.0 (stand-in)"));
+        CHECK(find_line("java: this OpenGL ES has no version 1", 0) >= 0);
+    } else {
+        CHECK(line >= 0 && strstr(line_at(line), "gl=OpenGL ES-CM 1.1 (stand-in)"));
+        CHECK(find_line("java: this OpenGL ES has no version 1", 0) < 0);
+        CHECK(find_line("egl: OpenGL ES 1: its contexts are made with the configuration of their window surface", 0) >= 0);
+    }
     settle();
     write_picture("gl-1");
     /*
@@ -3725,10 +3738,11 @@ int mg_tests_java_run(const char *which, const char *apk, const char *android_ro
     }
     /*
      * OpenGL ES is the stand-in that draws, as for any app here: there is no ANGLE under qemu or on this PC. A real app that
-     * asks the GPU's name is told "stand-in for OpenGL ES".
+     * asks the GPU's name is told "stand-in for OpenGL ES". It makes OpenGL ES 1 as ANGLE does, with a configuration alone --
+     * but in the runs whose shell refuses the frames ("readback"), where it plays an EGL without version 1: `gl` checks both.
      */
     mg_egl_set_provider(mg_gl_standin);
-    mg_gl_standin_reset(true, false);
+    mg_gl_standin_reset(true, !GL.refuse);
     /*
      * An app that brings a GL stack of its own -- the WebView's Chromium, whose ANGLE loads every function of EGL and OpenGL ES
      * and makes its context before the first page -- gets every function there (the stand-in's complete mode). A test app

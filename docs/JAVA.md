@@ -674,7 +674,9 @@ OpenGL ES 2 and 3 and pbuffers in memory, `glClear`, triangles of one colour
 (the program's `vec4` uniform with "olor" in its name, positions from the
 attribute with "osition" in it), shaders whose attributes and uniforms are read
 out of their source, `glReadPixels` as R, G, B, A or B, G, R, A; a context of
-version 1 refused, as an ANGLE without OpenGL ES 1 refuses it; and every
+version 1 made as ANGLE makes it, with a configuration alone (refused without
+one with `EGL_BAD_MATCH`), and in the runs whose shell refuses the frames
+("readback") refused, as an EGL without OpenGL ES 1 refuses it; and every
 surface with a keyed mutex, as gecko-w10m's ANGLE gives every pbuffer, what is
 done with one that is not held dropped (docs/ARCHITECTURE.md, "Keyed
 mutexes"). Every Java app of the tests runs with it.
@@ -748,7 +750,9 @@ EGL14 pbuffer on a thread of the app's own.
   with the context current.
 - A thread of the app's on the `SurfaceView`, as older apps do: `EGL10`, six
   configurations for "565 with depth 16", one of them exactly 565, a context
-  with no attributes (version 1: here 2, and the log says so once), a window
+  with no attributes (version 1, made with the configuration of the surface,
+  as ANGLE makes it: "OpenGL ES-CM 1.1 (stand-in)"; in the readback run, where
+  the stand-in has no version 1, 2, and the log says so once), a window
   surface on the `SurfaceHolder` the view's size, `GL10` clearing to green,
   five swaps.
 - The picture: the frame under the hole, the triangle the right way up, the

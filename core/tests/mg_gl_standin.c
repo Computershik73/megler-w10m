@@ -244,17 +244,21 @@ static MG_GLAPI void *e_CreateContext(void *d, void *c, void *share, const int *
 {
     sb_context *x;
     int version = 1, minor = 0, i;
-    (void)d; (void)c; (void)share;
+    (void)d; (void)share;
     for (i = 0; attribs && attribs[i] != 0x3038; i += 2) {
         if (attribs[i] == 0x3098) version = attribs[i + 1];
         if (attribs[i] == 0x30FB) minor = attribs[i + 1];
     }
     mg_lock_acquire(&g_lock);
-    if (version == 1 && !S.es1) {
+    /* Version 1 where it is made at all as ANGLE makes it: only with a configuration, refused without one ("Invalid config"). */
+    if (version == 1 && (!S.es1 || !c)) {
         S.stats.refused_es1++;
+        if (S.es1) S.stats.refused_es1_no_config++;
         mg_lock_release(&g_lock);
+        t_egl_error = 0x3009;
         return NULL;
     }
+    S.stats.last_config = c;
     /*
      * The complete mode is a driver of OpenGL ES 2.0 alone (see there); the other makes 3.0 at most, as ANGLE over
      * Direct3D 11 does. More is refused as they refuse it: EGL_BAD_MATCH.
@@ -1170,7 +1174,8 @@ static MG_GLAPI const u8 *g_GetString(u32 name)
     switch (name) {
     case GL_VENDOR: return (const u8 *)"Megler";
     case GL_RENDERER: return (const u8 *)"stand-in for OpenGL ES";
-    case GL_VERSION: return (const u8 *)(t_ctx->version >= 3 ? "OpenGL ES 3.0 (stand-in)" : "OpenGL ES 2.0 (stand-in)");
+    case GL_VERSION:
+        return (const u8 *)(t_ctx->version >= 3 ? "OpenGL ES 3.0 (stand-in)" : t_ctx->version == 2 ? "OpenGL ES 2.0 (stand-in)" : "OpenGL ES-CM 1.1 (stand-in)");
     case GL_SHADING_LANGUAGE_VERSION: return (const u8 *)"OpenGL ES GLSL ES 1.00 (stand-in)";
     case GL_EXTENSIONS: return (const u8 *)extensions();
     default: g_error(GL_INVALID_ENUM); return NULL;
