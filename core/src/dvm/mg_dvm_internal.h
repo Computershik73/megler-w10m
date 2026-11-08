@@ -859,6 +859,8 @@ void mg_dvm_gc_class_ready(mg_dvm_class *c);
 void mg_dvm_gc_thread_gone(mg_dvm_thread *t);
 /* A new object of a class that is finalizable or a reference: the collector keeps account of it (alloc_raw). */
 void mg_dvm_gc_born(mg_jobj *o);
+/* A reference object freed by the sweep (mg_dvm_object_dying): one fewer for the collector to have room for. */
+void mg_dvm_gc_reference_gone(void);
 
 /* ---------------------------------------------------------- mg_dvm_heap.c */
 
@@ -870,9 +872,18 @@ void mg_dvm_heap_lock(void);
 void mg_dvm_heap_unlock(void);
 typedef struct mg_dvm_heap_info {
     u64 small_bytes, large_bytes, reserved;   /* in cells in use; in large objects; the host's memory the blocks take (committed) */
+    u64 addresses;                            /* the addresses the arenas take, committed or not */
+    u32 arenas, released;                     /* arenas the heap has; arenas given back to the host so far (mg_dvm_heap_trim) */
     u32 large_objects, objects;
 } mg_dvm_heap_info;
 void mg_dvm_heap_stats(mg_dvm_heap_info *out);
+/*
+ * After a sweep, with the heap's lock held: arenas left empty given back to the host whole, the highest first, past the
+ * spare blocks `keep` bytes and a few more take (the next collection's budget); how many.
+ */
+u32 mg_dvm_heap_trim(u64 keep);
+/* Bytes of objects made marked (mg_dvm_heap_alloc_black) since it was last turned on: what a collection alongside the app keeps of what was made while it marked. */
+u64 mg_dvm_heap_black_made(void);
 /* The large objects' bytes by class, the most first, when they take more than 32 MB (mg_dvm_heap.c); with the heap's lock held. */
 bool mg_dvm_heap_large_report(char *out, size_t cap, int top);
 /* The bytes of the apps' DEX files (mg_dvm_apk.c): read into the process's memory, and views of the APKs that store them. */
@@ -904,10 +915,9 @@ void mg_dvm_gc_fields_gone(mg_jobj *o);
 bool mg_dvm_heap_watched(void);
 void mg_dvm_heap_watch_restart(void);
 u32 mg_dvm_heap_each_written(void (*fn)(void *o));
-/* The same in pieces, for the collector's threads to share (mg_dvm_heap.c). */
-u32 mg_dvm_heap_pages(void);
-u32 mg_dvm_heap_written_list(u8 **out, u32 cap);
-void mg_dvm_heap_marked_on(u8 *page, void (*fn)(void *o, void *user), void *user);
+/* The same an arena at a time, for the collector's threads to share (mg_dvm_heap.c); how many pages. */
+u32 mg_dvm_heap_arenas(void);
+u32 mg_dvm_heap_written_in(u32 arena, void (*fn)(void *o, void *user), void *user);
 void mg_dvm_heap_each_marked_large(void (*fn)(void *o));
 /* ...and the sweep, shared among the collector's threads (mg_dvm_gc_share); how many there were. */
 u32 mg_dvm_heap_sweep(void (*dying)(void *o), bool poison, u64 *freed_objects, u64 *freed_bytes);

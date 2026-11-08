@@ -1197,6 +1197,8 @@ void mg_dvm_object_dying(void *p)
         for (i = 0; i < o->j.nfields; i++) free(o->j.fields[i].name);
         free(o->j.fields);
     }
+    /* (A reference object no longer counts toward the collector's list of those it finds while marking.) */
+    if (o->cls && o->cls->gc_ref && o->j.kind == MG_J_OBJECT) mg_dvm_gc_reference_gone();
 }
 
 static monitor *monitor_of(mg_jobj *o)

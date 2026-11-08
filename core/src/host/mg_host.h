@@ -88,6 +88,8 @@ MG_HOSTAPI void *mg_mem_alloc(size_t size);
  * cannot, and mg_mem_alloc's memory is had instead. Released with mg_mem_release.
  */
 MG_HOSTAPI void *mg_mem_alloc_watched(size_t size);
+/* Why the host's last call on this thread failed, as the host numbers it (GetLastError, errno): for the log. */
+MG_HOSTAPI u32 mg_host_last_error(void);
 /*
  * The pages of watched [p, p + size) written since the memory was made or the watch was last started again, as page numbers
  * from `p` into `out` (at most `max`): how many; -1 where the host cannot say (and every page is to be taken for written).

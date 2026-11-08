@@ -352,10 +352,12 @@ static void test_gc_gives_back(void)
 /*
  * The budget a collection leaves (budget_after): half of what lived, at least the least; with the machine's free memory known,
  * no more than half of what it has beyond 96 MB, and the least when it has less. TikTok Lite on a Lumia 650 was given the
- * least by the app's limit, which Windows let it pass, and collected every 0.8 s (package 619).
+ * least by the app's limit, which Windows let it pass, and collected every 0.8 s (package 619). And with the process's free
+ * addresses known, no more than a quarter of them beyond 192 MB.
  */
-static u64 g_test_available;
+static u64 g_test_available, g_test_addresses;
 static MG_HOSTCB u64 test_available(void) { return g_test_available; }
+static u64 test_addresses(void) { return g_test_addresses; }
 
 static void test_gc_budget_by_free_memory(void)
 {
@@ -380,6 +382,18 @@ static void test_gc_budget_by_free_memory(void)
     g_test_available = 1ull << 30;
     CHECK(mg_dvm_gc("test budget", &r));
     CHECK(mg_dvm_gc_budget() == r.live_bytes / 2);
+    /*
+     * The process's free addresses known, as a 32-bit host knows them: no more than a quarter of what is free beyond 192 MB,
+     * 10 MB of 232; the least when there are fewer.
+     */
+    mg_dvm_gc_set_address_probe(test_addresses);
+    g_test_addresses = (192ull + 40) << 20;
+    CHECK(mg_dvm_gc("test budget", &r));
+    CHECK(mg_dvm_gc_budget() == (10u << 20));
+    g_test_addresses = 150ull << 20;
+    CHECK(mg_dvm_gc("test budget", &r));
+    CHECK(mg_dvm_gc_budget() == (1u << 20));
+    mg_dvm_gc_set_address_probe(NULL);
     /* 10 MB beyond the 96 kept free: 5. */
     g_test_available = (96ull + 10) << 20;
     CHECK(mg_dvm_gc("test budget", &r));
@@ -391,6 +405,196 @@ static void test_gc_budget_by_free_memory(void)
     mg_mem_set_available_probe(NULL);
     for (i = 0; i < (int)MG_COUNT(held); i++) held[i] = NULL;
     CHECK(mg_dvm_gc("test budget", &r));
+}
+
+/*
+ * The heap near what lives while threads make garbage fast (docs/JAVA.md, "When it runs"): four threads make 480 MB of
+ * arrays nothing keeps, small ones and now and then one over 2 KB, and now and then put a new array in place of one of a
+ * live set of some 130,000 arrays, 30 MB, which one root holds -- what lives stays the same. Collections are asked for by
+ * allocation and mark alongside the threads, as on the phone. The heap's blocks, sampled every 10 ms meanwhile, and what is
+ * in use, are said against what lived at the end (a collection that stops the threads, with nothing made). Twice: as the
+ * host's scheduler has it, and with the markers at the lowest priority starved as a phone's busy cores starve them
+ * (mg_dvm_gc_set_marker_pace: 32 objects a millisecond each). WhatsApp's heap on an HP Elite x3 grew to 565 MB of blocks
+ * for some 95 MB that lived while its collections marked alongside it for up to 16 s, and its process ran out of addresses
+ * (0.1.0.671). All of it runs on a thread of its own, which ends before what lived is let go: a word of the live set's
+ * left on this thread's stack kept all of it (a conservative root).
+ */
+#define NEAR_ROWS 128
+#define NEAR_COLS 1024
+#define NEAR_THREADS 4
+#define NEAR_PACE 32u
+/* (Less in the phone's Self-test, whose processors are slower: a phone's own run is what the qemu runs measure.) */
+#define NEAR_GARBAGE ((MG_ARCH_ARM32 && MG_HOST_WINDOWS ? 192u : 480u) << 20)
+static mg_jobj *g_near;
+static volatile i32 g_near_made_kb, g_near_done;
+
+/* The live set's array at (row, col): its size, and a pattern its bytes are kept with. */
+static i32 near_size(u32 row, u32 col) { return (col & 63) == 7 ? 3000 : 24 + (i32)((row * 131u + col * 7u) % 177u); }
+
+static mg_jobj *near_new(u32 row, u32 col)
+{
+    i32 n = near_size(row, col), i;
+    mg_jobj *a = mg_dvm_new_array("[B", n);
+    u8 *d = (u8 *)a->u.arr.data;
+    for (i = 0; i < n; i += 61) d[i] = (u8)(row ^ col);
+    return a;
+}
+
+static u32 near_damage(void)
+{
+    u32 bad = 0, row, col;
+    for (row = 0; row < NEAR_ROWS; row++) {
+        mg_jobj *r = g_near->u.oarr.v[row];
+        for (col = 0; col < NEAR_COLS; col++) {
+            mg_jobj *a = r->u.oarr.v[col];
+            i32 i;
+            if (!a || a->kind != MG_J_PRIM_ARRAY || a->u.arr.len != near_size(row, col)) {
+                bad++;
+                continue;
+            }
+            for (i = 0; i < a->u.arr.len; i += 61)
+                if (((const u8 *)a->u.arr.data)[i] != (u8)(row ^ col)) {
+                    bad++;
+                    break;
+                }
+        }
+    }
+    return bad;
+}
+
+static MG_HOSTCB void near_main(void *p)
+{
+    u32 seed = (u32)(mg_addr)p * 2246822519u + 7u, n = 0, made = 0;
+    mg_dvm_self();
+    while ((u32)g_near_made_kb < (NEAR_GARBAGE >> 10)) {
+        i32 size;
+        seed = seed * 1103515245u + 12345u;
+        size = (n & 15) == 15 ? 3000 + (i32)((seed >> 8) % 9000u) : 16 + (i32)((seed >> 8) % 1500u);
+        mg_dvm_new_array("[B", size);
+        made += (u32)size + 32;
+        if (!(++n & 7)) {
+            u32 row = (seed >> 4) % NEAR_ROWS, col = (seed >> 13) % NEAR_COLS;
+            g_near->u.oarr.v[row]->u.oarr.v[col] = near_new(row, col);
+        }
+        if (made >= 64u << 10) {
+            mg_atomic_add(&g_near_made_kb, (i32)(made >> 10));
+            made &= 1023;
+        }
+    }
+    mg_atomic_add(&g_near_done, 1);
+}
+
+/* One run, on a thread of its own (near_driver), and what came of it. */
+typedef struct near_run {
+    u32 pace, started, damage;
+    u64 before, collections, most_blocks, most_used, most_addresses, live0, live, ns;
+    bool collected;
+    mg_dvm_heap_info after;
+} near_run;
+
+static MG_HOSTCB void near_driver(void *p)
+{
+    near_run *n = (near_run *)p;
+    mg_dvm_gc_result r;
+    mg_dvm_heap_info s;
+    u64 pause = 0, t0;
+    u32 row, col;
+    int t;
+    mg_dvm_self();
+    /* (What lives before the live set: the other tests' objects.) */
+    n->collected = mg_dvm_gc("test near live, before it", &r);
+    n->live0 = r.live_bytes;
+    g_near = mg_dvm_new_array("[Ljava/lang/Object;", NEAR_ROWS);
+    mg_dvm_add_root(&g_near);
+    for (row = 0; row < NEAR_ROWS; row++) {
+        mg_jobj *rw = mg_dvm_new_array("[Ljava/lang/Object;", NEAR_COLS);
+        g_near->u.oarr.v[row] = rw;
+        for (col = 0; col < NEAR_COLS; col++) rw->u.oarr.v[col] = near_new(row, col);
+    }
+    n->collected = mg_dvm_gc("test near live, before", &r) && n->collected;
+    mg_dvm_gc_totals(&n->before, &pause);
+    mg_dvm_gc_set_marker_pace(n->pace);
+    mg_dvm_gc_set_alongside(true);
+    g_near_made_kb = g_near_done = 0;
+    t0 = mg_time_monotonic_ns();
+    for (t = 0; t < NEAR_THREADS; t++) {
+        mg_thread *th = mg_thread_start(near_main, (void *)(mg_addr)(t + 1), (size_t)256 << 10, "near");
+        if (th) {
+            mg_thread_detach(th);
+            n->started++;
+        }
+    }
+    while (g_near_done < (i32)n->started) {
+        mg_dvm_heap_stats(&s);
+        if (s.reserved > n->most_blocks) n->most_blocks = s.reserved;
+        if (s.addresses > n->most_addresses) n->most_addresses = s.addresses;
+        if (s.small_bytes + s.large_bytes > n->most_used) n->most_used = s.small_bytes + s.large_bytes;
+        mg_sleep_ns(10000000ull);
+    }
+    n->ns = mg_time_monotonic_ns() - t0;
+    mg_dvm_gc_alongside_wait();
+    mg_dvm_gc_set_marker_pace(0);
+    mg_dvm_gc_totals(&n->collections, &pause);
+    n->collected = mg_dvm_gc("test near live, after", &r) && n->collected;
+    n->live = r.live_bytes;
+    mg_dvm_heap_stats(&n->after);
+    n->damage = near_damage();
+    mg_dvm_gc_set_alongside(false);
+    g_near = NULL;
+}
+
+static void near_test(u32 pace)
+{
+    near_run n;
+    mg_dvm_gc_result r;
+    mg_dvm_heap_info gone;
+    mg_thread *th;
+    memset(&n, 0, sizeof(n));
+    n.pace = pace;
+    th = mg_thread_start(near_driver, &n, (size_t)256 << 10, "near driver");
+    CHECK(th != NULL);
+    if (!th) return;
+    mg_thread_join(th);
+    say("  %s: %u MB made in %.1f s by %u threads, %u collections; %.1f MB lived at the end: the heap's blocks at most %.1f MB (%.1f times "
+        "that), in use at most %.1f MB, the blocks %.1f MB once collected; the arenas' addresses at most %u MB, %u MB once collected (%u "
+        "given back so far)",
+        pace ? "the markers starved" : "as the scheduler has it", (unsigned)((u32)g_near_made_kb >> 10), (double)n.ns / 1e9, (unsigned)n.started,
+        (unsigned)(n.collections - n.before), (double)n.live / 1048576.0, (double)n.most_blocks / 1048576.0,
+        n.live ? (double)n.most_blocks / (double)n.live : 0.0, (double)n.most_used / 1048576.0, (double)n.after.reserved / 1048576.0,
+        (unsigned)(n.most_addresses >> 20), (unsigned)(n.after.addresses >> 20), (unsigned)n.after.released);
+    CHECK(n.collected && n.started == NEAR_THREADS);
+    CHECK_INT((i32)n.damage, 0);
+    CHECK(n.collections > n.before);
+    /*
+     * The heap near what lives: what is in use at most what lives, two budgets (a budget is half of what lives) and what a
+     * thread makes before it sees one due; the blocks a little more, the cells' rounding and the blocks half used; the
+     * arenas' addresses as much again as two budgets of spare blocks (mg_dvm_heap_trim).
+     */
+    CHECK(n.most_used <= n.live * 5 / 2 + (24u << 20));
+    CHECK(n.most_blocks <= n.live * 3 + (24u << 20));
+    CHECK(n.most_addresses <= n.live * 3 + (32u << 20));
+    /*
+     * What lived let go, its thread gone: the arenas left empty past what the budget keeps (two budgets of spare blocks, 16 MB
+     * at the least here, and 8 MB more) go back to the host, their addresses too.
+     */
+    CHECK(mg_dvm_gc("test near live, let go", &r));
+    mg_dvm_heap_stats(&gone);
+    say("  the live set let go: %.1f MB live (%.1f before it), the arenas' addresses %u MB, %u more given back", (double)r.live_bytes / 1048576.0,
+        (double)n.live0 / 1048576.0, (unsigned)(gone.addresses >> 20), (unsigned)(gone.released - n.after.released));
+    CHECK(n.live > n.live0 && r.live_bytes < n.live && n.live - r.live_bytes > (n.live - n.live0) / 4 * 3);
+    CHECK(gone.addresses <= n.after.addresses);
+    CHECK(gone.released > n.after.released || n.after.addresses <= (40u << 20));
+}
+
+static void test_gc_heap_near_live(void)
+{
+    say("the collector: the heap near what lives while four threads make garbage fast");
+    mg_dvm_gc_set_poison(false);
+    mg_dvm_gc_set_min_budget(8u << 20);
+    near_test(0);
+    near_test(NEAR_PACE);
+    mg_dvm_gc_set_min_budget(1u << 20);
+    mg_dvm_gc_set_poison(true);
 }
 
 void test_gc(void)
@@ -421,4 +625,5 @@ void test_gc(void)
     mg_dvm_made_say();
     test_gc_gives_back();
     test_gc_budget_by_free_memory();
+    test_gc_heap_near_live();
 }

@@ -206,6 +206,8 @@ void *mg_mem_alloc_watched(size_t size)
     return NULL;
 }
 
+u32 mg_host_last_error(void) { return (u32)errno; }
+
 int mg_mem_written_pages(void *p, size_t size, u32 *out, int max, bool reset)
 {
     (void)p;

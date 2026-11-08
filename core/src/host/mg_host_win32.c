@@ -464,6 +464,7 @@ void mg_mem_release(void *p, size_t size) { (void)size; VirtualFree(p, 0, MEM_RE
 void mg_icache_flush(void *p, size_t size) { FlushInstructionCache(GetCurrentProcess(), p, size); }
 void *mg_mem_alloc(size_t size) { return valloc(NULL, size, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE); }
 void *mg_mem_alloc_watched(size_t size) { return valloc(NULL, size, MEM_RESERVE | MEM_COMMIT | MEM_WRITE_WATCH, PAGE_READWRITE); }
+u32 mg_host_last_error(void) { return (u32)GetLastError(); }
 
 int mg_mem_written_pages(void *p, size_t size, u32 *out, int max, bool reset)
 {

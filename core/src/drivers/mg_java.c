@@ -1621,7 +1621,7 @@ static void meter_census(void)
 {
     u64 process = mg_mem_usage();
     mg_dvm_stats s;
-    char mem[560];
+    char mem[800];
     mg_dvm_get_stats(&s);
     mem[0] = 0;
     if (process) {
@@ -1632,9 +1632,10 @@ static void meter_census(void)
         mg_dvm_dex_memory(&dex_read, &dex_viewed);
         mg_mmap_given_back(&given, &again);
         mg_mmap_usage(&anon, &files);
-        snprintf(mem, sizeof(mem), "the process %u MB (the heap's blocks %u MB and large objects %u MB; DEX files %u MB in memory, %u MB viewed "
-                 "in their APKs; native libraries %u MB; the app's malloc %u MB; the app's mappings %u MB anonymous and %u MB of files; %u MB "
-                 "given back with madvise, %u MB of it touched again)", (unsigned)(process >> 20), (unsigned)(hi.reserved >> 20),
+        snprintf(mem, sizeof(mem), "the process %u MB (the heap's blocks %u MB in %u arenas of 1 MB, %u given back so far, and large objects "
+                 "%u MB; DEX files %u MB in memory, %u MB viewed in their APKs; native libraries %u MB; the app's malloc %u MB; the app's mappings "
+                 "%u MB anonymous and %u MB of files; %u MB given back with madvise, %u MB of it touched again)", (unsigned)(process >> 20),
+                 (unsigned)(hi.reserved >> 20), (unsigned)hi.arenas, (unsigned)hi.released,
                  (unsigned)(hi.large_bytes >> 20), (unsigned)(dex_read >> 20), (unsigned)(dex_viewed >> 20), (unsigned)(mg_ld_image_bytes() >> 20),
                  (unsigned)(mg_g_malloc_bytes() >> 20), (unsigned)(anon >> 20), (unsigned)(files >> 20), (unsigned)(given >> 20),
                  (unsigned)(again >> 20));
