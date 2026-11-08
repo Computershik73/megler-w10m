@@ -2558,7 +2558,7 @@ static void app_results(int *at)
 static int run_data(void)
 {
     static const char *const steps[] = { "open", "kept", "insert", "query", "types", "update", "delete", "rollback", "commit", "constraint", "statement", "text",
-                                         "bad-sql", "memory", "upgrade", "left",
+                                         "bad-sql", "memory", "upgrade", "wal-restored", "left",
                                          /* And the storage as an app sees it. */
                                          "environment", "own-folders", "volumes", "space", "permissions", "download", "list-root",
                                          /* And the battery, the time zone, TLS (conscrypt's: a TLS server and client of the app's own on loopback,
