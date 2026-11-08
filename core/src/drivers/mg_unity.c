@@ -47,15 +47,22 @@ static struct {
 
 static void configuration_screen(int width, int height);
 
+/*
+ * A native of the player's on whichever of its classes this version registered it (Unity 6 registers the lifecycle natives
+ * on the class that hosts the player in an activity); any signature where `sig` is NULL. NULL, and nothing said, where it has none.
+ */
+static void *player_native(const char *name, const char *sig)
+{
+    void *fn = NULL;
+    size_t i;
+    for (i = 0; i < MG_COUNT(k_players) && !fn; i++) fn = mg_jni_native(k_players[i], name, sig);
+    return fn;
+}
+
 /* A native of the player's, wherever this version of Unity registered it; NULL, said once, when it has none. */
 static void *native_of(const char *cls, const char *name, const char *sig)
 {
-    void *fn = mg_jni_native(cls, name, sig);
-    /* Unity 6 registers the lifecycle natives on the class that hosts the player in an activity. */
-    if (!fn && !strcmp(cls, PLAYER)) {
-        fn = mg_jni_native("com/unity3d/player/UnityPlayerForActivityOrService", name, sig);
-        if (!fn) fn = mg_jni_native("com/unity3d/player/UnityPlayerForGameActivity", name, sig);
-    }
+    void *fn = !strcmp(cls, PLAYER) ? player_native(name, sig) : mg_jni_native(cls, name, sig);
     if (!fn) mg_note_once("unity: the engine has no %s.%s%s", cls, name, sig);
     return fn;
 }
@@ -222,7 +229,7 @@ static void ui_start_engine(void *arg)
         init_jni();
         a[0].j = a[1].j = 0;
         a[0].l = mg_jni_class_object("com/unity3d/player/UnityWebRequest");
-        if (mg_jni_native(PLAYER, "nativeInitWebRequest", NULL)) call("nativeInitWebRequest", "(Ljava/lang/Class;)V", a);
+        if (player_native("nativeInitWebRequest", NULL)) call("nativeInitWebRequest", "(Ljava/lang/Class;)V", a);
     }
     mg_atomic_xchg(&s->done, 1);
     mg_futex_wake(&s->done, true);
@@ -277,7 +284,7 @@ static MG_HOSTCB void unity_main(void *arg)
     mg_atomic_xchg(&U.started, 1);
     mg_jni_call_native(surface, U.player, surface_sig, legacy_surface ? a + 1 : a);
     if (legacy_surface) mg_info("unity: surface attached through the legacy signature");
-    if (mg_jni_native(PLAYER, "nativeSendSurfaceChangedEvent", NULL)) call("nativeSendSurfaceChangedEvent", "()V", NULL);
+    if (player_native("nativeSendSurfaceChangedEvent", NULL)) call("nativeSendSurfaceChangedEvent", "()V", NULL);
     call("nativeResume", "()V", NULL);
     call_bool("nativeFocusChanged", true);
     mg_info("unity: resumed and focused; rendering");
@@ -355,7 +362,7 @@ static MG_HOSTCB void unity_main(void *arg)
                 g[0].i = 0;
                 g[1].l = U.surface;
                 mg_jni_call_native(surface, U.player, surface_sig, legacy_surface ? g + 1 : g);
-                if (mg_jni_native(PLAYER, "nativeSendSurfaceChangedEvent", NULL)) call("nativeSendSurfaceChangedEvent", "()V", NULL);
+                if (player_native("nativeSendSurfaceChangedEvent", NULL)) call("nativeSendSurfaceChangedEvent", "()V", NULL);
             }
         }
         in_deliver();
@@ -371,7 +378,7 @@ static MG_HOSTCB void unity_main(void *arg)
         if (was_focused) call_bool("nativeFocusChanged", false);
         call("nativePause", "()Z", NULL);
     }
-    if (mg_jni_native(PLAYER, "nativeDone", NULL)) call("nativeDone", "()Z", NULL);
+    if (player_native("nativeDone", NULL)) call("nativeDone", "()Z", NULL);
     mg_run_ended(0, "stopped");
 }
 
@@ -1061,12 +1068,19 @@ static void un_key(int keycode, bool down)
 /* On the engine's thread, before a frame: everything that has come since the last one. */
 static void in_deliver(void)
 {
-    void *inject = mg_jni_native(PLAYER, "nativeInjectEvent", "(Landroid/view/InputEvent;)Z");
-    const char *sig = "(Landroid/view/InputEvent;)Z";
-    if (!inject) {
-        /* Newer players take the event and the display it came from. */
-        sig = "(Landroid/view/InputEvent;I)Z";
-        inject = native_of(PLAYER, "nativeInjectEvent", sig);
+    /* (Looked for once: on whichever of the player's classes, by either signature.) */
+    static void *inject;
+    static const char *sig;
+    static bool looked;
+    if (!looked) {
+        looked = true;
+        sig = "(Landroid/view/InputEvent;)Z";
+        inject = player_native("nativeInjectEvent", sig);
+        if (!inject) {
+            /* Newer players take the event and the display it came from. */
+            sig = "(Landroid/view/InputEvent;I)Z";
+            inject = native_of(PLAYER, "nativeInjectEvent", sig);
+        }
     }
     for (;;) {
         mg_jvalue a[2];
