@@ -219,28 +219,42 @@ bool listable(StorageFolder const& folder, std::string& note) {
         note = format("its handle is refused (0x%08X)", unsigned(hr));
         return false;
     }
-    std::vector<char> buffer(8192 + sizeof(FILE_ID_BOTH_DIR_INFO));
+    std::vector<uint64_t> buffer((8192 + sizeof(FILE_ID_BOTH_DIR_INFO)) / sizeof(uint64_t));  // (aligned for the entries' times)
+    const DWORD bytes = DWORD(buffer.size() * sizeof(uint64_t));
     int entries = 0;
-    bool more = GetFileInformationByHandleEx(h, FileIdBothDirectoryRestartInfo, buffer.data(), DWORD(buffer.size())) != 0;
+    bool more = GetFileInformationByHandleEx(h, FileIdBothDirectoryRestartInfo, buffer.data(), bytes) != 0;
     DWORD why = more ? 0 : GetLastError();
+    // A file system that does not know that class of its files' ids (a memory card's driver may not) is read with
+    // FileFullDirectoryInfo, as the core's layer then reads it (core/src/host/mg_host_win32.c, list_handle).
+    const bool full = why == ERROR_INVALID_PARAMETER || why == ERROR_NOT_SUPPORTED || why == ERROR_INVALID_FUNCTION || why == ERROR_INVALID_LEVEL;
+    if (full) {
+        more = GetFileInformationByHandleEx(h, FileFullDirectoryRestartInfo, buffer.data(), bytes) != 0;
+        why = more ? 0 : GetLastError();
+    }
     // A folder with nothing at all in it says so in one of two ways.
     if (why == ERROR_NO_MORE_FILES || why == ERROR_FILE_NOT_FOUND) why = 0;
     while (more) {
-        const auto* info = reinterpret_cast<const FILE_ID_BOTH_DIR_INFO*>(buffer.data());
+        const char* at = reinterpret_cast<const char*>(buffer.data());
         for (;;) {
-            const size_t length = info->FileNameLength / sizeof(wchar_t);
-            if (!(length == 1 && info->FileName[0] == L'.') && !(length == 2 && info->FileName[0] == L'.' && info->FileName[1] == L'.')) entries++;
-            if (!info->NextEntryOffset) break;
-            info = reinterpret_cast<const FILE_ID_BOTH_DIR_INFO*>(reinterpret_cast<const char*>(info) + info->NextEntryOffset);
+            // (The two classes' entries are alike up to their names, which come after more in FileIdBothDirectoryInfo's.)
+            const auto* both = reinterpret_cast<const FILE_ID_BOTH_DIR_INFO*>(at);
+            const auto* plain = reinterpret_cast<const FILE_FULL_DIR_INFO*>(at);
+            const wchar_t* name = full ? plain->FileName : both->FileName;
+            const size_t length = (full ? plain->FileNameLength : both->FileNameLength) / sizeof(wchar_t);
+            if (!(length == 1 && name[0] == L'.') && !(length == 2 && name[0] == L'.' && name[1] == L'.')) entries++;
+            const DWORD next = full ? plain->NextEntryOffset : both->NextEntryOffset;
+            if (!next) break;
+            at += next;
         }
-        more = entries < 1000 && GetFileInformationByHandleEx(h, FileIdBothDirectoryInfo, buffer.data(), DWORD(buffer.size())) != 0;
+        more = entries < 1000 &&
+               GetFileInformationByHandleEx(h, full ? FileFullDirectoryInfo : FileIdBothDirectoryInfo, buffer.data(), bytes) != 0;
     }
     CloseHandle(h);
     if (why) {
         note = format("its entries cannot be read (error %lu)", why);
         return false;
     }
-    note = format("%d%s entries", entries, entries >= 1000 ? " or more" : "");
+    note = format("%d%s entries%s", entries, entries >= 1000 ? " or more" : "", full ? ", read as a file system without files' ids has them" : "");
     return true;
 }
 
