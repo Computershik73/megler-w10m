@@ -1094,6 +1094,7 @@ bool mg_file_locked_elsewhere(mg_file *f, u64 offset, u64 length)
 static void fill_stat(const struct stat *s, mg_stat *st)
 {
     st->is_dir = S_ISDIR(s->st_mode);
+    st->read_only = !st->is_dir && !(s->st_mode & S_IWUSR);
     st->size = (u64)s->st_size;
     st->mtime_ns = (i64)s->st_mtim.tv_sec * 1000000000ll + s->st_mtim.tv_nsec;
     st->atime_ns = (i64)s->st_atim.tv_sec * 1000000000ll + s->st_atim.tv_nsec;
@@ -1152,6 +1153,20 @@ bool mg_path_rename(const char *from, const char *to, int *err)
 {
     if (mg_path_is_foreign(from) || mg_path_is_foreign(to)) return mg_foreign_rename(from, to, err);
     if (rename(from, to) != 0) { SET_ERR(); return false; }
+    return true;
+}
+
+/* chmod's write bits as the owner's write bit (the other bits as they were). A foreign file keeps whatever its owner gives it. */
+bool mg_path_set_writable(const char *path, bool writable, int *err)
+{
+    struct stat s;
+    if (mg_path_is_foreign(path)) return true;
+    if (stat(path, &s) != 0) { SET_ERR(); return false; }
+    if (S_ISDIR(s.st_mode)) return true;
+    if (chmod(path, writable ? (s.st_mode & 07777) | S_IWUSR : (s.st_mode & 07777) & ~(mode_t)(S_IWUSR | S_IWGRP | S_IWOTH)) != 0) {
+        SET_ERR();
+        return false;
+    }
     return true;
 }
 

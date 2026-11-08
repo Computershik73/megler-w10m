@@ -1654,6 +1654,7 @@ public class Main extends Activity {
         phoneApps();
         installs();
         bitmapBytes();
+        fileReadOnly();
         adaptiveIcon();
         launcherLoading();
         uriBuilder();
@@ -4692,6 +4693,27 @@ public class Main extends Activity {
             detail = "same=" + same + " shaped=" + shaped + " pixels=" + Integer.toHexString(first) + "," + Integer.toHexString(corner) + " allocation=" + allocation
                     + " reshaped=" + reshaped + " tooBig=" + tooBig + " refused=" + refused + " passedOver=" + passedOver;
             return same && shaped && first == 0xFF0000FF && corner == 0xFF00FF00 && allocation == 24 && reshaped && tooBig && refused && passedOver;
+        });
+    }
+
+    /**
+     * A file of the app's made read-only and writable again through java.io.File, as Facebook does with each module it downloads
+     * before it loads one ("Downloaded module file must be read only"): setReadOnly, canWrite, an output stream refused, and the
+     * file deleted all the same; setWritable gives its writing back. The write bits are kept by the core's chmod (Windows' read-only
+     * attribute on a phone), so they are still there when the app starts again.
+     */
+    private void fileReadOnly() {
+        step("file-read-only", () -> {
+            File f = new File(getFilesDir(), "module.zip");
+            try (java.io.FileOutputStream out = new java.io.FileOutputStream(f)) { out.write(new byte[] { 'P', 'K' }); }
+            boolean wasWritable = f.canWrite(), made = f.setReadOnly(), readOnly = !f.canWrite() && f.canRead();
+            boolean refused = false;
+            try (java.io.FileOutputStream out = new java.io.FileOutputStream(f, true)) { out.write(1); } catch (java.io.FileNotFoundException e) { refused = true; }
+            boolean writable = f.setWritable(true) && f.canWrite();
+            boolean again = f.setReadOnly() && !f.canWrite(), deleted = f.delete() && !f.exists();
+            detail = "wasWritable=" + wasWritable + " made=" + made + " readOnly=" + readOnly + " refused=" + refused + " writable=" + writable
+                    + " again=" + again + " deleted=" + deleted;
+            return wasWritable && made && readOnly && refused && writable && again && deleted;
         });
     }
 

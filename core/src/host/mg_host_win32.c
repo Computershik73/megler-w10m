@@ -2729,6 +2729,7 @@ static bool stat_handle(HANDLE h, mg_stat *st)
         BY_HANDLE_FILE_INFORMATION all;
         if (!GetFileInformationByHandle(h, &all)) return false;
         st->is_dir = (all.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) != 0;
+        st->read_only = !st->is_dir && (all.dwFileAttributes & FILE_ATTRIBUTE_READONLY) != 0;
         st->size = ((u64)all.nFileSizeHigh << 32) | all.nFileSizeLow;
         st->mtime_ns = (i64)filetime_to_unix_ns(all.ftLastWriteTime);
         st->atime_ns = (i64)filetime_to_unix_ns(all.ftLastAccessTime);
@@ -2744,11 +2745,42 @@ static bool stat_handle(HANDLE h, mg_stat *st)
         st->atime_ns = (i64)filetime_to_unix_ns(ft);
         ft.dwLowDateTime = bi.ChangeTime.LowPart; ft.dwHighDateTime = (DWORD)bi.ChangeTime.HighPart;
         st->ctime_ns = (i64)filetime_to_unix_ns(ft);
+        st->read_only = !st->is_dir && (bi.FileAttributes & FILE_ATTRIBUTE_READONLY) != 0;
     }
     return true;
 }
 
 bool mg_file_stat(mg_file *f, mg_stat *st) { return stat_handle(f->h, st); }
+
+/*
+ * chmod's write bits as Windows' read-only attribute: what an app makes read-only stays so across its starts, and Windows
+ * itself refuses to open it for writing. (Removing and replacing such a file clear the attribute first: mg_path_remove,
+ * mg_path_rename.) A foreign file, one of the phone's own folders, keeps whatever its owner gives it.
+ */
+bool mg_path_set_writable(const char *path, bool writable, int *err)
+{
+    wchar_t *w;
+    DWORD a, want;
+    BOOL ok = TRUE;
+    if (mg_path_is_foreign(path)) return true;
+    w = wide_path(path);
+    a = GetFileAttributesW(w);
+    if (a == INVALID_FILE_ATTRIBUTES) {
+        SET_ERR();
+        free(w);
+        return false;
+    }
+    if (!(a & FILE_ATTRIBUTE_DIRECTORY)) {
+        want = writable ? (a & ~(DWORD)FILE_ATTRIBUTE_READONLY) : (a | FILE_ATTRIBUTE_READONLY);
+        if (want != a) {
+            /* (No attribute left is FILE_ATTRIBUTE_NORMAL, which SetFileAttributes wants alone.) */
+            ok = SetFileAttributesW(w, want ? want : FILE_ATTRIBUTE_NORMAL);
+            if (!ok) SET_ERR();
+        }
+    }
+    free(w);
+    return ok != 0;
+}
 
 bool mg_path_stat(const char *path, mg_stat *st, int *err)
 {
@@ -2770,6 +2802,7 @@ bool mg_path_stat(const char *path, mg_stat *st, int *err)
     if (!ok) return false;
     memset(st, 0, sizeof(*st));
     st->is_dir = (a.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) != 0;
+    st->read_only = !st->is_dir && (a.dwFileAttributes & FILE_ATTRIBUTE_READONLY) != 0;
     st->size = ((u64)a.nFileSizeHigh << 32) | a.nFileSizeLow;
     st->mtime_ns = (i64)filetime_to_unix_ns(a.ftLastWriteTime);
     st->atime_ns = (i64)filetime_to_unix_ns(a.ftLastAccessTime);
@@ -3054,6 +3087,16 @@ bool mg_path_rename(const char *from, const char *to, int *err)
         ok = MoveFileExW(a, b, MOVEFILE_REPLACE_EXISTING);
         if (ok) break;
         e = GetLastError();
+        if (e == ERROR_ACCESS_DENIED && tries == 0) {
+            /* A read-only file in the way (chmod's, mg_path_set_writable), which POSIX's rename replaces all the same. */
+            DWORD in_way = GetFileAttributesW(b);
+            if (in_way != INVALID_FILE_ATTRIBUTES && !(in_way & FILE_ATTRIBUTE_DIRECTORY) && (in_way & FILE_ATTRIBUTE_READONLY) &&
+                SetFileAttributesW(b, (in_way & ~(DWORD)FILE_ATTRIBUTE_READONLY) ? (in_way & ~(DWORD)FILE_ATTRIBUTE_READONLY) : FILE_ATTRIBUTE_NORMAL)) {
+                ok = MoveFileExW(a, b, MOVEFILE_REPLACE_EXISTING);
+                if (ok) break;
+                e = GetLastError();
+            }
+        }
         if (e != ERROR_ACCESS_DENIED && e != ERROR_SHARING_VIOLATION && e != ERROR_USER_MAPPED_FILE && e != ERROR_LOCK_VIOLATION) {
             /* (A folder over an empty one, which POSIX's rename replaces, where Windows says one is there.) */
             if (e == ERROR_ALREADY_EXISTS || e == ERROR_FILE_EXISTS) {

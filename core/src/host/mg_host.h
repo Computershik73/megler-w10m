@@ -454,6 +454,7 @@ enum { MG_E_OK = 0, MG_E_NOENT, MG_E_ACCESS, MG_E_EXIST, MG_E_NOTDIR, MG_E_ISDIR
 
 typedef struct mg_stat {
     bool is_dir;
+    bool read_only;                    /* a file that may not be written (Windows' read-only attribute; no owner write bit) */
     u64 size;
     i64 mtime_ns, atime_ns, ctime_ns;  /* since the Unix epoch */
     u64 id;                            /* something distinct per file */
@@ -501,6 +502,12 @@ MG_HOSTAPI bool mg_path_mkdirs(const char *path);
 MG_HOSTAPI bool mg_path_remove(const char *path, int *err);        /* a file */
 MG_HOSTAPI bool mg_path_rmdir(const char *path, int *err);
 MG_HOSTAPI bool mg_path_rename(const char *from, const char *to, int *err);
+/*
+ * A file made read-only or writable again, as chmod takes the write bits away and gives them back: Windows' read-only
+ * attribute, or the owner's write bit. A directory is left as it is (true). The file stays removable and replaceable by
+ * mg_path_remove and mg_path_rename, as POSIX's unlink and rename look at the folder, not at the file.
+ */
+MG_HOSTAPI bool mg_path_set_writable(const char *path, bool writable, int *err);
 /* Calls cb for every entry but . and ..; false with *err set when the directory cannot be listed. */
 typedef void (MG_HOSTCB *mg_dir_cb)(const char *name, bool is_dir, void *user);
 MG_HOSTAPI bool mg_path_list(const char *path, mg_dir_cb cb, void *user, int *err);
