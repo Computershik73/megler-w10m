@@ -5579,7 +5579,8 @@ on a looper thread of its own and takes it back with `next()`.
   Android's: the value's asset cookie in the high word, its data (for a file,
   the string's index in the pool) in the low. Nothing is preloaded, so they
   start empty, but apps fill them by reflection, taking the field from
-  `Resources` where there is no `ResourcesImpl`, as here. Instagram 333 swaps
+  `ResourcesImpl` (from `Resources` where there is none, as there was here
+  until `ResourcesImpl` below; the fields are its now). Instagram 333 swaps
   each array element for a `LongSparseArray` of its own that answers its
   vector icons, whose values (`"I1801B8"`) name no file. Without the field it
   logged "Could not enable custom drawable support" and its main activity's
@@ -5587,6 +5588,26 @@ on a looper thread of its own and takes it back with `next()`.
   "preloaded-drawables" does as Instagram does with a platform drawable's key,
   gets its own drawable for it, and the file's again once the element is put
   back.
+- `android/content/res/ResourcesImpl.java` (a class the framework did not
+  have), `Resources.java` and `android/view/DisplayAdjustments.java` (another):
+  what a `Resources` is made of -- its `AssetManager`, configuration and
+  metrics and the configuration its resources are chosen for, the app
+  package's table, its loaders, the drawables, colours, fonts and bags made
+  of them -- is a `ResourcesImpl` of its own, as on Android 7 and later, in
+  Android's field `mResourcesImpl`; the hidden `getImpl()` gives it,
+  `setImpl(ResourcesImpl)` gives `Resources` another (the themes they made
+  are rebased onto it: `Theme.rebase` applies their styles again, where it
+  did nothing), and the hidden constructor `Resources(ClassLoader)` makes
+  `Resources` with none until then. Libraries make `Resources` of their own
+  over the platform's so, by reflection, to answer some lookups themselves:
+  Tuya Smart's dynamic strings for every activity
+  (`DynamicResourceContextThemeWrapper.getResources`), and the app ended at
+  its first activity on `NoSuchMethodException: getImpl []` (0.1.0.673).
+  The screen's changes now reach each implementation once
+  (`ResourcesImpl.meglerScreenChanged`), as Android's `ResourcesManager`
+  applies a configuration to every `ResourcesImpl`. The data app's step
+  "resources-impl" makes such `Resources` as Tuya does, and one of the
+  public constructor that answers a string itself, and finds them alike.
 - `android/graphics/drawable/RippleDrawable.java` and `megler/ResInflate.java`,
   a method and a statement: a ripple inflated from XML is told that it has a
   mask. Android's commonest ripple is nothing but a mask (the background of

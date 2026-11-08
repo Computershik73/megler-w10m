@@ -1721,6 +1721,7 @@ public class Main extends Activity {
             return "chimera config".equals(read);
         });
         layoutApiLevel();
+        resourcesImpl();
         sound();
         mediaCodec();
         network();
@@ -5201,6 +5202,91 @@ public class Main extends Activity {
                     && frame.getMinimumHeight() == Math.round(72 * density) && frame.getPaddingStart() == Math.round(20 * density)
                     && titleMargin == Math.round(24 * density) && "31".equals(level);
         });
+    }
+
+    /**
+     * Resources of the app's own over the implementation of the activity's, as Tuya Smart's dynamic strings make them for every
+     * activity (DynamicResourceContextThemeWrapper.getResources) and other libraries on Android 7 and later: getImpl of the
+     * activity's Resources, then setImpl of that implementation on Resources made with the hidden Resources(ClassLoader), and on
+     * a subclass made with the public constructor that answers one string itself -- hidden API, by reflection. Both then have
+     * the activity's AssetManager, configuration and metrics (the very objects) and its resources: strings, a dimension, a
+     * drawable, a platform colour, a layout inflated through a ContextThemeWrapper whose getResources gives the subclass (as
+     * Tuya's wrapper), whose theme is made of it; the subclass's own string is its own. A theme the subclass made before, while
+     * it had a night configuration of its own (ProbeTheme of values-night), is rebased onto the implementation it is given
+     * (ProbeTheme of values). And ResourcesImpl's getters, Resources' field mResourcesImpl, the class loader given, the loaders.
+     */
+    private void resourcesImpl() {
+        step("resources-impl", () -> {
+            final android.content.res.Resources base = getResources();
+            java.lang.reflect.Method getImpl = android.content.res.Resources.class.getDeclaredMethod("getImpl");
+            getImpl.setAccessible(true);
+            Object impl = getImpl.invoke(base);
+            Class<?> implClass = Class.forName("android.content.res.ResourcesImpl");
+            java.lang.reflect.Method setImpl = android.content.res.Resources.class.getDeclaredMethod("setImpl", implClass);
+            setImpl.setAccessible(true);
+            java.lang.reflect.Constructor<android.content.res.Resources> withLoader = android.content.res.Resources.class.getDeclaredConstructor(ClassLoader.class);
+            withLoader.setAccessible(true);
+            android.content.res.Resources plain = withLoader.newInstance(getClassLoader());
+            setImpl.invoke(plain, impl);
+            android.content.res.Configuration night = new android.content.res.Configuration(base.getConfiguration());
+            night.uiMode = (night.uiMode & ~android.content.res.Configuration.UI_MODE_NIGHT_MASK) | android.content.res.Configuration.UI_MODE_NIGHT_YES;
+            final DynamicStrings dynamic = new DynamicStrings(base.getAssets(), base.getDisplayMetrics(), night);
+            Object own = getImpl.invoke(dynamic);
+            android.content.res.Resources.Theme early = dynamic.newTheme();
+            early.applyStyle(R.style.ProbeTheme, true);
+            int before = foreground(early);
+            setImpl.invoke(dynamic, impl);
+            int rebased = foreground(early);
+            android.content.res.Resources.Theme day = base.newTheme();
+            day.applyStyle(R.style.ProbeTheme, true);
+            // As Tuya's wrapper: a ContextThemeWrapper whose getResources gives the subclass, its theme made of it.
+            android.view.ContextThemeWrapper wrapper = new android.view.ContextThemeWrapper(this, android.R.style.Theme_Material_Light) {
+                @Override public android.content.res.Resources getResources() { return dynamic; }
+            };
+            android.view.View inflated = android.view.LayoutInflater.from(wrapper).inflate(R.layout.switch_bar, null);
+            java.lang.reflect.Field field = android.content.res.Resources.class.getDeclaredField("mResourcesImpl");
+            field.setAccessible(true);
+            Object loaders = android.content.res.Resources.class.getMethod("getLoaders").invoke(plain);
+            Object loader = android.content.res.Resources.class.getMethod("getClassLoader").invoke(plain);
+            String name = base.getString(R.string.app_name);
+            detail = "impl " + impl + " (" + (impl == null ? null : impl.getClass().getName()) + "), own " + own + "; strings " + plain.getString(R.string.app_name)
+                    + " / " + dynamic.getString(R.string.app_name) + " / " + wrapper.getString(R.string.app_name) + "; foreground before " + Integer.toHexString(before)
+                    + " rebased " + Integer.toHexString(rebased) + " day " + Integer.toHexString(foreground(day)) + "; inflated frame "
+                    + (inflated == null ? null : inflated.findViewById(R.id.frame)) + "; loaders " + loaders + " class loader " + loader;
+            return impl != null && impl.getClass() == implClass && getImpl.invoke(plain) == impl && getImpl.invoke(dynamic) == impl && own != null && own != impl
+                    && field.get(base) == impl && field.get(dynamic) == impl
+                    && plain.getAssets() == base.getAssets() && plain.getConfiguration() == base.getConfiguration() && plain.getDisplayMetrics() == base.getDisplayMetrics()
+                    && dynamic.getConfiguration() == base.getConfiguration()
+                    && implClass.getMethod("getAssets").invoke(impl) == base.getAssets() && implClass.getMethod("getConfiguration").invoke(impl) == base.getConfiguration()
+                    && implClass.getMethod("getDisplayMetrics").invoke(impl) == base.getDisplayMetrics()
+                    && name.equals(plain.getString(R.string.app_name)) && "Dynamic".equals(dynamic.getString(R.string.app_name)) && "Dynamic".equals(wrapper.getString(R.string.app_name))
+                    && base.getString(R.string.sync_account_type).equals(dynamic.getString(R.string.sync_account_type))
+                    && dynamic.getDimensionPixelSize(R.dimen.switch_title_margin) == base.getDimensionPixelSize(R.dimen.switch_title_margin)
+                    && plain.getDrawable(R.drawable.inset_fraction, null) instanceof android.graphics.drawable.InsetDrawable
+                    && plain.getColor(android.R.color.white, null) == 0xFFFFFFFF
+                    && wrapper.getTheme().getResources() == dynamic && inflated != null && inflated.findViewById(R.id.frame) != null
+                    && before == 0xFF222222 && rebased == 0xFF111111 && foreground(day) == 0xFF111111
+                    && loaders instanceof java.util.List && ((java.util.List<?>) loaders).isEmpty() && loader == getClassLoader();
+        });
+    }
+
+    /** The theme's android:colorForeground, 0 when it has none. */
+    private static int foreground(android.content.res.Resources.Theme t) {
+        android.util.TypedValue v = new android.util.TypedValue();
+        return t.resolveAttribute(android.R.attr.colorForeground, v, true) ? v.data : 0;
+    }
+
+    /** Resources that answer one string themselves, as Tuya's dynamic strings answer theirs, and leave the rest to the original's. */
+    static final class DynamicStrings extends android.content.res.Resources {
+        @SuppressWarnings("deprecation")
+        DynamicStrings(android.content.res.AssetManager a, android.util.DisplayMetrics m, android.content.res.Configuration c) {
+            super(a, m, c);
+        }
+
+        @Override
+        public CharSequence getText(int id) {
+            return id == R.string.app_name ? "Dynamic" : super.getText(id);
+        }
     }
 
     /** As the Settings library's MainSwitchBar: a LinearLayout that inflates its layout into itself and finds its views by id. */

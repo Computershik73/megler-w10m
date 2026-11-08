@@ -2760,6 +2760,9 @@ static int run_data(void)
                                          /* And a layout of layout, -v31 and -v33 inflated as the Settings library's main switch bar inflates its
                                             own: the -v33 one Android 14 chooses, its frame there, with the dimensions and drawables of -v31 alone. */
                                          "layout-api-level",
+                                         /* And Resources of the app's own over the implementation of the activity's (getImpl, setImpl, the hidden
+                                            Resources(ClassLoader)), as Tuya Smart's dynamic strings make them: alike in everything, a theme rebased. */
+                                         "resources-impl",
                                          "audio-track", "media-player", "media-player-ogg", "sound-pool",
                                          /* And MediaCodec over the stand-in for the shell's decoders: H.264 shown on a Surface in display
                                             order, a flush, parameter sets in a codec-config buffer, the asynchronous mode, AAC with an
