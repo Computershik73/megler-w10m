@@ -155,6 +155,17 @@ struct App : ApplicationT<App, Markup::IXamlMetadataProvider> {
                     shellLog::write("memory: Windows changes the app's limit from " + formattedByteCount(e.OldLimit()) + " to " +
                                     formattedByteCount(e.NewLimit()) + "; " + platform::memorySummary());
                 });
+            // And each step of the app's use up toward its limit, as Windows counts it: an app over it is ended without a word,
+            // and the log's last lines then say how near it was.
+            winrt::Windows::System::MemoryManager::AppMemoryUsageIncreased([](auto&&, auto&&) {
+                using winrt::Windows::System::AppMemoryUsageLevel;
+                const AppMemoryUsageLevel level = winrt::Windows::System::MemoryManager::AppMemoryUsageLevel();
+                const char* said = level == AppMemoryUsageLevel::Low      ? "low"
+                                   : level == AppMemoryUsageLevel::Medium ? "medium"
+                                   : level == AppMemoryUsageLevel::High   ? "high"
+                                                                          : "over its limit";
+                shellLog::writeNow(std::string("memory: Windows counts the app's use as ") + said + " now: " + platform::memorySummary());
+            });
         } catch (const hresult_error& e) {
             shellLog::write("app: the background's events are not there: " + narrow(e.message()));
         }
