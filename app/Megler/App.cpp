@@ -208,6 +208,11 @@ struct App : ApplicationT<App, Markup::IXamlMetadataProvider> {
     /// The window shown: Windows takes the splash screen away at the first frame after this. Then what the start leaves
     /// for after it: the copies of the package's Google APKs, on a thread of their own (Library::afterStart).
     void activate() {
+        // (Activated again later -- a megler: link, a file opened in Megler -- it is no step of the start.)
+        if (startup::isShown()) {
+            Window::Current().Activate();
+            return;
+        }
         startStep("showing the window", [] { Window::Current().Activate(); });
         startup::shown();
         try {
