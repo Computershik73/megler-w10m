@@ -2804,6 +2804,13 @@ static int run_data(void)
         free(crypto);
         say("  TLS: %s", with ? "conscrypt's (its library is in the Android root)" : "the runtime's stand-in, which has none");
         CHECK(find_line(with ? "I/DataTest: tls-is conscrypt provider=com.android.org.conscrypt.OpenSSLProvider" : "I/DataTest: tls-is none provider=megler.security.RuntimeProvider", 0) >= 0);
+        /* A server's certificates refused by the app's trust (RootTrustManager), said once a host with why and with the issuer of
+           the last: 127.0.0.1's, refused twice in the step network-trust -- through a socket and by the host-aware check. */
+        if (with) {
+            int said = find_line("W/Megler: TLS: 127.0.0.1's certificates refused (", 0);
+            CHECK(said >= 0 && strstr(line_at(said), ", the last issued by ") && strstr(line_at(said), "Trust anchor for certification path not found"));
+            CHECK(count_lines("W/Megler: TLS: 127.0.0.1's certificates refused (") == 1);
+        }
     }
     /* The app's network security configuration, said in the log once as it was read (android.security.net.config.XmlConfigSource):
        the base configuration with Android's authorities alone (its debug-overrides not counted), and a <domain-config> inside

@@ -2381,7 +2381,15 @@ Trusted Root CA, which Android 9 does not have, from their own `res/raw`. The
 data app's steps "network-trust", "network-trust-domains" and
 "network-trust-pins" show it with a test authority of the app's own: trusted
 for localhost and the names its configuration gives it, 127.0.0.1 refused,
-pins matched, missed, expired and overridden.
+pins matched, missed, expired and overridden. A server's certificates the
+`RootTrustManager` refuses are said once a host, with why and with the issuer
+of the last of them ("W/Megler: TLS: <host>'s certificates refused (N of them,
+the last issued by ...): ..."): the system's authorities are Android 9's 137
+of 2018, and a server whose chain reaches only a newer authority is refused
+here where Android 14 takes it. Chromium's own line ("cr_X509Util: Failed to
+validate the certificate chain", the WebView's; Google Play services' Cronet
+says "cn_X509Util") names no server: Transit's WebView was refused eight at
+every start (0.1.0.675), whose they were not known.
 
 What follows is what stands in where conscrypt's library is not in the root
 (an Android root made before the library was built, or the PC's own build of

@@ -43,13 +43,23 @@ public class RootTrustManager extends X509ExtendedTrustManager {
         }
         SSLSession session = ((SSLSocket) socket).getHandshakeSession();
         if (session == null) throw new CertificateException("Not in handshake; no session available");
-        mConfig.getConfigForHostname(session.getPeerHost()).getTrustManager().checkServerTrusted(certs, authType, socket);
+        try {
+            mConfig.getConfigForHostname(session.getPeerHost()).getTrustManager().checkServerTrusted(certs, authType, socket);
+        } catch (CertificateException e) {
+            refused(session.getPeerHost(), certs, e);
+            throw e;
+        }
     }
 
     @Override public void checkServerTrusted(X509Certificate[] certs, String authType, SSLEngine engine) throws CertificateException {
         SSLSession session = engine.getHandshakeSession();
         if (session == null) throw new CertificateException("Not in handshake; no session available");
-        mConfig.getConfigForHostname(session.getPeerHost()).getTrustManager().checkServerTrusted(certs, authType, engine);
+        try {
+            mConfig.getConfigForHostname(session.getPeerHost()).getTrustManager().checkServerTrusted(certs, authType, engine);
+        } catch (CertificateException e) {
+            refused(session.getPeerHost(), certs, e);
+            throw e;
+        }
     }
 
     /** With no host there is no configuration to choose: refused where domains have their own, as on Android. */
@@ -66,7 +76,30 @@ public class RootTrustManager extends X509ExtendedTrustManager {
         if (hostname == null && mConfig.hasPerDomainConfigs()) {
             throw new CertificateException("Domain specific configurations require that the hostname be provided");
         }
-        return mConfig.getConfigForHostname(hostname).getTrustManager().checkServerTrusted(certs, authType, hostname);
+        try {
+            return mConfig.getConfigForHostname(hostname).getTrustManager().checkServerTrusted(certs, authType, hostname);
+        } catch (CertificateException e) {
+            refused(hostname, certs, e);
+            throw e;
+        }
+    }
+
+    /*
+     * Megler: a server's certificates refused, said once a host with why and with the authority they lead to (the issuer of
+     * the last one). The system's authorities here are Android 9's, the root's cacerts (137, of 2018), where Android 14 has
+     * newer ones: a server whose chain reaches only a newer authority is refused here alone ("Trust anchor for certification
+     * path not found"), and the log did not say whose it was -- Transit's WebView was refused eight servers' chains at every
+     * start (Chromium's "cr_X509Util: Failed to validate the certificate chain", 0.1.0.675).
+     */
+    private static final java.util.HashSet<String> sRefusedSaid = new java.util.HashSet<>();
+    private static void refused(String host, X509Certificate[] certs, CertificateException e) {
+        String name = host == null ? "a server with no name" : host;
+        synchronized (sRefusedSaid) {
+            if (sRefusedSaid.size() >= 64 || !sRefusedSaid.add(name)) return;
+        }
+        X509Certificate last = certs != null && certs.length > 0 ? certs[certs.length - 1] : null;
+        android.util.Log.w("Megler", "TLS: " + name + "'s certificates refused (" + (certs == null ? 0 : certs.length) + " of them, the last issued by "
+                + (last == null ? "no one" : last.getIssuerX500Principal().getName()) + "): " + e.getMessage());
     }
 
     /** The base configuration's anchors: what a client's certificate may be issued by. */
