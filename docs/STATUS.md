@@ -287,6 +287,7 @@ Tools made for this, all still there: the trace (`mg_trace`: a ring of the last
 stack scan, thread and memory lines, the flags (`mg_flag`: a file's presence in
 `LocalState\flags`, put there through the Device Portal: `no-interrupt`,
 `no-render`, `late-render`, `no-egl`, `no-panel`, `early-present`, `no-present`,
+`fail-present` (every Present taken as refused, uncalled: docs/XBOX.md),
 `normal-priority`, `trace-gl`), `trace-gl` (every GL call through a generated
 thunk), `no-gl-turns` (the thunks that have two threads' calls of one ANGLE
 display take turns left out; `ndk/mg_egl.c`, "turns"), the unattended `play` mode, and `tools/phone-etw.py`. And for what an app
