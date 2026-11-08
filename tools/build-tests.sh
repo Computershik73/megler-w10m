@@ -75,6 +75,11 @@
 #       counted as it comes, the first kept and said in the log with what its
 #       Present said, the player told of it at once (what the player's busy
 #       overlay goes by), and a picture whose Present is refused.
+#       And the shell's Bluetooth for an app's android.bluetooth
+#       (app/Megler/player/BluetoothHost.cpp: Windows.Devices.Bluetooth),
+#       built in likewise and run as --bluetooth-windows: the PC's radio
+#       and a passive scan of three seconds -- nothing connected to or
+#       paired with -- or, on a PC without a radio, a line that says so.
 #       And the Xbox build's client of the console's Device Portal
 #       (app/Megler/shell/DevicePortal.cpp), built in likewise and run as
 #       --portal-windows against tools/device-portal-mock.py, a portal of the
@@ -129,7 +134,9 @@
 # phone turned does it: its activities made again or told, the pictures at the
 # new size. And `gms-host`, which hosts a stand-in for Google's own Play
 # services (`gms-own`) and starts a service of theirs: their code is told it
-# runs in its application's process. Their
+# runs in its application's process.
+# And `bluetooth`, Bluetooth LE's central side as MeshCore's app uses it, on a
+# stand-in for the shell's radio (core/tests/mg_bluetooth_standin.c). Their
 # pictures are written to build/java-pictures as BMP files. Each is then run
 # once more with its calls of the shell's drawing recorded
 # (build/gfx-records/<app>.rec), for the Windows build to draw again.
@@ -240,7 +247,7 @@ EOF
     # Bundles of split APKs, unpacked as the shell unpacks them.
     MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL="*" wsl.exe -- bash -c "rm -rf $WB/scratch-bundles && qemu-arm -L /usr/arm-linux-gnueabihf $WB/mg_tests --bundles '$WROOT/build/guest/java' $WB/scratch-bundles '$WROOT/build/bundles' 2>&1; STATUS=\$?; rm -rf $WB/scratch-bundles; exit \$STATUS" || STATUS=1
     if [ "$JAVA" = 1 ]; then
-      for app in hello demos natives crash gc gl screen; do
+      for app in hello demos natives crash gc gl screen bluetooth; do
         if [ ! -f "$ROOT/build/guest/java/$app.apk" ]; then
           echo "(the Java test app $app is not run: build/guest/java/$app.apk was not built -- its native library needs the NDK, see tools/build-test-app.sh)"
           continue
@@ -454,11 +461,12 @@ elif [ "$MODE" = win ]; then
   for s in "${SRCS[@]}"; do ALL+=("$(w "$ROOT/$s")"); done
   ZALL=()
   for s in "${ZSRCS[@]}"; do ZALL+=("$(w "$ROOT/$s")"); done
-  # (MG_GFX_WINDOWS, MG_STORAGE_WINDOWS, MG_CODEC_WINDOWS, MG_CAMERA_WINDOWS, MG_SENSORS_WINDOWS, MG_PORTAL_WINDOWS: this build has
-  # the shell's drawing, its storage host, its decoders, its cameras, its sensors and the Xbox build's Device Portal client in
-  # it; mg_tests_main.c's --gfx-windows, --storage-windows, --codec-windows, --camera-windows, --sensors-windows and
-  # --portal-windows modes.)
-  "$VC/bin/Hostx64/x64/cl.exe" /nologo /c "$OPT" /MT /W3 /std:c11 /utf-8 "$MP" /D_CRT_SECURE_NO_WARNINGS /D_CRT_NONSTDC_NO_WARNINGS /DMG_GFX_WINDOWS /DMG_STORAGE_WINDOWS /DMG_CODEC_WINDOWS /DMG_CAMERA_WINDOWS /DMG_SENSORS_WINDOWS /DMG_PORTAL_WINDOWS /DMG_WINDOW_WINDOWS "${SQLITE_CL[@]}" "${WEBP_CL[@]}" \
+  # (MG_GFX_WINDOWS, MG_STORAGE_WINDOWS, MG_CODEC_WINDOWS, MG_CAMERA_WINDOWS, MG_SENSORS_WINDOWS, MG_BLUETOOTH_WINDOWS,
+  # MG_PORTAL_WINDOWS, MG_WINDOW_WINDOWS: this build has the shell's drawing, its storage host, its decoders, its
+  # cameras, its sensors, its Bluetooth, the Xbox build's Device Portal client and the shell's window in it;
+  # mg_tests_main.c's --gfx-windows, --storage-windows, --codec-windows, --camera-windows, --sensors-windows,
+  # --bluetooth-windows, --portal-windows and --window-windows modes.)
+  "$VC/bin/Hostx64/x64/cl.exe" /nologo /c "$OPT" /MT /W3 /std:c11 /utf-8 "$MP" /D_CRT_SECURE_NO_WARNINGS /D_CRT_NONSTDC_NO_WARNINGS /DMG_GFX_WINDOWS /DMG_STORAGE_WINDOWS /DMG_CODEC_WINDOWS /DMG_CAMERA_WINDOWS /DMG_SENSORS_WINDOWS /DMG_BLUETOOTH_WINDOWS /DMG_PORTAL_WINDOWS /DMG_WINDOW_WINDOWS "${SQLITE_CL[@]}" "${WEBP_CL[@]}" \
     "/I$(w "$ROOT/core/third_party/zlib")" "/Fo$(w "$OUT/obj")\\" "${ALL[@]}" | grep -v -E '^[A-Za-z0-9_]+\.c$' || true
   "$VC/bin/Hostx64/x64/cl.exe" /nologo /c /O1 /MT /w "$MP" /D_CRT_SECURE_NO_WARNINGS /D_CRT_NONSTDC_NO_WARNINGS \
     "/Fo$(w "$OUT/zobj")\\" "${ZALL[@]}" | grep -v -E '^[A-Za-z0-9_]+\.c$' || true
@@ -496,7 +504,8 @@ elif [ "$MODE" = win ]; then
   # whole files (player/MediaHost.cpp), for the files of sound alone a Java app's MediaPlayer and SoundPool hand it; the
   # shell's log they write to is mg_storage_windows.cpp's. And the shell's cameras (player/CameraHost.cpp:
   # Windows.Media.Capture), with the lines that hand them to the tests (core/tests/mg_camera_windows.cpp). And the shell's
-  # sensors (player/SensorHost.cpp: Windows.Devices.Sensors), likewise (core/tests/mg_sensors_windows.cpp). And the Xbox
+  # sensors (player/SensorHost.cpp: Windows.Devices.Sensors), likewise (core/tests/mg_sensors_windows.cpp). And its
+  # Bluetooth (player/BluetoothHost.cpp: Windows.Devices.Bluetooth), likewise (core/tests/mg_bluetooth_windows.cpp). And the Xbox
   # build's Device Portal client (shell/DevicePortal.cpp: Windows.Web.Http), with the tests that drive it against the mock
   # portal (core/tests/mg_portal_windows.cpp); no package but the Xbox's has the client (tools/build-appx.sh --xbox).
   STORAGE_SRC=("$(w "$ROOT/app/Megler/player/StorageHost.cpp")" "$(w "$ROOT/app/Megler/shell/Strings.cpp")" "$(w "$ROOT/core/tests/mg_storage_windows.cpp")"
@@ -504,6 +513,7 @@ elif [ "$MODE" = win ]; then
                "$(w "$ROOT/app/Megler/player/MediaHost.cpp")"
                "$(w "$ROOT/app/Megler/player/CameraHost.cpp")" "$(w "$ROOT/core/tests/mg_camera_windows.cpp")"
                "$(w "$ROOT/app/Megler/player/SensorHost.cpp")" "$(w "$ROOT/core/tests/mg_sensors_windows.cpp")"
+               "$(w "$ROOT/app/Megler/player/BluetoothHost.cpp")" "$(w "$ROOT/core/tests/mg_bluetooth_windows.cpp")"
                "$(w "$ROOT/app/Megler/shell/DevicePortal.cpp")" "$(w "$ROOT/core/tests/mg_portal_windows.cpp")"
                "$(w "$ROOT/app/Megler/player/WindowHost.cpp")" "$(w "$ROOT/core/tests/mg_window_windows.cpp")")
   mkdir -p "$OUT/storageobj"
@@ -511,7 +521,7 @@ elif [ "$MODE" = win ]; then
   INCLUDE="$INCLUDE;$(w "$SDK/Include/$SDKV/winrt");$(w "$SDK/Include/$SDKV/cppwinrt")" \
     "$VC/bin/Hostx64/x64/cl.exe" "${GFX_FLAGS[@]}" /Zc:__cplusplus /bigobj /DWINAPI_FAMILY=WINAPI_FAMILY_APP /O1 "$MP" "/Fo$(w "$OUT/storageobj")\\" "${STORAGE_SRC[@]}" \
     | grep -v -E '^[A-Za-z0-9_]+\.cpp$' || true
-  for obj in StorageHost Strings mg_storage_windows CodecHost mg_codec_windows MediaHost CameraHost mg_camera_windows SensorHost mg_sensors_windows DevicePortal mg_portal_windows WindowHost mg_window_windows; do
+  for obj in StorageHost Strings mg_storage_windows CodecHost mg_codec_windows MediaHost CameraHost mg_camera_windows SensorHost mg_sensors_windows BluetoothHost mg_bluetooth_windows DevicePortal mg_portal_windows WindowHost mg_window_windows; do
     [ -f "$OUT/storageobj/$obj.obj" ] || { echo "compile failed: $obj.cpp" >&2; exit 1; }
   done
   # (MEGLER_TESTS_MAP=1: a linker map beside it, mg_tests.map, which tools/dvm-bench.sh profile reads.)
@@ -604,6 +614,10 @@ elif [ "$MODE" = win ]; then
     # The shell's sensors: what this PC has through the core's sensors, each read a moment; a PC without them says so.
     rm -rf "$OUT/scratch-sensors"
     "$OUT/mg_tests.exe" --sensors-windows "$(w "$OUT/scratch-sensors")" || STATUS=1
+    # The shell's Bluetooth: this PC's radio through the core's, and a passive scan of three seconds (nothing connected to or
+    # paired with); a PC without one says so.
+    rm -rf "$OUT/scratch-bluetooth"
+    "$OUT/mg_tests.exe" --bluetooth-windows "$(w "$OUT/scratch-bluetooth")" || STATUS=1
     # The Xbox build's Device Portal client, against a portal of the tests' own (tools/device-portal-mock.py) on a port of
     # its choosing on 127.0.0.1: over TLS with a certificate openssl makes here for another name, nothing vouching for it, as
     # the console's own is; the first two questions of the install's state answered 204, as another client's install

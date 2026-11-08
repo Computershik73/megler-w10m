@@ -19,9 +19,12 @@
 //                                  nothing. The app's Settings change it (ui/SettingsScreen.cpp, Permissions). Under the
 //                                  flag allow-permissions (LocalState\flags) every one is allowed with no one asked, for a
 //                                  run no one watches; the flag ui-dialog-<name>-1 answers one that is up (ui/UiShots.h).
-//   contacts, calendar, sensors, nearby_devices, notifications, activity_recognition   granted, no one asked: Megler gives an
-//                                  app none of the phone's contacts, calendar, body sensors, Bluetooth devices or
-//                                  notifications, so there is nothing for the user to refuse.
+//   contacts, calendar, sensors, notifications, activity_recognition   granted, no one asked: Megler gives an app none of the
+//                                  phone's contacts, calendar, body sensors or notifications, so there is nothing for the
+//                                  user to refuse.
+//   nearby_devices                 granted, no one asked: Bluetooth LE's devices (player/BluetoothHost.h), which Windows asks
+//                                  the user nothing for -- its privacy settings of "other devices" refuse them, where the
+//                                  user has said so there -- and which an app without them could not reach at all.
 //
 // What each asks for, and each answer, is in the log.
 #pragma once

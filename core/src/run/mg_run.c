@@ -18,6 +18,7 @@
 #include "../host/mg_host.h"
 #include "../ld/mg_ld.h"
 #include "../ndk/mg_sensors.h"
+#include "mg_bluetooth.h"
 
 static megler_run_config g_config;
 static char *g_apk_path;
@@ -114,6 +115,8 @@ void mg_run_ended(int status, const char *reason)
     mg_atomic_xchg(&g_active, 0);
     /* The phone's sensors no longer read for it (ndk/mg_sensors.c). */
     mg_sensors_end();
+    /* Its Bluetooth scan stopped and its connections closed (run/mg_bluetooth.c). */
+    mg_bluetooth_end();
     mg_info("run: the app has ended (status %d%s%s)", status, reason ? ", " : "", reason ? reason : "");
     if (g_config.on_exit) g_config.on_exit(g_config.user, status, reason);
 }
@@ -576,6 +579,8 @@ bool mg_run_start(const megler_run_config *config)
 
     /* The phone's sensors, for its SensorManager and its native code's ASensorManager (ndk/mg_sensors.c). */
     mg_sensors_set_host(&g_config.sensors);
+    /* The phone's Bluetooth LE radio, for its android.bluetooth (run/mg_bluetooth.c). */
+    mg_bluetooth_set_host(&g_config.bluetooth);
     /* Each app gets its own Android data directories under ours, and all of them one shared storage. */
     mg_run_files(megler_data_dir(), megler_storage_dir(), info.package, &g_config.storage);
 

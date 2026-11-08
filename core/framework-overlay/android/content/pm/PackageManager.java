@@ -6,7 +6,8 @@
 // (VK mp3 mod's QR sign-in among them) would not offer to scan. Likewise the
 // location (android.hardware.location, .gps, .network), wherever the shell can
 // find the phone (megler.LocationNative). And a fingerprint sensor (android.hardware.fingerprint)
-// where Windows Hello can check the user (megler.Biometrics). And getSystemAvailableFeatures lists those same
+// where Windows Hello can check the user (megler.Biometrics). And Bluetooth and Bluetooth LE
+// (android.hardware.bluetooth, .bluetooth_le) where the phone has a radio for LE's central side (megler.Bluetooth). And getSystemAvailableFeatures lists those same
 // features and the OpenGL ES version, and getSystemSharedLibraryNames the legacy
 // Apache HTTP client, where both said nothing.
 // And getPackageInfo names the app's split APKs (splitNames, splitRevisionCodes),
@@ -216,6 +217,8 @@ public class PackageManager {
         // The phone's check of its user (megler.Biometrics, Windows Hello: the iris, a fingerprint, the PIN) stands for a
         // fingerprint sensor, as FingerprintManager and BiometricPrompt use it.
         if (name.equals(FEATURE_FINGERPRINT)) return megler.Biometrics.available() != megler.Biometrics.NONE;
+        // Bluetooth, Low Energy's central side, where the shell has a radio for it (megler.Bluetooth): on or off, it is there.
+        if (name.equals(FEATURE_BLUETOOTH) || name.equals(FEATURE_BLUETOOTH_LE)) return megler.Bluetooth.state() != megler.Bluetooth.RADIO_NONE;
         return false;
     }
     /*

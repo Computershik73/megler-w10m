@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The test app for Bluetooth LE (tools/build-test-app.sh): a central's side as MeshCore's app uses it through
+     flutter_blue_plus, on the test's stand-in for the shell's radio (core/tests/mg_bluetooth_standin.c): the adapter, Android
+     12's permissions, a filtered scan and the old one, a GATT connection to a radio with the Nordic UART service, its
+     services, the MTU, notifications through the Client Characteristic Configuration descriptor, writes with and without
+     response and their echo, the RSSI, pairing with a PIN (the app's and the user's), the radio turned off and the request
+     to turn it on. Each step is a line of the log, which the test (core/tests/mg_java_tests.c, run_bluetooth) reads. It
+     targets Android 14, as MeshCore's app does Android 16: Android 13's forms of the GATT calls, Android 12's permissions. -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="megler.test.bluetooth" android:versionCode="1" android:versionName="1.0">
+    <uses-sdk android:minSdkVersion="21" android:targetSdkVersion="34" />
+    <uses-permission android:name="android.permission.BLUETOOTH" android:maxSdkVersion="30" />
+    <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" android:maxSdkVersion="30" />
+    <uses-permission android:name="android.permission.BLUETOOTH_SCAN" />
+    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
+    <uses-feature android:name="android.hardware.bluetooth_le" android:required="true" />
+    <application android:label="@string/app_name">
+        <activity android:name=".Main" android:label="@string/app_name" android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+    </application>
+</manifest>
