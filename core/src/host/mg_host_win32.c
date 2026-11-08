@@ -3072,7 +3072,7 @@ bool mg_path_rename(const char *from, const char *to, int *err)
     static volatile LONG said;
     wchar_t *a, *b;
     BOOL ok;
-    DWORD e = 0;
+    DWORD e = 0, posix_e = 0, aside_e = 0;
     int tries;
     if (mg_path_is_foreign(from) || mg_path_is_foreign(to)) return mg_foreign_rename(from, to, err);
     a = wide_path(from);
@@ -3107,8 +3107,10 @@ bool mg_path_rename(const char *from, const char *to, int *err)
         }
         ok = posix_rename(a, b);
         if (ok) break;
+        posix_e = GetLastError();
         ok = replace_in_use(a, b);
         if (ok) break;
+        aside_e = GetLastError();
         ok = move_dir_in_use(a, b);
         if (ok) break;
         /* (A folder in the way with something in it, or a file where a folder is moved, stays so: said at once.) */
@@ -3119,9 +3121,15 @@ bool mg_path_rename(const char *from, const char *to, int *err)
     }
     if (!ok) {
         SetLastError(e);
+        /*
+         * With what each way round it said: POSIX's rename (not before Windows 10 1709: a phone's 15063 has none) and the file
+         * in the way moved aside first (replace_in_use). TikTok Lite's renames of its stores' "<id>--updating" over "<id>"
+         * failed so on a Lumia 650, 28 in two minutes (0.1.0.671 to 676), where Windows 11 replaces even a file mapped.
+         */
         if ((e == ERROR_ACCESS_DENIED || e == ERROR_SHARING_VIOLATION || e == ERROR_USER_MAPPED_FILE || e == ERROR_LOCK_VIOLATION) &&
             InterlockedIncrement(&said) <= 30)
-            mg_warn("io: %s could not be renamed to %s (Windows error %lu, after %d tries)", from, to, (unsigned long)e, tries);
+            mg_warn("io: %s could not be renamed to %s (Windows error %lu, after %d tries; POSIX's rename error %lu, the file in the way "
+                    "moved aside error %lu)", from, to, (unsigned long)e, tries, (unsigned long)posix_e, (unsigned long)aside_e);
         SET_ERR();
     }
     free(a);
