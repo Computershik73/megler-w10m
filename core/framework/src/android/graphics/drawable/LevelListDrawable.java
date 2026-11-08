@@ -3,6 +3,9 @@ package android.graphics.drawable;
 public class LevelListDrawable extends DrawableContainer {
     private final java.util.ArrayList<int[]> mRanges = new java.util.ArrayList<>();
     public void addLevel(int low, int high, Drawable d) { mRanges.add(new int[] { low, high }); addChild(d); onLevelChange(getLevel()); }
+    /* A copy (DrawableContainer's constant state): the same levels. */
+    @Override DrawableContainer meglerNewEmpty() { return new LevelListDrawable(); }
+    @Override void meglerAddCopy(DrawableContainer to, int i, Drawable child) { ((LevelListDrawable) to).addLevel(mRanges.get(i)[0], mRanges.get(i)[1], child); }
     @Override protected boolean onLevelChange(int l) {
         for (int i = 0; i < mRanges.size(); i++) if (l >= mRanges.get(i)[0] && l <= mRanges.get(i)[1]) return selectDrawable(i);
         return selectDrawable(-1);

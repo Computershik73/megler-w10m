@@ -6,6 +6,9 @@ public class AnimationDrawable extends DrawableContainer implements Runnable, An
     private int mFrame;
     public void addFrame(Drawable d, int duration) { addChild(d); mDurations.add(duration); if (mCurIndex < 0) selectDrawable(0); }
     public int getNumberOfFrames() { return mDurations.size(); }
+    /* A copy (DrawableContainer's constant state): the same frames and durations, one shot or not, not running. */
+    @Override DrawableContainer meglerNewEmpty() { AnimationDrawable a = new AnimationDrawable(); a.setOneShot(mOneShot); return a; }
+    @Override void meglerAddCopy(DrawableContainer to, int i, Drawable child) { ((AnimationDrawable) to).addFrame(child, mDurations.get(i)); }
     public Drawable getFrame(int i) { return mChildren.get(i); }
     public int getDuration(int i) { return mDurations.get(i); }
     public boolean isOneShot() { return mOneShot; }
