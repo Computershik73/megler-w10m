@@ -3403,6 +3403,7 @@ static void test_library(mg_lib *lib, const char *what, const char *scratch)
 #endif
     CHECK_INT(FN(lib, int (*)(void), "t_boot_id")(), 1);
     CHECK_INT(FN(lib, int (*)(void), "t_proc_status")(), 1);
+    CHECK_INT(FN(lib, int (*)(void), "t_proc_pid")(), 1);
     CHECK_INT(FN(lib, int (*)(void), "t_smaps")(), 4);
     CHECK_INT(FN(lib, int (*)(void), "t_props")(), 28);
     CHECK_INT(FN(lib, int (*)(void), "t_dl")(), 4);

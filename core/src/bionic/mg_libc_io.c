@@ -234,6 +234,27 @@ static char *without_alias(char *g)
 }
 
 /*
+ * /proc/<the app's own pid> and /proc/thread-self said as /proc/self, which they are on Linux: getpid() is 4242 here
+ * (bionic/mg_libc_misc.c), and the files made up for /proc/self are the process's. Tuya Smart's libthing_security.so
+ * reads /proc/<getpid()>/status, went on with fopen's NULL, and ended in fgets (0.1.0.673); Google Play services' safeboot
+ * said "Unable to access /proc/pid/status: /proc/4242/status". Takes `g`.
+ */
+static char *proc_self(char *g)
+{
+    static const char *const names[] = { "/proc/4242", "/proc/thread-self" };
+    size_t i;
+    for (i = 0; i < MG_COUNT(names); i++) {
+        size_t n = strlen(names[i]);
+        if (!strncmp(g, names[i], n) && (!g[n] || g[n] == '/')) {
+            char *out = mg_sprintf("/proc/self%s", g + n);
+            free(g);
+            return out;
+        }
+    }
+    return g;
+}
+
+/*
  * An absolute guest path with ".", ".." and doubled slashes resolved, and the
  * shared storage called by its one name; malloc'd.
  */
@@ -265,7 +286,7 @@ static char *normalize(const char *path)
     if (!n) out[n++] = '/';
     out[n] = 0;
     free(full);
-    return without_alias(out);
+    return without_alias(proc_self(out));
 }
 
 /* The mount a normalized path is in: the one with the longest prefix. */

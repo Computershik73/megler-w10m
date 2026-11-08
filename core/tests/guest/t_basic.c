@@ -614,6 +614,31 @@ int t_proc_status(void)
     return hwm >= 0 && rss >= 0 && hwm >= rss && peak >= size && size >= 0 && status_kb("VmSwap") == 0;
 }
 
+/* /proc/<its own pid>/status and /proc/thread-self/status, which are /proc/self's on Linux (Tuya's security library reads
+   the first): 1 when both open and say the process's pid on their Pid line. */
+int getpid(void);
+int strncmp(const char *, const char *, size_t);
+int t_proc_pid(void)
+{
+    static const char *const formats[2] = { "/proc/%d/status", "/proc/thread-self/status" };
+    char path[64], line[256];
+    int pid = getpid(), found = 0, k;
+    for (k = 0; k < 2; k++) {
+        void *f;
+        snprintf(path, sizeof(path), formats[k], pid);
+        f = fopen(path, "r");
+        if (!f) return 0;
+        while (fgets(line, sizeof(line), f)) {
+            int i = 5, n = 0;
+            if (strncmp(line, "Pid:\t", 5)) continue;
+            while (line[i] >= '0' && line[i] <= '9') n = n * 10 + (line[i++] - '0');
+            if (n == pid) found++;
+        }
+        fclose(f);
+    }
+    return found == 2;
+}
+
 /* /proc/self/smaps, as Instagram reads it for the page size: the first "KernelPageSize:" line's number of kB (4), or -1. */
 int t_smaps(void)
 {
