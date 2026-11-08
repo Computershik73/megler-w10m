@@ -1693,6 +1693,7 @@ public class Main extends Activity {
         insetFraction();
         workSource();
         resourcesLoader();
+        locationRequest();
         sound();
         mediaCodec();
         network();
@@ -5029,6 +5030,60 @@ public class Main extends Activity {
             return before == 0 && id != 0 && (id >>> 24) == 0x7f && "from the loader".equals(text) && "megler.test.loader".equals(pkg)
                     && mark != null && mark.getWidth() == 4 && mark.getPixel(1, 1) == 0xFF102030 && color == 0xFF102030
                     && !"from the loader".equals(own) && ok != null && !ok.isEmpty() && platform != getResources();
+        });
+    }
+
+    /**
+     * A LocationRequest as Android 12 and later make one: the builder keeps the interval and the rest, the minimum update
+     * interval a sixth of the interval until one is set, "any number" of updates (Integer.MAX_VALUE) until one is set; one of
+     * the deprecated provider -- createFromDeprecatedProvider, as Google Play services' location engine asks for the passive
+     * provider (hidden: by reflection) -- names its provider and the quality the passive provider stands for (POWER_NONE); one
+     * goes through a Parcel and comes back equal. And a request of the passive interval through LocationManager (Android 12's
+     * requestLocationUpdates with a LocationRequest, by reflection) is handed a fix on the main thread and removed:
+     * "location-passive ok", which the test waits for. (LocationRequest is Android 12's: stubs/.)
+     */
+    private void locationRequest() {
+        step("location-request", () -> {
+            android.location.LocationRequest r = new android.location.LocationRequest.Builder(6000).setMaxUpdates(3).setMinUpdateDistanceMeters(10f).build();
+            android.location.LocationRequest any = new android.location.LocationRequest.Builder(6000).build();
+            Object deprecated = android.location.LocationRequest.class.getMethod("createFromDeprecatedProvider", String.class, long.class, float.class, boolean.class)
+                    .invoke(null, "passive", 0L, 0f, false);
+            String provider = (String) deprecated.getClass().getMethod("getProvider").invoke(deprecated);
+            int quality = (Integer) deprecated.getClass().getMethod("getQuality").invoke(deprecated);
+            android.os.Parcel p = android.os.Parcel.obtain();
+            r.writeToParcel(p, 0);
+            p.setDataPosition(0);
+            android.location.LocationRequest back = android.location.LocationRequest.CREATOR.createFromParcel(p);
+            p.recycle();
+            final android.location.LocationManager lm = (android.location.LocationManager) getSystemService(Context.LOCATION_SERVICE);
+            android.location.LocationRequest passive = new android.location.LocationRequest.Builder(android.location.LocationRequest.PASSIVE_INTERVAL).build();
+            lm.getClass().getMethod("requestLocationUpdates", String.class, android.location.LocationRequest.class, java.util.concurrent.Executor.class,
+                    android.location.LocationListener.class).invoke(lm, android.location.LocationManager.PASSIVE_PROVIDER, passive, getMainExecutor(),
+                    new android.location.LocationListener() {
+                        private int calls;
+
+                        @Override
+                        public void onLocationChanged(android.location.Location l) {
+                            if (++calls != 1) return;
+                            boolean good = Math.abs(l.getLatitude() - 55.7512) < 0.01 && android.os.Looper.myLooper() == android.os.Looper.getMainLooper();
+                            Log.i("DataTest", "location-passive " + (good ? "ok" : "FAILED " + l));
+                            lm.removeUpdates(this);
+                        }
+
+                        @Override
+                        public void onProviderEnabled(String provider) {}
+
+                        @Override
+                        public void onProviderDisabled(String provider) {}
+
+                        @Override
+                        public void onStatusChanged(String provider, int status, android.os.Bundle extras) {}
+                    });
+            detail = "built " + r + " minUpdate=" + r.getMinUpdateIntervalMillis() + " any.max=" + any.getMaxUpdates() + " deprecated " + deprecated + " provider=" + provider
+                    + " quality=" + quality + " back=" + back;
+            return r.getIntervalMillis() == 6000 && r.getMaxUpdates() == 3 && r.getMinUpdateIntervalMillis() == 1000
+                    && r.getQuality() == android.location.LocationRequest.QUALITY_BALANCED_POWER_ACCURACY && any.getMaxUpdates() == Integer.MAX_VALUE
+                    && "passive".equals(provider) && quality == 200 && r.equals(back);
         });
     }
 

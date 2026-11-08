@@ -5213,6 +5213,19 @@ on a looper thread of its own and takes it back with `next()`.
   trace), and the app had no fix while Megler's own `LocationManager` had one:
   Transit, and the Google Maps "my location" layer (0.1.0.671). The data app's
   step "work-source" writes one so and reads it back.
+- `android/location/LocationRequest.java`, Android 14's in place of the
+  generated stub: its `Builder(intervalMillis)` forgot the interval, its
+  factories made a request of nothing, `getMaxUpdates` said 0 where Android
+  says "any number" (`Integer.MAX_VALUE`), and it wrote nothing into a parcel.
+  Google Play services' location engine in the app asks for the passive
+  provider with `createFromDeprecatedProvider("passive", ...)`, which came out
+  a request of the fused provider every `Long.MAX_VALUE` ms that was never
+  handed a fix. `megler/LocationService.java` hands a request of the passive
+  interval every new fix without it setting how often the location is
+  followed, and `LocationManager` takes Android's "any number" of updates for
+  its own 0. The data app's step "location-request" builds requests, makes
+  one of the deprecated provider, puts one through a parcel, and has one of
+  the passive interval handed a fix.
 - `android/app/usage/StorageStatsManager.java`, two methods in their two
   forms: `getTotalBytes` and `getFreeBytes` were signatures answering 0.
   Since Android 8 this is where an app asks how large the phone's storage is

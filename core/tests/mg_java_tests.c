@@ -2608,6 +2608,8 @@ static int run_data(void)
                                          /* And a module's resources as Google Play services' DynamiteLoader makes them: the platform's
                                             with a ResourcesLoader of an APK of resources alone added (the app's assets/loader.apk). */
                                          "resources-loader",
+                                         /* And a LocationRequest as Android 12 makes one, and a request of the passive interval through LocationManager. */
+                                         "location-request",
                                          "audio-track", "media-player", "media-player-ogg", "sound-pool",
                                          /* And MediaCodec over the stand-in for the shell's decoders: H.264 shown on a Surface in display
                                             order, a flush, parameter sets in a codec-config buffer, the asynchronous mode, AAC with an
@@ -2676,6 +2678,8 @@ static int run_data(void)
     /* The phone's location, asked for in the step "location": a fix delivered on the main thread, after which the listener is
        removed and the location no longer followed. */
     CHECK(wait_line("I/DataTest: location-update ok", 0, 30) >= 0);
+    /* And the request of the passive interval of the step "location-request": a fix, on the main thread, after which it is removed. */
+    CHECK(wait_line("I/DataTest: location-passive ok", 0, 30) >= 0);
     {
         int starts = 0, stops = 0, tries;
         for (tries = 0; tries < 40; tries++) {

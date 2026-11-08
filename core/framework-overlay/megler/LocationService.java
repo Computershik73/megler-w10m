@@ -16,6 +16,9 @@
 // that the next call finds one, as on a phone something has always just asked. Until the user has been asked, the location
 // counts as on, so that an app that first checks isProviderEnabled("gps") goes on to ask for it; nothing is asked then.
 //
+// A request of the passive interval (LocationRequest.PASSIVE_INTERVAL, Long.MAX_VALUE) is handed every new fix and does not
+// set how often the location is followed.
+//
 // The log says each request as it comes, whose it is (the listener's class, the PendingIntent's package, the consumer's class)
 // and how often, and the first fix each is handed: whether an app that finds no location asked at all, and whether a fix
 // reached what it asked through (Google Play services' fused provider asks here for the app). At most 40 lines a run.
@@ -56,7 +59,12 @@ public final class LocationService {
         long fixTime;
         Location delivered;
         boolean toldDisabled;
+        /** Of the passive interval: handed every new fix, and no say in how often the location is followed. */
+        boolean passive;
     }
+
+    /** A request's minimum time that is the passive interval (LocationRequest.PASSIVE_INTERVAL, and what its deprecated factories make of it). */
+    private static boolean passiveInterval(long minTimeMs) { return minTimeMs >= Long.MAX_VALUE - 1; }
 
     private static final Object LOCK = new Object();
     private static final ArrayList<Request> REQUESTS = new ArrayList<>();
@@ -123,7 +131,8 @@ public final class LocationService {
         if (listener == null) throw new IllegalArgumentException("invalid null listener");
         Request r = new Request();
         r.provider = provider;
-        r.minTimeMs = Math.max(0, minTimeMs);
+        r.passive = passiveInterval(minTimeMs);
+        r.minTimeMs = r.passive ? 0 : Math.max(0, minTimeMs);
         r.minDistanceM = Math.max(0, minDistanceM);
         r.listener = listener;
         r.executor = executor != null ? executor : executorFor(null);
@@ -136,7 +145,8 @@ public final class LocationService {
         if (pending == null) throw new IllegalArgumentException("invalid null pending intent");
         Request r = new Request();
         r.provider = provider;
-        r.minTimeMs = Math.max(0, minTimeMs);
+        r.passive = passiveInterval(minTimeMs);
+        r.minTimeMs = r.passive ? 0 : Math.max(0, minTimeMs);
         r.minDistanceM = Math.max(0, minDistanceM);
         r.pending = pending;
         r.context = context;
@@ -203,7 +213,8 @@ public final class LocationService {
 
     private static void add(Request r, LocationListener sameListener, PendingIntent samePending) {
         say(r.consumer != null ? "one fix (getCurrentLocation) of " + r.provider + " for " + whose(r)
-                : r.provider + " every " + r.minTimeMs + " ms" + (r.minDistanceM > 0 ? " and " + r.minDistanceM + " m" : "")
+                : r.provider + (r.passive ? " at the passive interval (every fix found for others)" : " every " + r.minTimeMs + " ms")
+                  + (r.minDistanceM > 0 ? " and " + r.minDistanceM + " m" : "")
                   + (r.remaining > 0 ? ", " + r.remaining + " updates," : "") + " for " + whose(r));
         synchronized (LOCK) {
             for (int i = REQUESTS.size() - 1; i >= 0; i--) {
@@ -227,10 +238,16 @@ public final class LocationService {
         sWorker.start();
     }
 
+    /** How often the location is followed: the shortest minimum time asked for, the passive requests' aside (60 s for those alone). */
     private static int interval(ArrayList<Request> now) {
         long ms = Long.MAX_VALUE;
-        for (Request r : now) ms = Math.min(ms, r.minTimeMs);
-        if (ms == Long.MAX_VALUE) ms = FASTEST_MS;
+        boolean any = false;
+        for (Request r : now) {
+            if (r.passive) continue;
+            ms = Math.min(ms, r.minTimeMs);
+            any = true;
+        }
+        if (!any) ms = now.isEmpty() ? FASTEST_MS : 60000;
         return (int) Math.max(FASTEST_MS, Math.min(ms, 60000));
     }
 

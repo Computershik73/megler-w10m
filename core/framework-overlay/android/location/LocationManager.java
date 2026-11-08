@@ -129,15 +129,15 @@ public class LocationManager {
     public void requestLocationUpdates(long p0, float p1, android.location.Criteria p2, android.app.PendingIntent p3) { megler.LocationService.request(provider(p2), p0, p1, p3, mContext, 0); }
     public void requestLocationUpdates(long p0, float p1, android.location.Criteria p2, android.location.LocationListener p3, android.os.Looper p4) { megler.LocationService.request(provider(p2), p0, p1, p3, megler.LocationService.executorFor(p4), 0); }
     public void requestLocationUpdates(long p0, float p1, android.location.Criteria p2, java.util.concurrent.Executor p3, android.location.LocationListener p4) { megler.LocationService.request(provider(p2), p0, p1, p4, p3, 0); }
-    public void requestLocationUpdates(android.location.LocationRequest p0, android.app.PendingIntent p1) { megler.LocationService.request(providerOf(p0), intervalOf(p0), p0.getMinUpdateDistanceMeters(), p1, mContext, p0.getMaxUpdates()); }
-    public void requestLocationUpdates(android.location.LocationRequest p0, android.location.LocationListener p1, android.os.Looper p2) { megler.LocationService.request(providerOf(p0), intervalOf(p0), p0.getMinUpdateDistanceMeters(), p1, megler.LocationService.executorFor(p2), p0.getMaxUpdates()); }
-    public void requestLocationUpdates(android.location.LocationRequest p0, java.util.concurrent.Executor p1, android.location.LocationListener p2) { megler.LocationService.request(providerOf(p0), intervalOf(p0), p0.getMinUpdateDistanceMeters(), p2, p1, p0.getMaxUpdates()); }
+    public void requestLocationUpdates(android.location.LocationRequest p0, android.app.PendingIntent p1) { megler.LocationService.request(providerOf(p0), intervalOf(p0), p0.getMinUpdateDistanceMeters(), p1, mContext, maxOf(p0)); }
+    public void requestLocationUpdates(android.location.LocationRequest p0, android.location.LocationListener p1, android.os.Looper p2) { megler.LocationService.request(providerOf(p0), intervalOf(p0), p0.getMinUpdateDistanceMeters(), p1, megler.LocationService.executorFor(p2), maxOf(p0)); }
+    public void requestLocationUpdates(android.location.LocationRequest p0, java.util.concurrent.Executor p1, android.location.LocationListener p2) { megler.LocationService.request(providerOf(p0), intervalOf(p0), p0.getMinUpdateDistanceMeters(), p2, p1, maxOf(p0)); }
     public void requestLocationUpdates(java.lang.String p0, long p1, float p2, android.app.PendingIntent p3) { check(p0); megler.LocationService.request(p0, p1, p2, p3, mContext, 0); }
     public void requestLocationUpdates(java.lang.String p0, long p1, float p2, android.location.LocationListener p3) { check(p0); megler.LocationService.request(p0, p1, p2, p3, megler.LocationService.executorFor(null), 0); }
     public void requestLocationUpdates(java.lang.String p0, long p1, float p2, android.location.LocationListener p3, android.os.Looper p4) { check(p0); megler.LocationService.request(p0, p1, p2, p3, megler.LocationService.executorFor(p4), 0); }
     public void requestLocationUpdates(java.lang.String p0, long p1, float p2, java.util.concurrent.Executor p3, android.location.LocationListener p4) { check(p0); megler.LocationService.request(p0, p1, p2, p4, p3, 0); }
-    public void requestLocationUpdates(java.lang.String p0, android.location.LocationRequest p1, android.app.PendingIntent p2) { check(p0); megler.LocationService.request(p0, intervalOf(p1), p1.getMinUpdateDistanceMeters(), p2, mContext, p1.getMaxUpdates()); }
-    public void requestLocationUpdates(java.lang.String p0, android.location.LocationRequest p1, java.util.concurrent.Executor p2, android.location.LocationListener p3) { check(p0); megler.LocationService.request(p0, intervalOf(p1), p1.getMinUpdateDistanceMeters(), p3, p2, p1.getMaxUpdates()); }
+    public void requestLocationUpdates(java.lang.String p0, android.location.LocationRequest p1, android.app.PendingIntent p2) { check(p0); megler.LocationService.request(p0, intervalOf(p1), p1.getMinUpdateDistanceMeters(), p2, mContext, maxOf(p1)); }
+    public void requestLocationUpdates(java.lang.String p0, android.location.LocationRequest p1, java.util.concurrent.Executor p2, android.location.LocationListener p3) { check(p0); megler.LocationService.request(p0, intervalOf(p1), p1.getMinUpdateDistanceMeters(), p3, p2, maxOf(p1)); }
     public void requestSingleUpdate(android.location.Criteria p0, android.app.PendingIntent p1) { megler.LocationService.request(provider(p0), 0, 0, p1, mContext, 1); }
     public void requestSingleUpdate(android.location.Criteria p0, android.location.LocationListener p1, android.os.Looper p2) { megler.LocationService.request(provider(p0), 0, 0, p1, megler.LocationService.executorFor(p2), 1); }
     public void requestSingleUpdate(java.lang.String p0, android.app.PendingIntent p1) { check(p0); megler.LocationService.request(p0, 0, 0, p1, mContext, 1); }
@@ -174,6 +174,12 @@ public class LocationManager {
     private static long intervalOf(android.location.LocationRequest r) {
         long ms = r.getIntervalMillis();
         return ms > 0 ? ms : r.getInterval();
+    }
+
+    /* A request's updates: Android's "any number" (Integer.MAX_VALUE) is LocationService's 0. */
+    private static int maxOf(android.location.LocationRequest r) {
+        int n = r.getMaxUpdates();
+        return n == Integer.MAX_VALUE ? 0 : n;
     }
 
     private static String providerOf(android.location.LocationRequest r) {
