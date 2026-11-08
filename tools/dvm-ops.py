@@ -84,6 +84,21 @@ def frem(a, b):
         return NAN
 
 
+def l2f(a):
+    """long to float as Java converts it: rounded once, to the nearest float, from the long itself. (float(a) would round
+    to a double first, and that second rounding can differ: 2^60 + 2^36 + 1 is above the halfway point, its double is on
+    it.)"""
+    m = abs(a)
+    if m.bit_length() <= 24:
+        return float(a)
+    shift = m.bit_length() - 24
+    q, r = divmod(m, 1 << shift)
+    half = 1 << (shift - 1)
+    if r > half or (r == half and q & 1):
+        q += 1
+    return f32(float(q << shift)) * (-1 if a < 0 else 1)
+
+
 def to_int(x, lo, hi):
     """float or double to int or long: NaN is zero, out of range is the nearest end, the rest loses its fraction."""
     if x != x:
@@ -122,21 +137,39 @@ FLOAT_PAIRS = [(1.5, 2.25), (-7.5, 2.0), (1e30, 1e30), (0.0, 0.0), (1.0, 0.0), (
 DOUBLE_PAIRS = [(1.5, 2.25), (-7.5, 2.0), (1e300, 1e300), (0.0, 0.0), (1.0, 0.0), (-1.0, 0.0), (NAN, 1.0), (INF, INF), (INF, 2.0), (5.5, -2.0),
                 (4.9e-324, 0.5), (1.7976931348623157e308, 1.7976931348623157e308), (0.1, 0.2)]
 INTS = [0, 1, -1, 127, 128, -129, 65535, 65536, 0x12345678, -0x12345678, IMAX, IMIN]
-LONGS = [0, 1, -1, 0x7FFFFFFF, 0x80000000, -0x80000001, 123456789012345, (1 << 24) + 1, 1 << 62, LMAX - 0x3FF, LMIN, 0x123456789ABCDEF0]
-FLOATS = [0.0, -0.0, 1.0, -1.5, 2.5, 0.99, -0.99, 2147483520.0, 3e9, -3e9, 1e19, -1e19, 3.4028235e38, 1.4e-45, INF, -INF, NAN]
+LONGS = [0, 1, -1, 0x7FFFFFFF, 0x80000000, -0x80000001, 123456789012345, (1 << 24) + 1, 1 << 62, LMAX - 0x3FF, LMIN, 0x123456789ABCDEF0,
+         0xFFFFFFFF, -0x100000000, (1 << 60) + (1 << 36) + 1, -((1 << 60) + (1 << 36) + 1), (1 << 53) + 3, -((1 << 55) + (1 << 31) + 1)]
+FLOATS = [0.0, -0.0, 1.0, -1.5, 2.5, 0.99, -0.99, 2147483520.0, 3e9, -3e9, 1e19, -1e19, 3.4028235e38, 1.4e-45, INF, -INF, NAN,
+          2147483648.0, -2147483648.0, 1e10, -1e10, 4.6e18, -9.2e18, -9223372036854775808.0]
 DOUBLES = [0.0, -0.0, 1.0, -1.5, 2.5, 0.99, -0.99, 2147483647.0, 2147483648.5, -2147483649.5, 9.3e18, -9.3e18, 1e300, 4.9e-324, 3.5e38, 1.0000000001, INF,
-           -INF, NAN]
+           -INF, NAN, 2147483648.0, -2147483648.0, 4294967297.75, -4294967297.75, 4611686018427387904.0, -4611686018427387904.0, 9.2e18, -9.2e18,
+           -9223372036854775808.0, 9223372036854774784.0]
 
 smali = []
 cases = []
 
 
-def method(name, sig, registers, body):
+def ins_words(sig):
+    """The registers a method's parameters take: two for a long or a double."""
+    return sum(2 if k in 'JD' else 1 for k in sig[1:sig.index(')')])
+
+
+def emit(name, sig, registers, body):
     smali.append('.method public static %s%s' % (name, sig))
     smali.append('    .registers %d' % registers)
-    smali.extend('    ' + line if not line.startswith(':') else '    ' + line for line in body)
+    smali.extend('    ' + line for line in body)
     smali.append('.end method')
     smali.append('')
+
+
+def method(name, sig, registers, body):
+    emit(name, sig, registers, body)
+    # Its twin for the JIT (mg_dvm_tests.c, test_ops_jit): the same body in the second turn of a loop, which a JIT whose
+    # threshold is 1 compiles at its first jump back -- the instruction then runs as compiled code, whose answer must be
+    # Java's as much as the interpreter's. Its counter is a register more after the method's own locals (pc 1 the loop's head).
+    k = 'v%d' % (registers - ins_words(sig))
+    emit(name + '_jit', sig, registers + 1, ['const/4 %s, 0x0' % k, ':jit_loop', 'if-eqz %s, :jit_skip' % k] + body +
+         [':jit_skip', 'add-int/lit8 %s, %s, 0x1' % (k, k), 'goto :jit_loop'])
 
 
 def enc(kind, v):
@@ -220,7 +253,7 @@ def build():
         ('neg-float', 'F', 'F', FLOATS, neg_real), ('neg-double', 'D', 'D', DOUBLES, neg_real),
         ('int-to-long', 'I', 'J', INTS, lambda a: a), ('int-to-float', 'I', 'F', INTS, lambda a: f32(float(a))),
         ('int-to-double', 'I', 'D', INTS, lambda a: float(a)),
-        ('long-to-int', 'J', 'I', LONGS, s32), ('long-to-float', 'J', 'F', LONGS, lambda a: f32(float(a))),
+        ('long-to-int', 'J', 'I', LONGS, s32), ('long-to-float', 'J', 'F', LONGS, l2f),
         ('long-to-double', 'J', 'D', LONGS + [(1 << 53) + 1, -((1 << 53) + 3)], lambda a: float(a)),
         ('float-to-int', 'F', 'I', FLOATS, lambda a: to_int(a, IMIN, IMAX)), ('float-to-long', 'F', 'J', FLOATS, lambda a: to_int(a, LMIN, LMAX)),
         ('float-to-double', 'F', 'D', FLOATS, lambda a: a),

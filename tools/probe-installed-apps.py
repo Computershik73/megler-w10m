@@ -23,7 +23,7 @@ packages = json.loads(phone.get('/api/app/packagemanager/packages'))['InstalledP
 encode = lambda value: base64.b64encode(value.encode()).decode()
 results = []
 for app in args.app:
-    prefix = ('MeglerApp.' + app.replace('_', '-'))[:41]
+    prefix = phone.app_identity_prefix(app)
     matches = [p for p in packages if p['PackageFullName'].split('_')[0].startswith(prefix)]
     if len(matches) != 1:
         raise RuntimeError('expected one installed package for ' + app)

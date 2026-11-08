@@ -87,7 +87,7 @@ static mg_addr stack_guard(void)
     return guard;
 }
 
-#if (MG_ARCH_X86_64 || MG_ARCH_ARM32) && MG_GUEST_CODE
+#if (MG_ARCH_X86_64 || MG_ARCH_ARM64 || MG_ARCH_ARM32) && MG_GUEST_CODE
 /* Whether every block gets a stack for system calls (MG_TCB_SYSCALL): since a library has one of its own led out. */
 static bool g_syscall_stacks;
 
@@ -104,6 +104,25 @@ void mg_tls_syscall_stacks(void)
     mg_lock_release(&g_tls_lock);
 }
 #endif
+
+bool mg_tls_syscall_stack_in(const void *base, size_t size)
+{
+#if (MG_ARCH_X86_64 || MG_ARCH_ARM64 || MG_ARCH_ARM32) && MG_GUEST_CODE
+    tls_block *b;
+    bool in = false;
+    mg_lock_acquire(&g_tls_lock);
+    for (b = g_blocks; b && !in; b = b->next) {
+        const u8 *s = (const u8 *)b->tcb[MG_TCB_SYSCALL];
+        in = s && s >= (const u8 *)base && s < (const u8 *)base + size;
+    }
+    mg_lock_release(&g_tls_lock);
+    return in;
+#else
+    (void)base;
+    (void)size;
+    return false;
+#endif
+}
 
 void **mg_tls_thread_pointer(void)
 {
@@ -123,7 +142,7 @@ void **mg_tls_thread_pointer(void)
     b->next = g_blocks;
     if (g_blocks) g_blocks->prev = b;
     g_blocks = b;
-#if (MG_ARCH_X86_64 || MG_ARCH_ARM32) && MG_GUEST_CODE
+#if (MG_ARCH_X86_64 || MG_ARCH_ARM64 || MG_ARCH_ARM32) && MG_GUEST_CODE
     if (g_syscall_stacks) {
         void *lo = NULL, *hi = NULL;
         mg_thread_stack_bounds(&lo, &hi);
@@ -147,7 +166,7 @@ void mg_tls_thread_exit(void)
     if (b->next) b->next->prev = b->prev;
     mg_lock_release(&g_tls_lock);
     mg_guest_tp_set(NULL);
-#if (MG_ARCH_X86_64 || MG_ARCH_ARM32) && MG_GUEST_CODE
+#if (MG_ARCH_X86_64 || MG_ARCH_ARM64 || MG_ARCH_ARM32) && MG_GUEST_CODE
     if (b->tcb[MG_TCB_SYSCALL]) mg_patch_syscall_stack_free(b->tcb[MG_TCB_SYSCALL]);
 #endif
     free(b);

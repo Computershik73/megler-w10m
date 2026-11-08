@@ -1,6 +1,8 @@
-"""A library built for another ABI, held against the armeabi-v7a library of the same name.
+"""A library built for another ABI, held against the armeabi-v7a library of the same name;
+or a library built in place of Android's own of the same ABI, held against that one.
 
   abidiff.py CXXFILT ABI LIBRARY ARMEABI-V7A-LIBRARY built|copied
+  abidiff.py CXXFILT ABI LIBRARY ANDROIDS-LIBRARY replaces
 
 tools/android9-natives.sh asks this of every library it builds or copies for
 arm64-v8a, x86_64 or x86. The two must need the same libraries in the same
@@ -13,6 +15,14 @@ reason, `-` before a name armeabi-v7a's library imports and this one does not,
 1) for a library built here. Android's own libcrypto.so and libssl.so differ
 from their ARM build in more (their ARM unwinder, their CPU probing): there it
 is said and not held against them.
+
+`replaces`: arm64's libcrypto.so and libssl.so are built from BoringSSL's
+sources in place of Android 9's own arm64 ones (which write x18), and are held
+against those: the same SONAME, the same DT_NEEDED, every name Android's
+exports (but NOT_INTERFACE's: what Android's link put there by accident, which
+no library may import from them) and no other, and the same imports but for
+FORTIFY's (a call checked in one build, plain in the other), each said with its
+reason. Anything else is a reason to stop.
 
 CXXFILT is a c++filt (the NDK's arm-linux-androideabi-c++filt: the C++ ABI's
 mangling is the same for every processor).
@@ -66,6 +76,26 @@ BECAUSE = [
 ]
 DATA_MODEL = 'size_t or int64_t, spelled for 64 bits'       # C++ names that are one function (see portable())
 
+# `replaces`: the names Android 9's own arm64 libcrypto.so and libssl.so export that are no part of BoringSSL's
+# interface, but what Android's link left there (a whole name, as a regular expression; the reason, as said). The
+# libraries built on these are linked against them with --no-undefined, so none of them imports one.
+NOT_INTERFACE = [
+    (r'__bss_start|_edata|_end', "GNU ld's marks of where the data ends, which lld does not export"),
+    (r'__udivti3|__umodti3|__clz_tab', "libgcc's 128-bit division, linked into Android's libcrypto and exported with it; "
+                                       "here the compiler's runtime is each library's own, hidden"),
+]
+# `replaces`: the one way two builds of the same sources for the same ABI import differently here is FORTIFY, which
+# keeps a call's check (__read_chk, __open_2) in one and folds it into the plain call (read, open) in the other: Android
+# built BoringSSL with Android 9's clang and bionic's headers, this is built with the NDK's (r21, API 28), whose
+# FORTIFY decides otherwise for a few calls. A name is accounted for so when the other library imports its other form.
+FORTIFY = 'FORTIFY: the checked and the plain form of one function'
+
+
+def fortify_pair(name, other):
+    """Whether `name` and a name `other` imports are the plain and the checked form of one function."""
+    m = re.fullmatch(r'__(\w+?)_(chk|2)', name)
+    return '__%s_chk' % name in other or '__%s_2' % name in other or (m is not None and m.group(1) in other)
+
 _INTS = [
     (re.compile(r'\bunsigned long long\b'), 'UINT'), (re.compile(r'\bunsigned long\b'), 'UINT'),
     (re.compile(r'\bunsigned int\b'), 'UINT'),
@@ -96,10 +126,45 @@ def portable(demangled):
     return demangled
 
 
+def replaces(mine, android):
+    """LIBRARY built in place of ANDROIDS-LIBRARY, of the same ABI: 0 when it can stand in for it."""
+    bad = 0
+    if mine.soname() != android.soname() or mine.needed() != android.needed():
+        print('      SONAME %s, DT_NEEDED %s; Android\'s: %s, %s' % (mine.soname(), ' '.join(mine.needed()), android.soname(),
+                                                                   ' '.join(android.needed())))
+        bad = 1
+    else:
+        print('      the same SONAME (%s) and DT_NEEDED (%s) as Android\'s own' % (mine.soname(), ' '.join(mine.needed())))
+    for what, have, theirs in (('exported', set(mine.exports()), set(android.exports())),
+                               ('imported', set(mine.imports()), set(android.imports()))):
+        said, left = collections.OrderedDict(), []
+        for sign, names, other in (('-', theirs - have, have), ('+', have - theirs, theirs)):
+            for n in sorted(names):
+                why = None
+                if what == 'exported' and sign == '-':
+                    why = next((w for rx, w in NOT_INTERFACE if re.fullmatch(rx, n)), None)
+                elif what == 'imported' and fortify_pair(n, other):
+                    why = FORTIFY
+                if why:
+                    said.setdefault(why, []).append(sign + n)
+                else:
+                    left.append(sign + n)
+        print('      %d names %s (Android\'s %d): %d of them Android\'s too, %d differ'
+              % (len(have), what, len(theirs), len(have & theirs), len(have ^ theirs)))
+        for why, names in said.items():
+            print('        %s (%s)' % (' '.join(names), why))
+        if left:
+            print('        %s (NOT accounted for: - %s by Android\'s alone, + by this one alone)' % (' '.join(left), what))
+            bad = 1
+    return bad
+
+
 def main():
-    if len(sys.argv) != 6 or sys.argv[5] not in ('built', 'copied'):
+    if len(sys.argv) != 6 or sys.argv[5] not in ('built', 'copied', 'replaces'):
         raise SystemExit(__doc__)
     cxxfilt, abi, path, ref_path, how = sys.argv[1:]
+    if how == 'replaces':
+        return replaces(Elf(path), Elf(ref_path))
     mine, arm = Elf(path), Elf(ref_path)
     if mine.needed() != arm.needed():
         print('      DT_NEEDED: %s; armeabi-v7a\'s: %s' % (' '.join(mine.needed()), ' '.join(arm.needed())))

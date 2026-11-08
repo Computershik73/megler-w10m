@@ -53,6 +53,35 @@ static int collate_binary(void *user, int na, const void *a, int nb, const void 
     return r ? r : na - nb;
 }
 
+/*
+ * A database file in the write-ahead log's format -- bytes 18 and 19 of its header 2 -- made one of the rollback journal's.
+ * The core's SQLite has no shared memory (sqlite/mg_sqlite.c), so it cannot open such a file at all: the first statement
+ * on it fails with SQLITE_CANTOPEN. Android writes its databases so, and they come back so from a backup: WhatsApp's
+ * restore from Google Drive ended in "unable to open database file (code 14) ... PRAGMA journal_mode=WAL" on every
+ * worker that opened its databases (0.1.0.672). In exclusive locking mode SQLite keeps the log's index in its own memory
+ * and needs none shared; journal_mode=DELETE then copies whatever the -wal holds into the database and writes the
+ * header's bytes as 1. Under the open lock, so that the app's threads opening the same file at once convert it once.
+ */
+static void unwal(const char *host, const char *path)
+{
+    unsigned char head[20];
+    sqlite3 *db = NULL;
+    int err = 0, rc;
+    mg_file *f = mg_file_open(host, MG_O_READ, &err);
+    if (!f) return;
+    rc = mg_file_pread(f, head, sizeof(head), 0, NULL) == (i64)sizeof(head) && head[18] == 2 && head[19] == 2;
+    mg_file_close(f);
+    if (!rc) return;
+    rc = sqlite3_open_v2(host, &db, SQLITE_OPEN_READWRITE | SQLITE_OPEN_FULLMUTEX, NULL);
+    if (rc == SQLITE_OK) {
+        sqlite3_busy_timeout(db, 5000);
+        rc = sqlite3_exec(db, "PRAGMA locking_mode=EXCLUSIVE; PRAGMA journal_mode=DELETE;", NULL, NULL, NULL);
+    }
+    mg_info("sqlite: %s was in the write-ahead log's format, which this SQLite cannot open: %s", path,
+            rc == SQLITE_OK ? "made a rollback journal's, its log written into it" : db ? sqlite3_errmsg(db) : sqlite3_errstr(rc));
+    if (db) sqlite3_close(db);
+}
+
 /* open(path, flags): Android's OPEN_READONLY (1) and CREATE_IF_NECESSARY (0x10000000). The handle, or 0. */
 N(Sqlite_open)
 {
@@ -70,6 +99,11 @@ N(Sqlite_open)
         return;
     }
     if (path && path[0] && strcmp(path, ":memory:")) host = mg_fs_host_path(path);
+    if (host && !(asked & 1)) {
+        mg_lock_acquire(&g_open_lock);
+        unwal(host, path);
+        mg_lock_release(&g_open_lock);
+    }
     rc = sqlite3_open_v2(host ? host : path && path[0] ? path : ":memory:", &db, flags, NULL);
     if (rc != SQLITE_OK) {
         mg_lock_acquire(&g_open_lock);

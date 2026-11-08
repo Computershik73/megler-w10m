@@ -749,6 +749,170 @@ public class Lib {
         return sb.toString();
     }
 
+    private static byte[] unhex(String text) {
+        byte[] out = new byte[text.length() / 2];
+        for (int i = 0; i < out.length; i++) out[i] = (byte) Integer.parseInt(text.substring(2 * i, 2 * i + 2), 16);
+        return out;
+    }
+
+    /* The test server's key and certificate, the data app's (core/tests/app/data): EC P-256, for 127.0.0.1 and localhost, its own issuer, valid until 2126. */
+    private static final String TLS_CERT = "MIIBmzCCAUGgAwIBAgIUSCkkSCVXmr4YGF4nBH/UqsiQrrEwCgYIKoZIzj0EAwIwFDESMBAGA1UEAwwJbG9jYWxob3N0MCAXDTI2MTAxNDE5NDkwN1oYDzIx"
+            + "MjYwOTIwMTk0OTA3WjAUMRIwEAYDVQQDDAlsb2NhbGhvc3QwWTATBgcqhkjOPQIBBggqhkjOPQMBBwNCAASSOKxorFlV2PxAaplmg0VzCo6g5dcgejzgpERSfmqr"
+            + "UCxTzAdCDQLxcLOZCYgMKwUHK2eyrVByyAtXT+l2f5t3o28wbTAdBgNVHQ4EFgQUlQdcW7Xv7E4n8iyupv2dBZoWQg0wHwYDVR0jBBgwFoAUlQdcW7Xv7E4n8iyu"
+            + "pv2dBZoWQg0wDwYDVR0TAQH/BAUwAwEB/zAaBgNVHREEEzARhwR/AAABgglsb2NhbGhvc3QwCgYIKoZIzj0EAwIDSAAwRQIhANZj3S08wMis2aZyDna2u0yD7uCg"
+            + "z9HYDYREfE1Ss5ArAiA+Y1r8tv+lwWIh8fhqvc3nS+gF3Y67jscJtaox+zq1/Q==";
+    private static final String TLS_KEY = "MIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQgxyjM+eEJTgNZNj8S0HvPUp/EYUsW7SCywlDYtxPU9QKhRANCAASSOKxorFlV2PxAaplm"
+            + "g0VzCo6g5dcgejzgpERSfmqrUCxTzAdCDQLxcLOZCYgMKwUHK2eyrVByyAtXT+l2f5t3";
+
+    /** Copies what one socket hears to another until it ends, then ends the other's way out; what passed is kept too, where asked. */
+    static void relay(java.net.Socket from, java.net.Socket to, ByteArrayOutputStream kept) {
+        byte[] buffer = new byte[4096];
+        try {
+            for (int n; (n = from.getInputStream().read(buffer)) > 0;) {
+                if (kept != null) kept.write(buffer, 0, n);
+                to.getOutputStream().write(buffer, 0, n);
+                to.getOutputStream().flush();
+            }
+        } catch (IOException e) {
+            // (a socket closed under it, or nothing came for 20 s: the end)
+        }
+        try {
+            to.shutdownOutput();
+        } catch (IOException e) {
+            // (the other side is gone already)
+        }
+    }
+
+    /**
+     * The ECDHE group a TLS 1.2 server chose, out of what it sent before its keys changed: its handshake records up to
+     * ChangeCipherSpec, in which the ServerKeyExchange names the group (RFC 8422: curve type 3, named_curve, the group,
+     * the length of the server's share). As TLS names it, with that length.
+     */
+    static String serverGroup(byte[] wire) {
+        ByteArrayOutputStream handshake = new ByteArrayOutputStream();
+        for (int at = 0; at + 5 <= wire.length;) {
+            int length = ((wire[at + 3] & 255) << 8) | (wire[at + 4] & 255);
+            if (wire[at] != 22 || at + 5 + length > wire.length) break;
+            handshake.write(wire, at + 5, length);
+            at += 5 + length;
+        }
+        byte[] h = handshake.toByteArray();
+        for (int at = 0; at + 8 <= h.length;) {
+            int type = h[at] & 255, length = ((h[at + 1] & 255) << 16) | ((h[at + 2] & 255) << 8) | (h[at + 3] & 255);
+            if (type == 12 && (h[at + 4] & 255) == 3) {
+                int group = ((h[at + 5] & 255) << 8) | (h[at + 6] & 255);
+                String name = group == 29 ? "x25519" : group == 23 ? "secp256r1" : group == 24 ? "secp384r1" : "group-" + group;
+                return name + "(" + (h[at + 7] & 255) + ")";
+            }
+            at += 4 + length;
+        }
+        return "no-ServerKeyExchange";
+    }
+
+    /**
+     * What an app's TLS runs on. AES-128-GCM: test case 4 of GCM's specification (McGrew and Viega: 60 bytes, 20 of
+     * associated data) sealed and opened, and refused once a bit of it is changed. Then a TLS 1.2 handshake with a
+     * server of the test's own on 127.0.0.1 (the data app's EC P-256 key), ECDHE_ECDSA with AES-128-GCM, a line each
+     * way. On Android all of it is conscrypt's, over BoringSSL's libcrypto and libssl. The client reaches the server
+     * through a relay of the test's own, which keeps what the server sent: the ECDHE group it chose is the one thing
+     * Java's API does not say. The JVM's (Java 8's SunJSSE) is secp256r1; BoringSSL's, x25519 (lib-android.txt).
+     */
+    public static String lib_tls() throws Exception {
+        StringBuilder sb = new StringBuilder();
+        javax.crypto.spec.SecretKeySpec key = new javax.crypto.spec.SecretKeySpec(unhex("feffe9928665731c6d6a8f9467308308"), "AES");
+        byte[] iv = unhex("cafebabefacedbaddecaf888"), aad = unhex("feedfacedeadbeeffeedfacedeadbeefabaddad2");
+        byte[] plain = unhex("d9313225f88406e5a55909c5aff5269a86a7a9531534f7da2e4c303d8a318a721c3c0c95956809532fcf0e2449a6b525b16aedf5aa0de657ba637b39");
+        javax.crypto.Cipher gcm = javax.crypto.Cipher.getInstance("AES/GCM/NoPadding");
+        gcm.init(javax.crypto.Cipher.ENCRYPT_MODE, key, new javax.crypto.spec.GCMParameterSpec(128, iv));
+        gcm.updateAAD(aad);
+        byte[] sealed = gcm.doFinal(plain);
+        String published = "42831ec2217774244b7221b784d0d49ce3aa212f2c02a4e035c17e2329aca12e21d514b25466931c7d8f6a5aac84aa051ba30b396a0aac973d58e091"
+                + "5bc94fbc3221a5db94fae95ae7121a47";
+        sb.append(sealed.length).append(' ').append(hex(sealed).substring(120)).append(' ').append(hex(sealed).equals(published));
+        gcm.init(javax.crypto.Cipher.DECRYPT_MODE, key, new javax.crypto.spec.GCMParameterSpec(128, iv));
+        gcm.updateAAD(aad);
+        sb.append(Arrays.equals(gcm.doFinal(sealed), plain));
+        sealed[7] ^= 1;
+        gcm.init(javax.crypto.Cipher.DECRYPT_MODE, key, new javax.crypto.spec.GCMParameterSpec(128, iv));
+        gcm.updateAAD(aad);
+        try {
+            gcm.doFinal(sealed);
+            sb.append(" opened");
+        } catch (javax.crypto.AEADBadTagException e) {
+            sb.append(" AEADBadTagException");
+        }
+
+        java.security.cert.X509Certificate cert = (java.security.cert.X509Certificate) java.security.cert.CertificateFactory.getInstance("X.509")
+                .generateCertificate(new ByteArrayInputStream(java.util.Base64.getDecoder().decode(TLS_CERT)));
+        java.security.PrivateKey privateKey = java.security.KeyFactory.getInstance("EC").generatePrivate(new java.security.spec.PKCS8EncodedKeySpec(java.util.Base64.getDecoder().decode(TLS_KEY)));
+        char[] password = "changeit".toCharArray();
+        java.security.KeyStore keys = java.security.KeyStore.getInstance(java.security.KeyStore.getDefaultType());
+        keys.load(null, null);
+        keys.setKeyEntry("server", privateKey, password, new java.security.cert.Certificate[] { cert });
+        javax.net.ssl.KeyManagerFactory kmf = javax.net.ssl.KeyManagerFactory.getInstance(javax.net.ssl.KeyManagerFactory.getDefaultAlgorithm());
+        kmf.init(keys, password);
+        java.security.KeyStore trusted = java.security.KeyStore.getInstance(java.security.KeyStore.getDefaultType());
+        trusted.load(null, null);
+        trusted.setCertificateEntry("server", cert);
+        javax.net.ssl.TrustManagerFactory tmf = javax.net.ssl.TrustManagerFactory.getInstance(javax.net.ssl.TrustManagerFactory.getDefaultAlgorithm());
+        tmf.init(trusted);
+        javax.net.ssl.SSLContext serverContext = javax.net.ssl.SSLContext.getInstance("TLS"), clientContext = javax.net.ssl.SSLContext.getInstance("TLS");
+        serverContext.init(kmf.getKeyManagers(), null, null);
+        clientContext.init(null, tmf.getTrustManagers(), null);
+
+        java.net.InetAddress loopback = java.net.InetAddress.getByName("127.0.0.1");
+        final javax.net.ssl.SSLServerSocket server = (javax.net.ssl.SSLServerSocket) serverContext.getServerSocketFactory().createServerSocket(0, 5, loopback);
+        final java.net.ServerSocket between = new java.net.ServerSocket(0, 5, loopback);
+        final String[] heard = new String[1];
+        final ByteArrayOutputStream fromServer = new ByteArrayOutputStream();
+        Thread serving = new Thread(() -> {
+            try (java.net.Socket c = server.accept()) {
+                c.setSoTimeout(20000);
+                heard[0] = new BufferedReader(new java.io.InputStreamReader(c.getInputStream(), StandardCharsets.UTF_8)).readLine();
+                c.getOutputStream().write("pong\n".getBytes(StandardCharsets.UTF_8));
+                c.getOutputStream().flush();
+            } catch (IOException e) {
+                heard[0] = "the server: " + e.getClass().getSimpleName();
+            }
+        }, "tls-server");
+        Thread relaying = new Thread(() -> {
+            try (java.net.Socket client = between.accept(); java.net.Socket upstream = new java.net.Socket(loopback, server.getLocalPort())) {
+                client.setSoTimeout(20000);
+                upstream.setSoTimeout(20000);
+                Thread up = new Thread(() -> relay(client, upstream, null), "tls-relay-up");
+                up.start();
+                relay(upstream, client, fromServer);
+                up.join(20000);
+            } catch (Exception e) {
+                // (said by what the client gets)
+            }
+        }, "tls-relay");
+        serving.start();
+        relaying.start();
+        String protocol, suite, back;
+        boolean peer;
+        try (javax.net.ssl.SSLSocket s = (javax.net.ssl.SSLSocket) clientContext.getSocketFactory().createSocket(loopback, between.getLocalPort())) {
+            s.setSoTimeout(20000);
+            s.setEnabledProtocols(new String[] { "TLSv1.2" });
+            s.setEnabledCipherSuites(new String[] { "TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256" });
+            s.startHandshake();
+            javax.net.ssl.SSLSession session = s.getSession();
+            protocol = session.getProtocol();
+            suite = session.getCipherSuite();
+            peer = session.getPeerCertificates()[0].equals(cert);
+            s.getOutputStream().write("ping\n".getBytes(StandardCharsets.UTF_8));
+            s.getOutputStream().flush();
+            back = new BufferedReader(new java.io.InputStreamReader(s.getInputStream(), StandardCharsets.UTF_8)).readLine();
+        }
+        serving.join(20000);
+        relaying.join(20000);
+        server.close();
+        between.close();
+        sb.append(' ').append(protocol).append(' ').append(suite).append(' ').append(peer).append(' ').append(heard[0]).append(' ').append(back);
+        sb.append(' ').append(serverGroup(fromServer.toByteArray())).append(' ').append(!serving.isAlive() && !relaying.isAlive());
+        return sb.toString();
+    }
+
     public static String lib_threads() throws InterruptedException {
         StringBuilder sb = new StringBuilder();
         final int[] result = new int[1];
@@ -1076,6 +1240,7 @@ public class Lib {
         System.out.println("lib_nio=" + lib_nio());
         System.out.println("lib_security=" + lib_security());
         System.out.println("lib_crypto=" + lib_crypto());
+        System.out.println("lib_tls=" + lib_tls());
         System.out.println("lib_threads=" + lib_threads());
         System.out.println("lib_exceptions=" + lib_exceptions());
         System.out.println("lib_system=" + lib_system());

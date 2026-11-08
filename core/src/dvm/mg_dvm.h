@@ -199,7 +199,11 @@ typedef struct mg_dvm_gc_result {
     u64 classes_ns, strings_ns, jni_ns;      /* of the exact roots: the classes', the interned strings', the JNI layer's */
     u32 classes, strings, jni_roots;         /* how many of each were read */
     bool roots_shared;                       /* the classes and strings read by all the marking threads: classes_ns their time with what they hold */
+    u32 mark_peak, mark_room;                /* the most the mark stack held at once, and its entries (the collector's own, kept) */
+    bool mark_overflowed;                    /* it ran out, and the heap was walked for marked objects to follow */
+    u32 arenas_released;                     /* the heap's arenas left empty and given back to the host after the sweep */
     char makers[200];                        /* the threads that made the most since the last collection, and what: "\"GLThread 1\" 30.1 MB, ..." */
+    char not_collected[120];                 /* why, when nothing was collected */
 } mg_dvm_gc_result;
 /* A collection that marks only: what is reachable, counted, nothing freed. False when not every thread could be stopped. */
 bool mg_dvm_gc_census(mg_dvm_gc_result *out);
@@ -214,6 +218,18 @@ void mg_dvm_gc_set_poison(bool on);
 void mg_dvm_gc_set_min_budget(u64 bytes);
 /* For the tests: what may be made before the next collection, as the last one left it. */
 u64 mg_dvm_gc_budget(void);
+/* What lived through the last collection as it traced it: the base of the budget (what one alongside the app found reachable). */
+u64 mg_dvm_gc_live(void);
+/*
+ * For the tests: the process's free addresses in bytes, as a probe says them (NULL: as the host says them, on a 32-bit host
+ * only), by which the budget is bounded and below which collections due to allocation stop the app while they mark.
+ */
+void mg_dvm_gc_set_address_probe(u64 (*free_bytes)(void));
+/*
+ * For the tests: a marker at the lowest priority, marking alongside the app, follows `pace` objects and then sleeps a
+ * millisecond, as a phone's busy cores leave it (0: not so). A collection that falls behind takes its markers off it.
+ */
+void mg_dvm_gc_set_marker_pace(u32 pace);
 /* Native memory an object keeps alive (VMRuntime.registerNativeAllocation, a bitmap's pixels): it counts toward the next collection. */
 void mg_dvm_gc_native(i64 bytes);
 /* Collections made so far and the time they took, for the frame meter. */

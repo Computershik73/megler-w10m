@@ -21,4 +21,7 @@ std::string formattedByteCount(uint64_t bytes);
 /// "HH:MM:SS.mmm", local time.
 std::string timeOfDay();
 
+/// "YYYY-MM-DD HH:MM:SS", local time: a record that outlives the run it was made in.
+std::string localDateTime();
+
 } // namespace megler::app

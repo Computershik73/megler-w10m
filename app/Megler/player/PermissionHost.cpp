@@ -163,11 +163,15 @@ HRESULT openOnce(const std::string& group) {
     } catch (const winrt::hresult_error&) {
     }
     if (!dispatcher) return E_FAIL;
+    // The MediaCapture is the state's, closed on the UI thread once the question is answered -- not inside its own
+    // InitializeAsync's Completed: Sberbank's process ended there (0.1.0.671, an access violation in the handler's Close,
+    // called from Windows.Media through combase as Windows' own question was answered), the capture it held null by then.
     struct State {
         std::mutex mutex;
         std::condition_variable cv;
         bool done = false;
         HRESULT hr = E_FAIL;
+        MediaCapture capture{nullptr};
     };
     auto state = std::make_shared<State>();
     const bool camera = group == "camera";
@@ -179,23 +183,19 @@ HRESULT openOnce(const std::string& group) {
             state->cv.notify_all();
         };
         try {
-            MediaCapture capture;
+            state->capture = MediaCapture();
             MediaCaptureInitializationSettings settings;
             settings.StreamingCaptureMode(camera ? StreamingCaptureMode::Video : StreamingCaptureMode::Audio);
-            IAsyncAction op = capture.InitializeAsync(settings);
-            op.Completed([finish, capture](const IAsyncAction& done, AsyncStatus status) {
+            IAsyncAction op = state->capture.InitializeAsync(settings);
+            op.Completed([finish](const IAsyncAction& done, AsyncStatus status) {
                 HRESULT hr = S_OK;
                 if (status != AsyncStatus::Completed) {
                     hr = E_FAIL;
                     try {
-                        hr = done.ErrorCode();
+                        if (done) hr = done.ErrorCode();
                     } catch (...) {
                     }
                     if (hr == S_OK) hr = E_FAIL;
-                }
-                try {
-                    capture.Close();
-                } catch (...) {
                 }
                 finish(hr);
             });
@@ -203,9 +203,25 @@ HRESULT openOnce(const std::string& group) {
             finish(e.code());
         }
     });
-    std::unique_lock<std::mutex> lock(state->mutex);
-    if (!state->cv.wait_for(lock, std::chrono::seconds(170), [&state] { return state->done; })) return HRESULT_FROM_WIN32(ERROR_TIMEOUT);
-    return state->hr;
+    HRESULT hr = HRESULT_FROM_WIN32(ERROR_TIMEOUT);
+    {
+        std::unique_lock<std::mutex> lock(state->mutex);
+        if (state->cv.wait_for(lock, std::chrono::seconds(170), [&state] { return state->done; })) hr = state->hr;
+    }
+    // (Closed where it was made; a question still open after the wait is left to Windows, the capture closed with it.)
+    if (hr != HRESULT_FROM_WIN32(ERROR_TIMEOUT)) {
+        try {
+            dispatcher.RunAsync(winrt::Windows::UI::Core::CoreDispatcherPriority::Normal, [state] {
+                try {
+                    if (state->capture) state->capture.Close();
+                } catch (...) {
+                }
+                state->capture = nullptr;
+            });
+        } catch (const winrt::hresult_error&) {
+        }
+    }
+    return hr;
 }
 
 /// Windows' own question for a group it decides, when it has not been answered; then what Windows says.

@@ -84,6 +84,13 @@ struct mg_lib {
      */
     mg_addr code[8][2];
     int ncode;
+    /*
+     * ARM64: spans of data among that code, [start, end) by address in ascending order, from the mapping symbols of the
+     * library's symbol table where it has one (mg_ld.c, read_data_spans): hand-written assembly's constants. Words there
+     * are not counted as instructions that write x18 (arm64/mg_patch_arm64.c). None known: none left out.
+     */
+    mg_addr (*data)[2];
+    int ndata;
     mg_lib *next;
 };
 
@@ -109,9 +116,10 @@ bool mg_bionic_is_system_lib(const char *soname);
 /* Guest thread-local storage (ld/mg_tls.c). */
 #define MG_TCB_SLOTS 16
 /*
- * x86_64 and 32-bit ARM: the last of the block's slots, which no bionic has, holds the thread's stack for the system calls
- * of libraries' own led out to the core (x86/mg_patch_x86.c; arm/mg_patch.c, a library of Go's), once a library has one:
- * every thread's block gets it then (mg_tls_syscall_stacks), the block of a thread made later as it is made.
+ * x86_64, ARM64 and 32-bit ARM: the last of the block's slots, which no bionic has, holds the thread's stack for the system
+ * calls of libraries' own led out to the core (x86/mg_patch_x86.c; arm64/mg_patch_arm64.c; arm/mg_patch.c, a library of
+ * Go's), once a library has one: every thread's block gets it then (mg_tls_syscall_stacks), the block of a thread made
+ * later as it is made.
  * mg_patch_syscall_stack_new makes one (the thread's own stack's bounds where the host's thread block does not say them,
  * NULL where they are not known), _free gives it back.
  */

@@ -440,6 +440,49 @@ this was tried; sound through `AudioTrack` and decoders through `MediaCodec` are
 something Windows decodes (WebM/VP8, Ogg), and the listeners the engine registers
 (display, input devices, system UI) are never called.
 
+## Logs
+
+Every package of Megler's, Megler and each app's own package, keeps its log in
+its own `LocalState` (`megler.log`, the two runs before as `megler.prev.log` and
+`megler.prev2.log`, `megler-boot.txt`, the checks' logs), which no other package
+can read. Each also keeps copies of them in the shared folder,
+`<shared>\logs\<its package identity name>\` (`shell/LogMirror.cpp`): at its
+start (ten seconds in, out of the start's way) the runs before, whole; while it
+runs, `megler.log`'s new lines every
+30 s and as it is suspended or exits; the other files when they change, and
+`flags.txt`, the names of its flags. A run that ended in a crash is there whole
+from the package's next start, and the part before the crash at once. A log over
+16 MB is copied as its last 16 MB, after a line that says so. Megler removes the
+folder of a package that is no longer installed whenever it lists the apps'
+packages.
+
+**Save All Logs** (the Log screen, in Megler and in an app's own package,
+`shell/LogArchive.cpp`) writes one ZIP, `megler-logs-<yyyyMMdd-HHmmss>.zip`, to
+`Pictures\Megler\logs`, which the phone's file manager shows and a PC reaches over
+USB (on a PC, the user's Pictures); Share sends it from the phone itself. In it:
+
+- `summary.txt`: Megler's and the core's versions, the processor, the device
+  family and model, Windows's version, memory, whether Android code can run,
+  ANGLE, the packages of Megler's publisher as Windows lists them, free space, the
+  time with its offset from UTC, the last install Windows refused
+  (`LocalState\install-refusal.txt`), and what the ZIP holds;
+- `<identity>/`: the files of the package that saves it, from its own LocalState;
+- `<identity>/` of every other package: its copies from the shared folder, with
+  `package.txt` (what it is) and `flags.txt`;
+- `shared/settings.ini`, `shared/apps/<package>/settings.ini`: the settings every
+  package reads.
+
+Where the Pictures folder cannot be had (an Xbox; an app's own package that does
+not declare it) the ZIP stays in `LocalState\logs`, the newest three kept, and the
+Log screen says so. An app's own package made by an older Megler copies nothing
+until Update All makes it again. The shell writes the ZIP itself
+(`shell/ZipWriter.cpp`, zlib's deflate). **Passes on PC**, the very files with
+stand-ins for the rest of the shell: `tools/zip-writer-test.sh` (Python's zipfile
+and Explorer read the writer's ZIP whole), `tools/log-mirror-test.sh` (29 checks:
+a crashed run's start, new lines, changed and vanished files, a log over 16 MB,
+the folder taken away, the removal), `tools/log-archive-test.sh` (Save All Logs as
+an Xbox's Megler, its ZIP read by zipfile). **Not tried on a phone yet.**
+
 ## Not there yet
 
 - **Drivers** other than NativeActivity: Unity, Unreal, Godot (cocos2d-x's and

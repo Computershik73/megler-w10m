@@ -8,15 +8,20 @@ would compile and not what a glob happens to find.
 
 What it understands of Blueprint: modules (`type { ... }`), strings, lists,
 maps, booleans, integers, `+` between lists or strings, comments, and
-variable assignments at the top level. A module's value is its own plus,
-before it, that of every module it names in `defaults` (looked up in the same
-file), plus what Soong would add for an Android device of the architecture
-ARCH, as Soong names it (arm, the default, arm64, x86 or x86_64):
-`target.android`, `target.linux` (which in Android 9 means every Linux kernel,
-Android included), `target.bionic`, `target.not_windows`, `target.android_ARCH`,
-`arch.ARCH` and `multilib.lib32` or `multilib.lib64`. A `filegroup` named as
-":name" in a source list is not followed here; the script asks for it by name.
+variable assignments at the top level, among them `build`, the files of more
+modules Blueprint reads with this one (BoringSSL's Android.bp has its source
+lists in sources.bp so). A module's value is its own plus, before it, that of
+every module it names in `defaults` (looked up in the same files), plus what
+Soong would add for an Android device of the architecture ARCH, as Soong names
+it (arm, the default, arm64, x86 or x86_64): `target.android`, `target.linux`
+(which in Android 9 means every Linux kernel, Android included),
+`target.bionic`, `target.not_windows`, `target.android_ARCH`,
+`target.linux_ARCH` and `target.bionic_ARCH` (BoringSSL's assembly is named
+under linux_ARCH), `arch.ARCH` and `multilib.lib32` or `multilib.lib64`. A
+`filegroup` named as ":name" in a source list is not followed here; the script
+asks for it by name.
 """
+import os
 import sys
 
 MULTILIB = {'arm': 'lib32', 'arm64': 'lib64', 'x86': 'lib32', 'x86_64': 'lib64'}
@@ -24,7 +29,8 @@ MULTILIB = {'arm': 'lib32', 'arm64': 'lib64', 'x86': 'lib32', 'x86_64': 'lib64'}
 
 def device_variants(arch):
     return (('target', 'android'), ('target', 'linux'), ('target', 'bionic'), ('target', 'not_windows'),
-            ('target', 'android_' + arch), ('arch', arch), ('multilib', MULTILIB[arch]))
+            ('target', 'android_' + arch), ('target', 'linux_' + arch), ('target', 'bionic_' + arch), ('arch', arch),
+            ('multilib', MULTILIB[arch]))
 
 
 class Parser:
@@ -176,7 +182,13 @@ def main():
         raise SystemExit('bp.py: no architecture %s (%s)' % (arch, ', '.join(MULTILIB)))
     p = Parser(open(path, encoding='utf-8').read())
     p.file()
-    for v in collect(p.modules, module, prop, device_variants(arch), []):
+    modules = list(p.modules)
+    # `build`: more files of modules, next to this one. Each has its own variables.
+    for name in p.vars.get('build', []):
+        sub = Parser(open(os.path.join(os.path.dirname(path), name), encoding='utf-8').read())
+        sub.file()
+        modules += sub.modules
+    for v in collect(modules, module, prop, device_variants(arch), []):
         print(v if not isinstance(v, bool) else ('true' if v else 'false'))
 
 

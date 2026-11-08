@@ -141,7 +141,10 @@ void ensureInstalled(AppShell& shell) {
         // Refused for the certificate Megler signs apps' packages with, which Windows trusts only once the user has installed
         // it for the machine (desktop Windows; a phone in Developer mode installs developer packages without it): not made
         // and refused again every minute, but once the user installs it from the Library (pending() says how), which tries again.
-        if (untrusted(s)) return;
+        // Likewise refused for access: Megler has not got packageManagement until the phone's interop unlock is complete and
+        // Megler is started again, and each try would copy Google Play services' APK to the shared folder anew to have its
+        // package refused at once.
+        if (untrusted(s) || s.accessDenied) return;
         const ULONGLONG now = GetTickCount64();
         if (b.installAsked && now - b.installAsked < retryMs) return;
         b.installAsked = now;
@@ -186,6 +189,11 @@ std::string pending() {
             return "Google Play was chosen, but Windows does not trust the certificate Megler signs its apps' packages with, and "
                    "refused them. Trust it once, as administrator (Google Play services' page below says how), then install Google "
                    "Play services there. Apps run with microG until Google Play services is installed.";
+    // (Why and what to do is the Library's card above this, said once for all the apps: separateApps::installsRefused.)
+    for (const Bundled& b : gBundled)
+        if (!installed(b.package) && separateApps::status(b.package).accessDenied)
+            return "Google Play was chosen, but Windows does not let Megler install apps yet (above). Once it does, Megler installs "
+                   "Google Play services and Google Play Store when it is opened again. Until then, apps run with microG.";
     return "Google Play was chosen: Megler installs its Google Play services, then Google Play Store. Apps run with microG "
            "until Google Play services is installed.";
 }

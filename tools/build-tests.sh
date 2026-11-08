@@ -421,6 +421,9 @@ elif [ "$MODE" = win ]; then
   # (MEGLER_TESTS_OPT: the C compiler's optimisation, /O1 unless told; tools/dvm-bench.sh builds with /O2, as the app is
   # built, into a folder of its own named by MEGLER_TESTS_OUT.)
   OPT="${MEGLER_TESTS_OPT:-/O1}"
+  # (MEGLER_JOBS: the compilers at once, as the other builds take it; a bare /MP is one for every processor, and this PC
+  # turns itself off with all sixteen of its busy.)
+  MP="/MP${MEGLER_JOBS:-}"
   OUT="${MEGLER_TESTS_OUT:-$ROOT/build/tests-win}"
   mkdir -p "$OUT/obj" "$OUT/zobj"
   # Every file is compiled on every run; the objects of the last go first, so that a file that no longer compiles fails
@@ -434,9 +437,9 @@ elif [ "$MODE" = win ]; then
   # the shell's drawing, its storage host, its decoders, its cameras, its sensors and the Xbox build's Device Portal client in
   # it; mg_tests_main.c's --gfx-windows, --storage-windows, --codec-windows, --camera-windows, --sensors-windows and
   # --portal-windows modes.)
-  "$VC/bin/Hostx64/x64/cl.exe" /nologo /c "$OPT" /MT /W3 /std:c11 /utf-8 /MP /D_CRT_SECURE_NO_WARNINGS /D_CRT_NONSTDC_NO_WARNINGS /DMG_GFX_WINDOWS /DMG_STORAGE_WINDOWS /DMG_CODEC_WINDOWS /DMG_CAMERA_WINDOWS /DMG_SENSORS_WINDOWS /DMG_PORTAL_WINDOWS "${SQLITE_CL[@]}" "${WEBP_CL[@]}" \
+  "$VC/bin/Hostx64/x64/cl.exe" /nologo /c "$OPT" /MT /W3 /std:c11 /utf-8 "$MP" /D_CRT_SECURE_NO_WARNINGS /D_CRT_NONSTDC_NO_WARNINGS /DMG_GFX_WINDOWS /DMG_STORAGE_WINDOWS /DMG_CODEC_WINDOWS /DMG_CAMERA_WINDOWS /DMG_SENSORS_WINDOWS /DMG_PORTAL_WINDOWS "${SQLITE_CL[@]}" "${WEBP_CL[@]}" \
     "/I$(w "$ROOT/core/third_party/zlib")" "/Fo$(w "$OUT/obj")\\" "${ALL[@]}" | grep -v -E '^[A-Za-z0-9_]+\.c$' || true
-  "$VC/bin/Hostx64/x64/cl.exe" /nologo /c /O1 /MT /w /MP /D_CRT_SECURE_NO_WARNINGS /D_CRT_NONSTDC_NO_WARNINGS \
+  "$VC/bin/Hostx64/x64/cl.exe" /nologo /c /O1 /MT /w "$MP" /D_CRT_SECURE_NO_WARNINGS /D_CRT_NONSTDC_NO_WARNINGS \
     "/Fo$(w "$OUT/zobj")\\" "${ZALL[@]}" | grep -v -E '^[A-Za-z0-9_]+\.c$' || true
   # The shell's drawing itself, the very file the phone's package is built from (it is plain COM, no WinRT), and the few
   # lines that hand it to the tests: C++, with the shell's own flags.
@@ -445,7 +448,7 @@ elif [ "$MODE" = win ]; then
              "/I$(w "$ROOT/app/Megler")" "/I$(w "$ROOT/core/include")")
   mkdir -p "$OUT/gfxobj"
   rm -f "$OUT/gfxobj/"*.obj
-  "$VC/bin/Hostx64/x64/cl.exe" "${GFX_FLAGS[@]}" /O2 /MP "/Fo$(w "$OUT/gfxobj")\\" "${GFX_SRC[@]}" | grep -v -E '^[A-Za-z0-9_]+\.cpp$' || true
+  "$VC/bin/Hostx64/x64/cl.exe" "${GFX_FLAGS[@]}" /O2 "$MP" "/Fo$(w "$OUT/gfxobj")\\" "${GFX_SRC[@]}" | grep -v -E '^[A-Za-z0-9_]+\.cpp$' || true
   for obj in GfxHost mg_gfx_windows; do
     [ -f "$OUT/gfxobj/$obj.obj" ] || { echo "compile failed: $obj.cpp" >&2; exit 1; }
   done
@@ -484,7 +487,7 @@ elif [ "$MODE" = win ]; then
   mkdir -p "$OUT/storageobj"
   rm -f "$OUT/storageobj/"*.obj
   INCLUDE="$INCLUDE;$(w "$SDK/Include/$SDKV/winrt");$(w "$SDK/Include/$SDKV/cppwinrt")" \
-    "$VC/bin/Hostx64/x64/cl.exe" "${GFX_FLAGS[@]}" /Zc:__cplusplus /bigobj /DWINAPI_FAMILY=WINAPI_FAMILY_APP /O1 /MP "/Fo$(w "$OUT/storageobj")\\" "${STORAGE_SRC[@]}" \
+    "$VC/bin/Hostx64/x64/cl.exe" "${GFX_FLAGS[@]}" /Zc:__cplusplus /bigobj /DWINAPI_FAMILY=WINAPI_FAMILY_APP /O1 "$MP" "/Fo$(w "$OUT/storageobj")\\" "${STORAGE_SRC[@]}" \
     | grep -v -E '^[A-Za-z0-9_]+\.cpp$' || true
   for obj in StorageHost Strings mg_storage_windows CodecHost mg_codec_windows MediaHost CameraHost mg_camera_windows SensorHost mg_sensors_windows DevicePortal mg_portal_windows; do
     [ -f "$OUT/storageobj/$obj.obj" ] || { echo "compile failed: $obj.cpp" >&2; exit 1; }

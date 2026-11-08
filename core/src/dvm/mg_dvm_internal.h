@@ -662,15 +662,30 @@ bool mg_dvm_stub_listed(const char *cls, const char *name, const char *sig);
 void mg_dvm_stub_called(const mg_dvm_method *caller, mg_dvm_method *m);
 
 /*
- * mg_dvm_jit.c (docs/JIT.md): the method compiled to Thumb-2 once its jumps back pass the threshold, and run from `pc`, a
- * branch target, on the frame's registers until it hands the frame back: true with *next the pc the interpreter goes on
- * at; false when there is no code to run there (nothing done). Where there is no JIT (x64), always false.
+ * mg_dvm_jit.c (docs/JIT.md): the method compiled to machine code once its jumps back pass the threshold, and run from
+ * `pc`, a branch target, on the frame's registers until it hands the frame back: true with *next the pc the interpreter
+ * goes on at; false when there is no code to run there (nothing done). Only where the JIT has a back end (MG_DVM_JIT):
+ * elsewhere always false.
  */
+/* (x86-64 and x86 where the core's convention is Android's, System V's and i386's: not MSVC's build of the tests.) */
+#define MG_DVM_JIT (MG_ARCH_ARM32 || MG_ARCH_ARM64 || ((MG_ARCH_X86_64 || MG_ARCH_X86) && MG_GUEST_CODE))
+/*
+ * Where a call compiled code makes of a method whose body runs in an interpreter loop of its own (mg_dvm_jit.c, dear_call:
+ * one with handlers, refused by the JIT, compiled without a start) costs more than the interpreter's own call, which goes
+ * on in the loop it is in: how many other instructions a loop must have for each such call to be entered compiled
+ * (worth_entering); 0 where every loop is. On x86 and x86-64 the benchmark's loop around a call of a method that throws
+ * (refused: its throw is an exit) was 14% and 31% slower compiled than interpreted, and is as fast as interpreted with the
+ * measure, every other item as it was (the least of three alternating runs; docs/JIT.md). The ARM processors keep every
+ * loop: under qemu-aarch64 that one was not slower, and their speed is the phones' to say. The JIT goes by
+ * g_dvm_jit_call_work, which the tests set to 0 to have such loops compiled too.
+ */
+#define MG_DVM_JIT_CALL_WORK ((MG_ARCH_X86 || MG_ARCH_X86_64) ? 8u : 0u)
+extern u32 g_dvm_jit_call_work;
 typedef struct mg_dvm_jit_code mg_dvm_jit_code;
 /*
- * What compiled code is run with (r5 holds it): the frame's registers, the flag that says instructions are watched, the pc
- * it hands the frame back at, the thread and the frame for the calls it makes (mg_dvm_jit_invoke), and the result of the
- * last call, which move-result reads. Its layout is the code's (mg_dvm_jit.c, JIT_CTX_*).
+ * What compiled code is run with (a register holds it): the frame's registers, the flag that says instructions are
+ * watched, the pc it hands the frame back at, the thread and the frame for the calls it makes (mg_dvm_jit_invoke), and the
+ * result of the last call, which move-result reads. Its layout is the code's (each back end's JIT_CTX_*).
  */
 typedef struct mg_dvm_jit_ctx {
     mg_dvm_reg *regs;
@@ -696,7 +711,7 @@ struct mg_dvm_jit_code {
     u32 in_place;
     /*
      * Where the code is entered, in the order of their pcs: the heads of the loops compiled whole and the method's start,
-     * each with its halfword in the code +1. (A table by pc took four bytes for every instruction of the method, for the
+     * each with its unit in the code +1. (A table by pc took four bytes for every instruction of the method, for the
      * one to three entries most have.)
      */
     u32 nentries;
@@ -704,7 +719,18 @@ struct mg_dvm_jit_code {
         u32 pc, at;
     } entries[];
 };
-/* The code's entry at `pc`, as its halfword +1; 0 for none. */
+/*
+ * Where the code of an entry is (`at`: its unit in the code +1, mg_dvm_jit_entry): a Thumb-2 halfword's address, with bit 0
+ * set (Thumb); an A64 word's; an x86 byte's.
+ */
+#if MG_ARCH_ARM32
+#define MG_DVM_JIT_AT(c, at) ((const void *)((c)->pages + (size_t)((at) - 1) * 2 + 1))
+#elif MG_ARCH_ARM64
+#define MG_DVM_JIT_AT(c, at) ((const void *)((c)->pages + (size_t)((at) - 1) * 4))
+#else
+#define MG_DVM_JIT_AT(c, at) ((const void *)((c)->pages + (size_t)((at) - 1)))
+#endif
+/* The code's entry at `pc`, as its unit +1; 0 for none. */
 static inline u32 mg_dvm_jit_entry(const mg_dvm_jit_code *c, u32 pc)
 {
     u32 lo = 0, hi = c->nentries;
@@ -769,7 +795,7 @@ static inline int mg_dvm_jit_run(mg_dvm_thread *t, mg_dvm_frame *f, mg_dvm_jit_c
     ctx.pc = 0;
     ctx.t = t;
     ctx.f = f;
-    r = c->run(&ctx, c->pages + (size_t)(at - 1) * 2 + 1);
+    r = c->run(&ctx, MG_DVM_JIT_AT(c, at));
     *next = ctx.pc;
     if (r == 2) {
         *res = ctx.result;
@@ -845,6 +871,8 @@ void mg_dvm_gc_class_ready(mg_dvm_class *c);
 void mg_dvm_gc_thread_gone(mg_dvm_thread *t);
 /* A new object of a class that is finalizable or a reference: the collector keeps account of it (alloc_raw). */
 void mg_dvm_gc_born(mg_jobj *o);
+/* A reference object freed by the sweep (mg_dvm_object_dying): one fewer for the collector to have room for. */
+void mg_dvm_gc_reference_gone(void);
 
 /* ---------------------------------------------------------- mg_dvm_heap.c */
 
@@ -856,9 +884,22 @@ void mg_dvm_heap_lock(void);
 void mg_dvm_heap_unlock(void);
 typedef struct mg_dvm_heap_info {
     u64 small_bytes, large_bytes, reserved;   /* in cells in use; in large objects; the host's memory the blocks take (committed) */
+    u64 addresses;                            /* the addresses the arenas take, committed or not */
+    u32 arenas, released;                     /* arenas the heap has; arenas given back to the host so far (mg_dvm_heap_trim) */
     u32 large_objects, objects;
 } mg_dvm_heap_info;
 void mg_dvm_heap_stats(mg_dvm_heap_info *out);
+/* Whether `p` is the start of one of the heap's arenas (the census of the addresses asks whose an allocation is). */
+bool mg_dvm_heap_arena_at(const void *p);
+/* Whether a thread's frame stack, or a segment of one, starts in [base, base + size) (the same census asks). */
+bool mg_dvm_frames_in(const void *base, size_t size);
+/*
+ * After a sweep, with the heap's lock held: arenas left empty given back to the host whole, the highest first, past the
+ * spare blocks `keep` bytes and a few more take (the next collection's budget); how many.
+ */
+u32 mg_dvm_heap_trim(u64 keep);
+/* Bytes of objects made marked (mg_dvm_heap_alloc_black) since it was last turned on: what a collection alongside the app keeps of what was made while it marked. */
+u64 mg_dvm_heap_black_made(void);
 /* The large objects' bytes by class, the most first, when they take more than 32 MB (mg_dvm_heap.c); with the heap's lock held. */
 bool mg_dvm_heap_large_report(char *out, size_t cap, int top);
 /* The bytes of the apps' DEX files (mg_dvm_apk.c): read into the process's memory, and views of the APKs that store them. */
@@ -890,10 +931,9 @@ void mg_dvm_gc_fields_gone(mg_jobj *o);
 bool mg_dvm_heap_watched(void);
 void mg_dvm_heap_watch_restart(void);
 u32 mg_dvm_heap_each_written(void (*fn)(void *o));
-/* The same in pieces, for the collector's threads to share (mg_dvm_heap.c). */
-u32 mg_dvm_heap_pages(void);
-u32 mg_dvm_heap_written_list(u8 **out, u32 cap);
-void mg_dvm_heap_marked_on(u8 *page, void (*fn)(void *o, void *user), void *user);
+/* The same an arena at a time, for the collector's threads to share (mg_dvm_heap.c); how many pages. */
+u32 mg_dvm_heap_arenas(void);
+u32 mg_dvm_heap_written_in(u32 arena, void (*fn)(void *o, void *user), void *user);
 void mg_dvm_heap_each_marked_large(void (*fn)(void *o));
 /* ...and the sweep, shared among the collector's threads (mg_dvm_gc_share); how many there were. */
 u32 mg_dvm_heap_sweep(void (*dying)(void *o), bool poison, u64 *freed_objects, u64 *freed_bytes);

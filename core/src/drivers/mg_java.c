@@ -1612,6 +1612,37 @@ static void meter_advance(const meter_sum *now)
 static double per_frame_ms(u64 ns, u32 frames) { return frames ? (double)ns / 1e6 / frames : 0; }
 
 /*
+ * Whose a private allocation of the process is, as the core knows it (mg_host_address_census, "addresses by kind"): the Java
+ * heap's arenas; an app's mapping by the library that made it, Go's runtime among them (mg_mmap_whose); a native library's
+ * image; the runtime's frame stacks; the threads' stacks for system calls; or NULL, not known. A library's image is named
+ * as the library, a name kept for it (the census tells owners apart by their names' pointers): on the census's thread.
+ */
+static struct { const mg_lib *lib; char name[80]; } g_image_names[24];
+static u32 g_nimage_names;
+
+static MG_HOSTCB const char *address_whose(const void *base, size_t size)
+{
+    const char *mapping;
+    mg_lib *lib;
+    u32 i;
+    if (mg_dvm_heap_arena_at(base)) return "the Java heap's arenas";
+    if ((mapping = mg_mmap_whose(base)) != NULL) return mapping;
+    if ((lib = mg_ld_lib_of(base)) != NULL) {
+        for (i = 0; i < g_nimage_names && g_image_names[i].lib != lib; i++) {}
+        if (i == g_nimage_names) {
+            if (i == MG_COUNT(g_image_names)) return "native libraries' images";
+            g_image_names[i].lib = lib;
+            snprintf(g_image_names[i].name, sizeof(g_image_names[i].name), "%s's image", mg_ld_lib_name(lib));
+            g_nimage_names++;
+        }
+        return g_image_names[i].name;
+    }
+    if (mg_dvm_frames_in(base, size)) return "the runtime's frame stacks";
+    if (mg_tls_syscall_stack_in(base, size)) return "stacks for system calls";
+    return NULL;
+}
+
+/*
  * The memory's lines: what the process holds and what holds its addresses, and the JIT's work. They walk the whole address
  * space (VirtualQuery) and every thread: some 300 ms of the main thread every five seconds when the frames line said them,
  * the frame meter (Native.frameMark) 6% of Yandex Maps' main thread (package 530). Said every ten seconds by the sampler's
@@ -1621,7 +1652,7 @@ static void meter_census(void)
 {
     u64 process = mg_mem_usage();
     mg_dvm_stats s;
-    char mem[560];
+    char mem[800];
     mg_dvm_get_stats(&s);
     mem[0] = 0;
     if (process) {
@@ -1632,9 +1663,10 @@ static void meter_census(void)
         mg_dvm_dex_memory(&dex_read, &dex_viewed);
         mg_mmap_given_back(&given, &again);
         mg_mmap_usage(&anon, &files);
-        snprintf(mem, sizeof(mem), "the process %u MB (the heap's blocks %u MB and large objects %u MB; DEX files %u MB in memory, %u MB viewed "
-                 "in their APKs; native libraries %u MB; the app's malloc %u MB; the app's mappings %u MB anonymous and %u MB of files; %u MB "
-                 "given back with madvise, %u MB of it touched again)", (unsigned)(process >> 20), (unsigned)(hi.reserved >> 20),
+        snprintf(mem, sizeof(mem), "the process %u MB (the heap's blocks %u MB in %u arenas of 1 MB, %u given back so far, and large objects "
+                 "%u MB; DEX files %u MB in memory, %u MB viewed in their APKs; native libraries %u MB; the app's malloc %u MB; the app's mappings "
+                 "%u MB anonymous and %u MB of files; %u MB given back with madvise, %u MB of it touched again)", (unsigned)(process >> 20),
+                 (unsigned)(hi.reserved >> 20), (unsigned)hi.arenas, (unsigned)hi.released,
                  (unsigned)(hi.large_bytes >> 20), (unsigned)(dex_read >> 20), (unsigned)(dex_viewed >> 20), (unsigned)(mg_ld_image_bytes() >> 20),
                  (unsigned)(mg_g_malloc_bytes() >> 20), (unsigned)(anon >> 20), (unsigned)(files >> 20), (unsigned)(given >> 20),
                  (unsigned)(again >> 20));
@@ -1670,13 +1702,26 @@ static void meter_census(void)
         mg_host_address_kinds k;
         u32 gpu_used = 0, gpu_budget = 0, threads = 0, attached = 0;
         u64 frames = 0, c_reserved = 0, c_peak = 0;
-        char sizes[160];
-        int i;
-        if (mg_host_address_census(&k)) {
+        char sizes[700];
+        int i, o;
+        if (mg_host_address_census(&k, address_whose)) {
             sizes[0] = 0;
+            /* Each size with whose its allocations are: "599 of 1024 KB (the Java heap's arenas 420, thread stacks 170, others 9)". */
             for (i = 0; i < k.nsizes; i++) {
                 size_t used = strlen(sizes);
                 snprintf(sizes + used, sizeof(sizes) - used, "%s%u of %u KB", i ? ", " : "", (unsigned)k.sizes[i].count, (unsigned)k.sizes[i].kb);
+                for (o = 0; o < MG_ADDRESS_OWNERS && k.sizes[i].by[o].count; o++) {
+                    const char *whose = k.sizes[i].by[o].whose ? k.sizes[i].by[o].whose : "others";
+                    used = strlen(sizes);
+                    if (k.sizes[i].by[o].count == k.sizes[i].count)
+                        snprintf(sizes + used, sizeof(sizes) - used, " (%s)", whose);
+                    else
+                        snprintf(sizes + used, sizeof(sizes) - used, "%s%s %u", o ? ", " : " (", whose, (unsigned)k.sizes[i].by[o].count);
+                }
+                if (o && k.sizes[i].by[0].count != k.sizes[i].count) {
+                    used = strlen(sizes);
+                    snprintf(sizes + used, sizeof(sizes) - used, ")");
+                }
             }
             mg_egl_gpu_memory(&gpu_used, &gpu_budget);
             mg_dvm_thread_census(&threads, &attached, &frames, &c_reserved, &c_peak);

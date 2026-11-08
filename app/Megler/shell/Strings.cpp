@@ -65,4 +65,12 @@ std::string timeOfDay() {
     return buffer;
 }
 
+std::string localDateTime() {
+    SYSTEMTIME st;
+    GetLocalTime(&st);
+    char buffer[32];
+    snprintf(buffer, sizeof(buffer), "%04u-%02u-%02u %02u:%02u:%02u", st.wYear, st.wMonth, st.wDay, st.wHour, st.wMinute, st.wSecond);
+    return buffer;
+}
+
 } // namespace megler::app

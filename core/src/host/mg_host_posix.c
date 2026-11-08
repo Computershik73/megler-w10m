@@ -206,6 +206,8 @@ void *mg_mem_alloc_watched(size_t size)
     return NULL;
 }
 
+u32 mg_host_last_error(void) { return (u32)errno; }
+
 int mg_mem_written_pages(void *p, size_t size, u32 *out, int max, bool reset)
 {
     (void)p;
@@ -455,6 +457,9 @@ void mg_thread_resume(mg_thread *t)
 }
 
 void mg_thread_suspend_report(char *out, size_t size) { snprintf(out, size, "registers as the signal's handler found them"); }
+
+/* (x18 is nobody's here: mg_host.h.) */
+void mg_thread_set_x18_report(void (*fn)(mg_addr pc, mg_addr x18, mg_addr teb, u32 thread, u32 stops)) { (void)fn; }
 
 /* No hardware breakpoints here (ptrace's, another process's, are no use from inside): see mg_host.h. */
 bool mg_breakpoints_available(void) { return false; }
@@ -1887,9 +1892,10 @@ bool mg_host_address_space(u32 *free_mb, u32 *largest_free_mb, u32 *reserved_mb,
 
 u32 mg_thread_live_count(void) { return 0; }
 
-bool mg_host_address_census(mg_host_address_kinds *k)
+bool mg_host_address_census(mg_host_address_kinds *k, mg_address_whose_fn whose)
 {
     (void)k;
+    (void)whose;
     return false;
 }
 

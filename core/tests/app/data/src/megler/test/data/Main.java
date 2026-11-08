@@ -295,6 +295,36 @@ public class Main extends Activity {
             v2.close();
             return held && deleteDatabase("versions.db") && !getDatabasePath("versions.db").exists();
         });
+        step("wal-restored", () -> {
+            /*
+             * A database in the write-ahead log's format, as Android writes one and a backup brings one back (WhatsApp's
+             * msgstore.db after a restore): made here in exclusive locking mode, the one way this SQLite writes that format,
+             * left with its header saying so, then opened as an app opens it. Before 0.1.0.673 the first statement on it
+             * failed with SQLITE_CANTOPEN; now the open makes it a rollback journal's and the rows are there.
+             */
+            deleteDatabase("restored.db");
+            File file = getDatabasePath("restored.db");
+            SQLiteDatabase w = SQLiteDatabase.openOrCreateDatabase(file, null);
+            w.execSQL("PRAGMA locking_mode=EXCLUSIVE");
+            String mode = DatabaseUtils.stringForQuery(w, "PRAGMA journal_mode=WAL", null);
+            w.execSQL("CREATE TABLE m (id INTEGER PRIMARY KEY, body TEXT)");
+            for (int i = 1; i <= 50; i++) w.execSQL("INSERT INTO m (body) VALUES (?)", new Object[] { "message " + i });
+            w.close();
+            byte[] head = new byte[20];
+            try (java.io.FileInputStream in = new java.io.FileInputStream(file)) {
+                if (in.read(head) != head.length) return false;
+            }
+            int before = head[18];
+            SQLiteDatabase r = SQLiteDatabase.openDatabase(file.getPath(), null, SQLiteDatabase.OPEN_READWRITE);
+            long rows = DatabaseUtils.longForQuery(r, "SELECT count(*) FROM m", null);
+            String last = DatabaseUtils.stringForQuery(r, "SELECT body FROM m WHERE id = 50", null);
+            r.close();
+            try (java.io.FileInputStream in = new java.io.FileInputStream(file)) {
+                if (in.read(head) != head.length) return false;
+            }
+            detail = "mode=" + mode + " header " + before + "->" + head[18] + " rows=" + rows + " last=" + last;
+            return "wal".equals(mode) && before == 2 && head[18] == 1 && rows == 50 && "message 50".equals(last) && deleteDatabase("restored.db");
+        });
         step("left", () -> {
             /* What the next run must find. */
             db.delete("notes", null, null);

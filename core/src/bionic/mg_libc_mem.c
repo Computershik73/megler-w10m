@@ -558,6 +558,13 @@ typedef struct region {
     u32 gone_pages;
     /* Which pages the app made no-access itself (mmap or mprotect with PROT_NONE), a bit each: a fault there is the app's. */
     u8 *noaccess;
+    /*
+     * The library whose code mapped it (a system call's place by number, else libc's caller; NULL: none known, the layer's
+     * own among them), and whether that was Go's runtime, by number from a library of Go's: whose the census of the
+     * addresses says it is (mg_mmap_whose).
+     */
+    const mg_lib *maker;
+    bool go;
     struct region *next;
 } region;
 
@@ -940,13 +947,105 @@ i32 mg_fd_pread(int fd, void *buf, u32 n, u64 offset);
 
 static bool rwx_on(void);
 
-static void *g_mmap_common(void *addr, size_t len, int prot, int flags, int fd, u64 offset)
+/*
+ * Go's runtime on a 32-bit processor stakes out its heap's addresses as it starts (runtime/malloc.go, mallocinit): an arena
+ * of 512 MB, or of 256 or 128 where that is not to be had, each with 4 MB more to line it up (sysReserveAligned), all of
+ * it reserved with no access by a system call of its own (mmap2 by number), to keep its heap in one piece -- on Linux, where
+ * a 32-bit process has 3 GB. WhatsApp's libgojni.so (Psiphon's tunnel core, Go 1.26.5) took 516 MB so, then 260 in a run
+ * where 516 were not to be had, of a 2 GB process that ran out of addresses (the HP Elite x3, 0.1.0.671), for a heap of a
+ * few megabytes. On a 32-bit host such a reservation from a library of Go's (its build ID note, and the call's place in its
+ * code: mg_bionic_syscall_site) is refused with ENOMEM, which Go takes for none to be had: it then reserves nothing big,
+ * its heap growing 4 MB at a time at a hint past its library's image, or anywhere, lined up (mheap.sysAlloc). Every
+ * refusal is handled there, in the version WhatsApp has as in 1.27 (a nil from sysReserve: the next size, then none).
+ * What Go asks for so on a 64-bit host, and what any other code reserves (Chromium's, Unity's), is left as it is.
+ */
+#define GO_UP_FRONT (64u << 20)
+
+static mg_lock g_go_lock = MG_LOCK_INIT;
+static u32 g_go_refused;
+static u64 g_go_refused_bytes;
+
+void mg_mmap_go_refused(u32 *count, u64 *bytes)
+{
+    mg_lock_acquire(&g_go_lock);
+    if (count) *count = g_go_refused;
+    if (bytes) *bytes = g_go_refused_bytes;
+    mg_lock_release(&g_go_lock);
+}
+
+static bool go_up_front_refused(size_t len, int prot, int flags)
+{
+    static const mg_lib *said[8];
+    static u32 nsaid;
+    mg_addr site;
+    const mg_lib *lib;
+    u32 i;
+    bool first;
+    if (sizeof(void *) != 4 || len < GO_UP_FRONT || (prot & 7) || !(flags & G_MAP_ANONYMOUS) || (flags & (G_MAP_FIXED | G_MAP_SHARED))) return false;
+    site = mg_bionic_syscall_site();
+    lib = site ? mg_ld_lib_of((const void *)MG_CODE_ADDR(site)) : NULL;
+    if (!lib || !mg_ld_lib_is_go(lib)) return false;
+    /* (Said once for each library: its runtime asks again for less, and the sizes after the first say nothing new.) */
+    mg_lock_acquire(&g_go_lock);
+    g_go_refused++;
+    g_go_refused_bytes += len;
+    for (i = 0; i < nsaid && said[i] != lib; i++) {}
+    first = i == nsaid;
+    if (first && nsaid < MG_COUNT(said)) said[nsaid++] = lib;
+    mg_lock_release(&g_go_lock);
+    if (first)
+        mg_info("go: %s's runtime asked to reserve %u MB up front: refused on a 32-bit Windows, Go reserves as it grows", mg_ld_lib_name(lib),
+                (unsigned)(len >> 20));
+    return true;
+}
+
+/*
+ * And as its heap grows: 4 MB at a hint past what it has (mheap.sysAlloc), and where the hint is not followed, an arena's
+ * size and 4 MB more anywhere (sysReserveAligned(nil, ...)), of which it keeps the 4 MB lined up and gives the ends back --
+ * which stay reserved here until the rest goes, twice the addresses for every such arena. Such a reservation of Go's (by
+ * number from a library of Go's, with no access, a multiple of 4 MB) is made lined up on 4 MB, which Go takes for one it
+ * may use whole (`p&(align-1) == 0`): an arena of 8 MB, nothing given back.
+ */
+#define GO_ARENA (4u << 20)
+
+static bool go_lined_up(size_t len, int prot, int flags)
+{
+    mg_addr site;
+    if (sizeof(void *) != 4 || len < 2 * GO_ARENA || len >= GO_UP_FRONT || (len & (GO_ARENA - 1)) || (prot & 7) || !(flags & G_MAP_ANONYMOUS) ||
+        (flags & (G_MAP_FIXED | G_MAP_SHARED)))
+        return false;
+    site = mg_bionic_syscall_site();
+    return site && mg_ld_lib_is_go(mg_ld_lib_of((const void *)MG_CODE_ADDR(site)));
+}
+
+/* `size` reserved at an address lined up on `align`: anywhere first, to see where there is room, given back and reserved again lined up there. */
+static u8 *reserve_lined_up(size_t size, size_t align)
+{
+    int tries;
+    for (tries = 0; tries < 8; tries++) {
+        u8 *q = (u8 *)mg_mem_reserve(size + align), *p;
+        if (!q) return NULL;
+        mg_mem_release(q, size + align);
+        p = (u8 *)MG_ALIGN_UP((mg_addr)q, (mg_addr)align);
+        /* (Another thread may have taken it meanwhile: then again.) */
+        q = (u8 *)mg_mem_reserve_at(p, size);
+        if (q == p) return p;
+        if (q) mg_mem_release(q, size);
+    }
+    return NULL;
+}
+
+static void *g_mmap_common(void *addr, size_t len, int prot, int flags, int fd, u64 offset, mg_addr caller)
 {
     size_t size = MG_ALIGN_UP(len, MG_PAGE), reserve = MG_ALIGN_UP(len, 65536);
     region *r;
     u8 *p;
     if (!len) {
         mg_set_errno(GE_INVAL);
+        return G_MAP_FAILED;
+    }
+    if (go_up_front_refused(len, prot, flags)) {
+        mg_set_errno(GE_NOMEM);
         return G_MAP_FAILED;
     }
     if (!(flags & G_MAP_ANONYMOUS)) {
@@ -1044,6 +1143,7 @@ static void *g_mmap_common(void *addr, size_t len, int prot, int flags, int fd, 
          * suits its pool, and gave up with an out-of-memory crash when every answer was the same place, which it had banned.
          */
         p = addr && !((mg_addr)addr & 0xFFFF) ? (u8 *)mg_mem_reserve_at(addr, reserve) : NULL;
+        if (!p && !addr && go_lined_up(len, prot, flags)) p = reserve_lined_up(reserve, GO_ARENA);
         if (!p) p = (u8 *)mg_mem_reserve(reserve);
         /* (Anonymous and with no access, reserved alone: see the top.) */
         if (!p || (((prot & 7) || !(flags & G_MAP_ANONYMOUS)) && !mg_mem_commit(p, size, MG_PROT_RW))) {
@@ -1055,6 +1155,12 @@ static void *g_mmap_common(void *addr, size_t len, int prot, int flags, int fd, 
         r->base = p;
         r->size = reserve;
         r->anon = (flags & G_MAP_ANONYMOUS) != 0;
+        {
+            /* Whose (mg_mmap_whose): the library of the system call's place by number, or of libc's caller. */
+            const mg_addr site = mg_bionic_syscall_site();
+            r->maker = mg_ld_lib_of((const void *)MG_CODE_ADDR(site ? site : caller));
+            r->go = site && r->maker && mg_ld_lib_is_go(r->maker);
+        }
         r->live = (u8 *)mg_alloc(reserve / MG_PAGE / 8 + 1);
         region_mark(r, 0, size, true);
         if (!(prot & 7)) noaccess_mark(r, 0, size, true);
@@ -1108,18 +1214,18 @@ static void *g_mmap_common(void *addr, size_t len, int prot, int flags, int fd, 
 /* (An off_t, a long: in 32-bit Android one past 2 GB is taken as unsigned, as it always was here.) */
 static void *g_mmap(void *addr, size_t len, int prot, int flags, int fd, goff offset)
 {
-    return g_mmap_common(addr, len, prot, flags, fd, (u64)(gulong)offset);
+    return g_mmap_common(addr, len, prot, flags, fd, (u64)(gulong)offset, (mg_addr)CALLER());
 }
 
 static void *g_mmap64(void *addr, size_t len, int prot, int flags, int fd, i64 offset)
 {
-    return g_mmap_common(addr, len, prot, flags, fd, (u64)offset);
+    return g_mmap_common(addr, len, prot, flags, fd, (u64)offset, (mg_addr)CALLER());
 }
 
 /* mmap2's offset is in pages. */
 void *mg_g_mmap2(void *addr, size_t len, int prot, int flags, int fd, u32 pgoffset)
 {
-    return g_mmap_common(addr, len, prot, flags, fd, (u64)pgoffset * MG_PAGE);
+    return g_mmap_common(addr, len, prot, flags, fd, (u64)pgoffset * MG_PAGE, (mg_addr)CALLER());
 }
 
 static int g_munmap(void *addr, size_t len)
@@ -1199,7 +1305,7 @@ static void *g_mremap(void *old, size_t old_size, size_t new_size, int flags)
         mg_set_errno(GE_NOMEM);
         return G_MAP_FAILED;
     }
-    p = g_mmap_common(NULL, n, G_PROT_READ | G_PROT_WRITE, 0x02 | G_MAP_ANONYMOUS, -1, 0);   /* MAP_PRIVATE */
+    p = g_mmap_common(NULL, n, G_PROT_READ | G_PROT_WRITE, 0x02 | G_MAP_ANONYMOUS, -1, 0, (mg_addr)CALLER());   /* MAP_PRIVATE */
     if (p == G_MAP_FAILED) return p;
     memcpy(p, old, o);
     g_munmap(old, o);
@@ -1690,6 +1796,42 @@ void mg_mmap_given_back(u64 *given, u64 *again)
     if (given) *given = g_given_back;
     if (again) *again = g_taken_again;
     mg_lock_release(&g_region_lock);
+}
+
+/*
+ * The census of the addresses (mg_host_address_census) asks whose an allocation is: an app's mapping is said by the
+ * library that made it -- Go's runtime in one, by number -- or as the app's, where none is known. The names are kept, one
+ * for each library and kind, since the census tells owners apart by their names' pointers. Under g_region_lock.
+ */
+static struct { const mg_lib *lib; bool go; char name[80]; } g_owner_names[24];
+static u32 g_nowner_names;
+
+static const char *owner_name(const mg_lib *lib, bool go)
+{
+    u32 i;
+    if (!lib) return "the app's mappings";
+    for (i = 0; i < g_nowner_names; i++)
+        if (g_owner_names[i].lib == lib && g_owner_names[i].go == go) return g_owner_names[i].name;
+    if (g_nowner_names == MG_COUNT(g_owner_names)) return "the app's mappings";
+    g_owner_names[i].lib = lib;
+    g_owner_names[i].go = go;
+    snprintf(g_owner_names[i].name, sizeof(g_owner_names[i].name), go ? "Go's runtime in %s" : "%s's mappings", mg_ld_lib_name(lib));
+    g_nowner_names++;
+    return g_owner_names[i].name;
+}
+
+const char *mg_mmap_whose(const void *base)
+{
+    region *r;
+    const char *name = NULL;
+    mg_lock_acquire(&g_region_lock);
+    for (r = g_regions; r; r = r->next)
+        if (r->base == (const u8 *)base && !r->view) {
+            name = owner_name(r->maker, r->go);
+            break;
+        }
+    mg_lock_release(&g_region_lock);
+    return name;
 }
 
 void mg_mmap_usage(u64 *anon, u64 *files)

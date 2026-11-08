@@ -227,6 +227,18 @@ def package(required=True):
     return None
 
 
+def app_identity_prefix(android_package):
+    """What the identity name of the package Megler made of `android_package` begins with (core/src/appx/mg_appx_manifest.c):
+    "MeglerApp." and the package, '_' made '-', 50 characters in all -- one longer cut to 41 (a '.' at the 41st made '-')
+    and a dot and a hash after it, one shorter than 49 a dot and a hash after it, one of 49 a hash digit. The dot counts:
+    "MeglerApp.com.google.android.gm" alone begins Google Play services' name too."""
+    full = "MeglerApp." + android_package.replace("_", "-")
+    if len(full) > 50:
+        cut = full[:41]
+        return (cut[:40] + "-" if cut[40] == "." else cut) + "."
+    return full + "." if len(full) < 49 else full
+
+
 def cmd_version(_):
     print(package()["PackageFullName"])
 

@@ -217,7 +217,7 @@ own ("The security providers" below, and the getter of "The time zone"): 7624.
   runs: `7624 linked, 0 not`).
 - The program that uses `java.lang` alone (`d8t/Main.java`) gives the JVM's
   answers for 9 of its 10 tests, and the one that uses `java.util`, `java.io`
-  and `java.text` (`d8t/Lib.java`) for the 7 of its 17 that need no native
+  and `java.text` (`d8t/Lib.java`) for the 7 of its 19 that need no native
   library: `ArrayList`, `LinkedList`, `ArrayDeque`, `PriorityQueue`, sorting
   with comparators, `HashMap`, `TreeMap`, `LinkedHashMap`, `HashSet`, `BitSet`,
   iterators, `StringBuilder`, `String`'s own methods, boxes, `Optional`,
@@ -258,7 +258,7 @@ work: `libjavacore`, `libopenjdk`, `libicuuc`, `libicui18n`, `libnativehelper`,
   descriptor to a file for one line and reads back exactly those 19 bytes.
   (The descriptor is not 1: libcore's `FileDescriptor.out` is a duplicate of 1
   it makes when the class starts.)
-- **Both programs match the JVM**: all 10 tests of `Main` and all 17 of `Lib`,
+- **Both programs match the JVM**: all 10 tests of `Main` and all 19 of `Lib`,
   which add regular expressions, `String.format`, `DecimalFormat`,
   `SimpleDateFormat` in UTC and in `Europe/Moscow`, `BigInteger` and
   `BigDecimal`, case conversion and character classes outside ASCII, charsets
@@ -267,15 +267,22 @@ work: `libjavacore`, `libopenjdk`, `libicuuc`, `libicui18n`, `libnativehelper`,
   (`File`, streams, readers and writers, `RandomAccessFile`) and through
   `java.nio.file` and a `FileChannel`, a second thread with `join`, `wait` and
   `notify`, exceptions the interpreter throws, and `System.currentTimeMillis`,
-  `nanoTime`, `getProperty`, `arraycopy`, `identityHashCode`. The JVM's answers
-  were made by JDK 1.8.0_202 from the same class files.
-- **One test's answer is Android's and not the JVM's**, and
+  `nanoTime`, `getProperty`, `arraycopy`, `identityHashCode`; and through
+  conscrypt over BoringSSL, digests, HMAC, AES-CBC, AES-GCM (a known answer,
+  and a changed bit refused) and a TLS 1.2 handshake with a server of the
+  test's own on loopback, ECDHE_ECDSA with AES-128-GCM and a line each way
+  (`lib_tls`). The JVM's answers were made by JDK 1.8.0_202 from the same
+  class files.
+- **Two tests' answers are Android's and not the JVM's**, and
   `core/tests/dvm/d8/lib-android.txt` says which and why: three messages of
   exceptions the runtime itself throws, which Java does not specify and
   Android words its own way -- `divide by zero` (the JVM: `/ by zero`), a
   negative array size as `Dimension 2: -1` (the JVM 8: no message), and an
-  index out of bounds as `length=5; index=5` (the JVM: `5`). A difference that
-  is not in that file fails the test. There is no other.
+  index out of bounds as `length=5; index=5` (the JVM: `5`); and the ECDHE
+  group of the TLS handshake, which a relay of the test's own reads off the
+  server's ServerKeyExchange: `x25519`, BoringSSL's first, where Java 8's
+  SunJSSE, which has no X25519, takes `secp256r1`. A difference that is not in
+  that file fails the test. There is no other.
 - `java.nio.file`'s native half is in no table: `libopenjdk.so` exports it as
   `Java_sun_nio_fs_UnixNativeDispatcher_...`, and those are found by name (a
   check that some were; 15 by the end of the two programs).
@@ -4462,6 +4469,19 @@ what was done:
   of that: some of a process's heaps are not serialized, one was walked while
   its owner used it and the app ended, and the walk held the process heap's lock
   for most of a second.
+- **And whose the sizes of allocation are**, where the core can tell
+  (`address_whose`, which the census calls for each private allocation): of
+  each of the four sizes, the owners with the most of them, in the form "599
+  of 1024 KB (the Java heap's arenas 420, thread stacks 170, others 9), 2 of
+  8192 KB (Go's runtime in libgojni.so)" (three owners a size at most;
+  "others": those no owner is known of). The owners: the Java heap's arenas;
+  an app's mapping by the library whose code made it (the place of a system
+  call by number, else libc's caller), and Go's runtime when that was a
+  library of Go's by number (`mg_mmap_whose`); a native library's image; the
+  runtime's frame stacks; the threads' stacks for system calls; and, of what
+  none of those is, an allocation with a guard page in it is a thread's
+  stack. WhatsApp's log said "1 of 528384 KB" and "599 of 1024 KB", and whose
+  they were took a disassembly and a guess (0.1.0.671).
 
 **An app's DEX files are views of files where they can be**
 (`mg_dvm_apk.c`), not memory of the process's, which Windows counts against
@@ -4562,8 +4582,21 @@ keeps a local reference in a local, which is what local references are for.
   own storage, the identity hash is the address, and `Unsafe` works on offsets
   from it.
 - *Mark*: the world stopped, from the roots below, with an explicit mark stack.
-  The mark stack is allocated before the stop, sized by the count of live
-  objects. Once it holds enough (2048 objects), the mark is shared with helper
+  The mark stack is the collector's own, kept from one collection to the next
+  and grown before a stop to as many entries as the heap has objects (half
+  again as many ahead), where that can be had; so is the list of reference
+  objects found while marking. Each was allocated at every collection and
+  freed after: WhatsApp's 1.5 million objects wanted 6 MB in one piece while
+  its process had no stretch of addresses that long, and every collection from
+  then on was given up, dozens a second, until an `OutOfMemoryError` (HP Elite
+  x3, 0.1.0.671). Where one cannot grow it stays as it was: the stack
+  overflows into walks of the heap for marked objects (`heap_rescan_marked`,
+  each pass until one marks nothing new), a reference with no room on the list
+  keeps its referent that time, a finalizable object with no room to be queued
+  is kept for a later collection; and before the first growth there are small
+  ones in the collector's own data. A collection is now given up only when a
+  thread cannot be stopped, and the log says which and why. Once it holds
+  enough (2048 objects), the mark is shared with helper
   threads of the collector's own, one fewer than the processors and three at
   the most: the stack becomes a pool they take chunks of into stacks of their
   own, a mark bit is set with an interlocked compare-and-swap so that each
@@ -4595,6 +4628,23 @@ keeps a local reference in a local, which is what local references are for.
   `GetByteArrayElements` returned to guest code.
 - An empty block goes back to the host after a sweep when more than a few are
   empty.
+- Blocks come sixteen at a time in arenas of 1 MB, each a reservation of the
+  host's watched for writes (marking alongside the app, below). An arena that
+  cannot be watched is had unwatched and every page of it counts as written at
+  a second stop; the next one is watched again. (The first such arena took the
+  watch from every arena for good: each second stop of WhatsApp's after it
+  looked at every marked object of a heap of 400 MB, 1.4 to 1.6 s.) The
+  warning says Windows' error.
+- *Lowest first, and arenas given back.* A sweep makes the lists of blocks
+  with room and of spare blocks from the highest block down, so that each
+  hands out its lowest first: what lives gathers low and the arenas high up
+  empty. After the sweep, the arenas left wholly empty past what the next
+  budget wants (two budgets of spare blocks, and 8 MB more) are given back to
+  the host whole, the highest first, their addresses too
+  (`mg_dvm_heap_trim`). The heap kept the addresses of the most it ever had:
+  WhatsApp's 565 MB of arenas for some 95 MB that lived, until its process
+  could not get one more megabyte. The memory line says the arenas and how
+  many have been given back.
 
 **Roots, and exact or conservative.**
 - *Conservative*:
@@ -4716,6 +4766,58 @@ keeps a local reference in a local, which is what local references are for.
   lock. Its pause and the result are one line in the log ("gc: 41 ms, 212 MB
   live of 260, 48 MB freed, 3 threads stopped"), and the frame meter's line
   gets the time spent collecting.
+- *Alongside the app.* Where the heap's arenas are watched for writes, a
+  collection due to allocation marks alongside the app (`collect_alongside`):
+  two short stops, the marking between them by the collector's thread and its
+  helpers at the lowest priority while the app runs, what the app makes
+  meanwhile made marked and kept. Its budget comes from what it *traced*: what
+  the heap holds after its sweep less what was made while it marked
+  (`mg_dvm_heap_black_made`), which counts toward the next collection instead
+  -- it is mostly the next one's garbage. A thread that has made two budgets
+  since the last collection (the app's main thread three; one budget, two for
+  the main thread, where the machine's memory is pressed) waits for the
+  collection under way; at a budget and a half, or with any thread waiting,
+  the collection is behind and its markers take their usual priority until it
+  ends, and the next one starts so (`hurry`): raised by the thread that finds
+  it behind, at once, since a marker of the lowest priority that the app's
+  threads keep from running would not get to raising its own. The heap then
+  holds at most what lives and two budgets, about twice what lives. Before,
+  the budget was half of everything the heap held after the sweep, what was
+  made while it marked included, and threads waited only at three budgets:
+  WhatsApp's collections marked at the lowest priority for 4 to 16 s on the HP
+  Elite x3 while its threads, Google Play services' among them, made 100 to
+  320 MB, each took that for living, and its heap grew to 565 MB of blocks for
+  some 95 MB that lived, in 90 s (0.1.0.671). The collection's line says what
+  it traced, what the heap holds and what was made while it marked, the
+  budget, the arenas and how many were given back, the mark stack's most, and
+  when it was behind.
+- *The process's addresses* (a 32-bit host's 2 GB): after each collection's
+  sweep, at most once a second, the free addresses are counted
+  (`mg_host_address_space`). The budget stays within a quarter of them beyond
+  192 MB, and with fewer than 128 MB free a collection due to allocation stops
+  the app while it marks, so that nothing made meanwhile is kept.
+  `mg_dvm_gc_set_address_probe` stands in for them in the tests.
+- `test_gc_heap_near_live` (`core/tests/mg_dvm_tests_gc.c`, and
+  `MG_DVM_TESTS_ONLY=gc` with `mg_tests --dvm-only` runs the collector's tests
+  alone): four threads make 480 MB of garbage, small arrays and some over 2 KB,
+  and now and then replace an array of a live set of 130,000 that one root
+  holds, while collections mark alongside them; the heap's blocks are sampled
+  every 10 ms. Twice: as the host's scheduler has it, and with the markers
+  starved as a phone's busy cores starve a thread of the lowest priority
+  (`mg_dvm_gc_set_marker_pace`: 32 objects followed, then a millisecond
+  asleep, while a marker's priority is the lowest -- under qemu and on the PC
+  every marker has a core of its own, and its priority costs it nothing). The
+  blocks must stay within three times what lives (and 24 MB), what is in use
+  within two and a half, and once the live set is let go the empty arenas go
+  back. The run is a thread of its own, which ends before the live set is let
+  go: a word of it left on the test's stack kept all of it. Under qemu-arm,
+  the collector's tests alone, with the markers starved: before, 4
+  collections in 15.2 s and the blocks at most 218 MB for 35 MB that lived
+  (6.3 times), in use 332 MB, the arenas' addresses 218 MB and never fewer;
+  after, 30 collections in 2.7 s, the blocks at most 45 MB for 30.5 MB (1.5
+  times), in use 64 MB, the arenas' addresses 45 MB, and 26 MB once the live
+  set is let go. As the scheduler has it, the blocks at most 50 MB before and
+  41 MB after.
 
 **References, finalizers, queues.** libcore's `java.lang.ref.Reference` has a
 `referent` that ART treats specially, and so will this collector.

@@ -82,16 +82,16 @@ const char *text_of(mg_jobj *s)
 
 /* ------------------------------------------------------- generated: t.Ops */
 
-static void test_ops(void)
+/* Each case through t.Ops' method of its name with `suffix` after it. */
+static void ops_cases(const char *suffix)
 {
     size_t i;
     int before = g_failed;
-    say("every arithmetic instruction (%u cases worked out by tools/dvm-ops.py)", (unsigned)MG_COUNT(k_ops_cases));
     for (i = 0; i < MG_COUNT(k_ops_cases); i++) {
         const ops_case *c = &k_ops_cases[i];
         mg_jvalue args[2], r;
         const char *p = c->sig + 1;
-        char ret = c->sig[strlen(c->sig) - 1];
+        char ret = c->sig[strlen(c->sig) - 1], name[96];
         bool ok, good;
         int k;
         for (k = 0; *p != ')'; p++, k++) {
@@ -99,8 +99,9 @@ static void test_ops(void)
             if (*p == 'J' || *p == 'D') args[k].j = c->a[k];
             else args[k].i = (i32)c->a[k];
         }
+        snprintf(name, sizeof(name), "%s%s", c->name, suffix);
         r.j = 0;
-        ok = mg_dvm_call_static("t/Ops", c->name, c->sig, args, &r);
+        ok = mg_dvm_call_static("t/Ops", name, c->sig, args, &r);
         g_checks++;
         if (c->throws) {
             good = !ok && mg_dvm_pending() && !strcmp(mg_dvm_class_name(mg_dvm_pending()), c->throws);
@@ -116,11 +117,53 @@ static void test_ops(void)
         if (!good) {
             g_failed++;
             if (g_failed - before <= 20)
-                say("  FAIL t.Ops.%s%s (%#llx, %#llx): got %#llx%s, expected %#llx%s%s", c->name, c->sig, (unsigned long long)c->a[0], (unsigned long long)c->a[1],
+                say("  FAIL t.Ops.%s%s (%#llx, %#llx): got %#llx%s, expected %#llx%s%s", name, c->sig, (unsigned long long)c->a[0], (unsigned long long)c->a[1],
                     (unsigned long long)r.j, ok ? "" : " and an exception", (unsigned long long)c->want, c->want_nan ? " (a NaN)" : "", c->throws ? c->throws : "");
         }
         mg_dvm_clear_pending();
     }
+}
+
+static void test_ops(void)
+{
+    say("every arithmetic instruction (%u cases worked out by tools/dvm-ops.py)", (unsigned)MG_COUNT(k_ops_cases));
+    ops_cases("");
+}
+
+/*
+ * The same cases through each method's twin for the JIT (tools/dvm-ops.py), which does the instruction in the second turn of
+ * a loop: with the threshold at 1 the loop is compiled at its first jump back, and the instruction is the JIT's own code
+ * (mg_dvm_jit.c) where it has a back end. Its answers must be Java's all the same -- where a processor's own arithmetic
+ * is not Java's at the edges: shifts by 32 and more, MIN_VALUE / -1, conversions of NaN and of what is out of range, a
+ * float's remainder, a divisor of zero (handed back to the interpreter, which throws). And there each twin's loop must
+ * have been compiled whole: its head, pc 1, an entry of its code.
+ */
+static void test_ops_jit(void)
+{
+    u32 was = g_dvm_jit_threshold;
+    say("every arithmetic instruction again, compiled (%u cases)", (unsigned)MG_COUNT(k_ops_cases));
+    mg_dvm_jit_start(true, 1, false);
+    ops_cases("_jit");
+#if MG_DVM_JIT
+    {
+        mg_dvm_class *c = mg_dvm_find_class("t/Ops");
+        u32 twins = 0, missed = 0;
+        int k;
+        for (k = 0; c && k < c->ndirect; k++) {
+            const mg_dvm_method *m = &c->direct[k];
+            size_t n = strlen(m->name);
+            if (n < 4 || strcmp(m->name + n - 4, "_jit")) continue;
+            /* (A division by a literal 0 is the interpreter's, which throws: its loop is not compiled whole.) */
+            if ((!strncmp(m->name, "div_lit", 7) || !strncmp(m->name, "rem_lit", 7)) && strstr(m->name, "_0_jit")) continue;
+            twins++;
+            if (m->jit && mg_dvm_jit_entry(m->jit, 1)) continue;
+            if (++missed <= 10) say("  t.Ops.%s%s: its loop was not compiled", m->name, m->sig);
+        }
+        CHECK(twins > 100);
+        CHECK_INT(missed, 0);
+    }
+#endif
+    g_dvm_jit_threshold = was;
 }
 
 /* ---------------------------------------------------------------- t.Arith */
@@ -341,6 +384,21 @@ static i64 jit_longs(i32 n, i64 seed)
     return (i64)(v0 + v2);
 }
 
+/* What t.Jit.bigFrame computes, in C. */
+static i64 jit_big_frame(i32 n, i64 seed)
+{
+    u64 a = (u64)seed;
+    i32 i;
+    for (i = 0; i < n; i++) {
+        u32 s = (u32)i + 7, s2 = s * s;
+        a = a * 0x5851f42d4c957f2dull + 0x14057b7ef767814full;
+        a ^= a << (s2 & 63);
+        a ^= a >> (s & 63);
+        a -= 0x14057b7ef767814full;
+    }
+    return (i64)a;
+}
+
 static i32 jit_switches(i32 n)
 {
     i32 s = 0, i;
@@ -363,8 +421,8 @@ static i32 jit_switches(i32 n)
  * The JIT (mg_dvm_jit.c, docs/JIT.md) with its threshold at 1: each of t.Jit's loops compiled at its first jump back,
  * and what they return as Java says. Exits too: a divisor of zero, an index out of bounds and a null array inside a
  * compiled loop throw as interpreted; calls made from compiled code, their exceptions and deep recursion through them; long
- * arithmetic and switches. Where the host runs no Thumb-2
- * (x64) nothing is compiled and the same answers are the interpreter's.
+ * arithmetic and switches. Where the JIT has no back end (MG_DVM_JIT) nothing is compiled and the same answers are the
+ * interpreter's.
  */
 static void test_jit(void)
 {
@@ -381,6 +439,8 @@ static void test_jit(void)
     flags = jit_array("[Z", 7);
     CHECK(ints && bytes && chars && shorts && flags);
     if (!ints || !bytes || !chars || !shorts || !flags) return;
+    /* Every loop compiled, those of calls that cost more compiled too (MG_DVM_JIT_CALL_WORK): the measure is seen last. */
+    g_dvm_jit_call_work = 0;
     /* Filled by the compiled loop at k = 1000: ints i*1000, bytes, chars and shorts their truncations. */
     A[0].l = ints;
     A[1].l = bytes;
@@ -499,23 +559,52 @@ static void test_jit(void)
         A[0].i = 120;
         CHECK_INT(call("t/Jit", "inlined", "(I)I").i, jit_inlined(120));
         CHECK_STR(thrown(), "");
-#if defined(__arm__) || defined(_M_ARM)
+#if MG_DVM_JIT
         /* setI, getI, seven, total, setC, getC, touch, getJ, getO */
         CHECK_INT((i32)(g_dvm_jit_in_place - in_place), 9);
 #else
         (void)in_place;
 #endif
     }
-    /* Compiled, where the host runs Thumb-2. */
+    /*
+     * Ints compiled code makes, kept zero-extended as the interpreter keeps them (if-eq and if-nez compare whole registers):
+     * compared in the compiled loop and, handed back, in the interpreter; and one a compiled method returns to an interpreted
+     * caller.
+     */
+    A[0].i = 3;
+    CHECK_INT(call("t/Jit", "upperHalves", "(I)I").i, 0);
+    CHECK_INT(call("t/Jit", "upperCaller", "()I").i, 0);
+    CHECK_STR(thrown(), "");
+    /* A frame of 300 registers, compiled. */
+    A[0].i = 50;
+    A[1].j = (i64)0x0123456789abcdefll;
+    CHECK(call("t/Jit", "bigFrame", "(IJ)J").j == jit_big_frame(50, (i64)0x0123456789abcdefll));
+    CHECK_STR(thrown(), "");
+    /* A negative index, and a null object, met by compiled loops: thrown as interpreted. */
+    A[0].l = ints;
+    call("t/Jit", "readDown", "([I)I");
+    CHECK_STR(thrown(), "java.lang.ArrayIndexOutOfBoundsException: length=40; index=-1");
+    {
+        mg_jobj *points = jit_array("[Lt/JitPoint;", 6);
+        CHECK(points != NULL);
+        if (points) {
+            for (i = 0; i < 6; i++) points->u.oarr.v[i] = i == 4 ? NULL : mg_dvm_new("t/JitPoint", "()V", NULL);
+            A[0].l = points;
+            call("t/Jit", "fieldOfNull", "([Lt/JitPoint;)I");
+            CHECK_STR(thrown(), "java.lang.NullPointerException: Attempt to read from field 't/JitPoint.i' on a null object reference");
+        }
+    }
+    /* Compiled, where the JIT has a back end. */
     c = mg_dvm_find_class("t/Jit");
-#if defined(__arm__) || defined(_M_ARM)
+#if MG_DVM_JIT
     {
         static const struct { const char *name, *sig; } compiled[] = {
             { "sum", "([I)I" }, { "fill", "([I[B[C[SI)I" }, { "mix", "(II)I" }, { "conditions", "(I)I" }, { "divideAll", "(I[I)I" },
             { "readTo", "([II)I" }, { "wideMoves", "(IJ)J" }, { "fields", "(I)I" }, { "callsInLoop", "(I)I" },
             { "callKinds", "(I)I" }, { "catchInLoop", "(I)I" }, { "deepCalls", "(I)I" }, { "longs", "(IJ)J" }, { "switches", "(I)I" },
             { "objects", "(I)I" }, { "storeFails", "(I)I" }, { "castFails", "(I)I" }, { "inlined", "(I)I" }, { "firstAbove", "([II)I" },
-            { "floats", "(I)D" }, { "byCalls", "(IJ)J" }, { "intrinsics", "(Ljava/lang/String;)I" },
+            { "floats", "(I)D" }, { "byCalls", "(IJ)J" }, { "intrinsics", "(Ljava/lang/String;)I" }, { "upperHalves", "(I)I" },
+            { "bigFrame", "(IJ)J" }, { "readDown", "([I)I" }, { "fieldOfNull", "([Lt/JitPoint;)I" },
         };
         size_t k;
         for (k = 0; k < MG_COUNT(compiled); k++) {
@@ -528,7 +617,30 @@ static void test_jit(void)
     {
         mg_dvm_class *ac = mg_dvm_find_class("t/Arith");
         mg_dvm_method *sum = ac ? mg_dvm_find_method(ac, "sum", "(II)I", true) : NULL;
+        mg_dvm_method *minus = c ? mg_dvm_find_method(c, "minusOne", "(I)I", true) : NULL;
         CHECK(sum && sum->jit && mg_dvm_jit_entry(sum->jit, 0));
+        CHECK(minus && minus->jit && mg_dvm_jit_entry(minus->jit, 0));
+    }
+    /*
+     * The measure of calls as the JIT has it (mg_dvm_jit.c, worth_entering): a loop whose turns are mostly a call of a
+     * synchronized method with its handler, whose body runs in an interpreter loop of its own when compiled code calls it,
+     * entered compiled where such a call costs no more than the interpreter's, and left to the interpreter where it does
+     * (MG_DVM_JIT_CALL_WORK: x86 and x86-64). Run once interpreted first, so that its call is resolved when it is compiled,
+     * as the JIT's own threshold's turns would have it.
+     */
+    {
+        mg_dvm_method *mc = c ? mg_dvm_find_method(c, "mostlyCalls", "(I)I", true) : NULL;
+        bool loop = false;
+        u32 k;
+        g_dvm_jit_call_work = MG_DVM_JIT_CALL_WORK;
+        mg_dvm_jit_start(false, 0, false);
+        A[0].i = 2;
+        CHECK_INT(call("t/Jit", "mostlyCalls", "(I)I").i, 1);
+        mg_dvm_jit_start(true, 1, false);
+        A[0].i = 100;
+        CHECK_INT(call("t/Jit", "mostlyCalls", "(I)I").i, 4950);
+        for (k = 0; mc && mc->jit && k < mc->jit->nentries; k++) loop |= mc->jit->entries[k].pc != 0;
+        CHECK(mc && loop == !MG_DVM_JIT_CALL_WORK);
     }
     /*
      * With the threshold above 1, a small method's code waits on the page being filled, interpreted meanwhile, until the
@@ -556,6 +668,7 @@ static void test_jit(void)
     (void)c;
 #endif
     g_dvm_jit_threshold = was;
+    g_dvm_jit_call_work = MG_DVM_JIT_CALL_WORK;
 }
 
 /* ------------------------------------------------------------- two files */
@@ -667,11 +780,17 @@ int mg_dvm_tests_run(const mg_dvm_test_config *config, mg_test_sink sink, void *
         CHECK(mg_dvm_start(NULL, 0));
     }
     CHECK(add_fixtures(config->fixtures));
-    if (!g_failed) {
+    if (!g_failed && getenv("MG_DVM_TESTS_ONLY") && !strcmp(getenv("MG_DVM_TESTS_ONLY"), "gc")) {
+        /* (MG_DVM_TESTS_ONLY=gc: the collector's tests alone, as its measurements are taken: mg_tests --dvm-only.) */
+        mg_dvm_set_trace(config->trace);
+        test_gc();
+        mg_dvm_set_trace(0);
+    } else if (!g_failed) {
         mg_dvm_set_trace(config->trace);
         test_ops();
         test_arith();
         test_jit();
+        test_ops_jit();
         test_two_files();
         test_language();
         test_runtime(config->fixtures);
