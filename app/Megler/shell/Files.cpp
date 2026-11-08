@@ -183,13 +183,6 @@ bool same(const std::wstring& a, const std::wstring& b) {
 
 namespace {
 
-bool readAt(HANDLE h, uint64_t at, char* out, DWORD n) {
-    LARGE_INTEGER pos = {};
-    pos.QuadPart = LONGLONG(at);
-    DWORD got = 0;
-    return SetFilePointerEx(h, pos, nullptr, FILE_BEGIN) && ReadFile(h, out, n, &got, nullptr) && got == n;
-}
-
 bool writeAt(HANDLE h, uint64_t at, const char* data, DWORD n) {
     LARGE_INTEGER pos = {};
     pos.QuadPart = LONGLONG(at);
@@ -232,45 +225,80 @@ bool DiskFile::read(uint64_t at, char* out, uint32_t n) {
     return true;
 }
 
-bool mend(const std::wstring& source, const std::wstring& copy, uint64_t& mended, std::vector<uint64_t>* chunks) {
+bool mend(const std::wstring& source, const std::wstring& copy, uint64_t& mended, std::vector<uint64_t>* chunks, const Progress& progress) {
     const DWORD chunk = DiskFile::chunk;
     mended = 0;
-    HANDLE from = open(source, GENERIC_READ, OPEN_EXISTING);
-    if (from == INVALID_HANDLE_VALUE) return false;
+    // (The source past the cache as well: what is compared is what the disk has, and a phone's memory is not filled with it.)
+    DiskFile from(source);
+    if (!from.isOpen()) return false;
     HANDLE to = open(copy, GENERIC_READ | GENERIC_WRITE, OPEN_EXISTING);
-    if (to == INVALID_HANDLE_VALUE) {
-        CloseHandle(from);
-        return false;
-    }
+    if (to == INVALID_HANDLE_VALUE) return false;
     DiskFile disk(copy);
-    LARGE_INTEGER sizeFrom = {}, sizeTo = {};
-    bool ok = disk.isOpen() && GetFileSizeEx(from, &sizeFrom) && GetFileSizeEx(to, &sizeTo) && sizeFrom.QuadPart == sizeTo.QuadPart;
+    LARGE_INTEGER sizeTo = {};
+    const uint64_t total = from.size();
+    bool ok = disk.isOpen() && GetFileSizeEx(to, &sizeTo) && uint64_t(sizeTo.QuadPart) == total;
     std::vector<char> a(chunk), b(chunk), again(chunk);
-    for (uint64_t at = 0; ok && at < uint64_t(sizeFrom.QuadPart); at += chunk) {
-        const DWORD n = DWORD(std::min<uint64_t>(chunk, uint64_t(sizeFrom.QuadPart) - at));
-        ok = readAt(from, at, a.data(), n) && disk.read(at, b.data(), n);
-        if (!ok || !memcmp(a.data(), b.data(), n)) continue;
-        // The source read twice alike first, so that what is written is the file's and not a reading's mistake; then the
-        // chunk written, put on the disk and read back from there.
-        bool fixed = false;
-        for (int tries = 0; tries < 3 && !fixed; tries++) {
-            if (!readAt(from, at, a.data(), n) || !readAt(from, at, again.data(), n) || memcmp(a.data(), again.data(), n)) continue;
-            fixed = writeAt(to, at, a.data(), n) && FlushFileBuffers(to) && disk.read(at, b.data(), n) && !memcmp(a.data(), b.data(), n);
+    for (uint64_t at = 0; ok && at < total; at += chunk) {
+        const DWORD n = DWORD(std::min<uint64_t>(chunk, total - at));
+        ok = from.read(at, a.data(), n) && disk.read(at, b.data(), n);
+        if (ok && memcmp(a.data(), b.data(), n)) {
+            // The source read twice alike first, so that what is written is the file's and not a reading's mistake; then the
+            // chunk written, put on the disk and read back from there.
+            bool fixed = false;
+            for (int tries = 0; tries < 3 && !fixed; tries++) {
+                if (!from.read(at, a.data(), n) || !from.read(at, again.data(), n) || memcmp(a.data(), again.data(), n)) continue;
+                fixed = writeAt(to, at, a.data(), n) && FlushFileBuffers(to) && disk.read(at, b.data(), n) && !memcmp(a.data(), b.data(), n);
+            }
+            ok = fixed;
+            if (fixed) {
+                mended += n;
+                if (chunks) chunks->push_back(at);
+            }
         }
-        ok = fixed;
-        if (fixed) {
-            mended += n;
-            if (chunks) chunks->push_back(at);
-        }
+        if (ok && progress) progress(Stage::comparing, at + n, total);
     }
-    CloseHandle(from);
     CloseHandle(to);
     return ok;
 }
 
-bool copyWhole(const std::wstring& from, const std::wstring& to, uint64_t& mended) {
+namespace {
+
+COPYFILE2_MESSAGE_ACTION CALLBACK copyProgress(const COPYFILE2_MESSAGE* message, PVOID context) {
+    if (message->Type == COPYFILE2_CALLBACK_CHUNK_FINISHED)
+        (*static_cast<const Progress*>(context))(Stage::copying, uint64_t(message->Info.ChunkFinished.uliTotalBytesTransferred.QuadPart),
+                                                 uint64_t(message->Info.ChunkFinished.uliTotalFileSize.QuadPart));
+    return COPYFILE2_PROGRESS_CONTINUE;
+}
+
+/// CopyFile2 with `flags`, `progress` told of each chunk; whether it copied, and when not, its Win32 error for GetLastError.
+bool copyFile(const std::wstring& from, const std::wstring& to, DWORD flags, const Progress& progress) {
+    COPYFILE2_EXTENDED_PARAMETERS params = {};
+    params.dwSize = sizeof(params);
+    params.dwCopyFlags = flags;
+    if (progress) {
+        params.pProgressRoutine = &copyProgress;
+        params.pvCallbackContext = const_cast<Progress*>(&progress);
+    }
+    const HRESULT hr = CopyFile2(from.c_str(), to.c_str(), &params);
+    if (FAILED(hr)) SetLastError(HRESULT_FACILITY(hr) == FACILITY_WIN32 ? DWORD(HRESULT_CODE(hr)) : DWORD(hr));
+    return SUCCEEDED(hr);
+}
+
+} // namespace
+
+bool copyWhole(const std::wstring& from, const std::wstring& to, uint64_t& mended, const Progress& progress) {
     mended = 0;
-    return copy(from, to) && flush(to) && mend(from, to, mended);
+    const uint64_t total = size(from);
+    bool copied = false;
+    if (total >= unbufferedFrom) {
+        copied = copyFile(from, to, COPY_FILE_NO_BUFFERING, progress);
+        // (A full disk is full through the cache too.)
+        const DWORD error = copied ? 0 : GetLastError();
+        if (error == ERROR_DISK_FULL || error == ERROR_HANDLE_DISK_FULL) return false;
+    }
+    if (!copied && !copyFile(from, to, 0, progress)) return false;
+    if (progress) progress(Stage::flushing, 0, total);
+    return flush(to) && mend(from, to, mended, nullptr, progress);
 }
 
 std::vector<std::wstring> list(const std::wstring& directory, const std::wstring& pattern) {

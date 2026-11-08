@@ -4,11 +4,17 @@
 #pragma once
 
 #include <cstdint>
+#include <functional>
 #include <string>
 #include <string_view>
 #include <vector>
 
 namespace megler::app::files {
+
+/// What a long copy (copyWhole) is doing: copying, putting the copy on the disk, comparing it with what it was made from.
+enum class Stage { copying, flushing, comparing };
+/// Told how far a long copy is, as it goes: `done` of `total` bytes of the stage. From the copying thread.
+using Progress = std::function<void(Stage stage, uint64_t done, uint64_t total)>;
 
 bool exists(const std::wstring& path);
 uint64_t size(const std::wstring& path);
@@ -47,12 +53,18 @@ bool same(const std::wstring& a, const std::wstring& b);
 /// `source` (read twice alike first), put on the disk and read back; `mended`: how many bytes were written so, and
 /// `chunks`, when given, the offset of each chunk that was. A Lumia 650's copies of Google Play services' 277 MB APK came
 /// out twice with a byte wrong in their middle, each time in a DEX file of it that no app could then use (packages 625 and
-/// 632). The copy is read as the disk holds it (DiskFile): a page Windows still has in memory from the writing reads right
-/// whatever went to the disk.
-bool mend(const std::wstring& source, const std::wstring& copy, uint64_t& mended, std::vector<uint64_t>* chunks = nullptr);
+/// 632). Both are read as the disk holds them (DiskFile): a page Windows still has in memory from the writing reads right
+/// whatever went to the disk, and hundreds of megabytes read through Windows's cache push out of a phone's memory what
+/// everything else had in it (a Lumia 630 has 512 MB). `progress`, when given, is told each chunk compared.
+bool mend(const std::wstring& source, const std::wstring& copy, uint64_t& mended, std::vector<uint64_t>* chunks = nullptr,
+          const Progress& progress = nullptr);
 /// `from` copied to `to` (replacing it), put on the disk, and made byte for byte `from`'s (mend; `mended` as there): how
-/// every copy of an APK is made that apps run from.
-bool copyWhole(const std::wstring& from, const std::wstring& to, uint64_t& mended);
+/// every copy of an APK is made that apps run from. A file of unbufferedFrom bytes or more is copied past Windows's cache
+/// (COPY_FILE_NO_BUFFERING), as a copy of hundreds of megabytes should be on a phone of 512 MB, and again through it should
+/// that be refused. `progress`, when given, is told how far each stage is. On failure GetLastError() says why.
+bool copyWhole(const std::wstring& from, const std::wstring& to, uint64_t& mended, const Progress& progress = nullptr);
+/// The size from which copyWhole copies past Windows's cache.
+constexpr uint64_t unbufferedFrom = 8u << 20;
 
 /// A file read as the disk holds it, past Windows's cache of it (FILE_FLAG_NO_BUFFERING: whole sectors, into memory of
 /// its own aligned to a page); as any file where the file system will not open it so.
