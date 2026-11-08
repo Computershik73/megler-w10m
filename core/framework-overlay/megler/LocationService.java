@@ -15,13 +15,21 @@
 // getLastKnownLocation is the newest fix the shell has; when there is none, the location is followed for half a minute so
 // that the next call finds one, as on a phone something has always just asked. Until the user has been asked, the location
 // counts as on, so that an app that first checks isProviderEnabled("gps") goes on to ask for it; nothing is asked then.
+// The location counts as on too where Windows refuses it to this app (the user's no in Settings > Privacy > Location): on
+// Android the location's switch is the phone's, and an app without the permission is told so by its permission; it is off
+// only where the phone's location is switched off, or nothing finds the phone.
 //
 // A request of the passive interval (LocationRequest.PASSIVE_INTERVAL, Long.MAX_VALUE) is handed every new fix and does not
-// set how often the location is followed.
+// set how often the location is followed. An app whose permission is granted after its first request (the worker asked
+// nothing then) has Windows asked once it is, and so has one whose location is undecided again (the phone's location
+// switched on after it was off, the app not yet asked about).
 //
 // The log says each request as it comes, whose it is (the listener's class, the PendingIntent's package, the consumer's class)
-// and how often, and the first fix each is handed: whether an app that finds no location asked at all, and whether a fix
-// reached what it asked through (Google Play services' fused provider asks here for the app). At most 40 lines a run.
+// and how often, and that the app holds no location permission when it does not (Android would have refused the request), and
+// the first fix each is handed: whether an app that finds no location asked at all, and whether a fix reached what it asked
+// through (Google Play services' fused provider asks here for the app). At most 40 lines a run. And why no fix is handed while
+// there are requests, each time the reason changes: the phone's location switched off, Windows' no for this app, no location
+// device, no permission (Windows not asked), Windows not answering yet; and when 30 seconds of following have brought none.
 package megler;
 
 import android.app.PendingIntent;
@@ -85,12 +93,14 @@ public final class LocationService {
 
     /**
      * Whether the location is on for the app: on, or not decided yet, so that an app that first checks isProviderEnabled("gps")
-     * goes on to ask for it. Nothing is asked here. It was, in the background: Google Play services in an app asks this of
-     * every provider, and Windows asked the user for the location for apps that never wanted it.
+     * goes on to ask for it, or refused to this app by the user, which is the app's permission's to say on Android (see the
+     * top); off where the phone's location is switched off or nothing finds the phone. Nothing is asked here. It was, in the
+     * background: Google Play services in an app asks this of every provider, and Windows asked the user for the location for
+     * apps that never wanted it.
      */
     public static boolean enabled() {
         int a = LocationNative.access(false);
-        return a == LocationNative.ON || a == LocationNative.UNKNOWN;
+        return a == LocationNative.ON || a == LocationNative.UNKNOWN || a == LocationNative.DENIED;
     }
 
     /**
@@ -165,6 +175,7 @@ public final class LocationService {
         r.expiresAt = SystemClock.elapsedRealtime() + CURRENT_TIMEOUT_MS;
         int a = LocationNative.access(false);
         if (a != LocationNative.ON && a != LocationNative.UNKNOWN) {
+            say("one fix (getCurrentLocation) of " + provider + " for " + whose(r) + ": " + why(a, mayAsk()) + "; it is handed null at once");
             r.executor.execute(() -> consumer.accept(null));
             return;
         }
@@ -212,10 +223,11 @@ public final class LocationService {
     }
 
     private static void add(Request r, LocationListener sameListener, PendingIntent samePending) {
-        say(r.consumer != null ? "one fix (getCurrentLocation) of " + r.provider + " for " + whose(r)
+        say((r.consumer != null ? "one fix (getCurrentLocation) of " + r.provider + " for " + whose(r)
                 : r.provider + (r.passive ? " at the passive interval (every fix found for others)" : " every " + r.minTimeMs + " ms")
-                  + (r.minDistanceM > 0 ? " and " + r.minDistanceM + " m" : "")
-                  + (r.remaining > 0 ? ", " + r.remaining + " updates," : "") + " for " + whose(r));
+                  + (r.minDistanceM > 0 ? " and " + r.minDistanceM + " m" : "") + (r.remaining > 0 ? ", " + r.remaining + " updates," : "") + " for " + whose(r))
+            + (mayAsk() ? "" : " -- the app holds no location permission (ACCESS_FINE_LOCATION, ACCESS_COARSE_LOCATION): Android would refuse this"
+                               + " request with a SecurityException, and Windows is not asked for the location on its behalf"));
         synchronized (LOCK) {
             for (int i = REQUESTS.size() - 1; i >= 0; i--) {
                 Request o = REQUESTS.get(i);
@@ -251,10 +263,25 @@ public final class LocationService {
         return (int) Math.max(FASTEST_MS, Math.min(ms, 60000));
     }
 
+    /** Why no fix is handed while the location is not on for the app, as the log says it. */
+    private static String why(int access, boolean permitted) {
+        switch (access) {
+        case LocationNative.OFF: return "the phone's location is switched off (Windows' Settings > Privacy > Location): the app is told its providers are disabled";
+        case LocationNative.DENIED: return "Windows does not let this app have the location (Settings > Privacy > Location)";
+        case LocationNative.NONE: return "nothing finds where the phone is: Windows has no location device or service";
+        default: return permitted ? "Windows has not answered whether the app may have the location"
+                                  : "the app holds no location permission (ACCESS_FINE_LOCATION, ACCESS_COARSE_LOCATION), so Windows is not asked";
+        }
+    }
+
     private static void follow() {
         int started = -1;
-        int access = LocationNative.access(mayAsk());
+        boolean asked = mayAsk();
+        int access = LocationNative.access(asked);
         long accessAt = SystemClock.elapsedRealtime();
+        long startedAt = 0;
+        boolean saidNoFix = false;
+        String saidWhy = null;
         try {
             for (;;) {
                 ArrayList<Request> now;
@@ -272,20 +299,33 @@ public final class LocationService {
                         if (started >= 0) LocationNative.stop();
                         started = -1;
                         sWorker = null;
-                        for (Request r : expired) expire(r);
+                        for (Request r : expired) expire(r, access);
                         return;
                     }
                     now = new ArrayList<>(REQUESTS);
                 }
-                for (Request r : expired) expire(r);
+                for (Request r : expired) expire(r, access);
                 if (t - accessAt >= 2000) {
+                    int before = access;
                     access = LocationNative.access(false);
+                    // (Not decided again -- the phone's location switched on after it was off -- or an app granted its permission
+                    // since the worker started without asking: Windows is asked now, once each time.)
+                    if (access == LocationNative.UNKNOWN && before != LocationNative.UNKNOWN) asked = false;
+                    if (access == LocationNative.UNKNOWN && !asked && mayAsk()) {
+                        asked = true;
+                        access = LocationNative.access(true);
+                    }
                     accessAt = t;
                 }
                 if (access != LocationNative.ON) {
                     if (started >= 0) {
                         LocationNative.stop();
                         started = -1;
+                    }
+                    String why = why(access, asked || mayAsk());
+                    if (!why.equals(saidWhy) && !now.isEmpty()) {
+                        saidWhy = why;
+                        android.util.Log.i("MeglerLocation", "no fix for the app's " + now.size() + " request" + (now.size() == 1 ? "" : "s") + ": " + why);
                     }
                     for (Request r : now) {
                         if (r.toldDisabled) continue;
@@ -294,6 +334,10 @@ public final class LocationService {
                     }
                     pause(500);
                     continue;
+                }
+                if (saidWhy != null) {
+                    saidWhy = null;
+                    android.util.Log.i("MeglerLocation", "the location is on for the app again");
                 }
                 for (Request r : now) {
                     if (!r.toldDisabled) continue;
@@ -304,10 +348,22 @@ public final class LocationService {
                 if (started != interval) {
                     if (started >= 0) LocationNative.stop();
                     LocationNative.start(interval);
+                    if (started < 0) {
+                        startedAt = t;
+                        saidNoFix = false;
+                    }
                     started = interval;
                 }
                 double[] f = LocationNative.last();
+                boolean fresh = f != null && System.currentTimeMillis() - (long) f[7] <= STALE_MS;
                 if (f != null) deliver(now, f, t);
+                if (fresh) {
+                    saidNoFix = true;
+                } else if (!saidNoFix && t - startedAt >= CURRENT_TIMEOUT_MS) {
+                    saidNoFix = true;
+                    android.util.Log.i("MeglerLocation", "no fix yet, " + (t - startedAt) / 1000 + " s after the location was followed: Windows' Geolocator has"
+                            + " found none (indoors with no Wi-Fi or cell network position, or the satellites not found yet); requests wait for one");
+                }
                 pause(250);
             }
         } catch (Throwable e) {
@@ -319,8 +375,9 @@ public final class LocationService {
         }
     }
 
-    private static void expire(Request r) {
-        say("no fix within " + CURRENT_TIMEOUT_MS / 1000 + " s for " + whose(r));
+    private static void expire(Request r, int access) {
+        say("no fix within " + CURRENT_TIMEOUT_MS / 1000 + " s for " + whose(r)
+            + (access == LocationNative.ON ? ": Windows' Geolocator found none in that time" : ": " + why(access, mayAsk())) + "; it is handed null");
         r.executor.execute(() -> r.consumer.accept(null));
     }
 

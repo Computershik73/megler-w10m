@@ -3574,7 +3574,26 @@ media, the text messages, the phone and the call history by Megler's own
 question (Allow, Don't Allow), kept in the app's settings, a second no for
 good; and the contacts, the calendar, the body sensors, nearby devices,
 notifications and physical activity granted with no one asked, since Megler
-gives an app none of those of the phone's. An app's App Settings list its
+gives an app none of those of the phone's. The location refused by the
+system -- the phone's location switched off, which Windows' consent says as
+`DeniedBySystem` -- is no refusal of the app's: Android grants or refuses an
+app's location permission whether the location is on or off, and the app,
+told the permission is its own and the location off (`LocationService`:
+`isLocationEnabled` and `isProviderEnabled` false, its listeners' providers
+disabled), asks the user to switch it on -- Android's location settings
+(`ACTION_LOCATION_SOURCE_SETTINGS`) open Windows' page of them
+(`ms-settings:privacy-location`, `AppRunner`), a caller that asked for a
+result hearing `RESULT_CANCELED` once it is in front again. Taken for a
+refusal for good, it left an app nothing to ask: VTB's request was "denied;
+no one asked", and VTB said that the geolocation was not available
+(0.1.0.671). What Windows says of
+the location (allowed, the user's no for this app, the system's no, not
+decided) is said in the log as it is first read and as it changes, by the
+permissions and by the location (`player/LocationHost.h`, which follows the
+consent while the app runs), and so is why no fix is handed while an app has
+requests (`LocationService`: the location off, Windows' no, no location
+device, no permission held and so nothing asked, Windows not answering yet,
+nothing found in 30 s of following). An app's App Settings list its
 groups, what was said, and change Megler's answers. Clearing an app's data
 (Clear Data on its page in Megler, or Clear storage on Android's app info
 screen in the app) forgets Megler's answers too, as Android's Clear storage

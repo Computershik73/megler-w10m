@@ -297,9 +297,7 @@ private:
                 // Windows' answer is the package's own: known here only in the app's own package.
                 std::string said = "Windows asks when the app first wants it";
                 if (scope_.own) {
-                    const int state = permissionHost::windows(group.name);
-                    if (state == MEGLER_PERMISSION_GRANTED) said = "Allowed by Windows";
-                    if (state == MEGLER_PERMISSION_DENIED_FIXED) said = "Not allowed by Windows";
+                    said = permissionHost::windowsSaid(group.name);
                 } else {
                     said = "Windows decides, in its privacy settings";
                 }

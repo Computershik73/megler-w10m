@@ -6,6 +6,7 @@
 #include "shell/ShellLog.h"
 #include "shell/Strings.h"
 
+#include <winrt/Windows.Devices.Enumeration.h>
 #include <winrt/Windows.Devices.Geolocation.h>
 
 #include <chrono>
@@ -19,6 +20,9 @@
 namespace megler::app {
 namespace {
 
+using winrt::Windows::Devices::Enumeration::DeviceAccessChangedEventArgs;
+using winrt::Windows::Devices::Enumeration::DeviceAccessInformation;
+using winrt::Windows::Devices::Enumeration::DeviceAccessStatus;
 using winrt::Windows::Devices::Geolocation::Geocoordinate;
 using winrt::Windows::Devices::Geolocation::GeolocationAccessStatus;
 using winrt::Windows::Devices::Geolocation::Geolocator;
@@ -42,6 +46,12 @@ bool gFollowing = false;
 bool gHaveFix = false;
 megler_location gFix = {};
 bool gSaidFix = false;
+// Windows' location consent of this package (the device class Windows' documentation checks it by), read once and followed
+// (AccessChanged), kept alive here.
+const winrt::guid kLocationConsent{0xBFA794E4, 0xF964, 0x4FDB, {0x90, 0xF6, 0x51, 0x05, 0x6B, 0xFE, 0x4B, 0x44}};
+DeviceAccessInformation gConsent{nullptr};
+winrt::event_token gConsentToken{};
+std::once_flag gConsentOnce;
 
 long long nowMs() {
     return std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
@@ -131,6 +141,64 @@ int accessOf(GeolocationAccessStatus s) {
     }
 }
 
+/// Windows' consent as the core's answer: allowed, refused by the user for this app, refused by the system -- the phone's
+/// location switched off, or every app's (Settings > Privacy > Location) -- or not decided yet.
+int accessOfConsent(DeviceAccessStatus s) {
+    switch (s) {
+    case DeviceAccessStatus::Allowed: return MEGLER_LOCATION_ON;
+    case DeviceAccessStatus::DeniedByUser: return MEGLER_LOCATION_DENIED;
+    case DeviceAccessStatus::DeniedBySystem: return MEGLER_LOCATION_OFF;
+    default: return MEGLER_LOCATION_UNKNOWN;
+    }
+}
+
+const char* consentName(DeviceAccessStatus s) {
+    switch (s) {
+    case DeviceAccessStatus::Allowed: return "allowed";
+    case DeviceAccessStatus::DeniedByUser: return "denied by the user for this app (Settings > Privacy > Location)";
+    case DeviceAccessStatus::DeniedBySystem: return "denied by the system: the phone's location is switched off, or no app may have it (Settings > Privacy > Location)";
+    default: return "not decided yet: Windows asks the first time the app wants it";
+    }
+}
+
+/// The consent, nothing asked, from now on followed: what Windows says of this package before anyone asks (the phone's
+/// location switched off is said so, and an app asking is told so rather than taken for one not asked yet), and each change
+/// the user makes in Windows' settings while the app runs. Once for the process.
+void followConsent() {
+    std::call_once(gConsentOnce, [] {
+        inMta([] {
+            DeviceAccessInformation info = DeviceAccessInformation::CreateFromDeviceClassId(kLocationConsent);
+            const DeviceAccessStatus now = info.CurrentStatus();
+            {
+                std::lock_guard<std::mutex> lock(gMutex);
+                if (gAccess == MEGLER_LOCATION_UNKNOWN) gAccess = accessOfConsent(now);
+            }
+            shellLog::write(format("location: Windows' consent for this app: %s", consentName(now)));
+            gConsentToken = info.AccessChanged([](const DeviceAccessInformation&, const DeviceAccessChangedEventArgs& args) {
+                const DeviceAccessStatus s = args.Status();
+                const int access = accessOfConsent(s);
+                bool changed;
+                {
+                    std::lock_guard<std::mutex> lock(gMutex);
+                    changed = gAccess != access;
+                    gAccess = access;
+                }
+                if (changed) shellLog::write(format("location: Windows' consent for this app changed: %s", consentName(s)));
+            });
+            gConsent = info;
+        });
+    });
+}
+
+/// After Windows' question was answered no: whether that was the system's (the location off) rather than the user's.
+int refinedRefusal() {
+    int access = MEGLER_LOCATION_DENIED;
+    inMta([&access] {
+        if (DeviceAccessInformation::CreateFromDeviceClassId(kLocationConsent).CurrentStatus() == DeviceAccessStatus::DeniedBySystem) access = MEGLER_LOCATION_OFF;
+    });
+    return access;
+}
+
 /// Windows' question to the user, on the UI thread where it can be asked (on this one where there is none: the tests'
 /// program). Waits for the answer, as long as the user takes, up to 170 seconds.
 int askWindows() {
@@ -201,6 +269,7 @@ megler_location_host LocationHost::callbacks() {
 int LocationHost::accessThunk(void*, bool ask) {
     double latitude = 0, longitude = 0;
     if (placeSet(latitude, longitude)) return MEGLER_LOCATION_ON;
+    followConsent();
     {
         std::unique_lock<std::mutex> lock(gMutex);
         if (gAccess != MEGLER_LOCATION_UNKNOWN || !ask) return gAccess;
@@ -213,9 +282,12 @@ int LocationHost::accessThunk(void*, bool ask) {
     }
     int access = MEGLER_LOCATION_UNKNOWN;
     inMta([&access] { access = askWindows(); });
+    // (Windows' no is the system's when the phone's location is off: no question was put, and the app is told the location
+    // is off rather than refused.)
+    if (access == MEGLER_LOCATION_DENIED) access = refinedRefusal();
     shellLog::write(format("location: Windows says %s", access == MEGLER_LOCATION_ON       ? "Megler may have the location"
                                                         : access == MEGLER_LOCATION_DENIED ? "Megler may not have the location (Settings > Privacy > Location)"
-                                                        : access == MEGLER_LOCATION_OFF    ? "the location is not to be had"
+                                                        : access == MEGLER_LOCATION_OFF    ? "the phone's location is switched off (Settings > Privacy > Location)"
                                                                                          : "nothing yet"));
     {
         std::lock_guard<std::mutex> lock(gMutex);

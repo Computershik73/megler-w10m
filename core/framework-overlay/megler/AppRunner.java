@@ -29,6 +29,11 @@
 // And the screens of Android's Settings an app opens -- the accounts, the app's info -- are Megler's own (megler.SystemScreens),
 // shown on top of the app as Android shows the Settings app's: they had opened nothing.
 //
+// And Android's location settings (android.settings.LOCATION_SOURCE_SETTINGS: an app's "turn the location on", after it was
+// told the location is off) open Windows' page of them (ms-settings:privacy-location), where the phone's location is switched
+// on; a caller that asked for a result hears RESULT_CANCELED once it is in front again, as from Android's Settings' Back. They
+// had opened nothing.
+//
 // And the app's network security configuration is put in place before its Application is made, where Android 9's
 // handleBindApplication does it (android.security.net.config.NetworkSecurityConfigProvider says why): the authorities its
 // XML names, Ozon's Russian Trusted Root CA among them, are trusted by TLS.
@@ -532,6 +537,19 @@ public final class AppRunner {
             });
             return;
         }
+        // Android's location settings (an app's "turn the location on"): Windows' page of them, where the phone's location is
+        // switched on; a caller that asked for a result hears the user backed out once it is in front again (windowsSettingsBack).
+        if ("android.settings.LOCATION_SOURCE_SETTINGS".equals(action)) {
+            android.util.Log.d("Megler", "startActivity " + i + " -> Windows' location settings (ms-settings:privacy-location)");
+            Native.openUrl("ms-settings:privacy-location");
+            final Activity caller = from instanceof Activity ? (Activity) from : top();
+            if (request >= 0 && caller != null) {
+                sWindowsCaller = caller;
+                sWindowsRequest = request;
+                sHandler.postDelayed(() -> windowsSettingsBack(true), 5000);
+            }
+            return;
+        }
         /* a screen of the system's (the account chooser, Settings pages, the permission dialog): Megler has none of them -- asked for a
            result, the caller hears the user backed out, as it would on a phone; otherwise nothing opens */
         String pkg = i.getComponent() != null ? i.getComponent().getPackageName() : i.getPackage();
@@ -728,6 +746,22 @@ public final class AppRunner {
         Native.toBack();
         return true;
     }
+    /** The activity that opened Windows' location settings for a result, and its request code (-1: none waits). */
+    private static Activity sWindowsCaller;
+    private static int sWindowsRequest = -1;
+    /**
+     * The answer of Windows' location settings to an activity that opened them for a result: RESULT_CANCELED, as Android's
+     * Settings answers its Back, when the app is in front again (hostPause) -- or after five seconds when the page never hid
+     * the app (fromTimer), so that the caller is not left waiting.
+     */
+    private static void windowsSettingsBack(boolean fromTimer) {
+        final Activity caller = sWindowsCaller;
+        if (caller == null || (fromTimer && sPausedByHost)) return;
+        final int request = sWindowsRequest;
+        sWindowsCaller = null;
+        sWindowsRequest = -1;
+        caller.meglerActivityResult(request, Activity.RESULT_CANCELED, null);
+    }
     /** The activities the host's hidden window stopped (hostPause), in the stack's order: started again as it comes back. */
     private static final ArrayList<Activity> sStoppedByHost = new ArrayList<>();
     private static void hostPause(boolean pause) {
@@ -737,6 +771,7 @@ public final class AppRunner {
         ViewRoot.hostHidden(pause);
         // a result another app's activity left for this one comes first, as onActivityResult comes before onResume
         if (!pause) AppResults.resumed();
+        if (!pause) windowsSettingsBack(false);
         // and what the shell said of the permission groups is asked again: the user may have changed Windows' settings meanwhile
         if (!pause) Permissions.forget();
         Activity a = top();
