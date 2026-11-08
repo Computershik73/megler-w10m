@@ -27,8 +27,14 @@ static void *g_lib_egl, *g_lib_gles;
 static bool g_angle_tried;
 static mg_lock g_egl_lock = MG_LOCK_INIT;      /* the display */
 static mg_lock g_angle_lock = MG_LOCK_INIT;    /* loading ANGLE: taken while the display's lock is held */
+/* Whether this EGL makes contexts without a configuration (EGL_KHR_no_config_context; g_eglCreateContext): -1, not asked yet. */
+static int g_no_config = -1;
 
-void mg_egl_set_provider(void *(*resolve)(const char *name)) { g_provider = resolve; }
+void mg_egl_set_provider(void *(*resolve)(const char *name))
+{
+    g_provider = resolve;
+    g_no_config = -1;
+}
 
 /* On x86_64 and x86 ANGLE's function is given as its adapter (mg_gl_adapters.c), of the core's convention, which is the guest's. */
 #if MG_GL_ADAPTERS
@@ -1135,22 +1141,21 @@ static EGLConfig context_config(EGLDisplay d, EGLConfig config, const EGLint *at
 
 static EGLContext g_eglCreateContext(EGLDisplay d, EGLConfig config, EGLContext share, const EGLint *attribs)
 {
-    static int no_config = -1;
     static volatile i32 said;
     fn_create_context real = A(fn_create_context, "eglCreateContext");
     EGLContext made;
     EGLConfig with;
     mg_trace("eglCreateContext(share %p)", (void *)share);
     if (!real) return NULL;
-    if (no_config < 0) {
+    if (g_no_config < 0) {
         fn_query_string qs = A(fn_query_string, "eglQueryString");
         const char *ext = qs ? qs(d, EGL_EXTENSIONS) : NULL;
-        no_config = ext && strstr(ext, "EGL_KHR_no_config_context") ? 1 : 0;
+        g_no_config = ext && strstr(ext, "EGL_KHR_no_config_context") ? 1 : 0;
     }
     if (!g_blob_started) blob_cache_offer(d);
-    with = context_config(d, config, attribs, no_config != 0);
+    with = context_config(d, config, attribs, g_no_config != 0);
     made = real(d, with, share, attribs);
-    if (made && with && no_config)
+    if (made && with && g_no_config)
         mg_note_once("egl: OpenGL ES 1: its contexts are made with the configuration of their window surface, as ANGLE makes version 1 only "
                      "with one (every other version without)");
     if (!made) context_refused(share, attribs, &said);
