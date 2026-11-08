@@ -384,8 +384,6 @@ void Library::load() {
             else if ((stale || !entry.analysed) && files::exists(entry.path)) toRead.push_back(entry.id);
             entries_.push_back(std::move(entry));
         }
-        if (appPackage::single().package == "com.google.android.gms")
-            for (const auto& entry : entries_) appPackage::registerServiceApk(entry, narrow(winrt::Windows::ApplicationModel::Package::Current().Id().FullName()));
         refreshingAll_ = stale && !toRead.empty();
         if (stale && toRead.empty()) files::write(directory_ + L"\\reports.version", versionStamp());
         ++generation_;
@@ -399,11 +397,32 @@ void Library::load() {
 
 void Library::afterStart() {
     std::vector<bundledApks::Task> copies;
+    std::vector<ApkEntry> services;
     {
         std::lock_guard<std::mutex> lock(mutex_);
         if (startedCopies_) return;
         startedCopies_ = true;
         copies.swap(pendingCopies_);
+        if (appPackage::single().package == "com.google.android.gms") services = entries_;
+    }
+    // Google Play services' own package: its APK registered for the other apps (appPackage::registerServiceApk), which at its
+    // first start copies the APK, hundreds of megabytes, into the shared folder -- on a thread of its own, after the window
+    // is shown. It was done in load(), on the UI thread before the window was shown and under the library's lock.
+    if (!services.empty()) {
+        const std::string fullName = narrow(winrt::Windows::ApplicationModel::Package::Current().Id().FullName());
+        std::thread([services = std::move(services), fullName] {
+            SetThreadPriority(GetCurrentThread(), THREAD_MODE_BACKGROUND_BEGIN);
+            for (const auto& entry : services) {
+                try {
+                    appPackage::registerServiceApk(entry, fullName);
+                } catch (const hresult_error& e) {
+                    shellLog::write("library: Google Play services' APK could not be registered: " + narrow(e.message()));
+                } catch (const std::exception& e) {
+                    shellLog::write(std::string("library: Google Play services' APK could not be registered: ") + e.what());
+                }
+            }
+            SetThreadPriority(GetCurrentThread(), THREAD_MODE_BACKGROUND_END);
+        }).detach();
     }
     using Kind = bundledApks::Task::Kind;
     // The offers in the library: the stamp once each of them is made.
@@ -724,41 +743,47 @@ void Library::analyse(const std::string& id) {
     shellLog::write(format("library: %s is %s (%s%s) -- %s", id.c_str(), parsed.package.empty() ? "?" : parsed.package.c_str(),
                            parsed.engine.empty() ? "?" : parsed.engine.c_str(),
                            parsed.splits.empty() ? "" : format(", with %u splits", unsigned(parsed.splits.size())).c_str(), parsed.status().c_str()));
-    std::lock_guard<std::mutex> lock(mutex_);
-    std::string package;
-    bool replaces = false;
-    for (auto& entry : entries_) {
-        if (entry.id != id) continue;
-        replaces = entry.replaces;
-        entry.replaces = false;
-        entry.analysing = false;
-        if (!read && entry.analysed) {
-            if (entry.iconPath.empty()) entry.iconPath = iconPath;
+    std::optional<ApkEntry> service;
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        std::string package;
+        bool replaces = false;
+        for (auto& entry : entries_) {
+            if (entry.id != id) continue;
+            replaces = entry.replaces;
+            entry.replaces = false;
+            entry.analysing = false;
+            if (!read && entry.analysed) {
+                if (entry.iconPath.empty()) entry.iconPath = iconPath;
+                break;
+            }
+            package = parsed.package;
+            entry.report = std::move(parsed);
+            entry.analysed = true;
+            entry.iconPath = iconPath;
+            if (appPackage::single().package == "com.google.android.gms") service = entry;
             break;
         }
-        package = parsed.package;
-        entry.report = std::move(parsed);
-        if (appPackage::single().package == "com.google.android.gms")
-            appPackage::registerServiceApk(entry, narrow(winrt::Windows::ApplicationModel::Package::Current().Id().FullName()));
-        entry.analysed = true;
-        entry.iconPath = iconPath;
-        break;
-    }
-    // Added just now, for a package already in the library: it replaces the entries that were there, whatever their file
-    // names, versions or signatures (none is compared); the app's own files stay. Not when the report names no package.
-    if (replaces && !package.empty()) {
-        for (auto it = entries_.begin(); it != entries_.end();) {
-            if (it->id != id && it->report.package == package) {
-                shellLog::write(format("library: %s replaces %s, the same package %s (its version and signature not compared; the app's files kept)",
-                                       id.c_str(), it->id.c_str(), package.c_str()));
-                eraseLocked(it);
-                it = entries_.begin();
-            } else {
-                ++it;
+        // Added just now, for a package already in the library: it replaces the entries that were there, whatever their file
+        // names, versions or signatures (none is compared); the app's own files stay. Not when the report names no package.
+        if (replaces && !package.empty()) {
+            for (auto it = entries_.begin(); it != entries_.end();) {
+                if (it->id != id && it->report.package == package) {
+                    shellLog::write(format("library: %s replaces %s, the same package %s (its version and signature not compared; the app's files kept)",
+                                           id.c_str(), it->id.c_str(), package.c_str()));
+                    eraseLocked(it);
+                    it = entries_.begin();
+                } else {
+                    ++it;
+                }
             }
         }
+        ++generation_;
     }
-    ++generation_;
+    // Google Play services' own package registers its APK for the other apps (a copy of it, hundreds of megabytes) here, on
+    // the library's thread, and not under the library's lock: the screens ask the library for its entries four times a
+    // second, and they waited the copy out, the phone taking the UI thread for hung.
+    if (service) appPackage::registerServiceApk(*service, narrow(winrt::Windows::ApplicationModel::Package::Current().Id().FullName()));
 }
 
 ApkEntry Library::installedEntry(const std::string& id, const std::string& marker) const {
