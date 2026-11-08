@@ -3327,8 +3327,9 @@ static void test_library(mg_lib *lib, const char *what, const char *scratch)
         long long alone = FN(lib, long long (*)(int, int), "t_wait_herd")(0, 2000);
         long long herd = FN(lib, long long (*)(int, int), "t_wait_herd")(32, 2000);
         say("  2000 round trips over two pipes: %lld us with no other waiter, %lld us with 32 waiting elsewhere", alone, herd);
-        /* (Each change woke every waiter: 87 ms and 1.76 s.) */
-        CHECK(alone > 0 && herd > 0 && herd < alone * 3);
+        /* (Each change woke every waiter: 87 ms and 1.76 s. On a PC busy with other work the two take a millisecond or
+           three each, where its scheduling alone is a factor of three: 1056 and 3190 us once, so 20 ms passes too.) */
+        CHECK(alone > 0 && herd > 0 && (herd < alone * 3 || herd < 20000));
     }
     /* Four thousand megabytes mapped and unmapped in two pieces each: the addresses come back. */
     CHECK_INT(FN(lib, int (*)(int), "t_map_pieces")(4096), 0);
