@@ -2236,6 +2236,25 @@ static void test_libc_odds(void)
         CHECK(get64 && get64(9, lim) == 0 && lim[0] == ~(u64)0 && lim[1] == ~(u64)0);
     }
     /*
+     * getauxval: what every Linux process's vector has -- AT_EXECFN, the path it was started from, an app's its zygote's (it was
+     * zero: a string read through null), the clock's ticks, the app's ids -- and zero with ENOENT for what it has not. And the
+     * process's executable through realpath is what readlink says it links to.
+     */
+    {
+        typedef unsigned long (*auxval_fn)(unsigned long);
+        typedef char *(*realpath_fn)(const char *, char *);
+        auxval_fn aux = (auxval_fn)mg_bionic_find("getauxval");
+        realpath_fn real = (realpath_fn)mg_bionic_find("realpath");
+        const char *exe = MG_GUEST_LP64 ? "/system/bin/app_process64" : "/system/bin/app_process32";
+        static char path[4096];
+        CHECK(aux && aux(31) != 0 && aux(17) == 100 && aux(11) == 10100 && aux(14) == 10100);
+        /* (A string's address fits an unsigned long where the guest's ABI is the host's: not in MSVC's x64 build.) */
+        if (aux && sizeof(unsigned long) == sizeof(void *)) CHECK(!strcmp((const char *)(mg_addr)aux(31), exe));
+        *mg_errno_ptr() = 0;
+        CHECK(aux && aux(9999) == 0 && *mg_errno_ptr() == GE_NOENT);
+        CHECK(real && real("/proc/self/exe", path) == path && !strcmp(path, exe));
+    }
+    /*
      * malloc's blocks at bionic's alignment, 16 bytes but on 32-bit ARM 8 (x86-64's SSE stores fault on less: exteraGram's
      * libtmessages), through calloc and realloc too, the contents kept; memalign's at theirs. And of jemalloc's sizes, a
      * multiple of that and at least one, all of it the block's to write: malloc(0) too (MaxVibe's libqrcode.so writes a byte
