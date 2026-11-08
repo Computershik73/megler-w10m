@@ -227,13 +227,22 @@ static int g_clearenv(void)
     return 0;
 }
 
+/*
+ * An app's environment: what Android 9's init exports for every process it starts (init.environ.rc), which the zygote's
+ * children keep -- but BOOTCLASSPATH and SYSTEMSERVERCLASSPATH, whose jars are not where they would say, and DOWNLOAD_CACHE,
+ * whose folder is not there (android.os.Environment takes /cache without it) -- and HOME, TMPDIR and LANG of this layer's.
+ */
 void mg_env_init(void)
 {
     env_reserve();
     g_environ[0] = NULL;
     g_setenv("PATH", "/sbin:/system/sbin:/system/bin:/system/xbin", 1);
+    g_setenv("ANDROID_BOOTLOGO", "1", 1);
     g_setenv("ANDROID_ROOT", "/system", 1);
+    g_setenv("ANDROID_ASSETS", "/system/app", 1);
     g_setenv("ANDROID_DATA", "/data", 1);
+    g_setenv("ANDROID_STORAGE", "/storage", 1);
+    g_setenv("ASEC_MOUNTPOINT", "/mnt/asec", 1);
     g_setenv("EXTERNAL_STORAGE", mg_fs_external_dir(), 1);
     g_setenv("HOME", mg_fs_internal_dir(), 1);
     g_setenv("TMPDIR", "/data/local/tmp", 1);
@@ -499,9 +508,10 @@ static mg_addr vdso_image(void)
 static unsigned long g_getauxval(unsigned long type);
 char **mg_bionic_initial_argv(void)
 {
-    static mg_addr block[32];
+    static mg_addr block[34];
     static const unsigned long tags[] = { 6 /* AT_PAGESZ */, 15 /* AT_PLATFORM */, 16 /* AT_HWCAP */, 26 /* AT_HWCAP2 */,
-                                          25 /* AT_RANDOM */, 17 /* AT_CLKTCK */, 23 /* AT_SECURE */, 11, 12, 13, 14 /* uids, gids */ };
+                                          25 /* AT_RANDOM */, 17 /* AT_CLKTCK */, 23 /* AT_SECURE */, 11, 12, 13, 14 /* uids, gids */,
+                                          31 /* AT_EXECFN */ };
     static int made;
     if (!made) {
         int n = 0;
@@ -510,9 +520,8 @@ char **mg_bionic_initial_argv(void)
         block[n++] = 0;                                  /* argv's end */
         block[n++] = 0;                                  /* envp, empty */
         for (i = 0; i < MG_COUNT(tags); i++) {
-            unsigned long v = tags[i] == 17 ? 100 : tags[i] >= 11 && tags[i] <= 14 ? 10100 : g_getauxval(tags[i]);
             block[n++] = (mg_addr)tags[i];
-            block[n++] = (mg_addr)v;
+            block[n++] = (mg_addr)g_getauxval(tags[i]);
         }
         block[n] = vdso_image();
         if (block[n]) {
@@ -565,7 +574,19 @@ static unsigned long g_getauxval(unsigned long type)
 #endif
     case 25: return (unsigned long)(mg_addr)g_at_random;   /* AT_RANDOM */
     case 26: return 0;                             /* AT_HWCAP2: no ARMv8 crypto claimed */
-    default: return 0;
+    case 17: return 100;                           /* AT_CLKTCK */
+    case 11: case 12: case 13: case 14: return 10100;   /* AT_UID, AT_EUID, AT_GID, AT_EGID: the app's, as getuid says */
+    case 23: return 0;                             /* AT_SECURE */
+    /*
+     * AT_EXECFN: the path the process was started from, a string every Linux process has -- an app's is its zygote's. It was
+     * zero, and a caller that takes it for a string (the process's name for a crash report) read through null.
+     */
+    case 31: return (unsigned long)(mg_addr)(MG_GUEST_LP64 ? "/system/bin/app_process64" : "/system/bin/app_process32");
+    case 33: return 0;                             /* AT_SYSINFO_EHDR: as before, the vector's own alone (it makes the image) */
+    default:
+        /* Not in the vector: zero, and ENOENT, as bionic says it. */
+        mg_set_errno(GE_NOENT);
+        return 0;
     }
 }
 

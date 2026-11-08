@@ -2480,6 +2480,33 @@ static void test_libc_odds(void)
         CHECK(get64 && get64(9, lim) == 0 && lim[0] == ~(u64)0 && lim[1] == ~(u64)0);
     }
     /*
+     * getauxval: what every Linux process's vector has -- AT_EXECFN, the path it was started from, an app's its zygote's (it was
+     * zero: a string read through null), the clock's ticks, the app's ids -- and zero with ENOENT for what it has not. And the
+     * process's executable through realpath is what readlink says it links to.
+     */
+    {
+        typedef unsigned long (*auxval_fn)(unsigned long);
+        typedef char *(*realpath_fn)(const char *, char *);
+        auxval_fn aux = (auxval_fn)mg_bionic_find("getauxval");
+        realpath_fn real = (realpath_fn)mg_bionic_find("realpath");
+        const char *exe = MG_GUEST_LP64 ? "/system/bin/app_process64" : "/system/bin/app_process32";
+        static char path[4096];
+        CHECK(aux && aux(31) != 0 && aux(17) == 100 && aux(11) == 10100 && aux(14) == 10100);
+        /* (A string's address fits an unsigned long where the guest's ABI is the host's: not in MSVC's x64 build.) */
+        if (aux && sizeof(unsigned long) == sizeof(void *)) CHECK(!strcmp((const char *)(mg_addr)aux(31), exe));
+        *mg_errno_ptr() = 0;
+        CHECK(aux && aux(9999) == 0 && *mg_errno_ptr() == GE_NOENT);
+        CHECK(real && real("/proc/self/exe", path) == path && !strcmp(path, exe));
+    }
+    /* The environment Android's init gives every process, as an app has it: its storage's root and the rest beside the data and the root. */
+    {
+        typedef char *(*getenv_fn)(const char *);
+        getenv_fn env = (getenv_fn)mg_bionic_find("getenv");
+        const char *storage = env ? env("ANDROID_STORAGE") : NULL, *assets = env ? env("ANDROID_ASSETS") : NULL, *data = env ? env("ANDROID_DATA") : NULL;
+        CHECK(storage && !strcmp(storage, "/storage") && assets && !strcmp(assets, "/system/app") && data && !strcmp(data, "/data"));
+        CHECK(env && env("ASEC_MOUNTPOINT") && env("ANDROID_BOOTLOGO") && env("ANDROID_ROOT") && env("EXTERNAL_STORAGE") && !env("BOOTCLASSPATH"));
+    }
+    /*
      * malloc's blocks at bionic's alignment, 16 bytes but on 32-bit ARM 8 (x86-64's SSE stores fault on less: exteraGram's
      * libtmessages), through calloc and realloc too, the contents kept; memalign's at theirs. And of jemalloc's sizes, a
      * multiple of that and at least one, all of it the block's to write: malloc(0) too (MaxVibe's libqrcode.so writes a byte
@@ -3216,6 +3243,40 @@ typedef struct proxy_caller {
     proxied *p;
 } proxy_caller;
 
+/* What the main looper's thread found (test_proxies, at its end): its native looper, a descriptor watched on it, its callback's calls. */
+typedef struct ui_looper_probe {
+    int fd;
+    void *looper;
+    volatile i32 watched, added, called;
+    u32 thread, called_thread;
+} ui_looper_probe;
+
+/* ALooper's callback: the descriptor read, once; 0 takes it off the looper. */
+static int ui_looper_ready(int fd, int events, void *data)
+{
+    ui_looper_probe *p = (ui_looper_probe *)data;
+    u64 v;
+    (void)events;
+    mg_fd_read(fd, &v, 8);
+    p->called_thread = mg_thread_self_id();
+    mg_atomic_add(&p->called, 1);
+    return 0;
+}
+
+/* On the main looper's thread: its looper, and the descriptor watched on it, as native code that loads there does. */
+static void ui_looper_watch(void *arg)
+{
+    typedef void *(*for_thread_fn)(void);
+    typedef int (*add_fd_fn)(void *, int, int, int, void *, void *);
+    ui_looper_probe *p = (ui_looper_probe *)arg;
+    for_thread_fn for_thread = (for_thread_fn)mg_bionic_find("ALooper_forThread");
+    add_fd_fn add_fd = (add_fd_fn)mg_bionic_find("ALooper_addFd");
+    p->thread = mg_thread_self_id();
+    p->looper = for_thread ? for_thread() : NULL;
+    if (p->looper && add_fd) p->added = add_fd(p->looper, p->fd, 0, 1 /* ALOOPER_EVENT_INPUT */, (void *)ui_looper_ready, p);
+    mg_atomic_xchg(&p->watched, 1);
+}
+
 static MG_HOSTCB void proxy_caller_thread(void *arg)
 {
     proxy_caller *c = (proxy_caller *)arg;
@@ -3252,6 +3313,13 @@ static void test_proxies(void)
     m.fn = (void *)proxied_invoke;
     ((register_fn)table[215])(env, cls, &m, 1);
     CHECK(mg_jni_native(bridge, "invoke", invoke_sig) == (void *)proxied_invoke);
+    /* (A native found by its name alone, with the signature it was registered with, and the class's natives said: the Unity driver's initJni.) */
+    {
+        char said[400];
+        const char *sig = mg_jni_native_sig(bridge, "invoke");
+        CHECK(sig && !strcmp(sig, invoke_sig) && !mg_jni_native_sig(bridge, "noSuchNative"));
+        CHECK(mg_jni_natives_said(bridge, said, sizeof(said)) == 1 && !strncmp(said, "invoke(JLjava/lang/Class;", 25));
+    }
     new_id = ((static_id_fn)table[113])(env, cls, "newInterfaceProxy", "(J[Ljava/lang/Class;)Ljava/lang/Object;");
     off_id = ((static_id_fn)table[113])(env, cls, "disableInterfaceProxy", "(Ljava/lang/Object;)V");
     CHECK(new_id && off_id);
@@ -3330,6 +3398,33 @@ static void test_proxies(void)
             a[0].l = proxy;
             ((jni_void_a_fn)table[JNI_STATIC_VOID_A])(env, cls, off_id, a);
         }
+    }
+
+    /*
+     * The main thread's native looper (mg_jni_loop.c, looper_thread): ALooper_forThread there gives one, as on Android's UI
+     * thread, where Unity's engine takes it as it loads, and a descriptor watched on it with a callback has the callback run
+     * on that thread once it is ready -- and only then.
+     */
+    say("the main looper's thread: a native looper, whose descriptors' callbacks it runs");
+    {
+        ui_looper_probe probe;
+        u64 one = 1;
+        memset(&probe, 0, sizeof(probe));
+        probe.fd = mg_fd_eventfd(0, 04000);
+        CHECK(probe.fd >= 0);
+        mg_jni_loop_call(NULL, ui_looper_watch, &probe);
+        for (waited = 0; waited < 1000 && !probe.watched; waited++) mg_sleep_ns(2000000ull);
+        CHECK(probe.watched && probe.looper != NULL && probe.added == 1);
+        mg_sleep_ns(30000000ull);
+        CHECK_INT(probe.called, 0);
+        mg_fd_write(probe.fd, &one, 8);
+        for (waited = 0; waited < 1000 && !probe.called; waited++) mg_sleep_ns(2000000ull);
+        CHECK_INT(probe.called, 1);
+        CHECK(probe.called_thread == probe.thread && probe.thread != mg_thread_self_id());
+        say("  looper %p on the main thread %u; the callback ran %d times, on thread %u", probe.looper, (unsigned)probe.thread, (int)probe.called,
+            (unsigned)probe.called_thread);
+        mg_sleep_ns(30000000ull);
+        if (probe.fd >= 0) mg_fd_close(probe.fd);
     }
 }
 

@@ -30,6 +30,7 @@
 
 #include "../bionic/mg_bionic.h"
 #include "../host/mg_host.h"
+#include "../ndk/mg_ndk.h"
 
 #define NS 1000000000ll
 #define VSYNC_NS (NS / 60)
@@ -355,7 +356,8 @@ static void looper_start(looper *l)
     l->started = true;
     mg_lock_release(&l->lock);
     if (!go) return;
-    l->thread = mg_thread_start(looper_thread, l, 2u * 1024 * 1024, l->name);
+    /* (The main thread's stack is Android's main thread's size: the Unity driver loads the engine on it, as UnityPlayer does.) */
+    l->thread = mg_thread_start(looper_thread, l, (l == g_main ? 8u : 2u) * 1024 * 1024, l->name);
     if (!l->thread) mg_warn("looper: no thread for '%s'; nothing sent to it will run", l->name);
     else mg_info("looper: '%s' runs", l->name);
 }
@@ -426,6 +428,14 @@ static void dispatch(looper *l, ev *e)
     }
 }
 
+/*
+ * A loop's thread. Android's Looper sits over a native looper (MessageQueue's), which ALooper_forThread gives native code on
+ * that thread -- the main thread's above all: Unity's engine takes the UI thread's as it loads ("Couldn't retrieve native
+ * ALooper for UI thread" where there was none) and runs its jobs for the UI thread through it. So each loop's thread says it
+ * is one (mg_looper_java_thread: its native looper is made when native code first asks), and between its events runs the
+ * callbacks of the descriptors native code watches on it (mg_looper_poll_thread, which never waits); while it has a native
+ * looper it comes round every 8 ms for them, as the Java driver's message loops do.
+ */
 static MG_HOSTCB void looper_thread(void *arg)
 {
     looper *l = (looper *)arg;
@@ -433,10 +443,12 @@ static MG_HOSTCB void looper_thread(void *arg)
     /* One of the app's threads from the start: it has a thread record before the app's code first asks whose thread this is. */
     mg_gthread_self();
     if (mg_app_threads_give_way()) mg_thread_runs_app_code();
+    mg_looper_java_thread();
     for (;;) {
         ev *e;
         i64 now, wait = 0;
         i32 seq;
+        bool native = mg_looper_poll_thread();
         mg_lock_acquire(&l->lock);
         if (l->quit) {
             mg_lock_release(&l->lock);
@@ -459,7 +471,8 @@ static MG_HOSTCB void looper_thread(void *arg)
             mg_atomic_xchg(&l->busy, 0);
             continue;
         }
-        /* Until the queue changes, the next event is due, or a signal has been handled (the collector's stop is one). */
+        /* Until the queue changes, the next event is due, or a signal has been handled (the collector's stop is one); with a native looper, 8 ms at most. */
+        if (native && (wait <= 0 || wait > 8000000)) wait = 8000000;
         mg_gwait(&l->seq, seq, wait > 0 ? (u64)wait : 0);
     }
     mg_atomic_xchg(&l->ended, 1);

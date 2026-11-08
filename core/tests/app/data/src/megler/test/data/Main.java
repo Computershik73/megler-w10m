@@ -1897,6 +1897,34 @@ public class Main extends Activity {
             boolean fits = ok.isShown() && ok.getHeight() > 0 && at[1] >= 0 && at[1] + ok.getHeight() <= screen && decor.getHeight() <= screen;
             Log.i("DataTest", "dialog-tall " + (fits ? "ok" : "FAILED") + " button=" + at[1] + "+" + ok.getHeight() + " screen=" + screen + " dialog=" + decor.getHeight());
             dialog.dismiss();
+            panelRoot();
+        }, 500);
+    }
+
+    /**
+     * A window of the app's own over the activity (a panel, as King's popups are, with their WebView straight in the root): its
+     * root view draws on the window's frame, which is hardware accelerated as a window's canvas is on Android, and a SurfaceView
+     * straight in that root draws on one that does not say so, as one does in a list. (A WebView there whose page is drawn on
+     * the graphics processor is drawn by its draw functor then; it was drawn in software.) Said as either was seen in any frame.
+     */
+    private void panelRoot() {
+        final boolean[] seen = new boolean[4];
+        final android.widget.FrameLayout root = new android.widget.FrameLayout(this) {
+            @Override protected void onDraw(android.graphics.Canvas c) { seen[0] = true; seen[1] |= c.isHardwareAccelerated(); }
+        };
+        root.setWillNotDraw(false);
+        android.view.SurfaceView surface = new android.view.SurfaceView(this) {
+            @Override public void draw(android.graphics.Canvas c) { seen[2] = true; seen[3] |= c.isHardwareAccelerated(); super.draw(c); }
+        };
+        root.addView(surface, new android.widget.FrameLayout.LayoutParams(40, 40));
+        android.view.WindowManager.LayoutParams lp = new android.view.WindowManager.LayoutParams(200, 200,
+                android.view.WindowManager.LayoutParams.TYPE_APPLICATION_PANEL, 0, android.graphics.PixelFormat.TRANSLUCENT);
+        lp.token = getWindow().getDecorView().getWindowToken();
+        getWindowManager().addView(root, lp);
+        new android.os.Handler().postDelayed(() -> {
+            boolean ok = seen[0] && seen[1] && seen[2] && !seen[3];
+            Log.i("DataTest", "panel-root " + (ok ? "ok" : "FAILED") + " root=" + seen[0] + "/" + seen[1] + " surface=" + seen[2] + "/" + seen[3]);
+            getWindowManager().removeView(root);
         }, 500);
     }
 

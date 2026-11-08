@@ -848,6 +848,35 @@ static void *find_native(const char *cls, const char *name, const char *sig, boo
 
 void *mg_jni_native(const char *cls, const char *name, const char *sig) { return find_native(cls, name, sig, true); }
 
+const char *mg_jni_native_sig(const char *cls, const char *name)
+{
+    mg_jclass *c = mg_jni_class(cls, NULL);
+    const char *sig = NULL;
+    jnative *n;
+    mg_lock_acquire(&g_jni_lock);
+    for (n = c->natives; n && !sig; n = n->next)
+        if (!strcmp(n->name, name)) sig = n->sig;
+    mg_lock_release(&g_jni_lock);
+    return sig;
+}
+
+int mg_jni_natives_said(const char *cls, char *out, size_t size)
+{
+    mg_jclass *c = mg_jni_class(cls, NULL);
+    size_t at = 0;
+    int count = 0;
+    jnative *n;
+    if (size) out[0] = 0;
+    mg_lock_acquire(&g_jni_lock);
+    for (n = c->natives; n; n = n->next) {
+        if (at < size) at += (size_t)snprintf(out + at, size - at, "%s%s%s", count ? ", " : "", n->name, n->sig);
+        count++;
+    }
+    mg_lock_release(&g_jni_lock);
+    if (size && at >= size) out[size - 1] = 0;
+    return count;
+}
+
 static void native_tried(const char *cls, const char *name, const char *sig, char *out, size_t n)
 {
     char brief[1024], full[1024];

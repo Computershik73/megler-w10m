@@ -216,6 +216,45 @@ is calling the library's own `JNIBridge.invoke` with a `java.lang.reflect.Method
 and the arguments boxed). Each loop is a thread; a Runnable or a Handler that is
 one of the app's own Java classes is noted and dropped, since no Java runs.
 
+**Where UnityPlayer's constructor runs, and with what.** On Android it runs on
+the main ("UI") thread: `NativeLoader.load` loads `libunity.so` and runs its
+`JNI_OnLoad` there, and the engine takes that thread's native looper
+(`ALooper_forThread`) to run its jobs for the UI thread through; then
+`initJni` hands it the player and the Context it asks Java through from then
+on. The driver did all of it on the engine's own thread, which had no looper
+("E/Unity: Couldn't retrieve native ALooper for UI thread"), and called
+`initJni` only by the two signatures it had seen, `(Context)` up to 2022 and
+`(Context, int)` in Unity 6.0, on `UnityPlayer` alone for the first. WOW
+(`com.kzapp.wowua`, Unity 6: it asks `shouldSetGameState`, Android 13's game
+state hints) registered it otherwise, and it was never called ("the engine has
+no ...initJni"): the engine went on with neither, called the player's
+`executeMainThreadJobs`, `initializeGoogleAr` and `shouldSetGameState` on null
+(the log names the class of null: "java/lang/Object.initializeGoogleAr()Z is
+not implemented"), and set up its crash handler -- the 128 KB alternate signal
+stack it maps with `MAP_STACK | MAP_GROWSDOWN` is the trace's last line, as in
+Unity 2019's `libunity.so` -- where it ended in `strlen(NULL)` called straight
+from `libunity.so`, no Java called and no file opened in between: most likely
+a string the handler keeps for its reports that `initJni` would have given it
+(the game's `libunity.so` was not at hand to say which). Now the constructor's
+part runs on the main
+looper's thread (`jni/mg_jni_loop.c`), whose threads say they are Java
+loopers (`mg_looper_java_thread`: a native looper for the asking) and run
+what native code watches on them between their events, every 8 ms at most
+while they have one; the engine's own thread has a native looper too, polled
+before each frame, as UnityPlayer's main thread has a `Looper`. `initJni` is
+called as the engine registered it, on whichever of the three classes,
+whatever its parameters: the Context for a Context or an activity, the player
+for a view, 0 for a number, null for the rest; where it registered none, the
+log lists the natives it did register on each class. The player is an object
+of the class the engine's natives are on (Unity 6's
+`UnityPlayerForActivityOrService`, which extends `UnityPlayer`). The flag
+`unity-load-here` loads the engine on its own thread as before. And
+`getauxval(AT_EXECFN)` -- the path a process was started from, which every
+Linux process has (an app's is its zygote's, `/system/bin/app_process32`),
+and code takes for a process's name in a crash report -- was zero; it is
+that path now, as `realpath("/proc/self/exe")` is (it was not found), and
+`getauxval` says ENOENT, as bionic does, for what the vector has not.
+
 Builds 0.1.0.29 to 0.1.0.47 all died 0.7 s into the first scene, and the log
 blamed the wrong thing for a day. What it was, since the same will happen to any
 engine:

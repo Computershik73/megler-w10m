@@ -984,9 +984,21 @@ public final class ViewRoot implements ViewParent {
      * The screen's canvas. While a window's views draw on it, its width and height are the window's, and each view's own while
      * that view draws (View.drawFromParent): on Android a view draws into a display list of its own size, and an onDraw that
      * reads canvas.getWidth() means the view's width. Anything else of the canvas is the screen's, as before.
+     *
+     * The one that records the window's frames is hardware accelerated, as a window's canvas is on Android, while the views
+     * draw through lists of their own: a window's root view draws on it, and so does a child of the root that has no list of
+     * its own. A WebView whose page is drawn on the graphics processor is such a child where an app puts it straight into a
+     * window of its own (King's popups: a WebView in the root of a panel window, PopupDialog$PopupDecorView), and it was
+     * drawn in software there, where nothing else on the screen is. Chromium's software draw cannot take a page's view
+     * transition (its own frame sink manager has no shared images: ProcessCompositorFrameTransitionDirective called
+     * GetSharedImageInterface through a null provider), and Candy Crush Saga ended at its popup's first one. As
+     * RecordingCanvas, it says it is not while a view without a list that is not drawn on the graphics processor (a
+     * SurfaceView, a TextureView, a WebView drawn in software) draws into it (meglerSoftware). A screen canvas over a bitmap
+     * (checkPart's) never is.
      */
     public static final class ScreenCanvas extends Canvas {
         private int mViewW = -1, mViewH = -1, mScreenW = -1, mScreenH = -1;
+        private boolean mFrames, mSoftware;
 
         ScreenCanvas(Bitmap b) { super(b); }
         /* One that records the window's frames (drawAll), of the screen's size. */
@@ -997,6 +1009,16 @@ public final class ViewRoot implements ViewParent {
             meglerRecordFrame(w, h);
             mScreenW = w;
             mScreenH = h;
+            mFrames = true;
+        }
+
+        @Override public boolean isHardwareAccelerated() { return mFrames && !mSoftware && View.meglerViewLists(); }
+
+        /** Whether the canvas says it is not hardware accelerated from now on; what it said before (RecordingCanvas's). */
+        public boolean meglerSoftware(boolean on) {
+            boolean was = mSoftware;
+            mSoftware = on;
+            return was;
         }
 
         @Override public int getWidth() { return mViewW >= 0 ? mViewW : mScreenW >= 0 ? mScreenW : super.getWidth(); }

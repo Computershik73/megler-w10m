@@ -2315,14 +2315,28 @@ static char *g_getcwd(char *buf, size_t n)
     return buf;
 }
 
+static gssize g_readlink(const char *path, char *buf, size_t n);
+
 static char *g_realpath(const char *path, char *out)
 {
     g_stat st;
-    char *g;
+    char *g, link[256];
+    gssize k;
+    int was;
     if (!path) {
         mg_set_errno(GE_INVAL);
         return NULL;
     }
+    /* The one link there is, the process's executable, is what it names (readlink, below), as on Android: there is no such file here. */
+    was = *mg_errno_ptr();
+    k = g_readlink(path, link, sizeof(link) - 1);
+    if (k > 0) {
+        link[k] = 0;
+        if (!out) out = (char *)mg_g_malloc(4096);
+        if (out) mg_strlcpy(out, link, 4096);
+        return out;
+    }
+    *mg_errno_ptr() = was;
     if (g_stat_path(path, &st) != 0) return NULL;
     g = normalize(path);
     if (!out) out = (char *)mg_g_malloc(4096);
