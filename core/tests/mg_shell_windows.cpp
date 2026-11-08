@@ -204,16 +204,17 @@ void testLog() {
 void testStartup() {
     printf("start\n");
     const char* const notShown = "the window is not shown yet: still testing the start; the UI thread: a place of the tests'";
-    startup::launched([](unsigned) { return std::string("a place of the tests'"); }, {150, 300, 900});
+    startup::launched([](unsigned) { return std::string("a place of the tests'"); }, {150, 300, 2500});
     startup::step("testing the start");
     check(logText().find("start: testing the start") != std::string::npos, "a step is in the file the moment it is said");
     check(startup::current() == "testing the start", "the step is the one said");
-    Sleep(600);
+    // (Its two first marks passed, the third not: given a PC busy with other builds the time it needs.)
+    for (int i = 0; i < 40 && count(logText(), notShown) < 2; i++) Sleep(50);
     check(count(logText(), notShown) == 2, format("the watch spoke at its two marks before the window was shown (%u times)", unsigned(count(logText(), notShown))));
     startup::shown();
     check(startup::isShown() && logText().find("start: the window is shown, ") != std::string::npos, "the window shown is said");
-    Sleep(700);
-    check(count(logText(), notShown) == 2, "the watch says nothing once the window is shown");
+    Sleep(2700);
+    check(count(logText(), notShown) == 2, "the watch says nothing once the window is shown, at its third mark either");
     check(startup::processAge() > 0, format("the process's age is known (%llu ms)", (unsigned long long)startup::processAge()));
 }
 
