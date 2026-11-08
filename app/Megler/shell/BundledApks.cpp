@@ -477,11 +477,12 @@ bool copy(const std::wstring& source, const std::wstring& target, const std::str
     if (copied) {
         madeWhole(target);
         const ULONGLONG flushing = at[1] ? at[1] : ended, comparing = at[2] ? at[2] : ended;
+        // (How fast, where it took long enough to tell.)
         const double copySeconds = double(flushing - began) / 1000.0;
-        shellLog::write(format("bundled apks: %s copied to %s in %s: %s to copy (%.1f MB/s), %s to put on the disk, %s to compare", name.c_str(),
-                               shown(target, shared).c_str(), seconds(ended - began).c_str(), seconds(flushing - began).c_str(),
-                               copySeconds > 0 ? double(size) / 1048576.0 / copySeconds : 0.0, seconds(comparing - flushing).c_str(),
-                               seconds(ended - comparing).c_str()));
+        const std::string rate = copySeconds >= 0.1 ? format(" (%.1f MB/s)", double(size) / 1048576.0 / copySeconds) : std::string();
+        shellLog::write(format("bundled apks: %s copied to %s in %s: %s to copy%s, %s to put on the disk, %s to compare", name.c_str(),
+                               shown(target, shared).c_str(), seconds(ended - began).c_str(), seconds(flushing - began).c_str(), rate.c_str(),
+                               seconds(comparing - flushing).c_str(), seconds(ended - comparing).c_str()));
     } else {
         shellLog::write(format("bundled apks: %s could not be copied to %s (error %lu), %s after it began", name.c_str(), shown(target, shared).c_str(),
                                error, seconds(ended - began).c_str()));
