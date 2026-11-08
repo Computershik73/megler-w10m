@@ -4701,6 +4701,19 @@ public class Main extends Activity {
             detail = "plain=" + java.util.Arrays.toString(plain.signatures) + " sigs=" + got + " signing=" + signed + " uid=" + uid + " named=" + pm.getNameForUid(uid);
             return plain.signatures == null && got && signed && uid != android.os.Process.myUid() && "com.example.other".equals(pm.getNameForUid(uid));
         });
+        // Packages compared by their signers: those the phone has match (the app's own, the platform's, another app's); one it does
+        // not have is SIGNATURE_UNKNOWN_PACKAGE, as Android answers -- Google Play services took a match of a Pixel's system
+        // service with "android" for that service being there, and then did not find it.
+        step("check-signatures", () -> {
+            android.content.pm.PackageManager pm = getPackageManager();
+            int own = pm.checkSignatures(getPackageName(), "android"), other = pm.checkSignatures(getPackageName(), "com.example.other");
+            int pixel = pm.checkSignatures("com.google.android.pixelsystemservice", "android"), none = pm.checkSignatures(getPackageName(), "megler.test.none");
+            int uids = pm.checkSignatures(android.os.Process.myUid(), android.os.Process.myUid());
+            detail = "own=" + own + " other=" + other + " pixel=" + pixel + " none=" + none + " uids=" + uids;
+            return own == android.content.pm.PackageManager.SIGNATURE_MATCH && other == android.content.pm.PackageManager.SIGNATURE_MATCH
+                    && pixel == android.content.pm.PackageManager.SIGNATURE_UNKNOWN_PACKAGE && none == android.content.pm.PackageManager.SIGNATURE_UNKNOWN_PACKAGE
+                    && uids == android.content.pm.PackageManager.SIGNATURE_MATCH;
+        });
     }
 
     /**

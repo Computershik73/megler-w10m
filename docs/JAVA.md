@@ -3983,6 +3983,15 @@ What a Java app asks of the phone beyond its window goes to the shell through
   each time its sign-in began: at every start signed out on the HP Elite x3
   (0.1.0.671), and on an Italian user's phone, which went from the sign-in
   back to that screen again and again. The data app's step `component-state`.
+  And `checkSignatures` of such a package (or of a uid with none) is
+  `SIGNATURE_UNKNOWN_PACKAGE`, as Android answers; two packages the phone has
+  are said to match, their certificates not compared. Every pair matched
+  before: Google Play services 26.41 takes a match of
+  `com.google.android.pixelsystemservice` with `android` for a Pixel's system
+  service on the phone, asks for its `ApplicationInfo` next, and logged
+  "E/BusinessScope: Unhandled exception in #1 block ...
+  NameNotFoundException: com.google.android.pixelsystemservice" in the apps
+  that host it (Transit, 0.1.0.675). The data app's step `check-signatures`.
 
 APKs, .apks and .xapk files also open in Megler from the phone's file
 manager (a file type association of Megler's package, taken out of an app's

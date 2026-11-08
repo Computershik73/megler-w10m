@@ -31,6 +31,7 @@
 // And getResourcesForApplication("android") is the platform's resources alone, a Resources of their own
 // (Resources.meglerPlatform), as Android gives framework-res.apk's: it gave the app's own Resources, to which Google Play
 // services' DynamiteLoader then added a module's resources (Resources.addLoaders) over the app's.
+// And checkSignatures answers SIGNATURE_UNKNOWN_PACKAGE for a package the phone does not have, where every package matched.
 package android.content.pm;
 
 import android.content.ComponentName;
@@ -263,8 +264,19 @@ public class PackageManager {
         }
         return p;
     }
-    public int checkSignatures(String a, String b) { return SIGNATURE_MATCH; }
-    public int checkSignatures(int a, int b) { return SIGNATURE_MATCH; }
+    /*
+     * Whether two packages are signed alike. Any two the phone has are said to be (their certificates are not compared here);
+     * one it does not have is SIGNATURE_UNKNOWN_PACKAGE, as Android answers, where it was said to match too: Google Play
+     * services 26.41 takes a match of com.google.android.pixelsystemservice with "android" (fyjd.c) for a Pixel's system
+     * service on the phone, asks for its ApplicationInfo next, and logged "E/BusinessScope: Unhandled exception in #1 block
+     * ... NameNotFoundException: com.google.android.pixelsystemservice" in the apps that host it (Transit, 0.1.0.675). A uid
+     * with no package is unknown likewise. (has: as getPackageInfo answers, below.)
+     */
+    public int checkSignatures(String a, String b) { return has(a) && has(b) ? SIGNATURE_MATCH : SIGNATURE_UNKNOWN_PACKAGE; }
+    public int checkSignatures(int a, int b) {
+        String[] pa = getPackagesForUid(a), pb = getPackagesForUid(b);
+        return pa != null && pa.length > 0 && pb != null && pb.length > 0 ? SIGNATURE_MATCH : SIGNATURE_UNKNOWN_PACKAGE;
+    }
     public boolean hasSigningCertificate(String pkg, byte[] cert, int type) { return true; }
     public CharSequence getApplicationLabel(ApplicationInfo a) { return a.loadLabel(this); }
     public android.graphics.drawable.Drawable getApplicationIcon(ApplicationInfo a) { return a.loadIcon(this); }
