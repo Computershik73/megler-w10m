@@ -114,7 +114,9 @@
 # second time with every camera refused. And `screen`, whose surface is resized
 # and turned from the host's side (megler_set_surface), as a PC's window or a
 # phone turned does it: its activities made again or told, the pictures at the
-# new size. Their
+# new size. And `gms-host`, which hosts a stand-in for Google's own Play
+# services (`gms-own`) and starts a service of theirs: their code is told it
+# runs in its application's process. Their
 # pictures are written to build/java-pictures as BMP files. Each is then run
 # once more with its calls of the shell's drawing recorded
 # (build/gfx-records/<app>.rec), for the Windows build to draw again.
@@ -237,6 +239,12 @@ EOF
       # Fetch the pinned upstream APK with tools/microg-fetch.sh first.
       if [ -f "$ROOT/build/microg/GmsCore.apk" ] && [ -f "$ROOT/build/guest/java/microg.apk" ]; then
         MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL="*" wsl.exe -- bash -c "cp '$WROOT/build/guest/java/microg.apk' $WB/microg.apk && rm -rf $WB/java-data-microg && cp '$WROOT/build/microg/GmsCore.apk' $WB/GmsCore.apk && MG_JAVA_GMS_APK=$WB/GmsCore.apk qemu-arm -L /usr/arm-linux-gnueabihf $WB/mg_tests --java microg $WB/microg.apk $WB/java-data-microg $WB/android-root - 2>&1" || STATUS=1
+      fi
+      # Google's own Play services as an app hosts them, in a stand-in of theirs (gms-own: no microG in it): their code is told
+      # it runs in its application's process, its main one (mg_java_tests.c, run_gms_host).
+      if [ -f "$ROOT/build/guest/java/gms-own.apk" ] && [ -f "$ROOT/build/guest/java/gms-host.apk" ]; then
+        echo "the Java test app gms-host (build/guest/java/gms-host.apk), hosting the stand-in for Google's own Play services (gms-own.apk)"
+        MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL="*" wsl.exe -- bash -c "cp -u '$WROOT/build/guest/java/gms-host.apk' $WB/gms-host.apk && cp -u '$WROOT/build/guest/java/gms-own.apk' $WB/gms-own.apk && rm -rf $WB/java-data-gms-host && MG_JAVA_GMS_APK=$WB/gms-own.apk qemu-arm -L /usr/arm-linux-gnueabihf $WB/mg_tests --java gms-host $WB/gms-host.apk $WB/java-data-gms-host $WB/android-root - 2>&1" || STATUS=1
       fi
       # The app in several APKs, from each of its bundles: unpacked as the shell unpacks one, for a screen of 320 dpi, and run.
       for bundle in apks xapk; do

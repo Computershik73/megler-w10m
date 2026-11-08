@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- A stand-in for Google's own Play services (no microG in it), as an app hosts them: the test app gms-host starts its one service. -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="com.google.android.gms"
+    android:versionCode="264131009" android:versionName="26.41.31 (a stand-in)">
+    <uses-sdk android:minSdkVersion="21" android:targetSdkVersion="28" />
+    <application android:label="@string/gms_own_label">
+        <service android:name="megler.test.gmsown.Probe" android:exported="true">
+            <intent-filter>
+                <action android:name="megler.test.gmsown.PROBE" />
+            </intent-filter>
+        </service>
+    </application>
+</manifest>

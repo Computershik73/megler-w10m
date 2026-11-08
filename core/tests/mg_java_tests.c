@@ -3271,6 +3271,23 @@ static int run_microg(void)
     return g_failed;
 }
 
+/*
+ * Google's own Play services hosted in an app (their stand-in, the test app gms-own: a service of com.google.android.gms, no
+ * microG in it), run with MG_JAVA_GMS_APK naming it. Their code is told it runs in its application's process: the process
+ * name of its ApplicationInfo is the one Application.getProcessName gives it here, the app's. They take that process for
+ * their main one, the only one where GmsModuleFinder makes their module configuration again at once; in every app that
+ * hosted them the names differed, and each module scan asked for another, five a second, without end.
+ */
+static int run_gms_host(void)
+{
+    CHECK(wait_line("I/GmsOwnTest: main process true application=megler.test.gmshost current=megler.test.gmshost", 0, 600) >= 0);
+    CHECK(find_line("I/MicroG: Google Play services' application runs in this process, megler.test.gmshost, as its main one", 0) >= 0);
+    CHECK(find_line("I/GmsHostTest: started ComponentInfo{com.google.android.gms/megler.test.gmsown.Probe}", 0) >= 0);
+    CHECK(find_line("FATAL EXCEPTION", 0) < 0);
+    say_app_lines("/GmsOwnTest: ");
+    return g_failed;
+}
+
 /* -------------------------------------------------------------- any app */
 
 /*
@@ -3509,6 +3526,7 @@ int mg_tests_java_run(const char *which, const char *apk, const char *android_ro
     }
     if (start(apk, android_root)) {
         if (!strcmp(which, "microg")) run_microg();
+        else if (!strcmp(which, "gms-host")) run_gms_host();
         else if (!strcmp(which, "demos")) run_demos();
         else if (!strcmp(which, "natives")) run_natives();
         else if (!strcmp(which, "crash")) run_crash();
