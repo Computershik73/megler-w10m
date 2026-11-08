@@ -940,6 +940,11 @@ public class Main extends Activity {
                     + " strings=" + strings + " nan=" + nan + " refused=" + refused;
             return inner && !whole && mismatch == 0 && shorter == 2 && ints < 0 && unsigned > 0 && strings < 0 && nan && "IllegalArgumentException".equals(refused);
         });
+        // Java 9 and 10's List.of, Set.of, Map.of, Map.ofEntries, Map.entry and copyOf, which Android has from Android 11 (the
+        // libcore overlay's, over java.util.ImmutableCollections): Amazon Shopping's start ended on a NoSuchMethodError of
+        // Map.of and Set.of, Shazam's on Map.of() and Map.entry. Each arity, nulls and duplicates refused, every mutator
+        // refused, copies, serialization. By reflection, as above (CollectionFactories.java).
+        step("collection-factories", () -> (detail = CollectionFactories.factories()).isEmpty());
         // The frame stacks of threads Java starts: two thousand calls deep on a thread of the default size, twenty thousand
         // on one that asked for 16 MB, and a recursion without end the StackOverflowError it is on Android, caught there.
         step("thread-stack", () -> {

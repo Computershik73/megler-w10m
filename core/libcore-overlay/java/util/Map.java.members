@@ -1,0 +1,69 @@
+
+    // Megler: Java 9's Map.of, Map.ofEntries and Map.entry and Java 10's Map.copyOf, which Android has from Android 11 (API
+    // 30) and Android 9's Map has not (Android took them out of its copy of this file: the line above): Amazon Shopping's start
+    // ended on a NoSuchMethodError of Map.of(Object, Object), Shazam's on Map.of() and Map.entry, called by Firebase.
+    // Unmodifiable maps of no null keys or values, a key given twice refused (IllegalArgumentException), Serializable; an
+    // entry of Map.entry unmodifiable too, and not Serializable: java.util.ImmutableCollections.
+
+    @SuppressWarnings("unchecked")
+    static <K, V> Map<K, V> of() {
+        return (Map<K, V>) ImmutableCollections.EMPTY_MAP;
+    }
+
+    static <K, V> Map<K, V> of(K k1, V v1) {
+        return ImmutableCollections.map(new Object[] { k1 }, new Object[] { v1 });
+    }
+
+    static <K, V> Map<K, V> of(K k1, V v1, K k2, V v2) {
+        return ImmutableCollections.map(new Object[] { k1, k2 }, new Object[] { v1, v2 });
+    }
+
+    static <K, V> Map<K, V> of(K k1, V v1, K k2, V v2, K k3, V v3) {
+        return ImmutableCollections.map(new Object[] { k1, k2, k3 }, new Object[] { v1, v2, v3 });
+    }
+
+    static <K, V> Map<K, V> of(K k1, V v1, K k2, V v2, K k3, V v3, K k4, V v4) {
+        return ImmutableCollections.map(new Object[] { k1, k2, k3, k4 }, new Object[] { v1, v2, v3, v4 });
+    }
+
+    static <K, V> Map<K, V> of(K k1, V v1, K k2, V v2, K k3, V v3, K k4, V v4, K k5, V v5) {
+        return ImmutableCollections.map(new Object[] { k1, k2, k3, k4, k5 }, new Object[] { v1, v2, v3, v4, v5 });
+    }
+
+    static <K, V> Map<K, V> of(K k1, V v1, K k2, V v2, K k3, V v3, K k4, V v4, K k5, V v5, K k6, V v6) {
+        return ImmutableCollections.map(new Object[] { k1, k2, k3, k4, k5, k6 }, new Object[] { v1, v2, v3, v4, v5, v6 });
+    }
+
+    static <K, V> Map<K, V> of(K k1, V v1, K k2, V v2, K k3, V v3, K k4, V v4, K k5, V v5, K k6, V v6, K k7, V v7) {
+        return ImmutableCollections.map(new Object[] { k1, k2, k3, k4, k5, k6, k7 }, new Object[] { v1, v2, v3, v4, v5, v6, v7 });
+    }
+
+    static <K, V> Map<K, V> of(K k1, V v1, K k2, V v2, K k3, V v3, K k4, V v4, K k5, V v5, K k6, V v6, K k7, V v7, K k8, V v8) {
+        return ImmutableCollections.map(new Object[] { k1, k2, k3, k4, k5, k6, k7, k8 }, new Object[] { v1, v2, v3, v4, v5, v6, v7, v8 });
+    }
+
+    static <K, V> Map<K, V> of(K k1, V v1, K k2, V v2, K k3, V v3, K k4, V v4, K k5, V v5, K k6, V v6, K k7, V v7, K k8, V v8,
+                               K k9, V v9) {
+        return ImmutableCollections.map(new Object[] { k1, k2, k3, k4, k5, k6, k7, k8, k9 },
+                                        new Object[] { v1, v2, v3, v4, v5, v6, v7, v8, v9 });
+    }
+
+    static <K, V> Map<K, V> of(K k1, V v1, K k2, V v2, K k3, V v3, K k4, V v4, K k5, V v5, K k6, V v6, K k7, V v7, K k8, V v8,
+                               K k9, V v9, K k10, V v10) {
+        return ImmutableCollections.map(new Object[] { k1, k2, k3, k4, k5, k6, k7, k8, k9, k10 },
+                                        new Object[] { v1, v2, v3, v4, v5, v6, v7, v8, v9, v10 });
+    }
+
+    @SafeVarargs
+    @SuppressWarnings("varargs")
+    static <K, V> Map<K, V> ofEntries(Entry<? extends K, ? extends V>... entries) {
+        return ImmutableCollections.mapOfEntries(entries);
+    }
+
+    static <K, V> Entry<K, V> entry(K k, V v) {
+        return new ImmutableCollections.ImmutableEntry<>(k, v);
+    }
+
+    static <K, V> Map<K, V> copyOf(Map<? extends K, ? extends V> map) {
+        return ImmutableCollections.mapOf(map);
+    }
