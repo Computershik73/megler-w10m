@@ -354,6 +354,43 @@ void testFiles(const std::wstring& root) {
     uint64_t none = 0;
     check(!files::copyWhole(dir + L"\\none.bin", dir + L"\\none.copy", none) && !files::exists(dir + L"\\none.copy"),
           "copyWhole: a file that is not there is not copied, and nothing is made");
+
+    // A memory card's file system, as CopyFile2 is refused there for what it copies besides the bytes (ERROR_NOT_SUPPORTED,
+    // ERROR_ENCRYPTION_FAILED): the bytes read and written, the time of writing kept. Not where reading and writing cannot help.
+    {
+        files::testing::refuseCopyFile2(ERROR_NOT_SUPPORTED);
+        const std::wstring streamed = dir + L"\\streamed.copy";
+        check(files::copy(a, streamed) && files::same(a, streamed) && files::lastWrite(a) == files::lastWrite(streamed),
+              "copy: CopyFile2 refused, the bytes read and written, the time of writing kept");
+        Told told;
+        uint64_t mended = 99;
+        const std::wstring bigStreamed = dir + L"\\big-streamed.copy";
+        check(files::copyWhole(big, bigStreamed, mended, told.progress()) && mended == 0 && files::same(big, bigStreamed) &&
+                  told.stages == std::vector<files::Stage>{files::Stage::copying, files::Stage::flushing, files::Stage::comparing} &&
+                  told.lastDone == bigSize,
+              "copyWhole: likewise, CopyFile2 past the cache and through it refused; then put on the disk and compared");
+        files::testing::refuseCopyFile2(ERROR_ENCRYPTION_FAILED);
+        check(files::copy(a, dir + L"\\decrypted.copy") && files::same(a, dir + L"\\decrypted.copy"), "copy: CopyFile2 refused for encryption, likewise");
+        files::testing::refuseCopyFile2(ERROR_DISK_FULL);
+        check(!files::copy(a, dir + L"\\full.copy") && GetLastError() == ERROR_DISK_FULL && !files::exists(dir + L"\\full.copy"),
+              "copy: a full disk is not gone round, and says so");
+        files::testing::refuseCopyFile2(0);
+        check(count(writtenLog(), "files: CopyFile2 refused to copy") == 1, "the way round CopyFile2 is said once");
+    }
+    // Reads past the cache refused (a memory card's file system whose sectors are larger than a page, or that has no such
+    // reads): read through the cache.
+    {
+        files::testing::refuseUncachedReads(ERROR_INVALID_PARAMETER);
+        files::DiskFile disk(big);
+        const bool wasUncached = disk.uncached();
+        char head[4096];
+        check(wasUncached && disk.read(0, head, sizeof(head)) && !disk.uncached(), "DiskFile: a read refused past the cache is made through it");
+        uint64_t mended = 0;
+        check(spoil(bigCopy, 3 * 1024 * 1024 + 5) && files::mend(big, bigCopy, mended) && mended == files::DiskFile::chunk && files::same(big, bigCopy),
+              "mend: so, a byte wrong found and written again");
+        files::testing::refuseUncachedReads(0);
+        check(count(writtenLog(), "could not be read past Windows's cache") == 1, "the way round is said once");
+    }
 }
 
 void testLog() {

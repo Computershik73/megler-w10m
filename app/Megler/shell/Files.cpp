@@ -8,7 +8,14 @@
 namespace megler::app::files {
 namespace {
 
-std::atomic<bool> gSaidRefused{false};
+std::atomic<bool> gSaidRefused{false}, gSaidStreamCopy{false}, gSaidEncrypted{false}, gSaidUncached{false};
+// The tests' refusals (testing::), 0 for none.
+std::atomic<uint32_t> gRefuseCopyFile2{0}, gRefuseUncached{0};
+
+/// `line` in the log the first time only: a way round the file system said once a run, not once a file.
+void sayOnce(std::atomic<bool>& said, const std::string& line) {
+    if (!said.exchange(true)) shellLog::write(line + "; said once");
+}
 
 /*
  * Whether `path` is one to be read, written or listed: absolute, on a drive ("C:\...") or by a volume's or a share's name
@@ -172,10 +179,6 @@ bool move(const std::wstring& from, const std::wstring& to) {
     return usable(from) && usable(to) && MoveFileExW(from.c_str(), to.c_str(), MOVEFILE_REPLACE_EXISTING) != 0;
 }
 
-bool copy(const std::wstring& from, const std::wstring& to) {
-    return usable(from) && usable(to) && SUCCEEDED(CopyFile2(from.c_str(), to.c_str(), nullptr));
-}
-
 bool flush(const std::wstring& path) {
     HANDLE h = open(path, GENERIC_WRITE, OPEN_EXISTING);
     if (h == INVALID_HANDLE_VALUE) return false;
@@ -247,7 +250,7 @@ bool writeAt(HANDLE h, uint64_t at, const char* data, DWORD n) {
 
 } // namespace
 
-DiskFile::DiskFile(const std::wstring& path) : handle_(INVALID_HANDLE_VALUE) {
+DiskFile::DiskFile(const std::wstring& path) : handle_(INVALID_HANDLE_VALUE), path_(path) {
     if (!usable(path)) return;
     CREATEFILE2_EXTENDED_PARAMETERS params = {};
     params.dwSize = sizeof(params);
@@ -271,14 +274,39 @@ bool DiskFile::isOpen() const { return handle_ != INVALID_HANDLE_VALUE; }
 
 bool DiskFile::read(uint64_t at, char* out, uint32_t n) {
     if (handle_ == INVALID_HANDLE_VALUE || !buffer_ || n > chunk || at > size_ || n > size_ - at) return false;
-    // Uncached, a read asks for whole sectors and is given what there is of them up to the file's end.
-    const DWORD asked = uncached_ ? DWORD((n + 4095u) & ~4095u) : DWORD(n);
-    LARGE_INTEGER pos = {};
-    pos.QuadPart = LONGLONG(at);
-    DWORD got = 0;
-    if (!SetFilePointerEx(handle_, pos, nullptr, FILE_BEGIN) || !ReadFile(handle_, buffer_, asked, &got, nullptr) || got < n) return false;
-    memcpy(out, buffer_, n);
-    return true;
+    for (;;) {
+        // Uncached, a read asks for whole sectors and is given what there is of them up to the file's end.
+        const DWORD asked = uncached_ ? DWORD((n + 4095u) & ~4095u) : DWORD(n);
+        LARGE_INTEGER pos = {};
+        pos.QuadPart = LONGLONG(at);
+        DWORD got = 0;
+        bool ok = SetFilePointerEx(handle_, pos, nullptr, FILE_BEGIN) != 0;
+        if (ok && uncached_ && gRefuseUncached) {
+            SetLastError(gRefuseUncached);
+            ok = false;
+        }
+        ok = ok && ReadFile(handle_, buffer_, asked, &got, nullptr);
+        if (ok && got >= n) {
+            memcpy(out, buffer_, n);
+            return true;
+        }
+        /*
+         * A file system that opens a file past the cache and then refuses its reads so -- a memory card's whose sectors are
+         * larger than a page, a driver that has no uncached reads -- has it read through the cache from then on: compared
+         * so, a copy is checked against what Windows's cache holds of it, which is less, but no copy fails for it.
+         */
+        const DWORD error = ok ? ERROR_HANDLE_EOF : GetLastError();
+        if (!uncached_ || !(error == ERROR_INVALID_PARAMETER || error == ERROR_NOT_SUPPORTED || error == ERROR_INVALID_FUNCTION || error == ERROR_NOACCESS))
+            return false;
+        HANDLE cached = open(path_, GENERIC_READ, OPEN_EXISTING);
+        if (cached == INVALID_HANDLE_VALUE) return false;
+        CloseHandle(handle_);
+        handle_ = cached;
+        uncached_ = false;
+        sayOnce(gSaidUncached, format("files: %s could not be read past Windows's cache (error %lu): read through it instead, as every file whose "
+                                      "file system refuses that",
+                                      narrow(path_).c_str(), error));
+    }
 }
 
 bool mend(const std::wstring& source, const std::wstring& copy, uint64_t& mended, std::vector<uint64_t>* chunks, const Progress& progress) {
@@ -326,9 +354,9 @@ COPYFILE2_MESSAGE_ACTION CALLBACK copyProgress(const COPYFILE2_MESSAGE* message,
     return COPYFILE2_PROGRESS_CONTINUE;
 }
 
-/// CopyFile2 with `flags`, `progress` told of each chunk; whether it copied, and when not, its Win32 error for GetLastError.
-bool copyFile(const std::wstring& from, const std::wstring& to, DWORD flags, const Progress& progress) {
-    if (!usable(from) || !usable(to)) return false;
+/// CopyFile2 with `flags`, `progress` told of each chunk: 0, or its Win32 error.
+DWORD copyFile2(const std::wstring& from, const std::wstring& to, DWORD flags, const Progress& progress) {
+    if (gRefuseCopyFile2) return gRefuseCopyFile2;
     COPYFILE2_EXTENDED_PARAMETERS params = {};
     params.dwSize = sizeof(params);
     params.dwCopyFlags = flags;
@@ -337,11 +365,111 @@ bool copyFile(const std::wstring& from, const std::wstring& to, DWORD flags, con
         params.pvCallbackContext = const_cast<Progress*>(&progress);
     }
     const HRESULT hr = CopyFile2(from.c_str(), to.c_str(), &params);
-    if (FAILED(hr)) SetLastError(HRESULT_FACILITY(hr) == FACILITY_WIN32 ? DWORD(HRESULT_CODE(hr)) : DWORD(hr));
-    return SUCCEEDED(hr);
+    return SUCCEEDED(hr) ? 0 : HRESULT_FACILITY(hr) == FACILITY_WIN32 ? DWORD(HRESULT_CODE(hr)) : DWORD(hr);
+}
+
+/// Whether CopyFile2 was refused for what it copies besides the bytes, which a plain read and write do without: a memory card's
+/// FAT32 or exFAT has no encryption of Windows's (ERROR_ENCRYPTION_FAILED), no extended attributes and no streams but the file's
+/// own (ERROR_EAS_NOT_SUPPORTED, ERROR_NOT_SUPPORTED, ERROR_INVALID_PARAMETER, ERROR_INVALID_FUNCTION), and an app container may
+/// be refused what goes with a file (ERROR_ACCESS_DENIED, ERROR_PRIVILEGE_NOT_HELD).
+bool refusedForExtras(DWORD error) {
+    switch (error) {
+    case ERROR_ENCRYPTION_FAILED: case ERROR_EAS_NOT_SUPPORTED: case ERROR_NOT_SUPPORTED: case ERROR_INVALID_PARAMETER:
+    case ERROR_INVALID_FUNCTION: case ERROR_ACCESS_DENIED: case ERROR_PRIVILEGE_NOT_HELD:
+        return true;
+    default:
+        return false;
+    }
+}
+
+/// `from` copied by reading it and writing `to` (made anew), a megabyte at a time, and given the time `from` was last written,
+/// as CopyFile2 gives a copy: the bytes and nothing else, so a plain file whatever `from` is. On failure `to` is removed and
+/// GetLastError() says why.
+bool streamCopy(const std::wstring& from, const std::wstring& to, const Progress& progress) {
+    HANDLE in = open(from, GENERIC_READ, OPEN_EXISTING);
+    if (in == INVALID_HANDLE_VALUE) return false;
+    HANDLE out = open(to, GENERIC_WRITE, CREATE_ALWAYS);
+    if (out == INVALID_HANDLE_VALUE) {
+        const DWORD error = GetLastError();
+        CloseHandle(in);
+        SetLastError(error);
+        return false;
+    }
+    LARGE_INTEGER total = {};
+    GetFileSizeEx(in, &total);
+    std::vector<char> buffer(1u << 20);
+    uint64_t done = 0;
+    DWORD error = 0;
+    for (;;) {
+        DWORD got = 0;
+        if (!ReadFile(in, buffer.data(), DWORD(buffer.size()), &got, nullptr)) {
+            error = GetLastError();
+            break;
+        }
+        if (!got) break;
+        SetLastError(0);
+        if (!writeAll(out, std::string_view(buffer.data(), got))) {
+            error = GetLastError() ? GetLastError() : ERROR_WRITE_FAULT;
+            break;
+        }
+        done += got;
+        if (progress) progress(Stage::copying, done, uint64_t(total.QuadPart));
+    }
+    FILE_BASIC_INFO basic = {};
+    if (!error && GetFileInformationByHandleEx(in, FileBasicInfo, &basic, sizeof(basic))) {
+        FILE_BASIC_INFO times = {};  // (Its other times and its attributes 0: left as they are.)
+        times.LastWriteTime = basic.LastWriteTime;
+        SetFileInformationByHandle(out, FileBasicInfo, &times, sizeof(times));
+    }
+    CloseHandle(in);
+    CloseHandle(out);
+    if (error) {
+        DeleteFileW(to.c_str());
+        SetLastError(error);
+        return false;
+    }
+    return true;
+}
+
+/*
+ * `from` copied to `to`, `progress` told of each chunk; whether it was, and when not, its Win32 error for GetLastError. CopyFile2
+ * with `flags`, but where a memory card's file system or an app container refuses it what it copies besides the bytes
+ * (refusedForExtras: encryption first, then the rest), the bytes read and written (streamCopy) -- not where it is asked past
+ * the cache (COPY_FILE_NO_BUFFERING), which copyWhole asks again through it. A file Windows encrypted -- an app's on a memory
+ * card is, for that app -- is copied so at once: the copy is plain, and the publisher's other packages can read it in the
+ * shared folder, where CopyFile2 made it encrypted again. Each way round said once.
+ */
+bool copyFile(const std::wstring& from, const std::wstring& to, DWORD flags, const Progress& progress) {
+    if (!usable(from) || !usable(to)) return false;
+    const DWORD attributes = GetFileAttributesW(from.c_str());
+    if (attributes != INVALID_FILE_ATTRIBUTES && (attributes & FILE_ATTRIBUTE_ENCRYPTED) && !(attributes & FILE_ATTRIBUTE_DIRECTORY)) {
+        sayOnce(gSaidEncrypted, "files: " + narrow(from) + " is encrypted, as Windows keeps an app's files on a memory card: copied by reading and "
+                                                             "writing it, so that the copy is plain and the publisher's other packages read it");
+        return streamCopy(from, to, progress);
+    }
+    DWORD error = copyFile2(from, to, flags, progress);
+    if (error == ERROR_ENCRYPTION_FAILED) error = copyFile2(from, to, flags | COPY_FILE_ALLOW_DECRYPTED_DESTINATION, progress);
+    if (!error) return true;
+    if ((flags & COPY_FILE_NO_BUFFERING) || !refusedForExtras(error)) {
+        SetLastError(error);
+        return false;
+    }
+    // (Where reading and writing cannot copy it either, GetLastError says why they could not.)
+    if (!streamCopy(from, to, progress)) return false;
+    sayOnce(gSaidStreamCopy, format("files: CopyFile2 refused to copy %s (error %lu), and reading and writing it copied it: so is every copy it "
+                                    "refuses so -- a memory card's file system has not all a copy of Windows's takes along",
+                                    narrow(from).c_str(), error));
+    return true;
 }
 
 } // namespace
+
+bool copy(const std::wstring& from, const std::wstring& to) { return copyFile(from, to, 0, nullptr); }
+
+namespace testing {
+void refuseCopyFile2(uint32_t error) { gRefuseCopyFile2 = error; }
+void refuseUncachedReads(uint32_t error) { gRefuseUncached = error; }
+} // namespace testing
 
 bool copyWhole(const std::wstring& from, const std::wstring& to, uint64_t& mended, const Progress& progress) {
     mended = 0;
