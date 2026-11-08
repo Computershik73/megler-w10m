@@ -3720,8 +3720,9 @@ static void test_guest(const char *libdir, const char *scratch)
             mg_ld_get_stats(svc, &st);
             CHECK_INT(st.svc_sites, 3);
             CHECK_INT(st.svc_led_out, 3);
-            /* The writes of x18 the loader counts and says (Windows' TEB): t_svc64_x18_writer's ten, never run; none in
-               the code clang makes for Android, which keeps x18 (libt_basic.so). */
+            /* The writes of x18 the loader counts and says (Windows' TEB): t_svc64_x18_writer's ten, never run, and not
+               the two words of data after them that read as two more (its mapping symbols say they are data: twelve
+               without them); none in the code clang makes for Android, which keeps x18 (libt_basic.so). */
             CHECK_INT(st.x18_writes, 10);
             {
                 mg_ld_stats b;

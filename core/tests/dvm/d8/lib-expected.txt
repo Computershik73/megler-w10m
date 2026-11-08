@@ -12,6 +12,7 @@ lib_files=falsetruetrue truetruelines.txttrue 100,892,line 100 é 30325503 30398
 lib_nio=falsetrue 22truetrue 3second é 22f falsetrue 22,6,second,8 XYrst|se [one.txt, three.bin] NoSuchFileExceptiontruefalsefalse
 lib_security=900150983cd24fb0d6963f7d28e17f72 a9993e364706816aba3e25717850c26c9cd0d89d ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad ddaf35a193617aba64ca3dff61 NSAE truetruetrue8 4236true 90015098-3cd2-3fb0-9696-3f7d28e17f72 4822678189205111 352441c2 24d0127
 lib_crypto=8ae4dad83ec7e576ac177567 48f650378914dc047etrue 61dcf877bff8a047ddacfdda25f80358 YXR0YWNrIGF0IGRhhello
+lib_tls=76 5bc94fbc3221a5db94fae95ae7121a47 truetrue AEADBadTagException TLSv1.2 TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256 true ping pong secp256r1(65) true
 lib_threads=falsefalse500500workertrue 20000,20000 notify,woken in a thread 5null
 lib_exceptions=java.lang.ArithmeticException:/ by zero java.lang.NullPointerException java.lang.NegativeArraySizeException:null java.lang.ArrayIndexOutOfBoundsException:5 java.lang.ClassCastException java.lang.StringIndexOutOfBoundsException For input string: "12x" java.io.IOException: made|cause|d8t.Lib.lib_exceptions no.such.ClassArrayList[Ijava.util.AbstractList0(3,4)8truetrue
 lib_system=truetruetrue truetrue default0true truetruetrue7true96354 [1, 1, 2, 3, 4]

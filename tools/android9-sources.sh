@@ -25,20 +25,30 @@
 #   external/zlib            whole
 #   system/core              base, liblog/include, libcutils/include
 #   external/boringssl       src/include (headers for java.math's NativeBN and
-#                            for conscrypt)
+#                            for conscrypt); and, for arm64-v8a's libcrypto.so
+#                            and libssl.so, which are built here (below), the
+#                            sources Android.bp and sources.bp name: src/crypto,
+#                            src/ssl, src/third_party/fiat, err_data.c, the
+#                            aarch64 assembly (linux-aarch64), and the two files
 #   external/conscrypt       common/src/jni (the native half of conscrypt,
 #                            libjavacrypto.so) and Android.bp (its build rule)
 #   art                      runtime and openjdkjvm: not built -- they are what says
 #                            how ART answers the native methods libcore leaves to
 #                            the runtime, and what libopenjdkjvm.so's JVM_* do
-#   prebuilts/vndk/v28       libcrypto.so and libssl.so, Android 9's own (BoringSSL
-#                            is not compiled here), for each ABI the natives are
-#                            built for (tools/android9-natives.sh [abi]): ARMv7
-#                            with NEON, arm64 (ARMv8-A), x86 and x86_64
+#   prebuilts/vndk/v28       libcrypto.so and libssl.so, Android 9's own, for each
+#                            ABI the natives are built for
+#                            (tools/android9-natives.sh [abi]): ARMv7 with NEON,
+#                            x86 and x86_64 take them as they are; arm64's
+#                            (ARMv8-A) are what its own build is held against.
+#                            Android 9's compiler had x18 as an ordinary
+#                            register, and Windows on ARM64 keeps the thread's
+#                            TEB there, so arm64's are compiled from BoringSSL's
+#                            sources at this tag instead
 #
 # gitiles makes each archive when asked, so there are no sizes to check against;
-# the whole comes to about 150 MB unpacked. A part already there is not
-# fetched again (remove its folder to fetch it anew).
+# the whole comes to about 180 MB unpacked (BoringSSL 31 MB of it, its tests'
+# data mostly). A part already there is not fetched again (remove its folder to
+# fetch it anew).
 set -euo pipefail
 
 TAG="${MEGLER_AOSP_TAG:-android-9.0.0_r47}"
@@ -100,6 +110,15 @@ part system/core base
 part system/core liblog/include
 part system/core libcutils/include
 part external/boringssl src/include
+# BoringSSL itself, for arm64-v8a's libcrypto.so and libssl.so: what its Android.bp and sources.bp name. (Each folder is a
+# part of its own, so that a tree fetched before, which has src/include alone, gets them too.)
+part external/boringssl src/crypto
+part external/boringssl src/ssl
+part external/boringssl src/third_party/fiat
+part external/boringssl linux-aarch64
+file external/boringssl "refs/tags/$TAG" Android.bp
+file external/boringssl "refs/tags/$TAG" sources.bp
+file external/boringssl "refs/tags/$TAG" err_data.c
 part external/conscrypt common/src/jni
 file external/conscrypt "refs/tags/$TAG" Android.bp
 part art runtime

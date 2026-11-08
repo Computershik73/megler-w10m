@@ -217,7 +217,7 @@ own ("The security providers" below, and the getter of "The time zone"): 7624.
   runs: `7624 linked, 0 not`).
 - The program that uses `java.lang` alone (`d8t/Main.java`) gives the JVM's
   answers for 9 of its 10 tests, and the one that uses `java.util`, `java.io`
-  and `java.text` (`d8t/Lib.java`) for the 7 of its 17 that need no native
+  and `java.text` (`d8t/Lib.java`) for the 7 of its 19 that need no native
   library: `ArrayList`, `LinkedList`, `ArrayDeque`, `PriorityQueue`, sorting
   with comparators, `HashMap`, `TreeMap`, `LinkedHashMap`, `HashSet`, `BitSet`,
   iterators, `StringBuilder`, `String`'s own methods, boxes, `Optional`,
@@ -258,7 +258,7 @@ work: `libjavacore`, `libopenjdk`, `libicuuc`, `libicui18n`, `libnativehelper`,
   descriptor to a file for one line and reads back exactly those 19 bytes.
   (The descriptor is not 1: libcore's `FileDescriptor.out` is a duplicate of 1
   it makes when the class starts.)
-- **Both programs match the JVM**: all 10 tests of `Main` and all 17 of `Lib`,
+- **Both programs match the JVM**: all 10 tests of `Main` and all 19 of `Lib`,
   which add regular expressions, `String.format`, `DecimalFormat`,
   `SimpleDateFormat` in UTC and in `Europe/Moscow`, `BigInteger` and
   `BigDecimal`, case conversion and character classes outside ASCII, charsets
@@ -267,15 +267,22 @@ work: `libjavacore`, `libopenjdk`, `libicuuc`, `libicui18n`, `libnativehelper`,
   (`File`, streams, readers and writers, `RandomAccessFile`) and through
   `java.nio.file` and a `FileChannel`, a second thread with `join`, `wait` and
   `notify`, exceptions the interpreter throws, and `System.currentTimeMillis`,
-  `nanoTime`, `getProperty`, `arraycopy`, `identityHashCode`. The JVM's answers
-  were made by JDK 1.8.0_202 from the same class files.
-- **One test's answer is Android's and not the JVM's**, and
+  `nanoTime`, `getProperty`, `arraycopy`, `identityHashCode`; and through
+  conscrypt over BoringSSL, digests, HMAC, AES-CBC, AES-GCM (a known answer,
+  and a changed bit refused) and a TLS 1.2 handshake with a server of the
+  test's own on loopback, ECDHE_ECDSA with AES-128-GCM and a line each way
+  (`lib_tls`). The JVM's answers were made by JDK 1.8.0_202 from the same
+  class files.
+- **Two tests' answers are Android's and not the JVM's**, and
   `core/tests/dvm/d8/lib-android.txt` says which and why: three messages of
   exceptions the runtime itself throws, which Java does not specify and
   Android words its own way -- `divide by zero` (the JVM: `/ by zero`), a
   negative array size as `Dimension 2: -1` (the JVM 8: no message), and an
-  index out of bounds as `length=5; index=5` (the JVM: `5`). A difference that
-  is not in that file fails the test. There is no other.
+  index out of bounds as `length=5; index=5` (the JVM: `5`); and the ECDHE
+  group of the TLS handshake, which a relay of the test's own reads off the
+  server's ServerKeyExchange: `x25519`, BoringSSL's first, where Java 8's
+  SunJSSE, which has no X25519, takes `secp256r1`. A difference that is not in
+  that file fails the test. There is no other.
 - `java.nio.file`'s native half is in no table: `libopenjdk.so` exports it as
   `Java_sun_nio_fs_UnixNativeDispatcher_...`, and those are found by name (a
   check that some were; 15 by the end of the two programs).
