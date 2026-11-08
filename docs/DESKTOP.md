@@ -507,7 +507,8 @@ turned").
   allows (`AutoRotationPreferences`).
 - **An Xbox** has the whole television, which never changes size: an app
   that asks for portrait gets the strip in the middle, and nothing else is
-  turned. **Windows RT**'s tablets are desktop Windows: the same as a PC's,
+  turned. The flag `as-xbox` has a PC's Megler take those ways (its window
+  opened at 960 by 540 and never turned; docs/XBOX.md). **Windows RT**'s tablets are desktop Windows: the same as a PC's,
   with the tablet's turning as above.
 
 ## Proven
