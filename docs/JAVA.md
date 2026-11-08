@@ -3217,7 +3217,8 @@ framework here. The contract is in `megler.h` (`megler_display_host`,
 - **The configuration.** `megler.Screen` (new) does with the event what
   `ActivityThread` does with a new configuration. Every `Resources` of the
   app's (the app's, the system's, those of configuration contexts and of the
-  packages it hosts: `Resources.sAll`) takes the screen's orientation,
+  packages it hosts: each implementation of them once, `ResourcesImpl.sAll`,
+  as Android's `ResourcesManager` updates every `ResourcesImpl`) takes the screen's orientation,
   `screenWidthDp`, `screenHeightDp`, `smallestScreenWidthDp`, `screenLayout`
   and `densityDpi`, and `DisplayMetrics` the new size; the rest of their
   configuration stays, an app's own locale with it. The Application, the
