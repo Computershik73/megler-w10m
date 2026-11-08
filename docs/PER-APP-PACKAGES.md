@@ -138,7 +138,9 @@ developer's packages and refuses one more with 0x80073d11
 so, and a Lumia 650 had 20 developer's packages (the portal's PackageOrigin 5),
 Megler's and its four apps' among them, installed so by 0.1.0.612 to 0.1.0.639.
 The packages are listed by `PackageManager.FindPackagesForUser` (the restricted
-capability `packageQuery`) and uninstalled by `RemovePackageAsync`.
+capability `packageQuery`) and uninstalled by `RemovePackageAsync`. Every package
+goes onto the package volume Megler itself is installed on, the phone's memory or
+a memory card, not where Windows saves new apps (below, "A memory card").
 
 A phone needs its full interop unlock for this, the capability part included:
 `packageManagement` is a restricted capability, and Windows 10 Mobile grants it
@@ -664,6 +666,131 @@ is installed, and the old folder goes with the next listing. An older APK is
 never put over a later one, as Android keeps an update of a system app over an
 older system image; and an APK of the library's that is not installed yet is
 installed as it is, the user's choice.
+
+## A memory card
+
+A user reported (2026-11-08, no log with it) that Megler crashes once it, or its
+apps, are installed on the memory card: Windows 10 Mobile's Settings › System ›
+Storage, "New apps will save to: SD card", or an app moved there. No phone with a
+card was at hand; what follows is from the code and from how Windows keeps a
+package on another volume than the system's. Such a package has its app data on
+that volume too (`<drive>:\WpSystem\...\AppData\...`), the files an app writes
+there encrypted for it; its publisher cache folder is that volume's, a folder
+other than the phone's memory's, or Windows gives it none
+(`GetPublisherCacheFolder` throws, `appPackage::sharedFolder` is empty). A card
+is FAT32 or exFAT as a rule: no hard links, junctions, symbolic links, sparse
+files or ACLs, a time of writing kept to two seconds, no file of 4 GB on FAT32.
+
+What that did to Megler:
+
+- **Its apps went to the card.** `installWithPackageManager` named no volume, so
+  Windows put every package Megler made where it saves new apps. An app's own
+  package on the card has the card's shared folder (or none), where Megler, in
+  the phone's memory, had put neither Android's files nor the app's APK: its
+  library found no APK and the app showed its splash picture for ever, which is
+  a crash to whoever waits for it. An APK such an app handed Megler to install
+  (`<shared>\incoming`) was in a folder Megler does not see.
+- **No shared folder is no folder.** Many places made their paths as
+  `sharedFolder() + L"\\..."`: with none, `\apks\...`, `\services\...`,
+  `\incoming\...` -- the current drive's root. An app's own package listed
+  `\apks\<identity>\<token>\*.apk` as its library and wrote its
+  `reports.version` there, removing an app's registration took
+  `\services\gms-package.txt` away, and `files::makeDirectories` would walk such
+  a path up to the drive's root and make what it could there (an app container
+  is refused most of it, which was all that stood in the way).
+
+What Megler does since 2026-11-08:
+
+- Every package it installs -- an app's, Update All's, Google's apps', its own
+  update -- goes onto **the package volume Megler itself is on**
+  (`installVolume`, `shell/AppPackage.cpp`): Windows's package manager lists its
+  volumes (`FindPackageVolumes`, else `GetPackageVolumesAsync`), and the one that
+  holds Megler's install folder (`Package::Current().InstalledLocation()`) is the
+  one whose store path the folder is in, else whose volume name the folder's own
+  handle gives (`GetFinalPathNameByHandle`, `\\?\Volume{...}`: a store path named
+  by another drive letter, as a phone's data volume may be both `C:\Data` and
+  `U:`), else whose mount point it is under (`placement::volumeHolding`,
+  `shell/Placement.h`, tested on a PC with the volumes of a PC, of a phone and of
+  a phone with a card). It is handed to `AddPackageAsync(uri, null, options,
+  volume)` (`addPackage`); where none is found, Windows lists none, or the call
+  with a volume is not there or not taken (E_NOINTERFACE, E_NOTIMPL or
+  E_INVALIDARG thrown, said once), the call is as before. What Windows answers is
+  taken as before, every set of options in its turn. The log says the volume
+  once, and again when it is another: `app package: packages are installed on
+  Megler's own volume, C:\Data\Programs\WindowsApps (mounted at ...,
+  \\?\Volume{...}, the system's)`.
+- **Paths that are not absolute are refused** by every function of
+  `shell/Files.cpp` (ERROR_BAD_PATHNAME, the first said in the log once), and
+  `files::removeTree` refuses a drive's or a volume's root: nothing is listed,
+  made, written or removed at a drive's root whatever a caller forgot. And the
+  callers know no shared folder from one: an app's own package has no APK folder
+  and no Android root then (`single()`), its library reads nothing, Megler's
+  library takes an installed app's APK for none, a link `megler:install` whose
+  APK is not in Megler's shared folder says why (the app that asked is on other
+  storage), and making a package says that Megler is on the card.
+- **An app's own package says what it lacks.** At its start
+  (`appPackage::singleAppProblem`, `placement::missingFor`) it reads the first
+  bytes of its APK and Android's `complete` in its shared folder; where Windows
+  gave it no shared folder, or either is not there or cannot be read, its app is
+  not opened, and its screen (`ui/StartScreen.cpp`) says so: the app and Megler
+  are on different storage; keep them on the same, the app (or Megler) moved to
+  the phone's memory in Settings › System › Storage, or the app installed again
+  from Megler's Library (**Open Megler**). The log says which was missing, where
+  it was looked for, and each folder with its drive.
+- **Megler on the card says so** once at each start, a dialog, and above the
+  Library (`appPackage::meglerOnCard`, a phone's install folder not on the drive
+  Windows is on, or no shared folder anywhere): its apps may not reach its files,
+  the phone's memory is where it should be, and New apps will save to: This
+  device. Megler still installs its apps beside itself on the card.
+- **The log says where everything is.** At each start, `storage: the install
+  folder on C: (\\?\Volume{...}), LocalState on C:, the shared folder on C:
+  (...); Windows on C:`; Save All Logs' summary says it as `Folders:`, and the
+  drive each of Megler's packages is installed on.
+- **A memory card's file system:** a copy that CopyFile2 refuses for what it
+  copies besides the bytes (ERROR_ENCRYPTION_FAILED, extended attributes or
+  streams the card has not, ERROR_ACCESS_DENIED from an app container) is made by
+  reading and writing, the time of writing kept; a file Windows encrypted (an
+  app's on the card) is copied so at once, so that the copy in the shared folder
+  is plain and the publisher's other packages read it. A file whose reads past
+  Windows's cache are refused once opened so (`files::DiskFile`: sectors larger
+  than a page, a driver without them) is compared through the cache. A folder
+  of the phone's whose file system lists no files' ids (FileIdBothDirectoryInfo
+  refused) is listed with FileFullDirectoryInfo, by the core's layer
+  (`list_handle`, `core/src/host/mg_host_win32.c`) and by the shell's check of
+  its links (`player/StorageHost.cpp`) -- not tried: a PC's NTFS answers the
+  first, and FAT and exFAT are thought to. The logs' mirror takes a copy's time to
+  two seconds. Each way round is said once in the log. Megler's own code made no
+  hard links, junctions, symbolic links or sparse files, and asked for no file
+  ids; the core's POSIX rename (FileRenameInfoEx) went round a file system
+  without it before (a file put aside, then the plain rename), and its locks
+  count a file system without them as granted.
+
+*Proven* on a PC (`tools/build-tests.sh win`, `mg_shell_tests`): the volume
+chosen for a PC's, a phone's and a phone-with-a-card's volumes; paths that are not
+absolute refused and no drive's root removed; what an app's own package finds
+missing and says; what Megler says of itself on the card; the copies made by
+reading and writing where CopyFile2 is refused, and compared through the cache
+where uncached reads are, each said once (`files::testing`); and
+`tools/log-mirror-test.sh`, a copy's time kept to two seconds. *Not known* until a
+phone with a card is tried: whether Windows 10 Mobile gives a package on the card a
+publisher cache folder at all, and the same one to Megler and its apps there;
+what its package volumes' store paths and mount points are (the log line above
+says them); whether the deployment engine moves an app's package installed on the
+other storage when its update is told Megler's volume, or refuses it (its refusal
+is said on the app's page as any other: uninstall it and install it again);
+whether the card's encryption of an app's files keeps the publisher's other
+packages from reading what one of them put in the shared folder there; and
+whether the deployment engine reads a package that Megler on the card made in its
+LocalState there, which is encrypted for Megler.
+
+What a user with a memory card does: keep Megler in the phone's memory (Settings
+› System › Storage: the memory card, Apps & games, Megler, Move), set New apps will
+save to: This device, and open Megler: it says nothing of the card any more. An app
+of Megler's that says it cannot start is moved to the phone's memory the same way,
+or installed again from its page in Megler's Library (Install Again, or Update All
+after an update of Megler). Save All Logs then shows each package's drive (its
+summary's `Megler's packages` and `Folders`), and the log the volume each install
+went to.
 
 ## What follows (not done yet)
 
