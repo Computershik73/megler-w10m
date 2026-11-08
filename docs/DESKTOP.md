@@ -284,12 +284,14 @@ app's like any other since `MG_ALIGN_UP` keeps a 64-bit size's upper half.
 
 ## Java's bytecode
 
-The Dalvik runtime's JIT ([JIT.md](JIT.md)) compiles what is hot of an app's bytecode on each desktop processor as on the
-phone: A64 on ARM64, following AAPCS64 and never touching x18, Windows' TEB there; x86-64 and x86 under the core's own
-conventions (System V's, i386's cdecl), with SSE2, never naming fs or gs, the TEB on x86 and x64. Its code goes on pages of
-the host's (VirtualProtect, with the RWX probe's answer), which FlushInstructionCache makes runnable. x64 and x86 are
-proven here, natively: the desktop suites with every loop compiled and with the JIT off. A64 is proven under qemu-aarch64;
-on an ARM64 machine it is built (the package) and not yet run.
+The Dalvik runtime's JIT ([JIT.md](JIT.md)) compiles what is hot of an app's bytecode on each desktop processor as on
+the phone: A64 on ARM64, following AAPCS64 and never touching x18, Windows' TEB there; x86-64 and x86 under the core's
+own conventions (System V's, i386's cdecl), with SSE2, never naming fs or gs, the TEB on x86 and x64. There a call from
+compiled code of a method whose body runs interpreted costs more than the interpreter's own call, and a loop made mostly
+of such calls is left to the interpreter (JIT.md). Its code goes on pages of the host's (VirtualProtect, with the RWX
+probe's answer), which FlushInstructionCache makes runnable. x64 and x86 are proven here, natively: the desktop suites
+with every loop compiled and with the JIT off. A64 is proven under qemu-aarch64; on an ARM64 machine it is built (the
+package) and not yet run.
 
 ## Google's apps
 
