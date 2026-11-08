@@ -6109,6 +6109,27 @@ on a looper thread of its own and takes it back with `next()`.
   and a file's descriptor, closes the originals, writes through the
   duplicate, detaches it and adopts it again.
 
+- `android/os/Parcel.java`, `marshall` and `unmarshall`, which carry the
+  parcel's table of objects with its bytes. A parcel here keeps what
+  Android would write out as bytes -- lists, maps, bundles, Parcelables,
+  CharSequences -- as objects in a table, and its bytes hold their numbers
+  in it. `marshall` gave the bytes alone, and a parcel unmarshalled from them
+  had no table: every object read back as null. Facebook keeps an activity's
+  Parcelables as their marshalled bytes
+  (`com.facebook.base.activity.parcel.OpaqueParcelable`) and restores them
+  with `unmarshall`, `setDataPosition(0)` and the creator: Messenger, opening
+  a conversation, read null for the list its photo editor's layers had been
+  written as ("ActivityParcelableHacks: Failed to restore"), and its
+  composer's camera configuration ended the app ("Required value was null",
+  a user's 12-minute run of 673). Now the bytes of a parcel with objects end
+  with a trailer of 16 bytes (a mark, a number, the objects' count, a mark),
+  the table is kept under the number (the last 16384 tables), and `unmarshall`
+  takes the trailer off and gives the parcel the same objects. A parcel
+  without objects marshals to its bytes alone, as before; bytes kept past the
+  process find no table and read nulls, as before. The data app's step
+  "parcel-marshall" writes a list and a bundle, marshals, unmarshals into
+  another parcel and reads them, and marshals a parcel of data alone.
+
 - `android/os/UserHandle.java`, the arithmetic of a uid, which is Android's:
   a uid is a user's id times `PER_USER_RANGE` plus an app's id, so
   `getAppId(uid)` is the remainder, `getUid(user, appId)` the sum, and

@@ -1758,6 +1758,7 @@ public class Main extends Activity {
         });
         insetFraction();
         workSource();
+        parcelMarshall();
         resourcesLoader();
         locationRequest();
         // A provider's file through a ContentProviderClient, as Google Play services' DynamiteLoader reads its modules'
@@ -5203,6 +5204,44 @@ public class Main extends Activity {
             detail = "size=" + size + " back=" + back + " empty=" + emptyBack;
             return size > 0 && back != null && back.equals(ws) && !back.equals(empty) && n == 2 && firstUid == 10045 && "megler.test.a".equals(firstName)
                     && chains != null && chains.size() == 1 && emptyIs && emptyBack.equals(empty);
+        });
+    }
+
+    /**
+     * A Parcelable kept as its marshalled bytes, as Facebook keeps an activity's (OpaqueParcelable: writeToParcel into a parcel
+     * of its own, marshall), and restored from them in another parcel (unmarshall, setDataPosition(0), its creator): what it
+     * wrote as objects -- a list, a bundle -- comes back, the parcel's data the size it was written; bytes of a parcel without
+     * objects are its data alone. Messenger read null for the list its photo editor's layers were, and ended.
+     */
+    private void parcelMarshall() {
+        step("parcel-marshall", () -> {
+            android.os.Parcel w = android.os.Parcel.obtain();
+            java.util.ArrayList<String> layers = new java.util.ArrayList<>(java.util.Arrays.asList("text", "sticker"));
+            android.os.Bundle extra = new android.os.Bundle();
+            extra.putString("tool", "pen");
+            w.writeInt(7);
+            w.writeList(layers);
+            w.writeBundle(extra);
+            w.writeString("end");
+            int written = w.dataSize();
+            byte[] bytes = w.marshall();
+            w.recycle();
+            android.os.Parcel r = android.os.Parcel.obtain();
+            r.unmarshall(bytes, 0, bytes.length);
+            r.setDataPosition(0);
+            int size = r.dataSize(), seven = r.readInt();
+            java.util.ArrayList<?> back = r.readArrayList(getClassLoader());
+            android.os.Bundle b = r.readBundle(getClassLoader());
+            String end = r.readString();
+            r.recycle();
+            android.os.Parcel plain = android.os.Parcel.obtain();
+            plain.writeInt(1);
+            plain.writeString("only data");
+            int plainSize = plain.dataSize(), plainBytes = plain.marshall().length;
+            plain.recycle();
+            detail = "size=" + size + " of " + written + " list=" + back + " bundle=" + (b == null ? null : b.getString("tool")) + " end=" + end
+                    + " plain=" + plainBytes + " of " + plainSize;
+            return size == written && seven == 7 && layers.equals(back) && b != null && "pen".equals(b.getString("tool")) && "end".equals(end) && plainBytes == plainSize;
         });
     }
 

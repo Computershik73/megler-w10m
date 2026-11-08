@@ -2762,6 +2762,9 @@ static int run_data(void)
                                          "inset-fraction",
                                          /* And a WorkSource through a Parcel and back, as a location request of Google Play services' carries one. */
                                          "work-source",
+                                         /* And a Parcelable kept as its marshalled bytes and restored from them in another parcel, as Facebook
+                                            keeps an activity's (OpaqueParcelable): the objects it wrote come back with the bytes. */
+                                         "parcel-marshall",
                                          /* And a module's resources as Google Play services' DynamiteLoader makes them: the platform's
                                             with a ResourcesLoader of an APK of resources alone added (the app's assets/loader.apk). */
                                          "resources-loader",
