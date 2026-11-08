@@ -1,0 +1,52 @@
+
+    // Megler: Java 10's toUnmodifiableList, toUnmodifiableSet and toUnmodifiableMap, which Android has from Android 13 (API
+    // 33) and Android 9's Collectors has not; apps that call List.of and Map.of (the overlay's) call these as well. What they
+    // collect is made by List.copyOf, Set.copyOf and Map.copyOf: no nulls (NullPointerException), nothing changes. A set
+    // keeps one of equal elements; a map refuses a key it has (IllegalStateException), or merges the two values with the
+    // function given, in the stream's order (HashMap.merge's way: a merge to null takes the key out).
+
+    public static <T> Collector<T, ?, List<T>> toUnmodifiableList() {
+        return Collector.<T, List<T>, List<T>>of(ArrayList::new, List::add, (left, right) -> {
+            left.addAll(right);
+            return left;
+        }, List::copyOf);
+    }
+
+    public static <T> Collector<T, ?, Set<T>> toUnmodifiableSet() {
+        return Collector.<T, Set<T>, Set<T>>of(HashSet::new, Set::add, (left, right) -> {
+            left.addAll(right);
+            return left;
+        }, Set::copyOf, Collector.Characteristics.UNORDERED);
+    }
+
+    public static <T, K, U> Collector<T, ?, Map<K, U>> toUnmodifiableMap(Function<? super T, ? extends K> keyMapper,
+                                                                        Function<? super T, ? extends U> valueMapper) {
+        Objects.requireNonNull(keyMapper, "keyMapper");
+        Objects.requireNonNull(valueMapper, "valueMapper");
+        return Collector.<T, Map<K, U>, Map<K, U>>of(HashMap::new, (map, t) -> megler_putNew(map, keyMapper.apply(t), valueMapper.apply(t)),
+                (left, right) -> {
+                    for (Map.Entry<K, U> e : right.entrySet()) megler_putNew(left, e.getKey(), e.getValue());
+                    return left;
+                }, Map::copyOf);
+    }
+
+    public static <T, K, U> Collector<T, ?, Map<K, U>> toUnmodifiableMap(Function<? super T, ? extends K> keyMapper,
+                                                                        Function<? super T, ? extends U> valueMapper,
+                                                                        BinaryOperator<U> mergeFunction) {
+        Objects.requireNonNull(keyMapper, "keyMapper");
+        Objects.requireNonNull(valueMapper, "valueMapper");
+        Objects.requireNonNull(mergeFunction, "mergeFunction");
+        return Collector.<T, Map<K, U>, Map<K, U>>of(HashMap::new, (map, t) -> map.merge(keyMapper.apply(t), valueMapper.apply(t), mergeFunction),
+                (left, right) -> {
+                    for (Map.Entry<K, U> e : right.entrySet()) left.merge(e.getKey(), e.getValue(), mergeFunction);
+                    return left;
+                }, Map::copyOf);
+    }
+
+    /** toUnmodifiableMap's: a key and its value, neither null, put where the key is not yet. */
+    private static <K, U> void megler_putNew(Map<K, U> map, K key, U value) {
+        Objects.requireNonNull(key, "a key mapped to null");
+        Objects.requireNonNull(value, "a value mapped to null");
+        U had = map.putIfAbsent(key, value);
+        if (had != null) throw new IllegalStateException("Duplicate key " + key + " (attempted merging values " + had + " and " + value + ")");
+    }

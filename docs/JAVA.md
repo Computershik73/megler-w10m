@@ -2482,6 +2482,45 @@ two default methods of Java 9 (`update(byte[])`, `update(ByteBuffer)`). The
 data app's "crc32c" step checks the standard check value, the defaults, a
 direct buffer and `Adler32` through the interface.
 
+**Java 9 and 10's collection factories** are added that way to Android 9's
+`List`, `Set` and `Map` (Android's `Map.java` says it took them out):
+`List.of` and `Set.of` of 0 to 10 elements and of an array, `Map.of` of 0 to 10
+pairs, `Map.ofEntries`, `Map.entry`, and the three `copyOf`. Android has them
+from Android 11, and Megler says it is Android 14: Amazon Shopping ended at its
+start with `NoSuchMethodError: java/util/Map.of(Object, Object)` (and
+`Set.of(Object)`), Shazam with `Map.of()` and Firebase's `Map.entry`. What they
+make is `java.util.ImmutableCollections`, Megler's own, as Java documents the
+collections: nulls refused with `NullPointerException`, by the factories and by
+`contains`, `indexOf`, `containsKey`, `containsValue` and `get` asked for null,
+as OpenJDK's are; an element of `Set.of` or a key given twice refused with
+`IllegalArgumentException` (`Set.copyOf` keeps one); every mutator refused with
+`UnsupportedOperationException`, an empty collection's, the iterators', a map's
+views' and entries' too; a list is `RandomAccess`; a set and a map go in the
+order they were given; the lists, sets and maps are `Serializable`, through a
+proxy that makes them again with the same checks (`Map.entry`'s entry is not,
+as documented); `copyOf` of one of them is that one. Java 10's
+`Collectors.toUnmodifiableList`, `toUnmodifiableSet` and `toUnmodifiableMap`
+(Android 13) collect into them (a key mapped twice is an
+`IllegalStateException`, unless a merge function is given), and Java 16's
+`Stream.toList()` (Android 14), a default method as Java's is, gives an
+unmodifiable list that keeps nulls.
+
+Every class the overlay replaces keeps every member Android 9's has: the
+runtime names none of them (nothing in `core/src/dvm` asks for `java.util`'s
+collections or streams), and dexdump's lists of `core-oj.dex` and of the
+overlay agree, but for five of `Collectors`' lambdas, which javac 8 names
+otherwise and only `Collectors` calls. The overlay is compiled with JDK 8's own
+classes for the platform (`javac -cp android.jar`), so what an overlaid class
+calls of its package's hidden classes (`Stream`'s static methods, of `Streams`
+and `StreamSpliterators`) is JDK 8's when it is compiled and core-oj's when it
+runs, of the same names and types; every such reference was found in Android
+9's boot class path. The data app's steps "collection-factories" and
+"unmodifiable-collectors" call each of them by reflection (the app is built
+against Android 10's `android.jar`): each arity, the nulls and duplicates
+refused, every mutator, the copies, a round trip through `ObjectOutputStream`,
+a collector's parts combined as a parallel stream combines them, a merge in the
+stream's order.
+
 **Methods core-libart's classes lack** cannot be added that way: core-libart
 (ICU4J among it) is a file of DEX code here, without its sources. A reference
 to such a method that a class does not have is looked for in the framework's
