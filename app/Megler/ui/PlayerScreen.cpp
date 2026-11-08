@@ -1061,6 +1061,20 @@ private:
                 occludedDips_ = 0;
                 showNavigationBar(false);
                 session::keyboardHeight(0);
+                // Gone because the app moved from one field to the next: its own "put away" for the field it left, or the
+                // text service's focus taken from the field and given again for another kind of field, came just before it
+                // asked for the keyboard again, and Windows tells of that going after the asking. It is not the user's: the
+                // keyboard comes back for the field that wants it. (It was taken for the user's: the app was told the keyboard
+                // had been put away, the keyboard's coming back was put away again "though the app had not asked for it", and
+                // Discord's password field, after its e-mail field, never had a keyboard.)
+                if (keyboardWanted_ && std::chrono::steady_clock::now() - ownHide_ < std::chrono::milliseconds(700)) {
+                    if (!betweenFieldsSaid_) {
+                        betweenFieldsSaid_ = true;
+                        shellLog::write("player: the keyboard went as the app moved from one field to another, and comes back for the field that asked for it");
+                    }
+                    showKeyboardLater();
+                    return;
+                }
                 // Put away by the user (its own key, or Back, which Windows gives the keyboard first): the app did not ask.
                 if (keyboardWanted_) {
                     keyboardWanted_ = false;
@@ -1153,6 +1167,25 @@ private:
         shell_.refreshChrome();
     }
 
+    /// The keyboard shown again for the field that wants it, once the event that is being answered is over.
+    void showKeyboardLater() {
+        try {
+            std::weak_ptr<Page> alive = weak_from_this();
+            Window::Current().Dispatcher().RunAsync(winrt::Windows::UI::Core::CoreDispatcherPriority::Normal, [this, alive] {
+                if (alive.expired() || !keyboardWanted_) return; // gone, or put away meanwhile
+                try {
+                    if (editContext_ && !editFocused_) {
+                        editContext_.NotifyFocusEnter();
+                        editFocused_ = true;
+                    }
+                    winrt::Windows::UI::ViewManagement::InputPane::GetForCurrentView().TryShow();
+                } catch (const hresult_error&) {
+                }
+            });
+        } catch (const hresult_error&) {
+        }
+    }
+
     /// putKeyboardAway, once the event that is being answered is over.
     void putKeyboardAwayLater() {
         try {
@@ -1192,8 +1225,12 @@ private:
         typing_.kind = kind;
         keyboardWanted_ = true;
         try {
-            // A new scope is the text service's to read at the next focus: so the focus is left and taken again.
-            if (editFocused_) editContext_.NotifyFocusLeave();
+            // A new scope is the text service's to read at the next focus: so the focus is left and taken again (which may
+            // send the keyboard away for a moment: not the user's doing, the pane's hiding handler knows by ownHide_).
+            if (editFocused_) {
+                ownHide_ = std::chrono::steady_clock::now();
+                editContext_.NotifyFocusLeave();
+            }
             editFocused_ = false;
             editContext_.InputScope(scope);
             startKeyboardText();
@@ -1213,6 +1250,8 @@ private:
         if (!keyboardWanted_ && !keyboardUp_) return;
         typingTold();
         keyboardWanted_ = false;
+        // (The app's own: if it asks again at once, for the next field, the going Windows tells of afterwards is this one.)
+        if (!byUser) ownHide_ = std::chrono::steady_clock::now();
         if (byUser) session::keyboardClosed();
         try {
             winrt::Windows::UI::ViewManagement::InputPane::GetForCurrentView().TryHide();
@@ -1517,6 +1556,10 @@ private:
     bool keyboardWanted_ = false; // the app asked for the keyboard and has not been told it is gone
     bool keyboardUp_ = false;     // Windows says it is on the screen
     bool typingSaid_ = false;     // the log has said that typing reaches the app
+    // When the shell itself last sent the keyboard away (the app's put-away, or the field's focus left for another kind of
+    // field): a going Windows tells of soon after, while the app wants the keyboard again, is that one and not the user's.
+    std::chrono::steady_clock::time_point ownHide_{};
+    bool betweenFieldsSaid_ = false; // the log has said that once
     // What the keyboard did in the field being edited, counted (never what it typed): see typingTold.
     struct Typing {
         int kind = 0;             // MEGLER_KEYBOARD_*

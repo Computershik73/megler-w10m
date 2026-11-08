@@ -1654,6 +1654,8 @@ public class Main extends Activity {
         phoneApps();
         installs();
         bitmapBytes();
+        fileReadOnly();
+        componentState();
         adaptiveIcon();
         launcherLoading();
         uriBuilder();
@@ -4679,6 +4681,97 @@ public class Main extends Activity {
             return alpha.getByteCount() == 4 && alpha.getRowBytes() == 2 && (a.get(0) & 255) == 0x80 && (a.get(3) & 255) == 0x80 && a.position() == 4
                     && rgb.getByteCount() == 2 && (r.get(0) & 255) == 0x00 && (r.get(1) & 255) == 0xF8
                     && full.getByteCount() == 16 && Math.abs((f.get(0) & 255) - 0x80) <= 1 && (f.get(3) & 255) == 0x80 && f.position() == 16;
+        });
+        /*
+         * A picture decoded into a bitmap of a pool, as Fresco decodes every still picture (DefaultDecoder): its pool makes a
+         * bitmap of 1 x N in RGB_565 for N bytes, hands it over in Options.inBitmap, and throws an IllegalStateException when
+         * the bitmap that comes back is another one -- Facebook, React Native's images and Aliucord showed none of theirs. The
+         * same bitmap comes back with the picture's size and pixels; reconfigure gives such a bitmap a frame's size, as
+         * Fresco's animated pictures do, within what it was made with; a bitmap too small, or recycled, is refused as on
+         * Android; an immutable one is passed over for a new bitmap.
+         */
+        step("bitmap-reuse", () -> {
+            android.graphics.Bitmap.Config argb = android.graphics.Bitmap.Config.ARGB_8888, rgb565 = android.graphics.Bitmap.Config.RGB_565;
+            android.graphics.Bitmap source = android.graphics.Bitmap.createBitmap(3, 2, argb);
+            source.eraseColor(0xFF0000FF);
+            source.setPixel(2, 1, 0xFF00FF00);
+            java.io.ByteArrayOutputStream png = new java.io.ByteArrayOutputStream();
+            source.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, png);
+            byte[] bytes = png.toByteArray();
+            android.graphics.Bitmap pool = android.graphics.Bitmap.createBitmap(1, 12, rgb565);  // 24 bytes: 3 x 2 x 4
+            android.graphics.BitmapFactory.Options o = new android.graphics.BitmapFactory.Options();
+            o.inBitmap = pool;
+            o.inMutable = true;
+            o.inPreferredConfig = argb;
+            android.graphics.Bitmap got = android.graphics.BitmapFactory.decodeStream(new java.io.ByteArrayInputStream(bytes), null, o);
+            boolean same = got == pool, shaped = got != null && got.getWidth() == 3 && got.getHeight() == 2 && got.getConfig() == argb && got.isMutable();
+            int corner = got != null ? got.getPixel(2, 1) : 0, first = got != null ? got.getPixel(0, 0) : 0;
+            int allocation = pool.getAllocationByteCount();
+            // reconfigure within the 24 bytes, and past them
+            pool.reconfigure(2, 3, argb);
+            boolean reshaped = pool.getWidth() == 2 && pool.getHeight() == 3 && pool.getByteCount() == 24 && pool.getAllocationByteCount() == 24;
+            boolean tooBig = false;
+            try { pool.reconfigure(5, 5, argb); } catch (IllegalArgumentException e) { tooBig = true; }
+            // a bitmap too small to hold the picture
+            android.graphics.BitmapFactory.Options small = new android.graphics.BitmapFactory.Options();
+            small.inBitmap = android.graphics.Bitmap.createBitmap(1, 1, argb);
+            boolean refused = false;
+            try { android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.length, small); } catch (IllegalArgumentException e) { refused = "Problem decoding into existing bitmap".equals(e.getMessage()); }
+            // an immutable one, passed over
+            android.graphics.BitmapFactory.Options fixed = new android.graphics.BitmapFactory.Options();
+            fixed.inBitmap = android.graphics.Bitmap.createBitmap(new int[6], 3, 2, argb);
+            android.graphics.Bitmap fresh = android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.length, fixed);
+            boolean passedOver = fresh != null && fresh != fixed.inBitmap && fresh.getWidth() == 3;
+            detail = "same=" + same + " shaped=" + shaped + " pixels=" + Integer.toHexString(first) + "," + Integer.toHexString(corner) + " allocation=" + allocation
+                    + " reshaped=" + reshaped + " tooBig=" + tooBig + " refused=" + refused + " passedOver=" + passedOver;
+            return same && shaped && first == 0xFF0000FF && corner == 0xFF00FF00 && allocation == 24 && reshaped && tooBig && refused && passedOver;
+        });
+    }
+
+    /**
+     * A file of the app's made read-only and writable again through java.io.File, as Facebook does with each module it downloads
+     * before it loads one ("Downloaded module file must be read only"): setReadOnly, canWrite, an output stream refused, and the
+     * file deleted all the same; setWritable gives its writing back. The write bits are kept by the core's chmod (Windows' read-only
+     * attribute on a phone), so they are still there when the app starts again.
+     */
+    private void fileReadOnly() {
+        step("file-read-only", () -> {
+            File f = new File(getFilesDir(), "module.zip");
+            try (java.io.FileOutputStream out = new java.io.FileOutputStream(f)) { out.write(new byte[] { 'P', 'K' }); }
+            boolean wasWritable = f.canWrite(), made = f.setReadOnly(), readOnly = !f.canWrite() && f.canRead();
+            boolean refused = false;
+            try (java.io.FileOutputStream out = new java.io.FileOutputStream(f, true)) { out.write(1); } catch (java.io.FileNotFoundException e) { refused = true; }
+            boolean writable = f.setWritable(true) && f.canWrite();
+            boolean again = f.setReadOnly() && !f.canWrite(), deleted = f.delete() && !f.exists();
+            detail = "wasWritable=" + wasWritable + " made=" + made + " readOnly=" + readOnly + " refused=" + refused + " writable=" + writable
+                    + " again=" + again + " deleted=" + deleted;
+            return wasWritable && made && readOnly && refused && writable && again && deleted;
+        });
+    }
+
+    /**
+     * The enabled state of a component and of an application: of the app's own, the platform's, Google Play services' and the
+     * phone's other app's, the default; of a package the phone does not have, IllegalArgumentException, as Android answers.
+     * Facebook asks so for Meta's App Manager, and took a default for the App Manager being there: it showed the terms of phones
+     * that came with Meta's apps at every start while signed out.
+     */
+    private void componentState() {
+        step("component-state", () -> {
+            android.content.pm.PackageManager pm = getPackageManager();
+            int own = pm.getComponentEnabledSetting(new android.content.ComponentName(this, Main.class));
+            int app = pm.getApplicationEnabledSetting(getPackageName()), platform = pm.getApplicationEnabledSetting("android");
+            int gms = pm.getComponentEnabledSetting(new android.content.ComponentName("com.google.android.gms", "com.google.android.gms.common.api.GoogleApiActivity"));
+            int other = pm.getComponentEnabledSetting(new android.content.ComponentName("com.example.other", "com.example.other.Main"));
+            String component = null, application = null;
+            try { pm.getComponentEnabledSetting(new android.content.ComponentName("com.facebook.appmanager", "com.facebook.oxygen.appmanager.firstparty.tos.ShouldAcceptTos")); }
+            catch (IllegalArgumentException e) { component = e.getMessage(); }
+            try { pm.getApplicationEnabledSetting("com.facebook.appmanager"); }
+            catch (IllegalArgumentException e) { application = e.getMessage(); }
+            detail = "own=" + own + " app=" + app + " platform=" + platform + " gms=" + gms + " other=" + other + " component=" + component
+                    + " application=" + application;
+            return own == 0 && app == 0 && platform == 0 && gms == 0 && other == 0
+                    && "Unknown component: ComponentInfo{com.facebook.appmanager/com.facebook.oxygen.appmanager.firstparty.tos.ShouldAcceptTos}".equals(component)
+                    && "Unknown package: com.facebook.appmanager".equals(application);
         });
     }
 

@@ -1078,7 +1078,32 @@ public class View implements Drawable.Callback, KeyEvent.Callback {
     public void requestApplyInsets() { if (mRoot != null) mRoot.requestApplyInsets(); }
     @Deprecated public void requestFitSystemWindows() { requestApplyInsets(); }
     protected boolean fitSystemWindows(Rect insets) { return false; }
-    public void setWindowInsetsAnimationCallback(WindowInsetsAnimation.Callback cb) {}
+    /*
+     * The view's callback of inset animations (the keyboard's coming and going, megler.ViewRoot), and its part of their
+     * dispatch, as Android's: the callback's own answer, which a ViewGroup then hands its children unless the callback's
+     * dispatch mode stops it there. The original kept no callback, and answered every dispatch with null.
+     */
+    private WindowInsetsAnimation.Callback mInsetsAnimationCallback;
+    public void setWindowInsetsAnimationCallback(WindowInsetsAnimation.Callback cb) { mInsetsAnimationCallback = cb; }
+    /** Megler: the callback set, for ViewGroup's dispatch. */
+    public final WindowInsetsAnimation.Callback meglerInsetsAnimationCallback() { return mInsetsAnimationCallback; }
+    public boolean hasWindowInsetsAnimationCallback() { return mInsetsAnimationCallback != null; }
+    public void dispatchWindowInsetsAnimationPrepare(WindowInsetsAnimation animation) {
+        if (mInsetsAnimationCallback != null) mInsetsAnimationCallback.onPrepare(animation);
+    }
+    public WindowInsetsAnimation.Bounds dispatchWindowInsetsAnimationStart(WindowInsetsAnimation animation, WindowInsetsAnimation.Bounds bounds) {
+        if (mInsetsAnimationCallback == null) return bounds;
+        WindowInsetsAnimation.Bounds b = mInsetsAnimationCallback.onStart(animation, bounds);
+        return b != null ? b : bounds;
+    }
+    public WindowInsets dispatchWindowInsetsAnimationProgress(WindowInsets insets, java.util.List<WindowInsetsAnimation> running) {
+        if (mInsetsAnimationCallback == null) return insets;
+        WindowInsets i = mInsetsAnimationCallback.onProgress(insets, running);
+        return i != null ? i : insets;
+    }
+    public void dispatchWindowInsetsAnimationEnd(WindowInsetsAnimation animation) {
+        if (mInsetsAnimationCallback != null) mInsetsAnimationCallback.onEnd(animation);
+    }
     public WindowInsetsController getWindowInsetsController() {
         if (mRoot != null) return mRoot.insetsController();
         // not attached yet (an activity's onCreate): its parents', up to the window's decor, which has one from the start
@@ -1984,10 +2009,6 @@ public class View implements Drawable.Callback, KeyEvent.Callback {
     public void dispatchProvideAutofillStructure(android.view.ViewStructure p0, int p1) {}
     public void dispatchProvideStructure(android.view.ViewStructure p0) {}
     public void dispatchScrollCaptureSearch(android.graphics.Rect p0, android.graphics.Point p1, java.util.function.Consumer p2) {}
-    public void dispatchWindowInsetsAnimationEnd(android.view.WindowInsetsAnimation p0) {}
-    public void dispatchWindowInsetsAnimationPrepare(android.view.WindowInsetsAnimation p0) {}
-    public android.view.WindowInsets dispatchWindowInsetsAnimationProgress(android.view.WindowInsets p0, java.util.List p1) { return null; }
-    public android.view.WindowInsetsAnimation.Bounds dispatchWindowInsetsAnimationStart(android.view.WindowInsetsAnimation p0, android.view.WindowInsetsAnimation.Bounds p1) { return null; }
     public void dispatchWindowSystemUiVisiblityChanged(int p0) {}
     protected boolean drawsWithRenderNode(android.graphics.Canvas p0) { return false; }
     public void encode(android.view.ViewHierarchyEncoder p0) {}
@@ -2099,7 +2120,6 @@ public class View implements Drawable.Callback, KeyEvent.Callback {
     protected boolean hasOpaqueScrollbars() { return false; }
     public boolean hasShadow() { return false; }
     public boolean hasTranslationTransientState() { return false; }
-    public boolean hasWindowInsetsAnimationCallback() { return false; }
     public boolean hideAutofillHighlight() { return false; }
     public boolean includeForAccessibility() { return false; }
     public boolean includeForAccessibility(boolean p0) { return false; }

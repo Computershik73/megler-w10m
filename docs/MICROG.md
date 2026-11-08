@@ -106,6 +106,43 @@ microG's ELF scope. The provider installer thus puts microG's Conscrypt
 (`GmsCore_OpenSSL`) first for the client, as on Android. Classes a module takes
 from its client (`MERGED_CLASSES`, Cronet's API) are not followed yet; the log
 says so when a module names any.
+## Google's own Play services: their process, and their module scans
+
+Google's own Play services (not microG) run in the app that hosts them, and
+their application is told that this process is its own: the process name of
+their `ApplicationInfo` is the app's (`MicroG`'s constructor, said in the log:
+"Google Play services' application runs in this process, ..., as its main
+one"), which is what `Application.getProcessName` gives their code here. Their
+components keep the process names of their manifest.
+
+Their code takes the process whose name is its application's for its main one
+(`bjej.i` in 26.41.31: `getApplicationInfo().processName.equals(
+Application.getProcessName())`), and only there does `GmsModuleFinder`
+make their module configuration again at once when a scan finds it changed
+(`aeac.z`, its reason "Features changed", "Device properties changed",
+"Verify failed" or "Unmigrated"). Anywhere else the scan asks for another
+(`startService(MODULE_SCAN)`, which `ConfigUpdateIntentOperation` takes) and
+leaves it to that one. With "com.google.android.gms" there and the app's
+name here, no scan was ever the main process's, and each asked for the next:
+five a second, without end, in every app that hosted Google's own Play
+services. The log showed it as "Beginning GMS chimera module scan (logged 1000
+times)" every minute or so, the same three files opened 200 times in 8 to 9 s
+(`current_fileapks.pb`, `stored_modulesets.pb`, `ChimeraConfigService.xml`),
+and a collection every three seconds, 30 to 40 MB of each made by the thread
+"[com.google.android.gms.chimera.container.intentoperation..." (Aliucord,
+Facebook, VTB, Ozon and Play Store on 0.1.0.671). The other readers of that
+comparison in 26.41.31 are the measurement's tag of its process's kind and
+the feedback screens; and `PhenotypeCommittedOperation` scans again after a
+change of flags in the main process only.
+
+`MicroG.start` counts the starts of their services by what they were started
+for, and one asked for a hundred times in ten seconds is said, with what asked
+(three times at most each): "Google Play services asked for <action> ->
+<service> 100 times in N ms". The test app `gms-host` hosts a stand-in for
+their package with one service (`gms-own`, no microG in it) and starts it:
+"main process true application=megler.test.gmshost current=megler.test.gmshost"
+(`tools/build-tests.sh arm`).
+
 ## Class isolation
 
 The failed implementation reverted in `1adae04` appended GmsCore's DEX files

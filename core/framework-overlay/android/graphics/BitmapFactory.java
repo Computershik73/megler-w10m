@@ -1,7 +1,12 @@
 // Overlay of core/framework/src/android/graphics/BitmapFactory.java (tools/build-framework.sh).
 // It differs in decodeFile, which caught IOException alone: a null path (Drawable.createFromPath(null), as Sberbank calls it
 // from a coroutine) threw a NullPointerException out of it: a fatal exception on the phone (FATAL EXCEPTION, DefaultDispatcher). Android's
-// catches any exception there, says it in the log and answers null. Everything else is the original's, unchanged.
+// catches any exception there, says it in the log and answers null.
+// And in Options.inBitmap, which the original never looked at: a decode now goes into the bitmap given there and hands that
+// same bitmap back, as Android's does. Fresco -- the pictures of Facebook's apps, of React Native's Image and of Aliucord's
+// Discord -- decodes every still picture into a bitmap of its pool and throws an IllegalStateException when the bitmap that
+// comes back is another one: no avatar, photo or preview of theirs was ever shown (Facebook's log: "onProducerFinishWithFailure
+// ... stage: DecodeProducer ... java.lang.IllegalStateException"). And a JPEG asked for as RGB_565 is RGB_565, as on Android.
 package android.graphics;
 
 import java.io.ByteArrayOutputStream;
@@ -30,20 +35,47 @@ public class BitmapFactory {
         if (d.length - o > 3 && d[o] == 'G' && d[o + 1] == 'I') return "image/gif";
         return "image/png";
     }
+    /* The config a decoded picture has: ARGB_8888 (the pixels are kept so whatever the config), but RGB_565 for a JPEG -- which
+       has no alpha -- when the app asks for that, as Android's decoder gives it (its bytes then count two a pixel). */
+    private static Bitmap.Config configOf(Options o, String mime) {
+        return o != null && o.inPreferredConfig == Bitmap.Config.RGB_565 && "image/jpeg".equals(mime) ? Bitmap.Config.RGB_565 : Bitmap.Config.ARGB_8888;
+    }
+    /* The bitmap a decode goes into (Options.inBitmap), as Android takes it: a recycled one refused, an immutable one passed
+       over (said once) for a new bitmap. */
+    private static boolean sImmutableSaid;
+    private static Bitmap reusable(Options o) {
+        Bitmap b = o != null ? o.inBitmap : null;
+        if (b == null) return null;
+        if (b.isRecycled()) throw new IllegalArgumentException("Cannot reuse a recycled Bitmap");
+        if (!b.isMutable()) {
+            if (!sImmutableSaid) { sImmutableSaid = true; android.util.Log.w("BitmapFactory", "Unable to reuse an immutable bitmap as an image decoder target."); }
+            return null;
+        }
+        return b;
+    }
     public static Bitmap decodeByteArray(byte[] data, int offset, int length, Options o) {
         if (data == null) return null;
         int[] wh = new int[2];
         int sample = o != null && o.inSampleSize > 1 ? Integer.highestOneBit(o.inSampleSize) : 1;
+        String mime = mime(data, offset);
         if (o != null && o.inJustDecodeBounds) {
             megler.Gfx.bmDecode(data, offset, length, sample, wh, true);
-            o.outWidth = wh[0]; o.outHeight = wh[1]; o.outMimeType = mime(data, offset); o.outConfig = Bitmap.Config.ARGB_8888;
+            o.outWidth = wh[0]; o.outHeight = wh[1]; o.outMimeType = mime; o.outConfig = configOf(o, mime);
             return null;
         }
+        Bitmap reuse = reusable(o);
         long n = megler.Gfx.bmDecode(data, offset, length, sample, wh, false);
-        if (n == 0) { if (o != null) { o.outWidth = -1; o.outHeight = -1; } return null; }
-        Bitmap b = new Bitmap(n, wh[0], wh[1], Bitmap.Config.ARGB_8888, o != null && o.inMutable);
+        if (n == 0) {
+            if (o != null) { o.outWidth = -1; o.outHeight = -1; }
+            // (Android's decode methods say so when there was a bitmap to decode into: Fresco catches it and decodes plainly.)
+            if (o != null && o.inBitmap != null) throw new IllegalArgumentException("Problem decoding into existing bitmap");
+            return null;
+        }
+        Bitmap.Config config = configOf(o, mime);
+        Bitmap b = new Bitmap(n, wh[0], wh[1], config, reuse != null || (o != null && o.inMutable));
+        if (config == Bitmap.Config.RGB_565) b.setHasAlpha(false);
         if (o != null) {
-            o.outWidth = wh[0]; o.outHeight = wh[1]; o.outMimeType = mime(data, offset); o.outConfig = Bitmap.Config.ARGB_8888;
+            o.outWidth = wh[0]; o.outHeight = wh[1]; o.outMimeType = mime; o.outConfig = config;
             // density scaling, as resources ask for it
             if (o.inScaled && o.inDensity > 0 && o.inTargetDensity > 0 && o.inDensity != o.inTargetDensity) {
                 float s = o.inTargetDensity / (float) o.inDensity;
@@ -52,6 +84,15 @@ public class BitmapFactory {
                 b.setDensity(o.inTargetDensity);
                 o.outWidth = b.getWidth(); o.outHeight = b.getHeight();
             }
+        }
+        if (reuse != null) {
+            // Into the bitmap given, which has to hold the picture in what it was made with, as on Android.
+            if ((long) b.getByteCount() > reuse.getAllocationByteCount()) {
+                b.recycle();
+                throw new IllegalArgumentException("Problem decoding into existing bitmap");
+            }
+            reuse.meglerTakeOver(b);
+            return reuse;
         }
         return b;
     }

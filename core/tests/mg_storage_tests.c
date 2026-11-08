@@ -550,12 +550,14 @@ static struct {
     int (*statvfs)(const char *, t_statvfs *);
     char *(*realpath)(const char *, char *);
     int (*chdir)(const char *);
+    int (*chmod)(const char *, unsigned);
+    int (*fchmod)(int, unsigned);
 } C;
 
 static bool libc_found(void)
 {
     static const char *const names[] = { "open", "close", "read", "write", "stat", "fstat", "access", "mkdir", "rmdir", "unlink", "rename",
-                                         "opendir", "readdir", "closedir", "statfs", "statvfs", "realpath", "chdir" };
+                                         "opendir", "readdir", "closedir", "statfs", "statvfs", "realpath", "chdir", "chmod", "fchmod" };
     void **slot = (void **)&C;
     size_t i;
     for (i = 0; i < MG_COUNT(names); i++) {
@@ -1136,6 +1138,50 @@ static void test_odd_names(void)
 }
 
 /*
+ * A file's write bits, as chmod takes them away and gives them back (File.setReadOnly and setWritable): Facebook makes each
+ * module it downloads read-only and loads only one that is ("Downloaded module file must be read only"). Read-only, a file
+ * says so in stat and fstat, refuses access(W_OK) and an open for writing, and still opens for reading; it is replaced by a
+ * rename and removed by unlink as POSIX's do, whatever its mode; given its write bits back, by chmod or fchmod, it is written
+ * again. A directory keeps its mode, and a file that is not there is ENOENT.
+ */
+static void test_file_modes(void)
+{
+    const char *dir = "/data/data/" PKG "/files/modes", *file = "/data/data/" PKG "/files/modes/module.zip";
+    const char *other = "/data/data/" PKG "/files/modes/other", *inside = "/data/data/" PKG "/files/modes/inside";
+    t_stat st;
+    int fd;
+    say("a file's write bits: chmod and fchmod, and stat, access, open, rename and unlink of a read-only file");
+    C.mkdir("/data/data/" PKG "/files", 0700);
+    CHECK(C.mkdir(dir, 0700) == 0 || last_errno() == GE_EXIST);
+    CHECK(put(file, "zip") && C.stat(file, &st) == 0 && (st.st_mode & 0200) != 0 && C.access(file, 2) == 0);
+    CHECK(C.chmod(file, 0444) == 0);
+    CHECK(C.stat(file, &st) == 0 && (st.st_mode & 0222) == 0 && (st.st_mode & 0400) != 0 && (st.st_mode & T_IFREG) != 0);
+    CHECK(C.access(file, 2) == -1 && last_errno() == GE_ACCES);
+    CHECK(C.access(file, 4) == 0 && C.access(file, 0) == 0);
+    CHECK_INT(open_errno(file, T_WRONLY), GE_ACCES);
+    CHECK_INT(open_errno(file, T_RDWR | T_APPEND), GE_ACCES);
+    CHECK(!strcmp(get(file), "zip"));
+    fd = C.open(file, T_RDONLY, 0);
+    CHECK(fd >= 0 && C.fstat(fd, &st) == 0 && (st.st_mode & 0222) == 0);
+    if (fd >= 0) C.close(fd);
+    /* Replaced by a rename over it, as POSIX's rename does whatever the file's mode: the new one is writable. */
+    CHECK(put(other, "new") && C.rename(other, file) == 0 && !strcmp(get(file), "new") && C.access(file, 2) == 0);
+    /* Read-only again, and removed. */
+    CHECK(C.chmod(file, 0400) == 0 && C.access(file, 2) == -1 && C.unlink(file) == 0 && stat_errno(file) == GE_NOENT);
+    /* Writable again: by chmod, and by fchmod on a descriptor of it. */
+    CHECK(put(file, "a") && C.chmod(file, 0444) == 0 && C.chmod(file, 0644) == 0 && C.access(file, 2) == 0 && put(file, "b") && !strcmp(get(file), "b"));
+    fd = C.open(file, T_RDONLY, 0);
+    CHECK(fd >= 0 && C.fchmod(fd, 0440) == 0 && C.access(file, 2) == -1 && C.fchmod(fd, 0660) == 0 && C.access(file, 2) == 0);
+    if (fd >= 0) C.close(fd);
+    /* The owner's write bit decides, as for the app that owns the file on Android: the group's is no writing for it. */
+    CHECK(C.chmod(file, 0464) == 0 && C.access(file, 2) == -1 && C.chmod(file, 0600) == 0 && C.access(file, 2) == 0);
+    /* A directory keeps its mode (files are still made in it); a file that is not there is ENOENT. */
+    CHECK(C.chmod(dir, 0500) == 0 && put(inside, "x") && C.unlink(inside) == 0);
+    CHECK(C.chmod("/data/data/" PKG "/files/modes/none", 0444) == -1 && last_errno() == GE_NOENT);
+    CHECK(C.unlink(file) == 0 && C.rmdir(dir) == 0);
+}
+
+/*
  * A shared writable mapping of a file, as MMKV and MX Player's mx-kv keep their stores: what is written into the mapping
  * reaches the file at msync, and at munmap, though the descriptor was closed right after mapping; and with neither, as the
  * shell settles the app's files when it is suspended (megler_settle_files), as TikTok Lite's KEVA needs (it does not msync).
@@ -1590,6 +1636,7 @@ static int run_in(const char *base, mg_storage_host_maker make, mg_test_sink sin
             test_layout(data);
             test_threads();
             test_odd_names();
+            test_file_modes();
             test_shared_mapping();
             test_shared_mapping_shortened();
             test_check();

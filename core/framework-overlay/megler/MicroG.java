@@ -368,6 +368,21 @@ public final class MicroG {
         info.signatures = new Signature[] {GooglePackages.signature()};
         info.signingInfo = new SigningInfo(info.signatures);
         activities = Manifest.activitiesIn(manifest, APK, GooglePackages.GMS);
+        /*
+         * Google's own Play services run in this process, and their application is told so: its process name is the one
+         * Application.getProcessName gives their code here, this process's. They take the process whose name is their
+         * application's for their main one, and only there is their module configuration made again at once when something
+         * changed (GmsModuleFinder's ConfigUpdateIntentOperation, bjej.i); anywhere else a scan that finds a change asks for
+         * another scan (MODULE_SCAN) and leaves it to that one. With "com.google.android.gms" there and the app's name here,
+         * no scan was ever the main process's: each asked for the next, five scans a second without end, and every app that
+         * hosts them made 10 MB of garbage a second on that thread (Aliucord, Facebook, VTB, Ozon, Play Store: a collection
+         * every three seconds, "Beginning GMS chimera module scan (logged 1000 times)"). Their components keep the process
+         * name of their manifest. microG's are left as they were.
+         */
+        if (!microg()) {
+            a.processName = Native.packageName();
+            android.util.Log.i("MicroG", "Google Play services' application runs in this process, " + a.processName + ", as its main one");
+        }
         context = new PackageContext(resources);
         android.util.Log.i("MicroG", "GmsCore " + info.versionName + ": " + services.size() + " services, " + receivers.size() + " receivers, " + providers.size() + " providers");
     }
@@ -801,10 +816,31 @@ public final class MicroG {
             r.service.onDestroy();
         }
     }
+    /*
+     * The starts of GmsCore's services by what they were started for, over ten seconds: one asked for a hundred times is said
+     * (three times at most for each), with what asked -- GmsCore's code asking itself for the same work without end, as its
+     * module scans did (MODULE_SCAN, five a second, in every app that hosts it), is otherwise seen only as garbage and time.
+     */
+    private static final HashMap<String, long[]> sStarts = new HashMap<>();
+    private static void countStart(Intent intent, String service) {
+        String key = (intent.getAction() != null ? intent.getAction() : "(no action)") + " -> " + service;
+        long now = SystemClock.uptimeMillis();
+        long[] c;
+        boolean say;
+        synchronized (sStarts) {
+            c = sStarts.get(key);
+            if (c == null) sStarts.put(key, c = new long[] { now, 0, 0 });
+            if (now - c[0] > 10000) { c[0] = now; c[1] = 0; }
+            say = ++c[1] == 100 && c[2]++ < 3;
+        }
+        if (say) android.util.Log.w("MicroG", "Google Play services asked for " + key + " 100 times in " + (now - c[0]) + " ms: the same work again and again",
+                                    new Throwable("asked by"));
+    }
     public static ComponentName start(Context from, Intent intent) {
         if (!mayBeGms(intent)) return null;
         MicroG g = get(); Entry e = g == null ? null : g.find(intent, GooglePackages.GMS.equals(from.getPackageName()));
         if (e == null) return null;
+        countStart(intent, e.info.name);
         Intent copy = new Intent(intent);
         Services.postStart(g.startIds, e.info.name, id -> {
             try { Running r = g.create(e); r.started = true; r.starts++; r.service.onStartCommand(copy, 0, id); }

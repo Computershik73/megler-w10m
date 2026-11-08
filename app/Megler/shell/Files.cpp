@@ -111,7 +111,16 @@ bool append(const std::wstring& path, std::string_view data) {
     return ok;
 }
 
-bool remove(const std::wstring& path) { return DeleteFileW(path.c_str()) != 0; }
+// A file an app made read-only (chmod, File.setReadOnly: the core keeps it as Windows' read-only attribute) goes all the same,
+// as POSIX's unlink takes one: an app's folders are removed whole (its data moved or cleared, a bundle unpacked again).
+bool remove(const std::wstring& path) {
+    if (DeleteFileW(path.c_str())) return true;
+    if (GetLastError() != ERROR_ACCESS_DENIED) return false;
+    const DWORD attributes = GetFileAttributesW(path.c_str());
+    if (attributes == INVALID_FILE_ATTRIBUTES || (attributes & FILE_ATTRIBUTE_DIRECTORY) || !(attributes & FILE_ATTRIBUTE_READONLY)) return false;
+    const DWORD rest = attributes & ~DWORD(FILE_ATTRIBUTE_READONLY);
+    return SetFileAttributesW(path.c_str(), rest ? rest : FILE_ATTRIBUTE_NORMAL) && DeleteFileW(path.c_str());
+}
 
 bool move(const std::wstring& from, const std::wstring& to) {
     return MoveFileExW(from.c_str(), to.c_str(), MOVEFILE_REPLACE_EXISTING) != 0;

@@ -3516,6 +3516,41 @@ with a keyboard over 500 of the 800 rows:
 
 Once the keyboard is put away, each dialog is back where it was.
 
+**From one field to the next.** An app that moves the focus to another field
+often puts the keyboard away for the one it leaves and asks for it again for
+the next at once (React Native's text inputs do), or the next field is of
+another kind, for which the shell leaves the text service's focus and takes
+it again. Windows tells of the keyboard's going only after the asking, and
+the shell took that for the user's putting it away: the app was told the
+keyboard was gone, and the keyboard's coming back was put away again "though
+the app had not asked for it" -- Discord's password field, after its e-mail
+field, never had a keyboard (0.1.0.573). A going Windows tells of within 0.7 s
+of the shell's own (`ownHide_`, `ui/PlayerScreen.cpp`), while the app wants
+the keyboard, is now taken for that: the keyboard is shown again for the field
+that asked, and the log says so once ("player: the keyboard went as the app
+moved from one field to another, and comes back for the field that asked for
+it"). Not tried on a phone yet.
+
+**The keyboard's coming and going is an inset animation** of
+`WindowInsets.Type.ime()`, run through the views' callbacks
+(`View.setWindowInsetsAnimationCallback`) as Android 11's `InsetsController`
+runs it (`megler.ViewRoot`, `ImeAnimation`): `onPrepare` with the insets as
+they were; the window's new insets (`onApplyWindowInsets`) and its layout;
+`onStart`, at the end of that frame, with the bounds -- none and the
+keyboard's height; `onProgress` at each frame of its 250 ms with the insets at
+that point (decelerating); `onEnd`. A `ViewGroup` hands each call on to its
+children unless its own callback's dispatch mode is `DISPATCH_MODE_STOP`, and
+a new change ends the one running. `WindowInsetsAnimation` and its `Bounds`
+were stubs that kept nothing (an overlay now), and the callback was never
+kept: AndroidX's `WindowInsetsAnimationCompat` uses these on Android 11 and
+later (Megler says 14), and React Native's keyboard controller
+(`react-native-keyboard-controller`, which Discord's login and registration
+screens are built on) moves what is above the keyboard only as such an
+animation tells it. The log says the first one: "MeglerViews: the keyboard
+comes as an inset animation of 250 ms to the views' callbacks". The demos
+app's typing screen has a callback that says each call, and the test checks
+them when the keyboard comes up.
+
 **Not there:** composing text (a keyboard that composes sends each piece when
 it is final), the selection handles and the copy and paste bar (the
 framework's), and telling the shell where the cursor is on the screen.
@@ -3871,6 +3906,24 @@ What a Java app asks of the phone beyond its window goes to the shell through
     `ACTION_PACKAGE_FULLY_REMOVED`. Each has the package as its data and its
     `EXTRA_UID`. Before, Google Play went on showing an app removed in Megler
     as installed.
+- **A package the phone does not have.** `getPackageInfo`,
+  `getApplicationInfo` and the like are `NameNotFoundException` for it, and
+  the enabled state of one of its components or of the application
+  (`getComponentEnabledSetting`, `getApplicationEnabledSetting`) is
+  `IllegalArgumentException` ("Unknown component: ComponentInfo{...}",
+  "Unknown package: ..."), as Android's package manager answers; the log says
+  so once a package ("the enabled state of a component of ..., which the phone
+  does not have"). The app, the platform (`android`), the Google packages and
+  the phone's other apps are the packages it has. Before, every name had
+  `COMPONENT_ENABLED_STATE_DEFAULT`. Facebook asks so whether Meta's App
+  Manager (`com.facebook.appmanager`, the updater of phones that came with
+  Meta's apps) is there: told the default, it took it to be there, found none
+  of its receivers, went on to the SIM (a European or Canadian one, or none),
+  and opened the terms of such phones ("Meta uses a preinstalled service to
+  update apps automatically", the screen `oxygen_preloads_terms_of_service`)
+  each time its sign-in began: at every start signed out on the HP Elite x3
+  (0.1.0.671), and on an Italian user's phone, which went from the sign-in
+  back to that screen again and again. The data app's step `component-state`.
 
 APKs, .apks and .xapk files also open in Megler from the phone's file
 manager (a file type association of Megler's package, taken out of an app's
@@ -3996,6 +4049,37 @@ of 16 x 16 at (8, 8) on a 32 x 32 canvas, whole and at half size; and three
 files that only begin like WebP. The MSVC ARM build of the 29 files is clean
 at `/W3`. *Not measured:* how long a large lossy picture takes without NEON on
 the phone.
+
+### A decode into a bitmap of the app's (inBitmap), and reconfigure
+
+`BitmapFactory` decodes into the bitmap an app gives it in `Options.inBitmap`
+and hands that same bitmap back, as Android's does: the decoded picture takes
+the place of the bitmap's own (`Bitmap.meglerTakeOver`, its native picture
+replaced; a display list that drew the old one keeps its reference), with the
+picture's size and config, while what the bitmap was made with
+(`getAllocationByteCount`) stays. A picture that needs more than that, or
+that cannot be decoded, is `IllegalArgumentException("Problem decoding into
+existing bitmap")`; a recycled bitmap is refused; an immutable one is passed
+over, said once, for a new bitmap. `Bitmap.reconfigure` gives a mutable bitmap
+another size and config within what it was made with (a new, empty picture of
+that size: Android leaves the old bytes, of no use in the new shape), and
+`setWidth`, `setHeight` and `setConfig` go through it. A JPEG asked for as
+`RGB_565` is `RGB_565` (two bytes a pixel in what an app reads of it), as
+Android's decoder gives it; everything else decodes to `ARGB_8888`.
+
+Both were missing (inBitmap ignored, reconfigure doing nothing), and every
+still picture of Fresco's failed: its decoder (`DefaultDecoder`) decodes into a
+bitmap of its pool and throws an `IllegalStateException` when the bitmap that
+comes back is another one -- Facebook's log on 0.1.0.671 had
+`onProducerFinishWithFailure ... stage: DecodeProducer ... IllegalStateException`
+for each picture, and Aliucord (Discord's old app, Fresco 2) showed no avatars.
+Fresco's pools make their bitmaps 1 x N in `RGB_565` and reconfigure them to a
+picture's or an animation frame's size (`ArtBitmapFactory`), so its animated
+pictures were drawn into a buffer one pixel wide. Glide reconfigures what its
+pool gives too, and retries without inBitmap on the `IllegalArgumentException`.
+The data app's step `bitmap-reuse` decodes a PNG into a pool's bitmap made as
+Fresco makes one, reconfigures it within and past what it was made with, and
+gives a bitmap too small and an immutable one.
 
 ### Databases: `megler.Sqlite` and the SQLite in the core
 

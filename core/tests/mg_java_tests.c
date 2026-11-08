@@ -1674,6 +1674,17 @@ static void type_into_fields(const int row[4], int *at)
     CHECK(count_colour(name, 0x102030) == 0);
     /* The keyboard comes up and says how much it covers before anything is typed, as a phone's shell does. */
     megler_keyboard_height(g_screen_h * 2 / 5);
+    /* It comes as an inset animation of the keyboard's type (WindowInsetsAnimation, through the views' callbacks, as
+       React Native's keyboard controller is moved by): prepared, started with the bounds none and its height, frames of
+       its progress, ended. */
+    {
+        char start[128];
+        snprintf(start, sizeof(start), "I/DemoTest: typing: ime start lower=0 upper=%d duration=250", g_screen_h * 2 / 5);
+        expect_line("I/DemoTest: typing: ime prepare type=8", at, 30);
+        expect_line(start, at, 30);
+        expect_line("I/DemoTest: typing: ime end type=8 fraction=1.0 steps=several", at, 30);
+        CHECK(find_line("I/MeglerViews: the keyboard comes as an inset animation of 250 ms to the views' callbacks (WindowInsetsAnimation)", 0) >= 0);
+    }
     settle();
     /* Text, as the keyboard commits it. */
     megler_text_commit("Hello");
@@ -2718,7 +2729,7 @@ static int run_data(void)
                                             makes one. And a proxy of an interface of 600 methods. And sound from Java: an
                                             AudioTrack written to, a MediaPlayer of a WAV and of an Ogg Vorbis asset, a SoundPool. */
                                          "xml", "asset-fd", "tasks", "wrapper-receiver", "viewgroup-flag", "text-drawables", "pfd-dup", "pfd-parcel",
-                                         "theme-selfref", "queue-next", "storage-stats", "broadcast-explicit", "service-stop-thread", "start-ids", "process-scope", "job-scheduler", "downloads", "rollback-service", "art-manager", "progress-subclass", "telephony", "microphone", "biometric", "ordered-broadcast", "hardware-accelerated", "descendant-invalidated", "image-matrix-before-layout", "delegate-last-scope", "asset-manager-manifest", "big-asset", "path-iterator", "mutable-context", "exec", "crc32c", "nine-patch-constructors", "subscription-ids", "filter-categories", "arrays-ranges", "thread-stack", "icu-number", "audio-route", "expand-template", "list-fragment", "fragment-saved-state", "stub-said", "handler-thread", "managed-dialog", "input-format", "dialog-of-stopped", "zip-path-validator", "list-row-click", "animation-listener", "circular-reveal", "animator-values", "observer-merged", "typeface-descriptor", "device-provisioned", "users", "start-asked", "pending-intent-creator", "pending-intent-flags", "alarm-replace-cancel", "messenger-forwarded", "insets-builder", "insets-consumed", "insets-siblings", "broadcast-handler", "prefs-spaced-key", "account-removed", "sync", "package-installer", "batch-operations", "wifi", "media-metadata", "playback-state", "remote-user-info", "theme-accent", "phone-apps", "phone-apps-activities", "phone-apps-signatures", "install-intent", "install-session", "install-splits", "bitmap-bytes", "adaptive-icon", "idle-handler", "uri-builder", "html-tag-handler", "stats-manager", "credential-manager", "many-interfaces", "proxy-many-methods", "apk-path", "maps-paths", "apk-optimization",
+                                         "theme-selfref", "queue-next", "storage-stats", "broadcast-explicit", "service-stop-thread", "start-ids", "process-scope", "job-scheduler", "downloads", "rollback-service", "art-manager", "progress-subclass", "telephony", "microphone", "biometric", "ordered-broadcast", "hardware-accelerated", "descendant-invalidated", "image-matrix-before-layout", "delegate-last-scope", "asset-manager-manifest", "big-asset", "path-iterator", "mutable-context", "exec", "crc32c", "nine-patch-constructors", "subscription-ids", "filter-categories", "arrays-ranges", "thread-stack", "icu-number", "audio-route", "expand-template", "list-fragment", "fragment-saved-state", "stub-said", "handler-thread", "managed-dialog", "input-format", "dialog-of-stopped", "zip-path-validator", "list-row-click", "animation-listener", "circular-reveal", "animator-values", "observer-merged", "typeface-descriptor", "device-provisioned", "users", "start-asked", "pending-intent-creator", "pending-intent-flags", "alarm-replace-cancel", "messenger-forwarded", "insets-builder", "insets-consumed", "insets-siblings", "broadcast-handler", "prefs-spaced-key", "account-removed", "sync", "package-installer", "batch-operations", "wifi", "media-metadata", "playback-state", "remote-user-info", "theme-accent", "phone-apps", "phone-apps-activities", "phone-apps-signatures", "install-intent", "install-session", "install-splits", "bitmap-bytes", "bitmap-reuse", "file-read-only", "component-state", "adaptive-icon", "idle-handler", "uri-builder", "html-tag-handler", "stats-manager", "credential-manager", "many-interfaces", "proxy-many-methods", "apk-path", "maps-paths", "apk-optimization",
                                          /* And an <inset> whose insets are fractions of its bounds, WhatsApp's adaptive icon's 0.01% among them. */
                                          "inset-fraction",
                                          /* And a WorkSource through a Parcel and back, as a location request of Google Play services' carries one. */
@@ -2772,6 +2783,8 @@ static int run_data(void)
        another, taking cleartext and the anchors from it. */
     CHECK(find_line("I/NetworkSecurityConfig: the app's network security configuration xml/network_security_config: base-config: cleartext refused, anchors system;", 0) >= 0);
     CHECK(find_line("; domain-config of nested.sub.megler.test: cleartext permitted, anchors @raw/trust_test_ca;", 0) >= 0);
+    /* The state of a component of a package the phone does not have (component-state) is Android's IllegalArgumentException, said once. */
+    CHECK(find_line("I/Megler: the enabled state of a component of com.facebook.appmanager, which the phone does not have: IllegalArgumentException, as Android answers", 0) >= 0);
     /*
      * What requestPermissions asked comes back by a message of its own, after the method that asked has returned. In the first
      * run the user is asked about the storage, the messages, the phone, the calls and the camera, one after another, and the
@@ -3402,6 +3415,23 @@ static int run_microg(void)
     return g_failed;
 }
 
+/*
+ * Google's own Play services hosted in an app (their stand-in, the test app gms-own: a service of com.google.android.gms, no
+ * microG in it), run with MG_JAVA_GMS_APK naming it. Their code is told it runs in its application's process: the process
+ * name of its ApplicationInfo is the one Application.getProcessName gives it here, the app's. They take that process for
+ * their main one, the only one where GmsModuleFinder makes their module configuration again at once; in every app that
+ * hosted them the names differed, and each module scan asked for another, five a second, without end.
+ */
+static int run_gms_host(void)
+{
+    CHECK(wait_line("I/GmsOwnTest: main process true application=megler.test.gmshost current=megler.test.gmshost", 0, 600) >= 0);
+    CHECK(find_line("I/MicroG: Google Play services' application runs in this process, megler.test.gmshost, as its main one", 0) >= 0);
+    CHECK(find_line("I/GmsHostTest: started ComponentInfo{com.google.android.gms/megler.test.gmsown.Probe}", 0) >= 0);
+    CHECK(find_line("FATAL EXCEPTION", 0) < 0);
+    say_app_lines("/GmsOwnTest: ");
+    return g_failed;
+}
+
 /* -------------------------------------------------------------- any app */
 
 /*
@@ -3644,6 +3674,7 @@ int mg_tests_java_run(const char *which, const char *apk, const char *android_ro
     if (start(apk, android_root)) {
         if (!strcmp(which, "first")) run_first();
         else if (!strcmp(which, "microg")) run_microg();
+        else if (!strcmp(which, "gms-host")) run_gms_host();
         else if (!strcmp(which, "demos")) run_demos();
         else if (!strcmp(which, "natives")) run_natives();
         else if (!strcmp(which, "crash")) run_crash();

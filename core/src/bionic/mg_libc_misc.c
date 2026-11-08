@@ -901,7 +901,8 @@ static long g_syscall(long nr, long a, long b, long c, long d, long e, long f)
      * The files of Go's os package by number too: reads and writes at an offset (in the register pair after a pad), a
      * file's lock, its data synced, its size (after a pad), a directory's entries, a link read, a file's mode, owner and
      * times, a file system's size, the working directory. Psiphon keeps its data in a Bolt database, which opens, locks,
-     * reads, writes, syncs and grows its file so. A mode or an owner is not kept here: for a file that is there, done.
+     * reads, writes, syncs and grows its file so. An owner is not kept here (for a file that is there, done), and of a mode
+     * only its write bits (fchmodat, fchmod).
      */
     case 180: return ((pio_fn)mg_bionic_find("pread64"))((int)a, (void *)(mg_addr)b, (size_t)c, (i64)(((u64)(u32)f << 32) | (u32)e));   /* pread64 */
     case 181: return ((pio_fn)mg_bionic_find("pwrite64"))((int)a, (void *)(mg_addr)b, (size_t)c, (i64)(((u64)(u32)f << 32) | (u32)e));  /* pwrite64 */
@@ -912,7 +913,8 @@ static long g_syscall(long nr, long a, long b, long c, long d, long e, long f)
     case 332: return ((readlinkat_fn)mg_bionic_find("readlinkat"))((int)a, (const char *)(mg_addr)b, (char *)(mg_addr)c, (size_t)d);  /* readlinkat */
     case 94: return ((fd2_fn)mg_bionic_find("fchmod"))((int)a, (int)b);                                                  /* fchmod */
     case 95: case 207: return ((fcntl_fn)mg_bionic_find("fcntl"))((int)a, 1 /* F_GETFD */, 0) < 0 ? -1 : 0;              /* fchown, fchown32 */
-    case 325: case 333: return ((at_int_fn)mg_bionic_find("faccessat"))((int)a, (const char *)(mg_addr)b, 0 /* F_OK */, 0);  /* fchownat, fchmodat */
+    case 325: return ((at_int_fn)mg_bionic_find("faccessat"))((int)a, (const char *)(mg_addr)b, 0 /* F_OK */, 0);         /* fchownat */
+    case 333: return ((at_int_fn)mg_bionic_find("fchmodat"))((int)a, (const char *)(mg_addr)b, (int)c, 0);               /* fchmodat: its write bits kept */
     case 348: return ((utimensat_fn)mg_bionic_find("utimensat"))((int)a, (const char *)(mg_addr)b, (const void *)(mg_addr)c, (int)d);  /* utimensat */
     case 266: return ((path_buf_fn)mg_bionic_find("statfs64"))((const char *)(mg_addr)a, (void *)(mg_addr)c);          /* statfs64: path, size, buffer */
     case 267: return ((fd_buf_fn)mg_bionic_find("fstatfs64"))((int)a, (void *)(mg_addr)c);                              /* fstatfs64 */
