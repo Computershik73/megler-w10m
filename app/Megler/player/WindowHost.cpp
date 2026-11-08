@@ -54,13 +54,30 @@ double millisecondsPerTick() {
     return ms;
 }
 
-/// What the UI thread answers the render thread with.
+/// What the UI thread answers the render thread with: SetSwapChain's result, and the panel as it was then.
 struct PanelAnswer {
     std::mutex mutex;
     std::condition_variable changed;
     bool done = false;
     HRESULT result = E_PENDING;
+    double width = 0, height = 0;   // DIPs
+    float scaleX = 0, scaleY = 0;   // its CompositionScale: the display's pixels for a DIP
+    bool visible = true;
 };
+
+double msSince(uint64_t from) { return double(qpcNow() - from) * millisecondsPerTick(); }
+
+/// What a Present's answer is, in words, for the log.
+std::string presentSaid(HRESULT hr) {
+    switch (hr) {
+    case S_OK: return "put it on the screen";
+    case DXGI_STATUS_OCCLUDED: return "said the window is occluded (DXGI_STATUS_OCCLUDED): it is not on the screen";
+    case DXGI_ERROR_INVALID_CALL: return "failed, DXGI_ERROR_INVALID_CALL (0x887A0001): it is not on the screen";
+    case DXGI_ERROR_DEVICE_REMOVED: return "failed: the device was removed (0x887A0005)";
+    case DXGI_ERROR_DEVICE_RESET: return "failed: the device was reset (0x887A0007)";
+    default: return format(FAILED(hr) ? "failed, 0x%08X: it is not on the screen" : "said 0x%08X", unsigned(hr));
+    }
+}
 
 } // namespace
 
@@ -90,9 +107,9 @@ WindowHost::Rect WindowHost::letterbox(float areaWidth, float areaHeight, float 
 }
 
 WindowHost::WindowHost(SwapChainPanel const& panel, int width, int height)
-    : panel_(panel), dispatcher_(panel.Dispatcher()), surfaceWidth_(width), surfaceHeight_(height) {
+    : panel_(panel), dispatcher_(panel ? panel.Dispatcher() : nullptr), surfaceWidth_(width), surfaceHeight_(height), created_(qpcNow()) {
     directOff_ = flag(L"gfx-window-copy");
-    setPanelSize(float(panel.ActualWidth()), float(panel.ActualHeight()));
+    setPanelSize(panel ? float(panel.ActualWidth()) : 0.0f, panel ? float(panel.ActualHeight()) : 0.0f);
 }
 
 megler_window_host WindowHost::callbacks() {
@@ -130,6 +147,102 @@ std::string WindowHost::description() {
     return description_;
 }
 
+// MARK: The pictures as they come
+
+const char* WindowHost::wayName(Way way) {
+    switch (way) {
+    case Way::game: return "a frame rendered with ANGLE into the window's texture (present)";
+    case Way::memory: return "the views drawn in memory (present_pixels)";
+    case Way::memoryPart: return "the views drawn in memory, a part of them new (present_pixels_part)";
+    case Way::gpu: return "the views drawn on the graphics processor into the window's texture, copied to the swap chain";
+    case Way::gpuDirect: return "the views drawn on the graphics processor straight into the swap chain's buffer";
+    }
+    return "?";
+}
+
+WindowHost::FirstPicture WindowHost::firstPicture() {
+    std::lock_guard<std::mutex> lock(firstMutex_);
+    return first_;
+}
+
+void WindowHost::onFirstPicture(std::function<void()> f) {
+    {
+        std::lock_guard<std::mutex> lock(firstMutex_);
+        if (!first_.tried) {
+            firstHook_ = std::move(f);
+            return;
+        }
+    }
+    if (f) f();
+}
+
+std::string WindowHost::state() {
+    std::string swapChain, problem;
+    {
+        std::lock_guard<std::mutex> lock(descriptionMutex_);
+        swapChain = description_;
+        problem = problem_;
+    }
+    const int made = swapChainState_.load();
+    const FirstPicture first = firstPicture();
+    std::string s = made == 0    ? std::string("no swap chain made yet")
+                    : made > 0   ? "a swap chain of " + swapChain + " on " + deviceOwner_.load() + " device"
+                                 : "no swap chain: " + problem;
+    s += format("; %u pictures came, %u Presents went, %u failed", unsigned(pictures_.load()), unsigned(presented_.load()), unsigned(presentsFailed_.load()));
+    if (presentsFailed_.load()) s += format(" (the last 0x%08X)", unsigned(lastFailure_.load()));
+    if (first.came)
+        s += format("; the first, %dx%d, %s, came %.0f ms after Play%s", first.width, first.height, wayName(first.way), first.ms,
+                    first.shown ? format(", and a picture has been on the screen since %.0f ms", first.shownMs).c_str() : ", and none has been on the screen");
+    s += format("; the panel %.0fx%.0f DIPs", double(panelWidth_.load()), double(panelHeight_.load()));
+    return s;
+}
+
+void WindowHost::came(Way way, int width, int height) {
+    if (pictures_.fetch_add(1) != 0) return;
+    std::lock_guard<std::mutex> lock(firstMutex_);
+    first_.came = true;
+    first_.way = way;
+    first_.width = width;
+    first_.height = height;
+    first_.ms = msSince(created_);
+}
+
+void WindowHost::tried(HRESULT result, const char* why) {
+    if (result == S_OK) shownNow("its Present");
+    if (firstTried_.load()) return;
+    std::function<void()> hook;
+    std::string line;
+    {
+        std::lock_guard<std::mutex> lock(firstMutex_);
+        if (first_.tried || !first_.came) return;
+        first_.tried = true;
+        first_.result = result;
+        first_.why = why ? why : "";
+        firstTried_ = true;
+        line = format("window: the app's first picture, %dx%d, came %.0f ms after Play: %s; ", first_.width, first_.height, first_.ms, wayName(first_.way)) +
+               (result == S_FALSE ? "it was not presented: " + first_.why : "Present " + presentSaid(result));
+        hook = std::move(firstHook_);
+        firstHook_ = nullptr;
+    }
+    shellLog::write(line);
+    if (hook) hook();
+}
+
+void WindowHost::shownNow(const char* how) {
+    if (shownOnce_.exchange(true)) return;
+    std::string line;
+    {
+        std::lock_guard<std::mutex> lock(firstMutex_);
+        first_.shown = true;
+        first_.shownMs = msSince(created_);
+        // (The first picture's own Present is said in its line, tried's.)
+        if (first_.tried)
+            line = format("window: a picture of the app's is on the screen at last, %.0f ms after Play (%u pictures came; %s put it there)",
+                          first_.shownMs, unsigned(pictures_.load()), how);
+    }
+    if (!line.empty()) shellLog::write(line);
+}
+
 // MARK: megler_window_host (the app's render thread)
 
 bool WindowHost::attachDevice(void* user, void* device) {
@@ -140,7 +253,13 @@ void* WindowHost::acquireTarget(void* user, int width, int height) {
     return static_cast<WindowHost*>(user)->acquire(width, height);
 }
 
-void WindowHost::present(void* user) { static_cast<WindowHost*>(user)->presentFrame(); }
+void WindowHost::present(void* user) {
+    auto* self = static_cast<WindowHost*>(user);
+    self->came(Way::game, self->surfaceWidth_.load(), self->surfaceHeight_.load());
+    const char* why = nullptr;
+    const HRESULT hr = self->presentFrame(&why);
+    self->tried(hr, why);
+}
 
 void WindowHost::releaseTarget(void* user) {
     auto* self = static_cast<WindowHost*>(user);
@@ -172,13 +291,18 @@ bool WindowHost::createSwapChain(unsigned width, unsigned height) {
     com_ptr<IDXGIDevice1> dxgiDevice;
     com_ptr<IDXGIAdapter> adapter;
     com_ptr<IDXGIFactory2> factory;
+    // (Why there is none, for the player's line when no picture comes: WindowHost::state.)
+    auto failed = [this](std::string why) {
+        shellLog::write("window: " + why);
+        std::lock_guard<std::mutex> lock(descriptionMutex_);
+        problem_ = std::move(why);
+        swapChainState_ = -1;
+        return false;
+    };
     HRESULT hr = device_->QueryInterface(IID_PPV_ARGS(dxgiDevice.put()));
     if (SUCCEEDED(hr)) hr = dxgiDevice->GetAdapter(adapter.put());
     if (SUCCEEDED(hr)) hr = adapter->GetParent(IID_PPV_ARGS(factory.put()));
-    if (FAILED(hr)) {
-        shellLog::write(format("window: no DXGI 1.2 factory behind %s device, 0x%08X", deviceOwner_, unsigned(hr)));
-        return false;
-    }
+    if (FAILED(hr)) return failed(format("no DXGI 1.2 factory behind %s device, 0x%08X", deviceOwner_.load(), unsigned(hr)));
 
     DXGI_SWAP_CHAIN_DESC1 desc = {};
     desc.Width = width;
@@ -195,10 +319,7 @@ bool WindowHost::createSwapChain(unsigned width, unsigned height) {
         DeviceLock device(*this);
         hr = factory->CreateSwapChainForComposition(device_.get(), &desc, nullptr, chain.put());
     }
-    if (FAILED(hr)) {
-        shellLog::write(format("window: CreateSwapChainForComposition(%ux%u) failed, 0x%08X", width, height, unsigned(hr)));
-        return false;
-    }
+    if (FAILED(hr)) return failed(format("CreateSwapChainForComposition(%ux%u) failed, 0x%08X", width, height, unsigned(hr)));
 
     // The panel takes it on its own thread, and this one waits: the core is
     // told the truth about whether there is a screen. megler_run is never
@@ -206,8 +327,9 @@ bool WindowHost::createSwapChain(unsigned width, unsigned height) {
     // answer; the wait still ends by itself if it does not.
     auto answer = std::make_shared<PanelAnswer>();
     SwapChainPanel panel = panel_;
-    if (flag(L"no-panel")) {
-        // The swap chain is made and presented to, and never shown.
+    const bool noPanel = !panel || flag(L"no-panel");
+    if (noPanel) {
+        // The swap chain is made and presented to, and never shown (the flag; or no panel, the shell's test program's).
         std::lock_guard<std::mutex> lock(answer->mutex);
         answer->done = true;
         answer->result = S_OK;
@@ -215,30 +337,45 @@ bool WindowHost::createSwapChain(unsigned width, unsigned height) {
     try {
         dispatcher_.RunAsync(CoreDispatcherPriority::High, [answer, panel, chain] {
             HRESULT result = E_FAIL;
+            double width = 0, height = 0;
+            float scaleX = 0, scaleY = 0;
+            bool visible = true;
             try {
                 result = panel.as<ISwapChainPanelNative>()->SetSwapChain(chain.get());
             } catch (const winrt::hresult_error& e) {
                 result = e.code();
             }
+            try {
+                // Where the pictures go, as the panel stands now: an Xbox shows a XAML app at 200 percent on 1920 by 1080.
+                width = panel.ActualWidth();
+                height = panel.ActualHeight();
+                scaleX = panel.CompositionScaleX();
+                scaleY = panel.CompositionScaleY();
+                visible = panel.Visibility() == winrt::Windows::UI::Xaml::Visibility::Visible;
+            } catch (const winrt::hresult_error&) {
+            }
             std::lock_guard<std::mutex> lock(answer->mutex);
             answer->result = result;
+            answer->width = width;
+            answer->height = height;
+            answer->scaleX = scaleX;
+            answer->scaleY = scaleY;
+            answer->visible = visible;
             answer->done = true;
             answer->changed.notify_all();
         });
     } catch (const winrt::hresult_error& e) {
-        shellLog::write(format("window: couldn't reach the UI thread, 0x%08X", unsigned(e.code())));
-        return false;
+        return failed(format("couldn't reach the UI thread, 0x%08X", unsigned(e.code())));
     }
+    std::string onPanel;
     {
         std::unique_lock<std::mutex> lock(answer->mutex);
-        if (!answer->changed.wait_for(lock, std::chrono::seconds(10), [&] { return answer->done; })) {
-            shellLog::write("window: the UI thread didn't take the swap chain within 10 s");
-            return false;
-        }
-        if (FAILED(answer->result)) {
-            shellLog::write(format("window: the panel refused the swap chain, 0x%08X", unsigned(answer->result)));
-            return false;
-        }
+        if (!answer->changed.wait_for(lock, std::chrono::seconds(10), [&] { return answer->done; }))
+            return failed("the UI thread didn't take the swap chain within 10 s");
+        if (FAILED(answer->result)) return failed(format("the panel refused the swap chain, 0x%08X", unsigned(answer->result)));
+        onPanel = noPanel ? std::string(panel ? "; on no panel (the flag no-panel)" : "; on no panel (none was given)")
+                          : format("; on a panel of %.0fx%.0f DIPs at %.2fx%.2f of the display's pixels for each%s", answer->width, answer->height,
+                                   double(answer->scaleX), double(answer->scaleY), answer->visible ? "" : ", which is not visible");
     }
 
     swapChain_ = chain;
@@ -247,22 +384,21 @@ bool WindowHost::createSwapChain(unsigned width, unsigned height) {
     directAge_ = 0;
     backBuffer_ = nullptr;
     hr = swapChain_->GetBuffer(0, IID_PPV_ARGS(backBuffer_.put()));
-    if (FAILED(hr)) {
-        shellLog::write(format("window: no back buffer, 0x%08X", unsigned(hr)));
-        return false;
-    }
+    if (FAILED(hr)) return failed(format("no back buffer, 0x%08X", unsigned(hr)));
     bufferWidth_ = width;
     bufferHeight_ = height;
     transformDirty_ = true;
     describe();
+    swapChainState_ = 1;
     if (flag(L"early-present")) {
         DeviceLock device(*this);
         const HRESULT presented = swapChain_->Present(0, 0);
         shellLog::write(format("window: an empty frame presented at once, 0x%08X", unsigned(presented)));
     }
     noPresent_ = flag(L"no-present");
-    shellLog::write(format("window: swap chain %ux%u x3 on %s device (feature level %s)%s", width, height, deviceOwner_,
-                           levelName(featureLevel_), swapChain2_ ? "" : "; no IDXGISwapChain2: it cannot be scaled to the panel"));
+    failPresent_ = flag(L"fail-present");
+    shellLog::write(format("window: swap chain %ux%u x3 on %s device (feature level %s)%s%s", width, height, deviceOwner_.load(),
+                           levelName(featureLevel_), swapChain2_ ? "" : "; no IDXGISwapChain2: it cannot be scaled to the panel", onPanel.c_str()));
     return true;
 }
 
@@ -320,12 +456,16 @@ ID3D11Texture2D* WindowHost::acquire(int width, int height) {
     return target_.get();
 }
 
-void WindowHost::presentFrame() {
-    if (!swapChain_ || !backBuffer_ || !target_) return;
+HRESULT WindowHost::presentFrame(const char** notPresented) {
+    if (!swapChain_ || !backBuffer_ || !target_) {
+        if (notPresented) *notPresented = !swapChain_ ? "there is no swap chain (see above)" : !target_ ? "there is no target texture" : "there is no back buffer";
+        return S_FALSE;
+    }
     if (noPresent_) {
         ++presented_;
         Sleep(16);
-        return;
+        if (notPresented) *notPresented = "the flag no-present drops it";
+        return S_FALSE;
     }
     if (transformDirty_.exchange(false)) applyTransform();
     if (shotWanted_.exchange(false)) {
@@ -343,21 +483,27 @@ void WindowHost::presentFrame() {
     const uint64_t copying = qpcNow();
     context_->CopyResource(backBuffer_.get(), target_.get());
     const uint64_t presenting = qpcNow();
-    const HRESULT hr = swapChain_->Present(1, 0);
+    // (The flag fail-present: Present is not called, and taken as refused -- what the player does with pictures that come
+    // and cannot be shown.)
+    const HRESULT hr = failPresent_ ? DXGI_ERROR_INVALID_CALL : swapChain_->Present(1, 0);
     const uint64_t presented = qpcNow();
     if (FAILED(hr)) {
+        ++presentsFailed_;
+        lastFailure_ = hr;
         // Said once per kind of failure, not sixty times a second.
         if (hr != lastPresentError_) {
             lastPresentError_ = hr;
-            shellLog::write(format("window: Present failed, 0x%08X%s", unsigned(hr),
+            shellLog::write(format("window: Present failed, 0x%08X%s%s", unsigned(hr),
                                    hr == DXGI_ERROR_DEVICE_REMOVED || hr == DXGI_ERROR_DEVICE_RESET
                                        ? format(" (the device was lost, reason 0x%08X)", unsigned(device_->GetDeviceRemovedReason())).c_str()
-                                       : ""));
+                                       : "",
+                                   failPresent_ ? " (the flag fail-present)" : ""));
         }
-        return;
+        return hr;
     }
     markShown();
     afterPresent(false, presenting - copying, presented - presenting);
+    return hr;
 }
 
 void WindowHost::checkGpu() {
@@ -580,6 +726,7 @@ void WindowHost::leaveLostDevice() {
     directAge_ = 0;
     bufferWidth_ = bufferHeight_ = 0;
     ownDeviceState_ = 0;
+    swapChainState_ = 0;
 }
 
 ID3D11Texture2D* WindowHost::gfxTarget(void* user, int width, int height) { return static_cast<WindowHost*>(user)->pictureTarget(width, height); }
@@ -594,7 +741,7 @@ ID3D11Texture2D* WindowHost::pictureTarget(int width, int height) {
     std::lock_guard<std::mutex> lock(pixelsMutex_);
     if (sharedDevice_ && !GfxHost::shared().device()) leaveLostDevice();
     if (!ownDeviceState_) {
-        shellLog::write(format("window: the app's first picture, %dx%d: it draws its views on the graphics processor", width, height));
+        shellLog::write(format("window: the app draws its views on the graphics processor (its first picture is %dx%d): its swap chain goes on that device", width, height));
         ownDeviceState_ = makeOwnDevice(unsigned(width), unsigned(height)) ? 1 : -1;
     }
     if (ownDeviceState_ < 0 || !sharedDevice_) return nullptr;
@@ -610,14 +757,17 @@ ID3D11Texture2D* WindowHost::pictureTarget(int width, int height) {
 void WindowHost::showTarget() {
     std::lock_guard<std::mutex> lock(pixelsMutex_);
     if (!target_) return;
+    came(Way::gpu, surfaceWidth_.load(), surfaceHeight_.load());
     DeviceLock device(*this);
-    presentFrame();
+    const char* why = nullptr;
+    const HRESULT hr = presentFrame(&why);
     showsPixels_ = true;
-    if (transformDirty_.exchange(false) && swapChain_ && backBuffer_ && !noPresent_) {
+    if (transformDirty_.exchange(false) && swapChain_ && backBuffer_ && !noPresent_ && !failPresent_) {
         applyTransform();
         context_->CopyResource(backBuffer_.get(), target_.get());
-        swapChain_->Present(0, 0);
+        if (swapChain_->Present(0, 0) == S_OK) shownNow("a Present again at the panel's new size");
     }
+    tried(hr, why);
 }
 
 ID3D11Texture2D* WindowHost::gfxBack(void* user, int width, int height, int* age) {
@@ -642,6 +792,7 @@ ID3D11Texture2D* WindowHost::backTarget(int width, int height, int* age) {
 void WindowHost::showBackBuffer() {
     std::lock_guard<std::mutex> lock(pixelsMutex_);
     if (!swapChain_ || !backBuffer_) return;
+    came(Way::gpuDirect, int(bufferWidth_), int(bufferHeight_));
     DeviceLock device(*this);
     if (!showsDirect_.exchange(true)) shellLog::write("window: the app's pictures go straight into the swap chain's buffers, with no copy of the whole");
     // (The UI thread shows the target again at another panel size; it is not the picture now, and the next picture is.)
@@ -658,36 +809,43 @@ void WindowHost::showBackBuffer() {
     }
     checkGpu();
     const uint64_t presenting = qpcNow();
-    const HRESULT hr = swapChain_->Present(1, 0);
+    const HRESULT hr = failPresent_ ? DXGI_ERROR_INVALID_CALL : swapChain_->Present(1, 0);
     const uint64_t presented = qpcNow();
     // A Present that said anything else (an occluded window's) may not have turned the buffers: the next pictures go whole.
     if (hr == S_OK) directAge_ = std::min(directAge_.load() + 1, 3);
     else directAge_ = 0;
     if (FAILED(hr)) {
+        ++presentsFailed_;
+        lastFailure_ = hr;
         if (hr != lastPresentError_) {
             lastPresentError_ = hr;
-            shellLog::write(format("window: Present failed, 0x%08X%s", unsigned(hr),
+            shellLog::write(format("window: Present failed, 0x%08X%s%s", unsigned(hr),
                                    hr == DXGI_ERROR_DEVICE_REMOVED || hr == DXGI_ERROR_DEVICE_RESET
                                        ? format(" (the device was lost, reason 0x%08X)", unsigned(device_->GetDeviceRemovedReason())).c_str()
-                                       : ""));
+                                       : "",
+                                   failPresent_ ? " (the flag fail-present)" : ""));
         }
+        tried(hr);
         return;
     }
     markShown();
     afterPresent(true, 0, presented - presenting);
+    tried(hr);
 }
 
-void WindowHost::showPixels(const void* pixels, int width, int height, int stride) {
+void WindowHost::showPixels(const void* pixels, int width, int height, int stride, Way way) {
     // No picture: the last one stays (megler.h; the core does not pass this on today).
     if (!pixels || width <= 0 || height <= 0 || stride < width * 4) return;
     std::lock_guard<std::mutex> lock(pixelsMutex_);
+    came(way, width, height);
     if (sharedDevice_ && !GfxHost::shared().device()) leaveLostDevice();
     if (!ownDeviceState_) {
-        shellLog::write(format("window: the app's first picture, %dx%d: it draws its views in memory, not with OpenGL", width, height));
+        shellLog::write(format("window: the app draws its views in memory, not with OpenGL (its first picture is %dx%d)", width, height));
         ownDeviceState_ = makeOwnDevice(unsigned(width), unsigned(height)) ? 1 : -1;
     }
     if (ownDeviceState_ < 0) {
         if (!picturesDropped_++) shellLog::write("window: the app's pictures are dropped: there is nothing to show them with (see above)");
+        tried(S_FALSE, "there is no Direct3D device to show it with (see above)");
         return;
     }
     // The texture a game would have rendered into, made the same way; again when the picture's size is another.
@@ -696,6 +854,7 @@ void WindowHost::showPixels(const void* pixels, int width, int height, int strid
         showsPixels_ = false;
         if (!acquire(width, height)) {
             if (!picturesDropped_++) shellLog::write("window: the app's pictures are dropped: no texture to put them in (see above)");
+            tried(S_FALSE, "there is no texture to put it in (see above)");
             return;
         }
     }
@@ -711,14 +870,16 @@ void WindowHost::showPixels(const void* pixels, int width, int height, int strid
     flippedStale_ = false;
     DeviceLock device(*this);
     context_->UpdateSubresource(target_.get(), 0, nullptr, flipped_.data(), UINT(rowBytes), 0);
-    presentFrame();
+    const char* why = nullptr;
+    const HRESULT hr = presentFrame(&why);
     showsPixels_ = true;
     // The panel's size changed while that was being shown (the UI thread found this lock taken and left it to us): again, at the new size.
-    if (transformDirty_.exchange(false) && swapChain_ && backBuffer_ && !noPresent_) {
+    if (transformDirty_.exchange(false) && swapChain_ && backBuffer_ && !noPresent_ && !failPresent_) {
         applyTransform();
         context_->CopyResource(backBuffer_.get(), target_.get());
-        swapChain_->Present(0, 0);
+        if (swapChain_->Present(0, 0) == S_OK) shownNow("a Present again at the panel's new size");
     }
+    tried(hr, why);
 }
 
 // A picture of which only a rectangle is new (megler.h, present_pixels_part):
@@ -739,6 +900,7 @@ void WindowHost::showPixelsPart(const void* pixels, int width, int height, int s
         const bool kept = ownDeviceState_ > 0 && target_ && showsPixels_ && surfaceWidth_.load() == width && surfaceHeight_.load() == height &&
                           flippedWidth_ == width && flippedHeight_ == height && flipped_.size() >= size_t(width) * size_t(height) * 4;
         if (kept) {
+            came(Way::memoryPart, width, height);
             const size_t rowBytes = size_t(width) * 4, partBytes = size_t(right - left) * 4;
             for (int row = top; row < bottom; row++)
                 memcpy(flipped_.data() + size_t(height - 1 - row) * rowBytes + size_t(left) * 4,
@@ -753,16 +915,18 @@ void WindowHost::showPixelsPart(const void* pixels, int width, int height, int s
             box.back = 1;
             DeviceLock device(*this);
             context_->UpdateSubresource(target_.get(), 0, &box, flipped_.data() + size_t(box.top) * rowBytes + size_t(left) * 4, UINT(rowBytes), 0);
-            presentFrame();
-            if (transformDirty_.exchange(false) && swapChain_ && backBuffer_ && !noPresent_) {
+            const char* why = nullptr;
+            const HRESULT hr = presentFrame(&why);
+            if (transformDirty_.exchange(false) && swapChain_ && backBuffer_ && !noPresent_ && !failPresent_) {
                 applyTransform();
                 context_->CopyResource(backBuffer_.get(), target_.get());
-                swapChain_->Present(0, 0);
+                if (swapChain_->Present(0, 0) == S_OK) shownNow("a Present again at the panel's new size");
             }
+            tried(hr, why);
             return;
         }
     }
-    showPixels(pixels, width, height, stride);
+    showPixels(pixels, width, height, stride, Way::memoryPart);
 }
 
 // Any thread. A Java app's last picture as a BMP, at half its size when it
@@ -819,12 +983,15 @@ void WindowHost::showAgain() {
     // The app's thread is showing a picture this moment: it looks at the panel's size again when it has (showPixels).
     std::unique_lock<std::mutex> lock(pixelsMutex_, std::try_to_lock);
     if (!lock.owns_lock()) return;
-    if (!swapChain_ || !backBuffer_ || !target_ || noPresent_) return;
+    if (!swapChain_ || !backBuffer_ || !target_ || noPresent_ || failPresent_) return;
     if (transformDirty_.exchange(false)) applyTransform();
     DeviceLock device(*this);
     directAge_ = 0;
     context_->CopyResource(backBuffer_.get(), target_.get());
     const HRESULT hr = swapChain_->Present(0, 0);
+    // (Not counted with the app's own Presents: the frame rate is the app's. But it may be the first to put a picture of the
+    // app's on the screen -- a panel resized as Megler's window goes away, its pictures' own Presents having failed.)
+    if (hr == S_OK) shownNow("the UI thread's Present of the last picture again, at the panel's new size");
     if (FAILED(hr) && hr != lastPresentError_) {
         lastPresentError_ = hr;
         shellLog::write(format("window: Present failed while showing the last picture again, 0x%08X", unsigned(hr)));

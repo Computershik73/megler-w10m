@@ -75,6 +75,16 @@
 // held the thread, and at how many of them the graphics processor had not
 // finished the picture before (an event query).
 //
+// Every picture the app hands over is counted as it comes, whichever way it
+// came and whatever Present says of it (pictures()): the player's busy
+// overlay goes with the first, and the first is said in the log -- the way it
+// came, its size, how long after Play, and whether Present put it on the
+// screen -- and told to the player at once (onFirstPicture), not at its next
+// poll. An Xbox's player stayed on "Starting <app>..." while the app drew
+// (0.1.0.671), and the app's picture showed for a moment as it was closed:
+// the overlay went by the count of Presents that had succeeded, and nothing in
+// the log said whether a picture had come at all, nor how.
+//
 // One WindowHost lives from Play to the end of the process: one app runs per
 // process, and the core may call it for as long as the app's threads live.
 #pragma once
@@ -83,6 +93,7 @@
 #include "player/GfxHost.h"
 
 #include <atomic>
+#include <functional>
 #include <mutex>
 #include <string>
 #include <vector>
@@ -100,7 +111,9 @@ public:
     static Rect letterbox(float areaWidth, float areaHeight, float contentWidth, float contentHeight);
 
     /// UI thread. `width` x `height` is the surface the app is about to be
-    /// given (megler_run_config), the swap chain's first size.
+    /// given (megler_run_config), the swap chain's first size. A null panel
+    /// (the shell's test program, which has no XAML) makes swap chains that
+    /// are presented to and never shown, as the flag no-panel does.
     WindowHost(winrt::Windows::UI::Xaml::Controls::SwapChainPanel const& panel, int width, int height);
     WindowHost(const WindowHost&) = delete;
     WindowHost& operator=(const WindowHost&) = delete;
@@ -120,6 +133,40 @@ public:
     int surfaceHeight() const { return surfaceHeight_.load(); }
     /// Frames presented so far.
     uint32_t presented() const { return presented_.load(); }
+
+    /// How a picture of the app's reached this window.
+    enum class Way {
+        game,       // a frame an engine rendered into the target texture with ANGLE (megler_window_host.present)
+        memory,     // a Java app's views drawn in memory (present_pixels)
+        memoryPart, // ... of which a part had changed (present_pixels_part)
+        gpu,        // drawn on the graphics processor into the target, and copied to the swap chain (GfxHost's window)
+        gpuDirect,  // drawn on the graphics processor straight into the swap chain's buffer
+    };
+    /// The way's words, for the log: "drawn in memory (present_pixels)".
+    static const char* wayName(Way way);
+    /// What is known of the app's first picture.
+    struct FirstPicture {
+        bool came = false;
+        Way way = Way::game;
+        int width = 0, height = 0;
+        double ms = 0;            // after this window was made (Play)
+        bool tried = false;       // the window has tried to show it (below)
+        HRESULT result = S_OK;    // ... and what its Present said; S_FALSE: it was not presented (why)
+        std::string why;          // when S_FALSE
+        bool shown = false;       // a picture of the app's is on the screen (this one, or a later one)
+        double shownMs = 0;       // since when
+    };
+    FirstPicture firstPicture();
+    /// Pictures the app has handed over so far, however they came and whether or not Present put them on the screen:
+    /// the player's busy overlay is up until the first.
+    uint32_t pictures() const { return pictures_.load(); }
+    /// Any thread: `f` is called once, on the thread the app's first picture came on, as soon as the window has tried
+    /// to show it (at once, when that has happened already). It is called with the window's own locks held, so it may only
+    /// post elsewhere: the player posts to the UI thread.
+    void onFirstPicture(std::function<void()> f);
+    /// Where the window stands, for the player's line when no picture has come: the device and its owner, the swap
+    /// chain, the pictures and what the Presents said, the panel's size.
+    std::string state();
     /// On-demand gesture measurement; intervals between successful Present calls.
     void startFrameSample();
     std::vector<double> endFrameSample();
@@ -143,7 +190,17 @@ private:
     bool attach(ID3D11Device* device);
     bool createSwapChain(unsigned width, unsigned height);
     ID3D11Texture2D* acquire(int width, int height);
-    void presentFrame();
+    /// The target to the back buffer, and Present. What Present said; S_FALSE when there was nothing to present with, and
+    /// then why in `notPresented`.
+    HRESULT presentFrame(const char** notPresented = nullptr);
+    /// A picture came the way `way` says (counted: pictures()); the first is kept (firstPicture).
+    void came(Way way, int width, int height);
+    /// The window tried to show the picture that came last, and Present said `result` (S_FALSE: not presented, `why`):
+    /// for the first picture, the log's line and the player's hook (onFirstPicture).
+    void tried(HRESULT result, const char* why = nullptr);
+    /// A Present put a picture of the app's on the screen: the first time, the log says so if the first picture's own did
+    /// not (`how`: which Present).
+    void shownNow(const char* how);
     /// After a Present that went: the counts, the frame sample, and every five seconds a line in the log. `direct`: the
     /// picture was drawn straight into the back buffer; else copied there, taking `copyTicks`.
     void afterPresent(bool direct, uint64_t copyTicks, uint64_t presentTicks);
@@ -160,7 +217,7 @@ private:
     // on a thread of its that swaps OpenGL ES frames (the core composes the
     // window then, and calls one at a time), but for showAgain, which is the
     // UI thread's. All of it under pixelsMutex_.
-    void showPixels(const void* pixels, int width, int height, int stride);
+    void showPixels(const void* pixels, int width, int height, int stride, Way way = Way::memory);
     void showPixelsPart(const void* pixels, int width, int height, int stride, int x, int y, int partWidth, int partHeight);
     bool makeOwnDevice(unsigned width, unsigned height);
     void showAgain();
@@ -197,6 +254,20 @@ private:
 
     std::atomic<int> surfaceWidth_, surfaceHeight_;
     std::atomic<uint32_t> presented_{0};
+
+    // The pictures as they came (came, tried, shownNow), and what the player and its line when none has come are told.
+    const uint64_t created_;                  // when this window was made (QueryPerformanceCounter)
+    std::atomic<uint32_t> pictures_{0};
+    std::atomic<bool> firstTried_{false}, shownOnce_{false};
+    std::mutex firstMutex_;                   // the two below
+    FirstPicture first_;
+    std::function<void()> firstHook_;
+    std::atomic<uint32_t> presentsFailed_{0};
+    std::atomic<HRESULT> lastFailure_{S_OK};
+    std::atomic<int> swapChainState_{0};      // 0 none made yet, 1 made, -1 the last try failed (problem_ says why)
+    std::string problem_;                     // under descriptionMutex_
+    /// The flag "fail-present" (WindowHost.cpp): Present is not called, and taken as failed.
+    bool failPresent_ = false;
     std::atomic<bool> samplingFrames_{false};
     std::mutex frameSampleMutex_;
     uint64_t frameSampleLast_ = 0;
@@ -209,8 +280,8 @@ private:
     std::wstring shotPath_;
     std::atomic<bool> shotWanted_{false};
 
-    /// Whose device it is, for the log: ANGLE's, or this class's own.
-    const char* deviceOwner_ = "ANGLE's";
+    /// Whose device it is, for the log: ANGLE's, or this class's own. (Read by state(), on the UI thread.)
+    std::atomic<const char*> deviceOwner_{"ANGLE's"};
     // A Java app's pictures. pixelsMutex_ guards the device context while
     // pictures are shown through it; a game never takes it.
     std::mutex pixelsMutex_;
