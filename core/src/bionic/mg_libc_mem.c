@@ -940,6 +940,94 @@ i32 mg_fd_pread(int fd, void *buf, u32 n, u64 offset);
 
 static bool rwx_on(void);
 
+/*
+ * Go's runtime on a 32-bit processor stakes out its heap's addresses as it starts (runtime/malloc.go, mallocinit): an arena
+ * of 512 MB, or of 256 or 128 where that is not to be had, each with 4 MB more to line it up (sysReserveAligned), all of
+ * it reserved with no access by a system call of its own (mmap2 by number), to keep its heap in one piece -- on Linux, where
+ * a 32-bit process has 3 GB. WhatsApp's libgojni.so (Psiphon's tunnel core, Go 1.26.5) took 516 MB so, then 260 in a run
+ * where 516 were not to be had, of a 2 GB process that ran out of addresses (the HP Elite x3, 0.1.0.671), for a heap of a
+ * few megabytes. On a 32-bit host such a reservation from a library of Go's (its build ID note, and the call's place in its
+ * code: mg_bionic_syscall_site) is refused with ENOMEM, which Go takes for none to be had: it then reserves nothing big,
+ * its heap growing 4 MB at a time at a hint past its library's image, or anywhere, lined up (mheap.sysAlloc). Every
+ * refusal is handled there, in the version WhatsApp has as in 1.27 (a nil from sysReserve: the next size, then none).
+ * What Go asks for so on a 64-bit host, and what any other code reserves (Chromium's, Unity's), is left as it is.
+ */
+#define GO_UP_FRONT (64u << 20)
+
+static mg_lock g_go_lock = MG_LOCK_INIT;
+static u32 g_go_refused;
+static u64 g_go_refused_bytes;
+
+void mg_mmap_go_refused(u32 *count, u64 *bytes)
+{
+    mg_lock_acquire(&g_go_lock);
+    if (count) *count = g_go_refused;
+    if (bytes) *bytes = g_go_refused_bytes;
+    mg_lock_release(&g_go_lock);
+}
+
+static bool go_up_front_refused(size_t len, int prot, int flags)
+{
+    static const mg_lib *said[8];
+    static u32 nsaid;
+    mg_addr site;
+    const mg_lib *lib;
+    u32 i;
+    bool first;
+    if (sizeof(void *) != 4 || len < GO_UP_FRONT || (prot & 7) || !(flags & G_MAP_ANONYMOUS) || (flags & (G_MAP_FIXED | G_MAP_SHARED))) return false;
+    site = mg_bionic_syscall_site();
+    lib = site ? mg_ld_lib_of((const void *)MG_CODE_ADDR(site)) : NULL;
+    if (!lib || !mg_ld_lib_is_go(lib)) return false;
+    /* (Said once for each library: its runtime asks again for less, and the sizes after the first say nothing new.) */
+    mg_lock_acquire(&g_go_lock);
+    g_go_refused++;
+    g_go_refused_bytes += len;
+    for (i = 0; i < nsaid && said[i] != lib; i++) {}
+    first = i == nsaid;
+    if (first && nsaid < MG_COUNT(said)) said[nsaid++] = lib;
+    mg_lock_release(&g_go_lock);
+    if (first)
+        mg_info("go: %s's runtime asked to reserve %u MB up front: refused on a 32-bit Windows, Go reserves as it grows", mg_ld_lib_name(lib),
+                (unsigned)(len >> 20));
+    return true;
+}
+
+/*
+ * And as its heap grows: 4 MB at a hint past what it has (mheap.sysAlloc), and where the hint is not followed, an arena's
+ * size and 4 MB more anywhere (sysReserveAligned(nil, ...)), of which it keeps the 4 MB lined up and gives the ends back --
+ * which stay reserved here until the rest goes, twice the addresses for every such arena. Such a reservation of Go's (by
+ * number from a library of Go's, with no access, a multiple of 4 MB) is made lined up on 4 MB, which Go takes for one it
+ * may use whole (`p&(align-1) == 0`): an arena of 8 MB, nothing given back.
+ */
+#define GO_ARENA (4u << 20)
+
+static bool go_lined_up(size_t len, int prot, int flags)
+{
+    mg_addr site;
+    if (sizeof(void *) != 4 || len < 2 * GO_ARENA || len >= GO_UP_FRONT || (len & (GO_ARENA - 1)) || (prot & 7) || !(flags & G_MAP_ANONYMOUS) ||
+        (flags & (G_MAP_FIXED | G_MAP_SHARED)))
+        return false;
+    site = mg_bionic_syscall_site();
+    return site && mg_ld_lib_is_go(mg_ld_lib_of((const void *)MG_CODE_ADDR(site)));
+}
+
+/* `size` reserved at an address lined up on `align`: anywhere first, to see where there is room, given back and reserved again lined up there. */
+static u8 *reserve_lined_up(size_t size, size_t align)
+{
+    int tries;
+    for (tries = 0; tries < 8; tries++) {
+        u8 *q = (u8 *)mg_mem_reserve(size + align), *p;
+        if (!q) return NULL;
+        mg_mem_release(q, size + align);
+        p = (u8 *)MG_ALIGN_UP((mg_addr)q, (mg_addr)align);
+        /* (Another thread may have taken it meanwhile: then again.) */
+        q = (u8 *)mg_mem_reserve_at(p, size);
+        if (q == p) return p;
+        if (q) mg_mem_release(q, size);
+    }
+    return NULL;
+}
+
 static void *g_mmap_common(void *addr, size_t len, int prot, int flags, int fd, u64 offset)
 {
     size_t size = MG_ALIGN_UP(len, MG_PAGE), reserve = MG_ALIGN_UP(len, 65536);
@@ -947,6 +1035,10 @@ static void *g_mmap_common(void *addr, size_t len, int prot, int flags, int fd, 
     u8 *p;
     if (!len) {
         mg_set_errno(GE_INVAL);
+        return G_MAP_FAILED;
+    }
+    if (go_up_front_refused(len, prot, flags)) {
+        mg_set_errno(GE_NOMEM);
         return G_MAP_FAILED;
     }
     if (!(flags & G_MAP_ANONYMOUS)) {
@@ -1044,6 +1136,7 @@ static void *g_mmap_common(void *addr, size_t len, int prot, int flags, int fd, 
          * suits its pool, and gave up with an out-of-memory crash when every answer was the same place, which it had banned.
          */
         p = addr && !((mg_addr)addr & 0xFFFF) ? (u8 *)mg_mem_reserve_at(addr, reserve) : NULL;
+        if (!p && !addr && go_lined_up(len, prot, flags)) p = reserve_lined_up(reserve, GO_ARENA);
         if (!p) p = (u8 *)mg_mem_reserve(reserve);
         /* (Anonymous and with no access, reserved alone: see the top.) */
         if (!p || (((prot & 7) || !(flags & G_MAP_ANONYMOUS)) && !mg_mem_commit(p, size, MG_PROT_RW))) {

@@ -244,6 +244,46 @@ is the same vector now, as the kernel's file has it (32-bit pairs up to
 `AT_NULL`, `mg_bionic_auxv_words`). Without it the runtime probed the page
 size with `mincore`, had no `AT_RANDOM`, and found no vDSO.
 
+**Go's heap's addresses.** On a 32-bit processor Go's runtime stakes out its
+heap as it starts (`runtime/malloc.go`, `mallocinit`): it reserves its arenas'
+metadata (0x242000 bytes in Go 1.26, the "~258 MB" of the source's comment
+being from before Go 1.22's allocation headers) and then an arena of 512 MB,
+or 256 where that is not to be had, or 128, each with 4 MB more to line it up
+(`sysReserveAligned`), all with no access and by number -- on Linux, where a
+32-bit process has 3 GB. WhatsApp's `libgojni.so` (Psiphon's tunnel core, Go
+1.26.5) took 516 MB of the HP Elite x3's 2 GB so in one run and 260 MB in
+another where 516 were not to be had ("1 of 528384 KB", "1 of 266240 KB" in
+the addresses' census), for a heap of a few megabytes, and the process ran
+out of addresses (0.1.0.671). On a 32-bit host -- the phone, Windows RT,
+desktop x86 -- a reservation of 64 MB or more with no access, anonymous,
+private and not at a fixed address, made by number from a library of Go's
+(its build ID note, and the call's place in its code:
+`mg_bionic_syscall_site`, which the led-out `svc` and x86's `int 0x80` set),
+is refused with `ENOMEM` (`go_up_front_refused`, `bionic/mg_libc_mem.c`),
+said once for each library ("go: libgojni.so's runtime asked to reserve 516
+MB up front: refused on a 32-bit Windows, Go reserves as it grows"). Go
+takes a refusal for none to be had: `sysReserve` gives nil, the next size is
+tried, then none, and the heap grows as it is used, 4 MB at a hint past its
+library's image (`mheap.sysAlloc`) or, the hint taken, an arena's size and 4
+MB more anywhere, of which Go keeps the part lined up on 4 MB and gives the
+ends back -- which stayed reserved here until the rest went, twice the
+addresses for every such arena. Such a reservation of Go's (by number, a
+multiple of 4 MB) is made lined up on a 32-bit host (`go_lined_up`), which
+Go takes for one it may use whole, nothing given back. That is so in
+the binary WhatsApp carries (its `mallocinit`, `sysReserveAligned` and
+`sysReserveOS` read from its `.gopclntab` and disassembled) and in Go 1.27's
+source. What Go asks for so on a 64-bit host, what the library's own C code
+maps through libc, and every other library's reservations (Chromium's,
+Unity's) are left as they are. A single object of Go's of 60 MB or more
+would be refused with them: Go's own heap then ends with "out of memory", as
+a 32-bit process with no such stretch free would. `t_go_reserve` (the guest
+library `libt_go.so`, `test_go_reserve`) makes `mallocinit`'s calls by
+number: refused with -12 on 32-bit ARM under qemu and on x86, granted on
+x86_64 and ARM64; its 4 MB at the hint, made readable and writable with
+`MAP_FIXED`, takes writes; 60 MB by number and 64 MB through libc are not
+refused; 8 MB asked anywhere by number comes lined up on 4 MB on a 32-bit
+host. `mg_mmap_go_refused` counts what was refused.
+
 **The vDSO.** Go's runtime reads its clocks (`nanotime`, `walltime`) through
 the vDSO's `__vdso_clock_gettime` (version `LINUX_2.6`) where the vector
 names one (`AT_SYSINFO_EHDR`), and otherwise by number. By number each reading
