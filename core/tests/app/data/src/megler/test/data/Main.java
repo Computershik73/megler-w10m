@@ -1650,6 +1650,8 @@ public class Main extends Activity {
         mediaMetadata();
         playbackState();
         remoteUserInfo();
+        mediaKeyController();
+        containerState();
         themeAccent();
         phoneApps();
         installs();
@@ -5352,6 +5354,104 @@ public class Main extends Activity {
      * controller registers its callback (Deezer ended at its start with an InstantiationError: the class was an empty
      * abstract one): what it was made of comes back, and two of the same are equal.
      */
+    /**
+     * A key of the phone's media controls reaches the active session's callback with who sent it there to be asked
+     * (getCurrentControllerInfo: the system, "android" with its uid), as Spotify asks it in onPause; outside of the callback
+     * the question throws, as on Android. (MediaSession.meglerMediaKey is what the player calls for the key: by reflection.)
+     */
+    private void mediaKeyController() {
+        step("media-key-controller", () -> {
+            android.os.HandlerThread ht = new android.os.HandlerThread("media keys");
+            ht.start();
+            final android.media.session.MediaSession session = new android.media.session.MediaSession(this, "media-key-controller");
+            final String[] seen = new String[1];
+            final java.util.concurrent.CountDownLatch paused = new java.util.concurrent.CountDownLatch(1);
+            session.setCallback(new android.media.session.MediaSession.Callback() {
+                @Override public void onPause() {
+                    try {
+                        android.media.session.MediaSessionManager.RemoteUserInfo u = session.getCurrentControllerInfo();
+                        seen[0] = u.getPackageName() + " uid " + u.getUid();
+                    } catch (RuntimeException e) {
+                        seen[0] = String.valueOf(e);
+                    }
+                    paused.countDown();
+                }
+            }, new android.os.Handler(ht.getLooper()));
+            session.setPlaybackState(new android.media.session.PlaybackState.Builder()
+                    .setState(android.media.session.PlaybackState.STATE_PLAYING, 0, 1f)
+                    .setActions(android.media.session.PlaybackState.ACTION_PAUSE | android.media.session.PlaybackState.ACTION_PLAY).build());
+            session.setActive(true);
+            boolean threw = false;
+            try { session.getCurrentControllerInfo(); } catch (IllegalStateException e) { threw = true; }
+            boolean taken = (Boolean) android.media.session.MediaSession.class.getMethod("meglerMediaKey", android.view.KeyEvent.class)
+                    .invoke(null, new android.view.KeyEvent(android.view.KeyEvent.ACTION_DOWN, android.view.KeyEvent.KEYCODE_MEDIA_PAUSE));
+            boolean called = paused.await(5, java.util.concurrent.TimeUnit.SECONDS);
+            // (The key's message done whole before the question is asked again: one posted after it.)
+            final java.util.concurrent.CountDownLatch drained = new java.util.concurrent.CountDownLatch(1);
+            new android.os.Handler(ht.getLooper()).post(drained::countDown);
+            drained.await(5, java.util.concurrent.TimeUnit.SECONDS);
+            boolean threwAfter = false;
+            try { session.getCurrentControllerInfo(); } catch (IllegalStateException e) { threwAfter = true; }
+            session.release();
+            ht.quit();
+            detail = "outside " + threw + ", key taken " + taken + ", onPause " + called + " saw " + seen[0] + ", after " + threwAfter;
+            return threw && taken && called && ("android uid " + android.os.Process.SYSTEM_UID).equals(seen[0]) && threwAfter;
+        });
+    }
+
+    /**
+     * A selector's constant state as Android's DrawableContainerState says it, as Spotify's SecondaryButtonView reads it: its
+     * children, the very drawables it draws (getChildren, getChild, getChildCount); a copy of it (newDrawable) of the same
+     * kind, with the same states and each child a copy of its own; a level list's and an animation's copies likewise.
+     */
+    private void containerState() {
+        step("container-state", () -> {
+            android.graphics.drawable.GradientDrawable pressed = new android.graphics.drawable.GradientDrawable();
+            pressed.setColor(0xFFFF0000);
+            android.graphics.drawable.GradientDrawable normal = new android.graphics.drawable.GradientDrawable();
+            normal.setColor(0xFF00FF00);
+            android.graphics.drawable.StateListDrawable s = new android.graphics.drawable.StateListDrawable();
+            s.addState(new int[] { android.R.attr.state_pressed }, pressed);
+            s.addState(new int[0], normal);
+            android.graphics.drawable.Drawable.ConstantState cs = s.getConstantState();
+            if (!(cs instanceof android.graphics.drawable.DrawableContainer.DrawableContainerState)) {
+                detail = "the selector's constant state is " + cs;
+                return false;
+            }
+            android.graphics.drawable.DrawableContainer.DrawableContainerState st = (android.graphics.drawable.DrawableContainer.DrawableContainerState) cs;
+            android.graphics.drawable.Drawable[] children = st.getChildren();
+            boolean live = children != null && children.length >= 2 && children[0] == pressed && children[1] == normal && st.getChildCount() == 2
+                    && st.getChild(1) == normal && st.canConstantState();
+            android.graphics.drawable.Drawable copy = cs.newDrawable();
+            boolean copied = false;
+            if (copy instanceof android.graphics.drawable.StateListDrawable && copy != s) {
+                copy.setState(new int[] { android.R.attr.state_pressed });
+                android.graphics.drawable.Drawable now = copy.getCurrent();
+                copy.setState(new int[0]);
+                android.graphics.drawable.Drawable rest = copy.getCurrent();
+                copied = now instanceof android.graphics.drawable.GradientDrawable && now != pressed && rest instanceof android.graphics.drawable.GradientDrawable
+                        && rest != normal && rest != now;
+            }
+            android.graphics.drawable.LevelListDrawable l = new android.graphics.drawable.LevelListDrawable();
+            android.graphics.drawable.ColorDrawable low = new android.graphics.drawable.ColorDrawable(0xFF0000FF), high = new android.graphics.drawable.ColorDrawable(0xFFFFFF00);
+            l.addLevel(0, 10, low);
+            l.addLevel(11, 20, high);
+            android.graphics.drawable.Drawable lc = l.getConstantState().newDrawable();
+            lc.setLevel(15);
+            boolean levels = lc instanceof android.graphics.drawable.LevelListDrawable && lc.getCurrent() instanceof android.graphics.drawable.ColorDrawable
+                    && ((android.graphics.drawable.ColorDrawable) lc.getCurrent()).getColor() == 0xFFFFFF00 && lc.getCurrent() != high;
+            android.graphics.drawable.AnimationDrawable a = new android.graphics.drawable.AnimationDrawable();
+            a.addFrame(new android.graphics.drawable.ColorDrawable(0xFF000001), 100);
+            a.addFrame(new android.graphics.drawable.ColorDrawable(0xFF000002), 200);
+            a.setOneShot(true);
+            android.graphics.drawable.Drawable ac = a.getConstantState().newDrawable();
+            boolean frames = ac instanceof android.graphics.drawable.AnimationDrawable && ((android.graphics.drawable.AnimationDrawable) ac).getNumberOfFrames() == 2
+                    && ((android.graphics.drawable.AnimationDrawable) ac).getDuration(1) == 200 && ((android.graphics.drawable.AnimationDrawable) ac).isOneShot();
+            detail = "children " + (children == null ? "null" : children.length) + " live " + live + ", copy " + copy + " " + copied + ", levels " + levels + ", frames " + frames;
+            return live && copied && levels && frames;
+        });
+    }
+
     private void remoteUserInfo() {
         step("remote-user-info", () -> {
             android.media.session.MediaSessionManager.RemoteUserInfo u = new android.media.session.MediaSessionManager.RemoteUserInfo("megler.test.data", 12, 10077);
