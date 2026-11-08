@@ -2720,7 +2720,7 @@ static int run_data(void)
                                             permitted (NetworkSecurityPolicy), a compatibility change's state for the app's target
                                             (CompatChanges), the WebView APK added to the app's resources as a shared library, and
                                             the cameras there are (none, as a device without one says). And Android 13's Safety
-                                            Center's class, whose service is null, as on a device without one. And an intent
+                                            Center's manager, there and saying it is off, as on a phone without one. And an intent
                                             written in XML, read as AndroidX's preferences read theirs (Intent.parseIntent). */
                                          "user-handle",
                                          "cleartext",
@@ -2757,6 +2757,15 @@ static int run_data(void)
                                          "location-request",
                                          /* And a provider's file through a ContentProviderClient, as Google Play services' DynamiteLoader reads its configuration. */
                                          "provider-client-file",
+                                         /* And a layout of layout, -v31 and -v33 inflated as the Settings library's main switch bar inflates its
+                                            own: the -v33 one Android 14 chooses, its frame there, with the dimensions and drawables of -v31 alone. */
+                                         "layout-api-level",
+                                         /* And Resources of the app's own over the implementation of the activity's (getImpl, setImpl, the hidden
+                                            Resources(ClassLoader)), as Tuya Smart's dynamic strings make them: alike in everything, a theme rebased. */
+                                         "resources-impl",
+                                         /* And the process's Application through ActivityThread's hidden fields, on a thread of the Application's
+                                            own while it is created, as Tuya Smart's library loader asks, and afterwards. */
+                                         "activity-thread-application",
                                          "audio-track", "media-player", "media-player-ogg", "sound-pool",
                                          /* And MediaCodec over the stand-in for the shell's decoders: H.264 shown on a Surface in display
                                             order, a flush, parameter sets in a codec-config buffer, the asynchronous mode, AAC with an

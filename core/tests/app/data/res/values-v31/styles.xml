@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Main's step "layout-api-level": the switch bar's title and switch styles, in values-v31 alone, as the Settings library's
+     MainSwitchText.Settingslib and Switch.SettingsLib are; and the frame's colours. -->
+<resources>
+    <style name="SwitchBarTitle" parent="@android:style/TextAppearance.DeviceDefault.Widget.ActionBar.Title.Inverse">
+        <item name="android:textSize">20sp</item>
+        <item name="android:textColor">#FF202124</item>
+    </style>
+    <style name="SwitchBarSwitch" parent="@android:style/Widget.Material.CompoundButton.Switch">
+        <item name="android:minHeight">48dp</item>
+        <item name="android:switchMinWidth">52dp</item>
+    </style>
+    <color name="switch_bar_on">#FFD3E3FD</color>
+    <color name="switch_bar_off">#FFE8EAED</color>
+    <color name="switch_bar_ripple">#33000000</color>
+</resources>

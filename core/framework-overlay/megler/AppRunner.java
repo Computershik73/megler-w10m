@@ -50,6 +50,11 @@
 // And Android's screens about the Bluetooth radio an app starts (BluetoothAdapter.ACTION_REQUEST_ENABLE, the Bluetooth
 // settings) are the phone's Bluetooth settings, the request's result RESULT_OK once the radio is on (megler.Bluetooth).
 //
+// And the Application, once made, is put in ActivityThread's fields (mInitialApplication, mAllApplications:
+// ActivityThread.meglerApplicationMade) before its providers and its onCreate, as Android's handleBindApplication puts it
+// there: code that reads them by reflection on another thread while the Application starts finds it (android/app/
+// ActivityThread.java says who).
+//
 // Everything else is the original's, unchanged.
 package megler;
 
@@ -147,6 +152,8 @@ public final class AppRunner {
         try { app = sFactory.instantiateApplication(classLoader(), appCls != null ? appCls : Application.class.getName()); }
         catch (ClassNotFoundException e) { android.util.Log.w("Megler", "no application class " + appCls); app = new Application(); }
         sApp = app;
+        // (The process's from now on, for code that asks ActivityThread by reflection, its fields as well as its methods.)
+        android.app.ActivityThread.meglerApplicationMade(app);
         Application.meglerSet(app);
         ContextImpl.setApplication(app);
         app.meglerAttach(base);

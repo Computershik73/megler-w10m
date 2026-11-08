@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Main's step "layout-api-level": the switch bar's sizes as the Settings library keeps them, in values-v31 alone (but for the
+     title's margin, which values has too). -->
+<resources>
+    <dimen name="switch_bar_margin">16dp</dimen>
+    <dimen name="switch_bar_min_height">72dp</dimen>
+    <dimen name="switch_bar_padding">20dp</dimen>
+    <dimen name="switch_bar_radius">28dp</dimen>
+    <dimen name="switch_title_margin">16dp</dimen>
+</resources>

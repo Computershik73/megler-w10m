@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Main's step "layout-api-level": the switch bar as the Settings library has it from Android 12 on: the title and the switch
+     in a frame (id/frame) whose background (drawable-v31) is enabled and activated with the switch, and whose sizes are
+     dimensions of values-v31 alone. -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:paddingTop="@dimen/switch_bar_margin"
+    android:paddingBottom="@dimen/switch_bar_margin"
+    android:paddingStart="?android:attr/listPreferredItemPaddingStart"
+    android:paddingEnd="?android:attr/listPreferredItemPaddingEnd">
+
+    <LinearLayout
+        android:id="@+id/frame"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:minHeight="@dimen/switch_bar_min_height"
+        android:paddingStart="@dimen/switch_bar_padding"
+        android:paddingEnd="@dimen/switch_bar_padding"
+        android:background="@drawable/switch_bar_bg">
+
+        <TextView
+            android:id="@+id/switch_text"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:layout_gravity="center_vertical"
+            android:layout_marginEnd="@dimen/switch_title_margin"
+            android:maxLines="2"
+            android:ellipsize="end"
+            android:textAppearance="?android:attr/textAppearanceListItem"
+            style="@style/SwitchBarTitle" />
+
+        <Switch
+            android:id="@android:id/switch_widget"
+            android:layout_width="wrap_content"
+            android:layout_height="48dp"
+            android:layout_gravity="center_vertical"
+            android:focusable="false"
+            android:clickable="false"
+            android:theme="@style/SwitchBarSwitch" />
+    </LinearLayout>
+</LinearLayout>

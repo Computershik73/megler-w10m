@@ -3230,7 +3230,8 @@ framework here. The contract is in `megler.h` (`megler_display_host`,
 - **The configuration.** `megler.Screen` (new) does with the event what
   `ActivityThread` does with a new configuration. Every `Resources` of the
   app's (the app's, the system's, those of configuration contexts and of the
-  packages it hosts: `Resources.sAll`) takes the screen's orientation,
+  packages it hosts: each implementation of them once, `ResourcesImpl.sAll`,
+  as Android's `ResourcesManager` updates every `ResourcesImpl`) takes the screen's orientation,
   `screenWidthDp`, `screenHeightDp`, `smallestScreenWidthDp`, `screenLayout`
   and `densityDpi`, and `DisplayMetrics` the new size; the rest of their
   configuration stays, an app's own locale with it. The Application, the
@@ -5559,7 +5560,21 @@ on a looper thread of its own and takes it back with `next()`.
   (`control_checkable_material` asks the theme, the `-v31` theme answers with
   a colour that refers to it). Choosing as a phone with Android 9 chooses is
   the only choice that fits the resources that are there. The constant must
-  follow the Android root.
+  follow the Android root. But an app's layouts, menus and XML documents are
+  chosen for 34 (`ResTable.find`, `REPORTED_TYPES`): the app's code, told 34,
+  finds by id the views of the layout Android 14 chooses. Android's Settings
+  library keeps its main switch bar in `layout`, `layout-v31` and `layout-v33`,
+  and only the last two have a frame round the title and the switch, which
+  `MainSwitchBar.setEnabled` sets enabled and activated once `SDK_INT` is 31:
+  chosen at 28 the layout had no frame, and Google Play services' Location
+  accuracy screen ended on a `NullPointerException` there (0.1.0.673). Of the
+  platform's resources that the layouts, menus and XML of API 29 to 34 in
+  Google Play services, Maps, Files, Niagara and Device Info name, every one
+  is a public resource of Android 9's. And a resource of the app's that has no
+  choice of 28 at all is taken from up to 34, whatever its type (it was done
+  for fonts, styles and colours alone): such a layout names dimensions and
+  drawables of `values-v31` and `drawable-v31` alone. The data app's step
+  "layout-api-level" inflates such a layout as `MainSwitchBar` does.
 - `android/content/res/Resources.java`, besides: a theme attribute whose
   value names an attribute that names another with no end -- a style's item
   that names itself, as Android's `TextAppearance` does with
@@ -5578,7 +5593,8 @@ on a looper thread of its own and takes it back with `next()`.
   Android's: the value's asset cookie in the high word, its data (for a file,
   the string's index in the pool) in the low. Nothing is preloaded, so they
   start empty, but apps fill them by reflection, taking the field from
-  `Resources` where there is no `ResourcesImpl`, as here. Instagram 333 swaps
+  `ResourcesImpl` (from `Resources` where there is none, as there was here
+  until `ResourcesImpl` below; the fields are its now). Instagram 333 swaps
   each array element for a `LongSparseArray` of its own that answers its
   vector icons, whose values (`"I1801B8"`) name no file. Without the field it
   logged "Could not enable custom drawable support" and its main activity's
@@ -5586,6 +5602,26 @@ on a looper thread of its own and takes it back with `next()`.
   "preloaded-drawables" does as Instagram does with a platform drawable's key,
   gets its own drawable for it, and the file's again once the element is put
   back.
+- `android/content/res/ResourcesImpl.java` (a class the framework did not
+  have), `Resources.java` and `android/view/DisplayAdjustments.java` (another):
+  what a `Resources` is made of -- its `AssetManager`, configuration and
+  metrics and the configuration its resources are chosen for, the app
+  package's table, its loaders, the drawables, colours, fonts and bags made
+  of them -- is a `ResourcesImpl` of its own, as on Android 7 and later, in
+  Android's field `mResourcesImpl`; the hidden `getImpl()` gives it,
+  `setImpl(ResourcesImpl)` gives `Resources` another (the themes they made
+  are rebased onto it: `Theme.rebase` applies their styles again, where it
+  did nothing), and the hidden constructor `Resources(ClassLoader)` makes
+  `Resources` with none until then. Libraries make `Resources` of their own
+  over the platform's so, by reflection, to answer some lookups themselves:
+  Tuya Smart's dynamic strings for every activity
+  (`DynamicResourceContextThemeWrapper.getResources`), and the app ended at
+  its first activity on `NoSuchMethodException: getImpl []` (0.1.0.673).
+  The screen's changes now reach each implementation once
+  (`ResourcesImpl.meglerScreenChanged`), as Android's `ResourcesManager`
+  applies a configuration to every `ResourcesImpl`. The data app's step
+  "resources-impl" makes such `Resources` as Tuya does, and one of the
+  public constructor that answers a string itself, and finds them alike.
 - `android/graphics/drawable/RippleDrawable.java` and `megler/ResInflate.java`,
   a method and a statement: a ripple inflated from XML is told that it has a
   mask. Android's commonest ripple is nothing but a mask (the background of
@@ -5892,6 +5928,23 @@ on a looper thread of its own and takes it back with `next()`.
   (there, of another type) and `ColorSpace.Named.OK_LAB` (Android 16) as the
   fields it names and the framework lacks. The data app's step "tasks" reads
   its own task so.
+
+- `android/app/ActivityThread.java` and `megler/AppRunner.java`: Android's
+  hidden fields that hold the process's `ActivityThread` and `Application`,
+  `sCurrentActivityThread`, `mInitialApplication` and `mAllApplications`,
+  which code with no `Context` reads by reflection as well as the methods.
+  `AppRunner` puts the Application in them as soon as it has made it
+  (`ActivityThread.meglerApplicationMade`), before its providers and its
+  `onCreate`, as Android's `handleBindApplication` and
+  `LoadedApk.makeApplication` put it; `currentApplication()` and
+  `getApplication()` answer from `mInitialApplication`, as Android's do.
+  Tuya Smart's library loader (`ThingLibraryLoader.getContext`) reads
+  `currentActivityThread()`'s `mInitialApplication` on a worker thread while
+  the Application starts: there was no such field (`NoSuchFieldException`
+  in its log), it had no `Context`, and the thread ended on "context is
+  null" (0.1.0.673). The data app's Application (`DataApplication`) asks so
+  on a thread of its own in its `onCreate`, and the step
+  "activity-thread-application" checks what it found and every other way.
 
 - `android/app/DialogFragment.java`, in place of the generated stub, whose
   `show()` did nothing: `onCreateDialog` was never called and `getDialog()`

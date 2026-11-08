@@ -1,15 +1,39 @@
 // Overlay of core/framework/src/android/app/ActivityThread.java (tools/build-framework.sh). It differs in
 // currentProcessName, which is the process of the code that asks, as Application.getProcessName (overlaid) says why.
+// And in Android's hidden fields that hold the process's ActivityThread and Application, which apps read by reflection as
+// well as the methods: sCurrentActivityThread, mInitialApplication and mAllApplications. The Application is put in them as
+// soon as megler.AppRunner has made it -- before its content providers and its onCreate, as Android's handleBindApplication
+// and LoadedApk.makeApplication put it -- and currentApplication and getApplication answer from mInitialApplication, as
+// Android's do. Tuya Smart's library loader (ThingLibraryLoader.getContext) takes its Context from
+// currentActivityThread()'s mInitialApplication, on a worker thread while the Application starts: the field was not there
+// (NoSuchFieldException), it had no Context, and the thread ended with "context is null" (0.1.0.673).
 // Everything else is the original's, unchanged.
 package android.app;
 
 /** The hidden ActivityThread apps reach by reflection for the process's Application (ActivityThread.currentApplication() and
  *  friends): one per process, answering from what AppRunner set up. */
 public final class ActivityThread {
-    private static final ActivityThread sCurrent = new ActivityThread();
+    /** Android's: the process's ActivityThread, which apps read as a field too (currentActivityThread gives it). */
+    private static volatile ActivityThread sCurrentActivityThread = new ActivityThread();
+    /** Android's: the process's Application, from the moment it is made (meglerApplicationMade), as Android sets it. */
+    Application mInitialApplication;
+    /** Android's: the Applications made in the process. */
+    final java.util.ArrayList<Application> mAllApplications = new java.util.ArrayList<>();
 
-    public static ActivityThread currentActivityThread() { return sCurrent; }
-    public static Application currentApplication() { return megler.AppRunner.application(); }
+    public static ActivityThread currentActivityThread() { return sCurrentActivityThread; }
+    public static Application currentApplication() { ActivityThread t = sCurrentActivityThread; return t != null ? t.mInitialApplication : null; }
+    /**
+     * Megler: the process's Application has been made (megler.AppRunner, before it is attached, its providers installed and its
+     * onCreate called): it is the process's from now on, as LoadedApk.makeApplication adds it to mAllApplications and
+     * handleBindApplication sets mInitialApplication before the providers and onCreate.
+     */
+    public static void meglerApplicationMade(Application app) {
+        ActivityThread t = sCurrentActivityThread;
+        synchronized (t.mAllApplications) {
+            if (!t.mAllApplications.contains(app)) t.mAllApplications.add(app);
+        }
+        t.mInitialApplication = app;
+    }
     public static String currentPackageName() { Application a = currentApplication(); return a != null ? a.getPackageName() : null; }
     public static String currentOpPackageName() { return currentPackageName(); }
     /* As Application.getProcessName (overlaid): the process of the code that asks, a class scope's for code of one. */
@@ -19,7 +43,7 @@ public final class ActivityThread {
     }
     public static boolean isSystem() { return false; }
 
-    public Application getApplication() { return currentApplication(); }
+    public Application getApplication() { return mInitialApplication; }
     public String getProcessName() { return currentProcessName(); }
     public android.content.Context getSystemContext() { return currentApplication(); }
     public android.os.Looper getLooper() { return android.os.Looper.getMainLooper(); }

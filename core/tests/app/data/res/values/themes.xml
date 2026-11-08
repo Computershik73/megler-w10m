@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Main's step "resources-impl": a style of values and of values-night, by which a theme tells which configuration's
+     resources it was made of (rebased onto another implementation, it is made of that one's). -->
+<resources>
+    <style name="ProbeTheme">
+        <item name="android:colorForeground">#FF111111</item>
+    </style>
+</resources>
