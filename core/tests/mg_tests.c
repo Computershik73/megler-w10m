@@ -2991,6 +2991,40 @@ typedef struct proxy_caller {
     proxied *p;
 } proxy_caller;
 
+/* What the main looper's thread found (test_proxies, at its end): its native looper, a descriptor watched on it, its callback's calls. */
+typedef struct ui_looper_probe {
+    int fd;
+    void *looper;
+    volatile i32 watched, added, called;
+    u32 thread, called_thread;
+} ui_looper_probe;
+
+/* ALooper's callback: the descriptor read, once; 0 takes it off the looper. */
+static int ui_looper_ready(int fd, int events, void *data)
+{
+    ui_looper_probe *p = (ui_looper_probe *)data;
+    u64 v;
+    (void)events;
+    mg_fd_read(fd, &v, 8);
+    p->called_thread = mg_thread_self_id();
+    mg_atomic_add(&p->called, 1);
+    return 0;
+}
+
+/* On the main looper's thread: its looper, and the descriptor watched on it, as native code that loads there does. */
+static void ui_looper_watch(void *arg)
+{
+    typedef void *(*for_thread_fn)(void);
+    typedef int (*add_fd_fn)(void *, int, int, int, void *, void *);
+    ui_looper_probe *p = (ui_looper_probe *)arg;
+    for_thread_fn for_thread = (for_thread_fn)mg_bionic_find("ALooper_forThread");
+    add_fd_fn add_fd = (add_fd_fn)mg_bionic_find("ALooper_addFd");
+    p->thread = mg_thread_self_id();
+    p->looper = for_thread ? for_thread() : NULL;
+    if (p->looper && add_fd) p->added = add_fd(p->looper, p->fd, 0, 1 /* ALOOPER_EVENT_INPUT */, (void *)ui_looper_ready, p);
+    mg_atomic_xchg(&p->watched, 1);
+}
+
 static MG_HOSTCB void proxy_caller_thread(void *arg)
 {
     proxy_caller *c = (proxy_caller *)arg;
@@ -3105,6 +3139,33 @@ static void test_proxies(void)
             a[0].l = proxy;
             ((jni_void_a_fn)table[JNI_STATIC_VOID_A])(env, cls, off_id, a);
         }
+    }
+
+    /*
+     * The main thread's native looper (mg_jni_loop.c, looper_thread): ALooper_forThread there gives one, as on Android's UI
+     * thread, where Unity's engine takes it as it loads, and a descriptor watched on it with a callback has the callback run
+     * on that thread once it is ready -- and only then.
+     */
+    say("the main looper's thread: a native looper, whose descriptors' callbacks it runs");
+    {
+        ui_looper_probe probe;
+        u64 one = 1;
+        memset(&probe, 0, sizeof(probe));
+        probe.fd = mg_fd_eventfd(0, 04000);
+        CHECK(probe.fd >= 0);
+        mg_jni_loop_call(NULL, ui_looper_watch, &probe);
+        for (waited = 0; waited < 1000 && !probe.watched; waited++) mg_sleep_ns(2000000ull);
+        CHECK(probe.watched && probe.looper != NULL && probe.added == 1);
+        mg_sleep_ns(30000000ull);
+        CHECK_INT(probe.called, 0);
+        mg_fd_write(probe.fd, &one, 8);
+        for (waited = 0; waited < 1000 && !probe.called; waited++) mg_sleep_ns(2000000ull);
+        CHECK_INT(probe.called, 1);
+        CHECK(probe.called_thread == probe.thread && probe.thread != mg_thread_self_id());
+        say("  looper %p on the main thread %u; the callback ran %d times, on thread %u", probe.looper, (unsigned)probe.thread, (int)probe.called,
+            (unsigned)probe.called_thread);
+        mg_sleep_ns(30000000ull);
+        if (probe.fd >= 0) mg_fd_close(probe.fd);
     }
 }
 
