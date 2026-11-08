@@ -385,6 +385,48 @@ long t_svc64_fallback(void)
     return r ? 10 + r : 0;
 }
 
+/*
+ * t_svc64_ctr: CTR_EL0, the cache's type, which the loader makes a constant's (Windows refuses the read in user mode;
+ * arm64/mg_patch_arm64.c, MG_ARM64_CTR_EL0). t_svc64_flush(p, n): the WebView's V8's flush of what it compiled
+ * (CpuFeatures::FlushICache), with its two reads of CTR_EL0 -- one into x8, one into xzr -- and the lines each says:
+ * DC CIVAC over the data cache's lines of [p, p + n), DSB, IC IVAU over the instruction cache's, DSB, ISB; the steps of
+ * both, in bytes, in the high and low halves of what it gives.
+ */
+__attribute__((naked)) t_u64 t_svc64_ctr(void)
+{
+    __asm__ volatile("mrs x0, ctr_el0\n  ret\n");
+}
+
+__attribute__((naked)) t_u64 t_svc64_flush(void *p, long n)
+{
+    __asm__ volatile("mrs xzr, ctr_el0\n"
+                     "  mrs x8, ctr_el0\n"
+                     "  ubfx w9, w8, #16, #4\n"
+                     "  mov w10, #4\n"
+                     "  and w8, w8, #0xf\n"
+                     "  add x12, x0, x1\n"
+                     "  lsl w9, w10, w9\n"
+                     "  lsl w8, w10, w8\n"
+                     "  neg x10, x9\n"
+                     "  neg x11, x8\n"
+                     "  and x10, x10, x0\n"
+                     "  and x11, x11, x0\n"
+                     "1: dc civac, x10\n"
+                     "  add x10, x10, x9\n"
+                     "  cmp x10, x12\n"
+                     "  b.lt 1b\n"
+                     "  dsb ish\n"
+                     "2: ic ivau, x11\n"
+                     "  add x11, x11, x8\n"
+                     "  cmp x11, x12\n"
+                     "  b.lt 2b\n"
+                     "  dsb ish\n"
+                     "  isb\n"
+                     "  lsl x0, x9, #32\n"
+                     "  orr x0, x0, x8\n"
+                     "  ret\n");
+}
+
 #else
 #error "t_svc.c: armeabi-v7a and arm64-v8a only"
 #endif

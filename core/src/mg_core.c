@@ -290,6 +290,16 @@ static MG_HOSTCB bool on_fault(mg_fault *f)
             mg_fault_resume_at(f, target);
             return true;
         }
+        /*
+         * A read of CTR_EL0, the cache's type, or cache maintenance by address (DC CVAU, CVAC, CIVAC; IC IVAU), which Linux
+         * lets user code run and Windows refuses in user mode: done here, and the thread on after it. The loader makes each
+         * read of CTR_EL0 it finds a constant's (arm64/mg_patch_arm64.c); this answers code made at run time, and the
+         * maintenance, should Windows refuse that too.
+         */
+        if (f->kind == MG_FAULT_ILLEGAL && mg_patch_sys_fault(pc, f->regs)) {
+            mg_fault_resume_at(f, pc + 4);
+            return true;
+        }
 #endif
         if (f->kind == MG_FAULT_BREAKPOINT) return false;
         if (mg_ld_plt_target(pc, &target) || mg_stubs_once_target(pc, &target)) {

@@ -132,8 +132,9 @@ static int load_mode(int argc, char **argv)
         last = lib;
         mg_ld_get_stats(lib, &st);
         printf("%s: %u Thumb, %u ARM functions; %u unresolved; %u thread-pointer reads (%u failed), %u accesses through a register "
-               "led out, %u PLT entries, %u direct system calls (%u led out), %u writes of x18\n", argv[i], st.thumb_functions, st.arm_functions,
-               st.unresolved, st.tp_reads, st.tp_reads_failed, st.tp_led_out, st.plt_entries, st.svc_sites, st.svc_led_out, st.x18_writes);
+               "led out, %u PLT entries, %u direct system calls (%u led out), %u writes of x18, %u reads of CTR_EL0\n", argv[i], st.thumb_functions,
+               st.arm_functions, st.unresolved, st.tp_reads, st.tp_reads_failed, st.tp_led_out, st.plt_entries, st.svc_sites, st.svc_led_out,
+               st.x18_writes, st.ctr_reads);
         fn = mg_ld_sym(lib, "OpenSSL_version");
         if (fn) printf("  OpenSSL_version(0): %s\n", MG_GFN(const char *(*)(int), fn)(0));
         fn = mg_ld_sym(lib, "SHA256");

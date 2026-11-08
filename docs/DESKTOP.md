@@ -342,6 +342,42 @@ stripped), and `ldp x18, x19, [x0, #0x90]` in LLVM libunwind's
 saved (x18 then gets back the thread's own value). The other three roots hold
 no ARM64 code.
 
+### ARM64's cache type and cache maintenance
+
+Linux lets user code read CTR_EL0, the cache's type (`SCTLR_EL1.UCT`), and
+make cache maintenance by address (`UCI`: `DC CVAU`, `DC CIVAC`, `IC IVAU`);
+code that makes code reads the one for the line sizes the other steps by. The
+WebView's V8 does at every flush of what it compiled
+(`CpuFeatures::FlushICache`: `mrs x8, ctr_el0`, `DC CIVAC` over the data
+cache's lines, `IC IVAU` over the instruction cache's), compiler-rt's
+`__clear_cache` once. Windows refuses the read in user mode -- an illegal
+instruction (0xC000001D) -- and 0.1.0.673's Telegram ended as its reCAPTCHA's
+page started on a Snapdragon X Elite (GitHub issue 4: `libwebviewchromium.so
++0x3cf9460`, V8's `mrs x8, ctr_el0`); Google Play services' DroidGuard faulted
+likewise at every start of its VM.
+
+The loader makes each `mrs xN, ctr_el0` of a library's code a branch to a
+piece of its island that puts `MG_ARM64_CTR_EL0` in xN (`movz`, `movk`) and
+comes back (`arm64/mg_patch_arm64.c`; `ld: <library>: N reads of CTR_EL0
+... made an ARMv8 core's value`). The value is 0x8444C004: 64-byte lines of
+both caches, as every ARMv8 core Windows runs on has (a step smaller than the
+real line would only make more of the maintenance), neither cache coherent of
+itself (IDC, DIC clear), so the maintenance is made by address as on a phone.
+Whether Windows lets user code make it is not known here (no ARM64 Windows
+machine; Windows' own code calls `FlushInstructionCache`, which V8 and
+compiler-rt do on Windows too). Where it does not, and for a read of CTR_EL0
+in code made at run time, the fault handler does what the instruction would
+(`mg_patch_sys_fault`, said once of each kind: `arm64: ... is refused by
+Windows in user mode ...: done here`): the read gives the same value, a data
+cache's clean is nothing to do (no device reads the memory past the caches,
+and the invalidation that follows it is made whole), and `IC IVAU` is
+`FlushInstructionCache` over the line, which cleans the data cache's lines of
+it first. `DC ZVA` zeroes memory and is not among them: `DCZID_EL0`, which
+user code reads anywhere, says whether it may be used. The test library
+`libt_svc.so` reads CTR_EL0 three ways and makes V8's flush itself
+(`t_svc64_ctr`, `t_svc64_flush`); `mg_tests` checks the reads made constant
+and what the fault handler does for each instruction it answers.
+
 ### Where the two sides meet on x86
 
 Android's x86 ABI aligns a 64-bit field at 4 bytes, MSVC's x86 at 8:

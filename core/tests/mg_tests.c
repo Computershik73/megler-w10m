@@ -3803,6 +3803,33 @@ static void test_guest(const char *libdir, const char *scratch)
                 mg_ld_get_stats(basic, &b);
                 CHECK_INT(b.x18_writes, 0);
             }
+            /*
+             * The reads of CTR_EL0, the cache's type, which Windows refuses in user mode (Telegram's WebView ended on V8's,
+             * GitHub issue 4): t_svc64_ctr's and t_svc64_flush's two (one into xzr) made MG_ARM64_CTR_EL0's, and the flush
+             * steps by the 64-byte lines it says. And what the fault handler does for one it finds (mg_patch_sys_emulate):
+             * the read, the data cache's cleans and the instruction cache's invalidation by address, nothing else.
+             */
+            CHECK_INT(st.ctr_reads, 3);
+            CHECK(FN(svc, u64 (*)(void), "t_svc64_ctr")() == MG_ARM64_CTR_EL0);
+            {
+                static u8 code[300];
+                CHECK(FN(svc, u64 (*)(void *, long), "t_svc64_flush")(code + 7, 250) == ((u64)64 << 32 | 64));
+            }
+            {
+                mg_addr regs[33];
+                static u8 line[128];
+                memset(regs, 0, sizeof(regs));
+                regs[3] = (mg_addr)(line + 70);
+                CHECK(mg_patch_sys_emulate(0xD53B0020u | 5u, regs) && regs[5] == MG_ARM64_CTR_EL0);          /* mrs x5, ctr_el0 */
+                CHECK(mg_patch_sys_emulate(0xD53B0020u | 31u, regs));                                        /* mrs xzr, ctr_el0 */
+                CHECK(mg_patch_sys_emulate(0xD50B7E20u | 3u, regs) && mg_patch_sys_emulate(0xD50B7B20u | 3u, regs) &&
+                      mg_patch_sys_emulate(0xD50B7A20u | 3u, regs));                                         /* dc civac, cvau, cvac */
+                CHECK(mg_patch_sys_emulate(0xD50B7520u | 3u, regs) && regs[3] == (mg_addr)(line + 70));      /* ic ivau, x3 */
+                CHECK(!mg_patch_sys_emulate(0xD50B7420u | 3u, regs));                                        /* dc zva: memory zeroed, not this */
+                CHECK(!mg_patch_sys_emulate(0xD5380000u | 1u, regs) && regs[1] == 0);                        /* mrs x1, midr_el1 */
+                CHECK(!mg_patch_sys_emulate(0xD53BD040u | 1u, regs));                                        /* mrs x1, tpidr_el0 */
+                CHECK(!mg_patch_sys_emulate(0xD503201Fu, regs));                                             /* nop */
+            }
             *mg_errno_ptr() = 123;
             mg_core_svc_calls(&made0, &on0);
             CHECK_INT(FN(svc, long (*)(void), "t_svc64_results")(), 0);
