@@ -8,3 +8,8 @@
 # (art/runtime/mirror/array.cc); an index out of bounds with the array's length beside it
 # (art/runtime/common_throws.cc) where the JVM gives the index alone.
 lib_exceptions=java.lang.ArithmeticException:divide by zero java.lang.NullPointerException java.lang.NegativeArraySizeException:Dimension 2: -1 java.lang.ArrayIndexOutOfBoundsException:length=5; index=5 java.lang.ClassCastException java.lang.StringIndexOutOfBoundsException For input string: "12x" java.io.IOException: made|cause|d8t.Lib.lib_exceptions no.such.ClassArrayList[Ijava.util.AbstractList0(3,4)8truetrue
+
+# The ECDHE group the TLS server chose. The JVM's TLS (Java 8's SunJSSE) has no X25519 and takes secp256r1, whose
+# share is a point of 65 bytes; Android's is conscrypt's over BoringSSL, whose client and server both put X25519 first
+# (a share of 32 bytes). The rest is the same: AES-GCM's answer, TLS 1.2, ECDHE_ECDSA with AES-128-GCM, a line each way.
+lib_tls=76 5bc94fbc3221a5db94fae95ae7121a47 truetrue AEADBadTagException TLSv1.2 TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256 true ping pong x25519(32) true
