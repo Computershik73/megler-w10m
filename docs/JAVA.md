@@ -3516,6 +3516,21 @@ with a keyboard over 500 of the 800 rows:
 
 Once the keyboard is put away, each dialog is back where it was.
 
+**From one field to the next.** An app that moves the focus to another field
+often puts the keyboard away for the one it leaves and asks for it again for
+the next at once (React Native's text inputs do), or the next field is of
+another kind, for which the shell leaves the text service's focus and takes
+it again. Windows tells of the keyboard's going only after the asking, and
+the shell took that for the user's putting it away: the app was told the
+keyboard was gone, and the keyboard's coming back was put away again "though
+the app had not asked for it" -- Discord's password field, after its e-mail
+field, never had a keyboard (0.1.0.573). A going Windows tells of within 0.7 s
+of the shell's own (`ownHide_`, `ui/PlayerScreen.cpp`), while the app wants
+the keyboard, is now taken for that: the keyboard is shown again for the field
+that asked, and the log says so once ("player: the keyboard went as the app
+moved from one field to another, and comes back for the field that asked for
+it"). Not tried on a phone yet.
+
 **The keyboard's coming and going is an inset animation** of
 `WindowInsets.Type.ime()`, run through the views' callbacks
 (`View.setWindowInsetsAnimationCallback`) as Android 11's `InsetsController`
