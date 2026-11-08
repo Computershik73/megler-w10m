@@ -11,6 +11,7 @@
 #endif
 #include "shell/Files.h"
 #include "shell/PickedFile.h"
+#include "shell/Placement.h"
 #include "shell/Platform.h"
 #include "shell/ShellLog.h"
 #include "shell/Strings.h"
@@ -113,6 +114,98 @@ std::string oneLine(std::string s) {
     for (char& c : s)
         if (c == '\r' || c == '\n') c = ' ';
     return s;
+}
+
+/*
+ * The package volume Megler's own package is installed on, which every package Megler installs goes to (installWithPackageManager):
+ * the phone's memory, or the memory card where Settings › System › Storage saves new apps there or Megler was moved there.
+ * Windows puts a package where its user saves new apps unless it is told a volume, and an app's package on another storage
+ * than Megler's gets that storage's publisher cache folder, or none: it found neither Android's files nor its APK there, and
+ * Megler, the other way round, none of the APKs it hands over (docs/PER-APP-PACKAGES.md, "A memory card"). Asked of Windows's
+ * package manager at each install (FindPackageVolumes, GetPackageVolumesAsync where that will not answer), the volume being
+ * the one whose store path holds Megler's install folder (placement::volumeHolding). Null where neither answers or no volume
+ * holds it: the package then goes where Windows puts new apps, as before. The log says which, the first time and whenever
+ * it is another.
+ */
+winrt::Windows::Management::Deployment::PackageVolume installVolume() {
+    using namespace winrt::Windows::Management::Deployment;
+    static std::mutex mutex;
+    static std::string said;  // the last said
+    std::vector<PackageVolume> volumes;
+    std::string why;
+    try {
+        for (auto const& volume : PackageManager().FindPackageVolumes()) volumes.push_back(volume);
+    } catch (hresult_error const& e) {
+        why = format("FindPackageVolumes: 0x%08x", unsigned(e.code()));
+        try {
+            for (auto const& volume : PackageManager().GetPackageVolumesAsync().get()) volumes.push_back(volume);
+        } catch (hresult_error const& again) {
+            why += format("; GetPackageVolumesAsync: 0x%08x", unsigned(again.code()));
+        }
+    }
+    std::vector<placement::Volume> places;
+    for (auto const& volume : volumes) {
+        placement::Volume place;
+        try {
+            place.name = volume.Name();
+            place.storePath = volume.PackageStorePath();
+            place.mountPoint = volume.MountPoint();
+        } catch (hresult_error const&) {
+        }
+        places.push_back(place);
+    }
+    const std::wstring install = platform::installDirectory();
+    const int at = placement::volumeHolding(places, install, placement::volumeOf(install));
+    std::string line;
+    if (at >= 0) {
+        bool system = false;
+        try {
+            system = volumes[at].IsSystemVolume();
+        } catch (hresult_error const&) {
+        }
+        line = "app package: packages are installed on Megler's own volume, " + narrow(places[at].storePath) + " (mounted at " +
+               narrow(places[at].mountPoint) + ", " + narrow(places[at].name) +
+               (system ? ", the system's)" : ", not the system's: a memory card or another drive)");
+    } else {
+        std::string listed;
+        for (const auto& place : places) listed += (listed.empty() ? "" : ", ") + narrow(place.storePath);
+        line = volumes.empty() ? "app package: Windows did not list its package volumes (" + why + "): packages go where Windows puts new apps"
+                               : "app package: none of the package volumes (" + listed + ") holds Megler's install folder " + narrow(install) +
+                                     ": packages go where Windows puts new apps";
+    }
+    {
+        std::lock_guard<std::mutex> lock(mutex);
+        if (line != said) {
+            said = line;
+            shellLog::write(line);
+        }
+    }
+    return at >= 0 ? volumes[at] : nullptr;
+}
+
+/*
+ * AddPackageAsync onto `volume` (installVolume), or as before where there is none. Where Windows has not that call or will not
+ * take a volume with it (E_NOINTERFACE, E_NOTIMPL or E_INVALIDARG thrown), as before too, said once; whatever else it throws
+ * or answers is the caller's, as it was.
+ */
+winrt::Windows::Management::Deployment::DeploymentResult addPackage(winrt::Windows::Management::Deployment::PackageManager const& manager,
+                                                                    winrt::Windows::Foundation::Uri const& package,
+                                                                    winrt::Windows::Management::Deployment::DeploymentOptions options,
+                                                                    winrt::Windows::Management::Deployment::PackageVolume const& volume) {
+    if (volume) {
+        try {
+            return manager.AddPackageAsync(package, nullptr, options, volume).get();
+        } catch (hresult_error const& e) {
+            const int32_t code = e.code();
+            if (code != E_NOINTERFACE && code != E_NOTIMPL && code != E_INVALIDARG) throw;
+            static std::atomic<bool> said{false};
+            if (!said.exchange(true))
+                shellLog::write(format("app package: Windows would not take a package volume with an install (0x%08x): packages go where "
+                                       "Windows puts new apps",
+                                       unsigned(code)));
+        }
+    }
+    return manager.AddPackageAsync(package, nullptr, options).get();
 }
 
 }  // namespace
@@ -722,6 +815,8 @@ InstallResult installWithPackageManager(const std::wstring& path, const std::fun
     std::string said, asTheStore;
     bool denied = true;  // every try so far refused for access
     std::lock_guard<std::mutex> one(gDeployMutex);
+    // (Onto the volume Megler itself is on, where there is one to name: installVolume, addPackage.)
+    const PackageVolume volume = installVolume();
     bool first = true;
     for (const DeploymentOptions options : tries) {
         int32_t code = 0;
@@ -742,7 +837,7 @@ InstallResult installWithPackageManager(const std::wstring& path, const std::fun
                 progress(format("Installing it through Windows's deployment engine (options 0x%x)…", unsigned(options)));
                 // (Said before it goes: an update of Megler's own package ends Megler as soon as it is installed.)
                 shellLog::flush();
-                const DeploymentResult result = manager.AddPackageAsync(winrt::Windows::Foundation::Uri(uri), nullptr, options).get();
+                const DeploymentResult result = addPackage(manager, winrt::Windows::Foundation::Uri(uri), options, volume);
                 if (result.ErrorText().empty()) {
                     shellLog::write(format("app package: %s installed by Windows's deployment engine (options 0x%x%s)",
                                            narrow(path.substr(path.find_last_of(L'\\') + 1)).c_str(), unsigned(options),

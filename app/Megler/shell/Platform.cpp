@@ -5,6 +5,7 @@
 #include "player/StorageHost.h"
 #include "shell/AppPackage.h"
 #include "shell/Files.h"
+#include "shell/Placement.h"
 #include "shell/ShellLog.h"
 #include "shell/Strings.h"
 
@@ -197,6 +198,9 @@ void initializeCore() {
     static const std::string packageDirectory = narrow(installDirectory());
     shellLog::write("LocalState: " + dataDirectory);
     shellLog::write("install folder: " + packageDirectory);
+    // Which drive each is on: a package on a memory card has its LocalState there, and the card's shared folder or none
+    // (shell/Placement.h).
+    shellLog::write("storage: " + placement::summary(installDirectory(), localStateDirectory(), appPackage::sharedFolder()));
     shellLog::write("memory: " + memorySummary());
     // What the phone is, and the room its disks have: a first start copies hundreds of megabytes (shell/BundledApks.h), and
     // a phone of 512 MB is told an app may use 390 MB (a Lumia 630).

@@ -28,6 +28,7 @@
 #include "shell/AppPackage.h"
 #include "shell/BundledApks.h"
 #include "shell/Files.h"
+#include "shell/Placement.h"
 #include "shell/Platform.h"
 #include "shell/ShellLog.h"
 #include "shell/Startup.h"
@@ -194,6 +195,62 @@ void testPaths(const std::wstring& root) {
     check(files::makeDirectories(root + L"\\paths\\a\\b") && files::write(root + L"\\paths\\a\\b\\c.txt", "c") && files::removeTree(root + L"\\paths") &&
               !files::exists(root + L"\\paths"),
           "an absolute path is made, written and removed as before");
+}
+
+/// The package volume every package Megler installs goes to: the one its own install folder is on (shell/Placement.h,
+/// volumeHolding), as Windows's package manager would list them on a PC, on a phone (the data volume mounted at C:\Data,
+/// perhaps also called U:), and with a memory card.
+void testPlacement(const std::wstring& root) {
+    printf("placement\n");
+    using placement::Volume;
+    using placement::volumeHolding;
+    const std::vector<Volume> pc = {{L"\\\\?\\Volume{11111111-0000-0000-0000-000000000000}", L"C:\\Program Files\\WindowsApps", L"C:\\"},
+                                    {L"\\\\?\\Volume{22222222-0000-0000-0000-000000000000}", L"D:\\WindowsApps", L"D:\\"}};
+    check(volumeHolding(pc, L"C:\\Program Files\\WindowsApps\\Megler_0.1.0.673_x64__7p434m16tbgc6") == 0, "a PC: Megler on the system's volume");
+    check(volumeHolding(pc, L"D:\\WindowsApps\\Megler_0.1.0.673_x64__7p434m16tbgc6") == 1, "a PC: Megler on another drive's");
+    check(volumeHolding(pc, L"d:\\windowsapps\\MEGLER_0.1.0.673_x64__7p434m16tbgc6\\") == 1 &&
+              volumeHolding(pc, L"\\\\?\\D:\\WindowsApps\\Megler_0.1.0.673_x64__7p434m16tbgc6") == 1 &&
+              volumeHolding(pc, L"D:/WindowsApps/Megler_0.1.0.673_x64__7p434m16tbgc6") == 1,
+          "names compared without regard to case, \"\\\\?\\\", '/' or a separator at the end");
+    // A phone: its packages in C:\Data\Programs\WindowsApps (C:\data, as Windows gives Megler its install folder), a card's on D:.
+    const std::vector<Volume> phone = {{L"\\\\?\\Volume{aaaaaaaa-0000-0000-0000-000000000000}", L"C:\\Data\\Programs\\WindowsApps", L"C:\\Data\\"},
+                                       {L"\\\\?\\Volume{bbbbbbbb-0000-0000-0000-000000000000}", L"D:\\WPSystem\\Apps", L"D:\\"}};
+    check(volumeHolding(phone, L"C:\\data\\Programs\\WindowsApps\\Megler_0.1.0.673_arm__7p434m16tbgc6") == 0, "a phone: Megler in its memory");
+    check(volumeHolding(phone, L"D:\\WPSystem\\Apps\\Megler_0.1.0.673_arm__7p434m16tbgc6") == 1, "a phone: Megler on its memory card");
+    // A store path is a folder: one whose name begins as another's is not in it; the mount point is then what holds it.
+    check(volumeHolding(phone, L"D:\\WPSystem\\AppsOld\\Megler_0.1.0.673_arm__7p434m16tbgc6") == 1, "a folder named as a store path begins is not in it");
+    // The store path named by another drive than the install folder's (a phone's data volume as U:): its volume's name, as the
+    // folder's own handle gives it, says which; without it, the longest mount point the folder is under.
+    const std::vector<Volume> lettered = {{L"\\\\?\\Volume{aaaaaaaa-0000-0000-0000-000000000000}\\", L"U:\\Programs\\WindowsApps", L"U:\\"},
+                                          {L"\\\\?\\Volume{cccccccc-0000-0000-0000-000000000000}", L"C:\\Programs\\WindowsApps", L"C:\\"},
+                                          {L"\\\\?\\Volume{bbbbbbbb-0000-0000-0000-000000000000}", L"D:\\WPSystem\\Apps", L"D:\\"}};
+    check(volumeHolding(lettered, L"C:\\data\\Programs\\WindowsApps\\Megler_0.1.0.673_arm__7p434m16tbgc6",
+                        L"\\\\?\\Volume{AAAAAAAA-0000-0000-0000-000000000000}\\") == 0,
+          "a store path named by another drive: the volume the folder's handle names");
+    check(volumeHolding(lettered, L"C:\\data\\Programs\\WindowsApps\\Megler_0.1.0.673_arm__7p434m16tbgc6") == 1,
+          "without the folder's volume, the mount point it is under");
+    const std::vector<Volume> mounted = {{L"", L"", L"C:\\"}, {L"", L"", L"C:\\Data\\"}};
+    check(volumeHolding(mounted, L"C:\\Data\\Programs\\WindowsApps\\Megler_0.1.0.673_arm__7p434m16tbgc6") == 1, "the longest mount point it is under");
+    check(volumeHolding(phone, L"E:\\Apps\\Megler_0.1.0.673_arm__7p434m16tbgc6") == -1 && volumeHolding({}, L"C:\\Program Files\\WindowsApps\\Megler") == -1 &&
+              volumeHolding(pc, L"") == -1 && volumeHolding(pc, L"WindowsApps\\Megler") == -1 && volumeHolding({{L"", L"", L""}}, L"C:\\x") == -1,
+          "none where no volume holds it, there are none, or the folder is none or not absolute");
+    // The drives the log says.
+    check(placement::driveOf(L"C:\\Data\\Users") == L"C:" && placement::driveOf(L"d:/WPSystem") == L"D:" && placement::driveOf(L"\\\\?\\e:\\x") == L"E:" &&
+              placement::driveOf(L"\\\\?\\Volume{abc}\\x") == L"\\\\?\\Volume{abc}" && placement::driveOf(L"\\\\server\\share\\x") == L"\\\\server\\share" &&
+              placement::driveOf(L"\\\\?\\UNC\\server\\share\\x") == L"\\\\server\\share" && placement::driveOf(L"\\apks\\x").empty() &&
+              placement::driveOf(L"").empty() && placement::driveOf(L"C:").empty(),
+          "the drive of a path, of a volume's name, of a share; none of a path that is not absolute");
+    // This PC's own: the scratch folder's volume as its handle names it, and the system's drive.
+    const std::wstring volume = placement::volumeOf(root);
+    check(volume.rfind(L"\\\\?\\Volume{", 0) == 0 && volume.back() == L'}', "the scratch folder's volume, from its handle: " + narrow(volume));
+    check(placement::volumeOf(L"").empty() && placement::volumeOf(root + L"\\none").empty(), "no volume for no folder, nor for one that is not there");
+    wchar_t system[MAX_PATH] = {};
+    GetSystemDirectoryW(system, MAX_PATH);
+    check(placement::onSystemDrive(system) && placement::onSystemDrive(L"") && !placement::onSystemDrive(system[0] == L'Q' ? L"R:\\x" : L"Q:\\x"),
+          "the system's drive is told from another");
+    check(placement::summary(root, gLocal, std::wstring()).find(", no shared folder") != std::string::npos &&
+              placement::summary(root, gLocal, gShared).find("the shared folder on " + narrow(placement::driveOf(gShared))) != std::string::npos,
+          "the log's summary: " + placement::summary(root, gLocal, gShared));
 }
 
 void testFiles(const std::wstring& root) {
@@ -442,6 +499,7 @@ int wmain(int argc, wchar_t** argv) {
     shellLog::initialize(gLocal);
     printf("the shell's start and copies (shell/Files.cpp, ShellLog.cpp, Startup.cpp, BundledApks.cpp)\n");
     testPaths(root);
+    testPlacement(root);
     testFiles(root);
     testLog();
     testStartup();
