@@ -208,11 +208,30 @@ public final class Accounts {
         synchronized (sListeners) {
             if (on && !sListeners.contains(listener)) sListeners.add(listener);
             if (!on) sListeners.remove(listener);
-            if (!sListeners.isEmpty() && !sWatching) { sWatching = true; WATCH.postDelayed(WATCHER, 2000); }
+            if (!sListeners.isEmpty() && !sWatching) { sWatching = true; watch().postDelayed(WATCHER, 2000); }
         }
     }
     private static boolean sWatching;
-    private static final android.os.Handler WATCH = new android.os.Handler(android.os.Looper.getMainLooper());
+    /** The main thread, where the listeners are told and the broadcasts sent, as Android's AccountManager tells them. */
+    private static final android.os.Handler MAIN = new android.os.Handler(android.os.Looper.getMainLooper());
+    /*
+     * The file is looked at on a thread of its own, not the main thread: the look takes the accounts' lock, which another
+     * thread may hold for long -- Google Play services' token calls in the app's process, an authenticator's description read
+     * from its package's resources. TikTok Lite's main thread (Lumia 650, 0.1.0.675) spent a quarter of its time waiting for
+     * it there, every two seconds, and drew a frame in 130 to 340 ms.
+     */
+    private static android.os.Handler sWatch;
+    private static android.os.Handler watch() {
+        synchronized (sListeners) {
+            if (sWatch == null) {
+                android.os.HandlerThread t = new android.os.HandlerThread("megler-accounts");
+                t.setDaemon(true);
+                t.start();
+                sWatch = new android.os.Handler(t.getLooper());
+            }
+            return sWatch;
+        }
+    }
     /** While someone listens, the file is looked at every two seconds: another process (microG's sign-in) may add an account. */
     private static final Runnable WATCHER = new Runnable() {
         public void run() {
@@ -221,7 +240,7 @@ public final class Accounts {
             if (changed) changed();
             synchronized (sListeners) {
                 sWatching = !sListeners.isEmpty();
-                if (sWatching) WATCH.postDelayed(this, 2000);
+                if (sWatching) watch().postDelayed(this, 2000);
             }
         }
     };
@@ -258,11 +277,11 @@ public final class Accounts {
             sToldPasswords = passwords;
         }
         synchronized (sListeners) { all = new ArrayList<>(sListeners); }
-        for (Runnable r : all) WATCH.post(r);
+        for (Runnable r : all) MAIN.post(r);
         // An account added is synced by the app's adapters of its type, as Android's SyncManager syncs it (megler.Syncs).
         for (Account a : came) Syncs.added(a);
         Context app = AppRunner.application() != null ? AppRunner.application() : ContextImpl.app();
-        if (app != null) WATCH.post(() -> {
+        if (app != null) MAIN.post(() -> {
             Broadcasts.send(app, new Intent(android.accounts.AccountManager.LOGIN_ACCOUNTS_CHANGED_ACTION));
             Broadcasts.send(app, new Intent(android.accounts.AccountManager.ACTION_VISIBLE_ACCOUNTS_CHANGED));
             /*
@@ -292,23 +311,36 @@ public final class Accounts {
         Authenticator(AuthenticatorDescription d, Intent i, boolean m) { description = d; intent = i; microG = m; }
     }
 
-    public static synchronized ArrayList<Authenticator> authenticators() {
-        ArrayList<Authenticator> out = new ArrayList<>();
-        Context gms = MicroG.context(GooglePackages.GMS);
-        for (ServiceInfo s : MicroG.services(AUTHENTICATOR_ACTION)) {
-            Authenticator a = describe(gms, s.packageName, s.name, s.metaData, true);
-            if (a != null) out.add(a);
+    /*
+     * The authenticators are read once. Their descriptions come from their packages' account-authenticator XML (Google Play
+     * services' resources, for microG's), and they were read again at every getAuthToken and every account type asked about,
+     * holding the accounts' lock, which every account call and the file's watch waited for. They have a lock of their own now,
+     * and are kept once both Google Play services' context and the app's were there to read them with.
+     */
+    private static final Object AUTHENTICATORS = new Object();
+    private static ArrayList<Authenticator> sAuthenticators;
+
+    public static ArrayList<Authenticator> authenticators() {
+        synchronized (AUTHENTICATORS) {
+            if (sAuthenticators != null) return new ArrayList<>(sAuthenticators);
+            ArrayList<Authenticator> out = new ArrayList<>();
+            Context gms = MicroG.context(GooglePackages.GMS);
+            for (ServiceInfo s : MicroG.services(AUTHENTICATOR_ACTION)) {
+                Authenticator a = describe(gms, s.packageName, s.name, s.metaData, true);
+                if (a != null) out.add(a);
+            }
+            Context app = AppRunner.application() != null ? AppRunner.application() : ContextImpl.app();
+            for (Manifest.Component c : Manifest.services) {
+                if (!c.enabled) continue;
+                boolean listed = false;
+                for (Manifest.Filter f : c.filters) listed |= f.actions.contains(AUTHENTICATOR_ACTION);
+                if (!listed) continue;
+                Authenticator a = describe(app, Native.packageName(), c.name, c.metaData, false);
+                if (a != null) out.add(a);
+            }
+            if (gms != null && app != null) sAuthenticators = new ArrayList<>(out);
+            return out;
         }
-        Context app = AppRunner.application() != null ? AppRunner.application() : ContextImpl.app();
-        for (Manifest.Component c : Manifest.services) {
-            if (!c.enabled) continue;
-            boolean listed = false;
-            for (Manifest.Filter f : c.filters) listed |= f.actions.contains(AUTHENTICATOR_ACTION);
-            if (!listed) continue;
-            Authenticator a = describe(app, Native.packageName(), c.name, c.metaData, false);
-            if (a != null) out.add(a);
-        }
-        return out;
     }
     public static Authenticator authenticator(String type) {
         if (type == null) return null;
