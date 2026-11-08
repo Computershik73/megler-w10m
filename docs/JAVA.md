@@ -5201,6 +5201,18 @@ on a looper thread of its own and takes it back with `next()`.
   (The platform's own `AlertDialog`, which the demos app uses, is the
   framework's own and calls its listeners directly.) Found with the runtime's
   trace and the profile of a run: of the two listeners neither had run.
+- `android/os/WorkSource.java`, Android 14's in place of the generated stub,
+  which kept no uids, wrote nothing into a parcel and had a null `CREATOR`. A
+  location request of Google Play services' carries one: the client library
+  in the app writes it into the transaction with its `writeToParcel`, inside a
+  field whose size it patches in after (`SafeParcelWriter`), and Google Play
+  services reads it back with the `CREATOR` -- null for a field of no size.
+  Every `FusedLocationProviderClient` request then ended in Google Play
+  services with a `NullPointerException` in `ImmutableWorkSource`'s
+  constructor ("RegisterLocationCallback", "RegisterLocationListener" in its
+  trace), and the app had no fix while Megler's own `LocationManager` had one:
+  Transit, and the Google Maps "my location" layer (0.1.0.671). The data app's
+  step "work-source" writes one so and reads it back.
 - `android/app/usage/StorageStatsManager.java`, two methods in their two
   forms: `getTotalBytes` and `getFreeBytes` were signatures answering 0.
   Since Android 8 this is where an app asks how large the phone's storage is

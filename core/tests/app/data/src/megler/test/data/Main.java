@@ -1691,6 +1691,7 @@ public class Main extends Activity {
                     && Boolean.FALSE.equals(info.getClass().getMethod("isFullyCompiled").invoke(info));
         });
         insetFraction();
+        workSource();
         sound();
         mediaCodec();
         network();
@@ -4936,6 +4937,51 @@ public class Main extends Activity {
             detail = "inner " + inner + " intrinsic " + d.getIntrinsicWidth() + "x" + d.getIntrinsicHeight() + " padding " + pad + " made " + madeInner + " nested " + nested;
             return inner.equals(new android.graphics.Rect(8, 25, 150, 75)) && d.getIntrinsicWidth() == 114 && d.getIntrinsicHeight() == 80
                     && padded && pad.equals(new android.graphics.Rect(8, 25, 50, 25)) && madeInner.equals(new android.graphics.Rect(10, 10, 30, 30)) && nested;
+        });
+    }
+
+    /**
+     * A WorkSource through a Parcel as Google Play services' client library writes a location request's: its writeToParcel
+     * inside a field's header whose size is patched in after (SafeParcelWriter), read back with the CREATOR, as Google Play
+     * services' location service reads it. One with two uids and a name each and a work chain comes back equal, kept in the
+     * uids' order as Android keeps it; an empty one comes back empty, not null -- the null that ended every request of
+     * FusedLocationProviderClient in Google Play services' ImmutableWorkSource. (Most of WorkSource is system API, not in the
+     * SDK the app is built against: by reflection.)
+     */
+    private void workSource() {
+        step("work-source", () -> {
+            Class<android.os.WorkSource> c = android.os.WorkSource.class;
+            android.os.WorkSource ws = new android.os.WorkSource(), empty = new android.os.WorkSource();
+            java.lang.reflect.Method add = c.getMethod("add", int.class, String.class);
+            add.invoke(ws, 10123, "megler.test.b");
+            add.invoke(ws, 10045, "megler.test.a");
+            Object chain = c.getMethod("createWorkChain").invoke(ws);
+            chain.getClass().getMethod("addNode", int.class, String.class).invoke(chain, 10045, "location");
+            android.os.Parcel p = android.os.Parcel.obtain();
+            p.writeInt(0xFFFF0001);
+            int sizeAt = p.dataPosition();
+            p.writeInt(0);
+            int start = p.dataPosition();
+            ws.writeToParcel(p, 0);
+            int end = p.dataPosition();
+            p.setDataPosition(sizeAt);
+            p.writeInt(end - start);
+            p.setDataPosition(end);
+            empty.writeToParcel(p, 0);
+            p.setDataPosition(0);
+            p.readInt();
+            int size = p.readInt();
+            android.os.WorkSource back = android.os.WorkSource.CREATOR.createFromParcel(p);
+            android.os.WorkSource emptyBack = android.os.WorkSource.CREATOR.createFromParcel(p);
+            p.recycle();
+            int n = (Integer) c.getMethod("size").invoke(back);
+            int firstUid = (Integer) c.getMethod("getUid", int.class).invoke(back, 0);
+            String firstName = (String) c.getMethod("getPackageName", int.class).invoke(back, 0);
+            java.util.List<?> chains = (java.util.List<?>) c.getMethod("getWorkChains").invoke(back);
+            boolean emptyIs = emptyBack != null && (Boolean) c.getMethod("isEmpty").invoke(emptyBack);
+            detail = "size=" + size + " back=" + back + " empty=" + emptyBack;
+            return size > 0 && back != null && back.equals(ws) && !back.equals(empty) && n == 2 && firstUid == 10045 && "megler.test.a".equals(firstName)
+                    && chains != null && chains.size() == 1 && emptyIs && emptyBack.equals(empty);
         });
     }
 
