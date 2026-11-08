@@ -94,6 +94,8 @@ typedef struct {
 #define PF_R 4
 
 #define SHT_PROGBITS 1
+#define SHT_SYMTAB 2
+#define SHT_STRTAB 3
 #define SHF_ALLOC 2
 #define SHF_EXECINSTR 4
 

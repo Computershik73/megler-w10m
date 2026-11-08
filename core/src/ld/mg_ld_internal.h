@@ -84,6 +84,13 @@ struct mg_lib {
      */
     mg_addr code[8][2];
     int ncode;
+    /*
+     * ARM64: spans of data among that code, [start, end) by address in ascending order, from the mapping symbols of the
+     * library's symbol table where it has one (mg_ld.c, read_data_spans): hand-written assembly's constants. Words there
+     * are not counted as instructions that write x18 (arm64/mg_patch_arm64.c). None known: none left out.
+     */
+    mg_addr (*data)[2];
+    int ndata;
     mg_lib *next;
 };
 

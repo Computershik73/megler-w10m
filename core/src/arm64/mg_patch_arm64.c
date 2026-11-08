@@ -468,8 +468,11 @@ static bool lead_out(mg_lib *lib, u8 *at, u32 where, u32 offset)
  * the core's runs -- a thread that has written it ends at the next of either (GitHub issue 4). Android's compilers keep
  * it since Android 10 (the shadow call stack's register); Android 9's did not: its prebuilt libcrypto.so for arm64,
  * which the Android root carries (tools/android9-natives.sh copies it), writes x18 in 772 instructions of ordinary C --
- * X25519, AES, DES, MD5, BN, poly1305 -- that every TLS connection of a Java app's runs through Conscrypt. Not exact
- * (a word of data among the code may read as one); it is for the log.
+ * X25519, AES, DES, MD5, BN, poly1305 -- that every TLS connection of a Java app's runs through Conscrypt (the root's
+ * arm64 libcrypto.so and libssl.so are built from BoringSSL's sources since, and write it nowhere). Not exact: a word of
+ * data among the code may read as one -- BoringSSL's assembly keeps its constants and banners in .text, eight such words
+ * in libcrypto.so -- and where the library's symbol table says which words are data (mg_lib's data, its mapping
+ * symbols) those are left out (in_data). It is for the log.
  */
 static bool writes_x18(u32 w)
 {
@@ -506,13 +509,26 @@ static bool writes_x18(u32 w)
     return false;
 }
 
+/* Whether `at` (from the library's base) is in one of the spans of data among its code that its mapping symbols mark. */
+static bool in_data(const mg_lib *lib, mg_addr at)
+{
+    int lo = 0, hi = lib->ndata;
+    while (lo < hi) {
+        int mid = (lo + hi) / 2;
+        if (at < lib->data[mid][0]) hi = mid;
+        else if (at >= lib->data[mid][1]) lo = mid + 1;
+        else return true;
+    }
+    return false;
+}
+
 /* Walks [lo, hi) of the library's code, a word at a time. */
 static void patch_range(mg_lib *lib, u8 *lo, u8 *hi, bool have, u32 where, u32 offset, bool trap, u32 *svc, u32 *failed, mg_addr *x18_first)
 {
     u8 *p = lib->base + MG_ALIGN_UP((mg_addr)(lo - lib->base), 4);
     for (; p + 4 <= hi; p += 4) {
         u32 w = mg_rd32(p);
-        if (writes_x18(w)) {
+        if (writes_x18(w) && !in_data(lib, (mg_addr)(p - lib->base))) {
             if (!*x18_first) *x18_first = (mg_addr)(p - lib->base);
             lib->stats.x18_writes++;
         }

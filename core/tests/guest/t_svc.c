@@ -71,7 +71,8 @@ __attribute__((naked)) int t_svc_cacheflush(void *start, unsigned length)
  *                     call as it made every one before, the registers kept all the same
  *
  * And t_svc64_x18_writer, never called: ten writes of x18 of different kinds, which the loader counts (mg_ld_stats'
- * x18_writes) and says, as it says them of any library -- on Windows x18 is the thread's TEB.
+ * x18_writes) and says, as it says them of any library -- on Windows x18 is the thread's TEB -- and after it two words
+ * of data that would read as two more, which the library's mapping symbols mark as data and the loader leaves out.
  */
 #include "t_abi.h"
 
@@ -187,6 +188,11 @@ __asm__(".text\n"
         "  ret\n"
         "  .p2align 3\n"
         "1: .quad 0\n"
+        /* And two words of data among the code that writes_x18 takes for writes of x18 (0x79622d32 reads as `ldrh w18,
+           [x9, #0x1116]`, 0x52412072 is of the data-processing class with Rd 18): BoringSSL's assembly keeps such words in
+           .text -- ChaCha20's "2-by" of "expand 32-byte k", the "r AR" of its banners. The assembler marks them $d; the
+           loader must not count them. */
+        "  .word 0x79622d32\n  .word 0x52412072\n"
         ".size t_svc64_x18_writer, .-t_svc64_x18_writer\n");
 
 static t_u64 mark(int n) { return (t_u64)(0xA500 + n) << 48 | (t_u64)(0x0101 * n); }

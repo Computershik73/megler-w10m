@@ -877,10 +877,84 @@ static size_t island_estimate(const lib_source *src, const ElfW(Phdr) *ph, int p
     return MG_ALIGN_UP(need, 65536);
 }
 
+#if MG_ARCH_ARM64
+static int cmp_mark(const void *a, const void *b)
+{
+    const mg_addr *x = (const mg_addr *)a, *y = (const mg_addr *)b;
+    return x[0] < y[0] ? -1 : x[0] > y[0] ? 1 : 0;
+}
+
+/*
+ * ARM64: the spans of data among the library's executable sections (mg_lib's data), from its symbol table's mapping
+ * symbols -- local, untyped, $d (or $d.<any>) where data starts and $x where instructions start again, as the AArch64
+ * ELF ABI tells a disassembler the two apart -- where it still has a symbol table. Hand-written assembly keeps its
+ * constants and banners beside its code (BoringSSL's ChaCha20 its "expand 32-byte k", SHA-256 its table), and a word of
+ * them may read as an instruction that writes x18. A table of more than 4 MB (an app's library left unstripped) is not
+ * read at every load: nothing is left out of such a library's count.
+ */
+static void read_data_spans(mg_lib *lib, const lib_source *src, const ElfW(Shdr) *sh, size_t n)
+{
+    const ElfW(Shdr) *tab = NULL, *str;
+    ElfW(Sym) *syms;
+    char *names;
+    mg_addr (*marks)[3];                /* address, 1 where data starts, the end of its section */
+    size_t i, count, nmarks = 0;
+    for (i = 0; i < n && !tab; i++)
+        if (sh[i].sh_type == SHT_SYMTAB && sh[i].sh_entsize == sizeof(ElfW(Sym)) && sh[i].sh_link < n) tab = &sh[i];
+    if (!tab) return;
+    str = &sh[tab->sh_link];
+    count = (size_t)(tab->sh_size / sizeof(ElfW(Sym)));
+    if (str->sh_type != SHT_STRTAB || !count || !str->sh_size || tab->sh_size > (4u << 20) || str->sh_size > (4u << 20)) return;
+    syms = (ElfW(Sym) *)mg_alloc(count * sizeof(ElfW(Sym)));
+    names = (char *)mg_alloc((size_t)str->sh_size + 1);
+    marks = (mg_addr(*)[3])mg_alloc(count * sizeof(*marks));
+    if (src_read(src, tab->sh_offset, syms, count * sizeof(ElfW(Sym))) && src_read(src, str->sh_offset, names, (size_t)str->sh_size)) {
+        names[str->sh_size] = 0;
+        for (i = 0; i < count; i++) {
+            const ElfW(Sym) *s = &syms[i];
+            const char *name = s->st_name < str->sh_size ? names + s->st_name : "";
+            const ElfW(Shdr) *in;
+            if (ELF_ST_BIND(s->st_info) != STB_LOCAL || ELF_ST_TYPE(s->st_info) != STT_NOTYPE || name[0] != '$'
+                || (name[1] != 'd' && name[1] != 'x') || (name[2] && name[2] != '.') || s->st_shndx == SHN_UNDEF || s->st_shndx >= n)
+                continue;
+            in = &sh[s->st_shndx];
+            if (in->sh_type != SHT_PROGBITS || (in->sh_flags & (SHF_ALLOC | SHF_EXECINSTR)) != (SHF_ALLOC | SHF_EXECINSTR)) continue;
+            marks[nmarks][0] = (mg_addr)s->st_value;
+            marks[nmarks][1] = name[1] == 'd';
+            marks[nmarks][2] = (mg_addr)(in->sh_addr + in->sh_size);
+            nmarks++;
+        }
+        qsort(marks, nmarks, sizeof(*marks), cmp_mark);
+        /* Each $d to the next $x of its section (or the section's end); a run of $d is one span. */
+        for (i = 0; i < nmarks;) {
+            mg_addr start = marks[i][0], end = marks[i][2];
+            size_t j = i + 1;
+            if (!marks[i][1]) {
+                i++;
+                continue;
+            }
+            while (j < nmarks && marks[j][0] < end && marks[j][1]) j++;
+            if (j < nmarks && marks[j][0] < end) end = marks[j][0];
+            if (start < end) {
+                if (!(lib->ndata & 15)) lib->data = (mg_addr(*)[2])mg_realloc(lib->data, (size_t)(lib->ndata + 16) * sizeof(*lib->data));
+                lib->data[lib->ndata][0] = start;
+                lib->data[lib->ndata][1] = end;
+                lib->ndata++;
+            }
+            i = j;
+        }
+    }
+    free(marks);
+    free(names);
+    free(syms);
+}
+#endif
+
 /*
  * The library's executable sections from its section headers (mg_lib's code). Each must lie in an executable segment's
  * bytes from the file, at the address that segment gives its offset; headers that do not (stripped, or made up to
  * mislead a disassembler), or more than eight such sections, and none is known: the segments are then looked at whole.
+ * On ARM64, where they are known, the spans of data among them too (read_data_spans).
  */
 static void read_code_sections(mg_lib *lib, const lib_source *src, const ElfW(Ehdr) *eh)
 {
@@ -913,8 +987,11 @@ static void read_code_sections(mg_lib *lib, const lib_source *src, const ElfW(Eh
         lib->code[found][1] = s->sh_addr + s->sh_size;
         found++;
     }
-    free(sh);
     lib->ncode = found > 0 ? found : 0;
+#if MG_ARCH_ARM64
+    if (lib->ncode) read_data_spans(lib, src, sh, n);
+#endif
+    free(sh);
 }
 
 /* Note `name` of `type` among the notes in [p, p + size), each name and description padded to `align`. */
@@ -1124,6 +1201,7 @@ bad:
     }
     free(lib->phdr);
     free(lib->name);
+    free(lib->data);
     free(lib);
     return NULL;
 }
