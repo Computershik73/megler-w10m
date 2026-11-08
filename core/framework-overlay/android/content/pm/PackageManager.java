@@ -429,12 +429,40 @@ public class PackageManager {
     public void setComponentEnabledSettings(java.util.List settings) {
         for (Object o : settings) { ComponentEnabledSetting s = (ComponentEnabledSetting) o; setComponentEnabledSetting(s.getComponentName(), s.getEnabledState(), s.getEnabledFlags()); }
     }
+    /*
+     * A component's state: what the app set, else its manifest's (DEFAULT). A component of a package the phone does not have is
+     * IllegalArgumentException("Unknown component: ..."), as Android's package manager answers, and apps take that for the
+     * package's absence; an application's state likewise ("Unknown package: ..."). Facebook asks so whether Meta's App Manager
+     * (com.facebook.appmanager, the updater of phones that came with Meta's apps) is there, to know whether its terms for such
+     * phones come first. Told DEFAULT, it took the App Manager to be there, did not find its receivers, went on to the SIM's
+     * country, and opened those terms ("Meta uses a preinstalled service to update apps...", the screen
+     * oxygen_preloads_terms_of_service) each time its sign-in began: at every start signed out on the HP Elite x3
+     * (0.1.0.671), and on an Italian user's phone, whose sign-in went back to them again and again. (Facebook 583: X.9RD,
+     * which takes IllegalArgumentException for "no App Manager", and no terms.)
+     */
     public int getComponentEnabledSetting(ComponentName c) {
         if (c == null) return COMPONENT_ENABLED_STATE_DEFAULT;
+        if (!has(c.getPackageName())) throw unknown("component", c.getPackageName(), c.toString());
         synchronized (PackageManager.class) { String v = states().getProperty(c.flattenToString()); return v == null ? COMPONENT_ENABLED_STATE_DEFAULT : Integer.parseInt(v); }
     }
     public void setApplicationEnabledSetting(String pkg, int state, int flags) {}
-    public int getApplicationEnabledSetting(String pkg) { return COMPONENT_ENABLED_STATE_DEFAULT; }
+    public int getApplicationEnabledSetting(String pkg) {
+        if (!has(pkg)) throw unknown("package", pkg, pkg);
+        return COMPONENT_ENABLED_STATE_DEFAULT;
+    }
+    /** Whether the phone has the package, as getPackageInfo answers: the app, the platform, the Google packages, the phone's other apps. */
+    private static boolean has(String pkg) {
+        return mine(pkg) || "android".equals(pkg) || megler.GooglePackages.is(pkg) || megler.PhoneApps.find(pkg) != null;
+    }
+    private static final java.util.HashSet<String> sUnknownSaid = new java.util.HashSet<>();
+    /* Android's answer for a package the phone does not have; the log says it once a package, which is often all it has to explain why an app went another way. */
+    private static IllegalArgumentException unknown(String what, String pkg, String name) {
+        synchronized (sUnknownSaid) {
+            if (sUnknownSaid.add(pkg))
+                android.util.Log.i("Megler", "the enabled state of a " + what + " of " + pkg + ", which the phone does not have: IllegalArgumentException, as Android answers");
+        }
+        return new IllegalArgumentException("Unknown " + what + ": " + name);
+    }
     public boolean isSafeMode() { return false; }
     public boolean isInstantApp() { return false; }
     public boolean isInstantApp(String pkg) { return false; }

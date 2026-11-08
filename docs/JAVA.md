@@ -3887,6 +3887,24 @@ What a Java app asks of the phone beyond its window goes to the shell through
     `ACTION_PACKAGE_FULLY_REMOVED`. Each has the package as its data and its
     `EXTRA_UID`. Before, Google Play went on showing an app removed in Megler
     as installed.
+- **A package the phone does not have.** `getPackageInfo`,
+  `getApplicationInfo` and the like are `NameNotFoundException` for it, and
+  the enabled state of one of its components or of the application
+  (`getComponentEnabledSetting`, `getApplicationEnabledSetting`) is
+  `IllegalArgumentException` ("Unknown component: ComponentInfo{...}",
+  "Unknown package: ..."), as Android's package manager answers; the log says
+  so once a package ("the enabled state of a component of ..., which the phone
+  does not have"). The app, the platform (`android`), the Google packages and
+  the phone's other apps are the packages it has. Before, every name had
+  `COMPONENT_ENABLED_STATE_DEFAULT`. Facebook asks so whether Meta's App
+  Manager (`com.facebook.appmanager`, the updater of phones that came with
+  Meta's apps) is there: told the default, it took it to be there, found none
+  of its receivers, went on to the SIM (a European or Canadian one, or none),
+  and opened the terms of such phones ("Meta uses a preinstalled service to
+  update apps automatically", the screen `oxygen_preloads_terms_of_service`)
+  each time its sign-in began: at every start signed out on the HP Elite x3
+  (0.1.0.671), and on an Italian user's phone, which went from the sign-in
+  back to that screen again and again. The data app's step `component-state`.
 
 APKs, .apks and .xapk files also open in Megler from the phone's file
 manager (a file type association of Megler's package, taken out of an app's

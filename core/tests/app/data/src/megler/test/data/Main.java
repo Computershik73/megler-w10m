@@ -1655,6 +1655,7 @@ public class Main extends Activity {
         installs();
         bitmapBytes();
         fileReadOnly();
+        componentState();
         adaptiveIcon();
         launcherLoading();
         uriBuilder();
@@ -4714,6 +4715,32 @@ public class Main extends Activity {
             detail = "wasWritable=" + wasWritable + " made=" + made + " readOnly=" + readOnly + " refused=" + refused + " writable=" + writable
                     + " again=" + again + " deleted=" + deleted;
             return wasWritable && made && readOnly && refused && writable && again && deleted;
+        });
+    }
+
+    /**
+     * The enabled state of a component and of an application: of the app's own, the platform's, Google Play services' and the
+     * phone's other app's, the default; of a package the phone does not have, IllegalArgumentException, as Android answers.
+     * Facebook asks so for Meta's App Manager, and took a default for the App Manager being there: it showed the terms of phones
+     * that came with Meta's apps at every start while signed out.
+     */
+    private void componentState() {
+        step("component-state", () -> {
+            android.content.pm.PackageManager pm = getPackageManager();
+            int own = pm.getComponentEnabledSetting(new android.content.ComponentName(this, Main.class));
+            int app = pm.getApplicationEnabledSetting(getPackageName()), platform = pm.getApplicationEnabledSetting("android");
+            int gms = pm.getComponentEnabledSetting(new android.content.ComponentName("com.google.android.gms", "com.google.android.gms.common.api.GoogleApiActivity"));
+            int other = pm.getComponentEnabledSetting(new android.content.ComponentName("com.example.other", "com.example.other.Main"));
+            String component = null, application = null;
+            try { pm.getComponentEnabledSetting(new android.content.ComponentName("com.facebook.appmanager", "com.facebook.oxygen.appmanager.firstparty.tos.ShouldAcceptTos")); }
+            catch (IllegalArgumentException e) { component = e.getMessage(); }
+            try { pm.getApplicationEnabledSetting("com.facebook.appmanager"); }
+            catch (IllegalArgumentException e) { application = e.getMessage(); }
+            detail = "own=" + own + " app=" + app + " platform=" + platform + " gms=" + gms + " other=" + other + " component=" + component
+                    + " application=" + application;
+            return own == 0 && app == 0 && platform == 0 && gms == 0 && other == 0
+                    && "Unknown component: ComponentInfo{com.facebook.appmanager/com.facebook.oxygen.appmanager.firstparty.tos.ShouldAcceptTos}".equals(component)
+                    && "Unknown package: com.facebook.appmanager".equals(application);
         });
     }
 
