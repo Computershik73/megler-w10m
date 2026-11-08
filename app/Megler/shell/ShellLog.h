@@ -30,10 +30,16 @@ void write(const std::string& line);
 void writeNow(const std::string& line);
 /// The lines not in the file yet written out now (they go every 200 ms, and at
 /// once for a fault's report and for the core's word of a process about to
-/// end): before suspending and exiting.
+/// end): before suspending and exiting. The file is written with no lock held
+/// that a line being said waits for: only another write waits for a write.
 void flush();
-/// megler_config.log's sink: a line of the core's, from any thread.
+/// megler_config.log's sink: a line of the core's, from any thread, and from
+/// several at once (the core calls it past its log's lock).
 void core(int level, const char* line, void* user);
+/// For the tests (core/tests/mg_shell_windows.cpp): `hook` is called each time
+/// lines are written out, as the write begins -- where a disk that stands would
+/// hold the writer. None in the app.
+void setWriteHook(void (*hook)());
 
 std::string path();
 

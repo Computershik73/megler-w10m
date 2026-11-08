@@ -463,6 +463,20 @@ from the package's next start, and the part before the crash at once. A log over
 folder of a package that is no longer installed whenever it lists the apps'
 packages.
 
+**No line waits for the disk but its own.** `megler.log` is written every 200 ms,
+and at once for a line that has to be on the disk before its thread goes on (a
+fault's report, its trace lines, `FATAL`, the core's word on a process about to
+end). On a phone such a write is a millisecond or more a line, and far longer
+while another thread puts a file on the disk (SQLite's fsync). It was made under
+the shell's log lock, and the core's lines came through the core's log lock, so
+every thread that logged meanwhile waited for the disk: Tuya Smart's main thread
+waited in `mg_logv` while a fault's report wrote its 161 trace lines one by one
+(0.1.0.671). The core now hands a line to the shell past its own lock
+(`mg_base.c`; `megler_log_fn` may be called from several threads at once), and
+the shell takes lines out of its buffer under its lock and writes them with only
+the writers' own lock held (`shell/ShellLog.cpp`): a thread waits for a write only
+when it writes too.
+
 **The start** (`App.cpp`, `shell/Startup.cpp`) says each of its steps before it
 begins, the log written out with it (`start: reading the library`), and until
 the window is shown a watch says at 2, 5, 10, 15, 20, 30, 45 and 60 s which step

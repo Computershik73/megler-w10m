@@ -213,9 +213,14 @@ enum { MG_LOG_DEBUG, MG_LOG_INFO, MG_LOG_WARN, MG_LOG_ERROR };
 
 void mg_log(int level, const char *fmt, ...) MG_PRINTF(2, 3);
 void mg_logv(int level, const char *fmt, va_list ap);
-/* Where lines go besides stderr / the debugger: the shell shows and saves them. */
+/*
+ * Where lines go besides stderr / the debugger: the shell shows and saves them. Called past the log's lock, from any thread
+ * and from several at once: a sink that writes a line out to a file there holds up no other thread's lines.
+ */
 typedef void (*mg_log_sink)(int level, const char *line, void *user);
 void mg_log_set_sink(mg_log_sink sink, void *user);
+/* The sink now (the tests', which put one of their own in its place for a while). */
+void mg_log_get_sink(mg_log_sink *sink, void **user);
 void mg_log_set_level(int min_level);
 /* ------------------------------------------------------- a lock's holder */
 

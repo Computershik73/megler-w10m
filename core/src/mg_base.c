@@ -78,6 +78,12 @@ void mg_log_set_sink(mg_log_sink sink, void *user)
     g_sink_user = user;
 }
 
+void mg_log_get_sink(mg_log_sink *sink, void **user)
+{
+    *sink = g_sink;
+    *user = g_sink_user;
+}
+
 void mg_log_set_level(int min_level) { g_min_level = min_level; }
 
 void mg_logv(int level, const char *fmt, va_list ap)
@@ -98,9 +104,17 @@ void mg_logv(int level, const char *fmt, va_list ap)
     mg_lock_acquire(&g_log_lock);
     mg_holder_take(&g_log_hold, line);
     mg_host_print(line);
-    if (g_sink) g_sink(level, line, g_sink_user);
     mg_holder_let_go(&g_log_hold);
     mg_lock_release(&g_log_lock);
+    /*
+     * The sink past the lock, which keeps only the host's own lines whole (a debugger's, standard error). The shell's sink
+     * writes a line to its file at once when it must -- a fault's report, the core's word on a process about to end --
+     * and on a phone's flash that is a millisecond or more a line, and longer while another thread puts a file on the disk
+     * (SQLite's fsync): under the lock every thread that logged meanwhile waited for it. Tuya Smart's main thread and
+     * another waited so in mg_logv while a fault's report wrote its 161 trace lines one by one (0.1.0.671). The sink keeps
+     * its own order (megler.h).
+     */
+    if (g_sink) g_sink(level, line, g_sink_user);
 }
 
 /* (The line is in the holder's frame, which stays while it holds the lock: copied while the hold is still the one seen.) */

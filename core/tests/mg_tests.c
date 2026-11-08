@@ -246,6 +246,65 @@ static void test_lock_holders(void)
     }
 }
 
+/*
+ * The log's sink is called past the log's lock (mg_base.c): a sink that stands -- the shell's, writing a fault's report to
+ * its file line by line on a phone's busy flash -- holds up no other thread's line. Under the lock Tuya Smart's main
+ * thread waited in mg_logv while a fault's report wrote its trace lines (0.1.0.671).
+ */
+static volatile i32 g_stand_entered, g_stand_release, g_stand_other;
+static mg_log_sink g_stand_before;
+static void *g_stand_before_user;
+
+static void standing_sink(int level, const char *line, void *user)
+{
+    int i;
+    (void)user;
+    if (strstr(line, "a line whose sink stands")) {
+        mg_atomic_xchg(&g_stand_entered, 1);
+        /* (Two seconds at most: the test goes on either way.) */
+        for (i = 0; i < 1000 && !g_stand_release; i++) mg_sleep_ns(2000000ull);
+        mg_atomic_xchg(&g_stand_entered, 2);
+    } else if (strstr(line, "a line said meanwhile")) {
+        mg_atomic_xchg(&g_stand_other, 1);
+    }
+    if (g_stand_before) g_stand_before(level, line, g_stand_before_user);
+}
+
+static MG_HOSTCB void standing_logger(void *arg)
+{
+    (void)arg;
+    mg_log(MG_LOG_ERROR, "log test: a line whose sink stands (the tests' own, not an error)");
+}
+
+static void test_log_sink_past_lock(void)
+{
+    mg_thread *t;
+    mg_hold_seen seen;
+    char line[128];
+    u64 began, took;
+    int i;
+    bool held;
+    say("the log's sink is called past the log's lock");
+    mg_log_get_sink(&g_stand_before, &g_stand_before_user);
+    g_stand_entered = g_stand_release = g_stand_other = 0;
+    mg_log_set_sink(standing_sink, NULL);
+    t = mg_thread_start(standing_logger, NULL, 64u * 1024u, "log-stander");
+    CHECK(t != NULL);
+    for (i = 0; i < 1000 && t && g_stand_entered != 1; i++) mg_sleep_ns(2000000ull);
+    CHECK(g_stand_entered == 1);
+    /* While that sink stands: nobody holds the log's lock, and a line of this thread's goes through. */
+    held = mg_log_holder(&seen, line, sizeof(line));
+    began = mg_time_monotonic_ns();
+    mg_log(MG_LOG_ERROR, "log test: a line said meanwhile (the tests' own, not an error)");
+    took = mg_time_monotonic_ns() - began;
+    say("  a line said while another thread's sink stood: through in %.1f ms, the log's lock %s, the other sink still standing: %s",
+        (double)took / 1e6, held ? "held" : "free", g_stand_entered == 1 ? "yes" : "no");
+    CHECK(!held && g_stand_other == 1 && g_stand_entered == 1);
+    mg_atomic_xchg(&g_stand_release, 1);
+    if (t) mg_thread_join(t);
+    mg_log_set_sink(g_stand_before, g_stand_before_user);
+}
+
 static void test_host(const char *scratch)
 {
     u8 *p;
@@ -4685,6 +4744,7 @@ int mg_tests_run(const char *libdir, const char *scratch, mg_test_sink sink, voi
     mg_path_mkdirs(scratch);
     test_host(scratch);
     test_lock_holders();
+    test_log_sink_past_lock();
     g_failed += mg_storage_tests_run(scratch, g_sink, g_sink_user, &g_checks);
     g_failed += mg_net_tests_run(g_sink, g_sink_user, &g_checks);
     g_failed += mg_sensor_tests_run(g_sink, g_sink_user, &g_checks);

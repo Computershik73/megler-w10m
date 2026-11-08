@@ -5,7 +5,8 @@
 //   - files::same; files::copyWhole through Windows's cache and past it (COPY_FILE_NO_BUFFERING, from 8 MB), with what
 //     its progress is told; files::mend of a copy with a byte wrong;
 //   - the log: the core's word on a process about to end ("host: ..." at the error level) and writeNow's line are in the
-//     file the moment they are said, not at the writer's next turn;
+//     file the moment they are said, not at the writer's next turn; a write of the file made to stand holds up no other
+//     thread's line, and what was said meanwhile follows it in the file;
 //   - the start's steps and its watch (shell/Startup.h): a step said at once, the watch's lines while the window is not
 //     shown, and none after it is;
 //   - bundledApks::plan on a library and a shared folder in each state a phone's can be in (a first start's, all copied,
@@ -31,7 +32,9 @@
 
 #include "megler.h"
 
+#include <atomic>
 #include <cstdio>
+#include <thread>
 
 namespace megler::app {
 
@@ -199,6 +202,35 @@ void testLog() {
     shellLog::core(1, "an ordinary line of the shell's tests", nullptr);
     Sleep(600);
     check(logText().find("an ordinary line of the shell's tests") != std::string::npos, "an ordinary line is in the file at the writer's turn");
+
+    // A write of the file that stands holds up no other thread's line: lines go into the buffer under a lock of their own,
+    // and the file is written with that one let go. A fault's report wrote its trace lines one by one so, each under the
+    // log's locks, while Tuya Smart's main thread waited in the core's mg_logv (0.1.0.671).
+    static std::atomic<int> stage{0};
+    shellLog::setWriteHook([] {
+        if (stage.load() != 1) return;
+        stage.store(2);
+        for (int i = 0; i < 300 && stage.load() == 2; i++) Sleep(10);
+    });
+    stage.store(1);
+    std::thread reporter([] { shellLog::core(3, "fault: a fault's report of the shell's tests, written out at once", nullptr); });
+    for (int i = 0; i < 300 && stage.load() != 2; i++) Sleep(10);
+    check(stage.load() == 2, "a fault's line is being written out, its write made to stand");
+    const ULONGLONG began = GetTickCount64();
+    shellLog::core(1, "a line said while a write of the file stands", nullptr);
+    std::vector<std::string> ring;
+    shellLog::take(0, ring);
+    const ULONGLONG took = GetTickCount64() - began;
+    check(took < 1000 && stage.load() == 2 && !ring.empty() && ring.back().find("a line said while a write of the file stands") != std::string::npos,
+          format("a line said meanwhile, and the ring read, at once (%llu ms), the write still standing", (unsigned long long)took));
+    stage.store(3);
+    reporter.join();
+    shellLog::setWriteHook(nullptr);
+    check(logText().find("fault: a fault's report of the shell's tests, written out at once") != std::string::npos,
+          "the fault's line is in the file as its thread goes on");
+    const std::string written = writtenLog();
+    const size_t fault = written.find("fault: a fault's report of the shell's tests"), meanwhile = written.find("a line said while a write of the file stands");
+    check(fault != std::string::npos && meanwhile != std::string::npos && fault < meanwhile, "the line said meanwhile is in the file after it");
 }
 
 void testStartup() {
