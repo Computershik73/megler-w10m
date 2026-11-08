@@ -158,6 +158,29 @@ bool sameEnd(const std::wstring& a, const std::wstring& b, uint32_t bytes) {
     return readEnd(a, bytes, sizeA, endA) && readEnd(b, bytes, sizeB, endB) && sizeA == sizeB && endA == endB;
 }
 
+bool same(const std::wstring& a, const std::wstring& b) {
+    HANDLE x = open(a, GENERIC_READ, OPEN_EXISTING);
+    if (x == INVALID_HANDLE_VALUE) return false;
+    HANDLE y = open(b, GENERIC_READ, OPEN_EXISTING);
+    if (y == INVALID_HANDLE_VALUE) {
+        CloseHandle(x);
+        return false;
+    }
+    LARGE_INTEGER sizeX = {}, sizeY = {};
+    bool alike = GetFileSizeEx(x, &sizeX) && GetFileSizeEx(y, &sizeY) && sizeX.QuadPart == sizeY.QuadPart;
+    std::vector<char> p(65536), q(65536);
+    for (int64_t left = sizeX.QuadPart; alike && left > 0;) {
+        const DWORD n = DWORD(std::min<int64_t>(left, int64_t(p.size())));
+        DWORD gotX = 0, gotY = 0;
+        alike = ReadFile(x, p.data(), n, &gotX, nullptr) && ReadFile(y, q.data(), n, &gotY, nullptr) && gotX == n && gotY == n &&
+                !memcmp(p.data(), q.data(), n);
+        left -= n;
+    }
+    CloseHandle(x);
+    CloseHandle(y);
+    return alike;
+}
+
 namespace {
 
 bool readAt(HANDLE h, uint64_t at, char* out, DWORD n) {

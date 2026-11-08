@@ -40,6 +40,9 @@ bool flush(const std::wstring& path);
 /// Whether two files are of one size and end with the same `bytes`: a copy that never finished is not (Windows gives it
 /// the whole size first, and what was never written of it reads as zeros).
 bool sameEnd(const std::wstring& a, const std::wstring& b, uint32_t bytes);
+/// Whether two files hold the same bytes: of one size, then compared a piece at a time, neither read whole into memory.
+/// False when either cannot be read.
+bool same(const std::wstring& a, const std::wstring& b);
 /// Whether `copy` now holds `source`'s bytes, every 1 MB chunk of it compared and those that differ written again from
 /// `source` (read twice alike first), put on the disk and read back; `mended`: how many bytes were written so, and
 /// `chunks`, when given, the offset of each chunk that was. A Lumia 650's copies of Google Play services' 277 MB APK came

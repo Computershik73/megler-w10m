@@ -237,11 +237,11 @@ void Library::load() {
             }
             // The demo, once added, is a copy like any other, and an update of
             // Megler may carry a newer one: the copy follows the package's.
+            // (Compared a piece at a time, as every file here: neither is read whole into memory.)
             {
                 const std::wstring source = platform::installDirectory() + L"\\demo\\megler-demo.apk";
                 const std::wstring copy = directory_ + L"\\megler-demo.apk";
-                std::string ours, theirs;
-                if (files::read(copy, theirs) && files::read(source, ours) && ours != theirs && files::copy(source, copy)) {
+                if (files::exists(copy) && files::exists(source) && !files::same(copy, source) && files::copy(source, copy)) {
                     files::remove(copy + L".json");
                     files::remove(copy + L".icon");
                     shellLog::write("library: the demo was replaced with this build's");
@@ -251,8 +251,7 @@ void Library::load() {
             for (const wchar_t* name : {L"hello.apk", L"demos.apk", L"gl.apk"}) {
                 const std::wstring source = platform::installDirectory() + L"\\demo\\" + name;
                 const std::wstring copy = directory_ + L"\\" + name;
-                std::string ours, theirs;
-                if (files::read(copy, theirs) && files::read(source, ours) && ours != theirs && files::copy(source, copy)) {
+                if (files::exists(copy) && files::exists(source) && !files::same(copy, source) && files::copy(source, copy)) {
                     files::remove(copy + L".json");
                     files::remove(copy + L".icon");
                     shellLog::write("library: " + narrow(name) + " was replaced with this build's");
