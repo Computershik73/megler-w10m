@@ -63,7 +63,21 @@ DWORD WINAPI threadEntry(void* parameter) {
 
 bool isMobile() { return deviceFamily() == "Windows.Mobile"; }
 
-bool isXbox() { return deviceFamily() == "Windows.Xbox"; }
+bool isXbox() {
+    static const bool xbox = deviceFamily() == "Windows.Xbox" || asXbox();
+    return xbox;
+}
+
+bool asXbox() {
+    static const bool flagged = [] {
+        if (deviceFamily() == "Windows.Xbox" || deviceFamily() == "Windows.Mobile") return false;
+        if (!files::exists(localStateDirectory() + L"\\flags\\as-xbox")) return false;
+        shellLog::write("flag: as-xbox is on: Megler takes an Xbox's ways (its window 960 by 540 and never turned for an app; the log's ZIP in "
+                        "LocalState)");
+        return true;
+    }();
+    return flagged;
+}
 
 std::string deviceFamily() {
     try {

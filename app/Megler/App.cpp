@@ -183,13 +183,15 @@ struct App : ApplicationT<App, Markup::IXamlMetadataProvider> {
         // Content stays out from under the status bar and the navigation bar
         // (the player takes the whole display back: ui/AppShell.cpp).
         view.SetDesiredBoundsMode(ApplicationViewBoundsMode::UseVisible);
-        if (!platform::isMobile() && !platform::isXbox()) {
+        if (!platform::isMobile() && (!platform::isXbox() || platform::asXbox())) {
             // On a desktop (the x64 build) open phone-shaped. (An Xbox shows an app on the whole television, at 960 by 540
-            // of its pixels, whatever it asks.)
+            // of its pixels, whatever it asks; a PC's Megler under the flag as-xbox opens its window so.)
             using winrt::Windows::UI::ViewManagement::ApplicationViewWindowingMode;
-            view.PreferredLaunchViewSize(winrt::Windows::Foundation::Size(400, 760));
+            const winrt::Windows::Foundation::Size size = platform::asXbox() ? winrt::Windows::Foundation::Size(960, 540)
+                                                                             : winrt::Windows::Foundation::Size(400, 760);
+            view.PreferredLaunchViewSize(size);
             view.PreferredLaunchWindowingMode(ApplicationViewWindowingMode::PreferredLaunchViewSize);
-            view.TryResizeView(winrt::Windows::Foundation::Size(400, 760));
+            view.TryResizeView(size);
         }
 
         ui::installStyles();
