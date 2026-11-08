@@ -544,6 +544,30 @@ with a bit wrong in a DEX file (0.1.0.625 and 632).
   (`files::copyWhole`, `files::mend`). An app's APK, and the services' copy of
   Google Play services, are copied from the package's own APK, not from the
   library's, where the library's is a copy of one (`bundledApks::originalOf`).
+- Megler's own copies -- Google Services Framework and microG's Google Play
+  services into `<shared>\services`, Google Play services and Google Play Store
+  offered in the library once (`bitgapps-*.apk`, `apks\bitgapps.added`), a
+  library copy that is not the package's made again, one whose app's package
+  Windows took away put back -- are decided at the start by names, sizes and
+  the last 64 KB of two files (`bundledApks::plan`), and made once the window
+  is shown, on a thread of their own at background priority
+  (`Library::afterStart`, `bundledApks::start`): each said in the log before it
+  begins (`bundled apks: copying ...`, written out at once), every 10 s while it
+  goes, and with its times after (to copy, to put on the disk, to compare);
+  refused where the disk lacks the room; each library entry listed and read as
+  its copy is made, the Library showing a card while they go, and Google Play's
+  install at the first start waiting for them. A copy of 8 MB or more is made
+  past Windows's cache, and compared with its source as the disk holds both,
+  so that hundreds of megabytes do not push out of a phone's memory what
+  everything else had in it. They were made in `Library::load` before, on the
+  UI thread, before the window was shown: a Lumia 630 (512 MB, Windows 10
+  Mobile 15063) with Megler 0.1.0.671 showed the splash screen for a few
+  seconds and closed at every start -- Windows ends an app whose window it has
+  not been shown in time, and tells it nothing -- each log ending a second in
+  with the phone's folders, which another thread had looked up, and each start
+  beginning the copies again. Google Play services' own package registers its
+  APK for the other apps (a copy of it into `<shared>\services`) likewise after
+  its window is shown, and outside the library's lock.
 - Once for each build of Megler (`LocalState\bundled-apks-checked.txt`), a
   thread of its own at background priority compares every APK Megler keeps
   (the library's, each folder of `<shared>\apks`, `<shared>\services`) that is
@@ -552,7 +576,9 @@ with a bit wrong in a DEX file (0.1.0.625 and 632).
   in thousands) -- with that one, and mends it where it differs. The log says
   each copy mended and where, and at the end `bundled apks: N copies of the
   package's M Google APKs compared with them in S s`. A copy that differs and
-  cannot be mended has it done again at the next start.
+  cannot be mended has it done again at the next start. It runs after the
+  copies above, and leaves out those just made, which were compared as they
+  were made (a first start's are all such).
 - The flag `check-bundled-apks` (Megler's) has the check done at every start,
   and the log say each file's SHA-1 and SHA-256, each byte of a copy that
   differs (a copy's first 16 one by one; then how many bytes, bits and zeros,

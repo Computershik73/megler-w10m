@@ -31,6 +31,11 @@ const std::wstring& localStateDirectory();
 const std::wstring& installDirectory();
 /// "390 MB limit, 85 MB in use" from MemoryManager, or why not.
 std::string memorySummary();
+/// "NOKIA RM-976_1018, 512 MB of memory, 96.3 MB of it free": the device as Windows names it (EasClientDeviceInformation),
+/// and its memory (GlobalMemoryStatusEx).
+std::string deviceSummary();
+/// "LocalState's 1.20 GB free of 3.56 GB", and the package's and the shared folder's where they are on other disks.
+std::string diskSummary();
 /// Reads the app's memory use and limit for the core to hand to the app
 /// (Platform.cpp). On the shell's own thread: at start-up and on its tick.
 void sampleMemory();

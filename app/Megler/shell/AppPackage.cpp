@@ -805,6 +805,10 @@ bool registerServiceApk(const ApkEntry& entry, const std::string& installedFullN
     if (!entry.report.ok || installedFullName.empty() || installedFullName.find_first_not_of("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789._-") != std::string::npos || !canRead(entry.path)) return false;
     const auto shared = sharedFolder();
     if (shared.empty()) return false;
+    // (One at a time: Google Play services' own package asks after its start and again when its library reads it, and a
+    // second asking meanwhile copied the APK a second time, beside the first.)
+    static std::mutex registering;
+    std::lock_guard<std::mutex> lock(registering);
     // microG's and Google's own are each registered apart: an app takes the one it is set to (ui/SettingsScreen.cpp).
     const auto record = shared + (entry.report.microg ? L"\\services\\microg-package.txt" : L"\\services\\gms-package.txt");
     std::string previous;

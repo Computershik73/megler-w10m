@@ -101,7 +101,7 @@ void ask(AppShell& shell) {
 
 /// The bundle's copy put in the library again, on a worker thread: it had gone from there (removed, or lost to an update).
 void restore(AppShell& shell, Bundled& b) {
-    if (gCopying || !files::exists(bundleFile(b.file))) return;
+    if (gCopying || bundledApks::copying() || !files::exists(bundleFile(b.file))) return;
     const ULONGLONG now = GetTickCount64();
     if (b.restoreAsked && now - b.restoreAsked < retryMs) return;
     b.restoreAsked = now;
@@ -110,7 +110,9 @@ void restore(AppShell& shell, Bundled& b) {
     const std::wstring source = bundleFile(b.file), target = Library::instance().directory() + L"\\" + widen(id);
     auto copied = std::make_shared<bool>(false);
     shell.runInBackground(
-        [source, target, copied] { *copied = bundledApks::copy(source, target); },
+        [source, target, copied, what = std::string(strcmp(b.package, gmsPackage) ? "Google Play Store" : "Google Play services")] {
+            *copied = bundledApks::copy(source, target, what);
+        },
         [id, copied] {
             gCopying = false;
             if (!*copied) {
@@ -127,7 +129,8 @@ void restore(AppShell& shell, Bundled& b) {
 void ensureInstalled(AppShell& shell) {
     const bool listed = separateApps::list() == separateApps::List::ready && separateApps::listProblem().empty();
     if ((installed(gmsPackage) && installed(storePackage)) || !listed) return;
-    if (!separateApps::working().empty() || gCopying) return;
+    // (Nor while the library's copies of the package's APKs are being made after the start: they are its entries to be.)
+    if (!separateApps::working().empty() || gCopying || bundledApks::copying()) return;
     for (Bundled& b : gBundled) {
         if (installed(b.package)) continue;
         const auto entry = entryOf(b.package);

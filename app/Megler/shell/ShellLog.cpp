@@ -38,9 +38,14 @@ void writeOut() {
     gBuffer.clear();
 }
 
-bool urgent(const std::string& message) {
+bool urgent(int level, const std::string& message) {
     return message.compare(0, 6, "fault:") == 0 || message.find("FATAL") != std::string::npos ||
-           message.compare(0, 6, "trace:") == 0;
+           message.compare(0, 6, "trace:") == 0 ||
+           // The core's word on a process Windows is about to end -- abort() (std::terminate's end too), an exception nothing
+           // handled, the C runtime's refusals, a pure call -- is an error of "host:" (core/src/host/mg_host_win32.c). It
+           // waited for the writer like any other line, and abort() ends the process at once: an exception escaping a
+           // thread left a log that stopped with no word of it.
+           (level >= 3 && message.compare(0, 5, "host:") == 0);
 }
 
 char levelLetter(int level) {
@@ -80,7 +85,7 @@ void emit(int level, const std::string& message) {
     }
     gBuffer += line;
     gBuffer += "\r\n";
-    if (gBuffer.size() >= 64 * 1024 || urgent(message)) writeOut();
+    if (gBuffer.size() >= 64 * 1024 || urgent(level, message)) writeOut();
 }
 
 void writer() {
@@ -128,6 +133,11 @@ void write(const std::string& line) {
     static std::atomic<bool> said{false};
     if (!said.exchange(true)) emit(1, format("shell: the UI thread is %lu", static_cast<unsigned long>(GetCurrentThreadId())));
     emit(1, "shell: " + line);
+}
+
+void writeNow(const std::string& line) {
+    write(line);
+    flush();
 }
 
 void core(int level, const char* line, void*) { emit(level, line ? line : ""); }

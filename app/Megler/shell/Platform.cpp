@@ -10,6 +10,8 @@
 
 #include "megler.h"
 
+#include <winrt/Windows.Security.ExchangeActiveSyncProvisioning.h>
+
 #if defined(MG_ELF_HOST)
 // core/src/host/win32/mg_core_loader.h: the core's ELF into this process (desktop Windows, docs/DESKTOP.md).
 extern "C" bool mg_core_load(const char* path, char* err, size_t errlen);
@@ -139,6 +141,47 @@ std::string memorySummary() {
     }
 }
 
+std::string deviceSummary() {
+    std::string text;
+    try {
+        // (What Windows calls the device for Exchange: its maker, its model's code, its variant. A phone given a later Windows
+        // than its maker gave it may say another model's.)
+        winrt::Windows::Security::ExchangeActiveSyncProvisioning::EasClientDeviceInformation eas;
+        const std::string maker = narrow(eas.SystemManufacturer()), product = narrow(eas.SystemProductName());
+        text = (maker.empty() ? std::string() : maker + " ") + (product.empty() ? std::string("(no model said)") : product);
+        try {
+            const std::string sku = narrow(eas.SystemSku());
+            if (!sku.empty() && sku != product) text += " (" + sku + ")";
+        } catch (...) {
+        }
+    } catch (...) {
+        text = "a device Windows does not name";
+    }
+    MEMORYSTATUSEX status = {};
+    status.dwLength = sizeof(status);
+    if (GlobalMemoryStatusEx(&status))
+        text += ", " + formattedByteCount(status.ullTotalPhys) + " of memory, " + formattedByteCount(status.ullAvailPhys) + " of it free";
+    return text;
+}
+
+std::string diskSummary() {
+    const auto room = [](const std::wstring& folder) {
+        ULARGE_INTEGER free = {}, total = {};
+        return GetDiskFreeSpaceExW(folder.c_str(), &free, &total, nullptr)
+                   ? formattedByteCount(free.QuadPart) + " free of " + formattedByteCount(total.QuadPart)
+                   : format("not said (error %lu)", GetLastError());
+    };
+    const auto drive = [](const std::wstring& path) { return path.size() >= 2 && path[1] == L':' ? std::wstring(1, wchar_t(towupper(path[0]))) : path; };
+    const std::wstring local = localStateDirectory(), install = installDirectory(), shared = appPackage::sharedFolder();
+    std::string text = "LocalState's " + room(local);
+    if (drive(install) != drive(local)) text += "; the package's " + room(install);
+    // (A package installed on a memory card may be given no publisher's folder: the services' copies and the apps' shared
+    // storage then have nowhere to go.)
+    if (shared.empty()) text += "; no shared folder (Windows gave Megler no folder of its publisher's)";
+    else if (drive(shared) != drive(local)) text += "; the shared folder's " + room(shared);
+    return text;
+}
+
 void sampleMemory() {
     try {
         gMemoryLimit.store(MemoryManager::AppMemoryUsageLimit(), std::memory_order_relaxed);
@@ -155,6 +198,10 @@ void initializeCore() {
     shellLog::write("LocalState: " + dataDirectory);
     shellLog::write("install folder: " + packageDirectory);
     shellLog::write("memory: " + memorySummary());
+    // What the phone is, and the room its disks have: a first start copies hundreds of megabytes (shell/BundledApks.h), and
+    // a phone of 512 MB is told an app may use 390 MB (a Lumia 630).
+    shellLog::write("phone: " + deviceSummary());
+    shellLog::write("disk: " + diskSummary());
     shellLog::write("ANGLE: " + angle().summary);
     // The phone's folders for an app's storage are looked for now, on a thread of their own: by the time an app is started they are known.
     StorageHost::shared().start();
