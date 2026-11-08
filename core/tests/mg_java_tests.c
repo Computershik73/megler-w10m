@@ -86,6 +86,7 @@
 #include "mg_camera_standin.h"
 #include "mg_location_standin.h"
 #include "mg_sensor_standin.h"
+#include "mg_bluetooth_standin.h"
 #include "mg_codec_standin.h"
 #include "mg_gfx_standin.h"
 #include "mg_gl_standin.h"
@@ -521,6 +522,8 @@ static bool g_crash_app;
 static bool g_microg_app;
 /* The camera app: it alone has cameras (the stand-in), so that the others still see a phone without one. */
 static bool g_camera_app;
+/* The Bluetooth app: it alone has a radio (the stand-in), so that the others still see a phone without one. */
+static bool g_bluetooth_app;
 static volatile i32 g_exited;
 static int g_status;
 static char g_reason[1600];
@@ -945,6 +948,11 @@ static bool start(const char *apk, const char *android_root)
     cfg.location = *mg_location_standin();
     /* A device with one of each sensor, each reading a known value in Windows' units and signs (mg_sensor_standin.c). */
     cfg.sensors = *mg_sensor_standin();
+    /* A Bluetooth LE radio with a MeshCore radio and a beacon in range (mg_bluetooth_standin.c), as it starts. */
+    if (g_bluetooth_app) {
+        mg_bluetooth_standin_reset();
+        cfg.bluetooth = *mg_bluetooth_standin();
+    }
     /*
      * A microphone that hears a ramp (mic_start), and a SIM of the country the run's language and region are in, as a
      * phone's is -- the US in the first run (en-US), Russia in the second (ru-RU): the data app's steps microphone,
@@ -3227,6 +3235,56 @@ static int run_camera(void)
     return g_failed;
 }
 
+/*
+ * The Bluetooth LE app (core/tests/app/bluetooth) on the stand-in for the shell's radio (mg_bluetooth_standin.c), as MeshCore's
+ * app uses it: each step in order; the radio turned off when the app is ready for it, as a user would, and turned on again
+ * by the stand-in's user in the phone's settings, which the app's request to enable it shows; then what the stand-in was
+ * asked, and what the core said.
+ */
+static int run_bluetooth(void)
+{
+    static const char *const steps[] = { "adapter", "permissions", "names", "scan", "scan-legacy", "connect", "discover", "mtu", "notify", "write",
+                                         "write-no-response", "write-old", "read", "rssi", "bond-on-demand", "unbond", "bond-asked", "disconnect",
+                                         "dropped", "unreachable" };
+    mg_bluetooth_standin_counts n;
+    char text[120];
+    int at = -1, i;
+    expect_line("I/BluetoothTest: onCreate", &at, 120);
+    for (i = 0; i < (int)MG_COUNT(steps); i++) {
+        snprintf(text, sizeof(text), "I/BluetoothTest: %s ok", steps[i]);
+        expect_line(text, &at, 120);
+    }
+    expect_line("I/BluetoothTest: turn the radio off", &at, 60);
+    mg_bluetooth_standin_radio(false);
+    expect_line("I/BluetoothTest: radio-off ok", &at, 120);
+    expect_line("I/BluetoothTest: enable ok", &at, 120);
+    snprintf(text, sizeof(text), "I/BluetoothTest: done ok=%d failed=0", (int)MG_COUNT(steps) + 2);
+    expect_line(text, &at, 60);
+    mg_bluetooth_standin_get(&n);
+    say("  the stand-in: %d scans (%d active, %d stopped), %d connections asked for, %d left, %d bytes written, MTU %d asked, %d pairings (%d answered, "
+        "%d by the user, PIN \"%s\"), %d removed, the settings shown %d times",
+        n.scans, n.scans_active, n.scans_stopped, n.connects, n.connected, n.written, n.mtu_asked, n.bonds, n.pairing_answers, n.asked_user, n.pin, n.unbonds,
+        n.settings);
+    /* Both scans ran actively and stopped; every connection ended; the writes, the MTU, the pairings and the settings as the app made them. */
+    CHECK(n.scans == 2 && n.scans_active == 2 && n.scans_stopped == 2 && !n.scanning);
+    CHECK(n.connects == 3 && n.connected == 0 && n.connect_type == MEGLER_BT_ADDRESS_UNKNOWN);
+    CHECK(n.written == 15 && n.mtu_asked == 247);
+    CHECK(n.bonds == 2 && n.pairing_answers == 2 && n.asked_user == 1 && !strcmp(n.pin, "123456") && n.unbonds == 1 && n.settings == 1);
+    /* What the core said of it: the radio, the device heard, the connection, its database, the pairing's question and answers. */
+    CHECK(find_line("bluetooth: the radio is on (\"Test Radio\")", 0) >= 0);
+    CHECK(find_line("bluetooth: heard C0:FF:EE:00:00:01 (random) \"MeshCore-Test\", -50 dBm, takes connections", 0) >= 0);
+    CHECK(find_line("bluetooth: connection 1 to C0:FF:EE:00:00:01 (random)", 0) >= 0 && find_line("bluetooth: connection 1 to C0:FF:EE:00:00:01 made", 0) >= 0);
+    CHECK(find_line("bluetooth: connection 1: 3 services, 4 characteristics, 1 descriptors (status 0)", 0) >= 0);
+    CHECK(find_line("bluetooth: C0:FF:EE:00:00:01 asks for a PIN to pair", 0) >= 0);
+    CHECK(find_line("bluetooth: C0:FF:EE:00:00:01's pairing answered with the app's PIN", 0) >= 0
+          && find_line("bluetooth: C0:FF:EE:00:00:01's pairing not answered by the app: the user is asked", 0) >= 0);
+    CHECK(find_line("bluetooth: the radio is off", 0) >= 0 && find_line("bluetooth: the phone's Bluetooth settings shown", 0) >= 0);
+    CHECK(find_line(" FAILED", 0) < 0 && find_line("FATAL EXCEPTION", 0) < 0);
+    back_and_end("I/BluetoothTest: onDestroy", &at);
+    if (g_failed) say_app_lines("/BluetoothTest: ");
+    return g_failed;
+}
+
 /* Regression: a client and GmsCore carry incompatible classes of identical names. */
 static int run_microg(void)
 {
@@ -3445,6 +3503,7 @@ int mg_tests_java_run(const char *which, const char *apk, const char *android_ro
     if (g_any_app && getenv("MG_JAVA_SPLITS")) g_splits_dir = mg_strdup(getenv("MG_JAVA_SPLITS"));
     g_crash_app = !strcmp(which, "crash");
     g_camera_app = !strcmp(which, "camera");
+    g_bluetooth_app = !strcmp(which, "bluetooth");
     g_data_app = !strcmp(which, "data");
     g_microg_app = !strcmp(which, "microg");
     /* The data app runs with the phone's look told (megler_set_theme): a cobalt accent and a light theme; its step theme-accent checks what an app sees of it. */
@@ -3519,6 +3578,7 @@ int mg_tests_java_run(const char *which, const char *apk, const char *android_ro
         else if (!strcmp(which, "camera")) run_camera();
         else if (!strcmp(which, "splits")) run_splits();
         else if (!strcmp(which, "screen")) run_screen();
+        else if (!strcmp(which, "bluetooth")) run_bluetooth();
         else if (g_any_app) run_app();
         else run_hello();
         if (running()) {

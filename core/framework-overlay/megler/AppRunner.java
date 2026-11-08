@@ -42,6 +42,9 @@
 // front wants the screen held -- its android:screenOrientation or setRequestedOrientation, "behind" and an activity that
 // does not fill the screen leaving it to the one below -- is told to the shell as it changes (updateOrientation).
 //
+// And Android's screens about the Bluetooth radio an app starts (BluetoothAdapter.ACTION_REQUEST_ENABLE, the Bluetooth
+// settings) are the phone's Bluetooth settings, the request's result RESULT_OK once the radio is on (megler.Bluetooth).
+//
 // Everything else is the original's, unchanged.
 package megler;
 
@@ -459,6 +462,9 @@ public final class AppRunner {
             megler.PhoneApps.start(i);
             return;
         }
+        // Android's screens about the Bluetooth radio (BluetoothAdapter.ACTION_REQUEST_ENABLE and the like): the phone's
+        // Bluetooth settings, the result as the radio turns out (megler.Bluetooth.request).
+        if (Bluetooth.request(from instanceof Activity ? (Activity) from : top(), i, request)) return;
         Manifest.Component c = Manifest.resolve(i);
         android.util.Log.d("Megler", "startActivity " + i + (c != null ? " -> " + c.name : " (not an activity of this app)"));
         if (c != null) {
@@ -737,6 +743,8 @@ public final class AppRunner {
         ViewRoot.hostHidden(pause);
         // a result another app's activity left for this one comes first, as onActivityResult comes before onResume
         if (!pause) AppResults.resumed();
+        // (and a request to turn the Bluetooth radio on that showed the phone's settings: the radio as it is now)
+        if (!pause) Bluetooth.resumed();
         // and what the shell said of the permission groups is asked again: the user may have changed Windows' settings meanwhile
         if (!pause) Permissions.forget();
         Activity a = top();

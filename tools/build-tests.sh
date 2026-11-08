@@ -114,7 +114,8 @@
 # second time with every camera refused. And `screen`, whose surface is resized
 # and turned from the host's side (megler_set_surface), as a PC's window or a
 # phone turned does it: its activities made again or told, the pictures at the
-# new size. Their
+# new size. And `bluetooth`, Bluetooth LE's central side as MeshCore's app uses
+# it, on a stand-in for the shell's radio (core/tests/mg_bluetooth_standin.c). Their
 # pictures are written to build/java-pictures as BMP files. Each is then run
 # once more with its calls of the shell's drawing recorded
 # (build/gfx-records/<app>.rec), for the Windows build to draw again.
@@ -225,7 +226,7 @@ EOF
     # Bundles of split APKs, unpacked as the shell unpacks them.
     MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL="*" wsl.exe -- bash -c "rm -rf $WB/scratch-bundles && qemu-arm -L /usr/arm-linux-gnueabihf $WB/mg_tests --bundles '$WROOT/build/guest/java' $WB/scratch-bundles '$WROOT/build/bundles' 2>&1; STATUS=\$?; rm -rf $WB/scratch-bundles; exit \$STATUS" || STATUS=1
     if [ "$JAVA" = 1 ]; then
-      for app in hello demos natives crash gc gl screen; do
+      for app in hello demos natives crash gc gl screen bluetooth; do
         if [ ! -f "$ROOT/build/guest/java/$app.apk" ]; then
           echo "(the Java test app $app is not run: build/guest/java/$app.apk was not built -- its native library needs the NDK, see tools/build-test-app.sh)"
           continue

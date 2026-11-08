@@ -41,6 +41,8 @@
 // And a broadcast can be sent to the receivers that hold a permission, as Android's sendBroadcast(intent, receiverPermission)
 // sends it: megler.Phone's SMS_RECEIVED to those that hold RECEIVE_SMS, PHONE_STATE with the caller's number to those that hold
 // READ_CALL_LOG as well and without it to the others (a receiver's permissions are its package's, megler.Phone.holds).
+// And a receiver registered for the Bluetooth radio's broadcasts (android.bluetooth.*) starts the framework's thread that
+// hears the radio (megler.Bluetooth), as the adapter's first use does: an app that only listens hears the radio turn.
 // Everything else is the original's, unchanged.
 package megler;
 
@@ -65,6 +67,8 @@ public final class Broadcasts {
         final Handler on = handler != null ? handler : new Handler(Looper.getMainLooper());
         /* With no receiver there is nothing to keep: the call only asks for the sticky intent. (A null in the list was a NullPointerException waiting for the first broadcast its filter matched.) */
         if (r != null) synchronized (sReceivers) { sReceivers.add(new Object[] { r, f, context, on }); }
+        /* A receiver of the Bluetooth radio's broadcasts: the framework's thread that hears the radio runs from now on (megler.Bluetooth). */
+        for (int k = 0; f != null && k < f.countActions(); k++) if (f.getAction(k) != null && f.getAction(k).startsWith("android.bluetooth.")) { Bluetooth.ensure(); break; }
         Intent first = null;
         if (f != null) for (String action : STICKY) {
             if (!f.hasAction(action)) continue;
