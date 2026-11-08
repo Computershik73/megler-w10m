@@ -1652,6 +1652,7 @@ public class Main extends Activity {
         remoteUserInfo();
         mediaKeyController();
         containerState();
+        contextParams();
         themeAccent();
         phoneApps();
         installs();
@@ -5449,6 +5450,25 @@ public class Main extends Activity {
                     && ((android.graphics.drawable.AnimationDrawable) ac).getDuration(1) == 200 && ((android.graphics.drawable.AnimationDrawable) ac).isOneShot();
             detail = "children " + (children == null ? "null" : children.length) + " live " + live + ", copy " + copy + " " + copied + ", levels " + levels + ", frames " + frames;
             return live && copied && levels && frames;
+        });
+    }
+
+    /**
+     * Android 12's Context.createContext(ContextParams), as Google Play services' Nearby UWB service asks it: a context of the
+     * attribution tag the parameters carry, from this activity and from the application. (API 31, past the SDK the app is
+     * built against: by reflection.)
+     */
+    private void contextParams() {
+        step("context-params", () -> {
+            Class<?> params = Class.forName("android.content.ContextParams"), builder = Class.forName("android.content.ContextParams$Builder");
+            Object b = builder.getConstructor().newInstance();
+            builder.getMethod("setAttributionTag", String.class).invoke(b, "megler-test");
+            Object made = builder.getMethod("build").invoke(b);
+            java.lang.reflect.Method create = android.content.Context.class.getMethod("createContext", params);
+            Object fromActivity = create.invoke(this, made), fromApp = create.invoke(getApplicationContext(), made);
+            detail = "from the activity " + fromActivity + ", from the application " + fromApp;
+            return fromActivity instanceof android.content.Context && fromApp instanceof android.content.Context
+                    && ((android.content.Context) fromApp).getPackageName().equals(getPackageName());
         });
     }
 
