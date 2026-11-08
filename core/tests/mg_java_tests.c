@@ -2763,6 +2763,9 @@ static int run_data(void)
                                          /* And Resources of the app's own over the implementation of the activity's (getImpl, setImpl, the hidden
                                             Resources(ClassLoader)), as Tuya Smart's dynamic strings make them: alike in everything, a theme rebased. */
                                          "resources-impl",
+                                         /* And the process's Application through ActivityThread's hidden fields, on a thread of the Application's
+                                            own while it is created, as Tuya Smart's library loader asks, and afterwards. */
+                                         "activity-thread-application",
                                          "audio-track", "media-player", "media-player-ogg", "sound-pool",
                                          /* And MediaCodec over the stand-in for the shell's decoders: H.264 shown on a Surface in display
                                             order, a flush, parameter sets in a codec-config buffer, the asynchronous mode, AAC with an

@@ -5916,6 +5916,23 @@ on a looper thread of its own and takes it back with `next()`.
   fields it names and the framework lacks. The data app's step "tasks" reads
   its own task so.
 
+- `android/app/ActivityThread.java` and `megler/AppRunner.java`: Android's
+  hidden fields that hold the process's `ActivityThread` and `Application`,
+  `sCurrentActivityThread`, `mInitialApplication` and `mAllApplications`,
+  which code with no `Context` reads by reflection as well as the methods.
+  `AppRunner` puts the Application in them as soon as it has made it
+  (`ActivityThread.meglerApplicationMade`), before its providers and its
+  `onCreate`, as Android's `handleBindApplication` and
+  `LoadedApk.makeApplication` put it; `currentApplication()` and
+  `getApplication()` answer from `mInitialApplication`, as Android's do.
+  Tuya Smart's library loader (`ThingLibraryLoader.getContext`) reads
+  `currentActivityThread()`'s `mInitialApplication` on a worker thread while
+  the Application starts: there was no such field (`NoSuchFieldException`
+  in its log), it had no `Context`, and the thread ended on "context is
+  null" (0.1.0.673). The data app's Application (`DataApplication`) asks so
+  on a thread of its own in its `onCreate`, and the step
+  "activity-thread-application" checks what it found and every other way.
+
 - `android/app/DialogFragment.java`, in place of the generated stub, whose
   `show()` did nothing: `onCreateDialog` was never called and `getDialog()`
   was null. VK mp3 mod's sign-in, when VK asks for a confirmation code, shows

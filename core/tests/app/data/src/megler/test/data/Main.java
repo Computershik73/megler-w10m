@@ -1722,6 +1722,7 @@ public class Main extends Activity {
         });
         layoutApiLevel();
         resourcesImpl();
+        activityThreadApplication();
         sound();
         mediaCodec();
         network();
@@ -5267,6 +5268,36 @@ public class Main extends Activity {
                     && wrapper.getTheme().getResources() == dynamic && inflated != null && inflated.findViewById(R.id.frame) != null
                     && before == 0xFF222222 && rebased == 0xFF111111 && foreground(day) == 0xFF111111
                     && loaders instanceof java.util.List && ((java.util.List<?>) loaders).isEmpty() && loader == getClassLoader();
+        });
+    }
+
+    /**
+     * The process's Application as code that has no Context finds it, by Android's hidden ActivityThread: its field
+     * sCurrentActivityThread, which currentActivityThread() gives too; that one's mInitialApplication -- which Tuya Smart's
+     * library loader reads on a worker thread while its Application starts, and found no such field -- mAllApplications and
+     * getApplication(); currentApplication() and AppGlobals.getInitialApplication(). All are the app's Application, here and
+     * on the thread DataApplication.onCreate started, as Android sets them before the Application's onCreate.
+     */
+    private void activityThreadApplication() {
+        step("activity-thread-application", () -> {
+            Class<?> at = Class.forName("android.app.ActivityThread");
+            Object thread = at.getMethod("currentActivityThread").invoke(null);
+            java.lang.reflect.Field current = at.getDeclaredField("sCurrentActivityThread");
+            current.setAccessible(true);
+            java.lang.reflect.Field initial = at.getDeclaredField("mInitialApplication");
+            initial.setAccessible(true);
+            java.lang.reflect.Field all = at.getDeclaredField("mAllApplications");
+            all.setAccessible(true);
+            android.app.Application app = getApplication();
+            Object fromField = initial.get(thread);
+            java.util.List<?> apps = (java.util.List<?>) all.get(thread);
+            Object fromGetter = at.getMethod("getApplication").invoke(thread);
+            Object fromCurrent = at.getMethod("currentApplication").invoke(null);
+            Object fromGlobals = Class.forName("android.app.AppGlobals").getMethod("getInitialApplication").invoke(null);
+            detail = "application " + app + ", in its onCreate: " + DataApplication.seenInOnCreate + "; field " + fromField + ", all " + apps
+                    + ", getApplication " + fromGetter + ", currentApplication " + fromCurrent + ", AppGlobals " + fromGlobals;
+            return app instanceof DataApplication && "field true current true".equals(DataApplication.seenInOnCreate) && current.get(null) == thread
+                    && fromField == app && apps != null && apps.contains(app) && fromGetter == app && fromCurrent == app && fromGlobals == app;
         });
     }
 
