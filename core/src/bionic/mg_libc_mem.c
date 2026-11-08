@@ -565,6 +565,8 @@ typedef struct region {
      */
     const mg_lib *maker;
     bool go;
+    /* Its own number, given as it went into the list (g_region_serial): a write-back knows it again by it, the lock let go meanwhile. */
+    u32 serial;
     struct region *next;
 } region;
 
@@ -735,11 +737,12 @@ static MG_HOSTCB void before_system_write(void *p, size_t size)
     bool held;
     if (!g_gone || !size) return;
     /*
-     * A thread that holds the lock already goes on under it. write_back reads the file into g_file_chunk under the lock, and
-     * the host's read asks here first: once the app had given pages back (madvise -- Chromium's PartitionAlloc and V8 do it
-     * all the time), the 5-second write-back took the lock again, its thread stopped for good, and every mmap, munmap,
+     * A thread that holds the lock already goes on under it. The write-back read the file into g_file_chunk under the lock,
+     * and the host's read asks here first: once the app had given pages back (madvise -- Chromium's PartitionAlloc and V8 do
+     * it all the time), the 5-second write-back took the lock again, its thread stopped for good, and every mmap, munmap,
      * mprotect and madvise of the app's with it -- Aurora Store's and Gmail's Google sign-in pages stood still on a Lumia 650
      * (650; 651's hang report: "the mappings' lock is taken again in before_system_write ... since mg_mem_write_back_all").
+     * No file is read under the lock any more (write_back_out); this stays for whatever else reads under it.
      */
     held = mg_holder_mine(&g_region_hold);
     if (!held) mg_lock_acquire(&g_region_lock);
@@ -808,98 +811,278 @@ void mg_mem_file_written(void *file, u64 at, const void *buf, size_t n)
     mg_lock_release(&g_region_lock);
 }
 
-/* The file's bytes as they are, a chunk at a time, to compare a mapping's pages with before writing them back. Under the lock. */
+/*
+ * Write-backs: what the app wrote into a writable shared file mapping, back to the file and into the file's other mappings.
+ * They read and write the file with the mappings' lock let go, one write-back at a time (g_write_back_lock, which nothing
+ * else waits for): a chunk of the mapping's pages is copied under the mappings' lock, then compared with what the file holds
+ * and written where it differs past it. They were made under the mappings' lock, which every mmap, munmap, mprotect and
+ * madvise of the app's waits for, and the fault handler's mending of a page: every 5 s the write-back thread read each
+ * mapping's file whole and wrote what differed, and walked the list of mappings from its start for each of them, all with the
+ * lock held -- a pass of a moment on a PC, and as long as the phone's flash takes, which is far longer while another thread
+ * puts a file on the disk (Viber's hang report has a SQLite thread in fsync). The lock order is g_write_back_lock, then
+ * g_region_lock; a write-back may take the mappings' lock, never the other way round.
+ */
 #define FILE_CHUNK (16 * MG_PAGE)
-static u8 g_file_chunk[FILE_CHUNK];
+static mg_lock g_write_back_lock = MG_LOCK_INIT;
+/* Who writes back (the suspension's word when it cannot wait any longer). */
+static mg_holder g_write_back_hold = MG_HOLDER_INIT;
+/* The file's bytes as they are, and the mapping's copied to be written: a chunk at a time, under g_write_back_lock. */
+static u8 g_file_chunk[FILE_CHUNK], g_page_copy[FILE_CHUNK];
+/* The writable shared file mappings there are (a region's `file` and `write_back`), counted under the mappings' lock. */
+static volatile i32 g_write_backs;
+/* Each region's own number (region.serial), given as it goes into the list: a region looked at before is known again by it. */
+static u32 g_region_serial;
+void (*volatile mg_mem_write_back_io_hook)(void);
+
+static region *region_of(const void *p);
+static bool write_back_regions_by(u64 deadline);
+
+static void write_back_lock(void)
+{
+    mg_lock_acquire(&g_write_back_lock);
+    mg_holder_take(&g_write_back_hold, "a write-back");
+}
+
+/* g_write_back_lock by `deadline` (mg_time_monotonic_ns): false when it was not to be had by then. */
+static bool write_back_lock_by(u64 deadline)
+{
+    while (!mg_lock_try(&g_write_back_lock)) {
+        if (mg_time_monotonic_ns() >= deadline) return false;
+        mg_sleep_ns(2000000ull);
+    }
+    mg_holder_take(&g_write_back_hold, "a write-back");
+    return true;
+}
+
+static void write_back_unlock(void)
+{
+    mg_holder_let_go(&g_write_back_hold);
+    mg_lock_release(&g_write_back_lock);
+}
+
+/* `r`, if it is still in the list with its `serial`: a region looked at under the lock before, which may have gone since. Under the lock. */
+static region *region_still(const region *r, u32 serial)
+{
+    region *x;
+    for (x = g_regions; x; x = x->next)
+        if (x == r && x->serial == serial) return x;
+    return NULL;
+}
+
+/* `r` into the list, with a number of its own. Under the lock. */
+static void region_link(region *r)
+{
+    r->serial = ++g_region_serial;
+    r->next = g_regions;
+    g_regions = r;
+}
 
 /*
- * What the app wrote into [from, from + size) of a shared file mapping, back to the file, and into the file's other mappings:
- * the pages it still has, and of them those that differ from what the file holds -- most of a store's pages are as they were
- * the last time, and write_back_loop goes over them every few seconds. Under the lock.
+ * What the app wrote into [from, from + size) of region `r` (its `serial`), back to the file, and into the file's other
+ * mappings: the pages it still has, and of them those that differ from what the file holds -- most of a store's pages are as
+ * they were the last time, and write_back_loop goes over them every few seconds. A chunk's pages are copied under the
+ * mappings' lock, the file read and written past it; the file held apart for it (mg_fd_held_ref), as the mapping may be
+ * unmapped meanwhile, and then the rest is left. With a `deadline` (mg_time_monotonic_ns; 0: none) the mappings' lock is
+ * waited for no later than it: false when it gave up then. Under g_write_back_lock, the mappings' lock not held.
  */
-static void write_back(region *r, size_t from, size_t size)
+static bool write_back_out(region *r, u32 serial, size_t from, size_t size, u64 deadline)
 {
-    size_t end = from + size, at;
-    if (!r->file || !r->write_back) return;
-    if (end > r->file_bytes) end = r->file_bytes;
+    void *file = NULL;
+    u64 file_offset = 0;
+    size_t end = 0, at;
+    bool done = true;
+#define WRITE_BACK_REGIONS_LOCK() (!deadline ? (mg_lock_acquire(&g_region_lock), true) : write_back_regions_by(deadline))
+    if (!WRITE_BACK_REGIONS_LOCK()) return false;
+    if (region_still(r, serial) && r->file && r->write_back && from < r->file_bytes) {
+        file = mg_fd_held_ref(r->file);
+        file_offset = r->file_offset;
+        end = size < r->file_bytes - from ? from + size : r->file_bytes;
+    }
+    mg_lock_release(&g_region_lock);
+    if (!file) return true;
     for (at = from / MG_PAGE * MG_PAGE; at < end; at += FILE_CHUNK) {
-        size_t chunk_end = at + FILE_CHUNK < end ? at + FILE_CHUNK : end, page;
-        i32 got = mg_fd_held_pread(r->file, g_file_chunk, (u32)(chunk_end - at), r->file_offset + at);
-        for (page = at / MG_PAGE; page * MG_PAGE < chunk_end; page++) {
+        const size_t chunk_end = at + FILE_CHUNK < end ? at + FILE_CHUNK : end, first = at / MG_PAGE;
+        size_t page;
+        u32 have = 0;   /* the chunk's pages copied, a bit each */
+        i32 got;
+        if (!WRITE_BACK_REGIONS_LOCK()) {
+            done = false;
+            break;
+        }
+        if (!region_still(r, serial)) {
+            /* (Unmapped meanwhile: its munmap wrote it back.) */
+            mg_lock_release(&g_region_lock);
+            break;
+        }
+        for (page = first; page * MG_PAGE < chunk_end; page++) {
+            const size_t a = page * MG_PAGE < from ? from : page * MG_PAGE, b = (page + 1) * MG_PAGE < chunk_end ? (page + 1) * MG_PAGE : chunk_end;
+            /* (Not a page the app unmapped, made no-access, or gave back: reading it would fault, and it holds nothing of the file's.) */
+            if (b <= a || !live_has(r, page) || noaccess_has(r, page) || gone_has(r, page)) continue;
+            memcpy(g_page_copy + (a - at), r->base + a, b - a);
+            have |= 1u << (page - first);
+        }
+        mg_lock_release(&g_region_lock);
+        if (!have) continue;
+        if (mg_mem_write_back_io_hook) mg_mem_write_back_io_hook();
+        got = mg_fd_held_pread(file, g_file_chunk, (u32)(chunk_end - at), file_offset + at);
+        for (page = first; page * MG_PAGE < chunk_end; page++) {
             size_t a = page * MG_PAGE < from ? from : page * MG_PAGE, b = (page + 1) * MG_PAGE < chunk_end ? (page + 1) * MG_PAGE : chunk_end;
-            /* (Not a page the app made no-access, or gave back: reading it would fault, and it holds nothing of the file's.) */
-            if (!(r->live[page >> 3] & (1u << (page & 7))) || (r->noaccess && (r->noaccess[page >> 3] & (1u << (page & 7)))) || gone_has(r, page))
-                continue;
+            if (!(have & (1u << (page - first)))) continue;
             /* Up to the file's end, which the app may have moved in since it mapped it: Linux writes a mapping back no further. */
             if (got >= 0 && b > at + (size_t)got) b = at + (size_t)got;
             if (b <= a) continue;
-            if (got >= 0 && !memcmp(g_file_chunk + (a - at), r->base + a, b - a)) continue;
-            if (mg_fd_held_pwrite(r->file, r->base + a, (u32)(b - a), r->file_offset + a) > 0 && g_file_copies > 1)
-                copies_written(r, r->file, r->file_offset + a, r->base + a, b - a);
+            if (got >= 0 && !memcmp(g_file_chunk + (a - at), g_page_copy + (a - at), b - a)) continue;
+            if (mg_fd_held_pwrite(file, g_page_copy + (a - at), (u32)(b - a), file_offset + a) <= 0 || g_file_copies <= 1) continue;
+            /* The file's other mappings are given the bytes as a write through a descriptor gives them: memory alone, under the lock. */
+            if (!WRITE_BACK_REGIONS_LOCK()) {
+                done = false;
+                continue;
+            }
+            copies_written(region_still(r, serial), file, file_offset + a, g_page_copy + (a - at), b - a);
+            mg_lock_release(&g_region_lock);
         }
     }
+#undef WRITE_BACK_REGIONS_LOCK
+    mg_fd_let_go(file);
+    return done;
 }
 
-void mg_mem_write_back(void)
+/* [addr, addr + len) of the mapping that holds `addr` written back, where it is a writable shared file mapping: msync, munmap. */
+static void write_back_range(void *addr, size_t len)
 {
     region *r;
-    /* At the app's end, which may be a fault's: a lock left taken is not waited for, and nothing is written then. */
-    if (!mg_lock_try(&g_region_lock)) return;
-    for (r = g_regions; r; r = r->next) write_back(r, 0, r->file_bytes);
+    u32 serial = 0;
+    size_t from = 0;
+    bool wanted;
+    mg_lock_acquire(&g_region_lock);
+    r = region_of(addr);
+    wanted = r && r->file && r->write_back;
+    if (wanted) {
+        serial = r->serial;
+        from = (size_t)((u8 *)addr - r->base);
+    }
     mg_lock_release(&g_region_lock);
+    if (!wanted) return;
+    write_back_lock();
+    write_back_out(r, serial, from, len, 0);
+    write_back_unlock();
+}
+
+/* A writable shared file mapping as it was when the list was made: one write-back's worth of mg_mem_write_back_all. */
+typedef struct write_back_item {
+    region *r;
+    u32 serial;
+    size_t bytes;
+} write_back_item;
+
+/* The writable shared file mappings of up to `largest` bytes (0: all), `cap` at most, into `items`. Under the lock: one walk. */
+static u32 write_back_list(write_back_item *items, u32 cap, size_t largest)
+{
+    region *r;
+    u32 n = 0;
+    for (r = g_regions; r && n < cap; r = r->next) {
+        if (!r->file || !r->write_back || (largest && r->file_bytes > largest)) continue;
+        items[n].r = r;
+        items[n].serial = r->serial;
+        items[n].bytes = r->file_bytes;
+        n++;
+    }
+    return n;
 }
 
 /*
- * Every writable shared file mapping written back, one region at a time under the lock (a fault or an mmap of another thread
- * waits for one region, not for all of them). The kernel's page cache holds what an app writes into such a mapping, and the file
- * has it even when the app is killed; here it was in the mapping alone until msync, munmap or the app's end. A phone's app is
- * suspended and then ended without notice, and TikTok Lite's key-value store (KEVA), which maps its files so and does not
- * msync, found them half written at the next start: 368 "fail to mark" a start on a Lumia 650 from its second start on, and
- * what it kept was wrong (package 628). Now also as the app is suspended (megler_settle_files), all of them, and every 5 s
- * (write_back_loop) those of up to `largest` bytes: each pass reads what it compares, and a store's files are small, where
- * a database mapped whole and written so (Realm's) may not be.
+ * Every writable shared file mapping written back, one at a time. The kernel's page cache holds what an app writes into such
+ * a mapping, and the file has it even when the app is killed; here it was in the mapping alone until msync, munmap or the
+ * app's end. A phone's app is suspended and then ended without notice, and TikTok Lite's key-value store (KEVA), which maps
+ * its files so and does not msync, found them half written at the next start: 368 "fail to mark" a start on a Lumia 650
+ * from its second start on, and what it kept was wrong (package 628). Now also as the app is suspended
+ * (megler_settle_files), all of them, and every 5 s (write_back_loop) those of up to `largest` bytes: each pass reads what
+ * it compares, and a store's files are small, where a database mapped whole and written so (Realm's) may not be. The
+ * mappings are listed in one walk under the lock; it walked the list from its start once for every mapping there is.
  */
 void mg_mem_write_back_all(size_t largest)
 {
-    u32 index;
-    for (index = 0;; index++) {
-        region *r;
-        u32 i = 0;
-        mg_lock_acquire(&g_region_lock);
-        for (r = g_regions; r && i < index; r = r->next) i++;
-        if (r && (!largest || r->file_bytes <= largest)) write_back(r, 0, r->file_bytes);
-        mg_lock_release(&g_region_lock);
-        if (!r) break;
+    const u32 cap = (u32)g_write_backs + 8;
+    write_back_item *items = (write_back_item *)mg_alloc(cap * sizeof(*items));
+    u32 n, i;
+    mg_lock_acquire(&g_region_lock);
+    n = write_back_list(items, cap, largest);
+    mg_lock_release(&g_region_lock);
+    for (i = 0; i < n; i++) {
+        write_back_lock();
+        write_back_out(items[i].r, items[i].serial, 0, items[i].bytes, 0);
+        write_back_unlock();
+    }
+    free(items);
+}
+
+/* Who holds the lock that a write-back could not wait for any longer, said. */
+static void write_back_gave_up(const char *as, bool writer)
+{
+    mg_hold_seen seen;
+    if (writer) {
+        mg_holder_look(&g_write_back_hold, &seen, NULL, 0);
+        mg_log(MG_LOG_WARN, "mem: the files' shared mappings were not all written back %s: another write-back (host thread %u) has been "
+               "reading and writing its file for %.1f s", as, (unsigned)seen.owner, (double)seen.held_ns / 1e9);
+    } else {
+        mg_holder_look(&g_region_hold, &seen, NULL, 0);
+        mg_log(MG_LOG_WARN, "mem: the files' shared mappings were not all written back %s: the mappings' lock is held by host thread %u, "
+               "taken in %s %.1f s ago", as, (unsigned)seen.owner, seen.what ? seen.what : "?", (double)seen.held_ns / 1e9);
     }
 }
 
-/*
- * mg_mem_write_back_all(0), waiting for the lock no later than `deadline` (mg_time_monotonic_ns): as the app is suspended,
- * on the shell's UI thread, which is not to stand still behind a lock that stands still -- Aurora Store's was "not answered
- * for 5031 ms" as Windows suspended it, waiting in mg_mem_write_back_all (650). False, said with the holder, when it gave up.
- */
-bool mg_mem_write_back_all_until(u64 deadline)
+/* The mappings' lock by `deadline`, for write_back_out. */
+static bool write_back_regions_by(u64 deadline)
 {
-    u32 index;
-    for (index = 0;; index++) {
-        region *r;
-        u32 i = 0;
-        while (!mg_lock_try(&g_region_lock)) {
-            if (mg_time_monotonic_ns() >= deadline) {
-                mg_hold_seen seen;
-                mg_holder_look(&g_region_hold, &seen, NULL, 0);
-                mg_log(MG_LOG_WARN, "mem: the files' shared mappings were not all written back as the app was suspended: the mappings' lock is "
-                       "held by host thread %u, taken in %s %.1f s ago", (unsigned)seen.owner, seen.what ? seen.what : "?", (double)seen.held_ns / 1e9);
-                return false;
-            }
-            mg_sleep_ns(2000000ull);
-        }
-        for (r = g_regions; r && i < index; r = r->next) i++;
-        if (r) write_back(r, 0, r->file_bytes);
-        mg_lock_release(&g_region_lock);
-        if (!r) break;
+    while (!mg_lock_try(&g_region_lock)) {
+        if (mg_time_monotonic_ns() >= deadline) return false;
+        mg_sleep_ns(2000000ull);
     }
     return true;
+}
+
+/* All of them, waiting for each lock no later than `deadline`; `as` says when, in the word said if it gave up. */
+static bool write_back_all_by(u64 deadline, const char *as)
+{
+    const u32 cap = (u32)g_write_backs + 8;
+    write_back_item *items = (write_back_item *)mg_alloc(cap * sizeof(*items));
+    u32 n, i;
+    bool done = true;
+    if (!write_back_lock_by(deadline)) {
+        free(items);
+        write_back_gave_up(as, true);
+        return false;
+    }
+    if (!write_back_regions_by(deadline)) {
+        write_back_unlock();
+        free(items);
+        write_back_gave_up(as, false);
+        return false;
+    }
+    n = write_back_list(items, cap, 0);
+    mg_lock_release(&g_region_lock);
+    for (i = 0; i < n && done; i++) done = write_back_out(items[i].r, items[i].serial, 0, items[i].bytes, deadline);
+    write_back_unlock();
+    free(items);
+    if (!done) write_back_gave_up(as, false);
+    return done;
+}
+
+/*
+ * As the app is suspended, on the shell's UI thread, which is not to stand still behind a lock that stands still --
+ * Aurora Store's was "not answered for 5031 ms" as Windows suspended it, waiting in mg_mem_write_back_all (650). False,
+ * said with the holder, when it gave up.
+ */
+bool mg_mem_write_back_all_until(u64 deadline) { return write_back_all_by(deadline, "as the app was suspended"); }
+
+/*
+ * At the app's end, which may be a fault's: not when this thread holds either lock (the fault met under it), and a lock
+ * left taken by another is waited for a second at most.
+ */
+void mg_mem_write_back(void)
+{
+    if (mg_holder_mine(&g_region_hold) || mg_holder_mine(&g_write_back_hold)) return;
+    write_back_all_by(mg_time_monotonic_ns() + 1000000000ull, "as the app ended");
 }
 
 static MG_HOSTCB void write_back_loop(void *unused)
@@ -1072,8 +1255,7 @@ static void *g_mmap_common(void *addr, size_t len, int prot, int flags, int fd, 
             r->live = (u8 *)mg_alloc(size / MG_PAGE / 8 + 1);
             region_mark(r, 0, size, true);
             mg_lock_acquire(&g_region_lock);
-            r->next = g_regions;
-            g_regions = r;
+            region_link(r);
             mg_lock_release(&g_region_lock);
             if (host_prot(prot) != MG_PROT_RW) mg_mem_protect(p, size, host_prot(prot));
             mg_trace("mmap(%p, %u, prot %d, flags 0x%x, fd %d) -> %p, shared memory", addr, (unsigned)len, prot, (unsigned)flags, fd, (void *)p);
@@ -1092,8 +1274,7 @@ static void *g_mmap_common(void *addr, size_t len, int prot, int flags, int fd, 
                 r->live = (u8 *)mg_alloc(size / MG_PAGE / 8 + 1);
                 region_mark(r, 0, size, true);
                 mg_lock_acquire(&g_region_lock);
-                r->next = g_regions;
-                g_regions = r;
+                region_link(r);
                 mg_lock_release(&g_region_lock);
                 mg_trace("mmap(%p, %u, prot %d, flags 0x%x, fd %d) -> %p, a view of the file", addr, (unsigned)len, prot, (unsigned)flags, fd, (void *)p);
                 return p;
@@ -1160,8 +1341,7 @@ static void *g_mmap_common(void *addr, size_t len, int prot, int flags, int fd, 
         region_mark(r, 0, size, true);
         if (!(prot & 7)) noaccess_mark(r, 0, size, true);
         mg_lock_acquire(&g_region_lock);
-        r->next = g_regions;
-        g_regions = r;
+        region_link(r);
         mg_lock_release(&g_region_lock);
     }
     if (!(flags & G_MAP_ANONYMOUS)) {
@@ -1185,6 +1365,7 @@ static void *g_mmap_common(void *addr, size_t len, int prot, int flags, int fd, 
                 r->write_back = (prot & G_PROT_WRITE) != 0;
                 r->file_prot = host_prot(prot);
                 if (r->file) mg_atomic_add(&g_file_copies, 1);
+                if (r->file && r->write_back) mg_atomic_add(&g_write_backs, 1);
             }
             mg_lock_release(&g_region_lock);
             if (prot & G_PROT_WRITE) write_back_start();
@@ -1239,18 +1420,24 @@ static int g_munmap(void *addr, size_t len)
         if (keep_hi < (u8 *)addr + size) g_munmap(keep_hi, (size_t)((u8 *)addr + size - keep_hi));
         return 0;
     }
+    /*
+     * A writable shared file mapping's pages go to its file first, the mappings' lock let go while the file is read and
+     * written (write_back_out). (What another thread writes into those pages meanwhile, as they are being unmapped, is lost,
+     * as it may be on Linux, where the write and the unmapping race.)
+     */
+    write_back_range((u8 *)MG_ALIGN_DOWN((mg_addr)addr, (mg_addr)MG_PAGE), size);
     mg_lock_acquire(&g_region_lock);
     for (link = &g_regions; (r = *link) != NULL; link = &r->next) {
         size_t offset;
         if ((u8 *)addr < r->base || (u8 *)addr >= r->base + r->size) continue;
         offset = (size_t)((u8 *)addr - r->base) & ~(size_t)(MG_PAGE - 1);
         if (size > r->size - offset) size = r->size - offset;
-        write_back(r, offset, size);
         gone_mark(r, offset, size, false);
         region_mark(r, offset, size, false);
         if (!r->live_pages) {
             /* The last of it: the reservation goes back. */
             *link = r->next;
+            if (r->file && r->write_back) mg_atomic_add(&g_write_backs, -1);
             mg_lock_release(&g_region_lock);
             if (r->file) mg_atomic_add(&g_file_copies, -1);
             mg_fd_let_go(r->file);
@@ -1949,15 +2136,11 @@ static int g_madvise(void *addr, size_t len, int advice)
     return 0;
 }
 static int g_mlock(const void *addr, size_t len) { (void)addr; (void)len; return 0; }
-/* msync: what was written into a shared file mapping goes to the file now. */
+/* msync: what was written into a shared file mapping goes to the file now (the mappings' lock let go while it does). */
 static int g_msync(void *addr, size_t len, int flags)
 {
-    region *r;
     (void)flags;
-    mg_lock_acquire(&g_region_lock);
-    r = region_of(addr);
-    if (r) write_back(r, (size_t)((u8 *)addr - r->base), len);
-    mg_lock_release(&g_region_lock);
+    write_back_range(addr, len);
     return 0;
 }
 static int g_mincore(void *addr, size_t len, u8 *vec)

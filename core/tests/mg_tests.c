@@ -1537,6 +1537,121 @@ static void test_mmap_file_written(const char *scratch)
 }
 
 /*
+ * A writable shared file mapping is written back with the mappings' lock let go (bionic/mg_libc_mem.c, write_back_out):
+ * while a write-back reads and writes its file, another thread maps and unmaps memory -- which takes that lock -- and the
+ * hang report finds nobody holding it. The write-back read every such file and wrote it under the lock, which every mmap,
+ * munmap, mprotect and madvise of the app's and the fault handler wait for (Viber's hang report on 0.1.0.669 named the
+ * write-back thread as its holder). msync, the 5-second pass, the suspension's and munmap each write back so, and the
+ * file has the bytes.
+ */
+typedef void *(*wb_mmap_fn)(void *, size_t, int, int, int, goff);
+typedef int (*wb_munmap_fn)(void *, size_t);
+static wb_mmap_fn g_wb_mmap;
+static wb_munmap_fn g_wb_munmap;
+static volatile i32 g_wb_calls, g_wb_mapped, g_wb_lock_free;
+
+static MG_HOSTCB void wb_mapper(void *arg)
+{
+    u8 *p = (u8 *)g_wb_mmap(NULL, 65536, 3, 0x22, -1, 0);        /* PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS */
+    (void)arg;
+    if (p && p != (u8 *)(mg_addr)-1) {
+        p[0] = 1;
+        if (g_wb_munmap(p, 65536) == 0) mg_atomic_xchg(&g_wb_mapped, 1);
+    }
+}
+
+/* At the first write-back of each step, as it is about to read and write its file: the lock free, and another thread's mmap through. */
+static void wb_io_hook(void)
+{
+    mg_hold_seen seen;
+    mg_thread *t;
+    int i;
+    if (mg_atomic_add(&g_wb_calls, 1) != 1) return;
+    g_wb_lock_free = !mg_mem_lock_look(&seen);
+    g_wb_mapped = 0;
+    t = mg_thread_start(wb_mapper, NULL, 256u * 1024u, "wb-mapper");
+    for (i = 0; i < 1000 && t && !g_wb_mapped; i++) mg_sleep_ns(2000000ull);
+    /* (Not joined: had the write-back held the lock, the other thread would wait for it, and this one for that.) */
+    if (t) mg_thread_detach(t);
+}
+
+/* Whether the file at `path` holds `text` at `at`. */
+static bool file_has(const char *path, u64 at, const char *text)
+{
+    char buf[64];
+    size_t n = strlen(text);
+    int err = 0;
+    mg_file *f = mg_file_open(path, MG_O_READ, &err);
+    bool same;
+    if (!f) return false;
+    same = mg_file_pread(f, buf, (u32)n, at, &err) == (i64)n && !memcmp(buf, text, n);
+    mg_file_close(f);
+    return same;
+}
+
+static void test_mmap_write_back_unlocked(const char *scratch)
+{
+    typedef int (*open_fn)(const char *, int, int);
+    typedef int (*msync_fn)(void *, size_t, int);
+    typedef int (*close_fn)(int);
+    typedef int (*unlink_fn)(const char *);
+    typedef int (*ftruncate_fn)(int, goff);
+    enum { RW = 3, SHARED = 0x01, PAGE = 4096 };
+    open_fn open_ = (open_fn)mg_bionic_find("open");
+    msync_fn msync_ = (msync_fn)mg_bionic_find("msync");
+    close_fn close_ = (close_fn)mg_bionic_find("close");
+    unlink_fn unlink_ = (unlink_fn)mg_bionic_find("unlink");
+    ftruncate_fn ftruncate_ = (ftruncate_fn)mg_bionic_find("ftruncate");
+    char *host = mg_sprintf("%s/store.bin", scratch);
+    const char *file = "/write-back-files/store.bin";
+    u8 *w;
+    int fd;
+    say("mmap: a shared file mapping is written back with the mappings' lock let go");
+    g_wb_mmap = (wb_mmap_fn)mg_bionic_find("mmap");
+    g_wb_munmap = (wb_munmap_fn)mg_bionic_find("munmap");
+    mg_fs_mount("/write-back-files", scratch);
+    CHECK(open_ && msync_ && close_ && unlink_ && ftruncate_ && g_wb_mmap && g_wb_munmap);
+    if (!open_ || !msync_ || !close_ || !unlink_ || !ftruncate_ || !g_wb_mmap || !g_wb_munmap) {
+        free(host);
+        return;
+    }
+    fd = open_(file, 02 | 0100 | 01000, 0600);                    /* O_RDWR | O_CREAT | O_TRUNC */
+    CHECK(fd >= 0 && ftruncate_(fd, 3 * PAGE) == 0);
+    w = fd >= 0 ? (u8 *)g_wb_mmap(NULL, 3 * PAGE, RW, SHARED, fd, 0) : NULL;
+    if (fd >= 0) close_(fd);                                      /* the mapping holds the file apart */
+    CHECK(w && w != (u8 *)(mg_addr)-1);
+    if (w && w != (u8 *)(mg_addr)-1) {
+        mg_mem_write_back_io_hook = wb_io_hook;
+        /* msync. */
+        memcpy(w + 10, "msync'd", 7);
+        g_wb_calls = 0;
+        CHECK(msync_(w, 3 * PAGE, 4 /* MS_SYNC */) == 0);
+        say("  msync: the write-back's file read and written %s the mappings' lock, another thread's mmap and munmap %s", g_wb_lock_free ? "without" : "UNDER",
+            g_wb_mapped ? "through meanwhile" : "NOT THROUGH");
+        CHECK(g_wb_calls >= 1 && g_wb_lock_free && g_wb_mapped && file_has(host, 10, "msync'd"));
+        /* The 5-second pass. */
+        memcpy(w + PAGE + 5, "the pass", 8);
+        g_wb_calls = 0;
+        mg_mem_write_back_all(4u << 20);
+        CHECK(g_wb_calls >= 1 && g_wb_lock_free && g_wb_mapped && file_has(host, PAGE + 5, "the pass"));
+        /* The suspension's, which waits no longer than it is told. */
+        memcpy(w + 2 * PAGE + 7, "suspended", 9);
+        g_wb_calls = 0;
+        CHECK(mg_mem_write_back_all_until(mg_time_monotonic_ns() + 5000000000ull));
+        CHECK(g_wb_calls >= 1 && g_wb_lock_free && g_wb_mapped && file_has(host, 2 * PAGE + 7, "suspended"));
+        /* munmap: the pages to the file first, then gone. */
+        memcpy(w + 100, "unmapped", 8);
+        g_wb_calls = 0;
+        CHECK(g_wb_munmap(w, 3 * PAGE) == 0);
+        CHECK(g_wb_calls >= 1 && g_wb_lock_free && g_wb_mapped && file_has(host, 100, "unmapped") && file_has(host, 10, "msync'd"));
+        mg_mem_write_back_io_hook = NULL;
+    }
+    CHECK(!mg_mem_file_copies());
+    unlink_(file);
+    free(host);
+}
+
+/*
  * What Zalo's libraries import of libc, libm and libz that was not there (each a stub that ended the app when called): POSIX
  * regular expressions (bionic/mg_regex.c), zlib's gzip files on the guest's files (bionic/mg_libz.c), j0 and j1,
  * eventfd_read and eventfd_write, fchmodat.
@@ -4766,6 +4881,7 @@ int mg_tests_run(const char *libdir, const char *scratch, mg_test_sink sink, voi
     test_mmap_commit();
     test_mmap_file(scratch);
     test_mmap_file_written(scratch);
+    test_mmap_write_back_unlocked(scratch);
     test_libc_gaps(scratch);
     test_mmap_madvise(scratch);
     test_pread_threads(scratch);

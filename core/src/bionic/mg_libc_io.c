@@ -1556,8 +1556,17 @@ void *mg_fd_hold(int fd)
     }
     return o;
 }
-/* (A shared mapping's own pages, which it writes back under the mappings' lock: the file is written, and the other mappings of
-   it are given the bytes by the one writing back, mg_libc_mem.c.) */
+void *mg_fd_held_ref(void *held)
+{
+    gobj *o = (gobj *)held;
+    if (!o) return NULL;
+    mg_lock_acquire(&g_io_lock);
+    o->refs++;
+    mg_lock_release(&g_io_lock);
+    return o;
+}
+/* (A shared mapping's own pages, which a write-back copies and writes with the mappings' lock let go: the file is written, and
+   the other mappings of it are given the bytes by the one writing back, mg_libc_mem.c.) */
 i32 mg_fd_held_pwrite(void *held, const void *buf, u32 n, u64 offset)
 {
     gobj *o = (gobj *)held;
