@@ -19,13 +19,19 @@ import java.util.ListIterator;
 import java.util.Map;
 import java.util.RandomAccess;
 import java.util.Set;
+import java.util.function.BinaryOperator;
+import java.util.function.Function;
+import java.util.stream.Collector;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 /**
- * The data app's step collection-factories: Java 9 and 10's List.of, Set.of, Map.of, Map.ofEntries, Map.entry and copyOf,
- * which Android has from Android 11, and Megler's libcore overlay gives Android 9's libcore
- * (core/libcore-overlay/java/util/ImmutableCollections.java). Called by reflection, as an app built for that Android calls
- * them directly: this app is built against Android 10's android.jar, which has none of them. Returns the checks that
- * failed, by name (with what was thrown instead, for a check of an exception), or "" when none did.
+ * The data app's steps collection-factories and unmodifiable-collectors: Java 9 and 10's List.of, Set.of, Map.of,
+ * Map.ofEntries, Map.entry and copyOf, Java 10's Collectors.toUnmodifiableList, toUnmodifiableSet and toUnmodifiableMap, and
+ * Java 16's Stream.toList(), which Android has from Android 11, 13 and 14, and Megler's libcore overlay gives Android 9's
+ * libcore (core/libcore-overlay/java/util/ImmutableCollections.java). Called by reflection, as an app built for those
+ * Androids calls them directly: this app is built against Android 10's android.jar, which has none of them. Each returns the
+ * checks that failed, by name (with what was thrown instead, for a check of an exception), or "" when none did.
  */
 final class CollectionFactories {
     private static final Class<? extends Throwable> NPE = NullPointerException.class, UOE = UnsupportedOperationException.class,
@@ -248,6 +254,73 @@ final class CollectionFactories {
         refused(bad, "serialized-add", UOE, () -> ((List<Object>) read[0]).add("d"));
         refused(bad, "serialized-put", UOE, () -> ((Map<Object, Object>) read[2]).put("c", 3));
         refused(bad, "entry-serialized", NotSerializableException.class, () -> new ObjectOutputStream(new ByteArrayOutputStream()).writeObject(entry));
+        return bad.toString();
+    }
+
+    @SuppressWarnings({ "unchecked", "rawtypes" })
+    static String collectors() throws Throwable {
+        StringBuilder bad = new StringBuilder();
+        Class<?>[] none = {}, two = { Function.class, Function.class }, three = { Function.class, Function.class, BinaryOperator.class };
+        Function<String, Object> first = s -> s.substring(0, 1), length = String::length, one = s -> 1, self = s -> s, nothing = s -> null;
+        BinaryOperator<Object> sum = (x, y) -> (Integer) x + (Integer) y, keepFirst = (x, y) -> x;
+
+        // toUnmodifiableList: in order, duplicates kept, unmodifiable, null refused; two parts combined as a parallel stream does.
+        Collector toList = (Collector) call(Collectors.class, "toUnmodifiableList", none);
+        List<Object> list = (List<Object>) Stream.of("a", "b", "a").collect(toList);
+        check(bad, "to-list", list.equals(Arrays.asList("a", "b", "a")));
+        refused(bad, "to-list-add", UOE, () -> list.add("c"));
+        refused(bad, "to-list-null", NPE, () -> Stream.of("a", null).collect(toList));
+        Object left = toList.supplier().get(), right = toList.supplier().get();
+        toList.accumulator().accept(left, "x");
+        toList.accumulator().accept(right, "y");
+        check(bad, "to-list-combined", Arrays.asList("x", "y").equals(toList.finisher().apply(toList.combiner().apply(left, right))));
+
+        // toUnmodifiableSet: one of equal elements, unordered, unmodifiable, null refused.
+        Collector toSet = (Collector) call(Collectors.class, "toUnmodifiableSet", none);
+        Set<Object> set = (Set<Object>) Stream.of("a", "b", "a").collect(toSet);
+        check(bad, "to-set", set.equals(new HashSet<>(Arrays.asList("a", "b"))) && toSet.characteristics().contains(Collector.Characteristics.UNORDERED));
+        refused(bad, "to-set-add", UOE, () -> set.add("c"));
+        refused(bad, "to-set-null", NPE, () -> Stream.of("a", null).collect(toSet));
+
+        // toUnmodifiableMap: a key mapped twice refused (IllegalStateException), in one part or across two; nulls refused.
+        Collector toMap = (Collector) call(Collectors.class, "toUnmodifiableMap", two, first, length);
+        Map<Object, Object> map = (Map<Object, Object>) Stream.of("apple", "banana").collect(toMap);
+        Map<Object, Object> expected = new HashMap<>();
+        expected.put("a", 5);
+        expected.put("b", 6);
+        check(bad, "to-map", map.equals(expected));
+        refused(bad, "to-map-put", UOE, () -> map.put("c", 1));
+        refused(bad, "to-map-twice", IllegalStateException.class, () -> Stream.of("apple", "avocado").collect(toMap));
+        refused(bad, "to-map-null-value", NPE, () -> Stream.of("a").collect((Collector) call(Collectors.class, "toUnmodifiableMap", two, self, nothing)));
+        refused(bad, "to-map-null-key", NPE, () -> Stream.of("a").collect((Collector) call(Collectors.class, "toUnmodifiableMap", two, nothing, self)));
+        refused(bad, "to-map-no-mapper", NPE, () -> call(Collectors.class, "toUnmodifiableMap", two, first, null));
+        Object part = toMap.supplier().get(), other = toMap.supplier().get();
+        toMap.accumulator().accept(part, "apple");
+        toMap.accumulator().accept(other, "avocado");
+        refused(bad, "to-map-combined-twice", IllegalStateException.class, () -> toMap.combiner().apply(part, other));
+
+        // toUnmodifiableMap with a merge function: the values of a key merged, in the stream's order; nulls refused.
+        Map<Object, Object> counts = (Map<Object, Object>) Stream.of("apple", "avocado", "banana").collect((Collector) call(Collectors.class, "toUnmodifiableMap", three, first, one, sum));
+        Map<Object, Object> counted = new HashMap<>();
+        counted.put("a", 2);
+        counted.put("b", 1);
+        check(bad, "to-map-merged", counts.equals(counted));
+        refused(bad, "to-map-merged-put", UOE, () -> counts.put("c", 1));
+        Map<?, ?> firsts = (Map<?, ?>) Stream.of("apple", "avocado").collect((Collector) call(Collectors.class, "toUnmodifiableMap", three, first, self, keepFirst));
+        check(bad, "to-map-merged-order", "apple".equals(firsts.get("a")));
+        refused(bad, "to-map-merged-null", NPE, () -> Stream.of("a").collect((Collector) call(Collectors.class, "toUnmodifiableMap", three, self, nothing, keepFirst)));
+
+        // Stream.toList(): the stream's elements in order, nulls kept, unmodifiable.
+        List<Object> fromStream = (List<Object>) Stream.class.getMethod("toList").invoke(Stream.of("a", null, "c"));
+        check(bad, "stream-to-list", fromStream.equals(Arrays.asList("a", null, "c")) && fromStream.contains(null) && fromStream.indexOf("c") == 2);
+        refused(bad, "stream-to-list-add", UOE, () -> fromStream.add("d"));
+        refused(bad, "stream-to-list-set", UOE, () -> fromStream.set(0, "d"));
+        refused(bad, "stream-to-list-sort", UOE, () -> fromStream.sort(null));
+        refused(bad, "stream-to-list-iterator", UOE, () -> {
+            Iterator<Object> i = fromStream.iterator();
+            i.next();
+            i.remove();
+        });
         return bad.toString();
     }
 }

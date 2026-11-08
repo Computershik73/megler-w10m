@@ -942,9 +942,11 @@ public class Main extends Activity {
         });
         // Java 9 and 10's List.of, Set.of, Map.of, Map.ofEntries, Map.entry and copyOf, which Android has from Android 11 (the
         // libcore overlay's, over java.util.ImmutableCollections): Amazon Shopping's start ended on a NoSuchMethodError of
-        // Map.of and Set.of, Shazam's on Map.of() and Map.entry. Each arity, nulls and duplicates refused, every mutator
-        // refused, copies, serialization. By reflection, as above (CollectionFactories.java).
+        // Map.of and Set.of, Shazam's on Map.of() and Map.entry. And Java 10's Collectors.toUnmodifiable* and Java 16's
+        // Stream.toList() (Android 13, 14), which make such lists, sets and maps of a stream. Each arity, nulls and duplicates
+        // refused, every mutator refused, copies, serialization. By reflection, as above (CollectionFactories.java).
         step("collection-factories", () -> (detail = CollectionFactories.factories()).isEmpty());
+        step("unmodifiable-collectors", () -> (detail = CollectionFactories.collectors()).isEmpty());
         // The frame stacks of threads Java starts: two thousand calls deep on a thread of the default size, twenty thousand
         // on one that asked for 16 MB, and a recursion without end the StackOverflowError it is on Android, caught there.
         step("thread-stack", () -> {

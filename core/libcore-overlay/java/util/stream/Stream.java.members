@@ -1,0 +1,11 @@
+
+    // Megler: Java 16's Stream.toList(), which Android has from Android 14 (API 34), the Android Megler says it is, and
+    // Android 9's Stream has not. A default method, as Java's is: a stream of an app's own that has a toList of its own
+    // keeps it. The list is unmodifiable (every mutator throws UnsupportedOperationException), in the stream's order, and
+    // nulls stay in it, as documented; it is made of a copy of toArray()'s array, which an app's stream may keep.
+    @SuppressWarnings("unchecked")
+    default java.util.List<T> toList() {
+        Object[] items = toArray();
+        java.util.List<?> list = java.util.Collections.unmodifiableList(Arrays.asList(Arrays.copyOf(items, items.length, Object[].class)));
+        return (java.util.List<T>) list;
+    }
