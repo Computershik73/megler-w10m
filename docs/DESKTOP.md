@@ -353,8 +353,11 @@ cache's lines, `IC IVAU` over the instruction cache's), compiler-rt's
 `__clear_cache` once. Windows refuses the read in user mode -- an illegal
 instruction (0xC000001D) -- and 0.1.0.673's Telegram ended as its reCAPTCHA's
 page started on a Snapdragon X Elite (GitHub issue 4: `libwebviewchromium.so
-+0x3cf9460`, V8's `mrs x8, ctr_el0`); Google Play services' DroidGuard faulted
-likewise at every start of its VM.
++0x3cf9460`, V8's `mrs x8, ctr_el0`). Google Play services' DroidGuard ended
+every start of its VM with an illegal instruction too (`libd89AE7BF53CAA.so
++0x33870`, right after a call returned there); its library comes from Google at
+run time and was not at hand, so whether that is a read of CTR_EL0 -- likely,
+as code that unpacks code flushes it -- is not known here.
 
 The loader makes each `mrs xN, ctr_el0` of a library's code a branch to a
 piece of its island that puts `MG_ARM64_CTR_EL0` in xN (`movz`, `movk`) and
