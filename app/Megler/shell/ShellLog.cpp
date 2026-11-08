@@ -14,10 +14,18 @@
 namespace megler::app::shellLog {
 namespace {
 
+// The ring, the lines not written out yet and the file's name: only ever held
+// while they change, never across the file's opening or writing.
 std::mutex gMutex;
-// The thread inside emit() under gMutex: a fault there that the core reports
-// comes back to emit() on the same thread, which must not wait for itself.
-std::atomic<DWORD> gOwner{0};
+// The file's: whoever writes lines out to it holds it from taking them out of
+// gBuffer to the end of the write, so that what one took goes in before what
+// the next takes. Nothing but a writer waits for it -- the writer thread, a
+// line that must be in the file before its thread goes on, flush().
+std::mutex gFileMutex;
+// The thread under gMutex, and under gFileMutex: a fault there that the core
+// reports comes back to emit() on the same thread, which must not wait for
+// itself.
+std::atomic<DWORD> gOwner{0}, gFileOwner{0};
 std::wstring gPathW;
 std::deque<std::string> gRing;
 uint64_t gFirst = 0;               // the number of the ring's first line
@@ -31,11 +39,38 @@ std::vector<std::string> gPending; // before initialize
 // Device Portal refuses to copy one a process holds open (Files.h).
 std::string gBuffer;
 
-// With gMutex held.
+// The tests' (setWriteHook): called as lines are written out.
+std::atomic<void (*)()> gWriteHook{nullptr};
+
+struct Owner {
+    std::atomic<DWORD>& who;
+    explicit Owner(std::atomic<DWORD>& w) : who(w) { who.store(GetCurrentThreadId()); }
+    ~Owner() { who.store(0); }
+};
+
+// The lines said so far, out to the file: taken out of gBuffer under gMutex,
+// written with gFileMutex alone held. On a phone a write is a millisecond or
+// more, and far longer while another thread puts a file on the disk (SQLite's
+// fsync); it was made under gMutex -- and, the core's lines coming through
+// its log's lock, under that too -- so every thread that logged meanwhile
+// waited for the disk: a fault's report wrote its trace lines one by one so
+// while Tuya Smart's main thread waited in the core's mg_logv (0.1.0.671).
+// Called with neither lock held. A thread that comes while another writes
+// waits for that write, which has its lines in it or leaves them for it.
 void writeOut() {
-    if (gBuffer.empty() || gPathW.empty()) return;
-    files::append(gPathW, gBuffer);
-    gBuffer.clear();
+    std::lock_guard<std::mutex> file(gFileMutex);
+    Owner fileOwner(gFileOwner);
+    std::string lines;
+    std::wstring path;
+    {
+        std::lock_guard<std::mutex> lock(gMutex);
+        Owner owner(gOwner);
+        if (gBuffer.empty() || gPathW.empty()) return;
+        lines.swap(gBuffer);
+        path = gPathW;
+    }
+    if (const auto hook = gWriteHook.load()) hook();
+    files::append(path, lines);
 }
 
 bool urgent(int level, const std::string& message) {
@@ -63,39 +98,37 @@ void emit(int level, const std::string& message) {
     // To a debugger only: with none, OutputDebugStringA's exception reaches
     // nobody (and its dispatch faulted on the phone; see mg_host_print).
     if (IsDebuggerPresent()) OutputDebugStringA(("[megler] " + line + "\n").c_str());
-    if (gOwner.load() == GetCurrentThreadId()) {
-        // Entered again from a fault on this thread while it was writing:
-        // the file only, past the lock it already holds.
+    const DWORD self = GetCurrentThreadId();
+    if (gOwner.load() == self || gFileOwner.load() == self) {
+        // Entered again from a fault on this thread while it held one of the
+        // log's locks: the file only, past them.
         if (!gPathW.empty()) files::append(gPathW, line + "\r\n");
         return;
     }
-    std::lock_guard<std::mutex> lock(gMutex);
-    struct Owner {
-        Owner() { gOwner.store(GetCurrentThreadId()); }
-        ~Owner() { gOwner.store(0); }
-    } owner;
-    gRing.push_back(line);
-    if (gRing.size() > ringCapacity) {
-        gRing.pop_front();
-        ++gFirst;
+    bool now;
+    {
+        std::lock_guard<std::mutex> lock(gMutex);
+        Owner owner(gOwner);
+        gRing.push_back(line);
+        if (gRing.size() > ringCapacity) {
+            gRing.pop_front();
+            ++gFirst;
+        }
+        if (gPathW.empty()) {
+            if (gPending.size() < 500) gPending.push_back(line);
+            return;
+        }
+        gBuffer += line;
+        gBuffer += "\r\n";
+        now = gBuffer.size() >= 64 * 1024 || urgent(level, message);
     }
-    if (gPathW.empty()) {
-        if (gPending.size() < 500) gPending.push_back(line);
-        return;
-    }
-    gBuffer += line;
-    gBuffer += "\r\n";
-    if (gBuffer.size() >= 64 * 1024 || urgent(level, message)) writeOut();
+    // (Past gMutex: the other threads' lines go into gBuffer meanwhile.)
+    if (now) writeOut();
 }
 
 void writer() {
     for (;;) {
         std::this_thread::sleep_for(std::chrono::milliseconds(200));
-        std::lock_guard<std::mutex> lock(gMutex);
-        struct Owner {
-            Owner() { gOwner.store(GetCurrentThreadId()); }
-            ~Owner() { gOwner.store(0); }
-        } owner;
         writeOut();
     }
 }
@@ -103,8 +136,15 @@ void writer() {
 } // namespace
 
 void initialize(const std::wstring& localStateDirectory) {
-    std::lock_guard<std::mutex> lock(gMutex);
-    if (!gPathW.empty()) return;
+    // The files moved and begun under the file's lock alone: a line said
+    // meanwhile waits in gPending, or in gBuffer behind the early ones, and
+    // never for the disk.
+    std::lock_guard<std::mutex> fileLock(gFileMutex);
+    Owner fileOwner(gFileOwner);
+    {
+        std::lock_guard<std::mutex> lock(gMutex);
+        if (!gPathW.empty()) return;
+    }
     const std::wstring file = localStateDirectory + L"\\megler.log";
     // The last two runs are kept: after a crash the app is usually opened once
     // more before anyone thinks of fetching the log, and that start must not
@@ -115,17 +155,18 @@ void initialize(const std::wstring& localStateDirectory) {
         files::move(file, previous);
     }
     std::string early;
-    for (const auto& line : gPending) early += line + "\r\n";
-    gPending.clear();
+    {
+        std::lock_guard<std::mutex> lock(gMutex);
+        Owner owner(gOwner);
+        for (const auto& line : gPending) early += line + "\r\n";
+        gPending.clear();
+        gPathW = file;
+    }
     files::write(file, early);
-    gPathW = file;
     std::thread(writer).detach();
 }
 
-void flush() {
-    std::lock_guard<std::mutex> lock(gMutex);
-    writeOut();
-}
+void flush() { writeOut(); }
 
 void write(const std::string& line) {
     // The first line of a run says which thread the shell's own is: a crash
@@ -141,6 +182,8 @@ void writeNow(const std::string& line) {
 }
 
 void core(int level, const char* line, void*) { emit(level, line ? line : ""); }
+
+void setWriteHook(void (*hook)()) { gWriteHook.store(hook); }
 
 std::string path() {
     std::lock_guard<std::mutex> lock(gMutex);

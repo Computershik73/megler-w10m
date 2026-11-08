@@ -328,6 +328,10 @@ void mg_mem_write_back(void);
 void mg_mem_write_back_all(size_t largest);
 /* All of them, waiting for the lock no later than `deadline` (monotonic ns), false when it gave up: as the app is suspended. */
 bool mg_mem_write_back_all_until(u64 deadline);
+/* A look at who holds the mappings' lock (mg_holder_look), for the hang report: false when nobody does. */
+bool mg_mem_lock_look(mg_hold_seen *seen);
+/* For the tests: called as a write-back is about to read and write its file, the mappings' lock let go. NULL in the app. */
+extern void (*volatile mg_mem_write_back_io_hook)(void);
 /*
  * Whether any copy of a file is mapped shared; and what was written to a file (a held one, mg_fd_hold) through a descriptor,
  * `n` bytes at `at`, copied into every such mapping of it, as the kernel's mappings of a file show what is written to it.

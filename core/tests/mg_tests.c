@@ -176,6 +176,135 @@ static void test_pread_threads(const char *scratch)
     free(path);
 }
 
+/*
+ * Who holds a lock, as the hang report reads it from its own thread (mg_base.c, mg_holder). It read its clock first and
+ * the holder's record after: a hold begun between the two was 2^64 ns old, "18446744073.7 s", and said as an app that
+ * stands still (Viber's write-back thread on 0.1.0.669, Tuya Smart's fault report on 671). A look reads the clock after
+ * the record, and gets the record whole -- one hold's owner, time and words, however fast the lock changes hands.
+ */
+typedef struct holder_race {
+    mg_holder *h;
+    volatile i32 stop;
+    volatile u32 host_id;
+    u32 rounds;
+} holder_race;
+
+static MG_HOSTCB void holder_racer(void *arg)
+{
+    holder_race *r = (holder_race *)arg;
+    r->host_id = mg_thread_self_id();
+    while (!r->stop) {
+        mg_holder_take(r->h, "the racer's hold");
+        mg_holder_let_go(r->h);
+        r->rounds++;
+    }
+}
+
+static void test_lock_holders(void)
+{
+    mg_holder h = MG_HOLDER_INIT;
+    mg_hold_seen seen;
+    char text[64];
+    u64 before;
+    say("a lock's holder, as the hang report looks at it");
+    CHECK(!mg_holder_look(&h, &seen, text, sizeof(text)) && seen.owner == 0 && seen.held_ns == 0 && text[0] == 0);
+    /* The clock read first, the hold begun after it: counted from that reading it wraps round; looked at, it is a moment old. */
+    before = mg_time_monotonic_ns();
+    mg_sleep_ns(2000000ull);
+    mg_holder_take(&h, "a test's hold");
+    CHECK(mg_holder_mine(&h));
+    CHECK(mg_holder_look(&h, &seen, text, sizeof(text)) && seen.owner == mg_thread_self_id() && !strcmp(text, "a test's hold"));
+    say("  a hold begun after the clock was read: %.6f s held as looked at; %.1f s counted from the reading (the old way)",
+        (double)seen.held_ns / 1e9, (double)(before - seen.since) / 1e9);
+    CHECK(seen.held_ns < 1000000000ull && before - seen.since > 1000000000ull * 1000000000ull && mg_held_ns(seen.since, before) == 0);
+    /* Held a while: as long as it was. */
+    mg_sleep_ns(60000000ull);
+    CHECK(mg_holder_look(&h, &seen, NULL, 0) && seen.held_ns >= 50000000ull && seen.held_ns < 30000000000ull);
+    mg_holder_let_go(&h);
+    CHECK(!mg_holder_mine(&h) && !mg_holder_look(&h, &seen, text, sizeof(text)) && seen.owner == 0 && text[0] == 0);
+    /* Taken and let go by another thread as fast as it can, looked at all the while: every look one hold's, whole. */
+    {
+        holder_race race;
+        mg_thread *t;
+        u32 looks = 0, held = 0, torn = 0;
+        u64 until;
+        memset(&race, 0, sizeof(race));
+        race.h = &h;
+        t = mg_thread_start(holder_racer, &race, 64u * 1024u, "holder-racer");
+        CHECK(t != NULL);
+        until = mg_time_monotonic_ns() + 300000000ull;
+        while (t && mg_time_monotonic_ns() < until) {
+            looks++;
+            if (!mg_holder_look(&h, &seen, text, sizeof(text))) continue;
+            held++;
+            if (seen.owner != race.host_id || strcmp(text, "the racer's hold") || seen.held_ns > 10000000000ull || !seen.since) torn++;
+        }
+        race.stop = 1;
+        if (t) mg_thread_join(t);
+        say("  %u looks while another thread took it %u times: %u found it held, %u of them not one hold's", looks, race.rounds, held, torn);
+        CHECK(race.rounds > 0 && torn == 0);
+    }
+}
+
+/*
+ * The log's sink is called past the log's lock (mg_base.c): a sink that stands -- the shell's, writing a fault's report to
+ * its file line by line on a phone's busy flash -- holds up no other thread's line. Under the lock Tuya Smart's main
+ * thread waited in mg_logv while a fault's report wrote its trace lines (0.1.0.671).
+ */
+static volatile i32 g_stand_entered, g_stand_release, g_stand_other;
+static mg_log_sink g_stand_before;
+static void *g_stand_before_user;
+
+static void standing_sink(int level, const char *line, void *user)
+{
+    int i;
+    (void)user;
+    if (strstr(line, "a line whose sink stands")) {
+        mg_atomic_xchg(&g_stand_entered, 1);
+        /* (Two seconds at most: the test goes on either way.) */
+        for (i = 0; i < 1000 && !g_stand_release; i++) mg_sleep_ns(2000000ull);
+        mg_atomic_xchg(&g_stand_entered, 2);
+    } else if (strstr(line, "a line said meanwhile")) {
+        mg_atomic_xchg(&g_stand_other, 1);
+    }
+    if (g_stand_before) g_stand_before(level, line, g_stand_before_user);
+}
+
+static MG_HOSTCB void standing_logger(void *arg)
+{
+    (void)arg;
+    mg_log(MG_LOG_ERROR, "log test: a line whose sink stands (the tests' own, not an error)");
+}
+
+static void test_log_sink_past_lock(void)
+{
+    mg_thread *t;
+    mg_hold_seen seen;
+    char line[128];
+    u64 began, took;
+    int i;
+    bool held;
+    say("the log's sink is called past the log's lock");
+    mg_log_get_sink(&g_stand_before, &g_stand_before_user);
+    g_stand_entered = g_stand_release = g_stand_other = 0;
+    mg_log_set_sink(standing_sink, NULL);
+    t = mg_thread_start(standing_logger, NULL, 64u * 1024u, "log-stander");
+    CHECK(t != NULL);
+    for (i = 0; i < 1000 && t && g_stand_entered != 1; i++) mg_sleep_ns(2000000ull);
+    CHECK(g_stand_entered == 1);
+    /* While that sink stands: nobody holds the log's lock, and a line of this thread's goes through. */
+    held = mg_log_holder(&seen, line, sizeof(line));
+    began = mg_time_monotonic_ns();
+    mg_log(MG_LOG_ERROR, "log test: a line said meanwhile (the tests' own, not an error)");
+    took = mg_time_monotonic_ns() - began;
+    say("  a line said while another thread's sink stood: through in %.1f ms, the log's lock %s, the other sink still standing: %s",
+        (double)took / 1e6, held ? "held" : "free", g_stand_entered == 1 ? "yes" : "no");
+    CHECK(!held && g_stand_other == 1 && g_stand_entered == 1);
+    mg_atomic_xchg(&g_stand_release, 1);
+    if (t) mg_thread_join(t);
+    mg_log_set_sink(g_stand_before, g_stand_before_user);
+}
+
 static void test_host(const char *scratch)
 {
     u8 *p;
@@ -1405,6 +1534,121 @@ static void test_mmap_file_written(const char *scratch)
     CHECK(!mg_mem_file_copies());
     close_(fd);
     unlink_(file);
+}
+
+/*
+ * A writable shared file mapping is written back with the mappings' lock let go (bionic/mg_libc_mem.c, write_back_out):
+ * while a write-back reads and writes its file, another thread maps and unmaps memory -- which takes that lock -- and the
+ * hang report finds nobody holding it. The write-back read every such file and wrote it under the lock, which every mmap,
+ * munmap, mprotect and madvise of the app's and the fault handler wait for (Viber's hang report on 0.1.0.669 named the
+ * write-back thread as its holder). msync, the 5-second pass, the suspension's and munmap each write back so, and the
+ * file has the bytes.
+ */
+typedef void *(*wb_mmap_fn)(void *, size_t, int, int, int, goff);
+typedef int (*wb_munmap_fn)(void *, size_t);
+static wb_mmap_fn g_wb_mmap;
+static wb_munmap_fn g_wb_munmap;
+static volatile i32 g_wb_calls, g_wb_mapped, g_wb_lock_free;
+
+static MG_HOSTCB void wb_mapper(void *arg)
+{
+    u8 *p = (u8 *)g_wb_mmap(NULL, 65536, 3, 0x22, -1, 0);        /* PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS */
+    (void)arg;
+    if (p && p != (u8 *)(mg_addr)-1) {
+        p[0] = 1;
+        if (g_wb_munmap(p, 65536) == 0) mg_atomic_xchg(&g_wb_mapped, 1);
+    }
+}
+
+/* At the first write-back of each step, as it is about to read and write its file: the lock free, and another thread's mmap through. */
+static void wb_io_hook(void)
+{
+    mg_hold_seen seen;
+    mg_thread *t;
+    int i;
+    if (mg_atomic_add(&g_wb_calls, 1) != 1) return;
+    g_wb_lock_free = !mg_mem_lock_look(&seen);
+    g_wb_mapped = 0;
+    t = mg_thread_start(wb_mapper, NULL, 256u * 1024u, "wb-mapper");
+    for (i = 0; i < 1000 && t && !g_wb_mapped; i++) mg_sleep_ns(2000000ull);
+    /* (Not joined: had the write-back held the lock, the other thread would wait for it, and this one for that.) */
+    if (t) mg_thread_detach(t);
+}
+
+/* Whether the file at `path` holds `text` at `at`. */
+static bool file_has(const char *path, u64 at, const char *text)
+{
+    char buf[64];
+    size_t n = strlen(text);
+    int err = 0;
+    mg_file *f = mg_file_open(path, MG_O_READ, &err);
+    bool same;
+    if (!f) return false;
+    same = mg_file_pread(f, buf, (u32)n, at, &err) == (i64)n && !memcmp(buf, text, n);
+    mg_file_close(f);
+    return same;
+}
+
+static void test_mmap_write_back_unlocked(const char *scratch)
+{
+    typedef int (*open_fn)(const char *, int, int);
+    typedef int (*msync_fn)(void *, size_t, int);
+    typedef int (*close_fn)(int);
+    typedef int (*unlink_fn)(const char *);
+    typedef int (*ftruncate_fn)(int, goff);
+    enum { RW = 3, SHARED = 0x01, PAGE = 4096 };
+    open_fn open_ = (open_fn)mg_bionic_find("open");
+    msync_fn msync_ = (msync_fn)mg_bionic_find("msync");
+    close_fn close_ = (close_fn)mg_bionic_find("close");
+    unlink_fn unlink_ = (unlink_fn)mg_bionic_find("unlink");
+    ftruncate_fn ftruncate_ = (ftruncate_fn)mg_bionic_find("ftruncate");
+    char *host = mg_sprintf("%s/store.bin", scratch);
+    const char *file = "/write-back-files/store.bin";
+    u8 *w;
+    int fd;
+    say("mmap: a shared file mapping is written back with the mappings' lock let go");
+    g_wb_mmap = (wb_mmap_fn)mg_bionic_find("mmap");
+    g_wb_munmap = (wb_munmap_fn)mg_bionic_find("munmap");
+    mg_fs_mount("/write-back-files", scratch);
+    CHECK(open_ && msync_ && close_ && unlink_ && ftruncate_ && g_wb_mmap && g_wb_munmap);
+    if (!open_ || !msync_ || !close_ || !unlink_ || !ftruncate_ || !g_wb_mmap || !g_wb_munmap) {
+        free(host);
+        return;
+    }
+    fd = open_(file, 02 | 0100 | 01000, 0600);                    /* O_RDWR | O_CREAT | O_TRUNC */
+    CHECK(fd >= 0 && ftruncate_(fd, 3 * PAGE) == 0);
+    w = fd >= 0 ? (u8 *)g_wb_mmap(NULL, 3 * PAGE, RW, SHARED, fd, 0) : NULL;
+    if (fd >= 0) close_(fd);                                      /* the mapping holds the file apart */
+    CHECK(w && w != (u8 *)(mg_addr)-1);
+    if (w && w != (u8 *)(mg_addr)-1) {
+        mg_mem_write_back_io_hook = wb_io_hook;
+        /* msync. */
+        memcpy(w + 10, "msync'd", 7);
+        g_wb_calls = 0;
+        CHECK(msync_(w, 3 * PAGE, 4 /* MS_SYNC */) == 0);
+        say("  msync: the write-back's file read and written %s the mappings' lock, another thread's mmap and munmap %s", g_wb_lock_free ? "without" : "UNDER",
+            g_wb_mapped ? "through meanwhile" : "NOT THROUGH");
+        CHECK(g_wb_calls >= 1 && g_wb_lock_free && g_wb_mapped && file_has(host, 10, "msync'd"));
+        /* The 5-second pass. */
+        memcpy(w + PAGE + 5, "the pass", 8);
+        g_wb_calls = 0;
+        mg_mem_write_back_all(4u << 20);
+        CHECK(g_wb_calls >= 1 && g_wb_lock_free && g_wb_mapped && file_has(host, PAGE + 5, "the pass"));
+        /* The suspension's, which waits no longer than it is told. */
+        memcpy(w + 2 * PAGE + 7, "suspended", 9);
+        g_wb_calls = 0;
+        CHECK(mg_mem_write_back_all_until(mg_time_monotonic_ns() + 5000000000ull));
+        CHECK(g_wb_calls >= 1 && g_wb_lock_free && g_wb_mapped && file_has(host, 2 * PAGE + 7, "suspended"));
+        /* munmap: the pages to the file first, then gone. */
+        memcpy(w + 100, "unmapped", 8);
+        g_wb_calls = 0;
+        CHECK(g_wb_munmap(w, 3 * PAGE) == 0);
+        CHECK(g_wb_calls >= 1 && g_wb_lock_free && g_wb_mapped && file_has(host, 100, "unmapped") && file_has(host, 10, "msync'd"));
+        mg_mem_write_back_io_hook = NULL;
+    }
+    CHECK(!mg_mem_file_copies());
+    unlink_(file);
+    free(host);
 }
 
 /*
@@ -4615,6 +4859,8 @@ int mg_tests_run(const char *libdir, const char *scratch, mg_test_sink sink, voi
     can_run = mg_core_init();
     mg_path_mkdirs(scratch);
     test_host(scratch);
+    test_lock_holders();
+    test_log_sink_past_lock();
     g_failed += mg_storage_tests_run(scratch, g_sink, g_sink_user, &g_checks);
     g_failed += mg_net_tests_run(g_sink, g_sink_user, &g_checks);
     g_failed += mg_sensor_tests_run(g_sink, g_sink_user, &g_checks);
@@ -4636,6 +4882,7 @@ int mg_tests_run(const char *libdir, const char *scratch, mg_test_sink sink, voi
     test_mmap_commit();
     test_mmap_file(scratch);
     test_mmap_file_written(scratch);
+    test_mmap_write_back_unlocked(scratch);
     test_libc_gaps(scratch);
     test_mmap_madvise(scratch);
     test_pread_threads(scratch);

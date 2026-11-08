@@ -213,16 +213,59 @@ enum { MG_LOG_DEBUG, MG_LOG_INFO, MG_LOG_WARN, MG_LOG_ERROR };
 
 void mg_log(int level, const char *fmt, ...) MG_PRINTF(2, 3);
 void mg_logv(int level, const char *fmt, va_list ap);
-/* Where lines go besides stderr / the debugger: the shell shows and saves them. */
+/*
+ * Where lines go besides stderr / the debugger: the shell shows and saves them. Called past the log's lock, from any thread
+ * and from several at once: a sink that writes a line out to a file there holds up no other thread's lines.
+ */
 typedef void (*mg_log_sink)(int level, const char *line, void *user);
 void mg_log_set_sink(mg_log_sink sink, void *user);
+/* The sink now (the tests', which put one of their own in its place for a while). */
+void mg_log_get_sink(mg_log_sink *sink, void **user);
 void mg_log_set_level(int min_level);
+/* ------------------------------------------------------- a lock's holder */
+
 /*
- * For a watchdog (the hang report, mg_bionic.c): the host thread that holds the log's lock, since when (monotonic ns), and
- * the line it is writing; false when nobody holds it. mg_log_unlocked hands a line to the host and the sink without the
- * lock, for saying that the lock itself stands still; nothing else may use it.
+ * Who holds one of the layer's locks, since when and doing what, for the hang report (bionic/mg_bionic.c), which looks at
+ * it from a thread of its own without taking the lock: the log's, the guest threads' and the mappings'. The holder writes
+ * the record as it takes the lock and as it lets it go, and nothing else writes it (the lock keeps its writers one at a
+ * time). A look gets it whole or not at all: `seq` is odd while it is written and moves on with every hold, since the
+ * time is two words on a 32-bit processor and the owner, the time and what it does are one hold's.
  */
-bool mg_log_holder(u32 *thread, u64 *since_ns, char *line, size_t size);
+typedef struct mg_holder {
+    volatile i32 seq;
+    volatile u32 owner;           /* the host thread's id (mg_thread_self_id); 0: nobody */
+    volatile u64 since;           /* mg_time_monotonic_ns() as it was taken */
+    const char *volatile what;    /* where it was taken, or the line being written (in the holder's frame while it holds the lock) */
+} mg_holder;
+#define MG_HOLDER_INIT { 0, 0, 0, NULL }
+
+void mg_holder_take(mg_holder *h, const char *what);
+void mg_holder_let_go(mg_holder *h);
+/* Whether the calling thread is the holder: a fault met under the lock, whose handling would take it again. */
+bool mg_holder_mine(const mg_holder *h);
+
+typedef struct mg_hold_seen {
+    u32 owner;                    /* 0: nobody held it */
+    u64 since, held_ns;           /* when the hold began, and how long it had lasted when it was seen */
+    const char *what;
+} mg_hold_seen;
+/*
+ * A look at a lock's holder from another thread; false (and all of `seen` 0) when nobody holds it. The clock is read after
+ * the record, and the record again after the clock: `held_ns` is a time the hold had really lasted. Read the other way
+ * round -- the clock first, then a hold that began a moment later -- the unsigned difference was 2^64 ns, the
+ * "18446744073.7 s" of two users' hang reports (Viber on 0.1.0.669, Tuya Smart on 671). `what` is copied into `text` (of
+ * `size` bytes; none when 0) while the hold is still the one seen.
+ */
+bool mg_holder_look(mg_holder *h, mg_hold_seen *seen, char *text, size_t size);
+/* How long a hold begun at `since` had lasted at `now`: none when `now` is the earlier of the two. */
+static inline u64 mg_held_ns(u64 since, u64 now) { return now > since ? now - since : 0; }
+
+/*
+ * For a watchdog (the hang report, mg_bionic.c): a look at who holds the log's lock, with the line it is writing copied into
+ * `line`; false when nobody holds it. mg_log_unlocked hands a line to the host and the sink without the lock, for saying
+ * that the lock itself stands still; nothing else may use it.
+ */
+bool mg_log_holder(mg_hold_seen *seen, char *line, size_t size);
 void mg_log_unlocked(int level, const char *line);
 /* The trace: a line into a ring that only a crash report prints (mg_base.c). Cheap enough for every call that matters. */
 void mg_trace(const char *fmt, ...) MG_PRINTF(1, 2);

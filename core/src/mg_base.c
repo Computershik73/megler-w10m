@@ -1,8 +1,67 @@
-/* The log, the allocator wrappers and the trace. (The file helpers that need no OS call of their own are the host layer's: host/mg_host_common.c.) */
+/* The log, a lock's holder as the hang report sees it, the allocator wrappers and the trace. (The file helpers that need no OS call of their own are the host layer's: host/mg_host_common.c.) */
 #include "mg_base.h"
 #include "host/mg_host.h"
 
 #include <stdio.h>
+
+/* ------------------------------------------------------- a lock's holder */
+
+void mg_holder_take(mg_holder *h, const char *what)
+{
+    const u64 now = mg_time_monotonic_ns();
+    mg_atomic_add(&h->seq, 1);
+    h->since = now;
+    h->what = what;
+    h->owner = mg_thread_self_id();
+    mg_atomic_add(&h->seq, 1);
+}
+
+void mg_holder_let_go(mg_holder *h)
+{
+    mg_atomic_add(&h->seq, 1);
+    h->owner = 0;
+    h->what = NULL;
+    mg_atomic_add(&h->seq, 1);
+}
+
+bool mg_holder_mine(const mg_holder *h)
+{
+    const u32 owner = h->owner;
+    return owner && owner == mg_thread_self_id();
+}
+
+bool mg_holder_look(mg_holder *h, mg_hold_seen *seen, char *text, size_t size)
+{
+    int tries;
+    for (tries = 0; tries < 1000; tries++) {
+        /* (mg_atomic_add of nothing: a read with the barriers the holder's writes have.) */
+        const i32 seq = mg_atomic_add(&h->seq, 0);
+        u64 now;
+        if (seq & 1) {
+            mg_thread_yield();
+            continue;
+        }
+        seen->owner = h->owner;
+        seen->since = h->since;
+        seen->what = h->what;
+        if (size) {
+            /* A byte at a time, up to its end or `size`: once the hold is over, the frame the line was in holds anything. */
+            size_t i = 0;
+            if (seen->owner && seen->what)
+                for (; i + 1 < size && seen->what[i]; i++) text[i] = seen->what[i];
+            text[i] = 0;
+        }
+        now = mg_time_monotonic_ns();
+        if (mg_atomic_add(&h->seq, 0) != seq) continue;
+        if (!seen->owner) break;
+        seen->held_ns = mg_held_ns(seen->since, now);
+        return true;
+    }
+    /* Nobody holds it -- or it changed hands faster than it could be looked at, which is no lock standing still either. */
+    memset(seen, 0, sizeof(*seen));
+    if (size) text[0] = 0;
+    return false;
+}
 
 /* ------------------------------------------------------------------- log */
 
@@ -11,14 +70,18 @@ static void *g_sink_user;
 static int g_min_level = MG_LOG_INFO;
 static mg_lock g_log_lock = MG_LOCK_INIT;
 /* Who holds g_log_lock (mg_log_holder): the host thread, since when, and the line, in its own frame while it writes it. */
-static volatile u32 g_log_owner;
-static volatile u64 g_log_owned_at;
-static const char *volatile g_log_writing;
+static mg_holder g_log_hold = MG_HOLDER_INIT;
 
 void mg_log_set_sink(mg_log_sink sink, void *user)
 {
     g_sink = sink;
     g_sink_user = user;
+}
+
+void mg_log_get_sink(mg_log_sink *sink, void **user)
+{
+    *sink = g_sink;
+    *user = g_sink_user;
 }
 
 void mg_log_set_level(int min_level) { g_min_level = min_level; }
@@ -28,7 +91,7 @@ void mg_logv(int level, const char *fmt, va_list ap)
     char line[1024];
     if (level < g_min_level) return;
     vsnprintf(line, sizeof(line), fmt, ap);
-    if (g_log_owner && g_log_owner == mg_thread_self_id()) {
+    if (mg_holder_mine(&g_log_hold)) {
         /*
          * A fault or an exception on this thread while it writes a line, which the handler reports through the log too:
          * the lock is this thread's already, and taken again it would never come (the profiler's thread stood so, and
@@ -39,29 +102,23 @@ void mg_logv(int level, const char *fmt, va_list ap)
         return;
     }
     mg_lock_acquire(&g_log_lock);
-    g_log_owned_at = mg_time_monotonic_ns();
-    g_log_writing = line;
-    g_log_owner = mg_thread_self_id();
+    mg_holder_take(&g_log_hold, line);
     mg_host_print(line);
-    if (g_sink) g_sink(level, line, g_sink_user);
-    g_log_owner = 0;
+    mg_holder_let_go(&g_log_hold);
     mg_lock_release(&g_log_lock);
+    /*
+     * The sink past the lock, which keeps only the host's own lines whole (a debugger's, standard error). The shell's sink
+     * writes a line to its file at once when it must -- a fault's report, the core's word on a process about to end --
+     * and on a phone's flash that is a millisecond or more a line, and longer while another thread puts a file on the disk
+     * (SQLite's fsync): under the lock every thread that logged meanwhile waited for it. Tuya Smart's main thread and
+     * another waited so in mg_logv while a fault's report wrote its 161 trace lines one by one (0.1.0.671). The sink keeps
+     * its own order (megler.h).
+     */
+    if (g_sink) g_sink(level, line, g_sink_user);
 }
 
-bool mg_log_holder(u32 *thread, u64 *since_ns, char *line, size_t size)
-{
-    u32 owner = g_log_owner;
-    const char *writing = g_log_writing;
-    if (!owner) return false;
-    *thread = owner;
-    *since_ns = g_log_owned_at;
-    /* (The line is in the holder's frame, which stays while it holds the lock: read only while it still does.) */
-    if (size) {
-        line[0] = 0;
-        if (writing && g_log_owner == owner) mg_strlcpy(line, writing, size);
-    }
-    return g_log_owner == owner;
-}
+/* (The line is in the holder's frame, which stays while it holds the lock: copied while the hold is still the one seen.) */
+bool mg_log_holder(mg_hold_seen *seen, char *line, size_t size) { return mg_holder_look(&g_log_hold, seen, line, size); }
 
 void mg_log_unlocked(int level, const char *line)
 {

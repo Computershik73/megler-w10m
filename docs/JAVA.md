@@ -903,6 +903,19 @@ it is still a private copy, and the log says so. The storage tests map a file
 shared and writable, close its descriptor, write into the mapping, and read
 the file back after `msync` and after `munmap`.
 
+The file is read and written with the mappings' lock let go (`write_back_out`):
+a chunk of the mapping's pages is copied under it, and compared with the file
+and written where it differs past it, one write-back at a time under a lock of
+their own, which nothing else waits for. It was all done under the mappings'
+lock, which every `mmap`, `munmap`, `mprotect` and `madvise` of the app's and
+the fault handler's mending of a page wait for -- every 5 s for each such
+mapping, as long as the phone's flash took, which is far longer while another
+thread puts a file on the disk (Viber's hang report, 0.1.0.669, named the
+write-back thread as the lock's holder). `mg_tests`' "a shared file mapping is
+written back with the mappings' lock let go" maps memory on another thread while
+`msync`, the 5-second pass, the suspension's and `munmap` each read and write
+their file, and finds the lock free.
+
 **A file mapped shared shows what is written to it.** A shared mapping of a
 file that is the layer's copy (any but a read-only view from a read-only
 descriptor) holds the file, and what is written to the file through any

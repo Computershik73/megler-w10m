@@ -52,7 +52,11 @@ extern "C" {
 
 enum { MEGLER_LOG_DEBUG = 0, MEGLER_LOG_INFO, MEGLER_LOG_WARN, MEGLER_LOG_ERROR };
 
-/* A line of the log. May be called from any thread, one call at a time. */
+/*
+ * A line of the log. May be called from any thread, and from several at once: it keeps its own order. The layer calls it
+ * past its log's lock, so a line it writes out to a file there (a fault's report, which has to be on the disk before the
+ * process may end) holds up no other thread's lines.
+ */
 typedef void (MEGLER_CB *megler_log_fn)(int level, const char *line, void *user);
 
 typedef struct megler_config {
