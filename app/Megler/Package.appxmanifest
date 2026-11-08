@@ -156,6 +156,11 @@
          user the first time an app records; after a no, the app records
          silence. -->
     <DeviceCapability Name="microphone" />
+    <!-- The phone's Bluetooth LE radio for an Android app's android.bluetooth
+         (player/BluetoothHost.cpp): Android's BLUETOOTH_SCAN and
+         BLUETOOTH_CONNECT. Windows asks nothing for it; its privacy
+         settings ("other devices") can refuse it. -->
+    <DeviceCapability Name="bluetooth" />
   </Capabilities>
 
   <!-- The folder every package of this publisher shares (ApplicationData.

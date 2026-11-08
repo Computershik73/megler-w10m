@@ -1998,6 +1998,7 @@ static void test_appx_manifest(void)
         "    <rescap:Capability Name=\"codeGeneration\" />\r\n    <rescap:Capability Name=\"packageManagement\" />\r\n"
         "    <rescap:Capability Name=\"packageQuery\" />\r\n    <!-- The devices. -->\r\n    <DeviceCapability Name=\"webcam\" />\r\n"
         "    <DeviceCapability Name=\"location\" />\r\n    <DeviceCapability Name=\"microphone\" />\r\n"
+        "    <DeviceCapability Name=\"bluetooth\" />\r\n"
         "    <DeviceCapability Name=\"bluetooth.rfcomm\">\r\n      <Device Id=\"any\"><Function Type=\"name:serialPort\" /></Device>\r\n"
         "    </DeviceCapability>\r\n  </Capabilities>\r\n"
         "  <Extensions><Extension Category=\"windows.publisherCacheFolders\" /></Extensions></Package>\r\n";
@@ -2007,6 +2008,8 @@ static void test_appx_manifest(void)
     static const char *const phone[] = { "android.permission.READ_PHONE_STATE", "android.permission.RECEIVE_SMS" };
     static const char *const devices[] = { "android.permission.ACCESS_COARSE_LOCATION", "android.permission.RECORD_AUDIO", "android.permission.READ_CALL_LOG",
                                            "android.permission.READ_MEDIA_VISUAL_USER_SELECTED" };
+    static const char *const bluetooth[] = { "android.permission.BLUETOOTH_SCAN", "android.permission.BLUETOOTH_CONNECT", "android.permission.INTERNET" };
+    static const char *const bluetooth_old[] = { "android.permission.BLUETOOTH", "android.permission.BLUETOOTH_ADMIN" };
     char err[200], name[64], name2[64];
     char *m, *m2;
     say("an app's own package: its manifest from Megler's");
@@ -2079,6 +2082,9 @@ static void test_appx_manifest(void)
     CHECK_INT((int)mg_appx_capabilities(NULL, 0, true), MG_APPX_CAP_PICTURES | MG_APPX_CAP_CHAT);
     CHECK_INT((int)mg_appx_capabilities(devices, (int)MG_COUNT(devices), false),
               MG_APPX_CAP_PICTURES | MG_APPX_CAP_VIDEOS | MG_APPX_CAP_LOCATION | MG_APPX_CAP_MICROPHONE | MG_APPX_CAP_CALL_HISTORY);
+    /* Bluetooth's: Android 12's permissions of nearby devices, and the Androids' before it. */
+    CHECK_INT((int)mg_appx_capabilities(bluetooth, (int)MG_COUNT(bluetooth), false), MG_APPX_CAP_PICTURES | MG_APPX_CAP_NETWORK | MG_APPX_CAP_BLUETOOTH);
+    CHECK_INT((int)mg_appx_capabilities(bluetooth_old, (int)MG_COUNT(bluetooth_old), false), MG_APPX_CAP_PICTURES | MG_APPX_CAP_BLUETOOTH);
     m = mg_appx_app_manifest(megler, "com.example.camera", "Camera", NULL, NULL, (int)mg_appx_capabilities(permissions, (int)MG_COUNT(permissions), false),
                              err, sizeof(err));
     CHECK(m != NULL);
@@ -2094,8 +2100,15 @@ static void test_appx_manifest(void)
     /* Nothing it did not ask for, and none of Megler's that no app's package has. */
     CHECK(!strstr(m, "videosLibrary") && !strstr(m, "documentsLibrary") && !strstr(m, "removableStorage") && !strstr(m, "\"chat\"") &&
           !strstr(m, "phoneCallHistoryPublic") && !strstr(m, "packageManagement") && !strstr(m, "\"location\"") && !strstr(m, "\"microphone\"") &&
+          !strstr(m, "Name=\"bluetooth\"") &&
           !strstr(m, "The network:") && !strstr(m, "The libraries.") && !strstr(m, "The devices."));
     CHECK(strstr(m, "Name=\"MeglerApp.com.example.camera.") != NULL && strstr(m, "<DisplayName>Camera</DisplayName>") != NULL);
+    free(m);
+    /* An app of Bluetooth LE (MeshCore's): the bluetooth device capability, in Megler's place for it. */
+    m = mg_appx_app_manifest(megler, "com.meshcore.mcoadvanced", "MCO A", NULL, NULL, (int)mg_appx_capabilities(bluetooth, (int)MG_COUNT(bluetooth), false), err,
+                             sizeof(err));
+    CHECK(m && strstr(m, "    <rescap:Capability Name=\"packageQuery\" />\r\n    <DeviceCapability Name=\"bluetooth\" />\r\n"
+                         "    <DeviceCapability Name=\"bluetooth.rfcomm\">") != NULL && !strstr(m, "DeviceCapability Name=\"webcam\""));
     free(m);
     /* An app that asks for nothing Windows guards: the pictures library and Megler's own alone, no network. */
     m = mg_appx_app_manifest(megler, "com.example.calculator", "Calculator", NULL, NULL, (int)mg_appx_capabilities(NULL, 0, false), err, sizeof(err));

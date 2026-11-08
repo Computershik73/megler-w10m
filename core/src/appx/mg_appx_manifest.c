@@ -201,6 +201,13 @@ static const struct {
     { "android.permission.READ_SMS", MG_APPX_CAP_CHAT },
     { "android.permission.READ_PHONE_STATE", MG_APPX_CAP_CALL_HISTORY },
     { "android.permission.READ_CALL_LOG", MG_APPX_CAP_CALL_HISTORY },
+    /* The phone's Bluetooth LE radio (player/BluetoothHost.cpp, Windows.Devices.Bluetooth): Android 12's permissions of nearby
+       devices, and those of the Androids before it. */
+    { "android.permission.BLUETOOTH_SCAN", MG_APPX_CAP_BLUETOOTH },
+    { "android.permission.BLUETOOTH_CONNECT", MG_APPX_CAP_BLUETOOTH },
+    { "android.permission.BLUETOOTH_ADVERTISE", MG_APPX_CAP_BLUETOOTH },
+    { "android.permission.BLUETOOTH", MG_APPX_CAP_BLUETOOTH },
+    { "android.permission.BLUETOOTH_ADMIN", MG_APPX_CAP_BLUETOOTH },
 };
 
 unsigned mg_appx_capabilities(const char *const *permissions, int count, bool sms_retriever)
@@ -237,6 +244,7 @@ static const struct {
     { "webcam", MG_APPX_CAP_WEBCAM },
     { "microphone", MG_APPX_CAP_MICROPHONE },
     { "location", MG_APPX_CAP_LOCATION },
+    { "bluetooth", MG_APPX_CAP_BLUETOOTH },
     /*
      * Never an app's: the documents library and a memory card are reached only with file types declared, and an app's package
      * declares none (Megler's association of APKs is taken out); a folder there comes in through the folder picker
