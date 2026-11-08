@@ -253,14 +253,13 @@ handler.
 the instructions of its code that write x18 are counted and said, on every
 host (a warning on Windows): `ld: <library>: N instructions write x18, the
 first at +0x<offset>: ...`. Android's compilers keep x18 since Android 10;
-Android 9's did not, and the Android root's arm64 `libcrypto.so` -- Android
-9's own, which `tools/android9-natives.sh` copies where it builds the rest --
-writes it in 772 instructions of ordinary C (X25519, AES, DES, MD5, BN,
-poly1305, the TLS PRF), which every TLS connection of a Java app's runs
-through Conscrypt; none of the libraries built here does. A thread that has
-run one has x18 that is not its TEB until its next exception, or its next
-call into Windows, ends the process. On Windows ARM64 alone, two things more,
-once each:
+Android 9's did not, and Android 9's own arm64 `libcrypto.so`, which the
+Android root carried until it was built here (below), writes it in 772
+instructions of ordinary C (X25519, AES, DES, MD5, BN, poly1305, the TLS
+PRF), which every TLS connection of a Java app's runs through Conscrypt; none
+of the libraries built here does. A thread that has run one has x18 that is
+not its TEB until its next exception, or its next call into Windows, ends the
+process. On Windows ARM64 alone, two things more, once each:
 
 - a fault of guest code with less than 64 KB between its sp and the bottom of
   its thread's stack: `fault: thread <id> faulted at <library>+0x<offset>
@@ -272,6 +271,66 @@ once each:
   thread is stopped: the table is said once no thread is (the last
   `mg_thread_resume`, the end of an interruption). The pc names the code that
   wrote x18, or code after it.
+
+### arm64's libcrypto.so and libssl.so, built
+
+The Android root's other natives are built with the NDK
+(`tools/android9-natives.sh`), whose clang keeps off x18; BoringSSL's two
+libraries were Android 9's own prebuilt copies (the VNDK snapshot's), for
+every ABI. Android 9's arm64 `libcrypto.so` writes x18 in 772 instructions
+(above), and every Java app's TLS runs through it -- a likely end of Telegram,
+Spotify and Via on GitHub issue 4's machine. So for arm64-v8a both are built
+from Android 9's own sources at the same tag (`external/boringssl`, which
+`tools/android9-sources.sh` fetches: `src/crypto`, `src/ssl`,
+`src/third_party/fiat`, `err_data.c`, the aarch64 assembly, `Android.bp` and
+`sources.bp`), as the rest is built: the NDK's clang at API 28, `-ffixed-x18`,
+emulated TLS, libc++ static and hidden in libssl, and the modules' own flags
+as Soong reads them (`tools/android9-natives/bp.py`: `-DOPENSSL_SMALL`,
+`-fvisibility=hidden`, `-std=c99`, the assembly's `-march=armv8-a+crypto`).
+armeabi-v7a, x86_64 and x86 keep Android's copies: x18 is ARM64's alone.
+
+**The assembly is kept.** None of BoringSSL's seven aarch64 files (ChaCha20;
+AES, GHASH, SHA-1, SHA-256, SHA-512 with ARMv8's crypto instructions and
+without; Montgomery multiplication) names x18: OpenSSL's perlasm leaves it to
+the platform. What of it runs is `getauxval(AT_HWCAP)`'s to say, and the core
+says fp and asimd, nothing of ARMv8's crypto instructions (`mg_libc_misc.c`),
+so AES and GHASH are BoringSSL's C and SHA its integer assembly -- as with
+Android's copy; telling apps of the crypto instructions a Windows on ARM
+processor has would make TLS faster, and is not done here.
+
+**They stand in for Android's**, held against its arm64 copies (`abidiff.py
+replaces`): the same SONAME and DT_NEEDED (libc, libm, libdl; libcrypto first
+for libssl); every name Android's export but six that their link put there --
+GNU ld's `__bss_start`, `_edata`, `_end`, and in libcrypto libgcc's
+`__udivti3`, `__umodti3`, `__clz_tab`, exported with it -- and no other (2144
+of 2150, 483 of 486); the same imports but for FORTIFY's checked and plain
+forms of one call (`read` and `__read_chk`, `write`, `vsnprintf` and
+`__vsnprintf_chk`; libssl's 345 are Android's 345). libjavacore, libopenjdk
+and libjavacrypto are linked against them with `--no-undefined`. No
+instruction of either names x18; for arm64 that check is fatal again.
+
+**Data among the code.** BoringSSL's assembly keeps its constants and banners
+in `.text` (ChaCha20's "expand 32-byte k", SHA-256's and SHA-512's tables,
+"CRYPTOGAMS by ..."), and eight of those words read as writes of x18 to the
+loader's count, which goes through the code a word at a time: it would have
+said 8 for `libcrypto.so`, where it said 772. The AArch64 ELF ABI marks data
+among code with mapping symbols (`$d` where data starts, `$x` where code
+does), and the assembler writes them: where a library has a symbol table the
+loader reads them (`mg_ld.c`'s `read_data_spans`, a table of up to 4 MB) and
+leaves those words out of the count; `libcrypto.so` keeps its symbol table for
+that (its strip is `--strip-debug`: 1.40 MB in place of 1.16), and
+`tools/android9-natives/x18.py`, the loader's count done on the file, holds
+every arm64 library the script ships to none. (The count is still a word at a
+time in a stripped library: an app's own with such data says it.)
+
+The only other code in the arm64 root not built here is Android's System
+WebView (`tools/webview-fetch.sh`, Chromium's prebuilt), whose
+`libwebviewchromium.so` counts 3: two banners of its own BoringSSL's assembly
+("Montgomery Multiplication for ARMv8", "GHASH for ARMv8": data, the library
+stripped), and `ldp x18, x19, [x0, #0x90]` in LLVM libunwind's
+`__libunwind_Registers_arm64_jumpto`, which restores a context its own thread
+saved (x18 then gets back the thread's own value). The other three roots hold
+no ARM64 code.
 
 ### Where the two sides meet on x86
 
@@ -522,8 +581,13 @@ On this PC (x64, Windows 11 26300), 2026-11-05 and 06:
   and 165 of 16,202).
 - `tools/build-tests.sh arm64`: ARM64's core and tests as one static program
   of the NDK's bionic, under qemu-aarch64 in WSL with the POSIX host: 5627
-  checks, 0 failed, and 5776 checks, 0 failed on Android's libcore with
-  arm64-v8a's natives (2026-11-08, branch arm64-svc-islands). ELF64, the
+  checks, 0 failed, and 5779 checks, 0 failed on Android's libcore with
+  arm64-v8a's natives, BoringSSL's two built here among them (2026-11-08,
+  branch boringssl-arm64; 5776 before, on Android 9's own libcrypto and
+  libssl): conscrypt's digests, HMAC, AES-CBC and AES-GCM, and `lib_tls`'s
+  TLS 1.2 handshake on loopback over x25519, and the root's nine libraries
+  writing x18 nowhere (the release 0.1.0.671's root fails that check with
+  libcrypto's 772). ELF64, the
   patched TPIDR_EL0 reads (through the island there, bionic's own thread
   pointer being the host's), TLS descriptors, svc led out to the core
   (libt_svc.so, t_svc.c: 1310 calls through its three pieces; results, -errno
@@ -538,8 +602,10 @@ On this PC (x64, Windows 11 26300), 2026-11-05 and 06:
   block after the call, as x86_64's and ARM32's entries do, went back from
   the call the handler's call was made inside to that call's place and
   ended at the mark in x30), the writes of x18 the loader counts (ten of
-  ten kinds in t_svc64_x18_writer, none in clang's code for Android, 772 in
-  Android 9's arm64 libcrypto.so loaded by `mg_tests --load`), AAPCS64's
+  ten kinds in t_svc64_x18_writer and not the two words of data after it,
+  none in clang's code for Android, 772 in Android 9's arm64 libcrypto.so
+  loaded by `mg_tests --load` and none in the one built here, whose
+  SHA-256, AES-128 and BN_mul give the same answers), AAPCS64's
   native calls, faults; the signalled
   thread's own x0-x28 (but x18), fp and lr at every stop in its loop (0 of
   63,814), and a failure where the host reported x19 and lr changed at every
@@ -658,14 +724,13 @@ folder the package's access.
    qemu-aarch64 (above). The first such machine, GitHub issue 4's, ended in
    RtlDispatchException with x18 not the TEB at +0xA0, which leading the
    calls out does not mend by itself (a thread takes far fewer exceptions,
-   but one with x18 so still ends at its next). x18 is not left alone by all
-   guest code: Android 9's prebuilt arm64 `libcrypto.so` in the Android root
-   writes it in 772 places (above, "What the reporter's machine is asked"),
-   and an app's library made by a compiler of before Android 10 may as well
-   (the loader says which). Built here with the NDK from BoringSSL's sources
-   at Android 9's tag, as the other natives are (`tools/android9-sources.sh`
-   fetches its headers alone so far), libcrypto would keep x18; an app's own
-   library cannot be rebuilt.
+   but one with x18 so still ends at its next). x18 was not left alone by all
+   guest code: Android 9's prebuilt arm64 `libcrypto.so`, which the Android
+   root carried, writes it in 772 places; the root's is built from BoringSSL's
+   sources now and writes it nowhere ("arm64's libcrypto.so and libssl.so,
+   built", above), which a device has yet to confirm. An app's library made
+   by a compiler of before Android 10 may write it still (the loader says
+   which), and an app's own library cannot be rebuilt.
 6. **Ping in a desktop app container**: Windows gives an app container no
    ICMP echo at all -- IcmpCreateFile fails with ERROR_ACCESS_DENIED whatever
    the package's capabilities (the NSI service turns away the echo's
