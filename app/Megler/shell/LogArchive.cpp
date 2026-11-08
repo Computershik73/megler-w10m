@@ -152,15 +152,16 @@ const char* processor(winrt::Windows::System::ProcessorArchitecture a) {
     }
 }
 
-/// The packages of Megler's publisher, as Windows's package manager lists them (packageQuery, which an app's own package
-/// keeps): Megler, its test identities, the apps' own.
+/// Megler's packages, as Windows's package manager lists them (packageQuery, which an app's own package keeps): Megler, its
+/// test identities, the apps' own -- the names beginning "Megler". The publisher's other apps are left out: a report shows
+/// none of what else its user has installed (a Lumia's ZIP listed a publisher's games and browsers beside Megler).
 std::string packages() {
     try {
         const std::wstring publisher(winrt::Windows::ApplicationModel::Package::Current().Id().PublisherId());
         std::vector<std::string> rows;
         for (auto const& package : winrt::Windows::Management::Deployment::PackageManager().FindPackagesForUser(L"")) {
             const auto id = package.Id();
-            if (std::wstring(id.PublisherId()) != publisher) continue;
+            if (std::wstring(id.PublisherId()) != publisher || std::wstring(id.Name()).rfind(L"Megler", 0) != 0) continue;
             const auto v = id.Version();
             std::string row = format("  %s %u.%u.%u.%u %s", narrow(std::wstring(id.Name())).c_str(), v.Major, v.Minor, v.Build, v.Revision,
                                      processor(id.Architecture()));
