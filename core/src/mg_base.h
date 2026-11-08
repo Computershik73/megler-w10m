@@ -216,8 +216,8 @@ void mg_logv(int level, const char *fmt, va_list ap);
 /* Where lines go besides stderr / the debugger: the shell shows and saves them. */
 typedef void (*mg_log_sink)(int level, const char *line, void *user);
 void mg_log_set_sink(mg_log_sink sink, void *user);
-/* The sink set now, and its user (a test that listens to the log for a while hands lines on to it, and puts it back). */
-mg_log_sink mg_log_get_sink(void **user);
+/* The sink now (the tests', which put one of their own in its place for a while). */
+void mg_log_get_sink(mg_log_sink *sink, void **user);
 void mg_log_set_level(int min_level);
 /*
  * For a watchdog (the hang report, mg_bionic.c): the host thread that holds the log's lock, since when (monotonic ns), and

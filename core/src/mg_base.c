@@ -21,10 +21,10 @@ void mg_log_set_sink(mg_log_sink sink, void *user)
     g_sink_user = user;
 }
 
-mg_log_sink mg_log_get_sink(void **user)
+void mg_log_get_sink(mg_log_sink *sink, void **user)
 {
-    if (user) *user = g_sink_user;
-    return g_sink;
+    *sink = g_sink;
+    *user = g_sink_user;
 }
 
 void mg_log_set_level(int min_level) { g_min_level = min_level; }

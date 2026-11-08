@@ -367,7 +367,7 @@ static void test_context_versions(void)
     CHECK(get_display && create && destroy && get_error);
     if (!get_display || !create || !destroy || !get_error) return;
     d = get_display(NULL);
-    t_log_was = mg_log_get_sink(&t_log_was_user);
+    mg_log_get_sink(&t_log_was, &t_log_was_user);
     t_versions_said = t_refusals_said = 0;
     t_version_line[0] = 0;
     mg_log_set_sink(listen_egl, NULL);
