@@ -667,8 +667,8 @@ void mg_dvm_stub_called(const mg_dvm_method *caller, mg_dvm_method *m);
  * goes on at; false when there is no code to run there (nothing done). Only where the JIT has a back end (MG_DVM_JIT):
  * elsewhere always false.
  */
-/* (x86-64 where the core's convention is Android's, System V: not MSVC's build of the tests.) */
-#define MG_DVM_JIT (MG_ARCH_ARM32 || MG_ARCH_ARM64 || (MG_ARCH_X86_64 && MG_GUEST_CODE))
+/* (x86-64 and x86 where the core's convention is Android's, System V's and i386's: not MSVC's build of the tests.) */
+#define MG_DVM_JIT (MG_ARCH_ARM32 || MG_ARCH_ARM64 || ((MG_ARCH_X86_64 || MG_ARCH_X86) && MG_GUEST_CODE))
 typedef struct mg_dvm_jit_code mg_dvm_jit_code;
 /*
  * What compiled code is run with (a register holds it): the frame's registers, the flag that says instructions are

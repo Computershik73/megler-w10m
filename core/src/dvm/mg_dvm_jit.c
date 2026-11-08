@@ -25,8 +25,8 @@
  * handed back, branches and their targets, the code's memory and its publishing. What each instruction becomes is a back
  * end's (the emit_* functions, and the branches they write): Thumb-2 on 32-bit ARM, the phone and the ARM tests under
  * qemu-arm (mg_dvm_jit_thumb2.h); A64 on ARM64, desktop Windows on a Snapdragon and the arm64 tests under qemu-aarch64
- * (mg_dvm_jit_a64.h); x86-64 under System V where the core is of Android's ABI, desktop Windows' core and the Linux tests
- * (mg_dvm_jit_x86.h). Where there is no back end (MG_DVM_JIT), nothing is compiled.
+ * (mg_dvm_jit_a64.h); x86-64 under System V and 32-bit x86 under i386's cdecl where the core is of Android's ABI, desktop
+ * Windows' core and the Linux tests (mg_dvm_jit_x86.h). Where there is no back end (MG_DVM_JIT), nothing is compiled.
  */
 #include "mg_dvm_internal.h"
 #include "../mg_core.h"
