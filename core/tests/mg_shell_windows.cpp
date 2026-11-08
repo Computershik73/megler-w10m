@@ -2,6 +2,9 @@
 // from the very files the phone's package is built from -- shell/Files.cpp, ShellLog.cpp, Startup.cpp, BundledApks.cpp and
 // Strings.cpp -- with the few stand-ins below for the rest of the shell, and runs it on a scratch folder of its own:
 //
+//   - paths that are not absolute (made from a folder Windows gave none of: a package on a memory card may have no shared
+//     folder) refused by every function of shell/Files.cpp, nothing made, written, listed or removed at a drive's root, and
+//     no drive's or volume's root removed whole;
 //   - files::same; files::copyWhole through Windows's cache and past it (COPY_FILE_NO_BUFFERING, from 8 MB), with what
 //     its progress is told; files::mend of a copy with a byte wrong;
 //   - the log: the core's word on a process about to end ("host: ..." at the error level) and writeNow's line are in the
@@ -25,6 +28,7 @@
 #include "shell/AppPackage.h"
 #include "shell/BundledApks.h"
 #include "shell/Files.h"
+#include "shell/Placement.h"
 #include "shell/Platform.h"
 #include "shell/ShellLog.h"
 #include "shell/Startup.h"
@@ -136,6 +140,166 @@ struct Told {
     }
 };
 
+/// Paths that are not absolute -- what is made from a folder Windows gave none of, as a package on a memory card may have no
+/// shared folder ("" + L"\\apks\\...") -- are refused, and nothing is made, written, listed or removed at a drive's root.
+void testPaths(const std::wstring& root) {
+    printf("paths that are not absolute\n");
+    const std::wstring atRoot = L"\\megler-shell-tests-" + std::to_wstring(GetCurrentProcessId());
+    check(!files::makeDirectories(atRoot + L"\\apks\\x") && GetLastError() == ERROR_BAD_PATHNAME,
+          "makeDirectories refuses a folder at the drive's root (as \"\" + \"\\apks\\...\" would be)");
+    check(!files::makeDirectory(atRoot) && GetLastError() == ERROR_BAD_PATHNAME, "makeDirectory refuses one");
+    check(!files::write(atRoot + L".txt", "x") && GetLastError() == ERROR_BAD_PATHNAME, "write refuses a file at the drive's root");
+    check(!files::append(atRoot + L".txt", "x") && GetLastError() == ERROR_BAD_PATHNAME, "append refuses one");
+    files::write(gLocal + L"\\paths.txt", "x");
+    check(!files::copy(gLocal + L"\\paths.txt", atRoot + L".txt") && GetLastError() == ERROR_BAD_PATHNAME, "copy refuses one");
+    uint64_t mended = 0;
+    check(!files::copyWhole(gLocal + L"\\paths.txt", atRoot + L".txt", mended) && GetLastError() == ERROR_BAD_PATHNAME, "copyWhole refuses one");
+    check(!files::move(gLocal + L"\\paths.txt", atRoot + L".txt") && GetLastError() == ERROR_BAD_PATHNAME && files::exists(gLocal + L"\\paths.txt"),
+          "move refuses one, and the file stays where it was");
+    check(GetFileAttributesW(atRoot.c_str()) == INVALID_FILE_ATTRIBUTES && GetFileAttributesW((atRoot + L".txt").c_str()) == INVALID_FILE_ATTRIBUTES,
+          "nothing was made at the drive's root");
+    // (Should any of it have been made after all, it goes.)
+    DeleteFileW((atRoot + L".txt").c_str());
+    RemoveDirectoryW((atRoot + L"\\apks\\x").c_str());
+    RemoveDirectoryW((atRoot + L"\\apks").c_str());
+    RemoveDirectoryW(atRoot.c_str());
+    // What is at the drive's root is not looked at either: Windows's own folder, there on this PC's drive.
+    std::string text;
+    check(!files::exists(L"\\Windows") && files::size(L"\\Windows\\win.ini") == 0 && !files::read(L"\\Windows\\win.ini", text),
+          "exists, size and read do not look at the drive's root (\\Windows)");
+    check(files::list(L"", L"*").empty() && files::listFolders(L"", L"*").empty() && files::listFolders(L"\\", L"*").empty() &&
+              files::list(L"\\Windows", L"*.ini").empty(),
+          "the lists of no folder and of the drive's root are empty");
+    check(!files::removeTree(L"") && GetLastError() == ERROR_BAD_PATHNAME && !files::removeTree(atRoot) && GetLastError() == ERROR_BAD_PATHNAME,
+          "removeTree refuses no folder and a folder at the drive's root");
+    // A drive's root is not removed whole: tried on a letter no drive has, so that nothing could go were it not refused.
+    wchar_t letter = 0;
+    const DWORD drives = GetLogicalDrives();
+    for (wchar_t c = L'Z'; c >= L'D' && !letter; c--)
+        if (!(drives & (1u << (c - L'A')))) letter = c;
+    if (letter) {
+        const std::wstring drive = std::wstring(1, letter) + L":\\";
+        bool refused = true;
+        for (const std::wstring& r : {drive, drive.substr(0, 2), L"\\\\?\\" + drive, std::wstring(L"\\\\?\\Volume{00000000-0000-0000-0000-000000000000}\\"),
+                                      std::wstring(L"\\\\no-such-server\\share")}) {
+            SetLastError(0);
+            refused = !files::removeTree(r) && GetLastError() == ERROR_BAD_PATHNAME && refused;
+        }
+        check(refused, "removeTree refuses a drive's root, a volume's and a share's (" + narrow(drive) + ", " + narrow(drive.substr(0, 2)) +
+                           ", \\\\?\\" + narrow(drive) + ", \\\\?\\Volume{...}\\, \\\\server\\share)");
+    }
+    check(count(writtenLog(), "files: a path that is not absolute was refused") == 1 &&
+              writtenLog().find("\"" + narrow(atRoot) + "\\apks\\x\"") != std::string::npos,
+          "the log says the first path refused, once");
+    // An absolute path is as it was.
+    check(files::makeDirectories(root + L"\\paths\\a\\b") && files::write(root + L"\\paths\\a\\b\\c.txt", "c") && files::removeTree(root + L"\\paths") &&
+              !files::exists(root + L"\\paths"),
+          "an absolute path is made, written and removed as before");
+}
+
+/// The package volume every package Megler installs goes to: the one its own install folder is on (shell/Placement.h,
+/// volumeHolding), as Windows's package manager would list them on a PC, on a phone (the data volume mounted at C:\Data,
+/// perhaps also called U:), and with a memory card.
+void testPlacement(const std::wstring& root) {
+    printf("placement\n");
+    using placement::Volume;
+    using placement::volumeHolding;
+    const std::vector<Volume> pc = {{L"\\\\?\\Volume{11111111-0000-0000-0000-000000000000}", L"C:\\Program Files\\WindowsApps", L"C:\\"},
+                                    {L"\\\\?\\Volume{22222222-0000-0000-0000-000000000000}", L"D:\\WindowsApps", L"D:\\"}};
+    check(volumeHolding(pc, L"C:\\Program Files\\WindowsApps\\Megler_0.1.0.673_x64__7p434m16tbgc6") == 0, "a PC: Megler on the system's volume");
+    check(volumeHolding(pc, L"D:\\WindowsApps\\Megler_0.1.0.673_x64__7p434m16tbgc6") == 1, "a PC: Megler on another drive's");
+    check(volumeHolding(pc, L"d:\\windowsapps\\MEGLER_0.1.0.673_x64__7p434m16tbgc6\\") == 1 &&
+              volumeHolding(pc, L"\\\\?\\D:\\WindowsApps\\Megler_0.1.0.673_x64__7p434m16tbgc6") == 1 &&
+              volumeHolding(pc, L"D:/WindowsApps/Megler_0.1.0.673_x64__7p434m16tbgc6") == 1,
+          "names compared without regard to case, \"\\\\?\\\", '/' or a separator at the end");
+    // A phone: its packages in C:\Data\Programs\WindowsApps (C:\data, as Windows gives Megler its install folder), a card's on D:.
+    const std::vector<Volume> phone = {{L"\\\\?\\Volume{aaaaaaaa-0000-0000-0000-000000000000}", L"C:\\Data\\Programs\\WindowsApps", L"C:\\Data\\"},
+                                       {L"\\\\?\\Volume{bbbbbbbb-0000-0000-0000-000000000000}", L"D:\\WPSystem\\Apps", L"D:\\"}};
+    check(volumeHolding(phone, L"C:\\data\\Programs\\WindowsApps\\Megler_0.1.0.673_arm__7p434m16tbgc6") == 0, "a phone: Megler in its memory");
+    check(volumeHolding(phone, L"D:\\WPSystem\\Apps\\Megler_0.1.0.673_arm__7p434m16tbgc6") == 1, "a phone: Megler on its memory card");
+    // A store path is a folder: one whose name begins as another's is not in it; the mount point is then what holds it.
+    check(volumeHolding(phone, L"D:\\WPSystem\\AppsOld\\Megler_0.1.0.673_arm__7p434m16tbgc6") == 1, "a folder named as a store path begins is not in it");
+    // The store path named by another drive than the install folder's (a phone's data volume as U:): its volume's name, as the
+    // folder's own handle gives it, says which; without it, the longest mount point the folder is under.
+    const std::vector<Volume> lettered = {{L"\\\\?\\Volume{aaaaaaaa-0000-0000-0000-000000000000}\\", L"U:\\Programs\\WindowsApps", L"U:\\"},
+                                          {L"\\\\?\\Volume{cccccccc-0000-0000-0000-000000000000}", L"C:\\Programs\\WindowsApps", L"C:\\"},
+                                          {L"\\\\?\\Volume{bbbbbbbb-0000-0000-0000-000000000000}", L"D:\\WPSystem\\Apps", L"D:\\"}};
+    check(volumeHolding(lettered, L"C:\\data\\Programs\\WindowsApps\\Megler_0.1.0.673_arm__7p434m16tbgc6",
+                        L"\\\\?\\Volume{AAAAAAAA-0000-0000-0000-000000000000}\\") == 0,
+          "a store path named by another drive: the volume the folder's handle names");
+    check(volumeHolding(lettered, L"C:\\data\\Programs\\WindowsApps\\Megler_0.1.0.673_arm__7p434m16tbgc6") == 1,
+          "without the folder's volume, the mount point it is under");
+    const std::vector<Volume> mounted = {{L"", L"", L"C:\\"}, {L"", L"", L"C:\\Data\\"}};
+    check(volumeHolding(mounted, L"C:\\Data\\Programs\\WindowsApps\\Megler_0.1.0.673_arm__7p434m16tbgc6") == 1, "the longest mount point it is under");
+    check(volumeHolding(phone, L"E:\\Apps\\Megler_0.1.0.673_arm__7p434m16tbgc6") == -1 && volumeHolding({}, L"C:\\Program Files\\WindowsApps\\Megler") == -1 &&
+              volumeHolding(pc, L"") == -1 && volumeHolding(pc, L"WindowsApps\\Megler") == -1 && volumeHolding({{L"", L"", L""}}, L"C:\\x") == -1,
+          "none where no volume holds it, there are none, or the folder is none or not absolute");
+    // The drives the log says.
+    check(placement::driveOf(L"C:\\Data\\Users") == L"C:" && placement::driveOf(L"d:/WPSystem") == L"D:" && placement::driveOf(L"\\\\?\\e:\\x") == L"E:" &&
+              placement::driveOf(L"\\\\?\\Volume{abc}\\x") == L"\\\\?\\Volume{abc}" && placement::driveOf(L"\\\\server\\share\\x") == L"\\\\server\\share" &&
+              placement::driveOf(L"\\\\?\\UNC\\server\\share\\x") == L"\\\\server\\share" && placement::driveOf(L"\\apks\\x").empty() &&
+              placement::driveOf(L"").empty() && placement::driveOf(L"C:").empty(),
+          "the drive of a path, of a volume's name, of a share; none of a path that is not absolute");
+    // This PC's own: the scratch folder's volume as its handle names it, and the system's drive.
+    const std::wstring volume = placement::volumeOf(root);
+    check(volume.rfind(L"\\\\?\\Volume{", 0) == 0 && volume.back() == L'}', "the scratch folder's volume, from its handle: " + narrow(volume));
+    check(placement::volumeOf(L"").empty() && placement::volumeOf(root + L"\\none").empty(), "no volume for no folder, nor for one that is not there");
+    wchar_t system[MAX_PATH] = {};
+    GetSystemDirectoryW(system, MAX_PATH);
+    check(placement::onSystemDrive(system) && placement::onSystemDrive(L"") && !placement::onSystemDrive(system[0] == L'Q' ? L"R:\\x" : L"Q:\\x"),
+          "the system's drive is told from another");
+    check(placement::summary(root, gLocal, std::wstring()).find(", no shared folder") != std::string::npos &&
+              placement::summary(root, gLocal, gShared).find("the shared folder on " + narrow(placement::driveOf(gShared))) != std::string::npos,
+          "the log's summary: " + placement::summary(root, gLocal, gShared));
+}
+
+/// What an app's own package lacks of what Megler put in the shared folder for it (shell/Placement.h, missingFor): none, an
+/// APK or Android's files not there -- a shared folder of another storage's has nothing of Megler's -- and what its screen says.
+void testMissing(const std::wstring& root) {
+    printf("an app's own package's files in the shared folder\n");
+    using placement::Missing;
+    const std::wstring shared = root + L"\\missing\\shared", folder = shared + L"\\apks\\MeglerApp.x\\0123", apk = folder + L"\\app.apk",
+                       android = shared + L"\\android\\0.1.0.0";
+    check(files::makeDirectories(folder) && files::makeDirectories(android) && files::write(apk, std::string("PK\3\4", 4) + "the rest") &&
+              files::write(android + L"\\complete", "0.1.0.0"),
+          "a shared folder as Megler fills it for an app");
+    check(placement::missingFor(shared, apk, android) == Missing::nothing, "all there: nothing missing");
+    check(placement::missingFor(std::wstring(), apk, android) == Missing::sharedFolder, "no shared folder");
+    check(placement::missingFor(shared, std::wstring(), android) == Missing::apk, "no APK to look for");
+    check(placement::missingFor(shared, apk, std::wstring()) == Missing::nothing, "no Android files named: not looked for");
+    files::remove(android + L"\\complete");
+    check(placement::missingFor(shared, apk, android) == Missing::androidFiles, "Android's files without their file complete");
+    files::write(android + L"\\complete", "0.1.0.0");
+    files::write(apk, "not a ZIP");
+    check(placement::missingFor(shared, apk, android) == Missing::apk, "an APK that is no ZIP");
+    files::remove(apk);
+    check(placement::missingFor(shared, apk, android) == Missing::apk, "an APK that is not there");
+    const std::wstring card = root + L"\\missing\\card-shared";
+    files::makeDirectories(card);
+    check(placement::missingFor(card, card + L"\\apks\\MeglerApp.x\\0123\\app.apk", card + L"\\android\\0.1.0.0") == Missing::apk,
+          "another storage's shared folder, with nothing of Megler's in it");
+    for (const Missing missing : {Missing::sharedFolder, Missing::apk, Missing::androidFiles}) {
+        const std::string text = placement::missingText(missing, "Telegram", shared, true);
+        check(text.rfind("Telegram can't start: ", 0) == 0 && text.find("Settings › System › Storage") != std::string::npos &&
+                  text.find("install the app again from Megler's Library") != std::string::npos,
+              "its screen says why and what to do: " + text);
+    }
+    check(placement::missingText(Missing::nothing, "Telegram", shared, true).empty(), "nothing missing, nothing said");
+    check(placement::missingText(Missing::apk, "Telegram", shared, false).find("Settings › Apps") != std::string::npos,
+          "on desktop Windows, the system drive and Settings › Apps");
+    // What Megler says of itself at its start: on a phone's memory card, or with no shared folder.
+    check(placement::meglerOnCardText(false, false, true).empty() && placement::meglerOnCardText(true, false, false).empty(),
+          "Megler in the phone's memory, or on a PC's other drive with a shared folder, says nothing");
+    const std::string onCard = placement::meglerOnCardText(true, false, true);
+    check(onCard.find("Megler is installed on the memory card") != std::string::npos &&
+              onCard.find("the phone's memory is where Megler should be") != std::string::npos && onCard.find("Settings › System › Storage") != std::string::npos,
+          "Megler on the memory card: " + onCard);
+    const std::string none = placement::meglerOnCardText(true, true, true), pc = placement::meglerOnCardText(false, true, false);
+    check(none.find("Megler is installed on the memory card") != std::string::npos && none.find("no shared folder there") != std::string::npos &&
+              pc.find("no shared folder") != std::string::npos && pc.find("system drive") != std::string::npos,
+          "and with no shared folder, on a phone and on a PC: " + pc);
+}
+
 void testFiles(const std::wstring& root) {
     printf("files\n");
     const std::wstring dir = root + L"\\files";
@@ -190,6 +354,43 @@ void testFiles(const std::wstring& root) {
     uint64_t none = 0;
     check(!files::copyWhole(dir + L"\\none.bin", dir + L"\\none.copy", none) && !files::exists(dir + L"\\none.copy"),
           "copyWhole: a file that is not there is not copied, and nothing is made");
+
+    // A memory card's file system, as CopyFile2 is refused there for what it copies besides the bytes (ERROR_NOT_SUPPORTED,
+    // ERROR_ENCRYPTION_FAILED): the bytes read and written, the time of writing kept. Not where reading and writing cannot help.
+    {
+        files::testing::refuseCopyFile2(ERROR_NOT_SUPPORTED);
+        const std::wstring streamed = dir + L"\\streamed.copy";
+        check(files::copy(a, streamed) && files::same(a, streamed) && files::lastWrite(a) == files::lastWrite(streamed),
+              "copy: CopyFile2 refused, the bytes read and written, the time of writing kept");
+        Told told;
+        uint64_t mended = 99;
+        const std::wstring bigStreamed = dir + L"\\big-streamed.copy";
+        check(files::copyWhole(big, bigStreamed, mended, told.progress()) && mended == 0 && files::same(big, bigStreamed) &&
+                  told.stages == std::vector<files::Stage>{files::Stage::copying, files::Stage::flushing, files::Stage::comparing} &&
+                  told.lastDone == bigSize,
+              "copyWhole: likewise, CopyFile2 past the cache and through it refused; then put on the disk and compared");
+        files::testing::refuseCopyFile2(ERROR_ENCRYPTION_FAILED);
+        check(files::copy(a, dir + L"\\decrypted.copy") && files::same(a, dir + L"\\decrypted.copy"), "copy: CopyFile2 refused for encryption, likewise");
+        files::testing::refuseCopyFile2(ERROR_DISK_FULL);
+        check(!files::copy(a, dir + L"\\full.copy") && GetLastError() == ERROR_DISK_FULL && !files::exists(dir + L"\\full.copy"),
+              "copy: a full disk is not gone round, and says so");
+        files::testing::refuseCopyFile2(0);
+        check(count(writtenLog(), "files: CopyFile2 refused to copy") == 1, "the way round CopyFile2 is said once");
+    }
+    // Reads past the cache refused (a memory card's file system whose sectors are larger than a page, or that has no such
+    // reads): read through the cache.
+    {
+        files::testing::refuseUncachedReads(ERROR_INVALID_PARAMETER);
+        files::DiskFile disk(big);
+        const bool wasUncached = disk.uncached();
+        char head[4096];
+        check(wasUncached && disk.read(0, head, sizeof(head)) && !disk.uncached(), "DiskFile: a read refused past the cache is made through it");
+        uint64_t mended = 0;
+        check(spoil(bigCopy, 3 * 1024 * 1024 + 5) && files::mend(big, bigCopy, mended) && mended == files::DiskFile::chunk && files::same(big, bigCopy),
+              "mend: so, a byte wrong found and written again");
+        files::testing::refuseUncachedReads(0);
+        check(count(writtenLog(), "could not be read past Windows's cache") == 1, "the way round is said once");
+    }
 }
 
 void testLog() {
@@ -348,6 +549,14 @@ void testBundled() {
     tasks = bundledApks::plan(library, gShared, never);
     check(describe(tasks) == "again bitgapps-Phonesky.apk, service GmsCore.apk", "plan with that package there: " + describe(tasks));
 
+    // No shared folder (Windows gives a Megler on a memory card none): the library's offers alone, no service copied anywhere.
+    {
+        const std::wstring lone = gLocal + L"\\apks-no-shared";
+        files::makeDirectories(lone);
+        tasks = bundledApks::plan(lone, std::wstring(), never);
+        check(describe(tasks) == "offer bitgapps-PrebuiltGmsCore.apk, offer bitgapps-Phonesky.apk", "plan with no shared folder: " + describe(tasks));
+    }
+
     // A copy of what is not there: refused, said, and nothing left.
     check(!bundledApks::copy(bitgapps + L"\\None.apk", library + L"\\bitgapps-None.apk", "an APK the tests have not") &&
               !files::exists(library + L"\\bitgapps-None.apk") && !files::exists(library + L"\\bitgapps-None.apk.part"),
@@ -373,6 +582,9 @@ int wmain(int argc, wchar_t** argv) {
     }
     shellLog::initialize(gLocal);
     printf("the shell's start and copies (shell/Files.cpp, ShellLog.cpp, Startup.cpp, BundledApks.cpp)\n");
+    testPaths(root);
+    testPlacement(root);
+    testMissing(root);
     testFiles(root);
     testLog();
     testStartup();

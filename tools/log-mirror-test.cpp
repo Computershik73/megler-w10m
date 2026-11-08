@@ -6,7 +6,8 @@
 //      beginning of it (its last lines never copied), an older run's copy as megler.prev.log there -- rotated and completed,
 //      only the missing lines appended; the run before that copied again from nothing where the mirror had none;
 //   2. the running megler.log's new lines copied at each now(), and nothing else of it written again;
-//   3. the other files copied when they change and taken away when they go, flags.txt following LocalState\flags;
+//   3. the other files copied when they change and taken away when they go, flags.txt following LocalState\flags; a copy
+//      whose time is its source's to two seconds, as a memory card's FAT keeps it, not copied again at each pass;
 //   4. a log over 16 MB: its copy stops there with a line saying so; at the next start the run's last 16 MB, from a line's
 //      beginning, after a line saying what was left out;
 //   5. the folder taken away under the running mirror: made again at its next pass;
@@ -157,6 +158,27 @@ int wmain(int argc, wchar_t** argv) {
     check(readAll(mirror + L"\\megler-boot.txt") == readAll(local + L"\\megler-boot.txt"), "a changed file is copied again");
     check(!files::exists(mirror + L"\\install-refusal.txt"), "a file gone from LocalState goes from the mirror");
     check(!files::exists(mirror + L"\\flags.txt"), "flags.txt goes with the last flag");
+
+    // A copy whose time of writing is its source's to two seconds, as a memory card's FAT keeps one, is not made again at each
+    // pass; one further off is.
+    {
+        const auto setTime = [](const std::wstring& path, uint64_t time) {
+            HANDLE h = CreateFile2(path.c_str(), FILE_WRITE_ATTRIBUTES, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, OPEN_EXISTING, nullptr);
+            FILE_BASIC_INFO basic{};
+            basic.LastWriteTime.QuadPart = LONGLONG(time);
+            const bool ok = h != INVALID_HANDLE_VALUE && SetFileInformationByHandle(h, FileBasicInfo, &basic, sizeof(basic));
+            if (h != INVALID_HANDLE_VALUE) CloseHandle(h);
+            return ok;
+        };
+        const uint64_t twoSeconds = 20000000, source = files::lastWrite(local + L"\\megler-boot.txt"), rounded = source - source % twoSeconds;
+        check(setTime(mirror + L"\\megler-boot.txt", rounded), "the copy's time set as a memory card's FAT keeps it");
+        const uint64_t id = fileId(mirror + L"\\megler-boot.txt");
+        settle();
+        check(id && fileId(mirror + L"\\megler-boot.txt") == id, "a copy whose time is its source's to two seconds (a memory card's FAT) is not copied again");
+        setTime(mirror + L"\\megler-boot.txt", rounded + 2 * twoSeconds);
+        settle();
+        check(fileId(mirror + L"\\megler-boot.txt") != id && files::lastWrite(mirror + L"\\megler-boot.txt") == source, "one four seconds off is");
+    }
 
     // 4. Past 16 MB: the copy stops, with a line; at the next start (begun again below), the run's last 16 MB.
     std::string big;

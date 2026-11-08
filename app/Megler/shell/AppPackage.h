@@ -34,6 +34,17 @@ struct SingleApp {
 };
 const SingleApp& single();
 inline bool isSingleApp() { return !single().package.empty(); }
+/// An app's own package: why its app cannot start from what Megler put in the shared folder for it -- Windows gave the package
+/// no shared folder, or its APK or Android's files are not there (or cannot be read), as when the package and Megler are on
+/// different storage, a memory card and the phone's memory -- in words for its screen, with what to do (placement::missingText,
+/// ui/StartScreen.cpp); the app is not opened then. Empty when nothing is missing, and in Megler. Looked at at the first call,
+/// which says it in the log with each folder and its drive.
+const std::string& singleAppProblem();
+/// Megler itself (not an app's own package) installed where its apps may not reach its files: on a phone, on the memory card
+/// (not on the drive Windows is on: placement::onSystemDrive), or anywhere with no shared folder. What it says once at its
+/// start and above the Library (placement::meglerOnCardText); empty when neither. Looked at at the first call, which says it in
+/// the log.
+const std::string& meglerOnCard();
 
 /// The scheme of the links by which a package of Megler's asks another (megler:install, megler:run...): the protocol this
 /// package declares, which an app's own package has from the Megler that made it -- "megler" for the release's Megler,

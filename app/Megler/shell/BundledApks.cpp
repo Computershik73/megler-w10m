@@ -559,7 +559,8 @@ void checkLater() {
     const std::wstring local = platform::localStateDirectory(), shared = appPackage::sharedFolder();
     const bool asked = files::exists(local + L"\\flags\\check-bundled-apks");
     if (appPackage::isSingleApp()) {
-        if (!asked) return;
+        // (None where Windows gave the package no shared folder.)
+        if (!asked || appPackage::single().apkFolder.empty()) return;
         // What this app reads as its own APK (Google Play Store hashes its own base.apk before it patches itself).
         const std::wstring apk = appPackage::single().apkFolder + L"\\app.apk";
         std::thread([apk, shared] { sayDigests("this app's APK,", apk, shared); }).detach();

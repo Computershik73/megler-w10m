@@ -6,6 +6,7 @@
 #include "shell/AppPackage.h"
 #include "shell/Files.h"
 #include "shell/LogMirror.h"
+#include "shell/Placement.h"
 #include "shell/Platform.h"
 #include "shell/ShellLog.h"
 #include "shell/Strings.h"
@@ -169,6 +170,12 @@ std::string packages() {
                 if (package.IsDevelopmentMode()) row += ", a developer's";
             } catch (...) {
             }
+            // Which drive it is installed on: a package on a memory card has the card's shared folder, not Megler's.
+            try {
+                const std::wstring drive = placement::driveOf(std::wstring(package.InstalledLocation().Path()));
+                if (!drive.empty()) row += ", on " + narrow(drive);
+            } catch (...) {
+            }
             rows.push_back(row + "\r\n");
         }
         std::sort(rows.begin(), rows.end());
@@ -185,7 +192,7 @@ std::string packages() {
 std::string lastRefusal() {
     std::string text;
     std::string from;
-    if (!files::read(platform::localStateDirectory() + L"\\install-refusal.txt", text) && appPackage::isSingleApp()) {
+    if (!files::read(platform::localStateDirectory() + L"\\install-refusal.txt", text) && appPackage::isSingleApp() && !logMirror::root().empty()) {
         const std::wstring family = appPackage::meglerFamilyName();
         const std::wstring megler = family.substr(0, family.rfind(L'_'));
         if (files::read(logMirror::root() + L"\\" + megler + L"\\install-refusal.txt", text)) from = "  (Megler's, from its logs in the shared folder)\r\n";
@@ -226,6 +233,7 @@ std::string summary(const std::vector<Item>& items) {
     line("ANGLE", platform::angle().summary);
     line("Free space", freeSpace(platform::localStateDirectory()) + " (LocalState's drive); " + freeSpace(appPackage::sharedFolder()) +
                            " (the shared folder's)");
+    line("Folders", placement::summary(platform::installDirectory(), platform::localStateDirectory(), appPackage::sharedFolder()));
     s += "\r\nMegler's packages, as Windows lists them:\r\n" + packages();
     s += "\r\nThe last install refused:\r\n" + lastRefusal();
     // What the ZIP holds, a folder a line, with when the newest of its files was written (whether a package's copies are of

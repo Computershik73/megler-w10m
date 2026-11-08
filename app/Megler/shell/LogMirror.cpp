@@ -136,6 +136,13 @@ void followLog() {
     }
 }
 
+/// Whether a copy's time of writing, `copy`, is its source's, `source`: the same, or, where the copy is on a memory card's FAT,
+/// which keeps a time to two seconds, the source's rounded so -- such a copy was made again at every pass.
+bool sameTime(uint64_t source, uint64_t copy) {
+    const uint64_t twoSeconds = 20000000;  // (FILETIME's 100 ns)
+    return source == copy || (copy % twoSeconds == 0 && (source > copy ? source - copy : copy - source) < twoSeconds);
+}
+
 /// The other files, each whenever it has changed (its size or its time: a copy keeps the time of what it copies); gone
 /// from LocalState, gone here too.
 void copyOthers() {
@@ -147,7 +154,7 @@ void copyOthers() {
             continue;
         }
         const uint64_t size = files::size(from);
-        if (files::exists(to) && size == files::size(to) && files::lastWrite(from) == files::lastWrite(to)) continue;
+        if (files::exists(to) && size == files::size(to) && sameTime(files::lastWrite(from), files::lastWrite(to))) continue;
         if (!(size > capBytes ? copyTail(from, to, size) : copyWhole(from, to))) fail(narrow(name) + " could not be copied");
     }
     const std::string flags = flagsText();

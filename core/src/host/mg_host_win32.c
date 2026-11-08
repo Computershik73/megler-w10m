@@ -3131,18 +3131,34 @@ bool mg_path_rename(const char *from, const char *to, int *err)
 
 /*
  * A directory read through a handle to it, which is all there is of a
- * foreign one: no pattern, no path. The entries come a bufferful at a time.
+ * foreign one: no pattern, no path. The entries come a bufferful at a time,
+ * as FileIdBothDirectoryInfo has them. A file system that does not know that
+ * class of its files' ids -- refused at the first call for what is asked (a
+ * memory card's driver, through the broker's handle of a folder the user
+ * picked on the card) -- is read with FileFullDirectoryInfo, which every one
+ * answers; said once.
  */
 static bool list_handle(HANDLE h, mg_dir_cb cb, void *user, int *err)
 {
     enum { LIST_BYTES = 16384 };
+    static volatile LONG said;
     /* (Not on the stack: the caller may be a thread of the app's, with a stack of the app's choosing.) */
-    FILE_ID_BOTH_DIR_INFO *buffer = (FILE_ID_BOTH_DIR_INFO *)mg_alloc(LIST_BYTES);
-    bool first = true, ok = true;
+    u8 *buffer = (u8 *)mg_alloc(LIST_BYTES);
+    bool first = true, ok = true, full = false;
     for (;;) {
-        const FILE_ID_BOTH_DIR_INFO *e = buffer;
-        if (!GetFileInformationByHandleEx(h, first ? FileIdBothDirectoryRestartInfo : FileIdBothDirectoryInfo, buffer, LIST_BYTES)) {
+        const u8 *e = buffer;
+        FILE_INFO_BY_HANDLE_CLASS what = full ? (first ? FileFullDirectoryRestartInfo : FileFullDirectoryInfo)
+                                              : (first ? FileIdBothDirectoryRestartInfo : FileIdBothDirectoryInfo);
+        if (!GetFileInformationByHandleEx(h, what, buffer, LIST_BYTES)) {
             DWORD why = GetLastError();
+            if (first && !full &&
+                (why == ERROR_INVALID_PARAMETER || why == ERROR_NOT_SUPPORTED || why == ERROR_INVALID_FUNCTION || why == ERROR_INVALID_LEVEL)) {
+                full = true;
+                if (InterlockedIncrement(&said) == 1)
+                    mg_info("io: a folder's file system refused FileIdBothDirectoryInfo (Windows error %lu): its entries are read with "
+                            "FileFullDirectoryInfo, as every such folder's (a memory card's may be so); said once", (unsigned long)why);
+                continue;
+            }
             /* The end; or, at the first call, a directory with nothing at all in it (a volume's root has not even "."). */
             if (why != ERROR_NO_MORE_FILES && !(first && why == ERROR_FILE_NOT_FOUND)) {
                 if (err) *err = err_of(why);
@@ -3152,17 +3168,22 @@ static bool list_handle(HANDLE h, mg_dir_cb cb, void *user, int *err)
         }
         first = false;
         for (;;) {
-            size_t n = e->FileNameLength / sizeof(wchar_t);
-            if (!(n == 1 && e->FileName[0] == L'.') && !(n == 2 && e->FileName[0] == L'.' && e->FileName[1] == L'.')) {
-                int bytes = WideCharToMultiByte(CP_UTF8, 0, e->FileName, (int)n, NULL, 0, NULL, NULL);
+            /* The two classes' entries alike up to their names, which come after more in FileIdBothDirectoryInfo's. */
+            const FILE_ID_BOTH_DIR_INFO *both = (const FILE_ID_BOTH_DIR_INFO *)e;
+            const FILE_FULL_DIR_INFO *plain = (const FILE_FULL_DIR_INFO *)e;
+            const WCHAR *file = full ? plain->FileName : both->FileName;
+            DWORD attributes = full ? plain->FileAttributes : both->FileAttributes, next = full ? plain->NextEntryOffset : both->NextEntryOffset;
+            size_t n = (full ? plain->FileNameLength : both->FileNameLength) / sizeof(wchar_t);
+            if (!(n == 1 && file[0] == L'.') && !(n == 2 && file[0] == L'.' && file[1] == L'.')) {
+                int bytes = WideCharToMultiByte(CP_UTF8, 0, file, (int)n, NULL, 0, NULL, NULL);
                 char *name = (char *)mg_alloc((size_t)(bytes > 0 ? bytes : 0) + 1);
-                if (bytes > 0) WideCharToMultiByte(CP_UTF8, 0, e->FileName, (int)n, name, bytes, NULL, NULL);
+                if (bytes > 0) WideCharToMultiByte(CP_UTF8, 0, file, (int)n, name, bytes, NULL, NULL);
                 mg_name_from_host(name);
-                if (name[0]) cb(name, (e->FileAttributes & FILE_ATTRIBUTE_DIRECTORY) != 0, user);
+                if (name[0]) cb(name, (attributes & FILE_ATTRIBUTE_DIRECTORY) != 0, user);
                 free(name);
             }
-            if (!e->NextEntryOffset) break;
-            e = (const FILE_ID_BOTH_DIR_INFO *)((const u8 *)e + e->NextEntryOffset);
+            if (!next) break;
+            e += next;
         }
     }
     free(buffer);

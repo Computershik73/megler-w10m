@@ -32,13 +32,13 @@ for s in "${ZSRC[@]}"; do ZW+=("$(w "$s")"); done
 "$CL" /nologo /c /O2 /MT /w "/Fo$(w "$OUT/obj")\\" "${ZW[@]}" | grep -v -E '^[A-Za-z0-9_]+\.c$' || true
 SRC=()
 for s in app/Megler/shell/LogArchive.cpp app/Megler/shell/LogMirror.cpp app/Megler/shell/ZipWriter.cpp app/Megler/shell/Files.cpp \
-         app/Megler/shell/Strings.cpp tools/log-archive-test.cpp; do
+         app/Megler/shell/Strings.cpp app/Megler/shell/Placement.cpp tools/log-archive-test.cpp; do
   SRC+=("$(w "$ROOT/$s")")
 done
 "$CL" /nologo /c /O2 /MT /W3 /EHsc /GR /permissive- /std:c++20 /Zc:__cplusplus /bigobj /utf-8 \
   /DWINAPI_FAMILY=WINAPI_FAMILY_APP /DUNICODE /D_UNICODE /DNOMINMAX /DWIN32_LEAN_AND_MEAN /D_CRT_SECURE_NO_WARNINGS \
   "/I$(w "$ROOT/app/Megler")" "/I$(w "$ROOT/core/include")" "/Fo$(w "$OUT/obj")\\" "${SRC[@]}" | grep -v -E '^[A-Za-z0-9_.-]+\.cpp$' || true
-for obj in LogArchive LogMirror ZipWriter Files Strings log-archive-test deflate; do
+for obj in LogArchive LogMirror ZipWriter Files Strings Placement log-archive-test deflate; do
   [ -f "$OUT/obj/$obj.obj" ] || { echo "compile failed: $obj" >&2; exit 1; }
 done
 "$VC/bin/Hostx64/x64/link.exe" /nologo "/OUT:$(w "$OUT/log-archive-test.exe")" "$(w "$OUT/obj")\\*.obj" ole32.lib oleaut32.lib \
