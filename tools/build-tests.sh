@@ -68,6 +68,11 @@
 #       likewise and run as --sensors-windows: the PC's sensors listed through
 #       the core's and each read a moment, or, on a PC without them, a line
 #       that says so.
+#       And the shell's Bluetooth for an app's android.bluetooth
+#       (app/Megler/player/BluetoothHost.cpp: Windows.Devices.Bluetooth),
+#       built in likewise and run as --bluetooth-windows: the PC's radio
+#       and a passive scan of three seconds -- nothing connected to or
+#       paired with -- or, on a PC without a radio, a line that says so.
 #       And the Xbox build's client of the console's Device Portal
 #       (app/Megler/shell/DevicePortal.cpp), built in likewise and run as
 #       --portal-windows against tools/device-portal-mock.py, a portal of the
@@ -434,11 +439,11 @@ elif [ "$MODE" = win ]; then
   for s in "${SRCS[@]}"; do ALL+=("$(w "$ROOT/$s")"); done
   ZALL=()
   for s in "${ZSRCS[@]}"; do ZALL+=("$(w "$ROOT/$s")"); done
-  # (MG_GFX_WINDOWS, MG_STORAGE_WINDOWS, MG_CODEC_WINDOWS, MG_CAMERA_WINDOWS, MG_SENSORS_WINDOWS, MG_PORTAL_WINDOWS: this build has
-  # the shell's drawing, its storage host, its decoders, its cameras, its sensors and the Xbox build's Device Portal client in
-  # it; mg_tests_main.c's --gfx-windows, --storage-windows, --codec-windows, --camera-windows, --sensors-windows and
-  # --portal-windows modes.)
-  "$VC/bin/Hostx64/x64/cl.exe" /nologo /c "$OPT" /MT /W3 /std:c11 /utf-8 "$MP" /D_CRT_SECURE_NO_WARNINGS /D_CRT_NONSTDC_NO_WARNINGS /DMG_GFX_WINDOWS /DMG_STORAGE_WINDOWS /DMG_CODEC_WINDOWS /DMG_CAMERA_WINDOWS /DMG_SENSORS_WINDOWS /DMG_PORTAL_WINDOWS "${SQLITE_CL[@]}" "${WEBP_CL[@]}" \
+  # (MG_GFX_WINDOWS, MG_STORAGE_WINDOWS, MG_CODEC_WINDOWS, MG_CAMERA_WINDOWS, MG_SENSORS_WINDOWS, MG_BLUETOOTH_WINDOWS,
+  # MG_PORTAL_WINDOWS: this build has the shell's drawing, its storage host, its decoders, its cameras, its sensors, its
+  # Bluetooth and the Xbox build's Device Portal client in it; mg_tests_main.c's --gfx-windows, --storage-windows,
+  # --codec-windows, --camera-windows, --sensors-windows, --bluetooth-windows and --portal-windows modes.)
+  "$VC/bin/Hostx64/x64/cl.exe" /nologo /c "$OPT" /MT /W3 /std:c11 /utf-8 "$MP" /D_CRT_SECURE_NO_WARNINGS /D_CRT_NONSTDC_NO_WARNINGS /DMG_GFX_WINDOWS /DMG_STORAGE_WINDOWS /DMG_CODEC_WINDOWS /DMG_CAMERA_WINDOWS /DMG_SENSORS_WINDOWS /DMG_BLUETOOTH_WINDOWS /DMG_PORTAL_WINDOWS "${SQLITE_CL[@]}" "${WEBP_CL[@]}" \
     "/I$(w "$ROOT/core/third_party/zlib")" "/Fo$(w "$OUT/obj")\\" "${ALL[@]}" | grep -v -E '^[A-Za-z0-9_]+\.c$' || true
   "$VC/bin/Hostx64/x64/cl.exe" /nologo /c /O1 /MT /w "$MP" /D_CRT_SECURE_NO_WARNINGS /D_CRT_NONSTDC_NO_WARNINGS \
     "/Fo$(w "$OUT/zobj")\\" "${ZALL[@]}" | grep -v -E '^[A-Za-z0-9_]+\.c$' || true
@@ -476,7 +481,8 @@ elif [ "$MODE" = win ]; then
   # whole files (player/MediaHost.cpp), for the files of sound alone a Java app's MediaPlayer and SoundPool hand it; the
   # shell's log they write to is mg_storage_windows.cpp's. And the shell's cameras (player/CameraHost.cpp:
   # Windows.Media.Capture), with the lines that hand them to the tests (core/tests/mg_camera_windows.cpp). And the shell's
-  # sensors (player/SensorHost.cpp: Windows.Devices.Sensors), likewise (core/tests/mg_sensors_windows.cpp). And the Xbox
+  # sensors (player/SensorHost.cpp: Windows.Devices.Sensors), likewise (core/tests/mg_sensors_windows.cpp). And its
+  # Bluetooth (player/BluetoothHost.cpp: Windows.Devices.Bluetooth), likewise (core/tests/mg_bluetooth_windows.cpp). And the Xbox
   # build's Device Portal client (shell/DevicePortal.cpp: Windows.Web.Http), with the tests that drive it against the mock
   # portal (core/tests/mg_portal_windows.cpp); no package but the Xbox's has the client (tools/build-appx.sh --xbox).
   STORAGE_SRC=("$(w "$ROOT/app/Megler/player/StorageHost.cpp")" "$(w "$ROOT/app/Megler/shell/Strings.cpp")" "$(w "$ROOT/core/tests/mg_storage_windows.cpp")"
@@ -484,13 +490,14 @@ elif [ "$MODE" = win ]; then
                "$(w "$ROOT/app/Megler/player/MediaHost.cpp")"
                "$(w "$ROOT/app/Megler/player/CameraHost.cpp")" "$(w "$ROOT/core/tests/mg_camera_windows.cpp")"
                "$(w "$ROOT/app/Megler/player/SensorHost.cpp")" "$(w "$ROOT/core/tests/mg_sensors_windows.cpp")"
+               "$(w "$ROOT/app/Megler/player/BluetoothHost.cpp")" "$(w "$ROOT/core/tests/mg_bluetooth_windows.cpp")"
                "$(w "$ROOT/app/Megler/shell/DevicePortal.cpp")" "$(w "$ROOT/core/tests/mg_portal_windows.cpp")")
   mkdir -p "$OUT/storageobj"
   rm -f "$OUT/storageobj/"*.obj
   INCLUDE="$INCLUDE;$(w "$SDK/Include/$SDKV/winrt");$(w "$SDK/Include/$SDKV/cppwinrt")" \
     "$VC/bin/Hostx64/x64/cl.exe" "${GFX_FLAGS[@]}" /Zc:__cplusplus /bigobj /DWINAPI_FAMILY=WINAPI_FAMILY_APP /O1 "$MP" "/Fo$(w "$OUT/storageobj")\\" "${STORAGE_SRC[@]}" \
     | grep -v -E '^[A-Za-z0-9_]+\.cpp$' || true
-  for obj in StorageHost Strings mg_storage_windows CodecHost mg_codec_windows MediaHost CameraHost mg_camera_windows SensorHost mg_sensors_windows DevicePortal mg_portal_windows; do
+  for obj in StorageHost Strings mg_storage_windows CodecHost mg_codec_windows MediaHost CameraHost mg_camera_windows SensorHost mg_sensors_windows BluetoothHost mg_bluetooth_windows DevicePortal mg_portal_windows; do
     [ -f "$OUT/storageobj/$obj.obj" ] || { echo "compile failed: $obj.cpp" >&2; exit 1; }
   done
   # (MEGLER_TESTS_MAP=1: a linker map beside it, mg_tests.map, which tools/dvm-bench.sh profile reads.)
@@ -557,6 +564,10 @@ elif [ "$MODE" = win ]; then
     # The shell's sensors: what this PC has through the core's sensors, each read a moment; a PC without them says so.
     rm -rf "$OUT/scratch-sensors"
     "$OUT/mg_tests.exe" --sensors-windows "$(w "$OUT/scratch-sensors")" || STATUS=1
+    # The shell's Bluetooth: this PC's radio through the core's, and a passive scan of three seconds (nothing connected to or
+    # paired with); a PC without one says so.
+    rm -rf "$OUT/scratch-bluetooth"
+    "$OUT/mg_tests.exe" --bluetooth-windows "$(w "$OUT/scratch-bluetooth")" || STATUS=1
     # The Xbox build's Device Portal client, against a portal of the tests' own (tools/device-portal-mock.py) on a port of
     # its choosing on 127.0.0.1: over TLS with a certificate openssl makes here for another name, nothing vouching for it, as
     # the console's own is; the first two questions of the install's state answered 204, as another client's install
