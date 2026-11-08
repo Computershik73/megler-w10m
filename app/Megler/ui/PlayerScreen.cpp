@@ -717,9 +717,12 @@ private:
                                double(panel_.CompositionScaleX()));
             } catch (const hresult_error&) {
             }
+            const std::string shown = first.shown    ? std::string()
+                                      : !first.tried ? std::string(" (being shown)")
+                                      : first.result == S_FALSE ? " (not on the screen: it was not presented, " + first.why + ")"
+                                                                : format(" (not on the screen: its Present failed, 0x%08X)", unsigned(first.result));
             shellLog::write(format("player: the busy overlay is hidden %.0f ms after Play (%s): the app's first picture came at %.0f ms, %dx%d, %s%s%s", ms,
-                                   how, first.ms, first.width, first.height, first.came ? WindowHost::wayName(first.way) : "?",
-                                   first.shown ? "" : first.tried ? " (not on the screen: its Present did not put it there)" : " (being shown)", panel.c_str()));
+                                   how, first.ms, first.width, first.height, first.came ? WindowHost::wayName(first.way) : "?", shown.c_str(), panel.c_str()));
         }
         if (stopping) {
             busyText_.Text(hs("Stopping " + title_ + "…"));
