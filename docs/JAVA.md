@@ -4293,7 +4293,29 @@ parameters, the picture handed over and the release with the tests' stand-in.
 `Bitmap`'s, the window's with `no-view-lists`, or any canvas where the draw
 functor is not there -- has the WebView draw in software, as it does on Android
 into a `Bitmap`'s canvas: `AwContents.onDraw` with `isHardwareAccelerated()`
-false. The overlay's `WebView.onDraw` draws every frame through one bitmap of
+false.
+
+Only there, as on Android. A WebView put straight into the root view of a
+window of the app's own -- King's popups in Candy Crush Saga: a panel window
+whose `PopupDialog$PopupDecorView` holds the WebView -- drew on the window's
+frame, which said it was not hardware-accelerated, so its pages were drawn in
+software while every other WebView's were on the graphics processor. Chromium's
+software draw cannot take a page's view transition (`startViewTransition`, a
+CSS `@view-transition`): it composes on a frame sink manager of its own
+(`SynchronousLayerTreeFrameSink`, Blink's
+`widget/compositing/android_webview`), made with no shared image interface
+provider, and the transition's save directive asks for one
+(`CompositorFrameSinkSupport::ProcessCompositorFrameTransitionDirective`,
+`BlitRequestsForViewTransition` on by default, then
+`FrameSinkManagerImpl::GetSharedImageInterface`, which only DCHECKs its
+provider: libwebviewchromium.so+0x3879a04 reads the provider's vtable through
+null, called from +0x3874010). The popup's page made one, and the app ended
+(package 673). A window's frame (`megler.ViewRoot.ScreenCanvas`) now says it is
+hardware-accelerated while the views draw through lists of their own, as a
+window's canvas does on Android, and not while a view without a list that is
+not drawn on the graphics processor draws into it, as a view list's does: the
+data app's `panel-root` checks both. A WebView drawn in software on Android
+(into a `Bitmap`) would end the same way on such a page. The overlay's `WebView.onDraw` draws every frame through one bitmap of
 what the window shows of the view, as the functor draws on Android, and puts
 that bitmap in the canvas it was given: a WebView sized to its page is many
 screens tall (a check: a WebView 20000 rows tall is drawn through 744), and a

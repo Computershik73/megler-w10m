@@ -1373,15 +1373,19 @@ public class View implements Drawable.Callback, KeyEvent.Callback {
         c.translate(-mScrollX, -mScrollY);
         megler.ViewRoot.ScreenCanvas screen = c instanceof megler.ViewRoot.ScreenCanvas ? (megler.ViewRoot.ScreenCanvas) c : null;
         long was = screen != null ? screen.meglerViewSize(w, h) : 0;
-        // A view without a list of its own drawing into its parent's: that canvas is not hardware accelerated for it, but
-        // for a WebView whose page is drawn on the graphics processor (its draw functor: megler.WebFunctors).
-        android.graphics.RecordingCanvas soft = !meglerListable() && !meglerWebOnGpu() && c instanceof android.graphics.RecordingCanvas ? (android.graphics.RecordingCanvas) c : null;
+        // A view without a list of its own drawing into its parent's, or into the window's frame as a child of the window's
+        // root (megler.ViewRoot.ScreenCanvas): that canvas is not hardware accelerated for it, but for a WebView whose page is
+        // drawn on the graphics processor (its draw functor: megler.WebFunctors).
+        boolean noList = !meglerListable() && !meglerWebOnGpu();
+        android.graphics.RecordingCanvas soft = noList && c instanceof android.graphics.RecordingCanvas ? (android.graphics.RecordingCanvas) c : null;
         boolean wasSoft = soft != null && soft.meglerSoftware(true);
+        boolean wasScreenSoft = noList && screen != null && screen.meglerSoftware(true);
         try {
             draw(c);
         } finally {
             if (screen != null) screen.meglerViewSizeBack(was);
             if (soft != null) soft.meglerSoftware(wasSoft);
+            if (noList && screen != null) screen.meglerSoftware(wasScreenSoft);
         }
         c.restoreToCount(save);
     }
