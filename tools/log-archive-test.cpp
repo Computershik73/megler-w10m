@@ -43,6 +43,10 @@ const std::wstring& localStateDirectory() {
     static const std::wstring path = gRoot + L"\\LocalState";
     return path;
 }
+const std::wstring& installDirectory() {
+    static const std::wstring path = gRoot + L"\\package";
+    return path;
+}
 std::string packageVersion() { return "0.1.0.999"; }
 std::string architecture() { return "x64"; }
 std::string deviceFamily() { return "Windows.Xbox"; }

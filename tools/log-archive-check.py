@@ -50,7 +50,7 @@ def main():
         summary = z.read("summary.txt").decode("utf-8")
         for line in ("Megler: 0.1.0.999", "Core: 0.1.0 (the test's)", "Android Code: Can run", "ANGLE: In the package",
                      "Device family: Windows.Xbox", "MeglerApp.a.appx was not installed", "Megler (this package, from its LocalState)",
-                     "MeglerApp.one.app", "shared/apps/one.app"):
+                     "MeglerApp.one.app", "shared/apps/one.app", "Folders: the install folder on ", ", the shared folder on "):
             check(line in summary, "summary.txt does not say " + repr(line))
         print("zipfile: %d entries, %d bytes; summary.txt:\n%s" % (len(names), archive.stat().st_size, summary))
 
