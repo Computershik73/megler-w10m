@@ -669,6 +669,18 @@ void mg_dvm_stub_called(const mg_dvm_method *caller, mg_dvm_method *m);
  */
 /* (x86-64 and x86 where the core's convention is Android's, System V's and i386's: not MSVC's build of the tests.) */
 #define MG_DVM_JIT (MG_ARCH_ARM32 || MG_ARCH_ARM64 || ((MG_ARCH_X86_64 || MG_ARCH_X86) && MG_GUEST_CODE))
+/*
+ * Where a call compiled code makes of a method whose body runs in an interpreter loop of its own (mg_dvm_jit.c, dear_call:
+ * one with handlers, refused by the JIT, compiled without a start) costs more than the interpreter's own call, which goes
+ * on in the loop it is in: how many other instructions a loop must have for each such call to be entered compiled
+ * (worth_entering); 0 where every loop is. On x86 and x86-64 the benchmark's loop around a call of a method that throws
+ * (refused: its throw is an exit) was 14% and 31% slower compiled than interpreted, and is as fast as interpreted with the
+ * measure, every other item as it was (the least of three alternating runs; docs/JIT.md). The ARM processors keep every
+ * loop: under qemu-aarch64 that one was not slower, and their speed is the phones' to say. The JIT goes by
+ * g_dvm_jit_call_work, which the tests set to 0 to have such loops compiled too.
+ */
+#define MG_DVM_JIT_CALL_WORK ((MG_ARCH_X86 || MG_ARCH_X86_64) ? 8u : 0u)
+extern u32 g_dvm_jit_call_work;
 typedef struct mg_dvm_jit_code mg_dvm_jit_code;
 /*
  * What compiled code is run with (a register holds it): the frame's registers, the flag that says instructions are

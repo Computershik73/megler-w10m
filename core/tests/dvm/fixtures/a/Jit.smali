@@ -274,6 +274,41 @@
     return v0
 .end method
 
+# A static synchronized method as a compiler writes one (t.Sync's comment): its monitor taken and given back in its
+# body, a handler for what throws in between -- whose body, called from compiled code, runs in an interpreter loop of its
+# own (mg_dvm_jit_invoke), as the interpreter's loop decides about its exceptions.
+.method public static declared-synchronized lockedSum(II)I
+    .registers 5
+    const-class v2, Lt/Jit;
+    monitor-enter v2
+    :try_start
+    add-int v0, p0, p1
+    :try_end
+    .catchall {:try_start .. :try_end} :handler
+    monitor-exit v2
+    return v0
+    :handler
+    move-exception v1
+    monitor-exit v2
+    throw v1
+.end method
+
+# A loop whose turns are mostly a call of it: compiled where such a call costs no more compiled than interpreted, left
+# to the interpreter where it does (MG_DVM_JIT_CALL_WORK, mg_dvm_jit.c's worth_entering). Returns 0 + 1 + ... + (n - 1).
+.method public static mostlyCalls(I)I
+    .registers 4
+    const/4 v0, 0x0
+    const/4 v1, 0x0
+    :loop
+    if-ge v1, p0, :done
+    invoke-static {v1, v0}, Lt/Jit;->lockedSum(II)I
+    move-result v0
+    add-int/lit8 v1, v1, 0x1
+    goto :loop
+    :done
+    return v0
+.end method
+
 # Long values moved in a loop (move-wide) beside int ones: the pairs kept whole.
 .method public static wideMoves(IJ)J
     .registers 10

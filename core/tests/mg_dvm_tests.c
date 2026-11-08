@@ -439,6 +439,8 @@ static void test_jit(void)
     flags = jit_array("[Z", 7);
     CHECK(ints && bytes && chars && shorts && flags);
     if (!ints || !bytes || !chars || !shorts || !flags) return;
+    /* Every loop compiled, those of calls that cost more compiled too (MG_DVM_JIT_CALL_WORK): the measure is seen last. */
+    g_dvm_jit_call_work = 0;
     /* Filled by the compiled loop at k = 1000: ints i*1000, bytes, chars and shorts their truncations. */
     A[0].l = ints;
     A[1].l = bytes;
@@ -620,6 +622,27 @@ static void test_jit(void)
         CHECK(minus && minus->jit && mg_dvm_jit_entry(minus->jit, 0));
     }
     /*
+     * The measure of calls as the JIT has it (mg_dvm_jit.c, worth_entering): a loop whose turns are mostly a call of a
+     * synchronized method with its handler, whose body runs in an interpreter loop of its own when compiled code calls it,
+     * entered compiled where such a call costs no more than the interpreter's, and left to the interpreter where it does
+     * (MG_DVM_JIT_CALL_WORK: x86 and x86-64). Run once interpreted first, so that its call is resolved when it is compiled,
+     * as the JIT's own threshold's turns would have it.
+     */
+    {
+        mg_dvm_method *mc = c ? mg_dvm_find_method(c, "mostlyCalls", "(I)I", true) : NULL;
+        bool loop = false;
+        u32 k;
+        g_dvm_jit_call_work = MG_DVM_JIT_CALL_WORK;
+        mg_dvm_jit_start(false, 0, false);
+        A[0].i = 2;
+        CHECK_INT(call("t/Jit", "mostlyCalls", "(I)I").i, 1);
+        mg_dvm_jit_start(true, 1, false);
+        A[0].i = 100;
+        CHECK_INT(call("t/Jit", "mostlyCalls", "(I)I").i, 4950);
+        for (k = 0; mc && mc->jit && k < mc->jit->nentries; k++) loop |= mc->jit->entries[k].pc != 0;
+        CHECK(mc && loop == !MG_DVM_JIT_CALL_WORK);
+    }
+    /*
      * With the threshold above 1, a small method's code waits on the page being filled, interpreted meanwhile, until the
      * page is made executable: here once 200 ms have passed, at its next threshold's worth of calls. Where pages may be
      * writable and executable at once (mg_mem_rwx: here, and on phones that allow it), the page is so from its start and
@@ -645,6 +668,7 @@ static void test_jit(void)
     (void)c;
 #endif
     g_dvm_jit_threshold = was;
+    g_dvm_jit_call_work = MG_DVM_JIT_CALL_WORK;
 }
 
 /* ------------------------------------------------------------- two files */
