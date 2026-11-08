@@ -76,6 +76,12 @@
 #       packages, an uninstall), over TLS with a certificate made here by
 #       openssl for another name (plain HTTP where there is no openssl), where
 #       Python is.
+#       And, in a program of its own (mg_shell_tests.exe, from
+#       core/tests/mg_shell_windows.cpp), the shell's start and its copies:
+#       shell/Files.cpp's copies past the cache and their mending, the log's
+#       last words written out at once (ShellLog.cpp), the start's steps and
+#       watch (Startup.cpp), and the plan and the making of the copies of the
+#       package's Google APKs after the window is shown (BundledApks.cpp).
 #
 # Both builds unpack bundles of split APKs as the shell does (mg_tests
 # --bundles, core/tests/mg_bundle_tests.c): the test app `splits` as an .apks
@@ -502,6 +508,23 @@ elif [ "$MODE" = win ]; then
   "$VC/bin/Hostx64/x64/link.exe" /nologo ${MAPOPT[@]+"${MAPOPT[@]}"} "/OUT:$(w "$OUT/mg_tests.exe")" "$(w "$OUT/obj")\\*.obj" "$(w "$OUT/zobj")\\*.obj" "$(w "$OUT/gfxobj")\\*.obj" \
     "$(w "$OUT/storageobj")\\*.obj" bcrypt.lib synchronization.lib d2d1.lib d3d11.lib dwrite.lib ole32.lib oleaut32.lib ws2_32.lib iphlpapi.lib mfplat.lib mfreadwrite.lib mfuuid.lib
   echo "built $OUT/mg_tests.exe"
+  # The shell's start and its copies (shell/Files.cpp, ShellLog.cpp, Startup.cpp, BundledApks.cpp and Strings.cpp), the very
+  # files the phone's package is built from, in a program of their own with the tests that drive them
+  # (core/tests/mg_shell_windows.cpp): mg_tests.exe stands in for the shell's files and log, as its storage, codec and camera
+  # tests want, and these want the real ones. Compiled as for an app container, as the storage host is (onecore.lib: an app's
+  # VirtualAlloc is VirtualAllocFromApp).
+  SHELL_SRC=("$(w "$ROOT/app/Megler/shell/Files.cpp")" "$(w "$ROOT/app/Megler/shell/Strings.cpp")" "$(w "$ROOT/app/Megler/shell/ShellLog.cpp")"
+             "$(w "$ROOT/app/Megler/shell/Startup.cpp")" "$(w "$ROOT/app/Megler/shell/BundledApks.cpp")" "$(w "$ROOT/core/tests/mg_shell_windows.cpp")")
+  mkdir -p "$OUT/shellobj"
+  rm -f "$OUT/shellobj/"*.obj
+  INCLUDE="$INCLUDE;$(w "$SDK/Include/$SDKV/winrt");$(w "$SDK/Include/$SDKV/cppwinrt")" \
+    "$VC/bin/Hostx64/x64/cl.exe" "${GFX_FLAGS[@]}" /Zc:__cplusplus /bigobj /DWINAPI_FAMILY=WINAPI_FAMILY_APP /O1 "$MP" "/Fo$(w "$OUT/shellobj")\\" "${SHELL_SRC[@]}" \
+    | grep -v -E '^[A-Za-z0-9_]+\.cpp$' || true
+  for obj in Files Strings ShellLog Startup BundledApks mg_shell_windows; do
+    [ -f "$OUT/shellobj/$obj.obj" ] || { echo "compile failed: $obj.cpp" >&2; exit 1; }
+  done
+  "$VC/bin/Hostx64/x64/link.exe" /nologo "/OUT:$(w "$OUT/mg_shell_tests.exe")" "$(w "$OUT/shellobj")\\*.obj" bcrypt.lib ole32.lib oleaut32.lib onecore.lib
+  echo "built $OUT/mg_shell_tests.exe"
   if [ "$RUN" = 1 ]; then
     rm -rf "$OUT/scratch"
     APK="${MEGLER_TEST_APK:-$USERPROFILE/Downloads/Hollow_Knight_22.10.2022_LQ.apk}"
@@ -534,6 +557,10 @@ elif [ "$MODE" = win ]; then
     # instead of the stand-in, on folders under a scratch folder of its own.
     rm -rf "$OUT/scratch-storage"
     "$OUT/mg_tests.exe" --storage-windows "$(w "$OUT/scratch-storage")" || STATUS=1
+    # The shell's start and its copies: files copied past the cache and mended, the log's last words written out at once,
+    # the start's steps and watch, the plan of the copies of the package's Google APKs and their making after the start.
+    rm -rf "$OUT/scratch-shell"
+    "$OUT/mg_shell_tests.exe" "$(w "$OUT/scratch-shell")" || STATUS=1
     # The shell's decoders: the core's codec for MediaCodec over Media Foundation's own decoder transforms, fed the data
     # app's streams (H.264 and H.265 with B-pictures, AAC, MP3) and checked against what they hold; and timed on longer
     # streams of 720p and 1080p, made once into build/media-speed where Python and ffmpeg are (they are not kept in the
