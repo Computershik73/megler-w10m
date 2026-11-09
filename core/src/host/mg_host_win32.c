@@ -4427,26 +4427,176 @@ int mg_net_dns_servers(char (*out)[48], int max)
 
 /* ------------------------------------------------------ host shared libraries */
 
-void *mg_dl_open(const char *name)
-{
-    wchar_t *w = wide_path(name);
-    HMODULE h;
-#if MG_UWP
-    h = LoadPackagedLibrary(w, 0);
-#else
-    h = LoadLibraryW(w);
-#endif
-    free(w);
-    return (void *)h;
-}
-
-void *mg_dl_sym(void *lib, const char *name) { return (void *)GetProcAddress((HMODULE)lib, name); }
-
 #if WINAPI_FAMILY == WINAPI_FAMILY_APP
 /* Left out of the app partition by the SDK's headers, in the phone's kernelbase like any other. */
 WINBASEAPI BOOL WINAPI GetModuleHandleExW(DWORD dwFlags, LPCWSTR lpModuleName, HMODULE *phModule);
 WINBASEAPI DWORD WINAPI GetModuleFileNameW(HMODULE hModule, LPWSTR lpFilename, DWORD nSize);
 #endif
+
+/* What the loader's error means, for the log. */
+static const char *dl_error_meaning(DWORD e)
+{
+    switch (e) {
+    case ERROR_MOD_NOT_FOUND: return "it, or a DLL it imports, is not here";
+    case ERROR_PROC_NOT_FOUND: return "a DLL it imports lacks a function it needs";
+    case ERROR_BAD_EXE_FORMAT: return "not an image for this processor";
+    case ERROR_ACCESS_DENIED: return "access denied";
+    case ERROR_INVALID_IMAGE_HASH: return "its signature is refused";
+    case ERROR_DLL_INIT_FAILED: return "its initialisation failed";
+    case ERROR_INVALID_PARAMETER: return "a name the loader refuses";
+    default: return "see the Windows error";
+    }
+}
+
+/* `len` bytes of `f` at `at`; false if the file is shorter. */
+static bool dl_read_at(HANDLE f, u32 at, void *buf, u32 len)
+{
+    LARGE_INTEGER to;
+    DWORD got = 0;
+    to.QuadPart = at;
+    return SetFilePointerEx(f, to, NULL, FILE_BEGIN) && ReadFile(f, buf, len, &got, NULL) && got == len;
+}
+
+/* The NUL-ended string of `f` at `at` (none at 0), at most `cap` - 1 bytes of it. */
+static void dl_read_string(HANDLE f, u32 at, char *out, u32 cap)
+{
+    LARGE_INTEGER to;
+    DWORD got = 0;
+    to.QuadPart = at;
+    if (!at || !SetFilePointerEx(f, to, NULL, FILE_BEGIN) || !ReadFile(f, out, cap - 1, &got, NULL)) got = 0;
+    out[got] = 0;
+}
+
+/* A DLL's headers, as far as its import table needs them. */
+typedef struct {
+    u8 hdr[0x1000];      /* (the headers and the section table are in the first page of any DLL of ours) */
+    u32 sections, nsec;
+    bool pe64;
+} dl_image;
+
+/* An address of the image as a place in its file, through the section that has it; 0 if none has. */
+static u32 dl_file_at(const dl_image *im, u32 rva)
+{
+    u32 s;
+    for (s = 0; rva && s < im->nsec; s++) {
+        const u8 *h = im->hdr + im->sections + 40 * s;
+        u32 vsize, va, rsize, raw;
+        memcpy(&vsize, h + 8, 4);
+        memcpy(&va, h + 12, 4);
+        memcpy(&rsize, h + 16, 4);
+        memcpy(&raw, h + 20, 4);
+        if (rva >= va && rva - va < (vsize > rsize ? vsize : rsize)) return rva - va + raw;
+    }
+    return 0;
+}
+
+/*
+ * Why the package's DLL `name` did not load, as far as its imports tell, for the log: the loader says only that something
+ * was not found (126) or lacked a function (127), not what. Each DLL its import table names is asked for by name, as the
+ * loader would (the package's own DLLs left out: they are the loader's to find beside it), and of those that load, each
+ * function asked for by name. `out` gets "; this process cannot have <DLL> (error <n>), <DLL>!<function>, ..." or
+ * nothing. An Xbox has no kernel32.dll for an app, and ANGLE imported its functions from it by that name: neither of
+ * ANGLE's DLLs loaded there (0.1.0.679), and nothing said why.
+ */
+static void dl_missing_imports(const wchar_t *name, char *out, size_t cap)
+{
+    wchar_t path[MAX_PATH + 64], own[MAX_PATH + 64];
+    DWORD n = GetModuleFileNameW(NULL, path, MAX_PATH), got = 0;
+    size_t len = wcslen(name), o = 0;
+    dl_image *im = NULL;
+    HANDLE f;
+    u32 pe, opt, dir, rva_imports, at;
+    int listed = 0;
+    out[0] = 0;
+    if (!n || n >= MAX_PATH) return;
+    while (n && path[n - 1] != L'\\' && path[n - 1] != L'/') n--;
+    if (n + len + 1 >= sizeof(path) / sizeof(path[0])) return;
+    memcpy(path + n, name, (len + 1) * sizeof(wchar_t));
+    f = CreateFile2(path, GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, OPEN_EXISTING, NULL);
+    if (f == INVALID_HANDLE_VALUE) {
+        snprintf(out, cap, "; its file could not be opened (error %lu)", (unsigned long)GetLastError());
+        return;
+    }
+    im = (dl_image *)calloc(1, sizeof(*im));
+    if (!im || !ReadFile(f, im->hdr, sizeof(im->hdr), &got, NULL) || got < 0x200 || im->hdr[0] != 'M' || im->hdr[1] != 'Z') goto done;
+    memcpy(&pe, im->hdr + 0x3c, 4);
+    if (pe > got - 26 || memcmp(im->hdr + pe, "PE\0\0", 4)) goto done;
+    im->nsec = (u32)(im->hdr[pe + 6] | im->hdr[pe + 7] << 8);
+    opt = pe + 24;
+    im->sections = opt + (u32)(im->hdr[pe + 20] | im->hdr[pe + 21] << 8);
+    im->pe64 = (im->hdr[opt] | im->hdr[opt + 1] << 8) == 0x20b;
+    dir = opt + (im->pe64 ? 112 : 96) + 8 * 1;           /* the import table's entry of the data directories */
+    if (dir + 8 > im->sections || im->sections + 40 * im->nsec > got) goto done;
+    memcpy(&rva_imports, im->hdr + dir, 4);
+    for (at = 0; rva_imports && at < 20 * 1024; at += 20) {
+        u32 desc[5], d = dl_file_at(im, rva_imports + at), thunks, t, step = im->pe64 ? 8 : 4;
+        char dll[128];
+        wchar_t wdll[128];
+        WIN32_FILE_ATTRIBUTE_DATA a;
+        HMODULE m = NULL;
+        size_t wl;
+        if (!d || !dl_read_at(f, d, desc, sizeof(desc)) || !desc[3]) break;
+        dl_read_string(f, dl_file_at(im, desc[3]), dll, sizeof(dll));
+        if (!dll[0] || !MultiByteToWideChar(CP_UTF8, 0, dll, -1, wdll, 128)) break;
+        wl = wcslen(wdll);
+        if (n + wl + 1 < sizeof(own) / sizeof(own[0])) {
+            memcpy(own, path, n * sizeof(wchar_t));
+            memcpy(own + n, wdll, (wl + 1) * sizeof(wchar_t));
+            if (GetFileAttributesExW(own, GetFileExInfoStandard, &a)) continue;
+        }
+        /* (One loaded already is looked at with a reference of its own, given back below as one loaded here is.) */
+        if (!GetModuleHandleExW(0, wdll, &m) || !m) m = LoadLibraryExW(wdll, NULL, LOAD_LIBRARY_SEARCH_SYSTEM32);
+        if (!m) {
+            DWORD e = GetLastError();
+            if (listed++ < 8 && o < cap)
+                o += (size_t)snprintf(out + o, cap - o, "%s%s (error %lu)", o ? ", " : "; this process cannot have ", dll, (unsigned long)e);
+            continue;
+        }
+        /* Its functions asked for by name (OriginalFirstThunk's list, else FirstThunk's), each looked for in what loaded. */
+        thunks = dl_file_at(im, desc[0] ? desc[0] : desc[4]);
+        for (t = 0; thunks && t < 8192; t++) {
+            u8 entry[8] = { 0 };
+            u32 lo, hi;
+            char fn[96];
+            if (!dl_read_at(f, thunks + t * step, entry, step)) break;
+            memcpy(&lo, entry, 4);
+            memcpy(&hi, entry + 4, 4);
+            if (!lo && !hi) break;
+            if (im->pe64 ? (hi & 0x80000000u) : (lo & 0x80000000u)) continue;          /* asked for by ordinal */
+            dl_read_string(f, dl_file_at(im, lo + 2), fn, sizeof(fn));
+            if (fn[0] && !GetProcAddress(m, fn) && listed++ < 8 && o < cap)
+                o += (size_t)snprintf(out + o, cap - o, "%s%s!%s", o ? ", " : "; this process cannot have ", dll, fn);
+        }
+        FreeLibrary(m);
+    }
+    if (listed > 8 && o < cap) snprintf(out + o, cap - o, " and %d more", listed - 8);
+done:
+    free(im);
+    CloseHandle(f);
+}
+
+void *mg_dl_open(const char *name)
+{
+    wchar_t *w = wide_path(name);
+    HMODULE h;
+    DWORD e;
+    SetLastError(0);
+#if MG_UWP
+    h = LoadPackagedLibrary(w, 0);
+#else
+    h = LoadLibraryW(w);
+#endif
+    e = GetLastError();
+    if (!h) {
+        char why[768];
+        dl_missing_imports(w, why, sizeof(why));
+        mg_err("host: %s did not load: Windows error %lu (%s)%s", name, (unsigned long)e, dl_error_meaning(e), why);
+    }
+    free(w);
+    return (void *)h;
+}
+
+void *mg_dl_sym(void *lib, const char *name) { return (void *)GetProcAddress((HMODULE)lib, name); }
 
 #if defined(MG_ELF_HOST)
 bool mg_core_image(mg_addr *base, size_t *size);
