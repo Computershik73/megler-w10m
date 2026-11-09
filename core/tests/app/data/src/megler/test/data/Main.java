@@ -1420,6 +1420,7 @@ public class Main extends Activity {
             return Float.valueOf(0f).equals(before) && atStart[0] instanceof Float && Float.valueOf(10f).equals(a.getAnimatedValue());
         });
         detachedAnimator();
+        animatorListener();
         // A view's observer taken before the view is in a window is dead once it is (merged into the window's): a one-shot
         // listener added to it removes itself through the view's observer then, as AndroidX's OneShotPreDrawListener and
         // YouTube's TraceableOnGlobalLayoutListener do, and is run once (it stayed in the window's, run at every layout), while
@@ -6003,6 +6004,52 @@ public class Main extends Activity {
         }
         Log.i("DataTest", "detached-animator removed " + unscrap + " heard=" + (inside.length() == 0 ? "nothing" : inside.toString().trim())
               + " attached-before=" + attached + " after=" + item.isAttachedToWindow() + " parent=" + item.getParent());
+    }
+
+    /**
+     * A ViewPropertyAnimator tells the listener it has when it tells, as Android's: taken off in onAnimationCancel, it does
+     * not hear the onAnimationEnd that follows, and withEndAction's runnable is not run for an animation cancelled. A
+     * property asked for again is taken from the animation that had it, which is cancelled then if it has none left -- its
+     * listener hears that before a new one is set -- and an animation of other properties runs on beside the new one. And
+     * start() with nothing asked for starts an animation of nothing, which its listener hears. Spotify's carousel animator
+     * (through ViewPropertyAnimatorCompat) takes its listener off at a cancel to finish an item once; here an animation's
+     * listener was the one set as it started, which heard the end too, and the item was finished twice.
+     */
+    private void animatorListener() {
+        step("animator-listener", () -> {
+            final android.view.View v = new android.view.View(this);
+            final StringBuilder first = new StringBuilder(), taken = new StringBuilder(), next = new StringBuilder();
+            final boolean[] endAction = new boolean[1];
+            final int[] cancels = new int[1];
+            v.animate().translationX(10).setDuration(5000).withEndAction(() -> endAction[0] = true).setListener(new android.animation.AnimatorListenerAdapter() {
+                @Override public void onAnimationCancel(android.animation.Animator a) { first.append("cancel "); v.animate().setListener(null); }
+                @Override public void onAnimationEnd(android.animation.Animator a) { first.append("end "); }
+            }).start();
+            v.animate().cancel();
+            v.animate().alpha(0f).setListener(new android.animation.AnimatorListenerAdapter() {
+                @Override public void onAnimationCancel(android.animation.Animator a) { taken.append("cancel "); }
+                @Override public void onAnimationEnd(android.animation.Animator a) { taken.append("end "); }
+            }).start();
+            v.animate().alpha(1f).setListener(new android.animation.AnimatorListenerAdapter() {
+                @Override public void onAnimationStart(android.animation.Animator a) { next.append("start "); }
+                @Override public void onAnimationCancel(android.animation.Animator a) { cancels[0]++; }
+            }).start();
+            v.animate().scaleX(2f).start();
+            int beside = cancels[0];
+            v.animate().cancel();
+            final StringBuilder empty = new StringBuilder();
+            v.animate().setListener(new android.animation.AnimatorListenerAdapter() {
+                @Override public void onAnimationStart(android.animation.Animator a) { empty.append("start "); }
+                @Override public void onAnimationCancel(android.animation.Animator a) { empty.append("cancel "); }
+                @Override public void onAnimationEnd(android.animation.Animator a) { empty.append("end "); }
+            }).start();
+            v.animate().cancel();
+            detail = "first heard " + first.toString().trim() + ", its end action run " + endAction[0] + "; the one taken over heard " + taken.toString().trim()
+                + "; the next " + next.toString().trim() + ", cancelled beside another " + beside + " times and by cancel() " + cancels[0]
+                + "; one of nothing heard " + empty.toString().trim();
+            return "cancel".equals(first.toString().trim()) && !endAction[0] && "cancel end".equals(taken.toString().trim())
+                && "start start".equals(next.toString().trim()) && beside == 0 && cancels[0] == 2 && "start cancel end".equals(empty.toString().trim());
+        });
     }
 
     /** A ViewGroup's constructor marks it as not drawing itself without calling setWillNotDraw, which a subclass may override. */

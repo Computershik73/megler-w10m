@@ -5507,6 +5507,24 @@ on a looper thread of its own and takes it back with `next()`.
   object reference" in the module's `m6.ev.a`) as it put a bus route on its
   map (0.1.0.675). The data app's step "bitmap-parcel" writes two so and
   reads them back.
+- `android/view/ViewPropertyAnimator.java`, as Android's in what it tells
+  and what it cancels. The properties asked for since a start get a
+  `ValueAnimator` of their own; a property asked for again is taken from the
+  animator that had it there and then, and that animator is cancelled once
+  it has none left, while animators of other properties run on beside the
+  new one -- the framework's own ran one animation at a time and cancelled it
+  when the next started. The listener and the update listener told are the
+  ones the `ViewPropertyAnimator` has when an event comes, whichever animator
+  it comes from, so a listener taken off in `onAnimationCancel` does not hear
+  the `onAnimationEnd` that follows -- the framework's own told the ones set
+  when the animation started. `withEndAction`'s runnable is not run for an
+  animation cancelled, and `start()` starts even with nothing asked for, as
+  Android's does. Spotify's carousel animator (through
+  `ViewPropertyAnimatorCompat`) takes its listener off when an item's fade is
+  cancelled so as to finish the item once; here the end that followed was
+  told to it too, and the item was finished twice (RecyclerView's listener
+  run twice for one fade). The data app's step "animator-listener" checks
+  each of these.
 - `android/app/usage/StorageStatsManager.java`, two methods in their two
   forms: `getTotalBytes` and `getFreeBytes` were signatures answering 0.
   Since Android 8 this is where an app asks how large the phone's storage is
