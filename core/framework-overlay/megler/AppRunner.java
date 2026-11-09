@@ -59,6 +59,10 @@
 // coming in front does on Android (isHome): Facebook's Back goes home so on Facebook Lite's sign-in screen and Messenger's
 // first-run screen, and found no home.
 //
+// And Activity.finishAffinity finishes the activities of the caller's task affinity at once, none of them resumed on the
+// way, and stops at one of another affinity (finishAffinity): it finished them one by one, each the top in its turn, and
+// the one under each was resumed before it went too.
+//
 // Everything else is the original's, unchanged.
 package megler;
 
@@ -662,13 +666,33 @@ public final class AppRunner {
     /** The finished activities not stopped yet, stopped and destroyed now: before the app ends. */
     private static void endPending() { for (Runnable r : new ArrayList<>(sEnding)) r.run(); }
     public static void finishAll() { sHandler.post(() -> { while (!sStack.isEmpty()) finishNow(top(), false); endPending(); }); }
-    /** Activity.finishAffinity(): the activity and those under it in the task go; activities it started, above it, stay. */
+    /*
+     * Activity.finishAffinity(), as Android's ActivityStack.finishActivityAffinityLocked: the activity and those under it of
+     * its task affinity (android:taskAffinity, the package's unless the manifest names another) go, together; those it
+     * started, above it, stay, and so does the first one down of another affinity, which comes back if the top went. None
+     * of those going comes back on the way: all are finishing before the first goes, as Android marks each finishing at
+     * once. They went one after another here, each the top in its turn, so the one under it was resumed before it went
+     * too. Messenger's first-run screen finishes so on Back when it finds no home to go to (0.1.0.673): its main activity,
+     * resumed for that moment, asked for the first-run screen again (Messenger looks for a pending first-run at every
+     * resume) and finished; the one it asked for finished in its onCreate, as the first was not destroyed yet; and the app
+     * ended.
+     */
     public static void finishAffinity(Activity a) {
+        a.meglerMarkFinished();     /* isFinishing at once, as Activity.finishAffinity has it once the system took it */
         sHandler.post(() -> {
             int i = sStack.indexOf(a);
             if (i < 0) return;
-            for (int k = i; k >= 0; k--) if (k < sStack.size()) finishNow(sStack.get(k), sStack.size() - 1 == k);
+            String affinity = affinity(a);
+            ArrayList<Activity> going = new ArrayList<>();
+            for (int k = i; k >= 0 && java.util.Objects.equals(affinity(sStack.get(k)), affinity); k--) going.add(sStack.get(k));
+            for (Activity g : going) g.meglerMarkFinished();
+            for (Activity g : going) finishNow(g, true);
         });
+    }
+    /** An activity's task affinity: its manifest's (megler.Manifest.Component.taskAffinity); the package's for one with none. */
+    static String affinity(Activity a) {
+        Manifest.Component c = a.meglerInfo();
+        return c != null ? c.taskAffinity : Manifest.packageName;
     }
     /*
      * Activity.recreate, as Android does it: the same component made again (its manifest's, not the class the app's component

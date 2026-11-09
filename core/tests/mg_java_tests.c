@@ -3192,6 +3192,17 @@ static int run_crash(void)
      */
     expect_line("I/CrashTest: trampoline onCreate root=true", &at, 60);
     expect_line("I/CrashTest: main onCreate root=false", &at, 60);
+    /*
+     * Activity.finishAffinity: Trampoline starts Away, of an affinity of its own, which starts AwayTop, of the same, which
+     * finishes their affinity. Both go together, AwayTop finishing at once, and Away is not resumed on the way down, as on
+     * Android; Trampoline, of the package's affinity, stays and comes back. The layer finished them one by one, each the top
+     * in its turn, and resumed the one under each first: Messenger's main activity, resumed so under its first-run screen,
+     * asked for that screen again (0.1.0.673).
+     */
+    expect_line("I/CrashTest: away onResume 1 finishing=false", &at, 60);
+    expect_line("I/CrashTest: away-top finishAffinity finishing=true", &at, 60);
+    expect_line("I/CrashTest: trampoline back after the affinity went", &at, 60);
+    CHECK(find_line("I/CrashTest: away onResume 2", 0) < 0 && find_line("I/CrashTest: away-top onDestroy", 0) >= 0);
     expect_line("I/CrashTest: second onCreate, about to throw", &at, 60);
     CHECK(find_line("I/CrashTest: main onStart", 0) < 0 && find_line("I/CrashTest: main onRestart", 0) < 0);
     /* (The second First stayed through SINGLE_TOP, and goes only when it finishes itself for Trampoline.) */

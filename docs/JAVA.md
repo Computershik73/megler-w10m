@@ -5917,6 +5917,20 @@ on a looper thread of its own and takes it back with `next()`.
   its own activities is the home) and the app goes to the back; the data
   app's step "intent-categories" resolves the home, the launcher's intent and
   an unknown category.
+  And `Activity.finishAffinity` finishes the caller and the activities under
+  it of its task affinity (`android:taskAffinity`, now read with the manifest:
+  the application's, the package's unless it names another, none for an
+  empty one) together, as `ActivityStack.finishActivityAffinityLocked`: all
+  are finishing before the first goes, so none is resumed on the way, and the
+  first one down of another affinity stays and comes back if the top went.
+  They were finished one by one, each the top in its turn, and the one under
+  each was resumed before it went too. Messenger's first-run screen finishes
+  so on Back when it finds no home: its main activity, resumed for that
+  moment, asked for the first-run screen again (Messenger looks for a pending
+  first-run at every resume) and finished, and the screen it asked for
+  finished in `onCreate`, the first not destroyed yet (673). The crash app's
+  `Trampoline` starts `Away` and `AwayTop`, of an affinity of their own;
+  `AwayTop` finishes it, `Away` is not resumed, and `Trampoline` comes back.
 
 - `android/app/Activity.java`, `getCallingActivity` and `getCallingPackage`:
   who started the activity for a result, which its `setResult` answers, and
