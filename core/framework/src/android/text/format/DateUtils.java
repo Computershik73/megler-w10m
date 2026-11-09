@@ -92,23 +92,33 @@ public class DateUtils {
     public static final java.lang.String YEAR_FORMAT_TWO_DIGITS = "%g";
     public static int[] sameMonthTable;
     public static int[] sameYearTable;
-    /** Megler: Android's, a duration in hours, minutes or seconds as ICU's MeasureFormat words it (it answered null). */
+    /*
+     * Megler: Android's, a duration in hours, minutes or seconds as ICU's MeasureFormat words it (they answered null) -- ICU's
+     * of core-libart by reflection (the SDK's stubs the framework is built against have not those calls), plain English where
+     * it cannot be had.
+     */
     public static java.lang.CharSequence formatDuration(long millis) { return formatDuration(millis, LENGTH_LONG); }
     public static java.lang.CharSequence formatDuration(long millis, int abbrev) {
-        final android.icu.text.MeasureFormat.FormatWidth width;
-        switch (abbrev) {
-            case LENGTH_LONG: width = android.icu.text.MeasureFormat.FormatWidth.WIDE; break;
-            case LENGTH_SHORT: case LENGTH_SHORTER: case LENGTH_MEDIUM: width = android.icu.text.MeasureFormat.FormatWidth.SHORT; break;
-            case LENGTH_SHORTEST: width = android.icu.text.MeasureFormat.FormatWidth.NARROW; break;
-            default: width = android.icu.text.MeasureFormat.FormatWidth.WIDE;
-        }
-        final android.icu.text.MeasureFormat formatter = android.icu.text.MeasureFormat.getInstance(java.util.Locale.getDefault(), width);
-        if (millis >= HOUR_IN_MILLIS) {
-            return formatter.format(new android.icu.util.Measure((int) ((millis + 1800000) / HOUR_IN_MILLIS), android.icu.util.MeasureUnit.HOUR));
-        } else if (millis >= MINUTE_IN_MILLIS) {
-            return formatter.format(new android.icu.util.Measure((int) ((millis + 30000) / MINUTE_IN_MILLIS), android.icu.util.MeasureUnit.MINUTE));
-        } else {
-            return formatter.format(new android.icu.util.Measure((int) ((millis + 500) / SECOND_IN_MILLIS), android.icu.util.MeasureUnit.SECOND));
+        final String unit;
+        final int count;
+        if (millis >= HOUR_IN_MILLIS) { unit = "HOUR"; count = (int) ((millis + 1800000) / HOUR_IN_MILLIS); }
+        else if (millis >= MINUTE_IN_MILLIS) { unit = "MINUTE"; count = (int) ((millis + 30000) / MINUTE_IN_MILLIS); }
+        else { unit = "SECOND"; count = (int) ((millis + 500) / SECOND_IN_MILLIS); }
+        final String width = abbrev == LENGTH_LONG ? "WIDE" : abbrev == LENGTH_SHORTEST ? "NARROW"
+                : (abbrev == LENGTH_SHORT || abbrev == LENGTH_SHORTER || abbrev == LENGTH_MEDIUM) ? "SHORT" : "WIDE";
+        try {
+            Class<?> widthClass = Class.forName("android.icu.text.MeasureFormat$FormatWidth");
+            Class<?> formatClass = Class.forName("android.icu.text.MeasureFormat");
+            Class<?> unitClass = Class.forName("android.icu.util.MeasureUnit");
+            Object formatter = formatClass.getMethod("getInstance", java.util.Locale.class, widthClass)
+                    .invoke(null, java.util.Locale.getDefault(), widthClass.getField(width).get(null));
+            Object measure = Class.forName("android.icu.util.Measure").getConstructor(Number.class, unitClass)
+                    .newInstance(count, unitClass.getField(unit).get(null));
+            return (String) formatClass.getMethod("format", Object.class).invoke(formatter, measure);
+        } catch (Throwable t) {
+            String word = unit.toLowerCase(java.util.Locale.ROOT);
+            if (!"WIDE".equals(width)) word = "HOUR".equals(unit) ? "hr" : "MINUTE".equals(unit) ? "min" : "sec";
+            return count + " " + word + ("WIDE".equals(width) && count != 1 ? "s" : "");
         }
     }
     public static java.lang.String getAMPMString(int p0) { return null; }
