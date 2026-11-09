@@ -3253,6 +3253,8 @@ static int run_gl(void)
     CHECK(strstr(line_at(at), "current=true version=2 config=8/16") != NULL);
     expect_line("I/GlTest: strings vendor=Megler renderer=stand-in for OpenGL ES version=OpenGL ES 2.0 (stand-in) extensions=4 gl10=Megler", &at, 30);
     expect_line("I/GlTest: program linked=1 position=0 color=0 log=stand-in: program", &at, 30);
+    /* GLUtils as Android's: an ALPHA_8 bitmap up as GL_ALPHA bytes, the app's unpack alignment of 4 kept. */
+    expect_line("I/GlTest: glutils alpha8 format=0x1906 type=0x1401 error=0 align=4", &at, 30);
     expect_line("I/GlTest: changed ", &at, 30);
     expect_line("I/GlTest: first frame on GLThread", &at, 30);
     CHECK(strstr(line_at(at), "error=0") != NULL);
