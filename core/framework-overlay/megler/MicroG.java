@@ -876,6 +876,8 @@ public final class MicroG {
             if (still) { r.started = false; g.destroyIfUnused(r); }
         }) ? 1 : 0;
     }
+    /** The attribution tag of Google Play services' package context where none was asked for (PackageContext.getAttributionTag). */
+    static final String DEFAULT_ATTRIBUTION_TAG = "megler.app";
     /* A package context's attribution context: that context in everything but its tag. */
     private static final class Attributed extends ContextWrapper {
         private final String tag;
@@ -895,6 +897,16 @@ public final class MicroG {
         }
         @Override public String getPackageName() { return GooglePackages.GMS; }
         @Override public String getOpPackageName() { return getPackageName(); }
+        /*
+         * Google Play services' own location requests must carry an attribution tag of their own on Android 11 and later
+         * (GmsCore's gerz.h: "internal location usage has a forbidden attribution tag", null among the forbidden). On a phone
+         * a request made through this context in an app's process is the app's, another uid's; here the app and Google Play
+         * services are one, so it was taken for Google Play services' own, and the null tag of a context with none refused:
+         * the my-location layer of Google's maps in Transit, every time it asked (0.1.0.679, "location is still kinda
+         * awful"). A context with no tag of its own answers DEFAULT_ATTRIBUTION_TAG, none of the forbidden; an attribution
+         * context its own (Attributed).
+         */
+        @Override public String getAttributionTag() { return DEFAULT_ATTRIBUTION_TAG; }
         @Override public ApplicationInfo getApplicationInfo() { return info.applicationInfo; }
         @Override public String getPackageCodePath() { return APK; }
         @Override public String getPackageResourcePath() { return APK; }
