@@ -865,7 +865,9 @@ fi
 
 # On desktop Windows: Megler's own build of the same ANGLE for the processor (python tools/build-angle.py --arch <arch>), its
 # C runtime linked in and no mozglue, so the two DLLs are all of it; d3dcompiler_47.dll is the system's. What they import
-# must be the system's or each other: anything else would fail LoadPackagedLibrary.
+# must be api-sets, Direct3D's DLLs or each other: anything else would fail LoadPackagedLibrary. kernel32.dll and ole32.dll
+# by name too: an Xbox has neither for an app, and an ANGLE linked with kernel32.lib (before 0.1.0.680) loaded for no app
+# there.
 stage_angle_desktop() {
   local angle="${MEGLER_ANGLE_DESKTOP:-$ROOT/build/angle/$ARCH/dist}" dll need missing=""
   for dll in libEGL.dll libGLESv2.dll; do
@@ -876,13 +878,13 @@ stage_angle_desktop() {
     while IFS= read -r need; do
       [ -n "$need" ] || continue
       case "${need,,}" in
-        libglesv2.dll|kernel32.dll|ole32.dll|d3d11.dll|dxgi.dll|d3dcompiler_47.dll|api-ms-win-*) ;;
+        libglesv2.dll|d3d11.dll|dxgi.dll|d3dcompiler_47.dll|api-ms-win-*|ext-ms-win-*) ;;
         *) missing="$missing $dll->$need" ;;
       esac
     done < <(dependents "$STAGE/$dll")
   done
-  [ -z "$missing" ] || { ANGLE_WHY="imports that are not the system's:$missing"; return 1; }
-  echo "    ANGLE from $angle: libEGL.dll, libGLESv2.dll ($(stat -c %s "$STAGE/libGLESv2.dll") bytes), importing the system's DLLs alone"
+  [ -z "$missing" ] || { ANGLE_WHY="imports that are not api-sets or Direct3D's:$missing (an ANGLE of before 0.1.0.680? python tools/build-angle.py --arch $ARCH)"; return 1; }
+  echo "    ANGLE from $angle: libEGL.dll, libGLESv2.dll ($(stat -c %s "$STAGE/libGLESv2.dll") bytes), importing api-sets and Direct3D's DLLs alone"
 }
 if [ "$DESKTOP" = 1 ]; then
   echo "=== ANGLE ==="

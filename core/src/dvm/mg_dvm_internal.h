@@ -281,6 +281,12 @@ struct mg_dvm_class {
     volatile i32 ref_slots_ready;
     u8 gc_ref;                         /* a java.lang.ref class: 1 soft, 2 weak, 3 phantom (their referent is not followed); 0 none */
     bool finalizable;                  /* it overrides finalize() with a body: its objects are finalized before they are freed */
+    /*
+     * The class of arrays of it, once asked for by Array.newInstance (Array_createObjectArray, mg_dvm_art.c): found by name
+     * under the runtime's lock every time before, which a thread loading classes holds -- TikTok Lite's main thread waited
+     * there 5 to 8 percent of its time (0.1.0.677).
+     */
+    mg_dvm_class *volatile array_of;
 };
 
 /*

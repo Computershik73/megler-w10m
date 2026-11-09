@@ -46,6 +46,16 @@ bool gFollowing = false;
 bool gHaveFix = false;
 megler_location gFix = {};
 bool gSaidFix = false;
+/// What the fixes were, said once a minute while they come (keep): how many, how many the satellites found, how accurate.
+/// Only the first was said before, and a user's "location is still kinda awful" (Transit, 0.1.0.679) could not be told from
+/// a phone indoors, where Windows finds it by Wi-Fi and the cell network alone (300 to 600 m), or the satellites never
+/// asked for.
+struct FixStats {
+    long long from = 0;
+    int fixes = 0, satellites = 0, lastSource = 0;
+    float best = 0, last = 0;
+};
+FixStats gStats;
 // Windows' location consent of this package (the device class Windows' documentation checks it by), read once and followed
 // (AccessChanged), kept alive here.
 const winrt::guid kLocationConsent{0xBFA794E4, 0xF964, 0x4FDB, {0x90, 0xF6, 0x51, 0x05, 0x6B, 0xFE, 0x4B, 0x44}};
@@ -120,17 +130,34 @@ megler_location fixOf(const Geoposition& position) {
 
 void keep(const Geoposition& position) {
     megler_location f = fixOf(position);
-    bool say;
+    bool say, sayStats = false;
+    FixStats stats;
+    const long long now = nowMs();
     {
         std::lock_guard<std::mutex> lock(gMutex);
         gFix = f;
         gHaveFix = true;
         say = !gSaidFix;
         gSaidFix = true;
+        if (!gStats.from) gStats.from = now;
+        gStats.fixes++;
+        if (f.source == MEGLER_LOCATION_SATELLITES) gStats.satellites++;
+        if (gStats.fixes == 1 || f.accuracy_m < gStats.best) gStats.best = f.accuracy_m;
+        gStats.last = f.accuracy_m;
+        gStats.lastSource = f.source;
+        if (now - gStats.from >= 60000) {
+            stats = gStats;
+            gStats = FixStats();
+            sayStats = true;
+        }
     }
     if (say)
         shellLog::write(format("location: the first fix, from %s, %.0f m accurate, %lld ms old", f.source == MEGLER_LOCATION_SATELLITES ? "the satellites" : "Wi-Fi or the cell network",
-                               double(f.accuracy_m), nowMs() - f.time_ms));
+                               double(f.accuracy_m), now - f.time_ms));
+    if (sayStats)
+        shellLog::write(format("location: %d fixes in the last %lld s, %d of them from the satellites; accurate to %.0f m at best, %.0f m the last (from %s)",
+                               stats.fixes, (now - stats.from) / 1000, stats.satellites, double(stats.best), double(stats.last),
+                               stats.lastSource == MEGLER_LOCATION_SATELLITES ? "the satellites" : "Wi-Fi or the cell network"));
 }
 
 int accessOf(GeolocationAccessStatus s) {

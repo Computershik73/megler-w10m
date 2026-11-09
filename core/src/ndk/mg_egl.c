@@ -54,7 +54,8 @@ static void *angle(const char *name)
             g_lib_gles = mg_dl_open("libGLESv2.dll");
             g_lib_egl = mg_dl_open("libEGL.dll");
             if (!g_lib_egl || !g_lib_gles)
-                mg_err("egl: ANGLE did not load (libEGL.dll %s, libGLESv2.dll %s)", g_lib_egl ? "ok" : "missing", g_lib_gles ? "ok" : "missing");
+                mg_err("egl: ANGLE did not load (libEGL.dll %s, libGLESv2.dll %s): the host's lines before say why",
+                       g_lib_egl ? "loaded" : "not loaded", g_lib_gles ? "loaded" : "not loaded");
             g_angle_tried = true;
         }
         mg_lock_release(&g_angle_lock);

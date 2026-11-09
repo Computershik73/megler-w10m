@@ -2822,12 +2822,120 @@ bool mg_path_mkdir(const char *path, int *err)
     return ok != 0;
 }
 
+/*
+ * POSIX's unlink takes a name away at once, whoever has the file open. Windows's DeleteFile leaves a file someone has open
+ * where it was until the last handle and view of it go (on a phone's Windows 10 Mobile: a PC's Windows 10 of 2019 and later
+ * deletes as POSIX does), and meanwhile the name can be neither opened nor moved (error 5), nor made again, and its folder
+ * can be neither removed nor renamed. TikTok Lite deletes each update of its resources' archive (res.zip, res.zst) as it
+ * reads it, then renames the update's folder into place: refused every time on a phone (0.1.0.671 to 680), and its updates
+ * never took. A file someone has open is moved first into a folder of Megler's on the same disk (mg_path_add_trash: the
+ * app's data, the shared storage), and deleted there: it goes with its last handle. A file nobody has open, or one that
+ * cannot be moved there (another disk), is deleted where it is, as before.
+ *
+ * The folders are named as a file a rename put aside is (is_aside below), so that no listing shows them.
+ */
+#define TRASH_NAME L".megler-replaced-deleted"
+#define TRASH_MAX 4
+static wchar_t *g_trash[TRASH_MAX];
+static volatile LONG g_ntrash;
+
+void mg_path_add_trash(const char *dir)
+{
+    WIN32_FIND_DATAW found;
+    wchar_t *base, *trash, *pattern;
+    size_t n;
+    HANDLE h;
+    LONG i, k;
+    if (!dir || !dir[0]) return;
+    base = wide_path(dir);
+    n = wcslen(base);
+    trash = (wchar_t *)mg_alloc(sizeof(wchar_t) * (n + sizeof(TRASH_NAME) / sizeof(wchar_t) + 2));
+    memcpy(trash, base, sizeof(wchar_t) * n);
+    trash[n] = L'\\';
+    memcpy(trash + n + 1, TRASH_NAME, sizeof(TRASH_NAME));
+    free(base);
+    k = g_ntrash;
+    for (i = 0; i < k; i++)
+        if (!_wcsicmp(g_trash[i], trash)) {
+            free(trash);
+            return;
+        }
+    if (k >= TRASH_MAX) {
+        free(trash);
+        return;
+    }
+    /* What an earlier run left there, that its last handle had not let go of yet. */
+    n = wcslen(trash);
+    pattern = (wchar_t *)mg_alloc(sizeof(wchar_t) * (n + 3));
+    memcpy(pattern, trash, sizeof(wchar_t) * n);
+    memcpy(pattern + n, L"\\*", sizeof(wchar_t) * 3);
+    h = FindFirstFileExW(pattern, FindExInfoBasic, &found, FindExSearchNameMatch, NULL, 0);
+    if (h != INVALID_HANDLE_VALUE) {
+        do {
+            wchar_t *full;
+            size_t m = wcslen(found.cFileName);
+            if (found.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) continue;
+            full = (wchar_t *)mg_alloc(sizeof(wchar_t) * (n + m + 2));
+            memcpy(full, trash, sizeof(wchar_t) * n);
+            full[n] = L'\\';
+            memcpy(full + n + 1, found.cFileName, sizeof(wchar_t) * (m + 1));
+            if (!DeleteFileW(full) && SetFileAttributesW(full, FILE_ATTRIBUTE_NORMAL)) DeleteFileW(full);
+            free(full);
+        } while (FindNextFileW(h, &found));
+        FindClose(h);
+    }
+    free(pattern);
+    g_trash[k] = trash;
+    InterlockedExchange(&g_ntrash, k + 1);
+}
+
+/* The file `w` moved into a trash folder and deleted there, when someone has it open; false (nothing done) otherwise. */
+static bool remove_open(const wchar_t *w)
+{
+    static volatile LONG counter;
+    CREATEFILE2_EXTENDED_PARAMETERS params;
+    HANDLE h;
+    LONG i, k = g_ntrash;
+    if (!k) return false;
+    memset(&params, 0, sizeof(params));
+    params.dwSize = sizeof(params);
+    params.dwFileFlags = FILE_FLAG_OPEN_REPARSE_POINT;
+    /* Nobody else has it if it opens with no sharing at all: then it is deleted where it is, and goes at once. */
+    h = CreateFile2(w, DELETE, 0, OPEN_EXISTING, &params);
+    if (h != INVALID_HANDLE_VALUE) {
+        CloseHandle(h);
+        return false;
+    }
+    if (GetLastError() != ERROR_SHARING_VIOLATION) return false;
+    for (i = 0; i < k; i++) {
+        size_t n = wcslen(g_trash[i]);
+        wchar_t *t = (wchar_t *)mg_alloc(sizeof(wchar_t) * (n + 40));
+        memcpy(t, g_trash[i], sizeof(wchar_t) * n);
+        swprintf(t + n, 40, L"\\%08lx-%08lx-%08lx", (unsigned long)GetCurrentProcessId(),
+                 (unsigned long)InterlockedIncrement(&counter), (unsigned long)GetTickCount());
+        CreateDirectoryW(g_trash[i], NULL);       /* (there already, mostly: that fails, and does no harm) */
+        if (MoveFileExW(w, t, 0)) {
+            /* (A read-only one is deleted all the same, as unlink deletes it; one that will not go is the next start's.) */
+            if (!DeleteFileW(t) && !(SetFileAttributesW(t, FILE_ATTRIBUTE_NORMAL) && DeleteFileW(t)))
+                SetFileAttributesW(t, FILE_ATTRIBUTE_HIDDEN);
+            free(t);
+            return true;
+        }
+        free(t);
+    }
+    return false;
+}
+
 bool mg_path_remove(const char *path, int *err)
 {
     wchar_t *w;
     BOOL ok;
     if (mg_path_is_foreign(path)) return mg_foreign_remove(path, false, err);
     w = wide_path(path);
+    if (remove_open(w)) {
+        free(w);
+        return true;
+    }
     ok = DeleteFileW(w);
     if (!ok) {
         DWORD e = GetLastError();
@@ -2984,6 +3092,22 @@ static BOOL move_entry(const wchar_t *from, const wchar_t *to, int depth)
     return FALSE;
 }
 
+/*
+ * What stopped a folder's move an entry at a time, in the log (the first 30): the rename's own line says only the error.
+ * TikTok Lite's "<id>--updating" folders were refused so on a Lumia 650 (0.1.0.671 to 679), the folder in the way not
+ * there, and nothing said which of their entries could not be moved.
+ */
+static void move_entries_failed(const char *what, const wchar_t *path, DWORD error)
+{
+    static volatile LONG said;
+    char *p;
+    if (InterlockedIncrement(&said) > 30) return;
+    p = utf8_of(path);
+    mg_warn("io: a folder moved an entry at a time: %s %s (Windows error %lu); all that was moved is put back", what, p,
+            (unsigned long)error);
+    free(p);
+}
+
 /* The folder `a`'s entries moved into `b`, made for them, and `a` removed; or, whatever fails, all as it was. */
 static BOOL move_entries(const wchar_t *a, const wchar_t *b, int depth)
 {
@@ -3000,7 +3124,12 @@ static BOOL move_entries(const wchar_t *a, const wchar_t *b, int depth)
     pattern = path_join(a, L"*");
     h = FindFirstFileExW(pattern, FindExInfoBasic, &found, FindExSearchNameMatch, NULL, 0);
     free(pattern);
-    if (h == INVALID_HANDLE_VALUE) return FALSE;
+    if (h == INVALID_HANDLE_VALUE) {
+        why = GetLastError();
+        move_entries_failed("the entries could not be listed of", a, why);
+        SetLastError(why);
+        return FALSE;
+    }
     do {
         if (!wcscmp(found.cFileName, L".") || !wcscmp(found.cFileName, L"..")) continue;
         if (count == cap) {
@@ -3014,11 +3143,15 @@ static BOOL move_entries(const wchar_t *a, const wchar_t *b, int depth)
     if (!CreateDirectoryW(b, NULL)) {
         ok = FALSE;
         why = GetLastError();
+        move_entries_failed("the folder of the new name could not be made:", b, why);
     } else {
         for (; moved < count; moved++) {
             wchar_t *from = path_join(a, names[moved]), *to = path_join(b, names[moved]);
             ok = move_entry(from, to, depth);
-            if (!ok) why = GetLastError();
+            if (!ok) {
+                why = GetLastError();
+                move_entries_failed("could not move", from, why);
+            }
             free(from);
             free(to);
             if (!ok) break;
@@ -3026,6 +3159,7 @@ static BOOL move_entries(const wchar_t *a, const wchar_t *b, int depth)
         if (ok && !RemoveDirectoryW(a)) {
             ok = FALSE;
             why = GetLastError();
+            move_entries_failed("the folder emptied could not be removed:", a, why);
         }
         if (!ok) {
             for (i = moved - 1; i >= 0; i--) {
@@ -3072,7 +3206,7 @@ bool mg_path_rename(const char *from, const char *to, int *err)
     static volatile LONG said;
     wchar_t *a, *b;
     BOOL ok;
-    DWORD e = 0, posix_e = 0, aside_e = 0;
+    DWORD e = 0, posix_e = 0, aside_e = 0, entries_e = 0;
     int tries;
     if (mg_path_is_foreign(from) || mg_path_is_foreign(to)) return mg_foreign_rename(from, to, err);
     a = wide_path(from);
@@ -3113,6 +3247,7 @@ bool mg_path_rename(const char *from, const char *to, int *err)
         aside_e = GetLastError();
         ok = move_dir_in_use(a, b);
         if (ok) break;
+        entries_e = GetLastError();
         /* (A folder in the way with something in it, or a file where a folder is moved, stays so: said at once.) */
         if (GetLastError() == ERROR_DIR_NOT_EMPTY || GetLastError() == ERROR_DIRECTORY) {
             e = GetLastError();
@@ -3129,7 +3264,8 @@ bool mg_path_rename(const char *from, const char *to, int *err)
         if ((e == ERROR_ACCESS_DENIED || e == ERROR_SHARING_VIOLATION || e == ERROR_USER_MAPPED_FILE || e == ERROR_LOCK_VIOLATION) &&
             InterlockedIncrement(&said) <= 30)
             mg_warn("io: %s could not be renamed to %s (Windows error %lu, after %d tries; POSIX's rename error %lu, the file in the way "
-                    "moved aside error %lu)", from, to, (unsigned long)e, tries, (unsigned long)posix_e, (unsigned long)aside_e);
+                    "moved aside error %lu, a folder moved an entry at a time error %lu)", from, to, (unsigned long)e, tries,
+                    (unsigned long)posix_e, (unsigned long)aside_e, (unsigned long)entries_e);
         SET_ERR();
     }
     free(a);
@@ -4427,26 +4563,176 @@ int mg_net_dns_servers(char (*out)[48], int max)
 
 /* ------------------------------------------------------ host shared libraries */
 
-void *mg_dl_open(const char *name)
-{
-    wchar_t *w = wide_path(name);
-    HMODULE h;
-#if MG_UWP
-    h = LoadPackagedLibrary(w, 0);
-#else
-    h = LoadLibraryW(w);
-#endif
-    free(w);
-    return (void *)h;
-}
-
-void *mg_dl_sym(void *lib, const char *name) { return (void *)GetProcAddress((HMODULE)lib, name); }
-
 #if WINAPI_FAMILY == WINAPI_FAMILY_APP
 /* Left out of the app partition by the SDK's headers, in the phone's kernelbase like any other. */
 WINBASEAPI BOOL WINAPI GetModuleHandleExW(DWORD dwFlags, LPCWSTR lpModuleName, HMODULE *phModule);
 WINBASEAPI DWORD WINAPI GetModuleFileNameW(HMODULE hModule, LPWSTR lpFilename, DWORD nSize);
 #endif
+
+/* What the loader's error means, for the log. */
+static const char *dl_error_meaning(DWORD e)
+{
+    switch (e) {
+    case ERROR_MOD_NOT_FOUND: return "it, or a DLL it imports, is not here";
+    case ERROR_PROC_NOT_FOUND: return "a DLL it imports lacks a function it needs";
+    case ERROR_BAD_EXE_FORMAT: return "not an image for this processor";
+    case ERROR_ACCESS_DENIED: return "access denied";
+    case ERROR_INVALID_IMAGE_HASH: return "its signature is refused";
+    case ERROR_DLL_INIT_FAILED: return "its initialisation failed";
+    case ERROR_INVALID_PARAMETER: return "a name the loader refuses";
+    default: return "see the Windows error";
+    }
+}
+
+/* `len` bytes of `f` at `at`; false if the file is shorter. */
+static bool dl_read_at(HANDLE f, u32 at, void *buf, u32 len)
+{
+    LARGE_INTEGER to;
+    DWORD got = 0;
+    to.QuadPart = at;
+    return SetFilePointerEx(f, to, NULL, FILE_BEGIN) && ReadFile(f, buf, len, &got, NULL) && got == len;
+}
+
+/* The NUL-ended string of `f` at `at` (none at 0), at most `cap` - 1 bytes of it. */
+static void dl_read_string(HANDLE f, u32 at, char *out, u32 cap)
+{
+    LARGE_INTEGER to;
+    DWORD got = 0;
+    to.QuadPart = at;
+    if (!at || !SetFilePointerEx(f, to, NULL, FILE_BEGIN) || !ReadFile(f, out, cap - 1, &got, NULL)) got = 0;
+    out[got] = 0;
+}
+
+/* A DLL's headers, as far as its import table needs them. */
+typedef struct {
+    u8 hdr[0x1000];      /* (the headers and the section table are in the first page of any DLL of ours) */
+    u32 sections, nsec;
+    bool pe64;
+} dl_image;
+
+/* An address of the image as a place in its file, through the section that has it; 0 if none has. */
+static u32 dl_file_at(const dl_image *im, u32 rva)
+{
+    u32 s;
+    for (s = 0; rva && s < im->nsec; s++) {
+        const u8 *h = im->hdr + im->sections + 40 * s;
+        u32 vsize, va, rsize, raw;
+        memcpy(&vsize, h + 8, 4);
+        memcpy(&va, h + 12, 4);
+        memcpy(&rsize, h + 16, 4);
+        memcpy(&raw, h + 20, 4);
+        if (rva >= va && rva - va < (vsize > rsize ? vsize : rsize)) return rva - va + raw;
+    }
+    return 0;
+}
+
+/*
+ * Why the package's DLL `name` did not load, as far as its imports tell, for the log: the loader says only that something
+ * was not found (126) or lacked a function (127), not what. Each DLL its import table names is asked for by name, as the
+ * loader would (the package's own DLLs left out: they are the loader's to find beside it), and of those that load, each
+ * function asked for by name. `out` gets "; this process cannot have <DLL> (error <n>), <DLL>!<function>, ..." or
+ * nothing. An Xbox has no kernel32.dll for an app, and ANGLE imported its functions from it by that name: neither of
+ * ANGLE's DLLs loaded there (0.1.0.679), and nothing said why.
+ */
+static void dl_missing_imports(const wchar_t *name, char *out, size_t cap)
+{
+    wchar_t path[MAX_PATH + 64], own[MAX_PATH + 64];
+    DWORD n = GetModuleFileNameW(NULL, path, MAX_PATH), got = 0;
+    size_t len = wcslen(name), o = 0;
+    dl_image *im = NULL;
+    HANDLE f;
+    u32 pe, opt, dir, rva_imports, at;
+    int listed = 0;
+    out[0] = 0;
+    if (!n || n >= MAX_PATH) return;
+    while (n && path[n - 1] != L'\\' && path[n - 1] != L'/') n--;
+    if (n + len + 1 >= sizeof(path) / sizeof(path[0])) return;
+    memcpy(path + n, name, (len + 1) * sizeof(wchar_t));
+    f = CreateFile2(path, GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, OPEN_EXISTING, NULL);
+    if (f == INVALID_HANDLE_VALUE) {
+        snprintf(out, cap, "; its file could not be opened (error %lu)", (unsigned long)GetLastError());
+        return;
+    }
+    im = (dl_image *)calloc(1, sizeof(*im));
+    if (!im || !ReadFile(f, im->hdr, sizeof(im->hdr), &got, NULL) || got < 0x200 || im->hdr[0] != 'M' || im->hdr[1] != 'Z') goto done;
+    memcpy(&pe, im->hdr + 0x3c, 4);
+    if (pe > got - 26 || memcmp(im->hdr + pe, "PE\0\0", 4)) goto done;
+    im->nsec = (u32)(im->hdr[pe + 6] | im->hdr[pe + 7] << 8);
+    opt = pe + 24;
+    im->sections = opt + (u32)(im->hdr[pe + 20] | im->hdr[pe + 21] << 8);
+    im->pe64 = (im->hdr[opt] | im->hdr[opt + 1] << 8) == 0x20b;
+    dir = opt + (im->pe64 ? 112 : 96) + 8 * 1;           /* the import table's entry of the data directories */
+    if (dir + 8 > im->sections || im->sections + 40 * im->nsec > got) goto done;
+    memcpy(&rva_imports, im->hdr + dir, 4);
+    for (at = 0; rva_imports && at < 20 * 1024; at += 20) {
+        u32 desc[5], d = dl_file_at(im, rva_imports + at), thunks, t, step = im->pe64 ? 8 : 4;
+        char dll[128];
+        wchar_t wdll[128];
+        WIN32_FILE_ATTRIBUTE_DATA a;
+        HMODULE m = NULL;
+        size_t wl;
+        if (!d || !dl_read_at(f, d, desc, sizeof(desc)) || !desc[3]) break;
+        dl_read_string(f, dl_file_at(im, desc[3]), dll, sizeof(dll));
+        if (!dll[0] || !MultiByteToWideChar(CP_UTF8, 0, dll, -1, wdll, 128)) break;
+        wl = wcslen(wdll);
+        if (n + wl + 1 < sizeof(own) / sizeof(own[0])) {
+            memcpy(own, path, n * sizeof(wchar_t));
+            memcpy(own + n, wdll, (wl + 1) * sizeof(wchar_t));
+            if (GetFileAttributesExW(own, GetFileExInfoStandard, &a)) continue;
+        }
+        /* (One loaded already is looked at with a reference of its own, given back below as one loaded here is.) */
+        if (!GetModuleHandleExW(0, wdll, &m) || !m) m = LoadLibraryExW(wdll, NULL, LOAD_LIBRARY_SEARCH_SYSTEM32);
+        if (!m) {
+            DWORD e = GetLastError();
+            if (listed++ < 8 && o < cap)
+                o += (size_t)snprintf(out + o, cap - o, "%s%s (error %lu)", o ? ", " : "; this process cannot have ", dll, (unsigned long)e);
+            continue;
+        }
+        /* Its functions asked for by name (OriginalFirstThunk's list, else FirstThunk's), each looked for in what loaded. */
+        thunks = dl_file_at(im, desc[0] ? desc[0] : desc[4]);
+        for (t = 0; thunks && t < 8192; t++) {
+            u8 entry[8] = { 0 };
+            u32 lo, hi;
+            char fn[96];
+            if (!dl_read_at(f, thunks + t * step, entry, step)) break;
+            memcpy(&lo, entry, 4);
+            memcpy(&hi, entry + 4, 4);
+            if (!lo && !hi) break;
+            if (im->pe64 ? (hi & 0x80000000u) : (lo & 0x80000000u)) continue;          /* asked for by ordinal */
+            dl_read_string(f, dl_file_at(im, lo + 2), fn, sizeof(fn));
+            if (fn[0] && !GetProcAddress(m, fn) && listed++ < 8 && o < cap)
+                o += (size_t)snprintf(out + o, cap - o, "%s%s!%s", o ? ", " : "; this process cannot have ", dll, fn);
+        }
+        FreeLibrary(m);
+    }
+    if (listed > 8 && o < cap) snprintf(out + o, cap - o, " and %d more", listed - 8);
+done:
+    free(im);
+    CloseHandle(f);
+}
+
+void *mg_dl_open(const char *name)
+{
+    wchar_t *w = wide_path(name);
+    HMODULE h;
+    DWORD e;
+    SetLastError(0);
+#if MG_UWP
+    h = LoadPackagedLibrary(w, 0);
+#else
+    h = LoadLibraryW(w);
+#endif
+    e = GetLastError();
+    if (!h) {
+        char why[768];
+        dl_missing_imports(w, why, sizeof(why));
+        mg_err("host: %s did not load: Windows error %lu (%s)%s", name, (unsigned long)e, dl_error_meaning(e), why);
+    }
+    free(w);
+    return (void *)h;
+}
+
+void *mg_dl_sym(void *lib, const char *name) { return (void *)GetProcAddress((HMODULE)lib, name); }
 
 #if defined(MG_ELF_HOST)
 bool mg_core_image(mg_addr *base, size_t *size);

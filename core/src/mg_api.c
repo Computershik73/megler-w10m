@@ -101,6 +101,9 @@ bool megler_init(const megler_config *config)
     if (g_log) mg_log_set_sink(log_sink, NULL);
     mg_mem_set_probe(config->memory_limit, config->memory_usage);
     mg_path_mkdirs(g_data_dir);
+    /* (Where a file still open is put as it is deleted: the app's data's disk, and the shared storage's, mg_path_remove.) */
+    mg_path_add_trash(g_data_dir);
+    if (g_storage_dir[0]) mg_path_add_trash(g_storage_dir);
     return mg_core_init();
 }
 

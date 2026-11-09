@@ -485,6 +485,8 @@ struct CodecHost::Codec {
 
     // Pictures: what the output type says.
     int frameWidth = 0, frameHeight = 0, cropX = 0, cropY = 0, visibleWidth = 0, visibleHeight = 0, stride = 0;
+    int askedWidth = 0, askedHeight = 0; // the app's format's (configure): the most a picture shows where the decoder says no size
+    bool sizeLearned = false;           // the size taken from a picture (learnSize), said once
     int matrix = 0;
     bool fullRange = false;
     // Sound: what the output type says, and the channels the core is given.
@@ -728,6 +730,17 @@ struct CodecHost::Codec {
             }
             UINT32 w = 0, h = 0;
             MFGetAttributeSize(type.get(), MF_MT_FRAME_SIZE, &w, &h);
+            if (!w || !h) {
+                // (An output offered with no size may have one once it is set: the type the decoder now has is read instead.)
+                winrt::com_ptr<IMFMediaType> current;
+                UINT32 cw = 0, ch = 0;
+                if (SUCCEEDED(transform->GetOutputCurrentType(out, current.put())) && current &&
+                    SUCCEEDED(MFGetAttributeSize(current.get(), MF_MT_FRAME_SIZE, &cw, &ch)) && cw && ch) {
+                    type = current;
+                    w = cw;
+                    h = ch;
+                }
+            }
             frameWidth = int(w);
             frameHeight = int(h);
             cropX = cropY = 0;
@@ -848,6 +861,8 @@ struct CodecHost::Codec {
             type->SetGUID(MF_MT_MAJOR_TYPE, MFMediaType_Video);
             type->SetGUID(MF_MT_SUBTYPE, kind == MEGLER_CODEC_H264 ? MFVideoFormat_H264 : MFVideoFormat_HEVC);
             if (f.width > 0 && f.height > 0) MFSetAttributeSize(type.get(), MF_MT_FRAME_SIZE, UINT32(f.width), UINT32(f.height));
+            askedWidth = f.width;
+            askedHeight = f.height;
             type->SetUINT32(MF_MT_INTERLACE_MODE, MFVideoInterlace_MixedInterlaceOrProgressive);
         } else {
             type->SetGUID(MF_MT_MAJOR_TYPE, MFMediaType_Audio);
@@ -881,6 +896,53 @@ struct CodecHost::Codec {
         return true;
     }
 
+    /// The pictures' size where the output type said none (0x0), from the first picture: its texture's size on the graphics
+    /// processor, else its rows and its length; shown whole, or as much of it as the app's format asks for. The H.265
+    /// decoder of the Elite x3's Windows offers its NV12 output with no size when it decodes on the graphics processor, and
+    /// every picture was refused for it (0.1.0.680: "a picture of 884736 bytes is not 0x0 NV12"): TikTok Lite showed no
+    /// video. In software the same decoder says 576x1024.
+    bool learnSize(IMFSample* sample) {
+        winrt::com_ptr<IMFMediaBuffer> buffer;
+        if (FAILED(sample->GetBufferByIndex(0, buffer.put())) || !buffer) return false;
+        int w = 0, h = 0, rows = 0;
+        const char* from = "texture";
+        if (auto dxgi = buffer.try_as<IMFDXGIBuffer>()) {
+            winrt::com_ptr<ID3D11Texture2D> texture;
+            D3D11_TEXTURE2D_DESC desc = {};
+            if (SUCCEEDED(dxgi->GetResource(__uuidof(ID3D11Texture2D), texture.put_void())) && texture) {
+                texture->GetDesc(&desc);
+                w = int(desc.Width);
+                h = int(desc.Height);
+            }
+        }
+        if (w <= 0 || h <= 0) {
+            from = "rows";
+            BYTE* base = nullptr;
+            LONG pitch = 0;
+            DWORD length = 0;
+            if (auto planar = buffer.try_as<IMF2DBuffer>(); planar && SUCCEEDED(planar->Lock2D(&base, &pitch))) {
+                planar->Unlock2D();
+                if (pitch > 0 && SUCCEEDED(buffer->GetCurrentLength(&length)) && length) {
+                    rows = int(length / DWORD(pitch) * 2 / 3);
+                    w = int(pitch) / (p010 ? 2 : 1);
+                    h = rows;
+                }
+            }
+        }
+        if (w <= 0 || h <= 0) return false;
+        frameWidth = w;
+        frameHeight = h;
+        cropX = cropY = 0;
+        visibleWidth = askedWidth > 0 && askedWidth < w ? askedWidth : w;
+        visibleHeight = askedHeight > 0 && askedHeight < h ? askedHeight : h;
+        if (stride <= 0) stride = w * (p010 ? 2 : 1);
+        if (!sizeLearned)
+            shellLog::write(format("codec: %s (%s): its output type says no size; the pictures are %dx%d (the first one's %s), %dx%d of them shown",
+                                   kindName(kind), name.c_str(), w, h, from, visibleWidth, visibleHeight));
+        sizeLearned = true;
+        return true;
+    }
+
     /// An output sample of ours, big enough for what the output type says.
     winrt::com_ptr<IMFSample> outputSample() {
         if (spare) return std::exchange(spare, nullptr);
@@ -897,6 +959,10 @@ struct CodecHost::Codec {
     /// A decoded picture into the queue: on the graphics processor, where it was decoded there (takeGpuPicture); else its
     /// buffer held, or (a decoder's own buffer, the graphics processor's too) copied.
     void takePicture(IMFSample* sample) {
+        if ((frameWidth <= 0 || frameHeight <= 0) && !learnSize(sample)) {
+            fail("a picture of a size the output type does not say, nor its buffer");
+            return;
+        }
         if (gpu && !gpuOff) {
             // Below feature level 10_0 every picture held is a B8G8R8A8 copy of its own, four bytes a pixel, as on
             // venetium-w10m: up to 1280x720 there (an app holds up to eight, 30 MB); larger ones are read back as NV12.
