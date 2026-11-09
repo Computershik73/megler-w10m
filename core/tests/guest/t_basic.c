@@ -673,6 +673,18 @@ int t_dl(void)
 }
 
 /*
+ * The system's libraries that are not here, opened by name as an app asks whether they are: not found, as on a phone without
+ * them -- Vulkan, and the Neural Networks API, which TensorFlow Lite took to be there once its library opened and called a
+ * function of it that was not (Transit, 0.1.0.677). 0, or which was opened.
+ */
+int t_dl_absent(void)
+{
+    if (dlopen("libneuralnetworks.so", 0)) return 1;
+    if (dlopen("libvulkan.so", 0)) return 2;
+    return dlopen("libandroid.so", 0) ? 0 : 3;
+}
+
+/*
  * The linker's entry points that Android 8's libdl.so calls, looked up in libdl.so as Facebook's apps look them up (Instagram's
  * __loader_dlopen): a library opened and a function found with a caller's address, and a library that is not there refused
  * with an error to read.

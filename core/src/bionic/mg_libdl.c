@@ -47,7 +47,14 @@ static void *g_dlopen(const char *name, int flags)
     base = strrchr(name, '/');
     base = base ? base + 1 : name;
     if (mg_bionic_is_system_lib(base)) {
-        if (!strcmp(base, "libvulkan.so")) {
+        /*
+         * Libraries of the system's that a library may name (it loads, its functions there unfound) but that are not here,
+         * which an app opened by name to find out whether they are: said not to be, as on a phone without them. Vulkan; and
+         * the Neural Networks API, which TensorFlow Lite (Google Play services' own, in Transit's process) takes to be there
+         * once libneuralnetworks.so opens, every one of its functions then unfound -- and called one of them: a call through
+         * a null pointer, at every start of Transit on 0.1.0.677.
+         */
+        if (!strcmp(base, "libvulkan.so") || !strcmp(base, "libneuralnetworks.so")) {
             set_error("dlopen failed: library \"%s\" not found", name);
             return NULL;
         }
