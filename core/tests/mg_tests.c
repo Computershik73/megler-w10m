@@ -347,6 +347,49 @@ static void test_dl_open_why(void)
 }
 #endif
 
+/*
+ * A file removed while it is open goes from its folder at once, as POSIX's unlink takes it: the name can be made again, the
+ * folder renamed, and the handle still reads what the file had. Windows 10 Mobile's DeleteFile left it there until the last
+ * handle went, and TikTok Lite's updates, whose archive it deletes as it reads it before renaming their folder into place,
+ * never took on a phone (0.1.0.680, mg_path_remove's remove_open).
+ */
+static void test_unlink_open(const char *scratch)
+{
+    char *dir = mg_sprintf("%s/unlink-open/139141132--updating", scratch);
+    char *done = mg_sprintf("%s/unlink-open/139141132", scratch);
+    char *path = mg_sprintf("%s/res.zst", dir);
+    char *trash = mg_sprintf("%s/unlink-open", scratch);
+    char buf[8] = { 0 };
+    mg_stat st;
+    mg_file *f, *again;
+    int err = 0;
+    say("a file removed while open goes from its folder at once");
+    mg_path_rmdir(done, NULL);
+    CHECK(mg_path_mkdirs(dir));
+    mg_path_add_trash(trash);
+    CHECK(mg_file_write_all(path, "zstd", 4));
+    f = mg_file_open(path, MG_O_READ, &err);
+    CHECK(f != NULL);
+    CHECK(mg_path_remove(path, &err));
+    CHECK(!mg_path_stat(path, &st, NULL));                          /* the name is gone */
+    again = mg_file_open(path, MG_O_WRITE | MG_O_CREATE | MG_O_EXCL, &err);
+    CHECK(again != NULL);                                           /* and can be made again */
+    if (again) mg_file_close(again);
+    CHECK(mg_path_remove(path, &err));
+    CHECK(mg_path_rename(dir, done, &err));                         /* the folder moves with the first file still open */
+    if (f) {
+        CHECK_INT(mg_file_pread(f, buf, 4, 0, &err), 4);            /* and that handle reads what the file had */
+        CHECK(!memcmp(buf, "zstd", 4));
+        mg_file_close(f);
+    }
+    CHECK(mg_path_stat(done, &st, NULL) && st.is_dir);
+    CHECK(mg_path_rmdir(done, &err));                               /* empty: nothing of the file left in it */
+    free(dir);
+    free(done);
+    free(path);
+    free(trash);
+}
+
 static void test_host(const char *scratch)
 {
     u8 *p;
@@ -4999,6 +5042,7 @@ int mg_tests_run(const char *libdir, const char *scratch, mg_test_sink sink, voi
     test_host(scratch);
     test_lock_holders();
     test_log_sink_past_lock();
+    test_unlink_open(scratch);
 #if defined(MG_DL_TESTS)
     test_dl_open_why();
 #endif

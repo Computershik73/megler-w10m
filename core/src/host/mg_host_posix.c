@@ -1142,6 +1142,9 @@ bool mg_path_remove(const char *path, int *err)
     return true;
 }
 
+/* (unlink takes a name away at once here, whoever has the file open.) */
+void mg_path_add_trash(const char *dir) { (void)dir; }
+
 bool mg_path_rmdir(const char *path, int *err)
 {
     if (mg_path_is_foreign(path)) return mg_foreign_remove(path, true, err);

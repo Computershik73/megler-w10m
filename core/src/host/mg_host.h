@@ -500,6 +500,12 @@ MG_HOSTAPI bool mg_path_stat(const char *path, mg_stat *st, int *err);
 MG_HOSTAPI bool mg_path_mkdir(const char *path, int *err);
 MG_HOSTAPI bool mg_path_mkdirs(const char *path);
 MG_HOSTAPI bool mg_path_remove(const char *path, int *err);        /* a file */
+/*
+ * A folder on the same disk as the app's files where mg_path_remove puts a file someone still has open before deleting it,
+ * so that its name goes at once, as POSIX's unlink takes it (mg_host_win32.c, remove_open); what an earlier run left there
+ * is deleted. Up to four, tried in order (the app's data, the shared storage). Nothing on POSIX hosts.
+ */
+MG_HOSTAPI void mg_path_add_trash(const char *dir);
 MG_HOSTAPI bool mg_path_rmdir(const char *path, int *err);
 MG_HOSTAPI bool mg_path_rename(const char *from, const char *to, int *err);
 /*

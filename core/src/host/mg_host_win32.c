@@ -2822,12 +2822,120 @@ bool mg_path_mkdir(const char *path, int *err)
     return ok != 0;
 }
 
+/*
+ * POSIX's unlink takes a name away at once, whoever has the file open. Windows's DeleteFile leaves a file someone has open
+ * where it was until the last handle and view of it go (on a phone's Windows 10 Mobile: a PC's Windows 10 of 2019 and later
+ * deletes as POSIX does), and meanwhile the name can be neither opened nor moved (error 5), nor made again, and its folder
+ * can be neither removed nor renamed. TikTok Lite deletes each update of its resources' archive (res.zip, res.zst) as it
+ * reads it, then renames the update's folder into place: refused every time on a phone (0.1.0.671 to 680), and its updates
+ * never took. A file someone has open is moved first into a folder of Megler's on the same disk (mg_path_add_trash: the
+ * app's data, the shared storage), and deleted there: it goes with its last handle. A file nobody has open, or one that
+ * cannot be moved there (another disk), is deleted where it is, as before.
+ *
+ * The folders are named as a file a rename put aside is (is_aside below), so that no listing shows them.
+ */
+#define TRASH_NAME L".megler-replaced-deleted"
+#define TRASH_MAX 4
+static wchar_t *g_trash[TRASH_MAX];
+static volatile LONG g_ntrash;
+
+void mg_path_add_trash(const char *dir)
+{
+    WIN32_FIND_DATAW found;
+    wchar_t *base, *trash, *pattern;
+    size_t n;
+    HANDLE h;
+    LONG i, k;
+    if (!dir || !dir[0]) return;
+    base = wide_path(dir);
+    n = wcslen(base);
+    trash = (wchar_t *)mg_alloc(sizeof(wchar_t) * (n + sizeof(TRASH_NAME) / sizeof(wchar_t) + 2));
+    memcpy(trash, base, sizeof(wchar_t) * n);
+    trash[n] = L'\\';
+    memcpy(trash + n + 1, TRASH_NAME, sizeof(TRASH_NAME));
+    free(base);
+    k = g_ntrash;
+    for (i = 0; i < k; i++)
+        if (!_wcsicmp(g_trash[i], trash)) {
+            free(trash);
+            return;
+        }
+    if (k >= TRASH_MAX) {
+        free(trash);
+        return;
+    }
+    /* What an earlier run left there, that its last handle had not let go of yet. */
+    n = wcslen(trash);
+    pattern = (wchar_t *)mg_alloc(sizeof(wchar_t) * (n + 3));
+    memcpy(pattern, trash, sizeof(wchar_t) * n);
+    memcpy(pattern + n, L"\\*", sizeof(wchar_t) * 3);
+    h = FindFirstFileExW(pattern, FindExInfoBasic, &found, FindExSearchNameMatch, NULL, 0);
+    if (h != INVALID_HANDLE_VALUE) {
+        do {
+            wchar_t *full;
+            size_t m = wcslen(found.cFileName);
+            if (found.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) continue;
+            full = (wchar_t *)mg_alloc(sizeof(wchar_t) * (n + m + 2));
+            memcpy(full, trash, sizeof(wchar_t) * n);
+            full[n] = L'\\';
+            memcpy(full + n + 1, found.cFileName, sizeof(wchar_t) * (m + 1));
+            if (!DeleteFileW(full) && SetFileAttributesW(full, FILE_ATTRIBUTE_NORMAL)) DeleteFileW(full);
+            free(full);
+        } while (FindNextFileW(h, &found));
+        FindClose(h);
+    }
+    free(pattern);
+    g_trash[k] = trash;
+    InterlockedExchange(&g_ntrash, k + 1);
+}
+
+/* The file `w` moved into a trash folder and deleted there, when someone has it open; false (nothing done) otherwise. */
+static bool remove_open(const wchar_t *w)
+{
+    static volatile LONG counter;
+    CREATEFILE2_EXTENDED_PARAMETERS params;
+    HANDLE h;
+    LONG i, k = g_ntrash;
+    if (!k) return false;
+    memset(&params, 0, sizeof(params));
+    params.dwSize = sizeof(params);
+    params.dwFileFlags = FILE_FLAG_OPEN_REPARSE_POINT;
+    /* Nobody else has it if it opens with no sharing at all: then it is deleted where it is, and goes at once. */
+    h = CreateFile2(w, DELETE, 0, OPEN_EXISTING, &params);
+    if (h != INVALID_HANDLE_VALUE) {
+        CloseHandle(h);
+        return false;
+    }
+    if (GetLastError() != ERROR_SHARING_VIOLATION) return false;
+    for (i = 0; i < k; i++) {
+        size_t n = wcslen(g_trash[i]);
+        wchar_t *t = (wchar_t *)mg_alloc(sizeof(wchar_t) * (n + 40));
+        memcpy(t, g_trash[i], sizeof(wchar_t) * n);
+        swprintf(t + n, 40, L"\\%08lx-%08lx-%08lx", (unsigned long)GetCurrentProcessId(),
+                 (unsigned long)InterlockedIncrement(&counter), (unsigned long)GetTickCount());
+        CreateDirectoryW(g_trash[i], NULL);       /* (there already, mostly: that fails, and does no harm) */
+        if (MoveFileExW(w, t, 0)) {
+            /* (A read-only one is deleted all the same, as unlink deletes it; one that will not go is the next start's.) */
+            if (!DeleteFileW(t) && !(SetFileAttributesW(t, FILE_ATTRIBUTE_NORMAL) && DeleteFileW(t)))
+                SetFileAttributesW(t, FILE_ATTRIBUTE_HIDDEN);
+            free(t);
+            return true;
+        }
+        free(t);
+    }
+    return false;
+}
+
 bool mg_path_remove(const char *path, int *err)
 {
     wchar_t *w;
     BOOL ok;
     if (mg_path_is_foreign(path)) return mg_foreign_remove(path, false, err);
     w = wide_path(path);
+    if (remove_open(w)) {
+        free(w);
+        return true;
+    }
     ok = DeleteFileW(w);
     if (!ok) {
         DWORD e = GetLastError();
