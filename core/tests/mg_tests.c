@@ -3746,6 +3746,7 @@ static void test_library(mg_lib *lib, const char *what, const char *scratch)
     CHECK_INT(FN(lib, int (*)(void), "t_smaps")(), 4);
     CHECK_INT(FN(lib, int (*)(void), "t_props")(), 28);
     CHECK_INT(FN(lib, int (*)(void), "t_dl")(), 4);
+    CHECK_INT(FN(lib, int (*)(void), "t_dl_absent")(), 0);
     CHECK_INT(FN(lib, int (*)(void), "t_loader_dl")(), 5);
 #if MG_ARCH_ARM32
     /* (Thumb's hooks on libc's hookable entries, and a Thumb or ARM udf as an app's trap: 32-bit ARM's alone.) */

@@ -33,9 +33,11 @@
 #                           bytecode alone. With libjavacrypto.so among them
 #                           the security providers are conscrypt's, TLS
 #                           included (mg_dvm_art.c, "the security providers")
-#   etc/security/cacerts/*  the certificate authorities Android 9 trusts, which
-#                           conscrypt's trust manager reads; without them no
-#                           server's certificate is trusted
+#   etc/security/cacerts/*  the certificate authorities apps trust, which
+#                           conscrypt's trust manager reads: core/cacerts,
+#                           Mozilla's root store laid out as Android's
+#                           (tools/make-cacerts.py), not Android 9's of 2018;
+#                           without them no server's certificate is trusted
 #   framework/megler-framework.dex
 #                           the Java framework an app with an Activity runs
 #                           on, where tools/build-framework.sh has built it
@@ -162,14 +164,19 @@ for f in "$NATIVES/"*.so; do
   LIBS=$((LIBS + 1))
 done
 [ "$LIBS" -gt 0 ] || echo "  (no native libraries in ${NATIVES#$ROOT/}: libcore will be its bytecode alone)"
+# The certificate authorities: core/cacerts (Mozilla's root store as Android lays it out, tools/make-cacerts.py), the
+# folder emptied first, so that a root dropped since (Android 9's of 2018, a distrusted one) does not stay in a root made
+# before. Android 9's lacked the authorities of most sites' chains today (GTS Root R1 to R4, ISRG Root X2): Transit's
+# WebView was refused eight servers at every start (0.1.0.675).
 CERTS=0
-for f in "$A9/system/etc/security/cacerts/"*; do
+rm -rf "$OUT/etc/security/cacerts"
+mkdir -p "$OUT/etc/security/cacerts"
+for f in "$ROOT/core/cacerts/"*.[0-9]; do
   [ -f "$f" ] || continue
-  mkdir -p "$OUT/etc/security/cacerts"
-  cp -u "$f" "$OUT/etc/security/cacerts/"
+  cp "$f" "$OUT/etc/security/cacerts/"
   CERTS=$((CERTS + 1))
 done
-[ "$CERTS" -gt 0 ] || echo "  (no certificates in build/android9/system/etc/security/cacerts: tools/android9-unpack.sh takes them out of the image)"
+[ "$CERTS" -gt 0 ] || echo "  (no certificates in core/cacerts: tools/make-cacerts.py makes them)"
 FONTS=0
 for f in "$A9/system/fonts/"*.ttf; do
   [ -f "$f" ] || continue

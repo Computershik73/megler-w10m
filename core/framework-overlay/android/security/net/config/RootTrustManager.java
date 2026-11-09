@@ -86,10 +86,11 @@ public class RootTrustManager extends X509ExtendedTrustManager {
 
     /*
      * Megler: a server's certificates refused, said once a host with why and with the authority they lead to (the issuer of
-     * the last one). The system's authorities here are Android 9's, the root's cacerts (137, of 2018), where Android 14 has
-     * newer ones: a server whose chain reaches only a newer authority is refused here alone ("Trust anchor for certification
+     * the last one). The system's authorities were Android 9's, the root's cacerts (137, of 2018), where Android 14 has
+     * newer ones: a server whose chain reaches only a newer authority was refused here alone ("Trust anchor for certification
      * path not found"), and the log did not say whose it was -- Transit's WebView was refused eight servers' chains at every
-     * start (Chromium's "cr_X509Util: Failed to validate the certificate chain", 0.1.0.675).
+     * start (Chromium's "cr_X509Util: Failed to validate the certificate chain", 0.1.0.675). They are Mozilla's root store
+     * now (core/cacerts, tools/make-cacerts.py); this says which servers a store still lacks.
      */
     private static final java.util.HashSet<String> sRefusedSaid = new java.util.HashSet<>();
     private static void refused(String host, X509Certificate[] certs, CertificateException e) {

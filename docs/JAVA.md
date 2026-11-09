@@ -2367,8 +2367,15 @@ links it against Android's own `libcrypto.so` and `libssl.so` (which alone are
 NEON code; every Windows phone's processor has NEON). It needs what Android's
 own does less `libc++.so`, and Megler's linker finds every import of it and of
 `libssl.so` (`tools/android9-natives/loadtest.sh`). `tools/dvm-android-root.sh`
-puts both in `lib/`, and Android 9's 137 certificate authorities in
-`etc/security/cacerts`, where conscrypt's `TrustedCertificateStore` reads them.
+puts both in `lib/`, and the certificate authorities apps trust in
+`etc/security/cacerts`, where conscrypt's `TrustedCertificateStore` reads them:
+`core/cacerts`, Mozilla's root store laid out as Android's (one file a root,
+named by `X509_NAME_hash_old`), made by `tools/make-cacerts.py` from curl's
+extraction of it (`core/cacerts/README.md` says which and of when). Android 9's
+137 of 2018 lacked the authorities of many sites' chains today (GTS Root R1 to
+R4, ISRG Root X2); roots the tool's `DISTRUSTED` names are left out whatever
+the bundle says (eMudhra's emSign ECC Root CA - G3, whose intermediates' keys
+were compromised in October 2026).
 With `lib/libjavacrypto.so` in the root, on a host that runs ARM code and
 where libcore's libraries loaded (`mg_dvm.c`), the list is Android's own:
 `System.loadLibrary("javacrypto")` loads it from the root when conscrypt's
@@ -2610,7 +2617,7 @@ framework/megler-framework-classes2.dex ...     the rest of it, where it has out
 framework/framework-res.apk                   the platform's own resources, Android 9's; for an app
 lib/*.so                                      libcore's native libraries, 32-bit ARM, conscrypt's among them
 lib/libc.so, libz.so ...                      the names of the system's libraries the core answers, files that say so
-etc/security/cacerts/*                        the certificate authorities Android 9 trusts, for conscrypt
+etc/security/cacerts/*                        the certificate authorities apps trust (core/cacerts), for conscrypt
 usr/icu/icudt60l.dat                          ICU's data
 usr/share/zoneinfo/tzdata, tzlookup.xml       the time zones
 ```
