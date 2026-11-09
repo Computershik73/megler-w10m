@@ -1,0 +1,128 @@
+# The certificate authorities apps trust
+
+Made by `tools/make-cacerts.py` from curl's extraction of Mozilla's root store, https://curl.se/ca/cacert.pem, Mozilla's data as of Thu Nov  5 04:12:01 2026 GMT (SHA-256 427c064216761a1e72a8b30f0d954d08cb6e4435a82091fb865afd20c8497285): 118 roots, one file each, laid out as Android's `etc/security/cacerts` (`tools/dvm-android-root.sh` copies them into the Android root).
+
+Left out whatever the bundle says (`DISTRUSTED` in the tool):
+
+- emSign ECC Root CA - G3 (eMudhra): intermediates' keys compromised, 2026-10 -- not in this bundle
+
+The roots:
+
+- `01419da9.0` C=US, O=Microsoft Corporation, CN=Microsoft ECC Root Certificate Authority 2017
+- `04f60c28.0` C=US, ST=New Jersey, L=Jersey City, O=The USERTRUST Network, CN=USERTrust ECC Certification Authority
+- `073bfcc5.0` C=CN, O=TrustAsia Technologies, Inc., CN=TrustAsia Global Root CA G4
+- `0d69c7e1.0` OU=GlobalSign ECC Root CA - R4, O=GlobalSign, CN=GlobalSign
+- `10531352.0` C=US, ST=Arizona, L=Scottsdale, O=Starfield Technologies, Inc., CN=Starfield Services Root Certificate Authority - G2
+- `128f4b91.0` CN=Atos TrustedRoot Root CA RSA TLS 2021, O=Atos, C=DE
+- `17882578.0` C=SE, O=Telia Company AB, CN=Telia EC TLS Root CA v3
+- `1b0f7e5c.0` C=BE, O=GlobalSign nv-sa, CN=GlobalSign Root R46
+- `1df5a75f.0` C=DE, O=D-Trust GmbH, CN=D-TRUST Root Class 3 CA 2 2009
+- `1e1eab7c.0` C=DE, O=T-Systems Enterprise Services GmbH, OU=T-Systems Trust Center, CN=T-TeleSec GlobalRoot Class 3
+- `1e44ef15.0` C=DE, O=D-Trust GmbH, CN=D-TRUST BR Root CA 2 2023
+- `1e8e7201.0` OU=GlobalSign Root CA - R3, O=GlobalSign, CN=GlobalSign
+- `1f58a078.0` C=BM, O=QuoVadis Limited, CN=QuoVadis Root CA 2 G3
+- `252252d2.0` C=US, O=DigiCert, Inc., CN=DigiCert TLS ECC P384 Root G5
+- `2add47b6.0` OU=GlobalSign ECC Root CA - R5, O=GlobalSign, CN=GlobalSign
+- `2c63f966.0` C=US, O=SSL Corporation, CN=SSL.com TLS RSA Root CA 2022
+- `2cc2056d.0` C=CN, O=TrustAsia Technologies, Inc., CN=TrustAsia TLS ECC Root CA
+- `2d21b73c.0` CN=Atos TrustedRoot Root CA ECC TLS 2021, O=Atos, C=DE
+- `2d9dafe4.0` C=NO, O=Buypass AS-983163327, CN=Buypass Class 3 Root CA
+- `302904dd.0` C=FR, O=Dhimyotis, OU=0002 48146308100036, CN=Certigna Root CA
+- `304d27c3.0` C=CN, O=UniTrust, CN=UCA Global G2 Root
+- `31188b5e.0` C=TR, L=Gebze - Kocaeli, O=Turkiye Bilimsel ve Teknolojik Arastirma Kurumu - TUBITAK, OU=Kamu Sertifikasyon Merkezi - Kamu SM, CN=TUBITAK Kamu SM SSL Kok Sertifikasi - Surum 1
+- `33ee480d.0` C=US, ST=Texas, L=Houston, O=SSL Corporation, CN=SSL.com Root Certification Authority RSA
+- `3428dc64.0` C=CH, O=OISTE Foundation, CN=OISTE Server Root RSA G1
+- `35105088.0` C=US, ST=New Jersey, L=Jersey City, O=The USERTRUST Network, CN=USERTrust RSA Certification Authority
+- `3afde786.0` C=GB, O=Sectigo Limited, CN=Sectigo Public Server Authentication Root E46
+- `3c899c73.0` C=CH, O=WISeKey, OU=OISTE Foundation Endorsed, CN=OISTE WISeKey Global Root GC CA
+- `3c9a4d3b.0` CN=ACCVRAIZ1, OU=PKIACCV, O=ACCV, C=ES
+- `41a3f684.0` C=PL, O=Asseco Data Systems S.A., OU=Certum Certification Authority, CN=Certum EC-384 CA
+- `47b283f6.0` C=TW, O=TAIWAN-CA, OU=Root CA, CN=TWCA CYBER Root CA
+- `48a195d8.0` C=ES, O=IZENPE S.A., CN=Izenpe.com
+- `4be590e0.0` C=US, O=IdenTrust, CN=IdenTrust Public Sector Root CA 1
+- `4c3982f2.0` C=GR, O=Hellenic Academic and Research Institutions CA, CN=HARICA TLS ECC Root CA 2021
+- `52b525c7.0` C=BM, O=QuoVadis Limited, CN=QuoVadis Root CA 1 G3
+- `53a1b57a.0` C=TW, O=Chunghwa Telecom Co., Ltd., CN=HiPKI Root CA - G1
+- `583ac115.0` C=CN, O=TrustAsia Technologies, Inc., CN=TrustAsia TLS RSA Root CA
+- `583d0756.0` C=US, ST=Texas, L=Houston, O=SSL Corporation, CN=SSL.com EV Root Certification Authority RSA R2
+- `5acf816d.0` C=US, O=Google Trust Services LLC, CN=GTS Root R4
+- `5f47b495.0` C=IT, L=Milan, O=Actalis S.p.A./03358520967, CN=Actalis Authentication Root CA
+- `5f9a69fa.0` C=ES, O=FNMT-RCM, OU=Ceres, organizationIdentifier=VATES-Q2826004J, CN=AC RAIZ FNMT-RCM SERVIDORES SEGUROS
+- `5fdd185d.0` C=US, O=Certainly, CN=Certainly Root E1
+- `60afe812.0` C=HU, L=Budapest, O=NetLock Kft., OU=Tanúsítványkiadók (Certification Services), CN=NetLock Arany (Class Gold) Főtanúsítvány
+- `6187b673.0` C=US, O=Internet Security Research Group, CN=ISRG Root X1
+- `64316a39.0` C=HU, L=Budapest, O=Microsec Ltd., organizationIdentifier=VATHU-23584497, CN=e-Szigno TLS Root CA 2023
+- `6b03dec0.0` C=US, O=Google Trust Services LLC, CN=GTS Root R3
+- `6b483515.0` C=DE, O=Deutsche Telekom Security GmbH, CN=Telekom Security TLS ECC Root 2020
+- `6c85d883.0` C=DE, O=D-Trust GmbH, CN=D-TRUST EV Root CA 2 2023
+- `7892ad52.0` C=US, ST=Texas, L=Houston, O=SSL Corporation, CN=SSL.com EV Root Certification Authority ECC
+- `7a7c655d.0` C=US, O=Amazon, CN=Amazon Root CA 3
+- `7e067d03.0` C=CN, O=BEIJING CERTIFICATE AUTHORITY, CN=BJCA Global Root CA2
+- `82223c44.0` C=NO, O=Buypass AS-983163327, CN=Buypass Class 2 Root CA
+- `83e9984f.0` C=HU, L=Budapest, O=Microsec Ltd., organizationIdentifier=VATHU-23584497, CN=e-Szigno Root CA 2017
+- `85cde254.0` C=US, ST=Arizona, L=Scottsdale, O=Starfield Technologies, Inc., CN=Starfield Root Certificate Authority - G2
+- `8761519c.0` C=JP, O=Cybertrust Japan Co., Ltd., CN=SecureSign Root CA14
+- `8794b4e3.0` C=US, O=Internet Security Research Group, CN=ISRG Root X2
+- `88950faa.0` C=US, ST=Texas, L=Houston, O=SSL Corporation, CN=SSL.com Root Certification Authority ECC
+- `89c02a45.0` C=GB, ST=Greater Manchester, L=Salford, O=COMODO CA Limited, CN=COMODO ECC Certification Authority
+- `8b4600ae.0` C=SE, O=Telia Company AB, CN=Telia RSA TLS Root CA v3
+- `8d6437c3.0` C=US, O=DigiCert Inc, OU=www.digicert.com, CN=DigiCert Assured ID Root G2
+- `8d81b251.0` C=CH, O=SwissSign AG, CN=SwissSign RSA TLS Root CA 2022 - 1
+- `8f6cd7bb.0` C=JP, O=Cybertrust Japan Co., Ltd., CN=SecureSign Root CA15
+- `9282e51c.0` C=CN, O=China Financial Certification Authority, CN=CFCA EV ROOT
+- `93851c9e.0` serialNumber=G63287510, C=ES, O=ANF Autoridad de Certificacion, OU=ANF CA Raiz, CN=ANF Secure Server Root CA
+- `9479c8c3.0` C=GR, L=Athens, O=Hellenic Academic and Research Institutions Cert. Authority, CN=Hellenic Academic and Research Institutions ECC RootCA 2015
+- `9576d26b.0` C=SK, L=Bratislava, O=Disig a.s., CN=CA Disig Root R2
+- `9591a472.0` C=US, O=Microsoft Corporation, CN=Microsoft RSA Root Certificate Authority 2017
+- `95aff9e3.0` C=PL, O=Unizeto Technologies S.A., OU=Certum Certification Authority, CN=Certum Trusted Network CA
+- `985c1f52.0` OU=GlobalSign Root CA - R6, O=GlobalSign, CN=GlobalSign
+- `98aaf404.0` C=CN, O=TrustAsia Technologies, Inc., CN=TrustAsia Global Root CA G3
+- `99e1b953.0` C=CN, O=iTrusChina Co.,Ltd., CN=vTrus Root CA
+- `a2c66da8.0` C=US, O=DigiCert Inc, OU=www.digicert.com, CN=DigiCert Trusted Root G4
+- `a716d4ed.0` C=DE, O=D-Trust GmbH, CN=D-TRUST EV Root CA 1 2020
+- `a81e292b.0` C=PL, O=Krajowa Izba Rozliczeniowa S.A., CN=SZAFIR ROOT CA2
+- `a9d40e02.0` C=RO, O=CERTSIGN SA, OU=certSIGN ROOT CA G2
+- `ab59055e.0` C=CN, O=GUANG DONG CERTIFICATE AUTHORITY CO.,LTD., CN=GDCA TrustAUTH R5 ROOT
+- `b0ed035a.0` C=TW, O=TAIWAN-CA, OU=Root CA, CN=TWCA Global Root CA
+- `b30d5fda.0` C=DE, O=D-Trust GmbH, CN=D-TRUST BR Root CA 1 2020
+- `b7b40cb7.0` C=CH, O=OISTE Foundation, CN=OISTE Server Root ECC G1
+- `b7db1890.0` C=TW, O=TAIWAN-CA, OU=Root CA, CN=TWCA Root Certification Authority
+- `b92fd57f.0` C=GR, O=Hellenic Academic and Research Institutions CA, CN=HARICA TLS RSA Root CA 2021
+- `b936d1c6.0` C=ES, O=FNMT-RCM, OU=AC RAIZ FNMT-RCM
+- `bb055c90.0` C=JP, O=SECOM Trust Systems Co., Ltd., CN=SECOM TLS RSA Root CA 2024
+- `bc3f2570.0` C=US, ST=Arizona, L=Scottsdale, O=GoDaddy.com, Inc., CN=Go Daddy Root Certificate Authority - G2
+- `bd43e1dd.0` C=HK, ST=Hong Kong, L=Hong Kong, O=Hongkong Post, CN=Hongkong Post Root CA 3
+- `c44cc0c0.0` C=US, O=DigiCert, Inc., CN=DigiCert TLS RSA4096 Root G5
+- `c491639e.0` C=US, O=DigiCert Inc, OU=www.digicert.com, CN=DigiCert Assured ID Root G3
+- `c7f1359b.0` C=JP, O=SECOM Trust Systems CO.,LTD., CN=Security Communication ECC RootCA1
+- `c90bc37d.0` C=US, O=DigiCert Inc, OU=www.digicert.com, CN=DigiCert Global Root G2
+- `cb1c3204.0` C=PL, O=Unizeto Technologies S.A., OU=Certum Certification Authority, CN=Certum Trusted Network CA 2
+- `cbb3f32b.0` C=US, O=SSL Corporation, CN=SSL.com TLS ECC Root CA 2022
+- `d06393bb.0` C=DE, O=T-Systems Enterprise Services GmbH, OU=T-Systems Trust Center, CN=T-TeleSec GlobalRoot Class 2
+- `d16a5865.0` C=ES, CN=Autoridad de Certificacion Firmaprofesional CIF A62634068
+- `d18e9066.0` C=US, O=IdenTrust, CN=IdenTrust Commercial Root CA 1
+- `d39b0a2c.0` C=KR, O=NAVER BUSINESS PLATFORM Corp., CN=NAVER Global Root Certification Authority
+- `d41b5e2a.0` C=US, O=Amazon, CN=Amazon Root CA 4
+- `d4c339cb.0` C=GB, ST=Greater Manchester, L=Salford, O=COMODO CA Limited, CN=COMODO RSA Certification Authority
+- `d59297b8.0` C=JP, O=SECOM Trust Systems CO.,LTD., OU=Security Communication RootCA2
+- `d7746a63.0` C=DE, O=D-Trust GmbH, CN=D-TRUST Root Class 3 CA 2 EV 2009
+- `d96b65e2.0` C=US, O=Certainly, CN=Certainly Root R1
+- `da7377f6.0` C=CN, O=UniTrust, CN=UCA Extended Validation Root
+- `dc99f41e.0` C=GR, L=Athens, O=Hellenic Academic and Research Institutions Cert. Authority, CN=Hellenic Academic and Research Institutions RootCA 2015
+- `dfc0fe80.0` C=CH, O=WISeKey, OU=OISTE Foundation Endorsed, CN=OISTE WISeKey Global Root GB CA
+- `e071171e.0` C=GB, O=Sectigo Limited, CN=Sectigo Public Server Authentication Root R46
+- `e13665f9.0` C=TN, O=Agence Nationale de Certification Electronique, CN=TunTrust Root CA
+- `e442e424.0` C=BM, O=QuoVadis Limited, CN=QuoVadis Root CA 3 G3
+- `e7c037b4.0` C=BE, O=GlobalSign nv-sa, CN=GlobalSign Root E46
+- `e8651083.0` C=HU, L=Budapest, O=Microsec Ltd., CN=Microsec e-Szigno Root CA 2009, emailAddress=info@e-szigno.hu
+- `ed39abd0.0` C=US, O=DigiCert Inc, OU=www.digicert.com, CN=DigiCert Global Root G3
+- `ee035825.0` C=JP, O=SECOM Trust Systems Co., Ltd., CN=SECOM TLS ECC Root CA 2024
+- `ee37c333.0` C=DE, O=Deutsche Telekom Security GmbH, CN=Telekom Security TLS RSA Root 2023
+- `ee532fd5.0` C=CN, O=iTrusChina Co.,Ltd., CN=vTrus ECC Root CA
+- `f013ecaf.0` C=US, O=Google Trust Services LLC, CN=GTS Root R1
+- `f058632f.0` C=FI, O=Telia Finland Oyj, CN=Telia Root CA v2
+- `f459871d.0` C=IN, OU=emSign PKI, O=eMudhra Technologies Limited, CN=emSign Root CA - G1
+- `f8fc53da.0` C=PL, O=Asseco Data Systems S.A., OU=Certum Certification Authority, CN=Certum Trusted Root CA
+- `fb5fa911.0` C=US, O=Amazon, CN=Amazon Root CA 2
+- `fd08c599.0` C=US, O=Amazon, CN=Amazon Root CA 1
+- `ffa7f1eb.0` C=CN, O=BEIJING CERTIFICATE AUTHORITY, CN=BJCA Global Root CA1

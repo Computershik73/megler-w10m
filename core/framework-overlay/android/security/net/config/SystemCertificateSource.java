@@ -5,7 +5,10 @@ package android.security.net.config;
 
 import java.io.File;
 
-/** The authorities Android 9 trusts: the Android root's etc/security/cacerts, which conscrypt's own trust manager reads too. */
+/**
+ * The authorities apps trust: the Android root's etc/security/cacerts, which conscrypt's own trust manager reads too --
+ * Mozilla's root store laid out as Android's (core/cacerts, tools/make-cacerts.py), where Android 9's of 2018 was.
+ */
 public final class SystemCertificateSource extends DirectoryCertificateSource {
     private static final class NoPreloadHolder {
         private static final SystemCertificateSource INSTANCE = new SystemCertificateSource();
