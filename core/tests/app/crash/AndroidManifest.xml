@@ -5,7 +5,8 @@
      first of them disabled. No class has an alias's name; the layer must start the activity the enabled one stands for.
      And it is the one test app written for an old Android (targetSdkVersion 23): what Android keeps as it was for apps of that age is tested here.
      And the first Activity starts a third one for a result from its first onResume, as Asphalt 9 starts its data installer: its own window
-     waits for the result, and has no focus to lose before then. -->
+     waits for the result, and has no focus to lose before then.
+     And two activities of a task affinity of their own, the top one finishing that affinity (Activity.finishAffinity). -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android" package="megler.test.crash" android:versionCode="1" android:versionName="1.0">
     <uses-sdk android:minSdkVersion="21" android:targetSdkVersion="23" />
     <application android:label="@string/app_name">
@@ -31,5 +32,8 @@
         <!-- Instagram's way in: the root once First finishes; starts Main, which finishes in onCreate unless it is the root (Trampoline's comment). -->
         <activity android:name=".Trampoline" />
         <activity android:name=".Main" android:launchMode="singleTop" />
+        <!-- Started by Trampoline, of an affinity of their own: AwayTop finishes it, both go, and Trampoline comes back (Away's comment). -->
+        <activity android:name=".Away" android:taskAffinity="megler.test.crash.away" />
+        <activity android:name=".AwayTop" android:taskAffinity="megler.test.crash.away" />
     </application>
 </manifest>

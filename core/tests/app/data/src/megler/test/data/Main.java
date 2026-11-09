@@ -1421,6 +1421,24 @@ public class Main extends Activity {
         });
         detachedAnimator();
         animatorListener();
+        // A view animation's XML is no animator's: AnimatorInflater throws "Unknown animator name" for its <alpha>, alone and
+        // in a <set>, as Android does, and AnimationUtils makes the animation of it; an animator's XML is an animator. AndroidX's
+        // fragments try an animation resource as an animator first when its type is not named "anim" (Facebook's apps name
+        // theirs "anim.2") and take the view animation when that throws (megler/ResInflate.java says what came of the
+        // ValueAnimator Megler made of Messenger's <alpha> instead).
+        step("animator-not-animation", () -> {
+            String alone = null, inSet = null;
+            try { android.animation.AnimatorInflater.loadAnimator(this, R.anim.fade_in); } catch (RuntimeException e) { alone = e.getMessage(); }
+            try { android.animation.AnimatorInflater.loadAnimator(this, R.anim.fade_set); } catch (RuntimeException e) { inSet = e.getMessage(); }
+            android.view.animation.Animation view = android.view.animation.AnimationUtils.loadAnimation(this, R.anim.fade_in);
+            android.animation.Animator animator = android.animation.AnimatorInflater.loadAnimator(this, R.animator.fade_in);
+            detail = "alone: " + alone + ", in a set: " + inSet + ", the view animation " + view + " of " + (view == null ? 0 : view.getDuration())
+                    + " ms, the animator " + animator;
+            return "Unknown animator name: alpha".equals(alone) && "Unknown animator name: alpha".equals(inSet)
+                    && view instanceof android.view.animation.AlphaAnimation && view.getDuration() == 200
+                    && animator instanceof android.animation.ObjectAnimator && animator.getDuration() == 200
+                    && "alpha".equals(((android.animation.ObjectAnimator) animator).getPropertyName());
+        });
         // A view's observer taken before the view is in a window is dead once it is (merged into the window's): a one-shot
         // listener added to it removes itself through the view's observer then, as AndroidX's OneShotPreDrawListener and
         // YouTube's TraceableOnGlobalLayoutListener do, and is run once (it stayed in the window's, run at every layout), while

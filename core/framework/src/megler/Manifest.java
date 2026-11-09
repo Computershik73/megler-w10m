@@ -10,6 +10,8 @@ import org.xmlpull.v1.XmlPullParser;
 public final class Manifest {
     public static final class Component {
         public String name, kind, authorities, process, permission, readPermission, writePermission, parentActivity;
+        /** An activity's android:taskAffinity (affinity() says how it is read); null when it has none. */
+        public String taskAffinity;
         public int theme, label, icon, screenOrientation = -1, configChanges, launchMode, windowSoftInputMode, uiOptions, initOrder;
         public boolean exported, enabled = true, grantUriPermissions;
         public Bundle metaData;
@@ -18,7 +20,7 @@ public final class Manifest {
     public static final class Filter {
         public final ArrayList<String> actions = new ArrayList<>(), categories = new ArrayList<>(), schemes = new ArrayList<>(), mimeTypes = new ArrayList<>(), hosts = new ArrayList<>();
     }
-    public static String packageName, applicationClass, versionName, appComponentFactory;
+    public static String packageName, applicationClass, versionName, appComponentFactory, appTaskAffinity;
     public static int versionCode, minSdk = 21, targetSdk = 34, appTheme, appLabel, appIcon, appFlags;
     public static boolean debuggable, largeHeap, hardwareAccelerated = true, extractNativeLibs = true;
     /** Whether the manifest has <uses-sdk>: one without is an app of Android 1's, whose target is that (megler.Permissions). */
@@ -91,15 +93,17 @@ public final class Manifest {
                     extractNativeLibs = p.getAttributeBooleanValue(NS, "extractNativeLibs", true);
                     hardwareAccelerated = p.getAttributeBooleanValue(NS, "hardwareAccelerated", true);
                     appComponentFactory = full(p.getAttributeValue(NS, "appComponentFactory"));
+                    appTaskAffinity = affinity(p.getAttributeValue(NS, "taskAffinity"), packageName, packageName);
                     break;
                 case "activity": case "activity-alias": case "service": case "receiver": case "provider": {
                     if (!inApp) break;
                     cur = new Component();
                     cur.kind = tag;
                     cur.name = full(p.getAttributeValue(NS, "name"));
+                    cur.taskAffinity = affinity(p.getAttributeValue(NS, "taskAffinity"), appTaskAffinity, packageName);
                     if ("activity-alias".equals(tag)) {
                         String target = full(p.getAttributeValue(NS, "targetActivity"));
-                        for (Component a : activities) if (a.name.equals(target)) { cur.theme = a.theme; cur.screenOrientation = a.screenOrientation; cur.configChanges = a.configChanges; }
+                        for (Component a : activities) if (a.name.equals(target)) { cur.theme = a.theme; cur.screenOrientation = a.screenOrientation; cur.configChanges = a.configChanges; cur.taskAffinity = a.taskAffinity; }
                         cur.parentActivity = target;
                     }
                     cur.theme = p.getAttributeResourceValue(NS, "theme", cur.theme);
@@ -253,6 +257,7 @@ public final class Manifest {
             Component cur = null; Filter filter = null;
             boolean inApp = false;
             int t, appTheme = 0;
+            String appAffinity = pkg;
             while ((t = p.next()) != XmlPullParser.END_DOCUMENT) {
                 String tag = p.getName();
                 if (t == XmlPullParser.END_TAG) {
@@ -263,16 +268,21 @@ public final class Manifest {
                 }
                 if (t != XmlPullParser.START_TAG) continue;
                 switch (tag) {
-                case "application": inApp = true; appTheme = p.getAttributeResourceValue(NS, "theme", 0); break;
+                case "application":
+                    inApp = true;
+                    appTheme = p.getAttributeResourceValue(NS, "theme", 0);
+                    appAffinity = affinity(p.getAttributeValue(NS, "taskAffinity"), pkg, pkg);
+                    break;
                 case "activity": case "activity-alias": {
                     if (!inApp) break;
                     cur = new Component();
                     cur.kind = tag;
                     cur.name = full(p.getAttributeValue(NS, "name"), pkg);
                     cur.theme = appTheme;
+                    cur.taskAffinity = affinity(p.getAttributeValue(NS, "taskAffinity"), appAffinity, pkg);
                     if ("activity-alias".equals(tag)) {
                         String target = full(p.getAttributeValue(NS, "targetActivity"), pkg);
-                        for (Component a : out) if (a.name.equals(target)) { cur.theme = a.theme; cur.screenOrientation = a.screenOrientation; cur.configChanges = a.configChanges; }
+                        for (Component a : out) if (a.name.equals(target)) { cur.theme = a.theme; cur.screenOrientation = a.screenOrientation; cur.configChanges = a.configChanges; cur.taskAffinity = a.taskAffinity; }
                         cur.parentActivity = target;
                     }
                     cur.theme = p.getAttributeResourceValue(NS, "theme", cur.theme);
@@ -308,5 +318,15 @@ public final class Manifest {
         if (n.startsWith(".")) return pkg + n;
         if (n.indexOf('.') < 0) return pkg + "." + n;
         return n;
+    }
+    /*
+     * android:taskAffinity as Android's PackageParser.buildTaskAffinityName reads it: none named is the default (an activity
+     * has its application's, an application its package's), an empty one is no affinity at all, and ":x" is the package's own
+     * "<package>:x". Activity.finishAffinity finishes the activities of the caller's affinity (megler.AppRunner).
+     */
+    private static String affinity(String named, String byDefault, String pkg) {
+        if (named == null) return byDefault;
+        if (named.isEmpty()) return null;
+        return named.startsWith(":") ? pkg + named : named;
     }
 }

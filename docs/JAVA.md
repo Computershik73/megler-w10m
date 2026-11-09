@@ -5811,6 +5811,22 @@ on a looper thread of its own and takes it back with `next()`.
   (Settings, Chats, Theme) ended the app: "Can't convert value at index 6 to
   dimension: type=0x6" (0.1.0.671). The data app's step "inset-fraction"
   inflates such insets and measures what they give.
+- `megler/ResInflate.java`, a few lines: an animator's XML is read as
+  Android's `AnimatorInflater` reads it, and an element that is no
+  animator's -- a view animation's `<alpha>`, `<translate>`, `<scale>` or
+  `<rotate>`, alone or in a `<set>` -- is "Unknown animator name", thrown.
+  The inflater made a `ValueAnimator` of anything. AndroidX's fragments try
+  an animation resource as an animator first when its type is not named
+  "anim", and take the view animation when that throws; Facebook's apps name
+  the type of theirs "anim.2", so Messenger's fragments came in by an
+  animator of 200 ms that animated nothing, and a fragment is resumed only
+  once its animator ends, where a view animation lets it be resumed at once.
+  The step of Messenger's first-run screen that asks to import the contacts
+  opens its Bloks screen as it is made and learns it did in its `onPause`;
+  paused by that screen before its animator was over, it was never resumed,
+  so never paused, and on coming back it did not move on: the screen stayed
+  until Back (0.1.0.673). The data app's step "animator-not-animation"
+  inflates both kinds both ways.
 
 - `android/app/Activity.java`, two methods: `initWindowDecorActionBar` makes
   the window's decor before it asks whether the window has an action bar, as
@@ -5919,6 +5935,20 @@ on a looper thread of its own and takes it back with `next()`.
   its own activities is the home) and the app goes to the back; the data
   app's step "intent-categories" resolves the home, the launcher's intent and
   an unknown category.
+  And `Activity.finishAffinity` finishes the caller and the activities under
+  it of its task affinity (`android:taskAffinity`, now read with the manifest:
+  the application's, the package's unless it names another, none for an
+  empty one) together, as `ActivityStack.finishActivityAffinityLocked`: all
+  are finishing before the first goes, so none is resumed on the way, and the
+  first one down of another affinity stays and comes back if the top went.
+  They were finished one by one, each the top in its turn, and the one under
+  each was resumed before it went too. Messenger's first-run screen finishes
+  so on Back when it finds no home: its main activity, resumed for that
+  moment, asked for the first-run screen again (Messenger looks for a pending
+  first-run at every resume) and finished, and the screen it asked for
+  finished in `onCreate`, the first not destroyed yet (673). The crash app's
+  `Trampoline` starts `Away` and `AwayTop`, of an affinity of their own;
+  `AwayTop` finishes it, `Away` is not resumed, and `Trampoline` comes back.
 
 - `android/app/Activity.java`, `getCallingActivity` and `getCallingPackage`:
   who started the activity for a result, which its `setResult` answers, and
