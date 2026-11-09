@@ -1,0 +1,59 @@
+
+    // Megler: Java 9's Set.of and Java 10's Set.copyOf, which Android has from Android 11 (API 30) and Android 9's Set has
+    // not: Amazon Shopping's start ended on a NoSuchMethodError of Set.of(Object). Unmodifiable sets of no nulls, an element
+    // given twice to Set.of refused (IllegalArgumentException), Serializable: java.util.ImmutableCollections.
+
+    @SuppressWarnings("unchecked")
+    static <E> Set<E> of() {
+        return (Set<E>) ImmutableCollections.EMPTY_SET;
+    }
+
+    static <E> Set<E> of(E e1) {
+        return ImmutableCollections.set(new Object[] { e1 });
+    }
+
+    static <E> Set<E> of(E e1, E e2) {
+        return ImmutableCollections.set(new Object[] { e1, e2 });
+    }
+
+    static <E> Set<E> of(E e1, E e2, E e3) {
+        return ImmutableCollections.set(new Object[] { e1, e2, e3 });
+    }
+
+    static <E> Set<E> of(E e1, E e2, E e3, E e4) {
+        return ImmutableCollections.set(new Object[] { e1, e2, e3, e4 });
+    }
+
+    static <E> Set<E> of(E e1, E e2, E e3, E e4, E e5) {
+        return ImmutableCollections.set(new Object[] { e1, e2, e3, e4, e5 });
+    }
+
+    static <E> Set<E> of(E e1, E e2, E e3, E e4, E e5, E e6) {
+        return ImmutableCollections.set(new Object[] { e1, e2, e3, e4, e5, e6 });
+    }
+
+    static <E> Set<E> of(E e1, E e2, E e3, E e4, E e5, E e6, E e7) {
+        return ImmutableCollections.set(new Object[] { e1, e2, e3, e4, e5, e6, e7 });
+    }
+
+    static <E> Set<E> of(E e1, E e2, E e3, E e4, E e5, E e6, E e7, E e8) {
+        return ImmutableCollections.set(new Object[] { e1, e2, e3, e4, e5, e6, e7, e8 });
+    }
+
+    static <E> Set<E> of(E e1, E e2, E e3, E e4, E e5, E e6, E e7, E e8, E e9) {
+        return ImmutableCollections.set(new Object[] { e1, e2, e3, e4, e5, e6, e7, e8, e9 });
+    }
+
+    static <E> Set<E> of(E e1, E e2, E e3, E e4, E e5, E e6, E e7, E e8, E e9, E e10) {
+        return ImmutableCollections.set(new Object[] { e1, e2, e3, e4, e5, e6, e7, e8, e9, e10 });
+    }
+
+    @SafeVarargs
+    @SuppressWarnings("varargs")
+    static <E> Set<E> of(E... elements) {
+        return ImmutableCollections.setCopy(elements);
+    }
+
+    static <E> Set<E> copyOf(Collection<? extends E> coll) {
+        return ImmutableCollections.setOf(coll);
+    }

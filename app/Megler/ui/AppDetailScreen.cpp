@@ -253,9 +253,11 @@ private:
         trust.Margin(ThicknessHelper::FromLengths(-12, -12, 0, 0));
         // The package made, when the deployment engine did not install it: Windows's own installer, as a file manager opens a
         // package, and its certificate, which Windows has to trust (shell/AppPackage.h, untrustedCertificate). (Not on an Xbox,
-        // which has no installer of packages for an app to hand one to: its Device Portal is all there is.)
+        // which has no installer of packages for an app to hand one to: its Device Portal is all there is.) An installed app's
+        // update that Windows refused is offered so too, as the Library's card of a refused install says: without it, the app
+        // could be updated only after being uninstalled, with its private files.
 #if !defined(MEGLER_XBOX)
-        if (!s.made.appx.empty() && !installed) {
+        if (!s.made.appx.empty() && (!installed || s.outdated)) {
             const std::wstring appx = s.made.appx, certificate = s.made.certificate;
             add(more, textButton("Open the Package", [this, appx] { openFile(appx); }));
             if (platform::isMobile()) {

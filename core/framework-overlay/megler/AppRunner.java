@@ -55,6 +55,10 @@
 // there: code that reads them by reflection on another thread while the Application starts finds it (android/app/
 // ActivityThread.java says who).
 //
+// And an intent for the phone's home screen (ACTION_MAIN with CATEGORY_HOME) sends the app to the back, as the launcher
+// coming in front does on Android (isHome): Facebook's Back goes home so on Facebook Lite's sign-in screen and Messenger's
+// first-run screen, and found no home.
+//
 // Everything else is the original's, unchanged.
 package megler;
 
@@ -524,6 +528,13 @@ public final class AppRunner {
             });
             return;
         }
+        // The phone's home screen (ACTION_MAIN with CATEGORY_HOME, of no activity of the app's own): the app goes to the back, as
+        // on Android when the launcher comes in front, and nothing of it finishes (moveTaskToBack's way).
+        if (isHome(i)) {
+            android.util.Log.d("Megler", "startActivity " + i + " -> the phone's home: the app goes to the back");
+            toBack();
+            return;
+        }
         android.net.Uri u = i.getData();
         String action = i.getAction();
         if (u != null && (Intent.ACTION_VIEW.equals(action) || Intent.ACTION_SENDTO.equals(action) || action == null || "android.intent.action.DIAL".equals(action))) {
@@ -755,9 +766,26 @@ public final class AppRunner {
      */
     public static boolean moveTaskToBack(Activity a, boolean nonRoot) {
         if (!nonRoot && !isRoot(a)) return false;
+        toBack();
+        return true;
+    }
+    /* The app to the back: said to the Back being answered (back), or making the shell's next Back the system's. */
+    private static void toBack() {
         sBackLeaves = true;
         Native.toBack();
-        return true;
+    }
+    /*
+     * An intent for the phone's home screen: ACTION_MAIN with CATEGORY_HOME, as an app sends itself home -- Facebook's Back on
+     * Facebook Lite's sign-in screen and on Messenger's first-run screen (NeueNuxActivity) does, through its launcher of
+     * activities of another signature than its own (DifferentKeyIntentScope). The phone's home here is Windows' Start, whose
+     * coming in front is the app going to the back. There was none: the intent found the app's own launcher activity (a
+     * filter's categories were not looked at), Facebook removed that one as its own, found nothing else ("No matching
+     * different-signature components"), and went on as without a home: Facebook Lite ended its process (status 0) at its
+     * sign-in screen's Back, and Messenger finished its first-run screen, whose main activity below finished as well, and the
+     * app ended (0.1.0.673, the user's logs of 2026-11-08).
+     */
+    static boolean isHome(Intent i) {
+        return Intent.ACTION_MAIN.equals(i.getAction()) && i.hasCategory(Intent.CATEGORY_HOME);
     }
     /** The activity that opened Windows' location settings for a result, and its request code (-1: none waits). */
     private static Activity sWindowsCaller;

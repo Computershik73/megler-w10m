@@ -363,14 +363,19 @@ Two things are asked for before anything else (the owner's wish, 2026-11-02):
      them there (byte for byte, `files::mend`; `<token>` is the time it began);
      the app's next packages (every Update All) take that folder as it is, so
      a package is Megler's own files alone, some 12 MB, whatever the app's
-     size. After an install `<shared>\apks\<identity name>\installed.txt` says
+     size. Before the package exists, the folder's `made.txt` gets its full
+     name, a line for each package made with the folder; once its file is
+     begun, `<identity name>.appx.txt` beside it says the folder and full name
+     of the package waiting there (below, "Which APK folders stay"). After
+     Megler's own install `<shared>\apks\<identity name>\installed.txt` says
      which folder the installed package reads, and the library's entry is that
      APK (`Library::adopt`: `<id>.installed` says the package's full name, then
      `shared=<folder>`): one copy of each APK on the phone. A folder that no
-     installed package and no entry of the library names any more (a newer APK
+     installed package was made with, no package waiting for Windows's
+     installer reads and no entry of the library names any more (a newer APK
      installed, the app uninstalled) goes at a later listing of the packages,
      when no package is being made and it is over an hour old
-     (`appPackage::removeUnusedSharedApks`). Packages made before 0.1.0.645
+     (`appPackage::settleSharedApks`). Packages made before 0.1.0.645
      carried the APK as `app\app.apk` (`apk=app`), and are read as they are
      until Update All makes them again.
      The certificate is copied beside it.
@@ -434,7 +439,11 @@ Commander's and for names with capitals, digits, `.` and `-`).
   Windows's deployment engine did not install it, hand the file to Windows
   (`Launcher.LaunchFileAsync`), as a file manager would: the package to its
   installer, the certificate to Windows's installer of certificates. On the
-  HP Elite x3 (353) Windows's installer installed a package so.
+  HP Elite x3 (353) Windows's installer installed a package so. Megler is not
+  told of such an install: up to 0.1.0.675 the APK folder of a package
+  installed so went an hour after it was made, and since 2026-11-09 the
+  package's full name in the folder's `made.txt` tells it (below, "Which APK
+  folders stay").
 
 A package with `MeglerApp.ini` in its install folder is one app's
 (`shell/AppPackage.cpp`, `single()`):
@@ -666,6 +675,142 @@ is installed, and the old folder goes with the next listing. An older APK is
 never put over a later one, as Android keeps an update of a system app over an
 older system image; and an APK of the library's that is not installed yet is
 installed as it is, the user's choice.
+
+## Which APK folders stay
+
+An app's own package reads the APK of one folder of the shared folder,
+`apks\<identity>\<token>`, which its `MeglerApp.ini` names. Megler cannot read
+another package's install folder on a phone, so it cannot ask a package which
+folder it reads; it goes by what it wrote down itself. Up to 0.1.0.675 that was
+`installed.txt` and the library's entries, both written only when Megler's own
+install had succeeded, and a folder neither named went at the first listing of
+the packages an hour after it was begun (`removeUnusedSharedApks`). A package
+installed any other way lost its APK so:
+
+- **Open the Package.** Where Windows refuses Megler's install (`0x80070005` on
+  a phone without the capability part of its interop unlock, a certificate it
+  does not trust), the app's page offers the package made to Windows's own
+  installer, which installs it, and Megler is not told. A user's Candy Crush
+  Saga, its package made by 0.1.0.673 on Windows 10 Mobile 15254 (2026-11-08),
+  ran at 09:16, 09:29 and 09:42 (its library: `1 APKs`), and from 17:41 on found
+  none (`library: 0 APKs in LocalState\apks, 0 to read (the reports are another
+  build's)`: the folder's `reports.version` had gone with it). Megler's own log
+  was not to be had; the code removed such a folder at any listing of the
+  packages an hour after it was begun -- Megler's Library shown, an app's page.
+  673's package then stood still (its shell opens the app once the library has
+  its entry, `AppShell::poll`); 675's says its APK is not in the shared folder
+  (`appPackage::singleAppProblem`).
+- The same package opened in a file manager (`LocalState\packages\<identity
+  name>.appx` stays where Windows did not install it).
+- An install Windows finished after Megler had given up on it (Megler ended
+  under it, or suspended and its run lost).
+- The package waiting for Windows's installer, before it is installed: its
+  folder went an hour after it was begun, and the package the user opened later
+  found no APK.
+- Update All of Google Play services from Megler's newer APK (a folder of its
+  own, `bundledApks::replacementFor`) refused, and the package made installed
+  another way (a file manager, or Windows after Megler had given up on it):
+  `installed.txt` and the library named the old folder.
+- A folder of a package Megler had not installed itself, whose library entry the
+  user took out of the Library, or replaced with a newer APK not yet installed.
+
+Since 2026-11-09 (`shell/SharedApks.h`, `appPackage::settleSharedApks`):
+
+- **What is written down.** `make` writes the package's full name
+  (`MeglerApp.<...>_<version>_arm__<publisher id>`, as Windows's package manager
+  lists it) into the folder's `made.txt`, a line for each package made with the
+  folder (Update All makes each next package with the same folder), before the
+  package exists: a package whose record cannot be written is not made. Once
+  the package's file is begun, `LocalState\packages\<identity name>.appx.txt`
+  beside it says the folder and full name of the package waiting there for
+  Windows's installer (where the file cannot be begun again -- Windows's
+  installer holding it open, as is thought -- it keeps the record it had); it
+  goes with the file, after Megler's own install or once the package is seen
+  installed.
+- **What stays**, decided at each listing of the packages while no package is
+  being made, by a function of what was read (`sharedApks::plan`):
+  - the folder whose `made.txt` names an installed package's full name, however
+    that package was installed -- but not one made before Megler itself installed
+    the same package from another folder (a newer APK of the app installed with
+    the same Megler: `installed.txt` is written after that install, which
+    replaced the package of that name, and the file of a package made before it
+    is gone, each make writing it anew and Megler's install removing it);
+  - the folder of the package waiting for Windows's installer, while it waits
+    (in this Megler's LocalState: another Megler of the publisher on the same PC,
+    an x86 one beside an x64 one, does not see it, and may remove that folder an
+    hour after it was begun, as before, until the package is installed);
+  - the library's folders, and those begun within the hour (a package being
+    made, by Megler or another Megler of the publisher);
+  - for an installed package made up to 0.1.0.675, which no `made.txt` names,
+    what it may read: `installed.txt`'s folder and those begun after it, or,
+    with no `installed.txt`, every folder of the app's -- until its next package
+    (Update All after an update of Megler) is made and written down; likewise
+    for a package made up to 0.1.0.675 that waits, with no record beside it;
+  - a folder whose `made.txt` cannot be read, and every folder of an installed
+    app whose `installed.txt` cannot be read.
+
+  Every other goes: a later APK's package installed, the app uninstalled, a
+  package never installed, a copy that never finished. Its APK goes first: a
+  folder whose APK an app has open stays whole, `made.txt` with it, for the next
+  time.
+- **A package installed by another than Megler is taken as Megler's own install
+  is.** Where one folder alone was made for an installed package, `installed.txt`
+  is written for it, the package made that waited and is the one installed goes,
+  and the library's entry of the app reads that APK (`Library::adopt`,
+  `ui/SeparateApps.cpp`): Update All makes the next package from it, Uninstall
+  copies it back first, and Google Play services' is registered for the apps.
+  An entry that is Megler's copy of another APK (one picked since, to be
+  installed) is left as it is, and none is made where the library has none (the
+  user took the app out of it). Where two folders were made for one full name --
+  the same Megler made two packages of the app from different APKs, and Megler
+  installed neither after both were made -- which one is read cannot be told:
+  both stay until the app's next package.
+- **The log says each decision once a run**: `app package: apks\<identity>\<token>
+  kept: the installed <full name> was made with it`, `... removed (<size>): <why>`,
+  `app package: apks\<identity>\installed.txt names <token> now: ...`, and
+  `separate apps: the installed <full name>, installed by another than Megler,
+  reads apks\<identity>\<token>: the library's <id> is its APK now`.
+
+Whether the app's own package could tell Megler what it reads (it knows: its
+`MeglerApp.ini`) was considered and left. The packages that lost their APK are
+0.1.0.645's to 0.1.0.675's, whose shell would write nothing; a package made
+since is written down by Megler before it exists, where the app's own record
+would come only at its first start, after a listing that may already have
+removed the folder of a package installed and not yet started; and it would be
+a second writer into the folders Megler removes. What it would add is telling
+which of two folders made for one full name is read, which keeping both
+settles.
+
+*Proven* on a PC (`tools/build-tests.sh win`, `mg_shell_tests`): Open the
+Package first -- the folder of a package waiting for Windows's installer kept
+hours on, and once installed, kept and known (`installed.txt` to name it, the
+library to read it), the package made gone; an install Windows finished after
+Megler had given up on it; Megler's own installs, an older folder of the same
+full name going; Update All refused, then opened; Google Play services from
+Megler's newer APK; two folders of one full name; packages made up to
+0.1.0.675, with `installed.txt` and without, and one waiting with no record;
+what goes; and on the disk, `made.txt` and the record beside the package as
+`make` writes them, a listing read, decided and carried out, a folder whose APK
+is open left whole, each decision said once. *Not tried yet*: the same on a
+phone (below, what to check).
+
+What a user whose app lost its APK so does (Candy Crush's): update Megler, then
+Update All or the app's Update: its package is made again from the library's
+copy, written down, and installed by Megler; its folder stays. Where Windows
+refuses Megler's installs, the app's page offers the package made to Windows's
+installer only while the app is not installed (Open the Package): the app is
+uninstalled from the phone's list of apps first (its private files go with it),
+then installed from Megler's Library and opened in Windows's installer; its
+folder stays then too. Where the library has no copy of the app any more, its
+APK is added again.
+
+On a phone, the log of Megler's listing says it: after Open the Package and a
+return to the Library, `app package: apks\MeglerApp.<...>\installed.txt names
+<token> now: the installed ... was made with it, and installed by another than
+Megler`, `separate apps: ... the library's <id> is its APK now`, and an hour
+and more later `apks\MeglerApp.<...>\<token> kept: the installed ... was made
+with it`; the app's own package starts into its app, its log saying `library: 1
+APKs`, at every start after.
 
 ## A memory card
 

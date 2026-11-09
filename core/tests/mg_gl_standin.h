@@ -8,8 +8,9 @@
  * has "osition" in it, two to four floats in clip space, from client memory or a buffer object. Shaders are not compiled:
  * their attributes and uniforms are read out of their source ("attribute vec4 aPosition;", "uniform vec4 uColor;"), every
  * compile and link succeeds and has a log saying so. glReadPixels gives R, G, B, A, or B, G, R, A with GL_BGRA_EXT, which
- * its extensions list. Contexts of OpenGL ES 2 and 3 are made; one of version 1 is refused unless asked for, as an ANGLE
- * without OpenGL ES 1 refuses it. All contexts share their objects. A texture keeps its pixels (glTexImage2D and
+ * its extensions list. Contexts of OpenGL ES 2 and 3 are made; one of version 1 where asked for (mg_gl_standin_reset) as
+ * ANGLE makes it, only with a configuration -- without one it is refused with EGL_BAD_MATCH, as ANGLE refuses it -- and
+ * otherwise refused, as an EGL without OpenGL ES 1 refuses it. All contexts share their objects. A texture keeps its pixels (glTexImage2D and
  * glTexSubImage2D of RGBA, RGB and RGB 5-6-5); an EGL image of a texture (EGL_KHR_gl_texture_2D_image, which its EGL lists)
  * shares them with a texture made of it (glEGLImageTargetTexture2DOES); a framebuffer object with a texture for its colour
  * is what glClear fills and glReadPixels reads. Anything it does not have is "no such function".
@@ -37,6 +38,8 @@ typedef struct mg_gl_standin_stats {
     i32 contexts, contexts_alive, surfaces, surfaces_alive;
     i32 clears, draws, reads, swaps;
     i32 refused_es1;                   /* version-1 contexts refused */
+    i32 refused_es1_no_config;         /* of them, those made where version 1 is, but asked for without a configuration */
+    void *last_config;                 /* the configuration the last context made was made with (NULL: none) */
     i32 refused_versions;              /* contexts of a version above what it makes (3.0, or 2.0 in the complete mode) refused */
     float clear[4];                    /* the last clear colour */
     i32 largest_es;                    /* the newest version a context was made for */

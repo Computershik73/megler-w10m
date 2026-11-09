@@ -674,7 +674,9 @@ OpenGL ES 2 and 3 and pbuffers in memory, `glClear`, triangles of one colour
 (the program's `vec4` uniform with "olor" in its name, positions from the
 attribute with "osition" in it), shaders whose attributes and uniforms are read
 out of their source, `glReadPixels` as R, G, B, A or B, G, R, A; a context of
-version 1 refused, as an ANGLE without OpenGL ES 1 refuses it; and every
+version 1 made as ANGLE makes it, with a configuration alone (refused without
+one with `EGL_BAD_MATCH`), and in the runs whose shell refuses the frames
+("readback") refused, as an EGL without OpenGL ES 1 refuses it; and every
 surface with a keyed mutex, as gecko-w10m's ANGLE gives every pbuffer, what is
 done with one that is not held dropped (docs/ARCHITECTURE.md, "Keyed
 mutexes"). Every Java app of the tests runs with it.
@@ -748,7 +750,9 @@ EGL14 pbuffer on a thread of the app's own.
   with the context current.
 - A thread of the app's on the `SurfaceView`, as older apps do: `EGL10`, six
   configurations for "565 with depth 16", one of them exactly 565, a context
-  with no attributes (version 1: here 2, and the log says so once), a window
+  with no attributes (version 1, made with the configuration of the surface,
+  as ANGLE makes it: "OpenGL ES-CM 1.1 (stand-in)"; in the readback run, where
+  the stand-in has no version 1, 2, and the log says so once), a window
   surface on the `SurfaceHolder` the view's size, `GL10` clearing to green,
   five swaps.
 - The picture: the frame under the hole, the triangle the right way up, the
@@ -1072,6 +1076,24 @@ original's context did nothing with a result receiver and its receivers kept no
 result: Play Store sends its own receivers one when it takes an install up. The
 data app's step "ordered-broadcast" checks the order, the result passed on and
 added to from another thread, and the result receiver's thread.
+
+**Who sent a broadcast.** Android 14 tells a receiver who sent the broadcast
+(`BroadcastReceiver.getSentFromUid` and `getSentFromPackage`, and its
+`PendingResult`'s) when the sender shared it:
+`BroadcastOptions.makeBasic().setShareIdentityEnabled(true)`, whose
+`toBundle()` goes with the broadcast (`sendBroadcast(intent, permission,
+options)`, the ordered ones' overloads with options). The options' bundle
+came back empty here and both methods said no one, ever: Messenger sends its
+own receivers its broadcasts with its identity shared, and refused each one
+that came from no one ("InternalIntentScope: Access denied. ...
+StellaContactBroadcastReceiver cannot receive broadcasts from null", 21 times
+in a user's run of 673). The options now go into their bundle and come back
+out of it (the overlay's `BroadcastOptions`), and every receiver hears a
+broadcast with a `PendingResult` of its own (`megler.Broadcasts`), which has
+the sender -- the sending context's uid and package (`sharedSender`) --
+where the options share it, and no one (`Process.INVALID_UID`, null) where
+they do not, as on Android. The data app's step "broadcast-identity" sends
+with the identity shared, with options that do not share it, and with none.
 
 ### The time zone (the runtime on libcore and the app, under qemu-arm)
 
@@ -2377,7 +2399,15 @@ Trusted Root CA, which Android 9 does not have, from their own `res/raw`. The
 data app's steps "network-trust", "network-trust-domains" and
 "network-trust-pins" show it with a test authority of the app's own: trusted
 for localhost and the names its configuration gives it, 127.0.0.1 refused,
-pins matched, missed, expired and overridden.
+pins matched, missed, expired and overridden. A server's certificates the
+`RootTrustManager` refuses are said once a host, with why and with the issuer
+of the last of them ("W/Megler: TLS: <host>'s certificates refused (N of them,
+the last issued by ...): ..."): the system's authorities are Android 9's 137
+of 2018, and a server whose chain reaches only a newer authority is refused
+here where Android 14 takes it. Chromium's own line ("cr_X509Util: Failed to
+validate the certificate chain", the WebView's; Google Play services' Cronet
+says "cn_X509Util") names no server: Transit's WebView was refused eight at
+every start (0.1.0.675), whose they were not known.
 
 What follows is what stands in where conscrypt's library is not in the root
 (an Android root made before the library was built, or the PC's own build of
@@ -2481,6 +2511,45 @@ Besides `DelegateLastClassLoader` and TLS's newer methods there is
 two default methods of Java 9 (`update(byte[])`, `update(ByteBuffer)`). The
 data app's "crc32c" step checks the standard check value, the defaults, a
 direct buffer and `Adler32` through the interface.
+
+**Java 9 and 10's collection factories** are added that way to Android 9's
+`List`, `Set` and `Map` (Android's `Map.java` says it took them out):
+`List.of` and `Set.of` of 0 to 10 elements and of an array, `Map.of` of 0 to 10
+pairs, `Map.ofEntries`, `Map.entry`, and the three `copyOf`. Android has them
+from Android 11, and Megler says it is Android 14: Amazon Shopping ended at its
+start with `NoSuchMethodError: java/util/Map.of(Object, Object)` (and
+`Set.of(Object)`), Shazam with `Map.of()` and Firebase's `Map.entry`. What they
+make is `java.util.ImmutableCollections`, Megler's own, as Java documents the
+collections: nulls refused with `NullPointerException`, by the factories and by
+`contains`, `indexOf`, `containsKey`, `containsValue` and `get` asked for null,
+as OpenJDK's are; an element of `Set.of` or a key given twice refused with
+`IllegalArgumentException` (`Set.copyOf` keeps one); every mutator refused with
+`UnsupportedOperationException`, an empty collection's, the iterators', a map's
+views' and entries' too; a list is `RandomAccess`; a set and a map go in the
+order they were given; the lists, sets and maps are `Serializable`, through a
+proxy that makes them again with the same checks (`Map.entry`'s entry is not,
+as documented); `copyOf` of one of them is that one. Java 10's
+`Collectors.toUnmodifiableList`, `toUnmodifiableSet` and `toUnmodifiableMap`
+(Android 13) collect into them (a key mapped twice is an
+`IllegalStateException`, unless a merge function is given), and Java 16's
+`Stream.toList()` (Android 14), a default method as Java's is, gives an
+unmodifiable list that keeps nulls.
+
+Every class the overlay replaces keeps every member Android 9's has: the
+runtime names none of them (nothing in `core/src/dvm` asks for `java.util`'s
+collections or streams), and dexdump's lists of `core-oj.dex` and of the
+overlay agree, but for five of `Collectors`' lambdas, which javac 8 names
+otherwise and only `Collectors` calls. The overlay is compiled with JDK 8's own
+classes for the platform (`javac -cp android.jar`), so what an overlaid class
+calls of its package's hidden classes (`Stream`'s static methods, of `Streams`
+and `StreamSpliterators`) is JDK 8's when it is compiled and core-oj's when it
+runs, of the same names and types; every such reference was found in Android
+9's boot class path. The data app's steps "collection-factories" and
+"unmodifiable-collectors" call each of them by reflection (the app is built
+against Android 10's `android.jar`): each arity, the nulls and duplicates
+refused, every mutator, the copies, a round trip through `ObjectOutputStream`,
+a collector's parts combined as a parallel stream combines them, a merge in the
+stream's order.
 
 **Methods core-libart's classes lack** cannot be added that way: core-libart
 (ICU4J among it) is a file of DEX code here, without its sources. A reference
@@ -3940,6 +4009,15 @@ What a Java app asks of the phone beyond its window goes to the shell through
   each time its sign-in began: at every start signed out on the HP Elite x3
   (0.1.0.671), and on an Italian user's phone, which went from the sign-in
   back to that screen again and again. The data app's step `component-state`.
+  And `checkSignatures` of such a package (or of a uid with none) is
+  `SIGNATURE_UNKNOWN_PACKAGE`, as Android answers; two packages the phone has
+  are said to match, their certificates not compared. Every pair matched
+  before: Google Play services 26.41 takes a match of
+  `com.google.android.pixelsystemservice` with `android` for a Pixel's system
+  service on the phone, asks for its `ApplicationInfo` next, and logged
+  "E/BusinessScope: Unhandled exception in #1 block ...
+  NameNotFoundException: com.google.android.pixelsystemservice" in the apps
+  that host it (Transit, 0.1.0.675). The data app's step `check-signatures`.
 
 APKs, .apks and .xapk files also open in Megler from the phone's file
 manager (a file type association of Megler's package, taken out of an app's
@@ -5408,6 +5486,20 @@ on a looper thread of its own and takes it back with `next()`.
   Maps module's own Google certificates among them (0.1.0.671). The data
   app's step "provider-client-file" reads its provider's file through a
   client.
+- `android/graphics/Bitmap.java`, `writeToParcel` and `CREATOR`: a bitmap
+  goes into a Parcel and the reader gets one of its own, the same pixels,
+  size, config, density and mutability, which stays when the writer recycles
+  its own, as on Android -- here the copy itself in the parcel's table of the
+  process's objects (`Parcel.writeValue`), not its bytes. `CREATOR` was null
+  and `writeToParcel` the interface's, which writes nothing. Google Play
+  services' maps client in an app writes a marker's picture so
+  (`BitmapDescriptorFactory.fromBitmap`: an int, then `writeToParcel`) and
+  its maps module reads it with `Bitmap.CREATOR`
+  (`IBitmapDescriptorFactoryDelegate`, transaction 6): Transit ended with a
+  `NullPointerException` ("Parcelable$Creator.createFromParcel ... on a null
+  object reference" in the module's `m6.ev.a`) as it put a bus route on its
+  map (0.1.0.675). The data app's step "bitmap-parcel" writes two so and
+  reads them back.
 - `android/app/usage/StorageStatsManager.java`, two methods in their two
   forms: `getTotalBytes` and `getFreeBytes` were signatures answering 0.
   Since Android 8 this is where an app asks how large the phone's storage is
@@ -5783,6 +5875,33 @@ on a looper thread of its own and takes it back with `next()`.
   main thread a message later, never ran ("No responseUri present", 576).
   The crash app's `Gate` posts work from its `onPause` as it finishes, which
   finds it not destroyed.
+  And an intent for the phone's home screen, `ACTION_MAIN` with
+  `CATEGORY_HOME` (an app sending itself home), sends the app to the back as
+  `moveTaskToBack` does (`AppRunner.isHome`): the launcher coming in front
+  on Android is Windows' Start coming in front here, and nothing of the app
+  finishes. There was no home: the intent found the app's own launcher
+  activity, because the manifest's filters were matched without their
+  categories (`megler.Manifest.matches` now wants every category of the
+  intent in the filter, as `IntentFilter.matchCategories`). Facebook's Back
+  on Facebook Lite's sign-in screen and on Messenger's first-run screen goes
+  home through its launcher of activities of other signatures
+  (`DifferentKeyIntentScope`); it removed that one as its own, found nothing
+  else ("No matching different-signature components", twice), and went on as
+  without a home: Facebook Lite ended its process at its sign-in screen's
+  Back (status 0, three runs of a user's on 673), and Messenger finished its
+  first-run screen (`NeueNuxActivity`), its main activity below finished as
+  well, and the app ended. The hello app's third Back goes home so (none of
+  its own activities is the home) and the app goes to the back; the data
+  app's step "intent-categories" resolves the home, the launcher's intent and
+  an unknown category.
+
+- `android/app/Activity.java`, `getCallingActivity` and `getCallingPackage`:
+  who started the activity for a result, which its `setResult` answers, and
+  nobody when it was started without one, as on Android; they named whoever
+  started it. Android 14's `getLaunchedFromPackage` and `getLaunchedFromUid`
+  name the app itself for an activity it launched, for a result or not. The
+  crash app's `Gate`, started for a result, has `First` for its caller; its
+  `Top`, started without one, has none.
 
 - `android/widget/LinearLayout.java`, four statements: what a child with a
   weight and a size of 0 is given when the layout's own size is not exact.
@@ -6072,6 +6191,27 @@ on a looper thread of its own and takes it back with `next()`.
   and a file's descriptor, closes the originals, writes through the
   duplicate, detaches it and adopts it again.
 
+- `android/os/Parcel.java`, `marshall` and `unmarshall`, which carry the
+  parcel's table of objects with its bytes. A parcel here keeps what
+  Android would write out as bytes -- lists, maps, bundles, Parcelables,
+  CharSequences -- as objects in a table, and its bytes hold their numbers
+  in it. `marshall` gave the bytes alone, and a parcel unmarshalled from them
+  had no table: every object read back as null. Facebook keeps an activity's
+  Parcelables as their marshalled bytes
+  (`com.facebook.base.activity.parcel.OpaqueParcelable`) and restores them
+  with `unmarshall`, `setDataPosition(0)` and the creator: Messenger, opening
+  a conversation, read null for the list its photo editor's layers had been
+  written as ("ActivityParcelableHacks: Failed to restore"), and its
+  composer's camera configuration ended the app ("Required value was null",
+  a user's 12-minute run of 673). Now the bytes of a parcel with objects end
+  with a trailer of 16 bytes (a mark, a number, the objects' count, a mark),
+  the table is kept under the number (the last 16384 tables), and `unmarshall`
+  takes the trailer off and gives the parcel the same objects. A parcel
+  without objects marshals to its bytes alone, as before; bytes kept past the
+  process find no table and read nulls, as before. The data app's step
+  "parcel-marshall" writes a list and a bundle, marshals, unmarshals into
+  another parcel and reads them, and marshals a parcel of data alone.
+
 - `android/os/UserHandle.java`, the arithmetic of a uid, which is Android's:
   a uid is a user's id times `PER_USER_RANGE` plus an app's id, so
   `getAppId(uid)` is the remainder, `getUid(user, appId)` the sum, and
@@ -6178,6 +6318,18 @@ on a looper thread of its own and takes it back with `next()`.
   features): the phone's cameras through Android's old camera API, which VK
   mp3 mod's sign-in by QR code (budiyev's code-scanner over ZXing) and most
   scanners use. "The cameras" below has all of it.
+
+- `android/content/pm/PackageManager.java`, Android 13's calls with a flags
+  object (`ResolveInfoFlags`, `ComponentInfoFlags`, `PackageInfoFlags`,
+  `ApplicationInfoFlags`), which are the calls with an int, the flags passed
+  on. Some passed 0 (`getInstalledPackages` gave no signatures asked for that
+  way), and `queryIntentServices`, `resolveService`, `resolveContentProvider`,
+  `queryBroadcastReceivers`, `getReceiverInfo`, `getProviderInfo`,
+  `getPackageUid`, `getInstalledApplications` and `queryContentProviders`
+  with one were generated stubs that found nothing: Facebook Lite asks
+  `queryIntentServices` and `resolveContentProvider` so, and Messenger
+  `resolveContentProvider`. The data app's step "package-flags" asks each
+  for the app's own service, provider, receivers, uid and signatures.
 
 - `android/media/MediaMetadata.java`, in place of the generated stub, whose
   getters answered null and 0, whose `writeToParcel` wrote nothing and whose

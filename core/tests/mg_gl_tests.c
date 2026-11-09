@@ -326,7 +326,7 @@ static void test_version(void)
 /* The core's log while a test listens: lines with "egl: " in them counted, by kind, and handed on to the sink that was there. */
 static mg_log_sink t_log_was;
 static void *t_log_was_user;
-static int t_versions_said, t_refusals_said;
+static int t_versions_said, t_refusals_said, t_es1_said;
 static char t_version_line[300];
 
 static void listen_egl(int level, const char *line, void *user)
@@ -337,6 +337,7 @@ static void listen_egl(int level, const char *line, void *user)
         if (!t_version_line[0]) mg_strlcpy(t_version_line, line, sizeof(t_version_line));
     }
     if (strstr(line, "egl: eglCreateContext was refused")) t_refusals_said++;
+    if (strstr(line, "egl: OpenGL ES 1: its contexts are made with the configuration of their window surface")) t_es1_said++;
     if (t_log_was) t_log_was(level, line, t_log_was_user);
 }
 
@@ -389,6 +390,64 @@ static void test_context_versions(void)
     CHECK(strstr(t_version_line, "OpenGL ES 3.2 (lost on a reset) asked for and refused (EGL_BAD_MATCH): this display makes OpenGL ES 3.0 at most") != NULL);
     CHECK(ctx != NULL);
     if (ctx) destroy(d, ctx);
+}
+
+/*
+ * OpenGL ES 1 as ANGLE makes it: only for a context made with a configuration, where every other version is made without one
+ * here (EGL_KHR_no_config_context). The stand-in makes version 1 so when asked to. A version-1 context -- asked for with no
+ * version, as EGL has it, and with 1 -- is made, with the configuration of its window surface (mg_egl.c, context_config: the
+ * one given, an 8888 one), and said once; one of version 2 is still made without one; none of them refused. Where version 1
+ * is not made at all, its refusal is said, as before. (Made without a configuration, every version-1 context was refused by
+ * ANGLE, and an app's GL10 drew in a context of version 2, where its calls do nothing: Google Maps' legacy renderer.)
+ */
+static void test_context_es1(void)
+{
+    typedef void *(*fn_create)(void *, void *, void *, const int *);
+    void *(*get_display)(void *) = (void *(*)(void *))mg_egl_resolve("eglGetDisplay");
+    unsigned (*choose)(void *, const int *, void **, int, int *) = (unsigned (*)(void *, const int *, void **, int, int *))mg_egl_resolve("eglChooseConfig");
+    fn_create create = (fn_create)mg_egl_resolve("eglCreateContext");
+    unsigned (*destroy)(void *, void *) = (unsigned (*)(void *, void *))mg_egl_resolve("eglDestroyContext");
+    static const int want[] = { 0x3040 /* EGL_RENDERABLE_TYPE */, 0x4 /* OpenGL ES 2 */, 0x3038 };
+    static const int es1[] = { 0x3098, 1, 0x3038 }, es2[] = { 0x3098, 2, 0x3038 };
+    mg_gl_standin_stats st;
+    void *d, *config = NULL, *none = NULL, *one = NULL, *two = NULL, *refused;
+    void *none_with = (void *)1, *one_with = (void *)1, *two_with = (void *)1;
+    int n = 0;
+    say("EGL: contexts of OpenGL ES 1 made with their window's configuration, as ANGLE makes version 1 only with one; 2 without");
+    CHECK(get_display && choose && create && destroy);
+    if (!get_display || !choose || !create || !destroy) return;
+    d = get_display(NULL);
+    CHECK(choose(d, want, &config, 1, &n) && n == 1 && config != NULL);
+    mg_log_get_sink(&t_log_was, &t_log_was_user);
+    t_versions_said = t_refusals_said = t_es1_said = 0;
+    mg_log_set_sink(listen_egl, NULL);
+    mg_gl_standin_reset(true, true);
+    none = create(d, config, NULL, NULL);
+    mg_gl_standin_stats_get(&st);
+    none_with = st.last_config;
+    one = create(d, config, NULL, es1);
+    mg_gl_standin_stats_get(&st);
+    one_with = st.last_config;
+    two = create(d, config, NULL, es2);
+    mg_gl_standin_stats_get(&st);
+    two_with = st.last_config;
+    say("  version 1 asked with no version: %s, with 1: %s, version 2: %s; %d version-1 contexts refused; the note said %d times",
+        none ? "made" : "refused", one ? "made" : "refused", two ? "made" : "refused", (int)st.refused_es1, t_es1_said);
+    CHECK(none && none_with == config);
+    CHECK(one && one_with == config);
+    CHECK(two && two_with == NULL);
+    CHECK(st.refused_es1 == 0 && st.refused_es1_no_config == 0);
+    CHECK(t_es1_said == 1 && t_refusals_said == 0);
+    if (none) destroy(d, none);
+    if (one) destroy(d, one);
+    if (two) destroy(d, two);
+    /* An EGL that does not make version 1: refused, and said as a refusal. */
+    mg_gl_standin_reset(true, false);
+    refused = create(d, config, NULL, NULL);
+    mg_log_set_sink(t_log_was, t_log_was_user);
+    mg_gl_standin_stats_get(&st);
+    CHECK(refused == NULL && st.refused_es1 == 1 && t_refusals_said == 1);
+    if (refused) destroy(d, refused);
 }
 
 /*
@@ -1575,6 +1634,7 @@ int mg_gl_natives_tests_run(mg_test_sink sink, void *user, int *checks)
     mg_java_gl_reset();
     test_version();
     test_context_versions();
+    test_context_es1();
     test_hardware_buffers();
     test_webview_display();
     mg_egl_webview_own_display(false);

@@ -43,6 +43,9 @@
 // READ_CALL_LOG as well and without it to the others (a receiver's permissions are its package's, megler.Phone.holds).
 // And a receiver registered for the Bluetooth radio's broadcasts (android.bluetooth.*) starts the framework's thread that
 // hears the radio (megler.Bluetooth), as the adapter's first use does: an app that only listens hears the radio turn.
+// And each receiver hears a broadcast with a PendingResult of its own, which says who sent it (Android 14's getSentFromUid
+// and getSentFromPackage) where the sender's options share its identity (BroadcastOptions.setShareIdentityEnabled):
+// Messenger's own receivers refuse a broadcast of its own that comes from no one (sharedSender).
 // Everything else is the original's, unchanged.
 package megler;
 
@@ -116,23 +119,48 @@ public final class Broadcasts {
         return b;
     }
     public static void unregister(BroadcastReceiver r) { synchronized (sReceivers) { for (int i = sReceivers.size() - 1; i >= 0; i--) if (sReceivers.get(i)[0] == r) sReceivers.remove(i); } }
-    public static void send(Context from, Intent i) { send(from, i, null, null, false); }
+    public static void send(Context from, Intent i) { send(from, i, null, null, false, null); }
     /** To the receivers that hold `permission`. */
-    public static void send(Context from, Intent i, String permission) { send(from, i, permission, null, false); }
+    public static void send(Context from, Intent i, String permission) { send(from, i, permission, null, false, null); }
+    /** To the receivers that hold `permission`, with the sender's options (BroadcastOptions.toBundle, or null). */
+    public static void send(Context from, Intent i, String permission, Bundle options) { send(from, i, permission, null, false, options); }
     /** To the receivers that hold `permission` and, with `also` not null, that hold it as well (`holdsAlso`) or do not. */
-    public static void send(Context from, Intent i, String permission, String also, boolean holdsAlso) {
+    public static void send(Context from, Intent i, String permission, String also, boolean holdsAlso) { send(from, i, permission, also, holdsAlso, null); }
+    private static void send(Context from, Intent i, String permission, String also, boolean holdsAlso, Bundle options) {
         // A broadcast for microG's package goes to microG's receivers (megler.MicroG), as Android sends it to that app.
         if (MicroG.send(from, i)) return;
         // And one of the implicit broadcasts Google's system configuration lets through (CHECKIN_COMPLETE) to its receivers too.
         MicroG.sendImplicit(from, i);
         ArrayList<Object[]> targets = targets(from, i, permission, also, holdsAlso);
         Handler main = new Handler(Looper.getMainLooper());
+        final Object[] sender = sharedSender(from, options);
         // (Each receiver has the intent as a Parcel between processes would make it for it: the objects of another class scope
-        // among its extras made again by its own classes, megler.Processes.forLoader.)
+        // among its extras made again by its own classes, megler.Processes.forLoader.) Each hears it with a PendingResult of
+        // its own, as on Android: what goAsync takes, and who sent the broadcast (getSentFromUid) where the sender shared it.
         for (Object[] target : targets) (target[3] != null ? (Handler) target[3] : main).post(() -> {
             BroadcastReceiver r = (BroadcastReceiver) target[0];
-            r.onReceive((Context) target[2], Processes.forLoader(i, r.getClass().getClassLoader()));
+            BroadcastReceiver.PendingResult p = r.meglerBegin(false, 0, null, null, null);
+            if (sender != null) p.meglerSentFrom((Integer) sender[0], (String) sender[1]);
+            try { r.onReceive((Context) target[2], Processes.forLoader(i, r.getClass().getClassLoader())); } finally { r.meglerEnd(p); }
         });
+    }
+
+    /*
+     * Who sends a broadcast with these options, {uid, package}, when the options share it with the receivers (Android 14's
+     * BroadcastOptions.setShareIdentityEnabled, which BroadcastReceiver.getSentFromUid and getSentFromPackage then give); null
+     * when they do not, and a receiver then hears it from no one, as on Android. Messenger sends its own receivers its
+     * broadcasts with the identity shared, and refuses one that comes from no one (InternalIntentScope: "cannot receive
+     * broadcasts from null"): the options' bundle came here empty, and every broadcast came from no one.
+     */
+    private static Object[] sharedSender(Context from, Bundle options) {
+        android.app.BroadcastOptions o = android.app.BroadcastOptions.fromBundleNullable(options);
+        if (o == null || !o.isShareIdentityEnabled() || from == null) return null;
+        int uid = android.os.Process.myUid();
+        try {
+            android.content.pm.ApplicationInfo a = from.getApplicationInfo();
+            if (a != null && a.uid > 0) uid = a.uid;
+        } catch (RuntimeException e) { }
+        return new Object[] { uid, from.getPackageName() };
     }
 
     /**
@@ -145,6 +173,10 @@ public final class Broadcasts {
      * takes an install up, never heard its answer (package 543).
      */
     public static void sendOrdered(Context from, Intent i, String permission, BroadcastReceiver resultReceiver, Handler scheduler, int code, String data, Bundle extras) {
+        sendOrdered(from, i, permission, null, resultReceiver, scheduler, code, data, extras);
+    }
+    /** The same with the sender's options (BroadcastOptions.toBundle, or null): who sent it is told where they share it. */
+    public static void sendOrdered(Context from, Intent i, String permission, Bundle options, BroadcastReceiver resultReceiver, Handler scheduler, int code, String data, Bundle extras) {
         final Context ctx = AppRunner.application() != null ? AppRunner.application() : from;
         ArrayList<Object[]> targets;
         if (MicroG.send(from, i)) targets = new ArrayList<>();
@@ -152,16 +184,17 @@ public final class Broadcasts {
             MicroG.sendImplicit(from, i);
             targets = targets(from, i, permission, null, false);
         }
-        next(targets, 0, i, code, data, extras, resultReceiver, scheduler, ctx);
+        next(targets, 0, i, code, data, extras, resultReceiver, scheduler, ctx, sharedSender(from, options));
     }
 
     /** The ordered broadcast's receiver number `at` given the result, or, past the last (or ended), its result receiver. */
     private static void next(final ArrayList<Object[]> targets, final int at, final Intent i, final int code, final String data, final Bundle extras,
-                             final BroadcastReceiver last, final Handler scheduler, final Context ctx) {
+                             final BroadcastReceiver last, final Handler scheduler, final Context ctx, final Object[] sender) {
         final Handler main = new Handler(Looper.getMainLooper());
         if (at >= targets.size()) {
             if (last != null) (scheduler != null ? scheduler : main).post(() -> {
                 BroadcastReceiver.PendingResult p = last.meglerBegin(false, code, data, extras, null);
+                if (sender != null) p.meglerSentFrom((Integer) sender[0], (String) sender[1]);
                 try { last.onReceive(ctx, i); } finally { last.meglerEnd(p); }
             });
             return;
@@ -172,8 +205,9 @@ public final class Broadcasts {
             final BroadcastReceiver.PendingResult[] mine = new BroadcastReceiver.PendingResult[1];
             mine[0] = r.meglerBegin(true, code, data, extras, () -> {
                 BroadcastReceiver.PendingResult p = mine[0];
-                next(targets, p.getAbortBroadcast() ? targets.size() : at + 1, i, p.getResultCode(), p.getResultData(), p.getResultExtras(false), last, scheduler, ctx);
+                next(targets, p.getAbortBroadcast() ? targets.size() : at + 1, i, p.getResultCode(), p.getResultData(), p.getResultExtras(false), last, scheduler, ctx, sender);
             });
+            if (sender != null) mine[0].meglerSentFrom((Integer) sender[0], (String) sender[1]);
             try { r.onReceive((Context) target[2], Processes.forLoader(i, r.getClass().getClassLoader())); } finally { r.meglerEnd(mine[0]); }
         });
     }

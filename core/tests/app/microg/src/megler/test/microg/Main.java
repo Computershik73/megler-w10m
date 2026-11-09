@@ -509,13 +509,63 @@ public class Main extends Activity {
             for (android.accounts.Account a : accounts) if (name.equals(a.name)) heard.countDown();
         };
         am.addOnAccountsUpdatedListener(listener, null, false);
+        // While someone listens, the accounts' file is looked at every two seconds, on a thread of its own: the main thread goes on
+        // while another thread holds the accounts' lock. (On the main thread, the look waited for the lock there: TikTok Lite's
+        // main thread did so a quarter of its time while Google Play services' calls held it, 0.1.0.675.) The lock is held here
+        // for longer than a look's period, and the main thread is asked for something every 50 ms meanwhile.
+        {
+            final android.os.Handler main = new android.os.Handler(android.os.Looper.getMainLooper());
+            final java.util.concurrent.atomic.AtomicLong worst = new java.util.concurrent.atomic.AtomicLong();
+            synchronized (Class.forName("megler.Accounts")) {
+                long end = android.os.SystemClock.uptimeMillis() + 4500;
+                while (android.os.SystemClock.uptimeMillis() < end) {
+                    final long posted = android.os.SystemClock.uptimeMillis();
+                    main.post(() -> worst.accumulateAndGet(android.os.SystemClock.uptimeMillis() - posted, Math::max));
+                    Thread.sleep(50);
+                }
+            }
+            final java.util.concurrent.CountDownLatch drained = new java.util.concurrent.CountDownLatch(1);
+            main.post(drained::countDown);
+            check(drained.await(30, java.util.concurrent.TimeUnit.SECONDS) && worst.get() < 1500,
+                  "the main thread goes on while the accounts' lock is held: it answered in " + worst.get() + " ms at worst");
+        }
         android.accounts.Account account = new android.accounts.Account(name, type);
         check(am.addAccountExplicitly(account, null, null), "account added");
         check(!am.addAccountExplicitly(account, null, null), "account added once");
         check(java.util.Arrays.asList(am.getAccountsByType(type)).contains(account), "account listed");
         check(heard.await(10, java.util.concurrent.TimeUnit.SECONDS), "listener told of the account");
+        // An account another process adds (microG's sign-in in Google Play services' own package writes the shared file, as
+        // Megler's accounts write it: beside it, then renamed over it) is heard through the file's look, and told on the main thread.
+        java.io.File accountsFile = new java.io.File("/data/megler-services/accounts/accounts.json");
+        final String outsider = "outside.megler.test@example.com";
+        final java.util.concurrent.CountDownLatch heardOutside = new java.util.concurrent.CountDownLatch(1);
+        final boolean[] toldOnMain = { false };
+        android.accounts.OnAccountsUpdateListener outsideListener = accounts -> {
+            for (android.accounts.Account a : accounts) if (outsider.equals(a.name)) {
+                toldOnMain[0] = android.os.Looper.myLooper() == android.os.Looper.getMainLooper();
+                heardOutside.countDown();
+            }
+        };
+        am.addOnAccountsUpdatedListener(outsideListener, null, false);
+        {
+            byte[] bytes = new byte[(int) accountsFile.length()];
+            try (java.io.FileInputStream in = new java.io.FileInputStream(accountsFile)) {
+                int n = 0, got;
+                while (n < bytes.length && (got = in.read(bytes, n, bytes.length - n)) > 0) n += got;
+            }
+            org.json.JSONObject kept = new org.json.JSONObject(new String(bytes, "UTF-8"));
+            kept.getJSONArray("accounts").put(new org.json.JSONObject().put("name", outsider).put("type", type)
+                    .put("data", new org.json.JSONObject()).put("tokens", new org.json.JSONObject()));
+            java.io.File next = new java.io.File(accountsFile.getPath() + ".test");
+            try (java.io.FileOutputStream out = new java.io.FileOutputStream(next)) { out.write(kept.toString().getBytes("UTF-8")); }
+            check(next.renameTo(accountsFile), "the accounts' file written as another process writes it");
+        }
+        check(heardOutside.await(15, java.util.concurrent.TimeUnit.SECONDS) && toldOnMain[0],
+              "an account another process added is heard (told on the main thread: " + toldOnMain[0] + ")");
+        am.removeOnAccountsUpdatedListener(outsideListener);
+        check(am.removeAccountExplicitly(new android.accounts.Account(outsider, type)), "the other process's account removed");
         am.removeOnAccountsUpdatedListener(listener);
-        check(new java.io.File("/data/megler-services/accounts/accounts.json").isFile(), "accounts kept in the services' shared folder");
+        check(accountsFile.isFile(), "accounts kept in the services' shared folder");
         am.setUserData(account, "megler", "1");
         check("1".equals(am.getUserData(account, "megler")), "user data");
         am.setAuthToken(account, "probe", "token-1");

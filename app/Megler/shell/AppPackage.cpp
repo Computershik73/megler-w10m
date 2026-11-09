@@ -13,6 +13,7 @@
 #include "shell/PickedFile.h"
 #include "shell/Placement.h"
 #include "shell/Platform.h"
+#include "shell/SharedApks.h"
 #include "shell/ShellLog.h"
 #include "shell/Strings.h"
 
@@ -711,10 +712,26 @@ Made make(const ApkEntry& entry, const std::function<void(const std::string&)>& 
     std::wstring folder;
     if (const std::string error = keepInShared(entry, identity, splits, picked, progress, folder); !error.empty()) return fail(error);
     made.apkFolder = folder.substr(shared.size() + 1);
+    // Which package is made with the folder, written down in it before the package exists (shell/SharedApks.h): a package
+    // installed by another than Megler -- Windows's own installer (Open the Package), a file manager, Windows after Megler gave
+    // up on it -- is known by its full name at the next listing, and its folder kept. Until this was written, such a folder was
+    // removed an hour after it was begun, which installed.txt and the library did not name (a user's Candy Crush Saga, 673).
+    if (!sharedApks::recordMade(folder, made.fullName))
+        return fail(format("The record of the package beside its APK in the shared folder could not be written (error %lu).", GetLastError()));
 
     progress(format("Packing %u files of Megler…", unsigned(parts.size())));
     megler_appx* a = megler_appx_begin(narrow(made.appx).c_str(), err, sizeof(err));
     if (!a) return fail(std::string("The package could not be begun: ") + err);
+    // And beside the package's file, which Windows's own installer may install whenever the user hands it the file: the folder
+    // its app reads, kept while it waits. Written once the file is begun (a package Windows's installer holds open is not
+    // begun again, and keeps the record it had); one that cannot be written goes, and every folder the app's package may read
+    // is kept meanwhile, as for a package made before records.
+    if (!sharedApks::recordWaiting(made.appx, made.apkFolder, made.fullName)) {
+        shellLog::write(format("app package: %s.txt could not be written (error %lu): while the package waits, every folder of the app's "
+                               "APKs it may read is kept",
+                               narrow(made.appx).c_str(), GetLastError()));
+        files::remove(made.appx + L".txt");
+    }
     // (A failure on the way makes the rest fail at once; finish says what it was.)
     for (const auto& [name, path] : parts) {
         bool drawn = false;
@@ -1535,41 +1552,20 @@ void sharedApkInstalled(const Made& made) {
                                narrow(record).c_str(), GetLastError()));
 }
 
-void removeUnusedSharedApks(const std::vector<InstalledApp>& installed, const std::vector<std::wstring>& used) {
+std::vector<sharedApks::Known> settleSharedApks(const std::vector<InstalledApp>& installed, const std::vector<std::wstring>& read) {
+    if (isSingleApp()) return {};
     const std::wstring shared = sharedFolder();
-    if (shared.empty()) return;
-    const std::wstring apks = shared + L"\\apks";
+    if (shared.empty()) return {};
+    std::vector<sharedApks::Installed> packages;
+    for (const InstalledApp& app : installed) packages.push_back({app.identity, app.fullName});
     FILETIME time;
     GetSystemTimeAsFileTime(&time);
-    const uint64_t now = (uint64_t(time.dwHighDateTime) << 32) | time.dwLowDateTime, hour = 36000000000ull;
-    uint64_t freed = 0;
-    unsigned open = 0;
-    for (const auto& identity : files::listFolders(apks, L"*")) {
-        const std::wstring dir = apks + L"\\" + identity;
-        const bool isInstalled = std::any_of(installed.begin(), installed.end(), [&](const InstalledApp& a) { return widen(a.identity) == identity; });
-        std::string current;
-        if (!isInstalled) files::remove(dir + L"\\installed.txt");
-        else if (!files::read(dir + L"\\installed.txt", current)) current.clear();
-        for (const auto& token : files::listFolders(dir, L"*")) {
-            const std::wstring folder = dir + L"\\" + token;
-            if ((!current.empty() && narrow(token) == current) ||
-                std::any_of(used.begin(), used.end(), [&](const std::wstring& u) { return _wcsicmp(u.c_str(), folder.c_str()) == 0; }))
-                continue;
-            // A folder of the last hour may be a package's being made, which nothing names yet: its name begins with the time
-            // it was begun at (keepInShared).
-            const uint64_t begun = token.size() >= 16 ? std::wcstoull(token.substr(0, 16).c_str(), nullptr, 16) : 0;
-            if (begun && (begun > now || now - begun < hour)) continue;
-            const uint64_t size = files::size(folder + L"\\app.apk") + files::folderSize(folder + L"\\app.apk.splits");
-            if (files::removeTree(folder))
-                freed += size;
-            else
-                open++;
-        }
-        RemoveDirectoryW(dir.c_str()); // (only when nothing is left in it)
-    }
-    if (freed || open)
-        shellLog::write("app package: apps' APKs no package and no library entry uses removed from the shared folder, " + formattedByteCount(freed) +
-                        (open ? format("; %u still open in an app, left for the next time", open) : std::string()));
+    const uint64_t now = (uint64_t(time.dwHighDateTime) << 32) | time.dwLowDateTime;
+    // (The packages made and not installed by Megler wait where make puts them.)
+    const std::wstring made = platform::localStateDirectory() + L"\\packages";
+    const sharedApks::Plan plan = sharedApks::plan(sharedApks::look(shared, made, read), packages, now);
+    sharedApks::apply(plan, shared, made);
+    return plan.known;
 }
 
 bool meglersStorageShared() {

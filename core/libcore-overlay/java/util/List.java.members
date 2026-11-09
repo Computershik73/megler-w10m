@@ -1,0 +1,59 @@
+
+    // Megler: Java 9's List.of and Java 10's List.copyOf, which Android has from Android 11 (API 30) and Android 9's List has
+    // not; apps built for a later Android call them as they start (Amazon Shopping's Set.of and Map.of beside them ended on a
+    // NoSuchMethodError). Unmodifiable lists of no nulls, RandomAccess and Serializable: java.util.ImmutableCollections.
+
+    @SuppressWarnings("unchecked")
+    static <E> List<E> of() {
+        return (List<E>) ImmutableCollections.EMPTY_LIST;
+    }
+
+    static <E> List<E> of(E e1) {
+        return ImmutableCollections.list(new Object[] { e1 });
+    }
+
+    static <E> List<E> of(E e1, E e2) {
+        return ImmutableCollections.list(new Object[] { e1, e2 });
+    }
+
+    static <E> List<E> of(E e1, E e2, E e3) {
+        return ImmutableCollections.list(new Object[] { e1, e2, e3 });
+    }
+
+    static <E> List<E> of(E e1, E e2, E e3, E e4) {
+        return ImmutableCollections.list(new Object[] { e1, e2, e3, e4 });
+    }
+
+    static <E> List<E> of(E e1, E e2, E e3, E e4, E e5) {
+        return ImmutableCollections.list(new Object[] { e1, e2, e3, e4, e5 });
+    }
+
+    static <E> List<E> of(E e1, E e2, E e3, E e4, E e5, E e6) {
+        return ImmutableCollections.list(new Object[] { e1, e2, e3, e4, e5, e6 });
+    }
+
+    static <E> List<E> of(E e1, E e2, E e3, E e4, E e5, E e6, E e7) {
+        return ImmutableCollections.list(new Object[] { e1, e2, e3, e4, e5, e6, e7 });
+    }
+
+    static <E> List<E> of(E e1, E e2, E e3, E e4, E e5, E e6, E e7, E e8) {
+        return ImmutableCollections.list(new Object[] { e1, e2, e3, e4, e5, e6, e7, e8 });
+    }
+
+    static <E> List<E> of(E e1, E e2, E e3, E e4, E e5, E e6, E e7, E e8, E e9) {
+        return ImmutableCollections.list(new Object[] { e1, e2, e3, e4, e5, e6, e7, e8, e9 });
+    }
+
+    static <E> List<E> of(E e1, E e2, E e3, E e4, E e5, E e6, E e7, E e8, E e9, E e10) {
+        return ImmutableCollections.list(new Object[] { e1, e2, e3, e4, e5, e6, e7, e8, e9, e10 });
+    }
+
+    @SafeVarargs
+    @SuppressWarnings("varargs")
+    static <E> List<E> of(E... elements) {
+        return ImmutableCollections.listCopy(elements);
+    }
+
+    static <E> List<E> copyOf(Collection<? extends E> coll) {
+        return ImmutableCollections.listOf(coll);
+    }

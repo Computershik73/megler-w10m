@@ -912,6 +912,8 @@ u32 mg_dvm_heap_trim(u64 keep);
 u64 mg_dvm_heap_black_made(void);
 /* The large objects' bytes by class, the most first, when they take more than 32 MB (mg_dvm_heap.c); with the heap's lock held. */
 bool mg_dvm_heap_large_report(char *out, size_t cap, int top);
+/* What the objects in use are, all of them, by class: just after a sweep, the live ones; false below `min_bytes` (mg_dvm_heap.c). */
+bool mg_dvm_heap_class_report(char *out, size_t cap, int top, u64 min_bytes);
 /* The bytes of the apps' DEX files (mg_dvm_apk.c): read into the process's memory, and views of the APKs that store them. */
 void mg_dvm_dex_memory(u64 *read, u64 *viewed);
 /* The collector's, with the heap's lock held: objects in it; an object's mark set (true when it was not set before), read, all cleared. */
