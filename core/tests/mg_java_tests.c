@@ -2788,6 +2788,8 @@ static int run_data(void)
                                          /* And the hidden ServiceManager, every service one that is not there, as Shizuku's SystemServiceHelper
                                             asks it (Morphe Manager ended at its start without the class). */
                                          "service-manager",
+                                         /* And DateUtils' ranges into a Formatter, and a duration in words (both answered null). */
+                                         "date-range",
                                          "audio-track", "media-player", "media-player-ogg", "sound-pool",
                                          /* And MediaCodec over the stand-in for the shell's decoders: H.264 shown on a Surface in display
                                             order, a flush, parameter sets in a codec-config buffer, the asynchronous mode, AAC with an

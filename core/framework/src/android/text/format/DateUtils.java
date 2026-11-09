@@ -21,16 +21,53 @@ public class DateUtils {
     public static CharSequence getRelativeTimeSpanString(android.content.Context c, long millis) { return getRelativeTimeSpanString(millis); }
     public static CharSequence getRelativeTimeSpanString(android.content.Context c, long millis, boolean withPreposition) { return getRelativeTimeSpanString(millis); }
     public static CharSequence getRelativeDateTimeString(android.content.Context c, long time, long minRes, long transRes, int flags) { return getRelativeTimeSpanString(time); }
-    public static String formatDateTime(android.content.Context c, long millis, int flags) {
+    public static String formatDateTime(android.content.Context c, long millis, int flags) { return formatDateTime(c, millis, flags, null); }
+    /* In the time zone named, or the default's where it is null; FORMAT_UTC's UTC whatever it names. */
+    private static String formatDateTime(android.content.Context c, long millis, int flags, String timeZone) {
         StringBuilder p = new StringBuilder();
         if ((flags & FORMAT_SHOW_WEEKDAY) != 0) p.append((flags & (FORMAT_ABBREV_WEEKDAY | FORMAT_ABBREV_ALL)) != 0 ? "EEE, " : "EEEE, ");
         if ((flags & FORMAT_SHOW_DATE) != 0 || (flags & (FORMAT_SHOW_TIME)) == 0) { p.append((flags & FORMAT_NUMERIC_DATE) != 0 ? "M/d" : (flags & (FORMAT_ABBREV_MONTH | FORMAT_ABBREV_ALL)) != 0 ? "MMM d" : "MMMM d"); if ((flags & FORMAT_NO_YEAR) == 0 && (flags & FORMAT_SHOW_YEAR) != 0) p.append(", yyyy"); }
         if ((flags & FORMAT_SHOW_TIME) != 0) { if (p.length() > 0) p.append(", "); p.append((flags & FORMAT_12HOUR) != 0 ? "h:mm a" : "HH:mm"); }
         java.text.SimpleDateFormat f = new java.text.SimpleDateFormat(p.toString());
         if ((flags & FORMAT_UTC) != 0) f.setTimeZone(java.util.TimeZone.getTimeZone("UTC"));
+        else if (timeZone != null) f.setTimeZone(java.util.TimeZone.getTimeZone(timeZone));
         return f.format(new java.util.Date(millis));
     }
-    public static String formatDateRange(android.content.Context c, long a, long b, int flags) { return formatDateTime(c, a, flags) + " – " + formatDateTime(c, b, flags); }
+    public static String formatDateRange(android.content.Context c, long a, long b, int flags) { return range(c, a, b, flags, null); }
+    public static java.util.Formatter formatDateRange(android.content.Context c, java.util.Formatter f, long a, long b, int flags) { return formatDateRange(c, f, a, b, flags, null); }
+    /*
+     * Megler: a range as Android's DateUtils formats it -- by libcore's DateIntervalFormat (ICU's interval formats, in Android
+     * 9's core-libart), the clock of the user's when the flags name neither 12 nor 24 hours -- appended to the Formatter given,
+     * which is answered. These two were stubs that answered null, and Transit's "Go" on a route took toString() of that and
+     * ended (0.1.0.678). The plain format of formatDateTime where libcore's cannot be had.
+     */
+    public static java.util.Formatter formatDateRange(android.content.Context c, java.util.Formatter f, long a, long b, int flags, String timeZone) {
+        try {
+            f.out().append(range(c, a, b, flags, timeZone));
+        } catch (java.io.IOException impossible) {
+            throw new AssertionError(impossible);
+        }
+        return f;
+    }
+    private static java.lang.reflect.Method sIntervalFormat;
+    private static boolean sIntervalTried;
+    private static String range(android.content.Context c, long a, long b, int flags, String timeZone) {
+        if ((flags & (FORMAT_SHOW_TIME | FORMAT_12HOUR | FORMAT_24HOUR)) == FORMAT_SHOW_TIME)
+            flags |= DateFormat.is24HourFormat(c) ? FORMAT_24HOUR : FORMAT_12HOUR;
+        try {
+            synchronized (DateUtils.class) {
+                if (!sIntervalTried) {
+                    sIntervalTried = true;
+                    sIntervalFormat = Class.forName("libcore.icu.DateIntervalFormat").getMethod("formatDateRange", long.class, long.class, int.class, String.class);
+                }
+            }
+            if (sIntervalFormat != null) return (String) sIntervalFormat.invoke(null, a, b, flags, timeZone);
+        } catch (Throwable t) {
+            android.util.Log.w("DateUtils", "libcore's interval format: " + t);
+        }
+        String from = formatDateTime(c, a, flags, timeZone), to = formatDateTime(c, b, flags, timeZone);
+        return from.equals(to) ? from : from + " – " + to;
+    }
     public static String formatElapsedTime(long secs) { return formatElapsedTime(null, secs); }
     public static String formatElapsedTime(StringBuilder r, long secs) { long h = secs / 3600, m = (secs % 3600) / 60, s = secs % 60; String out = h > 0 ? String.format("%d:%02d:%02d", h, m, s) : String.format("%02d:%02d", m, s); if (r != null) { r.setLength(0); r.append(out); } return out; }
     public static CharSequence formatSameDayTime(long then, long now, int dateStyle, int timeStyle) { return isToday(then) ? java.text.DateFormat.getTimeInstance(timeStyle).format(new java.util.Date(then)) : java.text.DateFormat.getDateInstance(dateStyle).format(new java.util.Date(then)); }
@@ -55,10 +92,25 @@ public class DateUtils {
     public static final java.lang.String YEAR_FORMAT_TWO_DIGITS = "%g";
     public static int[] sameMonthTable;
     public static int[] sameYearTable;
-    public static java.util.Formatter formatDateRange(android.content.Context p0, java.util.Formatter p1, long p2, long p3, int p4) { return null; }
-    public static java.util.Formatter formatDateRange(android.content.Context p0, java.util.Formatter p1, long p2, long p3, int p4, java.lang.String p5) { return null; }
-    public static java.lang.CharSequence formatDuration(long p0) { return null; }
-    public static java.lang.CharSequence formatDuration(long p0, int p1) { return null; }
+    /** Megler: Android's, a duration in hours, minutes or seconds as ICU's MeasureFormat words it (it answered null). */
+    public static java.lang.CharSequence formatDuration(long millis) { return formatDuration(millis, LENGTH_LONG); }
+    public static java.lang.CharSequence formatDuration(long millis, int abbrev) {
+        final android.icu.text.MeasureFormat.FormatWidth width;
+        switch (abbrev) {
+            case LENGTH_LONG: width = android.icu.text.MeasureFormat.FormatWidth.WIDE; break;
+            case LENGTH_SHORT: case LENGTH_SHORTER: case LENGTH_MEDIUM: width = android.icu.text.MeasureFormat.FormatWidth.SHORT; break;
+            case LENGTH_SHORTEST: width = android.icu.text.MeasureFormat.FormatWidth.NARROW; break;
+            default: width = android.icu.text.MeasureFormat.FormatWidth.WIDE;
+        }
+        final android.icu.text.MeasureFormat formatter = android.icu.text.MeasureFormat.getInstance(java.util.Locale.getDefault(), width);
+        if (millis >= HOUR_IN_MILLIS) {
+            return formatter.format(new android.icu.util.Measure((int) ((millis + 1800000) / HOUR_IN_MILLIS), android.icu.util.MeasureUnit.HOUR));
+        } else if (millis >= MINUTE_IN_MILLIS) {
+            return formatter.format(new android.icu.util.Measure((int) ((millis + 30000) / MINUTE_IN_MILLIS), android.icu.util.MeasureUnit.MINUTE));
+        } else {
+            return formatter.format(new android.icu.util.Measure((int) ((millis + 500) / SECOND_IN_MILLIS), android.icu.util.MeasureUnit.SECOND));
+        }
+    }
     public static java.lang.String getAMPMString(int p0) { return null; }
     // ---- end of generated members
 }

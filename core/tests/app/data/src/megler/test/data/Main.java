@@ -5546,6 +5546,20 @@ public class Main extends Activity {
                     + ", getServiceOrThrow threw " + threw;
             return pkg == null && checked == null && listed != null && listed.length == 0 && threw;
         });
+        // DateUtils' ranges into a Formatter, as Transit words a route's times: the Formatter given, the range appended to it (it
+        // answered null, and Transit's "Go" took toString() of that); and a duration in words (it answered null too).
+        step("date-range", () -> {
+            long start = 1762700000000L, end = start + 45 * 60000L;
+            java.util.Formatter f = new java.util.Formatter(new StringBuilder("at "), java.util.Locale.US);
+            java.util.Formatter back = android.text.format.DateUtils.formatDateRange(this, f, start, end,
+                    android.text.format.DateUtils.FORMAT_SHOW_TIME | android.text.format.DateUtils.FORMAT_24HOUR, "UTC");
+            String range = back == null ? null : back.toString();
+            String plain = android.text.format.DateUtils.formatDateRange(this, start, end, android.text.format.DateUtils.FORMAT_SHOW_DATE);
+            Object duration = android.text.format.DateUtils.class.getMethod("formatDuration", long.class).invoke(null, 90L * 60000L);
+            detail = "range=" + range + " plain=" + plain + " duration=" + duration;
+            return back == f && range != null && range.startsWith("at ") && range.contains("14:53") && range.contains("15:38")
+                    && plain != null && !plain.isEmpty() && duration != null && duration.toString().length() > 0;
+        });
     }
 
     /** The theme's android:colorForeground, 0 when it has none. */
