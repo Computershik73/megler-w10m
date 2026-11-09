@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Main's step "animator-not-animation": a view animation's <set>, which an animator's XML may have too: AnimatorInflater
+     refuses it at its <alpha>. -->
+<set xmlns:android="http://schemas.android.com/apk/res/android" android:duration="200">
+    <alpha android:fromAlpha="0.0" android:toAlpha="1.0" />
+    <translate android:fromYDelta="10%" android:toYDelta="0" />
+</set>

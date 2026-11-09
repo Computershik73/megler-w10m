@@ -5793,6 +5793,22 @@ on a looper thread of its own and takes it back with `next()`.
   (Settings, Chats, Theme) ended the app: "Can't convert value at index 6 to
   dimension: type=0x6" (0.1.0.671). The data app's step "inset-fraction"
   inflates such insets and measures what they give.
+- `megler/ResInflate.java`, a few lines: an animator's XML is read as
+  Android's `AnimatorInflater` reads it, and an element that is no
+  animator's -- a view animation's `<alpha>`, `<translate>`, `<scale>` or
+  `<rotate>`, alone or in a `<set>` -- is "Unknown animator name", thrown.
+  The inflater made a `ValueAnimator` of anything. AndroidX's fragments try
+  an animation resource as an animator first when its type is not named
+  "anim", and take the view animation when that throws; Facebook's apps name
+  the type of theirs "anim.2", so Messenger's fragments came in by an
+  animator of 200 ms that animated nothing, and a fragment is resumed only
+  once its animator ends, where a view animation lets it be resumed at once.
+  The step of Messenger's first-run screen that asks to import the contacts
+  opens its Bloks screen as it is made and learns it did in its `onPause`;
+  paused by that screen before its animator was over, it was never resumed,
+  so never paused, and on coming back it did not move on: the screen stayed
+  until Back (0.1.0.673). The data app's step "animator-not-animation"
+  inflates both kinds both ways.
 
 - `android/app/Activity.java`, two methods: `initWindowDecorActionBar` makes
   the window's decor before it asks whether the window has an action bar, as
