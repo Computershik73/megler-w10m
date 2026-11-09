@@ -1688,9 +1688,14 @@ N(Array_createObjectArray)
         npe("componentType == null");
         return;
     }
-    name = e->name[0] == '[' ? mg_sprintf("[%s", e->name) : mg_sprintf("[L%s;", e->name);
-    a = mg_dvm_find_class_scope(name, e->scope);
-    free(name);
+    /* (The array class is the same every time: kept on the element's class after the first, mg_dvm_class.array_of.) */
+    a = e->array_of;
+    if (!a) {
+        name = e->name[0] == '[' ? mg_sprintf("[%s", e->name) : mg_sprintf("[L%s;", e->name);
+        a = mg_dvm_find_class_scope(name, e->scope);
+        free(name);
+        if (a) e->array_of = a;
+    }
     if (a) c->ret.l = mg_dvm_alloc_array(a, c->args[1].i);
 }
 
