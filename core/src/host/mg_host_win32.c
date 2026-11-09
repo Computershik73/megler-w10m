@@ -2984,6 +2984,22 @@ static BOOL move_entry(const wchar_t *from, const wchar_t *to, int depth)
     return FALSE;
 }
 
+/*
+ * What stopped a folder's move an entry at a time, in the log (the first 30): the rename's own line says only the error.
+ * TikTok Lite's "<id>--updating" folders were refused so on a Lumia 650 (0.1.0.671 to 679), the folder in the way not
+ * there, and nothing said which of their entries could not be moved.
+ */
+static void move_entries_failed(const char *what, const wchar_t *path, DWORD error)
+{
+    static volatile LONG said;
+    char *p;
+    if (InterlockedIncrement(&said) > 30) return;
+    p = utf8_of(path);
+    mg_warn("io: a folder moved an entry at a time: %s %s (Windows error %lu); all that was moved is put back", what, p,
+            (unsigned long)error);
+    free(p);
+}
+
 /* The folder `a`'s entries moved into `b`, made for them, and `a` removed; or, whatever fails, all as it was. */
 static BOOL move_entries(const wchar_t *a, const wchar_t *b, int depth)
 {
@@ -3000,7 +3016,12 @@ static BOOL move_entries(const wchar_t *a, const wchar_t *b, int depth)
     pattern = path_join(a, L"*");
     h = FindFirstFileExW(pattern, FindExInfoBasic, &found, FindExSearchNameMatch, NULL, 0);
     free(pattern);
-    if (h == INVALID_HANDLE_VALUE) return FALSE;
+    if (h == INVALID_HANDLE_VALUE) {
+        why = GetLastError();
+        move_entries_failed("the entries could not be listed of", a, why);
+        SetLastError(why);
+        return FALSE;
+    }
     do {
         if (!wcscmp(found.cFileName, L".") || !wcscmp(found.cFileName, L"..")) continue;
         if (count == cap) {
@@ -3014,11 +3035,15 @@ static BOOL move_entries(const wchar_t *a, const wchar_t *b, int depth)
     if (!CreateDirectoryW(b, NULL)) {
         ok = FALSE;
         why = GetLastError();
+        move_entries_failed("the folder of the new name could not be made:", b, why);
     } else {
         for (; moved < count; moved++) {
             wchar_t *from = path_join(a, names[moved]), *to = path_join(b, names[moved]);
             ok = move_entry(from, to, depth);
-            if (!ok) why = GetLastError();
+            if (!ok) {
+                why = GetLastError();
+                move_entries_failed("could not move", from, why);
+            }
             free(from);
             free(to);
             if (!ok) break;
@@ -3026,6 +3051,7 @@ static BOOL move_entries(const wchar_t *a, const wchar_t *b, int depth)
         if (ok && !RemoveDirectoryW(a)) {
             ok = FALSE;
             why = GetLastError();
+            move_entries_failed("the folder emptied could not be removed:", a, why);
         }
         if (!ok) {
             for (i = moved - 1; i >= 0; i--) {
@@ -3072,7 +3098,7 @@ bool mg_path_rename(const char *from, const char *to, int *err)
     static volatile LONG said;
     wchar_t *a, *b;
     BOOL ok;
-    DWORD e = 0, posix_e = 0, aside_e = 0;
+    DWORD e = 0, posix_e = 0, aside_e = 0, entries_e = 0;
     int tries;
     if (mg_path_is_foreign(from) || mg_path_is_foreign(to)) return mg_foreign_rename(from, to, err);
     a = wide_path(from);
@@ -3113,6 +3139,7 @@ bool mg_path_rename(const char *from, const char *to, int *err)
         aside_e = GetLastError();
         ok = move_dir_in_use(a, b);
         if (ok) break;
+        entries_e = GetLastError();
         /* (A folder in the way with something in it, or a file where a folder is moved, stays so: said at once.) */
         if (GetLastError() == ERROR_DIR_NOT_EMPTY || GetLastError() == ERROR_DIRECTORY) {
             e = GetLastError();
@@ -3129,7 +3156,8 @@ bool mg_path_rename(const char *from, const char *to, int *err)
         if ((e == ERROR_ACCESS_DENIED || e == ERROR_SHARING_VIOLATION || e == ERROR_USER_MAPPED_FILE || e == ERROR_LOCK_VIOLATION) &&
             InterlockedIncrement(&said) <= 30)
             mg_warn("io: %s could not be renamed to %s (Windows error %lu, after %d tries; POSIX's rename error %lu, the file in the way "
-                    "moved aside error %lu)", from, to, (unsigned long)e, tries, (unsigned long)posix_e, (unsigned long)aside_e);
+                    "moved aside error %lu, a folder moved an entry at a time error %lu)", from, to, (unsigned long)e, tries,
+                    (unsigned long)posix_e, (unsigned long)aside_e, (unsigned long)entries_e);
         SET_ERR();
     }
     free(a);
