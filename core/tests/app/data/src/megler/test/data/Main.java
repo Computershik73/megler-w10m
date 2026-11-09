@@ -1419,6 +1419,8 @@ public class Main extends Activity {
             detail = "before " + before + ", at the second start " + atStart[0] + ", at its end " + a.getAnimatedValue();
             return Float.valueOf(0f).equals(before) && atStart[0] instanceof Float && Float.valueOf(10f).equals(a.getAnimatedValue());
         });
+        detachedAnimator();
+        animatorListener();
         // A view's observer taken before the view is in a window is dead once it is (merged into the window's): a one-shot
         // listener added to it removes itself through the view's observer then, as AndroidX's OneShotPreDrawListener and
         // YouTube's TraceableOnGlobalLayoutListener do, and is run once (it stayed in the window's, run at every layout), while
@@ -5928,6 +5930,126 @@ public class Main extends Activity {
         int calls;
         WillNotDrawProbe(android.content.Context c) { super(c); }
         @Override public void setWillNotDraw(boolean w) { made.hashCode(); calls++; super.setWillNotDraw(w); }
+    }
+
+    /**
+     * RecyclerView's ChildHelper in small: a child detached from the list into the scrap (detachViewFromParent, which leaves it
+     * in the window, as Android's does), and a detached child removed (removeDetachedView). Both are protected in ViewGroup.
+     */
+    private static final class Scrapping extends android.widget.FrameLayout {
+        Scrapping(android.content.Context c) { super(c); }
+        void scrap(android.view.View v) { detachViewFromParent(v); }
+        void removeScrapped(android.view.View v) { removeDetachedView(v, false); }
+    }
+
+    /**
+     * A view animated by View.animate() goes on animating when it leaves the window, as on Android: its listener hears the
+     * animation's end afterwards, not inside the removal. RecyclerView's layout takes a child from its scrap so (androidx's
+     * Recycler.tryGetViewHolderForPositionByDeadline): found stale, the child is removed with removeDetachedView and then
+     * unscrapped, which needs it still in the scrap; and the item animator's listener, when the child's animation ends,
+     * recycles it (RecyclerView's removeAnimatingView: no longer a child, so unscrapped). Here the removal cancelled the
+     * animation, the listener unscrapped the child inside it, and the unscrap that followed met null: Spotify's Now Playing
+     * carousel, whose covers its item animator fades out through View.animate(), ended so at a track change (0.1.0.678). The
+     * list does it once it is in the window, and says what was heard during the removal and, later, at the animation's end.
+     */
+    private void detachedAnimator() {
+        step("detached-animator", () -> {
+            final Scrapping list = new Scrapping(this);
+            final android.view.View item = new android.view.View(this);
+            item.setBackgroundColor(0xff663399);
+            list.addView(item, new android.widget.FrameLayout.LayoutParams(20, 20));
+            list.addOnAttachStateChangeListener(new android.view.View.OnAttachStateChangeListener() {
+                @Override public void onViewAttachedToWindow(android.view.View v) {
+                    list.removeOnAttachStateChangeListener(this);
+                    list.post(() -> takeFromScrap(list, item));
+                }
+                @Override public void onViewDetachedFromWindow(android.view.View v) {}
+            });
+            ((android.view.ViewGroup) text.getParent()).addView(list, new android.view.ViewGroup.LayoutParams(40, 40));
+            return true;
+        });
+    }
+
+    private void takeFromScrap(final Scrapping list, final android.view.View item) {
+        final Object[] scrapContainer = new Object[1];   /* the holder's mScrapContainer */
+        final boolean[] removing = new boolean[1];
+        final StringBuilder inside = new StringBuilder(), after = new StringBuilder();
+        // The item animator's fade: cancelled or ended, the item is finished once (the listener taken off at the first, as
+        // Spotify's is through ViewPropertyAnimatorCompat), and recycled as RecyclerView's removeAnimatingView recycles it.
+        item.animate().alpha(0f).setDuration(100).setListener(new android.animation.AnimatorListenerAdapter() {
+            private void finished(String how) {
+                item.animate().setListener(null);
+                (removing[0] ? inside : after).append(how).append(' ');
+                if (list.indexOfChild(item) < 0) scrapContainer[0] = null;
+                if (!removing[0]) list.post(() -> {
+                    Log.i("DataTest", "detached-animator ended heard=" + after.toString().trim() + " alpha=" + item.getAlpha() + " attached=" + item.isAttachedToWindow());
+                    ((android.view.ViewGroup) list.getParent()).removeView(list);
+                });
+            }
+            @Override public void onAnimationCancel(android.animation.Animator a) { finished("cancel"); }
+            @Override public void onAnimationEnd(android.animation.Animator a) { finished("end"); }
+        }).start();
+        boolean attached = item.isAttachedToWindow();
+        // The layout: the child into the scrap, found stale and removed, then unscrapped (the holder's unScrap()).
+        list.scrap(item);
+        scrapContainer[0] = list;
+        removing[0] = true;
+        String unscrap;
+        try {
+            list.removeScrapped(item);
+            unscrap = scrapContainer[0] != null ? "unscrapped" : "NullPointerException";
+            scrapContainer[0] = null;
+        } finally {
+            removing[0] = false;
+        }
+        Log.i("DataTest", "detached-animator removed " + unscrap + " heard=" + (inside.length() == 0 ? "nothing" : inside.toString().trim())
+              + " attached-before=" + attached + " after=" + item.isAttachedToWindow() + " parent=" + item.getParent());
+    }
+
+    /**
+     * A ViewPropertyAnimator tells the listener it has when it tells, as Android's: taken off in onAnimationCancel, it does
+     * not hear the onAnimationEnd that follows, and withEndAction's runnable is not run for an animation cancelled. A
+     * property asked for again is taken from the animation that had it, which is cancelled then if it has none left -- its
+     * listener hears that before a new one is set -- and an animation of other properties runs on beside the new one. And
+     * start() with nothing asked for starts an animation of nothing, which its listener hears. Spotify's carousel animator
+     * (through ViewPropertyAnimatorCompat) takes its listener off at a cancel to finish an item once; here an animation's
+     * listener was the one set as it started, which heard the end too, and the item was finished twice.
+     */
+    private void animatorListener() {
+        step("animator-listener", () -> {
+            final android.view.View v = new android.view.View(this);
+            final StringBuilder first = new StringBuilder(), taken = new StringBuilder(), next = new StringBuilder();
+            final boolean[] endAction = new boolean[1];
+            final int[] cancels = new int[1];
+            v.animate().translationX(10).setDuration(5000).withEndAction(() -> endAction[0] = true).setListener(new android.animation.AnimatorListenerAdapter() {
+                @Override public void onAnimationCancel(android.animation.Animator a) { first.append("cancel "); v.animate().setListener(null); }
+                @Override public void onAnimationEnd(android.animation.Animator a) { first.append("end "); }
+            }).start();
+            v.animate().cancel();
+            v.animate().alpha(0f).setListener(new android.animation.AnimatorListenerAdapter() {
+                @Override public void onAnimationCancel(android.animation.Animator a) { taken.append("cancel "); }
+                @Override public void onAnimationEnd(android.animation.Animator a) { taken.append("end "); }
+            }).start();
+            v.animate().alpha(1f).setListener(new android.animation.AnimatorListenerAdapter() {
+                @Override public void onAnimationStart(android.animation.Animator a) { next.append("start "); }
+                @Override public void onAnimationCancel(android.animation.Animator a) { cancels[0]++; }
+            }).start();
+            v.animate().scaleX(2f).start();
+            int beside = cancels[0];
+            v.animate().cancel();
+            final StringBuilder empty = new StringBuilder();
+            v.animate().setListener(new android.animation.AnimatorListenerAdapter() {
+                @Override public void onAnimationStart(android.animation.Animator a) { empty.append("start "); }
+                @Override public void onAnimationCancel(android.animation.Animator a) { empty.append("cancel "); }
+                @Override public void onAnimationEnd(android.animation.Animator a) { empty.append("end "); }
+            }).start();
+            v.animate().cancel();
+            detail = "first heard " + first.toString().trim() + ", its end action run " + endAction[0] + "; the one taken over heard " + taken.toString().trim()
+                + "; the next " + next.toString().trim() + ", cancelled beside another " + beside + " times and by cancel() " + cancels[0]
+                + "; one of nothing heard " + empty.toString().trim();
+            return "cancel".equals(first.toString().trim()) && !endAction[0] && "cancel end".equals(taken.toString().trim())
+                && "start start".equals(next.toString().trim()) && beside == 0 && cancels[0] == 2 && "start cancel end".equals(empty.toString().trim());
+        });
     }
 
     /** A ViewGroup's constructor marks it as not drawing itself without calling setWillNotDraw, which a subclass may override. */
