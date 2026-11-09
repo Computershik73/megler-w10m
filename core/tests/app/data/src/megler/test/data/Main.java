@@ -1791,6 +1791,7 @@ public class Main extends Activity {
             detail = "client=" + client + " read=" + read;
             return "chimera config".equals(read);
         });
+        bitmapParcel();
         layoutApiLevel();
         resourcesImpl();
         activityThreadApplication();
@@ -4763,6 +4764,19 @@ public class Main extends Activity {
             detail = "plain=" + java.util.Arrays.toString(plain.signatures) + " sigs=" + got + " signing=" + signed + " uid=" + uid + " named=" + pm.getNameForUid(uid);
             return plain.signatures == null && got && signed && uid != android.os.Process.myUid() && "com.example.other".equals(pm.getNameForUid(uid));
         });
+        // Packages compared by their signers: those the phone has match (the app's own, the platform's, another app's); one it does
+        // not have is SIGNATURE_UNKNOWN_PACKAGE, as Android answers -- Google Play services took a match of a Pixel's system
+        // service with "android" for that service being there, and then did not find it.
+        step("check-signatures", () -> {
+            android.content.pm.PackageManager pm = getPackageManager();
+            int own = pm.checkSignatures(getPackageName(), "android"), other = pm.checkSignatures(getPackageName(), "com.example.other");
+            int pixel = pm.checkSignatures("com.google.android.pixelsystemservice", "android"), none = pm.checkSignatures(getPackageName(), "megler.test.none");
+            int uids = pm.checkSignatures(android.os.Process.myUid(), android.os.Process.myUid());
+            detail = "own=" + own + " other=" + other + " pixel=" + pixel + " none=" + none + " uids=" + uids;
+            return own == android.content.pm.PackageManager.SIGNATURE_MATCH && other == android.content.pm.PackageManager.SIGNATURE_MATCH
+                    && pixel == android.content.pm.PackageManager.SIGNATURE_UNKNOWN_PACKAGE && none == android.content.pm.PackageManager.SIGNATURE_UNKNOWN_PACKAGE
+                    && uids == android.content.pm.PackageManager.SIGNATURE_MATCH;
+        });
     }
 
     /**
@@ -5288,6 +5302,41 @@ public class Main extends Activity {
                     + " receiver=" + (receiver != null) + " uid=" + uid + " signed=" + (signed == null ? "none" : signed.signatures != null) + " apps=" + apps.size();
             return services.size() == 1 && resolved != null && provider != null && intReceivers > 0 && receivers.size() == intReceivers && receiver != null
                     && uid == android.os.Process.myUid() && signed != null && (signed.signatures != null) == intSigned && !apps.isEmpty();
+        });
+    }
+
+    /**
+     * Bitmaps through a Parcel as Google Play services' maps client writes a marker's picture (BitmapDescriptorFactory.fromBitmap:
+     * an int, then the bitmap's writeToParcel) and its maps module reads it (an int, then Bitmap.CREATOR): each comes out a
+     * bitmap of its own, of the same size, pixels, density and mutability, the parcel read to its end -- the module checks
+     * that -- and whole after the writer has recycled its own.
+     */
+    private void bitmapParcel() {
+        step("bitmap-parcel", () -> {
+            android.graphics.Bitmap mutable = android.graphics.Bitmap.createBitmap(3, 2, android.graphics.Bitmap.Config.ARGB_8888);
+            mutable.setPixel(0, 0, 0xFFFF0000);
+            mutable.setPixel(2, 1, 0xFF00FF00);
+            mutable.setDensity(320);
+            android.graphics.Bitmap fixed = android.graphics.Bitmap.createBitmap(new int[] { 0xFF0000FF, 0xFFFFFFFF }, 2, 1, android.graphics.Bitmap.Config.ARGB_8888);
+            android.os.Parcel p = android.os.Parcel.obtain();
+            for (android.graphics.Bitmap b : new android.graphics.Bitmap[] { mutable, fixed }) {
+                p.writeInt(1);
+                b.writeToParcel(p, 0);
+            }
+            p.setDataPosition(0);
+            android.graphics.Bitmap[] back = android.graphics.Bitmap.CREATOR.newArray(2);
+            for (int i = 0; i < back.length; i++) back[i] = p.readInt() != 0 ? android.graphics.Bitmap.CREATOR.createFromParcel(p) : null;
+            int left = p.dataAvail();
+            p.recycle();
+            mutable.recycle();
+            fixed.recycle();
+            android.graphics.Bitmap a = back[0], b = back[1];
+            detail = "back=" + java.util.Arrays.toString(back) + " left=" + left
+                    + (a == null || a.isRecycled() ? "" : " first " + a.getWidth() + "x" + a.getHeight() + " density=" + a.getDensity() + " mutable=" + a.isMutable());
+            return a != null && b != null && a != mutable && b != fixed && !a.isRecycled() && !b.isRecycled() && left == 0
+                    && a.getWidth() == 3 && a.getHeight() == 2 && a.getDensity() == 320 && a.isMutable() && a.getConfig() == android.graphics.Bitmap.Config.ARGB_8888
+                    && a.getPixel(0, 0) == 0xFFFF0000 && a.getPixel(2, 1) == 0xFF00FF00 && a.getPixel(1, 0) == 0
+                    && b.getWidth() == 2 && b.getHeight() == 1 && !b.isMutable() && b.getPixel(0, 0) == 0xFF0000FF && b.getPixel(1, 0) == 0xFFFFFFFF;
         });
     }
 

@@ -674,7 +674,9 @@ OpenGL ES 2 and 3 and pbuffers in memory, `glClear`, triangles of one colour
 (the program's `vec4` uniform with "olor" in its name, positions from the
 attribute with "osition" in it), shaders whose attributes and uniforms are read
 out of their source, `glReadPixels` as R, G, B, A or B, G, R, A; a context of
-version 1 refused, as an ANGLE without OpenGL ES 1 refuses it; and every
+version 1 made as ANGLE makes it, with a configuration alone (refused without
+one with `EGL_BAD_MATCH`), and in the runs whose shell refuses the frames
+("readback") refused, as an EGL without OpenGL ES 1 refuses it; and every
 surface with a keyed mutex, as gecko-w10m's ANGLE gives every pbuffer, what is
 done with one that is not held dropped (docs/ARCHITECTURE.md, "Keyed
 mutexes"). Every Java app of the tests runs with it.
@@ -748,7 +750,9 @@ EGL14 pbuffer on a thread of the app's own.
   with the context current.
 - A thread of the app's on the `SurfaceView`, as older apps do: `EGL10`, six
   configurations for "565 with depth 16", one of them exactly 565, a context
-  with no attributes (version 1: here 2, and the log says so once), a window
+  with no attributes (version 1, made with the configuration of the surface,
+  as ANGLE makes it: "OpenGL ES-CM 1.1 (stand-in)"; in the readback run, where
+  the stand-in has no version 1, 2, and the log says so once), a window
   surface on the `SurfaceHolder` the view's size, `GL10` clearing to green,
   five swaps.
 - The picture: the frame under the hole, the triangle the right way up, the
@@ -2395,7 +2399,15 @@ Trusted Root CA, which Android 9 does not have, from their own `res/raw`. The
 data app's steps "network-trust", "network-trust-domains" and
 "network-trust-pins" show it with a test authority of the app's own: trusted
 for localhost and the names its configuration gives it, 127.0.0.1 refused,
-pins matched, missed, expired and overridden.
+pins matched, missed, expired and overridden. A server's certificates the
+`RootTrustManager` refuses are said once a host, with why and with the issuer
+of the last of them ("W/Megler: TLS: <host>'s certificates refused (N of them,
+the last issued by ...): ..."): the system's authorities are Android 9's 137
+of 2018, and a server whose chain reaches only a newer authority is refused
+here where Android 14 takes it. Chromium's own line ("cr_X509Util: Failed to
+validate the certificate chain", the WebView's; Google Play services' Cronet
+says "cn_X509Util") names no server: Transit's WebView was refused eight at
+every start (0.1.0.675), whose they were not known.
 
 What follows is what stands in where conscrypt's library is not in the root
 (an Android root made before the library was built, or the PC's own build of
@@ -3997,6 +4009,15 @@ What a Java app asks of the phone beyond its window goes to the shell through
   each time its sign-in began: at every start signed out on the HP Elite x3
   (0.1.0.671), and on an Italian user's phone, which went from the sign-in
   back to that screen again and again. The data app's step `component-state`.
+  And `checkSignatures` of such a package (or of a uid with none) is
+  `SIGNATURE_UNKNOWN_PACKAGE`, as Android answers; two packages the phone has
+  are said to match, their certificates not compared. Every pair matched
+  before: Google Play services 26.41 takes a match of
+  `com.google.android.pixelsystemservice` with `android` for a Pixel's system
+  service on the phone, asks for its `ApplicationInfo` next, and logged
+  "E/BusinessScope: Unhandled exception in #1 block ...
+  NameNotFoundException: com.google.android.pixelsystemservice" in the apps
+  that host it (Transit, 0.1.0.675). The data app's step `check-signatures`.
 
 APKs, .apks and .xapk files also open in Megler from the phone's file
 manager (a file type association of Megler's package, taken out of an app's
@@ -5465,6 +5486,20 @@ on a looper thread of its own and takes it back with `next()`.
   Maps module's own Google certificates among them (0.1.0.671). The data
   app's step "provider-client-file" reads its provider's file through a
   client.
+- `android/graphics/Bitmap.java`, `writeToParcel` and `CREATOR`: a bitmap
+  goes into a Parcel and the reader gets one of its own, the same pixels,
+  size, config, density and mutability, which stays when the writer recycles
+  its own, as on Android -- here the copy itself in the parcel's table of the
+  process's objects (`Parcel.writeValue`), not its bytes. `CREATOR` was null
+  and `writeToParcel` the interface's, which writes nothing. Google Play
+  services' maps client in an app writes a marker's picture so
+  (`BitmapDescriptorFactory.fromBitmap`: an int, then `writeToParcel`) and
+  its maps module reads it with `Bitmap.CREATOR`
+  (`IBitmapDescriptorFactoryDelegate`, transaction 6): Transit ended with a
+  `NullPointerException` ("Parcelable$Creator.createFromParcel ... on a null
+  object reference" in the module's `m6.ev.a`) as it put a bus route on its
+  map (0.1.0.675). The data app's step "bitmap-parcel" writes two so and
+  reads them back.
 - `android/app/usage/StorageStatsManager.java`, two methods in their two
   forms: `getTotalBytes` and `getFreeBytes` were signatures answering 0.
   Since Android 8 this is where an app asks how large the phone's storage is

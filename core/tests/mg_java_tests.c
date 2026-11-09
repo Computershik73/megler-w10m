@@ -2757,7 +2757,7 @@ static int run_data(void)
                                             makes one. And a proxy of an interface of 600 methods. And sound from Java: an
                                             AudioTrack written to, a MediaPlayer of a WAV and of an Ogg Vorbis asset, a SoundPool. */
                                          "xml", "asset-fd", "tasks", "wrapper-receiver", "viewgroup-flag", "text-drawables", "pfd-dup", "pfd-parcel",
-                                         "theme-selfref", "queue-next", "storage-stats", "broadcast-explicit", "service-stop-thread", "start-ids", "process-scope", "job-scheduler", "downloads", "rollback-service", "art-manager", "progress-subclass", "telephony", "microphone", "biometric", "ordered-broadcast", "hardware-accelerated", "descendant-invalidated", "image-matrix-before-layout", "delegate-last-scope", "asset-manager-manifest", "big-asset", "path-iterator", "mutable-context", "exec", "crc32c", "nine-patch-constructors", "subscription-ids", "filter-categories", "intent-categories", "broadcast-identity", "arrays-ranges", "collection-factories", "unmodifiable-collectors", "thread-stack", "icu-number", "audio-route", "expand-template", "list-fragment", "fragment-saved-state", "stub-said", "handler-thread", "managed-dialog", "input-format", "dialog-of-stopped", "zip-path-validator", "list-row-click", "animation-listener", "circular-reveal", "animator-values", "observer-merged", "typeface-descriptor", "device-provisioned", "users", "start-asked", "pending-intent-creator", "pending-intent-flags", "alarm-replace-cancel", "messenger-forwarded", "insets-builder", "insets-consumed", "insets-siblings", "broadcast-handler", "prefs-spaced-key", "account-removed", "sync", "package-installer", "batch-operations", "wifi", "media-metadata", "playback-state", "remote-user-info", "media-key-controller", "container-state", "context-params", "theme-accent", "phone-apps", "phone-apps-activities", "phone-apps-signatures", "install-intent", "install-session", "install-splits", "bitmap-bytes", "bitmap-reuse", "file-read-only", "component-state", "adaptive-icon", "idle-handler", "uri-builder", "html-tag-handler", "stats-manager", "credential-manager", "many-interfaces", "proxy-many-methods", "apk-path", "maps-paths", "apk-optimization",
+                                         "theme-selfref", "queue-next", "storage-stats", "broadcast-explicit", "service-stop-thread", "start-ids", "process-scope", "job-scheduler", "downloads", "rollback-service", "art-manager", "progress-subclass", "telephony", "microphone", "biometric", "ordered-broadcast", "hardware-accelerated", "descendant-invalidated", "image-matrix-before-layout", "delegate-last-scope", "asset-manager-manifest", "big-asset", "path-iterator", "mutable-context", "exec", "crc32c", "nine-patch-constructors", "subscription-ids", "filter-categories", "intent-categories", "broadcast-identity", "arrays-ranges", "collection-factories", "unmodifiable-collectors", "thread-stack", "icu-number", "audio-route", "expand-template", "list-fragment", "fragment-saved-state", "stub-said", "handler-thread", "managed-dialog", "input-format", "dialog-of-stopped", "zip-path-validator", "list-row-click", "animation-listener", "circular-reveal", "animator-values", "observer-merged", "typeface-descriptor", "device-provisioned", "users", "start-asked", "pending-intent-creator", "pending-intent-flags", "alarm-replace-cancel", "messenger-forwarded", "insets-builder", "insets-consumed", "insets-siblings", "broadcast-handler", "prefs-spaced-key", "account-removed", "sync", "package-installer", "batch-operations", "wifi", "media-metadata", "playback-state", "remote-user-info", "media-key-controller", "container-state", "context-params", "theme-accent", "phone-apps", "phone-apps-activities", "phone-apps-signatures", "check-signatures", "install-intent", "install-session", "install-splits", "bitmap-bytes", "bitmap-reuse", "file-read-only", "component-state", "adaptive-icon", "idle-handler", "uri-builder", "html-tag-handler", "stats-manager", "credential-manager", "many-interfaces", "proxy-many-methods", "apk-path", "maps-paths", "apk-optimization",
                                          /* And an <inset> whose insets are fractions of its bounds, WhatsApp's adaptive icon's 0.01% among them. */
                                          "inset-fraction",
                                          /* And a WorkSource through a Parcel and back, as a location request of Google Play services' carries one. */
@@ -2774,6 +2774,8 @@ static int run_data(void)
                                          "location-request",
                                          /* And a provider's file through a ContentProviderClient, as Google Play services' DynamiteLoader reads its configuration. */
                                          "provider-client-file",
+                                         /* And bitmaps through a Parcel as a marker's picture goes from Google Play services' maps client to its module. */
+                                         "bitmap-parcel",
                                          /* And a layout of layout, -v31 and -v33 inflated as the Settings library's main switch bar inflates its
                                             own: the -v33 one Android 14 chooses, its frame there, with the dimensions and drawables of -v31 alone. */
                                          "layout-api-level",
@@ -2822,6 +2824,13 @@ static int run_data(void)
         free(crypto);
         say("  TLS: %s", with ? "conscrypt's (its library is in the Android root)" : "the runtime's stand-in, which has none");
         CHECK(find_line(with ? "I/DataTest: tls-is conscrypt provider=com.android.org.conscrypt.OpenSSLProvider" : "I/DataTest: tls-is none provider=megler.security.RuntimeProvider", 0) >= 0);
+        /* A server's certificates refused by the app's trust (RootTrustManager), said once a host with why and with the issuer of
+           the last: 127.0.0.1's, refused twice in the step network-trust -- through a socket and by the host-aware check. */
+        if (with) {
+            int said = find_line("W/Megler: TLS: 127.0.0.1's certificates refused (", 0);
+            CHECK(said >= 0 && strstr(line_at(said), ", the last issued by ") && strstr(line_at(said), "Trust anchor for certification path not found"));
+            CHECK(count_lines("W/Megler: TLS: 127.0.0.1's certificates refused (") == 1);
+        }
     }
     /* The app's network security configuration, said in the log once as it was read (android.security.net.config.XmlConfigSource):
        the base configuration with Android's authorities alone (its debug-overrides not counted), and a <domain-config> inside
@@ -3253,12 +3262,25 @@ static int run_gl(void)
     expect_line("I/GlTest: request-render frames=1", &at, 60);
     expect_line("I/GlTest: event on GLThread ", &at, 60);
     CHECK(strstr(line_at(at), "current=true vendor=Megler") != NULL);
-    /* EGL10 and GL10 from the app's own thread on the bottom SurfaceView: a 565 configuration found by exact match, a version-1 context. */
+    /*
+     * EGL10 and GL10 from the app's own thread on the bottom SurfaceView: a 565 configuration found by exact match, a version-1
+     * context -- of OpenGL ES 1 where EGL makes it, as ANGLE does, with the configuration of the surface (ndk/mg_egl.c), and
+     * of 2, said, where it does not (the stand-in in the readback run).
+     */
     line = wait_line("I/GlTest: egl10 configs=6 exact565=true made=true surface=", 0, 60);
     snprintf(text, sizeof(text), "surface=%dx%d egl=1.4", egl[2], egl[3]);
     CHECK(line >= 0 && strstr(line_at(line), text));
-    CHECK(wait_line("I/GlTest: egl10 swapped 5 ok=true error=12288", 0, 60) >= 0);
-    CHECK(find_line("java: this OpenGL ES has no version 1", 0) >= 0);
+    line = wait_line("I/GlTest: egl10 swapped 5 ok=true error=12288", 0, 60);
+    CHECK(line >= 0);
+    if (line >= 0) say("  %s", strstr(line_at(line), "egl10 swapped"));
+    if (GL.refuse) {
+        CHECK(line >= 0 && strstr(line_at(line), "gl=OpenGL ES 2.0 (stand-in)"));
+        CHECK(find_line("java: this OpenGL ES has no version 1", 0) >= 0);
+    } else {
+        CHECK(line >= 0 && strstr(line_at(line), "gl=OpenGL ES-CM 1.1 (stand-in)"));
+        CHECK(find_line("java: this OpenGL ES has no version 1", 0) < 0);
+        CHECK(find_line("egl: OpenGL ES 1: its contexts are made with the configuration of their window surface", 0) >= 0);
+    }
     settle();
     write_picture("gl-1");
     /*
@@ -3748,10 +3770,11 @@ int mg_tests_java_run(const char *which, const char *apk, const char *android_ro
     }
     /*
      * OpenGL ES is the stand-in that draws, as for any app here: there is no ANGLE under qemu or on this PC. A real app that
-     * asks the GPU's name is told "stand-in for OpenGL ES".
+     * asks the GPU's name is told "stand-in for OpenGL ES". It makes OpenGL ES 1 as ANGLE does, with a configuration alone --
+     * but in the runs whose shell refuses the frames ("readback"), where it plays an EGL without version 1: `gl` checks both.
      */
     mg_egl_set_provider(mg_gl_standin);
-    mg_gl_standin_reset(true, false);
+    mg_gl_standin_reset(true, !GL.refuse);
     /*
      * An app that brings a GL stack of its own -- the WebView's Chromium, whose ANGLE loads every function of EGL and OpenGL ES
      * and makes its context before the first page -- gets every function there (the stand-in's complete mode). A test app
