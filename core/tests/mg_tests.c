@@ -305,6 +305,48 @@ static void test_log_sink_past_lock(void)
     mg_log_set_sink(g_stand_before, g_stand_before_user);
 }
 
+#if defined(MG_DL_TESTS)
+/*
+ * A DLL that does not load says why (mg_dl_open, mg_host_win32.c): the Windows error, and which of what it imports this
+ * process cannot have. tools/build-tests.sh win makes the DLLs beside mg_tests.exe: mg-dl-t1.dll imports a function of
+ * mg-dl-nowhere.dll, which is nowhere; mg-dl-t2.dll one that kernel32.dll has not got. On an Xbox ANGLE's DLLs did not
+ * load, and the log said they were missing (0.1.0.679).
+ */
+static char g_dl_line[1024];
+static mg_log_sink g_dl_before;
+static void *g_dl_before_user;
+
+static void dl_sink(int level, const char *line, void *user)
+{
+    (void)user;
+    if (strstr(line, "did not load")) mg_strlcpy(g_dl_line, line, sizeof(g_dl_line));
+    if (g_dl_before) g_dl_before(level, line, g_dl_before_user);
+}
+
+static void test_dl_open_why(void)
+{
+    static const struct { const char *dll, *error, *why; } cases[] = {
+        { "mg-dl-t1.dll", "Windows error 126 ", "; this process cannot have mg-dl-nowhere.dll (error 126)" },
+        { "mg-dl-t2.dll", "Windows error 127 ", "; this process cannot have KERNEL32.dll!MeglerNoSuchFunction" },
+        { "mg-dl-absent.dll", "Windows error 126 ", "; its file could not be opened (error 2)" },
+    };
+    size_t i;
+    say("a DLL that does not load says why");
+    mg_log_get_sink(&g_dl_before, &g_dl_before_user);
+    mg_log_set_sink(dl_sink, NULL);
+    for (i = 0; i < sizeof(cases) / sizeof(cases[0]); i++) {
+        void *h;
+        g_dl_line[0] = 0;
+        h = mg_dl_open(cases[i].dll);
+        say("  %s: %s", cases[i].dll, g_dl_line[0] ? g_dl_line : "(no line)");
+        CHECK(h == NULL);
+        CHECK(strstr(g_dl_line, cases[i].error) != NULL);
+        CHECK(strstr(g_dl_line, cases[i].why) != NULL);
+    }
+    mg_log_set_sink(g_dl_before, g_dl_before_user);
+}
+#endif
+
 static void test_host(const char *scratch)
 {
     u8 *p;
@@ -4957,6 +4999,9 @@ int mg_tests_run(const char *libdir, const char *scratch, mg_test_sink sink, voi
     test_host(scratch);
     test_lock_holders();
     test_log_sink_past_lock();
+#if defined(MG_DL_TESTS)
+    test_dl_open_why();
+#endif
     g_failed += mg_storage_tests_run(scratch, g_sink, g_sink_user, &g_checks);
     g_failed += mg_net_tests_run(g_sink, g_sink_user, &g_checks);
     g_failed += mg_sensor_tests_run(g_sink, g_sink_user, &g_checks);

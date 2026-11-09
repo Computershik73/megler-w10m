@@ -470,7 +470,7 @@ elif [ "$MODE" = win ]; then
   # cameras, its sensors, its Bluetooth, the Xbox build's Device Portal client and the shell's window in it;
   # mg_tests_main.c's --gfx-windows, --storage-windows, --codec-windows, --camera-windows, --sensors-windows,
   # --bluetooth-windows, --portal-windows and --window-windows modes.)
-  "$VC/bin/Hostx64/x64/cl.exe" /nologo /c "$OPT" /MT /W3 /std:c11 /utf-8 "$MP" /D_CRT_SECURE_NO_WARNINGS /D_CRT_NONSTDC_NO_WARNINGS /DMG_GFX_WINDOWS /DMG_STORAGE_WINDOWS /DMG_CODEC_WINDOWS /DMG_CAMERA_WINDOWS /DMG_SENSORS_WINDOWS /DMG_BLUETOOTH_WINDOWS /DMG_PORTAL_WINDOWS /DMG_WINDOW_WINDOWS "${SQLITE_CL[@]}" "${WEBP_CL[@]}" \
+  "$VC/bin/Hostx64/x64/cl.exe" /nologo /c "$OPT" /MT /W3 /std:c11 /utf-8 "$MP" /D_CRT_SECURE_NO_WARNINGS /D_CRT_NONSTDC_NO_WARNINGS /DMG_GFX_WINDOWS /DMG_STORAGE_WINDOWS /DMG_CODEC_WINDOWS /DMG_CAMERA_WINDOWS /DMG_SENSORS_WINDOWS /DMG_BLUETOOTH_WINDOWS /DMG_PORTAL_WINDOWS /DMG_WINDOW_WINDOWS /DMG_DL_TESTS "${SQLITE_CL[@]}" "${WEBP_CL[@]}" \
     "/I$(w "$ROOT/core/third_party/zlib")" "/Fo$(w "$OUT/obj")\\" "${ALL[@]}" | grep -v -E '^[A-Za-z0-9_]+\.c$' || true
   "$VC/bin/Hostx64/x64/cl.exe" /nologo /c /O1 /MT /w "$MP" /D_CRT_SECURE_NO_WARNINGS /D_CRT_NONSTDC_NO_WARNINGS \
     "/Fo$(w "$OUT/zobj")\\" "${ZALL[@]}" | grep -v -E '^[A-Za-z0-9_]+\.c$' || true
@@ -538,6 +538,25 @@ elif [ "$MODE" = win ]; then
   "$VC/bin/Hostx64/x64/link.exe" /nologo ${MAPOPT[@]+"${MAPOPT[@]}"} "/OUT:$(w "$OUT/mg_tests.exe")" "$(w "$OUT/obj")\\*.obj" "$(w "$OUT/zobj")\\*.obj" "$(w "$OUT/gfxobj")\\*.obj" \
     "$(w "$OUT/storageobj")\\*.obj" bcrypt.lib synchronization.lib d2d1.lib d3d11.lib dwrite.lib ole32.lib oleaut32.lib ws2_32.lib iphlpapi.lib mfplat.lib mfreadwrite.lib mfuuid.lib
   echo "built $OUT/mg_tests.exe"
+  # Two DLLs beside mg_tests.exe that do not load, for its test of what mg_dl_open says then (MG_DL_TESTS,
+  # test_dl_open_why): mg-dl-t1.dll imports a function of mg-dl-nowhere.dll, which is nowhere, and mg-dl-t2.dll one that
+  # kernel32.dll has not got. Each imports that function alone (no C runtime, no entry point), through an import library
+  # made from a .def of its own.
+  DLT="$OUT/dltest"
+  mkdir -p "$DLT"
+  rm -f "$OUT/mg-dl-t1.dll" "$OUT/mg-dl-t2.dll"
+  printf 'LIBRARY mg-dl-nowhere.dll\nEXPORTS\n  MeglerNowhere\n' > "$DLT/nowhere.def"
+  printf 'LIBRARY KERNEL32.dll\nEXPORTS\n  MeglerNoSuchFunction\n' > "$DLT/k32.def"
+  printf '__declspec(dllimport) int MeglerNowhere(void);\n__declspec(dllexport) int mg_dl_t1(void) { return MeglerNowhere(); }\n' > "$DLT/t1.c"
+  printf '__declspec(dllimport) int MeglerNoSuchFunction(void);\n__declspec(dllexport) int mg_dl_t2(void) { return MeglerNoSuchFunction(); }\n' > "$DLT/t2.c"
+  for t in t1:nowhere t2:k32; do
+    src="${t%%:*}" imp="${t##*:}"
+    "$VC/bin/Hostx64/x64/lib.exe" /nologo /machine:x64 "/def:$(w "$DLT/$imp.def")" "/out:$(w "$DLT/$imp.lib")" > /dev/null
+    "$VC/bin/Hostx64/x64/cl.exe" /nologo /c /GS- "/Fo$(w "$DLT/$src.obj")" "$(w "$DLT/$src.c")" > /dev/null
+    "$VC/bin/Hostx64/x64/link.exe" /nologo /DLL /NOENTRY /NODEFAULTLIB "/OUT:$(w "$OUT/mg-dl-$src.dll")" "$(w "$DLT/$src.obj")" \
+      "$(w "$DLT/$imp.lib")" > /dev/null
+    [ -f "$OUT/mg-dl-$src.dll" ] || { echo "mg-dl-$src.dll was not made" >&2; exit 1; }
+  done
   # The shell's start and its copies (shell/Files.cpp, ShellLog.cpp, Startup.cpp, BundledApks.cpp and Strings.cpp), the
   # package volume Megler installs onto (shell/Placement.cpp) and the apps' APKs in the shared folder (shell/SharedApks.cpp), the very
   # files the phone's package is built from, in a program of their own with the tests that drive them
