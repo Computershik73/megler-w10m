@@ -32,8 +32,10 @@ patches, with the flags gecko-w10m's build used for each, but for that
 processor, with no Gecko in them: no mozilla-config.h, no STL wrappers and
 mozglue allocator (the C runtime's, linked statically, so the DLLs need no
 runtime DLL beside them), and Megler's zlib (core/third_party/zlib) for
-Gecko's. For an app container, as the phone's are (ANGLE_ENABLE_WINDOWS_UWP).
-d3dcompiler_47.dll is the system's.
+Gecko's. For an app container, as the phone's are (ANGLE_ENABLE_WINDOWS_UWP),
+and linked as Megler.exe is, with WindowsApp.lib: they import api-sets,
+d3d11.dll, dxgi.dll and d3dcompiler_47.dll (the system's) and nothing else by
+name -- an Xbox has no kernel32.dll for an app -- or the link is refused.
 
 Environment: MEGLER_GECKO (gecko-w10m's checkout, ../gecko-w10m by default),
 MEGLER_ANGLE_OBJ (its object directory, C:\rw-obj by default), MEGLER_LLVM
@@ -274,6 +276,8 @@ def desktop_flags(obj_dir, cpp):
         if f.startswith("-I") and norm(f[2:]).startswith(dist):
             continue
         out.append("-MT" if f == "-MD" else f)
+    # (angle/0003-platform-helpers-app-container.patch: the version check gives UWP's answer, without VerifyVersionInfoW.)
+    out.append("-DANGLE_MEGLER_APP_CONTAINER")
     return out
 
 
@@ -350,7 +354,29 @@ def windows_h(out_root):
     return path.replace("\\", "/")
 
 
-def desktop_link(arch, autoconf, name, objs, deffile, res, os_libs, extra):
+# The libraries the DLLs link, as Megler.exe's (tools/build-appx.sh): the app partition's WindowsApp.lib, then OneCoreUAP.lib
+# for what the static C runtime needs beyond it, Direct3D's own, and the desktop's umbrella libraries switched off -- the
+# objects name them, and gecko-w10m's link listed them (kernel32.lib and some twenty more) -- so that every function of
+# Windows is imported from an api-set and none from kernel32.dll by name. An Xbox has no kernel32.dll for an app: a DLL
+# importing it does not load there (LoadPackagedLibrary's error 126), and ANGLE did not, for any app (0.1.0.679).
+WINDOWS_LIBS = ["WindowsApp.lib", "OneCoreUAP.lib", "d3d11.lib", "dxgi.lib", "d3dcompiler.lib", "dxguid.lib"]
+DESKTOP_LIBS = ["kernel32.lib", "user32.lib", "gdi32.lib", "advapi32.lib", "comdlg32.lib", "dbghelp.lib", "dnsapi.lib",
+                "msimg32.lib", "odbc32.lib", "odbccp32.lib", "ole32.lib", "oleaut32.lib", "shell32.lib", "shlwapi.lib",
+                "usp10.lib", "uuid.lib", "version.lib", "wininet.lib", "winmm.lib", "winspool.lib", "ws2_32.lib",
+                "setupapi.lib", "synchronization.lib", "runtimeobject.lib"]
+# What the DLLs may ask the loader for by name: api-sets, Direct3D's DLLs, which every Windows of an app has, and each other.
+ALLOWED_IMPORTS = re.compile(r"^(api-ms-win-.*|ext-ms-win-.*|d3d11\.dll|dxgi\.dll|d3dcompiler_47\.dll|libGLESv2\.dll)$", re.I)
+
+
+def imports_of(dll):
+    """The DLL names a DLL's import table asks the loader for, and those of its delay-load table."""
+    r = subprocess.run([os.path.join(LLVM, "llvm-readobj.exe"), "--coff-imports", dll], capture_output=True, text=True)
+    if r.returncode:
+        die("could not read the imports of %s:\n%s" % (dll, r.stderr[-2000:]))
+    return sorted(set(m.group(1) for m in re.finditer(r"^\s*Name:\s*(\S+\.dll)\s*$", r.stdout, re.M | re.I)))
+
+
+def desktop_link(arch, autoconf, name, objs, deffile, res, extra):
     _, vcarch, machine = ARCHES[arch]
     dist = os.path.join(OUT, arch, "dist")
     os.makedirs(dist, exist_ok=True)
@@ -359,13 +385,18 @@ def desktop_link(arch, autoconf, name, objs, deffile, res, os_libs, extra):
     rsp = os.path.join(OUT, arch, "obj", name + ".rsp")
     args = ["-NOLOGO", "-DLL", "-OUT:" + os.path.join(dist, name + ".dll"), "-IMPLIB:" + os.path.join(OUT, arch, "obj", name + ".lib"),
             "-MACHINE:" + machine, "-SUBSYSTEM:WINDOWS,10.0", "-APPCONTAINER", "-OPT:REF,ICF", "-DEF:" + deffile]
-    args += objs + extra + [res] + os_libs
+    args += objs + extra + [res] + WINDOWS_LIBS + ["-NODEFAULTLIB:" + l for l in DESKTOP_LIBS]
     with open(rsp, "w", encoding="utf-8") as f:
         f.write("\n".join('"%s"' % a if " " in a else a for a in args) + "\n")
     r = subprocess.run([os.path.join(LLVM, "lld-link.exe"), "@" + rsp], env=dict(os.environ, LIB=lib.replace("/", "\\")), capture_output=True, text=True)
     if r.returncode:
         die("linking %s.dll for %s failed:\n%s%s" % (name, arch, r.stdout[-6000:], r.stderr[-6000:]))
-    print("  linked build/angle/%s/dist/%s.dll (%d KB)" % (arch, name, os.path.getsize(os.path.join(dist, name + ".dll")) // 1024))
+    path = os.path.join(dist, name + ".dll")
+    odd = [d for d in imports_of(path) if not ALLOWED_IMPORTS.match(d)]
+    if odd:
+        os.remove(path)
+        die("%s.dll for %s imports %s by name, which an Xbox has not got for an app: removed" % (name, arch, ", ".join(odd)))
+    print("  linked build/angle/%s/dist/%s.dll (%d KB), importing %s" % (arch, name, os.path.getsize(path) // 1024, ", ".join(imports_of(path))))
 
 
 def build_desktop(arch):
@@ -390,13 +421,11 @@ def build_desktop(arch):
     if failed:
         die("%d of %d objects did not compile for %s" % (len(failed), len(jobs), arch))
     print("  compiled %d objects" % len(jobs))
-    gles_mk = make_vars(os.path.join(GLES_OBJ, "backend.mk"))
-    egl_mk = make_vars(os.path.join(egl_obj, "backend.mk"))
-    # (The Windows Runtime's activation and strings, which Trim11 and the window classes call: Gecko's link had them elsewhere.)
+    # (The Windows Runtime's activation and strings, which Trim11 and the window classes call, are WindowsApp.lib's.)
     desktop_link(arch, autoconf, "libGLESv2", gles, os.path.join(ANGLE_SRC, "src", "libGLESv2", "libGLESv2_autogen.def"),
-                 os.path.join(GLES_OBJ, "libGLESv2.dll.res"), gles_mk.get("OS_LIBS", "").split() + ["runtimeobject.lib"], [])
+                 os.path.join(GLES_OBJ, "libGLESv2.dll.res"), [])
     desktop_link(arch, autoconf, "libEGL", egl, os.path.join(ANGLE_SRC, "src", "libEGL", "libEGL_autogen.def"),
-                 os.path.join(egl_obj, "libEGL.dll.res"), egl_mk.get("OS_LIBS", "").split(), [os.path.join(OUT, arch, "obj", "libGLESv2.lib")])
+                 os.path.join(egl_obj, "libEGL.dll.res"), [os.path.join(OUT, arch, "obj", "libGLESv2.lib")])
 
 
 def main():

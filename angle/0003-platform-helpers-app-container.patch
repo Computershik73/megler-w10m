@@ -1,0 +1,16 @@
+--- a/src/common/platform_helpers.cpp
++++ b/src/common/platform_helpers.cpp
+@@ -33,7 +33,12 @@
+ bool IsWindowsVersionOrLater(VersionTriple greaterOrEqual)
+ {
+ #if defined(ANGLE_PLATFORM_WINDOWS)
+-#    if defined(ANGLE_ENABLE_WINDOWS_UWP)
++    // Megler: its ANGLE for desktop Windows (tools/build-angle.py --arch) runs in an app container on
++    // Windows 10 and later only -- a PC's, an Xbox's -- and imports nothing by name but api-sets and
++    // Direct3D's DLLs. VerifyVersionInfoW is api-ms-win-core-kernel32-legacy's, which an Xbox may not
++    // have for an app; gecko-w10m's build compiles these objects as the desktop's, not as UWP's, so
++    // they are told with ANGLE_MEGLER_APP_CONTAINER to give UWP's answer.
++#    if defined(ANGLE_ENABLE_WINDOWS_UWP) || defined(ANGLE_MEGLER_APP_CONTAINER)
+     // Windows UWP does not provide access to the VerifyVersionInfo API, nor
+     // the versionhelpers.h functions. To work around this, always treat UWP
+     // applications as running on Windows 10 (which is when UWP was

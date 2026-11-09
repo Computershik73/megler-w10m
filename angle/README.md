@@ -26,6 +26,20 @@ it: these patches change `.cpp` files only.
   `WRITE_DISCARD`, so the draws already made with it keep what they read); one
   used by the last 64 ranges asked for is never taken.
 
+- `0003-platform-helpers-app-container.patch` -- `platform_helpers.cpp`, for the
+  ANGLE of desktop Windows (`tools/build-angle.py --arch`, which defines
+  `ANGLE_MEGLER_APP_CONTAINER`; the phone's build does not, and its code stays as
+  it was). gecko-w10m's build compiles ANGLE's common code as the desktop's, not
+  as UWP's, so its Windows version check called `VerifyVersionInfoW`, which
+  WindowsApp.lib takes from `api-ms-win-core-kernel32-legacy-l1-1-1.dll`: the one
+  import of the DLLs that neither Megler.exe has nor Direct3D, and that an Xbox
+  may not have for an app. The check gives UWP's answer instead (Windows 10 or
+  later, which every Megler of desktop Windows runs on). Since 0.1.0.680 the
+  desktop DLLs are linked as Megler.exe is, with WindowsApp.lib, and import
+  api-sets, `d3d11.dll`, `dxgi.dll` and `d3dcompiler_47.dll` alone: an Xbox has no
+  `kernel32.dll` for an app, and ANGLE linked with `kernel32.lib` loaded for no app
+  there (0.1.0.679, "ANGLE did not load").
+
 (An earlier `0001-buffer11-dynamic-writes.patch` took a static buffer written
 after its draws as dynamic. It was made for a loading screen that ran at seven
 frames a second, which turned out to be the shell composing the window from
