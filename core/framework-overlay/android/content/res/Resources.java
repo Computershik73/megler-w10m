@@ -116,7 +116,12 @@ public class Resources {
     // ---- the tables, shared by every Resources of the app
     static ResTable sApp, sFramework;
     static final Object sLock = new Object();
-    private static Resources sSystem;
+    /*
+     * (Read without sLock once made: getSystem. A thread reading another package's table or a library's held sLock for
+     * seconds on a Lumia 650, and TikTok Lite's main thread waited there for the system's Resources, made long before: 27
+     * percent of its first ten seconds, 0.1.0.677.)
+     */
+    private static volatile Resources sSystem;
 
     /**
      * What these Resources are made of: the AssetManager, the configuration and metrics, the tables, the loaders and the caches
@@ -193,12 +198,27 @@ public class Resources {
     private static final java.util.HashMap<Integer, ResTable> sPackageTables = new java.util.HashMap<>();
     /** That package's table (ResourcesImpl: the table of an AssetManager of another package's). */
     static ResTable meglerPackageTable(int apk) { return packageTable(apk); }
+    /*
+     * Each read under a lock of that APK's own, not sLock: Google Play services' takes seconds on a phone, and sLock is the
+     * one every Resources of the app takes for its tables (getSystem, the libraries, the size buckets).
+     */
+    private static final java.util.HashMap<Integer, Object> sPackageTableLocks = new java.util.HashMap<>();
     private static ResTable packageTable(int apk) {
+        Object own;
         synchronized (sLock) {
             ResTable t = sPackageTables.get(apk);
-            if (t == null) {
-                byte[] data = megler.Native.readApkResourceTable(apk, tableLanguages());
-                t = new ResTable(data == null ? emptyTable() : data);
+            if (t != null) return t;
+            own = sPackageTableLocks.get(apk);
+            if (own == null) sPackageTableLocks.put(apk, own = new Object());
+        }
+        synchronized (own) {
+            synchronized (sLock) {
+                ResTable t = sPackageTables.get(apk);
+                if (t != null) return t;
+            }
+            byte[] data = megler.Native.readApkResourceTable(apk, tableLanguages());
+            ResTable t = new ResTable(data == null ? emptyTable() : data);
+            synchronized (sLock) {
                 sPackageTables.put(apk, t);
             }
             return t;
@@ -365,16 +385,22 @@ public class Resources {
      * name[0]. id[0] stays 0 when the APK has no resources. AssetManager.addAssetPathAsSharedLibrary calls this.
      */
     static void meglerAddLibrary(int apk, int[] id, String[] name) {
+        int given;
         synchronized (sLock) {
             loadTables();
             if (sNextLibraryId >= 0x7f) return;
-            ResTable t = tableOf(apk, sNextLibraryId);
-            if (t == null || t.packages.isEmpty()) return;
-            sLibs[sNextLibraryId] = t;
-            sLibApks[sNextLibraryId] = apk;
-            id[0] = sNextLibraryId++;
-            name[0] = t.packages.get(0).name;
+            given = sNextLibraryId++;
         }
+        // (Read with the id it is given, outside sLock as another package's table is: an id of a library with no resources
+        // is left unused, which no table names.)
+        ResTable t = tableOf(apk, given);
+        if (t == null || t.packages.isEmpty()) return;
+        synchronized (sLock) {
+            sLibs[given] = t;
+            sLibApks[given] = apk;
+        }
+        id[0] = given;
+        name[0] = t.packages.get(0).name;
     }
     /** The core's number of the APK that holds the files of a resource id: the platform's (1), a library's, or the app's (0). */
     private int apkOf(int id) {
@@ -396,7 +422,11 @@ public class Resources {
         return null;
     }
 
-    public static Resources getSystem() { synchronized (sLock) { if (sSystem == null) sSystem = new Resources(new AssetManager()); return sSystem; } }
+    public static Resources getSystem() {
+        Resources r = sSystem;
+        if (r != null) return r;
+        synchronized (sLock) { if (sSystem == null) sSystem = new Resources(new AssetManager()); return sSystem; }
+    }
     public final AssetManager getAssets() { return mResourcesImpl.mAssets; }
     public DisplayMetrics getDisplayMetrics() { return mResourcesImpl.mMetrics; }
     public Configuration getConfiguration() { return mResourcesImpl.mConfiguration; }
