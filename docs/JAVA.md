@@ -5507,6 +5507,24 @@ on a looper thread of its own and takes it back with `next()`.
   object reference" in the module's `m6.ev.a`) as it put a bus route on its
   map (0.1.0.675). The data app's step "bitmap-parcel" writes two so and
   reads them back.
+- `android/view/ViewPropertyAnimator.java`, as Android's in what it tells
+  and what it cancels. The properties asked for since a start get a
+  `ValueAnimator` of their own; a property asked for again is taken from the
+  animator that had it there and then, and that animator is cancelled once
+  it has none left, while animators of other properties run on beside the
+  new one -- the framework's own ran one animation at a time and cancelled it
+  when the next started. The listener and the update listener told are the
+  ones the `ViewPropertyAnimator` has when an event comes, whichever animator
+  it comes from, so a listener taken off in `onAnimationCancel` does not hear
+  the `onAnimationEnd` that follows -- the framework's own told the ones set
+  when the animation started. `withEndAction`'s runnable is not run for an
+  animation cancelled, and `start()` starts even with nothing asked for, as
+  Android's does. Spotify's carousel animator (through
+  `ViewPropertyAnimatorCompat`) takes its listener off when an item's fade is
+  cancelled so as to finish the item once; here the end that followed was
+  told to it too, and the item was finished twice (RecyclerView's listener
+  run twice for one fade). The data app's step "animator-listener" checks
+  each of these.
 - `android/app/usage/StorageStatsManager.java`, two methods in their two
   forms: `getTotalBytes` and `getFreeBytes` were signatures answering 0.
   Since Android 8 this is where an app asks how large the phone's storage is
@@ -5793,6 +5811,22 @@ on a looper thread of its own and takes it back with `next()`.
   (Settings, Chats, Theme) ended the app: "Can't convert value at index 6 to
   dimension: type=0x6" (0.1.0.671). The data app's step "inset-fraction"
   inflates such insets and measures what they give.
+- `megler/ResInflate.java`, a few lines: an animator's XML is read as
+  Android's `AnimatorInflater` reads it, and an element that is no
+  animator's -- a view animation's `<alpha>`, `<translate>`, `<scale>` or
+  `<rotate>`, alone or in a `<set>` -- is "Unknown animator name", thrown.
+  The inflater made a `ValueAnimator` of anything. AndroidX's fragments try
+  an animation resource as an animator first when its type is not named
+  "anim", and take the view animation when that throws; Facebook's apps name
+  the type of theirs "anim.2", so Messenger's fragments came in by an
+  animator of 200 ms that animated nothing, and a fragment is resumed only
+  once its animator ends, where a view animation lets it be resumed at once.
+  The step of Messenger's first-run screen that asks to import the contacts
+  opens its Bloks screen as it is made and learns it did in its `onPause`;
+  paused by that screen before its animator was over, it was never resumed,
+  so never paused, and on coming back it did not move on: the screen stayed
+  until Back (0.1.0.673). The data app's step "animator-not-animation"
+  inflates both kinds both ways.
 
 - `android/app/Activity.java`, two methods: `initWindowDecorActionBar` makes
   the window's decor before it asks whether the window has an action bar, as
@@ -5901,6 +5935,20 @@ on a looper thread of its own and takes it back with `next()`.
   its own activities is the home) and the app goes to the back; the data
   app's step "intent-categories" resolves the home, the launcher's intent and
   an unknown category.
+  And `Activity.finishAffinity` finishes the caller and the activities under
+  it of its task affinity (`android:taskAffinity`, now read with the manifest:
+  the application's, the package's unless it names another, none for an
+  empty one) together, as `ActivityStack.finishActivityAffinityLocked`: all
+  are finishing before the first goes, so none is resumed on the way, and the
+  first one down of another affinity stays and comes back if the top went.
+  They were finished one by one, each the top in its turn, and the one under
+  each was resumed before it went too. Messenger's first-run screen finishes
+  so on Back when it finds no home: its main activity, resumed for that
+  moment, asked for the first-run screen again (Messenger looks for a pending
+  first-run at every resume) and finished, and the screen it asked for
+  finished in `onCreate`, the first not destroyed yet (673). The crash app's
+  `Trampoline` starts `Away` and `AwayTop`, of an affinity of their own;
+  `AwayTop` finishes it, `Away` is not resumed, and `Trampoline` comes back.
 
 - `android/app/Activity.java`, `getCallingActivity` and `getCallingPackage`:
   who started the activity for a result, which its `setResult` answers, and
@@ -6017,6 +6065,22 @@ on a looper thread of its own and takes it back with `next()`.
   seconds: frames, the time drawing the lists and showing each, and how long
   the main thread waited for it. The flag `no-render-thread` draws and shows
   each frame on the main thread.
+  And `dispatchDetachedFromWindow` leaves the view's `View.animate()`
+  animation running, as Android's does: the framework's own cancelled it,
+  which told its listener the animation's end inside whatever took the view
+  out of the window. RecyclerView's layout removes a stale child it has
+  taken from its scrap with `removeDetachedView` and then unscraps it
+  (androidx's `Recycler.tryGetViewHolderForPositionByDeadline`); the item
+  animator's listener, told the end in between, had recycled the child
+  already (`removeAnimatingView`: no longer a child, so unscrapped), and the
+  unscrap met null. Spotify's Now Playing carousel, whose covers its item
+  animator fades out through `View.animate()`, ended so at a track change
+  (0.1.0.678: a `NullPointerException` on `p.t7y0.n(Lp/c8y0;)V`, the
+  recycler's `unscrapView`, in `p.t7y0.m` under `CarouselLayoutManager`'s
+  `onLayoutChildren`). The data app's step "detached-animator" does that
+  with a list of its own in the window: nothing is heard inside the removal,
+  the child is still in the scrap after it, and the fade goes on to its end
+  and is told then, once.
 - `megler/KeyStoreProvider.java`, one method, and Megler's circumstance
   rather than a fault of the framework's own: `PairGen.generateKeyPair` takes another
   provider's key pair generator from its service, because

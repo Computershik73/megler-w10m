@@ -148,6 +148,23 @@ public class Main extends Activity {
             vertices = ByteBuffer.allocateDirect(triangle.length * 4).order(ByteOrder.nativeOrder()).asFloatBuffer();
             vertices.put(triangle).position(0);
             Log.i(T, "program linked=" + linked[0] + " position=" + position + " color=" + color + " log=" + GLES20.glGetProgramInfoLog(program));
+            // GLUtils as Android's: an ALPHA_8 bitmap goes up as GL_ALPHA bytes, as Google Play services' legacy maps renderer puts
+            // its labels into GL_ALPHA textures (they went up as RGBA, and showed as grey boxes), and the app's unpack alignment is
+            // the same after.
+            GLES20.glPixelStorei(GLES20.GL_UNPACK_ALIGNMENT, 4);
+            int[] tex = new int[1];
+            GLES20.glGenTextures(1, tex, 0);
+            GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, tex[0]);
+            android.graphics.Bitmap a8 = android.graphics.Bitmap.createBitmap(3, 2, android.graphics.Bitmap.Config.ALPHA_8);
+            a8.eraseColor(0x80000000);
+            android.opengl.GLUtils.texImage2D(GLES20.GL_TEXTURE_2D, 0, a8, 0);
+            int uploaded = GLES20.glGetError();
+            int[] align = new int[1];
+            GLES20.glGetIntegerv(GLES20.GL_UNPACK_ALIGNMENT, align, 0);
+            GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, 0);
+            GLES20.glDeleteTextures(1, tex, 0);
+            Log.i(T, "glutils alpha8 format=0x" + Integer.toHexString(android.opengl.GLUtils.getInternalFormat(a8)) + " type=0x"
+                    + Integer.toHexString(android.opengl.GLUtils.getType(a8)) + " error=" + uploaded + " align=" + align[0]);
         }
 
         private int shader(int type, String source) {

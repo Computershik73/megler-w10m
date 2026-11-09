@@ -1,11 +1,14 @@
 // Overlay of core/framework/src/megler/ResInflate.java (tools/build-framework.sh).
-// It differs in three places. The mask layer of a <ripple> is handed to the RippleDrawable before it is left out of the
+// It differs in four places. The mask layer of a <ripple> is handed to the RippleDrawable before it is left out of the
 // layers that are drawn. And an <adaptive-icon> is an AdaptiveIconDrawable (its background, foreground and monochrome
 // layers), where it was a LayerDrawable of its layers: launchers ask an icon whether it is adaptive, and draw it masked.
 // And an <inset>'s insets may be fractions of the drawable's bounds ("10%"), as Android 8 and later read them
 // (InsetDrawable.getInset: the value's type first, then a fraction or a dimension); the original read every one with
 // getDimensionPixelOffset, which throws for a fraction, and WhatsApp's adaptive icon, whose foreground is inset by 0.01%,
 // ended the app where its Appearance screen showed it (android/graphics/drawable/InsetDrawable.java says more).
+// And an animator's XML is read as Android's AnimatorInflater reads it: an element that is no animator's (a view animation's
+// <alpha>, say) is "Unknown animator name", thrown, where the original made a ValueAnimator of anything (animatorElement says
+// what that did to Messenger's first-run screen).
 // Everything else is the original's, unchanged.
 //
 // Why. Android's commonest ripple is one with nothing in it but a mask -- item_background_material, which is
@@ -595,6 +598,19 @@ public final class ResInflate {
         try { toStart(p); return animatorElement(r, p); }
         catch (RuntimeException e) { throw e; } catch (Exception e) { throw new Resources.NotFoundException("animator: " + e); }
     }
+    /*
+     * An element of an animator's XML, as Android's AnimatorInflater.createAnimatorFromXml takes it: <set>, <objectAnimator>
+     * and <animator> are animators, a <propertyValuesHolder> standing where an animator would is none (null: a set leaves it
+     * out), and any other element is "Unknown animator name", thrown -- a view animation's <alpha>, <translate>, <scale> or
+     * <rotate>, alone or in a <set>. AndroidX's fragments count on that throw: an animation resource whose type is not named
+     * "anim" is tried as an animator first and taken as a view animation when that fails (FragmentAnim.loadAnimation), and
+     * Facebook's apps name the type of theirs "anim.2". This made a ValueAnimator of anything, so Messenger's fragments, which
+     * come in with an <alpha> of 200 ms, came in by an animator that animates nothing: a fragment waits for its animator's end
+     * before it is resumed (SpecialEffectsController), where a view animation lets it be resumed at once. The step of
+     * Messenger's first-run screen that asks to import the contacts opens its Bloks screen from onActivityCreated and only
+     * learns it did in onPause; paused 50 ms later by that screen, before its animator was over, it never was resumed, so never
+     * paused, and on coming back it did not move on: the screen stayed until Back (0.1.0.673).
+     */
     private static android.animation.Animator animatorElement(Resources r, XmlPullParser p) throws Exception {
         AttributeSet set = as(p);
         String n = p.getName();
@@ -605,12 +621,17 @@ public final class ResInflate {
             ArrayList<android.animation.Animator> kids = new ArrayList<>();
             int depth = p.getDepth() + 1, tt;
             while ((tt = p.next()) != XmlPullParser.END_DOCUMENT && (p.getDepth() >= depth || tt != XmlPullParser.END_TAG)) {
-                if (tt == XmlPullParser.START_TAG && p.getDepth() == depth) kids.add(animatorElement(r, p));
+                if (tt == XmlPullParser.START_TAG && p.getDepth() == depth) {
+                    android.animation.Animator kid = animatorElement(r, p);
+                    if (kid != null) kids.add(kid);
+                }
             }
             android.animation.AnimatorSet s = new android.animation.AnimatorSet();
             if (seq) s.playSequentially(kids); else s.playTogether(kids);
             return s;
         }
+        if ("propertyValuesHolder".equals(n)) { skip(p); return null; }
+        if (!"objectAnimator".equals(n) && !"animator".equals(n)) throw new RuntimeException("Unknown animator name: " + n);
         TypedArray a = r.obtainAttributes(set, S.Animator);
         TypedArray pa = r.obtainAttributes(set, S.PropertyAnimator);
         int vt = a.getInt(S.Animator_valueType, 0);   // 0 float, 1 int, 2 path, 3 color

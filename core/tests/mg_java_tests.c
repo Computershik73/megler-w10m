@@ -2757,7 +2757,7 @@ static int run_data(void)
                                             makes one. And a proxy of an interface of 600 methods. And sound from Java: an
                                             AudioTrack written to, a MediaPlayer of a WAV and of an Ogg Vorbis asset, a SoundPool. */
                                          "xml", "asset-fd", "tasks", "wrapper-receiver", "viewgroup-flag", "text-drawables", "pfd-dup", "pfd-parcel",
-                                         "theme-selfref", "queue-next", "storage-stats", "broadcast-explicit", "service-stop-thread", "start-ids", "process-scope", "job-scheduler", "downloads", "rollback-service", "art-manager", "progress-subclass", "telephony", "microphone", "biometric", "ordered-broadcast", "hardware-accelerated", "descendant-invalidated", "image-matrix-before-layout", "delegate-last-scope", "asset-manager-manifest", "big-asset", "path-iterator", "mutable-context", "exec", "crc32c", "nine-patch-constructors", "subscription-ids", "filter-categories", "intent-categories", "broadcast-identity", "arrays-ranges", "collection-factories", "unmodifiable-collectors", "thread-stack", "icu-number", "audio-route", "expand-template", "list-fragment", "fragment-saved-state", "stub-said", "handler-thread", "managed-dialog", "input-format", "dialog-of-stopped", "zip-path-validator", "list-row-click", "animation-listener", "circular-reveal", "animator-values", "observer-merged", "typeface-descriptor", "device-provisioned", "users", "start-asked", "pending-intent-creator", "pending-intent-flags", "alarm-replace-cancel", "messenger-forwarded", "insets-builder", "insets-consumed", "insets-siblings", "broadcast-handler", "prefs-spaced-key", "account-removed", "sync", "package-installer", "batch-operations", "wifi", "media-metadata", "playback-state", "remote-user-info", "media-key-controller", "container-state", "context-params", "theme-accent", "phone-apps", "phone-apps-activities", "phone-apps-signatures", "check-signatures", "install-intent", "install-session", "install-splits", "bitmap-bytes", "bitmap-reuse", "file-read-only", "component-state", "adaptive-icon", "idle-handler", "uri-builder", "html-tag-handler", "stats-manager", "credential-manager", "many-interfaces", "proxy-many-methods", "apk-path", "maps-paths", "apk-optimization",
+                                         "theme-selfref", "queue-next", "storage-stats", "broadcast-explicit", "service-stop-thread", "start-ids", "process-scope", "job-scheduler", "downloads", "rollback-service", "art-manager", "progress-subclass", "telephony", "microphone", "biometric", "ordered-broadcast", "hardware-accelerated", "descendant-invalidated", "image-matrix-before-layout", "delegate-last-scope", "asset-manager-manifest", "big-asset", "path-iterator", "mutable-context", "exec", "crc32c", "nine-patch-constructors", "subscription-ids", "filter-categories", "intent-categories", "broadcast-identity", "arrays-ranges", "collection-factories", "unmodifiable-collectors", "thread-stack", "icu-number", "audio-route", "expand-template", "list-fragment", "fragment-saved-state", "stub-said", "handler-thread", "managed-dialog", "input-format", "dialog-of-stopped", "zip-path-validator", "list-row-click", "animation-listener", "circular-reveal", "animator-values", "detached-animator", "animator-listener", "animator-not-animation", "observer-merged", "typeface-descriptor", "device-provisioned", "users", "start-asked", "pending-intent-creator", "pending-intent-flags", "alarm-replace-cancel", "messenger-forwarded", "insets-builder", "insets-consumed", "insets-siblings", "broadcast-handler", "prefs-spaced-key", "account-removed", "sync", "package-installer", "batch-operations", "wifi", "media-metadata", "playback-state", "remote-user-info", "media-key-controller", "container-state", "context-params", "theme-accent", "phone-apps", "phone-apps-activities", "phone-apps-signatures", "check-signatures", "install-intent", "install-session", "install-splits", "bitmap-bytes", "bitmap-reuse", "file-read-only", "component-state", "adaptive-icon", "idle-handler", "uri-builder", "html-tag-handler", "stats-manager", "credential-manager", "many-interfaces", "proxy-many-methods", "apk-path", "maps-paths", "apk-optimization",
                                          /* And an <inset> whose insets are fractions of its bounds, WhatsApp's adaptive icon's 0.01% among them. */
                                          "inset-fraction",
                                          /* And a WorkSource through a Parcel and back, as a location request of Google Play services' carries one. */
@@ -2788,6 +2788,8 @@ static int run_data(void)
                                          /* And the hidden ServiceManager, every service one that is not there, as Shizuku's SystemServiceHelper
                                             asks it (Morphe Manager ended at its start without the class). */
                                          "service-manager",
+                                         /* And DateUtils' ranges into a Formatter, and a duration in words (both answered null). */
+                                         "date-range",
                                          "audio-track", "media-player", "media-player-ogg", "sound-pool",
                                          /* And MediaCodec over the stand-in for the shell's decoders: H.264 shown on a Surface in display
                                             order, a flush, parameter sets in a codec-config buffer, the asynchronous mode, AAC with an
@@ -2961,6 +2963,11 @@ static int run_data(void)
     /* The view animation of the step "animation-listener": its listener told through the view's handler, after the frames that
        started and ended it, not inside its parent's dispatchDraw (Animation.fireStart; Telegram's settings ended the app). */
     CHECK(wait_line("I/DataTest: animation-listener heard=start end", 0, 30) >= 0);
+    /* The child of the step "detached-animator", fading through View.animate() when it was taken from its list's scrap and removed
+       (RecyclerView's layout taking a stale child): nothing heard inside the removal, so it was still in the scrap to be unscrapped
+       (Spotify's carousel met null there), and its animation went on to its end, the listener told once, afterwards. */
+    CHECK(wait_line("I/DataTest: detached-animator removed unscrapped heard=nothing attached-before=true after=false parent=null", 0, 30) >= 0);
+    CHECK(wait_line("I/DataTest: detached-animator ended heard=end alpha=0.0 attached=false", 0, 30) >= 0);
     /* The one-shot listener of the step "observer-merged", on the observer a view had before it was in a window: run once, that
        observer dead by then, while a listener left in place heard several layouts. */
     CHECK(wait_line("I/DataTest: observer-merged runs=1 dead=true layouts=several", 0, 30) >= 0);
@@ -3192,6 +3199,17 @@ static int run_crash(void)
      */
     expect_line("I/CrashTest: trampoline onCreate root=true", &at, 60);
     expect_line("I/CrashTest: main onCreate root=false", &at, 60);
+    /*
+     * Activity.finishAffinity: Trampoline starts Away, of an affinity of its own, which starts AwayTop, of the same, which
+     * finishes their affinity. Both go together, AwayTop finishing at once, and Away is not resumed on the way down, as on
+     * Android; Trampoline, of the package's affinity, stays and comes back. The layer finished them one by one, each the top
+     * in its turn, and resumed the one under each first: Messenger's main activity, resumed so under its first-run screen,
+     * asked for that screen again (0.1.0.673).
+     */
+    expect_line("I/CrashTest: away onResume 1 finishing=false", &at, 60);
+    expect_line("I/CrashTest: away-top finishAffinity finishing=true", &at, 60);
+    expect_line("I/CrashTest: trampoline back after the affinity went", &at, 60);
+    CHECK(find_line("I/CrashTest: away onResume 2", 0) < 0 && find_line("I/CrashTest: away-top onDestroy", 0) >= 0);
     expect_line("I/CrashTest: second onCreate, about to throw", &at, 60);
     CHECK(find_line("I/CrashTest: main onStart", 0) < 0 && find_line("I/CrashTest: main onRestart", 0) < 0);
     /* (The second First stayed through SINGLE_TOP, and goes only when it finishes itself for Trampoline.) */
@@ -3246,6 +3264,8 @@ static int run_gl(void)
     CHECK(strstr(line_at(at), "current=true version=2 config=8/16") != NULL);
     expect_line("I/GlTest: strings vendor=Megler renderer=stand-in for OpenGL ES version=OpenGL ES 2.0 (stand-in) extensions=4 gl10=Megler", &at, 30);
     expect_line("I/GlTest: program linked=1 position=0 color=0 log=stand-in: program", &at, 30);
+    /* GLUtils as Android's: an ALPHA_8 bitmap up as GL_ALPHA bytes, the app's unpack alignment of 4 kept. */
+    expect_line("I/GlTest: glutils alpha8 format=0x1906 type=0x1401 error=0 align=4", &at, 30);
     expect_line("I/GlTest: changed ", &at, 30);
     expect_line("I/GlTest: first frame on GLThread", &at, 30);
     CHECK(strstr(line_at(at), "error=0") != NULL);

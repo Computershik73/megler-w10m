@@ -82,7 +82,7 @@ public class PackageManager {
         ActivityInfo a = new ActivityInfo();
         a.name = c.name; a.packageName = megler.Native.packageName(); a.theme = c.theme; a.labelRes = c.label; a.icon = c.icon; a.screenOrientation = c.screenOrientation;
         a.configChanges = c.configChanges; a.launchMode = c.launchMode; a.exported = c.exported; a.enabled = c.enabled; a.metaData = c.metaData; a.parentActivityName = c.parentActivity;
-        a.softInputMode = c.windowSoftInputMode; a.processName = process(c); a.taskAffinity = a.packageName;
+        a.softInputMode = c.windowSoftInputMode; a.processName = process(c); a.taskAffinity = c.taskAffinity;
         return a;
     }
     /** An activity of Google Play services that runs here (megler.MicroG.activity), as its package describes it. */
