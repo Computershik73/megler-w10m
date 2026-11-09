@@ -6017,6 +6017,22 @@ on a looper thread of its own and takes it back with `next()`.
   seconds: frames, the time drawing the lists and showing each, and how long
   the main thread waited for it. The flag `no-render-thread` draws and shows
   each frame on the main thread.
+  And `dispatchDetachedFromWindow` leaves the view's `View.animate()`
+  animation running, as Android's does: the framework's own cancelled it,
+  which told its listener the animation's end inside whatever took the view
+  out of the window. RecyclerView's layout removes a stale child it has
+  taken from its scrap with `removeDetachedView` and then unscraps it
+  (androidx's `Recycler.tryGetViewHolderForPositionByDeadline`); the item
+  animator's listener, told the end in between, had recycled the child
+  already (`removeAnimatingView`: no longer a child, so unscrapped), and the
+  unscrap met null. Spotify's Now Playing carousel, whose covers its item
+  animator fades out through `View.animate()`, ended so at a track change
+  (0.1.0.678: a `NullPointerException` on `p.t7y0.n(Lp/c8y0;)V`, the
+  recycler's `unscrapView`, in `p.t7y0.m` under `CarouselLayoutManager`'s
+  `onLayoutChildren`). The data app's step "detached-animator" does that
+  with a list of its own in the window: nothing is heard inside the removal,
+  the child is still in the scrap after it, and the fade goes on to its end
+  and is told then, once.
 - `megler/KeyStoreProvider.java`, one method, and Megler's circumstance
   rather than a fault of the framework's own: `PairGen.generateKeyPair` takes another
   provider's key pair generator from its service, because

@@ -43,7 +43,15 @@
 // And setPadding and setPaddingRelative each set the padding themselves (meglerSetPadding, as Android's internalSetPadding),
 // where setPaddingRelative called setPadding: a view of an app's own that overrides setPadding to call setPaddingRelative
 // called itself until the stack ran out (Avito's text field, com.avito.android.lib.design.input.Input, as its layout was
-// inflated). Everything else is the original's, unchanged.
+// inflated).
+//
+// And dispatchDetachedFromWindow leaves the view's View.animate() animation running, as Android's does; the original
+// cancelled it, which told its listener the animation's end inside whatever took the view out of the window. RecyclerView's
+// layout removes a stale child it has taken from its scrap (removeDetachedView) and then unscraps it (androidx's
+// Recycler.tryGetViewHolderForPositionByDeadline); the item animator's listener, told the end in between, had recycled the
+// child already (RecyclerView's removeAnimatingView: no longer a child, so unscrapped), and the unscrap met null. Spotify's
+// Now Playing carousel, whose covers its item animator fades out through View.animate(), ended so at a track change
+// (0.1.0.678). Everything else is the original's, unchanged.
 package android.view;
 
 import android.animation.StateListAnimator;
@@ -448,7 +456,7 @@ public class View implements Drawable.Callback, KeyEvent.Callback {
         if (mMeglerNode != null) mMeglerNode.discardDisplayList();
         mMeglerListValid = false;
         if (mOverlay != null) mOverlay.meglerDetached();
-        if (mAnimator != null) mAnimator.cancel();
+        // (Its View.animate() animation runs on, as on Android: see the top of this file.)
         onWindowVisibilityChanged(GONE);
         onDetachedFromWindow();
         if (mOnAttach != null) for (OnAttachStateChangeListener l : new ArrayList<>(mOnAttach)) l.onViewDetachedFromWindow(this);
