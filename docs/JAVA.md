@@ -3701,7 +3701,11 @@ question (Allow, Don't Allow), kept in the app's settings, a second no for
 good; and the contacts, the calendar, the body sensors, notifications and
 physical activity granted with no one asked, since Megler gives an app none of
 those of the phone's, and nearby devices likewise, which are Bluetooth LE's
-("Bluetooth LE" below), Windows asking nothing for them. The location refused by the
+("Bluetooth LE" below), Windows asking nothing for them. One group is no
+permission of Android's: Google Location Accuracy (`location_accuracy`),
+Megler's question, put once an app that holds the location binds Google Play
+services' location API, its answer written into Google's settings for every
+app ("Wi-Fi, and Google's network location" below). The location refused by the
 system -- the phone's location switched off, which Windows' consent says as
 `DeniedBySystem` -- is no refusal of the app's: Android grants or refuses an
 app's location permission whether the location is on or off, and the app,

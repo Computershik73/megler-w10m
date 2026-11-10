@@ -1,5 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- A stand-in for Google's own Play services (no microG in it), as an app hosts them: the test app gms-host starts its one service. -->
+<!-- A stand-in for Google's own Play services (no microG in it), as an app hosts them: the test app gms-host starts its one
+     service, and binds its location API, as an app's FusedLocationProviderClient does. And a stand-in for Google's settings
+     (Google Services Framework's GoogleSettingsProvider, content://com.google.settings/partner), which says what is written
+     into it: where Megler puts the user's answer of Google Location Accuracy. -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android" package="com.google.android.gms"
     android:versionCode="264131009" android:versionName="26.41.31 (a stand-in)">
     <uses-sdk android:minSdkVersion="21" android:targetSdkVersion="28" />
@@ -9,5 +12,11 @@
                 <action android:name="megler.test.gmsown.PROBE" />
             </intent-filter>
         </service>
+        <service android:name="megler.test.gmsown.LocationApi" android:exported="true">
+            <intent-filter>
+                <action android:name="com.google.android.location.internal.GoogleLocationManagerService.START" />
+            </intent-filter>
+        </service>
+        <provider android:name="megler.test.gmsown.GoogleSettings" android:authorities="com.google.settings" android:exported="true" />
     </application>
 </manifest>

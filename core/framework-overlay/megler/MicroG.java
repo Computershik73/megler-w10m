@@ -725,6 +725,8 @@ public final class MicroG {
 
     public static boolean bind(Context from, Intent intent, ServiceConnection conn) {
         if (!mayBeGms(intent)) return false;
+        // (The app's own binding of Google Play services' location API settles Google Location Accuracy: megler.LocationAccuracy.)
+        LocationAccuracy.bound(from, intent.getAction());
         MicroG g = get(); Entry e = g == null ? null : g.find(intent, GooglePackages.GMS.equals(from.getPackageName()));
         if (e == null) {
             // a binding meant for Google Play services that none of its services takes: said, as the caller often says only that

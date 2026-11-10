@@ -836,7 +836,16 @@ static MEGLER_CB int system_permission(void *user, const char *group, bool ask)
 {
     int state;
     (void)user;
-    if (!g_data_app) return MEGLER_PERMISSION_GRANTED;
+    if (!g_data_app) {
+        /* (Every other app is let have what it asks for; what was asked of the user is noted all the same: gms-host's Google
+           Location Accuracy, which no app has an answer kept for until the user is asked.) */
+        if (!strcmp(group, "location_accuracy") && !ask) return MEGLER_PERMISSION_UNDECIDED;
+        if (ask) {
+            size_t n = strlen(g_permissions_asked);
+            snprintf(g_permissions_asked + n, sizeof(g_permissions_asked) - n, "%s;", group);
+        }
+        return MEGLER_PERMISSION_GRANTED;
+    }
     if (!strcmp(group, "contacts")) return MEGLER_PERMISSION_GRANTED;
     state = permission_kept(group);
     if (ask && state != MEGLER_PERMISSION_GRANTED && state != MEGLER_PERMISSION_DENIED_FIXED) {
@@ -3616,6 +3625,25 @@ static int run_gms_host(void)
     CHECK(wait_line("I/GmsOwnTest: main process true application=megler.test.gmshost current=megler.test.gmshost", 0, 600) >= 0);
     CHECK(find_line("I/MicroG: Google Play services' application runs in this process, megler.test.gmshost, as its main one", 0) >= 0);
     CHECK(find_line("I/GmsHostTest: started ComponentInfo{com.google.android.gms/megler.test.gmsown.Probe}", 0) >= 0);
+    /*
+     * The app's binding of their location API (an app's FusedLocationProviderClient's) has Google Location Accuracy settled:
+     * the app holds the location and no answer is kept, the setting not there, so the user is asked (the test's shell answers
+     * Allow) and the answer written into Google's settings (the stand-in's, as Google Services Framework's are), once.
+     */
+    CHECK(wait_line("I/GmsHostTest: location api connected true", 0, 300) >= 0);
+    CHECK(wait_line("I/GmsOwnTest: settings network_location_opt_in=1", 0, 120) >= 0);
+    CHECK(wait_line("I/MeglerLocation: Google Location Accuracy on: the user was asked, and said Allow -- Google Play services' network location may find "
+                    "the phone from the Wi-Fi networks around it", 0, 60) >= 0);
+    say("  the user was asked about: %s", g_permissions_asked[0] ? g_permissions_asked : "nothing");
+    {
+        const char *at = g_permissions_asked;
+        int asked = 0;
+        while ((at = strstr(at, "location_accuracy;")) != NULL) {
+            asked++;
+            at++;
+        }
+        CHECK(asked == 1);
+    }
     CHECK(find_line("FATAL EXCEPTION", 0) < 0);
     say_app_lines("/GmsOwnTest: ");
     return g_failed;

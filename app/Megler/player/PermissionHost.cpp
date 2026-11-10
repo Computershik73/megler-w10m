@@ -63,6 +63,9 @@ const struct {
     {"POST_NOTIFICATIONS", "notifications"}, {"ACTIVITY_RECOGNITION", "activity_recognition"},
 };
 
+/* Google Location Accuracy's group, Megler's own: asked of an app that holds the location, as its Google Play services want it. */
+constexpr const char* kLocationAccuracy = "location_accuracy";
+
 /* The groups in Android's order, what each lets an app have, and who decides: Windows, Megler's question, or no one. */
 struct Kind {
     const char* group;
@@ -73,6 +76,12 @@ struct Kind {
 };
 const Kind kKinds[] = {
     {"location", "the location", Decider::windows, nullptr, nullptr},
+    // (No permission of Android's: the setting Google Play services' network location goes by, asked of an app that holds the
+    // location -- megler.LocationAccuracy, which writes the answer into Google's settings, every app's.)
+    {kLocationAccuracy, "Google Location Accuracy", Decider::megler, "use Google Location Accuracy?",
+     "Google Play services in the app then finds the phone from the Wi-Fi networks around it, as on Android: it sends the networks "
+     "it hears, their addresses and signals, to Google, which answers where they are -- within tens of metres, where Windows finds "
+     "the phone by the cell network alone. It is one setting for every app, as Android's is; an app's Settings in Megler change it."},
     {"camera", "the camera", Decider::windows, nullptr, nullptr},
     {"microphone", "the microphone", Decider::windows, nullptr, nullptr},
     {"storage", "photos, media and files", Decider::megler, "have the photos, media and files on this phone?",
@@ -348,8 +357,12 @@ std::vector<Group> groupsOf(const ApkReport& report) {
     std::vector<Group> out;
     for (const Kind& kind : kKinds) {
         bool asked = false;
+        // (Google Location Accuracy is the app's to decide where it holds the location: its Google Play services find the phone so.)
+        const bool accuracy = !strcmp(kind.group, kLocationAccuracy);
         for (const auto& p : kPermissions)
-            if (!strcmp(p.group, kind.group) && report.permissionsKnown && report.asks(std::string("android.permission.") + p.permission)) asked = true;
+            if (!strcmp(p.group, accuracy ? "location" : kind.group) && !(accuracy && !strcmp(p.permission, "ACCESS_BACKGROUND_LOCATION")) &&
+                report.permissionsKnown && report.asks(std::string("android.permission.") + p.permission))
+                asked = true;
         if (asked) out.push_back({kind.group, kind.what, kind.decider});
     }
     return out;
