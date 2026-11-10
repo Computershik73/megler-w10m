@@ -1249,7 +1249,76 @@ static int window_windows_mode(void)
 /* ------------------------------------------------------- --angle-windows */
 
 /* mg_angle_windows.c: OpenGL ES 1 on ANGLE itself, through the core's EGL, at feature level 9_3 or at this PC's own. */
-int mg_angle_windows_run(const char *dir, const char *scratch, bool level_9_3, mg_test_sink sink, void *user, int *checks);
+int mg_angle_windows_run(const char *dir, const char *scratch, bool level_9_3, mg_test_sink sink, void *user, int *checks,
+                         bool (*label)(void *user, const char *ascii, u32 ink, u32 halo, int w, int h, u8 *rgba), void *label_user);
+
+#ifdef MG_GFX_WINDOWS
+static float g_label_outline[16384];
+static size_t g_label_floats;
+static MEGLER_CB bool label_outline_put(void *sink, const void *data, size_t size)
+{
+    (void)sink;
+    if (size % sizeof(float) || size / sizeof(float) > MG_COUNT(g_label_outline) - g_label_floats) return false;
+    memcpy(g_label_outline + g_label_floats, data, size);
+    g_label_floats += size / sizeof(float);
+    return true;
+}
+
+/*
+ * A name as Megler draws a label of Google Maps' legacy renderer into its bitmap (lib6.gmm6.vector.bu): Paint.getTextPath's
+ * outlines -- the shell's text_path -- stroked 3 wide in the halo's colour, then filled in the ink's, on a clear w x h canvas
+ * of the shell's drawing (in memory, the same pixels at each run), the baseline below the ascent and the halo; premultiplied
+ * R, G, B, A as Megler's Bitmap hands them to GLUtils.
+ */
+static bool angle_label(void *user, const char *ascii, u32 ink, u32 halo, int w, int h, u8 *rgba)
+{
+    const megler_gfx_host *g = (const megler_gfx_host *)user;
+    megler_gfx_paint fill, stroke;
+    float metrics[5] = { 0, 0, 0, 0, 0 };
+    u16 text[64];
+    u32 *px;
+    void *cv;
+    int n, i;
+    bool drawn;
+    if (!g || !g->text_path || !g->text_metrics || !g->canvas_new) return false;
+    for (n = 0; ascii[n] && n < 64; n++) text[n] = (u8)ascii[n];
+    memset(&fill, 0, sizeof(fill));
+    fill.color = ink;
+    fill.flags = MEGLER_GFX_ANTI_ALIAS;
+    fill.miter_limit = 4;
+    fill.text_size = 10;
+    fill.text_scale_x = 1;
+    fill.blend = MEGLER_GFX_BLEND_SRC_OVER;
+    fill.filter_mode = -1;
+    stroke = fill;
+    stroke.style = MEGLER_GFX_STROKE;
+    stroke.stroke_width = 3;
+    stroke.color = halo;
+    px = (u32 *)calloc((size_t)w * (size_t)h, 4);
+    if (!px) return false;
+    cv = g->canvas_new(g->user, px, w, h, w * 4);
+    g->text_metrics(g->user, &fill, NULL, metrics);
+    g_label_floats = 0;
+    /* (The baseline on a whole row, as the original's (int) Math.ceil puts it.) */
+    i = (int)(-metrics[1] + 1.5f);
+    if ((float)i < -metrics[1] + 1.5f) i++;
+    drawn = cv && g->text_path(g->user, text, n, 2, (float)i, &fill, NULL, label_outline_put, NULL) && g_label_floats > 0;
+    if (drawn) {
+        g->draw_path(g->user, cv, g_label_outline, (int)g_label_floats, MEGLER_GFX_WINDING, &stroke, NULL);
+        g->draw_path(g->user, cv, g_label_outline, (int)g_label_floats, MEGLER_GFX_WINDING, &fill, NULL);
+        g->flush(g->user, cv);
+        for (i = 0; i < w * h; i++) {
+            rgba[i * 4] = (u8)(px[i] >> 16);
+            rgba[i * 4 + 1] = (u8)(px[i] >> 8);
+            rgba[i * 4 + 2] = (u8)px[i];
+            rgba[i * 4 + 3] = (u8)(px[i] >> 24);
+        }
+    }
+    if (cv) g->canvas_free(g->user, cv);
+    free(px);
+    return drawn;
+}
+#endif
 
 static int angle_windows_mode(int argc, char **argv)
 {
@@ -1261,7 +1330,13 @@ static int angle_windows_mode(int argc, char **argv)
     config.package_dir = argv[3];
     /* (The core's own lines -- the display made, OpenGL ES 1 tried on it -- go where they go without a log of the shell's.) */
     megler_init(&config);
-    failed = mg_angle_windows_run(argv[2], argv[3], argc >= 5 && !strcmp(argv[4], "9_3"), print_line, NULL, &checks);
+#ifdef MG_GFX_WINDOWS
+    /* Google Maps' labels as Megler draws them, by the shell's drawing in memory. */
+    failed = mg_angle_windows_run(argv[2], argv[3], argc >= 5 && !strcmp(argv[4], "9_3"), print_line, NULL, &checks, angle_label,
+                                  (void *)mg_gfx_windows_host(print_line, NULL, 2));
+#else
+    failed = mg_angle_windows_run(argv[2], argv[3], argc >= 5 && !strcmp(argv[4], "9_3"), print_line, NULL, &checks, NULL, NULL);
+#endif
     printf("%d checks, %d failed\n", checks, failed);
     return failed ? 1 : 0;
 }
