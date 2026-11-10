@@ -1655,6 +1655,50 @@ public class Main extends Activity {
                 .invoke(alarms, android.app.AlarmManager.ELAPSED_REALTIME, now + 400, 0L, 300L, repeating[0], on, new android.os.WorkSource());
             return true;
         });
+        // A wake lock counted as Android counts one: held from acquire to the release that matches it, all at once where it is
+        // not counted, and until acquire(timeout)'s time is up (whose release comes on the main thread, which the steps keep
+        // busy: a thread of the step's own looks until it is let go). Google Play services checks isHeld as it lets one go,
+        // and said "<tag> should be held!" at each.
+        step("wake-lock", () -> {
+            android.os.PowerManager power = (android.os.PowerManager) getSystemService(POWER_SERVICE);
+            final android.os.PowerManager.WakeLock w = power.newWakeLock(android.os.PowerManager.PARTIAL_WAKE_LOCK, "megler:test");
+            boolean before = w.isHeld();
+            w.acquire();
+            w.acquire();
+            boolean twice = w.isHeld();
+            w.release();
+            boolean once = w.isHeld();
+            w.release();
+            boolean none = w.isHeld();
+            w.release();
+            boolean extra = w.isHeld();
+            final android.os.PowerManager.WakeLock u = power.newWakeLock(android.os.PowerManager.PARTIAL_WAKE_LOCK, "megler:uncounted");
+            u.setReferenceCounted(false);
+            u.acquire();
+            u.acquire();
+            u.release();
+            boolean uncounted = u.isHeld();
+            final android.os.PowerManager.WakeLock timed = power.newWakeLock(android.os.PowerManager.PARTIAL_WAKE_LOCK, "megler:timed");
+            timed.acquire(200);
+            boolean timedHeld = timed.isHeld();
+            detail = "before=" + before + " twice=" + twice + " once=" + once + " none=" + none + " extra=" + extra + " uncounted=" + uncounted + " timed=" + timedHeld;
+            final android.os.HandlerThread thread = new android.os.HandlerThread("wake-lock");
+            thread.start();
+            final android.os.Handler on = new android.os.Handler(thread.getLooper());
+            final long since = android.os.SystemClock.elapsedRealtime();
+            on.post(new Runnable() {
+                @Override public void run() {
+                    long waited = android.os.SystemClock.elapsedRealtime() - since;
+                    if (timed.isHeld() && waited < 60000) {
+                        on.postDelayed(this, 100);
+                        return;
+                    }
+                    Log.i("DataTest", "wake-lock-timed " + (!timed.isHeld() && waited >= 190 ? "ok" : "FAILED") + " held=" + timed.isHeld() + " after " + waited + " ms");
+                    thread.quitSafely();
+                }
+            });
+            return !before && twice && once && !none && !extra && !uncounted && timedHeld;
+        });
         // The cells around asked for as Android 10 asks (Google Play services' network location, at each of its scans): the
         // callback told through the Executor given, with no cells -- Windows gives an app none -- where it was never told; and
         // Android 12's best-matching network callback (the network location's NetworkConnectionMonitor) told the network is
