@@ -340,6 +340,7 @@ public class Main extends Activity {
         dnsServers();
         systemLibs();
         apacheHttpLegacy();
+        androidTestBase();
         preloadedDrawables();
         location();
         sensors();
@@ -2801,6 +2802,127 @@ public class Main extends Activity {
             detail = "https on " + port + " through " + factory.getClass().getName() + ", layered " + layered;
             return port == 443 && "org.apache.http.conn.ssl.SSLSocketFactory".equals(factory.getClass().getName()) && layered;
         });
+    }
+
+    /**
+     * android.test.base, which an app made for Android 10 or before has on its class path (this one targets Android 9) and
+     * which this app's code calls directly (compiled against stubs/junit): junit.framework.Assert as Facebook's SDK calls it
+     * in AppEventUtility.assertIsMainThread from its activity callbacks -- Zombie Road Trip ended at its start on
+     * NoClassDefFoundError: junit/framework/Assert there -- holding on the main thread, failing elsewhere with the
+     * AssertionFailedError (an AssertionError) Android's throws, and the classes the app's class loader's, as a shared
+     * library's are; the failures worded as Android's; and a TestCase's tests run by a TestSuite of its class.
+     */
+    private void androidTestBase() {
+        step("junit-assert", () -> {
+            boolean main = android.os.Looper.myLooper() == android.os.Looper.getMainLooper();
+            // AppEventUtility.assertIsMainThread and assertIsNotMainThread, as the game's Facebook SDK has them.
+            junit.framework.Assert.assertTrue("Call must be made on the main thread", main);
+            String told = null, failed = null;
+            try {
+                junit.framework.Assert.assertFalse("Call cannot be made on the main thread", main);
+            } catch (AssertionError e) {
+                told = e instanceof junit.framework.AssertionFailedError ? e.getMessage() : "not an AssertionFailedError: " + e;
+            }
+            try {
+                junit.framework.Assert.assertTrue(!main);
+            } catch (junit.framework.AssertionFailedError e) {
+                failed = e.getMessage();
+            }
+            boolean appLoader = junit.framework.Assert.class.getClassLoader() == Main.class.getClassLoader();
+            detail = "main=" + main + " told=" + told + " failed=" + failed + " the app's class loader " + appLoader;
+            return main && "Call cannot be made on the main thread".equals(told) && "".equals(failed) && appLoader;
+        });
+        step("junit-messages", () -> {
+            String[] said = new String[5];
+            String head = "0123456789abcdefghijklmno", tail = "ABCDEFGHIJKLMNOPQRSTUVWXY";
+            junit.framework.Assert.assertEquals(1.0, 1.05, 0.1);
+            try {
+                junit.framework.Assert.assertEquals(1, 2);
+            } catch (junit.framework.AssertionFailedError e) {
+                said[0] = e.getMessage();
+            }
+            try {
+                junit.framework.Assert.assertEquals("words", "hello world", "hello word");
+            } catch (junit.framework.ComparisonFailure e) {
+                said[1] = e.getMessage() + " | " + e.getExpected() + " | " + e.getActual();
+            }
+            try {
+                junit.framework.Assert.assertEquals(null, head + "x" + tail, head + "yz" + tail);
+            } catch (junit.framework.ComparisonFailure e) {
+                said[2] = e.getMessage();
+            }
+            try {
+                junit.framework.Assert.assertNull("thing");
+            } catch (junit.framework.AssertionFailedError e) {
+                said[3] = e.getMessage();
+            }
+            try {
+                junit.framework.Assert.assertSame("a", "b");
+            } catch (junit.framework.AssertionFailedError e) {
+                said[4] = e.getMessage();
+            }
+            detail = Arrays.toString(said);
+            return "expected:<1> but was:<2>".equals(said[0])
+                && "words expected:<hello wor[l]d> but was:<hello wor[]d> | hello world | hello word".equals(said[1])
+                && "expected:<...56789abcdefghijklmno[x]ABCDEFGHIJKLMNOPQRST...> but was:<...56789abcdefghijklmno[yz]ABCDEFGHIJKLMNOPQRST...>".equals(said[2])
+                && "Expected: <null> but was: thing".equals(said[3]) && "expected same:<a> was not:<b>".equals(said[4]);
+        });
+        // A suite of JunitSample's class: its three public tests, and one for the test method that is not public, which fails
+        // saying so; setUp and tearDown around each of the three.
+        step("junit-test-case", () -> {
+            JunitSample.setUps = JunitSample.tearDowns = 0;
+            junit.framework.TestSuite suite = new junit.framework.TestSuite(JunitSample.class);
+            junit.framework.TestResult result = new junit.framework.TestResult();
+            suite.run(result);
+            java.util.TreeSet<String> failures = new java.util.TreeSet<>(), errors = new java.util.TreeSet<>();
+            for (java.util.Enumeration<junit.framework.TestFailure> e = result.failures(); e.hasMoreElements();) {
+                junit.framework.TestFailure f = e.nextElement();
+                failures.add(((junit.framework.TestCase) f.failedTest()).getName() + ": " + f.thrownException().getMessage() + (f.isFailure() ? "" : " (not a failure)"));
+            }
+            for (java.util.Enumeration<junit.framework.TestFailure> e = result.errors(); e.hasMoreElements();) {
+                junit.framework.TestFailure f = e.nextElement();
+                errors.add(((junit.framework.TestCase) f.failedTest()).getName() + ": " + f.thrownException() + (f.isFailure() ? " (a failure)" : ""));
+            }
+            detail = "tests=" + suite.testCount() + " cases=" + suite.countTestCases() + " run=" + result.runCount() + " failures=" + failures + " errors=" + errors
+                + " setUps=" + JunitSample.setUps + " tearDowns=" + JunitSample.tearDowns + " successful=" + result.wasSuccessful();
+            return suite.testCount() == 4 && suite.countTestCases() == 4 && result.runCount() == 4 && !result.wasSuccessful()
+                && "[testFails: on purpose, warning: Test method isn't public: testHidden(megler.test.data.Main.JunitSample)]".equals(failures.toString())
+                && "[testThrows: java.lang.IllegalStateException: thrown]".equals(errors.toString()) && JunitSample.setUps == 3 && JunitSample.tearDowns == 3;
+        });
+    }
+
+    /** A test case as an app's own would be (step junit-test-case): three tests, one that holds, one that fails and one that throws, and one not public. */
+    public static class JunitSample extends junit.framework.TestCase {
+        static int setUps, tearDowns;
+
+        public JunitSample(String name) {
+            super(name);
+        }
+
+        @Override
+        protected void setUp() {
+            setUps++;
+        }
+
+        @Override
+        protected void tearDown() {
+            tearDowns++;
+        }
+
+        public void testHolds() {
+            assertEquals(4, 2 + 2);
+        }
+
+        public void testFails() {
+            fail("on purpose");
+        }
+
+        public void testThrows() {
+            throw new IllegalStateException("thrown");
+        }
+
+        void testHidden() {
+        }
     }
 
     /**

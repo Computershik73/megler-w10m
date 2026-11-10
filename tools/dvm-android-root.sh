@@ -16,6 +16,13 @@
 #                           boot class path: an app that asks for it in its
 #                           manifest, or targets an Android before 9, has it
 #                           on its class path (drivers/mg_java.c)
+#   framework/android.test.base.dex
+#                           JUnit 3's junit.framework and Android's
+#                           android.test base classes, Megler's own
+#                           (core/shared-libraries, built by
+#                           tools/build-shared-libraries.sh): an app that asks
+#                           for it, or targets Android 10 or before, has it on
+#                           its class path (drivers/mg_java.c)
 #   framework/platform-framework.dex, -classes2.dex, -classes3.dex
 #                           Android 9's own framework, the platform's original
 #                           bytecode: an app of the platform's own (its
@@ -122,6 +129,9 @@ for name in framework framework-classes2 framework-classes3; do
 done
 bash "$ROOT/tools/build-libcore-overlay.sh"
 put "$ROOT/build/libcore-overlay/megler-libcore.dex" "$OUT/framework"
+# The shared libraries that are Megler's own (android.test.base), for the apps that get them likewise.
+bash "$ROOT/tools/build-shared-libraries.sh"
+for f in "$ROOT/build/shared-libraries/"*.dex; do put "$f" "$OUT/framework"; done
 for name in core-oj core-libart; do put "$A9/system/framework/$name.jar" "$OUT/framework"; done
 RES_SRC="$A9/system/framework/framework-res.apk"
 RES_SAID="no platform resources"

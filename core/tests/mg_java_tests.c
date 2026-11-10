@@ -3211,8 +3211,11 @@ static int run_data(void)
                                             trusted for the names it gives it, the rest refused, pins), Android's key store's key pairs and their
                                             X.509 certificates (and an attestation challenge refused, and a key no provider takes refused at once),
                                             and the list of decoders: the stand-in's H.264, AAC and MP3 (mg_codec_standin.c), and no H.265. And
-                                            the phone's sensors, the stand-in's (mg_sensor_standin.c), listed and listened to. */
-                                         "battery", "connectivity", "dns-servers", "system-libs", "apache-http-legacy", "apache-http-client", "preloaded-drawables", "location", "sensors", "timezone", "locale", "phone-number", "tls", "tls-loopback", "tls-https",
+                                            the phone's sensors, the stand-in's (mg_sensor_standin.c), listed and listened to. And
+                                            android.test.base, which an app made for Android 10 or before has: junit.framework.Assert
+                                            as Facebook's SDK asserts the main thread, its failures worded as Android's, a TestSuite
+                                            of a TestCase's class run. */
+                                         "battery", "connectivity", "dns-servers", "system-libs", "apache-http-legacy", "apache-http-client", "junit-assert", "junit-messages", "junit-test-case", "preloaded-drawables", "location", "sensors", "timezone", "locale", "phone-number", "tls", "tls-loopback", "tls-https",
                                          "network-trust", "network-trust-domains", "network-trust-pins", "keystore", "keystore-certificates", "keystore-foreign-key", "path-op", "text-path", "base64-streams", "piped-streams", "trace-bytes", "codecs",
                                          /* And what Android's WebView asks of the platform before it shows a page, each answered as Android
                                             answers it: the app's id within its user (UserHandle.getAppId), whether cleartext HTTP is
@@ -3366,6 +3369,8 @@ static int run_data(void)
     }
     snprintf(text, sizeof(text), "I/DataTest: done ok=%d failed=0", (int)MG_COUNT(steps));
     expect_line(text, &at, 60);
+    /* android.test.base was put on its class path before its code, as for an app made for Android 10 or before (mg_java.c). */
+    CHECK(count_lines("java: the app's class path has android.test.base (JUnit 3's junit.framework, android.test) before its own code") == 1);
     /* The TLS the app had is the one the Android root gives: conscrypt's where its library is there and this host runs ARM code (mg_dvm.c). */
     {
         char *crypto = mg_sprintf("%s/lib/libjavacrypto.so", g_android_root ? g_android_root : ".");
@@ -4068,7 +4073,8 @@ static int run_camera(void)
  */
 static int run_bluetooth(void)
 {
-    static const char *const steps[] = { "adapter", "permissions", "names", "scan", "scan-legacy", "connect", "discover", "mtu", "notify", "write",
+    /* (First, as an app made for Android 14 has it: no android.test.base, which it does not ask for -- JUnit 3's Assert not there.) */
+    static const char *const steps[] = { "no-test-base", "adapter", "permissions", "names", "scan", "scan-legacy", "connect", "discover", "mtu", "notify", "write",
                                          "write-no-response", "write-old", "read", "rssi", "bond-on-demand", "unbond", "bond-asked", "disconnect",
                                          "dropped", "unreachable" };
     mg_bluetooth_standin_counts n;
@@ -4105,6 +4111,7 @@ static int run_bluetooth(void)
           && find_line("bluetooth: C0:FF:EE:00:00:01's pairing not answered by the app: the user is asked", 0) >= 0);
     CHECK(find_line("bluetooth: the radio is off", 0) >= 0 && find_line("bluetooth: the phone's Bluetooth settings shown", 0) >= 0);
     CHECK(find_line(" FAILED", 0) < 0 && find_line("FATAL EXCEPTION", 0) < 0);
+    CHECK(find_line("java: the app's class path has android.test.base", 0) < 0);
     back_and_end("I/BluetoothTest: onDestroy", &at);
     if (g_failed) say_app_lines("/BluetoothTest: ");
     return g_failed;
