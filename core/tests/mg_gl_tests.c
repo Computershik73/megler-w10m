@@ -1392,6 +1392,94 @@ static void test_turns_destroy(void)
 #endif
 }
 
+/*
+ * The turns go round (mg_egl.c, turn_lock): one thread clears 600 times without a pause while another clears for as long as
+ * the first does. The display's lock is no queue -- the first takes it again before the second, woken, runs -- and HERE
+ * WeGo's map drew so while Flutter's raster thread waited with the app's whole interface (package 681). A thread whose
+ * calls have had the display for a slice while another waits lets that one in: the second clears about as often.
+ */
+static volatile i32 g_turn_stop;
+
+static MG_HOSTCB void turn_running(void *p)
+{
+    typedef unsigned (*make_fn)(void *, void *, void *, void *);
+    typedef void (*clear_fn)(u32);
+    turn_side *s = (turn_side *)p;
+    make_fn make = (make_fn)mg_egl_resolve("eglMakeCurrent");
+    clear_fn clear = (clear_fn)mg_egl_resolve("glClear");
+    int i;
+    if (!make || !clear || !make(s->d, NULL, NULL, s->ctx)) {
+        mg_atomic_xchg(&s->ready, -1);
+        mg_atomic_xchg(&s->done, 1);
+        return;
+    }
+    mg_atomic_xchg(&s->ready, 1);
+    while (!g_turn_go) mg_sleep_ns(100000ull);
+    /* The first (host) clears 600 times and stops the other; the other clears until then. */
+    for (i = 0; s->host ? i < 600 : !g_turn_stop; i++) {
+        clear(0x4000);
+        s->clears++;
+    }
+    if (s->host) mg_atomic_xchg(&g_turn_stop, 1);
+    make(s->d, NULL, NULL, NULL);
+    mg_atomic_xchg(&s->done, 1);
+}
+
+static void test_turns_fair(void)
+{
+#if MG_GUEST_CODE
+    typedef void *(*display_fn)(void *);
+    typedef unsigned (*init_fn)(void *, int *, int *);
+    typedef void *(*create_fn)(void *, void *, void *, const int *);
+    typedef unsigned (*destroy_fn)(void *, void *);
+    static const int es2[] = { 0x3098, 2, 0x3038 };
+    display_fn get_display = (display_fn)mg_egl_resolve("eglGetDisplay");
+    init_fn initialize = (init_fn)mg_egl_resolve("eglInitialize");
+    create_fn create = (create_fn)mg_egl_resolve("eglCreateContext");
+    destroy_fn destroy = (destroy_fn)mg_egl_resolve("eglDestroyContext");
+    turn_side a, b;
+    mg_thread *ta, *tb;
+    mg_gl_standin_stats before, after;
+    int major = 0, minor = 0, tries;
+    void *d;
+    say("Turns: a thread that calls without a pause, and one that waits for it");
+    CHECK(get_display && initialize && create && destroy);
+    if (!get_display || !initialize || !create || !destroy) return;
+    d = get_display(NULL);
+    CHECK(d && initialize(d, &major, &minor));
+    memset(&a, 0, sizeof(a));
+    memset(&b, 0, sizeof(b));
+    a.d = b.d = d;
+    a.host = true;     /* (here: the one that stops) */
+    a.ctx = create(d, NULL, NULL, es2);
+    b.ctx = create(d, NULL, NULL, es2);
+    CHECK(a.ctx && b.ctx);
+    if (!a.ctx || !b.ctx) return;
+    g_turn_go = 0;
+    g_turn_stop = 0;
+    mg_gl_standin_set_dwell(50000ull);
+    ta = mg_thread_start(turn_running, &a, 1u << 20, "turn-busy");
+    tb = mg_thread_start(turn_running, &b, 1u << 20, "turn-waiting");
+    CHECK(ta && tb);
+    for (tries = 0; tries < 500 && (!a.ready || !b.ready); tries++) mg_sleep_ns(2000000ull);
+    CHECK(a.ready == 1 && b.ready == 1);
+    mg_gl_standin_stats_get(&before);
+    mg_atomic_xchg(&g_turn_go, 1);
+    if (ta) mg_thread_join(ta);
+    if (tb) mg_thread_join(tb);
+    mg_gl_standin_set_dwell(0);
+    mg_gl_standin_stats_get(&after);
+    say("  600 clears of the one, %d of the other meanwhile; %d overlapping, %d of a context not made current last", b.clears,
+        (int)(after.overlaps - before.overlaps), (int)(after.stale - before.stale));
+    CHECK(a.done && b.done && a.clears == 600 && b.clears >= 150);
+    CHECK(after.overlaps == before.overlaps && after.stale == before.stale);
+    destroy(d, a.ctx);
+    destroy(d, b.ctx);
+#else
+    say("(Turns: no thunks in a build whose convention is not Android's, nothing is checked here)");
+#endif
+}
+
 static void test_turns(void)
 {
 #if MG_GUEST_CODE
@@ -1643,6 +1731,7 @@ int mg_gl_natives_tests_run(mg_test_sink sink, void *user, int *checks)
     test_doomed();
     test_turns();
     test_turns_destroy();
+    test_turns_fair();
     test_calls();
     test_buffers();
     mg_gl_standin_reset(true, false);

@@ -83,6 +83,15 @@ void *mg_egl_surface_mutex(void *display, void *surface);
 bool mg_egl_keyed_mutex(void *mutex, bool acquire);
 
 /*
+ * Around a wait inside a call of EGL's that makes no call of EGL or OpenGL ES itself -- a swap's pacing, the shell taking
+ * its frame -- the display's turn the calling thread holds (mg_egl.c, "turns") is let go of, so that the display's other
+ * threads draw meanwhile; resumed, it is taken again, the thread's context made current again when another thread's was
+ * since. What pause returns is resume's; NULL (nothing let go of) where no turn is held.
+ */
+void *mg_egl_turn_pause(void);
+void mg_egl_turn_resume(void *paused);
+
+/*
  * The display eglGetDisplay gives code in the library of that name: the app's, the WebView's Chromium (libwebviewchromium.so)
  * included -- its threads' and the app's contexts take turns -- but with the flag webview-own-display (or
  * mg_egl_webview_own_display(true), for a test), when Chromium's gets a display of its own, with a Direct3D device of its

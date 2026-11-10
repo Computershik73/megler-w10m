@@ -314,7 +314,45 @@ static struct {
     int vw, vh;
     volatile i32 frames, places, composed;
     volatile i32 unlocked;             /* frames refused because the core held the surface's keyed mutex */
+    /* The next frames handed over while another thread makes a call of OpenGL ES (turn_probe): asked for, made, gone on. */
+    volatile i32 probe_turns, probes, probes_free;
 } GL = { MG_LOCK_INIT };
+
+/*
+ * Whether a call of OpenGL ES's on another thread goes on while a frame is being handed over: it does where the swapping
+ * thread holds no turn of the display for it (mg_egl_turn_pause). A thread of the test's own makes the call; the swap's
+ * thread waits two seconds at the most for it, so that a turn held makes the probe late, never stuck.
+ */
+static mg_lock g_probe_lock = MG_LOCK_INIT;
+static volatile i32 g_probe_go, g_probe_done;
+
+static MG_HOSTCB void probe_main(void *arg)
+{
+    typedef u32 (*fn_error)(void);
+    fn_error error = (fn_error)mg_egl_host("glGetError");
+    i32 seen = 0;
+    (void)arg;
+    for (;;) {
+        while (g_probe_go == seen) mg_sleep_ns(1000000ull);
+        seen = g_probe_go;
+        if (seen < 0) return;
+        if (error) error();
+        mg_atomic_xchg(&g_probe_done, seen);
+    }
+}
+
+static bool turn_probe(void)
+{
+    static mg_thread *prober;
+    i32 go;
+    int waited;
+    mg_lock_acquire(&g_probe_lock);
+    if (!prober) prober = mg_thread_start(probe_main, NULL, 256 * 1024, "turn-probe");
+    go = mg_atomic_add(&g_probe_go, 1);
+    for (waited = 0; waited < 2000 && g_probe_done != go; waited++) mg_sleep_ns(1000000ull);
+    mg_lock_release(&g_probe_lock);
+    return g_probe_done == go;
+}
 
 /* With GL.lock held: the window composed and shown. */
 static void gl_compose(void)
@@ -366,6 +404,12 @@ static MEGLER_CB bool gl_frame(void *user, int layer, void *share_handle, int wi
     int w, h;
     (void)user;
     if (GL.refuse || layer < 0 || layer >= GL_LAYERS || !mg_gl_standin_shared(share_handle, &rgba, &w, &h) || w != width || h != height) return false;
+    /* (While natives_stack asks: another thread's call of OpenGL ES meanwhile.) */
+    if (GL.probe_turns > 0 && mg_atomic_add(&GL.probe_turns, -1) >= 0) {
+        bool free_ = turn_probe();
+        mg_atomic_add(&GL.probes, 1);
+        if (free_) mg_atomic_add(&GL.probes_free, 1);
+    }
     /* The surface's keyed mutex first, as the shell's AcquireSync: a frame whose mutex the core still holds is not taken. */
     if (!mg_gl_standin_keyed(share_handle, true)) {
         mg_atomic_add(&GL.unlocked, 1);
@@ -2403,7 +2447,8 @@ static bool pixel_shown(int x, int y, u32 want, int seconds)
  * it: in the left half the blue under the window's hole and the left box over it, both seen through the clear frame on
  * top; in the right half the half red over the blue, and over the right box. Up to package 681 a surface on top was
  * shown nowhere -- its view drew no hole and said no place -- and HERE WeGo showed its map alone, the taps going to the
- * interface no one saw.
+ * interface no one saw. And, where the shell takes the frames, a call of OpenGL ES's on another thread goes on while a
+ * frame is handed over: the swapping thread holds no turn of the display meanwhile (mg_egl_turn_pause).
  */
 static void natives_stack(const int tap_at[2])
 {
@@ -2439,6 +2484,14 @@ static void natives_stack(const int tap_at[2])
     write_picture("natives-6");
     /* Three threads draw at once (the stack's two and the window test's renderer): the display's calls take turns. */
     CHECK(find_line("egl: two threads have contexts of the app's display current at once", 0) >= 0);
+    if (!GL.refuse) {
+        int tries;
+        mg_atomic_xchg(&GL.probe_turns, 3);
+        for (tries = 0; tries < 600 && GL.probes < 3; tries++) mg_sleep_ns(50000000ull);
+        say("  frames handed over while another thread called OpenGL ES: %d probed, %d of them with the call going on meanwhile", (int)GL.probes,
+            (int)GL.probes_free);
+        CHECK(GL.probes == 3 && GL.probes_free == 3);
+    }
 }
 
 static int run_natives(void)

@@ -1682,7 +1682,20 @@ static void w_link_program(u32 program)
  * The layer's own code that calls ANGLE on an app's thread takes the turn too (mg_egl_external_upload), and so does a job of
  * a hardware buffers' thread (buffer_job_run); a job for a thread that holds the display's turn and waits for it runs in
  * that turn, lent, as the two never run at once.
+ *
+ * The turns go round. The display's lock is no queue: a thread that calls again as soon as its call ends takes it again
+ * before a thread woken for it runs, and one thread drawing without a pause kept the others out for as long as it drew --
+ * HERE WeGo's map's render thread, while Flutter's raster thread waited with the app's whole interface (package 681). So a
+ * thread whose calls have had the display for a slice (TURN_SLICE) while another waits for it lets that one in before its
+ * next call, and waits until it has had it (TURN_YIELD at the most): a slice, not a call, so that what the turns cost --
+ * each context made current again -- stays a few hundred times a second. And a thread that holds the display's turn
+ * through a wait that makes no call of EGL's or OpenGL ES's -- a swap's pacing, the shell taking its frame, which may wait
+ * for the screen -- lets go of it meanwhile (mg_egl_turn_pause): a swap held every other thread of the display out for
+ * the sixtieth of a second it slept, and for the shell's Present.
  */
+#define TURN_SLICE 4000000ull
+#define TURN_YIELD 4000000ull
+typedef struct turn_thread turn_thread;
 typedef struct gl_turn {
     mg_lock lock;
     EGLContext last;                   /* the context ANGLE last had current on this display */
@@ -1692,12 +1705,17 @@ typedef struct gl_turn {
     volatile i32 switches;             /* times a context was made current again for its turn */
     u64 switch_ns;
     const char *whose;
+    volatile i32 waiting;              /* threads waiting for the display's lock */
+    volatile i32 handovers;            /* times a thread had the lock after another thread's calls */
+    volatile i32 yields;               /* times a thread let a waiting one in after its slice */
+    turn_thread *owner;                /* the thread whose run of calls has the display now */
+    u64 run_since;                     /* when that run began */
 } gl_turn;
-static gl_turn g_turn_app = { MG_LOCK_INIT, NULL, 0, 0, 0, 0, 0, "the app's" };
-static gl_turn g_turn_web = { MG_LOCK_INIT, NULL, 0, 0, 0, 0, 0, "the WebView's" };
+static gl_turn g_turn_app = { MG_LOCK_INIT, NULL, 0, 0, 0, 0, 0, "the app's", 0, 0, 0, NULL, 0 };
+static gl_turn g_turn_web = { MG_LOCK_INIT, NULL, 0, 0, 0, 0, 0, "the WebView's", 0, 0, 0, NULL, 0 };
 
 #define TURN_DEPTH 64
-typedef struct turn_thread {
+struct turn_thread {
     int depth;                         /* calls of EGL and OpenGL ES under way on this thread, one inside another */
     gl_turn *held;                     /* the display whose lock the outermost holds */
     gl_turn *loose;                    /* the display whose loose calls the outermost is counted in */
@@ -1707,7 +1725,7 @@ typedef struct turn_thread {
     EGLSurface draw, read;
     EGLContext ctx;
     mg_addr lr[TURN_DEPTH];            /* the return addresses of the thunks' callers */
-} turn_thread;
+};
 static MG_THREAD_LOCAL turn_thread t_turn;
 
 static gl_turn *turn_of(EGLDisplay d) { return d && d == g_webview_display ? &g_turn_web : &g_turn_app; }
@@ -1732,6 +1750,34 @@ static void turn_refresh(turn_thread *t, gl_turn *g)
                 g->whose, (double)g->switch_ns / 1e6);
 }
 
+/*
+ * The display's lock, for a call of the calling thread's: when its run of calls has had the display for a slice while
+ * another thread waits for it, that one first (and waited for, TURN_YIELD at the most).
+ */
+static void turn_lock(gl_turn *g, turn_thread *t)
+{
+    u64 now;
+    if (g->owner == t && g->waiting > 0 && (now = mg_time_monotonic_ns()) - g->run_since >= TURN_SLICE) {
+        i32 seen = g->handovers, n = mg_atomic_add(&g->yields, 1), tries;
+        /* (The waiting thread was woken when the lock was let go of: it has it at once, mostly. Else this one sleeps a little.) */
+        for (tries = 0; g->handovers == seen && g->waiting > 0 && mg_time_monotonic_ns() - now < TURN_YIELD; tries++) {
+            if (tries < 16) mg_thread_yield();
+            else mg_sleep_ns(100000ull);
+        }
+        if (n == 1 || n == 100 || n == 10000 || n == 1000000)
+            mg_info("egl: %d time%s a thread's calls had %s display for %d ms while another thread waited, and let it in (%d handovers in all)",
+                    (int)n, n == 1 ? "" : "s", g->whose, (int)(TURN_SLICE / 1000000ull), (int)g->handovers);
+    }
+    mg_atomic_add(&g->waiting, 1);
+    mg_lock_acquire(&g->lock);
+    mg_atomic_add(&g->waiting, -1);
+    if (g->owner != t) {
+        g->owner = t;
+        g->run_since = mg_time_monotonic_ns();
+        mg_atomic_add(&g->handovers, 1);
+    }
+}
+
 static void turn_begin(void)
 {
     turn_thread *t = &t_turn;
@@ -1751,7 +1797,7 @@ static void turn_begin(void)
         mg_atomic_add(&g->loose, -1);
         t->loose = NULL;
     }
-    mg_lock_acquire(&g->lock);
+    turn_lock(g, t);
     t->held = g;
     if (t->ctx && g->last != t->ctx) turn_refresh(t, g);
 }
@@ -1797,9 +1843,29 @@ static void turn_before(EGLDisplay d, EGLContext ctx)
             mg_atomic_add(&t->loose->loose, -1);
             t->loose = NULL;
         }
-        mg_lock_acquire(&g->lock);
+        turn_lock(g, t);
         t->held = g;
     }
+}
+
+void *mg_egl_turn_pause(void)
+{
+    turn_thread *t = &t_turn;
+    gl_turn *g = t->held;
+    if (!g) return NULL;
+    t->held = NULL;
+    mg_lock_release(&g->lock);
+    return g;
+}
+
+void mg_egl_turn_resume(void *paused)
+{
+    turn_thread *t = &t_turn;
+    gl_turn *g = (gl_turn *)paused;
+    if (!g) return;
+    turn_lock(g, t);
+    t->held = g;
+    if (t->ctx && g->last != t->ctx) turn_refresh(t, g);
 }
 
 /* After a make-current that EGL took: what the calling thread has current now, as ANGLE was given it. */

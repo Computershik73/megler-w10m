@@ -1375,14 +1375,22 @@ static bool read_back(gl_surf *s, gl_ctx *x)
     return true;
 }
 
-/* A swap returns no sooner than a sixtieth of a second after the one before was due, as a swap interval of 1 has it. */
+/*
+ * A swap returns no sooner than a sixtieth of a second after the one before was due, as a swap interval of 1 has it. The
+ * display's turn the swapping thread holds is let go of while it waits (mg_egl_turn_pause): the display's other threads
+ * draw meanwhile.
+ */
 static void pace(gl_surf *s)
 {
     const u64 period = 16666667ull;
     u64 now = mg_time_monotonic_ns();
     if (!s->due || now > s->due + 100000000ull) s->due = now;
     s->due += period;
-    if (s->due > now) mg_sleep_ns(s->due - now);
+    if (s->due > now) {
+        void *paused = mg_egl_turn_pause();
+        mg_sleep_ns(s->due - now);
+        mg_egl_turn_resume(paused);
+    }
 }
 
 /*
@@ -1402,6 +1410,7 @@ static bool shell_frame(gl_surf *s, layer *l, bool *shown, u64 *finished)
     typedef void (*fn_finish)(void);
     fn_finish finish = FN(fn_finish, F_FINISH, "glFinish"), flush = FN(fn_finish, F_FLUSH, "glFlush");
     bool active, taken;
+    void *paused;
     *shown = false;
     *finished = mg_time_monotonic_ns();
     if (!s->share_asked) {
@@ -1420,7 +1429,10 @@ static bool shell_frame(gl_surf *s, layer *l, bool *shown, u64 *finished)
     mg_lock_release(&g_window_lock);
     if (!active) return true;
     if (s->mutex) mg_egl_keyed_mutex(s->mutex, false);
+    /* (Not in the display's turn: the shell copies on its own device, and may wait for the screen meanwhile.) */
+    paused = mg_egl_turn_pause();
     taken = g_shell->gl_frame(g_shell->user, layer_index(l), s->share, s->width, s->height);
+    mg_egl_turn_resume(paused);
     if (s->mutex && !mg_egl_keyed_mutex(s->mutex, true))
         mg_note_once("java: a surface's keyed mutex could not be taken back from the shell: what the app draws in it now is dropped");
     *shown = taken;
@@ -1437,6 +1449,7 @@ static bool swap(gl_surf *s, gl_ctx *x)
     layer *l;
     u64 t0, t1, t2 = 0, t3, work;
     bool shown = false;
+    void *paused;
     if (!s || !x) return false;
     l = s->layer;
     if (!l) return true;
@@ -1476,6 +1489,8 @@ static bool swap(gl_surf *s, gl_ctx *x)
     }
     if (!read_back(s, x)) return false;
     t1 = mg_time_monotonic_ns();
+    /* (Composing and showing make no call of OpenGL ES: not in the display's turn.) */
+    paused = mg_egl_turn_pause();
     mg_lock_acquire(&g_window_lock);
     if (l->active) {
         /* The frame just read is the layer's now; the layer's last one is where the next is read to. */
@@ -1522,6 +1537,7 @@ static bool swap(gl_surf *s, gl_ctx *x)
         C.window_started = t3;
     }
     mg_lock_release(&g_window_lock);
+    mg_egl_turn_resume(paused);
     if (shown) mg_run_count_frame();
     pace(s);
     return true;
@@ -1689,6 +1705,7 @@ bool mg_java_gl_share_frame(void *display, void *pbuffer, mg_java_gl_share *shar
     typedef void (*fn_finish)(void);
     fn_finish finish = FN(fn_finish, F_FINISH, "glFinish"), flush = FN(fn_finish, F_FLUSH, "glFlush");
     bool taken;
+    void *paused;
     if (id <= 0 || !mg_java_gl_shares_frames()) return false;
     if (!share->asked) {
         void *handle = NULL;
@@ -1701,7 +1718,10 @@ bool mg_java_gl_share_frame(void *display, void *pbuffer, mg_java_gl_share *shar
     if (share->mutex && flush) flush();
     else finish();
     if (share->mutex) mg_egl_keyed_mutex(share->mutex, false);
+    /* (The shell's copy not in the display's turn, as a window surface's frame: shell_frame.) */
+    paused = mg_egl_turn_pause();
     taken = g_shell->texture_frame(g_shell->user, id, share->handle, width, height);
+    mg_egl_turn_resume(paused);
     if (share->mutex && !mg_egl_keyed_mutex(share->mutex, true))
         mg_note_once("java: a surface's keyed mutex could not be taken back from the shell: what the app draws in it now is dropped");
     return taken;

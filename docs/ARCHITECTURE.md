@@ -535,6 +535,18 @@ ANGLE's functions. This layer adds the display, the window, and the float adapte
   `libwebviewchromium.so`): ANGLE's Direct3D 11 renderer, one to a display, does not
   take two contexts of one display drawing at once (docs/JAVA.md, "A display of its
   own").
+- The threads of an app's own that draw on one display at once take turns
+  (`ndk/mg_egl.c`, "turns"): each call of EGL's and OpenGL ES's holds the
+  display's lock, and a thread's context is made current again when another's was
+  last. The turns go round: a thread whose calls have had the display for 4 ms
+  while another waits lets that one in, and a swap lets go of its turn while it
+  waits for its pacing or for the shell to take its frame
+  (`mg_egl_turn_pause`). Up to package 681 a thread drawing without a pause kept
+  the others out, and a swap held them out for the sixtieth of a second it slept:
+  HERE WeGo's map's render thread and Flutter's raster thread (the app's whole
+  interface) shared the display so. Tested under qemu (`mg_gl_tests.c`,
+  `test_turns_fair`; the natives app's stack, a call of another thread's going on
+  while a frame is handed over).
 - The app's window is an `ANativeWindow`; its window surface is a pbuffer over a
   texture the shell provides, on ANGLE's own Direct3D device. `eglSwapBuffers` hands
   the finished frame to the shell, which copies it to its swap chain's back buffer
