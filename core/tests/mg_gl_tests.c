@@ -1003,7 +1003,7 @@ static void test_window(void)
     CHECK(EGL("swap", "(JJIIII)Z", 6, J(surf), J(x), I(0), I(0), I(0), I(0)).z);
     CHECK(W.pictures == pictures);
     /* The views say where the view is, and their picture comes: shown whole, the first time, and the frame under the hole. */
-    EGL("place", "(Ljava/lang/Object;IIII)V", 5, L(view), I(10), I(8), I(40), I(20));
+    EGL("place", "(Ljava/lang/Object;IIIII)V", 6, L(view), I(10), I(8), I(40), I(20), I(0));
     CHECK(mg_java_gl_views(views, 64, 48, 64 * 4, k_all));
     CHECK(W.pictures == pictures + 1 && W.part[0] == 0 && W.part[1] == 0 && W.part[2] == 64 && W.part[3] == 48);
     CHECK_HEX(window_pixel(5, 5), 0x808080);
@@ -1091,7 +1091,7 @@ static void test_window(void)
     /* The view moves (the views' next picture has its hole elsewhere): the old place is the views' again, the new one the frame's. */
     free(views);
     views = views_picture(64, 48, 20, 24, 40, 20, -1);
-    EGL("place", "(Ljava/lang/Object;IIII)V", 5, L(view), I(20), I(24), I(40), I(20));
+    EGL("place", "(Ljava/lang/Object;IIIII)V", 6, L(view), I(20), I(24), I(40), I(20), I(0));
     CHECK(mg_java_gl_views(views, 64, 48, 64 * 4, k_all));
     CHECK_HEX(window_pixel(12, 10), 0x808080);
     CHECK_HEX(window_pixel(55, 40), 0x0000FF);
@@ -1144,7 +1144,7 @@ static void test_two_threads(void)
     mg_java_gl_start(64, 48, shown);
     G.x = EGL("createContext", "(IJ)J", 2, I(2), J(0)).j;
     G.surf = EGL("createWindowSurface", "(Ljava/lang/Object;II)J", 3, L(view), I(64), I(48)).j;
-    EGL("place", "(Ljava/lang/Object;IIII)V", 5, L(view), I(0), I(0), I(64), I(48));
+    EGL("place", "(Ljava/lang/Object;IIIII)V", 6, L(view), I(0), I(0), I(64), I(48), I(0));
     t = mg_thread_start(swapping, NULL, 1u << 20, "gl-test");
     CHECK(t != NULL);
     for (i = 0; i < 100 && t; i++) {
@@ -1194,7 +1194,7 @@ static void test_cost(void)
     x = EGL("createContext", "(IJ)J", 2, I(2), J(0)).j;
     surf = EGL("createWindowSurface", "(Ljava/lang/Object;II)J", 3, L(view), I(720), I(1182)).j;
     EGL("makeCurrent", "(JJ)Z", 2, J(surf), J(x));
-    EGL("place", "(Ljava/lang/Object;IIII)V", 5, L(view), I(0), I(98), I(720), I(1182));
+    EGL("place", "(Ljava/lang/Object;IIIII)V", 6, L(view), I(0), I(98), I(720), I(1182), I(0));
     t0 = mg_time_monotonic_ns();
     mg_java_gl_views(views, 720, 1280, 720 * 4, k_all);
     t1 = mg_time_monotonic_ns();

@@ -152,7 +152,8 @@ void mg_gfx_windows_lose_device(void) { megler::app::GfxHost::shared().loseDevic
 /// bottom first as OpenGL's are. The frame shows where the views leave a
 /// hole, the right way up, under what the views have there; a new frame is
 /// shown without the views being shown again; a layer taken away leaves the
-/// views alone; nothing is read back. Twice: the texture shared plainly, and
+/// views alone; a layer over the views is over them, its premultiplied alpha
+/// kept where it is translucent; nothing is read back. Twice: the texture shared plainly, and
 /// shared with a keyed mutex, as gecko-w10m's ANGLE shares every pbuffer --
 /// "ANGLE's" device then draws holding it and lets go of it for gl_frame, as
 /// the core does, and the shell copies holding it (without, Direct3D drops
@@ -255,7 +256,7 @@ int mg_gfx_windows_check_gl(const megler_gfx_host* h, void (*line)(const char* t
         const int shownBefore = g_window.shown;
         check(h->gl_frame(h->user, 0, handle, fw, fh), "the first frame was not taken");
         check(g_window.shown == shownBefore, "a frame was shown before the views were");
-        h->gl_place(h->user, 0, 16, 8, 32, 24);
+        h->gl_place(h->user, 0, 16, 8, 32, 24, 0);
         check(h->present(h->user, cv, 0, 0, w, hgt) && readWindow(shown), "the views were not shown");
         // (Within two steps a channel: the mix is the processor's arithmetic.)
         const auto alike = [](uint32_t a, uint32_t b) {
@@ -280,8 +281,31 @@ int mg_gfx_windows_check_gl(const megler_gfx_host* h, void (*line)(const char* t
             mutex->ReleaseSync(0);
         }
         // The layer taken away: the views alone there again, at the next showing.
-        h->gl_place(h->user, 0, 0, 0, 0, 0);
+        h->gl_place(h->user, 0, 0, 0, 0, 0, 0);
         check(h->present(h->user, cv, 16, 8, 32, 24) && readWindow(shown) && shown[10 * w + 20] == 0u, "the views' hole does not show nothing once the layer is gone");
+        // The layer over the views (MEGLER_GL_ABOVE: a SurfaceView on top of the window, Flutter's view over HERE WeGo's map),
+        // the views white all over now, no hole, the half transparent red still: the frame's left half clear, its right half
+        // blue at half alpha, premultiplied. Translucent (MEGLER_GL_TRANSLUCENT), the views are seen through its left half and
+        // under its right half, the red too; opaque, the frame covers them, whatever its alpha.
+        h->draw_color(h->user, cv, 0xFFFFFFFFu, MEGLER_GFX_BLEND_SRC);
+        p.blend = MEGLER_GFX_BLEND_SRC_OVER;
+        p.color = 0x80FF0000u;
+        h->draw_rect(h->user, cv, 40, 20, 48, 32, &p, nullptr);
+        for (int y = 0; y < fh; y++)
+            for (int x = 0; x < fw; x++) frame[size_t(y) * fw + x] = x < fw / 2 ? 0u : 0x80000080u;
+        draw();
+        h->gl_place(h->user, 0, 16, 8, 32, 24, MEGLER_GL_ABOVE | MEGLER_GL_TRANSLUCENT);
+        check(h->gl_frame(h->user, 0, handle, fw, fh) && h->present(h->user, cv, 0, 0, w, hgt) && readWindow(shown), "a frame over the views was not shown");
+        check(shown.size() == memory.size() && (shown[10 * w + 20] | 0xFF000000u) == 0xFFFFFFFFu, "the views are not seen where a translucent frame over them is clear");
+        check(shown.size() == memory.size() && alike(shown[10 * w + 40] | 0xFF000000u, 0xFF7F7FFFu), "a translucent frame's half blue over the white views is not their mix");
+        check(shown.size() == memory.size() && alike(shown[30 * w + 44] | 0xFF000000u, 0xFF7F3FBFu), "a translucent frame is not over the views' half transparent red");
+        check(shown.size() == memory.size() && (shown[2 * w + 2] | 0xFF000000u) == 0xFFFFFFFFu, "the views beside a frame over them changed");
+        h->gl_place(h->user, 0, 16, 8, 32, 24, MEGLER_GL_ABOVE);
+        check(h->present(h->user, cv, 0, 0, w, hgt) && readWindow(shown), "an opaque frame over the views was not shown");
+        check(shown.size() == memory.size() && (shown[10 * w + 20] & 0x00FFFFFFu) == 0u && (shown[10 * w + 40] & 0x00FFFFFFu) == 0x80u,
+              "an opaque frame over the views is not over them whatever its alpha");
+        h->gl_place(h->user, 0, 0, 0, 0, 0, 0);
+        check(h->present(h->user, cv, 0, 0, w, hgt) && readWindow(shown) && (shown[10 * w + 20] | 0xFF000000u) == 0xFFFFFFFFu, "the views are not alone again once the layer over them is gone");
         const megler::app::GfxHost::Counts after = gfx.counts();
         check(after.readBacks == before.readBacks, "something was read back");
         snprintf(text, sizeof(text), "    %s: %d pictures shown, %llu read-backs", keyed ? "shared with a keyed mutex" : "shared plainly", g_window.shown,

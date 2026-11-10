@@ -31,6 +31,8 @@ final class WindowTest {
     private Surface textureSurface;
     private int said, acted, fullWidth, fullHeight;
     private boolean ended;
+    /** What the tap after the last step does (Main: StackTest's views added). */
+    Runnable afterLast;
 
     WindowTest(Context c) {
         row = new LinearLayout(c);
@@ -103,6 +105,8 @@ final class WindowTest {
             row.removeView(eglView);
         } else if (acted == 3) {
             row.addView(eglView, 0, weighted());
+        } else if (acted == 4 && afterLast != null) {
+            afterLast.run();
         }
     }
 

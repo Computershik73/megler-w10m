@@ -294,8 +294,10 @@ static MEGLER_CB void present_pixels_part(void *user, const void *pixels, int wi
 /*
  * megler_gfx_host.gl_frame and gl_place, as a shell that composes the window on its graphics processor has them: each layer's
  * place and last frame kept, the views' picture as `present` last showed it kept, and the window composed of the two -- the
- * frames at their places, scaled to them, opaque, the views' premultiplied colours over them -- whenever either changes,
- * then shown as a picture handed to present_pixels is. The frames come out of the GL stand-in's surfaces by their "shared
+ * frames of the layers under the views at their places, scaled to them, opaque (those with MEGLER_GL_OVERLAY after the
+ * others), the views' premultiplied colours over them; then the frames of the layers over the views (MEGLER_GL_ABOVE),
+ * opaque or, with MEGLER_GL_TRANSLUCENT, their premultiplied colours over what is there -- whenever either changes, then
+ * shown as a picture handed to present_pixels is. The frames come out of the GL stand-in's surfaces by their "shared
  * handles" (mg_gl_standin_shared). With the script's "readback" gl_frame says no, and the core composes the window itself.
  */
 #define GL_LAYERS 8
@@ -304,6 +306,7 @@ static struct {
     bool refuse, used;
     struct {
         i32 x, y, w, h;
+        int flags;                     /* gl_place's MEGLER_GL_* */
         u8 *frame;                     /* R, G, B, A, rows bottom first */
         int fw, fh;
     } layers[GL_LAYERS];
@@ -316,32 +319,43 @@ static struct {
 /* With GL.lock held: the window composed and shown. */
 static void gl_compose(void)
 {
-    int i, r, col;
+    int i, r, col, pass;
     size_t stride = (size_t)GL.vw * 4;
     if (!GL.views) return;
     memcpy(GL.out, GL.views, stride * (size_t)GL.vh);
-    for (i = 0; i < GL_LAYERS; i++) {
-        i32 x0, y0, x1, y1;
-        if (!GL.layers[i].frame || GL.layers[i].w <= 0 || GL.layers[i].h <= 0) continue;
-        x0 = GL.layers[i].x < 0 ? 0 : GL.layers[i].x;
-        y0 = GL.layers[i].y < 0 ? 0 : GL.layers[i].y;
-        x1 = GL.layers[i].x + GL.layers[i].w > GL.vw ? GL.vw : GL.layers[i].x + GL.layers[i].w;
-        y1 = GL.layers[i].y + GL.layers[i].h > GL.vh ? GL.vh : GL.layers[i].y + GL.layers[i].h;
-        for (r = y0; r < y1; r++) {
-            i32 lr = r - GL.layers[i].y, fr = GL.layers[i].fh - 1 - (i32)((i64)lr * GL.layers[i].fh / GL.layers[i].h);
-            for (col = x0; col < x1; col++) {
-                i32 fc = (i32)((i64)(col - GL.layers[i].x) * GL.layers[i].fw / GL.layers[i].w);
-                const u8 *g = GL.layers[i].frame + ((size_t)fr * (size_t)GL.layers[i].fw + (size_t)fc) * 4;
-                const u8 *v = GL.views + (size_t)r * stride + (size_t)col * 4;
-                u8 *o = GL.out + (size_t)r * stride + (size_t)col * 4;
-                u32 left = 255u - v[3];
-                o[0] = (u8)(v[0] + (g[2] * left + 127) / 255);
-                o[1] = (u8)(v[1] + (g[1] * left + 127) / 255);
-                o[2] = (u8)(v[2] + (g[0] * left + 127) / 255);
-                o[3] = 255;
+    for (pass = 0; pass < 3; pass++)
+        for (i = 0; i < GL_LAYERS; i++) {
+            int flags = GL.layers[i].flags, which = (flags & MEGLER_GL_ABOVE) ? 2 : (flags & MEGLER_GL_OVERLAY) ? 1 : 0;
+            i32 x0, y0, x1, y1;
+            if (which != pass || !GL.layers[i].frame || GL.layers[i].w <= 0 || GL.layers[i].h <= 0) continue;
+            x0 = GL.layers[i].x < 0 ? 0 : GL.layers[i].x;
+            y0 = GL.layers[i].y < 0 ? 0 : GL.layers[i].y;
+            x1 = GL.layers[i].x + GL.layers[i].w > GL.vw ? GL.vw : GL.layers[i].x + GL.layers[i].w;
+            y1 = GL.layers[i].y + GL.layers[i].h > GL.vh ? GL.vh : GL.layers[i].y + GL.layers[i].h;
+            for (r = y0; r < y1; r++) {
+                i32 lr = r - GL.layers[i].y, fr = GL.layers[i].fh - 1 - (i32)((i64)lr * GL.layers[i].fh / GL.layers[i].h);
+                for (col = x0; col < x1; col++) {
+                    i32 fc = (i32)((i64)(col - GL.layers[i].x) * GL.layers[i].fw / GL.layers[i].w);
+                    const u8 *g = GL.layers[i].frame + ((size_t)fr * (size_t)GL.layers[i].fw + (size_t)fc) * 4;
+                    const u8 *v = GL.views + (size_t)r * stride + (size_t)col * 4;
+                    u8 *o = GL.out + (size_t)r * stride + (size_t)col * 4;
+                    if (pass == 2) {
+                        /* Over the views: opaque, or its premultiplied colours over what is there. */
+                        u32 a = (flags & MEGLER_GL_TRANSLUCENT) ? g[3] : 255u, left = 255u - a;
+                        o[0] = (u8)(g[2] + (o[0] * left + 127) / 255 > 255 ? 255 : g[2] + (o[0] * left + 127) / 255);
+                        o[1] = (u8)(g[1] + (o[1] * left + 127) / 255 > 255 ? 255 : g[1] + (o[1] * left + 127) / 255);
+                        o[2] = (u8)(g[0] + (o[2] * left + 127) / 255 > 255 ? 255 : g[0] + (o[2] * left + 127) / 255);
+                        o[3] = (u8)(a + (o[3] * left + 127) / 255 > 255 ? 255 : a + (o[3] * left + 127) / 255);
+                    } else {
+                        u32 left = 255u - v[3];
+                        o[0] = (u8)(v[0] + (g[2] * left + 127) / 255);
+                        o[1] = (u8)(v[1] + (g[1] * left + 127) / 255);
+                        o[2] = (u8)(v[2] + (g[0] * left + 127) / 255);
+                        o[3] = 255;
+                    }
+                }
             }
         }
-    }
     present_pixels(NULL, GL.out, GL.vw, GL.vh, GL.vw * 4);
     mg_atomic_add(&GL.composed, 1);
 }
@@ -373,7 +387,7 @@ static MEGLER_CB bool gl_frame(void *user, int layer, void *share_handle, int wi
     return true;
 }
 
-static MEGLER_CB void gl_place(void *user, int layer, int x, int y, int width, int height)
+static MEGLER_CB void gl_place(void *user, int layer, int x, int y, int width, int height, int flags)
 {
     (void)user;
     if (layer < 0 || layer >= GL_LAYERS) return;
@@ -383,6 +397,7 @@ static MEGLER_CB void gl_place(void *user, int layer, int x, int y, int width, i
     GL.layers[layer].y = y;
     GL.layers[layer].w = width > 0 ? width : 0;
     GL.layers[layer].h = width > 0 ? height : 0;
+    GL.layers[layer].flags = width > 0 ? flags : 0;
     if (width <= 0) {
         free(GL.layers[layer].frame);
         GL.layers[layer].frame = NULL;
@@ -2359,6 +2374,73 @@ static void natives_windows(const int tap_at[2])
     write_picture("natives-5");
 }
 
+/* Whether a pixel is a colour (0xRRGGBB) within two steps a channel: a mix is arithmetic, rounded either way. */
+static bool pixel_near(int x, int y, u32 want)
+{
+    u32 got = pixel(x, y);
+    int s;
+    for (s = 0; s < 24; s += 8)
+        if (abs((int)((got >> s) & 255) - (int)((want >> s) & 255)) > 2) return false;
+    return true;
+}
+
+/* Waits up to `seconds` for a pixel of the window to be near a colour. */
+static bool pixel_shown(int x, int y, u32 want, int seconds)
+{
+    int tries;
+    for (tries = 0; tries < seconds * 20 && running(); tries++) {
+        if (pixel_near(x, y, want)) return true;
+        mg_sleep_ns(50000000ull);
+    }
+    return pixel_near(x, y, want);
+}
+
+/*
+ * Two SurfaceViews one over the other (core/tests/app/natives: StackTest, jni/windows.c), as HERE WeGo has its map and
+ * Flutter's view of its whole interface: under, an ordinary one, drawn blue; over it, one ordered on top of the window
+ * (setZOrderOnTop) with a transparent format, drawn clear with its right half red at half alpha, premultiplied; between
+ * them, in the window, two yellow boxes. A render thread of the library's own draws on each, both at once. As Android has
+ * it: in the left half the blue under the window's hole and the left box over it, both seen through the clear frame on
+ * top; in the right half the half red over the blue, and over the right box. Up to package 681 a surface on top was
+ * shown nowhere -- its view drew no hole and said no place -- and HERE WeGo showed its map alone, the taps going to the
+ * interface no one saw.
+ */
+static void natives_stack(const int tap_at[2])
+{
+    int line, stack[4], left[4], right[4], y, x_left, x_right;
+    char text[200];
+    memset(stack, 0, sizeof(stack));
+    memset(left, 0, sizeof(left));
+    memset(right, 0, sizeof(right));
+    /* The tap after the window test's last step puts the stack's views in the window. */
+    tap(tap_at[0], tap_at[1]);
+    line = wait_line("I/NativesStack: drawn ", 0, 120);
+    CHECK(line >= 0 && rect_in(line_at(line), "stack", stack) && rect_in(line_at(line), "left", left) && rect_in(line_at(line), "right", right));
+    if (line < 0 || stack[2] <= 0) return;
+    CHECK(find_line("I/NativesWindow: stack: under window surface made=1", 0) >= 0 && find_line("I/NativesWindow: stack: over window surface made=1", 0) >= 0);
+    /* The window under is RGBX_8888 as an opaque SurfaceView's; the one over RGBA_8888, its format TRANSPARENT. */
+    snprintf(text, sizeof(text), "I/NativesStack: under surface %dx%d window format 2", stack[2], stack[3]);
+    CHECK(find_line(text, 0) >= 0);
+    snprintf(text, sizeof(text), "I/NativesStack: over surface %dx%d window format 1", stack[2], stack[3]);
+    CHECK(find_line(text, 0) >= 0);
+    /* The surface on top said where it is and how: over the views, translucent. */
+    snprintf(text, sizeof(text) - 1, "is at %d,%d %dx%d in the window, over the views, translucent: its frames go there", stack[0], stack[1], stack[2], stack[3]);
+    CHECK(find_line(text, 0) >= 0);
+    y = stack[1] + stack[3] / 2;
+    x_left = stack[0] + stack[2] * 2 / 5;
+    x_right = stack[0] + stack[2] * 3 / 5;
+    CHECK(pixel_shown(x_left, y, 0x0000FF, 30));
+    CHECK(pixel_shown(left[0] + left[2] / 2, left[1] + left[3] / 2, 0xFFFF00, 30));
+    CHECK(pixel_shown(x_right, y, 0x80007F, 30));
+    CHECK(pixel_shown(right[0] + right[2] / 2, right[1] + right[3] / 2, 0xFF7F00, 30));
+    say("  the stack at %d,%d %dx%d: left %06x, its box %06x; right %06x, its box %06x (blue, yellow; half red over blue 80007f, over yellow ff7f00)",
+        stack[0], stack[1], stack[2], stack[3], (unsigned)pixel(x_left, y), (unsigned)pixel(left[0] + left[2] / 2, left[1] + left[3] / 2),
+        (unsigned)pixel(x_right, y), (unsigned)pixel(right[0] + right[2] / 2, right[1] + right[3] / 2));
+    write_picture("natives-6");
+    /* Three threads draw at once (the stack's two and the window test's renderer): the display's calls take turns. */
+    CHECK(find_line("egl: two threads have contexts of the app's display current at once", 0) >= 0);
+}
+
 static int run_natives(void)
 {
     static const char *const steps[] = { "load", "registered", "primitives", "stack-mix", "overloads", "arrays", "bounds", "strings", "callback", "throw-native",
@@ -2409,13 +2491,18 @@ static int run_natives(void)
         tap_at[0] = pic[0] + pic[2] / 2;
         tap_at[1] = pic[1] + pic[3] / 2;
         natives_windows(tap_at);
+        natives_stack(tap_at);
     }
     back_and_end("I/NativesTest: onDestroy", &at);
     /* The renderer, swapping when the activity went, ended with it (the view's surface gone, its swaps refused), and nothing threw. */
     CHECK(wait_line("I/NativesWindow: render: ended", 0, 30) >= 0 && find_line("I/NativesWindow: stopped", 0) >= 0);
+    /* And the stack's two, likewise. */
+    CHECK(find_line("I/NativesStack: stopped", 0) >= 0 && find_line("I/NativesWindow: stack: under ended after ", 0) >= 0 &&
+          find_line("I/NativesWindow: stack: over ended after ", 0) >= 0);
     CHECK(find_line("FATAL EXCEPTION", 0) < 0);
     say_app_lines("/NativesTest: ");
     say_app_lines("/NativesWindow: ");
+    say_app_lines("/NativesStack: ");
     return g_failed;
 }
 

@@ -21,6 +21,14 @@
 // graphics processor would cost a canvas's read-back for every picture; onDraw scales it to the view as it does any frame.
 // meglerFrameDrawn says whether the window has drawn the last one, so that a camera faster than the window skips pictures
 // the window would never show.
+// And the surface's place among the window's views, as Android orders a SurfaceView's surface (its sublayer): under the
+// window (the default), under it but over those (setZOrderMediaOverlay), or over it (setZOrderOnTop) -- where it makes no
+// hole, and where a format with alpha (PixelFormat.TRANSLUCENT, TRANSPARENT, RGBA_8888) lets the views under it be seen
+// where its frame is clear. Said with its place (EGLNative.place's flags). Why: a surface on top was not shown at all, its
+// view drawing neither its hole nor its place; HERE WeGo's whole interface is Flutter's view, a transparent SurfaceView on
+// top of its map's (FlutterActivity's TransparencyMode.transparent), and only the map was seen, the taps going to the
+// interface no one saw (package 681). And hidden (setVisibility other than VISIBLE), the surface is destroyed and made
+// again when shown, as Android's is.
 // Everything else is the original's, unchanged.
 package android.view;
 
@@ -40,8 +48,10 @@ public class SurfaceView extends View {
     private final Object mLock = new Object();
     private Bitmap mFront, mBack;
     private Canvas mBackCanvas;
-    private boolean mCreated, mLocked, mZOnTop, mFixed, mHasFrame, mDrawn = true;
+    private boolean mCreated, mLocked, mFixed, mHasFrame, mDrawn = true;
     private int mFixedW, mFixedH, mFormat = PixelFormat.OPAQUE, mSurfaceW, mSurfaceH;
+    /** Android's sublayer of the surface: -2 under the window (APPLICATION_MEDIA_SUBLAYER), -1 a media overlay, 1 on top. */
+    private int mSubLayer = -2;
     private final Paint mClear = new Paint(), mBlit = new Paint(Paint.FILTER_BITMAP_FLAG);
     private final SurfaceHolder mHolder = new SurfaceHolder() {
         public void addCallback(Callback c) { synchronized (mCallbacks) { if (!mCallbacks.contains(c)) mCallbacks.add(c); } }
@@ -50,7 +60,7 @@ public class SurfaceView extends View {
         public void setType(int t) {}
         public void setFixedSize(int w, int h) { mFixed = true; mFixedW = w; mFixedH = h; post(() -> sizeChanged()); }
         public void setSizeFromLayout() { mFixed = false; post(() -> sizeChanged()); }
-        public void setFormat(int f) { mFormat = f; }
+        public void setFormat(int f) { if (f != mFormat) { mFormat = f; if (mGL) invalidate(); } }
         public void setKeepScreenOn(boolean b) { SurfaceView.this.setKeepScreenOn(b); }
         public Canvas lockCanvas() { return lock(null); }
         public Canvas lockCanvas(Rect dirty) { return lock(dirty); }
@@ -78,8 +88,22 @@ public class SurfaceView extends View {
     public int[] meglerSurfaceSize() { int w = mSurfaceW > 0 ? mSurfaceW : getWidth(), h = mSurfaceH > 0 ? mSurfaceH : getHeight(); return new int[] { w > 0 ? w : megler.Native.screenWidth(), h > 0 ? h : megler.Native.screenHeight() }; }
     /** EGL draws on this view: it keeps its area clear for the frame under the window. */
     public void meglerSetGL(boolean gl) { mGL = gl; postInvalidate(); }
-    public void setZOrderOnTop(boolean onTop) { mZOnTop = onTop; }
-    public void setZOrderMediaOverlay(boolean o) {}
+    public void setZOrderOnTop(boolean onTop) { meglerSubLayer(onTop ? 1 : -2); }
+    public void setZOrderMediaOverlay(boolean o) { meglerSubLayer(o ? -1 : -2); }
+    public boolean isZOrderedOnTop() { return mSubLayer > 0; }
+    private void meglerSubLayer(int s) { if (s != mSubLayer) { mSubLayer = s; if (mGL) invalidate(); } }
+    /** How the frames go with the views (EGLNative.place): over them, with their alpha, over the other surfaces under them. */
+    private int meglerPlaceFlags() {
+        return (mSubLayer > 0 ? megler.EGLNative.PLACE_ABOVE : 0) | (mSubLayer == -1 ? megler.EGLNative.PLACE_OVERLAY : 0)
+               | (PixelFormat.formatHasAlpha(mFormat) ? megler.EGLNative.PLACE_TRANSLUCENT : 0);
+    }
+    /** Hidden, the surface is destroyed; shown again, it is made again (Android's setVisibility, through updateSurface). */
+    @Override public void setVisibility(int v) {
+        boolean was = getVisibility() == VISIBLE;
+        super.setVisibility(v);
+        if (was && v != VISIBLE) destroy();
+        else if (!was && v == VISIBLE && getWidth() > 0) post(this::sizeChanged);
+    }
     public void setSecure(boolean s) {}
     public SurfaceControl getSurfaceControl() { return new SurfaceControl(); }
     public void setChildSurfacePackage(SurfaceControlViewHost.SurfacePackage p) {}
@@ -102,7 +126,7 @@ public class SurfaceView extends View {
     @Override protected void onWindowVisibilityChanged(int v) { super.onWindowVisibilityChanged(v); if (v != VISIBLE) destroy(); else if (getWidth() > 0) post(this::sizeChanged); }
     private ArrayList<SurfaceHolder.Callback> callbacks() { synchronized (mCallbacks) { return new ArrayList<>(mCallbacks); } }
     private void sizeChanged() {
-        if (!isAttachedToWindow()) return;
+        if (!isAttachedToWindow() || getVisibility() != VISIBLE) return;
         int w = mFixed ? mFixedW : getWidth(), h = mFixed ? mFixedH : getHeight();
         if (w <= 0 || h <= 0) return;
         boolean created = false, changed = w != mSurfaceW || h != mSurfaceH;
@@ -189,14 +213,14 @@ public class SurfaceView extends View {
                 return;
             }
         }
-        // A surface EGL draws on lets what is under the window show through (the frame is there, under it). One that nothing has
-        // drawn yet -- a GLSurfaceView whose renderer never started, a software one before its first frame -- is no hole, as on
-        // Android: the views behind it are seen.
-        if (mGL && (!mZOnTop || this instanceof android.opengl.GLSurfaceView)) {
-            c.drawRect(0, 0, getWidth(), getHeight(), mClear);
-            // And the core is told where the hole is, as this picture of the views has it: the frame goes there.
+        // A surface EGL draws on under the window lets what is under it show through (the frame is there, under it). One that
+        // nothing has drawn yet -- a GLSurfaceView whose renderer never started, a software one before its first frame -- is no
+        // hole, as on Android: the views behind it are seen. One on top of the window makes no hole: its frame is over the views.
+        if (mGL) {
+            if (mSubLayer < 0) c.drawRect(0, 0, getWidth(), getHeight(), mClear);
+            // And the core is told where it is, as this picture of the views has it, and how: the frame goes there.
             getLocationOnScreen(mPlace);
-            megler.EGLNative.place(this, mPlace[0], mPlace[1], getWidth(), getHeight());
+            megler.EGLNative.place(this, mPlace[0], mPlace[1], getWidth(), getHeight(), meglerPlaceFlags());
         }
     }
     private final int[] mPlace = new int[2];
@@ -215,7 +239,6 @@ public class SurfaceView extends View {
     public android.view.SurfaceControl getRenderingSurfaceControl() { return null; }
     public android.graphics.Rect getSurfaceRenderPosition() { return null; }
     public boolean isFixedSize() { return false; }
-    public boolean isZOrderedOnTop() { return (megler.Fill.get(meglerFill, "ZOrderedOnTop") instanceof Boolean ? (Boolean) megler.Fill.get(meglerFill, "ZOrderedOnTop") : false); }
     public void onInitializeAccessibilityNodeInfoInternal(android.view.accessibility.AccessibilityNodeInfo p0) {}
     protected void onProvideStructure(android.view.ViewStructure p0, int p1, int p2) {}
     protected boolean onSetAlpha(int p0) { return false; }

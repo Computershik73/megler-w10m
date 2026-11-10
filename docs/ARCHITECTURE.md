@@ -721,7 +721,10 @@ can be OpenGL ES surfaces: a `GLSurfaceView` with a `Renderer`, or any
 on through `EGL14` or `EGL10`. And some apps use EGL with no view at all: a pbuffer
 to ask the GPU's name, or to draw off the screen. This is how that is done here.
 Android's picture of it is kept: the surface lies *under* the window, and the
-views are drawn over it with a hole where the `SurfaceView` is.
+views are drawn over it with a hole where the `SurfaceView` is -- or, for a
+`SurfaceView` ordered on top of the window (`setZOrderOnTop`), *over* it, with
+no hole, and translucent where its format has alpha (below, "Surfaces over the
+window").
 
 **One OpenGL ES in the process.** The Java natives call the very functions native
 code is bound to, ANGLE's, by name through the core (`mg_egl_host`). Two things
@@ -897,6 +900,39 @@ composed there and nothing is read back, neither the frames nor the views:
   the test shell takes it before it copies a frame. On the PC's graphics
   processor a second Direct3D device stands for ANGLE's (`mg_gfx_windows.cpp`),
   its texture shared plainly and then with a keyed mutex.
+
+**Surfaces over the window.** Android orders a `SurfaceView`'s surface by its
+sublayer: under the window (the default), under it but over those
+(`setZOrderMediaOverlay`), or over it (`setZOrderOnTop`) -- where the view makes
+no hole, and where a format with alpha (`PixelFormat.TRANSLUCENT`,
+`TRANSPARENT`, `RGBA_8888`) lets the window be seen where the surface's frame is
+clear, its colours premultiplied. The overlay's `SurfaceView` says its place with
+how (`EGLNative.place`'s flags: megler.h's `MEGLER_GL_ABOVE`,
+`MEGLER_GL_TRANSLUCENT`, `MEGLER_GL_OVERLAY`), the core hands that to the shell
+with the place (`gl_place`'s `flags`), and the window is composed so, by the
+shell (`composeWindow` in `GfxHost.cpp`: the layers under the views, those with
+`MEGLER_GL_OVERLAY` after the others, the views over them, the videos, then the
+layers over the views, opaque or, translucent, over what is there through a
+premultiplied bitmap of the same copy) or by the core (`compose_part` in
+`mg_java_gl.c`: a part where a layer over the views is composed whole, in that
+order). Up to package 681 a surface on top was shown nowhere: its view drew
+neither its hole nor its place, and the log's OpenGL frames said "layer 0
+nowhere". HERE WeGo is a Flutter app whose `FlutterActivity` is transparent
+(`TransparencyMode.transparent`): its whole interface is `FlutterSurfaceView`,
+`setZOrderOnTop(true)` with `PixelFormat.TRANSPARENT`, over the SurfaceView its
+map (HERE SDK's native renderer) draws on, which its activity puts under it; only
+the map was seen, and the taps went to the interface no one saw (its map's
+gestures come through Flutter's Dart code, which drives the map by FFI). A
+hidden `SurfaceView` (`setVisibility` other than `VISIBLE`) has its surface
+destroyed and made again when it is shown, as Android's has, so that a hidden
+surface over the window is not left there. Tested by the natives app's stack
+(two SurfaceViews one over the other, a render thread drawing each, two boxes of
+the views between them), under qemu both ways, and by the PC's test of the
+shell's composing, a translucent and an opaque layer over the views. Not as on
+Android: the app's windows are one picture of the views here (megler.ViewRoot
+draws its dialogs, popups and toasts into the screen's one bitmap), so a surface
+on top of an activity's window is over that activity's dialogs too, where Android
+has them over it.
 
 **Native code on a SurfaceView.** A game with a Java activity and a native
 engine (Asphalt 9) hands its `SurfaceView`'s `Surface` to native code, which

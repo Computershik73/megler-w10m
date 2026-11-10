@@ -413,10 +413,11 @@ the views hide, and a frame the shell loses tell apart so: the first has a black
 grid, the second alpha other than `00` over it, the third a good grid and alpha
 `00` and a black screen that `gl-compose-here` mends. Without a flag the log says
 each view's first six places (`java: OpenGL layer N (class) is at x,y wxh in the
-window`), every EGL call of the app's for these surfaces that EGL refused with its
+window`, and `, over the views` with `, translucent` for a surface on top of the
+window), every EGL call of the app's for these surfaces that EGL refused with its
 error (`egl: ... was refused (EGL error 0x...)`), and the OpenGL frames' minute
 lines end with who composes and where each layer is, or that it is nowhere (its
-view has not drawn its hole). The natives app runs under qemu with
+view has not been drawn). The natives app runs under qemu with
 `trace-surfaces` on, and the test checks its lines.
 
 **Sound.** FMOD said "Error initializing output device" twice and made no player.
