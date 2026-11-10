@@ -37,6 +37,9 @@
 //                                  that run's alone (kept in this process, thisRun); for a group Windows decides, Windows'
 //                                  own answer after Megler's yes.
 //
+// And one answer for every app, kept in Megler's settings: whether Google Play services' own features in an app's process
+// may use the location (gmsLocation; megler.MicroG's package context gives them their attribution tag only then).
+//
 // What each asks for, and each answer, is in the log. The answers and what they come to (everything but Windows' objects and
 // the questions) are player/PermissionRules.cpp, which the shell's tests build (core/tests/mg_shell_windows.cpp).
 #pragma once
@@ -52,7 +55,9 @@ struct ApkReport;
 
 namespace megler::app::permissionHost {
 
-/// megler_system_host.permission for the app that runs here (systemHost::runningPackage): MEGLER_PERMISSION_*.
+/// megler_system_host.permission for the app that runs here (systemHost::runningPackage): MEGLER_PERMISSION_*. The group
+/// gmsLocationGroup is the user's answer for Google Play services' own use of the location (gmsLocation), asked once for
+/// every app.
 int MEGLER_CB thunk(void* user, const char* group, bool ask);
 
 enum class Decider { windows, megler, none };
@@ -107,5 +112,13 @@ int windows(const std::string& group);
 std::string windowsSaid(const std::string& group);
 /// Windows' privacy settings page of a group Windows decides ("ms-settings:privacy-webcam"), empty for another.
 std::wstring windowsSettingsPage(const std::string& group);
+
+/// Google Play services' own use of the location, in every app's process (their features: location accuracy, personal
+/// safety, place suggestions): the user's one answer for every app, kept in Megler's settings (settings::gmsLocation), read
+/// as the file has it now. GRANTED, DENIED_FIXED, or UNDECIDED while the user has not been asked (or put the question away).
+constexpr const char* gmsLocationGroup = "gms_location";
+int gmsLocation();
+/// GRANTED, DENIED_FIXED; UNDECIDED: asked again the next time they want it.
+void keepGmsLocation(int state);
 
 } // namespace megler::app::permissionHost

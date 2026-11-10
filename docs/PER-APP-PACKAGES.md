@@ -270,7 +270,10 @@ choice. They apply at the app's next start. Each file is written beside and
 moved into place, so that a package reading it meanwhile finds a whole one. The
 `settings.ini` of before, in LocalState, is copied to its new place the first
 time. An app's permission answers are kept in its own file too
-(`megler.permission.<group>`).
+(`megler.permission.<group>`), and Megler's file keeps the one answer for every
+app of whether Google Play services' own features may use the location
+(`megler.gmsLocation`), which the package that asked writes and every package
+reads as the file has it then (`settings::meglerNow`).
 
 **Megler's own storage** (`shareMeglersStorage` in `shell/AppPackage.cpp`). Megler's
 `/sdcard` is the shared folder's too: once, in the background, Megler copies its

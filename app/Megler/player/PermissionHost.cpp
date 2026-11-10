@@ -263,10 +263,36 @@ int askUser(const Group& group, const std::string& package, int state, bool ever
     return answer;
 }
 
+/// Google Play services' own use of the location (gmsLocationGroup): what the user said, for every app; with `ask`, Megler's
+/// question over the app where nothing was said -- the framework asks on a thread of its own, the first time their features
+/// would be refused for want of it (megler.MicroG). Under the flag allow-permissions: allowed for this run, nothing kept.
+int gmsQuestion(bool ask) {
+    const int state = gmsLocation();
+    if (!ask || state != MEGLER_PERMISSION_UNDECIDED) return state;
+    if (allowedByFlag()) {
+        shellLog::write("permissions: Google Play services' own use of the location allowed for this run under the flag allow-permissions");
+        return MEGLER_PERMISSION_GRANTED;
+    }
+    const int button = systemHost::askUser(
+        "Allow Google Play services to use this phone's location for its own features?",
+        "Location accuracy, personal safety, place suggestions: Google Play services' own features follow where the phone is, in "
+        "every app Windows lets have the location, apart from what the app itself asks for. One answer for every app: Megler's "
+        "Settings (Google Services) and any app's App Permissions change it.",
+        {"Don't Allow", "Allow"});
+    if (button < 0) {
+        shellLog::write("permissions: the question of Google Play services' own location was put away unanswered");
+        return MEGLER_PERMISSION_UNDECIDED;
+    }
+    const int answer = button == 1 ? MEGLER_PERMISSION_GRANTED : MEGLER_PERMISSION_DENIED_FIXED;
+    keepGmsLocation(answer);
+    return answer;
+}
+
 } // namespace
 
 int MEGLER_CB thunk(void*, const char* name, bool ask) {
     const std::string group = name ? name : "";
+    if (group == gmsLocationGroup) return gmsQuestion(ask);
     const Group* g = groupNamed(group);
     if (!g) return MEGLER_PERMISSION_GRANTED;
     const std::string package = systemHost::runningPackage();

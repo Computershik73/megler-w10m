@@ -813,6 +813,12 @@ static MEGLER_CB int bio_verify(void *user, const char *message)
  */
 static bool g_data_app;
 static char g_permissions_asked[256];
+/*
+ * Google Play services' own use of the location ("gms_location"): one answer of the user's for every app, which nobody has
+ * given when an app starts. Asked, the user takes a moment and allows it -- or, with the script `deny`, refuses it for good.
+ * g_gms_asked counts the questions.
+ */
+static int g_gms_location = MEGLER_PERMISSION_UNDECIDED, g_gms_asked;
 
 static int permission_kept(const char *group)
 {
@@ -836,6 +842,14 @@ static MEGLER_CB int system_permission(void *user, const char *group, bool ask)
 {
     int state;
     (void)user;
+    if (!strcmp(group, "gms_location")) {
+        if (ask && g_gms_location == MEGLER_PERMISSION_UNDECIDED) {
+            g_gms_asked++;
+            mg_sleep_ns(300000000ull);
+            g_gms_location = g_script_count && !strcmp(g_script[0], "deny") ? MEGLER_PERMISSION_DENIED_FIXED : MEGLER_PERMISSION_GRANTED;
+        }
+        return g_gms_location;
+    }
     if (!g_data_app) return MEGLER_PERMISSION_GRANTED;
     if (!strcmp(group, "contacts")) {
         if (ask) {
@@ -3573,12 +3587,28 @@ static int run_microg(void)
  * name of its ApplicationInfo is the one Application.getProcessName gives it here, the app's. They take that process for
  * their main one, the only one where GmsModuleFinder makes their module configuration again at once; in every app that
  * hosted them the names differed, and each module scan asked for another, five a second, without end.
+ *
+ * And their package context's attribution tag, which the identity of a location request of their own is made of
+ * (ClientIdentity.c, a class of that name in the stand-in as in GmsCore): GmsCore refuses such a request where it is null,
+ * and Megler gives one only where the user lets Google Play services' own features have the location. Nobody has said at
+ * the start: asked for plainly, no tag and no one asked; for an identity, no tag at once and the user asked, once, on a
+ * thread of the framework's (the stand-in's user takes 0.3 s); then the tag "megler.app" once allowed -- or, run with
+ * `deny`, none for good, and nobody asked again. An attribution context keeps its own tag either way.
  */
 static int run_gms_host(void)
 {
+    const bool deny = g_script_count && !strcmp(g_script[0], "deny");
     CHECK(wait_line("I/GmsOwnTest: main process true application=megler.test.gmshost current=megler.test.gmshost", 0, 600) >= 0);
     CHECK(find_line("I/MicroG: Google Play services' application runs in this process, megler.test.gmshost, as its main one", 0) >= 0);
     CHECK(find_line("I/GmsHostTest: started ComponentInfo{com.google.android.gms/megler.test.gmsown.Probe}", 0) >= 0);
+    CHECK(wait_line("I/GmsOwnTest: attribution tag plain=null asked=false first=null asked=true", 0, 120) >= 0);
+    CHECK(wait_line(deny ? "I/GmsOwnTest: attribution tag later=null again=null attributed=probe"
+                         : "I/GmsOwnTest: attribution tag later=megler.app again=megler.app attributed=probe", 0, 300) >= 0);
+    /* The user was asked once (the core says the question as it is answered). */
+    CHECK(find_line("java: the app asks for the permission group gms_location: ", 0) >= 0 && g_gms_asked == 1);
+    CHECK(find_line(deny ? "permissions: Google Play services' own use of the location, the user asked: not allowed, for every app"
+                         : "permissions: Google Play services' own use of the location, the user asked: allowed, for every app", 0) >= 0);
+    say("  Google Play services' own location: the user asked %d time(s), %s", g_gms_asked, deny ? "and refused it" : "and allowed it");
     CHECK(find_line("FATAL EXCEPTION", 0) < 0);
     say_app_lines("/GmsOwnTest: ");
     return g_failed;

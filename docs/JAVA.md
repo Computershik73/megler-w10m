@@ -3760,6 +3760,28 @@ the clear is asked and as the app next starts with one waiting
 (`megler_clear_data_asked`). Windows' own answers stay; they are changed in
 its privacy settings.
 
+**Google Play services' own use of the location.** Their features in the app's
+process (location accuracy, personal safety, semantic location: PersonalSafety
+and the like in the log) ask for the location as Google Play services itself,
+and GmsCore refuses such a request when the attribution tag of the identity it
+is made with is null or its location module's own ("internal location usage
+has a forbidden attribution tag", `gerz.h`); the identity is made of the
+context's tag (`ClientIdentity.c(Context)`), and on a phone such a request in
+an app's process would be the app's, another uid. Google Play services'
+package context (`MicroG.PackageContext.getAttributionTag`) answers
+`megler.app` only where the user has allowed it, and null otherwise, as before:
+one answer for every app (`megler.gmsLocation` in Megler's settings, read as the
+file has it now: `megler_system_host.permission`'s `gms_location`). The user is
+asked once, over the app, the first time such an identity is made with no
+answer (the context's caller has `ClientIdentity` on its stack): on a thread
+of the framework's (`Permissions.askGmsLocation`), the thread that wanted the
+tag told null meanwhile; later calls get the tag once allowed. Megler's
+Settings (Google Play Services' Location) and every Java app's App Permissions
+change it. The test app `gms-host` checks it with a stand-in of
+`ClientIdentity` in its Google Play services: no tag asked for plainly and no
+one asked, none at once for an identity and the user asked, then the tag once
+allowed -- or none, the user refusing, and nobody asked again.
+
 ### The phone's text messages and calls
 
 What comes to the phone while an app runs is the app's as Android gives it,

@@ -1,6 +1,6 @@
 // The part of player/PermissionHost.h that needs neither Windows' objects nor a dialog: Android's groups and who decides
-// each, what the user said of them (the app's settings), and what an app is told. Built into the shell's tests too
-// (core/tests/mg_shell_windows.cpp).
+// each, what the user said of them (the app's settings) and of Google Play services' own location (Megler's), and what an
+// app is told. Built into the shell's tests too (core/tests/mg_shell_windows.cpp).
 #include "pch.h"
 
 #include "player/PermissionHost.h"
@@ -223,6 +223,17 @@ bool refusedByUser(const std::string& package, const std::string& group) {
     if (said != EVERY_TIME) return false;
     const int now = thisRun(package, group);
     return now == MEGLER_PERMISSION_DENIED || now == MEGLER_PERMISSION_DENIED_FIXED;
+}
+
+int gmsLocation() {
+    const std::string value = settings::meglerNow(settings::gmsLocation).value_or("");
+    return value == "granted" ? MEGLER_PERMISSION_GRANTED : value == "denied" ? MEGLER_PERMISSION_DENIED_FIXED : MEGLER_PERMISSION_UNDECIDED;
+}
+
+void keepGmsLocation(int state) {
+    settings::setMegler(settings::gmsLocation, state == MEGLER_PERMISSION_GRANTED ? "granted" : state == MEGLER_PERMISSION_DENIED_FIXED ? "denied" : "");
+    shellLog::write(std::string("permissions: Google Play services' own use of the location, for every app: ") +
+                    (state == MEGLER_PERMISSION_GRANTED ? "allowed" : state == MEGLER_PERMISSION_DENIED_FIXED ? "not allowed" : "to be asked"));
 }
 
 } // namespace megler::app::permissionHost

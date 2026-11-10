@@ -876,8 +876,18 @@ public final class MicroG {
             if (still) { r.started = false; g.destroyIfUnused(r); }
         }) ? 1 : 0;
     }
-    /** The attribution tag of Google Play services' package context where none was asked for (PackageContext.getAttributionTag). */
+    /** The attribution tag of Google Play services' package context where none was asked for, given only where the user lets
+     *  their own features have the location (PackageContext.getAttributionTag). */
     static final String DEFAULT_ATTRIBUTION_TAG = "megler.app";
+    /* The identity of a location request of Google Play services' own, which their location service checks (gerz.h): made of
+       the context's tag by ClientIdentity.c(Context). The name is kept in their code; the method's is not. */
+    private static final String IDENTITY = "com.google.android.gms.libs.identity.ClientIdentity";
+    /** Whether the tag is asked for on this thread to make such an identity: looked at only until the user has been asked. */
+    private static boolean forIdentity() {
+        if (Permissions.gmsAsked()) return false;
+        for (StackTraceElement e : new Throwable().getStackTrace()) if (IDENTITY.equals(e.getClassName())) return true;
+        return false;
+    }
     /* A package context's attribution context: that context in everything but its tag. */
     private static final class Attributed extends ContextWrapper {
         private final String tag;
@@ -899,14 +909,23 @@ public final class MicroG {
         @Override public String getOpPackageName() { return getPackageName(); }
         /*
          * Google Play services' own location requests must carry an attribution tag of their own on Android 11 and later
-         * (GmsCore's gerz.h: "internal location usage has a forbidden attribution tag", null among the forbidden). On a phone
-         * a request made through this context in an app's process is the app's, another uid's; here the app and Google Play
-         * services are one, so it was taken for Google Play services' own, and the null tag of a context with none refused:
-         * the my-location layer of Google's maps in Transit, every time it asked (0.1.0.679, "location is still kinda
-         * awful"). A context with no tag of its own answers DEFAULT_ATTRIBUTION_TAG, none of the forbidden; an attribution
-         * context its own (Attributed).
+         * (GmsCore's gerz.h: "internal location usage has a forbidden attribution tag", null among the forbidden), and the
+         * identity of such a request is made of this context's tag (ClientIdentity.c). On a phone a request made through this
+         * context in an app's process is the app's, another uid's; here the app and Google Play services are one, so it is
+         * taken for Google Play services' own. Most are: their own features in every app's process -- personal safety,
+         * semantic location, place suggestions (20 apps' logs of 0.1.0.681, 1110) -- besides the my-location layer of
+         * Google's maps (Transit, 0.1.0.679). A context with no tag of its own answers DEFAULT_ATTRIBUTION_TAG, none of the
+         * forbidden, only where the user lets their features have the location (Permissions.gmsLocation: one answer for
+         * every app, kept by Megler); null otherwise, and the request is refused, as before. The user is asked the first
+         * time such an identity is made with no answer (Permissions.askGmsLocation: once in this process, over the app, on
+         * a thread of its own; this one is told null meanwhile). An attribution context keeps its own tag (Attributed).
          */
-        @Override public String getAttributionTag() { return DEFAULT_ATTRIBUTION_TAG; }
+        @Override public String getAttributionTag() {
+            int s = Permissions.gmsLocation();
+            if (s == Permissions.ALLOWED) return DEFAULT_ATTRIBUTION_TAG;
+            if (s == Permissions.UNDECIDED && forIdentity()) Permissions.askGmsLocation();
+            return null;
+        }
         @Override public ApplicationInfo getApplicationInfo() { return info.applicationInfo; }
         @Override public String getPackageCodePath() { return APK; }
         @Override public String getPackageResourcePath() { return APK; }

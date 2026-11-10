@@ -3,8 +3,9 @@
 // allowed -- and a tap on one gives its choices: Allow, Ask every time, Don't allow. Every group may be refused, those Megler
 // has nothing behind too, and the location, the camera and the microphone by Megler's own no over Windows' consent; a yes
 // of Megler's leaves them to Windows, whose answer is said where it is known (in the app's own package: Megler's process is
-// another package, whose consent is not the app's) with the way to Windows' privacy settings. Then the other permissions
-// the manifest asks for, read only, as Android's "All permissions" lists what it grants with the install.
+// another package, whose consent is not the app's) with the way to Windows' privacy settings. Then Google Play services' own
+// use of the location (one answer for every app), and the other permissions the manifest asks for, read only, as Android's
+// "All permissions" lists what it grants with the install.
 //
 // Reached from the app's page in Megler (Permissions), from its App Settings, and in the app's own package from its
 // Settings (the player's menu), where it opens in place of them and Back goes back to them.
@@ -309,6 +310,29 @@ private:
         });
     }
 
+    /// Google Play services' own use of the location, one answer for every app (permissionHost::gmsLocation).
+    void changeGmsLocation() {
+        const int state = permissionHost::gmsLocation();
+        AppShell::DialogSpec spec;
+        spec.title = "Google Play Services' Location";
+        spec.message = "Location accuracy, personal safety, place suggestions: Google Play services' own features follow where the phone is, "
+                       "in every app Windows lets have the location, apart from what the app itself asks for. One answer for every app; "
+                       "it applies when an app next starts.";
+        spec.choices = {{"Allow", "Their requests are made with a tag of their own, which Google Play services takes"},
+                        {"Don't allow", "Their requests are refused, as Google Play services refuses them without one"},
+                        {"Ask", "Megler asks the next time they want it"}};
+        spec.chosen = state == MEGLER_PERMISSION_GRANTED ? 0 : state == MEGLER_PERMISSION_DENIED_FIXED ? 1 : 2;
+        spec.buttons = {"Cancel"};
+        const std::weak_ptr<PermissionsBody> weak = weak_from_this();
+        shell_.dialog(std::move(spec), [weak](int button, std::string) {
+            auto self = weak.lock();
+            if (!self || button < 1) return;
+            const int choice = button - 1;
+            permissionHost::keepGmsLocation(choice == 0 ? MEGLER_PERMISSION_GRANTED : choice == 1 ? MEGLER_PERMISSION_DENIED_FIXED : MEGLER_PERMISSION_UNDECIDED);
+            self->rebuild();
+        });
+    }
+
     void rebuild() {
         if (!host_) return;
         const auto& p = palette();
@@ -346,6 +370,19 @@ private:
             if (!everyTime.empty()) add(column, listSection("Ask every time", everyTime));
             if (notAllowed.empty()) notAllowed.push_back(listItem("No permissions denied", ""));
             add(column, listSection("Not allowed", notAllowed));
+        }
+
+        // Google Play services in the app's process: a Java app's.
+        if (r.engine == "java") {
+            const int gms = permissionHost::gmsLocation();
+            const std::string said = gms == MEGLER_PERMISSION_GRANTED      ? "Allowed, in every app"
+                                     : gms == MEGLER_PERMISSION_DENIED_FIXED ? "Not allowed, in every app"
+                                                                             : "Not asked yet: asked the first time they want it";
+            add(column, listSection("Google Play Services", {button(listItem("Their Own Use of the Location", said, glyphs::place), [this] { changeGmsLocation(); },
+                                                                    ButtonKind::plain, "Their Own Use of the Location")},
+                                    "Google Play services run in the app's process here, and their own features (location accuracy, personal "
+                                    "safety, place suggestions) ask for the location as Google Play services. One answer for every app; Megler's "
+                                    "Settings change it too."));
         }
 
         // Every other permission the manifest asks for: granted with the install, as Android grants them.

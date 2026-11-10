@@ -30,6 +30,13 @@
 //
 // What the shell said of a group is kept until the app comes back to the front (megler.AppRunner.hostPause: the user may
 // have changed Windows' settings, or the app's App Permissions in Megler, meanwhile) or asks for it again.
+//
+// And Google Play services' own use of the location (gmsLocation): their features in the app's process (location accuracy,
+// personal safety, place suggestions) ask for it as Google Play services itself, and GmsCore refuses such a request unless
+// the identity it is made with has an attribution tag of its own (MicroG's package context gives one only where the user
+// allows it). The shell keeps the user's one answer for every app ("gms_location"); the user is asked once, over the app,
+// on a thread of its own, the first time it is wanted and not answered -- never on the thread that wants it, which is told
+// no meanwhile.
 package megler;
 
 import android.app.Activity;
@@ -108,6 +115,7 @@ public final class Permissions {
      *  app's App Permissions meanwhile. */
     public static void forget() {
         synchronized (sStates) { sStates.clear(); }
+        sGmsLocation = -1;
     }
 
     /** Context.checkPermission, checkSelfPermission and their kind, and PackageManager.checkPermission of the app's own package. */
@@ -118,6 +126,45 @@ public final class Permissions {
         // Granted with the install, unless the user took it away (Android's settings revoke an old app's permission so).
         if (grantedWithInstall()) return state(g) == REFUSED_FOR_GOOD ? DENIED : GRANTED;
         return state(g) == ALLOWED ? GRANTED : DENIED;
+    }
+
+    /** megler_system_host.permission's name for Google Play services' own use of the location, one answer for every app. */
+    public static final String GMS_LOCATION = "gms_location";
+    /* What the shell said of it (-1: not asked since the app was last in front), and whether the user was asked in this process. */
+    private static volatile int sGmsLocation = -1;
+    private static boolean sGmsAsked;
+
+    /** Whether the user lets Google Play services' own features have the location: ALLOWED, REFUSED_FOR_GOOD, or UNDECIDED
+     *  while not asked. Nothing is asked. */
+    public static int gmsLocation() {
+        int s = sGmsLocation;
+        if (s < 0) sGmsLocation = s = Native.permission(GMS_LOCATION, false);
+        return s;
+    }
+
+    /** Whether askGmsLocation has asked the user in this process. */
+    public static boolean gmsAsked() {
+        synchronized (Permissions.class) { return sGmsAsked; }
+    }
+
+    /**
+     * The user asked whether Google Play services' own features may have the location, where they have not answered: once in
+     * this process, on a thread of its own (the shell's dialog over the app waits for the user), the caller not waiting. The
+     * answer is gmsLocation's from then on; a question put away is asked again in the app's next process.
+     */
+    public static void askGmsLocation() {
+        synchronized (Permissions.class) {
+            if (sGmsAsked) return;
+            sGmsAsked = true;
+        }
+        Thread t = new Thread(() -> {
+            int s = Native.permission(GMS_LOCATION, true);
+            sGmsLocation = s;
+            android.util.Log.i("Megler", "permissions: Google Play services' own use of the location, the user asked: "
+                    + (s == ALLOWED ? "allowed, for every app" : s == REFUSED_FOR_GOOD ? "not allowed, for every app" : "not answered"));
+        }, "megler-gms-location");
+        t.setDaemon(true);
+        t.start();
     }
 
     /** Activity.shouldShowRequestPermissionRationale: the user said no once, and may be asked again. */

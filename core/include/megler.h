@@ -1541,6 +1541,10 @@ typedef struct megler_display_host {
  *                The framework (megler.Permissions) asks it of a group whose permissions the app's manifest asks for and
  *                whose answer Android's rules do not settle by themselves; of a group an app has with its install (an app
  *                for Android 5.1 or older, Google's own packages) without `ask`, where _DENIED_FIXED takes it away.
+ *                And "gms_location": whether Google Play services' own features in the app's process may have the
+ *                location -- one answer of the user's for every app, _GRANTED, _DENIED_FIXED or _UNDECIDED (not asked);
+ *                with `ask`, the user is asked where they have not answered, on a thread of the framework's that waits
+ *                (megler.MicroG gives Google Play services' context an attribution tag only where it is _GRANTED).
  *                Left NULL: every group is granted, nothing asked.
  */
 enum { MEGLER_PERMISSION_UNDECIDED = 0, MEGLER_PERMISSION_GRANTED = 1, MEGLER_PERMISSION_DENIED = 2, MEGLER_PERMISSION_DENIED_FIXED = 3 };

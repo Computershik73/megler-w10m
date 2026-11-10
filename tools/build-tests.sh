@@ -138,7 +138,9 @@
 # phone turned does it: its activities made again or told, the pictures at the
 # new size. And `gms-host`, which hosts a stand-in for Google's own Play
 # services (`gms-own`) and starts a service of theirs: their code is told it
-# runs in its application's process.
+# runs in its application's process; twice, the user allowing and then
+# refusing their own use of the location, which their package context's
+# attribution tag follows.
 # And `bluetooth`, Bluetooth LE's central side as MeshCore's app uses it, on a
 # stand-in for the shell's radio (core/tests/mg_bluetooth_standin.c). Their
 # pictures are written to build/java-pictures as BMP files. Each is then run
@@ -265,10 +267,13 @@ EOF
         MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL="*" wsl.exe -- bash -c "cp '$WROOT/build/guest/java/microg.apk' $WB/microg.apk && rm -rf $WB/java-data-microg && cp '$WROOT/build/microg/GmsCore.apk' $WB/GmsCore.apk && MG_JAVA_GMS_APK=$WB/GmsCore.apk qemu-arm -L /usr/arm-linux-gnueabihf $WB/mg_tests --java microg $WB/microg.apk $WB/java-data-microg $WB/android-root - 2>&1" || STATUS=1
       fi
       # Google's own Play services as an app hosts them, in a stand-in of theirs (gms-own: no microG in it): their code is told
-      # it runs in its application's process, its main one (mg_java_tests.c, run_gms_host).
+      # it runs in its application's process, its main one; and their own location requests get an attribution tag once the
+      # user allows them it, and none where the user refuses it (`deny`), the user asked once (mg_java_tests.c, run_gms_host).
       if [ -f "$ROOT/build/guest/java/gms-own.apk" ] && [ -f "$ROOT/build/guest/java/gms-host.apk" ]; then
-        echo "the Java test app gms-host (build/guest/java/gms-host.apk), hosting the stand-in for Google's own Play services (gms-own.apk)"
-        MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL="*" wsl.exe -- bash -c "cp -u '$WROOT/build/guest/java/gms-host.apk' $WB/gms-host.apk && cp -u '$WROOT/build/guest/java/gms-own.apk' $WB/gms-own.apk && rm -rf $WB/java-data-gms-host && MG_JAVA_GMS_APK=$WB/gms-own.apk qemu-arm -L /usr/arm-linux-gnueabihf $WB/mg_tests --java gms-host $WB/gms-host.apk $WB/java-data-gms-host $WB/android-root - 2>&1" || STATUS=1
+        for answer in allow deny; do
+          echo "the Java test app gms-host (build/guest/java/gms-host.apk), hosting the stand-in for Google's own Play services (gms-own.apk): their own location, the user's answer $answer"
+          MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL="*" wsl.exe -- bash -c "cp -u '$WROOT/build/guest/java/gms-host.apk' $WB/gms-host.apk && cp -u '$WROOT/build/guest/java/gms-own.apk' $WB/gms-own.apk && rm -rf $WB/java-data-gms-host && MG_JAVA_GMS_APK=$WB/gms-own.apk qemu-arm -L /usr/arm-linux-gnueabihf $WB/mg_tests --java gms-host $WB/gms-host.apk $WB/java-data-gms-host $WB/android-root - 0 480x800@160 $answer 2>&1" || STATUS=1
+        done
       fi
       # The app in several APKs, from each of its bundles: unpacked as the shell unpacks one, for a screen of 320 dpi, and run.
       for bundle in apks xapk; do

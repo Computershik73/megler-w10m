@@ -24,7 +24,7 @@
 //     carried out, a folder whose APK an app has open left whole, each decision said once;
 //   - an app's permissions (player/PermissionRules.cpp): the user's answers kept in its settings and forgotten, what the app
 //     is told of each kind of group -- a refused group Megler has nothing behind, Megler's no over Windows' yes, a group
-//     asked every time --, and the groups a manifest asks for.
+//     asked every time --, the groups a manifest asks for, and Google Play services' own location in Megler's settings.
 //
 // A Lumia 630's Megler 0.1.0.671 was ended at every start while it made those copies on its UI thread before its window
 // was shown (library/Library.cpp); what is tested here is the way they are made since.
@@ -912,10 +912,11 @@ void testBundled() {
 /// An app's permissions as the shell keeps and decides them (player/PermissionRules.cpp), in the app's settings in the shared
 /// folder (shell/Settings.cpp): what the user said kept and forgotten; what the app is told of each kind of group -- one
 /// Megler has nothing behind (granted with no one asked) refused by the user, Megler's own no over Windows' yes, a group
-/// asked every time by this run's answer; and the groups an app's manifest asks for.
+/// asked every time by this run's answer; the groups an app's manifest asks for; and Google Play services' own use of the
+/// location, one answer for every app in Megler's settings, read as the file has it now.
 void testPermissions() {
     using namespace permissionHost;
-    printf("an app's permissions: kept and decided (player/PermissionRules.cpp)\n");
+    printf("an app's permissions: kept, decided, and Google Play services' own location (player/PermissionRules.cpp)\n");
     files::makeDirectories(gShared);
     settings::load(gLocal, gShared, "");
     const std::string app = "org.megler.test.perms";
@@ -984,6 +985,18 @@ void testPermissions() {
               groupOfPermission("com.example.permission.CAMERA").empty(),
           "a dangerous permission's group, and none for another");
     check(questionOf("camera", "Test") == "Allow Test to take pictures and record video?" && !explanationOf("contacts").empty(), "Megler's question");
+
+    // Google Play services' own location: Megler's settings, read as the file has it now.
+    const std::wstring meglerFile = gShared + L"\\settings.ini";
+    check(gmsLocation() == un, "Google Play services' own location: not asked at first");
+    keepGmsLocation(yes);
+    check(gmsLocation() == yes && files::read(meglerFile, text) && count(text, "megler.gmsLocation=granted") == 1, "allowed, kept in Megler's settings.ini");
+    // Another package answers (an app's own package, where the question was put): the file says so, and so does gmsLocation.
+    files::write(meglerFile, "megler.gmsLocation=denied\r\nmegler.renderCap=960\r\n");
+    check(gmsLocation() == never && settings::meglerNow("megler.renderCap").value_or("") == "960", "read as the file has it now");
+    check(settings::megler("megler.renderCap").value_or("") != "960", "what this process goes by stays as it was");
+    keepGmsLocation(un);
+    check(gmsLocation() == un && files::read(meglerFile, text) && count(text, "megler.renderCap=960") == 1, "asked again, Megler's other settings kept");
 }
 
 } // namespace

@@ -325,6 +325,23 @@ private:
         return true;
     }
 
+    /// Whether Google Play services' own features may use the location, in every app (player/PermissionHost.h, gmsLocation): asked
+    /// the first time they want it, and changed here.
+    UIElement gmsLocationSection() {
+        const int state = permissionHost::gmsLocation();
+        std::vector<UIElement> rows;
+        rows.push_back(choice("Ask", "Megler asks the first time they want it", state == MEGLER_PERMISSION_UNDECIDED,
+                              [] { permissionHost::keepGmsLocation(MEGLER_PERMISSION_UNDECIDED); }));
+        rows.push_back(choice("Allow", "Their requests are made with a tag of their own, which Google Play services takes",
+                              state == MEGLER_PERMISSION_GRANTED, [] { permissionHost::keepGmsLocation(MEGLER_PERMISSION_GRANTED); }));
+        rows.push_back(choice("Don't Allow", "Their requests are refused, as Google Play services refuses them without one",
+                              state == MEGLER_PERMISSION_DENIED_FIXED, [] { permissionHost::keepGmsLocation(MEGLER_PERMISSION_DENIED_FIXED); }));
+        return listSection("Google Play Services' Location", rows,
+                           "Location accuracy, personal safety, place suggestions: Google Play services run in each app's process here, and "
+                           "their own features follow where the phone is, in every app Windows lets have the location, apart from what the "
+                           "app itself asks for. One answer for every app; it applies when an app next starts.");
+    }
+
     /// Where apps are told the phone is (player/LocationHost.h): the phone's location, or a place set here.
     UIElement locationSection() {
         const auto source = own(settings::locationSource);
@@ -619,6 +636,7 @@ private:
         if (forApp()) add(column, permissionsSection());
         add(column, renderSection());
         add(column, servicesSection());
+        if (!forApp()) add(column, gmsLocationSection());
         add(column, localeSection());
         add(column, locationSection());
         if (!forApp()) add(column, themeSection());
