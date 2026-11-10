@@ -1936,20 +1936,28 @@ static int run_hello(void)
  * once the screen is laid out, before its first frame, as WhatsApp gives its own (a ColorDrawable, whose bounds are empty
  * until the card is drawn). Both must be drawn, their buttons with them: on a Lumia 650 WhatsApp's card, its "Accept and
  * continue" button in it, never was (0.1.0.685), scrolled to or not. Run a second time with the flag no-node-damage (the
- * script's "no-node-damage"): the frames drawn by the views' rectangles alone.
+ * script's "no-node-damage"): the frames drawn by the views' rectangles alone. And above the cards two ImageViews whose
+ * picture draws into their padding: drawn there by the one that does not crop to its padding (LottieAnimationView does not),
+ * not by the one that does.
  */
 static int run_scroll(void)
 {
     const bool no_damage = g_script_count && !strcmp(g_script[0], "no-node-damage");
-    int at = -1, line, a[4], b[4];
+    int at = -1, line, plain[4], cropped[4], a[4], b[4];
+    memset(plain, 0, sizeof(plain));
+    memset(cropped, 0, sizeof(cropped));
     memset(a, 0, sizeof(a));
     memset(b, 0, sizeof(b));
     if (no_damage) CHECK(wait_line("flag: no-node-damage is on", 0, 60) >= 0);
     /* Laid out: the column 80 px taller than its ScrollView, and card B's new background, not drawn yet, of no size. */
     expect_line("I/ScrollTest: laid out over=80 cardB=ColorDrawable bounds=[0,0][0,0]", &at, 120);
-    CHECK(wait_line("I/ScrollTest: shown ", 0, 60) >= 0);
+    line = wait_line("I/ScrollTest: shown ", 0, 60);
+    CHECK(line >= 0 && rect_in(line_at(line), "plain", plain) && rect_in(line_at(line), "cropped", cropped));
     settle();
     write_picture(no_damage ? "scroll-nodamage-1-shown" : "scroll-1-shown");
+    /* The picture in the padding of the ImageView that does not crop to it, not in that of the one that does; in both middles. */
+    CHECK(pixel(plain[0] + 5, plain[1] + 5) == 0xE0A000 && pixel(plain[0] + plain[2] / 2, plain[1] + plain[3] / 2) == 0xE0A000);
+    CHECK(pixel(cropped[0] + 5, cropped[1] + 5) == 0x2060C0 && pixel(cropped[0] + cropped[2] / 2, cropped[1] + cropped[3] / 2) == 0xE0A000);
     /* F12: the app scrolls to the bottom, and the cards come into view. */
     megler_key(142, true);
     megler_key(142, false);

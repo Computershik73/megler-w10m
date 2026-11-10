@@ -104,3 +104,24 @@ test program (`mg_tests --java app` with its .apks, 720 x 1280 at 320 dpi,
 its content dragged up) showed the same before: the button's place white,
 the frame walk at 17 nodes; now "Agree and continue" is drawn in its card
 and the walk meets 18.
+
+The picture above the title, a Lottie animation in a `LottieAnimationView`
+of 540 x 540 px with 80 px of padding, was cut along that padding box: what
+lay above it or left of it was not there. That is Lottie's own clip, as on
+Android. The view's layout (`res/hpz.xml` in 2.26.39.74) gives it its padding
+(40 dp), `centerInside`, `lottie_autoPlay`, `lottie_loop` and `lottie_rawRes`,
+and not `lottie_clipToCompositionBounds`, which LottieAnimationView reads from
+its attributes alone (`setClipToCompositionBounds` has no other caller in the
+app): Lottie's default holds, and what the composition draws is clipped to
+its bounds. The composition (`raw/eula_animation`,
+"WA_Onboarding_Registration_WelcomeScreen_1x1") is 280 x 280; its drawable,
+560 x 560 at 320 dpi, is scaled by 0.679 into the 380 x 380 inside the
+padding (the phone's view dump: `img=... 560x560 scale=CENTER_INSIDE
+m=[0.6785714, ...]`), so its bounds are the padding box; drawn in software,
+it goes through a bitmap of exactly those bounds (the log's "a frame drew a
+bitmap (380x380)"). What its layers move outside the 280 x 280 frame at a
+moment is cut there on Android too: its globe's precomposition (228 x 152 at
+115 %), for one, is placed partly above its top and past its right edge.
+Megler's `ImageView` clips to its padding only with `cropToPadding`, as
+Android's; the test app `scroll` checks that a picture drawing past its
+bounds is drawn into the padding without it and not with it.

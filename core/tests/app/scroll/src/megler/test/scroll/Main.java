@@ -1,7 +1,12 @@
 package megler.test.scroll;
 
 import android.app.Activity;
+import android.graphics.Canvas;
+import android.graphics.ColorFilter;
 import android.graphics.Outline;
+import android.graphics.Paint;
+import android.graphics.PixelFormat;
+import android.graphics.drawable.Drawable;
 import android.graphics.drawable.GradientDrawable;
 import android.os.Bundle;
 import android.util.Log;
@@ -11,6 +16,7 @@ import android.view.ViewGroup;
 import android.view.ViewOutlineProvider;
 import android.view.ViewTreeObserver;
 import android.widget.FrameLayout;
+import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 
@@ -23,15 +29,19 @@ import android.widget.ScrollView;
  * does from the ScrollView's global layout listener when its content is taller than it: CardView.setCardElevation(8),
  * View.setBackgroundColor -- which puts a new ColorDrawable there, its bounds empty until the card is drawn.
  *
+ * Above them, two ImageViews with padding whose picture draws all over the view: one as LottieAnimationView is (an
+ * AppCompatImageView, cropToPadding not set), whose padding the picture is drawn in, and one with cropToPadding.
+ *
  * F12 scrolls the screen to the bottom, and the app says where the cards are then. Pixels in pixels: the test runs at 160 dpi.
  */
 public class Main extends Activity {
     static final int PAGE = 0xFF0A1014, TOP = 0xFF2060C0, CARD_A = 0xFF604080, CARD_B_FIRST = 0xFF808080, CARD_B = 0xFF406080, BUTTON = 0xFF21C063,
-        CORNER = 0xFFC02020;
-    static final int VIEWPORT = 400, CARD = 56, BOTTOM_PADDING = 24;
+        CORNER = 0xFFC02020, PICTURE = 0xFFE0A000;
+    static final int VIEWPORT = 400, CARD = 56, BOTTOM_PADDING = 24, IMAGE = 120, IMAGE_PADDING = 30;
     private ScrollView scroll;
     private LinearLayout column;
     private FrameLayout cardA, cardB;
+    private ImageView plain, cropped;
     private boolean shown;
 
     private static void say(String what) {
@@ -67,6 +77,31 @@ public class Main extends Activity {
         return card;
     }
 
+    /** A picture of IMAGE - 2 * IMAGE_PADDING square that draws IMAGE_PADDING beyond its bounds on every side, as an animation may. */
+    static final class Spilling extends Drawable {
+        private final Paint paint = new Paint();
+
+        @Override public void draw(Canvas c) {
+            paint.setColor(PICTURE);
+            android.graphics.Rect b = getBounds();
+            c.drawRect(b.left - IMAGE_PADDING, b.top - IMAGE_PADDING, b.right + IMAGE_PADDING, b.bottom + IMAGE_PADDING, paint);
+        }
+        @Override public int getIntrinsicWidth() { return IMAGE - 2 * IMAGE_PADDING; }
+        @Override public int getIntrinsicHeight() { return IMAGE - 2 * IMAGE_PADDING; }
+        @Override public void setAlpha(int a) {}
+        @Override public void setColorFilter(ColorFilter f) {}
+        @Override public int getOpacity() { return PixelFormat.OPAQUE; }
+    }
+
+    private ImageView image(boolean crop) {
+        ImageView v = new ImageView(this);
+        v.setPadding(IMAGE_PADDING, IMAGE_PADDING, IMAGE_PADDING, IMAGE_PADDING);
+        v.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
+        v.setCropToPadding(crop);
+        v.setImageDrawable(new Spilling());
+        return v;
+    }
+
     @Override
     protected void onCreate(Bundle state) {
         super.onCreate(state);
@@ -78,6 +113,14 @@ public class Main extends Activity {
         column.setPadding(0, 0, 0, BOTTOM_PADDING);
         FrameLayout top = new FrameLayout(this);
         top.setBackgroundColor(TOP);
+        plain = image(false);
+        cropped = image(true);
+        FrameLayout.LayoutParams at = new FrameLayout.LayoutParams(IMAGE, IMAGE);
+        at.setMargins(20, 200, 0, 0);
+        top.addView(plain, at);
+        at = new FrameLayout.LayoutParams(IMAGE, IMAGE);
+        at.setMargins(20 + IMAGE + 20, 200, 0, 0);
+        top.addView(cropped, at);
         column.addView(top, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, VIEWPORT));
         LinearLayout row = new LinearLayout(this);
         cardA = card(CARD_A);
@@ -120,7 +163,7 @@ public class Main extends Activity {
         super.onWindowFocusChanged(focus);
         if (!focus || shown) return;
         shown = true;
-        say("shown scroll=" + place(scroll) + " a=" + place(cardA) + " b=" + place(cardB));
+        say("shown scroll=" + place(scroll) + " plain=" + place(plain) + " cropped=" + place(cropped) + " a=" + place(cardA) + " b=" + place(cardB));
     }
 
     @Override
