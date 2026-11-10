@@ -2316,6 +2316,191 @@ static void test_libc_gaps(const char *scratch)
 }
 
 /*
+ * libm's rounding to a whole number, which the core works out on the bits (bionic/mg_libm.c), against the host's libm,
+ * whose results IEEE 754 decides (to nearest, the default mode): every exponent of a float and of a double, with the
+ * fractions a rounding decides at -- just under, at and just over a half, the largest, an odd and an even whole part --
+ * both signs, zeros, denormals, infinities and NaNs, and random bits. The integer ones where the result has room.
+ */
+static u32 g_round_seed = 12345;
+static u32 round_rand(void)
+{
+    g_round_seed = g_round_seed * 1664525u + 1013904223u;
+    return g_round_seed;
+}
+
+static int rounding_floats(u32 *out)
+{
+    int n = 0, e, s, j;
+    for (e = 0; e < 256; e++) {
+        u32 picks[16];
+        int np = 0, k = 150 - e;
+        picks[np++] = 0;
+        picks[np++] = 1;
+        picks[np++] = 0x7FFFFF;
+        picks[np++] = 0x400000;
+        picks[np++] = 0x3FFFFF;
+        picks[np++] = 0x400001;
+        if (k >= 1 && k <= 23) {
+            /* (k bits of fraction below the units: the half is bit k - 1; the unit's bit k is the last of the whole part.) */
+            u32 half = 1u << (k - 1);
+            picks[np++] = half;
+            picks[np++] = half - 1;
+            picks[np++] = half + 1;
+            picks[np++] = (half << 1) | half;
+            picks[np++] = (half << 1) | (half - 1);
+            picks[np++] = (half << 1) - 1;
+        }
+        picks[np++] = round_rand();
+        picks[np++] = round_rand();
+        for (s = 0; s < 2; s++)
+            for (j = 0; j < np; j++) out[n++] = ((u32)s << 31) | ((u32)e << 23) | (picks[j] & 0x7FFFFFu);
+    }
+    for (j = 0; j < 1000; j++) out[n++] = round_rand();
+    return n;
+}
+
+static int rounding_doubles(u64 *out)
+{
+    int n = 0, e, s, j;
+    for (e = 0; e < 2048; e++) {
+        u64 picks[16];
+        int np = 0, k = 1075 - e;
+        picks[np++] = 0;
+        picks[np++] = 1;
+        picks[np++] = 0xFFFFFFFFFFFFFull;
+        picks[np++] = 0x8000000000000ull;
+        picks[np++] = 0x7FFFFFFFFFFFFull;
+        picks[np++] = 0x8000000000001ull;
+        if (k >= 1 && k <= 52) {
+            u64 half = 1ull << (k - 1);
+            picks[np++] = half;
+            picks[np++] = half - 1;
+            picks[np++] = half + 1;
+            picks[np++] = (half << 1) | half;
+            picks[np++] = (half << 1) | (half - 1);
+            picks[np++] = (half << 1) - 1;
+        }
+        picks[np++] = ((u64)round_rand() << 32) | round_rand();
+        for (s = 0; s < 2; s++)
+            for (j = 0; j < np; j++) out[n++] = ((u64)s << 63) | ((u64)e << 52) | (picks[j] & 0xFFFFFFFFFFFFFull);
+    }
+    for (j = 0; j < 1000; j++) out[n++] = ((u64)round_rand() << 32) | round_rand();
+    return n;
+}
+
+static void test_libm_rounding(void)
+{
+    typedef gfloat (*ff_fn)(gfloat);
+    typedef gdouble (*dd_fn)(gdouble);
+    typedef glong (*lf_fn)(gfloat);
+    typedef glong (*ld_fn)(gdouble);
+    typedef i64 (*llf_fn)(gfloat);
+    typedef i64 (*lld_fn)(gdouble);
+    static const char *const fnames[] = { "floorf", "ceilf", "truncf", "roundf", "rintf", "nearbyintf" };
+    static const char *const dnames[] = { "floor", "ceil", "trunc", "round", "rint", "nearbyint" };
+    float (*const fref[])(float) = { floorf, ceilf, truncf, roundf, rintf, nearbyintf };
+    double (*const dref[])(double) = { floor, ceil, trunc, round, rint, nearbyint };
+    u32 *fv = (u32 *)mg_alloc(sizeof(u32) * 20000);
+    u64 *dv = (u64 *)mg_alloc(sizeof(u64) * 70000);
+    int nf = rounding_floats(fv), nd = rounding_doubles(dv), i, f;
+    say("libm's rounding on the bits: %d floats and %d doubles, against the host's", nf, nd);
+    for (f = 0; f < 6; f++) {
+        ff_fn fn = (ff_fn)mg_bionic_find(fnames[f]);
+        dd_fn dn = (dd_fn)mg_bionic_find(dnames[f]);
+        int bad = 0;
+        CHECK(fn && dn);
+        if (!fn || !dn) continue;
+        for (i = 0; i < nf; i++) {
+            float want = fref[f](mg_f(fv[i])), got = mg_gf(fn(mg_gfb(mg_f(fv[i]))));
+            if (isnan(want) ? !isnan(got) : mg_fb(got) != mg_fb(want)) {
+                if (!bad++) say("  %s(%08x) = %08x, the host's %08x", fnames[f], (unsigned)fv[i], (unsigned)mg_fb(got), (unsigned)mg_fb(want));
+            }
+        }
+        CHECK_INT(bad, 0);
+        bad = 0;
+        for (i = 0; i < nd; i++) {
+            double want = dref[f](mg_d(dv[i])), got = mg_gd(dn(mg_gdb(mg_d(dv[i]))));
+            if (isnan(want) ? !isnan(got) : mg_db(got) != mg_db(want)) {
+                if (!bad++)
+                    say("  %s(%08x%08x) = %08x%08x, the host's %08x%08x", dnames[f], (unsigned)(dv[i] >> 32), (unsigned)dv[i],
+                        (unsigned)(mg_db(got) >> 32), (unsigned)mg_db(got), (unsigned)(mg_db(want) >> 32), (unsigned)mg_db(want));
+            }
+        }
+        CHECK_INT(bad, 0);
+    }
+    {
+        lf_fn lroundf_ = (lf_fn)mg_bionic_find("lroundf"), lrintf_ = (lf_fn)mg_bionic_find("lrintf");
+        ld_fn lround_ = (ld_fn)mg_bionic_find("lround"), lrint_ = (ld_fn)mg_bionic_find("lrint");
+        llf_fn llroundf_ = (llf_fn)mg_bionic_find("llroundf"), llrintf_ = (llf_fn)mg_bionic_find("llrintf");
+        lld_fn llround_ = (lld_fn)mg_bionic_find("llround"), llrint_ = (lld_fn)mg_bionic_find("llrint");
+        int bad = 0;
+        CHECK(lroundf_ && lrintf_ && lround_ && lrint_ && llroundf_ && llrintf_ && llround_ && llrint_);
+        if (lroundf_ && lrintf_ && lround_ && lrint_ && llroundf_ && llrintf_ && llround_ && llrint_) {
+            /* (In the range of a 32-bit long, which every guest's long holds, and of a 64-bit one; out of it, C's conversion.) */
+            for (i = 0; i < nf; i++) {
+                float x = mg_f(fv[i]);
+                gfloat g = mg_gfb(x);
+                if (!(fabsf(x) < 2147483520.0f)) continue;
+                if (lroundf_(g) != (glong)lroundf(x) || lrintf_(g) != (glong)lrintf(x) || llroundf_(g) != (i64)llroundf(x) || llrintf_(g) != (i64)llrintf(x)) {
+                    if (!bad++)
+                        say("  lroundf, lrintf, llroundf, llrintf(%08x) = %ld %ld %lld %lld, the host's %ld %ld %lld %lld", (unsigned)fv[i], (long)lroundf_(g),
+                            (long)lrintf_(g), (long long)llroundf_(g), (long long)llrintf_(g), (long)lroundf(x), (long)lrintf(x), (long long)llroundf(x),
+                            (long long)llrintf(x));
+                }
+            }
+            for (i = 0; i < nd; i++) {
+                double x = mg_d(dv[i]);
+                gdouble g = mg_gdb(x);
+                if (!(fabs(x) < 2147483647.0)) continue;
+                if (lround_(g) != (glong)lround(x) || lrint_(g) != (glong)lrint(x) || llround_(g) != (i64)llround(x) || llrint_(g) != (i64)llrint(x)) {
+                    if (!bad++)
+                        say("  lround, lrint, llround, llrint(%08x%08x) = %ld %ld %lld %lld, the host's %ld %ld %lld %lld", (unsigned)(dv[i] >> 32), (unsigned)dv[i],
+                            (long)lround_(g), (long)lrint_(g), (long long)llround_(g), (long long)llrint_(g), (long)lround(x), (long)lrint(x),
+                            (long long)llround(x), (long long)llrint(x));
+                }
+            }
+            for (i = 0; i < nf; i++) {
+                float x = mg_f(fv[i]);
+                if (!(fabsf(x) < 9.2e18f)) continue;
+                if (llroundf_(mg_gfb(x)) != (i64)llroundf(x) || llrintf_(mg_gfb(x)) != (i64)llrintf(x)) {
+                    if (!bad++) say("  llroundf, llrintf(%08x) wrong", (unsigned)fv[i]);
+                }
+            }
+            for (i = 0; i < nd; i++) {
+                double x = mg_d(dv[i]);
+                if (!(fabs(x) < 9.2e18)) continue;
+                if (llround_(mg_gdb(x)) != (i64)llround(x) || llrint_(mg_gdb(x)) != (i64)llrint(x)) {
+                    if (!bad++) say("  llround, llrint(%08x%08x) wrong", (unsigned)(dv[i] >> 32), (unsigned)dv[i]);
+                }
+            }
+            CHECK_INT(bad, 0);
+            /* A few by name: halves, the sign of a zero, a whole number of 2^23 and more. */
+            CHECK_INT(lroundf_(mg_gfb(-2.5f)), -3);
+            CHECK_INT(lrintf_(mg_gfb(-2.5f)), -2);
+            CHECK_INT(lrintf_(mg_gfb(3.5f)), 4);
+            CHECK_INT(lroundf_(mg_gfb(0.49999997f)), 0);
+            CHECK_INT(lroundf_(mg_gfb(8388609.0f)), 8388609);
+            CHECK_INT(lroundf_(mg_gfb(-1073741824.0f)), -1073741824);
+            CHECK(llroundf_(mg_gfb(1099511627776.0f)) == 1099511627776ll);
+            CHECK(llround_(mg_gdb(-4503599627370497.0)) == -4503599627370497ll);
+            CHECK_INT(lround_(mg_gdb(-2147483648.0)), (glong)-2147483647 - 1);
+        }
+        {
+            ff_fn roundf_ = (ff_fn)mg_bionic_find("roundf"), ceilf_ = (ff_fn)mg_bionic_find("ceilf"), floorf_ = (ff_fn)mg_bionic_find("floorf");
+            if (roundf_ && ceilf_ && floorf_) {
+                CHECK(mg_fb(mg_gf(roundf_(mg_gfb(-0.25f)))) == 0x80000000u);
+                CHECK(mg_fb(mg_gf(ceilf_(mg_gfb(-0.5f)))) == 0x80000000u);
+                CHECK(mg_gf(floorf_(mg_gfb(-0.5f))) == -1.0f);
+                CHECK(mg_gf(roundf_(mg_gfb(-0.5f))) == -1.0f);
+                CHECK(isnan(mg_gf(roundf_(mg_gfb(mg_f(0x7FA00000u))))) && (mg_fb(mg_gf(roundf_(mg_gfb(mg_f(0x7FA00000u))))) & 0x00400000u));
+            }
+        }
+    }
+    free(fv);
+    free(dv);
+}
+
+/*
  * Anonymous memory given back with madvise (MADV_DONTNEED, bionic/mg_libc_mem.c) is the system's again -- decommitted, where
  * the host says what is -- and still the app's: a page of it touched is zero, read or written; one the system itself writes
  * into (a file read into it) is read into; made no-access and given access again it is zero; what was not given back keeps
@@ -4128,6 +4313,21 @@ static void test_stop_in_handler(mg_lib *lib, int how)
 }
 #endif
 
+/* What t_round_sum (guest/t_basic.c) adds up, with the host's libm. */
+static i64 round_sum_expected(int n)
+{
+    i64 sum = 0;
+    int i;
+    for (i = 0; i < n; i++) {
+        float x = (float)(i - n / 2) * 0.37109375f + 0.25f;
+        double d = (double)x * 1.5;
+        sum += (i64)lroundf(x) * 3 + (i64)lrintf(x) * 5 + (i64)roundf(x) * 7 + (i64)floorf(x) * 11 + (i64)ceilf(x) * 13 + (i64)truncf(x) * 17
+               + (i64)rintf(x) * 19 + (i64)lround(d) * 23 + (i64)lrint(d) * 29 + (i64)floor(d) * 31 + (i64)ceil(d) * 37 + (i64)round(d) * 41
+               + llroundf(x) * 43 + llround(d) * 47;
+    }
+    return sum;
+}
+
 static void test_library(mg_lib *lib, const char *what, const char *scratch)
 {
     char buf[128], word[16];
@@ -4158,6 +4358,13 @@ static void test_library(mg_lib *lib, const char *what, const char *scratch)
     CHECK(near(mg_gd(FN(lib, gdouble (*)(gdouble), "t_sin")(mg_gdb(0.5))), sin(0.5)));
     CHECK(near(mg_gd(FN(lib, gdouble (*)(gdouble, gdouble), "t_pow")(mg_gdb(2.0), mg_gdb(10.0))), 1024.0));
     CHECK_INT(FN(lib, long (*)(gdouble), "t_lround")(mg_gdb(-2.5)), -3);
+    {
+        /* libm's rounding through the library's PLT (ARM entries in the ARM one, as Geekbench's are), against the host's. */
+        u64 began = mg_time_monotonic_ns();
+        i64 got = FN(lib, i64 (*)(int), "t_round_sum")(8192);
+        CHECK(got == round_sum_expected(8192));
+        say("  libm's rounding through the PLT: 8192 x 14 calls in %.1f ms", (double)(mg_time_monotonic_ns() - began) / 1e6);
+    }
     CHECK(near(mg_gd(FN(lib, gdouble (*)(gdouble, double *), "t_modf")(mg_gdb(3.75), &ip)), 0.75) && near(ip, 3.0));
     CHECK(near(mg_gd(FN(lib, gdouble (*)(const char *), "t_strtod")("-12.5e2")), -1250.0));
     CHECK(near(mg_gd(FN(lib, gdouble (*)(void *, gdouble, gdouble), "t_call_d")((void *)host_hypot, mg_gdb(3.0), mg_gdb(4.0))), 5.0));
@@ -5664,6 +5871,7 @@ int mg_tests_run(const char *libdir, const char *scratch, mg_test_sink sink, voi
     test_mmap_write_back_unlocked(scratch);
     test_mmap_lock_order(scratch);
     test_libc_gaps(scratch);
+    test_libm_rounding();
     test_mmap_madvise(scratch);
     test_pread_threads(scratch);
     test_rename_in_use(scratch);
