@@ -2771,8 +2771,6 @@ static int run_natives(void)
     }
     snprintf(want, sizeof(want), "I/NativesTest: done ok=%d failed=0", (int)MG_COUNT(steps));
     expect_line(want, &at, 60);
-    /* The step own-file-same-name's library: the app's own file, which the APK has a library of that name beside. */
-    CHECK(find_line("/files/own/libnatives_alt.so is a file of the app's own, not the APK's libnatives_alt.so nor its library folder's", 0) >= 0);
     /* The descriptor the library watches on the main thread's looper: its callback comes with a later turn of the message loop. */
     expect_line("I/NativesTest: looper ok", &at, 30);
     /* The library's sensor queue on that looper (the stand-in's sensors, mg_sensor_standin.c): its events in Android's units and

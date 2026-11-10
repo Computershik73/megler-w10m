@@ -212,8 +212,8 @@ static void set_java_loaded(mg_lib *lib)
  * WebView's are), is the library of that name, as a file of its own is.
  *
  * An app's library is the APK's of that file name, unless the path names a
- * file of the app's own in its data folder that is not the APK's library of
- * that name -- a library the app unpacked or downloaded for itself and loads
+ * file of the app's own in its data folder (not the copy in its library
+ * folder) -- a library the app unpacked or downloaded for itself and loads
  * with System.load, which on Android loads the file it is given
  * (mg_dl_own_library, bionic/mg_bionic.h): that file is read. So is a path
  * outside the app's folder that names a file with something in it when no APK
@@ -251,6 +251,7 @@ static bool load_native(const char *name_or_path, bool runtime, char *why, size_
     void *onload;
     i32 version;
     char *own;
+    bool other = false;
     why[0] = 0;
     if (!runtime && mg_bionic_is_system_lib(base)) return true;
     if (lib && java_loaded(lib)) return true;
@@ -258,10 +259,9 @@ static bool load_native(const char *name_or_path, bool runtime, char *why, size_
         /* in the process already, not yet by Java: its JNI_OnLoad is run now, once (see above) */
     } else if (runtime) {
         lib = mg_ld_load_runtime(base);
-    } else if ((own = mg_dl_own_library(name_or_path)) != NULL) {
-        /* The app's own file, not the APK's library of its name (see above). */
-        if (mg_ld_has_lib(base))
-            mg_info("dvm: %s is a file of the app's own, not the APK's %s nor its library folder's: it is loaded from that file", name_or_path, base);
+    } else if ((own = mg_dl_own_library(name_or_path, &other)) != NULL) {
+        /* The app's own file, whatever library of its name the APK has (see above). */
+        if (other) mg_info("dvm: %s is a build of the app's own, not the APK's %s: it is loaded from that file", name_or_path, base);
         lib = mg_ld_load_file(own);
         free(own);
     } else if (mg_ld_has_lib(base)) {

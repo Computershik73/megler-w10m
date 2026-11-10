@@ -2883,16 +2883,22 @@ APK's; N of an older version's, which this one has not, removed: libnpth.so,
 `JVM_NativeLoad` (`mg_dvm_jvm.c`) then loads: with no class loader (one of
 the runtime's classes asked) a library of the Android root's, otherwise the
 APK's of that file name -- unless the path names a file of the app's own in
-its data folder that is not the APK's library of that name (not the copy in
-the library folder, and not of the entry's size and CRC-32:
-`mg_dl_own_library`, `bionic/mg_libdl.c`). That file is loaded, as Android's
-`System.load` loads the file it is given: a library the app unpacked or
-downloaded itself, under a name no APK has or under one an APK has too (a
-build of the app's own, a patch). A file of the entry's size is summed once
-for the load; one of another size is the app's at once; a copy of the APK's
-own bytes is the APK's library, as before. A path outside the app's folder
-that names a file with something in it is loaded from that file when no APK
-has the name. Native code's `dlopen` of a path takes the same file
+its data folder, not the copy in its library folder (`mg_dl_own_library`,
+`bionic/mg_libdl.c`). That file is loaded, as Android's `System.load` loads
+the file it is given: a library the app unpacked or downloaded itself, under a
+name no APK has or under one an APK has too (a build of the app's own, a
+patch). It is not read first to see whether it is the APK's library after all:
+loading it reads it once, as loading the APK's would, and loaders that unpack
+an app's libraries themselves and load them by path (SoLoader's
+`ApkSoSource`, ReLinker) would have every library read twice at every start.
+Only where the APK stores a library of 16 MB or more as it is -- read where it
+lies, it never needs its size of addresses again beside its image, as a file
+read whole does -- is a copy of the entry's size summed against it, and the
+APK's taken when the two are the same. Where the file is known to be another
+library than the APK's of its name, the log says so ("dvm: <path> is a build
+of the app's own, not the APK's <name>"). A path outside the app's folder that
+names a file with something in it is loaded from that file when no APK has the
+name. Native code's `dlopen` of a path takes the same file
 (`g_dlopen`); up to 0.1.0.685 it looked for the name alone, and a library the
 app wrote into a folder no library had come from was "not found". A library
 is loaded once, by its name: a second request finds it and does not run
