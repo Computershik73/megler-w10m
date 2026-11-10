@@ -6350,6 +6350,16 @@ on a looper thread of its own and takes it back with `next()`.
   browser's activity ended there. Nothing draws them here; the cursor is
   drawn as before. The data app's step "text-drawables" asks an `EditText`
   for all four, tints them, and sets one.
+  And `onMeasure` makes the layout again for another width where the text
+  ends in an ellipsis, as Android's does when the width it ellipsizes at
+  changes. A single line scrolls horizontally, so a layout wider than the
+  view was kept as good enough, its ellipsis where that wider width ended. A
+  `LinearLayout` not given an exact width measures a weighted child at its
+  own width first and at its share after: Transit's search cards'
+  single-line titles kept the layout of the first measure, and the line was
+  cut at the view's edge with no ellipsis (0.1.0.684). The data app's step
+  "ellipsis-narrower" measures such a title at 500 pixels and then at 200:
+  the ellipsis at 200.
 
 - `android/os/ParcelFileDescriptor.java`, what `dup` and the descriptors it
   is given own, which is now Android's: `dup(FileDescriptor)`, `dup()` and

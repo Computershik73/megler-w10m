@@ -2986,6 +2986,9 @@ static int run_data(void)
                                             width and the rest coloured by a span of its own, on an android:singleLine TextView, whose
                                             transformation gave the view a String: the markup drawn, the colour gone. */
                                          "single-line-spans",
+                                         /* And such a title measured wide and then narrower, as a weighted LinearLayout measures it: the
+                                            ellipsis where the narrower width ends (the first, wider layout was kept, the line cut). */
+                                         "ellipsis-narrower",
                                          "audio-track", "media-player", "media-player-ogg", "sound-pool",
                                          /* And MediaCodec over the stand-in for the shell's decoders: H.264 shown on a Surface in display
                                             order, a flush, parameter sets in a codec-config buffer, the asynchronous mode, AAC with an

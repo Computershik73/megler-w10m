@@ -1849,6 +1849,7 @@ public class Main extends Activity {
         activityThreadApplication();
         backgroundOffMainThread();
         singleLineSpans();
+        ellipsisNarrower();
         sound();
         mediaCodec();
         network();
@@ -5837,6 +5838,33 @@ public class Main extends Activity {
                     + joined + "\"), an Editable followed \"" + follows + "\", a String \"" + plain + "\" " + (plain instanceof String);
             return how instanceof android.text.method.SingleLineTransformationMethod && hidden == 1 && Math.abs(width - alone) < 0.5f && ellipsis == 0
                     && runs == 11 && left < 3 && dark == 0 && itself && kept && "z y".equals(follows.toString()) && plain instanceof String && "p q".equals(plain);
+        });
+    }
+
+    /**
+     * A single-line title with an ellipsis at its end measured wide and then narrower, as a LinearLayout not given an exact
+     * width measures a weighted child: at its own width first, at its share after. Android makes the layout again when the
+     * width it ellipsizes at changes, and the ellipsis is where the narrower width ends. The view kept the layout of its first,
+     * wider measure -- a single line scrolls horizontally, and a layout wider than the view was taken to be as good -- so the
+     * line had no ellipsis and was cut at the view's edge: Transit's search cards' titles ended "<color|1e212d/f0f0f1>Ch", no
+     * ellipsis (0.1.0.684).
+     */
+    private void ellipsisNarrower() {
+        step("ellipsis-narrower", () -> {
+            android.widget.TextView title = (android.widget.TextView) android.view.LayoutInflater.from(this).inflate(R.layout.markup_row, null);
+            title.setText("A title wider than its second measure");
+            title.measure(android.view.View.MeasureSpec.makeMeasureSpec(500, android.view.View.MeasureSpec.EXACTLY),
+                          android.view.View.MeasureSpec.makeMeasureSpec(0, android.view.View.MeasureSpec.UNSPECIFIED));
+            android.text.Layout first = title.getLayout();
+            int wide = first == null ? -1 : first.getEllipsisCount(0);
+            title.measure(android.view.View.MeasureSpec.makeMeasureSpec(200, android.view.View.MeasureSpec.EXACTLY),
+                          android.view.View.MeasureSpec.makeMeasureSpec(0, android.view.View.MeasureSpec.UNSPECIFIED));
+            title.layout(0, 0, 200, Math.max(1, title.getMeasuredHeight()));
+            android.text.Layout l = title.getLayout();
+            int ellipsis = l == null ? -1 : l.getEllipsisCount(0), at = l == null ? -1 : l.getEllipsizedWidth();
+            detail = "at 500 px the ellipsis over " + wide + " characters; at 200 px a layout " + (l == null ? null : l.getWidth()) + " px wide, ellipsized at "
+                    + at + " px over " + ellipsis + " characters";
+            return wide == 0 && ellipsis > 0 && at == 200;
         });
     }
 
