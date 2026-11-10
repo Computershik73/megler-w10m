@@ -690,6 +690,15 @@ u32 mg_tls_alloc(void)
 void *mg_tls_get(u32 key) { return pthread_getspecific((pthread_key_t)key); }
 void mg_tls_set(u32 key, void *value) { pthread_setspecific((pthread_key_t)key, value); }
 
+u32 mg_tls_alloc_ending(void (*end)(void *value))
+{
+    pthread_key_t k;
+    if (pthread_key_create(&k, end) != 0) mg_fatal("out of thread-local slots");
+    return (u32)k;
+}
+void mg_tls_set_ending(u32 key, void *value) { pthread_setspecific((pthread_key_t)key, value); }
+const char *mg_heap_kind(void) { return "the C library's malloc"; }
+
 /* ------------------------------------------------- the guest thread pointer */
 
 /*

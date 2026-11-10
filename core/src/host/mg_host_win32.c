@@ -1524,6 +1524,42 @@ u32 mg_tls_alloc(void)
 void *mg_tls_get(u32 key) { return TlsGetValue(key); }
 void mg_tls_set(u32 key, void *value) { TlsSetValue(key, value); }
 
+/*
+ * Fiber-local slots, whose callback Windows calls on every thread that ends with a value in one (and in the core's ELF on
+ * x86 the core's function is cdecl where Windows calls stdcall): each slot's through a function of its own here.
+ */
+static void (*volatile g_ending[4])(void *);
+static void WINAPI ending0(PVOID v) { if (v && g_ending[0]) g_ending[0](v); }
+static void WINAPI ending1(PVOID v) { if (v && g_ending[1]) g_ending[1](v); }
+static void WINAPI ending2(PVOID v) { if (v && g_ending[2]) g_ending[2](v); }
+static void WINAPI ending3(PVOID v) { if (v && g_ending[3]) g_ending[3](v); }
+
+u32 mg_tls_alloc_ending(void (*end)(void *value))
+{
+    static PFLS_CALLBACK_FUNCTION const calls[4] = { ending0, ending1, ending2, ending3 };
+    static volatile LONG taken;
+    LONG i = InterlockedIncrement(&taken) - 1;
+    DWORD k;
+    if (i >= 4) mg_fatal("out of thread-local slots with an end");
+    g_ending[i] = end;
+    k = FlsAlloc(calls[i]);
+    if (k == FLS_OUT_OF_INDEXES) mg_fatal("out of fiber-local slots");
+    return k;
+}
+void mg_tls_set_ending(u32 key, void *value) { FlsSetValue(key, value); }
+
+/*
+ * The C runtime's malloc is HeapAlloc on the process heap (the UCRT's __acrt_heap), which Windows 10 makes one of two
+ * kinds: the NT heap, whose low-fragmentation front end serialises threads that free and allocate blocks of many sizes,
+ * or the segment heap (an app's own manifest, a packaged app by default on the desktop). Each has its signature two
+ * pointers into its header: 0xffeeffee the NT heap's segment, 0xddeeddee the segment heap's.
+ */
+const char *mg_heap_kind(void)
+{
+    const u32 sig = *(const volatile u32 *)((const u8 *)GetProcessHeap() + 2 * sizeof(void *));
+    return sig == 0xffeeffeeu ? "the NT heap" : sig == 0xddeeddeeu ? "the segment heap" : "a heap of a kind not known here";
+}
+
 /* ------------------------------------------------- the guest thread pointer
  *
  * Windows on ARM keeps the TEB in TPIDRURW (c13, c0, 2), readable from user

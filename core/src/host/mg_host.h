@@ -334,6 +334,16 @@ MG_HOSTAPI void mg_thread_whole_stack(void);
 MG_HOSTAPI u32 mg_tls_alloc(void);
 MG_HOSTAPI void *mg_tls_get(u32 key);
 MG_HOSTAPI void mg_tls_set(u32 key, void *value);
+/*
+ * A slot of the host's own whose value, while it is not NULL, is given to `end` on its thread as the thread ends -- any
+ * thread, started here or not (the shell's, the system's pool's): FlsAlloc's callback on Windows, a pthread key's
+ * destructor on POSIX. At most four such slots. mg_tls_set_ending sets the calling thread's value.
+ */
+MG_HOSTAPI u32 mg_tls_alloc_ending(void (MG_HOSTCB *end)(void *value));
+MG_HOSTAPI void mg_tls_set_ending(u32 key, void *value);
+/* What the C runtime's malloc takes its blocks from, in words for the log: on Windows its heap's kind ("the segment heap",
+   "the NT heap"), read from the heap's own header. */
+MG_HOSTAPI const char *mg_heap_kind(void);
 
 /* ------------------------------------------------- the guest thread pointer
  *
