@@ -3385,7 +3385,9 @@ static int run_crash(void)
        one started without a result has none, as on Android, where the layer named whoever started it -- and the app is
        who launched it, either way (Android 14's getLaunchedFromPackage and getLaunchedFromUid). */
     CHECK(find_line("I/CrashTest: gate caller=megler.test.crash.First package=megler.test.crash", 0) >= 0);
-    CHECK(find_line("I/CrashTest: top caller=null package=null launched=megler.test.crash uid=mine", 0) >= 0);
+    /* (Waited for: Top says it just after its onCreate, which the line above waited for -- found at once, it was missed
+       once by a moment under qemu, the line the next in the log.) */
+    CHECK(wait_line("I/CrashTest: top caller=null package=null launched=megler.test.crash uid=mine", 0, 30) >= 0);
     expect_line("I/CrashTest: first onCreate again creations=2", &at, 60);
     expect_line("I/CrashTest: top onCreate single", &at, 60);
     expect_line("I/CrashTest: first onNewIntent third creations=2", &at, 60);
