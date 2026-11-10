@@ -109,8 +109,13 @@ public:
         std::vector<std::string> fieldSuggestions; // chips under the field, each putting itself in it
         std::vector<std::string> buttons;    // at the dialog's end, the confirming one last
         bool destructive = false;            // the confirming one in the error colour
+        /// Material's choices under the text, a radio button before each (a title and a line under it), as Android's settings
+        /// offer a permission's: a tap on one closes the dialog with the index buttons.size() + its own.
+        std::vector<std::pair<std::string, std::string>> choices;
+        int chosen = -1;                     // the choice marked as things stand; -1: none
     };
-    /// `done` gets the index of the button pressed (-1: dismissed, by Back or a tap beside it) and the field's text.
+    /// `done` gets the index of the button pressed (-1: dismissed, by Back or a tap beside it; buttons.size() and on: a choice)
+    /// and the field's text.
     void dialog(DialogSpec spec, std::function<void(int button, std::string text)> done);
     /// The same, shown once no other is up (dialog drops a second): a question an app asked for that must be answered, as a
     /// permission's (player/PermissionHost.h), waits its turn.
@@ -225,9 +230,19 @@ public:
     virtual winrt::Windows::UI::Xaml::UIElement view() = 0;
     /// Every poll while shown.
     virtual void refresh() = 0;
+    /// Hardware Back while shown: true when the view took it (a view of its own open in it went back).
+    virtual bool back() { return false; }
+    /// Its page shown again (a page over it gone).
+    virtual void appeared() {}
 };
 std::shared_ptr<SettingsView> makeSettingsView(AppShell& shell, SettingsScope scope);
 /// One app's own settings, on its page in Megler.
 std::shared_ptr<Page> makeAppSettingsScreen(AppShell& shell, std::string package, std::string label);
+/// One app's permissions, as Android's App info > Permissions has them (ui/PermissionsScreen.cpp): its body, for a page or
+/// for the settings of an app's own package; the page, from the app's page and its App Settings in Megler; and what they
+/// come to in a line, for a row that opens them.
+std::shared_ptr<SettingsView> makePermissionsView(AppShell& shell, SettingsScope scope);
+std::shared_ptr<Page> makePermissionsScreen(AppShell& shell, std::string package, std::string label);
+std::string permissionsSummary(const std::string& package, bool own);
 
 } // namespace megler::app::ui

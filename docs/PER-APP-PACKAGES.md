@@ -269,7 +269,8 @@ app's own package, change the app's, with **As in Megler** at the top of each
 choice. They apply at the app's next start. Each file is written beside and
 moved into place, so that a package reading it meanwhile finds a whole one. The
 `settings.ini` of before, in LocalState, is copied to its new place the first
-time.
+time. An app's permission answers are kept in its own file too
+(`megler.permission.<group>`).
 
 **Megler's own storage** (`shareMeglersStorage` in `shell/AppPackage.cpp`). Megler's
 `/sdcard` is the shared folder's too: once, in the background, Megler copies its
@@ -502,7 +503,9 @@ messages and the call history only where its package declares them
 (`player/PhoneEvents.h`). An app's permissions themselves are Android's runtime
 ones (docs/JAVA.md, "Permissions"): the user is asked when the app requests one,
 by Windows for the camera, the microphone and the location, by Megler for the
-rest, and an app's App Settings list them.
+rest, and an app's App Permissions (its page's Permissions, its App Settings, and
+its own package's Settings) list them as Android's App info does and change them:
+Allow, Ask every time, Don't allow, for any group.
 
 **The phone's folders** (`ui/SharedFolders.cpp`). Music, Pictures, Movies and
 DCIM come from the libraries' capabilities, which a package declares as above:

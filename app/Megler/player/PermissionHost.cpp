@@ -35,77 +35,12 @@ using winrt::Windows::Foundation::IAsyncAction;
 
 namespace {
 
-/* Android 14's dangerous permissions by group, as the framework's megler.Permissions has them. */
-const struct {
-    const char* permission;
-    const char* group;
-} kPermissions[] = {
-    {"READ_CALENDAR", "calendar"},           {"WRITE_CALENDAR", "calendar"},
-    {"READ_CALL_LOG", "call_log"},           {"WRITE_CALL_LOG", "call_log"},
-    {"PROCESS_OUTGOING_CALLS", "call_log"},  {"CAMERA", "camera"},
-    {"READ_CONTACTS", "contacts"},           {"WRITE_CONTACTS", "contacts"},
-    {"GET_ACCOUNTS", "contacts"},            {"ACCESS_FINE_LOCATION", "location"},
-    {"ACCESS_COARSE_LOCATION", "location"},  {"ACCESS_BACKGROUND_LOCATION", "location"},
-    {"RECORD_AUDIO", "microphone"},          {"READ_PHONE_STATE", "phone"},
-    {"READ_PHONE_NUMBERS", "phone"},         {"CALL_PHONE", "phone"},
-    {"ANSWER_PHONE_CALLS", "phone"},         {"ADD_VOICEMAIL", "phone"},
-    {"USE_SIP", "phone"},                    {"ACCEPT_HANDOVER", "phone"},
-    {"BODY_SENSORS", "sensors"},             {"BODY_SENSORS_BACKGROUND", "sensors"},
-    {"SEND_SMS", "sms"},                     {"RECEIVE_SMS", "sms"},
-    {"READ_SMS", "sms"},                     {"RECEIVE_WAP_PUSH", "sms"},
-    {"RECEIVE_MMS", "sms"},                  {"READ_CELL_BROADCASTS", "sms"},
-    {"READ_EXTERNAL_STORAGE", "storage"},    {"WRITE_EXTERNAL_STORAGE", "storage"},
-    {"READ_MEDIA_IMAGES", "read_media_visual"}, {"READ_MEDIA_VIDEO", "read_media_visual"},
-    {"READ_MEDIA_VISUAL_USER_SELECTED", "read_media_visual"}, {"ACCESS_MEDIA_LOCATION", "read_media_visual"},
-    {"READ_MEDIA_AUDIO", "read_media_aural"}, {"BLUETOOTH_SCAN", "nearby_devices"},
-    {"BLUETOOTH_CONNECT", "nearby_devices"}, {"BLUETOOTH_ADVERTISE", "nearby_devices"},
-    {"NEARBY_WIFI_DEVICES", "nearby_devices"}, {"UWB_RANGING", "nearby_devices"},
-    {"POST_NOTIFICATIONS", "notifications"}, {"ACTIVITY_RECOGNITION", "activity_recognition"},
-};
-
-/* The groups in Android's order, what each lets an app have, and who decides: Windows, Megler's question, or no one. */
-struct Kind {
-    const char* group;
-    const char* what;
-    Decider decider;
-    const char* question;    // Megler's, after "Allow <app> to "
-    const char* explanation; // what it amounts to here
-};
-const Kind kKinds[] = {
-    {"location", "the location", Decider::windows, nullptr, nullptr},
-    {"camera", "the camera", Decider::windows, nullptr, nullptr},
-    {"microphone", "the microphone", Decider::windows, nullptr, nullptr},
-    {"storage", "photos, media and files", Decider::megler, "have the photos, media and files on this phone?",
-     "The phone's pictures, music and videos, and the files Android apps keep in their shared storage (/sdcard)."},
-    {"read_media_visual", "photos and videos", Decider::megler, "have the photos and videos on this phone?",
-     "The phone's Pictures, Videos and the camera's pictures."},
-    {"read_media_aural", "music and audio", Decider::megler, "have the music and audio on this phone?", "The phone's Music."},
-    {"sms", "text messages", Decider::megler, "read text messages?",
-     "The text messages that come in while it runs: a code it waits for comes so. None that came before."},
-    {"phone", "the phone's calls", Decider::megler, "know of the phone's calls?",
-     "That a call comes in or ends while it runs, and the phone's SIM."},
-    {"call_log", "the call history", Decider::megler, "read the call history?",
-     "The calls of the phone's history that end while it runs, with their numbers."},
-    {"contacts", "contacts", Decider::none, nullptr, nullptr},
-    {"calendar", "the calendar", Decider::none, nullptr, nullptr},
-    {"sensors", "body sensors", Decider::none, nullptr, nullptr},
-    {"nearby_devices", "nearby devices", Decider::none, nullptr, nullptr},
-    {"notifications", "notifications", Decider::none, nullptr, nullptr},
-    {"activity_recognition", "physical activity", Decider::none, nullptr, nullptr},
-};
-
-const Kind* kindOf(const std::string& group) {
-    for (const Kind& k : kKinds)
-        if (group == k.group) return &k;
-    return nullptr;
-}
-
 const char* stateName(int state) {
     switch (state) {
     case MEGLER_PERMISSION_GRANTED: return "granted";
     case MEGLER_PERMISSION_DENIED: return "denied";
     case MEGLER_PERMISSION_DENIED_FIXED: return "denied-fixed";
-    default: return "";
+    default: return "undecided";
     }
 }
 
@@ -296,25 +231,35 @@ int askWindows(const std::string& group) {
     return MEGLER_PERMISSION_UNDECIDED;
 }
 
-/// Megler's question for a group it asks about itself; what is kept from then on. Under the flag allow-permissions
-/// (LocalState\flags) every such question is answered Allow with no one asked, for a run no one watches.
-int askUser(const Kind& kind, const std::string& package, int state) {
-    if (files::exists(platform::localStateDirectory() + L"\\flags\\allow-permissions")) {
-        shellLog::write(std::string("permissions: ") + kind.group + " allowed under the flag allow-permissions");
-        keep(package, kind.group, MEGLER_PERMISSION_GRANTED);
-        return MEGLER_PERMISSION_GRANTED;
+bool allowedByFlag() { return files::exists(platform::localStateDirectory() + L"\\flags\\allow-permissions"); }
+
+/// Megler's question about a group: for a group Megler asks about by default (or one the user said no to once), what is kept
+/// from then on, a second no for good; for one asked every time, this run's answer alone (`state` being this run's so far).
+/// Under the flag allow-permissions (LocalState\flags) every such question is answered Allow with no one asked, for a run no
+/// one watches. Back puts the question away and changes nothing.
+int askUser(const Group& group, const std::string& package, int state, bool everyTime) {
+    int answer = MEGLER_PERMISSION_GRANTED;
+    if (allowedByFlag()) {
+        shellLog::write("permissions: " + group.name + " allowed under the flag allow-permissions");
+    } else {
+        const std::string app = systemHost::runningLabel();
+        std::string message = explanationOf(group.name);
+        if (everyTime)
+            message += " Asked each time " + app + " starts and wants it: its App Permissions in Megler change that.";
+        else if (state == MEGLER_PERMISSION_DENIED)
+            message += " " + app + " asks again after a no: a second no is for good (its App Permissions in Megler change it).";
+        if (group.decider == Decider::windows) message += " Windows asks too, the first time.";
+        const int button = systemHost::askUser(questionOf(group.name, app), message, {"Don't Allow", "Allow"});
+        if (button < 0) {
+            shellLog::write("permissions: the question of " + group.name + " was put away unanswered");
+            return state;
+        }
+        answer = button == 1 ? MEGLER_PERMISSION_GRANTED : state == MEGLER_PERMISSION_DENIED ? MEGLER_PERMISSION_DENIED_FIXED : MEGLER_PERMISSION_DENIED;
     }
-    const std::string app = systemHost::runningLabel();
-    std::string message = kind.explanation;
-    if (state == MEGLER_PERMISSION_DENIED)
-        message += " " + app + " asks again after a no: a second no is for good (its App Settings in Megler change it).";
-    const int button = systemHost::askUser("Allow " + app + " to " + kind.question, message, {"Don't Allow", "Allow"});
-    if (button < 0) {
-        shellLog::write(std::string("permissions: the question of ") + kind.group + " was put away unanswered");
-        return state;
-    }
-    const int answer = button == 1 ? MEGLER_PERMISSION_GRANTED : state == MEGLER_PERMISSION_DENIED ? MEGLER_PERMISSION_DENIED_FIXED : MEGLER_PERMISSION_DENIED;
-    keep(package, kind.group, answer);
+    if (everyTime)
+        rememberThisRun(package, group.name, answer);
+    else
+        keep(package, group.name, answer);
     return answer;
 }
 
@@ -322,59 +267,39 @@ int askUser(const Kind& kind, const std::string& package, int state) {
 
 int MEGLER_CB thunk(void*, const char* name, bool ask) {
     const std::string group = name ? name : "";
-    const Kind* kind = kindOf(group);
-    if (!kind || kind->decider == Decider::none) return MEGLER_PERMISSION_GRANTED;
+    const Group* g = groupNamed(group);
+    if (!g) return MEGLER_PERMISSION_GRANTED;
     const std::string package = systemHost::runningPackage();
-    int state = MEGLER_PERMISSION_UNDECIDED;
-    if (kind->decider == Decider::windows) {
-        if (ask) {
-            state = askWindows(group);
-        } else {
-            inMta([&] { state = windowsNow(group); });
+    const int said = kept(package, group);
+    int run = said == EVERY_TIME ? thisRun(package, group) : MEGLER_PERMISSION_UNDECIDED;
+    // Windows is asked what it says only where that counts: a group it decides, the user's own no not standing before it.
+    auto windowsCounts = [&] {
+        return g->decider == Decider::windows && said != MEGLER_PERMISSION_DENIED && said != MEGLER_PERMISSION_DENIED_FIXED &&
+               (said != EVERY_TIME || run == MEGLER_PERMISSION_GRANTED);
+    };
+    int windowsState = MEGLER_PERMISSION_UNDECIDED;
+    if (windowsCounts()) inMta([&] { windowsState = windowsNow(group); });
+    int state = decide(g->decider, said, windowsState, run);
+    if (ask && !package.empty()) {
+        if (said == EVERY_TIME && run != MEGLER_PERMISSION_GRANTED && run != MEGLER_PERMISSION_DENIED_FIXED) {
+            // Asked every time: Megler's question, this run's; then Windows' own for a group it decides.
+            run = askUser(*g, package, run, true);
+            if (windowsCounts()) windowsState = askWindows(group);
+        } else if (g->decider == Decider::windows) {
+            if (windowsCounts() && windowsState == MEGLER_PERMISSION_UNDECIDED) windowsState = askWindows(group);
+        } else if (state == MEGLER_PERMISSION_UNDECIDED || state == MEGLER_PERMISSION_DENIED) {
+            askUser(*g, package, state, false);
         }
-        if (group == "location") sayWindows(group, package);
-    } else {
-        state = kept(package, group);
-        if (ask && !package.empty() && state != MEGLER_PERMISSION_GRANTED && state != MEGLER_PERMISSION_DENIED_FIXED) state = askUser(*kind, package, state);
+        state = decide(g->decider, kept(package, group), windowsState, run);
     }
+    if (group == "location" && windowsCounts()) sayWindows(group, package);
     if (ask)
-        shellLog::write("permissions: " + package + " asked for " + group + ": " +
-                        (state == MEGLER_PERMISSION_UNDECIDED ? std::string("undecided") : stateName(state)) +
-                        (kind->decider == Decider::windows ? " (Windows')" : ""));
+        shellLog::write("permissions: " + package + " asked for " + group + ": " + stateName(state) +
+                        (said == MEGLER_PERMISSION_DENIED_FIXED && g->decider != Decider::megler ? " (Don't allow, in its App Permissions)"
+                         : said == EVERY_TIME                                                    ? " (asked every time)"
+                         : g->decider == Decider::windows                                        ? " (Windows')"
+                                                                                                 : ""));
     return state;
-}
-
-std::vector<Group> groupsOf(const ApkReport& report) {
-    std::vector<Group> out;
-    for (const Kind& kind : kKinds) {
-        bool asked = false;
-        for (const auto& p : kPermissions)
-            if (!strcmp(p.group, kind.group) && report.permissionsKnown && report.asks(std::string("android.permission.") + p.permission)) asked = true;
-        if (asked) out.push_back({kind.group, kind.what, kind.decider});
-    }
-    return out;
-}
-
-int kept(const std::string& package, const std::string& group) {
-    if (package.empty()) return MEGLER_PERMISSION_UNDECIDED;
-    const std::string value = settings::app(package, "megler.permission." + group).value_or("");
-    if (value == "granted") return MEGLER_PERMISSION_GRANTED;
-    if (value == "denied") return MEGLER_PERMISSION_DENIED;
-    if (value == "denied-fixed") return MEGLER_PERMISSION_DENIED_FIXED;
-    return MEGLER_PERMISSION_UNDECIDED;
-}
-
-void keep(const std::string& package, const std::string& group, int state) {
-    if (package.empty()) return;
-    const char* name = stateName(state);
-    settings::setApp(package, "megler.permission." + group, name[0] ? std::optional<std::string>(name) : std::nullopt);
-}
-
-void forgetAll(const std::string& package) {
-    if (package.empty()) return;
-    const int forgotten = settings::eraseApp(package, "megler.permission.");
-    shellLog::write("permissions: " + package + "'s data is cleared: " +
-                    (forgotten ? std::to_string(forgotten) + " answer(s) forgotten, the app asks again" : std::string("no answers kept to forget")));
 }
 
 int windows(const std::string& group) {

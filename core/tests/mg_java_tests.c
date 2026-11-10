@@ -806,9 +806,10 @@ static MEGLER_CB int bio_verify(void *user, const char *message)
 /*
  * The user's answers to the permission groups the app asks for (megler_system_host.permission), as the shell keeps them: in a
  * file of the data folder, so that the data app's second run finds what its first left. For the data app the user lets it
- * have every group but the camera, which is refused each time it is asked, the second time for good; the contacts are
- * granted with no one asked, as the shell grants a group it has nothing behind. Every other app has every group granted, as
- * before there were questions. What was asked is said in g_permissions_asked, each group followed by ';'.
+ * have every group but the camera, which is refused each time it is asked, the second time for good; and the contacts,
+ * which the shell would grant with no one asked (it has nothing behind them), the user refused in the app's App
+ * Permissions: denied for good, never to be asked. Every other app has every group granted, as before there were
+ * questions. What was asked is said in g_permissions_asked, each group followed by ';'.
  */
 static bool g_data_app;
 static char g_permissions_asked[256];
@@ -836,7 +837,13 @@ static MEGLER_CB int system_permission(void *user, const char *group, bool ask)
     int state;
     (void)user;
     if (!g_data_app) return MEGLER_PERMISSION_GRANTED;
-    if (!strcmp(group, "contacts")) return MEGLER_PERMISSION_GRANTED;
+    if (!strcmp(group, "contacts")) {
+        if (ask) {
+            size_t n = strlen(g_permissions_asked);
+            snprintf(g_permissions_asked + n, sizeof(g_permissions_asked) - n, "%s;", group);
+        }
+        return MEGLER_PERMISSION_DENIED_FIXED;
+    }
     state = permission_kept(group);
     if (ask && state != MEGLER_PERMISSION_GRANTED && state != MEGLER_PERMISSION_DENIED_FIXED) {
         char *path = mg_sprintf("%s/test-permissions.txt", megler_data_dir());

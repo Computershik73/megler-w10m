@@ -13,10 +13,14 @@
 //     special ones too, as before: the screens of Android's settings that grant them are Megler's to answer;
 //   - dangerous, of an app that targets Android 5.1 or older (or names no target: Android 1's), or of Google's own packages
 //     (Play Store, Google Play services, its framework), which a phone has as system apps: granted with the install, as
-//     Android grants them. Windows still asks for the camera, the microphone and the location the first time they are used;
+//     Android grants them, unless the shell says the group is denied for good -- the user's Don't allow in the app's App
+//     Permissions, as Android's settings revoke an old app's permission (or Windows' own no). Windows still asks for the
+//     camera, the microphone and the location the first time they are used;
 //   - any other dangerous one: its group's (Android 14's groups, GROUPS below), as the shell keeps it
 //     (megler_system_host.permission): granted; denied, and may be asked again (shouldShowRequestPermissionRationale is true
-//     then); denied for good (Windows' own setting, or a second no, as Android 11 and later take it); or undecided.
+//     then); denied for good (Windows' own setting, a second no, as Android 11 and later take it, or the user's Don't allow
+//     in the app's App Permissions, which may refuse any group, those Megler has nothing behind too); or undecided (asked
+//     when the app requests it: never asked, or asked every time and not yet in this run).
 // requestPermissions asks the shell, on a thread of its own, for each group that is undecided or denied once, one after
 // another -- Windows' own question for the camera, the microphone and the location, the shell's for the others -- and the
 // answers come to onRequestPermissionsResult on the main thread, the activity paused and resumed around them as Android's
@@ -25,7 +29,7 @@
 // no would otherwise ask for ever.
 //
 // What the shell said of a group is kept until the app comes back to the front (megler.AppRunner.hostPause: the user may
-// have changed Windows' settings meanwhile) or asks for it again.
+// have changed Windows' settings, or the app's App Permissions in Megler, meanwhile) or asks for it again.
 package megler;
 
 import android.app.Activity;
@@ -100,7 +104,8 @@ public final class Permissions {
         return s;
     }
 
-    /** What the shell said is forgotten: the app is in front again, and the user may have changed Windows' settings meanwhile. */
+    /** What the shell said is forgotten: the app is in front again, and the user may have changed Windows' settings or the
+     *  app's App Permissions meanwhile. */
     public static void forget() {
         synchronized (sStates) { sStates.clear(); }
     }
@@ -109,7 +114,9 @@ public final class Permissions {
     public static int check(String permission) {
         if (!asks(permission)) return DENIED;
         String g = groupOf(permission);
-        if (g == null || grantedWithInstall()) return GRANTED;
+        if (g == null) return GRANTED;
+        // Granted with the install, unless the user took it away (Android's settings revoke an old app's permission so).
+        if (grantedWithInstall()) return state(g) == REFUSED_FOR_GOOD ? DENIED : GRANTED;
         return state(g) == ALLOWED ? GRANTED : DENIED;
     }
 

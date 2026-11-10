@@ -1,8 +1,9 @@
 // One app: what megler_apk_report says about its APK -- what it is, which
 // engine drives it, its native libraries and what they need -- and what to do
 // with it: install it as an app of the phone's own, update or uninstall it
-// (ui/SeparateApps.h), its own settings, clear its data, and Remove. Megler runs
-// an app itself only in an auto run (auto/AutoRun.h).
+// (ui/SeparateApps.h), its own settings, its permissions (ui/PermissionsScreen.cpp),
+// clear its data, and Remove. Megler runs an app itself only in an auto run
+// (auto/AutoRun.h).
 #include "pch.h"
 
 #include "megler.h"
@@ -230,17 +231,22 @@ private:
             }
             add(column, card(progress, 12, 16));
         }
-        auto more = hstack(0);
-        more.Margin(ThicknessHelper::FromLengths(-12, -4, 0, 0));
-        // Android's Clear storage: the core clears the app's data when it next starts (megler_ask_clear_data).
+        // Android's App info: its permissions (ui/PermissionsScreen.cpp) and Clear storage -- the core clears the app's data
+        // when it next starts (megler_ask_clear_data). A row of their own: with Uninstall they are wider than a phone.
+        auto manage = hstack(0);
+        manage.Margin(ThicknessHelper::FromLengths(-12, -4, 0, 0));
         if (!package.empty()) {
-            add(more, textButton("Clear Data", [this, package, title] {
+            add(manage, textButton("Permissions", [this, package, title] { shell_.push(makePermissionsScreen(shell_, package, title)); }));
+            add(manage, textButton("Clear Data", [this, package, title] {
                 shell_.confirm("Clear " + title + "'s data?",
                                "Its private files, settings, databases and the accounts it keeps, and its Android/data folder, are deleted "
                                "the next time it starts; its Android/obb files stay. If the app is open now, close it first.",
                                "Clear Data", true, [this, package, title] { askClearData(package, title); });
             }, p.error));
         }
+        if (manage.Children().Size()) add(column, manage);
+        auto more = hstack(0);
+        more.Margin(ThicknessHelper::FromLengths(-12, -12, 0, 0));
         if (installed) {
             add(more, textButton("Uninstall", [this, package, title] {
                 shell_.confirm("Uninstall " + title + "?",
@@ -285,7 +291,8 @@ private:
                                              " It starts straight into the app, in a process of its own with its own memory; its /sdcard is "
                                              "shared with the other apps. The first time, the app's data in Megler goes along with it."
                                        : "This app can't run here: " + r.status();
-        footer += " App Settings are this app's own: render size, language and region, location.";
+        footer += " App Settings are this app's own: render size, language and region, location. Permissions are what it may have of "
+                  "what Android asks about, as Android's App info has them.";
         if (!entry.installedPackage.empty())
             footer += apkThere ? " Megler keeps no copy of its APK: it reads the installed app's, and updates from it."
                                : " Its APK was the installed app's, which is gone: to install it again, install the APK again.";

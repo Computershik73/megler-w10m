@@ -1535,9 +1535,13 @@ typedef struct megler_display_host {
  *                the shell's for the rest -- and the call waits for the answer (what it was before, when the question was
  *                put away unanswered or could not be put); it comes on a thread of the app's that may wait, never its main
  *                thread. The shell keeps
- *                what the user said, for the app, from run to run; it may grant a group it has nothing behind at once.
+ *                what the user said, for the app, from run to run; it may grant a group it has nothing behind at once,
+ *                and the user may refuse any group (_DENIED_FIXED, nothing asked), or have it asked every run (_UNDECIDED
+ *                until this run's answer).
  *                The framework (megler.Permissions) asks it of a group whose permissions the app's manifest asks for and
- *                whose answer Android's rules do not settle by themselves. Left NULL: every group is granted, nothing asked.
+ *                whose answer Android's rules do not settle by themselves; of a group an app has with its install (an app
+ *                for Android 5.1 or older, Google's own packages) without `ask`, where _DENIED_FIXED takes it away.
+ *                Left NULL: every group is granted, nothing asked.
  */
 enum { MEGLER_PERMISSION_UNDECIDED = 0, MEGLER_PERMISSION_GRANTED = 1, MEGLER_PERMISSION_DENIED = 2, MEGLER_PERMISSION_DENIED_FIXED = 3 };
 

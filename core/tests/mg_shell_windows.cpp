@@ -1,7 +1,7 @@
 // The shell's start and its copies, tested on a PC: tools/build-tests.sh win builds this program (mg_shell_tests.exe)
 // from the very files the phone's package is built from -- shell/Files.cpp, ShellLog.cpp, Startup.cpp, BundledApks.cpp,
-// Placement.cpp, SharedApks.cpp and Strings.cpp -- with the few stand-ins below for the rest of the shell, and runs it on a
-// scratch folder of its own:
+// Placement.cpp, SharedApks.cpp, Settings.cpp, Strings.cpp and player/PermissionRules.cpp -- with the few stand-ins below
+// for the rest of the shell, and runs it on a scratch folder of its own:
 //
 //   - paths that are not absolute (made from a folder Windows gave none of: a package on a memory card may have no shared
 //     folder) refused by every function of shell/Files.cpp, nothing made, written, listed or removed at a drive's root, and
@@ -21,7 +21,10 @@
 //     installed by Windows's own installer (Open the Package) or by Windows after Megler gave up on it, one waiting for
 //     Windows's installer, Megler's own installs, Update All, Google Play services from Megler's newer APK, packages made
 //     before Megler wrote down which folder a package reads; and on the disk, make's records, a listing read, decided and
-//     carried out, a folder whose APK an app has open left whole, each decision said once.
+//     carried out, a folder whose APK an app has open left whole, each decision said once;
+//   - an app's permissions (player/PermissionRules.cpp): the user's answers kept in its settings and forgotten, what the app
+//     is told of each kind of group -- a refused group Megler has nothing behind, Megler's no over Windows' yes, a group
+//     asked every time --, and the groups a manifest asks for.
 //
 // A Lumia 630's Megler 0.1.0.671 was ended at every start while it made those copies on its UI thread before its window
 // was shown (library/Library.cpp); what is tested here is the way they are made since.
@@ -31,11 +34,13 @@
 #include "pch.h"
 
 #include "library/Library.h"
+#include "player/PermissionHost.h"
 #include "shell/AppPackage.h"
 #include "shell/BundledApks.h"
 #include "shell/Files.h"
 #include "shell/Placement.h"
 #include "shell/Platform.h"
+#include "shell/Settings.h"
 #include "shell/SharedApks.h"
 #include "shell/ShellLog.h"
 #include "shell/Startup.h"
@@ -54,8 +59,14 @@ std::wstring gLocal, gInstall, gShared;
 } // namespace
 
 // What the copies' code asks of the rest of the shell: the folders, the tests' own; no app's own package; no report of an
-// APK (the core is not in this program).
+// APK (the core is not in this program), and what a report says of a permission as library/Library.cpp says it.
 ApkReport ApkReport::parse(const std::string&) { return ApkReport(); }
+bool ApkReport::asks(const std::string& permission) const {
+    if (!permissionsKnown) return true;
+    for (size_t i = 0; i < permissions.size(); ++i)
+        if (permissions[i] == permission) return i >= permissionMaxSdk.size() || permissionMaxSdk[i] == 0 || permissionMaxSdk[i] >= 34;
+    return false;
+}
 
 namespace platform {
 const std::wstring& localStateDirectory() { return gLocal; }
@@ -898,6 +909,83 @@ void testBundled() {
     check(writtenLog().find("bundled apks: an APK the tests have not could not be copied to") != std::string::npos, "copy: the log says why not");
 }
 
+/// An app's permissions as the shell keeps and decides them (player/PermissionRules.cpp), in the app's settings in the shared
+/// folder (shell/Settings.cpp): what the user said kept and forgotten; what the app is told of each kind of group -- one
+/// Megler has nothing behind (granted with no one asked) refused by the user, Megler's own no over Windows' yes, a group
+/// asked every time by this run's answer; and the groups an app's manifest asks for.
+void testPermissions() {
+    using namespace permissionHost;
+    printf("an app's permissions: kept and decided (player/PermissionRules.cpp)\n");
+    files::makeDirectories(gShared);
+    settings::load(gLocal, gShared, "");
+    const std::string app = "org.megler.test.perms";
+    const std::wstring appFile = gShared + L"\\apps\\org.megler.test.perms\\settings.ini";
+    std::string text;
+
+    // Kept in the app's settings, as megler.permission.<group>; UNDECIDED takes it out.
+    check(kept(app, "camera") == MEGLER_PERMISSION_UNDECIDED, "nothing kept at first");
+    keep(app, "camera", MEGLER_PERMISSION_DENIED_FIXED);
+    keep(app, "contacts", EVERY_TIME);
+    keep(app, "sms", MEGLER_PERMISSION_GRANTED);
+    check(kept(app, "camera") == MEGLER_PERMISSION_DENIED_FIXED && kept(app, "contacts") == EVERY_TIME && kept(app, "sms") == MEGLER_PERMISSION_GRANTED,
+          "Don't allow, Ask every time and Allow kept");
+    check(files::read(appFile, text) && count(text, "megler.permission.camera=denied-fixed") == 1 && count(text, "megler.permission.contacts=ask") == 1,
+          "kept in the app's settings.ini in the shared folder");
+    keep(app, "sms", MEGLER_PERMISSION_UNDECIDED);
+    check(kept(app, "sms") == MEGLER_PERMISSION_UNDECIDED && files::read(appFile, text) && count(text, "megler.permission.sms") == 0,
+          "UNDECIDED takes the answer out");
+
+    // What the app is told.
+    const int un = MEGLER_PERMISSION_UNDECIDED, yes = MEGLER_PERMISSION_GRANTED, no = MEGLER_PERMISSION_DENIED, never = MEGLER_PERMISSION_DENIED_FIXED;
+    check(decide(Decider::none, un, un, un) == yes && decide(Decider::none, yes, un, un) == yes, "a group Megler has nothing behind: granted, no one asked");
+    check(decide(Decider::none, never, un, un) == never && decide(Decider::none, no, un, un) == no, "... refused by the user: denied");
+    check(decide(Decider::megler, un, un, un) == un && decide(Decider::megler, yes, un, un) == yes && decide(Decider::megler, no, un, un) == no &&
+              decide(Decider::megler, never, un, un) == never,
+          "a group Megler asks about: undecided until asked, then as answered");
+    check(decide(Decider::windows, un, yes, un) == yes && decide(Decider::windows, un, never, un) == never && decide(Decider::windows, un, un, un) == un &&
+              decide(Decider::windows, yes, never, un) == never,
+          "a group Windows decides: Windows' answer, Megler's yes leaving it to Windows");
+    check(decide(Decider::windows, never, yes, un) == never && decide(Decider::windows, no, yes, un) == no, "Megler's own no over Windows' yes");
+    check(decide(Decider::megler, EVERY_TIME, un, un) == un && decide(Decider::megler, EVERY_TIME, un, yes) == yes && decide(Decider::megler, EVERY_TIME, un, no) == no &&
+              decide(Decider::none, EVERY_TIME, un, un) == un && decide(Decider::none, EVERY_TIME, un, never) == never,
+          "asked every time: undecided until this run's answer, then that");
+    check(decide(Decider::windows, EVERY_TIME, yes, yes) == yes && decide(Decider::windows, EVERY_TIME, never, yes) == never && decide(Decider::windows, EVERY_TIME, yes, un) == un,
+          "... and for a group Windows decides, Windows' answer after this run's yes");
+
+    // This run's answers, kept in the process; a new choice drops them.
+    check(thisRun(app, "contacts") == un && !refusedByUser(app, "contacts"), "no answer this run at first");
+    rememberThisRun(app, "contacts", no);
+    check(thisRun(app, "contacts") == no && refusedByUser(app, "contacts") && refusedByUser(app, "camera") && !refusedByUser(app, "sms"),
+          "this run's no and Don't allow are the user's refusals; nothing said is none");
+    keep(app, "contacts", EVERY_TIME);
+    check(thisRun(app, "contacts") == un, "a choice made again drops this run's answer");
+    rememberThisRun(app, "contacts", yes);
+    forgetAll(app);
+    check(kept(app, "camera") == un && kept(app, "contacts") == un && thisRun(app, "contacts") == un && files::read(appFile, text) &&
+              count(text, "megler.permission.") == 0,
+          "Clear Data forgets every answer, this run's too");
+
+    // The groups an app's manifest asks for, in Android's order; one asked for only up to Android 9 is none; ACCESS_MEDIA_LOCATION
+    // with the storage where that is asked for.
+    ApkReport r;
+    r.permissionsKnown = true;
+    r.permissions = {"android.permission.READ_CONTACTS", "android.permission.CAMERA", "android.permission.WRITE_EXTERNAL_STORAGE", "android.permission.INTERNET",
+                     "android.permission.ACCESS_MEDIA_LOCATION"};
+    r.permissionMaxSdk = {0, 0, 28, 0, 0};
+    std::string names;
+    for (const auto& g : groupsOf(r)) names += g.name + "/" + g.title + (g.decider == Decider::windows ? "/windows;" : g.decider == Decider::none ? "/none;" : "/megler;");
+    check(names == "camera/Camera/windows;read_media_visual/Photos and videos/megler;contacts/Contacts/none;", "the groups asked for: " + names);
+    r.permissions.push_back("android.permission.READ_EXTERNAL_STORAGE");
+    r.permissionMaxSdk.push_back(0);
+    names.clear();
+    for (const auto& g : groupsOf(r)) names += g.name + ";";
+    check(names == "camera;storage;contacts;", "ACCESS_MEDIA_LOCATION with the storage: " + names);
+    check(groupOfPermission("android.permission.CAMERA") == "camera" && groupOfPermission("android.permission.INTERNET").empty() &&
+              groupOfPermission("com.example.permission.CAMERA").empty(),
+          "a dangerous permission's group, and none for another");
+    check(questionOf("camera", "Test") == "Allow Test to take pictures and record video?" && !explanationOf("contacts").empty(), "Megler's question");
+}
+
 } // namespace
 
 int wmain(int argc, wchar_t** argv) {
@@ -924,6 +1012,7 @@ int wmain(int argc, wchar_t** argv) {
     testStartup();
     testBundled();
     testSharedApks(root);
+    testPermissions();
     shellLog::flush();
     printf("shell: %d checks, %d failed\n", gChecks, gFailed);
     return gFailed ? 1 : 0;
