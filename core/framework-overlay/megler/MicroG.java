@@ -231,6 +231,14 @@ public final class MicroG {
         a.credentialProtectedDataDir = a.dataDir;
         a.deviceProtectedDataDir = new File(a.dataDir, "device_protected").getPath();
         a.nativeLibraryDir = APK + "!/lib/" + Abis.PRIMARY;
+        // Their splits, as Android lists an installed app's, sorted by name (Native.gmsSplitPaths); none in one APK.
+        String[] splits = Native.gmsSplitPaths();
+        if (splits != null && splits.length > 0) {
+            a.splitSourceDirs = splits.clone();
+            a.splitPublicSourceDirs = splits.clone();
+            a.splitNames = new String[splits.length];
+            for (int i = 0; i < splits.length; i++) a.splitNames[i] = splitName(splits[i]);
+        }
         a.enabled = true; a.uid = GooglePackages.sharedUid();
         a.flags = ApplicationInfo.FLAG_SYSTEM | ApplicationInfo.FLAG_INSTALLED | ApplicationInfo.FLAG_HAS_CODE;
         a.metaData = new Bundle();
@@ -288,9 +296,41 @@ public final class MicroG {
         if (name == null) return null;
         return name.startsWith(".") ? GooglePackages.GMS + name : name.indexOf('.') < 0 ? GooglePackages.GMS + "." + name : name;
     }
+    /* A split's name from its path, as Android installs one: /system/priv-app/GmsCore/split_config.xhdpi.apk is config.xhdpi. */
+    private static String splitName(String path) {
+        String n = new File(path).getName();
+        if (n.endsWith(".apk")) n = n.substring(0, n.length() - 4);
+        return n.startsWith("split_") ? n.substring(6) : n;
+    }
+    /*
+     * Their splits, said once as they join their resources; and one with code or native libraries, of which nothing is taken
+     * here (their classes and libraries are their base's alone): Play Store's bundle of Google's own has had none of either.
+     */
+    private static void saySplits(AssetManager assets, String[] splits) {
+        StringBuilder names = new StringBuilder();
+        for (String s : splits) {
+            names.append(names.length() > 0 ? ", " : "").append(splitName(s));
+            // (Its entries as the core has them already: the same path is the same APK, opened once.)
+            int apk = Native.addApk(s);
+            if (apk < 0) continue;
+            String[] dex = Native.listApkFiles(apk, "classes"), libs = Native.listApkFiles(apk, "lib/");
+            boolean code = false, native_ = libs != null && libs.length > 0;
+            if (dex != null) for (String n : dex) code |= n.endsWith(".dex");
+            if (code || native_) android.util.Log.w("MicroG", "Google Play services' split " + splitName(s) + " has " + (code ? native_ ? "code and native libraries" : "code" : "native libraries")
+                + ", which are not taken from it here: their classes and libraries are their base's");
+        }
+        android.util.Log.i("MicroG", "Google Play services' splits, whose resources and files join their base's: " + names
+            + " (" + assets.getApkPaths().length + " APKs)");
+    }
     private MicroG() throws Exception {
-        AssetManager assets = AssetManager.meglerForPackage(APK, GooglePackages.GMS);
+        // With their splits, where they came in several APKs (Native.gmsSplitPaths): Play Store installs Google's own as a base
+        // and splits of the phone's density and languages, and a resource whose every value is a density's is in the
+        // density's split alone -- their account screens' Google logo (ProductLockupView), without which "Manage your Google
+        // Account" ended Play Store on Resources$NotFoundException (0.1.0.685).
+        String[] splits = Native.gmsSplitPaths();
+        AssetManager assets = AssetManager.meglerForPackage(APK, GooglePackages.GMS, splits);
         Resources resources = new Resources(assets);
+        if (splits != null && splits.length > 0) saySplits(assets, splits);
         byte[] manifest;
         try (java.io.InputStream in = assets.openNonAsset("AndroidManifest.xml"); java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream()) {
             byte[] buf = new byte[8192]; int n;
@@ -368,6 +408,10 @@ public final class MicroG {
         info.signatures = new Signature[] {GooglePackages.signature()};
         info.signingInfo = new SigningInfo(info.signatures);
         activities = Manifest.activitiesIn(manifest, APK, GooglePackages.GMS);
+        // An activity of theirs that names no theme, of an application that names none (Google's own names none), has the
+        // platform's default for their target, as Android gives it (Theme.DeviceDefault.Light.DarkActionBar). Activity's own
+        // default is the app's theme, a style of the app's package, under whose number theirs has something else or nothing.
+        for (Manifest.Component c : activities) if (c.theme == 0) c.theme = IR.style.Theme_DeviceDefault_Light_DarkActionBar;
         /*
          * Google's own Play services run in this process, and their application is told so: its process name is the one
          * Application.getProcessName gives their code here, this process's. They take the process whose name is their
@@ -515,6 +559,61 @@ public final class MicroG {
     public static boolean bindAsSystem(Intent intent, ServiceConnection conn) {
         MicroG g = get();
         return g != null && g.find(intent, true) != null && bind(g.context, intent, conn);
+    }
+    /*
+     * The services the system keeps bound (bindAsSystemNow), by service and binding key: each counted as one client of its
+     * service once, so that it is never destroyed while the process lives, as the system's binding of it never ends.
+     */
+    private final Set<String> systemBindings = new HashSet<>();
+    /**
+     * A binding the system makes and keeps, as Android's location manager keeps Google Play services' geocode provider bound
+     * (its GeocoderProxy): the binder of their service whose filter takes the intent, exported or not, made and bound on the
+     * main thread -- at once when this is the main thread, else waited for, `timeoutMs` at most -- and the same binder again
+     * after. Null where Google Play services are not here, none of their services takes it, or it failed. Nothing of theirs
+     * is read for an intent of another package.
+     */
+    public static IBinder bindAsSystemNow(Intent intent, long timeoutMs) {
+        if (!mayBeGms(intent)) return null;
+        final MicroG g = get();
+        final Entry e = g == null ? null : g.find(intent, true);
+        if (e == null) return null;
+        final Intent copy = new Intent(intent);
+        java.util.concurrent.Callable<IBinder> bind = () -> {
+            Running r = g.create(e);
+            String key = bindKey(copy);
+            if (!r.binders.containsKey(key)) {
+                r.binders.put(key, r.service.onBind(copy));
+                android.util.Log.i("MicroG", "bound " + e.info.name + " for " + key + ", as the system binds it");
+            }
+            if (g.systemBindings.add(e.info.name + "\n" + key)) r.clients++;
+            return r.binders.get(key);
+        };
+        try {
+            if (Looper.myLooper() == Looper.getMainLooper()) return bind.call();
+            java.util.concurrent.FutureTask<IBinder> task = new java.util.concurrent.FutureTask<>(bind);
+            onMain(task);
+            return task.get(timeoutMs, java.util.concurrent.TimeUnit.MILLISECONDS);
+        } catch (java.util.concurrent.TimeoutException t) {
+            android.util.Log.w("MicroG", "binding " + e.info.name + " as the system binds it: the main thread did not get to it in " + timeoutMs + " ms");
+            return null;
+        } catch (Throwable t) {
+            Throwable cause = t instanceof java.util.concurrent.ExecutionException && t.getCause() != null ? t.getCause() : t;
+            if (!(cause instanceof NotRestartedYet)) android.util.Log.e("MicroG", "Binding " + e.info.name + " as the system binds it failed", cause);
+            return null;
+        }
+    }
+    /**
+     * Whether Google Play services here have an enabled service for the action (Geocoder.isPresent: a geocode provider), as
+     * the system finds one. Until they are read for something else they are not read for this: their APK there and their
+     * package enabled, Google's own and microG's both declaring a geocode provider (GmsCore's GeocodeService, microG's
+     * GeocodeProviderService).
+     */
+    public static boolean geocoderPresent(String action) {
+        if (!installed()) return false;
+        MicroG g = loaded();
+        if (g != null) return g.find(new Intent(action), true) != null;
+        PackageInfo basic = basic();
+        return basic != null && basic.applicationInfo != null && basic.applicationInfo.enabled;
     }
     /* One loader, one class scope of GmsCore's, whichever thread asks first: Play Store asked for GmsCore's flags provider on
        a thread of its own while its main thread started GmsCore, each made a loader, and GmsCore's classes were there twice,
@@ -913,12 +1012,45 @@ public final class MicroG {
     private final class PackageContext extends ContextWrapper {
         private final Resources resources;
         private final boolean deviceProtected;
-        private final HashMap<String, SharedPreferences> prefs = new HashMap<>();
+        private final HashMap<String, SharedPreferences> prefs;
         PackageContext(Resources r) { this(r, false); }
-        PackageContext(Resources r, boolean deviceProtected) {
+        PackageContext(Resources r, boolean deviceProtected) { this(r, deviceProtected, new HashMap<>()); }
+        /* (A configuration context keeps its preferences' objects: one file, one object, whichever context asks.) */
+        private PackageContext(Resources r, boolean deviceProtected, HashMap<String, SharedPreferences> prefs) {
             super(ContextImpl.app());
             resources = r;
             this.deviceProtected = deviceProtected;
+            this.prefs = prefs;
+        }
+        /*
+         * A context of another configuration -- AppCompat's attachBaseContext2 wraps an activity's base in one where the app's
+         * night mode or locales differ, Compose and Google Play services' own code make them for a locale -- is this package's
+         * resources under that configuration, and this context in all else. It was the app's: ContextWrapper asks its base,
+         * the app's ContextImpl, and Google Play services' activities and services hosted here were given the app's resources
+         * there, its drawables and strings under their numbers, or none.
+         */
+        @Override public Context createConfigurationContext(Configuration c) {
+            Configuration config = new Configuration(resources.getConfiguration());
+            if (c != null) config.updateFrom(c);
+            return new PackageContext(new Resources(resources.getAssets(), resources.getDisplayMetrics(), config), deviceProtected, prefs);
+        }
+        /*
+         * A theme of their own, as Android's ContextImpl has: of their resources, the platform's default for their target
+         * (Theme.DeviceDefault.Light.DarkActionBar) unless one was set. ContextWrapper asked the app's ContextImpl, whose theme
+         * is the app's own, of the app's resources, and every activity of theirs hosted here began from a copy of it
+         * (ContextThemeWrapper.initializeTheme copies its base's before it applies the activity's): the app's attributes, under
+         * their numbers in the app's package, stood in theirs wherever their own theme set none under those numbers.
+         */
+        private Resources.Theme theme;
+        private int themeId;
+        @Override public synchronized void setTheme(int resid) { if (themeId != resid) { themeId = resid; theme = null; } }
+        @Override public synchronized int getThemeResId() { return themeId; }
+        @Override public synchronized Resources.Theme getTheme() {
+            if (theme == null) {
+                theme = resources.newTheme();
+                theme.applyStyle(themeId != 0 ? themeId : IR.style.Theme_DeviceDefault_Light_DarkActionBar, true);
+            }
+            return theme;
         }
         @Override public String getPackageName() { return GooglePackages.GMS; }
         @Override public String getOpPackageName() { return getPackageName(); }

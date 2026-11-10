@@ -5783,6 +5783,44 @@ on a looper thread of its own and takes it back with `next()`.
   its own 0. The data app's step "location-request" builds requests, makes
   one of the deprecated provider, puts one through a parcel, and has one of
   the passive interval handed a fix.
+- `android/location/Geocoder.java` and `Address.java` in place of the
+  generated stubs, and `GeocoderParams.java`, `IGeocodeProvider.java`,
+  `IGeocodeListener.java` and `com/android/location/provider/GeocodeProvider.java`,
+  which the framework did not have: Android's Geocoder over the geocode
+  provider of the Google Play services the app hosts (docs/MICROG.md,
+  "Android's Geocoder"). `isPresent()` was false and every request an empty
+  list, and an `Address` kept no lines and never a latitude: Transit named a
+  place it was asked about by its coordinates ("Map location" and them). The
+  synchronous forms and Android 13's listener forms, the provider's error as
+  an `IOException` or `onError`, Android's argument checks; an `Address` with
+  its lines numbered as Android's, its coordinates thrown for when none was
+  set, and its `Parcel` layout. The data app's steps "geocoder" (no provider:
+  not present, no addresses and no error, on the main thread and through the
+  listener off it) and "address", and `gms-host` with a stand-in provider of
+  Google Play services' (a place at a point and of a name in the request's
+  locale, an error, the listener forms, the first request a synchronous one
+  on the main thread).
+- `android/content/res/AssetManager.java`, `Resources.java` and
+  `ResourcesImpl.java`, another package's splits: an `AssetManager` made for
+  another package (`meglerForPackage`) takes its splits too, whose tables are
+  merged into its own (`meglerPackageTable`) and whose files are read where
+  the base has none, as an app's own splits are. Google Play services from
+  Play Store are a base and splits of the phone's density and languages, and
+  an app that hosted them had their base alone: the Google logo of their
+  account and help screens, of densities' values alone, was not there, and Play
+  Store ended on `Resources$NotFoundException` (0.1.0.685, docs/MICROG.md,
+  "Google's own Play services from Play Store: their splits"). `gms-host`
+  hosts a stand-in of theirs built as such a bundle.
+- `megler/AppRunner.java`, an activity whose `onCreate` throws: `launch`
+  takes it off the stack at once, marks it finished, closes any window it
+  opened and resumes the one below; it is never stopped or destroyed. It
+  stayed on the stack, the one below paused under it, and once it had
+  finished itself it was stopped and destroyed at the next idle: Google Play
+  services' help screen, whose layout failed so in Play Store (0.1.0.686),
+  ended in their lifecycle's "State must be at least 'CREATED' to be moved
+  to 'DESTROYED'" out of the idle handler. One of the app's own still ends
+  the app, as the exception goes on. `gms-host` starts one of their
+  stand-in's that throws and is resumed after it.
 - `android/content/ContentProviderClient.java`: `openFile`, `openAssetFile`,
   `openTypedAssetFile(Descriptor)`, `query` with a `Bundle`, `insert`,
   `update` and `delete` with extras, `bulkInsert`, `call` with an authority,

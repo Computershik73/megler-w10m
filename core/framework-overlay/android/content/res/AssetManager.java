@@ -18,7 +18,13 @@
 // 1 for the app's APK and 2 on for the libraries, in the order they were added.
 //
 // And one of the platform's own resources alone (meglerForPlatform), for Resources.meglerPlatform: its Resources have no app
-// package, and it names the platform's package alone. Everything else is the original's.
+// package, and it names the platform's package alone.
+//
+// And another package's with its splits (meglerForPackage with splits: Google Play services as Play Store installs them, a
+// base and splits of the phone's density and languages), as Android's AssetManager has an installed app's base and splits:
+// their tables are one package's (Resources.meglerPackageTable), and a file the base has not is looked for in each split in
+// turn. With the base alone, a resource whose every value is a density's (the Google logo of Google Play services' account
+// screens) was not there, and "Manage your Google Account" ended Play Store (0.1.0.685). Everything else is the original's.
 package android.content.res;
 
 import java.io.*;
@@ -29,15 +35,37 @@ public final class AssetManager implements AutoCloseable {
     private Library mPackage;
     public AssetManager() {}
     /** A package with its own 0x7f resources, not a shared resource library. */
-    public static AssetManager meglerForPackage(String path, String name) {
+    public static AssetManager meglerForPackage(String path, String name) { return meglerForPackage(path, name, null); }
+    /**
+     * A package with its own 0x7f resources and its splits, as Android has an installed app in several APKs (see the top of
+     * the file); a split that cannot be read is said in the log and left out.
+     */
+    public static AssetManager meglerForPackage(String path, String name, String[] splits) {
         int apk = megler.Native.addApk(path);
         if (apk < 0) throw new IllegalArgumentException("Cannot open package " + path);
         AssetManager a = new AssetManager();
         a.mPackage = new Library(path, apk);
         a.mPackage.packageName = name;
+        if (splits != null && splits.length > 0) {
+            java.util.ArrayList<String> paths = new java.util.ArrayList<>();
+            int[] apks = new int[splits.length];
+            for (String s : splits) {
+                int k = s == null ? -1 : megler.Native.addApk(s);
+                if (k < 0) {
+                    android.util.Log.w("AssetManager", "the split " + s + " of " + name + " cannot be read, and is left out (the log says why)");
+                    continue;
+                }
+                apks[paths.size()] = k;
+                paths.add(s);
+            }
+            a.mPackage.splitApks = java.util.Arrays.copyOf(apks, paths.size());
+            a.mPackage.splitPaths = paths.toArray(new String[0]);
+        }
         return a;
     }
     int meglerPackageApk() { return mPackage == null ? 0 : mPackage.apk; }
+    /** The core's numbers of the package's splits (meglerForPackage), none for the app's own resources or a package in one APK. */
+    int[] meglerPackageSplits() { return mPackage == null ? Library.NO_SPLITS : mPackage.splitApks; }
     /** The platform's own resources alone, no app package (Resources.meglerPlatform: getResourcesForApplication("android")). */
     private boolean mPlatformOnly;
     public static AssetManager meglerForPlatform() {
@@ -48,7 +76,7 @@ public final class AssetManager implements AutoCloseable {
     boolean meglerPlatformOnly() { return mPlatformOnly; }
     String meglerPackageName() { return mPackage == null ? megler.Native.packageName() : mPackage.packageName; }
     private InputStream packageFile(String name) throws IOException {
-        byte[] b = megler.Native.readApkFile(mPackage.apk, name);
+        byte[] b = mPackage.read(name);
         if (b == null) throw new FileNotFoundException(name);
         return new ByteArrayInputStream(b);
     }
@@ -115,7 +143,7 @@ public final class AssetManager implements AutoCloseable {
     public InputStream openNonAsset(int cookie, String name) throws IOException {
         Library lib = mPackage != null ? mPackage : library(cookie);
         if (lib != null) {
-            byte[] b = megler.Native.readApkFile(lib.apk, norm(name));
+            byte[] b = lib.read(norm(name));
             if (b == null) throw new FileNotFoundException(name);
             return new ByteArrayInputStream(b);
         }
@@ -159,7 +187,7 @@ public final class AssetManager implements AutoCloseable {
         String n = norm(fileName);
         byte[] b;
         Library lib = mPackage != null ? mPackage : library(cookie);
-        if (lib != null) b = megler.Native.readApkFile(lib.apk, n);
+        if (lib != null) b = lib.read(n);
         else if (cookie == 0 || cookie == 1) {
             b = megler.Native.readAsset("/" + n);
             if (b == null && cookie == 0) b = libraryFile(n);
@@ -176,22 +204,47 @@ public final class AssetManager implements AutoCloseable {
 
     // ---- Megler: shared libraries (see the top of the file)
 
-    /** A shared library's APK: where it is, the core's number for it, and the package id its resources were given (0: none). */
+    /**
+     * A shared library's APK, or another package's: where it is, the core's number for it, the package id its resources were
+     * given (0: none), and a package's splits (meglerForPackage), whose files are looked for after the base's.
+     */
     private static final class Library {
+        static final int[] NO_SPLITS = new int[0];
         final String path;
         final int apk;
         int packageId;
         String packageName;
+        int[] splitApks = NO_SPLITS;
+        String[] splitPaths = new String[0];
         Library(String path, int apk) { this.path = path; this.apk = apk; }
-        /** A file of the APK as a descriptor and where it starts, or null when it is not there or is compressed. */
+        /** A file of the APK, else of the first of its splits that has it; null when none has. */
+        byte[] read(String inApk) {
+            byte[] b = megler.Native.readApkFile(apk, inApk);
+            for (int i = 0; b == null && i < splitApks.length; i++) b = megler.Native.readApkFile(splitApks[i], inApk);
+            return b;
+        }
+        /** A file of the APK (else of a split) as a descriptor and where it starts, or null when it is not there or is compressed. */
         AssetFileDescriptor fd(String inApk) {
+            AssetFileDescriptor afd = fdIn(apk, inApk);
+            for (int i = 0; afd == null && i < splitApks.length; i++) afd = fdIn(splitApks[i], inApk);
+            return afd;
+        }
+        private static AssetFileDescriptor fdIn(int apk, String inApk) {
             long fdoff = megler.Native.apkFileFd(apk, inApk);
             if (fdoff == -1) return null;
             return new AssetFileDescriptor(inApk, descriptor((int) (fdoff >>> 40)), fdoff & 0xFFFFFFFFFFL, megler.Native.apkFileLength(apk, inApk));
         }
         java.util.List<String> list(String prefix) {
             String[] all = megler.Native.listApkFiles(apk, prefix);
-            return all == null ? java.util.Collections.<String>emptyList() : java.util.Arrays.asList(all);
+            if (splitApks.length == 0) return all == null ? java.util.Collections.<String>emptyList() : java.util.Arrays.asList(all);
+            // the base's, then what the splits have besides, each name once (as the app's own: Native.listAssets)
+            java.util.LinkedHashSet<String> names = new java.util.LinkedHashSet<>();
+            if (all != null) names.addAll(java.util.Arrays.asList(all));
+            for (int s : splitApks) {
+                String[] more = megler.Native.listApkFiles(s, prefix);
+                if (more != null) names.addAll(java.util.Arrays.asList(more));
+            }
+            return new java.util.ArrayList<>(names);
         }
     }
     private static final java.util.ArrayList<Library> sLibs = new java.util.ArrayList<>();
@@ -250,7 +303,12 @@ public final class AssetManager implements AutoCloseable {
         return ids;
     }
     public String[] getApkPaths() {
-        if (mPackage != null) return new String[] {mPackage.path};
+        if (mPackage != null) {
+            String[] paths = new String[1 + mPackage.splitPaths.length];
+            paths[0] = mPackage.path;
+            System.arraycopy(mPackage.splitPaths, 0, paths, 1, mPackage.splitPaths.length);
+            return paths;
+        }
         java.util.List<Library> libs = libraries();
         String[] paths = new String[1 + libs.size()];
         paths[0] = megler.Native.apkPath();
@@ -258,7 +316,11 @@ public final class AssetManager implements AutoCloseable {
         return paths;
     }
     public int findCookieForPath(String path) {
-        if (mPackage != null) return mPackage.path.equals(path) ? 1 : 0;
+        if (mPackage != null) {
+            if (mPackage.path.equals(path)) return 1;
+            for (int i = 0; i < mPackage.splitPaths.length; i++) if (mPackage.splitPaths[i].equals(path)) return i + 2;
+            return 0;
+        }
         if (path == null) return 0;
         if (path.equals(megler.Native.apkPath())) return 1;
         synchronized (sLibs) { for (int i = 0; i < sLibs.size(); i++) if (sLibs.get(i).path.equals(path)) return i + 2; }

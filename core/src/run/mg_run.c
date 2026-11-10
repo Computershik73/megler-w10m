@@ -588,6 +588,7 @@ bool mg_run_start(const megler_run_config *config)
     g_apk_path = mg_strdup(config->apk_path);
     g_config.apk_path = g_apk_path;
     g_config.gms_apk_path = config->gms_apk_path ? mg_strdup(config->gms_apk_path) : NULL;
+    g_config.gms_splits_dir = config->gms_apk_path && config->gms_splits_dir && config->gms_splits_dir[0] ? mg_strdup(config->gms_splits_dir) : NULL;
     g_services_microg = (config->gms_apk_path && mg_apk_is_microg(config->gms_apk_path)) ||
                         (!strcmp(info.package, "com.google.android.gms") && mg_apk_is_microg(config->apk_path));
     if (g_services_microg) mg_info("run: Google Play services are microG's: their data is the shared folder's services/data-microg");

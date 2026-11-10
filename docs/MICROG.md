@@ -262,6 +262,91 @@ through the C library), `trace-calls-bywg` with 26.43.30 (`bvts` with
 `trace-calls-com.google.ccc.abuse.droidguard.DroidGuard` (the machine's Java:
 the flow it was made for, and `run`'s and `ss`'s results with their length).
 
+## Google's own Play services from Play Store: their splits
+
+Play Store updates Google's own Play services as it installs any app from a
+bundle: a base and splits of the phone's density and languages (26.43.30 on a
+Lumia 650: "its base and 10 split(s) kept", for 320 dpi in English and
+Russian). The library keeps them as an app's (`<apk>.splits`), and Google
+Play services' own package runs with them. An app that hosts them had the base
+alone: the shell copied `GmsCore.apk` into `<shared>\services\<token>` and
+nothing else, and their resources were the base's table. A resource whose
+every value is a density's -- the Google logo `googlelogo_standard_color_74x24`
+of `ProductLockupView`, its default when the layout names none (in 26.41.31's
+universal APK PNGs for mdpi to xxhdpi and a vector for anydpi, nothing of no
+density; `0x7f0804bc` in 26.43.30) -- is in the density's split alone, and
+"Manage your Google Account" (their account settings' Compose screen) and
+"Help and feedback" (`HelpChimeraActivity`'s layout) ended Play Store on
+`Resources$NotFoundException: Resource ID #0x7f0804bc` (0.1.0.685 and 686).
+Play Store's own table has an entry under that number: the lookup was in
+theirs.
+
+Now `registerServiceApk` copies the splits beside the base
+(`<token>\GmsCore.apk.splits`, `files::copyFilesWhole`: each whole, a copy
+registered before them gets them at the next registration), the player passes
+the folder (`megler_run_config.gms_splits_dir`) and holds its files open as it
+holds the base, and the core mounts each split beside `GmsCore.apk`
+(`/system/priv-app/GmsCore/split_<name>.apk`, `Native.gmsSplitPaths`; the log
+says "Google Play services are in N APKs"). `megler.MicroG` makes their
+`AssetManager` of the base and the splits: the splits' tables are merged into
+the base's (`Resources.meglerPackageTable`, each cut to the languages as the
+base's is), a file the base has not is read from the split that has it, and
+their `ApplicationInfo` names the splits as Android does. A split with code
+or native libraries is said in the log; nothing of either is taken from one.
+
+And a context of theirs made for another configuration
+(`createConfigurationContext`: AppCompat's `attachBaseContext2` wraps an
+activity's base in one where the app's night mode or locales differ, and their
+own code makes such contexts) is their resources under that configuration. It
+was the app's, through the app's `ContextImpl`, which `ContextWrapper` asks.
+So was their package context's theme, from which each activity of theirs
+begins (`ContextThemeWrapper` copies its base's): the app's own, whose
+attributes stood under their numbers in theirs wherever their theme set none.
+It is a theme of their resources now, the platform's default for their target
+(`Theme.DeviceDefault.Light.DarkActionBar`), and an activity of theirs that
+names no theme (their application names none) has that default too, not the
+number of the app's theme.
+
+An activity of theirs whose `onCreate` throws is taken off the stack at once
+and never destroyed (`AppRunner.launch`), the one below resumed; the app goes
+on, as it did. Their help screen failed so and finished itself, and its
+destruction at the next idle threw in their lifecycle ("State must be at
+least 'CREATED' to be moved to 'DESTROYED'").
+
+The test app `gms-host` hosts a stand-in of theirs built as Play Store's
+bundle (`gms-own`: a base and the splits `config.mdpi`, `config.xxhdpi` and
+`config.en`), unpacked as the shell unpacks one for 160 dpi: an activity of
+theirs reads a picture of their density's split alone and a word of their
+English split, and both through a context of another configuration, and finds
+no attribute of the app's theme in its own (`gms-host` has a theme with one);
+and one whose `onCreate` throws.
+
+## Android's Geocoder
+
+An app's `android.location.Geocoder` asks Google Play services' geocode
+provider, as Android's location manager does: their service for
+`com.android.location.service.GeocodeProvider` -- Google's own
+`com.google.android.gms.location.geocode.GeocodeService` (not exported; in
+26.41.31 a Chimera proxy whose `GeocodeChimeraService` gives the binder of a
+`com.android.location.provider.GeocodeProvider`, its legacy provider below
+Android 15, `GeocodeProviderBase` from 15 on), or microG's
+`GeocodeProviderService` (OpenStreetMap's Nominatim). It is bound as the system
+binds it and kept (`MicroG.bindAsSystemNow`, on the main thread), and its
+binder, local, is called in place on a thread of the Geocoder's own with the
+app's package, uid, attribution tag and locale (`GeocoderParams`). The
+framework has the library's `GeocodeProvider`, which neither carries, the
+provider's interfaces (`IGeocodeProvider`, `IGeocodeListener`) and Android's
+`Address`. Where no provider is there, `isPresent()` is false and a request
+has no addresses and no error, as on Android. A synchronous request asked on
+the main thread binds the provider there before it waits; what the provider
+wants of the main thread while it answers waits with it (a phone's provider
+has a process of its own). Whether Google's server answers their geocoder
+here is for a phone to show ("I/Geocoder: a place asked ... address(es)").
+
+Windows' own `MapLocationFinder` is no way round: without a Bing Maps key
+(`MapService.ServiceToken`) it answers `InvalidCredentials` to a reverse and
+a forward geocode alike (tried on this PC, Windows 11 26300).
+
 ## Class isolation
 
 The failed implementation reverted in `1adae04` appended GmsCore's DEX files

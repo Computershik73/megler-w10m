@@ -376,6 +376,28 @@ void testFiles(const std::wstring& root) {
     check(!files::copyWhole(dir + L"\\none.bin", dir + L"\\none.copy", none) && !files::exists(dir + L"\\none.copy"),
           "copyWhole: a file that is not there is not copied, and nothing is made");
 
+    // A folder's APKs copied beside a copy of an APK, as Google Play services' splits are beside its shared copy
+    // (appPackage::registerServiceApk): each whole through a .part of its own, those there of the same size kept, nothing else of
+    // the folder taken (a cut resource table the core keeps beside a split, an .apk.part of a copy that never ended).
+    {
+        const std::wstring splits = dir + L"\\app.apk.splits", beside = dir + L"\\GmsCore.apk.splits";
+        files::makeDirectories(splits);
+        check(makeFile(splits + L"\\split_config.xhdpi.apk", 70 * 1024 + 3, 3) && makeFile(splits + L"\\split_config.ru.apk", 9 * 1024, 4) &&
+                  files::write(splits + L"\\split_config.ru.apk.0a1b2c3d-ru-en.arsc", "cut") && files::write(splits + L"\\split_config.en.apk.part", "torn"),
+              "a folder of two splits, a cut table and a torn copy made");
+        int copied = -1;
+        check(files::copyFilesWhole(splits, beside, L".apk", copied) && copied == 2 && files::same(splits + L"\\split_config.xhdpi.apk", beside + L"\\split_config.xhdpi.apk") &&
+                  files::same(splits + L"\\split_config.ru.apk", beside + L"\\split_config.ru.apk"),
+              "copyFilesWhole: the two APKs copied whole");
+        check(files::list(beside, L"*").size() == 2, "copyFilesWhole: and nothing else of the folder, no .part left");
+        check(files::copyFilesWhole(splits, beside, L".apk", copied) && copied == 0, "copyFilesWhole: again, those there of the same size kept");
+        check(makeFile(splits + L"\\split_config.ru.apk", 9 * 1024 + 1, 5) && files::copyFilesWhole(splits, beside, L".apk", copied) && copied == 1 &&
+                  files::same(splits + L"\\split_config.ru.apk", beside + L"\\split_config.ru.apk"),
+              "copyFilesWhole: one of another size copied again");
+        check(files::copyFilesWhole(dir + L"\\no-splits", dir + L"\\no-splits-beside", L".apk", copied) && copied == 0 && !files::exists(dir + L"\\no-splits-beside"),
+              "copyFilesWhole: no folder, nothing to copy: no failure, and no folder made");
+    }
+
     // A memory card's file system, as CopyFile2 is refused there for what it copies besides the bytes (ERROR_NOT_SUPPORTED,
     // ERROR_ENCRYPTION_FAILED): the bytes read and written, the time of writing kept. Not where reading and writing cannot help.
     {

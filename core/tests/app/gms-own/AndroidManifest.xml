@@ -2,11 +2,35 @@
 <!-- A stand-in for Google's own Play services (no microG in it), as an app hosts them: the test app gms-host starts its one
      service, and binds its location API, as an app's FusedLocationProviderClient does. And a stand-in for Google's settings
      (Google Services Framework's GoogleSettingsProvider, content://com.google.settings/partner), which says what is written
-     into it: where Megler puts the user's answer of Google Location Accuracy. -->
+     into it: where Megler puts the user's answer of Google Location Accuracy. And an activity of theirs, which an app starts
+     and which runs in the app (their account settings, "Manage your Google Account"), reading their resources as their
+     account screens do: a picture of their density's split, a word of their language's split, and both through a context of
+     another configuration, as AppCompat wraps an activity's; and one whose onCreate fails, which the app outlives. And their
+     geocode provider, which an app's Geocoder asks. Built as a base and splits, as Play Store installs Google's own (the file
+     `splits`). -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android" package="com.google.android.gms"
     android:versionCode="264131009" android:versionName="26.41.31 (a stand-in)">
     <uses-sdk android:minSdkVersion="21" android:targetSdkVersion="28" />
     <application android:label="@string/gms_own_label">
+        <activity android:name="megler.test.gmsown.Lockup" android:exported="true">
+            <intent-filter>
+                <action android:name="megler.test.gmsown.LOCKUP" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </activity>
+        <activity android:name="megler.test.gmsown.Broken" android:exported="true">
+            <intent-filter>
+                <action android:name="megler.test.gmsown.BROKEN" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </activity>
+        <!-- Their geocode provider, which the system binds for an app's Geocoder (GmsCore's GeocodeService): not exported. -->
+        <service android:name="megler.test.gmsown.Geocode" android:exported="false">
+            <intent-filter>
+                <action android:name="com.android.location.service.GeocodeProvider" />
+            </intent-filter>
+            <meta-data android:name="serviceVersion" android:value="2" />
+        </service>
         <service android:name="megler.test.gmsown.Probe" android:exported="true">
             <intent-filter>
                 <action android:name="megler.test.gmsown.PROBE" />

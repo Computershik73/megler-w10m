@@ -1,0 +1,8 @@
+# How tools/build-test-app.sh builds the stand-in for Google's own Play services: as Play Store installs Google's own, a
+# base and config splits (tools/build-split-app.py), bundled as gms-own.apks. Its picture gms_lockup is of two densities and
+# no other, as the Google logo of Google Play services' account screens is (ProductLockupView), so the base has none of it;
+# its word gms_split_word is English's in config.en alone. The test unpacks the bundle as the shell unpacks one, for 160 dpi
+# in English and Russian: config.mdpi and config.en are kept, config.xxhdpi left out (core/tests/mg_java_tests.c).
+config mdpi
+config xxhdpi
+config en

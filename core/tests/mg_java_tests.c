@@ -1198,13 +1198,42 @@ static const char *phone_apps_fixture(void)
     return dir;
 }
 
+/*
+ * Google Play services as the test is given them (MG_JAVA_GMS_APK): an APK, or a bundle of a base and splits (.apks, .xapk),
+ * as Play Store installs Google's own -- unpacked as the shell unpacks one into its library, for this screen's density in
+ * English and Russian, the folder of its splits then megler_run_config.gms_splits_dir, as the shell gives the splits it
+ * copies beside the shared copy of their APK. MG_JAVA_GMS_SPLITS names such a folder for an APK. NULL for none.
+ */
+static const char *gms_apk(const char **splits_dir)
+{
+    static char *base, *splits;
+    const char *given = getenv("MG_JAVA_GMS_APK");
+    size_t n = given ? strlen(given) : 0;
+    *splits_dir = getenv("MG_JAVA_GMS_SPLITS");
+    if (n < 6 || (strcmp(given + n - 5, ".apks") && strcmp(given + n - 5, ".xapk"))) return given;
+    if (!base) {
+        char *dir = mg_sprintf("%s/library", megler_data_dir()), *json;
+        mg_path_mkdirs(dir);
+        base = mg_sprintf("%s/gms.apk", dir);
+        splits = mg_sprintf("%s/gms.apk.splits", dir);
+        json = megler_bundle_unpack(given, base, splits, g_screen_dpi, "en,ru", NULL, NULL);
+        say("Google Play services' bundle unpacked as the shell unpacks one: %s, for %d dpi, in English and Russian", given, g_screen_dpi);
+        say("  %s", json ? json : "(nothing)");
+        CHECK(json && strstr(json, "\"ok\":true"));
+        megler_free(json);
+        free(dir);
+    }
+    *splits_dir = splits;
+    return base;
+}
+
 static bool start(const char *apk, const char *android_root)
 {
     static megler_run_config cfg;
     g_android_root = android_root;
     memset(&cfg, 0, sizeof(cfg));
     cfg.apk_path = apk;
-    cfg.gms_apk_path = getenv("MG_JAVA_GMS_APK");
+    cfg.gms_apk_path = gms_apk(&cfg.gms_splits_dir);
     cfg.gsf_apk_path = getenv("MG_JAVA_GSF_APK");
     cfg.splits_dir = g_splits_dir;
     cfg.android_root = android_root;
@@ -3195,6 +3224,9 @@ static int run_data(void)
                                             deleted and made again, a conversation's channel, groups with their channels; and kept
                                             across the runs (checked below). */
                                          "notification-channels-shared", "notification-channels-rules", "notification-channels-kept",
+                                         /* And Android's Geocoder with no geocode provider (no Google Play services): not present, no
+                                            addresses and no error, the arguments checked; and an Address as Android's, through a Parcel. */
+                                         "geocoder", "address",
                                          "audio-track", "media-player", "media-player-ogg", "sound-pool",
                                          /* And MediaCodec over the stand-in for the shell's decoders: H.264 shown on a Surface in display
                                             order, a flush, parameter sets in a codec-config buffer, the asynchronous mode, AAC with an
@@ -3304,6 +3336,9 @@ static int run_data(void)
     CHECK(wait_line("I/DataTest: location-update ok", 0, 30) >= 0);
     /* And the request of the passive interval of the step "location-request": a fix, on the main thread, after which it is removed. */
     CHECK(wait_line("I/DataTest: location-passive ok", 0, 30) >= 0);
+    /* And the Geocoder's listener of the step "geocoder", with no provider: no addresses, on a thread that is not the main one. */
+    CHECK(wait_line("I/DataTest: geocoder-listener ok", 0, 30) >= 0);
+    CHECK(find_line("I/Geocoder: no geocode provider: the app's Google Play services have none, or none here", 0) >= 0);
     {
         int starts = 0, stops = 0, tries;
         for (tries = 0; tries < 40; tries++) {
@@ -4110,8 +4145,60 @@ static int run_gms_host(void)
        WorkSource, as GmsAlarm sets theirs on Android 12 and later), which never went off: it did, and its second fix was sent. */
     CHECK(wait_line("I/GmsOwnTest: network location alarm went off", 0, 60) >= 0);
     CHECK(wait_line("I/GmsOwnTest: network location second fix sent true", 0, 30) >= 0);
+    /*
+     * Google Play services from a bundle (gms-own.apks: a base and the splits config.mdpi, config.xxhdpi and config.en), as
+     * Play Store installs Google's own, unpacked for 160 dpi in English and Russian: the app has their base and the splits
+     * kept, and their resources are those of all three. An activity of theirs, started by the app and run here as their
+     * account settings are, reads a picture that is in their density's split alone (16 x 16, mdpi's), the word of their
+     * English split, and both again through a context of another configuration, as AppCompat wraps an activity's: the
+     * picture was not there ("Manage your Google Account" ended Play Store on the Google logo's NotFoundException,
+     * 0.1.0.685), and that context's resources were the app's, whose label it read under their label's number. Its theme
+     * has none of the app's theme's attributes (gms-host's gms_host_mark): it began from a copy of the app's theme. And,
+     * naming none, it has the platform's default for their target (Theme.DeviceDefault.Light.DarkActionBar, 0x0103013f),
+     * not the number of the app's theme.
+     */
+    CHECK(find_line("java: Google Play services are in 3 APKs, their base and the splits config.en, config.mdpi", 0) >= 0);
+    CHECK(find_line("I/MicroG: Google Play services' splits, whose resources and files join their base's: config.en, config.mdpi (3 APKs)", 0) >= 0);
+    CHECK(wait_line("-> Google Play services' megler.test.gmsown.Lockup, here", 0, 60) >= 0);
+    CHECK(wait_line("I/GmsOwnTest: lockup 16x16 word=english wrapped 16x16 word=english label=Google Play services (a stand-in) "
+                    "splits=[config.en, config.mdpi] host theme attribute false theme 0x103013f", 0, 120) >= 0);
+    /*
+     * Android's Geocoder, answered by their geocode provider (the stand-in's GeocodeProvider, not exported), bound as the system
+     * binds it -- the first request a synchronous one on the main thread, which binds it there before it waits -- and asked on
+     * a thread of the Geocoder's own, with the app's package, uid and locale: a place at a point and of a name, in the request's
+     * locale, the provider's error an IOException, and Android 13's listener forms answered off the main thread, an error to
+     * onError. isPresent says there is one.
+     */
+    CHECK(wait_line("I/GmsHostTest: geocoder on the main thread: 1 address(es) [Red Square | Moscow, 109012 | Moscow RU 55.7539,37.6208 en_US]", 0, 120) >= 0);
+    CHECK(find_line("I/GmsOwnTest: geocode provider bound on the main thread", 0) >= 0);
+    CHECK(find_line("I/MicroG: bound megler.test.gmsown.Geocode for com.android.location.service.GeocodeProvider, as the system binds it", 0) >= 0);
+    CHECK(find_line("I/GmsOwnTest: geocode at a point for megler.test.gmshost (the app's uid) in en_US off the main thread true, at most 1", 0) >= 0);
+    CHECK(wait_line("I/GmsHostTest: geocoder present true", 0, 60) >= 0);
+    CHECK(wait_line("I/GmsHostTest: geocoder at a point: 1 address(es) [Red Square | Moscow, 109012 | Moscow RU 55.7539,37.6208 ru_RU]", 0, 60) >= 0);
+    CHECK(wait_line("I/GmsHostTest: geocoder of a name: 1 address(es) [Red Square | Moscow, 109012 | Moscow RU 55.7539,37.6208 ru_RU]", 0, 60) >= 0);
+    CHECK(find_line("I/GmsOwnTest: geocode of a name for megler.test.gmshost (the app's uid) in ru_RU off the main thread true, within 0.0,0.0,0.0,0.0, at most 1", 0) >= 0);
+    CHECK(wait_line("I/GmsHostTest: geocoder of no place: no place called Atlantis", 0, 60) >= 0);
+    CHECK(find_line("within 10.0,20.0,30.0,40.0, at most 1", 0) >= 0);
+    CHECK(wait_line("I/GmsHostTest: geocoder listener: 1 address(es) [Red Square | Moscow, 109012 | Moscow RU 55.7539,37.6208 ru_RU] off the main thread true", 0, 60) >= 0);
+    CHECK(wait_line("I/GmsHostTest: geocoder listener of an error: no place south of the equator", 0, 60) >= 0);
+    CHECK(find_line("I/Geocoder: Google Play services' geocode provider answers the app's geocoding", 0) >= 0);
+    CHECK(find_line("geocoder FAILED", 0) < 0 && find_line("geocoder on the main thread FAILED", 0) < 0 && find_line("geocoder listener FAILED", 0) < 0 &&
+          find_line("of an error FAILED", 0) < 0);
+    /*
+     * And an activity of theirs whose onCreate throws, having asked to be finished after (their help screen, whose layout's
+     * logo was missing, 0.1.0.686): the app goes on, the activity is taken off the stack and never destroyed -- their
+     * lifecycle threw at its destruction -- and the app's activity is resumed after it.
+     */
+    {
+        int failed = wait_line("E/Megler: starting megler.test.gmsown.Broken failed", 0, 60);
+        CHECK(failed >= 0 && find_line("broken on purpose", failed) >= 0);
+        CHECK(wait_line("I/GmsHostTest: resumed", failed + 1, 30) > failed);
+        mg_sleep_ns(1000000000ull);
+        CHECK(find_line("I/GmsOwnTest: broken destroyed", 0) < 0 && find_line("D/Megler: finish megler.test.gmsown.Broken", 0) < 0);
+    }
     CHECK(find_line("FATAL EXCEPTION", 0) < 0);
     say_app_lines("/GmsOwnTest: ");
+    say_app_lines("/GmsHostTest: geocoder");
     return g_failed;
 }
 

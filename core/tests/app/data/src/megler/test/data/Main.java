@@ -1981,6 +1981,7 @@ public class Main extends Activity {
         audioAttributesEqual();
         notificationChannel();
         notificationChannels(run);
+        geocoding();
         sound();
         mediaCodec();
         network();
@@ -6280,6 +6281,82 @@ public class Main extends Activity {
      * find(int) each time, the fields read by group(i) as Kotlin's groupValues reads them (an absent one ""). java.util.regex is
      * ICU's matcher here, as on Android: each tag found whole, the fields the text has between its bars.
      */
+    /*
+     * Android's Geocoder where there is no geocode provider (this app runs without Google Play services): isPresent false, and
+     * a request answered with no addresses and no error, as Android's location manager answers it then -- the synchronous
+     * forms at once, on the main thread too, and Android 13's listener on a thread that is not the main one (said below,
+     * "geocoder-listener"); the arguments checked as Android 13 checks them. And an Address as Android's is: its lines
+     * numbered (the largest index set), the coordinates thrown for when none was set, the extras copied, and all of it
+     * through a Parcel.
+     */
+    private void geocoding() {
+        step("geocoder", () -> {
+            boolean absent = !android.location.Geocoder.isPresent();
+            android.location.Geocoder g = new android.location.Geocoder(this, java.util.Locale.US);
+            java.util.List<android.location.Address> at = g.getFromLocation(55.7539, 37.6208, 2);
+            java.util.List<android.location.Address> named = g.getFromLocationName("Red Square", 1);
+            java.util.List<android.location.Address> bounded = g.getFromLocationName("Red Square", 1, 55, 37, 56, 38);
+            boolean range = false, name = false, bounds = false;
+            try { g.getFromLocation(91, 0, 1); } catch (IllegalArgumentException e) { range = true; }
+            try { g.getFromLocationName(null, 1); } catch (IllegalArgumentException e) { name = true; }
+            try { g.getFromLocationName("Red Square", 1, 0, 181, 0, 0); } catch (IllegalArgumentException e) { bounds = true; }
+            g.getFromLocation(55.7539, 37.6208, 1, new android.location.Geocoder.GeocodeListener() {
+                @Override
+                public void onGeocode(java.util.List<android.location.Address> list) {
+                    boolean off = android.os.Looper.myLooper() != android.os.Looper.getMainLooper();
+                    Log.i("DataTest", "geocoder-listener " + (list.isEmpty() && off ? "ok" : "FAILED " + list.size() + " address(es), off the main thread " + off));
+                }
+
+                @Override
+                public void onError(String error) {
+                    Log.i("DataTest", "geocoder-listener FAILED error " + error);
+                }
+            });
+            detail = "absent " + absent + ", " + at.size() + "/" + named.size() + "/" + bounded.size() + " addresses, checked " + range + " " + name + " " + bounds;
+            return absent && at.isEmpty() && named.isEmpty() && bounded.isEmpty() && range && name && bounds;
+        });
+        step("address", () -> {
+            android.location.Address a = new android.location.Address(new java.util.Locale("ru", "RU"));
+            boolean empty = a.getMaxAddressLineIndex() == -1 && a.getAddressLine(0) == null && !a.hasLatitude() && !a.hasLongitude();
+            boolean threw = false;
+            try { a.getLatitude(); } catch (IllegalStateException e) { threw = true; }
+            a.setAddressLine(1, "Москва, 109012");
+            int max = a.getMaxAddressLineIndex();
+            a.setAddressLine(0, "Красная площадь");
+            int stays = a.getMaxAddressLineIndex();
+            boolean negative = false;
+            try { a.setAddressLine(-1, "x"); } catch (IllegalArgumentException e) { negative = true; }
+            a.setFeatureName("Красная площадь");
+            a.setLocality("Москва");
+            a.setPostalCode("109012");
+            a.setCountryCode("RU");
+            a.setCountryName("Россия");
+            a.setLatitude(55.7539);
+            a.setLongitude(37.6208);
+            android.os.Bundle extras = new android.os.Bundle();
+            extras.putString("kind", "square");
+            a.setExtras(extras);
+            extras.putString("kind", "changed");
+            android.location.Address b = new android.location.Address(java.util.Locale.US);
+            b.setAddressLine(0, "1 Line");
+            android.os.Parcel p = android.os.Parcel.obtain();
+            a.writeToParcel(p, 0);
+            b.writeToParcel(p, 0);
+            p.setDataPosition(0);
+            android.location.Address back = android.location.Address.CREATOR.createFromParcel(p), second = android.location.Address.CREATOR.createFromParcel(p);
+            p.recycle();
+            boolean same = back.getLocale().equals(new java.util.Locale("ru", "RU")) && "Красная площадь".equals(back.getAddressLine(0)) &&
+                           "Москва, 109012".equals(back.getAddressLine(1)) && "Москва".equals(back.getLocality()) && "109012".equals(back.getPostalCode()) &&
+                           "RU".equals(back.getCountryCode()) && "Россия".equals(back.getCountryName()) && back.getLatitude() == 55.7539 &&
+                           back.getLongitude() == 37.6208 && "square".equals(back.getExtras().getString("kind")) && "Красная площадь".equals(back.getFeatureName()) &&
+                           second.getLocale().equals(java.util.Locale.US) && "1 Line".equals(second.getAddressLine(0)) && !second.hasLatitude();
+            String text = back.toString();
+            detail = "empty " + empty + " threw " + threw + " max " + max + "/" + stays + "/" + back.getMaxAddressLineIndex() + " negative " + negative + " same " + same + ": " + text;
+            return empty && threw && max == 1 && stays == 1 && back.getMaxAddressLineIndex() == 1 && negative && same && "square".equals(a.getExtras().getString("kind")) &&
+                   text.startsWith("Address[addressLines=[0:\"Красная площадь\",1:\"Москва, 109012\"],feature=Красная площадь,") && text.contains(",locality=Москва,");
+        });
+    }
+
     private void markupRegex() {
         step("markup-regex", () -> {
             StringBuilder fields = new StringBuilder();

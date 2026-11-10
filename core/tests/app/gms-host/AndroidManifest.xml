@@ -5,7 +5,7 @@
     <uses-sdk android:minSdkVersion="21" android:targetSdkVersion="28" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
-    <application android:label="@string/gms_host_label">
+    <application android:label="@string/gms_host_label" android:theme="@style/GmsHostTheme">
         <activity android:name=".Main" android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />

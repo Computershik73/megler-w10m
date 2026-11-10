@@ -46,9 +46,13 @@
 /*
  * APKs 12 on are those the framework adds (addApk): Google Play services' and its framework's for an app that hosts them, the
  * resource archives each keeps for the language (locale-filtered-resources), and the WebView's. Play Store with Google Play
- * services hosted took the four of 16 there were before the WebView's, and its sign-in page had no WebView.
+ * services hosted took the four of 16 there were before the WebView's, and its sign-in page had no WebView. And Google Play
+ * services' splits (mount_gms_splits) and the modules it loads (Cronet, the ads, the maps, Vision's): Play Store took 17 of
+ * the 20 there were on a Lumia 650 (0.1.0.684) before Google Play services' splits were added too.
  */
-#define MAX_APKS 32
+#define MAX_APKS 48
+/* Google Play services' splits an app that hosts them reads (mount_gms_splits): a bundle from Play Store has a few. */
+#define MAX_GMS_SPLITS 12
 /* The app's splits are APKs 2 to 11: ten, which is all the framework reads (its Resources looks in 2 to 11). */
 #define FIRST_SPLIT_APK 2
 #define MAX_SPLITS 10
@@ -74,6 +78,12 @@ static struct {
     char split_names[MAX_SPLITS][96];
     char *guest_splits[MAX_SPLITS];
     bool split_code[MAX_SPLITS];
+    /*
+     * Google Play services' splits, for an app that hosts them (megler_run_config.gms_splits_dir): their paths as the app
+     * sees them, beside GmsCore.apk (Native.gmsSplitPaths), which megler.MicroG adds to their resources.
+     */
+    int ngms_splits;
+    char *gms_guest_splits[MAX_GMS_SPLITS];
     mg_thread *main;
     /*
      * The APKs by the framework's numbers: 0 the app's, 1 the platform's resources, 2 to 11 the app's splits, 12 on the shared
@@ -544,6 +554,18 @@ N(Native_splitPaths)
     mg_jobj *a = mg_dvm_new_array("[Ljava/lang/String;", J.nsplits);
     int i;
     for (i = 0; a && i < J.nsplits; i++) a->u.oarr.v[i] = mg_dvm_new_string(J.guest_splits[i]);
+    c->ret.l = a;
+}
+
+/*
+ * Google Play services' splits as the app sees them, /system/priv-app/GmsCore/split_<name>.apk (mount_gms_splits), sorted by
+ * name; none where they came in one APK. megler.MicroG adds them to their resources and names them in their ApplicationInfo.
+ */
+N(Native_gmsSplitPaths)
+{
+    mg_jobj *a = mg_dvm_new_array("[Ljava/lang/String;", J.ngms_splits);
+    int i;
+    for (i = 0; a && i < J.ngms_splits; i++) a->u.oarr.v[i] = mg_dvm_new_string(J.gms_guest_splits[i]);
     c->ret.l = a;
 }
 
@@ -1334,6 +1356,7 @@ static const mg_jhle k_native[] = {
     { "megler/Native", "apkFileLength", NULL, Native_apkFileLength },
     { "megler/Native", "apkPath", NULL, Native_apkPath },
     { "megler/Native", "splitPaths", NULL, Native_splitPaths },
+    { "megler/Native", "gmsSplitPaths", NULL, Native_gmsSplitPaths },
     { "megler/Native", "setAppClassLoader", NULL, Native_setAppClassLoader },
     { "megler/Native", "nativeLooperPrepare", NULL, Native_looperPrepare },
     { "megler/Native", "nativeLooperPoll", NULL, Native_looperPoll },
@@ -2061,6 +2084,46 @@ static void open_apk(int index, const char *host_path)
 }
 
 /*
+ * Google Play services' splits, where they came in several APKs (megler_run_config.gms_splits_dir: the folder's .apk files,
+ * named split_<name>.apk as megler_bundle_unpack names those it keeps), each mounted beside GmsCore.apk under the name Android
+ * gives an installed split, for megler.MicroG to add to their resources (Native.gmsSplitPaths). Play Store installs Google's
+ * own Play services as a base and splits of the phone's density and languages, and a resource whose every value is a
+ * density's is in the density's split alone: the Google logo of their account screens (ProductLockupView's default,
+ * googlelogo_standard_color_74x24: four densities' PNGs and an anydpi vector, nothing of no density) was not there for an
+ * app that hosted them, and "Manage your Google Account" in Play Store ended the app on Resources$NotFoundException
+ * (0.1.0.685, the Lumia 650). Their names are the files' own: nothing of the splits is read here, which every app's start
+ * would pay for.
+ */
+static void mount_gms_splits(void)
+{
+    char **paths = NULL, names[400];
+    int n = mg_apk_list_splits(J.config->gms_splits_dir, &paths), i;
+    size_t at = 0;
+    names[0] = 0;
+    for (i = 0; i < n; i++) {
+        const char *slash = strrchr(paths[i], '/'), *back = strrchr(paths[i], '\\');
+        const char *file = back && (!slash || back > slash) ? back + 1 : slash ? slash + 1 : paths[i];
+        char name[96];
+        size_t len;
+        if (!strncmp(file, "split_", 6)) file += 6;
+        mg_strlcpy(name, file, sizeof(name));
+        len = strlen(name);
+        if (len > 4 && !strcmp(name + len - 4, ".apk")) name[len - 4] = 0;
+        if (!name[0]) continue;
+        if (J.ngms_splits == MAX_GMS_SPLITS) {
+            mg_warn("java: Google Play services have more than %d splits: %s and those after it are left out", MAX_GMS_SPLITS, name);
+            break;
+        }
+        J.gms_guest_splits[J.ngms_splits] = mg_sprintf("/system/priv-app/GmsCore/split_%s.apk", name);
+        mg_fs_mount(J.gms_guest_splits[J.ngms_splits], paths[i]);
+        J.ngms_splits++;
+        if (at + strlen(name) + 3 < sizeof(names)) at += (size_t)snprintf(names + at, sizeof(names) - at, "%s%s", at ? ", " : "", name);
+    }
+    if (J.ngms_splits) mg_info("java: Google Play services are in %d APKs, their base and the split%s %s", J.ngms_splits + 1, J.ngms_splits == 1 ? "" : "s", names);
+    mg_apk_free_list(paths, n);
+}
+
+/*
  * Gives the APK its Android path, /data/app/<package>-1/base.apk, and tells the runtime that its classes are on the class path under that name. And the
  * splits theirs, beside it, under the names Android gives installed splits (split_config.armeabi_v7a.apk), each a mount of
  * its own file wherever the shell keeps it; those with code are on the class path under their names too.
@@ -2073,8 +2136,10 @@ static void mount_apk(void)
     int i;
     if (name > path) dir[name - path - 1] = 0;
     mg_fs_mount(guest_dir, dir);
-    if (J.config->gms_apk_path && strcmp(J.package, "com.google.android.gms"))
+    if (J.config->gms_apk_path && strcmp(J.package, "com.google.android.gms")) {
         mg_fs_mount("/system/priv-app/GmsCore/GmsCore.apk", J.config->gms_apk_path);
+        if (J.config->gms_splits_dir) mount_gms_splits();
+    }
     if (J.config->gsf_apk_path && strcmp(J.package, "com.google.android.gsf"))
         mg_fs_mount("/system/priv-app/GoogleServicesFramework/GoogleServicesFramework.apk", J.config->gsf_apk_path);
     /* Each app retains Android's stable base.apk path, regardless of the picked filename. */

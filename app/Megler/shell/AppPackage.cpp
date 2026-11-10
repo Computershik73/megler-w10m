@@ -1334,6 +1334,36 @@ bool untrustedCertificate(const std::string& said) {
     return lower.find("0x800b0109") != std::string::npos || lower.find("0x800b010a") != std::string::npos;
 }
 
+namespace {
+
+/*
+ * The splits of Google Play services' library entry (its folder of splits' .apk files: Play Store installs Google's own as a
+ * base and splits of the phone's density and languages) copied whole beside the shared copy of its APK, in <apk>.splits,
+ * where the apps that host it find them (serviceSplits, megler_run_config.gms_splits_dir); those there already are kept.
+ * Without them an app had the base's resources alone, and a resource whose every value is a density's was not there: the
+ * Google logo of "Manage your Google Account", which ended Play Store (0.1.0.685). False when one could not be copied.
+ */
+bool copyServiceSplits(const ApkEntry& entry, const std::wstring& apk) {
+    const std::wstring from = !entry.splitsDir.empty() ? entry.splitsDir : Library::splitsDirFor(entry.path);
+    if (!files::exists(from)) return true;
+    int copied = 0;
+    if (!files::copyFilesWhole(from, apk + L".splits", L".apk", copied)) {
+        shellLog::write(format("microG: the splits of %s could not be copied beside its shared copy (error %lu): the apps have its base alone",
+                               narrow(entry.path).c_str(), GetLastError()));
+        return false;
+    }
+    if (copied) shellLog::write(format("microG: %d split(s) of Google Play services copied beside its shared copy", copied));
+    return true;
+}
+
+}  // namespace
+
+std::wstring serviceSplits(const std::wstring& apk) {
+    if (apk.empty()) return {};
+    const std::wstring splits = apk + L".splits";
+    return files::list(splits, L"*.apk").empty() ? std::wstring() : splits;
+}
+
 bool registerServiceApk(const ApkEntry& entry, const std::string& installedFullName, bool replace) {
     if (entry.report.package != "com.google.android.gms") return true;
     if (!entry.report.ok || installedFullName.empty() || installedFullName.find_first_not_of("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789._-") != std::string::npos || !canRead(entry.path)) return false;
@@ -1348,8 +1378,13 @@ bool registerServiceApk(const ApkEntry& entry, const std::string& installedFullN
     std::string previous;
     if (!replace && files::read(record, previous) && iniValue(previous, "package") == installedFullName) {
         const auto token = iniValue(previous, "cache");
-        if (!token.empty() && token.find_first_not_of("0123456789abcdef-") == std::string::npos &&
-            canRead(shared + L"\\services\\" + widen(token) + L"\\GmsCore.apk")) return true;
+        const auto registered = shared + L"\\services\\" + widen(token) + L"\\GmsCore.apk";
+        // (A copy registered before its splits were copied with it gets them now, beside it: the apps that start from then on
+        // have them; one running meanwhile knows nothing of them. The base stays registered whatever becomes of them.)
+        if (!token.empty() && token.find_first_not_of("0123456789abcdef-") == std::string::npos && canRead(registered)) {
+            copyServiceSplits(entry, registered);
+            return true;
+        }
     }
     // One shared service copy per installation. Fresh paths also preserve an older client's mapped APK.
     FILETIME time; GetSystemTimeAsFileTime(&time);
@@ -1372,6 +1407,8 @@ bool registerServiceApk(const ApkEntry& entry, const std::string& installedFullN
     }
     if (mended) shellLog::write(format("microG: %llu bytes of the shared copy of Google Play services differed from its APK after the copy, and were written again",
                                        (unsigned long long)mended));
+    // Its splits beside it, before the record names it (an app that starts then finds them there).
+    copyServiceSplits(entry, apk);
     if (!files::write(record + L".part", "package=" + installedFullName + "\ncache=" + token + "\n") || !files::flush(record + L".part") ||
         !files::move(record + L".part", record)) return false;
     shellLog::write(std::string(entry.report.microg ? "microG: registered microG's " : "microG: registered Google's own ") + installedFullName);
