@@ -950,6 +950,11 @@ static long g_syscall(long nr, long a, long b, long c, long d, long e, long f)
      * here, and a new one taken as setrlimit takes it.
      */
     case 122: return ((buf_fn)mg_bionic_find("uname"))((void *)(mg_addr)a);                                              /* uname */
+    /* sysinfo by number, as the libc's own: Geekbench 5's libgeekbench.so has a sysinfo of its own (push {r4, r7}; mov r7, #116;
+       svc 0; pop; movs r0, r0; bxpl lr), which returns only when the call gave 0 or more -- Linux's never fails -- and otherwise
+       runs on into the function after it (SHA-1's start, which stored to -ENOSYS + 32): "syscall(116) is not supported" and an
+       alignment fault in "libgeekbench.so sysinfo" at its start (the Elite x3, 681). */
+    case 116: return ((buf_fn)mg_bionic_find("sysinfo"))((void *)(mg_addr)a);                                            /* sysinfo */
     case 24: case 199: return ((id_fn)mg_bionic_find("getuid"))();                                                       /* getuid32 */
     case 47: case 200: return ((id_fn)mg_bionic_find("getgid"))();                                                       /* getgid32 */
     case 49: case 201: return ((id_fn)mg_bionic_find("geteuid"))();                                                      /* geteuid32 */

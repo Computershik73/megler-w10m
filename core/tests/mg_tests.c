@@ -4483,11 +4483,21 @@ static void test_guest(const char *libdir, const char *scratch)
                 int saved = *mg_errno_ptr();
                 mg_ld_get_stats(svc, &st);
                 /* The dead stub's svc: left in Thumb code, behind its branch; taken in ARM code, where every svc 0 is. */
-                CHECK_INT(st.svc_sites, j == 0 ? 6 : 7);
+                CHECK_INT(st.svc_sites, j == 0 ? 7 : 8);
                 *mg_errno_ptr() = 123;
                 CHECK_INT(FN(svc, int (*)(void), "t_svc_getpid")(), 4242);
                 CHECK_INT(FN(svc, int (*)(void), "t_svc_literal")(), 4242);
                 CHECK_INT(FN(svc, int (*)(void), "t_svc_unknown")(), -38);
+                {
+                    /* sysinfo by number, as Geekbench 5's own stub makes it: 0, and Linux's 32-bit struct sysinfo filled in
+                       (totalram the 5th word, procs the low half of the 11th, mem_unit the 14th). */
+                    u32 info[16];
+                    memset(info, 0xEE, sizeof(info));
+                    CHECK_INT(FN(svc, int (*)(void *), "t_svc_sysinfo")(info), 0);
+                    CHECK(info[4] != 0 && info[4] != 0xEEEEEEEEu);
+                    CHECK_INT((int)(info[10] & 0xFFFF), 1);
+                    CHECK_INT((int)info[13], 1);
+                }
                 /* An svc whose number was set two instructions back (Chromium's syscall()). */
                 CHECK_INT(FN(svc, int (*)(void), "t_svc_far_number")(), 4242);
                 CHECK_INT(FN(svc, int (*)(void), "t_svc_dead_stub")(), 7);
@@ -4525,7 +4535,7 @@ static void test_guest(const char *libdir, const char *scratch)
         if (svc) {
             mg_addr target;
             mg_ld_get_stats(svc, &st);
-            CHECK_INT(st.svc_sites, 6);
+            CHECK_INT(st.svc_sites, 7);
             fn = (const u8 *)((mg_addr)SYM(svc, "t_svc_getpid") & ~(mg_addr)1);
             for (k = 0; k < 16; k += 2) {
                 trapped |= mg_rd16(fn + k) == 0xDEA5;

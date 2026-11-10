@@ -60,6 +60,7 @@ static const u16 g_abi_nr[][2] = {
     {93, 95},      /* fchown */
     {96, 78},      /* gettimeofday */
     {97, 191},     /* ugetrlimit, getrlimit here */
+    {99, 116},     /* sysinfo */
     {102, 24},     /* getuid */
     {104, 47},     /* getgid */
     {107, 49},     /* geteuid */
@@ -186,6 +187,7 @@ static const u16 g_abi_nr[][2] = {
     {176, 47},     /* getgid */
     {177, 50},     /* getegid */
     {178, 224},    /* gettid */
+    {179, 116},    /* sysinfo */
     {198, 281},    /* socket */
     {199, 288},    /* socketpair */
     {200, 282},    /* bind */
@@ -246,6 +248,7 @@ static const u16 g_abi_nr[][2] = {
     {91, 91},      /* munmap */
     {94, 94},      /* fchmod */
     {95, 95},      /* fchown */
+    {116, 116},    /* sysinfo */
     {118, 118},    /* fsync */
     {122, 122},    /* uname */
     {125, 125},    /* mprotect */
