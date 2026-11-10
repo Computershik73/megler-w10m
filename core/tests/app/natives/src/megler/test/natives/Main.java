@@ -292,7 +292,35 @@ public class Main extends Activity {
             try (FileInputStream in = new FileInputStream(lib)) {
                 in.read(magic);
             }
-            return lib.getPath().equals(found) && lib.length() > 1000 && dep.length() > 1000 && magic[0] == 0x7F && magic[1] == 'E' && magic[2] == 'L' && magic[3] == 'F';
+            /*
+             * The folder holds the APK's libraries and nothing else, each of the entry's bytes, as ByteDance's librarian sums them
+             * against the APK's entries: the test put an older version's there before the start (mg_java_tests.c) -- a library this
+             * one has not, and libnatives_dep.so of the entry's size and other bytes, which Megler up to 0.1.0.685 kept.
+             */
+            java.util.TreeSet<String> want = new java.util.TreeSet<>(), have = new java.util.TreeSet<>(Arrays.asList(new File(libDir).list()));
+            boolean same = true;
+            try (java.util.zip.ZipFile apk = new java.util.zip.ZipFile(getPackageCodePath())) {
+                for (java.util.Enumeration<? extends java.util.zip.ZipEntry> en = apk.entries(); en.hasMoreElements();) {
+                    java.util.zip.ZipEntry e = en.nextElement();
+                    String name = e.getName();
+                    if (!name.startsWith("lib/armeabi-v7a/") || !name.endsWith(".so")) continue;
+                    File placed = new File(libDir, name.substring(16));
+                    want.add(placed.getName());
+                    java.util.zip.CRC32 crc = new java.util.zip.CRC32();
+                    byte[] buf = new byte[8192];
+                    int n;
+                    try (FileInputStream in = new FileInputStream(placed)) {
+                        while ((n = in.read(buf)) > 0) crc.update(buf, 0, n);
+                    }
+                    if (placed.length() != e.getSize() || crc.getValue() != e.getCrc()) {
+                        same = false;
+                        detail += " " + placed.getName() + " is not the APK's";
+                    }
+                }
+            }
+            detail += " folder=" + have + " apk=" + want;
+            return lib.getPath().equals(found) && lib.length() > 1000 && dep.length() > 1000 && magic[0] == 0x7F && magic[1] == 'E' && magic[2] == 'L' && magic[3] == 'F'
+                    && want.equals(have) && same;
         });
         step("loaded-once", () -> {
             System.loadLibrary("natives");

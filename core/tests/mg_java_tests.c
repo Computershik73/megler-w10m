@@ -2706,6 +2706,39 @@ static void natives_stack(const int tap_at[2])
     }
 }
 
+/*
+ * An older version's libraries in the app's library folder before its start, as an update leaves the folder on a phone that
+ * Megler up to 0.1.0.685 placed it on (ld/mg_ld_place.c): a library this version has not, under the name the step own-file
+ * unpacks one of its own as and loads by its path (TikTok Lite 47.7.4's libnpth.so, which the older version's in the folder
+ * took the place of), and libnatives_dep.so of the APK entry's size and other bytes, which the old rule kept. The step
+ * library-folder sums the folder against the APK's entries.
+ */
+static void natives_older_libraries(const char *apk)
+{
+    char *dir = mg_sprintf("%s/apps/megler.test.natives/data/lib", megler_data_dir()), *path = mg_sprintf("%s/libunpacked.so", dir), err[160];
+    mg_zip z;
+    mg_path_mkdirs(dir);
+    CHECK(mg_file_write_all(path, "an older version's library, which this one has not", 51));
+    free(path);
+    if (mg_zip_open(&z, apk, err, sizeof(err))) {
+        const mg_zip_entry *e = mg_zip_find(&z, "lib/armeabi-v7a/libnatives_dep.so");
+        CHECK(e != NULL);
+        if (e) {
+            u8 *other = (u8 *)mg_alloc((size_t)e->usize);
+            memset(other, 0x5A, (size_t)e->usize);
+            path = mg_sprintf("%s/libnatives_dep.so", dir);
+            CHECK(mg_file_write_all(path, other, (size_t)e->usize));
+            free(path);
+            free(other);
+        }
+        mg_zip_close(&z);
+    } else {
+        say("  FAIL: %s does not open: %s", apk, err);
+        CHECK(false);
+    }
+    free(dir);
+}
+
 static int run_natives(void)
 {
     static const char *const steps[] = { "load", "registered", "primitives", "stack-mix", "overloads", "arrays", "bounds", "strings", "callback", "throw-native",
@@ -2716,6 +2749,10 @@ static int run_natives(void)
     char want[120];
     memset(pic, 0, sizeof(pic));
     expect_line("I/NativesTest: onCreate", &at, 120);
+    /* The older version's libraries the test left in the folder (natives_older_libraries): the one this version has not, removed;
+       libnatives_dep.so, of the entry's size, summed against the APK's and written again. */
+    CHECK(find_line(" of an older version's, which this one has not, removed: libunpacked.so", 0) >= 0);
+    CHECK(find_line(" summed against the APK's", 0) >= 0);
     /* Its activity names its library with android.app.lib_name, as Qt's does, and the library has no NativeActivity entry:
        the Java driver runs it, not the NativeActivity one. Found so when the APK is read, or -- in the run with the flag
        native-entry-at-start, where the library is not looked into then -- by the start, which loads it and asks it. */
@@ -4313,6 +4350,7 @@ int mg_tests_java_run(const char *which, const char *apk, const char *android_ro
         free(flags);
         free(flag);
         free(at_start);
+        natives_older_libraries(apk);
     }
     /* The data app's second run is on another battery than the one the core has when nobody has said: what the app then reads is what was set here. */
     if (!strcmp(which, "data") && g_script_count && !strcmp(g_script[0], "run:2")) mg_battery_set(&k_battery_run2);

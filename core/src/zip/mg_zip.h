@@ -80,6 +80,11 @@ bool mg_zip_stream(const mg_zip *z, const mg_zip_entry *e, bool (*piece)(void *u
  */
 bool mg_zip_extract(const mg_zip *z, const mg_zip_entry *e, const char *path, void (*progress)(void *user, u64 written), void *user,
                     char *err, size_t errlen);
+/*
+ * The CRC-32 of a file of the host's, reckoned as a ZIP entry's is, and its size: what tells a file written from an entry from
+ * one of other bytes (core/src/ld/mg_ld_place.c). Read a megabyte at a time. False when it cannot be read.
+ */
+bool mg_zip_file_crc(const char *path, u32 *crc, u64 *size);
 
 #ifdef __cplusplus
 }

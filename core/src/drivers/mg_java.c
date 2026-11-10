@@ -2097,47 +2097,46 @@ static void mount_apk(void)
  * (BaseDexClassLoader.findLibrary, which System.loadLibrary asks, opens the
  * file to see that it is there), and so do apps: loaders that read a
  * library's ELF header to load what it needs first (Facebook's SoLoader, in
- * every React Native app), and code that lists the folder. A file is written
- * when it is not there or not of the size the APK's is, so the second start
- * of an app writes nothing. The library that runs is still the APK's, taken
- * from there by the linker (dvm/mg_dvm_jvm.c).
+ * every React Native app), loaders that sum the files against the APK's
+ * entries (ByteDance's librarian), and code that lists the folder. The folder
+ * holds this version's libraries and nothing else, as Android's installer
+ * leaves it at each update (ld/mg_ld_place.c): a file is written when it is
+ * not the APK's entry, as an index in Megler's data folder (lib-index/<the
+ * package>) and the APK's central directory say without reading a library, so
+ * the second start of an app writes nothing; what an older version had and
+ * this one has not is removed. The library that runs is still the APK's,
+ * taken from there by the linker (dvm/mg_dvm_jvm.c).
  */
-static void place_one(const char *name, u64 size, void *user)
-{
-    const char *dir = (const char *)user, *abi = mg_ld_abi();
-    char *path = mg_sprintf("%s/%s", dir, name), entry[400];
-    mg_stat st;
-    int i;
-    if (!(mg_path_stat(path, &st, NULL) && !st.is_dir && st.size == size)) {
-        snprintf(entry, sizeof(entry), "lib/%s/%s", abi ? abi : "", name);
-        for (i = 0; mg_ld_apk_at(i); i++) {
-            const mg_zip *z = mg_ld_apk_at(i);
-            const mg_zip_entry *e = mg_zip_find(z, entry);
-            size_t n = 0;
-            u8 *bytes = e ? mg_zip_read(z, e, 0x40000000u, &n) : NULL;
-            if (!e) continue;
-            if (!bytes || !mg_file_write_all(path, bytes, n)) {
-                /* No room, or it cannot be read: an empty file still says "it is there" to the class loader. */
-                mg_warn("java: %s could not be written to the app's library folder (%s)", name, bytes ? "the file could not be written" : "the APK's entry could not be read");
-                mg_file_write_all(path, "", 0);
-            }
-            free(bytes);
-            break;
-        }
-    }
-    free(path);
-}
-
 static void place_libraries(void)
 {
-    const char *data = mg_fs_internal_dir();
+    const char *data = mg_fs_internal_dir(), *abi = mg_ld_abi(), *megler_dir = megler_data_dir();
     char *guest = mg_sprintf("%s/lib", data ? data : ""), *host = data && data[0] ? mg_fs_host_path(guest) : NULL;
-    int n;
+    char *index = megler_dir && megler_dir[0] ? mg_sprintf("%s/lib-index/%s", megler_dir, J.package) : NULL;
+    const mg_zip *apks[MG_LD_MAX_APKS];
+    mg_ld_placed placed;
+    int n = 0;
     if (host && mg_path_mkdirs(host)) {
         mg_ld_add_search_dir(host);
-        n = mg_ld_apk_libs(place_one, host);
-        if (n) mg_info("java: the app's %d native librar%s (%s) %s in %s", n, n == 1 ? "y" : "ies", mg_ld_abi(), n == 1 ? "is" : "are", guest);
+        while (n < MG_LD_MAX_APKS && (apks[n] = mg_ld_apk_at(n)) != NULL) n++;
+        mg_ld_place_libs(apks, n, abi, host, index, &placed);
+        n = placed.libs;
+        if (n) {
+            char what[400];
+            int w = 0;
+            what[0] = 0;
+            if (placed.written) w += snprintf(what + w, sizeof(what) - (size_t)w, "%s%d written", w ? ", " : "", placed.written);
+            if (placed.summed) w += snprintf(what + w, sizeof(what) - (size_t)w, "%s%d summed against the APK's", w ? ", " : "", placed.summed);
+            if (placed.failed) w += snprintf(what + w, sizeof(what) - (size_t)w, "%s%d could not be written", w ? ", " : "", placed.failed);
+            if (placed.removed)
+                snprintf(what + w, sizeof(what) - (size_t)w, "%s%d of an older version's, which this one has not, removed: %s", w ? "; " : "", placed.removed,
+                         placed.removed_names);
+            mg_info("java: the app's %d native librar%s (%s) %s in %s%s%s%s", n, n == 1 ? "y" : "ies", abi, n == 1 ? "is" : "are", guest, what[0] ? " (" : "",
+                    what, what[0] ? ")" : "");
+        } else if (placed.removed) {
+            mg_info("java: the app has no native libraries now: %d of an older version's removed from %s: %s", placed.removed, guest, placed.removed_names);
+        }
     }
+    free(index);
     free(host);
     free(guest);
 }
