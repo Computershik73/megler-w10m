@@ -1655,6 +1655,42 @@ public class Main extends Activity {
                 .invoke(alarms, android.app.AlarmManager.ELAPSED_REALTIME, now + 400, 0L, 300L, repeating[0], on, new android.os.WorkSource());
             return true;
         });
+        // The cells around asked for as Android 10 asks (Google Play services' network location, at each of its scans): the
+        // callback told through the Executor given, with no cells -- Windows gives an app none -- where it was never told; and
+        // Android 12's best-matching network callback (the network location's NetworkConnectionMonitor) told the network is
+        // there, where it was never told either.
+        step("cell-info-update", () -> {
+            android.telephony.TelephonyManager phone = (android.telephony.TelephonyManager) getSystemService(TELEPHONY_SERVICE);
+            final java.util.concurrent.CountDownLatch told = new java.util.concurrent.CountDownLatch(2);
+            final Object[] cells = new Object[1];
+            final java.util.concurrent.ExecutorService executor = java.util.concurrent.Executors.newSingleThreadExecutor();
+            phone.requestCellInfoUpdate(executor, new android.telephony.TelephonyManager.CellInfoCallback() {
+                @Override public void onCellInfo(java.util.List<android.telephony.CellInfo> list) {
+                    cells[0] = list;
+                    told.countDown();
+                }
+            });
+            android.net.ConnectivityManager connectivity = (android.net.ConnectivityManager) getSystemService(CONNECTIVITY_SERVICE);
+            final boolean[] available = new boolean[1];
+            android.net.ConnectivityManager.NetworkCallback callback = new android.net.ConnectivityManager.NetworkCallback() {
+                @Override public void onAvailable(android.net.Network n) {
+                    available[0] = true;
+                    told.countDown();
+                }
+            };
+            android.os.HandlerThread thread = new android.os.HandlerThread("best-matching");
+            thread.start();
+            android.net.ConnectivityManager.class.getMethod("registerBestMatchingNetworkCallback", android.net.NetworkRequest.class,
+                android.net.ConnectivityManager.NetworkCallback.class, android.os.Handler.class)
+                .invoke(connectivity, new android.net.NetworkRequest.Builder().addCapability(android.net.NetworkCapabilities.NET_CAPABILITY_INTERNET).build(), callback,
+                        new android.os.Handler(thread.getLooper()));
+            boolean all = told.await(10, java.util.concurrent.TimeUnit.SECONDS);
+            connectivity.unregisterNetworkCallback(callback);
+            thread.quitSafely();
+            executor.shutdown();
+            detail = "told=" + all + " cells=" + cells[0] + " available=" + available[0];
+            return all && cells[0] instanceof java.util.List && ((java.util.List<?>) cells[0]).isEmpty() && available[0];
+        });
         // A Messenger reaches a binder of another's that passes transactions on to a Messenger's, as Google Play services' task
         // services hand theirs to its scheduler, and the message received says the sender's uid (Forward says so).
         step("messenger-forwarded", () -> {
