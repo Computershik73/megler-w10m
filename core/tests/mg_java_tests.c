@@ -56,6 +56,10 @@
  * come at the new size with the views laid out for it. And what the app asks of the screen's way up -- its manifest's
  * android:screenOrientation, setRequestedOrientation -- reaches a stand-in for the shell (megler_display_host).
  *
+ * `scroll` is a screen made as WhatsApp's first one is: a ScrollView over a column taller than it, whose cards -- clipped to
+ * their outlines, one given a new background once the screen is laid out -- lie below its edge until the app scrolls to them;
+ * their pixels are looked at then. Run again with the flag no-node-damage (the script's "no-node-damage").
+ *
  * `first` is hello started as the player starts an app on a PC's window or on an Xbox's television (`pc`, `xbox`): the
  * player's busy overlay must go at the app's first picture, whichever way it came and at whatever size, the surface changed
  * and the bars' insets told as the app starts (an Xbox's), and the pictures after the change come at the new size.
@@ -1950,6 +1954,58 @@ static int run_hello(void)
         if (g_exited) say("  Back that the app ends with: the app ended with status %d%s%s", g_status, g_reason[0] ? ": " : "", g_reason);
     }
     say_app_lines("/HelloTest: ");
+    return g_failed;
+}
+
+/* ----------------------------------------------------------------- scroll */
+
+/*
+ * `scroll` (core/tests/app/scroll): a screen made as WhatsApp's first one is, scrolled to the two cards that lay just below
+ * its ScrollView's bottom edge. Each card is clipped to its outline and has a button in it; card B is given a plain colour
+ * once the screen is laid out, before its first frame, as WhatsApp gives its own (a ColorDrawable, whose bounds are empty
+ * until the card is drawn). Both must be drawn, their buttons with them: on a Lumia 650 WhatsApp's card, its "Accept and
+ * continue" button in it, never was (0.1.0.685), scrolled to or not. Run a second time with the flag no-node-damage (the
+ * script's "no-node-damage"): the frames drawn by the views' rectangles alone. And above the cards two ImageViews whose
+ * picture draws into their padding: drawn there by the one that does not crop to its padding (LottieAnimationView does not),
+ * not by the one that does.
+ */
+static int run_scroll(void)
+{
+    const bool no_damage = g_script_count && !strcmp(g_script[0], "no-node-damage");
+    int at = -1, line, plain[4], cropped[4], a[4], b[4];
+    memset(plain, 0, sizeof(plain));
+    memset(cropped, 0, sizeof(cropped));
+    memset(a, 0, sizeof(a));
+    memset(b, 0, sizeof(b));
+    if (no_damage) CHECK(wait_line("flag: no-node-damage is on", 0, 60) >= 0);
+    /* Laid out: the column 80 px taller than its ScrollView, and card B's new background, not drawn yet, of no size. */
+    expect_line("I/ScrollTest: laid out over=80 cardB=ColorDrawable bounds=[0,0][0,0]", &at, 120);
+    line = wait_line("I/ScrollTest: shown ", 0, 60);
+    CHECK(line >= 0 && rect_in(line_at(line), "plain", plain) && rect_in(line_at(line), "cropped", cropped));
+    settle();
+    write_picture(no_damage ? "scroll-nodamage-1-shown" : "scroll-1-shown");
+    /* The picture in the padding of the ImageView that does not crop to it, not in that of the one that does; in both middles. */
+    CHECK(pixel(plain[0] + 5, plain[1] + 5) == 0xE0A000 && pixel(plain[0] + plain[2] / 2, plain[1] + plain[3] / 2) == 0xE0A000);
+    CHECK(pixel(cropped[0] + 5, cropped[1] + 5) == 0x2060C0 && pixel(cropped[0] + cropped[2] / 2, cropped[1] + cropped[3] / 2) == 0xE0A000);
+    /* F12: the app scrolls to the bottom, and the cards come into view. */
+    megler_key(142, true);
+    megler_key(142, false);
+    line = wait_line("I/ScrollTest: scrolled y=80 range=80 ", 0, 60);
+    CHECK(line >= 0 && rect_in(line_at(line), "a", a) && rect_in(line_at(line), "b", b));
+    settle();
+    write_picture(no_damage ? "scroll-nodamage-2-bottom" : "scroll-2-bottom");
+    say("  scrolled to the bottom: card A at %d,%d %dx%d shows %06x beside its button and %06x in it; card B at %d,%d %dx%d %06x and %06x",
+        a[0], a[1], a[2], a[3], (unsigned)pixel(a[0] + 6, a[1] + a[3] / 2), (unsigned)pixel(a[0] + a[2] / 2, a[1] + a[3] / 2),
+        b[0], b[1], b[2], b[3], (unsigned)pixel(b[0] + 6, b[1] + b[3] / 2), (unsigned)pixel(b[0] + b[2] / 2, b[1] + b[3] / 2));
+    /* Each card: its own colour beside its button (12 px of it to the button's left), and the button green in the middle. */
+    CHECK(a[2] > 0 && pixel(a[0] + 6, a[1] + a[3] / 2) == 0x604080 && pixel(a[0] + a[2] / 2, a[1] + a[3] / 2) == 0x21C063);
+    CHECK(b[2] > 0 && pixel(b[0] + 6, b[1] + b[3] / 2) == 0x406080 && pixel(b[0] + b[2] / 2, b[1] + b[3] / 2) == 0x21C063);
+    /* And the red square in each card's top left corner, cut by the outline: card A's, 2 px inside the card, leaves the corner's
+       first two rows and columns to the screen's colour beneath; card B's plain colour's, the card's bounds, cuts nothing. */
+    CHECK(pixel(a[0], a[1]) == 0x0A1014 && pixel(a[0] + 1, a[1] + 1) == 0x0A1014 && pixel(a[0] + 2, a[1] + 2) == 0xC02020);
+    CHECK(pixel(b[0], b[1]) == 0xC02020 && pixel(b[0] + 10, b[1] + 10) == 0xC02020);
+    back_and_end("I/ScrollTest: destroyed", &at);
+    say_app_lines("/ScrollTest: ");
     return g_failed;
 }
 
@@ -4445,6 +4501,16 @@ int mg_tests_java_run(const char *which, const char *apk, const char *android_ro
         free(flag);
         free(at_start);
     }
+    /* scroll's second run: with the flag no-node-damage, its frames drawn by the views' rectangles alone (run_scroll). */
+    if (!strcmp(which, "scroll") && g_script_count && !strcmp(g_script[0], "no-node-damage")) {
+        char *flags = mg_sprintf("%s/flags", megler_data_dir()), *flag = mg_sprintf("%s/flags/no-node-damage", megler_data_dir());
+        FILE *f;
+        mg_path_mkdirs(flags);
+        f = fopen(flag, "w");
+        if (f) fclose(f);
+        free(flags);
+        free(flag);
+    }
     /* The data app's second run is on another battery than the one the core has when nobody has said: what the app then reads is what was set here. */
     if (!strcmp(which, "data") && g_script_count && !strcmp(g_script[0], "run:2")) mg_battery_set(&k_battery_run2);
     /* And with its cache to be cleared as it starts, as Megler's app page asks for it (megler_ask_clear_cache): its step cache-cleared
@@ -4524,6 +4590,7 @@ int mg_tests_java_run(const char *which, const char *apk, const char *android_ro
         else if (!strcmp(which, "camera")) run_camera();
         else if (!strcmp(which, "splits")) run_splits();
         else if (!strcmp(which, "screen")) run_screen();
+        else if (!strcmp(which, "scroll")) run_scroll();
         else if (!strcmp(which, "bluetooth")) run_bluetooth();
         else if (!strcmp(which, "wifi")) run_wifi();
         else if (g_any_app) run_app();

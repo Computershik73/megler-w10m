@@ -6476,6 +6476,32 @@ on a looper thread of its own and takes it back with `next()`.
   GC'd" (0.1.0.683); Litho's `LithoView` takes its visibility hint from it.
   The data app's step "visibility-aggregated" hides a picture and a
   background with their parent made `GONE` and taken out of the window.
+  And a view clipped to its outline (`setClipToOutline`, as androidx's
+  `CardView` clips itself to its rounded background) and drawn through a
+  list of its own is clipped by that list's node, as Android's `RenderNode`
+  clips it (`setOutline`, `setClipToOutline`; `RenderNode.meglerViewOutline`
+  in the overlay tells the core only of an outline that changed). The
+  outline is worked out as the view's list is recorded, when its
+  background's bounds are its size (`drawBackground`), as Android rebuilds it
+  after `setBackgroundBounds`, and again whenever the list is recorded again:
+  a new size, a new background, the background invalidating itself,
+  `invalidateOutline`, `setOutlineProvider`, `setClipToOutline`. It was a clip
+  in the parent's list, worked out by `drawFromParent` before the view's own
+  list was recorded and kept as long as the parent's list was. WhatsApp's
+  first screen (2.26, `com.whatsapp.registration.app.EULA`) gives the card
+  that holds its "Accept and continue" button a plain colour from its
+  `ScrollView`'s global layout listener, after the layout and before the
+  first frame (`CardView.setCardElevation(8)`, `View.setBackgroundColor`):
+  the new `ColorDrawable` had no bounds when the parent recorded the card, the
+  outline was a rectangle of nothing, and the card and its button were never
+  drawn, scrolled to or not (0.1.0.685, a Lumia 650, whose frame walk never
+  reached the button's node). A view with no list of its own,
+  or blurred (Android clips the blurred picture to the outline, not what is
+  blurred), is clipped by its parent as before, its background's bounds made
+  its size first. The test app `scroll` makes that screen, a `ScrollView`
+  over a column taller than it with two such cards just below its bottom
+  edge, one given its plain colour so: both are drawn once the app scrolls to
+  them, with the frame walk and with the flag `no-node-damage`.
 - `megler/KeyStoreProvider.java`, one method, and Megler's circumstance
   rather than a fault of the framework's own: `PairGen.generateKeyPair` takes another
   provider's key pair generator from its service, because

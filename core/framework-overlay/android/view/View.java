@@ -33,6 +33,10 @@
 //    bars while Instagram, laid out under them, kept off them too: an empty band at the top and at the bottom of its feed.
 //  - setRevealClip is kept, and drawFromParent clips the view to its circle, as Android's RenderNode does for a circular
 //    reveal (ViewAnimationUtils, overlaid). The original did nothing with it.
+//  - A view clipped to its outline and drawn through a list of its own is clipped by its own node, as Android's RenderNode
+//    clips it, the outline worked out as the view's list is recorded (meglerNodeOutline); drawFromParent clipped the parent's
+//    list to it, worked out before the view was drawn: a background set after the layout had no bounds yet, and WhatsApp's
+//    card with its "Accept and continue" button in it was never drawn.
 //
 // Why. The original's invalidate asked the window to be drawn again whole, and the window cleared the screen and drew every
 // view, so a blinking cursor cost a whole screen. ViewRoot (overlaid) now keeps each window's dirty rectangle and draws only
@@ -1386,7 +1390,11 @@ public class View implements Drawable.Callback, KeyEvent.Callback {
         if (megler.ViewRoot.meglerDrawingPart() && parent.getClipChildren() && c.quickReject(0, 0, w, h)) { c.restoreToCount(save); return; }
         if (mClipBounds != null) c.clipRect(mClipBounds);
         if (mRevealClip != null) { Path p = new Path(); p.addCircle(mRevealClip[0], mRevealClip[1], mRevealClip[2], Path.Direction.CW); c.clipPath(p); }
-        if (getClipToOutline() && mOutlineProvider != null) {
+        // Megler: a view drawn through a list of its own is clipped to its outline by its node (meglerNodeOutline). One with no
+        // list, or blurred, is clipped here, its background's bounds made its size first, as its draw makes them.
+        boolean listed = w > 0 && h > 0 && meglerListable() && meglerListsOn();
+        if (getClipToOutline() && mOutlineProvider != null && (!listed || meglerBlurred())) {
+            if (mBackground != null) mBackground.setBounds(0, 0, w, h);
             Outline o = new Outline();
             mOutlineProvider.getOutline(this, o);
             if (o.mRect != null) {
@@ -1398,7 +1406,7 @@ public class View implements Drawable.Callback, KeyEvent.Callback {
         /* a view with a layer (software or hardware) draws into one of its own, as Android's: its blending (a DST_IN mask, a CLEAR)
            then stays inside it instead of reaching what is under it in the window */
         /* a view with a blur RenderEffect draws into a layer that is put onto what is under it blurred (the shell's save_layer_blur) */
-        if (mRenderEffect != null && mRenderEffect.meglerBlurs()) {
+        if (meglerBlurred()) {
             int a = Math.round(alpha * 255);
             if (mLayerPaint != null) a = a * mLayerPaint.getAlpha() / 255;
             c.meglerSaveLayerBlur(0, 0, w, h, a, mRenderEffect.meglerBlurX(), mRenderEffect.meglerBlurY(), mRenderEffect.meglerClamp());
@@ -1407,7 +1415,7 @@ public class View implements Drawable.Callback, KeyEvent.Callback {
             if (mLayerPaint != null) a = a * mLayerPaint.getAlpha() / 255;
             c.saveLayerAlpha(0, 0, w, h, a);
         }
-        if (w > 0 && h > 0 && meglerListable() && meglerListsOn()) {
+        if (listed) {
             meglerDrawList(c, w, h);
             c.restoreToCount(save);
             return;
@@ -1512,8 +1520,43 @@ public class View implements Drawable.Callback, KeyEvent.Callback {
             rc.restoreToCount(save);
             n.endRecording();
         }
+        meglerNodeOutline(n);
     }
     private static int sMeglerThrew;
+
+    /*
+     * Megler: a view clipped to its outline (setClipToOutline: androidx's CardView clips itself to its rounded background so)
+     * is clipped by its own node, as Android's RenderNode clips it (setOutline, setClipToOutline): the outline worked out here,
+     * as the view's list has been recorded -- its background's bounds are its size now (drawBackground), as Android rebuilds
+     * the outline after setBackgroundBounds -- and again each time the list is recorded again, which whatever makes Android
+     * rebuild it brings about: a new size, a new background, the background invalidating itself, invalidateOutline,
+     * setOutlineProvider, setClipToOutline. The parent's list draws the node by reference and holds no outline of its own.
+     *
+     * It was a clip that drawFromParent put in the parent's list, worked out before the view's own list was recorded, and
+     * kept for as long as the parent's list was kept. WhatsApp's first screen (com.whatsapp.registration.app.EULA) gives the
+     * card that holds its "Accept and continue" button a plain colour once the screen is laid out, before its first frame,
+     * from its ScrollView's global layout listener (CardView.setCardElevation(8), View.setBackgroundColor): a ColorDrawable
+     * whose bounds were empty when the parent recorded the card. Its outline was a rectangle of nothing, and neither the card
+     * nor its button was ever drawn, scrolled to or not (0.1.0.685, a Lumia 650).
+     *
+     * A blurred view is clipped by its parent still (drawFromParent): Android clips the blurred picture to the outline, not
+     * what is blurred. The Outline is one for all (the main thread's), as Android's AttachInfo has one.
+     */
+    private static final Outline sMeglerOutline = new Outline();
+    private void meglerNodeOutline(android.graphics.RenderNode n) {
+        if (!getClipToOutline() || mOutlineProvider == null || meglerBlurred()) {
+            n.meglerViewOutline(null);
+            return;
+        }
+        Outline o = sMeglerOutline;
+        o.setEmpty();
+        o.setAlpha(1f);
+        mOutlineProvider.getOutline(this, o);
+        n.meglerViewOutline(o);
+    }
+
+    /** Whether the view is drawn blurred, through a layer of the shell's (drawFromParent): its RenderEffect's blur. */
+    private boolean meglerBlurred() { return mRenderEffect != null && mRenderEffect.meglerBlurs(); }
 
     /** Megler: before a frame, every invalid list of this view's subtree under a valid one recorded again where it stands. */
     public void meglerUpdateLists() {

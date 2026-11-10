@@ -141,7 +141,9 @@
 # second time with every camera refused. And `screen`, whose surface is resized
 # and turned from the host's side (megler_set_surface), as a PC's window or a
 # phone turned does it: its activities made again or told, the pictures at the
-# new size. And `gms-host`, which hosts a stand-in for Google's own Play
+# new size. And `scroll`, a screen made as WhatsApp's first one is, scrolled to
+# the cards below its ScrollView's edge, twice: the second time with the flag
+# no-node-damage. And `gms-host`, which hosts a stand-in for Google's own Play
 # services (`gms-own`, a bundle of a base and splits, as Play Store installs
 # Google's own) and starts a service of theirs: their code is told it runs in
 # its application's process; twice, the user allowing and then refusing their
@@ -335,6 +337,14 @@ EOF
       if [ -f "$ROOT/build/guest/java/natives.apk" ]; then
         echo "the Java test app natives again, the window composed by the core (the shell takes no frames)"
         MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL="*" wsl.exe -- bash -c "rm -rf $WB/java-data-natives && qemu-arm -L /usr/arm-linux-gnueabihf $WB/mg_tests --java natives $WB/natives.apk $WB/java-data-natives $WB/android-root '$WROOT/build/java-pictures-readback' 0 480x800@160 readback 2>&1" || STATUS=1
+      fi
+      # The scrolled screen made as WhatsApp's first one is, twice: the frames drawn by what the nodes changed, and by the
+      # views' rectangles alone (the flag no-node-damage, which the test puts in its data folder).
+      if [ -f "$ROOT/build/guest/java/scroll.apk" ]; then
+        for how in node-damage no-node-damage; do
+          echo "the Java test app scroll (build/guest/java/scroll.apk), through megler_run: $how"
+          MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL="*" wsl.exe -- bash -c "cp -u '$WROOT/build/guest/java/scroll.apk' $WB/scroll.apk && rm -rf $WB/java-data-scroll && qemu-arm -L /usr/arm-linux-gnueabihf $WB/mg_tests --java scroll $WB/scroll.apk $WB/java-data-scroll $WB/android-root '$WROOT/build/java-pictures' 0 480x800@160 $how 2>&1" || STATUS=1
+        done
       fi
       # And an upright surface, as a phone held upright gives an app that does not ask for landscape: the same app, the same checks.
       echo "the Java test app hello again, on an upright surface (720 x 1280 at 320 dpi)"

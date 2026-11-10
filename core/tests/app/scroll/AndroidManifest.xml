@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The test app of a screen scrolled to what lay below it (tools/build-test-app.sh), made as WhatsApp's first screen
+     (com.whatsapp.registration.app.EULA) is: a ScrollView over a column taller than it, the cards at the column's bottom just
+     below the ScrollView's own bottom edge, each clipped to its outline, raised, with a button in it; one of them given a plain
+     colour for its background once the screen is laid out, before its first frame, as WhatsApp gives its card. The test has the
+     app scroll to the bottom (F12) and looks at the cards' pixels; it runs once more with the flag no-node-damage. No native
+     library. -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="megler.test.scroll" android:versionCode="1" android:versionName="1.0">
+    <uses-sdk android:minSdkVersion="21" android:targetSdkVersion="28" />
+    <application android:label="@string/app_name" android:theme="@android:style/Theme.DeviceDefault.Light.NoActionBar">
+        <activity android:name=".Main" android:label="@string/app_name">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+    </application>
+</manifest>
