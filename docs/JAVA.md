@@ -5468,6 +5468,19 @@ on a looper thread of its own and takes it back with `next()`.
   trace), and the app had no fix while Megler's own `LocationManager` had one:
   Transit, and the Google Maps "my location" layer (0.1.0.671). The data app's
   step "work-source" writes one so and reads it back.
+- `android/app/PendingIntent.java`: its sends with an `OnFinished`, a
+  required permission or options -- `send`'s six- and seven-argument forms,
+  `send(Bundle)` and `sendAndReturnResult` -- were generated signatures that
+  sent nothing. They send as the others do (a broadcast to the receivers that
+  hold the permission) and then tell the `OnFinished`, on its `Handler`'s
+  thread, or without one on a thread of its own once the send has returned
+  (Android's binder thread), with the intent sent and Android's 0. Google Play
+  services sends its `PendingIntent`s so (`bpep.d`): its network location's
+  fixes to its fused provider were lost on the way, and with them every fix
+  of Google's Wi-Fi positioning ("Wi-Fi, and Google's network location"
+  below). The data app's step "pending-intent-options" sends one with an
+  `OnFinished` on a `Handler` of its own and options, and one with a
+  permission no receiver holds: each is told, the first heard.
 - `android/location/LocationRequest.java`, Android 14's in place of the
   generated stub: its `Builder(intervalMillis)` forgot the interval, its
   factories made a request of nothing, `getMaxUpdates` said 0 where Android
