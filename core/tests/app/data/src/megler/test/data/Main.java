@@ -784,6 +784,34 @@ public class Main extends Activity {
                         && in.getClass().getSimpleName().equals("InflatedAssetStream");
             }
         });
+        // A file's available(): what is left of it after the position, as Android's FileInputStream answers it (FIONREAD on a
+        // regular file); Geekbench 5 reads a result of 47 KB, named with colons, into an array of available()'s size.
+        step("file-available", () -> {
+            java.io.File f = new java.io.File(getFilesDir(), "Result 00:18:09.gb5");
+            byte[] data = new byte[47584];
+            for (int i = 0; i < data.length; i++) data[i] = (byte) (i * 13 + 7);
+            try (java.io.FileOutputStream out = new java.io.FileOutputStream(f)) { out.write(data); }
+            int first, after, read = 0;
+            byte[] got;
+            try (java.io.FileInputStream in = new java.io.FileInputStream(f)) {
+                first = in.available();
+                got = new byte[first];
+                for (int r; read < got.length && (r = in.read(got, read, Math.min(1000, got.length - read))) > 0; ) {
+                    read += r;
+                    if (read == 1000) after = in.available();
+                }
+                after = in.available();
+            }
+            int middle;
+            try (java.io.FileInputStream in = new java.io.FileInputStream(f)) {
+                in.skip(40000);
+                middle = in.available();
+            }
+            boolean same = java.util.Arrays.equals(data, got);
+            f.delete();
+            detail = "available=" + first + " middle=" + middle + " after=" + after + " read=" + read + " same=" + same;
+            return first == data.length && middle == data.length - 40000 && after == 0 && same;
+        });
         // A path's segments through Path.getPathIterator, as Compose walks them on Android 14 (the Play Store's app pages): a
         // line, quad or cubic with its start point first, a rectangle in lines, a close without points, and then done. By
         // reflection, since the app is built against Android 10's android.jar.

@@ -3210,6 +3210,17 @@ static int g_ioctl(int fd, unsigned request, void *arg)
         else if (o->type == OBJ_MEM) n = (int)(o->mem_size > o->pos ? o->mem_size - o->pos : 0);
         mg_lock_release(&g_io_lock);
         if (o->type == OBJ_EXT && o->ops->readable) n = o->ops->readable(o->ext);
+        if (o->type == OBJ_FILE) {
+            /* A file's: what is left of it after the position, as Linux answers it for a regular file (do_vfs_ioctl). Android's
+               FileInputStream.available() is this ioctl (IoBridge.available), and Geekbench 5 reads a result into an array of
+               available()'s size: it read 0 bytes of its 47 KB result, and showed an empty result page and an empty history
+               (the HP Elite x3, 689). */
+            mg_stat st;
+            int err = 0;
+            i64 at = mg_file_seek(o->file, 0, 1, &err);
+            if (at >= 0 && mg_file_stat(o->file, &st) && st.size > (u64)at)
+                n = st.size - (u64)at > 0x7FFFFFFFu ? 0x7FFFFFFF : (int)(st.size - (u64)at);
+        }
         *(int *)arg = n;
         r = 0;
     } else if (request == 0x5421) {                /* FIONBIO */
