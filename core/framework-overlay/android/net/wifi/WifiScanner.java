@@ -1,10 +1,15 @@
 // Megler: Android's WifiScanner (a system API: the scanner Google Play services' location asks for), which the framework did
-// not have: the class and the types its users name, and no scanner. The phone gives an app no Wi-Fi scans, so
-// getSystemService("wifiscanner") answers null, as on a device without one; what a scan would be asked of is a no-op.
+// not have: the class and the types its users name, and no scanner. getSystemService("wifiscanner") answers null, as on a
+// device without one; what a scan would be asked of is a no-op. The phone's scans are WifiManager's (megler.Wifi).
 //
 // Why. Google Play services 26's location service names WifiScanner.ScanListener in a class it makes as it starts; without
 // the class its onCreate ended in NoClassDefFoundError, and its clients asked for it again at once: 2500 times in 43
 // seconds while Play Store started.
+//
+// And why no scanner. Without one, Google Play services' network location scans through WifiManager -- startScan (gezt.a),
+// SCAN_RESULTS_AVAILABLE_ACTION, which its CallbackRunner (gexg) listens for only when getSystemService("wifiscanner") is
+// null, and getScanResults (gexb) -- as it does where it may not have the scanner (gdpl.a: LOCATION_HARDWARE and a scanner);
+// one scan of Windows' answers both ways alike, and this way is Android's for every app.
 package android.net.wifi;
 
 import android.os.Parcel;

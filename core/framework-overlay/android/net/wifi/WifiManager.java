@@ -12,6 +12,15 @@
 // address; getDhcpInfo() has that address and its netmask; calculateSignalLevel is Android's formula. The address is the
 // first IPv4 address of an interface that is up and not the loopback (java.net.NetworkInterface, the layer's own list),
 // 0 when there is none. Everything else is the stub's, unchanged (its WifiLock and MulticastLock count as Android's do).
+//
+// And the phone's Wi-Fi itself (megler.Wifi, over the shell's Windows.Devices.WiFi): startScan asks for a scan and returns at
+// once, SCAN_RESULTS_AVAILABLE_ACTION says when it is done (EXTRA_RESULTS_UPDATED), getScanResults gives its networks as
+// ScanResults, registerScanResultsCallback is called after each scan, and getConnectionInfo's network has its name, BSSID,
+// signal and channel -- each where the app may have the location, as Android's rules have it, else false, none and the
+// connection as before. Google Play services in the app finds the phone's location from these (its network location: Wi-Fi
+// networks sent to Google). isScanAlwaysAvailable stays false: Windows scans only with the Wi-Fi on, and has no scanning of
+// its own while it is off. isScanThrottleEnabled is false: no app's scans are throttled as Android's are, only none begins
+// sooner than three seconds after the last (megler.Wifi.MIN_GAP_MS).
 package android.net.wifi;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
@@ -397,7 +406,7 @@ public class WifiManager {
     public java.util.List getCallerConfiguredNetworks() { return (meglerProps.get("CallerConfiguredNetworks") != null ? (java.util.List) meglerProps.get("CallerConfiguredNetworks") : new java.util.ArrayList()); }
     public void getChannelData(java.util.concurrent.Executor p0, java.util.function.Consumer p1) {}
     public java.util.List getConfiguredNetworks() { return (meglerProps.get("ConfiguredNetworks") != null ? (java.util.List) meglerProps.get("ConfiguredNetworks") : new java.util.ArrayList()); }
-    public android.net.wifi.WifiInfo getConnectionInfo() { return android.net.wifi.WifiInfo.meglerConnected(meglerAddress()[0]); }
+    public android.net.wifi.WifiInfo getConnectionInfo() { return megler.Wifi.connection(meglerAddress()[0]); }
     public java.lang.String getCountryCode() { return (java.lang.String) meglerProps.get("CountryCode"); }
     public android.net.Network getCurrentNetwork() { return (android.net.Network) meglerProps.get("CurrentNetwork"); }
     public java.lang.String getCurrentNetworkWpsNfcConfigurationToken() { return (java.lang.String) meglerProps.get("CurrentNetworkWpsNfcConfigurationToken"); }
@@ -468,7 +477,7 @@ public class WifiManager {
     public void getPerSsidRoamingModes(java.util.concurrent.Executor p0, java.util.function.Consumer p1) {}
     public java.util.List getPrivilegedConfiguredNetworks() { return (meglerProps.get("PrivilegedConfiguredNetworks") != null ? (java.util.List) meglerProps.get("PrivilegedConfiguredNetworks") : new java.util.ArrayList()); }
     public android.net.wifi.WifiConfiguration getPrivilegedConnectedNetwork() { return (android.net.wifi.WifiConfiguration) meglerProps.get("PrivilegedConnectedNetwork"); }
-    public java.util.List getScanResults() { return (meglerProps.get("ScanResults") != null ? (java.util.List) meglerProps.get("ScanResults") : new java.util.ArrayList()); }
+    public java.util.List getScanResults() { return megler.Wifi.results(); }
     public android.net.wifi.SoftApConfiguration getSoftApConfiguration() { return (android.net.wifi.SoftApConfiguration) meglerProps.get("SoftApConfiguration"); }
     public java.util.Set getSsidsAllowlist() { return (meglerProps.get("SsidsAllowlist") != null ? (java.util.Set) meglerProps.get("SsidsAllowlist") : new java.util.HashSet()); }
     public int getStaConcurrencyForMultiInternetMode() { return (meglerProps.get("StaConcurrencyForMultiInternetMode") instanceof Integer ? (Integer) meglerProps.get("StaConcurrencyForMultiInternetMode") : 0); }
@@ -515,8 +524,8 @@ public class WifiManager {
     public boolean isPasspointTermsAndConditionsSupported() { return (meglerProps.get("PasspointTermsAndConditionsSupported") instanceof Boolean ? (Boolean) meglerProps.get("PasspointTermsAndConditionsSupported") : false); }
     public boolean isPortableHotspotSupported() { return (meglerProps.get("PortableHotspotSupported") instanceof Boolean ? (Boolean) meglerProps.get("PortableHotspotSupported") : false); }
     public boolean isPreferredNetworkOffloadSupported() { return (meglerProps.get("PreferredNetworkOffloadSupported") instanceof Boolean ? (Boolean) meglerProps.get("PreferredNetworkOffloadSupported") : false); }
-    public boolean isScanAlwaysAvailable() { return (meglerProps.get("ScanAlwaysAvailable") instanceof Boolean ? (Boolean) meglerProps.get("ScanAlwaysAvailable") : false); }
-    public boolean isScanThrottleEnabled() { return (meglerProps.get("ScanThrottleEnabled") instanceof Boolean ? (Boolean) meglerProps.get("ScanThrottleEnabled") : false); }
+    public boolean isScanAlwaysAvailable() { return false; }
+    public boolean isScanThrottleEnabled() { return false; }
     public boolean isStaApConcurrencySupported() { return (meglerProps.get("StaApConcurrencySupported") instanceof Boolean ? (Boolean) meglerProps.get("StaApConcurrencySupported") : false); }
     public boolean isStaBridgedApConcurrencySupported() { return (meglerProps.get("StaBridgedApConcurrencySupported") instanceof Boolean ? (Boolean) meglerProps.get("StaBridgedApConcurrencySupported") : false); }
     public boolean isStaConcurrencyForLocalOnlyConnectionsSupported() { return (meglerProps.get("StaConcurrencyForLocalOnlyConnectionsSupported") instanceof Boolean ? (Boolean) meglerProps.get("StaConcurrencyForLocalOnlyConnectionsSupported") : false); }
@@ -564,7 +573,7 @@ public class WifiManager {
     public void registerCoexCallback(java.util.concurrent.Executor p0, android.net.wifi.WifiManager.CoexCallback p1) {}
     public void registerLocalOnlyHotspotSoftApCallback(java.util.concurrent.Executor p0, android.net.wifi.WifiManager.SoftApCallback p1) {}
     public void registerNetworkRequestMatchCallback(java.util.concurrent.Executor p0, android.net.wifi.WifiManager.NetworkRequestMatchCallback p1) {}
-    public void registerScanResultsCallback(java.util.concurrent.Executor p0, android.net.wifi.WifiManager.ScanResultsCallback p1) {}
+    public void registerScanResultsCallback(java.util.concurrent.Executor p0, android.net.wifi.WifiManager.ScanResultsCallback p1) { megler.Wifi.register(p0, p1); }
     public void registerSoftApCallback(java.util.concurrent.Executor p0, android.net.wifi.WifiManager.SoftApCallback p1) {}
     public void registerSubsystemRestartTrackingCallback(java.util.concurrent.Executor p0, android.net.wifi.WifiManager.SubsystemRestartTrackingCallback p1) {}
     public void registerTrafficStateCallback(java.util.concurrent.Executor p0, android.net.wifi.WifiManager.TrafficStateCallback p1) {}
@@ -650,8 +659,8 @@ public class WifiManager {
     public void startLocalOnlyHotspot(android.net.wifi.WifiManager.LocalOnlyHotspotCallback p0, android.os.Handler p1) {}
     public void startLocalOnlyHotspotWithConfiguration(android.net.wifi.SoftApConfiguration p0, java.util.concurrent.Executor p1, android.net.wifi.WifiManager.LocalOnlyHotspotCallback p2) {}
     public void startRestrictingAutoJoinToSubscriptionId(int p0) {}
-    public boolean startScan() { return false; }
-    public boolean startScan(android.os.WorkSource p0) { return false; }
+    public boolean startScan() { return megler.Wifi.startScan(); }
+    public boolean startScan(android.os.WorkSource p0) { return megler.Wifi.startScan(); }
     public boolean startSoftAp(android.net.wifi.WifiConfiguration p0) { return false; }
     public void startSubscriptionProvisioning(android.net.wifi.hotspot2.OsuProvider p0, java.util.concurrent.Executor p1, android.net.wifi.hotspot2.ProvisioningCallback p2) {}
     public void startTetheredHotspot(android.net.TetheringManager.TetheringRequest p0, java.util.concurrent.Executor p1, android.net.wifi.WifiManager.SoftApCallback p2) {}
@@ -667,7 +676,7 @@ public class WifiManager {
     public void unregisterLocalOnlyHotspotObserver() {}
     public void unregisterLocalOnlyHotspotSoftApCallback(android.net.wifi.WifiManager.SoftApCallback p0) {}
     public void unregisterNetworkRequestMatchCallback(android.net.wifi.WifiManager.NetworkRequestMatchCallback p0) {}
-    public void unregisterScanResultsCallback(android.net.wifi.WifiManager.ScanResultsCallback p0) {}
+    public void unregisterScanResultsCallback(android.net.wifi.WifiManager.ScanResultsCallback p0) { megler.Wifi.unregister(p0); }
     public void unregisterSoftApCallback(android.net.wifi.WifiManager.SoftApCallback p0) {}
     public void unregisterSubsystemRestartTrackingCallback(android.net.wifi.WifiManager.SubsystemRestartTrackingCallback p0) {}
     public void unregisterTrafficStateCallback(android.net.wifi.WifiManager.TrafficStateCallback p0) {}

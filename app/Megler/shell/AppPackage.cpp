@@ -244,7 +244,8 @@ std::string describeCapabilities(int capabilities) {
                  {MEGLER_APPX_CAP_VIDEOS, "the videos library"},     {MEGLER_APPX_CAP_MUSIC, "the music library"},
                  {MEGLER_APPX_CAP_WEBCAM, "the camera"},             {MEGLER_APPX_CAP_MICROPHONE, "the microphone"},
                  {MEGLER_APPX_CAP_LOCATION, "the location"},         {MEGLER_APPX_CAP_CHAT, "text messages"},
-                 {MEGLER_APPX_CAP_CALL_HISTORY, "the call history"}};
+                 {MEGLER_APPX_CAP_CALL_HISTORY, "the call history"}, {MEGLER_APPX_CAP_BLUETOOTH, "Bluetooth"},
+                 {MEGLER_APPX_CAP_WIFI, "the Wi-Fi networks around"}};
     std::string out;
     for (const auto& n : names)
         if (capabilities & n.cap) out += (out.empty() ? "" : ", ") + std::string(n.what);

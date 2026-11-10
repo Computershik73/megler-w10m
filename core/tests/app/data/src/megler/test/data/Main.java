@@ -1547,6 +1547,38 @@ public class Main extends Activity {
             return none == null && again == first && updated == first && found == first && other != first && sent && gone == null && refused
                     && instead != fresh && replaced;
         });
+        // A PendingIntent sent with an OnFinished, a required permission and options, as Google Play services' network location
+        // hands its fixes to its fused provider: sent with the fill-in's extras, and the OnFinished told so, on its Handler's
+        // thread, with the intent that was sent. Those forms sent nothing.
+        step("pending-intent-options", () -> {
+            registerReceiver(new android.content.BroadcastReceiver() {
+                @Override public void onReceive(Context c, android.content.Intent i) {
+                    int v = i.getIntExtra("v", 0);
+                    Log.i("DataTest", "pending-intent-options-sent " + (v == 5 ? "ok" : "FAILED") + " v=" + v);
+                    c.unregisterReceiver(this);
+                }
+            }, new android.content.IntentFilter("megler.test.PENDING_OPTIONS"));
+            android.app.PendingIntent p = android.app.PendingIntent.getBroadcast(this, 11, new android.content.Intent("megler.test.PENDING_OPTIONS"), 0);
+            final java.util.concurrent.CountDownLatch finished = new java.util.concurrent.CountDownLatch(2);
+            final int[] heard = new int[2];
+            android.os.HandlerThread thread = new android.os.HandlerThread("pending-finished");
+            thread.start();
+            final android.os.Handler on = new android.os.Handler(thread.getLooper());
+            p.send(this, 0, new android.content.Intent().putExtra("v", 5), (pi, intent, code, data, extras) -> {
+                heard[0] = intent.getIntExtra("v", 0) + (android.os.Looper.myLooper() == on.getLooper() ? 100 : 0);
+                finished.countDown();
+            }, on, null, null);
+            // (And one only a receiver that holds a permission hears, which none here does: the sender is told all the same.)
+            android.app.PendingIntent q = android.app.PendingIntent.getBroadcast(this, 12, new android.content.Intent("megler.test.PENDING_PERMISSION"), 0);
+            q.send(this, 0, new android.content.Intent().putExtra("v", 6), (pi, intent, code, data, extras) -> {
+                heard[1] = intent.getIntExtra("v", 0);
+                finished.countDown();
+            }, null, "android.permission.ACCESS_FINE_LOCATION");
+            boolean told = finished.await(10, java.util.concurrent.TimeUnit.SECONDS);
+            thread.quitSafely();
+            detail = "told " + told + ", heard " + heard[0] + "/" + heard[1];
+            return told && heard[0] == 105 && heard[1] == 6;
+        });
         // Alarms as Android keeps them: one for a PendingIntent, which setting it again moves and cancel takes away, and a
         // repeating one goes off each interval until it is cancelled (GmsCore's watchdog of its module setup is one).
         step("alarm-replace-cancel", () -> {
@@ -1853,6 +1885,9 @@ public class Main extends Activity {
     /**
      * The Wi-Fi as a game's downloader asks about it before it fetches its data: on and connected by ConnectivityManager and
      * by WifiManager alike, the connection's state and signal, and the address in the connection and in the DHCP answer the same.
+     * And an app that may not have the location -- this one names no location permission -- has no scans, as on Android: startScan
+     * false and getScanResults an empty list (the test's shell has four networks in range), the connection's name and BSSID
+     * hidden.
      */
     private void wifi() {
         step("wifi", () -> {
@@ -1861,9 +1896,13 @@ public class Main extends Activity {
             android.net.wifi.WifiInfo info = wm.getConnectionInfo();
             android.net.DhcpInfo dhcp = wm.getDhcpInfo();
             android.net.NetworkInfo net = cm.getNetworkInfo(android.net.ConnectivityManager.TYPE_WIFI);
+            boolean scanned = wm.startScan();
+            java.util.List<android.net.wifi.ScanResult> results = wm.getScanResults();
             detail = "enabled=" + wm.isWifiEnabled() + " state=" + wm.getWifiState() + " info=" + (info == null ? null : info.getSSID() + "/" + info.getSupplicantState()
-                    + "/" + info.getRssi() + "/" + info.getIpAddress()) + " dhcp=" + (dhcp == null ? null : dhcp.ipAddress) + " level=" + android.net.wifi.WifiManager.calculateSignalLevel(-50, 5);
-            return wm.isWifiEnabled() && wm.getWifiState() == android.net.wifi.WifiManager.WIFI_STATE_ENABLED && net != null && net.isConnected()
+                    + "/" + info.getRssi() + "/" + info.getIpAddress()) + " dhcp=" + (dhcp == null ? null : dhcp.ipAddress) + " level=" + android.net.wifi.WifiManager.calculateSignalLevel(-50, 5)
+                    + " scanned=" + scanned + " results=" + results;
+            return !scanned && results != null && results.isEmpty()
+                    && wm.isWifiEnabled() && wm.getWifiState() == android.net.wifi.WifiManager.WIFI_STATE_ENABLED && net != null && net.isConnected()
                     && info != null && "<unknown ssid>".equals(info.getSSID()) && info.getSupplicantState() == android.net.wifi.SupplicantState.COMPLETED
                     && "02:00:00:00:00:00".equals(info.getBSSID()) && info.getRssi() == -50 && info.getLinkSpeed() > 0 && dhcp != null && dhcp.ipAddress == info.getIpAddress()
                     && android.net.wifi.WifiManager.calculateSignalLevel(-50, 5) == 4 && android.net.wifi.WifiManager.calculateSignalLevel(-100, 5) == 0

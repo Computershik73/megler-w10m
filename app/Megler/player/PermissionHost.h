@@ -19,6 +19,11 @@
 //                                  nothing. Under the flag allow-permissions (LocalState\flags) every one is allowed with no
 //                                  one asked, for a run no one watches; the flag ui-dialog-<name>-1 answers one that is up
 //                                  (ui/UiShots.h).
+//   location_accuracy              Megler's too, and no permission of Android's: Google Location Accuracy, under which Google
+//                                  Play services' network location finds the phone from the Wi-Fi networks around it. Asked
+//                                  once the app's code binds Google Play services' location API while it holds the location
+//                                  (megler.LocationAccuracy, which writes the answer into Google's settings, every app's);
+//                                  listed in the App Permissions of an app that asks for ACCESS_FINE_LOCATION or _COARSE_LOCATION.
 //   contacts, calendar, sensors, notifications, activity_recognition   granted, no one asked: Megler gives an app none of the
 //                                  phone's contacts, calendar, body sensors or notifications, so there is nothing for the
 //                                  user to be asked about.

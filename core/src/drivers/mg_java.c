@@ -2369,6 +2369,8 @@ static MG_HOSTCB void main_thread(void *arg)
         mg_dvm_register(mg_java_location_natives());
         mg_dvm_register(mg_java_sensors_natives());
         mg_dvm_register(mg_java_bluetooth_natives());
+        mg_java_wifi_set_host(&J.config->wifi);
+        mg_dvm_register(mg_java_wifi_natives());
         mg_java_gfx_set_host(&J.config->gfx);
         mg_java_gfx_set_present(present, NULL);
         mg_java_gfx_set_present_canvas(present_canvas, NULL);

@@ -184,9 +184,18 @@ static const struct {
     { "android.permission.INTERNET", MG_APPX_CAP_NETWORK },
     { "android.permission.CAMERA", MG_APPX_CAP_WEBCAM },
     { "android.permission.RECORD_AUDIO", MG_APPX_CAP_MICROPHONE },
-    { "android.permission.ACCESS_FINE_LOCATION", MG_APPX_CAP_LOCATION },
-    { "android.permission.ACCESS_COARSE_LOCATION", MG_APPX_CAP_LOCATION },
+    /*
+     * And the Wi-Fi networks around the phone (player/WifiHost.cpp, Windows.Devices.WiFi, whose scans want wiFiControl): Android
+     * gives an app a scan's results only with a location permission, and Google Play services in the app finds the phone's
+     * location from them for it (its network location) -- an app needs no Wi-Fi permission of its own for that: Transit, which
+     * asks Google Play services for the location, names neither ACCESS_WIFI_STATE nor CHANGE_WIFI_STATE. The background
+     * location alone gives no scans, as on Android. NEARBY_WIFI_DEVICES is Android 13's way to the same results without the
+     * location.
+     */
+    { "android.permission.ACCESS_FINE_LOCATION", MG_APPX_CAP_LOCATION | MG_APPX_CAP_WIFI },
+    { "android.permission.ACCESS_COARSE_LOCATION", MG_APPX_CAP_LOCATION | MG_APPX_CAP_WIFI },
     { "android.permission.ACCESS_BACKGROUND_LOCATION", MG_APPX_CAP_LOCATION },
+    { "android.permission.NEARBY_WIFI_DEVICES", MG_APPX_CAP_WIFI },
     /* The shared storage's Music, Pictures, Movies and DCIM are the phone's libraries (player/StorageHost.h). */
     { "android.permission.READ_EXTERNAL_STORAGE", MG_APPX_CAP_PICTURES | MG_APPX_CAP_VIDEOS | MG_APPX_CAP_MUSIC },
     { "android.permission.WRITE_EXTERNAL_STORAGE", MG_APPX_CAP_PICTURES | MG_APPX_CAP_VIDEOS | MG_APPX_CAP_MUSIC },
@@ -247,6 +256,7 @@ static const struct {
     { "microphone", MG_APPX_CAP_MICROPHONE },
     { "location", MG_APPX_CAP_LOCATION },
     { "bluetooth", MG_APPX_CAP_BLUETOOTH },
+    { "wiFiControl", MG_APPX_CAP_WIFI },
     /*
      * Never an app's: the documents library and a memory card are reached only with file types declared, and an app's package
      * declares none (Megler's association of APKs is taken out); a folder there comes in through the folder picker

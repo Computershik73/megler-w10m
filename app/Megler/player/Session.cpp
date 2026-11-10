@@ -21,6 +21,7 @@
 #include "player/PhoneState.h"
 #include "player/SensorHost.h"
 #include "player/StorageHost.h"
+#include "player/WifiHost.h"
 
 #include "shell/AppPackage.h"
 #include "shell/Checks.h"
@@ -305,6 +306,9 @@ bool start(const ApkEntry& apk, winrt::Windows::UI::Xaml::Controls::SwapChainPan
         // Its android.bluetooth: Bluetooth LE's central side over Windows.Devices.Bluetooth (player/BluetoothHost.h); the radio is
         // looked at from here on, while the app starts.
         config.bluetooth = BluetoothHost::shared().callbacks();
+        // Its WifiManager's scans and connection: Windows.Devices.WiFi (player/WifiHost.h), which Google Play services in the app
+        // finds the phone's location from.
+        config.wifi = WifiHost::shared().callbacks();
         // For an app that is Java: its drawing, and where Android's libcore and the framework are -- NULL is the folder
         // `android` of the installed package, which is where tools/build-appx.sh --libcore (or --java) puts them. An app
         // with a native engine uses neither.

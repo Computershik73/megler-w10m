@@ -22,6 +22,7 @@
 #include "mg_net_tests.h"
 #include "mg_sensor_tests.h"
 #include "mg_bluetooth_tests.h"
+#include "mg_wifi_tests.h"
 #include "mg_storage_tests.h"
 #include "mg_tests.h"
 
@@ -2327,7 +2328,7 @@ static void test_appx_manifest(void)
         "    <rescap:Capability Name=\"codeGeneration\" />\r\n    <rescap:Capability Name=\"packageManagement\" />\r\n"
         "    <rescap:Capability Name=\"packageQuery\" />\r\n    <!-- The devices. -->\r\n    <DeviceCapability Name=\"webcam\" />\r\n"
         "    <DeviceCapability Name=\"location\" />\r\n    <DeviceCapability Name=\"microphone\" />\r\n"
-        "    <DeviceCapability Name=\"bluetooth\" />\r\n"
+        "    <DeviceCapability Name=\"bluetooth\" />\r\n    <DeviceCapability Name=\"wiFiControl\" />\r\n"
         "    <DeviceCapability Name=\"bluetooth.rfcomm\">\r\n      <Device Id=\"any\"><Function Type=\"name:serialPort\" /></Device>\r\n"
         "    </DeviceCapability>\r\n  </Capabilities>\r\n"
         "  <Extensions><Extension Category=\"windows.publisherCacheFolders\" /></Extensions></Package>\r\n";
@@ -2339,6 +2340,13 @@ static void test_appx_manifest(void)
                                            "android.permission.READ_MEDIA_VISUAL_USER_SELECTED" };
     static const char *const bluetooth[] = { "android.permission.BLUETOOTH_SCAN", "android.permission.BLUETOOTH_CONNECT", "android.permission.INTERNET" };
     static const char *const bluetooth_old[] = { "android.permission.BLUETOOTH", "android.permission.BLUETOOTH_ADMIN" };
+    /* Transit's: the location, no Wi-Fi permission of its own (Google Play services in the app scans for it); and the Wi-Fi's
+       alone, without the location, and the background location alone, which give no scans. */
+    static const char *const transit[] = { "android.permission.ACCESS_FINE_LOCATION", "android.permission.ACCESS_COARSE_LOCATION",
+                                           "android.permission.INTERNET", "android.permission.ACCESS_NETWORK_STATE" };
+    static const char *const wifi_alone[] = { "android.permission.ACCESS_WIFI_STATE", "android.permission.CHANGE_WIFI_STATE",
+                                              "android.permission.ACCESS_BACKGROUND_LOCATION" };
+    static const char *const nearby_wifi[] = { "android.permission.NEARBY_WIFI_DEVICES" };
     char err[200], name[64], name2[64];
     char *m, *m2;
     say("an app's own package: its manifest from Megler's");
@@ -2410,7 +2418,12 @@ static void test_appx_manifest(void)
     /* An app that hears its code through Google Play services' SMS Retriever has the phone's messages heard for it. */
     CHECK_INT((int)mg_appx_capabilities(NULL, 0, true), MG_APPX_CAP_PICTURES | MG_APPX_CAP_CHAT);
     CHECK_INT((int)mg_appx_capabilities(devices, (int)MG_COUNT(devices), false),
-              MG_APPX_CAP_PICTURES | MG_APPX_CAP_VIDEOS | MG_APPX_CAP_LOCATION | MG_APPX_CAP_MICROPHONE | MG_APPX_CAP_CALL_HISTORY);
+              MG_APPX_CAP_PICTURES | MG_APPX_CAP_VIDEOS | MG_APPX_CAP_LOCATION | MG_APPX_CAP_WIFI | MG_APPX_CAP_MICROPHONE | MG_APPX_CAP_CALL_HISTORY);
+    /* The Wi-Fi's networks with the location, which Android gives them to, or with Android 13's NEARBY_WIFI_DEVICES; not with the
+       Wi-Fi's own permissions alone, nor with the background location alone. */
+    CHECK_INT((int)mg_appx_capabilities(transit, (int)MG_COUNT(transit), false), MG_APPX_CAP_PICTURES | MG_APPX_CAP_NETWORK | MG_APPX_CAP_LOCATION | MG_APPX_CAP_WIFI);
+    CHECK_INT((int)mg_appx_capabilities(wifi_alone, (int)MG_COUNT(wifi_alone), false), MG_APPX_CAP_PICTURES | MG_APPX_CAP_LOCATION);
+    CHECK_INT((int)mg_appx_capabilities(nearby_wifi, (int)MG_COUNT(nearby_wifi), false), MG_APPX_CAP_PICTURES | MG_APPX_CAP_WIFI);
     /* Bluetooth's: Android 12's permissions of nearby devices, and the Androids' before it. */
     CHECK_INT((int)mg_appx_capabilities(bluetooth, (int)MG_COUNT(bluetooth), false), MG_APPX_CAP_PICTURES | MG_APPX_CAP_NETWORK | MG_APPX_CAP_BLUETOOTH);
     CHECK_INT((int)mg_appx_capabilities(bluetooth_old, (int)MG_COUNT(bluetooth_old), false), MG_APPX_CAP_PICTURES | MG_APPX_CAP_BLUETOOTH);
@@ -2429,7 +2442,7 @@ static void test_appx_manifest(void)
     /* Nothing it did not ask for, and none of Megler's that no app's package has. */
     CHECK(!strstr(m, "videosLibrary") && !strstr(m, "documentsLibrary") && !strstr(m, "removableStorage") && !strstr(m, "\"chat\"") &&
           !strstr(m, "phoneCallHistoryPublic") && !strstr(m, "packageManagement") && !strstr(m, "\"location\"") && !strstr(m, "\"microphone\"") &&
-          !strstr(m, "Name=\"bluetooth\"") &&
+          !strstr(m, "Name=\"bluetooth\"") && !strstr(m, "wiFiControl") &&
           !strstr(m, "The network:") && !strstr(m, "The libraries.") && !strstr(m, "The devices."));
     CHECK(strstr(m, "Name=\"MeglerApp.com.example.camera.") != NULL && strstr(m, "<DisplayName>Camera</DisplayName>") != NULL);
     free(m);
@@ -2438,6 +2451,13 @@ static void test_appx_manifest(void)
                              sizeof(err));
     CHECK(m && strstr(m, "    <rescap:Capability Name=\"packageQuery\" />\r\n    <DeviceCapability Name=\"bluetooth\" />\r\n"
                          "    <DeviceCapability Name=\"bluetooth.rfcomm\">") != NULL && !strstr(m, "DeviceCapability Name=\"webcam\""));
+    free(m);
+    /* An app that asks Google Play services for the location (Transit's): the location, and wiFiControl in Megler's place for it. */
+    m = mg_appx_app_manifest(megler, "com.thetransitapp.droid", "Transit", NULL, NULL, (int)mg_appx_capabilities(transit, (int)MG_COUNT(transit), false), err,
+                             sizeof(err));
+    CHECK(m && strstr(m, "    <rescap:Capability Name=\"packageQuery\" />\r\n    <DeviceCapability Name=\"location\" />\r\n"
+                         "    <DeviceCapability Name=\"wiFiControl\" />\r\n    <DeviceCapability Name=\"bluetooth.rfcomm\">") != NULL &&
+          !strstr(m, "Name=\"bluetooth\""));
     free(m);
     /* An app that asks for nothing Windows guards: the pictures library and Megler's own alone, no network. */
     m = mg_appx_app_manifest(megler, "com.example.calculator", "Calculator", NULL, NULL, (int)mg_appx_capabilities(NULL, 0, false), err, sizeof(err));
@@ -5050,6 +5070,7 @@ int mg_tests_run(const char *libdir, const char *scratch, mg_test_sink sink, voi
     g_failed += mg_net_tests_run(g_sink, g_sink_user, &g_checks);
     g_failed += mg_sensor_tests_run(g_sink, g_sink_user, &g_checks);
     g_failed += mg_bluetooth_tests_run(g_sink, g_sink_user, &g_checks);
+    g_failed += mg_wifi_tests_run(g_sink, g_sink_user, &g_checks);
     test_zip(scratch);
     test_sqlite(scratch);
     test_textures();

@@ -1862,6 +1862,67 @@ typedef struct megler_bluetooth_host {
 /* What the radio did, from any thread; everything it points to is copied before it returns. Nothing happens when no app runs. */
 MEGLER_API void megler_bluetooth_push(const megler_bluetooth_event *event);
 
+/*
+ * The phone's Wi-Fi, for an app's android.net.wifi.WifiManager: the networks around the phone as a scan hears them, and the
+ * one it is connected to (core/src/drivers/mg_java_wifi.c; the framework's megler.Wifi). Google Play services in the app
+ * finds where the phone is from them, as on Android (Google's network location: docs/JAVA.md, "Wi-Fi").
+ *
+ * A network is an access point as a scan heard it: its BSSID (48 bits: AA:BB:CC:DD:EE:FF is 0xAABBCCDDEEFF), its SSID's
+ * octets as the access point sends them (UTF-8 mostly; none for a hidden network), its signal in dBm, the centre of its
+ * channel in MHz, its security (MEGLER_WIFI_SECURITY_*: the authentication, and the cipher where Windows says one), its
+ * physical layer (MEGLER_WIFI_PHY_*, Windows' WiFiPhyKind), and its kind (an access point's or an ad hoc network's).
+ *
+ * The host is asked, on one thread of the framework's, which may wait:
+ *   state(ask)   whether the phone can scan: MEGLER_WIFI_ON; OFF when its Wi-Fi is switched off; DENIED when Windows does not
+ *                let Megler have the Wi-Fi (the package declares no wiFiControl, or the user or a policy said no); NONE when
+ *                it has no Wi-Fi adapter; UNKNOWN while Windows has not been asked. With `ask`, Windows is asked first if it
+ *                has not been (WiFiAdapter.RequestAccessAsync: nothing is shown to the user for it).
+ *   scan(out, max, time_ns)  a scan: the networks heard into out (at most max), their number returned; -1 when no scan could
+ *                be made (the state is not ON, or Windows' scan failed). *time_ns: when Windows' report was made,
+ *                nanoseconds since 1970 (UTC). It waits for Windows' scan, a few seconds at most; the core asks no more often
+ *                than every ten seconds.
+ *   connection(out)  the network the phone is connected to by Wi-Fi: true, with as much of it as Windows says (its SSID; its
+ *                BSSID, signal, channel and security where the last scan heard an access point of that SSID, the strongest
+ *                such); false when the phone is not on Wi-Fi. May be NULL.
+ * May be left zero: the app is told the phone has no Wi-Fi to scan.
+ */
+enum { MEGLER_WIFI_NONE = 0, MEGLER_WIFI_ON = 1, MEGLER_WIFI_OFF = 2, MEGLER_WIFI_DENIED = 3, MEGLER_WIFI_UNKNOWN = 4 };
+/* The authentication (the low byte) and the cipher (bits 8 to 15), as Windows' NetworkAuthenticationType and NetworkEncryptionType have them. */
+enum {
+    MEGLER_WIFI_AUTH_UNKNOWN = 0, MEGLER_WIFI_AUTH_OPEN = 1, MEGLER_WIFI_AUTH_SHARED_KEY = 2, MEGLER_WIFI_AUTH_WPA = 3, MEGLER_WIFI_AUTH_WPA_PSK = 4,
+    MEGLER_WIFI_AUTH_RSNA = 5, MEGLER_WIFI_AUTH_RSNA_PSK = 6, MEGLER_WIFI_AUTH_WPA3 = 7, MEGLER_WIFI_AUTH_WPA3_SAE = 8, MEGLER_WIFI_AUTH_OWE = 9,
+    MEGLER_WIFI_AUTH_OTHER = 10
+};
+enum {
+    MEGLER_WIFI_CIPHER_UNKNOWN = 0, MEGLER_WIFI_CIPHER_NONE = 1, MEGLER_WIFI_CIPHER_WEP = 2, MEGLER_WIFI_CIPHER_TKIP = 3, MEGLER_WIFI_CIPHER_CCMP = 4,
+    MEGLER_WIFI_CIPHER_GCMP = 5
+};
+#define MEGLER_WIFI_SECURITY(auth, cipher) ((auth) | (cipher) << 8)
+/* Windows' WiFiPhyKind, as it numbers them: 802.11b is HRDSSS, 802.11a OFDM, 802.11g ERP, 802.11n HT, 802.11ac VHT, 802.11ad DMG, 802.11ax HE. */
+enum {
+    MEGLER_WIFI_PHY_UNKNOWN = 0, MEGLER_WIFI_PHY_FHSS = 1, MEGLER_WIFI_PHY_DSSS = 2, MEGLER_WIFI_PHY_IR = 3, MEGLER_WIFI_PHY_OFDM = 4,
+    MEGLER_WIFI_PHY_HRDSSS = 5, MEGLER_WIFI_PHY_ERP = 6, MEGLER_WIFI_PHY_HT = 7, MEGLER_WIFI_PHY_VHT = 8, MEGLER_WIFI_PHY_DMG = 9,
+    MEGLER_WIFI_PHY_HE = 10
+};
+
+typedef struct megler_wifi_network {
+    unsigned long long bssid;
+    unsigned char ssid[32];
+    int ssid_size;          /* 0..32; 0 for a hidden network */
+    int rssi_dbm;
+    int frequency_mhz;
+    int security;           /* MEGLER_WIFI_SECURITY(auth, cipher) */
+    int phy;                /* MEGLER_WIFI_PHY_* */
+    int adhoc;              /* 1 for an ad hoc network (IBSS), 0 for an access point's */
+} megler_wifi_network;
+
+typedef struct megler_wifi_host {
+    void *user;
+    int (MEGLER_CB *state)(void *user, bool ask);
+    int (MEGLER_CB *scan)(void *user, megler_wifi_network *out, int max, long long *time_ns);
+    bool (MEGLER_CB *connection)(void *user, megler_wifi_network *out);
+} megler_wifi_host;
+
 typedef struct megler_run_config {
     const char *apk_path;
     /* Optional installed microG APK. Opened as the service package; no copy in each client. */
@@ -1903,6 +1964,8 @@ typedef struct megler_run_config {
     megler_sensor_host sensors;
     /* The phone's Bluetooth LE radio for an app's android.bluetooth (see megler_bluetooth_host). May be left zero: none. */
     megler_bluetooth_host bluetooth;
+    /* The phone's Wi-Fi, its scans and its connection, for an app's WifiManager (see megler_wifi_host). May be left zero: none. */
+    megler_wifi_host wifi;
     /*
      * Drawing for an app whose user interface is Java (see megler_gfx_host). All of it may be left NULL: such an app still starts,
      * lays its views out and takes input, but nothing is drawn (its bitmaps hold only what the layer does itself: erasing, single
@@ -2287,6 +2350,9 @@ MEGLER_API bool megler_appx_app_identity(const char *android_package, char *out,
  *   CALL_HISTORY  phoneCallHistoryPublic: READ_PHONE_STATE, READ_CALL_LOG
  *   BLUETOOTH     bluetooth (a device capability): BLUETOOTH_SCAN, BLUETOOTH_CONNECT, BLUETOOTH_ADVERTISE, and before Android 12
  *                 BLUETOOTH and BLUETOOTH_ADMIN
+ *   WIFI          wiFiControl (a device capability): a location permission (ACCESS_FINE_LOCATION, ACCESS_COARSE_LOCATION): the
+ *                 Wi-Fi networks a scan hears, which Android gives only to an app that may have the location, and which
+ *                 Google Play services in the app finds the phone's location from; NEARBY_WIFI_DEVICES too
  * Megler's other capabilities are every package's (codeGeneration, packageQuery, backgroundMediaPlayback) or no app's
  * (documentsLibrary and removableStorage, which want file types declared; packageManagement).
  */
@@ -2301,6 +2367,7 @@ enum {
     MEGLER_APPX_CAP_CHAT = 128,
     MEGLER_APPX_CAP_CALL_HISTORY = 256,
     MEGLER_APPX_CAP_BLUETOOTH = 512,
+    MEGLER_APPX_CAP_WIFI = 1024,
 };
 MEGLER_API unsigned megler_appx_capabilities(const char *const *permissions, int count, bool sms_retriever);
 /* That package's manifest, made from Megler's (the text of its AppxManifest.xml): the identity name, phone product id and

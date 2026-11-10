@@ -4,8 +4,10 @@
 // app's; and in that one is found again by what it starts, with its flags and cancel (get). And in a Parcel: written as
 // itself, in the parcel's table of this process's objects (writeToParcel, CREATOR, write/readPendingIntentOrNull...), where
 // the original wrote nothing and read null -- Google Play services' answers carry PendingIntents in their SafeParcelables,
-// and Play Store's install (its billing sheet's) got null for one and ended (package 539). The rest is the original's,
-// unchanged.
+// and Play Store's install (its billing sheet's) got null for one and ended (package 539). And in its sends with an
+// OnFinished, a required permission or options (send's six- and seven-argument forms, send(Bundle), sendAndReturnResult),
+// which sent nothing: they send as the others do and then tell the OnFinished (sendAndReturnResult says why). The rest is
+// the original's, unchanged.
 package android.app;
 
 import android.content.Context;
@@ -63,15 +65,51 @@ public final class PendingIntent implements android.os.Parcelable {
     public static PendingIntent getForegroundService(Context c, int req, Intent i, int flags) { return get(c, req, i, flags, 2); }
     public void send() throws CanceledException { send(mContext, 0, null); }
     public void send(int code) throws CanceledException { send(mContext, code, null); }
-    public void send(Context c, int code, Intent fill) throws CanceledException {
+    public void send(Context c, int code, Intent fill) throws CanceledException { sendAndReturnResult(c, code, fill, null, null, null, null); }
+    public void send(int code, OnFinished f, android.os.Handler h) throws CanceledException { sendAndReturnResult(mContext, code, null, f, h, null, null); }
+    public void send(Context c, int code, Intent i, OnFinished f, android.os.Handler h) throws CanceledException { sendAndReturnResult(c, code, i, f, h, null, null); }
+    public void send(Context c, int code, Intent i, OnFinished f, android.os.Handler h, String requiredPermission) throws CanceledException {
+        sendAndReturnResult(c, code, i, f, h, requiredPermission, null);
+    }
+    public void send(Context c, int code, Intent i, OnFinished f, android.os.Handler h, String requiredPermission, android.os.Bundle options) throws CanceledException {
+        sendAndReturnResult(c, code, i, f, h, requiredPermission, options);
+    }
+    public void send(android.os.Bundle options) throws CanceledException { sendAndReturnResult(mContext, 0, null, null, null, null, options); }
+    /*
+     * Each of the sends: the intent with the fill-in's extras started as the app would start it -- a broadcast to the receivers
+     * that hold `requiredPermission` where one is named -- and then `f` told it was sent, on `h`'s thread, or without one on a
+     * thread of its own after the send has returned, as Android tells it on a binder thread; with Android's result for an
+     * activity or a service (0, as START_SUCCESS; a broadcast's is its receivers' to give, and here 0 too). The forms with an
+     * OnFinished, a permission or options did nothing, and each send of Google Play services' through them was lost: its
+     * network location hands its fixes to its fused provider so (bpep.d: send(context, 0, intent, onFinished, null,
+     * permission, options)), and the fused provider never had one.
+     */
+    public int sendAndReturnResult(Context c, int code, Intent fill, OnFinished f, android.os.Handler h, String requiredPermission, android.os.Bundle options)
+            throws CanceledException {
         if (mCanceled) throw new CanceledException();
-        Intent i = new Intent(mIntent);
+        final Intent i = new Intent(mIntent);
         if (fill != null) i.putExtras(fill);
         if ((mFlags & FLAG_ONE_SHOT) != 0) cancel();
-        if (mKind == 0) mContext.startActivity(i); else if (mKind == 1) mContext.sendBroadcast(i); else mContext.startService(i);
+        // (A fix of Google Play services' network location on its way to its fused provider: seen by megler.LocationService.)
+        megler.LocationService.sent(this, i);
+        if (mKind == 0) mContext.startActivity(i);
+        else if (mKind == 1) { if (requiredPermission != null) mContext.sendBroadcast(i, requiredPermission); else mContext.sendBroadcast(i); }
+        else mContext.startService(i);
+        if (f != null) {
+            Runnable finished = () -> f.onSendFinished(this, i, 0, null, null);
+            if (h != null) h.post(finished); else Finished.THREAD.execute(finished);
+        }
+        return 0;
     }
-    public void send(int code, OnFinished f, android.os.Handler h) throws CanceledException { send(); }
-    public void send(Context c, int code, Intent i, OnFinished f, android.os.Handler h) throws CanceledException { send(c, code, i); }
+    /** The thread an OnFinished without a Handler is told on (one, made when first wanted, gone after half a minute idle). */
+    private static final class Finished {
+        static final java.util.concurrent.ThreadPoolExecutor THREAD = new java.util.concurrent.ThreadPoolExecutor(0, 1, 30,
+                java.util.concurrent.TimeUnit.SECONDS, new java.util.concurrent.LinkedBlockingQueue<Runnable>(), r -> {
+                    Thread t = new Thread(r, "PendingIntentFinished");
+                    t.setDaemon(true);
+                    return t;
+                });
+    }
     /** Ends it: sending it fails, an alarm with it goes (AlarmManager.meglerCanceled), and asking for it again makes a new one. */
     public void cancel() { mCanceled = true; AlarmManager.meglerCanceled(this); }
     /** The intent it starts or sends (Activity.startIntentSenderForResult). */
@@ -121,10 +159,6 @@ public final class PendingIntent implements android.os.Parcelable {
     public java.util.List queryIntentComponents(int p0) { return new java.util.ArrayList(); }
     public void registerCancelListener(android.app.PendingIntent.CancelListener p0) {}
     public void removeCancelListener(android.app.PendingIntent.CancelListener p0) {}
-    public void send(android.content.Context p0, int p1, android.content.Intent p2, android.app.PendingIntent.OnFinished p3, android.os.Handler p4, java.lang.String p5) {}
-    public void send(android.content.Context p0, int p1, android.content.Intent p2, android.app.PendingIntent.OnFinished p3, android.os.Handler p4, java.lang.String p5, android.os.Bundle p6) {}
-    public void send(android.os.Bundle p0) {}
-    public int sendAndReturnResult(android.content.Context p0, int p1, android.content.Intent p2, android.app.PendingIntent.OnFinished p3, android.os.Handler p4, java.lang.String p5, android.os.Bundle p6) { return 0; }
     public void unregisterCancelListener(android.app.PendingIntent.CancelListener p0) {}
     // ---- end of generated members
     // ---- generated by tools/compat/genstubs.py: the platform's nested classes this class does not write

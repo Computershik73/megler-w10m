@@ -3716,7 +3716,11 @@ question (Allow, Don't Allow), kept in the app's settings, a second no for
 good; and the contacts, the calendar, the body sensors, notifications and
 physical activity granted with no one asked, since Megler gives an app none of
 those of the phone's, and nearby devices likewise, which are Bluetooth LE's
-("Bluetooth LE" below), Windows asking nothing for them. The location refused by the
+("Bluetooth LE" below), Windows asking nothing for them. One group is no
+permission of Android's: Google Location Accuracy (`location_accuracy`),
+Megler's question, put once an app that holds the location binds Google Play
+services' location API, its answer written into Google's settings for every
+app ("Wi-Fi, and Google's network location" below). The location refused by the
 system -- the phone's location switched off, which Windows' consent says as
 `DeniedBySystem` -- is no refusal of the app's: Android grants or refuses an
 app's location permission whether the location is on or off, and the app,
@@ -5534,6 +5538,19 @@ on a looper thread of its own and takes it back with `next()`.
   trace), and the app had no fix while Megler's own `LocationManager` had one:
   Transit, and the Google Maps "my location" layer (0.1.0.671). The data app's
   step "work-source" writes one so and reads it back.
+- `android/app/PendingIntent.java`: its sends with an `OnFinished`, a
+  required permission or options -- `send`'s six- and seven-argument forms,
+  `send(Bundle)` and `sendAndReturnResult` -- were generated signatures that
+  sent nothing. They send as the others do (a broadcast to the receivers that
+  hold the permission) and then tell the `OnFinished`, on its `Handler`'s
+  thread, or without one on a thread of its own once the send has returned
+  (Android's binder thread), with the intent sent and Android's 0. Google Play
+  services sends its `PendingIntent`s so (`bpep.d`): its network location's
+  fixes to its fused provider were lost on the way, and with them every fix
+  of Google's Wi-Fi positioning ("Wi-Fi, and Google's network location"
+  below). The data app's step "pending-intent-options" sends one with an
+  `OnFinished` on a `Handler` of its own and options, and one with a
+  permission no receiver holds: each is told, the first heard.
 - `android/location/LocationRequest.java`, Android 14's in place of the
   generated stub: its `Builder(intervalMillis)` forgot the interval, its
   factories made a request of nothing, `getMaxUpdates` said 0 where Android
@@ -6497,7 +6514,10 @@ on a looper thread of its own and takes it back with `next()`.
   `NetworkInterface`, which `getDhcpInfo()` has too, with its netmask; and
   `calculateSignalLevel` is Android's formula. Which network the phone is
   really on is not asked of Windows: the framework says Wi-Fi throughout.
-  The data app's step "wifi" asks as the installer does.
+  The data app's step "wifi" asks as the installer does. And the phone's
+  scans and its connection's network for an app that may have the location
+  ("Wi-Fi, and Google's network location" below; `ScanResult.java` and
+  `WifiSsid.java`, Android's in place of the generated stubs).
 
 - `android/media/session/PlaybackState.java`, in place of the generated stub,
   which dropped what `setState` and `addCustomAction` were given (the state,
@@ -6866,6 +6886,152 @@ on: `STATE_TURNING_ON`, `STATE_ON`, `RESULT_OK`; asked again while on,
 active scans, both stopped, every connection ended, the bytes written, the MTU,
 two pairings, one PIN given by the app and one by the user, the settings shown
 once -- and the core's lines in the log.
+
+### Wi-Fi, and Google's network location
+
+`WifiManager`'s scans are the phone's (the overlay's `WifiManager`,
+`ScanResult` and `WifiSsid`, Android's now, over `megler.Wifi`,
+`drivers/mg_java_wifi.c` and the shell's `megler_wifi_host`, `player/WifiHost.cpp`
+over Windows.Devices.WiFi; ARCHITECTURE.md, "Wi-Fi"). They are what Google Play
+services in the app finds the phone from, as on Android: its network location
+sends the networks a scan hears to Google's location server and has back where
+they are, a fix of tens of metres, where Windows' own location gives some phones
+the cell network's 300 to 660 m alone (Transit, 0.1.0.679: "location is still
+kinda awful", every minute's summary "0 of them from the satellites").
+
+- **A scan**: `startScan` returns at once; one thread of the framework's,
+  "megler-wifi", has the shell scan (a few seconds on a phone), keeps the
+  networks as the last results and sends `SCAN_RESULTS_AVAILABLE_ACTION` with
+  `EXTRA_RESULTS_UPDATED` (false where no scan could be made, the results then
+  the last ones), then calls Android 11's `ScanResultsCallback`s. A request that
+  comes while a scan is made is answered by it; none begins sooner than three
+  seconds after the last began, a request inside that waiting for it (Google
+  Play services waits five seconds for its scan and drops a result older than
+  its request, so a scan made before it cannot answer it).
+- **The results**: `getScanResults` gives copies of the last scan's, each as
+  Android has it: the BSSID ("aa:bb:cc:dd:ee:ff"), `SSID` as text (empty for a
+  hidden network) and `getWifiSsid` as the octets, the signal, the channel's
+  frequency (and `centerFreq0`), Android's capabilities of Windows' security
+  ("[WPA2-PSK-CCMP][RSN-PSK-CCMP][ESS]", "[IBSS]" for an ad hoc network), the
+  standard of Windows' physical layer, a width Windows does not say (20 MHz,
+  80 MHz for 802.11ac and ax on 5 GHz), and the time each was heard:
+  microseconds of `elapsedRealtime` at Windows' report, which Google Play
+  services checks against its request. Through a `Parcel` and back.
+- **Android's rules**: a scan and its results only while the app may have the
+  location -- the location not switched off, and `ACCESS_FINE_LOCATION` from
+  Android 10 (FINE or COARSE before, or Android 13's `NEARBY_WIFI_DEVICES`) --
+  else `startScan` false and an empty list, as Android has them, and said once
+  in the log. Google Play services in the app scans for it: the app's
+  permission is what counts. The Wi-Fi's own permissions are not asked of the
+  app (Transit, which asks Google Play services for the location, names
+  neither). `getConnectionInfo`'s network has its name (quoted), BSSID, signal
+  and channel where the app may have the location, else what Android 8.1 tells
+  others ("<unknown ssid>", 02:00:00:00:00:00). `isScanAlwaysAvailable` stays
+  false: Windows scans only with the Wi-Fi on. `getSystemService("wifiscanner")`
+  stays null (`WifiScanner.java` says why).
+
+**What Google Play services needs** (26.41.31, jadx of the user's GmsCore). Its
+network location is a module of its own ("network_location_provider") that runs
+in the app's process here, started by its fused provider
+(`com.google.android.location.internal.GMS_NLP`, its
+`GoogleLocationChimeraService`), and three things stood in its way:
+
+1. **Scans.** Without a `WifiScanner` it scans through `WifiManager`
+   (`gezt.a`: `startScan`; its `CallbackRunner`, `gexg`, listens for
+   `SCAN_RESULTS_AVAILABLE_ACTION` only then; `gexb` reads `getScanResults`),
+   and a result is used only if heard after its request and less than 30 s
+   ago (`geyw`), its BSSID a MAC address and its SSID not ending in "_nomap".
+   `startScan` answered false and the results were none.
+2. **Google Location Accuracy.** It locates only while
+   `network_location_opt_in` is 1 in Google's settings
+   (`content://com.google.settings/partner`, Google Services Framework's
+   `GoogleSettingsProvider`, which Megler mounts): its "network" provider is on
+   only where the location's mode is and that is 1 (`dhcg.a`, `dhce`), its
+   network location operates only then (`geup`: location permission, "network"
+   on, consent), and its fused provider asks it for fixes only then (`gedl`).
+   Android asks this as a phone is set up, or through an app's
+   `SettingsClient` when the settings fall short; Transit checks them only
+   while `LocationManager` says every provider is off, so it was never asked.
+   `megler.LocationAccuracy` asks it: the first time the app's own code binds
+   Google Play services' location API (`GoogleLocationManagerService.START`,
+   an app's `FusedLocationProviderClient` or `SettingsClient`; `MicroG.bind`)
+   while it holds the location, where Google's own Play services are the app's,
+   Megler's question ("Allow Transit to use Google Location Accuracy?", the
+   shell's group `location_accuracy`) is put unless an answer is kept for the app
+   or the setting is decided already, and the answer written into Google's
+   settings -- 1 or 0, as Google Play services writes it (an insert of the name
+   and the value). The setting is one for every app, as Android's is; the
+   app's Settings in Megler change its answer, written at its next start. Google
+   Play services follows the setting (its own observer of its `Uri`), so the app
+   that asked has it at once.
+3. **Its fixes' way to the fused provider.** It hands each fix to its fused
+   provider by a `PendingIntent` sent with an `OnFinished`, a permission and
+   options (`bpep.d`: `send(context, 0, intent, onFinished, null, permission,
+   options)`), a form that sent nothing (the `PendingIntent` overlay's
+   `sendAndReturnResult`, android/app/PendingIntent.java above).
+
+Then its server: the module asks Google's `VoilaTileService/FindTiles` over
+gRPC for the access points it does not know (`GmsCoreVoilaTileGrpc`, `gded`;
+`GlsClientGrpc`, `gexu`) and locates the phone among them itself (its "frewle"
+model); whether Google answers a phone of Megler's is for a phone to show.
+
+**The fixes**, as `megler.LocationService` sees them on their way (a
+`PendingIntent` of Google Play services' whose intent carries its network
+location's `EXTRA_RELEASE_VERSION`): the app's own requests of
+`LocationManager` are handed the better of a fix of Google's and Windows'
+newest -- the more accurate, each taken 3 m less accurate for every second of
+its age -- as on Android, where the network provider is Google Play services'
+network location. An app of `LocationManager` alone gets none of Google's:
+the module runs only for Google Play services' fused provider, which such an
+app never binds, and Megler does not start it for `LocationManager` (GmsCore
+read into the app's process -- seconds and tens of megabytes on a Lumia -- and
+the phone's Wi-Fi networks sent to Google for an app that asked nothing of
+Google). Google Play services' own requests ("gps" and "passive", its fused
+provider's and its network location's, and its `getLastKnownLocation`: told
+by GmsCore's class loader, the listener's or the closest up the stack, not by
+any scope's, which an app's own other processes have too) are never handed
+its own fixes back, and while a fix of its network location is fresh (a
+minute) are handed Windows' from the satellites alone: Windows' cell fixes
+came every second as "gps" ones, fresher than the Wi-Fi's, and are what its
+collection takes satellite positions for. With none for a minute they have
+Windows' as before. Google's network location does not need Google Play
+services' package context to have an attribution tag of its own (066d60ea):
+an app's `FusedLocationProviderClient` requests are made as the app, and the
+module hands its fixes to the fused provider by its `PendingIntent`, not
+through the location API that refuses Google Play services' own requests
+with a null tag (`gerz.h`).
+
+The log says, in the shell's lines and the framework's ("MeglerWifi",
+"MeglerLocation"): what Windows says of the Wi-Fi ("wifi: Windows' access:
+allowed, 1 Wi-Fi adapter; the Wi-Fi is on"), each of the first eight scans'
+networks and then a minute's ("wifi: scan 1 found 14 networks (3 on 5 GHz),
+the strongest at -48 dBm, in 2804 ms"), who asked for the first scans ("a scan
+asked for by gezt") and to whom results were handed, Google Location
+Accuracy's answer ("Google Location Accuracy on: the user was asked, and said
+Allow"), Google's network location's first fix and then each minute's ("its
+first fix, 24 m accurate", "4 fixes in the last 60 s, accurate to 18 m at best,
+25 m the last; Windows' newest 640 m"), and when Windows' cell fixes stop and
+start going to Google Play services.
+
+The test app `wifi`, on the stand-in for the shell's Wi-Fi
+(`core/tests/mg_wifi_standin.c`: four networks -- one UTF-8 name, a hidden one,
+an ad hoc one -- the first a little weaker at each scan, the phone connected to
+the first), asks for a scan and hears its broadcast on the main thread, reads
+every field of the four results, a second scan's three seconds later, two
+requests answered by one scan and its callback, the connection, and a result
+through a `Parcel` (`run_wifi`: three scans of the stand-in's, the core's and
+the framework's lines). The data app, which names no location permission, is
+refused its scan and results. And `gms-host`, holding the location, binds the
+location API of the stand-in for Google's own Play services, which has a
+stand-in for Google's settings: the user is asked once, and
+`network_location_opt_in=1` is written there. Windows' fix is the cell
+network's 600 m in that run (`mg_location_standin_cell`), and the stand-in's
+network location hands its fused provider a fix of 5 m as Google's does (a
+`PendingIntent` of its own, sent with an `OnFinished`, the intent marked with
+the module's release): the app's `getLastKnownLocation("network")` and the
+first fix of its "gps" request are that one, named for the provider asked,
+and the stand-in's own "gps" request is handed none of Windows' while it is
+fresh.
 
 ### Sound from Java
 

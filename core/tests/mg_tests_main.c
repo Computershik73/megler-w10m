@@ -72,6 +72,11 @@
  *       seconds -- nothing sent, connected to or paired with -- its advertisements counted, each device's first said. A PC
  *       without Bluetooth, or with the radio off, says so and has nothing to check. Only in the build tools/build-tests.sh win
  *       makes; any other says so and does nothing
+ *   mg_tests --wifi-windows <scratch dir>
+ *       the shell's Wi-Fi (app/Megler/player/WifiHost.cpp: Windows.Devices.WiFi) through megler_wifi_host, under the core's for
+ *       WifiManager: Windows' access, this PC's adapter and radio, one scan -- its networks counted, the first eight said with
+ *       their numbers -- and the network the PC is connected to. A PC without Wi-Fi, or with it off, says so and has nothing to
+ *       check. Only in the build tools/build-tests.sh win makes; any other says so and does nothing
  *   mg_tests --portal-windows <address> <user> <password> <scratch dir> <received dir> <mock's log>
  *       the Xbox build's client of the console's Device Portal (app/Megler/shell/DevicePortal.cpp) against a portal of the
  *       tests' own at that address (tools/device-portal-mock.py, which tools/build-tests.sh win starts): its handshake, user
@@ -1121,6 +1126,77 @@ static int bluetooth_windows_mode(int argc, char **argv)
 #endif
 }
 
+/* ---------------------------------------------------------- --wifi-windows */
+
+#ifdef MG_WIFI_WINDOWS
+/* mg_wifi_windows.cpp: the shell's own megler_wifi_host. */
+MG_HOSTAPI const megler_wifi_host *mg_wifi_windows_host(void);
+MG_HOSTAPI void mg_wifi_windows_summary(char *out, size_t size);
+#endif
+
+/*
+ * This PC's Wi-Fi through the shell's host and the core's, as an app's WifiManager uses them: whether it can be scanned, one
+ * scan -- how many networks it heard, the first eight said (their BSSID, name, signal, channel and security) -- and the network
+ * the PC is connected to. A PC without Wi-Fi, or with it off, or that Windows does not let scan, says so and checks nothing.
+ */
+static int wifi_windows_mode(int argc, char **argv)
+{
+#ifdef MG_WIFI_WINDOWS
+    megler_config config;
+    static megler_wifi_network nets[128];
+    megler_wifi_network c;
+    char summary[600];
+    long long when = 0;
+    int checks = 0, failed = 0, state, n, i;
+    (void)argc;
+    memset(&config, 0, sizeof(config));
+    config.data_dir = argv[2];
+    config.package_dir = argv[2];
+    megler_init(&config);
+    mg_java_wifi_set_host(mg_wifi_windows_host());
+    mg_wifi_windows_summary(summary, sizeof(summary));
+    printf("  Windows' Wi-Fi: %s\n", summary);
+    state = mg_jwifi_state(true);
+    if (state != MEGLER_WIFI_ON) {
+        printf("(%s: --wifi-windows has nothing to scan, and nothing is checked)\n0 checks, 0 failed\n",
+               state == MEGLER_WIFI_OFF      ? "this PC's Wi-Fi is off"
+               : state == MEGLER_WIFI_DENIED ? "Windows does not let this program scan the Wi-Fi"
+               : state == MEGLER_WIFI_NONE   ? "no Wi-Fi adapter on this PC"
+                                             : "Windows did not say whether this program may scan the Wi-Fi");
+        mg_java_wifi_set_host(NULL);
+        return 0;
+    }
+    n = mg_jwifi_scan(nets, (int)MG_COUNT(nets), &when);
+    checks++;
+    if (n < 0) failed++;
+    printf("  %s a scan: %d networks, Windows' report %lld ms old\n", n < 0 ? "FAIL" : "ok", n,
+           when ? (long long)(mg_time_realtime_ns() / 1000000ull) - when / 1000000 : -1ll);
+    for (i = 0; i < n && i < 8; i++)
+        printf("  %012llx \"%.*s\" %d dBm, %d MHz, security %d/%d, physical layer %d%s\n", nets[i].bssid, nets[i].ssid_size, (const char *)nets[i].ssid,
+               nets[i].rssi_dbm, nets[i].frequency_mhz, nets[i].security & 0xff, nets[i].security >> 8, nets[i].phy, nets[i].adhoc ? ", ad hoc" : "");
+    /* Each network's numbers as megler.h has them: a BSSID of 48 bits, a channel's frequency, a signal of dBm. */
+    for (i = 0; i < n; i++)
+        if (!nets[i].bssid || nets[i].bssid >> 48 || nets[i].frequency_mhz < 2400 || nets[i].frequency_mhz > 72000 || nets[i].rssi_dbm > 0 || nets[i].rssi_dbm < -127) {
+            printf("  FAIL network %d's numbers\n", i);
+            failed++;
+            break;
+        }
+    checks++;
+    if (mg_jwifi_connection(&c))
+        printf("  connected to \"%.*s\" (%012llx, %d dBm, %d MHz)\n", c.ssid_size, (const char *)c.ssid, c.bssid, c.rssi_dbm, c.frequency_mhz);
+    else
+        printf("  connected by no Wi-Fi\n");
+    mg_java_wifi_set_host(NULL);
+    printf("%d checks, %d failed\n", checks, failed);
+    return failed ? 1 : 0;
+#else
+    (void)argc;
+    (void)argv;
+    printf("(the shell's Wi-Fi -- Windows.Devices.WiFi -- is not in this build of the tests: --wifi-windows does nothing here; tools/build-tests.sh win runs it)\n");
+    return 0;
+#endif
+}
+
 /* ------------------------------------------------------- --portal-windows */
 
 #ifdef MG_PORTAL_WINDOWS
@@ -1177,6 +1253,7 @@ int main(int argc, char **argv)
     if (argc >= 3 && !strcmp(argv[1], "--camera-windows")) return camera_windows_mode(argc, argv);
     if (argc >= 3 && !strcmp(argv[1], "--sensors-windows")) return sensors_windows_mode(argc, argv);
     if (argc >= 3 && !strcmp(argv[1], "--bluetooth-windows")) return bluetooth_windows_mode(argc, argv);
+    if (argc >= 3 && !strcmp(argv[1], "--wifi-windows")) return wifi_windows_mode(argc, argv);
     if (argc >= 8 && !strcmp(argv[1], "--portal-windows")) return portal_windows_mode(argv);
     if (argc >= 2 && !strcmp(argv[1], "--window-windows")) return window_windows_mode();
     if (argc >= 5 && !strcmp(argv[1], "--gfx-replay")) return gfx_replay_mode(argc, argv);

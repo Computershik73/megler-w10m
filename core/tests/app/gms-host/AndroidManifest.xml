@@ -1,7 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- An app that hosts Google's own Play services (their stand-in, gms-own) and starts a service of theirs. -->
+<!-- An app that hosts Google's own Play services (their stand-in, gms-own), starts a service of theirs, and binds their
+     location API as an app's FusedLocationProviderClient does, holding the location as Transit does (the test's shell grants it). -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android" package="megler.test.gmshost">
     <uses-sdk android:minSdkVersion="21" android:targetSdkVersion="28" />
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <application android:label="@string/gms_host_label">
         <activity android:name=".Main" android:exported="true">
             <intent-filter>

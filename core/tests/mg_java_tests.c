@@ -89,6 +89,7 @@
 #include "../src/zip/mg_zip.h"
 #include "mg_camera_standin.h"
 #include "mg_location_standin.h"
+#include "mg_wifi_standin.h"
 #include "mg_sensor_standin.h"
 #include "mg_bluetooth_standin.h"
 #include "mg_codec_standin.h"
@@ -911,7 +912,16 @@ static MEGLER_CB int system_permission(void *user, const char *group, bool ask)
         }
         return g_gms_location;
     }
-    if (!g_data_app) return MEGLER_PERMISSION_GRANTED;
+    if (!g_data_app) {
+        /* (Every other app is let have what it asks for; what was asked of the user is noted all the same: gms-host's Google
+           Location Accuracy, which no app has an answer kept for until the user is asked.) */
+        if (!strcmp(group, "location_accuracy") && !ask) return MEGLER_PERMISSION_UNDECIDED;
+        if (ask) {
+            size_t n = strlen(g_permissions_asked);
+            snprintf(g_permissions_asked + n, sizeof(g_permissions_asked) - n, "%s;", group);
+        }
+        return MEGLER_PERMISSION_GRANTED;
+    }
     if (!strcmp(group, "contacts")) {
         if (ask) {
             size_t n = strlen(g_permissions_asked);
@@ -1057,6 +1067,9 @@ static bool start(const char *apk, const char *android_root)
     if (g_camera_app) cfg.camera = *mg_camera_standin();
     /* The phone in Moscow, the location on (mg_location_standin.c). */
     cfg.location = *mg_location_standin();
+    /* Its Wi-Fi on, four networks in range, connected to the first (mg_wifi_standin.c), its scans counted from each start. */
+    mg_wifi_standin_reset();
+    cfg.wifi = *mg_wifi_standin();
     /* A device with one of each sensor, each reading a known value in Windows' units and signs (mg_sensor_standin.c). */
     cfg.sensors = *mg_sensor_standin();
     /* A Bluetooth LE radio with a MeshCore radio and a beacon in range (mg_bluetooth_standin.c), as it starts. */
@@ -2930,7 +2943,7 @@ static int run_data(void)
                                             makes one. And a proxy of an interface of 600 methods. And sound from Java: an
                                             AudioTrack written to, a MediaPlayer of a WAV and of an Ogg Vorbis asset, a SoundPool. */
                                          "xml", "asset-fd", "tasks", "wrapper-receiver", "viewgroup-flag", "text-drawables", "pfd-dup", "pfd-parcel",
-                                         "theme-selfref", "queue-next", "storage-stats", "broadcast-explicit", "service-stop-thread", "start-ids", "process-scope", "job-scheduler", "downloads", "rollback-service", "art-manager", "progress-subclass", "telephony", "microphone", "biometric", "ordered-broadcast", "hardware-accelerated", "descendant-invalidated", "image-matrix-before-layout", "delegate-last-scope", "asset-manager-manifest", "big-asset", "path-iterator", "mutable-context", "exec", "crc32c", "nine-patch-constructors", "subscription-ids", "filter-categories", "intent-categories", "broadcast-identity", "arrays-ranges", "collection-factories", "unmodifiable-collectors", "thread-stack", "icu-number", "audio-route", "expand-template", "list-fragment", "fragment-saved-state", "stub-said", "handler-thread", "managed-dialog", "input-format", "dialog-of-stopped", "zip-path-validator", "list-row-click", "animation-listener", "circular-reveal", "animator-values", "detached-animator", "animator-listener", "animator-not-animation", "observer-merged", "typeface-descriptor", "device-provisioned", "users", "start-asked", "pending-intent-creator", "pending-intent-flags", "alarm-replace-cancel", "messenger-forwarded", "insets-builder", "insets-consumed", "insets-siblings", "broadcast-handler", "prefs-spaced-key", "account-removed", "sync", "package-installer", "batch-operations", "wifi", "media-metadata", "playback-state", "remote-user-info", "media-key-controller", "container-state", "context-params", "theme-accent", "phone-apps", "phone-apps-activities", "phone-apps-signatures", "check-signatures", "install-intent", "install-session", "install-splits", "bitmap-bytes", "bitmap-reuse", "file-read-only", "component-state", "adaptive-icon", "idle-handler", "uri-builder", "html-tag-handler", "stats-manager", "credential-manager", "many-interfaces", "proxy-many-methods", "apk-path", "maps-paths", "apk-optimization",
+                                         "theme-selfref", "queue-next", "storage-stats", "broadcast-explicit", "service-stop-thread", "start-ids", "process-scope", "job-scheduler", "downloads", "rollback-service", "art-manager", "progress-subclass", "telephony", "microphone", "biometric", "ordered-broadcast", "hardware-accelerated", "descendant-invalidated", "image-matrix-before-layout", "delegate-last-scope", "asset-manager-manifest", "big-asset", "path-iterator", "mutable-context", "exec", "crc32c", "nine-patch-constructors", "subscription-ids", "filter-categories", "intent-categories", "broadcast-identity", "arrays-ranges", "collection-factories", "unmodifiable-collectors", "thread-stack", "icu-number", "audio-route", "expand-template", "list-fragment", "fragment-saved-state", "stub-said", "handler-thread", "managed-dialog", "input-format", "dialog-of-stopped", "zip-path-validator", "list-row-click", "animation-listener", "circular-reveal", "animator-values", "detached-animator", "animator-listener", "animator-not-animation", "observer-merged", "typeface-descriptor", "device-provisioned", "users", "start-asked", "pending-intent-creator", "pending-intent-flags", "pending-intent-options", "alarm-replace-cancel", "messenger-forwarded", "insets-builder", "insets-consumed", "insets-siblings", "broadcast-handler", "prefs-spaced-key", "account-removed", "sync", "package-installer", "batch-operations", "wifi", "media-metadata", "playback-state", "remote-user-info", "media-key-controller", "container-state", "context-params", "theme-accent", "phone-apps", "phone-apps-activities", "phone-apps-signatures", "check-signatures", "install-intent", "install-session", "install-splits", "bitmap-bytes", "bitmap-reuse", "file-read-only", "component-state", "adaptive-icon", "idle-handler", "uri-builder", "html-tag-handler", "stats-manager", "credential-manager", "many-interfaces", "proxy-many-methods", "apk-path", "maps-paths", "apk-optimization",
                                          /* And an <inset> whose insets are fractions of its bounds, WhatsApp's adaptive icon's 0.01% among them. */
                                          "inset-fraction",
                                          /* And a WorkSource through a Parcel and back, as a location request of Google Play services' carries one. */
@@ -3045,6 +3058,12 @@ static int run_data(void)
     expect_line("I/DataTest: battery-received ok", &at, 30);
     /* And the network's sticky broadcast (CONNECTIVITY_ACTION), once, to the receiver registered for it. */
     CHECK(wait_line("I/DataTest: connectivity-received ok", 0, 30) >= 0);
+    /* The PendingIntent sent with an OnFinished and options (the step "pending-intent-options"): its receiver heard it. */
+    CHECK(wait_line("I/DataTest: pending-intent-options-sent ok v=5", 0, 30) >= 0);
+    /* No scan of the Wi-Fi for an app that may not have the location (the step "wifi"): refused before the shell was asked. */
+    CHECK(wait_line("I/DataTest: wifi ok", 0, 120) >= 0);
+    CHECK(mg_wifi_standin_scans() == 0);
+    CHECK(find_line("I/MeglerWifi: a scan refused: the app holds no location permission (ACCESS_FINE_LOCATION, ACCESS_COARSE_LOCATION)", 0) >= 0);
     /* The phone's location, asked for in the step "location": a fix delivered on the main thread, after which the listener is
        removed and the location no longer followed. */
     CHECK(wait_line("I/DataTest: location-update ok", 0, 30) >= 0);
@@ -3697,6 +3716,40 @@ static int run_bluetooth(void)
     return g_failed;
 }
 
+/*
+ * The phone's Wi-Fi (the test app wifi, on the stand-in for the shell's Wi-Fi, mg_wifi_standin.c), as an app and Google Play
+ * services' network location in it use it: a scan asked for and its broadcast, its networks as ScanResults, a second scan no
+ * sooner than three seconds after the first, two requests answered by one scan and its callback, the connection's network,
+ * a ScanResult through a Parcel. Three scans of the stand-in's in all, and what the core and the framework said of them.
+ */
+static int run_wifi(void)
+{
+    static const char *const steps[] = { "permission", "scan", "results", "copies", "second-scan", "joined", "connection", "parcel" };
+    char text[120];
+    int at = -1, i;
+    expect_line("I/WifiTest: onCreate", &at, 120);
+    for (i = 0; i < (int)MG_COUNT(steps); i++) {
+        snprintf(text, sizeof(text), "I/WifiTest: %s ok", steps[i]);
+        expect_line(text, &at, 120);
+    }
+    snprintf(text, sizeof(text), "I/WifiTest: done ok=%d failed=0", (int)MG_COUNT(steps));
+    expect_line(text, &at, 60);
+    say("  the stand-in: %d scans", mg_wifi_standin_scans());
+    CHECK(mg_wifi_standin_scans() == 3);
+    /* The core's word on each scan and the framework's on who asked and what it found. */
+    CHECK(find_line("wifi: on: the phone's Wi-Fi can be scanned", 0) >= 0);
+    CHECK(find_line("wifi: scan 1 found 4 networks (1 on 5 GHz), the strongest at -46 dBm, in ", 0) >= 0);
+    CHECK(find_line("wifi: scan 3 found 4 networks (1 on 5 GHz), the strongest at -48 dBm, in ", 0) >= 0);
+    CHECK(find_line("I/MeglerWifi: a scan asked for by megler.test.wifi.Main", 0) >= 0);
+    CHECK(find_line("I/MeglerWifi: scan 1 found 4 networks in ", 0) >= 0 &&
+          find_line(", the strongest \"Megler Test\" (00:11:22:33:44:55) at -46 dBm, 2437 MHz", 0) >= 0);
+    CHECK(find_line("I/MeglerWifi: 4 results of a scan ", 0) >= 0);
+    CHECK(find_line(" FAILED", 0) < 0 && find_line("FATAL EXCEPTION", 0) < 0 && find_line("I/MeglerWifi: a scan refused", 0) < 0);
+    back_and_end("I/WifiTest: onDestroy", &at);
+    if (g_failed) say_app_lines("/WifiTest: ");
+    return g_failed;
+}
+
 /* Regression: a client and GmsCore carry incompatible classes of identical names. */
 static int run_microg(void)
 {
@@ -3769,6 +3822,37 @@ static int run_gms_host(void)
     CHECK(find_line(deny ? "permissions: Google Play services' own use of the location, the user asked: not allowed, for every app"
                          : "permissions: Google Play services' own use of the location, the user asked: allowed, for every app", 0) >= 0);
     say("  Google Play services' own location: the user asked %d time(s), %s", g_gms_asked, deny ? "and refused it" : "and allowed it");
+    /*
+     * The app's binding of their location API (an app's FusedLocationProviderClient's) has Google Location Accuracy settled:
+     * the app holds the location and no answer is kept, the setting not there, so the user is asked (the test's shell answers
+     * Allow) and the answer written into Google's settings (the stand-in's, as Google Services Framework's are), once.
+     */
+    CHECK(wait_line("I/GmsHostTest: location api connected true", 0, 300) >= 0);
+    CHECK(wait_line("I/GmsOwnTest: settings network_location_opt_in=1", 0, 120) >= 0);
+    CHECK(wait_line("I/MeglerLocation: Google Location Accuracy on: the user was asked, and said Allow -- Google Play services' network location may find "
+                    "the phone from the Wi-Fi networks around it", 0, 60) >= 0);
+    say("  the user was asked about: %s", g_permissions_asked[0] ? g_permissions_asked : "nothing");
+    {
+        const char *at = g_permissions_asked;
+        int asked = 0;
+        while ((at = strstr(at, "location_accuracy;")) != NULL) {
+            asked++;
+            at++;
+        }
+        CHECK(asked == 1);
+    }
+    /*
+     * Google's network location's fix, as the module hands it to the fused provider (the stand-in's, of 5 m, by a PendingIntent of
+     * Google Play services' sent with an OnFinished, its intent marked with the module's release), seen on its way; Windows'
+     * fix the cell network's 600 m. The app's own LocationManager has the better one, Google's, for getLastKnownLocation of
+     * "network" and as the first fix of a "gps" request, each named for the provider asked; Google Play services' own "gps"
+     * request (their fused provider's) is handed no fix of Windows' cell network while Google's is fresh.
+     */
+    CHECK(wait_line("I/GmsOwnTest: network location fix sent true", 0, 60) >= 0);
+    CHECK(find_line("I/MeglerLocation: Google's network location: its first fix, 5 m accurate", 0) >= 0);
+    CHECK(wait_line("I/GmsHostTest: last network fix 5 m network", 0, 60) >= 0);
+    CHECK(wait_line("I/GmsHostTest: first gps fix 5 m gps", 0, 60) >= 0);
+    CHECK(find_line("I/GmsOwnTest: own gps fix too soon", 0) < 0);
     CHECK(find_line("FATAL EXCEPTION", 0) < 0);
     say_app_lines("/GmsOwnTest: ");
     return g_failed;
@@ -3951,6 +4035,9 @@ int mg_tests_java_run(const char *which, const char *apk, const char *android_ro
     g_bluetooth_app = !strcmp(which, "bluetooth");
     g_data_app = !strcmp(which, "data");
     g_microg_app = !strcmp(which, "microg");
+    /* gms-host runs where Windows finds the phone by the cell network alone (600 m), as Transit's user's phone does: Google Play
+       services' network location's fix is then the better one (run_gms_host). */
+    mg_location_standin_cell(!strcmp(which, "gms-host"));
     /* The data app runs with the phone's look told (megler_set_theme): a cobalt accent and a light theme; its step theme-accent checks what an app sees of it. */
     if (!strcmp(which, "data")) megler_set_theme(0xFF0063B1u, false);
     /* The camera app's second run: every camera refused, as Windows refuses Megler the camera when the user has said no. */
@@ -4043,6 +4130,7 @@ int mg_tests_java_run(const char *which, const char *apk, const char *android_ro
         else if (!strcmp(which, "splits")) run_splits();
         else if (!strcmp(which, "screen")) run_screen();
         else if (!strcmp(which, "bluetooth")) run_bluetooth();
+        else if (!strcmp(which, "wifi")) run_wifi();
         else if (g_any_app) run_app();
         else run_hello();
         if (running()) {

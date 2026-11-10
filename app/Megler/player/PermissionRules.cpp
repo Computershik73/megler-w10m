@@ -57,9 +57,17 @@ struct Kind {
     const char* question;
     const char* explanation;
 };
+/* Google Location Accuracy's group, Megler's own and no permission of Android's: asked of an app that holds the location, as
+   its Google Play services want it (megler.LocationAccuracy, which writes the answer into Google's settings, every app's). */
+constexpr const char* kLocationAccuracy = "location_accuracy";
+
 const Kind kKinds[] = {
     {"location", "the location", "Location", Decider::windows, 0xE707, "use this phone's location?",
      "Where the phone is, as Windows finds it: the satellites, Wi-Fi, the cell network."},
+    {kLocationAccuracy, "Google Location Accuracy", "Google Location Accuracy", Decider::megler, 0xE81D, "use Google Location Accuracy?",
+     "Google Play services in the app then finds the phone from the Wi-Fi networks around it, as on Android: it sends the networks "
+     "it hears, their addresses and signals, to Google, which answers where they are -- within tens of metres, where Windows finds "
+     "the phone by the cell network alone. It is one setting for every app, as Android's is."},
     {"camera", "the camera", "Camera", Decider::windows, 0xE722, "take pictures and record video?", "The phone's cameras."},
     {"microphone", "the microphone", "Microphone", Decider::windows, 0xE720, "record audio?", "The phone's microphone."},
     {"storage", "photos, media and files", "Files and media", Decider::megler, 0xE8B7, "have the photos, media and files on this phone?",
@@ -120,10 +128,14 @@ std::vector<Group> groupsOf(const ApkReport& report) {
     const bool storage = report.asks("android.permission.READ_EXTERNAL_STORAGE");
     for (const Kind& kind : kKinds) {
         bool asked = false;
+        // (Google Location Accuracy is the app's to decide where it holds the location in the foreground: its Google Play
+        // services find the phone so.)
+        const bool accuracy = !strcmp(kind.group, kLocationAccuracy);
         for (const auto& p : kPermissions) {
             const bool mediaLocation = !strcmp(p.permission, "ACCESS_MEDIA_LOCATION");
             const char* group = mediaLocation && storage ? "storage" : p.group;
-            if (!strcmp(group, kind.group) && report.asks(std::string("android.permission.") + p.permission)) asked = true;
+            if (accuracy && !strcmp(p.permission, "ACCESS_BACKGROUND_LOCATION")) continue;
+            if (!strcmp(group, accuracy ? "location" : kind.group) && report.asks(std::string("android.permission.") + p.permission)) asked = true;
         }
         if (asked) out.push_back(groupOf(kind));
     }
