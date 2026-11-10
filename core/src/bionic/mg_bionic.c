@@ -1045,6 +1045,80 @@ static void hang_write(const char *text, size_t size)
     mg_file_write_all(path, text, size);
 }
 
+/*
+ * When and by which build a report was said. LocalState\hang.txt outlives the run that wrote it, and was read as another
+ * run's: a Lumia 650's Spotify had one of 0.1.0.674's (the old count, 18446744073.7 s, and the write-back thread asleep
+ * between two passes, as Viber's of 669) under 0.1.0.687, where it was taken for the app standing still after a tap, and
+ * its addresses named with 687's map gave nonsense. So an earlier run's goes aside as hang.prev.txt when the watch begins,
+ * and a report's first line says the local time, how far into the run, and the linker's time stamp of the core's module,
+ * which its build's map has at its top ("Timestamp is ..."): the map that names its addresses. The module, its stamp and the
+ * zone's offset are found as the watch begins (hang_heading_facts): a stand-still may hold the loader's lock, and the
+ * report's first lines are to need nothing but the clock.
+ */
+static u64 g_hang_began;
+static i32 g_hang_utc_offset;
+static char g_hang_module[96];
+static u32 g_hang_stamp;
+
+static void hang_heading_facts(void)
+{
+    const mg_addr self = MG_CODE_ADDR((mg_addr)mg_bionic_hang_heading);
+    const i64 now = (i64)(mg_time_realtime_ns() / 1000000000ull);
+    mg_addr base = 0;
+    g_hang_utc_offset = mg_time_utc_offset(now, NULL);
+    if (!mg_host_module_at(self, g_hang_module, sizeof(g_hang_module), &base) || !mg_host_module_stamp(self, &g_hang_stamp)) {
+        g_hang_module[0] = 0;
+        g_hang_stamp = 0;
+    }
+}
+
+/* Seconds since the epoch as "YYYY-MM-DD hh:mm:ss" (the days to a date by Howard Hinnant's civil_from_days). */
+static void hang_time(i64 t, char *out, size_t size)
+{
+    i64 days = t / 86400, rem = t % 86400, era, doe, yoe, doy, mp, y;
+    unsigned d, m;
+    if (rem < 0) {
+        rem += 86400;
+        days--;
+    }
+    days += 719468;
+    era = (days >= 0 ? days : days - 146096) / 146097;
+    doe = days - era * 146097;
+    yoe = (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365;
+    doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    mp = (5 * doy + 2) / 153;
+    d = (unsigned)(doy - (153 * mp + 2) / 5 + 1);
+    m = (unsigned)(mp < 10 ? mp + 3 : mp - 9);
+    y = yoe + era * 400 + (m <= 2 ? 1 : 0);
+    snprintf(out, size, "%04d-%02u-%02u %02u:%02u:%02u", (int)y, m, d, (unsigned)(rem / 3600), (unsigned)(rem % 3600 / 60), (unsigned)(rem % 60));
+}
+
+size_t mg_bionic_hang_heading(char *out, size_t cap, size_t at)
+{
+    const i64 now = (i64)(mg_time_realtime_ns() / 1000000000ull);
+    char when[32];
+    /* (Looked at by a test, with no watch begun: found now.) */
+    if (!g_hang_began) hang_heading_facts();
+    hang_time(now + g_hang_utc_offset, when, sizeof(when));
+    at = hang_add(out, cap, at, "hang: said %s local time", when);
+    if (g_hang_began) at = hang_add(out, cap, at, ", %.0f s into the run", (double)(mg_time_monotonic_ns() - g_hang_began) / 1e9);
+    if (g_hang_module[0] && g_hang_stamp)
+        at = hang_add(out, cap, at, ", by %s of time stamp %08x: its build's map says \"Timestamp is %08x\"", g_hang_module, (unsigned)g_hang_stamp,
+                      (unsigned)g_hang_stamp);
+    return hang_add(out, cap, at, "\n");
+}
+
+/* An earlier run's report, if there is one, as hang.prev.txt: hang.txt is this run's or none. */
+static void hang_earlier_aside(void)
+{
+    char from[700], to[700];
+    mg_stat st;
+    int err = 0;
+    snprintf(from, sizeof(from), "%s/hang.txt", megler_data_dir());
+    snprintf(to, sizeof(to), "%s/hang.prev.txt", megler_data_dir());
+    if (mg_path_stat(from, &st, &err)) mg_path_rename(from, to, &err);
+}
+
 /* `threads`, `holders` and `text` are the watchdog's, made at its start: the allocator's lock may be what stands still. */
 static void hang_report(hang_thread *threads, hang_holder *holders, const u32 *holder_ids, const char *what, char *text, size_t text_cap)
 {
@@ -1092,6 +1166,7 @@ static void hang_report(hang_thread *threads, hang_holder *holders, const u32 *h
         hd->lr = MG_ARCH_ARM32 && regs.n > 13 ? regs.r[13] : 0;
         nholders++;
     }
+    at = mg_bionic_hang_heading(text, text_cap, at);
     at = hang_add(text, text_cap, at, "hang: %s\n", what);
     mark = at;
     /* First the bare addresses: the words of each stack that may be code, unnamed. */
@@ -1178,6 +1253,9 @@ static MG_HOSTCB void hang_observer(void *unused)
     u64 said_log_at = 0, said_threads_at = 0, said_regions_at = 0;
     int reports = 0;
     (void)unused;
+    hang_heading_facts();
+    hang_earlier_aside();
+    g_hang_began = mg_time_monotonic_ns();
     while (reports < 5) {
         /* Each lock's holder as one hold: who, since when and for how long, read whole (mg_holder_look). */
         mg_hold_seen log, thread, region;

@@ -1882,6 +1882,13 @@ bool mg_host_module_at(mg_addr address, char *name, size_t size, mg_addr *base)
     return true;
 }
 
+bool mg_host_module_stamp(mg_addr address, u32 *stamp)
+{
+    (void)address;
+    (void)stamp;
+    return false;
+}
+
 bool mg_host_repair_known_fault(mg_fault *f)
 {
     (void)f;

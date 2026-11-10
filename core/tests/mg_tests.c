@@ -28,6 +28,7 @@
 
 #include <math.h>
 #include <stdio.h>
+#include <time.h>
 #ifdef _WIN32
 #include <process.h>
 #endif
@@ -244,6 +245,24 @@ static void test_lock_holders(void)
         if (t) mg_thread_join(t);
         say("  %u looks while another thread took it %u times: %u found it held, %u of them not one hold's", looks, race.rounds, held, torn);
         CHECK(race.rounds > 0 && torn == 0);
+    }
+    /*
+     * A report's first line says when it was said and by which build (bionic/mg_bionic.c, mg_bionic_hang_heading): a Lumia
+     * 650's hang.txt of 0.1.0.674 was read as 0.1.0.687's, and named with 687's map. Today's date, as the C library has it,
+     * and on Windows the program's linker time stamp, which its map says at its top.
+     */
+    {
+        char heading[400], today[16];
+        time_t now = time(NULL);
+        struct tm *local = localtime(&now);
+        size_t n = mg_bionic_hang_heading(heading, sizeof(heading), 0);
+        if (local) snprintf(today, sizeof(today), "%04d-%02d-%02d", local->tm_year + 1900, local->tm_mon + 1, local->tm_mday);
+        else today[0] = 0;
+        say("  a hang report's first line: %.*s", (int)(n && heading[n - 1] == '\n' ? n - 1 : n), heading);
+        CHECK(n > 20 && heading[n - 1] == '\n' && !strncmp(heading, "hang: said ", 11) && strstr(heading, today) == heading + 11);
+#if MG_HOST_WINDOWS && !defined(MG_CORE_ELF)
+        CHECK(strstr(heading, ".exe of time stamp ") != NULL && strstr(heading, "its build's map says \"Timestamp is ") != NULL);
+#endif
     }
 }
 
