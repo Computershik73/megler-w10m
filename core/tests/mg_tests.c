@@ -4096,6 +4096,135 @@ static void test_go_reserve(void)
     else CHECK(out[8] == 0 || out[8] == 1);
 }
 
+/*
+ * Imports nothing provides (guest/t_unres.c): the library's line in the log as it loads names each, once however many
+ * relocations ask for it, as many as the line has room for and then how many more. DANA's libjabe.so had one and the line
+ * said "1 imports are not provided", which one only at the loader's verbosity 2 (0.1.0.678). A function's import is a stub
+ * that says so when called and gives 0; a variable's is NULL.
+ */
+static char g_unres_line[600], g_unres_called[200];
+static mg_log_sink g_unres_before;
+static void *g_unres_before_user;
+
+static void unres_sink(int level, const char *line, void *user)
+{
+    (void)user;
+    if (strstr(line, "imports are not provided")) mg_strlcpy(g_unres_line, line, sizeof(g_unres_line));
+    if (strstr(line, "which nothing provides")) mg_strlcpy(g_unres_called, line, sizeof(g_unres_called));
+    if (g_unres_before) g_unres_before(level, line, g_unres_before_user);
+}
+
+static int count_in(const char *s, const char *what)
+{
+    int n = 0;
+    for (s = strstr(s, what); s; s = strstr(s + 1, what)) n++;
+    return n;
+}
+
+static void test_unresolved_imports(void)
+{
+    static const char *const names[] = { "mg_absent_one", "mg_absent_two", "mg_absent_data" };
+    const char *long_name = "mg_absent_function_whose_name_is_rather_long_number_";
+    size_t before = mg_ld_unresolved_count();
+    mg_ld_stats st;
+    mg_lib *lib;
+    char more[64];
+    int i, said;
+    say("guest library: imports nothing provides, named in the log as it loads");
+    mg_log_get_sink(&g_unres_before, &g_unres_before_user);
+    mg_log_set_sink(unres_sink, NULL);
+    g_unres_line[0] = 0;
+    lib = mg_ld_load("libt_unres.so");
+    say("  %s", g_unres_line[0] ? g_unres_line : "(no line)");
+    CHECK(lib != NULL && mg_ld_init(lib));
+    if (lib) {
+        mg_ld_get_stats(lib, &st);
+        CHECK_INT(st.unresolved, 3);
+        CHECK_INT((int)(mg_ld_unresolved_count() - before), 3);
+        CHECK(strstr(g_unres_line, "ld: libt_unres.so: 3 imports are not provided: ") != NULL);
+        for (i = 0; i < 3; i++) CHECK_INT(count_in(g_unres_line, names[i]), 1);
+        CHECK(!strstr(g_unres_line, " more"));
+        g_unres_called[0] = 0;
+        CHECK_INT(FN(lib, int (*)(int), "t_unres_call_one")(5), 7);
+        CHECK(strstr(g_unres_called, "mg_absent_one") != NULL);
+        CHECK_INT(FN(lib, int (*)(void), "t_unres_call_two")(), 9);
+        CHECK(FN(lib, int *(*)(void), "t_unres_data")() == NULL);
+        CHECK(FN(lib, void *const *(*)(void), "t_unres_pointers")()[1] == NULL);
+    }
+    g_unres_line[0] = 0;
+    lib = mg_ld_load("libt_unres_many.so");
+    say("  %s", g_unres_line[0] ? g_unres_line : "(no line)");
+    CHECK(lib != NULL);
+    if (lib) {
+        mg_ld_get_stats(lib, &st);
+        CHECK_INT(st.unresolved, 40);
+        CHECK(strstr(g_unres_line, "ld: libt_unres_many.so: 40 imports are not provided: mg_absent_function_whose_name_is_rather_long_number_") != NULL);
+        said = count_in(g_unres_line, long_name);
+        snprintf(more, sizeof(more), ", and %d more", 40 - said);
+        CHECK(said >= 4 && said < 40);
+        CHECK(strstr(g_unres_line, more) != NULL);
+        CHECK(strlen(g_unres_line) < 400);
+    }
+    mg_log_set_sink(g_unres_before, g_unres_before_user);
+}
+
+#if MG_ARCH_ARM32
+/*
+ * The crash report of a thread at a small pc (mg_core.c), each under a guard as the runtime calls a service's natives:
+ * a call through a pointer a little past null (t_call_small) is said to be one, lr a return address after it; a return
+ * through a frame whose saved lr was written over (t_return_smashed, lr in the library's data, as DANA's libjabe.so's was
+ * when it ended itself: DexGuard's answer to a sum of its code that differs; t_return_smashed_sp, lr on the stack) is not:
+ * the report says lr is no return address, and how much of the library's code the loader changed. It said a call through a
+ * null pointer for libjabe.so (0.1.0.678).
+ */
+static char g_small_pc_report[1100];
+static mg_log_sink g_small_pc_before;
+static void *g_small_pc_before_user;
+
+static void small_pc_sink(int level, const char *line, void *user)
+{
+    (void)user;
+    if (strstr(line, "fault: ") && strstr(line, "at pc 00000014")) mg_strlcpy(g_small_pc_report, line, sizeof(g_small_pc_report));
+    if (g_small_pc_before) g_small_pc_before(level, line, g_small_pc_before_user);
+}
+
+static void test_small_pc_report(mg_lib *lib, const char *what)
+{
+    static const char *const names[] = { "t_call_small", "t_return_smashed", "t_return_smashed_sp" };
+    char changed[96];
+    int i;
+    say("the crash report of a thread at a small pc, %s: a call through a pointer near null; a return through a saved lr written over", what);
+    if (!mg_guest_tp_get()) {
+        say("  (this thread has never run Android code: no guard can be had for the faults)");
+        CHECK(mg_guest_tp_get() != NULL);
+        return;
+    }
+    snprintf(changed, sizeof(changed), "the loader changed %s's code in ", mg_ld_lib_name(lib));
+    mg_log_get_sink(&g_small_pc_before, &g_small_pc_before_user);
+    mg_log_set_sink(small_pc_sink, NULL);
+    for (i = 0; i < (int)(sizeof(names) / sizeof(names[0])); i++) {
+        void *fn = SYM(lib, names[i]);
+        bool faulted = false;
+        g_small_pc_report[0] = 0;
+        CHECK(fn != NULL);
+        if (!fn) continue;
+        (void)mg_jni_call_native_guarded(fn, NULL, "()I", NULL, &faulted);
+        CHECK(faulted);
+        CHECK(strstr(g_small_pc_report, "executing at pc 00000014") != NULL);
+        if (i == 0) {
+            CHECK(strstr(g_small_pc_report, "a call through a null pointer") != NULL);
+            CHECK(strstr(g_small_pc_report, "\n  called from ") != NULL && strstr(g_small_pc_report, "not a call") == NULL);
+        } else {
+            CHECK(strstr(g_small_pc_report, "a call through a null pointer") == NULL);
+            CHECK(strstr(g_small_pc_report, "not a call: lr is no return address") != NULL);
+        }
+        /* lr in the library's data: named, and what the loader changed of the library's code said. */
+        if (i == 1) CHECK(strstr(g_small_pc_report, "\n  lr: ") != NULL && strstr(g_small_pc_report, changed) != NULL);
+    }
+    mg_log_set_sink(g_small_pc_before, g_small_pc_before_user);
+}
+#endif
+
 static void test_guest(const char *libdir, const char *scratch)
 {
     mg_lib *basic, *dep;
@@ -4153,6 +4282,10 @@ static void test_guest(const char *libdir, const char *scratch)
     CHECK(mg_ld_find_lib("libt_basic.so") == basic && mg_ld_lib_of(SYM(basic, "t_add")) == basic);
     CHECK(mg_ld_load("libc.so") == NULL && mg_ld_load("libnothere.so") == NULL);
     test_guest_kinds(libdir);
+    test_unresolved_imports();
+#if MG_ARCH_ARM32
+    test_small_pc_report(basic, "Thumb-2");
+#endif
 
 #if MG_ARCH_ARM32
     /* Both ISAs must return the shim pid (4242), never the host kernel's pid.
@@ -4383,6 +4516,7 @@ static void test_guest_arm(const char *scratch)
         mg_ld_get_stats(arm, &st);
         CHECK(st.arm_functions > 20);
         test_library(arm, "ARM mode, packed relocations", scratch);
+        test_small_pc_report(arm, "ARM mode");
     }
 }
 

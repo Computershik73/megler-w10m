@@ -376,6 +376,35 @@ them all. With 0.1.0.608 one such slot was an enabled context-ID breakpoint,
 which matched every instruction: the thread stopped at the first one of the
 exception dispatcher, again and again, until its stack ran out.
 
+**A library past the breakpoints.** DANA's `libjabe.so` (2.151.0; Guardsquare's
+DexGuard, its name chosen by DexGuard) sums its own code the same way, and much
+of it: its function at `+0xedd8c` (ARM) asks `+0x16d84` for a length and a sum
+(0x129c, 0x5e77), sums its own first 0x129c bytes with sdbm's hash (each byte
+added to the hash times 65599, from 0x8c53fbfe), and where the low 16 bits differ
+it puts 20 in its frame's saved `lr` and 24 in the saved `r11` and returns
+(`+0xeed18`): the thread goes on at 0x14 with `r11` 0x18, `r12` the length and
+`r0` the stack guard's difference, 0. Those bytes hold three ARM `svc 0`
+(`+0xeebac`, `+0xeebc8`, `+0xeec54`), which the loader made traps. Eleven such
+functions giving a length (up to 64 KB) and a sum are found by their shape, and
+some 27 blocks that put small numbers in their frame's saved `r11` and `lr`; the
+phone's third fault (pc 0x28, `r11` 0xc, `r3` 669df417, `r4` 0x504) is the next
+check's. The library has 417 system calls by number (352 ARM, 65 Thumb) in 164 of
+its 306 pages of code, and under qemu it made them at 35 sites before that second
+check -- far past the six breakpoints, and one page of it holds twenty. Under qemu,
+with the three `svc` of the first sum's bytes left as the file has them (made by
+qemu's Linux itself, for the trial), the first check passes and the second ends
+the thread as on the phone, with the same registers; with all of them left so, the
+library's checks pass and the app goes on, as far as a fault in another library
+(`libakamaibmp.so`, Akamai's, which unpacks itself). What would run it on the phone
+is its code as the file has it where it is read, and the traps where it runs: the
+image twice, the copy that runs patched and the one the library's pointers name
+never executed, their writable segments one memory -- not done.
+Meanwhile the crash report no longer calls such an end a call through a null
+pointer: a small pc whose `lr` is no return address (no BL or BLX before it, or in
+a library's data, or on the stack) is said to be a jump or a return there, with how
+much of `lr`'s library's code the loader changed (`mg_ld_after_call`; the guest
+test `t_return_smashed` ends as libjabe.so does).
+
 ### The kernel's user helpers
 
 Linux maps a page of code at `0xffff0000` into every ARM process, which old
@@ -464,7 +493,12 @@ and never both at once.
 An island is the library's own bit of executable memory, within a branch's reach
 (16 MB) of its text: the thread-pointer trampolines, the PLT thunks, and a stub for
 every import nothing provides (it logs the name when called and returns zero, so a
-missing function is a line in the log and not a crash at load).
+missing function is a line in the log and not a crash at load). The library's line
+as it loads names those imports, each once however many relocations ask for it, as
+many as the line has room for and then how many more ("ld: libjabe.so: 1 imports
+are not provided: killpg"), where DANA's log (0.1.0.678) said only how many.
+`mg_tests` checks it on the guest libraries `libt_unres.so` and
+`libt_unres_many.so` (`guest/t_unres.c`).
 
 Memory an app asks for as writable and executable at once (a JIT's code heap) cannot
 exist. Such a region is writable until something executes in it and executable until

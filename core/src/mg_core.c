@@ -381,10 +381,45 @@ static MG_HOSTCB bool on_fault(mg_fault *f)
                          (unsigned)(asked >> 20));
             }
         }
+        /*
+         * A small pc, reached by a call when lr is where a call returns to: a call through a null pointer, or a little past
+         * one, through a table of them. Not when lr is no return address -- in a library's data, after an instruction that
+         * is no call, on the stack: the thread jumped or returned there, as a function returns whose frame's saved lr was
+         * written over. A library that ends its process on purpose does that: DANA's libjabe.so (DexGuard) sums its own
+         * code, and where a sum differs it puts 20 in its frame's saved lr and 24 in the saved r11 and returns (+0xeed18) --
+         * and its sums differ here, the loader having made its system calls traps. The report said a call through a null
+         * pointer (0.1.0.678).
+         */
+        int called = 1;
         if (f->kind == MG_FAULT_ACCESS && pc < 0x10000) {
             size_t n = strlen(report);
-            snprintf(report + n, sizeof(report) - n, "\n  a call through a null pointer: the caller (%s) had asked for a function and was given none",
-                     MG_REG_LR >= 0 ? "lr" : "the return address on the stack");
+#if MG_ARCH_ARM32
+            mg_addr lr_at = f->regs[MG_REG_LR];
+            called = mg_ld_after_call(lr_at);
+            if (called < 0) {
+                void *lo = NULL, *hi = NULL;
+                mg_thread_stack_bounds(&lo, &hi);
+                if (lr_at >= (mg_addr)lo && lr_at < (mg_addr)hi) called = 0;
+            }
+#endif
+            if (called) {
+                snprintf(report + n, sizeof(report) - n, "\n  a call through a null pointer: the caller (%s) had asked for a function and was given none",
+                         MG_REG_LR >= 0 ? "lr" : "the return address on the stack");
+            } else {
+                mg_lib *changed = mg_ld_lib_of((const void *)f->regs[MG_REG_LR >= 0 ? MG_REG_LR : 0]);
+                mg_ld_stats st;
+                snprintf(report + n, sizeof(report) - n, "\n  not a call: lr is no return address, so the thread jumped or returned to this pc, as a function "
+                         "returns whose saved lr was written over -- a library that ends its process on purpose does that");
+                if (changed) {
+                    mg_ld_get_stats(changed, &st);
+                    n = strlen(report);
+                    if (st.svc_sites + st.tp_reads + st.plt_entries)
+                        snprintf(report + n, sizeof(report) - n, "; the loader changed %s's code in %u places (%u system calls by number made traps, "
+                                 "%u thread-pointer reads, %u PLT entries), which a library that sums its own code takes for tampering",
+                                 mg_ld_lib_name(changed), (unsigned)(st.svc_sites + st.tp_reads + st.plt_entries), (unsigned)st.svc_sites,
+                                 (unsigned)st.tp_reads, (unsigned)st.plt_entries);
+                }
+            }
         }
         {
             /*
@@ -397,8 +432,8 @@ static MG_HOSTCB bool on_fault(mg_fault *f)
             const char *caller = mg_ld_symbol_at((const void *)lr, &caller_lib, &caller_sym_addr, &caller_base);
             if (caller_lib && caller_base) {
                 size_t n = strlen(report);
-                snprintf(report + n, sizeof(report) - n, "\n  called from %s+0x%x%s%s", caller_lib, (unsigned)(lr - (mg_addr)caller_base), caller ? " " : "",
-                         caller ? caller : "");
+                snprintf(report + n, sizeof(report) - n, "\n  %s %s+0x%x%s%s", called ? "called from" : "lr:", caller_lib, (unsigned)(lr - (mg_addr)caller_base),
+                         caller ? " " : "", caller ? caller : "");
             }
         }
         if (!lib) {
