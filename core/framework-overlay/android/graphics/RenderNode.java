@@ -23,6 +23,8 @@
 //   - The generated create(String, AnimationHost), which returned null, makes a node.
 //   - A View's own node says so to the core (meglerSetView), and a View may leave what changed in it to the frame walk
 //     (meglerDefer, megler.Gfx.damage), which finds what changed in every other node itself.
+//   - A View's own node is clipped to the View's outline (meglerViewOutline), which the View works out as its list is
+//     recorded, the core told only of an outline that differs.
 // Everything else is the original's.
 package android.graphics;
 
@@ -306,6 +308,30 @@ public final class RenderNode {
             mOutline = copy;
         }
         meglerChanged();
+        return true;
+    }
+    /**
+     * Megler: the outline a View's own node is clipped to (android.view.View, overlaid, works it out as the view's list is
+     * recorded), or none: the node not clipped to one. The core is told only where that differs from what the node has: an
+     * outline set again as it was is no change, which the frame walk (megler.Gfx.damage) would take for one and have the
+     * whole view drawn again.
+     */
+    public void meglerViewOutline(Outline o) {
+        setClipToOutline(o != null);
+        if (o != null && !meglerSameOutline(o)) setOutline(o);
+    }
+
+    /** Whether the node's outline is `o` in what the core takes of it (rnSet): the rectangle and its corners, or the path. */
+    private boolean meglerSameOutline(Outline o) {
+        Outline was = mOutline;
+        if (was == null) return false;
+        if (was.mRect == null ? o.mRect != null : !was.mRect.equals(o.mRect)) return false;
+        if (was.mRect != null && was.mRadius != o.mRadius) return false;
+        Path a = was.mPath, b = o.mPath;
+        if (a == null || b == null) return a == b;
+        if (a.n != b.n || a.meglerFill() != b.meglerFill()) return false;
+        for (int i = 0; i < a.n; i++)
+            if (Float.floatToIntBits(a.ops[i]) != Float.floatToIntBits(b.ops[i])) return false;
         return true;
     }
     public boolean setClipRect(Rect r) { mClipRect = r == null ? null : new Rect(r); meglerChanged(); return true; }

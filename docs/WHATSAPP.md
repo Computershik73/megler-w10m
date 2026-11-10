@@ -74,3 +74,33 @@ traced" near what the collections that stop the app find, "the heap's blocks"
 within about three times that, the arenas "given back" when the app's garbage
 falls, the budget, and ", behind and hurried" where the app outran the
 marking; no "not collected" lines (or the thread and the reason they name).
+
+## The first screen on a Lumia 650 (2026-11-10)
+
+WhatsApp's first screen (`com.whatsapp.registration.app.EULA`) showed its
+picture, its title, the privacy text and the language, but never its green
+"Accept and continue" button (0.1.0.685, 720 x 1280 at 320 dpi): nobody could
+register. The button is in an androidx `CardView` (`eula_accept_view`) at the
+bottom of the `NestedScrollView`'s content, just below the scroll view's own
+bottom edge (a content of 1296 px in a view of 1136, the card's 112 px from
+1136 down). Where it should be stayed the screen's background colour when
+WhatsApp scrolled there itself, when a finger dragged the content up, and
+with the flag `no-node-damage`.
+
+In 2.26.39.74 the `NestedScrollView` has a global layout listener (`X.CbG`)
+that, once the screen is laid out, finds the content taller than the view
+and gives the card `setCardElevation(8)` and `setBackgroundColor(...)`: a new
+`ColorDrawable` in place of CardView's rounded one, whose bounds stay empty
+until the card is drawn. CardView clips itself to its outline, and Megler's
+`View.drawFromParent` put that clip into the parent's display list before
+the card's own list was recorded -- a rectangle of nothing, kept for as long
+as the parent's list, which nothing recorded again. Neither the card nor its
+button was drawn; the frame walk, the screen scrolled, met 17 nodes, the
+screen's views but the button. A view's outline is its own node's now,
+worked out as its list is recorded ([JAVA.md](JAVA.md), the overlay's
+`View.java`), and the test app `scroll` makes the screen and scrolls to the
+cards, with the frame walk and without. WhatsApp 2.26.39.74 itself in the
+test program (`mg_tests --java app` with its .apks, 720 x 1280 at 320 dpi,
+its content dragged up) showed the same before: the button's place white,
+the frame walk at 17 nodes; now "Agree and continue" is drawn in its card
+and the walk meets 18.
