@@ -7448,9 +7448,15 @@ an http URL refused, an exception of `onStreamReady` (CallbackException, the
 stream reset); "http-engine-hpack", RFC 7541's C.6.1 to C.6.3 as three
 responses on one connection after a size update of the table to 256 bytes,
 the second padded and the third cut by a CONTINUATION: each status and header
-as the RFC has them. **Not tried on a phone** yet: the Play Store's log there
-says "HttpEngine: the app made one" and its HTTP/2 connections when the flag
-is on, and search suggestions answer.
+as the RFC has them. Once, against Google's own front end (2026-11-10, the
+engine's classes on a desktop JVM, with its TLS): HTTP/2 to
+play-fe.googleapis.com over TLS 1.3, Google's compressed headers read, and a
+gRPC call to the Play Store's BrowseService without credentials answered in
+its trailers, apart from the headers ("grpc-status" 7, "Permission denied on
+the service."); a request to www.google.com/generate_204 got its 204. **Not
+tried on a phone** yet: the Play Store's log there says "HttpEngine: the app
+made one" and its HTTP/2 connections when the flag is on, and search
+suggestions answer.
 
 Not there: QUIC; an HTTP cache (`wasCached` is false); Brotli; public key
 pinning; HTTP/2 for `UrlRequest` (it is HTTP/1.1, as Android's
