@@ -79,6 +79,9 @@ void logSharedSpace();
 /// Google Play services' APK an app starts with: microG's when `microg` and it is registered, else Google's own, else
 /// microG's; nothing when neither is. Each kind is registered apart (registerServiceApk), the last installed of each.
 std::wstring serviceApk(bool microg = false);
+/// The folder of the splits of that APK (serviceApk's), which registerServiceApk copies beside it: Google's own from Play
+/// Store is a base and splits of the phone's density and languages. Empty when it has none.
+std::wstring serviceSplits(const std::wstring& apk);
 /// Whether a microG's Google Play services is registered.
 bool hasMicroG();
 /// microG's GmsCore.apk: the one registered by microG's own package, else the one published in the shared folder; empty when none.

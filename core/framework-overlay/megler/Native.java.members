@@ -64,6 +64,12 @@
     public static native java.nio.ByteBuffer mapApkFile(int apk, String path);
     /** The names of the entries of APK number `apk` that lie under `prefix` ("assets/x/"): a file's own name, a folder's name once. */
     public static native String[] listApkFiles(int apk, String prefix);
+    /**
+     * Google Play services' splits, for an app that hosts them, as it sees them: /system/priv-app/GmsCore/split_<name>.apk,
+     * sorted by name, beside GmsCore.apk; none where they came in one APK (megler_run_config.gms_splits_dir; megler.MicroG adds
+     * them to their resources).
+     */
+    public static native String[] gmsSplitPaths();
     /** The phone's name servers now, as text, the network's in use first (core: mg_net_dns_servers): android.net.LinkProperties.getDnsServers. */
     public static native String[] dnsServers();
     /**

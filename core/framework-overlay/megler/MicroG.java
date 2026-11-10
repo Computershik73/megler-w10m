@@ -231,6 +231,14 @@ public final class MicroG {
         a.credentialProtectedDataDir = a.dataDir;
         a.deviceProtectedDataDir = new File(a.dataDir, "device_protected").getPath();
         a.nativeLibraryDir = APK + "!/lib/" + Abis.PRIMARY;
+        // Their splits, as Android lists an installed app's, sorted by name (Native.gmsSplitPaths); none in one APK.
+        String[] splits = Native.gmsSplitPaths();
+        if (splits != null && splits.length > 0) {
+            a.splitSourceDirs = splits.clone();
+            a.splitPublicSourceDirs = splits.clone();
+            a.splitNames = new String[splits.length];
+            for (int i = 0; i < splits.length; i++) a.splitNames[i] = splitName(splits[i]);
+        }
         a.enabled = true; a.uid = GooglePackages.sharedUid();
         a.flags = ApplicationInfo.FLAG_SYSTEM | ApplicationInfo.FLAG_INSTALLED | ApplicationInfo.FLAG_HAS_CODE;
         a.metaData = new Bundle();
@@ -288,9 +296,41 @@ public final class MicroG {
         if (name == null) return null;
         return name.startsWith(".") ? GooglePackages.GMS + name : name.indexOf('.') < 0 ? GooglePackages.GMS + "." + name : name;
     }
+    /* A split's name from its path, as Android installs one: /system/priv-app/GmsCore/split_config.xhdpi.apk is config.xhdpi. */
+    private static String splitName(String path) {
+        String n = new File(path).getName();
+        if (n.endsWith(".apk")) n = n.substring(0, n.length() - 4);
+        return n.startsWith("split_") ? n.substring(6) : n;
+    }
+    /*
+     * Their splits, said once as they join their resources; and one with code or native libraries, of which nothing is taken
+     * here (their classes and libraries are their base's alone): Play Store's bundle of Google's own has had none of either.
+     */
+    private static void saySplits(AssetManager assets, String[] splits) {
+        StringBuilder names = new StringBuilder();
+        for (String s : splits) {
+            names.append(names.length() > 0 ? ", " : "").append(splitName(s));
+            // (Its entries as the core has them already: the same path is the same APK, opened once.)
+            int apk = Native.addApk(s);
+            if (apk < 0) continue;
+            String[] dex = Native.listApkFiles(apk, "classes"), libs = Native.listApkFiles(apk, "lib/");
+            boolean code = false, native_ = libs != null && libs.length > 0;
+            if (dex != null) for (String n : dex) code |= n.endsWith(".dex");
+            if (code || native_) android.util.Log.w("MicroG", "Google Play services' split " + splitName(s) + " has " + (code ? native_ ? "code and native libraries" : "code" : "native libraries")
+                + ", which are not taken from it here: their classes and libraries are their base's");
+        }
+        android.util.Log.i("MicroG", "Google Play services' splits, whose resources and files join their base's: " + names
+            + " (" + assets.getApkPaths().length + " APKs)");
+    }
     private MicroG() throws Exception {
-        AssetManager assets = AssetManager.meglerForPackage(APK, GooglePackages.GMS);
+        // With their splits, where they came in several APKs (Native.gmsSplitPaths): Play Store installs Google's own as a base
+        // and splits of the phone's density and languages, and a resource whose every value is a density's is in the
+        // density's split alone -- their account screens' Google logo (ProductLockupView), without which "Manage your Google
+        // Account" ended Play Store on Resources$NotFoundException (0.1.0.685).
+        String[] splits = Native.gmsSplitPaths();
+        AssetManager assets = AssetManager.meglerForPackage(APK, GooglePackages.GMS, splits);
         Resources resources = new Resources(assets);
+        if (splits != null && splits.length > 0) saySplits(assets, splits);
         byte[] manifest;
         try (java.io.InputStream in = assets.openNonAsset("AndroidManifest.xml"); java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream()) {
             byte[] buf = new byte[8192]; int n;

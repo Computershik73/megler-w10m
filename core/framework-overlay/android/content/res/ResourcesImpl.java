@@ -50,7 +50,7 @@ public class ResourcesImpl {
     private final android.view.DisplayAdjustments mDisplayAdjustments;
     /** The configuration the resources are chosen for, made of mConfiguration and mMetrics (updateCfg). */
     ResTable.Config mCfg;
-    /** Another package's table, where the AssetManager is that package's (megler.MicroG, megler.Gsf); null for the app's own. */
+    /** Another package's table, where the AssetManager is that package's (megler.MicroG, megler.Gsf), its splits' merged into it; null for the app's own. */
     final ResTable mPackageTable;
     final HashMap<Integer, Drawable.ConstantState> mDrawableCache = new HashMap<>();
     final HashMap<Integer, ColorStateList> mColorCache = new HashMap<>();
@@ -77,7 +77,7 @@ public class ResourcesImpl {
         mDisplayAdjustments = displayAdjustments != null ? displayAdjustments : new android.view.DisplayAdjustments();
         updateCfg();
         Resources.meglerLoadTables();
-        mPackageTable = assets.meglerPackageApk() != 0 ? Resources.meglerPackageTable(assets.meglerPackageApk()) : null;
+        mPackageTable = assets.meglerPackageApk() != 0 ? Resources.meglerPackageTable(assets.meglerPackageApk(), assets.meglerPackageSplits()) : null;
         synchronized (sAll) {
             // (Those gone are dropped as the list grows: an app that makes a configuration context's Resources at every
             // getResources, as some apps' locale wrappers do, would have it grow without end.)

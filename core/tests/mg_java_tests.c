@@ -1198,13 +1198,42 @@ static const char *phone_apps_fixture(void)
     return dir;
 }
 
+/*
+ * Google Play services as the test is given them (MG_JAVA_GMS_APK): an APK, or a bundle of a base and splits (.apks, .xapk),
+ * as Play Store installs Google's own -- unpacked as the shell unpacks one into its library, for this screen's density in
+ * English and Russian, the folder of its splits then megler_run_config.gms_splits_dir, as the shell gives the splits it
+ * copies beside the shared copy of their APK. MG_JAVA_GMS_SPLITS names such a folder for an APK. NULL for none.
+ */
+static const char *gms_apk(const char **splits_dir)
+{
+    static char *base, *splits;
+    const char *given = getenv("MG_JAVA_GMS_APK");
+    size_t n = given ? strlen(given) : 0;
+    *splits_dir = getenv("MG_JAVA_GMS_SPLITS");
+    if (n < 6 || (strcmp(given + n - 5, ".apks") && strcmp(given + n - 5, ".xapk"))) return given;
+    if (!base) {
+        char *dir = mg_sprintf("%s/library", megler_data_dir()), *json;
+        mg_path_mkdirs(dir);
+        base = mg_sprintf("%s/gms.apk", dir);
+        splits = mg_sprintf("%s/gms.apk.splits", dir);
+        json = megler_bundle_unpack(given, base, splits, g_screen_dpi, "en,ru", NULL, NULL);
+        say("Google Play services' bundle unpacked as the shell unpacks one: %s, for %d dpi, in English and Russian", given, g_screen_dpi);
+        say("  %s", json ? json : "(nothing)");
+        CHECK(json && strstr(json, "\"ok\":true"));
+        megler_free(json);
+        free(dir);
+    }
+    *splits_dir = splits;
+    return base;
+}
+
 static bool start(const char *apk, const char *android_root)
 {
     static megler_run_config cfg;
     g_android_root = android_root;
     memset(&cfg, 0, sizeof(cfg));
     cfg.apk_path = apk;
-    cfg.gms_apk_path = getenv("MG_JAVA_GMS_APK");
+    cfg.gms_apk_path = gms_apk(&cfg.gms_splits_dir);
     cfg.gsf_apk_path = getenv("MG_JAVA_GSF_APK");
     cfg.splits_dir = g_splits_dir;
     cfg.android_root = android_root;
@@ -4066,6 +4095,18 @@ static int run_gms_host(void)
        WorkSource, as GmsAlarm sets theirs on Android 12 and later), which never went off: it did, and its second fix was sent. */
     CHECK(wait_line("I/GmsOwnTest: network location alarm went off", 0, 60) >= 0);
     CHECK(wait_line("I/GmsOwnTest: network location second fix sent true", 0, 30) >= 0);
+    /*
+     * Google Play services from a bundle (gms-own.apks: a base and the splits config.mdpi, config.xxhdpi and config.en), as
+     * Play Store installs Google's own, unpacked for 160 dpi in English and Russian: the app has their base and the splits
+     * kept, and their resources are those of all three. An activity of theirs, started by the app and run here as their
+     * account settings are, reads a picture that is in their density's split alone (16 x 16, mdpi's) and the word of their
+     * English split: the picture was not there ("Manage your Google Account" ended Play Store on the Google logo's
+     * NotFoundException, 0.1.0.685).
+     */
+    CHECK(find_line("java: Google Play services are in 3 APKs, their base and the splits config.en, config.mdpi", 0) >= 0);
+    CHECK(find_line("I/MicroG: Google Play services' splits, whose resources and files join their base's: config.en, config.mdpi (3 APKs)", 0) >= 0);
+    CHECK(wait_line("-> Google Play services' megler.test.gmsown.Lockup, here", 0, 60) >= 0);
+    CHECK(wait_line("I/GmsOwnTest: lockup 16x16 word=english splits=[config.en, config.mdpi]", 0, 120) >= 0);
     CHECK(find_line("FATAL EXCEPTION", 0) < 0);
     say_app_lines("/GmsOwnTest: ");
     return g_failed;

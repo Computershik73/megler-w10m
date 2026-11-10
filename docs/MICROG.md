@@ -167,6 +167,44 @@ service, signed with the device key where the phone has one (JAVA.md says
 what a phone without one sends). With microG nothing of this is asked:
 microG's own location backends are its own.
 
+## Google's own Play services from Play Store: their splits
+
+Play Store updates Google's own Play services as it installs any app from a
+bundle: a base and splits of the phone's density and languages (26.43.30 on a
+Lumia 650: "its base and 10 split(s) kept", for 320 dpi in English and
+Russian). The library keeps them as an app's (`<apk>.splits`), and Google
+Play services' own package runs with them. An app that hosts them had the base
+alone: the shell copied `GmsCore.apk` into `<shared>\services\<token>` and
+nothing else, and their resources were the base's table. A resource whose
+every value is a density's -- the Google logo `googlelogo_standard_color_74x24`
+of `ProductLockupView`, its default when the layout names none (in 26.41.31's
+universal APK PNGs for mdpi to xxhdpi and a vector for anydpi, nothing of no
+density; `0x7f0804bc` in 26.43.30) -- is in the density's split alone, and
+"Manage your Google Account" (their account settings' Compose screen) and
+"Help and feedback" (`HelpChimeraActivity`'s layout) ended Play Store on
+`Resources$NotFoundException: Resource ID #0x7f0804bc` (0.1.0.685 and 686).
+Play Store's own table has an entry under that number: the lookup was in
+theirs.
+
+Now `registerServiceApk` copies the splits beside the base
+(`<token>\GmsCore.apk.splits`, `files::copyFilesWhole`: each whole, a copy
+registered before them gets them at the next registration), the player passes
+the folder (`megler_run_config.gms_splits_dir`) and holds its files open as it
+holds the base, and the core mounts each split beside `GmsCore.apk`
+(`/system/priv-app/GmsCore/split_<name>.apk`, `Native.gmsSplitPaths`; the log
+says "Google Play services are in N APKs"). `megler.MicroG` makes their
+`AssetManager` of the base and the splits: the splits' tables are merged into
+the base's (`Resources.meglerPackageTable`, each cut to the languages as the
+base's is), a file the base has not is read from the split that has it, and
+their `ApplicationInfo` names the splits as Android does. A split with code
+or native libraries is said in the log; nothing of either is taken from one.
+
+The test app `gms-host` hosts a stand-in of theirs built as Play Store's
+bundle (`gms-own`: a base and the splits `config.mdpi`, `config.xxhdpi` and
+`config.en`), unpacked as the shell unpacks one for 160 dpi: an activity of
+theirs reads a picture of their density's split alone and a word of their
+English split.
+
 ## Class isolation
 
 The failed implementation reverted in `1adae04` appended GmsCore's DEX files

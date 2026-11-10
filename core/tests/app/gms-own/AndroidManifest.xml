@@ -2,11 +2,20 @@
 <!-- A stand-in for Google's own Play services (no microG in it), as an app hosts them: the test app gms-host starts its one
      service, and binds its location API, as an app's FusedLocationProviderClient does. And a stand-in for Google's settings
      (Google Services Framework's GoogleSettingsProvider, content://com.google.settings/partner), which says what is written
-     into it: where Megler puts the user's answer of Google Location Accuracy. -->
+     into it: where Megler puts the user's answer of Google Location Accuracy. And an activity of theirs, which an app starts
+     and which runs in the app (their account settings, "Manage your Google Account"), reading their resources as their
+     account screens do: a picture of their density's split and a word of their language's split. Built as a base and
+     splits, as Play Store installs Google's own (the file `splits`). -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android" package="com.google.android.gms"
     android:versionCode="264131009" android:versionName="26.41.31 (a stand-in)">
     <uses-sdk android:minSdkVersion="21" android:targetSdkVersion="28" />
     <application android:label="@string/gms_own_label">
+        <activity android:name="megler.test.gmsown.Lockup" android:exported="true">
+            <intent-filter>
+                <action android:name="megler.test.gmsown.LOCKUP" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </activity>
         <service android:name="megler.test.gmsown.Probe" android:exported="true">
             <intent-filter>
                 <action android:name="megler.test.gmsown.PROBE" />

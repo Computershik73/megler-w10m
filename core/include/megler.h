@@ -1944,6 +1944,13 @@ typedef struct megler_run_config {
     const char *apk_path;
     /* Optional installed microG APK. Opened as the service package; no copy in each client. */
     const char *gms_apk_path;
+    /*
+     * Its splits, where Google Play services came in several APKs (Play Store installs Google's own as a base and splits
+     * of its densities and languages): a folder of .apk files, each named as megler_bundle_unpack names a split it keeps
+     * (split_<name>.apk). Their resources and files are Google Play services' own as the app hosts them, as Android adds
+     * an installed app's splits to its resources. May be NULL.
+     */
+    const char *gms_splits_dir;
     /* Optional Google Services Framework APK, shared by all client packages. */
     const char *gsf_apk_path;
     /*

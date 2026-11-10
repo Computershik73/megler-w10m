@@ -74,6 +74,11 @@ bool mend(const std::wstring& source, const std::wstring& copy, uint64_t& mended
 bool copyWhole(const std::wstring& from, const std::wstring& to, uint64_t& mended, const Progress& progress = nullptr);
 /// The size from which copyWhole copies past Windows's cache.
 constexpr uint64_t unbufferedFrom = 8u << 20;
+/// The files of `fromDir` whose names end with `extension` (".apk") copied whole into `toDir`, which is made where it is not
+/// there: each through a ".part" of its own (copyWhole, then renamed), as a copy that apps run from is made. One there already
+/// of the same size is kept. `copied`: how many were copied. False at the first that could not be (its .part removed; on
+/// failure GetLastError() says why); none to copy is no failure, and makes no folder.
+bool copyFilesWhole(const std::wstring& fromDir, const std::wstring& toDir, const std::wstring& extension, int& copied);
 
 /// A file read as the disk holds it, past Windows's cache of it (FILE_FLAG_NO_BUFFERING: whole sectors, into memory of
 /// its own aligned to a page); as any file where the file system will not open it so, or opens it so and then refuses its

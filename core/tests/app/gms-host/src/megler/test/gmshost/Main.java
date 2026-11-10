@@ -19,7 +19,8 @@ import android.widget.TextView;
  * in; and binds their location API, as an app's FusedLocationProviderClient does, which has Megler settle Google Location
  * Accuracy (asked of the test's shell, and written into the stand-in's Google settings). Once it is bound -- their network
  * location has handed a fix of the Wi-Fi's to their fused provider by then -- asks LocationManager as an app of it does: the
- * last "network" fix, and the first "gps" fix of a request, each said with how accurate it is and its provider.
+ * last "network" fix, and the first "gps" fix of a request, each said with how accurate it is and its provider. Then starts
+ * an activity of theirs, which runs here, as Play Store starts their account settings ("Manage your Google Account").
  */
 public class Main extends Activity {
     @Override
@@ -56,6 +57,8 @@ public class Main extends Activity {
                 public void onLocationChanged(Location l) {
                     Log.i("GmsHostTest", "first gps fix " + said(l));
                     lm.removeUpdates(this);
+                    // Then an activity of Google Play services', which runs here (their stand-in's Lockup says what it read).
+                    startActivity(new Intent("megler.test.gmsown.LOCKUP").setPackage("com.google.android.gms"));
                 }
 
                 @Override

@@ -77,6 +77,13 @@
 // the heap. Spotify's is 49.8 MB: read, it was a fifth of the heap on a Lumia 650, and the collector, keeping within what the
 // phone had free, ran every second or two (package 664).
 //
+// And another package's splits (megler.MicroG: Google Play services as Play Store installs them, a base and splits of the
+// phone's density and languages): their tables are merged into the package's (meglerPackageTable), as an app's own splits'
+// are into the app's, and a file the base has not is read from the split that has it (meglerFile). Google Play services'
+// account screens' Google logo has values of densities alone (four densities' PNGs, a vector of anydpi), in the density's
+// split, and an app that hosted them looked it up in the base's table: "Manage your Google Account" ended Play Store on
+// "Resource ID #0x7f0804bc" (0.1.0.685, a Lumia 650).
+//
 // And the screen's changes (megler.Screen: the shell resized or turned the app's surface): every Resources the app has --
 // its own, the system's, those of configuration contexts and of the packages it hosts -- is known (sAll) and takes the
 // screen's new orientation, sizes, layout and density, and DisplayMetrics of the new size, as Android's ResourcesManager
@@ -196,14 +203,21 @@ public class Resources {
      * heap of every app it runs in, and of its 2 GB of addresses, which Yandex Maps ran out of (package 489).
      */
     private static final java.util.HashMap<Integer, ResTable> sPackageTables = new java.util.HashMap<>();
-    /** That package's table (ResourcesImpl: the table of an AssetManager of another package's). */
-    static ResTable meglerPackageTable(int apk) { return packageTable(apk); }
+    /**
+     * That package's table (ResourcesImpl: the table of an AssetManager of another package's), with its splits' merged into
+     * it, read once for the base (Google Play services as Play Store installs them, a base and splits of the phone's density
+     * and languages; AssetManager.meglerForPackage). A split's table has the base's package with its own configurations of
+     * its entries, as an app's own split's has (loadTables): a density's pictures, a language's strings -- and of a resource
+     * whose every value is a density's, the only values there are. Each split's table is cut to the languages as the base's
+     * is.
+     */
+    static ResTable meglerPackageTable(int apk, int[] splits) { return packageTable(apk, splits); }
     /*
      * Each read under a lock of that APK's own, not sLock: Google Play services' takes seconds on a phone, and sLock is the
      * one every Resources of the app takes for its tables (getSystem, the libraries, the size buckets).
      */
     private static final java.util.HashMap<Integer, Object> sPackageTableLocks = new java.util.HashMap<>();
-    private static ResTable packageTable(int apk) {
+    private static ResTable packageTable(int apk, int[] splits) {
         Object own;
         synchronized (sLock) {
             ResTable t = sPackageTables.get(apk);
@@ -216,8 +230,15 @@ public class Resources {
                 ResTable t = sPackageTables.get(apk);
                 if (t != null) return t;
             }
-            byte[] data = megler.Native.readApkResourceTable(apk, tableLanguages());
+            String[] languages = tableLanguages();
+            byte[] data = megler.Native.readApkResourceTable(apk, languages);
             ResTable t = new ResTable(data == null ? emptyTable() : data);
+            if (splits != null) for (int s : splits) {
+                byte[] sd = megler.Native.readApkResourceTable(s, languages);
+                if (sd == null) continue;
+                try { t.merge(new ResTable(sd)); }
+                catch (RuntimeException e) { android.util.Log.w("Resources", "the resources.arsc of a split of " + meglerDescribeTable(t) + " (APK " + s + "): " + e); }
+            }
             synchronized (sLock) {
                 sPackageTables.put(apk, t);
             }
@@ -357,7 +378,7 @@ public class Resources {
     }
     public java.util.List getLoaders() { return java.util.Collections.unmodifiableList(new java.util.ArrayList<>(java.util.Arrays.asList(mResourcesImpl.mLoaders))); }
     /** The table of an APK a ResourcesProvider has opened (megler.Native.addApk): its package as it is, 0x7f, read once. */
-    public static ResTable meglerLoaderTable(int apk) { return packageTable(apk); }
+    public static ResTable meglerLoaderTable(int apk) { return packageTable(apk, null); }
     /** For the log: a table's package and how many types it has. */
     public static String meglerDescribeTable(ResTable t) {
         if (t == null || t.packages.isEmpty()) return "no resources";
@@ -776,13 +797,24 @@ public class Resources {
     // ---- files
     /** The bytes of a file in the APK that holds resource id (res/...). */
     public byte[] meglerFile(String path, int id) {
-        byte[] d = megler.Native.readApkFile(apkOf(id), path);
-        if (d == null && apkOf(id) == 0) {
+        int apk = apkOf(id);
+        byte[] d = megler.Native.readApkFile(apk, path);
+        if (d == null && apk == 0) {
             // a split APK may hold it
             for (int k = 2; k < 12 && d == null; k++) d = megler.Native.readApkFile(k, path);
         }
+        // and another package's split (Google Play services': a density's pictures are in its split alone), as the app's own
+        if (d == null && apk != 0 && apk == mResourcesImpl.mAssets.meglerPackageApk())
+            for (int s : mResourcesImpl.mAssets.meglerPackageSplits()) if ((d = megler.Native.readApkFile(s, path)) != null) break;
         if (d == null) throw new NotFoundException("File " + path + " not found (resource ID #0x" + Integer.toHexString(id) + ")");
         return d;
+    }
+    /** The core's number of the APK that has the file of resource id: apkOf(id), else the package's split that has it (meglerFile). */
+    private int fileApk(String path, int id) {
+        int apk = apkOf(id);
+        if (apk == 0 || apk != mResourcesImpl.mAssets.meglerPackageApk() || megler.Native.apkFileLength(apk, path) >= 0) return apk;
+        for (int s : mResourcesImpl.mAssets.meglerPackageSplits()) if (megler.Native.apkFileLength(s, path) >= 0) return s;
+        return apk;
     }
     public XmlResourceParser meglerXml(String path, int id) {
         try {
@@ -810,11 +842,12 @@ public class Resources {
         TypedValue v = new TypedValue();
         getValue(id, v, true);
         String path = v.string.toString();
-        long fdoff = megler.Native.apkFileFd(apkOf(id), path);
+        int apk = fileApk(path, v.resourceId != 0 ? v.resourceId : id);
+        long fdoff = megler.Native.apkFileFd(apk, path);
         if (fdoff == -1) throw new NotFoundException("File " + path + " is compressed and cannot be opened as a file descriptor");
         java.io.FileDescriptor fd = new java.io.FileDescriptor();
         try { java.lang.reflect.Field f = java.io.FileDescriptor.class.getDeclaredField("descriptor"); f.setAccessible(true); f.setInt(fd, (int) (fdoff >>> 40)); } catch (Exception e) {}
-        return new AssetFileDescriptor(path, fd, fdoff & 0xFFFFFFFFFFL, megler.Native.apkFileLength(apkOf(id), path));
+        return new AssetFileDescriptor(path, fd, fdoff & 0xFFFFFFFFFFL, megler.Native.apkFileLength(apk, path));
     }
     /** The density a drawable resource's image was made for. */
     public int meglerDrawableDensity(int id) { TypedValue v = new TypedValue(); return meglerValue(id, v, true) ? (v.density == 0 ? 160 : v.density == 0xffff ? mResourcesImpl.mMetrics.densityDpi : v.density) : 160; }

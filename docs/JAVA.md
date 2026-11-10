@@ -5738,6 +5738,17 @@ on a looper thread of its own and takes it back with `next()`.
   its own 0. The data app's step "location-request" builds requests, makes
   one of the deprecated provider, puts one through a parcel, and has one of
   the passive interval handed a fix.
+- `android/content/res/AssetManager.java`, `Resources.java` and
+  `ResourcesImpl.java`, another package's splits: an `AssetManager` made for
+  another package (`meglerForPackage`) takes its splits too, whose tables are
+  merged into its own (`meglerPackageTable`) and whose files are read where
+  the base has none, as an app's own splits are. Google Play services from
+  Play Store are a base and splits of the phone's density and languages, and
+  an app that hosted them had their base alone: the Google logo of their
+  account and help screens, of densities' values alone, was not there, and Play
+  Store ended on `Resources$NotFoundException` (0.1.0.685, docs/MICROG.md,
+  "Google's own Play services from Play Store: their splits"). `gms-host`
+  hosts a stand-in of theirs built as such a bundle.
 - `android/content/ContentProviderClient.java`: `openFile`, `openAssetFile`,
   `openTypedAssetFile(Descriptor)`, `query` with a `Bundle`, `insert`,
   `update` and `delete` with extras, `bulkInsert`, `call` with an authority,

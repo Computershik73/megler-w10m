@@ -488,6 +488,28 @@ bool copyWhole(const std::wstring& from, const std::wstring& to, uint64_t& mende
     return mend(from, to, mended, nullptr, progress);
 }
 
+bool copyFilesWhole(const std::wstring& fromDir, const std::wstring& toDir, const std::wstring& extension, int& copied) {
+    copied = 0;
+    std::vector<std::wstring> names;
+    for (const auto& name : list(fromDir, L"*" + extension))
+        if (name.size() > extension.size() && _wcsicmp(name.c_str() + name.size() - extension.size(), extension.c_str()) == 0) names.push_back(name);
+    if (names.empty()) return true;
+    if (!makeDirectories(toDir)) return false;
+    for (const auto& name : names) {
+        const std::wstring from = fromDir + L"\\" + name, to = toDir + L"\\" + name;
+        if (exists(to) && size(to) == size(from)) continue;
+        uint64_t mended = 0;
+        if (!copyWhole(from, to + L".part", mended) || !move(to + L".part", to)) {
+            const DWORD error = GetLastError();
+            remove(to + L".part");
+            SetLastError(error);
+            return false;
+        }
+        copied++;
+    }
+    return true;
+}
+
 std::vector<std::wstring> list(const std::wstring& directory, const std::wstring& pattern) {
     std::vector<std::wstring> names;
     WIN32_FIND_DATAW found = {};
