@@ -101,6 +101,23 @@ it: these patches change `.cpp` files only.
   nothing. venetium-w10m (the owner's Chromium for these phones) found Skia
   blending its LCD text so at 9_3 on a Lumia 650, nothing with such text drawn.
 
+- `0007-egl-image-level-zero.patch` -- `TextureStorage11.cpp`. At feature level
+  9_3 (`zeroMaxLodWorkaround`) ANGLE asks a texture for its level-zero copy
+  before it samples it, and an EGL image's storage answered that it could not
+  be reached (`UNREACHABLE`): every draw sampling an image of a texture was
+  refused, `GL_INVALID_OPERATION`. An image is one level already, the one asked
+  for, and now answers so. The WebView's Chromium draws parts of a page from
+  such images: on this PC at 9_3 without the patch its draws of them were
+  refused (ANGLE's "Error 0x502 ...
+  TextureStorage11_EGLImage::useLevelZeroWorkaroundTexture"), and the WebView
+  test app's page drawn through a `RenderNode` lost its yellow bar; with it the
+  page is whole. venetium-w10m met it with video frames. Not yet right at 9_3:
+  an image of a 16x16 texture whose picture was copied into it
+  (`glCopyTexImage2D`) is sampled empty there by OpenGL ES 1, where at this
+  PC's own level it is drawn -- left for a change of its own (ANGLE keeps such
+  a texture at 9_3 as two Direct3D textures, all its levels and level zero
+  alone, and the image's is likely the one without the picture).
+
 (An earlier `0001-buffer11-dynamic-writes.patch` took a static buffer written
 after its draws as dynamic. It was made for a loading screen that ran at seven
 frames a second, which turned out to be the shell composing the window from
