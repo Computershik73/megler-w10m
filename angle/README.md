@@ -74,6 +74,50 @@ it: these patches change `.cpp` files only.
   it stages has (`megler-patches.txt`, which `tools/build-angle.py` writes
   beside the DLLs).
 
+- `0005-share-handles-feature-level-9.patch` -- `Renderer11.cpp`,
+  `SwapChain11.cpp`. At Direct3D feature level 9_3 ANGLE gave a surface's
+  texture no shared handle (`Renderer11::getShareHandleSupport`: such a device
+  "doesn't support share handles on RGBA8 textures/swapchains"), so no frame of
+  OpenGL ES could be a picture the shell keeps there: on a Lumia 650 every
+  WebView was drawn in software (docs/JAVA.md, "At Direct3D feature level 9_3
+  too"). Direct3D shares textures at 9_3 in one format: on this PC a device of
+  9_3 makes a `B8G8R8A8_UNORM` texture shared, plainly and with a keyed mutex,
+  and a second device of 9_3 or 11_1 opens it by its handle and reads what the
+  first drew; `R8G8B8A8_UNORM` and the typeless formats it refuses
+  (`E_INVALIDARG`) -- the runtime's rule for the level, which the win suite holds
+  it to (`core/tests/mg_gfx_windows.cpp`, `check_texture_9_3`). So at 9_3 ANGLE
+  has share handles, and a pbuffer's texture is made shared where it is
+  `B8G8R8A8_UNORM` of one sample (the first configuration of 8888 EGL gives); a
+  pbuffer of any other format is made unshared there, its handle null, as every
+  one was, rather than not made at all. `core/tests/mg_angle_windows.c`
+  (`gl1_shared`) draws into such a pbuffer at 9_3 and reads it back through its
+  handle.
+
+- `0006-no-dual-source-blending-below-10.patch` -- `renderer11_utils.cpp`.
+  `GL_EXT_blend_func_extended` and a dual-source draw buffer are offered from
+  feature level 10_0 on only, where Direct3D blends with a second source: on
+  this PC a blend state of `ONE, INV_SRC1_COLOR` is made on a device of 11_1 and
+  refused on one of 9_3 (`E_INVALIDARG`), and ANGLE's draws with it then do
+  nothing. venetium-w10m (the owner's Chromium for these phones) found Skia
+  blending its LCD text so at 9_3 on a Lumia 650, nothing with such text drawn.
+
+- `0007-egl-image-level-zero.patch` -- `TextureStorage11.cpp`. At feature level
+  9_3 (`zeroMaxLodWorkaround`) ANGLE asks a texture for its level-zero copy
+  before it samples it, and an EGL image's storage answered that it could not
+  be reached (`UNREACHABLE`): every draw sampling an image of a texture was
+  refused, `GL_INVALID_OPERATION`. An image is one level already, the one asked
+  for, and now answers so. The WebView's Chromium draws parts of a page from
+  such images: on this PC at 9_3 without the patch its draws of them were
+  refused (ANGLE's "Error 0x502 ...
+  TextureStorage11_EGLImage::useLevelZeroWorkaroundTexture"), and the WebView
+  test app's page drawn through a `RenderNode` lost its yellow bar; with it the
+  page is whole. venetium-w10m met it with video frames. Not yet right at 9_3:
+  an image of a 16x16 texture whose picture was copied into it
+  (`glCopyTexImage2D`) is sampled empty there by OpenGL ES 1, where at this
+  PC's own level it is drawn -- left for a change of its own (ANGLE keeps such
+  a texture at 9_3 as two Direct3D textures, all its levels and level zero
+  alone, and the image's is likely the one without the picture).
+
 (An earlier `0001-buffer11-dynamic-writes.patch` took a static buffer written
 after its draws as dynamic. It was made for a loading screen that ran at seven
 frames a second, which turned out to be the shell composing the window from

@@ -30,10 +30,14 @@ static mg_lock g_angle_lock = MG_LOCK_INIT;    /* loading ANGLE: taken while the
 /* Whether this EGL makes contexts without a configuration (EGL_KHR_no_config_context; g_eglCreateContext): -1, not asked yet. */
 static int g_no_config = -1;
 
+/* ANGLE's glGetString, under the layer's own (w_get_string); looked up again after this changes. */
+static const u8 *(*h_get_string)(u32 name);
+
 void mg_egl_set_provider(void *(*resolve)(const char *name))
 {
     g_provider = resolve;
     g_no_config = -1;
+    h_get_string = NULL;
 }
 
 /* On x86_64 and x86 ANGLE's function is given as its adapter (mg_gl_adapters.c), of the core's convention, which is the guest's. */
@@ -2262,6 +2266,96 @@ static void *turn_thunk(void *target, bool host)
 }
 #endif
 
+/*
+ * Where a function of the layer's that a guest called returns to: in the guest's code, though it was called through a thunk
+ * that has the call take its turn (CALLER() is then the thunk's own; turn_enter kept the guest's).
+ */
+static const void *guest_return(const void *pc)
+{
+#if MG_GUEST_CODE
+    const turn_thread *t = &t_turn;
+    const u8 *at = (const u8 *)((mg_addr)pc & ~(mg_addr)1);
+    const size_t size = (TURN_ENTRIES_AT + (TURN_GUEST + TURN_HOST) * TURN_ENTRY + MG_PAGE - 1) & ~(size_t)(MG_PAGE - 1);
+    if (g_turn_code && at >= g_turn_code && at < g_turn_code + size && t->depth > 0 && t->depth <= TURN_DEPTH) return (const void *)t->lr[t->depth - 1];
+#endif
+    return pc;
+}
+
+/*
+ * What the WebView's Chromium is told of OpenGL ES's extensions on a display of OpenGL ES 2 at most (Direct3D below feature
+ * level 10_1; 9_3 on a Lumia's Adreno 3xx): no instanced arrays. Its ANGLE draws over this EGL (its OpenGL ES back end) and
+ * takes GL_EXT_instanced_arrays, which ANGLE over Direct3D 11 names there, for instanced draws -- but loads the functions that
+ * draw so only with OpenGL ES 3 or GL_EXT_draw_instanced (DispatchTableGL), neither of which such a display has: Skia's
+ * first instanced draw went through a null pointer, and the app ended (a desktop build of the tests at 9_3, the WebView test
+ * app's first page). And at 9_3 what Skia draws with instances is what does not fit: its tessellating path renderers, whose
+ * vertex shaders take some 466 instruction slots where vs_4_0_level_9_3 has 256, and which D3DCompile takes seconds on a
+ * Lumia 650's processor to refuse (venetium-w10m, the owner's Chromium for these phones, turns them off there). Without
+ * instanced arrays Skia has neither (TessellationPathRenderer::IsSupported, AtlasPathRenderer, FillRRectOp: drawInstancedSupport)
+ * and draws paths and round rectangles as it does on any OpenGL ES 2 phone. Anyone else's code is told what ANGLE says.
+ */
+static bool webview_code(const void *pc)
+{
+    mg_lib *lib = pc ? mg_ld_lib_of(pc) : NULL;
+    const char *name = lib ? mg_ld_lib_name(lib) : NULL;
+    return name && strstr(name, "libwebviewchromium") != NULL;
+}
+
+static const u8 *webview_extensions(const u8 *all)
+{
+    static const char *const k_left_out[] = { "GL_ANGLE_instanced_arrays", "GL_EXT_instanced_arrays", "GL_EXT_draw_instanced", "GL_NV_draw_instanced" };
+    static char *kept[8];
+    static mg_lock lock = MG_LOCK_INIT;
+    static volatile i32 said;
+    const char *s = (const char *)all, *end;
+    char *out = (char *)malloc(strlen(s) + 1), *o = out, *found = NULL;
+    size_t i, n;
+    bool left = false;
+    if (!out) return all;
+    while (*s) {
+        while (*s == ' ') s++;
+        for (end = s; *end && *end != ' '; end++) {}
+        n = (size_t)(end - s);
+        for (i = 0; i < MG_COUNT(k_left_out) && n; i++)
+            if (strlen(k_left_out[i]) == n && !memcmp(s, k_left_out[i], n)) break;
+        if (n && i == MG_COUNT(k_left_out)) {
+            if (o != out) *o++ = ' ';
+            memcpy(o, s, n);
+            o += n;
+        } else if (n) {
+            left = true;
+        }
+        s = end;
+    }
+    *o = 0;
+    if (!left) {
+        free(out);
+        return all;
+    }
+    /* Kept for good, the same text given each time (a few, one for each set of extensions a context has had). */
+    mg_lock_acquire(&lock);
+    for (i = 0; i < MG_COUNT(kept) && kept[i] && !found; i++)
+        if (!strcmp(kept[i], out)) found = kept[i];
+    if (!found && i < MG_COUNT(kept)) found = kept[i] = out;
+    mg_lock_release(&lock);
+    if (found != out) free(out);
+    if (!found) return all;
+    if (!mg_atomic_xchg(&said, 1))
+        mg_info("egl: the WebView's Chromium is not told of instanced arrays at Direct3D feature level %d_%d (OpenGL ES 2 at most): its ANGLE would "
+                "draw them through no function, and at 9_3 Skia's tessellating path renderers, which draw with them, do not fit",
+                g_d3d_level >> 12, (g_d3d_level >> 8) & 15);
+    return (const u8 *)found;
+}
+
+static const u8 *w_get_string(u32 name)
+{
+    const u8 *s;
+    if (!h_get_string) h_get_string = (const u8 *(*)(u32))angle("glGetString");
+    if (!h_get_string) return NULL;
+    s = h_get_string(name);
+    if (name == GL_EXTENSIONS && s && g_d3d_level && display_es_version() < 30 && webview_code(guest_return(CALLER()))) return webview_extensions(s);
+    return s;
+}
+
 static EGLBoolean g_eglMakeCurrent(EGLDisplay d, EGLSurface draw, EGLSurface read, EGLContext ctx)
 {
     static volatile i32 said;
@@ -3046,6 +3140,8 @@ static void *resolve(const char *name)
         if (!h_link_program) h_link_program = (fn_gl_uint)angle(name);
         return h_link_program ? (void *)w_link_program : NULL;
     }
+    /* (What the WebView's Chromium is told of the extensions on a display of OpenGL ES 2: w_get_string.) */
+    if (!strcmp(name, "glGetString")) return angle(name) ? (void *)w_get_string : NULL;
 #if MG_GUEST_SOFTFP
     for (i = 0; i < MG_COUNT(g_adapters); i++) {
         if (strcmp(g_adapters[i].name, name)) continue;

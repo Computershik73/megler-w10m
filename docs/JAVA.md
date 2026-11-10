@@ -4461,10 +4461,12 @@ makes a functor for each WebView (`create_functor_v3`) and, in `onDraw`, asks
 the platform to draw it (`WebViewDelegate.drawWebViewFunctor`). The overlay's
 `WebView.meglerDrawFunctor` has it drawn at once on the WebView's render
 thread, the UI thread waiting as HWUI's does for a frame it cannot let go of:
-`on_sync`, then `draw_gl`, with an OpenGL ES 3 context current on a pbuffer of
-the part of the view the window shows (rounded up to 64 pixels, kept while the
-part changes a little), of the WebView's own display (the one Chromium's own
-`eglGetDisplay` is given: `ndk/mg_egl.c`, `webview_display`). The pbuffer is
+`on_sync`, then `draw_gl`, with an OpenGL ES 3 context current (2 on a display
+of feature level 9_3) on a pbuffer of the part of the view the window shows
+(rounded up to 64 pixels, kept while the part changes a little; of a
+configuration whose texture the display shares, `wv_pick`), of the WebView's
+own display (the one Chromium's own `eglGetDisplay` is given: `ndk/mg_egl.c`,
+`webview_display`). The pbuffer is
 cleared and set up as HWUI leaves its surface for a functor: the framebuffer
 0, the viewport the surface, the scissor the part, no stencil test (with one
 Chromium draws into a texture of its own and that through the stencil). The
@@ -4482,7 +4484,8 @@ released functor (`release_functor`) has `on_context_destroyed` (with the
 context current) and `on_destroyed` on the render thread; its pbuffer and
 picture go with it. The log says "webview: pages are drawn on the graphics
 processor" and "draw functor N drawn" with the time a draw takes. A draw that
-fails three times in a row, or one that takes more than four seconds, has the
+fails three times in a row, or one that takes more than four seconds (fifteen
+on a display of OpenGL ES 2, below), has the
 pages drawn in software from then on, as below. `mg_gl_tests.c`'s draw functor
 test checks the table, the threads, the order of the callbacks, the
 parameters, the picture handed over and the release with the tests' stand-in.
@@ -4575,18 +4578,83 @@ device's limits). Chromium's raster of tiles goes there too; under qemu that
 draws nothing (its log says "Error: 1 for Command Noop"), and the page is
 drawn in software regardless.
 
-**At Direct3D feature level 9_3 every page is drawn in software.** ANGLE
+**At Direct3D feature level 9_3 too, pages are drawn on the graphics
+processor.** They were drawn in software there: ANGLE as gecko-w10m builds it
 gives a surface's texture no shared handle on a device of feature level 9_3
 or below (`Renderer11::getShareHandleSupport`: such a device "doesn't support
-share handles on RGBA8 textures/swapchains"), so its EGL does not name
-`EGL_ANGLE_surface_d3d_texture_2d_share_handle`, no frame of OpenGL ES can be
-a picture the shell keeps (`mg_java_gl_shares_frames`), and Chromium is given
-no draw functor: a Lumia 650's logs say "webview: pages are drawn in software:
-no draw functor" in every app. Chromium's GPU service starts there all the
-same, on a context of OpenGL ES 2.0 (3.2, 3.1 and 3.0 refused), and rasters
-its layers' tiles for draws on the graphics processor that never come (its
-"tile memory limits exceeded"); what the screen shows is its software draw of
-each frame into the WebView's bitmap.
+share handles on RGBA8 textures/swapchains"), so its EGL did not name
+`EGL_ANGLE_surface_d3d_texture_2d_share_handle`, no frame of OpenGL ES could
+be a picture the shell keeps (`mg_java_gl_shares_frames`), and Chromium was
+given no draw functor -- a Lumia 650's logs said "webview: pages are drawn in
+software: no draw functor" in every app -- while its GPU service rastered its
+layers' tiles for draws on the graphics processor that never came (its "tile
+memory limits exceeded", which this PC's software runs at 9_3 say too).
+Direct3D 11 does share textures at 9_3, in one format: on this PC a device of
+9_3 makes a `B8G8R8A8_UNORM` texture shared, plainly and with a keyed mutex,
+and a second device of 9_3 or 11_1 opens it by its handle and reads what the
+first drew; `R8G8B8A8_UNORM` and the typeless formats it refuses
+(`E_INVALIDARG`). Megler's ANGLE shares such a pbuffer's texture at 9_3
+(`angle/0005-share-handles-feature-level-9.patch`); the render thread's
+pbuffers are of the first configuration whose pbuffer has a shared handle
+(`wv_pick`, EGL putting B8G8R8A8 first; where none has one, pages are drawn in
+software as before); and the shell takes each picture as on an HP Elite x3: by
+its handle, under its keyed mutex, into a copy of its own drawn where the view
+is, nothing read back. The win suite holds both sides to it: the shell's
+drawing takes a 9_3 device's shared picture (`mg_gfx_windows.cpp`,
+`check_texture_9_3`), and this PC's own ANGLE at 9_3 shares a pbuffer and gives
+back through its handle what was drawn into it (`mg_angle_windows.c`,
+`gl1_shared`). Chromium's contexts there are of OpenGL ES 2.0.
+
+Chromium's own ANGLE (its OpenGL ES back end over this layer's EGL) is not told
+of instanced arrays on a display of OpenGL ES 2 at most (`ndk/mg_egl.c`,
+`w_get_string`, for the WebView's code alone, told by the library the call
+comes from). It takes `GL_EXT_instanced_arrays`, which ANGLE over Direct3D 11
+names at 9_3, for instanced draws, but loads the functions that draw so only
+with OpenGL ES 3 or `GL_EXT_draw_instanced` (`DispatchTableGL`), neither of
+which such a display has: Skia's first instanced draw went through a null
+pointer (this PC at 9_3, the WebView test app's first page). And what Skia
+draws with instances does not fit 9_3: its tessellating path renderers' vertex
+shaders take some 466 instruction slots where `vs_4_0_level_9_3` has 256, which
+D3DCompile takes seconds on a Lumia 650's processor to refuse (venetium-w10m,
+the owner's Chromium for these phones, turns them off there). Without them
+Skia draws paths and round rectangles as on any OpenGL ES 2 phone. Megler's
+ANGLE also has two of venetium-w10m's fixes for 9_3: no dual-source blending
+below feature level 10_0, whose blend states Direct3D refuses there
+(`angle/0006`), and an EGL image's texture sampled at 9_3 (`angle/0007`):
+without the second, the WebView test app's page drawn through a `RenderNode`
+lost its yellow bar on this PC at 9_3, ANGLE refusing each draw from one of
+Chromium's images. venetium-w10m's third, that a shader over the target's
+limits is not compiled again with ANGLE's other configurations, is not taken:
+here the eight lights of OpenGL ES 1 (`mg_angle_windows.c`) compile at 9_3
+only with a later configuration than the first, and without it they were
+refused and ANGLE ended the test at the next draw.
+
+On this PC at 9_3 (the desktop build's test program on the x86_64 WebView with
+Megler's ANGLE for this PC instead of the tests' stand-in, the shell's pictures
+taken through their handles: `MG_JAVA_ANGLE=build/angle/x64/dist mg_tests.exe
+--java webview ... root-x86_64 ...` with the flag `egl-level-9_3` in the data
+folder's flags) the WebView test app passes every step through the draw
+functor -- the page's bar and body their exact colours, the layers' page whole
+-- as it does at this PC's own level. A page of text (9 to 30 pixels, bold,
+italic, Cyrillic, shadowed, turned) and paths (SVG curves, dashes, joins,
+even-odd, arcs, a 60-pointed star, canvas arcs and curves) comes out as
+Chromium's software drawing of it but for the edges' anti-aliasing: 96% of its
+pixels the same, 0.02% different by more than 48 of 255. WebGL is not offered
+at 9_3 (Chromium's command buffer wants 8 varying vectors and ANGLE has 7
+there; told 8, Chromium still made no WebGL context): a page's
+`getContext("webgl")` gives none, as before.
+
+What it costs a Lumia 650 (1 GB, 390 MB for an app): a functor's pbuffer of
+the part shown, rounded up to 64 pixels (768x1216 for 720x1168: 3.7 MB), and
+the shell's copy of it, as much; the two bitmaps of software frames (3.4 MB
+each at that size) are let go, and Chromium made its tiles before too. A
+program of Skia's is compiled by D3DCompile on the phone's processor the first
+time it is needed, and a page's first frames wait for theirs; ANGLE keeps them
+for the next start (`EGL_ANDROID_blob_cache`, `angle-cache` in the app's
+data). So on a display of OpenGL ES 2 the UI thread waits up to 15 s for a
+functor's draw, not 4, before it gives pages up to software
+(`WV_WAIT_ES2_MS`); the log says each slow frame's time ("webview: slow
+frame").
 
 **The WebView's developer-mode flags, and HitTestOpaqueness.** The WebView in
 the Android root is AOSP's, not Google's, and Chromium that is not

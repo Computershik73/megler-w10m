@@ -14,12 +14,14 @@
  * level 9_3's short vertex programs may refuse -- refused, its draws fail (GL_INVALID_OPERATION) each time and the next
  * state draws, where ANGLE as gecko-w10m builds it ended the app at the second. Each picture is read back (glReadPixels) and
  * its pixels checked, and written as <scratch>/gles1-<level>-<scene>.bmp. At 9_3 the version-1 context must be of version
- * 1 (no fallback to 2: mg_egl.c, es1_on_es2) and ANGLE's renderer must say level_9_3.
+ * 1 (no fallback to 2: mg_egl.c, es1_on_es2) and ANGLE's renderer must say level_9_3. And a pbuffer's texture shared by its
+ * handle, as the WebView's draw functor hands its pictures to the shell, at either level (gl1_shared).
  *
  * Only in the build tools/build-tests.sh win makes (MG_ANGLE_WINDOWS); elsewhere it says so and does nothing.
  */
 #include <stdarg.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include "../include/megler.h"
@@ -1222,6 +1224,114 @@ static void gl1_map_text(gl1_run *r)
 
 static void *host_gl(const char *name) { return mg_egl_host(name); }
 
+/*
+ * A pbuffer's texture shared, what the WebView's draw functor and a TextureView hand the shell their pictures by
+ * (EGL_ANGLE_surface_d3d_texture_2d_share_handle, mg_java_gl_share_frame): at this PC's own level and at 9_3, where ANGLE
+ * as gecko-w10m builds it shares none and Megler's shares a B8G8R8A8 one (angle/0005-share-handles-feature-level-9.patch,
+ * Direct3D sharing no other format there). EGL names the extension; the first configuration of 8888 (EGL puts B8G8R8A8
+ * first) gives its pbuffer a shared handle and a keyed mutex; at 9_3 a pbuffer of 565 is still made, with no handle; and
+ * what is drawn into the shared one arrives: opened by its handle on the same display as a pbuffer of its own
+ * (EGL_ANGLE_d3d_share_handle_client_buffer), under the keyed mutex the drawing side let go of, and read back. With a
+ * context of version 2 of that configuration (the scenes' version-1 one has their pbuffer's depth, and EGL makes a context
+ * current only on a surface of its depth), and the scenes' context current on their pbuffer again after.
+ */
+static void gl1_shared(gl1_run *r, void *d, void *ctx, void *own_pb, bool level_9_3)
+{
+    enum { EGL_NONE_ = 0x3038, EGL_SURFACE_TYPE_ = 0x3033, EGL_PBUFFER_BIT_ = 1, EGL_RED_SIZE_ = 0x3024, EGL_GREEN_SIZE_ = 0x3023,
+           EGL_BLUE_SIZE_ = 0x3022, EGL_ALPHA_SIZE_ = 0x3021, EGL_WIDTH_ = 0x3057, EGL_HEIGHT_ = 0x3056, EGL_EXTENSIONS_ = 0x3055,
+           EGL_D3D_TEXTURE_2D_SHARE_HANDLE_ANGLE_ = 0x3200, EGL_DXGI_KEYED_MUTEX_ANGLE_ = 0x33A2, S = 32 };
+    typedef unsigned (*fn_choose)(void *, const int *, void **, int, int *);
+    typedef void *(*fn_pbuffer)(void *, void *, const int *);
+    typedef void *(*fn_client)(void *, unsigned, void *, void *, const int *);
+    typedef unsigned (*fn_destroy)(void *, void *);
+    typedef unsigned (*fn_make_current)(void *, void *, void *, void *);
+    typedef unsigned (*fn_pointer)(void *, void *, int, void **);
+    typedef const char *(*fn_query_string)(void *, int);
+    typedef void (*fn_finish)(void);
+    typedef void *(*fn_create)(void *, void *, void *, const int *);
+    static const int rgba8[] = { EGL_SURFACE_TYPE_, EGL_PBUFFER_BIT_, EGL_RED_SIZE_, 8, EGL_GREEN_SIZE_, 8, EGL_BLUE_SIZE_, 8, EGL_ALPHA_SIZE_, 8, EGL_NONE_ };
+    static const int rgb565[] = { EGL_SURFACE_TYPE_, EGL_PBUFFER_BIT_, EGL_RED_SIZE_, 5, EGL_GREEN_SIZE_, 6, EGL_BLUE_SIZE_, 5, EGL_ALPHA_SIZE_, 0, EGL_NONE_ };
+    static const int size[] = { EGL_WIDTH_, S, EGL_HEIGHT_, S, EGL_NONE_ };
+    static const int es2[] = { 0x3098 /* EGL_CONTEXT_CLIENT_VERSION */, 2, EGL_NONE_ };
+    fn_choose choose = (fn_choose)mg_egl_host("eglChooseConfig");
+    fn_pbuffer pbuffer = (fn_pbuffer)mg_egl_host("eglCreatePbufferSurface");
+    fn_client client = (fn_client)mg_egl_host("eglCreatePbufferFromClientBuffer");
+    fn_destroy destroy = (fn_destroy)mg_egl_host("eglDestroySurface");
+    fn_make_current make_current = (fn_make_current)mg_egl_host("eglMakeCurrent");
+    fn_pointer pointer = (fn_pointer)mg_egl_host("eglQuerySurfacePointerANGLE");
+    fn_query_string query = (fn_query_string)mg_egl_host("eglQueryString");
+    fn_finish finish = (fn_finish)mg_egl_host("glFinish");
+    fn_create create = (fn_create)mg_egl_host("eglCreateContext");
+    fn_destroy destroy_context = (fn_destroy)mg_egl_host("eglDestroyContext");
+    const gl1 *f = r->f;
+    const char *ext;
+    void *config = NULL, *config565 = NULL, *pb = NULL, *pb565 = NULL, *opened = NULL, *handle = NULL, *mutex = NULL, *handle565 = NULL;
+    void *opened_mutex = NULL, *ctx2 = NULL;
+    u8 px[4] = { 0, 0, 0, 0 };
+    int n = 0;
+    snprintf(r->scene, sizeof(r->scene), "a shared pbuffer");
+    if (!(choose && pbuffer && client && destroy && make_current && pointer && query && finish && create && destroy_context)) {
+        gl1_check(r, false, "a function of EGL's is missing");
+        return;
+    }
+    ext = query(d, EGL_EXTENSIONS_);
+    gl1_check(r, ext && strstr(ext, "EGL_ANGLE_surface_d3d_texture_2d_share_handle") && strstr(ext, "EGL_ANGLE_d3d_share_handle_client_buffer"),
+              "EGL does not name EGL_ANGLE_surface_d3d_texture_2d_share_handle and EGL_ANGLE_d3d_share_handle_client_buffer "
+              "(an ANGLE without angle/0005-share-handles-feature-level-9.patch shares nothing at 9_3)");
+    gl1_check(r, choose(d, rgba8, &config, 1, &n) && n == 1 && config, "no configuration of 8888 for a pbuffer");
+    if (config) pb = pbuffer(d, config, size);
+    gl1_check(r, pb != NULL, "no pbuffer of 8888");
+    if (pb && (!pointer(d, pb, EGL_D3D_TEXTURE_2D_SHARE_HANDLE_ANGLE_, &handle) || !pointer(d, pb, EGL_DXGI_KEYED_MUTEX_ANGLE_, &mutex))) handle = mutex = NULL;
+    gl1_check(r, handle && mutex, "the pbuffer of 8888 has no shared handle, or no keyed mutex");
+    n = 0;
+    if (level_9_3 && choose(d, rgb565, &config565, 1, &n) && n == 1 && config565) {
+        pb565 = pbuffer(d, config565, size);
+        if (pb565 && !pointer(d, pb565, EGL_D3D_TEXTURE_2D_SHARE_HANDLE_ANGLE_, &handle565)) handle565 = NULL;
+        gl1_check(r, pb565 && !handle565, "a pbuffer of 565 is not made at 9_3, or has a shared handle (Direct3D shares B8G8R8A8 alone there)");
+    } else if (level_9_3) {
+        gl1_say(r, "  (no configuration of 565 for a pbuffer here: a pbuffer of a format Direct3D does not share at 9_3 is not tried)");
+    }
+    gl1_say(r, "  a pbuffer of 8888 at %s: a shared handle %s, a keyed mutex %s%s", r->level, handle ? "yes" : "no", mutex ? "yes" : "no",
+            !level_9_3 ? "" : !config565 ? "" : pb565 && !handle565 ? "; one of 565 made, unshared" : "; one of 565 NOT made unshared");
+    if (handle && mutex) {
+        bool current;
+        ctx2 = create(d, config, NULL, es2);
+        current = ctx2 && make_current(d, pb, pb, ctx2) != 0;
+        gl1_check(r, current, "no context of version 2 made current on the pbuffer of 8888");
+        if (!current) handle = NULL;
+    }
+    if (handle && mutex) {
+        /* Drawn, finished, and the mutex let go of, as the core hands a functor's picture to the shell. */
+        f->ClearColor(0.25f, 0.5f, 0.75f, 1.0f);
+        f->Clear(GL_COLOR_BUFFER_BIT_);
+        finish();
+        mg_egl_keyed_mutex(mutex, false);
+        opened = client(d, EGL_D3D_TEXTURE_2D_SHARE_HANDLE_ANGLE_, handle, config, size);
+        if (opened && !pointer(d, opened, EGL_DXGI_KEYED_MUTEX_ANGLE_, &opened_mutex)) opened_mutex = NULL;
+        gl1_check(r, opened && opened_mutex, "the texture is not opened by its handle, with its keyed mutex");
+        if (opened && opened_mutex) {
+            const bool held = mg_egl_keyed_mutex(opened_mutex, true), current = held && make_current(d, opened, opened, ctx2) != 0;
+            gl1_check(r, current, "the texture opened by its handle could not be drawn from (its keyed mutex not had, or made current)");
+            if (held && !current) mg_egl_keyed_mutex(opened_mutex, false);
+            if (!current) opened_mutex = NULL;
+        }
+        if (opened && opened_mutex) {
+            f->PixelStorei(GL_PACK_ALIGNMENT_, 1);
+            f->ReadPixels(S / 2, S / 2, 1, 1, GL_RGBA_, GL_UNSIGNED_BYTE_, px);
+            mg_egl_keyed_mutex(opened_mutex, false);
+            gl1_say(r, "  a pbuffer's shared texture at %s, opened by its handle: %02x%02x%02x%02x (drawn 4080bfff)", r->level, px[0], px[1], px[2], px[3]);
+            gl1_check(r, abs(px[0] - 0x40) <= 1 && abs(px[1] - 0x80) <= 1 && abs(px[2] - 0xbf) <= 1 && px[3] == 0xff,
+                      "what was drawn into the shared texture is not what is read through its handle");
+        }
+        mg_egl_keyed_mutex(mutex, true);
+    }
+    make_current(d, own_pb, own_pb, ctx);
+    if (ctx2) destroy_context(d, ctx2);
+    if (opened) destroy(d, opened);
+    if (pb) destroy(d, pb);
+    if (pb565) destroy(d, pb565);
+}
+
 int mg_angle_windows_run(const char *dir, const char *scratch, bool level_9_3, mg_test_sink sink, void *user, int *checks,
                          bool (*label)(void *user, const char *ascii, u32 ink, u32 halo, int w, int h, u8 *rgba), void *label_user)
 {
@@ -1323,6 +1433,7 @@ int mg_angle_windows_run(const char *dir, const char *scratch, bool level_9_3, m
     gl1_scenes(&r);
     gl1_variants(&r);
     gl1_map_text(&r);
+    gl1_shared(&r, d, ctx, pb, level_9_3);
     if (level_9_3)
         gl1_say(&r, "  %d of its pictures compared with the PC's own level's%s", r.compared,
                 r.compared ? "" : " (there were none: run it without 9_3 first, into the same folder)");

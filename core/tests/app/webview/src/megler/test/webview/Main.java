@@ -330,16 +330,37 @@ public class Main extends Activity {
         return super.dispatchKeyEvent(e);
     }
 
-    /** The rows of the bitmap the overlay's WebView last drew a hardware-accelerated canvas through; -1 if none. */
+    /**
+     * The rows the overlay's WebView last drew a hardware-accelerated canvas through: the bitmap's of a frame drawn in software,
+     * or, drawn on the graphics processor, the part of it its draw functor drew (0 when Chromium asked for no draw, as for a
+     * WebView out of the window); -1 if none.
+     */
     private static int drawnRows(WebView v) {
         try {
             java.lang.reflect.Field f = WebView.class.getDeclaredField("mMeglerBitmap");
             f.setAccessible(true);
             Bitmap b = (Bitmap) f.get(v);
-            return b != null ? b.getHeight() : -1;
+            if (b != null || !onGraphicsProcessor()) return b != null ? b.getHeight() : -1;
+            java.lang.reflect.Field asked = WebView.class.getDeclaredField("mMeglerFunctorAsked");
+            java.lang.reflect.Field failed = WebView.class.getDeclaredField("mMeglerFunctorFailed");
+            java.lang.reflect.Field part = WebView.class.getDeclaredField("mMeglerVisible");
+            asked.setAccessible(true);
+            failed.setAccessible(true);
+            part.setAccessible(true);
+            if (!asked.getBoolean(v)) return 0;
+            return failed.getBoolean(v) ? -1 : ((android.graphics.Rect) part.get(v)).height();
         } catch (Exception e) {
             Log.w(T, "dismiss: " + e);
             return -1;
+        }
+    }
+
+    /** Whether pages are drawn on the graphics processor here (megler.WebFunctors.on: the platform's draw functor). */
+    private static boolean onGraphicsProcessor() {
+        try {
+            return (Boolean) Class.forName("megler.WebFunctors").getMethod("on").invoke(null);
+        } catch (Exception e) {
+            return false;
         }
     }
 
@@ -372,7 +393,8 @@ public class Main extends Activity {
                     int detached = drawnRows(banner);
                     banner.destroy();
                     drawThroughNode(banner, w, h);
-                    boolean ok = h == 20000 && drawn > 0 && drawn <= root.getHeight() && detached > 0
+                    // (Drawn on the graphics processor, one out of the window may be given no draw at all: 0 rows.)
+                    boolean ok = h == 20000 && drawn > 0 && drawn <= root.getHeight() && detached >= (onGraphicsProcessor() ? 0 : 1)
                             && detached <= getResources().getDisplayMetrics().heightPixels;
                     Log.i(T, "dismiss " + (ok ? "ok" : "FAILED") + " size=" + w + "x" + h + " drawn=" + drawn + " detached=" + detached + " window=" + root.getHeight());
                     Log.i(T, "done");
