@@ -34,9 +34,13 @@ public class First extends Activity {
             // started again by Top through FLAG_ACTIVITY_CLEAR_TOP: no gate this time
             gated = true;
             Log.i("CrashTest", "first onCreate " + step + " creations=" + creations);
+            // by the app, which started it (Activity.getReferrer)
+            Log.i("CrashTest", "first referrer " + step + " " + getReferrer());
             return;
         }
         Log.i("CrashTest", "first onCreate");
+        // by the system, which started it for the tap on the app's tile (megler.AppRunner.SHELL_REFERRER)
+        Log.i("CrashTest", "first referrer " + getReferrer());
         /*
          * This app says it is written for Android 6 (targetSdkVersion 23). Two views with no width and a weight each, asking for 40 and for
          * 100, in a row with no limit on its width: Android leaves such an app's two what they asked for, where an app for Android 7 or later
@@ -76,6 +80,7 @@ public class First extends Activity {
     protected void onNewIntent(Intent intent) {
         super.onNewIntent(intent);
         Log.i("CrashTest", "first onNewIntent " + intent.getStringExtra("step") + " creations=" + creations);
+        Log.i("CrashTest", "first onNewIntent referrer " + getReferrer());
         // the way into Instagram: the activity it starts is the task's root once this one finishes (Trampoline)
         startActivity(new Intent(this, Trampoline.class));
         finish();
@@ -85,6 +90,15 @@ public class First extends Activity {
     protected void onDestroy() {
         super.onDestroy();
         Log.i("CrashTest", "first onDestroy " + step);
+    }
+
+    /**
+     * Made again (a step), it names itself as the referrer of what it starts, as an app may (Activity.onProvideReferrer): Top's
+     * second time, and Trampoline, have it as their intent's Intent.EXTRA_REFERRER.
+     */
+    @Override
+    public android.net.Uri onProvideReferrer() {
+        return step != null ? android.net.Uri.parse("https://megler.test/first-" + step) : null;
     }
 
     private void whenGateGone(Runnable next, int waited) {

@@ -6437,6 +6437,28 @@ on a looper thread of its own and takes it back with `next()`.
   crash app's `Gate`, started for a result, has `First` for its caller; its
   `Top`, started without one, has none.
 
+- `android/app/Activity.java`, `getReferrer`: who started the activity, as
+  Android says it -- the intent's `Intent.EXTRA_REFERRER` where it is a `Uri`,
+  else its `EXTRA_REFERRER_NAME` parsed, else `android-app://` and the package
+  that started it, which Android's `ActivityThread` hands `Activity.attach`.
+  That is the app's own for an activity it started, and kept while an
+  activity hears a new intent of the app's (`onNewIntent`). For the activity
+  the shell starts for the user's tap on the app's tile it is the system's,
+  `android-app://android` (`megler.AppRunner.SHELL_REFERRER`): on Android the
+  launcher's package is named, and Windows' Start is no Android package; the
+  platform's own name is one every app can see. An activity made again in
+  its place keeps it. And `onProvideReferrer`'s `Uri` goes into the intents
+  of the activities an activity starts (`Intent.EXTRA_REFERRER`), as
+  `Instrumentation.execStartActivity` puts it. `getReferrer` was a stub's
+  null: Device Info HW 5.27.1 keeps `getReferrer().getAuthority()` in its
+  `DeviceInfoActivity.onCreate` (`b1.J.g`) and ended at its start on a
+  `NullPointerException` (a Lumia 950, 0.1.0.681). The crash app's
+  activities say theirs (the first `First` the system's; `Gate`, before and
+  after it is made again, `Top` and the second `First` the app's; the second
+  `Top` and `Trampoline` what the second `First` provides; `Away` the name
+  `Trampoline` gives, a `String` under `EXTRA_REFERRER` passed over), and
+  the screen app's launcher activity the system's at each of its four makings.
+
 - `android/widget/LinearLayout.java`, four statements: what a child with a
   weight and a size of 0 is given when the layout's own size is not exact.
   Android has two rules. For an app written for Android 7 or later the space

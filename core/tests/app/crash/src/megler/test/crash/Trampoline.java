@@ -19,7 +19,10 @@ public class Trampoline extends Activity {
         Log.i("CrashTest", "trampoline onCreate root=" + isTaskRoot());
         for (int i = 0; i < 2; i++)
             startActivity(new Intent(this, Main.class).addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP));
-        new Handler().post(() -> startActivity(new Intent(this, Away.class)));
+        // (naming a referrer of its own by name, Intent.EXTRA_REFERRER_NAME, which Away's getReferrer gives back; a String
+        // under Intent.EXTRA_REFERRER, where Android reads a Uri alone, is passed over)
+        new Handler().post(() -> startActivity(new Intent(this, Away.class).putExtra(Intent.EXTRA_REFERRER, "https://not-a-uri.megler.test/")
+                .putExtra(Intent.EXTRA_REFERRER_NAME, "android-app://megler.test.crash.trampoline")));
     }
 
     @Override

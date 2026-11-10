@@ -34,6 +34,8 @@ public class Top extends Activity {
             launched = e.toString();
         }
         Log.i("CrashTest", "top caller=" + getCallingActivity() + " package=" + getCallingPackage() + " launched=" + launched);
+        // Who started it (Activity.getReferrer): the app, and the second time what First gave it (onProvideReferrer).
+        Log.i("CrashTest", "top referrer " + step + " " + getReferrer());
     }
 
     @Override

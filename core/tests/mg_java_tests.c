@@ -157,6 +157,17 @@ static int find_line(const char *text, int from)
     return found;
 }
 
+/* How many lines of the log contain the text. */
+static int count_lines(const char *text)
+{
+    int i, n = 0;
+    mg_lock_acquire(&g_log_lock);
+    for (i = 0; i < g_nlines; i++)
+        if (strstr(g_lines[i], text)) n++;
+    mg_lock_release(&g_log_lock);
+    return n;
+}
+
 static const char *line_at(int i) { return i >= 0 && i < g_nlines ? g_lines[i] : ""; }
 const char *megler_data_dir(void);
 
@@ -1614,6 +1625,8 @@ static int run_screen(void)
     CHECK(halves(480, 800, RED, BLUE, true));
     write_picture("screen-4-back");
     CHECK(find_line("I/ScreenTest: Handled.onDestroy changing=false", 0) >= 0);
+    /* Its referrer the system's, which started it (megler.AppRunner.SHELL_REFERRER), each of the four times it was made. */
+    CHECK(count_lines("I/ScreenTest: Main.referrer android-app://android") == 4 && count_lines("I/ScreenTest: Main.referrer ") == 4);
     if (g_failed) say_app_lines("I/ScreenTest:");
     stop_and_end("I/ScreenTest: Main.onDestroy changing=false", &at);
     return g_failed;
@@ -2980,16 +2993,6 @@ void mg_tests_java_set_script(int count, char **steps)
 /* A battery nobody would take for the default: 37 of 100 and going down, off the charger, 3.712 V, 30.1 degrees. */
 static const mg_battery k_battery_run2 = { 37, 100, 3, 0, 2, 3712, 301, true, "Li-poly" };
 
-static int count_lines(const char *text)
-{
-    int i, n = 0;
-    mg_lock_acquire(&g_log_lock);
-    for (i = 0; i < g_nlines; i++)
-        if (strstr(g_lines[i], text)) n++;
-    mg_lock_release(&g_log_lock);
-    return n;
-}
-
 /*
  * The battery changing under the app, as the shell reports it (megler_set_battery). The app has a receiver registered for the
  * battery's broadcasts, which has heard the battery once already, when it was registered. It must hear each change once, on the
@@ -3815,6 +3818,19 @@ static int run_crash(void)
     CHECK(find_line("I/CrashTest: first onDestroy null", 0) >= 0 && find_line("I/CrashTest: top onDestroy standard", 0) >= 0 &&
           find_line("I/CrashTest: top onDestroy single", 0) >= 0 && find_line("I/CrashTest: first onDestroy again", 0) > new_intent);
     CHECK(find_line("I/CrashTest: first unexpected result", 0) < 0);
+    /*
+     * Who started each (Activity.getReferrer), as Android says it: the system for the first First, started for the tap on the
+     * app's tile (megler.AppRunner.SHELL_REFERRER); the app for the activities it started, Gate made again as well, and while
+     * the second First hears its new intent; what the second First gave the activities it started (onProvideReferrer, their
+     * Intent.EXTRA_REFERRER); and the name Trampoline gave Away (Intent.EXTRA_REFERRER_NAME). It was null for every one.
+     */
+    CHECK(find_line("I/CrashTest: first referrer android-app://android", 0) >= 0);
+    CHECK(count_lines("I/CrashTest: gate referrer android-app://megler.test.crash") == 2 && count_lines("I/CrashTest: gate referrer ") == 2);
+    CHECK(find_line("I/CrashTest: top referrer standard android-app://megler.test.crash", 0) >= 0);
+    CHECK(find_line("I/CrashTest: first referrer again android-app://megler.test.crash", 0) >= 0);
+    CHECK(find_line("I/CrashTest: top referrer single https://megler.test/first-again", 0) >= 0);
+    CHECK(find_line("I/CrashTest: first onNewIntent referrer android-app://megler.test.crash", 0) >= 0);
+    CHECK(find_line("I/CrashTest: away referrer android-app://megler.test.crash.trampoline", 0) >= 0);
     for (tries = 0; tries < 3000 && running(); tries++) mg_sleep_ns(10000000ull);
     CHECK(g_exited && g_status == -1);
     say("  the app's end, as the shell is told it: %s", g_reason);

@@ -66,6 +66,9 @@
 // And an activity whose onCreate throws is taken off the stack at once and never stopped or destroyed, the one below
 // resumed (launch): one of Google Play services', which the app outlives, was destroyed later with no onCreate behind it.
 //
+// And each activity knows the package that started it (Activity.getReferrer): the app's own, or the system's for the one the
+// shell starts for the user's tap on the app's tile (SHELL_REFERRER); one made again in its place keeps it (relaunch).
+//
 // Everything else is the original's, unchanged.
 package megler;
 
@@ -182,7 +185,7 @@ public final class AppRunner {
         String startedAs = entry != null && "activity-alias".equals(entry.kind) && activityClass.equals(entry.parentActivity) ? entry.name : activityClass;
         main.setComponent(new ComponentName(Native.packageName(), startedAs));
         main.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-        launch(activityClass, main, null, -1, launcher);
+        launch(activityClass, main, null, -1, launcher, null, SHELL_REFERRER);
         Looper.loop();
     }
     public static Application application() { return sApp; }
@@ -258,14 +261,25 @@ public final class AppRunner {
         try { if (Manifest.appLabel != 0) return c.getResources().getText(Manifest.appLabel); } catch (Exception e) {}
         return Native.packageName();
     }
+    /*
+     * Who starts the activity the shell starts for the user's tap on the app's tile, as Activity.getReferrer says it. On
+     * Android that is the launcher, an app of its own; here it is Windows' Start, which is no Android package, and the
+     * platform's own name stands for it, a package every app can see (PackageManager answers for "android").
+     */
+    static final String SHELL_REFERRER = "android";
+
     static Activity launch(String cls, Intent intent, Activity caller, int request, Manifest.Component info) throws Exception {
-        return launch(cls, intent, caller, request, info, null);
+        return launch(cls, intent, caller, request, info, null, null);
     }
-    /** An activity made and started; `state` the one a recreated activity saved, given to onCreate and to onRestoreInstanceState. */
-    static Activity launch(String cls, Intent intent, Activity caller, int request, Manifest.Component info, Bundle state) throws Exception {
+    /**
+     * An activity made and started; `state` the one a recreated activity saved, given to onCreate and to onRestoreInstanceState;
+     * `referrer` the package that started it where that is not the app (Activity.getReferrer).
+     */
+    static Activity launch(String cls, Intent intent, Activity caller, int request, Manifest.Component info, Bundle state, String referrer) throws Exception {
         android.util.Log.d("Megler", "launch " + cls);
         Activity prev = top();
         Activity a = make(cls, intent, caller, request, info);
+        if (referrer != null) a.meglerSetReferrer(referrer);
         final boolean prevResumed = prev != null && prev.isResumedMegler();
         if (prevResumed) prev.meglerPause();
         sStack.add(a);
@@ -340,6 +354,7 @@ public final class AppRunner {
         Activity n;
         try { n = make(cls, a.getIntent(), a.meglerCaller(), a.meglerRequestCode(), info); }
         catch (Exception e) { sStack.remove(idx); exitWhenLast(); throw new RuntimeException(e); }
+        n.meglerSetReferrer(a.meglerReferrer());
         n.meglerSetRetained(retained);
         sStack.set(idx, n);
         for (Activity o : sStack) if (o.meglerCaller() == a) o.meglerSetCaller(n);
