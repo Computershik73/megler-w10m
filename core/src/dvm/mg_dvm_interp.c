@@ -171,8 +171,37 @@ static void call_trace_text(mg_jobj *s, char *out, size_t size)
     out[k] = 0;
 }
 
-/* The String, int and boolean arguments of a call (argv: its registers, the object first for one not static), said after
-   its name: the uid a package is asked for, the flags of a query, as well as the names. */
+/*
+ * A byte[] of a traced call, as said: its length, its first 24 bytes in hex, and those of them that are printable ASCII as
+ * text. What an app keeps to itself of a server's answer: Google Play services' DroidGuard says only which field its
+ * server's answer lacked ("byteCode") and keeps the rest of the answer in the exception it makes of it (bvts' second
+ * argument in 26.41.31, bywg's in 26.43.30) -- none, the trace showed.
+ */
+static void call_trace_bytes(const mg_jobj *a, char *out, size_t size)
+{
+    const u8 *b;
+    u32 n, i, shown;
+    size_t k;
+    if (!a || a->kind != MG_J_PRIM_ARRAY || a->u.arr.etype != 'B') {
+        mg_strlcpy(out, a ? "[B?" : "null", size);
+        return;
+    }
+    b = (const u8 *)a->u.arr.data;
+    n = a->u.arr.len;
+    shown = n < 24 ? n : 24;
+    k = (size_t)snprintf(out, size, "[B of %u", (unsigned)n);
+    for (i = 0; i < shown && k + 4 < size; i++) k += (size_t)snprintf(out + k, size - k, "%s%02x", i ? "" : ": ", b[i]);
+    if (shown && k + shown + 6 < size) {
+        out[k++] = ' ';
+        out[k++] = '"';
+        for (i = 0; i < shown; i++) out[k++] = b[i] >= 0x20 && b[i] < 0x7F ? (char)b[i] : '.';
+        out[k++] = '"';
+        out[k] = 0;
+    }
+}
+
+/* The String, int, boolean and byte[] arguments of a call (argv: its registers, the object first for one not static), said
+   after its name: the uid a package is asked for, the flags of a query, as well as the names. */
 static void call_trace_strings(const mg_dvm_method *m, const mg_dvm_reg *argv, u32 argc, char *out, size_t size)
 {
     const char *p = m->sig + 1;
@@ -191,6 +220,10 @@ static void call_trace_strings(const mg_dvm_method *m, const mg_dvm_reg *argv, u
             k += (size_t)snprintf(out + k, size - k, " %d", (int)(i32)argv[r]);
         } else if (p - start == 1 && *start == 'Z') {
             k += (size_t)snprintf(out + k, size - k, " %s", argv[r] ? "true" : "false");
+        } else if (p - start == 2 && start[0] == '[' && start[1] == 'B') {
+            out[k++] = ' ';
+            call_trace_bytes((const mg_jobj *)argv[r], out + k, size - k);
+            k += strlen(out + k);
         }
         r += (*start == 'J' || *start == 'D') ? 2 : 1;
     }
@@ -271,6 +304,12 @@ static void call_trace_return(mg_dvm_thread *t, mg_dvm_method *m, const mg_jvalu
             char texts[480];
             call_trace_texts(v->l, texts, sizeof(texts));
             mg_info("calls: thread %u depth %d: %s.%s returns %s", (unsigned)t->id, t->depth, m->cls->name, m->name, texts);
+            break;
+        }
+        if (v->l && !strcmp(r + 1, "[B")) {
+            char bytes[120];
+            call_trace_bytes(v->l, bytes, sizeof(bytes));
+            mg_info("calls: thread %u depth %d: %s.%s returns %s", (unsigned)t->id, t->depth, m->cls->name, m->name, bytes);
             break;
         }
         mg_info("calls: thread %u depth %d: %s.%s returns %s", (unsigned)t->id, t->depth, m->cls->name, m->name, v->l ? mg_dvm_class_of(v->l)->name : "null");

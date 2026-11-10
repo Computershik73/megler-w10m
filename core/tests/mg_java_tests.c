@@ -3090,7 +3090,7 @@ static int run_data(void)
                                             and the list of decoders: the stand-in's H.264, AAC and MP3 (mg_codec_standin.c), and no H.265. And
                                             the phone's sensors, the stand-in's (mg_sensor_standin.c), listed and listened to. */
                                          "battery", "connectivity", "dns-servers", "system-libs", "apache-http-legacy", "apache-http-client", "preloaded-drawables", "location", "sensors", "timezone", "locale", "phone-number", "tls", "tls-loopback", "tls-https",
-                                         "network-trust", "network-trust-domains", "network-trust-pins", "keystore", "keystore-certificates", "keystore-foreign-key", "path-op", "text-path", "base64-streams", "piped-streams", "codecs",
+                                         "network-trust", "network-trust-domains", "network-trust-pins", "keystore", "keystore-certificates", "keystore-foreign-key", "path-op", "text-path", "base64-streams", "piped-streams", "trace-bytes", "codecs",
                                          /* And what Android's WebView asks of the platform before it shows a page, each answered as Android
                                             answers it: the app's id within its user (UserHandle.getAppId), whether cleartext HTTP is
                                             permitted (NetworkSecurityPolicy), a compatibility change's state for the app's target
@@ -3477,6 +3477,11 @@ static int run_data(void)
         /* An int argument is said too: the state the step sets, STATE_PLAYING (3). */
         CHECK(find_line("PlaybackState$Builder.setState(IJFJ)Landroid/media/session/PlaybackState$Builder; 3", 0) >= 0
               || find_line("PlaybackState$Builder.setState(IJFJ)Landroid/media/session/PlaybackState$Builder; (compiled) 3", 0) >= 0);
+        /* And a byte[], given and returned, with trace-calls-megler.test.data.Bytes: its length, its first bytes in hex and as text
+           (the step trace-bytes), as an answer Google Play services' DroidGuard keeps to itself was seen. */
+        CHECK(find_line("megler/test/data/Bytes.echo([B)[B [B of 6: 6d65676c6572 \"megler\"", 0) >= 0
+              || find_line("megler/test/data/Bytes.echo([B)[B (compiled) [B of 6: 6d65676c6572 \"megler\"", 0) >= 0);
+        CHECK(find_line("megler/test/data/Bytes.echo returns [B of 6: 6d65676c6572 \"megler\"", 0) >= 0);
     }
     /* The core's own word that it is its SQLite, on its files. */
     CHECK(find_line("sqlite: SQLite 3.", 0) >= 0);
