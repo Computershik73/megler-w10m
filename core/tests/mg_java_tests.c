@@ -2785,9 +2785,12 @@ static int run_data(void)
                                          /* And the process's Application through ActivityThread's hidden fields, on a thread of the Application's
                                             own while it is created, as Tuya Smart's library loader asks, and afterwards. */
                                          "activity-thread-application",
-                                         /* And the hidden ServiceManager, every service one that is not there, as Shizuku's SystemServiceHelper
-                                            asks it (Morphe Manager ended at its start without the class). */
+                                         /* And the hidden ServiceManager, the platform's services each a binder that refuses every
+                                            transaction and any other name a service that is not there, as Shizuku's SystemServiceHelper
+                                            asks it (Morphe Manager ended at its start without the class); and its "window" cast to
+                                            IBinder, as Instagram asks whether there is a navigation bar (it ended on a null). */
                                          "service-manager",
+                                         "service-manager-window",
                                          /* And DateUtils' ranges into a Formatter, and a duration in words (both answered null). */
                                          "date-range",
                                          /* And a view made on a worker thread with a state list for its background, its invalidateDrawable

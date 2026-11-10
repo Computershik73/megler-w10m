@@ -5549,21 +5549,73 @@ public class Main extends Activity {
                     && fromField == app && apps != null && apps.contains(app) && fromGetter == app && fromCurrent == app && fromGlobals == app;
         });
         // The hidden ServiceManager, which Shizuku's SystemServiceHelper reaches by reflection for the system's binders (Sui asks it
-        // for "package"): there, and every name a service that is not there. Morphe Manager ended at its start without the class.
+        // for "package"): there (Morphe Manager ended at its start without the class), the platform's own services each a binder
+        // that stands for it -- the same one each time, its interface's descriptor, alive, no local interface, every transaction
+        // refused -- and any other name a service that is not there. Sui's bridge, a transaction of its own code on the binder,
+        // brings no binder back: no Sui.
         step("service-manager", () -> {
             Class<?> sm = Class.forName("android.os.ServiceManager");
-            Object pkg = sm.getMethod("getService", String.class).invoke(null, "package");
-            Object checked = sm.getMethod("checkService", String.class).invoke(null, "activity");
+            java.lang.reflect.Method get = sm.getMethod("getService", String.class);
+            android.os.IBinder pkg = (android.os.IBinder) get.invoke(null, "package"), again = (android.os.IBinder) get.invoke(null, "package");
+            android.os.IBinder checked = (android.os.IBinder) sm.getMethod("checkService", String.class).invoke(null, "activity");
+            Object none = get.invoke(null, "megler.test.none");
             String[] listed = (String[]) sm.getMethod("listServices").invoke(null);
+            Object orThrow = sm.getMethod("getServiceOrThrow", String.class).invoke(null, "package");
             boolean threw = false;
             try {
-                sm.getMethod("getServiceOrThrow", String.class).invoke(null, "package");
+                sm.getMethod("getServiceOrThrow", String.class).invoke(null, "megler.test.none");
             } catch (java.lang.reflect.InvocationTargetException e) {
                 threw = "android.os.ServiceManager$ServiceNotFoundException".equals(e.getCause().getClass().getName());
             }
-            detail = "getService " + pkg + ", checkService " + checked + ", listServices " + java.util.Arrays.toString(listed)
-                    + ", getServiceOrThrow threw " + threw;
-            return pkg == null && checked == null && listed != null && listed.length == 0 && threw;
+            boolean answered = true;
+            android.os.IBinder bridged = null;
+            if (pkg != null) {
+                android.os.Parcel data = android.os.Parcel.obtain(), reply = android.os.Parcel.obtain();
+                data.writeInterfaceToken("android.content.pm.IPackageManager");
+                data.writeInt(2);
+                answered = pkg.transact(('_' << 24) | ('S' << 16) | ('U' << 8) | 'I', data, reply, 0);
+                reply.readException();
+                bridged = reply.readStrongBinder();
+                data.recycle();
+                reply.recycle();
+            }
+            java.util.List<String> names = listed == null ? java.util.Collections.<String>emptyList() : java.util.Arrays.asList(listed);
+            detail = "getService " + (pkg == null ? null : pkg.getInterfaceDescriptor()) + " the same twice " + (pkg == again)
+                    + ", checkService " + (checked == null ? null : checked.getInterfaceDescriptor()) + ", an unknown name " + none
+                    + ", listServices " + names + ", getServiceOrThrow " + (orThrow == pkg) + " and threw for an unknown name " + threw
+                    + ", a transaction of Sui's answered " + answered + " with " + bridged;
+            return pkg != null && pkg == again && pkg == orThrow && pkg.pingBinder() && pkg.isBinderAlive()
+                    && "android.content.pm.IPackageManager".equals(pkg.getInterfaceDescriptor())
+                    && pkg.queryLocalInterface("android.content.pm.IPackageManager") == null
+                    && checked != null && "android.app.IActivityManager".equals(checked.getInterfaceDescriptor())
+                    && none == null && threw && names.contains("window") && names.contains("package") && names.contains("activity")
+                    && !names.contains("megler.test.none") && !answered && bridged == null;
+        });
+        // Instagram's WindowInsetsManager (453), when the navigation bar's inset is 0 (the user has hidden the phone's bar), asks
+        // the window manager whether there is a navigation bar: getService("window") cast to IBinder as Kotlin casts (null is a
+        // NullPointerException), then IWindowManager.Stub.asInterface and hasNavigationBar() by reflection, and the platform's
+        // config_showNavigationBar where the reflection fails with one of the exceptions it catches. A null binder ended
+        // Instagram from its insets listener (0.1.0.681).
+        step("service-manager-window", () -> {
+            Class<?> sm = Class.forName("android.os.ServiceManager");
+            Object window = sm.getMethod("getService", String.class).invoke(sm, "window");
+            if (window == null) throw new NullPointerException("null cannot be cast to non-null type android.os.IBinder");
+            android.os.IBinder binder = (android.os.IBinder) window;
+            Boolean has;
+            String how;
+            try {
+                Class<?> stub = Class.forName("android.view.IWindowManager$Stub");
+                Object wm = stub.getMethod("asInterface", android.os.IBinder.class).invoke(stub, binder);
+                has = (Boolean) wm.getClass().getMethod("hasNavigationBar").invoke(wm);
+                how = "IWindowManager";
+            } catch (ClassCastException | ClassNotFoundException | IllegalAccessException | IllegalArgumentException | NoSuchMethodException
+                     | SecurityException | java.lang.reflect.InvocationTargetException e) {
+                int id = getResources().getIdentifier("config_showNavigationBar", "bool", "android");
+                has = id > 0 && getResources().getBoolean(id);
+                how = "config_showNavigationBar (" + id + ") after " + e.getClass().getSimpleName();
+            }
+            detail = "window " + binder.getInterfaceDescriptor() + ", a navigation bar " + has + " from " + how;
+            return "android.view.IWindowManager".equals(binder.getInterfaceDescriptor()) && has != null;
         });
         // DateUtils' ranges into a Formatter, as Transit words a route's times: the Formatter given, the range appended to it (it
         // answered null, and Transit's "Go" took toString() of that); and a duration in words (it answered null too).
