@@ -50,6 +50,40 @@ public class Main extends Activity {
                 public void onServiceDisconnected(ComponentName name) {}
             }, Context.BIND_AUTO_CREATE);
         Log.i("GmsHostTest", "location api bind " + bound);
+        askUnderLock();
+    }
+
+    /*
+     * Their provider asked by a thread of the app's that holds a lock of its own, while their Application is being attached (App,
+     * slowly) for a binding whose onServiceConnected wants that lock: as Smash Hit's GoogleApiHandler asked their Chimera provider
+     * with the client library's GmsClientSupervisor lock held, and the main thread then delivered a binding's onServiceConnected,
+     * which waits for that lock. The binding is to be delivered once the attaching is done, not after the ten seconds the thread
+     * would wait for a request of its own behind it on the main thread's queue.
+     */
+    private void askUnderLock() {
+        final Object lock = new Object();
+        final long asked = android.os.SystemClock.uptimeMillis();
+        getApplicationContext().bindService(
+            new Intent("com.google.android.location.internal.GoogleLocationManagerService.START").setPackage("com.google.android.gms"),
+            new ServiceConnection() {
+                @Override
+                public void onServiceConnected(ComponentName name, IBinder binder) {
+                    synchronized (lock) {
+                        Log.i("GmsHostTest", "bound under the provider's lock after " + (android.os.SystemClock.uptimeMillis() - asked) + " ms");
+                    }
+                }
+
+                @Override
+                public void onServiceDisconnected(ComponentName name) {}
+            }, Context.BIND_AUTO_CREATE);
+        new Thread(() -> {
+            synchronized (lock) {
+                android.database.Cursor c = getContentResolver().query(android.net.Uri.parse("content://com.google.settings/partner"), null, "name=?",
+                                                                       new String[] { "under_lock" }, null);
+                Log.i("GmsHostTest", "provider asked under a lock " + (c != null) + " after " + (android.os.SystemClock.uptimeMillis() - asked) + " ms");
+                if (c != null) c.close();
+            }
+        }, "gms-host-under-lock").start();
     }
 
     private int resumed;

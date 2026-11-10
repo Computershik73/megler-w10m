@@ -11,7 +11,8 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android" package="com.google.android.gms"
     android:versionCode="264131009" android:versionName="26.41.31 (a stand-in)">
     <uses-sdk android:minSdkVersion="21" android:targetSdkVersion="28" />
-    <application android:label="@string/gms_own_label">
+    <!-- (Their Application, attached slowly as GmsCore's is: App.) -->
+    <application android:name="megler.test.gmsown.App" android:label="@string/gms_own_label">
         <activity android:name="megler.test.gmsown.Lockup" android:exported="true">
             <intent-filter>
                 <action android:name="megler.test.gmsown.LOCKUP" />

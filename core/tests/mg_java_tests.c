@@ -4227,6 +4227,19 @@ static int run_gms_host(void)
      * Allow) and the answer written into Google's settings (the stand-in's, as Google Services Framework's are), once.
      */
     CHECK(wait_line("I/GmsHostTest: location api connected true", 0, 300) >= 0);
+    /*
+     * Their provider asked by a thread of the app's that holds a lock, while their Application (attached slowly, App) was being
+     * attached for a binding whose onServiceConnected wants that lock (Main.askUnderLock): the binding comes once the attaching
+     * is done. Smash Hit's main thread stood ten seconds there at every start: the thread waited for a request of its own
+     * behind that binding on the main thread's queue (0.1.0.681).
+     */
+    {
+        int at = wait_line("I/GmsHostTest: bound under the provider's lock after ", 0, 300);
+        const char *ms = strstr(line_at(at), " after ");
+        CHECK(at >= 0 && ms && atol(ms + 7) < 8000);
+        CHECK(find_line("I/GmsHostTest: provider asked under a lock true", 0) >= 0);
+        say("  %s", at >= 0 ? line_at(at) : "a binding under the provider's lock: none");
+    }
     CHECK(wait_line("I/GmsOwnTest: settings network_location_opt_in=1", 0, 120) >= 0);
     CHECK(wait_line("I/MeglerLocation: Google Location Accuracy on: the user was asked, and said Allow -- Google Play services' network location may find "
                     "the phone from the Wi-Fi networks around it", 0, 60) >= 0);
