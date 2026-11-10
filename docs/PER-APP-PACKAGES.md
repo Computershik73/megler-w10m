@@ -204,11 +204,15 @@ for an auto run, `auto/AutoRun.cpp`, which pushes it on its own): an app is
 installed as an app of the phone's own, and Megler is where that is done
 (`ui/SeparateApps.cpp`, `ui/LibraryScreen.cpp`, `ui/AppDetailScreen.cpp`):
 
-- which apps are installed, and by which Megler, is asked of Windows's package
-  manager (`PackageManager.FindPackagesForUser`, the restricted capability
-  `packageQuery`, at once) when the library or an app's page is
-  shown and after every action: a package of Megler's publisher whose name begins
-  `MeglerApp.` is an app's. Its version says which Megler made it
+- which apps are installed, and by which Megler, is asked when the library or an
+  app's page is shown and after every action: on a phone first of
+  `Windows.Phone.Management.Deployment.InstallationManager`
+  (`FindPackagesForCurrentPublisher`, as the Store's and a company hub's apps list
+  their own: no capability), else of Windows's package manager
+  (`PackageManager.FindPackagesForUser`, the restricted capability `packageQuery`,
+  which a phone grants only with its interop unlock's capability part); the flag
+  `no-installation-manager` skips the first. A package of Megler's publisher whose
+  name begins `MeglerApp.` is an app's. Its version says which Megler made it
   (`shell/PackageVersions.h`): Megler's own is `<major>.<minor>.0.<build>`, an
   app's package since 0.1.0.682 `<major>.<minor>.<Megler's build>.<n>`, the n-th
   package of the app that build made, so that an app updated in Megler (through

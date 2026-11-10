@@ -163,9 +163,11 @@ struct InstalledApp {
     std::string fullName;        // its full name, which it is uninstalled by
     std::string packageVersion;  // the package's own version: "0.1.682.1" since 0.1.0.682 (appPackageVersion), else as version
 };
-/// The apps' own packages of Megler's publisher installed on the phone, as Windows's package manager lists them (the
-/// restricted capability packageQuery; on an Xbox, as the console's Device Portal lists them); false, with why, when they
-/// could not be listed. `reachable` is told as soon as the lister has answered at all, before a list that takes its time.
+/// The apps' own packages of Megler's publisher installed on the phone; false, with why, when they could not be listed.
+/// On a phone as the Store's and a company hub's apps list theirs, Windows.Phone.Management.Deployment's InstallationManager
+/// (FindPackagesForCurrentPublisher: no capability), else Windows's package manager (the restricted capability
+/// packageQuery, which a phone grants only with its interop unlock's capability part); on an Xbox, as the console's Device
+/// Portal lists them. `reachable` is told as soon as the lister has answered at all, before a list that takes its time.
 /// Off the UI thread.
 bool installedApps(std::vector<InstalledApp>& out, std::string& error, const std::function<void()>& reachable = {});
 /// What lists, installs and uninstalls the apps' packages here, for a sentence: "Windows's package manager", on an Xbox

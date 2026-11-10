@@ -1268,6 +1268,53 @@ std::wstring gsfApk() {
 
 namespace {
 std::atomic<int> gPackageManager{0}; // 1 Windows's package manager answered (packageQuery), -1 it would not, 0 not asked
+std::atomic<int> gInstallationManager{0}; // the same of InstallationManager (installedApps)
+
+/// Whether the flag file LocalState\flags\<name> is there (ui/UiShots.h): for a test of the way that is not taken first.
+bool flagSet(const wchar_t* name) { return files::exists(platform::localStateDirectory() + L"\\flags\\" + name); }
+
+#if !defined(MEGLER_XBOX)
+/*
+ * Windows.Phone.Management.Deployment.InstallationManager, the phone's own: the Store's way, and a company hub's, to the
+ * packages of its own publisher. Declared here from the phone contract's metadata (winmdidl's IDL of
+ * Windows.Phone.PhoneContract.winmd), as player/AudioHost.cpp declares AudioRoutingManager: the SDK's C++/WinRT headers have
+ * no projection of the contract. Not on a PC, which has no such class.
+ */
+struct __declspec(uuid("929AA738-8D49-42AC-80C9-B4AD793C43F2")) __declspec(novtable) IInstallationManagerStatics : ::IInspectable {
+    virtual HRESULT __stdcall AddPackageAsync(HSTRING title, void* sourceLocation, void** operation) = 0;
+    virtual HRESULT __stdcall AddPackagePreloadedAsync(HSTRING title, void* sourceLocation, HSTRING instanceId, HSTRING offerId, void* license,
+                                                       void** operation) = 0;
+    virtual HRESULT __stdcall GetPendingPackageInstalls(void** items) = 0;
+    virtual HRESULT __stdcall FindPackagesForCurrentPublisher(void** items) = 0;
+    virtual HRESULT __stdcall FindPackages(void** items) = 0;
+};
+
+/// The packages of this app's publisher, as InstallationManager lists them; false, with why, where it would not.
+bool publisherPackages(std::vector<Package>& out, std::string& why) {
+    out.clear();
+    try {
+        const winrt::hstring name = L"Windows.Phone.Management.Deployment.InstallationManager";
+        winrt::com_ptr<IInstallationManagerStatics> statics;
+        HRESULT hr = RoGetActivationFactory(static_cast<HSTRING>(winrt::get_abi(name)), __uuidof(IInstallationManagerStatics), statics.put_void());
+        if (FAILED(hr) || !statics) {
+            why = format("there is no InstallationManager (0x%08X)", unsigned(hr));
+            return false;
+        }
+        void* items = nullptr;
+        hr = statics->FindPackagesForCurrentPublisher(&items);
+        if (FAILED(hr) || !items) {
+            why = format("FindPackagesForCurrentPublisher failed (0x%08X)", unsigned(hr));
+            return false;
+        }
+        const winrt::Windows::Foundation::Collections::IIterable<Package> packages{items, winrt::take_ownership_from_abi};
+        for (auto const& package : packages) out.push_back(package);
+        return true;
+    } catch (hresult_error const& e) {
+        why = format("0x%08X %s", unsigned(e.code()), narrow(e.message()).c_str());
+        return false;
+    }
+}
+#endif
 
 /// Whether Windows counts `package` with the developer's packages, of which a phone takes only so many (0x80073d11:
 /// installWithPackageManager), and what signed it: "developer's, signed Developer", for the log.
@@ -1322,8 +1369,40 @@ bool installedApps(std::vector<InstalledApp>& out, std::string& error, const std
      * (installWithPackageManager), and a Megler whose package manager does not answer installs nothing either (the restricted
      * capabilities packageQuery and packageManagement go together in its manifest).
      */
+    const std::wstring publisherId(Package::Current().Id().PublisherId());
+    /*
+     * On a phone first as the Store's and a company hub's apps list their own: InstallationManager's packages of this app's
+     * publisher, which every app's own package shares with Megler, and which Windows gives with no capability -- where
+     * Windows's package manager wants packageQuery, which a phone grants only with the capability part of its interop
+     * unlock, and lists every package of the phone (211 on an HP Elite x3). Windows's package manager where it is not.
+     */
+    std::string why;
+    std::vector<Package> mine;
+    if (!flagSet(L"no-installation-manager") && publisherPackages(mine, why)) {
+        std::vector<InstalledApp> found;
+        std::string own;
+        for (auto const& package : mine) {
+            const auto id = package.Id();
+            const std::wstring name(id.Name());
+            if (name.compare(0, 10, L"MeglerApp.") != 0 || std::wstring(id.PublisherId()) != publisherId) {
+                if (name == L"Megler") own += "; Megler " + howInstalled(package);
+                continue;
+            }
+            const auto v = id.Version();
+            const std::string version = format("%u.%u.%u.%u", v.Major, v.Minor, v.Build, v.Revision);
+            found.push_back({narrow(name), madeByVersion(version), narrow(std::wstring(id.FullName())), version});
+            if (gInstallationManager.load() != 1) own += "; " + narrow(name) + " " + version + " " + howInstalled(package);
+        }
+        if (gInstallationManager.exchange(1) != 1)
+            shellLog::write(format("app package: InstallationManager lists the packages of Megler's publisher, as the Store lists its own: %u "
+                                   "of them the apps'",
+                                   unsigned(found.size())) + own);
+        if (reachable) reachable();
+        out = std::move(found);
+        return true;
+    }
+    if (gInstallationManager.exchange(-1) != -1 && !why.empty()) shellLog::write("app package: InstallationManager lists nothing here: " + why);
     try {
-        const std::wstring publisherId(Package::Current().Id().PublisherId());
         std::vector<InstalledApp> found;
         // Once a run, for the log: how many of the phone's packages Windows counts as a developer's, and how Megler's are.
         const bool tell = gPackageManager.load() != 1;
