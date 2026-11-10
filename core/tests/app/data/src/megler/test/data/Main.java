@@ -1979,6 +1979,7 @@ public class Main extends Activity {
         markupRegex();
         audioAttributesEqual();
         notificationChannel();
+        notificationChannels(run);
         sound();
         mediaCodec();
         network();
@@ -6487,6 +6488,159 @@ public class Main extends Activity {
                      + ", through XML " + throughXml + " (" + xml + "), told " + said;
             return fresh && described && clones && differs && throughParcel && throughXml
                     && said.equals("NotificationChannelGroup{mId='group', mName=Group, mDescription=hasDescription , mBlocked=false, mChannels=[], mUserLockedFields=0}");
+        });
+    }
+
+    /** What an app sets of a channel, and the fields the system sets, in a line. */
+    private static String channelSummary(android.app.NotificationChannel c) {
+        if (c == null) return "none";
+        android.media.AudioAttributes a = c.getAudioAttributes();
+        return c.getId() + " '" + c.getName() + "' " + c.getImportance() + " " + c.getDescription() + " group " + c.getGroup() + " sound " + c.getSound() + " "
+                + (a == null ? "null" : a.getUsage() + "/" + a.getContentType() + "/" + a.getFlags()) + " lights " + c.shouldShowLights() + " "
+                + Integer.toHexString(c.getLightColor()) + " vibrates " + c.shouldVibrate() + " " + Arrays.toString(c.getVibrationPattern()) + " badge "
+                + c.canShowBadge() + " lock screen " + c.getLockscreenVisibility() + " dnd " + c.canBypassDnd() + " bubbles " + c.canBubble();
+    }
+
+    /** Whether the list has a channel or a group of the id. */
+    private static boolean lists(java.util.List<?> l, String id) {
+        for (Object o : l) {
+            String has = o instanceof android.app.NotificationChannel ? ((android.app.NotificationChannel) o).getId() : ((android.app.NotificationChannelGroup) o).getId();
+            if (id.equals(has)) return true;
+        }
+        return false;
+    }
+
+    /**
+     * The app's channels and groups kept as Android's system keeps them (NotificationManager): one set for the process, whichever
+     * NotificationManager is asked; a channel the system's copy; what an app may change of a channel that is there; deleted and
+     * made again; a conversation's channel; groups with their channels; and kept across the app's runs, in its data folder.
+     */
+    private void notificationChannels(long run) {
+        final android.app.NotificationManager nm = (android.app.NotificationManager) getSystemService(NOTIFICATION_SERVICE);
+        // A channel made through the context's NotificationManager is found through another one, as megler.Services makes one (each kept
+        // its own); what is found is the system's copy: the app's later change to its own object, or to the copy, is the app's own.
+        step("notification-channels-shared", () -> {
+            android.app.NotificationManager other = (android.app.NotificationManager) Class.forName("megler.Services")
+                    .getMethod("system", String.class, Context.class).invoke(null, NOTIFICATION_SERVICE, this);
+            String id = "shared-" + run;
+            android.app.NotificationChannel made = new android.app.NotificationChannel(id, "Shared", android.app.NotificationManager.IMPORTANCE_DEFAULT);
+            made.setDescription("made through one, found through another");
+            made.setVibrationPattern(new long[] { 0, 100 });
+            nm.createNotificationChannel(made);
+            android.app.NotificationChannel found = other.getNotificationChannel(id);
+            boolean listed = lists(other.getNotificationChannels(), id);
+            made.setDescription("changed by the app afterwards");
+            if (found != null) found.setImportance(android.app.NotificationManager.IMPORTANCE_MIN);
+            android.app.NotificationChannel again = nm.getNotificationChannel(id);
+            detail = "another manager " + (other != nm) + ", found " + channelSummary(found) + ", listed " + listed + ", again " + channelSummary(again)
+                     + ", the same object " + (found == made || again == found);
+            return other != nm && found != null && found != made && again != found && listed
+                    && channelSummary(again).equals(id + " 'Shared' 3 made through one, found through another group null sound content://settings/system/notification_sound"
+                            + " 5/4/0 lights false 0 vibrates true [0, 100] badge true lock screen -1000 dnd false bubbles false");
+        });
+        // Android's rules for an app: a new channel's lock screen visibility, Do Not Disturb and bubbles are the system's; a channel made
+        // again changes its name, description and group (where it had none), its importance only downwards, and not its sound; a
+        // deleted one is gone, and made again it is back as it was; a conversation's channel; a group with its channels, and its
+        // channels deleted with it. (Ids of the run's own: what the first run left is there in the second.)
+        step("notification-channels-rules", () -> {
+            String a = "rules-" + run + "-a", p = "rules-" + run + "-parent", conv = "rules-" + run + "-conversation", g = "rules-" + run + "-group";
+            android.net.Uri first = android.net.Uri.parse("android.resource://megler.test.data/raw/first");
+            android.net.Uri second = android.net.Uri.parse("android.resource://megler.test.data/raw/second");
+            android.media.AudioAttributes attrs = new android.media.AudioAttributes.Builder().setUsage(android.media.AudioAttributes.USAGE_NOTIFICATION).build();
+            android.app.NotificationChannel ch = new android.app.NotificationChannel(a, "A", android.app.NotificationManager.IMPORTANCE_HIGH);
+            ch.setSound(first, attrs);
+            ch.setLockscreenVisibility(android.app.Notification.VISIBILITY_SECRET);
+            ch.setBypassDnd(true);
+            ch.setAllowBubbles(true);
+            nm.createNotificationChannel(ch);
+            String made = channelSummary(nm.getNotificationChannel(a));
+            nm.createNotificationChannelGroup(new android.app.NotificationChannelGroup(g, "Group"));
+            android.app.NotificationChannel changed = new android.app.NotificationChannel(a, "A again", android.app.NotificationManager.IMPORTANCE_LOW);
+            changed.setDescription("described");
+            changed.setGroup(g);
+            changed.setSound(second, attrs);
+            nm.createNotificationChannel(changed);
+            String again = channelSummary(nm.getNotificationChannel(a));
+            nm.createNotificationChannel(new android.app.NotificationChannel(a, "A again", android.app.NotificationManager.IMPORTANCE_MAX));
+            int upwards = nm.getNotificationChannel(a).getImportance();
+            nm.deleteNotificationChannel(a);
+            boolean gone = nm.getNotificationChannel(a) == null && !lists(nm.getNotificationChannels(), a) && nm.getNotificationChannelGroup(g).getChannels().isEmpty();
+            android.app.NotificationChannel back = new android.app.NotificationChannel(a, "A back", android.app.NotificationManager.IMPORTANCE_HIGH);
+            back.setSound(null, null);
+            nm.createNotificationChannel(back);
+            String restored = channelSummary(nm.getNotificationChannel(a));
+            // A conversation's channel (Android 11): found for its conversation, the parent for another.
+            nm.createNotificationChannel(new android.app.NotificationChannel(p, "Messages", android.app.NotificationManager.IMPORTANCE_DEFAULT));
+            android.app.NotificationChannel forConversation = new android.app.NotificationChannel(conv, "A conversation", android.app.NotificationManager.IMPORTANCE_HIGH);
+            call(forConversation, "setConversationId", new Class<?>[] { String.class, String.class }, p, "someone");
+            nm.createNotificationChannel(forConversation);
+            Class<?>[] two = { String.class, String.class };
+            Object ofConversation = call(nm, "getNotificationChannel", two, p, "someone");
+            Object ofAnother = call(nm, "getNotificationChannel", two, p, "someone else");
+            String conversations = (ofConversation == null ? "none" : ((android.app.NotificationChannel) ofConversation).getId()) + " "
+                    + (ofAnother == null ? "none" : ((android.app.NotificationChannel) ofAnother).getId());
+            // The group: its channels in it, a deleted one not; deleted with the group.
+            android.app.NotificationChannel second2 = new android.app.NotificationChannel(a + "2", "A2", android.app.NotificationManager.IMPORTANCE_DEFAULT);
+            second2.setGroup(g);
+            nm.createNotificationChannel(second2);
+            android.app.NotificationChannelGroup group = nm.getNotificationChannelGroup(g);
+            int inGroup = group == null ? -1 : group.getChannels().size();
+            boolean groupListed = lists(nm.getNotificationChannelGroups(), g);
+            boolean groupsChannels = false;
+            for (android.app.NotificationChannelGroup each : nm.getNotificationChannelGroups())
+                if (g.equals(each.getId())) groupsChannels = lists(each.getChannels(), a) && lists(each.getChannels(), a + "2") && !each.isBlocked();
+            nm.deleteNotificationChannelGroup(g);
+            boolean groupGone = nm.getNotificationChannelGroup(g) == null && !lists(nm.getNotificationChannelGroups(), g) && nm.getNotificationChannel(a) == null
+                    && nm.getNotificationChannel(a + "2") == null && nm.getNotificationChannel(p) != null;
+            detail = "made: " + made + "; made again: " + again + "; importance upwards " + upwards + "; deleted gone " + gone + "; made again after: " + restored
+                     + "; conversations " + conversations + "; in the group " + inGroup + " listed " + groupListed + " with its channels " + groupsChannels
+                     + "; the group's deletion " + groupGone;
+            return made.equals(a + " 'A' 4 null group null sound " + first + " 5/0/0 lights false 0 vibrates false null badge true lock screen -1000 dnd false bubbles false")
+                    && again.equals(a + " 'A again' 2 described group " + g + " sound " + first + " 5/0/0 lights false 0 vibrates false null badge true lock screen -1000 dnd false bubbles false")
+                    && upwards == android.app.NotificationManager.IMPORTANCE_LOW && gone
+                    && restored.equals(a + " 'A back' 2 null group " + g + " sound " + first + " 5/0/0 lights false 0 vibrates false null badge true lock screen -1000 dnd false bubbles false")
+                    && conversations.equals(conv + " " + p) && inGroup == 2 && groupListed && groupsChannels && groupGone;
+        });
+        // Kept across the app's runs, as Android's system keeps them: the first run makes a group, a silent channel in it and a channel
+        // it deletes; the second finds them as they were -- the silent channel with no sound and no audio attributes -- and the deleted
+        // one deleted, made again as it was.
+        step("notification-channels-kept", () -> {
+            String keptLine = "kept 'Kept' 2 a channel of the run before group kept-group sound null null lights true ff0000ff vibrates true [0, 300, 200, 300]"
+                    + " badge false lock screen -1000 dnd false bubbles false";
+            android.net.Uri bell = android.net.Uri.parse("android.resource://megler.test.data/raw/bell");
+            if (run == 1) {
+                android.app.NotificationChannelGroup group = new android.app.NotificationChannelGroup("kept-group", "Kept");
+                group.setDescription("the group of the run before");
+                nm.createNotificationChannelGroup(group);
+                android.app.NotificationChannel kept = new android.app.NotificationChannel("kept", "Kept", android.app.NotificationManager.IMPORTANCE_LOW);
+                kept.setDescription("a channel of the run before");
+                kept.setGroup("kept-group");
+                kept.setSound(null, null);
+                kept.enableLights(true);
+                kept.setLightColor(0xFF0000FF);
+                kept.setVibrationPattern(new long[] { 0, 300, 200, 300 });
+                kept.setShowBadge(false);
+                nm.createNotificationChannel(kept);
+                android.app.NotificationChannel deleted = new android.app.NotificationChannel("kept-deleted", "Deleted", android.app.NotificationManager.IMPORTANCE_HIGH);
+                deleted.setSound(bell, new android.media.AudioAttributes.Builder().setUsage(android.media.AudioAttributes.USAGE_NOTIFICATION_EVENT).build());
+                nm.createNotificationChannel(deleted);
+                nm.deleteNotificationChannel("kept-deleted");
+                detail = "made: " + channelSummary(nm.getNotificationChannel("kept"));
+                return channelSummary(nm.getNotificationChannel("kept")).equals(keptLine) && nm.getNotificationChannel("kept-deleted") == null;
+            }
+            android.app.NotificationChannel kept = nm.getNotificationChannel("kept");
+            android.app.NotificationChannelGroup group = nm.getNotificationChannelGroup("kept-group");
+            boolean deletedStill = nm.getNotificationChannel("kept-deleted") == null && !lists(nm.getNotificationChannels(), "kept-deleted");
+            nm.createNotificationChannel(new android.app.NotificationChannel("kept-deleted", "Deleted", android.app.NotificationManager.IMPORTANCE_MAX));
+            android.app.NotificationChannel back = nm.getNotificationChannel("kept-deleted");
+            detail = "found: " + channelSummary(kept) + "; group " + (group == null ? "none" : group.getName() + " '" + group.getDescription() + "' "
+                     + group.getChannels().size() + " " + lists(group.getChannels(), "kept")) + "; deleted still " + deletedStill + "; made again: " + channelSummary(back);
+            // (Deleted again, for a run after this one to find as this one did.)
+            nm.deleteNotificationChannel("kept-deleted");
+            return channelSummary(kept).equals(keptLine) && group != null && "Kept".equals(group.getName().toString())
+                    && "the group of the run before".equals(group.getDescription()) && group.getChannels().size() == 1 && lists(group.getChannels(), "kept")
+                    && deletedStill && channelSummary(back).equals("kept-deleted 'Deleted' 4 null group null sound " + bell
+                            + " 10/0/0 lights false 0 vibrates false null badge true lock screen -1000 dnd false bubbles false");
         });
     }
 
