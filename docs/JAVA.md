@@ -6120,6 +6120,21 @@ on a looper thread of its own and takes it back with `next()`.
   and no layers the drawable took itself for a borderless one and drew its
   highlight as a disc of half its longer side: for a pressed row of a list, a
   grey disc as wide as the screen over the rows above and below.
+- `android/graphics/drawable/LayerDrawable.java`, one statement in `draw`:
+  every layer is drawn, visible or not, as Android's. A drawable's
+  visibility (`setVisible`, which a LayerDrawable passes on to its layers,
+  and which a view sets on its background as it hears whether it is shown)
+  is a hint to it, and only a drawable that hides itself (Fresco's
+  `RootDrawable`) draws nothing while it is not visible. The framework's own
+  file drew only the layers that were visible, so a LayerDrawable told it was
+  not visible drew nothing at all. Messenger's avatars are such drawables
+  (`MigProfileImage` draws a user's picture with `UserTileDrawableComponent`:
+  a LayerDrawable of the picture's round `ShapeDrawable`, a badge and the
+  initials, in Litho's `MatrixDrawable`, whose `mount` does not give the new
+  drawable its own visibility), and so is a `RippleDrawable` with content,
+  the background of a view told it is not shown. The data app's step
+  "layer-drawable-hidden" draws a LayerDrawable and a ripple told they are
+  not visible.
 - `android/graphics/drawable/InsetDrawable.java` and `megler/ResInflate.java`:
   an inset may be a fraction of the drawable's bounds as well as pixels, as
   Android 8 and later have it (`InsetDrawable.InsetValue`): an `<inset>`'s

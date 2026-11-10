@@ -3171,6 +3171,8 @@ static int run_data(void)
                                          /* And a list's rows taken out and put back as RecyclerView's scrap, heard as Android tells them
                                             whether they are shown: said once the window has the list, checked below. */
                                          "visibility-scrap",
+                                         /* And a LayerDrawable told it is not visible: its layers drawn all the same, as Android's. */
+                                         "layer-drawable-hidden",
                                          /* And a view made on a worker thread with a state list for its background, its invalidateDrawable
                                             asserting the main thread, as Facebook builds its tab bar's tabs: the view the callback last. */
                                          "background-callback-last",

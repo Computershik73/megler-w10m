@@ -1974,6 +1974,7 @@ public class Main extends Activity {
         roundRectShape();
         visibilityAggregated();
         visibilityScrap();
+        layerDrawableHidden();
         backgroundOffMainThread();
         singleLineSpans();
         ellipsisNarrower();
@@ -6174,6 +6175,36 @@ public class Main extends Activity {
             ((android.view.ViewGroup) text.getParent()).addView(list, new android.view.ViewGroup.LayoutParams(20, 20));
             detail = "in the window now " + list.isAttachedToWindow();
             return true;
+        });
+    }
+
+    /**
+     * A LayerDrawable told it is not visible draws its layers all the same, as Android's: its visibility is passed on to its
+     * layers, which are drawn. A ripple with content (a LayerDrawable too) likewise. Megler drew only the layers that were
+     * visible: a LayerDrawable told it was not visible drew nothing, as Messenger's user tiles (its avatars) are.
+     */
+    private void layerDrawableHidden() {
+        step("layer-drawable-hidden", () -> {
+            android.graphics.drawable.ColorDrawable face = new android.graphics.drawable.ColorDrawable(0xFFFF0000);
+            android.graphics.drawable.ColorDrawable badge = new android.graphics.drawable.ColorDrawable(0xFF0000FF);
+            android.graphics.drawable.LayerDrawable tile = new android.graphics.drawable.LayerDrawable(new android.graphics.drawable.Drawable[] { face, badge });
+            tile.setLayerInset(1, 15, 15, 0, 0);
+            tile.setBounds(0, 0, 20, 20);
+            tile.setVisible(false, false);
+            android.graphics.Bitmap bm = android.graphics.Bitmap.createBitmap(20, 20, android.graphics.Bitmap.Config.ARGB_8888);
+            tile.draw(new android.graphics.Canvas(bm));
+            int middle = bm.getPixel(5, 5), corner = bm.getPixel(18, 18);
+            android.graphics.drawable.ColorDrawable content = new android.graphics.drawable.ColorDrawable(0xFF00FF00);
+            android.graphics.drawable.RippleDrawable ripple = new android.graphics.drawable.RippleDrawable(
+                    android.content.res.ColorStateList.valueOf(0x40000000), content, null);
+            ripple.setBounds(0, 0, 20, 20);
+            ripple.setVisible(false, false);
+            android.graphics.Bitmap b2 = android.graphics.Bitmap.createBitmap(20, 20, android.graphics.Bitmap.Config.ARGB_8888);
+            ripple.draw(new android.graphics.Canvas(b2));
+            int inside = b2.getPixel(10, 10);
+            detail = String.format("layers told %b %b, middle=%08x corner=%08x ripple content=%08x", face.isVisible(), badge.isVisible(), middle, corner, inside);
+            Log.i("DataTest", "layer-drawable-hidden " + detail);
+            return !face.isVisible() && !badge.isVisible() && middle == 0xFFFF0000 && corner == 0xFF0000FF && inside == 0xFF00FF00;
         });
     }
 
