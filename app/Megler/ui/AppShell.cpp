@@ -629,7 +629,10 @@ void AppShell::dialog(DialogSpec spec, std::function<void(int, std::string)> don
     dialogLayer_.Tapped([this](auto&&, auto const& e) {
         if (e.OriginalSource().try_as<Grid>() == dialogLayer_) closeDialog(-1);
     });
+    // The sheet's own margin of 24 within is the content's at its sides (the choices' rows reach out over it, within the
+    // scrolling), the sheet's at its top and bottom.
     auto column = vstack(0);
+    column.Margin(ThicknessHelper::FromLengths(24, 0, 24, 0));
     if (!spec.title.empty()) {
         auto t = text(spec.title, font::headlineSmall, weightNormal(), p.onSurface);
         t.Margin(ThicknessHelper::FromLengths(0, 0, 0, 16));
@@ -715,18 +718,32 @@ void AppShell::dialog(DialogSpec spec, std::function<void(int, std::string)> don
     }
     auto actions = hstack(8);
     actions.HorizontalAlignment(HorizontalAlignment::Right);
-    actions.Margin(ThicknessHelper::FromLengths(0, 24, -12, -8));
+    actions.Margin(ThicknessHelper::FromLengths(24, 24, 12, -8));
     for (size_t i = 0; i < spec.buttons.size(); ++i) {
         const bool confirming = i + 1 == spec.buttons.size();
         auto b = textButton(spec.buttons[i], [this, i] { closeDialog(int(i)); }, confirming && spec.destructive ? p.error : p.primary);
         add(actions, b);
     }
-    add(column, actions);
+    // The content scrolls where it is higher than the window lets the sheet be, and the buttons stay below it: a phone's
+    // window is too low for a permission's choices with their explanation, and the sheet cut its buttons off (Lumia 650).
+    ScrollViewer scroller;
+    scroller.Content(column);
+    scroller.VerticalScrollBarVisibility(ScrollBarVisibility::Auto);
+    scroller.HorizontalScrollBarVisibility(ScrollBarVisibility::Disabled);
+    Grid body;
+    RowDefinition scrolled, buttons;
+    scrolled.Height(GridLengthHelper::FromValueAndType(1, GridUnitType::Star));
+    buttons.Height(GridLengthHelper::Auto());
+    body.RowDefinitions().Append(scrolled);
+    body.RowDefinitions().Append(buttons);
+    body.Children().Append(scroller);
+    Grid::SetRow(actions, 1);
+    body.Children().Append(actions);
     Border sheet;
-    sheet.Child(column);
+    sheet.Child(body);
     sheet.Background(brush(p.surfaceContainerHigh));
     sheet.CornerRadius(CornerRadiusHelper::FromUniformRadius(28));
-    sheet.Padding(ThicknessHelper::FromUniformLength(24));
+    sheet.Padding(ThicknessHelper::FromLengths(0, 24, 0, 24));
     sheet.MinWidth(280);
     sheet.MaxWidth(560);
     sheet.Margin(ThicknessHelper::FromLengths(24, 24, 24, 24));
