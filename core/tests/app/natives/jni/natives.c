@@ -880,6 +880,22 @@ JNIEXPORT jstring JNICALL Java_megler_test_natives_Lib_systemProperty(JNIEnv *en
     return (*env)->NewStringUTF(env, value);
 }
 
+/*
+ * A library the app wrote itself, opened by native code by its path: dlopen loads that file, as bionic's does, its constructor
+ * run. The step dlopen-own-file hands a copy of libnatives_dep.so under a name no APK has, in a folder no library came from
+ * before. Its natives_dep_answer (4242 once its constructor has run), or -1 when it did not open, which is logged.
+ */
+JNIEXPORT jint JNICALL Java_megler_test_natives_Lib_dlopenAnswer(JNIEnv *env, jclass cls, jstring path)
+{
+    const char *p = (*env)->GetStringUTFChars(env, path, NULL);
+    void *h = p ? dlopen(p, RTLD_NOW) : NULL;
+    int (*answer)(void) = h ? (int (*)(void))dlsym(h, "natives_dep_answer") : NULL;
+    (void)cls;
+    if (!h) __android_log_print(ANDROID_LOG_INFO, "NativesLib", "dlopen(%s): %s", p ? p : "(null)", dlerror());
+    if (p) (*env)->ReleaseStringUTFChars(env, path, p);
+    return answer ? answer() : -1;
+}
+
 JNIEXPORT jint JNICALL Java_megler_test_natives_Lib_icuVersion(JNIEnv *env, jclass cls)
 {
     static const uint16_t text[] = { 'M', 'e', 'g', 'l', 'e', 'r', 0 };

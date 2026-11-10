@@ -210,6 +210,27 @@ bool mg_ld_has_lib(const char *name)
     return found;
 }
 
+int mg_ld_file_is_apk_lib(const char *name, const char *host_path)
+{
+    const mg_zip *z = NULL;
+    const mg_zip_entry *e;
+    u32 want_crc = 0, crc = 0;
+    u64 want_size = 0, size = 0;
+    mg_stat st;
+    load_lock();
+    e = apk_lib(name, &z);
+    if (e) {
+        want_crc = e->crc;
+        want_size = e->usize;
+    }
+    load_unlock();
+    /* (Summed outside the lock: an app's library may be megabytes, and other threads load theirs meanwhile.) */
+    if (!e || !mg_path_stat(host_path, &st, NULL) || st.is_dir) return -1;
+    if (st.size != want_size) return 0;
+    if (!mg_zip_file_crc(host_path, &crc, &size)) return -1;
+    return crc == want_crc && size == want_size ? 1 : 0;
+}
+
 /*
  * A library's file: `*owned` says whether the bytes are ours to free. The
  * app's are in the APKs and then the folders named for them; the runtime's

@@ -339,6 +339,54 @@ public class Main extends Activity {
             System.load(copy.getPath());
             return true;
         });
+        step("own-file-same-name", () -> {
+            /*
+             * A library of the APK's name and size and other bytes, made by the app and loaded by its path before anything loaded
+             * the APK's of that name: the APK's libnatives_alt.so with the "version 1" of its text made "version 2". On Android
+             * System.load loads the file it is given; TikTok Lite 47.7.4 loads the libnpth.so it unpacks so.
+             */
+            File src = new File(libDir, "libnatives_alt.so"), dir = new File(getFilesDir(), "own"), copy = new File(dir, "libnatives_alt.so");
+            byte[] bytes = new byte[(int) src.length()], from = "natives_alt version 1".getBytes("US-ASCII");
+            try (FileInputStream in = new FileInputStream(src)) {
+                int at = 0, n;
+                while (at < bytes.length && (n = in.read(bytes, at, bytes.length - at)) > 0) at += n;
+            }
+            int found = -1, times = 0;
+            for (int i = 0; i + from.length <= bytes.length; i++) {
+                int k = 0;
+                while (k < from.length && bytes[i + k] == from[k]) k++;
+                if (k == from.length) {
+                    found = i;
+                    times++;
+                }
+            }
+            if (times != 1) {
+                detail = "the library has its text " + times + " times";
+                return false;
+            }
+            bytes[found + from.length - 1] = '2';
+            dir.mkdirs();
+            try (FileOutputStream out = new FileOutputStream(copy)) {
+                out.write(bytes);
+            }
+            System.load(copy.getPath());
+            String said = Alt.version();
+            detail = "said=" + said + " size=" + copy.length() + "/" + src.length();
+            return "natives_alt version 2".equals(said) && copy.length() == src.length();
+        });
+        step("dlopen-own-file", () -> {
+            /* A library the app wrote itself, in a folder no library came from before, opened by native code by its path. */
+            File dir = new File(getFilesDir(), "dl"), copy = new File(dir, "libdlopened.so");
+            byte[] buf = new byte[65536];
+            int n;
+            dir.mkdirs();
+            try (FileInputStream in = new FileInputStream(new File(libDir, "libnatives_dep.so")); FileOutputStream out = new FileOutputStream(copy)) {
+                while ((n = in.read(buf)) > 0) out.write(buf, 0, n);
+            }
+            int answer = Lib.dlopenAnswer(copy.getPath());
+            detail = "answer=" + answer;
+            return answer == 4242;
+        });
         step("missing-library", () -> {
             String byName = null, byPath = null;
             try {

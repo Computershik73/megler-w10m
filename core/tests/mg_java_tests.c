@@ -2743,7 +2743,8 @@ static int run_natives(void)
 {
     static const char *const steps[] = { "load", "registered", "primitives", "stack-mix", "overloads", "arrays", "bounds", "strings", "callback", "throw-native",
                                          "throw-java", "find-class", "references", "reflection", "monitor", "thread", "thread-daemon", "needed-library", "asset",
-                                         "bitmap", "direct-buffer", "configuration", "library-folder", "loaded-once", "own-file", "missing-library",
+                                         "bitmap", "direct-buffer", "configuration", "library-folder", "loaded-once", "own-file", "own-file-same-name",
+                                         "dlopen-own-file", "missing-library",
                                          "missing-method", "looper-watched", "sensors", "gc-held", "system-icu", "abi", "device", "string-alloc", "many-args", "deep-callbacks" };
     int at = -1, layout, pic[4], i;
     char want[120];
@@ -2770,6 +2771,8 @@ static int run_natives(void)
     }
     snprintf(want, sizeof(want), "I/NativesTest: done ok=%d failed=0", (int)MG_COUNT(steps));
     expect_line(want, &at, 60);
+    /* The step own-file-same-name's library: the app's own file, which the APK has a library of that name beside. */
+    CHECK(find_line("/files/own/libnatives_alt.so is a file of the app's own, not the APK's libnatives_alt.so nor its library folder's", 0) >= 0);
     /* The descriptor the library watches on the main thread's looper: its callback comes with a later turn of the message loop. */
     expect_line("I/NativesTest: looper ok", &at, 30);
     /* The library's sensor queue on that looper (the stand-in's sensors, mg_sensor_standin.c): its events in Android's units and

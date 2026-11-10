@@ -77,6 +77,12 @@ typedef struct mg_ld_placed {
     char removed_names[200];           /* the first of them, joined by ", " */
 } mg_ld_placed;
 bool mg_ld_place_libs(const struct mg_zip *const *apks, int napks, const char *abi, const char *dir, const char *index, mg_ld_placed *out);
+/*
+ * Whether the file at `host_path` holds the APK's library `name` (a file name: lib/<abi>/<name> of the first APK that has
+ * it, as the linker takes it; in a service's scope, its APK's): 1 when its size and CRC-32 are the entry's, 0 when an APK
+ * has the library with other bytes, -1 when none has it or the file cannot be read. Only a file of the entry's size is read.
+ */
+int mg_ld_file_is_apk_lib(const char *name, const char *host_path);
 
 /* Bind every later import of `name` to `fn` instead of whatever defines it. Call before the libraries load. */
 void mg_ld_interpose(const char *name, void *fn);

@@ -193,6 +193,8 @@ public class Lib {
     static native int watchSensors(SensorReport report);
     /** The system's ICU opened by name and a function of each of its two libraries found by its versioned name: the version, or below 1. */
     static native int icuVersion();
+    /** A copy of libnatives_dep.so dlopen'd by its path: its natives_dep_answer (4242, its constructor run), or -1 when it did not open. */
+    static native int dlopenAnswer(String path);
     /** A system property as native code reads it: "" when there is none. */
     static native String systemProperty(String name);
     static native String allocatedString(byte[] bytes, char[] chars);

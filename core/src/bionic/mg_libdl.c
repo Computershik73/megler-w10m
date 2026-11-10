@@ -37,10 +37,44 @@ static mg_lib *root_public_lib(const char *base)
     return mg_ld_find_runtime_lib(base);
 }
 
+/*
+ * (mg_bionic.h.) A library is looked for by its file name everywhere else -- the APKs, then the folders of
+ * mg_ld_add_search_dir, the app's library folder first -- and up to 0.1.0.685 a path was too, wherever it led. TikTok Lite
+ * 47.7.4 unpacks libnpth.so out of an archive of its own (Zoin's tt_lib) into files/esolib and loads it with System.load; its
+ * APK has none, but the library folder still had the older version's, which was loaded in its place, and whose natives were
+ * not the new Java's: the app ended at its start with an UnsatisfiedLinkError. Only the app's own folder is looked at: a path
+ * into the Android root or elsewhere keeps the name's library. A file of the APK entry's size is summed against it, once
+ * for each such load; one of another size is the app's at once.
+ */
+char *mg_dl_own_library(const char *path)
+{
+    const char *internal = mg_fs_internal_dir(), *slash = path ? strrchr(path, '/') : NULL, *base = slash ? slash + 1 : NULL;
+    char *host, *home, *placed;
+    size_t n;
+    mg_stat st;
+    bool own = false;
+    if (!base || !base[0] || !internal || !internal[0] || strstr(path, "!/")) return NULL;
+    host = mg_fs_host_path(path);
+    home = mg_fs_host_path(internal);
+    placed = home ? mg_sprintf("%s/lib/%s", home, base) : NULL;
+    n = home ? strlen(home) : 0;
+    if (host && home && !strncmp(host, home, n) && (host[n] == '/' || host[n] == '\\') && strcmp(host, placed) && mg_path_stat(host, &st, NULL) &&
+        !st.is_dir && st.size > 0)
+        own = mg_ld_file_is_apk_lib(base, host) != 1;
+    free(home);
+    free(placed);
+    if (!own) {
+        free(host);
+        return NULL;
+    }
+    return host;
+}
+
 static void *g_dlopen(const char *name, int flags)
 {
     const char *base;
     mg_lib *lib;
+    char *own;
     (void)flags;
     mg_trace("dlopen(%s)", name ? name : "(null)");
     if (!name) return G_RTLD_DEFAULT;
@@ -61,7 +95,11 @@ static void *g_dlopen(const char *name, int flags)
         return SYSTEM_HANDLE;
     }
     lib = mg_ld_find_lib(base);
-    if (!lib) {
+    if (!lib && (own = mg_dl_own_library(name)) != NULL) {
+        /* A file of the app's own, by its path: that file, as bionic opens it. */
+        lib = mg_ld_load_file(own);
+        free(own);
+    } else if (!lib) {
         if (!mg_ld_has_lib(base)) {
             lib = root_public_lib(base);
             if (lib) return lib;
