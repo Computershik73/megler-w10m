@@ -3260,6 +3260,17 @@ where the framework's code, written for iOS, leaned on CoreGraphics without sayi
   into a struct; a path turned from the framework's fifteen operations into
   move, line, quad, cubic and close; arcs and round corners as cubics;
   underlines; path bounds, containment and length.
+- **Text as outlines.** `Paint.getTextPath` asks the shell for the outlines
+  of the run's glyphs where `drawText` would draw them, alignment, scale,
+  skew and letter spacing included (`megler.Gfx.txPath`, the host's
+  `text_path`: DirectWrite's own outlines, `IDWriteFontFace::GetGlyphRunOutline`,
+  in `player/GfxHost.cpp`), and the path holds them alone afterwards, as
+  Android's does. Google Maps' legacy renderer draws every name of its map
+  that way into a bitmap -- one path for label after label, stroked in the
+  halo's colour, then filled -- and draws the bitmap with OpenGL ES 1. Up to
+  0.1.0.684 the framework added the run's box to the path at each call,
+  which no graphics processor draws as letters: the names on Transit's map
+  were grey boxes (a Lumia 650).
 - **The stand-in** (`core/tests/mg_gfx_standin.c`) is for tests and is not a
   renderer to look at: a pixel is in when its centre is, curves are straight
   pieces, strokes have no joins, a gradient is its first colour, text is a box
