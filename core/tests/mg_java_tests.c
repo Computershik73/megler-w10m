@@ -2790,6 +2790,9 @@ static int run_data(void)
                                          "service-manager",
                                          /* And DateUtils' ranges into a Formatter, and a duration in words (both answered null). */
                                          "date-range",
+                                         /* And a view made on a worker thread with a state list for its background, its invalidateDrawable
+                                            asserting the main thread, as Facebook builds its tab bar's tabs: the view the callback last. */
+                                         "background-callback-last",
                                          "audio-track", "media-player", "media-player-ogg", "sound-pool",
                                          /* And MediaCodec over the stand-in for the shell's decoders: H.264 shown on a Surface in display
                                             order, a flush, parameter sets in a codec-config buffer, the asynchronous mode, AAC with an

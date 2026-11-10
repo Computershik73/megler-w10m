@@ -1815,6 +1815,7 @@ public class Main extends Activity {
         layoutApiLevel();
         resourcesImpl();
         activityThreadApplication();
+        backgroundOffMainThread();
         sound();
         mediaCodec();
         network();
@@ -5577,6 +5578,56 @@ public class Main extends Activity {
             detail = "range=" + range + " plain=" + plain + " duration=" + duration;
             return back == f && range != null && range.startsWith("at ") && range.contains("14:53") && range.contains("15:38")
                     && plain != null && !plain.isEmpty() && duration != null && duration.toString().length() > 0;
+        });
+    }
+
+    /**
+     * A view made on a worker thread with a state list for its background, as Facebook (583) builds its tab bar's tabs in a
+     * Callable on an executor of its own: the view's invalidateDrawable asserts the main thread, as Facebook's does (its
+     * DefaultAndroidThreadUtil.assertOnUiThread). Android makes the view the background's callback after the background's
+     * state is set (View.setBackgroundDrawable: "Set callback last"), so the state list choosing its child for the view's
+     * state, and the child's gradient taking that state's colour, reach no view, and setBackground passes on the worker; the
+     * view is the callback afterwards, and a change of its state on the main thread reaches it. The view as the callback
+     * first ended Facebook as its main tabs came up ("This operation must be run on UI thread.", 0.1.0.681).
+     */
+    private void backgroundOffMainThread() {
+        step("background-callback-last", () -> {
+            final android.graphics.drawable.GradientDrawable[] child = new android.graphics.drawable.GradientDrawable[1];
+            final int[] heard = new int[1];
+            java.util.concurrent.FutureTask<android.view.View> made = new java.util.concurrent.FutureTask<>(() -> {
+                android.view.View tab = new android.view.View(this) {
+                    @Override
+                    public void invalidateDrawable(android.graphics.drawable.Drawable d) {
+                        super.invalidateDrawable(d);
+                        if (android.os.Looper.myLooper() != android.os.Looper.getMainLooper()) throw new IllegalStateException("This operation must be run on UI thread.");
+                        heard[0]++;
+                    }
+                };
+                android.graphics.drawable.GradientDrawable enabled = new android.graphics.drawable.GradientDrawable();
+                enabled.setColor(new android.content.res.ColorStateList(new int[][] { { android.R.attr.state_enabled }, {} }, new int[] { 0xFF1877F2, 0xFF65676B }));
+                child[0] = enabled;
+                android.graphics.drawable.StateListDrawable states = new android.graphics.drawable.StateListDrawable();
+                states.addState(new int[] { android.R.attr.state_enabled }, enabled);
+                states.addState(new int[0], new android.graphics.drawable.ColorDrawable(0xFF000000));
+                states.setExitFadeDuration(150);
+                tab.setBackground(states);
+                return tab;
+            });
+            new Thread(made, "tab-maker").start();
+            android.view.View tab;
+            try {
+                tab = made.get(10, java.util.concurrent.TimeUnit.SECONDS);
+            } catch (java.util.concurrent.ExecutionException e) {
+                detail = "setBackground on the worker thread threw " + e.getCause();
+                return false;
+            }
+            android.graphics.drawable.Drawable bg = tab.getBackground();
+            boolean chose = bg != null && bg.getCurrent() == child[0], callback = bg != null && bg.getCallback() == tab;
+            int before = heard[0];
+            tab.setEnabled(false);
+            detail = "the enabled child chosen " + chose + ", the view the callback " + callback + ", invalidateDrawable heard "
+                    + before + " times on the worker, " + heard[0] + " after the view was disabled on the main thread";
+            return chose && callback && before == 0 && heard[0] > 0;
         });
     }
 
