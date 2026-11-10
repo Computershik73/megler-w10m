@@ -80,6 +80,11 @@
 #       built in likewise and run as --bluetooth-windows: the PC's radio
 #       and a passive scan of three seconds -- nothing connected to or
 #       paired with -- or, on a PC without a radio, a line that says so.
+#       And the shell's Wi-Fi for an app's WifiManager (app/Megler/player/
+#       WifiHost.cpp: Windows.Devices.WiFi), built in likewise and run as
+#       --wifi-windows: the PC's adapter, one scan and its networks, the
+#       network it is connected to -- or, on a PC without Wi-Fi, a line that
+#       says so.
 #       And the Xbox build's client of the console's Device Portal
 #       (app/Megler/shell/DevicePortal.cpp), built in likewise and run as
 #       --portal-windows against tools/device-portal-mock.py, a portal of the
@@ -468,11 +473,11 @@ elif [ "$MODE" = win ]; then
   ZALL=()
   for s in "${ZSRCS[@]}"; do ZALL+=("$(w "$ROOT/$s")"); done
   # (MG_GFX_WINDOWS, MG_STORAGE_WINDOWS, MG_CODEC_WINDOWS, MG_CAMERA_WINDOWS, MG_SENSORS_WINDOWS, MG_BLUETOOTH_WINDOWS,
-  # MG_PORTAL_WINDOWS, MG_WINDOW_WINDOWS: this build has the shell's drawing, its storage host, its decoders, its
-  # cameras, its sensors, its Bluetooth, the Xbox build's Device Portal client and the shell's window in it;
-  # mg_tests_main.c's --gfx-windows, --storage-windows, --codec-windows, --camera-windows, --sensors-windows,
-  # --bluetooth-windows, --portal-windows and --window-windows modes.)
-  "$VC/bin/Hostx64/x64/cl.exe" /nologo /c "$OPT" /MT /W3 /std:c11 /utf-8 "$MP" /D_CRT_SECURE_NO_WARNINGS /D_CRT_NONSTDC_NO_WARNINGS /DMG_GFX_WINDOWS /DMG_STORAGE_WINDOWS /DMG_CODEC_WINDOWS /DMG_CAMERA_WINDOWS /DMG_SENSORS_WINDOWS /DMG_BLUETOOTH_WINDOWS /DMG_PORTAL_WINDOWS /DMG_WINDOW_WINDOWS /DMG_DL_TESTS "${SQLITE_CL[@]}" "${WEBP_CL[@]}" \
+  # MG_WIFI_WINDOWS, MG_PORTAL_WINDOWS, MG_WINDOW_WINDOWS: this build has the shell's drawing, its storage host, its
+  # decoders, its cameras, its sensors, its Bluetooth, its Wi-Fi, the Xbox build's Device Portal client and the shell's
+  # window in it; mg_tests_main.c's --gfx-windows, --storage-windows, --codec-windows, --camera-windows, --sensors-windows,
+  # --bluetooth-windows, --wifi-windows, --portal-windows and --window-windows modes.)
+  "$VC/bin/Hostx64/x64/cl.exe" /nologo /c "$OPT" /MT /W3 /std:c11 /utf-8 "$MP" /D_CRT_SECURE_NO_WARNINGS /D_CRT_NONSTDC_NO_WARNINGS /DMG_GFX_WINDOWS /DMG_STORAGE_WINDOWS /DMG_CODEC_WINDOWS /DMG_CAMERA_WINDOWS /DMG_SENSORS_WINDOWS /DMG_BLUETOOTH_WINDOWS /DMG_WIFI_WINDOWS /DMG_PORTAL_WINDOWS /DMG_WINDOW_WINDOWS /DMG_DL_TESTS "${SQLITE_CL[@]}" "${WEBP_CL[@]}" \
     "/I$(w "$ROOT/core/third_party/zlib")" "/Fo$(w "$OUT/obj")\\" "${ALL[@]}" | grep -v -E '^[A-Za-z0-9_]+\.c$' || true
   "$VC/bin/Hostx64/x64/cl.exe" /nologo /c /O1 /MT /w "$MP" /D_CRT_SECURE_NO_WARNINGS /D_CRT_NONSTDC_NO_WARNINGS \
     "/Fo$(w "$OUT/zobj")\\" "${ZALL[@]}" | grep -v -E '^[A-Za-z0-9_]+\.c$' || true
@@ -511,7 +516,8 @@ elif [ "$MODE" = win ]; then
   # shell's log they write to is mg_storage_windows.cpp's. And the shell's cameras (player/CameraHost.cpp:
   # Windows.Media.Capture), with the lines that hand them to the tests (core/tests/mg_camera_windows.cpp). And the shell's
   # sensors (player/SensorHost.cpp: Windows.Devices.Sensors), likewise (core/tests/mg_sensors_windows.cpp). And its
-  # Bluetooth (player/BluetoothHost.cpp: Windows.Devices.Bluetooth), likewise (core/tests/mg_bluetooth_windows.cpp). And the Xbox
+  # Bluetooth (player/BluetoothHost.cpp: Windows.Devices.Bluetooth), likewise (core/tests/mg_bluetooth_windows.cpp), and its
+  # Wi-Fi (player/WifiHost.cpp: Windows.Devices.WiFi), likewise (core/tests/mg_wifi_windows.cpp). And the Xbox
   # build's Device Portal client (shell/DevicePortal.cpp: Windows.Web.Http), with the tests that drive it against the mock
   # portal (core/tests/mg_portal_windows.cpp); no package but the Xbox's has the client (tools/build-appx.sh --xbox).
   STORAGE_SRC=("$(w "$ROOT/app/Megler/player/StorageHost.cpp")" "$(w "$ROOT/app/Megler/shell/Strings.cpp")" "$(w "$ROOT/core/tests/mg_storage_windows.cpp")"
@@ -520,6 +526,7 @@ elif [ "$MODE" = win ]; then
                "$(w "$ROOT/app/Megler/player/CameraHost.cpp")" "$(w "$ROOT/core/tests/mg_camera_windows.cpp")"
                "$(w "$ROOT/app/Megler/player/SensorHost.cpp")" "$(w "$ROOT/core/tests/mg_sensors_windows.cpp")"
                "$(w "$ROOT/app/Megler/player/BluetoothHost.cpp")" "$(w "$ROOT/core/tests/mg_bluetooth_windows.cpp")"
+               "$(w "$ROOT/app/Megler/player/WifiHost.cpp")" "$(w "$ROOT/core/tests/mg_wifi_windows.cpp")"
                "$(w "$ROOT/app/Megler/shell/DevicePortal.cpp")" "$(w "$ROOT/core/tests/mg_portal_windows.cpp")"
                "$(w "$ROOT/app/Megler/player/WindowHost.cpp")" "$(w "$ROOT/core/tests/mg_window_windows.cpp")")
   mkdir -p "$OUT/storageobj"
@@ -527,7 +534,7 @@ elif [ "$MODE" = win ]; then
   INCLUDE="$INCLUDE;$(w "$SDK/Include/$SDKV/winrt");$(w "$SDK/Include/$SDKV/cppwinrt")" \
     "$VC/bin/Hostx64/x64/cl.exe" "${GFX_FLAGS[@]}" /Zc:__cplusplus /bigobj /DWINAPI_FAMILY=WINAPI_FAMILY_APP /O1 "$MP" "/Fo$(w "$OUT/storageobj")\\" "${STORAGE_SRC[@]}" \
     | grep -v -E '^[A-Za-z0-9_]+\.cpp$' || true
-  for obj in StorageHost Strings mg_storage_windows CodecHost mg_codec_windows MediaHost CameraHost mg_camera_windows SensorHost mg_sensors_windows BluetoothHost mg_bluetooth_windows DevicePortal mg_portal_windows WindowHost mg_window_windows; do
+  for obj in StorageHost Strings mg_storage_windows CodecHost mg_codec_windows MediaHost CameraHost mg_camera_windows SensorHost mg_sensors_windows BluetoothHost mg_bluetooth_windows WifiHost mg_wifi_windows DevicePortal mg_portal_windows WindowHost mg_window_windows; do
     [ -f "$OUT/storageobj/$obj.obj" ] || { echo "compile failed: $obj.cpp" >&2; exit 1; }
   done
   # (MEGLER_TESTS_MAP=1: a linker map beside it, mg_tests.map, which tools/dvm-bench.sh profile reads.)
@@ -645,6 +652,9 @@ elif [ "$MODE" = win ]; then
     # paired with); a PC without one says so.
     rm -rf "$OUT/scratch-bluetooth"
     "$OUT/mg_tests.exe" --bluetooth-windows "$(w "$OUT/scratch-bluetooth")" || STATUS=1
+    # The shell's Wi-Fi: this PC's Wi-Fi through the core's, one scan and the network it is connected to; a PC without one says so.
+    rm -rf "$OUT/scratch-wifi"
+    "$OUT/mg_tests.exe" --wifi-windows "$(w "$OUT/scratch-wifi")" || STATUS=1
     # The Xbox build's Device Portal client, against a portal of the tests' own (tools/device-portal-mock.py) on a port of
     # its choosing on 127.0.0.1: over TLS with a certificate openssl makes here for another name, nothing vouching for it, as
     # the console's own is; the first two questions of the install's state answered 204, as another client's install
