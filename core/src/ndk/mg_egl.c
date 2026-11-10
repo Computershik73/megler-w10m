@@ -1140,14 +1140,47 @@ static EGLConfig context_config(EGLDisplay d, EGLConfig config, const EGLint *at
     return surface_configs(d, config, candidates, (int)MG_COUNT(candidates)) > 0 ? candidates[0] : config;
 }
 
+/*
+ * OpenGL ES 1 on a display of OpenGL ES 2 at most (Direct3D feature level 9_x: a Lumia 650's Adreno 304, most Lumias): ANGLE
+ * draws version 1 with OpenGL ES 3 shaders of its making (GLES1Renderer, "#version 300 es"), which such a display cannot
+ * compile; the first draw fails, and the next ends the app in ANGLE, which keeps the failed program's place and asks a
+ * program that is not there for its id (gl::Program::id on null, from GLES1Renderer::initializeRendererProgram): Transit,
+ * whose Google Maps draws with the legacy renderer, OpenGL ES 1 throughout, ended so as its map came up on a Lumia 650
+ * (0.1.0.683, "access violation at libGLESv2.dll+0x91100, address 0000017c"). There a version-1 context is made of version
+ * 2, where the fixed-function calls of GL10 do nothing and are refused (GL_INVALID_OPERATION): the app goes on with its map
+ * black, as before 0.1.0.675. `out` holds the attributes then (32 at most).
+ */
+static const EGLint *es1_on_es2(const EGLint *attribs, EGLint *out, size_t n)
+{
+    int major, minor;
+    char rest[8];
+    size_t k = 0;
+    context_asked(attribs, &major, &minor, rest, sizeof(rest));
+    if (major != 1 || display_es_version() >= 30) return attribs;
+    for (; attribs && attribs[0] != EGL_NONE && k + 4 < n; attribs += 2)
+        if (attribs[0] != EGL_CONTEXT_CLIENT_VERSION && attribs[0] != EGL_CONTEXT_MINOR_VERSION) {
+            out[k++] = attribs[0];
+            out[k++] = attribs[1];
+        }
+    out[k++] = EGL_CONTEXT_CLIENT_VERSION;
+    out[k++] = 2;
+    out[k] = EGL_NONE;
+    mg_note_once("egl: OpenGL ES 1 is drawn by ANGLE with OpenGL ES 3 shaders, which this graphics processor (Direct3D feature level 9_x) "
+                 "cannot run: the app's version-1 context is made of version 2, where its fixed-function drawing does nothing, rather than "
+                 "end the app in ANGLE");
+    return out;
+}
+
 static EGLContext g_eglCreateContext(EGLDisplay d, EGLConfig config, EGLContext share, const EGLint *attribs)
 {
     static volatile i32 said;
     fn_create_context real = A(fn_create_context, "eglCreateContext");
     EGLContext made;
     EGLConfig with;
+    EGLint es2[32];
     mg_trace("eglCreateContext(share %p)", (void *)share);
     if (!real) return NULL;
+    attribs = es1_on_es2(attribs, es2, MG_COUNT(es2));
     if (g_no_config < 0) {
         fn_query_string qs = A(fn_query_string, "eglQueryString");
         const char *ext = qs ? qs(d, EGL_EXTENSIONS) : NULL;
