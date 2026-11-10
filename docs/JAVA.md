@@ -6628,6 +6628,20 @@ on a looper thread of its own and takes it back with `next()`.
   "ellipsis-narrower" measures such a title at 500 pixels and then at 200:
   the ellipsis at 200.
 
+- `android/text/BoringLayout.java` and `android/text/StaticLayout.java`: a
+  BoringLayout is one line whatever its width, as Android's -- the width
+  places the line, and with an ellipsis the line is shortened to the
+  ellipsized width. It was a StaticLayout made at the width, broken wherever
+  the shell's line breaking found the text wider than that. Facebook's
+  `TextLayoutBuilder` makes a BoringLayout of a single-line text at its own
+  measured width (the ceiling of `Layout.getDesiredWidth`, or less where the
+  text may take less), and Messenger's time badge on a story circle ("3 ч.")
+  came out in two lines in its pill (0.1.0.687). The StaticLayout inside is
+  told not to break its lines (`Builder.oneLine`, package-private). The data
+  app's step "boring-layout-one-line" makes a badge's BoringLayout at half
+  its width and at its own, and a name's with an ellipsis at half its width:
+  one line each, all of the badge's text on it.
+
 - `android/os/ParcelFileDescriptor.java`, what `dup` and the descriptors it
   is given own, which is now Android's: `dup(FileDescriptor)`, `dup()` and
   `fromFd(int)` make a descriptor of their own (`Os.dup`) that closing the

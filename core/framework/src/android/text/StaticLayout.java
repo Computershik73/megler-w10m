@@ -17,6 +17,8 @@ public class StaticLayout extends Layout {
     public static final class Builder {
         CharSequence text; int start, end, width, maxLines = Integer.MAX_VALUE, ellipsizedWidth; TextPaint paint; Layout.Alignment align = Layout.Alignment.ALIGN_NORMAL;
         float mult = 1, add = 0; boolean includePad = true; TextUtils.TruncateAt ellipsize;
+        /* Megler: BoringLayout's one line -- each paragraph a line whatever its width (see BoringLayout) */
+        boolean oneLine;
         private Builder() {}
         public static Builder obtain(CharSequence source, int start, int end, TextPaint paint, int width) {
             Builder b = new Builder(); b.text = source; b.start = start; b.end = end; b.paint = paint; b.width = width; b.ellipsizedWidth = width; return b;
@@ -52,8 +54,10 @@ public class StaticLayout extends Layout {
         mSource = b.ellipsize != null ? getText() : b.text;
         mStart = b.ellipsize != null ? 0 : b.start; mEnd = b.ellipsize != null ? getText().length() : b.end;
         mIncludePad = b.includePad; mMaxLines = b.maxLines; mEllipsize = b.ellipsize; mEllipsizedWidth = b.ellipsize != null ? b.ellipsizedWidth : b.width;
+        mOneLine = b.oneLine;
         generate();
     }
+    private boolean mOneLine;
     public StaticLayout(CharSequence source, TextPaint paint, int width, Layout.Alignment align, float mult, float add, boolean includePad) {
         this(source, 0, source.length(), paint, width, align, mult, add, includePad);
     }
@@ -99,7 +103,7 @@ public class StaticLayout extends Layout {
             }
             do {
                 int avail = Math.max(1, lineStart == paraStart ? firstWidth : restWidth);
-                int brk = breakLine(text, lineStart, contentEnd, avail, paint);
+                int brk = mOneLine ? contentEnd : breakLine(text, lineStart, contentEnd, avail, paint);
                 int next = brk;
                 // a line of spaces at a break belongs to the line before
                 while (next < contentEnd && text.charAt(next) == ' ') next++;

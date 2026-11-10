@@ -1975,6 +1975,7 @@ public class Main extends Activity {
         visibilityAggregated();
         visibilityScrap();
         layerDrawableHidden();
+        boringLayoutOneLine();
         backgroundOffMainThread();
         singleLineSpans();
         ellipsisNarrower();
@@ -6205,6 +6206,34 @@ public class Main extends Activity {
             detail = String.format("layers told %b %b, middle=%08x corner=%08x ripple content=%08x", face.isVisible(), badge.isVisible(), middle, corner, inside);
             Log.i("DataTest", "layer-drawable-hidden " + detail);
             return !face.isVisible() && !badge.isVisible() && middle == 0xFFFF0000 && corner == 0xFF0000FF && inside == 0xFF00FF00;
+        });
+    }
+
+    /**
+     * A BoringLayout is one line whatever its width, as Android's: a badge's text made at half its width still one line with
+     * all of its text, at its own width (the ceiling of getDesiredWidth, as Facebook's TextLayoutBuilder makes one) one line,
+     * and a name with an ellipsis at half its width one line ellipsized. Megler's was a StaticLayout broken at the width:
+     * Messenger's time badge on a story circle ("3 ч.") came out in two lines.
+     */
+    private void boringLayoutOneLine() {
+        step("boring-layout-one-line", () -> {
+            android.text.TextPaint p = new android.text.TextPaint(android.graphics.Paint.ANTI_ALIAS_FLAG);
+            p.setTextSize(24);
+            String badge = "3 ч.";
+            android.text.BoringLayout.Metrics m = android.text.BoringLayout.isBoring(badge, p);
+            int own = (int) Math.ceil(android.text.Layout.getDesiredWidth(badge, p));
+            android.text.BoringLayout narrow = android.text.BoringLayout.make(badge, p, own / 2, android.text.Layout.Alignment.ALIGN_NORMAL, 1, 0, m, false);
+            android.text.BoringLayout fits = android.text.BoringLayout.make(badge, p, own, android.text.Layout.Alignment.ALIGN_CENTER, 1, 0, m, false);
+            String name = "Annabelle Smith";
+            android.text.BoringLayout.Metrics m2 = android.text.BoringLayout.isBoring(name, p);
+            int half = (int) Math.ceil(android.text.Layout.getDesiredWidth(name, p)) / 2;
+            android.text.BoringLayout ellipsized = android.text.BoringLayout.make(name, p, half, android.text.Layout.Alignment.ALIGN_NORMAL, 1, 0, m2, false,
+                    android.text.TextUtils.TruncateAt.END, half);
+            detail = String.format("narrow lines %d to %d, own width lines %d, ellipsized lines %d from %d for %d", narrow.getLineCount(), narrow.getLineEnd(0),
+                    fits.getLineCount(), ellipsized.getLineCount(), ellipsized.getEllipsisStart(0), ellipsized.getEllipsisCount(0));
+            Log.i("DataTest", "boring-layout-one-line " + detail);
+            return m != null && m2 != null && narrow.getLineCount() == 1 && narrow.getLineEnd(0) == badge.length() && fits.getLineCount() == 1
+                    && ellipsized.getLineCount() == 1 && ellipsized.getEllipsisStart(0) > 0 && ellipsized.getEllipsisCount(0) > 0;
         });
     }
 

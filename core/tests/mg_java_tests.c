@@ -3173,6 +3173,8 @@ static int run_data(void)
                                          "visibility-scrap",
                                          /* And a LayerDrawable told it is not visible: its layers drawn all the same, as Android's. */
                                          "layer-drawable-hidden",
+                                         /* And a BoringLayout one line whatever its width, as Android's (a badge's text in two lines). */
+                                         "boring-layout-one-line",
                                          /* And a view made on a worker thread with a state list for its background, its invalidateDrawable
                                             asserting the main thread, as Facebook builds its tab bar's tabs: the view the callback last. */
                                          "background-callback-last",
