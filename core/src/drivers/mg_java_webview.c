@@ -318,6 +318,7 @@ enum {
     WV_ROUND = 64,                     /* a pbuffer's size, rounded up to this: a part that changes a little keeps its pbuffer */
     WV_PICTURES = 0x40000000,          /* the shell's ids of functors' pictures: above any a TextureView's texture is given */
     WV_WAIT_MS = 4000,                 /* the most the UI thread waits for a functor drawn */
+    WV_WAIT_ES2_MS = 15000,            /* the same on a display of OpenGL ES 2 at most (Direct3D 9_3): see wv_ask */
 };
 
 typedef struct aw_sync_params {
@@ -381,7 +382,7 @@ static struct {
     bool asked, done;
     i32 ask_id, ask_l, ask_t, ask_w, ask_h;
     i64 answer;
-    volatile i32 stuck;                /* a draw outlasted WV_WAIT_MS: no more are asked for */
+    volatile i32 stuck;                /* a draw outlasted WV_WAIT_MS (WV_WAIT_ES2_MS): no more are asked for */
     /* the render thread's own */
     i32 egl;                           /* 0 not tried, 1 ready, 2 none */
     EGLDisplay display;
@@ -843,6 +844,13 @@ N(WF_on) { c->ret.z = wv_wanted() && !W.stuck; }
  */
 static i64 wv_ask(i32 id, i32 l, i32 t, i32 w, i32 h)
 {
+    /*
+     * At Direct3D feature level 9_3 (OpenGL ES 2 at most) a draw that needs a program of Skia's not made yet waits for it to
+     * be compiled, by D3DCompile on the phone's processor -- a Lumia 650's Cortex-A7 -- and the first frames of a page need
+     * ten and more of them (ANGLE keeps them for the next start: EGL_ANDROID_blob_cache). Such a draw is waited for longer
+     * before pages are given up to software for good.
+     */
+    const int wait_ms = WP.version == 2 ? WV_WAIT_ES2_MS : WV_WAIT_MS;
     u64 until;
     i64 answer = 0;
     if (W.stuck || !wv_start()) return 0;
@@ -856,7 +864,7 @@ static i64 wv_ask(i32 id, i32 l, i32 t, i32 w, i32 h)
     W.done = false;
     W.asked = true;
     mg_cond_signal(&g_wv_wake);
-    until = mg_time_monotonic_ns() + (u64)WV_WAIT_MS * 1000000u;
+    until = mg_time_monotonic_ns() + (u64)wait_ms * 1000000u;
     while (!W.done) {
         u64 now = mg_time_monotonic_ns();
         if (now >= until) break;
@@ -866,7 +874,7 @@ static i64 wv_ask(i32 id, i32 l, i32 t, i32 w, i32 h)
         answer = W.answer;
     } else {
         mg_atomic_xchg(&W.stuck, 1);
-        mg_warn("webview: draw functor %d was not drawn in %d ms: pages are drawn in software from now on", (int)id, WV_WAIT_MS);
+        mg_warn("webview: draw functor %d was not drawn in %d ms: pages are drawn in software from now on", (int)id, wait_ms);
     }
     mg_lock_release(&g_wv_lock);
     mg_lock_release(&g_wv_serial);
