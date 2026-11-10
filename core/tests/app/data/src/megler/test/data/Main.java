@@ -1984,6 +1984,7 @@ public class Main extends Activity {
         sound();
         mediaCodec();
         network();
+        httpEngine();
         renderNodes();
         Log.i("DataTest", "done ok=" + ok + " failed=" + failed);
         doneLogged = true;
@@ -3338,15 +3339,7 @@ public class Main extends Activity {
     /** The TLS server of the network security configuration's steps, on 127.0.0.1 until it is closed: an HTTP GET is answered
      *  "trusted!", any other line "pong"; a client that refuses its certificate ends that connection alone. */
     private static javax.net.ssl.SSLServerSocket trustServer() throws Exception {
-        java.security.PrivateKey key = java.security.KeyFactory.getInstance("EC").generatePrivate(new java.security.spec.PKCS8EncodedKeySpec(java.util.Base64.getDecoder().decode(TRUST_KEY)));
-        java.security.KeyStore keys = java.security.KeyStore.getInstance(java.security.KeyStore.getDefaultType());
-        keys.load(null, null);
-        keys.setKeyEntry("server", key, new char[0], new java.security.cert.Certificate[] { trustCertificate() });
-        javax.net.ssl.KeyManagerFactory kmf = javax.net.ssl.KeyManagerFactory.getInstance(javax.net.ssl.KeyManagerFactory.getDefaultAlgorithm());
-        kmf.init(keys, new char[0]);
-        javax.net.ssl.SSLContext context = javax.net.ssl.SSLContext.getInstance("TLS");
-        context.init(kmf.getKeyManagers(), null, null);
-        final javax.net.ssl.SSLServerSocket server = (javax.net.ssl.SSLServerSocket) context.getServerSocketFactory()
+        final javax.net.ssl.SSLServerSocket server = (javax.net.ssl.SSLServerSocket) trustContext().getServerSocketFactory()
                 .createServerSocket(0, 16, java.net.InetAddress.getByName("127.0.0.1"));
         Thread t = new Thread(() -> {
             while (!server.isClosed()) {
@@ -3370,6 +3363,21 @@ public class Main extends Activity {
         t.setDaemon(true);
         t.start();
         return server;
+    }
+
+    /** A server's TLS context with the test authority's certificate for localhost and 127.0.0.1 (Main.TRUST_CERT), which the
+     *  app's network security configuration trusts for localhost: the trust server's, and the HTTP/2 server's of the steps
+     *  http-engine-stream and after. */
+    static javax.net.ssl.SSLContext trustContext() throws Exception {
+        java.security.PrivateKey key = java.security.KeyFactory.getInstance("EC").generatePrivate(new java.security.spec.PKCS8EncodedKeySpec(java.util.Base64.getDecoder().decode(TRUST_KEY)));
+        java.security.KeyStore keys = java.security.KeyStore.getInstance(java.security.KeyStore.getDefaultType());
+        keys.load(null, null);
+        keys.setKeyEntry("server", key, new char[0], new java.security.cert.Certificate[] { trustCertificate() });
+        javax.net.ssl.KeyManagerFactory kmf = javax.net.ssl.KeyManagerFactory.getInstance(javax.net.ssl.KeyManagerFactory.getDefaultAlgorithm());
+        kmf.init(keys, new char[0]);
+        javax.net.ssl.SSLContext context = javax.net.ssl.SSLContext.getInstance("TLS");
+        context.init(kmf.getKeyManagers(), null, null);
+        return context;
     }
 
     /**
@@ -7213,6 +7221,38 @@ public class Main extends Activity {
         byte[] buf = new byte[256];
         for (int n; (n = in.read(buf)) > 0;) out.write(buf, 0, n);
         return new String(out.toByteArray(), "UTF-8");
+    }
+
+    /**
+     * Android 14's HttpEngine (android.net.http; Megler's own engine, megler.http), as the Google Play Store and gRPC use it:
+     * HttpEngineSteps says each step. The requests go to an HTTP/1.1 server of the app's own on 127.0.0.1, on both hosts;
+     * the bidirectional streams to an HTTP/2 server of its own over TLS (localhost, the test authority's certificate, ALPN
+     * h2), so without conscrypt's TLS (the PC's run) those steps hold, as there is nothing to connect with.
+     */
+    private void httpEngine() {
+        final HttpEngineSteps[] h = new HttpEngineSteps[1];
+        try {
+            h[0] = new HttpEngineSteps(this, conscrypt ? trustContext() : null);
+        } catch (Exception e) {
+            Log.e("DataTest", "http-engine: no TLS context for the test's server", e);
+            h[0] = new HttpEngineSteps(this, null);
+        }
+        step("http-engine", () -> offMain(() -> said(h[0], h[0].build())));
+        step("http-engine-request", () -> offMain(() -> said(h[0], h[0].request())));
+        step("http-engine-upload", () -> offMain(() -> said(h[0], h[0].upload())));
+        step("http-engine-failures", () -> offMain(() -> said(h[0], h[0].failures())));
+        step("http-engine-connection", () -> offMain(() -> said(h[0], h[0].connection())));
+        step("http-engine-stream", () -> !conscrypt || offMain(() -> said(h[0], h[0].stream())));
+        step("http-engine-stream-flow", () -> !conscrypt || offMain(() -> said(h[0], h[0].streamFlow())));
+        step("http-engine-stream-cancel", () -> !conscrypt || offMain(() -> said(h[0], h[0].streamCancel())));
+        step("http-engine-hpack", () -> !conscrypt || offMain(() -> said(h[0], h[0].hpack())));
+    }
+
+    /** A check of HttpEngineSteps' result, what it saw made the step's detail and said in the log. */
+    private boolean said(HttpEngineSteps h, boolean held) {
+        detail = h.detail;
+        Log.i("DataTest", "http-engine-said " + h.detail);
+        return held;
     }
 
     /**
