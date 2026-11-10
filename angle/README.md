@@ -68,7 +68,11 @@ it: these patches change `.cpp` files only.
   for an id; the shader manager is made once (it was made again, and leaked,
   after each failure). Megler's core finds out by drawing once whether the
   package's ANGLE has this (`ndk/mg_egl.c`, `es1_drawn_here`), and where it does
-  not, makes version-1 contexts of version 2 there, as 0.1.0.684 did.
+  not, makes version-1 contexts of version 2 there, as 0.1.0.684 did. The
+  phone's package has it only where `tools/build-angle.py` has made Megler's own
+  ANGLE (`build/angle/dist`); `tools/build-appx.sh` says which patches the ANGLE
+  it stages has (`megler-patches.txt`, which `tools/build-angle.py` writes
+  beside the DLLs).
 
 (An earlier `0001-buffer11-dynamic-writes.patch` took a static buffer written
 after its draws as dynamic. It was made for a loading screen that ran at seven

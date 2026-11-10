@@ -18,6 +18,9 @@ its object directory:
      libraries, into build/angle/dist with its map in build/angle/maps
      (tools/build-appx.sh needs the map to mend the DLL's virtual-call thunks).
      libEGL.dll and mozglue.dll are gecko-w10m's own, copied beside it.
+  4. megler-patches.txt beside them names the patches they were built with, by
+     SHA-256: tools/build-appx.sh warns when angle/ has others now (or when it
+     stages gecko-w10m's ANGLE, which has none).
 
 --check: no patch applied; the objects are compiled and linked all the same,
 to show that the way of building gives an ANGLE that works.
@@ -35,7 +38,9 @@ runtime DLL beside them), and Megler's zlib (core/third_party/zlib) for
 Gecko's. For an app container, as the phone's are (ANGLE_ENABLE_WINDOWS_UWP),
 and linked as Megler.exe is, with WindowsApp.lib: they import api-sets,
 d3d11.dll, dxgi.dll and d3dcompiler_47.dll (the system's) and nothing else by
-name -- an Xbox has no kernel32.dll for an app -- or the link is refused.
+name -- an Xbox has no kernel32.dll for an app -- or the link is refused. With
+megler-patches.txt beside them, as above. tools/build-tests.sh win runs
+OpenGL ES 1 on build/angle/x64/dist (core/tests/mg_angle_windows.c).
 
 Environment: MEGLER_GECKO (gecko-w10m's checkout, ../gecko-w10m by default),
 MEGLER_ANGLE_OBJ (its object directory, C:\rw-obj by default), MEGLER_LLVM
@@ -90,6 +95,17 @@ def patched_files(patch):
                 name = line[4:].strip().split("\t")[0]
                 files.append(name[2:] if name.startswith("b/") else name)
     return files
+
+
+def record_patches(dist, check):
+    """dist/megler-patches.txt: the SHA-256 and name of each patch in angle/ the DLLs were built with (none with --check),
+    which tools/build-appx.sh compares with angle/ as it is when it stages them."""
+    import hashlib
+    names = [] if check else sorted(p for p in os.listdir(PATCHES) if p.endswith(".patch"))
+    with open(os.path.join(dist, "megler-patches.txt"), "w", encoding="utf-8", newline="\n") as f:
+        for name in names:
+            with open(os.path.join(PATCHES, name), "rb") as p:
+                f.write("%s %s\n" % (hashlib.sha256(p.read()).hexdigest(), name))
 
 
 def apply_patches(check):
@@ -426,6 +442,7 @@ def build_desktop(arch):
                  os.path.join(GLES_OBJ, "libGLESv2.dll.res"), [])
     desktop_link(arch, autoconf, "libEGL", egl, os.path.join(ANGLE_SRC, "src", "libEGL", "libEGL_autogen.def"),
                  os.path.join(egl_obj, "libEGL.dll.res"), [os.path.join(OUT, arch, "obj", "libGLESv2.lib")])
+    record_patches(os.path.join(OUT, arch, "dist"), False)
 
 
 def main():
@@ -457,6 +474,7 @@ def main():
     for listed, source, unified in units:
         rebuilt[listed] = compile_unit(autoconf, listed, source, unified, changed)
     link(autoconf, rebuilt)
+    record_patches(os.path.join(OUT, "dist"), check)
 
 
 if __name__ == "__main__":
