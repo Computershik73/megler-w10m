@@ -51,7 +51,16 @@
 // Recycler.tryGetViewHolderForPositionByDeadline); the item animator's listener, told the end in between, had recycled the
 // child already (RecyclerView's removeAnimatingView: no longer a child, so unscrapped), and the unscrap met null. Spotify's
 // Now Playing carousel, whose covers its item animator fades out through View.animate(), ended so at a track change
-// (0.1.0.678). Everything else is the original's, unchanged.
+// (0.1.0.678).
+//
+// And setBackgroundDrawable, setForeground and the constructor (a layout's background) make the view the drawable's callback
+// last, after its state, visibility and tint are set, as Android's do ("Set callback last, since the view may still be
+// initializing"): what those do to the drawable -- a state list choosing its child, a gradient changing its colour, each of
+// which invalidates itself -- reaches no view. The original made the view the callback first, and the view's
+// invalidateDrawable was called from inside setBackground.
+// Facebook builds its tab bar's tabs on a worker thread (a view of its own whose invalidateDrawable asserts the main thread,
+// a state list for its background), and the assertion ended the app as its main tabs came up: "This operation must be run
+// on UI thread." (0.1.0.681). Everything else is the original's, unchanged.
 package android.view;
 
 import android.animation.StateListAnimator;
@@ -344,8 +353,8 @@ public class View implements Drawable.Callback, KeyEvent.Callback {
                 if (pr < 0 && ph < 0 && pe == Integer.MIN_VALUE) mPaddingRight = p.right;
                 if (pb < 0 && pv < 0) mPaddingBottom = p.bottom;
             }
-            mBackground.setCallback(this);
             applyBackgroundTint();
+            mBackground.setCallback(this);
         }
         if (mForeground != null) mForeground.setCallback(this);
         mTranslationX = tx; mTranslationY = ty; mTranslationZ = tz; mRotation = rot; mRotationX = rx; mRotationY = ry; mScaleX = sx; mScaleY = sy;
@@ -743,10 +752,11 @@ public class View implements Drawable.Callback, KeyEvent.Callback {
         if (d != null) {
             Rect p = new Rect();
             if (d.getPadding(p)) setPadding(p.left, p.top, p.right, p.bottom);
-            d.setCallback(this);
+            // Megler: the view becomes the drawable's callback last, as on Android (see the note at the top)
             if (d.isStateful()) d.setState(getDrawableState());
             d.setVisible(mVisibility == VISIBLE, false);
             applyBackgroundTint();
+            mBackground.setCallback(this);
         }
         requestLayout();
         invalidate();
@@ -774,7 +784,7 @@ public class View implements Drawable.Callback, KeyEvent.Callback {
     public void setForeground(Drawable d) {
         if (mForeground != null) mForeground.setCallback(null);
         mForeground = d;
-        if (d != null) { d.setCallback(this); if (d.isStateful()) d.setState(getDrawableState()); }
+        if (d != null) { if (d.isStateful()) d.setState(getDrawableState()); d.setCallback(this); }
         invalidate();
     }
     public int getForegroundGravity() { return mForegroundGravity; }
