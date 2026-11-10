@@ -3009,6 +3009,9 @@ static int run_data(void)
                                             Notification.AUDIO_ATTRIBUTES_DEFAULT...), what the app sets kept, Messenger's copy of one
                                             through the getters; copy(), equals, through a Parcel and through XML. */
                                          "notification-channel", "notification-channel-copy",
+                                         /* And a channel group as Android's: its description, one list of channels, clone(), equals,
+                                            through a Parcel and through XML. */
+                                         "notification-channel-group",
                                          "audio-track", "media-player", "media-player-ogg", "sound-pool",
                                          /* And MediaCodec over the stand-in for the shell's decoders: H.264 shown on a Surface in display
                                             order, a flush, parameter sets in a codec-config buffer, the asynchronous mode, AAC with an

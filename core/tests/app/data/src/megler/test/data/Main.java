@@ -6450,6 +6450,44 @@ public class Main extends Activity {
                      + " (" + xml + "), told " + said;
             return copied && apart && differs && throughParcel && throughXml && told;
         });
+        // A channel group as Android's: its description kept, not blocked, one list of channels (empty until NotificationManager
+        // gives the group out), clone() (public since Android 9: the stub had none), equals, through a Parcel and through XML.
+        step("notification-channel-group", () -> {
+            android.app.NotificationChannelGroup g = new android.app.NotificationChannelGroup("group", "Group");
+            boolean fresh = "group".equals(g.getId()) && "Group".equals(g.getName().toString()) && g.getDescription() == null && !g.isBlocked()
+                    && g.getChannels().isEmpty() && g.getChannels() == g.getChannels();
+            g.setDescription("a group of channels");
+            boolean described = "a group of channels".equals(g.getDescription());
+            android.app.NotificationChannelGroup cloned = g.clone();
+            boolean clones = cloned != g && cloned.equals(g) && g.equals(cloned) && cloned.hashCode() == g.hashCode();
+            boolean differs = !g.equals(new android.app.NotificationChannelGroup("group", "Group"));
+            android.os.Parcel p = android.os.Parcel.obtain();
+            g.writeToParcel(p, 0);
+            p.setDataPosition(0);
+            android.app.NotificationChannelGroup parcelled = android.app.NotificationChannelGroup.CREATOR.createFromParcel(p);
+            p.recycle();
+            boolean throughParcel = parcelled != g && parcelled.equals(g) && parcelled.hashCode() == g.hashCode();
+            java.io.StringWriter xml = new java.io.StringWriter();
+            org.xmlpull.v1.XmlSerializer out = android.util.Xml.newSerializer();
+            out.setOutput(xml);
+            out.startDocument("UTF-8", true);
+            call(g, "writeXml", new Class<?>[] { org.xmlpull.v1.XmlSerializer.class }, out);
+            out.endDocument();
+            org.xmlpull.v1.XmlPullParser in = android.util.Xml.newPullParser();
+            in.setInput(new java.io.StringReader(xml.toString()));
+            android.app.NotificationChannelGroup read = null;
+            while (in.next() != org.xmlpull.v1.XmlPullParser.END_DOCUMENT) {
+                if (in.getEventType() != org.xmlpull.v1.XmlPullParser.START_TAG || !"channelGroup".equals(in.getName())) continue;
+                read = new android.app.NotificationChannelGroup(in.getAttributeValue(null, "id"), in.getAttributeValue(null, "name"));
+                call(read, "populateFromXml", new Class<?>[] { org.xmlpull.v1.XmlPullParser.class }, in);
+            }
+            boolean throughXml = read != null && read.equals(g);
+            String said = g.toString();
+            detail = "fresh " + fresh + ", described " + described + ", clone " + clones + ", another differs " + differs + ", through a parcel " + throughParcel
+                     + ", through XML " + throughXml + " (" + xml + "), told " + said;
+            return fresh && described && clones && differs && throughParcel && throughXml
+                    && said.equals("NotificationChannelGroup{mId='group', mName=Group, mDescription=hasDescription , mBlocked=false, mChannels=[], mUserLockedFields=0}");
+        });
     }
 
     /** The theme's android:colorForeground, 0 when it has none. */
