@@ -1558,11 +1558,19 @@ one so far: `NativeActivity`, which is what Android itself provides for apps wit
 Java (`android:hasCode="false"`, or `android.app.lib_name` in the manifest). An
 activity of the app's own that names its library with `android.app.lib_name` is
 taken for NativeActivity's subclass only when the library exports its entry
-(`ANativeActivity_onCreate`, or `android.app.func_name`), looked for in the
-dynamic symbols of its first 32 MB (`native_entry`, `apk/mg_apk.c`): Qt's
-QtActivity names its library so and starts it through JNI itself, and 2GIS
-(`libv4android.so`, 277 MB) ended in "has no ANativeActivity_onCreate" until it
-was taken for the Java app it is (package 576). It
+(`ANativeActivity_onCreate`, or `android.app.func_name`), looked for among its
+dynamic symbols (`native_entry`, `apk/mg_apk.c`): Qt's QtActivity names its
+library so and starts it through JNI itself, and 2GIS (`libv4android.so`, 277 MB)
+ended in "has no ANativeActivity_onCreate" until it was taken for the Java app
+it is (package 576). The look reads the library where it lies in whichever APK
+has it (`mg_zip_cursor`, `zip/mg_zip.c`): its headers, its dynamic section, and
+through its GNU or SysV hash table the bucket, chain, symbol and name the
+dynamic linker would read -- a stored library a few small reads, a deflated one
+inflated as far as its dynamic section, its first 32 MB kept for the tables
+before it. Up to package 681 it read the library's first 32 MB whole, and 2GIS's
+dynamic section, past its code, was not in them: it was a NativeActivity again.
+The bundle tests make the natives app with a library of 40 MB whose dynamic
+section is at 40 MB, stored (a hole in the file) and deflated. It
 loads the library, calls `ANativeActivity_onCreate`, and makes the activity's
 callbacks in the framework's order on a thread that stands for Android's main
 thread. Apps built on `android_native_app_glue` run on top of that.

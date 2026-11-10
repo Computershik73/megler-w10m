@@ -21,6 +21,7 @@
 #include <stdlib.h>
 
 #include "../include/megler.h"
+#include "../src/apk/mg_apk.h"
 #include "../src/apk/mg_json.h"
 #include "../src/mg_base.h"
 #include "../src/host/mg_host.h"
@@ -146,7 +147,8 @@ typedef struct zip_out {
     u64 at;
     struct {
         char name[120];
-        u32 crc, size;
+        u32 crc, size, csize;
+        u16 method;                    /* 0 stored; 8 deflated (zip_add_big) */
         u64 offset;
     } e[32];
     int n;
@@ -178,12 +180,103 @@ static void zip_add(zip_out *z, const char *name, const u8 *data, u32 size)
     put16(h + 26, (u32)nlen);
     mg_strlcpy(z->e[z->n].name, name, sizeof(z->e[0].name));
     z->e[z->n].crc = crc;
-    z->e[z->n].size = size;
+    z->e[z->n].size = z->e[z->n].csize = size;
+    z->e[z->n].method = 0;
     z->e[z->n].offset = z->at;
     z->n++;
     zip_write(z, h, sizeof(h));
     zip_write(z, name, nlen);
     zip_write(z, data, size);
+}
+
+/*
+ * A large entry that is mostly nothing: `head` at its start, `tail` at `tail_at`, zeros between and to `total`. Stored, the
+ * zeros are not written but skipped (a hole, where the filesystem keeps one); deflated, they are a few kilobytes. False when
+ * it could not be written.
+ */
+static bool zip_add_big(zip_out *z, const char *name, bool deflated, const u8 *head, u32 head_n, const u8 *tail, u32 tail_n, u32 tail_at, u32 total)
+{
+    enum { PIECE = 1 << 20 };
+    u8 h[30], *zeros = (u8 *)calloc(1, PIECE), *packed = NULL;
+    size_t nlen = strlen(name), packed_n = 0, packed_cap = 0;
+    u32 crc = (u32)crc32(0L, Z_NULL, 0), at;
+    z_stream s;
+    int err = 0;
+    bool ok = zeros && z->n < 32 && head_n <= tail_at && tail_at + tail_n <= total;
+    memset(&s, 0, sizeof(s));
+    if (ok && deflated) ok = deflateInit2(&s, 6, Z_DEFLATED, -MAX_WBITS, 8, Z_DEFAULT_STRATEGY) == Z_OK;
+    /* The bytes in order: the CRC over all of them, and deflated as they come. */
+    for (at = 0; ok && at <= total;) {
+        const u8 *p;
+        u32 n;
+        if (at < head_n) {
+            p = head + at;
+            n = head_n - at;
+        } else if (at >= tail_at && at < tail_at + tail_n) {
+            p = tail + (at - tail_at);
+            n = tail_at + tail_n - at;
+        } else {
+            u32 next = at < tail_at ? tail_at : total;
+            p = zeros;
+            n = next - at > PIECE ? PIECE : next - at;
+        }
+        crc = (u32)crc32(crc, p, n);
+        if (deflated) {
+            int flush = at + n == total ? Z_FINISH : Z_NO_FLUSH, r;
+            s.next_in = (Bytef *)p;
+            s.avail_in = n;
+            do {
+                if (packed_cap - packed_n < 65536) {
+                    u8 *grown = (u8 *)realloc(packed, packed_cap + (1 << 20));
+                    if (!grown) {
+                        ok = false;
+                        break;
+                    }
+                    packed = grown;
+                    packed_cap += 1 << 20;
+                }
+                s.next_out = packed + packed_n;
+                s.avail_out = (uInt)(packed_cap - packed_n);
+                r = deflate(&s, flush);
+                packed_n = packed_cap - s.avail_out;
+            } while (ok && (s.avail_in || (flush == Z_FINISH && r != Z_STREAM_END)));
+        }
+        at += n;
+        if (at == total) break;
+    }
+    if (deflated) deflateEnd(&s);
+    if (ok) {
+        memset(h, 0, sizeof(h));
+        put32(h, 0x04034b50u);
+        put16(h + 4, 20);
+        put16(h + 8, deflated ? 8 : 0);
+        put16(h + 12, 0x21);
+        put32(h + 14, crc);
+        put32(h + 18, deflated ? (u32)packed_n : total);
+        put32(h + 22, total);
+        put16(h + 26, (u32)nlen);
+        mg_strlcpy(z->e[z->n].name, name, sizeof(z->e[0].name));
+        z->e[z->n].crc = crc;
+        z->e[z->n].size = total;
+        z->e[z->n].csize = deflated ? (u32)packed_n : total;
+        z->e[z->n].method = deflated ? 8 : 0;
+        z->e[z->n].offset = z->at;
+        z->n++;
+        zip_write(z, h, sizeof(h));
+        zip_write(z, name, nlen);
+        if (deflated) {
+            zip_write(z, packed, packed_n);
+        } else {
+            /* The head, the tail where it goes, and the file's position past the end: nothing written between. */
+            ok = mg_file_pwrite(z->f, head, head_n, z->at, &err) == (i64)head_n && mg_file_pwrite(z->f, tail, tail_n, z->at + tail_at, &err) == (i64)tail_n;
+            if (tail_at + tail_n < total) ok = ok && mg_file_pwrite(z->f, zeros, 1, z->at + total - 1, &err) == 1;
+            z->at += total;
+            ok = ok && mg_file_seek(z->f, (i64)z->at, 0, &err) == (i64)z->at;
+        }
+    }
+    free(zeros);
+    free(packed);
+    return ok;
 }
 
 static void zip_end(zip_out *z)
@@ -197,9 +290,10 @@ static void zip_end(zip_out *z)
         put32(h, 0x02014b50u);
         put16(h + 4, 20);
         put16(h + 6, 20);
+        put16(h + 10, z->e[i].method);
         put16(h + 14, 0x21);
         put32(h + 16, z->e[i].crc);
-        put32(h + 20, z->e[i].size);
+        put32(h + 20, z->e[i].csize);
         put32(h + 24, z->e[i].size);
         put16(h + 28, (u32)nlen);
         put32(h + 42, (u32)z->e[i].offset);
@@ -446,6 +540,228 @@ done:
     free(from);
 }
 
+/* ------------------------------------- a large library's NativeActivity entry */
+
+/* The parts of the 32-bit ARM ELF test_big_library makes: its first 4 KB with the headers and the symbol tables, and 4 KB at 40 MB with its dynamic section. */
+enum { BIG_HEAD = 0x1000, BIG_TAIL = 0x1000, BIG_DATA = 40u << 20, BIG_DATA_VADDR = BIG_DATA + 0x10000 };
+
+static u32 gnu_hash_of(const char *s)
+{
+    u32 h = 5381;
+    while (*s) h = h * 33 + (u8)*s++;
+    return h;
+}
+
+static u32 sysv_hash_of(const char *s)
+{
+    u32 h = 0, g;
+    while (*s) {
+        h = (h << 4) + (u8)*s++;
+        g = h & 0xF0000000u;
+        if (g) h ^= g >> 24;
+        h &= ~g;
+    }
+    return h;
+}
+
+/*
+ * The head and the tail of a library of 40 MB + 4 KB whose dynamic section is at 40 MB, past the first 32 MB, where its
+ * second segment begins (as a large library's data comes after all its code); its symbol tables at its start. Its dynamic
+ * symbols: JNI_OnLoad, and ANativeActivity_onCreate -- defined (`entry`) or an import. Found through a GNU hash table, a
+ * SysV one, or both.
+ */
+static void big_library(u8 *head, u8 *tail, bool entry, bool gnu, bool sysv)
+{
+    static const char strtab[] = "\0JNI_OnLoad\0ANativeActivity_onCreate";
+    const u32 symtab_at = 0x100, strtab_at = 0x200, hash_at = 0x300, gnu_at = 0x400, onload = 1, create = 12;
+    /* The symbols in the order a linker gives them: the imports first, those GNU's table does not hash. */
+    u32 names[3], defined[3], symoff, i, d = 0, nsyms = 3;
+    u8 *p;
+    memset(head, 0, BIG_HEAD);
+    memset(tail, 0, BIG_TAIL);
+    names[0] = 0;
+    defined[0] = 0;
+    if (entry) {
+        names[1] = onload, defined[1] = 1, names[2] = create, defined[2] = 1;
+        symoff = 1;
+    } else {
+        names[1] = create, defined[1] = 0, names[2] = onload, defined[2] = 1;
+        symoff = 2;
+    }
+    /* The ELF header: 32-bit, little-endian, a shared object for ARM, three program headers right after it. */
+    memcpy(head, "\177ELF\1\1\1", 7);
+    put16(head + 16, 3);
+    put16(head + 18, 40);
+    put32(head + 20, 1);
+    put32(head + 28, 52);
+    put32(head + 36, 0x05000000u);
+    put16(head + 40, 52);
+    put16(head + 42, 32);
+    put16(head + 44, 3);
+    put16(head + 46, 40);
+    /* PT_LOAD of the code (the head and the hole), PT_LOAD of the data at 40 MB (at another address), PT_DYNAMIC in it. */
+    p = head + 52;
+    put32(p, 1), put32(p + 4, 0), put32(p + 8, 0), put32(p + 12, 0), put32(p + 16, BIG_DATA), put32(p + 20, BIG_DATA), put32(p + 24, 5), put32(p + 28, 0x1000);
+    p += 32;
+    put32(p, 1), put32(p + 4, BIG_DATA), put32(p + 8, BIG_DATA_VADDR), put32(p + 12, BIG_DATA_VADDR), put32(p + 16, BIG_TAIL), put32(p + 20, BIG_TAIL),
+        put32(p + 24, 6), put32(p + 28, 0x1000);
+    p += 32;
+    put32(p, 2), put32(p + 4, BIG_DATA), put32(p + 8, BIG_DATA_VADDR), put32(p + 12, BIG_DATA_VADDR), put32(p + 16, 8 * 8), put32(p + 20, 8 * 8), put32(p + 24, 6),
+        put32(p + 28, 4);
+    /* .dynsym and .dynstr */
+    for (i = 1; i < nsyms; i++) {
+        p = head + symtab_at + i * 16;
+        put32(p, names[i]);
+        put32(p + 4, defined[i] ? 0x2000 + i * 16 : 0);
+        p[12] = 0x12;               /* global, a function */
+        put16(p + 14, defined[i] ? 7 : 0);
+    }
+    memcpy(head + strtab_at, strtab, sizeof(strtab));
+    /* .hash: two buckets, the chains through all three symbols */
+    if (sysv) {
+        u32 bucket[2] = { 0, 0 }, chain[3] = { 0, 0, 0 };
+        for (i = 1; i < nsyms; i++) {
+            u32 b = sysv_hash_of(strtab + names[i]) % 2;
+            chain[i] = bucket[b];
+            bucket[b] = i;
+        }
+        put32(head + hash_at, 2);
+        put32(head + hash_at + 4, nsyms);
+        for (i = 0; i < 2; i++) put32(head + hash_at + 8 + i * 4, bucket[i]);
+        for (i = 0; i < nsyms; i++) put32(head + hash_at + 16 + i * 4, chain[i]);
+    }
+    /* .gnu.hash: one bucket, a bloom word that lets everything through, the defined symbols' chain */
+    if (gnu) {
+        put32(head + gnu_at, 1);
+        put32(head + gnu_at + 4, symoff);
+        put32(head + gnu_at + 8, 1);
+        put32(head + gnu_at + 12, 5);
+        put32(head + gnu_at + 16, 0xFFFFFFFFu);
+        put32(head + gnu_at + 20, symoff);
+        for (i = symoff; i < nsyms; i++) put32(head + gnu_at + 24 + (i - symoff) * 4, (gnu_hash_of(strtab + names[i]) & ~1u) | (i == nsyms - 1 ? 1u : 0u));
+    }
+    /* .dynamic */
+    p = tail;
+    if (sysv) put32(p + d * 8, 4), put32(p + d * 8 + 4, hash_at), d++;
+    if (gnu) put32(p + d * 8, 0x6ffffef5u), put32(p + d * 8 + 4, gnu_at), d++;
+    put32(p + d * 8, 5), put32(p + d * 8 + 4, strtab_at), d++;
+    put32(p + d * 8, 6), put32(p + d * 8 + 4, symtab_at), d++;
+    put32(p + d * 8, 10), put32(p + d * 8 + 4, (u32)sizeof(strtab)), d++;
+    put32(p + d * 8, 11), put32(p + d * 8 + 4, 16), d++;
+}
+
+/*
+ * Whether an app whose activity names its library with android.app.lib_name is a NativeActivity: its library is looked at
+ * for ANativeActivity_onCreate (core/src/apk/mg_apk.c, native_entry). 2GIS (Qt: its QtActivity, libv4android.so of 277 MB in
+ * the split config.armeabi_v7a) was taken for a NativeActivity, and its start ended in "has no ANativeActivity_onCreate"
+ * (package 681): the look read the library's first 32 MB, and its dynamic section was past them. Here the natives test app
+ * (lib_name "natives", an activity of its own) with its libnatives.so replaced by a library of 40 MB whose dynamic section is
+ * at 40 MB, stored (the file has a hole where the filesystem allows) or deflated (a few kilobytes), its symbols hashed by a
+ * GNU table, a SysV one or both: a Java app where the entry is an import, a NativeActivity where it is defined. And the
+ * cursor a deflated library is read through: inflated once as far as the dynamic section, its tables then read from what it
+ * kept of its head, and inflated again from the start for a read past what is kept.
+ */
+static void test_big_library(const char *java_dir, const char *scratch)
+{
+    static const struct {
+        bool deflated, entry, gnu, sysv;
+        const char *engine;
+    } variants[] = {
+        { false, false, true, true, "java" },
+        { true, true, true, false, "native-activity" },
+        { true, false, false, true, "java" },
+        { false, true, false, true, "native-activity" },
+    };
+    char *from = mg_sprintf("%s/natives.apk", java_dir), *dir = mg_sprintf("%s/big-library", scratch);
+    static entry_names names;
+    static mg_apk_info info;
+    u8 *head = (u8 *)malloc(BIG_HEAD), *tail = (u8 *)malloc(BIG_TAIL);
+    mg_zip src;
+    char err[160];
+    int v, i;
+    say("an app whose library's dynamic section is past its first 32 MB");
+#if !MG_APK_ABI_ARM
+    say("  (this build looks at its own processor's libraries, not 32-bit ARM's: these checks are left out)");
+    goto done;
+#endif
+    if (!head || !tail || !exists(from) || !mg_zip_open(&src, from, err, sizeof(err))) {
+        say("  (no %s: tools/build-test-app.sh makes it; these checks are left out)", from);
+        goto done;
+    }
+    mg_path_mkdirs(dir);
+    memset(&names, 0, sizeof(names));
+    mg_zip_each(&src, "", name_seen, &names);
+    for (v = 0; v < (int)MG_COUNT(variants); v++) {
+        char *apk = mg_sprintf("%s/big-%d.apk", dir, v);
+        zip_out z;
+        int ferr = 0;
+        bool made = true, read;
+        u64 size;
+        memset(&z, 0, sizeof(z));
+        z.f = mg_file_open(apk, MG_O_WRITE | MG_O_CREATE | MG_O_TRUNC, &ferr);
+        CHECK(z.f != NULL);
+        if (!z.f) {
+            free(apk);
+            continue;
+        }
+        for (i = 0; i < names.n; i++) {
+            const mg_zip_entry *e = mg_zip_find(&src, names.names[i]);
+            size_t n = 0;
+            u8 *data;
+            if (!strcmp(names.names[i], "lib/armeabi-v7a/libnatives.so")) continue;
+            data = e ? mg_zip_read(&src, e, 64u << 20, &n) : NULL;
+            if (data) zip_add(&z, names.names[i], data, (u32)n);
+            free(data);
+        }
+        big_library(head, tail, variants[v].entry, variants[v].gnu, variants[v].sysv);
+        made = zip_add_big(&z, "lib/armeabi-v7a/libnatives.so", variants[v].deflated, head, BIG_HEAD, tail, BIG_TAIL, BIG_DATA, BIG_DATA + BIG_TAIL);
+        zip_end(&z);
+        CHECK(made);
+        size = size_of(apk);
+        memset(&info, 0, sizeof(info));
+        read = mg_apk_read_info(apk, &info);
+        say("  %s, its symbols hashed by %s, ANativeActivity_onCreate %s (the APK %.1f MB): %s, %s", variants[v].deflated ? "deflated" : "stored",
+            variants[v].gnu && variants[v].sysv ? "GNU's table and SysV's" : variants[v].gnu ? "GNU's table" : "SysV's table",
+            variants[v].entry ? "defined" : "an import", (double)size / 1048576.0, read ? info.engine : "not read", read ? (info.runnable ? "runnable" : info.reason) : info.error);
+        CHECK(read && !strcmp(info.engine, variants[v].engine) && info.runnable);
+        if (read) mg_apk_info_free(&info);
+        /* The deflated library read through its cursor, as the look reads it. */
+        if (v == 1 && made) {
+            mg_zip big;
+            if (mg_zip_open(&big, apk, err, sizeof(err))) {
+                const mg_zip_entry *e = mg_zip_find(&big, "lib/armeabi-v7a/libnatives.so");
+                mg_zip_cursor *c = e ? mg_zip_cursor_open(&big, e, 32u << 20) : NULL;
+                u8 got[64];
+                u64 once = 0, twice = 0;
+                bool ok = c != NULL;
+                ok = ok && mg_zip_cursor_read(c, 0, got, 52) && !memcmp(got, head, 52);
+                ok = ok && mg_zip_cursor_read(c, BIG_DATA, got, 16) && !memcmp(got, tail, 16);
+                once = mg_zip_cursor_inflated(c);
+                ok = ok && mg_zip_cursor_read(c, 0x100, got, 48) && !memcmp(got, head + 0x100, 48) && mg_zip_cursor_inflated(c) == once;
+                ok = ok && mg_zip_cursor_read(c, BIG_DATA - 16, got, 32) && !memcmp(got + 16, tail, 16) && got[0] == 0 && got[15] == 0;
+                twice = mg_zip_cursor_inflated(c);
+                say("  the deflated one through its cursor: %.1f MB inflated to its dynamic section, its tables then from what it kept, "
+                    "%.1f MB more for a read before that past the first 32 MB", (double)once / 1048576.0, (double)(twice - once) / 1048576.0);
+                CHECK(ok && e && once >= BIG_DATA + 16 && once < BIG_DATA + (1u << 20) && twice > once + (32u << 20) && twice < 2 * once + (1u << 20));
+                CHECK(!mg_zip_cursor_read(c, BIG_DATA + BIG_TAIL - 8, got, 16));
+                mg_zip_cursor_close(c);
+                mg_zip_close(&big);
+            } else {
+                CHECK(false);
+            }
+        }
+        mg_path_remove(apk, NULL);
+        free(apk);
+    }
+    mg_zip_close(&src);
+    mg_path_rmdir(dir, NULL);
+done:
+    free(head);
+    free(tail);
+    free(dir);
+    free(from);
+}
+
 static void test_odd_bundles(const char *java_dir, const char *scratch)
 {
     char *base = mg_sprintf("%s/splits-base.apk", java_dir), *xapk = mg_sprintf("%s/splits.xapk", java_dir), *dir = mg_sprintf("%s/odd", scratch);
@@ -612,6 +928,7 @@ int mg_bundle_tests_run(const char *java_dir, const char *scratch, const char *r
         /* (Minecraft: Story Mode's: it was refused as an app built on sdl.) */
         test_engine_app(java_dir, scratch, "SDL", sdl, (int)MG_COUNT(sdl), "Built with SDL", NULL);
     }
+    test_big_library(java_dir, scratch);
     if (real_dir)
         for (i = 0; i < (int)MG_COUNT(real); i++) test_real(real_dir, scratch, &real[i]);
     else

@@ -303,6 +303,150 @@ u8 *mg_zip_read(const mg_zip *z, const mg_zip_entry *e, size_t limit, size_t *si
     return out;
 }
 
+/* ------------------------------------------------- an entry read in parts */
+
+enum { CURSOR_IN = 256 * 1024, CURSOR_OUT = 256 * 1024 };
+
+struct mg_zip_cursor {
+    const mg_zip *z;
+    const mg_zip_entry *e;
+    u64 data;                          /* where the entry's bytes begin in the file */
+    bool stored;
+    /* A deflated entry's: */
+    z_stream s;
+    bool inflating, ended, broken;
+    u8 *in, *out;                      /* a piece of its compressed bytes as read from the file; a piece inflated */
+    u64 src, left;                     /* the next compressed byte's place in the file, and how many are left */
+    u64 pos;                           /* the entry's bytes inflated so far in this pass */
+    u8 *kept;                          /* its first bytes, nkept of them so far, `keep` at the most */
+    size_t keep, nkept, kept_size;
+    u64 inflated;                      /* in every pass */
+};
+
+mg_zip_cursor *mg_zip_cursor_open(const mg_zip *z, const mg_zip_entry *e, size_t keep)
+{
+    mg_zip_cursor *c;
+    u64 data = 0;
+    if (!z || !e || !entry_data(z, e, &data) || (e->method != 0 && e->method != 8) || (e->method == 0 && e->csize != e->usize)) return NULL;
+    c = (mg_zip_cursor *)calloc(1, sizeof(*c));
+    if (!c) return NULL;
+    c->z = z;
+    c->e = e;
+    c->data = data;
+    c->stored = e->method == 0;
+    c->keep = keep;
+    return c;
+}
+
+/* The inflating begun again from the entry's start (what is kept stays). */
+static bool cursor_restart(mg_zip_cursor *c)
+{
+    if (c->inflating) inflateEnd(&c->s);
+    c->inflating = c->ended = false;
+    memset(&c->s, 0, sizeof(c->s));
+    if (!c->in) c->in = (u8 *)malloc(CURSOR_IN);
+    if (!c->out) c->out = (u8 *)malloc(CURSOR_OUT);
+    if (!c->in || !c->out || inflateInit2(&c->s, -MAX_WBITS) != Z_OK) return false;
+    c->inflating = true;
+    c->src = c->data;
+    c->left = c->e->csize;
+    c->pos = 0;
+    return true;
+}
+
+/* The next piece of the entry inflated into c->out: how many bytes came; 0 at its end, or when it is damaged (c->broken). */
+static size_t cursor_piece(mg_zip_cursor *c)
+{
+    size_t got = 0;
+    c->s.next_out = c->out;
+    c->s.avail_out = CURSOR_OUT;
+    while (!got && !c->ended && !c->broken) {
+        int r;
+        if (!c->s.avail_in && c->left) {
+            size_t k = (size_t)(c->left > CURSOR_IN ? CURSOR_IN : c->left);
+            if (!mg_zip_pread(c->z, c->src, c->in, k)) {
+                c->broken = true;
+                break;
+            }
+            c->src += k;
+            c->left -= k;
+            c->s.next_in = c->in;
+            c->s.avail_in = (uInt)k;
+        }
+        r = inflate(&c->s, Z_NO_FLUSH);
+        got = CURSOR_OUT - c->s.avail_out;
+        if (r == Z_STREAM_END) c->ended = true;
+        else if (r == Z_BUF_ERROR && (c->s.avail_in || c->left)) continue;   /* it wants more of the input there is */
+        else if (r != Z_OK || (!got && !c->s.avail_in && !c->left)) c->broken = true;
+    }
+    c->pos += got;
+    c->inflated += got;
+    return got;
+}
+
+bool mg_zip_cursor_read(mg_zip_cursor *c, u64 offset, void *out, size_t n)
+{
+    u8 *to = (u8 *)out;
+    u64 end = offset + n;
+    if (!c || end < offset || end > c->e->usize) return false;
+    if (!n) return true;
+    if (c->stored) return mg_zip_pread(c->z, c->data + offset, out, n);
+    /* What is kept of it first; the rest inflated. */
+    if (offset < c->nkept) {
+        size_t k = (size_t)(end <= c->nkept ? n : c->nkept - offset);
+        memcpy(to, c->kept + offset, k);
+        if (k == n) return true;
+        to += k;
+        offset += k;
+    }
+    if ((!c->inflating || c->pos > offset || c->broken) && !cursor_restart(c)) return false;
+    while (c->pos < end) {
+        u64 at = c->pos;
+        size_t got = cursor_piece(c), skip;
+        if (!got) return false;
+        /* The entry's head, kept as it comes the first time. */
+        if (at <= c->nkept && c->nkept < c->keep && at + got > c->nkept) {
+            size_t from = (size_t)(c->nkept - at), k = got - from;
+            if (k > c->keep - c->nkept) k = c->keep - c->nkept;
+            if (c->nkept + k > c->kept_size) {
+                size_t size = c->kept_size ? c->kept_size : c->keep < CURSOR_OUT ? c->keep : CURSOR_OUT;
+                u8 *grown;
+                while (size < c->nkept + k) size = size * 2 < c->keep ? size * 2 : c->keep;
+                grown = (u8 *)realloc(c->kept, size);
+                if (grown) {
+                    c->kept = grown;
+                    c->kept_size = size;
+                }
+            }
+            if (c->nkept + k <= c->kept_size) {
+                memcpy(c->kept + c->nkept, c->out + from, k);
+                c->nkept += k;
+            }
+        }
+        /* And what the read wants of the piece. */
+        if (at + got <= offset) continue;
+        skip = at < offset ? (size_t)(offset - at) : 0;
+        {
+            u64 want_end = end < at + got ? end : at + got;
+            size_t k = (size_t)(want_end - (at + skip));
+            memcpy(to + (at + skip - offset), c->out + skip, k);
+        }
+    }
+    return true;
+}
+
+u64 mg_zip_cursor_inflated(const mg_zip_cursor *c) { return c ? c->inflated : 0; }
+
+void mg_zip_cursor_close(mg_zip_cursor *c)
+{
+    if (!c) return;
+    if (c->inflating) inflateEnd(&c->s);
+    free(c->in);
+    free(c->out);
+    free(c->kept);
+    free(c);
+}
+
 bool mg_zip_stream(const mg_zip *z, const mg_zip_entry *e, bool (*piece)(void *user, const u8 *data, size_t n), void *user, char *err,
                    size_t errlen)
 {

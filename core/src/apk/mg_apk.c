@@ -754,9 +754,148 @@ static u32 elf_symbol_count(const u8 *d, size_t n, u32 hash, u32 gnu)
 }
 
 /*
+ * A library in an APK looked at for one of its dynamic symbols, its parts read where they are (mg_zip_cursor): the ELF
+ * header, the program headers, the dynamic section, and of the symbol tables only what a lookup through their hash table
+ * reads -- a bucket, a chain, a symbol and its name -- as the dynamic linker looks a name up. A library's dynamic section is
+ * at the end of its data, past all of its code: in 2GIS's libv4android.so (277 MB, in the split config.armeabi_v7a) far past
+ * the 32 MB of it that were read whole before, where none of it was found (package 681).
+ */
+typedef struct elf_reader {
+    mg_zip_cursor *c;
+    u64 size;
+    A_Phdr *ph;
+    int phnum;
+    u64 symtab, strtab, strsz;
+} elf_reader;
+
+/* `n` bytes at the virtual address `vaddr`, where the PT_LOAD headers put it in the file. */
+static bool elf_vread(const elf_reader *r, u64 vaddr, void *out, size_t n)
+{
+    int i;
+    for (i = 0; i < r->phnum; i++) {
+        const A_Phdr *p = &r->ph[i];
+        u64 off;
+        if (p->p_type != PT_LOAD || vaddr < p->p_vaddr || vaddr - p->p_vaddr >= p->p_filesz) continue;
+        if (n > p->p_filesz - (vaddr - p->p_vaddr)) return false;
+        off = p->p_offset + (vaddr - p->p_vaddr);
+        return off <= r->size && n <= r->size - off && mg_zip_cursor_read(r->c, off, out, n);
+    }
+    return false;
+}
+
+/* Whether dynamic symbol `i` is `name`, and defined: 1 yes, 0 no, -1 when it cannot be read. */
+static int elf_symbol_is(const elf_reader *r, u32 i, const char *name)
+{
+    A_Sym sym;
+    char text[128];
+    size_t n = strlen(name) + 1;
+    if (n > sizeof(text) || !elf_vread(r, r->symtab + (u64)i * sizeof(A_Sym), &sym, sizeof(sym))) return -1;
+    if (sym.st_shndx == SHN_UNDEF || sym.st_name >= r->strsz || r->strsz - sym.st_name < n) return 0;
+    if (!elf_vread(r, r->strtab + sym.st_name, text, n)) return -1;
+    return !memcmp(text, name, n);
+}
+
+static u32 elf_gnu_hash(const char *s)
+{
+    u32 h = 5381;
+    while (*s) h = h * 33 + (u8)*s++;
+    return h;
+}
+
+static u32 elf_sysv_hash(const char *s)
+{
+    u32 h = 0, g;
+    while (*s) {
+        h = (h << 4) + (u8)*s++;
+        g = h & 0xF0000000u;
+        if (g) h ^= g >> 24;
+        h &= ~g;
+    }
+    return h;
+}
+
+/* `name` looked up through the GNU hash table at `gnu`: its bucket, then the chain of the symbols of its hash. */
+static int elf_gnu_lookup(const elf_reader *r, u64 gnu, const char *name)
+{
+    u32 head[4], h = elf_gnu_hash(name), i, hv, steps;
+    u64 buckets, chains;
+    if (!elf_vread(r, gnu, head, sizeof(head)) || !head[0] || head[0] >= 0x1000000u || head[2] >= 0x1000000u) return -1;
+    buckets = gnu + 16 + (u64)head[2] * A_BLOOM_WORD;
+    chains = buckets + (u64)head[0] * 4;
+    if (!elf_vread(r, buckets + (u64)(h % head[0]) * 4, &i, 4)) return -1;
+    if (!i) return 0;
+    if (i < head[1]) return -1;
+    for (steps = 0; steps < 4000000u; steps++, i++) {
+        int is;
+        if (!elf_vread(r, chains + (u64)(i - head[1]) * 4, &hv, 4)) return -1;
+        if ((hv | 1) == (h | 1) && (is = elf_symbol_is(r, i, name)) != 0) return is;
+        if (hv & 1) return 0;
+    }
+    return -1;
+}
+
+/* And through the SysV one at `hash`: its bucket, then the chain. */
+static int elf_sysv_lookup(const elf_reader *r, u64 hash, const char *name)
+{
+    u32 head[2], i, steps;
+    if (!elf_vread(r, hash, head, sizeof(head)) || !head[0] || head[0] >= 0x1000000u || head[1] >= 0x1000000u) return -1;
+    if (!elf_vread(r, hash + 8 + (u64)(elf_sysv_hash(name) % head[0]) * 4, &i, 4)) return -1;
+    for (steps = 0; i && steps <= head[1]; steps++) {
+        int is;
+        if (i >= head[1]) return -1;
+        if ((is = elf_symbol_is(r, i, name)) != 0) return is;
+        if (!elf_vread(r, hash + 8 + (u64)head[0] * 4 + (u64)i * 4, &i, 4)) return -1;
+    }
+    return i ? -1 : 0;
+}
+
+/* Whether the library behind the cursor (`size` bytes) defines `name` among its dynamic symbols: 1 yes, 0 no, -1 not known (not this processor's ELF, damaged, no hash table). */
+static int elf_exports(mg_zip_cursor *c, u64 size, const char *name)
+{
+    A_Ehdr eh;
+    A_Dyn *dyn = NULL;
+    elf_reader r;
+    u64 hash = 0, gnu = 0;
+    size_t ndyn = 0, j;
+    int i, found = -1;
+    memset(&r, 0, sizeof(r));
+    r.c = c;
+    r.size = size;
+    if (size < sizeof(eh) || !mg_zip_cursor_read(c, 0, &eh, sizeof(eh))) return -1;
+    if (memcmp(eh.e_ident, "\177ELF", 4) || eh.e_ident[4] != A_CLASS || eh.e_machine != A_MACHINE || eh.e_phentsize != sizeof(A_Phdr) || !eh.e_phnum ||
+        eh.e_phnum > 256 || eh.e_phoff > size || (u64)eh.e_phnum * sizeof(A_Phdr) > size - eh.e_phoff)
+        return -1;
+    r.phnum = eh.e_phnum;
+    r.ph = (A_Phdr *)malloc((size_t)r.phnum * sizeof(A_Phdr));
+    if (!r.ph || !mg_zip_cursor_read(c, eh.e_phoff, r.ph, (size_t)r.phnum * sizeof(A_Phdr))) goto done;
+    for (i = 0; i < r.phnum && !dyn; i++) {
+        const A_Phdr *p = &r.ph[i];
+        if (p->p_type != PT_DYNAMIC || p->p_filesz < sizeof(A_Dyn) || p->p_filesz > (1u << 20) || p->p_offset > size || p->p_filesz > size - p->p_offset) continue;
+        ndyn = (size_t)(p->p_filesz / sizeof(A_Dyn));
+        dyn = (A_Dyn *)malloc(ndyn * sizeof(A_Dyn));
+        if (!dyn || !mg_zip_cursor_read(c, p->p_offset, dyn, ndyn * sizeof(A_Dyn))) goto done;
+    }
+    for (j = 0; dyn && j < ndyn && dyn[j].d_tag != DT_NULL; j++) {
+        if (dyn[j].d_tag == DT_SYMTAB) r.symtab = (u64)dyn[j].d_val;
+        if (dyn[j].d_tag == DT_STRTAB) r.strtab = (u64)dyn[j].d_val;
+        if (dyn[j].d_tag == DT_STRSZ) r.strsz = (u64)dyn[j].d_val;
+        if (dyn[j].d_tag == DT_HASH) hash = (u64)dyn[j].d_val;
+        if (dyn[j].d_tag == DT_GNU_HASH) gnu = (u64)dyn[j].d_val;
+    }
+    if (!r.symtab || !r.strtab || !r.strsz) goto done;
+    if (gnu) found = elf_gnu_lookup(&r, gnu, name);
+    if (found < 0 && hash) found = elf_sysv_lookup(&r, hash, name);
+done:
+    free(r.ph);
+    free(dyn);
+    return found;
+}
+
+/*
  * Whether the library android.app.lib_name names exports NativeActivity's entry -- android.app.func_name, else
- * ANativeActivity_onCreate --, looked for in the dynamic symbols of its first 32 MB, where an ELF file keeps them: 1 yes,
- * 0 no, -1 not known (no such library, not ARM's ELF, its tables past what was read).
+ * ANativeActivity_onCreate --, in whichever of the app's APKs has it, stored or deflated: 1 yes, 0 no, -1 not known (no
+ * such library, not this processor's ELF, damaged). (A deflated library is inflated as far as its dynamic section, past its
+ * code; the first 32 MB of it are kept for the tables, which come before.)
  */
 static int native_entry(mg_zip *const *zips, int nzips, const mg_apk_info *info)
 {
@@ -766,39 +905,9 @@ static int native_entry(mg_zip *const *zips, int nzips, const mg_apk_info *info)
     snprintf(path, sizeof(path), "lib/%s/lib%s.so", info->abi, info->native_library);
     for (k = 0; k < nzips && found < 0; k++) {
         const mg_zip_entry *e = mg_zip_find(zips[k], path);
-        size_t n = 0;
-        u8 *d = e ? mg_zip_read_head(zips[k], e, 32u << 20, &n) : NULL;
-        const A_Ehdr *eh = (const A_Ehdr *)d;
-        if (d && n > sizeof(A_Ehdr) && !memcmp(d, "\177ELF", 4) && d[4] == A_CLASS && eh->e_machine == A_MACHINE &&
-            eh->e_phentsize == sizeof(A_Phdr) && eh->e_phoff <= n && (size_t)eh->e_phnum * sizeof(A_Phdr) <= n - eh->e_phoff) {
-            const A_Phdr *ph = (const A_Phdr *)(d + eh->e_phoff);
-            const A_Dyn *dyn = NULL;
-            u32 ndyn = 0, symtab = 0, strtab = 0, strsz = 0, hash = 0, gnu = 0, nsyms, j;
-            int i;
-            for (i = 0; i < eh->e_phnum; i++)
-                if (ph[i].p_type == PT_DYNAMIC && ph[i].p_offset <= n && ph[i].p_filesz <= n - ph[i].p_offset) {
-                    dyn = (const A_Dyn *)(d + ph[i].p_offset);
-                    ndyn = (u32)(ph[i].p_filesz / sizeof(A_Dyn));
-                }
-            for (j = 0; j < ndyn && dyn[j].d_tag != DT_NULL; j++) {
-                if (dyn[j].d_tag == DT_SYMTAB) symtab = (u32)dyn[j].d_val;
-                if (dyn[j].d_tag == DT_STRTAB) strtab = (u32)dyn[j].d_val;
-                if (dyn[j].d_tag == DT_STRSZ) strsz = (u32)dyn[j].d_val;
-                if (dyn[j].d_tag == DT_HASH) hash = (u32)dyn[j].d_val;
-                if (dyn[j].d_tag == DT_GNU_HASH) gnu = (u32)dyn[j].d_val;
-            }
-            nsyms = strtab && strsz ? elf_symbol_count(d, n, hash, gnu) : 0;
-            if (symtab && nsyms && nsyms < 4000000) {
-                const char *str = (const char *)elf_at(d, n, strtab, strsz);
-                const A_Sym *sym = (const A_Sym *)elf_at(d, n, symtab, nsyms * sizeof(A_Sym));
-                if (str && sym && str[strsz - 1] == 0) {
-                    found = 0;
-                    for (j = 1; j < nsyms && !found; j++)
-                        if (sym[j].st_name < strsz && sym[j].st_shndx != SHN_UNDEF && !strcmp(str + sym[j].st_name, want)) found = 1;
-                }
-            }
-        }
-        free(d);
+        mg_zip_cursor *c = e ? mg_zip_cursor_open(zips[k], e, 32u << 20) : NULL;
+        if (c) found = elf_exports(c, e->usize, want);
+        mg_zip_cursor_close(c);
     }
     return found;
 }
@@ -873,7 +982,8 @@ static void classify(mg_apk_info *info, mg_zip *const *zips, int nzips, char (*b
      * android.app.lib_name on an activity of the app's own is a subclass of NativeActivity's -- unless the library has no
      * NativeActivity entry: then the activity is one that loads the library and starts it through JNI itself, and the app
      * is a Java one. Qt's QtActivity names its library so: 2GIS (libv4android.so, 277 MB) was taken for a NativeActivity,
-     * and its start ended in "has no ANativeActivity_onCreate: it is not a NativeActivity library" (package 576).
+     * and its start ended in "has no ANativeActivity_onCreate: it is not a NativeActivity library" (package 576; and again
+     * in 681, its dynamic section being past the part of the library that was read).
      */
     else if (!strcmp(info->activity, "android.app.NativeActivity") || (!info->has_code && w.count) ||
              (info->native_library[0] && !(info->has_code && info->activity[0] && mg_zip_find(zips[0], "classes.dex") && native_entry(zips, nzips, info) == 0)))
