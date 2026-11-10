@@ -4,8 +4,9 @@
      (Google Services Framework's GoogleSettingsProvider, content://com.google.settings/partner), which says what is written
      into it: where Megler puts the user's answer of Google Location Accuracy. And an activity of theirs, which an app starts
      and which runs in the app (their account settings, "Manage your Google Account"), reading their resources as their
-     account screens do: a picture of their density's split and a word of their language's split. Built as a base and
-     splits, as Play Store installs Google's own (the file `splits`). -->
+     account screens do: a picture of their density's split, a word of their language's split, and both through a context of
+     another configuration, as AppCompat wraps an activity's. Built as a base and splits, as Play Store installs Google's own
+     (the file `splits`). -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android" package="com.google.android.gms"
     android:versionCode="264131009" android:versionName="26.41.31 (a stand-in)">
     <uses-sdk android:minSdkVersion="21" android:targetSdkVersion="28" />

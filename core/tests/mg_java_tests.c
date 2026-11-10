@@ -4099,14 +4099,19 @@ static int run_gms_host(void)
      * Google Play services from a bundle (gms-own.apks: a base and the splits config.mdpi, config.xxhdpi and config.en), as
      * Play Store installs Google's own, unpacked for 160 dpi in English and Russian: the app has their base and the splits
      * kept, and their resources are those of all three. An activity of theirs, started by the app and run here as their
-     * account settings are, reads a picture that is in their density's split alone (16 x 16, mdpi's) and the word of their
-     * English split: the picture was not there ("Manage your Google Account" ended Play Store on the Google logo's
-     * NotFoundException, 0.1.0.685).
+     * account settings are, reads a picture that is in their density's split alone (16 x 16, mdpi's), the word of their
+     * English split, and both again through a context of another configuration, as AppCompat wraps an activity's: the
+     * picture was not there ("Manage your Google Account" ended Play Store on the Google logo's NotFoundException,
+     * 0.1.0.685), and that context's resources were the app's, whose label it read under their label's number. Its theme
+     * has none of the app's theme's attributes (gms-host's gms_host_mark): it began from a copy of the app's theme. And,
+     * naming none, it has the platform's default for their target (Theme.DeviceDefault.Light.DarkActionBar, 0x0103013f),
+     * not the number of the app's theme.
      */
     CHECK(find_line("java: Google Play services are in 3 APKs, their base and the splits config.en, config.mdpi", 0) >= 0);
     CHECK(find_line("I/MicroG: Google Play services' splits, whose resources and files join their base's: config.en, config.mdpi (3 APKs)", 0) >= 0);
     CHECK(wait_line("-> Google Play services' megler.test.gmsown.Lockup, here", 0, 60) >= 0);
-    CHECK(wait_line("I/GmsOwnTest: lockup 16x16 word=english splits=[config.en, config.mdpi]", 0, 120) >= 0);
+    CHECK(wait_line("I/GmsOwnTest: lockup 16x16 word=english wrapped 16x16 word=english label=Google Play services (a stand-in) "
+                    "splits=[config.en, config.mdpi] host theme attribute false theme 0x103013f", 0, 120) >= 0);
     CHECK(find_line("FATAL EXCEPTION", 0) < 0);
     say_app_lines("/GmsOwnTest: ");
     return g_failed;

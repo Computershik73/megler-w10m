@@ -199,11 +199,25 @@ base's is), a file the base has not is read from the split that has it, and
 their `ApplicationInfo` names the splits as Android does. A split with code
 or native libraries is said in the log; nothing of either is taken from one.
 
+And a context of theirs made for another configuration
+(`createConfigurationContext`: AppCompat's `attachBaseContext2` wraps an
+activity's base in one where the app's night mode or locales differ, and their
+own code makes such contexts) is their resources under that configuration. It
+was the app's, through the app's `ContextImpl`, which `ContextWrapper` asks.
+So was their package context's theme, from which each activity of theirs
+begins (`ContextThemeWrapper` copies its base's): the app's own, whose
+attributes stood under their numbers in theirs wherever their theme set none.
+It is a theme of their resources now, the platform's default for their target
+(`Theme.DeviceDefault.Light.DarkActionBar`), and an activity of theirs that
+names no theme (their application names none) has that default too, not the
+number of the app's theme.
+
 The test app `gms-host` hosts a stand-in of theirs built as Play Store's
 bundle (`gms-own`: a base and the splits `config.mdpi`, `config.xxhdpi` and
 `config.en`), unpacked as the shell unpacks one for 160 dpi: an activity of
 theirs reads a picture of their density's split alone and a word of their
-English split.
+English split, and both through a context of another configuration, and finds
+no attribute of the app's theme in its own (`gms-host` has a theme with one).
 
 ## Class isolation
 

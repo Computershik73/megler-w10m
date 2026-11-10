@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The app's theme, with an attribute of its own that only it sets: an activity of Google Play services' hosted here must not
+     find it in its theme (their stand-in's Lockup asks), as on Android, where their activities' themes never begin from the
+     app's. -->
+<resources>
+    <attr name="gms_host_mark" format="color" />
+    <style name="GmsHostTheme" parent="android:Theme.DeviceDefault.Light.DarkActionBar">
+        <item name="gms_host_mark">#ff336699</item>
+    </style>
+</resources>

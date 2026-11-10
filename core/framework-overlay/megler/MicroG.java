@@ -408,6 +408,10 @@ public final class MicroG {
         info.signatures = new Signature[] {GooglePackages.signature()};
         info.signingInfo = new SigningInfo(info.signatures);
         activities = Manifest.activitiesIn(manifest, APK, GooglePackages.GMS);
+        // An activity of theirs that names no theme, of an application that names none (Google's own names none), has the
+        // platform's default for their target, as Android gives it (Theme.DeviceDefault.Light.DarkActionBar). Activity's own
+        // default is the app's theme, a style of the app's package, under whose number theirs has something else or nothing.
+        for (Manifest.Component c : activities) if (c.theme == 0) c.theme = IR.style.Theme_DeviceDefault_Light_DarkActionBar;
         /*
          * Google's own Play services run in this process, and their application is told so: its process name is the one
          * Application.getProcessName gives their code here, this process's. They take the process whose name is their
@@ -953,12 +957,45 @@ public final class MicroG {
     private final class PackageContext extends ContextWrapper {
         private final Resources resources;
         private final boolean deviceProtected;
-        private final HashMap<String, SharedPreferences> prefs = new HashMap<>();
+        private final HashMap<String, SharedPreferences> prefs;
         PackageContext(Resources r) { this(r, false); }
-        PackageContext(Resources r, boolean deviceProtected) {
+        PackageContext(Resources r, boolean deviceProtected) { this(r, deviceProtected, new HashMap<>()); }
+        /* (A configuration context keeps its preferences' objects: one file, one object, whichever context asks.) */
+        private PackageContext(Resources r, boolean deviceProtected, HashMap<String, SharedPreferences> prefs) {
             super(ContextImpl.app());
             resources = r;
             this.deviceProtected = deviceProtected;
+            this.prefs = prefs;
+        }
+        /*
+         * A context of another configuration -- AppCompat's attachBaseContext2 wraps an activity's base in one where the app's
+         * night mode or locales differ, Compose and Google Play services' own code make them for a locale -- is this package's
+         * resources under that configuration, and this context in all else. It was the app's: ContextWrapper asks its base,
+         * the app's ContextImpl, and Google Play services' activities and services hosted here were given the app's resources
+         * there, its drawables and strings under their numbers, or none.
+         */
+        @Override public Context createConfigurationContext(Configuration c) {
+            Configuration config = new Configuration(resources.getConfiguration());
+            if (c != null) config.updateFrom(c);
+            return new PackageContext(new Resources(resources.getAssets(), resources.getDisplayMetrics(), config), deviceProtected, prefs);
+        }
+        /*
+         * A theme of their own, as Android's ContextImpl has: of their resources, the platform's default for their target
+         * (Theme.DeviceDefault.Light.DarkActionBar) unless one was set. ContextWrapper asked the app's ContextImpl, whose theme
+         * is the app's own, of the app's resources, and every activity of theirs hosted here began from a copy of it
+         * (ContextThemeWrapper.initializeTheme copies its base's before it applies the activity's): the app's attributes, under
+         * their numbers in the app's package, stood in theirs wherever their own theme set none under those numbers.
+         */
+        private Resources.Theme theme;
+        private int themeId;
+        @Override public synchronized void setTheme(int resid) { if (themeId != resid) { themeId = resid; theme = null; } }
+        @Override public synchronized int getThemeResId() { return themeId; }
+        @Override public synchronized Resources.Theme getTheme() {
+            if (theme == null) {
+                theme = resources.newTheme();
+                theme.applyStyle(themeId != 0 ? themeId : IR.style.Theme_DeviceDefault_Light_DarkActionBar, true);
+            }
+            return theme;
         }
         @Override public String getPackageName() { return GooglePackages.GMS; }
         @Override public String getOpPackageName() { return getPackageName(); }
