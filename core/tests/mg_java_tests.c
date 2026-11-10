@@ -3974,7 +3974,8 @@ static int run_app(void)
  * running in the app's process (docs/JAVA.md, "The WebView"), on pages of an HTTP server of the app's own on 127.0.0.1. The
  * app logs each step; the test waits for each, looks at the picture the window shows -- the page's yellow bar and blue
  * body, drawn through the views like any other view -- and then plays the user: a tap on the page's text field, which must
- * ask for the keyboard, and text typed with it, which must arrive in the field. Chromium's start under qemu takes minutes
+ * ask for the keyboard, and text typed with it, which must arrive in the field; then a page of Chromium's layers, each of
+ * whose boxes must be whole in the picture, and a key that lets the app go on. Chromium's start under qemu takes minutes
  * of class linking and its first page seconds: the waits are long.
  */
 static int run_webview(void)
@@ -4042,6 +4043,44 @@ static int run_webview(void)
     CHECK(wait_line("I/WebViewTest: input ok value=hello", 0, 120) >= 0);
     settle();
     write_picture("webview-2");
+    /*
+     * Chromium's layers that paint only part of themselves, drawn in software as every page is here (and on a phone of
+     * Direct3D feature level 9_3): each box whole, where the page says it is. With HitTestOpaqueness on -- the AOSP WebView's
+     * field trial testing config turns it on -- a layer's recording is bounded by what it paints, and the software draw
+     * squeezed the box of a Material-like checkbox into a third of itself, and the box in an empty layer likewise
+     * (megler.WebViewFlags, which turns it off through the WebView's developer-mode flags). A layer that paints all of itself
+     * is the control.
+     */
+    line = wait_line("I/WebViewTest: layers-at ", 0, 300);
+    {
+        static const char *const ids[] = { "box", "inner", "full" };
+        static const u32 colours[] = { 0xD01F7A, 0x1F7AD0, 0x1FD07A };
+        int ox = 0, oy = 0, k;
+        CHECK(line >= 0 && sscanf(strstr(line_at(line), "layers-at ") + 10, "%d,%d", &ox, &oy) == 2);
+        settle();
+        write_picture("webview-3");
+        for (k = 0; line >= 0 && k < 3; k++) {
+            int r[4] = { 0, 0, 0, 0 }, inset[4], n;
+            char key[16];
+            const char *at;
+            snprintf(key, sizeof(key), " %s=", ids[k]);
+            at = strstr(line_at(line), key);
+            CHECK(at && sscanf(at + strlen(key), "%d,%d,%d,%d", &r[0], &r[1], &r[2], &r[3]) == 4 && r[2] > 8 && r[3] > 8);
+            if (!at) continue;
+            /* (two pixels in from each edge: what is inside is the box's colour alone) */
+            inset[0] = ox + r[0] + 2;
+            inset[1] = oy + r[1] + 2;
+            inset[2] = r[2] - 4;
+            inset[3] = r[3] - 4;
+            n = count_colour(inset, colours[k]);
+            say("  the layers' page: #%s at %d,%d %dx%d, %d of its %d inner pixels its colour", ids[k], ox + r[0], oy + r[1], r[2], r[3], n,
+                inset[2] * inset[3]);
+            /* (squeezed, a box kept 15 to 25 of each hundred of these pixels) */
+            CHECK(n * 100 >= inset[2] * inset[3] * 95);
+        }
+    }
+    megler_key(142, true);     /* KEYCODE_F12: the app goes on */
+    megler_key(142, false);
     /* A second WebView, a banner, drawn through a RenderNode, dismissed and destroyed between its draws: the app goes on. */
     CHECK(wait_line("I/WebViewTest: dismiss ok", 0, 300) >= 0);
     expect_line("I/WebViewTest: done", &at, 120);
