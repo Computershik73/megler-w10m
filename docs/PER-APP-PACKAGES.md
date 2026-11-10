@@ -279,7 +279,22 @@ app's own package, change the app's, with **As in Megler** at the top of each
 choice. They apply at the app's next start. Each file is written beside and
 moved into place, so that a package reading it meanwhile finds a whole one. The
 `settings.ini` of before, in LocalState, is copied to its new place the first
-time.
+time. An app's permission answers are kept in its own file too
+(`megler.permission.<group>`), and Megler's file keeps the one answer for every
+app of whether Google Play services' own features may use the location
+(`megler.gmsLocation`), which the package that asked writes and every package
+reads as the file has it then (`settings::meglerNow`).
+
+**Clear Data** and **Clear Cache** on an app's page ask the app's own package to
+clear its data or its cache at its next start, before anything of it is open: a
+file named after the package in `<shared>\clear-data` or `<shared>\clear-cache`
+(`megler_ask_clear_data`, `megler_ask_clear_cache`; also in Megler's storage
+while that is not the shared folder), which the core carries out
+(`mg_run_clear_data_if_asked`, `mg_run_clear_cache_if_asked`). The data is the
+app's private folder and its Android/data, its permission answers forgotten
+with it; the cache is what is in its cache and code_cache folders and in its
+Android/data/<package>/cache, nothing else, its permissions kept. Android's app
+info screen in the app offers both too (Clear storage, Clear cache).
 
 **Megler's own storage** (`shareMeglersStorage` in `shell/AppPackage.cpp`). Megler's
 `/sdcard` is the shared folder's too: once, in the background, Megler copies its
@@ -512,7 +527,9 @@ messages and the call history only where its package declares them
 (`player/PhoneEvents.h`). An app's permissions themselves are Android's runtime
 ones (docs/JAVA.md, "Permissions"): the user is asked when the app requests one,
 by Windows for the camera, the microphone and the location, by Megler for the
-rest, and an app's App Settings list them.
+rest, and an app's App Permissions (its page's Permissions, its App Settings, and
+its own package's Settings) list them as Android's App info does and change them:
+Allow, Ask every time, Don't allow, for any group.
 
 **The phone's folders** (`ui/SharedFolders.cpp`). Music, Pictures, Movies and
 DCIM come from the libraries' capabilities, which a package declares as above:

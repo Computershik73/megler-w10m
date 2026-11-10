@@ -151,24 +151,30 @@ void megler_sms_received(const char *from, const char *body, int64_t time_ms) { 
 void megler_call_logged(const char *number, int64_t time_ms, int type, int duration_s) { mg_java_phone_call(number, time_ms, type, duration_s); }
 
 bool megler_clear_data_asked(const char *package) { return g_data_dir[0] && mg_run_clear_data_asked(megler_storage_dir(), package); }
+bool megler_clear_cache_asked(const char *package) { return g_data_dir[0] && mg_run_clear_cache_asked(megler_storage_dir(), package); }
 
-bool megler_ask_clear_data(const char *package)
+/* An ask that the app's next start carries out: an empty file named after the package in the shared storage's folder `folder`
+   (clear-data, clear-cache; core/src/run/mg_run.c). `what` says it in the log. */
+static bool ask_at_start(const char *folder, const char *package, const char *what)
 {
     char *dir, *path;
     mg_file *f;
     int err = 0;
     if (!package || !package[0] || strchr(package, '/') || strchr(package, '\\') || !g_data_dir[0]) return false;
-    dir = mg_sprintf("%s/clear-data", megler_storage_dir());
+    dir = mg_sprintf("%s/%s", megler_storage_dir(), folder);
     path = mg_sprintf("%s/%s", dir, package);
     mg_path_mkdirs(dir);
     f = mg_file_open(path, MG_O_WRITE | MG_O_CREATE | MG_O_TRUNC, &err);
     if (f) mg_file_close(f);
-    if (f) mg_info("run: %s's data is to be cleared when it next starts", package);
-    else mg_warn("run: the ask to clear %s's data could not be written (%s, error %d)", package, path, err);
+    if (f) mg_info("run: %s's %s is to be cleared when it next starts", package, what);
+    else mg_warn("run: the ask to clear %s's %s could not be written (%s, error %d)", package, what, path, err);
     free(dir);
     free(path);
     return f != NULL;
 }
+
+bool megler_ask_clear_data(const char *package) { return ask_at_start("clear-data", package, "data"); }
+bool megler_ask_clear_cache(const char *package) { return ask_at_start("clear-cache", package, "cache"); }
 uint32_t megler_frames(void) { return mg_run_frames(); }
 
 /* The phone, for an app. The time zone is kept where Android's own code looks for it (bionic/mg_bionic.h). */

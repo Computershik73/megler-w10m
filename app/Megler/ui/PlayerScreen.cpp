@@ -202,9 +202,10 @@ public:
         const session::State state = session::snapshot().state;
         backLeaves_ = false;
         if (state == session::State::running) {
-            if (settingsShown_)
-                showSettings(false);
-            else if (menuShown_)
+            // (Back in the settings goes back within them first: from the app's App Permissions to them.)
+            if (settingsShown_) {
+                if (!settings_ || !settings_->back()) showSettings(false);
+            } else if (menuShown_)
                 showMenu(false);
             else if (keyboardUp_)
                 putKeyboardAway(true); // while the keyboard is up, Back is the keyboard's, as on Android
@@ -869,6 +870,8 @@ private:
             settings_ = makeSettingsView(shell_, SettingsScope{app.package, app.label, true});
             settingsHost_.Content(settings_->view());
         }
+        // (Closed from the app's App Permissions, they open at the settings again.)
+        if (!show && settings_) settings_->back();
         setVisible(settingsOverlay_, show);
         shellLog::write(show ? "player: settings opened" : "player: settings closed");
     }

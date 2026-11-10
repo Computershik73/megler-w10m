@@ -1535,9 +1535,17 @@ typedef struct megler_display_host {
  *                the shell's for the rest -- and the call waits for the answer (what it was before, when the question was
  *                put away unanswered or could not be put); it comes on a thread of the app's that may wait, never its main
  *                thread. The shell keeps
- *                what the user said, for the app, from run to run; it may grant a group it has nothing behind at once.
+ *                what the user said, for the app, from run to run; it may grant a group it has nothing behind at once,
+ *                and the user may refuse any group (_DENIED_FIXED, nothing asked), or have it asked every run (_UNDECIDED
+ *                until this run's answer).
  *                The framework (megler.Permissions) asks it of a group whose permissions the app's manifest asks for and
- *                whose answer Android's rules do not settle by themselves. Left NULL: every group is granted, nothing asked.
+ *                whose answer Android's rules do not settle by themselves; of a group an app has with its install (an app
+ *                for Android 5.1 or older, Google's own packages) without `ask`, where _DENIED_FIXED takes it away.
+ *                And "gms_location": whether Google Play services' own features in the app's process may have the
+ *                location -- one answer of the user's for every app, _GRANTED, _DENIED_FIXED or _UNDECIDED (not asked);
+ *                with `ask`, the user is asked where they have not answered, on a thread of the framework's that waits
+ *                (megler.MicroG gives Google Play services' context an attribution tag only where it is _GRANTED).
+ *                Left NULL: every group is granted, nothing asked.
  */
 enum { MEGLER_PERMISSION_UNDECIDED = 0, MEGLER_PERMISSION_GRANTED = 1, MEGLER_PERMISSION_DENIED = 2, MEGLER_PERMISSION_DENIED_FIXED = 3 };
 
@@ -2024,6 +2032,16 @@ MEGLER_API bool megler_ask_clear_data(const char *package);
 /* Whether such an ask waits for the app's next start: the shell forgets then what it keeps of the app's own, as Android's
    Clear storage does -- the user's answers to its permissions (player/PermissionHost.h). Needs megler_init. */
 MEGLER_API bool megler_clear_data_asked(const char *package);
+/*
+ * Clears an app's cache, as Android's "Clear cache" does, when the app next starts: before anything of it is open, what is in
+ * its private cache and code_cache folders (/data/data/<package>/cache and code_cache) and in its own Android/data/<package>/
+ * cache folder of the shared storage goes, the folders staying; its other files, settings, databases and accounts stay, and
+ * so do the user's answers to its permissions. Asked as megler_ask_clear_data is: a file named after the package in the
+ * folder clear-cache of the shared storage. True when the ask is written. Needs megler_init.
+ */
+MEGLER_API bool megler_ask_clear_cache(const char *package);
+/* Whether such an ask waits for the app's next start. Needs megler_init. */
+MEGLER_API bool megler_clear_cache_asked(const char *package);
 /* Frames presented since the app started. */
 MEGLER_API uint32_t megler_frames(void);
 

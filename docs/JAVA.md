@@ -844,6 +844,14 @@ Java's calls arrive there.
   `Android/obb/<package>` and `Android/media/<package>` under the shared
   storage, each there once asked for, and the Activity and the application
   context agree.
+- `cache-cleared`: the app's cache cleared between the runs, as Megler's app
+  page (Clear Cache) and Android's app info screen (Clear cache) ask for it:
+  the test's C side asks the core before the second run
+  (`megler_ask_clear_cache`), and the core clears it as the app starts
+  (`mg_run_clear_cache_if_asked`, said in the log). What the first run left in
+  `getCacheDir()`, `getCodeCacheDir()` and `getExternalCacheDir()` is gone in
+  the second, the folders there; what it left in `getFilesDir()` and
+  `getExternalFilesDir(null)` stays.
 - `volumes`: `StorageManager.getStorageVolumes()` is one volume, the primary:
   "Internal storage", emulated, not removable, mounted, with no UUID. The
   hidden `getVolumeList`, `getVolumePaths` and `getVolumeState`, called by
@@ -862,11 +870,13 @@ Java's calls arrive there.
   Before the request: `VIBRATE`, normal, granted with the install;
   `READ_CALENDAR`, not in the manifest, denied; `WRITE_EXTERNAL_STORAGE`,
   asked for only up to Android 9 (`maxSdkVersion` 28), denied and not among
-  `requestedPermissions`; `READ_CONTACTS` granted, the shell granting a group
-  it has nothing behind; the dangerous ones not yet in the first run, and in
-  the second as the first left them; `getPermissionInfo` says `CAMERA` is
-  dangerous, of the group `CAMERA`, and `VIBRATE` normal. Then one request of
-  nine, and a second while it is answered, told at once it was cancelled
+  `requestedPermissions`; `READ_CONTACTS` denied with no rationale, a group the
+  shell has nothing behind and would grant with no one asked, which the user
+  refused in the app's App Permissions; the dangerous ones not yet in the
+  first run, and in the second as the first left them; `getPermissionInfo`
+  says `CAMERA` is dangerous, of the group `CAMERA`, and `VIBRATE` normal.
+  Then one request of ten (`READ_CONTACTS` told no, nobody asked), and a
+  second while it is answered, told at once it was cancelled
   (empty arrays). The C side answers for the user (`system_permission`, the
   shell's `megler_system_host.permission`, its answers kept in a file of the
   data folder): every group allowed but the camera. The answer comes later,
@@ -3661,11 +3671,15 @@ whatever its name and nothing was asked of anyone). For one permission:
 - dangerous, of an app that targets Android 5.1 or older (or has no
   `<uses-sdk>`), or of Google's own packages (Play Store, Google Play services,
   its services framework), which a phone has as system apps: granted with the
-  install;
+  install -- unless the shell says the group is denied for good, the user's
+  Don't allow in the app's App Permissions, as Android's settings revoke an old
+  app's permission;
 - any other dangerous one: its group's (Android 14's groups), as the shell keeps
   it (`megler_system_host.permission`, `Native.permission`): granted, denied
   (`shouldShowRequestPermissionRationale` true, the app may ask again), denied
-  for good, or undecided.
+  for good (Windows' own no, a second no, or the user's Don't allow in the
+  app's App Permissions), or undecided (never asked, or asked every time and
+  not yet in this run).
 
 `requestPermissions` (an activity's or a platform `Fragment`'s) settles what
 those rules settle and asks the shell, on a thread of its own, for each group
@@ -3720,13 +3734,63 @@ permissions and by the location (`player/LocationHost.h`, which follows the
 consent while the app runs), and so is why no fix is handed while an app has
 requests (`LocationService`: the location off, Windows' no, no location
 device, no permission held and so nothing asked, Windows not answering yet,
-nothing found in 30 s of following). An app's App Settings list its
-groups, what was said, and change Megler's answers. Clearing an app's data
-(Clear Data on its page in Megler, or Clear storage on Android's app info
-screen in the app) forgets Megler's answers too, as Android's Clear storage
-resets an app's permissions: the shell does it as the clear is asked and as
-the app next starts with one waiting (`megler_clear_data_asked`). Windows'
+nothing found in 30 s of following).
+
+The user's own say over every group is the app's **App Permissions**
+(`ui/PermissionsScreen.cpp`), as Android 11 and later's App info > Permissions
+has them: reached from the app's page in Megler (Permissions), from its App
+Settings, and in the app's own package from its Settings (the player's menu),
+where it opens in their place and Back goes back to them. Each group the
+manifest asks for is in the list of what the app may have -- Allowed, Ask
+every time where there is any, Not allowed -- and a tap gives its choices,
+kept in the app's settings as `megler.permission.<group>`: **Allow** (Megler's
+yes; for a group Windows decides, Windows' own answer, which is said where it
+is known -- in the app's own package, Megler's process being another package
+-- with the way to its privacy settings), **Ask every time** (`ask`: Megler's
+question at the app's first request of the group in each run, its answer that
+run's alone, held in the process; for a group Windows decides, Windows' own
+question after Megler's yes) and **Don't allow** (`denied-fixed`: the app is
+told no and not asked -- over Windows' yes for the location, the camera and the
+microphone, and for the groups Megler has nothing behind, which it grants with
+no one asked otherwise). An app that has its permissions with its install is
+offered Allow and Don't allow, with Android's warning that refusing one may
+make it misbehave. What the shell decides of a group from what the user said,
+what Windows says and this run's answer (`permissionHost::decide`) is tested
+on a PC (`mg_shell_tests`), and the data app is refused its contacts so. What
+Megler says is the app's to hear: what an app does without asking (opening the
+camera Windows lets it have) is as it was. Below, read only, every other
+permission the manifest asks for, as Android names them ("Have full network
+access", "Display over other apps (special app access)"), granted with the
+install. Clearing an app's data (Clear Data on its page in Megler, or Clear
+storage on Android's app info screen in the app) forgets Megler's answers too,
+as Android's Clear storage resets an app's permissions: the shell does it as
+the clear is asked and as the app next starts with one waiting
+(`megler_clear_data_asked`). Clearing its cache (Clear Cache, Clear cache:
+`megler_ask_clear_cache`, the app's cache, code_cache and
+Android/data/<package>/cache emptied as it next starts) keeps them. Windows'
 own answers stay; they are changed in its privacy settings.
+
+**Google Play services' own use of the location.** Their features in the app's
+process (location accuracy, personal safety, semantic location: PersonalSafety
+and the like in the log) ask for the location as Google Play services itself,
+and GmsCore refuses such a request when the attribution tag of the identity it
+is made with is null or its location module's own ("internal location usage
+has a forbidden attribution tag", `gerz.h`); the identity is made of the
+context's tag (`ClientIdentity.c(Context)`), and on a phone such a request in
+an app's process would be the app's, another uid. Google Play services'
+package context (`MicroG.PackageContext.getAttributionTag`) answers
+`megler.app` only where the user has allowed it, and null otherwise, as before:
+one answer for every app (`megler.gmsLocation` in Megler's settings, read as the
+file has it now: `megler_system_host.permission`'s `gms_location`). The user is
+asked once, over the app, the first time such an identity is made with no
+answer (the context's caller has `ClientIdentity` on its stack): on a thread
+of the framework's (`Permissions.askGmsLocation`), the thread that wanted the
+tag told null meanwhile; later calls get the tag once allowed. Megler's
+Settings (Google Play Services' Location) and every Java app's App Permissions
+change it. The test app `gms-host` checks it with a stand-in of
+`ClientIdentity` in its Google Play services: no tag asked for plainly and no
+one asked, none at once for an identity and the user asked, then the tag once
+allowed -- or none, the user refusing, and nobody asked again.
 
 ### The phone's text messages and calls
 

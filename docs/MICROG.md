@@ -200,6 +200,17 @@ the service's context is the app's, which bound the service's own services as
 the app. A binding meant for Google Play services that none of its services
 takes is said in the log ("no service of Google Play services binds ...").
 
+The package context's own attribution tag (where none was asked for) is
+`megler.app` only where the user lets Google Play services' own features use
+the location, and null otherwise: Google's GmsCore refuses a location request
+of its own whose identity (`ClientIdentity.c(Context)`, made of that tag) has a
+null tag or its location module's ("internal location usage has a forbidden
+attribution tag"), and those requests are its own features' in every app's
+process -- personal safety, semantic location, place suggestions --, not the
+app's. One answer for every app, asked over the app the first time such an
+identity is made, kept in Megler's settings (docs/JAVA.md, "Permissions").
+microG makes no such identity, and is never asked about.
+
 A service of Google Play services is given one `onBind` for each intent that is
 different as Android's `Intent.filterEquals` has it -- its action, data, type,
 identifier and categories, not its extras (`MicroG.bindKey`) -- and the clients

@@ -6,7 +6,8 @@
 //    tapping an account in its settings opens Android's accounts screen, which had opened nothing here.
 //  - the app's info (android.settings.APPLICATION_DETAILS_SETTINGS for the app's own package): its name, version and
 //    package, Clear storage -- the core clears its data when it next starts (megler_ask_clear_data), and the app ends now,
-//    as Android stops an app whose data it clears -- and Force stop.
+//    as Android stops an app whose data it clears --, Clear cache -- the core clears what is in its cache folders when it
+//    next starts (megler_ask_clear_cache), the app going on meanwhile -- and Force stop.
 // They are made from their classes, not by the app's component factory: on Android they are the Settings app's.
 package megler;
 
@@ -237,8 +238,17 @@ public final class SystemScreens {
                     .setPositiveButton("Delete", (d, w) -> clear())
                     .setNegativeButton("Cancel", null)
                     .show()), 8);
+            add(this, column, button(this, "Clear cache", v -> clearCache()), 8);
             add(this, column, text(this, "Clear storage deletes the app's private files and its Android/data folder; "
-                    + "its Android/obb files stay, as on Android.", 13, false, 0.7f), 16);
+                    + "its Android/obb files stay, as on Android. Clear cache deletes what is in its cache folders when it next "
+                    + "starts; its files, settings and accounts stay.", 13, false, 0.7f), 16);
+        }
+
+        private void clearCache() {
+            boolean asked = Native.askClearCache();
+            android.util.Log.i("Megler", "app info: clear cache asked" + (asked ? "" : ", and the ask could not be written"));
+            Toast.makeText(this, asked ? "The app's cache is cleared the next time it starts." : "The app's cache could not be cleared.",
+                    Toast.LENGTH_LONG).show();
         }
 
         private void clear() {

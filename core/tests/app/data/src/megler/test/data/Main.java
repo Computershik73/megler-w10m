@@ -2113,6 +2113,31 @@ public class Main extends Activity {
                     && files.isDirectory() && pictures.isDirectory() && cache.isDirectory() && obb.isDirectory() && media[0].isDirectory()
                     && obb.equals(getApplicationContext().getObbDir()) && media[0].equals(getApplicationContext().getExternalMediaDirs()[0]);
         });
+        /*
+         * The app's cache cleared between the runs, as Megler's app page and Android's app info screen ask for it (the test's C
+         * side asks the core before the second, megler_ask_clear_cache): what the first run left in its cache folders -- its
+         * private cache and code_cache, its own Android/data/<package>/cache -- is gone in the second, the folders there; what it
+         * left in its files folders stays.
+         */
+        step("cache-cleared", () -> {
+            File[] cached = { new File(getCacheDir(), "run-1-cache.txt"), new File(getCodeCacheDir(), "run-1-code.txt"),
+                              new File(getExternalCacheDir(), "run-1-external-cache.txt") };
+            File[] kept = { new File(getFilesDir(), "run-1-files.txt"), new File(getExternalFilesDir(null), "run-1-external-files.txt") };
+            boolean ok = true;
+            StringBuilder said = new StringBuilder();
+            for (File f : cached) {
+                if (run == 1) try (java.io.FileWriter w = new java.io.FileWriter(f)) { w.write("cached in run 1\n"); }
+                said.append(f.getName()).append('=').append(f.exists()).append(' ');
+                ok &= f.exists() == (run == 1) && f.getParentFile().isDirectory();
+            }
+            for (File f : kept) {
+                if (run == 1) try (java.io.FileWriter w = new java.io.FileWriter(f)) { w.write("kept from run 1\n"); }
+                said.append(f.getName()).append('=').append(f.exists()).append(' ');
+                ok &= f.exists();
+            }
+            detail = said.toString();
+            return ok;
+        });
         step("volumes", () -> {
             android.os.storage.StorageManager sm = (android.os.storage.StorageManager) getSystemService(Context.STORAGE_SERVICE);
             java.util.List<android.os.storage.StorageVolume> list = sm.getStorageVolumes();
@@ -2165,11 +2190,13 @@ public class Main extends Activity {
                     + " info=" + cameraInfo.protectionLevel + "/" + cameraInfo.group + "/" + vibrateInfo.protectionLevel;
             /*
              * Before the request: a normal permission granted with the install; one the manifest does not ask for, and one asked for
-             * only up to Android 9, denied and not even among those it asks for; the contacts granted (the shell has nothing behind
-             * them); the dangerous ones of the run before as the user left them, of the first run not yet; no rationale before a no.
+             * only up to Android 9, denied and not even among those it asks for; the contacts denied, with no rationale -- a group
+             * the shell has nothing behind and grants with no one asked, which the user refused in the app's App Permissions; the
+             * dangerous ones of the run before as the user left them, of the first run not yet; no rationale before a no.
              */
             boolean held = checkSelfPermission(vibrate) == granted && checkSelfPermission(calendar) == denied && checkSelfPermission(write) == denied
-                    && checkSelfPermission(contacts) == granted && checkSelfPermission(read) == (first ? denied : granted)
+                    && checkSelfPermission(contacts) == denied && !shouldShowRequestPermissionRationale(contacts)
+                    && pm.checkPermission(contacts, getPackageName()) == denied && checkSelfPermission(read) == (first ? denied : granted)
                     && checkSelfPermission(sms) == (first ? denied : granted) && checkSelfPermission(camera) == denied
                     && !shouldShowRequestPermissionRationale(camera) && !shouldShowRequestPermissionRationale(vibrate)
                     && checkCallingOrSelfPermission(vibrate) == granted && checkPermission(read, android.os.Process.myPid(), android.os.Process.myUid()) == (first ? denied : granted)
@@ -6696,13 +6723,14 @@ public class Main extends Activity {
     /*
      * What the step "permissions" requests, and what it is to be told: the storage, the messages, the phone and the calls the
      * user lets the app have (the test's C side answers for the user); WRITE_EXTERNAL_STORAGE, asked for only up to Android 9,
-     * denied with no one asked; the camera refused; VIBRATE, normal, granted; READ_CALENDAR, not in the manifest, denied.
+     * denied with no one asked; the camera refused; VIBRATE, normal, granted; READ_CALENDAR, not in the manifest, denied;
+     * READ_CONTACTS, refused for good in the app's App Permissions, denied with no one asked.
      */
     private static final String[] PERMISSIONS = { android.Manifest.permission.READ_EXTERNAL_STORAGE, android.Manifest.permission.WRITE_EXTERNAL_STORAGE,
                                                   android.Manifest.permission.RECEIVE_SMS, android.Manifest.permission.READ_SMS, android.Manifest.permission.READ_PHONE_STATE,
                                                   android.Manifest.permission.READ_CALL_LOG, android.Manifest.permission.CAMERA, android.Manifest.permission.VIBRATE,
-                                                  android.Manifest.permission.READ_CALENDAR };
-    private static final int[] TOLD = { 0, -1, 0, 0, 0, 0, -1, 0, -1 };
+                                                  android.Manifest.permission.READ_CALENDAR, android.Manifest.permission.READ_CONTACTS };
+    private static final int[] TOLD = { 0, -1, 0, 0, 0, 0, -1, 0, -1, -1 };
     private boolean cancelled, resumeAwaited, resumedNow;
 
     @Override

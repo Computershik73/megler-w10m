@@ -10,8 +10,9 @@
     <uses-permission android:name="android.permission.READ_PHONE_STATE" />
     <uses-permission-sdk-23 android:name="android.permission.READ_CALL_LOG" />
     <!-- Main's step "permissions", which requests them and the four above at run time: the storage, which the user lets the app
-         have, and the camera, which the user refuses twice, the second time for good; the contacts, which the shell grants with
-         no one asked (it has nothing behind them); a normal one, granted with the install; and WRITE_EXTERNAL_STORAGE asked
+         have, and the camera, which the user refuses twice, the second time for good; the contacts, which the shell would grant
+         with no one asked (it has nothing behind them) and the user refused in the app's App Permissions; a normal one, granted
+         with the install; and WRITE_EXTERNAL_STORAGE asked
          for only up to Android 9, which is no permission of the app's on the Android Megler says it is. -->
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="28" />

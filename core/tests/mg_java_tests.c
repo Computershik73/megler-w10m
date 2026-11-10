@@ -806,12 +806,19 @@ static MEGLER_CB int bio_verify(void *user, const char *message)
 /*
  * The user's answers to the permission groups the app asks for (megler_system_host.permission), as the shell keeps them: in a
  * file of the data folder, so that the data app's second run finds what its first left. For the data app the user lets it
- * have every group but the camera, which is refused each time it is asked, the second time for good; the contacts are
- * granted with no one asked, as the shell grants a group it has nothing behind. Every other app has every group granted, as
- * before there were questions. What was asked is said in g_permissions_asked, each group followed by ';'.
+ * have every group but the camera, which is refused each time it is asked, the second time for good; and the contacts,
+ * which the shell would grant with no one asked (it has nothing behind them), the user refused in the app's App
+ * Permissions: denied for good, never to be asked. Every other app has every group granted, as before there were
+ * questions. What was asked is said in g_permissions_asked, each group followed by ';'.
  */
 static bool g_data_app;
 static char g_permissions_asked[256];
+/*
+ * Google Play services' own use of the location ("gms_location"): one answer of the user's for every app, which nobody has
+ * given when an app starts. Asked, the user takes a moment and allows it -- or, with the script `deny`, refuses it for good.
+ * g_gms_asked counts the questions.
+ */
+static int g_gms_location = MEGLER_PERMISSION_UNDECIDED, g_gms_asked;
 
 static int permission_kept(const char *group)
 {
@@ -835,8 +842,22 @@ static MEGLER_CB int system_permission(void *user, const char *group, bool ask)
 {
     int state;
     (void)user;
+    if (!strcmp(group, "gms_location")) {
+        if (ask && g_gms_location == MEGLER_PERMISSION_UNDECIDED) {
+            g_gms_asked++;
+            mg_sleep_ns(300000000ull);
+            g_gms_location = g_script_count && !strcmp(g_script[0], "deny") ? MEGLER_PERMISSION_DENIED_FIXED : MEGLER_PERMISSION_GRANTED;
+        }
+        return g_gms_location;
+    }
     if (!g_data_app) return MEGLER_PERMISSION_GRANTED;
-    if (!strcmp(group, "contacts")) return MEGLER_PERMISSION_GRANTED;
+    if (!strcmp(group, "contacts")) {
+        if (ask) {
+            size_t n = strlen(g_permissions_asked);
+            snprintf(g_permissions_asked + n, sizeof(g_permissions_asked) - n, "%s;", group);
+        }
+        return MEGLER_PERMISSION_DENIED_FIXED;
+    }
     state = permission_kept(group);
     if (ask && state != MEGLER_PERMISSION_GRANTED && state != MEGLER_PERMISSION_DENIED_FIXED) {
         char *path = mg_sprintf("%s/test-permissions.txt", megler_data_dir());
@@ -2717,7 +2738,7 @@ static int run_data(void)
     static const char *const steps[] = { "open", "kept", "insert", "query", "types", "update", "delete", "rollback", "commit", "constraint", "statement", "text",
                                          "bad-sql", "memory", "upgrade", "wal-restored", "left",
                                          /* And the storage as an app sees it. */
-                                         "environment", "own-folders", "volumes", "space", "permissions", "download", "list-root",
+                                         "environment", "own-folders", "cache-cleared", "volumes", "space", "permissions", "download", "list-root",
                                          /* And the battery, the time zone, TLS (conscrypt's: a TLS server and client of the app's own on loopback,
                                             and an https URL through Android's HTTP client; or, where its library is not in the Android root, the
                                             stand-in that fails politely), the app's network security configuration (an authority of its own
@@ -2818,6 +2839,8 @@ static int run_data(void)
     line = wait_line("I/DataTest: run ", at, 60);
     CHECK(line >= 0 && sscanf(strstr(line_at(line), ": run ") ? strstr(line_at(line), ": run ") : "", ": run %d", &run) == 1 && run >= 1 && (!want || run == want));
     say("  this is run %d of the app on its database", run);
+    /* The second starts with its cache cleared, as asked before it (mg_tests_java_run): the core says so, and the ask is gone. */
+    if (run == 2) CHECK(find_line("run: the app's cache was cleared, as asked: ", 0) >= 0 && !megler_clear_cache_asked("megler.test.data"));
     for (i = 0; i < (int)MG_COUNT(steps); i++) {
         snprintf(text, sizeof(text), "I/DataTest: %s ok", steps[i]);
         expect_line(text, &at, 60);
@@ -3572,12 +3595,28 @@ static int run_microg(void)
  * name of its ApplicationInfo is the one Application.getProcessName gives it here, the app's. They take that process for
  * their main one, the only one where GmsModuleFinder makes their module configuration again at once; in every app that
  * hosted them the names differed, and each module scan asked for another, five a second, without end.
+ *
+ * And their package context's attribution tag, which the identity of a location request of their own is made of
+ * (ClientIdentity.c, a class of that name in the stand-in as in GmsCore): GmsCore refuses such a request where it is null,
+ * and Megler gives one only where the user lets Google Play services' own features have the location. Nobody has said at
+ * the start: asked for plainly, no tag and no one asked; for an identity, no tag at once and the user asked, once, on a
+ * thread of the framework's (the stand-in's user takes 0.3 s); then the tag "megler.app" once allowed -- or, run with
+ * `deny`, none for good, and nobody asked again. An attribution context keeps its own tag either way.
  */
 static int run_gms_host(void)
 {
+    const bool deny = g_script_count && !strcmp(g_script[0], "deny");
     CHECK(wait_line("I/GmsOwnTest: main process true application=megler.test.gmshost current=megler.test.gmshost", 0, 600) >= 0);
     CHECK(find_line("I/MicroG: Google Play services' application runs in this process, megler.test.gmshost, as its main one", 0) >= 0);
     CHECK(find_line("I/GmsHostTest: started ComponentInfo{com.google.android.gms/megler.test.gmsown.Probe}", 0) >= 0);
+    CHECK(wait_line("I/GmsOwnTest: attribution tag plain=null asked=false first=null asked=true", 0, 120) >= 0);
+    CHECK(wait_line(deny ? "I/GmsOwnTest: attribution tag later=null again=null attributed=probe"
+                         : "I/GmsOwnTest: attribution tag later=megler.app again=megler.app attributed=probe", 0, 300) >= 0);
+    /* The user was asked once (the core says the question as it is answered). */
+    CHECK(find_line("java: the app asks for the permission group gms_location: ", 0) >= 0 && g_gms_asked == 1);
+    CHECK(find_line(deny ? "permissions: Google Play services' own use of the location, the user asked: not allowed, for every app"
+                         : "permissions: Google Play services' own use of the location, the user asked: allowed, for every app", 0) >= 0);
+    say("  Google Play services' own location: the user asked %d time(s), %s", g_gms_asked, deny ? "and refused it" : "and allowed it");
     CHECK(find_line("FATAL EXCEPTION", 0) < 0);
     say_app_lines("/GmsOwnTest: ");
     return g_failed;
@@ -3778,6 +3817,11 @@ int mg_tests_java_run(const char *which, const char *apk, const char *android_ro
     }
     /* The data app's second run is on another battery than the one the core has when nobody has said: what the app then reads is what was set here. */
     if (!strcmp(which, "data") && g_script_count && !strcmp(g_script[0], "run:2")) mg_battery_set(&k_battery_run2);
+    /* And with its cache to be cleared as it starts, as Megler's app page asks for it (megler_ask_clear_cache): its step cache-cleared
+       finds what the first run left in its cache folders gone, and its other files there. */
+    if (!strcmp(which, "data") && g_script_count && !strcmp(g_script[0], "run:2")) {
+        CHECK(megler_ask_clear_cache("megler.test.data") && megler_clear_cache_asked("megler.test.data"));
+    }
     /* And in a time zone the shell names, as it must, before the app starts: one with summer time, and in the second run a name that is no zone's. */
     if (!strcmp(which, "data")) megler_set_timezone(g_script_count && !strcmp(g_script[0], "run:2") ? "Nowhere/At_All" : "Europe/Berlin");
     /* And in the language and region the shell names, likewise before the start: English (United States), and in the second run Russian (Russia). */

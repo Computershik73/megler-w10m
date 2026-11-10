@@ -15,6 +15,7 @@
 #include "player/Session.h"
 #include "player/StorageHost.h"
 #include "shell/AppPackage.h"
+#include "shell/Files.h"
 #include "shell/Platform.h"
 #include "shell/Settings.h"
 #include "shell/ShellLog.h"
@@ -75,12 +76,21 @@ public:
     }
 
     void refresh() override {
+        if (sub_) {
+            sub_->refresh();
+            return;
+        }
         if (!host_ || !showsPhone()) return;
         // The phone's folders are looked for while Megler starts: shown once they are known.
         if (!linksShown_ && StorageHost::shared().searched()) rebuild();
         // Memory moves; once a second is plenty.
         if (++ticks_ % 4 != 0 || !memory_) return;
         if (auto value = memory_.Children().GetAt(1).try_as<TextBlock>()) value.Text(hs(platform::memorySummary()));
+    }
+
+    /// Shown again (Megler's page of the app's settings, back from its App Permissions): what they come to may have changed.
+    void appeared() override {
+        if (host_ && forApp() && !sub_) rebuild();
     }
 
 private:
@@ -269,9 +279,9 @@ private:
         });
     }
 
-    /// An app's permissions (player/PermissionHost.h): each of Android's groups its manifest asks for, what was said of it,
-    /// and the way to change it -- Megler's question's answer here, Windows' in Windows' privacy settings. And what its own
-    /// package declares to Windows (megler_appx_capabilities).
+    /// An app's permissions (player/PermissionHost.h): what they come to, in a row that opens its App Permissions
+    /// (ui/PermissionsScreen.cpp) -- a page of its own in Megler, in place of these settings in the app's own package (Back
+    /// comes back to them). And what its own package declares to Windows (megler_appx_capabilities).
     UIElement permissionsSection() {
         std::optional<ApkEntry> entry;
         for (const auto& e : Library::instance().entries())
@@ -284,58 +294,117 @@ private:
             rows.push_back(listItem("Not Known Yet", "Megler has not read which permissions the app asks for: the Library reads it again once Megler is updated"));
             return listSection("Permissions", rows);
         }
-        const std::string label = scope_.label.empty() ? scope_.package : scope_.label;
-        for (const auto& group : permissionHost::groupsOf(entry->report)) {
-            // ("the camera" heads its row as "Camera")
-            std::string title = group.what.compare(0, 4, "the ") == 0 ? group.what.substr(4) : group.what;
-            if (!title.empty() && title[0] >= 'a' && title[0] <= 'z') title[0] = char(title[0] - 'a' + 'A');
-            if (group.decider == permissionHost::Decider::none) {
-                rows.push_back(listItem(title, "Allowed: Megler gives an app none of the phone's " + group.what + ", so there is nothing to refuse"));
-                continue;
-            }
-            if (group.decider == permissionHost::Decider::windows) {
-                // Windows' answer is the package's own: known here only in the app's own package.
-                std::string said = "Windows asks when the app first wants it";
-                if (scope_.own) {
-                    said = permissionHost::windowsSaid(group.name);
-                } else {
-                    said = "Windows decides, in its privacy settings";
-                }
-                const std::wstring page = permissionHost::windowsSettingsPage(group.name);
-                rows.push_back(button(listItem(title, said + " (tap: Windows' settings)"),
-                                      [page] { winrt::Windows::System::Launcher::LaunchUriAsync(winrt::Windows::Foundation::Uri(page)); }, ButtonKind::plain,
-                                      title));
-                continue;
-            }
-            const int state = permissionHost::kept(scope_.package, group.name);
-            const std::string said = state == MEGLER_PERMISSION_GRANTED    ? "Allowed"
-                                     : state == MEGLER_PERMISSION_DENIED   ? "Not allowed; the app may ask again"
-                                     : state == MEGLER_PERMISSION_DENIED_FIXED ? "Not allowed"
-                                                                               : "Asked when the app wants it";
-            rows.push_back(button(listItem(title, said), [this, group, label] { changePermission(group, label); }, ButtonKind::plain, title));
-        }
-        if (rows.empty()) rows.push_back(listItem("None", "The app asks for no permission the user is asked about"));
+        rows.push_back(button(listItem("App Permissions", permissionsSummary(scope_.package, scope_.own), glyphs::contact), [this] { openPermissions(); },
+                              ButtonKind::plain, "App Permissions"));
         return listSection("Permissions", rows,
-                           "What the app asks for that Android asks the user about, and what was said. Its own package declares " +
-                               appPackage::describeCapabilities(entry->report.capabilities()) + " to Windows, and nothing else." + applies());
+                           "What the app may have of what Android asks the user about: allowed, asked every time, or not allowed. Its own "
+                           "package declares " +
+                               appPackage::describeCapabilities(entry->report.capabilities()) + " to Windows, and nothing else.");
     }
 
-    /// A permission group Megler asks about: allowed, not allowed (for good), or asked again when the app wants it.
-    void changePermission(const permissionHost::Group& group, const std::string& label) {
-        AppShell::DialogSpec spec;
-        spec.title = "Permission: " + group.what;
-        spec.message = "Whether " + label + " may have " + group.what + ". \"Ask\" has it asked again the next time the app wants it.";
-        spec.buttons = {"Ask", "Don't Allow", "Allow"};
-        const std::weak_ptr<SettingsBody> weak = weak_from_this();
-        const std::string package = scope_.package, name = group.name;
-        shell_.dialog(std::move(spec), [weak, package, name](int button, std::string) {
-            auto self = weak.lock();
-            if (!self || button < 0) return;
-            const int state = button == 2 ? MEGLER_PERMISSION_GRANTED : button == 1 ? MEGLER_PERMISSION_DENIED_FIXED : MEGLER_PERMISSION_UNDECIDED;
-            permissionHost::keep(package, name, state);
-            shellLog::write("settings: " + package + "'s permission " + name + (button == 2 ? " allowed" : button == 1 ? " not allowed" : " to be asked again"));
-            self->rebuild();
-        });
+    /// The app's App Permissions: pushed in Megler; in the app's own package, whose settings are over the app and no page of
+    /// the shell's, shown in their place.
+    void openPermissions() {
+        if (!scope_.own) {
+            shell_.push(makePermissionsScreen(shell_, scope_.package, scope_.label));
+            return;
+        }
+        sub_ = makePermissionsView(shell_, scope_);
+        // (Made once: the view is in it, and may be the child of no other.)
+        subPage_ = vstack(0);
+        add(subPage_, button(listItem("App Permissions", "Back to the settings", glyphs::back), [this] { back(); }, ButtonKind::plain,
+                             "Back to the settings"));
+        add(subPage_, sub_->view());
+        rebuild();
+    }
+
+    bool back() override {
+        if (!sub_) return false;
+        sub_ = nullptr;
+        subPage_ = nullptr;
+        rebuild();
+        return true;
+    }
+
+    /// An app's own package: what its files take, as Android's Storage & cache page says it -- the app (its APK), its data and
+    /// its cache, measured on a thread of their own the first time the settings are shown -- and Clear Cache, which its next
+    /// start carries out (megler_ask_clear_cache). What was measured is kept in the shared folder for its page in Megler,
+    /// which cannot read this package's files (appStorageSizes).
+    UIElement storageSizesSection() {
+        if (!measuring_ && !measured_) measureStorage();
+        std::optional<ApkEntry> entry;
+        for (const auto& e : Library::instance().entries())
+            if (e.report.package == scope_.package) entry = e;
+        const std::string measuring = "Measuring…";
+        std::vector<UIElement> rows;
+        rows.push_back(labeledContent("App", entry ? formattedByteCount(entry->size) : std::string("—")));
+        rows.push_back(labeledContent("User data", measured_ ? formattedByteCount(sizes_.data) : measuring));
+        rows.push_back(labeledContent("Cache", measured_ ? formattedByteCount(sizes_.cache) : measuring));
+        const std::string package = scope_.package;
+        rows.push_back(button(listItem("Clear Cache", "What it keeps in its cache folders goes the next time it starts", glyphs::trash), [this, package] {
+            shell_.confirm("Clear the cache?", "What the app keeps in its cache folders is deleted the next time it starts. Its files, settings, "
+                                               "accounts and permissions stay.",
+                           "Clear Cache", false, [this, package] {
+                               const bool asked = megler_ask_clear_cache(package.c_str());
+                               shellLog::write("settings: clear the cache of " + package + (asked ? ", asked" : ", could not be asked"));
+                               shell_.alert(asked ? "Cache Will Be Cleared" : "Couldn't Clear the Cache",
+                                            asked ? "It goes the next time the app starts." : "Megler couldn't write the request in its storage.");
+                           });
+        }, ButtonKind::plain, "Clear Cache"));
+        return listSection("Storage", rows,
+                           "User data is the app's private files and its Android/data in the shared storage, the cache what it keeps in its "
+                           "cache folders. Clear Data is on its page in Megler, and on Android's app info screen in the app.");
+    }
+
+    /// The sizes, on a worker thread; then shown, and kept for Megler's page of the app.
+    void measureStorage() {
+        measuring_ = true;
+        const std::string package = scope_.package;
+        auto sizes = std::make_shared<AppStorageSizes>();
+        const std::weak_ptr<SettingsBody> weak = shared_from_this();
+        shell_.runInBackground(
+            [package, sizes] {
+                const std::wstring pkg = widen(package), shared = appPackage::sharedFolder();
+                const std::wstring own = platform::localStateDirectory() + L"\\apps\\" + pkg + L"\\data";
+                const std::wstring external = shared.empty() ? std::wstring() : shared + L"\\apps\\" + pkg + L"\\sdcard\\Android\\data\\" + pkg;
+                const uint64_t cache = files::treeSize(own + L"\\cache") + files::treeSize(own + L"\\code_cache") +
+                                       (external.empty() ? 0 : files::treeSize(external + L"\\cache"));
+                const uint64_t all = files::treeSize(own) + (external.empty() ? 0 : files::treeSize(external));
+                sizes->cache = cache;
+                sizes->data = all > cache ? all - cache : 0;
+                sizes->at = localDateTime();
+                if (!shared.empty())
+                    files::write(shared + L"\\apps\\" + pkg + L"\\storage.txt",
+                                 format("data=%llu\r\ncache=%llu\r\nat=%s\r\n", (unsigned long long)sizes->data, (unsigned long long)sizes->cache,
+                                        sizes->at.c_str()));
+                shellLog::write(format("settings: %s's storage: data %llu bytes, cache %llu bytes", package.c_str(), (unsigned long long)sizes->data,
+                                       (unsigned long long)sizes->cache));
+            },
+            [weak, sizes] {
+                auto self = weak.lock();
+                if (!self) return;
+                self->sizes_ = *sizes;
+                self->measured_ = true;
+                self->measuring_ = false;
+                self->rebuild();
+            });
+    }
+
+    /// Whether Google Play services' own features may use the location, in every app (player/PermissionHost.h, gmsLocation): asked
+    /// the first time they want it, and changed here.
+    UIElement gmsLocationSection() {
+        const int state = permissionHost::gmsLocation();
+        std::vector<UIElement> rows;
+        rows.push_back(choice("Ask", "Megler asks the first time they want it", state == MEGLER_PERMISSION_UNDECIDED,
+                              [] { permissionHost::keepGmsLocation(MEGLER_PERMISSION_UNDECIDED); }));
+        rows.push_back(choice("Allow", "Their requests are made with a tag of their own, which Google Play services takes",
+                              state == MEGLER_PERMISSION_GRANTED, [] { permissionHost::keepGmsLocation(MEGLER_PERMISSION_GRANTED); }));
+        rows.push_back(choice("Don't Allow", "Their requests are refused, as Google Play services refuses them without one",
+                              state == MEGLER_PERMISSION_DENIED_FIXED, [] { permissionHost::keepGmsLocation(MEGLER_PERMISSION_DENIED_FIXED); }));
+        return listSection("Google Play Services' Location", rows,
+                           "Location accuracy, personal safety, place suggestions: Google Play services run in each app's process here, and "
+                           "their own features follow where the phone is, in every app Windows lets have the location, apart from what the "
+                           "app itself asks for. One answer for every app; it applies when an app next starts.");
     }
 
     /// Where apps are told the phone is (player/LocationHost.h): the phone's location, or a place set here.
@@ -612,6 +681,11 @@ private:
     void rebuild() {
         if (!host_) return;
         const auto& p = palette();
+        // The app's App Permissions open in place (an app's own package), a line back to these settings over them.
+        if (sub_) {
+            host_.Content(subPage_);
+            return;
+        }
         auto column = vstack(0);
         column.Padding(ThicknessHelper::FromLengths(16, 0, 16, 24));
 
@@ -625,8 +699,10 @@ private:
         }
 
         if (forApp()) add(column, permissionsSection());
+        if (scope_.own) add(column, storageSizesSection());
         add(column, renderSection());
         add(column, servicesSection());
+        if (!forApp()) add(column, gmsLocationSection());
         add(column, localeSection());
         add(column, locationSection());
         if (!forApp()) add(column, themeSection());
@@ -666,6 +742,10 @@ private:
     AppShell& shell_;
     SettingsScope scope_;
     ContentControl host_{nullptr};
+    std::shared_ptr<SettingsView> sub_; // the app's App Permissions, open in place of these (an app's own package)
+    StackPanel subPage_{nullptr};       // ... with the line back over them
+    AppStorageSizes sizes_;             // an app's own package: what its files take (storageSizesSection)
+    bool measuring_ = false, measured_ = false;
     Grid memory_{nullptr};
     int ticks_ = 0;
     bool linksShown_ = false; // the Android Storage section was built after the search for the links was over
@@ -686,6 +766,7 @@ public:
     }
 
     void refresh() override { body_->refresh(); }
+    void appeared() override { body_->appeared(); }
 
 private:
     std::string title_;
@@ -703,6 +784,28 @@ std::shared_ptr<Page> makeSettingsScreen(AppShell& shell) { return std::make_sha
 
 std::shared_ptr<Page> makeAppSettingsScreen(AppShell& shell, std::string package, std::string label) {
     return std::make_shared<SettingsScreen>(shell, SettingsScope{std::move(package), std::move(label), false});
+}
+
+AppStorageSizes appStorageSizes(const std::string& package) {
+    AppStorageSizes sizes;
+    const std::wstring shared = appPackage::sharedFolder();
+    std::string text;
+    if (shared.empty() || package.empty() || !files::read(shared + L"\\apps\\" + widen(package) + L"\\storage.txt", text)) return sizes;
+    size_t at = 0;
+    while (at < text.size()) {
+        size_t end = text.find('\n', at);
+        if (end == std::string::npos) end = text.size();
+        std::string line = text.substr(at, end - at);
+        at = end + 1;
+        while (!line.empty() && (line.back() == '\r' || line.back() == ' ')) line.pop_back();
+        if (line.compare(0, 5, "data=") == 0)
+            sizes.data = strtoull(line.c_str() + 5, nullptr, 10);
+        else if (line.compare(0, 6, "cache=") == 0)
+            sizes.cache = strtoull(line.c_str() + 6, nullptr, 10);
+        else if (line.compare(0, 3, "at=") == 0)
+            sizes.at = line.substr(3);
+    }
+    return sizes;
 }
 
 } // namespace megler::app::ui

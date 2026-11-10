@@ -636,6 +636,53 @@ void AppShell::dialog(DialogSpec spec, std::function<void(int, std::string)> don
         add(column, t);
     }
     if (!spec.message.empty()) add(column, text(spec.message, font::bodyMedium, weightNormal(), p.onSurfaceVariant));
+    // The choices: rows of a radio button (the primary colour's ring, filled for the one chosen) and the choice's title and
+    // line, each closing the dialog with its index after the buttons'. The rows reach out over the dialog's margin, as a list's.
+    if (!spec.choices.empty()) {
+        auto list = vstack(0);
+        list.Margin(ThicknessHelper::FromLengths(-24, 12, -24, 0));
+        for (size_t i = 0; i < spec.choices.size(); ++i) {
+            const bool chosen = int(i) == spec.chosen;
+            Grid row;
+            ColumnDefinition c0, c1;
+            c0.Width(GridLengthHelper::Auto());
+            c1.Width(GridLengthHelper::FromValueAndType(1, GridUnitType::Star));
+            row.ColumnDefinitions().Append(c0);
+            row.ColumnDefinitions().Append(c1);
+            Grid radio;
+            radio.Width(20);
+            radio.Height(20);
+            radio.VerticalAlignment(VerticalAlignment::Center);
+            radio.Margin(ThicknessHelper::FromLengths(2, 0, 18, 0));
+            winrt::Windows::UI::Xaml::Shapes::Ellipse ring;
+            ring.Stroke(brush(chosen ? p.primary : p.onSurfaceVariant));
+            ring.StrokeThickness(2);
+            radio.Children().Append(ring);
+            if (chosen) {
+                winrt::Windows::UI::Xaml::Shapes::Ellipse dot;
+                dot.Width(10);
+                dot.Height(10);
+                dot.Fill(brush(p.primary));
+                radio.Children().Append(dot);
+            }
+            row.Children().Append(radio);
+            auto titles = vstack(0);
+            titles.VerticalAlignment(VerticalAlignment::Center);
+            add(titles, text(spec.choices[i].first, font::bodyLarge, weightNormal(), p.onSurface));
+            if (!spec.choices[i].second.empty()) {
+                auto line = text(spec.choices[i].second, font::bodyMedium, weightNormal(), p.onSurfaceVariant);
+                line.TextWrapping(TextWrapping::Wrap);
+                add(titles, line);
+            }
+            Grid::SetColumn(titles, 1);
+            row.Children().Append(titles);
+            row.MinHeight(48);
+            row.Padding(ThicknessHelper::FromLengths(24, 6, 24, 6));
+            const int index = int(spec.buttons.size() + i);
+            add(list, button(row, [this, index] { closeDialog(index); }, ButtonKind::plain, spec.choices[i].first));
+        }
+        add(column, list);
+    }
     dialogField_ = nullptr;
     dialogSecret_ = nullptr;
     if (spec.field && spec.secret) {
