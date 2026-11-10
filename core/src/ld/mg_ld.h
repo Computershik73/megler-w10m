@@ -170,7 +170,10 @@ bool mg_patch_tp_target(mg_addr pc, int *reg, mg_addr *target);
 bool mg_patch_sys_emulate(u32 w, mg_addr *regs);
 /* The same for the instruction at `pc`, where it faulted: the thread then goes on after it. */
 bool mg_patch_sys_fault(mg_addr pc, mg_addr *regs);
-/* 0 quiet, 1 one line per library, 2 every unresolved import as well. */
+/*
+ * 0 quiet, 1 one line per library and one naming its imports nothing provides (the first ones, as many as the line has
+ * room for), 2 every unresolved import as it is met as well.
+ */
 void mg_ld_set_verbosity(int v);
 
 /* What was done to a library's code so it runs here, for reports and tests. */
@@ -180,7 +183,7 @@ typedef struct mg_ld_stats {
     u32 plt_entries;       /* ARM-mode PLT entries rewritten */
     u32 arm_functions;     /* exported functions in ARM (not Thumb) mode */
     u32 thumb_functions;
-    u32 unresolved;
+    u32 unresolved;        /* imports nothing provides, each name once */
     u32 svc_sites;         /* direct system calls intercepted */
     u32 tp_led_out;        /* x86_64: accesses of the thread pointer's segment through a register, led out to the island */
     u32 svc_led_out;       /* 32-bit ARM: of svc_sites, ARM ones of a library of Go's led out to the core (arm/mg_patch.c), not traps; ARM64: every one led out */

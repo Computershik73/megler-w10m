@@ -462,6 +462,47 @@ typedef struct reloc_ctx {
     int phase;
 } reloc_ctx;
 
+/*
+ * An import nothing provides, kept by its name in the library's string table the first time: several relocations may ask
+ * for one name, and it is counted once. False when it was kept already.
+ */
+static bool keep_unresolved(mg_lib *lib, const char *name)
+{
+    u32 i;
+    for (i = 0; i < lib->stats.unresolved; i++)
+        if (!strcmp(lib->unresolved[i], name)) return false;
+    if (lib->stats.unresolved == lib->unresolved_cap) {
+        lib->unresolved_cap = lib->unresolved_cap ? lib->unresolved_cap * 2 : 8;
+        lib->unresolved = (const char **)mg_realloc((void *)lib->unresolved, lib->unresolved_cap * sizeof(*lib->unresolved));
+    }
+    lib->unresolved[lib->stats.unresolved++] = name;
+    return true;
+}
+
+/*
+ * The names of a library's imports nothing provides, for its lines in the log as it loads: as many as fit in `cap` (the
+ * first at least in part), then how many more there are.
+ */
+static void unresolved_names(const mg_lib *lib, char *out, size_t cap)
+{
+    enum { MORE = 24 };                                       /* room kept for ", and 4294967295 more" */
+    size_t n = 0;
+    u32 i, said = 0;
+    out[0] = 0;
+    for (i = 0; i < lib->stats.unresolved; i++) {
+        size_t len = strlen(lib->unresolved[i]);
+        if (n + 2 + len + MORE >= cap) break;
+        n += (size_t)snprintf(out + n, cap - n, "%s%s", i ? ", " : "", lib->unresolved[i]);
+        said++;
+    }
+    if (!said && lib->stats.unresolved) {
+        /* (A name too long for the line, a C++ one's: its start.) */
+        n = (size_t)snprintf(out, cap - MORE, "%.*s...", (int)(cap - MORE - 4), lib->unresolved[0]);
+        said = 1;
+    }
+    if (said < lib->stats.unresolved) snprintf(out + n, cap - n, ", and %u more", (unsigned)(lib->stats.unresolved - said));
+}
+
 static bool reloc_symbol(reloc_ctx *c, u32 index, bool want_fn, mg_addr *addr, const ElfW(Sym) **sym, mg_lib **def)
 {
     mg_lib *lib = c->lib;
@@ -488,12 +529,13 @@ static bool reloc_symbol(reloc_ctx *c, u32 index, bool want_fn, mg_addr *addr, c
             /* Counted, said and given its stub on the first pass: the second applies only what resolvers give, which this is not. */
             *addr = 0;
         } else {
-            g_unresolved++;
-            lib->stats.unresolved++;
-            if (g_verbosity >= 2) mg_warn("ld: %s: unresolved %s %s", lib->name, want_fn ? "function" : "symbol", name);
+            /* (Each name counted once, and said with the others in the library's line as it loads: mg_ld_load.) */
+            bool first = keep_unresolved(lib, name);
+            if (first) g_unresolved++;
+            if (first && g_verbosity >= 2) mg_warn("ld: %s: unresolved %s %s", lib->name, want_fn ? "function" : "symbol", name);
             /* A function gets a stub that says so when called; data gets NULL, and a note now. */
             *addr = want_fn || ELF_ST_TYPE(own->st_info) == STT_FUNC ? mg_patch_unresolved_stub(lib, name) : 0;
-            if (!*addr && g_verbosity < 2) mg_warn("ld: %s: unresolved data symbol %s", lib->name, name);
+            if (!*addr && first && g_verbosity < 2) mg_warn("ld: %s: unresolved data symbol %s", lib->name, name);
         }
     }
     c->cached_ok = true;
@@ -1407,7 +1449,12 @@ static mg_lib *load_lib(const char *name, bool runtime, const char *host_path)
         mg_info("ld: %s at %p (%u KB), %u Thumb / %u ARM functions, %u thread-pointer reads and %u PLT entries rewritten%s",
                 lib->name, (void *)(lib->base + lib->vmin), (unsigned)((lib->vmax - lib->vmin) >> 10), lib->stats.thumb_functions, lib->stats.arm_functions,
                 lib->stats.tp_reads, lib->stats.plt_entries, lib->stats.unresolved ? ", with unresolved imports" : "");
-        if (lib->stats.unresolved) mg_warn("ld: %s: %u imports are not provided", lib->name, lib->stats.unresolved);
+        if (lib->stats.unresolved) {
+            /* Which, by name: the first ones, as many as the line has room for (DANA's libjabe.so had one, and said only "1"). */
+            char names[320];
+            unresolved_names(lib, names, sizeof(names));
+            mg_warn("ld: %s: %u imports are not provided: %s", lib->name, lib->stats.unresolved, names);
+        }
 #if MG_ARCH_ARM32
         if (lib->stats.tp_reads_failed) mg_err("ld: %s: %u thread-pointer reads are out of an island's reach", lib->name, lib->stats.tp_reads_failed);
         /* (arm/mg_patch.c: a library of Go's, whose calls are made on its goroutines' small stacks.) */

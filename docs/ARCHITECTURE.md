@@ -464,7 +464,11 @@ and never both at once.
 An island is the library's own bit of executable memory, within a branch's reach
 (16 MB) of its text: the thread-pointer trampolines, the PLT thunks, and a stub for
 every import nothing provides (it logs the name when called and returns zero, so a
-missing function is a line in the log and not a crash at load).
+missing function is a line in the log and not a crash at load). The library's line
+as it loads names those imports, each once however many relocations ask for it, as
+many as the line has room for and then how many more ("ld: libjabe.so: 1 imports
+are not provided: killpg"); it said only how many until 0.1.0.678, which DANA's
+log showed. The guest test `t_unres` checks both lines.
 
 Memory an app asks for as writable and executable at once (a JIT's code heap) cannot
 exist. Such a region is writable until something executes in it and executable until
