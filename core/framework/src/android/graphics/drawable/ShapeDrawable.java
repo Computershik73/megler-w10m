@@ -23,6 +23,14 @@ public class ShapeDrawable extends Drawable {
     private void updateShader(Rect b) { if (mShaderFactory != null && b.width() > 0 && b.height() > 0) mPaint.setShader(mShaderFactory.resize(b.width(), b.height())); }
     public void setXfermode(Xfermode x) { mPaint.setXfermode(x); invalidateSelf(); }
     @Override protected void onBoundsChange(Rect b) { if (mShape != null) mShape.resize(b.width(), b.height()); updateShader(b); }
+    /* Megler: Android's, the shape's own outline at the drawable's alpha (it was Drawable's, the bounds at no alpha): a view
+       clipped to the outline of a rounded ShapeDrawable is clipped to its curves, and its shadow follows them. */
+    @Override public void getOutline(Outline outline) {
+        if (mShape != null) {
+            mShape.getOutline(outline);
+            outline.setAlpha(getAlpha() / 255.0f);
+        }
+    }
     /** Draws the shape: subclasses override this to draw it their way. */
     protected void onDraw(Shape shape, Canvas c, Paint p) { shape.draw(c, p); }
     /* the drawable's alpha scales the paint's own when drawing, as Android's does: setting it must not make a transparent paint opaque */

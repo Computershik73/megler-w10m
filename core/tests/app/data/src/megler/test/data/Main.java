@@ -1848,6 +1848,7 @@ public class Main extends Activity {
         resourcesImpl();
         activityThreadApplication();
         dateFormats();
+        roundRectShape();
         backgroundOffMainThread();
         sound();
         mediaCodec();
@@ -5825,6 +5826,47 @@ public class Main extends Activity {
         java.text.SimpleDateFormat f = (java.text.SimpleDateFormat) java.text.DateFormat.getDateInstance(java.text.DateFormat.MEDIUM, locale).clone();
         f.applyPattern(android.text.format.DateFormat.getBestDateTimePattern(locale, skeleton));
         return f.format(when);
+    }
+
+    /**
+     * A ShapeDrawable of a RoundRectShape with an inset of nothing, as Messenger's rounded backgrounds are made (its search
+     * field's): the rounded rectangle filled whole, nothing outside its curves. An inset that is smaller both ways is a hole.
+     * The inset of nothing cut the shape out of its bounds, and the corners alone were filled: a black pill with grey corners.
+     * And the outlines as Android's: none for a shape with an inset, the rounded rectangle for one without.
+     */
+    private void roundRectShape() {
+        step("round-rect-shape", () -> {
+            float[] radii = { 20, 20, 20, 20, 20, 20, 20, 20 };
+            android.graphics.drawable.ShapeDrawable pill = new android.graphics.drawable.ShapeDrawable(
+                    new android.graphics.drawable.shapes.RoundRectShape(radii, new android.graphics.RectF(), null));
+            pill.mutate();
+            pill.setColorFilter(0xFF3A3B3C, android.graphics.PorterDuff.Mode.SRC_IN);
+            pill.setBounds(0, 0, 100, 40);
+            android.graphics.Bitmap bm = android.graphics.Bitmap.createBitmap(100, 40, android.graphics.Bitmap.Config.ARGB_8888);
+            pill.draw(new android.graphics.Canvas(bm));
+            int centre = bm.getPixel(50, 20), corner = bm.getPixel(1, 1), end = bm.getPixel(2, 20), top = bm.getPixel(50, 1);
+            android.graphics.drawable.ShapeDrawable ring = new android.graphics.drawable.ShapeDrawable(
+                    new android.graphics.drawable.shapes.RoundRectShape(radii, new android.graphics.RectF(10, 10, 10, 10), null));
+            ring.getPaint().setColor(0xFF00FF00);
+            ring.setBounds(0, 0, 100, 40);
+            android.graphics.Bitmap b2 = android.graphics.Bitmap.createBitmap(100, 40, android.graphics.Bitmap.Config.ARGB_8888);
+            ring.draw(new android.graphics.Canvas(b2));
+            int hole = b2.getPixel(50, 20), band = b2.getPixel(50, 4);
+            // The outlines, Android's: none for a shape with an inset (even one of nothing), the rounded rectangle for one without.
+            android.graphics.Outline insetOutline = new android.graphics.Outline();
+            pill.getOutline(insetOutline);
+            android.graphics.drawable.ShapeDrawable plain = new android.graphics.drawable.ShapeDrawable(new android.graphics.drawable.shapes.RoundRectShape(radii, null, null));
+            plain.setBounds(0, 0, 100, 40);
+            android.graphics.Outline outline = new android.graphics.Outline();
+            plain.getOutline(outline);
+            android.graphics.Rect box = new android.graphics.Rect();
+            boolean rounded = outline.getRect(box);
+            detail = String.format("centre=%08x corner=%08x end=%08x top=%08x hole=%08x band=%08x inset's outline empty %b, outline %b %s radius %.1f alpha %.2f",
+                    centre, corner, end, top, hole, band, insetOutline.isEmpty(), rounded, box.toShortString(), outline.getRadius(), outline.getAlpha());
+            Log.i("DataTest", "round-rect-shape " + detail);
+            return centre == 0xFF3A3B3C && (corner >>> 24) == 0 && end == 0xFF3A3B3C && top == 0xFF3A3B3C && (hole >>> 24) == 0 && band == 0xFF00FF00
+                    && insetOutline.isEmpty() && rounded && box.equals(new android.graphics.Rect(0, 0, 100, 40)) && outline.getRadius() == 20 && outline.getAlpha() == 1;
+        });
     }
 
     /**

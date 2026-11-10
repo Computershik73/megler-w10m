@@ -2984,6 +2984,9 @@ static int run_data(void)
                                             clock; DateFormat.format's letters and the names, the 12/24 hours of the settings; DateUtils'
                                             dates and relative times in the run's locale, en-US and then ru-RU. */
                                          "date-patterns", "date-format-letters", "date-utils-locale",
+                                         /* And a RoundRectShape with an inset of nothing, as Messenger's rounded backgrounds: filled
+                                            whole; an inset smaller both ways a hole; the outlines Android's. */
+                                         "round-rect-shape",
                                          /* And a view made on a worker thread with a state list for its background, its invalidateDrawable
                                             asserting the main thread, as Facebook builds its tab bar's tabs: the view the callback last. */
                                          "background-callback-last",
