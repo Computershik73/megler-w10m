@@ -2897,8 +2897,9 @@ public class WebView extends AbsoluteLayout
                 android.util.Log.i("WebView", "onDraw on the graphics processor, part " + mMeglerVisible.toShortString() + ": "
                         + (!mMeglerFunctorAsked ? "no functor asked for (Chromium had no frame)" : mMeglerFunctorFailed ? "the functor was not drawn" : "the functor drawn"));
             if (!mMeglerFunctorFailed) {
-                // The bitmap of software frames is not needed while the pages are drawn so.
+                // The bitmaps of software frames are not needed while the pages are drawn so.
                 if (mMeglerBitmap != null) { mMeglerBitmap.recycle(); mMeglerBitmap = null; mMeglerCanvas = null; }
+                if (mMeglerSpare != null) { mMeglerSpare.recycle(); mMeglerSpare = null; mMeglerSpareCanvas = null; }
                 return;
             }
             // Not drawn on the graphics processor: this frame in software, as before.
@@ -2906,8 +2907,10 @@ public class WebView extends AbsoluteLayout
         meglerDrawThroughBitmap(canvas);
     }
 
-    private Bitmap mMeglerBitmap;
-    private Canvas mMeglerCanvas;
+    // Megler: the bitmap the last software frame was drawn through (which a frame on the render thread may still be drawing),
+    // and the one the next is drawn through (meglerDrawThroughBitmap).
+    private Bitmap mMeglerBitmap, mMeglerSpare;
+    private Canvas mMeglerCanvas, mMeglerSpareCanvas;
     private final Rect mMeglerVisible = new Rect();
     // Megler: the WebView whose onDraw Chromium is in, on the UI thread (WebViewDelegate.drawWebViewFunctor), and whether its
     // functor failed to be drawn.
@@ -2959,27 +2962,41 @@ public class WebView extends AbsoluteLayout
         return true;
     }
 
+    /*
+     * Megler: a frame drawn in software, through one of two bitmaps in turn. The canvas records the bitmap itself, whose pixels
+     * are drawn as they are when the frame is (megler.Gfx's lists), and the render thread draws a frame while this thread
+     * records the next: with one bitmap the next frame's page was erased and drawn again in place while the frame before could
+     * still be drawing it, and that frame showed it half written (the core's "a frame drew a bitmap ... whose pixels were
+     * written after the frame was recorded"). The bitmap the last frame was drawn through is left alone until the frame after.
+     */
     private void meglerDrawThroughBitmap(Canvas canvas) {
         if (!meglerArea()) return;
         Rect area = mMeglerVisible;
         int w = area.width(), h = area.height();
-        if (mMeglerBitmap == null || mMeglerBitmap.getWidth() != w || mMeglerBitmap.getHeight() != h) {
-            android.util.Log.i("WebView", "drawn through a bitmap of " + w + "x" + h + ", of a view of " + getWidth() + "x" + getHeight());
-            if (mMeglerBitmap != null) mMeglerBitmap.recycle();
-            mMeglerBitmap = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888);
-            mMeglerCanvas = new Canvas(mMeglerBitmap);
+        Bitmap b = mMeglerSpare;
+        Canvas c = mMeglerSpareCanvas;
+        if (b == null || b.getWidth() != w || b.getHeight() != h) {
+            if (mMeglerBitmap == null || mMeglerBitmap.getWidth() != w || mMeglerBitmap.getHeight() != h)
+                android.util.Log.i("WebView", "drawn through a bitmap of " + w + "x" + h + ", of a view of " + getWidth() + "x" + getHeight());
+            if (b != null) b.recycle();
+            b = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888);
+            c = new Canvas(b);
         } else {
             // cleared in its memory, which Chromium draws into next: through the canvas the shell would clear it, and
             // the clear would be read back before Chromium's draw
-            megler.Gfx.bmEraseMemory(mMeglerBitmap.meglerNative(), 0);
+            megler.Gfx.bmEraseMemory(b.meglerNative(), 0);
         }
         // What View.draw did to the canvas it was given -- the view's content scrolled by its scroll position -- with the
         // visible part's corner at the bitmap's.
-        int save = mMeglerCanvas.save();
-        mMeglerCanvas.translate(-area.left, -area.top);
-        mProvider.getViewDelegate().onDraw(mMeglerCanvas);
-        mMeglerCanvas.restoreToCount(save);
-        canvas.drawBitmap(mMeglerBitmap, area.left, area.top, null);
+        int save = c.save();
+        c.translate(-area.left, -area.top);
+        mProvider.getViewDelegate().onDraw(c);
+        c.restoreToCount(save);
+        canvas.drawBitmap(b, area.left, area.top, null);
+        mMeglerSpare = mMeglerBitmap;
+        mMeglerSpareCanvas = mMeglerCanvas;
+        mMeglerBitmap = b;
+        mMeglerCanvas = c;
     }
 
     @Override

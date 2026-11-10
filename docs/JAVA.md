@@ -4488,16 +4488,19 @@ what the window shows of the view, as the functor draws on Android, and puts
 that bitmap in the canvas it was given: a WebView sized to its page is many
 screens tall (a check: a WebView 20000 rows tall is drawn through 744), and a
 view out of the window gets at most a screen's worth from its scroll position.
-The bitmap is kept from one frame to the next and cleared in its memory, and
-let go while the pages are drawn on the graphics processor. A frame's list
-draws the bitmap itself, as its pixels are when the render thread draws the
-frame, while the main thread records the next one, which erases the page and
-draws it again in place; a frame that drew it then would show it half
-written. The render thread's line in the log counts the bitmaps a frame drew
-whose pixels had been written after the frame was recorded (and says the first
-at once): on this PC a page whose animation had Chromium draw again every
-frame, 52 frames a second with the main thread waiting 4.6 s of every 5 for
-the render thread, counted one in 9865 frames, the WebView's 720x1168 bitmap.
+Two such bitmaps are kept and drawn through in turn, each cleared in its
+memory, and let go while the pages are drawn on the graphics processor. A
+frame's list draws the bitmap itself, as its pixels are when the render thread
+draws the frame, while the main thread records the next one, which erases the
+page and draws it again; through one bitmap a frame that drew it then showed
+it half written, and now the bitmap the last frame was drawn through is left
+alone until the frame after. The render thread's line in the log counts the
+bitmaps a frame drew whose pixels had been written after the frame was
+recorded (and says the first at once): on this PC a page whose animation had
+Chromium draw again every frame, 52 frames a second with the main thread
+waiting 4.6 s of every 5 for the render thread, counted one in 9865 frames
+(the WebView's 720x1168 bitmap) through one bitmap, and none in 9749
+through two.
 
 Chromium draws into that bitmap directly. The platform's
 `libwebviewchromium_plat_support.so` gives a WebView tables of functions;
