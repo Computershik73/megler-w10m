@@ -2960,6 +2960,23 @@ static void node_play(gcanvas *v, gnode *n, int depth);
 static MG_THREAD_LOCAL gcanvas *t_cull_v;
 static MG_THREAD_LOCAL u32 t_cull_no;
 static u32 g_culled;
+/*
+ * Bitmaps a frame of the window drew (frame_show) whose pixels had been written since the frame recorded them (their version
+ * is another): a list draws a bitmap by reference, as it is when the list is drawn, and the render thread draws a frame while
+ * the main thread records the next -- so a bitmap written in place for the next frame meanwhile would be shown half written
+ * (a WebView's page drawn in software is erased and drawn again in its one bitmap: android/webkit/WebView.java). Counted for
+ * the render thread's line; said at once the first time.
+ */
+static volatile i32 g_rewritten;
+static MG_THREAD_LOCAL bool t_in_frame;
+
+static void bitmap_drawn(const gbitmap *b, u32 recorded)
+{
+    if (!t_in_frame || b->version == recorded) return;
+    if (mg_atomic_add(&g_rewritten, 1) == 1)
+        mg_warn("gfx: a frame drew a bitmap (%dx%d) whose pixels were written after the frame was recorded: it showed them as they were being written",
+                (int)b->w, (int)b->h);
+}
 
 static bool rects_meet(const float *a, const float *b) { return a[0] < b[2] && b[0] < a[2] && a[1] < b[3] && b[1] < a[3]; }
 
@@ -3052,10 +3069,14 @@ static void list_play(gcanvas *v, gdlist *l, int depth)
             const dl_bitmap *o = (const dl_bitmap *)h;
             memcpy(src, o->src, sizeof(src));
             memcpy(dst, o->dst, sizeof(dst));
+            bitmap_drawn(o->b, o->version);
             draw_bitmap(v, o->b, src, dst, &o->p, NULL);
             break;
         }
-        case DL_BITMAP_M: draw_bitmap_m(v, ((const dl_bitmap *)h)->b, ((const dl_bitmap *)h)->m, &((const dl_bitmap *)h)->p); break;
+        case DL_BITMAP_M:
+            bitmap_drawn(((const dl_bitmap *)h)->b, ((const dl_bitmap *)h)->version);
+            draw_bitmap_m(v, ((const dl_bitmap *)h)->b, ((const dl_bitmap *)h)->m, &((const dl_bitmap *)h)->p);
+            break;
         case DL_TEXT: {
             const dl_text *o = (const dl_text *)h;
             was = shot_on(&o->s);
@@ -4726,7 +4747,9 @@ static void frame_show(gcanvas *v, gbitmap *b, gdlist *l, const i32 part[4], u32
     }
     t_cull_v = cull ? v : NULL;
     t_cull_no = cull;
+    t_in_frame = true;
     list_play(v, l, 0);
+    t_in_frame = false;
     t_cull_v = NULL;
     while (v->depth > d0) cv_restore(v);
     dl_unref(l);
@@ -4771,9 +4794,10 @@ static MG_HOSTCB void rt_main(void *arg)
         if (!R.since) R.since = now;
         if (now - R.since >= 5000000000ull && R.frames) {
             mg_info("gfx: the render thread, %.1f s: %u frames drawn and shown off the main thread, %.1f ms drawing the lists and %.1f ms showing each; "
-                    "the main thread waited %.1f ms in all for the frame before to be shown; %.1f nodes a frame left out, drawing nowhere in the part drawn",
+                    "the main thread waited %.1f ms in all for the frame before to be shown; %.1f nodes a frame left out, drawing nowhere in the part drawn; "
+                    "%d bitmaps drawn since the start whose pixels were written after the frame was recorded",
                     (double)(now - R.since) / 1e9, (unsigned)R.frames, (double)R.play_ns / 1e6 / R.frames, (double)R.show_ns / 1e6 / R.frames,
-                    (double)R.wait_ns / 1e6, (double)g_culled / R.frames);
+                    (double)R.wait_ns / 1e6, (double)g_culled / R.frames, (int)g_rewritten);
             g_culled = 0;
             R.frames = 0;
             R.play_ns = R.show_ns = R.wait_ns = 0;
