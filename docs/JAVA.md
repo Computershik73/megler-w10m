@@ -4203,6 +4203,51 @@ its notification URI (`AbstractCursor.setNotificationUri` registers with the
 resolver, `ContentObservable.registerObserver` registers at all: both were
 stubs that did nothing, and unregistering an observer threw).
 
+### Notification channels
+
+`NotificationChannel` and `NotificationChannelGroup` are Android's (11 to 14):
+a channel keeps what the app sets on it and has Android's defaults where it
+sets nothing -- the default notification sound
+(`Settings.System.DEFAULT_NOTIFICATION_URI`) played as
+`Notification.AUDIO_ATTRIBUTES_DEFAULT`, no lights, no vibration, a badge,
+`VISIBILITY_NO_OVERRIDE` -- with Android's `copy()`, `equals`, Parcel layout
+and elements of the notification policy file (`writeXml`, `populateFromXml`);
+`AudioAttributes` are equal by what they hold. The channel was a stub whose
+setters kept nothing: Messenger copies a channel of its own through the
+getters and asserts that its audio attributes are there, and ended fifteen
+seconds after each start on a Lumia 650 (0.1.0.685, "INVOKE_RETURN must not be
+null").
+
+`NotificationManager` keeps the app's channels and groups as Android's system
+keeps them for an app: one set for the process, whichever `NotificationManager`
+is asked; each handed out as a copy (through a Parcel); a channel made again
+changes only what Android lets an app change (its name, description, its group
+where it had none, whether it may be blocked, its importance downwards), and a
+new one has the system's own fields as an app's new channel has them (no Do Not
+Disturb, no lock screen visibility of its own, bubbles as the user has them);
+a deleted channel is gone and comes back as it was when it is made again
+(forgotten after 30 days); deleting a group deletes its channels; a
+conversation's channel answers `getNotificationChannel(id, conversationId)`;
+a group is handed out with its channels. They are kept across the app's runs
+in its data folder, `.megler_notification_channels.xml` (Android's elements,
+written on a thread of their own after each change; "notification channels:
+N kept from the app's last run" in the log when they are read): Messenger
+looks its channels up by id and found them missing at each start ("Channel
+messenger_orca_800_live_location was missing, will reinitialize channels").
+Clearing the app's data clears them, as on Android. Not there: the
+exceptions Android's system throws for a channel it refuses (an empty name, a
+group that is not there), the default channel ("miscellaneous") of an app made
+for Android 7.1 or earlier; and Google Play services in the app's process
+share the app's channels, where on Android they have channels of their own.
+
+The data app checks them: `notification-channel` (the defaults, what is set
+kept, Messenger's copy through the getters), `notification-channel-copy`
+(`copy()`, `equals`, a Parcel, XML), `notification-channel-group`,
+`notification-channels-shared` (a channel made through one
+`NotificationManager` found through another), `notification-channels-rules`,
+and `notification-channels-kept`: what the first run made, the second finds,
+a silent channel's sound and attributes still null, a deleted one deleted.
+
 ### WebP pictures
 
 An app's pictures are WebP as often as PNG (Android's build tools convert

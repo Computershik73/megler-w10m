@@ -3181,6 +3181,20 @@ static int run_data(void)
                                          /* And the same markup as Transit's Compose screens read it: a regular expression of a tag and
                                             thirteen optional fields, found from where the last tag ended (ICU's matcher). */
                                          "markup-regex",
+                                         /* And AudioAttributes equal by what they hold: built alike, and through a Parcel. */
+                                         "audio-attributes-equal",
+                                         /* And a notification channel as Android's: its defaults (the default notification sound with
+                                            Notification.AUDIO_ATTRIBUTES_DEFAULT...), what the app sets kept, Messenger's copy of one
+                                            through the getters; copy(), equals, through a Parcel and through XML. */
+                                         "notification-channel", "notification-channel-copy",
+                                         /* And a channel group as Android's: its description, one list of channels, clone(), equals,
+                                            through a Parcel and through XML. */
+                                         "notification-channel-group",
+                                         /* And the app's channels and groups as Android's system keeps them: one set whichever
+                                            NotificationManager is asked, the system's copies, what an app may change of a channel,
+                                            deleted and made again, a conversation's channel, groups with their channels; and kept
+                                            across the runs (checked below). */
+                                         "notification-channels-shared", "notification-channels-rules", "notification-channels-kept",
                                          "audio-track", "media-player", "media-player-ogg", "sound-pool",
                                          /* And MediaCodec over the stand-in for the shell's decoders: H.264 shown on a Surface in display
                                             order, a flush, parameter sets in a codec-config buffer, the asynchronous mode, AAC with an
@@ -3234,6 +3248,13 @@ static int run_data(void)
     CHECK(find_line("; domain-config of nested.sub.megler.test: cleartext permitted, anchors @raw/trust_test_ca;", 0) >= 0);
     /* The state of a component of a package the phone does not have (component-state) is Android's IllegalArgumentException, said once. */
     CHECK(find_line("I/Megler: the enabled state of a component of com.facebook.appmanager, which the phone does not have: IllegalArgumentException, as Android answers", 0) >= 0);
+    /* The app's notification channels and groups, kept in its data folder by NotificationManager: none at the first run's start,
+       and at the second's what the first left -- shared-1, rules-1-parent, rules-1-conversation and kept, and three it deleted
+       (rules-1-a and rules-1-a2 with their group, kept-deleted), the group kept-group -- said once as they are read; neither
+       run failed to read or write them. */
+    if (run == 2) CHECK(find_line("I/Megler: notification channels: 4 kept from the app's last run and 3 deleted, 1 group", 0) >= 0);
+    else CHECK(find_line("I/Megler: notification channels: ", 0) < 0);
+    CHECK(count_lines("I/Megler: notification channels: ") <= 1 && find_line("W/Megler: notification channels: ", 0) < 0);
     /*
      * What requestPermissions asked comes back by a message of its own, after the method that asked has returned. In the first
      * run the user is asked about the storage, the messages, the phone, the calls and the camera, one after another, and the
