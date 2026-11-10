@@ -1850,6 +1850,7 @@ public class Main extends Activity {
         backgroundOffMainThread();
         singleLineSpans();
         ellipsisNarrower();
+        markupRegex();
         sound();
         mediaCodec();
         network();
@@ -5865,6 +5866,39 @@ public class Main extends Activity {
             detail = "at 500 px the ellipsis over " + wide + " characters; at 200 px a layout " + (l == null ? null : l.getWidth()) + " px wide, ellipsized at "
                     + at + " px over " + ellipsis + " characters";
             return wide == 0 && ellipsis > 0 && at == 200;
+        });
+    }
+
+    /**
+     * The same markup as Transit's Compose screens read it (6.3.7, its class ui.c): a Kotlin Regex of a tag's name and thirteen
+     * optional fields, each "\|?([^|>]*)?", then ">", found by Regex.find from where the last tag ended -- a new Matcher and
+     * find(int) each time, the fields read by group(i) as Kotlin's groupValues reads them (an absent one ""). java.util.regex is
+     * ICU's matcher here, as on Android: each tag found whole, the fields the text has between its bars.
+     */
+    private void markupRegex() {
+        step("markup-regex", () -> {
+            StringBuilder fields = new StringBuilder();
+            for (int i = 0; i < 13; i++) fields.append("\\|?([^|>]*)?");
+            java.util.regex.Pattern tag = java.util.regex.Pattern.compile("<(strong|small|light|color|image|date|realtime-symbol|link)" + fields + ">");
+            String text = "<color|1e212d/f0f0f1>Choose on map <image|bus||-1|1|-1|-1|Center> 5<realtime-symbol|*0>";
+            StringBuilder found = new StringBuilder();
+            int tags = 0, groups = -1, from = 0;
+            boolean whole = true;
+            java.util.regex.Matcher m;
+            while (from < text.length() && (m = tag.matcher(text)).find(from)) {
+                tags++;
+                groups = m.groupCount();
+                int last = 1;
+                for (int g = 2; g <= groups; g++) if (m.group(g) != null && !m.group(g).isEmpty()) last = g;
+                StringBuilder again = new StringBuilder("<").append(m.group(1));
+                for (int g = 2; g <= last; g++) again.append('|').append(m.group(g) == null ? "" : m.group(g));
+                again.append('>');
+                whole &= again.toString().equals(text.substring(m.start(), m.end()));
+                found.append(m.start()).append('-').append(m.end()).append(' ').append(again).append("; ");
+                from = m.end();
+            }
+            detail = tags + " tags, " + groups + " groups: " + found;
+            return tags == 3 && groups == 14 && whole && found.toString().equals("0-21 <color|1e212d/f0f0f1>; 35-65 <image|bus||-1|1|-1|-1|Center>; 67-87 <realtime-symbol|*0>; ");
         });
     }
 

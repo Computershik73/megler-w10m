@@ -2989,6 +2989,9 @@ static int run_data(void)
                                          /* And such a title measured wide and then narrower, as a weighted LinearLayout measures it: the
                                             ellipsis where the narrower width ends (the first, wider layout was kept, the line cut). */
                                          "ellipsis-narrower",
+                                         /* And the same markup as Transit's Compose screens read it: a regular expression of a tag and
+                                            thirteen optional fields, found from where the last tag ended (ICU's matcher). */
+                                         "markup-regex",
                                          "audio-track", "media-player", "media-player-ogg", "sound-pool",
                                          /* And MediaCodec over the stand-in for the shell's decoders: H.264 shown on a Surface in display
                                             order, a flush, parameter sets in a codec-config buffer, the asynchronous mode, AAC with an
