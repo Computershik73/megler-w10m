@@ -1541,33 +1541,65 @@ bool installedApps(std::vector<InstalledApp>& out, std::string& error, const std
     /*
      * Windows's package manager lists the user's packages at once (the restricted capability packageQuery), where the
      * Device Portal took 11 s on an HP Elite x3, more than a minute on a Lumia 650, and at times never answered on a Lumia
-     * 950 XL. It is the only lister: the portal, asked where it would not answer before, is asked nothing any more
-     * (installWithPackageManager), and a Megler whose package manager does not answer installs nothing either (the restricted
-     * capabilities packageQuery and packageManagement go together in its manifest).
+     * 950 XL; the portal is asked nothing any more on a phone or a PC. Where the package manager refuses Megler -- a phone
+     * grants packageQuery only with the capability part of its interop unlock -- the Store's and a company hub's way:
+     * InstallationManager's packages of this app's publisher, which every app's own package shares with Megler, and which
+     * Windows gives with no capability. (0.1.0.682 asked InstallationManager first, and ended at every start on a Lumia
+     * 650 over a property its packages do not have: howInstalled.) The flag no-package-manager takes its way alone.
      */
     const std::wstring publisherId(Package::Current().Id().PublisherId());
-    /*
-     * On a phone first as the Store's and a company hub's apps list their own: InstallationManager's packages of this app's
-     * publisher, which every app's own package shares with Megler, and which Windows gives with no capability -- where
-     * Windows's package manager wants packageQuery, which a phone grants only with the capability part of its interop
-     * unlock, and lists every package of the phone (211 on an HP Elite x3). Windows's package manager where it is not.
-     */
+    std::string refused;
+    if (!flagSet(L"no-package-manager")) {
+        try {
+            std::vector<InstalledApp> found;
+            // Once a run, for the log: how many of the phone's packages Windows counts as a developer's, and how Megler's are.
+            const bool tell = gPackageManager.load() != 1;
+            unsigned all = 0, developers = 0;
+            std::string own;
+            for (auto const& package : winrt::Windows::Management::Deployment::PackageManager().FindPackagesForUser(L"")) {
+                const auto id = package.Id();
+                const std::wstring name(id.Name());
+                if (tell) {
+                    all++;
+                    if (developerPackage(package)) developers++;
+                    if ((name == L"Megler" || name.compare(0, 10, L"MeglerApp.") == 0) && std::wstring(id.PublisherId()) == publisherId)
+                        own += "; " + narrow(name) + " " + howInstalled(package);
+                }
+                if (name.compare(0, 10, L"MeglerApp.") != 0 || std::wstring(id.PublisherId()) != publisherId) continue;
+                const auto v = id.Version();
+                const std::string version = format("%u.%u.%u.%u", v.Major, v.Minor, v.Build, v.Revision);
+                found.push_back({narrow(name), madeByVersion(version), narrow(std::wstring(id.FullName())), version});
+            }
+            if (gPackageManager.exchange(1) != 1)
+                shellLog::write(format("app package: Windows's package manager lists the apps' packages; %u of the %u packages are developer's",
+                                       developers, all) + own);
+            if (reachable) reachable();
+            out = std::move(found);
+            return true;
+        } catch (hresult_error const& e) {
+            refused = format("Windows's package manager did not list the packages (0x%08x %s)", unsigned(e.code()), narrow(e.message()).c_str());
+            if (gPackageManager.exchange(-1) != -1) shellLog::write("app package: " + refused);
+        }
+    } else {
+        refused = "Windows's package manager not asked (the flag no-package-manager)";
+    }
     std::string why;
     std::vector<Package> mine;
-    if (!flagSet(L"no-installation-manager") && publisherPackages(mine, why)) {
+    if (publisherPackages(mine, why)) {
         std::vector<InstalledApp> found;
         std::string own;
+        const bool tell = gInstallationManager.load() != 1;
         for (auto const& package : mine) {
             const auto id = package.Id();
             const std::wstring name(id.Name());
             if (name.compare(0, 10, L"MeglerApp.") != 0 || std::wstring(id.PublisherId()) != publisherId) {
-                if (name == L"Megler") own += "; Megler " + howInstalled(package);
+                if (tell && name == L"Megler") own += "; Megler " + howInstalled(package);
                 continue;
             }
             const auto v = id.Version();
             const std::string version = format("%u.%u.%u.%u", v.Major, v.Minor, v.Build, v.Revision);
             found.push_back({narrow(name), madeByVersion(version), narrow(std::wstring(id.FullName())), version});
-            if (gInstallationManager.load() != 1) own += "; " + narrow(name) + " " + version + " " + howInstalled(package);
+            if (tell) own += "; " + narrow(name) + " " + version + " " + howInstalled(package);
         }
         if (gInstallationManager.exchange(1) != 1)
             shellLog::write(format("app package: InstallationManager lists the packages of Megler's publisher, as the Store lists its own: %u "
@@ -1577,38 +1609,9 @@ bool installedApps(std::vector<InstalledApp>& out, std::string& error, const std
         out = std::move(found);
         return true;
     }
-    if (gInstallationManager.exchange(-1) != -1 && !why.empty()) shellLog::write("app package: InstallationManager lists nothing here: " + why);
-    try {
-        std::vector<InstalledApp> found;
-        // Once a run, for the log: how many of the phone's packages Windows counts as a developer's, and how Megler's are.
-        const bool tell = gPackageManager.load() != 1;
-        unsigned all = 0, developers = 0;
-        std::string own;
-        for (auto const& package : winrt::Windows::Management::Deployment::PackageManager().FindPackagesForUser(L"")) {
-            const auto id = package.Id();
-            const std::wstring name(id.Name());
-            if (tell) {
-                all++;
-                if (developerPackage(package)) developers++;
-                if ((name == L"Megler" || name.compare(0, 10, L"MeglerApp.") == 0) && std::wstring(id.PublisherId()) == publisherId)
-                    own += "; " + narrow(name) + " " + howInstalled(package);
-            }
-            if (name.compare(0, 10, L"MeglerApp.") != 0 || std::wstring(id.PublisherId()) != publisherId) continue;
-            const auto v = id.Version();
-            const std::string version = format("%u.%u.%u.%u", v.Major, v.Minor, v.Build, v.Revision);
-            found.push_back({narrow(name), madeByVersion(version), narrow(std::wstring(id.FullName())), version});
-        }
-        if (gPackageManager.exchange(1) != 1)
-            shellLog::write(format("app package: Windows's package manager lists the apps' packages; %u of the %u packages are developer's",
-                                   developers, all) + own);
-        if (reachable) reachable();
-        out = std::move(found);
-        return true;
-    } catch (hresult_error const& e) {
-        error = format("Windows's package manager did not list the packages (0x%08x %s)", unsigned(e.code()), narrow(e.message()).c_str());
-        if (gPackageManager.exchange(-1) != -1) shellLog::write("app package: " + error);
-        return false;
-    }
+    if (gInstallationManager.exchange(-1) != -1) shellLog::write("app package: InstallationManager lists nothing here: " + why);
+    error = refused + "; InstallationManager: " + why;
+    return false;
 #endif
 }
 
