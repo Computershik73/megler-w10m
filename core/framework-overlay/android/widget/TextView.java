@@ -16,7 +16,14 @@
 // And onSelectionChanged is called once a selection has moved, with its new ends, and not for the intermediate change of
 // its start (Selection.setSelection), as Android's spanChange calls it; a tap of a text field shows its cursor at once even
 // where the cursor stays. It was called for each end set, the first time with the old end: with WhatsApp's MentionableEntry,
-// which sets its selection again in its onSelectionChanged, that never ended. Everything else is the original's, unchanged.
+// which sets its selection again in its onSelectionChanged, that never ended.
+//
+// And onMeasure makes the layout again for another width where the text has an ellipsis, as Android's does when the width
+// it ellipsizes at changes. A single line scrolls horizontally, so a layout wider than the view was kept as good enough;
+// but one with an ellipsis has it where that wider width ended. A LinearLayout not given an exact width measures a weighted
+// child at its own width first and at its share after: Transit's search cards' single-line titles kept the layout of the
+// first measure, and the line was cut at the view's edge with no ellipsis ("<color|1e212d/f0f0f1>Ch", 0.1.0.684).
+// Everything else is the original's, unchanged.
 package android.widget;
 
 import android.content.Context;
@@ -708,7 +715,7 @@ public class TextView extends View implements ViewTreeObserver.OnPreDrawListener
             if (wm == MeasureSpec.AT_MOST) width = Math.min(wsz, width);
         }
         int avail = width - padH;
-        if (mLayoutDirty || mLayout == null || mLayout.getWidth() != avail && !(mHorizontallyScrolling && mLayout.getWidth() >= avail)) {
+        if (mLayoutDirty || mLayout == null || mLayout.getWidth() != avail && !(mHorizontallyScrolling && mEllipsize == null && mLayout.getWidth() >= avail)) {
             mLayout = makeLayout(mTransformed, avail, false);
             mLayoutDirty = false;
             mHintLayout = null;

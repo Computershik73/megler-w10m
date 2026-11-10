@@ -1848,6 +1848,9 @@ public class Main extends Activity {
         resourcesImpl();
         activityThreadApplication();
         backgroundOffMainThread();
+        singleLineSpans();
+        ellipsisNarrower();
+        markupRegex();
         sound();
         mediaCodec();
         network();
@@ -5746,6 +5749,156 @@ public class Main extends Activity {
             detail = "the enabled child chosen " + chose + ", the view the callback " + callback + ", invalidateDrawable heard "
                     + before + " times on the worker, " + heard[0] + " after the view was disabled on the main thread";
             return chose && callback && before == 0 && heard[0] > 0;
+        });
+    }
+
+    /**
+     * A search result's title as Transit 6.3.7 shows one (its util class e, d(), for each row of the results' adapter): the
+     * markup the app's native code writes -- "<color|light/dark>" before the words, a light theme's colour and a dark one's --
+     * stays in the text, hidden by a ReplacementSpan of no width that draws nothing, and the text from there is coloured by a
+     * MetricAffectingSpan of the app's own; set with BufferType.SPANNABLE on a TextView that is android:singleLine
+     * (res/layout/markup_row.xml, as the app's card row). Android shows the words alone, in the colour. The singleLine's
+     * SingleLineTransformationMethod gave the view a String of the text, every span gone: the markup was drawn, in the view's
+     * own colour, and ran out of the row (0.1.0.684, a Lumia 650). And what that transformation gives for each kind of text, as
+     * Android's: the text itself where it has no line break, the spans kept where it has, an Editable followed as it changes.
+     */
+    private void singleLineSpans() {
+        step("single-line-spans", () -> {
+            android.widget.TextView row = (android.widget.TextView) android.view.LayoutInflater.from(this).inflate(R.layout.markup_row, null);
+            android.text.method.TransformationMethod how = row.getTransformationMethod();
+            String markup = "<color|ff0000/00ff00>", words = "Choose on map";
+            android.text.SpannableString text = new android.text.SpannableString(markup + words);
+            text.setSpan(new android.text.style.MetricAffectingSpan() {
+                @Override
+                public void updateDrawState(android.text.TextPaint p) {
+                    p.setColor(0xFFFF0000);
+                }
+
+                @Override
+                public void updateMeasureState(android.text.TextPaint p) {
+                    p.setColor(0xFFFF0000);
+                }
+            }, 0, text.length(), 0);
+            text.setSpan(new android.text.style.ReplacementSpan() {
+                @Override
+                public int getSize(android.graphics.Paint p, CharSequence t, int start, int end, android.graphics.Paint.FontMetricsInt fm) {
+                    return 0;
+                }
+
+                @Override
+                public void draw(android.graphics.Canvas c, CharSequence t, int start, int end, float x, int top, int y, int bottom, android.graphics.Paint p) {
+                }
+            }, 0, markup.length(), 0);
+            row.setText(text, android.widget.TextView.BufferType.SPANNABLE);
+            int w = 300;
+            row.measure(android.view.View.MeasureSpec.makeMeasureSpec(w, android.view.View.MeasureSpec.EXACTLY),
+                        android.view.View.MeasureSpec.makeMeasureSpec(0, android.view.View.MeasureSpec.UNSPECIFIED));
+            int h = Math.max(1, row.getMeasuredHeight());
+            row.layout(0, 0, w, h);
+            android.text.Layout l = row.getLayout();
+            CharSequence shown = l == null ? null : l.getText();
+            int hidden = shown instanceof android.text.Spanned ? ((android.text.Spanned) shown).getSpans(0, shown.length(), android.text.style.ReplacementSpan.class).length : 0;
+            float width = l == null ? -1 : l.getLineWidth(0), alone = row.getPaint().measureText(words);
+            int ellipsis = l == null ? -1 : l.getEllipsisCount(0);
+            // The picture: the characters drawn red, each a run of red pixels along a row through them, and nothing black.
+            android.graphics.Bitmap b = bitmap(w, h);
+            android.graphics.Canvas c = new android.graphics.Canvas(b);
+            c.drawColor(0xFFFFFFFF);
+            row.draw(c);
+            int runs = 0, dark = 0, left = w;
+            for (int y = 0; y < h; y++) {
+                int inRow = 0;
+                boolean in = false;
+                for (int x = 0; x < w; x++) {
+                    int p = b.getPixel(x, y), r = (p >> 16) & 0xFF, g = (p >> 8) & 0xFF, bl = p & 0xFF;
+                    boolean red = r >= 128 && g < 128 && bl < 128;
+                    if (red && !in) inRow++;
+                    if (red) left = Math.min(left, x);
+                    in = red;
+                    if (r < 128 && g < 128 && bl < 128) dark++;
+                }
+                runs = Math.max(runs, inRow);
+            }
+            // The transformation alone.
+            android.text.method.TransformationMethod one = android.text.method.SingleLineTransformationMethod.getInstance();
+            boolean itself = one.getTransformation(text, row) == text;
+            android.text.SpannableString lines = new android.text.SpannableString("a\nb\rc");
+            Object bold = new android.text.style.StyleSpan(android.graphics.Typeface.BOLD);
+            lines.setSpan(bold, 0, lines.length(), 0);
+            CharSequence joined = one.getTransformation(lines, row);
+            boolean kept = joined instanceof android.text.Spanned && "a b﻿c".equals(joined.toString())
+                    && ((android.text.Spanned) joined).getSpanStart(bold) == 0 && ((android.text.Spanned) joined).getSpanEnd(bold) == 5;
+            android.text.SpannableStringBuilder typed = new android.text.SpannableStringBuilder("x\ny");
+            CharSequence follows = one.getTransformation(typed, row);
+            typed.replace(0, 1, "z");
+            CharSequence plain = one.getTransformation("p\nq", row);
+            detail = "transformation " + (how == null ? null : how.getClass().getSimpleName()) + ", the layout's text "
+                    + (shown == null ? null : shown.getClass().getSimpleName() + " \"" + shown + "\"") + " with " + hidden + " ReplacementSpan, its line "
+                    + width + " px wide (the words alone " + alone + "), ellipsis " + ellipsis + "; drawn: " + runs + " red characters from x=" + left
+                    + ", " + dark + " black pixels; the text itself back " + itself + ", lines joined with their span " + kept + " (\""
+                    + joined + "\"), an Editable followed \"" + follows + "\", a String \"" + plain + "\" " + (plain instanceof String);
+            return how instanceof android.text.method.SingleLineTransformationMethod && hidden == 1 && Math.abs(width - alone) < 0.5f && ellipsis == 0
+                    && runs == 11 && left < 3 && dark == 0 && itself && kept && "z y".equals(follows.toString()) && plain instanceof String && "p q".equals(plain);
+        });
+    }
+
+    /**
+     * A single-line title with an ellipsis at its end measured wide and then narrower, as a LinearLayout not given an exact
+     * width measures a weighted child: at its own width first, at its share after. Android makes the layout again when the
+     * width it ellipsizes at changes, and the ellipsis is where the narrower width ends. The view kept the layout of its first,
+     * wider measure -- a single line scrolls horizontally, and a layout wider than the view was taken to be as good -- so the
+     * line had no ellipsis and was cut at the view's edge: Transit's search cards' titles ended "<color|1e212d/f0f0f1>Ch", no
+     * ellipsis (0.1.0.684).
+     */
+    private void ellipsisNarrower() {
+        step("ellipsis-narrower", () -> {
+            android.widget.TextView title = (android.widget.TextView) android.view.LayoutInflater.from(this).inflate(R.layout.markup_row, null);
+            title.setText("A title wider than its second measure");
+            title.measure(android.view.View.MeasureSpec.makeMeasureSpec(500, android.view.View.MeasureSpec.EXACTLY),
+                          android.view.View.MeasureSpec.makeMeasureSpec(0, android.view.View.MeasureSpec.UNSPECIFIED));
+            android.text.Layout first = title.getLayout();
+            int wide = first == null ? -1 : first.getEllipsisCount(0);
+            title.measure(android.view.View.MeasureSpec.makeMeasureSpec(200, android.view.View.MeasureSpec.EXACTLY),
+                          android.view.View.MeasureSpec.makeMeasureSpec(0, android.view.View.MeasureSpec.UNSPECIFIED));
+            title.layout(0, 0, 200, Math.max(1, title.getMeasuredHeight()));
+            android.text.Layout l = title.getLayout();
+            int ellipsis = l == null ? -1 : l.getEllipsisCount(0), at = l == null ? -1 : l.getEllipsizedWidth();
+            detail = "at 500 px the ellipsis over " + wide + " characters; at 200 px a layout " + (l == null ? null : l.getWidth()) + " px wide, ellipsized at "
+                    + at + " px over " + ellipsis + " characters";
+            return wide == 0 && ellipsis > 0 && at == 200;
+        });
+    }
+
+    /**
+     * The same markup as Transit's Compose screens read it (6.3.7, its class ui.c): a Kotlin Regex of a tag's name and thirteen
+     * optional fields, each "\|?([^|>]*)?", then ">", found by Regex.find from where the last tag ended -- a new Matcher and
+     * find(int) each time, the fields read by group(i) as Kotlin's groupValues reads them (an absent one ""). java.util.regex is
+     * ICU's matcher here, as on Android: each tag found whole, the fields the text has between its bars.
+     */
+    private void markupRegex() {
+        step("markup-regex", () -> {
+            StringBuilder fields = new StringBuilder();
+            for (int i = 0; i < 13; i++) fields.append("\\|?([^|>]*)?");
+            java.util.regex.Pattern tag = java.util.regex.Pattern.compile("<(strong|small|light|color|image|date|realtime-symbol|link)" + fields + ">");
+            String text = "<color|1e212d/f0f0f1>Choose on map <image|bus||-1|1|-1|-1|Center> 5<realtime-symbol|*0>";
+            StringBuilder found = new StringBuilder();
+            int tags = 0, groups = -1, from = 0;
+            boolean whole = true;
+            java.util.regex.Matcher m;
+            while (from < text.length() && (m = tag.matcher(text)).find(from)) {
+                tags++;
+                groups = m.groupCount();
+                int last = 1;
+                for (int g = 2; g <= groups; g++) if (m.group(g) != null && !m.group(g).isEmpty()) last = g;
+                StringBuilder again = new StringBuilder("<").append(m.group(1));
+                for (int g = 2; g <= last; g++) again.append('|').append(m.group(g) == null ? "" : m.group(g));
+                again.append('>');
+                whole &= again.toString().equals(text.substring(m.start(), m.end()));
+                found.append(m.start()).append('-').append(m.end()).append(' ').append(again).append("; ");
+                from = m.end();
+            }
+            detail = tags + " tags, " + groups + " groups: " + found;
+            return tags == 3 && groups == 14 && whole && found.toString().equals("0-21 <color|1e212d/f0f0f1>; 35-65 <image|bus||-1|1|-1|-1|Center>; 67-87 <realtime-symbol|*0>; ");
         });
     }
 
