@@ -74,6 +74,25 @@ it: these patches change `.cpp` files only.
   it stages has (`megler-patches.txt`, which `tools/build-angle.py` writes
   beside the DLLs).
 
+- `0005-share-handles-feature-level-9.patch` -- `Renderer11.cpp`,
+  `SwapChain11.cpp`. At Direct3D feature level 9_3 ANGLE gave a surface's
+  texture no shared handle (`Renderer11::getShareHandleSupport`: such a device
+  "doesn't support share handles on RGBA8 textures/swapchains"), so no frame of
+  OpenGL ES could be a picture the shell keeps there: on a Lumia 650 every
+  WebView was drawn in software (docs/JAVA.md, "At Direct3D feature level 9_3
+  too"). Direct3D shares textures at 9_3 in one format: on this PC a device of
+  9_3 makes a `B8G8R8A8_UNORM` texture shared, plainly and with a keyed mutex,
+  and a second device of 9_3 or 11_1 opens it by its handle and reads what the
+  first drew; `R8G8B8A8_UNORM` and the typeless formats it refuses
+  (`E_INVALIDARG`) -- the runtime's rule for the level, which the win suite holds
+  it to (`core/tests/mg_gfx_windows.cpp`, `check_texture_9_3`). So at 9_3 ANGLE
+  has share handles, and a pbuffer's texture is made shared where it is
+  `B8G8R8A8_UNORM` of one sample (the first configuration of 8888 EGL gives); a
+  pbuffer of any other format is made unshared there, its handle null, as every
+  one was, rather than not made at all. `core/tests/mg_angle_windows.c`
+  (`gl1_shared`) draws into such a pbuffer at 9_3 and reads it back through its
+  handle.
+
 (An earlier `0001-buffer11-dynamic-writes.patch` took a static buffer written
 after its draws as dynamic. It was made for a loading screen that ran at seven
 frames a second, which turned out to be the shell composing the window from

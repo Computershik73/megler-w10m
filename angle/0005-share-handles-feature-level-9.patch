@@ -1,0 +1,36 @@
+--- a/src/libANGLE/renderer/d3d/d3d11/Renderer11.cpp
++++ b/src/libANGLE/renderer/d3d/d3d11/Renderer11.cpp
+@@ -2468,7 +2468,13 @@
+ 
+     // Also disable share handles on Feature Level 9_3, since it doesn't support share handles on
+     // RGBA8 textures/swapchains.
+-    if (mRenderer11DeviceCaps.featureLevel <= D3D_FEATURE_LEVEL_9_3)
++    // Megler (angle/0005-share-handles-feature-level-9.patch): but it does on BGRA8 ones. At
++    // feature level 9_3 Direct3D 11 makes a texture shared (D3D11_RESOURCE_MISC_SHARED, and with a
++    // keyed mutex) in B8G8R8A8_UNORM, and a second device of 9_3 or 11_1 opens it and reads what
++    // the first drew; R8G8B8A8_UNORM and both typeless formats it refuses (E_INVALIDARG). So 9_3
++    // has share handles, and SwapChain11 makes only a BGRA8 surface's texture shared there: one of
++    // any other format is made as before, with no handle. Below 9_3, none.
++    if (mRenderer11DeviceCaps.featureLevel < D3D_FEATURE_LEVEL_9_3)
+     {
+         mSupportsShareHandles = false;
+         return false;
+--- a/src/libANGLE/renderer/d3d/d3d11/SwapChain11.cpp
++++ b/src/libANGLE/renderer/d3d/d3d11/SwapChain11.cpp
+@@ -389,8 +389,15 @@
+     }
+     else
+     {
++        // Megler (angle/0005-share-handles-feature-level-9.patch): at feature level 9_3 Direct3D
++        // shares a texture of one sample in B8G8R8A8_UNORM alone; one of another format or with
++        // samples is made unshared there, as every surface's was (its share handle null), rather
++        // than not made at all.
+         const bool useSharedResource =
+-            !mNativeWindow->getNativeWindow() && mRenderer->getShareHandleSupport();
++            !mNativeWindow->getNativeWindow() && mRenderer->getShareHandleSupport() &&
++            (mRenderer->getRenderer11DeviceCaps().featureLevel > D3D_FEATURE_LEVEL_9_3 ||
++             (backbufferFormatInfo.texFormat == DXGI_FORMAT_B8G8R8A8_UNORM &&
++              getD3DSamples() <= 1));
+ 
+         offscreenTextureDesc.Width              = backbufferWidth;
+         offscreenTextureDesc.Height             = backbufferHeight;
