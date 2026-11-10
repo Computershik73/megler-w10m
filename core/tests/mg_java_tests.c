@@ -3679,6 +3679,11 @@ static int run_data(void)
           && find_line("stuck:   megler/test/data/Main.stuckMain line ", 0) >= 0);
     /* And not its looper's wait for the next message, which is the main thread with nothing to do (looper_idle). */
     CHECK(find_line("in wait() of a android/os/MessageQueue", 0) < 0);
+    /* Then a monitor another thread holds for 6 s while it sleeps: the report says the holder's stack as well as the main
+       thread's. Smash Hit's said only the holder's number (0.1.0.681). */
+    expect_line("I/DataTest: stuck-holder ok", &at, 60);
+    CHECK(find_line("and 1 holder of the monitors waited for:", 0) >= 0 && find_line("stuck: thread ", 0) >= 0
+          && find_line("stuck:   megler/test/data/Main.stuckHolder line ", 0) >= 0);
     /* A translucent activity over the app's (F11, Main$Clear): the one below paused, not stopped, its window still there. TikTok
        Lite's consent dialog, translucent, left the screen black behind it (package 619). */
     megler_key(141, true);
