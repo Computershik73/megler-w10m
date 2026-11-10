@@ -330,7 +330,9 @@ stack scan, thread and memory lines, the flags (`mg_flag`: a file's presence in
 `fail-present` (every Present taken as refused, uncalled: docs/XBOX.md),
 `normal-priority`, `trace-gl`), `trace-gl` (every GL call through a generated
 thunk), `no-gl-turns` (the thunks that have two threads' calls of one ANGLE
-display take turns left out; `ndk/mg_egl.c`, "turns"), the unattended `play` mode, and `tools/phone-etw.py`. And for what an app
+display take turns left out; `ndk/mg_egl.c`, "turns"), `native-entry-at-start` (an
+activity's library is not looked into for NativeActivity's entry when its APK is
+read: the start loads it and asks it, `run/mg_run.c`), the unattended `play` mode, and `tools/phone-etw.py`. And for what an app
 does that it says nothing of: `trace-net` (every TCP connection the app makes,
 where to, how it ended and how long it took, and every name it looks up with its
 addresses; `bionic/mg_net.c`, `mg_netdb.c`) and `trace-exceptions` (every Java
@@ -411,10 +413,11 @@ the views hide, and a frame the shell loses tell apart so: the first has a black
 grid, the second alpha other than `00` over it, the third a good grid and alpha
 `00` and a black screen that `gl-compose-here` mends. Without a flag the log says
 each view's first six places (`java: OpenGL layer N (class) is at x,y wxh in the
-window`), every EGL call of the app's for these surfaces that EGL refused with its
+window`, and `, over the views` with `, translucent` for a surface on top of the
+window), every EGL call of the app's for these surfaces that EGL refused with its
 error (`egl: ... was refused (EGL error 0x...)`), and the OpenGL frames' minute
 lines end with who composes and where each layer is, or that it is nowhere (its
-view has not drawn its hole). The natives app runs under qemu with
+view has not been drawn). The natives app runs under qemu with
 `trace-surfaces` on, and the test checks its lines.
 
 **Sound.** FMOD said "Error initializing output device" twice and made no player.

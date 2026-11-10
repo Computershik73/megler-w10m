@@ -1,11 +1,17 @@
     // Megler: members added to the original's megler.EGLNative (tools/build-framework.sh, "X.java.members"); the core's side is
     // core/src/drivers/mg_java_gl.c. A window surface is made with the view it is shown at, and the view says where it is on the
-    // screen each time it is drawn with its hole, and that its surface is gone: the core composes the window of the views'
-    // picture and the frames of the surfaces under it (docs/ARCHITECTURE.md, "OpenGL ES from an app's Java").
+    // screen each time it is drawn (with its hole, for a surface under the window), and that its surface is gone: the window is
+    // composed of the views' picture and the frames of the surfaces under it and over it (docs/ARCHITECTURE.md, "OpenGL ES
+    // from an app's Java").
     /** A pbuffer width x height whose frames are shown where the view is; 0 when none could be made. */
     public static native long createWindowSurface(Object view, int width, int height);
-    /** Where the view is on the screen, as the picture of the views being drawn has it. */
-    public static native void place(Object view, int x, int y, int width, int height);
+    /**
+     * Where the view is on the screen, as the picture of the views being drawn has it, and how its frames go with the views:
+     * PLACE_ABOVE over them (a surface ordered on top), PLACE_TRANSLUCENT with their alpha, PLACE_OVERLAY under them but over
+     * the other surfaces there (megler.h's MEGLER_GL_*).
+     */
+    public static native void place(Object view, int x, int y, int width, int height, int flags);
+    public static final int PLACE_ABOVE = 1, PLACE_TRANSLUCENT = 2, PLACE_OVERLAY = 4;
     /** The view's surface is gone: its frames are no longer shown. */
     public static native void forget(Object view);
     /** The newest OpenGL ES a context can be made of here, as ConfigurationInfo.reqGlEsVersion says it: 0x30000 is 3.0. */

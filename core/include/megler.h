@@ -868,16 +868,24 @@ typedef struct megler_storage_host {
  *                 thread, one call at a time with present_pixels. NULL:
  *                 never; the layer flushes.
  *   gl_frame      optional, with present and gl_place: OpenGL ES views'
- *   gl_place      frames shown under the window's views by the shell, the
+ *   gl_place      frames shown with the window's views by the shell, the
  *                 layer reading neither back. A view that draws with EGL
  *                 (a GLSurfaceView, a SurfaceView with an EGL window
  *                 surface) has a `layer`, 0..7, and its frames are shown
  *                 at the rectangle gl_place gives it (x, y, width, height
  *                 of the window; width 0: the layer shows nothing any more,
- *                 and its frame is dropped), scaled to it, opaque, with the
- *                 window's views over them -- their premultiplied colours,
- *                 as present last showed them; the views leave holes where
- *                 the frames are to show. gl_frame is a new frame:
+ *                 and its frame is dropped), scaled to it. As Android has a
+ *                 SurfaceView's surface, by gl_place's `flags`
+ *                 (MEGLER_GL_*): without MEGLER_GL_ABOVE under the views,
+ *                 opaque, the window's views over them -- their
+ *                 premultiplied colours, as present last showed them; the
+ *                 views leave holes where the frames are to show -- the
+ *                 layers with MEGLER_GL_OVERLAY over those without it; with
+ *                 MEGLER_GL_ABOVE over the views (setZOrderOnTop), in the
+ *                 order of their layers, opaque or, with
+ *                 MEGLER_GL_TRANSLUCENT, their premultiplied colours over
+ *                 what is under them (a surface whose format has alpha:
+ *                 Flutter's own view of a map's under it). gl_frame is a new frame:
  *                 `share_handle` is the DXGI shared handle of ANGLE's
  *                 Direct3D 11 texture of the surface (an OpenGL ES pbuffer;
  *                 EGL_ANGLE_surface_d3d_texture_2d_share_handle), width x
@@ -1275,6 +1283,8 @@ enum { MEGLER_GFX_CAP_BUTT = 0, MEGLER_GFX_CAP_ROUND = 1, MEGLER_GFX_CAP_SQUARE 
 enum { MEGLER_GFX_JOIN_MITER = 0, MEGLER_GFX_JOIN_ROUND = 1, MEGLER_GFX_JOIN_BEVEL = 2 };
 enum { MEGLER_GFX_ALIGN_LEFT = 0, MEGLER_GFX_ALIGN_CENTER = 1, MEGLER_GFX_ALIGN_RIGHT = 2 };
 enum { MEGLER_GFX_ANTI_ALIAS = 1, MEGLER_GFX_FILTER_BITMAP = 2, MEGLER_GFX_FAKE_BOLD = 4 };
+/* gl_place's flags: where an OpenGL ES view's frames go among the window's views, and how (see gl_frame above). */
+enum { MEGLER_GL_ABOVE = 1, MEGLER_GL_TRANSLUCENT = 2, MEGLER_GL_OVERLAY = 4 };
 enum {
     MEGLER_GFX_BLEND_CLEAR = 0, MEGLER_GFX_BLEND_SRC = 1, MEGLER_GFX_BLEND_DST = 2, MEGLER_GFX_BLEND_SRC_OVER = 3, MEGLER_GFX_BLEND_DST_OVER = 4,
     MEGLER_GFX_BLEND_SRC_IN = 5, MEGLER_GFX_BLEND_DST_IN = 6, MEGLER_GFX_BLEND_SRC_OUT = 7, MEGLER_GFX_BLEND_DST_OUT = 8, MEGLER_GFX_BLEND_SRC_ATOP = 9,
@@ -1368,7 +1378,7 @@ typedef struct megler_gfx_host {
 
     bool (MEGLER_CB *present)(void *user, void *canvas, int x, int y, int width, int height);
     bool (MEGLER_CB *gl_frame)(void *user, int layer, void *share_handle, int width, int height);
-    void (MEGLER_CB *gl_place)(void *user, int layer, int x, int y, int width, int height);
+    void (MEGLER_CB *gl_place)(void *user, int layer, int x, int y, int width, int height, int flags);
     bool (MEGLER_CB *texture_frame)(void *user, int id, void *share_handle, int width, int height);
     void (MEGLER_CB *draw_texture)(void *user, void *canvas, int id, float left, float top, float right, float bottom, int alpha);
     /* Optional bitmap-to-canvas drawing without a CPU readback. The source is

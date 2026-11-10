@@ -3156,9 +3156,10 @@ when Android destroys it too.
 
 Not there: attributes set with `eglSurfaceAttrib` are lost when a resize
 makes the next pbuffer;
-`ANativeWindow_setBuffersTransform` and `_setFrameRate` change nothing; a
-surface above the window (`setZOrderOnTop` without a `GLSurfaceView`) is not
-composed, as for Java's EGL.
+`ANativeWindow_setBuffersTransform` and `_setFrameRate` change nothing. (A
+surface above the window, `setZOrderOnTop`, was composed nowhere up to package
+681; it is over the views now, translucent where its format has alpha:
+docs/ARCHITECTURE.md, "Surfaces over the window".)
 
 *Tested* by the app `natives` under qemu, the window steps, twice (the shell
 composing, and the core), with `trace-surfaces` on and its lines checked (the
@@ -5330,8 +5331,9 @@ native code is.
 - **OpenGL ES from Java on a phone has not run.** Under qemu and on the PC it
   runs on a stand-in that draws. A `SurfaceView` that the app's *native*
   code draws on is there now (above, "A SurfaceView drawn by native code"),
-  a `SurfaceTexture`'s too, likewise only under qemu. Not there at all: `setZOrderOnTop` with a translucent surface (a
-  surface is always composed under the views, opaque), more than eight
+  a `SurfaceTexture`'s too, likewise only under qemu. (A surface ordered on top of
+  the window, opaque or translucent, is composed over the views now -- up to
+  package 681 nowhere: docs/ARCHITECTURE.md, "Surfaces over the window".) Not there at all: more than eight
   views with EGL at once, `GLES32.glDebugMessageCallback` and the other
   calls Android's own glue leaves "not yet implemented" (the same exception
   here), and the composition on the GPU (docs/ARCHITECTURE.md says what it

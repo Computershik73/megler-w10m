@@ -628,6 +628,26 @@ bool mg_run_start(const megler_run_config *config)
     /* Each app gets its own Android data directories under ours, and all of them one shared storage. */
     mg_run_files(megler_data_dir(), megler_storage_dir(), info.package, &g_config.storage);
 
+    /*
+     * A NativeActivity of the app's own Java class whose library the reading could not look into (mg_apk.c, native_entry:
+     * not known): the library is loaded -- not started: its constructors run when Java loads it -- and asked for the entry.
+     * Without one, the activity loads the library through JNI itself, as Qt's QtActivity does, and the app is a Java one: the
+     * Java driver starts it, where the NativeActivity driver would end at once ("has no ANativeActivity_onCreate", 2GIS).
+     */
+    if (!strcmp(info.engine, "native-activity") && info.native_entry == -1) {
+        const char *entry = info.func_name[0] ? info.func_name : "ANativeActivity_onCreate";
+        const mg_driver *java = mg_driver_find("java");
+        char name[160];
+        mg_lib *lib;
+        snprintf(name, sizeof(name), "lib%s.so", info.native_library);
+        lib = mg_ld_load(name);
+        if (lib && !mg_ld_sym(lib, entry) && java) {
+            mg_info("run: %s has no %s: its activity (%s) loads it through JNI itself, and the app is started as a Java one", name, entry, info.activity);
+            g_driver = java;
+            strcpy(info.engine, "java");
+        }
+    }
+
     mg_guest_exit_hook = on_guest_exit;
     mg_core_set_crash_hook(on_crash);
     /* The surface the drivers read from now on: the config's until megler_set_surface says otherwise. */

@@ -73,6 +73,7 @@ public class Main extends Activity {
 
     private Picture picture;
     private WindowTest windows;
+    private StackTest stack;
 
     @Override
     protected void onCreate(Bundle state) {
@@ -89,6 +90,12 @@ public class Main extends Activity {
             if (e.getAction() == android.view.MotionEvent.ACTION_UP) windows.tapped();
             return true;
         });
+        /* And, at the tap after the window test's last step, two SurfaceViews one over the other, the one over the window translucent, under the row (StackTest). */
+        windows.afterLast = () -> {
+            if (stack != null) return;
+            stack = new StackTest(this);
+            root.addView(stack.view(), 2, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 100));
+        };
         sText = new TextView(this);
         sText.setTextColor(0xFF000000);
         sText.setTextSize(10);
@@ -110,6 +117,7 @@ public class Main extends Activity {
     @Override
     protected void onDestroy() {
         super.onDestroy();
+        if (stack != null) stack.end();
         windows.end();
         Log.i("NativesTest", "onDestroy");
     }

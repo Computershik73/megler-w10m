@@ -535,6 +535,18 @@ ANGLE's functions. This layer adds the display, the window, and the float adapte
   `libwebviewchromium.so`): ANGLE's Direct3D 11 renderer, one to a display, does not
   take two contexts of one display drawing at once (docs/JAVA.md, "A display of its
   own").
+- The threads of an app's own that draw on one display at once take turns
+  (`ndk/mg_egl.c`, "turns"): each call of EGL's and OpenGL ES's holds the
+  display's lock, and a thread's context is made current again when another's was
+  last. The turns go round: a thread whose calls have had the display for 4 ms
+  while another waits lets that one in, and a swap lets go of its turn while it
+  waits for its pacing or for the shell to take its frame
+  (`mg_egl_turn_pause`). Up to package 681 a thread drawing without a pause kept
+  the others out, and a swap held them out for the sixtieth of a second it slept:
+  HERE WeGo's map's render thread and Flutter's raster thread (the app's whole
+  interface) shared the display so. Tested under qemu (`mg_gl_tests.c`,
+  `test_turns_fair`; the natives app's stack, a call of another thread's going on
+  while a frame is handed over).
 - The app's window is an `ANativeWindow`; its window surface is a pbuffer over a
   texture the shell provides, on ANGLE's own Direct3D device. `eglSwapBuffers` hands
   the finished frame to the shell, which copies it to its swap chain's back buffer
@@ -721,7 +733,10 @@ can be OpenGL ES surfaces: a `GLSurfaceView` with a `Renderer`, or any
 on through `EGL14` or `EGL10`. And some apps use EGL with no view at all: a pbuffer
 to ask the GPU's name, or to draw off the screen. This is how that is done here.
 Android's picture of it is kept: the surface lies *under* the window, and the
-views are drawn over it with a hole where the `SurfaceView` is.
+views are drawn over it with a hole where the `SurfaceView` is -- or, for a
+`SurfaceView` ordered on top of the window (`setZOrderOnTop`), *over* it, with
+no hole, and translucent where its format has alpha (below, "Surfaces over the
+window").
 
 **One OpenGL ES in the process.** The Java natives call the very functions native
 code is bound to, ANGLE's, by name through the core (`mg_egl_host`). Two things
@@ -897,6 +912,39 @@ composed there and nothing is read back, neither the frames nor the views:
   the test shell takes it before it copies a frame. On the PC's graphics
   processor a second Direct3D device stands for ANGLE's (`mg_gfx_windows.cpp`),
   its texture shared plainly and then with a keyed mutex.
+
+**Surfaces over the window.** Android orders a `SurfaceView`'s surface by its
+sublayer: under the window (the default), under it but over those
+(`setZOrderMediaOverlay`), or over it (`setZOrderOnTop`) -- where the view makes
+no hole, and where a format with alpha (`PixelFormat.TRANSLUCENT`,
+`TRANSPARENT`, `RGBA_8888`) lets the window be seen where the surface's frame is
+clear, its colours premultiplied. The overlay's `SurfaceView` says its place with
+how (`EGLNative.place`'s flags: megler.h's `MEGLER_GL_ABOVE`,
+`MEGLER_GL_TRANSLUCENT`, `MEGLER_GL_OVERLAY`), the core hands that to the shell
+with the place (`gl_place`'s `flags`), and the window is composed so, by the
+shell (`composeWindow` in `GfxHost.cpp`: the layers under the views, those with
+`MEGLER_GL_OVERLAY` after the others, the views over them, the videos, then the
+layers over the views, opaque or, translucent, over what is there through a
+premultiplied bitmap of the same copy) or by the core (`compose_part` in
+`mg_java_gl.c`: a part where a layer over the views is composed whole, in that
+order). Up to package 681 a surface on top was shown nowhere: its view drew
+neither its hole nor its place, and the log's OpenGL frames said "layer 0
+nowhere". HERE WeGo is a Flutter app whose `FlutterActivity` is transparent
+(`TransparencyMode.transparent`): its whole interface is `FlutterSurfaceView`,
+`setZOrderOnTop(true)` with `PixelFormat.TRANSPARENT`, over the SurfaceView its
+map (HERE SDK's native renderer) draws on, which its activity puts under it; only
+the map was seen, and the taps went to the interface no one saw (its map's
+gestures come through Flutter's Dart code, which drives the map by FFI). A
+hidden `SurfaceView` (`setVisibility` other than `VISIBLE`) has its surface
+destroyed and made again when it is shown, as Android's has, so that a hidden
+surface over the window is not left there. Tested by the natives app's stack
+(two SurfaceViews one over the other, a render thread drawing each, two boxes of
+the views between them), under qemu both ways, and by the PC's test of the
+shell's composing, a translucent and an opaque layer over the views. Not as on
+Android: the app's windows are one picture of the views here (megler.ViewRoot
+draws its dialogs, popups and toasts into the screen's one bitmap), so a surface
+on top of an activity's window is over that activity's dialogs too, where Android
+has them over it.
 
 **Native code on a SurfaceView.** A game with a Java activity and a native
 engine (Asphalt 9) hands its `SurfaceView`'s `Surface` to native code, which
@@ -1558,11 +1606,24 @@ one so far: `NativeActivity`, which is what Android itself provides for apps wit
 Java (`android:hasCode="false"`, or `android.app.lib_name` in the manifest). An
 activity of the app's own that names its library with `android.app.lib_name` is
 taken for NativeActivity's subclass only when the library exports its entry
-(`ANativeActivity_onCreate`, or `android.app.func_name`), looked for in the
-dynamic symbols of its first 32 MB (`native_entry`, `apk/mg_apk.c`): Qt's
-QtActivity names its library so and starts it through JNI itself, and 2GIS
-(`libv4android.so`, 277 MB) ended in "has no ANativeActivity_onCreate" until it
-was taken for the Java app it is (package 576). It
+(`ANativeActivity_onCreate`, or `android.app.func_name`), looked for among its
+dynamic symbols (`native_entry`, `apk/mg_apk.c`): Qt's QtActivity names its
+library so and starts it through JNI itself, and 2GIS (`libv4android.so`, 277 MB)
+ended in "has no ANativeActivity_onCreate" until it was taken for the Java app
+it is (package 576). The look reads the library where it lies in whichever APK
+has it (`mg_zip_cursor`, `zip/mg_zip.c`): its headers, its dynamic section, and
+through its GNU or SysV hash table the bucket, chain, symbol and name the
+dynamic linker would read -- a stored library a few small reads, a deflated one
+inflated as far as its dynamic section, its first 32 MB kept for the tables
+before it. Up to package 681 it read the library's first 32 MB whole, and 2GIS's
+dynamic section, past its code, was not in them: it was a NativeActivity again.
+The bundle tests make the natives app with a library of 40 MB whose dynamic
+section is at 40 MB, stored (a hole in the file) and deflated. Where the look
+cannot tell (the library damaged, or the flag `native-entry-at-start`), the start
+asks the library itself (`run/mg_run.c`): it is loaded -- not started, its
+constructors run when Java loads it -- and, without the entry, the app is started
+by the Java driver instead, where the NativeActivity driver would end at once; the
+natives app's second run under qemu goes that way. The NativeActivity driver
 loads the library, calls `ANativeActivity_onCreate`, and makes the activity's
 callbacks in the framework's order on a thread that stands for Android's main
 thread. Apps built on `android_native_app_glue` run on top of that.

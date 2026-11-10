@@ -51,6 +51,20 @@ bool mg_zip_pread(const mg_zip *z, u64 offset, void *buf, size_t n);
 /* Every entry whose name starts with `prefix`. */
 void mg_zip_each(const mg_zip *z, const char *prefix, void (*cb)(const mg_zip_entry *e, void *user), void *user);
 /*
+ * An entry read in parts wherever they lie, for the tables of a library an APK holds, which may be anywhere in its hundreds of
+ * megabytes (core/src/apk/mg_apk.c, native_entry). A stored entry is read where its bytes are in the file. A deflated one is
+ * inflated from its start as far as a read reaches, and its first `keep` bytes are kept for the reads that come back to them;
+ * a read before where the inflating has got to, and past what is kept, inflates it again from the start. NULL when the entry
+ * cannot be read at all.
+ */
+typedef struct mg_zip_cursor mg_zip_cursor;
+mg_zip_cursor *mg_zip_cursor_open(const mg_zip *z, const mg_zip_entry *e, size_t keep);
+/* `n` bytes of the entry from `offset` into `out`; false when they are not all in it, or it is damaged. */
+bool mg_zip_cursor_read(mg_zip_cursor *c, u64 offset, void *out, size_t n);
+/* The entry's bytes inflated for the reads so far, every pass from its start counted (0 for a stored entry). */
+u64 mg_zip_cursor_inflated(const mg_zip_cursor *c);
+void mg_zip_cursor_close(mg_zip_cursor *c);
+/*
  * An entry's bytes handed to `piece` as they are inflated, a megabyte or less at a time, never all in memory; `piece` returns
  * false to stop there. True when the entry was read to its end and its size and CRC-32 are the archive's, or `piece` stopped
  * it; false, with the reason in `err`, when it is damaged or cannot be read. For an app's code read for a name in it (the

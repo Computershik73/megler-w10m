@@ -620,6 +620,7 @@ typedef struct layer {
     bool pending;                      /* the view said where it is (place); taken with the next picture of the views */
     i32 x, y, w, h;                    /* the view's rectangle on the screen */
     i32 px, py, pw, ph;                /* the one it said */
+    int flags, pflags;                 /* how its frames go with the views (MEGLER_GL_*: over them, translucent, a media overlay); as said */
     u8 *frame;                         /* its last frame as read back, fw x fh, rows bottom first; fw 0: none */
     size_t frame_size;
     i32 fw, fh;
@@ -723,7 +724,7 @@ static void stop_shell(void)
     compose_here();
     C.have_views = C.shown_whole = false;
     for (i = 0; i < MAX_LAYERS; i++)
-        if (C.layers[i].view) g_shell->gl_place(g_shell->user, i, 0, 0, 0, 0);
+        if (C.layers[i].view) g_shell->gl_place(g_shell->user, i, 0, 0, 0, 0, 0);
     mg_warn("java: the shell did not take an OpenGL ES frame: from now on the window is composed here, the frames read back");
 }
 
@@ -748,8 +749,33 @@ static int layer_index(const struct layer *l) { return (int)(l - C.layers); }
 static void tell_place(struct layer *l, bool shown)
 {
     if (C.shell <= 0) return;
-    if (shown && l->placed) g_shell->gl_place(g_shell->user, layer_index(l), l->x, l->y, l->w, l->h);
-    else g_shell->gl_place(g_shell->user, layer_index(l), 0, 0, 0, 0);
+    if (shown && l->placed) g_shell->gl_place(g_shell->user, layer_index(l), l->x, l->y, l->w, l->h, l->flags);
+    else g_shell->gl_place(g_shell->user, layer_index(l), 0, 0, 0, 0, 0);
+}
+
+/* A layer whose frame is in the window: its view's, on, placed, with a frame. */
+static bool layer_shown(const layer *l) { return l->view && l->active && l->placed && l->w > 0 && l->h > 0; }
+
+/* Whether a layer over the views is shown in [x0, x1) x [y0, y1): then a part is composed whole (compose_part). */
+static bool above_in(i32 x0, i32 y0, i32 x1, i32 y1)
+{
+    int i;
+    for (i = 0; i < MAX_LAYERS; i++) {
+        const layer *l = &C.layers[i];
+        if (layer_shown(l) && (l->flags & MEGLER_GL_ABOVE) && l->x < x1 && l->x + l->w > x0 && l->y < y1 && l->y + l->h > y0) return true;
+    }
+    return false;
+}
+
+/* Whether another layer shown crosses a layer's rectangle. */
+static bool crossed(const layer *l)
+{
+    int i;
+    for (i = 0; i < MAX_LAYERS; i++) {
+        const layer *o = &C.layers[i];
+        if (o != l && layer_shown(o) && o->x < l->x + l->w && o->x + o->w > l->x && o->y < l->y + l->h && o->y + o->h > l->y) return true;
+    }
+    return false;
 }
 
 /* The window's composed picture is the views' there again: no frame under them. */
@@ -850,10 +876,76 @@ static void compose(layer *l, i32 x0, i32 y0, i32 x1, i32 y1)
     }
 }
 
+/*
+ * A layer over the views (MEGLER_GL_ABOVE): its frame onto the composed picture in [x0, x1) x [y0, y1) of the screen --
+ * opaque, or with MEGLER_GL_TRANSLUCENT its colours, premultiplied as Android's compositor takes a surface's, over what is
+ * there -- scaled to the view as compose's are.
+ */
+static void compose_above(layer *l, i32 x0, i32 y0, i32 x1, i32 y1)
+{
+    size_t stride = (size_t)C.width * 4, frow = (size_t)l->fw * 4;
+    bool same = l->fw == l->w, bgra = l->bgra, translucent = (l->flags & MEGLER_GL_TRANSLUCENT) != 0;
+    i32 r, col;
+    x0 = max_i(max_i(x0, l->x), 0);
+    y0 = max_i(max_i(y0, l->y), 0);
+    x1 = min_i(min_i(x1, l->x + l->w), C.width);
+    y1 = min_i(min_i(y1, l->y + l->h), C.height);
+    if (!l->frame || l->fw <= 0 || l->fh <= 0 || x0 >= x1 || y0 >= y1) return;
+    for (r = y0; r < y1; r++) {
+        i32 lr = r - l->y, fr = l->fh - 1 - (i32)((i64)lr * l->fh / l->h);
+        const u8 *g = l->frame + (size_t)fr * frow;
+        u8 *o = C.out + (size_t)r * stride;
+        for (col = x0; col < x1; col++) {
+            const u8 *gp = g + (size_t)(same ? col - l->x : (i32)((i64)(col - l->x) * l->fw / l->w)) * 4;
+            u8 *op = o + (size_t)col * 4;
+            u32 b = bgra ? gp[0] : gp[2], gg = gp[1], rr = bgra ? gp[2] : gp[0], a = translucent ? gp[3] : 255, left = 255 - a;
+            if (a == 255) {
+                op[0] = (u8)b;
+                op[1] = (u8)gg;
+                op[2] = (u8)rr;
+                op[3] = 255;
+                continue;
+            }
+            if (!a && !b && !gg && !rr) continue;   /* clear there: what is under it is seen */
+            op[0] = (u8)min_i(255, (i32)(b + (op[0] * left + 127) / 255));
+            op[1] = (u8)min_i(255, (i32)(gg + (op[1] * left + 127) / 255));
+            op[2] = (u8)min_i(255, (i32)(rr + (op[2] * left + 127) / 255));
+            op[3] = (u8)min_i(255, (i32)(a + (op[3] * left + 127) / 255));
+        }
+    }
+}
+
+/*
+ * With the lock held: [x0, x1) x [y0, y1) of the window composed whole from the views' picture -- the views there, the
+ * frames of the layers under them (those without MEGLER_GL_OVERLAY, then those with it) with the views over them, then
+ * the frames of the layers over them in the order of their layers. Where a layer over the views is, a part is composed so
+ * (its frame cannot be taken back out of the picture to put another under it).
+ */
+static void compose_part(i32 x0, i32 y0, i32 x1, i32 y1)
+{
+    int pass, i;
+    copy_views(x0, y0, x1, y1);
+    for (pass = 0; pass < 3; pass++)
+        for (i = 0; i < MAX_LAYERS; i++) {
+            layer *l = &C.layers[i];
+            int which = (l->flags & MEGLER_GL_ABOVE) ? 2 : (l->flags & MEGLER_GL_OVERLAY) ? 1 : 0;
+            if (which != pass || !layer_shown(l)) continue;
+            if (pass == 2) {
+                compose_above(l, x0, y0, x1, y1);
+                continue;
+            }
+            if (!l->rows_valid) {
+                classify(l, 0, C.height);
+                l->rows_valid = true;
+            }
+            compose(l, x0, y0, x1, y1);
+        }
+}
+
 /* With the lock held: a layer's rectangle changes to the one its view said, and its rows are to be looked at again. */
 static void take_place(layer *l, i32 *x0, i32 *y0, i32 *x1, i32 *y1)
 {
-    bool moved = !l->placed || l->x != l->px || l->y != l->py || l->w != l->pw || l->h != l->ph;
+    bool moved = !l->placed || l->x != l->px || l->y != l->py || l->w != l->pw || l->h != l->ph || l->flags != l->pflags;
     l->pending = false;
     if (!moved) return;
     if (l->placed && C.shell < 0) {
@@ -867,12 +959,16 @@ static void take_place(layer *l, i32 *x0, i32 *y0, i32 *x1, i32 *y1)
     l->y = l->py;
     l->w = l->pw;
     l->h = l->ph;
+    l->flags = l->pflags;
     l->placed = true;
     l->placed_at = mg_time_monotonic_ns();
     if (l->places_said < 6) {
         l->places_said++;
-        mg_info("java: OpenGL layer %d (%s) is at %d,%d %dx%d in the window: its frames go there%s", layer_index(l), mg_dvm_class_name(l->view), (int)l->x,
-                (int)l->y, (int)l->w, (int)l->h, l->places_said == 6 ? " (its next places are not said)" : "");
+        mg_info("java: OpenGL layer %d (%s) is at %d,%d %dx%d in the window%s: its frames go there%s", layer_index(l), mg_dvm_class_name(l->view), (int)l->x,
+                (int)l->y, (int)l->w, (int)l->h,
+                (l->flags & MEGLER_GL_ABOVE) ? ((l->flags & MEGLER_GL_TRANSLUCENT) ? ", over the views, translucent" : ", over the views")
+                : (l->flags & MEGLER_GL_OVERLAY) ? ", under the views over the other surfaces (a media overlay)" : "",
+                l->places_said == 6 ? " (its next places are not said)" : "");
     }
     /* (Made where the shell composes too: should it stop, the window is composed here with them.) */
     if (l->rows_size < (size_t)l->h) {
@@ -942,7 +1038,8 @@ static void layer_off(layer *l)
         return;
     }
     if (C.have_views && l->placed) {
-        copy_views(l->x, l->y, l->x + l->w, l->y + l->h);
+        /* (The other layers there, under the views and over them, as they are.) */
+        compose_part(l->x, l->y, l->x + l->w, l->y + l->h);
         show_part(l->x, l->y, l->x + l->w, l->y + l->h);
     }
 }
@@ -1090,14 +1187,23 @@ bool mg_java_gl_views(const void *pixels, int width, int height, int stride, con
         if (C.layers[i].view && C.layers[i].pending) take_place(&C.layers[i], &sx0, &sy0, &sx1, &sy1);
     for (i = 0; i < MAX_LAYERS; i++) {
         layer *l = &C.layers[i];
-        if (!l->view || !l->active || !l->placed || l->w <= 0 || l->h <= 0) continue;
+        if (!layer_shown(l) || (l->flags & MEGLER_GL_ABOVE)) continue;
         if (!l->rows_valid) {
             classify(l, 0, C.height);
             l->rows_valid = true;
         } else {
             classify(l, y0, y1);
         }
-        compose(l, sx0, sy0, sx1, sy1);
+    }
+    /* The frames under the new views; where a layer over the views is, the part whole, the views and the frames in their order. */
+    if (above_in(sx0, sy0, sx1, sy1)) {
+        compose_part(sx0, sy0, sx1, sy1);
+    } else {
+        for (i = 0; i < MAX_LAYERS; i++)
+            if (layer_shown(&C.layers[i]) && !(C.layers[i].flags & (MEGLER_GL_ABOVE | MEGLER_GL_OVERLAY))) compose(&C.layers[i], sx0, sy0, sx1, sy1);
+        for (i = 0; i < MAX_LAYERS; i++)
+            if (layer_shown(&C.layers[i]) && (C.layers[i].flags & (MEGLER_GL_ABOVE | MEGLER_GL_OVERLAY)) == MEGLER_GL_OVERLAY)
+                compose(&C.layers[i], sx0, sy0, sx1, sy1);
     }
     if (trace_surfaces() && mg_time_monotonic_ns() - C.views_looked >= TRACE_EVERY) look_at_views(pixels, width, height, stride, probe, sizeof(probe));
     show_part(sx0, sy0, sx1, sy1);
@@ -1157,9 +1263,10 @@ static void stats_line(const mg_java_gl_stats *a, u64 since, u64 now)
         const layer *l = &C.layers[i];
         if (!l->view) continue;
         if (l->placed)
-            at += (size_t)snprintf(places + at, sizeof(places) - at, "%slayer %d at %d,%d %dx%d", at ? ", " : "; ", i, (int)l->x, (int)l->y, (int)l->w, (int)l->h);
+            at += (size_t)snprintf(places + at, sizeof(places) - at, "%slayer %d at %d,%d %dx%d%s", at ? ", " : "; ", i, (int)l->x, (int)l->y, (int)l->w, (int)l->h,
+                                   (l->flags & MEGLER_GL_ABOVE) ? " over the views" : "");
         else
-            at += (size_t)snprintf(places + at, sizeof(places) - at, "%slayer %d nowhere (its view has not drawn its hole)", at ? ", " : "; ", i);
+            at += (size_t)snprintf(places + at, sizeof(places) - at, "%slayer %d nowhere (its view has not been drawn)", at ? ", " : "; ", i);
     }
     mg_info("java: OpenGL frames %s%.1f s: %u swaps of window surfaces, %u shown (%.1f a second); a swap's own work %.2f ms on average "
             "(reading back, or finishing where the shell composes, %.2f, composing %.2f, the shell %.2f), the longest %.2f; the window %dx%d, composed %s%s",
@@ -1198,9 +1305,10 @@ static void trace_frame(gl_surf *s, gl_ctx *x, layer *l)
     centre = frame_pixel(s->pixels, s->width, s->width / 2, s->height - 1 - s->height / 2, bgra);
     mg_lock_acquire(&g_window_lock);
     if (!l->placed) {
-        snprintf(where, sizeof(where), "its view has not said where it is (no hole drawn since the surface was made): the frame goes nowhere");
+        snprintf(where, sizeof(where), "its view has not said where it is (not drawn since the surface was made): the frame goes nowhere");
     } else {
-        n = (size_t)snprintf(where, sizeof(where), "at %d,%d %dx%d, said %.1f s ago, composed %s%s", (int)l->x, (int)l->y, (int)l->w, (int)l->h,
+        n = (size_t)snprintf(where, sizeof(where), "at %d,%d %dx%d%s, said %.1f s ago, composed %s%s", (int)l->x, (int)l->y, (int)l->w, (int)l->h,
+                             (l->flags & MEGLER_GL_ABOVE) ? ((l->flags & MEGLER_GL_TRANSLUCENT) ? " over the views, translucent" : " over the views") : "",
                              (double)(now - l->placed_at) / 1e9, C.shell > 0 ? "by the shell" : "here", l->active ? "" : ", NOT shown (its surface has gone)");
         if (!l->views_at) {
             snprintf(where + n, sizeof(where) - n, "; the views over it not looked at yet");
@@ -1267,14 +1375,22 @@ static bool read_back(gl_surf *s, gl_ctx *x)
     return true;
 }
 
-/* A swap returns no sooner than a sixtieth of a second after the one before was due, as a swap interval of 1 has it. */
+/*
+ * A swap returns no sooner than a sixtieth of a second after the one before was due, as a swap interval of 1 has it. The
+ * display's turn the swapping thread holds is let go of while it waits (mg_egl_turn_pause): the display's other threads
+ * draw meanwhile.
+ */
 static void pace(gl_surf *s)
 {
     const u64 period = 16666667ull;
     u64 now = mg_time_monotonic_ns();
     if (!s->due || now > s->due + 100000000ull) s->due = now;
     s->due += period;
-    if (s->due > now) mg_sleep_ns(s->due - now);
+    if (s->due > now) {
+        void *paused = mg_egl_turn_pause();
+        mg_sleep_ns(s->due - now);
+        mg_egl_turn_resume(paused);
+    }
 }
 
 /*
@@ -1294,6 +1410,7 @@ static bool shell_frame(gl_surf *s, layer *l, bool *shown, u64 *finished)
     typedef void (*fn_finish)(void);
     fn_finish finish = FN(fn_finish, F_FINISH, "glFinish"), flush = FN(fn_finish, F_FLUSH, "glFlush");
     bool active, taken;
+    void *paused;
     *shown = false;
     *finished = mg_time_monotonic_ns();
     if (!s->share_asked) {
@@ -1312,7 +1429,10 @@ static bool shell_frame(gl_surf *s, layer *l, bool *shown, u64 *finished)
     mg_lock_release(&g_window_lock);
     if (!active) return true;
     if (s->mutex) mg_egl_keyed_mutex(s->mutex, false);
+    /* (Not in the display's turn: the shell copies on its own device, and may wait for the screen meanwhile.) */
+    paused = mg_egl_turn_pause();
     taken = g_shell->gl_frame(g_shell->user, layer_index(l), s->share, s->width, s->height);
+    mg_egl_turn_resume(paused);
     if (s->mutex && !mg_egl_keyed_mutex(s->mutex, true))
         mg_note_once("java: a surface's keyed mutex could not be taken back from the shell: what the app draws in it now is dropped");
     *shown = taken;
@@ -1329,6 +1449,7 @@ static bool swap(gl_surf *s, gl_ctx *x)
     layer *l;
     u64 t0, t1, t2 = 0, t3, work;
     bool shown = false;
+    void *paused;
     if (!s || !x) return false;
     l = s->layer;
     if (!l) return true;
@@ -1368,6 +1489,8 @@ static bool swap(gl_surf *s, gl_ctx *x)
     }
     if (!read_back(s, x)) return false;
     t1 = mg_time_monotonic_ns();
+    /* (Composing and showing make no call of OpenGL ES: not in the display's turn.) */
+    paused = mg_egl_turn_pause();
     mg_lock_acquire(&g_window_lock);
     if (l->active) {
         /* The frame just read is the layer's now; the layer's last one is where the next is read to. */
@@ -1381,11 +1504,16 @@ static bool swap(gl_surf *s, gl_ctx *x)
         s->pixels = spare;
         s->pixels_size = spare_size;
         if (C.have_views && l->placed && l->w > 0 && l->h > 0) {
-            if (!l->rows_valid) {
-                classify(l, 0, C.height);
-                l->rows_valid = true;
+            /* A layer over the views or a media overlay, or one another layer's rectangle crosses: its rectangle composed whole, the layers in their order. */
+            if ((l->flags & (MEGLER_GL_ABOVE | MEGLER_GL_OVERLAY)) || crossed(l)) {
+                compose_part(l->x, l->y, l->x + l->w, l->y + l->h);
+            } else {
+                if (!l->rows_valid) {
+                    classify(l, 0, C.height);
+                    l->rows_valid = true;
+                }
+                compose(l, l->x, l->y, l->x + l->w, l->y + l->h);
             }
-            compose(l, l->x, l->y, l->x + l->w, l->y + l->h);
             t2 = mg_time_monotonic_ns();
             show_part(l->x, l->y, l->x + l->w, l->y + l->h);
             shown = true;
@@ -1409,6 +1537,7 @@ static bool swap(gl_surf *s, gl_ctx *x)
         C.window_started = t3;
     }
     mg_lock_release(&g_window_lock);
+    mg_egl_turn_resume(paused);
     if (shown) mg_run_count_frame();
     pace(s);
     return true;
@@ -1477,7 +1606,10 @@ N(EN_hide)
     mg_lock_release(&g_window_lock);
 }
 
-/* place(Object view, int x, int y, int width, int height): where the view is on the screen, said as it is drawn with its hole. */
+/*
+ * place(Object view, int x, int y, int width, int height, int flags): where the view is on the screen, said as it is drawn
+ * (with its hole, under the window), and how its frames go with the views (MEGLER_GL_*, EGLNative.PLACE_*).
+ */
 N(EN_place)
 {
     layer *l;
@@ -1488,6 +1620,7 @@ N(EN_place)
         l->py = c->args[2].i;
         l->pw = c->args[3].i;
         l->ph = c->args[4].i;
+        l->pflags = c->args[5].i & (MEGLER_GL_ABOVE | MEGLER_GL_TRANSLUCENT | MEGLER_GL_OVERLAY);
         l->pending = true;
     }
     mg_lock_release(&g_window_lock);
@@ -1572,6 +1705,7 @@ bool mg_java_gl_share_frame(void *display, void *pbuffer, mg_java_gl_share *shar
     typedef void (*fn_finish)(void);
     fn_finish finish = FN(fn_finish, F_FINISH, "glFinish"), flush = FN(fn_finish, F_FLUSH, "glFlush");
     bool taken;
+    void *paused;
     if (id <= 0 || !mg_java_gl_shares_frames()) return false;
     if (!share->asked) {
         void *handle = NULL;
@@ -1584,7 +1718,10 @@ bool mg_java_gl_share_frame(void *display, void *pbuffer, mg_java_gl_share *shar
     if (share->mutex && flush) flush();
     else finish();
     if (share->mutex) mg_egl_keyed_mutex(share->mutex, false);
+    /* (The shell's copy not in the display's turn, as a window surface's frame: shell_frame.) */
+    paused = mg_egl_turn_pause();
     taken = g_shell->texture_frame(g_shell->user, id, share->handle, width, height);
+    mg_egl_turn_resume(paused);
     if (share->mutex && !mg_egl_keyed_mutex(share->mutex, true))
         mg_note_once("java: a surface's keyed mutex could not be taken back from the shell: what the app draws in it now is dropped");
     return taken;
@@ -1941,7 +2078,7 @@ static const mg_jhle k_natives[] = {
     { "megler/EGLNative", "swap", "(JJIIII)Z", EN_swap },
     { "megler/EGLNative", "isRenderThread", "()Z", EN_isRenderThread },
     { "megler/EGLNative", "hide", "()V", EN_hide },
-    { "megler/EGLNative", "place", "(Ljava/lang/Object;IIII)V", EN_place },
+    { "megler/EGLNative", "place", "(Ljava/lang/Object;IIIII)V", EN_place },
     { "megler/EGLNative", "forget", "(Ljava/lang/Object;)V", EN_forget },
     { "megler/EGLNative", "glesVersion", "()I", EN_glesVersion },
     /* The GLES natives that are no plain call. */
