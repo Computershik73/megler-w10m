@@ -3058,6 +3058,33 @@ static void test_libc_odds(void)
                 gfree(a);
             }
             CHECK(odd == 0);
+            {
+                /* A big block (256 bytes or more) at 64, as jemalloc's runs and pages leave it -- Geekbench 5's zlib loads
+                   its 64 KB hash table with an aligned NEON load -- through calloc, and through realloc's every turn: small
+                   to big, bigger, smaller, small again, its contents kept each time. */
+                size_t steps[5] = { 40, 300, 65536, 1000, 24 };
+                u8 *b = (u8 *)gmalloc(65536), *z = (u8 *)gcalloc(65536, 1), *r = NULL;
+                size_t was = 0, k;
+                bool kept = true, zeroed = true;
+                CHECK(b && z && ((mg_addr)b & 63) == 0 && ((mg_addr)z & 63) == 0);
+                for (k = 0; z && k < 65536; k++) zeroed &= z[k] == 0;
+                CHECK(zeroed);
+                for (i = 0; i < 5; i++) {
+                    size_t keep = was < steps[i] ? was : steps[i];
+                    r = (u8 *)grealloc(r, steps[i]);
+                    CHECK(r != NULL);
+                    if (!r) break;
+                    for (k = 0; k < keep; k++) kept &= r[k] == (u8)(k * 7 + 1);
+                    for (k = 0; k < steps[i]; k++) r[k] = (u8)(k * 7 + 1);
+                    if (steps[i] >= 256) CHECK(((mg_addr)r & 63) == 0);
+                    else CHECK(((mg_addr)r & (align - 1)) == 0);
+                    was = steps[i];
+                }
+                CHECK(kept);
+                gfree(b);
+                gfree(z);
+                gfree(r);
+            }
             for (i = 0; i < 64; i++) {
                 u8 *z = (u8 *)gmalloc(0);
                 CHECK(z && gusable(z) == (size_t)align);

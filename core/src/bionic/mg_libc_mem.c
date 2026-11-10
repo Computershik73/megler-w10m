@@ -46,6 +46,16 @@ u64 mg_g_malloc_bytes(void) { return (u32)mg_atomic_add(&g_malloced, 0); }
  * (c0000374, MaxVibe ending at its start one run in two on x64).
  */
 #define USABLE(n) ((size_t)MG_ALIGN_UP((size_t)(n) ? (size_t)(n) : 1, G_ALIGN))
+/*
+ * A big block is at more than the quantum: jemalloc carves a block of a few hundred bytes or more from a run of its size
+ * class, at a multiple of that class's own power of two, and gives one of a page or more a page of its own, so code
+ * counts on such a block being at 16 or more on 32-bit ARM too -- zlib's NEON slide_hash in Geekbench 5's libgeekbench.so
+ * loads its 64 KB hash table with vld1.16 {d16, d17}, [r2:128], an alignment fault at a block of 8 (the HP Elite x3, 688).
+ * Every block of BIG_BLOCK bytes or more is at BIG_ALIGN here, the most a NEON load's hint asks for (32) and a cache line.
+ */
+#define BIG_BLOCK ((size_t)256)
+#define BIG_ALIGN ((size_t)64)
+static size_t block_align(size_t n) { return USABLE(n) >= BIG_BLOCK ? BIG_ALIGN : G_ALIGN; }
 
 /*
  * The flag malloc-guard, a diagnosis (64-bit processors; off by default): every block is followed by GUARD bytes of 0xFD
@@ -262,8 +272,9 @@ static bool guarded_free(void *p, mg_addr freer)
     return true;
 }
 
-/* A block of n bytes at a multiple of align, its header right before it, from a host block made bigger to hold both. */
-static void *aligned_block(size_t align, size_t n, mg_addr caller)
+/* A block of n bytes at a multiple of align, its header right before it, from a host block made bigger to hold both
+   (zeroed by the host for calloc's). */
+static void *aligned_block(size_t align, size_t n, bool zero, mg_addr caller)
 {
     size_t extra = guarding() ? GUARD : 0;
     u8 *raw, *p;
@@ -271,7 +282,7 @@ static void *aligned_block(size_t align, size_t n, mg_addr caller)
         mg_set_errno(GE_INVAL);
         return NULL;
     }
-    raw = (u8 *)malloc(USABLE(n) + align + sizeof(ghdr) + extra);
+    raw = (u8 *)(zero ? calloc(1, USABLE(n) + align + sizeof(ghdr) + extra) : malloc(USABLE(n) + align + sizeof(ghdr) + extra));
     if (!raw) {
         mg_set_errno(GE_NOMEM);
         return NULL;
@@ -288,16 +299,13 @@ static void *aligned_block(size_t align, size_t n, mg_addr caller)
     return p;
 }
 
-/* malloc's block (zeroed for calloc's): at G_ALIGN after the host's, or made as memalign's where the host gives less. */
+/* malloc's block (zeroed for calloc's): at G_ALIGN after the host's, or made as memalign's where the host gives less or
+   the block is big (BIG_BLOCK). */
 static void *plain_block(size_t n, bool zero, mg_addr caller)
 {
-    size_t extra = guarding() ? GUARD : 0;
+    size_t extra = guarding() ? GUARD : 0, align = block_align(n);
     u8 *raw;
-    if (H_ALIGN < G_ALIGN) {
-        u8 *p = (u8 *)aligned_block(G_ALIGN, n, caller);
-        if (p && zero) memset(p, 0, USABLE(n));
-        return p;
-    }
+    if (H_ALIGN < G_ALIGN || align > G_ALIGN) return aligned_block(align, n, zero, caller);
     raw = (u8 *)(zero ? calloc(1, USABLE(n) + G_ALIGN + extra) : malloc(USABLE(n) + G_ALIGN + extra));
     if (!raw) {
         mg_set_errno(GE_NOMEM);
@@ -349,7 +357,7 @@ void mg_g_free(void *p)
 static void *g_memalign(size_t align, size_t n)
 {
     if (align <= G_ALIGN) return mg_g_malloc(n);
-    return aligned_block(align, n, (mg_addr)CALLER());
+    return aligned_block(align, n, false, (mg_addr)CALLER());
 }
 
 void *mg_g_realloc(void *p, size_t n)
@@ -365,16 +373,37 @@ void *mg_g_realloc(void *p, size_t n)
         mg_set_errno(GE_NOMEM);
         return NULL;
     }
-    if (!guarding() && H_ALIGN >= G_ALIGN && HDR(p)->offset == G_ALIGN) {
-        u32 was = HDR(p)->size;
-        u8 *raw = (u8 *)realloc((u8 *)p - G_ALIGN, USABLE(n) + G_ALIGN);
-        if (!raw) {
-            mg_set_errno(GE_NOMEM);
-            return NULL;
+    /* The host's realloc, in place where it can: a block at the quantum or at BIG_ALIGN (or a memalign's of no more) stays
+       one, at what its new size asks for (block_align); where the host's new block puts it elsewhere, it is moved inside. */
+    if (!guarding() && H_ALIGN >= G_ALIGN && HDR(p)->offset >= G_ALIGN && HDR(p)->offset <= BIG_ALIGN + sizeof(ghdr)) {
+        u32 was = HDR(p)->size, off = HDR(p)->offset;
+        size_t align = block_align(n), keep = USABLE(was) < USABLE(n) ? USABLE(was) : USABLE(n), need;
+        u8 *raw = (u8 *)p - off, *grown;
+        if (align == G_ALIGN) {
+            /* (Its contents first where the smaller block keeps them, G_ALIGN in, and back if the host cannot.) */
+            if (off != G_ALIGN) memmove(raw + G_ALIGN, p, keep);
+            grown = (u8 *)realloc(raw, USABLE(n) + G_ALIGN);
+            if (!grown) {
+                if (off != G_ALIGN) memmove(p, raw + G_ALIGN, keep);
+                mg_set_errno(GE_NOMEM);
+                return NULL;
+            }
+            q = grown + G_ALIGN;
+        } else {
+            need = USABLE(n) + align + sizeof(ghdr);
+            if (need < off + keep) need = off + keep;
+            grown = (u8 *)realloc(raw, need);
+            if (!grown) {
+                mg_set_errno(GE_NOMEM);
+                return NULL;
+            }
+            q = (u8 *)MG_ALIGN_UP((mg_addr)grown + sizeof(ghdr), (mg_addr)align);
+            if (q != grown + off) memmove(q, grown + off, keep);
         }
-        HDR(raw + G_ALIGN)->size = (u32)n;
+        HDR(q)->offset = (u32)((u8 *)q - grown);
+        HDR(q)->size = (u32)n;
         mg_atomic_add(&g_malloced, (i32)((u32)n - was));
-        return raw + G_ALIGN;
+        return q;
     }
     /* An aligned block: the host cannot grow it in place and keep the alignment (nor a block's guard). */
     old = HDR(p)->size;
