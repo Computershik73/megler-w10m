@@ -3005,6 +3005,10 @@ static int run_data(void)
                                          "markup-regex",
                                          /* And AudioAttributes equal by what they hold: built alike, and through a Parcel. */
                                          "audio-attributes-equal",
+                                         /* And a notification channel as Android's: its defaults (the default notification sound with
+                                            Notification.AUDIO_ATTRIBUTES_DEFAULT...), what the app sets kept, Messenger's copy of one
+                                            through the getters; copy(), equals, through a Parcel and through XML. */
+                                         "notification-channel", "notification-channel-copy",
                                          "audio-track", "media-player", "media-player-ogg", "sound-pool",
                                          /* And MediaCodec over the stand-in for the shell's decoders: H.264 shown on a Surface in display
                                             order, a flush, parameter sets in a codec-config buffer, the asynchronous mode, AAC with an
