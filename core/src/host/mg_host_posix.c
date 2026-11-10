@@ -697,7 +697,7 @@ u32 mg_tls_alloc_ending(void (*end)(void *value))
     return (u32)k;
 }
 void mg_tls_set_ending(u32 key, void *value) { pthread_setspecific((pthread_key_t)key, value); }
-const char *mg_heap_kind(void) { return "the C library's malloc"; }
+const char *mg_heap_kind(void) { return "the C library's own heap"; }
 
 /* ------------------------------------------------- the guest thread pointer */
 
