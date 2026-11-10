@@ -882,6 +882,25 @@ static void said_first_name(const char *name, int e, int count)
 }
 
 /*
+ * A name of Google's location server (VoilaTileService, which Google Play services' network location asks where the Wi-Fi
+ * networks a scan heard are -- GmsCore's GmsCoreVoilaTileGrpc): whether the app's Google Play services looked it up at all,
+ * the first time it was found, and each time it was not (four lines at most), so that a phone's log tells a network location
+ * that never asked the server from one that asked and had no fix all the same (what the server answered is inside TLS).
+ */
+static void said_location_server(const char *name, int e, int count)
+{
+    static volatile i32 found, failed;
+    if (strcmp(name, "voilatile-pa.googleapis.com") && strcmp(name, "voilatile-pa.mtls.googleapis.com")) return;
+    if (!e) {
+        if (!found && !mg_atomic_xchg(&found, 1))
+            mg_info("network: Google's location server, \"%.100s\" (Google Play services' network location asks it where Wi-Fi networks are), has %d address%s",
+                    name, count, count == 1 ? "" : "es");
+    } else if (mg_atomic_add(&failed, 1) <= 3) {
+        mg_info("network: Google's location server, \"%.100s\", was not found: %s", name, eai_text(e));
+    }
+}
+
+/*
  * The addresses of a name for getaddrinfo and gethostbyname: a number, one of
  * the names Android knows without asking, or the host's resolver's answer.
  * `numeric_only`: AI_NUMERICHOST. 0 and a malloc'd array, or an EAI_* code.
@@ -913,6 +932,7 @@ static int addresses_of(const char *node, int family, bool numeric_only, bool ad
                      host_e == MG_EAI_OK || host_e == MG_EAI_NONAME || host_e == MG_EAI_NODATA ? "" : " (an error of its own)",
                      (unsigned)((mg_time_monotonic_ns() - began) / 1000000u));
         said_first_name(node, e, n);
+        said_location_server(node, e, n);
         if (e) return e;
         *out = found;
         *count = n;

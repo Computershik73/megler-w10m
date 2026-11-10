@@ -1613,6 +1613,128 @@ public class Main extends Activity {
             alarms.setRepeating(android.app.AlarmManager.ELAPSED_REALTIME, now + 300, 400, repeated);
             return true;
         });
+        // Alarms of a listener, as Android keeps them and Google Play services sets theirs (GmsAlarm, with an Executor and a
+        // WorkSource: Android 12's and the system's forms, which did nothing): told on the Handler given or through the Executor
+        // given, one for each listener -- set again it moves, cancelled it never goes off -- and a repeating one again each
+        // interval until it is cancelled. Everything is heard on a thread of the step's own, which decides once the repeating
+        // one has gone off three times, and a while after.
+        step("alarm-listeners", () -> {
+            final android.app.AlarmManager alarms = (android.app.AlarmManager) getSystemService(ALARM_SERVICE);
+            final android.os.HandlerThread thread = new android.os.HandlerThread("alarm-listeners");
+            thread.start();
+            final android.os.Handler on = new android.os.Handler(thread.getLooper());
+            final java.util.concurrent.Executor through = on::post;
+            final int[] heard = new int[5];
+            final boolean[] onIt = { true };
+            final Class<?> listenerClass = android.app.AlarmManager.OnAlarmListener.class;
+            long now = android.os.SystemClock.elapsedRealtime();
+            android.app.AlarmManager.OnAlarmListener moved = () -> { heard[0]++; onIt[0] &= android.os.Looper.myLooper() == on.getLooper(); };
+            alarms.set(android.app.AlarmManager.ELAPSED_REALTIME, now + 100, "megler-moved", moved, on);
+            alarms.set(android.app.AlarmManager.ELAPSED_REALTIME, now + 300, "megler-moved", moved, on);
+            android.app.AlarmManager.OnAlarmListener off = () -> heard[1]++;
+            alarms.set(android.app.AlarmManager.ELAPSED_REALTIME, now + 100, "megler-off", off, on);
+            alarms.cancel(off);
+            android.app.AlarmManager.OnAlarmListener exact = () -> { heard[2]++; onIt[0] &= android.os.Looper.myLooper() == on.getLooper(); };
+            android.app.AlarmManager.class.getMethod("setExact", int.class, long.class, String.class, java.util.concurrent.Executor.class, android.os.WorkSource.class, listenerClass)
+                .invoke(alarms, android.app.AlarmManager.ELAPSED_REALTIME_WAKEUP, now + 200, "megler-exact", through, new android.os.WorkSource(), exact);
+            android.app.AlarmManager.OnAlarmListener window = () -> heard[3]++;
+            android.app.AlarmManager.class.getMethod("setWindow", int.class, long.class, long.class, String.class, java.util.concurrent.Executor.class, android.os.WorkSource.class,
+                listenerClass).invoke(alarms, android.app.AlarmManager.ELAPSED_REALTIME, now + 200, 1000L, "megler-window", through, new android.os.WorkSource(), window);
+            final android.app.AlarmManager.OnAlarmListener[] repeating = new android.app.AlarmManager.OnAlarmListener[1];
+            repeating[0] = () -> {
+                if (++heard[4] != 3) return;
+                alarms.cancel(repeating[0]);
+                on.postDelayed(() -> {
+                    boolean ok = heard[0] == 1 && heard[1] == 0 && heard[2] == 1 && heard[3] == 1 && heard[4] == 3 && onIt[0];
+                    Log.i("DataTest", "alarm-listeners-heard " + (ok ? "ok" : "FAILED") + " moved=" + heard[0] + " cancelled=" + heard[1] + " exact=" + heard[2]
+                          + " window=" + heard[3] + " repeated=" + heard[4] + " on-its-thread=" + onIt[0]);
+                    thread.quitSafely();
+                }, 1500);
+            };
+            android.app.AlarmManager.class.getMethod("set", int.class, long.class, long.class, long.class, listenerClass, android.os.Handler.class, android.os.WorkSource.class)
+                .invoke(alarms, android.app.AlarmManager.ELAPSED_REALTIME, now + 400, 0L, 300L, repeating[0], on, new android.os.WorkSource());
+            return true;
+        });
+        // A wake lock counted as Android counts one: held from acquire to the release that matches it, all at once where it is
+        // not counted, and until acquire(timeout)'s time is up (whose release comes on the main thread, which the steps keep
+        // busy: a thread of the step's own looks until it is let go). Google Play services checks isHeld as it lets one go,
+        // and said "<tag> should be held!" at each.
+        step("wake-lock", () -> {
+            android.os.PowerManager power = (android.os.PowerManager) getSystemService(POWER_SERVICE);
+            final android.os.PowerManager.WakeLock w = power.newWakeLock(android.os.PowerManager.PARTIAL_WAKE_LOCK, "megler:test");
+            boolean before = w.isHeld();
+            w.acquire();
+            w.acquire();
+            boolean twice = w.isHeld();
+            w.release();
+            boolean once = w.isHeld();
+            w.release();
+            boolean none = w.isHeld();
+            w.release();
+            boolean extra = w.isHeld();
+            final android.os.PowerManager.WakeLock u = power.newWakeLock(android.os.PowerManager.PARTIAL_WAKE_LOCK, "megler:uncounted");
+            u.setReferenceCounted(false);
+            u.acquire();
+            u.acquire();
+            u.release();
+            boolean uncounted = u.isHeld();
+            final android.os.PowerManager.WakeLock timed = power.newWakeLock(android.os.PowerManager.PARTIAL_WAKE_LOCK, "megler:timed");
+            timed.acquire(200);
+            boolean timedHeld = timed.isHeld();
+            detail = "before=" + before + " twice=" + twice + " once=" + once + " none=" + none + " extra=" + extra + " uncounted=" + uncounted + " timed=" + timedHeld;
+            final android.os.HandlerThread thread = new android.os.HandlerThread("wake-lock");
+            thread.start();
+            final android.os.Handler on = new android.os.Handler(thread.getLooper());
+            final long since = android.os.SystemClock.elapsedRealtime();
+            on.post(new Runnable() {
+                @Override public void run() {
+                    long waited = android.os.SystemClock.elapsedRealtime() - since;
+                    if (timed.isHeld() && waited < 60000) {
+                        on.postDelayed(this, 100);
+                        return;
+                    }
+                    Log.i("DataTest", "wake-lock-timed " + (!timed.isHeld() && waited >= 190 ? "ok" : "FAILED") + " held=" + timed.isHeld() + " after " + waited + " ms");
+                    thread.quitSafely();
+                }
+            });
+            return !before && twice && once && !none && !extra && !uncounted && timedHeld;
+        });
+        // The cells around asked for as Android 10 asks (Google Play services' network location, at each of its scans): the
+        // callback told through the Executor given, with no cells -- Windows gives an app none -- where it was never told; and
+        // Android 12's best-matching network callback (the network location's NetworkConnectionMonitor) told the network is
+        // there, where it was never told either.
+        step("cell-info-update", () -> {
+            android.telephony.TelephonyManager phone = (android.telephony.TelephonyManager) getSystemService(TELEPHONY_SERVICE);
+            final java.util.concurrent.CountDownLatch told = new java.util.concurrent.CountDownLatch(2);
+            final Object[] cells = new Object[1];
+            final java.util.concurrent.ExecutorService executor = java.util.concurrent.Executors.newSingleThreadExecutor();
+            phone.requestCellInfoUpdate(executor, new android.telephony.TelephonyManager.CellInfoCallback() {
+                @Override public void onCellInfo(java.util.List<android.telephony.CellInfo> list) {
+                    cells[0] = list;
+                    told.countDown();
+                }
+            });
+            android.net.ConnectivityManager connectivity = (android.net.ConnectivityManager) getSystemService(CONNECTIVITY_SERVICE);
+            final boolean[] available = new boolean[1];
+            android.net.ConnectivityManager.NetworkCallback callback = new android.net.ConnectivityManager.NetworkCallback() {
+                @Override public void onAvailable(android.net.Network n) {
+                    available[0] = true;
+                    told.countDown();
+                }
+            };
+            android.os.HandlerThread thread = new android.os.HandlerThread("best-matching");
+            thread.start();
+            android.net.ConnectivityManager.class.getMethod("registerBestMatchingNetworkCallback", android.net.NetworkRequest.class,
+                android.net.ConnectivityManager.NetworkCallback.class, android.os.Handler.class)
+                .invoke(connectivity, new android.net.NetworkRequest.Builder().addCapability(android.net.NetworkCapabilities.NET_CAPABILITY_INTERNET).build(), callback,
+                        new android.os.Handler(thread.getLooper()));
+            boolean all = told.await(10, java.util.concurrent.TimeUnit.SECONDS);
+            connectivity.unregisterNetworkCallback(callback);
+            thread.quitSafely();
+            executor.shutdown();
+            detail = "told=" + all + " cells=" + cells[0] + " available=" + available[0];
+            return all && cells[0] instanceof java.util.List && ((java.util.List<?>) cells[0]).isEmpty() && available[0];
+        });
         // A Messenger reaches a binder of another's that passes transactions on to a Messenger's, as Google Play services' task
         // services hand theirs to its scheduler, and the message received says the sender's uid (Forward says so).
         step("messenger-forwarded", () -> {

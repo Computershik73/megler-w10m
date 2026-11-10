@@ -72,6 +72,10 @@ public final class Wifi {
     private static long sConnectionAt = Long.MIN_VALUE / 2;
     private static int sSaid;
     private static final java.util.HashSet<String> sSaidOnce = new java.util.HashSet<>();
+    /* Who asked for the last scan, and Google Play services' own requests (their network location's): how many, the last when. */
+    private static String sLastCaller = "?";
+    private static int sGoogleAsked, sIdleSaid;
+    private static long sGoogleAskedAt = -1;
 
     private Wifi() {}
 
@@ -139,9 +143,15 @@ public final class Wifi {
             broadcast(false);
             return false;
         }
-        boolean said;
+        boolean said, google = LocationService.byGoogle();
+        String who = caller();
         synchronized (LOCK) {
             said = sAsked++ < 6;
+            sLastCaller = who;
+            if (google) {
+                sGoogleAsked++;
+                sGoogleAskedAt = SystemClock.elapsedRealtime();
+            }
             if (!sScanning) sWanted = true;
             if (sWorker == null) {
                 sWorker = new Thread(Wifi::work, "megler-wifi");
@@ -150,7 +160,7 @@ public final class Wifi {
             }
             LOCK.notifyAll();
         }
-        if (said) say("a scan asked for by " + caller());
+        if (said) say("a scan asked for by " + who);
         return true;
     }
 
@@ -165,6 +175,10 @@ public final class Wifi {
                         if (!sWanted) {
                             if (now - idleFrom >= IDLE_MS) {
                                 sWorker = null;
+                                // (Said: a network location that scanned and then stopped -- its alarms, its fix -- is seen so.)
+                                if (sIdleSaid++ < 5)
+                                    say("no scan asked for in the last " + IDLE_MS / 1000 + " s: " + sAsked + " asked for so far, " + sScans + " made, the last asked for by "
+                                        + sLastCaller + (sGoogleAsked > 0 ? "; Google Play services' network location asked for " + sGoogleAsked : ""));
                                 return;
                             }
                             LOCK.wait(IDLE_MS - (now - idleFrom));
@@ -374,6 +388,15 @@ public final class Wifi {
             sConnectionAt = now;
         }
         return w;
+    }
+
+    /** For megler.LocationService: how many scans Google Play services' own code asked for, and when the last (elapsedRealtime; -1: none). */
+    public static int googleScans() {
+        synchronized (LOCK) { return sGoogleAsked; }
+    }
+
+    public static long googleScanAt() {
+        synchronized (LOCK) { return sGoogleAskedAt; }
     }
 
     /** For megler.LocationService: how many networks the last scan heard, and how long ago it was (ms; -1: none yet). */
