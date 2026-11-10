@@ -5749,6 +5749,16 @@ on a looper thread of its own and takes it back with `next()`.
   Store ended on `Resources$NotFoundException` (0.1.0.685, docs/MICROG.md,
   "Google's own Play services from Play Store: their splits"). `gms-host`
   hosts a stand-in of theirs built as such a bundle.
+- `megler/AppRunner.java`, an activity whose `onCreate` throws: `launch`
+  takes it off the stack at once, marks it finished, closes any window it
+  opened and resumes the one below; it is never stopped or destroyed. It
+  stayed on the stack, the one below paused under it, and once it had
+  finished itself it was stopped and destroyed at the next idle: Google Play
+  services' help screen, whose layout failed so in Play Store (0.1.0.686),
+  ended in their lifecycle's "State must be at least 'CREATED' to be moved
+  to 'DESTROYED'" out of the idle handler. One of the app's own still ends
+  the app, as the exception goes on. `gms-host` starts one of their
+  stand-in's that throws and is resumed after it.
 - `android/content/ContentProviderClient.java`: `openFile`, `openAssetFile`,
   `openTypedAssetFile(Descriptor)`, `query` with a `Bundle`, `insert`,
   `update` and `delete` with extras, `bulkInsert`, `call` with an authority,

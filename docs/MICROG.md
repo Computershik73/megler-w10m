@@ -212,12 +212,19 @@ It is a theme of their resources now, the platform's default for their target
 names no theme (their application names none) has that default too, not the
 number of the app's theme.
 
+An activity of theirs whose `onCreate` throws is taken off the stack at once
+and never destroyed (`AppRunner.launch`), the one below resumed; the app goes
+on, as it did. Their help screen failed so and finished itself, and its
+destruction at the next idle threw in their lifecycle ("State must be at
+least 'CREATED' to be moved to 'DESTROYED'").
+
 The test app `gms-host` hosts a stand-in of theirs built as Play Store's
 bundle (`gms-own`: a base and the splits `config.mdpi`, `config.xxhdpi` and
 `config.en`), unpacked as the shell unpacks one for 160 dpi: an activity of
 theirs reads a picture of their density's split alone and a word of their
 English split, and both through a context of another configuration, and finds
-no attribute of the app's theme in its own (`gms-host` has a theme with one).
+no attribute of the app's theme in its own (`gms-host` has a theme with one);
+and one whose `onCreate` throws.
 
 ## Class isolation
 

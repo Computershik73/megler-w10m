@@ -63,6 +63,9 @@
 // way, and stops at one of another affinity (finishAffinity): it finished them one by one, each the top in its turn, and
 // the one under each was resumed before it went too.
 //
+// And an activity whose onCreate throws is taken off the stack at once and never stopped or destroyed, the one below
+// resumed (launch): one of Google Play services', which the app outlives, was destroyed later with no onCreate behind it.
+//
 // Everything else is the original's, unchanged.
 package megler;
 
@@ -263,9 +266,27 @@ public final class AppRunner {
         android.util.Log.d("Megler", "launch " + cls);
         Activity prev = top();
         Activity a = make(cls, intent, caller, request, info);
-        if (prev != null && prev.isResumedMegler()) prev.meglerPause();
+        final boolean prevResumed = prev != null && prev.isResumedMegler();
+        if (prevResumed) prev.meglerPause();
         sStack.add(a);
-        a.meglerCreate(state);
+        try {
+            a.meglerCreate(state);
+        } catch (RuntimeException | Error e) {
+            /*
+             * Its onCreate threw: on Android the app's process ends. Here the app goes on where the activity was Google Play
+             * services' (startActivity says it failed); one of the app's own ends it still, as the exception goes on. Either
+             * way the activity is taken off the stack at once, finished, any window it opened closed, and the one below
+             * resumed as it was: it never was created, and is never stopped or destroyed -- Google Play services' help screen
+             * failed in its layout so (a resource of theirs missing, 0.1.0.686), was finished, and its destruction at the next
+             * idle ended in their lifecycle's "State must be at least 'CREATED' to be moved to 'DESTROYED'".
+             */
+            sStack.remove(a);
+            a.meglerMarkFinished();
+            ViewRoot.closeAll(a);
+            if (prevResumed && top() == prev && !prev.isFinishing()) prev.meglerResume();
+            updateOrientation();
+            throw e;
+        }
         if (!a.isFinishing()) { a.meglerStart(); if (state != null) a.meglerRestoreState(state); a.meglerResume(); }
         if (prev != null && !a.isFinishing()) {
             final Activity p = prev;

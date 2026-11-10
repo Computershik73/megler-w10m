@@ -4112,6 +4112,18 @@ static int run_gms_host(void)
     CHECK(wait_line("-> Google Play services' megler.test.gmsown.Lockup, here", 0, 60) >= 0);
     CHECK(wait_line("I/GmsOwnTest: lockup 16x16 word=english wrapped 16x16 word=english label=Google Play services (a stand-in) "
                     "splits=[config.en, config.mdpi] host theme attribute false theme 0x103013f", 0, 120) >= 0);
+    /*
+     * And an activity of theirs whose onCreate throws, having asked to be finished after (their help screen, whose layout's
+     * logo was missing, 0.1.0.686): the app goes on, the activity is taken off the stack and never destroyed -- their
+     * lifecycle threw at its destruction -- and the app's activity is resumed after it.
+     */
+    {
+        int failed = wait_line("E/Megler: starting megler.test.gmsown.Broken failed", 0, 60);
+        CHECK(failed >= 0 && find_line("broken on purpose", failed) >= 0);
+        CHECK(wait_line("I/GmsHostTest: resumed", failed + 1, 30) > failed);
+        mg_sleep_ns(1000000000ull);
+        CHECK(find_line("I/GmsOwnTest: broken destroyed", 0) < 0 && find_line("D/Megler: finish megler.test.gmsown.Broken", 0) < 0);
+    }
     CHECK(find_line("FATAL EXCEPTION", 0) < 0);
     say_app_lines("/GmsOwnTest: ");
     return g_failed;
