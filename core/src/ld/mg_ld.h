@@ -214,6 +214,13 @@ mg_addr mg_code_entry(mg_addr fn);
  */
 bool mg_ld_plt_target(mg_addr pc, mg_addr *target);
 
+/*
+ * The crash report's part (32-bit ARM): whether `lr` is where a call returns to, the instruction before it a BL or BLX in
+ * an executable segment of the guest library lr is in -- 1 if so, 0 if lr is in such a library and is not (in its data, or
+ * after any other instruction), -1 where that is not known (lr in no guest library, or another processor).
+ */
+int mg_ld_after_call(mg_addr lr);
+
 #ifdef __cplusplus
 }
 #endif

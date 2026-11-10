@@ -1760,3 +1760,32 @@ bool mg_ld_plt_target(mg_addr pc, mg_addr *target)
     }
     return false;
 }
+
+int mg_ld_after_call(mg_addr lr)
+{
+    mg_lib *lib = mg_ld_lib_of((const void *)lr);
+    mg_addr at = lr & ~(mg_addr)1;
+    int i;
+    /* (Its islands are the loader's code, which calls into the core: not known.) */
+    if (!MG_ARCH_ARM32 || !lib || at < (mg_addr)lib->base + lib->vmin || at >= (mg_addr)lib->base + lib->vmax) return -1;
+    for (i = 0; i < lib->phnum; i++) {
+        const ElfW(Phdr) *p = &lib->phdr[i];
+        mg_addr lo = (mg_addr)lib->base + p->p_vaddr;
+        if (p->p_type != PT_LOAD || !(p->p_flags & PF_X) || at < lo + 4 || at > lo + p->p_filesz) continue;
+        if (lr & 1) {
+            /* Thumb: BL or BLX, 11110... then 11x1x... or 11x0x...; or the 16-bit BLX of a register, 010001111xxxx000. */
+            u16 h1 = mg_rd16((const void *)(at - 4)), h2 = mg_rd16((const void *)(at - 2));
+            return ((h1 & 0xF800) == 0xF000 && (h2 & 0xC000) == 0xC000) || (h2 & 0xFF87) == 0x4780;
+        } else {
+            /*
+             * ARM: BL (cond 1011), BLX of an immediate (1111101x), BLX of a register (cond 0001 0010 1111 1111 1111 0011);
+             * or any jump after `mov lr, pc`, ARMv4's call through a register.
+             */
+            u32 w = mg_rd32((const void *)(at - 4));
+            if (at >= lo + 8 && mg_rd32((const void *)(at - 8)) == 0xE1A0E00Fu) return 1;
+            if ((w >> 28) == 0xF) return (w & 0xFE000000u) == 0xFA000000u;
+            return (w & 0x0F000000u) == 0x0B000000u || (w & 0x0FFFFFF0u) == 0x012FFF30u;
+        }
+    }
+    return 0;
+}
