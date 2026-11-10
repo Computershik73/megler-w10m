@@ -452,6 +452,179 @@ static MEGLER_CB void gl_place(void *user, int layer, int x, int y, int width, i
     mg_atomic_add(&GL.places, 1);
 }
 
+/*
+ * MG_JAVA_ANGLE=<the folder of Megler's ANGLE for this PC> (build/angle/x64/dist), in the desktop builds of the tests, which
+ * load Windows' DLLs: OpenGL ES is ANGLE itself instead of the stand-in, driven by the core's EGL as on a phone -- the
+ * WebView's Chromium on Direct3D 11 of this PC's graphics processor, at feature level 9_3 where the data folder's flags have
+ * egl-level-9_3 -- and the shell keeps pictures on the graphics processor as a phone's does (megler_gfx_host.texture_frame
+ * and draw_texture), so that the WebView's draw functor is drawn, as on a phone. A picture is taken by its shared handle
+ * through ANGLE's own EGL (EGL_ANGLE_d3d_share_handle_client_buffer: a pbuffer of that texture, on a context of its own),
+ * under its keyed mutex, read back and kept; draw_texture draws what was kept with the stand-in's drawing, the right way
+ * up. (A shell's own copies its picture on its graphics processor instead: app/Megler/player/GfxHost.cpp, textureFrame.)
+ */
+static struct {
+    mg_lock lock;
+    bool on;
+    void *display, *config, *context;
+    struct {
+        int id, w, h;
+        u32 *bgra;                     /* 0xAARRGGBB premultiplied, rows top first */
+        u32 version;
+    } kept[8];
+    volatile i32 frames, refused, drawn;
+} AT = { MG_LOCK_INIT };
+
+static MEGLER_CB bool angle_texture_frame(void *user, int id, void *share_handle, int width, int height)
+{
+    enum {
+        EGL_NONE_ = 0x3038, EGL_WIDTH_ = 0x3057, EGL_HEIGHT_ = 0x3056, EGL_SURFACE_TYPE_ = 0x3033, EGL_PBUFFER_BIT_ = 1, EGL_RED_SIZE_ = 0x3024,
+        EGL_GREEN_SIZE_ = 0x3023, EGL_BLUE_SIZE_ = 0x3022, EGL_ALPHA_SIZE_ = 0x3021, EGL_DRAW_ = 0x3059, EGL_READ_ = 0x305A,
+        EGL_D3D_TEXTURE_2D_SHARE_HANDLE_ANGLE_ = 0x3200, EGL_CONTEXT_CLIENT_VERSION_ = 0x3098, GL_RGBA_ = 0x1908, GL_UNSIGNED_BYTE_ = 0x1401
+    };
+    typedef void *(*fn_get_display)(void *);
+    typedef unsigned (*fn_choose)(void *, const int *, void **, int, int *);
+    typedef void *(*fn_create_context)(void *, void *, void *, const int *);
+    typedef void *(*fn_client_buffer)(void *, unsigned, void *, void *, const int *);
+    typedef unsigned (*fn_make_current)(void *, void *, void *, void *);
+    typedef unsigned (*fn_destroy)(void *, void *);
+    typedef void *(*fn_current)(void);
+    typedef void *(*fn_current_surface)(int);
+    typedef int (*fn_error)(void);
+    typedef void (*fn_read)(int, int, int, int, unsigned, unsigned, void *);
+    static const int want[] = { EGL_SURFACE_TYPE_, EGL_PBUFFER_BIT_, EGL_RED_SIZE_, 8, EGL_GREEN_SIZE_, 8, EGL_BLUE_SIZE_, 8, EGL_ALPHA_SIZE_, 8, EGL_NONE_ };
+    static const int es2[] = { EGL_CONTEXT_CLIENT_VERSION_, 2, EGL_NONE_ };
+    fn_client_buffer client_buffer = (fn_client_buffer)mg_egl_host("eglCreatePbufferFromClientBuffer");
+    fn_make_current make_current = (fn_make_current)mg_egl_host("eglMakeCurrent");
+    fn_destroy destroy_surface = (fn_destroy)mg_egl_host("eglDestroySurface");
+    fn_current current_display = (fn_current)mg_egl_host("eglGetCurrentDisplay"), current_context = (fn_current)mg_egl_host("eglGetCurrentContext");
+    fn_current_surface current_surface = (fn_current_surface)mg_egl_host("eglGetCurrentSurface");
+    fn_error egl_error = (fn_error)mg_egl_host("eglGetError");
+    fn_read read_pixels = (fn_read)mg_egl_host("glReadPixels");
+    void *was_display, *was_draw, *was_read, *was_context, *pb = NULL, *mutex;
+    int attribs[] = { EGL_WIDTH_, width, EGL_HEIGHT_, height, EGL_NONE_ };
+    u8 *rgba;
+    bool ok = false;
+    int slot = -1, i, r;
+    (void)user;
+    if (!share_handle) {
+        mg_lock_acquire(&AT.lock);
+        for (i = 0; i < (int)MG_COUNT(AT.kept); i++)
+            if (AT.kept[i].id == id) {
+                free(AT.kept[i].bgra);
+                memset(&AT.kept[i], 0, sizeof(AT.kept[i]));
+            }
+        mg_lock_release(&AT.lock);
+        return true;
+    }
+    if (id <= 0 || width <= 0 || height <= 0 || !client_buffer || !make_current || !destroy_surface || !current_display || !current_context
+        || !current_surface || !read_pixels || !egl_error)
+        return false;
+    was_display = current_display();
+    was_draw = current_surface(EGL_DRAW_);
+    was_read = current_surface(EGL_READ_);
+    was_context = current_context();
+    mg_lock_acquire(&AT.lock);
+    if (!AT.display) {
+        fn_get_display get_display = (fn_get_display)mg_egl_host("eglGetDisplay");
+        fn_choose choose = (fn_choose)mg_egl_host("eglChooseConfig");
+        fn_create_context create_context = (fn_create_context)mg_egl_host("eglCreateContext");
+        void *configs[32];
+        int n = 0;
+        AT.display = get_display ? get_display(NULL) : NULL;
+        if (AT.display && choose && create_context && choose(AT.display, want, configs, 32, &n)) {
+            /* The configuration whose format is the texture's (ANGLE checks): tried in EGL's order until one takes it. */
+            for (i = 0; i < n && !AT.config; i++) {
+                void *probe = client_buffer(AT.display, EGL_D3D_TEXTURE_2D_SHARE_HANDLE_ANGLE_, share_handle, configs[i], attribs);
+                if (probe) {
+                    AT.config = configs[i];
+                    destroy_surface(AT.display, probe);
+                }
+            }
+            if (AT.config) AT.context = create_context(AT.display, AT.config, NULL, es2);
+        }
+        say("  (the shell's pictures on the graphics processor: a configuration %s, a context %s)", AT.config ? "found" : "NOT found",
+            AT.context ? "made" : "NOT made");
+    }
+    if (AT.context) pb = client_buffer(AT.display, EGL_D3D_TEXTURE_2D_SHARE_HANDLE_ANGLE_, share_handle, AT.config, attribs);
+    rgba = pb ? (u8 *)malloc((size_t)width * (size_t)height * 4) : NULL;
+    if (rgba && make_current(AT.display, pb, pb, AT.context)) {
+        mutex = mg_egl_surface_mutex(AT.display, pb);
+        if (!mutex || mg_egl_keyed_mutex(mutex, true)) {
+            read_pixels(0, 0, width, height, GL_RGBA_, GL_UNSIGNED_BYTE_, rgba);
+            if (mutex) mg_egl_keyed_mutex(mutex, false);
+            ok = true;
+        }
+    }
+    if (was_context) make_current(was_display, was_draw, was_read, was_context);
+    else make_current(AT.display, NULL, NULL, NULL);
+    if (pb) destroy_surface(AT.display, pb);
+    if (ok) {
+        for (i = 0; i < (int)MG_COUNT(AT.kept) && slot < 0; i++)
+            if (AT.kept[i].id == id) slot = i;
+        for (i = 0; i < (int)MG_COUNT(AT.kept) && slot < 0; i++)
+            if (!AT.kept[i].id) slot = i;
+        if (slot >= 0) {
+            if (AT.kept[slot].w != width || AT.kept[slot].h != height || !AT.kept[slot].bgra) {
+                free(AT.kept[slot].bgra);
+                AT.kept[slot].bgra = (u32 *)malloc((size_t)width * (size_t)height * 4);
+            }
+            AT.kept[slot].id = id;
+            AT.kept[slot].w = width;
+            AT.kept[slot].h = height;
+            AT.kept[slot].version++;
+            /* OpenGL's rows are bottom first; kept top first, as B, G, R, A. */
+            for (r = 0; r < height && AT.kept[slot].bgra; r++) {
+                const u8 *s = rgba + (size_t)(height - 1 - r) * (size_t)width * 4;
+                u32 *d = AT.kept[slot].bgra + (size_t)r * (size_t)width;
+                for (i = 0; i < width; i++, s += 4) d[i] = (u32)s[3] << 24 | (u32)s[0] << 16 | (u32)s[1] << 8 | s[2];
+            }
+        }
+        ok = slot >= 0;
+    }
+    mg_lock_release(&AT.lock);
+    free(rgba);
+    if (ok) mg_atomic_add(&AT.frames, 1);
+    else if (mg_atomic_add(&AT.refused, 1) < 3)
+        say("  (a picture by its shared handle could not be taken: EGL error 0x%x)", (unsigned)egl_error());
+    return ok;
+}
+
+static MEGLER_CB void angle_draw_texture(void *user, void *canvas, int id, float left, float top, float right, float bottom, int alpha)
+{
+    megler_gfx_image img;
+    megler_gfx_paint paint;
+    float src[4], dst[4];
+    int i;
+    (void)user;
+    mg_lock_acquire(&AT.lock);
+    for (i = 0; i < (int)MG_COUNT(AT.kept); i++)
+        if (AT.kept[i].id == id && AT.kept[i].bgra) break;
+    if (i < (int)MG_COUNT(AT.kept)) {
+        memset(&img, 0, sizeof(img));
+        img.pixels = AT.kept[i].bgra;
+        img.width = AT.kept[i].w;
+        img.height = AT.kept[i].h;
+        img.stride = AT.kept[i].w * 4;
+        img.id = 0x7F000000u | (u32)id;
+        img.version = AT.kept[i].version;
+        memset(&paint, 0, sizeof(paint));
+        paint.color = (u32)(alpha < 0 ? 0 : alpha > 255 ? 255 : alpha) << 24;
+        paint.blend = MEGLER_GFX_BLEND_SRC_OVER;
+        paint.filter_mode = -1;
+        src[0] = 0;
+        src[1] = 0;
+        src[2] = (float)img.width;
+        src[3] = (float)img.height;
+        dst[0] = left;
+        dst[1] = top;
+        dst[2] = right;
+        dst[3] = bottom;
+        mg_gfx_standin()->draw_bitmap(NULL, canvas, &img, src, dst, &paint);
+        mg_atomic_add(&AT.drawn, 1);
+    }
+    mg_lock_release(&AT.lock);
+}
+
 static MEGLER_CB bool present_canvas(void *user, void *canvas, int x, int y, int width, int height)
 {
     const void *pixels;
@@ -1046,6 +1219,11 @@ static bool start(const char *apk, const char *android_root)
     cfg.gfx.present = present_canvas;
     cfg.gfx.gl_frame = gl_frame;
     cfg.gfx.gl_place = gl_place;
+    /* With ANGLE itself (MG_JAVA_ANGLE), pictures kept on the graphics processor, as a phone's shell keeps them. */
+    if (AT.on) {
+        cfg.gfx.texture_frame = angle_texture_frame;
+        cfg.gfx.draw_texture = angle_draw_texture;
+    }
     cfg.keyboard.show = keyboard_show;
     cfg.keyboard.hide = keyboard_hide;
     cfg.bars.wanted = bars_wanted;
@@ -4164,7 +4342,19 @@ int mg_tests_java_run(const char *which, const char *apk, const char *android_ro
      * asks the GPU's name is told "stand-in for OpenGL ES". It makes OpenGL ES 1 as ANGLE does, with a configuration alone --
      * but in the runs whose shell refuses the frames ("readback"), where it plays an EGL without version 1: `gl` checks both.
      */
-    mg_egl_set_provider(mg_gl_standin);
+    if (getenv("MG_JAVA_ANGLE") && *getenv("MG_JAVA_ANGLE")) {
+        /* ANGLE itself, loaded from that folder; EGL then finds it loaded by its name (ndk/mg_egl.c, angle). */
+        char *gles = mg_sprintf("%s/libGLESv2.dll", getenv("MG_JAVA_ANGLE")), *egl = mg_sprintf("%s/libEGL.dll", getenv("MG_JAVA_ANGLE"));
+        AT.on = mg_dl_open(gles) != NULL && mg_dl_open(egl) != NULL;
+        say("OpenGL ES is %s (MG_JAVA_ANGLE)", AT.on ? "ANGLE itself, from that folder" : "nothing: ANGLE did not load from that folder");
+        free(gles);
+        free(egl);
+        CHECK(AT.on);
+        if (!AT.on) return g_failed;
+        mg_egl_set_provider(NULL);
+    } else {
+        mg_egl_set_provider(mg_gl_standin);
+    }
     mg_gl_standin_reset(true, !GL.refuse);
     /*
      * An app that brings a GL stack of its own -- the WebView's Chromium, whose ANGLE loads every function of EGL and OpenGL ES
