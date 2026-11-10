@@ -750,35 +750,42 @@ Made make(const ApkEntry& entry, const std::function<void(const std::string&)>& 
     if (!sharedApks::recordMade(folder, made.fullName))
         return fail(format("The record of the package beside its APK in the shared folder could not be written (error %lu).", GetLastError()));
 
-    progress(format("Packing %u files of Megler…", unsigned(parts.size())));
-    megler_appx* a = megler_appx_begin(narrow(made.appx).c_str(), err, sizeof(err));
-    if (!a) return fail(std::string("The package could not be begun: ") + err);
-    // And beside the package's file, which Windows's own installer may install whenever the user hands it the file: the folder
-    // its app reads, kept while it waits. Written once the file is begun (a package Windows's installer holds open is not
-    // begun again, and keeps the record it had); one that cannot be written goes, and every folder the app's package may read
-    // is kept meanwhile, as for a package made before records.
-    if (!sharedApks::recordWaiting(made.appx, made.apkFolder, made.fullName)) {
-        shellLog::write(format("app package: %s.txt could not be written (error %lu): while the package waits, every folder of the app's "
-                               "APKs it may read is kept",
-                               narrow(made.appx).c_str(), GetLastError()));
-        files::remove(made.appx + L".txt");
+    for (int attempt = 0;; attempt++) {
+        progress(format("Packing %u files of Megler…", unsigned(parts.size())));
+        megler_appx* a = megler_appx_begin(narrow(made.appx).c_str(), err, sizeof(err));
+        if (!a) return fail(std::string("The package could not be begun: ") + err);
+        // And beside the package's file, which Windows's own installer may install whenever the user hands it the file: the folder
+        // its app reads, kept while it waits. Written once the file is begun (a package Windows's installer holds open is not
+        // begun again, and keeps the record it had); one that cannot be written goes, and every folder the app's package may read
+        // is kept meanwhile, as for a package made before records.
+        if (!sharedApks::recordWaiting(made.appx, made.apkFolder, made.fullName)) {
+            shellLog::write(format("app package: %s.txt could not be written (error %lu): while the package waits, every folder of the app's "
+                                   "APKs it may read is kept",
+                                   narrow(made.appx).c_str(), GetLastError()));
+            files::remove(made.appx + L".txt");
+        }
+        // (A failure on the way makes the rest fail at once; finish says what it was.)
+        for (const auto& [name, path] : parts) {
+            bool drawn = false;
+            for (const auto& logo : logos) drawn = drawn || _stricmp(logo.first.c_str(), name.c_str()) == 0;
+            if (!drawn) megler_appx_add_file(a, name.c_str(), narrow(path).c_str());
+        }
+        for (const auto& [name, png] : logos) megler_appx_add_data(a, name.c_str(), png.data(), png.size());
+        megler_appx_add_data(a, "AppxManifest.xml", manifestText.data(), manifestText.size());
+        megler_appx_add_data(a, "resources.pri", pri.data(), pri.size());
+        // (megler=: the Megler the app hands APKs to and starts others through, by its package family name -- a test identity's is
+        // not the release's.)
+        const std::string ini = "package=" + r.package + "\r\nlabel=" + label + "\r\napk=shared:" + narrow(made.apkFolder) + "\r\nroot=android\\" +
+                                androidRootName() + "\r\nmegler=" + narrow(std::wstring(Package::Current().Id().FamilyName())) + "\r\n";
+        megler_appx_add_data(a, "MeglerApp.ini", ini.data(), ini.size());
+        progress("Signing the package…");
+        if (megler_appx_finish(a, key, err, sizeof(err))) break;
+        // (A file of Megler's own that could not be read at that moment -- on an Xbox one another partition has mapped -- is
+        // tried again a moment later: the package begun again, twice at most.)
+        if (attempt == 2 || !strstr(err, "reading ")) return fail(std::string("The package could not be made: ") + err);
+        shellLog::write(std::string("app package: packing again in a second: ") + err);
+        std::this_thread::sleep_for(std::chrono::seconds(1));
     }
-    // (A failure on the way makes the rest fail at once; finish says what it was.)
-    for (const auto& [name, path] : parts) {
-        bool drawn = false;
-        for (const auto& logo : logos) drawn = drawn || _stricmp(logo.first.c_str(), name.c_str()) == 0;
-        if (!drawn) megler_appx_add_file(a, name.c_str(), narrow(path).c_str());
-    }
-    for (const auto& [name, png] : logos) megler_appx_add_data(a, name.c_str(), png.data(), png.size());
-    megler_appx_add_data(a, "AppxManifest.xml", manifestText.data(), manifestText.size());
-    megler_appx_add_data(a, "resources.pri", pri.data(), pri.size());
-    // (megler=: the Megler the app hands APKs to and starts others through, by its package family name -- a test identity's is
-    // not the release's.)
-    const std::string ini = "package=" + r.package + "\r\nlabel=" + label + "\r\napk=shared:" + narrow(made.apkFolder) + "\r\nroot=android\\" +
-                            androidRootName() + "\r\nmegler=" + narrow(std::wstring(Package::Current().Id().FamilyName())) + "\r\n";
-    megler_appx_add_data(a, "MeglerApp.ini", ini.data(), ini.size());
-    progress("Signing the package…");
-    if (!megler_appx_finish(a, key, err, sizeof(err))) return fail(std::string("The package could not be made: ") + err);
     shellLog::write("app package: " + narrow(made.appx) + " made, " + formattedByteCount(files::size(made.appx)) + ", for " + r.package);
     // The data handed over once: said only now, so that a make that failed hands it over again.
     if (handOver && (!files::makeDirectories(inShared) || !files::write(handedOver, "Megler " + version + " handed over " + r.package + "'s data in Megler\r\n")))

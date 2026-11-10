@@ -3,6 +3,8 @@
 #include "ui/Theme.h"
 
 #include "player/PhoneState.h"
+#include "shell/Files.h"
+#include "shell/Platform.h"
 #include "shell/ShellLog.h"
 #include "shell/Strings.h"
 
@@ -164,7 +166,28 @@ const wchar_t* lineContainerStyle = LR"(
   <Setter Property="IsTabStop" Value="False"/>
 </Style>)";
 
-const wchar_t* monoFamily = L"ms-appx:///fonts/DroidSansMono.ttf#Droid Sans Mono, Consolas";
+/*
+ * The monospaced face of the log's lines and of code, from a copy in LocalState, not from Megler's package: what XAML's
+ * text maps of a font file stays mapped, and on an Xbox a package Megler made then could not read the same file of Megler's
+ * own ("reading ...\fonts\DroidSansMono.ttf failed"), and the same "invalid cross-partition private file/section access"
+ * ended Megler as an unhandled XAML exception (0.1.0.681, Google Play services' package made while the install's lines were
+ * shown). The package's own file where the copy cannot be made.
+ */
+const std::wstring& monoFamilyText() {
+    static const std::wstring family = [] {
+        const std::wstring local = platform::localStateDirectory() + L"\\fonts", copy = local + L"\\DroidSansMono.ttf";
+        const std::wstring original = platform::installDirectory() + L"\\fonts\\DroidSansMono.ttf";
+        if (files::size(copy) == 0 || files::size(copy) != files::size(original)) {
+            files::makeDirectory(local);
+            if (!files::copy(original, copy + L".part") || !files::move(copy + L".part", copy)) {
+                shellLog::write("ui: the monospaced font could not be copied to LocalState: its package's file is read");
+                return std::wstring(L"ms-appx:///fonts/DroidSansMono.ttf#Droid Sans Mono, Consolas");
+            }
+        }
+        return std::wstring(L"ms-appdata:///local/fonts/DroidSansMono.ttf#Droid Sans Mono, Consolas");
+    }();
+    return family;
+}
 
 std::wstring replaceAll(std::wstring s, const std::wstring& what, const std::wstring& with) {
     for (size_t at = s.find(what); at != std::wstring::npos; at = s.find(what, at + with.size())) s.replace(at, what.size(), with);
@@ -367,7 +390,7 @@ FrameworkElement icon(wchar_t code, double size, std::optional<Color> color) {
 TextBlock monospace(std::string_view content, double size, std::optional<Color> color) {
     TextBlock t;
     t.Text(hs(content));
-    t.FontFamily(FontFamily(monoFamily));
+    t.FontFamily(FontFamily(monoFamilyText()));
     t.FontSize(size);
     t.TextWrapping(TextWrapping::Wrap);
     if (color) t.Foreground(brush(*color));
@@ -753,7 +776,7 @@ LineList::LineList(size_t capacity) : capacity_(capacity) {
     list_.Background(brush(palette().surface));
     try {
         list_.ItemTemplate(Markup::XamlReader::Load(replaceAll(replaceAll(lineTemplate, L"%COLOR%", hexColor(palette().onSurfaceVariant)),
-                                                               L"%MONO%", monoFamily))
+                                                               L"%MONO%", monoFamilyText()))
                                .as<DataTemplate>());
         list_.ItemContainerStyle(Markup::XamlReader::Load(lineContainerStyle).as<Style>());
     } catch (const hresult_error& e) {

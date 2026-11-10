@@ -98,6 +98,16 @@ struct App : ApplicationT<App, Markup::IXamlMetadataProvider> {
         logMirror::start();
 
         UnhandledException([](auto&&, UnhandledExceptionEventArgs const& e) {
+            /*
+             * An Xbox refuses a file of Megler's package that another of its partitions has mapped (ERROR_CROSS_PARTITION_VIOLATION,
+             * "An invalid cross-partition private file/section access was attempted"): what XAML failed to load with it is
+             * missing, nothing else is wrong, and Megler goes on rather than end (0.1.0.681, a font while a package was made).
+             */
+            if (e.Exception() == HRESULT_FROM_WIN32(1661 /* ERROR_CROSS_PARTITION_VIOLATION */)) {
+                e.Handled(true);
+                shellLog::write("ui: a XAML exception taken and gone on from: " + narrow(e.Message()));
+                return;
+            }
             shellLog::write("FATAL: unhandled XAML exception: " + narrow(e.Message()));
         });
         try {
