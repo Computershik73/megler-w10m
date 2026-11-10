@@ -560,6 +560,61 @@ public final class MicroG {
         MicroG g = get();
         return g != null && g.find(intent, true) != null && bind(g.context, intent, conn);
     }
+    /*
+     * The services the system keeps bound (bindAsSystemNow), by service and binding key: each counted as one client of its
+     * service once, so that it is never destroyed while the process lives, as the system's binding of it never ends.
+     */
+    private final Set<String> systemBindings = new HashSet<>();
+    /**
+     * A binding the system makes and keeps, as Android's location manager keeps Google Play services' geocode provider bound
+     * (its GeocoderProxy): the binder of their service whose filter takes the intent, exported or not, made and bound on the
+     * main thread -- at once when this is the main thread, else waited for, `timeoutMs` at most -- and the same binder again
+     * after. Null where Google Play services are not here, none of their services takes it, or it failed. Nothing of theirs
+     * is read for an intent of another package.
+     */
+    public static IBinder bindAsSystemNow(Intent intent, long timeoutMs) {
+        if (!mayBeGms(intent)) return null;
+        final MicroG g = get();
+        final Entry e = g == null ? null : g.find(intent, true);
+        if (e == null) return null;
+        final Intent copy = new Intent(intent);
+        java.util.concurrent.Callable<IBinder> bind = () -> {
+            Running r = g.create(e);
+            String key = bindKey(copy);
+            if (!r.binders.containsKey(key)) {
+                r.binders.put(key, r.service.onBind(copy));
+                android.util.Log.i("MicroG", "bound " + e.info.name + " for " + key + ", as the system binds it");
+            }
+            if (g.systemBindings.add(e.info.name + "\n" + key)) r.clients++;
+            return r.binders.get(key);
+        };
+        try {
+            if (Looper.myLooper() == Looper.getMainLooper()) return bind.call();
+            java.util.concurrent.FutureTask<IBinder> task = new java.util.concurrent.FutureTask<>(bind);
+            onMain(task);
+            return task.get(timeoutMs, java.util.concurrent.TimeUnit.MILLISECONDS);
+        } catch (java.util.concurrent.TimeoutException t) {
+            android.util.Log.w("MicroG", "binding " + e.info.name + " as the system binds it: the main thread did not get to it in " + timeoutMs + " ms");
+            return null;
+        } catch (Throwable t) {
+            Throwable cause = t instanceof java.util.concurrent.ExecutionException && t.getCause() != null ? t.getCause() : t;
+            if (!(cause instanceof NotRestartedYet)) android.util.Log.e("MicroG", "Binding " + e.info.name + " as the system binds it failed", cause);
+            return null;
+        }
+    }
+    /**
+     * Whether Google Play services here have an enabled service for the action (Geocoder.isPresent: a geocode provider), as
+     * the system finds one. Until they are read for something else they are not read for this: their APK there and their
+     * package enabled, Google's own and microG's both declaring a geocode provider (GmsCore's GeocodeService, microG's
+     * GeocodeProviderService).
+     */
+    public static boolean geocoderPresent(String action) {
+        if (!installed()) return false;
+        MicroG g = loaded();
+        if (g != null) return g.find(new Intent(action), true) != null;
+        PackageInfo basic = basic();
+        return basic != null && basic.applicationInfo != null && basic.applicationInfo.enabled;
+    }
     /* One loader, one class scope of GmsCore's, whichever thread asks first: Play Store asked for GmsCore's flags provider on
        a thread of its own while its main thread started GmsCore, each made a loader, and GmsCore's classes were there twice,
        their statics apart -- the flags provider's PhenotypeFlag was never set up (Must call PhenotypeFlag.init() first). */

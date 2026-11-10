@@ -226,6 +226,32 @@ English split, and both through a context of another configuration, and finds
 no attribute of the app's theme in its own (`gms-host` has a theme with one);
 and one whose `onCreate` throws.
 
+## Android's Geocoder
+
+An app's `android.location.Geocoder` asks Google Play services' geocode
+provider, as Android's location manager does: their service for
+`com.android.location.service.GeocodeProvider` -- Google's own
+`com.google.android.gms.location.geocode.GeocodeService` (not exported; in
+26.41.31 a Chimera proxy whose `GeocodeChimeraService` gives the binder of a
+`com.android.location.provider.GeocodeProvider`, its legacy provider below
+Android 15, `GeocodeProviderBase` from 15 on), or microG's
+`GeocodeProviderService` (OpenStreetMap's Nominatim). It is bound as the system
+binds it and kept (`MicroG.bindAsSystemNow`, on the main thread), and its
+binder, local, is called in place on a thread of the Geocoder's own with the
+app's package, uid, attribution tag and locale (`GeocoderParams`). The
+framework has the library's `GeocodeProvider`, which neither carries, the
+provider's interfaces (`IGeocodeProvider`, `IGeocodeListener`) and Android's
+`Address`. Where no provider is there, `isPresent()` is false and a request
+has no addresses and no error, as on Android. A synchronous request asked on
+the main thread binds the provider there before it waits; what the provider
+wants of the main thread while it answers waits with it (a phone's provider
+has a process of its own). Whether Google's server answers their geocoder
+here is for a phone to show ("I/Geocoder: a place asked ... address(es)").
+
+Windows' own `MapLocationFinder` is no way round: without a Bing Maps key
+(`MapService.ServiceToken`) it answers `InvalidCredentials` to a reverse and
+a forward geocode alike (tried on this PC, Windows 11 26300).
+
 ## Class isolation
 
 The failed implementation reverted in `1adae04` appended GmsCore's DEX files

@@ -15,7 +15,8 @@ comment says how). Like the other test apps, nothing is signed.
 
 aapt2 makes the config splits (link --split) and names them as bundletool does (config.xxhdpi, config.en: with the
 minimum SDK at 21 it gives a density no API level). The splits for a processor, the feature split and the asset pack have
-manifests written here and linked by aapt2.
+manifests written here and linked by aapt2. An app with a stubs/ folder is compiled against those classes before
+android.jar's, as tools/build-test-app.sh compiles one in one APK.
 """
 import json
 import os
@@ -89,9 +90,15 @@ for q in spec['config']:
     link += ['--split', os.path.join(work, 'parts', 'config.%s.apk' % q) + sep + q]
 run(*(link + [os.path.join(work, 'res.zip')]), quiet_compressed=True)
 
-# The base's code.
+# The base's code. With a stubs/ folder, as tools/build-test-app.sh has for an app in one APK: the platform's classes as a
+# later Android (or a library of the system's) has them, compiled first and put before android.jar, and not in the DEX file.
 sources = [os.path.join(r, f) for top in (os.path.join(app, 'src'), os.path.join(work, 'gen')) for r, _, fs in os.walk(top) for f in fs if f.endswith('.java')]
 boot = jar + sep + os.path.join(bt, 'core-lambda-stubs.jar')
+if os.path.isdir(os.path.join(app, 'stubs')):
+    stubs = [os.path.join(r, f) for r, _, fs in os.walk(os.path.join(app, 'stubs')) for f in fs if f.endswith('.java')]
+    os.makedirs(os.path.join(work, 'stubs'))
+    run(javac, '-nowarn', '-source', '8', '-target', '8', '-encoding', 'UTF-8', '-bootclasspath', jar, '-d', os.path.join(work, 'stubs'), *stubs)
+    boot = os.path.join(work, 'stubs') + sep + boot
 run(javac, '-nowarn', '-source', '8', '-target', '8', '-encoding', 'UTF-8', '-bootclasspath', boot, '-d', os.path.join(work, 'classes'), *sources)
 run(jartool, 'cf', os.path.join(work, 'classes.jar'), '-C', os.path.join(work, 'classes'), '.')
 run(java, '-cp', d8, 'com.android.tools.r8.D8', '--release', '--min-api', '26', '--lib', jar, '--output', os.path.join(work, 'dex'), os.path.join(work, 'classes.jar'))

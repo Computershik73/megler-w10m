@@ -3210,6 +3210,9 @@ static int run_data(void)
                                          /* And the same markup as Transit's Compose screens read it: a regular expression of a tag and
                                             thirteen optional fields, found from where the last tag ended (ICU's matcher). */
                                          "markup-regex",
+                                         /* And Android's Geocoder with no geocode provider (no Google Play services): not present, no
+                                            addresses and no error, the arguments checked; and an Address as Android's, through a Parcel. */
+                                         "geocoder", "address",
                                          "audio-track", "media-player", "media-player-ogg", "sound-pool",
                                          /* And MediaCodec over the stand-in for the shell's decoders: H.264 shown on a Surface in display
                                             order, a flush, parameter sets in a codec-config buffer, the asynchronous mode, AAC with an
@@ -3297,6 +3300,9 @@ static int run_data(void)
     CHECK(wait_line("I/DataTest: location-update ok", 0, 30) >= 0);
     /* And the request of the passive interval of the step "location-request": a fix, on the main thread, after which it is removed. */
     CHECK(wait_line("I/DataTest: location-passive ok", 0, 30) >= 0);
+    /* And the Geocoder's listener of the step "geocoder", with no provider: no addresses, on a thread that is not the main one. */
+    CHECK(wait_line("I/DataTest: geocoder-listener ok", 0, 30) >= 0);
+    CHECK(find_line("I/Geocoder: no geocode provider: the app's Google Play services have none, or none here", 0) >= 0);
     {
         int starts = 0, stops = 0, tries;
         for (tries = 0; tries < 40; tries++) {
@@ -4113,6 +4119,28 @@ static int run_gms_host(void)
     CHECK(wait_line("I/GmsOwnTest: lockup 16x16 word=english wrapped 16x16 word=english label=Google Play services (a stand-in) "
                     "splits=[config.en, config.mdpi] host theme attribute false theme 0x103013f", 0, 120) >= 0);
     /*
+     * Android's Geocoder, answered by their geocode provider (the stand-in's GeocodeProvider, not exported), bound as the system
+     * binds it -- the first request a synchronous one on the main thread, which binds it there before it waits -- and asked on
+     * a thread of the Geocoder's own, with the app's package, uid and locale: a place at a point and of a name, in the request's
+     * locale, the provider's error an IOException, and Android 13's listener forms answered off the main thread, an error to
+     * onError. isPresent says there is one.
+     */
+    CHECK(wait_line("I/GmsHostTest: geocoder on the main thread: 1 address(es) [Red Square | Moscow, 109012 | Moscow RU 55.7539,37.6208 en_US]", 0, 120) >= 0);
+    CHECK(find_line("I/GmsOwnTest: geocode provider bound on the main thread", 0) >= 0);
+    CHECK(find_line("I/MicroG: bound megler.test.gmsown.Geocode for com.android.location.service.GeocodeProvider, as the system binds it", 0) >= 0);
+    CHECK(find_line("I/GmsOwnTest: geocode at a point for megler.test.gmshost (the app's uid) in en_US off the main thread true, at most 1", 0) >= 0);
+    CHECK(wait_line("I/GmsHostTest: geocoder present true", 0, 60) >= 0);
+    CHECK(wait_line("I/GmsHostTest: geocoder at a point: 1 address(es) [Red Square | Moscow, 109012 | Moscow RU 55.7539,37.6208 ru_RU]", 0, 60) >= 0);
+    CHECK(wait_line("I/GmsHostTest: geocoder of a name: 1 address(es) [Red Square | Moscow, 109012 | Moscow RU 55.7539,37.6208 ru_RU]", 0, 60) >= 0);
+    CHECK(find_line("I/GmsOwnTest: geocode of a name for megler.test.gmshost (the app's uid) in ru_RU off the main thread true, within 0.0,0.0,0.0,0.0, at most 1", 0) >= 0);
+    CHECK(wait_line("I/GmsHostTest: geocoder of no place: no place called Atlantis", 0, 60) >= 0);
+    CHECK(find_line("within 10.0,20.0,30.0,40.0, at most 1", 0) >= 0);
+    CHECK(wait_line("I/GmsHostTest: geocoder listener: 1 address(es) [Red Square | Moscow, 109012 | Moscow RU 55.7539,37.6208 ru_RU] off the main thread true", 0, 60) >= 0);
+    CHECK(wait_line("I/GmsHostTest: geocoder listener of an error: no place south of the equator", 0, 60) >= 0);
+    CHECK(find_line("I/Geocoder: Google Play services' geocode provider answers the app's geocoding", 0) >= 0);
+    CHECK(find_line("geocoder FAILED", 0) < 0 && find_line("geocoder on the main thread FAILED", 0) < 0 && find_line("geocoder listener FAILED", 0) < 0 &&
+          find_line("of an error FAILED", 0) < 0);
+    /*
      * And an activity of theirs whose onCreate throws, having asked to be finished after (their help screen, whose layout's
      * logo was missing, 0.1.0.686): the app goes on, the activity is taken off the stack and never destroyed -- their
      * lifecycle threw at its destruction -- and the app's activity is resumed after it.
@@ -4126,6 +4154,7 @@ static int run_gms_host(void)
     }
     CHECK(find_line("FATAL EXCEPTION", 0) < 0);
     say_app_lines("/GmsOwnTest: ");
+    say_app_lines("/GmsHostTest: geocoder");
     return g_failed;
 }
 
