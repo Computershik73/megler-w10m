@@ -3095,6 +3095,145 @@ static void test_libc_odds(void)
     }
 }
 
+/* ------------------------------------------------------------------ malloc across threads
+ *
+ * How many malloc-and-free pairs threads make together, the guest's malloc's and the host's own under it: Geekbench 5's
+ * multi-core workloads, threads of C++ that allocate and free all the time, scaled worse on the HP Elite x3 than Android
+ * did on the same phone (690).
+ */
+typedef void *(*bench_malloc_fn)(size_t);
+typedef void (*bench_free_fn)(void *);
+
+typedef struct malloc_racer {
+    bench_malloc_fn m;
+    bench_free_fn f;
+    int pattern;                       /* MALLOC_MIXED or MALLOC_PAIRS */
+    volatile i32 *state;               /* 0 wait, 1 run, 2 stop */
+    u32 seed;
+    u64 pairs;
+} malloc_racer;
+
+enum { MALLOC_MIXED, MALLOC_PAIRS };
+#define RACER_SLOTS 1024
+
+static u32 racer_next(u32 *s)
+{
+    *s ^= *s << 13;
+    *s ^= *s >> 17;
+    *s ^= *s << 5;
+    return *s;
+}
+
+/* Sizes as a C++ program's: most of a few dozen bytes, some of a few kilobytes, a few of tens of kilobytes. */
+static size_t racer_size(u32 *s)
+{
+    u32 r = racer_next(s) % 100;
+    if (r < 80) return 8 + racer_next(s) % 248;
+    if (r < 95) return 256 + racer_next(s) % 3840;
+    return 4096 + racer_next(s) % 61440;
+}
+
+/*
+ * MALLOC_MIXED: a working set of RACER_SLOTS blocks of those sizes, one replaced at random each turn; MALLOC_PAIRS: two
+ * small blocks made and freed at once, last first, as a function's temporaries are.
+ */
+static MG_HOSTCB void malloc_racer_main(void *arg)
+{
+    malloc_racer *r = (malloc_racer *)arg;
+    void **slot = (void **)calloc(RACER_SLOTS, sizeof(void *));
+    u32 s = r->seed, i;
+    u64 n = 0;
+    while (*r->state == 0) mg_thread_yield();
+    while (slot && *r->state == 1) {
+        for (i = 0; i < 256; i++) {
+            if (r->pattern == MALLOC_MIXED) {
+                u32 k = racer_next(&s) & (RACER_SLOTS - 1);
+                if (slot[k]) r->f(slot[k]);
+                slot[k] = r->m(racer_size(&s));
+                if (slot[k]) *(volatile u8 *)slot[k] = 1;
+            } else {
+                size_t size = 16 + (i & 7) * 24;
+                u8 *a = (u8 *)r->m(size), *b = (u8 *)r->m(size * 2);
+                if (a) *(volatile u8 *)a = 1;
+                if (b) *(volatile u8 *)b = 1;
+                r->f(b);
+                r->f(a);
+            }
+        }
+        n += r->pattern == MALLOC_MIXED ? 256 : 512;
+    }
+    for (i = 0; slot && i < RACER_SLOTS; i++)
+        if (slot[i]) r->f(slot[i]);
+    free(slot);
+    r->pairs = n;
+}
+
+/* Millions of malloc-and-free pairs a second that `threads` threads (8 at most) make together in `ms` milliseconds. */
+static double malloc_race(bench_malloc_fn m, bench_free_fn f, int pattern, int threads, u32 ms)
+{
+    malloc_racer r[8];
+    mg_thread *t[8];
+    volatile i32 state = 0;
+    u64 t0, t1, pairs = 0;
+    int i;
+    for (i = 0; i < threads; i++) {
+        r[i].m = m;
+        r[i].f = f;
+        r[i].pattern = pattern;
+        r[i].state = &state;
+        r[i].seed = 0x9E3779B9u * (u32)(i + 1);
+        r[i].pairs = 0;
+        t[i] = mg_thread_start(malloc_racer_main, &r[i], 256u * 1024u, "malloc-racer");
+    }
+    mg_sleep_ns(20000000ull);
+    t0 = mg_time_monotonic_ns();
+    mg_atomic_xchg(&state, 1);
+    mg_sleep_ns((u64)ms * 1000000ull);
+    mg_atomic_xchg(&state, 2);
+    t1 = mg_time_monotonic_ns();
+    for (i = 0; i < threads; i++)
+        if (t[i]) {
+            mg_thread_join(t[i]);
+            pairs += r[i].pairs;
+        }
+    return t1 > t0 ? (double)pairs * 1000.0 / (double)(t1 - t0) : 0.0;
+}
+
+/* One line of the race at 1, 2, 4 (and 8) threads: millions a second, and how many times one thread's that is. */
+static void malloc_race_line(const char *what, bench_malloc_fn m, bench_free_fn f, int pattern, int max_threads, u32 ms)
+{
+    char line[300];
+    size_t at;
+    double one = 0;
+    int n;
+    at = (size_t)snprintf(line, sizeof(line), "  %s:", what);
+    for (n = 1; n <= max_threads && n <= 8 && at < sizeof(line); n *= 2) {
+        double v = malloc_race(m, f, pattern, n, ms);
+        if (n == 1) {
+            one = v;
+            at += (size_t)snprintf(line + at, sizeof(line) - at, " 1 thread %.1f M/s", v);
+        } else {
+            at += (size_t)snprintf(line + at, sizeof(line) - at, ", %d threads %.1f M/s (%.2fx)", n, v, one > 0 ? v / one : 0.0);
+        }
+    }
+    say("%s", line);
+}
+
+static void *host_malloc(size_t n) { return malloc(n); }
+static void host_free(void *p) { free(p); }
+
+void mg_tests_malloc_bench(int ms, int max_threads)
+{
+    bench_malloc_fn gmalloc = (bench_malloc_fn)mg_bionic_find("malloc");
+    bench_free_fn gfree = (bench_free_fn)mg_bionic_find("free");
+    if (!gmalloc || !gfree) return;
+    say("malloc-and-free pairs a second, threads together (the host's malloc on %s; %d processors):", mg_heap_kind(), mg_cpu_count());
+    malloc_race_line("the guest's malloc, mixed sizes", gmalloc, gfree, MALLOC_MIXED, max_threads, (u32)ms);
+    malloc_race_line("the host's malloc, mixed sizes", host_malloc, host_free, MALLOC_MIXED, max_threads, (u32)ms);
+    malloc_race_line("the guest's malloc, pairs", gmalloc, gfree, MALLOC_PAIRS, max_threads, (u32)ms);
+    malloc_race_line("the host's malloc, pairs", host_malloc, host_free, MALLOC_PAIRS, max_threads, (u32)ms);
+}
+
 /* ------------------------------------------------------------------ the decoders behind a Java app's MediaCodec */
 
 /* A NAL unit of H.264 after a start code: its header byte, then a few bytes nobody reads. */
