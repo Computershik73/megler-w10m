@@ -6974,6 +6974,61 @@ Then its server: the module asks Google's `VoilaTileService/FindTiles` over
 gRPC for the access points it does not know (`GmsCoreVoilaTileGrpc`, `gded`;
 `GlsClientGrpc`, `gexu`) and locates the phone among them itself (its "frewle"
 model); whether Google answers a phone of Megler's is for a phone to show.
+The call names no account: its credential is an `X-Goog-Spatula` header
+(`hamx`, `hamz`: "Could not retrieve spatula header" where it has none),
+which Google Play services' own AppCert service makes for the package
+(`com.google.android.gms.auth.APP_CERT`, `appp.a`): the package's name and
+certificate hash, and either a signature with the device key (the
+`device_key` file, `apps`, got from Google's `devicekey` endpoint with a
+DroidGuard result, `appr.b`) or, without one, the check-in's Android ID
+alone. The account's own credential (BAD_AUTHENTICATION on the Lumia 650)
+is not asked for; a phone without the device key ("DeviceKeyStore: Cannot
+load key: Device key file not found", Google Play services' own line) sends
+the header unsigned, and whether the server takes it is what the network's
+and the location's lines below say.
+
+**What a phone showed next** (0.1.0.684, a Lumia 650, Google Play services
+26.43.30 updated through Aurora): Google Location Accuracy on, one scan
+asked for by the module (its `hpsb`), three networks handed to it -- and
+then no second scan in two minutes and no fix. The module runs on alarms of
+its own (`GmsAlarm`, `dhmz`: on Android 12 and later through
+`AlarmManager.setExact`/`setWindow` with an `Executor` and a `WorkSource`, or
+`set` with a window, an interval and a `WorkSource`; its timers' names are
+its wake locks', "NetworkLocationLocator", "NetworkLocationScanner",
+"NetworkLocationActivityDetection"), and every one of those forms was a
+signature that did nothing ("AlarmManager.setWindow(...) is a stub here,
+first called from dlib.g", just after the module set
+"NetworkLocationActivityDetection"); `cancel(OnAlarmListener)` did nothing
+either. They are Android's now (`core/framework/src/android/app/
+AlarmManager.java`): one alarm a listener, moved when set again, gone when
+cancelled, told on its `Handler` or through its `Executor`, timed on a
+thread of their own. And at each of its scans the module asks for the cells
+around (`TelephonyManager.requestCellInfoUpdate`, `gezs.e`) and waits for
+them on a latch (`geyj`) until a timeout: those forms never answered, and
+answer now with no cells, as Windows gives an app none. It follows the
+network by Android 12's `registerBestMatchingNetworkCallback`
+(`NetworkConnectionMonitor`, `geup`), which now tells it as the other
+callbacks do (it read the first state itself). A wake lock is held from
+`acquire` to its `release` now (`isHeld` said false, and Google Play
+services said "<tag> should be held!" 64 times in those two and a half
+minutes). Ruled out on that log: the module's own location listener takes
+only "gps" fixes (`CallbackRunner$MyLocationListener$1.a`), and Google Play
+services had asked `LocationManager` for nothing but "passive", whose
+Windows' fixes are named "network" -- no cell fix reached it as a GPS one;
+and it trusts a scan's timestamps from the first, as long as they are
+within an hour (`gezy`: "six scans" decides only whether to stop checking).
+
+The log says more of it now: each alarm the first time it is set and goes
+off ("MeglerAlarms", 40 lines at most: `"NetworkLocationLocator" set to go
+off in 20.0 s (a listener's, told through an Executor)`), when no scan has
+been asked for in a minute ("MeglerWifi": "no scan asked for in the last
+60 s: 1 asked for so far, 1 made, the last asked for by hpsb"), a minute of
+the network location's scans without a fix ("MeglerLocation": "Google's
+network location: no fix in the last 60 s; it asked for 3 Wi-Fi scans in
+them ..."), and whether the location server's name was looked up ("network:
+Google's location server, "voilatile-pa.googleapis.com" ..., has 4
+addresses", or that it was not found): what the server answered is inside
+TLS.
 
 **The fixes**, as `megler.LocationService` sees them on their way (a
 `PendingIntent` of Google Play services' whose intent carries its network
@@ -7031,7 +7086,13 @@ network location hands its fused provider a fix of 5 m as Google's does (a
 the module's release): the app's `getLastKnownLocation("network")` and the
 first fix of its "gps" request are that one, named for the provider asked,
 and the stand-in's own "gps" request is handed none of Windows' while it is
-fresh.
+fresh. A second later an alarm of the stand-in's, set as `GmsAlarm` sets
+theirs (`setExact` with an `Executor` and a `WorkSource`), goes off and its
+second fix is sent. The data app's steps "alarm-listeners" (a listener's
+alarm moved, cancelled, through an `Executor` with a `WorkSource`, with a
+window, repeating), "wake-lock" (counted, uncounted, timed out) and
+"cell-info-update" (no cells, told; the best-matching network callback
+told) check the rest.
 
 ### Sound from Java
 

@@ -374,6 +374,7 @@ public final class LocationService {
                 double[] f = LocationNative.last();
                 boolean fresh = f != null && System.currentTimeMillis() - (long) f[7] <= STALE_MS;
                 Location g = google(t);
+                watchGoogle(t);
                 if (f != null || g != null) deliver(now, f, g, t);
                 if (fresh || g != null) {
                     saidNoFix = true;
@@ -607,6 +608,38 @@ public final class LocationService {
                     + " s, accurate to " + Math.round(best) + " m at best, " + Math.round(last) + " m the last" + (f != null ? "; Windows' newest "
                     + Math.round(f[3]) + " m (" + ((int) f[9] == LocationNative.SATELLITES ? "the satellites" : "Wi-Fi or the cell network") + ")" : ""));
         }
+    }
+
+    /*
+     * Google's network location watched while it gives no fix, so that a phone's log says why: a minute after the first Wi-Fi
+     * scan Google Play services asked for, and each minute after, where no fix of its came in that minute, how many scans it
+     * asked for in it -- none: it stopped (it scans again when an alarm of its goes off); some: it scanned and still found
+     * nothing (the server it asks where the networks are: the network's line says whether its name was looked up). Ten lines
+     * at most.
+     */
+    private static long sWatchAt;
+    private static int sWatchScans, sWatchSaid;
+
+    private static void watchGoogle(long t) {
+        int scans = Wifi.googleScans(), asked;
+        if (scans == 0) return;
+        synchronized (LOCK) {
+            if (sWatchAt == 0) {
+                sWatchAt = t;
+                sWatchScans = scans - 1;
+            }
+            if (t - sWatchAt < 60000) return;
+            boolean fixed = sGoogle != null && sGoogleAt >= sWatchAt;
+            asked = scans - sWatchScans;
+            sWatchAt = t;
+            sWatchScans = scans;
+            if (fixed || sWatchSaid >= 10) return;
+            sWatchSaid++;
+        }
+        long last = Wifi.googleScanAt();
+        android.util.Log.i("MeglerLocation", "Google's network location: no fix in the last 60 s; it asked for " + asked + " Wi-Fi scan" + (asked == 1 ? "" : "s")
+                + " in them (" + scans + " in all, the last " + (last < 0 ? "?" : (SystemClock.elapsedRealtime() - last) / 1000 + " s ago") + ")"
+                + (asked == 0 ? ": it has stopped scanning" : ": it scanned, and had no fix"));
     }
 
     /** Google's network location's newest fix while it is fresh; null after a minute without one (said once when it ends). */

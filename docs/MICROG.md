@@ -157,8 +157,15 @@ provider), which `megler.LocationAccuracy` asks of the user once an app that
 holds the location binds their location API, and writes; and `PendingIntent`'s
 sends with an `OnFinished` and options, by which the module hands each fix to
 the fused provider, and which sent nothing. Their fixes are seen on that way
-(`megler.LocationService.sent`) and said in the log. With microG nothing of
-this is asked: microG's own location backends are its own.
+(`megler.LocationService.sent`) and said in the log. The module also runs
+on Google Play services' own alarms (`GmsAlarm`: `AlarmManager`'s forms with
+an `Executor` and a `WorkSource`, which did nothing up to 0.1.0.684, so
+that a phone scanned once and never again), asks for the cells
+at each scan (`requestCellInfoUpdate`, answered now with none), and asks
+its server with an `X-Goog-Spatula` header of Google Play services' AppCert
+service, signed with the device key where the phone has one (JAVA.md says
+what a phone without one sends). With microG nothing of this is asked:
+microG's own location backends are its own.
 
 ## Class isolation
 
