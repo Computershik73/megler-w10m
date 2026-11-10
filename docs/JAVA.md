@@ -5608,6 +5608,25 @@ on a looper thread of its own and takes it back with `next()`.
   told to it too, and the item was finished twice (RecyclerView's listener
   run twice for one fade). The data app's step "animator-listener" checks
   each of these.
+- `android/text/method/ReplacementTransformationMethod.java` (the base of
+  `SingleLineTransformationMethod` and `HideReturnsTransformationMethod`),
+  Android's: text with none of the characters to replace is shown as it is,
+  and text with some keeps its spans -- a copy for text that cannot change, a
+  view that follows it for a `Spannable` or an `Editable`. The framework's own
+  gave a `String` of the text in every case, so a TextView that is
+  `android:singleLine` drew its text with no span at all. Transit 6.3.7 leaves
+  the markup its native code writes in a search result's title
+  (`<color|1e212d/f0f0f1>Choose on map`: a light theme's colour and a dark
+  one's) and hides it under a `ReplacementSpan` of no width, the rest
+  coloured by a span of its own (`com.thetransitapp.droid.shared.util.e.d`);
+  its result cards' titles are single-line (`search_actionable_card_cell`),
+  and on the phone they read `<color|1e212d/f0f0f1>Ch` in the view's own
+  colour (0.1.0.684, a Lumia 650). The data app's step "single-line-spans"
+  lays such a title out from a layout of its own
+  (`res/layout/markup_row.xml`) and draws it: the words alone, in the span's
+  colour; and checks what the transformation gives a `SpannableString` with
+  no line break (itself), one with line breaks (its spans kept), a
+  `SpannableStringBuilder` (a view that follows its edits) and a `String`.
 - `android/app/usage/StorageStatsManager.java`, two methods in their two
   forms: `getTotalBytes` and `getFreeBytes` were signatures answering 0.
   Since Android 8 this is where an app asks how large the phone's storage is

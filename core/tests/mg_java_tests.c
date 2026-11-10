@@ -2982,6 +2982,10 @@ static int run_data(void)
                                          /* And a view made on a worker thread with a state list for its background, its invalidateDrawable
                                             asserting the main thread, as Facebook builds its tab bar's tabs: the view the callback last. */
                                          "background-callback-last",
+                                         /* And a search result's title as Transit shows one: its markup hidden by a ReplacementSpan of no
+                                            width and the rest coloured by a span of its own, on an android:singleLine TextView, whose
+                                            transformation gave the view a String: the markup drawn, the colour gone. */
+                                         "single-line-spans",
                                          "audio-track", "media-player", "media-player-ogg", "sound-pool",
                                          /* And MediaCodec over the stand-in for the shell's decoders: H.264 shown on a Surface in display
                                             order, a flush, parameter sets in a codec-config buffer, the asynchronous mode, AAC with an
