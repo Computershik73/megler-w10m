@@ -275,10 +275,26 @@ public class Notification implements android.os.Parcelable {
         public static java.lang.Integer getFullLengthSpanColor(java.lang.CharSequence p0) { return null; }
         public static boolean isColorDark(int p0) { return false; }
         public static void makeHeaderExpanded(android.widget.RemoteViews p0) {}
-        public static android.app.Notification maybeCloneStrippedForDelivery(android.app.Notification p0) { return null; }
-        public static android.app.Notification.Builder recoverBuilder(android.content.Context p0, android.app.Notification p1) { return null; }
-        public android.app.Notification buildInto(android.app.Notification p0) { return null; }
-        public android.app.Notification buildUnstyled() { return null; }
+        public static android.app.Notification maybeCloneStrippedForDelivery(android.app.Notification p0) { return p0; }
+        /*
+         * A builder of what a notification already has, as Android's recoverBuilder makes one: its when, icon, number, category,
+         * content intent and extras (title, text). Null, it was: Google Play services' notifications called setChannelId on what
+         * it gave and their thread ended in a NullPointerException (Transit on a Lumia 650, 0.1.0.683).
+         */
+        public static android.app.Notification.Builder recoverBuilder(android.content.Context p0, android.app.Notification p1) {
+            Builder b = new Builder(p0, p1 != null ? p1.getChannelId() : null);
+            if (p1 != null) {
+                b.n.when = p1.when;
+                b.n.icon = p1.icon;
+                b.n.number = p1.number;
+                b.n.category = p1.category;
+                b.n.contentIntent = p1.contentIntent;
+                if (p1.extras != null) b.n.extras.putAll(p1.extras);
+            }
+            return b;
+        }
+        public android.app.Notification buildInto(android.app.Notification p0) { return p0 != null ? p0 : n; }
+        public android.app.Notification buildUnstyled() { return n; }
         public android.widget.RemoteViews createBigContentView() { return null; }
         public android.widget.RemoteViews createCompactHeadsUpContentView() { return null; }
         public android.widget.RemoteViews createContentView() { return null; }
