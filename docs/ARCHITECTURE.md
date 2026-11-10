@@ -69,7 +69,9 @@ exactly where softfp puts a double, and a 32-bit one where it puts a float. The
 wrapper converts bits to a value (`mg_d`, `mg_f`), calls the host's function, and
 converts back. All of libm, every OpenGL ES function with a float parameter, the JNI
 calls that return floats, and the NDK's `AMotionEvent_getX` are written this way; no
-assembly is involved.
+assembly is involved. The conversion is one `vmov` between the register files each
+way: MSVC's intrinsics for it (`_CopyFloatFromInt32` and its kin), where a `memcpy`
+became a store to the stack and a load into the other register file.
 
 The same holds the other way: the host calls a guest function through a pointer
 typed with integers, passing each float as its bits.
