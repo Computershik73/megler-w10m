@@ -1268,6 +1268,57 @@ negotiates, pairing with a PIN -- which only a phone (or a PC) with a MeshCore
 radio in range can show; whether Windows 10 Mobile takes a custom pairing
 ceremony, or a PIN must go through its own dialog.
 
+## Wi-Fi
+
+An app's `WifiManager` -- its scans, their results, the network the phone is
+connected to -- gets the phone's Wi-Fi through a call of the shell's,
+`megler_wifi_host` in `megler.h`: whether it can be scanned, a scan (waited
+for), the connection. The core (`drivers/mg_java_wifi.c`) hands what the shell
+found to the framework's `megler.Wifi`, which keeps Android's side: one thread
+for the scans, the last results as Android's `ScanResult`s, the broadcast, the
+rules of who may have them (docs/JAVA.md, "Wi-Fi, and Google's network
+location"). What they are for, above all, is Google Play services' network
+location, which runs in the app's process and finds the phone from the Wi-Fi
+networks around it, as on Android: where Windows' own location gives a phone
+the cell network's fixes alone, of 300 to 660 m, Google's Wi-Fi positioning gives
+tens of metres.
+
+**The shell** (`player/WifiHost.cpp`, Windows.Devices.WiFi, its work on a
+thread of its own in the multithreaded apartment while the core's call waits):
+
+| Android | Windows |
+|---|---|
+| whether the phone can scan | `WiFiAdapter.RequestAccessAsync` (the package's `wiFiControl`; nothing is shown to the user), the first adapter `FindAllAdaptersAsync` finds, and the Wi-Fi radio's state (Windows.Devices.Radios): on, off, refused, none |
+| a scan (`startScan`) | `ScanAsync`, waited for ten seconds at most, then the adapter's `NetworkReport`: its `Timestamp`, and each network's `Bssid`, `Ssid` (text, handed over as UTF-8), `NetworkRssiInDecibelMilliwatts`, `ChannelCenterFrequencyInKilohertz`, `SecuritySettings` (authentication and cipher), `PhyKind`, `NetworkKind` |
+| `ScanResult.timestamp` | the report's `Timestamp`, moved onto `elapsedRealtime`'s clock by the framework |
+| `getConnectionInfo`'s network | the adapter's connected profile (`GetConnectedProfileAsync`) where it is a Wi-Fi one: its SSID; the BSSID, signal and channel of the strongest access point of that SSID in the last scan (Windows says not which one the phone is with), else the signal of its bars; kept ten seconds |
+
+The core asks for no scan sooner than three seconds after the last began; the
+framework answers the requests meanwhile with the scan under way or the next.
+The log says what Windows answers of the access, the adapter and the radio as
+it changes, a scan or a connection that fails, and what scans find: the first
+eight one by one (how many networks, how many on 5 GHz, the strongest, how long
+Windows took), then once a minute.
+
+**The packages.** Megler's own manifest declares the device capability
+`wiFiControl`, and so does an app's own package where the app holds the
+location (docs/PER-APP-PACKAGES.md): Android gives a scan's results only to an
+app that may have the location, and Google Play services in the app scans for
+it with the app's own capabilities.
+
+*Proven:* under qemu and on this PC, on a stand-in for the shell's Wi-Fi
+(`core/tests/mg_wifi_standin.c`: four networks, a UTF-8 name, a hidden one, an
+ad hoc one): the core's tests (`mg_wifi_tests.c`: no Wi-Fi, a scan's networks to
+the last field, a scan bounded by the room given, the report's time, a scan
+refused with the Wi-Fi off, the connection), the test app `wifi` (Java: the
+broadcast, the results, the second scan's wait, two requests answered by one
+scan, the callback, the connection, a `Parcel`) and the data app (no location
+permission: no scan). `WifiHost.cpp` builds into the phone's package and into
+the PC's test program, whose `--wifi-windows` scans this PC's Wi-Fi through it
+and the core's. *Expected:* that a phone's scan is heard as said, and that
+Google's location server answers Google Play services there: only a phone's
+log shows it ("Google's network location: its first fix").
+
 ## Files and the shared storage
 
 Android's paths are looked up in a mount table (`bionic/mg_libc_io.c`). What an

@@ -1884,6 +1884,9 @@ public class Main extends Activity {
     /**
      * The Wi-Fi as a game's downloader asks about it before it fetches its data: on and connected by ConnectivityManager and
      * by WifiManager alike, the connection's state and signal, and the address in the connection and in the DHCP answer the same.
+     * And an app that may not have the location -- this one names no location permission -- has no scans, as on Android: startScan
+     * false and getScanResults an empty list (the test's shell has four networks in range), the connection's name and BSSID
+     * hidden.
      */
     private void wifi() {
         step("wifi", () -> {
@@ -1892,9 +1895,13 @@ public class Main extends Activity {
             android.net.wifi.WifiInfo info = wm.getConnectionInfo();
             android.net.DhcpInfo dhcp = wm.getDhcpInfo();
             android.net.NetworkInfo net = cm.getNetworkInfo(android.net.ConnectivityManager.TYPE_WIFI);
+            boolean scanned = wm.startScan();
+            java.util.List<android.net.wifi.ScanResult> results = wm.getScanResults();
             detail = "enabled=" + wm.isWifiEnabled() + " state=" + wm.getWifiState() + " info=" + (info == null ? null : info.getSSID() + "/" + info.getSupplicantState()
-                    + "/" + info.getRssi() + "/" + info.getIpAddress()) + " dhcp=" + (dhcp == null ? null : dhcp.ipAddress) + " level=" + android.net.wifi.WifiManager.calculateSignalLevel(-50, 5);
-            return wm.isWifiEnabled() && wm.getWifiState() == android.net.wifi.WifiManager.WIFI_STATE_ENABLED && net != null && net.isConnected()
+                    + "/" + info.getRssi() + "/" + info.getIpAddress()) + " dhcp=" + (dhcp == null ? null : dhcp.ipAddress) + " level=" + android.net.wifi.WifiManager.calculateSignalLevel(-50, 5)
+                    + " scanned=" + scanned + " results=" + results;
+            return !scanned && results != null && results.isEmpty()
+                    && wm.isWifiEnabled() && wm.getWifiState() == android.net.wifi.WifiManager.WIFI_STATE_ENABLED && net != null && net.isConnected()
                     && info != null && "<unknown ssid>".equals(info.getSSID()) && info.getSupplicantState() == android.net.wifi.SupplicantState.COMPLETED
                     && "02:00:00:00:00:00".equals(info.getBSSID()) && info.getRssi() == -50 && info.getLinkSpeed() > 0 && dhcp != null && dhcp.ipAddress == info.getIpAddress()
                     && android.net.wifi.WifiManager.calculateSignalLevel(-50, 5) == 4 && android.net.wifi.WifiManager.calculateSignalLevel(-100, 5) == 0

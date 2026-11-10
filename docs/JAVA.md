@@ -6444,7 +6444,10 @@ on a looper thread of its own and takes it back with `next()`.
   `NetworkInterface`, which `getDhcpInfo()` has too, with its netmask; and
   `calculateSignalLevel` is Android's formula. Which network the phone is
   really on is not asked of Windows: the framework says Wi-Fi throughout.
-  The data app's step "wifi" asks as the installer does.
+  The data app's step "wifi" asks as the installer does. And the phone's
+  scans and its connection's network for an app that may have the location
+  ("Wi-Fi, and Google's network location" below; `ScanResult.java` and
+  `WifiSsid.java`, Android's in place of the generated stubs).
 
 - `android/media/session/PlaybackState.java`, in place of the generated stub,
   which dropped what `setState` and `addCustomAction` were given (the state,

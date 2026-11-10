@@ -89,6 +89,7 @@
 #include "../src/zip/mg_zip.h"
 #include "mg_camera_standin.h"
 #include "mg_location_standin.h"
+#include "mg_wifi_standin.h"
 #include "mg_sensor_standin.h"
 #include "mg_bluetooth_standin.h"
 #include "mg_codec_standin.h"
@@ -975,6 +976,9 @@ static bool start(const char *apk, const char *android_root)
     if (g_camera_app) cfg.camera = *mg_camera_standin();
     /* The phone in Moscow, the location on (mg_location_standin.c). */
     cfg.location = *mg_location_standin();
+    /* Its Wi-Fi on, four networks in range, connected to the first (mg_wifi_standin.c), its scans counted from each start. */
+    mg_wifi_standin_reset();
+    cfg.wifi = *mg_wifi_standin();
     /* A device with one of each sensor, each reading a known value in Windows' units and signs (mg_sensor_standin.c). */
     cfg.sensors = *mg_sensor_standin();
     /* A Bluetooth LE radio with a MeshCore radio and a beacon in range (mg_bluetooth_standin.c), as it starts. */
@@ -2866,6 +2870,10 @@ static int run_data(void)
     CHECK(wait_line("I/DataTest: connectivity-received ok", 0, 30) >= 0);
     /* The PendingIntent sent with an OnFinished and options (the step "pending-intent-options"): its receiver heard it. */
     CHECK(wait_line("I/DataTest: pending-intent-options-sent ok v=5", 0, 30) >= 0);
+    /* No scan of the Wi-Fi for an app that may not have the location (the step "wifi"): refused before the shell was asked. */
+    CHECK(wait_line("I/DataTest: wifi ok", 0, 120) >= 0);
+    CHECK(mg_wifi_standin_scans() == 0);
+    CHECK(find_line("I/MeglerWifi: a scan refused: the app holds no location permission (ACCESS_FINE_LOCATION, ACCESS_COARSE_LOCATION)", 0) >= 0);
     /* The phone's location, asked for in the step "location": a fix delivered on the main thread, after which the listener is
        removed and the location no longer followed. */
     CHECK(wait_line("I/DataTest: location-update ok", 0, 30) >= 0);
@@ -3518,6 +3526,40 @@ static int run_bluetooth(void)
     return g_failed;
 }
 
+/*
+ * The phone's Wi-Fi (the test app wifi, on the stand-in for the shell's Wi-Fi, mg_wifi_standin.c), as an app and Google Play
+ * services' network location in it use it: a scan asked for and its broadcast, its networks as ScanResults, a second scan no
+ * sooner than three seconds after the first, two requests answered by one scan and its callback, the connection's network,
+ * a ScanResult through a Parcel. Three scans of the stand-in's in all, and what the core and the framework said of them.
+ */
+static int run_wifi(void)
+{
+    static const char *const steps[] = { "permission", "scan", "results", "copies", "second-scan", "joined", "connection", "parcel" };
+    char text[120];
+    int at = -1, i;
+    expect_line("I/WifiTest: onCreate", &at, 120);
+    for (i = 0; i < (int)MG_COUNT(steps); i++) {
+        snprintf(text, sizeof(text), "I/WifiTest: %s ok", steps[i]);
+        expect_line(text, &at, 120);
+    }
+    snprintf(text, sizeof(text), "I/WifiTest: done ok=%d failed=0", (int)MG_COUNT(steps));
+    expect_line(text, &at, 60);
+    say("  the stand-in: %d scans", mg_wifi_standin_scans());
+    CHECK(mg_wifi_standin_scans() == 3);
+    /* The core's word on each scan and the framework's on who asked and what it found. */
+    CHECK(find_line("wifi: on: the phone's Wi-Fi can be scanned", 0) >= 0);
+    CHECK(find_line("wifi: scan 1 found 4 networks (1 on 5 GHz), the strongest at -46 dBm, in ", 0) >= 0);
+    CHECK(find_line("wifi: scan 3 found 4 networks (1 on 5 GHz), the strongest at -48 dBm, in ", 0) >= 0);
+    CHECK(find_line("I/MeglerWifi: a scan asked for by megler.test.wifi.Main", 0) >= 0);
+    CHECK(find_line("I/MeglerWifi: scan 1 found 4 networks in ", 0) >= 0 &&
+          find_line(", the strongest \"Megler Test\" (00:11:22:33:44:55) at -46 dBm, 2437 MHz", 0) >= 0);
+    CHECK(find_line("I/MeglerWifi: 4 results of a scan ", 0) >= 0);
+    CHECK(find_line(" FAILED", 0) < 0 && find_line("FATAL EXCEPTION", 0) < 0 && find_line("I/MeglerWifi: a scan refused", 0) < 0);
+    back_and_end("I/WifiTest: onDestroy", &at);
+    if (g_failed) say_app_lines("/WifiTest: ");
+    return g_failed;
+}
+
 /* Regression: a client and GmsCore carry incompatible classes of identical names. */
 static int run_microg(void)
 {
@@ -3835,6 +3877,7 @@ int mg_tests_java_run(const char *which, const char *apk, const char *android_ro
         else if (!strcmp(which, "splits")) run_splits();
         else if (!strcmp(which, "screen")) run_screen();
         else if (!strcmp(which, "bluetooth")) run_bluetooth();
+        else if (!strcmp(which, "wifi")) run_wifi();
         else if (g_any_app) run_app();
         else run_hello();
         if (running()) {
