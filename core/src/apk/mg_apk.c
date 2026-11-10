@@ -895,13 +895,15 @@ done:
  * Whether the library android.app.lib_name names exports NativeActivity's entry -- android.app.func_name, else
  * ANativeActivity_onCreate --, in whichever of the app's APKs has it, stored or deflated: 1 yes, 0 no, -1 not known (no
  * such library, not this processor's ELF, damaged). (A deflated library is inflated as far as its dynamic section, past its
- * code; the first 32 MB of it are kept for the tables, which come before.)
+ * code; the first 32 MB of it are kept for the tables, which come before.) The flag native-entry-at-start leaves the
+ * library unread, not known: the start then loads it and asks it (core/src/run/mg_run.c).
  */
 static int native_entry(mg_zip *const *zips, int nzips, const mg_apk_info *info)
 {
     char path[160];
     const char *want = info->func_name[0] ? info->func_name : "ANativeActivity_onCreate";
     int k, found = -1;
+    if (mg_flag("native-entry-at-start")) return -1;
     snprintf(path, sizeof(path), "lib/%s/lib%s.so", info->abi, info->native_library);
     for (k = 0; k < nzips && found < 0; k++) {
         const mg_zip_entry *e = mg_zip_find(zips[k], path);
@@ -923,6 +925,7 @@ static void classify(mg_apk_info *info, mg_zip *const *zips, int nzips, char (*b
     char prefix[40], others[120];
     int i, k;
     bool v7 = false, v5 = false, any64 = false, in_parts = info->nsplits > 0 || info->nleft_out > 0, abi_split_missing;
+    info->native_entry = -2;
     for (k = 0; k < nzips; k++) mg_zip_each(zips[k], "lib/", abi_seen, info);
     /* (The processor's own ABI elsewhere than on 32-bit ARM: MG_APK_ABI_ARM.) */
     for (i = 0; i < info->nabis; i++) {
@@ -983,10 +986,12 @@ static void classify(mg_apk_info *info, mg_zip *const *zips, int nzips, char (*b
      * NativeActivity entry: then the activity is one that loads the library and starts it through JNI itself, and the app
      * is a Java one. Qt's QtActivity names its library so: 2GIS (libv4android.so, 277 MB) was taken for a NativeActivity,
      * and its start ended in "has no ANativeActivity_onCreate: it is not a NativeActivity library" (package 576; and again
-     * in 681, its dynamic section being past the part of the library that was read).
+     * in 681, its dynamic section being past the part of the library that was read). Where the library cannot be looked
+     * into (native_entry -1), it is a NativeActivity here and the start asks the library itself (core/src/run/mg_run.c).
      */
     else if (!strcmp(info->activity, "android.app.NativeActivity") || (!info->has_code && w.count) ||
-             (info->native_library[0] && !(info->has_code && info->activity[0] && mg_zip_find(zips[0], "classes.dex") && native_entry(zips, nzips, info) == 0)))
+             (info->native_library[0] &&
+              !(info->has_code && info->activity[0] && mg_zip_find(zips[0], "classes.dex") && (info->native_entry = native_entry(zips, nzips, info)) == 0)))
         strcpy(info->engine, "native-activity");
     /*
      * And an SDL app: SDLActivity (or the app's own on top of it) is an activity that loads libSDL2.so and the app's

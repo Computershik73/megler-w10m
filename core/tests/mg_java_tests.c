@@ -2364,8 +2364,14 @@ static int run_natives(void)
     memset(pic, 0, sizeof(pic));
     expect_line("I/NativesTest: onCreate", &at, 120);
     /* Its activity names its library with android.app.lib_name, as Qt's does, and the library has no NativeActivity entry:
-       the Java driver runs it, not the NativeActivity one. */
+       the Java driver runs it, not the NativeActivity one. Found so when the APK is read, or -- in the run with the flag
+       native-entry-at-start, where the library is not looked into then -- by the start, which loads it and asks it. */
     CHECK(find_line("run: megler.test.natives (", 0) >= 0 && find_line(") with the java driver", 0) >= 0);
+    if (GL.refuse)
+        CHECK(find_line("run: libnatives.so has no ANativeActivity_onCreate: its activity (megler.test.natives.Main) loads it through JNI itself, "
+                        "and the app is started as a Java one", 0) >= 0);
+    else
+        CHECK(find_line("run: libnatives.so has no ANativeActivity_onCreate", 0) < 0);
     /* The library's own line (__android_log_print), from its JNI_OnLoad: run when the class that loads it is first used. */
     expect_line("I/NativesLib: JNI_OnLoad call 1", &at, 60);
     for (i = 0; i < (int)MG_COUNT(steps); i++) {
@@ -3760,15 +3766,22 @@ int mg_tests_java_run(const char *which, const char *apk, const char *android_ro
     mg_camera_standin_refuse(g_camera_app && g_script_count && !strcmp(g_script[0], "denied"));
     /* The shell does not compose the window ("readback"): the core reads the GL frames back and composes it, as before. */
     GL.refuse = g_script_count && !strcmp(g_script[0], "readback");
-    /* natives runs with the flag trace-surfaces on (a file in the data folder's flags, as on the phone): natives_windows checks what it says. */
+    /*
+     * natives runs with the flag trace-surfaces on (a file in the data folder's flags, as on the phone): natives_windows checks
+     * what it says. And its second run ("readback") with native-entry-at-start: its library is not looked into for
+     * NativeActivity's entry when the APK is read, and the start asks the library itself (run_natives).
+     */
     if (!strcmp(which, "natives")) {
         char *flags = mg_sprintf("%s/flags", megler_data_dir()), *flag = mg_sprintf("%s/flags/trace-surfaces", megler_data_dir());
+        char *at_start = mg_sprintf("%s/flags/native-entry-at-start", megler_data_dir());
         FILE *f;
         mg_path_mkdirs(flags);
         f = fopen(flag, "w");
         if (f) fclose(f);
+        if (GL.refuse && (f = fopen(at_start, "w")) != NULL) fclose(f);
         free(flags);
         free(flag);
+        free(at_start);
     }
     /* The data app's second run is on another battery than the one the core has when nobody has said: what the app then reads is what was set here. */
     if (!strcmp(which, "data") && g_script_count && !strcmp(g_script[0], "run:2")) mg_battery_set(&k_battery_run2);

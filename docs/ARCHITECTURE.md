@@ -1570,7 +1570,12 @@ inflated as far as its dynamic section, its first 32 MB kept for the tables
 before it. Up to package 681 it read the library's first 32 MB whole, and 2GIS's
 dynamic section, past its code, was not in them: it was a NativeActivity again.
 The bundle tests make the natives app with a library of 40 MB whose dynamic
-section is at 40 MB, stored (a hole in the file) and deflated. It
+section is at 40 MB, stored (a hole in the file) and deflated. Where the look
+cannot tell (the library damaged, or the flag `native-entry-at-start`), the start
+asks the library itself (`run/mg_run.c`): it is loaded -- not started, its
+constructors run when Java loads it -- and, without the entry, the app is started
+by the Java driver instead, where the NativeActivity driver would end at once; the
+natives app's second run under qemu goes that way. The NativeActivity driver
 loads the library, calls `ANativeActivity_onCreate`, and makes the activity's
 callbacks in the framework's order on a thread that stands for Android's main
 thread. Apps built on `android_native_app_glue` run on top of that.

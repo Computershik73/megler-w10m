@@ -330,7 +330,9 @@ stack scan, thread and memory lines, the flags (`mg_flag`: a file's presence in
 `fail-present` (every Present taken as refused, uncalled: docs/XBOX.md),
 `normal-priority`, `trace-gl`), `trace-gl` (every GL call through a generated
 thunk), `no-gl-turns` (the thunks that have two threads' calls of one ANGLE
-display take turns left out; `ndk/mg_egl.c`, "turns"), the unattended `play` mode, and `tools/phone-etw.py`. And for what an app
+display take turns left out; `ndk/mg_egl.c`, "turns"), `native-entry-at-start` (an
+activity's library is not looked into for NativeActivity's entry when its APK is
+read: the start loads it and asks it, `run/mg_run.c`), the unattended `play` mode, and `tools/phone-etw.py`. And for what an app
 does that it says nothing of: `trace-net` (every TCP connection the app makes,
 where to, how it ended and how long it took, and every name it looks up with its
 addresses; `bionic/mg_net.c`, `mg_netdb.c`) and `trace-exceptions` (every Java
