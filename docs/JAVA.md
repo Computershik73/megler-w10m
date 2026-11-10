@@ -6183,6 +6183,18 @@ on a looper thread of its own and takes it back with `next()`.
   with a list of its own in the window: nothing is heard inside the removal,
   the child is still in the scrap after it, and the fade goes on to its end
   and is told then, once.
+  And a view hears whether it is shown, `onVisibilityAggregated`, as
+  Android's (7 and later) tells it: true at its attach to the window where it
+  is shown, false at its detach, and the subtree of a view whose visibility
+  changes in a window through `dispatchVisibilityAggregated` (`ViewGroup.java`
+  tells its visible children); View's own makes its background and
+  foreground visible or not, ImageView's its picture. Nothing called it: no
+  drawable heard that its view had left the window. Facebook's network
+  drawables let their pictures go only at `setVisible(false)`, and Messenger's
+  log had 124 lines "AsyncDrawable with url ... wasn't hidden before it was
+  GC'd" (0.1.0.683); Litho's `LithoView` takes its visibility hint from it.
+  The data app's step "visibility-aggregated" hides a picture and a
+  background with their parent made `GONE` and taken out of the window.
 - `megler/KeyStoreProvider.java`, one method, and Megler's circumstance
   rather than a fault of the framework's own: `PairGen.generateKeyPair` takes another
   provider's key pair generator from its service, because

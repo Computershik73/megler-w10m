@@ -1849,6 +1849,7 @@ public class Main extends Activity {
         activityThreadApplication();
         dateFormats();
         roundRectShape();
+        visibilityAggregated();
         backgroundOffMainThread();
         sound();
         mediaCodec();
@@ -5866,6 +5867,47 @@ public class Main extends Activity {
             Log.i("DataTest", "round-rect-shape " + detail);
             return centre == 0xFF3A3B3C && (corner >>> 24) == 0 && end == 0xFF3A3B3C && top == 0xFF3A3B3C && (hole >>> 24) == 0 && band == 0xFF00FF00
                     && insetOutline.isEmpty() && rounded && box.equals(new android.graphics.Rect(0, 0, 100, 40)) && outline.getRadius() == 20 && outline.getAlpha() == 1;
+        });
+    }
+
+    /**
+     * Whether a view is shown, heard by its drawables as on Android (View.onVisibilityAggregated, API 24): an ImageView's
+     * picture and a view's background visible once the window has them, not once their parent is made GONE, visible again
+     * with it, and not once their parent leaves the window. Megler never said it: Messenger's network drawables were never
+     * hidden ("AsyncDrawable ... wasn't hidden before it was GC'd"). Said after the window is attached (the steps run before),
+     * on its own line.
+     */
+    private void visibilityAggregated() {
+        step("visibility-aggregated", () -> {
+            final StringBuilder heard = new StringBuilder();
+            final android.graphics.drawable.ColorDrawable picture = new android.graphics.drawable.ColorDrawable(0xFF0000FF);
+            final android.graphics.drawable.ColorDrawable back = new android.graphics.drawable.ColorDrawable(0xFF00FF00);
+            final android.widget.FrameLayout outer = new android.widget.FrameLayout(this);
+            final android.widget.ImageView image = new android.widget.ImageView(this);
+            image.setImageDrawable(picture);
+            final android.view.View plain = new android.view.View(this);
+            plain.setBackground(back);
+            outer.addView(image, new android.widget.FrameLayout.LayoutParams(10, 10));
+            outer.addView(plain, new android.widget.FrameLayout.LayoutParams(10, 10));
+            outer.addOnAttachStateChangeListener(new android.view.View.OnAttachStateChangeListener() {
+                @Override public void onViewAttachedToWindow(android.view.View v) {
+                    outer.removeOnAttachStateChangeListener(this);
+                    outer.post(() -> {
+                        heard.append("attached ").append(picture.isVisible()).append(' ').append(back.isVisible());
+                        outer.setVisibility(android.view.View.GONE);
+                        heard.append(", gone ").append(picture.isVisible()).append(' ').append(back.isVisible());
+                        outer.setVisibility(android.view.View.VISIBLE);
+                        heard.append(", visible ").append(picture.isVisible()).append(' ').append(back.isVisible());
+                        ((android.view.ViewGroup) outer.getParent()).removeView(outer);
+                        heard.append(", removed ").append(picture.isVisible()).append(' ').append(back.isVisible());
+                        Log.i("DataTest", "visibility-aggregated " + heard);
+                    });
+                }
+                @Override public void onViewDetachedFromWindow(android.view.View v) {}
+            });
+            ((android.view.ViewGroup) text.getParent()).addView(outer, new android.view.ViewGroup.LayoutParams(20, 20));
+            detail = "in the window now " + outer.isAttachedToWindow();
+            return true;
         });
     }
 

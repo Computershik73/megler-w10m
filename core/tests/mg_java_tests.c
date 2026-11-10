@@ -2987,6 +2987,9 @@ static int run_data(void)
                                          /* And a RoundRectShape with an inset of nothing, as Messenger's rounded backgrounds: filled
                                             whole; an inset smaller both ways a hole; the outlines Android's. */
                                          "round-rect-shape",
+                                         /* And whether a view is shown, heard by its drawables (onVisibilityAggregated): said once the
+                                            window is attached, checked below. */
+                                         "visibility-aggregated",
                                          /* And a view made on a worker thread with a state list for its background, its invalidateDrawable
                                             asserting the main thread, as Facebook builds its tab bar's tabs: the view the callback last. */
                                          "background-callback-last",
@@ -3168,6 +3171,9 @@ static int run_data(void)
     CHECK(wait_line("I/DataTest: downloads ok status=200 bytes=5 body=hello cookie=true observed=true file=5", 0, 30) >= 0);
     /* The list of the step "list-row-click": its row, clickable itself, clicked by a tap. */
     CHECK(wait_line("I/DataTest: list-row-click rows=3 clicked=true", 0, 30) >= 0);
+    /* The step "visibility-aggregated": an ImageView's picture and a view's background hidden with their parent made GONE and
+       taken out of the window, shown with it again, as Android's onVisibilityAggregated tells them. */
+    CHECK(wait_line("I/DataTest: visibility-aggregated attached true true, gone false false, visible true true, removed false false", 0, 30) >= 0);
     /* The view animation of the step "animation-listener": its listener told through the view's handler, after the frames that
        started and ended it, not inside its parent's dispatchDraw (Animation.fireStart; Telegram's settings ended the app). */
     CHECK(wait_line("I/DataTest: animation-listener heard=start end", 0, 30) >= 0);
