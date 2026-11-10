@@ -2313,6 +2313,31 @@ static void test_libc_gaps(const char *scratch)
         }
         if (fchmodat_) CHECK(fchmodat_(-100, "/syscall-files/log.gz", 0644, 0) == 0 && fchmodat_(-100, "/syscall-files/none", 0644, 0) == -1);
     }
+
+    say("getgrgid, getgrnam and initgroups: the app's one group, none other (Jetpack Joyride's libmortargame.so imports them)");
+    {
+        typedef struct { char *name, *passwd; u32 gid; char **mem; } t_group;
+        typedef t_group *(*getgrgid_fn)(u32);
+        typedef t_group *(*getgrnam_fn)(const char *);
+        typedef int (*initgroups_fn)(const char *, u32);
+        typedef int *(*errno_fn)(void);
+        getgrgid_fn getgrgid_ = (getgrgid_fn)mg_bionic_find("getgrgid");
+        getgrnam_fn getgrnam_ = (getgrnam_fn)mg_bionic_find("getgrnam");
+        initgroups_fn initgroups_ = (initgroups_fn)mg_bionic_find("initgroups");
+        errno_fn errno_ = (errno_fn)mg_bionic_find("__errno");
+        t_group *g;
+        CHECK(getgrgid_ && getgrnam_ && initgroups_ && errno_);
+        if (getgrgid_ && getgrnam_ && initgroups_ && errno_) {
+            g = getgrgid_(10100);
+            CHECK(g && g->gid == 10100 && g->name && !strcmp(g->name, "u0_a100") && g->mem && !g->mem[0]);
+            CHECK(getgrgid_(0) == NULL);
+            g = getgrnam_("u0_a100");
+            CHECK(g && g->gid == 10100);
+            CHECK(getgrnam_("root") == NULL);
+            CHECK(initgroups_("u0_a100", 10100) == 0);
+            CHECK(initgroups_("root", 0) == -1 && *errno_() == GE_PERM);
+        }
+    }
 }
 
 /*

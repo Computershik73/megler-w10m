@@ -1829,6 +1829,16 @@ static int g_getgrnam_r(const char *name, g_group *grp, char *buf, size_t n, g_g
 {
     return group_into(name && !strcmp(name, "u0_a100"), grp, buf, n, result);
 }
+/* And their older forms, into a structure of the library's own (Jetpack Joyride's libmortargame.so imports them): NULL for any other. */
+static g_group *g_getgrgid(u32 gid)
+{
+    static g_group grp;
+    static char buf[32];
+    g_group *result = NULL;
+    group_into(gid == 10100, &grp, buf, sizeof(buf), &result);
+    return result;
+}
+static g_group *g_getgrnam(const char *name) { return name && !strcmp(name, "u0_a100") ? g_getgrgid(10100) : NULL; }
 
 /* The one user and group cannot be changed for others: setting them to what they are (or leaving them, -1) succeeds, anything else is not permitted. */
 static bool own_id(u32 id) { return id == 10100 || id == 0xFFFFFFFFu; }
@@ -1843,6 +1853,12 @@ static int g_set_two_ids(u32 real, u32 effective)
     if (own_id(real) && own_id(effective)) return 0;
     mg_set_errno(GE_PERM);
     return -1;
+}
+/* initgroups: the user's groups are the one given (bionic's getgrouplist), set as the ids are: its own group, nothing else. */
+static int g_initgroups(const char *user, u32 group)
+{
+    (void)user;
+    return g_set_one_id(group);
 }
 /* One process, a group of its own. */
 static int g_getpgid(int pid)
@@ -2128,7 +2144,7 @@ const mg_sym mg_tab_misc[] = {
     M("mkstemp64", g_mkstemp), M("mktemp", g_mktemp), M("mkdtemp", g_mkdtemp),
     M("getpwuid", g_getpwuid), M("getpwnam", g_getpwnam), M("getlogin", g_getlogin),
     M("getpwuid_r", g_getpwuid_r), M("getpwnam_r", g_getpwnam_r), M("getprogname", g_getprogname), MG_DATA("__progname", &g_progname),
-    M("getgrgid_r", g_getgrgid_r), M("getgrnam_r", g_getgrnam_r),
+    M("getgrgid_r", g_getgrgid_r), M("getgrnam_r", g_getgrnam_r), M("getgrgid", g_getgrgid), M("getgrnam", g_getgrnam), M("initgroups", g_initgroups),
     M("seteuid", g_set_one_id), M("setegid", g_set_one_id), M("setreuid", g_set_two_ids), M("setregid", g_set_two_ids),
     M("getpgid", g_getpgid), M("setpgid", g_setpgid), M("capget", g_capget), M("capset", g_capset),
     M("setpgrp", g_setpgrp), M("ptrace", g_ptrace), MG_DATA("__page_size", &g_page_size), MG_DATA("__page_shift", &g_page_shift),
