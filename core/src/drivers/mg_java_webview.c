@@ -388,7 +388,6 @@ static struct {
     EGLConfig config;
     EGLContext context;
     int version;
-    u32 (*choose)(EGLDisplay, const EGLint *, EGLConfig *, EGLint, EGLint *);
     EGLContext (*create_context)(EGLDisplay, EGLConfig, EGLContext, const EGLint *);
     EGLSurface (*create_pbuffer)(EGLDisplay, EGLConfig, const EGLint *);
     u32 (*destroy_surface)(EGLDisplay, EGLSurface);
@@ -400,15 +399,92 @@ static struct {
     void (*clear_color)(float, float, float, float);
 } W;
 
-/* Whether Chromium is given the table: pictures can be kept on the graphics processor, and no flag says otherwise. */
+/*
+ * The configuration of the render thread's pbuffers: one whose texture the display shares (EGL_D3D_TEXTURE_2D_SHARE_HANDLE_ANGLE,
+ * what the shell takes a functor's picture by), the first such of those EGL gives for OpenGL ES 3, else 2, eight bits a
+ * channel. From Direct3D feature level 10_0 on every one is shared; at 9_3 Direct3D shares B8G8R8A8 textures alone, and
+ * Megler's ANGLE makes a pbuffer of any other format unshared there (angle/0005-share-handles-feature-level-9.patch): each
+ * is tried with a pbuffer of 64x64 until one has a handle. EGL's own order puts B8G8R8A8 first, but a functor whose picture
+ * had no handle would go undrawn, so it is made sure of here. False where none has one: pages are drawn in software.
+ */
+static struct {
+    mg_lock lock;
+    i32 state;                         /* 0 not tried, 1 found, 2 none */
+    EGLConfig config;
+    int version;
+} WP = { MG_LOCK_INIT, 0, NULL, 0 };
+
+static bool wv_pick(void)
+{
+    enum {
+        EGL_NONE = 0x3038, EGL_SURFACE_TYPE = 0x3033, EGL_PBUFFER_BIT = 1, EGL_RENDERABLE_TYPE = 0x3040, EGL_OPENGL_ES2_BIT = 4,
+        EGL_OPENGL_ES3_BIT = 0x40, EGL_RED_SIZE = 0x3024, EGL_GREEN_SIZE = 0x3023, EGL_BLUE_SIZE = 0x3022, EGL_ALPHA_SIZE = 0x3021,
+        EGL_WIDTH = 0x3057, EGL_HEIGHT = 0x3056, EGL_CONFIG_ID = 0x3028, EGL_D3D_TEXTURE_2D_SHARE_HANDLE_ANGLE = 0x3200
+    };
+    /* No depth, no stencil: Chromium's frame needs neither (its render target has no stencil). */
+    EGLint want[] = { EGL_SURFACE_TYPE, EGL_PBUFFER_BIT, EGL_RENDERABLE_TYPE, EGL_OPENGL_ES3_BIT, EGL_RED_SIZE, 8, EGL_GREEN_SIZE, 8,
+                      EGL_BLUE_SIZE, 8, EGL_ALPHA_SIZE, 8, EGL_NONE };
+    static const EGLint probe[] = { EGL_WIDTH, 64, EGL_HEIGHT, 64, EGL_NONE };
+    u32 (*choose)(EGLDisplay, const EGLint *, EGLConfig *, EGLint, EGLint *);
+    EGLSurface (*create_pbuffer)(EGLDisplay, EGLConfig, const EGLint *);
+    u32 (*destroy_surface)(EGLDisplay, EGLSurface);
+    u32 (*query_pointer)(EGLDisplay, EGLSurface, EGLint, void **);
+    u32 (*config_attrib)(EGLDisplay, EGLConfig, EGLint, EGLint *);
+    EGLDisplay display;
+    EGLConfig configs[32];
+    EGLint n, id = 0;
+    int version, i, tried = 0;
+    if (WP.state) return WP.state == 1;
+    mg_lock_acquire(&WP.lock);
+    if (!WP.state) {
+        choose = (u32(*)(EGLDisplay, const EGLint *, EGLConfig *, EGLint, EGLint *))mg_egl_host("eglChooseConfig");
+        create_pbuffer = (EGLSurface(*)(EGLDisplay, EGLConfig, const EGLint *))mg_egl_host("eglCreatePbufferSurface");
+        destroy_surface = (u32(*)(EGLDisplay, EGLSurface))mg_egl_host("eglDestroySurface");
+        query_pointer = (u32(*)(EGLDisplay, EGLSurface, EGLint, void **))mg_egl_host("eglQuerySurfacePointerANGLE");
+        config_attrib = (u32(*)(EGLDisplay, EGLConfig, EGLint, EGLint *))mg_egl_host("eglGetConfigAttrib");
+        /* Chromium's display: what its own eglGetDisplay is given (ndk/mg_egl.c). */
+        display = mg_egl_display_for_library("libwebviewchromium.so");
+        for (version = 3; version >= 2 && !WP.config && choose && create_pbuffer && destroy_surface && query_pointer && display; version--) {
+            want[3] = version == 3 ? EGL_OPENGL_ES3_BIT : EGL_OPENGL_ES2_BIT;
+            n = 0;
+            if (!choose(display, want, configs, (EGLint)MG_COUNT(configs), &n)) n = 0;
+            for (i = 0; i < n && !WP.config; i++) {
+                EGLSurface pb = create_pbuffer(display, configs[i], probe);
+                void *handle = NULL;
+                tried++;
+                if (!pb) continue;
+                if (!query_pointer(display, pb, EGL_D3D_TEXTURE_2D_SHARE_HANDLE_ANGLE, &handle)) handle = NULL;
+                destroy_surface(display, pb);
+                if (!handle) continue;
+                WP.config = configs[i];
+                WP.version = version;
+            }
+        }
+        if (WP.config && config_attrib) config_attrib(display, WP.config, EGL_CONFIG_ID, &id);
+        if (WP.config)
+            mg_info("webview: the render thread's pbuffers are of EGL configuration %d (OpenGL ES %d), whose texture the display shares (%d tried)",
+                    (int)id, WP.version, tried);
+        else
+            mg_warn("webview: no EGL configuration's pbuffer has a texture the display shares (%d tried): pages are drawn in software", tried);
+        mg_atomic_xchg(&WP.state, WP.config ? 1 : 2);
+    }
+    mg_lock_release(&WP.lock);
+    return WP.state == 1;
+}
+
+/*
+ * Whether Chromium is given the table: pictures can be kept on the graphics processor, the render thread's pbuffers have a
+ * texture the display shares, and no flag says otherwise.
+ */
 static bool wv_wanted(void)
 {
     static i32 wanted = -1;
     if (wanted < 0) {
-        bool on = !mg_flag("no-webview-gpu") && mg_java_gfx_textures() && mg_java_gl_shares_frames();
+        bool on = !mg_flag("no-webview-gpu") && mg_java_gfx_textures() && mg_java_gl_shares_frames() && wv_pick();
         wanted = on ? 1 : 0;
         mg_info("webview: %s", on ? "pages are drawn on the graphics processor, through the platform's draw functor"
-                                  : "pages are drawn in software: no draw functor (the flag no-webview-gpu, or no pictures kept on the graphics processor)");
+                                  : "pages are drawn in software: no draw functor (the flag no-webview-gpu, no pictures kept on the graphics "
+                                    "processor, or no pbuffer whose texture is shared)");
     }
     return wanted > 0;
 }
@@ -486,22 +562,16 @@ static const aw_draw_fn_table k_draw_fn_table = {
 static void *wv_no_surface_control(void) { return NULL; }
 static void wv_no_transaction(void *transaction) { (void)transaction; }
 
-/* The render thread's EGL: a context of the WebView's display, OpenGL ES 3 where it has it, and the configuration of its pbuffers. */
+/*
+ * The render thread's EGL: a context of the WebView's display, OpenGL ES 3 where it has it, and the configuration of its
+ * pbuffers, one whose texture the display shares (wv_pick).
+ */
 static bool wv_egl(void)
 {
-    enum {
-        EGL_NONE = 0x3038, EGL_SURFACE_TYPE = 0x3033, EGL_PBUFFER_BIT = 1, EGL_RENDERABLE_TYPE = 0x3040, EGL_OPENGL_ES2_BIT = 4,
-        EGL_OPENGL_ES3_BIT = 0x40, EGL_RED_SIZE = 0x3024, EGL_GREEN_SIZE = 0x3023, EGL_BLUE_SIZE = 0x3022, EGL_ALPHA_SIZE = 0x3021,
-        EGL_CONTEXT_CLIENT_VERSION = 0x3098
-    };
-    /* No depth, no stencil: Chromium's frame needs neither (its render target has no stencil). */
-    EGLint config[] = { EGL_SURFACE_TYPE, EGL_PBUFFER_BIT, EGL_RENDERABLE_TYPE, EGL_OPENGL_ES3_BIT, EGL_RED_SIZE, 8, EGL_GREEN_SIZE, 8,
-                        EGL_BLUE_SIZE, 8, EGL_ALPHA_SIZE, 8, EGL_NONE };
+    enum { EGL_NONE = 0x3038, EGL_CONTEXT_CLIENT_VERSION = 0x3098 };
     EGLint context[] = { EGL_CONTEXT_CLIENT_VERSION, 3, EGL_NONE };
-    EGLint n = 0;
     if (W.egl) return W.egl == 1;
     W.egl = 2;
-    W.choose = (u32(*)(EGLDisplay, const EGLint *, EGLConfig *, EGLint, EGLint *))mg_egl_host("eglChooseConfig");
     W.create_context = (EGLContext(*)(EGLDisplay, EGLConfig, EGLContext, const EGLint *))mg_egl_host("eglCreateContext");
     W.create_pbuffer = (EGLSurface(*)(EGLDisplay, EGLConfig, const EGLint *))mg_egl_host("eglCreatePbufferSurface");
     W.destroy_surface = (u32(*)(EGLDisplay, EGLSurface))mg_egl_host("eglDestroySurface");
@@ -516,24 +586,16 @@ static bool wv_egl(void)
     W.bind_framebuffer = (void (*)(u32, u32))mg_egl_host("glBindFramebuffer");
     W.color_mask = (void (*)(u8, u8, u8, u8))mg_egl_host("glColorMask");
     W.clear_color = (void (*)(float, float, float, float))mg_egl_host("glClearColor");
-    if (!W.choose || !W.create_context || !W.create_pbuffer || !W.destroy_surface || !W.make_current || !W.get_error || !W.current_context || !W.viewport || !W.scissor ||
+    if (!W.create_context || !W.create_pbuffer || !W.destroy_surface || !W.make_current || !W.get_error || !W.current_context || !W.viewport || !W.scissor ||
         !W.enable || !W.disable || !W.clear || !W.bind_framebuffer || !W.clear_color) {
         mg_warn("webview: EGL or OpenGL ES lacks what the render thread draws with: pages are drawn in software");
         return false;
     }
     /* Chromium's display: what its own eglGetDisplay is given (ndk/mg_egl.c). */
     W.display = mg_egl_display_for_library("libwebviewchromium.so");
-    if (!W.display) return false;
-    W.version = 3;
-    if (!W.choose(W.display, config, &W.config, 1, &n) || n < 1) {
-        config[3] = EGL_OPENGL_ES2_BIT;
-        W.version = 2;
-        n = 0;
-        if (!W.choose(W.display, config, &W.config, 1, &n) || n < 1) {
-            mg_warn("webview: no EGL configuration for the render thread's pbuffers (EGL error 0x%x): pages are drawn in software", (unsigned)W.get_error());
-            return false;
-        }
-    }
+    if (!W.display || !wv_pick()) return false;
+    W.config = WP.config;
+    W.version = WP.version;
     context[1] = W.version;
     W.context = W.create_context(W.display, W.config, NULL, context);
     if (!W.context) {
@@ -823,6 +885,11 @@ void mg_java_webview_forget_egl(void)
     mg_lock_acquire(&g_wv_serial);
     W.egl = 0;
     W.display = W.config = W.context = NULL;
+    mg_lock_acquire(&WP.lock);
+    WP.state = 0;
+    WP.config = NULL;
+    WP.version = 0;
+    mg_lock_release(&WP.lock);
     mg_lock_release(&g_wv_serial);
 }
 
