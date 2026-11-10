@@ -6414,6 +6414,27 @@ on a looper thread of its own and takes it back with `next()`.
   GC'd" (0.1.0.683); Litho's `LithoView` takes its visibility hint from it.
   The data app's step "visibility-aggregated" hides a picture and a
   background with their parent made `GONE` and taken out of the window.
+  `isShown` is Android's too: a view without a parent is shown only as the
+  root of its window. RecyclerView takes its rows out of itself for each
+  layout (`detachViewFromParent`: still attached, no parent), puts back
+  those it keeps (`attachViewToParent`) and removes the others
+  (`removeDetachedView`). Megler took a row out of its list for a shown one,
+  so a row removed so heard that it was not shown as it left the window,
+  where Android tells it nothing, and a row's own visibility changed while
+  it was out was told to it; and putting a row back told nothing, where
+  Android's `attachViewToParent` (7 and later) tells the list and its
+  visible rows whether they are shown -- a row that was out when its list
+  was shown again hears it then. Litho's `BaseMountingView`, with Facebook's
+  `enableCheckVisibilityAggregated`, takes `onVisibilityAggregated(false)`
+  for `setVisibilityHint(false)`: it mounts nothing more until it hears true,
+  and at its detach it keeps what it has mounted (only unbinding it) where
+  it unmounts it when it has not been told so. Messenger's chat list and its
+  stories are such views: once 0.1.0.685 made views hear
+  `onVisibilityAggregated`, no chat row showed its picture and story circles
+  went and came back (Messenger 586 on 0.1.0.687, the Lumia 650; 0.1.0.683
+  showed every row's but the first). The data app's step
+  "visibility-scrap" takes a list's rows out and puts them back as
+  RecyclerView does and checks what each row hears.
 - `megler/KeyStoreProvider.java`, one method, and Megler's circumstance
   rather than a fault of the framework's own: `PairGen.generateKeyPair` takes another
   provider's key pair generator from its service, because

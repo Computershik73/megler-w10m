@@ -68,8 +68,13 @@
 // visible or not by it, and ImageView's drawable (ImageView's own). It was never called: a drawable never heard that its
 // view left the window. Messenger's network drawables (Facebook's AsyncDrawable) wait for setVisible(false) to let their
 // pictures go and said, once collected, "wasn't hidden before it was GC'd. Please call setVisible(false, ___ ) in
-// View.onDetachedFromWindow()"; Litho's LithoView takes its visibility hint from it. Everything else is the original's,
-// unchanged.
+// View.onDetachedFromWindow()"; Litho's LithoView takes its visibility hint from it.
+// isShown is Android's too: a view without a parent is shown only as its window's root. RecyclerView takes its rows out of
+// itself for each layout (detachViewFromParent), puts back those it keeps (attachViewToParent, which tells them they are shown
+// again: see the overlay's ViewGroup) and removes the others (removeDetachedView). Taken out so, a row was still "shown" here,
+// so it heard that it was not as it left the window, where Android tells it nothing; Litho's LithoView, told so, stops
+// mounting and keeps what it has mounted (unbound) at its detach, where on Android it unmounts it. Messenger's chat list
+// (0.1.0.687) lost its pictures once views heard onVisibilityAggregated. Everything else is the original's, unchanged.
 package android.view;
 
 import android.animation.StateListAnimator;
@@ -524,13 +529,16 @@ public class View implements Drawable.Callback, KeyEvent.Callback {
         invalidateParent();
         if (mParent != null) mParent.onChildVisibilityChanged(this, old, v);
         dispatchVisibilityChanged(this, v);
-        // In a window, where the parent is shown: the subtree hears whether it is shown now (as Android's setFlags).
-        if (mRoot != null && (mParent == null || mParent.isShown())) dispatchVisibilityAggregated(v == VISIBLE);
+        // In a window, where the parent is shown (or as the window's root): the subtree hears whether it is shown now (as
+        // Android's setFlags). Not a view out of its parent for a while (RecyclerView's scrap): it hears it once it is back.
+        if (mRoot != null && (mParent != null ? mParent.isShown() : mRoot.getView() == this)) dispatchVisibilityAggregated(v == VISIBLE);
         if (v != VISIBLE && hasFocus()) clearFocus();
     }
+    /* Android's: visible up to the window's root. A view without a parent is shown only as the root of its window: one taken
+       out of its parent for a while (detachViewFromParent) is not, though it is still attached. */
     public boolean isShown() {
         View v = this;
-        while (v != null) { if (v.mVisibility != VISIBLE) return false; if (v.mParent == null) return v.mRoot != null; v = v.mParent; }
+        while (v != null) { if (v.mVisibility != VISIBLE) return false; if (v.mParent == null) return v.mRoot != null && v.mRoot.getView() == v; v = v.mParent; }
         return false;
     }
     public boolean isEnabled() { return mEnabled; }
