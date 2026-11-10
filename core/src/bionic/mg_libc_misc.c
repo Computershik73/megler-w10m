@@ -704,6 +704,8 @@ static long g_syscall(long nr, long a, long b, long c, long d, long e, long f)
     typedef void (*exit_fn)(int);
     typedef int (*fallocate_fn)(int, i64, i64);
     typedef int (*eventfd_fn)(unsigned, int);
+    typedef int (*inotify_init1_fn)(int);
+    typedef int (*inotify_add_fn)(int, const char *, u32);
     typedef long (*io_fn)(int, void *, size_t);
     typedef int (*open_fn)(const char *, int, unsigned);
     typedef int (*openat_fn)(int, const char *, int, unsigned);
@@ -803,6 +805,11 @@ static long g_syscall(long nr, long a, long b, long c, long d, long e, long f)
     case 252: return ((epoll_wait_fn)mg_bionic_find("epoll_wait"))((int)a, (void *)(mg_addr)b, (int)c, (int)d);       /* epoll_wait */
     case 351: return ((eventfd_fn)mg_bionic_find("eventfd"))((unsigned)a, 0);                                         /* eventfd */
     case 356: return ((eventfd_fn)mg_bionic_find("eventfd"))((unsigned)a, (int)b);                                    /* eventfd2 */
+    /* inotify by number, as the libc's own (mg_libc_io.c). */
+    case 316: return ((inotify_init1_fn)mg_bionic_find("inotify_init1"))(0);                                          /* inotify_init */
+    case 360: return ((inotify_init1_fn)mg_bionic_find("inotify_init1"))((int)a);                                     /* inotify_init1 */
+    case 317: return ((inotify_add_fn)mg_bionic_find("inotify_add_watch"))((int)a, (const char *)(mg_addr)b, (u32)c); /* inotify_add_watch */
+    case 318: return ((fd2_fn)mg_bionic_find("inotify_rm_watch"))((int)a, (int)b);                                   /* inotify_rm_watch */
     /* Files by number, as the libc's own: TikTok Lite keeps its native libraries compressed in its APK, and its loader
        (libzoin) writes each out with syscall(__NR_open). That said "syscall(5) is not supported" and ENOSYS ("open
        decompress path failed ... 38 Function not implemented"), and the app ended at start without its libraries

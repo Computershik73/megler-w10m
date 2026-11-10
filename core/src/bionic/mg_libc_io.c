@@ -730,7 +730,7 @@ static char *synthetic(const char *g, size_t *size)
 
 /* ----------------------------------------------------- open descriptions */
 
-enum { OBJ_FILE = 1, OBJ_MEM, OBJ_NULL, OBJ_RANDOM, OBJ_PIPE_R, OBJ_PIPE_W, OBJ_EVENT, OBJ_LOG, OBJ_EPOLL, OBJ_DIRFD, OBJ_EXT, OBJ_TIMER };
+enum { OBJ_FILE = 1, OBJ_MEM, OBJ_NULL, OBJ_RANDOM, OBJ_PIPE_R, OBJ_PIPE_W, OBJ_EVENT, OBJ_LOG, OBJ_EPOLL, OBJ_DIRFD, OBJ_EXT, OBJ_TIMER, OBJ_INOTIFY };
 
 #define PIPE_CAP 65536u
 
@@ -788,6 +788,13 @@ typedef struct gobj {
      */
     mg_section *section;
     size_t capacity;
+    /* inotify (OBJ_INOTIFY, below): its watches, the events not read yet (oldest first), their count and bytes as read() gives
+       them, the number of its next watch, and the next inotify among them all (g_inotify) */
+    struct ino_watch *ino_watches;
+    struct ino_event *ino_first, *ino_last;
+    u32 ino_count, ino_bytes;
+    i32 ino_next_wd;
+    struct gobj *ino_next;
 } gobj;
 
 #define G_O_ACCMODE 3
@@ -799,6 +806,35 @@ typedef struct gobj {
 /* (The one of these that is the processor's: ARM's and arm64's 040000, the x86s' 0200000, where 040000 is O_DIRECT.) */
 #define G_O_DIRECTORY (MG_ARCH_X86_64 || MG_ARCH_X86 ? 0200000 : 040000)
 #define G_O_CLOEXEC 02000000
+
+/* inotify's events and flags, as Linux numbers them (linux/inotify.h). */
+#define G_IN_ACCESS 0x1u
+#define G_IN_MODIFY 0x2u
+#define G_IN_ATTRIB 0x4u
+#define G_IN_CLOSE_WRITE 0x8u
+#define G_IN_CLOSE_NOWRITE 0x10u
+#define G_IN_OPEN 0x20u
+#define G_IN_MOVED_FROM 0x40u
+#define G_IN_MOVED_TO 0x80u
+#define G_IN_CREATE 0x100u
+#define G_IN_DELETE 0x200u
+#define G_IN_DELETE_SELF 0x400u
+#define G_IN_MOVE_SELF 0x800u
+#define G_IN_ALL_EVENTS 0xFFFu
+#define G_IN_Q_OVERFLOW 0x4000u
+#define G_IN_IGNORED 0x8000u
+#define G_IN_ONLYDIR 0x01000000u
+#define G_IN_DONT_FOLLOW 0x02000000u
+#define G_IN_EXCL_UNLINK 0x04000000u
+#define G_IN_MASK_CREATE 0x10000000u
+#define G_IN_MASK_ADD 0x20000000u
+#define G_IN_ISDIR 0x40000000u
+#define G_IN_ONESHOT 0x80000000u
+/* The watches of every inotify there is: none, and the file calls look nothing up for them. */
+static volatile i32 g_ino_watches;
+static void ino_path(const char *g, u32 mask, u32 cookie, bool is_dir);
+static void ino_self(const char *g, u32 mask, bool is_dir);
+static void ino_destroy(struct gobj *o);
 
 #define MAX_FDS 1024
 static gobj *g_fds[MAX_FDS];
@@ -952,6 +988,11 @@ static gobj *fd_get(int fd)
 
 static void obj_destroy(gobj *o)
 {
+    /* The last descriptor of an open file closed: what its watches are told (inotify, below), as Linux tells them when the
+       file is released -- whether it was open for writing, and a directory's. */
+    if (g_ino_watches && o->path && ((o->type == OBJ_FILE && o->file) || o->type == OBJ_DIRFD))
+        ino_path(o->path, (o->flags & G_O_ACCMODE) ? G_IN_CLOSE_WRITE : G_IN_CLOSE_NOWRITE, 0, o->type == OBJ_DIRFD);
+    if (o->type == OBJ_INOTIFY) ino_destroy(o);
     if (o->file) mg_file_close(o->file);
     if (o->type == OBJ_EXT && o->ops && o->ops->close) o->ops->close(o->ext);
     if (o->type == OBJ_LOG && o->line_len) mg_log(o->log_level, "%.*s", (int)o->line_len, o->line);
@@ -1177,7 +1218,7 @@ static int g_open(const char *path, int flags, int mode)
         o->mem_size = n;
         o->type = OBJ_MEM;
     } else {
-        bool is_dir, asked = true, read_only = false;
+        bool is_dir, asked = true, read_only = false, existed = true;
         int why = 0;
         h = host_of_normal(g);
         /*
@@ -1196,6 +1237,7 @@ static int g_open(const char *path, int flags, int mode)
         } else {
             /* (A directory that is only the way to a mount is one with nothing of the host's behind it.) */
             is_dir = leads_to_mount(g);
+            existed = is_dir;
         }
         if (!why && !is_dir && (flags & G_O_DIRECTORY)) why = GE_NOTDIR;
         /* A file made read-only (chmod) is not opened for writing, whoever this process is on the host (root under qemu). */
@@ -1222,6 +1264,12 @@ static int g_open(const char *path, int flags, int mode)
             obj_destroy(o);
             mg_set_errno(why);
             return -1;
+        }
+        /* What its watches and its directory's are told (inotify, below): a file made, one emptied by O_TRUNC, the open. */
+        if (g_ino_watches) {
+            if (o->type == OBJ_FILE && (flags & G_O_CREAT) && !existed) ino_path(g, G_IN_CREATE, 0, false);
+            else if (o->type == OBJ_FILE && (flags & G_O_TRUNC) && acc) ino_path(g, G_IN_MODIFY, 0, false);
+            ino_path(g, G_IN_OPEN, 0, o->type == OBJ_DIRFD);
         }
     }
     fd = fd_new(o);
@@ -1375,6 +1423,7 @@ int mg_fd_wait_locked(u64 timeout_ns)
 }
 
 static bool shm_copy(gobj *o, u64 at, void *buf, size_t n, bool write);
+static i32 ino_read(gobj *o, void *buf, u32 n);
 
 static i32 obj_read(gobj *o, void *buf, u32 n, bool positioned, u64 offset)
 {
@@ -1384,6 +1433,7 @@ static i32 obj_read(gobj *o, void *buf, u32 n, bool positioned, u64 offset)
     case OBJ_FILE:
         r = positioned ? mg_file_pread(o->file, buf, n, offset, &err) : mg_file_read(o->file, buf, n, &err);
         if (r < 0) mg_set_errno(mg_errno_of(err));
+        else if (r > 0 && g_ino_watches) ino_path(o->path, G_IN_ACCESS, 0, false);
         return (i32)r;
     case OBJ_MEM: {
         u64 at = positioned ? offset : o->pos;
@@ -1487,6 +1537,8 @@ static i32 obj_read(gobj *o, void *buf, u32 n, bool positioned, u64 offset)
             return got;
         }
         break;
+    case OBJ_INOTIFY:
+        return ino_read(o, buf, n);
     default:
         break;
     }
@@ -1525,6 +1577,7 @@ static i32 obj_write(gobj *o, const void *buf, u32 n, bool positioned, u64 offse
             i64 end = positioned ? (i64)offset + r : mg_file_seek(o->file, 0, 1, &err);
             if (end >= r) mg_mem_file_written(o, (u64)(end - r), buf, (size_t)r);
         }
+        if (r > 0 && g_ino_watches) ino_path(o->path, G_IN_MODIFY, 0, false);
         return (i32)r;
     case OBJ_NULL:
     case OBJ_RANDOM:
@@ -1922,6 +1975,7 @@ static int g_ftruncate64(int fd, i64 size)
     if (o->type != OBJ_FILE) mg_set_errno(GE_INVAL);
     else if (!mg_file_truncate(o->file, (u64)size, &err)) mg_set_errno(mg_errno_of(err));
     else r = 0;
+    if (!r && g_ino_watches) ino_path(o->path, G_IN_MODIFY, 0, false);
     fd_put(o);
     return r;
 }
@@ -2287,7 +2341,8 @@ static int g_fstatvfs_fn(int fd, g_statvfs *out) { (void)fd; return g_statvfs_fn
  */
 static int fixed_name(const char *g, int why) { return is_mount_point(g) || leads_to_mount(g) ? why : 0; }
 
-#define PATH_OP(name, fixed, call)                  \
+/* (`done`: what the watches are told once it is done, of the normalized path `g`: inotify, below.) */
+#define PATH_OP(name, fixed, call, done)            \
     static int name(const char *path)               \
     {                                               \
         char *g, *h;                                \
@@ -2300,23 +2355,37 @@ static int fixed_name(const char *g, int why) { return is_mount_point(g) || lead
         g = normalize(path);                        \
         why = fixed_name(g, fixed);                 \
         h = why ? NULL : host_of_normal(g);         \
-        free(g);                                    \
         if (!h) {                                   \
+            free(g);                                \
             mg_set_errno(why ? why : GE_ACCES);     \
             return -1;                              \
         }                                           \
         ok = call;                                  \
         free(h);                                    \
         if (!ok) {                                  \
+            free(g);                                \
             mg_set_errno(mg_errno_of(err));         \
             return -1;                              \
         }                                           \
+        if (g_ino_watches) done;                    \
+        free(g);                                    \
         return 0;                                   \
     }
 
-PATH_OP(g_unlink, GE_BUSY, mg_path_remove(h, &err))
-PATH_OP(g_rmdir, GE_BUSY, mg_path_rmdir(h, &err))
-PATH_OP(mkdir_host, GE_EXIST, mg_path_mkdir(h, &err))
+/*
+ * A name removed, as Linux tells the watches: the file's own that its count of links went down (IN_ATTRIB), its
+ * directory's that the name went (IN_DELETE), and its own that it is gone (IN_DELETE_SELF), which ends them (IN_IGNORED).
+ */
+static void ino_removed(const char *g, bool dir)
+{
+    if (!dir) ino_self(g, G_IN_ATTRIB, false);
+    ino_path(g, G_IN_DELETE, 0, dir);
+    ino_self(g, G_IN_DELETE_SELF, dir);
+}
+
+PATH_OP(g_unlink, GE_BUSY, mg_path_remove(h, &err), ino_removed(g, false))
+PATH_OP(g_rmdir, GE_BUSY, mg_path_rmdir(h, &err), ino_removed(g, true))
+PATH_OP(mkdir_host, GE_EXIST, mg_path_mkdir(h, &err), ino_path(g, G_IN_CREATE, 0, true))
 
 static int g_mkdir(const char *path, int mode) { (void)mode; return mkdir_host(path); }
 static int g_mkdirat(int dirfd, const char *path, int mode) { (void)dirfd; (void)mode; return mkdir_host(path); }
@@ -2329,11 +2398,14 @@ static int g_remove(const char *path)
     return (st.st_mode & G_S_IFDIR) ? g_rmdir(path) : g_unlink(path);
 }
 
+static void ino_renamed(const char *from, const char *to, bool dir, bool replaced);
+
 static int g_rename(const char *from, const char *to)
 {
     char *ga, *gb, *a, *b;
     int err = 0, why;
-    bool ok;
+    bool ok, replaced = false;
+    mg_stat st;
     if (!from || !*from || !to || !*to) {
         mg_set_errno(GE_NOENT);
         return -1;
@@ -2344,11 +2416,14 @@ static int g_rename(const char *from, const char *to)
     if (!why) why = fixed_name(gb, GE_BUSY);
     a = why ? NULL : host_of_normal(ga);
     b = why ? NULL : host_of_normal(gb);
-    free(ga);
-    free(gb);
+    /* (Whether a name is replaced, for the watches of what it named: asked only when there are watches.) */
+    if (g_ino_watches && a && b && strcmp(ga, gb)) replaced = mg_path_stat(b, &st, NULL);
     /* (Between a link and anything else the host layer says EXDEV, as between two file systems: the app copies and removes.) */
     ok = a && b && mg_path_rename(a, b, &err);
     if (!ok) mg_set_errno(why ? why : a && b ? mg_errno_of(err) : GE_ACCES);
+    if (ok && g_ino_watches && strcmp(ga, gb)) ino_renamed(ga, gb, mg_path_stat(b, &st, NULL) && st.is_dir, replaced);
+    free(ga);
+    free(gb);
     free(a);
     free(b);
     return ok ? 0 : -1;
@@ -2555,7 +2630,7 @@ static int g_fallocate64(int fd, int mode, i64 offset, i64 len)
 static int g_fallocate(int fd, int mode, goff offset, goff len) { return g_fallocate64(fd, mode, offset, len); }
 
 /*
- * What this file system does not have: pipes spliced in the kernel, FIFOs and device files, extended attributes, watches.
+ * What this file system does not have: pipes spliced in the kernel, FIFOs and device files, extended attributes.
  * (A long -1, which is the int -1 too: splice's and getxattr's results are ssize_t.)
  */
 static glong g_io_nosys(void) { mg_set_errno(GE_NOSYS); return -1; }
@@ -3053,6 +3128,358 @@ int mg_fd_eventfd(unsigned initial, int flags)
     return fd;
 }
 
+/* ---------------------------------------------------------------- inotify */
+
+/*
+ * inotify: watches on files and directories, and the events of what the app's own calls do to them. Every file call of its
+ * code comes through here, its Java's (libcore's natives) as much as its native libraries', so what one thread of the app
+ * writes and closes another is told of, as on Linux; what another process changes (another app, in the shared storage) is
+ * not seen. A watch is of a path, not of an inode: a file moved takes its watches with it (IN_MOVE_SELF), one removed ends
+ * them (IN_DELETE_SELF, then IN_IGNORED, at the unlink and not at the last close). Events are queued as Linux queues them:
+ * one the same as the last one unread is not queued again, and past 16384 one IN_Q_OVERFLOW stands for the rest. A read
+ * gives as many whole records as fit (struct inotify_event, the name padded to 16 bytes), EINVAL when not even the first
+ * does, and waits for one unless the descriptor does not block; poll, select, epoll and FIONREAD see them.
+ *
+ * Firebase Cloud Messaging's C++ library (Jetpack Joyride's libmortargame.so, Firebase C++ SDK) reads the messages its Java
+ * side writes into a file of the app's on a thread of its own, which waits in inotify for that file's IN_CLOSE_WRITE, and
+ * asserts that inotify_init gave it a descriptor: with ENOSYS here every start ended in abort() ten seconds in, as its
+ * messaging started ("F/firebase: file_descriptor >= 0", 0.1.0.681).
+ */
+typedef struct ino_event {
+    struct ino_event *next;
+    i32 wd;
+    u32 mask, cookie, len;             /* len: the name's bytes in the record, its NUL and padding with it (0: none) */
+    char name[1];
+} ino_event;
+
+typedef struct ino_watch {
+    struct ino_watch *next;
+    i32 wd;
+    u32 mask;
+    bool dir;
+    char *path;                        /* normalized, as the file calls name what they do */
+} ino_watch;
+
+#define INO_QUEUE_MAX 16384u            /* Linux's /proc/sys/fs/inotify/max_queued_events */
+
+static gobj *g_inotify;                /* every inotify there is, under the descriptors' lock */
+static volatile i32 g_ino_cookie;      /* what ties a move's two events together */
+
+/* An event queued for an inotify, with the lock held, its readers woken. */
+static void ino_queue(gobj *o, i32 wd, u32 mask, u32 cookie, const char *name)
+{
+    ino_event *e, *last = o->ino_last;
+    size_t n = name && *name ? strlen(name) : 0;
+    if (last && last->wd == wd && last->mask == mask && last->cookie == cookie && !strcmp(last->name, n ? name : "")) return;
+    if (o->ino_count >= INO_QUEUE_MAX) {
+        if (last && last->mask == G_IN_Q_OVERFLOW) return;
+        wd = -1;
+        mask = G_IN_Q_OVERFLOW;
+        cookie = 0;
+        n = 0;
+    }
+    e = (ino_event *)mg_alloc(sizeof(*e) + n);
+    e->wd = wd;
+    e->mask = mask;
+    e->cookie = cookie;
+    e->len = n ? (u32)((n + 1 + 15) & ~(size_t)15) : 0;
+    if (n) memcpy(e->name, name, n);
+    if (last) last->next = e;
+    else o->ino_first = e;
+    o->ino_last = e;
+    o->ino_count++;
+    o->ino_bytes += 16 + e->len;
+    wake_for(o);
+}
+
+/* A watch ended, with the lock held: taken off its inotify, which reads IN_IGNORED for it. */
+static void ino_drop(gobj *o, ino_watch **at)
+{
+    ino_watch *w = *at;
+    *at = w->next;
+    ino_queue(o, w->wd, G_IN_IGNORED, 0, NULL);
+    free(w->path);
+    free(w);
+    mg_atomic_add(&g_ino_watches, -1);
+}
+
+/*
+ * What happened to `g`, told to the watches on its directory (the events of an entry, with its name) unless `self_only`,
+ * and then to those on it (the events of its own in `mask`), in that order, as Linux queues the two: each told what of it
+ * its mask takes. IN_DELETE_SELF ends the watches on it whatever their masks; IN_ONESHOT one once it has told something.
+ */
+static void ino_tell(const char *g, u32 mask, u32 cookie, bool is_dir, bool self_only)
+{
+    const u32 self_events = G_IN_ACCESS | G_IN_MODIFY | G_IN_ATTRIB | G_IN_CLOSE_WRITE | G_IN_CLOSE_NOWRITE | G_IN_OPEN | G_IN_DELETE_SELF |
+                            G_IN_MOVE_SELF;
+    const u32 entry_events = G_IN_ACCESS | G_IN_MODIFY | G_IN_ATTRIB | G_IN_CLOSE_WRITE | G_IN_CLOSE_NOWRITE | G_IN_OPEN | G_IN_MOVED_FROM |
+                             G_IN_MOVED_TO | G_IN_CREATE | G_IN_DELETE;
+    const char *slash, *name;
+    size_t dir_len;
+    gobj *o;
+    int pass;
+    if (!g || !g_ino_watches || !(slash = strrchr(g, '/'))) return;
+    name = slash + 1;
+    dir_len = (size_t)(slash - g);
+    mg_lock_acquire(&g_io_lock);
+    for (o = g_inotify; o; o = o->ino_next) {
+        for (pass = self_only ? 1 : 0; pass < 2; pass++) {
+            ino_watch **at = &o->ino_watches;
+            while (*at) {
+                ino_watch *w = *at;
+                bool self = pass == 1 && !strcmp(w->path, g);
+                bool entry = pass == 0 && w->dir && *name &&
+                             (dir_len ? strlen(w->path) == dir_len && !strncmp(w->path, g, dir_len) : !strcmp(w->path, "/"));
+                u32 hit = self ? (mask & self_events) : entry ? (mask & entry_events) : 0, told = hit & w->mask;
+                if (told) {
+                    /* (IN_ISDIR says a directory is what the event is of; Linux leaves it off a watched object's going.) */
+                    u32 isdir = is_dir && !(told & (G_IN_DELETE_SELF | G_IN_MOVE_SELF)) ? G_IN_ISDIR : 0;
+                    ino_queue(o, w->wd, told | isdir, entry ? cookie : 0, entry ? name : NULL);
+                }
+                if ((self && (hit & G_IN_DELETE_SELF)) || (told && (w->mask & G_IN_ONESHOT))) {
+                    ino_drop(o, at);
+                    continue;
+                }
+                at = &w->next;
+            }
+        }
+    }
+    mg_lock_release(&g_io_lock);
+}
+
+static void ino_path(const char *g, u32 mask, u32 cookie, bool is_dir) { ino_tell(g, mask, cookie, is_dir, false); }
+static void ino_self(const char *g, u32 mask, bool is_dir) { ino_tell(g, mask, 0, is_dir, true); }
+
+/*
+ * A name moved from `from` to `to`: the watches on what `to` named before, if it was replaced, told it is gone; the old
+ * directory's IN_MOVED_FROM and the new one's IN_MOVED_TO, one cookie for the two; the moved object's own IN_MOVE_SELF; and
+ * every watch on it, or on anything below it for a directory, on the new path from now on.
+ */
+static void ino_renamed(const char *from, const char *to, bool dir, bool replaced)
+{
+    u32 cookie = (u32)mg_atomic_add(&g_ino_cookie, 1);
+    size_t n = strlen(from);
+    gobj *o;
+    if (replaced) ino_self(to, G_IN_DELETE_SELF, dir);
+    ino_path(from, G_IN_MOVED_FROM, cookie, dir);
+    ino_path(to, G_IN_MOVED_TO, cookie, dir);
+    ino_self(from, G_IN_MOVE_SELF, dir);
+    mg_lock_acquire(&g_io_lock);
+    for (o = g_inotify; o; o = o->ino_next) {
+        ino_watch *w;
+        for (w = o->ino_watches; w; w = w->next) {
+            if (strncmp(w->path, from, n) || (w->path[n] && (!dir || w->path[n] != '/'))) continue;
+            {
+                char *moved = mg_sprintf("%s%s", to, w->path + n);
+                free(w->path);
+                w->path = moved;
+            }
+        }
+    }
+    mg_lock_release(&g_io_lock);
+}
+
+/* An inotify's last descriptor closed: its watches and events go with it. Never called with the lock held. */
+static void ino_destroy(gobj *o)
+{
+    gobj **p;
+    mg_lock_acquire(&g_io_lock);
+    for (p = &g_inotify; *p; p = &(*p)->ino_next) {
+        if (*p == o) {
+            *p = o->ino_next;
+            break;
+        }
+    }
+    while (o->ino_watches) {
+        ino_watch *w = o->ino_watches;
+        o->ino_watches = w->next;
+        free(w->path);
+        free(w);
+        mg_atomic_add(&g_ino_watches, -1);
+    }
+    while (o->ino_first) {
+        ino_event *e = o->ino_first;
+        o->ino_first = e->next;
+        free(e);
+    }
+    o->ino_last = NULL;
+    mg_lock_release(&g_io_lock);
+}
+
+/* inotify_init1: IN_NONBLOCK and IN_CLOEXEC, which are O_NONBLOCK's and O_CLOEXEC's bits; any other flag is EINVAL. */
+static int g_inotify_init1(int flags)
+{
+    gobj *o;
+    int fd;
+    if (flags & ~(G_O_NONBLOCK | G_O_CLOEXEC)) {
+        mg_set_errno(GE_INVAL);
+        return -1;
+    }
+    io_init();
+    o = (gobj *)mg_alloc(sizeof(*o));
+    o->type = OBJ_INOTIFY;
+    o->refs = 1;
+    o->flags = flags & G_O_NONBLOCK;                 /* O_RDONLY */
+    o->ino_next_wd = 1;
+    /* (Among them all before its descriptor is: another thread closing that number at once finds it to take off again.) */
+    mg_lock_acquire(&g_io_lock);
+    fd = fd_alloc_locked(o, 3);
+    if (fd >= 0) {
+        o->ino_next = g_inotify;
+        g_inotify = o;
+        g_cloexec[fd] = (flags & G_O_CLOEXEC) != 0;
+    }
+    mg_lock_release(&g_io_lock);
+    if (fd < 0) {
+        free(o);
+        mg_set_errno(GE_MFILE);
+    }
+    return fd;
+}
+
+static int g_inotify_init(void) { return g_inotify_init1(0); }
+
+/* The inotify a descriptor is, held; NULL with EBADF, or EINVAL for another kind of descriptor. */
+static gobj *inotify_of(int fd)
+{
+    gobj *o = fd_get(fd);
+    if (!o) {
+        mg_set_errno(GE_BADF);
+        return NULL;
+    }
+    if (o->type != OBJ_INOTIFY) {
+        fd_put(o);
+        mg_set_errno(GE_INVAL);
+        return NULL;
+    }
+    return o;
+}
+
+/*
+ * A watch on a path that is there (ENOENT), a directory where IN_ONLYDIR asks for one (ENOTDIR): its number, the same one
+ * again for a path this inotify watches already, whose mask is then replaced, or added to with IN_MASK_ADD, or which
+ * IN_MASK_CREATE refuses (EEXIST). A mask with no event in it is EINVAL, as are IN_MASK_ADD and IN_MASK_CREATE together.
+ */
+static int g_inotify_add_watch(int fd, const char *path, u32 mask)
+{
+    gobj *o;
+    char *g, *h;
+    bool there, dir = false;
+    ino_watch *w;
+    int wd = -1;
+    mg_stat st;
+    if (!(mask & G_IN_ALL_EVENTS) || ((mask & G_IN_MASK_ADD) && (mask & G_IN_MASK_CREATE))) {
+        mg_set_errno(GE_INVAL);
+        return -1;
+    }
+    if (!(o = inotify_of(fd))) return -1;
+    if (!path || !*path) {
+        fd_put(o);
+        mg_set_errno(GE_NOENT);
+        return -1;
+    }
+    g = normalize(path);
+    h = host_of_normal(g);
+    if (h) {
+        there = mg_path_stat(h, &st, NULL);
+        dir = there && st.is_dir;
+    } else if (is_synthetic(g)) {
+        size_t n = 0;
+        char *text = synthetic(g, &n);
+        there = text != NULL;
+        free(text);
+    } else {
+        there = dir = leads_to_mount(g);
+    }
+    free(h);
+    if (!there || ((mask & G_IN_ONLYDIR) && !dir)) {
+        free(g);
+        fd_put(o);
+        mg_set_errno(!there ? GE_NOENT : GE_NOTDIR);
+        return -1;
+    }
+    mg_lock_acquire(&g_io_lock);
+    for (w = o->ino_watches; w && strcmp(w->path, g); w = w->next) {}
+    if (w && (mask & G_IN_MASK_CREATE)) {
+        mg_set_errno(GE_EXIST);
+    } else if (w) {
+        w->mask = (mask & G_IN_MASK_ADD) ? (w->mask | (mask & ~G_IN_MASK_ADD)) : mask;
+        wd = w->wd;
+    } else {
+        w = (ino_watch *)mg_alloc(sizeof(*w));
+        w->wd = wd = o->ino_next_wd++;
+        w->mask = mask & ~(G_IN_MASK_ADD | G_IN_MASK_CREATE);
+        w->dir = dir;
+        w->path = g;
+        g = NULL;
+        w->next = o->ino_watches;
+        o->ino_watches = w;
+        mg_atomic_add(&g_ino_watches, 1);
+    }
+    mg_lock_release(&g_io_lock);
+    free(g);
+    fd_put(o);
+    return wd;
+}
+
+static int g_inotify_rm_watch(int fd, int wd)
+{
+    gobj *o = inotify_of(fd);
+    ino_watch **at;
+    int r = -1;
+    if (!o) return -1;
+    mg_lock_acquire(&g_io_lock);
+    for (at = &o->ino_watches; *at && (*at)->wd != wd; at = &(*at)->next) {}
+    if (*at) {
+        ino_drop(o, at);
+        r = 0;
+    } else {
+        mg_set_errno(GE_INVAL);
+    }
+    mg_lock_release(&g_io_lock);
+    fd_put(o);
+    return r;
+}
+
+/* read() of an inotify: whole records, oldest first, as many as fit; with none queued, a wait unless it does not block. */
+static i32 ino_read(gobj *o, void *buf, u32 n)
+{
+    u32 got = 0;
+    mg_lock_acquire(&g_io_lock);
+    while (!o->ino_first) {
+        if (o->flags & G_O_NONBLOCK) {
+            mg_lock_release(&g_io_lock);
+            mg_set_errno(GE_AGAIN);
+            return -1;
+        }
+        io_wait_for(o, 0);
+    }
+    while (o->ino_first && 16 + o->ino_first->len <= n - got) {
+        ino_event *e = o->ino_first;
+        u8 *p = (u8 *)buf + got;
+        memcpy(p, &e->wd, 4);
+        memcpy(p + 4, &e->mask, 4);
+        memcpy(p + 8, &e->cookie, 4);
+        memcpy(p + 12, &e->len, 4);
+        if (e->len) {
+            memset(p + 16, 0, e->len);
+            memcpy(p + 16, e->name, strlen(e->name));
+        }
+        got += 16 + e->len;
+        o->ino_first = e->next;
+        if (!o->ino_first) o->ino_last = NULL;
+        o->ino_count--;
+        o->ino_bytes -= 16 + e->len;
+        free(e);
+    }
+    mg_lock_release(&g_io_lock);
+    if (!got) {
+        mg_set_errno(GE_INVAL);
+        return -1;
+    }
+    return (i32)got;
+}
+
 static int g_dup_at(int fd, int at_least, bool cloexec)
 {
     gobj *o = fd_get(fd);
@@ -3208,6 +3635,7 @@ static int g_ioctl(int fd, unsigned request, void *arg)
         mg_lock_acquire(&g_io_lock);
         if (o->type == OBJ_PIPE_R) n = (int)o->pipe->count;
         else if (o->type == OBJ_MEM) n = (int)(o->mem_size > o->pos ? o->mem_size - o->pos : 0);
+        else if (o->type == OBJ_INOTIFY) n = (int)o->ino_bytes;   /* the records queued, as read() would give them */
         mg_lock_release(&g_io_lock);
         if (o->type == OBJ_EXT && o->ops->readable) n = o->ops->readable(o->ext);
         if (o->type == OBJ_FILE) {
@@ -3272,6 +3700,9 @@ static int ready_locked(gobj *o, int events)
     case OBJ_TIMER:
         timer_catch_up(o);
         if (o->timer_ticks) r |= G_POLLIN;
+        break;
+    case OBJ_INOTIFY:
+        if (o->ino_first) r |= G_POLLIN;
         break;
     case OBJ_EXT:
         if (o->ops->poll) r = o->ops->poll(o->ext, events);
@@ -3696,6 +4127,10 @@ static int chmod_normal(const char *g, unsigned mode)
     }
     /* (The owner's write bit: the app owns its files, and Linux gives an owner without it no writing, whatever the group's.) */
     ok = in_read_only(g) || mg_path_set_writable(h, (mode & 0200u) != 0, &err);
+    if (ok && g_ino_watches) {
+        mg_stat st;
+        ino_path(g, G_IN_ATTRIB, 0, mg_path_stat(h, &st, NULL) && st.is_dir);
+    }
     free(h);
     if (!ok) {
         mg_set_errno(mg_errno_of(err));
@@ -3776,7 +4211,8 @@ const mg_sym mg_tab_io[] = {
     IO("sendfile", g_sendfile), IO("sendfile64", g_sendfile64), IO("posix_fallocate64", g_posix_fallocate64), IO("splice", g_io_nosys),
     IO("mkfifo", g_io_perm), IO("mknod", g_io_perm), IO("pathconf", g_pathconf), IO("fpathconf", g_fpathconf),
     IO("getxattr", g_io_notsup), IO("setxattr", g_io_notsup), IO("listxattr", g_io_notsup), IO("removexattr", g_io_notsup),
-    IO("inotify_init", g_io_nosys), IO("inotify_init1", g_io_nosys), IO("inotify_add_watch", g_io_nosys), IO("inotify_rm_watch", g_io_nosys),
+    IO("inotify_init", g_inotify_init), IO("inotify_init1", g_inotify_init1), IO("inotify_add_watch", g_inotify_add_watch),
+    IO("inotify_rm_watch", g_inotify_rm_watch),
     /* (close_range is for a child about to exec, and no child is started here.) */
     IO("close_range", g_io_nosys),
     IO("tcgetattr", g_io_notty), IO("tcsetattr", g_io_notty), IO("tcdrain", g_io_notty), IO("tcsendbreak", g_io_notty),

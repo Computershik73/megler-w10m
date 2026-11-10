@@ -5661,12 +5661,13 @@ native code is.
 - Thread interruption does not wake a waiting thread. A thread's state is not
   freed when it ends.
 - The layer's libc now has every name the seven libraries import, but some
-  only refuse: `splice`, `inotify_*` (`ENOSYS`); `mkfifo`, `mknod`, `capset`
+  only refuse: `splice` (`ENOSYS`); `mkfifo`, `mknod`, `capset`
   (`EPERM`); the extended attributes (`ENOTSUP`); the terminal calls
   (`ENOTTY`); `setmntent` (no mount table); `seteuid` and its kin succeed for
   the app's own id and refuse any other. `sendfile`, `posix_fallocate64`,
   `pathconf`, `getgrgid_r` and the checked forms of `pread`, `pwrite` and
-  `readlink` do what they say.
+  `readlink` do what they say, and so does inotify (ARCHITECTURE.md,
+  "Watches").
 - **Two things about the loader, known and left** (`ld/mg_ld.c`, not this
   module's): a library is known by its file name alone and an app's own are
   looked for first, so an app that bundles a `libcrypto.so`, `libexpat.so` or

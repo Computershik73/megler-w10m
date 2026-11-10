@@ -1559,6 +1559,29 @@ way Windows answered. **Settings › Check the Folders** runs it, and so does a
 package built with `tools/build-appx.sh arm --auto storage`, into
 `megler-auto.log`.
 
+**Watches (inotify).** `inotify_init`, `inotify_init1`, `inotify_add_watch`
+and `inotify_rm_watch`, in the C library and by number, give a descriptor that
+reads the events of what the app's own calls do to the files and directories
+it watches (`bionic/mg_libc_io.c`, "inotify"): a file made (`IN_CREATE`, from
+an open with `O_CREAT` that made it, and `mkdir`'s with `IN_ISDIR`), opened,
+read, written or truncated, closed after writing or not (when its last
+descriptor goes, as Linux releases a file), its mode changed, moved
+(`IN_MOVED_FROM` and `IN_MOVED_TO` with one cookie, `IN_MOVE_SELF`) and
+removed (`IN_DELETE`, `IN_DELETE_SELF`, then `IN_IGNORED`). Every file call of
+the app comes through this file, its Java's (libcore's natives) as much as its
+native libraries', so what one thread writes another is told of; what another
+process changes is not seen. A watch is of a path: a file moved takes its
+watches with it. The events are queued and read as Linux's (a record of 16
+bytes and the name padded to 16, the same event as the last unread one not
+queued twice, `IN_Q_OVERFLOW` past 16384), with `poll`, `select`, `epoll` and
+`FIONREAD`; with no watch anywhere the file calls look nothing up.
+Firebase Cloud Messaging's C++ library waits in one for the file its Java side
+writes the messages into, and asserted that `inotify_init` gave a descriptor:
+with `ENOSYS` Jetpack Joyride ended in `abort()` at every start (0.1.0.681).
+*Proven:* `mg_tests`' "inotify" (under qemu and on the PC): a thread waiting
+in `read` as Firebase's does while another writes the file and closes it, and
+each kind of event on a file and on its directory.
+
 ## The network
 
 An app's sockets are the phone's own: Winsock 2, which an app container may
