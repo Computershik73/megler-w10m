@@ -21,6 +21,9 @@
 // each group it reaches, the point in the group, each child it is under and whether that child took it, or that none did:
 // where a tap that does nothing stops.
 //
+// And dispatchVisibilityAggregated, Android's: a group whose visibility changes in a window tells its visible children
+// whether they are shown (see the overlay's View).
+//
 // Everything else is the original's, unchanged.
 package android.view;
 
@@ -293,6 +296,12 @@ public abstract class ViewGroup extends View implements ViewParent, ViewManager 
     @Override void dispatchAttachedToWindow(megler.ViewRoot root, int visibility) {
         super.dispatchAttachedToWindow(root, visibility);
         for (int i = 0; i < mChildrenCount; i++) mChildren[i].dispatchAttachedToWindow(root, visibility);
+    }
+    /* Android's: the visible children told too (those not visible know already they are not shown). */
+    @Override boolean dispatchVisibilityAggregated(boolean isVisible) {
+        isVisible = super.dispatchVisibilityAggregated(isVisible);
+        for (int i = 0; i < mChildrenCount; i++) if (mChildren[i].getVisibility() == VISIBLE) mChildren[i].dispatchVisibilityAggregated(isVisible);
+        return isVisible;
     }
     @Override void dispatchDetachedFromWindow() {
         if (!isAttachedToWindow()) return;

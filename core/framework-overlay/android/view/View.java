@@ -60,7 +60,16 @@
 // invalidateDrawable was called from inside setBackground.
 // Facebook builds its tab bar's tabs on a worker thread (a view of its own whose invalidateDrawable asserts the main thread,
 // a state list for its background), and the assertion ended the app as its main tabs came up: "This operation must be run
-// on UI thread." (0.1.0.681). Everything else is the original's, unchanged.
+// on UI thread." (0.1.0.681).
+//
+// And a view hears whether it is shown (onVisibilityAggregated) as Android's does: true as it is attached to the window
+// shown, false as it is detached from it, and the subtree of a view whose visibility changes in a window told through
+// dispatchVisibilityAggregated (ViewGroup: its visible children); the view's background and foreground drawables made
+// visible or not by it, and ImageView's drawable (ImageView's own). It was never called: a drawable never heard that its
+// view left the window. Messenger's network drawables (Facebook's AsyncDrawable) wait for setVisible(false) to let their
+// pictures go and said, once collected, "wasn't hidden before it was GC'd. Please call setVisible(false, ___ ) in
+// View.onDetachedFromWindow()"; Litho's LithoView takes its visibility hint from it. Everything else is the original's,
+// unchanged.
 package android.view;
 
 import android.animation.StateListAnimator;
@@ -455,6 +464,8 @@ public class View implements Drawable.Callback, KeyEvent.Callback {
         onAttachedToWindow();
         if (mOnAttach != null) for (OnAttachStateChangeListener l : new ArrayList<>(mOnAttach)) l.onViewAttachedToWindow(this);
         onWindowVisibilityChanged(VISIBLE);
+        // (Each view of the subtree hears it at its own attach, as on Android.)
+        if (isShown()) onVisibilityAggregated(true);
         if (mPrivateFlags != 0 && (mPrivateFlags & PFLAG_DRAWABLE_STATE_DIRTY) != 0) refreshDrawableState();
         if (mKeepScreenOn) root.keepScreenOn(true);
         if (mOverlay != null) mOverlay.meglerAttached(root);
@@ -467,6 +478,7 @@ public class View implements Drawable.Callback, KeyEvent.Callback {
         if (mOverlay != null) mOverlay.meglerDetached();
         // (Its View.animate() animation runs on, as on Android: see the top of this file.)
         onWindowVisibilityChanged(GONE);
+        if (isShown()) onVisibilityAggregated(false);
         onDetachedFromWindow();
         if (mOnAttach != null) for (OnAttachStateChangeListener l : new ArrayList<>(mOnAttach)) l.onViewDetachedFromWindow(this);
         if (mRoot != null && mRoot.focused() == this) mRoot.setFocused(null);
@@ -482,7 +494,17 @@ public class View implements Drawable.Callback, KeyEvent.Callback {
     public void onWindowFocusChanged(boolean f) { refreshDrawableState(); }
     public void dispatchWindowFocusChanged(boolean f) { onWindowFocusChanged(f); }
     public boolean hasWindowFocus() { return mRoot != null && mRoot.hasWindowFocus(); }
-    public void onVisibilityAggregated(boolean v) {}
+    /* Whether the view is shown, said as it changes: its background's and foreground's drawables made visible or not, as Android's. */
+    public void onVisibilityAggregated(boolean v) {
+        if (mBackground != null && v != mBackground.isVisible()) mBackground.setVisible(v, false);
+        if (mForeground != null && v != mForeground.isVisible()) mForeground.setVisible(v, false);
+    }
+    /* Android's: a view told whether it is shown now, when it is visible itself or told it is not; ViewGroup tells its visible children. */
+    boolean dispatchVisibilityAggregated(boolean isVisible) {
+        final boolean thisVisible = getVisibility() == VISIBLE;
+        if (thisVisible || !isVisible) onVisibilityAggregated(isVisible);
+        return thisVisible && isVisible;
+    }
     protected void onVisibilityChanged(View changed, int v) {}
     public void dispatchVisibilityChanged(View changed, int v) { onVisibilityChanged(changed, v); }
     public void dispatchWindowVisibilityChanged(int v) { onWindowVisibilityChanged(v); }
@@ -502,6 +524,8 @@ public class View implements Drawable.Callback, KeyEvent.Callback {
         invalidateParent();
         if (mParent != null) mParent.onChildVisibilityChanged(this, old, v);
         dispatchVisibilityChanged(this, v);
+        // In a window, where the parent is shown: the subtree hears whether it is shown now (as Android's setFlags).
+        if (mRoot != null && (mParent == null || mParent.isShown())) dispatchVisibilityAggregated(v == VISIBLE);
         if (v != VISIBLE && hasFocus()) clearFocus();
     }
     public boolean isShown() {
