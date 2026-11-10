@@ -2608,8 +2608,14 @@ static void test_inotify(const char *scratch)
         f = INO.open(store, 01 | 02000, 0);         /* O_WRONLY | O_APPEND */
         CHECK(f >= 0 && INO.write(f, "message", 7) == 7);
         if (f >= 0) INO.close(f);
-        mg_thread_join(t);
+        /* (Ten seconds at most: a read that is never woken fails the check and is left waiting, not the tests.) */
+        {
+            int waited;
+            for (waited = 0; waited < 1000 && !w.got; waited++) mg_sleep_ns(10000000ull);
+        }
         CHECK(w.got == 16 && w.wd == 1 && w.mask == 0x8);
+        if (w.got) mg_thread_join(t);
+        else mg_thread_detach(t);
     }
 
     fd = INO.init1(04000 | 02000000);                /* IN_NONBLOCK | IN_CLOEXEC */
