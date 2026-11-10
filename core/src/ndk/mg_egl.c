@@ -240,6 +240,9 @@ static void make_display(made_display *m)
     if (!get || !init) return;
     for (i = 0; i < MG_COUNT(tries); i++) {
         EGLDisplay d;
+        /* The flag egl-level-9_3: the display is made at feature level 9_3 whatever the graphics processor has, to see a Lumia 650's
+           OpenGL ES 2 at most (and its OpenGL ES 1, mg_angle_windows.c) on an HP Elite x3 or a PC. */
+        if (tries[i].attribs == by_default && mg_flag("egl-level-9_3")) continue;
         if (tries[i].attribs == warp) {
             const int level = below_9_3();
             if (!level) break;
@@ -1141,22 +1144,37 @@ static EGLConfig context_config(EGLDisplay d, EGLConfig config, const EGLint *at
 }
 
 /*
- * OpenGL ES 1 on a display of OpenGL ES 2 at most (Direct3D feature level 9_x: a Lumia 650's Adreno 304, most Lumias): ANGLE
- * draws version 1 with OpenGL ES 3 shaders of its making (GLES1Renderer, "#version 300 es"), which such a display cannot
- * compile; the first draw fails, and the next ends the app in ANGLE, which keeps the failed program's place and asks a
- * program that is not there for its id (gl::Program::id on null, from GLES1Renderer::initializeRendererProgram): Transit,
- * whose Google Maps draws with the legacy renderer, OpenGL ES 1 throughout, ended so as its map came up on a Lumia 650
- * (0.1.0.683, "access violation at libGLESv2.dll+0x91100, address 0000017c"). There a version-1 context is made of version
- * 2, where the fixed-function calls of GL10 do nothing and are refused (GL_INVALID_OPERATION): the app goes on with its map
- * black, as before 0.1.0.675. `out` holds the attributes then (32 at most).
+ * OpenGL ES 1 on a display of OpenGL ES 2 at most (Direct3D feature level 9_x: a Lumia 650's Adreno 304, most Lumias). ANGLE
+ * draws version 1 itself (GLES1Renderer), with shaders of its making. As gecko-w10m builds it they are OpenGL ES 3's
+ * ("#version 300 es"), which such a display does not compile: an app's first draw of version 1 is refused there, and its
+ * second ends the app in ANGLE, which kept the failed program's place and asks a program that is not there for its id
+ * (gl::Program::id on null, from GLES1Renderer::initializeRendererProgram): Transit, whose Google Maps draws with its legacy
+ * renderer, OpenGL ES 1 throughout, ended so as its map came up on a Lumia 650 (0.1.0.683, "access violation at
+ * libGLESv2.dll+0x91100, address 0000017c"). Megler's own ANGLE (tools/build-angle.py, angle/0004-gles1-feature-level-9.patch)
+ * writes them in OpenGL ES 2's language there, for the state each draw is in, and refuses a draw it has no program for
+ * rather than end the app. Which of the two the package has is found out by drawing (es1_drawn_here): the first time a
+ * version-1 context is asked for on such a display, one is made on a pbuffer of the layer's own and draws once -- a single
+ * draw, which the other ANGLE refuses without ending anything. Drawn, version 1 is made as asked from then on. Refused, a
+ * version-1 context is made of version 2, where the fixed-function calls of GL10 do nothing and are refused
+ * (GL_INVALID_OPERATION): the app goes on with its map black, as 0.1.0.684 did on every such display. `out` holds the
+ * attributes then (32 at most).
  */
-static const EGLint *es1_on_es2(const EGLint *attribs, EGLint *out, size_t n)
+static bool es1_drawn_here(EGLDisplay d);
+static mg_lock g_es1_lock = MG_LOCK_INIT;
+static int g_es1_draws = -1;           /* whether ANGLE draws OpenGL ES 1 on this display: -1 not tried yet */
+
+static const EGLint *es1_on_es2(EGLDisplay d, const EGLint *attribs, EGLint *out, size_t n)
 {
-    int major, minor;
+    int major, minor, draws;
     char rest[8];
     size_t k = 0;
     context_asked(attribs, &major, &minor, rest, sizeof(rest));
     if (major != 1 || display_es_version() >= 30) return attribs;
+    mg_lock_acquire(&g_es1_lock);
+    if (g_es1_draws < 0) g_es1_draws = es1_drawn_here(d) ? 1 : 0;
+    draws = g_es1_draws;
+    mg_lock_release(&g_es1_lock);
+    if (draws) return attribs;
     for (; attribs && attribs[0] != EGL_NONE && k + 4 < n; attribs += 2)
         if (attribs[0] != EGL_CONTEXT_CLIENT_VERSION && attribs[0] != EGL_CONTEXT_MINOR_VERSION) {
             out[k++] = attribs[0];
@@ -1165,9 +1183,9 @@ static const EGLint *es1_on_es2(const EGLint *attribs, EGLint *out, size_t n)
     out[k++] = EGL_CONTEXT_CLIENT_VERSION;
     out[k++] = 2;
     out[k] = EGL_NONE;
-    mg_note_once("egl: OpenGL ES 1 is drawn by ANGLE with OpenGL ES 3 shaders, which this graphics processor (Direct3D feature level 9_x) "
-                 "cannot run: the app's version-1 context is made of version 2, where its fixed-function drawing does nothing, rather than "
-                 "end the app in ANGLE");
+    mg_note_once("egl: this ANGLE does not draw OpenGL ES 1 on this graphics processor (Direct3D feature level 9_x; Megler's own ANGLE, "
+                 "tools/build-angle.py, does): the app's version-1 contexts are made of version 2, where its fixed-function drawing does "
+                 "nothing, rather than end the app in ANGLE");
     return out;
 }
 
@@ -1180,13 +1198,14 @@ static EGLContext g_eglCreateContext(EGLDisplay d, EGLConfig config, EGLContext 
     EGLint es2[32];
     mg_trace("eglCreateContext(share %p)", (void *)share);
     if (!real) return NULL;
-    attribs = es1_on_es2(attribs, es2, MG_COUNT(es2));
     if (g_no_config < 0) {
         fn_query_string qs = A(fn_query_string, "eglQueryString");
         const char *ext = qs ? qs(d, EGL_EXTENSIONS) : NULL;
         g_no_config = ext && strstr(ext, "EGL_KHR_no_config_context") ? 1 : 0;
     }
     if (!g_blob_started) blob_cache_offer(d);
+    /* (After the program cache is offered: the try's program is kept with the app's.) */
+    attribs = es1_on_es2(d, attribs, es2, MG_COUNT(es2));
     with = context_config(d, config, attribs, g_no_config != 0);
     made = real(d, with, share, attribs);
     if (made && with && g_no_config)
@@ -2614,6 +2633,126 @@ void *mg_egl_ahb_image(mg_ahb *b, void *d)
 bool mg_egl_ahb_read(mg_ahb *b) { return buffer_job_do(b, J_READ, NULL); }
 bool mg_egl_ahb_upload(mg_ahb *b) { return buffer_job_do(b, J_UPLOAD, NULL); }
 void mg_egl_ahb_forget(mg_ahb *b) { buffer_job_do(b, J_FORGET, NULL); }
+
+/* ------------------------------------------------- whether ANGLE draws OpenGL ES 1
+ *
+ * On a display of OpenGL ES 2 at most, before the first version-1 context is made (es1_on_es2): a version-1 context of the
+ * layer's own on a 4x4 pbuffer, a green square drawn over it once with GL10's calls -- a vertex array, a colour, the
+ * matrices -- and one of its pixels read back. On the layer's service thread, which has no context of its own, in the turn
+ * of the thread that asked when that one holds the display's (as a hardware buffer's job is: buffer_job_run), so that no
+ * other thread's drawing runs in ANGLE meanwhile. A single draw: ANGLE as gecko-w10m builds it refuses that one and ends
+ * the app only at the next.
+ */
+typedef struct es1_try {
+    EGLDisplay d;
+    turn_thread *lender;
+    u32 error;                         /* glGetError after the draw */
+    u8 pixel[4];
+    const char *failed;                /* the step that failed before the draw, if one did */
+    bool drew;
+} es1_try;
+
+static void es1_try_work(es1_try *j)
+{
+    enum {
+        COLOR_BUFFER_BIT = 0x4000, PROJECTION = 0x1701, MODELVIEW = 0x1700, VERTEX_ARRAY = 0x8074, FLOAT = 0x1406, TRIANGLE_STRIP = 5,
+        RGBA = 0x1908, UNSIGNED_BYTE = 0x1401, SURFACE_TYPE = EGL_SURFACE_TYPE, GREEN_SIZE = 0x3023, BLUE_SIZE = 0x3022,
+        ALPHA_SIZE = 0x3021
+    };
+    typedef void (*fn_float4)(float, float, float, float);
+    typedef void (*fn_enum)(u32);
+    typedef void (*fn_none)(void);
+    typedef void (*fn_rect)(i32, i32, i32, i32);
+    typedef void (*fn_vertex_pointer)(i32, u32, i32, const void *);
+    typedef void (*fn_draw_arrays)(u32, i32, i32);
+    typedef u32 (*fn_error)(void);
+    typedef void (*fn_read)(i32, i32, i32, i32, u32, u32, void *);
+    static const EGLint want[] = { SURFACE_TYPE, EGL_PBUFFER_BIT, EGL_RED_SIZE, 8, GREEN_SIZE, 8, BLUE_SIZE, 8, ALPHA_SIZE, 8, EGL_NONE };
+    static const EGLint es1[] = { EGL_CONTEXT_CLIENT_VERSION, 1, EGL_NONE };
+    static const EGLint size[] = { EGL_WIDTH, 4, EGL_HEIGHT, 4, EGL_NONE };
+    static const float square[] = { -1.0f, -1.0f, 1.0f, -1.0f, -1.0f, 1.0f, 1.0f, 1.0f };
+    fn_choose_config choose = A(fn_choose_config, "eglChooseConfig");
+    fn_create_context create = A(fn_create_context, "eglCreateContext");
+    fn_float4 clear_color = A(fn_float4, "glClearColor"), color = A(fn_float4, "glColor4f");
+    fn_enum clear = A(fn_enum, "glClear"), matrix_mode = A(fn_enum, "glMatrixMode");
+    fn_enum enable_client = A(fn_enum, "glEnableClientState"), disable_client = A(fn_enum, "glDisableClientState");
+    fn_none identity = A(fn_none, "glLoadIdentity");
+    fn_rect viewport = A(fn_rect, "glViewport");
+    fn_vertex_pointer vertex_pointer = A(fn_vertex_pointer, "glVertexPointer");
+    fn_draw_arrays draw = A(fn_draw_arrays, "glDrawArrays");
+    fn_error get_error = A(fn_error, "glGetError");
+    fn_read read = A(fn_read, "glReadPixels");
+    EGLConfig config = NULL;
+    EGLContext ctx = NULL;
+    EGLSurface pb = NULL;
+    EGLint n = 0;
+    if (!choose || !create || !clear_color || !color || !clear || !matrix_mode || !enable_client || !disable_client || !identity || !viewport
+        || !vertex_pointer || !draw || !get_error || !read) {
+        j->failed = "a function of EGL's or OpenGL ES 1's is missing";
+        return;
+    }
+    if (!choose(j->d, want, &config, 1, &n) || n < 1) j->failed = "no 8888 configuration for a pbuffer";
+    else if (!(ctx = create(j->d, config, NULL, es1))) j->failed = "no context of version 1";
+    else if (!(pb = g_eglCreatePbufferSurface(j->d, config, size))) j->failed = "no pbuffer";
+    else if (!g_eglMakeCurrent(j->d, pb, pb, ctx)) j->failed = "the context could not be made current";
+    else {
+        turn_begin();
+        viewport(0, 0, 4, 4);
+        clear_color(0.0f, 0.0f, 0.0f, 0.0f);
+        clear(COLOR_BUFFER_BIT);
+        matrix_mode(PROJECTION);
+        identity();
+        matrix_mode(MODELVIEW);
+        identity();
+        enable_client(VERTEX_ARRAY);
+        vertex_pointer(2, FLOAT, 0, square);
+        color(0.0f, 1.0f, 0.0f, 1.0f);
+        draw(TRIANGLE_STRIP, 0, 4);
+        j->error = get_error();
+        read(1, 1, 1, 1, RGBA, UNSIGNED_BYTE, j->pixel);
+        disable_client(VERTEX_ARRAY);
+        while (get_error()) {}
+        turn_end();
+        g_eglMakeCurrent(j->d, NULL, NULL, NULL);
+        j->drew = j->error == 0 && j->pixel[0] < 16 && j->pixel[1] > 239 && j->pixel[2] < 16;
+    }
+    if (pb) g_eglDestroySurface(j->d, pb);
+    if (ctx) g_eglDestroyContext(j->d, ctx);
+}
+
+static void es1_try_job(void *p)
+{
+    es1_try *j = (es1_try *)p;
+    turn_thread *t = &t_turn;
+    if (!t->ctx) t->dpy = j->d;
+    t->lender = j->lender;
+    t->lent = j->lender && j->lender->held == turn_of(j->d) ? j->lender->held : NULL;
+    turn_begin();
+    es1_try_work(j);
+    turn_end();
+    t->lent = NULL;
+    t->lender = NULL;
+}
+
+static bool es1_drawn_here(EGLDisplay d)
+{
+    es1_try j;
+    u64 t0 = mg_time_monotonic_ns();
+    memset(&j, 0, sizeof(j));
+    j.d = d;
+    j.lender = &t_turn;
+    on_service_thread(es1_try_job, &j);
+    turn_back();
+    if (j.drew)
+        mg_info("egl: OpenGL ES 1 on this graphics processor (Direct3D feature level %d_%d, OpenGL ES 2 at most): ANGLE draws it, with "
+                "OpenGL ES 2's shaders (a version-1 context tried on a pbuffer drew, %.1f ms); the app's version-1 contexts are made as asked",
+                g_d3d_level >> 12, (g_d3d_level >> 8) & 15, (double)(mg_time_monotonic_ns() - t0) / 1e6);
+    else
+        mg_warn("egl: OpenGL ES 1 on this graphics processor (Direct3D feature level %d_%d, OpenGL ES 2 at most): ANGLE does not draw it "
+                "(a version-1 context tried on a pbuffer: %s, error 0x%x, pixel %02x%02x%02x%02x)", g_d3d_level >> 12, (g_d3d_level >> 8) & 15,
+                j.failed ? j.failed : "its draw was refused or drew nothing", (unsigned)j.error, j.pixel[0], j.pixel[1], j.pixel[2], j.pixel[3]);
+    return j.drew;
+}
 
 static void *g_eglGetNativeClientBufferANDROID(const void *buffer)
 {

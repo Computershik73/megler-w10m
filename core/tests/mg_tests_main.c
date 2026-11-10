@@ -82,6 +82,12 @@
  *       tests' own at that address (tools/device-portal-mock.py, which tools/build-tests.sh win starts): its handshake, user
  *       name and password, CSRF token, an install, a refused one, the list of the packages, an uninstall. Only in the build
  *       tools/build-tests.sh win makes; any other says so and does nothing
+ *   mg_tests --angle-windows <ANGLE dir> <scratch dir> [9_3]
+ *       OpenGL ES 1 on ANGLE itself (mg_angle_windows.c): Megler's own ANGLE for this PC from that folder
+ *       (tools/build-angle.py --arch x64), loaded and driven by the core's EGL as an app's Java drives it, at Direct3D
+ *       feature level 9_3 (the flag egl-level-9_3, as a Lumia 650's graphics processor has) or at this PC's own; scenes drawn
+ *       as Google Maps' legacy renderer draws them, read back and checked, each written as a BMP into the scratch folder.
+ *       Only in the build tools/build-tests.sh win makes; any other says so and does nothing
  *   mg_tests --bundles <test apps dir> <scratch dir> [real bundles dir]
  *       bundles of split APKs (.apks, .xapk, .apkm) unpacked as the shell unpacks them, and the APK report of what comes out
  *       (mg_bundle_tests.c): the test app `splits` in the folder of the test apps (build/guest/java), and the real bundles
@@ -1240,6 +1246,26 @@ static int window_windows_mode(void)
 #endif
 }
 
+/* ------------------------------------------------------- --angle-windows */
+
+/* mg_angle_windows.c: OpenGL ES 1 on ANGLE itself, through the core's EGL, at feature level 9_3 or at this PC's own. */
+int mg_angle_windows_run(const char *dir, const char *scratch, bool level_9_3, mg_test_sink sink, void *user, int *checks);
+
+static int angle_windows_mode(int argc, char **argv)
+{
+    megler_config config;
+    int checks = 0, failed;
+    memset(&config, 0, sizeof(config));
+    mg_path_mkdirs(argv[3]);
+    config.data_dir = argv[3];
+    config.package_dir = argv[3];
+    /* (The core's own lines -- the display made, OpenGL ES 1 tried on it -- go where they go without a log of the shell's.) */
+    megler_init(&config);
+    failed = mg_angle_windows_run(argv[2], argv[3], argc >= 5 && !strcmp(argv[4], "9_3"), print_line, NULL, &checks);
+    printf("%d checks, %d failed\n", checks, failed);
+    return failed ? 1 : 0;
+}
+
 #if defined(MG_CORE_ELF)
 /* On desktop Windows the tests are part of the core's ELF, and Megler's test program calls this (host/win32/mg_desktop_tests.c). */
 MEGLER_API int mg_tests_main(int argc, char **argv)
@@ -1256,6 +1282,7 @@ int main(int argc, char **argv)
     if (argc >= 3 && !strcmp(argv[1], "--wifi-windows")) return wifi_windows_mode(argc, argv);
     if (argc >= 8 && !strcmp(argv[1], "--portal-windows")) return portal_windows_mode(argv);
     if (argc >= 2 && !strcmp(argv[1], "--window-windows")) return window_windows_mode();
+    if (argc >= 4 && !strcmp(argv[1], "--angle-windows")) return angle_windows_mode(argc, argv);
     if (argc >= 5 && !strcmp(argv[1], "--gfx-replay")) return gfx_replay_mode(argc, argv);
     if (argc >= 7 && !strcmp(argv[1], "--gfx-record")) {
         megler_config config;

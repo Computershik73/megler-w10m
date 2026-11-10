@@ -820,6 +820,27 @@ native code's failed, and the Java side's were version 2 -- Google Maps'
 legacy renderer, which is OpenGL ES 1 throughout (`GL10`, `GL11`), drew
 Transit's map black.
 
+On a display of OpenGL ES 2 at most -- Direct3D feature level 9_x, a Lumia
+650's Adreno 304 and most Lumias' -- ANGLE's shaders for version 1 as
+gecko-w10m builds it are OpenGL ES 3's, which it does not compile there: an
+app's first draw of version 1 was refused, and its second ended the app in
+ANGLE (gl::Program::id on null: Transit on a Lumia 650, 0.1.0.683). Megler's own
+ANGLE (`angle/0004-gles1-feature-level-9.patch`, `tools/build-angle.py`) writes
+them in OpenGL ES 2's language there, for the state each draw is in, as its
+uber shader would decide (the same pictures as at feature level 10_1 and up;
+but no flat shade model and no logic op, which that language and level do not
+have),
+and refuses a draw it has no program for instead of ending the app. Which
+ANGLE the package has is found out by drawing: before the first version-1
+context on such a display, one of the layer's own draws once on a pbuffer
+(`mg_egl.c`, `es1_drawn_here`); where it does not draw, version-1 contexts are
+made of version 2, whose fixed-function calls do nothing, as 0.1.0.684 made
+them on every such display. The flag `egl-level-9_3` makes the app's display
+at feature level 9_3 on any graphics processor, to see a Lumia's way on an
+HP Elite x3 or a PC; `core/tests/mg_angle_windows.c` draws Google Maps' ways
+of drawing with GL10 on this PC's own build of that ANGLE, at 9_3 and at the
+PC's own level, and checks the pictures (`tools/build-tests.sh win`).
+
 **`GLSurfaceView`.** `megler.Native.startGL(view, renderer, version)` starts a GL
 thread of the layer's own for that view (C, in `mg_java_gl.c`), a thread of the
 app's (Java attached, named `GLThread N`, and a guest thread, since the renderer

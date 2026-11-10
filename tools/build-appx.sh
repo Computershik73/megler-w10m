@@ -765,6 +765,42 @@ fi
 #
 # Without any of the pieces the package is built all the same, with no ANGLE:
 # the app then says "ANGLE missing" and nothing can draw.
+# Whether the ANGLE in a folder has Megler's changes to it as angle/ has them now: tools/build-angle.py names the patches it
+# built with, by SHA-256, in megler-patches.txt beside the DLLs; gecko-w10m's own ANGLE has none of them. A line that says
+# which are in it, or a warning that says which are not: without angle/0004 OpenGL ES 1 does not draw on a graphics
+# processor of feature level 9_x -- a Lumia 650's, most Lumias' -- and the core makes the app's version-1 contexts of
+# version 2 there, which draw nothing (ndk/mg_egl.c, es1_drawn_here).
+angle_patches_said() {
+  python - "$(w "$ROOT/angle")" "$(w "$1")" "$2" <<'PY' || true
+import hashlib, os, sys
+patches, dist, how = sys.argv[1], sys.argv[2], sys.argv[3]
+want = {}
+for name in sorted(n for n in os.listdir(patches) if n.endswith(".patch")):
+    with open(os.path.join(patches, name), "rb") as f:
+        want[name] = hashlib.sha256(f.read()).hexdigest()
+have = {}
+try:
+    with open(os.path.join(dist, "megler-patches.txt"), encoding="utf-8") as f:
+        for line in f:
+            digest, _, name = line.strip().partition(" ")
+            if name:
+                have[name] = digest
+except OSError:
+    pass
+lacking = [n for n in want if have.get(n) != want[n]]
+extra = [n for n in have if n not in want]
+if not lacking and not extra:
+    print("    Megler's changes to ANGLE in it: %s" % (", ".join(want) or "none in angle/"))
+if lacking:
+    print("    WARNING: this ANGLE lacks Megler's changes to it: %s -- %s" % (", ".join(lacking), how), file=sys.stderr)
+    if "0004-gles1-feature-level-9.patch" in lacking:
+        print("    WARNING: so OpenGL ES 1 does not draw on a graphics processor of feature level 9_x (a Lumia 650's): the app's "
+              "version-1 contexts are made of version 2 there, and draw nothing", file=sys.stderr)
+if extra:
+    print("    WARNING: this ANGLE has changes angle/ no longer has: %s -- %s" % (", ".join(extra), how), file=sys.stderr)
+PY
+}
+
 stage_angle() {
   # Megler's own ANGLE where tools/build-angle.py has made one (gecko-w10m's with Megler's changes, angle/*.patch), else
   # gecko-w10m's as its build left it.
@@ -845,6 +881,7 @@ PY
   [ -z "$missing" ] || { ANGLE_WHY="imports with nothing to satisfy them:$missing"; return 1; }
   echo "    every import is in the package or the phone's own:$system"
   echo "    ANGLE from $angle: libEGL.dll, libGLESv2.dll, mozglue.dll, the C runtime and $(ls "$STAGE" | grep -c -i -E '^(api|ext)-ms-win-') api-set forwarders"
+  angle_patches_said "$angle" "python tools/build-angle.py makes Megler's own (MEGLER_GECKO set; build/angle/dist, which this script takes first)"
 }
 if [ "$ARCH" = arm ]; then
   echo "=== ANGLE ==="
@@ -885,6 +922,7 @@ stage_angle_desktop() {
   done
   [ -z "$missing" ] || { ANGLE_WHY="imports that are not api-sets or Direct3D's:$missing (an ANGLE of before 0.1.0.680? python tools/build-angle.py --arch $ARCH)"; return 1; }
   echo "    ANGLE from $angle: libEGL.dll, libGLESv2.dll ($(stat -c %s "$STAGE/libGLESv2.dll") bytes), importing api-sets and Direct3D's DLLs alone"
+  angle_patches_said "$angle" "python tools/build-angle.py --arch $ARCH makes it again"
 }
 if [ "$DESKTOP" = 1 ]; then
   echo "=== ANGLE ==="
