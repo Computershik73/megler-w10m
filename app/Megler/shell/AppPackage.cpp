@@ -1471,14 +1471,37 @@ std::atomic<int> gInstallationManager{0}; // the same of InstallationManager (in
 
 /// Whether Windows counts `package` with the developer's packages, of which a phone takes only so many (0x80073d11:
 /// installWithPackageManager), and what signed it: "developer's, signed Developer", for the log.
+/*
+ * Each asked of its own interface, which the package may not have: the packages InstallationManager lists on a Lumia 650
+ * (15063) have no IPackage2 (IsDevelopmentMode) or IPackage4 (SignatureKind), and C++/WinRT, asked a property of an
+ * interface the object refuses, called through null -- Megler 0.1.0.682 ended at every start ("access violation at
+ * Megler.exe+0x20cd6c", howInstalled, called from Windows.Phone.Management.Deployment.dll).
+ */
 std::string howInstalled(const Package& package) {
     static const char* const kinds[] = {"none", "Developer", "Enterprise", "Store", "System"};
+    std::string developer = "?", signedBy = "?";
     try {
-        const unsigned kind = unsigned(package.SignatureKind());
-        return std::string(package.IsDevelopmentMode() ? "developer's" : "not a developer's") + ", signed " + (kind < 5 ? kinds[kind] : "?");
+        if (const auto second = package.try_as<winrt::Windows::ApplicationModel::IPackage2>())
+            developer = second.IsDevelopmentMode() ? "developer's" : "not a developer's";
     } catch (hresult_error const&) {
-        return "?";
     }
+    try {
+        if (const auto fourth = package.try_as<winrt::Windows::ApplicationModel::IPackage4>()) {
+            const unsigned kind = unsigned(fourth.SignatureKind());
+            signedBy = kind < 5 ? kinds[kind] : "?";
+        }
+    } catch (hresult_error const&) {
+    }
+    return developer + ", signed " + signedBy;
+}
+
+/// Whether Windows counts `package` with the developer's packages, where its package has IPackage2 to say so (howInstalled).
+bool developerPackage(const Package& package) {
+    try {
+        if (const auto second = package.try_as<winrt::Windows::ApplicationModel::IPackage2>()) return second.IsDevelopmentMode();
+    } catch (hresult_error const&) {
+    }
+    return false;
 }
 }
 
@@ -1566,10 +1589,7 @@ bool installedApps(std::vector<InstalledApp>& out, std::string& error, const std
             const std::wstring name(id.Name());
             if (tell) {
                 all++;
-                try {
-                    if (package.IsDevelopmentMode()) developers++;
-                } catch (hresult_error const&) {
-                }
+                if (developerPackage(package)) developers++;
                 if ((name == L"Megler" || name.compare(0, 10, L"MeglerApp.") == 0) && std::wstring(id.PublisherId()) == publisherId)
                     own += "; " + narrow(name) + " " + howInstalled(package);
             }
