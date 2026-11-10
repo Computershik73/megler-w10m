@@ -813,6 +813,169 @@ Made make(const ApkEntry& entry, const std::function<void(const std::string&)>& 
  */
 namespace {
 
+/// Whether the flag file LocalState\flags\<name> is there (ui/UiShots.h): for a test of the way that is not taken first.
+bool flagSet(const wchar_t* name) { return files::exists(platform::localStateDirectory() + L"\\flags\\" + name); }
+
+#if !defined(MEGLER_XBOX)
+/*
+ * Windows.Phone.Management.Deployment.InstallationManager, the phone's own: the Store's way, and a company hub's, to the
+ * packages of its own publisher. Declared here from the phone contract's metadata (winmdidl's IDL of
+ * Windows.Phone.PhoneContract.winmd), as player/AudioHost.cpp declares AudioRoutingManager: the SDK's C++/WinRT headers have
+ * no projection of the contract. Not on a PC, which has no such class.
+ */
+struct __declspec(uuid("929AA738-8D49-42AC-80C9-B4AD793C43F2")) __declspec(novtable) IInstallationManagerStatics : ::IInspectable {
+    virtual HRESULT __stdcall AddPackageAsync(HSTRING title, void* sourceLocation, void** operation) = 0;
+    virtual HRESULT __stdcall AddPackagePreloadedAsync(HSTRING title, void* sourceLocation, HSTRING instanceId, HSTRING offerId, void* license,
+                                                       void** operation) = 0;
+    virtual HRESULT __stdcall GetPendingPackageInstalls(void** items) = 0;
+    virtual HRESULT __stdcall FindPackagesForCurrentPublisher(void** items) = 0;
+    virtual HRESULT __stdcall FindPackages(void** items) = 0;
+};
+
+/// The packages of this app's publisher, as InstallationManager lists them; false, with why, where it would not.
+bool publisherPackages(std::vector<Package>& out, std::string& why) {
+    out.clear();
+    try {
+        const winrt::hstring name = L"Windows.Phone.Management.Deployment.InstallationManager";
+        winrt::com_ptr<IInstallationManagerStatics> statics;
+        HRESULT hr = RoGetActivationFactory(static_cast<HSTRING>(winrt::get_abi(name)), __uuidof(IInstallationManagerStatics), statics.put_void());
+        if (FAILED(hr) || !statics) {
+            why = format("there is no InstallationManager (0x%08X)", unsigned(hr));
+            return false;
+        }
+        void* items = nullptr;
+        hr = statics->FindPackagesForCurrentPublisher(&items);
+        if (FAILED(hr) || !items) {
+            why = format("FindPackagesForCurrentPublisher failed (0x%08X)", unsigned(hr));
+            return false;
+        }
+        const winrt::Windows::Foundation::Collections::IIterable<Package> packages{items, winrt::take_ownership_from_abi};
+        for (auto const& package : packages) out.push_back(package);
+        return true;
+    } catch (hresult_error const& e) {
+        why = format("0x%08X %s", unsigned(e.code()), narrow(e.message()).c_str());
+        return false;
+    }
+}
+
+struct __declspec(uuid("7C6C2CBD-FA4A-4C8E-AB97-D959452F19E5")) __declspec(novtable) IInstallationManagerStatics2 : ::IInspectable {
+    virtual HRESULT __stdcall RemovePackageAsync(HSTRING packageFullName, uint32_t removalOptions, void** operation) = 0;
+    virtual HRESULT __stdcall RegisterPackageAsync(void* manifestUri, void* dependencyPackageUris, uint32_t deploymentOptions, void** operation) = 0;
+    virtual HRESULT __stdcall FindPackagesByNamePublisher(HSTRING packageName, HSTRING packagePublisher, void** items) = 0;
+};
+struct __declspec(uuid("33E8EED5-0F7E-4473-967C-7D6E1C0E7DE1")) __declspec(novtable) IPackageInstallResult : ::IInspectable {
+    virtual HRESULT __stdcall get_ProductId(HSTRING* value) = 0;
+    virtual HRESULT __stdcall get_InstallState(int32_t* value) = 0; // Windows.Management.Deployment.PackageInstallState
+};
+struct __declspec(uuid("7149D909-3FF9-41ED-A717-2BC65FFC61D2")) __declspec(novtable) IPackageInstallResult2 : ::IInspectable {
+    virtual HRESULT __stdcall get_ErrorText(HSTRING* value) = 0;
+};
+/// IAsyncOperationWithProgress<PackageInstallResult, UInt32>'s own methods, after IInspectable's, as its ABI lays them out.
+struct __declspec(novtable) IInstallOperation : ::IInspectable {
+    virtual HRESULT __stdcall put_Progress(void* handler) = 0;
+    virtual HRESULT __stdcall get_Progress(void** handler) = 0;
+    virtual HRESULT __stdcall put_Completed(void* handler) = 0;
+    virtual HRESULT __stdcall get_Completed(void** handler) = 0;
+    virtual HRESULT __stdcall GetResults(void** results) = 0;
+};
+
+/// InstallationManager's operation `raw` (taken over) waited for: true when it ended with the package installed (or
+/// removed, `removing`); else false, and what it said in `said`.
+bool waitInstallation(void* raw, bool removing, const std::function<void(const std::string&)>& progress, std::string& said) {
+    const winrt::Windows::Foundation::IInspectable operation{raw, winrt::take_ownership_from_abi};
+    const auto info = operation.as<winrt::Windows::Foundation::IAsyncInfo>();
+    const auto began = std::chrono::steady_clock::now();
+    while (info.Status() == winrt::Windows::Foundation::AsyncStatus::Started) {
+        if (std::chrono::steady_clock::now() - began > std::chrono::minutes(20)) {
+            said = "it did not finish in 20 minutes";
+            return false;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(250));
+    }
+    if (info.Status() != winrt::Windows::Foundation::AsyncStatus::Completed) {
+        said = format("0x%08x", unsigned(info.ErrorCode()));
+        return false;
+    }
+    void* results = nullptr;
+    const HRESULT hr = static_cast<IInstallOperation*>(winrt::get_abi(operation))->GetResults(&results);
+    if (FAILED(hr) || !results) {
+        said = format("its result could not be had (0x%08X)", unsigned(hr));
+        return false;
+    }
+    winrt::com_ptr<IPackageInstallResult> result;
+    result.attach(static_cast<IPackageInstallResult*>(results));
+    int32_t state = -1;
+    result->get_InstallState(&state);
+    std::string text;
+    if (const auto second = result.try_as<IPackageInstallResult2>()) {
+        winrt::hstring error;
+        if (SUCCEEDED(second->get_ErrorText(reinterpret_cast<HSTRING*>(winrt::put_abi(error))))) text = narrow(std::wstring(error));
+    }
+    // (PackageInstallState: 0 not installed, 1 staged, 2 installed, 6 paused.)
+    const bool done = text.empty() && (removing ? state == 0 : state == 2);
+    said = done ? std::string() : format("its state %d", int(state)) + (text.empty() ? std::string() : ", " + text);
+    (void)progress;
+    return done;
+}
+
+/// The package at `path` installed by InstallationManager, as the Store installs an app (AddPackageAsync): the way left
+/// where Windows's deployment engine refuses Megler for access (no packageManagement without the interop unlock's capability
+/// part). True when installed; else false, and what it said in `said`.
+bool installByInstallationManager(const std::wstring& path, const std::function<void(const std::string&)>& progress, std::string& said) {
+    try {
+        const winrt::hstring name = L"Windows.Phone.Management.Deployment.InstallationManager";
+        winrt::com_ptr<IInstallationManagerStatics> statics;
+        HRESULT hr = RoGetActivationFactory(static_cast<HSTRING>(winrt::get_abi(name)), __uuidof(IInstallationManagerStatics), statics.put_void());
+        if (FAILED(hr) || !statics) {
+            said = format("there is no InstallationManager (0x%08X)", unsigned(hr));
+            return false;
+        }
+        std::wstring uri = L"file:///" + path;
+        std::replace(uri.begin(), uri.end(), L'\\', L'/');
+        const winrt::Windows::Foundation::Uri source(uri);
+        const std::wstring file = path.substr(path.find_last_of(L'\\') + 1);
+        const winrt::hstring title(file.substr(0, file.find_last_of(L'.')));
+        progress("Installing it as the Store installs an app (InstallationManager)…");
+        shellLog::flush();
+        void* operation = nullptr;
+        hr = statics->AddPackageAsync(static_cast<HSTRING>(winrt::get_abi(title)), winrt::get_abi(source), &operation);
+        if (FAILED(hr) || !operation) {
+            said = format("AddPackageAsync refused it (0x%08X)", unsigned(hr));
+            return false;
+        }
+        return waitInstallation(operation, false, progress, said);
+    } catch (hresult_error const& e) {
+        said = format("0x%08x ", unsigned(e.code())) + narrow(e.message());
+        return false;
+    }
+}
+
+/// The package of `fullName` removed by InstallationManager (RemovePackageAsync), with its LocalState as Windows's package
+/// manager removes it. True when removed; else false, and what it said in `said`.
+bool removeByInstallationManager(const std::string& fullName, std::string& said) {
+    try {
+        const winrt::hstring name = L"Windows.Phone.Management.Deployment.InstallationManager";
+        winrt::com_ptr<IInstallationManagerStatics2> statics;
+        HRESULT hr = RoGetActivationFactory(static_cast<HSTRING>(winrt::get_abi(name)), __uuidof(IInstallationManagerStatics2), statics.put_void());
+        if (FAILED(hr) || !statics) {
+            said = format("there is no InstallationManager's RemovePackageAsync (0x%08X)", unsigned(hr));
+            return false;
+        }
+        const winrt::hstring full(widen(fullName));
+        void* operation = nullptr;
+        hr = statics->RemovePackageAsync(static_cast<HSTRING>(winrt::get_abi(full)), 0, &operation);
+        if (FAILED(hr) || !operation) {
+            said = format("RemovePackageAsync refused it (0x%08X)", unsigned(hr));
+            return false;
+        }
+        return waitInstallation(operation, true, [](const std::string&) {}, said);
+    } catch (hresult_error const& e) {
+        said = format("0x%08x ", unsigned(e.code())) + narrow(e.message());
+        return false;
+    }
+}
+#endif
+
 /// One deployment at a time, whoever asks (an app's install, Update All's, Megler's own update).
 std::mutex gDeployMutex;
 /// Whether Megler's packages were seen installed on this phone when Windows refused an install for access: Megler has had
@@ -896,10 +1059,17 @@ InstallResult installWithPackageManager(const std::wstring& path, const std::fun
     std::string said, asTheStore;
     bool denied = true;  // every try so far refused for access
     std::lock_guard<std::mutex> one(gDeployMutex);
+#if !defined(MEGLER_XBOX)
+    // (The flag no-package-manager takes InstallationManager's way alone: a phone with the interop unlock tries it so.)
+    const bool managerless = flagSet(L"no-package-manager");
+#else
+    const bool managerless = false;
+#endif
     // (Onto the volume Megler itself is on, where there is one to name: installVolume, addPackage.)
-    const PackageVolume volume = installVolume();
+    const PackageVolume volume = managerless ? PackageVolume(nullptr) : installVolume();
     bool first = true;
     for (const DeploymentOptions options : tries) {
+        if (managerless) break;
         int32_t code = 0;
         /*
          * Each set of options asked of C++/WinRT's PackageManager, and where that is refused for access, of one made from an
@@ -941,6 +1111,23 @@ InstallResult installWithPackageManager(const std::wstring& path, const std::fun
         denied = denied && code == E_ACCESSDENIED;
         if (!(unsigned(options) & 0x8000) && asTheStore.empty()) asTheStore = said;
     }
+#if !defined(MEGLER_XBOX)
+    /*
+     * Refused for access every time (no packageManagement: a phone without its interop unlock's capability part), the
+     * Store's own way: InstallationManager, which installs a package of the calling app's publisher, as a company hub's app
+     * installs its company's.
+     */
+    std::string byInstallationManager;
+    if (denied || managerless) {
+        const std::string file = narrow(path.substr(path.find_last_of(L'\\') + 1));
+        if (installByInstallationManager(path, progress, byInstallationManager)) {
+            shellLog::write("app package: " + file + " installed by InstallationManager, as the Store installs" +
+                            (managerless ? std::string(" (the flag no-package-manager)") : std::string(": Windows's deployment engine refused Megler for access")));
+            return {true, "Installed."};
+        }
+        shellLog::write("app package: InstallationManager did not install " + file + " either: " + byInstallationManager);
+    }
+#endif
     // Refused for access every time: whether Megler's packages are installed here all the same (Windows has granted it the
     // capability before, and the refusal is this run's), for what is said (accessDeniedText).
     if (denied && !gInstalledBefore) {
@@ -949,8 +1136,12 @@ InstallResult installWithPackageManager(const std::wstring& path, const std::fun
         if (installedApps(apps, error) && !apps.empty()) gInstalledBefore = true;
     }
     // What the Store's way was refused for first: a developer's deployment is refused for their number alone.
+    std::string through;
+#if !defined(MEGLER_XBOX)
+    if (!byInstallationManager.empty()) through = "; through InstallationManager, " + byInstallationManager;
+#endif
     const InstallResult refused{false, "Windows's deployment engine did not install it: as the Store installs, " + asTheStore +
-                                           "; as a developer's package, " + said,
+                                           "; as a developer's package, " + said + through,
                                 denied};
     if (denied) sayRefusedForAccess();
     rememberRefusal(path, refused);
@@ -1270,51 +1461,6 @@ namespace {
 std::atomic<int> gPackageManager{0}; // 1 Windows's package manager answered (packageQuery), -1 it would not, 0 not asked
 std::atomic<int> gInstallationManager{0}; // the same of InstallationManager (installedApps)
 
-/// Whether the flag file LocalState\flags\<name> is there (ui/UiShots.h): for a test of the way that is not taken first.
-bool flagSet(const wchar_t* name) { return files::exists(platform::localStateDirectory() + L"\\flags\\" + name); }
-
-#if !defined(MEGLER_XBOX)
-/*
- * Windows.Phone.Management.Deployment.InstallationManager, the phone's own: the Store's way, and a company hub's, to the
- * packages of its own publisher. Declared here from the phone contract's metadata (winmdidl's IDL of
- * Windows.Phone.PhoneContract.winmd), as player/AudioHost.cpp declares AudioRoutingManager: the SDK's C++/WinRT headers have
- * no projection of the contract. Not on a PC, which has no such class.
- */
-struct __declspec(uuid("929AA738-8D49-42AC-80C9-B4AD793C43F2")) __declspec(novtable) IInstallationManagerStatics : ::IInspectable {
-    virtual HRESULT __stdcall AddPackageAsync(HSTRING title, void* sourceLocation, void** operation) = 0;
-    virtual HRESULT __stdcall AddPackagePreloadedAsync(HSTRING title, void* sourceLocation, HSTRING instanceId, HSTRING offerId, void* license,
-                                                       void** operation) = 0;
-    virtual HRESULT __stdcall GetPendingPackageInstalls(void** items) = 0;
-    virtual HRESULT __stdcall FindPackagesForCurrentPublisher(void** items) = 0;
-    virtual HRESULT __stdcall FindPackages(void** items) = 0;
-};
-
-/// The packages of this app's publisher, as InstallationManager lists them; false, with why, where it would not.
-bool publisherPackages(std::vector<Package>& out, std::string& why) {
-    out.clear();
-    try {
-        const winrt::hstring name = L"Windows.Phone.Management.Deployment.InstallationManager";
-        winrt::com_ptr<IInstallationManagerStatics> statics;
-        HRESULT hr = RoGetActivationFactory(static_cast<HSTRING>(winrt::get_abi(name)), __uuidof(IInstallationManagerStatics), statics.put_void());
-        if (FAILED(hr) || !statics) {
-            why = format("there is no InstallationManager (0x%08X)", unsigned(hr));
-            return false;
-        }
-        void* items = nullptr;
-        hr = statics->FindPackagesForCurrentPublisher(&items);
-        if (FAILED(hr) || !items) {
-            why = format("FindPackagesForCurrentPublisher failed (0x%08X)", unsigned(hr));
-            return false;
-        }
-        const winrt::Windows::Foundation::Collections::IIterable<Package> packages{items, winrt::take_ownership_from_abi};
-        for (auto const& package : packages) out.push_back(package);
-        return true;
-    } catch (hresult_error const& e) {
-        why = format("0x%08X %s", unsigned(e.code()), narrow(e.message()).c_str());
-        return false;
-    }
-}
-#endif
 
 /// Whether Windows counts `package` with the developer's packages, of which a phone takes only so many (0x80073d11:
 /// installWithPackageManager), and what signed it: "developer's, signed Developer", for the log.
@@ -1457,7 +1603,21 @@ InstallResult uninstall(const InstalledApp& app) {
     return {true, "Uninstalled."};
 #else
     // Windows's package manager (packageManagement), as installWithPackageManager installs; refused for access where Megler
-    // has not got that capability, as an install is (InstallResult::accessDenied).
+    // has not got that capability, as an install is (InstallResult::accessDenied): then InstallationManager's way, the Store's.
+    const auto otherWay = [&app](const InstallResult& refused) -> InstallResult {
+        if (!refused.accessDenied && !flagSet(L"no-package-manager")) return refused;
+        std::string said;
+        if (removeByInstallationManager(app.fullName, said)) {
+            unregisterServiceApk(app.fullName);
+            shellLog::write("app package: " + app.fullName + " uninstalled by InstallationManager, as the Store uninstalls");
+            return {true, "Uninstalled."};
+        }
+        shellLog::write("app package: InstallationManager did not uninstall " + app.fullName + " either: " + said);
+        InstallResult again = refused;
+        again.said += "; through InstallationManager, " + said;
+        return again;
+    };
+    if (flagSet(L"no-package-manager")) return otherWay({false, "the flag no-package-manager", false});
     try {
         const auto result = winrt::Windows::Management::Deployment::PackageManager().RemovePackageAsync(widen(app.fullName)).get();
         if (result.ErrorText().empty()) {
@@ -1469,13 +1629,13 @@ InstallResult uninstall(const InstalledApp& app) {
         const std::string said = format("0x%08x ", unsigned(code)) + narrow(result.ErrorText());
         shellLog::write("app package: Windows's package manager did not uninstall " + app.fullName + ": " + said);
         if (code == E_ACCESSDENIED) sayRefusedForAccess();
-        return {false, "Windows's package manager did not uninstall it: " + said, code == E_ACCESSDENIED};
+        return otherWay({false, "Windows's package manager did not uninstall it: " + said, code == E_ACCESSDENIED});
     } catch (hresult_error const& e) {
         const int32_t code = e.code();
         const std::string said = format("0x%08x ", unsigned(code)) + narrow(e.message());
         shellLog::write("app package: Windows's package manager could not be asked to uninstall " + app.fullName + ": " + said);
         if (code == E_ACCESSDENIED) sayRefusedForAccess();
-        return {false, "Windows's package manager could not be asked to uninstall it: " + said, code == E_ACCESSDENIED};
+        return otherWay({false, "Windows's package manager could not be asked to uninstall it: " + said, code == E_ACCESSDENIED});
     }
 #endif
 }
