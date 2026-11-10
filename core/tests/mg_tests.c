@@ -3116,13 +3116,13 @@ typedef void (*bench_free_fn)(void *);
 typedef struct malloc_racer {
     bench_malloc_fn m;
     bench_free_fn f;
-    int pattern;                       /* MALLOC_MIXED or MALLOC_PAIRS */
+    int pattern;                       /* MALLOC_MIXED, MALLOC_SMALL or MALLOC_PAIRS */
     volatile i32 *state;               /* 0 wait, 1 run, 2 stop */
     u32 seed;
     u64 pairs;
 } malloc_racer;
 
-enum { MALLOC_MIXED, MALLOC_PAIRS };
+enum { MALLOC_MIXED, MALLOC_SMALL, MALLOC_PAIRS };
 #define RACER_SLOTS 1024
 
 static u32 racer_next(u32 *s)
@@ -3133,18 +3133,18 @@ static u32 racer_next(u32 *s)
     return *s;
 }
 
-/* Sizes as a C++ program's: most of a few dozen bytes, some of a few kilobytes, a few of tens of kilobytes. */
-static size_t racer_size(u32 *s)
+/* Sizes as a C++ program's: most of a few dozen bytes, some of a few kilobytes, a few of tens of kilobytes (none `small`). */
+static size_t racer_size(u32 *s, bool small)
 {
     u32 r = racer_next(s) % 100;
     if (r < 80) return 8 + racer_next(s) % 248;
-    if (r < 95) return 256 + racer_next(s) % 3840;
+    if (r < 95 || small) return 256 + racer_next(s) % 3840;
     return 4096 + racer_next(s) % 61440;
 }
 
 /*
- * MALLOC_MIXED: a working set of RACER_SLOTS blocks of those sizes, one replaced at random each turn; MALLOC_PAIRS: two
- * small blocks made and freed at once, last first, as a function's temporaries are.
+ * MALLOC_MIXED: a working set of RACER_SLOTS blocks of those sizes, one replaced at random each turn; MALLOC_SMALL: the same
+ * of 4 KB and less; MALLOC_PAIRS: two small blocks made and freed at once, last first, as a function's temporaries are.
  */
 static MG_HOSTCB void malloc_racer_main(void *arg)
 {
@@ -3155,10 +3155,10 @@ static MG_HOSTCB void malloc_racer_main(void *arg)
     while (*r->state == 0) mg_thread_yield();
     while (slot && *r->state == 1) {
         for (i = 0; i < 256; i++) {
-            if (r->pattern == MALLOC_MIXED) {
+            if (r->pattern != MALLOC_PAIRS) {
                 u32 k = racer_next(&s) & (RACER_SLOTS - 1);
                 if (slot[k]) r->f(slot[k]);
-                slot[k] = r->m(racer_size(&s));
+                slot[k] = r->m(racer_size(&s, r->pattern == MALLOC_SMALL));
                 if (slot[k]) *(volatile u8 *)slot[k] = 1;
             } else {
                 size_t size = 16 + (i & 7) * 24;
@@ -3169,7 +3169,7 @@ static MG_HOSTCB void malloc_racer_main(void *arg)
                 r->f(a);
             }
         }
-        n += r->pattern == MALLOC_MIXED ? 256 : 512;
+        n += r->pattern == MALLOC_PAIRS ? 512 : 256;
     }
     for (i = 0; slot && i < RACER_SLOTS; i++)
         if (slot[i]) r->f(slot[i]);
@@ -3244,6 +3244,11 @@ void mg_tests_malloc_bench(int ms, int max_threads)
     mg_g_malloc_caches_allow(1);
     malloc_race_line("the guest's malloc, mixed sizes", gmalloc, gfree, MALLOC_MIXED, max_threads, (u32)ms);
     malloc_race_line("the host's malloc, mixed sizes", host_malloc, host_free, MALLOC_MIXED, max_threads, (u32)ms);
+    mg_g_malloc_caches_allow(0);
+    malloc_race_line("the guest's malloc without caches, mixed sizes of 4 KB and less", gmalloc, gfree, MALLOC_SMALL, max_threads, (u32)ms);
+    mg_g_malloc_caches_allow(1);
+    malloc_race_line("the guest's malloc, mixed sizes of 4 KB and less", gmalloc, gfree, MALLOC_SMALL, max_threads, (u32)ms);
+    malloc_race_line("the host's malloc, mixed sizes of 4 KB and less", host_malloc, host_free, MALLOC_SMALL, max_threads, (u32)ms);
     mg_g_malloc_caches_allow(0);
     malloc_race_line("the guest's malloc without caches, pairs", gmalloc, gfree, MALLOC_PAIRS, max_threads, (u32)ms);
     mg_g_malloc_caches_allow(1);
@@ -3562,17 +3567,23 @@ static void test_malloc_threads(void)
     CHECK(bytes1 - bytes0 < 65536 || bytes0 - bytes1 < 65536);
     CHECK(caches1 == caches0);
     {
-        /* And how fast: one thread and four of mixed sizes, without the caches (malloc as it was before them) and with them. */
-        double off1, off4, on1, on4;
-        mg_g_malloc_caches_allow(0);
-        off1 = malloc_race(fn.m, fn.f, MALLOC_MIXED, 1, 150);
-        off4 = malloc_race(fn.m, fn.f, MALLOC_MIXED, 4, 150);
-        mg_g_malloc_caches_allow(1);
-        on1 = malloc_race(fn.m, fn.f, MALLOC_MIXED, 1, 150);
-        on4 = malloc_race(fn.m, fn.f, MALLOC_MIXED, 4, 150);
-        say("  malloc across threads (the host's malloc takes its blocks from %s): without the threads' caches 1 thread %.1f M/s, 4 threads "
-            "%.1f M/s (%.2fx); with them %.1f M/s, %.1f M/s (%.2fx)", mg_heap_kind(), off1, off4, off1 > 0 ? off4 / off1 : 0.0, on1, on4,
-            on1 > 0 ? on4 / on1 : 0.0);
+        /* And how fast: one thread and four, blocks of mixed sizes and pairs, without the caches (malloc as it was before them)
+           and with them. */
+        static const int patterns[2] = { MALLOC_MIXED, MALLOC_PAIRS };
+        static const char *const names[2] = { "mixed sizes", "pairs" };
+        int k;
+        say("  malloc across threads (the host's malloc takes its blocks from %s), malloc-and-free pairs a second:", mg_heap_kind());
+        for (k = 0; k < 2; k++) {
+            double off1, off4, on1, on4;
+            mg_g_malloc_caches_allow(0);
+            off1 = malloc_race(fn.m, fn.f, patterns[k], 1, 150);
+            off4 = malloc_race(fn.m, fn.f, patterns[k], 4, 150);
+            mg_g_malloc_caches_allow(1);
+            on1 = malloc_race(fn.m, fn.f, patterns[k], 1, 150);
+            on4 = malloc_race(fn.m, fn.f, patterns[k], 4, 150);
+            say("    %s: without the threads' caches 1 thread %.1f M/s, 4 threads %.1f M/s (%.2fx); with them %.1f M/s, %.1f M/s (%.2fx)",
+                names[k], off1, off4, off1 > 0 ? off4 / off1 : 0.0, on1, on4, on1 > 0 ? on4 / on1 : 0.0);
+        }
     }
     mg_g_malloc_caches_allow(-1);
 }
