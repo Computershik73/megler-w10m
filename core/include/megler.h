@@ -2322,6 +2322,9 @@ MEGLER_API bool megler_appx_app_identity(const char *android_package, char *out,
  *   CALL_HISTORY  phoneCallHistoryPublic: READ_PHONE_STATE, READ_CALL_LOG
  *   BLUETOOTH     bluetooth (a device capability): BLUETOOTH_SCAN, BLUETOOTH_CONNECT, BLUETOOTH_ADVERTISE, and before Android 12
  *                 BLUETOOTH and BLUETOOTH_ADMIN
+ *   WIFI          wiFiControl (a device capability): a location permission (ACCESS_FINE_LOCATION, ACCESS_COARSE_LOCATION): the
+ *                 Wi-Fi networks a scan hears, which Android gives only to an app that may have the location, and which
+ *                 Google Play services in the app finds the phone's location from; NEARBY_WIFI_DEVICES too
  * Megler's other capabilities are every package's (codeGeneration, packageQuery, backgroundMediaPlayback) or no app's
  * (documentsLibrary and removableStorage, which want file types declared; packageManagement).
  */
@@ -2336,6 +2339,7 @@ enum {
     MEGLER_APPX_CAP_CHAT = 128,
     MEGLER_APPX_CAP_CALL_HISTORY = 256,
     MEGLER_APPX_CAP_BLUETOOTH = 512,
+    MEGLER_APPX_CAP_WIFI = 1024,
 };
 MEGLER_API unsigned megler_appx_capabilities(const char *const *permissions, int count, bool sms_retriever);
 /* That package's manifest, made from Megler's (the text of its AppxManifest.xml): the identity name, phone product id and

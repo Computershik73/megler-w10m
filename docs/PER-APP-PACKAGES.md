@@ -491,6 +491,7 @@ own, nothing else:
 | `RECEIVE_SMS`, `READ_SMS`, or Google Play services' SMS Retriever, a receiver of it in the manifest or its names in the app's code (the report's `smsRetriever`) | `chat` |
 | `READ_PHONE_STATE`, `READ_CALL_LOG` | `phoneCallHistoryPublic` |
 | `BLUETOOTH_SCAN`, `BLUETOOTH_CONNECT`, `BLUETOOTH_ADVERTISE`, `BLUETOOTH`, `BLUETOOTH_ADMIN` | the device capability `bluetooth` (Bluetooth LE, `player/BluetoothHost.h`) |
+| `ACCESS_FINE_LOCATION`, `ACCESS_COARSE_LOCATION`, `NEARBY_WIFI_DEVICES` | the device capability `wiFiControl` (the Wi-Fi networks a scan hears, `player/WifiHost.h`): Android gives an app a scan's results only with the location (or Android 13's `NEARBY_WIFI_DEVICES`), and Google Play services in the app finds the phone's location from them -- the app needs no Wi-Fi permission of its own for that (Transit names none). The Wi-Fi's own permissions and the background location alone give no scans |
 | every package | `picturesLibrary` (Megler's diagnosis folder `Pictures\Megler\diag`, `shell/PicturesDiag.h`; and an app's own pictures, which Android 10 and later let it save without asking), `codeGeneration`, `packageQuery` (the shell checks the Google Play services package is still installed), `backgroundMediaPlayback` (no permission on Android) |
 | no package of an app's | `documentsLibrary` and `removableStorage`, reached only with file types declared, and an app's package declares none; `packageManagement`, Megler's alone |
 
