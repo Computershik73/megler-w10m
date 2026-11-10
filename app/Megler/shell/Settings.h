@@ -72,6 +72,11 @@ constexpr const char* googlePlay = "megler.googlePlay";
 /// package Google Play services first want it, and changed in Megler's Settings and in any app's App Permissions.
 constexpr const char* gmsLocation = "megler.gmsLocation";
 
+/// The last answer an app was given or set in its App Permissions for Google Location Accuracy (player/PermissionHost.h,
+/// locationAccuracyElsewhere): "granted", "denied"; empty: none yet. Google's setting is one for every app (megler.
+/// LocationAccuracy writes it where every app's Google Play services read it), so an app never asked itself goes by it.
+constexpr const char* locationAccuracy = "megler.locationAccuracy";
+
 /// A separate app (ui/SharedFolders.h): the names of Megler's folders the user said "Not Now" to, "a|b".
 constexpr const char* foldersNotNow = "megler.folders.notNow";
 

@@ -1032,6 +1032,22 @@ void testPermissions() {
     check(settings::megler("megler.renderCap").value_or("") != "960", "what this process goes by stays as it was");
     keepGmsLocation(un);
     check(gmsLocation() == un && files::read(meglerFile, text) && count(text, "megler.renderCap=960") == 1, "asked again, Megler's other settings kept");
+
+    // Google Location Accuracy: one setting of Google's for every app, so an app's yes or no is Megler's too, for the apps never
+    // asked; Ask every time and a forgotten answer leave it.
+    const std::string other = "org.megler.test.perms2";
+    check(locationAccuracyElsewhere() == un, "Google Location Accuracy: no app's answer at first");
+    keep(other, "location_accuracy", yes);
+    check(locationAccuracyElsewhere() == yes && kept(app, "location_accuracy") == un && files::read(meglerFile, text) &&
+              count(text, "megler.locationAccuracy=granted") == 1 && count(text, "megler.renderCap=960") == 1,
+          "an app's Allow is every app's, kept in Megler's settings.ini; the other app keeps nothing of its own");
+    keep(app, "location_accuracy", EVERY_TIME);
+    keep(other, "location_accuracy", un);
+    check(locationAccuracyElsewhere() == yes, "Ask every time and a forgotten answer leave it");
+    keep(app, "location_accuracy", never);
+    check(locationAccuracyElsewhere() == never, "an app's Don't allow is every app's too");
+    forgetAll(app);
+    forgetAll(other);
 }
 
 } // namespace

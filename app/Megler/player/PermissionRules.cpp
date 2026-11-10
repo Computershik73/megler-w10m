@@ -185,6 +185,10 @@ void keep(const std::string& package, const std::string& group, int state) {
     if (package.empty()) return;
     const char* name = keptName(state);
     settings::setApp(package, "megler.permission." + group, name[0] ? std::optional<std::string>(name) : std::nullopt);
+    // Google Location Accuracy's yes or no is Google's one setting for every app once the app runs: Megler's too, for the
+    // App Permissions of the apps that were never asked.
+    if (group == kLocationAccuracy && (state == MEGLER_PERMISSION_GRANTED || state == MEGLER_PERMISSION_DENIED || state == MEGLER_PERMISSION_DENIED_FIXED))
+        settings::setMegler(settings::locationAccuracy, state == MEGLER_PERMISSION_GRANTED ? "granted" : "denied");
     // A question asked every time is asked again from now on: what this run said of it went with it.
     rememberThisRun(package, group, MEGLER_PERMISSION_UNDECIDED);
 }
@@ -246,6 +250,11 @@ void keepGmsLocation(int state) {
     settings::setMegler(settings::gmsLocation, state == MEGLER_PERMISSION_GRANTED ? "granted" : state == MEGLER_PERMISSION_DENIED_FIXED ? "denied" : "");
     shellLog::write(std::string("permissions: Google Play services' own use of the location, for every app: ") +
                     (state == MEGLER_PERMISSION_GRANTED ? "allowed" : state == MEGLER_PERMISSION_DENIED_FIXED ? "not allowed" : "to be asked"));
+}
+
+int locationAccuracyElsewhere() {
+    const std::string value = settings::meglerNow(settings::locationAccuracy).value_or("");
+    return value == "granted" ? MEGLER_PERMISSION_GRANTED : value == "denied" ? MEGLER_PERMISSION_DENIED_FIXED : MEGLER_PERMISSION_UNDECIDED;
 }
 
 } // namespace megler::app::permissionHost

@@ -186,6 +186,14 @@ Standing standing(const permissionHost::Group& g, const ApkReport& r, const std:
     case Decider::megler:
         if (kept == MEGLER_PERMISSION_GRANTED) {
             s.said = "Allowed";
+        } else if (const int elsewhere = g.name == "location_accuracy" ? locationAccuracyElsewhere() : MEGLER_PERMISSION_UNDECIDED;
+                   elsewhere != MEGLER_PERMISSION_UNDECIDED) {
+            // Google's setting, one for every app, as another app's answer left it: the app goes by it (megler.LocationAccuracy)
+            // and is not asked.
+            const bool on = elsewhere == MEGLER_PERMISSION_GRANTED;
+            s.list = on ? List::allowed : List::notAllowed;
+            s.chosen = on ? 0 : 2;
+            s.said = std::string(on ? "Allowed" : "Not allowed") + ", as said in another app: Google's setting is one for every app";
         } else {
             s.list = List::notAllowed;
             s.chosen = -1;

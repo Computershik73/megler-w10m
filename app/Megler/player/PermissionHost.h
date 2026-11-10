@@ -126,4 +126,8 @@ int gmsLocation();
 /// GRANTED, DENIED_FIXED; UNDECIDED: asked again the next time they want it.
 void keepGmsLocation(int state);
 
+/// Google Location Accuracy as the last app it was answered or set for left it (settings::locationAccuracy): Google's setting
+/// is one for every app, so an app with nothing kept of its own goes by it. GRANTED, DENIED_FIXED, or UNDECIDED for none.
+int locationAccuracyElsewhere();
+
 } // namespace megler::app::permissionHost
