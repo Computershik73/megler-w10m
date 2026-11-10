@@ -496,8 +496,9 @@ every import nothing provides (it logs the name when called and returns zero, so
 missing function is a line in the log and not a crash at load). The library's line
 as it loads names those imports, each once however many relocations ask for it, as
 many as the line has room for and then how many more ("ld: libjabe.so: 1 imports
-are not provided: killpg"); it said only how many until 0.1.0.678, which DANA's
-log showed. The guest test `t_unres` checks both lines.
+are not provided: killpg"), where DANA's log (0.1.0.678) said only how many.
+`mg_tests` checks it on the guest libraries `libt_unres.so` and
+`libt_unres_many.so` (`guest/t_unres.c`).
 
 Memory an app asks for as writable and executable at once (a JIT's code heap) cannot
 exist. Such a region is writable until something executes in it and executable until
