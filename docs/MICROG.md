@@ -143,6 +143,23 @@ their package with one service (`gms-own`, no microG in it) and starts it:
 "main process true application=megler.test.gmshost current=megler.test.gmshost"
 (`tools/build-tests.sh arm`).
 
+## Google's own Play services: their network location
+
+Google's Play services find the phone from the Wi-Fi networks around it (their
+network location module, in the app's process here, started by their fused
+provider). Three things it needs were missing, and are there now (docs/JAVA.md,
+"Wi-Fi, and Google's network location", which says where each was found in
+26.41.31): scans through `WifiManager` (`startScan`, the broadcast,
+`getScanResults`; it uses them where `getSystemService("wifiscanner")` is null,
+as it is here); Google Location Accuracy, `network_location_opt_in` in Google's
+settings (`content://com.google.settings/partner`, Google Services Framework's
+provider), which `megler.LocationAccuracy` asks of the user once an app that
+holds the location binds their location API, and writes; and `PendingIntent`'s
+sends with an `OnFinished` and options, by which the module hands each fix to
+the fused provider, and which sent nothing. Their fixes are seen on that way
+(`megler.LocationService.sent`) and said in the log. With microG nothing of
+this is asked: microG's own location backends are its own.
+
 ## Class isolation
 
 The failed implementation reverted in `1adae04` appended GmsCore's DEX files

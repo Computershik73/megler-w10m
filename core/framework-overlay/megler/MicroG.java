@@ -35,7 +35,7 @@ public final class MicroG {
     /* The Application made and attached (attached), before it is created (application). */
     private volatile Application attached;
     private Application attaching;
-    private ClassLoader loader;
+    private volatile ClassLoader loader;
     private static final class Entry {
         ServiceInfo info = new ServiceInfo();
         ArrayList<IntentFilter> filters = new ArrayList<>();
@@ -523,6 +523,19 @@ public final class MicroG {
     static ClassLoader gmsLoader() {
         MicroG g = get();
         try { return g != null ? g.loader() : null; } catch (RuntimeException e) { return null; }
+    }
+    /**
+     * Whether `l` is GmsCore's class loader or one under it (a module of its own), GmsCore as read and loaded already: never
+     * reads or loads it for this. megler.LocationService tells Google Play services' own location requests from the app's so;
+     * a scope of the app's own other processes is a ServiceClassLoader too, and is not theirs.
+     */
+    static boolean isGmsLoader(ClassLoader l) {
+        MicroG g = loaded();
+        ClassLoader gms = g == null ? null : g.loader;
+        if (gms == null) return false;
+        for (ClassLoader c = l; c != null; c = c.getParent())
+            if (c == gms) return true;
+        return false;
     }
     private synchronized ClassLoader loader() {
         if (loader == null) try {

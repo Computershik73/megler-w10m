@@ -90,6 +90,8 @@ public final class PendingIntent implements android.os.Parcelable {
         final Intent i = new Intent(mIntent);
         if (fill != null) i.putExtras(fill);
         if ((mFlags & FLAG_ONE_SHOT) != 0) cancel();
+        // (A fix of Google Play services' network location on its way to its fused provider: seen by megler.LocationService.)
+        megler.LocationService.sent(this, i);
         if (mKind == 0) mContext.startActivity(i);
         else if (mKind == 1) { if (requiredPermission != null) mContext.sendBroadcast(i, requiredPermission); else mContext.sendBroadcast(i); }
         else mContext.startService(i);

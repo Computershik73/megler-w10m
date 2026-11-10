@@ -3644,6 +3644,18 @@ static int run_gms_host(void)
         }
         CHECK(asked == 1);
     }
+    /*
+     * Google's network location's fix, as the module hands it to the fused provider (the stand-in's, of 5 m, by a PendingIntent of
+     * Google Play services' sent with an OnFinished, its intent marked with the module's release), seen on its way; Windows'
+     * fix the cell network's 600 m. The app's own LocationManager has the better one, Google's, for getLastKnownLocation of
+     * "network" and as the first fix of a "gps" request, each named for the provider asked; Google Play services' own "gps"
+     * request (their fused provider's) is handed no fix of Windows' cell network while Google's is fresh.
+     */
+    CHECK(wait_line("I/GmsOwnTest: network location fix sent true", 0, 60) >= 0);
+    CHECK(find_line("I/MeglerLocation: Google's network location: its first fix, 5 m accurate", 0) >= 0);
+    CHECK(wait_line("I/GmsHostTest: last network fix 5 m network", 0, 60) >= 0);
+    CHECK(wait_line("I/GmsHostTest: first gps fix 5 m gps", 0, 60) >= 0);
+    CHECK(find_line("I/GmsOwnTest: own gps fix too soon", 0) < 0);
     CHECK(find_line("FATAL EXCEPTION", 0) < 0);
     say_app_lines("/GmsOwnTest: ");
     return g_failed;
@@ -3826,6 +3838,9 @@ int mg_tests_java_run(const char *which, const char *apk, const char *android_ro
     g_bluetooth_app = !strcmp(which, "bluetooth");
     g_data_app = !strcmp(which, "data");
     g_microg_app = !strcmp(which, "microg");
+    /* gms-host runs where Windows finds the phone by the cell network alone (600 m), as Transit's user's phone does: Google Play
+       services' network location's fix is then the better one (run_gms_host). */
+    mg_location_standin_cell(!strcmp(which, "gms-host"));
     /* The data app runs with the phone's look told (megler_set_theme): a cobalt accent and a light theme; its step theme-accent checks what an app sees of it. */
     if (!strcmp(which, "data")) megler_set_theme(0xFF0063B1u, false);
     /* The camera app's second run: every camera refused, as Windows refuses Megler the camera when the user has said no. */
