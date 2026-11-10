@@ -33,6 +33,9 @@ public class ContentResolver {
         /* the phone's text messages and calls that came while the app ran (megler.Phone) */
         if ("sms".equals(a)) return megler.Phone.SMS;
         if ("call_log".equals(a)) return megler.Phone.CALL_LOG;
+        /* the WebView's developer-mode flags, which the WebView DevTools app would provide (megler.WebViewFlags) */
+        ContentProvider web = megler.WebViewFlags.provider(a);
+        if (web != null) return web;
         return megler.GmsProviders.forAuthority(a);
     }
     public final ContentProviderClient acquireContentProviderClient(Uri u) { ContentProvider p = provider(u); return p == null ? null : new ContentProviderClient(p); }

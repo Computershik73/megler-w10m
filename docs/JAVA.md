@@ -4534,6 +4534,71 @@ device's limits). Chromium's raster of tiles goes there too; under qemu that
 draws nothing (its log says "Error: 1 for Command Noop"), and the page is
 drawn in software regardless.
 
+**At Direct3D feature level 9_3 every page is drawn in software.** ANGLE
+gives a surface's texture no shared handle on a device of feature level 9_3
+or below (`Renderer11::getShareHandleSupport`: such a device "doesn't support
+share handles on RGBA8 textures/swapchains"), so its EGL does not name
+`EGL_ANGLE_surface_d3d_texture_2d_share_handle`, no frame of OpenGL ES can be
+a picture the shell keeps (`mg_java_gl_shares_frames`), and Chromium is given
+no draw functor: a Lumia 650's logs say "webview: pages are drawn in software:
+no draw functor" in every app. Chromium's GPU service starts there all the
+same, on a context of OpenGL ES 2.0 (3.2, 3.1 and 3.0 refused), and rasters
+its layers' tiles for draws on the graphics processor that never come (its
+"tile memory limits exceeded"); what the screen shows is its software draw of
+each frame into the WebView's bitmap.
+
+**The WebView's developer-mode flags, and HitTestOpaqueness.** The WebView in
+the Android root is AOSP's, not Google's, and Chromium that is not
+Chrome-branded applies its field trial testing config wherever no variations
+seed says otherwise (`variations_field_trial_creator_base.cc`,
+`ShouldUseFieldTrialTestingConfig`): with the flag `webview-verbose-logging`
+its log lists 123 active field trials of that config, among them
+"HitTestOpaqueness" in group "Enabled". That feature bounds a layer's
+recording by what the layer paints rather than by the layer
+(`RecordingSource`, `can_use_recorded_bounds`), and Chromium's software draw
+does not take it into account: `PictureLayerImpl`'s resourceless draw gives
+the quad the visible rectangle cut down to those bounds and the texture
+coordinates of the whole visible rectangle, and
+`SoftwareRenderer::DrawPictureQuad` maps the one onto the other. So a layer of
+its own that paints only part of itself was drawn squeezed into that part,
+about the part's top left. On a Lumia 650 Google's sign-in page in Play Store
+(Google Play services' sign-in) showed its password field's floating label at
+0.4 of its size, the password's bullets at a third and the "Show password"
+checkbox at a third; drawn on the graphics processor, as on an HP Elite x3,
+the bounds only say which tiles have something in them, and nothing is
+squeezed. Material's checkbox is such a layer (`will-change: transform, opacity`):
+a 48-pixel input that paints nothing round an 18-pixel box, whose box came out
+13 pixels wide at 2.00, 11 pixels in from its own corner -- 18/48 of it, as
+the arithmetic of those two rectangles has it; Google's "Create account"
+button likewise. Megler now answers for the WebView DevTools app, through
+which a phone's user sets the WebView's flags (`megler.WebViewFlags`): the
+WebView asks, as it starts and before it loads its library
+(`WebViewChromiumFactoryProvider.initialize`, `DeveloperModeUtils`), whether
+the component `org.chromium.android_webview.devui.DeveloperModeState` of its
+package is enabled (`PackageManager.getComponentEnabledSetting`) and then for
+the rows of `content://<its package>.DeveloperModeContentProvider/flag-overrides`,
+and puts them on its command line (`FlagOverrideHelper`); the platform says
+the component is enabled and its provider answers HitTestOpaqueness off. The
+log says "the WebView's developer-mode flags: {HitTestOpaqueness=false}", and
+the WebView's own with `webview-verbose-logging` "Field trial config study
+skipped: HitTestOpaqueness.Enabled" and a `disable-features` with
+HitTestOpaqueness in it. Only flags of the WebView's own list are taken
+(`ProductionSupportedFlagList`; a name it does not have ends its start), so
+Megler's are named one by one and set only for the WebView they were checked
+against, 128 (another version is said in the log and gets none):
+`webview-layer-borders` (Chromium's
+`show-composited-layer-borders`, a border round each of its layers),
+`webview-verbose-logging` (its command line and field trials in the log) and
+`webview-hit-test-opaqueness` (HitTestOpaqueness left as the testing config
+has it). The WebView test app checks it: a page of layers that paint part of
+themselves -- a checkbox as Material's, a box in an empty layer -- and one that
+paints all of itself, each box found whole in the picture. With
+HitTestOpaqueness on, 36 of the checkbox's 196 inner pixels and 792 of the
+other box's 3136 were theirs, and the layer that paints all of itself was
+whole (the desktop build's test program running the app natively on the
+x86_64 WebView, the same release, which takes seconds where qemu takes
+minutes: `mg_tests.exe --java webview ... root-x86_64 ...`).
+
 **Resources.** The WebView APK's `resources.arsc` is a shared library's:
 package id 0, its own references through that id. `AssetManager.
 addAssetPathAsSharedLibrary` (the overlay's) has the core open the APK as one
