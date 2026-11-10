@@ -1684,18 +1684,22 @@ static void meter_census(void)
     if (process) {
         /* And the parts of it the core can name: the Java heap's memory, the DEX files, what madvise has given back. */
         mg_dvm_heap_info hi;
-        u64 dex_read = 0, dex_viewed = 0, given = 0, again = 0, anon = 0, files = 0;
+        u64 dex_read = 0, dex_viewed = 0, given = 0, again = 0, anon = 0, files = 0, cached = 0;
+        u32 caches = 0;
         mg_dvm_heap_stats(&hi);
         mg_dvm_dex_memory(&dex_read, &dex_viewed);
         mg_mmap_given_back(&given, &again);
         mg_mmap_usage(&anon, &files);
+        /* (And what the threads that allocate fast keep of the blocks they freed, for their next: mg_libc_mem.c, "each thread's cache".) */
+        mg_g_malloc_caches(&caches, &cached);
         snprintf(mem, sizeof(mem), "the process %u MB (the heap's blocks %u MB in %u arenas of 1 MB, %u given back so far, and large objects "
-                 "%u MB; DEX files %u MB in memory, %u MB viewed in their APKs; native libraries %u MB; the app's malloc %u MB; the app's mappings "
-                 "%u MB anonymous and %u MB of files; %u MB given back with madvise, %u MB of it touched again)", (unsigned)(process >> 20),
+                 "%u MB; DEX files %u MB in memory, %u MB viewed in their APKs; native libraries %u MB; the app's malloc %u MB, and %u KB of "
+                 "freed blocks in %u threads' caches; the app's mappings %u MB anonymous and %u MB of files; %u MB given back with madvise, %u MB "
+                 "of it touched again)", (unsigned)(process >> 20),
                  (unsigned)(hi.reserved >> 20), (unsigned)hi.arenas, (unsigned)hi.released,
                  (unsigned)(hi.large_bytes >> 20), (unsigned)(dex_read >> 20), (unsigned)(dex_viewed >> 20), (unsigned)(mg_ld_image_bytes() >> 20),
-                 (unsigned)(mg_g_malloc_bytes() >> 20), (unsigned)(anon >> 20), (unsigned)(files >> 20), (unsigned)(given >> 20),
-                 (unsigned)(again >> 20));
+                 (unsigned)(mg_g_malloc_bytes() >> 20), (unsigned)(cached >> 10), (unsigned)caches, (unsigned)(anon >> 20), (unsigned)(files >> 20),
+                 (unsigned)(given >> 20), (unsigned)(again >> 20));
         /*
          * And the addresses: a 32-bit process has 2 GB of them, and what the next allocation needs is a stretch of them free,
          * whoever makes it. Yandex Maps ran out of them with 1.2 GB of its 2 GB of memory used, and the shell's own drawing

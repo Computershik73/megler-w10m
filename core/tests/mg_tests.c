@@ -3222,16 +3222,350 @@ static void malloc_race_line(const char *what, bench_malloc_fn m, bench_free_fn 
 static void *host_malloc(size_t n) { return malloc(n); }
 static void host_free(void *p) { free(p); }
 
+/* (The threads' caches of freed blocks off for the first of each pair of lines -- malloc as it was before them -- and on for the second.) */
 void mg_tests_malloc_bench(int ms, int max_threads)
 {
     bench_malloc_fn gmalloc = (bench_malloc_fn)mg_bionic_find("malloc");
     bench_free_fn gfree = (bench_free_fn)mg_bionic_find("free");
     if (!gmalloc || !gfree) return;
-    say("malloc-and-free pairs a second, threads together (the host's malloc on %s; %d processors):", mg_heap_kind(), mg_cpu_count());
+    say("malloc-and-free pairs a second, threads together (the host's malloc takes its blocks from %s; %d processors):", mg_heap_kind(),
+        mg_cpu_count());
+    mg_g_malloc_caches_allow(0);
+    malloc_race_line("the guest's malloc without caches, mixed sizes", gmalloc, gfree, MALLOC_MIXED, max_threads, (u32)ms);
+    mg_g_malloc_caches_allow(1);
     malloc_race_line("the guest's malloc, mixed sizes", gmalloc, gfree, MALLOC_MIXED, max_threads, (u32)ms);
     malloc_race_line("the host's malloc, mixed sizes", host_malloc, host_free, MALLOC_MIXED, max_threads, (u32)ms);
+    mg_g_malloc_caches_allow(0);
+    malloc_race_line("the guest's malloc without caches, pairs", gmalloc, gfree, MALLOC_PAIRS, max_threads, (u32)ms);
+    mg_g_malloc_caches_allow(1);
     malloc_race_line("the guest's malloc, pairs", gmalloc, gfree, MALLOC_PAIRS, max_threads, (u32)ms);
     malloc_race_line("the host's malloc, pairs", host_malloc, host_free, MALLOC_PAIRS, max_threads, (u32)ms);
+    mg_g_malloc_caches_allow(-1);
+}
+
+/*
+ * The guest's malloc family as threads use it at once, each fast enough to keep a cache of the blocks it frees
+ * (mg_libc_mem.c, "each thread's cache"): blocks made by one thread and freed or reallocated by another, at bionic's
+ * alignment and of jemalloc's sizes whichever cache they pass through, calloc's zeroed, realloc's contents kept; what is
+ * counted as allocated back where it was once the threads are gone, and their caches gone with them.
+ */
+typedef struct malloc_fns {
+    void *(*m)(size_t);
+    void *(*c)(size_t, size_t);
+    void *(*r)(void *, size_t);
+    void *(*a)(size_t, size_t);
+    void (*f)(void *);
+    size_t (*usable)(const void *);
+} malloc_fns;
+
+typedef struct malloc_share {
+    const malloc_fns *fn;
+    void *volatile *slots;
+    u32 nslots, rounds, seed;
+    volatile i32 bad, ops;
+    u32 caches_seen;                   /* the threads with caches a thread saw before it ended */
+    u64 cached_seen;
+} malloc_share;
+
+static size_t share_quantum(void) { return MG_ARCH_ARM32 ? 8 : 16; }
+static void *xchg_ptr(void *volatile *at, void *value)
+{
+    void *was;
+    do was = *at;
+    while (mg_atomic_cas_ptr(at, was, value) != was);
+    return was;
+}
+static size_t share_usable(size_t n) { return MG_ALIGN_UP(n ? n : 1, share_quantum()); }
+
+/* A block of `size` bytes filled so that its size and every byte of it can be told again: the size in its first four, then a byte of the size's. */
+static void share_fill(u8 *p, size_t size)
+{
+    u32 s = (u32)size;
+    size_t i;
+    if (size < 4) return;
+    memcpy(p, &s, 4);
+    for (i = 4; i < size; i++) p[i] = (u8)(s * 7u + (u32)i);
+}
+
+/* Whether a filled block is as it was filled, of malloc_usable_size's and at an alignment a block of its size has (`align` at least). */
+static bool share_check(const malloc_fns *fn, const u8 *p, size_t size, size_t align)
+{
+    u32 s = (u32)size;
+    size_t i, want = share_usable(size) >= 256 ? 64 : share_quantum();
+    if (align < want) align = want;
+    if (fn->usable(p) != share_usable(size) || ((mg_addr)p & (align - 1))) return false;
+    if (size < 4) return true;
+    if (memcmp(p, &s, 4)) return false;
+    for (i = 4; i < size; i++)
+        if (p[i] != (u8)(s * 7u + (u32)i)) return false;
+    return true;
+}
+
+/* A block's size as share_fill wrote it (0 for one of fewer than four bytes, which none of these is). */
+static size_t share_size(const u8 *p)
+{
+    u32 s;
+    memcpy(&s, p, 4);
+    return s;
+}
+
+static size_t share_pick(u32 *s)
+{
+    u32 r = racer_next(s) % 100;
+    if (r < 70) return 4 + racer_next(s) % 252;
+    if (r < 95) return 256 + racer_next(s) % 3900;
+    return 4097 + racer_next(s) % 12000;
+}
+
+/*
+ * Each round a slot is taken at random: a block found there is checked and then freed, or reallocated to another size
+ * (its contents checked again) and put back; an empty one gets a new block from malloc, calloc (zero checked), memalign
+ * or realloc of NULL. Every block passes between the threads in the slots.
+ */
+static MG_HOSTCB void malloc_sharer(void *arg)
+{
+    malloc_share *sh = (malloc_share *)arg;
+    const malloc_fns *fn = sh->fn;
+    u32 s = sh->seed, i;
+    for (i = 0; i < sh->rounds; i++) {
+        u32 k = racer_next(&s) % sh->nslots, how = racer_next(&s) % 8;
+        u8 *p = (u8 *)xchg_ptr(&sh->slots[k], NULL);
+        size_t size;
+        if (p) {
+            size = share_size(p);
+            if (!share_check(fn, p, size, 0)) mg_atomic_add(&sh->bad, 1);
+            if (how < 5) {
+                fn->f(p);
+                continue;
+            }
+            {
+                size_t to = share_pick(&s), keep = to < size ? to : size, j;
+                u8 *q = (u8 *)fn->r(p, to);
+                bool same = q != NULL;
+                for (j = 4; same && j < keep; j++) same = q[j] == (u8)((u32)size * 7u + (u32)j);
+                if (!same || !q) {
+                    mg_atomic_add(&sh->bad, 1);
+                    if (q) fn->f(q);
+                    continue;
+                }
+                p = q;
+                size = to;
+            }
+        } else {
+            size = share_pick(&s);
+            if (how < 3) {
+                p = (u8 *)fn->m(size);
+            } else if (how < 5) {
+                size_t z;
+                bool zero = true;
+                p = (u8 *)fn->c(1, size);
+                for (z = 0; p && z < share_usable(size); z++) zero &= p[z] == 0;
+                if (!zero) mg_atomic_add(&sh->bad, 1);
+            } else if (how < 7) {
+                size_t align = how == 5 ? 64 : 128;
+                p = (u8 *)fn->a(align, size);
+                if (p && (fn->usable(p) != share_usable(size) || ((mg_addr)p & (align - 1)))) mg_atomic_add(&sh->bad, 1);
+            } else {
+                p = (u8 *)fn->r(NULL, size);
+            }
+            if (!p) {
+                mg_atomic_add(&sh->bad, 1);
+                continue;
+            }
+        }
+        share_fill(p, size);
+        p = (u8 *)xchg_ptr(&sh->slots[k], p);
+        /* (Another thread filled the slot meanwhile: its block is checked and freed here.) */
+        if (p) {
+            if (!share_check(fn, p, share_size(p), 0)) mg_atomic_add(&sh->bad, 1);
+            fn->f(p);
+        }
+        mg_atomic_add(&sh->ops, 1);
+    }
+    mg_g_malloc_caches(&sh->caches_seen, &sh->cached_seen);
+}
+
+/* A producer's blocks for a consumer: made here, checked, freed or reallocated and freed there. */
+typedef struct malloc_pipe {
+    const malloc_fns *fn;
+    void *volatile ring[64];
+    u32 count;
+    volatile i32 bad;
+} malloc_pipe;
+
+static size_t pipe_size(u32 i) { return 4 + (i * 37u) % 700u + (i % 50u == 0 ? 3000u : 0u); }
+
+static MG_HOSTCB void malloc_producer(void *arg)
+{
+    malloc_pipe *pp = (malloc_pipe *)arg;
+    u32 i;
+    for (i = 0; i < pp->count; i++) {
+        size_t size = pipe_size(i);
+        u8 *p = (u8 *)(i % 3 == 0 ? pp->fn->c(size, 1) : pp->fn->m(size));
+        if (!p) {
+            mg_atomic_add(&pp->bad, 1);
+            p = (u8 *)pp->fn->m(4);
+            size = 4;
+        }
+        share_fill(p, size);
+        while (mg_atomic_cas_ptr(&pp->ring[i % 64], NULL, p) != NULL) mg_thread_yield();
+    }
+}
+
+static MG_HOSTCB void malloc_consumer(void *arg)
+{
+    malloc_pipe *pp = (malloc_pipe *)arg;
+    u32 i;
+    for (i = 0; i < pp->count; i++) {
+        u8 *p;
+        while ((p = (u8 *)xchg_ptr(&pp->ring[i % 64], NULL)) == NULL) mg_thread_yield();
+        if (!share_check(pp->fn, p, share_size(p), 0)) mg_atomic_add(&pp->bad, 1);
+        if (i % 4 == 1) {
+            size_t size = share_size(p);
+            u8 *q = (u8 *)pp->fn->r(p, size * 2 + 100);
+            if (!q || share_size(q) != size || ((mg_addr)q & (share_usable(size * 2 + 100) >= 256 ? 63 : share_quantum() - 1)))
+                mg_atomic_add(&pp->bad, 1);
+            p = q;
+        }
+        pp->fn->f(p);
+    }
+}
+
+/* A thread that allocates fast enough to keep a cache, leaves blocks in it, and says what it saw before it ends. */
+typedef struct malloc_leaver {
+    const malloc_fns *fn;
+    u32 caches;
+    u64 cached;
+    bool reused;
+} malloc_leaver;
+
+static MG_HOSTCB void malloc_leaver_main(void *arg)
+{
+    malloc_leaver *lv = (malloc_leaver *)arg;
+    void *keep[40];
+    u32 i;
+    for (i = 0; i < 4000; i++) lv->fn->f(lv->fn->m(16 + (i % 40) * 8));
+    for (i = 0; i < 40; i++) keep[i] = lv->fn->m(16 + i * 8);
+    for (i = 0; i < 40; i++) lv->fn->f(keep[i]);
+    /* (The last block freed is the next of its size: a cache's, the last in first out.) */
+    lv->reused = lv->fn->m(16 + 39 * 8) == keep[39];
+    lv->fn->f(keep[39]);
+    mg_g_malloc_caches(&lv->caches, &lv->cached);
+}
+
+static void test_malloc_threads(void)
+{
+    malloc_fns fn;
+    u32 caches0 = 0, caches1 = 0;
+    u64 cached0 = 0, cached1 = 0, bytes0, bytes1;
+    fn.m = (void *(*)(size_t))mg_bionic_find("malloc");
+    fn.c = (void *(*)(size_t, size_t))mg_bionic_find("calloc");
+    fn.r = (void *(*)(void *, size_t))mg_bionic_find("realloc");
+    fn.a = (void *(*)(size_t, size_t))mg_bionic_find("memalign");
+    fn.f = (void (*)(void *))mg_bionic_find("free");
+    fn.usable = (size_t (*)(const void *))mg_bionic_find("malloc_usable_size");
+    CHECK(fn.m && fn.c && fn.r && fn.a && fn.f && fn.usable);
+    if (!fn.m || !fn.c || !fn.r || !fn.a || !fn.f || !fn.usable) return;
+    mg_g_malloc_caches_allow(1);
+    bytes0 = mg_g_malloc_bytes();
+    mg_g_malloc_caches(&caches0, &cached0);
+    {
+        /* This thread's own cache: the block freed last is the next of its bin, calloc's zeroed though it was written, and
+           a realloc within a bin stays where it is. */
+        u32 i;
+        u8 *a, *b;
+        for (i = 0; i < 2000; i++) fn.f(fn.m(24 + (i % 7) * 40));
+        a = (u8 *)fn.m(100);
+        if (a) memset(a, 0xAB, fn.usable(a));
+        fn.f(a);
+        b = (u8 *)fn.c(100, 1);
+        CHECK(b == a && b && fn.usable(b) == share_usable(100));
+        for (i = 0; b && i < share_usable(100); i++)
+            if (b[i]) break;
+        CHECK(b && i == share_usable(100));
+        fn.f(b);
+        a = (u8 *)fn.m(300);
+        if (a) share_fill(a, 300);
+        b = (u8 *)fn.r(a, 310);
+        CHECK(a && b == a && share_size(b) == 300 && b[299] == (u8)(300u * 7u + 299u) && fn.usable(b) == share_usable(310) && ((mg_addr)b & 63) == 0);
+        fn.f(b);
+        a = (u8 *)fn.m(316);
+        CHECK(a == b && fn.usable(a) == share_usable(316));
+        fn.f(a);
+    }
+    {
+        malloc_leaver lv;
+        mg_thread *t;
+        memset(&lv, 0, sizeof(lv));
+        lv.fn = &fn;
+        mg_g_malloc_caches(&caches0, &cached0);
+        t = mg_thread_start(malloc_leaver_main, &lv, 256u * 1024u, "malloc-leaver");
+        CHECK(t != NULL);
+        if (t) mg_thread_join(t);
+        mg_g_malloc_caches(&caches1, &cached1);
+        CHECK(lv.reused && lv.caches == caches0 + 1 && lv.cached > cached0);
+        CHECK(caches1 == caches0 && cached1 == cached0);
+    }
+    {
+        malloc_pipe pp;
+        mg_thread *tp, *tc;
+        memset(&pp, 0, sizeof(pp));
+        pp.fn = &fn;
+        pp.count = 20000;
+        tp = mg_thread_start(malloc_producer, &pp, 256u * 1024u, "malloc-producer");
+        tc = mg_thread_start(malloc_consumer, &pp, 256u * 1024u, "malloc-consumer");
+        CHECK(tp && tc);
+        if (tp) mg_thread_join(tp);
+        if (tc) mg_thread_join(tc);
+        CHECK(pp.bad == 0);
+    }
+    {
+        static void *volatile slots[512];
+        malloc_share sh[4];
+        mg_thread *t[4];
+        int i;
+        u32 k;
+        for (i = 0; i < 4; i++) {
+            memset(&sh[i], 0, sizeof(sh[i]));
+            sh[i].fn = &fn;
+            sh[i].slots = slots;
+            sh[i].nslots = 512;
+            sh[i].rounds = 30000;
+            sh[i].seed = 0x2545F491u * (u32)(i + 3);
+        }
+        for (i = 0; i < 4; i++) t[i] = mg_thread_start(malloc_sharer, &sh[i], 256u * 1024u, "malloc-sharer");
+        for (i = 0; i < 4; i++)
+            if (t[i]) mg_thread_join(t[i]);
+        for (k = 0; k < 512; k++) {
+            u8 *p = (u8 *)slots[k];
+            slots[k] = NULL;
+            if (p && !share_check(&fn, p, share_size(p), 0)) sh[0].bad++;
+            fn.f(p);
+        }
+        CHECK(t[0] && t[1] && t[2] && t[3]);
+        CHECK(sh[0].bad + sh[1].bad + sh[2].bad + sh[3].bad == 0);
+        CHECK(sh[0].caches_seen > caches0);
+    }
+    /* What is counted as allocated is what it was (the threads' parts in their caches, back in the whole as they ended), give or
+       take what another of the process's threads allocated meanwhile; and their caches are gone. */
+    bytes1 = mg_g_malloc_bytes();
+    mg_g_malloc_caches(&caches1, &cached1);
+    CHECK(bytes1 - bytes0 < 65536 || bytes0 - bytes1 < 65536);
+    CHECK(caches1 == caches0);
+    {
+        /* And how fast: one thread and four of mixed sizes, without the caches (malloc as it was before them) and with them. */
+        double off1, off4, on1, on4;
+        mg_g_malloc_caches_allow(0);
+        off1 = malloc_race(fn.m, fn.f, MALLOC_MIXED, 1, 150);
+        off4 = malloc_race(fn.m, fn.f, MALLOC_MIXED, 4, 150);
+        mg_g_malloc_caches_allow(1);
+        on1 = malloc_race(fn.m, fn.f, MALLOC_MIXED, 1, 150);
+        on4 = malloc_race(fn.m, fn.f, MALLOC_MIXED, 4, 150);
+        say("  malloc across threads (the host's malloc takes its blocks from %s): without the threads' caches 1 thread %.1f M/s, 4 threads "
+            "%.1f M/s (%.2fx); with them %.1f M/s, %.1f M/s (%.2fx)", mg_heap_kind(), off1, off4, off1 > 0 ? off4 / off1 : 0.0, on1, on4,
+            on1 > 0 ? on4 / on1 : 0.0);
+    }
+    mg_g_malloc_caches_allow(-1);
 }
 
 /* ------------------------------------------------------------------ the decoders behind a Java app's MediaCodec */
@@ -5791,6 +6125,7 @@ int mg_tests_run(const char *libdir, const char *scratch, mg_test_sink sink, voi
     test_camera();
     test_battery();
     test_libc_odds();
+    test_malloc_threads();
     test_appx_manifest();
     test_appx_pri();
     test_arsc(libdir);

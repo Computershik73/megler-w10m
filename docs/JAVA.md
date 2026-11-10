@@ -5144,7 +5144,9 @@ each of the frame meter's lines a line "java: memory:" says the process's
 parts the core can name: the heap's blocks and large objects, the DEX files
 in memory and viewed, the native libraries' segments (`mg_ld_image_bytes`,
 read into committed memory), what the app's native code has from `malloc`
-and not freed (`mg_g_malloc_bytes`; the blocks are the host's), the app's
+and not freed (`mg_g_malloc_bytes`; the blocks are the host's) and the freed
+blocks the threads that allocate fast keep in their caches for their next
+(`mg_g_malloc_caches`, 32 KB a thread at most), the app's
 own mappings, anonymous and private copies of files, as far as they are
 mapped, not made no-access and not given back (`mg_mmap_usage`), and what
 madvise has given back. What is left of the process's figure is the
