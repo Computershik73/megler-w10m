@@ -678,6 +678,37 @@ static bool fault_signal_refused(long sig, long act)
     return true;
 }
 
+/* (madvise asks whose call it is: Go's runtime gives its heap's pages back by number, bionic/mg_libc_mem.c.) */
+static MG_THREAD_LOCAL mg_addr t_syscall_site;
+
+#if defined(_MSC_VER)
+#include <intrin.h>
+#pragma intrinsic(_ReturnAddress)
+#define SYSCALL_CALLER() _ReturnAddress()
+#else
+#define SYSCALL_CALLER() __builtin_return_address(0)
+#endif
+
+/*
+ * A call by number this layer does not answer (ENOSYS): said once for each number, with the first such call's arguments and
+ * whose code made it -- an svc's site, or syscall()'s caller. "syscall(120) is not supported" said nothing of what
+ * libpairipcore.so asked clone for.
+ */
+static void syscall_unanswered(long nr, long a, long b, long c, long d, const void *from)
+{
+    static volatile u32 said[32];
+    const char *lib = NULL;
+    const void *sym = NULL, *base = NULL;
+    if (nr >= 0 && nr < 1024) {
+        u32 bit = 1u << (nr & 31);
+        if (said[nr >> 5] & bit) return;
+        said[nr >> 5] |= bit;
+    }
+    if (from) mg_ld_symbol_at(from, &lib, &sym, &base);
+    mg_note_once("syscall(%ld) is not supported (0x%lx, 0x%lx, 0x%lx, 0x%lx, from %s+0x%x)", nr, (unsigned long)a, (unsigned long)b, (unsigned long)c,
+                 (unsigned long)d, lib ? lib : "the layer", lib ? (unsigned)((const u8 *)from - (const u8 *)base) : 0u);
+}
+
 /*
  * syscall(): the handful that code calls by number. ARM EABI numbers. Gecko's mozglue installs its signal handlers with
  * syscall(__NR_sigaction) (67), past libc's sigaction, whose old struct is bionic's 32-bit one.
@@ -999,14 +1030,11 @@ static long g_syscall(long nr, long a, long b, long c, long d, long e, long f)
     /* prctl as libc's: Go's runtime names its mappings by number (see g_prctl). */
     case 172: return g_prctl((int)a, (unsigned long)b, (unsigned long)c, (unsigned long)d, (unsigned long)e);          /* prctl */
     default:
-        mg_note_once("syscall(%ld) is not supported", nr);
+        syscall_unanswered(nr, a, b, c, d, t_syscall_site ? (const void *)t_syscall_site : SYSCALL_CALLER());
         mg_set_errno(GE_NOSYS);
         return -1;
     }
 }
-
-/* (madvise asks whose call it is: Go's runtime gives its heap's pages back by number, bionic/mg_libc_mem.c.) */
-static MG_THREAD_LOCAL mg_addr t_syscall_site;
 
 mg_addr mg_bionic_syscall_site(void) { return t_syscall_site; }
 
