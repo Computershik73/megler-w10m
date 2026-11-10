@@ -6672,6 +6672,98 @@ void textBounds(void*, const uint16_t* text, int count, const megler_gfx_paint* 
     });
 }
 
+/// What DirectWrite gives of a run's glyph outlines (GetGlyphRunOutline: lines
+/// and cubics, each figure closed), written as draw_path's stream through the
+/// matrix that places the run, for text_path.
+class OutlineWriter final : public ID2D1SimplifiedGeometrySink, public Counted {
+public:
+    explicit OutlineWriter(std::vector<float>* out) : out_(out) {}
+    HRESULT STDMETHODCALLTYPE QueryInterface(REFIID iid, void** out) override {
+        if (!out) return E_POINTER;
+        if (iid == __uuidof(IUnknown) || iid == __uuidof(ID2D1SimplifiedGeometrySink)) {
+            *out = static_cast<ID2D1SimplifiedGeometrySink*>(this);
+            addRef();
+            return S_OK;
+        }
+        *out = nullptr;
+        return E_NOINTERFACE;
+    }
+    ULONG STDMETHODCALLTYPE AddRef() override { return addRef(); }
+    ULONG STDMETHODCALLTYPE Release() override { return release(); }
+    void STDMETHODCALLTYPE SetFillMode(D2D1_FILL_MODE) override {}
+    void STDMETHODCALLTYPE SetSegmentFlags(D2D1_PATH_SEGMENT) override {}
+    void STDMETHODCALLTYPE BeginFigure(D2D1_POINT_2F start, D2D1_FIGURE_BEGIN) override { put(MEGLER_GFX_PATH_MOVE, &start, 1); }
+    void STDMETHODCALLTYPE AddLines(const D2D1_POINT_2F* points, UINT32 count) override {
+        for (UINT32 i = 0; i < count; i++) put(MEGLER_GFX_PATH_LINE, &points[i], 1);
+    }
+    void STDMETHODCALLTYPE AddBeziers(const D2D1_BEZIER_SEGMENT* beziers, UINT32 count) override {
+        for (UINT32 i = 0; i < count; i++) {
+            const D2D1_POINT_2F points[3] = {beziers[i].point1, beziers[i].point2, beziers[i].point3};
+            put(MEGLER_GFX_PATH_CUBIC, points, 3);
+        }
+    }
+    void STDMETHODCALLTYPE EndFigure(D2D1_FIGURE_END end) override {
+        if (end == D2D1_FIGURE_END_CLOSED) put(MEGLER_GFX_PATH_CLOSE, nullptr, 0);
+    }
+    HRESULT STDMETHODCALLTYPE Close() override { return S_OK; }
+    /// Where the next run's glyphs go.
+    void place(const Matrix3x2F& m) { m_ = m; }
+    /// Whether memory ran out on the way (COM's calls cannot throw).
+    bool short_() const { return short_of_memory_; }
+
+private:
+    void put(int verb, const D2D1_POINT_2F* points, int n) {
+        if (short_of_memory_) return;
+        try {
+            out_->push_back(float(verb));
+            for (int i = 0; i < n; i++) {
+                const D2D1_POINT_2F p = m_.TransformPoint(points[i]);
+                out_->push_back(p.x);
+                out_->push_back(p.y);
+            }
+        } catch (const std::bad_alloc&) {
+            short_of_memory_ = true;
+        }
+    }
+    std::vector<float>* out_;
+    Matrix3x2F m_ = Matrix3x2F::Identity();
+    bool short_of_memory_ = false;
+};
+
+/// The run's glyph outlines where draw_text would draw the run (megler.h, text_path): each run of glyphs through the
+/// matrix drawText places it by, the outlines being what DirectWrite's own drawing of a stroked glyph strokes.
+bool textPath(void*, const uint16_t* text, int count, float x, float y, const megler_gfx_paint* given, void* typeface, megler_gfx_write write, void* sink) {
+    bool given_ = false;
+    if (!given || !write) return false;
+    guarded("text_path", [&] {
+        const megler_gfx_paint paint = checked(*given);
+        if (!sane(x) || !sane(y)) return;
+        std::shared_ptr<Shaped> shaped = shapedRun(typeface, paint, text, count);
+        if (!shaped) return;
+        const float sx = scaleOf(paint), skew = paint.text_skew_x;
+        const float width = shaped->width * sx;
+        if (paint.text_align == MEGLER_GFX_ALIGN_CENTER) x -= width / 2;
+        else if (paint.text_align == MEGLER_GFX_ALIGN_RIGHT) x -= width;
+        const Matrix3x2F textMatrix(sx, 0, skew, 1, x, y);
+        std::vector<float> stream;
+        Ref<OutlineWriter> writer;
+        writer.attach(new OutlineWriter(&stream));
+        for (const TextRun& run : shaped->plain) {
+            writer->place(Matrix3x2F::Translation(run.x, run.y) * textMatrix);
+            const HRESULT hr = run.face->GetGlyphRunOutline(run.em, run.glyphs.data(), run.advances.empty() ? nullptr : run.advances.data(),
+                                                            run.offsets.empty() ? nullptr : run.offsets.data(), UINT32(run.glyphs.size()), run.sideways,
+                                                            (run.bidi & 1) != 0, writer.get());
+            if (FAILED(hr)) {
+                failed("IDWriteFontFace::GetGlyphRunOutline", hr);
+                return;
+            }
+        }
+        if (writer->short_()) throw std::bad_alloc();
+        given_ = stream.empty() || write(sink, stream.data(), stream.size() * sizeof(float));
+    });
+    return given_;
+}
+
 /// How many code units of the first `length` of a run fit in `maxWidth`, by
 /// characters or by words (megler.h, text_break). `whole`: these units are all
 /// there is of the line, so its end is a place a line may end. `more` is set
@@ -7525,6 +7617,7 @@ megler_gfx_host GfxHost::callbacks() {
     host.text_bounds = &textBounds;
     host.text_break = &textBreak;
     host.text_widths = &textWidths;
+    host.text_path = &textPath;
     host.typeface_create = &typefaceCreate;
     host.typeface_derive = &typefaceDerive;
     host.typeface_from_data = &typefaceFromData;

@@ -43,7 +43,8 @@
  *     text_size high standing on the baseline, at the start of its advance.
  *     The ascent is 0.8 and the descent 0.2 of the text size, top and bottom
  *     the same, no leading. All typefaces are that one; skew, fake bold and
- *     the paint's style do nothing to it. A line breaks after spaces.
+ *     the paint's style do nothing to it. A line breaks after spaces. A
+ *     glyph's outline (text_path) is its box, four lines clockwise.
  *   - Image files: PNG only, not interlaced (every colour type and bit
  *     depth, tRNS included; the chunks' checksums are not looked at). An
  *     image asked for at another size than its own is sampled at the nearest
@@ -838,6 +839,24 @@ static MEGLER_CB void s_draw_text(void *user, void *canvas, const uint16_t *text
     points_free(&p);
 }
 
+/* The glyphs' outlines: each box that s_draw_text fills, as a closed figure of four lines, clockwise on the screen. */
+static MEGLER_CB bool s_text_path(void *user, const uint16_t *text, int count, float x, float y, const megler_gfx_paint *paint, void *typeface,
+                                  megler_gfx_write write, void *sink)
+{
+    float advance = advance_of(paint), width = (float)count * advance;
+    int i;
+    (void)user;
+    (void)typeface;
+    if (paint->text_align == MEGLER_GFX_ALIGN_CENTER) x -= width / 2;
+    else if (paint->text_align == MEGLER_GFX_ALIGN_RIGHT) x -= width;
+    for (i = 0; i < count; i++) {
+        float l = x + (float)i * advance, r = l + box_width(paint), t = y - 0.7f * paint->text_size;
+        float figure[] = { MEGLER_GFX_PATH_MOVE, l, t, MEGLER_GFX_PATH_LINE, r, t, MEGLER_GFX_PATH_LINE, r, y, MEGLER_GFX_PATH_LINE, l, y, MEGLER_GFX_PATH_CLOSE };
+        if (inked(text[i]) && !write(sink, figure, sizeof(figure))) return false;
+    }
+    return true;
+}
+
 /* ---------------------------------------------------- typefaces, shaders */
 
 typedef struct sface {
@@ -1267,6 +1286,7 @@ const megler_gfx_host *mg_gfx_standin(void)
         .text_bounds = s_text_bounds,
         .text_break = s_text_break,
         .text_widths = s_text_widths,
+        .text_path = s_text_path,
         .typeface_create = s_typeface_create,
         .typeface_derive = s_typeface_derive,
         .typeface_from_data = s_typeface_from_data,
