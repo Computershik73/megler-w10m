@@ -3482,6 +3482,9 @@ static int run_data(void)
         CHECK(find_line("megler/test/data/Bytes.echo([B)[B [B of 6: 6d65676c6572 \"megler\"", 0) >= 0
               || find_line("megler/test/data/Bytes.echo([B)[B (compiled) [B of 6: 6d65676c6572 \"megler\"", 0) >= 0);
         CHECK(find_line("megler/test/data/Bytes.echo returns [B of 6: 6d65676c6572 \"megler\"", 0) >= 0);
+        /* trace-files-libjavacore: the files libcore's own native code opens for the app's Java, each with the path and what the
+           open gave (bionic/mg_libc_io.c, file_said). */
+        CHECK(find_line("files: libjavacore.so+0x", 0) >= 0 && find_line(" open(\"/", find_line("files: libjavacore.so+0x", 0)) >= 0);
     }
     /* The core's own word that it is its SQLite, on its files. */
     CHECK(find_line("sqlite: SQLite 3.", 0) >= 0);

@@ -1034,6 +1034,58 @@ int mg_fd_open_host(const char *host_path, int host_flags)
 }
 
 /*
+ * The flags trace-files-<library>: each file the code of a library whose name starts with <library> opens or looks at
+ * through the C library (open, openat, stat, lstat, fstatat, access, faccessat, readlink, opendir), said with the path and
+ * what the call gave, at most 3000 lines a run. What a library that checks the device it runs on looks at: Google Play
+ * services' DroidGuard opens /proc/cpuinfo so (its calls by number, /sys/fs/selinux/enforce, are trace-syscalls'). Known
+ * by the call's return address, which is the library's where its code calls the C library directly, as on a 32-bit ARM
+ * host; a call from another function of this layer is not said.
+ */
+const char *megler_data_dir(void);
+const char *mg_ld_symbol_at(const void *addr, const char **lib_name, const void **sym_addr, const void **lib_base);
+static char g_files_traced[4][64];
+static volatile i32 g_files_traced_n = -1, g_files_lines;
+
+static void files_traced_add(const char *rest, void *user)
+{
+    (void)user;
+    if (g_files_traced_n < (i32)MG_COUNT(g_files_traced) && *rest) mg_strlcpy(g_files_traced[g_files_traced_n++], rest, sizeof(g_files_traced[0]));
+}
+
+static void file_said(const char *what, const char *path, long result, const void *ret)
+{
+    const char *lib = NULL;
+    const void *sym = NULL, *base = NULL;
+    char err[24];
+    i32 i;
+    if (g_files_traced_n < 0) {
+        if (!megler_data_dir()[0]) return;
+        g_files_traced_n = 0;
+        mg_flags_each("trace-files-", files_traced_add, NULL);
+    }
+    if (!g_files_traced_n || !ret) return;
+    mg_ld_symbol_at(ret, &lib, &sym, &base);
+    if (!lib) return;
+    for (i = 0; i < g_files_traced_n; i++) {
+        if (strncmp(lib, g_files_traced[i], strlen(g_files_traced[i]))) continue;
+        err[0] = 0;
+        if (result < 0) snprintf(err, sizeof(err), " (errno %d)", *mg_errno_ptr());
+        if (mg_atomic_add(&g_files_lines, 1) <= 3000)
+            mg_info("files: %s+0x%x %s(\"%s\") = %ld%s", lib, (unsigned)((const u8 *)ret - (const u8 *)base), what, path ? path : "(null)", result, err);
+        return;
+    }
+}
+/* Where the function this is written in returns to: called by a guest, an address in the guest's code (as mg_libc_mem.c's). */
+#if defined(_MSC_VER)
+#include <intrin.h>
+#pragma intrinsic(_ReturnAddress)
+#define FILE_CALLER() _ReturnAddress()
+#else
+#define FILE_CALLER() __builtin_return_address(0)
+#endif
+#define FILE_SAID(what, path, result) file_said(what, path, (long)(result), FILE_CALLER())
+
+/*
  * A file opened over and over: the first 200 opens of one path within 10 s are said once, with the Java frames of the
  * thread that opened it last (mg_core_thread_detail), as an app's loop shows itself (Google Play services read its module
  * configuration and rewrote ChimeraConfigService.xml a hundred times a second, on several threads, in every app). A few
@@ -3665,11 +3717,24 @@ static int g_fchmod(int fd, int mode)
 static int g_flock(int fd, int op) { (void)fd; (void)op; return 0; }
 static void g_sync(void) { }
 
+/* The calls that name a file, as guest code makes them: each said under the flags trace-files-<library> (file_said). */
+static int g_open_said(const char *path, int flags, int mode) { int r = g_open(path, flags, mode); FILE_SAID("open", path, r); return r; }
+static int g_open_2_said(const char *path, int flags) { int r = g_open_2(path, flags); FILE_SAID("open", path, r); return r; }
+static int g_openat_said(int dirfd, const char *path, int flags, int mode) { int r = g_openat(dirfd, path, flags, mode); FILE_SAID("openat", path, r); return r; }
+static int g_openat_2_said(int dirfd, const char *path, int flags) { int r = g_openat_2(dirfd, path, flags); FILE_SAID("openat", path, r); return r; }
+static int g_stat_said(const char *path, g_stat *out) { int r = g_stat_path(path, out); FILE_SAID("stat", path, r); return r; }
+static int g_fstatat_said(int dirfd, const char *path, g_stat *out, int flags) { int r = g_fstatat(dirfd, path, out, flags); FILE_SAID("fstatat", path, r); return r; }
+static int g_access_said(const char *path, int mode) { int r = g_access(path, mode); FILE_SAID("access", path, r); return r; }
+static int g_faccessat_said(int dirfd, const char *path, int mode, int flags) { int r = g_faccessat(dirfd, path, mode, flags); FILE_SAID("faccessat", path, r); return r; }
+static gssize g_readlink_said(const char *path, char *buf, size_t n) { gssize r = g_readlink(path, buf, n); FILE_SAID("readlink", path, r); return r; }
+static gssize g_readlinkat_said(int dirfd, const char *path, char *buf, size_t n) { gssize r = g_readlinkat(dirfd, path, buf, n); FILE_SAID("readlinkat", path, r); return r; }
+static g_dir *g_opendir_said(const char *path) { g_dir *d = g_opendir(path); FILE_SAID("opendir", path, d ? 0 : -1); return d; }
+
 #define IO(n, f) MG_WRAP(n, f)
 
 const mg_sym mg_tab_io[] = {
-    IO("open", g_open), IO("open64", g_open), IO("__open_2", g_open_2), IO("openat", g_openat), IO("openat64", g_openat),
-    IO("__openat_2", g_openat_2), IO("creat", g_creat), IO("creat64", g_creat), IO("close", g_close),
+    IO("open", g_open_said), IO("open64", g_open_said), IO("__open_2", g_open_2_said), IO("openat", g_openat_said), IO("openat64", g_openat_said),
+    IO("__openat_2", g_openat_2_said), IO("creat", g_creat), IO("creat64", g_creat), IO("close", g_close),
     IO("read", g_read), IO("write", g_write), IO("__read_chk", g_read), IO("__write_chk", g_write),
     IO("pread", g_pread), IO("pread64", g_pread64), IO("pwrite", g_pwrite), IO("pwrite64", g_pwrite64),
     IO("__pread_chk", g_pread_chk), IO("__pread64_chk", g_pread64_chk), IO("__umask_chk", g_umask_chk),
@@ -3685,22 +3750,22 @@ const mg_sym mg_tab_io[] = {
     IO("ftruncate", g_ftruncate), IO("ftruncate64", g_ftruncate64), IO("truncate", g_truncate),
     IO("posix_fadvise", g_posix_fadvise), IO("posix_fadvise64", g_posix_fadvise64), IO("posix_fallocate", g_posix_fallocate), IO("fallocate", g_fallocate), IO("fallocate64", g_fallocate64),
     IO("fsync", g_fsync), IO("fdatasync", g_fsync), IO("sync", g_sync),
-    IO("stat", g_stat_path), IO("stat64", g_stat_path), IO("lstat", g_stat_path), IO("lstat64", g_stat_path),
-    IO("fstat", g_fstat), IO("fstat64", g_fstat), IO("fstatat", g_fstatat), IO("fstatat64", g_fstatat),
-    IO("access", g_access), IO("faccessat", g_faccessat),
+    IO("stat", g_stat_said), IO("stat64", g_stat_said), IO("lstat", g_stat_said), IO("lstat64", g_stat_said),
+    IO("fstat", g_fstat), IO("fstat64", g_fstat), IO("fstatat", g_fstatat_said), IO("fstatat64", g_fstatat_said),
+    IO("access", g_access_said), IO("faccessat", g_faccessat_said),
     IO("statfs", g_statfs_fn), IO("statfs64", g_statfs_fn), IO("fstatfs", g_fstatfs_fn), IO("fstatfs64", g_fstatfs_fn),
     IO("statvfs", g_statvfs_fn), IO("fstatvfs", g_fstatvfs_fn),
     /* (With 32-bit counts on a 32-bit Android, as the plain ones: the two structures are the same there.) */
     IO("statvfs64", g_statvfs_fn), IO("fstatvfs64", g_fstatvfs_fn),
     IO("unlink", g_unlink), IO("unlinkat", g_unlinkat), IO("rmdir", g_rmdir), IO("mkdir", g_mkdir), IO("mkdirat", g_mkdirat),
     IO("remove", g_remove), IO("rename", g_rename), IO("renameat", g_renameat),
-    IO("chdir", g_chdir), IO("getcwd", g_getcwd), IO("realpath", g_realpath), IO("readlink", g_readlink),
+    IO("chdir", g_chdir), IO("getcwd", g_getcwd), IO("realpath", g_realpath), IO("readlink", g_readlink_said),
     IO("chmod", g_chmod), IO("fchmod", g_fchmod), IO("chown", g_chown), IO("lchown", g_chown), IO("utime", g_utime),
     IO("utimes", g_utime), IO("lutimes", g_utime), IO("futimes", g_futimes), IO("link", g_fail_link), IO("symlink", g_fail_link),
-    IO("readlinkat", g_readlinkat), IO("symlinkat", g_symlinkat), IO("utimensat", g_utimensat), IO("futimens", g_futimens), IO("futimesat", g_futimesat),
+    IO("readlinkat", g_readlinkat_said), IO("symlinkat", g_symlinkat), IO("utimensat", g_utimensat), IO("futimens", g_futimens), IO("futimesat", g_futimesat),
     IO("umask", g_umask), IO("flock", g_flock),
     IO("fchown", g_ok_fd),
-    IO("opendir", g_opendir), IO("fdopendir", g_fdopendir), IO("readdir", g_readdir), IO("readdir64", g_readdir),
+    IO("opendir", g_opendir_said), IO("fdopendir", g_fdopendir), IO("readdir", g_readdir), IO("readdir64", g_readdir),
     IO("readdir_r", g_readdir_r), IO("readdir64_r", g_readdir_r), IO("closedir", g_closedir), IO("rewinddir", g_rewinddir),
     IO("telldir", g_telldir), IO("seekdir", g_seekdir), IO("dirfd", g_dirfd), IO("scandir", g_scandir), IO("scandir64", g_scandir),
     IO("alphasort", g_alphasort), IO("alphasort64", g_alphasort), IO("getdents64", g_getdents64),
