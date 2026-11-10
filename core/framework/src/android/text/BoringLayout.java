@@ -1,16 +1,28 @@
 package android.text;
 
-/** One line of plain text: what StaticLayout does with a single line, measured directly. */
+/**
+ * One line of plain text: what StaticLayout does with a single line, measured directly. One line whatever the width, as
+ * Android's (its width places the line, and an ellipsis shortens it to the ellipsized width): the line inside is never
+ * broken. It was a StaticLayout's at the width, broken wherever the shell's line breaking found the text wider than that.
+ * Facebook's TextLayoutBuilder makes a BoringLayout of a single-line text at its own measured width (the ceiling of
+ * Layout.getDesiredWidth), and Messenger's time badge on a story circle ("3 ч.") came out in two lines in its pill
+ * (0.1.0.687).
+ */
 public class BoringLayout extends Layout implements TextUtils.EllipsizeCallback {
     public static class Metrics extends android.graphics.Paint.FontMetricsInt { public int width; public android.graphics.RectF getDrawingBoundingBox() { return new android.graphics.RectF(0, top, width, bottom); } }
     private StaticLayout mInner;
     public BoringLayout(CharSequence source, TextPaint paint, int outerwidth, Alignment align, float mult, float add, Metrics metrics, boolean includePad) {
         super(source, paint, outerwidth, align, mult, add);
-        mInner = new StaticLayout(source, paint, outerwidth, align, mult, add, includePad);
+        mInner = oneLine(StaticLayout.Builder.obtain(source, 0, source.length(), paint, outerwidth).setAlignment(align).setLineSpacing(add, mult).setIncludePad(includePad));
     }
     public BoringLayout(CharSequence source, TextPaint paint, int outerwidth, Alignment align, float mult, float add, Metrics metrics, boolean includePad, TextUtils.TruncateAt ellipsize, int ellipsizedWidth) {
         super(source, paint, outerwidth, align, mult, add);
-        mInner = new StaticLayout(source, 0, source.length(), paint, outerwidth, align, mult, add, includePad, ellipsize, ellipsizedWidth);
+        mInner = oneLine(StaticLayout.Builder.obtain(source, 0, source.length(), paint, outerwidth).setAlignment(align).setLineSpacing(add, mult).setIncludePad(includePad)
+                .setEllipsize(ellipsize).setEllipsizedWidth(ellipsizedWidth).setMaxLines(ellipsize != null ? 1 : Integer.MAX_VALUE));
+    }
+    private static StaticLayout oneLine(StaticLayout.Builder b) {
+        b.oneLine = true;
+        return b.build();
     }
     public static BoringLayout make(CharSequence source, TextPaint paint, int outerwidth, Alignment align, float mult, float add, Metrics metrics, boolean includePad) { return new BoringLayout(source, paint, outerwidth, align, mult, add, metrics, includePad); }
     public static BoringLayout make(CharSequence source, TextPaint paint, int outerwidth, Alignment align, float mult, float add, Metrics metrics, boolean includePad, TextUtils.TruncateAt ellipsize, int ellipsizedWidth) { return new BoringLayout(source, paint, outerwidth, align, mult, add, metrics, includePad, ellipsize, ellipsizedWidth); }

@@ -1974,6 +1974,9 @@ public class Main extends Activity {
         dateFormats();
         roundRectShape();
         visibilityAggregated();
+        visibilityScrap();
+        layerDrawableHidden();
+        boringLayoutOneLine();
         backgroundOffMainThread();
         singleLineSpans();
         ellipsisNarrower();
@@ -6105,6 +6108,154 @@ public class Main extends Activity {
             ((android.view.ViewGroup) text.getParent()).addView(outer, new android.view.ViewGroup.LayoutParams(20, 20));
             detail = "in the window now " + outer.isAttachedToWindow();
             return true;
+        });
+    }
+
+    /** A list that takes its rows out of itself and puts them back as RecyclerView does at each layout (its scrap). */
+    static class ScrapList extends android.widget.FrameLayout {
+        ScrapList(Context c) { super(c); }
+        void out(android.view.View row) { detachViewFromParent(row); }
+        void back(android.view.View row, int index) { attachViewToParent(row, index, row.getLayoutParams()); }
+        void drop(android.view.View row) { removeDetachedView(row, false); }
+    }
+
+    /** A row that writes down whether it is shown (onVisibilityAggregated: + or -) and its detach from the window (x). */
+    static class HeardRow extends android.view.View {
+        final String name;
+        final StringBuilder heard;
+        HeardRow(Context c, String name, StringBuilder heard) { super(c); this.name = name; this.heard = heard; }
+        @Override public void onVisibilityAggregated(boolean isVisible) {
+            super.onVisibilityAggregated(isVisible);
+            heard.append(name).append(isVisible ? '+' : '-').append(' ');
+        }
+        @Override protected void onDetachedFromWindow() {
+            super.onDetachedFromWindow();
+            heard.append(name).append('x').append(' ');
+        }
+    }
+
+    private static String taken(StringBuilder b) {
+        String s = b.toString().trim();
+        b.setLength(0);
+        return "[" + s + "]";
+    }
+
+    /**
+     * A list's rows taken out and put back as RecyclerView does at each layout, heard as Android tells them whether they are
+     * shown: a row out of its list is not shown; each row put back (attachViewToParent) tells the list's rows they are shown;
+     * a row taken out and removed (removeDetachedView) hears its detach and nothing else, so its background stays visible; a
+     * row that was out while its list was shown again hears it once it is back; a row's own visibility changed while it is
+     * out says nothing. Megler told a row out of its list that it was not shown as it left the window, and nothing as it was
+     * put back: Litho's LithoView (Messenger's chat list and story rows), told so, stops mounting. Said once the window has
+     * the list, on its own line.
+     */
+    private void visibilityScrap() {
+        step("visibility-scrap", () -> {
+            final StringBuilder heard = new StringBuilder();
+            final ScrapList list = new ScrapList(this);
+            final HeardRow a = new HeardRow(this, "a", heard), b = new HeardRow(this, "b", heard);
+            final android.graphics.drawable.ColorDrawable aBack = new android.graphics.drawable.ColorDrawable(0xFF00FF00);
+            final android.graphics.drawable.ColorDrawable bBack = new android.graphics.drawable.ColorDrawable(0xFF0000FF);
+            a.setBackground(aBack);
+            b.setBackground(bBack);
+            list.addView(a, new android.widget.FrameLayout.LayoutParams(10, 10));
+            list.addView(b, new android.widget.FrameLayout.LayoutParams(10, 10));
+            list.addOnAttachStateChangeListener(new android.view.View.OnAttachStateChangeListener() {
+                @Override public void onViewAttachedToWindow(android.view.View v) {
+                    list.removeOnAttachStateChangeListener(this);
+                    list.post(() -> {
+                        StringBuilder said = new StringBuilder("attached=").append(taken(heard));
+                        // a layout: both rows out, both put back
+                        list.out(a);
+                        list.out(b);
+                        said.append(" out-shown=").append(a.isShown());
+                        list.back(a, 0);
+                        list.back(b, 1);
+                        said.append(" put-back=").append(taken(heard));
+                        // a row taken out and not put back: removed
+                        list.out(b);
+                        list.drop(b);
+                        said.append(" dropped=").append(taken(heard)).append(" b-background=").append(bBack.isVisible());
+                        // the list hidden, the row taken out, the list shown again, the row put back
+                        list.setVisibility(android.view.View.INVISIBLE);
+                        list.out(a);
+                        list.setVisibility(android.view.View.VISIBLE);
+                        list.back(a, 0);
+                        said.append(" missed=").append(taken(heard)).append(" a-background=").append(aBack.isVisible());
+                        // the row's own visibility changed while it is out
+                        list.out(a);
+                        a.setVisibility(android.view.View.INVISIBLE);
+                        a.setVisibility(android.view.View.VISIBLE);
+                        list.back(a, 0);
+                        said.append(" own-while-out=").append(taken(heard));
+                        ((android.view.ViewGroup) list.getParent()).removeView(list);
+                        said.append(" removed=").append(taken(heard));
+                        Log.i("DataTest", "visibility-scrap " + said);
+                    });
+                }
+                @Override public void onViewDetachedFromWindow(android.view.View v) {}
+            });
+            ((android.view.ViewGroup) text.getParent()).addView(list, new android.view.ViewGroup.LayoutParams(20, 20));
+            detail = "in the window now " + list.isAttachedToWindow();
+            return true;
+        });
+    }
+
+    /**
+     * A LayerDrawable told it is not visible draws its layers all the same, as Android's: its visibility is passed on to its
+     * layers, which are drawn. A ripple with content (a LayerDrawable too) likewise. Megler drew only the layers that were
+     * visible: a LayerDrawable told it was not visible drew nothing, as Messenger's user tiles (its avatars) are.
+     */
+    private void layerDrawableHidden() {
+        step("layer-drawable-hidden", () -> {
+            android.graphics.drawable.ColorDrawable face = new android.graphics.drawable.ColorDrawable(0xFFFF0000);
+            android.graphics.drawable.ColorDrawable badge = new android.graphics.drawable.ColorDrawable(0xFF0000FF);
+            android.graphics.drawable.LayerDrawable tile = new android.graphics.drawable.LayerDrawable(new android.graphics.drawable.Drawable[] { face, badge });
+            tile.setLayerInset(1, 15, 15, 0, 0);
+            tile.setBounds(0, 0, 20, 20);
+            tile.setVisible(false, false);
+            android.graphics.Bitmap bm = android.graphics.Bitmap.createBitmap(20, 20, android.graphics.Bitmap.Config.ARGB_8888);
+            tile.draw(new android.graphics.Canvas(bm));
+            int middle = bm.getPixel(5, 5), corner = bm.getPixel(18, 18);
+            android.graphics.drawable.ColorDrawable content = new android.graphics.drawable.ColorDrawable(0xFF00FF00);
+            android.graphics.drawable.RippleDrawable ripple = new android.graphics.drawable.RippleDrawable(
+                    android.content.res.ColorStateList.valueOf(0x40000000), content, null);
+            ripple.setBounds(0, 0, 20, 20);
+            ripple.setVisible(false, false);
+            android.graphics.Bitmap b2 = android.graphics.Bitmap.createBitmap(20, 20, android.graphics.Bitmap.Config.ARGB_8888);
+            ripple.draw(new android.graphics.Canvas(b2));
+            int inside = b2.getPixel(10, 10);
+            detail = String.format("layers told %b %b, middle=%08x corner=%08x ripple content=%08x", face.isVisible(), badge.isVisible(), middle, corner, inside);
+            Log.i("DataTest", "layer-drawable-hidden " + detail);
+            return !face.isVisible() && !badge.isVisible() && middle == 0xFFFF0000 && corner == 0xFF0000FF && inside == 0xFF00FF00;
+        });
+    }
+
+    /**
+     * A BoringLayout is one line whatever its width, as Android's: a badge's text made at half its width still one line with
+     * all of its text, at its own width (the ceiling of getDesiredWidth, as Facebook's TextLayoutBuilder makes one) one line,
+     * and a name with an ellipsis at half its width one line ellipsized. Megler's was a StaticLayout broken at the width:
+     * Messenger's time badge on a story circle ("3 ч.") came out in two lines.
+     */
+    private void boringLayoutOneLine() {
+        step("boring-layout-one-line", () -> {
+            android.text.TextPaint p = new android.text.TextPaint(android.graphics.Paint.ANTI_ALIAS_FLAG);
+            p.setTextSize(24);
+            String badge = "3 ч.";
+            android.text.BoringLayout.Metrics m = android.text.BoringLayout.isBoring(badge, p);
+            int own = (int) Math.ceil(android.text.Layout.getDesiredWidth(badge, p));
+            android.text.BoringLayout narrow = android.text.BoringLayout.make(badge, p, own / 2, android.text.Layout.Alignment.ALIGN_NORMAL, 1, 0, m, false);
+            android.text.BoringLayout fits = android.text.BoringLayout.make(badge, p, own, android.text.Layout.Alignment.ALIGN_CENTER, 1, 0, m, false);
+            String name = "Annabelle Smith";
+            android.text.BoringLayout.Metrics m2 = android.text.BoringLayout.isBoring(name, p);
+            int half = (int) Math.ceil(android.text.Layout.getDesiredWidth(name, p)) / 2;
+            android.text.BoringLayout ellipsized = android.text.BoringLayout.make(name, p, half, android.text.Layout.Alignment.ALIGN_NORMAL, 1, 0, m2, false,
+                    android.text.TextUtils.TruncateAt.END, half);
+            detail = String.format("narrow lines %d to %d, own width lines %d, ellipsized lines %d from %d for %d", narrow.getLineCount(), narrow.getLineEnd(0),
+                    fits.getLineCount(), ellipsized.getLineCount(), ellipsized.getEllipsisStart(0), ellipsized.getEllipsisCount(0));
+            Log.i("DataTest", "boring-layout-one-line " + detail);
+            return m != null && m2 != null && narrow.getLineCount() == 1 && narrow.getLineEnd(0) == badge.length() && fits.getLineCount() == 1
+                    && ellipsized.getLineCount() == 1 && ellipsized.getEllipsisStart(0) > 0 && ellipsized.getEllipsisCount(0) > 0;
         });
     }
 

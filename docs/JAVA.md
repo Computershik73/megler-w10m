@@ -6234,6 +6234,21 @@ on a looper thread of its own and takes it back with `next()`.
   and no layers the drawable took itself for a borderless one and drew its
   highlight as a disc of half its longer side: for a pressed row of a list, a
   grey disc as wide as the screen over the rows above and below.
+- `android/graphics/drawable/LayerDrawable.java`, one statement in `draw`:
+  every layer is drawn, visible or not, as Android's. A drawable's
+  visibility (`setVisible`, which a LayerDrawable passes on to its layers,
+  and which a view sets on its background as it hears whether it is shown)
+  is a hint to it, and only a drawable that hides itself (Fresco's
+  `RootDrawable`) draws nothing while it is not visible. The framework's own
+  file drew only the layers that were visible, so a LayerDrawable told it was
+  not visible drew nothing at all. Messenger's avatars are such drawables
+  (`MigProfileImage` draws a user's picture with `UserTileDrawableComponent`:
+  a LayerDrawable of the picture's round `ShapeDrawable`, a badge and the
+  initials, in Litho's `MatrixDrawable`, whose `mount` does not give the new
+  drawable its own visibility), and so is a `RippleDrawable` with content,
+  the background of a view told it is not shown. The data app's step
+  "layer-drawable-hidden" draws a LayerDrawable and a ripple told they are
+  not visible.
 - `android/graphics/drawable/InsetDrawable.java` and `megler/ResInflate.java`:
   an inset may be a fraction of the drawable's bounds as well as pixels, as
   Android 8 and later have it (`InsetDrawable.InsetValue`): an `<inset>`'s
@@ -6554,6 +6569,28 @@ on a looper thread of its own and takes it back with `next()`.
   over a column taller than it with two such cards just below its bottom
   edge, one given its plain colour so: both are drawn once the app scrolls to
   them, with the frame walk and with the flag `no-node-damage`.
+
+  `isShown` is Android's too: a view without a parent is shown only as the
+  root of its window. RecyclerView takes its rows out of itself for each
+  layout (`detachViewFromParent`: still attached, no parent), puts back
+  those it keeps (`attachViewToParent`) and removes the others
+  (`removeDetachedView`). Megler took a row out of its list for a shown one,
+  so a row removed so heard that it was not shown as it left the window,
+  where Android tells it nothing, and a row's own visibility changed while
+  it was out was told to it; and putting a row back told nothing, where
+  Android's `attachViewToParent` (7 and later) tells the list and its
+  visible rows whether they are shown -- a row that was out when its list
+  was shown again hears it then. Litho's `BaseMountingView`, with Facebook's
+  `enableCheckVisibilityAggregated`, takes `onVisibilityAggregated(false)`
+  for `setVisibilityHint(false)`: it mounts nothing more until it hears true,
+  and at its detach it keeps what it has mounted (only unbinding it) where
+  it unmounts it when it has not been told so. Messenger's chat list and its
+  stories are such views: once 0.1.0.685 made views hear
+  `onVisibilityAggregated`, no chat row showed its picture and story circles
+  went and came back (Messenger 586 on 0.1.0.687, the Lumia 650; 0.1.0.683
+  showed every row's but the first). The data app's step
+  "visibility-scrap" takes a list's rows out and puts them back as
+  RecyclerView does and checks what each row hears.
 - `megler/KeyStoreProvider.java`, one method, and Megler's circumstance
   rather than a fault of the framework's own: `PairGen.generateKeyPair` takes another
   provider's key pair generator from its service, because
@@ -6731,6 +6768,20 @@ on a looper thread of its own and takes it back with `next()`.
   cut at the view's edge with no ellipsis (0.1.0.684). The data app's step
   "ellipsis-narrower" measures such a title at 500 pixels and then at 200:
   the ellipsis at 200.
+
+- `android/text/BoringLayout.java` and `android/text/StaticLayout.java`: a
+  BoringLayout is one line whatever its width, as Android's -- the width
+  places the line, and with an ellipsis the line is shortened to the
+  ellipsized width. It was a StaticLayout made at the width, broken wherever
+  the shell's line breaking found the text wider than that. Facebook's
+  `TextLayoutBuilder` makes a BoringLayout of a single-line text at its own
+  measured width (the ceiling of `Layout.getDesiredWidth`, or less where the
+  text may take less), and Messenger's time badge on a story circle ("3 ч.")
+  came out in two lines in its pill (0.1.0.687). The StaticLayout inside is
+  told not to break its lines (`Builder.oneLine`, package-private). The data
+  app's step "boring-layout-one-line" makes a badge's BoringLayout at half
+  its width and at its own, and a name's with an ellipsis at half its width:
+  one line each, all of the badge's text on it.
 
 - `android/os/ParcelFileDescriptor.java`, what `dup` and the descriptors it
   is given own, which is now Android's: `dup(FileDescriptor)`, `dup()` and

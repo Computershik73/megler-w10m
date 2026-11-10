@@ -3291,6 +3291,13 @@ static int run_data(void)
                                          /* And whether a view is shown, heard by its drawables (onVisibilityAggregated): said once the
                                             window is attached, checked below. */
                                          "visibility-aggregated",
+                                         /* And a list's rows taken out and put back as RecyclerView's scrap, heard as Android tells them
+                                            whether they are shown: said once the window has the list, checked below. */
+                                         "visibility-scrap",
+                                         /* And a LayerDrawable told it is not visible: its layers drawn all the same, as Android's. */
+                                         "layer-drawable-hidden",
+                                         /* And a BoringLayout one line whatever its width, as Android's (a badge's text in two lines). */
+                                         "boring-layout-one-line",
                                          /* And a view made on a worker thread with a state list for its background, its invalidateDrawable
                                             asserting the main thread, as Facebook builds its tab bar's tabs: the view the callback last. */
                                          "background-callback-last",
@@ -3527,6 +3534,11 @@ static int run_data(void)
     /* The step "visibility-aggregated": an ImageView's picture and a view's background hidden with their parent made GONE and
        taken out of the window, shown with it again, as Android's onVisibilityAggregated tells them. */
     CHECK(wait_line("I/DataTest: visibility-aggregated attached true true, gone false false, visible true true, removed false false", 0, 30) >= 0);
+    /* The step "visibility-scrap", as Android's: a row out of its list not shown; each row put back tells the list's rows they
+       are shown; a row taken out and removed hears its detach alone and keeps its background visible; a row out while its list
+       was shown again hears it once back; a row's own visibility changed while it is out says nothing. */
+    CHECK(wait_line("I/DataTest: visibility-scrap attached=[a+ b+] out-shown=false put-back=[a+ a+ b+] dropped=[bx] b-background=true "
+                    "missed=[a- a+] a-background=true own-while-out=[a+] removed=[a- ax]", 0, 30) >= 0);
     /* The view animation of the step "animation-listener": its listener told through the view's handler, after the frames that
        started and ended it, not inside its parent's dispatchDraw (Animation.fireStart; Telegram's settings ended the app). */
     CHECK(wait_line("I/DataTest: animation-listener heard=start end", 0, 30) >= 0);
