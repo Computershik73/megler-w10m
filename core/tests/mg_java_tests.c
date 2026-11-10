@@ -553,6 +553,8 @@ static bool g_microg_app;
 static bool g_camera_app;
 /* The Bluetooth app: it alone has a radio (the stand-in), so that the others still see a phone without one. */
 static bool g_bluetooth_app;
+/* natives' second run: the flag native-entry-at-start, its start asking its library for NativeActivity's entry (run_natives). */
+static bool g_entry_at_start;
 static volatile i32 g_exited;
 static int g_status;
 static char g_reason[1600];
@@ -1012,9 +1014,13 @@ static bool start(const char *apk, const char *android_root)
         ((int (*)(const char *, const char *, int))mg_bionic_find("setenv"))("MG_MICROG_POTOKEN_VM_TEST", "1", 1);
     say("a Java app through megler_run (%s on the Android root %s)", apk, android_root);
     {
-        /* What the shell reads before it starts an app: this is a Java app it can run, and how it asks to be held. */
+        /*
+         * What the shell reads before it starts an app: this is a Java app it can run, and how it asks to be held. (With the
+         * flag native-entry-at-start the reading does not look into natives' library, and the app is a NativeActivity until
+         * its start asks the library: run_natives.)
+         */
         char *report = g_splits_dir ? megler_apk_report_splits(apk, g_splits_dir) : megler_apk_report(apk);
-        CHECK(report && strstr(report, "\"engine\":\"java\"") && strstr(report, "\"runnable\":true"));
+        CHECK(report && strstr(report, g_entry_at_start ? "\"engine\":\"native-activity\"" : "\"engine\":\"java\"") && strstr(report, "\"runnable\":true"));
         /* The app whose launcher entries are aliases, the first one disabled: what is started is what the enabled one stands for. */
         if (g_crash_app) CHECK(report && strstr(report, "\"activity\":\"megler.test.crash.First\""));
         if (!g_any_app) CHECK(report && strstr(report, g_portrait ? "\"orientation\":\"portrait\"" : "\"orientation\":\"unspecified\""));
@@ -3778,7 +3784,8 @@ int mg_tests_java_run(const char *which, const char *apk, const char *android_ro
         mg_path_mkdirs(flags);
         f = fopen(flag, "w");
         if (f) fclose(f);
-        if (GL.refuse && (f = fopen(at_start, "w")) != NULL) fclose(f);
+        g_entry_at_start = GL.refuse;
+        if (g_entry_at_start && (f = fopen(at_start, "w")) != NULL) fclose(f);
         free(flags);
         free(flag);
         free(at_start);
