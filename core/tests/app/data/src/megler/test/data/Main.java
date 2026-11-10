@@ -1613,6 +1613,48 @@ public class Main extends Activity {
             alarms.setRepeating(android.app.AlarmManager.ELAPSED_REALTIME, now + 300, 400, repeated);
             return true;
         });
+        // Alarms of a listener, as Android keeps them and Google Play services sets theirs (GmsAlarm, with an Executor and a
+        // WorkSource: Android 12's and the system's forms, which did nothing): told on the Handler given or through the Executor
+        // given, one for each listener -- set again it moves, cancelled it never goes off -- and a repeating one again each
+        // interval until it is cancelled. Everything is heard on a thread of the step's own, which decides once the repeating
+        // one has gone off three times, and a while after.
+        step("alarm-listeners", () -> {
+            final android.app.AlarmManager alarms = (android.app.AlarmManager) getSystemService(ALARM_SERVICE);
+            final android.os.HandlerThread thread = new android.os.HandlerThread("alarm-listeners");
+            thread.start();
+            final android.os.Handler on = new android.os.Handler(thread.getLooper());
+            final java.util.concurrent.Executor through = on::post;
+            final int[] heard = new int[5];
+            final boolean[] onIt = { true };
+            final Class<?> listenerClass = android.app.AlarmManager.OnAlarmListener.class;
+            long now = android.os.SystemClock.elapsedRealtime();
+            android.app.AlarmManager.OnAlarmListener moved = () -> { heard[0]++; onIt[0] &= android.os.Looper.myLooper() == on.getLooper(); };
+            alarms.set(android.app.AlarmManager.ELAPSED_REALTIME, now + 100, "megler-moved", moved, on);
+            alarms.set(android.app.AlarmManager.ELAPSED_REALTIME, now + 300, "megler-moved", moved, on);
+            android.app.AlarmManager.OnAlarmListener off = () -> heard[1]++;
+            alarms.set(android.app.AlarmManager.ELAPSED_REALTIME, now + 100, "megler-off", off, on);
+            alarms.cancel(off);
+            android.app.AlarmManager.OnAlarmListener exact = () -> { heard[2]++; onIt[0] &= android.os.Looper.myLooper() == on.getLooper(); };
+            android.app.AlarmManager.class.getMethod("setExact", int.class, long.class, String.class, java.util.concurrent.Executor.class, android.os.WorkSource.class, listenerClass)
+                .invoke(alarms, android.app.AlarmManager.ELAPSED_REALTIME_WAKEUP, now + 200, "megler-exact", through, new android.os.WorkSource(), exact);
+            android.app.AlarmManager.OnAlarmListener window = () -> heard[3]++;
+            android.app.AlarmManager.class.getMethod("setWindow", int.class, long.class, long.class, String.class, java.util.concurrent.Executor.class, android.os.WorkSource.class,
+                listenerClass).invoke(alarms, android.app.AlarmManager.ELAPSED_REALTIME, now + 200, 1000L, "megler-window", through, new android.os.WorkSource(), window);
+            final android.app.AlarmManager.OnAlarmListener[] repeating = new android.app.AlarmManager.OnAlarmListener[1];
+            repeating[0] = () -> {
+                if (++heard[4] != 3) return;
+                alarms.cancel(repeating[0]);
+                on.postDelayed(() -> {
+                    boolean ok = heard[0] == 1 && heard[1] == 0 && heard[2] == 1 && heard[3] == 1 && heard[4] == 3 && onIt[0];
+                    Log.i("DataTest", "alarm-listeners-heard " + (ok ? "ok" : "FAILED") + " moved=" + heard[0] + " cancelled=" + heard[1] + " exact=" + heard[2]
+                          + " window=" + heard[3] + " repeated=" + heard[4] + " on-its-thread=" + onIt[0]);
+                    thread.quitSafely();
+                }, 1500);
+            };
+            android.app.AlarmManager.class.getMethod("set", int.class, long.class, long.class, long.class, listenerClass, android.os.Handler.class, android.os.WorkSource.class)
+                .invoke(alarms, android.app.AlarmManager.ELAPSED_REALTIME, now + 400, 0L, 300L, repeating[0], on, new android.os.WorkSource());
+            return true;
+        });
         // A Messenger reaches a binder of another's that passes transactions on to a Messenger's, as Google Play services' task
         // services hand theirs to its scheduler, and the message received says the sender's uid (Forward says so).
         step("messenger-forwarded", () -> {
