@@ -478,11 +478,12 @@ elif [ "$MODE" = win ]; then
   ZALL=()
   for s in "${ZSRCS[@]}"; do ZALL+=("$(w "$ROOT/$s")"); done
   # (MG_GFX_WINDOWS, MG_STORAGE_WINDOWS, MG_CODEC_WINDOWS, MG_CAMERA_WINDOWS, MG_SENSORS_WINDOWS, MG_BLUETOOTH_WINDOWS,
-  # MG_WIFI_WINDOWS, MG_PORTAL_WINDOWS, MG_WINDOW_WINDOWS: this build has the shell's drawing, its storage host, its
-  # decoders, its cameras, its sensors, its Bluetooth, its Wi-Fi, the Xbox build's Device Portal client and the shell's
-  # window in it; mg_tests_main.c's --gfx-windows, --storage-windows, --codec-windows, --camera-windows, --sensors-windows,
-  # --bluetooth-windows, --wifi-windows, --portal-windows and --window-windows modes.)
-  "$VC/bin/Hostx64/x64/cl.exe" /nologo /c "$OPT" /MT /W3 /std:c11 /utf-8 "$MP" /D_CRT_SECURE_NO_WARNINGS /D_CRT_NONSTDC_NO_WARNINGS /DMG_GFX_WINDOWS /DMG_STORAGE_WINDOWS /DMG_CODEC_WINDOWS /DMG_CAMERA_WINDOWS /DMG_SENSORS_WINDOWS /DMG_BLUETOOTH_WINDOWS /DMG_WIFI_WINDOWS /DMG_PORTAL_WINDOWS /DMG_WINDOW_WINDOWS /DMG_DL_TESTS "${SQLITE_CL[@]}" "${WEBP_CL[@]}" \
+  # MG_WIFI_WINDOWS, MG_PORTAL_WINDOWS, MG_WINDOW_WINDOWS, MG_ANGLE_WINDOWS: this build has the shell's drawing, its storage
+  # host, its decoders, its cameras, its sensors, its Bluetooth, its Wi-Fi, the Xbox build's Device Portal client and the
+  # shell's window in it, and loads ANGLE itself; mg_tests_main.c's --gfx-windows, --storage-windows, --codec-windows,
+  # --camera-windows, --sensors-windows, --bluetooth-windows, --wifi-windows, --portal-windows, --window-windows and
+  # --angle-windows modes.)
+  "$VC/bin/Hostx64/x64/cl.exe" /nologo /c "$OPT" /MT /W3 /std:c11 /utf-8 "$MP" /D_CRT_SECURE_NO_WARNINGS /D_CRT_NONSTDC_NO_WARNINGS /DMG_GFX_WINDOWS /DMG_STORAGE_WINDOWS /DMG_CODEC_WINDOWS /DMG_CAMERA_WINDOWS /DMG_SENSORS_WINDOWS /DMG_BLUETOOTH_WINDOWS /DMG_WIFI_WINDOWS /DMG_PORTAL_WINDOWS /DMG_WINDOW_WINDOWS /DMG_ANGLE_WINDOWS /DMG_DL_TESTS "${SQLITE_CL[@]}" "${WEBP_CL[@]}" \
     "/I$(w "$ROOT/core/third_party/zlib")" "/Fo$(w "$OUT/obj")\\" "${ALL[@]}" | grep -v -E '^[A-Za-z0-9_]+\.c$' || true
   "$VC/bin/Hostx64/x64/cl.exe" /nologo /c /O1 /MT /w "$MP" /D_CRT_SECURE_NO_WARNINGS /D_CRT_NONSTDC_NO_WARNINGS \
     "/Fo$(w "$OUT/zobj")\\" "${ZALL[@]}" | grep -v -E '^[A-Za-z0-9_]+\.c$' || true
@@ -625,6 +626,37 @@ elif [ "$MODE" = win ]; then
     # first said in the log with what its Present said and the player told of it at once, which its busy overlay goes by;
     # and a picture whose Present is refused (the flag fail-present).
     "$OUT/mg_tests.exe" --window-windows || STATUS=1
+    # OpenGL ES 1 on ANGLE itself (core/tests/mg_angle_windows.c): Megler's own ANGLE for this PC (python tools/build-angle.py
+    # --arch x64, build/angle/x64/dist), loaded and driven by the core's EGL as the package's is, at this PC's own feature level
+    # and at 9_3 -- a Lumia 650's, where ANGLE draws OpenGL ES 1 with shaders of OpenGL ES 2's language
+    # (angle/0004-gles1-feature-level-9.patch) -- Google Maps' legacy renderer's ways of drawing read back and checked, each
+    # picture a BMP in build/tests-win/scratch-angle. Without that ANGLE, or with one built with other patches than angle/ has
+    # now (its megler-patches.txt), it is said and left out.
+    ANGLE_X64="$ROOT/build/angle/x64/dist"
+    if [ ! -f "$ANGLE_X64/libGLESv2.dll" ]; then
+      echo "(no ANGLE of Megler's own for this PC in build/angle/x64/dist -- python tools/build-angle.py --arch x64 makes it: OpenGL ES 1 on ANGLE was not run)"
+    elif ! python -I - "$(w "$ROOT/angle")" "$(w "$ANGLE_X64/megler-patches.txt")" <<'PY'
+import hashlib, os, sys
+patches, record = sys.argv[1], sys.argv[2]
+want = set()
+for name in os.listdir(patches):
+    if name.endswith(".patch"):
+        with open(os.path.join(patches, name), "rb") as f:
+            want.add("%s %s" % (hashlib.sha256(f.read()).hexdigest(), name))
+try:
+    with open(record, encoding="utf-8") as f:
+        have = set(line.strip() for line in f if line.strip())
+except OSError:
+    have = set()
+sys.exit(0 if want == have else 1)
+PY
+    then
+      echo "(build/angle/x64/dist was not built with angle/ as it is now -- python tools/build-angle.py --arch x64 makes it again: OpenGL ES 1 on ANGLE was not run)"
+    else
+      rm -rf "$OUT/scratch-angle"
+      "$OUT/mg_tests.exe" --angle-windows "$(w "$ANGLE_X64")" "$(w "$OUT/scratch-angle")" || STATUS=1
+      "$OUT/mg_tests.exe" --angle-windows "$(w "$ANGLE_X64")" "$(w "$OUT/scratch-angle")" 9_3 || STATUS=1
+    fi
     # The shell's storage host: the storage's tests once more, with Windows.Storage's own objects handing the handles over
     # instead of the stand-in, on folders under a scratch folder of its own.
     rm -rf "$OUT/scratch-storage"
