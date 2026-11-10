@@ -3059,6 +3059,15 @@ static void test_libc_odds(void)
             }
             CHECK(odd == 0);
             {
+                /* memalign's big block at 64 whatever smaller alignment it asks for, as malloc's of its size is. */
+                u8 *a16 = (u8 *)gmemalign(16, 300), *a32 = (u8 *)gmemalign(32, 4000), *a8 = (u8 *)gmemalign(8, 256);
+                CHECK(a16 && a32 && a8 && ((mg_addr)a16 & 63) == 0 && ((mg_addr)a32 & 63) == 0 && ((mg_addr)a8 & 63) == 0);
+                CHECK(a16 && gusable(a16) == MG_ALIGN_UP(300, (size_t)align) && a32 && gusable(a32) == 4000);
+                gfree(a16);
+                gfree(a32);
+                gfree(a8);
+            }
+            {
                 /* A big block (256 bytes or more) at 64, as jemalloc's runs and pages leave it -- Geekbench 5's zlib loads
                    its 64 KB hash table with an aligned NEON load -- through calloc, and through realloc's every turn: small
                    to big, bigger, smaller, small again, its contents kept each time. */

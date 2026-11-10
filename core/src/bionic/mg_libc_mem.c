@@ -649,9 +649,14 @@ void mg_g_free(void *p)
     free((u8 *)p - HDR(p)->offset);
 }
 
+/*
+ * memalign's block: at `align`, and at least where malloc's of its size is -- a big block at BIG_ALIGN. memalign(16, 300)
+ * on 32-bit ARM was at 16 alone, where malloc(300) is at 64 and jemalloc's run of 320-byte blocks leaves one at 64 too.
+ */
 static void *g_memalign(size_t align, size_t n)
 {
     if (align <= G_ALIGN) return mg_g_malloc(n);
+    if (align < block_align(n)) align = block_align(n);
     return aligned_block(align, n, false, (mg_addr)CALLER());
 }
 
