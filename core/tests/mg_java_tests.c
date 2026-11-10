@@ -3190,6 +3190,14 @@ static int run_data(void)
                                          /* And the network from Java, on loopback: names, an HTTP server of the app's own and HttpURLConnection, UDP, a server
                                             socket closed under the thread waiting in accept, a java.nio selector, the interfaces, ConnectivityManager. */
                                          "net-localhost", "net-http", "net-udp", "net-close", "net-nio", "net-interfaces", "net-connectivity",
+                                         /* And Android 14's HttpEngine (Megler's own, megler.http), as the Google Play Store and gRPC's
+                                            Cronet transport use it: the builder and its options; UrlRequests through redirects, reads,
+                                            uploads, failures and a cancel, on an HTTP/1.1 server of the app's own; its URLConnections;
+                                            and, where conscrypt's TLS is (qemu), BidirectionalStreams over HTTP/2 to a server of the
+                                            app's own: echoes with trailers, flow control both ways, cancel and resets, and RFC 7541's
+                                            header compression examples. */
+                                         "http-engine", "http-engine-request", "http-engine-upload", "http-engine-failures", "http-engine-connection",
+                                         "http-engine-stream", "http-engine-stream-flow", "http-engine-stream-cancel", "http-engine-hpack",
                                          /* And RenderNodes and Pictures as display lists, as Compose uses them: nodes recorded once and drawn as their
                                             bitmaps were, three of a screen's size among them; the kids' properties changed and the parent not
                                             recorded again; nodes nested and moved; one discarded and recorded again; what a list keeps (a paint, a
@@ -3225,6 +3233,13 @@ static int run_data(void)
             int said = find_line("W/Megler: TLS: 127.0.0.1's certificates refused (", 0);
             CHECK(said >= 0 && strstr(line_at(said), ", the last issued by ") && strstr(line_at(said), "Trust anchor for certification path not found"));
             CHECK(count_lines("W/Megler: TLS: 127.0.0.1's certificates refused (") == 1);
+        }
+        /* Android 14's HttpEngine, made by the app (the steps http-engine*): said once a run; with TLS, the HTTP/2 connections
+           its streams made, each with its protocol, cipher suite and time (the same lines tell a phone's log the Play Store's). */
+        CHECK(count_lines("I/Megler: HttpEngine: the app made one: Megler's own") == 1);
+        if (with) {
+            int h2 = find_line("I/Megler: HttpEngine: HTTP/2 to localhost:", 0);
+            CHECK(h2 >= 0 && strstr(line_at(h2), " (TLSv1.") && strstr(line_at(h2), " ms"));
         }
     }
     /* The app's network security configuration, said in the log once as it was read (android.security.net.config.XmlConfigSource):

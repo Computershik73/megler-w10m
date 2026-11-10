@@ -7309,6 +7309,157 @@ window, repeating), "wake-lock" (counted, uncounted, timed out) and
 "cell-info-update" (no cells, told; the best-matching network callback
 told) check the rest.
 
+### Android's HTTP engine: `android.net.http.HttpEngine`
+
+Android 14 gives apps an HTTP stack of the platform's, `HttpEngine`: Cronet,
+Chromium's network stack, in the Tethering module, over a native library of
+its own. Megler does not carry that library, and the framework had the API as
+generated signatures: `HttpEngine.Builder.build()` answered null.
+
+**Who takes it.** Cronet's own provider list (`CronetEngine.Builder`, which an
+app carrying Cronet's API makes) offers HttpEngine only where
+`SdkExtensions.getExtensionVersion(31)` is 7 or more; Megler says 0, so Cronet
+never picks it there, and an app's own Cronet, or Google Play services', is
+taken. The Google Play Store (53.7.23, `sxi.g` in the jadx of its classes3)
+asks for HttpEngine itself on Android 14 when a server flag of its,
+`NetworkOptimizationsAutogen` / `enable_bypass_sdk_extensions_check_for_platform_cronet_on_u`,
+is on for the phone: "Device is eligible for platform Cronet and will attempt
+to use it." It then builds the engine with no check of its own
+(`HttpEngineNativeProvider.createBuilder`), and a null went into Cronet's
+wrapper as its engine: every request of its Volley stack (`openConnection`)
+and every gRPC call (`newBidirectionalStreamBuilder`, its channel to
+play-fe.googleapis.com) ended on that null -- "Uncaught exception in the
+SynchronizationContext. Panic!", no search suggestions as the user typed, and
+Google Play services' modules (Maps, the OCR) never downloaded, since Google
+Play services asks the Play Store's ModuleDelivery for them (a user's
+Lumia 950, 0.1.0.681: "Error while loading ModuleDelivery: ... HttpEngine.openConnection
+... on a null object", "Zapp module request failed: 1,-5007"). Where the flag
+is off -- the Lumia 650's and the Elite x3's logs: "Device is ineligible for
+platform Cronet and will use embedded Cronet instead" -- the Play Store uses
+the Cronet it carries ("source: Statically Linked") and all of that works.
+The Play Store has a fallback, OkHttp and gRPC's OkHttp transport, but only
+for an engine whose build throws (`aeus.e` catches it and uses none); a null
+it takes as an engine.
+
+**Megler's engine** (`megler.http`, in the overlay; `HttpEngine.java` there
+hands the Builder's calls to `megler.http.EngineBuilder`, as Android hands them
+to Cronet's builder through the hidden `IHttpEngineBuilder`) is Java over what
+Android 9's libcore has, and a client of HTTP/2 of its own:
+
+- `UrlRequest` (`Request.java`): Android's own HTTP client, libcore's
+  `HttpURLConnection` (okhttp 2.7, HTTP/1.1), on the engine's threads, its
+  redirects off: Cronet's states and callbacks -- `onRedirectReceived` and
+  `followRedirect` (303, and 301 or 302 after a POST, go on as GET without the
+  body; 307 and 308 rewind the upload), `onResponseStarted`, a `read` into the
+  app's buffer at a time and `onReadCompleted`, `onSucceeded` at the body's end,
+  `onCanceled` after `cancel()`, `getStatus`. The upload is the app's
+  `UploadDataProvider`, read on its executor, of a fixed length or chunked, and
+  closed when the request ends; one without a Content-Type is refused at
+  `start()`, as Cronet refuses it. The client's own `X-Android-*` headers are
+  not the response's (one of them gives the protocol, "http/1.1"); an app's
+  Accept-Encoding is dropped, as Cronet drops it (the client asks for gzip and
+  decodes it). https gets the platform's TLS and Android's host name check,
+  whatever defaults the app set for `HttpsURLConnection`.
+- `BidirectionalStream` (`Stream.java`): what gRPC's Cronet transport makes, a
+  request's body and its response flowing both ways at once. HTTP/2 over TLS
+  alone (an http URL is refused, as Cronet's are): `H2.java`, `Hpack.java` and
+  `Connections.java`. A connection is TLS by the platform's own context
+  (conscrypt; the app's network security configuration and Android's
+  authorities, as `HttpsURLConnection` trusts), the host's name checked by
+  Android's `OkHostnameVerifier`, ALPN offering "h2" alone (a server that does
+  not take it fails the stream, "net::ERR_ALPN_NEGOTIATION_FAILED"); one or
+  more for each host and port, shared by the engine's streams, the first
+  thread that needs one making it while the others wait for it. This side's
+  settings: no push, a megabyte that a stream may receive ahead of the app's
+  reads and 16 MB for the connection, given back by WINDOW_UPDATE as the app
+  reads, half a window at a time; what is sent waits for the server's windows.
+  The response's first HEADERS are its headers (1xx skipped), a later one with
+  END_STREAM its trailers, kept apart and handed to
+  `onResponseTrailersReceived` before the body's end; header compression is
+  RFC 7541's both ways (the encoder writes plain literals, never indexing the
+  sensitive ones; the decoder has the dynamic table and Huffman's code, from
+  the code lengths of Android 9's okhttp). A connection with no stream for
+  five minutes is let go; one the server has said nothing on for 30 s is
+  asked for a PING when it is taken again and closed if no answer comes in
+  10 s (a phone that was suspended, a network that changed). GOAWAY: what the
+  server did not take fails as a closed connection's, which may be tried again.
+  Android 9's own HTTP/2 (okhttp 2.7's `FramedConnection`) is not used: its
+  stream merges a response's trailers into the headers it has already handed
+  over, so where a response's frames arrive together -- a unary gRPC call's,
+  often -- gRPC's status would be read as a header; and its settings' methods
+  are its package's alone.
+- `openConnection` and `createUrlStreamHandlerFactory`: libcore's
+  `HttpURLConnection`, made through libcore's own handlers
+  (`com.android.okhttp.HttpHandler`, `HttpsHandler`), so that the factory,
+  installed as the process's, does not come back to itself.
+- Failures as Android's engine says them: a `NetworkException` with Android's
+  error code and Chromium's name of the error in the message ("Exception in
+  BidirectionalStream: net::ERR_CONNECTION_REFUSED (...)"), the Java exception
+  its cause; a `CallbackException` for what the app's callback or upload
+  threw. `HttpException` keeps its message and cause (the stub dropped both),
+  and `QuicOptions` the hosts and values it is given (the stub's
+  `addAllowedQuicHost`, which the Play Store's Cronet wrapper calls, was a
+  signature alone).
+- The builder checks what Cronet checks (the storage folder there, a disk
+  cache with one, 32-byte pins, QUIC hints' hosts); the options of QUIC, the
+  cache, Brotli, DNS and connection migration are kept and change nothing,
+  and public key pins are kept and not enforced, which the log says once
+  ("HttpEngine: the app pins public keys (...): kept, not enforced here").
+  `getVersionString()` is "1.0.0.0": Cronet's list ranks an HttpEngine below
+  the version it prefers (133) under the Cronet an app carries, so where both
+  are offered, Chromium's stack is taken. The default user agent is Android
+  14's form, "AndroidHttpClient (Linux; U; Android 14; ...; Cronet/1.0.0.0)".
+  `shutdown()` with requests running is refused, and nothing starts after it.
+
+The log says it: "HttpEngine: the app made one: Megler's own ...", once a
+process; each HTTP/2 connection made, with TLS's protocol and suite and the
+time it took, the first sixteen ("HttpEngine: HTTP/2 to <host>:<port>
+(<protocol>, <suite>) in <n> ms"); and the network failures of requests and
+streams still running (not those the app ended), the host alone, the first
+twenty ("HttpEngine: a stream to <host> failed: ...").
+
+**Tested** in the data app (`HttpEngineSteps.java`; `mg_java_tests.c` checks
+the steps and the lines): "http-engine", the builder as the Play Store drives
+it, the version and user agent, what is refused, `shutdown`; "http-engine-request",
+a GET redirected (302, a relative Location) and followed, read four bytes at a
+time on the app's executor, the URL chain, status, protocol and a header of
+two values, no X-Android-* headers, the user agent and the app's header sent,
+a 404 and its body; "http-engine-upload", an upload of a fixed length given
+five bytes a read and a chunked one, each provider closed, one without a
+Content-Type refused, a 303 after a POST followed as a GET without the body;
+"http-engine-failures", a refused connection (ERROR_CONNECTION_REFUSED), an
+exception of the app's callback and of its upload (CallbackException, theirs
+the cause), a cancel in the middle of a body; "http-engine-connection", the
+engine's URLConnection and a URL of its handler factory's. These run on both
+hosts, against an HTTP/1.1 server of the app's own on 127.0.0.1. Where
+conscrypt's TLS is (qemu), against an HTTP/2 server of the app's own over TLS
+(localhost, the test authority the app's configuration trusts, ALPN h2), whose
+frames are written by hand and which shares no code with the engine:
+"http-engine-stream", two echoes at once on one connection, each writing twice
+and ending as gRPC does, the headers before the body, the trailers
+(grpc-status 0) before its end, and a GET, whose HEADERS end the request; the
+server saw the engine's settings, pseudo-headers and headers;
+"http-engine-stream-flow", 200 000 bytes up to a server whose streams take
+16 KB at a time and 1.25 MB down, past the megabyte a stream may receive ahead
+(the server waits for the engine's WINDOW_UPDATE), CRC32s equal, no window
+ever overrun; "http-engine-stream-cancel", a stream canceled (RST_STREAM
+CANCEL at the server), one the server resets (NetworkException, INTERNAL_ERROR),
+an http URL refused, an exception of `onStreamReady` (CallbackException, the
+stream reset); "http-engine-hpack", RFC 7541's C.6.1 to C.6.3 as three
+responses on one connection after a size update of the table to 256 bytes,
+the second padded and the third cut by a CONTINUATION: each status and header
+as the RFC has them. **Not tried on a phone** yet: the Play Store's log there
+says "HttpEngine: the app made one" and its HTTP/2 connections when the flag
+is on, and search suggestions answer.
+
+Not there: QUIC; an HTTP cache (`wasCached` is false); Brotli; public key
+pinning; HTTP/2 for `UrlRequest` (it is HTTP/1.1, as Android's
+`HttpURLConnection` is); `bindToNetwork` (there is one network); request
+priorities. Cookies follow libcore's: a `CookieHandler` the app installed is
+used by `UrlRequest` too, which Cronet's own store would not be; cleartext is
+allowed where libcore allows it (Megler's libcore does not consult the app's
+network security configuration for it).
+
 ### Sound from Java
 
 `megler.Audio`'s natives (`drivers/mg_java_audio.c`) are what the framework's
