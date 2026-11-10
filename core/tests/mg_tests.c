@@ -1738,6 +1738,169 @@ static void test_mmap_write_back_unlocked(const char *scratch)
 }
 
 /*
+ * The mappings' lock is never held waiting for the descriptors' lock (bionic/mg_libc_io.c, io_lock_wanted). A thread that
+ * holds the descriptors' lock and meets a page the app gave back with madvise -- a pipe's bytes copied into a buffer there --
+ * is mended by the fault handler, which takes the mappings' lock. The write-back took its hold of its file under the
+ * mappings' lock, and mmap of a shared file its hold of the descriptor's, and each hold took the descriptors' lock: such a
+ * thread and a fault's waited for each other for good, and every mmap, munmap, mprotect, madvise and descriptor of the app's
+ * after them. Here a pipe is read into a page given back; then this thread holds the descriptors' lock, as a pipe's read
+ * holds it while it copies, while msync writes back on another thread: the write-back lets the mappings' lock go before it
+ * waits, another thread's mmap goes through meanwhile, and a page given back, touched by this thread with the descriptors'
+ * lock held, is mended. (Should the write-back hold the mappings' lock the while, the page is not touched -- that would stand
+ * still for good -- and the test fails.) Neither mmap of a shared file nor msync, the 5-second pass, the suspension's or
+ * munmap takes the descriptors' lock under the mappings' lock.
+ */
+typedef int (*lo_msync_fn)(void *, size_t, int);
+static lo_msync_fn g_lo_msync;
+static u8 *g_lo_map;
+static volatile i32 g_lo_past, g_lo_done;
+
+static void lo_io_hook(void) { mg_atomic_xchg(&g_lo_past, 1); }
+
+static MG_HOSTCB void lo_msync_thread(void *arg)
+{
+    (void)arg;
+    g_lo_msync(g_lo_map, 3 * 4096, 4 /* MS_SYNC */);
+    mg_atomic_xchg(&g_lo_done, 1);
+}
+
+static void test_mmap_lock_order(const char *scratch)
+{
+    typedef int (*open_fn)(const char *, int, int);
+    typedef int (*close_fn)(int);
+    typedef int (*unlink_fn)(const char *);
+    typedef int (*ftruncate_fn)(int, goff);
+    typedef int (*madvise_fn)(void *, size_t, int);
+    typedef int (*pipe_fn)(int *);
+    typedef gssize (*read_fn)(int, void *, size_t);
+    typedef gssize (*write_fn)(int, const void *, size_t);
+    enum { READ = 1, RW = 3, SHARED = 0x01, PRIVATE = 0x02, ANONYMOUS = 0x20, DONTNEED = 4, PAGE = 4096, BLOCK = 65536 };
+    open_fn open_ = (open_fn)mg_bionic_find("open");
+    close_fn close_ = (close_fn)mg_bionic_find("close");
+    unlink_fn unlink_ = (unlink_fn)mg_bionic_find("unlink");
+    ftruncate_fn ftruncate_ = (ftruncate_fn)mg_bionic_find("ftruncate");
+    madvise_fn madvise_ = (madvise_fn)mg_bionic_find("madvise");
+    pipe_fn pipe_ = (pipe_fn)mg_bionic_find("pipe");
+    read_fn read_ = (read_fn)mg_bionic_find("read");
+    write_fn write_ = (write_fn)mg_bionic_find("write");
+    char *host = mg_sprintf("%s/lock-order.bin", scratch);
+    const char *file = "/lock-order-files/lock-order.bin";
+    u8 *w = NULL, *ro = NULL;
+    volatile u8 *g = NULL;
+    int fd = -1, fds[2] = { -1, -1 }, i;
+    u32 before, taken;
+    mg_thread *t;
+    mg_hold_seen seen;
+    bool stuck = false, mapped = false, touched = false, piped = false;
+    u32 stuck_owner = 0;
+    say("mmap: the mappings' lock is never held waiting for the descriptors' lock");
+    g_wb_mmap = (wb_mmap_fn)mg_bionic_find("mmap");
+    g_wb_munmap = (wb_munmap_fn)mg_bionic_find("munmap");
+    g_lo_msync = (lo_msync_fn)mg_bionic_find("msync");
+    CHECK(open_ && close_ && unlink_ && ftruncate_ && madvise_ && pipe_ && read_ && write_ && g_wb_mmap && g_wb_munmap && g_lo_msync);
+    if (!open_ || !close_ || !unlink_ || !ftruncate_ || !madvise_ || !pipe_ || !read_ || !write_ || !g_wb_mmap || !g_wb_munmap || !g_lo_msync) {
+        free(host);
+        return;
+    }
+    mg_fs_mount("/lock-order-files", scratch);
+    before = mg_fd_lock_taken_under_mappings();
+    fd = open_(file, 02 | 0100 | 01000, 0600);                    /* O_RDWR | O_CREAT | O_TRUNC */
+    CHECK(fd >= 0 && ftruncate_(fd, 3 * PAGE) == 0);
+    if (fd >= 0) {
+        /* A writable one, written back, and a read-only copy kept in step: mmap holds the file for each. */
+        w = (u8 *)g_wb_mmap(NULL, 3 * PAGE, RW, SHARED, fd, 0);
+        ro = (u8 *)g_wb_mmap(NULL, PAGE, READ, SHARED, fd, 0);
+        close_(fd);
+    }
+    if (w == (u8 *)(mg_addr)-1) w = NULL;
+    if (ro == (u8 *)(mg_addr)-1) ro = NULL;
+    CHECK(w && ro);
+    /* Two blocks of 64 KB of anonymous memory, written, then given back. */
+    g = (volatile u8 *)g_wb_mmap(NULL, 2 * BLOCK, RW, PRIVATE | ANONYMOUS, -1, 0);
+    if (g == (volatile u8 *)(mg_addr)-1) g = NULL;
+    CHECK(g != NULL);
+    if (!w || !ro || !g) goto done;
+    memset((void *)g, 0x5A, 2 * BLOCK);
+    CHECK(madvise_((void *)g, 2 * BLOCK, DONTNEED) == 0);
+    /* A pipe read into a page of the first block: the bytes copied with the descriptors' lock held, the fault mended meanwhile. */
+    CHECK(pipe_(fds) == 0);
+    if (fds[0] >= 0 && fds[1] >= 0) {
+        piped = write_(fds[1], "piped", 5) == 5 && read_(fds[0], (void *)(g + 3 * PAGE + 10), 5) == 5;
+        piped = piped && !memcmp((const void *)(g + 3 * PAGE + 10), "piped", 5) && g[3 * PAGE + 9] == 0 && g[3 * PAGE + 15] == 0;
+        close_(fds[0]);
+        close_(fds[1]);
+    }
+    say("  a pipe read into a page given back: %s", piped ? "its bytes" : "NOT ITS BYTES");
+    CHECK(piped);
+    /* The descriptors' lock held while msync writes back on another thread. */
+    memcpy(w + 50, "held", 4);
+    g_lo_map = w;
+    g_lo_past = g_lo_done = 0;
+    mg_mem_write_back_io_hook = lo_io_hook;
+    mg_fd_lock();
+    t = mg_thread_start(lo_msync_thread, NULL, 256u * 1024u, "lock-order-msync");
+    /* Until the write-back is past the mappings' lock (its hook), or 0.4 s at least: the 5-second pass's write-back may hold
+       the write-backs' lock meanwhile and wait for this thread itself, letting go nothing but the mappings' lock either. */
+    for (i = 0; t && i < 200 && !g_lo_past && !stuck; i++) {
+        mg_sleep_ns(2000000ull);
+        if (mg_mem_lock_look(&seen) && seen.held_ns >= 200000000ull) {
+            stuck = true;
+            stuck_owner = seen.owner;
+        }
+    }
+    if (t && !stuck) {
+        mg_thread *m;
+        int k;
+        /* Its pages copied and the mappings' lock let go, it is on to its file and to letting its hold go, which waits for this
+           thread (or it waits behind the pass's write-back, which does): another thread maps and unmaps meanwhile, and this
+           one touches a page given back, in the second block. */
+        g_wb_mapped = 0;
+        m = mg_thread_start(wb_mapper, NULL, 256u * 1024u, "lock-order-mapper");
+        for (k = 0; m && k < 1000 && !g_wb_mapped; k++) mg_sleep_ns(2000000ull);
+        if (m) mg_thread_detach(m);
+        mapped = g_wb_mapped != 0;
+        touched = g[BLOCK + 100] == 0;
+        g[BLOCK + 200] = 0x42;
+        touched = touched && g[BLOCK + 200] == 0x42 && g[BLOCK + 201] == 0;
+    }
+    mg_fd_unlock();
+    for (i = 0; t && i < 2500 && !g_lo_done; i++) mg_sleep_ns(2000000ull);
+    if (t) {
+        /* (Not joined while it has not ended: the test goes on either way.) */
+        if (g_lo_done) mg_thread_join(t);
+        else mg_thread_detach(t);
+    }
+    mg_mem_write_back_io_hook = NULL;
+    if (stuck)
+        say("  the descriptors' lock held: the mappings' lock HELD 0.2 s by host thread %u, which waits for it -- a fault on a page given "
+            "back meanwhile would stand still for good", (unsigned)stuck_owner);
+    else
+        say("  the descriptors' lock held while msync wrote back on another thread: the mappings' lock %s, another thread's mmap %s, a "
+            "page given back touched %s", g_lo_past ? "let go before it waited" : "free (it waited behind the 5-second pass's write-back)",
+            mapped ? "through" : "NOT THROUGH", touched ? "and mended" : "NOT MENDED");
+    CHECK(t != NULL && !stuck && mapped && touched && g_lo_done && file_has(host, 50, "held"));
+    /* The other write-backs, and munmap's. */
+    memcpy(w + PAGE + 20, "the pass", 8);
+    mg_mem_write_back_all(4u << 20);
+    CHECK(file_has(host, PAGE + 20, "the pass") && !memcmp(ro + 50, "held", 4));
+    memcpy(w + 2 * PAGE + 30, "suspended", 9);
+    CHECK(mg_mem_write_back_all_until(mg_time_monotonic_ns() + 5000000000ull) && file_has(host, 2 * PAGE + 30, "suspended"));
+    memcpy(w + 70, "unmapped", 8);
+    CHECK(g_wb_munmap(ro, PAGE) == 0 && g_wb_munmap(w, 3 * PAGE) == 0 && file_has(host, 70, "unmapped"));
+    ro = w = NULL;
+done:
+    taken = mg_fd_lock_taken_under_mappings() - before;
+    say("  the descriptors' lock taken under the mappings' lock: %u times", (unsigned)taken);
+    CHECK_INT(taken, 0);
+    if (ro) g_wb_munmap(ro, PAGE);
+    if (w) g_wb_munmap(w, 3 * PAGE);
+    if (g) g_wb_munmap((void *)g, 2 * BLOCK);
+    CHECK(!mg_mem_file_copies());
+    unlink_(file);
+    free(host);
+}
+
+/*
  * What Zalo's libraries import of libc, libm and libz that was not there (each a stub that ended the app when called): POSIX
  * regular expressions (bionic/mg_regex.c), zlib's gzip files on the guest's files (bionic/mg_libz.c), j0 and j1,
  * eventfd_read and eventfd_write, fchmodat.
@@ -5223,6 +5386,7 @@ int mg_tests_run(const char *libdir, const char *scratch, mg_test_sink sink, voi
     test_mmap_file(scratch);
     test_mmap_file_written(scratch);
     test_mmap_write_back_unlocked(scratch);
+    test_mmap_lock_order(scratch);
     test_libc_gaps(scratch);
     test_mmap_madvise(scratch);
     test_pread_threads(scratch);

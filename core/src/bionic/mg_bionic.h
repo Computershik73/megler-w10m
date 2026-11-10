@@ -330,6 +330,8 @@ void mg_mem_write_back_all(size_t largest);
 bool mg_mem_write_back_all_until(u64 deadline);
 /* A look at who holds the mappings' lock (mg_holder_look), for the hang report: false when nobody does. */
 bool mg_mem_lock_look(mg_hold_seen *seen);
+/* Whether the calling thread holds the mappings' lock: the descriptors' lock is never taken so (mg_libc_io.c, io_lock_wanted). */
+bool mg_mem_lock_mine(void);
 /* For the tests: called as a write-back is about to read and write its file, the mappings' lock let go. NULL in the app. */
 extern void (*volatile mg_mem_write_back_io_hook)(void);
 /*

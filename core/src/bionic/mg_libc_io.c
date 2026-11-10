@@ -750,7 +750,10 @@ typedef struct epoll_item {
 } epoll_item;
 
 typedef struct gobj {
-    int type, refs;
+    int type;
+    /* Its holds: the descriptors that name it, the calls under way on it, a shared mapping's (mg_fd_hold). Changed atomically
+       (mg_fd_held_ref adds one without the lock); the last one let go under the lock (fd_put). */
+    volatile i32 refs;
     int flags;                     /* the guest's O_* flags */
     mg_file *file;
     char *path;                    /* guest path, for files and directories */
@@ -802,6 +805,26 @@ static gobj *g_fds[MAX_FDS];
 static u8 g_cloexec[MAX_FDS];
 static mg_lock g_io_lock = MG_LOCK_INIT;
 static bool g_io_inited;
+
+/*
+ * The descriptors' lock is never taken by a thread that holds the mappings' lock (mg_libc_mem.c). A thread that holds this
+ * one and meets a page the app gave back with madvise -- a pipe's bytes copied into the app's buffer, epoll_wait's events
+ * written into it, a select's sets or an epoll_ctl's event read from it -- is mended by the fault handler, which takes the
+ * mappings' lock; a thread that held the mappings' lock and waited here meanwhile waited for good, and so did the other,
+ * and every mmap, munmap, mprotect, madvise and descriptor of the app's after them. The write-back's hold of its file was
+ * taken so, and mmap's hold of a shared file's descriptor. Should anything take it so again, the log says where at once,
+ * and mg_fd_lock_taken_under_mappings counts it (the tests look).
+ */
+static volatile i32 g_io_under_mappings;
+static void io_lock_wanted(const char *site)
+{
+    if (!mg_mem_lock_mine()) return;
+    if (mg_atomic_add(&g_io_under_mappings, 1) == 1)
+        mg_log(MG_LOG_ERROR, "io: the descriptors' lock is taken in %s by a thread that holds the mappings' lock: a thread that holds the "
+               "descriptors' lock and meets a page given back waits for the mappings' lock, and the two may wait for each other for good", site);
+}
+#define mg_lock_acquire(l) ((l) == &g_io_lock ? (io_lock_wanted(__func__), mg_lock_acquire(l)) : mg_lock_acquire(l))
+u32 mg_fd_lock_taken_under_mappings(void) { return (u32)g_io_under_mappings; }
 
 /*
  * Who waits for what. Every thread that waits for descriptors -- poll, select and epoll_wait (wait_ready), a read or a
@@ -922,7 +945,7 @@ static gobj *fd_get(int fd)
     if (fd < 0 || fd >= MAX_FDS) return NULL;
     mg_lock_acquire(&g_io_lock);
     o = g_fds[fd];
-    if (o) o->refs++;
+    if (o) mg_atomic_add(&o->refs, 1);
     mg_lock_release(&g_io_lock);
     return o;
 }
@@ -945,7 +968,7 @@ static void fd_put(gobj *o)
     bool last;
     pipe_buf *p = NULL;
     mg_lock_acquire(&g_io_lock);
-    last = --o->refs == 0;
+    last = mg_atomic_add(&o->refs, -1) == 0;
     if (last && o->pipe) {
         p = o->pipe;
         if (o->type == OBJ_PIPE_R) p->readers--;
@@ -1577,13 +1600,13 @@ void *mg_fd_hold(int fd)
     }
     return o;
 }
+/* A count alone, without the lock: `held` is held already, so it cannot go meanwhile, and the write-back asks under the
+   mappings' lock, under which the descriptors' lock is not to be taken (io_lock_wanted). */
 void *mg_fd_held_ref(void *held)
 {
     gobj *o = (gobj *)held;
     if (!o) return NULL;
-    mg_lock_acquire(&g_io_lock);
-    o->refs++;
-    mg_lock_release(&g_io_lock);
+    mg_atomic_add(&o->refs, 1);
     return o;
 }
 /* (A shared mapping's own pages, which a write-back copies and writes with the mappings' lock let go: the file is written, and
