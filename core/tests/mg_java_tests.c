@@ -3003,6 +3003,8 @@ static int run_data(void)
                                          /* And the same markup as Transit's Compose screens read it: a regular expression of a tag and
                                             thirteen optional fields, found from where the last tag ended (ICU's matcher). */
                                          "markup-regex",
+                                         /* And AudioAttributes equal by what they hold: built alike, and through a Parcel. */
+                                         "audio-attributes-equal",
                                          "audio-track", "media-player", "media-player-ogg", "sound-pool",
                                          /* And MediaCodec over the stand-in for the shell's decoders: H.264 shown on a Surface in display
                                             order, a flush, parameter sets in a codec-config buffer, the asynchronous mode, AAC with an

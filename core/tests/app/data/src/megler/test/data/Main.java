@@ -1977,6 +1977,7 @@ public class Main extends Activity {
         singleLineSpans();
         ellipsisNarrower();
         markupRegex();
+        audioAttributesEqual();
         sound();
         mediaCodec();
         network();
@@ -6280,6 +6281,33 @@ public class Main extends Activity {
             }
             detail = tags + " tags, " + groups + " groups: " + found;
             return tags == 3 && groups == 14 && whole && found.toString().equals("0-21 <color|1e212d/f0f0f1>; 35-65 <image|bus||-1|1|-1|-1|Center>; 67-87 <realtime-symbol|*0>; ");
+        });
+    }
+
+    /**
+     * AudioAttributes equal by what they hold, as Android's: two built alike, and one and its copy through a Parcel (writeToParcel
+     * and CREATOR), equal with the same hash; another usage, content type or flag not. They were equal to themselves alone, and a
+     * NotificationChannel that came through a Parcel was never equal to its original.
+     */
+    private void audioAttributesEqual() {
+        step("audio-attributes-equal", () -> {
+            android.media.AudioAttributes a = new android.media.AudioAttributes.Builder().setUsage(android.media.AudioAttributes.USAGE_NOTIFICATION)
+                    .setContentType(android.media.AudioAttributes.CONTENT_TYPE_SONIFICATION).build();
+            android.media.AudioAttributes b = new android.media.AudioAttributes.Builder().setContentType(android.media.AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                    .setUsage(android.media.AudioAttributes.USAGE_NOTIFICATION).build();
+            android.os.Parcel p = android.os.Parcel.obtain();
+            a.writeToParcel(p, 0);
+            p.setDataPosition(0);
+            android.media.AudioAttributes parcelled = android.media.AudioAttributes.CREATOR.createFromParcel(p);
+            p.recycle();
+            android.media.AudioAttributes otherUsage = new android.media.AudioAttributes.Builder(a).setUsage(android.media.AudioAttributes.USAGE_ALARM).build();
+            android.media.AudioAttributes otherContent = new android.media.AudioAttributes.Builder(a).setContentType(android.media.AudioAttributes.CONTENT_TYPE_MUSIC).build();
+            android.media.AudioAttributes otherFlags = new android.media.AudioAttributes.Builder(a).setFlags(android.media.AudioAttributes.FLAG_AUDIBILITY_ENFORCED).build();
+            detail = "built alike " + a.equals(b) + " " + (a.hashCode() == b.hashCode()) + ", through a parcel " + (parcelled != a) + " " + a.equals(parcelled)
+                     + " " + (a.hashCode() == parcelled.hashCode()) + ", another usage " + a.equals(otherUsage) + ", content " + a.equals(otherContent)
+                     + ", flags " + a.equals(otherFlags) + ", null " + a.equals(null);
+            return a.equals(b) && b.equals(a) && a.hashCode() == b.hashCode() && parcelled != a && a.equals(parcelled) && a.hashCode() == parcelled.hashCode()
+                   && !a.equals(otherUsage) && !a.equals(otherContent) && !a.equals(otherFlags) && !a.equals(null) && !a.equals("AudioAttributes");
         });
     }
 
