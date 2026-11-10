@@ -297,8 +297,8 @@ EOF
           echo "the Java test app data (build/guest/java/data.apk), through megler_run: run $run on its database"
           CLEAN=""
           [ "$run" = 1 ] && CLEAN="rm -rf $WB/java-data-data &&"
-          # The second run with the flags trace-net, trace-exceptions, trace-stacks, trace-cpu, trace-native-stacks, trace-profile and a trace-calls and a trace-calls-within- on, which mg_java_tests.c finds the lines of.
-          [ "$run" = 2 ] && CLEAN="mkdir -p $WB/java-data-data/flags && touch $WB/java-data-data/flags/trace-net $WB/java-data-data/flags/trace-exceptions $WB/java-data-data/flags/trace-stacks $WB/java-data-data/flags/trace-cpu $WB/java-data-data/flags/trace-native-stacks $WB/java-data-data/flags/trace-profile $WB/java-data-data/flags/trace-calls-android.media.session.PlaybackState $WB/java-data-data/flags/trace-calls-within-android.media.session.PlaybackState &&"
+          # The second run with the flags trace-net, trace-exceptions, trace-stacks, trace-cpu, trace-native-stacks, trace-profile, two trace-calls, a trace-calls-within- and a trace-files- on, which mg_java_tests.c finds the lines of.
+          [ "$run" = 2 ] && CLEAN="mkdir -p $WB/java-data-data/flags && touch $WB/java-data-data/flags/trace-net $WB/java-data-data/flags/trace-exceptions $WB/java-data-data/flags/trace-stacks $WB/java-data-data/flags/trace-cpu $WB/java-data-data/flags/trace-native-stacks $WB/java-data-data/flags/trace-profile $WB/java-data-data/flags/trace-calls-android.media.session.PlaybackState $WB/java-data-data/flags/trace-calls-within-android.media.session.PlaybackState $WB/java-data-data/flags/trace-calls-megler.test.data.Bytes $WB/java-data-data/flags/trace-files-libjavacore &&"
           MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL="*" wsl.exe -- bash -c "cp -u '$WROOT/build/guest/java/data.apk' $WB/data.apk && $CLEAN qemu-arm -L /usr/arm-linux-gnueabihf $WB/mg_tests --java data $WB/data.apk $WB/java-data-data $WB/android-root '$WROOT/build/java-pictures' 0 480x800@160 run:$run 2>&1" || STATUS=1
         done
       else

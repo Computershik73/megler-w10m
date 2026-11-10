@@ -355,6 +355,7 @@ public class Main extends Activity {
         textPath();
         base64Streams();
         pipedStreams();
+        traceBytes();
         codecs();
         userHandle();
         cleartext();
@@ -3755,6 +3756,18 @@ public class Main extends Activity {
             long ms = (System.nanoTime() - start) / 1000000L;
             detail = total + " bytes in " + ms + " ms" + (failed[0] != null ? ", the writer: " + failed[0] : "");
             return failed[0] == null && total == (long) pieces * piece.length && ms < 20000;
+        });
+    }
+
+    /**
+     * A byte[] through a method of the app's own (Bytes.echo): the second run, with trace-calls-megler.test.data.Bytes, finds
+     * its length and first bytes said in the call's line and in its return's (mg_java_tests.c).
+     */
+    private void traceBytes() {
+        step("trace-bytes", () -> {
+            byte[] back = Bytes.echo("megler".getBytes(java.nio.charset.StandardCharsets.US_ASCII));
+            detail = new String(back, java.nio.charset.StandardCharsets.US_ASCII);
+            return "megler".equals(detail);
         });
     }
 

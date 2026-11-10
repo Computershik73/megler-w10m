@@ -7245,7 +7245,9 @@ alone. The account's own credential (BAD_AUTHENTICATION on the Lumia 650)
 is not asked for; a phone without the device key ("DeviceKeyStore: Cannot
 load key: Device key file not found", Google Play services' own line) sends
 the header unsigned, and whether the server takes it is what the network's
-and the location's lines below say.
+and the location's lines below say. Google refuses Megler the device key,
+whose request carries a DroidGuard result: docs/MICROG.md, "Google's own
+Play services: DroidGuard", says where and why.
 
 **What a phone showed next** (0.1.0.684, a Lumia 650, Google Play services
 26.43.30 updated through Aurora): Google Location Accuracy on, one scan

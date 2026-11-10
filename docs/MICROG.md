@@ -167,6 +167,101 @@ service, signed with the device key where the phone has one (JAVA.md says
 what a phone without one sends). With microG nothing of this is asked:
 microG's own location backends are its own.
 
+## Google's own Play services: DroidGuard
+
+DroidGuard is Google Play services' check of the device it runs on (their
+module `com.google.android.gms.droidguard`). For a flow -- the check-in, the
+device key, a Play Integrity token, a sign-in -- it asks Google's server for
+a program (`androidantiabuse/v1/x/create`), runs it in a virtual machine the
+server names (an APK of 24 classes with a native library `libd<12 hex
+digits>.so`, kept in `app_dg_cache/<the APK's SHA-1>/`, from
+`www.gstatic.com/droidguard/`), and hands the machine's bytes to whoever
+asked, who sends them to Google with its own request. Here the module runs
+in the app's process with the rest of Google Play services: the machine's APK
+gets a class scope of its own under theirs ("a dalvik/system/DexClassLoader
+over .../app_dg_cache/.../the.apk: scope N of its own" in the log), and its
+library loads in their ELF scope ("ld: libdB21738DAE92C.so at ..."), after
+an `UnsatisfiedLinkError` for the library's path inside the APK, which the
+machine's own Java answers by copying the library out of it, as it does
+where a linker cannot load from an APK.
+
+Since 26.4x Google Play services first asks for a "full" program, runs it,
+and sends its result back asking for a "fast" one (DroidGuard's "fast
+refresh": the log's tag `DGFRR`, `bvre` in 26.41.31, `byts` in 26.43.30),
+which then serves every flow that may use it; without one each flow asks
+for a program of its own, as before.
+
+**What fails, and where.** On the Lumia 650 (0.1.0.685) and the Elite x3
+(0.1.0.681), with Google Play services 26.43.30, every flow logs "E/DGFRR: FR
+error ... bywg: byteCode" and "W/DG: [flow devicekey] DroidGuardRunner.
+initSignalCollection() exception" (checkin, cryptauth_synckeys_request,
+po-token-fast, constellation_verify and recaptchabase-android likewise), and
+the device key is refused ("W/GLSUser: [AppCertManager] Exception while
+requesting key: ... dmyc: Parsing Exception ... Protocol message end-group
+tag did not match expected tag", then "[DeviceKeyStore] Cannot load key:
+Device key file not found"). Under qemu, with 26.41.31's armeabi-v7a APK as
+the app and the same machine (AA6305A5..., `libdB21738DAE92C.so`), it is the
+same, and there it was followed through (`trace-calls-within-com.google.ccc.
+abuse.droidguard`, `trace-syscalls`, `trace-files-libdB`, `trace-calls-bvts`,
+`trace-calls-java.io.PipedOutputStream`):
+
+- nothing of Megler's fails: the machine's classes load, its library loads
+  and runs, `initNative` and `ssNative` return, every call it makes of Java
+  through JNI and of the system is answered, and its results are what
+  DroidGuard's results are, protocol buffers of 1 to 2 KB ("DroidGuard.ss
+  returns [B of 1898: 0a06..."), the "full" one going to Google in the "fast"
+  request;
+- Google's server answers that request with a signed answer that holds no
+  program -- no `byteCode` (field 1, the first of the fields 26.41.31's
+  `bvrp.a` looks for, and the one it names) and no extra bytes to carry back
+  (field 9: "bvts.<init>(Ljava/lang/String;[B)V "byteCode" [B of 0");
+- the device-key request (`android.googleapis.com/auth/devicekey`, with the
+  result of the "devicekey" flow's own program) is answered with Google's
+  HTML page "Error 400 (Bad Request)" (1664 bytes) where its protocol buffer
+  was expected. Google's other answers come whole: the check-in succeeds,
+  the programs' answers verify their signatures, and on the Lumia the
+  account tokens' answers decrypt.
+
+**What the machine is told here that no Android device tells it.** Through
+JNI it reads the displays (`Display.getType()`, a stub here, says
+`TYPE_UNKNOWN` for the phone's own screen), the memory, Google Play services'
+package and signatures, and the features (`android.hardware.strongbox_keystore`,
+`android.software.device_id_attestation`, `android.software.verified_boot`:
+none here); and it makes two EC keys in `AndroidKeyStore` with an attestation
+challenge (`unstable.<hash>.A-...` and `.B-...`), which Megler's key store
+refuses ("ProviderException: Failed to generate attestation certificate
+chain"), as a device whose keymaster cannot attest -- Google Play services'
+check-in asks for such a key too ("KeyAttestationHandler: Failed to generate
+key attestation"). By number it looks for `/sys/fs/selinux/enforce`, which
+every Android device since 4.3 has, and finds nothing there. And the device
+it is told of is a Pixel of 2016 (`sailfish`) on Android 14, with a
+fingerprint Google never built, and a 32-bit ARM one alone.
+
+**What was tried, under qemu**, with code and flags of the experiments'
+own, not kept in Megler: the attested pairs made as Android's software
+keymaster makes them where there is no trusted environment (AOSP's
+`system/keymaster`: its software attestation keys and certificates, the
+key's description at the security level Software, checked with openssl),
+first with AOSP's EC chain, whose batch certificate expired in January 2026,
+then with its RSA one, unexpired, together with a `/sys/fs/selinux/enforce`
+that says 1. The machine took both: it read the file, its pairs were made,
+and its "full" result grew from 1898 to 3750 bytes with their chains in it.
+Google's answers were the same: no "fast" program, an empty extra, and the
+device key's "Error 400". So the server's answer is its judgement of what
+the machine sees, and what it sees is what Megler is: a key store with no
+trusted environment to attest from, no verified boot, a device of no maker's.
+Changing that would take Megler claiming a hardware-backed key store and a
+device it is not, which it does not do.
+
+**Following it on a phone** (flags in `Pictures\Megler\diag\<package>\flags`):
+`trace-syscalls` (a library's calls by number with the path each names:
+"/sys/fs/selinux/enforce" = -2 from `libdB21738DAE92C.so+0x2e18`, its own
+`syscall()`), `trace-files-libdB` (the files that library opens or looks at
+through the C library), `trace-calls-bywg` with 26.43.30 (`bvts` with
+26.41.31: the refusal, and the answer's extra bytes), and
+`trace-calls-com.google.ccc.abuse.droidguard.DroidGuard` (the machine's Java:
+the flow it was made for, and `run`'s and `ss`'s results with their length).
+
 ## Class isolation
 
 The failed implementation reverted in `1adae04` appended GmsCore's DEX files
