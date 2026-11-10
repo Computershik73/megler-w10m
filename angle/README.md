@@ -93,6 +93,14 @@ it: these patches change `.cpp` files only.
   (`gl1_shared`) draws into such a pbuffer at 9_3 and reads it back through its
   handle.
 
+- `0006-no-dual-source-blending-below-10.patch` -- `renderer11_utils.cpp`.
+  `GL_EXT_blend_func_extended` and a dual-source draw buffer are offered from
+  feature level 10_0 on only, where Direct3D blends with a second source: on
+  this PC a blend state of `ONE, INV_SRC1_COLOR` is made on a device of 11_1 and
+  refused on one of 9_3 (`E_INVALIDARG`), and ANGLE's draws with it then do
+  nothing. venetium-w10m (the owner's Chromium for these phones) found Skia
+  blending its LCD text so at 9_3 on a Lumia 650, nothing with such text drawn.
+
 (An earlier `0001-buffer11-dynamic-writes.patch` took a static buffer written
 after its draws as dynamic. It was made for a loading screen that ran at seven
 frames a second, which turned out to be the shell composing the window from

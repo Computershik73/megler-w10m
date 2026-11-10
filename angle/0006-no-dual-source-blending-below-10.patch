@@ -1,0 +1,27 @@
+--- a/src/libANGLE/renderer/d3d/d3d11/renderer11_utils.cpp
++++ b/src/libANGLE/renderer/d3d/d3d11/renderer11_utils.cpp
+@@ -1547,7 +1547,10 @@
+ 
+     caps->queryCounterBitsTimestamp = features.enableTimestampQueries.enabled ? 64 : 0;
+ 
+-    caps->maxDualSourceDrawBuffers = 1;
++    // Megler (angle/0006-no-dual-source-blending-below-10.patch): Direct3D blends with a second
++    // source (D3D11_BLEND_SRC1_*) from feature level 10_0 on; below it a blend state that asks for
++    // one is refused (E_INVALIDARG, "Error allocating BlendState") and its draws do nothing.
++    caps->maxDualSourceDrawBuffers = featureLevel >= D3D_FEATURE_LEVEL_10_0 ? 1 : 0;
+ 
+     // GL extension support
+     extensions->setTextureExtensionSupport(*textureCapsMap);
+@@ -1637,7 +1640,11 @@
+     extensions->multiDrawIndirectEXT    = true;
+     extensions->textureMultisampleANGLE = true;
+     extensions->provokingVertexANGLE    = true;
+-    extensions->blendFuncExtendedEXT    = true;
++    // Megler (angle/0006-no-dual-source-blending-below-10.patch): not below feature level 10_0,
++    // whose blend states have no second source (above). Offered at 9_3, Skia blended with SRC1
++    // factors where it had them and Direct3D refused each such blend state (venetium-w10m, the
++    // owner's Chromium for these phones, saw it at 9_3 on a Lumia 650).
++    extensions->blendFuncExtendedEXT    = featureLevel >= D3D_FEATURE_LEVEL_10_0;
+     // http://anglebug.com/42263500
+     extensions->texture3DOES                             = false;
+     extensions->baseInstanceEXT                          = true;
