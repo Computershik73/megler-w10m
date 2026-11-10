@@ -569,6 +569,33 @@ bool mg_zip_extract(const mg_zip *z, const mg_zip_entry *e, const char *path, vo
     return ok;
 }
 
+bool mg_zip_file_crc(const char *path, u32 *crc, u64 *size)
+{
+    enum { PIECE = 1024 * 1024 };
+    uLong c = crc32(0L, Z_NULL, 0);
+    u64 total = 0;
+    int ferr = 0;
+    bool ok = false;
+    mg_file *f = mg_file_open(path, MG_O_READ, &ferr);
+    u8 *buf = f ? (u8 *)malloc(PIECE) : NULL;
+    while (buf) {
+        i64 n = mg_file_read(f, buf, PIECE, &ferr);
+        if (n <= 0) {
+            ok = n == 0;
+            break;
+        }
+        c = crc32(c, buf, (uInt)n);
+        total += (u64)n;
+    }
+    free(buf);
+    if (f) mg_file_close(f);
+    if (ok) {
+        *crc = (u32)c;
+        if (size) *size = total;
+    }
+    return ok;
+}
+
 void mg_zip_each(const mg_zip *z, const char *prefix, void (*cb)(const mg_zip_entry *e, void *user), void *user)
 {
     size_t n = strlen(prefix);

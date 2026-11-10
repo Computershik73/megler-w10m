@@ -693,6 +693,225 @@ static void test_zip(const char *scratch)
     free(path);
 }
 
+/* --------------------------------------------------- an app's libraries placed */
+
+/* An APK of stored entries, each with its CRC-32, as an app's carries its libraries. False when it cannot be written. */
+static bool stored_apk(const char *path, const char *const *names, const u8 *const *data, const u32 *sizes, int n)
+{
+    size_t cap = 256, at = 0, cd;
+    u32 offsets[16];
+    u8 *z;
+    int i;
+    bool ok;
+    for (i = 0; i < n; i++) cap += 2 * (46 + strlen(names[i])) + sizes[i];
+    z = (u8 *)mg_alloc(cap);
+    for (i = 0; i < n && i < 16; i++) {
+        u16 nl = (u16)strlen(names[i]);
+        u32 crc = (u32)crc32(crc32(0L, Z_NULL, 0), data[i], (uInt)sizes[i]);
+        offsets[i] = (u32)at;
+        mg_wr32(z + at, 0x04034b50u); mg_wr16(z + at + 4, 20); mg_wr16(z + at + 6, 0); mg_wr16(z + at + 8, 0);
+        mg_wr32(z + at + 10, 0); mg_wr32(z + at + 14, crc); mg_wr32(z + at + 18, sizes[i]); mg_wr32(z + at + 22, sizes[i]);
+        mg_wr16(z + at + 26, nl); mg_wr16(z + at + 28, 0);
+        memcpy(z + at + 30, names[i], nl);
+        memcpy(z + at + 30 + nl, data[i], sizes[i]);
+        at += 30 + nl + sizes[i];
+    }
+    cd = at;
+    for (i = 0; i < n && i < 16; i++) {
+        u16 nl = (u16)strlen(names[i]);
+        memset(z + at, 0, 46);
+        mg_wr32(z + at, 0x02014b50u); mg_wr16(z + at + 4, 20); mg_wr16(z + at + 6, 20);
+        mg_wr32(z + at + 16, (u32)crc32(crc32(0L, Z_NULL, 0), data[i], (uInt)sizes[i]));
+        mg_wr32(z + at + 20, sizes[i]); mg_wr32(z + at + 24, sizes[i]); mg_wr16(z + at + 28, nl); mg_wr32(z + at + 42, offsets[i]);
+        memcpy(z + at + 46, names[i], nl);
+        at += 46 + nl;
+    }
+    memset(z + at, 0, 22);
+    mg_wr32(z + at, 0x06054b50u); mg_wr16(z + at + 8, (u16)n); mg_wr16(z + at + 10, (u16)n); mg_wr32(z + at + 12, (u32)(at - cd)); mg_wr32(z + at + 16, (u32)cd);
+    at += 22;
+    ok = mg_file_write_all(path, z, at);
+    free(z);
+    return ok;
+}
+
+/* Whether a file holds exactly these bytes. */
+static bool file_is(const char *dir, const char *name, const u8 *data, size_t size)
+{
+    char *path = mg_sprintf("%s/%s", dir, name);
+    size_t n = 0;
+    u8 *got = mg_file_read_all(path, &n);
+    bool same = got && n == size && !memcmp(got, data, size);
+    free(got);
+    free(path);
+    return same;
+}
+
+static bool file_there(const char *dir, const char *name)
+{
+    char *path = mg_sprintf("%s/%s", dir, name);
+    mg_stat st;
+    bool there = mg_path_stat(path, &st, NULL);
+    free(path);
+    return there;
+}
+
+/* The names of a folder's files, sorted and joined by spaces. */
+typedef struct names_listed {
+    char names[16][64];
+    int n;
+} names_listed;
+
+static MG_HOSTCB void name_listed(const char *name, bool is_dir, void *user)
+{
+    names_listed *l = (names_listed *)user;
+    if (!is_dir && l->n < 16) mg_strlcpy(l->names[l->n++], name, sizeof(l->names[0]));
+}
+
+/* A folder's files removed (its folders left): what a run before this one left. */
+static void folder_emptied(const char *dir)
+{
+    names_listed l;
+    int i;
+    memset(&l, 0, sizeof(l));
+    mg_path_list(dir, name_listed, &l, NULL);
+    for (i = 0; i < l.n; i++) {
+        char *path = mg_sprintf("%s/%s", dir, l.names[i]);
+        mg_path_remove(path, NULL);
+        free(path);
+    }
+}
+
+static void folder_files(const char *dir, char *out, size_t cap)
+{
+    names_listed l;
+    int i, k;
+    memset(&l, 0, sizeof(l));
+    mg_path_list(dir, name_listed, &l, NULL);
+    for (i = 1; i < l.n; i++)
+        for (k = i; k > 0 && strcmp(l.names[k - 1], l.names[k]) > 0; k--) {
+            char t[64];
+            memcpy(t, l.names[k], sizeof(t));
+            memcpy(l.names[k], l.names[k - 1], sizeof(t));
+            memcpy(l.names[k - 1], t, sizeof(t));
+        }
+    out[0] = 0;
+    for (i = 0; i < l.n; i++) {
+        size_t used = strlen(out);
+        snprintf(out + used, cap - used, "%s%s", i ? " " : "", l.names[i]);
+    }
+}
+
+/*
+ * An app's libraries as files of their own in its library folder (ld/mg_ld_place.c, ApplicationInfo.nativeLibraryDir), across
+ * an update, as Android's installer leaves the folder. Up to 0.1.0.685 a file was written only when it was not there or not of
+ * the entry's size: an update whose library kept its size kept the old file, and a library the update dropped stayed. TikTok
+ * Lite 47.7.4 moved libnpth.so out of its APK into an archive it unpacks itself and loads by its path; the older version's
+ * still in the folder was found by its name and loaded instead, its natives not the new Java's, and the app ended at its start.
+ */
+static void test_place_libs(const char *scratch)
+{
+    enum { A = 96, B = 120, GONE = 50, NEW = 40, SPLIT_A = 70, CASE = 30 };
+    static u8 a1[A], a2[A], b[B], gone[GONE], fresh[NEW], split_a[SPLIT_A], casey[CASE], junk[B];
+    char *dir = mg_sprintf("%s/place/data/lib", scratch), *index = mg_sprintf("%s/place/megler/lib-index/megler.test.place", scratch);
+    char *base1 = mg_sprintf("%s/place/base1.apk", scratch), *base2 = mg_sprintf("%s/place/base2.apk", scratch), *split1 = mg_sprintf("%s/place/split1.apk", scratch);
+    char *notes = mg_sprintf("%s/notes.txt", dir), *odd_case = mg_sprintf("%s/libCase.so", dir), listed[400], err[160];
+    const char *names1[] = { "AndroidManifest.xml", "lib/armeabi-v7a/liba.so", "lib/armeabi-v7a/libb.so", "lib/armeabi-v7a/libgone.so",
+                             "lib/armeabi-v7a/sub/libnested.so", "lib/armeabi-v7a/readme.txt", "lib/x86/libx.so", "lib/armeabi-v7a/libcase.so" };
+    const u8 *data1[] = { a1, a1, b, gone, b, b, b, casey };
+    const u32 sizes1[] = { 8, A, B, GONE, B, 10, B, CASE };
+    const char *names2[] = { "lib/armeabi-v7a/liba.so", "lib/armeabi-v7a/libb.so", "lib/armeabi-v7a/libnew.so", "lib/armeabi-v7a/libcase.so" };
+    const u8 *data2[] = { a2, b, fresh, casey };
+    const u32 sizes2[] = { A, B, NEW, CASE };
+    const char *names_split[] = { "lib/armeabi-v7a/liba.so" };
+    const u8 *data_split[] = { split_a };
+    const u32 sizes_split[] = { SPLIT_A };
+    mg_zip z1, z2, zs;
+    const mg_zip *apks[2];
+    mg_ld_placed p;
+    int i;
+    say("an app's libraries placed as files, across an update");
+    for (i = 0; i < A; i++) a1[i] = a2[i] = (u8)(i * 7 + 1);
+    a2[A / 2] ^= 0x5A;                     /* the update's liba.so: of the same size, one byte other */
+    for (i = 0; i < B; i++) b[i] = (u8)(i * 3 + 2), junk[i] = (u8)(0xA5 ^ i);
+    for (i = 0; i < GONE; i++) gone[i] = (u8)(0x40 + i);
+    for (i = 0; i < NEW; i++) fresh[i] = (u8)(0x90 + i);
+    for (i = 0; i < SPLIT_A; i++) split_a[i] = (u8)(0xC0 + i);
+    for (i = 0; i < CASE; i++) casey[i] = (u8)(0x20 + i);
+    memset(&z1, 0, sizeof(z1));
+    memset(&z2, 0, sizeof(z2));
+    memset(&zs, 0, sizeof(zs));
+    mg_path_mkdirs(dir);
+    folder_emptied(dir);
+    mg_path_remove(index, NULL);
+    CHECK(stored_apk(base1, names1, data1, sizes1, 8) && stored_apk(base2, names2, data2, sizes2, 4) && stored_apk(split1, names_split, data_split, sizes_split, 1));
+    if (!mg_zip_open(&z1, base1, err, sizeof(err)) || !mg_zip_open(&z2, base2, err, sizeof(err)) || !mg_zip_open(&zs, split1, err, sizeof(err))) {
+        say("  the test's APKs do not open: %s", err);
+        CHECK(false);
+        goto done;
+    }
+    /* What is no library of the app's stays: a file of another kind, and a folder. A library under another case of a name is an older one. */
+    CHECK(mg_file_write_all(notes, "the app's own", 13) && mg_file_write_all(odd_case, "an older libcase", 16));
+
+    /* The first install: the base's libraries (its liba.so, not the split's after it), none of another ABI or folder. */
+    apks[0] = &z1;
+    apks[1] = &zs;
+    CHECK(mg_ld_place_libs(apks, 2, "armeabi-v7a", dir, index, &p));
+    folder_files(dir, listed, sizeof(listed));
+    say("  installed: %d libraries, %d written, %d summed, %d removed (%s); the folder: %s", p.libs, p.written, p.summed, p.removed, p.removed_names, listed);
+    CHECK(p.libs == 4 && p.written == 4 && p.summed == 0 && p.removed == 1 && !strcmp(p.removed_names, "libCase.so"));
+    CHECK(!strcmp(listed, "liba.so libb.so libcase.so libgone.so notes.txt"));
+    CHECK(file_is(dir, "liba.so", a1, A) && file_is(dir, "libb.so", b, B) && file_is(dir, "libgone.so", gone, GONE) && file_is(dir, "libcase.so", casey, CASE));
+
+    /* Started again: nothing written, nothing read -- the index and the APK's central directory say so. */
+    CHECK(mg_ld_place_libs(apks, 2, "armeabi-v7a", dir, index, &p));
+    CHECK(p.libs == 4 && p.written == 0 && p.summed == 0 && p.removed == 0 && p.failed == 0);
+
+    /* The update: liba.so of the same size and other bytes, written; libgone.so, which it has not, removed; libnew.so written. */
+    apks[0] = &z2;
+    CHECK(mg_ld_place_libs(apks, 1, "armeabi-v7a", dir, index, &p));
+    folder_files(dir, listed, sizeof(listed));
+    say("  updated: %d libraries, %d written, %d summed, %d removed (%s); the folder: %s", p.libs, p.written, p.summed, p.removed, p.removed_names, listed);
+    CHECK(p.libs == 4 && p.written == 2 && p.summed == 0 && p.removed == 1 && !strcmp(p.removed_names, "libgone.so"));
+    CHECK(!strcmp(listed, "liba.so libb.so libcase.so libnew.so notes.txt"));
+    CHECK(file_is(dir, "liba.so", a2, A) && file_is(dir, "libnew.so", fresh, NEW) && !file_there(dir, "libgone.so"));
+
+    /* With no index (Megler's of before it, or lost): files of the entries' sizes are summed once, and only the one that differs
+       -- of the old rule's kind, of the right size and other bytes -- is written. */
+    CHECK(mg_path_remove(index, NULL));
+    {
+        char *bpath = mg_sprintf("%s/libb.so", dir);
+        CHECK(mg_file_write_all(bpath, junk, B));
+        free(bpath);
+    }
+    CHECK(mg_ld_place_libs(apks, 1, "armeabi-v7a", dir, index, &p));
+    say("  no index: %d written, %d summed", p.written, p.summed);
+    CHECK(p.written == 1 && p.summed == 4 && p.removed == 0 && file_is(dir, "libb.so", b, B));
+    CHECK(mg_ld_place_libs(apks, 1, "armeabi-v7a", dir, index, &p));
+    CHECK(p.written == 0 && p.summed == 0);
+
+    /* An index that is no index of these: read as none. */
+    CHECK(mg_file_write_all(index, "something else\n00000000 96 liba.so\n", 35));
+    CHECK(mg_ld_place_libs(apks, 1, "armeabi-v7a", dir, index, &p));
+    CHECK(p.written == 0 && p.summed == 4);
+
+    /* An update with no native code at all: every library goes, the app's own file stays. */
+    CHECK(mg_ld_place_libs(apks, 1, NULL, dir, index, &p));
+    folder_files(dir, listed, sizeof(listed));
+    say("  no libraries: %d removed (%s); the folder: %s", p.removed, p.removed_names, listed);
+    CHECK(p.libs == 0 && p.removed == 4 && !strcmp(listed, "notes.txt"));
+done:
+    if (z1.count) mg_zip_close(&z1);
+    if (z2.count) mg_zip_close(&z2);
+    if (zs.count) mg_zip_close(&zs);
+    free(dir);
+    free(index);
+    free(base1);
+    free(base2);
+    free(split1);
+    free(notes);
+    free(odd_case);
+}
+
 /* ------------------------------------------------------------- guest code */
 
 /* ------------------------------------------------------------------ input */
@@ -5398,6 +5617,7 @@ int mg_tests_run(const char *libdir, const char *scratch, mg_test_sink sink, voi
     g_failed += mg_bluetooth_tests_run(g_sink, g_sink_user, &g_checks);
     g_failed += mg_wifi_tests_run(g_sink, g_sink_user, &g_checks);
     test_zip(scratch);
+    test_place_libs(scratch);
     test_sqlite(scratch);
     test_textures();
     test_media(scratch);

@@ -87,6 +87,15 @@ void mg_bionic_register(const mg_sym *table);
 void *mg_g_mmap2(void *addr, size_t len, int prot, int flags, int fd, u32 pgoffset);
 void *mg_bionic_find(const char *name);
 bool mg_bionic_is_system_lib(const char *soname);
+/*
+ * A library asked for by its path (System.load, dlopen) that is to be loaded from that file: one with something in it, in the
+ * app's own data folder, that is not the copy the Java driver put in the library folder (ApplicationInfo.nativeLibraryDir) --
+ * nor, where the APK stores a large library of that name as it is, a copy of its bytes (mg_libdl.c). On Android System.load
+ * and dlopen load the file they are given; an app unpacks or downloads a library of its own and loads it so, under a name the
+ * APK or an older version's library folder may have too. Its host path, malloc'd; NULL otherwise, and the library is the APK's
+ * of its name, as it was. `other` (or NULL): whether the APK has a library of that name that the file is known not to be.
+ */
+char *mg_dl_own_library(const char *path, bool *other);
 
 /* The tables, one per file; each ends with MG_END. */
 extern const mg_sym mg_tab_mem[], mg_tab_str[], mg_tab_wchar[], mg_tab_stdio[], mg_tab_io[], mg_tab_misc[], mg_tab_time[], mg_tab_math[],

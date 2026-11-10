@@ -6,6 +6,7 @@
 #include "../ld/mg_ld_internal.h"
 #include "mg_fd.h"
 #include "../ndk/mg_egl.h"
+#include "../zip/mg_zip.h"
 
 /* What dlopen returns for a system library: its symbols are the shims'. */
 static int g_system_handle;
@@ -37,10 +38,67 @@ static mg_lib *root_public_lib(const char *base)
     return mg_ld_find_runtime_lib(base);
 }
 
+/*
+ * (mg_bionic.h.) A library is looked for by its file name everywhere else -- the APKs, then the folders of
+ * mg_ld_add_search_dir, the app's library folder first -- and up to 0.1.0.685 a path was too, wherever it led. TikTok Lite
+ * 47.7.4 unpacks libnpth.so out of an archive of its own (Zoin's tt_lib) into files/esolib and loads it with System.load; its
+ * APK has none, but the library folder still had the older version's, which was loaded in its place, and whose natives were
+ * not the new Java's: the app ended at its start with an UnsatisfiedLinkError. Only the app's own folder is looked at: a path
+ * into the Android root or elsewhere keeps the name's library.
+ *
+ * The file is not read to see whether it is the APK's library after all: loading it reads it once, as loading the APK's
+ * would (a deflated entry is inflated whole), and loaders that unpack an app's libraries themselves and load them by path
+ * (SoLoader's ApkSoSource, ReLinker) would have every one read twice at every start. Except where the APK stores a large
+ * library as it is (MG_DL_SUMMED_FROM): read where it lies, it never needs its size of addresses again beside its image, as
+ * a file read whole does; a copy of the entry's size is summed against it, once for the load, and the APK's taken when the
+ * two are the same. `other`: whether the APK has a library of this name that the file is known not to be.
+ */
+#define MG_DL_SUMMED_FROM (16u << 20)
+
+char *mg_dl_own_library(const char *path, bool *other)
+{
+    const char *internal = mg_fs_internal_dir(), *slash = path ? strrchr(path, '/') : NULL, *base = slash ? slash + 1 : NULL;
+    char *host, *home, *placed;
+    size_t n;
+    mg_stat st;
+    bool own = false;
+    if (other) *other = false;
+    if (!base || !base[0] || !internal || !internal[0] || strstr(path, "!/")) return NULL;
+    host = mg_fs_host_path(path);
+    home = mg_fs_host_path(internal);
+    placed = home ? mg_sprintf("%s/lib/%s", home, base) : NULL;
+    n = home ? strlen(home) : 0;
+    if (host && home && !strncmp(host, home, n) && (host[n] == '/' || host[n] == '\\') && strcmp(host, placed) && mg_path_stat(host, &st, NULL) &&
+        !st.is_dir && st.size > 0) {
+        u64 size = 0;
+        u32 crc = 0;
+        bool stored = false;
+        own = true;
+        if (mg_ld_apk_lib_entry(base, &size, &crc, &stored)) {
+            if (st.size != size) {
+                if (other) *other = true;
+            } else if (stored && size >= MG_DL_SUMMED_FROM) {
+                u32 file_crc = 0;
+                u64 file_size = 0;
+                own = !(mg_zip_file_crc(host, &file_crc, &file_size) && file_crc == crc && file_size == size);
+                if (other) *other = own;
+            }
+        }
+    }
+    free(home);
+    free(placed);
+    if (!own) {
+        free(host);
+        return NULL;
+    }
+    return host;
+}
+
 static void *g_dlopen(const char *name, int flags)
 {
     const char *base;
     mg_lib *lib;
+    char *own;
     (void)flags;
     mg_trace("dlopen(%s)", name ? name : "(null)");
     if (!name) return G_RTLD_DEFAULT;
@@ -61,7 +119,11 @@ static void *g_dlopen(const char *name, int flags)
         return SYSTEM_HANDLE;
     }
     lib = mg_ld_find_lib(base);
-    if (!lib) {
+    if (!lib && (own = mg_dl_own_library(name, NULL)) != NULL) {
+        /* A file of the app's own, by its path: that file, as bionic opens it. */
+        lib = mg_ld_load_file(own);
+        free(own);
+    } else if (!lib) {
         if (!mg_ld_has_lib(base)) {
             lib = root_public_lib(base);
             if (lib) return lib;

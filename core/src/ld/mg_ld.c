@@ -210,36 +210,21 @@ bool mg_ld_has_lib(const char *name)
     return found;
 }
 
-typedef struct libs_walk {
-    void (*cb)(const char *name, u64 size, void *user);
-    void *user;
-    int n;
-    size_t skip;
-} libs_walk;
-
-static void libs_one(const mg_zip_entry *e, void *user)
+bool mg_ld_apk_lib_entry(const char *name, u64 *size, u32 *crc, bool *stored)
 {
-    libs_walk *w = (libs_walk *)user;
-    size_t n = strlen(e->name);
-    if (n <= w->skip + 3 || strcmp(e->name + n - 3, ".so") || strchr(e->name + w->skip, '/')) return;
-    w->n++;
-    if (w->cb) w->cb(e->name + w->skip, e->usize, w->user);
-}
-
-int mg_ld_apk_libs(void (*cb)(const char *name, u64 size, void *user), void *user)
-{
-    const char *abi = mg_ld_abi();
-    char prefix[40];
-    libs_walk w;
-    int i;
-    if (!abi) return 0;
-    snprintf(prefix, sizeof(prefix), "lib/%s/", abi);
-    w.cb = cb;
-    w.user = user;
-    w.n = 0;
-    w.skip = strlen(prefix);
-    for (i = 0; i < g_napks; i++) mg_zip_each(&g_apks[i], prefix, libs_one, &w);
-    return w.n;
+    const mg_zip *z = NULL;
+    const mg_zip_entry *e;
+    u64 at = 0;
+    load_lock();
+    e = apk_lib(name, &z);
+    if (e) {
+        *size = e->usize;
+        *crc = e->crc;
+        /* As read_lib_file takes it: a stored entry is read where it lies. */
+        *stored = e->method == 0 && e->usize < 0x40000000u && mg_zip_stored_at(z, e, &at);
+    }
+    load_unlock();
+    return e != NULL;
 }
 
 /*

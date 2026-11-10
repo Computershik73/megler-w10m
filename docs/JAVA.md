@@ -476,7 +476,9 @@ native methods of `megler.Gfx` called as the runtime calls them.
 
 `core/tests/app/natives` is the third test app: one Activity and a library of
 its own, `libnatives.so`, which needs a second one of the APK's,
-`libnatives_dep.so`. Both are built by the NDK (r21e) against its real headers
+`libnatives_dep.so`, and a third that nothing loads by its name,
+`libnatives_alt.so` (the step `own-file-same-name` loads the app's own build of
+it). They are built by the NDK (r21e) against its real headers
 and libraries, as an app's are -- armeabi-v7a, Thumb-2, softfp --
 by `tools/build-test-app.sh`; where there is no NDK the app is not built and
 `tools/build-tests.sh` says that it is not run. `mg_tests --java natives ...`
@@ -508,9 +510,11 @@ checks:
 | `bitmap` | `AndroidBitmap_getInfo` (64 x 64, stride 256, `RGBA_8888`), `lockPixels`, the pixels written as R, G, B, A, `unlockPixels`; `Bitmap.getPixel` then reads each colour back, a half-transparent premultiplied white as `0x80FFFFFF` |
 | `direct-buffer` | `GetDirectBufferAddress` and `Capacity` of `ByteBuffer.allocateDirect`, written in C and read in Java; `NewDirectByteBuffer` over the library's memory, read and written in Java and seen in C |
 | `configuration` | `AConfiguration`: the surface's density and size in dp, and the API level the framework's `Build.VERSION.SDK_INT` says |
-| `library-folder` | `ApplicationInfo.nativeLibraryDir` holds both libraries as real ELF files; `BaseDexClassLoader.findLibrary` gives the path there |
+| `library-folder` | `ApplicationInfo.nativeLibraryDir` holds the APK's libraries as real ELF files and nothing else, each of the APK entry's size and CRC-32 (summed as ByteDance's librarian sums them), though the test put an older version's there before the start -- a library this one has not, and `libnatives_dep.so` of the entry's size and other bytes; `BaseDexClassLoader.findLibrary` gives the path there |
 | `loaded-once` | `System.loadLibrary` and `System.load` of the library again: `JNI_OnLoad` is not run again |
-| `own-file` | a library the app copied into its files folder under a name the APK does not have, loaded by its path |
+| `own-file` | a library the app copied into its files folder under a name the APK does not have -- and the older version's folder had (TikTok Lite's `libnpth.so`) -- loaded by its path |
+| `own-file-same-name` | the APK's `libnatives_alt.so` copied by the app with its text's "version 1" made "version 2", of the same size, and loaded by its path before anything loaded the APK's: the copy answers, "version 2" |
+| `dlopen-own-file` | a copy of `libnatives_dep.so` the app wrote into a folder no library came from, `dlopen`ed by native code by its path: its constructor ran, its function answers |
 | `missing-library` | `UnsatisfiedLinkError` in Android's words: `...PathClassLoader[...] couldn't find "libnothere.so"` (libcore's own), and `dlopen failed: library "<path>" not found` for `System.load` |
 | `missing-method` | `No implementation found for void megler.test.natives.Lib.notThere() (tried Java_megler_test_natives_Lib_notThere and Java_megler_test_natives_Lib_notThere__)` |
 | `looper-watched`, `looper` | `ALooper_forThread()` on the main thread, a pipe added with `ALooper_addFd` and written: the callback runs on the main thread with a later turn of the Java message loop |
@@ -2863,19 +2867,67 @@ class that called -- the app's `PathClassLoader` for a class of the app's --
 whose `findLibrary` looks in `ApplicationInfo.nativeLibraryDir`
 (`/data/data/<package>/lib`) and opens the file to see that it is there. The
 Java driver has put each of the APK's libraries there as a real file when the
-app starts (`place_libraries` in `mg_java.c`; written only when absent or of
-another size, so only an app's first start pays for it): the class loader
-needs them to exist, and so do apps -- loaders that read a library's ELF header
-to load what it needs first (Facebook's SoLoader, which every React Native app
-has) and code that lists the folder. Real files are simpler than empty
-stand-ins there with the APK's entry served when one is opened, and cost the
-libraries' size on the phone's storage once.
+app starts (`place_libraries` in `mg_java.c`, `ld/mg_ld_place.c`): the class
+loader needs them to exist, and so do apps -- loaders that read a library's
+ELF header to load what it needs first (Facebook's SoLoader, which every React
+Native app has), loaders that sum the files against the APK's entries
+(ByteDance's librarian), and code that lists the folder. Real files are simpler
+than empty stand-ins there with the APK's entry served when one is opened, and
+cost the libraries' size on the phone's storage once.
+
+The folder holds this version's libraries and nothing else, as Android's
+installer leaves it at each install and update. A file is written when it is
+not the APK entry's bytes: absent, of another size, or of another CRC-32 than
+an index in Megler's data folder (`lib-index/<package>`, a line a library:
+CRC-32, size, name) says the last start wrote -- the APK's central directory
+has each entry's, so a start that changes nothing reads no library and writes
+nothing. A file of the entry's size that the index does not name (placed by a
+Megler of before the index, or the index lost) is summed once and written only
+when it differs. A library that no APK of the app has any more is removed. Up
+to 0.1.0.685 a file was written only when it was absent or of another size,
+and nothing was removed: an update whose library kept its size (page-aligned
+builds often do) kept the old one, and a library an update dropped stayed in
+the folder for good -- where the linker, looking for a library by its name in
+the APKs and then in that folder, found it. TikTok Lite 47.7.4 moved
+`libnpth.so` and nineteen other libraries out of its APK into an archive it
+unpacks itself (Zoin's `tt_lib`, in its `config.armeabi_v7a` split as
+`libtt_lib.so`, 2 MB that come to 6) into `files/esolib/<version>`, and loads
+them from there with `System.load` through its librarian; the older version's
+`libnpth.so` in the folder was loaded instead, it registered the natives of its
+own `NativeBridge` -- `nStartNativeCrashMonitor` with three strings where the
+new Java's has five -- and the app ended in `Npth.init`, in its Application's
+`attachBaseContext`, with an `UnsatisfiedLinkError` (0.1.0.685 on a Lumia 650,
+after an update from the version with `df_bytenn` and `df_fusing`). The log's
+line says what a start did -- the files written, those summed for want of the
+index, those of an older version removed, by name: "java: the app's 10 native
+libraries (armeabi-v7a) are in /data/data/<package>/lib (N summed against the
+APK's; N of an older version's, which this one has not, removed: libnpth.so,
+...)".
+
 `JVM_NativeLoad` (`mg_dvm_jvm.c`) then loads: with no class loader (one of
 the runtime's classes asked) a library of the Android root's, otherwise the
-APK's of that file name. A path that names a file with something in it that is
-not in the APK -- a library the app unpacked or downloaded itself -- is loaded
-from that file. A library is loaded once: a second request finds it and does
-not run `JNI_OnLoad` again. What comes back when it fails is ART's sentence
+APK's of that file name -- unless the path names a file of the app's own in
+its data folder, not the copy in its library folder (`mg_dl_own_library`,
+`bionic/mg_libdl.c`). That file is loaded, as Android's `System.load` loads
+the file it is given: a library the app unpacked or downloaded itself, under a
+name no APK has or under one an APK has too (a build of the app's own, a
+patch). It is not read first to see whether it is the APK's library after all:
+loading it reads it once, as loading the APK's would, and loaders that unpack
+an app's libraries themselves and load them by path (SoLoader's
+`ApkSoSource`, ReLinker) would have every library read twice at every start.
+Only where the APK stores a library of 16 MB or more as it is -- read where it
+lies, it never needs its size of addresses again beside its image, as a file
+read whole does -- is a copy of the entry's size summed against it, and the
+APK's taken when the two are the same. Where the file is known to be another
+library than the APK's of its name, the log says so ("dvm: <path> is a build
+of the app's own, not the APK's <name>"). A path outside the app's folder that
+names a file with something in it is loaded from that file when no APK has the
+name. Native code's `dlopen` of a path takes the same file
+(`g_dlopen`); up to 0.1.0.685 it looked for the name alone, and a library the
+app wrote into a folder no library had come from was "not found". A library
+is loaded once, by its name: a second request finds it and does not run
+`JNI_OnLoad` again, even for another file of that name, of which Android would
+load a second copy. What comes back when it fails is ART's sentence
 (`dlopen failed: library "..." not found`, `JNI_ERR returned from JNI_OnLoad in
 "..."`, `Bad JNI version returned from JNI_OnLoad in "...": N`); a library the
 APK does not have at all never gets that far, and is libcore's own

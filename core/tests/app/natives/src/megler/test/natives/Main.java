@@ -292,7 +292,35 @@ public class Main extends Activity {
             try (FileInputStream in = new FileInputStream(lib)) {
                 in.read(magic);
             }
-            return lib.getPath().equals(found) && lib.length() > 1000 && dep.length() > 1000 && magic[0] == 0x7F && magic[1] == 'E' && magic[2] == 'L' && magic[3] == 'F';
+            /*
+             * The folder holds the APK's libraries and nothing else, each of the entry's bytes, as ByteDance's librarian sums them
+             * against the APK's entries: the test put an older version's there before the start (mg_java_tests.c) -- a library this
+             * one has not, and libnatives_dep.so of the entry's size and other bytes, which Megler up to 0.1.0.685 kept.
+             */
+            java.util.TreeSet<String> want = new java.util.TreeSet<>(), have = new java.util.TreeSet<>(Arrays.asList(new File(libDir).list()));
+            boolean same = true;
+            try (java.util.zip.ZipFile apk = new java.util.zip.ZipFile(getPackageCodePath())) {
+                for (java.util.Enumeration<? extends java.util.zip.ZipEntry> en = apk.entries(); en.hasMoreElements();) {
+                    java.util.zip.ZipEntry e = en.nextElement();
+                    String name = e.getName();
+                    if (!name.startsWith("lib/armeabi-v7a/") || !name.endsWith(".so")) continue;
+                    File placed = new File(libDir, name.substring(16));
+                    want.add(placed.getName());
+                    java.util.zip.CRC32 crc = new java.util.zip.CRC32();
+                    byte[] buf = new byte[8192];
+                    int n;
+                    try (FileInputStream in = new FileInputStream(placed)) {
+                        while ((n = in.read(buf)) > 0) crc.update(buf, 0, n);
+                    }
+                    if (placed.length() != e.getSize() || crc.getValue() != e.getCrc()) {
+                        same = false;
+                        detail += " " + placed.getName() + " is not the APK's";
+                    }
+                }
+            }
+            detail += " folder=" + have + " apk=" + want;
+            return lib.getPath().equals(found) && lib.length() > 1000 && dep.length() > 1000 && magic[0] == 0x7F && magic[1] == 'E' && magic[2] == 'L' && magic[3] == 'F'
+                    && want.equals(have) && same;
         });
         step("loaded-once", () -> {
             System.loadLibrary("natives");
@@ -310,6 +338,54 @@ public class Main extends Activity {
             }
             System.load(copy.getPath());
             return true;
+        });
+        step("own-file-same-name", () -> {
+            /*
+             * A library of the APK's name and size and other bytes, made by the app and loaded by its path before anything loaded
+             * the APK's of that name: the APK's libnatives_alt.so with the "version 1" of its text made "version 2". On Android
+             * System.load loads the file it is given; TikTok Lite 47.7.4 loads the libnpth.so it unpacks so.
+             */
+            File src = new File(libDir, "libnatives_alt.so"), dir = new File(getFilesDir(), "own"), copy = new File(dir, "libnatives_alt.so");
+            byte[] bytes = new byte[(int) src.length()], from = "natives_alt version 1".getBytes("US-ASCII");
+            try (FileInputStream in = new FileInputStream(src)) {
+                int at = 0, n;
+                while (at < bytes.length && (n = in.read(bytes, at, bytes.length - at)) > 0) at += n;
+            }
+            int found = -1, times = 0;
+            for (int i = 0; i + from.length <= bytes.length; i++) {
+                int k = 0;
+                while (k < from.length && bytes[i + k] == from[k]) k++;
+                if (k == from.length) {
+                    found = i;
+                    times++;
+                }
+            }
+            if (times != 1) {
+                detail = "the library has its text " + times + " times";
+                return false;
+            }
+            bytes[found + from.length - 1] = '2';
+            dir.mkdirs();
+            try (FileOutputStream out = new FileOutputStream(copy)) {
+                out.write(bytes);
+            }
+            System.load(copy.getPath());
+            String said = Alt.version();
+            detail = "said=" + said + " size=" + copy.length() + "/" + src.length();
+            return "natives_alt version 2".equals(said) && copy.length() == src.length();
+        });
+        step("dlopen-own-file", () -> {
+            /* A library the app wrote itself, in a folder no library came from before, opened by native code by its path. */
+            File dir = new File(getFilesDir(), "dl"), copy = new File(dir, "libdlopened.so");
+            byte[] buf = new byte[65536];
+            int n;
+            dir.mkdirs();
+            try (FileInputStream in = new FileInputStream(new File(libDir, "libnatives_dep.so")); FileOutputStream out = new FileOutputStream(copy)) {
+                while ((n = in.read(buf)) > 0) out.write(buf, 0, n);
+            }
+            int answer = Lib.dlopenAnswer(copy.getPath());
+            detail = "answer=" + answer;
+            return answer == 4242;
         });
         step("missing-library", () -> {
             String byName = null, byPath = null;

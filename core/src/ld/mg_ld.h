@@ -58,7 +58,31 @@ const char *mg_ld_abi(void);
 bool mg_ld_has_lib(const char *name);
 /* Whether an address is inside a loaded library. Takes no lock: for asking about a thread that has been stopped. */
 bool mg_ld_is_guest_code(mg_addr pc);
-int mg_ld_apk_libs(void (*cb)(const char *name, u64 size, void *user), void *user);
+
+/*
+ * The app's libraries as files of their own in `dir`, its ApplicationInfo.nativeLibraryDir (mg_ld_place.c): every
+ * lib/<abi>/<name>.so of the APKs -- of the first APK that has the name, as the linker takes it -- and no other library,
+ * as Android's installer leaves the folder at each install and update. A file is written when it is not that entry's:
+ * absent, of another size, or of another CRC-32 than `index` says the last placing wrote (the APK's central directory
+ * has the entry's, so a start that changes nothing reads no library). A file of the entry's size that the index does not
+ * name is summed once, and written only when it differs. A library no APK has any more -- an update dropped it, or moved
+ * it into an archive the app unpacks itself -- is removed. `index` is a file of Megler's, outside the app's folders,
+ * written again when anything changed; NULL: none. `abi` NULL: the APKs have no libraries, and the folder keeps none.
+ * False when the folder cannot be made.
+ */
+typedef struct mg_ld_placed {
+    int libs;                          /* the APKs' libraries */
+    int written, summed, failed;       /* written now; read and summed for want of the index; could not be written */
+    int removed;                       /* an older version's, removed */
+    char removed_names[200];           /* the first of them, joined by ", " */
+} mg_ld_placed;
+bool mg_ld_place_libs(const struct mg_zip *const *apks, int napks, const char *abi, const char *dir, const char *index, mg_ld_placed *out);
+/*
+ * The APK's library `name` (a file name: lib/<abi>/<name> of the first APK that has it, as the linker takes it; in a
+ * service's scope, its APK's): the entry's size and CRC-32, and whether the APK stores it as it is -- such a library is
+ * read where it lies when it is loaded, never whole in memory. False when no APK has it.
+ */
+bool mg_ld_apk_lib_entry(const char *name, u64 *size, u32 *crc, bool *stored);
 
 /* Bind every later import of `name` to `fn` instead of whatever defines it. Call before the libraries load. */
 void mg_ld_interpose(const char *name, void *fn);
