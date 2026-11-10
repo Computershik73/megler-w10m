@@ -1193,6 +1193,20 @@ typedef struct megler_storage_host {
  *                  with none of its own (the second half of a surrogate pair,
  *                  a combining mark, the later letters of a ligature unless
  *                  the system splits it) gets 0. They add up to text_measure.
+ *   text_path      (may be NULL) the outlines of the run's glyphs, for
+ *                  Paint.getTextPath: draw_path's stream (verbs and absolute
+ *                  coordinates as floats in the machine's order), handed to
+ *                  `write` in as many pieces as suit the host. The run is
+ *                  where draw_text with the same paint at (x, y) would put
+ *                  it -- the paint's alignment, text_scale_x, text_skew_x
+ *                  and letter_spacing as there -- and each glyph is its
+ *                  closed figures, inside by MEGLER_GFX_WINDING. The style,
+ *                  the stroke width, fake bold and a colour glyph's colours
+ *                  are not part of an outline (a colour glyph gives its plain
+ *                  glyph's). A run with no ink writes nothing and returns
+ *                  true; false: no outlines here, and the framework makes do
+ *                  with the run's box. (Google Maps' legacy renderer draws
+ *                  every label of its map by filling and stroking these.)
  *
  * TYPEFACES
  *
@@ -1389,6 +1403,9 @@ typedef struct megler_gfx_host {
     /* Free a canvas whose pixels will never be read again. Like canvas_free,
        but its memory need not receive the last drawing. */
     void (MEGLER_CB *canvas_discard)(void *user, void *canvas);
+    /* Optional: the outlines of a run's glyphs (see TEXT above). */
+    bool (MEGLER_CB *text_path)(void *user, const uint16_t *text, int count, float x, float y, const megler_gfx_paint *paint, void *typeface,
+                                megler_gfx_write write, void *sink);
 } megler_gfx_host;
 
 /*

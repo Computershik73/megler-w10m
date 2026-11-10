@@ -121,6 +121,10 @@ typedef struct gl1 {
     void (*Lightf)(u32, u32, float);
     void (*Materialf)(u32, u32, float);
     void (*TexEnvf)(u32, u32, float);
+    void (*TexEnvx)(u32, u32, i32);
+    void (*Color4x)(i32, i32, i32, i32);
+    void (*TexParameterf)(u32, u32, float);
+    void (*GetIntegerv)(u32, i32 *);
 } gl1;
 
 static bool gl1_resolve(gl1 *f, void *(*get)(const char *name))
@@ -133,7 +137,7 @@ static bool gl1_resolve(gl1 *f, void *(*get)(const char *name))
         "glBlendFunc", "glAlphaFunc", "glLightfv", "glLightModelfv", "glMaterialfv", "glFogf", "glFogfv", "glGenBuffers",
         "glDeleteBuffers", "glBindBuffer", "glBufferData", "glDrawArrays", "glDrawElements", "glDrawTexiOES", "glPixelStorei",
         "glReadPixels", "glGetError", "glGetString", "glActiveTexture", "glClientActiveTexture", "glClipPlanef", "glShadeModel",
-        "glPointSize", "glLightf", "glMaterialf", "glTexEnvf",
+        "glPointSize", "glLightf", "glMaterialf", "glTexEnvf", "glTexEnvx", "glColor4x", "glTexParameterf", "glGetIntegerv",
     };
     void **slots = (void **)f;
     size_t i;
@@ -152,6 +156,10 @@ typedef struct gl1_run {
     bool compare;                      /* each picture compared with the PC's own level's of that scene, where it is there */
     void (*say)(const char *line, void *user);
     void *user;
+    /* A name drawn by the shell's drawing as Megler's Paint.getTextPath and Canvas.drawPath draw a label of Google Maps' into a
+       bitmap: w x h, premultiplied R, G, B, A; NULL where there is none (mg_angle_windows_label). */
+    bool (*label)(void *user, const char *ascii, u32 ink, u32 halo, int w, int h, u8 *rgba);
+    void *label_user;
     int checks, failed, compared;
     char scene[40];
 } gl1_run;
@@ -964,13 +972,258 @@ static void gl1_variants(gl1_run *r)
     f->DeleteTextures(1, &cube);
     f->DeleteTextures(1, &mip);
 }
+
+/*
+ * A name as Google Maps' legacy renderer draws one into a bitmap (lib6.gmm6.vector.bu): w x h, clear, a halo of white over
+ * rows and columns 2 to the size less 3, and bars of the text's colour over rows 5 to h - 6 (columns 6 to 9 of every 8);
+ * premultiplied R, G, B, A, as Megler's Bitmap gives them.
+ */
+static void gl1_label_pixels(u8 *rgba, int w, int h, u8 text)
+{
+    int x, y;
+    for (y = 0; y < h; y++)
+        for (x = 0; x < w; x++) {
+            u8 *p = rgba + ((size_t)y * (size_t)w + (size_t)x) * 4;
+            bool halo = x >= 2 && x < w - 2 && y >= 2 && y < h - 2;
+            bool letter = halo && y >= 5 && y < h - 5 && x >= 6 && x < w - 6 && (x - 6) % 8 < 4;
+            p[0] = p[1] = p[2] = letter ? text : halo ? 255 : 0;
+            p[3] = halo ? 255 : 0;
+        }
+}
+
+/*
+ * The texture of a name, as the legacy renderer makes it (lib6.gmm6.vector.gl.ai.g): its own, GL_LINEAR both ways, clamped,
+ * GL_GENERATE_MIPMAP off, and the bitmap uploaded by GLUtils.texImage2D -- an ARGB_4444 one (a name of black or white) as
+ * GL_RGBA of GL_UNSIGNED_SHORT_4_4_4_4, an ARGB_8888 one as GL_RGBA of bytes (core/framework/.../GLUtils.java).
+ */
+static u32 gl1_label_texture(const gl1 *f, int w, int h, const u8 *rgba, bool shorts)
+{
+    enum { GL_UNSIGNED_SHORT_4_4_4_4_ = 0x8033 };
+    u16 packed[64 * 16];
+    u32 t = 0;
+    int i;
+    f->GenTextures(1, &t);
+    f->BindTexture(GL_TEXTURE_2D_, t);
+    f->TexParameterf(GL_TEXTURE_2D_, GL_TEXTURE_WRAP_S_, (float)GL_CLAMP_TO_EDGE_);
+    f->TexParameterf(GL_TEXTURE_2D_, GL_TEXTURE_WRAP_T_, (float)GL_CLAMP_TO_EDGE_);
+    f->TexParameterf(GL_TEXTURE_2D_, GL_TEXTURE_MIN_FILTER_, (float)GL_LINEAR_);
+    f->TexParameterf(GL_TEXTURE_2D_, GL_TEXTURE_MAG_FILTER_, (float)GL_LINEAR_);
+    f->TexParameterf(GL_TEXTURE_2D_, GL_GENERATE_MIPMAP_, 0.0f);
+    f->PixelStorei(GL_UNPACK_ALIGNMENT_, 1);
+    if (shorts) {
+        for (i = 0; i < w * h && i < 64 * 16; i++)
+            packed[i] = (u16)((rgba[i * 4] >> 4) << 12 | (rgba[i * 4 + 1] >> 4) << 8 | (rgba[i * 4 + 2] >> 4) << 4 | rgba[i * 4 + 3] >> 4);
+        f->TexImage2D(GL_TEXTURE_2D_, 0, GL_RGBA_, w, h, 0, GL_RGBA_, GL_UNSIGNED_SHORT_4_4_4_4_, packed);
+    } else {
+        f->TexImage2D(GL_TEXTURE_2D_, 0, GL_RGBA_, w, h, 0, GL_RGBA_, GL_UNSIGNED_BYTE_, rgba);
+    }
+    return t;
+}
+
+/* What blending premultiplied `src` (0xRRGGBBAA) faded by `fade` over `dst` (GL_ONE, GL_ONE_MINUS_SRC_ALPHA) gives. */
+static u32 gl1_over(u32 src, u32 dst, float fade)
+{
+    float sa = (float)(src & 255) / 255.0f * fade;
+    u32 out = 0;
+    int i;
+    for (i = 24; i >= 0; i -= 8) {
+        float s = (float)(src >> i & 255) * fade, d = (float)(dst >> i & 255);
+        float v = s + d * (1.0f - sa);
+        out |= (u32)(v > 255.0f ? 255 : (int)(v + 0.5f)) << i;
+    }
+    return out;
+}
+
+/*
+ * Google Maps' legacy renderer's map text, as it draws it (Transit's map; lib6.gmm6.vector.bu, gl.ai, gl.drawable.s, d.e):
+ * names in textures of their own (gl1_label_texture), a dark grey one of bytes, a black one of 4444 shorts, and the grey one
+ * faded to half (glColor4x), each a fan from one buffer object of three floats of position and two of texture coordinates
+ * (glVertexPointer and glTexCoordPointer 20 bytes apart), GL_MODULATE by the colour (glTexEnvx), blended premultiplied
+ * (GL_ONE, GL_ONE_MINUS_SRC_ALPHA), texel for pixel. And its roads' textures (gl.aj): GL_ALPHA mipmaps of ALPHA_8 bitmaps,
+ * each level uploaded by itself, GL_LINEAR_MIPMAP_LINEAR, repeated along, replacing the alpha of the vertex colours.
+ */
+static void gl1_map_text(gl1_run *r)
+{
+    enum { W = 64, H = 16 };
+    const gl1 *f = r->f;
+    static u8 grey[W * H * 4], black[W * H * 4];
+    u32 label[2], road = 0, buffer = 0, bg;
+    float vertices[3][4][5];
+    int i, k;
+    gl1_label_pixels(grey, W, H, 64);
+    gl1_label_pixels(black, W, H, 0);
+    for (i = 0; i < 3; i++) {
+        static const float corners[4][2] = { { 0, 0 }, { 1, 0 }, { 1, 1 }, { 0, 1 } };
+        float y0 = 4.0f + 20.0f * (float)i;
+        for (k = 0; k < 4; k++) {
+            vertices[i][k][0] = corners[k][0] * W;
+            vertices[i][k][1] = y0 + corners[k][1] * H;
+            vertices[i][k][2] = 0;
+            vertices[i][k][3] = corners[k][0];
+            vertices[i][k][4] = corners[k][1];
+        }
+    }
+    gl1_begin(r, "map-labels");
+    bg = gl1_pixel(r, 32, 2);
+    label[0] = gl1_label_texture(f, W, H, grey, false);
+    label[1] = gl1_label_texture(f, W, H, black, true);
+    f->GenBuffers(1, &buffer);
+    f->BindBuffer(GL_ARRAY_BUFFER_, buffer);
+    f->BufferData(GL_ARRAY_BUFFER_, (intptr_t)sizeof(vertices), vertices, GL_STATIC_DRAW_);
+    f->Enable(GL_TEXTURE_2D_);
+    f->EnableClientState(GL_VERTEX_ARRAY_);
+    f->EnableClientState(GL_TEXTURE_COORD_ARRAY_);
+    f->VertexPointer(3, GL_FLOAT_, 20, (const void *)0);
+    f->TexCoordPointer(2, GL_FLOAT_, 20, (const void *)12);
+    f->Enable(GL_BLEND_);
+    f->BlendFunc(1, GL_ONE_MINUS_SRC_ALPHA_);
+    f->TexEnvx(GL_TEXTURE_ENV_, GL_TEXTURE_ENV_MODE_, GL_MODULATE_);
+    for (i = 0; i < 3; i++) {
+        i32 fade = i == 2 ? 32768 : 65536;
+        f->Color4x(fade, fade, fade, fade);
+        f->BindTexture(GL_TEXTURE_2D_, label[i == 1]);
+        f->DrawArrays(GL_TRIANGLE_FAN_, i * 4, 4);
+    }
+    /* Each name: a letter, the halo between two letters, the clear edge, from the middle row. */
+    gl1_expect(r, 7, 4 + 8, 0x404040FFu);
+    gl1_expect(r, 11, 4 + 8, 0xFFFFFFFFu);
+    gl1_expect(r, 1, 4 + 8, bg);
+    gl1_expect(r, 32, 4 + 1, bg);
+    gl1_expect(r, 7, 24 + 8, 0x000000FFu);
+    gl1_expect(r, 11, 24 + 8, 0xFFFFFFFFu);
+    gl1_expect(r, 1, 24 + 8, bg);
+    gl1_expect(r, 7, 44 + 8, gl1_over(0x404040FFu, bg, 0.5f));
+    gl1_expect(r, 11, 44 + 8, gl1_over(0xFFFFFFFFu, bg, 0.5f));
+    gl1_expect(r, 1, 44 + 8, bg);
+    f->BindBuffer(GL_ARRAY_BUFFER_, 0);
+    gl1_end(r);
+
+    /*
+     * The same with names the shell's drawing drew as Megler draws Google Maps' labels (Paint.getTextPath's outlines stroked in
+     * the halo's white, then filled): letters, not the boxes package 684 gave them -- inside the box of a name's ink, a good part
+     * is the halo's white alone -- and on the screen texel for pixel, the grey ones of bytes, the black one of 4444 shorts.
+     */
+    if (r->label) {
+        static const char *const words[3] = { "Lisboa", "Atlantic", "Madrid" };
+        static const u32 inks[3] = { 0xFF5B5B5Bu, 0xFF000000u, 0xFF5B5B5Bu };
+        static u8 names[3][W * H * 4];
+        bool drawn = true;
+        for (i = 0; i < 3 && drawn; i++) drawn = r->label(r->label_user, words[i], inks[i], 0xFFFFFFFFu, W, H, names[i]);
+        snprintf(r->scene, sizeof(r->scene), "map-names");
+        gl1_check(r, drawn, "the shell's drawing did not draw the names");
+        for (i = 0; i < 3 && drawn; i++) {
+            int x, y, l = W, t = H, rr = -1, b = -1, ink = 0, white = 0;
+            char what[200];
+            for (y = 0; y < H; y++)
+                for (x = 0; x < W; x++) {
+                    const u8 *p = names[i] + (y * W + x) * 4;
+                    if (p[3] < 200 || p[0] > 140) continue;
+                    ink++;
+                    l = x < l ? x : l;
+                    rr = x > rr ? x : rr;
+                    t = y < t ? y : t;
+                    b = y > b ? y : b;
+                }
+            for (y = t; y <= b; y++)
+                for (x = l; x <= rr; x++) white += names[i][(y * W + x) * 4] > 230 && names[i][(y * W + x) * 4 + 3] > 230;
+            snprintf(what, sizeof(what), "the name \"%s\" is not letters: %d texels of ink in %d..%d by %d..%d, %d of the halo's white alone among them",
+                     words[i], ink, l, rr, t, b, white);
+            gl1_check(r, ink >= 20 && rr > l + 12 && white * 4 >= (rr - l + 1) * (b - t + 1), what);
+        }
+        if (drawn) {
+            u8 shown[W * H * 4];
+            u32 named[3];
+            int bad = 0, worst = -1;
+            char what[200];
+            gl1_begin(r, "map-names");
+            bg = gl1_pixel(r, 32, 2);
+            for (i = 0; i < 3; i++) named[i] = gl1_label_texture(f, W, H, names[i], i == 1);
+            f->BindBuffer(GL_ARRAY_BUFFER_, buffer);
+            f->Enable(GL_TEXTURE_2D_);
+            f->EnableClientState(GL_VERTEX_ARRAY_);
+            f->EnableClientState(GL_TEXTURE_COORD_ARRAY_);
+            f->VertexPointer(3, GL_FLOAT_, 20, (const void *)0);
+            f->TexCoordPointer(2, GL_FLOAT_, 20, (const void *)12);
+            f->Enable(GL_BLEND_);
+            f->BlendFunc(1, GL_ONE_MINUS_SRC_ALPHA_);
+            f->TexEnvx(GL_TEXTURE_ENV_, GL_TEXTURE_ENV_MODE_, GL_MODULATE_);
+            for (i = 0; i < 3; i++) {
+                i32 fade = i == 2 ? 32768 : 65536;
+                f->Color4x(fade, fade, fade, fade);
+                f->BindTexture(GL_TEXTURE_2D_, named[i]);
+                f->DrawArrays(GL_TRIANGLE_FAN_, i * 4, 4);
+            }
+            f->BindBuffer(GL_ARRAY_BUFFER_, 0);
+            /* Every pixel of the names is its texel over the ground (the 4444 one's to four bits), the third faded to half. */
+            f->PixelStorei(GL_PACK_ALIGNMENT_, 1);
+            for (i = 0; i < 3; i++) {
+                int x, y, c;
+                f->ReadPixels(0, 4 + 20 * i, W, H, GL_RGBA_, GL_UNSIGNED_BYTE_, shown);
+                for (y = 0; y < H; y++)
+                    for (x = 0; x < W; x++) {
+                        const u8 *p = names[i] + (y * W + x) * 4, *q = shown + (y * W + x) * 4;
+                        u32 texel = 0, got = (u32)q[0] << 24 | (u32)q[1] << 16 | (u32)q[2] << 8 | q[3];
+                        for (c = 0; c < 4; c++) texel = texel << 8 | (u32)(i == 1 ? (p[c] >> 4) * 17 : p[c]);
+                        if (!gl1_near(got, gl1_over(texel, bg, i == 2 ? 0.5f : 1.0f), 3)) {
+                            bad++;
+                            if (worst < 0) worst = (i * H + y) * W + x;
+                        }
+                    }
+            }
+            snprintf(what, sizeof(what), "%d pixels of the names are not their texels over the ground (the first: name %d, %d,%d)", bad,
+                     worst < 0 ? 0 : worst / (W * H), worst < 0 ? 0 : worst % W, worst < 0 ? 0 : worst / W % H);
+            gl1_check(r, bad == 0, what);
+            gl1_end(r);
+            f->DeleteTextures(3, named);
+        }
+    }
+
+    /* The roads: a GL_ALPHA texture of 16x16 whose four levels are uploaded one by one, a band across it that narrows level by
+       level (as the drawable roads of maps_dav_road_*), drawn at 16, 8 and 4 pixels across. */
+    {
+        static u8 levels[16 * 16];
+        static const u8 colors[16] = { 255, 128, 0, 255, 255, 128, 0, 255, 255, 128, 0, 255, 255, 128, 0, 255 };
+        int level, size;
+        gl1_begin(r, "map-roads");
+        f->GenTextures(1, &road);
+        f->BindTexture(GL_TEXTURE_2D_, road);
+        f->TexParameterf(GL_TEXTURE_2D_, GL_TEXTURE_WRAP_S_, 10497.0f);
+        f->TexParameterf(GL_TEXTURE_2D_, GL_TEXTURE_WRAP_T_, (float)GL_CLAMP_TO_EDGE_);
+        f->TexParameterf(GL_TEXTURE_2D_, GL_TEXTURE_MIN_FILTER_, 9987.0f);
+        f->TexParameterf(GL_TEXTURE_2D_, GL_TEXTURE_MAG_FILTER_, (float)GL_LINEAR_);
+        f->PixelStorei(GL_UNPACK_ALIGNMENT_, 1);
+        for (level = 0, size = 16; size > 0; level++, size >>= 1) {
+            int x, y;
+            for (y = 0; y < size; y++)
+                for (x = 0; x < size; x++) levels[y * size + x] = (u8)(y >= size / 4 && y < size - size / 4 ? 255 : 0);
+            f->TexParameterf(GL_TEXTURE_2D_, GL_GENERATE_MIPMAP_, 0.0f);
+            f->TexImage2D(GL_TEXTURE_2D_, level, GL_ALPHA_, size, size, 0, GL_ALPHA_, GL_UNSIGNED_BYTE_, levels);
+        }
+        f->Enable(GL_TEXTURE_2D_);
+        f->Enable(GL_BLEND_);
+        f->BlendFunc(GL_SRC_ALPHA_, GL_ONE_MINUS_SRC_ALPHA_);
+        f->TexEnvx(GL_TEXTURE_ENV_, GL_TEXTURE_ENV_MODE_, GL_REPLACE_);
+        f->EnableClientState(GL_COLOR_ARRAY_);
+        f->ColorPointer(4, GL_UNSIGNED_BYTE_, 0, colors);
+        gl1_quad(f, 8, 8, 24, 24);
+        gl1_quad(f, 32, 8, 40, 16);
+        gl1_quad(f, 48, 8, 52, 12);
+        gl1_expect(r, 16, 16, 0xFF8000FFu);
+        gl1_expect(r, 16, 9, bg);
+        gl1_end(r);
+    }
+    f->DeleteBuffers(1, &buffer);
+    f->DeleteTextures(2, label);
+    f->DeleteTextures(1, &road);
+}
 /* scenes: end */
 
 /* --------------------------------------------------------- through the core */
 
 static void *host_gl(const char *name) { return mg_egl_host(name); }
 
-int mg_angle_windows_run(const char *dir, const char *scratch, bool level_9_3, mg_test_sink sink, void *user, int *checks)
+int mg_angle_windows_run(const char *dir, const char *scratch, bool level_9_3, mg_test_sink sink, void *user, int *checks,
+                         bool (*label)(void *user, const char *ascii, u32 ink, u32 halo, int w, int h, u8 *rgba), void *label_user)
 {
     enum { EGL_NONE_ = 0x3038, EGL_SURFACE_TYPE_ = 0x3033, EGL_PBUFFER_BIT_ = 1, EGL_RED_SIZE_ = 0x3024, EGL_GREEN_SIZE_ = 0x3023,
            EGL_BLUE_SIZE_ = 0x3022, EGL_ALPHA_SIZE_ = 0x3021, EGL_DEPTH_SIZE_ = 0x3025, EGL_WIDTH_ = 0x3057, EGL_HEIGHT_ = 0x3056,
@@ -1010,6 +1263,8 @@ int mg_angle_windows_run(const char *dir, const char *scratch, bool level_9_3, m
     r.compare = level_9_3;
     r.say = sink;
     r.user = user;
+    r.label = label;
+    r.label_user = label_user;
     snprintf(r.scene, sizeof(r.scene), "setting up");
     /* ANGLE from that folder: the core loads libGLESv2.dll and libEGL.dll by name (mg_egl.c, angle), as the package's. */
     snprintf(path, sizeof(path), "%s/libGLESv2.dll", dir);
@@ -1067,6 +1322,7 @@ int mg_angle_windows_run(const char *dir, const char *scratch, bool level_9_3, m
     else gl1_check(&r, renderer && strstr(renderer, "level_9") == NULL, "ANGLE's renderer is of feature level 9_x without the flag");
     gl1_scenes(&r);
     gl1_variants(&r);
+    gl1_map_text(&r);
     if (level_9_3)
         gl1_say(&r, "  %d of its pictures compared with the PC's own level's%s", r.compared,
                 r.compared ? "" : " (there were none: run it without 9_3 first, into the same folder)");
@@ -1082,12 +1338,15 @@ done:
 
 #else
 
-int mg_angle_windows_run(const char *dir, const char *scratch, bool level_9_3, mg_test_sink sink, void *user, int *checks)
+int mg_angle_windows_run(const char *dir, const char *scratch, bool level_9_3, mg_test_sink sink, void *user, int *checks,
+                         bool (*label)(void *user, const char *ascii, u32 ink, u32 halo, int w, int h, u8 *rgba), void *label_user)
 {
     (void)dir;
     (void)scratch;
     (void)level_9_3;
     (void)checks;
+    (void)label;
+    (void)label_user;
     if (sink) sink("(ANGLE itself is not in this build of the tests: --angle-windows does nothing here; tools/build-tests.sh win runs it)", user);
     return 0;
 }

@@ -352,6 +352,7 @@ public class Main extends Activity {
         keystoreCertificates(run);
         keystoreForeignKey();
         pathOps();
+        textPath();
         base64Streams();
         pipedStreams();
         codecs();
@@ -3504,6 +3505,52 @@ public class Main extends Activity {
             return difference && centre == 0xFFFF0000 && (corner >>> 24) == 0 && edge == 0xFFFF0000
                     && intersect && inOval == 0xFFFF0000 && (outOval >>> 24) == 0
                     && xor && (overlap >>> 24) == 0 && onlyX == 0xFFFF0000 && onlyY == 0xFFFF0000;
+        });
+    }
+
+    /**
+     * Paint.getTextPath as Google Maps' legacy renderer draws the labels of its map with it: one Path handed over label after
+     * label, stroked in the halo's colour and then filled. The path holds the glyphs alone each time, where drawText would put
+     * them -- the stand-in's glyphs are boxes half an em wide on advances of 0.6 em (mg_gfx_standin.c), so there is ground
+     * between two letters -- whichever of the two methods is called, and with the alignment. Package 684 added the run's whole
+     * box to the path at each call, and the labels were grey boxes.
+     */
+    private void textPath() {
+        step("text-path", () -> {
+            android.graphics.Paint fill = new android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG);
+            fill.setTextSize(40);
+            fill.setColor(0xFFFF0000);
+            android.graphics.Paint halo = new android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG);
+            halo.setStyle(android.graphics.Paint.Style.STROKE);
+            halo.setStrokeWidth(2);
+            halo.setColor(0xFF0000FF);
+            android.graphics.Path path = new android.graphics.Path();
+            android.graphics.RectF first = new android.graphics.RectF(), again = new android.graphics.RectF(), centred = new android.graphics.RectF();
+            fill.getTextPath("HI", 0, 2, 10, 50, path);
+            path.computeBounds(first, true);
+            fill.getTextPath("xHI".toCharArray(), 1, 2, 10, 50, path);
+            path.computeBounds(again, true);
+            android.graphics.Bitmap bm = android.graphics.Bitmap.createBitmap(80, 60, android.graphics.Bitmap.Config.ARGB_8888);
+            android.graphics.Canvas c = new android.graphics.Canvas(bm);
+            c.drawPath(path, halo);
+            c.drawPath(path, fill);
+            int inH = bm.getPixel(20, 40), between = bm.getPixel(32, 40), edge = bm.getPixel(30, 40), inI = bm.getPixel(44, 40), above = bm.getPixel(20, 18);
+            fill.setTextAlign(android.graphics.Paint.Align.CENTER);
+            fill.getTextPath("HI", 0, 2, 34, 50, path);
+            path.computeBounds(centred, true);
+            fill.getTextPath("", 0, 0, 34, 50, path);
+            boolean emptied = path.isEmpty(), refused = false;
+            try {
+                fill.getTextPath("HI", 1, 5, 0, 0, path);
+            } catch (IndexOutOfBoundsException e) {
+                refused = true;
+            }
+            android.graphics.RectF want = new android.graphics.RectF(10, 22, 54, 50);
+            detail = String.format("first=%s again=%s centred=%s H=%08x between=%08x edge=%08x I=%08x above=%08x emptied=%b refused=%b", first, again, centred,
+                    inH, between, edge, inI, above, emptied, refused);
+            Log.i("DataTest", "text-path " + detail);
+            return first.equals(want) && again.equals(want) && centred.equals(want) && inH == 0xFFFF0000 && (between >>> 24) == 0 && edge == 0xFF0000FF
+                    && inI == 0xFFFF0000 && (above >>> 24) == 0 && emptied && refused;
         });
     }
 

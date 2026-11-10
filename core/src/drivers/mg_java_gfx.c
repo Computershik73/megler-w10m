@@ -4303,6 +4303,56 @@ N(G_txWidths)
     if (out && HAS(text_widths)) GFX(G.text_widths(G.user, text, count, &p.p, tf_host(c->args[4].j), out));
 }
 
+/* Whether the shell's outlines are draw_path's stream as megler.h has it: verbs 0 to 4, each with all its numbers, every number one. */
+static bool outline_stream(const float *v, size_t n)
+{
+    size_t i = 0, k, count;
+    while (i < n) {
+        if (!(v[i] >= MEGLER_GFX_PATH_MOVE && v[i] <= MEGLER_GFX_PATH_CLOSE) || v[i] != (float)(int)v[i]) return false;
+        if (i == 0 && v[i] != MEGLER_GFX_PATH_MOVE) return false;
+        count = (size_t)verb_floats((int)v[i++]);
+        if (count > n - i) return false;
+        for (k = 0; k < count; k++)
+            if (!isfinite(v[i + k])) return false;
+        i += count;
+    }
+    return true;
+}
+
+/*
+ * (String, int start, int end, float x, float y, int[] paint, long typeface) -> float[]: Paint.getTextPath, the outlines of
+ * the run's glyphs where drawText would put it, as draw_path's stream, whose verbs are those of the Java Path's own stream
+ * (MOVE, LINE, QUAD, CUBIC, CLOSE). Empty for no text; null when the shell gives no outlines, and the Java makes do.
+ */
+N(G_txPath)
+{
+    i32 count;
+    const u16 *text = text_of(c->args[0].l, c->args[1].i, c->args[2].i, &count);
+    gpaint p;
+    gbytes out;
+    bool given = false;
+    mg_jobj *array;
+    paint_of(c->args[5].l, &p);
+    if (!text) return;
+    if (count <= 0) {
+        c->ret.l = mg_dvm_new_array("[F", 0);
+        return;
+    }
+    if (!HAS(text_path)) return;
+    memset(&out, 0, sizeof(out));
+    GFX(given = G.text_path(G.user, text, count, c->args[3].f, c->args[4].f, &p.p, tf_host(c->args[6].j), bytes_write, &out));
+    if (given && (out.size % sizeof(float) != 0 || !outline_stream((const float *)out.data, out.size / sizeof(float)))) {
+        mg_note_once("gfx: the shell's text_path gave what is not draw_path's stream: Paint.getTextPath makes do with the run's box");
+        given = false;
+    }
+    if (given) {
+        array = mg_dvm_new_array("[F", (i32)(out.size / sizeof(float)));
+        if (array && out.size) memcpy(array->u.arr.data, out.data, out.size);
+        c->ret.l = array;
+    }
+    free(out.data);
+}
+
 /* --------------------------------------------------------- Gfx: typefaces */
 
 static gface *tf_new(void *host, i32 weight, bool italic)
@@ -4917,6 +4967,7 @@ static const mg_jhle k_gfx[] = {
     { "megler/Gfx", "txBounds", "(Ljava/lang/String;II[IJ[I)V", G_txBounds },
     { "megler/Gfx", "txBreak", "(Ljava/lang/String;IIF[IJZ)I", G_txBreak },
     { "megler/Gfx", "txWidths", "(Ljava/lang/String;II[IJ[F)V", G_txWidths },
+    { "megler/Gfx", "txPath", "(Ljava/lang/String;IIFF[IJ)[F", G_txPath },
     { "megler/Gfx", "tfCreate", "(Ljava/lang/String;I)J", G_tfCreate },
     { "megler/Gfx", "tfDefault", "()J", G_tfDefault },
     { "megler/Gfx", "tfDerive", "(JII)J", G_tfDerive },

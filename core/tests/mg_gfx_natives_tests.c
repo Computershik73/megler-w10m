@@ -1132,6 +1132,22 @@ static void test_paint(void)
 
 /* ----------------------------------------------------------------------- text */
 
+/* A shell's text_path that gives what it is told to, whatever the text. */
+static const float *g_text_path_gives;
+static size_t g_text_path_floats;
+static MEGLER_CB bool text_path_given(void *user, const uint16_t *text, int count, float x, float y, const megler_gfx_paint *paint, void *typeface,
+                                      megler_gfx_write write, void *sink)
+{
+    (void)user;
+    (void)text;
+    (void)count;
+    (void)x;
+    (void)y;
+    (void)paint;
+    (void)typeface;
+    return write(sink, g_text_path_gives, g_text_path_floats * sizeof(float));
+}
+
 static void test_text(void)
 {
     mg_jobj *s = mg_dvm_new_string("xA B"), *p = paint(0xFF0000FFu), *out5 = floats(NULL, 5), *box = ints(NULL, 4), *widths = floats(NULL, 4);
@@ -1221,6 +1237,42 @@ static void test_text(void)
     floats_of(widths)[0] = 99;
     call("txWidths", 6, L(words), I(0), I(15), L(p), J(0), L(widths));
     CHECK_FLOAT(floats_of(widths)[0], 99);
+    /* Paint.getTextPath's outlines, where cvDrawText draws the glyphs: the stand-in's two boxes of "A B" at (10, 30), each a closed
+       figure of four lines (Google Maps' labels are these filled and stroked, package 684 drew its box instead). */
+    {
+        static const float boxes[] = { 0, 10, 16, 1, 20, 16, 1, 20, 30, 1, 10, 30, 4, 0, 34, 16, 1, 44, 16, 1, 44, 30, 1, 34, 30, 4 };
+        static const float broken[] = { 1, 5, 5 };
+        mg_jobj *o = call("txPath", 7, L(s), I(1), I(4), F(10), F(30), L(p), J(0)).l;
+        CHECK(o && o->u.arr.len == 26 && memcmp(floats_of(o), boxes, sizeof(boxes)) == 0);
+        ints_of(p)[P_ALIGN] = 1;
+        o = call("txPath", 7, L(s), I(1), I(4), F(28), F(30), L(p), J(0)).l;
+        CHECK(o && o->u.arr.len == 26 && memcmp(floats_of(o), boxes, sizeof(boxes)) == 0);
+        ints_of(p)[P_ALIGN] = 0;
+        o = call("txPath", 7, L(s), I(2), I(2), F(10), F(30), L(p), J(0)).l;
+        CHECK(o && o->u.arr.len == 0);
+        o = call("txPath", 7, L(s), I(2), I(3), F(10), F(30), L(p), J(0)).l;
+        CHECK(o && o->u.arr.len == 0);
+        CHECK(call("txPath", 7, L(NULL), I(0), I(2), F(10), F(30), L(p), J(0)).l == NULL);
+        /* A shell with no outlines, or with what is not draw_path's stream: null, and the Java makes do with the run's box. */
+        {
+            megler_gfx_host none = *mg_gfx_standin();
+            none.text_path = NULL;
+            mg_java_gfx_set_host(&none);
+            CHECK(call("txPath", 7, L(s), I(1), I(4), F(10), F(30), L(p), J(0)).l == NULL);
+            g_text_path_gives = broken;
+            g_text_path_floats = 3;
+            none.text_path = text_path_given;
+            mg_java_gfx_set_host(&none);
+            CHECK(call("txPath", 7, L(s), I(1), I(4), F(10), F(30), L(p), J(0)).l == NULL);
+            g_text_path_gives = boxes;
+            g_text_path_floats = 24;
+            CHECK(call("txPath", 7, L(s), I(1), I(4), F(10), F(30), L(p), J(0)).l == NULL);
+            g_text_path_floats = 26;
+            o = call("txPath", 7, L(s), I(1), I(4), F(10), F(30), L(p), J(0)).l;
+            CHECK(o && o->u.arr.len == 26);
+            mg_java_gfx_set_host(mg_gfx_standin());
+        }
+    }
     /* Typefaces. The default is always there; the name's words are weights; a derived face is made once. */
     face = call("tfDefault", 0).j;
     CHECK(face != 0);
@@ -2593,7 +2645,7 @@ int mg_gfx_natives_tests_run(mg_test_sink sink, void *user, int *checks)
     say("megler.Gfx's native methods, over the stand-in");
     /* One entry for each native method megler/Gfx.java declares. */
     for (e = mg_java_gfx_natives(); e->cls; e++) n += strcmp(e->cls, "megler/Gfx") == 0 && e->sig && e->fn;
-    CHECK_INT(n, 75);
+    CHECK_INT(n, 76);
     mg_java_gfx_set_host(mg_gfx_standin());
     mg_java_gfx_stats(&bytes0, &count0);
     test_bitmaps();

@@ -13,8 +13,8 @@
 //
 // And in getPathIterator, which gave null: now an iterator over the segments megler.Gfx draws (PathIterator's overlay),
 // which Compose walks paths with on Android 14 and later. And in op, which did UNION alone and left the path as it was for
-// the rest: DIFFERENCE, REVERSE_DIFFERENCE, XOR and INTERSECT as the even-odd rule does them (see op). Everything else is
-// the original's, unchanged.
+// the rest: DIFFERENCE, REVERSE_DIFFERENCE, XOR and INTERSECT as the even-odd rule does them (see op). And meglerSetOutlines,
+// for Paint.getTextPath: the path made of the glyphs' outlines alone. Everything else is the original's, unchanged.
 package android.graphics;
 
 /** A path, kept as the op stream megler.Gfx draws (see core/src/drivers/mg_java_gfx.c: OP_*). */
@@ -95,6 +95,22 @@ public class Path {
     private void appendRaw(float[] o) {
         if (n + o.length > ops.length) ops = java.util.Arrays.copyOf(ops, n + o.length + 16);
         System.arraycopy(o, 0, ops, n, o.length); n += o.length; any = true;
+    }
+    /** For Paint.getTextPath: this path made of the glyphs' outlines alone (megler.Gfx.txPath's stream, this class's own verbs), filled
+        by WINDING, the last point where the stream leaves it. */
+    void meglerSetOutlines(float[] o) {
+        reset();
+        fill = FillType.WINDING;
+        if (o.length == 0) return;
+        appendRaw(o);
+        float sx = 0, sy = 0;
+        for (int i = 0; i < o.length;) {
+            int verb = (int) o[i++], count = verb == QUAD ? 4 : verb == CUBIC ? 6 : verb == CLOSE ? 0 : 2;
+            if (verb == CLOSE) { lastX = sx; lastY = sy; continue; }
+            lastX = o[i + count - 2]; lastY = o[i + count - 1];
+            if (verb == MOVE) { sx = lastX; sy = lastY; }
+            i += count;
+        }
     }
     public void offset(float dx, float dy) { transform(translate(dx, dy)); }
     public void offset(float dx, float dy, Path dst) { if (dst != null) { dst.set(this); dst.offset(dx, dy); } else offset(dx, dy); }

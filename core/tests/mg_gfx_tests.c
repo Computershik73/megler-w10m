@@ -563,6 +563,21 @@ static void test_bitmaps(void)
 
 /* ------------------------------------------------------------------- text */
 
+/* What text_path writes, kept: 64 numbers at most. */
+typedef struct outline {
+    float v[64];
+    size_t n;
+} outline;
+
+static MEGLER_CB bool outline_put(void *sink, const void *data, size_t size)
+{
+    outline *o = (outline *)sink;
+    if (size % sizeof(float) || size / sizeof(float) > 64 - o->n) return false;
+    memcpy(o->v + o->n, data, size);
+    o->n += size / sizeof(float);
+    return true;
+}
+
 static void test_text(void)
 {
     static const u16 a_b[] = { 'A', ' ', 'B' }, aa[] = { 'A', 'A' }, words[] = { 'h', 'e', 'l', 'l', 'o', ' ', 'w', 'o', 'r', 'l', 'd', ' ', 'f', 'o', 'o' },
@@ -628,6 +643,19 @@ static void test_text(void)
     /* Each code unit's advance; they add up to the measure. */
     H->text_widths(H->user, words, 15, &p, NULL, widths);
     for (i = 0; i < 15; i++) CHECK_FLOAT(widths[i], 12);
+    /* The glyphs' outlines: the boxes draw_text fills, each a closed figure of four lines; the alignment moves them as it moves the run. */
+    {
+        static const float want[] = { 0, 0, -14, 1, 10, -14, 1, 10, 0, 1, 0, 0, 4, 0, 24, -14, 1, 34, -14, 1, 34, 0, 1, 24, 0, 4 };
+        outline got;
+        memset(&got, 0, sizeof(got));
+        CHECK(H->text_path(H->user, a_b, 3, 0, 0, &p, NULL, outline_put, &got) && got.n == 26 && memcmp(got.v, want, sizeof(want)) == 0);
+        memset(&got, 0, sizeof(got));
+        p.text_align = MEGLER_GFX_ALIGN_RIGHT;
+        CHECK(H->text_path(H->user, a_b, 3, 36, 0, &p, NULL, outline_put, &got) && got.n == 26 && memcmp(got.v, want, sizeof(want)) == 0);
+        p.text_align = MEGLER_GFX_ALIGN_LEFT;
+        memset(&got, 0, sizeof(got));
+        CHECK(H->text_path(H->user, blank, 2, 0, 0, &p, NULL, outline_put, &got) && got.n == 0);
+    }
     /* Breaking, at size 10 (6 a character). By characters: as many as fit. */
     p.text_size = 10;
     CHECK_INT(H->text_break(H->user, words, 15, 50, &p, NULL, false), 8);
@@ -997,7 +1025,7 @@ int mg_gfx_tests_run(mg_test_sink sink, void *user, int *checks)
     /* Every function of the host is there: a test below that calls one need not ask. */
     CHECK(H->canvas_new && H->canvas_free && H->flush && H->touched && H->save && H->save_layer && H->restore && H->set_matrix && H->clip_rect && H->clip_path);
     CHECK(H->draw_color && H->draw_rect && H->draw_round_rect && H->draw_oval && H->draw_path && H->draw_bitmap && H->draw_text);
-    CHECK(H->text_measure && H->text_metrics && H->text_bounds && H->text_break && H->text_widths);
+    CHECK(H->text_measure && H->text_metrics && H->text_bounds && H->text_break && H->text_widths && H->text_path);
     CHECK(H->typeface_create && H->typeface_derive && H->typeface_from_data);
     CHECK(H->shader_linear && H->shader_radial && H->shader_sweep && H->shader_bitmap && H->shader_matrix && H->shader_free);
     CHECK(H->image_size && H->image_decode && H->image_encode && H->bitmap_gone);
