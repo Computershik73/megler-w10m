@@ -1847,6 +1847,7 @@ public class Main extends Activity {
         layoutApiLevel();
         resourcesImpl();
         activityThreadApplication();
+        dateFormats();
         backgroundOffMainThread();
         sound();
         mediaCodec();
@@ -5697,6 +5698,133 @@ public class Main extends Activity {
             return back == f && range != null && range.startsWith("at ") && range.contains("14:53") && range.contains("15:38")
                     && plain != null && !plain.isEmpty() && duration != null && duration.toString().length() > 0;
         });
+    }
+
+    /**
+     * Dates as Android words them. Messenger's chat list formats an older chat's date with a medium date format's clone given
+     * DateFormat.getBestDateTimePattern(locale, "MMMd") or (another year) "MMMd, yyyy", and today's with DateFormat.getTimeFormat;
+     * the skeleton itself was the pattern, and a Russian phone read "мая20, 2023" where Android says "20 мая 2023 г.". The
+     * patterns are written here from ICU's data as Android 9 has it (ICU 60, CLDR 32) for en-US and ru-RU in both runs; the
+     * formats of the default locale -- DateFormat.format's letters, the names, DateUtils' dates and relative times -- for the
+     * run's own, en-US in the first and ru-RU in the second. (The settings' 12/24 hours are Megler's default, 24.)
+     */
+    private void dateFormats() {
+        final java.util.Locale us = java.util.Locale.US, ru = new java.util.Locale("ru", "RU");
+        final boolean russian = "ru".equals(java.util.Locale.getDefault().getLanguage());
+        step("date-patterns", () -> {
+            final String[][] want = {
+                { "MMMd", "MMM d", "d MMM" },
+                { "MMMd, yyyy", "MMM d, yyyy", "d MMM yyyy 'г'." },
+                { "yMMMd", "MMM d, y", "d MMM y 'г'." },
+                { "MMMMd", "MMMM d", "d MMMM" },
+                { "yMMMMd", "MMMM d, y", "d MMMM y 'г'." },
+                // (ICU 60's Russian "Hm" is "H:mm".)
+                { "Hm", "HH:mm", "H:mm" },
+                { "hm", "h:mm a", "h:mm a" },
+            };
+            StringBuilder got = new StringBuilder();
+            boolean held = true;
+            for (String[] w : want) {
+                String a = android.text.format.DateFormat.getBestDateTimePattern(us, w[0]), b = android.text.format.DateFormat.getBestDateTimePattern(ru, w[0]);
+                got.append(w[0]).append(" = ").append(a).append(" | ").append(b).append("; ");
+                held &= w[1].equals(a) && w[2].equals(b);
+            }
+            java.util.Calendar may = java.util.Calendar.getInstance();
+            may.clear();
+            may.set(2023, java.util.Calendar.MAY, 20, 14, 53);
+            java.util.Calendar jan = (java.util.Calendar) may.clone();
+            jan.set(java.util.Calendar.MONTH, java.util.Calendar.JANUARY);
+            jan.set(java.util.Calendar.DAY_OF_MONTH, 5);
+            String usLong = messengerDate(us, "MMMd, yyyy", may.getTime()), ruLong = messengerDate(ru, "MMMd, yyyy", may.getTime());
+            String usShort = messengerDate(us, "MMMd", jan.getTime()), ruShort = messengerDate(ru, "MMMd", jan.getTime());
+            got.append("formats ").append(usLong).append(" | ").append(ruLong).append(" | ").append(usShort).append(" | ").append(ruShort);
+            held &= "May 20, 2023".equals(usLong) && "20 мая 2023 г.".equals(ruLong) && "Jan 5".equals(usShort) && "5 янв.".equals(ruShort);
+            // The locale's own clock, and the order of a pattern's day, month and year: hidden, reached as apps reach them.
+            java.lang.reflect.Method is24 = android.text.format.DateFormat.class.getMethod("is24HourLocale", java.util.Locale.class);
+            java.lang.reflect.Method order = android.text.format.DateFormat.class.getMethod("getDateFormatOrder", String.class);
+            boolean usClock = (Boolean) is24.invoke(null, us), ruClock = (Boolean) is24.invoke(null, ru);
+            String dmy = new String((char[]) order.invoke(null, "dd.MM.y")), mdy = new String((char[]) order.invoke(null, "M/d/yy 'г'."));
+            got.append("; 24 hours ").append(usClock).append(" | ").append(ruClock).append("; order ").append(dmy).append(" | ").append(mdy);
+            held &= !usClock && ruClock && "dMy".equals(dmy) && "Mdy".equals(mdy);
+            detail = got.toString();
+            Log.i("DataTest", "date-patterns " + detail);
+            return held;
+        });
+        step("date-format-letters", () -> {
+            java.util.Calendar when = java.util.Calendar.getInstance();
+            when.clear();
+            when.set(2023, java.util.Calendar.MAY, 20, 14, 53, 7); // a Saturday
+            CharSequence full = android.text.format.DateFormat.format("EEEE, dd MMMM yyyy, kk:mm:ss", when);
+            CharSequence alone = android.text.format.DateFormat.format("LLLL cccc", when);
+            CharSequence quoted = android.text.format.DateFormat.format("'at' h:mm, ''yy", when);
+            CharSequence spanned = android.text.format.DateFormat.format(new android.text.SpannedString("d.M.yy"), when);
+            CharSequence plain = android.text.format.DateFormat.format("d.M.yy", when);
+            String month = android.text.format.DateUtils.getMonthString(java.util.Calendar.JANUARY, android.text.format.DateUtils.LENGTH_LONG);
+            String mon = android.text.format.DateUtils.getMonthString(java.util.Calendar.JANUARY, android.text.format.DateUtils.LENGTH_MEDIUM);
+            String day = android.text.format.DateUtils.getDayOfWeekString(java.util.Calendar.SATURDAY, android.text.format.DateUtils.LENGTH_LONG);
+            String dy = android.text.format.DateUtils.getDayOfWeekString(java.util.Calendar.SATURDAY, android.text.format.DateUtils.LENGTH_MEDIUM);
+            String pm = android.text.format.DateUtils.getAMPMString(java.util.Calendar.PM);
+            // The clock: the settings' 24 hours, then 12 asked for, then 24 again.
+            boolean clock24 = android.text.format.DateFormat.is24HourFormat(this);
+            String time24 = ((java.text.SimpleDateFormat) android.text.format.DateFormat.getTimeFormat(this)).toPattern();
+            String shown24 = android.text.format.DateFormat.getTimeFormat(this).format(when.getTime());
+            android.provider.Settings.System.putString(getContentResolver(), android.provider.Settings.System.TIME_12_24, "12");
+            boolean clock12 = android.text.format.DateFormat.is24HourFormat(this);
+            String time12 = ((java.text.SimpleDateFormat) android.text.format.DateFormat.getTimeFormat(this)).toPattern();
+            android.provider.Settings.System.putString(getContentResolver(), android.provider.Settings.System.TIME_12_24, "24");
+            detail = "full=" + full + " alone=" + alone + " quoted=" + quoted + " spanned=" + spanned + " (" + spanned.getClass().getSimpleName() + ") plain="
+                    + plain + " (" + plain.getClass().getSimpleName() + ") month=" + month + " mon=" + mon + " day=" + day + " dy=" + dy + " pm=" + pm
+                    + " clock " + clock24 + " " + time24 + " " + shown24 + ", 12: " + clock12 + " " + time12;
+            Log.i("DataTest", "date-format-letters " + detail);
+            boolean names = russian
+                    ? "суббота, 20 мая 2023, 14:53:07".equals(full.toString()) && "май суббота".equals(alone.toString()) && "января".equals(month)
+                        && "янв.".equals(mon) && "суббота".equals(day) && "сб".equals(dy)
+                    : "Saturday, 20 May 2023, 14:53:07".equals(full.toString()) && "May Saturday".equals(alone.toString()) && "January".equals(month)
+                        && "Jan".equals(mon) && "Saturday".equals(day) && "Sat".equals(dy) && "PM".equals(pm);
+            return names && "at 2:53, '23".equals(quoted.toString()) && spanned instanceof android.text.Spanned && "20.5.23".equals(spanned.toString())
+                    && plain instanceof String && "20.5.23".equals(plain) && clock24 && (russian ? "H:mm" : "HH:mm").equals(time24) && "14:53".equals(shown24)
+                    && !clock12 && "h:mm a".equals(time12) && android.text.format.DateFormat.is24HourFormat(this);
+        });
+        step("date-utils-locale", () -> {
+            java.util.Calendar when = java.util.Calendar.getInstance();
+            when.clear();
+            when.set(2023, java.util.Calendar.MAY, 20, 14, 53);
+            long t = when.getTimeInMillis();
+            String medium = android.text.format.DateUtils.formatDateTime(this, t, android.text.format.DateUtils.FORMAT_SHOW_DATE
+                    | android.text.format.DateUtils.FORMAT_SHOW_YEAR | android.text.format.DateUtils.FORMAT_ABBREV_MONTH);
+            String numeric = android.text.format.DateUtils.formatDateTime(this, t, android.text.format.DateUtils.FORMAT_SHOW_DATE
+                    | android.text.format.DateUtils.FORMAT_SHOW_YEAR | android.text.format.DateUtils.FORMAT_NUMERIC_DATE);
+            String time = android.text.format.DateUtils.formatDateTime(this, t, android.text.format.DateUtils.FORMAT_SHOW_TIME);
+            long now = System.currentTimeMillis(), minute = android.text.format.DateUtils.MINUTE_IN_MILLIS, hour = android.text.format.DateUtils.HOUR_IN_MILLIS;
+            CharSequence ago = android.text.format.DateUtils.getRelativeTimeSpanString(now - 5 * minute, now, minute);
+            CharSequence ahead = android.text.format.DateUtils.getRelativeTimeSpanString(now + 3 * hour, now, minute);
+            CharSequence older = android.text.format.DateUtils.getRelativeTimeSpanString(t, now, minute);
+            CharSequence on = android.text.format.DateUtils.getRelativeTimeSpanString(this, t, true);
+            // "[relative], [time]": the time in the locale's own clock; a day before when the three hours cross midnight.
+            long then = now - 3 * hour;
+            CharSequence both = android.text.format.DateUtils.getRelativeDateTimeString(this, then, minute, android.text.format.DateUtils.WEEK_IN_MILLIS, 0);
+            java.util.Calendar a = java.util.Calendar.getInstance(), b = java.util.Calendar.getInstance();
+            a.setTimeInMillis(then);
+            b.setTimeInMillis(now);
+            boolean crossed = a.get(java.util.Calendar.DAY_OF_YEAR) != b.get(java.util.Calendar.DAY_OF_YEAR);
+            String clock = new java.text.SimpleDateFormat(russian ? "H:mm" : "h:mm a", java.util.Locale.getDefault()).format(new java.util.Date(then));
+            String relative = crossed ? (russian ? "Вчера" : "Yesterday") : (russian ? "3 часа назад" : "3 hours ago");
+            detail = "medium=" + medium + " numeric=" + numeric + " time=" + time + " ago=" + ago + " ahead=" + ahead + " older=" + older + " on=" + on + " both=" + both;
+            Log.i("DataTest", "date-utils-locale " + detail);
+            boolean held = russian
+                    ? "20 мая 2023 г.".equals(medium) && "20.05.2023".equals(numeric) && "5 минут назад".equals(ago.toString())
+                        && "Через 3 часа".equals(ahead.toString()) && "20 мая 2023 г.".equals(older.toString()) && "20.05.2023".equals(on.toString())
+                    : "May 20, 2023".equals(medium) && "5/20/2023".equals(numeric) && "5 minutes ago".equals(ago.toString())
+                        && "In 3 hours".equals(ahead.toString()) && "May 20, 2023".equals(older.toString()) && "on 5/20/2023".equals(on.toString());
+            return held && "14:53".equals(time) && both.toString().startsWith(relative + ", ") && both.toString().endsWith(clock);
+        });
+    }
+
+    /** A date as Messenger formats its chat list's: a medium date format of the locale, cloned, given the skeleton's best pattern. */
+    private static String messengerDate(java.util.Locale locale, String skeleton, java.util.Date when) {
+        java.text.SimpleDateFormat f = (java.text.SimpleDateFormat) java.text.DateFormat.getDateInstance(java.text.DateFormat.MEDIUM, locale).clone();
+        f.applyPattern(android.text.format.DateFormat.getBestDateTimePattern(locale, skeleton));
+        return f.format(when);
     }
 
     /**

@@ -2979,6 +2979,11 @@ static int run_data(void)
                                          "service-manager-window",
                                          /* And DateUtils' ranges into a Formatter, and a duration in words (both answered null). */
                                          "date-range",
+                                         /* And dates as Android words them: DateFormat's patterns for a skeleton, ICU's for en-US and
+                                            ru-RU (Messenger's chat list's "MMMd, yyyy" through a medium format's clone), the locale's
+                                            clock; DateFormat.format's letters and the names, the 12/24 hours of the settings; DateUtils'
+                                            dates and relative times in the run's locale, en-US and then ru-RU. */
+                                         "date-patterns", "date-format-letters", "date-utils-locale",
                                          /* And a view made on a worker thread with a state list for its background, its invalidateDrawable
                                             asserting the main thread, as Facebook builds its tab bar's tabs: the view the callback last. */
                                          "background-callback-last",

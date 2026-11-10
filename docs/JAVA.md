@@ -1182,6 +1182,25 @@ leaves "en-US". And in the data app, the `locale` step: `Locale`,
 harness starts the first run in "en-US" and the second in "ru-RU", and reads
 the tag and the country off the app's line.
 
+**Dates in the locale's words.** `android.text.format.DateFormat` and
+`DateUtils` are Android's (10 and later), on the ICU of Android 9's
+core-libart: a pattern for a skeleton is ICU's `DateTimePatternGenerator`'s
+best, the hour as long as the skeleton asks (`MATCH_HOUR_FIELD_LENGTH`), which
+is what Android 9 found through `libcore.icu.ICU`; 12 or 24 hours are the
+setting `TIME_12_24` where it is set (Megler's settings say 24) and the
+locale's own where it is not; `format()` is Android's own letters (`a`, `c`,
+`E`, `d`, `h`, `k`, `L`, `M`, `y`, `z`...) with ICU's names, standalone and
+narrow forms among them; `formatDateTime` is `formatDateRange` of the instant
+(libcore's `DateIntervalFormat`), and the relative times are libcore's
+`RelativeDateTimeFormatter`'s ("5 минут назад"), both by reflection, the
+plain English of before only where libcore's cannot be had. The pattern had
+been the skeleton itself: Messenger's chat list, which gives a medium date
+format the pattern for "MMMd, yyyy", read "мая20, 2023" in Russian. The data
+app's steps `date-patterns`, `date-format-letters` and `date-utils-locale`
+check the patterns for en-US and ru-RU against ICU 60's data (CLDR 32) in
+both runs ("d MMM y 'г'." for yMMMd in Russian), and the formats of the
+run's own locale.
+
 ### The screen resized and turned (the app under qemu-arm)
 
 `core/tests/app/screen`, run with the other test apps by `tools/build-tests.sh
