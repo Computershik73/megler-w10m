@@ -23,7 +23,11 @@ bool isXbox();
 bool asXbox();
 std::string deviceFamily();
 std::string osVersion();
+/// Megler's version, "0.1.0.682"; in an app's own package, that of the Megler that made it (its own version is
+/// "0.1.682.<n>" since 0.1.0.682: shell/AppPackage.h, appPackageVersion).
 std::string packageVersion();
+/// The package's own version, as Windows has it: Megler's, or an app's own package's "0.1.682.1".
+std::string ownPackageVersion();
 std::string architecture();
 /// LocalState, where everything the app keeps lives.
 const std::wstring& localStateDirectory();

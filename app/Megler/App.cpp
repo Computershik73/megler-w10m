@@ -83,7 +83,8 @@ struct App : ApplicationT<App, Markup::IXamlMetadataProvider> {
         } catch (...) {
         }
         shellLog::write("Megler for Windows 10 Mobile " + platform::packageVersion() + " (" + platform::architecture() + ", " +
-                        platform::deviceFamily() + " " + platform::osVersion() + ")");
+                        platform::deviceFamily() + " " + platform::osVersion() + ")" +
+                        (platform::ownPackageVersion() != platform::packageVersion() ? ", its package " + platform::ownPackageVersion() : std::string()));
         // (Each thread has its own terminate handler: this is the UI thread's. Any thread's abort() the core says.)
         std::set_terminate(&onTerminate);
         // The start watched until the window is shown (shell/Startup.h): where the UI thread stands, once the core can say.

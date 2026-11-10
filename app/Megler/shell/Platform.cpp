@@ -5,6 +5,7 @@
 #include "player/StorageHost.h"
 #include "shell/AppPackage.h"
 #include "shell/Files.h"
+#include "shell/PackageVersions.h"
 #include "shell/Placement.h"
 #include "shell/ShellLog.h"
 #include "shell/Strings.h"
@@ -101,6 +102,16 @@ std::string osVersion() {
 }
 
 std::string packageVersion() {
+    try {
+        auto v = Package::Current().Id().Version();
+        // (An app's own package, "<major>.<minor>.<Megler's build>.<n>": made by "<major>.<minor>.0.<Megler's build>".)
+        return packageVersions::madeBy(format("%u.%u.%u.%u", v.Major, v.Minor, v.Build, v.Revision));
+    } catch (...) {
+        return "unknown";
+    }
+}
+
+std::string ownPackageVersion() {
     try {
         auto v = Package::Current().Id().Version();
         return format("%u.%u.%u.%u", v.Major, v.Minor, v.Build, v.Revision);

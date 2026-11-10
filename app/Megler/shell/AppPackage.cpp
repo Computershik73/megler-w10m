@@ -10,6 +10,7 @@
 #include "shell/DevicePortal.h"
 #endif
 #include "shell/Files.h"
+#include "shell/PackageVersions.h"
 #include "shell/PickedFile.h"
 #include "shell/Placement.h"
 #include "shell/Platform.h"
@@ -51,10 +52,33 @@ std::string iniValue(const std::string& text, const char* key) {
     return {};
 }
 
-std::string versionString() {
+/// `xml` (a package's manifest) with its Identity's Version set to `version`; empty where it has none.
+std::string withIdentityVersion(const std::string& xml, const std::string& version) {
+    size_t tag = xml.find("<Identity");
+    while (tag != std::string::npos && tag + 9 < xml.size() && xml[tag + 9] != ' ' && xml[tag + 9] != '\t' && xml[tag + 9] != '\r' &&
+           xml[tag + 9] != '\n')
+        tag = xml.find("<Identity", tag + 9);
+    if (tag == std::string::npos) return {};
+    const size_t end = xml.find('>', tag);
+    if (end == std::string::npos) return {};
+    for (size_t at = xml.find("Version=\"", tag); at != std::string::npos && at < end; at = xml.find("Version=\"", at + 9)) {
+        const char before = xml[at - 1];
+        if (before != ' ' && before != '\t' && before != '\r' && before != '\n') continue; // (not MinVersion and the like)
+        const size_t value = at + 9, close = xml.find('"', value);
+        if (close == std::string::npos || close > end) return {};
+        return xml.substr(0, value) + version + xml.substr(close);
+    }
+    return {};
+}
+
+/// This package's own version, as Windows has it.
+std::string ownPackageVersion() {
     const auto v = Package::Current().Id().Version();
     return format("%u.%u.%u.%u", unsigned(v.Major), unsigned(v.Minor), unsigned(v.Build), unsigned(v.Revision));
 }
+
+/// The version of the Megler this is, or that made this app's own package (madeByVersion).
+std::string versionString() { return madeByVersion(ownPackageVersion()); }
 
 bool sameName(const std::wstring& a, const wchar_t* b) { return _wcsicmp(a.c_str(), b) == 0; }
 
@@ -534,7 +558,8 @@ std::string keepInShared(const ApkEntry& entry, const std::string& identity, con
 
 }  // namespace
 
-Made make(const ApkEntry& entry, const std::function<void(const std::string&)>& progress, const PickedFile* picked) {
+Made make(const ApkEntry& entry, const std::function<void(const std::string&)>& progress, const PickedFile* picked,
+          const std::string& installedVersion) {
     Made made;
     auto fail = [&made](std::string why) {
         made.error = std::move(why);
@@ -669,16 +694,22 @@ Made make(const ApkEntry& entry, const std::function<void(const std::string&)>& 
     char* manifest = megler_appx_app_manifest(meglerManifest.c_str(), r.package.c_str(), label.c_str(), logos.empty() ? nullptr : "transparent",
                                             nullptr, capabilities, err, sizeof(err));
     if (!manifest) return fail(std::string("The manifest could not be made: ") + err);
-    const std::string manifestText(manifest);
+    // Megler's manifest carries Megler's version: the app's package has one of its own (appPackageVersion).
+    made.version = appPackageVersion(installedVersion);
+    const std::string manifestText = withIdentityVersion(manifest, made.version);
     megler_free(manifest);
+    if (manifestText.empty()) return fail("Megler's manifest has no Identity Version to give the app's package a version of its own.");
+    if (!installedVersion.empty())
+        shellLog::write("app package: " + r.package + "'s package is " + made.version + ", the installed one " + installedVersion);
     char identity[64] = {};
     megler_appx_app_identity(r.package.c_str(), identity, sizeof(identity));
     made.identity = identity;
     {
-        // Its full name as Megler's is made: "<name>_<version>_<processor>__<publisher id>", the version Megler's.
+        // Its full name as Megler's is made: "<name>_<version>_<processor>__<publisher id>", the version the package's own.
         const auto id = Package::Current().Id();
         const std::string meglerFull = narrow(std::wstring(id.FullName())), meglerName = narrow(std::wstring(id.Name()));
-        made.fullName = identity + std::string("_") + version + meglerFull.substr(std::min(meglerFull.size(), meglerName.size() + 1 + version.size()));
+        made.fullName = identity + std::string("_") + made.version +
+                        meglerFull.substr(std::min(meglerFull.size(), meglerName.size() + 1 + ownPackageVersion().size()));
     }
 
     // resources.pri: XAML wants one whose resource map has the package's name. Megler carries one made for a placeholder
@@ -1279,7 +1310,8 @@ bool installedApps(std::vector<InstalledApp>& out, std::string& error, const std
         const size_t first = full.find('_'), second = first == std::string::npos ? std::string::npos : full.find('_', first + 1);
         if (second == std::string::npos || full.compare(0, 10, "MeglerApp.") != 0) continue;
         if (full.size() < publisherId.size() || full.compare(full.size() - publisherId.size(), publisherId.size(), publisherId) != 0) continue;
-        out.push_back({full.substr(0, first), full.substr(first + 1, second - first - 1), full});
+        const std::string version = full.substr(first + 1, second - first - 1);
+        out.push_back({full.substr(0, first), madeByVersion(version), full, version});
     }
     return true;
 #else
@@ -1311,7 +1343,8 @@ bool installedApps(std::vector<InstalledApp>& out, std::string& error, const std
             }
             if (name.compare(0, 10, L"MeglerApp.") != 0 || std::wstring(id.PublisherId()) != publisherId) continue;
             const auto v = id.Version();
-            found.push_back({narrow(name), format("%u.%u.%u.%u", v.Major, v.Minor, v.Build, v.Revision), narrow(std::wstring(id.FullName()))});
+            const std::string version = format("%u.%u.%u.%u", v.Major, v.Minor, v.Build, v.Revision);
+            found.push_back({narrow(name), madeByVersion(version), narrow(std::wstring(id.FullName())), version});
         }
         if (gPackageManager.exchange(1) != 1)
             shellLog::write(format("app package: Windows's package manager lists the apps' packages; %u of the %u packages are developer's",
@@ -1370,14 +1403,11 @@ InstallResult uninstall(const InstalledApp& app) {
 
 std::string meglerVersion() { return versionString(); }
 
-bool olderVersion(const std::string& a, const std::string& b) {
-    unsigned x[4] = {}, y[4] = {};
-    sscanf_s(a.c_str(), "%u.%u.%u.%u", &x[0], &x[1], &x[2], &x[3]);
-    sscanf_s(b.c_str(), "%u.%u.%u.%u", &y[0], &y[1], &y[2], &y[3]);
-    for (int i = 0; i < 4; i++)
-        if (x[i] != y[i]) return x[i] < y[i];
-    return false;
-}
+std::string madeByVersion(const std::string& packageVersion) { return packageVersions::madeBy(packageVersion); }
+
+std::string appPackageVersion(const std::string& installedVersion) { return packageVersions::next(ownPackageVersion(), installedVersion); }
+
+bool olderVersion(const std::string& a, const std::string& b) { return packageVersions::older(a, b); }
 
 namespace {
 

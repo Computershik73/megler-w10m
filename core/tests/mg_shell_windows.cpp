@@ -22,6 +22,8 @@
 //     Windows's installer, Megler's own installs, Update All, Google Play services from Megler's newer APK, packages made
 //     before Megler wrote down which folder a package reads; and on the disk, make's records, a listing read, decided and
 //     carried out, a folder whose APK an app has open left whole, each decision said once.
+//   - the versions of the apps' own packages (shell/PackageVersions.h): which Megler made one, the next one a build makes
+//     of an app (Aurora Store's update of an app made its package again with the same version, 0x80073CFB), Windows' order.
 //
 // A Lumia 630's Megler 0.1.0.671 was ended at every start while it made those copies on its UI thread before its window
 // was shown (library/Library.cpp); what is tested here is the way they are made since.
@@ -34,6 +36,7 @@
 #include "shell/AppPackage.h"
 #include "shell/BundledApks.h"
 #include "shell/Files.h"
+#include "shell/PackageVersions.h"
 #include "shell/Placement.h"
 #include "shell/Platform.h"
 #include "shell/SharedApks.h"
@@ -898,6 +901,24 @@ void testBundled() {
     check(writtenLog().find("bundled apks: an APK the tests have not could not be copied to") != std::string::npos, "copy: the log says why not");
 }
 
+/// The versions of an app's own packages (shell/PackageVersions.h): what made one, the next one a build makes, Windows' order.
+void testPackageVersions() {
+    printf("package versions\n");
+    namespace pv = packageVersions;
+    check(pv::madeBy("0.1.0.681") == "0.1.0.681", "a package made before 682 was made by its own version");
+    check(pv::madeBy("0.1.682.0") == "0.1.0.682" && pv::madeBy("0.1.682.7") == "0.1.0.682", "0.1.682.n was made by 0.1.0.682");
+    check(pv::next("0.1.0.682", "") == "0.1.682.0", "a first package of an app: 0.1.682.0");
+    check(pv::next("0.1.0.682", "0.1.0.681") == "0.1.682.0", "over a package 681 made: 0.1.682.0");
+    check(pv::next("0.1.0.682", "0.1.682.0") == "0.1.682.1", "made again by the same build: 0.1.682.1 (Aurora Store's update, 0x80073CFB before)");
+    check(pv::next("0.1.0.682", "0.1.682.4") == "0.1.682.5", "made again once more: 0.1.682.5");
+    check(pv::next("0.1.0.683", "0.1.682.4") == "0.1.683.0", "the next build's first: 0.1.683.0");
+    check(pv::next("1.2.3.4", "1.2.4.0") == "1.2.3.4", "a Megler whose third place is taken makes its own version");
+    check(pv::older("0.1.0.681", "0.1.682.0") && pv::older("0.1.682.9", "0.1.683.0") && pv::older("0.1.682.0", "0.1.682.1"),
+          "each build's packages are newer than the last build's, and a package made again newer than the one before");
+    check(!pv::older("0.1.682.1", "0.1.682.1") && pv::older("0.1.0.682", "0.1.682.0"),
+          "Windows' order: the same is not older; Megler 0.1.0.682's own version is older than its apps' packages");
+}
+
 } // namespace
 
 int wmain(int argc, wchar_t** argv) {
@@ -924,6 +945,7 @@ int wmain(int argc, wchar_t** argv) {
     testStartup();
     testBundled();
     testSharedApks(root);
+    testPackageVersions();
     shellLog::flush();
     printf("shell: %d checks, %d failed\n", gChecks, gFailed);
     return gFailed ? 1 : 0;

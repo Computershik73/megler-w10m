@@ -360,7 +360,16 @@ void run(Job& job, int number, int total) {
             entry.report = ApkReport::parse(replacement.report);
             entry.analysed = true;
         }
-        const appPackage::Made made = appPackage::make(entry, [&](const std::string& step) { setStep(package, stepOf(step)); }, job.picked.get());
+        // The installed package's version, which a package made again by this Megler goes past (appPackage::appPackageVersion).
+        std::string installedVersion;
+        {
+            std::lock_guard<std::mutex> lock(gMutex);
+            const std::string identity = identityOf(entry.report.package);
+            for (const auto& a : gInstalled)
+                if (a.identity == identity) installedVersion = a.packageVersion.empty() ? a.version : a.packageVersion;
+        }
+        const appPackage::Made made =
+            appPackage::make(entry, [&](const std::string& step) { setStep(package, stepOf(step)); }, job.picked.get(), installedVersion);
         if (!made.error.empty()) {
             const std::string kept = job.picked ? keepCopy(job, package) : std::string();
             setStep(package, made.error + (kept.empty() ? std::string() : " (" + kept + ")"));
@@ -431,7 +440,7 @@ void run(Job& job, int number, int total) {
             gInstalled.erase(std::remove_if(gInstalled.begin(), gInstalled.end(),
                                             [&](const appPackage::InstalledApp& a) { return a.identity == made.identity; }),
                              gInstalled.end());
-            gInstalled.push_back({made.identity, appPackage::meglerVersion(), made.fullName});
+            gInstalled.push_back({made.identity, appPackage::meglerVersion(), made.fullName, made.version});
             gGeneration++;
         }
         // The library's entry is that APK now, and Megler's own copy, if it had one, goes: one copy of it on the phone. (In the

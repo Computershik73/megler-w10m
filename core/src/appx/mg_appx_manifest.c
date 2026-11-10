@@ -16,7 +16,9 @@
  *     opened on the phone is Megler's to install, and with every app's package claiming it Windows would ask which one.
  *     Its megler: links stay, by which a package of Megler's starts another (Launcher.LaunchUriAsync with that package as
  *     the target).
- * The version is Megler's: a package made by a newer Megler updates one made by an older.
+ * The version is Megler's here; the shell gives the package one of its own, "<major>.<minor>.<Megler's build>.<n>"
+ * (app/Megler/shell/PackageVersions.h), so that a package made by a newer Megler updates one made by an older, and one
+ * made again by the same Megler (the app updated in it) updates the one it made before.
  */
 #include "mg_appx.h"
 

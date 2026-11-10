@@ -208,7 +208,13 @@ installed as an app of the phone's own, and Megler is where that is done
   manager (`PackageManager.FindPackagesForUser`, the restricted capability
   `packageQuery`, at once) when the library or an app's page is
   shown and after every action: a package of Megler's publisher whose name begins
-  `MeglerApp.` is an app's, its version the version of the Megler that made it. Each
+  `MeglerApp.` is an app's. Its version says which Megler made it
+  (`shell/PackageVersions.h`): Megler's own is `<major>.<minor>.0.<build>`, an
+  app's package since 0.1.0.682 `<major>.<minor>.<Megler's build>.<n>`, the n-th
+  package of the app that build made, so that an app updated in Megler (through
+  Aurora Store or Google Play) gets its package made again by the same Megler as an
+  update; until 0.1.0.681 it had Megler's version, and Windows refused such a
+  package, 0x80073CFB (the same identity with other contents). Each
   row of the library says Installed, Installed and made by another Megler (to
   update), or Not installed; a list that cannot be had is said above the list;
 - a package carries the Megler that made it, so an update of Megler updates none:
