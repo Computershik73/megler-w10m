@@ -534,6 +534,24 @@ uint64_t folderSize(const std::wstring& path) {
     return total;
 }
 
+uint64_t treeSize(const std::wstring& path) {
+    uint64_t total = 0;
+    WIN32_FIND_DATAW found = {};
+    if (!usable(path)) return 0;
+    // (The listing's own sizes: one call a folder, none a file.)
+    HANDLE h = FindFirstFileExW((path + L"\\*").c_str(), FindExInfoBasic, &found, FindExSearchNameMatch, nullptr, 0);
+    if (h == INVALID_HANDLE_VALUE) return 0;
+    do {
+        const std::wstring name = found.cFileName;
+        if (!(found.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY))
+            total += (uint64_t(found.nFileSizeHigh) << 32) | found.nFileSizeLow;
+        else if (name != L"." && name != L".." && !(found.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT))
+            total += treeSize(path + L"\\" + name);
+    } while (FindNextFileW(h, &found));
+    FindClose(h);
+    return total;
+}
+
 LineLog::LineLog(std::wstring path) : path_(std::move(path)) { write(path_, std::string_view()); }
 
 void LineLog::line(const std::string& text) { append(path_, timeOfDay() + " " + text + "\r\n"); }

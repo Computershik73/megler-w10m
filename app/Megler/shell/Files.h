@@ -108,6 +108,8 @@ std::vector<std::wstring> listFolders(const std::wstring& directory, const std::
 bool removeTree(const std::wstring& path);
 /// The sizes of the files in a folder (not in its folders), added up; 0 for no folder.
 uint64_t folderSize(const std::wstring& path);
+/// The sizes of the files in a folder and in its folders, added up (a link to a folder elsewhere not followed); 0 for none.
+uint64_t treeSize(const std::wstring& path);
 
 /// What a PC's NTFS never refuses and a memory card's file system may, for the tests of the ways round it
 /// (core/tests/mg_shell_windows.cpp): every CopyFile2 refused with `error`, every read past the cache (DiskFile) with

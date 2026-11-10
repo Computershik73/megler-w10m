@@ -2032,6 +2032,16 @@ MEGLER_API bool megler_ask_clear_data(const char *package);
 /* Whether such an ask waits for the app's next start: the shell forgets then what it keeps of the app's own, as Android's
    Clear storage does -- the user's answers to its permissions (player/PermissionHost.h). Needs megler_init. */
 MEGLER_API bool megler_clear_data_asked(const char *package);
+/*
+ * Clears an app's cache, as Android's "Clear cache" does, when the app next starts: before anything of it is open, what is in
+ * its private cache and code_cache folders (/data/data/<package>/cache and code_cache) and in its own Android/data/<package>/
+ * cache folder of the shared storage goes, the folders staying; its other files, settings, databases and accounts stay, and
+ * so do the user's answers to its permissions. Asked as megler_ask_clear_data is: a file named after the package in the
+ * folder clear-cache of the shared storage. True when the ask is written. Needs megler_init.
+ */
+MEGLER_API bool megler_ask_clear_cache(const char *package);
+/* Whether such an ask waits for the app's next start. Needs megler_init. */
+MEGLER_API bool megler_clear_cache_asked(const char *package);
 /* Frames presented since the app started. */
 MEGLER_API uint32_t megler_frames(void);
 

@@ -7,7 +7,7 @@
 //     folder) refused by every function of shell/Files.cpp, nothing made, written, listed or removed at a drive's root, and
 //     no drive's or volume's root removed whole;
 //   - files::same; files::copyWhole through Windows's cache and past it (COPY_FILE_NO_BUFFERING, from 8 MB), with what
-//     its progress is told; files::mend of a copy with a byte wrong;
+//     its progress is told; files::mend of a copy with a byte wrong; files::treeSize of a folder with folders in it;
 //   - the log: the core's word on a process about to end ("host: ..." at the error level) and writeNow's line are in the
 //     file the moment they are said, not at the writer's next turn; a write of the file made to stand holds up no other
 //     thread's line, and what was said meanwhile follows it in the file;
@@ -909,6 +909,20 @@ void testBundled() {
     check(writtenLog().find("bundled apks: an APK the tests have not could not be copied to") != std::string::npos, "copy: the log says why not");
 }
 
+/// What a folder's files take, its folders' too (files::treeSize: an app's data and cache in its own package's Settings).
+void testTreeSize(const std::wstring& root) {
+    printf("a folder's size with its folders' (files::treeSize)\n");
+    const std::wstring dir = root + L"\\tree";
+    files::makeDirectories(dir + L"\\cache\\images\\0");
+    files::makeDirectories(dir + L"\\files\\empty");
+    check(makeFile(dir + L"\\top.dat", 1000, 1) && makeFile(dir + L"\\cache\\http.dat", 70000, 2) && makeFile(dir + L"\\cache\\images\\0\\a.jpg", 5, 3) &&
+              makeFile(dir + L"\\files\\save.dat", 300, 4),
+          "a tree of files made");
+    check(files::treeSize(dir) == 71305 && files::treeSize(dir + L"\\cache") == 70005 && files::treeSize(dir + L"\\files\\empty") == 0,
+          "its size, a folder's in it, and an empty folder's");
+    check(files::treeSize(dir + L"\\nothing") == 0 && files::folderSize(dir) == 1000, "none for no folder; folderSize counts its own files alone");
+}
+
 /// An app's permissions as the shell keeps and decides them (player/PermissionRules.cpp), in the app's settings in the shared
 /// folder (shell/Settings.cpp): what the user said kept and forgotten; what the app is told of each kind of group -- one
 /// Megler has nothing behind (granted with no one asked) refused by the user, Megler's own no over Windows' yes, a group
@@ -1025,6 +1039,7 @@ int wmain(int argc, wchar_t** argv) {
     testStartup();
     testBundled();
     testSharedApks(root);
+    testTreeSize(root);
     testPermissions();
     shellLog::flush();
     printf("shell: %d checks, %d failed\n", gChecks, gFailed);

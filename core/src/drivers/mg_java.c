@@ -594,6 +594,8 @@ N(Native_uptimeNanos) { c->ret.j = (i64)mg_time_monotonic_ns(); }
 N(Native_flag) { c->ret.z = mg_flag(text_of(c->args[0].l)); }
 /* askClearData(): this app's data cleared when it next starts (megler_ask_clear_data), for Android's app info screen. */
 N(Native_askClearData) { c->ret.z = megler_ask_clear_data(J.package); }
+/* askClearCache(): this app's cache cleared when it next starts (megler_ask_clear_cache), for Android's app info screen. */
+N(Native_askClearCache) { c->ret.z = megler_ask_clear_cache(J.package); }
 static void Native_frameMark(mg_jcall *c);
 static void Native_mainStarted(mg_jcall *c);
 static void Native_presentRect(mg_jcall *c);
@@ -1393,6 +1395,7 @@ static const mg_jhle k_native[] = {
     { "megler/Native", "checkPartial", NULL, Native_checkPartial },
     { "megler/Native", "flag", NULL, Native_flag },
     { "megler/Native", "askClearData", NULL, Native_askClearData },
+    { "megler/Native", "askClearCache", NULL, Native_askClearCache },
     { NULL, NULL, NULL, NULL },
 };
 

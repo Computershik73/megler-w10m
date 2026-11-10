@@ -420,17 +420,21 @@ static void remove_tree(const char *path, struct tree *t)
  * done with the app stopped. Its private folder goes, and its own Android/data folder in the shared storage; its Android/obb
  * stays, as on Android. Then the ask goes.
  */
-bool mg_run_clear_data_asked(const char *storage_dir, const char *package)
+/* Whether megler_ask_clear_data (folder clear-data) or megler_ask_clear_cache (clear-cache) asked it of the app's next start. */
+static bool asked_at_start(const char *storage_dir, const char *folder, const char *package)
 {
     char *ask;
     mg_stat st;
     bool there;
     if (!package || !package[0] || strchr(package, '/')) return false;
-    ask = mg_sprintf("%s/clear-data/%s", storage_dir, package);
+    ask = mg_sprintf("%s/%s/%s", storage_dir, folder, package);
     there = mg_path_stat(ask, &st, NULL);
     free(ask);
     return there;
 }
+
+bool mg_run_clear_data_asked(const char *storage_dir, const char *package) { return asked_at_start(storage_dir, "clear-data", package); }
+bool mg_run_clear_cache_asked(const char *storage_dir, const char *package) { return asked_at_start(storage_dir, "clear-cache", package); }
 
 bool mg_run_clear_data_if_asked(const char *data_dir, const char *storage_dir, const char *package)
 {
@@ -457,6 +461,45 @@ bool mg_run_clear_data_if_asked(const char *data_dir, const char *storage_dir, c
     return true;
 }
 
+/*
+ * Clearing an app's cache, asked for by megler_ask_clear_cache (a file named after the package in the shared storage's folder
+ * clear-cache), as Android's "Clear cache" does it: what is in the app's private cache and code_cache folders goes, and in
+ * its own Android/data/<package>/cache of the shared storage; the folders stay, and so does everything else of the app's.
+ * Done now, before anything of the app is open. Then the ask goes.
+ */
+bool mg_run_clear_cache_if_asked(const char *data_dir, const char *storage_dir, const char *package)
+{
+    char *ask = mg_sprintf("%s/clear-cache/%s", storage_dir, package), *internal, *own, *dirs[3];
+    struct tree t;
+    mg_stat st;
+    size_t i;
+    if (!mg_path_stat(ask, &st, NULL)) {
+        free(ask);
+        return false;
+    }
+    internal = internal_dir(data_dir, storage_dir, package);
+    own = mg_run_own_storage(storage_dir, package);
+    dirs[0] = mg_sprintf("%s/cache", internal);
+    dirs[1] = mg_sprintf("%s/code_cache", internal);
+    dirs[2] = mg_sprintf("%s/Android/data/%s/cache", own, package);
+    memset(&t, 0, sizeof(t));
+    for (i = 0; i < MG_COUNT(dirs); i++) {
+        if (mg_path_stat(dirs[i], &st, NULL) && st.is_dir) {
+            /* What is in it, each entry as remove_tree removes a folder's (the folder itself is not listed again). */
+            t.path = dirs[i];
+            mg_path_list(dirs[i], remove_entry, &t, NULL);
+        }
+    }
+    mg_path_remove(ask, NULL);
+    if (t.failed) mg_warn("run: the app's cache was cleared, as asked, but for %d file(s) or folder(s) that could not be removed (%d files removed)", t.failed, t.files);
+    else mg_info("run: the app's cache was cleared, as asked: %d files removed from %s, %s and %s", t.files, dirs[0], dirs[1], dirs[2]);
+    free(ask);
+    free(internal);
+    free(own);
+    for (i = 0; i < MG_COUNT(dirs); i++) free(dirs[i]);
+    return true;
+}
+
 void mg_run_files(const char *data_dir, const char *storage_dir, const char *package, const megler_storage_host *storage)
 {
     char *services = mg_sprintf("%s/services/%s", storage_dir, services_folder());
@@ -465,6 +508,7 @@ void mg_run_files(const char *data_dir, const char *storage_dir, const char *pac
     left_behind left;
     other_apps others;
     mg_run_clear_data_if_asked(data_dir, storage_dir, package);
+    mg_run_clear_cache_if_asked(data_dir, storage_dir, package);
     internal = internal_dir(data_dir, storage_dir, package);
     mg_fs_configure(package, internal, own);
     mg_path_mkdirs(services);

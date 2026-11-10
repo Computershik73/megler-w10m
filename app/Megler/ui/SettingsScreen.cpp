@@ -15,6 +15,7 @@
 #include "player/Session.h"
 #include "player/StorageHost.h"
 #include "shell/AppPackage.h"
+#include "shell/Files.h"
 #include "shell/Platform.h"
 #include "shell/Settings.h"
 #include "shell/ShellLog.h"
@@ -323,6 +324,70 @@ private:
         subPage_ = nullptr;
         rebuild();
         return true;
+    }
+
+    /// An app's own package: what its files take, as Android's Storage & cache page says it -- the app (its APK), its data and
+    /// its cache, measured on a thread of their own the first time the settings are shown -- and Clear Cache, which its next
+    /// start carries out (megler_ask_clear_cache). What was measured is kept in the shared folder for its page in Megler,
+    /// which cannot read this package's files (appStorageSizes).
+    UIElement storageSizesSection() {
+        if (!measuring_ && !measured_) measureStorage();
+        std::optional<ApkEntry> entry;
+        for (const auto& e : Library::instance().entries())
+            if (e.report.package == scope_.package) entry = e;
+        const std::string measuring = "Measuring…";
+        std::vector<UIElement> rows;
+        rows.push_back(labeledContent("App", entry ? formattedByteCount(entry->size) : std::string("—")));
+        rows.push_back(labeledContent("User data", measured_ ? formattedByteCount(sizes_.data) : measuring));
+        rows.push_back(labeledContent("Cache", measured_ ? formattedByteCount(sizes_.cache) : measuring));
+        const std::string package = scope_.package;
+        rows.push_back(button(listItem("Clear Cache", "What it keeps in its cache folders goes the next time it starts", glyphs::trash), [this, package] {
+            shell_.confirm("Clear the cache?", "What the app keeps in its cache folders is deleted the next time it starts. Its files, settings, "
+                                               "accounts and permissions stay.",
+                           "Clear Cache", false, [this, package] {
+                               const bool asked = megler_ask_clear_cache(package.c_str());
+                               shellLog::write("settings: clear the cache of " + package + (asked ? ", asked" : ", could not be asked"));
+                               shell_.alert(asked ? "Cache Will Be Cleared" : "Couldn't Clear the Cache",
+                                            asked ? "It goes the next time the app starts." : "Megler couldn't write the request in its storage.");
+                           });
+        }, ButtonKind::plain, "Clear Cache"));
+        return listSection("Storage", rows,
+                           "User data is the app's private files and its Android/data in the shared storage, the cache what it keeps in its "
+                           "cache folders. Clear Data is on its page in Megler, and on Android's app info screen in the app.");
+    }
+
+    /// The sizes, on a worker thread; then shown, and kept for Megler's page of the app.
+    void measureStorage() {
+        measuring_ = true;
+        const std::string package = scope_.package;
+        auto sizes = std::make_shared<AppStorageSizes>();
+        const std::weak_ptr<SettingsBody> weak = shared_from_this();
+        shell_.runInBackground(
+            [package, sizes] {
+                const std::wstring pkg = widen(package), shared = appPackage::sharedFolder();
+                const std::wstring own = platform::localStateDirectory() + L"\\apps\\" + pkg + L"\\data";
+                const std::wstring external = shared.empty() ? std::wstring() : shared + L"\\apps\\" + pkg + L"\\sdcard\\Android\\data\\" + pkg;
+                const uint64_t cache = files::treeSize(own + L"\\cache") + files::treeSize(own + L"\\code_cache") +
+                                       (external.empty() ? 0 : files::treeSize(external + L"\\cache"));
+                const uint64_t all = files::treeSize(own) + (external.empty() ? 0 : files::treeSize(external));
+                sizes->cache = cache;
+                sizes->data = all > cache ? all - cache : 0;
+                sizes->at = localDateTime();
+                if (!shared.empty())
+                    files::write(shared + L"\\apps\\" + pkg + L"\\storage.txt",
+                                 format("data=%llu\r\ncache=%llu\r\nat=%s\r\n", (unsigned long long)sizes->data, (unsigned long long)sizes->cache,
+                                        sizes->at.c_str()));
+                shellLog::write(format("settings: %s's storage: data %llu bytes, cache %llu bytes", package.c_str(), (unsigned long long)sizes->data,
+                                       (unsigned long long)sizes->cache));
+            },
+            [weak, sizes] {
+                auto self = weak.lock();
+                if (!self) return;
+                self->sizes_ = *sizes;
+                self->measured_ = true;
+                self->measuring_ = false;
+                self->rebuild();
+            });
     }
 
     /// Whether Google Play services' own features may use the location, in every app (player/PermissionHost.h, gmsLocation): asked
@@ -634,6 +699,7 @@ private:
         }
 
         if (forApp()) add(column, permissionsSection());
+        if (scope_.own) add(column, storageSizesSection());
         add(column, renderSection());
         add(column, servicesSection());
         if (!forApp()) add(column, gmsLocationSection());
@@ -678,6 +744,8 @@ private:
     ContentControl host_{nullptr};
     std::shared_ptr<SettingsView> sub_; // the app's App Permissions, open in place of these (an app's own package)
     StackPanel subPage_{nullptr};       // ... with the line back over them
+    AppStorageSizes sizes_;             // an app's own package: what its files take (storageSizesSection)
+    bool measuring_ = false, measured_ = false;
     Grid memory_{nullptr};
     int ticks_ = 0;
     bool linksShown_ = false; // the Android Storage section was built after the search for the links was over
@@ -716,6 +784,28 @@ std::shared_ptr<Page> makeSettingsScreen(AppShell& shell) { return std::make_sha
 
 std::shared_ptr<Page> makeAppSettingsScreen(AppShell& shell, std::string package, std::string label) {
     return std::make_shared<SettingsScreen>(shell, SettingsScope{std::move(package), std::move(label), false});
+}
+
+AppStorageSizes appStorageSizes(const std::string& package) {
+    AppStorageSizes sizes;
+    const std::wstring shared = appPackage::sharedFolder();
+    std::string text;
+    if (shared.empty() || package.empty() || !files::read(shared + L"\\apps\\" + widen(package) + L"\\storage.txt", text)) return sizes;
+    size_t at = 0;
+    while (at < text.size()) {
+        size_t end = text.find('\n', at);
+        if (end == std::string::npos) end = text.size();
+        std::string line = text.substr(at, end - at);
+        at = end + 1;
+        while (!line.empty() && (line.back() == '\r' || line.back() == ' ')) line.pop_back();
+        if (line.compare(0, 5, "data=") == 0)
+            sizes.data = strtoull(line.c_str() + 5, nullptr, 10);
+        else if (line.compare(0, 6, "cache=") == 0)
+            sizes.cache = strtoull(line.c_str() + 6, nullptr, 10);
+        else if (line.compare(0, 3, "at=") == 0)
+            sizes.at = line.substr(3);
+    }
+    return sizes;
 }
 
 } // namespace megler::app::ui

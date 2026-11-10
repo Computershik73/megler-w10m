@@ -244,5 +244,13 @@ std::shared_ptr<Page> makeAppSettingsScreen(AppShell& shell, std::string package
 std::shared_ptr<SettingsView> makePermissionsView(AppShell& shell, SettingsScope scope);
 std::shared_ptr<Page> makePermissionsScreen(AppShell& shell, std::string package, std::string label);
 std::string permissionsSummary(const std::string& package, bool own);
+/// What an app's files take, as its own package last measured them (its Settings, Storage: Megler cannot read that package's
+/// files), kept in <shared>\apps\<package>\storage.txt for its page in Megler: its data and its cache, in bytes, and when
+/// (local time). `at` empty: never measured.
+struct AppStorageSizes {
+    uint64_t data = 0, cache = 0;
+    std::string at;
+};
+AppStorageSizes appStorageSizes(const std::string& package);
 
 } // namespace megler::app::ui

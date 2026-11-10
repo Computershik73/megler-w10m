@@ -2,8 +2,8 @@
 // engine drives it, its native libraries and what they need -- and what to do
 // with it: install it as an app of the phone's own, update or uninstall it
 // (ui/SeparateApps.h), its own settings, its permissions (ui/PermissionsScreen.cpp),
-// clear its data, and Remove. Megler runs an app itself only in an auto run
-// (auto/AutoRun.h).
+// clear its cache or its data, and Remove. Megler runs an app itself only in an
+// auto run (auto/AutoRun.h).
 #include "pch.h"
 
 #include "megler.h"
@@ -231,12 +231,19 @@ private:
             }
             add(column, card(progress, 12, 16));
         }
-        // Android's App info: its permissions (ui/PermissionsScreen.cpp) and Clear storage -- the core clears the app's data
-        // when it next starts (megler_ask_clear_data). A row of their own: with Uninstall they are wider than a phone.
+        // Android's App info: its permissions (ui/PermissionsScreen.cpp), Clear cache and Clear storage -- the core clears the
+        // app's cache or data when it next starts (megler_ask_clear_cache, megler_ask_clear_data). A row of their own: with
+        // Uninstall they are wider than a phone.
         auto manage = hstack(0);
         manage.Margin(ThicknessHelper::FromLengths(-12, -4, 0, 0));
         if (!package.empty()) {
             add(manage, textButton("Permissions", [this, package, title] { shell_.push(makePermissionsScreen(shell_, package, title)); }));
+            add(manage, textButton("Clear Cache", [this, package, title] {
+                shell_.confirm("Clear " + title + "'s cache?",
+                               "What it keeps in its cache folders (its cache and code_cache, and Android/data/" + package +
+                                   "/cache) is deleted the next time it starts. Its files, settings, accounts and permissions stay.",
+                               "Clear Cache", false, [this, package, title] { askClearCache(package, title); });
+            }));
             add(manage, textButton("Clear Data", [this, package, title] {
                 shell_.confirm("Clear " + title + "'s data?",
                                "Its private files, settings, databases and the accounts it keeps, and its Android/data folder, are deleted "
@@ -245,6 +252,18 @@ private:
             }, p.error));
         }
         if (manage.Children().Size()) add(column, manage);
+        // What its files take, as its own package last measured them (Megler cannot read that package's files).
+        if (!package.empty()) {
+            const AppStorageSizes sizes = appStorageSizes(package);
+            if (!sizes.at.empty()) {
+                auto storage = text("User data " + formattedByteCount(sizes.data) + ", cache " + formattedByteCount(sizes.cache) +
+                                        ", as the app measured them " + sizes.at + " (its own Settings, Storage).",
+                                    font::bodySmall, weightNormal(), p.onSurfaceVariant);
+                storage.TextWrapping(TextWrapping::Wrap);
+                storage.Margin(ThicknessHelper::FromLengths(0, -8, 0, 0));
+                add(column, storage);
+            }
+        }
         auto more = hstack(0);
         more.Margin(ThicknessHelper::FromLengths(-12, -12, 0, 0));
         if (installed) {
@@ -304,17 +323,31 @@ private:
     /// The ask is a file in the shared storage's folder clear-data, where the app's own package looks when it starts; when
     /// Megler's storage is not that folder (not yet copied there), it is written in both.
     void askClearData(const std::string& package, const std::string& title) {
-        bool asked = megler_ask_clear_data(package.c_str());
-        const std::wstring shared = appPackage::sharedFolder();
-        if (!appPackage::meglersStorageShared() && !shared.empty()) {
-            files::makeDirectories(shared + L"\\clear-data");
-            asked = files::write(shared + L"\\clear-data\\" + widen(package), "") || asked;
-        }
+        const bool asked = askAtStart(megler_ask_clear_data(package.c_str()), L"clear-data", package);
         shellLog::write("app page: clear the data of " + package + (asked ? ", asked" : ", could not be asked"));
         // And the user's answers to its permissions, as Android's Clear storage resets them (its next start does it as well).
         if (asked) permissionHost::forgetAll(package);
         shell_.alert(asked ? "Data Will Be Cleared" : "Couldn't Clear the Data",
                      asked ? title + "'s data goes the next time it starts." : "Megler couldn't write the request in its storage.");
+    }
+
+    /// Clear Cache likewise, in the folder clear-cache: what is in the app's cache folders goes at its next start, and nothing
+    /// else -- its permissions stay.
+    void askClearCache(const std::string& package, const std::string& title) {
+        const bool asked = askAtStart(megler_ask_clear_cache(package.c_str()), L"clear-cache", package);
+        shellLog::write("app page: clear the cache of " + package + (asked ? ", asked" : ", could not be asked"));
+        shell_.alert(asked ? "Cache Will Be Cleared" : "Couldn't Clear the Cache",
+                     asked ? title + "'s cache goes the next time it starts." : "Megler couldn't write the request in its storage.");
+    }
+
+    /// An ask the core wrote (`asked`) in Megler's storage, written in the shared folder too while Megler's storage is not it.
+    static bool askAtStart(bool asked, const wchar_t* folder, const std::string& package) {
+        const std::wstring shared = appPackage::sharedFolder();
+        if (!appPackage::meglersStorageShared() && !shared.empty()) {
+            files::makeDirectories(shared + L"\\" + folder);
+            asked = files::write(shared + L"\\" + folder + L"\\" + widen(package), "") || asked;
+        }
+        return asked;
     }
 
     void openFile(const std::wstring& path) {

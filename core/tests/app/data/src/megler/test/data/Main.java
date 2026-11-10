@@ -2112,6 +2112,31 @@ public class Main extends Activity {
                     && files.isDirectory() && pictures.isDirectory() && cache.isDirectory() && obb.isDirectory() && media[0].isDirectory()
                     && obb.equals(getApplicationContext().getObbDir()) && media[0].equals(getApplicationContext().getExternalMediaDirs()[0]);
         });
+        /*
+         * The app's cache cleared between the runs, as Megler's app page and Android's app info screen ask for it (the test's C
+         * side asks the core before the second, megler_ask_clear_cache): what the first run left in its cache folders -- its
+         * private cache and code_cache, its own Android/data/<package>/cache -- is gone in the second, the folders there; what it
+         * left in its files folders stays.
+         */
+        step("cache-cleared", () -> {
+            File[] cached = { new File(getCacheDir(), "run-1-cache.txt"), new File(getCodeCacheDir(), "run-1-code.txt"),
+                              new File(getExternalCacheDir(), "run-1-external-cache.txt") };
+            File[] kept = { new File(getFilesDir(), "run-1-files.txt"), new File(getExternalFilesDir(null), "run-1-external-files.txt") };
+            boolean ok = true;
+            StringBuilder said = new StringBuilder();
+            for (File f : cached) {
+                if (run == 1) try (java.io.FileWriter w = new java.io.FileWriter(f)) { w.write("cached in run 1\n"); }
+                said.append(f.getName()).append('=').append(f.exists()).append(' ');
+                ok &= f.exists() == (run == 1) && f.getParentFile().isDirectory();
+            }
+            for (File f : kept) {
+                if (run == 1) try (java.io.FileWriter w = new java.io.FileWriter(f)) { w.write("kept from run 1\n"); }
+                said.append(f.getName()).append('=').append(f.exists()).append(' ');
+                ok &= f.exists();
+            }
+            detail = said.toString();
+            return ok;
+        });
         step("volumes", () -> {
             android.os.storage.StorageManager sm = (android.os.storage.StorageManager) getSystemService(Context.STORAGE_SERVICE);
             java.util.List<android.os.storage.StorageVolume> list = sm.getStorageVolumes();

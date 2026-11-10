@@ -115,6 +115,8 @@
     public static native boolean flag(String name);
     /** Asks the core to clear this app's data when it next starts (megler.h, megler_ask_clear_data): Android's Clear storage. */
     public static native boolean askClearData();
+    /** Asks the core to clear this app's cache when it next starts (megler.h, megler_ask_clear_cache): Android's Clear cache. */
+    public static native boolean askClearCache();
     /** What the app did with the Back numbered seq (megler_back; AppRunner.back): 0 took it, 1 showed nothing new yet, 2 went
      *  to the back, 3 ended its last activity (core/src/drivers/mg_java.c). */
     public static native void backDone(int seq, int answer);

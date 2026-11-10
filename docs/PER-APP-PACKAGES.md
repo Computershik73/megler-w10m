@@ -275,6 +275,17 @@ app of whether Google Play services' own features may use the location
 (`megler.gmsLocation`), which the package that asked writes and every package
 reads as the file has it then (`settings::meglerNow`).
 
+**Clear Data** and **Clear Cache** on an app's page ask the app's own package to
+clear its data or its cache at its next start, before anything of it is open: a
+file named after the package in `<shared>\clear-data` or `<shared>\clear-cache`
+(`megler_ask_clear_data`, `megler_ask_clear_cache`; also in Megler's storage
+while that is not the shared folder), which the core carries out
+(`mg_run_clear_data_if_asked`, `mg_run_clear_cache_if_asked`). The data is the
+app's private folder and its Android/data, its permission answers forgotten
+with it; the cache is what is in its cache and code_cache folders and in its
+Android/data/<package>/cache, nothing else, its permissions kept. Android's app
+info screen in the app offers both too (Clear storage, Clear cache).
+
 **Megler's own storage** (`shareMeglersStorage` in `shell/AppPackage.cpp`). Megler's
 `/sdcard` is the shared folder's too: once, in the background, Megler copies its
 storage of before there (`LocalState\sdcard`, and each app's part

@@ -844,6 +844,14 @@ Java's calls arrive there.
   `Android/obb/<package>` and `Android/media/<package>` under the shared
   storage, each there once asked for, and the Activity and the application
   context agree.
+- `cache-cleared`: the app's cache cleared between the runs, as Megler's app
+  page (Clear Cache) and Android's app info screen (Clear cache) ask for it:
+  the test's C side asks the core before the second run
+  (`megler_ask_clear_cache`), and the core clears it as the app starts
+  (`mg_run_clear_cache_if_asked`, said in the log). What the first run left in
+  `getCacheDir()`, `getCodeCacheDir()` and `getExternalCacheDir()` is gone in
+  the second, the folders there; what it left in `getFilesDir()` and
+  `getExternalFilesDir(null)` stays.
 - `volumes`: `StorageManager.getStorageVolumes()` is one volume, the primary:
   "Internal storage", emulated, not removable, mounted, with no UUID. The
   hidden `getVolumeList`, `getVolumePaths` and `getVolumeState`, called by
@@ -3757,8 +3765,10 @@ install. Clearing an app's data (Clear Data on its page in Megler, or Clear
 storage on Android's app info screen in the app) forgets Megler's answers too,
 as Android's Clear storage resets an app's permissions: the shell does it as
 the clear is asked and as the app next starts with one waiting
-(`megler_clear_data_asked`). Windows' own answers stay; they are changed in
-its privacy settings.
+(`megler_clear_data_asked`). Clearing its cache (Clear Cache, Clear cache:
+`megler_ask_clear_cache`, the app's cache, code_cache and
+Android/data/<package>/cache emptied as it next starts) keeps them. Windows'
+own answers stay; they are changed in its privacy settings.
 
 **Google Play services' own use of the location.** Their features in the app's
 process (location accuracy, personal safety, semantic location: PersonalSafety

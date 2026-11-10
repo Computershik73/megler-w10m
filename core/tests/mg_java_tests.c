@@ -2738,7 +2738,7 @@ static int run_data(void)
     static const char *const steps[] = { "open", "kept", "insert", "query", "types", "update", "delete", "rollback", "commit", "constraint", "statement", "text",
                                          "bad-sql", "memory", "upgrade", "wal-restored", "left",
                                          /* And the storage as an app sees it. */
-                                         "environment", "own-folders", "volumes", "space", "permissions", "download", "list-root",
+                                         "environment", "own-folders", "cache-cleared", "volumes", "space", "permissions", "download", "list-root",
                                          /* And the battery, the time zone, TLS (conscrypt's: a TLS server and client of the app's own on loopback,
                                             and an https URL through Android's HTTP client; or, where its library is not in the Android root, the
                                             stand-in that fails politely), the app's network security configuration (an authority of its own
@@ -2833,6 +2833,8 @@ static int run_data(void)
     line = wait_line("I/DataTest: run ", at, 60);
     CHECK(line >= 0 && sscanf(strstr(line_at(line), ": run ") ? strstr(line_at(line), ": run ") : "", ": run %d", &run) == 1 && run >= 1 && (!want || run == want));
     say("  this is run %d of the app on its database", run);
+    /* The second starts with its cache cleared, as asked before it (mg_tests_java_run): the core says so, and the ask is gone. */
+    if (run == 2) CHECK(find_line("run: the app's cache was cleared, as asked: ", 0) >= 0 && !megler_clear_cache_asked("megler.test.data"));
     for (i = 0; i < (int)MG_COUNT(steps); i++) {
         snprintf(text, sizeof(text), "I/DataTest: %s ok", steps[i]);
         expect_line(text, &at, 60);
@@ -3809,6 +3811,11 @@ int mg_tests_java_run(const char *which, const char *apk, const char *android_ro
     }
     /* The data app's second run is on another battery than the one the core has when nobody has said: what the app then reads is what was set here. */
     if (!strcmp(which, "data") && g_script_count && !strcmp(g_script[0], "run:2")) mg_battery_set(&k_battery_run2);
+    /* And with its cache to be cleared as it starts, as Megler's app page asks for it (megler_ask_clear_cache): its step cache-cleared
+       finds what the first run left in its cache folders gone, and its other files there. */
+    if (!strcmp(which, "data") && g_script_count && !strcmp(g_script[0], "run:2")) {
+        CHECK(megler_ask_clear_cache("megler.test.data") && megler_clear_cache_asked("megler.test.data"));
+    }
     /* And in a time zone the shell names, as it must, before the app starts: one with summer time, and in the second run a name that is no zone's. */
     if (!strcmp(which, "data")) megler_set_timezone(g_script_count && !strcmp(g_script[0], "run:2") ? "Nowhere/At_All" : "Europe/Berlin");
     /* And in the language and region the shell names, likewise before the start: English (United States), and in the second run Russian (Russia). */
