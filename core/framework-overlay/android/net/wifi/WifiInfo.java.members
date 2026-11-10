@@ -3,7 +3,7 @@
     // without the location permission about it ("<unknown ssid>", BSSID 02:00:00:00:00:00), with the phone's address. The
     // generated getters read these keys; its setSSID stores a WifiSsid where getSSID reads a String, and nothing sets the
     // address, so the values are put here as the getters read them.
-    static WifiInfo meglerConnected(int ipAddress) {
+    public static WifiInfo meglerConnected(int ipAddress) {
         WifiInfo w = new WifiInfo();
         w.meglerProps.put("SSID", "<unknown ssid>");
         w.meglerProps.put("BSSID", "02:00:00:00:00:00");
@@ -17,5 +17,23 @@
         w.meglerProps.put("IpAddress", Integer.valueOf(ipAddress));
         w.meglerProps.put("NetworkId", Integer.valueOf(0));
         w.meglerProps.put("SupplicantState", SupplicantState.COMPLETED);
+        return w;
+    }
+    // The same network as an app that may have the location is told of it (Android 8.1 and later): its name (getSSID quoted
+    // where it is UTF-8, as Android writes it; getWifiSsid), its BSSID, signal, channel and standard, as the phone's Wi-Fi has
+    // them (megler.Wifi.connection). The phone's own MAC address stays hidden, as Android hides it from every app.
+    public static WifiInfo meglerConnected(int ipAddress, WifiSsid ssid, String bssid, int rssi, int frequency, int standard) {
+        WifiInfo w = meglerConnected(ipAddress);
+        String name = ssid == null ? "" : ssid.toString();
+        w.meglerProps.put("SSID", name.isEmpty() || "\"\"".equals(name) ? "<unknown ssid>" : name);
+        if (ssid != null) w.meglerProps.put("WifiSsid", ssid);
+        w.meglerProps.put("HiddenSSID", Boolean.valueOf(ssid == null || ssid.getBytes().length == 0));
+        w.meglerProps.put("BSSID", bssid);
+        w.meglerProps.put("Rssi", Integer.valueOf(rssi));
+        w.meglerProps.put("Frequency", Integer.valueOf(frequency));
+        w.meglerProps.put("24GHz", Boolean.valueOf(ScanResult.is24GHz(frequency)));
+        w.meglerProps.put("5GHz", Boolean.valueOf(ScanResult.is5GHz(frequency)));
+        w.meglerProps.put("6GHz", Boolean.valueOf(ScanResult.is6GHz(frequency)));
+        if (standard != 0) w.meglerProps.put("WifiStandard", Integer.valueOf(standard));
         return w;
     }

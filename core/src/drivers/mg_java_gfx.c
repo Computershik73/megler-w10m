@@ -2960,6 +2960,23 @@ static void node_play(gcanvas *v, gnode *n, int depth);
 static MG_THREAD_LOCAL gcanvas *t_cull_v;
 static MG_THREAD_LOCAL u32 t_cull_no;
 static u32 g_culled;
+/*
+ * Bitmaps a frame of the window drew (frame_show) whose pixels had been written since the frame recorded them (their version
+ * is another): a list draws a bitmap by reference, as it is when the list is drawn, and the render thread draws a frame while
+ * the main thread records the next -- so a bitmap written in place for the next frame meanwhile would be shown half written
+ * (a WebView's page drawn in software is erased and drawn again in its one bitmap: android/webkit/WebView.java). Counted for
+ * the render thread's line; said at once the first time.
+ */
+static volatile i32 g_rewritten;
+static MG_THREAD_LOCAL bool t_in_frame;
+
+static void bitmap_drawn(const gbitmap *b, u32 recorded)
+{
+    if (!t_in_frame || b->version == recorded) return;
+    if (mg_atomic_add(&g_rewritten, 1) == 1)
+        mg_warn("gfx: a frame drew a bitmap (%dx%d) whose pixels were written after the frame was recorded: it showed them as they were being written",
+                (int)b->w, (int)b->h);
+}
 
 static bool rects_meet(const float *a, const float *b) { return a[0] < b[2] && b[0] < a[2] && a[1] < b[3] && b[1] < a[3]; }
 
@@ -3052,10 +3069,14 @@ static void list_play(gcanvas *v, gdlist *l, int depth)
             const dl_bitmap *o = (const dl_bitmap *)h;
             memcpy(src, o->src, sizeof(src));
             memcpy(dst, o->dst, sizeof(dst));
+            bitmap_drawn(o->b, o->version);
             draw_bitmap(v, o->b, src, dst, &o->p, NULL);
             break;
         }
-        case DL_BITMAP_M: draw_bitmap_m(v, ((const dl_bitmap *)h)->b, ((const dl_bitmap *)h)->m, &((const dl_bitmap *)h)->p); break;
+        case DL_BITMAP_M:
+            bitmap_drawn(((const dl_bitmap *)h)->b, ((const dl_bitmap *)h)->version);
+            draw_bitmap_m(v, ((const dl_bitmap *)h)->b, ((const dl_bitmap *)h)->m, &((const dl_bitmap *)h)->p);
+            break;
         case DL_TEXT: {
             const dl_text *o = (const dl_text *)h;
             was = shot_on(&o->s);
@@ -4303,6 +4324,56 @@ N(G_txWidths)
     if (out && HAS(text_widths)) GFX(G.text_widths(G.user, text, count, &p.p, tf_host(c->args[4].j), out));
 }
 
+/* Whether the shell's outlines are draw_path's stream as megler.h has it: verbs 0 to 4, each with all its numbers, every number one. */
+static bool outline_stream(const float *v, size_t n)
+{
+    size_t i = 0, k, count;
+    while (i < n) {
+        if (!(v[i] >= MEGLER_GFX_PATH_MOVE && v[i] <= MEGLER_GFX_PATH_CLOSE) || v[i] != (float)(int)v[i]) return false;
+        if (i == 0 && v[i] != MEGLER_GFX_PATH_MOVE) return false;
+        count = (size_t)verb_floats((int)v[i++]);
+        if (count > n - i) return false;
+        for (k = 0; k < count; k++)
+            if (!isfinite(v[i + k])) return false;
+        i += count;
+    }
+    return true;
+}
+
+/*
+ * (String, int start, int end, float x, float y, int[] paint, long typeface) -> float[]: Paint.getTextPath, the outlines of
+ * the run's glyphs where drawText would put it, as draw_path's stream, whose verbs are those of the Java Path's own stream
+ * (MOVE, LINE, QUAD, CUBIC, CLOSE). Empty for no text; null when the shell gives no outlines, and the Java makes do.
+ */
+N(G_txPath)
+{
+    i32 count;
+    const u16 *text = text_of(c->args[0].l, c->args[1].i, c->args[2].i, &count);
+    gpaint p;
+    gbytes out;
+    bool given = false;
+    mg_jobj *array;
+    paint_of(c->args[5].l, &p);
+    if (!text) return;
+    if (count <= 0) {
+        c->ret.l = mg_dvm_new_array("[F", 0);
+        return;
+    }
+    if (!HAS(text_path)) return;
+    memset(&out, 0, sizeof(out));
+    GFX(given = G.text_path(G.user, text, count, c->args[3].f, c->args[4].f, &p.p, tf_host(c->args[6].j), bytes_write, &out));
+    if (given && (out.size % sizeof(float) != 0 || !outline_stream((const float *)out.data, out.size / sizeof(float)))) {
+        mg_note_once("gfx: the shell's text_path gave what is not draw_path's stream: Paint.getTextPath makes do with the run's box");
+        given = false;
+    }
+    if (given) {
+        array = mg_dvm_new_array("[F", (i32)(out.size / sizeof(float)));
+        if (array && out.size) memcpy(array->u.arr.data, out.data, out.size);
+        c->ret.l = array;
+    }
+    free(out.data);
+}
+
 /* --------------------------------------------------------- Gfx: typefaces */
 
 static gface *tf_new(void *host, i32 weight, bool italic)
@@ -4726,7 +4797,9 @@ static void frame_show(gcanvas *v, gbitmap *b, gdlist *l, const i32 part[4], u32
     }
     t_cull_v = cull ? v : NULL;
     t_cull_no = cull;
+    t_in_frame = true;
     list_play(v, l, 0);
+    t_in_frame = false;
     t_cull_v = NULL;
     while (v->depth > d0) cv_restore(v);
     dl_unref(l);
@@ -4771,9 +4844,10 @@ static MG_HOSTCB void rt_main(void *arg)
         if (!R.since) R.since = now;
         if (now - R.since >= 5000000000ull && R.frames) {
             mg_info("gfx: the render thread, %.1f s: %u frames drawn and shown off the main thread, %.1f ms drawing the lists and %.1f ms showing each; "
-                    "the main thread waited %.1f ms in all for the frame before to be shown; %.1f nodes a frame left out, drawing nowhere in the part drawn",
+                    "the main thread waited %.1f ms in all for the frame before to be shown; %.1f nodes a frame left out, drawing nowhere in the part drawn; "
+                    "%d bitmaps drawn since the start whose pixels were written after the frame was recorded",
                     (double)(now - R.since) / 1e9, (unsigned)R.frames, (double)R.play_ns / 1e6 / R.frames, (double)R.show_ns / 1e6 / R.frames,
-                    (double)R.wait_ns / 1e6, (double)g_culled / R.frames);
+                    (double)R.wait_ns / 1e6, (double)g_culled / R.frames, (int)g_rewritten);
             g_culled = 0;
             R.frames = 0;
             R.play_ns = R.show_ns = R.wait_ns = 0;
@@ -4917,6 +4991,7 @@ static const mg_jhle k_gfx[] = {
     { "megler/Gfx", "txBounds", "(Ljava/lang/String;II[IJ[I)V", G_txBounds },
     { "megler/Gfx", "txBreak", "(Ljava/lang/String;IIF[IJZ)I", G_txBreak },
     { "megler/Gfx", "txWidths", "(Ljava/lang/String;II[IJ[F)V", G_txWidths },
+    { "megler/Gfx", "txPath", "(Ljava/lang/String;IIFF[IJ)[F", G_txPath },
     { "megler/Gfx", "tfCreate", "(Ljava/lang/String;I)J", G_tfCreate },
     { "megler/Gfx", "tfDefault", "()J", G_tfDefault },
     { "megler/Gfx", "tfDerive", "(JII)J", G_tfDerive },

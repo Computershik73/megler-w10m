@@ -476,7 +476,9 @@ native methods of `megler.Gfx` called as the runtime calls them.
 
 `core/tests/app/natives` is the third test app: one Activity and a library of
 its own, `libnatives.so`, which needs a second one of the APK's,
-`libnatives_dep.so`. Both are built by the NDK (r21e) against its real headers
+`libnatives_dep.so`, and a third that nothing loads by its name,
+`libnatives_alt.so` (the step `own-file-same-name` loads the app's own build of
+it). They are built by the NDK (r21e) against its real headers
 and libraries, as an app's are -- armeabi-v7a, Thumb-2, softfp --
 by `tools/build-test-app.sh`; where there is no NDK the app is not built and
 `tools/build-tests.sh` says that it is not run. `mg_tests --java natives ...`
@@ -508,9 +510,11 @@ checks:
 | `bitmap` | `AndroidBitmap_getInfo` (64 x 64, stride 256, `RGBA_8888`), `lockPixels`, the pixels written as R, G, B, A, `unlockPixels`; `Bitmap.getPixel` then reads each colour back, a half-transparent premultiplied white as `0x80FFFFFF` |
 | `direct-buffer` | `GetDirectBufferAddress` and `Capacity` of `ByteBuffer.allocateDirect`, written in C and read in Java; `NewDirectByteBuffer` over the library's memory, read and written in Java and seen in C |
 | `configuration` | `AConfiguration`: the surface's density and size in dp, and the API level the framework's `Build.VERSION.SDK_INT` says |
-| `library-folder` | `ApplicationInfo.nativeLibraryDir` holds both libraries as real ELF files; `BaseDexClassLoader.findLibrary` gives the path there |
+| `library-folder` | `ApplicationInfo.nativeLibraryDir` holds the APK's libraries as real ELF files and nothing else, each of the APK entry's size and CRC-32 (summed as ByteDance's librarian sums them), though the test put an older version's there before the start -- a library this one has not, and `libnatives_dep.so` of the entry's size and other bytes; `BaseDexClassLoader.findLibrary` gives the path there |
 | `loaded-once` | `System.loadLibrary` and `System.load` of the library again: `JNI_OnLoad` is not run again |
-| `own-file` | a library the app copied into its files folder under a name the APK does not have, loaded by its path |
+| `own-file` | a library the app copied into its files folder under a name the APK does not have -- and the older version's folder had (TikTok Lite's `libnpth.so`) -- loaded by its path |
+| `own-file-same-name` | the APK's `libnatives_alt.so` copied by the app with its text's "version 1" made "version 2", of the same size, and loaded by its path before anything loaded the APK's: the copy answers, "version 2" |
+| `dlopen-own-file` | a copy of `libnatives_dep.so` the app wrote into a folder no library came from, `dlopen`ed by native code by its path: its constructor ran, its function answers |
 | `missing-library` | `UnsatisfiedLinkError` in Android's words: `...PathClassLoader[...] couldn't find "libnothere.so"` (libcore's own), and `dlopen failed: library "<path>" not found` for `System.load` |
 | `missing-method` | `No implementation found for void megler.test.natives.Lib.notThere() (tried Java_megler_test_natives_Lib_notThere and Java_megler_test_natives_Lib_notThere__)` |
 | `looper-watched`, `looper` | `ALooper_forThread()` on the main thread, a pipe added with `ALooper_addFd` and written: the callback runs on the main thread with a later turn of the Java message loop |
@@ -844,6 +848,14 @@ Java's calls arrive there.
   `Android/obb/<package>` and `Android/media/<package>` under the shared
   storage, each there once asked for, and the Activity and the application
   context agree.
+- `cache-cleared`: the app's cache cleared between the runs, as Megler's app
+  page (Clear Cache) and Android's app info screen (Clear cache) ask for it:
+  the test's C side asks the core before the second run
+  (`megler_ask_clear_cache`), and the core clears it as the app starts
+  (`mg_run_clear_cache_if_asked`, said in the log). What the first run left in
+  `getCacheDir()`, `getCodeCacheDir()` and `getExternalCacheDir()` is gone in
+  the second, the folders there; what it left in `getFilesDir()` and
+  `getExternalFilesDir(null)` stays.
 - `volumes`: `StorageManager.getStorageVolumes()` is one volume, the primary:
   "Internal storage", emulated, not removable, mounted, with no UUID. The
   hidden `getVolumeList`, `getVolumePaths` and `getVolumeState`, called by
@@ -862,11 +874,13 @@ Java's calls arrive there.
   Before the request: `VIBRATE`, normal, granted with the install;
   `READ_CALENDAR`, not in the manifest, denied; `WRITE_EXTERNAL_STORAGE`,
   asked for only up to Android 9 (`maxSdkVersion` 28), denied and not among
-  `requestedPermissions`; `READ_CONTACTS` granted, the shell granting a group
-  it has nothing behind; the dangerous ones not yet in the first run, and in
-  the second as the first left them; `getPermissionInfo` says `CAMERA` is
-  dangerous, of the group `CAMERA`, and `VIBRATE` normal. Then one request of
-  nine, and a second while it is answered, told at once it was cancelled
+  `requestedPermissions`; `READ_CONTACTS` denied with no rationale, a group the
+  shell has nothing behind and would grant with no one asked, which the user
+  refused in the app's App Permissions; the dangerous ones not yet in the
+  first run, and in the second as the first left them; `getPermissionInfo`
+  says `CAMERA` is dangerous, of the group `CAMERA`, and `VIBRATE` normal.
+  Then one request of ten (`READ_CONTACTS` told no, nobody asked), and a
+  second while it is answered, told at once it was cancelled
   (empty arrays). The C side answers for the user (`system_permission`, the
   shell's `megler_system_host.permission`, its answers kept in a file of the
   data folder): every group allowed but the camera. The answer comes later,
@@ -919,6 +933,30 @@ write-back thread as the lock's holder). `mg_tests`' "a shared file mapping is
 written back with the mappings' lock let go" maps memory on another thread while
 `msync`, the 5-second pass, the suspension's and `munmap` each read and write
 their file, and finds the lock free.
+
+Nothing is waited for under the mappings' lock, the descriptors' lock among
+them. A thread that holds the descriptors' lock -- a pipe's read copying its
+bytes into the app's buffer, `epoll_wait` writing its events, `select` reading
+its sets -- and meets a page the app gave back with `madvise` is mended by the
+fault handler, which takes the mappings' lock. The write-back took its own hold of its file under the mappings'
+lock, and `mmap` of a shared file its hold of the descriptor's, and each hold
+took the descriptors' lock: such a thread and the fault's would each wait for
+the other for good, and every `mmap`, `munmap`, `mprotect`, `madvise` and
+descriptor of the app's after them -- an app standing still with the mappings'
+lock held by its write-back. The write-back's hold is a count now, taken
+without the descriptors' lock (the mapping's own hold keeps the file while the
+mapping is there), and `mmap` holds the descriptor's file before it takes the
+mappings' lock. Should the descriptors' lock be taken by a thread that holds the
+mappings' lock again, the log says where at once ("io: the descriptors' lock is
+taken in ... by a thread that holds the mappings' lock"). `mg_tests`' "the
+mappings' lock is never held waiting for the descriptors' lock" reads a pipe
+into a page given back, then holds the descriptors' lock while `msync` writes
+back on another thread: the write-back lets the mappings' lock go before it
+waits, another thread's `mmap` goes through, and a page given back, touched with
+the descriptors' lock held, is mended; and `mmap` of a shared file, `msync`,
+the 5-second pass, the suspension's and `munmap` take the descriptors' lock
+under the mappings' lock no time. Before, the test found the mappings' lock
+held by the write-back for as long as the descriptors' lock was.
 
 **A file mapped shared shows what is written to it.** A shared mapping of a
 file that is the layer's copy (any but a read-only view from a read-only
@@ -1171,6 +1209,25 @@ leaves "en-US". And in the data app, the `locale` step: `Locale`,
 `LocaleList`, the configuration and `TelephonyManager` must agree. The
 harness starts the first run in "en-US" and the second in "ru-RU", and reads
 the tag and the country off the app's line.
+
+**Dates in the locale's words.** `android.text.format.DateFormat` and
+`DateUtils` are Android's (10 and later), on the ICU of Android 9's
+core-libart: a pattern for a skeleton is ICU's `DateTimePatternGenerator`'s
+best, the hour as long as the skeleton asks (`MATCH_HOUR_FIELD_LENGTH`), which
+is what Android 9 found through `libcore.icu.ICU`; 12 or 24 hours are the
+setting `TIME_12_24` where it is set (Megler's settings say 24) and the
+locale's own where it is not; `format()` is Android's own letters (`a`, `c`,
+`E`, `d`, `h`, `k`, `L`, `M`, `y`, `z`...) with ICU's names, standalone and
+narrow forms among them; `formatDateTime` is `formatDateRange` of the instant
+(libcore's `DateIntervalFormat`), and the relative times are libcore's
+`RelativeDateTimeFormatter`'s ("5 минут назад"), both by reflection, the
+plain English of before only where libcore's cannot be had. The pattern had
+been the skeleton itself: Messenger's chat list, which gives a medium date
+format the pattern for "MMMd, yyyy", read "мая20, 2023" in Russian. The data
+app's steps `date-patterns`, `date-format-letters` and `date-utils-locale`
+check the patterns for en-US and ru-RU against ICU 60's data (CLDR 32) in
+both runs ("d MMM y 'г'." for yMMMd in Russian), and the formats of the
+run's own locale.
 
 ### The screen resized and turned (the app under qemu-arm)
 
@@ -2810,19 +2867,67 @@ class that called -- the app's `PathClassLoader` for a class of the app's --
 whose `findLibrary` looks in `ApplicationInfo.nativeLibraryDir`
 (`/data/data/<package>/lib`) and opens the file to see that it is there. The
 Java driver has put each of the APK's libraries there as a real file when the
-app starts (`place_libraries` in `mg_java.c`; written only when absent or of
-another size, so only an app's first start pays for it): the class loader
-needs them to exist, and so do apps -- loaders that read a library's ELF header
-to load what it needs first (Facebook's SoLoader, which every React Native app
-has) and code that lists the folder. Real files are simpler than empty
-stand-ins there with the APK's entry served when one is opened, and cost the
-libraries' size on the phone's storage once.
+app starts (`place_libraries` in `mg_java.c`, `ld/mg_ld_place.c`): the class
+loader needs them to exist, and so do apps -- loaders that read a library's
+ELF header to load what it needs first (Facebook's SoLoader, which every React
+Native app has), loaders that sum the files against the APK's entries
+(ByteDance's librarian), and code that lists the folder. Real files are simpler
+than empty stand-ins there with the APK's entry served when one is opened, and
+cost the libraries' size on the phone's storage once.
+
+The folder holds this version's libraries and nothing else, as Android's
+installer leaves it at each install and update. A file is written when it is
+not the APK entry's bytes: absent, of another size, or of another CRC-32 than
+an index in Megler's data folder (`lib-index/<package>`, a line a library:
+CRC-32, size, name) says the last start wrote -- the APK's central directory
+has each entry's, so a start that changes nothing reads no library and writes
+nothing. A file of the entry's size that the index does not name (placed by a
+Megler of before the index, or the index lost) is summed once and written only
+when it differs. A library that no APK of the app has any more is removed. Up
+to 0.1.0.685 a file was written only when it was absent or of another size,
+and nothing was removed: an update whose library kept its size (page-aligned
+builds often do) kept the old one, and a library an update dropped stayed in
+the folder for good -- where the linker, looking for a library by its name in
+the APKs and then in that folder, found it. TikTok Lite 47.7.4 moved
+`libnpth.so` and nineteen other libraries out of its APK into an archive it
+unpacks itself (Zoin's `tt_lib`, in its `config.armeabi_v7a` split as
+`libtt_lib.so`, 2 MB that come to 6) into `files/esolib/<version>`, and loads
+them from there with `System.load` through its librarian; the older version's
+`libnpth.so` in the folder was loaded instead, it registered the natives of its
+own `NativeBridge` -- `nStartNativeCrashMonitor` with three strings where the
+new Java's has five -- and the app ended in `Npth.init`, in its Application's
+`attachBaseContext`, with an `UnsatisfiedLinkError` (0.1.0.685 on a Lumia 650,
+after an update from the version with `df_bytenn` and `df_fusing`). The log's
+line says what a start did -- the files written, those summed for want of the
+index, those of an older version removed, by name: "java: the app's 10 native
+libraries (armeabi-v7a) are in /data/data/<package>/lib (N summed against the
+APK's; N of an older version's, which this one has not, removed: libnpth.so,
+...)".
+
 `JVM_NativeLoad` (`mg_dvm_jvm.c`) then loads: with no class loader (one of
 the runtime's classes asked) a library of the Android root's, otherwise the
-APK's of that file name. A path that names a file with something in it that is
-not in the APK -- a library the app unpacked or downloaded itself -- is loaded
-from that file. A library is loaded once: a second request finds it and does
-not run `JNI_OnLoad` again. What comes back when it fails is ART's sentence
+APK's of that file name -- unless the path names a file of the app's own in
+its data folder, not the copy in its library folder (`mg_dl_own_library`,
+`bionic/mg_libdl.c`). That file is loaded, as Android's `System.load` loads
+the file it is given: a library the app unpacked or downloaded itself, under a
+name no APK has or under one an APK has too (a build of the app's own, a
+patch). It is not read first to see whether it is the APK's library after all:
+loading it reads it once, as loading the APK's would, and loaders that unpack
+an app's libraries themselves and load them by path (SoLoader's
+`ApkSoSource`, ReLinker) would have every library read twice at every start.
+Only where the APK stores a library of 16 MB or more as it is -- read where it
+lies, it never needs its size of addresses again beside its image, as a file
+read whole does -- is a copy of the entry's size summed against it, and the
+APK's taken when the two are the same. Where the file is known to be another
+library than the APK's of its name, the log says so ("dvm: <path> is a build
+of the app's own, not the APK's <name>"). A path outside the app's folder that
+names a file with something in it is loaded from that file when no APK has the
+name. Native code's `dlopen` of a path takes the same file
+(`g_dlopen`); up to 0.1.0.685 it looked for the name alone, and a library the
+app wrote into a folder no library had come from was "not found". A library
+is loaded once, by its name: a second request finds it and does not run
+`JNI_OnLoad` again, even for another file of that name, of which Android would
+load a second copy. What comes back when it fails is ART's sentence
 (`dlopen failed: library "..." not found`, `JNI_ERR returned from JNI_OnLoad in
 "..."`, `Bad JNI version returned from JNI_OnLoad in "...": N`); a library the
 APK does not have at all never gets that far, and is libcore's own
@@ -3146,9 +3251,10 @@ when Android destroys it too.
 
 Not there: attributes set with `eglSurfaceAttrib` are lost when a resize
 makes the next pbuffer;
-`ANativeWindow_setBuffersTransform` and `_setFrameRate` change nothing; a
-surface above the window (`setZOrderOnTop` without a `GLSurfaceView`) is not
-composed, as for Java's EGL.
+`ANativeWindow_setBuffersTransform` and `_setFrameRate` change nothing. (A
+surface above the window, `setZOrderOnTop`, was composed nowhere up to package
+681; it is over the views now, translucent where its format has alpha:
+docs/ARCHITECTURE.md, "Surfaces over the window".)
 
 *Tested* by the app `natives` under qemu, the window steps, twice (the shell
 composing, and the core), with `trace-surfaces` on and its lines checked (the
@@ -3249,6 +3355,17 @@ where the framework's code, written for iOS, leaned on CoreGraphics without sayi
   into a struct; a path turned from the framework's fifteen operations into
   move, line, quad, cubic and close; arcs and round corners as cubics;
   underlines; path bounds, containment and length.
+- **Text as outlines.** `Paint.getTextPath` asks the shell for the outlines
+  of the run's glyphs where `drawText` would draw them, alignment, scale,
+  skew and letter spacing included (`megler.Gfx.txPath`, the host's
+  `text_path`: DirectWrite's own outlines, `IDWriteFontFace::GetGlyphRunOutline`,
+  in `player/GfxHost.cpp`), and the path holds them alone afterwards, as
+  Android's does. Google Maps' legacy renderer draws every name of its map
+  that way into a bitmap -- one path for label after label, stroked in the
+  halo's colour, then filled -- and draws the bitmap with OpenGL ES 1. Up to
+  0.1.0.684 the framework added the run's box to the path at each call,
+  which no graphics processor draws as letters: the names on Transit's map
+  were grey boxes (a Lumia 650).
 - **The stand-in** (`core/tests/mg_gfx_standin.c`) is for tests and is not a
   renderer to look at: a pixel is in when its centre is, curves are straight
   pieces, strokes have no joins, a gradient is its first colour, text is a box
@@ -3661,11 +3778,15 @@ whatever its name and nothing was asked of anyone). For one permission:
 - dangerous, of an app that targets Android 5.1 or older (or has no
   `<uses-sdk>`), or of Google's own packages (Play Store, Google Play services,
   its services framework), which a phone has as system apps: granted with the
-  install;
+  install -- unless the shell says the group is denied for good, the user's
+  Don't allow in the app's App Permissions, as Android's settings revoke an old
+  app's permission;
 - any other dangerous one: its group's (Android 14's groups), as the shell keeps
   it (`megler_system_host.permission`, `Native.permission`): granted, denied
   (`shouldShowRequestPermissionRationale` true, the app may ask again), denied
-  for good, or undecided.
+  for good (Windows' own no, a second no, or the user's Don't allow in the
+  app's App Permissions), or undecided (never asked, or asked every time and
+  not yet in this run).
 
 `requestPermissions` (an activity's or a platform `Fragment`'s) settles what
 those rules settle and asks the shell, on a thread of its own, for each group
@@ -3701,7 +3822,11 @@ question (Allow, Don't Allow), kept in the app's settings, a second no for
 good; and the contacts, the calendar, the body sensors, notifications and
 physical activity granted with no one asked, since Megler gives an app none of
 those of the phone's, and nearby devices likewise, which are Bluetooth LE's
-("Bluetooth LE" below), Windows asking nothing for them. The location refused by the
+("Bluetooth LE" below), Windows asking nothing for them. One group is no
+permission of Android's: Google Location Accuracy (`location_accuracy`),
+Megler's question, put once an app that holds the location binds Google Play
+services' location API, its answer written into Google's settings for every
+app ("Wi-Fi, and Google's network location" below). The location refused by the
 system -- the phone's location switched off, which Windows' consent says as
 `DeniedBySystem` -- is no refusal of the app's: Android grants or refuses an
 app's location permission whether the location is on or off, and the app,
@@ -3720,13 +3845,63 @@ permissions and by the location (`player/LocationHost.h`, which follows the
 consent while the app runs), and so is why no fix is handed while an app has
 requests (`LocationService`: the location off, Windows' no, no location
 device, no permission held and so nothing asked, Windows not answering yet,
-nothing found in 30 s of following). An app's App Settings list its
-groups, what was said, and change Megler's answers. Clearing an app's data
-(Clear Data on its page in Megler, or Clear storage on Android's app info
-screen in the app) forgets Megler's answers too, as Android's Clear storage
-resets an app's permissions: the shell does it as the clear is asked and as
-the app next starts with one waiting (`megler_clear_data_asked`). Windows'
+nothing found in 30 s of following).
+
+The user's own say over every group is the app's **App Permissions**
+(`ui/PermissionsScreen.cpp`), as Android 11 and later's App info > Permissions
+has them: reached from the app's page in Megler (Permissions), from its App
+Settings, and in the app's own package from its Settings (the player's menu),
+where it opens in their place and Back goes back to them. Each group the
+manifest asks for is in the list of what the app may have -- Allowed, Ask
+every time where there is any, Not allowed -- and a tap gives its choices,
+kept in the app's settings as `megler.permission.<group>`: **Allow** (Megler's
+yes; for a group Windows decides, Windows' own answer, which is said where it
+is known -- in the app's own package, Megler's process being another package
+-- with the way to its privacy settings), **Ask every time** (`ask`: Megler's
+question at the app's first request of the group in each run, its answer that
+run's alone, held in the process; for a group Windows decides, Windows' own
+question after Megler's yes) and **Don't allow** (`denied-fixed`: the app is
+told no and not asked -- over Windows' yes for the location, the camera and the
+microphone, and for the groups Megler has nothing behind, which it grants with
+no one asked otherwise). An app that has its permissions with its install is
+offered Allow and Don't allow, with Android's warning that refusing one may
+make it misbehave. What the shell decides of a group from what the user said,
+what Windows says and this run's answer (`permissionHost::decide`) is tested
+on a PC (`mg_shell_tests`), and the data app is refused its contacts so. What
+Megler says is the app's to hear: what an app does without asking (opening the
+camera Windows lets it have) is as it was. Below, read only, every other
+permission the manifest asks for, as Android names them ("Have full network
+access", "Display over other apps (special app access)"), granted with the
+install. Clearing an app's data (Clear Data on its page in Megler, or Clear
+storage on Android's app info screen in the app) forgets Megler's answers too,
+as Android's Clear storage resets an app's permissions: the shell does it as
+the clear is asked and as the app next starts with one waiting
+(`megler_clear_data_asked`). Clearing its cache (Clear Cache, Clear cache:
+`megler_ask_clear_cache`, the app's cache, code_cache and
+Android/data/<package>/cache emptied as it next starts) keeps them. Windows'
 own answers stay; they are changed in its privacy settings.
+
+**Google Play services' own use of the location.** Their features in the app's
+process (location accuracy, personal safety, semantic location: PersonalSafety
+and the like in the log) ask for the location as Google Play services itself,
+and GmsCore refuses such a request when the attribution tag of the identity it
+is made with is null or its location module's own ("internal location usage
+has a forbidden attribution tag", `gerz.h`); the identity is made of the
+context's tag (`ClientIdentity.c(Context)`), and on a phone such a request in
+an app's process would be the app's, another uid. Google Play services'
+package context (`MicroG.PackageContext.getAttributionTag`) answers
+`megler.app` only where the user has allowed it, and null otherwise, as before:
+one answer for every app (`megler.gmsLocation` in Megler's settings, read as the
+file has it now: `megler_system_host.permission`'s `gms_location`). The user is
+asked once, over the app, the first time such an identity is made with no
+answer (the context's caller has `ClientIdentity` on its stack): on a thread
+of the framework's (`Permissions.askGmsLocation`), the thread that wanted the
+tag told null meanwhile; later calls get the tag once allowed. Megler's
+Settings (Google Play Services' Location) and every Java app's App Permissions
+change it. The test app `gms-host` checks it with a stand-in of
+`ClientIdentity` in its Google Play services: no tag asked for plainly and no
+one asked, none at once for an identity and the user asked, then the tag once
+allowed -- or none, the user refusing, and nobody asked again.
 
 ### The phone's text messages and calls
 
@@ -4104,6 +4279,51 @@ its notification URI (`AbstractCursor.setNotificationUri` registers with the
 resolver, `ContentObservable.registerObserver` registers at all: both were
 stubs that did nothing, and unregistering an observer threw).
 
+### Notification channels
+
+`NotificationChannel` and `NotificationChannelGroup` are Android's (11 to 14):
+a channel keeps what the app sets on it and has Android's defaults where it
+sets nothing -- the default notification sound
+(`Settings.System.DEFAULT_NOTIFICATION_URI`) played as
+`Notification.AUDIO_ATTRIBUTES_DEFAULT`, no lights, no vibration, a badge,
+`VISIBILITY_NO_OVERRIDE` -- with Android's `copy()`, `equals`, Parcel layout
+and elements of the notification policy file (`writeXml`, `populateFromXml`);
+`AudioAttributes` are equal by what they hold. The channel was a stub whose
+setters kept nothing: Messenger copies a channel of its own through the
+getters and asserts that its audio attributes are there, and ended fifteen
+seconds after each start on a Lumia 650 (0.1.0.685, "INVOKE_RETURN must not be
+null").
+
+`NotificationManager` keeps the app's channels and groups as Android's system
+keeps them for an app: one set for the process, whichever `NotificationManager`
+is asked; each handed out as a copy (through a Parcel); a channel made again
+changes only what Android lets an app change (its name, description, its group
+where it had none, whether it may be blocked, its importance downwards), and a
+new one has the system's own fields as an app's new channel has them (no Do Not
+Disturb, no lock screen visibility of its own, bubbles as the user has them);
+a deleted channel is gone and comes back as it was when it is made again
+(forgotten after 30 days); deleting a group deletes its channels; a
+conversation's channel answers `getNotificationChannel(id, conversationId)`;
+a group is handed out with its channels. They are kept across the app's runs
+in its data folder, `.megler_notification_channels.xml` (Android's elements,
+written on a thread of their own after each change; "notification channels:
+N kept from the app's last run" in the log when they are read): Messenger
+looks its channels up by id and found them missing at each start ("Channel
+messenger_orca_800_live_location was missing, will reinitialize channels").
+Clearing the app's data clears them, as on Android. Not there: the
+exceptions Android's system throws for a channel it refuses (an empty name, a
+group that is not there), the default channel ("miscellaneous") of an app made
+for Android 7.1 or earlier; and Google Play services in the app's process
+share the app's channels, where on Android they have channels of their own.
+
+The data app checks them: `notification-channel` (the defaults, what is set
+kept, Messenger's copy through the getters), `notification-channel-copy`
+(`copy()`, `equals`, a Parcel, XML), `notification-channel-group`,
+`notification-channels-shared` (a channel made through one
+`NotificationManager` found through another), `notification-channels-rules`,
+and `notification-channels-kept`: what the first run made, the second finds,
+a silent channel's sound and attributes still null, a deleted one deleted.
+
 ### WebP pictures
 
 An app's pictures are WebP as often as PNG (Android's build tools convert
@@ -4362,10 +4582,12 @@ makes a functor for each WebView (`create_functor_v3`) and, in `onDraw`, asks
 the platform to draw it (`WebViewDelegate.drawWebViewFunctor`). The overlay's
 `WebView.meglerDrawFunctor` has it drawn at once on the WebView's render
 thread, the UI thread waiting as HWUI's does for a frame it cannot let go of:
-`on_sync`, then `draw_gl`, with an OpenGL ES 3 context current on a pbuffer of
-the part of the view the window shows (rounded up to 64 pixels, kept while the
-part changes a little), of the WebView's own display (the one Chromium's own
-`eglGetDisplay` is given: `ndk/mg_egl.c`, `webview_display`). The pbuffer is
+`on_sync`, then `draw_gl`, with an OpenGL ES 3 context current (2 on a display
+of feature level 9_3) on a pbuffer of the part of the view the window shows
+(rounded up to 64 pixels, kept while the part changes a little; of a
+configuration whose texture the display shares, `wv_pick`), of the WebView's
+own display (the one Chromium's own `eglGetDisplay` is given: `ndk/mg_egl.c`,
+`webview_display`). The pbuffer is
 cleared and set up as HWUI leaves its surface for a functor: the framebuffer
 0, the viewport the surface, the scissor the part, no stencil test (with one
 Chromium draws into a texture of its own and that through the stencil). The
@@ -4383,7 +4605,8 @@ released functor (`release_functor`) has `on_context_destroyed` (with the
 context current) and `on_destroyed` on the render thread; its pbuffer and
 picture go with it. The log says "webview: pages are drawn on the graphics
 processor" and "draw functor N drawn" with the time a draw takes. A draw that
-fails three times in a row, or one that takes more than four seconds, has the
+fails three times in a row, or one that takes more than four seconds (fifteen
+on a display of OpenGL ES 2, below), has the
 pages drawn in software from then on, as below. `mg_gl_tests.c`'s draw functor
 test checks the table, the threads, the order of the callbacks, the
 parameters, the picture handed over and the release with the tests' stand-in.
@@ -4419,8 +4642,19 @@ what the window shows of the view, as the functor draws on Android, and puts
 that bitmap in the canvas it was given: a WebView sized to its page is many
 screens tall (a check: a WebView 20000 rows tall is drawn through 744), and a
 view out of the window gets at most a screen's worth from its scroll position.
-The bitmap is kept from one frame to the next and cleared in its memory, and
-let go while the pages are drawn on the graphics processor.
+Two such bitmaps are kept and drawn through in turn, each cleared in its
+memory, and let go while the pages are drawn on the graphics processor. A
+frame's list draws the bitmap itself, as its pixels are when the render thread
+draws the frame, while the main thread records the next one, which erases the
+page and draws it again; through one bitmap a frame that drew it then showed
+it half written, and now the bitmap the last frame was drawn through is left
+alone until the frame after. The render thread's line in the log counts the
+bitmaps a frame drew whose pixels had been written after the frame was
+recorded (and says the first at once): on this PC a page whose animation had
+Chromium draw again every frame, 52 frames a second with the main thread
+waiting 4.6 s of every 5 for the render thread, counted one in 9865 frames
+(the WebView's 720x1168 bitmap) through one bitmap, and none in 9749
+through two.
 
 Chromium draws into that bitmap directly. The platform's
 `libwebviewchromium_plat_support.so` gives a WebView tables of functions;
@@ -4464,6 +4698,136 @@ mode (`core/tests/mg_gl_standin.c`: every function of EGL 1.4 and OpenGL ES
 device's limits). Chromium's raster of tiles goes there too; under qemu that
 draws nothing (its log says "Error: 1 for Command Noop"), and the page is
 drawn in software regardless.
+
+**At Direct3D feature level 9_3 too, pages are drawn on the graphics
+processor.** They were drawn in software there: ANGLE as gecko-w10m builds it
+gives a surface's texture no shared handle on a device of feature level 9_3
+or below (`Renderer11::getShareHandleSupport`: such a device "doesn't support
+share handles on RGBA8 textures/swapchains"), so its EGL did not name
+`EGL_ANGLE_surface_d3d_texture_2d_share_handle`, no frame of OpenGL ES could
+be a picture the shell keeps (`mg_java_gl_shares_frames`), and Chromium was
+given no draw functor -- a Lumia 650's logs said "webview: pages are drawn in
+software: no draw functor" in every app -- while its GPU service rastered its
+layers' tiles for draws on the graphics processor that never came (its "tile
+memory limits exceeded", which this PC's software runs at 9_3 say too).
+Direct3D 11 does share textures at 9_3, in one format: on this PC a device of
+9_3 makes a `B8G8R8A8_UNORM` texture shared, plainly and with a keyed mutex,
+and a second device of 9_3 or 11_1 opens it by its handle and reads what the
+first drew; `R8G8B8A8_UNORM` and the typeless formats it refuses
+(`E_INVALIDARG`). Megler's ANGLE shares such a pbuffer's texture at 9_3
+(`angle/0005-share-handles-feature-level-9.patch`); the render thread's
+pbuffers are of the first configuration whose pbuffer has a shared handle
+(`wv_pick`, EGL putting B8G8R8A8 first; where none has one, pages are drawn in
+software as before); and the shell takes each picture as on an HP Elite x3: by
+its handle, under its keyed mutex, into a copy of its own drawn where the view
+is, nothing read back. The win suite holds both sides to it: the shell's
+drawing takes a 9_3 device's shared picture (`mg_gfx_windows.cpp`,
+`check_texture_9_3`), and this PC's own ANGLE at 9_3 shares a pbuffer and gives
+back through its handle what was drawn into it (`mg_angle_windows.c`,
+`gl1_shared`). Chromium's contexts there are of OpenGL ES 2.0.
+
+Chromium's own ANGLE (its OpenGL ES back end over this layer's EGL) is not told
+of instanced arrays on a display of OpenGL ES 2 at most (`ndk/mg_egl.c`,
+`w_get_string`, for the WebView's code alone, told by the library the call
+comes from). It takes `GL_EXT_instanced_arrays`, which ANGLE over Direct3D 11
+names at 9_3, for instanced draws, but loads the functions that draw so only
+with OpenGL ES 3 or `GL_EXT_draw_instanced` (`DispatchTableGL`), neither of
+which such a display has: Skia's first instanced draw went through a null
+pointer (this PC at 9_3, the WebView test app's first page). And what Skia
+draws with instances does not fit 9_3: its tessellating path renderers' vertex
+shaders take some 466 instruction slots where `vs_4_0_level_9_3` has 256, which
+D3DCompile takes seconds on a Lumia 650's processor to refuse (venetium-w10m,
+the owner's Chromium for these phones, turns them off there). Without them
+Skia draws paths and round rectangles as on any OpenGL ES 2 phone. Megler's
+ANGLE also has two of venetium-w10m's fixes for 9_3: no dual-source blending
+below feature level 10_0, whose blend states Direct3D refuses there
+(`angle/0006`), and an EGL image's texture sampled at 9_3 (`angle/0007`):
+without the second, the WebView test app's page drawn through a `RenderNode`
+lost its yellow bar on this PC at 9_3, ANGLE refusing each draw from one of
+Chromium's images. venetium-w10m's third, that a shader over the target's
+limits is not compiled again with ANGLE's other configurations, is not taken:
+here the eight lights of OpenGL ES 1 (`mg_angle_windows.c`) compile at 9_3
+only with a later configuration than the first, and without it they were
+refused and ANGLE ended the test at the next draw.
+
+On this PC at 9_3 (the desktop build's test program on the x86_64 WebView with
+Megler's ANGLE for this PC instead of the tests' stand-in, the shell's pictures
+taken through their handles: `MG_JAVA_ANGLE=build/angle/x64/dist mg_tests.exe
+--java webview ... root-x86_64 ...` with the flag `egl-level-9_3` in the data
+folder's flags) the WebView test app passes every step through the draw
+functor -- the page's bar and body their exact colours, the layers' page whole
+-- as it does at this PC's own level. A page of text (9 to 30 pixels, bold,
+italic, Cyrillic, shadowed, turned) and paths (SVG curves, dashes, joins,
+even-odd, arcs, a 60-pointed star, canvas arcs and curves) comes out as
+Chromium's software drawing of it but for the edges' anti-aliasing: 96% of its
+pixels the same, 0.02% different by more than 48 of 255. WebGL is not offered
+at 9_3 (Chromium's command buffer wants 8 varying vectors and ANGLE has 7
+there; told 8, Chromium still made no WebGL context): a page's
+`getContext("webgl")` gives none, as before.
+
+What it costs a Lumia 650 (1 GB, 390 MB for an app): a functor's pbuffer of
+the part shown, rounded up to 64 pixels (768x1216 for 720x1168: 3.7 MB), and
+the shell's copy of it, as much; the two bitmaps of software frames (3.4 MB
+each at that size) are let go, and Chromium made its tiles before too. A
+program of Skia's is compiled by D3DCompile on the phone's processor the first
+time it is needed, and a page's first frames wait for theirs; ANGLE keeps them
+for the next start (`EGL_ANDROID_blob_cache`, `angle-cache` in the app's
+data). So on a display of OpenGL ES 2 the UI thread waits up to 15 s for a
+functor's draw, not 4, before it gives pages up to software
+(`WV_WAIT_ES2_MS`); the log says each slow frame's time ("webview: slow
+frame").
+
+**The WebView's developer-mode flags, and HitTestOpaqueness.** The WebView in
+the Android root is AOSP's, not Google's, and Chromium that is not
+Chrome-branded applies its field trial testing config wherever no variations
+seed says otherwise (`variations_field_trial_creator_base.cc`,
+`ShouldUseFieldTrialTestingConfig`): with the flag `webview-verbose-logging`
+its log lists 123 active field trials of that config, among them
+"HitTestOpaqueness" in group "Enabled". That feature bounds a layer's
+recording by what the layer paints rather than by the layer
+(`RecordingSource`, `can_use_recorded_bounds`), and Chromium's software draw
+does not take it into account: `PictureLayerImpl`'s resourceless draw gives
+the quad the visible rectangle cut down to those bounds and the texture
+coordinates of the whole visible rectangle, and
+`SoftwareRenderer::DrawPictureQuad` maps the one onto the other. So a layer of
+its own that paints only part of itself was drawn squeezed into that part,
+about the part's top left. On a Lumia 650 Google's sign-in page in Play Store
+(Google Play services' sign-in) showed its password field's floating label at
+0.4 of its size, the password's bullets at a third and the "Show password"
+checkbox at a third; drawn on the graphics processor, as on an HP Elite x3,
+the bounds only say which tiles have something in them, and nothing is
+squeezed. Material's checkbox is such a layer (`will-change: transform, opacity`):
+a 48-pixel input that paints nothing round an 18-pixel box, whose box came out
+13 pixels wide at 2.00, 11 pixels in from its own corner -- 18/48 of it, as
+the arithmetic of those two rectangles has it; Google's "Create account"
+button likewise. Megler now answers for the WebView DevTools app, through
+which a phone's user sets the WebView's flags (`megler.WebViewFlags`): the
+WebView asks, as it starts and before it loads its library
+(`WebViewChromiumFactoryProvider.initialize`, `DeveloperModeUtils`), whether
+the component `org.chromium.android_webview.devui.DeveloperModeState` of its
+package is enabled (`PackageManager.getComponentEnabledSetting`) and then for
+the rows of `content://<its package>.DeveloperModeContentProvider/flag-overrides`,
+and puts them on its command line (`FlagOverrideHelper`); the platform says
+the component is enabled and its provider answers HitTestOpaqueness off. The
+log says "the WebView's developer-mode flags: {HitTestOpaqueness=false}", and
+the WebView's own with `webview-verbose-logging` "Field trial config study
+skipped: HitTestOpaqueness.Enabled" and a `disable-features` with
+HitTestOpaqueness in it. Only flags of the WebView's own list are taken
+(`ProductionSupportedFlagList`; a name it does not have ends its start), so
+Megler's are named one by one and set only for the WebView they were checked
+against, 128 (another version is said in the log and gets none):
+`webview-layer-borders` (Chromium's
+`show-composited-layer-borders`, a border round each of its layers),
+`webview-verbose-logging` (its command line and field trials in the log) and
+`webview-hit-test-opaqueness` (HitTestOpaqueness left as the testing config
+has it). The WebView test app checks it: a page of layers that paint part of
+themselves -- a checkbox as Material's, a box in an empty layer -- and one that
+paints all of itself, each box found whole in the picture. With
+HitTestOpaqueness on, 36 of the checkbox's 196 inner pixels and 792 of the
+other box's 3136 were theirs, and the layer that paints all of itself was
+whole (the desktop build's test program running the app natively on the
+x86_64 WebView, the same release, which takes seconds where qemu takes
+minutes: `mg_tests.exe --java webview ... root-x86_64 ...`).
 
 **Resources.** The WebView APK's `resources.arsc` is a shared library's:
 package id 0, its own references through that id. `AssetManager.
@@ -5266,8 +5630,9 @@ native code is.
 - **OpenGL ES from Java on a phone has not run.** Under qemu and on the PC it
   runs on a stand-in that draws. A `SurfaceView` that the app's *native*
   code draws on is there now (above, "A SurfaceView drawn by native code"),
-  a `SurfaceTexture`'s too, likewise only under qemu. Not there at all: `setZOrderOnTop` with a translucent surface (a
-  surface is always composed under the views, opaque), more than eight
+  a `SurfaceTexture`'s too, likewise only under qemu. (A surface ordered on top of
+  the window, opaque or translucent, is composed over the views now -- up to
+  package 681 nowhere: docs/ARCHITECTURE.md, "Surfaces over the window".) Not there at all: more than eight
   views with EGL at once, `GLES32.glDebugMessageCallback` and the other
   calls Android's own glue leaves "not yet implemented" (the same exception
   here), and the composition on the GPU (docs/ARCHITECTURE.md says what it
@@ -5468,6 +5833,19 @@ on a looper thread of its own and takes it back with `next()`.
   trace), and the app had no fix while Megler's own `LocationManager` had one:
   Transit, and the Google Maps "my location" layer (0.1.0.671). The data app's
   step "work-source" writes one so and reads it back.
+- `android/app/PendingIntent.java`: its sends with an `OnFinished`, a
+  required permission or options -- `send`'s six- and seven-argument forms,
+  `send(Bundle)` and `sendAndReturnResult` -- were generated signatures that
+  sent nothing. They send as the others do (a broadcast to the receivers that
+  hold the permission) and then tell the `OnFinished`, on its `Handler`'s
+  thread, or without one on a thread of its own once the send has returned
+  (Android's binder thread), with the intent sent and Android's 0. Google Play
+  services sends its `PendingIntent`s so (`bpep.d`): its network location's
+  fixes to its fused provider were lost on the way, and with them every fix
+  of Google's Wi-Fi positioning ("Wi-Fi, and Google's network location"
+  below). The data app's step "pending-intent-options" sends one with an
+  `OnFinished` on a `Handler` of its own and options, and one with a
+  permission no receiver holds: each is told, the first heard.
 - `android/location/LocationRequest.java`, Android 14's in place of the
   generated stub: its `Builder(intervalMillis)` forgot the interval, its
   factories made a request of nothing, `getMaxUpdates` said 0 where Android
@@ -5481,6 +5859,44 @@ on a looper thread of its own and takes it back with `next()`.
   its own 0. The data app's step "location-request" builds requests, makes
   one of the deprecated provider, puts one through a parcel, and has one of
   the passive interval handed a fix.
+- `android/location/Geocoder.java` and `Address.java` in place of the
+  generated stubs, and `GeocoderParams.java`, `IGeocodeProvider.java`,
+  `IGeocodeListener.java` and `com/android/location/provider/GeocodeProvider.java`,
+  which the framework did not have: Android's Geocoder over the geocode
+  provider of the Google Play services the app hosts (docs/MICROG.md,
+  "Android's Geocoder"). `isPresent()` was false and every request an empty
+  list, and an `Address` kept no lines and never a latitude: Transit named a
+  place it was asked about by its coordinates ("Map location" and them). The
+  synchronous forms and Android 13's listener forms, the provider's error as
+  an `IOException` or `onError`, Android's argument checks; an `Address` with
+  its lines numbered as Android's, its coordinates thrown for when none was
+  set, and its `Parcel` layout. The data app's steps "geocoder" (no provider:
+  not present, no addresses and no error, on the main thread and through the
+  listener off it) and "address", and `gms-host` with a stand-in provider of
+  Google Play services' (a place at a point and of a name in the request's
+  locale, an error, the listener forms, the first request a synchronous one
+  on the main thread).
+- `android/content/res/AssetManager.java`, `Resources.java` and
+  `ResourcesImpl.java`, another package's splits: an `AssetManager` made for
+  another package (`meglerForPackage`) takes its splits too, whose tables are
+  merged into its own (`meglerPackageTable`) and whose files are read where
+  the base has none, as an app's own splits are. Google Play services from
+  Play Store are a base and splits of the phone's density and languages, and
+  an app that hosted them had their base alone: the Google logo of their
+  account and help screens, of densities' values alone, was not there, and Play
+  Store ended on `Resources$NotFoundException` (0.1.0.685, docs/MICROG.md,
+  "Google's own Play services from Play Store: their splits"). `gms-host`
+  hosts a stand-in of theirs built as such a bundle.
+- `megler/AppRunner.java`, an activity whose `onCreate` throws: `launch`
+  takes it off the stack at once, marks it finished, closes any window it
+  opened and resumes the one below; it is never stopped or destroyed. It
+  stayed on the stack, the one below paused under it, and once it had
+  finished itself it was stopped and destroyed at the next idle: Google Play
+  services' help screen, whose layout failed so in Play Store (0.1.0.686),
+  ended in their lifecycle's "State must be at least 'CREATED' to be moved
+  to 'DESTROYED'" out of the idle handler. One of the app's own still ends
+  the app, as the exception goes on. `gms-host` starts one of their
+  stand-in's that throws and is resumed after it.
 - `android/content/ContentProviderClient.java`: `openFile`, `openAssetFile`,
   `openTypedAssetFile(Descriptor)`, `query` with a `Bundle`, `insert`,
   `update` and `delete` with extras, `bulkInsert`, `call` with an authority,
@@ -5525,6 +5941,25 @@ on a looper thread of its own and takes it back with `next()`.
   told to it too, and the item was finished twice (RecyclerView's listener
   run twice for one fade). The data app's step "animator-listener" checks
   each of these.
+- `android/text/method/ReplacementTransformationMethod.java` (the base of
+  `SingleLineTransformationMethod` and `HideReturnsTransformationMethod`),
+  Android's: text with none of the characters to replace is shown as it is,
+  and text with some keeps its spans -- a copy for text that cannot change, a
+  view that follows it for a `Spannable` or an `Editable`. The framework's own
+  gave a `String` of the text in every case, so a TextView that is
+  `android:singleLine` drew its text with no span at all. Transit 6.3.7 leaves
+  the markup its native code writes in a search result's title
+  (`<color|1e212d/f0f0f1>Choose on map`: a light theme's colour and a dark
+  one's) and hides it under a `ReplacementSpan` of no width, the rest
+  coloured by a span of its own (`com.thetransitapp.droid.shared.util.e.d`);
+  its result cards' titles are single-line (`search_actionable_card_cell`),
+  and on the phone they read `<color|1e212d/f0f0f1>Ch` in the view's own
+  colour (0.1.0.684, a Lumia 650). The data app's step "single-line-spans"
+  lays such a title out from a layout of its own
+  (`res/layout/markup_row.xml`) and draws it: the words alone, in the span's
+  colour; and checks what the transformation gives a `SpannableString` with
+  no line break (itself), one with line breaks (its spans kept), a
+  `SpannableStringBuilder` (a view that follows its edits) and a `String`.
 - `android/app/usage/StorageStatsManager.java`, two methods in their two
   forms: `getTotalBytes` and `getFreeBytes` were signatures answering 0.
   Since Android 8 this is where an app asks how large the phone's storage is
@@ -5799,6 +6234,21 @@ on a looper thread of its own and takes it back with `next()`.
   and no layers the drawable took itself for a borderless one and drew its
   highlight as a disc of half its longer side: for a pressed row of a list, a
   grey disc as wide as the screen over the rows above and below.
+- `android/graphics/drawable/LayerDrawable.java`, one statement in `draw`:
+  every layer is drawn, visible or not, as Android's. A drawable's
+  visibility (`setVisible`, which a LayerDrawable passes on to its layers,
+  and which a view sets on its background as it hears whether it is shown)
+  is a hint to it, and only a drawable that hides itself (Fresco's
+  `RootDrawable`) draws nothing while it is not visible. The framework's own
+  file drew only the layers that were visible, so a LayerDrawable told it was
+  not visible drew nothing at all. Messenger's avatars are such drawables
+  (`MigProfileImage` draws a user's picture with `UserTileDrawableComponent`:
+  a LayerDrawable of the picture's round `ShapeDrawable`, a badge and the
+  initials, in Litho's `MatrixDrawable`, whose `mount` does not give the new
+  drawable its own visibility), and so is a `RippleDrawable` with content,
+  the background of a view told it is not shown. The data app's step
+  "layer-drawable-hidden" draws a LayerDrawable and a ripple told they are
+  not visible.
 - `android/graphics/drawable/InsetDrawable.java` and `megler/ResInflate.java`:
   an inset may be a fraction of the drawable's bounds as well as pixels, as
   Android 8 and later have it (`InsetDrawable.InsetValue`): an `<inset>`'s
@@ -6081,6 +6531,66 @@ on a looper thread of its own and takes it back with `next()`.
   with a list of its own in the window: nothing is heard inside the removal,
   the child is still in the scrap after it, and the fade goes on to its end
   and is told then, once.
+  And a view hears whether it is shown, `onVisibilityAggregated`, as
+  Android's (7 and later) tells it: true at its attach to the window where it
+  is shown, false at its detach, and the subtree of a view whose visibility
+  changes in a window through `dispatchVisibilityAggregated` (`ViewGroup.java`
+  tells its visible children); View's own makes its background and
+  foreground visible or not, ImageView's its picture. Nothing called it: no
+  drawable heard that its view had left the window. Facebook's network
+  drawables let their pictures go only at `setVisible(false)`, and Messenger's
+  log had 124 lines "AsyncDrawable with url ... wasn't hidden before it was
+  GC'd" (0.1.0.683); Litho's `LithoView` takes its visibility hint from it.
+  The data app's step "visibility-aggregated" hides a picture and a
+  background with their parent made `GONE` and taken out of the window.
+  And a view clipped to its outline (`setClipToOutline`, as androidx's
+  `CardView` clips itself to its rounded background) and drawn through a
+  list of its own is clipped by that list's node, as Android's `RenderNode`
+  clips it (`setOutline`, `setClipToOutline`; `RenderNode.meglerViewOutline`
+  in the overlay tells the core only of an outline that changed). The
+  outline is worked out as the view's list is recorded, when its
+  background's bounds are its size (`drawBackground`), as Android rebuilds it
+  after `setBackgroundBounds`, and again whenever the list is recorded again:
+  a new size, a new background, the background invalidating itself,
+  `invalidateOutline`, `setOutlineProvider`, `setClipToOutline`. It was a clip
+  in the parent's list, worked out by `drawFromParent` before the view's own
+  list was recorded and kept as long as the parent's list was. WhatsApp's
+  first screen (2.26, `com.whatsapp.registration.app.EULA`) gives the card
+  that holds its "Accept and continue" button a plain colour from its
+  `ScrollView`'s global layout listener, after the layout and before the
+  first frame (`CardView.setCardElevation(8)`, `View.setBackgroundColor`):
+  the new `ColorDrawable` had no bounds when the parent recorded the card, the
+  outline was a rectangle of nothing, and the card and its button were never
+  drawn, scrolled to or not (0.1.0.685, a Lumia 650, whose frame walk never
+  reached the button's node). A view with no list of its own,
+  or blurred (Android clips the blurred picture to the outline, not what is
+  blurred), is clipped by its parent as before, its background's bounds made
+  its size first. The test app `scroll` makes that screen, a `ScrollView`
+  over a column taller than it with two such cards just below its bottom
+  edge, one given its plain colour so: both are drawn once the app scrolls to
+  them, with the frame walk and with the flag `no-node-damage`.
+
+  `isShown` is Android's too: a view without a parent is shown only as the
+  root of its window. RecyclerView takes its rows out of itself for each
+  layout (`detachViewFromParent`: still attached, no parent), puts back
+  those it keeps (`attachViewToParent`) and removes the others
+  (`removeDetachedView`). Megler took a row out of its list for a shown one,
+  so a row removed so heard that it was not shown as it left the window,
+  where Android tells it nothing, and a row's own visibility changed while
+  it was out was told to it; and putting a row back told nothing, where
+  Android's `attachViewToParent` (7 and later) tells the list and its
+  visible rows whether they are shown -- a row that was out when its list
+  was shown again hears it then. Litho's `BaseMountingView`, with Facebook's
+  `enableCheckVisibilityAggregated`, takes `onVisibilityAggregated(false)`
+  for `setVisibilityHint(false)`: it mounts nothing more until it hears true,
+  and at its detach it keeps what it has mounted (only unbinding it) where
+  it unmounts it when it has not been told so. Messenger's chat list and its
+  stories are such views: once 0.1.0.685 made views hear
+  `onVisibilityAggregated`, no chat row showed its picture and story circles
+  went and came back (Messenger 586 on 0.1.0.687, the Lumia 650; 0.1.0.683
+  showed every row's but the first). The data app's step
+  "visibility-scrap" takes a list's rows out and puts them back as
+  RecyclerView does and checks what each row hears.
 - `megler/KeyStoreProvider.java`, one method, and Megler's circumstance
   rather than a fault of the framework's own: `PairGen.generateKeyPair` takes another
   provider's key pair generator from its service, because
@@ -6248,6 +6758,30 @@ on a looper thread of its own and takes it back with `next()`.
   browser's activity ended there. Nothing draws them here; the cursor is
   drawn as before. The data app's step "text-drawables" asks an `EditText`
   for all four, tints them, and sets one.
+  And `onMeasure` makes the layout again for another width where the text
+  ends in an ellipsis, as Android's does when the width it ellipsizes at
+  changes. A single line scrolls horizontally, so a layout wider than the
+  view was kept as good enough, its ellipsis where that wider width ended. A
+  `LinearLayout` not given an exact width measures a weighted child at its
+  own width first and at its share after: Transit's search cards'
+  single-line titles kept the layout of the first measure, and the line was
+  cut at the view's edge with no ellipsis (0.1.0.684). The data app's step
+  "ellipsis-narrower" measures such a title at 500 pixels and then at 200:
+  the ellipsis at 200.
+
+- `android/text/BoringLayout.java` and `android/text/StaticLayout.java`: a
+  BoringLayout is one line whatever its width, as Android's -- the width
+  places the line, and with an ellipsis the line is shortened to the
+  ellipsized width. It was a StaticLayout made at the width, broken wherever
+  the shell's line breaking found the text wider than that. Facebook's
+  `TextLayoutBuilder` makes a BoringLayout of a single-line text at its own
+  measured width (the ceiling of `Layout.getDesiredWidth`, or less where the
+  text may take less), and Messenger's time badge on a story circle ("3 ч.")
+  came out in two lines in its pill (0.1.0.687). The StaticLayout inside is
+  told not to break its lines (`Builder.oneLine`, package-private). The data
+  app's step "boring-layout-one-line" makes a badge's BoringLayout at half
+  its width and at its own, and a name's with an ellipsis at half its width:
+  one line each, all of the badge's text on it.
 
 - `android/os/ParcelFileDescriptor.java`, what `dup` and the descriptors it
   is given own, which is now Android's: `dup(FileDescriptor)`, `dup()` and
@@ -6431,7 +6965,10 @@ on a looper thread of its own and takes it back with `next()`.
   `NetworkInterface`, which `getDhcpInfo()` has too, with its netmask; and
   `calculateSignalLevel` is Android's formula. Which network the phone is
   really on is not asked of Windows: the framework says Wi-Fi throughout.
-  The data app's step "wifi" asks as the installer does.
+  The data app's step "wifi" asks as the installer does. And the phone's
+  scans and its connection's network for an app that may have the location
+  ("Wi-Fi, and Google's network location" below; `ScanResult.java` and
+  `WifiSsid.java`, Android's in place of the generated stubs).
 
 - `android/media/session/PlaybackState.java`, in place of the generated stub,
   which dropped what `setState` and `addCustomAction` were given (the state,
@@ -6800,6 +7337,372 @@ on: `STATE_TURNING_ON`, `STATE_ON`, `RESULT_OK`; asked again while on,
 active scans, both stopped, every connection ended, the bytes written, the MTU,
 two pairings, one PIN given by the app and one by the user, the settings shown
 once -- and the core's lines in the log.
+
+### Wi-Fi, and Google's network location
+
+`WifiManager`'s scans are the phone's (the overlay's `WifiManager`,
+`ScanResult` and `WifiSsid`, Android's now, over `megler.Wifi`,
+`drivers/mg_java_wifi.c` and the shell's `megler_wifi_host`, `player/WifiHost.cpp`
+over Windows.Devices.WiFi; ARCHITECTURE.md, "Wi-Fi"). They are what Google Play
+services in the app finds the phone from, as on Android: its network location
+sends the networks a scan hears to Google's location server and has back where
+they are, a fix of tens of metres, where Windows' own location gives some phones
+the cell network's 300 to 660 m alone (Transit, 0.1.0.679: "location is still
+kinda awful", every minute's summary "0 of them from the satellites").
+
+- **A scan**: `startScan` returns at once; one thread of the framework's,
+  "megler-wifi", has the shell scan (a few seconds on a phone), keeps the
+  networks as the last results and sends `SCAN_RESULTS_AVAILABLE_ACTION` with
+  `EXTRA_RESULTS_UPDATED` (false where no scan could be made, the results then
+  the last ones), then calls Android 11's `ScanResultsCallback`s. A request that
+  comes while a scan is made is answered by it; none begins sooner than three
+  seconds after the last began, a request inside that waiting for it (Google
+  Play services waits five seconds for its scan and drops a result older than
+  its request, so a scan made before it cannot answer it).
+- **The results**: `getScanResults` gives copies of the last scan's, each as
+  Android has it: the BSSID ("aa:bb:cc:dd:ee:ff"), `SSID` as text (empty for a
+  hidden network) and `getWifiSsid` as the octets, the signal, the channel's
+  frequency (and `centerFreq0`), Android's capabilities of Windows' security
+  ("[WPA2-PSK-CCMP][RSN-PSK-CCMP][ESS]", "[IBSS]" for an ad hoc network), the
+  standard of Windows' physical layer, a width Windows does not say (20 MHz,
+  80 MHz for 802.11ac and ax on 5 GHz), and the time each was heard:
+  microseconds of `elapsedRealtime` at Windows' report, which Google Play
+  services checks against its request. Through a `Parcel` and back.
+- **Android's rules**: a scan and its results only while the app may have the
+  location -- the location not switched off, and `ACCESS_FINE_LOCATION` from
+  Android 10 (FINE or COARSE before, or Android 13's `NEARBY_WIFI_DEVICES`) --
+  else `startScan` false and an empty list, as Android has them, and said once
+  in the log. Google Play services in the app scans for it: the app's
+  permission is what counts. The Wi-Fi's own permissions are not asked of the
+  app (Transit, which asks Google Play services for the location, names
+  neither). `getConnectionInfo`'s network has its name (quoted), BSSID, signal
+  and channel where the app may have the location, else what Android 8.1 tells
+  others ("<unknown ssid>", 02:00:00:00:00:00). `isScanAlwaysAvailable` stays
+  false: Windows scans only with the Wi-Fi on. `getSystemService("wifiscanner")`
+  stays null (`WifiScanner.java` says why).
+
+**What Google Play services needs** (26.41.31, jadx of the user's GmsCore). Its
+network location is a module of its own ("network_location_provider") that runs
+in the app's process here, started by its fused provider
+(`com.google.android.location.internal.GMS_NLP`, its
+`GoogleLocationChimeraService`), and three things stood in its way:
+
+1. **Scans.** Without a `WifiScanner` it scans through `WifiManager`
+   (`gezt.a`: `startScan`; its `CallbackRunner`, `gexg`, listens for
+   `SCAN_RESULTS_AVAILABLE_ACTION` only then; `gexb` reads `getScanResults`),
+   and a result is used only if heard after its request and less than 30 s
+   ago (`geyw`), its BSSID a MAC address and its SSID not ending in "_nomap".
+   `startScan` answered false and the results were none.
+2. **Google Location Accuracy.** It locates only while
+   `network_location_opt_in` is 1 in Google's settings
+   (`content://com.google.settings/partner`, Google Services Framework's
+   `GoogleSettingsProvider`, which Megler mounts): its "network" provider is on
+   only where the location's mode is and that is 1 (`dhcg.a`, `dhce`), its
+   network location operates only then (`geup`: location permission, "network"
+   on, consent), and its fused provider asks it for fixes only then (`gedl`).
+   Android asks this as a phone is set up, or through an app's
+   `SettingsClient` when the settings fall short; Transit checks them only
+   while `LocationManager` says every provider is off, so it was never asked.
+   `megler.LocationAccuracy` asks it: the first time the app's own code binds
+   Google Play services' location API (`GoogleLocationManagerService.START`,
+   an app's `FusedLocationProviderClient` or `SettingsClient`; `MicroG.bind`)
+   while it holds the location, where Google's own Play services are the app's,
+   Megler's question ("Allow Transit to use Google Location Accuracy?", the
+   shell's group `location_accuracy`) is put unless an answer is kept for the app
+   or the setting is decided already, and the answer written into Google's
+   settings -- 1 or 0, as Google Play services writes it (an insert of the name
+   and the value). The setting is one for every app, as Android's is; the
+   app's Settings in Megler change its answer, written at its next start. Google
+   Play services follows the setting (its own observer of its `Uri`), so the app
+   that asked has it at once.
+3. **Its fixes' way to the fused provider.** It hands each fix to its fused
+   provider by a `PendingIntent` sent with an `OnFinished`, a permission and
+   options (`bpep.d`: `send(context, 0, intent, onFinished, null, permission,
+   options)`), a form that sent nothing (the `PendingIntent` overlay's
+   `sendAndReturnResult`, android/app/PendingIntent.java above).
+
+Then its server: the module asks Google's `VoilaTileService/FindTiles` over
+gRPC for the access points it does not know (`GmsCoreVoilaTileGrpc`, `gded`;
+`GlsClientGrpc`, `gexu`) and locates the phone among them itself (its "frewle"
+model); whether Google answers a phone of Megler's is for a phone to show.
+The call names no account: its credential is an `X-Goog-Spatula` header
+(`hamx`, `hamz`: "Could not retrieve spatula header" where it has none),
+which Google Play services' own AppCert service makes for the package
+(`com.google.android.gms.auth.APP_CERT`, `appp.a`): the package's name and
+certificate hash, and either a signature with the device key (the
+`device_key` file, `apps`, got from Google's `devicekey` endpoint with a
+DroidGuard result, `appr.b`) or, without one, the check-in's Android ID
+alone. The account's own credential (BAD_AUTHENTICATION on the Lumia 650)
+is not asked for; a phone without the device key ("DeviceKeyStore: Cannot
+load key: Device key file not found", Google Play services' own line) sends
+the header unsigned, and whether the server takes it is what the network's
+and the location's lines below say. Google refuses Megler the device key,
+whose request carries a DroidGuard result: docs/MICROG.md, "Google's own
+Play services: DroidGuard", says where and why.
+
+**What a phone showed next** (0.1.0.684, a Lumia 650, Google Play services
+26.43.30 updated through Aurora): Google Location Accuracy on, one scan
+asked for by the module (its `hpsb`), three networks handed to it -- and
+then no second scan in two minutes and no fix. The module runs on alarms of
+its own (`GmsAlarm`, `dhmz`: on Android 12 and later through
+`AlarmManager.setExact`/`setWindow` with an `Executor` and a `WorkSource`, or
+`set` with a window, an interval and a `WorkSource`; its timers' names are
+its wake locks', "NetworkLocationLocator", "NetworkLocationScanner",
+"NetworkLocationActivityDetection"), and every one of those forms was a
+signature that did nothing ("AlarmManager.setWindow(...) is a stub here,
+first called from dlib.g", just after the module set
+"NetworkLocationActivityDetection"); `cancel(OnAlarmListener)` did nothing
+either. They are Android's now (`core/framework/src/android/app/
+AlarmManager.java`): one alarm a listener, moved when set again, gone when
+cancelled, told on its `Handler` or through its `Executor`, timed on a
+thread of their own. And at each of its scans the module asks for the cells
+around (`TelephonyManager.requestCellInfoUpdate`, `gezs.e`) and waits for
+them on a latch (`geyj`) until a timeout: those forms never answered, and
+answer now with no cells, as Windows gives an app none. It follows the
+network by Android 12's `registerBestMatchingNetworkCallback`
+(`NetworkConnectionMonitor`, `geup`), which now tells it as the other
+callbacks do (it read the first state itself). A wake lock is held from
+`acquire` to its `release` now (`isHeld` said false, and Google Play
+services said "<tag> should be held!" 64 times in those two and a half
+minutes). Ruled out on that log: the module's own location listener takes
+only "gps" fixes (`CallbackRunner$MyLocationListener$1.a`), and Google Play
+services had asked `LocationManager` for nothing but "passive", whose
+Windows' fixes are named "network" -- no cell fix reached it as a GPS one;
+and it trusts a scan's timestamps from the first, as long as they are
+within an hour (`gezy`: "six scans" decides only whether to stop checking).
+
+The log says more of it now: each alarm the first time it is set and goes
+off ("MeglerAlarms", 40 lines at most: `"NetworkLocationLocator" set to go
+off in 20.0 s (a listener's, told through an Executor)`), when no scan has
+been asked for in a minute ("MeglerWifi": "no scan asked for in the last
+60 s: 1 asked for so far, 1 made, the last asked for by hpsb"), a minute of
+the network location's scans without a fix ("MeglerLocation": "Google's
+network location: no fix in the last 60 s; it asked for 3 Wi-Fi scans in
+them ..."), and whether the location server's name was looked up ("network:
+Google's location server, "voilatile-pa.googleapis.com" ..., has 4
+addresses", or that it was not found): what the server answered is inside
+TLS.
+
+**The fixes**, as `megler.LocationService` sees them on their way (a
+`PendingIntent` of Google Play services' whose intent carries its network
+location's `EXTRA_RELEASE_VERSION`): the app's own requests of
+`LocationManager` are handed the better of a fix of Google's and Windows'
+newest -- the more accurate, each taken 3 m less accurate for every second of
+its age -- as on Android, where the network provider is Google Play services'
+network location. An app of `LocationManager` alone gets none of Google's:
+the module runs only for Google Play services' fused provider, which such an
+app never binds, and Megler does not start it for `LocationManager` (GmsCore
+read into the app's process -- seconds and tens of megabytes on a Lumia -- and
+the phone's Wi-Fi networks sent to Google for an app that asked nothing of
+Google). Google Play services' own requests ("gps" and "passive", its fused
+provider's and its network location's, and its `getLastKnownLocation`: told
+by GmsCore's class loader, the listener's or the closest up the stack, not by
+any scope's, which an app's own other processes have too) are never handed
+its own fixes back, and while a fix of its network location is fresh (a
+minute) are handed Windows' from the satellites alone: Windows' cell fixes
+came every second as "gps" ones, fresher than the Wi-Fi's, and are what its
+collection takes satellite positions for. With none for a minute they have
+Windows' as before. Google's network location does not need Google Play
+services' package context to have an attribution tag of its own (066d60ea):
+an app's `FusedLocationProviderClient` requests are made as the app, and the
+module hands its fixes to the fused provider by its `PendingIntent`, not
+through the location API that refuses Google Play services' own requests
+with a null tag (`gerz.h`).
+
+The log says, in the shell's lines and the framework's ("MeglerWifi",
+"MeglerLocation"): what Windows says of the Wi-Fi ("wifi: Windows' access:
+allowed, 1 Wi-Fi adapter; the Wi-Fi is on"), each of the first eight scans'
+networks and then a minute's ("wifi: scan 1 found 14 networks (3 on 5 GHz),
+the strongest at -48 dBm, in 2804 ms"), who asked for the first scans ("a scan
+asked for by gezt") and to whom results were handed, Google Location
+Accuracy's answer ("Google Location Accuracy on: the user was asked, and said
+Allow"), Google's network location's first fix and then each minute's ("its
+first fix, 24 m accurate", "4 fixes in the last 60 s, accurate to 18 m at best,
+25 m the last; Windows' newest 640 m"), and when Windows' cell fixes stop and
+start going to Google Play services.
+
+The test app `wifi`, on the stand-in for the shell's Wi-Fi
+(`core/tests/mg_wifi_standin.c`: four networks -- one UTF-8 name, a hidden one,
+an ad hoc one -- the first a little weaker at each scan, the phone connected to
+the first), asks for a scan and hears its broadcast on the main thread, reads
+every field of the four results, a second scan's three seconds later, two
+requests answered by one scan and its callback, the connection, and a result
+through a `Parcel` (`run_wifi`: three scans of the stand-in's, the core's and
+the framework's lines). The data app, which names no location permission, is
+refused its scan and results. And `gms-host`, holding the location, binds the
+location API of the stand-in for Google's own Play services, which has a
+stand-in for Google's settings: the user is asked once, and
+`network_location_opt_in=1` is written there. Windows' fix is the cell
+network's 600 m in that run (`mg_location_standin_cell`), and the stand-in's
+network location hands its fused provider a fix of 5 m as Google's does (a
+`PendingIntent` of its own, sent with an `OnFinished`, the intent marked with
+the module's release): the app's `getLastKnownLocation("network")` and the
+first fix of its "gps" request are that one, named for the provider asked,
+and the stand-in's own "gps" request is handed none of Windows' while it is
+fresh. A second later an alarm of the stand-in's, set as `GmsAlarm` sets
+theirs (`setExact` with an `Executor` and a `WorkSource`), goes off and its
+second fix is sent. The data app's steps "alarm-listeners" (a listener's
+alarm moved, cancelled, through an `Executor` with a `WorkSource`, with a
+window, repeating), "wake-lock" (counted, uncounted, timed out) and
+"cell-info-update" (no cells, told; the best-matching network callback
+told) check the rest.
+
+### Android's HTTP engine: `android.net.http.HttpEngine`
+
+Android 14 gives apps an HTTP stack of the platform's, `HttpEngine`: Cronet,
+Chromium's network stack, in the Tethering module, over a native library of
+its own. Megler does not carry that library, and the framework had the API as
+generated signatures: `HttpEngine.Builder.build()` answered null.
+
+**Who takes it.** Cronet's own provider list (`CronetEngine.Builder`, which an
+app carrying Cronet's API makes) offers HttpEngine only where
+`SdkExtensions.getExtensionVersion(31)` is 7 or more; Megler says 0, so Cronet
+never picks it there, and an app's own Cronet, or Google Play services', is
+taken. The Google Play Store (53.7.23, `sxi.g` in the jadx of its classes3)
+asks for HttpEngine itself on Android 14 when a server flag of its,
+`NetworkOptimizationsAutogen` / `enable_bypass_sdk_extensions_check_for_platform_cronet_on_u`,
+is on for the phone: "Device is eligible for platform Cronet and will attempt
+to use it." It then builds the engine with no check of its own
+(`HttpEngineNativeProvider.createBuilder`), and a null went into Cronet's
+wrapper as its engine: every request of its Volley stack (`openConnection`)
+and every gRPC call (`newBidirectionalStreamBuilder`, its channel to
+play-fe.googleapis.com) ended on that null -- "Uncaught exception in the
+SynchronizationContext. Panic!", no search suggestions as the user typed, and
+Google Play services' modules (Maps, the OCR) never downloaded, since Google
+Play services asks the Play Store's ModuleDelivery for them (a user's
+Lumia 950, 0.1.0.681: "Error while loading ModuleDelivery: ... HttpEngine.openConnection
+... on a null object", "Zapp module request failed: 1,-5007"). Where the flag
+is off -- the Lumia 650's and the Elite x3's logs: "Device is ineligible for
+platform Cronet and will use embedded Cronet instead" -- the Play Store uses
+the Cronet it carries ("source: Statically Linked") and all of that works.
+The Play Store has a fallback, OkHttp and gRPC's OkHttp transport, but only
+for an engine whose build throws (`aeus.e` catches it and uses none); a null
+it takes as an engine.
+
+**Megler's engine** (`megler.http`, in the overlay; `HttpEngine.java` there
+hands the Builder's calls to `megler.http.EngineBuilder`, as Android hands them
+to Cronet's builder through the hidden `IHttpEngineBuilder`) is Java over what
+Android 9's libcore has, and a client of HTTP/2 of its own:
+
+- `UrlRequest` (`Request.java`): Android's own HTTP client, libcore's
+  `HttpURLConnection` (okhttp 2.7, HTTP/1.1), on the engine's threads, its
+  redirects off: Cronet's states and callbacks -- `onRedirectReceived` and
+  `followRedirect` (303, and 301 or 302 after a POST, go on as GET without the
+  body; 307 and 308 rewind the upload), `onResponseStarted`, a `read` into the
+  app's buffer at a time and `onReadCompleted`, `onSucceeded` at the body's end,
+  `onCanceled` after `cancel()`, `getStatus`. The upload is the app's
+  `UploadDataProvider`, read on its executor, of a fixed length or chunked, and
+  closed when the request ends; one without a Content-Type is refused at
+  `start()`, as Cronet refuses it. The client's own `X-Android-*` headers are
+  not the response's (one of them gives the protocol, "http/1.1"); an app's
+  Accept-Encoding is dropped, as Cronet drops it (the client asks for gzip and
+  decodes it). https gets the platform's TLS and Android's host name check,
+  whatever defaults the app set for `HttpsURLConnection`.
+- `BidirectionalStream` (`Stream.java`): what gRPC's Cronet transport makes, a
+  request's body and its response flowing both ways at once. HTTP/2 over TLS
+  alone (an http URL is refused, as Cronet's are): `H2.java`, `Hpack.java` and
+  `Connections.java`. A connection is TLS by the platform's own context
+  (conscrypt; the app's network security configuration and Android's
+  authorities, as `HttpsURLConnection` trusts), the host's name checked by
+  Android's `OkHostnameVerifier`, ALPN offering "h2" alone (a server that does
+  not take it fails the stream, "net::ERR_ALPN_NEGOTIATION_FAILED"); one or
+  more for each host and port, shared by the engine's streams, the first
+  thread that needs one making it while the others wait for it. This side's
+  settings: no push, a megabyte that a stream may receive ahead of the app's
+  reads and 16 MB for the connection, given back by WINDOW_UPDATE as the app
+  reads, half a window at a time; what is sent waits for the server's windows.
+  The response's first HEADERS are its headers (1xx skipped), a later one with
+  END_STREAM its trailers, kept apart and handed to
+  `onResponseTrailersReceived` before the body's end; header compression is
+  RFC 7541's both ways (the encoder writes plain literals, never indexing the
+  sensitive ones; the decoder has the dynamic table and Huffman's code, from
+  the code lengths of Android 9's okhttp). A connection with no stream for
+  five minutes is let go; one the server has said nothing on for 30 s is
+  asked for a PING when it is taken again and closed if no answer comes in
+  10 s (a phone that was suspended, a network that changed). GOAWAY: what the
+  server did not take fails as a closed connection's, which may be tried again.
+  Android 9's own HTTP/2 (okhttp 2.7's `FramedConnection`) is not used: its
+  stream merges a response's trailers into the headers it has already handed
+  over, so where a response's frames arrive together -- a unary gRPC call's,
+  often -- gRPC's status would be read as a header; and its settings' methods
+  are its package's alone.
+- `openConnection` and `createUrlStreamHandlerFactory`: libcore's
+  `HttpURLConnection`, made through libcore's own handlers
+  (`com.android.okhttp.HttpHandler`, `HttpsHandler`), so that the factory,
+  installed as the process's, does not come back to itself.
+- Failures as Android's engine says them: a `NetworkException` with Android's
+  error code and Chromium's name of the error in the message ("Exception in
+  BidirectionalStream: net::ERR_CONNECTION_REFUSED (...)"), the Java exception
+  its cause; a `CallbackException` for what the app's callback or upload
+  threw. `HttpException` keeps its message and cause (the stub dropped both),
+  and `QuicOptions` the hosts and values it is given (the stub's
+  `addAllowedQuicHost`, which the Play Store's Cronet wrapper calls, was a
+  signature alone).
+- The builder checks what Cronet checks (the storage folder there, a disk
+  cache with one, 32-byte pins, QUIC hints' hosts); the options of QUIC, the
+  cache, Brotli, DNS and connection migration are kept and change nothing,
+  and public key pins are kept and not enforced, which the log says once
+  ("HttpEngine: the app pins public keys (...): kept, not enforced here").
+  `getVersionString()` is "1.0.0.0": Cronet's list ranks an HttpEngine below
+  the version it prefers (133) under the Cronet an app carries, so where both
+  are offered, Chromium's stack is taken. The default user agent is Android
+  14's form, "AndroidHttpClient (Linux; U; Android 14; ...; Cronet/1.0.0.0)".
+  `shutdown()` with requests running is refused, and nothing starts after it.
+
+The log says it: "HttpEngine: the app made one: Megler's own ...", once a
+process; each HTTP/2 connection made, with TLS's protocol and suite and the
+time it took, the first sixteen ("HttpEngine: HTTP/2 to <host>:<port>
+(<protocol>, <suite>) in <n> ms"); and the network failures of requests and
+streams still running (not those the app ended), the host alone, the first
+twenty ("HttpEngine: a stream to <host> failed: ...").
+
+**Tested** in the data app (`HttpEngineSteps.java`; `mg_java_tests.c` checks
+the steps and the lines): "http-engine", the builder as the Play Store drives
+it, the version and user agent, what is refused, `shutdown`; "http-engine-request",
+a GET redirected (302, a relative Location) and followed, read four bytes at a
+time on the app's executor, the URL chain, status, protocol and a header of
+two values, no X-Android-* headers, the user agent and the app's header sent,
+a 404 and its body; "http-engine-upload", an upload of a fixed length given
+five bytes a read and a chunked one, each provider closed, one without a
+Content-Type refused, a 303 after a POST followed as a GET without the body;
+"http-engine-failures", a refused connection (ERROR_CONNECTION_REFUSED), an
+exception of the app's callback and of its upload (CallbackException, theirs
+the cause), a cancel in the middle of a body; "http-engine-connection", the
+engine's URLConnection and a URL of its handler factory's. These run on both
+hosts, against an HTTP/1.1 server of the app's own on 127.0.0.1. Where
+conscrypt's TLS is (qemu), against an HTTP/2 server of the app's own over TLS
+(localhost, the test authority the app's configuration trusts, ALPN h2), whose
+frames are written by hand and which shares no code with the engine:
+"http-engine-stream", two echoes at once on one connection, each writing twice
+and ending as gRPC does, the headers before the body, the trailers
+(grpc-status 0) before its end, and a GET, whose HEADERS end the request; the
+server saw the engine's settings, pseudo-headers and headers;
+"http-engine-stream-flow", 200 000 bytes up to a server whose streams take
+16 KB at a time and 1.25 MB down, past the megabyte a stream may receive ahead
+(the server waits for the engine's WINDOW_UPDATE), CRC32s equal, no window
+ever overrun; "http-engine-stream-cancel", a stream canceled (RST_STREAM
+CANCEL at the server), one the server resets (NetworkException, INTERNAL_ERROR),
+an http URL refused, an exception of `onStreamReady` (CallbackException, the
+stream reset); "http-engine-hpack", RFC 7541's C.6.1 to C.6.3 as three
+responses on one connection after a size update of the table to 256 bytes,
+the second padded and the third cut by a CONTINUATION: each status and header
+as the RFC has them. Once, against Google's own front end (2026-11-10, the
+engine's classes on a desktop JVM, with its TLS): HTTP/2 to
+play-fe.googleapis.com over TLS 1.3, Google's compressed headers read, and a
+gRPC call to the Play Store's BrowseService without credentials answered in
+its trailers, apart from the headers ("grpc-status" 7, "Permission denied on
+the service."); a request to www.google.com/generate_204 got its 204. **Not
+tried on a phone** yet: the Play Store's log there says "HttpEngine: the app
+made one" and its HTTP/2 connections when the flag is on, and search
+suggestions answer.
+
+Not there: QUIC; an HTTP cache (`wasCached` is false); Brotli; public key
+pinning; HTTP/2 for `UrlRequest` (it is HTTP/1.1, as Android's
+`HttpURLConnection` is); `bindToNetwork` (there is one network); request
+priorities. Cookies follow libcore's: a `CookieHandler` the app installed is
+used by `UrlRequest` too, which Cronet's own store would not be; cleartext is
+allowed where libcore allows it (Megler's libcore does not consult the app's
+network security configuration for it).
 
 ### Sound from Java
 

@@ -211,10 +211,17 @@ static void set_java_loaded(mg_lib *lib)
  * "<apk>!/lib/<abi>/<name>" (an APK whose libraries are used from it, as the
  * WebView's are), is the library of that name, as a file of its own is.
  *
- * An app's library is the APK's of that file name. Only a path that is not in
- * the APK and names a file with something in it -- a library the app unpacked
- * or downloaded for itself and loads with System.load -- is read from that
- * file; what it needs still comes from the APK.
+ * An app's library is the APK's of that file name, unless the path names a
+ * file of the app's own in its data folder (not the copy in its library
+ * folder) -- a library the app unpacked or downloaded for itself and loads
+ * with System.load, which on Android loads the file it is given
+ * (mg_dl_own_library, bionic/mg_bionic.h): that file is read. So is a path
+ * outside the app's folder that names a file with something in it when no APK
+ * has the name. What it needs still comes from the APK. Up to 0.1.0.685 a
+ * library of the APK's name, or of an older version's library folder, was
+ * loaded in place of the app's own file: TikTok Lite 47.7.4's libnpth.so,
+ * unpacked by the app, gave way to the older version's, whose natives were not
+ * the new Java's.
  *
  * While JNI_OnLoad runs, the thread says so (onload_*): FindClass in there is
  * for the loader the library is loaded for. An exception JNI_OnLoad leaves
@@ -243,6 +250,8 @@ static bool load_native(const char *name_or_path, bool runtime, char *why, size_
     int was_scope;
     void *onload;
     i32 version;
+    char *own;
+    bool other = false;
     why[0] = 0;
     if (!runtime && mg_bionic_is_system_lib(base)) return true;
     if (lib && java_loaded(lib)) return true;
@@ -250,6 +259,11 @@ static bool load_native(const char *name_or_path, bool runtime, char *why, size_
         /* in the process already, not yet by Java: its JNI_OnLoad is run now, once (see above) */
     } else if (runtime) {
         lib = mg_ld_load_runtime(base);
+    } else if ((own = mg_dl_own_library(name_or_path, &other)) != NULL) {
+        /* The app's own file, whatever library of its name the APK has (see above). */
+        if (other) mg_info("dvm: %s is a build of the app's own, not the APK's %s: it is loaded from that file", name_or_path, base);
+        lib = mg_ld_load_file(own);
+        free(own);
     } else if (mg_ld_has_lib(base)) {
         lib = mg_ld_load(base);
     } else {

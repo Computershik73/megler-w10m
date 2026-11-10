@@ -22,11 +22,13 @@
 #include "mg_net_tests.h"
 #include "mg_sensor_tests.h"
 #include "mg_bluetooth_tests.h"
+#include "mg_wifi_tests.h"
 #include "mg_storage_tests.h"
 #include "mg_tests.h"
 
 #include <math.h>
 #include <stdio.h>
+#include <time.h>
 #ifdef _WIN32
 #include <process.h>
 #endif
@@ -243,6 +245,24 @@ static void test_lock_holders(void)
         if (t) mg_thread_join(t);
         say("  %u looks while another thread took it %u times: %u found it held, %u of them not one hold's", looks, race.rounds, held, torn);
         CHECK(race.rounds > 0 && torn == 0);
+    }
+    /*
+     * A report's first line says when it was said and by which build (bionic/mg_bionic.c, mg_bionic_hang_heading): a Lumia
+     * 650's hang.txt of 0.1.0.674 was read as 0.1.0.687's, and named with 687's map. Today's date, as the C library has it,
+     * and on Windows the program's linker time stamp, which its map says at its top.
+     */
+    {
+        char heading[400], today[16];
+        time_t now = time(NULL);
+        struct tm *local = localtime(&now);
+        size_t n = mg_bionic_hang_heading(heading, sizeof(heading), 0);
+        if (local) snprintf(today, sizeof(today), "%04d-%02d-%02d", local->tm_year + 1900, local->tm_mon + 1, local->tm_mday);
+        else today[0] = 0;
+        say("  a hang report's first line: %.*s", (int)(n && heading[n - 1] == '\n' ? n - 1 : n), heading);
+        CHECK(n > 20 && heading[n - 1] == '\n' && !strncmp(heading, "hang: said ", 11) && strstr(heading, today) == heading + 11);
+#if MG_HOST_WINDOWS && !defined(MG_CORE_ELF)
+        CHECK(strstr(heading, ".exe of time stamp ") != NULL && strstr(heading, "its build's map says \"Timestamp is ") != NULL);
+#endif
     }
 }
 
@@ -671,6 +691,225 @@ static void test_zip(const char *scratch)
     CHECK(!mg_zip_open(&z, path, err, sizeof(err)));
     mg_path_remove(path, NULL);
     free(path);
+}
+
+/* --------------------------------------------------- an app's libraries placed */
+
+/* An APK of stored entries, each with its CRC-32, as an app's carries its libraries. False when it cannot be written. */
+static bool stored_apk(const char *path, const char *const *names, const u8 *const *data, const u32 *sizes, int n)
+{
+    size_t cap = 256, at = 0, cd;
+    u32 offsets[16];
+    u8 *z;
+    int i;
+    bool ok;
+    for (i = 0; i < n; i++) cap += 2 * (46 + strlen(names[i])) + sizes[i];
+    z = (u8 *)mg_alloc(cap);
+    for (i = 0; i < n && i < 16; i++) {
+        u16 nl = (u16)strlen(names[i]);
+        u32 crc = (u32)crc32(crc32(0L, Z_NULL, 0), data[i], (uInt)sizes[i]);
+        offsets[i] = (u32)at;
+        mg_wr32(z + at, 0x04034b50u); mg_wr16(z + at + 4, 20); mg_wr16(z + at + 6, 0); mg_wr16(z + at + 8, 0);
+        mg_wr32(z + at + 10, 0); mg_wr32(z + at + 14, crc); mg_wr32(z + at + 18, sizes[i]); mg_wr32(z + at + 22, sizes[i]);
+        mg_wr16(z + at + 26, nl); mg_wr16(z + at + 28, 0);
+        memcpy(z + at + 30, names[i], nl);
+        memcpy(z + at + 30 + nl, data[i], sizes[i]);
+        at += 30 + nl + sizes[i];
+    }
+    cd = at;
+    for (i = 0; i < n && i < 16; i++) {
+        u16 nl = (u16)strlen(names[i]);
+        memset(z + at, 0, 46);
+        mg_wr32(z + at, 0x02014b50u); mg_wr16(z + at + 4, 20); mg_wr16(z + at + 6, 20);
+        mg_wr32(z + at + 16, (u32)crc32(crc32(0L, Z_NULL, 0), data[i], (uInt)sizes[i]));
+        mg_wr32(z + at + 20, sizes[i]); mg_wr32(z + at + 24, sizes[i]); mg_wr16(z + at + 28, nl); mg_wr32(z + at + 42, offsets[i]);
+        memcpy(z + at + 46, names[i], nl);
+        at += 46 + nl;
+    }
+    memset(z + at, 0, 22);
+    mg_wr32(z + at, 0x06054b50u); mg_wr16(z + at + 8, (u16)n); mg_wr16(z + at + 10, (u16)n); mg_wr32(z + at + 12, (u32)(at - cd)); mg_wr32(z + at + 16, (u32)cd);
+    at += 22;
+    ok = mg_file_write_all(path, z, at);
+    free(z);
+    return ok;
+}
+
+/* Whether a file holds exactly these bytes. */
+static bool file_is(const char *dir, const char *name, const u8 *data, size_t size)
+{
+    char *path = mg_sprintf("%s/%s", dir, name);
+    size_t n = 0;
+    u8 *got = mg_file_read_all(path, &n);
+    bool same = got && n == size && !memcmp(got, data, size);
+    free(got);
+    free(path);
+    return same;
+}
+
+static bool file_there(const char *dir, const char *name)
+{
+    char *path = mg_sprintf("%s/%s", dir, name);
+    mg_stat st;
+    bool there = mg_path_stat(path, &st, NULL);
+    free(path);
+    return there;
+}
+
+/* The names of a folder's files, sorted and joined by spaces. */
+typedef struct names_listed {
+    char names[16][64];
+    int n;
+} names_listed;
+
+static MG_HOSTCB void name_listed(const char *name, bool is_dir, void *user)
+{
+    names_listed *l = (names_listed *)user;
+    if (!is_dir && l->n < 16) mg_strlcpy(l->names[l->n++], name, sizeof(l->names[0]));
+}
+
+/* A folder's files removed (its folders left): what a run before this one left. */
+static void folder_emptied(const char *dir)
+{
+    names_listed l;
+    int i;
+    memset(&l, 0, sizeof(l));
+    mg_path_list(dir, name_listed, &l, NULL);
+    for (i = 0; i < l.n; i++) {
+        char *path = mg_sprintf("%s/%s", dir, l.names[i]);
+        mg_path_remove(path, NULL);
+        free(path);
+    }
+}
+
+static void folder_files(const char *dir, char *out, size_t cap)
+{
+    names_listed l;
+    int i, k;
+    memset(&l, 0, sizeof(l));
+    mg_path_list(dir, name_listed, &l, NULL);
+    for (i = 1; i < l.n; i++)
+        for (k = i; k > 0 && strcmp(l.names[k - 1], l.names[k]) > 0; k--) {
+            char t[64];
+            memcpy(t, l.names[k], sizeof(t));
+            memcpy(l.names[k], l.names[k - 1], sizeof(t));
+            memcpy(l.names[k - 1], t, sizeof(t));
+        }
+    out[0] = 0;
+    for (i = 0; i < l.n; i++) {
+        size_t used = strlen(out);
+        snprintf(out + used, cap - used, "%s%s", i ? " " : "", l.names[i]);
+    }
+}
+
+/*
+ * An app's libraries as files of their own in its library folder (ld/mg_ld_place.c, ApplicationInfo.nativeLibraryDir), across
+ * an update, as Android's installer leaves the folder. Up to 0.1.0.685 a file was written only when it was not there or not of
+ * the entry's size: an update whose library kept its size kept the old file, and a library the update dropped stayed. TikTok
+ * Lite 47.7.4 moved libnpth.so out of its APK into an archive it unpacks itself and loads by its path; the older version's
+ * still in the folder was found by its name and loaded instead, its natives not the new Java's, and the app ended at its start.
+ */
+static void test_place_libs(const char *scratch)
+{
+    enum { A = 96, B = 120, GONE = 50, NEW = 40, SPLIT_A = 70, CASE = 30 };
+    static u8 a1[A], a2[A], b[B], gone[GONE], fresh[NEW], split_a[SPLIT_A], casey[CASE], junk[B];
+    char *dir = mg_sprintf("%s/place/data/lib", scratch), *index = mg_sprintf("%s/place/megler/lib-index/megler.test.place", scratch);
+    char *base1 = mg_sprintf("%s/place/base1.apk", scratch), *base2 = mg_sprintf("%s/place/base2.apk", scratch), *split1 = mg_sprintf("%s/place/split1.apk", scratch);
+    char *notes = mg_sprintf("%s/notes.txt", dir), *odd_case = mg_sprintf("%s/libCase.so", dir), listed[400], err[160];
+    const char *names1[] = { "AndroidManifest.xml", "lib/armeabi-v7a/liba.so", "lib/armeabi-v7a/libb.so", "lib/armeabi-v7a/libgone.so",
+                             "lib/armeabi-v7a/sub/libnested.so", "lib/armeabi-v7a/readme.txt", "lib/x86/libx.so", "lib/armeabi-v7a/libcase.so" };
+    const u8 *data1[] = { a1, a1, b, gone, b, b, b, casey };
+    const u32 sizes1[] = { 8, A, B, GONE, B, 10, B, CASE };
+    const char *names2[] = { "lib/armeabi-v7a/liba.so", "lib/armeabi-v7a/libb.so", "lib/armeabi-v7a/libnew.so", "lib/armeabi-v7a/libcase.so" };
+    const u8 *data2[] = { a2, b, fresh, casey };
+    const u32 sizes2[] = { A, B, NEW, CASE };
+    const char *names_split[] = { "lib/armeabi-v7a/liba.so" };
+    const u8 *data_split[] = { split_a };
+    const u32 sizes_split[] = { SPLIT_A };
+    mg_zip z1, z2, zs;
+    const mg_zip *apks[2];
+    mg_ld_placed p;
+    int i;
+    say("an app's libraries placed as files, across an update");
+    for (i = 0; i < A; i++) a1[i] = a2[i] = (u8)(i * 7 + 1);
+    a2[A / 2] ^= 0x5A;                     /* the update's liba.so: of the same size, one byte other */
+    for (i = 0; i < B; i++) b[i] = (u8)(i * 3 + 2), junk[i] = (u8)(0xA5 ^ i);
+    for (i = 0; i < GONE; i++) gone[i] = (u8)(0x40 + i);
+    for (i = 0; i < NEW; i++) fresh[i] = (u8)(0x90 + i);
+    for (i = 0; i < SPLIT_A; i++) split_a[i] = (u8)(0xC0 + i);
+    for (i = 0; i < CASE; i++) casey[i] = (u8)(0x20 + i);
+    memset(&z1, 0, sizeof(z1));
+    memset(&z2, 0, sizeof(z2));
+    memset(&zs, 0, sizeof(zs));
+    mg_path_mkdirs(dir);
+    folder_emptied(dir);
+    mg_path_remove(index, NULL);
+    CHECK(stored_apk(base1, names1, data1, sizes1, 8) && stored_apk(base2, names2, data2, sizes2, 4) && stored_apk(split1, names_split, data_split, sizes_split, 1));
+    if (!mg_zip_open(&z1, base1, err, sizeof(err)) || !mg_zip_open(&z2, base2, err, sizeof(err)) || !mg_zip_open(&zs, split1, err, sizeof(err))) {
+        say("  the test's APKs do not open: %s", err);
+        CHECK(false);
+        goto done;
+    }
+    /* What is no library of the app's stays: a file of another kind, and a folder. A library under another case of a name is an older one. */
+    CHECK(mg_file_write_all(notes, "the app's own", 13) && mg_file_write_all(odd_case, "an older libcase", 16));
+
+    /* The first install: the base's libraries (its liba.so, not the split's after it), none of another ABI or folder. */
+    apks[0] = &z1;
+    apks[1] = &zs;
+    CHECK(mg_ld_place_libs(apks, 2, "armeabi-v7a", dir, index, &p));
+    folder_files(dir, listed, sizeof(listed));
+    say("  installed: %d libraries, %d written, %d summed, %d removed (%s); the folder: %s", p.libs, p.written, p.summed, p.removed, p.removed_names, listed);
+    CHECK(p.libs == 4 && p.written == 4 && p.summed == 0 && p.removed == 1 && !strcmp(p.removed_names, "libCase.so"));
+    CHECK(!strcmp(listed, "liba.so libb.so libcase.so libgone.so notes.txt"));
+    CHECK(file_is(dir, "liba.so", a1, A) && file_is(dir, "libb.so", b, B) && file_is(dir, "libgone.so", gone, GONE) && file_is(dir, "libcase.so", casey, CASE));
+
+    /* Started again: nothing written, nothing read -- the index and the APK's central directory say so. */
+    CHECK(mg_ld_place_libs(apks, 2, "armeabi-v7a", dir, index, &p));
+    CHECK(p.libs == 4 && p.written == 0 && p.summed == 0 && p.removed == 0 && p.failed == 0);
+
+    /* The update: liba.so of the same size and other bytes, written; libgone.so, which it has not, removed; libnew.so written. */
+    apks[0] = &z2;
+    CHECK(mg_ld_place_libs(apks, 1, "armeabi-v7a", dir, index, &p));
+    folder_files(dir, listed, sizeof(listed));
+    say("  updated: %d libraries, %d written, %d summed, %d removed (%s); the folder: %s", p.libs, p.written, p.summed, p.removed, p.removed_names, listed);
+    CHECK(p.libs == 4 && p.written == 2 && p.summed == 0 && p.removed == 1 && !strcmp(p.removed_names, "libgone.so"));
+    CHECK(!strcmp(listed, "liba.so libb.so libcase.so libnew.so notes.txt"));
+    CHECK(file_is(dir, "liba.so", a2, A) && file_is(dir, "libnew.so", fresh, NEW) && !file_there(dir, "libgone.so"));
+
+    /* With no index (Megler's of before it, or lost): files of the entries' sizes are summed once, and only the one that differs
+       -- of the old rule's kind, of the right size and other bytes -- is written. */
+    CHECK(mg_path_remove(index, NULL));
+    {
+        char *bpath = mg_sprintf("%s/libb.so", dir);
+        CHECK(mg_file_write_all(bpath, junk, B));
+        free(bpath);
+    }
+    CHECK(mg_ld_place_libs(apks, 1, "armeabi-v7a", dir, index, &p));
+    say("  no index: %d written, %d summed", p.written, p.summed);
+    CHECK(p.written == 1 && p.summed == 4 && p.removed == 0 && file_is(dir, "libb.so", b, B));
+    CHECK(mg_ld_place_libs(apks, 1, "armeabi-v7a", dir, index, &p));
+    CHECK(p.written == 0 && p.summed == 0);
+
+    /* An index that is no index of these: read as none. */
+    CHECK(mg_file_write_all(index, "something else\n00000000 96 liba.so\n", 35));
+    CHECK(mg_ld_place_libs(apks, 1, "armeabi-v7a", dir, index, &p));
+    CHECK(p.written == 0 && p.summed == 4);
+
+    /* An update with no native code at all: every library goes, the app's own file stays. */
+    CHECK(mg_ld_place_libs(apks, 1, NULL, dir, index, &p));
+    folder_files(dir, listed, sizeof(listed));
+    say("  no libraries: %d removed (%s); the folder: %s", p.removed, p.removed_names, listed);
+    CHECK(p.libs == 0 && p.removed == 4 && !strcmp(listed, "notes.txt"));
+done:
+    if (z1.count) mg_zip_close(&z1);
+    if (z2.count) mg_zip_close(&z2);
+    if (zs.count) mg_zip_close(&zs);
+    free(dir);
+    free(index);
+    free(base1);
+    free(base2);
+    free(split1);
+    free(notes);
+    free(odd_case);
 }
 
 /* ------------------------------------------------------------- guest code */
@@ -1737,6 +1976,169 @@ static void test_mmap_write_back_unlocked(const char *scratch)
 }
 
 /*
+ * The mappings' lock is never held waiting for the descriptors' lock (bionic/mg_libc_io.c, io_lock_wanted). A thread that
+ * holds the descriptors' lock and meets a page the app gave back with madvise -- a pipe's bytes copied into a buffer there --
+ * is mended by the fault handler, which takes the mappings' lock. The write-back took its hold of its file under the
+ * mappings' lock, and mmap of a shared file its hold of the descriptor's, and each hold took the descriptors' lock: such a
+ * thread and a fault's waited for each other for good, and every mmap, munmap, mprotect, madvise and descriptor of the app's
+ * after them. Here a pipe is read into a page given back; then this thread holds the descriptors' lock, as a pipe's read
+ * holds it while it copies, while msync writes back on another thread: the write-back lets the mappings' lock go before it
+ * waits, another thread's mmap goes through meanwhile, and a page given back, touched by this thread with the descriptors'
+ * lock held, is mended. (Should the write-back hold the mappings' lock the while, the page is not touched -- that would stand
+ * still for good -- and the test fails.) Neither mmap of a shared file nor msync, the 5-second pass, the suspension's or
+ * munmap takes the descriptors' lock under the mappings' lock.
+ */
+typedef int (*lo_msync_fn)(void *, size_t, int);
+static lo_msync_fn g_lo_msync;
+static u8 *g_lo_map;
+static volatile i32 g_lo_past, g_lo_done;
+
+static void lo_io_hook(void) { mg_atomic_xchg(&g_lo_past, 1); }
+
+static MG_HOSTCB void lo_msync_thread(void *arg)
+{
+    (void)arg;
+    g_lo_msync(g_lo_map, 3 * 4096, 4 /* MS_SYNC */);
+    mg_atomic_xchg(&g_lo_done, 1);
+}
+
+static void test_mmap_lock_order(const char *scratch)
+{
+    typedef int (*open_fn)(const char *, int, int);
+    typedef int (*close_fn)(int);
+    typedef int (*unlink_fn)(const char *);
+    typedef int (*ftruncate_fn)(int, goff);
+    typedef int (*madvise_fn)(void *, size_t, int);
+    typedef int (*pipe_fn)(int *);
+    typedef gssize (*read_fn)(int, void *, size_t);
+    typedef gssize (*write_fn)(int, const void *, size_t);
+    enum { READ = 1, RW = 3, SHARED = 0x01, PRIVATE = 0x02, ANONYMOUS = 0x20, DONTNEED = 4, PAGE = 4096, BLOCK = 65536 };
+    open_fn open_ = (open_fn)mg_bionic_find("open");
+    close_fn close_ = (close_fn)mg_bionic_find("close");
+    unlink_fn unlink_ = (unlink_fn)mg_bionic_find("unlink");
+    ftruncate_fn ftruncate_ = (ftruncate_fn)mg_bionic_find("ftruncate");
+    madvise_fn madvise_ = (madvise_fn)mg_bionic_find("madvise");
+    pipe_fn pipe_ = (pipe_fn)mg_bionic_find("pipe");
+    read_fn read_ = (read_fn)mg_bionic_find("read");
+    write_fn write_ = (write_fn)mg_bionic_find("write");
+    char *host = mg_sprintf("%s/lock-order.bin", scratch);
+    const char *file = "/lock-order-files/lock-order.bin";
+    u8 *w = NULL, *ro = NULL;
+    volatile u8 *g = NULL;
+    int fd = -1, fds[2] = { -1, -1 }, i;
+    u32 before, taken;
+    mg_thread *t;
+    mg_hold_seen seen;
+    bool stuck = false, mapped = false, touched = false, piped = false;
+    u32 stuck_owner = 0;
+    say("mmap: the mappings' lock is never held waiting for the descriptors' lock");
+    g_wb_mmap = (wb_mmap_fn)mg_bionic_find("mmap");
+    g_wb_munmap = (wb_munmap_fn)mg_bionic_find("munmap");
+    g_lo_msync = (lo_msync_fn)mg_bionic_find("msync");
+    CHECK(open_ && close_ && unlink_ && ftruncate_ && madvise_ && pipe_ && read_ && write_ && g_wb_mmap && g_wb_munmap && g_lo_msync);
+    if (!open_ || !close_ || !unlink_ || !ftruncate_ || !madvise_ || !pipe_ || !read_ || !write_ || !g_wb_mmap || !g_wb_munmap || !g_lo_msync) {
+        free(host);
+        return;
+    }
+    mg_fs_mount("/lock-order-files", scratch);
+    before = mg_fd_lock_taken_under_mappings();
+    fd = open_(file, 02 | 0100 | 01000, 0600);                    /* O_RDWR | O_CREAT | O_TRUNC */
+    CHECK(fd >= 0 && ftruncate_(fd, 3 * PAGE) == 0);
+    if (fd >= 0) {
+        /* A writable one, written back, and a read-only copy kept in step: mmap holds the file for each. */
+        w = (u8 *)g_wb_mmap(NULL, 3 * PAGE, RW, SHARED, fd, 0);
+        ro = (u8 *)g_wb_mmap(NULL, PAGE, READ, SHARED, fd, 0);
+        close_(fd);
+    }
+    if (w == (u8 *)(mg_addr)-1) w = NULL;
+    if (ro == (u8 *)(mg_addr)-1) ro = NULL;
+    CHECK(w && ro);
+    /* Two blocks of 64 KB of anonymous memory, written, then given back. */
+    g = (volatile u8 *)g_wb_mmap(NULL, 2 * BLOCK, RW, PRIVATE | ANONYMOUS, -1, 0);
+    if (g == (volatile u8 *)(mg_addr)-1) g = NULL;
+    CHECK(g != NULL);
+    if (!w || !ro || !g) goto done;
+    memset((void *)g, 0x5A, 2 * BLOCK);
+    CHECK(madvise_((void *)g, 2 * BLOCK, DONTNEED) == 0);
+    /* A pipe read into a page of the first block: the bytes copied with the descriptors' lock held, the fault mended meanwhile. */
+    CHECK(pipe_(fds) == 0);
+    if (fds[0] >= 0 && fds[1] >= 0) {
+        piped = write_(fds[1], "piped", 5) == 5 && read_(fds[0], (void *)(g + 3 * PAGE + 10), 5) == 5;
+        piped = piped && !memcmp((const void *)(g + 3 * PAGE + 10), "piped", 5) && g[3 * PAGE + 9] == 0 && g[3 * PAGE + 15] == 0;
+        close_(fds[0]);
+        close_(fds[1]);
+    }
+    say("  a pipe read into a page given back: %s", piped ? "its bytes" : "NOT ITS BYTES");
+    CHECK(piped);
+    /* The descriptors' lock held while msync writes back on another thread. */
+    memcpy(w + 50, "held", 4);
+    g_lo_map = w;
+    g_lo_past = g_lo_done = 0;
+    mg_mem_write_back_io_hook = lo_io_hook;
+    mg_fd_lock();
+    t = mg_thread_start(lo_msync_thread, NULL, 256u * 1024u, "lock-order-msync");
+    /* Until the write-back is past the mappings' lock (its hook), or 0.4 s at least: the 5-second pass's write-back may hold
+       the write-backs' lock meanwhile and wait for this thread itself, letting go nothing but the mappings' lock either. */
+    for (i = 0; t && i < 200 && !g_lo_past && !stuck; i++) {
+        mg_sleep_ns(2000000ull);
+        if (mg_mem_lock_look(&seen) && seen.held_ns >= 200000000ull) {
+            stuck = true;
+            stuck_owner = seen.owner;
+        }
+    }
+    if (t && !stuck) {
+        mg_thread *m;
+        int k;
+        /* Its pages copied and the mappings' lock let go, it is on to its file and to letting its hold go, which waits for this
+           thread (or it waits behind the pass's write-back, which does): another thread maps and unmaps meanwhile, and this
+           one touches a page given back, in the second block. */
+        g_wb_mapped = 0;
+        m = mg_thread_start(wb_mapper, NULL, 256u * 1024u, "lock-order-mapper");
+        for (k = 0; m && k < 1000 && !g_wb_mapped; k++) mg_sleep_ns(2000000ull);
+        if (m) mg_thread_detach(m);
+        mapped = g_wb_mapped != 0;
+        touched = g[BLOCK + 100] == 0;
+        g[BLOCK + 200] = 0x42;
+        touched = touched && g[BLOCK + 200] == 0x42 && g[BLOCK + 201] == 0;
+    }
+    mg_fd_unlock();
+    for (i = 0; t && i < 2500 && !g_lo_done; i++) mg_sleep_ns(2000000ull);
+    if (t) {
+        /* (Not joined while it has not ended: the test goes on either way.) */
+        if (g_lo_done) mg_thread_join(t);
+        else mg_thread_detach(t);
+    }
+    mg_mem_write_back_io_hook = NULL;
+    if (stuck)
+        say("  the descriptors' lock held: the mappings' lock HELD 0.2 s by host thread %u, which waits for it -- a fault on a page given "
+            "back meanwhile would stand still for good", (unsigned)stuck_owner);
+    else
+        say("  the descriptors' lock held while msync wrote back on another thread: the mappings' lock %s, another thread's mmap %s, a "
+            "page given back touched %s", g_lo_past ? "let go before it waited" : "free (it waited behind the 5-second pass's write-back)",
+            mapped ? "through" : "NOT THROUGH", touched ? "and mended" : "NOT MENDED");
+    CHECK(t != NULL && !stuck && mapped && touched && g_lo_done && file_has(host, 50, "held"));
+    /* The other write-backs, and munmap's. */
+    memcpy(w + PAGE + 20, "the pass", 8);
+    mg_mem_write_back_all(4u << 20);
+    CHECK(file_has(host, PAGE + 20, "the pass") && !memcmp(ro + 50, "held", 4));
+    memcpy(w + 2 * PAGE + 30, "suspended", 9);
+    CHECK(mg_mem_write_back_all_until(mg_time_monotonic_ns() + 5000000000ull) && file_has(host, 2 * PAGE + 30, "suspended"));
+    memcpy(w + 70, "unmapped", 8);
+    CHECK(g_wb_munmap(ro, PAGE) == 0 && g_wb_munmap(w, 3 * PAGE) == 0 && file_has(host, 70, "unmapped"));
+    ro = w = NULL;
+done:
+    taken = mg_fd_lock_taken_under_mappings() - before;
+    say("  the descriptors' lock taken under the mappings' lock: %u times", (unsigned)taken);
+    CHECK_INT(taken, 0);
+    if (ro) g_wb_munmap(ro, PAGE);
+    if (w) g_wb_munmap(w, 3 * PAGE);
+    if (g) g_wb_munmap((void *)g, 2 * BLOCK);
+    CHECK(!mg_mem_file_copies());
+    unlink_(file);
+    free(host);
+}
+
+/*
  * What Zalo's libraries import of libc, libm and libz that was not there (each a stub that ended the app when called): POSIX
  * regular expressions (bionic/mg_regex.c), zlib's gzip files on the guest's files (bionic/mg_libz.c), j0 and j1,
  * eventfd_read and eventfd_write, fchmodat.
@@ -2327,7 +2729,7 @@ static void test_appx_manifest(void)
         "    <rescap:Capability Name=\"codeGeneration\" />\r\n    <rescap:Capability Name=\"packageManagement\" />\r\n"
         "    <rescap:Capability Name=\"packageQuery\" />\r\n    <!-- The devices. -->\r\n    <DeviceCapability Name=\"webcam\" />\r\n"
         "    <DeviceCapability Name=\"location\" />\r\n    <DeviceCapability Name=\"microphone\" />\r\n"
-        "    <DeviceCapability Name=\"bluetooth\" />\r\n"
+        "    <DeviceCapability Name=\"bluetooth\" />\r\n    <DeviceCapability Name=\"wiFiControl\" />\r\n"
         "    <DeviceCapability Name=\"bluetooth.rfcomm\">\r\n      <Device Id=\"any\"><Function Type=\"name:serialPort\" /></Device>\r\n"
         "    </DeviceCapability>\r\n  </Capabilities>\r\n"
         "  <Extensions><Extension Category=\"windows.publisherCacheFolders\" /></Extensions></Package>\r\n";
@@ -2339,6 +2741,13 @@ static void test_appx_manifest(void)
                                            "android.permission.READ_MEDIA_VISUAL_USER_SELECTED" };
     static const char *const bluetooth[] = { "android.permission.BLUETOOTH_SCAN", "android.permission.BLUETOOTH_CONNECT", "android.permission.INTERNET" };
     static const char *const bluetooth_old[] = { "android.permission.BLUETOOTH", "android.permission.BLUETOOTH_ADMIN" };
+    /* Transit's: the location, no Wi-Fi permission of its own (Google Play services in the app scans for it); and the Wi-Fi's
+       alone, without the location, and the background location alone, which give no scans. */
+    static const char *const transit[] = { "android.permission.ACCESS_FINE_LOCATION", "android.permission.ACCESS_COARSE_LOCATION",
+                                           "android.permission.INTERNET", "android.permission.ACCESS_NETWORK_STATE" };
+    static const char *const wifi_alone[] = { "android.permission.ACCESS_WIFI_STATE", "android.permission.CHANGE_WIFI_STATE",
+                                              "android.permission.ACCESS_BACKGROUND_LOCATION" };
+    static const char *const nearby_wifi[] = { "android.permission.NEARBY_WIFI_DEVICES" };
     char err[200], name[64], name2[64];
     char *m, *m2;
     say("an app's own package: its manifest from Megler's");
@@ -2410,7 +2819,12 @@ static void test_appx_manifest(void)
     /* An app that hears its code through Google Play services' SMS Retriever has the phone's messages heard for it. */
     CHECK_INT((int)mg_appx_capabilities(NULL, 0, true), MG_APPX_CAP_PICTURES | MG_APPX_CAP_CHAT);
     CHECK_INT((int)mg_appx_capabilities(devices, (int)MG_COUNT(devices), false),
-              MG_APPX_CAP_PICTURES | MG_APPX_CAP_VIDEOS | MG_APPX_CAP_LOCATION | MG_APPX_CAP_MICROPHONE | MG_APPX_CAP_CALL_HISTORY);
+              MG_APPX_CAP_PICTURES | MG_APPX_CAP_VIDEOS | MG_APPX_CAP_LOCATION | MG_APPX_CAP_WIFI | MG_APPX_CAP_MICROPHONE | MG_APPX_CAP_CALL_HISTORY);
+    /* The Wi-Fi's networks with the location, which Android gives them to, or with Android 13's NEARBY_WIFI_DEVICES; not with the
+       Wi-Fi's own permissions alone, nor with the background location alone. */
+    CHECK_INT((int)mg_appx_capabilities(transit, (int)MG_COUNT(transit), false), MG_APPX_CAP_PICTURES | MG_APPX_CAP_NETWORK | MG_APPX_CAP_LOCATION | MG_APPX_CAP_WIFI);
+    CHECK_INT((int)mg_appx_capabilities(wifi_alone, (int)MG_COUNT(wifi_alone), false), MG_APPX_CAP_PICTURES | MG_APPX_CAP_LOCATION);
+    CHECK_INT((int)mg_appx_capabilities(nearby_wifi, (int)MG_COUNT(nearby_wifi), false), MG_APPX_CAP_PICTURES | MG_APPX_CAP_WIFI);
     /* Bluetooth's: Android 12's permissions of nearby devices, and the Androids' before it. */
     CHECK_INT((int)mg_appx_capabilities(bluetooth, (int)MG_COUNT(bluetooth), false), MG_APPX_CAP_PICTURES | MG_APPX_CAP_NETWORK | MG_APPX_CAP_BLUETOOTH);
     CHECK_INT((int)mg_appx_capabilities(bluetooth_old, (int)MG_COUNT(bluetooth_old), false), MG_APPX_CAP_PICTURES | MG_APPX_CAP_BLUETOOTH);
@@ -2429,7 +2843,7 @@ static void test_appx_manifest(void)
     /* Nothing it did not ask for, and none of Megler's that no app's package has. */
     CHECK(!strstr(m, "videosLibrary") && !strstr(m, "documentsLibrary") && !strstr(m, "removableStorage") && !strstr(m, "\"chat\"") &&
           !strstr(m, "phoneCallHistoryPublic") && !strstr(m, "packageManagement") && !strstr(m, "\"location\"") && !strstr(m, "\"microphone\"") &&
-          !strstr(m, "Name=\"bluetooth\"") &&
+          !strstr(m, "Name=\"bluetooth\"") && !strstr(m, "wiFiControl") &&
           !strstr(m, "The network:") && !strstr(m, "The libraries.") && !strstr(m, "The devices."));
     CHECK(strstr(m, "Name=\"MeglerApp.com.example.camera.") != NULL && strstr(m, "<DisplayName>Camera</DisplayName>") != NULL);
     free(m);
@@ -2438,6 +2852,13 @@ static void test_appx_manifest(void)
                              sizeof(err));
     CHECK(m && strstr(m, "    <rescap:Capability Name=\"packageQuery\" />\r\n    <DeviceCapability Name=\"bluetooth\" />\r\n"
                          "    <DeviceCapability Name=\"bluetooth.rfcomm\">") != NULL && !strstr(m, "DeviceCapability Name=\"webcam\""));
+    free(m);
+    /* An app that asks Google Play services for the location (Transit's): the location, and wiFiControl in Megler's place for it. */
+    m = mg_appx_app_manifest(megler, "com.thetransitapp.droid", "Transit", NULL, NULL, (int)mg_appx_capabilities(transit, (int)MG_COUNT(transit), false), err,
+                             sizeof(err));
+    CHECK(m && strstr(m, "    <rescap:Capability Name=\"packageQuery\" />\r\n    <DeviceCapability Name=\"location\" />\r\n"
+                         "    <DeviceCapability Name=\"wiFiControl\" />\r\n    <DeviceCapability Name=\"bluetooth.rfcomm\">") != NULL &&
+          !strstr(m, "Name=\"bluetooth\""));
     free(m);
     /* An app that asks for nothing Windows guards: the pictures library and Megler's own alone, no network. */
     m = mg_appx_app_manifest(megler, "com.example.calculator", "Calculator", NULL, NULL, (int)mg_appx_capabilities(NULL, 0, false), err, sizeof(err));
@@ -2637,6 +3058,33 @@ static void test_libc_odds(void)
                 gfree(a);
             }
             CHECK(odd == 0);
+            {
+                /* A big block (256 bytes or more) at 64, as jemalloc's runs and pages leave it -- Geekbench 5's zlib loads
+                   its 64 KB hash table with an aligned NEON load -- through calloc, and through realloc's every turn: small
+                   to big, bigger, smaller, small again, its contents kept each time. */
+                size_t steps[5] = { 40, 300, 65536, 1000, 24 };
+                u8 *b = (u8 *)gmalloc(65536), *z = (u8 *)gcalloc(65536, 1), *r = NULL;
+                size_t was = 0, k;
+                bool kept = true, zeroed = true;
+                CHECK(b && z && ((mg_addr)b & 63) == 0 && ((mg_addr)z & 63) == 0);
+                for (k = 0; z && k < 65536; k++) zeroed &= z[k] == 0;
+                CHECK(zeroed);
+                for (i = 0; i < 5; i++) {
+                    size_t keep = was < steps[i] ? was : steps[i];
+                    r = (u8 *)grealloc(r, steps[i]);
+                    CHECK(r != NULL);
+                    if (!r) break;
+                    for (k = 0; k < keep; k++) kept &= r[k] == (u8)(k * 7 + 1);
+                    for (k = 0; k < steps[i]; k++) r[k] = (u8)(k * 7 + 1);
+                    if (steps[i] >= 256) CHECK(((mg_addr)r & 63) == 0);
+                    else CHECK(((mg_addr)r & (align - 1)) == 0);
+                    was = steps[i];
+                }
+                CHECK(kept);
+                gfree(b);
+                gfree(z);
+                gfree(r);
+            }
             for (i = 0; i < 64; i++) {
                 u8 *z = (u8 *)gmalloc(0);
                 CHECK(z && gusable(z) == (size_t)align);
@@ -4076,6 +4524,135 @@ static void test_go_reserve(void)
     else CHECK(out[8] == 0 || out[8] == 1);
 }
 
+/*
+ * Imports nothing provides (guest/t_unres.c): the library's line in the log as it loads names each, once however many
+ * relocations ask for it, as many as the line has room for and then how many more. DANA's libjabe.so had one and the line
+ * said "1 imports are not provided", which one only at the loader's verbosity 2 (0.1.0.678). A function's import is a stub
+ * that says so when called and gives 0; a variable's is NULL.
+ */
+static char g_unres_line[600], g_unres_called[200];
+static mg_log_sink g_unres_before;
+static void *g_unres_before_user;
+
+static void unres_sink(int level, const char *line, void *user)
+{
+    (void)user;
+    if (strstr(line, "imports are not provided")) mg_strlcpy(g_unres_line, line, sizeof(g_unres_line));
+    if (strstr(line, "which nothing provides")) mg_strlcpy(g_unres_called, line, sizeof(g_unres_called));
+    if (g_unres_before) g_unres_before(level, line, g_unres_before_user);
+}
+
+static int count_in(const char *s, const char *what)
+{
+    int n = 0;
+    for (s = strstr(s, what); s; s = strstr(s + 1, what)) n++;
+    return n;
+}
+
+static void test_unresolved_imports(void)
+{
+    static const char *const names[] = { "mg_absent_one", "mg_absent_two", "mg_absent_data" };
+    const char *long_name = "mg_absent_function_whose_name_is_rather_long_number_";
+    size_t before = mg_ld_unresolved_count();
+    mg_ld_stats st;
+    mg_lib *lib;
+    char more[64];
+    int i, said;
+    say("guest library: imports nothing provides, named in the log as it loads");
+    mg_log_get_sink(&g_unres_before, &g_unres_before_user);
+    mg_log_set_sink(unres_sink, NULL);
+    g_unres_line[0] = 0;
+    lib = mg_ld_load("libt_unres.so");
+    say("  %s", g_unres_line[0] ? g_unres_line : "(no line)");
+    CHECK(lib != NULL && mg_ld_init(lib));
+    if (lib) {
+        mg_ld_get_stats(lib, &st);
+        CHECK_INT(st.unresolved, 3);
+        CHECK_INT((int)(mg_ld_unresolved_count() - before), 3);
+        CHECK(strstr(g_unres_line, "ld: libt_unres.so: 3 imports are not provided: ") != NULL);
+        for (i = 0; i < 3; i++) CHECK_INT(count_in(g_unres_line, names[i]), 1);
+        CHECK(!strstr(g_unres_line, " more"));
+        g_unres_called[0] = 0;
+        CHECK_INT(FN(lib, int (*)(int), "t_unres_call_one")(5), 7);
+        CHECK(strstr(g_unres_called, "mg_absent_one") != NULL);
+        CHECK_INT(FN(lib, int (*)(void), "t_unres_call_two")(), 9);
+        CHECK(FN(lib, int *(*)(void), "t_unres_data")() == NULL);
+        CHECK(FN(lib, void *const *(*)(void), "t_unres_pointers")()[1] == NULL);
+    }
+    g_unres_line[0] = 0;
+    lib = mg_ld_load("libt_unres_many.so");
+    say("  %s", g_unres_line[0] ? g_unres_line : "(no line)");
+    CHECK(lib != NULL);
+    if (lib) {
+        mg_ld_get_stats(lib, &st);
+        CHECK_INT(st.unresolved, 40);
+        CHECK(strstr(g_unres_line, "ld: libt_unres_many.so: 40 imports are not provided: mg_absent_function_whose_name_is_rather_long_number_") != NULL);
+        said = count_in(g_unres_line, long_name);
+        snprintf(more, sizeof(more), ", and %d more", 40 - said);
+        CHECK(said >= 4 && said < 40);
+        CHECK(strstr(g_unres_line, more) != NULL);
+        CHECK(strlen(g_unres_line) < 400);
+    }
+    mg_log_set_sink(g_unres_before, g_unres_before_user);
+}
+
+#if MG_ARCH_ARM32
+/*
+ * The crash report of a thread at a small pc (mg_core.c), each under a guard as the runtime calls a service's natives:
+ * a call through a pointer a little past null (t_call_small) is said to be one, lr a return address after it; a return
+ * through a frame whose saved lr was written over (t_return_smashed, lr in the library's data, as DANA's libjabe.so's was
+ * when it ended itself: DexGuard's answer to a sum of its code that differs; t_return_smashed_sp, lr on the stack) is not:
+ * the report says lr is no return address, and how much of the library's code the loader changed. It said a call through a
+ * null pointer for libjabe.so (0.1.0.678).
+ */
+static char g_small_pc_report[1100];
+static mg_log_sink g_small_pc_before;
+static void *g_small_pc_before_user;
+
+static void small_pc_sink(int level, const char *line, void *user)
+{
+    (void)user;
+    if (strstr(line, "fault: ") && strstr(line, "at pc 00000014")) mg_strlcpy(g_small_pc_report, line, sizeof(g_small_pc_report));
+    if (g_small_pc_before) g_small_pc_before(level, line, g_small_pc_before_user);
+}
+
+static void test_small_pc_report(mg_lib *lib, const char *what)
+{
+    static const char *const names[] = { "t_call_small", "t_return_smashed", "t_return_smashed_sp" };
+    char changed[96];
+    int i;
+    say("the crash report of a thread at a small pc, %s: a call through a pointer near null; a return through a saved lr written over", what);
+    if (!mg_guest_tp_get()) {
+        say("  (this thread has never run Android code: no guard can be had for the faults)");
+        CHECK(mg_guest_tp_get() != NULL);
+        return;
+    }
+    snprintf(changed, sizeof(changed), "the loader changed %s's code in ", mg_ld_lib_name(lib));
+    mg_log_get_sink(&g_small_pc_before, &g_small_pc_before_user);
+    mg_log_set_sink(small_pc_sink, NULL);
+    for (i = 0; i < (int)(sizeof(names) / sizeof(names[0])); i++) {
+        void *fn = SYM(lib, names[i]);
+        bool faulted = false;
+        g_small_pc_report[0] = 0;
+        CHECK(fn != NULL);
+        if (!fn) continue;
+        (void)mg_jni_call_native_guarded(fn, NULL, "()I", NULL, &faulted);
+        CHECK(faulted);
+        CHECK(strstr(g_small_pc_report, "executing at pc 00000014") != NULL);
+        if (i == 0) {
+            CHECK(strstr(g_small_pc_report, "a call through a null pointer") != NULL);
+            CHECK(strstr(g_small_pc_report, "\n  called from ") != NULL && strstr(g_small_pc_report, "not a call") == NULL);
+        } else {
+            CHECK(strstr(g_small_pc_report, "a call through a null pointer") == NULL);
+            CHECK(strstr(g_small_pc_report, "not a call: lr is no return address") != NULL);
+        }
+        /* lr in the library's data: named, and what the loader changed of the library's code said. */
+        if (i == 1) CHECK(strstr(g_small_pc_report, "\n  lr: ") != NULL && strstr(g_small_pc_report, changed) != NULL);
+    }
+    mg_log_set_sink(g_small_pc_before, g_small_pc_before_user);
+}
+#endif
+
 static void test_guest(const char *libdir, const char *scratch)
 {
     mg_lib *basic, *dep;
@@ -4133,6 +4710,10 @@ static void test_guest(const char *libdir, const char *scratch)
     CHECK(mg_ld_find_lib("libt_basic.so") == basic && mg_ld_lib_of(SYM(basic, "t_add")) == basic);
     CHECK(mg_ld_load("libc.so") == NULL && mg_ld_load("libnothere.so") == NULL);
     test_guest_kinds(libdir);
+    test_unresolved_imports();
+#if MG_ARCH_ARM32
+    test_small_pc_report(basic, "Thumb-2");
+#endif
 
 #if MG_ARCH_ARM32
     /* Both ISAs must return the shim pid (4242), never the host kernel's pid.
@@ -4148,11 +4729,21 @@ static void test_guest(const char *libdir, const char *scratch)
                 int saved = *mg_errno_ptr();
                 mg_ld_get_stats(svc, &st);
                 /* The dead stub's svc: left in Thumb code, behind its branch; taken in ARM code, where every svc 0 is. */
-                CHECK_INT(st.svc_sites, j == 0 ? 6 : 7);
+                CHECK_INT(st.svc_sites, j == 0 ? 7 : 8);
                 *mg_errno_ptr() = 123;
                 CHECK_INT(FN(svc, int (*)(void), "t_svc_getpid")(), 4242);
                 CHECK_INT(FN(svc, int (*)(void), "t_svc_literal")(), 4242);
                 CHECK_INT(FN(svc, int (*)(void), "t_svc_unknown")(), -38);
+                {
+                    /* sysinfo by number, as Geekbench 5's own stub makes it: 0, and Linux's 32-bit struct sysinfo filled in
+                       (totalram the 5th word, procs the low half of the 11th, mem_unit the 14th). */
+                    u32 info[16];
+                    memset(info, 0xEE, sizeof(info));
+                    CHECK_INT(FN(svc, int (*)(void *), "t_svc_sysinfo")(info), 0);
+                    CHECK(info[4] != 0 && info[4] != 0xEEEEEEEEu);
+                    CHECK_INT((int)(info[10] & 0xFFFF), 1);
+                    CHECK_INT((int)info[13], 1);
+                }
                 /* An svc whose number was set two instructions back (Chromium's syscall()). */
                 CHECK_INT(FN(svc, int (*)(void), "t_svc_far_number")(), 4242);
                 CHECK_INT(FN(svc, int (*)(void), "t_svc_dead_stub")(), 7);
@@ -4190,7 +4781,7 @@ static void test_guest(const char *libdir, const char *scratch)
         if (svc) {
             mg_addr target;
             mg_ld_get_stats(svc, &st);
-            CHECK_INT(st.svc_sites, 6);
+            CHECK_INT(st.svc_sites, 7);
             fn = (const u8 *)((mg_addr)SYM(svc, "t_svc_getpid") & ~(mg_addr)1);
             for (k = 0; k < 16; k += 2) {
                 trapped |= mg_rd16(fn + k) == 0xDEA5;
@@ -4363,6 +4954,7 @@ static void test_guest_arm(const char *scratch)
         mg_ld_get_stats(arm, &st);
         CHECK(st.arm_functions > 20);
         test_library(arm, "ARM mode, packed relocations", scratch);
+        test_small_pc_report(arm, "ARM mode");
     }
 }
 
@@ -5050,7 +5642,9 @@ int mg_tests_run(const char *libdir, const char *scratch, mg_test_sink sink, voi
     g_failed += mg_net_tests_run(g_sink, g_sink_user, &g_checks);
     g_failed += mg_sensor_tests_run(g_sink, g_sink_user, &g_checks);
     g_failed += mg_bluetooth_tests_run(g_sink, g_sink_user, &g_checks);
+    g_failed += mg_wifi_tests_run(g_sink, g_sink_user, &g_checks);
     test_zip(scratch);
+    test_place_libs(scratch);
     test_sqlite(scratch);
     test_textures();
     test_media(scratch);
@@ -5068,6 +5662,7 @@ int mg_tests_run(const char *libdir, const char *scratch, mg_test_sink sink, voi
     test_mmap_file(scratch);
     test_mmap_file_written(scratch);
     test_mmap_write_back_unlocked(scratch);
+    test_mmap_lock_order(scratch);
     test_libc_gaps(scratch);
     test_mmap_madvise(scratch);
     test_pread_threads(scratch);

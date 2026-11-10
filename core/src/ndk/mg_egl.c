@@ -30,10 +30,14 @@ static mg_lock g_angle_lock = MG_LOCK_INIT;    /* loading ANGLE: taken while the
 /* Whether this EGL makes contexts without a configuration (EGL_KHR_no_config_context; g_eglCreateContext): -1, not asked yet. */
 static int g_no_config = -1;
 
+/* ANGLE's glGetString, under the layer's own (w_get_string); looked up again after this changes. */
+static const u8 *(*h_get_string)(u32 name);
+
 void mg_egl_set_provider(void *(*resolve)(const char *name))
 {
     g_provider = resolve;
     g_no_config = -1;
+    h_get_string = NULL;
 }
 
 /* On x86_64 and x86 ANGLE's function is given as its adapter (mg_gl_adapters.c), of the core's convention, which is the guest's. */
@@ -240,6 +244,9 @@ static void make_display(made_display *m)
     if (!get || !init) return;
     for (i = 0; i < MG_COUNT(tries); i++) {
         EGLDisplay d;
+        /* The flag egl-level-9_3: the display is made at feature level 9_3 whatever the graphics processor has, to see a Lumia 650's
+           OpenGL ES 2 at most (and its OpenGL ES 1, mg_angle_windows.c) on an HP Elite x3 or a PC. */
+        if (tries[i].attribs == by_default && mg_flag("egl-level-9_3")) continue;
         if (tries[i].attribs == warp) {
             const int level = below_9_3();
             if (!level) break;
@@ -1140,12 +1147,59 @@ static EGLConfig context_config(EGLDisplay d, EGLConfig config, const EGLint *at
     return surface_configs(d, config, candidates, (int)MG_COUNT(candidates)) > 0 ? candidates[0] : config;
 }
 
+/*
+ * OpenGL ES 1 on a display of OpenGL ES 2 at most (Direct3D feature level 9_x: a Lumia 650's Adreno 304, most Lumias). ANGLE
+ * draws version 1 itself (GLES1Renderer), with shaders of its making. As gecko-w10m builds it they are OpenGL ES 3's
+ * ("#version 300 es"), which such a display does not compile: an app's first draw of version 1 is refused there, and its
+ * second ends the app in ANGLE, which kept the failed program's place and asks a program that is not there for its id
+ * (gl::Program::id on null, from GLES1Renderer::initializeRendererProgram): Transit, whose Google Maps draws with its legacy
+ * renderer, OpenGL ES 1 throughout, ended so as its map came up on a Lumia 650 (0.1.0.683, "access violation at
+ * libGLESv2.dll+0x91100, address 0000017c"). Megler's own ANGLE (tools/build-angle.py, angle/0004-gles1-feature-level-9.patch)
+ * writes them in OpenGL ES 2's language there, for the state each draw is in, and refuses a draw it has no program for
+ * rather than end the app. Which of the two the package has is found out by drawing (es1_drawn_here): the first time a
+ * version-1 context is asked for on such a display, one is made on a pbuffer of the layer's own and draws once -- a single
+ * draw, which the other ANGLE refuses without ending anything. Drawn, version 1 is made as asked from then on. Refused, a
+ * version-1 context is made of version 2, where the fixed-function calls of GL10 do nothing and are refused
+ * (GL_INVALID_OPERATION): the app goes on with its map black, as 0.1.0.684 did on every such display. `out` holds the
+ * attributes then (32 at most).
+ */
+static bool es1_drawn_here(EGLDisplay d);
+static mg_lock g_es1_lock = MG_LOCK_INIT;
+static int g_es1_draws = -1;           /* whether ANGLE draws OpenGL ES 1 on this display: -1 not tried yet */
+
+static const EGLint *es1_on_es2(EGLDisplay d, const EGLint *attribs, EGLint *out, size_t n)
+{
+    int major, minor, draws;
+    char rest[8];
+    size_t k = 0;
+    context_asked(attribs, &major, &minor, rest, sizeof(rest));
+    if (major != 1 || display_es_version() >= 30) return attribs;
+    mg_lock_acquire(&g_es1_lock);
+    if (g_es1_draws < 0) g_es1_draws = es1_drawn_here(d) ? 1 : 0;
+    draws = g_es1_draws;
+    mg_lock_release(&g_es1_lock);
+    if (draws) return attribs;
+    for (; attribs && attribs[0] != EGL_NONE && k + 4 < n; attribs += 2)
+        if (attribs[0] != EGL_CONTEXT_CLIENT_VERSION && attribs[0] != EGL_CONTEXT_MINOR_VERSION) {
+            out[k++] = attribs[0];
+            out[k++] = attribs[1];
+        }
+    out[k++] = EGL_CONTEXT_CLIENT_VERSION;
+    out[k++] = 2;
+    out[k] = EGL_NONE;
+    mg_note_once("egl: this ANGLE does not draw OpenGL ES 1 on this graphics processor (Direct3D feature level 9_x; Megler's own ANGLE, "
+                 "tools/build-angle.py, does): the app's version-1 contexts are made of version 2, where its fixed-function drawing does "
+                 "nothing, rather than end the app in ANGLE");
+    return out;
+}
+
 static EGLContext g_eglCreateContext(EGLDisplay d, EGLConfig config, EGLContext share, const EGLint *attribs)
 {
     static volatile i32 said;
     fn_create_context real = A(fn_create_context, "eglCreateContext");
     EGLContext made;
     EGLConfig with;
+    EGLint es2[32];
     mg_trace("eglCreateContext(share %p)", (void *)share);
     if (!real) return NULL;
     if (g_no_config < 0) {
@@ -1154,6 +1208,8 @@ static EGLContext g_eglCreateContext(EGLDisplay d, EGLConfig config, EGLContext 
         g_no_config = ext && strstr(ext, "EGL_KHR_no_config_context") ? 1 : 0;
     }
     if (!g_blob_started) blob_cache_offer(d);
+    /* (After the program cache is offered: the try's program is kept with the app's.) */
+    attribs = es1_on_es2(d, attribs, es2, MG_COUNT(es2));
     with = context_config(d, config, attribs, g_no_config != 0);
     made = real(d, with, share, attribs);
     if (made && with && g_no_config)
@@ -1682,7 +1738,20 @@ static void w_link_program(u32 program)
  * The layer's own code that calls ANGLE on an app's thread takes the turn too (mg_egl_external_upload), and so does a job of
  * a hardware buffers' thread (buffer_job_run); a job for a thread that holds the display's turn and waits for it runs in
  * that turn, lent, as the two never run at once.
+ *
+ * The turns go round. The display's lock is no queue: a thread that calls again as soon as its call ends takes it again
+ * before a thread woken for it runs, and one thread drawing without a pause kept the others out for as long as it drew --
+ * HERE WeGo's map's render thread, while Flutter's raster thread waited with the app's whole interface (package 681). So a
+ * thread whose calls have had the display for a slice (TURN_SLICE) while another waits for it lets that one in before its
+ * next call, and waits until it has had it (TURN_YIELD at the most): a slice, not a call, so that what the turns cost --
+ * each context made current again -- stays a few hundred times a second. And a thread that holds the display's turn
+ * through a wait that makes no call of EGL's or OpenGL ES's -- a swap's pacing, the shell taking its frame, which may wait
+ * for the screen -- lets go of it meanwhile (mg_egl_turn_pause): a swap held every other thread of the display out for
+ * the sixtieth of a second it slept, and for the shell's Present.
  */
+#define TURN_SLICE 4000000ull
+#define TURN_YIELD 4000000ull
+typedef struct turn_thread turn_thread;
 typedef struct gl_turn {
     mg_lock lock;
     EGLContext last;                   /* the context ANGLE last had current on this display */
@@ -1692,12 +1761,17 @@ typedef struct gl_turn {
     volatile i32 switches;             /* times a context was made current again for its turn */
     u64 switch_ns;
     const char *whose;
+    volatile i32 waiting;              /* threads waiting for the display's lock */
+    volatile i32 handovers;            /* times a thread had the lock after another thread's calls */
+    volatile i32 yields;               /* times a thread let a waiting one in after its slice */
+    turn_thread *owner;                /* the thread whose run of calls has the display now */
+    u64 run_since;                     /* when that run began */
 } gl_turn;
-static gl_turn g_turn_app = { MG_LOCK_INIT, NULL, 0, 0, 0, 0, 0, "the app's" };
-static gl_turn g_turn_web = { MG_LOCK_INIT, NULL, 0, 0, 0, 0, 0, "the WebView's" };
+static gl_turn g_turn_app = { MG_LOCK_INIT, NULL, 0, 0, 0, 0, 0, "the app's", 0, 0, 0, NULL, 0 };
+static gl_turn g_turn_web = { MG_LOCK_INIT, NULL, 0, 0, 0, 0, 0, "the WebView's", 0, 0, 0, NULL, 0 };
 
 #define TURN_DEPTH 64
-typedef struct turn_thread {
+struct turn_thread {
     int depth;                         /* calls of EGL and OpenGL ES under way on this thread, one inside another */
     gl_turn *held;                     /* the display whose lock the outermost holds */
     gl_turn *loose;                    /* the display whose loose calls the outermost is counted in */
@@ -1707,7 +1781,7 @@ typedef struct turn_thread {
     EGLSurface draw, read;
     EGLContext ctx;
     mg_addr lr[TURN_DEPTH];            /* the return addresses of the thunks' callers */
-} turn_thread;
+};
 static MG_THREAD_LOCAL turn_thread t_turn;
 
 static gl_turn *turn_of(EGLDisplay d) { return d && d == g_webview_display ? &g_turn_web : &g_turn_app; }
@@ -1732,6 +1806,34 @@ static void turn_refresh(turn_thread *t, gl_turn *g)
                 g->whose, (double)g->switch_ns / 1e6);
 }
 
+/*
+ * The display's lock, for a call of the calling thread's: when its run of calls has had the display for a slice while
+ * another thread waits for it, that one first (and waited for, TURN_YIELD at the most).
+ */
+static void turn_lock(gl_turn *g, turn_thread *t)
+{
+    u64 now;
+    if (g->owner == t && g->waiting > 0 && (now = mg_time_monotonic_ns()) - g->run_since >= TURN_SLICE) {
+        i32 seen = g->handovers, n = mg_atomic_add(&g->yields, 1), tries;
+        /* (The waiting thread was woken when the lock was let go of: it has it at once, mostly. Else this one sleeps a little.) */
+        for (tries = 0; g->handovers == seen && g->waiting > 0 && mg_time_monotonic_ns() - now < TURN_YIELD; tries++) {
+            if (tries < 16) mg_thread_yield();
+            else mg_sleep_ns(100000ull);
+        }
+        if (n == 1 || n == 100 || n == 10000 || n == 1000000)
+            mg_info("egl: %d time%s a thread's calls had %s display for %d ms while another thread waited, and let it in (%d handovers in all)",
+                    (int)n, n == 1 ? "" : "s", g->whose, (int)(TURN_SLICE / 1000000ull), (int)g->handovers);
+    }
+    mg_atomic_add(&g->waiting, 1);
+    mg_lock_acquire(&g->lock);
+    mg_atomic_add(&g->waiting, -1);
+    if (g->owner != t) {
+        g->owner = t;
+        g->run_since = mg_time_monotonic_ns();
+        mg_atomic_add(&g->handovers, 1);
+    }
+}
+
 static void turn_begin(void)
 {
     turn_thread *t = &t_turn;
@@ -1751,7 +1853,7 @@ static void turn_begin(void)
         mg_atomic_add(&g->loose, -1);
         t->loose = NULL;
     }
-    mg_lock_acquire(&g->lock);
+    turn_lock(g, t);
     t->held = g;
     if (t->ctx && g->last != t->ctx) turn_refresh(t, g);
 }
@@ -1797,9 +1899,29 @@ static void turn_before(EGLDisplay d, EGLContext ctx)
             mg_atomic_add(&t->loose->loose, -1);
             t->loose = NULL;
         }
-        mg_lock_acquire(&g->lock);
+        turn_lock(g, t);
         t->held = g;
     }
+}
+
+void *mg_egl_turn_pause(void)
+{
+    turn_thread *t = &t_turn;
+    gl_turn *g = t->held;
+    if (!g) return NULL;
+    t->held = NULL;
+    mg_lock_release(&g->lock);
+    return g;
+}
+
+void mg_egl_turn_resume(void *paused)
+{
+    turn_thread *t = &t_turn;
+    gl_turn *g = (gl_turn *)paused;
+    if (!g) return;
+    turn_lock(g, t);
+    t->held = g;
+    if (t->ctx && g->last != t->ctx) turn_refresh(t, g);
 }
 
 /* After a make-current that EGL took: what the calling thread has current now, as ANGLE was given it. */
@@ -2143,6 +2265,96 @@ static void *turn_thunk(void *target, bool host)
     return target;
 }
 #endif
+
+/*
+ * Where a function of the layer's that a guest called returns to: in the guest's code, though it was called through a thunk
+ * that has the call take its turn (CALLER() is then the thunk's own; turn_enter kept the guest's).
+ */
+static const void *guest_return(const void *pc)
+{
+#if MG_GUEST_CODE
+    const turn_thread *t = &t_turn;
+    const u8 *at = (const u8 *)((mg_addr)pc & ~(mg_addr)1);
+    const size_t size = (TURN_ENTRIES_AT + (TURN_GUEST + TURN_HOST) * TURN_ENTRY + MG_PAGE - 1) & ~(size_t)(MG_PAGE - 1);
+    if (g_turn_code && at >= g_turn_code && at < g_turn_code + size && t->depth > 0 && t->depth <= TURN_DEPTH) return (const void *)t->lr[t->depth - 1];
+#endif
+    return pc;
+}
+
+/*
+ * What the WebView's Chromium is told of OpenGL ES's extensions on a display of OpenGL ES 2 at most (Direct3D below feature
+ * level 10_1; 9_3 on a Lumia's Adreno 3xx): no instanced arrays. Its ANGLE draws over this EGL (its OpenGL ES back end) and
+ * takes GL_EXT_instanced_arrays, which ANGLE over Direct3D 11 names there, for instanced draws -- but loads the functions that
+ * draw so only with OpenGL ES 3 or GL_EXT_draw_instanced (DispatchTableGL), neither of which such a display has: Skia's
+ * first instanced draw went through a null pointer, and the app ended (a desktop build of the tests at 9_3, the WebView test
+ * app's first page). And at 9_3 what Skia draws with instances is what does not fit: its tessellating path renderers, whose
+ * vertex shaders take some 466 instruction slots where vs_4_0_level_9_3 has 256, and which D3DCompile takes seconds on a
+ * Lumia 650's processor to refuse (venetium-w10m, the owner's Chromium for these phones, turns them off there). Without
+ * instanced arrays Skia has neither (TessellationPathRenderer::IsSupported, AtlasPathRenderer, FillRRectOp: drawInstancedSupport)
+ * and draws paths and round rectangles as it does on any OpenGL ES 2 phone. Anyone else's code is told what ANGLE says.
+ */
+static bool webview_code(const void *pc)
+{
+    mg_lib *lib = pc ? mg_ld_lib_of(pc) : NULL;
+    const char *name = lib ? mg_ld_lib_name(lib) : NULL;
+    return name && strstr(name, "libwebviewchromium") != NULL;
+}
+
+static const u8 *webview_extensions(const u8 *all)
+{
+    static const char *const k_left_out[] = { "GL_ANGLE_instanced_arrays", "GL_EXT_instanced_arrays", "GL_EXT_draw_instanced", "GL_NV_draw_instanced" };
+    static char *kept[8];
+    static mg_lock lock = MG_LOCK_INIT;
+    static volatile i32 said;
+    const char *s = (const char *)all, *end;
+    char *out = (char *)malloc(strlen(s) + 1), *o = out, *found = NULL;
+    size_t i, n;
+    bool left = false;
+    if (!out) return all;
+    while (*s) {
+        while (*s == ' ') s++;
+        for (end = s; *end && *end != ' '; end++) {}
+        n = (size_t)(end - s);
+        for (i = 0; i < MG_COUNT(k_left_out) && n; i++)
+            if (strlen(k_left_out[i]) == n && !memcmp(s, k_left_out[i], n)) break;
+        if (n && i == MG_COUNT(k_left_out)) {
+            if (o != out) *o++ = ' ';
+            memcpy(o, s, n);
+            o += n;
+        } else if (n) {
+            left = true;
+        }
+        s = end;
+    }
+    *o = 0;
+    if (!left) {
+        free(out);
+        return all;
+    }
+    /* Kept for good, the same text given each time (a few, one for each set of extensions a context has had). */
+    mg_lock_acquire(&lock);
+    for (i = 0; i < MG_COUNT(kept) && kept[i] && !found; i++)
+        if (!strcmp(kept[i], out)) found = kept[i];
+    if (!found && i < MG_COUNT(kept)) found = kept[i] = out;
+    mg_lock_release(&lock);
+    if (found != out) free(out);
+    if (!found) return all;
+    if (!mg_atomic_xchg(&said, 1))
+        mg_info("egl: the WebView's Chromium is not told of instanced arrays at Direct3D feature level %d_%d (OpenGL ES 2 at most): its ANGLE would "
+                "draw them through no function, and at 9_3 Skia's tessellating path renderers, which draw with them, do not fit",
+                g_d3d_level >> 12, (g_d3d_level >> 8) & 15);
+    return (const u8 *)found;
+}
+
+static const u8 *w_get_string(u32 name)
+{
+    const u8 *s;
+    if (!h_get_string) h_get_string = (const u8 *(*)(u32))angle("glGetString");
+    if (!h_get_string) return NULL;
+    s = h_get_string(name);
+    if (name == GL_EXTENSIONS && s && g_d3d_level && display_es_version() < 30 && webview_code(guest_return(CALLER()))) return webview_extensions(s);
+    return s;
+}
 
 static EGLBoolean g_eglMakeCurrent(EGLDisplay d, EGLSurface draw, EGLSurface read, EGLContext ctx)
 {
@@ -2516,6 +2728,126 @@ bool mg_egl_ahb_read(mg_ahb *b) { return buffer_job_do(b, J_READ, NULL); }
 bool mg_egl_ahb_upload(mg_ahb *b) { return buffer_job_do(b, J_UPLOAD, NULL); }
 void mg_egl_ahb_forget(mg_ahb *b) { buffer_job_do(b, J_FORGET, NULL); }
 
+/* ------------------------------------------------- whether ANGLE draws OpenGL ES 1
+ *
+ * On a display of OpenGL ES 2 at most, before the first version-1 context is made (es1_on_es2): a version-1 context of the
+ * layer's own on a 4x4 pbuffer, a green square drawn over it once with GL10's calls -- a vertex array, a colour, the
+ * matrices -- and one of its pixels read back. On the layer's service thread, which has no context of its own, in the turn
+ * of the thread that asked when that one holds the display's (as a hardware buffer's job is: buffer_job_run), so that no
+ * other thread's drawing runs in ANGLE meanwhile. A single draw: ANGLE as gecko-w10m builds it refuses that one and ends
+ * the app only at the next.
+ */
+typedef struct es1_try {
+    EGLDisplay d;
+    turn_thread *lender;
+    u32 error;                         /* glGetError after the draw */
+    u8 pixel[4];
+    const char *failed;                /* the step that failed before the draw, if one did */
+    bool drew;
+} es1_try;
+
+static void es1_try_work(es1_try *j)
+{
+    enum {
+        COLOR_BUFFER_BIT = 0x4000, PROJECTION = 0x1701, MODELVIEW = 0x1700, VERTEX_ARRAY = 0x8074, FLOAT = 0x1406, TRIANGLE_STRIP = 5,
+        RGBA = 0x1908, UNSIGNED_BYTE = 0x1401, SURFACE_TYPE = EGL_SURFACE_TYPE, GREEN_SIZE = 0x3023, BLUE_SIZE = 0x3022,
+        ALPHA_SIZE = 0x3021
+    };
+    typedef void (*fn_float4)(float, float, float, float);
+    typedef void (*fn_enum)(u32);
+    typedef void (*fn_none)(void);
+    typedef void (*fn_rect)(i32, i32, i32, i32);
+    typedef void (*fn_vertex_pointer)(i32, u32, i32, const void *);
+    typedef void (*fn_draw_arrays)(u32, i32, i32);
+    typedef u32 (*fn_error)(void);
+    typedef void (*fn_read)(i32, i32, i32, i32, u32, u32, void *);
+    static const EGLint want[] = { SURFACE_TYPE, EGL_PBUFFER_BIT, EGL_RED_SIZE, 8, GREEN_SIZE, 8, BLUE_SIZE, 8, ALPHA_SIZE, 8, EGL_NONE };
+    static const EGLint es1[] = { EGL_CONTEXT_CLIENT_VERSION, 1, EGL_NONE };
+    static const EGLint size[] = { EGL_WIDTH, 4, EGL_HEIGHT, 4, EGL_NONE };
+    static const float square[] = { -1.0f, -1.0f, 1.0f, -1.0f, -1.0f, 1.0f, 1.0f, 1.0f };
+    fn_choose_config choose = A(fn_choose_config, "eglChooseConfig");
+    fn_create_context create = A(fn_create_context, "eglCreateContext");
+    fn_float4 clear_color = A(fn_float4, "glClearColor"), color = A(fn_float4, "glColor4f");
+    fn_enum clear = A(fn_enum, "glClear"), matrix_mode = A(fn_enum, "glMatrixMode");
+    fn_enum enable_client = A(fn_enum, "glEnableClientState"), disable_client = A(fn_enum, "glDisableClientState");
+    fn_none identity = A(fn_none, "glLoadIdentity");
+    fn_rect viewport = A(fn_rect, "glViewport");
+    fn_vertex_pointer vertex_pointer = A(fn_vertex_pointer, "glVertexPointer");
+    fn_draw_arrays draw = A(fn_draw_arrays, "glDrawArrays");
+    fn_error get_error = A(fn_error, "glGetError");
+    fn_read read = A(fn_read, "glReadPixels");
+    EGLConfig config = NULL;
+    EGLContext ctx = NULL;
+    EGLSurface pb = NULL;
+    EGLint n = 0;
+    if (!choose || !create || !clear_color || !color || !clear || !matrix_mode || !enable_client || !disable_client || !identity || !viewport
+        || !vertex_pointer || !draw || !get_error || !read) {
+        j->failed = "a function of EGL's or OpenGL ES 1's is missing";
+        return;
+    }
+    if (!choose(j->d, want, &config, 1, &n) || n < 1) j->failed = "no 8888 configuration for a pbuffer";
+    else if (!(ctx = create(j->d, config, NULL, es1))) j->failed = "no context of version 1";
+    else if (!(pb = g_eglCreatePbufferSurface(j->d, config, size))) j->failed = "no pbuffer";
+    else if (!g_eglMakeCurrent(j->d, pb, pb, ctx)) j->failed = "the context could not be made current";
+    else {
+        turn_begin();
+        viewport(0, 0, 4, 4);
+        clear_color(0.0f, 0.0f, 0.0f, 0.0f);
+        clear(COLOR_BUFFER_BIT);
+        matrix_mode(PROJECTION);
+        identity();
+        matrix_mode(MODELVIEW);
+        identity();
+        enable_client(VERTEX_ARRAY);
+        vertex_pointer(2, FLOAT, 0, square);
+        color(0.0f, 1.0f, 0.0f, 1.0f);
+        draw(TRIANGLE_STRIP, 0, 4);
+        j->error = get_error();
+        read(1, 1, 1, 1, RGBA, UNSIGNED_BYTE, j->pixel);
+        disable_client(VERTEX_ARRAY);
+        while (get_error()) {}
+        turn_end();
+        g_eglMakeCurrent(j->d, NULL, NULL, NULL);
+        j->drew = j->error == 0 && j->pixel[0] < 16 && j->pixel[1] > 239 && j->pixel[2] < 16;
+    }
+    if (pb) g_eglDestroySurface(j->d, pb);
+    if (ctx) g_eglDestroyContext(j->d, ctx);
+}
+
+static void es1_try_job(void *p)
+{
+    es1_try *j = (es1_try *)p;
+    turn_thread *t = &t_turn;
+    if (!t->ctx) t->dpy = j->d;
+    t->lender = j->lender;
+    t->lent = j->lender && j->lender->held == turn_of(j->d) ? j->lender->held : NULL;
+    turn_begin();
+    es1_try_work(j);
+    turn_end();
+    t->lent = NULL;
+    t->lender = NULL;
+}
+
+static bool es1_drawn_here(EGLDisplay d)
+{
+    es1_try j;
+    u64 t0 = mg_time_monotonic_ns();
+    memset(&j, 0, sizeof(j));
+    j.d = d;
+    j.lender = &t_turn;
+    on_service_thread(es1_try_job, &j);
+    turn_back();
+    if (j.drew)
+        mg_info("egl: OpenGL ES 1 on this graphics processor (Direct3D feature level %d_%d, OpenGL ES 2 at most): ANGLE draws it, with "
+                "OpenGL ES 2's shaders (a version-1 context tried on a pbuffer drew, %.1f ms); the app's version-1 contexts are made as asked",
+                g_d3d_level >> 12, (g_d3d_level >> 8) & 15, (double)(mg_time_monotonic_ns() - t0) / 1e6);
+    else
+        mg_warn("egl: OpenGL ES 1 on this graphics processor (Direct3D feature level %d_%d, OpenGL ES 2 at most): ANGLE does not draw it "
+                "(a version-1 context tried on a pbuffer: %s, error 0x%x, pixel %02x%02x%02x%02x)", g_d3d_level >> 12, (g_d3d_level >> 8) & 15,
+                j.failed ? j.failed : "its draw was refused or drew nothing", (unsigned)j.error, j.pixel[0], j.pixel[1], j.pixel[2], j.pixel[3]);
+    return j.drew;
+}
+
 static void *g_eglGetNativeClientBufferANDROID(const void *buffer)
 {
     mg_ahb *b = mg_ahb_of(buffer);
@@ -2808,6 +3140,8 @@ static void *resolve(const char *name)
         if (!h_link_program) h_link_program = (fn_gl_uint)angle(name);
         return h_link_program ? (void *)w_link_program : NULL;
     }
+    /* (What the WebView's Chromium is told of the extensions on a display of OpenGL ES 2: w_get_string.) */
+    if (!strcmp(name, "glGetString")) return angle(name) ? (void *)w_get_string : NULL;
 #if MG_GUEST_SOFTFP
     for (i = 0; i < MG_COUNT(g_adapters); i++) {
         if (strcmp(g_adapters[i].name, name)) continue;

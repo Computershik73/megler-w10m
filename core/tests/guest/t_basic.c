@@ -3556,3 +3556,60 @@ const char *t_signal_regs_seen(long print)
     if (print) printf("t_signal_regs_seen: %s\n", text);
     return text;
 }
+
+#if defined(__arm__)
+/*
+ * A thread at a small pc (mg_tests.c, test_small_pc_report), in the library's own state. t_return_smashed ends as DANA's
+ * libjabe.so (DexGuard) ends itself when a sum of its own code differs (+0xeed18): 20 put in its frame's saved lr and 24 in
+ * the saved r11, and a return through them, lr left pointing into the library's data; t_return_smashed_sp the same with lr
+ * on the stack. t_call_small calls 20 through a register: a call through a pointer a little past null, lr a return
+ * address.
+ */
+__attribute__((visibility("hidden"))) int t_rs_word[2] = { 0x7447bf14, 0 };
+#if defined(__thumb__)
+#define T_RS_STATE ".thumb\n"
+#define T_RS_FUNC ".thumb_func\n"
+#define T_RS_PC "4"
+#else
+#define T_RS_STATE ".arm\n"
+#define T_RS_FUNC ""
+#define T_RS_PC "8"
+#endif
+__asm__(".text\n"
+        ".syntax unified\n" T_RS_STATE
+        ".p2align 2\n"
+        ".globl t_return_smashed\n.type t_return_smashed, %function\n" T_RS_FUNC
+        "t_return_smashed:\n"
+        "  push {r4, r5, r6, r7, r8, r9, r10, r11, lr}\n"
+        "  mov r2, #20\n"
+        "  str r2, [sp, #32]\n"
+        "  mov r0, #24\n"
+        "  str r0, [sp, #28]\n"
+        "  ldr lr, 2f\n"
+        "1:\n"
+        "  add lr, pc\n"
+        "  pop {r4, r5, r6, r7, r8, r9, r10, r11, pc}\n"
+        "  .p2align 2\n"
+        "2:\n"
+        "  .word t_rs_word - (1b + " T_RS_PC ")\n"
+        ".size t_return_smashed, .-t_return_smashed\n"
+
+        ".globl t_return_smashed_sp\n.type t_return_smashed_sp, %function\n" T_RS_FUNC
+        "t_return_smashed_sp:\n"
+        "  push {r4, r5, r6, r7, r8, r9, r10, r11, lr}\n"
+        "  mov r2, #20\n"
+        "  str r2, [sp, #32]\n"
+        "  mov r0, #24\n"
+        "  str r0, [sp, #28]\n"
+        "  mov lr, sp\n"
+        "  pop {r4, r5, r6, r7, r8, r9, r10, r11, pc}\n"
+        ".size t_return_smashed_sp, .-t_return_smashed_sp\n"
+
+        ".globl t_call_small\n.type t_call_small, %function\n" T_RS_FUNC
+        "t_call_small:\n"
+        "  push {r4, lr}\n"
+        "  mov r1, #20\n"
+        "  blx r1\n"
+        "  pop {r4, pc}\n"
+        ".size t_call_small, .-t_call_small\n");
+#endif

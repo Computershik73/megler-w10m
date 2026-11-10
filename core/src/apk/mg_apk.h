@@ -33,6 +33,12 @@ typedef struct mg_apk_info {
     char application[200];         /* the Application subclass, if any */
     char native_library[96];       /* android.app.lib_name of the launcher activity */
     char func_name[96];            /* android.app.func_name */
+    /*
+     * For a launcher activity that names its library and is a Java class of the app's own (with bytecode to run): whether the
+     * library exports NativeActivity's entry, as read from the APK -- 1 yes, 0 no (the app is a Java one then), -1 not known
+     * (the start loads the library and asks it: core/src/run/mg_run.c); -2 when it was not looked for.
+     */
+    int native_entry;
     mg_apk_meta meta[48];          /* <meta-data> of the application and the launcher activity */
     int nmeta;
     /* The platform's libraries the application asks for (<uses-library android:name>, required or not), in the manifest's order. */

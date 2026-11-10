@@ -376,6 +376,35 @@ them all. With 0.1.0.608 one such slot was an enabled context-ID breakpoint,
 which matched every instruction: the thread stopped at the first one of the
 exception dispatcher, again and again, until its stack ran out.
 
+**A library past the breakpoints.** DANA's `libjabe.so` (2.151.0; Guardsquare's
+DexGuard, its name chosen by DexGuard) sums its own code the same way, and much
+of it: its function at `+0xedd8c` (ARM) asks `+0x16d84` for a length and a sum
+(0x129c, 0x5e77), sums its own first 0x129c bytes with sdbm's hash (each byte
+added to the hash times 65599, from 0x8c53fbfe), and where the low 16 bits differ
+it puts 20 in its frame's saved `lr` and 24 in the saved `r11` and returns
+(`+0xeed18`): the thread goes on at 0x14 with `r11` 0x18, `r12` the length and
+`r0` the stack guard's difference, 0. Those bytes hold three ARM `svc 0`
+(`+0xeebac`, `+0xeebc8`, `+0xeec54`), which the loader made traps. Eleven such
+functions giving a length (up to 64 KB) and a sum are found by their shape, and
+some 27 blocks that put small numbers in their frame's saved `r11` and `lr`; the
+phone's third fault (pc 0x28, `r11` 0xc, `r3` 669df417, `r4` 0x504) is the next
+check's. The library has 417 system calls by number (352 ARM, 65 Thumb) in 164 of
+its 306 pages of code, and under qemu it made them at 35 sites before that second
+check -- far past the six breakpoints, and one page of it holds twenty. Under qemu,
+with the three `svc` of the first sum's bytes left as the file has them (made by
+qemu's Linux itself, for the trial), the first check passes and the second ends
+the thread as on the phone, with the same registers; with all of them left so, the
+library's checks pass and the app goes on, as far as a fault in another library
+(`libakamaibmp.so`, Akamai's, which unpacks itself). What would run it on the phone
+is its code as the file has it where it is read, and the traps where it runs: the
+image twice, the copy that runs patched and the one the library's pointers name
+never executed, their writable segments one memory -- not done.
+Meanwhile the crash report no longer calls such an end a call through a null
+pointer: a small pc whose `lr` is no return address (no BL or BLX before it, or in
+a library's data, or on the stack) is said to be a jump or a return there, with how
+much of `lr`'s library's code the loader changed (`mg_ld_after_call`; the guest
+test `t_return_smashed` ends as libjabe.so does).
+
 ### The kernel's user helpers
 
 Linux maps a page of code at `0xffff0000` into every ARM process, which old
@@ -464,7 +493,12 @@ and never both at once.
 An island is the library's own bit of executable memory, within a branch's reach
 (16 MB) of its text: the thread-pointer trampolines, the PLT thunks, and a stub for
 every import nothing provides (it logs the name when called and returns zero, so a
-missing function is a line in the log and not a crash at load).
+missing function is a line in the log and not a crash at load). The library's line
+as it loads names those imports, each once however many relocations ask for it, as
+many as the line has room for and then how many more ("ld: libjabe.so: 1 imports
+are not provided: killpg"), where DANA's log (0.1.0.678) said only how many.
+`mg_tests` checks it on the guest libraries `libt_unres.so` and
+`libt_unres_many.so` (`guest/t_unres.c`).
 
 Memory an app asks for as writable and executable at once (a JIT's code heap) cannot
 exist. Such a region is writable until something executes in it and executable until
@@ -535,6 +569,18 @@ ANGLE's functions. This layer adds the display, the window, and the float adapte
   `libwebviewchromium.so`): ANGLE's Direct3D 11 renderer, one to a display, does not
   take two contexts of one display drawing at once (docs/JAVA.md, "A display of its
   own").
+- The threads of an app's own that draw on one display at once take turns
+  (`ndk/mg_egl.c`, "turns"): each call of EGL's and OpenGL ES's holds the
+  display's lock, and a thread's context is made current again when another's was
+  last. The turns go round: a thread whose calls have had the display for 4 ms
+  while another waits lets that one in, and a swap lets go of its turn while it
+  waits for its pacing or for the shell to take its frame
+  (`mg_egl_turn_pause`). Up to package 681 a thread drawing without a pause kept
+  the others out, and a swap held them out for the sixtieth of a second it slept:
+  HERE WeGo's map's render thread and Flutter's raster thread (the app's whole
+  interface) shared the display so. Tested under qemu (`mg_gl_tests.c`,
+  `test_turns_fair`; the natives app's stack, a call of another thread's going on
+  while a frame is handed over).
 - The app's window is an `ANativeWindow`; its window surface is a pbuffer over a
   texture the shell provides, on ANGLE's own Direct3D device. `eglSwapBuffers` hands
   the finished frame to the shell, which copies it to its swap chain's back buffer
@@ -721,7 +767,10 @@ can be OpenGL ES surfaces: a `GLSurfaceView` with a `Renderer`, or any
 on through `EGL14` or `EGL10`. And some apps use EGL with no view at all: a pbuffer
 to ask the GPU's name, or to draw off the screen. This is how that is done here.
 Android's picture of it is kept: the surface lies *under* the window, and the
-views are drawn over it with a hole where the `SurfaceView` is.
+views are drawn over it with a hole where the `SurfaceView` is -- or, for a
+`SurfaceView` ordered on top of the window (`setZOrderOnTop`), *over* it, with
+no hole, and translucent where its format has alpha (below, "Surfaces over the
+window").
 
 **One OpenGL ES in the process.** The Java natives call the very functions native
 code is bound to, ANGLE's, by name through the core (`mg_egl_host`). Two things
@@ -770,6 +819,27 @@ contexts were made without a configuration too, and ANGLE refused them all:
 native code's failed, and the Java side's were version 2 -- Google Maps'
 legacy renderer, which is OpenGL ES 1 throughout (`GL10`, `GL11`), drew
 Transit's map black.
+
+On a display of OpenGL ES 2 at most -- Direct3D feature level 9_x, a Lumia
+650's Adreno 304 and most Lumias' -- ANGLE's shaders for version 1 as
+gecko-w10m builds it are OpenGL ES 3's, which it does not compile there: an
+app's first draw of version 1 was refused, and its second ended the app in
+ANGLE (gl::Program::id on null: Transit on a Lumia 650, 0.1.0.683). Megler's own
+ANGLE (`angle/0004-gles1-feature-level-9.patch`, `tools/build-angle.py`) writes
+them in OpenGL ES 2's language there, for the state each draw is in, as its
+uber shader would decide (the same pictures as at feature level 10_1 and up;
+but no flat shade model and no logic op, which that language and level do not
+have),
+and refuses a draw it has no program for instead of ending the app. Which
+ANGLE the package has is found out by drawing: before the first version-1
+context on such a display, one of the layer's own draws once on a pbuffer
+(`mg_egl.c`, `es1_drawn_here`); where it does not draw, version-1 contexts are
+made of version 2, whose fixed-function calls do nothing, as 0.1.0.684 made
+them on every such display. The flag `egl-level-9_3` makes the app's display
+at feature level 9_3 on any graphics processor, to see a Lumia's way on an
+HP Elite x3 or a PC; `core/tests/mg_angle_windows.c` draws Google Maps' ways
+of drawing with GL10 on this PC's own build of that ANGLE, at 9_3 and at the
+PC's own level, and checks the pictures (`tools/build-tests.sh win`).
 
 **`GLSurfaceView`.** `megler.Native.startGL(view, renderer, version)` starts a GL
 thread of the layer's own for that view (C, in `mg_java_gl.c`), a thread of the
@@ -897,6 +967,39 @@ composed there and nothing is read back, neither the frames nor the views:
   the test shell takes it before it copies a frame. On the PC's graphics
   processor a second Direct3D device stands for ANGLE's (`mg_gfx_windows.cpp`),
   its texture shared plainly and then with a keyed mutex.
+
+**Surfaces over the window.** Android orders a `SurfaceView`'s surface by its
+sublayer: under the window (the default), under it but over those
+(`setZOrderMediaOverlay`), or over it (`setZOrderOnTop`) -- where the view makes
+no hole, and where a format with alpha (`PixelFormat.TRANSLUCENT`,
+`TRANSPARENT`, `RGBA_8888`) lets the window be seen where the surface's frame is
+clear, its colours premultiplied. The overlay's `SurfaceView` says its place with
+how (`EGLNative.place`'s flags: megler.h's `MEGLER_GL_ABOVE`,
+`MEGLER_GL_TRANSLUCENT`, `MEGLER_GL_OVERLAY`), the core hands that to the shell
+with the place (`gl_place`'s `flags`), and the window is composed so, by the
+shell (`composeWindow` in `GfxHost.cpp`: the layers under the views, those with
+`MEGLER_GL_OVERLAY` after the others, the views over them, the videos, then the
+layers over the views, opaque or, translucent, over what is there through a
+premultiplied bitmap of the same copy) or by the core (`compose_part` in
+`mg_java_gl.c`: a part where a layer over the views is composed whole, in that
+order). Up to package 681 a surface on top was shown nowhere: its view drew
+neither its hole nor its place, and the log's OpenGL frames said "layer 0
+nowhere". HERE WeGo is a Flutter app whose `FlutterActivity` is transparent
+(`TransparencyMode.transparent`): its whole interface is `FlutterSurfaceView`,
+`setZOrderOnTop(true)` with `PixelFormat.TRANSPARENT`, over the SurfaceView its
+map (HERE SDK's native renderer) draws on, which its activity puts under it; only
+the map was seen, and the taps went to the interface no one saw (its map's
+gestures come through Flutter's Dart code, which drives the map by FFI). A
+hidden `SurfaceView` (`setVisibility` other than `VISIBLE`) has its surface
+destroyed and made again when it is shown, as Android's has, so that a hidden
+surface over the window is not left there. Tested by the natives app's stack
+(two SurfaceViews one over the other, a render thread drawing each, two boxes of
+the views between them), under qemu both ways, and by the PC's test of the
+shell's composing, a translucent and an opaque layer over the views. Not as on
+Android: the app's windows are one picture of the views here (megler.ViewRoot
+draws its dialogs, popups and toasts into the screen's one bitmap), so a surface
+on top of an activity's window is over that activity's dialogs too, where Android
+has them over it.
 
 **Native code on a SurfaceView.** A game with a Java activity and a native
 engine (Asphalt 9) hands its `SurfaceView`'s `Surface` to native code, which
@@ -1268,6 +1371,57 @@ negotiates, pairing with a PIN -- which only a phone (or a PC) with a MeshCore
 radio in range can show; whether Windows 10 Mobile takes a custom pairing
 ceremony, or a PIN must go through its own dialog.
 
+## Wi-Fi
+
+An app's `WifiManager` -- its scans, their results, the network the phone is
+connected to -- gets the phone's Wi-Fi through a call of the shell's,
+`megler_wifi_host` in `megler.h`: whether it can be scanned, a scan (waited
+for), the connection. The core (`drivers/mg_java_wifi.c`) hands what the shell
+found to the framework's `megler.Wifi`, which keeps Android's side: one thread
+for the scans, the last results as Android's `ScanResult`s, the broadcast, the
+rules of who may have them (docs/JAVA.md, "Wi-Fi, and Google's network
+location"). What they are for, above all, is Google Play services' network
+location, which runs in the app's process and finds the phone from the Wi-Fi
+networks around it, as on Android: where Windows' own location gives a phone
+the cell network's fixes alone, of 300 to 660 m, Google's Wi-Fi positioning gives
+tens of metres.
+
+**The shell** (`player/WifiHost.cpp`, Windows.Devices.WiFi, its work on a
+thread of its own in the multithreaded apartment while the core's call waits):
+
+| Android | Windows |
+|---|---|
+| whether the phone can scan | `WiFiAdapter.RequestAccessAsync` (the package's `wiFiControl`; nothing is shown to the user), the first adapter `FindAllAdaptersAsync` finds, and the Wi-Fi radio's state (Windows.Devices.Radios): on, off, refused, none |
+| a scan (`startScan`) | `ScanAsync`, waited for ten seconds at most, then the adapter's `NetworkReport`: its `Timestamp`, and each network's `Bssid`, `Ssid` (text, handed over as UTF-8), `NetworkRssiInDecibelMilliwatts`, `ChannelCenterFrequencyInKilohertz`, `SecuritySettings` (authentication and cipher), `PhyKind`, `NetworkKind` |
+| `ScanResult.timestamp` | the report's `Timestamp`, moved onto `elapsedRealtime`'s clock by the framework |
+| `getConnectionInfo`'s network | the adapter's connected profile (`GetConnectedProfileAsync`) where it is a Wi-Fi one: its SSID; the BSSID, signal and channel of the strongest access point of that SSID in the last scan (Windows says not which one the phone is with), else the signal of its bars; kept ten seconds |
+
+The core asks for no scan sooner than three seconds after the last began; the
+framework answers the requests meanwhile with the scan under way or the next.
+The log says what Windows answers of the access, the adapter and the radio as
+it changes, a scan or a connection that fails, and what scans find: the first
+eight one by one (how many networks, how many on 5 GHz, the strongest, how long
+Windows took), then once a minute.
+
+**The packages.** Megler's own manifest declares the device capability
+`wiFiControl`, and so does an app's own package where the app holds the
+location (docs/PER-APP-PACKAGES.md): Android gives a scan's results only to an
+app that may have the location, and Google Play services in the app scans for
+it with the app's own capabilities.
+
+*Proven:* under qemu and on this PC, on a stand-in for the shell's Wi-Fi
+(`core/tests/mg_wifi_standin.c`: four networks, a UTF-8 name, a hidden one, an
+ad hoc one): the core's tests (`mg_wifi_tests.c`: no Wi-Fi, a scan's networks to
+the last field, a scan bounded by the room given, the report's time, a scan
+refused with the Wi-Fi off, the connection), the test app `wifi` (Java: the
+broadcast, the results, the second scan's wait, two requests answered by one
+scan, the callback, the connection, a `Parcel`) and the data app (no location
+permission: no scan). `WifiHost.cpp` builds into the phone's package and into
+the PC's test program, whose `--wifi-windows` scans this PC's Wi-Fi through it
+and the core's. *Expected:* that a phone's scan is heard as said, and that
+Google's location server answers Google Play services there: only a phone's
+log shows it ("Google's network location: its first fix").
+
 ## Files and the shared storage
 
 Android's paths are looked up in a mount table (`bionic/mg_libc_io.c`). What an
@@ -1558,11 +1712,24 @@ one so far: `NativeActivity`, which is what Android itself provides for apps wit
 Java (`android:hasCode="false"`, or `android.app.lib_name` in the manifest). An
 activity of the app's own that names its library with `android.app.lib_name` is
 taken for NativeActivity's subclass only when the library exports its entry
-(`ANativeActivity_onCreate`, or `android.app.func_name`), looked for in the
-dynamic symbols of its first 32 MB (`native_entry`, `apk/mg_apk.c`): Qt's
-QtActivity names its library so and starts it through JNI itself, and 2GIS
-(`libv4android.so`, 277 MB) ended in "has no ANativeActivity_onCreate" until it
-was taken for the Java app it is (package 576). It
+(`ANativeActivity_onCreate`, or `android.app.func_name`), looked for among its
+dynamic symbols (`native_entry`, `apk/mg_apk.c`): Qt's QtActivity names its
+library so and starts it through JNI itself, and 2GIS (`libv4android.so`, 277 MB)
+ended in "has no ANativeActivity_onCreate" until it was taken for the Java app
+it is (package 576). The look reads the library where it lies in whichever APK
+has it (`mg_zip_cursor`, `zip/mg_zip.c`): its headers, its dynamic section, and
+through its GNU or SysV hash table the bucket, chain, symbol and name the
+dynamic linker would read -- a stored library a few small reads, a deflated one
+inflated as far as its dynamic section, its first 32 MB kept for the tables
+before it. Up to package 681 it read the library's first 32 MB whole, and 2GIS's
+dynamic section, past its code, was not in them: it was a NativeActivity again.
+The bundle tests make the natives app with a library of 40 MB whose dynamic
+section is at 40 MB, stored (a hole in the file) and deflated. Where the look
+cannot tell (the library damaged, or the flag `native-entry-at-start`), the start
+asks the library itself (`run/mg_run.c`): it is loaded -- not started, its
+constructors run when Java loads it -- and, without the entry, the app is started
+by the Java driver instead, where the NativeActivity driver would end at once; the
+natives app's second run under qemu goes that way. The NativeActivity driver
 loads the library, calls `ANativeActivity_onCreate`, and makes the activity's
 callbacks in the framework's order on a thread that stands for Android's main
 thread. Apps built on `android_native_app_glue` run on top of that.

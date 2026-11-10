@@ -123,6 +123,9 @@ fi
 # One of Go's, by its build ID note: a goroutine's stack in its heap given back by number (bionic/mg_libc_mem.c, madvise),
 # and its runtime's reservations for its heap.
 "$CLANG" "${COMMON[@]}" ${THUMB[@]+"${THUMB[@]}"} -Wl,--hash-style=both -Wl,-soname,libt_go.so -o "$(w "$OUT/libt_go.so")" "$(w "$SRC/t_go.c")" "${SYS[@]}"
+# Imports nothing provides, which the loader names as it loads them: a few, and more than its line has room for.
+"$CLANG" "${COMMON[@]}" ${THUMB[@]+"${THUMB[@]}"} -Wl,--hash-style=both -Wl,-soname,libt_unres.so -o "$(w "$OUT/libt_unres.so")" "$(w "$SRC/t_unres.c")" "${SYS[@]}"
+"$CLANG" "${COMMON[@]}" ${THUMB[@]+"${THUMB[@]}"} -Wl,--hash-style=both -DMANY -Wl,-soname,libt_unres_many.so -o "$(w "$OUT/libt_unres_many.so")" "$(w "$SRC/t_unres.c")" "${SYS[@]}"
 
 # One file name twice: the app's, and the one that stands for a library of the Android root's.
 mkdir -p "$OUT/runtime"

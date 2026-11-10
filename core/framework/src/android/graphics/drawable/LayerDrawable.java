@@ -54,7 +54,12 @@ public class LayerDrawable extends Drawable implements Drawable.Callback {
             } else y.d.setBounds(mTmp);
         }
     }
-    @Override public void draw(Canvas c) { for (Layer y : mLayers) if (y.d != null && y.d.isVisible()) y.d.draw(c); }
+    /* Every layer, as Android's: a layer's visibility (setVisible, which this drawable passes on to its layers) is a hint to
+       it, and only a layer that hides itself while not visible (Fresco's RootDrawable) draws nothing then. Layers that were
+       not visible were left out here, so a LayerDrawable told it was not visible drew nothing at all: Messenger's avatars
+       are one (MigProfileImage's user tile: the picture's round shape, a badge and the initials, in Litho's MatrixDrawable),
+       and so are ripples with their content (RippleDrawable), a view's background told it is not shown. */
+    @Override public void draw(Canvas c) { for (Layer y : mLayers) if (y.d != null) y.d.draw(c); }
     @Override public int getIntrinsicWidth() { int w = -1; for (Layer y : mLayers) if (y.d != null) w = Math.max(w, (y.w > 0 ? y.w : y.d.getIntrinsicWidth()) + y.l + y.r); return w; }
     @Override public int getIntrinsicHeight() { int h = -1; for (Layer y : mLayers) if (y.d != null) h = Math.max(h, (y.h > 0 ? y.h : y.d.getIntrinsicHeight()) + y.t + y.b); return h; }
     @Override public boolean getPadding(Rect p) {

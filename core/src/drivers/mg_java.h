@@ -110,6 +110,17 @@ bool mg_jlocation_last(megler_location *fix);
 const mg_jhle *mg_java_sensors_natives(void);
 /* megler.Bluetooth: the phone's Bluetooth LE radio behind android.bluetooth, over run/mg_bluetooth.c (mg_java_bluetooth.c). */
 const mg_jhle *mg_java_bluetooth_natives(void);
+/*
+ * megler.WifiNative: the phone's Wi-Fi behind android.net.wifi.WifiManager, over the shell's (megler_wifi_host;
+ * mg_java_wifi.c). The host is copied; NULL or one left zero has no Wi-Fi. The same without Java for the tests: whether the
+ * phone can scan (MEGLER_WIFI_*; Windows asked first with `ask`), a scan (the networks' number, -1 for none; what it finds
+ * said in the log, the first scans one by one and then once a minute), and the network the phone is connected to.
+ */
+const mg_jhle *mg_java_wifi_natives(void);
+void mg_java_wifi_set_host(const megler_wifi_host *host);
+int mg_jwifi_state(bool ask);
+int mg_jwifi_scan(megler_wifi_network *out, int max, long long *time_ns);
+bool mg_jwifi_connection(megler_wifi_network *out);
 void mg_java_camera_close_all(void);
 /*
  * The same without Java, as the natives use them, for the tests. A camera is opened by its number and started at one of its

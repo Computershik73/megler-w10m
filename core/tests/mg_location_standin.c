@@ -4,7 +4,7 @@
 #include "../src/mg_core.h"
 #include "../src/host/mg_host.h"
 
-static volatile i32 g_starts, g_stops;
+static volatile i32 g_starts, g_stops, g_cell;
 
 static MEGLER_CB int access_fn(void *user, bool ask)
 {
@@ -34,13 +34,13 @@ static MEGLER_CB bool last_fn(void *user, megler_location *fix)
     fix->latitude = 55.751244 + (double)(now_ms / 1000 % 100) * 0.00001;
     fix->longitude = 37.618423;
     fix->altitude = 144.0;
-    fix->accuracy_m = 12.0f;
+    fix->accuracy_m = g_cell ? 600.0f : 12.0f;
     fix->speed_mps = 1.5f;
     fix->bearing_deg = 0.0f;
     fix->has = MEGLER_LOCATION_HAS_ALTITUDE | MEGLER_LOCATION_HAS_SPEED | MEGLER_LOCATION_HAS_BEARING;
     /* A new fix each second, as a phone's satellites give one. */
     fix->time_ms = now_ms / 1000 * 1000;
-    fix->source = MEGLER_LOCATION_SATELLITES;
+    fix->source = g_cell ? MEGLER_LOCATION_NETWORK : MEGLER_LOCATION_SATELLITES;
     return true;
 }
 
@@ -53,3 +53,5 @@ void mg_location_standin_counts(int *starts, int *stops)
     *starts = (int)g_starts;
     *stops = (int)g_stops;
 }
+
+void mg_location_standin_cell(bool cell) { mg_atomic_xchg(&g_cell, cell ? 1 : 0); }

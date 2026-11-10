@@ -72,11 +72,22 @@
  *       seconds -- nothing sent, connected to or paired with -- its advertisements counted, each device's first said. A PC
  *       without Bluetooth, or with the radio off, says so and has nothing to check. Only in the build tools/build-tests.sh win
  *       makes; any other says so and does nothing
+ *   mg_tests --wifi-windows <scratch dir>
+ *       the shell's Wi-Fi (app/Megler/player/WifiHost.cpp: Windows.Devices.WiFi) through megler_wifi_host, under the core's for
+ *       WifiManager: Windows' access, this PC's adapter and radio, one scan -- its networks counted, the first eight said with
+ *       their numbers -- and the network the PC is connected to. A PC without Wi-Fi, or with it off, says so and has nothing to
+ *       check. Only in the build tools/build-tests.sh win makes; any other says so and does nothing
  *   mg_tests --portal-windows <address> <user> <password> <scratch dir> <received dir> <mock's log>
  *       the Xbox build's client of the console's Device Portal (app/Megler/shell/DevicePortal.cpp) against a portal of the
  *       tests' own at that address (tools/device-portal-mock.py, which tools/build-tests.sh win starts): its handshake, user
  *       name and password, CSRF token, an install, a refused one, the list of the packages, an uninstall. Only in the build
  *       tools/build-tests.sh win makes; any other says so and does nothing
+ *   mg_tests --angle-windows <ANGLE dir> <scratch dir> [9_3]
+ *       OpenGL ES 1 on ANGLE itself (mg_angle_windows.c): Megler's own ANGLE for this PC from that folder
+ *       (tools/build-angle.py --arch x64), loaded and driven by the core's EGL as an app's Java drives it, at Direct3D
+ *       feature level 9_3 (the flag egl-level-9_3, as a Lumia 650's graphics processor has) or at this PC's own; scenes drawn
+ *       as Google Maps' legacy renderer draws them, read back and checked, each written as a BMP into the scratch folder.
+ *       Only in the build tools/build-tests.sh win makes; any other says so and does nothing
  *   mg_tests --bundles <test apps dir> <scratch dir> [real bundles dir]
  *       bundles of split APKs (.apks, .xapk, .apkm) unpacked as the shell unpacks them, and the APK report of what comes out
  *       (mg_bundle_tests.c): the test app `splits` in the folder of the test apps (build/guest/java), and the real bundles
@@ -555,6 +566,7 @@ MG_HOSTAPI int mg_gfx_windows_check_present(const megler_gfx_host *h, void (MEGL
 MG_HOSTAPI int mg_gfx_windows_check_gl(const megler_gfx_host *h, void (MEGLER_CB *line)(const char *text, void *user), int *checks);
 MG_HOSTAPI int mg_gfx_windows_check_canvas(const megler_gfx_host *h, void (MEGLER_CB *line)(const char *text, void *user), int *checks);
 MG_HOSTAPI int mg_gfx_windows_check_video(const megler_gfx_host *h, void (MEGLER_CB *line)(const char *text, void *user), int *checks);
+MG_HOSTAPI int mg_gfx_windows_check_texture_9_3(const megler_gfx_host *h, void (MEGLER_CB *line)(const char *text, void *user), int *checks);
 
 /* A pixel of a 32 x 32 picture, as a check: a line when it is not what it should be. */
 static int gfx_loss_pixel(const u32 *px, int x, int y, u32 want, const char *what)
@@ -663,6 +675,7 @@ static int gfx_windows_mode(int argc, char **argv)
         failed += mg_gfx_windows_check_canvas(config.host, print_line, &checks);
         failed += mg_gfx_windows_check_gl(config.host, print_line, &checks);
         failed += mg_gfx_windows_check_video(config.host, print_line, &checks);
+        failed += mg_gfx_windows_check_texture_9_3(config.host, print_line, &checks);
         failed += gfx_windows_loss(config.host, &checks);
     } else if (config.host->present) {
         /* Drawn in memory there is no picture of the shell's own to show: the layer is told no, and flushes as before. */
@@ -1121,6 +1134,77 @@ static int bluetooth_windows_mode(int argc, char **argv)
 #endif
 }
 
+/* ---------------------------------------------------------- --wifi-windows */
+
+#ifdef MG_WIFI_WINDOWS
+/* mg_wifi_windows.cpp: the shell's own megler_wifi_host. */
+MG_HOSTAPI const megler_wifi_host *mg_wifi_windows_host(void);
+MG_HOSTAPI void mg_wifi_windows_summary(char *out, size_t size);
+#endif
+
+/*
+ * This PC's Wi-Fi through the shell's host and the core's, as an app's WifiManager uses them: whether it can be scanned, one
+ * scan -- how many networks it heard, the first eight said (their BSSID, name, signal, channel and security) -- and the network
+ * the PC is connected to. A PC without Wi-Fi, or with it off, or that Windows does not let scan, says so and checks nothing.
+ */
+static int wifi_windows_mode(int argc, char **argv)
+{
+#ifdef MG_WIFI_WINDOWS
+    megler_config config;
+    static megler_wifi_network nets[128];
+    megler_wifi_network c;
+    char summary[600];
+    long long when = 0;
+    int checks = 0, failed = 0, state, n, i;
+    (void)argc;
+    memset(&config, 0, sizeof(config));
+    config.data_dir = argv[2];
+    config.package_dir = argv[2];
+    megler_init(&config);
+    mg_java_wifi_set_host(mg_wifi_windows_host());
+    mg_wifi_windows_summary(summary, sizeof(summary));
+    printf("  Windows' Wi-Fi: %s\n", summary);
+    state = mg_jwifi_state(true);
+    if (state != MEGLER_WIFI_ON) {
+        printf("(%s: --wifi-windows has nothing to scan, and nothing is checked)\n0 checks, 0 failed\n",
+               state == MEGLER_WIFI_OFF      ? "this PC's Wi-Fi is off"
+               : state == MEGLER_WIFI_DENIED ? "Windows does not let this program scan the Wi-Fi"
+               : state == MEGLER_WIFI_NONE   ? "no Wi-Fi adapter on this PC"
+                                             : "Windows did not say whether this program may scan the Wi-Fi");
+        mg_java_wifi_set_host(NULL);
+        return 0;
+    }
+    n = mg_jwifi_scan(nets, (int)MG_COUNT(nets), &when);
+    checks++;
+    if (n < 0) failed++;
+    printf("  %s a scan: %d networks, Windows' report %lld ms old\n", n < 0 ? "FAIL" : "ok", n,
+           when ? (long long)(mg_time_realtime_ns() / 1000000ull) - when / 1000000 : -1ll);
+    for (i = 0; i < n && i < 8; i++)
+        printf("  %012llx \"%.*s\" %d dBm, %d MHz, security %d/%d, physical layer %d%s\n", nets[i].bssid, nets[i].ssid_size, (const char *)nets[i].ssid,
+               nets[i].rssi_dbm, nets[i].frequency_mhz, nets[i].security & 0xff, nets[i].security >> 8, nets[i].phy, nets[i].adhoc ? ", ad hoc" : "");
+    /* Each network's numbers as megler.h has them: a BSSID of 48 bits, a channel's frequency, a signal of dBm. */
+    for (i = 0; i < n; i++)
+        if (!nets[i].bssid || nets[i].bssid >> 48 || nets[i].frequency_mhz < 2400 || nets[i].frequency_mhz > 72000 || nets[i].rssi_dbm > 0 || nets[i].rssi_dbm < -127) {
+            printf("  FAIL network %d's numbers\n", i);
+            failed++;
+            break;
+        }
+    checks++;
+    if (mg_jwifi_connection(&c))
+        printf("  connected to \"%.*s\" (%012llx, %d dBm, %d MHz)\n", c.ssid_size, (const char *)c.ssid, c.bssid, c.rssi_dbm, c.frequency_mhz);
+    else
+        printf("  connected by no Wi-Fi\n");
+    mg_java_wifi_set_host(NULL);
+    printf("%d checks, %d failed\n", checks, failed);
+    return failed ? 1 : 0;
+#else
+    (void)argc;
+    (void)argv;
+    printf("(the shell's Wi-Fi -- Windows.Devices.WiFi -- is not in this build of the tests: --wifi-windows does nothing here; tools/build-tests.sh win runs it)\n");
+    return 0;
+#endif
+}
+
 /* ------------------------------------------------------- --portal-windows */
 
 #ifdef MG_PORTAL_WINDOWS
@@ -1164,6 +1248,101 @@ static int window_windows_mode(void)
 #endif
 }
 
+/* ------------------------------------------------------- --angle-windows */
+
+/* mg_angle_windows.c: OpenGL ES 1 on ANGLE itself, through the core's EGL, at feature level 9_3 or at this PC's own. */
+int mg_angle_windows_run(const char *dir, const char *scratch, bool level_9_3, mg_test_sink sink, void *user, int *checks,
+                         bool (*label)(void *user, const char *ascii, u32 ink, u32 halo, int w, int h, u8 *rgba), void *label_user);
+
+#ifdef MG_GFX_WINDOWS
+static float g_label_outline[16384];
+static size_t g_label_floats;
+static MEGLER_CB bool label_outline_put(void *sink, const void *data, size_t size)
+{
+    (void)sink;
+    if (size % sizeof(float) || size / sizeof(float) > MG_COUNT(g_label_outline) - g_label_floats) return false;
+    memcpy(g_label_outline + g_label_floats, data, size);
+    g_label_floats += size / sizeof(float);
+    return true;
+}
+
+/*
+ * A name as Megler draws a label of Google Maps' legacy renderer into its bitmap (lib6.gmm6.vector.bu): Paint.getTextPath's
+ * outlines -- the shell's text_path -- stroked 3 wide in the halo's colour, then filled in the ink's, on a clear w x h canvas
+ * of the shell's drawing (in memory, the same pixels at each run), the baseline below the ascent and the halo; premultiplied
+ * R, G, B, A as Megler's Bitmap hands them to GLUtils.
+ */
+static bool angle_label(void *user, const char *ascii, u32 ink, u32 halo, int w, int h, u8 *rgba)
+{
+    const megler_gfx_host *g = (const megler_gfx_host *)user;
+    megler_gfx_paint fill, stroke;
+    float metrics[5] = { 0, 0, 0, 0, 0 };
+    u16 text[64];
+    u32 *px;
+    void *cv;
+    int n, i;
+    bool drawn;
+    if (!g || !g->text_path || !g->text_metrics || !g->canvas_new) return false;
+    for (n = 0; ascii[n] && n < 64; n++) text[n] = (u8)ascii[n];
+    memset(&fill, 0, sizeof(fill));
+    fill.color = ink;
+    fill.flags = MEGLER_GFX_ANTI_ALIAS;
+    fill.miter_limit = 4;
+    fill.text_size = 10;
+    fill.text_scale_x = 1;
+    fill.blend = MEGLER_GFX_BLEND_SRC_OVER;
+    fill.filter_mode = -1;
+    stroke = fill;
+    stroke.style = MEGLER_GFX_STROKE;
+    stroke.stroke_width = 3;
+    stroke.color = halo;
+    px = (u32 *)calloc((size_t)w * (size_t)h, 4);
+    if (!px) return false;
+    cv = g->canvas_new(g->user, px, w, h, w * 4);
+    g->text_metrics(g->user, &fill, NULL, metrics);
+    g_label_floats = 0;
+    /* (The baseline on a whole row, as the original's (int) Math.ceil puts it.) */
+    i = (int)(-metrics[1] + 1.5f);
+    if ((float)i < -metrics[1] + 1.5f) i++;
+    drawn = cv && g->text_path(g->user, text, n, 2, (float)i, &fill, NULL, label_outline_put, NULL) && g_label_floats > 0;
+    if (drawn) {
+        g->draw_path(g->user, cv, g_label_outline, (int)g_label_floats, MEGLER_GFX_WINDING, &stroke, NULL);
+        g->draw_path(g->user, cv, g_label_outline, (int)g_label_floats, MEGLER_GFX_WINDING, &fill, NULL);
+        g->flush(g->user, cv);
+        for (i = 0; i < w * h; i++) {
+            rgba[i * 4] = (u8)(px[i] >> 16);
+            rgba[i * 4 + 1] = (u8)(px[i] >> 8);
+            rgba[i * 4 + 2] = (u8)px[i];
+            rgba[i * 4 + 3] = (u8)(px[i] >> 24);
+        }
+    }
+    if (cv) g->canvas_free(g->user, cv);
+    free(px);
+    return drawn;
+}
+#endif
+
+static int angle_windows_mode(int argc, char **argv)
+{
+    megler_config config;
+    int checks = 0, failed;
+    memset(&config, 0, sizeof(config));
+    mg_path_mkdirs(argv[3]);
+    config.data_dir = argv[3];
+    config.package_dir = argv[3];
+    /* (The core's own lines -- the display made, OpenGL ES 1 tried on it -- go where they go without a log of the shell's.) */
+    megler_init(&config);
+#ifdef MG_GFX_WINDOWS
+    /* Google Maps' labels as Megler draws them, by the shell's drawing in memory. */
+    failed = mg_angle_windows_run(argv[2], argv[3], argc >= 5 && !strcmp(argv[4], "9_3"), print_line, NULL, &checks, angle_label,
+                                  (void *)mg_gfx_windows_host(print_line, NULL, 2));
+#else
+    failed = mg_angle_windows_run(argv[2], argv[3], argc >= 5 && !strcmp(argv[4], "9_3"), print_line, NULL, &checks, NULL, NULL);
+#endif
+    printf("%d checks, %d failed\n", checks, failed);
+    return failed ? 1 : 0;
+}
+
 #if defined(MG_CORE_ELF)
 /* On desktop Windows the tests are part of the core's ELF, and Megler's test program calls this (host/win32/mg_desktop_tests.c). */
 MEGLER_API int mg_tests_main(int argc, char **argv)
@@ -1177,8 +1356,10 @@ int main(int argc, char **argv)
     if (argc >= 3 && !strcmp(argv[1], "--camera-windows")) return camera_windows_mode(argc, argv);
     if (argc >= 3 && !strcmp(argv[1], "--sensors-windows")) return sensors_windows_mode(argc, argv);
     if (argc >= 3 && !strcmp(argv[1], "--bluetooth-windows")) return bluetooth_windows_mode(argc, argv);
+    if (argc >= 3 && !strcmp(argv[1], "--wifi-windows")) return wifi_windows_mode(argc, argv);
     if (argc >= 8 && !strcmp(argv[1], "--portal-windows")) return portal_windows_mode(argv);
     if (argc >= 2 && !strcmp(argv[1], "--window-windows")) return window_windows_mode();
+    if (argc >= 4 && !strcmp(argv[1], "--angle-windows")) return angle_windows_mode(argc, argv);
     if (argc >= 5 && !strcmp(argv[1], "--gfx-replay")) return gfx_replay_mode(argc, argv);
     if (argc >= 7 && !strcmp(argv[1], "--gfx-record")) {
         megler_config config;

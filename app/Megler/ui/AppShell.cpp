@@ -629,13 +629,63 @@ void AppShell::dialog(DialogSpec spec, std::function<void(int, std::string)> don
     dialogLayer_.Tapped([this](auto&&, auto const& e) {
         if (e.OriginalSource().try_as<Grid>() == dialogLayer_) closeDialog(-1);
     });
+    // The sheet's own margin of 24 within is the content's at its sides (the choices' rows reach out over it, within the
+    // scrolling), the sheet's at its top and bottom.
     auto column = vstack(0);
+    column.Margin(ThicknessHelper::FromLengths(24, 0, 24, 0));
     if (!spec.title.empty()) {
         auto t = text(spec.title, font::headlineSmall, weightNormal(), p.onSurface);
         t.Margin(ThicknessHelper::FromLengths(0, 0, 0, 16));
         add(column, t);
     }
     if (!spec.message.empty()) add(column, text(spec.message, font::bodyMedium, weightNormal(), p.onSurfaceVariant));
+    // The choices: rows of a radio button (the primary colour's ring, filled for the one chosen) and the choice's title and
+    // line, each closing the dialog with its index after the buttons'. The rows reach out over the dialog's margin, as a list's.
+    if (!spec.choices.empty()) {
+        auto list = vstack(0);
+        list.Margin(ThicknessHelper::FromLengths(-24, 12, -24, 0));
+        for (size_t i = 0; i < spec.choices.size(); ++i) {
+            const bool chosen = int(i) == spec.chosen;
+            Grid row;
+            ColumnDefinition c0, c1;
+            c0.Width(GridLengthHelper::Auto());
+            c1.Width(GridLengthHelper::FromValueAndType(1, GridUnitType::Star));
+            row.ColumnDefinitions().Append(c0);
+            row.ColumnDefinitions().Append(c1);
+            Grid radio;
+            radio.Width(20);
+            radio.Height(20);
+            radio.VerticalAlignment(VerticalAlignment::Center);
+            radio.Margin(ThicknessHelper::FromLengths(2, 0, 18, 0));
+            winrt::Windows::UI::Xaml::Shapes::Ellipse ring;
+            ring.Stroke(brush(chosen ? p.primary : p.onSurfaceVariant));
+            ring.StrokeThickness(2);
+            radio.Children().Append(ring);
+            if (chosen) {
+                winrt::Windows::UI::Xaml::Shapes::Ellipse dot;
+                dot.Width(10);
+                dot.Height(10);
+                dot.Fill(brush(p.primary));
+                radio.Children().Append(dot);
+            }
+            row.Children().Append(radio);
+            auto titles = vstack(0);
+            titles.VerticalAlignment(VerticalAlignment::Center);
+            add(titles, text(spec.choices[i].first, font::bodyLarge, weightNormal(), p.onSurface));
+            if (!spec.choices[i].second.empty()) {
+                auto line = text(spec.choices[i].second, font::bodyMedium, weightNormal(), p.onSurfaceVariant);
+                line.TextWrapping(TextWrapping::Wrap);
+                add(titles, line);
+            }
+            Grid::SetColumn(titles, 1);
+            row.Children().Append(titles);
+            row.MinHeight(48);
+            row.Padding(ThicknessHelper::FromLengths(24, 6, 24, 6));
+            const int index = int(spec.buttons.size() + i);
+            add(list, button(row, [this, index] { closeDialog(index); }, ButtonKind::plain, spec.choices[i].first));
+        }
+        add(column, list);
+    }
     dialogField_ = nullptr;
     dialogSecret_ = nullptr;
     if (spec.field && spec.secret) {
@@ -668,18 +718,32 @@ void AppShell::dialog(DialogSpec spec, std::function<void(int, std::string)> don
     }
     auto actions = hstack(8);
     actions.HorizontalAlignment(HorizontalAlignment::Right);
-    actions.Margin(ThicknessHelper::FromLengths(0, 24, -12, -8));
+    actions.Margin(ThicknessHelper::FromLengths(24, 24, 12, -8));
     for (size_t i = 0; i < spec.buttons.size(); ++i) {
         const bool confirming = i + 1 == spec.buttons.size();
         auto b = textButton(spec.buttons[i], [this, i] { closeDialog(int(i)); }, confirming && spec.destructive ? p.error : p.primary);
         add(actions, b);
     }
-    add(column, actions);
+    // The content scrolls where it is higher than the window lets the sheet be, and the buttons stay below it: a phone's
+    // window is too low for a permission's choices with their explanation, and the sheet cut its buttons off (Lumia 650).
+    ScrollViewer scroller;
+    scroller.Content(column);
+    scroller.VerticalScrollBarVisibility(ScrollBarVisibility::Auto);
+    scroller.HorizontalScrollBarVisibility(ScrollBarVisibility::Disabled);
+    Grid body;
+    RowDefinition scrolled, buttons;
+    scrolled.Height(GridLengthHelper::FromValueAndType(1, GridUnitType::Star));
+    buttons.Height(GridLengthHelper::Auto());
+    body.RowDefinitions().Append(scrolled);
+    body.RowDefinitions().Append(buttons);
+    body.Children().Append(scroller);
+    Grid::SetRow(actions, 1);
+    body.Children().Append(actions);
     Border sheet;
-    sheet.Child(column);
+    sheet.Child(body);
     sheet.Background(brush(p.surfaceContainerHigh));
     sheet.CornerRadius(CornerRadiusHelper::FromUniformRadius(28));
-    sheet.Padding(ThicknessHelper::FromUniformLength(24));
+    sheet.Padding(ThicknessHelper::FromLengths(0, 24, 0, 24));
     sheet.MinWidth(280);
     sheet.MaxWidth(560);
     sheet.Margin(ThicknessHelper::FromLengths(24, 24, 24, 24));

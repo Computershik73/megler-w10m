@@ -26,4 +26,10 @@ final class Windows {
     static native String textureEgl(Surface surface);
     /** Its EGL surface destroyed by the calling thread while another thread has it current and then draws on it. What each step gave. */
     static native String textureEglElsewhere(Surface surface);
+    /** StackTest's: the surface under (0) or over (1) handed to a render thread of its own, started for it; the window's format, -1 when it has one already. */
+    static native int stackWindow(int over, Surface surface);
+    /** The frames that render thread has swapped. */
+    static native int stackFrames(int over);
+    /** Both render threads end; waited for. */
+    static native void stackStop();
 }

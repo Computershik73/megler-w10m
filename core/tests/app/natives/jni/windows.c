@@ -7,6 +7,8 @@
  * finds out at its next swap. And ANativeWindow_lock on another SurfaceView, in RGB 565 at a size of its own; and a TextureView's
  * SurfaceTexture drawn through its Surface's window, first in software (RGBX_8888), then once with EGL.
  *
+ * And StackTest's two SurfaceViews one over the other, a render thread for each ("the stack", below).
+ *
  * The renderer says what it saw in the log and how far it has come in `phase`, which the Java side (WindowTest) reads:
  * 1 thirty frames on the first window; 2 its surface resized by the window and ten frames at the new size; 3 the window gone
  * (a swap refused) and the surface destroyed; 4 thirty frames on the second window. Each frame is cleared to one colour
@@ -237,6 +239,110 @@ JNIEXPORT void JNICALL Java_megler_test_natives_Windows_stop(JNIEnv *env, jclass
     pthread_cond_broadcast(&g_wake);
     pthread_mutex_unlock(&g_lock);
     if (started) pthread_join(g_thread, NULL);
+}
+
+/* -------------------------------------------------------------- the stack */
+
+/*
+ * StackTest's two SurfaceViews, one over the other as HERE WeGo's map and Flutter's view of its interface: a render thread
+ * of the library's own for each window, drawing without a pause, the two at once (their calls of EGL and OpenGL ES take
+ * turns): under, blue all over; over (a surface on top of the window, with a transparent format), clear, its right half
+ * red at half alpha -- premultiplied, as Flutter draws. Each counts the frames it swapped; a swap refused (the surface
+ * gone) ends it.
+ */
+typedef struct stacked {
+    ANativeWindow *win;
+    int over, started;
+    volatile int frames;
+    pthread_t thread;
+} stacked;
+static stacked g_stack[2];
+static volatile int g_stack_stop;
+
+static void *stack_main(void *arg)
+{
+    static const EGLint es2[] = { EGL_CONTEXT_CLIENT_VERSION, 2, EGL_NONE };
+    static const GLfloat right[] = { 0, -1, 1, -1, 1, 1, 0, -1, 1, 1, 0, 1 }, half_red[] = { 0.5f, 0, 0, 0.5f };
+    stacked *s = (stacked *)arg;
+    EGLDisplay d = eglGetDisplay(EGL_DEFAULT_DISPLAY);
+    EGLint configs = 0;
+    EGLConfig config;
+    EGLContext ctx = EGL_NO_CONTEXT;
+    EGLSurface surf = EGL_NO_SURFACE;
+    GLuint program = 0;
+    GLint position = -1, colour = -1;
+    int made;
+    eglInitialize(d, NULL, NULL);
+    config = choose(d, &configs);
+    if (config) ctx = eglCreateContext(d, config, EGL_NO_CONTEXT, es2);
+    if (ctx != EGL_NO_CONTEXT) surf = eglCreateWindowSurface(d, config, s->win, NULL);
+    made = surf != EGL_NO_SURFACE && eglMakeCurrent(d, surf, surf, ctx);
+    SAY("stack: %s window surface made=%d", s->over ? "over" : "under", made);
+    if (made && s->over) {
+        program = glCreateProgram();
+        glAttachShader(program, shader(GL_VERTEX_SHADER, "attribute vec4 aPosition;\nvoid main() { gl_Position = aPosition; }\n"));
+        glAttachShader(program, shader(GL_FRAGMENT_SHADER, "precision mediump float;\nuniform vec4 uColor;\nvoid main() { gl_FragColor = uColor; }\n"));
+        glLinkProgram(program);
+        position = glGetAttribLocation(program, "aPosition");
+        colour = glGetUniformLocation(program, "uColor");
+    }
+    while (made && !g_stack_stop) {
+        EGLint w = 0, h = 0;
+        eglQuerySurface(d, surf, EGL_WIDTH, &w);
+        eglQuerySurface(d, surf, EGL_HEIGHT, &h);
+        glViewport(0, 0, w, h);
+        if (s->over) {
+            glClearColor(0, 0, 0, 0);
+            glClear(GL_COLOR_BUFFER_BIT);
+            glUseProgram(program);
+            glUniform4fv(colour, 1, half_red);
+            glVertexAttribPointer((GLuint)position, 2, GL_FLOAT, GL_FALSE, 0, right);
+            glEnableVertexAttribArray((GLuint)position);
+            glDrawArrays(GL_TRIANGLES, 0, 6);
+        } else {
+            glClearColor(0, 0, 1, 1);
+            glClear(GL_COLOR_BUFFER_BIT);
+        }
+        if (!eglSwapBuffers(d, surf)) break;
+        s->frames++;
+    }
+    eglMakeCurrent(d, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
+    if (surf != EGL_NO_SURFACE) eglDestroySurface(d, surf);
+    if (ctx != EGL_NO_CONTEXT) eglDestroyContext(d, ctx);
+    SAY("stack: %s ended after %d frames", s->over ? "over" : "under", s->frames);
+    return NULL;
+}
+
+JNIEXPORT jint JNICALL Java_megler_test_natives_Windows_stackWindow(JNIEnv *env, jclass cls, jint over, jobject surface)
+{
+    stacked *s = &g_stack[over ? 1 : 0];
+    (void)cls;
+    if (s->started) return -1;
+    s->win = ANativeWindow_fromSurface(env, surface);
+    if (!s->win) return 0;
+    s->over = over != 0;
+    s->started = pthread_create(&s->thread, NULL, stack_main, s) == 0;
+    return ANativeWindow_getFormat(s->win);
+}
+
+JNIEXPORT jint JNICALL Java_megler_test_natives_Windows_stackFrames(JNIEnv *env, jclass cls, jint over)
+{
+    (void)env; (void)cls;
+    return g_stack[over ? 1 : 0].frames;
+}
+
+/* The activity ends: both render threads finish their frame and end; waited for, their windows let go of. */
+JNIEXPORT void JNICALL Java_megler_test_natives_Windows_stackStop(JNIEnv *env, jclass cls)
+{
+    int i;
+    (void)env; (void)cls;
+    g_stack_stop = 1;
+    for (i = 0; i < 2; i++) {
+        if (!g_stack[i].started) continue;
+        pthread_join(g_stack[i].thread, NULL);
+        ANativeWindow_release(g_stack[i].win);
+        g_stack[i].started = 0;
+    }
 }
 
 /* Red, green above, blue, white below: the quarters of a frame drawn in software. */

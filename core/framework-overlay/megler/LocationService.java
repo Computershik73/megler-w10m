@@ -11,7 +11,9 @@
 // fix older than a minute is not an update. When the location is switched off or refused, a listener is told its provider
 // is disabled, and enabled again once it is back. With no request left the shell stops following it.
 //
-// All four providers -- gps, network, passive, fused -- are the same fixes, each named as asked for (passive: as found).
+// All four providers -- gps, network, passive, fused -- are the same fixes, each named as asked for (passive: as found): Windows',
+// or Google Play services' network location's where it runs in the app and has a better one (the end of the file says when,
+// and what Google Play services' own requests are handed).
 // getLastKnownLocation is the newest fix the shell has; when there is none, the location is followed for half a minute so
 // that the next call finds one, as on a phone something has always just asked. Until the user has been asked, the location
 // counts as on, so that an app that first checks isProviderEnabled("gps") goes on to ask for it; nothing is asked then.
@@ -69,6 +71,8 @@ public final class LocationService {
         boolean toldDisabled;
         /** Of the passive interval: handed every new fix, and no say in how often the location is followed. */
         boolean passive;
+        /** Google Play services' own (its fused provider's, its network location's), not the app's: ofGoogle. */
+        boolean google;
     }
 
     /** A request's minimum time that is the passive interval (LocationRequest.PASSIVE_INTERVAL, and what its deprecated factories make of it). */
@@ -114,19 +118,29 @@ public final class LocationService {
             || Permissions.check("android.permission.ACCESS_COARSE_LOCATION") == Permissions.GRANTED;
     }
 
-    /** The newest fix, named for `provider`; null when there is none (then the location is followed a while) or it is off. */
+    /**
+     * The newest fix -- the better of Windows' and Google's network location's (better) -- named for `provider`; null when
+     * there is none (then the location is followed a while) or it is off. Asked by Google Play services' own code (the
+     * closest class loader up the stack is theirs), it is what their own requests are handed (deliver): never their network
+     * location's fix, and Windows' from the satellites alone while that is fresh.
+     */
     public static Location last(String provider) {
         int a = LocationNative.access(false);
         if (a != LocationNative.ON && a != LocationNative.UNKNOWN) return null;
         double[] f = LocationNative.last();
+        long t = SystemClock.elapsedRealtime();
+        boolean theirs = byGoogle();
+        Location g = google(t);
         if (f == null) {
             synchronized (LOCK) {
-                sWarmUntil = Math.max(sWarmUntil, SystemClock.elapsedRealtime() + WARM_MS);
+                sWarmUntil = Math.max(sWarmUntil, t + WARM_MS);
                 ensureWorker();
             }
-            return null;
+            return g == null || theirs ? null : named(g, provider);
         }
-        return toLocation(f, provider);
+        Location w = toLocation(f, null);
+        if (theirs) return g == null || (int) f[9] != LocationNative.NETWORK ? named(w, provider) : null;
+        return named(better(w, g, t), provider);
     }
 
     public static Executor executorFor(Looper looper) {
@@ -147,6 +161,7 @@ public final class LocationService {
         r.listener = listener;
         r.executor = executor != null ? executor : executorFor(null);
         r.remaining = Math.max(0, maxUpdates);
+        r.google = ofGoogle(listener) || byGoogle();
         add(r, listener, null);
     }
 
@@ -161,6 +176,7 @@ public final class LocationService {
         r.pending = pending;
         r.context = context;
         r.remaining = Math.max(0, maxUpdates);
+        r.google = GooglePackages.GMS.equals(pending.getCreatorPackage()) || byGoogle();
         add(r, null, pending);
     }
 
@@ -172,6 +188,7 @@ public final class LocationService {
         r.consumer = consumer;
         r.executor = executor != null ? executor : executorFor(null);
         r.remaining = 1;
+        r.google = ofGoogle(consumer) || byGoogle();
         r.expiresAt = SystemClock.elapsedRealtime() + CURRENT_TIMEOUT_MS;
         int a = LocationNative.access(false);
         if (a != LocationNative.ON && a != LocationNative.UNKNOWN) {
@@ -356,8 +373,10 @@ public final class LocationService {
                 }
                 double[] f = LocationNative.last();
                 boolean fresh = f != null && System.currentTimeMillis() - (long) f[7] <= STALE_MS;
-                if (f != null) deliver(now, f, t);
-                if (fresh) {
+                Location g = google(t);
+                watchGoogle(t);
+                if (f != null || g != null) deliver(now, f, g, t);
+                if (fresh || g != null) {
                     saidNoFix = true;
                 } else if (!saidNoFix && t - startedAt >= CURRENT_TIMEOUT_MS) {
                     saidNoFix = true;
@@ -381,15 +400,26 @@ public final class LocationService {
         r.executor.execute(() -> r.consumer.accept(null));
     }
 
-    private static void deliver(ArrayList<Request> now, double[] f, long t) {
-        long fixTime = (long) f[7];
-        if (System.currentTimeMillis() - fixTime > STALE_MS) return;
+    /**
+     * Each request handed its fix, where it has a newer one than its last and its minimum time and distance are past: the
+     * better of Windows' newest and Google's network location's newest (better), or for Google Play services' own requests
+     * Windows' alone -- and, while Google's network location finds the phone, Windows' from the satellites alone: its cell
+     * fixes would come to Google Play services' fused provider every second as "gps" ones (ofGoogle says why).
+     */
+    private static void deliver(ArrayList<Request> now, double[] f, Location g, long t) {
+        Location w = f != null && System.currentTimeMillis() - (long) f[7] <= STALE_MS ? toLocation(f, null) : null;
+        boolean satellites = f != null && (int) f[9] != LocationNative.NETWORK;
         for (Request r : now) {
+            Location c = r.google ? (g == null || satellites ? w : null) : better(w, g, t);
+            if (c == null) continue;
+            long fixTime = c.getTime();
             if (fixTime <= r.fixTime) continue;
             if (t - r.deliveredAt < r.minTimeMs - 100) continue;
-            Location loc = toLocation(f, r.provider);
+            Location loc = named(c, r.provider);
             if (r.minDistanceM > 0 && r.delivered != null && loc.distanceTo(r.delivered) < r.minDistanceM) continue;
-            if (r.delivered == null) say("the first fix for " + whose(r) + ", " + Math.round(loc.getAccuracy()) + " m accurate, " + (System.currentTimeMillis() - fixTime) + " ms old");
+            if (r.delivered == null)
+                say("the first fix for " + whose(r) + ", " + Math.round(loc.getAccuracy()) + " m accurate, " + (System.currentTimeMillis() - fixTime) + " ms old"
+                    + (c == g ? ", Google's network location's" : ""));
             r.fixTime = fixTime;
             r.deliveredAt = t;
             r.delivered = loc;
@@ -475,5 +505,180 @@ public final class LocationService {
         } catch (InterruptedException e) {
             // (Nothing interrupts this thread; a spurious wake is a shorter pause.)
         }
+    }
+
+    /* ---------------------------------------------------------------- Google's network location */
+    //
+    // Google Play services in the app finds the phone from the Wi-Fi networks around it (its network location, with Google
+    // Location Accuracy on: megler.LocationAccuracy) and hands each fix to its fused provider by a PendingIntent of its own,
+    // the intent marked with its EXTRA_RELEASE_VERSION (GoogleLocationChimeraService's geup.ms, sent through gesy.d:
+    // PendingIntent.send with an OnFinished and options). Each such fix is seen here as it is sent (sent), and kept while it
+    // is fresh (a minute):
+    //   - the app's own requests -- LocationManager's providers, getLastKnownLocation -- are handed the better of it and
+    //     Windows' newest (better), as on Android, where the network provider is Google Play services' network location: an
+    //     app that asks LocationManager as well as Google Play services has the Wi-Fi's fixes there too. An app that uses
+    //     LocationManager alone has none: Google's network location runs only for Google Play services' fused provider,
+    //     which such an app never binds, and Megler does not start it for LocationManager -- GmsCore read into the app's
+    //     process, seconds and tens of megabytes on a Lumia, and the phone's Wi-Fi networks sent to Google for an app that
+    //     asked nothing of Google;
+    //   - Google Play services' own requests (its fused provider's "gps" and "passive", its network location's "passive":
+    //     ofGoogle) are never handed it back, and while it is fresh are handed Windows' fixes from the satellites alone:
+    //     Windows' cell fixes, every second, would be "gps" ones to the fused provider, fresher than the Wi-Fi's, and data
+    //     its collection takes satellite positions for. Without a fix of Google's for a minute, they have Windows' fixes as
+    //     before, the cell's too.
+    // The log says the first fix, then once a minute while they come how many, how accurate, and Windows' best beside them;
+    // and when Windows' cell fixes stop and start going to Google Play services.
+
+    /** The marks of Google Play services' network location's result (GoogleLocationChimeraService's extras). */
+    private static final String NLP_RELEASE = "com.google.android.location.internal.EXTRA_RELEASE_VERSION",
+            NLP_LIST = "com.google.android.location.internal.EXTRA_LOCATION_LIST";
+    private static final long GOOGLE_FRESH_MS = 60000;
+    private static Location sGoogle;
+    private static long sGoogleAt = Long.MIN_VALUE / 2;
+    private static boolean sGoogleFresh;
+    private static int sGoogleFixes;
+    private static long sGoogleFrom;
+    private static float sGoogleBest, sGoogleLast;
+
+    /** Whether `o` is Google Play services' code: its class is of GmsCore's class loader, or one under it (MicroG.isGmsLoader). */
+    static boolean ofGoogle(Object o) {
+        return o != null && MicroG.isGmsLoader(o.getClass().getClassLoader());
+    }
+
+    /** Whether the code that called into the framework is Google Play services': the closest class loader up the stack is theirs. */
+    static boolean byGoogle() {
+        return MicroG.isGmsLoader(dalvik.system.VMStack.getClosestUserClassLoader());
+    }
+
+    /** A PendingIntent of Google Play services' is sent (android.app.PendingIntent): its network location's fix, if it carries one. */
+    public static void sent(PendingIntent p, Intent i) {
+        if (i == null || p == null || !i.hasExtra(NLP_RELEASE) || !GooglePackages.GMS.equals(p.getCreatorPackage())) return;
+        Location l = null;
+        try {
+            Object one = i.getParcelableExtra(LocationManager.KEY_LOCATION_CHANGED);
+            if (one instanceof Location) l = (Location) one;
+            if (l == null) {
+                ArrayList<?> list = i.getParcelableArrayListExtra(NLP_LIST);
+                if (list != null && !list.isEmpty() && list.get(list.size() - 1) instanceof Location) l = (Location) list.get(list.size() - 1);
+            }
+        } catch (RuntimeException e) {
+            return;
+        }
+        if (l == null || !l.hasAccuracy()) return;
+        google(new Location(l));
+    }
+
+    private static void google(Location l) {
+        long t = SystemClock.elapsedRealtime();
+        boolean first, minute = false, began;
+        int fixes = 0;
+        float best = 0, last = 0;
+        long span = 0;
+        synchronized (LOCK) {
+            first = sGoogleFixes == 0 && sGoogleFrom == 0;
+            began = !sGoogleFresh;
+            sGoogle = l;
+            sGoogleAt = t;
+            sGoogleFresh = true;
+            if (sGoogleFrom == 0) sGoogleFrom = t;
+            sGoogleFixes++;
+            if (sGoogleFixes == 1 || l.getAccuracy() < sGoogleBest) sGoogleBest = l.getAccuracy();
+            sGoogleLast = l.getAccuracy();
+            if (t - sGoogleFrom >= 60000) {
+                minute = true;
+                fixes = sGoogleFixes;
+                best = sGoogleBest;
+                last = sGoogleLast;
+                span = (t - sGoogleFrom) / 1000;
+                sGoogleFrom = t;
+                sGoogleFixes = 0;
+            }
+        }
+        int heard = Wifi.lastCount();
+        if (first)
+            android.util.Log.i("MeglerLocation", "Google's network location: its first fix, " + Math.round(l.getAccuracy()) + " m accurate, "
+                    + Math.max(0, (SystemClock.elapsedRealtimeNanos() - l.getElapsedRealtimeNanos()) / 1000000) + " ms old"
+                    + (heard >= 0 ? ", the last Wi-Fi scan hearing " + heard + " networks" : ", no Wi-Fi scan yet"));
+        if (began)
+            android.util.Log.i("MeglerLocation", "Google's network location finds the phone: Google Play services' own requests are handed Windows' fixes"
+                    + " from the satellites alone, the app's the better of Windows' and Google's");
+        if (minute) {
+            double[] f = LocationNative.last();
+            android.util.Log.i("MeglerLocation", "Google's network location: " + fixes + " fix" + (fixes == 1 ? "" : "es") + " in the last " + span
+                    + " s, accurate to " + Math.round(best) + " m at best, " + Math.round(last) + " m the last" + (f != null ? "; Windows' newest "
+                    + Math.round(f[3]) + " m (" + ((int) f[9] == LocationNative.SATELLITES ? "the satellites" : "Wi-Fi or the cell network") + ")" : ""));
+        }
+    }
+
+    /*
+     * Google's network location watched while it gives no fix, so that a phone's log says why: a minute after the first Wi-Fi
+     * scan Google Play services asked for, and each minute after, where no fix of its came in that minute, how many scans it
+     * asked for in it -- none: it stopped (it scans again when an alarm of its goes off); some: it scanned and still found
+     * nothing (the server it asks where the networks are: the network's line says whether its name was looked up). Ten lines
+     * at most.
+     */
+    private static long sWatchAt;
+    private static int sWatchScans, sWatchSaid;
+
+    private static void watchGoogle(long t) {
+        int scans = Wifi.googleScans(), asked;
+        if (scans == 0) return;
+        synchronized (LOCK) {
+            if (sWatchAt == 0) {
+                sWatchAt = t;
+                sWatchScans = scans - 1;
+            }
+            if (t - sWatchAt < 60000) return;
+            boolean fixed = sGoogle != null && sGoogleAt >= sWatchAt;
+            asked = scans - sWatchScans;
+            sWatchAt = t;
+            sWatchScans = scans;
+            if (fixed || sWatchSaid >= 10) return;
+            sWatchSaid++;
+        }
+        long last = Wifi.googleScanAt();
+        android.util.Log.i("MeglerLocation", "Google's network location: no fix in the last 60 s; it asked for " + asked + " Wi-Fi scan" + (asked == 1 ? "" : "s")
+                + " in them (" + scans + " in all, the last " + (last < 0 ? "?" : (SystemClock.elapsedRealtime() - last) / 1000 + " s ago") + ")"
+                + (asked == 0 ? ": it has stopped scanning" : ": it scanned, and had no fix"));
+    }
+
+    /** Google's network location's newest fix while it is fresh; null after a minute without one (said once when it ends). */
+    static Location google(long t) {
+        boolean ended = false;
+        Location g;
+        synchronized (LOCK) {
+            g = sGoogle;
+            if (g != null && t - sGoogleAt > GOOGLE_FRESH_MS) {
+                g = null;
+                ended = sGoogleFresh;
+                sGoogleFresh = false;
+            }
+        }
+        if (ended)
+            android.util.Log.i("MeglerLocation", "Google's network location has given no fix for " + GOOGLE_FRESH_MS / 1000
+                    + " s: Google Play services' own requests are handed Windows' fixes again, the cell's too");
+        return g;
+    }
+
+    /**
+     * The better of Windows' fix and Google's: the more accurate, each taken 3 m less accurate for every second of its age (a
+     * walk's pace: a Wi-Fi fix of 25 m from 15 s ago is better than a cell fix of 600 m from now, not than the satellites').
+     */
+    static Location better(Location w, Location g, long t) {
+        if (g == null) return w;
+        if (w == null) return g;
+        long now = SystemClock.elapsedRealtimeNanos();
+        double ew = w.getAccuracy() + 3.0 * Math.max(0, now - w.getElapsedRealtimeNanos()) / 1e9;
+        double eg = g.getAccuracy() + 3.0 * Math.max(0, now - g.getElapsedRealtimeNanos()) / 1e9;
+        return eg < ew ? g : w;
+    }
+
+    /** A copy of a fix named for `provider` (passive, or none: as it is named), without the extras Google Play services put in its own. */
+    static Location named(Location c, String provider) {
+        if (c == null) return null;
+        Location l = new Location(c);
+        if (provider != null && !LocationManager.PASSIVE_PROVIDER.equals(provider)) l.setProvider(provider);
+        l.setExtras(null);
+        return l;
     }
 }

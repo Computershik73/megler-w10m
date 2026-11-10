@@ -2034,6 +2034,156 @@ static bool ink_box(const pic *p, int *l, int *t, int *r, int *b)
     return any;
 }
 
+/* What text_path writes, kept for a check or a scene. */
+static float t_outline[32768];
+static size_t t_outline_n;
+static MEGLER_CB bool outline_put(void *sink, const void *data, size_t size)
+{
+    (void)sink;
+    if (size % sizeof(float) || size / sizeof(float) > MG_COUNT(t_outline) - t_outline_n) return false;
+    memcpy(t_outline + t_outline_n, data, size);
+    t_outline_n += size / sizeof(float);
+    return true;
+}
+/* The run's outlines (Paint.getTextPath's) into t_outline: how many numbers, or -1 when the host gave none. */
+static int outlines_of(const u16 *t, int n, float x, float y, const megler_gfx_paint *paint, void *face)
+{
+    t_outline_n = 0;
+    if (!H->text_path || !H->text_path(H->user, t, n, x, y, paint, face, outline_put, NULL)) return -1;
+    return (int)t_outline_n;
+}
+/* How many figures a stream has, and whether it is draw_path's (verbs with all their numbers, a MOVE first). */
+static int figures_of(const float *v, int n)
+{
+    int i = 0, figures = 0, verb;
+    while (i < n) {
+        verb = (int)v[i];
+        if (v[i] != (float)verb || verb < MEGLER_GFX_PATH_MOVE || verb > MEGLER_GFX_PATH_CLOSE || (i == 0 && verb != MEGLER_GFX_PATH_MOVE)) return -1;
+        figures += verb == MEGLER_GFX_PATH_MOVE;
+        i += 1 + (verb == MEGLER_GFX_PATH_QUAD ? 4 : verb == MEGLER_GFX_PATH_CUBIC ? 6 : verb == MEGLER_GFX_PATH_CLOSE ? 0 : 2);
+    }
+    return i == n ? figures : -1;
+}
+
+/*
+ * The glyphs' outlines (text_path, for Paint.getTextPath) are the glyphs: filled, they cover what draw_text covers, to the
+ * edges' smoothing, in each way a paint can place and shape a run; and they are letters, not the run's box (Google Maps'
+ * legacy renderer fills and strokes them for every label of its map, which package 684 drew as grey boxes). Stroked, as the
+ * labels' halo is, they reach out by half the stroke.
+ */
+static void check_text_path(void)
+{
+    megler_gfx_paint paint = paint_of(0xFF000000u), other;
+    pic drawn, filled;
+    int way, i, px, py, n, figures, inkD, inkF, apart, l = 0, t = 0, r = 0, b = 0, l2 = 0, t2 = 0, r2 = 0, b2 = 0;
+    say("  text: the glyphs' outlines (text_path) against the glyphs drawn");
+    CHECK(H->text_path != NULL);
+    if (!H->text_path) return;
+    pic_make(&drawn, H, 320, 120);
+    pic_make(&filled, H, 320, 120);
+    for (way = 0; way < 6; way++) {
+        float x = 60, y = 70;
+        void *face = way == 5 ? H->typeface_derive(H->user, NULL, 700, false) : NULL;
+        other = paint;
+        other.text_size = 32;
+        if (way == 1) other.text_scale_x = 1.5f;
+        if (way == 2) other.text_skew_x = -0.25f;
+        if (way == 3) other.text_align = MEGLER_GFX_ALIGN_CENTER;
+        if (way == 4) other.text_align = MEGLER_GFX_ALIGN_RIGHT;
+        if (way == 4) other.letter_spacing = 0.1f;
+        if (way >= 3) x = 160;
+        color(&drawn, 0xFFFFFFFFu, MEGLER_GFX_BLEND_SRC);
+        text16(&drawn, k_latin, 9, x, y, &other, face, NULL);
+        settle(&drawn);
+        n = outlines_of(k_latin, 9, x, y, &other, face);
+        figures = n > 0 ? figures_of(t_outline, n) : -1;
+        /* "Hamburgef": nine letters, four of them with a hole. */
+        CHECK(n > 0 && figures >= 13);
+        color(&filled, 0xFFFFFFFFu, MEGLER_GFX_BLEND_SRC);
+        if (n > 0) path(&filled, t_outline, n, MEGLER_GFX_WINDING, &other, NULL);
+        settle(&filled);
+        /* Ink, darker than half: about as much each way. And where the glyphs drawn are all ink or all ground round a pixel, the
+           outlines filled are the same there: the two differ on the edges alone, which they smooth each in its own way
+           (DirectWrite's glyphs with its gamma and contrast, Direct2D's shapes by their coverage). */
+        for (i = 0, inkD = inkF = apart = 0; i < drawn.w * drawn.h; i++) {
+            inkD += (drawn.px[i] & 0xFFu) < 0x80u;
+            inkF += (filled.px[i] & 0xFFu) < 0x80u;
+        }
+        for (py = 1; py < drawn.h - 1; py++)
+            for (px = 1; px < drawn.w - 1; px++) {
+                u32 f = filled.px[py * filled.w + px] & 0xFFu;
+                int dark = 0, light = 0, dy, dx;
+                for (dy = -1; dy <= 1; dy++)
+                    for (dx = -1; dx <= 1; dx++) {
+                        u32 d = drawn.px[(py + dy) * drawn.w + px + dx] & 0xFFu;
+                        dark += d < 0x40u;
+                        light += d > 0xC0u;
+                    }
+                apart += (dark == 9 && f > 0xC0u) || (light == 9 && f < 0x40u);
+            }
+        CHECK(ink_box(&drawn, &l, &t, &r, &b) && ink_box(&filled, &l2, &t2, &r2, &b2));
+        if (apart || abs(inkF - inkD) * 5 > inkD || abs(l - l2) > 1 || abs(r - r2) > 1 || abs(t - t2) > 1 || abs(b - b2) > 1)
+            say("    way %d: drawn %d..%d by %d..%d, %d pixels; outlines filled %d..%d by %d..%d, %d pixels; %d inside one and outside the other", way,
+                l, r, t, b, inkD, l2, r2, t2, b2, inkF, apart);
+        CHECK(inkD > 400 && abs(inkF - inkD) * 5 <= inkD && apart == 0);
+        CHECK(abs(l - l2) <= 1 && abs(r - r2) <= 1 && abs(t - t2) <= 1 && abs(b - b2) <= 1);
+        /* Letters: well under the box they stand in is ink. */
+        CHECK(inkF * 2 < (r2 - l2) * (b2 - t2));
+        if (way == 0) {
+            /* A halo: the outlines stroked 4 wide reach 2 further each way, and the letters filled over it are where they were. */
+            megler_gfx_paint halo = stroke_of(0xFF000000u, 4);
+            halo.join = MEGLER_GFX_JOIN_ROUND;
+            color(&filled, 0xFFFFFFFFu, MEGLER_GFX_BLEND_SRC);
+            path(&filled, t_outline, n, MEGLER_GFX_WINDING, &halo, NULL);
+            settle(&filled);
+            CHECK(ink_box(&filled, &l2, &t2, &r2, &b2));
+            CHECK(abs(l - 2 - l2) <= 1 && abs(r + 2 - r2) <= 1 && abs(t - 2 - t2) <= 1 && abs(b + 2 - b2) <= 1);
+        }
+    }
+    /* No ink, no figures; the same run asked for again is the same outlines. */
+    CHECK(outlines_of(k_latin + 15, 1, 0, 0, &paint, NULL) == 0);
+    n = outlines_of(k_latin, 4, 10, 20, &paint, NULL);
+    {
+        static float first[4096];
+        int again;
+        CHECK(n > 0 && n <= 4096);
+        if (n > 0 && n <= 4096) {
+            memcpy(first, t_outline, sizeof(float) * (size_t)n);
+            again = outlines_of(k_latin, 4, 10, 20, &paint, NULL);
+            CHECK(again == n && memcmp(first, t_outline, sizeof(float) * (size_t)n) == 0);
+        }
+    }
+    pic_done(&drawn);
+    pic_done(&filled);
+}
+
+/* A map's labels as Google Maps' legacy renderer draws them into its bitmaps: the outlines stroked in the halo's colour, then filled. */
+static void scene_text_path(pic *p)
+{
+    static const u16 moscow[] = { 0x041C, 0x043E, 0x0441, 0x043A, 0x0432, 0x0430 };
+    static const char *names[] = { "Atlantic Ocean", "Lisboa", "Mexico City", NULL };
+    megler_gfx_paint fill = paint_of(0xFF5B5B5Bu), halo = stroke_of(0xCCFFFFFFu, 3);
+    u16 t[64];
+    int i, n;
+    color(p, 0xFFAAD3DFu, MEGLER_GFX_BLEND_SRC);
+    for (i = 0; i < 4; i++) {
+        float y = 40 + 46 * (float)i;
+        if (names[i]) n = units(names[i], t, 64);
+        else {
+            n = (int)MG_COUNT(moscow);
+            memcpy(t, moscow, sizeof(moscow));
+        }
+        fill.text_size = halo.text_size = 18 + 4 * (float)i;
+        if (outlines_of(t, n, 10, y, &fill, NULL) > 0) {
+            path(p, t_outline, (int)t_outline_n, MEGLER_GFX_WINDING, &halo, NULL);
+            path(p, t_outline, (int)t_outline_n, MEGLER_GFX_WINDING, &fill, NULL);
+        }
+        text16(p, t, n, 250, y, &fill, NULL, NULL);
+    }
+    label(p, "getTextPath: stroked, then filled", 10, 224);
+    label(p, "drawText", 250, 224);
+}
+
 /* What the text functions answer, against each other and against what is drawn. */
 static void check_text(void)
 {
@@ -3251,6 +3401,8 @@ int mg_gfx_scenes_run(const mg_gfx_scenes_config *config, mg_test_sink sink, voi
     alone("21-text", scene_text, NULL, 660, 520);
     alone("22-text-styles", scene_text_styles, NULL, 480, 360);
     check_text();
+    check_text_path();
+    alone("27-text-path", scene_text_path, NULL, 480, 240);
     images_make();
     alone("23-images", scene_images, NULL, 480, 360);
     check_images();

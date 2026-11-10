@@ -143,6 +143,210 @@ their package with one service (`gms-own`, no microG in it) and starts it:
 "main process true application=megler.test.gmshost current=megler.test.gmshost"
 (`tools/build-tests.sh arm`).
 
+## Google's own Play services: their network location
+
+Google's Play services find the phone from the Wi-Fi networks around it (their
+network location module, in the app's process here, started by their fused
+provider). Three things it needs were missing, and are there now (docs/JAVA.md,
+"Wi-Fi, and Google's network location", which says where each was found in
+26.41.31): scans through `WifiManager` (`startScan`, the broadcast,
+`getScanResults`; it uses them where `getSystemService("wifiscanner")` is null,
+as it is here); Google Location Accuracy, `network_location_opt_in` in Google's
+settings (`content://com.google.settings/partner`, Google Services Framework's
+provider), which `megler.LocationAccuracy` asks of the user once an app that
+holds the location binds their location API, and writes; and `PendingIntent`'s
+sends with an `OnFinished` and options, by which the module hands each fix to
+the fused provider, and which sent nothing. Their fixes are seen on that way
+(`megler.LocationService.sent`) and said in the log. The module also runs
+on Google Play services' own alarms (`GmsAlarm`: `AlarmManager`'s forms with
+an `Executor` and a `WorkSource`, which did nothing up to 0.1.0.684, so
+that a phone scanned once and never again), asks for the cells
+at each scan (`requestCellInfoUpdate`, answered now with none), and asks
+its server with an `X-Goog-Spatula` header of Google Play services' AppCert
+service, signed with the device key where the phone has one (JAVA.md says
+what a phone without one sends). With microG nothing of this is asked:
+microG's own location backends are its own.
+
+## Google's own Play services: DroidGuard
+
+DroidGuard is Google Play services' check of the device it runs on (their
+module `com.google.android.gms.droidguard`). For a flow -- the check-in, the
+device key, a Play Integrity token, a sign-in -- it asks Google's server for
+a program (`androidantiabuse/v1/x/create`), runs it in a virtual machine the
+server names (an APK of 24 classes with a native library `libd<12 hex
+digits>.so`, kept in `app_dg_cache/<the APK's SHA-1>/`, from
+`www.gstatic.com/droidguard/`), and hands the machine's bytes to whoever
+asked, who sends them to Google with its own request. Here the module runs
+in the app's process with the rest of Google Play services: the machine's APK
+gets a class scope of its own under theirs ("a dalvik/system/DexClassLoader
+over .../app_dg_cache/.../the.apk: scope N of its own" in the log), and its
+library loads in their ELF scope ("ld: libdB21738DAE92C.so at ..."), after
+an `UnsatisfiedLinkError` for the library's path inside the APK, which the
+machine's own Java answers by copying the library out of it, as it does
+where a linker cannot load from an APK.
+
+Since 26.4x Google Play services first asks for a "full" program, runs it,
+and sends its result back asking for a "fast" one (DroidGuard's "fast
+refresh": the log's tag `DGFRR`, `bvre` in 26.41.31, `byts` in 26.43.30),
+which then serves every flow that may use it; without one each flow asks
+for a program of its own, as before.
+
+**What fails, and where.** On the Lumia 650 (0.1.0.685) and the Elite x3
+(0.1.0.681), with Google Play services 26.43.30, every flow logs "E/DGFRR: FR
+error ... bywg: byteCode" and "W/DG: [flow devicekey] DroidGuardRunner.
+initSignalCollection() exception" (checkin, cryptauth_synckeys_request,
+po-token-fast, constellation_verify and recaptchabase-android likewise), and
+the device key is refused ("W/GLSUser: [AppCertManager] Exception while
+requesting key: ... dmyc: Parsing Exception ... Protocol message end-group
+tag did not match expected tag", then "[DeviceKeyStore] Cannot load key:
+Device key file not found"). Under qemu, with 26.41.31's armeabi-v7a APK as
+the app and the same machine (AA6305A5..., `libdB21738DAE92C.so`), it is the
+same, and there it was followed through (`trace-calls-within-com.google.ccc.
+abuse.droidguard`, `trace-syscalls`, `trace-files-libdB`, `trace-calls-bvts`,
+`trace-calls-java.io.PipedOutputStream`):
+
+- nothing of Megler's fails: the machine's classes load, its library loads
+  and runs, `initNative` and `ssNative` return, every call it makes of Java
+  through JNI and of the system is answered, and its results are what
+  DroidGuard's results are, protocol buffers of 1 to 2 KB ("DroidGuard.ss
+  returns [B of 1898: 0a06..."), the "full" one going to Google in the "fast"
+  request;
+- Google's server answers that request with a signed answer that holds no
+  program -- no `byteCode` (field 1, the first of the fields 26.41.31's
+  `bvrp.a` looks for, and the one it names) and no extra bytes to carry back
+  (field 9: "bvts.<init>(Ljava/lang/String;[B)V "byteCode" [B of 0");
+- the device-key request (`android.googleapis.com/auth/devicekey`, with the
+  result of the "devicekey" flow's own program) is answered with Google's
+  HTML page "Error 400 (Bad Request)" (1664 bytes) where its protocol buffer
+  was expected. Google's other answers come whole: the check-in succeeds,
+  the programs' answers verify their signatures, and on the Lumia the
+  account tokens' answers decrypt.
+
+**What the machine is told here that no Android device tells it.** Through
+JNI it reads the displays (`Display.getType()`, a stub here, says
+`TYPE_UNKNOWN` for the phone's own screen), the memory, Google Play services'
+package and signatures, and the features (`android.hardware.strongbox_keystore`,
+`android.software.device_id_attestation`, `android.software.verified_boot`:
+none here); and it makes two EC keys in `AndroidKeyStore` with an attestation
+challenge (`unstable.<hash>.A-...` and `.B-...`), which Megler's key store
+refuses ("ProviderException: Failed to generate attestation certificate
+chain"), as a device whose keymaster cannot attest -- Google Play services'
+check-in asks for such a key too ("KeyAttestationHandler: Failed to generate
+key attestation"). By number it looks for `/sys/fs/selinux/enforce`, which
+every Android device since 4.3 has, and finds nothing there. And the device
+it is told of is a Pixel of 2016 (`sailfish`) on Android 14, with a
+fingerprint Google never built, and a 32-bit ARM one alone.
+
+**What was tried, under qemu**, with code and flags of the experiments'
+own, not kept in Megler: the attested pairs made as Android's software
+keymaster makes them where there is no trusted environment (AOSP's
+`system/keymaster`: its software attestation keys and certificates, the
+key's description at the security level Software, checked with openssl),
+first with AOSP's EC chain, whose batch certificate expired in January 2026,
+then with its RSA one, unexpired, together with a `/sys/fs/selinux/enforce`
+that says 1. The machine took both: it read the file, its pairs were made,
+and its "full" result grew from 1898 to 3750 bytes with their chains in it.
+Google's answers were the same: no "fast" program, an empty extra, and the
+device key's "Error 400". So the server's answer is its judgement of what
+the machine sees, and what it sees is what Megler is: a key store with no
+trusted environment to attest from, no verified boot, a device of no maker's.
+Changing that would take Megler claiming a hardware-backed key store and a
+device it is not, which it does not do.
+
+**Following it on a phone** (flags in `Pictures\Megler\diag\<package>\flags`):
+`trace-syscalls` (a library's calls by number with the path each names:
+"/sys/fs/selinux/enforce" = -2 from `libdB21738DAE92C.so+0x2e18`, its own
+`syscall()`), `trace-files-libdB` (the files that library opens or looks at
+through the C library), `trace-calls-bywg` with 26.43.30 (`bvts` with
+26.41.31: the refusal, and the answer's extra bytes), and
+`trace-calls-com.google.ccc.abuse.droidguard.DroidGuard` (the machine's Java:
+the flow it was made for, and `run`'s and `ss`'s results with their length).
+
+## Google's own Play services from Play Store: their splits
+
+Play Store updates Google's own Play services as it installs any app from a
+bundle: a base and splits of the phone's density and languages (26.43.30 on a
+Lumia 650: "its base and 10 split(s) kept", for 320 dpi in English and
+Russian). The library keeps them as an app's (`<apk>.splits`), and Google
+Play services' own package runs with them. An app that hosts them had the base
+alone: the shell copied `GmsCore.apk` into `<shared>\services\<token>` and
+nothing else, and their resources were the base's table. A resource whose
+every value is a density's -- the Google logo `googlelogo_standard_color_74x24`
+of `ProductLockupView`, its default when the layout names none (in 26.41.31's
+universal APK PNGs for mdpi to xxhdpi and a vector for anydpi, nothing of no
+density; `0x7f0804bc` in 26.43.30) -- is in the density's split alone, and
+"Manage your Google Account" (their account settings' Compose screen) and
+"Help and feedback" (`HelpChimeraActivity`'s layout) ended Play Store on
+`Resources$NotFoundException: Resource ID #0x7f0804bc` (0.1.0.685 and 686).
+Play Store's own table has an entry under that number: the lookup was in
+theirs.
+
+Now `registerServiceApk` copies the splits beside the base
+(`<token>\GmsCore.apk.splits`, `files::copyFilesWhole`: each whole, a copy
+registered before them gets them at the next registration), the player passes
+the folder (`megler_run_config.gms_splits_dir`) and holds its files open as it
+holds the base, and the core mounts each split beside `GmsCore.apk`
+(`/system/priv-app/GmsCore/split_<name>.apk`, `Native.gmsSplitPaths`; the log
+says "Google Play services are in N APKs"). `megler.MicroG` makes their
+`AssetManager` of the base and the splits: the splits' tables are merged into
+the base's (`Resources.meglerPackageTable`, each cut to the languages as the
+base's is), a file the base has not is read from the split that has it, and
+their `ApplicationInfo` names the splits as Android does. A split with code
+or native libraries is said in the log; nothing of either is taken from one.
+
+And a context of theirs made for another configuration
+(`createConfigurationContext`: AppCompat's `attachBaseContext2` wraps an
+activity's base in one where the app's night mode or locales differ, and their
+own code makes such contexts) is their resources under that configuration. It
+was the app's, through the app's `ContextImpl`, which `ContextWrapper` asks.
+So was their package context's theme, from which each activity of theirs
+begins (`ContextThemeWrapper` copies its base's): the app's own, whose
+attributes stood under their numbers in theirs wherever their theme set none.
+It is a theme of their resources now, the platform's default for their target
+(`Theme.DeviceDefault.Light.DarkActionBar`), and an activity of theirs that
+names no theme (their application names none) has that default too, not the
+number of the app's theme.
+
+An activity of theirs whose `onCreate` throws is taken off the stack at once
+and never destroyed (`AppRunner.launch`), the one below resumed; the app goes
+on, as it did. Their help screen failed so and finished itself, and its
+destruction at the next idle threw in their lifecycle ("State must be at
+least 'CREATED' to be moved to 'DESTROYED'").
+
+The test app `gms-host` hosts a stand-in of theirs built as Play Store's
+bundle (`gms-own`: a base and the splits `config.mdpi`, `config.xxhdpi` and
+`config.en`), unpacked as the shell unpacks one for 160 dpi: an activity of
+theirs reads a picture of their density's split alone and a word of their
+English split, and both through a context of another configuration, and finds
+no attribute of the app's theme in its own (`gms-host` has a theme with one);
+and one whose `onCreate` throws.
+
+## Android's Geocoder
+
+An app's `android.location.Geocoder` asks Google Play services' geocode
+provider, as Android's location manager does: their service for
+`com.android.location.service.GeocodeProvider` -- Google's own
+`com.google.android.gms.location.geocode.GeocodeService` (not exported; in
+26.41.31 a Chimera proxy whose `GeocodeChimeraService` gives the binder of a
+`com.android.location.provider.GeocodeProvider`, its legacy provider below
+Android 15, `GeocodeProviderBase` from 15 on), or microG's
+`GeocodeProviderService` (OpenStreetMap's Nominatim). It is bound as the system
+binds it and kept (`MicroG.bindAsSystemNow`, on the main thread), and its
+binder, local, is called in place on a thread of the Geocoder's own with the
+app's package, uid, attribution tag and locale (`GeocoderParams`). The
+framework has the library's `GeocodeProvider`, which neither carries, the
+provider's interfaces (`IGeocodeProvider`, `IGeocodeListener`) and Android's
+`Address`. Where no provider is there, `isPresent()` is false and a request
+has no addresses and no error, as on Android. A synchronous request asked on
+the main thread binds the provider there before it waits; what the provider
+wants of the main thread while it answers waits with it (a phone's provider
+has a process of its own). Whether Google's server answers their geocoder
+here is for a phone to show ("I/Geocoder: a place asked ... address(es)").
+
+Windows' own `MapLocationFinder` is no way round: without a Bing Maps key
+(`MapService.ServiceToken`) it answers `InvalidCredentials` to a reverse and
+a forward geocode alike (tried on this PC, Windows 11 26300).
+
 ## Class isolation
 
 The failed implementation reverted in `1adae04` appended GmsCore's DEX files
@@ -199,6 +403,17 @@ which version 26 makes for much of its work) is its package context itself:
 the service's context is the app's, which bound the service's own services as
 the app. A binding meant for Google Play services that none of its services
 takes is said in the log ("no service of Google Play services binds ...").
+
+The package context's own attribution tag (where none was asked for) is
+`megler.app` only where the user lets Google Play services' own features use
+the location, and null otherwise: Google's GmsCore refuses a location request
+of its own whose identity (`ClientIdentity.c(Context)`, made of that tag) has a
+null tag or its location module's ("internal location usage has a forbidden
+attribution tag"), and those requests are its own features' in every app's
+process -- personal safety, semantic location, place suggestions --, not the
+app's. One answer for every app, asked over the app the first time such an
+identity is made, kept in Megler's settings (docs/JAVA.md, "Permissions").
+microG makes no such identity, and is never asked about.
 
 A service of Google Play services is given one `onBind` for each intent that is
 different as Android's `Intent.filterEquals` has it -- its action, data, type,

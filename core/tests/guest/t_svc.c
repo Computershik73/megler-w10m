@@ -38,6 +38,13 @@ __attribute__((naked)) int t_svc_dead_stub(void)
    0xEF000000: the word of an ARM svc 0, and a Thumb movs r7, #20 and svc 0. The loader leaves them: they are no code. */
 const unsigned t_svc_rodata[2] = { 0xEF000000u, 0xDF002714u };
 
+/* Geekbench 5's own sysinfo (libgeekbench.so): the call by number, 116, which Linux never fails -- its code runs on into the
+   next function when the result is negative. */
+__attribute__((naked)) int t_svc_sysinfo(void *info)
+{
+    __asm__ volatile("push {r4, r7}\nmovs r7, #116\nsvc 0\npop {r4, r7}\nbx lr\n");
+}
+
 /* Chromium's cacheflush wrapper: start + length, flags 0, literal syscall nr. */
 __attribute__((naked)) int t_svc_cacheflush(void *start, unsigned length)
 {

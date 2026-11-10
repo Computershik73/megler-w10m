@@ -75,6 +75,9 @@ struct mg_lib {
     bool runtime;              /* one of Android's own (mg_ld_load_runtime), not the app's: the two never see each other */
     bool go;                   /* one of Go's: its build ID note (mg_ld_lib_is_go) */
     mg_ld_stats stats;
+    /* Its imports nothing provides, each once (stats.unresolved of them): their names in its string table, for the log. */
+    const char **unresolved;
+    u32 unresolved_cap;
     mg_svc_site *svc_sites;    /* immutable once executable; only our registered traps may resume */
     /*
      * Its executable sections (.text, .plt...), [start, end) by address, from the file's section headers when they agree

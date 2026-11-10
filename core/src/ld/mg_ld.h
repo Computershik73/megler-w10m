@@ -58,7 +58,31 @@ const char *mg_ld_abi(void);
 bool mg_ld_has_lib(const char *name);
 /* Whether an address is inside a loaded library. Takes no lock: for asking about a thread that has been stopped. */
 bool mg_ld_is_guest_code(mg_addr pc);
-int mg_ld_apk_libs(void (*cb)(const char *name, u64 size, void *user), void *user);
+
+/*
+ * The app's libraries as files of their own in `dir`, its ApplicationInfo.nativeLibraryDir (mg_ld_place.c): every
+ * lib/<abi>/<name>.so of the APKs -- of the first APK that has the name, as the linker takes it -- and no other library,
+ * as Android's installer leaves the folder at each install and update. A file is written when it is not that entry's:
+ * absent, of another size, or of another CRC-32 than `index` says the last placing wrote (the APK's central directory
+ * has the entry's, so a start that changes nothing reads no library). A file of the entry's size that the index does not
+ * name is summed once, and written only when it differs. A library no APK has any more -- an update dropped it, or moved
+ * it into an archive the app unpacks itself -- is removed. `index` is a file of Megler's, outside the app's folders,
+ * written again when anything changed; NULL: none. `abi` NULL: the APKs have no libraries, and the folder keeps none.
+ * False when the folder cannot be made.
+ */
+typedef struct mg_ld_placed {
+    int libs;                          /* the APKs' libraries */
+    int written, summed, failed;       /* written now; read and summed for want of the index; could not be written */
+    int removed;                       /* an older version's, removed */
+    char removed_names[200];           /* the first of them, joined by ", " */
+} mg_ld_placed;
+bool mg_ld_place_libs(const struct mg_zip *const *apks, int napks, const char *abi, const char *dir, const char *index, mg_ld_placed *out);
+/*
+ * The APK's library `name` (a file name: lib/<abi>/<name> of the first APK that has it, as the linker takes it; in a
+ * service's scope, its APK's): the entry's size and CRC-32, and whether the APK stores it as it is -- such a library is
+ * read where it lies when it is loaded, never whole in memory. False when no APK has it.
+ */
+bool mg_ld_apk_lib_entry(const char *name, u64 *size, u32 *crc, bool *stored);
 
 /* Bind every later import of `name` to `fn` instead of whatever defines it. Call before the libraries load. */
 void mg_ld_interpose(const char *name, void *fn);
@@ -170,7 +194,10 @@ bool mg_patch_tp_target(mg_addr pc, int *reg, mg_addr *target);
 bool mg_patch_sys_emulate(u32 w, mg_addr *regs);
 /* The same for the instruction at `pc`, where it faulted: the thread then goes on after it. */
 bool mg_patch_sys_fault(mg_addr pc, mg_addr *regs);
-/* 0 quiet, 1 one line per library, 2 every unresolved import as well. */
+/*
+ * 0 quiet, 1 one line per library and one naming its imports nothing provides (the first ones, as many as the line has
+ * room for), 2 every unresolved import as it is met as well.
+ */
 void mg_ld_set_verbosity(int v);
 
 /* What was done to a library's code so it runs here, for reports and tests. */
@@ -180,7 +207,7 @@ typedef struct mg_ld_stats {
     u32 plt_entries;       /* ARM-mode PLT entries rewritten */
     u32 arm_functions;     /* exported functions in ARM (not Thumb) mode */
     u32 thumb_functions;
-    u32 unresolved;
+    u32 unresolved;        /* imports nothing provides, each name once */
     u32 svc_sites;         /* direct system calls intercepted */
     u32 tp_led_out;        /* x86_64: accesses of the thread pointer's segment through a register, led out to the island */
     u32 svc_led_out;       /* 32-bit ARM: of svc_sites, ARM ones of a library of Go's led out to the core (arm/mg_patch.c), not traps; ARM64: every one led out */
@@ -210,6 +237,13 @@ mg_addr mg_code_entry(mg_addr fn);
  * (bit 0 says Thumb, as in any code pointer) and the result is true.
  */
 bool mg_ld_plt_target(mg_addr pc, mg_addr *target);
+
+/*
+ * The crash report's part (32-bit ARM): whether `lr` is where a call returns to, the instruction before it a BL or BLX in
+ * an executable segment of the guest library lr is in -- 1 if so, 0 if lr is in such a library and is not (in its data, or
+ * after any other instruction), -1 where that is not known (lr in no guest library, or another processor).
+ */
+int mg_ld_after_call(mg_addr lr);
 
 #ifdef __cplusplus
 }

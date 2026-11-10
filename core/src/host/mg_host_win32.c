@@ -4767,6 +4767,21 @@ bool mg_host_module_at(mg_addr address, char *name, size_t size, mg_addr *base)
     return true;
 }
 
+bool mg_host_module_stamp(mg_addr address, u32 *stamp)
+{
+    HMODULE module = NULL;
+    const IMAGE_DOS_HEADER *dos;
+    const IMAGE_NT_HEADERS *nt;
+    /* FROM_ADDRESS | UNCHANGED_REFCOUNT; the core's own ELF on desktop Windows is no module of Windows' and has none. */
+    if (!GetModuleHandleExW(0x4 | 0x2, (LPCWSTR)address, &module) || !module) return false;
+    dos = (const IMAGE_DOS_HEADER *)module;
+    if (dos->e_magic != IMAGE_DOS_SIGNATURE) return false;
+    nt = (const IMAGE_NT_HEADERS *)((const u8 *)module + dos->e_lfanew);
+    if (nt->Signature != IMAGE_NT_SIGNATURE) return false;
+    *stamp = (u32)nt->FileHeader.TimeDateStamp;
+    return true;
+}
+
 /*
  * CoreUIComponents.dll keeps a state for each view (0 to 8, in a field at +0x12c of its object) and changes it in one
  * function, which checks every change: one it does not allow ends the process on the spot, by writing to address 0

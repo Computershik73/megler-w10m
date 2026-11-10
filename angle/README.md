@@ -40,6 +40,84 @@ it: these patches change `.cpp` files only.
   `kernel32.dll` for an app, and ANGLE linked with `kernel32.lib` loaded for no app
   there (0.1.0.679, "ANGLE did not load").
 
+- `0004-gles1-feature-level-9.patch` -- `GLES1Renderer.cpp`, OpenGL ES 1 on a
+  display of OpenGL ES 2 at most: Direct3D 11 at feature level 9_3, a Lumia
+  650's Adreno 304 and most Lumias'. ANGLE draws version 1 itself, with an uber
+  shader of ESSL 3.00 specialised by constants (uint loops and switches, flat
+  varyings, array constructors, `gl_VertexID`), which such a display does not
+  compile (at 9_3 the translator also holds it to ESSL 1.00's limits on
+  indexing: "'vertexId' : Index expression can only contain const or loop
+  symbols"). The first draw of version 1 was refused there, and the second ended
+  the app: `initializeRendererProgram` had kept the failed state's entry with no
+  program and asked it for its id (gl::Program::id on null -- Transit's Google
+  Maps on a Lumia 650, 0.1.0.683; this PC's own ANGLE at 9_3 without the patch
+  does the same at the second draw). Where the display makes OpenGL ES 2 at most
+  (`Display::getMaxSupportedESVersion`), the shaders are ESSL 1.00 written for
+  the state they draw in: every choice the uber shader makes from its constants
+  -- lights, texture units and their environments and combiners, fog, alpha
+  test, clip planes, point size, `glDrawTexOES` -- made in C++, the arithmetic
+  the uber shader's line for line, so the pictures are the same at either level
+  (`core/tests/mg_angle_windows.c`, on this PC's build of it: thirty scenes,
+  every picture the same at 9_3 as at 12_1, pixel for pixel). ESSL 1.00 has no
+  flat varyings (a flat shade model is drawn smooth) and 9_3 no framebuffer
+  fetch (no logic op, as before), and no `gl_VertexID`: `glDrawTexOES` reads its
+  rectangle's corners from the point size's attribute, a client array for that
+  draw, the app's own given back after it. And on every display a state whose
+  shaders do not compile or link is kept with no program: its draws are refused
+  with `GL_INVALID_OPERATION` and its shaders and program let go of, never asked
+  for an id; the shader manager is made once (it was made again, and leaked,
+  after each failure). Megler's core finds out by drawing once whether the
+  package's ANGLE has this (`ndk/mg_egl.c`, `es1_drawn_here`), and where it does
+  not, makes version-1 contexts of version 2 there, as 0.1.0.684 did. The
+  phone's package has it only where `tools/build-angle.py` has made Megler's own
+  ANGLE (`build/angle/dist`); `tools/build-appx.sh` says which patches the ANGLE
+  it stages has (`megler-patches.txt`, which `tools/build-angle.py` writes
+  beside the DLLs).
+
+- `0005-share-handles-feature-level-9.patch` -- `Renderer11.cpp`,
+  `SwapChain11.cpp`. At Direct3D feature level 9_3 ANGLE gave a surface's
+  texture no shared handle (`Renderer11::getShareHandleSupport`: such a device
+  "doesn't support share handles on RGBA8 textures/swapchains"), so no frame of
+  OpenGL ES could be a picture the shell keeps there: on a Lumia 650 every
+  WebView was drawn in software (docs/JAVA.md, "At Direct3D feature level 9_3
+  too"). Direct3D shares textures at 9_3 in one format: on this PC a device of
+  9_3 makes a `B8G8R8A8_UNORM` texture shared, plainly and with a keyed mutex,
+  and a second device of 9_3 or 11_1 opens it by its handle and reads what the
+  first drew; `R8G8B8A8_UNORM` and the typeless formats it refuses
+  (`E_INVALIDARG`) -- the runtime's rule for the level, which the win suite holds
+  it to (`core/tests/mg_gfx_windows.cpp`, `check_texture_9_3`). So at 9_3 ANGLE
+  has share handles, and a pbuffer's texture is made shared where it is
+  `B8G8R8A8_UNORM` of one sample (the first configuration of 8888 EGL gives); a
+  pbuffer of any other format is made unshared there, its handle null, as every
+  one was, rather than not made at all. `core/tests/mg_angle_windows.c`
+  (`gl1_shared`) draws into such a pbuffer at 9_3 and reads it back through its
+  handle.
+
+- `0006-no-dual-source-blending-below-10.patch` -- `renderer11_utils.cpp`.
+  `GL_EXT_blend_func_extended` and a dual-source draw buffer are offered from
+  feature level 10_0 on only, where Direct3D blends with a second source: on
+  this PC a blend state of `ONE, INV_SRC1_COLOR` is made on a device of 11_1 and
+  refused on one of 9_3 (`E_INVALIDARG`), and ANGLE's draws with it then do
+  nothing. venetium-w10m (the owner's Chromium for these phones) found Skia
+  blending its LCD text so at 9_3 on a Lumia 650, nothing with such text drawn.
+
+- `0007-egl-image-level-zero.patch` -- `TextureStorage11.cpp`. At feature level
+  9_3 (`zeroMaxLodWorkaround`) ANGLE asks a texture for its level-zero copy
+  before it samples it, and an EGL image's storage answered that it could not
+  be reached (`UNREACHABLE`): every draw sampling an image of a texture was
+  refused, `GL_INVALID_OPERATION`. An image is one level already, the one asked
+  for, and now answers so. The WebView's Chromium draws parts of a page from
+  such images: on this PC at 9_3 without the patch its draws of them were
+  refused (ANGLE's "Error 0x502 ...
+  TextureStorage11_EGLImage::useLevelZeroWorkaroundTexture"), and the WebView
+  test app's page drawn through a `RenderNode` lost its yellow bar; with it the
+  page is whole. venetium-w10m met it with video frames. Not yet right at 9_3:
+  an image of a 16x16 texture whose picture was copied into it
+  (`glCopyTexImage2D`) is sampled empty there by OpenGL ES 1, where at this
+  PC's own level it is drawn -- left for a change of its own (ANGLE keeps such
+  a texture at 9_3 as two Direct3D textures, all its levels and level zero
+  alone, and the image's is likely the one without the picture).
+
 (An earlier `0001-buffer11-dynamic-writes.patch` took a static buffer written
 after its draws as dynamic. It was made for a loading screen that ran at seven
 frames a second, which turned out to be the shell composing the window from

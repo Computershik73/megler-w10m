@@ -47,6 +47,7 @@ enum {
     MG_APPX_CAP_CHAT = MEGLER_APPX_CAP_CHAT,
     MG_APPX_CAP_CALL_HISTORY = MEGLER_APPX_CAP_CALL_HISTORY,
     MG_APPX_CAP_BLUETOOTH = MEGLER_APPX_CAP_BLUETOOTH,
+    MG_APPX_CAP_WIFI = MEGLER_APPX_CAP_WIFI,
 };
 MG_HOSTAPI unsigned mg_appx_capabilities(const char *const *permissions, int count, bool sms_retriever);
 /* The manifest of that package, made from Megler's own (`megler`, the text of its AppxManifest.xml): its identity name,

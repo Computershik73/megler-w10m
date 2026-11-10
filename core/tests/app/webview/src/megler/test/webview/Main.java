@@ -39,7 +39,9 @@ import java.nio.charset.StandardCharsets;
  *  - redirect: a navigation of the page's own is redirected by the server to a callback URL of a scheme of the app's, as an
  *    OAuth server sends a login back, and shouldOverrideUrlLoading is asked about it and takes it;
  *  - input: the page's text field is where the log says (input-at), the test taps it, the field has the focus, the test types
- *    with the keyboard, and the field has the text.
+ *    with the keyboard, and the field has the text;
+ *  - layers: a page of Chromium's layers that paint only part of themselves (LAYERS), whose boxes the log places (layers-at)
+ *    and the test finds whole in the picture; the test's key F12 lets the app go on.
  * The test (core/tests/mg_java_tests.c, run_webview) reads the lines, taps, types, and looks at the picture.
  */
 public class Main extends Activity {
@@ -148,6 +150,9 @@ public class Main extends Activity {
             } else if (stage == 7 && url.endsWith("/page")) {
                 stage = 8;
                 main.postDelayed(Main.this::input, 500);
+            } else if (stage == 9 && url.endsWith("/layers")) {
+                stage = 10;
+                main.postDelayed(Main.this::layersAt, 800);
             }
         }
 
@@ -281,7 +286,7 @@ public class Main extends Activity {
             String text = v.substring(v.indexOf(':') + 1);
             if (text.equals("hello")) {
                 Log.i(T, "input ok value=" + text);
-                dismiss();
+                layers();
                 return;
             }
             if (tries > 200) {
@@ -293,16 +298,69 @@ public class Main extends Activity {
         });
     }
 
-    /** The rows of the bitmap the overlay's WebView last drew a hardware-accelerated canvas through; -1 if none. */
+    /**
+     * Layers that paint only part of themselves (LAYERS): their boxes are where the page says, in the window's pixels
+     * ("layers-at"), for the test to look at in the picture; then the app waits for the test's key (KEYCODE_F12) to go on.
+     */
+    private void layers() {
+        stage = 9;
+        web.loadUrl(base + "/layers");
+    }
+
+    private void layersAt() {
+        web.evaluateJavascript("(function(){ var d = window.devicePixelRatio, out = [];"
+                + " ['box', 'inner', 'full'].forEach(function(id) { var r = document.getElementById(id).getBoundingClientRect();"
+                + " out.push(id + '=' + Math.round(r.left * d) + ',' + Math.round(r.top * d) + ',' + Math.round(r.width * d) + ',' + Math.round(r.height * d)); });"
+                + " return out.join(' '); })()", value -> {
+            int[] at = new int[2];
+            web.getLocationOnScreen(at);
+            Log.i(T, "layers-at " + at[0] + "," + at[1] + " " + (value == null ? "" : value.replace("\"", "")));
+        });
+    }
+
+    @Override
+    public boolean dispatchKeyEvent(android.view.KeyEvent e) {
+        if (stage == 10 && e.getKeyCode() == android.view.KeyEvent.KEYCODE_F12) {
+            if (e.getAction() == android.view.KeyEvent.ACTION_UP) {
+                stage = 11;
+                dismiss();
+            }
+            return true;
+        }
+        return super.dispatchKeyEvent(e);
+    }
+
+    /**
+     * The rows the overlay's WebView last drew a hardware-accelerated canvas through: the bitmap's of a frame drawn in software,
+     * or, drawn on the graphics processor, the part of it its draw functor drew (0 when Chromium asked for no draw, as for a
+     * WebView out of the window); -1 if none.
+     */
     private static int drawnRows(WebView v) {
         try {
             java.lang.reflect.Field f = WebView.class.getDeclaredField("mMeglerBitmap");
             f.setAccessible(true);
             Bitmap b = (Bitmap) f.get(v);
-            return b != null ? b.getHeight() : -1;
+            if (b != null || !onGraphicsProcessor()) return b != null ? b.getHeight() : -1;
+            java.lang.reflect.Field asked = WebView.class.getDeclaredField("mMeglerFunctorAsked");
+            java.lang.reflect.Field failed = WebView.class.getDeclaredField("mMeglerFunctorFailed");
+            java.lang.reflect.Field part = WebView.class.getDeclaredField("mMeglerVisible");
+            asked.setAccessible(true);
+            failed.setAccessible(true);
+            part.setAccessible(true);
+            if (!asked.getBoolean(v)) return 0;
+            return failed.getBoolean(v) ? -1 : ((android.graphics.Rect) part.get(v)).height();
         } catch (Exception e) {
             Log.w(T, "dismiss: " + e);
             return -1;
+        }
+    }
+
+    /** Whether pages are drawn on the graphics processor here (megler.WebFunctors.on: the platform's draw functor). */
+    private static boolean onGraphicsProcessor() {
+        try {
+            return (Boolean) Class.forName("megler.WebFunctors").getMethod("on").invoke(null);
+        } catch (Exception e) {
+            return false;
         }
     }
 
@@ -335,7 +393,8 @@ public class Main extends Activity {
                     int detached = drawnRows(banner);
                     banner.destroy();
                     drawThroughNode(banner, w, h);
-                    boolean ok = h == 20000 && drawn > 0 && drawn <= root.getHeight() && detached > 0
+                    // (Drawn on the graphics processor, one out of the window may be given no draw at all: 0 rows.)
+                    boolean ok = h == 20000 && drawn > 0 && drawn <= root.getHeight() && detached >= (onGraphicsProcessor() ? 0 : 1)
                             && detached <= getResources().getDisplayMetrics().heightPixels;
                     Log.i(T, "dismiss " + (ok ? "ok" : "FAILED") + " size=" + w + "x" + h + " drawn=" + drawn + " detached=" + detached + " window=" + root.getHeight());
                     Log.i(T, "done");
@@ -421,6 +480,8 @@ public class Main extends Activity {
                     send(out, "200 OK", "text/html; charset=utf-8", PAGE, "Set-Cookie: megler=1; Path=/\r\n");
                 } else if (path.equals("/check-cookie")) {
                     send(out, "200 OK", "text/html; charset=utf-8", "<!DOCTYPE html><html><body style=\"background:#1e78c8\">cookie=" + cookie + "</body></html>", "");
+                } else if (path.equals("/layers")) {
+                    send(out, "200 OK", "text/html; charset=utf-8", LAYERS, "");
                 } else if (path.equals("/login")) {
                     send(out, "302 Found", "text/html", "<html><body>redirecting</body></html>", "Location: meglertest://callback?code=abc123\r\n");
                 } else {
@@ -441,6 +502,24 @@ public class Main extends Activity {
             out.flush();
         }
     }
+
+    /**
+     * Layers of Chromium's own (will-change) that paint only part of themselves, as a Material checkbox does (a 48-pixel input
+     * that paints nothing round an 18-pixel box: #box), or a box in the middle of an empty layer (#inner), and one that paints
+     * all of itself (#full). A page drawn in software (the platform's software table) drew each of the first two squeezed into
+     * what it paints while Chromium's HitTestOpaqueness was on (megler.WebViewFlags).
+     */
+    private static final String LAYERS = "<!DOCTYPE html><html><head>"
+            + "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><title>layers</title>"
+            + "<style>html, body { margin: 0; background: #fff; }"
+            + " #check { position: absolute; left: 40px; top: 40px; width: 48px; height: 48px; will-change: transform, opacity; }"
+            + " #check input { position: absolute; left: 0; top: 0; width: 48px; height: 48px; margin: 0; opacity: 0; }"
+            + " #box { position: absolute; left: 15px; top: 15px; width: 18px; height: 18px; background: #d01f7a; }"
+            + " #plain { position: absolute; left: 40px; top: 120px; width: 160px; height: 100px; will-change: transform; }"
+            + " #inner { position: absolute; left: 40px; top: 20px; width: 60px; height: 60px; background: #1f7ad0; }"
+            + " #full { position: absolute; left: 240px; top: 120px; width: 100px; height: 100px; will-change: transform; background: #1fd07a; }</style>"
+            + "</head><body><div id=\"check\"><input type=\"checkbox\"><div id=\"box\"></div></div>"
+            + "<div id=\"plain\"><div id=\"inner\"></div></div><div id=\"full\"></div></body></html>";
 
     /** The page: a yellow bar along the top, blue below, a text field; its script names the page and tells the app. */
     private static final String PAGE = "<!DOCTYPE html><html><head>"

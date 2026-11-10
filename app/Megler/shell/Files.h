@@ -74,6 +74,11 @@ bool mend(const std::wstring& source, const std::wstring& copy, uint64_t& mended
 bool copyWhole(const std::wstring& from, const std::wstring& to, uint64_t& mended, const Progress& progress = nullptr);
 /// The size from which copyWhole copies past Windows's cache.
 constexpr uint64_t unbufferedFrom = 8u << 20;
+/// The files of `fromDir` whose names end with `extension` (".apk") copied whole into `toDir`, which is made where it is not
+/// there: each through a ".part" of its own (copyWhole, then renamed), as a copy that apps run from is made. One there already
+/// of the same size is kept. `copied`: how many were copied. False at the first that could not be (its .part removed; on
+/// failure GetLastError() says why); none to copy is no failure, and makes no folder.
+bool copyFilesWhole(const std::wstring& fromDir, const std::wstring& toDir, const std::wstring& extension, int& copied);
 
 /// A file read as the disk holds it, past Windows's cache of it (FILE_FLAG_NO_BUFFERING: whole sectors, into memory of
 /// its own aligned to a page); as any file where the file system will not open it so, or opens it so and then refuses its
@@ -108,6 +113,8 @@ std::vector<std::wstring> listFolders(const std::wstring& directory, const std::
 bool removeTree(const std::wstring& path);
 /// The sizes of the files in a folder (not in its folders), added up; 0 for no folder.
 uint64_t folderSize(const std::wstring& path);
+/// The sizes of the files in a folder and in its folders, added up (a link to a folder elsewhere not followed); 0 for none.
+uint64_t treeSize(const std::wstring& path);
 
 /// What a PC's NTFS never refuses and a memory card's file system may, for the tests of the ways round it
 /// (core/tests/mg_shell_windows.cpp): every CopyFile2 refused with `error`, every read past the cache (DiskFile) with

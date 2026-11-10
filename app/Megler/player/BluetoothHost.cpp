@@ -206,7 +206,14 @@ std::string gName, gWhyNone;
 BluetoothAdapter gAdapter{nullptr};
 Radio gRadioObject{nullptr};
 std::vector<Paired> gPaired;
-bool gTyped = false; // BluetoothAddressType there (Windows 10 1703)
+bool gTyped = false; // BluetoothLEDevice.BluetoothAddressType there (Windows 10 1703)
+/*
+ * An advertisement's BluetoothAddressType (IBluetoothLEAdvertisementReceivedEventArgs2) came later, with Windows 10 2004:
+ * asked where gTyped said yes, on Windows 10 Mobile (15063, 15254), C++/WinRT took the interface Windows did not give for
+ * one it had and called through null. Every app that scanned crashed with the first advertisement heard, in received():
+ * Spotify and Yandex Maps on an HP Elite x3 (0.1.0.681, "access violation at Megler.exe+0x2484be, address 00000000").
+ */
+bool gAdvertisementTyped = false;
 
 int radioOf(RadioState s) { return s == RadioState::On ? MEGLER_BT_RADIO_ON : MEGLER_BT_RADIO_OFF; }
 
@@ -239,6 +246,8 @@ void look() {
     int state = MEGLER_BT_RADIO_NONE;
     std::vector<Paired> paired;
     gTyped = ApiInformation::IsPropertyPresent(L"Windows.Devices.Bluetooth.BluetoothLEDevice", L"BluetoothAddressType");
+    gAdvertisementTyped = ApiInformation::IsPropertyPresent(L"Windows.Devices.Bluetooth.Advertisement.BluetoothLEAdvertisementReceivedEventArgs",
+                                                            L"BluetoothAddressType");
     try {
         // (Windows 10 1703's GATT client, which reaches devices it is not paired with: GattSession, GetGattServicesAsync.)
         if (!ApiInformation::IsTypePresent(L"Windows.Devices.Bluetooth.GenericAttributeProfile.GattSession"))
@@ -379,7 +388,11 @@ void received(const BluetoothLEAdvertisementReceivedEventArgs& e) {
     megler_bluetooth_event ev{};
     ev.kind = MEGLER_BT_EVENT_ADVERTISEMENT;
     ev.address = address;
-    ev.address_type = gTyped ? typeOf(e.BluetoothAddressType()) : MEGLER_BT_ADDRESS_UNKNOWN;
+    ev.address_type = MEGLER_BT_ADDRESS_UNKNOWN;
+    // (The interface asked for as such, too: a Windows that names the property and gives no interface is not believed.)
+    if (gAdvertisementTyped)
+        if (const auto typed = e.try_as<winrt::Windows::Devices::Bluetooth::Advertisement::IBluetoothLEAdvertisementReceivedEventArgs2>())
+            ev.address_type = typeOf(typed.BluetoothAddressType());
     ev.value = e.RawSignalStrengthInDBm();
     ev.extra = connectable ? 1 : 0;
     ev.data = all.data();

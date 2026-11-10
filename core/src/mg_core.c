@@ -127,7 +127,37 @@ static void registers_line(const mg_fault *f, char *out, size_t cap)
 }
 
 #if MG_ARCH_ARM32
-/* The flag trace-syscalls: each system call of a library's own said, with its number, its first four arguments, what it gives and whose. */
+/*
+ * The path a traced call by number names (open, openat, stat64, fstatat64, access, faccessat, readlink, readlinkat and the
+ * rest), as said after its arguments: in quotes, its first 120 characters. Read after the call, which read it already: not
+ * where the call said EFAULT. Google Play services' DroidGuard checks files by number, and the line said only an address.
+ */
+static void syscall_path(u32 nr, const u32 args[4], u32 result, char *out, size_t size)
+{
+    const char *p;
+    size_t k = 0;
+    int which;
+    out[0] = 0;
+    switch (nr) {
+    case 5: case 10: case 33: case 38: case 39: case 40: case 85: case 195: case 196: case 266: which = 0; break;
+    case 322: case 323: case 325: case 327: case 328: case 329: case 332: case 333: case 334: case 348: which = 1; break;
+    default: return;
+    }
+    p = (const char *)(mg_addr)args[which];
+    if (!p || (i32)result == -14 /* EFAULT */) return;
+    out[k++] = ' ';
+    out[k++] = '"';
+    while (*p && k + 5 < size && k < 122) {
+        out[k++] = *p >= 0x20 && *p < 0x7F ? *p : '?';
+        p++;
+    }
+    if (*p) { out[k++] = '.'; out[k++] = '.'; }
+    out[k++] = '"';
+    out[k] = 0;
+}
+
+/* The flag trace-syscalls: each system call of a library's own said, with its number, its first four arguments, the path it
+   names, what it gives and whose. */
 static void trace_syscall(u32 nr, const u32 args[4], u32 result, mg_addr pc)
 {
     static volatile i32 traced = -1, lines;
@@ -135,9 +165,11 @@ static void trace_syscall(u32 nr, const u32 args[4], u32 result, mg_addr pc)
     if (traced > 0 && mg_atomic_add(&lines, 1) <= 30000) {
         const char *where = NULL;
         const void *s = NULL, *b = NULL;
+        char path[140];
         mg_ld_symbol_at((const void *)pc, &where, &s, &b);
-        mg_info("syscall %u(0x%x, 0x%x, 0x%x, 0x%x) = %d on thread %u at %s+0x%x", (unsigned)nr, (unsigned)args[0], (unsigned)args[1],
-                (unsigned)args[2], (unsigned)args[3], (int)result, (unsigned)mg_thread_self_id(), where ? where : "?", (unsigned)(pc - (mg_addr)b));
+        syscall_path(nr, args, result, path, sizeof(path));
+        mg_info("syscall %u(0x%x, 0x%x, 0x%x, 0x%x)%s = %d on thread %u at %s+0x%x", (unsigned)nr, (unsigned)args[0], (unsigned)args[1],
+                (unsigned)args[2], (unsigned)args[3], path, (int)result, (unsigned)mg_thread_self_id(), where ? where : "?", (unsigned)(pc - (mg_addr)b));
     }
 }
 
@@ -381,10 +413,45 @@ static MG_HOSTCB bool on_fault(mg_fault *f)
                          (unsigned)(asked >> 20));
             }
         }
+        /*
+         * A small pc, reached by a call when lr is where a call returns to: a call through a null pointer, or a little past
+         * one, through a table of them. Not when lr is no return address -- in a library's data, after an instruction that
+         * is no call, on the stack: the thread jumped or returned there, as a function returns whose frame's saved lr was
+         * written over. A library that ends its process on purpose does that: DANA's libjabe.so (DexGuard) sums its own
+         * code, and where a sum differs it puts 20 in its frame's saved lr and 24 in the saved r11 and returns (+0xeed18) --
+         * and its sums differ here, the loader having made its system calls traps. The report said a call through a null
+         * pointer (0.1.0.678).
+         */
+        int called = 1;
         if (f->kind == MG_FAULT_ACCESS && pc < 0x10000) {
             size_t n = strlen(report);
-            snprintf(report + n, sizeof(report) - n, "\n  a call through a null pointer: the caller (%s) had asked for a function and was given none",
-                     MG_REG_LR >= 0 ? "lr" : "the return address on the stack");
+#if MG_ARCH_ARM32
+            mg_addr lr_at = f->regs[MG_REG_LR];
+            called = mg_ld_after_call(lr_at);
+            if (called < 0) {
+                void *lo = NULL, *hi = NULL;
+                mg_thread_stack_bounds(&lo, &hi);
+                if (lr_at >= (mg_addr)lo && lr_at < (mg_addr)hi) called = 0;
+            }
+#endif
+            if (called) {
+                snprintf(report + n, sizeof(report) - n, "\n  a call through a null pointer: the caller (%s) had asked for a function and was given none",
+                         MG_REG_LR >= 0 ? "lr" : "the return address on the stack");
+            } else {
+                mg_lib *changed = mg_ld_lib_of((const void *)f->regs[MG_REG_LR >= 0 ? MG_REG_LR : 0]);
+                mg_ld_stats st;
+                snprintf(report + n, sizeof(report) - n, "\n  not a call: lr is no return address, so the thread jumped or returned to this pc, as a function "
+                         "returns whose saved lr was written over -- a library that ends its process on purpose does that");
+                if (changed) {
+                    mg_ld_get_stats(changed, &st);
+                    n = strlen(report);
+                    if (st.svc_sites + st.tp_reads + st.plt_entries)
+                        snprintf(report + n, sizeof(report) - n, "; the loader changed %s's code in %u places (%u system calls by number made traps, "
+                                 "%u thread-pointer reads, %u PLT entries), which a library that sums its own code takes for tampering",
+                                 mg_ld_lib_name(changed), (unsigned)(st.svc_sites + st.tp_reads + st.plt_entries), (unsigned)st.svc_sites,
+                                 (unsigned)st.tp_reads, (unsigned)st.plt_entries);
+                }
+            }
         }
         {
             /*
@@ -397,8 +464,8 @@ static MG_HOSTCB bool on_fault(mg_fault *f)
             const char *caller = mg_ld_symbol_at((const void *)lr, &caller_lib, &caller_sym_addr, &caller_base);
             if (caller_lib && caller_base) {
                 size_t n = strlen(report);
-                snprintf(report + n, sizeof(report) - n, "\n  called from %s+0x%x%s%s", caller_lib, (unsigned)(lr - (mg_addr)caller_base), caller ? " " : "",
-                         caller ? caller : "");
+                snprintf(report + n, sizeof(report) - n, "\n  %s %s+0x%x%s%s", called ? "called from" : "lr:", caller_lib, (unsigned)(lr - (mg_addr)caller_base),
+                         caller ? " " : "", caller ? caller : "");
             }
         }
         if (!lib) {

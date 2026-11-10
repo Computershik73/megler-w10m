@@ -16,6 +16,18 @@ public final class AudioAttributes implements android.os.Parcelable {
     public boolean areHapticChannelsMuted() { return true; }
     public boolean isContentSpatialized() { return false; }
     public int getSpatializationBehavior() { return 0; }
+    /* Equal by what they hold, as Android's are (its compare the usage, the content type, the flags, the capture preset and
+       the tags): two built alike, or one and its copy through a Parcel, are equal. A NotificationChannel compares its audio
+       attributes so in its equals, and a channel that came through a Parcel, or that NotificationManager kept across the
+       app's runs, has attributes of its own. The legacy stream type, which Megler keeps beside them where Android works the
+       usage out of it, is compared too. */
+    @Override public boolean equals(Object o) {
+        if (this == o) return true;
+        if (!(o instanceof AudioAttributes)) return false;
+        AudioAttributes that = (AudioAttributes) o;
+        return mUsage == that.mUsage && mContent == that.mContent && mFlags == that.mFlags && mStream == that.mStream;
+    }
+    @Override public int hashCode() { return java.util.Objects.hash(mContent, mFlags, mUsage, mStream); }
     public static class Builder {
         private int u, c, f, s = AudioManager.STREAM_MUSIC;
         public Builder() {}

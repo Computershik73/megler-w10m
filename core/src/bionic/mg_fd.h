@@ -109,6 +109,11 @@ MG_HOSTCB void mg_fd_notify(void);
 void mg_fd_lock(void);
 void mg_fd_unlock(void);
 void mg_fd_notify_locked(void);
+/*
+ * How many times the descriptors' lock was taken by a thread that held the mappings' lock (mg_libc_mem.c), which is never to
+ * be: a fault on a page given back, met under the descriptors' lock, waits for the mappings' lock (mg_libc_io.c, io_lock_wanted).
+ */
+u32 mg_fd_lock_taken_under_mappings(void);
 /* What ended a wait. MG_FD_INTERRUPTED: a handler that did not ask for SA_RESTART ran; MG_FD_HANDLER_RAN: one that did. */
 enum { MG_FD_WOKEN = 0, MG_FD_TIMED_OUT, MG_FD_HANDLER_RAN, MG_FD_INTERRUPTED };
 /* With the lock held: until something is announced, `timeout_ns` (0: no limit) has passed, or a signal for the thread has been handled (the lock let go of meanwhile). It may end sooner, as a time run out (a look again at most every 200 ms): callers keep their own limits. */

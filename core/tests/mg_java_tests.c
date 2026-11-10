@@ -56,6 +56,10 @@
  * come at the new size with the views laid out for it. And what the app asks of the screen's way up -- its manifest's
  * android:screenOrientation, setRequestedOrientation -- reaches a stand-in for the shell (megler_display_host).
  *
+ * `scroll` is a screen made as WhatsApp's first one is: a ScrollView over a column taller than it, whose cards -- clipped to
+ * their outlines, one given a new background once the screen is laid out -- lie below its edge until the app scrolls to them;
+ * their pixels are looked at then. Run again with the flag no-node-damage (the script's "no-node-damage").
+ *
  * `first` is hello started as the player starts an app on a PC's window or on an Xbox's television (`pc`, `xbox`): the
  * player's busy overlay must go at the app's first picture, whichever way it came and at whatever size, the surface changed
  * and the bars' insets told as the app starts (an Xbox's), and the pictures after the change come at the new size.
@@ -89,6 +93,7 @@
 #include "../src/zip/mg_zip.h"
 #include "mg_camera_standin.h"
 #include "mg_location_standin.h"
+#include "mg_wifi_standin.h"
 #include "mg_sensor_standin.h"
 #include "mg_bluetooth_standin.h"
 #include "mg_codec_standin.h"
@@ -294,8 +299,10 @@ static MEGLER_CB void present_pixels_part(void *user, const void *pixels, int wi
 /*
  * megler_gfx_host.gl_frame and gl_place, as a shell that composes the window on its graphics processor has them: each layer's
  * place and last frame kept, the views' picture as `present` last showed it kept, and the window composed of the two -- the
- * frames at their places, scaled to them, opaque, the views' premultiplied colours over them -- whenever either changes,
- * then shown as a picture handed to present_pixels is. The frames come out of the GL stand-in's surfaces by their "shared
+ * frames of the layers under the views at their places, scaled to them, opaque (those with MEGLER_GL_OVERLAY after the
+ * others), the views' premultiplied colours over them; then the frames of the layers over the views (MEGLER_GL_ABOVE),
+ * opaque or, with MEGLER_GL_TRANSLUCENT, their premultiplied colours over what is there -- whenever either changes, then
+ * shown as a picture handed to present_pixels is. The frames come out of the GL stand-in's surfaces by their "shared
  * handles" (mg_gl_standin_shared). With the script's "readback" gl_frame says no, and the core composes the window itself.
  */
 #define GL_LAYERS 8
@@ -304,6 +311,7 @@ static struct {
     bool refuse, used;
     struct {
         i32 x, y, w, h;
+        int flags;                     /* gl_place's MEGLER_GL_* */
         u8 *frame;                     /* R, G, B, A, rows bottom first */
         int fw, fh;
     } layers[GL_LAYERS];
@@ -311,37 +319,86 @@ static struct {
     int vw, vh;
     volatile i32 frames, places, composed;
     volatile i32 unlocked;             /* frames refused because the core held the surface's keyed mutex */
+    /* The next frames handed over while another thread makes a call of OpenGL ES (turn_probe): asked for, made, gone on. */
+    volatile i32 probe_turns, probes, probes_free;
 } GL = { MG_LOCK_INIT };
+
+/*
+ * Whether a call of OpenGL ES's on another thread goes on while a frame is being handed over: it does where the swapping
+ * thread holds no turn of the display for it (mg_egl_turn_pause). A thread of the test's own makes the call; the swap's
+ * thread waits two seconds at the most for it, so that a turn held makes the probe late, never stuck.
+ */
+static mg_lock g_probe_lock = MG_LOCK_INIT;
+static volatile i32 g_probe_go, g_probe_done;
+
+static MG_HOSTCB void probe_main(void *arg)
+{
+    typedef u32 (*fn_error)(void);
+    fn_error error = (fn_error)mg_egl_host("glGetError");
+    i32 seen = 0;
+    (void)arg;
+    for (;;) {
+        while (g_probe_go == seen) mg_sleep_ns(1000000ull);
+        seen = g_probe_go;
+        if (seen < 0) return;
+        if (error) error();
+        mg_atomic_xchg(&g_probe_done, seen);
+    }
+}
+
+static bool turn_probe(void)
+{
+    static mg_thread *prober;
+    i32 go;
+    int waited;
+    mg_lock_acquire(&g_probe_lock);
+    if (!prober) prober = mg_thread_start(probe_main, NULL, 256 * 1024, "turn-probe");
+    go = mg_atomic_add(&g_probe_go, 1);
+    for (waited = 0; waited < 2000 && g_probe_done != go; waited++) mg_sleep_ns(1000000ull);
+    mg_lock_release(&g_probe_lock);
+    return g_probe_done == go;
+}
 
 /* With GL.lock held: the window composed and shown. */
 static void gl_compose(void)
 {
-    int i, r, col;
+    int i, r, col, pass;
     size_t stride = (size_t)GL.vw * 4;
     if (!GL.views) return;
     memcpy(GL.out, GL.views, stride * (size_t)GL.vh);
-    for (i = 0; i < GL_LAYERS; i++) {
-        i32 x0, y0, x1, y1;
-        if (!GL.layers[i].frame || GL.layers[i].w <= 0 || GL.layers[i].h <= 0) continue;
-        x0 = GL.layers[i].x < 0 ? 0 : GL.layers[i].x;
-        y0 = GL.layers[i].y < 0 ? 0 : GL.layers[i].y;
-        x1 = GL.layers[i].x + GL.layers[i].w > GL.vw ? GL.vw : GL.layers[i].x + GL.layers[i].w;
-        y1 = GL.layers[i].y + GL.layers[i].h > GL.vh ? GL.vh : GL.layers[i].y + GL.layers[i].h;
-        for (r = y0; r < y1; r++) {
-            i32 lr = r - GL.layers[i].y, fr = GL.layers[i].fh - 1 - (i32)((i64)lr * GL.layers[i].fh / GL.layers[i].h);
-            for (col = x0; col < x1; col++) {
-                i32 fc = (i32)((i64)(col - GL.layers[i].x) * GL.layers[i].fw / GL.layers[i].w);
-                const u8 *g = GL.layers[i].frame + ((size_t)fr * (size_t)GL.layers[i].fw + (size_t)fc) * 4;
-                const u8 *v = GL.views + (size_t)r * stride + (size_t)col * 4;
-                u8 *o = GL.out + (size_t)r * stride + (size_t)col * 4;
-                u32 left = 255u - v[3];
-                o[0] = (u8)(v[0] + (g[2] * left + 127) / 255);
-                o[1] = (u8)(v[1] + (g[1] * left + 127) / 255);
-                o[2] = (u8)(v[2] + (g[0] * left + 127) / 255);
-                o[3] = 255;
+    for (pass = 0; pass < 3; pass++)
+        for (i = 0; i < GL_LAYERS; i++) {
+            int flags = GL.layers[i].flags, which = (flags & MEGLER_GL_ABOVE) ? 2 : (flags & MEGLER_GL_OVERLAY) ? 1 : 0;
+            i32 x0, y0, x1, y1;
+            if (which != pass || !GL.layers[i].frame || GL.layers[i].w <= 0 || GL.layers[i].h <= 0) continue;
+            x0 = GL.layers[i].x < 0 ? 0 : GL.layers[i].x;
+            y0 = GL.layers[i].y < 0 ? 0 : GL.layers[i].y;
+            x1 = GL.layers[i].x + GL.layers[i].w > GL.vw ? GL.vw : GL.layers[i].x + GL.layers[i].w;
+            y1 = GL.layers[i].y + GL.layers[i].h > GL.vh ? GL.vh : GL.layers[i].y + GL.layers[i].h;
+            for (r = y0; r < y1; r++) {
+                i32 lr = r - GL.layers[i].y, fr = GL.layers[i].fh - 1 - (i32)((i64)lr * GL.layers[i].fh / GL.layers[i].h);
+                for (col = x0; col < x1; col++) {
+                    i32 fc = (i32)((i64)(col - GL.layers[i].x) * GL.layers[i].fw / GL.layers[i].w);
+                    const u8 *g = GL.layers[i].frame + ((size_t)fr * (size_t)GL.layers[i].fw + (size_t)fc) * 4;
+                    const u8 *v = GL.views + (size_t)r * stride + (size_t)col * 4;
+                    u8 *o = GL.out + (size_t)r * stride + (size_t)col * 4;
+                    if (pass == 2) {
+                        /* Over the views: opaque, or its premultiplied colours over what is there. */
+                        u32 a = (flags & MEGLER_GL_TRANSLUCENT) ? g[3] : 255u, left = 255u - a;
+                        o[0] = (u8)(g[2] + (o[0] * left + 127) / 255 > 255 ? 255 : g[2] + (o[0] * left + 127) / 255);
+                        o[1] = (u8)(g[1] + (o[1] * left + 127) / 255 > 255 ? 255 : g[1] + (o[1] * left + 127) / 255);
+                        o[2] = (u8)(g[0] + (o[2] * left + 127) / 255 > 255 ? 255 : g[0] + (o[2] * left + 127) / 255);
+                        o[3] = (u8)(a + (o[3] * left + 127) / 255 > 255 ? 255 : a + (o[3] * left + 127) / 255);
+                    } else {
+                        u32 left = 255u - v[3];
+                        o[0] = (u8)(v[0] + (g[2] * left + 127) / 255);
+                        o[1] = (u8)(v[1] + (g[1] * left + 127) / 255);
+                        o[2] = (u8)(v[2] + (g[0] * left + 127) / 255);
+                        o[3] = 255;
+                    }
+                }
             }
         }
-    }
     present_pixels(NULL, GL.out, GL.vw, GL.vh, GL.vw * 4);
     mg_atomic_add(&GL.composed, 1);
 }
@@ -352,6 +409,12 @@ static MEGLER_CB bool gl_frame(void *user, int layer, void *share_handle, int wi
     int w, h;
     (void)user;
     if (GL.refuse || layer < 0 || layer >= GL_LAYERS || !mg_gl_standin_shared(share_handle, &rgba, &w, &h) || w != width || h != height) return false;
+    /* (While natives_stack asks: another thread's call of OpenGL ES meanwhile.) */
+    if (GL.probe_turns > 0 && mg_atomic_add(&GL.probe_turns, -1) >= 0) {
+        bool free_ = turn_probe();
+        mg_atomic_add(&GL.probes, 1);
+        if (free_) mg_atomic_add(&GL.probes_free, 1);
+    }
     /* The surface's keyed mutex first, as the shell's AcquireSync: a frame whose mutex the core still holds is not taken. */
     if (!mg_gl_standin_keyed(share_handle, true)) {
         mg_atomic_add(&GL.unlocked, 1);
@@ -373,7 +436,7 @@ static MEGLER_CB bool gl_frame(void *user, int layer, void *share_handle, int wi
     return true;
 }
 
-static MEGLER_CB void gl_place(void *user, int layer, int x, int y, int width, int height)
+static MEGLER_CB void gl_place(void *user, int layer, int x, int y, int width, int height, int flags)
 {
     (void)user;
     if (layer < 0 || layer >= GL_LAYERS) return;
@@ -383,6 +446,7 @@ static MEGLER_CB void gl_place(void *user, int layer, int x, int y, int width, i
     GL.layers[layer].y = y;
     GL.layers[layer].w = width > 0 ? width : 0;
     GL.layers[layer].h = width > 0 ? height : 0;
+    GL.layers[layer].flags = width > 0 ? flags : 0;
     if (width <= 0) {
         free(GL.layers[layer].frame);
         GL.layers[layer].frame = NULL;
@@ -390,6 +454,179 @@ static MEGLER_CB void gl_place(void *user, int layer, int x, int y, int width, i
     }
     mg_lock_release(&GL.lock);
     mg_atomic_add(&GL.places, 1);
+}
+
+/*
+ * MG_JAVA_ANGLE=<the folder of Megler's ANGLE for this PC> (build/angle/x64/dist), in the desktop builds of the tests, which
+ * load Windows' DLLs: OpenGL ES is ANGLE itself instead of the stand-in, driven by the core's EGL as on a phone -- the
+ * WebView's Chromium on Direct3D 11 of this PC's graphics processor, at feature level 9_3 where the data folder's flags have
+ * egl-level-9_3 -- and the shell keeps pictures on the graphics processor as a phone's does (megler_gfx_host.texture_frame
+ * and draw_texture), so that the WebView's draw functor is drawn, as on a phone. A picture is taken by its shared handle
+ * through ANGLE's own EGL (EGL_ANGLE_d3d_share_handle_client_buffer: a pbuffer of that texture, on a context of its own),
+ * under its keyed mutex, read back and kept; draw_texture draws what was kept with the stand-in's drawing, the right way
+ * up. (A shell's own copies its picture on its graphics processor instead: app/Megler/player/GfxHost.cpp, textureFrame.)
+ */
+static struct {
+    mg_lock lock;
+    bool on;
+    void *display, *config, *context;
+    struct {
+        int id, w, h;
+        u32 *bgra;                     /* 0xAARRGGBB premultiplied, rows top first */
+        u32 version;
+    } kept[8];
+    volatile i32 frames, refused, drawn;
+} AT = { MG_LOCK_INIT };
+
+static MEGLER_CB bool angle_texture_frame(void *user, int id, void *share_handle, int width, int height)
+{
+    enum {
+        EGL_NONE_ = 0x3038, EGL_WIDTH_ = 0x3057, EGL_HEIGHT_ = 0x3056, EGL_SURFACE_TYPE_ = 0x3033, EGL_PBUFFER_BIT_ = 1, EGL_RED_SIZE_ = 0x3024,
+        EGL_GREEN_SIZE_ = 0x3023, EGL_BLUE_SIZE_ = 0x3022, EGL_ALPHA_SIZE_ = 0x3021, EGL_DRAW_ = 0x3059, EGL_READ_ = 0x305A,
+        EGL_D3D_TEXTURE_2D_SHARE_HANDLE_ANGLE_ = 0x3200, EGL_CONTEXT_CLIENT_VERSION_ = 0x3098, GL_RGBA_ = 0x1908, GL_UNSIGNED_BYTE_ = 0x1401
+    };
+    typedef void *(*fn_get_display)(void *);
+    typedef unsigned (*fn_choose)(void *, const int *, void **, int, int *);
+    typedef void *(*fn_create_context)(void *, void *, void *, const int *);
+    typedef void *(*fn_client_buffer)(void *, unsigned, void *, void *, const int *);
+    typedef unsigned (*fn_make_current)(void *, void *, void *, void *);
+    typedef unsigned (*fn_destroy)(void *, void *);
+    typedef void *(*fn_current)(void);
+    typedef void *(*fn_current_surface)(int);
+    typedef int (*fn_error)(void);
+    typedef void (*fn_read)(int, int, int, int, unsigned, unsigned, void *);
+    static const int want[] = { EGL_SURFACE_TYPE_, EGL_PBUFFER_BIT_, EGL_RED_SIZE_, 8, EGL_GREEN_SIZE_, 8, EGL_BLUE_SIZE_, 8, EGL_ALPHA_SIZE_, 8, EGL_NONE_ };
+    static const int es2[] = { EGL_CONTEXT_CLIENT_VERSION_, 2, EGL_NONE_ };
+    fn_client_buffer client_buffer = (fn_client_buffer)mg_egl_host("eglCreatePbufferFromClientBuffer");
+    fn_make_current make_current = (fn_make_current)mg_egl_host("eglMakeCurrent");
+    fn_destroy destroy_surface = (fn_destroy)mg_egl_host("eglDestroySurface");
+    fn_current current_display = (fn_current)mg_egl_host("eglGetCurrentDisplay"), current_context = (fn_current)mg_egl_host("eglGetCurrentContext");
+    fn_current_surface current_surface = (fn_current_surface)mg_egl_host("eglGetCurrentSurface");
+    fn_error egl_error = (fn_error)mg_egl_host("eglGetError");
+    fn_read read_pixels = (fn_read)mg_egl_host("glReadPixels");
+    void *was_display, *was_draw, *was_read, *was_context, *pb = NULL, *mutex;
+    int attribs[] = { EGL_WIDTH_, width, EGL_HEIGHT_, height, EGL_NONE_ };
+    u8 *rgba;
+    bool ok = false;
+    int slot = -1, i, r;
+    (void)user;
+    if (!share_handle) {
+        mg_lock_acquire(&AT.lock);
+        for (i = 0; i < (int)MG_COUNT(AT.kept); i++)
+            if (AT.kept[i].id == id) {
+                free(AT.kept[i].bgra);
+                memset(&AT.kept[i], 0, sizeof(AT.kept[i]));
+            }
+        mg_lock_release(&AT.lock);
+        return true;
+    }
+    if (id <= 0 || width <= 0 || height <= 0 || !client_buffer || !make_current || !destroy_surface || !current_display || !current_context
+        || !current_surface || !read_pixels || !egl_error)
+        return false;
+    was_display = current_display();
+    was_draw = current_surface(EGL_DRAW_);
+    was_read = current_surface(EGL_READ_);
+    was_context = current_context();
+    mg_lock_acquire(&AT.lock);
+    if (!AT.display) {
+        fn_get_display get_display = (fn_get_display)mg_egl_host("eglGetDisplay");
+        fn_choose choose = (fn_choose)mg_egl_host("eglChooseConfig");
+        fn_create_context create_context = (fn_create_context)mg_egl_host("eglCreateContext");
+        void *configs[32];
+        int n = 0;
+        AT.display = get_display ? get_display(NULL) : NULL;
+        if (AT.display && choose && create_context && choose(AT.display, want, configs, 32, &n)) {
+            /* The configuration whose format is the texture's (ANGLE checks): tried in EGL's order until one takes it. */
+            for (i = 0; i < n && !AT.config; i++) {
+                void *probe = client_buffer(AT.display, EGL_D3D_TEXTURE_2D_SHARE_HANDLE_ANGLE_, share_handle, configs[i], attribs);
+                if (probe) {
+                    AT.config = configs[i];
+                    destroy_surface(AT.display, probe);
+                }
+            }
+            if (AT.config) AT.context = create_context(AT.display, AT.config, NULL, es2);
+        }
+        say("  (the shell's pictures on the graphics processor: a configuration %s, a context %s)", AT.config ? "found" : "NOT found",
+            AT.context ? "made" : "NOT made");
+    }
+    if (AT.context) pb = client_buffer(AT.display, EGL_D3D_TEXTURE_2D_SHARE_HANDLE_ANGLE_, share_handle, AT.config, attribs);
+    rgba = pb ? (u8 *)malloc((size_t)width * (size_t)height * 4) : NULL;
+    if (rgba && make_current(AT.display, pb, pb, AT.context)) {
+        mutex = mg_egl_surface_mutex(AT.display, pb);
+        if (!mutex || mg_egl_keyed_mutex(mutex, true)) {
+            read_pixels(0, 0, width, height, GL_RGBA_, GL_UNSIGNED_BYTE_, rgba);
+            if (mutex) mg_egl_keyed_mutex(mutex, false);
+            ok = true;
+        }
+    }
+    if (was_context) make_current(was_display, was_draw, was_read, was_context);
+    else make_current(AT.display, NULL, NULL, NULL);
+    if (pb) destroy_surface(AT.display, pb);
+    if (ok) {
+        for (i = 0; i < (int)MG_COUNT(AT.kept) && slot < 0; i++)
+            if (AT.kept[i].id == id) slot = i;
+        for (i = 0; i < (int)MG_COUNT(AT.kept) && slot < 0; i++)
+            if (!AT.kept[i].id) slot = i;
+        if (slot >= 0) {
+            if (AT.kept[slot].w != width || AT.kept[slot].h != height || !AT.kept[slot].bgra) {
+                free(AT.kept[slot].bgra);
+                AT.kept[slot].bgra = (u32 *)malloc((size_t)width * (size_t)height * 4);
+            }
+            AT.kept[slot].id = id;
+            AT.kept[slot].w = width;
+            AT.kept[slot].h = height;
+            AT.kept[slot].version++;
+            /* OpenGL's rows are bottom first; kept top first, as B, G, R, A. */
+            for (r = 0; r < height && AT.kept[slot].bgra; r++) {
+                const u8 *s = rgba + (size_t)(height - 1 - r) * (size_t)width * 4;
+                u32 *d = AT.kept[slot].bgra + (size_t)r * (size_t)width;
+                for (i = 0; i < width; i++, s += 4) d[i] = (u32)s[3] << 24 | (u32)s[0] << 16 | (u32)s[1] << 8 | s[2];
+            }
+        }
+        ok = slot >= 0;
+    }
+    mg_lock_release(&AT.lock);
+    free(rgba);
+    if (ok) mg_atomic_add(&AT.frames, 1);
+    else if (mg_atomic_add(&AT.refused, 1) < 3)
+        say("  (a picture by its shared handle could not be taken: EGL error 0x%x)", (unsigned)egl_error());
+    return ok;
+}
+
+static MEGLER_CB void angle_draw_texture(void *user, void *canvas, int id, float left, float top, float right, float bottom, int alpha)
+{
+    megler_gfx_image img;
+    megler_gfx_paint paint;
+    float src[4], dst[4];
+    int i;
+    (void)user;
+    mg_lock_acquire(&AT.lock);
+    for (i = 0; i < (int)MG_COUNT(AT.kept); i++)
+        if (AT.kept[i].id == id && AT.kept[i].bgra) break;
+    if (i < (int)MG_COUNT(AT.kept)) {
+        memset(&img, 0, sizeof(img));
+        img.pixels = AT.kept[i].bgra;
+        img.width = AT.kept[i].w;
+        img.height = AT.kept[i].h;
+        img.stride = AT.kept[i].w * 4;
+        img.id = 0x7F000000u | (u32)id;
+        img.version = AT.kept[i].version;
+        memset(&paint, 0, sizeof(paint));
+        paint.color = (u32)(alpha < 0 ? 0 : alpha > 255 ? 255 : alpha) << 24;
+        paint.blend = MEGLER_GFX_BLEND_SRC_OVER;
+        paint.filter_mode = -1;
+        src[0] = 0;
+        src[1] = 0;
+        src[2] = (float)img.width;
+        src[3] = (float)img.height;
+        dst[0] = left;
+        dst[1] = top;
+        dst[2] = right;
+        dst[3] = bottom;
+        mg_gfx_standin()->draw_bitmap(NULL, canvas, &img, src, dst, &paint);
+        mg_atomic_add(&AT.drawn, 1);
+    }
+    mg_lock_release(&AT.lock);
 }
 
 static MEGLER_CB bool present_canvas(void *user, void *canvas, int x, int y, int width, int height)
@@ -553,6 +790,8 @@ static bool g_microg_app;
 static bool g_camera_app;
 /* The Bluetooth app: it alone has a radio (the stand-in), so that the others still see a phone without one. */
 static bool g_bluetooth_app;
+/* natives' second run: the flag native-entry-at-start, its start asking its library for NativeActivity's entry (run_natives). */
+static bool g_entry_at_start;
 static volatile i32 g_exited;
 static int g_status;
 static char g_reason[1600];
@@ -806,12 +1045,19 @@ static MEGLER_CB int bio_verify(void *user, const char *message)
 /*
  * The user's answers to the permission groups the app asks for (megler_system_host.permission), as the shell keeps them: in a
  * file of the data folder, so that the data app's second run finds what its first left. For the data app the user lets it
- * have every group but the camera, which is refused each time it is asked, the second time for good; the contacts are
- * granted with no one asked, as the shell grants a group it has nothing behind. Every other app has every group granted, as
- * before there were questions. What was asked is said in g_permissions_asked, each group followed by ';'.
+ * have every group but the camera, which is refused each time it is asked, the second time for good; and the contacts,
+ * which the shell would grant with no one asked (it has nothing behind them), the user refused in the app's App
+ * Permissions: denied for good, never to be asked. Every other app has every group granted, as before there were
+ * questions. What was asked is said in g_permissions_asked, each group followed by ';'.
  */
 static bool g_data_app;
 static char g_permissions_asked[256];
+/*
+ * Google Play services' own use of the location ("gms_location"): one answer of the user's for every app, which nobody has
+ * given when an app starts. Asked, the user takes a moment and allows it -- or, with the script `deny`, refuses it for good.
+ * g_gms_asked counts the questions.
+ */
+static int g_gms_location = MEGLER_PERMISSION_UNDECIDED, g_gms_asked;
 
 static int permission_kept(const char *group)
 {
@@ -835,8 +1081,31 @@ static MEGLER_CB int system_permission(void *user, const char *group, bool ask)
 {
     int state;
     (void)user;
-    if (!g_data_app) return MEGLER_PERMISSION_GRANTED;
-    if (!strcmp(group, "contacts")) return MEGLER_PERMISSION_GRANTED;
+    if (!strcmp(group, "gms_location")) {
+        if (ask && g_gms_location == MEGLER_PERMISSION_UNDECIDED) {
+            g_gms_asked++;
+            mg_sleep_ns(300000000ull);
+            g_gms_location = g_script_count && !strcmp(g_script[0], "deny") ? MEGLER_PERMISSION_DENIED_FIXED : MEGLER_PERMISSION_GRANTED;
+        }
+        return g_gms_location;
+    }
+    if (!g_data_app) {
+        /* (Every other app is let have what it asks for; what was asked of the user is noted all the same: gms-host's Google
+           Location Accuracy, which no app has an answer kept for until the user is asked.) */
+        if (!strcmp(group, "location_accuracy") && !ask) return MEGLER_PERMISSION_UNDECIDED;
+        if (ask) {
+            size_t n = strlen(g_permissions_asked);
+            snprintf(g_permissions_asked + n, sizeof(g_permissions_asked) - n, "%s;", group);
+        }
+        return MEGLER_PERMISSION_GRANTED;
+    }
+    if (!strcmp(group, "contacts")) {
+        if (ask) {
+            size_t n = strlen(g_permissions_asked);
+            snprintf(g_permissions_asked + n, sizeof(g_permissions_asked) - n, "%s;", group);
+        }
+        return MEGLER_PERMISSION_DENIED_FIXED;
+    }
     state = permission_kept(group);
     if (ask && state != MEGLER_PERMISSION_GRANTED && state != MEGLER_PERMISSION_DENIED_FIXED) {
         char *path = mg_sprintf("%s/test-permissions.txt", megler_data_dir());
@@ -933,13 +1202,42 @@ static const char *phone_apps_fixture(void)
     return dir;
 }
 
+/*
+ * Google Play services as the test is given them (MG_JAVA_GMS_APK): an APK, or a bundle of a base and splits (.apks, .xapk),
+ * as Play Store installs Google's own -- unpacked as the shell unpacks one into its library, for this screen's density in
+ * English and Russian, the folder of its splits then megler_run_config.gms_splits_dir, as the shell gives the splits it
+ * copies beside the shared copy of their APK. MG_JAVA_GMS_SPLITS names such a folder for an APK. NULL for none.
+ */
+static const char *gms_apk(const char **splits_dir)
+{
+    static char *base, *splits;
+    const char *given = getenv("MG_JAVA_GMS_APK");
+    size_t n = given ? strlen(given) : 0;
+    *splits_dir = getenv("MG_JAVA_GMS_SPLITS");
+    if (n < 6 || (strcmp(given + n - 5, ".apks") && strcmp(given + n - 5, ".xapk"))) return given;
+    if (!base) {
+        char *dir = mg_sprintf("%s/library", megler_data_dir()), *json;
+        mg_path_mkdirs(dir);
+        base = mg_sprintf("%s/gms.apk", dir);
+        splits = mg_sprintf("%s/gms.apk.splits", dir);
+        json = megler_bundle_unpack(given, base, splits, g_screen_dpi, "en,ru", NULL, NULL);
+        say("Google Play services' bundle unpacked as the shell unpacks one: %s, for %d dpi, in English and Russian", given, g_screen_dpi);
+        say("  %s", json ? json : "(nothing)");
+        CHECK(json && strstr(json, "\"ok\":true"));
+        megler_free(json);
+        free(dir);
+    }
+    *splits_dir = splits;
+    return base;
+}
+
 static bool start(const char *apk, const char *android_root)
 {
     static megler_run_config cfg;
     g_android_root = android_root;
     memset(&cfg, 0, sizeof(cfg));
     cfg.apk_path = apk;
-    cfg.gms_apk_path = getenv("MG_JAVA_GMS_APK");
+    cfg.gms_apk_path = gms_apk(&cfg.gms_splits_dir);
     cfg.gsf_apk_path = getenv("MG_JAVA_GSF_APK");
     cfg.splits_dir = g_splits_dir;
     cfg.android_root = android_root;
@@ -954,6 +1252,11 @@ static bool start(const char *apk, const char *android_root)
     cfg.gfx.present = present_canvas;
     cfg.gfx.gl_frame = gl_frame;
     cfg.gfx.gl_place = gl_place;
+    /* With ANGLE itself (MG_JAVA_ANGLE), pictures kept on the graphics processor, as a phone's shell keeps them. */
+    if (AT.on) {
+        cfg.gfx.texture_frame = angle_texture_frame;
+        cfg.gfx.draw_texture = angle_draw_texture;
+    }
     cfg.keyboard.show = keyboard_show;
     cfg.keyboard.hide = keyboard_hide;
     cfg.bars.wanted = bars_wanted;
@@ -975,6 +1278,9 @@ static bool start(const char *apk, const char *android_root)
     if (g_camera_app) cfg.camera = *mg_camera_standin();
     /* The phone in Moscow, the location on (mg_location_standin.c). */
     cfg.location = *mg_location_standin();
+    /* Its Wi-Fi on, four networks in range, connected to the first (mg_wifi_standin.c), its scans counted from each start. */
+    mg_wifi_standin_reset();
+    cfg.wifi = *mg_wifi_standin();
     /* A device with one of each sensor, each reading a known value in Windows' units and signs (mg_sensor_standin.c). */
     cfg.sensors = *mg_sensor_standin();
     /* A Bluetooth LE radio with a MeshCore radio and a beacon in range (mg_bluetooth_standin.c), as it starts. */
@@ -1012,9 +1318,13 @@ static bool start(const char *apk, const char *android_root)
         ((int (*)(const char *, const char *, int))mg_bionic_find("setenv"))("MG_MICROG_POTOKEN_VM_TEST", "1", 1);
     say("a Java app through megler_run (%s on the Android root %s)", apk, android_root);
     {
-        /* What the shell reads before it starts an app: this is a Java app it can run, and how it asks to be held. */
+        /*
+         * What the shell reads before it starts an app: this is a Java app it can run, and how it asks to be held. (With the
+         * flag native-entry-at-start the reading does not look into natives' library, and the app is a NativeActivity until
+         * its start asks the library: run_natives.)
+         */
         char *report = g_splits_dir ? megler_apk_report_splits(apk, g_splits_dir) : megler_apk_report(apk);
-        CHECK(report && strstr(report, "\"engine\":\"java\"") && strstr(report, "\"runnable\":true"));
+        CHECK(report && strstr(report, g_entry_at_start ? "\"engine\":\"native-activity\"" : "\"engine\":\"java\"") && strstr(report, "\"runnable\":true"));
         /* The app whose launcher entries are aliases, the first one disabled: what is started is what the enabled one stands for. */
         if (g_crash_app) CHECK(report && strstr(report, "\"activity\":\"megler.test.crash.First\""));
         if (!g_any_app) CHECK(report && strstr(report, g_portrait ? "\"orientation\":\"portrait\"" : "\"orientation\":\"unspecified\""));
@@ -1644,6 +1954,58 @@ static int run_hello(void)
         if (g_exited) say("  Back that the app ends with: the app ended with status %d%s%s", g_status, g_reason[0] ? ": " : "", g_reason);
     }
     say_app_lines("/HelloTest: ");
+    return g_failed;
+}
+
+/* ----------------------------------------------------------------- scroll */
+
+/*
+ * `scroll` (core/tests/app/scroll): a screen made as WhatsApp's first one is, scrolled to the two cards that lay just below
+ * its ScrollView's bottom edge. Each card is clipped to its outline and has a button in it; card B is given a plain colour
+ * once the screen is laid out, before its first frame, as WhatsApp gives its own (a ColorDrawable, whose bounds are empty
+ * until the card is drawn). Both must be drawn, their buttons with them: on a Lumia 650 WhatsApp's card, its "Accept and
+ * continue" button in it, never was (0.1.0.685), scrolled to or not. Run a second time with the flag no-node-damage (the
+ * script's "no-node-damage"): the frames drawn by the views' rectangles alone. And above the cards two ImageViews whose
+ * picture draws into their padding: drawn there by the one that does not crop to its padding (LottieAnimationView does not),
+ * not by the one that does.
+ */
+static int run_scroll(void)
+{
+    const bool no_damage = g_script_count && !strcmp(g_script[0], "no-node-damage");
+    int at = -1, line, plain[4], cropped[4], a[4], b[4];
+    memset(plain, 0, sizeof(plain));
+    memset(cropped, 0, sizeof(cropped));
+    memset(a, 0, sizeof(a));
+    memset(b, 0, sizeof(b));
+    if (no_damage) CHECK(wait_line("flag: no-node-damage is on", 0, 60) >= 0);
+    /* Laid out: the column 80 px taller than its ScrollView, and card B's new background, not drawn yet, of no size. */
+    expect_line("I/ScrollTest: laid out over=80 cardB=ColorDrawable bounds=[0,0][0,0]", &at, 120);
+    line = wait_line("I/ScrollTest: shown ", 0, 60);
+    CHECK(line >= 0 && rect_in(line_at(line), "plain", plain) && rect_in(line_at(line), "cropped", cropped));
+    settle();
+    write_picture(no_damage ? "scroll-nodamage-1-shown" : "scroll-1-shown");
+    /* The picture in the padding of the ImageView that does not crop to it, not in that of the one that does; in both middles. */
+    CHECK(pixel(plain[0] + 5, plain[1] + 5) == 0xE0A000 && pixel(plain[0] + plain[2] / 2, plain[1] + plain[3] / 2) == 0xE0A000);
+    CHECK(pixel(cropped[0] + 5, cropped[1] + 5) == 0x2060C0 && pixel(cropped[0] + cropped[2] / 2, cropped[1] + cropped[3] / 2) == 0xE0A000);
+    /* F12: the app scrolls to the bottom, and the cards come into view. */
+    megler_key(142, true);
+    megler_key(142, false);
+    line = wait_line("I/ScrollTest: scrolled y=80 range=80 ", 0, 60);
+    CHECK(line >= 0 && rect_in(line_at(line), "a", a) && rect_in(line_at(line), "b", b));
+    settle();
+    write_picture(no_damage ? "scroll-nodamage-2-bottom" : "scroll-2-bottom");
+    say("  scrolled to the bottom: card A at %d,%d %dx%d shows %06x beside its button and %06x in it; card B at %d,%d %dx%d %06x and %06x",
+        a[0], a[1], a[2], a[3], (unsigned)pixel(a[0] + 6, a[1] + a[3] / 2), (unsigned)pixel(a[0] + a[2] / 2, a[1] + a[3] / 2),
+        b[0], b[1], b[2], b[3], (unsigned)pixel(b[0] + 6, b[1] + b[3] / 2), (unsigned)pixel(b[0] + b[2] / 2, b[1] + b[3] / 2));
+    /* Each card: its own colour beside its button (12 px of it to the button's left), and the button green in the middle. */
+    CHECK(a[2] > 0 && pixel(a[0] + 6, a[1] + a[3] / 2) == 0x604080 && pixel(a[0] + a[2] / 2, a[1] + a[3] / 2) == 0x21C063);
+    CHECK(b[2] > 0 && pixel(b[0] + 6, b[1] + b[3] / 2) == 0x406080 && pixel(b[0] + b[2] / 2, b[1] + b[3] / 2) == 0x21C063);
+    /* And the red square in each card's top left corner, cut by the outline: card A's, 2 px inside the card, leaves the corner's
+       first two rows and columns to the screen's colour beneath; card B's plain colour's, the card's bounds, cuts nothing. */
+    CHECK(pixel(a[0], a[1]) == 0x0A1014 && pixel(a[0] + 1, a[1] + 1) == 0x0A1014 && pixel(a[0] + 2, a[1] + 2) == 0xC02020);
+    CHECK(pixel(b[0], b[1]) == 0xC02020 && pixel(b[0] + 10, b[1] + 10) == 0xC02020);
+    back_and_end("I/ScrollTest: destroyed", &at);
+    say_app_lines("/ScrollTest: ");
     return g_failed;
 }
 
@@ -2353,19 +2715,139 @@ static void natives_windows(const int tap_at[2])
     write_picture("natives-5");
 }
 
+/* Whether a pixel is a colour (0xRRGGBB) within two steps a channel: a mix is arithmetic, rounded either way. */
+static bool pixel_near(int x, int y, u32 want)
+{
+    u32 got = pixel(x, y);
+    int s;
+    for (s = 0; s < 24; s += 8)
+        if (abs((int)((got >> s) & 255) - (int)((want >> s) & 255)) > 2) return false;
+    return true;
+}
+
+/* Waits up to `seconds` for a pixel of the window to be near a colour. */
+static bool pixel_shown(int x, int y, u32 want, int seconds)
+{
+    int tries;
+    for (tries = 0; tries < seconds * 20 && running(); tries++) {
+        if (pixel_near(x, y, want)) return true;
+        mg_sleep_ns(50000000ull);
+    }
+    return pixel_near(x, y, want);
+}
+
+/*
+ * Two SurfaceViews one over the other (core/tests/app/natives: StackTest, jni/windows.c), as HERE WeGo has its map and
+ * Flutter's view of its whole interface: under, an ordinary one, drawn blue; over it, one ordered on top of the window
+ * (setZOrderOnTop) with a transparent format, drawn clear with its right half red at half alpha, premultiplied; between
+ * them, in the window, two yellow boxes. A render thread of the library's own draws on each, both at once. As Android has
+ * it: in the left half the blue under the window's hole and the left box over it, both seen through the clear frame on
+ * top; in the right half the half red over the blue, and over the right box. Up to package 681 a surface on top was
+ * shown nowhere -- its view drew no hole and said no place -- and HERE WeGo showed its map alone, the taps going to the
+ * interface no one saw. And, where the shell takes the frames, a call of OpenGL ES's on another thread goes on while a
+ * frame is handed over: the swapping thread holds no turn of the display meanwhile (mg_egl_turn_pause).
+ */
+static void natives_stack(const int tap_at[2])
+{
+    int line, stack[4], left[4], right[4], y, x_left, x_right;
+    char text[200];
+    memset(stack, 0, sizeof(stack));
+    memset(left, 0, sizeof(left));
+    memset(right, 0, sizeof(right));
+    /* The tap after the window test's last step puts the stack's views in the window. */
+    tap(tap_at[0], tap_at[1]);
+    line = wait_line("I/NativesStack: drawn ", 0, 120);
+    CHECK(line >= 0 && rect_in(line_at(line), "stack", stack) && rect_in(line_at(line), "left", left) && rect_in(line_at(line), "right", right));
+    if (line < 0 || stack[2] <= 0) return;
+    CHECK(find_line("I/NativesWindow: stack: under window surface made=1", 0) >= 0 && find_line("I/NativesWindow: stack: over window surface made=1", 0) >= 0);
+    /* The window under is RGBX_8888 as an opaque SurfaceView's; the one over RGBA_8888, its format TRANSPARENT. */
+    snprintf(text, sizeof(text), "I/NativesStack: under surface %dx%d window format 2", stack[2], stack[3]);
+    CHECK(find_line(text, 0) >= 0);
+    snprintf(text, sizeof(text), "I/NativesStack: over surface %dx%d window format 1", stack[2], stack[3]);
+    CHECK(find_line(text, 0) >= 0);
+    /* The surface on top said where it is and how: over the views, translucent. */
+    snprintf(text, sizeof(text) - 1, "is at %d,%d %dx%d in the window, over the views, translucent: its frames go there", stack[0], stack[1], stack[2], stack[3]);
+    CHECK(find_line(text, 0) >= 0);
+    y = stack[1] + stack[3] / 2;
+    x_left = stack[0] + stack[2] * 2 / 5;
+    x_right = stack[0] + stack[2] * 3 / 5;
+    CHECK(pixel_shown(x_left, y, 0x0000FF, 30));
+    CHECK(pixel_shown(left[0] + left[2] / 2, left[1] + left[3] / 2, 0xFFFF00, 30));
+    CHECK(pixel_shown(x_right, y, 0x80007F, 30));
+    CHECK(pixel_shown(right[0] + right[2] / 2, right[1] + right[3] / 2, 0xFF7F00, 30));
+    say("  the stack at %d,%d %dx%d: left %06x, its box %06x; right %06x, its box %06x (blue, yellow; half red over blue 80007f, over yellow ff7f00)",
+        stack[0], stack[1], stack[2], stack[3], (unsigned)pixel(x_left, y), (unsigned)pixel(left[0] + left[2] / 2, left[1] + left[3] / 2),
+        (unsigned)pixel(x_right, y), (unsigned)pixel(right[0] + right[2] / 2, right[1] + right[3] / 2));
+    write_picture("natives-6");
+    /* Three threads draw at once (the stack's two and the window test's renderer): the display's calls take turns. */
+    CHECK(find_line("egl: two threads have contexts of the app's display current at once", 0) >= 0);
+    if (!GL.refuse) {
+        int tries;
+        mg_atomic_xchg(&GL.probe_turns, 3);
+        for (tries = 0; tries < 600 && GL.probes < 3; tries++) mg_sleep_ns(50000000ull);
+        say("  frames handed over while another thread called OpenGL ES: %d probed, %d of them with the call going on meanwhile", (int)GL.probes,
+            (int)GL.probes_free);
+        CHECK(GL.probes == 3 && GL.probes_free == 3);
+    }
+}
+
+/*
+ * An older version's libraries in the app's library folder before its start, as an update leaves the folder on a phone that
+ * Megler up to 0.1.0.685 placed it on (ld/mg_ld_place.c): a library this version has not, under the name the step own-file
+ * unpacks one of its own as and loads by its path (TikTok Lite 47.7.4's libnpth.so, which the older version's in the folder
+ * took the place of), and libnatives_dep.so of the APK entry's size and other bytes, which the old rule kept. The step
+ * library-folder sums the folder against the APK's entries.
+ */
+static void natives_older_libraries(const char *apk)
+{
+    char *dir = mg_sprintf("%s/apps/megler.test.natives/data/lib", megler_data_dir()), *path = mg_sprintf("%s/libunpacked.so", dir), err[160];
+    mg_zip z;
+    mg_path_mkdirs(dir);
+    CHECK(mg_file_write_all(path, "an older version's library, which this one has not", 51));
+    free(path);
+    if (mg_zip_open(&z, apk, err, sizeof(err))) {
+        const mg_zip_entry *e = mg_zip_find(&z, "lib/armeabi-v7a/libnatives_dep.so");
+        CHECK(e != NULL);
+        if (e) {
+            u8 *other = (u8 *)mg_alloc((size_t)e->usize);
+            memset(other, 0x5A, (size_t)e->usize);
+            path = mg_sprintf("%s/libnatives_dep.so", dir);
+            CHECK(mg_file_write_all(path, other, (size_t)e->usize));
+            free(path);
+            free(other);
+        }
+        mg_zip_close(&z);
+    } else {
+        say("  FAIL: %s does not open: %s", apk, err);
+        CHECK(false);
+    }
+    free(dir);
+}
+
 static int run_natives(void)
 {
     static const char *const steps[] = { "load", "registered", "primitives", "stack-mix", "overloads", "arrays", "bounds", "strings", "callback", "throw-native",
                                          "throw-java", "find-class", "references", "reflection", "monitor", "thread", "thread-daemon", "needed-library", "asset",
-                                         "bitmap", "direct-buffer", "configuration", "library-folder", "loaded-once", "own-file", "missing-library",
+                                         "bitmap", "direct-buffer", "configuration", "library-folder", "loaded-once", "own-file", "own-file-same-name",
+                                         "dlopen-own-file", "missing-library",
                                          "missing-method", "looper-watched", "sensors", "gc-held", "system-icu", "abi", "device", "string-alloc", "many-args", "deep-callbacks" };
     int at = -1, layout, pic[4], i;
     char want[120];
     memset(pic, 0, sizeof(pic));
     expect_line("I/NativesTest: onCreate", &at, 120);
+    /* The older version's libraries the test left in the folder (natives_older_libraries): the one this version has not, removed;
+       libnatives_dep.so, of the entry's size, summed against the APK's and written again. */
+    CHECK(find_line(" of an older version's, which this one has not, removed: libunpacked.so", 0) >= 0);
+    CHECK(find_line(" summed against the APK's", 0) >= 0);
     /* Its activity names its library with android.app.lib_name, as Qt's does, and the library has no NativeActivity entry:
-       the Java driver runs it, not the NativeActivity one. */
+       the Java driver runs it, not the NativeActivity one. Found so when the APK is read, or -- in the run with the flag
+       native-entry-at-start, where the library is not looked into then -- by the start, which loads it and asks it. */
     CHECK(find_line("run: megler.test.natives (", 0) >= 0 && find_line(") with the java driver", 0) >= 0);
+    if (GL.refuse)
+        CHECK(find_line("run: libnatives.so has no ANativeActivity_onCreate: its activity (megler.test.natives.Main) loads it through JNI itself, "
+                        "and the app is started as a Java one", 0) >= 0);
+    else
+        CHECK(find_line("run: libnatives.so has no ANativeActivity_onCreate", 0) < 0);
     /* The library's own line (__android_log_print), from its JNI_OnLoad: run when the class that loads it is first used. */
     expect_line("I/NativesLib: JNI_OnLoad call 1", &at, 60);
     for (i = 0; i < (int)MG_COUNT(steps); i++) {
@@ -2397,13 +2879,18 @@ static int run_natives(void)
         tap_at[0] = pic[0] + pic[2] / 2;
         tap_at[1] = pic[1] + pic[3] / 2;
         natives_windows(tap_at);
+        natives_stack(tap_at);
     }
     back_and_end("I/NativesTest: onDestroy", &at);
     /* The renderer, swapping when the activity went, ended with it (the view's surface gone, its swaps refused), and nothing threw. */
     CHECK(wait_line("I/NativesWindow: render: ended", 0, 30) >= 0 && find_line("I/NativesWindow: stopped", 0) >= 0);
+    /* And the stack's two, likewise. */
+    CHECK(find_line("I/NativesStack: stopped", 0) >= 0 && find_line("I/NativesWindow: stack: under ended after ", 0) >= 0 &&
+          find_line("I/NativesWindow: stack: over ended after ", 0) >= 0);
     CHECK(find_line("FATAL EXCEPTION", 0) < 0);
     say_app_lines("/NativesTest: ");
     say_app_lines("/NativesWindow: ");
+    say_app_lines("/NativesStack: ");
     return g_failed;
 }
 
@@ -2717,7 +3204,7 @@ static int run_data(void)
     static const char *const steps[] = { "open", "kept", "insert", "query", "types", "update", "delete", "rollback", "commit", "constraint", "statement", "text",
                                          "bad-sql", "memory", "upgrade", "wal-restored", "left",
                                          /* And the storage as an app sees it. */
-                                         "environment", "own-folders", "volumes", "space", "permissions", "download", "list-root",
+                                         "environment", "own-folders", "cache-cleared", "volumes", "space", "permissions", "download", "list-root",
                                          /* And the battery, the time zone, TLS (conscrypt's: a TLS server and client of the app's own on loopback,
                                             and an https URL through Android's HTTP client; or, where its library is not in the Android root, the
                                             stand-in that fails politely), the app's network security configuration (an authority of its own
@@ -2726,7 +3213,7 @@ static int run_data(void)
                                             and the list of decoders: the stand-in's H.264, AAC and MP3 (mg_codec_standin.c), and no H.265. And
                                             the phone's sensors, the stand-in's (mg_sensor_standin.c), listed and listened to. */
                                          "battery", "connectivity", "dns-servers", "system-libs", "apache-http-legacy", "apache-http-client", "preloaded-drawables", "location", "sensors", "timezone", "locale", "phone-number", "tls", "tls-loopback", "tls-https",
-                                         "network-trust", "network-trust-domains", "network-trust-pins", "keystore", "keystore-certificates", "keystore-foreign-key", "path-op", "base64-streams", "piped-streams", "codecs",
+                                         "network-trust", "network-trust-domains", "network-trust-pins", "keystore", "keystore-certificates", "keystore-foreign-key", "path-op", "text-path", "base64-streams", "piped-streams", "trace-bytes", "codecs",
                                          /* And what Android's WebView asks of the platform before it shows a page, each answered as Android
                                             answers it: the app's id within its user (UserHandle.getAppId), whether cleartext HTTP is
                                             permitted (NetworkSecurityPolicy), a compatibility change's state for the app's target
@@ -2757,7 +3244,7 @@ static int run_data(void)
                                             makes one. And a proxy of an interface of 600 methods. And sound from Java: an
                                             AudioTrack written to, a MediaPlayer of a WAV and of an Ogg Vorbis asset, a SoundPool. */
                                          "xml", "asset-fd", "tasks", "wrapper-receiver", "viewgroup-flag", "text-drawables", "pfd-dup", "pfd-parcel",
-                                         "theme-selfref", "queue-next", "storage-stats", "broadcast-explicit", "service-stop-thread", "start-ids", "process-scope", "job-scheduler", "downloads", "rollback-service", "art-manager", "progress-subclass", "telephony", "microphone", "biometric", "ordered-broadcast", "hardware-accelerated", "descendant-invalidated", "image-matrix-before-layout", "delegate-last-scope", "asset-manager-manifest", "big-asset", "path-iterator", "mutable-context", "exec", "crc32c", "nine-patch-constructors", "subscription-ids", "filter-categories", "intent-categories", "broadcast-identity", "arrays-ranges", "collection-factories", "unmodifiable-collectors", "thread-stack", "icu-number", "audio-route", "expand-template", "list-fragment", "fragment-saved-state", "stub-said", "handler-thread", "managed-dialog", "input-format", "dialog-of-stopped", "zip-path-validator", "list-row-click", "animation-listener", "circular-reveal", "animator-values", "detached-animator", "animator-listener", "animator-not-animation", "observer-merged", "typeface-descriptor", "device-provisioned", "users", "start-asked", "pending-intent-creator", "pending-intent-flags", "alarm-replace-cancel", "messenger-forwarded", "insets-builder", "insets-consumed", "insets-siblings", "broadcast-handler", "prefs-spaced-key", "account-removed", "sync", "package-installer", "batch-operations", "wifi", "media-metadata", "playback-state", "remote-user-info", "media-key-controller", "container-state", "context-params", "theme-accent", "phone-apps", "phone-apps-activities", "phone-apps-signatures", "check-signatures", "install-intent", "install-session", "install-splits", "bitmap-bytes", "bitmap-reuse", "file-read-only", "component-state", "adaptive-icon", "idle-handler", "uri-builder", "html-tag-handler", "stats-manager", "credential-manager", "many-interfaces", "proxy-many-methods", "apk-path", "maps-paths", "apk-optimization",
+                                         "theme-selfref", "queue-next", "storage-stats", "broadcast-explicit", "service-stop-thread", "start-ids", "process-scope", "job-scheduler", "downloads", "rollback-service", "art-manager", "progress-subclass", "telephony", "microphone", "biometric", "ordered-broadcast", "hardware-accelerated", "descendant-invalidated", "image-matrix-before-layout", "delegate-last-scope", "asset-manager-manifest", "big-asset", "file-available", "path-iterator", "mutable-context", "exec", "crc32c", "nine-patch-constructors", "subscription-ids", "filter-categories", "intent-categories", "broadcast-identity", "arrays-ranges", "collection-factories", "unmodifiable-collectors", "thread-stack", "icu-number", "audio-route", "expand-template", "list-fragment", "fragment-saved-state", "stub-said", "handler-thread", "managed-dialog", "input-format", "dialog-of-stopped", "zip-path-validator", "list-row-click", "animation-listener", "circular-reveal", "animator-values", "detached-animator", "animator-listener", "animator-not-animation", "observer-merged", "typeface-descriptor", "device-provisioned", "users", "start-asked", "pending-intent-creator", "pending-intent-flags", "pending-intent-options", "alarm-replace-cancel", "alarm-listeners", "wake-lock", "cell-info-update", "messenger-forwarded", "insets-builder", "insets-consumed", "insets-siblings", "broadcast-handler", "prefs-spaced-key", "account-removed", "sync", "package-installer", "batch-operations", "wifi", "media-metadata", "playback-state", "remote-user-info", "media-key-controller", "container-state", "context-params", "theme-accent", "phone-apps", "phone-apps-activities", "phone-apps-signatures", "check-signatures", "install-intent", "install-session", "install-splits", "bitmap-bytes", "bitmap-reuse", "file-read-only", "component-state", "adaptive-icon", "idle-handler", "uri-builder", "html-tag-handler", "stats-manager", "credential-manager", "many-interfaces", "proxy-many-methods", "apk-path", "maps-paths", "apk-optimization",
                                          /* And an <inset> whose insets are fractions of its bounds, WhatsApp's adaptive icon's 0.01% among them. */
                                          "inset-fraction",
                                          /* And a WorkSource through a Parcel and back, as a location request of Google Play services' carries one. */
@@ -2785,11 +3272,62 @@ static int run_data(void)
                                          /* And the process's Application through ActivityThread's hidden fields, on a thread of the Application's
                                             own while it is created, as Tuya Smart's library loader asks, and afterwards. */
                                          "activity-thread-application",
-                                         /* And the hidden ServiceManager, every service one that is not there, as Shizuku's SystemServiceHelper
-                                            asks it (Morphe Manager ended at its start without the class). */
+                                         /* And the hidden ServiceManager, the platform's services each a binder that refuses every
+                                            transaction and any other name a service that is not there, as Shizuku's SystemServiceHelper
+                                            asks it (Morphe Manager ended at its start without the class); and its "window" cast to
+                                            IBinder, as Instagram asks whether there is a navigation bar (it ended on a null). */
                                          "service-manager",
+                                         "service-manager-window",
                                          /* And DateUtils' ranges into a Formatter, and a duration in words (both answered null). */
                                          "date-range",
+                                         /* And dates as Android words them: DateFormat's patterns for a skeleton, ICU's for en-US and
+                                            ru-RU (Messenger's chat list's "MMMd, yyyy" through a medium format's clone), the locale's
+                                            clock; DateFormat.format's letters and the names, the 12/24 hours of the settings; DateUtils'
+                                            dates and relative times in the run's locale, en-US and then ru-RU. */
+                                         "date-patterns", "date-format-letters", "date-utils-locale",
+                                         /* And a RoundRectShape with an inset of nothing, as Messenger's rounded backgrounds: filled
+                                            whole; an inset smaller both ways a hole; the outlines Android's. */
+                                         "round-rect-shape",
+                                         /* And whether a view is shown, heard by its drawables (onVisibilityAggregated): said once the
+                                            window is attached, checked below. */
+                                         "visibility-aggregated",
+                                         /* And a list's rows taken out and put back as RecyclerView's scrap, heard as Android tells them
+                                            whether they are shown: said once the window has the list, checked below. */
+                                         "visibility-scrap",
+                                         /* And a LayerDrawable told it is not visible: its layers drawn all the same, as Android's. */
+                                         "layer-drawable-hidden",
+                                         /* And a BoringLayout one line whatever its width, as Android's (a badge's text in two lines). */
+                                         "boring-layout-one-line",
+                                         /* And a view made on a worker thread with a state list for its background, its invalidateDrawable
+                                            asserting the main thread, as Facebook builds its tab bar's tabs: the view the callback last. */
+                                         "background-callback-last",
+                                         /* And a search result's title as Transit shows one: its markup hidden by a ReplacementSpan of no
+                                            width and the rest coloured by a span of its own, on an android:singleLine TextView, whose
+                                            transformation gave the view a String: the markup drawn, the colour gone. */
+                                         "single-line-spans",
+                                         /* And such a title measured wide and then narrower, as a weighted LinearLayout measures it: the
+                                            ellipsis where the narrower width ends (the first, wider layout was kept, the line cut). */
+                                         "ellipsis-narrower",
+                                         /* And the same markup as Transit's Compose screens read it: a regular expression of a tag and
+                                            thirteen optional fields, found from where the last tag ended (ICU's matcher). */
+                                         "markup-regex",
+                                         /* And AudioAttributes equal by what they hold: built alike, and through a Parcel. */
+                                         "audio-attributes-equal",
+                                         /* And a notification channel as Android's: its defaults (the default notification sound with
+                                            Notification.AUDIO_ATTRIBUTES_DEFAULT...), what the app sets kept, Messenger's copy of one
+                                            through the getters; copy(), equals, through a Parcel and through XML. */
+                                         "notification-channel", "notification-channel-copy",
+                                         /* And a channel group as Android's: its description, one list of channels, clone(), equals,
+                                            through a Parcel and through XML. */
+                                         "notification-channel-group",
+                                         /* And the app's channels and groups as Android's system keeps them: one set whichever
+                                            NotificationManager is asked, the system's copies, what an app may change of a channel,
+                                            deleted and made again, a conversation's channel, groups with their channels; and kept
+                                            across the runs (checked below). */
+                                         "notification-channels-shared", "notification-channels-rules", "notification-channels-kept",
+                                         /* And Android's Geocoder with no geocode provider (no Google Play services): not present, no
+                                            addresses and no error, the arguments checked; and an Address as Android's, through a Parcel. */
+                                         "geocoder", "address",
                                          "audio-track", "media-player", "media-player-ogg", "sound-pool",
                                          /* And MediaCodec over the stand-in for the shell's decoders: H.264 shown on a Surface in display
                                             order, a flush, parameter sets in a codec-config buffer, the asynchronous mode, AAC with an
@@ -2799,6 +3337,14 @@ static int run_data(void)
                                          /* And the network from Java, on loopback: names, an HTTP server of the app's own and HttpURLConnection, UDP, a server
                                             socket closed under the thread waiting in accept, a java.nio selector, the interfaces, ConnectivityManager. */
                                          "net-localhost", "net-http", "net-udp", "net-close", "net-nio", "net-interfaces", "net-connectivity",
+                                         /* And Android 14's HttpEngine (Megler's own, megler.http), as the Google Play Store and gRPC's
+                                            Cronet transport use it: the builder and its options; UrlRequests through redirects, reads,
+                                            uploads, failures and a cancel, on an HTTP/1.1 server of the app's own; its URLConnections;
+                                            and, where conscrypt's TLS is (qemu), BidirectionalStreams over HTTP/2 to a server of the
+                                            app's own: echoes with trailers, flow control both ways, cancel and resets, and RFC 7541's
+                                            header compression examples. */
+                                         "http-engine", "http-engine-request", "http-engine-upload", "http-engine-failures", "http-engine-connection",
+                                         "http-engine-stream", "http-engine-stream-flow", "http-engine-stream-cancel", "http-engine-hpack",
                                          /* And RenderNodes and Pictures as display lists, as Compose uses them: nodes recorded once and drawn as their
                                             bitmaps were, three of a screen's size among them; the kids' properties changed and the parent not
                                             recorded again; nodes nested and moved; one discarded and recorded again; what a list keeps (a paint, a
@@ -2812,6 +3358,8 @@ static int run_data(void)
     line = wait_line("I/DataTest: run ", at, 60);
     CHECK(line >= 0 && sscanf(strstr(line_at(line), ": run ") ? strstr(line_at(line), ": run ") : "", ": run %d", &run) == 1 && run >= 1 && (!want || run == want));
     say("  this is run %d of the app on its database", run);
+    /* The second starts with its cache cleared, as asked before it (mg_tests_java_run): the core says so, and the ask is gone. */
+    if (run == 2) CHECK(find_line("run: the app's cache was cleared, as asked: ", 0) >= 0 && !megler_clear_cache_asked("megler.test.data"));
     for (i = 0; i < (int)MG_COUNT(steps); i++) {
         snprintf(text, sizeof(text), "I/DataTest: %s ok", steps[i]);
         expect_line(text, &at, 60);
@@ -2833,6 +3381,13 @@ static int run_data(void)
             CHECK(said >= 0 && strstr(line_at(said), ", the last issued by ") && strstr(line_at(said), "Trust anchor for certification path not found"));
             CHECK(count_lines("W/Megler: TLS: 127.0.0.1's certificates refused (") == 1);
         }
+        /* Android 14's HttpEngine, made by the app (the steps http-engine*): said once a run; with TLS, the HTTP/2 connections
+           its streams made, each with its protocol, cipher suite and time (the same lines tell a phone's log the Play Store's). */
+        CHECK(count_lines("I/Megler: HttpEngine: the app made one: Megler's own") == 1);
+        if (with) {
+            int h2 = find_line("I/Megler: HttpEngine: HTTP/2 to localhost:", 0);
+            CHECK(h2 >= 0 && strstr(line_at(h2), " (TLSv1.") && strstr(line_at(h2), " ms"));
+        }
     }
     /* The app's network security configuration, said in the log once as it was read (android.security.net.config.XmlConfigSource):
        the base configuration with Android's authorities alone (its debug-overrides not counted), and a <domain-config> inside
@@ -2841,6 +3396,13 @@ static int run_data(void)
     CHECK(find_line("; domain-config of nested.sub.megler.test: cleartext permitted, anchors @raw/trust_test_ca;", 0) >= 0);
     /* The state of a component of a package the phone does not have (component-state) is Android's IllegalArgumentException, said once. */
     CHECK(find_line("I/Megler: the enabled state of a component of com.facebook.appmanager, which the phone does not have: IllegalArgumentException, as Android answers", 0) >= 0);
+    /* The app's notification channels and groups, kept in its data folder by NotificationManager: none at the first run's start,
+       and at the second's what the first left -- shared-1, rules-1-parent, rules-1-conversation and kept, and three it deleted
+       (rules-1-a and rules-1-a2 with their group, kept-deleted), the group kept-group -- said once as they are read; neither
+       run failed to read or write them. */
+    if (run == 2) CHECK(find_line("I/Megler: notification channels: 4 kept from the app's last run and 3 deleted, 1 group", 0) >= 0);
+    else CHECK(find_line("I/Megler: notification channels: ", 0) < 0);
+    CHECK(count_lines("I/Megler: notification channels: ") <= 1 && find_line("W/Megler: notification channels: ", 0) < 0);
     /*
      * What requestPermissions asked comes back by a message of its own, after the method that asked has returned. In the first
      * run the user is asked about the storage, the messages, the phone, the calls and the camera, one after another, and the
@@ -2864,11 +3426,20 @@ static int run_data(void)
     expect_line("I/DataTest: battery-received ok", &at, 30);
     /* And the network's sticky broadcast (CONNECTIVITY_ACTION), once, to the receiver registered for it. */
     CHECK(wait_line("I/DataTest: connectivity-received ok", 0, 30) >= 0);
+    /* The PendingIntent sent with an OnFinished and options (the step "pending-intent-options"): its receiver heard it. */
+    CHECK(wait_line("I/DataTest: pending-intent-options-sent ok v=5", 0, 30) >= 0);
+    /* No scan of the Wi-Fi for an app that may not have the location (the step "wifi"): refused before the shell was asked. */
+    CHECK(wait_line("I/DataTest: wifi ok", 0, 120) >= 0);
+    CHECK(mg_wifi_standin_scans() == 0);
+    CHECK(find_line("I/MeglerWifi: a scan refused: the app holds no location permission (ACCESS_FINE_LOCATION, ACCESS_COARSE_LOCATION)", 0) >= 0);
     /* The phone's location, asked for in the step "location": a fix delivered on the main thread, after which the listener is
        removed and the location no longer followed. */
     CHECK(wait_line("I/DataTest: location-update ok", 0, 30) >= 0);
     /* And the request of the passive interval of the step "location-request": a fix, on the main thread, after which it is removed. */
     CHECK(wait_line("I/DataTest: location-passive ok", 0, 30) >= 0);
+    /* And the Geocoder's listener of the step "geocoder", with no provider: no addresses, on a thread that is not the main one. */
+    CHECK(wait_line("I/DataTest: geocoder-listener ok", 0, 30) >= 0);
+    CHECK(find_line("I/Geocoder: no geocode provider: the app's Google Play services have none, or none here", 0) >= 0);
     {
         int starts = 0, stops = 0, tries;
         for (tries = 0; tries < 40; tries++) {
@@ -2960,6 +3531,14 @@ static int run_data(void)
     CHECK(wait_line("I/DataTest: downloads ok status=200 bytes=5 body=hello cookie=true observed=true file=5", 0, 30) >= 0);
     /* The list of the step "list-row-click": its row, clickable itself, clicked by a tap. */
     CHECK(wait_line("I/DataTest: list-row-click rows=3 clicked=true", 0, 30) >= 0);
+    /* The step "visibility-aggregated": an ImageView's picture and a view's background hidden with their parent made GONE and
+       taken out of the window, shown with it again, as Android's onVisibilityAggregated tells them. */
+    CHECK(wait_line("I/DataTest: visibility-aggregated attached true true, gone false false, visible true true, removed false false", 0, 30) >= 0);
+    /* The step "visibility-scrap", as Android's: a row out of its list not shown; each row put back tells the list's rows they
+       are shown; a row taken out and removed hears its detach alone and keeps its background visible; a row out while its list
+       was shown again hears it once back; a row's own visibility changed while it is out says nothing. */
+    CHECK(wait_line("I/DataTest: visibility-scrap attached=[a+ b+] out-shown=false put-back=[a+ a+ b+] dropped=[bx] b-background=true "
+                    "missed=[a- a+] a-background=true own-while-out=[a+] removed=[a- ax]", 0, 30) >= 0);
     /* The view animation of the step "animation-listener": its listener told through the view's handler, after the frames that
        started and ended it, not inside its parent's dispatchDraw (Animation.fireStart; Telegram's settings ended the app). */
     CHECK(wait_line("I/DataTest: animation-listener heard=start end", 0, 30) >= 0);
@@ -2976,6 +3555,11 @@ static int run_data(void)
     /* The alarms of the step "alarm-replace-cancel": the one set twice went off once, the cancelled one never, the repeating one
        three times, until it was cancelled. */
     CHECK(wait_line("I/DataTest: alarms ok moved=1 cancelled=0 repeated=3", 0, 30) >= 0);
+    /* The listeners' alarms of the step "alarm-listeners", as Google Play services sets theirs: the one set twice went off once,
+       the cancelled one never, those with an Executor and a WorkSource once each, the repeating one three times, each heard on
+       the step's thread. And the wake lock of the step "wake-lock" let go when acquire's timeout was up. */
+    CHECK(wait_line("I/DataTest: alarm-listeners-heard ok moved=1 cancelled=0 exact=1 window=1 repeated=3 on-its-thread=true", 0, 30) >= 0);
+    CHECK(wait_line("I/DataTest: wake-lock-timed ok", 0, 60) >= 0);
     /* The message of the step "messenger-forwarded", sent through a binder that passed it on: received whole, with the uid. */
     CHECK(wait_line("I/DataTest: messenger-forwarded ok what=7 arg1=42 uid=true", 0, 30) >= 0);
     /* The receiver of the step "broadcast-handler", registered with a Handler: it heard on that Handler's thread. */
@@ -3070,6 +3654,14 @@ static int run_data(void)
         /* An int argument is said too: the state the step sets, STATE_PLAYING (3). */
         CHECK(find_line("PlaybackState$Builder.setState(IJFJ)Landroid/media/session/PlaybackState$Builder; 3", 0) >= 0
               || find_line("PlaybackState$Builder.setState(IJFJ)Landroid/media/session/PlaybackState$Builder; (compiled) 3", 0) >= 0);
+        /* And a byte[], given and returned, with trace-calls-megler.test.data.Bytes: its length, its first bytes in hex and as text
+           (the step trace-bytes), as an answer Google Play services' DroidGuard keeps to itself was seen. */
+        CHECK(find_line("megler/test/data/Bytes.echo([B)[B [B of 6: 6d65676c6572 \"megler\"", 0) >= 0
+              || find_line("megler/test/data/Bytes.echo([B)[B (compiled) [B of 6: 6d65676c6572 \"megler\"", 0) >= 0);
+        CHECK(find_line("megler/test/data/Bytes.echo returns [B of 6: 6d65676c6572 \"megler\"", 0) >= 0);
+        /* trace-files-libjavacore: the files libcore's own native code opens for the app's Java, each with the path and what the
+           open gave (bionic/mg_libc_io.c, file_said). */
+        CHECK(find_line("files: libjavacore.so+0x", 0) >= 0 && find_line(" open(\"/", find_line("files: libjavacore.so+0x", 0)) >= 0);
     }
     /* The core's own word that it is its SQLite, on its files. */
     CHECK(find_line("sqlite: SQLite 3.", 0) >= 0);
@@ -3185,7 +3777,9 @@ static int run_crash(void)
        one started without a result has none, as on Android, where the layer named whoever started it -- and the app is
        who launched it, either way (Android 14's getLaunchedFromPackage and getLaunchedFromUid). */
     CHECK(find_line("I/CrashTest: gate caller=megler.test.crash.First package=megler.test.crash", 0) >= 0);
-    CHECK(find_line("I/CrashTest: top caller=null package=null launched=megler.test.crash uid=mine", 0) >= 0);
+    /* (Waited for: Top says it just after its onCreate, which the line above waited for -- found at once, it was missed
+       once by a moment under qemu, the line the next in the log.) */
+    CHECK(wait_line("I/CrashTest: top caller=null package=null launched=megler.test.crash uid=mine", 0, 30) >= 0);
     expect_line("I/CrashTest: first onCreate again creations=2", &at, 60);
     expect_line("I/CrashTest: top onCreate single", &at, 60);
     expect_line("I/CrashTest: first onNewIntent third creations=2", &at, 60);
@@ -3516,6 +4110,40 @@ static int run_bluetooth(void)
     return g_failed;
 }
 
+/*
+ * The phone's Wi-Fi (the test app wifi, on the stand-in for the shell's Wi-Fi, mg_wifi_standin.c), as an app and Google Play
+ * services' network location in it use it: a scan asked for and its broadcast, its networks as ScanResults, a second scan no
+ * sooner than three seconds after the first, two requests answered by one scan and its callback, the connection's network,
+ * a ScanResult through a Parcel. Three scans of the stand-in's in all, and what the core and the framework said of them.
+ */
+static int run_wifi(void)
+{
+    static const char *const steps[] = { "permission", "scan", "results", "copies", "second-scan", "joined", "connection", "parcel" };
+    char text[120];
+    int at = -1, i;
+    expect_line("I/WifiTest: onCreate", &at, 120);
+    for (i = 0; i < (int)MG_COUNT(steps); i++) {
+        snprintf(text, sizeof(text), "I/WifiTest: %s ok", steps[i]);
+        expect_line(text, &at, 120);
+    }
+    snprintf(text, sizeof(text), "I/WifiTest: done ok=%d failed=0", (int)MG_COUNT(steps));
+    expect_line(text, &at, 60);
+    say("  the stand-in: %d scans", mg_wifi_standin_scans());
+    CHECK(mg_wifi_standin_scans() == 3);
+    /* The core's word on each scan and the framework's on who asked and what it found. */
+    CHECK(find_line("wifi: on: the phone's Wi-Fi can be scanned", 0) >= 0);
+    CHECK(find_line("wifi: scan 1 found 4 networks (1 on 5 GHz), the strongest at -46 dBm, in ", 0) >= 0);
+    CHECK(find_line("wifi: scan 3 found 4 networks (1 on 5 GHz), the strongest at -48 dBm, in ", 0) >= 0);
+    CHECK(find_line("I/MeglerWifi: a scan asked for by megler.test.wifi.Main", 0) >= 0);
+    CHECK(find_line("I/MeglerWifi: scan 1 found 4 networks in ", 0) >= 0 &&
+          find_line(", the strongest \"Megler Test\" (00:11:22:33:44:55) at -46 dBm, 2437 MHz", 0) >= 0);
+    CHECK(find_line("I/MeglerWifi: 4 results of a scan ", 0) >= 0);
+    CHECK(find_line(" FAILED", 0) < 0 && find_line("FATAL EXCEPTION", 0) < 0 && find_line("I/MeglerWifi: a scan refused", 0) < 0);
+    back_and_end("I/WifiTest: onDestroy", &at);
+    if (g_failed) say_app_lines("/WifiTest: ");
+    return g_failed;
+}
+
 /* Regression: a client and GmsCore carry incompatible classes of identical names. */
 static int run_microg(void)
 {
@@ -3566,14 +4194,117 @@ static int run_microg(void)
  * name of its ApplicationInfo is the one Application.getProcessName gives it here, the app's. They take that process for
  * their main one, the only one where GmsModuleFinder makes their module configuration again at once; in every app that
  * hosted them the names differed, and each module scan asked for another, five a second, without end.
+ *
+ * And their package context's attribution tag, which the identity of a location request of their own is made of
+ * (ClientIdentity.c, a class of that name in the stand-in as in GmsCore): GmsCore refuses such a request where it is null,
+ * and Megler gives one only where the user lets Google Play services' own features have the location. Nobody has said at
+ * the start: asked for plainly, no tag and no one asked; for an identity, no tag at once and the user asked, once, on a
+ * thread of the framework's (the stand-in's user takes 0.3 s); then the tag "megler.app" once allowed -- or, run with
+ * `deny`, none for good, and nobody asked again. An attribution context keeps its own tag either way.
  */
 static int run_gms_host(void)
 {
+    const bool deny = g_script_count && !strcmp(g_script[0], "deny");
     CHECK(wait_line("I/GmsOwnTest: main process true application=megler.test.gmshost current=megler.test.gmshost", 0, 600) >= 0);
     CHECK(find_line("I/MicroG: Google Play services' application runs in this process, megler.test.gmshost, as its main one", 0) >= 0);
     CHECK(find_line("I/GmsHostTest: started ComponentInfo{com.google.android.gms/megler.test.gmsown.Probe}", 0) >= 0);
+    CHECK(wait_line("I/GmsOwnTest: attribution tag plain=null asked=false first=null asked=true", 0, 120) >= 0);
+    CHECK(wait_line(deny ? "I/GmsOwnTest: attribution tag later=null again=null attributed=probe"
+                         : "I/GmsOwnTest: attribution tag later=megler.app again=megler.app attributed=probe", 0, 300) >= 0);
+    /* The user was asked once (the core says the question as it is answered). */
+    CHECK(find_line("java: the app asks for the permission group gms_location: ", 0) >= 0 && g_gms_asked == 1);
+    CHECK(find_line(deny ? "permissions: Google Play services' own use of the location, the user asked: not allowed, for every app"
+                         : "permissions: Google Play services' own use of the location, the user asked: allowed, for every app", 0) >= 0);
+    say("  Google Play services' own location: the user asked %d time(s), %s", g_gms_asked, deny ? "and refused it" : "and allowed it");
+    /*
+     * The app's binding of their location API (an app's FusedLocationProviderClient's) has Google Location Accuracy settled:
+     * the app holds the location and no answer is kept, the setting not there, so the user is asked (the test's shell answers
+     * Allow) and the answer written into Google's settings (the stand-in's, as Google Services Framework's are), once.
+     */
+    CHECK(wait_line("I/GmsHostTest: location api connected true", 0, 300) >= 0);
+    CHECK(wait_line("I/GmsOwnTest: settings network_location_opt_in=1", 0, 120) >= 0);
+    CHECK(wait_line("I/MeglerLocation: Google Location Accuracy on: the user was asked, and said Allow -- Google Play services' network location may find "
+                    "the phone from the Wi-Fi networks around it", 0, 60) >= 0);
+    say("  the user was asked about: %s", g_permissions_asked[0] ? g_permissions_asked : "nothing");
+    {
+        const char *at = g_permissions_asked;
+        int asked = 0;
+        while ((at = strstr(at, "location_accuracy;")) != NULL) {
+            asked++;
+            at++;
+        }
+        CHECK(asked == 1);
+    }
+    /*
+     * Google's network location's fix, as the module hands it to the fused provider (the stand-in's, of 5 m, by a PendingIntent of
+     * Google Play services' sent with an OnFinished, its intent marked with the module's release), seen on its way; Windows'
+     * fix the cell network's 600 m. The app's own LocationManager has the better one, Google's, for getLastKnownLocation of
+     * "network" and as the first fix of a "gps" request, each named for the provider asked; Google Play services' own "gps"
+     * request (their fused provider's) is handed no fix of Windows' cell network while Google's is fresh.
+     */
+    CHECK(wait_line("I/GmsOwnTest: network location fix sent true", 0, 60) >= 0);
+    CHECK(find_line("I/MeglerLocation: Google's network location: its first fix, 5 m accurate", 0) >= 0);
+    CHECK(wait_line("I/GmsHostTest: last network fix 5 m network", 0, 60) >= 0);
+    CHECK(wait_line("I/GmsHostTest: first gps fix 5 m gps", 0, 60) >= 0);
+    CHECK(find_line("I/GmsOwnTest: own gps fix too soon", 0) < 0);
+    /* And the network location's next round, run by an alarm of Google Play services' kind (setExact with an Executor and a
+       WorkSource, as GmsAlarm sets theirs on Android 12 and later), which never went off: it did, and its second fix was sent. */
+    CHECK(wait_line("I/GmsOwnTest: network location alarm went off", 0, 60) >= 0);
+    CHECK(wait_line("I/GmsOwnTest: network location second fix sent true", 0, 30) >= 0);
+    /*
+     * Google Play services from a bundle (gms-own.apks: a base and the splits config.mdpi, config.xxhdpi and config.en), as
+     * Play Store installs Google's own, unpacked for 160 dpi in English and Russian: the app has their base and the splits
+     * kept, and their resources are those of all three. An activity of theirs, started by the app and run here as their
+     * account settings are, reads a picture that is in their density's split alone (16 x 16, mdpi's), the word of their
+     * English split, and both again through a context of another configuration, as AppCompat wraps an activity's: the
+     * picture was not there ("Manage your Google Account" ended Play Store on the Google logo's NotFoundException,
+     * 0.1.0.685), and that context's resources were the app's, whose label it read under their label's number. Its theme
+     * has none of the app's theme's attributes (gms-host's gms_host_mark): it began from a copy of the app's theme. And,
+     * naming none, it has the platform's default for their target (Theme.DeviceDefault.Light.DarkActionBar, 0x0103013f),
+     * not the number of the app's theme.
+     */
+    CHECK(find_line("java: Google Play services are in 3 APKs, their base and the splits config.en, config.mdpi", 0) >= 0);
+    CHECK(find_line("I/MicroG: Google Play services' splits, whose resources and files join their base's: config.en, config.mdpi (3 APKs)", 0) >= 0);
+    CHECK(wait_line("-> Google Play services' megler.test.gmsown.Lockup, here", 0, 60) >= 0);
+    CHECK(wait_line("I/GmsOwnTest: lockup 16x16 word=english wrapped 16x16 word=english label=Google Play services (a stand-in) "
+                    "splits=[config.en, config.mdpi] host theme attribute false theme 0x103013f", 0, 120) >= 0);
+    /*
+     * Android's Geocoder, answered by their geocode provider (the stand-in's GeocodeProvider, not exported), bound as the system
+     * binds it -- the first request a synchronous one on the main thread, which binds it there before it waits -- and asked on
+     * a thread of the Geocoder's own, with the app's package, uid and locale: a place at a point and of a name, in the request's
+     * locale, the provider's error an IOException, and Android 13's listener forms answered off the main thread, an error to
+     * onError. isPresent says there is one.
+     */
+    CHECK(wait_line("I/GmsHostTest: geocoder on the main thread: 1 address(es) [Red Square | Moscow, 109012 | Moscow RU 55.7539,37.6208 en_US]", 0, 120) >= 0);
+    CHECK(find_line("I/GmsOwnTest: geocode provider bound on the main thread", 0) >= 0);
+    CHECK(find_line("I/MicroG: bound megler.test.gmsown.Geocode for com.android.location.service.GeocodeProvider, as the system binds it", 0) >= 0);
+    CHECK(find_line("I/GmsOwnTest: geocode at a point for megler.test.gmshost (the app's uid) in en_US off the main thread true, at most 1", 0) >= 0);
+    CHECK(wait_line("I/GmsHostTest: geocoder present true", 0, 60) >= 0);
+    CHECK(wait_line("I/GmsHostTest: geocoder at a point: 1 address(es) [Red Square | Moscow, 109012 | Moscow RU 55.7539,37.6208 ru_RU]", 0, 60) >= 0);
+    CHECK(wait_line("I/GmsHostTest: geocoder of a name: 1 address(es) [Red Square | Moscow, 109012 | Moscow RU 55.7539,37.6208 ru_RU]", 0, 60) >= 0);
+    CHECK(find_line("I/GmsOwnTest: geocode of a name for megler.test.gmshost (the app's uid) in ru_RU off the main thread true, within 0.0,0.0,0.0,0.0, at most 1", 0) >= 0);
+    CHECK(wait_line("I/GmsHostTest: geocoder of no place: no place called Atlantis", 0, 60) >= 0);
+    CHECK(find_line("within 10.0,20.0,30.0,40.0, at most 1", 0) >= 0);
+    CHECK(wait_line("I/GmsHostTest: geocoder listener: 1 address(es) [Red Square | Moscow, 109012 | Moscow RU 55.7539,37.6208 ru_RU] off the main thread true", 0, 60) >= 0);
+    CHECK(wait_line("I/GmsHostTest: geocoder listener of an error: no place south of the equator", 0, 60) >= 0);
+    CHECK(find_line("I/Geocoder: Google Play services' geocode provider answers the app's geocoding", 0) >= 0);
+    CHECK(find_line("geocoder FAILED", 0) < 0 && find_line("geocoder on the main thread FAILED", 0) < 0 && find_line("geocoder listener FAILED", 0) < 0 &&
+          find_line("of an error FAILED", 0) < 0);
+    /*
+     * And an activity of theirs whose onCreate throws, having asked to be finished after (their help screen, whose layout's
+     * logo was missing, 0.1.0.686): the app goes on, the activity is taken off the stack and never destroyed -- their
+     * lifecycle threw at its destruction -- and the app's activity is resumed after it.
+     */
+    {
+        int failed = wait_line("E/Megler: starting megler.test.gmsown.Broken failed", 0, 60);
+        CHECK(failed >= 0 && find_line("broken on purpose", failed) >= 0);
+        CHECK(wait_line("I/GmsHostTest: resumed", failed + 1, 30) > failed);
+        mg_sleep_ns(1000000000ull);
+        CHECK(find_line("I/GmsOwnTest: broken destroyed", 0) < 0 && find_line("D/Megler: finish megler.test.gmsown.Broken", 0) < 0);
+    }
     CHECK(find_line("FATAL EXCEPTION", 0) < 0);
     say_app_lines("/GmsOwnTest: ");
+    say_app_lines("/GmsHostTest: geocoder");
     return g_failed;
 }
 
@@ -3658,7 +4389,8 @@ static int run_app(void)
  * running in the app's process (docs/JAVA.md, "The WebView"), on pages of an HTTP server of the app's own on 127.0.0.1. The
  * app logs each step; the test waits for each, looks at the picture the window shows -- the page's yellow bar and blue
  * body, drawn through the views like any other view -- and then plays the user: a tap on the page's text field, which must
- * ask for the keyboard, and text typed with it, which must arrive in the field. Chromium's start under qemu takes minutes
+ * ask for the keyboard, and text typed with it, which must arrive in the field; then a page of Chromium's layers, each of
+ * whose boxes must be whole in the picture, and a key that lets the app go on. Chromium's start under qemu takes minutes
  * of class linking and its first page seconds: the waits are long.
  */
 static int run_webview(void)
@@ -3726,6 +4458,44 @@ static int run_webview(void)
     CHECK(wait_line("I/WebViewTest: input ok value=hello", 0, 120) >= 0);
     settle();
     write_picture("webview-2");
+    /*
+     * Chromium's layers that paint only part of themselves, drawn in software as every page is here (and on a phone of
+     * Direct3D feature level 9_3): each box whole, where the page says it is. With HitTestOpaqueness on -- the AOSP WebView's
+     * field trial testing config turns it on -- a layer's recording is bounded by what it paints, and the software draw
+     * squeezed the box of a Material-like checkbox into a third of itself, and the box in an empty layer likewise
+     * (megler.WebViewFlags, which turns it off through the WebView's developer-mode flags). A layer that paints all of itself
+     * is the control.
+     */
+    line = wait_line("I/WebViewTest: layers-at ", 0, 300);
+    {
+        static const char *const ids[] = { "box", "inner", "full" };
+        static const u32 colours[] = { 0xD01F7A, 0x1F7AD0, 0x1FD07A };
+        int ox = 0, oy = 0, k;
+        CHECK(line >= 0 && sscanf(strstr(line_at(line), "layers-at ") + 10, "%d,%d", &ox, &oy) == 2);
+        settle();
+        write_picture("webview-3");
+        for (k = 0; line >= 0 && k < 3; k++) {
+            int r[4] = { 0, 0, 0, 0 }, inset[4], n;
+            char key[16];
+            const char *at;
+            snprintf(key, sizeof(key), " %s=", ids[k]);
+            at = strstr(line_at(line), key);
+            CHECK(at && sscanf(at + strlen(key), "%d,%d,%d,%d", &r[0], &r[1], &r[2], &r[3]) == 4 && r[2] > 8 && r[3] > 8);
+            if (!at) continue;
+            /* (two pixels in from each edge: what is inside is the box's colour alone) */
+            inset[0] = ox + r[0] + 2;
+            inset[1] = oy + r[1] + 2;
+            inset[2] = r[2] - 4;
+            inset[3] = r[3] - 4;
+            n = count_colour(inset, colours[k]);
+            say("  the layers' page: #%s at %d,%d %dx%d, %d of its %d inner pixels its colour", ids[k], ox + r[0], oy + r[1], r[2], r[3], n,
+                inset[2] * inset[3]);
+            /* (squeezed, a box kept 15 to 25 of each hundred of these pixels) */
+            CHECK(n * 100 >= inset[2] * inset[3] * 95);
+        }
+    }
+    megler_key(142, true);     /* KEYCODE_F12: the app goes on */
+    megler_key(142, false);
     /* A second WebView, a banner, drawn through a RenderNode, dismissed and destroyed between its draws: the app goes on. */
     CHECK(wait_line("I/WebViewTest: dismiss ok", 0, 300) >= 0);
     expect_line("I/WebViewTest: done", &at, 120);
@@ -3754,15 +4524,37 @@ int mg_tests_java_run(const char *which, const char *apk, const char *android_ro
     g_bluetooth_app = !strcmp(which, "bluetooth");
     g_data_app = !strcmp(which, "data");
     g_microg_app = !strcmp(which, "microg");
+    /* gms-host runs where Windows finds the phone by the cell network alone (600 m), as Transit's user's phone does: Google Play
+       services' network location's fix is then the better one (run_gms_host). */
+    mg_location_standin_cell(!strcmp(which, "gms-host"));
     /* The data app runs with the phone's look told (megler_set_theme): a cobalt accent and a light theme; its step theme-accent checks what an app sees of it. */
     if (!strcmp(which, "data")) megler_set_theme(0xFF0063B1u, false);
     /* The camera app's second run: every camera refused, as Windows refuses Megler the camera when the user has said no. */
     mg_camera_standin_refuse(g_camera_app && g_script_count && !strcmp(g_script[0], "denied"));
     /* The shell does not compose the window ("readback"): the core reads the GL frames back and composes it, as before. */
     GL.refuse = g_script_count && !strcmp(g_script[0], "readback");
-    /* natives runs with the flag trace-surfaces on (a file in the data folder's flags, as on the phone): natives_windows checks what it says. */
+    /*
+     * natives runs with the flag trace-surfaces on (a file in the data folder's flags, as on the phone): natives_windows checks
+     * what it says. And its second run ("readback") with native-entry-at-start: its library is not looked into for
+     * NativeActivity's entry when the APK is read, and the start asks the library itself (run_natives).
+     */
     if (!strcmp(which, "natives")) {
         char *flags = mg_sprintf("%s/flags", megler_data_dir()), *flag = mg_sprintf("%s/flags/trace-surfaces", megler_data_dir());
+        char *at_start = mg_sprintf("%s/flags/native-entry-at-start", megler_data_dir());
+        FILE *f;
+        mg_path_mkdirs(flags);
+        f = fopen(flag, "w");
+        if (f) fclose(f);
+        g_entry_at_start = GL.refuse;
+        if (g_entry_at_start && (f = fopen(at_start, "w")) != NULL) fclose(f);
+        free(flags);
+        free(flag);
+        free(at_start);
+        natives_older_libraries(apk);
+    }
+    /* scroll's second run: with the flag no-node-damage, its frames drawn by the views' rectangles alone (run_scroll). */
+    if (!strcmp(which, "scroll") && g_script_count && !strcmp(g_script[0], "no-node-damage")) {
+        char *flags = mg_sprintf("%s/flags", megler_data_dir()), *flag = mg_sprintf("%s/flags/no-node-damage", megler_data_dir());
         FILE *f;
         mg_path_mkdirs(flags);
         f = fopen(flag, "w");
@@ -3772,6 +4564,11 @@ int mg_tests_java_run(const char *which, const char *apk, const char *android_ro
     }
     /* The data app's second run is on another battery than the one the core has when nobody has said: what the app then reads is what was set here. */
     if (!strcmp(which, "data") && g_script_count && !strcmp(g_script[0], "run:2")) mg_battery_set(&k_battery_run2);
+    /* And with its cache to be cleared as it starts, as Megler's app page asks for it (megler_ask_clear_cache): its step cache-cleared
+       finds what the first run left in its cache folders gone, and its other files there. */
+    if (!strcmp(which, "data") && g_script_count && !strcmp(g_script[0], "run:2")) {
+        CHECK(megler_ask_clear_cache("megler.test.data") && megler_clear_cache_asked("megler.test.data"));
+    }
     /* And in a time zone the shell names, as it must, before the app starts: one with summer time, and in the second run a name that is no zone's. */
     if (!strcmp(which, "data")) megler_set_timezone(g_script_count && !strcmp(g_script[0], "run:2") ? "Nowhere/At_All" : "Europe/Berlin");
     /* And in the language and region the shell names, likewise before the start: English (United States), and in the second run Russian (Russia). */
@@ -3793,7 +4590,19 @@ int mg_tests_java_run(const char *which, const char *apk, const char *android_ro
      * asks the GPU's name is told "stand-in for OpenGL ES". It makes OpenGL ES 1 as ANGLE does, with a configuration alone --
      * but in the runs whose shell refuses the frames ("readback"), where it plays an EGL without version 1: `gl` checks both.
      */
-    mg_egl_set_provider(mg_gl_standin);
+    if (getenv("MG_JAVA_ANGLE") && *getenv("MG_JAVA_ANGLE")) {
+        /* ANGLE itself, loaded from that folder; EGL then finds it loaded by its name (ndk/mg_egl.c, angle). */
+        char *gles = mg_sprintf("%s/libGLESv2.dll", getenv("MG_JAVA_ANGLE")), *egl = mg_sprintf("%s/libEGL.dll", getenv("MG_JAVA_ANGLE"));
+        AT.on = mg_dl_open(gles) != NULL && mg_dl_open(egl) != NULL;
+        say("OpenGL ES is %s (MG_JAVA_ANGLE)", AT.on ? "ANGLE itself, from that folder" : "nothing: ANGLE did not load from that folder");
+        free(gles);
+        free(egl);
+        CHECK(AT.on);
+        if (!AT.on) return g_failed;
+        mg_egl_set_provider(NULL);
+    } else {
+        mg_egl_set_provider(mg_gl_standin);
+    }
     mg_gl_standin_reset(true, !GL.refuse);
     /*
      * An app that brings a GL stack of its own -- the WebView's Chromium, whose ANGLE loads every function of EGL and OpenGL ES
@@ -3832,7 +4641,9 @@ int mg_tests_java_run(const char *which, const char *apk, const char *android_ro
         else if (!strcmp(which, "camera")) run_camera();
         else if (!strcmp(which, "splits")) run_splits();
         else if (!strcmp(which, "screen")) run_screen();
+        else if (!strcmp(which, "scroll")) run_scroll();
         else if (!strcmp(which, "bluetooth")) run_bluetooth();
+        else if (!strcmp(which, "wifi")) run_wifi();
         else if (g_any_app) run_app();
         else run_hello();
         if (running()) {

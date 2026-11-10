@@ -21,6 +21,12 @@
 // each group it reaches, the point in the group, each child it is under and whether that child took it, or that none did:
 // where a tap that does nothing stops.
 //
+// And dispatchVisibilityAggregated, Android's: a group whose visibility changes in a window tells its visible children
+// whether they are shown (see the overlay's View). attachViewToParent tells them too, as Android's does since 7: RecyclerView
+// takes its rows out of itself for a layout and puts those it keeps back so, and a row that was out when its list was shown
+// again (told it was hidden before it went out, and nothing since) hears it is shown; Litho's LithoView, told it is not shown,
+// stops mounting until it hears otherwise.
+//
 // Everything else is the original's, unchanged.
 package android.view;
 
@@ -204,6 +210,9 @@ public abstract class ViewGroup extends View implements ViewParent, ViewManager 
         meglerListInvalid();
         /* a child detached from its parent stays attached to the window; one that never was joins it now, so the tree stays consistent */
         if (mRoot != null && !child.isAttachedToWindow()) child.dispatchAttachedToWindow(mRoot, getVisibility());
+        /* Android's (7 and later): this group and its visible children told whether they are shown -- a row RecyclerView puts
+           back after a layout hears it is shown, whatever it missed while it was out (see the top of the file) */
+        dispatchVisibilityAggregated(isAttachedToWindow() && getWindowVisibility() == VISIBLE && isShown());
     }
     protected void detachViewFromParent(View child) { int i = indexOfChild(child); if (i >= 0) detachViewFromParent(i); }
     protected void detachViewFromParent(int index) { View c = mChildren[index]; removeFromArray(index); if (c != null) c.mParent = null; }
@@ -293,6 +302,12 @@ public abstract class ViewGroup extends View implements ViewParent, ViewManager 
     @Override void dispatchAttachedToWindow(megler.ViewRoot root, int visibility) {
         super.dispatchAttachedToWindow(root, visibility);
         for (int i = 0; i < mChildrenCount; i++) mChildren[i].dispatchAttachedToWindow(root, visibility);
+    }
+    /* Android's: the visible children told too (those not visible know already they are not shown). */
+    @Override boolean dispatchVisibilityAggregated(boolean isVisible) {
+        isVisible = super.dispatchVisibilityAggregated(isVisible);
+        for (int i = 0; i < mChildrenCount; i++) if (mChildren[i].getVisibility() == VISIBLE) mChildren[i].dispatchVisibilityAggregated(isVisible);
+        return isVisible;
     }
     @Override void dispatchDetachedFromWindow() {
         if (!isAttachedToWindow()) return;

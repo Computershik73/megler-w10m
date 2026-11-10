@@ -152,7 +152,8 @@ void mg_gfx_windows_lose_device(void) { megler::app::GfxHost::shared().loseDevic
 /// bottom first as OpenGL's are. The frame shows where the views leave a
 /// hole, the right way up, under what the views have there; a new frame is
 /// shown without the views being shown again; a layer taken away leaves the
-/// views alone; nothing is read back. Twice: the texture shared plainly, and
+/// views alone; a layer over the views is over them, its premultiplied alpha
+/// kept where it is translucent; nothing is read back. Twice: the texture shared plainly, and
 /// shared with a keyed mutex, as gecko-w10m's ANGLE shares every pbuffer --
 /// "ANGLE's" device then draws holding it and lets go of it for gl_frame, as
 /// the core does, and the shell copies holding it (without, Direct3D drops
@@ -255,7 +256,7 @@ int mg_gfx_windows_check_gl(const megler_gfx_host* h, void (*line)(const char* t
         const int shownBefore = g_window.shown;
         check(h->gl_frame(h->user, 0, handle, fw, fh), "the first frame was not taken");
         check(g_window.shown == shownBefore, "a frame was shown before the views were");
-        h->gl_place(h->user, 0, 16, 8, 32, 24);
+        h->gl_place(h->user, 0, 16, 8, 32, 24, 0);
         check(h->present(h->user, cv, 0, 0, w, hgt) && readWindow(shown), "the views were not shown");
         // (Within two steps a channel: the mix is the processor's arithmetic.)
         const auto alike = [](uint32_t a, uint32_t b) {
@@ -280,8 +281,31 @@ int mg_gfx_windows_check_gl(const megler_gfx_host* h, void (*line)(const char* t
             mutex->ReleaseSync(0);
         }
         // The layer taken away: the views alone there again, at the next showing.
-        h->gl_place(h->user, 0, 0, 0, 0, 0);
+        h->gl_place(h->user, 0, 0, 0, 0, 0, 0);
         check(h->present(h->user, cv, 16, 8, 32, 24) && readWindow(shown) && shown[10 * w + 20] == 0u, "the views' hole does not show nothing once the layer is gone");
+        // The layer over the views (MEGLER_GL_ABOVE: a SurfaceView on top of the window, Flutter's view over HERE WeGo's map),
+        // the views white all over now, no hole, the half transparent red still: the frame's left half clear, its right half
+        // blue at half alpha, premultiplied. Translucent (MEGLER_GL_TRANSLUCENT), the views are seen through its left half and
+        // under its right half, the red too; opaque, the frame covers them, whatever its alpha.
+        h->draw_color(h->user, cv, 0xFFFFFFFFu, MEGLER_GFX_BLEND_SRC);
+        p.blend = MEGLER_GFX_BLEND_SRC_OVER;
+        p.color = 0x80FF0000u;
+        h->draw_rect(h->user, cv, 40, 20, 48, 32, &p, nullptr);
+        for (int y = 0; y < fh; y++)
+            for (int x = 0; x < fw; x++) frame[size_t(y) * fw + x] = x < fw / 2 ? 0u : 0x80000080u;
+        draw();
+        h->gl_place(h->user, 0, 16, 8, 32, 24, MEGLER_GL_ABOVE | MEGLER_GL_TRANSLUCENT);
+        check(h->gl_frame(h->user, 0, handle, fw, fh) && h->present(h->user, cv, 0, 0, w, hgt) && readWindow(shown), "a frame over the views was not shown");
+        check(shown.size() == memory.size() && (shown[10 * w + 20] | 0xFF000000u) == 0xFFFFFFFFu, "the views are not seen where a translucent frame over them is clear");
+        check(shown.size() == memory.size() && alike(shown[10 * w + 40] | 0xFF000000u, 0xFF7F7FFFu), "a translucent frame's half blue over the white views is not their mix");
+        check(shown.size() == memory.size() && alike(shown[30 * w + 44] | 0xFF000000u, 0xFF7F3FBFu), "a translucent frame is not over the views' half transparent red");
+        check(shown.size() == memory.size() && (shown[2 * w + 2] | 0xFF000000u) == 0xFFFFFFFFu, "the views beside a frame over them changed");
+        h->gl_place(h->user, 0, 16, 8, 32, 24, MEGLER_GL_ABOVE);
+        check(h->present(h->user, cv, 0, 0, w, hgt) && readWindow(shown), "an opaque frame over the views was not shown");
+        check(shown.size() == memory.size() && (shown[10 * w + 20] & 0x00FFFFFFu) == 0u && (shown[10 * w + 40] & 0x00FFFFFFu) == 0x80u,
+              "an opaque frame over the views is not over them whatever its alpha");
+        h->gl_place(h->user, 0, 0, 0, 0, 0, 0);
+        check(h->present(h->user, cv, 0, 0, w, hgt) && readWindow(shown) && (shown[10 * w + 20] | 0xFF000000u) == 0xFFFFFFFFu, "the views are not alone again once the layer over them is gone");
         const megler::app::GfxHost::Counts after = gfx.counts();
         check(after.readBacks == before.readBacks, "something was read back");
         snprintf(text, sizeof(text), "    %s: %d pictures shown, %llu read-backs", keyed ? "shared with a keyed mutex" : "shared plainly", g_window.shown,
@@ -627,6 +651,144 @@ int mg_gfx_windows_check_video(const megler_gfx_host* h, void (*line)(const char
     }
     if (green) green->Release();
     if (blue) blue->Release();
+    gfx.setWindow(megler::app::GfxHost::Window());
+    if (g_window.texture) g_window.texture->Release();
+    g_window = TestWindow();
+    return failed;
+}
+
+/// A picture kept on the graphics processor (megler_gfx_host.texture_frame and draw_texture: the WebView's draw functor, a
+/// TextureView's frames) made by a device of Direct3D feature level 9_3, as ANGLE's is on a Lumia 650's Adreno 304: there
+/// Direct3D shares a texture in B8G8R8A8_UNORM alone -- one in R8G8B8A8_UNORM it refuses to make shared at all, which is why
+/// Megler's ANGLE shares only its BGRA8 pbuffers there (angle/0005-share-handles-feature-level-9.patch) -- with a keyed
+/// mutex, as gecko-w10m's ANGLE shares them, and plainly. The shell takes each frame by its handle into a copy of its own
+/// and draws it in a view's place the right way up (its rows bottom first, as OpenGL's), a new frame replacing it; nothing
+/// is read back. Lines to `line`; checks that failed.
+int mg_gfx_windows_check_texture_9_3(const megler_gfx_host* h, void (*line)(const char* text, void* user), int* checks) {
+    megler::app::GfxHost& gfx = megler::app::GfxHost::shared();
+    int failed = 0;
+    char text[300];
+    bool keyedRun = false;
+    auto check = [&](bool ok, const char* what) {
+        ++*checks;
+        if (ok) return;
+        ++failed;
+        snprintf(text, sizeof(text), "  FAIL a picture of a device of feature level 9_3%s: %s", keyedRun ? " (a keyed mutex)" : "", what);
+        line(text, nullptr);
+    };
+    line("  a picture kept on the graphics processor, made by a device of feature level 9_3 (megler_gfx_host.texture_frame, draw_texture)", nullptr);
+    // "ANGLE's" device at 9_3, on the adapter GfxHost's is on (a texture is shared on one adapter only).
+    ID3D11Device* angle = nullptr;
+    ID3D11DeviceContext* angleContext = nullptr;
+    IDXGIDevice* drawing = nullptr;
+    IDXGIAdapter* adapter = nullptr;
+    const D3D_FEATURE_LEVEL level = D3D_FEATURE_LEVEL_9_3;
+    D3D_FEATURE_LEVEL got = D3D_FEATURE_LEVEL_9_1;
+    if (gfx.device()) gfx.device()->QueryInterface(__uuidof(IDXGIDevice), reinterpret_cast<void**>(&drawing));
+    if (drawing) drawing->GetAdapter(&adapter);
+    const HRESULT made = D3D11CreateDevice(adapter, adapter ? D3D_DRIVER_TYPE_UNKNOWN : D3D_DRIVER_TYPE_HARDWARE, nullptr, D3D11_CREATE_DEVICE_BGRA_SUPPORT,
+                                           &level, 1, D3D11_SDK_VERSION, &angle, &got, &angleContext);
+    if (adapter) adapter->Release();
+    if (drawing) drawing->Release();
+    if (FAILED(made)) {
+        check(false, "no second Direct3D device at feature level 9_3");
+        return failed;
+    }
+    check(got == D3D_FEATURE_LEVEL_9_3, "the second device is not of feature level 9_3");
+    const int fw = 32, fh = 24, id = 0x40000007;
+    D3D11_TEXTURE2D_DESC td = {};
+    td.Width = UINT(fw);
+    td.Height = UINT(fh);
+    td.MipLevels = 1;
+    td.ArraySize = 1;
+    td.SampleDesc.Count = 1;
+    td.Usage = D3D11_USAGE_DEFAULT;
+    td.BindFlags = D3D11_BIND_RENDER_TARGET | D3D11_BIND_SHADER_RESOURCE;
+    {
+        // The rule the patch goes by: RGBA8 is not made shared at 9_3, with a keyed mutex or without.
+        ID3D11Texture2D* rgba = nullptr;
+        td.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+        td.MiscFlags = D3D11_RESOURCE_MISC_SHARED;
+        const HRESULT plain = angle->CreateTexture2D(&td, nullptr, &rgba);
+        if (rgba) rgba->Release();
+        rgba = nullptr;
+        td.MiscFlags = D3D11_RESOURCE_MISC_SHARED_KEYEDMUTEX;
+        const HRESULT keyed = angle->CreateTexture2D(&td, nullptr, &rgba);
+        if (rgba) rgba->Release();
+        check(FAILED(plain) && FAILED(keyed), "a shared texture of R8G8B8A8 was made at 9_3 (Direct3D's rule has changed: ANGLE's patch could share more)");
+    }
+    td.Format = DXGI_FORMAT_B8G8R8A8_UNORM;
+    megler::app::GfxHost::Window window;
+    window.target = windowTarget;
+    window.show = windowShow;
+    gfx.setWindow(window);
+    const int w = 64, hgt = 48;
+    std::vector<uint32_t> memory(size_t(w) * hgt, 0), shown, frame(size_t(fw) * fh);
+    void* cv = h->canvas_new(h->user, memory.data(), w, hgt, w * 4);
+    check(cv != nullptr, "no canvas");
+    for (int keyed = 0; keyed < 2 && cv; keyed++) {
+        keyedRun = keyed != 0;
+        td.MiscFlags = keyed ? D3D11_RESOURCE_MISC_SHARED_KEYEDMUTEX : D3D11_RESOURCE_MISC_SHARED;
+        ID3D11Texture2D* surface = nullptr;
+        IDXGIResource* resource = nullptr;
+        IDXGIKeyedMutex* mutex = nullptr;
+        HANDLE handle = nullptr;
+        if (FAILED(angle->CreateTexture2D(&td, nullptr, &surface)) || FAILED(surface->QueryInterface(__uuidof(IDXGIResource), reinterpret_cast<void**>(&resource))) ||
+            FAILED(resource->GetSharedHandle(&handle)) || (keyed && FAILED(surface->QueryInterface(__uuidof(IDXGIKeyedMutex), reinterpret_cast<void**>(&mutex))))) {
+            check(false, "no shared texture of B8G8R8A8 at 9_3");
+            if (mutex) mutex->Release();
+            if (resource) resource->Release();
+            if (surface) surface->Release();
+            continue;
+        }
+        // "ANGLE" draws holding the mutex and lets go of it for the shell, as the core does around texture_frame; what glFinish
+        // does on ANGLE's side is done here with an event query.
+        const auto draw = [&]() {
+            if (mutex) mutex->AcquireSync(0, INFINITE);
+            angleContext->UpdateSubresource(surface, 0, nullptr, frame.data(), UINT(fw * 4), 0);
+            D3D11_QUERY_DESC qd = {D3D11_QUERY_EVENT, 0};
+            ID3D11Query* done = nullptr;
+            if (SUCCEEDED(angle->CreateQuery(&qd, &done))) {
+                angleContext->End(done);
+                angleContext->Flush();
+                while (angleContext->GetData(done, nullptr, 0, 0) == S_FALSE) SwitchToThread();
+                done->Release();
+            }
+            if (mutex) mutex->ReleaseSync(0);
+        };
+        // OpenGL's rows: the first 12 are the picture's bottom, blue; the top yellow.
+        for (int y = 0; y < fh; y++)
+            for (int x = 0; x < fw; x++) frame[size_t(y) * fw + x] = y < fh / 2 ? 0xFF0000FFu : 0xFFFFFF00u;
+        draw();
+        check(h->texture_frame(h->user, id, handle, fw, fh), "the frame was not taken by its handle");
+        h->draw_color(h->user, cv, 0xFFFFFFFFu, MEGLER_GFX_BLEND_SRC);
+        h->draw_texture(h->user, cv, id, 16, 8, 48, 32, 255);
+        check(h->present(h->user, cv, 0, 0, w, hgt) && readWindow(shown), "the window was not shown");
+        check(shown.size() == memory.size() && (shown[10 * w + 20] & 0x00FFFFFFu) == 0x00FFFF00u, "the picture's top (yellow) is not at its view's top");
+        check(shown.size() == memory.size() && (shown[30 * w + 20] & 0x00FFFFFFu) == 0x000000FFu, "the picture's bottom (blue) is not at its view's bottom");
+        check(shown.size() == memory.size() && (shown[2 * w + 2] | 0xFF000000u) == 0xFFFFFFFFu, "the views are not white beside the picture");
+        if (mutex) {
+            // The shell gave the mutex back after its copy: "ANGLE" may draw the next frame at once.
+            check(mutex->AcquireSync(0, 0) == S_OK, "the shell kept the texture's keyed mutex");
+            mutex->ReleaseSync(0);
+        }
+        // A new frame, green all over: the picture the view draws is the new one.
+        for (uint32_t& px : frame) px = 0xFF00FF00u;
+        draw();
+        check(h->texture_frame(h->user, id, handle, fw, fh), "the new frame was not taken");
+        h->draw_color(h->user, cv, 0xFFFFFFFFu, MEGLER_GFX_BLEND_SRC);
+        h->draw_texture(h->user, cv, id, 16, 8, 48, 32, 255);
+        check(h->present(h->user, cv, 0, 0, w, hgt) && readWindow(shown) && shown.size() == memory.size() && (shown[10 * w + 20] & 0x00FFFFFFu) == 0x0000FF00u &&
+                  (shown[30 * w + 20] & 0x00FFFFFFu) == 0x0000FF00u,
+              "the new frame (green) is not what the view draws");
+        h->texture_frame(h->user, id, nullptr, 0, 0);
+        if (mutex) mutex->Release();
+        resource->Release();
+        surface->Release();
+    }
+    if (cv) h->canvas_free(h->user, cv);
+    angleContext->Release();
+    angle->Release();
     gfx.setWindow(megler::app::GfxHost::Window());
     if (g_window.texture) g_window.texture->Release();
     g_window = TestWindow();

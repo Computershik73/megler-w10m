@@ -227,7 +227,24 @@ public class Paint {
     }
     public void getTextBounds(CharSequence s, int start, int end, Rect bounds) { getTextBounds(s.toString(), start, end, bounds); }
     public void getTextBounds(char[] t, int index, int count, Rect bounds) { getTextBounds(new String(t, index, count), 0, count, bounds); }
-    public void getTextPath(String s, int start, int end, float x, float y, Path path) { path.addRect(x, y + ascent(), x + measureText(s, start, end), y + descent(), Path.Direction.CW); }
+    /**
+     * The outlines of the glyphs, where drawText(s, start, end, x, y, this) would draw them, the alignment too; the path holds them
+     * alone afterwards, filled by WINDING, as the original's does. An app may hand the same path over again and again (Google Maps'
+     * legacy renderer, for every label of its map, which it fills and strokes for a halo). Without outlines from the shell: the
+     * run's box, ascent to descent.
+     */
+    public void getTextPath(String s, int start, int end, float x, float y, Path path) {
+        if ((start | end | (end - start) | (s.length() - end)) < 0) throw new IndexOutOfBoundsException();
+        float[] outlines = megler.Gfx.txPath(s, start, end, x, y, mP, meglerFace());
+        if (outlines != null) { path.meglerSetOutlines(outlines); return; }
+        float w = measureText(s, start, end), l = mAlign == Align.CENTER ? x - w / 2 : mAlign == Align.RIGHT ? x - w : x;
+        path.meglerSetOutlines(new float[0]);
+        if (end > start) path.addRect(l, y + ascent(), l + w, y + descent(), Path.Direction.CW);
+    }
+    public void getTextPath(char[] t, int index, int count, float x, float y, Path path) {
+        if ((index | count) < 0 || index + count > t.length) throw new ArrayIndexOutOfBoundsException();
+        getTextPath(new String(t, index, count), 0, count, x, y, path);
+    }
     public boolean hasGlyph(String s) { return true; }
     public float getUnderlinePosition() { return getTextSize() / 9; }
     public float getUnderlineThickness() { return getTextSize() / 18; }
@@ -279,7 +296,6 @@ public class Paint {
     public float getRunCharacterAdvance(char[] p0, int p1, int p2, int p3, int p4, boolean p5, int p6, float[] p7, int p8) { return 0f; }
     public float getRunCharacterAdvance(char[] p0, int p1, int p2, int p3, int p4, boolean p5, int p6, float[] p7, int p8, android.graphics.RectF p9, android.graphics.Paint.RunInfo p10) { return 0f; }
     public long getShadowLayerColorLong() { return 0L; }
-    public void getTextPath(char[] p0, int p1, int p2, float p3, float p4, android.graphics.Path p5) {}
     public float getTextRunAdvances(char[] p0, int p1, int p2, int p3, int p4, boolean p5, float[] p6, int p7) { return 0f; }
     public int getTextRunCursor(java.lang.CharSequence p0, int p1, int p2, boolean p3, int p4, int p5) { return 0; }
     public int getTextRunCursor(java.lang.String p0, int p1, int p2, boolean p3, int p4, int p5) { return 0; }

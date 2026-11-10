@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The test app for the phone's Wi-Fi (tools/build-test-app.sh): WifiManager's scans as an app (and Google Play services'
+     network location in it) use them, on the test's stand-in for the shell's Wi-Fi (core/tests/mg_wifi_standin.c): startScan,
+     SCAN_RESULTS_AVAILABLE_ACTION with EXTRA_RESULTS_UPDATED, getScanResults' ScanResults to the last field, a second scan
+     no sooner than three seconds after the first, two requests answered by one scan, the connection's network, a ScanResult
+     through a Parcel. It may have the location (Android 10's ACCESS_FINE_LOCATION, which the test's shell grants), and names
+     the Wi-Fi's own permissions as an app of the Wi-Fi does. Each step is a line of the log, which the test
+     (core/tests/mg_java_tests.c, run_wifi) reads. -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="megler.test.wifi" android:versionCode="1" android:versionName="1.0">
+    <uses-sdk android:minSdkVersion="21" android:targetSdkVersion="29" />
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+    <uses-permission android:name="android.permission.CHANGE_WIFI_STATE" />
+    <application android:label="@string/app_name">
+        <activity android:name=".Main" android:label="@string/app_name" android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+    </application>
+</manifest>

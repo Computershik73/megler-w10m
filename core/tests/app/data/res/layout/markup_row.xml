@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Main's step "single-line-spans": a search result's title as Transit 6.3.7 lays one out (its search_actionable_card_cell): a
+     TextView of one line, android:singleLine, at most a line, an ellipsis at its end. Black text 20 pixels high: under the
+     tests' stand-in for the shell's drawing each character is a box 10 pixels wide every 12, so the picture says which
+     characters were drawn and in what colour. -->
+<TextView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:ellipsize="end"
+    android:maxLines="1"
+    android:singleLine="true"
+    android:textColor="#FF000000"
+    android:textSize="20px" />

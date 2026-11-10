@@ -22,8 +22,12 @@ int getInt(const std::string& key, int fallback);
 /// Sets and writes this process's own: Megler's in Megler, its app's in an app's own package.
 void set(const std::string& key, const std::string& value);
 
-/// Megler's, as its file has it; nothing when it has none.
+/// Megler's, as its file had it when this process started (or Megler's Settings last changed it here); nothing when it has
+/// none.
 std::optional<std::string> megler(const std::string& key);
+/// Megler's, as its file has it now: another package may have written it since (an answer given in an app's own package that
+/// counts for every app, as gmsLocation's).
+std::optional<std::string> meglerNow(const std::string& key);
 void setMegler(const std::string& key, const std::string& value);
 /// The app `package`'s own, as its file has it; nothing when it goes by Megler's.
 std::optional<std::string> app(const std::string& package, const std::string& key);
@@ -62,6 +66,16 @@ constexpr const char* googleServices = "megler.googleServices";
 /// Megler's question at its first start (ui/GooglePlay.h): "yes", Google Play wanted -- Megler installs its Google Play
 /// services and Google Play Store, apps running with microG until then; "no", apps run with microG; empty: not asked.
 constexpr const char* googlePlay = "megler.googlePlay";
+
+/// Whether Google Play services' own features may use the phone's location in every app's process (player/PermissionHost.h,
+/// gmsLocation): "granted", "denied"; empty: not asked yet. Megler's alone, one answer for every app; asked in whichever
+/// package Google Play services first want it, and changed in Megler's Settings and in any app's App Permissions.
+constexpr const char* gmsLocation = "megler.gmsLocation";
+
+/// The last answer an app was given or set in its App Permissions for Google Location Accuracy (player/PermissionHost.h,
+/// locationAccuracyElsewhere): "granted", "denied"; empty: none yet. Google's setting is one for every app (megler.
+/// LocationAccuracy writes it where every app's Google Play services read it), so an app never asked itself goes by it.
+constexpr const char* locationAccuracy = "megler.locationAccuracy";
 
 /// A separate app (ui/SharedFolders.h): the names of Megler's folders the user said "Not Now" to, "a|b".
 constexpr const char* foldersNotNow = "megler.folders.notNow";

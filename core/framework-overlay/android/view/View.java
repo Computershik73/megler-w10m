@@ -33,6 +33,10 @@
 //    bars while Instagram, laid out under them, kept off them too: an empty band at the top and at the bottom of its feed.
 //  - setRevealClip is kept, and drawFromParent clips the view to its circle, as Android's RenderNode does for a circular
 //    reveal (ViewAnimationUtils, overlaid). The original did nothing with it.
+//  - A view clipped to its outline and drawn through a list of its own is clipped by its own node, as Android's RenderNode
+//    clips it, the outline worked out as the view's list is recorded (meglerNodeOutline); drawFromParent clipped the parent's
+//    list to it, worked out before the view was drawn: a background set after the layout had no bounds yet, and WhatsApp's
+//    card with its "Accept and continue" button in it was never drawn.
 //
 // Why. The original's invalidate asked the window to be drawn again whole, and the window cleared the screen and drew every
 // view, so a blinking cursor cost a whole screen. ViewRoot (overlaid) now keeps each window's dirty rectangle and draws only
@@ -51,7 +55,30 @@
 // Recycler.tryGetViewHolderForPositionByDeadline); the item animator's listener, told the end in between, had recycled the
 // child already (RecyclerView's removeAnimatingView: no longer a child, so unscrapped), and the unscrap met null. Spotify's
 // Now Playing carousel, whose covers its item animator fades out through View.animate(), ended so at a track change
-// (0.1.0.678). Everything else is the original's, unchanged.
+// (0.1.0.678).
+//
+// And setBackgroundDrawable, setForeground and the constructor (a layout's background) make the view the drawable's callback
+// last, after its state, visibility and tint are set, as Android's do ("Set callback last, since the view may still be
+// initializing"): what those do to the drawable -- a state list choosing its child, a gradient changing its colour, each of
+// which invalidates itself -- reaches no view. The original made the view the callback first, and the view's
+// invalidateDrawable was called from inside setBackground.
+// Facebook builds its tab bar's tabs on a worker thread (a view of its own whose invalidateDrawable asserts the main thread,
+// a state list for its background), and the assertion ended the app as its main tabs came up: "This operation must be run
+// on UI thread." (0.1.0.681).
+//
+// And a view hears whether it is shown (onVisibilityAggregated) as Android's does: true as it is attached to the window
+// shown, false as it is detached from it, and the subtree of a view whose visibility changes in a window told through
+// dispatchVisibilityAggregated (ViewGroup: its visible children); the view's background and foreground drawables made
+// visible or not by it, and ImageView's drawable (ImageView's own). It was never called: a drawable never heard that its
+// view left the window. Messenger's network drawables (Facebook's AsyncDrawable) wait for setVisible(false) to let their
+// pictures go and said, once collected, "wasn't hidden before it was GC'd. Please call setVisible(false, ___ ) in
+// View.onDetachedFromWindow()"; Litho's LithoView takes its visibility hint from it.
+// isShown is Android's too: a view without a parent is shown only as its window's root. RecyclerView takes its rows out of
+// itself for each layout (detachViewFromParent), puts back those it keeps (attachViewToParent, which tells them they are shown
+// again: see the overlay's ViewGroup) and removes the others (removeDetachedView). Taken out so, a row was still "shown" here,
+// so it heard that it was not as it left the window, where Android tells it nothing; Litho's LithoView, told so, stops
+// mounting and keeps what it has mounted (unbound) at its detach, where on Android it unmounts it. Messenger's chat list
+// (0.1.0.687) lost its pictures once views heard onVisibilityAggregated. Everything else is the original's, unchanged.
 package android.view;
 
 import android.animation.StateListAnimator;
@@ -344,8 +371,8 @@ public class View implements Drawable.Callback, KeyEvent.Callback {
                 if (pr < 0 && ph < 0 && pe == Integer.MIN_VALUE) mPaddingRight = p.right;
                 if (pb < 0 && pv < 0) mPaddingBottom = p.bottom;
             }
-            mBackground.setCallback(this);
             applyBackgroundTint();
+            mBackground.setCallback(this);
         }
         if (mForeground != null) mForeground.setCallback(this);
         mTranslationX = tx; mTranslationY = ty; mTranslationZ = tz; mRotation = rot; mRotationX = rx; mRotationY = ry; mScaleX = sx; mScaleY = sy;
@@ -446,6 +473,8 @@ public class View implements Drawable.Callback, KeyEvent.Callback {
         onAttachedToWindow();
         if (mOnAttach != null) for (OnAttachStateChangeListener l : new ArrayList<>(mOnAttach)) l.onViewAttachedToWindow(this);
         onWindowVisibilityChanged(VISIBLE);
+        // (Each view of the subtree hears it at its own attach, as on Android.)
+        if (isShown()) onVisibilityAggregated(true);
         if (mPrivateFlags != 0 && (mPrivateFlags & PFLAG_DRAWABLE_STATE_DIRTY) != 0) refreshDrawableState();
         if (mKeepScreenOn) root.keepScreenOn(true);
         if (mOverlay != null) mOverlay.meglerAttached(root);
@@ -458,6 +487,7 @@ public class View implements Drawable.Callback, KeyEvent.Callback {
         if (mOverlay != null) mOverlay.meglerDetached();
         // (Its View.animate() animation runs on, as on Android: see the top of this file.)
         onWindowVisibilityChanged(GONE);
+        if (isShown()) onVisibilityAggregated(false);
         onDetachedFromWindow();
         if (mOnAttach != null) for (OnAttachStateChangeListener l : new ArrayList<>(mOnAttach)) l.onViewDetachedFromWindow(this);
         if (mRoot != null && mRoot.focused() == this) mRoot.setFocused(null);
@@ -473,7 +503,17 @@ public class View implements Drawable.Callback, KeyEvent.Callback {
     public void onWindowFocusChanged(boolean f) { refreshDrawableState(); }
     public void dispatchWindowFocusChanged(boolean f) { onWindowFocusChanged(f); }
     public boolean hasWindowFocus() { return mRoot != null && mRoot.hasWindowFocus(); }
-    public void onVisibilityAggregated(boolean v) {}
+    /* Whether the view is shown, said as it changes: its background's and foreground's drawables made visible or not, as Android's. */
+    public void onVisibilityAggregated(boolean v) {
+        if (mBackground != null && v != mBackground.isVisible()) mBackground.setVisible(v, false);
+        if (mForeground != null && v != mForeground.isVisible()) mForeground.setVisible(v, false);
+    }
+    /* Android's: a view told whether it is shown now, when it is visible itself or told it is not; ViewGroup tells its visible children. */
+    boolean dispatchVisibilityAggregated(boolean isVisible) {
+        final boolean thisVisible = getVisibility() == VISIBLE;
+        if (thisVisible || !isVisible) onVisibilityAggregated(isVisible);
+        return thisVisible && isVisible;
+    }
     protected void onVisibilityChanged(View changed, int v) {}
     public void dispatchVisibilityChanged(View changed, int v) { onVisibilityChanged(changed, v); }
     public void dispatchWindowVisibilityChanged(int v) { onWindowVisibilityChanged(v); }
@@ -493,11 +533,16 @@ public class View implements Drawable.Callback, KeyEvent.Callback {
         invalidateParent();
         if (mParent != null) mParent.onChildVisibilityChanged(this, old, v);
         dispatchVisibilityChanged(this, v);
+        // In a window, where the parent is shown (or as the window's root): the subtree hears whether it is shown now (as
+        // Android's setFlags). Not a view out of its parent for a while (RecyclerView's scrap): it hears it once it is back.
+        if (mRoot != null && (mParent != null ? mParent.isShown() : mRoot.getView() == this)) dispatchVisibilityAggregated(v == VISIBLE);
         if (v != VISIBLE && hasFocus()) clearFocus();
     }
+    /* Android's: visible up to the window's root. A view without a parent is shown only as the root of its window: one taken
+       out of its parent for a while (detachViewFromParent) is not, though it is still attached. */
     public boolean isShown() {
         View v = this;
-        while (v != null) { if (v.mVisibility != VISIBLE) return false; if (v.mParent == null) return v.mRoot != null; v = v.mParent; }
+        while (v != null) { if (v.mVisibility != VISIBLE) return false; if (v.mParent == null) return v.mRoot != null && v.mRoot.getView() == v; v = v.mParent; }
         return false;
     }
     public boolean isEnabled() { return mEnabled; }
@@ -743,10 +788,11 @@ public class View implements Drawable.Callback, KeyEvent.Callback {
         if (d != null) {
             Rect p = new Rect();
             if (d.getPadding(p)) setPadding(p.left, p.top, p.right, p.bottom);
-            d.setCallback(this);
+            // Megler: the view becomes the drawable's callback last, as on Android (see the note at the top)
             if (d.isStateful()) d.setState(getDrawableState());
             d.setVisible(mVisibility == VISIBLE, false);
             applyBackgroundTint();
+            mBackground.setCallback(this);
         }
         requestLayout();
         invalidate();
@@ -774,7 +820,7 @@ public class View implements Drawable.Callback, KeyEvent.Callback {
     public void setForeground(Drawable d) {
         if (mForeground != null) mForeground.setCallback(null);
         mForeground = d;
-        if (d != null) { d.setCallback(this); if (d.isStateful()) d.setState(getDrawableState()); }
+        if (d != null) { if (d.isStateful()) d.setState(getDrawableState()); d.setCallback(this); }
         invalidate();
     }
     public int getForegroundGravity() { return mForegroundGravity; }
@@ -1352,7 +1398,11 @@ public class View implements Drawable.Callback, KeyEvent.Callback {
         if (megler.ViewRoot.meglerDrawingPart() && parent.getClipChildren() && c.quickReject(0, 0, w, h)) { c.restoreToCount(save); return; }
         if (mClipBounds != null) c.clipRect(mClipBounds);
         if (mRevealClip != null) { Path p = new Path(); p.addCircle(mRevealClip[0], mRevealClip[1], mRevealClip[2], Path.Direction.CW); c.clipPath(p); }
-        if (getClipToOutline() && mOutlineProvider != null) {
+        // Megler: a view drawn through a list of its own is clipped to its outline by its node (meglerNodeOutline). One with no
+        // list, or blurred, is clipped here, its background's bounds made its size first, as its draw makes them.
+        boolean listed = w > 0 && h > 0 && meglerListable() && meglerListsOn();
+        if (getClipToOutline() && mOutlineProvider != null && (!listed || meglerBlurred())) {
+            if (mBackground != null) mBackground.setBounds(0, 0, w, h);
             Outline o = new Outline();
             mOutlineProvider.getOutline(this, o);
             if (o.mRect != null) {
@@ -1364,7 +1414,7 @@ public class View implements Drawable.Callback, KeyEvent.Callback {
         /* a view with a layer (software or hardware) draws into one of its own, as Android's: its blending (a DST_IN mask, a CLEAR)
            then stays inside it instead of reaching what is under it in the window */
         /* a view with a blur RenderEffect draws into a layer that is put onto what is under it blurred (the shell's save_layer_blur) */
-        if (mRenderEffect != null && mRenderEffect.meglerBlurs()) {
+        if (meglerBlurred()) {
             int a = Math.round(alpha * 255);
             if (mLayerPaint != null) a = a * mLayerPaint.getAlpha() / 255;
             c.meglerSaveLayerBlur(0, 0, w, h, a, mRenderEffect.meglerBlurX(), mRenderEffect.meglerBlurY(), mRenderEffect.meglerClamp());
@@ -1373,7 +1423,7 @@ public class View implements Drawable.Callback, KeyEvent.Callback {
             if (mLayerPaint != null) a = a * mLayerPaint.getAlpha() / 255;
             c.saveLayerAlpha(0, 0, w, h, a);
         }
-        if (w > 0 && h > 0 && meglerListable() && meglerListsOn()) {
+        if (listed) {
             meglerDrawList(c, w, h);
             c.restoreToCount(save);
             return;
@@ -1478,8 +1528,43 @@ public class View implements Drawable.Callback, KeyEvent.Callback {
             rc.restoreToCount(save);
             n.endRecording();
         }
+        meglerNodeOutline(n);
     }
     private static int sMeglerThrew;
+
+    /*
+     * Megler: a view clipped to its outline (setClipToOutline: androidx's CardView clips itself to its rounded background so)
+     * is clipped by its own node, as Android's RenderNode clips it (setOutline, setClipToOutline): the outline worked out here,
+     * as the view's list has been recorded -- its background's bounds are its size now (drawBackground), as Android rebuilds
+     * the outline after setBackgroundBounds -- and again each time the list is recorded again, which whatever makes Android
+     * rebuild it brings about: a new size, a new background, the background invalidating itself, invalidateOutline,
+     * setOutlineProvider, setClipToOutline. The parent's list draws the node by reference and holds no outline of its own.
+     *
+     * It was a clip that drawFromParent put in the parent's list, worked out before the view's own list was recorded, and
+     * kept for as long as the parent's list was kept. WhatsApp's first screen (com.whatsapp.registration.app.EULA) gives the
+     * card that holds its "Accept and continue" button a plain colour once the screen is laid out, before its first frame,
+     * from its ScrollView's global layout listener (CardView.setCardElevation(8), View.setBackgroundColor): a ColorDrawable
+     * whose bounds were empty when the parent recorded the card. Its outline was a rectangle of nothing, and neither the card
+     * nor its button was ever drawn, scrolled to or not (0.1.0.685, a Lumia 650).
+     *
+     * A blurred view is clipped by its parent still (drawFromParent): Android clips the blurred picture to the outline, not
+     * what is blurred. The Outline is one for all (the main thread's), as Android's AttachInfo has one.
+     */
+    private static final Outline sMeglerOutline = new Outline();
+    private void meglerNodeOutline(android.graphics.RenderNode n) {
+        if (!getClipToOutline() || mOutlineProvider == null || meglerBlurred()) {
+            n.meglerViewOutline(null);
+            return;
+        }
+        Outline o = sMeglerOutline;
+        o.setEmpty();
+        o.setAlpha(1f);
+        mOutlineProvider.getOutline(this, o);
+        n.meglerViewOutline(o);
+    }
+
+    /** Whether the view is drawn blurred, through a layer of the shell's (drawFromParent): its RenderEffect's blur. */
+    private boolean meglerBlurred() { return mRenderEffect != null && mRenderEffect.meglerBlurs(); }
 
     /** Megler: before a frame, every invalid list of this view's subtree under a valid one recorded again where it stands. */
     public void meglerUpdateLists() {

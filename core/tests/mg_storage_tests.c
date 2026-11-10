@@ -725,6 +725,64 @@ static void test_clear_data(const char *base)
     free(data);
 }
 
+/*
+ * Clearing an app's cache, as asked (megler_ask_clear_cache writes <storage>/clear-cache/<package>): before its folders are set
+ * up, what is in its private cache and code_cache folders goes, and in its own Android/data/<package>/cache -- files and
+ * folders in them -- while the folders stay; its other files, its Android/data's other folders, its obb and another app's
+ * cache stay. Asked for no more, nothing goes.
+ */
+static void test_clear_cache(const char *base)
+{
+    static const char *const made[] = { "apps/org.megler.test.cached/data/cache/image_cache/0/a.jpg", "apps/org.megler.test.cached/data/cache/http.dat",
+                                        "apps/org.megler.test.cached/data/code_cache/compiled.dex", "apps/org.megler.test.cached/data/files/save.dat",
+                                        "apps/org.megler.test.cached/data/shared_prefs/settings.xml", "apps/org.megler.test.cached/data/databases/main.db",
+                                        "apps/org.megler.test.cached/data/files/cache/not-the-cache.dat",
+                                        "apps/org.megler.test.cached/sdcard/Android/data/org.megler.test.cached/cache/video.tmp",
+                                        "apps/org.megler.test.cached/sdcard/Android/data/org.megler.test.cached/files/save.dat",
+                                        "apps/org.megler.test.cached/sdcard/Android/obb/org.megler.test.cached/main.1.obb",
+                                        "apps/org.megler.test.uncached/data/cache/http.dat", "clear-cache/org.megler.test.cached" };
+    static const char *const kept_dirs[] = { "apps/org.megler.test.cached/data/cache", "apps/org.megler.test.cached/data/code_cache",
+                                             "apps/org.megler.test.cached/sdcard/Android/data/org.megler.test.cached/cache" };
+    mg_stat st;
+    char *data = mg_sprintf("%s/cache-cleared", base), *p, *dir;
+    size_t i;
+    say("clearing an app's cache, as asked: what is in its cache, code_cache and Android/data/<package>/cache goes, the rest stays");
+    for (i = 0; i < MG_COUNT(made); i++) {
+        p = mg_sprintf("%s/%s", data, made[i]);
+        dir = mg_sprintf("%s", p);
+        *strrchr(dir, '/') = 0;
+        CHECK(mg_path_mkdirs(dir) && mg_file_write_all(p, "x", 1));
+        free(dir);
+        free(p);
+    }
+    CHECK(mg_run_clear_cache_asked(data, "org.megler.test.cached") && !mg_run_clear_cache_asked(data, "org.megler.test.uncached"));
+    /* Clearing the data, not asked for, leaves everything; then the cache, asked for. */
+    CHECK(!mg_run_clear_data_if_asked(data, data, "org.megler.test.cached"));
+    CHECK(mg_run_clear_cache_if_asked(data, data, "org.megler.test.cached"));
+    CHECK(!mg_run_clear_cache_asked(data, "org.megler.test.cached"));
+    for (i = 0; i < MG_COUNT(made); i++) {
+        bool gone = strstr(made[i], "test.cached/data/cache/") || strstr(made[i], "/code_cache/") || strstr(made[i], "test.cached/cache/") ||
+                    strstr(made[i], "clear-cache/");
+        p = mg_sprintf("%s/%s", data, made[i]);
+        CHECK(mg_path_stat(p, &st, NULL) == !gone);
+        free(p);
+    }
+    for (i = 0; i < MG_COUNT(kept_dirs); i++) {
+        p = mg_sprintf("%s/%s", data, kept_dirs[i]);
+        CHECK(mg_path_stat(p, &st, NULL) && st.is_dir);
+        free(p);
+    }
+    p = mg_sprintf("%s/apps/org.megler.test.cached/data/cache/image_cache", data);
+    CHECK(!mg_path_stat(p, &st, NULL));
+    free(p);
+    CHECK(!mg_run_clear_cache_if_asked(data, data, "org.megler.test.cached"));
+    CHECK(!mg_run_clear_cache_if_asked(data, data, "org.megler.test.uncached"));
+    p = mg_sprintf("%s/apps/org.megler.test.uncached/data/cache/http.dat", data);
+    CHECK(mg_path_stat(p, &st, NULL));
+    free(p);
+    free(data);
+}
+
 static const megler_storage_link k_links[] = {
     { "Music", true }, { "Pictures", true },
     { "Books", false },                /* a name of the user's own, and only to be read */
@@ -1633,6 +1691,7 @@ static int run_in(const char *base, mg_storage_host_maker make, mg_test_sink sin
         CHECK(libc_found());
         if (libc_found()) {
             test_clear_data(data);
+            test_clear_cache(data);
             test_layout(data);
             test_threads();
             test_odd_names();

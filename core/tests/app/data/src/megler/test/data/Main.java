@@ -352,8 +352,10 @@ public class Main extends Activity {
         keystoreCertificates(run);
         keystoreForeignKey();
         pathOps();
+        textPath();
         base64Streams();
         pipedStreams();
+        traceBytes();
         codecs();
         userHandle();
         cleartext();
@@ -781,6 +783,34 @@ public class Main extends Activity {
                 return a == 1000 && b == 1000 && java.util.Arrays.equals(one, two) && one[0] == (byte) (1000000 * 31 + (1000000 >> 12))
                         && in.getClass().getSimpleName().equals("InflatedAssetStream");
             }
+        });
+        // A file's available(): what is left of it after the position, as Android's FileInputStream answers it (FIONREAD on a
+        // regular file); Geekbench 5 reads a result of 47 KB, named with colons, into an array of available()'s size.
+        step("file-available", () -> {
+            java.io.File f = new java.io.File(getFilesDir(), "Result 00:18:09.gb5");
+            byte[] data = new byte[47584];
+            for (int i = 0; i < data.length; i++) data[i] = (byte) (i * 13 + 7);
+            try (java.io.FileOutputStream out = new java.io.FileOutputStream(f)) { out.write(data); }
+            int first, after, read = 0;
+            byte[] got;
+            try (java.io.FileInputStream in = new java.io.FileInputStream(f)) {
+                first = in.available();
+                got = new byte[first];
+                for (int r; read < got.length && (r = in.read(got, read, Math.min(1000, got.length - read))) > 0; ) {
+                    read += r;
+                    if (read == 1000) after = in.available();
+                }
+                after = in.available();
+            }
+            int middle;
+            try (java.io.FileInputStream in = new java.io.FileInputStream(f)) {
+                in.skip(40000);
+                middle = in.available();
+            }
+            boolean same = java.util.Arrays.equals(data, got);
+            f.delete();
+            detail = "available=" + first + " middle=" + middle + " after=" + after + " read=" + read + " same=" + same;
+            return first == data.length && middle == data.length - 40000 && after == 0 && same;
         });
         // A path's segments through Path.getPathIterator, as Compose walks them on Android 14 (the Play Store's app pages): a
         // line, quad or cubic with its start point first, a rectangle in lines, a close without points, and then done. By
@@ -1547,6 +1577,38 @@ public class Main extends Activity {
             return none == null && again == first && updated == first && found == first && other != first && sent && gone == null && refused
                     && instead != fresh && replaced;
         });
+        // A PendingIntent sent with an OnFinished, a required permission and options, as Google Play services' network location
+        // hands its fixes to its fused provider: sent with the fill-in's extras, and the OnFinished told so, on its Handler's
+        // thread, with the intent that was sent. Those forms sent nothing.
+        step("pending-intent-options", () -> {
+            registerReceiver(new android.content.BroadcastReceiver() {
+                @Override public void onReceive(Context c, android.content.Intent i) {
+                    int v = i.getIntExtra("v", 0);
+                    Log.i("DataTest", "pending-intent-options-sent " + (v == 5 ? "ok" : "FAILED") + " v=" + v);
+                    c.unregisterReceiver(this);
+                }
+            }, new android.content.IntentFilter("megler.test.PENDING_OPTIONS"));
+            android.app.PendingIntent p = android.app.PendingIntent.getBroadcast(this, 11, new android.content.Intent("megler.test.PENDING_OPTIONS"), 0);
+            final java.util.concurrent.CountDownLatch finished = new java.util.concurrent.CountDownLatch(2);
+            final int[] heard = new int[2];
+            android.os.HandlerThread thread = new android.os.HandlerThread("pending-finished");
+            thread.start();
+            final android.os.Handler on = new android.os.Handler(thread.getLooper());
+            p.send(this, 0, new android.content.Intent().putExtra("v", 5), (pi, intent, code, data, extras) -> {
+                heard[0] = intent.getIntExtra("v", 0) + (android.os.Looper.myLooper() == on.getLooper() ? 100 : 0);
+                finished.countDown();
+            }, on, null, null);
+            // (And one only a receiver that holds a permission hears, which none here does: the sender is told all the same.)
+            android.app.PendingIntent q = android.app.PendingIntent.getBroadcast(this, 12, new android.content.Intent("megler.test.PENDING_PERMISSION"), 0);
+            q.send(this, 0, new android.content.Intent().putExtra("v", 6), (pi, intent, code, data, extras) -> {
+                heard[1] = intent.getIntExtra("v", 0);
+                finished.countDown();
+            }, null, "android.permission.ACCESS_FINE_LOCATION");
+            boolean told = finished.await(10, java.util.concurrent.TimeUnit.SECONDS);
+            thread.quitSafely();
+            detail = "told " + told + ", heard " + heard[0] + "/" + heard[1];
+            return told && heard[0] == 105 && heard[1] == 6;
+        });
         // Alarms as Android keeps them: one for a PendingIntent, which setting it again moves and cancel takes away, and a
         // repeating one goes off each interval until it is cancelled (GmsCore's watchdog of its module setup is one).
         step("alarm-replace-cancel", () -> {
@@ -1580,6 +1642,128 @@ public class Main extends Activity {
             alarms.cancel(off);
             alarms.setRepeating(android.app.AlarmManager.ELAPSED_REALTIME, now + 300, 400, repeated);
             return true;
+        });
+        // Alarms of a listener, as Android keeps them and Google Play services sets theirs (GmsAlarm, with an Executor and a
+        // WorkSource: Android 12's and the system's forms, which did nothing): told on the Handler given or through the Executor
+        // given, one for each listener -- set again it moves, cancelled it never goes off -- and a repeating one again each
+        // interval until it is cancelled. Everything is heard on a thread of the step's own, which decides once the repeating
+        // one has gone off three times, and a while after.
+        step("alarm-listeners", () -> {
+            final android.app.AlarmManager alarms = (android.app.AlarmManager) getSystemService(ALARM_SERVICE);
+            final android.os.HandlerThread thread = new android.os.HandlerThread("alarm-listeners");
+            thread.start();
+            final android.os.Handler on = new android.os.Handler(thread.getLooper());
+            final java.util.concurrent.Executor through = on::post;
+            final int[] heard = new int[5];
+            final boolean[] onIt = { true };
+            final Class<?> listenerClass = android.app.AlarmManager.OnAlarmListener.class;
+            long now = android.os.SystemClock.elapsedRealtime();
+            android.app.AlarmManager.OnAlarmListener moved = () -> { heard[0]++; onIt[0] &= android.os.Looper.myLooper() == on.getLooper(); };
+            alarms.set(android.app.AlarmManager.ELAPSED_REALTIME, now + 100, "megler-moved", moved, on);
+            alarms.set(android.app.AlarmManager.ELAPSED_REALTIME, now + 300, "megler-moved", moved, on);
+            android.app.AlarmManager.OnAlarmListener off = () -> heard[1]++;
+            alarms.set(android.app.AlarmManager.ELAPSED_REALTIME, now + 100, "megler-off", off, on);
+            alarms.cancel(off);
+            android.app.AlarmManager.OnAlarmListener exact = () -> { heard[2]++; onIt[0] &= android.os.Looper.myLooper() == on.getLooper(); };
+            android.app.AlarmManager.class.getMethod("setExact", int.class, long.class, String.class, java.util.concurrent.Executor.class, android.os.WorkSource.class, listenerClass)
+                .invoke(alarms, android.app.AlarmManager.ELAPSED_REALTIME_WAKEUP, now + 200, "megler-exact", through, new android.os.WorkSource(), exact);
+            android.app.AlarmManager.OnAlarmListener window = () -> heard[3]++;
+            android.app.AlarmManager.class.getMethod("setWindow", int.class, long.class, long.class, String.class, java.util.concurrent.Executor.class, android.os.WorkSource.class,
+                listenerClass).invoke(alarms, android.app.AlarmManager.ELAPSED_REALTIME, now + 200, 1000L, "megler-window", through, new android.os.WorkSource(), window);
+            final android.app.AlarmManager.OnAlarmListener[] repeating = new android.app.AlarmManager.OnAlarmListener[1];
+            repeating[0] = () -> {
+                if (++heard[4] != 3) return;
+                alarms.cancel(repeating[0]);
+                on.postDelayed(() -> {
+                    boolean ok = heard[0] == 1 && heard[1] == 0 && heard[2] == 1 && heard[3] == 1 && heard[4] == 3 && onIt[0];
+                    Log.i("DataTest", "alarm-listeners-heard " + (ok ? "ok" : "FAILED") + " moved=" + heard[0] + " cancelled=" + heard[1] + " exact=" + heard[2]
+                          + " window=" + heard[3] + " repeated=" + heard[4] + " on-its-thread=" + onIt[0]);
+                    thread.quitSafely();
+                }, 1500);
+            };
+            android.app.AlarmManager.class.getMethod("set", int.class, long.class, long.class, long.class, listenerClass, android.os.Handler.class, android.os.WorkSource.class)
+                .invoke(alarms, android.app.AlarmManager.ELAPSED_REALTIME, now + 400, 0L, 300L, repeating[0], on, new android.os.WorkSource());
+            return true;
+        });
+        // A wake lock counted as Android counts one: held from acquire to the release that matches it, all at once where it is
+        // not counted, and until acquire(timeout)'s time is up (whose release comes on the main thread, which the steps keep
+        // busy: a thread of the step's own looks until it is let go). Google Play services checks isHeld as it lets one go,
+        // and said "<tag> should be held!" at each.
+        step("wake-lock", () -> {
+            android.os.PowerManager power = (android.os.PowerManager) getSystemService(POWER_SERVICE);
+            final android.os.PowerManager.WakeLock w = power.newWakeLock(android.os.PowerManager.PARTIAL_WAKE_LOCK, "megler:test");
+            boolean before = w.isHeld();
+            w.acquire();
+            w.acquire();
+            boolean twice = w.isHeld();
+            w.release();
+            boolean once = w.isHeld();
+            w.release();
+            boolean none = w.isHeld();
+            w.release();
+            boolean extra = w.isHeld();
+            final android.os.PowerManager.WakeLock u = power.newWakeLock(android.os.PowerManager.PARTIAL_WAKE_LOCK, "megler:uncounted");
+            u.setReferenceCounted(false);
+            u.acquire();
+            u.acquire();
+            u.release();
+            boolean uncounted = u.isHeld();
+            final android.os.PowerManager.WakeLock timed = power.newWakeLock(android.os.PowerManager.PARTIAL_WAKE_LOCK, "megler:timed");
+            timed.acquire(200);
+            boolean timedHeld = timed.isHeld();
+            detail = "before=" + before + " twice=" + twice + " once=" + once + " none=" + none + " extra=" + extra + " uncounted=" + uncounted + " timed=" + timedHeld;
+            final android.os.HandlerThread thread = new android.os.HandlerThread("wake-lock");
+            thread.start();
+            final android.os.Handler on = new android.os.Handler(thread.getLooper());
+            final long since = android.os.SystemClock.elapsedRealtime();
+            on.post(new Runnable() {
+                @Override public void run() {
+                    long waited = android.os.SystemClock.elapsedRealtime() - since;
+                    if (timed.isHeld() && waited < 60000) {
+                        on.postDelayed(this, 100);
+                        return;
+                    }
+                    Log.i("DataTest", "wake-lock-timed " + (!timed.isHeld() && waited >= 190 ? "ok" : "FAILED") + " held=" + timed.isHeld() + " after " + waited + " ms");
+                    thread.quitSafely();
+                }
+            });
+            return !before && twice && once && !none && !extra && !uncounted && timedHeld;
+        });
+        // The cells around asked for as Android 10 asks (Google Play services' network location, at each of its scans): the
+        // callback told through the Executor given, with no cells -- Windows gives an app none -- where it was never told; and
+        // Android 12's best-matching network callback (the network location's NetworkConnectionMonitor) told the network is
+        // there, where it was never told either.
+        step("cell-info-update", () -> {
+            android.telephony.TelephonyManager phone = (android.telephony.TelephonyManager) getSystemService(TELEPHONY_SERVICE);
+            final java.util.concurrent.CountDownLatch told = new java.util.concurrent.CountDownLatch(2);
+            final Object[] cells = new Object[1];
+            final java.util.concurrent.ExecutorService executor = java.util.concurrent.Executors.newSingleThreadExecutor();
+            phone.requestCellInfoUpdate(executor, new android.telephony.TelephonyManager.CellInfoCallback() {
+                @Override public void onCellInfo(java.util.List<android.telephony.CellInfo> list) {
+                    cells[0] = list;
+                    told.countDown();
+                }
+            });
+            android.net.ConnectivityManager connectivity = (android.net.ConnectivityManager) getSystemService(CONNECTIVITY_SERVICE);
+            final boolean[] available = new boolean[1];
+            android.net.ConnectivityManager.NetworkCallback callback = new android.net.ConnectivityManager.NetworkCallback() {
+                @Override public void onAvailable(android.net.Network n) {
+                    available[0] = true;
+                    told.countDown();
+                }
+            };
+            android.os.HandlerThread thread = new android.os.HandlerThread("best-matching");
+            thread.start();
+            android.net.ConnectivityManager.class.getMethod("registerBestMatchingNetworkCallback", android.net.NetworkRequest.class,
+                android.net.ConnectivityManager.NetworkCallback.class, android.os.Handler.class)
+                .invoke(connectivity, new android.net.NetworkRequest.Builder().addCapability(android.net.NetworkCapabilities.NET_CAPABILITY_INTERNET).build(), callback,
+                        new android.os.Handler(thread.getLooper()));
+            boolean all = told.await(10, java.util.concurrent.TimeUnit.SECONDS);
+            connectivity.unregisterNetworkCallback(callback);
+            thread.quitSafely();
+            executor.shutdown();
+            detail = "told=" + all + " cells=" + cells[0] + " available=" + available[0];
+            return all && cells[0] instanceof java.util.List && ((java.util.List<?>) cells[0]).isEmpty() && available[0];
         });
         // A Messenger reaches a binder of another's that passes transactions on to a Messenger's, as Google Play services' task
         // services hand theirs to its scheduler, and the message received says the sender's uid (Forward says so).
@@ -1815,9 +1999,24 @@ public class Main extends Activity {
         layoutApiLevel();
         resourcesImpl();
         activityThreadApplication();
+        dateFormats();
+        roundRectShape();
+        visibilityAggregated();
+        visibilityScrap();
+        layerDrawableHidden();
+        boringLayoutOneLine();
+        backgroundOffMainThread();
+        singleLineSpans();
+        ellipsisNarrower();
+        markupRegex();
+        audioAttributesEqual();
+        notificationChannel();
+        notificationChannels(run);
+        geocoding();
         sound();
         mediaCodec();
         network();
+        httpEngine();
         renderNodes();
         Log.i("DataTest", "done ok=" + ok + " failed=" + failed);
         doneLogged = true;
@@ -1852,6 +2051,9 @@ public class Main extends Activity {
     /**
      * The Wi-Fi as a game's downloader asks about it before it fetches its data: on and connected by ConnectivityManager and
      * by WifiManager alike, the connection's state and signal, and the address in the connection and in the DHCP answer the same.
+     * And an app that may not have the location -- this one names no location permission -- has no scans, as on Android: startScan
+     * false and getScanResults an empty list (the test's shell has four networks in range), the connection's name and BSSID
+     * hidden.
      */
     private void wifi() {
         step("wifi", () -> {
@@ -1860,9 +2062,13 @@ public class Main extends Activity {
             android.net.wifi.WifiInfo info = wm.getConnectionInfo();
             android.net.DhcpInfo dhcp = wm.getDhcpInfo();
             android.net.NetworkInfo net = cm.getNetworkInfo(android.net.ConnectivityManager.TYPE_WIFI);
+            boolean scanned = wm.startScan();
+            java.util.List<android.net.wifi.ScanResult> results = wm.getScanResults();
             detail = "enabled=" + wm.isWifiEnabled() + " state=" + wm.getWifiState() + " info=" + (info == null ? null : info.getSSID() + "/" + info.getSupplicantState()
-                    + "/" + info.getRssi() + "/" + info.getIpAddress()) + " dhcp=" + (dhcp == null ? null : dhcp.ipAddress) + " level=" + android.net.wifi.WifiManager.calculateSignalLevel(-50, 5);
-            return wm.isWifiEnabled() && wm.getWifiState() == android.net.wifi.WifiManager.WIFI_STATE_ENABLED && net != null && net.isConnected()
+                    + "/" + info.getRssi() + "/" + info.getIpAddress()) + " dhcp=" + (dhcp == null ? null : dhcp.ipAddress) + " level=" + android.net.wifi.WifiManager.calculateSignalLevel(-50, 5)
+                    + " scanned=" + scanned + " results=" + results;
+            return !scanned && results != null && results.isEmpty()
+                    && wm.isWifiEnabled() && wm.getWifiState() == android.net.wifi.WifiManager.WIFI_STATE_ENABLED && net != null && net.isConnected()
                     && info != null && "<unknown ssid>".equals(info.getSSID()) && info.getSupplicantState() == android.net.wifi.SupplicantState.COMPLETED
                     && "02:00:00:00:00:00".equals(info.getBSSID()) && info.getRssi() == -50 && info.getLinkSpeed() > 0 && dhcp != null && dhcp.ipAddress == info.getIpAddress()
                     && android.net.wifi.WifiManager.calculateSignalLevel(-50, 5) == 4 && android.net.wifi.WifiManager.calculateSignalLevel(-100, 5) == 0
@@ -2112,6 +2318,31 @@ public class Main extends Activity {
                     && files.isDirectory() && pictures.isDirectory() && cache.isDirectory() && obb.isDirectory() && media[0].isDirectory()
                     && obb.equals(getApplicationContext().getObbDir()) && media[0].equals(getApplicationContext().getExternalMediaDirs()[0]);
         });
+        /*
+         * The app's cache cleared between the runs, as Megler's app page and Android's app info screen ask for it (the test's C
+         * side asks the core before the second, megler_ask_clear_cache): what the first run left in its cache folders -- its
+         * private cache and code_cache, its own Android/data/<package>/cache -- is gone in the second, the folders there; what it
+         * left in its files folders stays.
+         */
+        step("cache-cleared", () -> {
+            File[] cached = { new File(getCacheDir(), "run-1-cache.txt"), new File(getCodeCacheDir(), "run-1-code.txt"),
+                              new File(getExternalCacheDir(), "run-1-external-cache.txt") };
+            File[] kept = { new File(getFilesDir(), "run-1-files.txt"), new File(getExternalFilesDir(null), "run-1-external-files.txt") };
+            boolean ok = true;
+            StringBuilder said = new StringBuilder();
+            for (File f : cached) {
+                if (run == 1) try (java.io.FileWriter w = new java.io.FileWriter(f)) { w.write("cached in run 1\n"); }
+                said.append(f.getName()).append('=').append(f.exists()).append(' ');
+                ok &= f.exists() == (run == 1) && f.getParentFile().isDirectory();
+            }
+            for (File f : kept) {
+                if (run == 1) try (java.io.FileWriter w = new java.io.FileWriter(f)) { w.write("kept from run 1\n"); }
+                said.append(f.getName()).append('=').append(f.exists()).append(' ');
+                ok &= f.exists();
+            }
+            detail = said.toString();
+            return ok;
+        });
         step("volumes", () -> {
             android.os.storage.StorageManager sm = (android.os.storage.StorageManager) getSystemService(Context.STORAGE_SERVICE);
             java.util.List<android.os.storage.StorageVolume> list = sm.getStorageVolumes();
@@ -2164,11 +2395,13 @@ public class Main extends Activity {
                     + " info=" + cameraInfo.protectionLevel + "/" + cameraInfo.group + "/" + vibrateInfo.protectionLevel;
             /*
              * Before the request: a normal permission granted with the install; one the manifest does not ask for, and one asked for
-             * only up to Android 9, denied and not even among those it asks for; the contacts granted (the shell has nothing behind
-             * them); the dangerous ones of the run before as the user left them, of the first run not yet; no rationale before a no.
+             * only up to Android 9, denied and not even among those it asks for; the contacts denied, with no rationale -- a group
+             * the shell has nothing behind and grants with no one asked, which the user refused in the app's App Permissions; the
+             * dangerous ones of the run before as the user left them, of the first run not yet; no rationale before a no.
              */
             boolean held = checkSelfPermission(vibrate) == granted && checkSelfPermission(calendar) == denied && checkSelfPermission(write) == denied
-                    && checkSelfPermission(contacts) == granted && checkSelfPermission(read) == (first ? denied : granted)
+                    && checkSelfPermission(contacts) == denied && !shouldShowRequestPermissionRationale(contacts)
+                    && pm.checkPermission(contacts, getPackageName()) == denied && checkSelfPermission(read) == (first ? denied : granted)
                     && checkSelfPermission(sms) == (first ? denied : granted) && checkSelfPermission(camera) == denied
                     && !shouldShowRequestPermissionRationale(camera) && !shouldShowRequestPermissionRationale(vibrate)
                     && checkCallingOrSelfPermission(vibrate) == granted && checkPermission(read, android.os.Process.myPid(), android.os.Process.myUid()) == (first ? denied : granted)
@@ -3138,15 +3371,7 @@ public class Main extends Activity {
     /** The TLS server of the network security configuration's steps, on 127.0.0.1 until it is closed: an HTTP GET is answered
      *  "trusted!", any other line "pong"; a client that refuses its certificate ends that connection alone. */
     private static javax.net.ssl.SSLServerSocket trustServer() throws Exception {
-        java.security.PrivateKey key = java.security.KeyFactory.getInstance("EC").generatePrivate(new java.security.spec.PKCS8EncodedKeySpec(java.util.Base64.getDecoder().decode(TRUST_KEY)));
-        java.security.KeyStore keys = java.security.KeyStore.getInstance(java.security.KeyStore.getDefaultType());
-        keys.load(null, null);
-        keys.setKeyEntry("server", key, new char[0], new java.security.cert.Certificate[] { trustCertificate() });
-        javax.net.ssl.KeyManagerFactory kmf = javax.net.ssl.KeyManagerFactory.getInstance(javax.net.ssl.KeyManagerFactory.getDefaultAlgorithm());
-        kmf.init(keys, new char[0]);
-        javax.net.ssl.SSLContext context = javax.net.ssl.SSLContext.getInstance("TLS");
-        context.init(kmf.getKeyManagers(), null, null);
-        final javax.net.ssl.SSLServerSocket server = (javax.net.ssl.SSLServerSocket) context.getServerSocketFactory()
+        final javax.net.ssl.SSLServerSocket server = (javax.net.ssl.SSLServerSocket) trustContext().getServerSocketFactory()
                 .createServerSocket(0, 16, java.net.InetAddress.getByName("127.0.0.1"));
         Thread t = new Thread(() -> {
             while (!server.isClosed()) {
@@ -3170,6 +3395,21 @@ public class Main extends Activity {
         t.setDaemon(true);
         t.start();
         return server;
+    }
+
+    /** A server's TLS context with the test authority's certificate for localhost and 127.0.0.1 (Main.TRUST_CERT), which the
+     *  app's network security configuration trusts for localhost: the trust server's, and the HTTP/2 server's of the steps
+     *  http-engine-stream and after. */
+    static javax.net.ssl.SSLContext trustContext() throws Exception {
+        java.security.PrivateKey key = java.security.KeyFactory.getInstance("EC").generatePrivate(new java.security.spec.PKCS8EncodedKeySpec(java.util.Base64.getDecoder().decode(TRUST_KEY)));
+        java.security.KeyStore keys = java.security.KeyStore.getInstance(java.security.KeyStore.getDefaultType());
+        keys.load(null, null);
+        keys.setKeyEntry("server", key, new char[0], new java.security.cert.Certificate[] { trustCertificate() });
+        javax.net.ssl.KeyManagerFactory kmf = javax.net.ssl.KeyManagerFactory.getInstance(javax.net.ssl.KeyManagerFactory.getDefaultAlgorithm());
+        kmf.init(keys, new char[0]);
+        javax.net.ssl.SSLContext context = javax.net.ssl.SSLContext.getInstance("TLS");
+        context.init(kmf.getKeyManagers(), null, null);
+        return context;
     }
 
     /**
@@ -3309,6 +3549,52 @@ public class Main extends Activity {
             return difference && centre == 0xFFFF0000 && (corner >>> 24) == 0 && edge == 0xFFFF0000
                     && intersect && inOval == 0xFFFF0000 && (outOval >>> 24) == 0
                     && xor && (overlap >>> 24) == 0 && onlyX == 0xFFFF0000 && onlyY == 0xFFFF0000;
+        });
+    }
+
+    /**
+     * Paint.getTextPath as Google Maps' legacy renderer draws the labels of its map with it: one Path handed over label after
+     * label, stroked in the halo's colour and then filled. The path holds the glyphs alone each time, where drawText would put
+     * them -- the stand-in's glyphs are boxes half an em wide on advances of 0.6 em (mg_gfx_standin.c), so there is ground
+     * between two letters -- whichever of the two methods is called, and with the alignment. Package 684 added the run's whole
+     * box to the path at each call, and the labels were grey boxes.
+     */
+    private void textPath() {
+        step("text-path", () -> {
+            android.graphics.Paint fill = new android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG);
+            fill.setTextSize(40);
+            fill.setColor(0xFFFF0000);
+            android.graphics.Paint halo = new android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG);
+            halo.setStyle(android.graphics.Paint.Style.STROKE);
+            halo.setStrokeWidth(2);
+            halo.setColor(0xFF0000FF);
+            android.graphics.Path path = new android.graphics.Path();
+            android.graphics.RectF first = new android.graphics.RectF(), again = new android.graphics.RectF(), centred = new android.graphics.RectF();
+            fill.getTextPath("HI", 0, 2, 10, 50, path);
+            path.computeBounds(first, true);
+            fill.getTextPath("xHI".toCharArray(), 1, 2, 10, 50, path);
+            path.computeBounds(again, true);
+            android.graphics.Bitmap bm = android.graphics.Bitmap.createBitmap(80, 60, android.graphics.Bitmap.Config.ARGB_8888);
+            android.graphics.Canvas c = new android.graphics.Canvas(bm);
+            c.drawPath(path, halo);
+            c.drawPath(path, fill);
+            int inH = bm.getPixel(20, 40), between = bm.getPixel(32, 40), edge = bm.getPixel(30, 40), inI = bm.getPixel(44, 40), above = bm.getPixel(20, 18);
+            fill.setTextAlign(android.graphics.Paint.Align.CENTER);
+            fill.getTextPath("HI", 0, 2, 34, 50, path);
+            path.computeBounds(centred, true);
+            fill.getTextPath("", 0, 0, 34, 50, path);
+            boolean emptied = path.isEmpty(), refused = false;
+            try {
+                fill.getTextPath("HI", 1, 5, 0, 0, path);
+            } catch (IndexOutOfBoundsException e) {
+                refused = true;
+            }
+            android.graphics.RectF want = new android.graphics.RectF(10, 22, 54, 50);
+            detail = String.format("first=%s again=%s centred=%s H=%08x between=%08x edge=%08x I=%08x above=%08x emptied=%b refused=%b", first, again, centred,
+                    inH, between, edge, inI, above, emptied, refused);
+            Log.i("DataTest", "text-path " + detail);
+            return first.equals(want) && again.equals(want) && centred.equals(want) && inH == 0xFFFF0000 && (between >>> 24) == 0 && edge == 0xFF0000FF
+                    && inI == 0xFFFF0000 && (above >>> 24) == 0 && emptied && refused;
         });
     }
 
@@ -3510,6 +3796,18 @@ public class Main extends Activity {
             long ms = (System.nanoTime() - start) / 1000000L;
             detail = total + " bytes in " + ms + " ms" + (failed[0] != null ? ", the writer: " + failed[0] : "");
             return failed[0] == null && total == (long) pieces * piece.length && ms < 20000;
+        });
+    }
+
+    /**
+     * A byte[] through a method of the app's own (Bytes.echo): the second run, with trace-calls-megler.test.data.Bytes, finds
+     * its length and first bytes said in the call's line and in its return's (mg_java_tests.c).
+     */
+    private void traceBytes() {
+        step("trace-bytes", () -> {
+            byte[] back = Bytes.echo("megler".getBytes(java.nio.charset.StandardCharsets.US_ASCII));
+            detail = new String(back, java.nio.charset.StandardCharsets.US_ASCII);
+            return "megler".equals(detail);
         });
     }
 
@@ -5548,21 +5846,73 @@ public class Main extends Activity {
                     && fromField == app && apps != null && apps.contains(app) && fromGetter == app && fromCurrent == app && fromGlobals == app;
         });
         // The hidden ServiceManager, which Shizuku's SystemServiceHelper reaches by reflection for the system's binders (Sui asks it
-        // for "package"): there, and every name a service that is not there. Morphe Manager ended at its start without the class.
+        // for "package"): there (Morphe Manager ended at its start without the class), the platform's own services each a binder
+        // that stands for it -- the same one each time, its interface's descriptor, alive, no local interface, every transaction
+        // refused -- and any other name a service that is not there. Sui's bridge, a transaction of its own code on the binder,
+        // brings no binder back: no Sui.
         step("service-manager", () -> {
             Class<?> sm = Class.forName("android.os.ServiceManager");
-            Object pkg = sm.getMethod("getService", String.class).invoke(null, "package");
-            Object checked = sm.getMethod("checkService", String.class).invoke(null, "activity");
+            java.lang.reflect.Method get = sm.getMethod("getService", String.class);
+            android.os.IBinder pkg = (android.os.IBinder) get.invoke(null, "package"), again = (android.os.IBinder) get.invoke(null, "package");
+            android.os.IBinder checked = (android.os.IBinder) sm.getMethod("checkService", String.class).invoke(null, "activity");
+            Object none = get.invoke(null, "megler.test.none");
             String[] listed = (String[]) sm.getMethod("listServices").invoke(null);
+            Object orThrow = sm.getMethod("getServiceOrThrow", String.class).invoke(null, "package");
             boolean threw = false;
             try {
-                sm.getMethod("getServiceOrThrow", String.class).invoke(null, "package");
+                sm.getMethod("getServiceOrThrow", String.class).invoke(null, "megler.test.none");
             } catch (java.lang.reflect.InvocationTargetException e) {
                 threw = "android.os.ServiceManager$ServiceNotFoundException".equals(e.getCause().getClass().getName());
             }
-            detail = "getService " + pkg + ", checkService " + checked + ", listServices " + java.util.Arrays.toString(listed)
-                    + ", getServiceOrThrow threw " + threw;
-            return pkg == null && checked == null && listed != null && listed.length == 0 && threw;
+            boolean answered = true;
+            android.os.IBinder bridged = null;
+            if (pkg != null) {
+                android.os.Parcel data = android.os.Parcel.obtain(), reply = android.os.Parcel.obtain();
+                data.writeInterfaceToken("android.content.pm.IPackageManager");
+                data.writeInt(2);
+                answered = pkg.transact(('_' << 24) | ('S' << 16) | ('U' << 8) | 'I', data, reply, 0);
+                reply.readException();
+                bridged = reply.readStrongBinder();
+                data.recycle();
+                reply.recycle();
+            }
+            java.util.List<String> names = listed == null ? java.util.Collections.<String>emptyList() : java.util.Arrays.asList(listed);
+            detail = "getService " + (pkg == null ? null : pkg.getInterfaceDescriptor()) + " the same twice " + (pkg == again)
+                    + ", checkService " + (checked == null ? null : checked.getInterfaceDescriptor()) + ", an unknown name " + none
+                    + ", listServices " + names + ", getServiceOrThrow " + (orThrow == pkg) + " and threw for an unknown name " + threw
+                    + ", a transaction of Sui's answered " + answered + " with " + bridged;
+            return pkg != null && pkg == again && pkg == orThrow && pkg.pingBinder() && pkg.isBinderAlive()
+                    && "android.content.pm.IPackageManager".equals(pkg.getInterfaceDescriptor())
+                    && pkg.queryLocalInterface("android.content.pm.IPackageManager") == null
+                    && checked != null && "android.app.IActivityManager".equals(checked.getInterfaceDescriptor())
+                    && none == null && threw && names.contains("window") && names.contains("package") && names.contains("activity")
+                    && !names.contains("megler.test.none") && !answered && bridged == null;
+        });
+        // Instagram's WindowInsetsManager (453), when the navigation bar's inset is 0 (the user has hidden the phone's bar), asks
+        // the window manager whether there is a navigation bar: getService("window") cast to IBinder as Kotlin casts (null is a
+        // NullPointerException), then IWindowManager.Stub.asInterface and hasNavigationBar() by reflection, and the platform's
+        // config_showNavigationBar where the reflection fails with one of the exceptions it catches. A null binder ended
+        // Instagram from its insets listener (0.1.0.681).
+        step("service-manager-window", () -> {
+            Class<?> sm = Class.forName("android.os.ServiceManager");
+            Object window = sm.getMethod("getService", String.class).invoke(sm, "window");
+            if (window == null) throw new NullPointerException("null cannot be cast to non-null type android.os.IBinder");
+            android.os.IBinder binder = (android.os.IBinder) window;
+            Boolean has;
+            String how;
+            try {
+                Class<?> stub = Class.forName("android.view.IWindowManager$Stub");
+                Object wm = stub.getMethod("asInterface", android.os.IBinder.class).invoke(stub, binder);
+                has = (Boolean) wm.getClass().getMethod("hasNavigationBar").invoke(wm);
+                how = "IWindowManager";
+            } catch (ClassCastException | ClassNotFoundException | IllegalAccessException | IllegalArgumentException | NoSuchMethodException
+                     | SecurityException | java.lang.reflect.InvocationTargetException e) {
+                int id = getResources().getIdentifier("config_showNavigationBar", "bool", "android");
+                has = id > 0 && getResources().getBoolean(id);
+                how = "config_showNavigationBar (" + id + ") after " + e.getClass().getSimpleName();
+            }
+            detail = "window " + binder.getInterfaceDescriptor() + ", a navigation bar " + has + " from " + how;
+            return "android.view.IWindowManager".equals(binder.getInterfaceDescriptor()) && has != null;
         });
         // DateUtils' ranges into a Formatter, as Transit words a route's times: the Formatter given, the range appended to it (it
         // answered null, and Transit's "Go" took toString() of that); and a duration in words (it answered null too).
@@ -5577,6 +5927,997 @@ public class Main extends Activity {
             detail = "range=" + range + " plain=" + plain + " duration=" + duration;
             return back == f && range != null && range.startsWith("at ") && range.contains("14:53") && range.contains("15:38")
                     && plain != null && !plain.isEmpty() && duration != null && duration.toString().length() > 0;
+        });
+    }
+
+    /**
+     * Dates as Android words them. Messenger's chat list formats an older chat's date with a medium date format's clone given
+     * DateFormat.getBestDateTimePattern(locale, "MMMd") or (another year) "MMMd, yyyy", and today's with DateFormat.getTimeFormat;
+     * the skeleton itself was the pattern, and a Russian phone read "мая20, 2023" where Android says "20 мая 2023 г.". The
+     * patterns are written here from ICU's data as Android 9 has it (ICU 60, CLDR 32) for en-US and ru-RU in both runs; the
+     * formats of the default locale -- DateFormat.format's letters, the names, DateUtils' dates and relative times -- for the
+     * run's own, en-US in the first and ru-RU in the second. (The settings' 12/24 hours are Megler's default, 24.)
+     */
+    private void dateFormats() {
+        final java.util.Locale us = java.util.Locale.US, ru = new java.util.Locale("ru", "RU");
+        final boolean russian = "ru".equals(java.util.Locale.getDefault().getLanguage());
+        step("date-patterns", () -> {
+            final String[][] want = {
+                { "MMMd", "MMM d", "d MMM" },
+                { "MMMd, yyyy", "MMM d, yyyy", "d MMM yyyy 'г'." },
+                { "yMMMd", "MMM d, y", "d MMM y 'г'." },
+                { "MMMMd", "MMMM d", "d MMMM" },
+                { "yMMMMd", "MMMM d, y", "d MMMM y 'г'." },
+                // (ICU 60's Russian "Hm" is "H:mm".)
+                { "Hm", "HH:mm", "H:mm" },
+                { "hm", "h:mm a", "h:mm a" },
+            };
+            StringBuilder got = new StringBuilder();
+            boolean held = true;
+            for (String[] w : want) {
+                String a = android.text.format.DateFormat.getBestDateTimePattern(us, w[0]), b = android.text.format.DateFormat.getBestDateTimePattern(ru, w[0]);
+                got.append(w[0]).append(" = ").append(a).append(" | ").append(b).append("; ");
+                held &= w[1].equals(a) && w[2].equals(b);
+            }
+            java.util.Calendar may = java.util.Calendar.getInstance();
+            may.clear();
+            may.set(2023, java.util.Calendar.MAY, 20, 14, 53);
+            java.util.Calendar jan = (java.util.Calendar) may.clone();
+            jan.set(java.util.Calendar.MONTH, java.util.Calendar.JANUARY);
+            jan.set(java.util.Calendar.DAY_OF_MONTH, 5);
+            String usLong = messengerDate(us, "MMMd, yyyy", may.getTime()), ruLong = messengerDate(ru, "MMMd, yyyy", may.getTime());
+            String usShort = messengerDate(us, "MMMd", jan.getTime()), ruShort = messengerDate(ru, "MMMd", jan.getTime());
+            got.append("formats ").append(usLong).append(" | ").append(ruLong).append(" | ").append(usShort).append(" | ").append(ruShort);
+            held &= "May 20, 2023".equals(usLong) && "20 мая 2023 г.".equals(ruLong) && "Jan 5".equals(usShort) && "5 янв.".equals(ruShort);
+            // The locale's own clock, and the order of a pattern's day, month and year: hidden, reached as apps reach them.
+            java.lang.reflect.Method is24 = android.text.format.DateFormat.class.getMethod("is24HourLocale", java.util.Locale.class);
+            java.lang.reflect.Method order = android.text.format.DateFormat.class.getMethod("getDateFormatOrder", String.class);
+            boolean usClock = (Boolean) is24.invoke(null, us), ruClock = (Boolean) is24.invoke(null, ru);
+            String dmy = new String((char[]) order.invoke(null, "dd.MM.y")), mdy = new String((char[]) order.invoke(null, "M/d/yy 'г'."));
+            got.append("; 24 hours ").append(usClock).append(" | ").append(ruClock).append("; order ").append(dmy).append(" | ").append(mdy);
+            held &= !usClock && ruClock && "dMy".equals(dmy) && "Mdy".equals(mdy);
+            detail = got.toString();
+            Log.i("DataTest", "date-patterns " + detail);
+            return held;
+        });
+        step("date-format-letters", () -> {
+            java.util.Calendar when = java.util.Calendar.getInstance();
+            when.clear();
+            when.set(2023, java.util.Calendar.MAY, 20, 14, 53, 7); // a Saturday
+            CharSequence full = android.text.format.DateFormat.format("EEEE, dd MMMM yyyy, kk:mm:ss", when);
+            CharSequence alone = android.text.format.DateFormat.format("LLLL cccc", when);
+            CharSequence quoted = android.text.format.DateFormat.format("'at' h:mm, ''yy", when);
+            CharSequence spanned = android.text.format.DateFormat.format(new android.text.SpannedString("d.M.yy"), when);
+            CharSequence plain = android.text.format.DateFormat.format("d.M.yy", when);
+            String month = android.text.format.DateUtils.getMonthString(java.util.Calendar.JANUARY, android.text.format.DateUtils.LENGTH_LONG);
+            String mon = android.text.format.DateUtils.getMonthString(java.util.Calendar.JANUARY, android.text.format.DateUtils.LENGTH_MEDIUM);
+            String day = android.text.format.DateUtils.getDayOfWeekString(java.util.Calendar.SATURDAY, android.text.format.DateUtils.LENGTH_LONG);
+            String dy = android.text.format.DateUtils.getDayOfWeekString(java.util.Calendar.SATURDAY, android.text.format.DateUtils.LENGTH_MEDIUM);
+            String pm = android.text.format.DateUtils.getAMPMString(java.util.Calendar.PM);
+            // The clock: the settings' 24 hours, then 12 asked for, then 24 again.
+            boolean clock24 = android.text.format.DateFormat.is24HourFormat(this);
+            String time24 = ((java.text.SimpleDateFormat) android.text.format.DateFormat.getTimeFormat(this)).toPattern();
+            String shown24 = android.text.format.DateFormat.getTimeFormat(this).format(when.getTime());
+            android.provider.Settings.System.putString(getContentResolver(), android.provider.Settings.System.TIME_12_24, "12");
+            boolean clock12 = android.text.format.DateFormat.is24HourFormat(this);
+            String time12 = ((java.text.SimpleDateFormat) android.text.format.DateFormat.getTimeFormat(this)).toPattern();
+            android.provider.Settings.System.putString(getContentResolver(), android.provider.Settings.System.TIME_12_24, "24");
+            detail = "full=" + full + " alone=" + alone + " quoted=" + quoted + " spanned=" + spanned + " (" + spanned.getClass().getSimpleName() + ") plain="
+                    + plain + " (" + plain.getClass().getSimpleName() + ") month=" + month + " mon=" + mon + " day=" + day + " dy=" + dy + " pm=" + pm
+                    + " clock " + clock24 + " " + time24 + " " + shown24 + ", 12: " + clock12 + " " + time12;
+            Log.i("DataTest", "date-format-letters " + detail);
+            boolean names = russian
+                    ? "суббота, 20 мая 2023, 14:53:07".equals(full.toString()) && "май суббота".equals(alone.toString()) && "января".equals(month)
+                        && "янв.".equals(mon) && "суббота".equals(day) && "сб".equals(dy)
+                    : "Saturday, 20 May 2023, 14:53:07".equals(full.toString()) && "May Saturday".equals(alone.toString()) && "January".equals(month)
+                        && "Jan".equals(mon) && "Saturday".equals(day) && "Sat".equals(dy) && "PM".equals(pm);
+            return names && "at 2:53, '23".equals(quoted.toString()) && spanned instanceof android.text.Spanned && "20.5.23".equals(spanned.toString())
+                    && plain instanceof String && "20.5.23".equals(plain) && clock24 && (russian ? "H:mm" : "HH:mm").equals(time24) && "14:53".equals(shown24)
+                    && !clock12 && "h:mm a".equals(time12) && android.text.format.DateFormat.is24HourFormat(this);
+        });
+        step("date-utils-locale", () -> {
+            java.util.Calendar when = java.util.Calendar.getInstance();
+            when.clear();
+            when.set(2023, java.util.Calendar.MAY, 20, 14, 53);
+            long t = when.getTimeInMillis();
+            String medium = android.text.format.DateUtils.formatDateTime(this, t, android.text.format.DateUtils.FORMAT_SHOW_DATE
+                    | android.text.format.DateUtils.FORMAT_SHOW_YEAR | android.text.format.DateUtils.FORMAT_ABBREV_MONTH);
+            String numeric = android.text.format.DateUtils.formatDateTime(this, t, android.text.format.DateUtils.FORMAT_SHOW_DATE
+                    | android.text.format.DateUtils.FORMAT_SHOW_YEAR | android.text.format.DateUtils.FORMAT_NUMERIC_DATE);
+            String time = android.text.format.DateUtils.formatDateTime(this, t, android.text.format.DateUtils.FORMAT_SHOW_TIME);
+            long now = System.currentTimeMillis(), minute = android.text.format.DateUtils.MINUTE_IN_MILLIS, hour = android.text.format.DateUtils.HOUR_IN_MILLIS;
+            CharSequence ago = android.text.format.DateUtils.getRelativeTimeSpanString(now - 5 * minute, now, minute);
+            CharSequence ahead = android.text.format.DateUtils.getRelativeTimeSpanString(now + 3 * hour, now, minute);
+            CharSequence older = android.text.format.DateUtils.getRelativeTimeSpanString(t, now, minute);
+            CharSequence on = android.text.format.DateUtils.getRelativeTimeSpanString(this, t, true);
+            // "[relative], [time]": the time in the locale's own clock; a day before when the three hours cross midnight.
+            long then = now - 3 * hour;
+            CharSequence both = android.text.format.DateUtils.getRelativeDateTimeString(this, then, minute, android.text.format.DateUtils.WEEK_IN_MILLIS, 0);
+            java.util.Calendar a = java.util.Calendar.getInstance(), b = java.util.Calendar.getInstance();
+            a.setTimeInMillis(then);
+            b.setTimeInMillis(now);
+            boolean crossed = a.get(java.util.Calendar.DAY_OF_YEAR) != b.get(java.util.Calendar.DAY_OF_YEAR);
+            String clock = new java.text.SimpleDateFormat(russian ? "H:mm" : "h:mm a", java.util.Locale.getDefault()).format(new java.util.Date(then));
+            String relative = crossed ? (russian ? "Вчера" : "Yesterday") : (russian ? "3 часа назад" : "3 hours ago");
+            detail = "medium=" + medium + " numeric=" + numeric + " time=" + time + " ago=" + ago + " ahead=" + ahead + " older=" + older + " on=" + on + " both=" + both;
+            Log.i("DataTest", "date-utils-locale " + detail);
+            boolean held = russian
+                    ? "20 мая 2023 г.".equals(medium) && "20.05.2023".equals(numeric) && "5 минут назад".equals(ago.toString())
+                        && "Через 3 часа".equals(ahead.toString()) && "20 мая 2023 г.".equals(older.toString()) && "20.05.2023".equals(on.toString())
+                    : "May 20, 2023".equals(medium) && "5/20/2023".equals(numeric) && "5 minutes ago".equals(ago.toString())
+                        && "In 3 hours".equals(ahead.toString()) && "May 20, 2023".equals(older.toString()) && "on 5/20/2023".equals(on.toString());
+            return held && "14:53".equals(time) && both.toString().startsWith(relative + ", ") && both.toString().endsWith(clock);
+        });
+    }
+
+    /** A date as Messenger formats its chat list's: a medium date format of the locale, cloned, given the skeleton's best pattern. */
+    private static String messengerDate(java.util.Locale locale, String skeleton, java.util.Date when) {
+        java.text.SimpleDateFormat f = (java.text.SimpleDateFormat) java.text.DateFormat.getDateInstance(java.text.DateFormat.MEDIUM, locale).clone();
+        f.applyPattern(android.text.format.DateFormat.getBestDateTimePattern(locale, skeleton));
+        return f.format(when);
+    }
+
+    /**
+     * A ShapeDrawable of a RoundRectShape with an inset of nothing, as Messenger's rounded backgrounds are made (its search
+     * field's): the rounded rectangle filled whole, nothing outside its curves. An inset that is smaller both ways is a hole.
+     * The inset of nothing cut the shape out of its bounds, and the corners alone were filled: a black pill with grey corners.
+     * And the outlines as Android's: none for a shape with an inset, the rounded rectangle for one without.
+     */
+    private void roundRectShape() {
+        step("round-rect-shape", () -> {
+            float[] radii = { 20, 20, 20, 20, 20, 20, 20, 20 };
+            android.graphics.drawable.ShapeDrawable pill = new android.graphics.drawable.ShapeDrawable(
+                    new android.graphics.drawable.shapes.RoundRectShape(radii, new android.graphics.RectF(), null));
+            pill.mutate();
+            pill.setColorFilter(0xFF3A3B3C, android.graphics.PorterDuff.Mode.SRC_IN);
+            pill.setBounds(0, 0, 100, 40);
+            android.graphics.Bitmap bm = android.graphics.Bitmap.createBitmap(100, 40, android.graphics.Bitmap.Config.ARGB_8888);
+            pill.draw(new android.graphics.Canvas(bm));
+            int centre = bm.getPixel(50, 20), corner = bm.getPixel(1, 1), end = bm.getPixel(2, 20), top = bm.getPixel(50, 1);
+            android.graphics.drawable.ShapeDrawable ring = new android.graphics.drawable.ShapeDrawable(
+                    new android.graphics.drawable.shapes.RoundRectShape(radii, new android.graphics.RectF(10, 10, 10, 10), null));
+            ring.getPaint().setColor(0xFF00FF00);
+            ring.setBounds(0, 0, 100, 40);
+            android.graphics.Bitmap b2 = android.graphics.Bitmap.createBitmap(100, 40, android.graphics.Bitmap.Config.ARGB_8888);
+            ring.draw(new android.graphics.Canvas(b2));
+            int hole = b2.getPixel(50, 20), band = b2.getPixel(50, 4);
+            // The outlines, Android's: none for a shape with an inset (even one of nothing), the rounded rectangle for one without.
+            android.graphics.Outline insetOutline = new android.graphics.Outline();
+            pill.getOutline(insetOutline);
+            android.graphics.drawable.ShapeDrawable plain = new android.graphics.drawable.ShapeDrawable(new android.graphics.drawable.shapes.RoundRectShape(radii, null, null));
+            plain.setBounds(0, 0, 100, 40);
+            android.graphics.Outline outline = new android.graphics.Outline();
+            plain.getOutline(outline);
+            android.graphics.Rect box = new android.graphics.Rect();
+            boolean rounded = outline.getRect(box);
+            detail = String.format("centre=%08x corner=%08x end=%08x top=%08x hole=%08x band=%08x inset's outline empty %b, outline %b %s radius %.1f alpha %.2f",
+                    centre, corner, end, top, hole, band, insetOutline.isEmpty(), rounded, box.toShortString(), outline.getRadius(), outline.getAlpha());
+            Log.i("DataTest", "round-rect-shape " + detail);
+            return centre == 0xFF3A3B3C && (corner >>> 24) == 0 && end == 0xFF3A3B3C && top == 0xFF3A3B3C && (hole >>> 24) == 0 && band == 0xFF00FF00
+                    && insetOutline.isEmpty() && rounded && box.equals(new android.graphics.Rect(0, 0, 100, 40)) && outline.getRadius() == 20 && outline.getAlpha() == 1;
+        });
+    }
+
+    /**
+     * Whether a view is shown, heard by its drawables as on Android (View.onVisibilityAggregated, API 24): an ImageView's
+     * picture and a view's background visible once the window has them, not once their parent is made GONE, visible again
+     * with it, and not once their parent leaves the window. Megler never said it: Messenger's network drawables were never
+     * hidden ("AsyncDrawable ... wasn't hidden before it was GC'd"). Said after the window is attached (the steps run before),
+     * on its own line.
+     */
+    private void visibilityAggregated() {
+        step("visibility-aggregated", () -> {
+            final StringBuilder heard = new StringBuilder();
+            final android.graphics.drawable.ColorDrawable picture = new android.graphics.drawable.ColorDrawable(0xFF0000FF);
+            final android.graphics.drawable.ColorDrawable back = new android.graphics.drawable.ColorDrawable(0xFF00FF00);
+            final android.widget.FrameLayout outer = new android.widget.FrameLayout(this);
+            final android.widget.ImageView image = new android.widget.ImageView(this);
+            image.setImageDrawable(picture);
+            final android.view.View plain = new android.view.View(this);
+            plain.setBackground(back);
+            outer.addView(image, new android.widget.FrameLayout.LayoutParams(10, 10));
+            outer.addView(plain, new android.widget.FrameLayout.LayoutParams(10, 10));
+            outer.addOnAttachStateChangeListener(new android.view.View.OnAttachStateChangeListener() {
+                @Override public void onViewAttachedToWindow(android.view.View v) {
+                    outer.removeOnAttachStateChangeListener(this);
+                    outer.post(() -> {
+                        heard.append("attached ").append(picture.isVisible()).append(' ').append(back.isVisible());
+                        outer.setVisibility(android.view.View.GONE);
+                        heard.append(", gone ").append(picture.isVisible()).append(' ').append(back.isVisible());
+                        outer.setVisibility(android.view.View.VISIBLE);
+                        heard.append(", visible ").append(picture.isVisible()).append(' ').append(back.isVisible());
+                        ((android.view.ViewGroup) outer.getParent()).removeView(outer);
+                        heard.append(", removed ").append(picture.isVisible()).append(' ').append(back.isVisible());
+                        Log.i("DataTest", "visibility-aggregated " + heard);
+                    });
+                }
+                @Override public void onViewDetachedFromWindow(android.view.View v) {}
+            });
+            ((android.view.ViewGroup) text.getParent()).addView(outer, new android.view.ViewGroup.LayoutParams(20, 20));
+            detail = "in the window now " + outer.isAttachedToWindow();
+            return true;
+        });
+    }
+
+    /** A list that takes its rows out of itself and puts them back as RecyclerView does at each layout (its scrap). */
+    static class ScrapList extends android.widget.FrameLayout {
+        ScrapList(Context c) { super(c); }
+        void out(android.view.View row) { detachViewFromParent(row); }
+        void back(android.view.View row, int index) { attachViewToParent(row, index, row.getLayoutParams()); }
+        void drop(android.view.View row) { removeDetachedView(row, false); }
+    }
+
+    /** A row that writes down whether it is shown (onVisibilityAggregated: + or -) and its detach from the window (x). */
+    static class HeardRow extends android.view.View {
+        final String name;
+        final StringBuilder heard;
+        HeardRow(Context c, String name, StringBuilder heard) { super(c); this.name = name; this.heard = heard; }
+        @Override public void onVisibilityAggregated(boolean isVisible) {
+            super.onVisibilityAggregated(isVisible);
+            heard.append(name).append(isVisible ? '+' : '-').append(' ');
+        }
+        @Override protected void onDetachedFromWindow() {
+            super.onDetachedFromWindow();
+            heard.append(name).append('x').append(' ');
+        }
+    }
+
+    private static String taken(StringBuilder b) {
+        String s = b.toString().trim();
+        b.setLength(0);
+        return "[" + s + "]";
+    }
+
+    /**
+     * A list's rows taken out and put back as RecyclerView does at each layout, heard as Android tells them whether they are
+     * shown: a row out of its list is not shown; each row put back (attachViewToParent) tells the list's rows they are shown;
+     * a row taken out and removed (removeDetachedView) hears its detach and nothing else, so its background stays visible; a
+     * row that was out while its list was shown again hears it once it is back; a row's own visibility changed while it is
+     * out says nothing. Megler told a row out of its list that it was not shown as it left the window, and nothing as it was
+     * put back: Litho's LithoView (Messenger's chat list and story rows), told so, stops mounting. Said once the window has
+     * the list, on its own line.
+     */
+    private void visibilityScrap() {
+        step("visibility-scrap", () -> {
+            final StringBuilder heard = new StringBuilder();
+            final ScrapList list = new ScrapList(this);
+            final HeardRow a = new HeardRow(this, "a", heard), b = new HeardRow(this, "b", heard);
+            final android.graphics.drawable.ColorDrawable aBack = new android.graphics.drawable.ColorDrawable(0xFF00FF00);
+            final android.graphics.drawable.ColorDrawable bBack = new android.graphics.drawable.ColorDrawable(0xFF0000FF);
+            a.setBackground(aBack);
+            b.setBackground(bBack);
+            list.addView(a, new android.widget.FrameLayout.LayoutParams(10, 10));
+            list.addView(b, new android.widget.FrameLayout.LayoutParams(10, 10));
+            list.addOnAttachStateChangeListener(new android.view.View.OnAttachStateChangeListener() {
+                @Override public void onViewAttachedToWindow(android.view.View v) {
+                    list.removeOnAttachStateChangeListener(this);
+                    list.post(() -> {
+                        StringBuilder said = new StringBuilder("attached=").append(taken(heard));
+                        // a layout: both rows out, both put back
+                        list.out(a);
+                        list.out(b);
+                        said.append(" out-shown=").append(a.isShown());
+                        list.back(a, 0);
+                        list.back(b, 1);
+                        said.append(" put-back=").append(taken(heard));
+                        // a row taken out and not put back: removed
+                        list.out(b);
+                        list.drop(b);
+                        said.append(" dropped=").append(taken(heard)).append(" b-background=").append(bBack.isVisible());
+                        // the list hidden, the row taken out, the list shown again, the row put back
+                        list.setVisibility(android.view.View.INVISIBLE);
+                        list.out(a);
+                        list.setVisibility(android.view.View.VISIBLE);
+                        list.back(a, 0);
+                        said.append(" missed=").append(taken(heard)).append(" a-background=").append(aBack.isVisible());
+                        // the row's own visibility changed while it is out
+                        list.out(a);
+                        a.setVisibility(android.view.View.INVISIBLE);
+                        a.setVisibility(android.view.View.VISIBLE);
+                        list.back(a, 0);
+                        said.append(" own-while-out=").append(taken(heard));
+                        ((android.view.ViewGroup) list.getParent()).removeView(list);
+                        said.append(" removed=").append(taken(heard));
+                        Log.i("DataTest", "visibility-scrap " + said);
+                    });
+                }
+                @Override public void onViewDetachedFromWindow(android.view.View v) {}
+            });
+            ((android.view.ViewGroup) text.getParent()).addView(list, new android.view.ViewGroup.LayoutParams(20, 20));
+            detail = "in the window now " + list.isAttachedToWindow();
+            return true;
+        });
+    }
+
+    /**
+     * A LayerDrawable told it is not visible draws its layers all the same, as Android's: its visibility is passed on to its
+     * layers, which are drawn. A ripple with content (a LayerDrawable too) likewise. Megler drew only the layers that were
+     * visible: a LayerDrawable told it was not visible drew nothing, as Messenger's user tiles (its avatars) are.
+     */
+    private void layerDrawableHidden() {
+        step("layer-drawable-hidden", () -> {
+            android.graphics.drawable.ColorDrawable face = new android.graphics.drawable.ColorDrawable(0xFFFF0000);
+            android.graphics.drawable.ColorDrawable badge = new android.graphics.drawable.ColorDrawable(0xFF0000FF);
+            android.graphics.drawable.LayerDrawable tile = new android.graphics.drawable.LayerDrawable(new android.graphics.drawable.Drawable[] { face, badge });
+            tile.setLayerInset(1, 15, 15, 0, 0);
+            tile.setBounds(0, 0, 20, 20);
+            tile.setVisible(false, false);
+            android.graphics.Bitmap bm = android.graphics.Bitmap.createBitmap(20, 20, android.graphics.Bitmap.Config.ARGB_8888);
+            tile.draw(new android.graphics.Canvas(bm));
+            int middle = bm.getPixel(5, 5), corner = bm.getPixel(18, 18);
+            android.graphics.drawable.ColorDrawable content = new android.graphics.drawable.ColorDrawable(0xFF00FF00);
+            android.graphics.drawable.RippleDrawable ripple = new android.graphics.drawable.RippleDrawable(
+                    android.content.res.ColorStateList.valueOf(0x40000000), content, null);
+            ripple.setBounds(0, 0, 20, 20);
+            ripple.setVisible(false, false);
+            android.graphics.Bitmap b2 = android.graphics.Bitmap.createBitmap(20, 20, android.graphics.Bitmap.Config.ARGB_8888);
+            ripple.draw(new android.graphics.Canvas(b2));
+            int inside = b2.getPixel(10, 10);
+            detail = String.format("layers told %b %b, middle=%08x corner=%08x ripple content=%08x", face.isVisible(), badge.isVisible(), middle, corner, inside);
+            Log.i("DataTest", "layer-drawable-hidden " + detail);
+            return !face.isVisible() && !badge.isVisible() && middle == 0xFFFF0000 && corner == 0xFF0000FF && inside == 0xFF00FF00;
+        });
+    }
+
+    /**
+     * A BoringLayout is one line whatever its width, as Android's: a badge's text made at half its width still one line with
+     * all of its text, at its own width (the ceiling of getDesiredWidth, as Facebook's TextLayoutBuilder makes one) one line,
+     * and a name with an ellipsis at half its width one line ellipsized. Megler's was a StaticLayout broken at the width:
+     * Messenger's time badge on a story circle ("3 ч.") came out in two lines.
+     */
+    private void boringLayoutOneLine() {
+        step("boring-layout-one-line", () -> {
+            android.text.TextPaint p = new android.text.TextPaint(android.graphics.Paint.ANTI_ALIAS_FLAG);
+            p.setTextSize(24);
+            String badge = "3 ч.";
+            android.text.BoringLayout.Metrics m = android.text.BoringLayout.isBoring(badge, p);
+            int own = (int) Math.ceil(android.text.Layout.getDesiredWidth(badge, p));
+            android.text.BoringLayout narrow = android.text.BoringLayout.make(badge, p, own / 2, android.text.Layout.Alignment.ALIGN_NORMAL, 1, 0, m, false);
+            android.text.BoringLayout fits = android.text.BoringLayout.make(badge, p, own, android.text.Layout.Alignment.ALIGN_CENTER, 1, 0, m, false);
+            String name = "Annabelle Smith";
+            android.text.BoringLayout.Metrics m2 = android.text.BoringLayout.isBoring(name, p);
+            int half = (int) Math.ceil(android.text.Layout.getDesiredWidth(name, p)) / 2;
+            android.text.BoringLayout ellipsized = android.text.BoringLayout.make(name, p, half, android.text.Layout.Alignment.ALIGN_NORMAL, 1, 0, m2, false,
+                    android.text.TextUtils.TruncateAt.END, half);
+            detail = String.format("narrow lines %d to %d, own width lines %d, ellipsized lines %d from %d for %d", narrow.getLineCount(), narrow.getLineEnd(0),
+                    fits.getLineCount(), ellipsized.getLineCount(), ellipsized.getEllipsisStart(0), ellipsized.getEllipsisCount(0));
+            Log.i("DataTest", "boring-layout-one-line " + detail);
+            return m != null && m2 != null && narrow.getLineCount() == 1 && narrow.getLineEnd(0) == badge.length() && fits.getLineCount() == 1
+                    && ellipsized.getLineCount() == 1 && ellipsized.getEllipsisStart(0) > 0 && ellipsized.getEllipsisCount(0) > 0;
+        });
+    }
+
+    /**
+     * A view made on a worker thread with a state list for its background, as Facebook (583) builds its tab bar's tabs in a
+     * Callable on an executor of its own: the view's invalidateDrawable asserts the main thread, as Facebook's does (its
+     * DefaultAndroidThreadUtil.assertOnUiThread). Android makes the view the background's callback after the background's
+     * state is set (View.setBackgroundDrawable: "Set callback last"), so the state list choosing its child for the view's
+     * state, and the child's gradient taking that state's colour, reach no view, and setBackground passes on the worker; the
+     * view is the callback afterwards, and a change of its state on the main thread reaches it. The view as the callback
+     * first ended Facebook as its main tabs came up ("This operation must be run on UI thread.", 0.1.0.681).
+     */
+    private void backgroundOffMainThread() {
+        step("background-callback-last", () -> {
+            final android.graphics.drawable.GradientDrawable[] child = new android.graphics.drawable.GradientDrawable[1];
+            final int[] heard = new int[1];
+            java.util.concurrent.FutureTask<android.view.View> made = new java.util.concurrent.FutureTask<>(() -> {
+                android.view.View tab = new android.view.View(this) {
+                    @Override
+                    public void invalidateDrawable(android.graphics.drawable.Drawable d) {
+                        super.invalidateDrawable(d);
+                        if (android.os.Looper.myLooper() != android.os.Looper.getMainLooper()) throw new IllegalStateException("This operation must be run on UI thread.");
+                        heard[0]++;
+                    }
+                };
+                android.graphics.drawable.GradientDrawable enabled = new android.graphics.drawable.GradientDrawable();
+                enabled.setColor(new android.content.res.ColorStateList(new int[][] { { android.R.attr.state_enabled }, {} }, new int[] { 0xFF1877F2, 0xFF65676B }));
+                child[0] = enabled;
+                android.graphics.drawable.StateListDrawable states = new android.graphics.drawable.StateListDrawable();
+                states.addState(new int[] { android.R.attr.state_enabled }, enabled);
+                states.addState(new int[0], new android.graphics.drawable.ColorDrawable(0xFF000000));
+                states.setExitFadeDuration(150);
+                tab.setBackground(states);
+                return tab;
+            });
+            new Thread(made, "tab-maker").start();
+            android.view.View tab;
+            try {
+                tab = made.get(10, java.util.concurrent.TimeUnit.SECONDS);
+            } catch (java.util.concurrent.ExecutionException e) {
+                detail = "setBackground on the worker thread threw " + e.getCause();
+                return false;
+            }
+            android.graphics.drawable.Drawable bg = tab.getBackground();
+            boolean chose = bg != null && bg.getCurrent() == child[0], callback = bg != null && bg.getCallback() == tab;
+            int before = heard[0];
+            tab.setEnabled(false);
+            detail = "the enabled child chosen " + chose + ", the view the callback " + callback + ", invalidateDrawable heard "
+                    + before + " times on the worker, " + heard[0] + " after the view was disabled on the main thread";
+            return chose && callback && before == 0 && heard[0] > 0;
+        });
+    }
+
+    /**
+     * A search result's title as Transit 6.3.7 shows one (its util class e, d(), for each row of the results' adapter): the
+     * markup the app's native code writes -- "<color|light/dark>" before the words, a light theme's colour and a dark one's --
+     * stays in the text, hidden by a ReplacementSpan of no width that draws nothing, and the text from there is coloured by a
+     * MetricAffectingSpan of the app's own; set with BufferType.SPANNABLE on a TextView that is android:singleLine
+     * (res/layout/markup_row.xml, as the app's card row). Android shows the words alone, in the colour. The singleLine's
+     * SingleLineTransformationMethod gave the view a String of the text, every span gone: the markup was drawn, in the view's
+     * own colour, and ran out of the row (0.1.0.684, a Lumia 650). And what that transformation gives for each kind of text, as
+     * Android's: the text itself where it has no line break, the spans kept where it has, an Editable followed as it changes.
+     */
+    private void singleLineSpans() {
+        step("single-line-spans", () -> {
+            android.widget.TextView row = (android.widget.TextView) android.view.LayoutInflater.from(this).inflate(R.layout.markup_row, null);
+            android.text.method.TransformationMethod how = row.getTransformationMethod();
+            String markup = "<color|ff0000/00ff00>", words = "Choose on map";
+            android.text.SpannableString text = new android.text.SpannableString(markup + words);
+            text.setSpan(new android.text.style.MetricAffectingSpan() {
+                @Override
+                public void updateDrawState(android.text.TextPaint p) {
+                    p.setColor(0xFFFF0000);
+                }
+
+                @Override
+                public void updateMeasureState(android.text.TextPaint p) {
+                    p.setColor(0xFFFF0000);
+                }
+            }, 0, text.length(), 0);
+            text.setSpan(new android.text.style.ReplacementSpan() {
+                @Override
+                public int getSize(android.graphics.Paint p, CharSequence t, int start, int end, android.graphics.Paint.FontMetricsInt fm) {
+                    return 0;
+                }
+
+                @Override
+                public void draw(android.graphics.Canvas c, CharSequence t, int start, int end, float x, int top, int y, int bottom, android.graphics.Paint p) {
+                }
+            }, 0, markup.length(), 0);
+            row.setText(text, android.widget.TextView.BufferType.SPANNABLE);
+            int w = 300;
+            row.measure(android.view.View.MeasureSpec.makeMeasureSpec(w, android.view.View.MeasureSpec.EXACTLY),
+                        android.view.View.MeasureSpec.makeMeasureSpec(0, android.view.View.MeasureSpec.UNSPECIFIED));
+            int h = Math.max(1, row.getMeasuredHeight());
+            row.layout(0, 0, w, h);
+            android.text.Layout l = row.getLayout();
+            CharSequence shown = l == null ? null : l.getText();
+            int hidden = shown instanceof android.text.Spanned ? ((android.text.Spanned) shown).getSpans(0, shown.length(), android.text.style.ReplacementSpan.class).length : 0;
+            float width = l == null ? -1 : l.getLineWidth(0), alone = row.getPaint().measureText(words);
+            int ellipsis = l == null ? -1 : l.getEllipsisCount(0);
+            // The picture: the characters drawn red, each a run of red pixels along a row through them, and nothing black.
+            android.graphics.Bitmap b = bitmap(w, h);
+            android.graphics.Canvas c = new android.graphics.Canvas(b);
+            c.drawColor(0xFFFFFFFF);
+            row.draw(c);
+            int runs = 0, dark = 0, left = w;
+            for (int y = 0; y < h; y++) {
+                int inRow = 0;
+                boolean in = false;
+                for (int x = 0; x < w; x++) {
+                    int p = b.getPixel(x, y), r = (p >> 16) & 0xFF, g = (p >> 8) & 0xFF, bl = p & 0xFF;
+                    boolean red = r >= 128 && g < 128 && bl < 128;
+                    if (red && !in) inRow++;
+                    if (red) left = Math.min(left, x);
+                    in = red;
+                    if (r < 128 && g < 128 && bl < 128) dark++;
+                }
+                runs = Math.max(runs, inRow);
+            }
+            // The transformation alone.
+            android.text.method.TransformationMethod one = android.text.method.SingleLineTransformationMethod.getInstance();
+            boolean itself = one.getTransformation(text, row) == text;
+            android.text.SpannableString lines = new android.text.SpannableString("a\nb\rc");
+            Object bold = new android.text.style.StyleSpan(android.graphics.Typeface.BOLD);
+            lines.setSpan(bold, 0, lines.length(), 0);
+            CharSequence joined = one.getTransformation(lines, row);
+            boolean kept = joined instanceof android.text.Spanned && "a b﻿c".equals(joined.toString())
+                    && ((android.text.Spanned) joined).getSpanStart(bold) == 0 && ((android.text.Spanned) joined).getSpanEnd(bold) == 5;
+            android.text.SpannableStringBuilder typed = new android.text.SpannableStringBuilder("x\ny");
+            CharSequence follows = one.getTransformation(typed, row);
+            typed.replace(0, 1, "z");
+            CharSequence plain = one.getTransformation("p\nq", row);
+            detail = "transformation " + (how == null ? null : how.getClass().getSimpleName()) + ", the layout's text "
+                    + (shown == null ? null : shown.getClass().getSimpleName() + " \"" + shown + "\"") + " with " + hidden + " ReplacementSpan, its line "
+                    + width + " px wide (the words alone " + alone + "), ellipsis " + ellipsis + "; drawn: " + runs + " red characters from x=" + left
+                    + ", " + dark + " black pixels; the text itself back " + itself + ", lines joined with their span " + kept + " (\""
+                    + joined + "\"), an Editable followed \"" + follows + "\", a String \"" + plain + "\" " + (plain instanceof String);
+            return how instanceof android.text.method.SingleLineTransformationMethod && hidden == 1 && Math.abs(width - alone) < 0.5f && ellipsis == 0
+                    && runs == 11 && left < 3 && dark == 0 && itself && kept && "z y".equals(follows.toString()) && plain instanceof String && "p q".equals(plain);
+        });
+    }
+
+    /**
+     * A single-line title with an ellipsis at its end measured wide and then narrower, as a LinearLayout not given an exact
+     * width measures a weighted child: at its own width first, at its share after. Android makes the layout again when the
+     * width it ellipsizes at changes, and the ellipsis is where the narrower width ends. The view kept the layout of its first,
+     * wider measure -- a single line scrolls horizontally, and a layout wider than the view was taken to be as good -- so the
+     * line had no ellipsis and was cut at the view's edge: Transit's search cards' titles ended "<color|1e212d/f0f0f1>Ch", no
+     * ellipsis (0.1.0.684).
+     */
+    private void ellipsisNarrower() {
+        step("ellipsis-narrower", () -> {
+            android.widget.TextView title = (android.widget.TextView) android.view.LayoutInflater.from(this).inflate(R.layout.markup_row, null);
+            title.setText("A title wider than its second measure");
+            title.measure(android.view.View.MeasureSpec.makeMeasureSpec(500, android.view.View.MeasureSpec.EXACTLY),
+                          android.view.View.MeasureSpec.makeMeasureSpec(0, android.view.View.MeasureSpec.UNSPECIFIED));
+            android.text.Layout first = title.getLayout();
+            int wide = first == null ? -1 : first.getEllipsisCount(0);
+            title.measure(android.view.View.MeasureSpec.makeMeasureSpec(200, android.view.View.MeasureSpec.EXACTLY),
+                          android.view.View.MeasureSpec.makeMeasureSpec(0, android.view.View.MeasureSpec.UNSPECIFIED));
+            title.layout(0, 0, 200, Math.max(1, title.getMeasuredHeight()));
+            android.text.Layout l = title.getLayout();
+            int ellipsis = l == null ? -1 : l.getEllipsisCount(0), at = l == null ? -1 : l.getEllipsizedWidth();
+            detail = "at 500 px the ellipsis over " + wide + " characters; at 200 px a layout " + (l == null ? null : l.getWidth()) + " px wide, ellipsized at "
+                    + at + " px over " + ellipsis + " characters";
+            return wide == 0 && ellipsis > 0 && at == 200;
+        });
+    }
+
+    /**
+     * The same markup as Transit's Compose screens read it (6.3.7, its class ui.c): a Kotlin Regex of a tag's name and thirteen
+     * optional fields, each "\|?([^|>]*)?", then ">", found by Regex.find from where the last tag ended -- a new Matcher and
+     * find(int) each time, the fields read by group(i) as Kotlin's groupValues reads them (an absent one ""). java.util.regex is
+     * ICU's matcher here, as on Android: each tag found whole, the fields the text has between its bars.
+     */
+    /*
+     * Android's Geocoder where there is no geocode provider (this app runs without Google Play services): isPresent false, and
+     * a request answered with no addresses and no error, as Android's location manager answers it then -- the synchronous
+     * forms at once, on the main thread too, and Android 13's listener on a thread that is not the main one (said below,
+     * "geocoder-listener"); the arguments checked as Android 13 checks them. And an Address as Android's is: its lines
+     * numbered (the largest index set), the coordinates thrown for when none was set, the extras copied, and all of it
+     * through a Parcel.
+     */
+    private void geocoding() {
+        step("geocoder", () -> {
+            boolean absent = !android.location.Geocoder.isPresent();
+            android.location.Geocoder g = new android.location.Geocoder(this, java.util.Locale.US);
+            java.util.List<android.location.Address> at = g.getFromLocation(55.7539, 37.6208, 2);
+            java.util.List<android.location.Address> named = g.getFromLocationName("Red Square", 1);
+            java.util.List<android.location.Address> bounded = g.getFromLocationName("Red Square", 1, 55, 37, 56, 38);
+            boolean range = false, name = false, bounds = false;
+            try { g.getFromLocation(91, 0, 1); } catch (IllegalArgumentException e) { range = true; }
+            try { g.getFromLocationName(null, 1); } catch (IllegalArgumentException e) { name = true; }
+            try { g.getFromLocationName("Red Square", 1, 0, 181, 0, 0); } catch (IllegalArgumentException e) { bounds = true; }
+            g.getFromLocation(55.7539, 37.6208, 1, new android.location.Geocoder.GeocodeListener() {
+                @Override
+                public void onGeocode(java.util.List<android.location.Address> list) {
+                    boolean off = android.os.Looper.myLooper() != android.os.Looper.getMainLooper();
+                    Log.i("DataTest", "geocoder-listener " + (list.isEmpty() && off ? "ok" : "FAILED " + list.size() + " address(es), off the main thread " + off));
+                }
+
+                @Override
+                public void onError(String error) {
+                    Log.i("DataTest", "geocoder-listener FAILED error " + error);
+                }
+            });
+            detail = "absent " + absent + ", " + at.size() + "/" + named.size() + "/" + bounded.size() + " addresses, checked " + range + " " + name + " " + bounds;
+            return absent && at.isEmpty() && named.isEmpty() && bounded.isEmpty() && range && name && bounds;
+        });
+        step("address", () -> {
+            android.location.Address a = new android.location.Address(new java.util.Locale("ru", "RU"));
+            boolean empty = a.getMaxAddressLineIndex() == -1 && a.getAddressLine(0) == null && !a.hasLatitude() && !a.hasLongitude();
+            boolean threw = false;
+            try { a.getLatitude(); } catch (IllegalStateException e) { threw = true; }
+            a.setAddressLine(1, "Москва, 109012");
+            int max = a.getMaxAddressLineIndex();
+            a.setAddressLine(0, "Красная площадь");
+            int stays = a.getMaxAddressLineIndex();
+            boolean negative = false;
+            try { a.setAddressLine(-1, "x"); } catch (IllegalArgumentException e) { negative = true; }
+            a.setFeatureName("Красная площадь");
+            a.setLocality("Москва");
+            a.setPostalCode("109012");
+            a.setCountryCode("RU");
+            a.setCountryName("Россия");
+            a.setLatitude(55.7539);
+            a.setLongitude(37.6208);
+            android.os.Bundle extras = new android.os.Bundle();
+            extras.putString("kind", "square");
+            a.setExtras(extras);
+            extras.putString("kind", "changed");
+            android.location.Address b = new android.location.Address(java.util.Locale.US);
+            b.setAddressLine(0, "1 Line");
+            android.os.Parcel p = android.os.Parcel.obtain();
+            a.writeToParcel(p, 0);
+            b.writeToParcel(p, 0);
+            p.setDataPosition(0);
+            android.location.Address back = android.location.Address.CREATOR.createFromParcel(p), second = android.location.Address.CREATOR.createFromParcel(p);
+            p.recycle();
+            boolean same = back.getLocale().equals(new java.util.Locale("ru", "RU")) && "Красная площадь".equals(back.getAddressLine(0)) &&
+                           "Москва, 109012".equals(back.getAddressLine(1)) && "Москва".equals(back.getLocality()) && "109012".equals(back.getPostalCode()) &&
+                           "RU".equals(back.getCountryCode()) && "Россия".equals(back.getCountryName()) && back.getLatitude() == 55.7539 &&
+                           back.getLongitude() == 37.6208 && "square".equals(back.getExtras().getString("kind")) && "Красная площадь".equals(back.getFeatureName()) &&
+                           second.getLocale().equals(java.util.Locale.US) && "1 Line".equals(second.getAddressLine(0)) && !second.hasLatitude();
+            String text = back.toString();
+            detail = "empty " + empty + " threw " + threw + " max " + max + "/" + stays + "/" + back.getMaxAddressLineIndex() + " negative " + negative + " same " + same + ": " + text;
+            return empty && threw && max == 1 && stays == 1 && back.getMaxAddressLineIndex() == 1 && negative && same && "square".equals(a.getExtras().getString("kind")) &&
+                   text.startsWith("Address[addressLines=[0:\"Красная площадь\",1:\"Москва, 109012\"],feature=Красная площадь,") && text.contains(",locality=Москва,");
+        });
+    }
+
+    private void markupRegex() {
+        step("markup-regex", () -> {
+            StringBuilder fields = new StringBuilder();
+            for (int i = 0; i < 13; i++) fields.append("\\|?([^|>]*)?");
+            java.util.regex.Pattern tag = java.util.regex.Pattern.compile("<(strong|small|light|color|image|date|realtime-symbol|link)" + fields + ">");
+            String text = "<color|1e212d/f0f0f1>Choose on map <image|bus||-1|1|-1|-1|Center> 5<realtime-symbol|*0>";
+            StringBuilder found = new StringBuilder();
+            int tags = 0, groups = -1, from = 0;
+            boolean whole = true;
+            java.util.regex.Matcher m;
+            while (from < text.length() && (m = tag.matcher(text)).find(from)) {
+                tags++;
+                groups = m.groupCount();
+                int last = 1;
+                for (int g = 2; g <= groups; g++) if (m.group(g) != null && !m.group(g).isEmpty()) last = g;
+                StringBuilder again = new StringBuilder("<").append(m.group(1));
+                for (int g = 2; g <= last; g++) again.append('|').append(m.group(g) == null ? "" : m.group(g));
+                again.append('>');
+                whole &= again.toString().equals(text.substring(m.start(), m.end()));
+                found.append(m.start()).append('-').append(m.end()).append(' ').append(again).append("; ");
+                from = m.end();
+            }
+            detail = tags + " tags, " + groups + " groups: " + found;
+            return tags == 3 && groups == 14 && whole && found.toString().equals("0-21 <color|1e212d/f0f0f1>; 35-65 <image|bus||-1|1|-1|-1|Center>; 67-87 <realtime-symbol|*0>; ");
+        });
+    }
+
+    /**
+     * AudioAttributes equal by what they hold, as Android's: two built alike, and one and its copy through a Parcel (writeToParcel
+     * and CREATOR), equal with the same hash; another usage, content type or flag not. They were equal to themselves alone, and a
+     * NotificationChannel that came through a Parcel was never equal to its original.
+     */
+    private void audioAttributesEqual() {
+        step("audio-attributes-equal", () -> {
+            android.media.AudioAttributes a = new android.media.AudioAttributes.Builder().setUsage(android.media.AudioAttributes.USAGE_NOTIFICATION)
+                    .setContentType(android.media.AudioAttributes.CONTENT_TYPE_SONIFICATION).build();
+            android.media.AudioAttributes b = new android.media.AudioAttributes.Builder().setContentType(android.media.AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                    .setUsage(android.media.AudioAttributes.USAGE_NOTIFICATION).build();
+            android.os.Parcel p = android.os.Parcel.obtain();
+            a.writeToParcel(p, 0);
+            p.setDataPosition(0);
+            android.media.AudioAttributes parcelled = android.media.AudioAttributes.CREATOR.createFromParcel(p);
+            p.recycle();
+            android.media.AudioAttributes otherUsage = new android.media.AudioAttributes.Builder(a).setUsage(android.media.AudioAttributes.USAGE_ALARM).build();
+            android.media.AudioAttributes otherContent = new android.media.AudioAttributes.Builder(a).setContentType(android.media.AudioAttributes.CONTENT_TYPE_MUSIC).build();
+            android.media.AudioAttributes otherFlags = new android.media.AudioAttributes.Builder(a).setFlags(android.media.AudioAttributes.FLAG_AUDIBILITY_ENFORCED).build();
+            detail = "built alike " + a.equals(b) + " " + (a.hashCode() == b.hashCode()) + ", through a parcel " + (parcelled != a) + " " + a.equals(parcelled)
+                     + " " + (a.hashCode() == parcelled.hashCode()) + ", another usage " + a.equals(otherUsage) + ", content " + a.equals(otherContent)
+                     + ", flags " + a.equals(otherFlags) + ", null " + a.equals(null);
+            return a.equals(b) && b.equals(a) && a.hashCode() == b.hashCode() && parcelled != a && a.equals(parcelled) && a.hashCode() == parcelled.hashCode()
+                   && !a.equals(otherUsage) && !a.equals(otherContent) && !a.equals(otherFlags) && !a.equals(null) && !a.equals("AudioAttributes");
+        });
+    }
+
+    /** A public method of Android's that android.jar (API 29) does not have, or a hidden one, called by reflection. */
+    private static Object call(Object target, String name, Class<?>[] types, Object... args) throws ReflectiveOperationException {
+        return target.getClass().getMethod(name, types).invoke(target, args);
+    }
+
+    private static final Class<?>[] NO_TYPES = {};
+
+    /**
+     * A notification channel as Android's (11 to 14): Android's defaults where the app sets nothing -- the default notification
+     * sound played as a notification's (Notification.AUDIO_ATTRIBUTES_DEFAULT), no lights, no vibration, a badge, no lock screen
+     * visibility of its own -- and what the app sets kept, a silent channel's sound and attributes null among it. And Messenger's
+     * copy of a channel of its own through the getters (X.30q.A00 of its version on a Lumia 650), which asserts the audio
+     * attributes it gave the channel: they were null, every setter of the stub kept nothing, and Messenger ended ("INVOKE_RETURN
+     * must not be null").
+     */
+    private void notificationChannel() {
+        step("notification-channel", () -> {
+            android.app.NotificationChannel d = new android.app.NotificationChannel("defaults", "Defaults", android.app.NotificationManager.IMPORTANCE_DEFAULT);
+            android.media.AudioAttributes da = d.getAudioAttributes();
+            String defaults = d.getSound() + " " + (da == null ? "null" : da.getUsage() + "/" + da.getContentType()) + " lights " + d.shouldShowLights() + " "
+                    + d.getLightColor() + " vibrates " + d.shouldVibrate() + " " + Arrays.toString(d.getVibrationPattern()) + " badge " + d.canShowBadge()
+                    + " lock screen " + d.getLockscreenVisibility() + " dnd " + d.canBypassDnd() + " bubbles " + d.canBubble() + " group " + d.getGroup()
+                    + " description " + d.getDescription() + " set importance " + d.hasUserSetImportance() + " set sound " + call(d, "hasUserSetSound", NO_TYPES)
+                    + " parent " + call(d, "getParentChannelId", NO_TYPES) + " conversation " + call(d, "getConversationId", NO_TYPES) + " "
+                    + call(d, "isConversation", NO_TYPES) + " blockable " + call(d, "isBlockable", NO_TYPES);
+            boolean defaulted = android.provider.Settings.System.DEFAULT_NOTIFICATION_URI.equals(d.getSound()) && da != null
+                    && da.getUsage() == android.media.AudioAttributes.USAGE_NOTIFICATION && da.getContentType() == android.media.AudioAttributes.CONTENT_TYPE_SONIFICATION
+                    && defaults.endsWith(" lights false 0 vibrates false null badge true lock screen -1000 dnd false bubbles false group null description null"
+                            + " set importance false set sound false parent null conversation null false blockable false")
+                    && "defaults".equals(d.getId()) && "Defaults".equals(d.getName().toString()) && d.getImportance() == android.app.NotificationManager.IMPORTANCE_DEFAULT;
+            // What the app sets is kept.
+            android.net.Uri tone = android.net.Uri.parse("android.resource://megler.test.data/raw/tone");
+            android.media.AudioAttributes ringtone = new android.media.AudioAttributes.Builder().setUsage(android.media.AudioAttributes.USAGE_NOTIFICATION_RINGTONE)
+                    .setContentType(android.media.AudioAttributes.CONTENT_TYPE_SONIFICATION).build();
+            long[] pattern = { 0, 250, 250, 250 };
+            android.app.NotificationChannel c = new android.app.NotificationChannel("set", "Set", android.app.NotificationManager.IMPORTANCE_HIGH);
+            c.setSound(tone, ringtone);
+            c.enableLights(true);
+            c.setLightColor(0xFF00FF00);
+            c.setVibrationPattern(pattern);
+            c.setShowBadge(false);
+            c.setLockscreenVisibility(android.app.Notification.VISIBILITY_SECRET);
+            c.setBypassDnd(true);
+            c.setAllowBubbles(true);
+            c.setGroup("group");
+            c.setDescription("described");
+            c.setName("Renamed");
+            c.setImportance(android.app.NotificationManager.IMPORTANCE_LOW);
+            call(c, "setBlockable", new Class<?>[] { boolean.class }, true);
+            call(c, "setConversationId", new Class<?>[] { String.class, String.class }, "set", "conversation");
+            String set = c.getSound() + " " + (c.getAudioAttributes() == ringtone) + " lights " + c.shouldShowLights() + " " + Integer.toHexString(c.getLightColor())
+                    + " vibrates " + c.shouldVibrate() + " " + (c.getVibrationPattern() == pattern) + " badge " + c.canShowBadge() + " lock screen "
+                    + c.getLockscreenVisibility() + " dnd " + c.canBypassDnd() + " bubbles " + c.canBubble() + " group " + c.getGroup() + " description "
+                    + c.getDescription() + " name " + c.getName() + " importance " + c.getImportance() + " blockable " + call(c, "isBlockable", NO_TYPES)
+                    + " parent " + call(c, "getParentChannelId", NO_TYPES) + " conversation " + call(c, "getConversationId", NO_TYPES) + " "
+                    + call(c, "isConversation", NO_TYPES);
+            boolean kept = set.equals(tone + " true lights true ff00ff00 vibrates true true badge false lock screen -1 dnd true bubbles true group group"
+                    + " description described name Renamed importance 2 blockable true parent set conversation conversation true");
+            // A pattern of nothing, or none, turns the vibration off; enableVibration turns it on whatever the pattern.
+            c.setVibrationPattern(new long[0]);
+            boolean emptyOff = !c.shouldVibrate();
+            c.enableVibration(true);
+            boolean onAgain = c.shouldVibrate();
+            c.setVibrationPattern(null);
+            boolean noneOff = !c.shouldVibrate() && c.getVibrationPattern() == null;
+            // A silent channel's: no sound and no attributes, given back as they were given.
+            c.setSound(null, null);
+            boolean silent = c.getSound() == null && c.getAudioAttributes() == null;
+            // Messenger's model of a channel (X.2wl.A01 of its version 585) copied through the getters as its X.30q.A00 copies it.
+            android.app.NotificationChannel model = new android.app.NotificationChannel("messenger_model", "Messages", android.app.NotificationManager.IMPORTANCE_HIGH);
+            model.setGroup("messenger_group");
+            model.enableLights(true);
+            model.setLightColor(0xFF0084FF);
+            model.setVibrationPattern(pattern);
+            model.enableVibration(true);
+            model.setSound(tone, ringtone);
+            model.setShowBadge(true);
+            android.app.NotificationChannel copied = new android.app.NotificationChannel(model.getId(), model.getName(), model.getImportance());
+            copied.setGroup(model.getGroup());
+            copied.enableLights(model.shouldShowLights());
+            copied.setLightColor(model.getLightColor());
+            copied.setVibrationPattern(model.getVibrationPattern());
+            copied.enableVibration(model.shouldVibrate());
+            copied.setSound(model.getSound(), java.util.Objects.requireNonNull(model.getAudioAttributes(), "INVOKE_RETURN must not be null"));
+            copied.setShowBadge(model.canShowBadge());
+            boolean messenger = copied.equals(model) && model.equals(copied) && copied.hashCode() == model.hashCode();
+            detail = "defaults: " + defaults + "; set: " + set + "; a pattern of nothing off " + emptyOff + ", on " + onAgain + ", none off " + noneOff
+                     + "; silent " + silent + "; Messenger's copy equal " + messenger;
+            return defaulted && kept && emptyOff && onAgain && noneOff && silent && messenger;
+        });
+        // copy() (hidden, as Android's system copies a channel), equals and hashCode; a channel through a Parcel (writeToParcel and
+        // CREATOR, as Android's binder hands one over) and through the element of Android's notification policy file (writeXml and
+        // populateFromXml, hidden: how NotificationManager keeps the app's channels across its runs) equal to its original; toString.
+        step("notification-channel-copy", () -> {
+            android.app.NotificationChannel c = new android.app.NotificationChannel("copied", "Copied", android.app.NotificationManager.IMPORTANCE_DEFAULT);
+            c.setDescription("a channel to copy");
+            c.setGroup("group");
+            c.enableLights(true);
+            c.setLightColor(0xFFFF0000);
+            c.setVibrationPattern(new long[] { 100, 200, 300 });
+            c.setShowBadge(false);
+            c.setSound(android.provider.Settings.System.DEFAULT_NOTIFICATION_URI,
+                    new android.media.AudioAttributes.Builder().setUsage(android.media.AudioAttributes.USAGE_NOTIFICATION_EVENT).build());
+            android.app.NotificationChannel copy = (android.app.NotificationChannel) call(c, "copy", NO_TYPES);
+            boolean copied = copy != c && c.equals(copy) && copy.equals(c) && c.hashCode() == copy.hashCode();
+            copy.setImportance(android.app.NotificationManager.IMPORTANCE_LOW);
+            boolean apart = !c.equals(copy) && c.getImportance() == android.app.NotificationManager.IMPORTANCE_DEFAULT;
+            android.app.NotificationChannel other = new android.app.NotificationChannel("copied", "Copied", android.app.NotificationManager.IMPORTANCE_DEFAULT);
+            boolean differs = !c.equals(other) && !other.equals(c);
+            android.os.Parcel p = android.os.Parcel.obtain();
+            c.writeToParcel(p, 0);
+            p.setDataPosition(0);
+            android.app.NotificationChannel parcelled = android.app.NotificationChannel.CREATOR.createFromParcel(p);
+            p.recycle();
+            boolean throughParcel = parcelled != c && c.equals(parcelled) && c.hashCode() == parcelled.hashCode() && parcelled.getVibrationPattern() != c.getVibrationPattern();
+            java.io.StringWriter xml = new java.io.StringWriter();
+            org.xmlpull.v1.XmlSerializer out = android.util.Xml.newSerializer();
+            out.setOutput(xml);
+            out.startDocument("UTF-8", true);
+            call(c, "writeXml", new Class<?>[] { org.xmlpull.v1.XmlSerializer.class }, out);
+            out.endDocument();
+            org.xmlpull.v1.XmlPullParser in = android.util.Xml.newPullParser();
+            in.setInput(new java.io.StringReader(xml.toString()));
+            android.app.NotificationChannel read = null;
+            while (in.next() != org.xmlpull.v1.XmlPullParser.END_DOCUMENT) {
+                if (in.getEventType() != org.xmlpull.v1.XmlPullParser.START_TAG || !"channel".equals(in.getName())) continue;
+                read = new android.app.NotificationChannel(in.getAttributeValue(null, "id"), in.getAttributeValue(null, "name"),
+                        Integer.parseInt(in.getAttributeValue(null, "importance")));
+                call(read, "populateFromXml", new Class<?>[] { org.xmlpull.v1.XmlPullParser.class }, in);
+            }
+            boolean throughXml = read != null && c.equals(read) && read.equals(c);
+            String said = c.toString();
+            boolean told = said.startsWith("NotificationChannel{mId='copied', mName=Copied, mDescription=hasDescription , mImportance=3, ")
+                    && said.contains(", mLightColor=-65536, mVibration=[100, 200, 300], ") && said.contains(", mShowBadge=false, ") && said.endsWith("}");
+            detail = "copy " + copied + ", apart " + apart + ", another differs " + differs + ", through a parcel " + throughParcel + ", through XML " + throughXml
+                     + " (" + xml + "), told " + said;
+            return copied && apart && differs && throughParcel && throughXml && told;
+        });
+        // A channel group as Android's: its description kept, not blocked, one list of channels (empty until NotificationManager
+        // gives the group out), clone() (public since Android 9: the stub had none), equals, through a Parcel and through XML.
+        step("notification-channel-group", () -> {
+            android.app.NotificationChannelGroup g = new android.app.NotificationChannelGroup("group", "Group");
+            boolean fresh = "group".equals(g.getId()) && "Group".equals(g.getName().toString()) && g.getDescription() == null && !g.isBlocked()
+                    && g.getChannels().isEmpty() && g.getChannels() == g.getChannels();
+            g.setDescription("a group of channels");
+            boolean described = "a group of channels".equals(g.getDescription());
+            android.app.NotificationChannelGroup cloned = g.clone();
+            boolean clones = cloned != g && cloned.equals(g) && g.equals(cloned) && cloned.hashCode() == g.hashCode();
+            boolean differs = !g.equals(new android.app.NotificationChannelGroup("group", "Group"));
+            android.os.Parcel p = android.os.Parcel.obtain();
+            g.writeToParcel(p, 0);
+            p.setDataPosition(0);
+            android.app.NotificationChannelGroup parcelled = android.app.NotificationChannelGroup.CREATOR.createFromParcel(p);
+            p.recycle();
+            boolean throughParcel = parcelled != g && parcelled.equals(g) && parcelled.hashCode() == g.hashCode();
+            java.io.StringWriter xml = new java.io.StringWriter();
+            org.xmlpull.v1.XmlSerializer out = android.util.Xml.newSerializer();
+            out.setOutput(xml);
+            out.startDocument("UTF-8", true);
+            call(g, "writeXml", new Class<?>[] { org.xmlpull.v1.XmlSerializer.class }, out);
+            out.endDocument();
+            org.xmlpull.v1.XmlPullParser in = android.util.Xml.newPullParser();
+            in.setInput(new java.io.StringReader(xml.toString()));
+            android.app.NotificationChannelGroup read = null;
+            while (in.next() != org.xmlpull.v1.XmlPullParser.END_DOCUMENT) {
+                if (in.getEventType() != org.xmlpull.v1.XmlPullParser.START_TAG || !"channelGroup".equals(in.getName())) continue;
+                read = new android.app.NotificationChannelGroup(in.getAttributeValue(null, "id"), in.getAttributeValue(null, "name"));
+                call(read, "populateFromXml", new Class<?>[] { org.xmlpull.v1.XmlPullParser.class }, in);
+            }
+            boolean throughXml = read != null && read.equals(g);
+            String said = g.toString();
+            detail = "fresh " + fresh + ", described " + described + ", clone " + clones + ", another differs " + differs + ", through a parcel " + throughParcel
+                     + ", through XML " + throughXml + " (" + xml + "), told " + said;
+            return fresh && described && clones && differs && throughParcel && throughXml
+                    && said.equals("NotificationChannelGroup{mId='group', mName=Group, mDescription=hasDescription , mBlocked=false, mChannels=[], mUserLockedFields=0}");
+        });
+    }
+
+    /** What an app sets of a channel, and the fields the system sets, in a line. */
+    private static String channelSummary(android.app.NotificationChannel c) {
+        if (c == null) return "none";
+        android.media.AudioAttributes a = c.getAudioAttributes();
+        return c.getId() + " '" + c.getName() + "' " + c.getImportance() + " " + c.getDescription() + " group " + c.getGroup() + " sound " + c.getSound() + " "
+                + (a == null ? "null" : a.getUsage() + "/" + a.getContentType() + "/" + a.getFlags()) + " lights " + c.shouldShowLights() + " "
+                + Integer.toHexString(c.getLightColor()) + " vibrates " + c.shouldVibrate() + " " + Arrays.toString(c.getVibrationPattern()) + " badge "
+                + c.canShowBadge() + " lock screen " + c.getLockscreenVisibility() + " dnd " + c.canBypassDnd() + " bubbles " + c.canBubble();
+    }
+
+    /** Whether the list has a channel or a group of the id. */
+    private static boolean lists(java.util.List<?> l, String id) {
+        for (Object o : l) {
+            String has = o instanceof android.app.NotificationChannel ? ((android.app.NotificationChannel) o).getId() : ((android.app.NotificationChannelGroup) o).getId();
+            if (id.equals(has)) return true;
+        }
+        return false;
+    }
+
+    /**
+     * The app's channels and groups kept as Android's system keeps them (NotificationManager): one set for the process, whichever
+     * NotificationManager is asked; a channel the system's copy; what an app may change of a channel that is there; deleted and
+     * made again; a conversation's channel; groups with their channels; and kept across the app's runs, in its data folder.
+     */
+    private void notificationChannels(long run) {
+        final android.app.NotificationManager nm = (android.app.NotificationManager) getSystemService(NOTIFICATION_SERVICE);
+        // A channel made through the context's NotificationManager is found through another one, as megler.Services makes one (each kept
+        // its own); what is found is the system's copy: the app's later change to its own object, or to the copy, is the app's own.
+        step("notification-channels-shared", () -> {
+            android.app.NotificationManager other = (android.app.NotificationManager) Class.forName("megler.Services")
+                    .getMethod("system", String.class, Context.class).invoke(null, NOTIFICATION_SERVICE, this);
+            String id = "shared-" + run;
+            android.app.NotificationChannel made = new android.app.NotificationChannel(id, "Shared", android.app.NotificationManager.IMPORTANCE_DEFAULT);
+            made.setDescription("made through one, found through another");
+            made.setVibrationPattern(new long[] { 0, 100 });
+            nm.createNotificationChannel(made);
+            android.app.NotificationChannel found = other.getNotificationChannel(id);
+            boolean listed = lists(other.getNotificationChannels(), id);
+            made.setDescription("changed by the app afterwards");
+            if (found != null) found.setImportance(android.app.NotificationManager.IMPORTANCE_MIN);
+            android.app.NotificationChannel again = nm.getNotificationChannel(id);
+            detail = "another manager " + (other != nm) + ", found " + channelSummary(found) + ", listed " + listed + ", again " + channelSummary(again)
+                     + ", the same object " + (found == made || again == found);
+            return other != nm && found != null && found != made && again != found && listed
+                    && channelSummary(again).equals(id + " 'Shared' 3 made through one, found through another group null sound content://settings/system/notification_sound"
+                            + " 5/4/0 lights false 0 vibrates true [0, 100] badge true lock screen -1000 dnd false bubbles false");
+        });
+        // Android's rules for an app: a new channel's lock screen visibility, Do Not Disturb and bubbles are the system's; a channel made
+        // again changes its name, description and group (where it had none), its importance only downwards, and not its sound; a
+        // deleted one is gone, and made again it is back as it was; a conversation's channel; a group with its channels, and its
+        // channels deleted with it. (Ids of the run's own: what the first run left is there in the second.)
+        step("notification-channels-rules", () -> {
+            String a = "rules-" + run + "-a", p = "rules-" + run + "-parent", conv = "rules-" + run + "-conversation", g = "rules-" + run + "-group";
+            android.net.Uri first = android.net.Uri.parse("android.resource://megler.test.data/raw/first");
+            android.net.Uri second = android.net.Uri.parse("android.resource://megler.test.data/raw/second");
+            android.media.AudioAttributes attrs = new android.media.AudioAttributes.Builder().setUsage(android.media.AudioAttributes.USAGE_NOTIFICATION).build();
+            android.app.NotificationChannel ch = new android.app.NotificationChannel(a, "A", android.app.NotificationManager.IMPORTANCE_HIGH);
+            ch.setSound(first, attrs);
+            ch.setLockscreenVisibility(android.app.Notification.VISIBILITY_SECRET);
+            ch.setBypassDnd(true);
+            ch.setAllowBubbles(true);
+            nm.createNotificationChannel(ch);
+            String made = channelSummary(nm.getNotificationChannel(a));
+            nm.createNotificationChannelGroup(new android.app.NotificationChannelGroup(g, "Group"));
+            android.app.NotificationChannel changed = new android.app.NotificationChannel(a, "A again", android.app.NotificationManager.IMPORTANCE_LOW);
+            changed.setDescription("described");
+            changed.setGroup(g);
+            changed.setSound(second, attrs);
+            nm.createNotificationChannel(changed);
+            String again = channelSummary(nm.getNotificationChannel(a));
+            nm.createNotificationChannel(new android.app.NotificationChannel(a, "A again", android.app.NotificationManager.IMPORTANCE_MAX));
+            int upwards = nm.getNotificationChannel(a).getImportance();
+            nm.deleteNotificationChannel(a);
+            boolean gone = nm.getNotificationChannel(a) == null && !lists(nm.getNotificationChannels(), a) && nm.getNotificationChannelGroup(g).getChannels().isEmpty();
+            android.app.NotificationChannel back = new android.app.NotificationChannel(a, "A back", android.app.NotificationManager.IMPORTANCE_HIGH);
+            back.setSound(null, null);
+            nm.createNotificationChannel(back);
+            String restored = channelSummary(nm.getNotificationChannel(a));
+            // A conversation's channel (Android 11): found for its conversation, the parent for another.
+            nm.createNotificationChannel(new android.app.NotificationChannel(p, "Messages", android.app.NotificationManager.IMPORTANCE_DEFAULT));
+            android.app.NotificationChannel forConversation = new android.app.NotificationChannel(conv, "A conversation", android.app.NotificationManager.IMPORTANCE_HIGH);
+            call(forConversation, "setConversationId", new Class<?>[] { String.class, String.class }, p, "someone");
+            nm.createNotificationChannel(forConversation);
+            Class<?>[] two = { String.class, String.class };
+            Object ofConversation = call(nm, "getNotificationChannel", two, p, "someone");
+            Object ofAnother = call(nm, "getNotificationChannel", two, p, "someone else");
+            String conversations = (ofConversation == null ? "none" : ((android.app.NotificationChannel) ofConversation).getId()) + " "
+                    + (ofAnother == null ? "none" : ((android.app.NotificationChannel) ofAnother).getId());
+            // The group: its channels in it, a deleted one not; deleted with the group.
+            android.app.NotificationChannel second2 = new android.app.NotificationChannel(a + "2", "A2", android.app.NotificationManager.IMPORTANCE_DEFAULT);
+            second2.setGroup(g);
+            nm.createNotificationChannel(second2);
+            android.app.NotificationChannelGroup group = nm.getNotificationChannelGroup(g);
+            int inGroup = group == null ? -1 : group.getChannels().size();
+            boolean groupListed = lists(nm.getNotificationChannelGroups(), g);
+            boolean groupsChannels = false;
+            for (android.app.NotificationChannelGroup each : nm.getNotificationChannelGroups())
+                if (g.equals(each.getId())) groupsChannels = lists(each.getChannels(), a) && lists(each.getChannels(), a + "2") && !each.isBlocked();
+            nm.deleteNotificationChannelGroup(g);
+            boolean groupGone = nm.getNotificationChannelGroup(g) == null && !lists(nm.getNotificationChannelGroups(), g) && nm.getNotificationChannel(a) == null
+                    && nm.getNotificationChannel(a + "2") == null && nm.getNotificationChannel(p) != null;
+            detail = "made: " + made + "; made again: " + again + "; importance upwards " + upwards + "; deleted gone " + gone + "; made again after: " + restored
+                     + "; conversations " + conversations + "; in the group " + inGroup + " listed " + groupListed + " with its channels " + groupsChannels
+                     + "; the group's deletion " + groupGone;
+            return made.equals(a + " 'A' 4 null group null sound " + first + " 5/0/0 lights false 0 vibrates false null badge true lock screen -1000 dnd false bubbles false")
+                    && again.equals(a + " 'A again' 2 described group " + g + " sound " + first + " 5/0/0 lights false 0 vibrates false null badge true lock screen -1000 dnd false bubbles false")
+                    && upwards == android.app.NotificationManager.IMPORTANCE_LOW && gone
+                    && restored.equals(a + " 'A back' 2 null group " + g + " sound " + first + " 5/0/0 lights false 0 vibrates false null badge true lock screen -1000 dnd false bubbles false")
+                    && conversations.equals(conv + " " + p) && inGroup == 2 && groupListed && groupsChannels && groupGone;
+        });
+        // Kept across the app's runs, as Android's system keeps them: the first run makes a group, a silent channel in it and a channel
+        // it deletes; the second finds them as they were -- the silent channel with no sound and no audio attributes -- and the deleted
+        // one deleted, made again as it was.
+        step("notification-channels-kept", () -> {
+            String keptLine = "kept 'Kept' 2 a channel of the run before group kept-group sound null null lights true ff0000ff vibrates true [0, 300, 200, 300]"
+                    + " badge false lock screen -1000 dnd false bubbles false";
+            android.net.Uri bell = android.net.Uri.parse("android.resource://megler.test.data/raw/bell");
+            if (run == 1) {
+                android.app.NotificationChannelGroup group = new android.app.NotificationChannelGroup("kept-group", "Kept");
+                group.setDescription("the group of the run before");
+                nm.createNotificationChannelGroup(group);
+                android.app.NotificationChannel kept = new android.app.NotificationChannel("kept", "Kept", android.app.NotificationManager.IMPORTANCE_LOW);
+                kept.setDescription("a channel of the run before");
+                kept.setGroup("kept-group");
+                kept.setSound(null, null);
+                kept.enableLights(true);
+                kept.setLightColor(0xFF0000FF);
+                kept.setVibrationPattern(new long[] { 0, 300, 200, 300 });
+                kept.setShowBadge(false);
+                nm.createNotificationChannel(kept);
+                android.app.NotificationChannel deleted = new android.app.NotificationChannel("kept-deleted", "Deleted", android.app.NotificationManager.IMPORTANCE_HIGH);
+                deleted.setSound(bell, new android.media.AudioAttributes.Builder().setUsage(android.media.AudioAttributes.USAGE_NOTIFICATION_EVENT).build());
+                nm.createNotificationChannel(deleted);
+                nm.deleteNotificationChannel("kept-deleted");
+                detail = "made: " + channelSummary(nm.getNotificationChannel("kept"));
+                return channelSummary(nm.getNotificationChannel("kept")).equals(keptLine) && nm.getNotificationChannel("kept-deleted") == null;
+            }
+            android.app.NotificationChannel kept = nm.getNotificationChannel("kept");
+            android.app.NotificationChannelGroup group = nm.getNotificationChannelGroup("kept-group");
+            boolean deletedStill = nm.getNotificationChannel("kept-deleted") == null && !lists(nm.getNotificationChannels(), "kept-deleted");
+            nm.createNotificationChannel(new android.app.NotificationChannel("kept-deleted", "Deleted", android.app.NotificationManager.IMPORTANCE_MAX));
+            android.app.NotificationChannel back = nm.getNotificationChannel("kept-deleted");
+            detail = "found: " + channelSummary(kept) + "; group " + (group == null ? "none" : group.getName() + " '" + group.getDescription() + "' "
+                     + group.getChannels().size() + " " + lists(group.getChannels(), "kept")) + "; deleted still " + deletedStill + "; made again: " + channelSummary(back);
+            // (Deleted again, for a run after this one to find as this one did.)
+            nm.deleteNotificationChannel("kept-deleted");
+            return channelSummary(kept).equals(keptLine) && group != null && "Kept".equals(group.getName().toString())
+                    && "the group of the run before".equals(group.getDescription()) && group.getChannels().size() == 1 && lists(group.getChannels(), "kept")
+                    && deletedStill && channelSummary(back).equals("kept-deleted 'Deleted' 4 null group null sound " + bell
+                            + " 10/0/0 lights false 0 vibrates false null badge true lock screen -1000 dnd false bubbles false");
         });
     }
 
@@ -6139,6 +7480,38 @@ public class Main extends Activity {
     }
 
     /**
+     * Android 14's HttpEngine (android.net.http; Megler's own engine, megler.http), as the Google Play Store and gRPC use it:
+     * HttpEngineSteps says each step. The requests go to an HTTP/1.1 server of the app's own on 127.0.0.1, on both hosts;
+     * the bidirectional streams to an HTTP/2 server of its own over TLS (localhost, the test authority's certificate, ALPN
+     * h2), so without conscrypt's TLS (the PC's run) those steps hold, as there is nothing to connect with.
+     */
+    private void httpEngine() {
+        final HttpEngineSteps[] h = new HttpEngineSteps[1];
+        try {
+            h[0] = new HttpEngineSteps(this, conscrypt ? trustContext() : null);
+        } catch (Exception e) {
+            Log.e("DataTest", "http-engine: no TLS context for the test's server", e);
+            h[0] = new HttpEngineSteps(this, null);
+        }
+        step("http-engine", () -> offMain(() -> said(h[0], h[0].build())));
+        step("http-engine-request", () -> offMain(() -> said(h[0], h[0].request())));
+        step("http-engine-upload", () -> offMain(() -> said(h[0], h[0].upload())));
+        step("http-engine-failures", () -> offMain(() -> said(h[0], h[0].failures())));
+        step("http-engine-connection", () -> offMain(() -> said(h[0], h[0].connection())));
+        step("http-engine-stream", () -> !conscrypt || offMain(() -> said(h[0], h[0].stream())));
+        step("http-engine-stream-flow", () -> !conscrypt || offMain(() -> said(h[0], h[0].streamFlow())));
+        step("http-engine-stream-cancel", () -> !conscrypt || offMain(() -> said(h[0], h[0].streamCancel())));
+        step("http-engine-hpack", () -> !conscrypt || offMain(() -> said(h[0], h[0].hpack())));
+    }
+
+    /** A check of HttpEngineSteps' result, what it saw made the step's detail and said in the log. */
+    private boolean said(HttpEngineSteps h, boolean held) {
+        detail = h.detail;
+        Log.i("DataTest", "http-engine-said " + h.detail);
+        return held;
+    }
+
+    /**
      * The network as Java code uses it, on this device's own loopback: names, an HTTP server of the app's own answering
      * HttpURLConnection, UDP, a server socket closed under the thread that waits in accept (libcore's way of ending that wait), the
      * interfaces, and what ConnectivityManager says. Nothing leaves the device.
@@ -6593,13 +7966,14 @@ public class Main extends Activity {
     /*
      * What the step "permissions" requests, and what it is to be told: the storage, the messages, the phone and the calls the
      * user lets the app have (the test's C side answers for the user); WRITE_EXTERNAL_STORAGE, asked for only up to Android 9,
-     * denied with no one asked; the camera refused; VIBRATE, normal, granted; READ_CALENDAR, not in the manifest, denied.
+     * denied with no one asked; the camera refused; VIBRATE, normal, granted; READ_CALENDAR, not in the manifest, denied;
+     * READ_CONTACTS, refused for good in the app's App Permissions, denied with no one asked.
      */
     private static final String[] PERMISSIONS = { android.Manifest.permission.READ_EXTERNAL_STORAGE, android.Manifest.permission.WRITE_EXTERNAL_STORAGE,
                                                   android.Manifest.permission.RECEIVE_SMS, android.Manifest.permission.READ_SMS, android.Manifest.permission.READ_PHONE_STATE,
                                                   android.Manifest.permission.READ_CALL_LOG, android.Manifest.permission.CAMERA, android.Manifest.permission.VIBRATE,
-                                                  android.Manifest.permission.READ_CALENDAR };
-    private static final int[] TOLD = { 0, -1, 0, 0, 0, 0, -1, 0, -1 };
+                                                  android.Manifest.permission.READ_CALENDAR, android.Manifest.permission.READ_CONTACTS };
+    private static final int[] TOLD = { 0, -1, 0, 0, 0, 0, -1, 0, -1, -1 };
     private boolean cancelled, resumeAwaited, resumedNow;
 
     @Override

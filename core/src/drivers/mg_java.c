@@ -46,9 +46,13 @@
 /*
  * APKs 12 on are those the framework adds (addApk): Google Play services' and its framework's for an app that hosts them, the
  * resource archives each keeps for the language (locale-filtered-resources), and the WebView's. Play Store with Google Play
- * services hosted took the four of 16 there were before the WebView's, and its sign-in page had no WebView.
+ * services hosted took the four of 16 there were before the WebView's, and its sign-in page had no WebView. And Google Play
+ * services' splits (mount_gms_splits) and the modules it loads (Cronet, the ads, the maps, Vision's): Play Store took 17 of
+ * the 20 there were on a Lumia 650 (0.1.0.684) before Google Play services' splits were added too.
  */
-#define MAX_APKS 32
+#define MAX_APKS 48
+/* Google Play services' splits an app that hosts them reads (mount_gms_splits): a bundle from Play Store has a few. */
+#define MAX_GMS_SPLITS 12
 /* The app's splits are APKs 2 to 11: ten, which is all the framework reads (its Resources looks in 2 to 11). */
 #define FIRST_SPLIT_APK 2
 #define MAX_SPLITS 10
@@ -74,6 +78,12 @@ static struct {
     char split_names[MAX_SPLITS][96];
     char *guest_splits[MAX_SPLITS];
     bool split_code[MAX_SPLITS];
+    /*
+     * Google Play services' splits, for an app that hosts them (megler_run_config.gms_splits_dir): their paths as the app
+     * sees them, beside GmsCore.apk (Native.gmsSplitPaths), which megler.MicroG adds to their resources.
+     */
+    int ngms_splits;
+    char *gms_guest_splits[MAX_GMS_SPLITS];
     mg_thread *main;
     /*
      * The APKs by the framework's numbers: 0 the app's, 1 the platform's resources, 2 to 11 the app's splits, 12 on the shared
@@ -548,6 +558,18 @@ N(Native_splitPaths)
 }
 
 /*
+ * Google Play services' splits as the app sees them, /system/priv-app/GmsCore/split_<name>.apk (mount_gms_splits), sorted by
+ * name; none where they came in one APK. megler.MicroG adds them to their resources and names them in their ApplicationInfo.
+ */
+N(Native_gmsSplitPaths)
+{
+    mg_jobj *a = mg_dvm_new_array("[Ljava/lang/String;", J.ngms_splits);
+    int i;
+    for (i = 0; a && i < J.ngms_splits; i++) a->u.oarr.v[i] = mg_dvm_new_string(J.gms_guest_splits[i]);
+    c->ret.l = a;
+}
+
+/*
  * Looper.prepare() and every turn of a message loop: the thread's native
  * looper, for native code that watches descriptors on its UI thread
  * (ALooper_forThread, ALooper_addFd). See ndk/mg_ndk.h. nativeLooperPoll
@@ -594,6 +616,8 @@ N(Native_uptimeNanos) { c->ret.j = (i64)mg_time_monotonic_ns(); }
 N(Native_flag) { c->ret.z = mg_flag(text_of(c->args[0].l)); }
 /* askClearData(): this app's data cleared when it next starts (megler_ask_clear_data), for Android's app info screen. */
 N(Native_askClearData) { c->ret.z = megler_ask_clear_data(J.package); }
+/* askClearCache(): this app's cache cleared when it next starts (megler_ask_clear_cache), for Android's app info screen. */
+N(Native_askClearCache) { c->ret.z = megler_ask_clear_cache(J.package); }
 static void Native_frameMark(mg_jcall *c);
 static void Native_mainStarted(mg_jcall *c);
 static void Native_presentRect(mg_jcall *c);
@@ -1332,6 +1356,7 @@ static const mg_jhle k_native[] = {
     { "megler/Native", "apkFileLength", NULL, Native_apkFileLength },
     { "megler/Native", "apkPath", NULL, Native_apkPath },
     { "megler/Native", "splitPaths", NULL, Native_splitPaths },
+    { "megler/Native", "gmsSplitPaths", NULL, Native_gmsSplitPaths },
     { "megler/Native", "setAppClassLoader", NULL, Native_setAppClassLoader },
     { "megler/Native", "nativeLooperPrepare", NULL, Native_looperPrepare },
     { "megler/Native", "nativeLooperPoll", NULL, Native_looperPoll },
@@ -1393,6 +1418,7 @@ static const mg_jhle k_native[] = {
     { "megler/Native", "checkPartial", NULL, Native_checkPartial },
     { "megler/Native", "flag", NULL, Native_flag },
     { "megler/Native", "askClearData", NULL, Native_askClearData },
+    { "megler/Native", "askClearCache", NULL, Native_askClearCache },
     { NULL, NULL, NULL, NULL },
 };
 
@@ -2058,6 +2084,46 @@ static void open_apk(int index, const char *host_path)
 }
 
 /*
+ * Google Play services' splits, where they came in several APKs (megler_run_config.gms_splits_dir: the folder's .apk files,
+ * named split_<name>.apk as megler_bundle_unpack names those it keeps), each mounted beside GmsCore.apk under the name Android
+ * gives an installed split, for megler.MicroG to add to their resources (Native.gmsSplitPaths). Play Store installs Google's
+ * own Play services as a base and splits of the phone's density and languages, and a resource whose every value is a
+ * density's is in the density's split alone: the Google logo of their account screens (ProductLockupView's default,
+ * googlelogo_standard_color_74x24: four densities' PNGs and an anydpi vector, nothing of no density) was not there for an
+ * app that hosted them, and "Manage your Google Account" in Play Store ended the app on Resources$NotFoundException
+ * (0.1.0.685, the Lumia 650). Their names are the files' own: nothing of the splits is read here, which every app's start
+ * would pay for.
+ */
+static void mount_gms_splits(void)
+{
+    char **paths = NULL, names[400];
+    int n = mg_apk_list_splits(J.config->gms_splits_dir, &paths), i;
+    size_t at = 0;
+    names[0] = 0;
+    for (i = 0; i < n; i++) {
+        const char *slash = strrchr(paths[i], '/'), *back = strrchr(paths[i], '\\');
+        const char *file = back && (!slash || back > slash) ? back + 1 : slash ? slash + 1 : paths[i];
+        char name[96];
+        size_t len;
+        if (!strncmp(file, "split_", 6)) file += 6;
+        mg_strlcpy(name, file, sizeof(name));
+        len = strlen(name);
+        if (len > 4 && !strcmp(name + len - 4, ".apk")) name[len - 4] = 0;
+        if (!name[0]) continue;
+        if (J.ngms_splits == MAX_GMS_SPLITS) {
+            mg_warn("java: Google Play services have more than %d splits: %s and those after it are left out", MAX_GMS_SPLITS, name);
+            break;
+        }
+        J.gms_guest_splits[J.ngms_splits] = mg_sprintf("/system/priv-app/GmsCore/split_%s.apk", name);
+        mg_fs_mount(J.gms_guest_splits[J.ngms_splits], paths[i]);
+        J.ngms_splits++;
+        if (at + strlen(name) + 3 < sizeof(names)) at += (size_t)snprintf(names + at, sizeof(names) - at, "%s%s", at ? ", " : "", name);
+    }
+    if (J.ngms_splits) mg_info("java: Google Play services are in %d APKs, their base and the split%s %s", J.ngms_splits + 1, J.ngms_splits == 1 ? "" : "s", names);
+    mg_apk_free_list(paths, n);
+}
+
+/*
  * Gives the APK its Android path, /data/app/<package>-1/base.apk, and tells the runtime that its classes are on the class path under that name. And the
  * splits theirs, beside it, under the names Android gives installed splits (split_config.armeabi_v7a.apk), each a mount of
  * its own file wherever the shell keeps it; those with code are on the class path under their names too.
@@ -2070,8 +2136,10 @@ static void mount_apk(void)
     int i;
     if (name > path) dir[name - path - 1] = 0;
     mg_fs_mount(guest_dir, dir);
-    if (J.config->gms_apk_path && strcmp(J.package, "com.google.android.gms"))
+    if (J.config->gms_apk_path && strcmp(J.package, "com.google.android.gms")) {
         mg_fs_mount("/system/priv-app/GmsCore/GmsCore.apk", J.config->gms_apk_path);
+        if (J.config->gms_splits_dir) mount_gms_splits();
+    }
     if (J.config->gsf_apk_path && strcmp(J.package, "com.google.android.gsf"))
         mg_fs_mount("/system/priv-app/GoogleServicesFramework/GoogleServicesFramework.apk", J.config->gsf_apk_path);
     /* Each app retains Android's stable base.apk path, regardless of the picked filename. */
@@ -2094,47 +2162,46 @@ static void mount_apk(void)
  * (BaseDexClassLoader.findLibrary, which System.loadLibrary asks, opens the
  * file to see that it is there), and so do apps: loaders that read a
  * library's ELF header to load what it needs first (Facebook's SoLoader, in
- * every React Native app), and code that lists the folder. A file is written
- * when it is not there or not of the size the APK's is, so the second start
- * of an app writes nothing. The library that runs is still the APK's, taken
- * from there by the linker (dvm/mg_dvm_jvm.c).
+ * every React Native app), loaders that sum the files against the APK's
+ * entries (ByteDance's librarian), and code that lists the folder. The folder
+ * holds this version's libraries and nothing else, as Android's installer
+ * leaves it at each update (ld/mg_ld_place.c): a file is written when it is
+ * not the APK's entry, as an index in Megler's data folder (lib-index/<the
+ * package>) and the APK's central directory say without reading a library, so
+ * the second start of an app writes nothing; what an older version had and
+ * this one has not is removed. The library that runs is still the APK's,
+ * taken from there by the linker (dvm/mg_dvm_jvm.c).
  */
-static void place_one(const char *name, u64 size, void *user)
-{
-    const char *dir = (const char *)user, *abi = mg_ld_abi();
-    char *path = mg_sprintf("%s/%s", dir, name), entry[400];
-    mg_stat st;
-    int i;
-    if (!(mg_path_stat(path, &st, NULL) && !st.is_dir && st.size == size)) {
-        snprintf(entry, sizeof(entry), "lib/%s/%s", abi ? abi : "", name);
-        for (i = 0; mg_ld_apk_at(i); i++) {
-            const mg_zip *z = mg_ld_apk_at(i);
-            const mg_zip_entry *e = mg_zip_find(z, entry);
-            size_t n = 0;
-            u8 *bytes = e ? mg_zip_read(z, e, 0x40000000u, &n) : NULL;
-            if (!e) continue;
-            if (!bytes || !mg_file_write_all(path, bytes, n)) {
-                /* No room, or it cannot be read: an empty file still says "it is there" to the class loader. */
-                mg_warn("java: %s could not be written to the app's library folder (%s)", name, bytes ? "the file could not be written" : "the APK's entry could not be read");
-                mg_file_write_all(path, "", 0);
-            }
-            free(bytes);
-            break;
-        }
-    }
-    free(path);
-}
-
 static void place_libraries(void)
 {
-    const char *data = mg_fs_internal_dir();
+    const char *data = mg_fs_internal_dir(), *abi = mg_ld_abi(), *megler_dir = megler_data_dir();
     char *guest = mg_sprintf("%s/lib", data ? data : ""), *host = data && data[0] ? mg_fs_host_path(guest) : NULL;
-    int n;
+    char *index = megler_dir && megler_dir[0] ? mg_sprintf("%s/lib-index/%s", megler_dir, J.package) : NULL;
+    const mg_zip *apks[MG_LD_MAX_APKS];
+    mg_ld_placed placed;
+    int n = 0;
     if (host && mg_path_mkdirs(host)) {
         mg_ld_add_search_dir(host);
-        n = mg_ld_apk_libs(place_one, host);
-        if (n) mg_info("java: the app's %d native librar%s (%s) %s in %s", n, n == 1 ? "y" : "ies", mg_ld_abi(), n == 1 ? "is" : "are", guest);
+        while (n < MG_LD_MAX_APKS && (apks[n] = mg_ld_apk_at(n)) != NULL) n++;
+        mg_ld_place_libs(apks, n, abi, host, index, &placed);
+        n = placed.libs;
+        if (n) {
+            char what[400];
+            int w = 0;
+            what[0] = 0;
+            if (placed.written) w += snprintf(what + w, sizeof(what) - (size_t)w, "%s%d written", w ? ", " : "", placed.written);
+            if (placed.summed) w += snprintf(what + w, sizeof(what) - (size_t)w, "%s%d summed against the APK's", w ? ", " : "", placed.summed);
+            if (placed.failed) w += snprintf(what + w, sizeof(what) - (size_t)w, "%s%d could not be written", w ? ", " : "", placed.failed);
+            if (placed.removed)
+                snprintf(what + w, sizeof(what) - (size_t)w, "%s%d of an older version's, which this one has not, removed: %s", w ? "; " : "", placed.removed,
+                         placed.removed_names);
+            mg_info("java: the app's %d native librar%s (%s) %s in %s%s%s%s", n, n == 1 ? "y" : "ies", abi, n == 1 ? "is" : "are", guest, what[0] ? " (" : "",
+                    what, what[0] ? ")" : "");
+        } else if (placed.removed) {
+            mg_info("java: the app has no native libraries now: %d of an older version's removed from %s: %s", placed.removed, guest, placed.removed_names);
+        }
     }
+    free(index);
     free(host);
     free(guest);
 }
@@ -2366,6 +2433,8 @@ static MG_HOSTCB void main_thread(void *arg)
         mg_dvm_register(mg_java_location_natives());
         mg_dvm_register(mg_java_sensors_natives());
         mg_dvm_register(mg_java_bluetooth_natives());
+        mg_java_wifi_set_host(&J.config->wifi);
+        mg_dvm_register(mg_java_wifi_natives());
         mg_java_gfx_set_host(&J.config->gfx);
         mg_java_gfx_set_present(present, NULL);
         mg_java_gfx_set_present_canvas(present_canvas, NULL);

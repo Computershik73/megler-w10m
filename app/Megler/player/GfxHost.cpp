@@ -3842,12 +3842,22 @@ KeptTextures& keptTextures() {
 struct Composition {
     struct Layer {
         Box rect;                    // where its frames go, in the window's (the views') pixels; empty: nowhere
+        int flags = 0;               // gl_place's MEGLER_GL_*: over the views, translucent, a media overlay
         void* handle = nullptr;      // the shared handle its surface's texture was opened by
         Ref<ID3D11Texture2D> shared; // ANGLE's texture of the surface, opened on this device
         Ref<IDXGIKeyedMutex> mutex;  // its keyed mutex, where ANGLE shares it with one (gecko-w10m's does)
         Ref<ID3D11Texture2D> copy;   // its last frame, copied out of it
         Ref<ID2D1Bitmap1> frame;     // the copy as Direct2D draws it: rows bottom first, alpha ignored (a frame is opaque)
+        Ref<ID2D1Bitmap1> translucent; // the same copy with its alpha, premultiplied, for a layer over the views that keeps it
     };
+    /// A layer started again for another texture: its place and flags kept, all else let go.
+    static void reset(Layer& l) {
+        const Box rect = l.rect;
+        const int flags = l.flags;
+        l = Layer();
+        l.rect = rect;
+        l.flags = flags;
+    }
     /// A TextureView's video under the views (drawTexture on the window's canvas): its picture is the id's newest in
     /// KeptTextures, rows top first, scaled to `rect`, shown where the views left `clip` open for it.
     struct Video {
@@ -3888,12 +3898,39 @@ void forgetVideo(int id) {
     }
 }
 
+/// The premultiplied picture of a translucent layer's last frame (the same
+/// copy, its alpha kept): made at its first use; NULL when it cannot be.
+ID2D1Bitmap1* translucentFrame(Composition::Layer& layer) {
+    if (layer.translucent) return layer.translucent.get();
+    if (!layer.copy) return nullptr;
+    State& s = G();
+    D3D11_TEXTURE2D_DESC desc = {};
+    layer.copy->GetDesc(&desc);
+    Ref<IDXGISurface> surface;
+    HRESULT hr = layer.copy->QueryInterface(__uuidof(IDXGISurface), reinterpret_cast<void**>(surface.put()));
+    if (SUCCEEDED(hr))
+        hr = s.gpuResource->CreateBitmapFromDxgiSurface(
+            surface.get(), D2D1::BitmapProperties1(D2D1_BITMAP_OPTIONS_NONE, D2D1::PixelFormat(desc.Format, D2D1_ALPHA_MODE_PREMULTIPLIED), 96.0f, 96.0f),
+            layer.translucent.put());
+    if (FAILED(hr)) {
+        note("gl-translucent", "an OpenGL ES frame of format %u cannot be drawn with its alpha (0x%08lX): it is drawn opaque", unsigned(desc.Format),
+             static_cast<unsigned long>(hr));
+        layer.translucent.reset();
+        return nullptr;
+    }
+    return layer.translucent.get();
+}
+
 /// With the composition's lock held: `part` of the window (the views'
 /// pixels, rows top first) composed into the window host's texture, whose
 /// rows are bottom first: the views copied in, turned over; and in each
-/// layer's rectangle that has a frame, the frame -- bottom row first already,
-/// so put in as it is, scaled to the rectangle, opaque -- with the views over
-/// it. An unchanged frame costs this and nothing else.
+/// rectangle of a layer under the views that has a frame (those without
+/// MEGLER_GL_OVERLAY first), the frame -- bottom row first already, so put
+/// in as it is, scaled to the rectangle, opaque -- with the views over it;
+/// then the videos under the views; then the frames of the layers over the
+/// views (MEGLER_GL_ABOVE), opaque or, with MEGLER_GL_TRANSLUCENT, their
+/// premultiplied colours over what is there, as Android's compositor puts a
+/// surface on top of the window. An unchanged frame costs this and nothing else.
 bool composeWindow(ID2D1Bitmap1* onto, Box part) {
     State& s = G();
     Composition& c = composition();
@@ -3919,24 +3956,25 @@ bool composeWindow(ID2D1Bitmap1* onto, Box part) {
     dc->SetPrimitiveBlend(D2D1_PRIMITIVE_BLEND_COPY);
     const D2D1_RECT_F whole = D2D1::RectF(float(part.l), float(part.t), float(part.r), float(part.b));
     dc->DrawBitmap(c.views.get(), &whole, 1.0f, D2D1_INTERPOLATION_MODE_NEAREST_NEIGHBOR, &whole, nullptr);
-    for (Composition::Layer& layer : c.layers) {
-        if (!layer.frame || layer.rect.empty()) continue;
-        Box b = layer.rect;
-        b.intersect(part);
-        if (b.empty()) continue;
-        dc->SetTransform(Matrix3x2F::Identity());
-        dc->PushAxisAlignedClip(D2D1::RectF(float(b.l), h - float(b.b), float(b.r), h - float(b.t)), D2D1_ANTIALIAS_MODE_ALIASED);
-        const D2D1_RECT_F at = D2D1::RectF(float(layer.rect.l), h - float(layer.rect.b), float(layer.rect.r), h - float(layer.rect.t));
-        dc->DrawBitmap(layer.frame.get(), &at, 1.0f, D2D1_INTERPOLATION_MODE_NEAREST_NEIGHBOR, nullptr, nullptr);
-        dc->PopAxisAlignedClip();
-        dc->SetTransform(turned);
-        const D2D1_RECT_F over = D2D1::RectF(float(b.l), float(b.t), float(b.r), float(b.b));
-        dc->PushAxisAlignedClip(over, D2D1_ANTIALIAS_MODE_ALIASED);
-        dc->SetPrimitiveBlend(D2D1_PRIMITIVE_BLEND_SOURCE_OVER);
-        dc->DrawBitmap(c.views.get(), &over, 1.0f, D2D1_INTERPOLATION_MODE_NEAREST_NEIGHBOR, &over, nullptr);
-        dc->SetPrimitiveBlend(D2D1_PRIMITIVE_BLEND_COPY);
-        dc->PopAxisAlignedClip();
-    }
+    for (int pass = 0; pass < 2; pass++)
+        for (Composition::Layer& layer : c.layers) {
+            if (!layer.frame || layer.rect.empty() || (layer.flags & MEGLER_GL_ABOVE) || ((layer.flags & MEGLER_GL_OVERLAY) != 0) != (pass == 1)) continue;
+            Box b = layer.rect;
+            b.intersect(part);
+            if (b.empty()) continue;
+            dc->SetTransform(Matrix3x2F::Identity());
+            dc->PushAxisAlignedClip(D2D1::RectF(float(b.l), h - float(b.b), float(b.r), h - float(b.t)), D2D1_ANTIALIAS_MODE_ALIASED);
+            const D2D1_RECT_F at = D2D1::RectF(float(layer.rect.l), h - float(layer.rect.b), float(layer.rect.r), h - float(layer.rect.t));
+            dc->DrawBitmap(layer.frame.get(), &at, 1.0f, D2D1_INTERPOLATION_MODE_NEAREST_NEIGHBOR, nullptr, nullptr);
+            dc->PopAxisAlignedClip();
+            dc->SetTransform(turned);
+            const D2D1_RECT_F over = D2D1::RectF(float(b.l), float(b.t), float(b.r), float(b.b));
+            dc->PushAxisAlignedClip(over, D2D1_ANTIALIAS_MODE_ALIASED);
+            dc->SetPrimitiveBlend(D2D1_PRIMITIVE_BLEND_SOURCE_OVER);
+            dc->DrawBitmap(c.views.get(), &over, 1.0f, D2D1_INTERPOLATION_MODE_NEAREST_NEIGHBOR, &over, nullptr);
+            dc->SetPrimitiveBlend(D2D1_PRIMITIVE_BLEND_COPY);
+            dc->PopAxisAlignedClip();
+        }
     // And the videos under the views: each newest picture (rows top first, so drawn turned as the views are), smoothly
     // scaled to its rectangle, in the part the views left open, then the views over it there.
     if (!c.videos.empty()) {
@@ -3964,6 +4002,21 @@ bool composeWindow(ID2D1Bitmap1* onto, Box part) {
             dc->SetPrimitiveBlend(D2D1_PRIMITIVE_BLEND_COPY);
             dc->PopAxisAlignedClip();
         }
+    }
+    // And the layers over the views, in their order: a surface on top of the window (Flutter's whole interface, over a map).
+    for (Composition::Layer& layer : c.layers) {
+        if (!layer.frame || layer.rect.empty() || !(layer.flags & MEGLER_GL_ABOVE)) continue;
+        Box b = layer.rect;
+        b.intersect(part);
+        if (b.empty()) continue;
+        ID2D1Bitmap1* frame = (layer.flags & MEGLER_GL_TRANSLUCENT) ? translucentFrame(layer) : nullptr;
+        dc->SetTransform(Matrix3x2F::Identity());
+        dc->SetPrimitiveBlend(frame ? D2D1_PRIMITIVE_BLEND_SOURCE_OVER : D2D1_PRIMITIVE_BLEND_COPY);
+        dc->PushAxisAlignedClip(D2D1::RectF(float(b.l), h - float(b.b), float(b.r), h - float(b.t)), D2D1_ANTIALIAS_MODE_ALIASED);
+        const D2D1_RECT_F at = D2D1::RectF(float(layer.rect.l), h - float(layer.rect.b), float(layer.rect.r), h - float(layer.rect.t));
+        dc->DrawBitmap(frame ? frame : layer.frame.get(), &at, 1.0f, D2D1_INTERPOLATION_MODE_NEAREST_NEIGHBOR, nullptr, nullptr);
+        dc->PopAxisAlignedClip();
+        dc->SetPrimitiveBlend(D2D1_PRIMITIVE_BLEND_COPY);
     }
     dc->SetPrimitiveBlend(D2D1_PRIMITIVE_BLEND_SOURCE_OVER);
     const HRESULT hr = dc->EndDraw();
@@ -4030,12 +4083,12 @@ bool glFrame(void*, int layer, void* handle, int width, int height) {
         c.layered = true;
         Composition::Layer& l = c.layers[layer];
         if (l.handle != handle || !l.shared || !l.frame) {
-            l = Composition::Layer{l.rect};
+            Composition::reset(l);
             HRESULT hr = s.d3d->OpenSharedResource(handle, __uuidof(ID3D11Texture2D), reinterpret_cast<void**>(l.shared.put()));
             if (FAILED(hr)) {
                 note("gl-shared", "an OpenGL ES surface's texture could not be opened by its shared handle (0x%08lX): the core composes the window",
                      static_cast<unsigned long>(hr));
-                l = Composition::Layer{l.rect};
+                Composition::reset(l);
                 return;
             }
             D3D11_TEXTURE2D_DESC desc = {};
@@ -4061,7 +4114,7 @@ bool glFrame(void*, int layer, void* handle, int width, int height) {
             if (FAILED(hr)) {
                 note("gl-frame", "an OpenGL ES frame of format %u cannot be drawn here (0x%08lX): the core composes the window", unsigned(desc.Format),
                      static_cast<unsigned long>(hr));
-                l = Composition::Layer{l.rect};
+                Composition::reset(l);
                 return;
             }
             l.handle = handle;
@@ -4314,10 +4367,11 @@ void drawTexture(void*, void* canvas, int id, float l, float t, float r, float b
     });
 }
 
-/// megler_gfx_host.gl_place: where a layer's frames go; nowhere, and its frame
-/// dropped, for width 0. What it covered and covers now is composed again
-/// at the next showing.
-void glPlace(void*, int layer, int x, int y, int width, int height) {
+/// megler_gfx_host.gl_place: where a layer's frames go, and how (MEGLER_GL_*:
+/// under the views or over them, opaque or translucent); nowhere, and its
+/// frame dropped, for width 0. What it covered and covers now is composed
+/// again at the next showing.
+void glPlace(void*, int layer, int x, int y, int width, int height, int flags) {
     if (layer < 0 || layer >= 8) return;
     guarded("gl_place", [&] {
         Composition& c = composition();
@@ -4330,6 +4384,7 @@ void glPlace(void*, int layer, int x, int y, int width, int height) {
             l.rect.t = y;
             l.rect.r = x + width;
             l.rect.b = y + height;
+            l.flags = flags;
             c.pending.include(l.rect);
         } else {
             l = Composition::Layer();
@@ -6617,6 +6672,98 @@ void textBounds(void*, const uint16_t* text, int count, const megler_gfx_paint* 
     });
 }
 
+/// What DirectWrite gives of a run's glyph outlines (GetGlyphRunOutline: lines
+/// and cubics, each figure closed), written as draw_path's stream through the
+/// matrix that places the run, for text_path.
+class OutlineWriter final : public ID2D1SimplifiedGeometrySink, public Counted {
+public:
+    explicit OutlineWriter(std::vector<float>* out) : out_(out) {}
+    HRESULT STDMETHODCALLTYPE QueryInterface(REFIID iid, void** out) override {
+        if (!out) return E_POINTER;
+        if (iid == __uuidof(IUnknown) || iid == __uuidof(ID2D1SimplifiedGeometrySink)) {
+            *out = static_cast<ID2D1SimplifiedGeometrySink*>(this);
+            addRef();
+            return S_OK;
+        }
+        *out = nullptr;
+        return E_NOINTERFACE;
+    }
+    ULONG STDMETHODCALLTYPE AddRef() override { return addRef(); }
+    ULONG STDMETHODCALLTYPE Release() override { return release(); }
+    void STDMETHODCALLTYPE SetFillMode(D2D1_FILL_MODE) override {}
+    void STDMETHODCALLTYPE SetSegmentFlags(D2D1_PATH_SEGMENT) override {}
+    void STDMETHODCALLTYPE BeginFigure(D2D1_POINT_2F start, D2D1_FIGURE_BEGIN) override { put(MEGLER_GFX_PATH_MOVE, &start, 1); }
+    void STDMETHODCALLTYPE AddLines(const D2D1_POINT_2F* points, UINT32 count) override {
+        for (UINT32 i = 0; i < count; i++) put(MEGLER_GFX_PATH_LINE, &points[i], 1);
+    }
+    void STDMETHODCALLTYPE AddBeziers(const D2D1_BEZIER_SEGMENT* beziers, UINT32 count) override {
+        for (UINT32 i = 0; i < count; i++) {
+            const D2D1_POINT_2F points[3] = {beziers[i].point1, beziers[i].point2, beziers[i].point3};
+            put(MEGLER_GFX_PATH_CUBIC, points, 3);
+        }
+    }
+    void STDMETHODCALLTYPE EndFigure(D2D1_FIGURE_END end) override {
+        if (end == D2D1_FIGURE_END_CLOSED) put(MEGLER_GFX_PATH_CLOSE, nullptr, 0);
+    }
+    HRESULT STDMETHODCALLTYPE Close() override { return S_OK; }
+    /// Where the next run's glyphs go.
+    void place(const Matrix3x2F& m) { m_ = m; }
+    /// Whether memory ran out on the way (COM's calls cannot throw).
+    bool short_() const { return short_of_memory_; }
+
+private:
+    void put(int verb, const D2D1_POINT_2F* points, int n) {
+        if (short_of_memory_) return;
+        try {
+            out_->push_back(float(verb));
+            for (int i = 0; i < n; i++) {
+                const D2D1_POINT_2F p = m_.TransformPoint(points[i]);
+                out_->push_back(p.x);
+                out_->push_back(p.y);
+            }
+        } catch (const std::bad_alloc&) {
+            short_of_memory_ = true;
+        }
+    }
+    std::vector<float>* out_;
+    Matrix3x2F m_ = Matrix3x2F::Identity();
+    bool short_of_memory_ = false;
+};
+
+/// The run's glyph outlines where draw_text would draw the run (megler.h, text_path): each run of glyphs through the
+/// matrix drawText places it by, the outlines being what DirectWrite's own drawing of a stroked glyph strokes.
+bool textPath(void*, const uint16_t* text, int count, float x, float y, const megler_gfx_paint* given, void* typeface, megler_gfx_write write, void* sink) {
+    bool given_ = false;
+    if (!given || !write) return false;
+    guarded("text_path", [&] {
+        const megler_gfx_paint paint = checked(*given);
+        if (!sane(x) || !sane(y)) return;
+        std::shared_ptr<Shaped> shaped = shapedRun(typeface, paint, text, count);
+        if (!shaped) return;
+        const float sx = scaleOf(paint), skew = paint.text_skew_x;
+        const float width = shaped->width * sx;
+        if (paint.text_align == MEGLER_GFX_ALIGN_CENTER) x -= width / 2;
+        else if (paint.text_align == MEGLER_GFX_ALIGN_RIGHT) x -= width;
+        const Matrix3x2F textMatrix(sx, 0, skew, 1, x, y);
+        std::vector<float> stream;
+        Ref<OutlineWriter> writer;
+        writer.attach(new OutlineWriter(&stream));
+        for (const TextRun& run : shaped->plain) {
+            writer->place(Matrix3x2F::Translation(run.x, run.y) * textMatrix);
+            const HRESULT hr = run.face->GetGlyphRunOutline(run.em, run.glyphs.data(), run.advances.empty() ? nullptr : run.advances.data(),
+                                                            run.offsets.empty() ? nullptr : run.offsets.data(), UINT32(run.glyphs.size()), run.sideways,
+                                                            (run.bidi & 1) != 0, writer.get());
+            if (FAILED(hr)) {
+                failed("IDWriteFontFace::GetGlyphRunOutline", hr);
+                return;
+            }
+        }
+        if (writer->short_()) throw std::bad_alloc();
+        given_ = stream.empty() || write(sink, stream.data(), stream.size() * sizeof(float));
+    });
+    return given_;
+}
+
 /// How many code units of the first `length` of a run fit in `maxWidth`, by
 /// characters or by words (megler.h, text_break). `whole`: these units are all
 /// there is of the line, so its end is a place a line may end. `more` is set
@@ -7470,6 +7617,7 @@ megler_gfx_host GfxHost::callbacks() {
     host.text_bounds = &textBounds;
     host.text_break = &textBreak;
     host.text_widths = &textWidths;
+    host.text_path = &textPath;
     host.typeface_create = &typefaceCreate;
     host.typeface_derive = &typefaceDerive;
     host.typeface_from_data = &typefaceFromData;

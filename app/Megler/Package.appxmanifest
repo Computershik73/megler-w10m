@@ -161,6 +161,12 @@
          BLUETOOTH_CONNECT. Windows asks nothing for it; its privacy
          settings ("other devices") can refuse it. -->
     <DeviceCapability Name="bluetooth" />
+    <!-- The Wi-Fi networks around the phone for an Android app's
+         WifiManager (player/WifiHost.cpp: Windows.Devices.WiFi's scans),
+         which Android gives an app that may have the location, and which
+         Google Play services in the app finds the phone's location from.
+         Windows asks nothing for it. -->
+    <DeviceCapability Name="wiFiControl" />
   </Capabilities>
 
   <!-- The folder every package of this publisher shares (ApplicationData.

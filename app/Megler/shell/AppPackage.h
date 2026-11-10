@@ -79,6 +79,9 @@ void logSharedSpace();
 /// Google Play services' APK an app starts with: microG's when `microg` and it is registered, else Google's own, else
 /// microG's; nothing when neither is. Each kind is registered apart (registerServiceApk), the last installed of each.
 std::wstring serviceApk(bool microg = false);
+/// The folder of the splits of that APK (serviceApk's), which registerServiceApk copies beside it: Google's own from Play
+/// Store is a base and splits of the phone's density and languages. Empty when it has none.
+std::wstring serviceSplits(const std::wstring& apk);
 /// Whether a microG's Google Play services is registered.
 bool hasMicroG();
 /// microG's GmsCore.apk: the one registered by microG's own package, else the one published in the shared folder; empty when none.
@@ -98,6 +101,7 @@ struct Made {
     std::string identity;      // its identity name
     std::string fullName;      // its full name once installed: the name of its install folder
     std::wstring apkFolder;    // the folder of the shared folder its app's APK is in, relative to it: apks\<identity>\<token>
+    std::string version;       // the package's own version, "0.1.682.0" (appPackageVersion)
     std::string error;         // set when it was not made
 };
 /// Makes the package of `entry` (`picked`: the APK picked where it is, which entry's path names for the core). Its APK, splits,
@@ -106,8 +110,18 @@ struct Made {
 /// and the folder beside the package made (shell/SharedApks.h). Slow (copies Android's files once per build and the APK
 /// once): off the UI thread. The first package made of an app takes the app's data in Megler along: its part of Android's
 /// storage to the shared one, its private files to the shared folder's handover\<package>, for takeHandover. `progress` is
-/// told each step.
-Made make(const ApkEntry& entry, const std::function<void(const std::string&)>& progress, const PickedFile* picked = nullptr);
+/// told each step. `installedVersion` is the package version of the app's package installed now, if any: a package made
+/// again by the same Megler (the app updated in it, through Aurora Store or Google Play) gets the next version of that
+/// build (appPackageVersion), as Windows refuses a package of an installed package's version with other contents.
+Made make(const ApkEntry& entry, const std::function<void(const std::string&)>& progress, const PickedFile* picked = nullptr,
+          const std::string& installedVersion = {});
+/// The version of an app's own package this Megler makes: "<major>.<minor>.<its build>.<n>", n one more than that of
+/// `installedVersion` when this build made that one, else 0. Megler's own version is "<major>.<minor>.0.<build>": the build
+/// goes up a place, so that each build's packages stay newer than every package an earlier build made, and a build may make
+/// an app's package again. (Until 0.1.0.681 an app's package had Megler's version: an app updated in Megler -- Aurora
+/// Store's update of Max, 0.1.0.681 -- made a package of the same version with other contents, which Windows refused,
+/// 0x80073CFB "the provided package has the same identity as an already-installed package but the contents are different".)
+std::string appPackageVersion(const std::string& installedVersion);
 
 /// What an install or an uninstall did: whether it was done, and what Windows (on an Xbox, the console's Device Portal) said,
 /// or why it was not done.
@@ -147,18 +161,26 @@ bool untrustedCertificate(const std::string& said);
 
 /// An app's own package installed on the phone.
 struct InstalledApp {
-    std::string identity;  // its identity name, "MeglerApp...." (megler_appx_app_identity)
-    std::string version;   // its version, which is that of the Megler that made it: "0.1.0.358"
-    std::string fullName;  // its full name, which it is uninstalled by
+    std::string identity;        // its identity name, "MeglerApp...." (megler_appx_app_identity)
+    std::string version;         // the version of the Megler that made it: "0.1.0.358" (madeByVersion of packageVersion)
+    std::string fullName;        // its full name, which it is uninstalled by
+    std::string packageVersion;  // the package's own version: "0.1.682.1" since 0.1.0.682 (appPackageVersion), else as version
 };
-/// The apps' own packages of Megler's publisher installed on the phone, as Windows's package manager lists them (the
-/// restricted capability packageQuery; on an Xbox, as the console's Device Portal lists them); false, with why, when they
-/// could not be listed. `reachable` is told as soon as the lister has answered at all, before a list that takes its time.
+/// The apps' own packages of Megler's publisher installed on the phone; false, with why, when they could not be listed.
+/// Windows's package manager lists them (the restricted capability packageQuery, which a phone grants only with its
+/// interop unlock's capability part), and where it refuses Megler, as the Store's and a company hub's apps list theirs:
+/// Windows.Phone.Management.Deployment's InstallationManager (FindPackagesForCurrentPublisher: no capability); on an Xbox,
+/// the console's Device Portal. `reachable` is told as soon as the lister has answered at all, before a list that takes its time.
 /// Off the UI thread.
 bool installedApps(std::vector<InstalledApp>& out, std::string& error, const std::function<void()>& reachable = {});
 /// What lists, installs and uninstalls the apps' packages here, for a sentence: "Windows's package manager", on an Xbox
 /// "the Xbox's Device Portal".
 std::string packageLister();
+/// The version of the Megler that made a package of version `packageVersion`. An app's own package made by Megler 0.1.0.682
+/// or later is "<major>.<minor>.<Megler's build>.<n>", the n-th package of the app that build made (appPackageVersion), and
+/// was made by "<major>.<minor>.0.<Megler's build>"; Megler's own package, and an app's made before 682, are the version as
+/// it is.
+std::string madeByVersion(const std::string& packageVersion);
 /// Uninstalls one by Windows's package manager (packageManagement; on an Xbox, through its Device Portal): the package goes,
 /// with the app's own LocalState; what it has in the shared folder stays. Off the UI thread.
 InstallResult uninstall(const InstalledApp& app);
@@ -173,7 +195,7 @@ bool portalWantsSignIn();
 std::string portalHelp();
 #endif
 
-/// This Megler's version, "0.1.0.358": the version of every package it makes.
+/// This Megler's version, "0.1.0.358" (in an app's own package, that of the Megler that made it: madeByVersion).
 std::string meglerVersion();
 /// Whether version `a` ("0.1.0.354") is older than `b` ("0.1.0.358").
 bool olderVersion(const std::string& a, const std::string& b);

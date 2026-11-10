@@ -53,6 +53,8 @@ public class ConnectivityManager {
     public void registerDefaultNetworkCallback(NetworkCallback cb, android.os.Handler h) { announce(null, cb, h); }
     public void requestNetwork(NetworkRequest r, NetworkCallback cb) { announce(r, cb, null); }
     public void requestNetwork(NetworkRequest r, NetworkCallback cb, int timeout) { announce(r, cb, null); }
+    /* Android 12's, which Google Play services' network location follows the network by (NetworkConnectionMonitor): as the others, where it did nothing. */
+    public void registerBestMatchingNetworkCallback(NetworkRequest r, NetworkCallback cb, android.os.Handler h) { announce(r, cb, h); }
     public void unregisterNetworkCallback(NetworkCallback cb) {}
     public void addDefaultNetworkActiveListener(OnNetworkActiveListener l) {}
     public void removeDefaultNetworkActiveListener(OnNetworkActiveListener l) {}
@@ -249,7 +251,6 @@ public class ConnectivityManager {
     public boolean isNetworkSupported(int p0) { return false; }
     public boolean isTetheringSupported() { return false; }
     public boolean isUidNetworkingBlocked(int p0, boolean p1) { return false; }
-    public void registerBestMatchingNetworkCallback(android.net.NetworkRequest p0, android.net.ConnectivityManager.NetworkCallback p1, android.os.Handler p2) {}
     public void registerDefaultNetworkCallbackForUid(int p0, android.net.ConnectivityManager.NetworkCallback p1, android.os.Handler p2) { announce(null, p1, p2); }
     public void registerNetworkCallback(android.net.NetworkRequest p0, android.app.PendingIntent p1) {}
     public void registerQuicConnectionClosePayload(android.os.ParcelFileDescriptor p0, byte[] p1) {}

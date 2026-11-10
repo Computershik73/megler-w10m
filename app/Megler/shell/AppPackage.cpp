@@ -10,6 +10,7 @@
 #include "shell/DevicePortal.h"
 #endif
 #include "shell/Files.h"
+#include "shell/PackageVersions.h"
 #include "shell/PickedFile.h"
 #include "shell/Placement.h"
 #include "shell/Platform.h"
@@ -51,10 +52,33 @@ std::string iniValue(const std::string& text, const char* key) {
     return {};
 }
 
-std::string versionString() {
+/// `xml` (a package's manifest) with its Identity's Version set to `version`; empty where it has none.
+std::string withIdentityVersion(const std::string& xml, const std::string& version) {
+    size_t tag = xml.find("<Identity");
+    while (tag != std::string::npos && tag + 9 < xml.size() && xml[tag + 9] != ' ' && xml[tag + 9] != '\t' && xml[tag + 9] != '\r' &&
+           xml[tag + 9] != '\n')
+        tag = xml.find("<Identity", tag + 9);
+    if (tag == std::string::npos) return {};
+    const size_t end = xml.find('>', tag);
+    if (end == std::string::npos) return {};
+    for (size_t at = xml.find("Version=\"", tag); at != std::string::npos && at < end; at = xml.find("Version=\"", at + 9)) {
+        const char before = xml[at - 1];
+        if (before != ' ' && before != '\t' && before != '\r' && before != '\n') continue; // (not MinVersion and the like)
+        const size_t value = at + 9, close = xml.find('"', value);
+        if (close == std::string::npos || close > end) return {};
+        return xml.substr(0, value) + version + xml.substr(close);
+    }
+    return {};
+}
+
+/// This package's own version, as Windows has it.
+std::string ownPackageVersion() {
     const auto v = Package::Current().Id().Version();
     return format("%u.%u.%u.%u", unsigned(v.Major), unsigned(v.Minor), unsigned(v.Build), unsigned(v.Revision));
 }
+
+/// The version of the Megler this is, or that made this app's own package (madeByVersion).
+std::string versionString() { return madeByVersion(ownPackageVersion()); }
 
 bool sameName(const std::wstring& a, const wchar_t* b) { return _wcsicmp(a.c_str(), b) == 0; }
 
@@ -220,7 +244,8 @@ std::string describeCapabilities(int capabilities) {
                  {MEGLER_APPX_CAP_VIDEOS, "the videos library"},     {MEGLER_APPX_CAP_MUSIC, "the music library"},
                  {MEGLER_APPX_CAP_WEBCAM, "the camera"},             {MEGLER_APPX_CAP_MICROPHONE, "the microphone"},
                  {MEGLER_APPX_CAP_LOCATION, "the location"},         {MEGLER_APPX_CAP_CHAT, "text messages"},
-                 {MEGLER_APPX_CAP_CALL_HISTORY, "the call history"}};
+                 {MEGLER_APPX_CAP_CALL_HISTORY, "the call history"}, {MEGLER_APPX_CAP_BLUETOOTH, "Bluetooth"},
+                 {MEGLER_APPX_CAP_WIFI, "the Wi-Fi networks around"}};
     std::string out;
     for (const auto& n : names)
         if (capabilities & n.cap) out += (out.empty() ? "" : ", ") + std::string(n.what);
@@ -534,7 +559,8 @@ std::string keepInShared(const ApkEntry& entry, const std::string& identity, con
 
 }  // namespace
 
-Made make(const ApkEntry& entry, const std::function<void(const std::string&)>& progress, const PickedFile* picked) {
+Made make(const ApkEntry& entry, const std::function<void(const std::string&)>& progress, const PickedFile* picked,
+          const std::string& installedVersion) {
     Made made;
     auto fail = [&made](std::string why) {
         made.error = std::move(why);
@@ -669,16 +695,22 @@ Made make(const ApkEntry& entry, const std::function<void(const std::string&)>& 
     char* manifest = megler_appx_app_manifest(meglerManifest.c_str(), r.package.c_str(), label.c_str(), logos.empty() ? nullptr : "transparent",
                                             nullptr, capabilities, err, sizeof(err));
     if (!manifest) return fail(std::string("The manifest could not be made: ") + err);
-    const std::string manifestText(manifest);
+    // Megler's manifest carries Megler's version: the app's package has one of its own (appPackageVersion).
+    made.version = appPackageVersion(installedVersion);
+    const std::string manifestText = withIdentityVersion(manifest, made.version);
     megler_free(manifest);
+    if (manifestText.empty()) return fail("Megler's manifest has no Identity Version to give the app's package a version of its own.");
+    if (!installedVersion.empty())
+        shellLog::write("app package: " + r.package + "'s package is " + made.version + ", the installed one " + installedVersion);
     char identity[64] = {};
     megler_appx_app_identity(r.package.c_str(), identity, sizeof(identity));
     made.identity = identity;
     {
-        // Its full name as Megler's is made: "<name>_<version>_<processor>__<publisher id>", the version Megler's.
+        // Its full name as Megler's is made: "<name>_<version>_<processor>__<publisher id>", the version the package's own.
         const auto id = Package::Current().Id();
         const std::string meglerFull = narrow(std::wstring(id.FullName())), meglerName = narrow(std::wstring(id.Name()));
-        made.fullName = identity + std::string("_") + version + meglerFull.substr(std::min(meglerFull.size(), meglerName.size() + 1 + version.size()));
+        made.fullName = identity + std::string("_") + made.version +
+                        meglerFull.substr(std::min(meglerFull.size(), meglerName.size() + 1 + ownPackageVersion().size()));
     }
 
     // resources.pri: XAML wants one whose resource map has the package's name. Megler carries one made for a placeholder
@@ -719,35 +751,42 @@ Made make(const ApkEntry& entry, const std::function<void(const std::string&)>& 
     if (!sharedApks::recordMade(folder, made.fullName))
         return fail(format("The record of the package beside its APK in the shared folder could not be written (error %lu).", GetLastError()));
 
-    progress(format("Packing %u files of Megler…", unsigned(parts.size())));
-    megler_appx* a = megler_appx_begin(narrow(made.appx).c_str(), err, sizeof(err));
-    if (!a) return fail(std::string("The package could not be begun: ") + err);
-    // And beside the package's file, which Windows's own installer may install whenever the user hands it the file: the folder
-    // its app reads, kept while it waits. Written once the file is begun (a package Windows's installer holds open is not
-    // begun again, and keeps the record it had); one that cannot be written goes, and every folder the app's package may read
-    // is kept meanwhile, as for a package made before records.
-    if (!sharedApks::recordWaiting(made.appx, made.apkFolder, made.fullName)) {
-        shellLog::write(format("app package: %s.txt could not be written (error %lu): while the package waits, every folder of the app's "
-                               "APKs it may read is kept",
-                               narrow(made.appx).c_str(), GetLastError()));
-        files::remove(made.appx + L".txt");
+    for (int attempt = 0;; attempt++) {
+        progress(format("Packing %u files of Megler…", unsigned(parts.size())));
+        megler_appx* a = megler_appx_begin(narrow(made.appx).c_str(), err, sizeof(err));
+        if (!a) return fail(std::string("The package could not be begun: ") + err);
+        // And beside the package's file, which Windows's own installer may install whenever the user hands it the file: the folder
+        // its app reads, kept while it waits. Written once the file is begun (a package Windows's installer holds open is not
+        // begun again, and keeps the record it had); one that cannot be written goes, and every folder the app's package may read
+        // is kept meanwhile, as for a package made before records.
+        if (!sharedApks::recordWaiting(made.appx, made.apkFolder, made.fullName)) {
+            shellLog::write(format("app package: %s.txt could not be written (error %lu): while the package waits, every folder of the app's "
+                                   "APKs it may read is kept",
+                                   narrow(made.appx).c_str(), GetLastError()));
+            files::remove(made.appx + L".txt");
+        }
+        // (A failure on the way makes the rest fail at once; finish says what it was.)
+        for (const auto& [name, path] : parts) {
+            bool drawn = false;
+            for (const auto& logo : logos) drawn = drawn || _stricmp(logo.first.c_str(), name.c_str()) == 0;
+            if (!drawn) megler_appx_add_file(a, name.c_str(), narrow(path).c_str());
+        }
+        for (const auto& [name, png] : logos) megler_appx_add_data(a, name.c_str(), png.data(), png.size());
+        megler_appx_add_data(a, "AppxManifest.xml", manifestText.data(), manifestText.size());
+        megler_appx_add_data(a, "resources.pri", pri.data(), pri.size());
+        // (megler=: the Megler the app hands APKs to and starts others through, by its package family name -- a test identity's is
+        // not the release's.)
+        const std::string ini = "package=" + r.package + "\r\nlabel=" + label + "\r\napk=shared:" + narrow(made.apkFolder) + "\r\nroot=android\\" +
+                                androidRootName() + "\r\nmegler=" + narrow(std::wstring(Package::Current().Id().FamilyName())) + "\r\n";
+        megler_appx_add_data(a, "MeglerApp.ini", ini.data(), ini.size());
+        progress("Signing the package…");
+        if (megler_appx_finish(a, key, err, sizeof(err))) break;
+        // (A file of Megler's own that could not be read at that moment -- on an Xbox one another partition has mapped -- is
+        // tried again a moment later: the package begun again, twice at most.)
+        if (attempt == 2 || !strstr(err, "reading ")) return fail(std::string("The package could not be made: ") + err);
+        shellLog::write(std::string("app package: packing again in a second: ") + err);
+        std::this_thread::sleep_for(std::chrono::seconds(1));
     }
-    // (A failure on the way makes the rest fail at once; finish says what it was.)
-    for (const auto& [name, path] : parts) {
-        bool drawn = false;
-        for (const auto& logo : logos) drawn = drawn || _stricmp(logo.first.c_str(), name.c_str()) == 0;
-        if (!drawn) megler_appx_add_file(a, name.c_str(), narrow(path).c_str());
-    }
-    for (const auto& [name, png] : logos) megler_appx_add_data(a, name.c_str(), png.data(), png.size());
-    megler_appx_add_data(a, "AppxManifest.xml", manifestText.data(), manifestText.size());
-    megler_appx_add_data(a, "resources.pri", pri.data(), pri.size());
-    // (megler=: the Megler the app hands APKs to and starts others through, by its package family name -- a test identity's is
-    // not the release's.)
-    const std::string ini = "package=" + r.package + "\r\nlabel=" + label + "\r\napk=shared:" + narrow(made.apkFolder) + "\r\nroot=android\\" +
-                            androidRootName() + "\r\nmegler=" + narrow(std::wstring(Package::Current().Id().FamilyName())) + "\r\n";
-    megler_appx_add_data(a, "MeglerApp.ini", ini.data(), ini.size());
-    progress("Signing the package…");
-    if (!megler_appx_finish(a, key, err, sizeof(err))) return fail(std::string("The package could not be made: ") + err);
     shellLog::write("app package: " + narrow(made.appx) + " made, " + formattedByteCount(files::size(made.appx)) + ", for " + r.package);
     // The data handed over once: said only now, so that a make that failed hands it over again.
     if (handOver && (!files::makeDirectories(inShared) || !files::write(handedOver, "Megler " + version + " handed over " + r.package + "'s data in Megler\r\n")))
@@ -781,6 +820,169 @@ Made make(const ApkEntry& entry, const std::function<void(const std::string&)>& 
  * (InstallResult::accessDenied), and the shell says what to do (accessDeniedText).
  */
 namespace {
+
+/// Whether the flag file LocalState\flags\<name> is there (ui/UiShots.h): for a test of the way that is not taken first.
+bool flagSet(const wchar_t* name) { return files::exists(platform::localStateDirectory() + L"\\flags\\" + name); }
+
+#if !defined(MEGLER_XBOX)
+/*
+ * Windows.Phone.Management.Deployment.InstallationManager, the phone's own: the Store's way, and a company hub's, to the
+ * packages of its own publisher. Declared here from the phone contract's metadata (winmdidl's IDL of
+ * Windows.Phone.PhoneContract.winmd), as player/AudioHost.cpp declares AudioRoutingManager: the SDK's C++/WinRT headers have
+ * no projection of the contract. Not on a PC, which has no such class.
+ */
+struct __declspec(uuid("929AA738-8D49-42AC-80C9-B4AD793C43F2")) __declspec(novtable) IInstallationManagerStatics : ::IInspectable {
+    virtual HRESULT __stdcall AddPackageAsync(HSTRING title, void* sourceLocation, void** operation) = 0;
+    virtual HRESULT __stdcall AddPackagePreloadedAsync(HSTRING title, void* sourceLocation, HSTRING instanceId, HSTRING offerId, void* license,
+                                                       void** operation) = 0;
+    virtual HRESULT __stdcall GetPendingPackageInstalls(void** items) = 0;
+    virtual HRESULT __stdcall FindPackagesForCurrentPublisher(void** items) = 0;
+    virtual HRESULT __stdcall FindPackages(void** items) = 0;
+};
+
+/// The packages of this app's publisher, as InstallationManager lists them; false, with why, where it would not.
+bool publisherPackages(std::vector<Package>& out, std::string& why) {
+    out.clear();
+    try {
+        const winrt::hstring name = L"Windows.Phone.Management.Deployment.InstallationManager";
+        winrt::com_ptr<IInstallationManagerStatics> statics;
+        HRESULT hr = RoGetActivationFactory(static_cast<HSTRING>(winrt::get_abi(name)), __uuidof(IInstallationManagerStatics), statics.put_void());
+        if (FAILED(hr) || !statics) {
+            why = format("there is no InstallationManager (0x%08X)", unsigned(hr));
+            return false;
+        }
+        void* items = nullptr;
+        hr = statics->FindPackagesForCurrentPublisher(&items);
+        if (FAILED(hr) || !items) {
+            why = format("FindPackagesForCurrentPublisher failed (0x%08X)", unsigned(hr));
+            return false;
+        }
+        const winrt::Windows::Foundation::Collections::IIterable<Package> packages{items, winrt::take_ownership_from_abi};
+        for (auto const& package : packages) out.push_back(package);
+        return true;
+    } catch (hresult_error const& e) {
+        why = format("0x%08X %s", unsigned(e.code()), narrow(e.message()).c_str());
+        return false;
+    }
+}
+
+struct __declspec(uuid("7C6C2CBD-FA4A-4C8E-AB97-D959452F19E5")) __declspec(novtable) IInstallationManagerStatics2 : ::IInspectable {
+    virtual HRESULT __stdcall RemovePackageAsync(HSTRING packageFullName, uint32_t removalOptions, void** operation) = 0;
+    virtual HRESULT __stdcall RegisterPackageAsync(void* manifestUri, void* dependencyPackageUris, uint32_t deploymentOptions, void** operation) = 0;
+    virtual HRESULT __stdcall FindPackagesByNamePublisher(HSTRING packageName, HSTRING packagePublisher, void** items) = 0;
+};
+struct __declspec(uuid("33E8EED5-0F7E-4473-967C-7D6E1C0E7DE1")) __declspec(novtable) IPackageInstallResult : ::IInspectable {
+    virtual HRESULT __stdcall get_ProductId(HSTRING* value) = 0;
+    virtual HRESULT __stdcall get_InstallState(int32_t* value) = 0; // Windows.Management.Deployment.PackageInstallState
+};
+struct __declspec(uuid("7149D909-3FF9-41ED-A717-2BC65FFC61D2")) __declspec(novtable) IPackageInstallResult2 : ::IInspectable {
+    virtual HRESULT __stdcall get_ErrorText(HSTRING* value) = 0;
+};
+/// IAsyncOperationWithProgress<PackageInstallResult, UInt32>'s own methods, after IInspectable's, as its ABI lays them out.
+struct __declspec(novtable) IInstallOperation : ::IInspectable {
+    virtual HRESULT __stdcall put_Progress(void* handler) = 0;
+    virtual HRESULT __stdcall get_Progress(void** handler) = 0;
+    virtual HRESULT __stdcall put_Completed(void* handler) = 0;
+    virtual HRESULT __stdcall get_Completed(void** handler) = 0;
+    virtual HRESULT __stdcall GetResults(void** results) = 0;
+};
+
+/// InstallationManager's operation `raw` (taken over) waited for: true when it ended with the package installed (or
+/// removed, `removing`); else false, and what it said in `said`.
+bool waitInstallation(void* raw, bool removing, const std::function<void(const std::string&)>& progress, std::string& said) {
+    const winrt::Windows::Foundation::IInspectable operation{raw, winrt::take_ownership_from_abi};
+    const auto info = operation.as<winrt::Windows::Foundation::IAsyncInfo>();
+    const auto began = std::chrono::steady_clock::now();
+    while (info.Status() == winrt::Windows::Foundation::AsyncStatus::Started) {
+        if (std::chrono::steady_clock::now() - began > std::chrono::minutes(20)) {
+            said = "it did not finish in 20 minutes";
+            return false;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(250));
+    }
+    if (info.Status() != winrt::Windows::Foundation::AsyncStatus::Completed) {
+        said = format("0x%08x", unsigned(info.ErrorCode()));
+        return false;
+    }
+    void* results = nullptr;
+    const HRESULT hr = static_cast<IInstallOperation*>(winrt::get_abi(operation))->GetResults(&results);
+    if (FAILED(hr) || !results) {
+        said = format("its result could not be had (0x%08X)", unsigned(hr));
+        return false;
+    }
+    winrt::com_ptr<IPackageInstallResult> result;
+    result.attach(static_cast<IPackageInstallResult*>(results));
+    int32_t state = -1;
+    result->get_InstallState(&state);
+    std::string text;
+    if (const auto second = result.try_as<IPackageInstallResult2>()) {
+        winrt::hstring error;
+        if (SUCCEEDED(second->get_ErrorText(reinterpret_cast<HSTRING*>(winrt::put_abi(error))))) text = narrow(std::wstring(error));
+    }
+    // (PackageInstallState: 0 not installed, 1 staged, 2 installed, 6 paused.)
+    const bool done = text.empty() && (removing ? state == 0 : state == 2);
+    said = done ? std::string() : format("its state %d", int(state)) + (text.empty() ? std::string() : ", " + text);
+    (void)progress;
+    return done;
+}
+
+/// The package at `path` installed by InstallationManager, as the Store installs an app (AddPackageAsync): the way left
+/// where Windows's deployment engine refuses Megler for access (no packageManagement without the interop unlock's capability
+/// part). True when installed; else false, and what it said in `said`.
+bool installByInstallationManager(const std::wstring& path, const std::function<void(const std::string&)>& progress, std::string& said) {
+    try {
+        const winrt::hstring name = L"Windows.Phone.Management.Deployment.InstallationManager";
+        winrt::com_ptr<IInstallationManagerStatics> statics;
+        HRESULT hr = RoGetActivationFactory(static_cast<HSTRING>(winrt::get_abi(name)), __uuidof(IInstallationManagerStatics), statics.put_void());
+        if (FAILED(hr) || !statics) {
+            said = format("there is no InstallationManager (0x%08X)", unsigned(hr));
+            return false;
+        }
+        std::wstring uri = L"file:///" + path;
+        std::replace(uri.begin(), uri.end(), L'\\', L'/');
+        const winrt::Windows::Foundation::Uri source(uri);
+        const std::wstring file = path.substr(path.find_last_of(L'\\') + 1);
+        const winrt::hstring title(file.substr(0, file.find_last_of(L'.')));
+        progress("Installing it as the Store installs an app (InstallationManager)…");
+        shellLog::flush();
+        void* operation = nullptr;
+        hr = statics->AddPackageAsync(static_cast<HSTRING>(winrt::get_abi(title)), winrt::get_abi(source), &operation);
+        if (FAILED(hr) || !operation) {
+            said = format("AddPackageAsync refused it (0x%08X)", unsigned(hr));
+            return false;
+        }
+        return waitInstallation(operation, false, progress, said);
+    } catch (hresult_error const& e) {
+        said = format("0x%08x ", unsigned(e.code())) + narrow(e.message());
+        return false;
+    }
+}
+
+/// The package of `fullName` removed by InstallationManager (RemovePackageAsync), with its LocalState as Windows's package
+/// manager removes it. True when removed; else false, and what it said in `said`.
+bool removeByInstallationManager(const std::string& fullName, std::string& said) {
+    try {
+        const winrt::hstring name = L"Windows.Phone.Management.Deployment.InstallationManager";
+        winrt::com_ptr<IInstallationManagerStatics2> statics;
+        HRESULT hr = RoGetActivationFactory(static_cast<HSTRING>(winrt::get_abi(name)), __uuidof(IInstallationManagerStatics2), statics.put_void());
+        if (FAILED(hr) || !statics) {
+            said = format("there is no InstallationManager's RemovePackageAsync (0x%08X)", unsigned(hr));
+            return false;
+        }
+        const winrt::hstring full(widen(fullName));
+        void* operation = nullptr;
+        hr = statics->RemovePackageAsync(static_cast<HSTRING>(winrt::get_abi(full)), 0, &operation);
+        if (FAILED(hr) || !operation) {
+            said = format("RemovePackageAsync refused it (0x%08X)", unsigned(hr));
+            return false;
+        }
+        return waitInstallation(operation, true, [](const std::string&) {}, said);
+    } catch (hresult_error const& e) {
+        said = format("0x%08x ", unsigned(e.code())) + narrow(e.message());
+        return false;
+    }
+}
+#endif
 
 /// One deployment at a time, whoever asks (an app's install, Update All's, Megler's own update).
 std::mutex gDeployMutex;
@@ -865,10 +1067,17 @@ InstallResult installWithPackageManager(const std::wstring& path, const std::fun
     std::string said, asTheStore;
     bool denied = true;  // every try so far refused for access
     std::lock_guard<std::mutex> one(gDeployMutex);
+#if !defined(MEGLER_XBOX)
+    // (The flag no-package-manager takes InstallationManager's way alone: a phone with the interop unlock tries it so.)
+    const bool managerless = flagSet(L"no-package-manager");
+#else
+    const bool managerless = false;
+#endif
     // (Onto the volume Megler itself is on, where there is one to name: installVolume, addPackage.)
-    const PackageVolume volume = installVolume();
+    const PackageVolume volume = managerless ? PackageVolume(nullptr) : installVolume();
     bool first = true;
     for (const DeploymentOptions options : tries) {
+        if (managerless) break;
         int32_t code = 0;
         /*
          * Each set of options asked of C++/WinRT's PackageManager, and where that is refused for access, of one made from an
@@ -910,6 +1119,23 @@ InstallResult installWithPackageManager(const std::wstring& path, const std::fun
         denied = denied && code == E_ACCESSDENIED;
         if (!(unsigned(options) & 0x8000) && asTheStore.empty()) asTheStore = said;
     }
+#if !defined(MEGLER_XBOX)
+    /*
+     * Refused for access every time (no packageManagement: a phone without its interop unlock's capability part), the
+     * Store's own way: InstallationManager, which installs a package of the calling app's publisher, as a company hub's app
+     * installs its company's.
+     */
+    std::string byInstallationManager;
+    if (denied || managerless) {
+        const std::string file = narrow(path.substr(path.find_last_of(L'\\') + 1));
+        if (installByInstallationManager(path, progress, byInstallationManager)) {
+            shellLog::write("app package: " + file + " installed by InstallationManager, as the Store installs" +
+                            (managerless ? std::string(" (the flag no-package-manager)") : std::string(": Windows's deployment engine refused Megler for access")));
+            return {true, "Installed."};
+        }
+        shellLog::write("app package: InstallationManager did not install " + file + " either: " + byInstallationManager);
+    }
+#endif
     // Refused for access every time: whether Megler's packages are installed here all the same (Windows has granted it the
     // capability before, and the refusal is this run's), for what is said (accessDeniedText).
     if (denied && !gInstalledBefore) {
@@ -918,8 +1144,12 @@ InstallResult installWithPackageManager(const std::wstring& path, const std::fun
         if (installedApps(apps, error) && !apps.empty()) gInstalledBefore = true;
     }
     // What the Store's way was refused for first: a developer's deployment is refused for their number alone.
+    std::string through;
+#if !defined(MEGLER_XBOX)
+    if (!byInstallationManager.empty()) through = "; through InstallationManager, " + byInstallationManager;
+#endif
     const InstallResult refused{false, "Windows's deployment engine did not install it: as the Store installs, " + asTheStore +
-                                           "; as a developer's package, " + said,
+                                           "; as a developer's package, " + said + through,
                                 denied};
     if (denied) sayRefusedForAccess();
     rememberRefusal(path, refused);
@@ -1104,6 +1334,36 @@ bool untrustedCertificate(const std::string& said) {
     return lower.find("0x800b0109") != std::string::npos || lower.find("0x800b010a") != std::string::npos;
 }
 
+namespace {
+
+/*
+ * The splits of Google Play services' library entry (its folder of splits' .apk files: Play Store installs Google's own as a
+ * base and splits of the phone's density and languages) copied whole beside the shared copy of its APK, in <apk>.splits,
+ * where the apps that host it find them (serviceSplits, megler_run_config.gms_splits_dir); those there already are kept.
+ * Without them an app had the base's resources alone, and a resource whose every value is a density's was not there: the
+ * Google logo of "Manage your Google Account", which ended Play Store (0.1.0.685). False when one could not be copied.
+ */
+bool copyServiceSplits(const ApkEntry& entry, const std::wstring& apk) {
+    const std::wstring from = !entry.splitsDir.empty() ? entry.splitsDir : Library::splitsDirFor(entry.path);
+    if (!files::exists(from)) return true;
+    int copied = 0;
+    if (!files::copyFilesWhole(from, apk + L".splits", L".apk", copied)) {
+        shellLog::write(format("microG: the splits of %s could not be copied beside its shared copy (error %lu): the apps have its base alone",
+                               narrow(entry.path).c_str(), GetLastError()));
+        return false;
+    }
+    if (copied) shellLog::write(format("microG: %d split(s) of Google Play services copied beside its shared copy", copied));
+    return true;
+}
+
+}  // namespace
+
+std::wstring serviceSplits(const std::wstring& apk) {
+    if (apk.empty()) return {};
+    const std::wstring splits = apk + L".splits";
+    return files::list(splits, L"*.apk").empty() ? std::wstring() : splits;
+}
+
 bool registerServiceApk(const ApkEntry& entry, const std::string& installedFullName, bool replace) {
     if (entry.report.package != "com.google.android.gms") return true;
     if (!entry.report.ok || installedFullName.empty() || installedFullName.find_first_not_of("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789._-") != std::string::npos || !canRead(entry.path)) return false;
@@ -1118,8 +1378,13 @@ bool registerServiceApk(const ApkEntry& entry, const std::string& installedFullN
     std::string previous;
     if (!replace && files::read(record, previous) && iniValue(previous, "package") == installedFullName) {
         const auto token = iniValue(previous, "cache");
-        if (!token.empty() && token.find_first_not_of("0123456789abcdef-") == std::string::npos &&
-            canRead(shared + L"\\services\\" + widen(token) + L"\\GmsCore.apk")) return true;
+        const auto registered = shared + L"\\services\\" + widen(token) + L"\\GmsCore.apk";
+        // (A copy registered before its splits were copied with it gets them now, beside it: the apps that start from then on
+        // have them; one running meanwhile knows nothing of them. The base stays registered whatever becomes of them.)
+        if (!token.empty() && token.find_first_not_of("0123456789abcdef-") == std::string::npos && canRead(registered)) {
+            copyServiceSplits(entry, registered);
+            return true;
+        }
     }
     // One shared service copy per installation. Fresh paths also preserve an older client's mapped APK.
     FILETIME time; GetSystemTimeAsFileTime(&time);
@@ -1142,6 +1407,8 @@ bool registerServiceApk(const ApkEntry& entry, const std::string& installedFullN
     }
     if (mended) shellLog::write(format("microG: %llu bytes of the shared copy of Google Play services differed from its APK after the copy, and were written again",
                                        (unsigned long long)mended));
+    // Its splits beside it, before the record names it (an app that starts then finds them there).
+    copyServiceSplits(entry, apk);
     if (!files::write(record + L".part", "package=" + installedFullName + "\ncache=" + token + "\n") || !files::flush(record + L".part") ||
         !files::move(record + L".part", record)) return false;
     shellLog::write(std::string(entry.report.microg ? "microG: registered microG's " : "microG: registered Google's own ") + installedFullName);
@@ -1237,17 +1504,42 @@ std::wstring gsfApk() {
 
 namespace {
 std::atomic<int> gPackageManager{0}; // 1 Windows's package manager answered (packageQuery), -1 it would not, 0 not asked
+std::atomic<int> gInstallationManager{0}; // the same of InstallationManager (installedApps)
+
 
 /// Whether Windows counts `package` with the developer's packages, of which a phone takes only so many (0x80073d11:
 /// installWithPackageManager), and what signed it: "developer's, signed Developer", for the log.
+/*
+ * Each asked of its own interface, which the package may not have: the packages InstallationManager lists on a Lumia 650
+ * (15063) have no IPackage2 (IsDevelopmentMode) or IPackage4 (SignatureKind), and C++/WinRT, asked a property of an
+ * interface the object refuses, called through null -- Megler 0.1.0.682 ended at every start ("access violation at
+ * Megler.exe+0x20cd6c", howInstalled, called from Windows.Phone.Management.Deployment.dll).
+ */
 std::string howInstalled(const Package& package) {
     static const char* const kinds[] = {"none", "Developer", "Enterprise", "Store", "System"};
+    std::string developer = "?", signedBy = "?";
     try {
-        const unsigned kind = unsigned(package.SignatureKind());
-        return std::string(package.IsDevelopmentMode() ? "developer's" : "not a developer's") + ", signed " + (kind < 5 ? kinds[kind] : "?");
+        if (const auto second = package.try_as<winrt::Windows::ApplicationModel::IPackage2>())
+            developer = second.IsDevelopmentMode() ? "developer's" : "not a developer's";
     } catch (hresult_error const&) {
-        return "?";
     }
+    try {
+        if (const auto fourth = package.try_as<winrt::Windows::ApplicationModel::IPackage4>()) {
+            const unsigned kind = unsigned(fourth.SignatureKind());
+            signedBy = kind < 5 ? kinds[kind] : "?";
+        }
+    } catch (hresult_error const&) {
+    }
+    return developer + ", signed " + signedBy;
+}
+
+/// Whether Windows counts `package` with the developer's packages, where its package has IPackage2 to say so (howInstalled).
+bool developerPackage(const Package& package) {
+    try {
+        if (const auto second = package.try_as<winrt::Windows::ApplicationModel::IPackage2>()) return second.IsDevelopmentMode();
+    } catch (hresult_error const&) {
+    }
+    return false;
 }
 }
 
@@ -1279,51 +1571,85 @@ bool installedApps(std::vector<InstalledApp>& out, std::string& error, const std
         const size_t first = full.find('_'), second = first == std::string::npos ? std::string::npos : full.find('_', first + 1);
         if (second == std::string::npos || full.compare(0, 10, "MeglerApp.") != 0) continue;
         if (full.size() < publisherId.size() || full.compare(full.size() - publisherId.size(), publisherId.size(), publisherId) != 0) continue;
-        out.push_back({full.substr(0, first), full.substr(first + 1, second - first - 1), full});
+        const std::string version = full.substr(first + 1, second - first - 1);
+        out.push_back({full.substr(0, first), madeByVersion(version), full, version});
     }
     return true;
 #else
     /*
      * Windows's package manager lists the user's packages at once (the restricted capability packageQuery), where the
      * Device Portal took 11 s on an HP Elite x3, more than a minute on a Lumia 650, and at times never answered on a Lumia
-     * 950 XL. It is the only lister: the portal, asked where it would not answer before, is asked nothing any more
-     * (installWithPackageManager), and a Megler whose package manager does not answer installs nothing either (the restricted
-     * capabilities packageQuery and packageManagement go together in its manifest).
+     * 950 XL; the portal is asked nothing any more on a phone or a PC. Where the package manager refuses Megler -- a phone
+     * grants packageQuery only with the capability part of its interop unlock -- the Store's and a company hub's way:
+     * InstallationManager's packages of this app's publisher, which every app's own package shares with Megler, and which
+     * Windows gives with no capability. (0.1.0.682 asked InstallationManager first, and ended at every start on a Lumia
+     * 650 over a property its packages do not have: howInstalled.) The flag no-package-manager takes its way alone.
      */
-    try {
-        const std::wstring publisherId(Package::Current().Id().PublisherId());
+    const std::wstring publisherId(Package::Current().Id().PublisherId());
+    std::string refused;
+    if (!flagSet(L"no-package-manager")) {
+        try {
+            std::vector<InstalledApp> found;
+            // Once a run, for the log: how many of the phone's packages Windows counts as a developer's, and how Megler's are.
+            const bool tell = gPackageManager.load() != 1;
+            unsigned all = 0, developers = 0;
+            std::string own;
+            for (auto const& package : winrt::Windows::Management::Deployment::PackageManager().FindPackagesForUser(L"")) {
+                const auto id = package.Id();
+                const std::wstring name(id.Name());
+                if (tell) {
+                    all++;
+                    if (developerPackage(package)) developers++;
+                    if ((name == L"Megler" || name.compare(0, 10, L"MeglerApp.") == 0) && std::wstring(id.PublisherId()) == publisherId)
+                        own += "; " + narrow(name) + " " + howInstalled(package);
+                }
+                if (name.compare(0, 10, L"MeglerApp.") != 0 || std::wstring(id.PublisherId()) != publisherId) continue;
+                const auto v = id.Version();
+                const std::string version = format("%u.%u.%u.%u", v.Major, v.Minor, v.Build, v.Revision);
+                found.push_back({narrow(name), madeByVersion(version), narrow(std::wstring(id.FullName())), version});
+            }
+            if (gPackageManager.exchange(1) != 1)
+                shellLog::write(format("app package: Windows's package manager lists the apps' packages; %u of the %u packages are developer's",
+                                       developers, all) + own);
+            if (reachable) reachable();
+            out = std::move(found);
+            return true;
+        } catch (hresult_error const& e) {
+            refused = format("Windows's package manager did not list the packages (0x%08x %s)", unsigned(e.code()), narrow(e.message()).c_str());
+            if (gPackageManager.exchange(-1) != -1) shellLog::write("app package: " + refused);
+        }
+    } else {
+        refused = "Windows's package manager not asked (the flag no-package-manager)";
+    }
+    std::string why;
+    std::vector<Package> mine;
+    if (publisherPackages(mine, why)) {
         std::vector<InstalledApp> found;
-        // Once a run, for the log: how many of the phone's packages Windows counts as a developer's, and how Megler's are.
-        const bool tell = gPackageManager.load() != 1;
-        unsigned all = 0, developers = 0;
         std::string own;
-        for (auto const& package : winrt::Windows::Management::Deployment::PackageManager().FindPackagesForUser(L"")) {
+        const bool tell = gInstallationManager.load() != 1;
+        for (auto const& package : mine) {
             const auto id = package.Id();
             const std::wstring name(id.Name());
-            if (tell) {
-                all++;
-                try {
-                    if (package.IsDevelopmentMode()) developers++;
-                } catch (hresult_error const&) {
-                }
-                if ((name == L"Megler" || name.compare(0, 10, L"MeglerApp.") == 0) && std::wstring(id.PublisherId()) == publisherId)
-                    own += "; " + narrow(name) + " " + howInstalled(package);
+            if (name.compare(0, 10, L"MeglerApp.") != 0 || std::wstring(id.PublisherId()) != publisherId) {
+                if (tell && name == L"Megler") own += "; Megler " + howInstalled(package);
+                continue;
             }
-            if (name.compare(0, 10, L"MeglerApp.") != 0 || std::wstring(id.PublisherId()) != publisherId) continue;
             const auto v = id.Version();
-            found.push_back({narrow(name), format("%u.%u.%u.%u", v.Major, v.Minor, v.Build, v.Revision), narrow(std::wstring(id.FullName()))});
+            const std::string version = format("%u.%u.%u.%u", v.Major, v.Minor, v.Build, v.Revision);
+            found.push_back({narrow(name), madeByVersion(version), narrow(std::wstring(id.FullName())), version});
+            if (tell) own += "; " + narrow(name) + " " + version + " " + howInstalled(package);
         }
-        if (gPackageManager.exchange(1) != 1)
-            shellLog::write(format("app package: Windows's package manager lists the apps' packages; %u of the %u packages are developer's",
-                                   developers, all) + own);
+        if (gInstallationManager.exchange(1) != 1)
+            shellLog::write(format("app package: InstallationManager lists the packages of Megler's publisher, as the Store lists its own: %u "
+                                   "of them the apps'",
+                                   unsigned(found.size())) + own);
         if (reachable) reachable();
         out = std::move(found);
         return true;
-    } catch (hresult_error const& e) {
-        error = format("Windows's package manager did not list the packages (0x%08x %s)", unsigned(e.code()), narrow(e.message()).c_str());
-        if (gPackageManager.exchange(-1) != -1) shellLog::write("app package: " + error);
-        return false;
     }
+    if (gInstallationManager.exchange(-1) != -1) shellLog::write("app package: InstallationManager lists nothing here: " + why);
+    error = refused + "; InstallationManager: " + why;
+    return false;
 #endif
 }
 
@@ -1345,7 +1671,21 @@ InstallResult uninstall(const InstalledApp& app) {
     return {true, "Uninstalled."};
 #else
     // Windows's package manager (packageManagement), as installWithPackageManager installs; refused for access where Megler
-    // has not got that capability, as an install is (InstallResult::accessDenied).
+    // has not got that capability, as an install is (InstallResult::accessDenied): then InstallationManager's way, the Store's.
+    const auto otherWay = [&app](const InstallResult& refused) -> InstallResult {
+        if (!refused.accessDenied && !flagSet(L"no-package-manager")) return refused;
+        std::string said;
+        if (removeByInstallationManager(app.fullName, said)) {
+            unregisterServiceApk(app.fullName);
+            shellLog::write("app package: " + app.fullName + " uninstalled by InstallationManager, as the Store uninstalls");
+            return {true, "Uninstalled."};
+        }
+        shellLog::write("app package: InstallationManager did not uninstall " + app.fullName + " either: " + said);
+        InstallResult again = refused;
+        again.said += "; through InstallationManager, " + said;
+        return again;
+    };
+    if (flagSet(L"no-package-manager")) return otherWay({false, "the flag no-package-manager", false});
     try {
         const auto result = winrt::Windows::Management::Deployment::PackageManager().RemovePackageAsync(widen(app.fullName)).get();
         if (result.ErrorText().empty()) {
@@ -1357,27 +1697,24 @@ InstallResult uninstall(const InstalledApp& app) {
         const std::string said = format("0x%08x ", unsigned(code)) + narrow(result.ErrorText());
         shellLog::write("app package: Windows's package manager did not uninstall " + app.fullName + ": " + said);
         if (code == E_ACCESSDENIED) sayRefusedForAccess();
-        return {false, "Windows's package manager did not uninstall it: " + said, code == E_ACCESSDENIED};
+        return otherWay({false, "Windows's package manager did not uninstall it: " + said, code == E_ACCESSDENIED});
     } catch (hresult_error const& e) {
         const int32_t code = e.code();
         const std::string said = format("0x%08x ", unsigned(code)) + narrow(e.message());
         shellLog::write("app package: Windows's package manager could not be asked to uninstall " + app.fullName + ": " + said);
         if (code == E_ACCESSDENIED) sayRefusedForAccess();
-        return {false, "Windows's package manager could not be asked to uninstall it: " + said, code == E_ACCESSDENIED};
+        return otherWay({false, "Windows's package manager could not be asked to uninstall it: " + said, code == E_ACCESSDENIED});
     }
 #endif
 }
 
 std::string meglerVersion() { return versionString(); }
 
-bool olderVersion(const std::string& a, const std::string& b) {
-    unsigned x[4] = {}, y[4] = {};
-    sscanf_s(a.c_str(), "%u.%u.%u.%u", &x[0], &x[1], &x[2], &x[3]);
-    sscanf_s(b.c_str(), "%u.%u.%u.%u", &y[0], &y[1], &y[2], &y[3]);
-    for (int i = 0; i < 4; i++)
-        if (x[i] != y[i]) return x[i] < y[i];
-    return false;
-}
+std::string madeByVersion(const std::string& packageVersion) { return packageVersions::madeBy(packageVersion); }
+
+std::string appPackageVersion(const std::string& installedVersion) { return packageVersions::next(ownPackageVersion(), installedVersion); }
+
+bool olderVersion(const std::string& a, const std::string& b) { return packageVersions::older(a, b); }
 
 namespace {
 

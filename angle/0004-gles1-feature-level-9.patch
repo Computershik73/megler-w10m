@@ -1,0 +1,806 @@
+--- a/src/libANGLE/GLES1Renderer.cpp
++++ b/src/libANGLE/GLES1Renderer.cpp
+@@ -21,6 +21,7 @@
+ #include "common/span.h"
+ #include "libANGLE/Context.h"
+ #include "libANGLE/Context.inl.h"
++#include "libANGLE/Display.h"
+ #include "libANGLE/ErrorStrings.h"
+ #include "libANGLE/Program.h"
+ #include "libANGLE/ResourceManager.h"
+@@ -44,6 +45,603 @@
+ 
+     return red | green << 4 | blue << 8 | alpha << 12 | static_cast<uint32_t>(logicOp) << 16;
+ }
++
++// Megler (angle/0004-gles1-feature-level-9.patch): OpenGL ES 1 on a display that makes OpenGL ES
++// 2 at most -- Direct3D 11 at feature level 9_3, the graphics processor of a Lumia 650 (Adreno
++// 304) and of most Lumias. The uber shader above is ESSL 3.00 (uint constants and loops,
++// switch, flat varyings, array constructors, gl_VertexID), which such a display does not
++// compile: an app's first OpenGL ES 1 draw failed there, and its next one ended the app
++// (initializeRendererProgram, below). There the shaders are ESSL 1.00 written for the state they
++// draw in: every choice the uber shader makes from its constants is made here, and a shader
++// holds only what that state uses -- what feature level 9_3's 7 varyings, 28 fragment uniform
++// vectors and short programs allow. The arithmetic is the uber shader's, line for line, so a
++// picture is the same at either level; but there are no flat varyings in ESSL 1.00 (a flat
++// shade model is drawn smooth) and no logic op (no framebuffer fetch at this level either).
++bool MeglerGLES1UsesEssl100(const gl::Context *context)
++{
++    const egl::Display *display = context->getDisplay();
++    return display != nullptr && display->getMaxSupportedESVersion() < gl::ES_3_0;
++}
++
++// The corners of glDrawTexOES's rectangle, two triangles: where ESSL 3.00 has gl_VertexID, the
++// ESSL 1.00 shader reads them from the point size's attribute (GLES1Renderer::drawTexture).
++constexpr float kMeglerDrawTextureCorners[12] = {0.0f, 0.0f, 1.0f, 0.0f, 1.0f, 1.0f,
++                                                 0.0f, 0.0f, 1.0f, 1.0f, 0.0f, 1.0f};
++
++bool MeglerGLES1UnitUsed(const gl::GLES1ShaderState &s, int unit)
++{
++    return s.tex2DEnables[unit] || s.texCubeEnables[unit];
++}
++
++void MeglerGLES1LightEssl100(std::stringstream &o, int i)
++{
++    // The uber shader's doLighting for light i.
++    o << "    {\n"
++         "        mediump vec4 lightAmbient = light_ambients["
++      << i << "];\n        mediump vec4 lightDiffuse = light_diffuses[" << i
++      << "];\n        mediump vec4 lightSpecular = light_speculars[" << i
++      << "];\n        vec4 lightPos = light_positions[" << i
++      << "];\n        vec3 lightDir = light_directions[" << i
++      << "];\n        float attConst = light_attenuation_consts[" << i
++      << "];\n        float attLinear = light_attenuation_linears[" << i
++      << "];\n        float attQuadratic = light_attenuation_quadratics[" << i
++      << "];\n        float spotAngle = light_spotlight_cutoff_angles[" << i
++      << "];\n        float spotExponent = light_spotlight_exponents[" << i
++      << "];\n"
++         "        vec3 toLight;\n"
++         "        if (lightPos.w == 0.0)\n"
++         "            toLight = lightPos.xyz;\n"
++         "        else\n"
++         "            toLight = lightPos.xyz / lightPos.w - eye.xyz;\n"
++         "        float lightDist = length(toLight);\n"
++         "        vec3 toLightNormalized = normalize(toLight);\n"
++         "        vec3 h = toLightNormalized + vec3(0.0, 0.0, 1.0);\n"
++         "        float ndotL = max(dot(n, toLightNormalized), 0.0);\n"
++         "        float ndoth = max(dot(n, normalize(h)), 0.0);\n"
++         "        float specAtt = ndotL != 0.0 ? 1.0 : 0.0;\n"
++         "        float att = 1.0;\n"
++         "        if (lightPos.w != 0.0)\n"
++         "            att = 1.0 / (attConst + attLinear * lightDist + attQuadratic * lightDist * "
++         "lightDist);\n"
++         "        mediump float spot = 1.0;\n"
++         "        mediump float spotAngleCos = cos(radians(spotAngle));\n"
++         "        vec3 toSurfaceDir = -toLightNormalized;\n"
++         "        mediump float spotDot = max(dot(toSurfaceDir, normalize(lightDir)), 0.0);\n"
++         "        if (!(spotAngle == 180.0 || lightPos.w == 0.0))\n"
++         "            spot = spotDot < spotAngleCos ? 0.0 : pow(spotDot, spotExponent);\n"
++         "        mediump vec4 contrib = materialAmbientActual * lightAmbient;\n"
++         "        contrib += ndotL * materialDiffuseActual * lightDiffuse;\n"
++         "        if (ndoth > 0.0 && material_specular_exponent > 0.0)\n"
++         "            contrib += specAtt * pow(ndoth, material_specular_exponent) * "
++         "material_specular * lightSpecular;\n"
++         "        else if (ndoth > 0.0)\n"
++         "            contrib += specAtt * material_specular * lightSpecular;\n"
++         "        contrib *= att * spot;\n"
++         "        lightingResult += contrib;\n"
++         "    }\n";
++}
++
++std::string MeglerGLES1VertexShaderEssl100(const gl::GLES1ShaderState &s)
++{
++    using E                = gl::GLES1StateEnables;
++    const bool lighting    = s.mGLES1StateEnabled[E::Lighting];
++    const bool drawTexture = s.mGLES1StateEnabled[E::DrawTexture];
++    const bool points      = s.mGLES1StateEnabled[E::PointRasterization] && !drawTexture;
++    const bool eyeVarying  = s.mGLES1StateEnabled[E::Fog] ||
++                            (s.mGLES1StateEnabled[E::ClipPlanes] && !drawTexture);
++    std::stringstream o;
++    o << "precision highp float;\n"
++         "attribute vec4 pos;\n"
++         "attribute mediump vec4 color;\n";
++    if (lighting)
++    {
++        o << "attribute vec3 normal;\n";
++    }
++    if (drawTexture)
++    {
++        // The rectangle's corner, (0, 0) to (1, 1): kMeglerDrawTextureCorners.
++        o << "attribute vec4 pointsize;\n";
++    }
++    else if (points)
++    {
++        o << "attribute float pointsize;\n";
++    }
++    for (int i = 0; i < gl::kTexUnitCount; i++)
++    {
++        if (MeglerGLES1UnitUsed(s, i))
++        {
++            if (!drawTexture)
++            {
++                o << "attribute mediump vec4 texcoord" << i << ";\n";
++            }
++            o << "varying mediump vec3 texcoord" << i << "_varying;\n";
++        }
++    }
++    o << "uniform mat4 projection;\n"
++         "uniform mat4 modelview;\n"
++         "uniform mat4 texture_matrix[4];\n"
++         "varying mediump vec4 color_varying;\n";
++    if (eyeVarying)
++    {
++        o << "varying vec4 pos_varying;\n";
++    }
++    if (points)
++    {
++        o << "uniform float point_size_min;\n"
++             "uniform float point_size_max;\n"
++             "uniform vec3 point_distance_attenuation;\n";
++    }
++    if (drawTexture)
++    {
++        o << "uniform vec4 draw_texture_coords;\n"
++             "uniform vec2 draw_texture_dims;\n"
++             "uniform mediump vec4 draw_texture_normalized_crop_rect[4];\n";
++    }
++    if (lighting)
++    {
++        o << "uniform mat4 modelview_invtr;\n"
++             "uniform mediump vec4 material_ambient;\n"
++             "uniform mediump vec4 material_diffuse;\n"
++             "uniform mediump vec4 material_specular;\n"
++             "uniform mediump vec4 material_emissive;\n"
++             "uniform float material_specular_exponent;\n"
++             "uniform mediump vec4 light_model_scene_ambient;\n"
++             "uniform mediump vec4 light_ambients[8];\n"
++             "uniform mediump vec4 light_diffuses[8];\n"
++             "uniform mediump vec4 light_speculars[8];\n"
++             "uniform vec4 light_positions[8];\n"
++             "uniform vec3 light_directions[8];\n"
++             "uniform float light_spotlight_exponents[8];\n"
++             "uniform float light_spotlight_cutoff_angles[8];\n"
++             "uniform float light_attenuation_consts[8];\n"
++             "uniform float light_attenuation_linears[8];\n"
++             "uniform float light_attenuation_quadratics[8];\n"
++             "mediump vec4 doLighting(mediump vec4 vertexColor, vec4 eye, vec3 n)\n"
++             "{\n";
++        if (s.mGLES1StateEnabled[E::ColorMaterial])
++        {
++            o << "    mediump vec4 materialAmbientActual = vertexColor;\n"
++                 "    mediump vec4 materialDiffuseActual = vertexColor;\n";
++        }
++        else
++        {
++            o << "    mediump vec4 materialAmbientActual = material_ambient;\n"
++                 "    mediump vec4 materialDiffuseActual = material_diffuse;\n";
++        }
++        o << "    mediump vec4 lightingResult = material_emissive + materialAmbientActual * "
++             "light_model_scene_ambient;\n";
++        for (int i = 0; i < gl::kLightCount; i++)
++        {
++            if (s.lightEnables[i])
++            {
++                MeglerGLES1LightEssl100(o, i);
++            }
++        }
++        o << "    return lightingResult;\n"
++             "}\n";
++    }
++    o << "void main()\n"
++         "{\n";
++    if (drawTexture)
++    {
++        o << "    vec2 corner = pointsize.xy;\n"
++             "    vec4 eye = vec4(draw_texture_coords.xy + corner * draw_texture_dims, "
++             "draw_texture_coords.z, 1.0);\n"
++             "    gl_Position = eye;\n";
++        for (int i = 0; i < gl::kTexUnitCount; i++)
++        {
++            if (MeglerGLES1UnitUsed(s, i))
++            {
++                o << "    texcoord" << i << "_varying = vec3(draw_texture_normalized_crop_rect[" << i
++                  << "].xy + corner * draw_texture_normalized_crop_rect[" << i
++                  << "].zw, 0.0);\n";
++            }
++        }
++        if (lighting)
++        {
++            o << "    vec3 n = normal;\n";
++        }
++    }
++    else
++    {
++        o << "    vec4 eye = modelview * pos;\n"
++             "    vec4 clip = projection * eye;\n"
++             "    gl_Position = clip;\n";
++        if (lighting)
++        {
++            o << "    vec3 n = (modelview_invtr * vec4(normal, 0.0)).xyz;\n";
++            if (s.mGLES1StateEnabled[E::RescaleNormal])
++            {
++                o << "    float rescaleLength = length(modelview_invtr[2].xyz);\n"
++                     "    if (rescaleLength > 0.0)\n"
++                     "        n *= 1.0 / rescaleLength;\n";
++            }
++            if (s.mGLES1StateEnabled[E::Normalize])
++            {
++                o << "    n = normalize(n);\n";
++            }
++        }
++        if (points)
++        {
++            o << "    float pointDist = abs(clip.z);\n"
++                 "    float pointAtt = point_distance_attenuation.x + point_distance_attenuation.y * "
++                 "pointDist + point_distance_attenuation.z * pointDist * pointDist;\n"
++                 "    gl_PointSize = clamp(pointsize / sqrt(pointAtt), point_size_min, "
++                 "point_size_max);\n";
++        }
++        for (int i = 0; i < gl::kTexUnitCount; i++)
++        {
++            if (MeglerGLES1UnitUsed(s, i))
++            {
++                o << "    texcoord" << i << "_varying = (texture_matrix[" << i << "] * texcoord" << i
++                  << ").xyz;\n";
++            }
++        }
++    }
++    if (eyeVarying)
++    {
++        o << "    pos_varying = eye;\n";
++    }
++    o << "    mediump vec4 vertexColor = color;\n";
++    if (lighting)
++    {
++        o << "    vertexColor = doLighting(color, eye, n);\n";
++    }
++    o << "    color_varying = clamp(vertexColor, vec4(0.0), vec4(1.0));\n"
++         "}\n";
++    return o.str();
++}
++
++// What a combiner's source and operand give: the uber shader's textureCombineSrcnOpnRgb/Alpha.
++std::string MeglerGLES1CombineSource(uint16_t source, int unit)
++{
++    switch (source)
++    {
++        case GL_TEXTURE:
++            return "tex";
++        case GL_CONSTANT:
++            return "texture_env_color[" + std::to_string(unit) + "]";
++        case GL_PRIMARY_COLOR:
++            return "vertexColor";
++        case GL_PREVIOUS:
++        default:
++            return "previous";
++    }
++}
++
++std::string MeglerGLES1CombineRgb(uint16_t source, uint16_t operand, int unit)
++{
++    const std::string x = MeglerGLES1CombineSource(source, unit);
++    switch (operand)
++    {
++        case GL_ONE_MINUS_SRC_COLOR:
++            return "(vec3(1.0) - " + x + ".rgb)";
++        case GL_SRC_ALPHA:
++            return "vec3(" + x + ".a)";
++        case GL_ONE_MINUS_SRC_ALPHA:
++            return "vec3(1.0 - " + x + ".a)";
++        case GL_SRC_COLOR:
++        default:
++            return x + ".rgb";
++    }
++}
++
++std::string MeglerGLES1CombineAlpha(uint16_t source, uint16_t operand, int unit)
++{
++    const std::string x = MeglerGLES1CombineSource(source, unit);
++    return operand == GL_ONE_MINUS_SRC_ALPHA ? "(1.0 - " + x + ".a)" : x + ".a";
++}
++
++// The texture environment of a unit: the uber shader's textureFunction, for this unit's mode and
++// format. In: previous, vertexColor, tex; out: result.
++void MeglerGLES1TexEnvEssl100(std::stringstream &o, const gl::GLES1ShaderState &s, int i)
++{
++    const uint16_t format = s.tex2DFormats[i];
++    const bool alpha      = format == GL_ALPHA;
++    const bool withAlpha  = format == GL_RGBA || format == GL_LUMINANCE_ALPHA;
++    const bool colorOnly  = format == GL_RGB || format == GL_LUMINANCE;
++    const std::string envColor = "texture_env_color[" + std::to_string(i) + "]";
++    switch (s.texEnvModes[i])
++    {
++        case GL_REPLACE:
++            o << (alpha       ? "        result = vec4(previous.rgb, tex.a);\n"
++                  : withAlpha ? "        result = tex;\n"
++                              : "        result = vec4(tex.rgb, previous.a);\n");
++            break;
++        case GL_MODULATE:
++            o << (alpha       ? "        result = vec4(previous.rgb, previous.a * tex.a);\n"
++                  : withAlpha ? "        result = previous * tex;\n"
++                              : "        result = vec4(previous.rgb * tex.rgb, previous.a);\n");
++            break;
++        case GL_DECAL:
++            o << (format == GL_RGB ? "        result = vec4(tex.rgb, previous.a);\n"
++                  : format == GL_RGBA
++                      ? "        result = vec4(previous.rgb * (1.0 - tex.a) + tex.rgb * tex.a, "
++                        "previous.a);\n"
++                      : "        result = vec4(previous.rgb * tex.rgb, previous.a);\n");
++            break;
++        case GL_BLEND:
++            if (alpha)
++            {
++                o << "        result = vec4(previous.rgb, tex.a * previous.a);\n";
++            }
++            else
++            {
++                o << "        result = vec4(previous.rgb * (vec3(1.0) - tex.rgb) + " << envColor
++                  << ".rgb * tex.rgb, " << (colorOnly ? "previous.a" : "tex.a * previous.a")
++                  << ");\n";
++            }
++            break;
++        case GL_ADD:
++            o << (alpha       ? "        result = vec4(previous.rgb, tex.a * previous.a);\n"
++                  : colorOnly ? "        result = vec4(previous.rgb + tex.rgb, previous.a);\n"
++                              : "        result = vec4(previous.rgb + tex.rgb, tex.a * "
++                                "previous.a);\n");
++            break;
++        case GL_COMBINE:
++        {
++            const uint16_t combineRgb   = s.texCombineRgbs[i];
++            const uint16_t combineAlpha = s.texCombineAlphas[i];
++            o << "        vec3 arg0Rgb = "
++              << MeglerGLES1CombineRgb(s.texCombineSrc0Rgbs[i], s.texCombineOp0Rgbs[i], i)
++              << ";\n        float arg0Alpha = "
++              << MeglerGLES1CombineAlpha(s.texCombineSrc0Alphas[i], s.texCombineOp0Alphas[i], i)
++              << ";\n";
++            if (combineRgb != GL_REPLACE)
++            {
++                o << "        vec3 arg1Rgb = "
++                  << MeglerGLES1CombineRgb(s.texCombineSrc1Rgbs[i], s.texCombineOp1Rgbs[i], i)
++                  << ";\n";
++            }
++            if (combineAlpha != GL_REPLACE)
++            {
++                o << "        float arg1Alpha = "
++                  << MeglerGLES1CombineAlpha(s.texCombineSrc1Alphas[i], s.texCombineOp1Alphas[i],
++                                             i)
++                  << ";\n";
++            }
++            if (combineRgb == GL_INTERPOLATE)
++            {
++                o << "        vec3 arg2Rgb = "
++                  << MeglerGLES1CombineRgb(s.texCombineSrc2Rgbs[i], s.texCombineOp2Rgbs[i], i)
++                  << ";\n";
++            }
++            if (combineAlpha == GL_INTERPOLATE)
++            {
++                o << "        float arg2Alpha = "
++                  << MeglerGLES1CombineAlpha(s.texCombineSrc2Alphas[i], s.texCombineOp2Alphas[i],
++                                             i)
++                  << ";\n";
++            }
++            switch (combineRgb)
++            {
++                case GL_MODULATE:
++                    o << "        vec3 resultRgb = arg0Rgb * arg1Rgb;\n";
++                    break;
++                case GL_ADD:
++                    o << "        vec3 resultRgb = arg0Rgb + arg1Rgb;\n";
++                    break;
++                case GL_ADD_SIGNED:
++                    o << "        vec3 resultRgb = arg0Rgb + arg1Rgb - 0.5;\n";
++                    break;
++                case GL_INTERPOLATE:
++                    o << "        vec3 resultRgb = arg0Rgb * arg2Rgb + arg1Rgb * (vec3(1.0) - "
++                         "arg2Rgb);\n";
++                    break;
++                case GL_SUBTRACT:
++                    o << "        vec3 resultRgb = arg0Rgb - arg1Rgb;\n";
++                    break;
++                case GL_DOT3_RGB:
++                case GL_DOT3_RGBA:
++                    o << "        float dotValue = 4.0 * dot(arg0Rgb - 0.5, arg1Rgb - 0.5);\n"
++                         "        vec3 resultRgb = vec3(dotValue);\n";
++                    break;
++                case GL_REPLACE:
++                default:
++                    o << "        vec3 resultRgb = arg0Rgb;\n";
++                    break;
++            }
++            switch (combineAlpha)
++            {
++                case GL_MODULATE:
++                    o << "        float resultAlpha = arg0Alpha * arg1Alpha;\n";
++                    break;
++                case GL_ADD:
++                    o << "        float resultAlpha = arg0Alpha + arg1Alpha;\n";
++                    break;
++                case GL_ADD_SIGNED:
++                    o << "        float resultAlpha = arg0Alpha + arg1Alpha - 0.5;\n";
++                    break;
++                case GL_INTERPOLATE:
++                    o << "        float resultAlpha = arg0Alpha * arg2Alpha + arg1Alpha * (1.0 - "
++                         "arg2Alpha);\n";
++                    break;
++                case GL_SUBTRACT:
++                    o << "        float resultAlpha = arg0Alpha - arg1Alpha;\n";
++                    break;
++                case GL_REPLACE:
++                default:
++                    o << "        float resultAlpha = arg0Alpha;\n";
++                    break;
++            }
++            o << (combineRgb == GL_DOT3_RGBA ? "        result = vec4(dotValue);\n"
++                                             : "        result = vec4(resultRgb, resultAlpha);\n");
++            o << "        result.rgb *= texture_env_rgb_scale[" << i
++              << "];\n        result.a *= texture_env_alpha_scale[" << i << "];\n";
++            break;
++        }
++        default:
++            o << "        result = previous;\n";
++            break;
++    }
++}
++
++std::string MeglerGLES1FragmentShaderEssl100(const gl::GLES1ShaderState &s)
++{
++    using E                = gl::GLES1StateEnables;
++    const bool drawTexture = s.mGLES1StateEnabled[E::DrawTexture];
++    const bool clipPlanes  = s.mGLES1StateEnabled[E::ClipPlanes] && !drawTexture;
++    const bool fog         = s.mGLES1StateEnabled[E::Fog];
++    const bool pointSprite = s.mGLES1StateEnabled[E::PointRasterization] &&
++                             s.mGLES1StateEnabled[E::PointSprite] && !drawTexture;
++    const bool alphaTest   = s.mGLES1StateEnabled[E::AlphaTest] &&
++                           s.alphaTestFunc != gl::AlphaTestFunc::AlwaysPass &&
++                           s.alphaTestFunc != gl::AlphaTestFunc::InvalidEnum;
++    bool combine = false, envColor = false;
++    std::stringstream o;
++    o << "#ifdef GL_FRAGMENT_PRECISION_HIGH\n"
++         "precision highp float;\n"
++         "#else\n"
++         "precision mediump float;\n"
++         "#endif\n"
++         "varying mediump vec4 color_varying;\n";
++    for (int i = 0; i < gl::kTexUnitCount; i++)
++    {
++        if (!MeglerGLES1UnitUsed(s, i))
++        {
++            continue;
++        }
++        o << "varying mediump vec3 texcoord" << i << "_varying;\n";
++        if (s.texCubeEnables[i])
++        {
++            o << "uniform mediump samplerCube tex_cube_sampler" << i << ";\n";
++        }
++        else
++        {
++            o << "uniform mediump sampler2D tex_sampler" << i << ";\n";
++        }
++        combine  = combine || s.texEnvModes[i] == GL_COMBINE;
++        envColor = envColor || s.texEnvModes[i] == GL_COMBINE || s.texEnvModes[i] == GL_BLEND;
++    }
++    if (envColor)
++    {
++        o << "uniform mediump vec4 texture_env_color[4];\n";
++    }
++    if (combine)
++    {
++        o << "uniform mediump float texture_env_rgb_scale[4];\n"
++             "uniform mediump float texture_env_alpha_scale[4];\n";
++    }
++    if (fog || clipPlanes)
++    {
++        o << "varying vec4 pos_varying;\n";
++    }
++    if (clipPlanes)
++    {
++        o << "uniform vec4 clip_planes[6];\n";
++    }
++    if (fog)
++    {
++        o << "uniform float fog_density;\n"
++             "uniform float fog_start;\n"
++             "uniform float fog_end;\n"
++             "uniform mediump vec4 fog_color;\n";
++    }
++    if (alphaTest && s.alphaTestFunc != gl::AlphaTestFunc::Never)
++    {
++        o << "uniform mediump float alpha_test_ref;\n";
++    }
++    o << "void main()\n"
++         "{\n";
++    if (clipPlanes)
++    {
++        for (int i = 0; i < gl::kClipPlaneCount; i++)
++        {
++            if (s.clipPlaneEnables[i])
++            {
++                o << "    if (dot(clip_planes[" << i << "].xyz, pos_varying.xyz) + clip_planes[" << i
++                  << "].w * pos_varying.w < 0.0)\n"
++                     "        discard;\n";
++            }
++        }
++    }
++    o << "    mediump vec4 vertexColor = color_varying;\n"
++         "    mediump vec4 previous = vertexColor;\n";
++    for (int i = 0; i < gl::kTexUnitCount; i++)
++    {
++        if (!MeglerGLES1UnitUsed(s, i))
++        {
++            continue;
++        }
++        o << "    {\n";
++        if (s.texCubeEnables[i])
++        {
++            o << "        mediump vec4 tex = textureCube(tex_cube_sampler" << i << ", texcoord" << i
++              << "_varying);\n";
++        }
++        else if (pointSprite && s.pointSpriteCoordReplaces[i])
++        {
++            o << "        mediump vec4 tex = texture2D(tex_sampler" << i << ", gl_PointCoord.xy);\n";
++        }
++        else
++        {
++            o << "        mediump vec4 tex = texture2D(tex_sampler" << i << ", texcoord" << i
++              << "_varying.xy);\n";
++        }
++        o << "        mediump vec4 result;\n";
++        MeglerGLES1TexEnvEssl100(o, s, i);
++        o << "        previous = clamp(result, 0.0, 1.0);\n"
++             "    }\n";
++    }
++    o << "    mediump vec4 fragment = previous;\n";
++    if (fog)
++    {
++        o << "    float eyeDist = abs(pos_varying.z / pos_varying.w);\n"
++             "    float fogFactor = 1.0;\n";
++        switch (s.fogMode)
++        {
++            case gl::FogMode::Exp:
++                o << "    fogFactor = exp(-fog_density * eyeDist);\n";
++                break;
++            case gl::FogMode::Exp2:
++                o << "    float fogDistance = fog_density * eyeDist;\n"
++                     "    fogFactor = exp(-(fogDistance * fogDistance));\n";
++                break;
++            case gl::FogMode::Linear:
++                o << "    fogFactor = (fog_end - eyeDist) / (fog_end - fog_start);\n";
++                break;
++            default:
++                break;
++        }
++        o << "    fogFactor = clamp(fogFactor, 0.0, 1.0);\n"
++             "    fragment = vec4(fogFactor * fragment.rgb + (1.0 - fogFactor) * fog_color.rgb, "
++             "fragment.a);\n";
++    }
++    if (alphaTest)
++    {
++        const char *pass = nullptr;
++        switch (s.alphaTestFunc)
++        {
++            case gl::AlphaTestFunc::Less:
++                pass = "fragment.a < alpha_test_ref";
++                break;
++            case gl::AlphaTestFunc::Lequal:
++                pass = "fragment.a <= alpha_test_ref";
++                break;
++            case gl::AlphaTestFunc::Equal:
++                pass = "fragment.a == alpha_test_ref";
++                break;
++            case gl::AlphaTestFunc::Gequal:
++                pass = "fragment.a >= alpha_test_ref";
++                break;
++            case gl::AlphaTestFunc::Greater:
++                pass = "fragment.a > alpha_test_ref";
++                break;
++            case gl::AlphaTestFunc::NotEqual:
++                pass = "fragment.a != alpha_test_ref";
++                break;
++            case gl::AlphaTestFunc::Never:
++            default:
++                pass = "false";
++                break;
++        }
++        o << "    if (!(" << pass << "))\n"
++             "        discard;\n";
++    }
++    o << "    gl_FragColor = fragment;\n"
++         "}\n";
++    return o.str();
++}
+ }  // anonymous namespace
+ 
+ namespace gl
+@@ -69,7 +667,7 @@
+     return angle::ComputeGenericHash(angle::byte_span_from_ref(*this));
+ }
+ 
+-GLES1Renderer::GLES1Renderer() : mRendererProgramInitialized(false) {}
++GLES1Renderer::GLES1Renderer() : mRendererProgramInitialized(false), mShaderPrograms(nullptr) {}
+ 
+ void GLES1Renderer::onDestroy(Context *context, State *state)
+ {
+@@ -80,7 +678,11 @@
+         for (const auto &iter : mUberShaderState)
+         {
+             const GLES1UberShaderState &UberShaderState = iter.second;
+-            mShaderPrograms->deleteProgram(context, {UberShaderState.programState.program});
++            // Megler: a state whose program failed has none (initializeRendererProgram).
++            if (UberShaderState.programState.program.value != 0)
++            {
++                mShaderPrograms->deleteProgram(context, {UberShaderState.programState.program});
++            }
+         }
+         mShaderPrograms->release(context);
+         mShaderPrograms             = nullptr;
+@@ -634,6 +1236,41 @@
+ 
+     AttributesMask prevAttributesMask = glState->gles1().getVertexArraysAttributeMask();
+ 
++    if (MeglerGLES1UsesEssl100(context))
++    {
++        // Megler: ESSL 1.00 has no gl_VertexID, so the shader reads each vertex's corner from the
++        // point size's attribute, a client array of kMeglerDrawTextureCorners for this draw; the
++        // app's own array there (glPointSizePointerOES) is given back after it.
++        VertexArray *vertexArray         = glState->getVertexArray();
++        const VertexAttribute &attrib    = vertexArray->getVertexAttribute(kPointSizeAttribIndex);
++        Buffer *savedBuffer              = vertexArray->getVertexArrayBuffer(attrib.bindingIndex);
++        const GLint savedSize            = static_cast<GLint>(attrib.format->channelCount);
++        const VertexAttribType savedType = attrib.format->vertexAttribType;
++        const bool savedNormalized       = attrib.format->isNorm();
++        const GLsizei savedStride        = static_cast<GLsizei>(attrib.vertexAttribArrayStride);
++        const void *savedPointer         = attrib.pointer;
++        bool dirty                       = false;
++        glState->setVertexAttribPointer(context, kPointSizeAttribIndex, nullptr, 2,
++                                        VertexAttribType::Float, false, 0,
++                                        kMeglerDrawTextureCorners, &dirty);
++        context->getMutablePrivateStateCache()->onVertexArrayStateChange();
++
++        AttributesMask cornersOnly;
++        cornersOnly.set(kPointSizeAttribIndex);
++        setAttributesEnabled(context, glState, gles1State, cornersOnly);
++        gles1State->setAllDirty();
++        context->drawArrays(PrimitiveMode::Triangles, 0, 6);
++        setAttributesEnabled(context, glState, gles1State, prevAttributesMask);
++
++        dirty = false;
++        glState->setVertexAttribPointer(context, kPointSizeAttribIndex, savedBuffer, savedSize,
++                                        savedType, savedNormalized, savedStride, savedPointer,
++                                        &dirty);
++        context->getMutablePrivateStateCache()->onVertexArrayStateChange();
++        mDrawTextureEnabled = false;
++        return;
++    }
++
+     setAttributesEnabled(context, glState, gles1State, AttributesMask());
+ 
+     gles1State->setAllDirty();
+@@ -933,13 +1570,26 @@
+                                                        GLES1State *gles1State)
+ {
+     // See if we have the shader for this combination of states
+-    if (mUberShaderState.find(mShaderState) != mUberShaderState.end())
++    auto known = mUberShaderState.find(mShaderState);
++    if (known != mUberShaderState.end())
+     {
+-        Program *programObject = getProgram(getUberShaderState().programState.program);
++        // Megler: a state whose shaders did not compile or link here is kept with no program:
++        // its draws are refused at once, where the program's place was asked for the id of a
++        // program that was not there (gl::Program::id on null: Transit's Google Maps on a Lumia
++        // 650, at its second draw of OpenGL ES 1).
++        if (known->second.programState.program.value == 0)
++        {
++            ANGLE_CHECK(context, false,
++                        "GLES1Renderer: this state's shaders did not compile or link here.",
++                        GL_INVALID_OPERATION);
++        }
++
++        Program *programObject = getProgram(known->second.programState.program);
++        Program *current       = glState->getProgram();
+ 
+         // If this is different than the current program, we need to sync everything
+         // TODO: This could be optimized to only dirty state that differs between the two programs
+-        if (glState->getProgram()->id() != programObject->id())
++        if (current == nullptr || current->id() != programObject->id())
+         {
+             gles1State->setAllDirty();
+         }
+@@ -951,13 +1601,17 @@
+     if (!mRendererProgramInitialized)
+     {
+         mShaderPrograms = new ShaderProgramManager();
++        // Megler: the manager is there from now on, whatever comes of this program: one made
++        // again for each failed one was never released.
++        mRendererProgramInitialized = true;
+     }
+ 
+     // If we get here, we don't have a shader for this state, need to create it
+     GLES1ProgramState &programState = mUberShaderState[mShaderState].programState;
++    programState.program            = {0};
+ 
+-    ShaderProgramID vertexShader;
+-    ShaderProgramID fragmentShader;
++    ShaderProgramID vertexShader   = {0};
++    ShaderProgramID fragmentShader = {0};
+ 
+     // Set the count of texture units to a minimum to avoid requiring unnecessary vertex attributes
+     // and take up varying slots.
+@@ -970,6 +1624,9 @@
+         }
+     }
+ 
++    // Megler: ESSL 1.00 written for this state where the display makes OpenGL ES 2 at most.
++    const bool essl100 = MeglerGLES1UsesEssl100(context);
++
+     std::stringstream GLES1DrawVShaderStateDefs;
+     addVertexShaderDefs(GLES1DrawVShaderStateDefs);
+ 
+@@ -979,8 +1636,10 @@
+     vertexStream << GLES1DrawVShaderStateDefs.str();
+     vertexStream << kGLES1DrawVShader;
+ 
+-    ANGLE_TRY(
+-        compileShader(context, ShaderType::Vertex, vertexStream.str().c_str(), &vertexShader));
++    const std::string vertexSource =
++        essl100 ? MeglerGLES1VertexShaderEssl100(mShaderState) : vertexStream.str();
++    angle::Result built =
++        compileShader(context, ShaderType::Vertex, vertexSource.c_str(), &vertexShader);
+ 
+     std::stringstream GLES1DrawFShaderStateDefs;
+     addFragmentShaderDefs(GLES1DrawFShaderStateDefs);
+@@ -1023,8 +1682,13 @@
+     fragmentStream << kGLES1DrawFShaderMultitexturing;
+     fragmentStream << kGLES1DrawFShaderMain;
+ 
+-    ANGLE_TRY(compileShader(context, ShaderType::Fragment, fragmentStream.str().c_str(),
+-                            &fragmentShader));
++    const std::string fragmentSource =
++        essl100 ? MeglerGLES1FragmentShaderEssl100(mShaderState) : fragmentStream.str();
++    if (built == angle::Result::Continue)
++    {
++        built =
++            compileShader(context, ShaderType::Fragment, fragmentSource.c_str(), &fragmentShader);
++    }
+ 
+     angle::HashMap<GLint, std::string> attribLocs;
+ 
+@@ -1040,11 +1704,34 @@
+         attribLocs[kTextureCoordAttribIndexBase + i] = ss.str();
+     }
+ 
+-    ANGLE_TRY(linkProgram(context, glState, vertexShader, fragmentShader, attribLocs,
+-                          &programState.program));
++    if (built == angle::Result::Continue)
++    {
++        built = linkProgram(context, glState, vertexShader, fragmentShader, attribLocs,
++                            &programState.program);
++    }
+ 
+-    mShaderPrograms->deleteShader(context, vertexShader);
+-    mShaderPrograms->deleteShader(context, fragmentShader);
++    if (vertexShader.value != 0)
++    {
++        mShaderPrograms->deleteShader(context, vertexShader);
++    }
++    if (fragmentShader.value != 0)
++    {
++        mShaderPrograms->deleteShader(context, fragmentShader);
++    }
++
++    if (built != angle::Result::Continue)
++    {
++        // Megler: the state is kept with no program, and its draws are refused (above); the
++        // shaders and the program made for it are let go of, not left in the manager.
++        if (programState.program.value != 0)
++        {
++            mShaderPrograms->deleteProgram(context, programState.program);
++            programState.program = {0};
++        }
++        ERR() << "GLES1Renderer: no program for this state" << (essl100 ? " (ESSL 1.00)" : "")
++              << "; its draws are refused.";
++        return built;
++    }
+ 
+     Program *programObject        = getProgram(programState.program);
+     ProgramExecutable &executable = programObject->getExecutable();

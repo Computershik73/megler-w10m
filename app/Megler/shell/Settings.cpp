@@ -115,6 +115,15 @@ std::optional<std::string> megler(const std::string& key) {
     return it->second;
 }
 
+std::optional<std::string> meglerNow(const std::string& key) {
+    std::lock_guard<std::mutex> lock(gMutex);
+    // (Read whole and not kept: what this process goes by, get(), stays as it was when it started.)
+    const Values values = readFile(gMeglerPath);
+    auto it = values.find(key);
+    if (it == values.end()) return std::nullopt;
+    return it->second;
+}
+
 void setMegler(const std::string& key, const std::string& value) {
     std::lock_guard<std::mutex> lock(gMutex);
     // Read again first, as an app's are: the file is what counts.

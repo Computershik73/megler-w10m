@@ -778,6 +778,11 @@ MG_HOSTAPI void *mg_dl_open(const char *name);
 MG_HOSTAPI void *mg_dl_sym(void *lib, const char *name);
 /* Which of the host's own modules (the app, a DLL of the package or of the system) an address is in: its file name and where it is loaded. For a crash report. */
 MG_HOSTAPI bool mg_host_module_at(mg_addr address, char *name, size_t size, mg_addr *base);
+/*
+ * The linker's time stamp of the module an address is in (a PE file's TimeDateStamp), which its build's map says at its top
+ * ("Timestamp is ..."): which build a report's module+offset addresses are of. False where there is none (an ELF, POSIX).
+ */
+MG_HOSTAPI bool mg_host_module_stamp(mg_addr address, u32 *stamp);
 /* A module of the process's, by file name, as it lies in memory into a file (megler_dump_module); its base and image size. */
 MG_HOSTAPI bool mg_host_module_dump(const char *name, const char *path, mg_addr *base, size_t *size);
 /* Whether the system stops a thread at a hardware breakpoint set through its context: a probe, said in `out` (megler_probe_breakpoints). */

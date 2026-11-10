@@ -210,36 +210,21 @@ bool mg_ld_has_lib(const char *name)
     return found;
 }
 
-typedef struct libs_walk {
-    void (*cb)(const char *name, u64 size, void *user);
-    void *user;
-    int n;
-    size_t skip;
-} libs_walk;
-
-static void libs_one(const mg_zip_entry *e, void *user)
+bool mg_ld_apk_lib_entry(const char *name, u64 *size, u32 *crc, bool *stored)
 {
-    libs_walk *w = (libs_walk *)user;
-    size_t n = strlen(e->name);
-    if (n <= w->skip + 3 || strcmp(e->name + n - 3, ".so") || strchr(e->name + w->skip, '/')) return;
-    w->n++;
-    if (w->cb) w->cb(e->name + w->skip, e->usize, w->user);
-}
-
-int mg_ld_apk_libs(void (*cb)(const char *name, u64 size, void *user), void *user)
-{
-    const char *abi = mg_ld_abi();
-    char prefix[40];
-    libs_walk w;
-    int i;
-    if (!abi) return 0;
-    snprintf(prefix, sizeof(prefix), "lib/%s/", abi);
-    w.cb = cb;
-    w.user = user;
-    w.n = 0;
-    w.skip = strlen(prefix);
-    for (i = 0; i < g_napks; i++) mg_zip_each(&g_apks[i], prefix, libs_one, &w);
-    return w.n;
+    const mg_zip *z = NULL;
+    const mg_zip_entry *e;
+    u64 at = 0;
+    load_lock();
+    e = apk_lib(name, &z);
+    if (e) {
+        *size = e->usize;
+        *crc = e->crc;
+        /* As read_lib_file takes it: a stored entry is read where it lies. */
+        *stored = e->method == 0 && e->usize < 0x40000000u && mg_zip_stored_at(z, e, &at);
+    }
+    load_unlock();
+    return e != NULL;
 }
 
 /*
@@ -462,6 +447,47 @@ typedef struct reloc_ctx {
     int phase;
 } reloc_ctx;
 
+/*
+ * An import nothing provides, kept by its name in the library's string table the first time: several relocations may ask
+ * for one name, and it is counted once. False when it was kept already.
+ */
+static bool keep_unresolved(mg_lib *lib, const char *name)
+{
+    u32 i;
+    for (i = 0; i < lib->stats.unresolved; i++)
+        if (!strcmp(lib->unresolved[i], name)) return false;
+    if (lib->stats.unresolved == lib->unresolved_cap) {
+        lib->unresolved_cap = lib->unresolved_cap ? lib->unresolved_cap * 2 : 8;
+        lib->unresolved = (const char **)mg_realloc((void *)lib->unresolved, lib->unresolved_cap * sizeof(*lib->unresolved));
+    }
+    lib->unresolved[lib->stats.unresolved++] = name;
+    return true;
+}
+
+/*
+ * The names of a library's imports nothing provides, for its lines in the log as it loads: as many as fit in `cap` (the
+ * first at least in part), then how many more there are.
+ */
+static void unresolved_names(const mg_lib *lib, char *out, size_t cap)
+{
+    enum { MORE = 24 };                                       /* room kept for ", and 4294967295 more" */
+    size_t n = 0;
+    u32 i, said = 0;
+    out[0] = 0;
+    for (i = 0; i < lib->stats.unresolved; i++) {
+        size_t len = strlen(lib->unresolved[i]);
+        if (n + 2 + len + MORE >= cap) break;
+        n += (size_t)snprintf(out + n, cap - n, "%s%s", i ? ", " : "", lib->unresolved[i]);
+        said++;
+    }
+    if (!said && lib->stats.unresolved) {
+        /* (A name too long for the line, a C++ one's: its start.) */
+        n = (size_t)snprintf(out, cap - MORE, "%.*s...", (int)(cap - MORE - 4), lib->unresolved[0]);
+        said = 1;
+    }
+    if (said < lib->stats.unresolved) snprintf(out + n, cap - n, ", and %u more", (unsigned)(lib->stats.unresolved - said));
+}
+
 static bool reloc_symbol(reloc_ctx *c, u32 index, bool want_fn, mg_addr *addr, const ElfW(Sym) **sym, mg_lib **def)
 {
     mg_lib *lib = c->lib;
@@ -488,12 +514,13 @@ static bool reloc_symbol(reloc_ctx *c, u32 index, bool want_fn, mg_addr *addr, c
             /* Counted, said and given its stub on the first pass: the second applies only what resolvers give, which this is not. */
             *addr = 0;
         } else {
-            g_unresolved++;
-            lib->stats.unresolved++;
-            if (g_verbosity >= 2) mg_warn("ld: %s: unresolved %s %s", lib->name, want_fn ? "function" : "symbol", name);
+            /* (Each name counted once, and said with the others in the library's line as it loads: mg_ld_load.) */
+            bool first = keep_unresolved(lib, name);
+            if (first) g_unresolved++;
+            if (first && g_verbosity >= 2) mg_warn("ld: %s: unresolved %s %s", lib->name, want_fn ? "function" : "symbol", name);
             /* A function gets a stub that says so when called; data gets NULL, and a note now. */
             *addr = want_fn || ELF_ST_TYPE(own->st_info) == STT_FUNC ? mg_patch_unresolved_stub(lib, name) : 0;
-            if (!*addr && g_verbosity < 2) mg_warn("ld: %s: unresolved data symbol %s", lib->name, name);
+            if (!*addr && first && g_verbosity < 2) mg_warn("ld: %s: unresolved data symbol %s", lib->name, name);
         }
     }
     c->cached_ok = true;
@@ -1407,7 +1434,12 @@ static mg_lib *load_lib(const char *name, bool runtime, const char *host_path)
         mg_info("ld: %s at %p (%u KB), %u Thumb / %u ARM functions, %u thread-pointer reads and %u PLT entries rewritten%s",
                 lib->name, (void *)(lib->base + lib->vmin), (unsigned)((lib->vmax - lib->vmin) >> 10), lib->stats.thumb_functions, lib->stats.arm_functions,
                 lib->stats.tp_reads, lib->stats.plt_entries, lib->stats.unresolved ? ", with unresolved imports" : "");
-        if (lib->stats.unresolved) mg_warn("ld: %s: %u imports are not provided", lib->name, lib->stats.unresolved);
+        if (lib->stats.unresolved) {
+            /* Which, by name: the first ones, as many as the line has room for (DANA's libjabe.so had one, and said only "1"). */
+            char names[320];
+            unresolved_names(lib, names, sizeof(names));
+            mg_warn("ld: %s: %u imports are not provided: %s", lib->name, lib->stats.unresolved, names);
+        }
 #if MG_ARCH_ARM32
         if (lib->stats.tp_reads_failed) mg_err("ld: %s: %u thread-pointer reads are out of an island's reach", lib->name, lib->stats.tp_reads_failed);
         /* (arm/mg_patch.c: a library of Go's, whose calls are made on its goroutines' small stacks.) */
@@ -1712,4 +1744,33 @@ bool mg_ld_plt_target(mg_addr pc, mg_addr *target)
         return true;
     }
     return false;
+}
+
+int mg_ld_after_call(mg_addr lr)
+{
+    mg_lib *lib = mg_ld_lib_of((const void *)lr);
+    mg_addr at = lr & ~(mg_addr)1;
+    int i;
+    /* (Its islands are the loader's code, which calls into the core: not known.) */
+    if (!MG_ARCH_ARM32 || !lib || at < (mg_addr)lib->base + lib->vmin || at >= (mg_addr)lib->base + lib->vmax) return -1;
+    for (i = 0; i < lib->phnum; i++) {
+        const ElfW(Phdr) *p = &lib->phdr[i];
+        mg_addr lo = (mg_addr)lib->base + p->p_vaddr;
+        if (p->p_type != PT_LOAD || !(p->p_flags & PF_X) || at < lo + 4 || at > lo + p->p_filesz) continue;
+        if (lr & 1) {
+            /* Thumb: BL or BLX, 11110... then 11x1x... or 11x0x...; or the 16-bit BLX of a register, 010001111xxxx000. */
+            u16 h1 = mg_rd16((const void *)(at - 4)), h2 = mg_rd16((const void *)(at - 2));
+            return ((h1 & 0xF800) == 0xF000 && (h2 & 0xC000) == 0xC000) || (h2 & 0xFF87) == 0x4780;
+        } else {
+            /*
+             * ARM: BL (cond 1011), BLX of an immediate (1111101x), BLX of a register (cond 0001 0010 1111 1111 1111 0011);
+             * or any jump after `mov lr, pc`, ARMv4's call through a register.
+             */
+            u32 w = mg_rd32((const void *)(at - 4));
+            if (at >= lo + 8 && mg_rd32((const void *)(at - 8)) == 0xE1A0E00Fu) return 1;
+            if ((w >> 28) == 0xF) return (w & 0xFE000000u) == 0xFA000000u;
+            return (w & 0x0F000000u) == 0x0B000000u || (w & 0x0FFFFFF0u) == 0x012FFF30u;
+        }
+    }
+    return 0;
 }

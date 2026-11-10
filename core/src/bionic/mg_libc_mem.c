@@ -46,6 +46,16 @@ u64 mg_g_malloc_bytes(void) { return (u32)mg_atomic_add(&g_malloced, 0); }
  * (c0000374, MaxVibe ending at its start one run in two on x64).
  */
 #define USABLE(n) ((size_t)MG_ALIGN_UP((size_t)(n) ? (size_t)(n) : 1, G_ALIGN))
+/*
+ * A big block is at more than the quantum: jemalloc carves a block of a few hundred bytes or more from a run of its size
+ * class, at a multiple of that class's own power of two, and gives one of a page or more a page of its own, so code
+ * counts on such a block being at 16 or more on 32-bit ARM too -- zlib's NEON slide_hash in Geekbench 5's libgeekbench.so
+ * loads its 64 KB hash table with vld1.16 {d16, d17}, [r2:128], an alignment fault at a block of 8 (the HP Elite x3, 688).
+ * Every block of BIG_BLOCK bytes or more is at BIG_ALIGN here, the most a NEON load's hint asks for (32) and a cache line.
+ */
+#define BIG_BLOCK ((size_t)256)
+#define BIG_ALIGN ((size_t)64)
+static size_t block_align(size_t n) { return USABLE(n) >= BIG_BLOCK ? BIG_ALIGN : G_ALIGN; }
 
 /*
  * The flag malloc-guard, a diagnosis (64-bit processors; off by default): every block is followed by GUARD bytes of 0xFD
@@ -262,8 +272,9 @@ static bool guarded_free(void *p, mg_addr freer)
     return true;
 }
 
-/* A block of n bytes at a multiple of align, its header right before it, from a host block made bigger to hold both. */
-static void *aligned_block(size_t align, size_t n, mg_addr caller)
+/* A block of n bytes at a multiple of align, its header right before it, from a host block made bigger to hold both
+   (zeroed by the host for calloc's). */
+static void *aligned_block(size_t align, size_t n, bool zero, mg_addr caller)
 {
     size_t extra = guarding() ? GUARD : 0;
     u8 *raw, *p;
@@ -271,7 +282,7 @@ static void *aligned_block(size_t align, size_t n, mg_addr caller)
         mg_set_errno(GE_INVAL);
         return NULL;
     }
-    raw = (u8 *)malloc(USABLE(n) + align + sizeof(ghdr) + extra);
+    raw = (u8 *)(zero ? calloc(1, USABLE(n) + align + sizeof(ghdr) + extra) : malloc(USABLE(n) + align + sizeof(ghdr) + extra));
     if (!raw) {
         mg_set_errno(GE_NOMEM);
         return NULL;
@@ -288,16 +299,13 @@ static void *aligned_block(size_t align, size_t n, mg_addr caller)
     return p;
 }
 
-/* malloc's block (zeroed for calloc's): at G_ALIGN after the host's, or made as memalign's where the host gives less. */
+/* malloc's block (zeroed for calloc's): at G_ALIGN after the host's, or made as memalign's where the host gives less or
+   the block is big (BIG_BLOCK). */
 static void *plain_block(size_t n, bool zero, mg_addr caller)
 {
-    size_t extra = guarding() ? GUARD : 0;
+    size_t extra = guarding() ? GUARD : 0, align = block_align(n);
     u8 *raw;
-    if (H_ALIGN < G_ALIGN) {
-        u8 *p = (u8 *)aligned_block(G_ALIGN, n, caller);
-        if (p && zero) memset(p, 0, USABLE(n));
-        return p;
-    }
+    if (H_ALIGN < G_ALIGN || align > G_ALIGN) return aligned_block(align, n, zero, caller);
     raw = (u8 *)(zero ? calloc(1, USABLE(n) + G_ALIGN + extra) : malloc(USABLE(n) + G_ALIGN + extra));
     if (!raw) {
         mg_set_errno(GE_NOMEM);
@@ -349,7 +357,7 @@ void mg_g_free(void *p)
 static void *g_memalign(size_t align, size_t n)
 {
     if (align <= G_ALIGN) return mg_g_malloc(n);
-    return aligned_block(align, n, (mg_addr)CALLER());
+    return aligned_block(align, n, false, (mg_addr)CALLER());
 }
 
 void *mg_g_realloc(void *p, size_t n)
@@ -365,16 +373,37 @@ void *mg_g_realloc(void *p, size_t n)
         mg_set_errno(GE_NOMEM);
         return NULL;
     }
-    if (!guarding() && H_ALIGN >= G_ALIGN && HDR(p)->offset == G_ALIGN) {
-        u32 was = HDR(p)->size;
-        u8 *raw = (u8 *)realloc((u8 *)p - G_ALIGN, USABLE(n) + G_ALIGN);
-        if (!raw) {
-            mg_set_errno(GE_NOMEM);
-            return NULL;
+    /* The host's realloc, in place where it can: a block at the quantum or at BIG_ALIGN (or a memalign's of no more) stays
+       one, at what its new size asks for (block_align); where the host's new block puts it elsewhere, it is moved inside. */
+    if (!guarding() && H_ALIGN >= G_ALIGN && HDR(p)->offset >= G_ALIGN && HDR(p)->offset <= BIG_ALIGN + sizeof(ghdr)) {
+        u32 was = HDR(p)->size, off = HDR(p)->offset;
+        size_t align = block_align(n), keep = USABLE(was) < USABLE(n) ? USABLE(was) : USABLE(n), need;
+        u8 *raw = (u8 *)p - off, *grown;
+        if (align == G_ALIGN) {
+            /* (Its contents first where the smaller block keeps them, G_ALIGN in, and back if the host cannot.) */
+            if (off != G_ALIGN) memmove(raw + G_ALIGN, p, keep);
+            grown = (u8 *)realloc(raw, USABLE(n) + G_ALIGN);
+            if (!grown) {
+                if (off != G_ALIGN) memmove(p, raw + G_ALIGN, keep);
+                mg_set_errno(GE_NOMEM);
+                return NULL;
+            }
+            q = grown + G_ALIGN;
+        } else {
+            need = USABLE(n) + align + sizeof(ghdr);
+            if (need < off + keep) need = off + keep;
+            grown = (u8 *)realloc(raw, need);
+            if (!grown) {
+                mg_set_errno(GE_NOMEM);
+                return NULL;
+            }
+            q = (u8 *)MG_ALIGN_UP((mg_addr)grown + sizeof(ghdr), (mg_addr)align);
+            if (q != grown + off) memmove(q, grown + off, keep);
         }
-        HDR(raw + G_ALIGN)->size = (u32)n;
+        HDR(q)->offset = (u32)((u8 *)q - grown);
+        HDR(q)->size = (u32)n;
         mg_atomic_add(&g_malloced, (i32)((u32)n - was));
-        return raw + G_ALIGN;
+        return q;
     }
     /* An aligned block: the host cannot grow it in place and keep the alignment (nor a block's guard). */
     old = HDR(p)->size;
@@ -607,6 +636,7 @@ static void region_wanted(const char *site)
 #define mg_lock_release(l) ((l) == &g_region_lock ? mg_holder_let_go(&g_region_hold) : (void)0, mg_lock_release(l))
 
 bool mg_mem_lock_look(mg_hold_seen *seen) { return mg_holder_look(&g_region_hold, seen, NULL, 0); }
+bool mg_mem_lock_mine(void) { return mg_holder_mine(&g_region_hold); }
 
 void mg_g_mapped_addresses(u64 *spanned, u64 *reserved)
 {
@@ -820,7 +850,12 @@ void mg_mem_file_written(void *file, u64 at, const void *buf, size_t n)
  * mapping's file whole and wrote what differed, and walked the list of mappings from its start for each of them, all with the
  * lock held -- a pass of a moment on a PC, and as long as the phone's flash takes, which is far longer while another thread
  * puts a file on the disk (Viber's hang report has a SQLite thread in fsync). The lock order is g_write_back_lock, then
- * g_region_lock; a write-back may take the mappings' lock, never the other way round.
+ * g_region_lock; a write-back may take the mappings' lock, never the other way round. And the mappings' lock is the last
+ * taken of all: nothing is waited for under it, not the descriptors' lock either (mg_libc_io.c), whose holder -- a pipe's
+ * bytes copied into the app's buffer, epoll_wait's events written into it, a select's sets read from it -- may meet a page
+ * the app gave back with madvise and wait in the fault handler for the mappings' lock (fix_fault). The write-back took a
+ * hold of its file under it, which took the descriptors' lock, and so did mmap of a shared file: each such thread and a
+ * fault's waited for each other for good.
  */
 #define FILE_CHUNK (16 * MG_PAGE)
 static mg_lock g_write_back_lock = MG_LOCK_INIT;
@@ -894,6 +929,7 @@ static bool write_back_out(region *r, u32 serial, size_t from, size_t size, u64 
 #define WRITE_BACK_REGIONS_LOCK() (!deadline ? (mg_lock_acquire(&g_region_lock), true) : write_back_regions_by(deadline))
     if (!WRITE_BACK_REGIONS_LOCK()) return false;
     if (region_still(r, serial) && r->file && r->write_back && from < r->file_bytes) {
+        /* (A count alone, no lock: the region's own hold keeps the file while the region is in the list, see above.) */
         file = mg_fd_held_ref(r->file);
         file_offset = r->file_offset;
         end = size < r->file_bytes - from ? from + size : r->file_bytes;
@@ -1355,11 +1391,14 @@ static void *g_mmap_common(void *addr, size_t len, int prot, int flags, int fd, 
             mg_note_once("mmap: a shared writable file mapping over memory already mapped is a private copy here; writes do not reach the file");
         } else if ((flags & G_MAP_SHARED) && !(flags & G_MAP_FIXED)) {
             /* The file: to write back to (region.file) when the mapping is writable, and to keep the copy in step with as
-               the file is written through a descriptor (mg_mem_file_written). */
+               the file is written through a descriptor (mg_mem_file_written). Held before the mappings' lock is taken:
+               holding it takes the descriptors' lock, which is never waited for under the mappings' (see write-backs). */
+            void *held = mg_fd_hold(fd);
             mg_lock_acquire(&g_region_lock);
             r = region_of(p);
             if (r && !r->file) {
-                r->file = mg_fd_hold(fd);
+                r->file = held;
+                held = NULL;
                 r->file_offset = offset;
                 r->file_bytes = len;
                 r->write_back = (prot & G_PROT_WRITE) != 0;
@@ -1368,6 +1407,8 @@ static void *g_mmap_common(void *addr, size_t len, int prot, int flags, int fd, 
                 if (r->file && r->write_back) mg_atomic_add(&g_write_backs, 1);
             }
             mg_lock_release(&g_region_lock);
+            /* (Not the region's after all: another thread unmapped it meanwhile, or it had its file already.) */
+            mg_fd_let_go(held);
             if (prot & G_PROT_WRITE) write_back_start();
         }
     }

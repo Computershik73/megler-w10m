@@ -868,16 +868,24 @@ typedef struct megler_storage_host {
  *                 thread, one call at a time with present_pixels. NULL:
  *                 never; the layer flushes.
  *   gl_frame      optional, with present and gl_place: OpenGL ES views'
- *   gl_place      frames shown under the window's views by the shell, the
+ *   gl_place      frames shown with the window's views by the shell, the
  *                 layer reading neither back. A view that draws with EGL
  *                 (a GLSurfaceView, a SurfaceView with an EGL window
  *                 surface) has a `layer`, 0..7, and its frames are shown
  *                 at the rectangle gl_place gives it (x, y, width, height
  *                 of the window; width 0: the layer shows nothing any more,
- *                 and its frame is dropped), scaled to it, opaque, with the
- *                 window's views over them -- their premultiplied colours,
- *                 as present last showed them; the views leave holes where
- *                 the frames are to show. gl_frame is a new frame:
+ *                 and its frame is dropped), scaled to it. As Android has a
+ *                 SurfaceView's surface, by gl_place's `flags`
+ *                 (MEGLER_GL_*): without MEGLER_GL_ABOVE under the views,
+ *                 opaque, the window's views over them -- their
+ *                 premultiplied colours, as present last showed them; the
+ *                 views leave holes where the frames are to show -- the
+ *                 layers with MEGLER_GL_OVERLAY over those without it; with
+ *                 MEGLER_GL_ABOVE over the views (setZOrderOnTop), in the
+ *                 order of their layers, opaque or, with
+ *                 MEGLER_GL_TRANSLUCENT, their premultiplied colours over
+ *                 what is under them (a surface whose format has alpha:
+ *                 Flutter's own view of a map's under it). gl_frame is a new frame:
  *                 `share_handle` is the DXGI shared handle of ANGLE's
  *                 Direct3D 11 texture of the surface (an OpenGL ES pbuffer;
  *                 EGL_ANGLE_surface_d3d_texture_2d_share_handle), width x
@@ -1185,6 +1193,20 @@ typedef struct megler_storage_host {
  *                  with none of its own (the second half of a surrogate pair,
  *                  a combining mark, the later letters of a ligature unless
  *                  the system splits it) gets 0. They add up to text_measure.
+ *   text_path      (may be NULL) the outlines of the run's glyphs, for
+ *                  Paint.getTextPath: draw_path's stream (verbs and absolute
+ *                  coordinates as floats in the machine's order), handed to
+ *                  `write` in as many pieces as suit the host. The run is
+ *                  where draw_text with the same paint at (x, y) would put
+ *                  it -- the paint's alignment, text_scale_x, text_skew_x
+ *                  and letter_spacing as there -- and each glyph is its
+ *                  closed figures, inside by MEGLER_GFX_WINDING. The style,
+ *                  the stroke width, fake bold and a colour glyph's colours
+ *                  are not part of an outline (a colour glyph gives its plain
+ *                  glyph's). A run with no ink writes nothing and returns
+ *                  true; false: no outlines here, and the framework makes do
+ *                  with the run's box. (Google Maps' legacy renderer draws
+ *                  every label of its map by filling and stroking these.)
  *
  * TYPEFACES
  *
@@ -1275,6 +1297,8 @@ enum { MEGLER_GFX_CAP_BUTT = 0, MEGLER_GFX_CAP_ROUND = 1, MEGLER_GFX_CAP_SQUARE 
 enum { MEGLER_GFX_JOIN_MITER = 0, MEGLER_GFX_JOIN_ROUND = 1, MEGLER_GFX_JOIN_BEVEL = 2 };
 enum { MEGLER_GFX_ALIGN_LEFT = 0, MEGLER_GFX_ALIGN_CENTER = 1, MEGLER_GFX_ALIGN_RIGHT = 2 };
 enum { MEGLER_GFX_ANTI_ALIAS = 1, MEGLER_GFX_FILTER_BITMAP = 2, MEGLER_GFX_FAKE_BOLD = 4 };
+/* gl_place's flags: where an OpenGL ES view's frames go among the window's views, and how (see gl_frame above). */
+enum { MEGLER_GL_ABOVE = 1, MEGLER_GL_TRANSLUCENT = 2, MEGLER_GL_OVERLAY = 4 };
 enum {
     MEGLER_GFX_BLEND_CLEAR = 0, MEGLER_GFX_BLEND_SRC = 1, MEGLER_GFX_BLEND_DST = 2, MEGLER_GFX_BLEND_SRC_OVER = 3, MEGLER_GFX_BLEND_DST_OVER = 4,
     MEGLER_GFX_BLEND_SRC_IN = 5, MEGLER_GFX_BLEND_DST_IN = 6, MEGLER_GFX_BLEND_SRC_OUT = 7, MEGLER_GFX_BLEND_DST_OUT = 8, MEGLER_GFX_BLEND_SRC_ATOP = 9,
@@ -1368,7 +1392,7 @@ typedef struct megler_gfx_host {
 
     bool (MEGLER_CB *present)(void *user, void *canvas, int x, int y, int width, int height);
     bool (MEGLER_CB *gl_frame)(void *user, int layer, void *share_handle, int width, int height);
-    void (MEGLER_CB *gl_place)(void *user, int layer, int x, int y, int width, int height);
+    void (MEGLER_CB *gl_place)(void *user, int layer, int x, int y, int width, int height, int flags);
     bool (MEGLER_CB *texture_frame)(void *user, int id, void *share_handle, int width, int height);
     void (MEGLER_CB *draw_texture)(void *user, void *canvas, int id, float left, float top, float right, float bottom, int alpha);
     /* Optional bitmap-to-canvas drawing without a CPU readback. The source is
@@ -1379,6 +1403,9 @@ typedef struct megler_gfx_host {
     /* Free a canvas whose pixels will never be read again. Like canvas_free,
        but its memory need not receive the last drawing. */
     void (MEGLER_CB *canvas_discard)(void *user, void *canvas);
+    /* Optional: the outlines of a run's glyphs (see TEXT above). */
+    bool (MEGLER_CB *text_path)(void *user, const uint16_t *text, int count, float x, float y, const megler_gfx_paint *paint, void *typeface,
+                                megler_gfx_write write, void *sink);
 } megler_gfx_host;
 
 /*
@@ -1535,9 +1562,17 @@ typedef struct megler_display_host {
  *                the shell's for the rest -- and the call waits for the answer (what it was before, when the question was
  *                put away unanswered or could not be put); it comes on a thread of the app's that may wait, never its main
  *                thread. The shell keeps
- *                what the user said, for the app, from run to run; it may grant a group it has nothing behind at once.
+ *                what the user said, for the app, from run to run; it may grant a group it has nothing behind at once,
+ *                and the user may refuse any group (_DENIED_FIXED, nothing asked), or have it asked every run (_UNDECIDED
+ *                until this run's answer).
  *                The framework (megler.Permissions) asks it of a group whose permissions the app's manifest asks for and
- *                whose answer Android's rules do not settle by themselves. Left NULL: every group is granted, nothing asked.
+ *                whose answer Android's rules do not settle by themselves; of a group an app has with its install (an app
+ *                for Android 5.1 or older, Google's own packages) without `ask`, where _DENIED_FIXED takes it away.
+ *                And "gms_location": whether Google Play services' own features in the app's process may have the
+ *                location -- one answer of the user's for every app, _GRANTED, _DENIED_FIXED or _UNDECIDED (not asked);
+ *                with `ask`, the user is asked where they have not answered, on a thread of the framework's that waits
+ *                (megler.MicroG gives Google Play services' context an attribution tag only where it is _GRANTED).
+ *                Left NULL: every group is granted, nothing asked.
  */
 enum { MEGLER_PERMISSION_UNDECIDED = 0, MEGLER_PERMISSION_GRANTED = 1, MEGLER_PERMISSION_DENIED = 2, MEGLER_PERMISSION_DENIED_FIXED = 3 };
 
@@ -1844,10 +1879,78 @@ typedef struct megler_bluetooth_host {
 /* What the radio did, from any thread; everything it points to is copied before it returns. Nothing happens when no app runs. */
 MEGLER_API void megler_bluetooth_push(const megler_bluetooth_event *event);
 
+/*
+ * The phone's Wi-Fi, for an app's android.net.wifi.WifiManager: the networks around the phone as a scan hears them, and the
+ * one it is connected to (core/src/drivers/mg_java_wifi.c; the framework's megler.Wifi). Google Play services in the app
+ * finds where the phone is from them, as on Android (Google's network location: docs/JAVA.md, "Wi-Fi").
+ *
+ * A network is an access point as a scan heard it: its BSSID (48 bits: AA:BB:CC:DD:EE:FF is 0xAABBCCDDEEFF), its SSID's
+ * octets as the access point sends them (UTF-8 mostly; none for a hidden network), its signal in dBm, the centre of its
+ * channel in MHz, its security (MEGLER_WIFI_SECURITY_*: the authentication, and the cipher where Windows says one), its
+ * physical layer (MEGLER_WIFI_PHY_*, Windows' WiFiPhyKind), and its kind (an access point's or an ad hoc network's).
+ *
+ * The host is asked, on one thread of the framework's, which may wait:
+ *   state(ask)   whether the phone can scan: MEGLER_WIFI_ON; OFF when its Wi-Fi is switched off; DENIED when Windows does not
+ *                let Megler have the Wi-Fi (the package declares no wiFiControl, or the user or a policy said no); NONE when
+ *                it has no Wi-Fi adapter; UNKNOWN while Windows has not been asked. With `ask`, Windows is asked first if it
+ *                has not been (WiFiAdapter.RequestAccessAsync: nothing is shown to the user for it).
+ *   scan(out, max, time_ns)  a scan: the networks heard into out (at most max), their number returned; -1 when no scan could
+ *                be made (the state is not ON, or Windows' scan failed). *time_ns: when Windows' report was made,
+ *                nanoseconds since 1970 (UTC). It waits for Windows' scan, a few seconds at most; the core asks no more often
+ *                than every ten seconds.
+ *   connection(out)  the network the phone is connected to by Wi-Fi: true, with as much of it as Windows says (its SSID; its
+ *                BSSID, signal, channel and security where the last scan heard an access point of that SSID, the strongest
+ *                such); false when the phone is not on Wi-Fi. May be NULL.
+ * May be left zero: the app is told the phone has no Wi-Fi to scan.
+ */
+enum { MEGLER_WIFI_NONE = 0, MEGLER_WIFI_ON = 1, MEGLER_WIFI_OFF = 2, MEGLER_WIFI_DENIED = 3, MEGLER_WIFI_UNKNOWN = 4 };
+/* The authentication (the low byte) and the cipher (bits 8 to 15), as Windows' NetworkAuthenticationType and NetworkEncryptionType have them. */
+enum {
+    MEGLER_WIFI_AUTH_UNKNOWN = 0, MEGLER_WIFI_AUTH_OPEN = 1, MEGLER_WIFI_AUTH_SHARED_KEY = 2, MEGLER_WIFI_AUTH_WPA = 3, MEGLER_WIFI_AUTH_WPA_PSK = 4,
+    MEGLER_WIFI_AUTH_RSNA = 5, MEGLER_WIFI_AUTH_RSNA_PSK = 6, MEGLER_WIFI_AUTH_WPA3 = 7, MEGLER_WIFI_AUTH_WPA3_SAE = 8, MEGLER_WIFI_AUTH_OWE = 9,
+    MEGLER_WIFI_AUTH_OTHER = 10
+};
+enum {
+    MEGLER_WIFI_CIPHER_UNKNOWN = 0, MEGLER_WIFI_CIPHER_NONE = 1, MEGLER_WIFI_CIPHER_WEP = 2, MEGLER_WIFI_CIPHER_TKIP = 3, MEGLER_WIFI_CIPHER_CCMP = 4,
+    MEGLER_WIFI_CIPHER_GCMP = 5
+};
+#define MEGLER_WIFI_SECURITY(auth, cipher) ((auth) | (cipher) << 8)
+/* Windows' WiFiPhyKind, as it numbers them: 802.11b is HRDSSS, 802.11a OFDM, 802.11g ERP, 802.11n HT, 802.11ac VHT, 802.11ad DMG, 802.11ax HE. */
+enum {
+    MEGLER_WIFI_PHY_UNKNOWN = 0, MEGLER_WIFI_PHY_FHSS = 1, MEGLER_WIFI_PHY_DSSS = 2, MEGLER_WIFI_PHY_IR = 3, MEGLER_WIFI_PHY_OFDM = 4,
+    MEGLER_WIFI_PHY_HRDSSS = 5, MEGLER_WIFI_PHY_ERP = 6, MEGLER_WIFI_PHY_HT = 7, MEGLER_WIFI_PHY_VHT = 8, MEGLER_WIFI_PHY_DMG = 9,
+    MEGLER_WIFI_PHY_HE = 10
+};
+
+typedef struct megler_wifi_network {
+    unsigned long long bssid;
+    unsigned char ssid[32];
+    int ssid_size;          /* 0..32; 0 for a hidden network */
+    int rssi_dbm;
+    int frequency_mhz;
+    int security;           /* MEGLER_WIFI_SECURITY(auth, cipher) */
+    int phy;                /* MEGLER_WIFI_PHY_* */
+    int adhoc;              /* 1 for an ad hoc network (IBSS), 0 for an access point's */
+} megler_wifi_network;
+
+typedef struct megler_wifi_host {
+    void *user;
+    int (MEGLER_CB *state)(void *user, bool ask);
+    int (MEGLER_CB *scan)(void *user, megler_wifi_network *out, int max, long long *time_ns);
+    bool (MEGLER_CB *connection)(void *user, megler_wifi_network *out);
+} megler_wifi_host;
+
 typedef struct megler_run_config {
     const char *apk_path;
     /* Optional installed microG APK. Opened as the service package; no copy in each client. */
     const char *gms_apk_path;
+    /*
+     * Its splits, where Google Play services came in several APKs (Play Store installs Google's own as a base and splits
+     * of its densities and languages): a folder of .apk files, each named as megler_bundle_unpack names a split it keeps
+     * (split_<name>.apk). Their resources and files are Google Play services' own as the app hosts them, as Android adds
+     * an installed app's splits to its resources. May be NULL.
+     */
+    const char *gms_splits_dir;
     /* Optional Google Services Framework APK, shared by all client packages. */
     const char *gsf_apk_path;
     /*
@@ -1885,6 +1988,8 @@ typedef struct megler_run_config {
     megler_sensor_host sensors;
     /* The phone's Bluetooth LE radio for an app's android.bluetooth (see megler_bluetooth_host). May be left zero: none. */
     megler_bluetooth_host bluetooth;
+    /* The phone's Wi-Fi, its scans and its connection, for an app's WifiManager (see megler_wifi_host). May be left zero: none. */
+    megler_wifi_host wifi;
     /*
      * Drawing for an app whose user interface is Java (see megler_gfx_host). All of it may be left NULL: such an app still starts,
      * lays its views out and takes input, but nothing is drawn (its bitmaps hold only what the layer does itself: erasing, single
@@ -2024,6 +2129,16 @@ MEGLER_API bool megler_ask_clear_data(const char *package);
 /* Whether such an ask waits for the app's next start: the shell forgets then what it keeps of the app's own, as Android's
    Clear storage does -- the user's answers to its permissions (player/PermissionHost.h). Needs megler_init. */
 MEGLER_API bool megler_clear_data_asked(const char *package);
+/*
+ * Clears an app's cache, as Android's "Clear cache" does, when the app next starts: before anything of it is open, what is in
+ * its private cache and code_cache folders (/data/data/<package>/cache and code_cache) and in its own Android/data/<package>/
+ * cache folder of the shared storage goes, the folders staying; its other files, settings, databases and accounts stay, and
+ * so do the user's answers to its permissions. Asked as megler_ask_clear_data is: a file named after the package in the
+ * folder clear-cache of the shared storage. True when the ask is written. Needs megler_init.
+ */
+MEGLER_API bool megler_ask_clear_cache(const char *package);
+/* Whether such an ask waits for the app's next start. Needs megler_init. */
+MEGLER_API bool megler_clear_cache_asked(const char *package);
 /* Frames presented since the app started. */
 MEGLER_API uint32_t megler_frames(void);
 
@@ -2259,6 +2374,9 @@ MEGLER_API bool megler_appx_app_identity(const char *android_package, char *out,
  *   CALL_HISTORY  phoneCallHistoryPublic: READ_PHONE_STATE, READ_CALL_LOG
  *   BLUETOOTH     bluetooth (a device capability): BLUETOOTH_SCAN, BLUETOOTH_CONNECT, BLUETOOTH_ADVERTISE, and before Android 12
  *                 BLUETOOTH and BLUETOOTH_ADMIN
+ *   WIFI          wiFiControl (a device capability): a location permission (ACCESS_FINE_LOCATION, ACCESS_COARSE_LOCATION): the
+ *                 Wi-Fi networks a scan hears, which Android gives only to an app that may have the location, and which
+ *                 Google Play services in the app finds the phone's location from; NEARBY_WIFI_DEVICES too
  * Megler's other capabilities are every package's (codeGeneration, packageQuery, backgroundMediaPlayback) or no app's
  * (documentsLibrary and removableStorage, which want file types declared; packageManagement).
  */
@@ -2273,6 +2391,7 @@ enum {
     MEGLER_APPX_CAP_CHAT = 128,
     MEGLER_APPX_CAP_CALL_HISTORY = 256,
     MEGLER_APPX_CAP_BLUETOOTH = 512,
+    MEGLER_APPX_CAP_WIFI = 1024,
 };
 MEGLER_API unsigned megler_appx_capabilities(const char *const *permissions, int count, bool sms_retriever);
 /* That package's manifest, made from Megler's (the text of its AppxManifest.xml): the identity name, phone product id and

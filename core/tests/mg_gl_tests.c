@@ -1003,7 +1003,7 @@ static void test_window(void)
     CHECK(EGL("swap", "(JJIIII)Z", 6, J(surf), J(x), I(0), I(0), I(0), I(0)).z);
     CHECK(W.pictures == pictures);
     /* The views say where the view is, and their picture comes: shown whole, the first time, and the frame under the hole. */
-    EGL("place", "(Ljava/lang/Object;IIII)V", 5, L(view), I(10), I(8), I(40), I(20));
+    EGL("place", "(Ljava/lang/Object;IIIII)V", 6, L(view), I(10), I(8), I(40), I(20), I(0));
     CHECK(mg_java_gl_views(views, 64, 48, 64 * 4, k_all));
     CHECK(W.pictures == pictures + 1 && W.part[0] == 0 && W.part[1] == 0 && W.part[2] == 64 && W.part[3] == 48);
     CHECK_HEX(window_pixel(5, 5), 0x808080);
@@ -1091,7 +1091,7 @@ static void test_window(void)
     /* The view moves (the views' next picture has its hole elsewhere): the old place is the views' again, the new one the frame's. */
     free(views);
     views = views_picture(64, 48, 20, 24, 40, 20, -1);
-    EGL("place", "(Ljava/lang/Object;IIII)V", 5, L(view), I(20), I(24), I(40), I(20));
+    EGL("place", "(Ljava/lang/Object;IIIII)V", 6, L(view), I(20), I(24), I(40), I(20), I(0));
     CHECK(mg_java_gl_views(views, 64, 48, 64 * 4, k_all));
     CHECK_HEX(window_pixel(12, 10), 0x808080);
     CHECK_HEX(window_pixel(55, 40), 0x0000FF);
@@ -1144,7 +1144,7 @@ static void test_two_threads(void)
     mg_java_gl_start(64, 48, shown);
     G.x = EGL("createContext", "(IJ)J", 2, I(2), J(0)).j;
     G.surf = EGL("createWindowSurface", "(Ljava/lang/Object;II)J", 3, L(view), I(64), I(48)).j;
-    EGL("place", "(Ljava/lang/Object;IIII)V", 5, L(view), I(0), I(0), I(64), I(48));
+    EGL("place", "(Ljava/lang/Object;IIIII)V", 6, L(view), I(0), I(0), I(64), I(48), I(0));
     t = mg_thread_start(swapping, NULL, 1u << 20, "gl-test");
     CHECK(t != NULL);
     for (i = 0; i < 100 && t; i++) {
@@ -1194,7 +1194,7 @@ static void test_cost(void)
     x = EGL("createContext", "(IJ)J", 2, I(2), J(0)).j;
     surf = EGL("createWindowSurface", "(Ljava/lang/Object;II)J", 3, L(view), I(720), I(1182)).j;
     EGL("makeCurrent", "(JJ)Z", 2, J(surf), J(x));
-    EGL("place", "(Ljava/lang/Object;IIII)V", 5, L(view), I(0), I(98), I(720), I(1182));
+    EGL("place", "(Ljava/lang/Object;IIIII)V", 6, L(view), I(0), I(98), I(720), I(1182), I(0));
     t0 = mg_time_monotonic_ns();
     mg_java_gl_views(views, 720, 1280, 720 * 4, k_all);
     t1 = mg_time_monotonic_ns();
@@ -1385,6 +1385,94 @@ static void test_turns_destroy(void)
     CHECK(a.done && b.done && a.clears == 200 && b.clears == 40);
     CHECK(after.stale == before.stale);
     say("  200 clears while 40 contexts were made and ended: %d of a context ANGLE did not have current", (int)(after.stale - before.stale));
+    destroy(d, a.ctx);
+    destroy(d, b.ctx);
+#else
+    say("(Turns: no thunks in a build whose convention is not Android's, nothing is checked here)");
+#endif
+}
+
+/*
+ * The turns go round (mg_egl.c, turn_lock): one thread clears 600 times without a pause while another clears for as long as
+ * the first does. The display's lock is no queue -- the first takes it again before the second, woken, runs -- and HERE
+ * WeGo's map drew so while Flutter's raster thread waited with the app's whole interface (package 681). A thread whose
+ * calls have had the display for a slice while another waits lets that one in: the second clears about as often.
+ */
+static volatile i32 g_turn_stop;
+
+static MG_HOSTCB void turn_running(void *p)
+{
+    typedef unsigned (*make_fn)(void *, void *, void *, void *);
+    typedef void (*clear_fn)(u32);
+    turn_side *s = (turn_side *)p;
+    make_fn make = (make_fn)mg_egl_resolve("eglMakeCurrent");
+    clear_fn clear = (clear_fn)mg_egl_resolve("glClear");
+    int i;
+    if (!make || !clear || !make(s->d, NULL, NULL, s->ctx)) {
+        mg_atomic_xchg(&s->ready, -1);
+        mg_atomic_xchg(&s->done, 1);
+        return;
+    }
+    mg_atomic_xchg(&s->ready, 1);
+    while (!g_turn_go) mg_sleep_ns(100000ull);
+    /* The first (host) clears 600 times and stops the other; the other clears until then. */
+    for (i = 0; s->host ? i < 600 : !g_turn_stop; i++) {
+        clear(0x4000);
+        s->clears++;
+    }
+    if (s->host) mg_atomic_xchg(&g_turn_stop, 1);
+    make(s->d, NULL, NULL, NULL);
+    mg_atomic_xchg(&s->done, 1);
+}
+
+static void test_turns_fair(void)
+{
+#if MG_GUEST_CODE
+    typedef void *(*display_fn)(void *);
+    typedef unsigned (*init_fn)(void *, int *, int *);
+    typedef void *(*create_fn)(void *, void *, void *, const int *);
+    typedef unsigned (*destroy_fn)(void *, void *);
+    static const int es2[] = { 0x3098, 2, 0x3038 };
+    display_fn get_display = (display_fn)mg_egl_resolve("eglGetDisplay");
+    init_fn initialize = (init_fn)mg_egl_resolve("eglInitialize");
+    create_fn create = (create_fn)mg_egl_resolve("eglCreateContext");
+    destroy_fn destroy = (destroy_fn)mg_egl_resolve("eglDestroyContext");
+    turn_side a, b;
+    mg_thread *ta, *tb;
+    mg_gl_standin_stats before, after;
+    int major = 0, minor = 0, tries;
+    void *d;
+    say("Turns: a thread that calls without a pause, and one that waits for it");
+    CHECK(get_display && initialize && create && destroy);
+    if (!get_display || !initialize || !create || !destroy) return;
+    d = get_display(NULL);
+    CHECK(d && initialize(d, &major, &minor));
+    memset(&a, 0, sizeof(a));
+    memset(&b, 0, sizeof(b));
+    a.d = b.d = d;
+    a.host = true;     /* (here: the one that stops) */
+    a.ctx = create(d, NULL, NULL, es2);
+    b.ctx = create(d, NULL, NULL, es2);
+    CHECK(a.ctx && b.ctx);
+    if (!a.ctx || !b.ctx) return;
+    g_turn_go = 0;
+    g_turn_stop = 0;
+    mg_gl_standin_set_dwell(50000ull);
+    ta = mg_thread_start(turn_running, &a, 1u << 20, "turn-busy");
+    tb = mg_thread_start(turn_running, &b, 1u << 20, "turn-waiting");
+    CHECK(ta && tb);
+    for (tries = 0; tries < 500 && (!a.ready || !b.ready); tries++) mg_sleep_ns(2000000ull);
+    CHECK(a.ready == 1 && b.ready == 1);
+    mg_gl_standin_stats_get(&before);
+    mg_atomic_xchg(&g_turn_go, 1);
+    if (ta) mg_thread_join(ta);
+    if (tb) mg_thread_join(tb);
+    mg_gl_standin_set_dwell(0);
+    mg_gl_standin_stats_get(&after);
+    say("  600 clears of the one, %d of the other meanwhile; %d overlapping, %d of a context not made current last", b.clears,
+        (int)(after.overlaps - before.overlaps), (int)(after.stale - before.stale));
+    CHECK(a.done && b.done && a.clears == 600 && b.clears >= 150);
+    CHECK(after.overlaps == before.overlaps && after.stale == before.stale);
     destroy(d, a.ctx);
     destroy(d, b.ctx);
 #else
@@ -1643,6 +1731,7 @@ int mg_gl_natives_tests_run(mg_test_sink sink, void *user, int *checks)
     test_doomed();
     test_turns();
     test_turns_destroy();
+    test_turns_fair();
     test_calls();
     test_buffers();
     mg_gl_standin_reset(true, false);

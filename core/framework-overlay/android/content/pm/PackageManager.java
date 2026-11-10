@@ -477,6 +477,9 @@ public class PackageManager {
      */
     public int getComponentEnabledSetting(ComponentName c) {
         if (c == null) return COMPONENT_ENABLED_STATE_DEFAULT;
+        // (The WebView's developer mode, which Megler keeps in the DevTools app's stead: megler.WebViewFlags.)
+        int webView = megler.WebViewFlags.state(c);
+        if (webView >= 0) return webView;
         if (!has(c.getPackageName())) throw unknown("component", c.getPackageName(), c.toString());
         synchronized (PackageManager.class) { String v = states().getProperty(c.flattenToString()); return v == null ? COMPONENT_ENABLED_STATE_DEFAULT : Integer.parseInt(v); }
     }

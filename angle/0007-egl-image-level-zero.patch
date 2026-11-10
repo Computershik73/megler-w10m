@@ -1,0 +1,20 @@
+--- a/src/libANGLE/renderer/d3d/d3d11/TextureStorage11.cpp
++++ b/src/libANGLE/renderer/d3d/d3d11/TextureStorage11.cpp
+@@ -1995,8 +1995,15 @@
+ angle::Result TextureStorage11_EGLImage::useLevelZeroWorkaroundTexture(const gl::Context *context,
+                                                                        bool)
+ {
+-    ANGLE_HR_UNREACHABLE(GetImplAs<Context11>(context));
+-    return angle::Result::Stop;
++    // Megler (angle/0007-egl-image-level-zero.patch): at feature level 9_3 (zeroMaxLodWorkaround)
++    // a texture is asked for its level-zero copy before it is sampled, and an EGL image's storage
++    // answered that it cannot be reached: every draw sampling an image of a texture was refused
++    // (GL_INVALID_OPERATION). An EGL image is one level of a texture already, the level zero it
++    // is asked for: there is nothing to switch to (venetium-w10m, the owner's Chromium for these
++    // phones, met it with video frames on a Lumia 650). The WebView's Chromium draws parts of a
++    // page from such images: at 9_3 those draws were refused, and a page drawn through a
++    // RenderNode lost what they drew.
++    return angle::Result::Continue;
+ }
+ 
+ angle::Result TextureStorage11_EGLImage::getSwizzleTexture(const gl::Context *context,
