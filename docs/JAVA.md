@@ -930,6 +930,30 @@ written back with the mappings' lock let go" maps memory on another thread while
 `msync`, the 5-second pass, the suspension's and `munmap` each read and write
 their file, and finds the lock free.
 
+Nothing is waited for under the mappings' lock, the descriptors' lock among
+them. A thread that holds the descriptors' lock -- a pipe's read copying its
+bytes into the app's buffer, `epoll_wait` writing its events, `select` reading
+its sets -- and meets a page the app gave back with `madvise` is mended by the
+fault handler, which takes the mappings' lock. The write-back took its own hold of its file under the mappings'
+lock, and `mmap` of a shared file its hold of the descriptor's, and each hold
+took the descriptors' lock: such a thread and the fault's would each wait for
+the other for good, and every `mmap`, `munmap`, `mprotect`, `madvise` and
+descriptor of the app's after them -- an app standing still with the mappings'
+lock held by its write-back. The write-back's hold is a count now, taken
+without the descriptors' lock (the mapping's own hold keeps the file while the
+mapping is there), and `mmap` holds the descriptor's file before it takes the
+mappings' lock. Should the descriptors' lock be taken by a thread that holds the
+mappings' lock again, the log says where at once ("io: the descriptors' lock is
+taken in ... by a thread that holds the mappings' lock"). `mg_tests`' "the
+mappings' lock is never held waiting for the descriptors' lock" reads a pipe
+into a page given back, then holds the descriptors' lock while `msync` writes
+back on another thread: the write-back lets the mappings' lock go before it
+waits, another thread's `mmap` goes through, and a page given back, touched with
+the descriptors' lock held, is mended; and `mmap` of a shared file, `msync`,
+the 5-second pass, the suspension's and `munmap` take the descriptors' lock
+under the mappings' lock no time. Before, the test found the mappings' lock
+held by the write-back for as long as the descriptors' lock was.
+
 **A file mapped shared shows what is written to it.** A shared mapping of a
 file that is the layer's copy (any but a read-only view from a read-only
 descriptor) holds the file, and what is written to the file through any

@@ -397,7 +397,15 @@ record is read whole and the clock after it (`mg_holder_look`, `mg_base.c`): rea
 the other way round, a lock taken a moment after the watchdog's clock was read
 came out held 2^64 ns, "18446744073.7 s", and a stand-still that was none was
 reported -- Viber's file write-back thread between its passes (0.1.0.669), a
-fault's report writing its trace lines (Tuya Smart, 671). `trace-net` also says, when the app closes a connection,
+fault's report writing its trace lines (Tuya Smart, 671). A report's first line
+says when it was said (the local time, and how far into the run) and the
+linker's time stamp of the module of the core, which the build's map has at its
+top ("Timestamp is ..."): the map that names its addresses. And as the watchdog
+begins, an earlier run's `hang.txt` goes aside as `hang.prev.txt`, so that
+`hang.txt` is this run's or none: a Lumia 650's Spotify still had one of
+0.1.0.674's under 0.1.0.687 -- the old count, and the write-back thread asleep
+between two passes, as Viber's -- which was taken for 687's after a tap that
+seemed to stop the app, and named with 687's map it gave nonsense. `trace-net` also says, when the app closes a connection,
 what went over it: the bytes and calls each way, the first sixteen bytes each
 way, when the first came in, the other end's close, errors and timeouts. Of a
 connection made it says which call the app learnt it by (`getsockopt SO_ERROR`,

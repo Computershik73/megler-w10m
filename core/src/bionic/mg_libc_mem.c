@@ -607,6 +607,7 @@ static void region_wanted(const char *site)
 #define mg_lock_release(l) ((l) == &g_region_lock ? mg_holder_let_go(&g_region_hold) : (void)0, mg_lock_release(l))
 
 bool mg_mem_lock_look(mg_hold_seen *seen) { return mg_holder_look(&g_region_hold, seen, NULL, 0); }
+bool mg_mem_lock_mine(void) { return mg_holder_mine(&g_region_hold); }
 
 void mg_g_mapped_addresses(u64 *spanned, u64 *reserved)
 {
@@ -820,7 +821,12 @@ void mg_mem_file_written(void *file, u64 at, const void *buf, size_t n)
  * mapping's file whole and wrote what differed, and walked the list of mappings from its start for each of them, all with the
  * lock held -- a pass of a moment on a PC, and as long as the phone's flash takes, which is far longer while another thread
  * puts a file on the disk (Viber's hang report has a SQLite thread in fsync). The lock order is g_write_back_lock, then
- * g_region_lock; a write-back may take the mappings' lock, never the other way round.
+ * g_region_lock; a write-back may take the mappings' lock, never the other way round. And the mappings' lock is the last
+ * taken of all: nothing is waited for under it, not the descriptors' lock either (mg_libc_io.c), whose holder -- a pipe's
+ * bytes copied into the app's buffer, epoll_wait's events written into it, a select's sets read from it -- may meet a page
+ * the app gave back with madvise and wait in the fault handler for the mappings' lock (fix_fault). The write-back took a
+ * hold of its file under it, which took the descriptors' lock, and so did mmap of a shared file: each such thread and a
+ * fault's waited for each other for good.
  */
 #define FILE_CHUNK (16 * MG_PAGE)
 static mg_lock g_write_back_lock = MG_LOCK_INIT;
@@ -894,6 +900,7 @@ static bool write_back_out(region *r, u32 serial, size_t from, size_t size, u64 
 #define WRITE_BACK_REGIONS_LOCK() (!deadline ? (mg_lock_acquire(&g_region_lock), true) : write_back_regions_by(deadline))
     if (!WRITE_BACK_REGIONS_LOCK()) return false;
     if (region_still(r, serial) && r->file && r->write_back && from < r->file_bytes) {
+        /* (A count alone, no lock: the region's own hold keeps the file while the region is in the list, see above.) */
         file = mg_fd_held_ref(r->file);
         file_offset = r->file_offset;
         end = size < r->file_bytes - from ? from + size : r->file_bytes;
@@ -1355,11 +1362,14 @@ static void *g_mmap_common(void *addr, size_t len, int prot, int flags, int fd, 
             mg_note_once("mmap: a shared writable file mapping over memory already mapped is a private copy here; writes do not reach the file");
         } else if ((flags & G_MAP_SHARED) && !(flags & G_MAP_FIXED)) {
             /* The file: to write back to (region.file) when the mapping is writable, and to keep the copy in step with as
-               the file is written through a descriptor (mg_mem_file_written). */
+               the file is written through a descriptor (mg_mem_file_written). Held before the mappings' lock is taken:
+               holding it takes the descriptors' lock, which is never waited for under the mappings' (see write-backs). */
+            void *held = mg_fd_hold(fd);
             mg_lock_acquire(&g_region_lock);
             r = region_of(p);
             if (r && !r->file) {
-                r->file = mg_fd_hold(fd);
+                r->file = held;
+                held = NULL;
                 r->file_offset = offset;
                 r->file_bytes = len;
                 r->write_back = (prot & G_PROT_WRITE) != 0;
@@ -1368,6 +1378,8 @@ static void *g_mmap_common(void *addr, size_t len, int prot, int flags, int fd, 
                 if (r->file && r->write_back) mg_atomic_add(&g_write_backs, 1);
             }
             mg_lock_release(&g_region_lock);
+            /* (Not the region's after all: another thread unmapped it meanwhile, or it had its file already.) */
+            mg_fd_let_go(held);
             if (prot & G_PROT_WRITE) write_back_start();
         }
     }

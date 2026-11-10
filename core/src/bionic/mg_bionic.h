@@ -264,8 +264,16 @@ void mg_gsleep(u64 ns);
 bool mg_app_threads_give_way(void);
 /* The flag trace-cpu: a thread that says every five seconds how much of the processor the app had, and its busiest threads. */
 void mg_bionic_cpu_trace_start(void);
-/* The hang report, in every run (Windows): when the log's or the guest threads' lock is held ten seconds, who holds it and where every thread is (LocalState\hang.txt and the log). */
+/*
+ * The hang report, in every run (Windows): when the log's, the guest threads' or the mappings' lock is held ten seconds, who
+ * holds it and where every thread is (LocalState\hang.txt and the log); an earlier run's hang.txt goes aside as hang.prev.txt.
+ */
 void mg_bionic_hang_watch_start(void);
+/*
+ * A report's first line, at `at` of `out` (`cap` bytes): when it was said (the phone's time, how far into the run) and the
+ * linker's time stamp of the core's module, which the build's map says at its top. The new end of the text.
+ */
+size_t mg_bionic_hang_heading(char *out, size_t cap, size_t at);
 /* The flag trace-native-stacks: a thread that says every ten seconds where each of the app's threads is (pc, lr, its stack's way back). */
 void mg_bionic_native_stacks_start(void);
 /* The flag trace-profile: the busiest threads sampled sixty times a second, by module and address (LocalState\profile.txt). */
@@ -330,6 +338,8 @@ void mg_mem_write_back_all(size_t largest);
 bool mg_mem_write_back_all_until(u64 deadline);
 /* A look at who holds the mappings' lock (mg_holder_look), for the hang report: false when nobody does. */
 bool mg_mem_lock_look(mg_hold_seen *seen);
+/* Whether the calling thread holds the mappings' lock: the descriptors' lock is never taken so (mg_libc_io.c, io_lock_wanted). */
+bool mg_mem_lock_mine(void);
 /* For the tests: called as a write-back is about to read and write its file, the mappings' lock let go. NULL in the app. */
 extern void (*volatile mg_mem_write_back_io_hook)(void);
 /*
