@@ -5512,6 +5512,43 @@ public class Main extends Activity {
             detail = u + " path=" + u.getPath() + " hierarchical=" + u.isHierarchical() + "; " + bare + " path=" + bare.getPath();
             return "max:/:chat-list".equals(u.toString()) && "/:chat-list".equals(u.getPath()) && u.isHierarchical() && "a/b".equals(bare.getPath());
         });
+        step("url-query-sanitizer", () -> {
+            // Android's UrlQuerySanitizer, as an analytics library of HBO Max reads its app id (new UrlQuerySanitizer(url)
+            // .getValue("id"), which was null for every URL): a URL's parameters unescaped, a value's illegal characters
+            // made '_'; and one set up by hand -- registered parameters with their sanitizers, the others dropped, the first
+            // or the last of a repeated one, the list in the query's order, a script URL emptied.
+            android.net.UrlQuerySanitizer q = new android.net.UrlQuerySanitizer("https://example.test/config?id=app-1&name=a+b%41%zz&e&x=%3Cb%3E");
+            String simple = q.getValue("id") + "|" + q.getValue("name") + "|" + q.getValue("e") + "|" + q.getValue("x") + "|" + q.getValue("none")
+                    + "|" + q.hasParameter("e") + q.hasParameter("none") + "|" + q.getParameterSet().size() + "|" + q.getParameterList().size();
+            android.net.UrlQuerySanitizer own = new android.net.UrlQuerySanitizer();
+            own.registerParameter("t", android.net.UrlQuerySanitizer.getSpaceLegal());
+            own.registerParameters(new String[] { "u", "v" }, android.net.UrlQuerySanitizer.getUrlAndSpaceLegal());
+            own.registerParameter("w", android.net.UrlQuerySanitizer.getAmpLegal());
+            // (Where spaces are legal the ends are not cut and an illegal character is a space; where no white space is, they are.)
+            own.parseQuery("t=%20one two%09&dropped=1&u=http://h/p?a=1%26b&t=last&v=JavaScript:alert(1)&w=%20a%26b%09&&=");
+            StringBuilder list = new StringBuilder();
+            for (Object o : own.getParameterList()) {
+                android.net.UrlQuerySanitizer.ParameterValuePair pair = (android.net.UrlQuerySanitizer.ParameterValuePair) o;
+                list.append(pair.mParameter).append('=').append(pair.mValue).append(';');
+            }
+            String last = own.getValue("t");
+            own.setPreferFirstRepeatedParameter(true);
+            own.parseQuery("t=first&t=second");
+            String first = own.getValue("t");
+            own.setAllowUnregisteredParamaters(true);
+            own.setUnregisteredParameterValueSanitizer(android.net.UrlQuerySanitizer.getAllButNulLegal());
+            own.parseUrl("x://y?other=<%00>");
+            String other = own.getValue("other");
+            own.parseUrl("no-query");
+            detail = "simple=" + simple + " list=" + list + " last=" + last + " first=" + first + " other=" + other + " none=" + own.getParameterList().size()
+                    + " unescape=" + own.unescape("a%2Bb+c%4") + " sanitizer=" + (own.getValueSanitizer("t") == android.net.UrlQuerySanitizer.getSpaceLegal())
+                    + (own.getEffectiveValueSanitizer("zz") == android.net.UrlQuerySanitizer.getAllButNulLegal());
+            return "app-1|a_bA_zz||_b_|null|truefalse|4|4".equals(simple)
+                    && "t= one two ;u=http://h/p?a=1&b;t=last;v=;w=a&b;".equals(list.toString()) && "last".equals(last) && "first".equals(first)
+                    && "< >".equals(other) && own.getParameterList().isEmpty() && "a+b c%4".equals(own.unescape("a%2Bb+c%4"))
+                    && own.getValueSanitizer("t") == android.net.UrlQuerySanitizer.getSpaceLegal()
+                    && own.getEffectiveValueSanitizer("zz") == android.net.UrlQuerySanitizer.getAllButNulLegal();
+        });
         step("html-tag-handler", () -> {
             // Html.fromHtml as Android's: the spans of the elements it knows, a paragraph's line breaks after it, elements left
             // open ended with the text, character references read; and a TagHandler is given html and body before the rest,
