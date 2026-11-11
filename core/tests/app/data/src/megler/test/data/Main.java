@@ -6734,6 +6734,9 @@ public class Main extends Activity {
      * A view named for a shared element transition where its layout is written -- android:transitionName in the layout, by
      * a string resource, by a style -- which a fragment transaction asks of each shared element (Citymapper's place page);
      * and setTransitionName still renames it.
+     * ListFormatter.getInstance with a type and a width (Android 13; Citymapper lists a route's lines with it) over ICU
+     * 60's list patterns: "and", "or" and units, in English and in Russian, by a Locale and by a ULocale; a width ICU 60's
+     * data has no pattern of is the next wider one, and holds the items anyway; and no type or no width is refused.
      */
     private void laterApis() {
         step("transition-name", () -> {
@@ -6746,6 +6749,31 @@ public class Main extends Activity {
             detail = "frame=" + frame + " string=" + string + " style=" + style + " none=" + none + " made=" + code + " renamed=" + byStyle.getTransitionName();
             return "frame".equals(frame) && "by-string".equals(string) && "by-style".equals(style) && none == null && code == null
                    && "renamed".equals(byStyle.getTransitionName());
+        });
+        step("list-formatter", () -> {
+            java.util.Locale ru = new java.util.Locale("ru", "RU");
+            android.icu.text.ListFormatter.Type and = android.icu.text.ListFormatter.Type.AND, or = android.icu.text.ListFormatter.Type.OR;
+            android.icu.text.ListFormatter.Type units = android.icu.text.ListFormatter.Type.UNITS;
+            android.icu.text.ListFormatter.Width wide = android.icu.text.ListFormatter.Width.WIDE, narrow = android.icu.text.ListFormatter.Width.NARROW;
+            android.icu.text.ListFormatter.Width shorter = android.icu.text.ListFormatter.Width.SHORT;
+            String three = android.icu.text.ListFormatter.getInstance(java.util.Locale.US, and, wide).format("A", "B", "C");
+            String two = android.icu.text.ListFormatter.getInstance(java.util.Locale.US, and, wide).format(java.util.Arrays.asList("A", "B"));
+            String either = android.icu.text.ListFormatter.getInstance(android.icu.util.ULocale.US, or, wide).format("A", "B", "C");
+            String unit = android.icu.text.ListFormatter.getInstance(java.util.Locale.US, units, wide).format("A", "B", "C");
+            String unitNarrow = android.icu.text.ListFormatter.getInstance(java.util.Locale.US, units, narrow).format("A", "B", "C");
+            String ruAnd = android.icu.text.ListFormatter.getInstance(ru, and, wide).format("A", "B", "C");
+            String ruOr = android.icu.text.ListFormatter.getInstance(android.icu.util.ULocale.forLocale(ru), or, wide).format("A", "B", "C");
+            String andNarrow = android.icu.text.ListFormatter.getInstance(java.util.Locale.US, and, narrow).format("A", "B", "C");
+            String orShort = android.icu.text.ListFormatter.getInstance(ru, or, shorter).format("A", "B", "C");
+            String plain = android.icu.text.ListFormatter.getInstance(java.util.Locale.US).format("A", "B", "C");
+            boolean noType = false, noWidth = false;
+            try { android.icu.text.ListFormatter.getInstance(java.util.Locale.US, null, wide); } catch (NullPointerException e) { noType = true; }
+            try { android.icu.text.ListFormatter.getInstance(android.icu.util.ULocale.US, and, null); } catch (NullPointerException e) { noWidth = true; }
+            detail = "and=" + three + " | " + two + " or=" + either + " unit=" + unit + " | " + unitNarrow + " ru=" + ruAnd + " | " + ruOr + " and-narrow=" + andNarrow
+                     + " ru-or-short=" + orShort + " plain=" + plain + " refused " + noType + " " + noWidth;
+            return "A, B, and C".equals(three) && "A and B".equals(two) && "A, B, or C".equals(either) && "A, B, C".equals(unit) && "A B C".equals(unitNarrow)
+                   && "A, B и C".equals(ruAnd) && "A, B или C".equals(ruOr) && andNarrow.startsWith("A") && andNarrow.contains("B") && andNarrow.endsWith("C")
+                   && orShort.startsWith("A") && orShort.contains("B") && orShort.endsWith("C") && "A, B, and C".equals(plain) && noType && noWidth;
         });
     }
 
