@@ -2006,6 +2006,7 @@ public class Main extends Activity {
         visibilityAggregated();
         visibilityScrap();
         addViewParams();
+        cleanupLayoutState();
         layerDrawableHidden();
         boringLayoutOneLine();
         backgroundOffMainThread();
@@ -6485,6 +6486,40 @@ public class Main extends Activity {
             detail = "with parameters [" + given.heard + "] " + withParams + ", made [" + bare.heard + "] [" + foreign.heard + "] " + made
                     + ", in a layout [" + quiet.heard + "] [" + asked.heard + "] " + inLayout + ", inflated [" + child.heard + "] " + fromLayout;
             return withParams && made && inLayout && fromLayout;
+        });
+    }
+
+    /** A group as Compose's AndroidViewsHandler is one: its requestLayout does not go on to View's -- it counts the request
+     *  and takes its own layout request back (cleanupLayoutState), so that the next request of a child reaches it too. */
+    static class QuietGroup extends android.widget.FrameLayout {
+        int asked;
+        QuietGroup(Context c) { super(c); }
+        @Override public void requestLayout() { asked++; cleanupLayoutState(this); }
+    }
+
+    /**
+     * ViewGroup.cleanupLayoutState takes a view's layout request back, as Android's: a group that has one asked (forceLayout)
+     * and whose requestLayout calls it on itself has none after a child is added (addView asks the group's layout), and so
+     * hears each requestLayout of the child, once each. It did nothing: the group kept its request, and the child's stopped
+     * at it (a view's requestLayout goes to a parent that has none asked) -- the views a Compose screen holds, whose parent
+     * (AndroidViewsHandler) is such a group, were not measured again when they asked.
+     */
+    private void cleanupLayoutState() {
+        step("cleanup-layout-state", () -> {
+            QuietGroup g = new QuietGroup(this);
+            g.forceLayout();
+            boolean forced = g.isLayoutRequested();
+            android.view.View child = new android.view.View(this);
+            int before = g.asked;
+            g.addView(child);
+            int added = g.asked - before;
+            boolean cleared = !g.isLayoutRequested();
+            child.requestLayout();
+            int heard = g.asked - before - added;
+            child.requestLayout();
+            int again = g.asked - before - added - heard;
+            detail = "forced " + forced + " added " + added + " cleared " + cleared + " heard " + heard + " again " + again + " child asked " + child.isLayoutRequested();
+            return forced && added == 1 && cleared && heard == 1 && again == 1 && child.isLayoutRequested();
         });
     }
 

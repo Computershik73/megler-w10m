@@ -3625,6 +3625,9 @@ static int run_data(void)
                                          /* And a view added to a group or inflated into one hears its layout parameters through its own
                                             setLayoutParams, as Android's ViewGroup gives them (Citymapper's bottom sheet container). */
                                          "add-view-params",
+                                         /* And ViewGroup.cleanupLayoutState takes a group's layout request back: a group whose requestLayout
+                                            calls it on itself (Compose's AndroidViewsHandler) hears each requestLayout of a child. */
+                                         "cleanup-layout-state",
                                          /* And a LayerDrawable told it is not visible: its layers drawn all the same, as Android's. */
                                          "layer-drawable-hidden",
                                          /* And a BoringLayout one line whatever its width, as Android's (a badge's text in two lines). */

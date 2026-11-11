@@ -33,6 +33,12 @@
 // CoordinatorLayout parameters their behavior there, and every screen that looks for the sheet above it ended the app with
 // "Not inside a bottom sheet".
 //
+// And cleanupLayoutState takes a view's layout request back (its PFLAG_FORCE_LAYOUT), as Android's does: it did nothing.
+// A group whose requestLayout does not go on to View's (Compose's AndroidViewsHandler, the parent of every view a Compose
+// screen holds) calls it on itself there, so that the next request of a child reaches it again; with nothing done the
+// group stayed "layout requested" from its making until its next layout, and a held view that asked for its layout
+// meanwhile (a child's requestLayout stops at a parent that has one asked) was not measured again.
+//
 // Everything else is the original's, unchanged.
 package android.view;
 
@@ -739,7 +745,7 @@ public abstract class ViewGroup extends View implements ViewParent, ViewManager 
     protected void attachLayoutAnimationParameters(android.view.View p0, android.view.ViewGroup.LayoutParams p1, int p2, int p3) {}
     public java.util.ArrayList buildTouchDispatchChildList() { return new java.util.ArrayList(); }
     public void captureTransitioningViews(java.util.List p0) {}
-    protected void cleanupLayoutState(android.view.View p0) {}
+    protected void cleanupLayoutState(android.view.View child) { child.mPrivateFlags &= ~View.PFLAG_FORCE_LAYOUT; }
     public android.graphics.Bitmap createSnapshot(android.view.ViewDebug.CanvasProvider p0, boolean p1) { return null; }
     protected void debug(int p0) {}
     protected void destroyHardwareResources() {}
