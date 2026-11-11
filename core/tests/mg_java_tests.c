@@ -91,6 +91,7 @@
 #include "../src/ndk/mg_egl.h"
 #include "../src/run/mg_run.h"
 #include "../src/zip/mg_zip.h"
+#include "zlib.h"
 #include "mg_camera_standin.h"
 #include "mg_location_standin.h"
 #include "mg_wifi_standin.h"
@@ -1020,6 +1021,152 @@ static MEGLER_CB void mic_stop(void *user)
 }
 
 /*
+ * The phone's picker and camera (megler_system_host.pick), for the pickers app: each request answered in turn, from a thread
+ * of its own as the shell answers from its picker, with what g_pick_script says for it -- files of the test's own written into
+ * the request's folder (photo.png, a picture of 640 x 480; doc.pdf; the camera's IMG_<time>.jpg, that picture again; its
+ * VID_<time>.mp4), or "-", the user backing out. The first request hides the app's window while its "picker" is up and shows
+ * it again a moment after the answer, as Windows 10 Mobile's FileOpenPicker does. What each request asked is said in
+ * g_pick_heard: "<kind> <types,> <o|m><max> s<start> d<duration> q<quality>;".
+ */
+static bool g_pickers_app, g_webview_app;
+static char g_pick_heard[1024];
+static volatile i32 g_picks;
+static const char *const g_pick_script[] = { "photo.png", "photo.png doc.pdf", "photo.png", "photo.png", "-", "doc.pdf",
+                                             "IMG_20261111_120000.jpg", "IMG_20261111_120001.jpg", "VID_20261111_120002.mp4", "photo.png" };
+
+typedef struct pick_job {
+    unsigned id;
+    int number;                        /* which request of the run, from 0 */
+    char folder[600];
+} pick_job;
+
+/* A PNG of w x h, its rows a gradient: zlib's deflate, the chunks' checksums. The caller frees it. */
+static u8 *make_png(int w, int h, size_t *size)
+{
+    size_t raw_len = (size_t)h * (size_t)(1 + 3 * w), at = 0;
+    uLongf z_len = compressBound((uLong)raw_len);
+    u8 *raw = (u8 *)malloc(raw_len), *z = (u8 *)malloc(z_len), *png = NULL;
+    int x, y;
+    if (raw && z) {
+        for (y = 0; y < h; y++) {
+            raw[at++] = 0;
+            for (x = 0; x < w; x++) {
+                raw[at++] = (u8)(x * 255 / w);
+                raw[at++] = (u8)(y * 255 / h);
+                raw[at++] = 0x80;
+            }
+        }
+        if (compress(z, &z_len, raw, (uLong)raw_len) == Z_OK && (png = (u8 *)malloc(8 + 25 + 12 + z_len + 12)) != NULL) {
+            static const u8 sig[8] = { 0x89, 'P', 'N', 'G', 0x0d, 0x0a, 0x1a, 0x0a };
+            u8 ihdr[13];
+            size_t n = 0;
+            const u8 *chunks[3];
+            const char *types[3] = { "IHDR", "IDAT", "IEND" };
+            size_t lens[3];
+            int k;
+            memcpy(png, sig, 8);
+            n = 8;
+            ihdr[0] = (u8)(w >> 24); ihdr[1] = (u8)(w >> 16); ihdr[2] = (u8)(w >> 8); ihdr[3] = (u8)w;
+            ihdr[4] = (u8)(h >> 24); ihdr[5] = (u8)(h >> 16); ihdr[6] = (u8)(h >> 8); ihdr[7] = (u8)h;
+            ihdr[8] = 8; ihdr[9] = 2; ihdr[10] = 0; ihdr[11] = 0; ihdr[12] = 0;
+            chunks[0] = ihdr; lens[0] = 13;
+            chunks[1] = z; lens[1] = z_len;
+            chunks[2] = NULL; lens[2] = 0;
+            for (k = 0; k < 3; k++) {
+                uLong crc;
+                png[n++] = (u8)(lens[k] >> 24); png[n++] = (u8)(lens[k] >> 16); png[n++] = (u8)(lens[k] >> 8); png[n++] = (u8)lens[k];
+                memcpy(png + n, types[k], 4);
+                if (lens[k]) memcpy(png + n + 4, chunks[k], lens[k]);
+                crc = crc32(0, png + n, (uInt)(4 + lens[k]));
+                n += 4 + lens[k];
+                png[n++] = (u8)(crc >> 24); png[n++] = (u8)(crc >> 16); png[n++] = (u8)(crc >> 8); png[n++] = (u8)crc;
+            }
+            *size = n;
+        }
+    }
+    free(raw);
+    free(z);
+    return png;
+}
+
+/* One of the test's files, written into a request's folder under `name`: what its extension says it is. */
+static bool write_pick_file(const char *folder, const char *name)
+{
+    char *path = mg_sprintf("%s/%s", folder, name);
+    bool ok = false;
+    if (strstr(name, ".png") || strstr(name, ".jpg")) {
+        size_t size = 0;
+        u8 *png = make_png(640, 480, &size);
+        ok = png && mg_file_write_all(path, png, size);
+        free(png);
+    } else if (strstr(name, ".pdf")) {
+        static const char pdf[] = "%PDF-1.4\n1 0 obj << /Type /Catalog >> endobj\ntrailer << /Root 1 0 R >>\n%%EOF\n";
+        ok = mg_file_write_all(path, pdf, sizeof(pdf) - 1);
+    } else if (strstr(name, ".mp4")) {
+        static const u8 mp4[] = { 0, 0, 0, 0x18, 'f', 't', 'y', 'p', 'm', 'p', '4', '2', 0, 0, 0, 0, 'i', 's', 'o', 'm', 'm', 'p', '4', '2',
+                                  0, 0, 0, 8, 'f', 'r', 'e', 'e' };
+        ok = mg_file_write_all(path, mp4, sizeof(mp4));
+    }
+    free(path);
+    return ok;
+}
+
+static MG_HOSTCB void pick_answer(void *arg)
+{
+    pick_job *job = (pick_job *)arg;
+    const char *script = job->number < (int)MG_COUNT(g_pick_script) ? g_pick_script[job->number] : "-";
+    const char *names[4];
+    char copy[200], *word, *space;
+    int n = 0;
+    bool hides = g_pickers_app && job->number == 0;
+    if (hides) {
+        /* The picker comes up over the app: its window hidden, as Windows 10 Mobile's picker hides it. */
+        mg_sleep_ns(50000000ull);
+        megler_set_paused(true);
+    }
+    mg_sleep_ns(200000000ull);
+    mg_strlcpy(copy, script, sizeof(copy));
+    for (word = copy; strcmp(script, "-") && word && *word && n < 4; word = space ? space + 1 : NULL) {
+        space = strchr(word, ' ');
+        if (space) *space = 0;
+        if (write_pick_file(job->folder, word)) names[n++] = word;
+    }
+    megler_pick_done(job->id, strcmp(script, "-") ? MEGLER_PICK_OK : MEGLER_PICK_CANCELED, n, names);
+    if (hides) {
+        /* The window back a moment after the picker's answer, which waits for it. */
+        mg_sleep_ns(300000000ull);
+        megler_set_paused(false);
+    }
+    free(job);
+}
+
+static MEGLER_CB bool system_pick(void *user, const megler_pick_request *r)
+{
+    pick_job *job;
+    char types[200];
+    size_t n = strlen(g_pick_heard), i;
+    mg_thread *t;
+    (void)user;
+    mg_strlcpy(types, r->types, sizeof(types));
+    for (i = 0; types[i]; i++)
+        if (types[i] == '\n') types[i] = types[i + 1] ? ',' : 0;
+    snprintf(g_pick_heard + n, sizeof(g_pick_heard) - n, "%d %s %c%d s%d d%d q%d;", r->kind, types, r->multiple ? 'm' : 'o', r->max, r->start,
+             r->duration_s, r->quality);
+    job = (pick_job *)calloc(1, sizeof(*job));
+    if (!job) return false;
+    job->id = r->id;
+    job->number = (int)mg_atomic_add(&g_picks, 1) - 1;
+    mg_strlcpy(job->folder, r->folder, sizeof(job->folder));
+    t = mg_thread_start(pick_answer, job, 0, "test picker");
+    if (!t) {
+        free(job);
+        return false;
+    }
+    mg_thread_detach(t);
+    return true;
+}
+
+/*
  * The phone's check of its user (megler_biometric_host), for the data app's step biometric: ready; it verifies the user
  * when its message has "Sign in" in it, else the user says no. What it was asked is said in g_bio_heard, the message's
  * lines joined by '|'.
@@ -1270,12 +1417,17 @@ static bool start(const char *apk, const char *android_root)
     cfg.system.launch_app = system_launch;
     cfg.system.uninstall_app = system_uninstall;
     cfg.system.permission = system_permission;
+    /* The phone's picker and camera, answered by the test for the pickers app and the WebView's file input (system_pick); any
+       other app has none here. */
+    if (g_pickers_app || g_webview_app) cfg.system.pick = system_pick;
+    g_pick_heard[0] = 0;
     g_system_heard[0] = 0;
     g_permissions_asked[0] = 0;
     cfg.apps_dir = phone_apps_fixture();
     /* Decoders for MediaCodec that decode nothing but take samples only as a real one must have them (mg_codec_standin.c). */
     cfg.codec = *mg_codec_standin();
-    if (g_camera_app) cfg.camera = *mg_camera_standin();
+    /* (The pickers app has them too: the package manager answers a camera app's intents where the device has a camera.) */
+    if (g_camera_app || g_pickers_app) cfg.camera = *mg_camera_standin();
     /* The phone in Moscow, the location on (mg_location_standin.c). */
     cfg.location = *mg_location_standin();
     /* Its Wi-Fi on, four networks in range, connected to the first (mg_wifi_standin.c), its scans counted from each start. */
@@ -4144,6 +4296,83 @@ static int run_wifi(void)
     return g_failed;
 }
 
+/*
+ * The system's picker and camera (the test app pickers, on the test's stand-in for the shell's, system_pick): each intent an
+ * app sends Android's documents UI, photo picker and camera app answered as the app expects -- the files' URIs and ClipData,
+ * the photo written to the app's own FileProvider and a thumbnail without one, the video to a file: URI, RESULT_CANCELED for
+ * a cancel, a chooser unwrapped, a WebView's file input left to the platform -- and what the package manager says of those
+ * intents. The first request's picker hides the window: its result waits until the window is back and comes before onResume.
+ * What the shell was asked for each, and the log saying what was asked and answered with no file's name in it.
+ */
+static int run_pickers(void)
+{
+    static const char *const steps[] = { "resolve", "get-content", "open-multiple", "pick-images", "pick-media", "cancel", "chooser",
+                                         "capture-output", "capture-inline", "video", "web-input", "write-refused" };
+    static const char heard[] = "0 image/* o0 s1 d0 q-1;0 image/*,application/pdf m0 s0 d0 q-1;0 image/* m5 s1 d0 q-1;0 image/* o0 s1 d0 q-1;"
+                                "0 */* o0 s0 d0 q-1;0 application/pdf o0 s0 d0 q-1;1 image/jpeg o0 s1 d0 q-1;1 image/jpeg o0 s1 d0 q-1;"
+                                "2 video/mp4 o0 s2 d15 q0;0 image/* m0 s1 d0 q-1;";
+    char text[160];
+    int at = -1, i, asked, stop, result, resume;
+    expect_line("I/PickersTest: onCreate", &at, 120);
+    for (i = 0; i < (int)MG_COUNT(steps); i++) {
+        snprintf(text, sizeof(text), "I/PickersTest: %s ok", steps[i]);
+        expect_line(text, &at, 120);
+    }
+    snprintf(text, sizeof(text), "I/PickersTest: done ok=%d failed=0", (int)MG_COUNT(steps));
+    expect_line(text, &at, 60);
+    say("  the shell was asked: %s", g_pick_heard);
+    CHECK(!strcmp(g_pick_heard, heard));
+    /* The first: asked, the window hidden by its picker (onStop), answered, and the result given once the window is back,
+       before onResume. */
+    asked = find_line("I/MeglerPickers: request 1 (android.intent.action.GET_CONTENT of image/*) asked of the shell for megler.test.pickers.Main, request code 11", 0);
+    stop = find_line("I/PickersTest: onStop", asked);
+    result = find_line("I/PickersTest: result 11 -1 content://megler.picked/1/photo.png", stop);
+    resume = find_line("I/PickersTest: onResume", result);
+    CHECK(asked >= 0 && stop > asked && result > stop && resume > result);
+    CHECK(find_line("I/MeglerPickers: the answer waits for the app to be in front again", asked) > 0);
+    /* What the core and the framework said of each: the requests, the answers, the results -- extensions, never names. */
+    CHECK(find_line("java: the app asks for the phone's picker (request 1): a file of image/*", 0) >= 0);
+    CHECK(find_line("java: the app asks for the phone's picker (request 2): several files of image/* application/pdf", 0) >= 0);
+    CHECK(find_line("java: the app asks for the phone's picker (request 3): several files of image/*, at most 5", 0) >= 0);
+    CHECK(find_line("java: the app asks for the phone's camera (request 9): a video, at most 15 s, low quality", 0) >= 0);
+    CHECK(find_line("java: the phone's answer to request 2: 2 files: .png .pdf", 0) >= 0);
+    CHECK(find_line("java: the phone's answer to request 9: 1 file: .mp4", 0) >= 0);
+    CHECK(find_line("java: the phone's answer to request 5: the user backed out", 0) >= 0);
+    CHECK(find_line("I/MeglerPickers: request 2 (android.intent.action.OPEN_DOCUMENT of image/* application/pdf): RESULT_OK, 2 files (.png .pdf) in the ClipData, "
+                    "to megler.test.pickers.Main (request code 12)", 0) >= 0);
+    CHECK(find_line("I/MeglerPickers: request 5 (android.intent.action.GET_CONTENT of */*): RESULT_CANCELED, the user backed out", 0) >= 0);
+    CHECK(find_line("I/MeglerPickers: request 7 (android.media.action.IMAGE_CAPTURE of image/jpeg): RESULT_OK, the photo (.jpg) written to the app's content: URI", 0) >= 0);
+    CHECK(find_line("I/MeglerPickers: request 8 (android.media.action.IMAGE_CAPTURE of image/jpeg): RESULT_OK, a photo of ", 0) >= 0);
+    CHECK(find_line("I/MeglerPickers: request 9 (android.media.action.VIDEO_CAPTURE of video/mp4): RESULT_OK, the video (.mp4) written to the app's file: URI", 0) >= 0);
+    CHECK(find_line("I/MeglerPickers: request 10 (a WebView's file input of image/*): the page's file input has 1 file (.png)", 0) >= 0);
+    CHECK(find_line("W/MeglerPickers: a picked file opened to write (mode w): refused", 0) >= 0);
+    mg_lock_acquire(&g_log_lock);
+    for (i = 0; i < g_nlines; i++)
+        if ((strstr(g_lines[i], "java: ") || strstr(g_lines[i], "/MeglerPickers: ")) && (strstr(g_lines[i], "photo.png") || strstr(g_lines[i], "doc.pdf") || strstr(g_lines[i], "IMG_") || strstr(g_lines[i], "VID_"))) {
+            say("  a line that names a picked file: %s", g_lines[i]);
+            g_failed++;
+        }
+    g_checks++;
+    mg_lock_release(&g_log_lock);
+    {
+        /* The camera's photo went where the app said, and its copy here with it; a picked file stays for the app to read later. */
+        char *taken = mg_sprintf("%s/megler-picked/7", mg_fs_internal_dir()), *kept = mg_sprintf("%s/megler-picked/1/photo.png", mg_fs_internal_dir());
+        char *taken_host = mg_fs_host_path(taken), *kept_host = mg_fs_host_path(kept);
+        mg_stat st;
+        int err = 0;
+        CHECK(taken_host && !mg_path_stat(taken_host, &st, &err));
+        CHECK(kept_host && mg_path_stat(kept_host, &st, &err) && st.size > 0);
+        free(taken);
+        free(kept);
+        free(taken_host);
+        free(kept_host);
+    }
+    CHECK(find_line(" FAILED", 0) < 0 && find_line("FATAL EXCEPTION", 0) < 0 && find_line("ActivityNotFoundException", 0) < 0);
+    back_and_end("I/PickersTest: onDestroy", &at);
+    if (g_failed) say_app_lines("/PickersTest: ");
+    return g_failed;
+}
+
 /* Regression: a client and GmsCore carry incompatible classes of identical names. */
 static int run_microg(void)
 {
@@ -4498,6 +4727,18 @@ static int run_webview(void)
     megler_key(142, false);
     /* A second WebView, a banner, drawn through a RenderNode, dismissed and destroyed between its draws: the app goes on. */
     CHECK(wait_line("I/WebViewTest: dismiss ok", 0, 300) >= 0);
+    /*
+     * A page's <input type=file> in a WebView the app gives no chrome client (it is none to the app: getWebChromeClient is
+     * null): tapped, it opens the phone's picker -- the stand-in (system_pick) picks its picture -- where Android's WebView
+     * with no client answers it with nothing; and the page reads the file through the picked file's content: URI, its name,
+     * type and bytes as Chromium has them from the provider (megler.Pickers).
+     */
+    line = wait_line("I/WebViewTest: file-at ", 0, 300);
+    CHECK(line >= 0 && sscanf(strstr(line_at(line), "file-at ") + 8, "%d,%d", &x, &y) == 2);
+    CHECK(line >= 0 && strstr(line_at(line), "chrome-client=null"));
+    if (line >= 0) tap(x, y);
+    CHECK(wait_line("I/WebViewTest: file-input ok photo.png image/png ", 0, 300) >= 0);
+    CHECK(find_line("I/MeglerPickers: request 1 (a WebView's file input of image/*): the page's file input has 1 file (.png)", 0) >= 0);
     expect_line("I/WebViewTest: done", &at, 120);
     for (i = 0; i < g_nlines; i++)
         if (strstr(g_lines[i], "/WebViewTest: ") && strstr(g_lines[i], " FAILED")) say("  %s", g_lines[i]);
@@ -4522,6 +4763,8 @@ int mg_tests_java_run(const char *which, const char *apk, const char *android_ro
     g_crash_app = !strcmp(which, "crash");
     g_camera_app = !strcmp(which, "camera");
     g_bluetooth_app = !strcmp(which, "bluetooth");
+    g_pickers_app = !strcmp(which, "pickers");
+    g_webview_app = !strcmp(which, "webview");
     g_data_app = !strcmp(which, "data");
     g_microg_app = !strcmp(which, "microg");
     /* gms-host runs where Windows finds the phone by the cell network alone (600 m), as Transit's user's phone does: Google Play
@@ -4644,6 +4887,7 @@ int mg_tests_java_run(const char *which, const char *apk, const char *android_ro
         else if (!strcmp(which, "scroll")) run_scroll();
         else if (!strcmp(which, "bluetooth")) run_bluetooth();
         else if (!strcmp(which, "wifi")) run_wifi();
+        else if (!strcmp(which, "pickers")) run_pickers();
         else if (g_any_app) run_app();
         else run_hello();
         if (running()) {
