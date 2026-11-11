@@ -4087,6 +4087,64 @@ app as Android's media keys, which go to its active session's
 `Callback.onMediaButtonEvent` as Android 9 sends them, and to the window when
 there is no session. The test app `data` (`media-session`) checks both ways.
 
+### A media session's controllers
+
+An app may drive its own player through its media session: its screens hold a
+`MediaController` (the support library's `MediaControllerCompat`) made from
+the session's token, press play on its `TransportControls`, and learn of the
+state and the track from a `MediaController.Callback`, while the playback
+service only answers the session's `Callback`. Deezer is built so. The
+session's token was null, a controller's `getTransportControls()` was null
+and `registerCallback` did nothing, so play never reached such an app's
+service and nothing was heard.
+
+- **The token.** `MediaSession.getSessionToken()` is the session's
+  `MediaSession.Token`, one object for its life, and equal to itself through
+  a `Parcel`. `new MediaController(context, token)` and `MediaSession.
+  getController()` are controllers of that session.
+- **To the session.** `TransportControls`' play, pause, stop, seek, skips,
+  fast forward and rewind, `playFromMediaId`/`Search`/`Uri` and their
+  `prepare` forms, `skipToQueueItem`, `setRating`, `setPlaybackSpeed` and
+  `sendCustomAction`, the controller's `sendCommand` (its `ResultReceiver`
+  handed on) and `dispatchMediaButtonEvent` are the session's `Callback`'s
+  methods, each posted to the handler the callback was set with (the
+  session's maker's looper, or the main one), as Android posts them. During
+  one, `getCurrentControllerInfo()` names the app itself, with its pid and
+  uid. Nothing is delivered after `setCallback(null)` or `release()`.
+- **From the session.** `setPlaybackState`, `setMetadata`, `setQueue`,
+  `setQueueTitle`, `setExtras`, `sendSessionEvent`, `setPlaybackToLocal`/
+  `Remote` and `release` reach every registered `MediaController.Callback` on
+  its handler (`onSessionDestroyed` last). The getters answer what the
+  session was last given; a playing state's position is carried forward by
+  the clock at its speed, as Android's is, and no further than the track's
+  duration.
+- **Volume.** `getPlaybackInfo()` is the music stream's volume, or the
+  session's `VolumeProvider`'s; `setVolumeTo` and `adjustVolume` go to the
+  provider (`onSetVolumeTo`, `onAdjustVolume`) or the stream, and
+  `VolumeProvider.setCurrentVolume` tells the controllers
+  (`onAudioInfoChanged`). `VolumeProvider` and `Rating` were generated
+  signatures and are written now.
+- **`RemoteCallbackList`**, which the support library keeps a session's
+  controllers' callbacks in, was signatures alone: it registered nothing
+  and a broadcast reached nobody. It is Android's now, by
+  binder, with cookies, `beginBroadcast`/`getBroadcastItem`/`finishBroadcast`
+  (one broadcast at a time), `broadcast(Consumer)` and `kill`.
+
+What Megler does not have: a session of another app (each app runs alone, and
+`MediaSessionManager.getActiveSessions` is empty), and
+`MediaBrowser`/`MediaBrowserService`, which are still signatures.
+
+The test app `data`: "remote-callback-list"; "session-token" (the token
+through a `Parcel`, a queue item likewise); "session-controller" (every
+transport control heard by the session's callback on its handler's thread,
+with the caller named, none after the callback is taken away);
+"session-controller-callback" (metadata, state, queue, title, extras, an
+event and the session's end heard by a controller's callback; the position
+carried forward and stopped at the duration); "session-controller-command"
+(a command answered through its `ResultReceiver`, a media button);
+"session-remote-volume" (a `VolumeProvider` set and adjusted through the
+controller, then the stream again); "rating".
+
 ### Installing, and the phone's other apps
 
 What a Java app asks of the phone beyond its window goes to the shell through
@@ -8164,6 +8222,37 @@ The tests:
   `renderFrame` alone takes 9.6 to 10.6 ms for 1080p. Microsoft's H.264
   decoder works in software here; it would use the graphics processor if it
   were given a Direct3D device manager, which it is not yet.
+
+### Protected media: there is no DRM
+
+Megler has no content decryption module: no Widevine, no PlayReady, no
+ClearKey, and no secure decoder. It says so the way an Android device without
+a scheme does, and nothing pretends otherwise (no keys, no attestation):
+
+- `MediaDrm.isCryptoSchemeSupported` (all three forms) and `MediaCrypto.
+  isCryptoSchemeSupported` are false for every UUID, and `MediaDrm.
+  getSupportedCryptoSchemes()` is empty;
+- `new MediaDrm(uuid)` throws `UnsupportedSchemeException` and `new
+  MediaCrypto(uuid, data)` throws `MediaCryptoException`, with Android's
+  messages; `MediaDrmException`, `MediaDrmResetException` and
+  `MediaCryptoException` keep their messages (they were generated classes
+  that dropped them);
+- `MediaCodecList` has no `.secure` decoder, no decoder has
+  `FEATURE_SecurePlayback`, a format that requires it finds none, and
+  `MediaCodec.queueSecureInputBuffer` of an encrypted sample throws
+  `MediaCodec.CryptoException` (`ERROR_UNSUPPORTED_OPERATION`).
+
+`MediaDrm` was a generated class: an object whose `openSession()` was null.
+A player went on with it until the null failed somewhere inside it (HBO Max:
+a `NullPointerException` in its DRM session, retried four times). Now
+ExoPlayer and media3 take the path they have for such a device: their
+`FrameworkMediaDrm` cannot be made, and the session fails with "Attempting
+to open a session using a dummy ExoMediaDrm" (media3's error 6006), or the
+app is told the scheme is unsupported (6001) where it asks first. An app
+that streams only protected video shows its own error for that; it cannot
+play here. Clear streams play as before.
+
+The test app `data`: "drm-no-scheme" and "drm-no-secure-decoder".
 
 ### The cameras
 
