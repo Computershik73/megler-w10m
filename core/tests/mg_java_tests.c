@@ -3585,7 +3585,8 @@ static int run_data(void)
                                          /* And a module's resources as Google Play services' DynamiteLoader makes them: the platform's
                                             with a ResourcesLoader of an APK of resources alone added (the app's assets/loader.apk). */
                                          "resources-loader",
-                                         /* And a LocationRequest as Android 12 makes one, and a request of the passive interval through LocationManager. */
+                                         /* And a LocationRequest as Android 12 makes one, and a request of the passive interval through LocationManager
+                                            (built with its minimum update interval set, as Android wants one; refused with none set). */
                                          "location-request",
                                          /* And a provider's file through a ContentProviderClient, as Google Play services' DynamiteLoader reads its configuration. */
                                          "provider-client-file",

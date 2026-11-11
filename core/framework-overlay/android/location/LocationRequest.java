@@ -11,6 +11,13 @@
 // every 9223372036854775807 ms for ggdn", 0.1.0.671), which was never handed a fix. And an app's
 // LocationManager.requestLocationUpdates(provider, new LocationRequest.Builder(5000).build(), ...) asked for its updates
 // every 0 ms.
+//
+// And the Builder refuses what Android's refuses: a request of the passive interval whose minimum update interval was never
+// set ("passive location requests must have an explicit minimum update interval"). It had the check the other way round and
+// refused every passive request that did set one, which is every one androidx makes (LocationRequestCompat always sets
+// it): microG's network location service asks for the GPS provider's fixes so, and failed at each start of its engine
+// ("D/NetworkLocation: GPS location retriever not initialized", "IllegalStateException: passive location requests must have
+// an implicit minimum update interval"; Citymapper, 0.1.0.690), and so never heard the GPS provider's fixes.
 package android.location;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
@@ -334,8 +341,8 @@ public final class LocationRequest implements android.os.Parcelable {
         public Builder setWorkSource(android.os.WorkSource workSource) { mWorkSource = workSource; return this; }
 
         public LocationRequest build() {
-            if (mIntervalMillis == PASSIVE_INTERVAL && mMinUpdateIntervalMillis != IMPLICIT_MIN_UPDATE_INTERVAL)
-                throw new IllegalStateException("passive location requests must have an implicit minimum update interval");
+            if (mIntervalMillis == PASSIVE_INTERVAL && mMinUpdateIntervalMillis == IMPLICIT_MIN_UPDATE_INTERVAL)
+                throw new IllegalStateException("passive location requests must have an explicit minimum update interval");
             return new LocationRequest(null, mIntervalMillis, mQuality, Long.MAX_VALUE, mDurationMillis, mMaxUpdates,
                     Math.min(mMinUpdateIntervalMillis, mIntervalMillis), mMinUpdateDistanceMeters, mMaxUpdateDelayMillis, mHiddenFromAppOps,
                     mAdasGnssBypass, mBypass, mLowPower, new android.os.WorkSource(mWorkSource));

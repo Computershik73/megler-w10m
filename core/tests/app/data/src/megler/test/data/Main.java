@@ -7343,7 +7343,10 @@ public class Main extends Activity {
      * provider (hidden: by reflection) -- names its provider and the quality the passive provider stands for (POWER_NONE); one
      * goes through a Parcel and comes back equal. And a request of the passive interval through LocationManager (Android 12's
      * requestLocationUpdates with a LocationRequest, by reflection) is handed a fix on the main thread and removed:
-     * "location-passive ok", which the test waits for. (LocationRequest is Android 12's: stubs/.)
+     * "location-passive ok", which the test waits for. (LocationRequest is Android 12's: stubs/.) A passive request is
+     * built with its minimum update interval set, as androidx's LocationRequestCompat builds every one (microG's network
+     * location asks for the GPS provider's fixes so); one whose minimum update interval was never set is refused
+     * (IllegalStateException), as Android refuses it. The check was the other way round, and microG's request failed.
      */
     private void locationRequest() {
         step("location-request", () -> {
@@ -7359,7 +7362,14 @@ public class Main extends Activity {
             android.location.LocationRequest back = android.location.LocationRequest.CREATOR.createFromParcel(p);
             p.recycle();
             final android.location.LocationManager lm = (android.location.LocationManager) getSystemService(Context.LOCATION_SERVICE);
-            android.location.LocationRequest passive = new android.location.LocationRequest.Builder(android.location.LocationRequest.PASSIVE_INTERVAL).build();
+            android.location.LocationRequest passive = new android.location.LocationRequest.Builder(android.location.LocationRequest.PASSIVE_INTERVAL)
+                    .setMinUpdateIntervalMillis(1000).build();
+            String implicit;
+            try {
+                implicit = "built " + new android.location.LocationRequest.Builder(android.location.LocationRequest.PASSIVE_INTERVAL).build();
+            } catch (IllegalStateException e) {
+                implicit = "refused";
+            }
             lm.getClass().getMethod("requestLocationUpdates", String.class, android.location.LocationRequest.class, java.util.concurrent.Executor.class,
                     android.location.LocationListener.class).invoke(lm, android.location.LocationManager.PASSIVE_PROVIDER, passive, getMainExecutor(),
                     new android.location.LocationListener() {
@@ -7383,10 +7393,13 @@ public class Main extends Activity {
                         public void onStatusChanged(String provider, int status, android.os.Bundle extras) {}
                     });
             detail = "built " + r + " minUpdate=" + r.getMinUpdateIntervalMillis() + " any.max=" + any.getMaxUpdates() + " deprecated " + deprecated + " provider=" + provider
-                    + " quality=" + quality + " back=" + back;
+                    + " quality=" + quality + " back=" + back + " passive: interval " + (passive.getIntervalMillis() == android.location.LocationRequest.PASSIVE_INTERVAL)
+                    + " minUpdate=" + passive.getMinUpdateIntervalMillis() + ", with none set " + implicit;
             return r.getIntervalMillis() == 6000 && r.getMaxUpdates() == 3 && r.getMinUpdateIntervalMillis() == 1000
                     && r.getQuality() == android.location.LocationRequest.QUALITY_BALANCED_POWER_ACCURACY && any.getMaxUpdates() == Integer.MAX_VALUE
-                    && "passive".equals(provider) && quality == 200 && r.equals(back);
+                    && "passive".equals(provider) && quality == 200 && r.equals(back)
+                    && passive.getIntervalMillis() == android.location.LocationRequest.PASSIVE_INTERVAL && passive.getMinUpdateIntervalMillis() == 1000
+                    && "refused".equals(implicit);
         });
     }
 
