@@ -679,7 +679,7 @@ PY
     # and of a second of video where ffmpeg is here to make one (MG_TEST_CLIP; without it the video's is left out, and said).
     rm -rf "$OUT/scratch-storage"
     CLIP=()
-    if command -v ffmpeg > /dev/null 2>&1 && ffmpeg -loglevel error -y -f lavfi -i "color=c=red:size=160x120:rate=10" -t 1 -pix_fmt yuv420p "$OUT/clip.mp4" < /dev/null; then
+    if command -v ffmpeg > /dev/null 2>&1 && ffmpeg -loglevel error -y -f lavfi -i "color=c=red:size=160x120:rate=10" -t 1 -pix_fmt yuv420p "$(w "$OUT/clip.mp4")" < /dev/null; then
       CLIP=(env "MG_TEST_CLIP=$(w "$OUT/clip.mp4")")
     fi
     ${CLIP[@]+"${CLIP[@]}"} "$OUT/mg_tests.exe" --storage-windows "$(w "$OUT/scratch-storage")" || STATUS=1
