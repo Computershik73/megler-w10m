@@ -3656,6 +3656,10 @@ static int run_data(void)
                                          /* And Android's Geocoder with no geocode provider (no Google Play services): not present, no
                                             addresses and no error, the arguments checked; and an Address as Android's, through a Parcel. */
                                          "geocoder", "address",
+                                         /* And Android's RemoteCallbackList (callbacks by their binder with cookies, a broadcast over the
+                                            callbacks as they were when it began, kill), which androidx's MediaSessionCompat keeps its
+                                            controllers' callbacks in. */
+                                         "remote-callback-list",
                                          "audio-track", "media-player", "media-player-ogg", "sound-pool",
                                          /* And MediaCodec over the stand-in for the shell's decoders: H.264 shown on a Surface in display
                                             order, a flush, parameter sets in a codec-config buffer, the asynchronous mode, AAC with an

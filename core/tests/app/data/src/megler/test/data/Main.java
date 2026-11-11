@@ -2015,6 +2015,7 @@ public class Main extends Activity {
         notificationChannel();
         notificationChannels(run);
         geocoding();
+        remoteCallbacks();
         sound();
         mediaCodec();
         network();
@@ -7486,6 +7487,50 @@ public class Main extends Activity {
             detail = u.getPackageName() + " " + u.getPid() + " " + u.getUid();
             return "megler.test.data".equals(u.getPackageName()) && u.getPid() == 12 && u.getUid() == 10077 && u.equals(same) && u.hashCode() == same.hashCode()
                     && !u.equals(new android.media.session.MediaSessionManager.RemoteUserInfo("megler.test.data", 13, 10077));
+        });
+    }
+
+    /** A listener of the app's own, as an AIDL callback is within its own process: an interface whose binder is itself. */
+    private static final class Listener extends android.os.Binder implements android.os.IInterface {
+        final String name;
+        Listener(String name) { this.name = name; }
+        @Override public android.os.IBinder asBinder() { return this; }
+    }
+
+    /**
+     * Android's RemoteCallbackList, as androidx's MediaSessionCompat keeps its controllers' callbacks in one: callbacks by
+     * their binder, each with its cookie, one registered again taking the earlier one's place; a broadcast over the
+     * callbacks as they were when it began, and Android's refusals of one begun inside another or finished outside one; the
+     * one-call broadcast (hidden on Android: by reflection); and kill, after which nothing registers.
+     */
+    private void remoteCallbacks() {
+        step("remote-callback-list", () -> {
+            android.os.RemoteCallbackList<Listener> list = new android.os.RemoteCallbackList<>();
+            Listener a = new Listener("a"), b = new Listener("b");
+            boolean registered = list.register(a, "first") && list.register(b) && list.register(a, "again");
+            int count = list.getRegisteredCallbackCount();
+            int n = list.beginBroadcast();
+            boolean nested = false;
+            try { list.beginBroadcast(); } catch (IllegalStateException e) { nested = true; }
+            // (Unregistered while the broadcast is under way: still of this broadcast, not of the next.)
+            boolean unregistered = list.unregister(b);
+            java.util.TreeSet<String> heard = new java.util.TreeSet<>();
+            for (int i = 0; i < n; i++) heard.add(list.getBroadcastItem(i).name + "=" + list.getBroadcastCookie(i));
+            list.finishBroadcast();
+            boolean outside = false;
+            try { list.finishBroadcast(); } catch (IllegalStateException e) { outside = true; }
+            final StringBuilder next = new StringBuilder();
+            android.os.RemoteCallbackList.class.getMethod("broadcast", java.util.function.Consumer.class)
+                    .invoke(list, (java.util.function.Consumer<Listener>) l -> next.append(l.name));
+            boolean notAgain = !list.unregister(b);
+            Object cookie = list.getRegisteredCallbackCookie(0);
+            list.kill();
+            boolean killed = !list.register(b) && list.getRegisteredCallbackCount() == 0 && list.beginBroadcast() == 0;
+            list.finishBroadcast();
+            detail = "registered " + registered + ", count " + count + ", a broadcast of " + n + " " + heard + ", nested refused " + nested + ", outside refused " + outside
+                    + ", the next " + next + ", cookie " + cookie + ", killed " + killed;
+            return registered && count == 2 && n == 2 && nested && unregistered && "[a=again, b=null]".equals(heard.toString()) && outside
+                    && "a".equals(next.toString()) && notAgain && "again".equals(cookie) && killed;
         });
     }
 
