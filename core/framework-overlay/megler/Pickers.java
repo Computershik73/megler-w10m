@@ -557,11 +557,68 @@ public final class Pickers {
                 double k = Math.sqrt((double) INLINE_PIXELS / pixels);
                 b = Bitmap.createScaledBitmap(b, Math.max(1, (int) (b.getWidth() * k)), Math.max(1, (int) (b.getHeight() * k)), true);
             }
+            // Upright, as Android's camera turns it by the photo's Exif orientation: a phone's camera writes its sensor's
+            // picture and says in the Exif how it was held, and the decoder does not turn it.
+            int degrees = exifDegrees(f);
+            if (degrees != 0) {
+                android.graphics.Matrix m = new android.graphics.Matrix();
+                m.postRotate(degrees);
+                b = Bitmap.createBitmap(b, 0, 0, b.getWidth(), b.getHeight(), m, true);
+            }
             return b;
         } catch (RuntimeException | OutOfMemoryError e) {
             Log.w(TAG, "a photo's thumbnail: " + e);
             return null;
         }
+    }
+
+    /*
+     * How far a JPEG's picture is to be turned clockwise to stand upright, by its Exif orientation (tag 0x0112 of its first
+     * IFD: 1 upright, 6 a quarter turn, 3 a half, 8 three quarters): 0 where it has none, as the photo picker's orientation
+     * column says it and Android's camera turns the photo it hands back. Read from the file's first 64 KB, where APP1 is.
+     */
+    static int exifDegrees(File f) {
+        byte[] b = new byte[64 * 1024];
+        int n = 0;
+        try (InputStream in = new FileInputStream(f)) {
+            int got;
+            while (n < b.length && (got = in.read(b, n, b.length - n)) > 0) n += got;
+        } catch (java.io.IOException e) {
+            return 0;
+        }
+        if (n < 4 || (b[0] & 0xFF) != 0xFF || (b[1] & 0xFF) != 0xD8) return 0;
+        int at = 2;
+        while (at + 4 <= n && (b[at] & 0xFF) == 0xFF) {
+            int marker = b[at + 1] & 0xFF, len = ((b[at + 2] & 0xFF) << 8) | (b[at + 3] & 0xFF);
+            if (marker == 0xDA || len < 2) return 0;
+            if (marker == 0xE1 && at + 10 <= n && b[at + 4] == 'E' && b[at + 5] == 'x' && b[at + 6] == 'i' && b[at + 7] == 'f') {
+                int tiff = at + 10, end = Math.min(n, at + 2 + len);
+                if (tiff + 8 > end) return 0;
+                boolean le = b[tiff] == 'I';
+                int ifd = tiff + read32(b, tiff + 4, le);
+                if (ifd < tiff || ifd + 2 > end) return 0;
+                int entries = read16(b, ifd, le);
+                for (int k = 0; k < entries && ifd + 2 + 12 * (k + 1) <= end; k++) {
+                    int e = ifd + 2 + 12 * k;
+                    if (read16(b, e, le) != 0x0112) continue;
+                    switch (read16(b, e + 8, le)) {
+                    case 3: return 180;
+                    case 6: return 90;
+                    case 8: return 270;
+                    default: return 0;
+                    }
+                }
+                return 0;
+            }
+            at += 2 + len;
+        }
+        return 0;
+    }
+    private static int read16(byte[] b, int at, boolean le) {
+        return le ? (b[at] & 0xFF) | (b[at + 1] & 0xFF) << 8 : (b[at] & 0xFF) << 8 | (b[at + 1] & 0xFF);
+    }
+    private static int read32(byte[] b, int at, boolean le) {
+        return le ? read16(b, at, true) | read16(b, at + 2, true) << 16 : read16(b, at, false) << 16 | read16(b, at + 2, false);
     }
 
     // ---- the requests' folders
@@ -670,7 +727,7 @@ public final class Pickers {
             case "date_modified": case "date_added": return f.lastModified() / 1000;
             case "width": return size != null ? size[0] : 0;
             case "height": return size != null ? size[1] : 0;
-            case "orientation": return 0;
+            case "orientation": return mimeOf(f.getName()).equals("image/jpeg") ? exifDegrees(f) : 0;
             case "duration_millis": case "duration": return 0L;
             default: return null;
             }
