@@ -252,8 +252,8 @@ compile() {
 echo "$SQLITE_GCC $WEBP_GCC" > \$OUT/sqlite.flags
 export -f compile
 export OUT CFLAGS
-printf '%s\n' ${SRCS[*]} | xargs -P 8 -I{} bash -c 'compile {} ""'
-printf '%s\n' ${ZSRCS[*]} | xargs -P 8 -I{} bash -c 'compile {} "-w"'
+printf '%s\n' ${SRCS[*]} | xargs -P ${MEGLER_JOBS:-8} -I{} bash -c 'compile {} ""'
+printf '%s\n' ${ZSRCS[*]} | xargs -P ${MEGLER_JOBS:-8} -I{} bash -c 'compile {} "-w"'
 arm-linux-gnueabihf-gcc -mthumb -o \$OUT/mg_tests \$OUT/obj/*.o -lm -lpthread -ldl
 echo "built \$OUT/mg_tests"
 EOF
@@ -390,8 +390,8 @@ compile() {
 echo "$SQLITE_GCC $WEBP_GCC" > \$OUT/sqlite.flags
 export -f compile
 export OUT CFLAGS
-printf '%s\n' ${SRCS[*]} | xargs -P 8 -I{} bash -c 'compile {} ""'
-printf '%s\n' ${ZSRCS[*]} | xargs -P 8 -I{} bash -c 'compile {} "-w"'
+printf '%s\n' ${SRCS[*]} | xargs -P ${MEGLER_JOBS:-8} -I{} bash -c 'compile {} ""'
+printf '%s\n' ${ZSRCS[*]} | xargs -P ${MEGLER_JOBS:-8} -I{} bash -c 'compile {} "-w"'
 gcc -o \$OUT/mg_tests \$OUT/obj/*.o -lm -lpthread -ldl
 echo "built \$OUT/mg_tests"
 EOF
