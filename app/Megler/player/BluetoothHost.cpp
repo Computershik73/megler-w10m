@@ -691,14 +691,28 @@ bool keepSession(const std::shared_ptr<Conn>& c, const GattSession& session, con
     return true;
 }
 
-/// How long until a connection made `auto` is tried again, on a Windows that gives no session to wait with.
-constexpr std::chrono::seconds againAfter{5};
+/// How long until a connection made `auto` is tried again, on a Windows that gives no session to wait with; and where the
+/// tests' devices come from (BluetoothHost::devicesFrom), none for Windows' own. Under gMutex.
+std::chrono::milliseconds gAgainAfter{5000};
+BluetoothHost::DeviceSource gDevices;
 
 winrt::fire_and_forget connectAsync(std::shared_ptr<Conn> c) {
     std::string why;
     try {
         BluetoothLEDevice dev{nullptr};
-        if (gTyped && c->type != MEGLER_BT_ADDRESS_UNKNOWN)
+        BluetoothHost::DeviceSource source;
+        std::chrono::milliseconds againAfter;
+        {
+            std::lock_guard<std::mutex> lock(gMutex);
+            source = gDevices;
+            againAfter = gAgainAfter;
+        }
+        if (source) {
+            // (The tests' device: handed over on one of Windows' threads, as Windows' own is, and taken for a device only
+            // if it answers as one.)
+            co_await winrt::resume_background();
+            if (const auto made = source(c->address)) dev = made.as<BluetoothLEDevice>();
+        } else if (gTyped && c->type != MEGLER_BT_ADDRESS_UNKNOWN)
             dev = co_await BluetoothLEDevice::FromBluetoothAddressAsync(c->address, c->type == MEGLER_BT_ADDRESS_RANDOM ? BluetoothAddressType::Random
                                                                                                                          : BluetoothAddressType::Public);
         else
@@ -802,9 +816,9 @@ winrt::fire_and_forget connectAsync(std::shared_ptr<Conn> c) {
                 co_return;
             }
             if (attempt == 1)
-                shellLog::write(format("bluetooth: connection %d to %s: not in range (%s); tried again every %d seconds, this Windows having no session to "
+                shellLog::write(format("bluetooth: connection %d to %s: not in range (%s); tried again every %g seconds, this Windows having no session to "
                                        "wait with",
-                                       c->conn, addressText(c->address).c_str(), statusName(status), int(againAfter.count())));
+                                       c->conn, addressText(c->address).c_str(), statusName(status), double(againAfter.count()) / 1000.0));
             co_await winrt::resume_after(againAfter);
             if (endedMeanwhile(c)) co_return;
         }
@@ -1454,6 +1468,12 @@ megler_bluetooth_host BluetoothHost::callbacks() {
 std::string BluetoothHost::summary() {
     if (!waitLooked()) return "not known: Windows did not answer in time";
     return summarize();
+}
+
+void BluetoothHost::devicesFrom(DeviceSource source, int againMs) {
+    std::lock_guard<std::mutex> lock(gMutex);
+    gDevices = std::move(source);
+    gAgainAfter = std::chrono::milliseconds(againMs > 0 ? againMs : 5000);
 }
 
 } // namespace megler::app

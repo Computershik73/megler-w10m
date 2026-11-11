@@ -44,6 +44,9 @@
 
 #include "megler.h"
 
+#include <winrt/base.h>
+
+#include <functional>
 #include <string>
 
 namespace megler::app {
@@ -59,6 +62,14 @@ public:
     megler_bluetooth_host callbacks();
     /// What was found, in a line (waits for the looking to end).
     std::string summary();
+
+    /// For the tests, which have no radio and no device to connect to (core/tests/mg_bluetooth_windows.cpp): the device of
+    /// an address is what `source` gives -- an object that answers as Windows' BluetoothLEDevice does, with as many or as
+    /// few of its later interfaces as the Windows it stands for, or null for no such device -- and Windows is not asked.
+    /// `againMs`: how long until a connection made `auto` is tried again where there is no session to wait with (five
+    /// seconds otherwise). An empty `source`: Windows' devices again.
+    using DeviceSource = std::function<winrt::Windows::Foundation::IInspectable(unsigned long long address)>;
+    void devicesFrom(DeviceSource source, int againMs = 0);
 
 private:
     BluetoothHost() = default;
