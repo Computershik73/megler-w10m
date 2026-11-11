@@ -77,9 +77,12 @@
 #       overlay goes by), and a picture whose Present is refused.
 #       And the shell's Bluetooth for an app's android.bluetooth
 #       (app/Megler/player/BluetoothHost.cpp: Windows.Devices.Bluetooth),
-#       built in likewise and run as --bluetooth-windows: the PC's radio
-#       and a passive scan of three seconds -- nothing connected to or
-#       paired with -- or, on a PC without a radio, a line that says so.
+#       built in likewise and run as --bluetooth-windows: connections to
+#       devices made up as Windows gives them (core/tests/
+#       mg_bluetooth_windows.cpp: the phone's interfaces and no more, and
+#       each way Windows has of not answering), then the PC's radio and a
+#       passive scan of three seconds -- nothing connected to or paired
+#       with -- or, on a PC without a radio, a line that says so.
 #       And the shell's Wi-Fi for an app's WifiManager (app/Megler/player/
 #       WifiHost.cpp: Windows.Devices.WiFi), built in likewise and run as
 #       --wifi-windows: the PC's adapter, one scan and its networks, the

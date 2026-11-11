@@ -1405,7 +1405,7 @@ thread.
 | Android | Windows |
 |---|---|
 | a scan (`startScan`, `startLeScan`) | `BluetoothLEAdvertisementWatcher`, active unless every scan is opportunistic; an advertisement and its scan response, two of Windows' events, are one record, the device's last of each, their AD structures as Windows got them; connectable from the advertisement's type |
-| `connectGatt` | `BluetoothLEDevice.FromBluetoothAddressAsync` (with the address's kind where it was heard), a `GattSession` with `MaintainConnection`, and the device's services asked for afresh, which makes Windows connect: connected once it has them, 133 when it could not reach the device; then `ConnectionStatusChanged`: a drop is Android's 8 (Windows says not why), and with `autoConnect` Windows makes the connection again whenever it can |
+| `connectGatt` | `BluetoothLEDevice.FromBluetoothAddressAsync` (with the address's kind where it was heard) and the device's services asked for afresh, which makes Windows connect: connected once it has them, 133 when it could not reach the device -- or when anything else of Windows' failed; a `GattSession` with `MaintainConnection`, asked for by the device's id where Windows has one (`BluetoothDeviceId`, Windows 10 1709) and, on Windows 10 Mobile, which has none, the one of the device's first service -- with `autoConnect` the services are asked for again there every five seconds until the device answers, there being no session to wait with; then `ConnectionStatusChanged`: a drop is Android's 8 (Windows says not why), and with `autoConnect` Windows makes the connection again whenever it can |
 | `discoverServices` | every service's characteristics and descriptors, uncached, by their attribute handles, which are Android's instance ids; a service Windows keeps to itself (HID) left out; a notifying characteristic whose Client Characteristic Configuration descriptor Windows does not list has one made up |
 | `readCharacteristic`, `writeCharacteristic`, the descriptors' | `ReadValueAsync`, `WriteValueWithResultAsync` (with or without response); Windows' status made Android's: the ATT error as it is, 133 unreachable, 257 refused |
 | the Client Characteristic Configuration descriptor written | `WriteClientCharacteristicConfigurationDescriptorWithResultAsync`, `ValueChanged` subscribed to first: each notification and indication is `onCharacteristicChanged` |
@@ -1413,6 +1413,26 @@ thread.
 | `readRemoteRssi` | none: Windows tells no connection's signal; the core answers with the last advertisement's |
 | `createBond`, `removeBond` | Windows' pairing with a ceremony of Megler's (`DeviceInformationCustomPairing`), `UnpairAsync` |
 | `ACTION_REQUEST_ENABLE`, `enable()` | the phone's Bluetooth settings (`ms-settings:bluetooth`): Megler cannot turn the radio on |
+
+**What a Windows lacks.** The host is compiled with a later Windows' headers
+than the phone's Windows knows (10.0.15254 has the contracts of Windows 10
+1703), and C++/WinRT reaches a member of a class's later interface through a
+`QueryInterface` whose answer it does not look at: on a Windows without the
+interface the call goes through null, on one of Windows' threads, and the
+process ends. That is how 0.1.0.690 ended MeshCore's app as its radio was
+tapped: `BluetoothLEDevice.BluetoothDeviceId` is `IBluetoothLEDevice4`'s, and
+Windows 10 1709's. So the host calls nothing of a later interface on the class
+itself: each is asked for as such -- one it needs gives the interface or
+throws (`part<I>`), one the phone's Windows lacks is done without (`try_as`:
+the device's id, an advertisement's kind of address) -- no result of an
+operation, no element of a list and no argument of an event is taken for an
+object before it is looked at, and every coroutine and every handler of an
+event ends with a catch-all, an exception that leaves one being the end of the
+process as well. What the app hears is what Android says of such a thing: a
+connection not made (133, disconnected), a discovery that failed (257, or 133
+when the device no longer answers), a read or a write with 133, the MTU 23, a
+bond not made; the log says which of Windows' answers it was
+("bluetooth: connection 1 to ... not made: ...").
 
 **Pairing.** As on Android, a read or a write the device refuses for want of
 pairing (`GATT_INSUFFICIENT_AUTHENTICATION` or `_ENCRYPTION`) while it is not
@@ -1436,14 +1456,30 @@ RSSI from the last advertisement, advertisements dropped past the bound while
 the answers wait, nothing after the app's end) and the test app `bluetooth` in
 Java, as MeshCore's app uses it (docs/JAVA.md). `BluetoothHost.cpp` builds into
 the phone's package and the PC's, and into the PC's test program, whose
-`--bluetooth-windows` says this PC's radio through it and the core's and
-listens passively for three seconds (nothing sent, connected to or paired
-with) -- on the PC this was written on, which has no Bluetooth adapter, it
-says so. *Expected:* everything the shell does with a real device -- a scan's
+`--bluetooth-windows` first has the host connect to devices made up as
+Windows gives them (`core/tests/mg_bluetooth_windows.cpp`, C++/WinRT
+implementations handed to the host in place of Windows' own,
+`BluetoothHost::devicesFrom`; 62 checks): a MeshCore radio as Windows 10
+Mobile shows it -- no `IBluetoothLEDevice4`, the session from its first
+service, an MTU that is 23 at first, nulls in Windows' lists, a service
+Windows refuses, a characteristic and a descriptor without their later
+interfaces -- gone through as flutter_blue_plus goes (connect, MTU, services,
+notifications on, writes, reads, the link lost and made again, disconnect),
+and each way a connection is not made or a discovery fails (no device, an
+object that is no device, no `IBluetoothLEDevice3`, out of range, no result,
+a throw, no session, a device gone meanwhile, a disconnect while Windows is
+asking), with what the app hears of each and no event twice or after a close.
+Then it says this PC's radio through the host and the core's and listens
+passively for three seconds (nothing sent, connected to or paired with) --
+on the PC this was written on, which has no Bluetooth adapter, it says so.
+*Expected:* everything the shell does with a real device -- a scan's
 records, a connection, its database, writes, notifications, the MTU Windows
 negotiates, pairing with a PIN -- which only a phone (or a PC) with a MeshCore
-radio in range can show; whether Windows 10 Mobile takes a custom pairing
-ceremony, or a PIN must go through its own dialog.
+radio in range can show: the made-up devices answer as Windows' interfaces
+say, not as the phone's radio does (whether its Windows gives the services of
+a device it is not paired with, and a session with them); whether Windows 10
+Mobile takes a custom pairing ceremony, or a PIN must go through its own
+dialog.
 
 ## Wi-Fi
 

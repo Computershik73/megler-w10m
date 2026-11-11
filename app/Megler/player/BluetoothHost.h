@@ -16,9 +16,14 @@
 //                 stops with an error is SCAN_FAILED.
 //   connect       the device by its address (and kind, where it was heard), a GattSession that maintains the connection,
 //                 and its services asked for afresh, which is what makes Windows connect: CONNECTION 1 once it has them,
-//                 or 0 with 133 when it could not reach the device. Then Windows' ConnectionStatus: a connection that drops
-//                 is CONNECTION 0 with Android's 8 (Windows says not why); with `auto` Windows makes it again whenever it
-//                 can (MaintainConnection) and it comes as CONNECTION 1, without, it is let go.
+//                 or 0 with 133 when it could not reach the device -- or when anything else went wrong: whatever Windows
+//                 throws or lacks, the app hears of a connection not made. The session is asked for by the device's id
+//                 where Windows has one (Windows 10 1709); Windows 10 Mobile has none, and there the session is the one
+//                 of the device's first service, once the services are there (a connection made `auto` is then tried
+//                 every few seconds until the device answers, there being no session to wait with). Then Windows'
+//                 ConnectionStatus: a connection that drops is CONNECTION 0 with Android's 8 (Windows says not why); with
+//                 `auto` Windows makes it again whenever it can (MaintainConnection) and it comes as CONNECTION 1,
+//                 without, it is let go.
 //   discover      every service's characteristics and descriptors, afresh, by their attribute handles. A characteristic
 //                 that notifies or indicates without a Client Characteristic Configuration descriptor among those Windows
 //                 lists has one made up for it, which stands for Windows' own call.
@@ -39,6 +44,9 @@
 
 #include "megler.h"
 
+#include <winrt/base.h>
+
+#include <functional>
 #include <string>
 
 namespace megler::app {
@@ -54,6 +62,14 @@ public:
     megler_bluetooth_host callbacks();
     /// What was found, in a line (waits for the looking to end).
     std::string summary();
+
+    /// For the tests, which have no radio and no device to connect to (core/tests/mg_bluetooth_windows.cpp): the device of
+    /// an address is what `source` gives -- an object that answers as Windows' BluetoothLEDevice does, with as many or as
+    /// few of its later interfaces as the Windows it stands for, or null for no such device -- and Windows is not asked.
+    /// `againMs`: how long until a connection made `auto` is tried again where there is no session to wait with (five
+    /// seconds otherwise). An empty `source`: Windows' devices again.
+    using DeviceSource = std::function<winrt::Windows::Foundation::IInspectable(unsigned long long address)>;
+    void devicesFrom(DeviceSource source, int againMs = 0);
 
 private:
     BluetoothHost() = default;
