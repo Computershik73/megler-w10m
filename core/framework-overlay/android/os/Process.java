@@ -6,7 +6,9 @@
 // Process.is64Bit (SysUtil.MarshmallowSysdeps): told 64 bits, it kept none of the two 32-bit ones, and WhatsApp ended at
 // its start with "No supported ABIs found on this device" (package 270). And in myProcessName, which names the process of
 // the code that asks, as Application.getProcessName does (overlaid). And in setThreadPriority, which sets the calling
-// thread's priority (megler.Native.threadNice) where the original did nothing. Everything else is the original's, unchanged.
+// thread's priority (megler.Native.threadNice) where the original did nothing. And in killProcess, which ends nothing when
+// Google Play services' own code asks it or the pid is not the process's, and says who ended the app. Everything else is
+// the original's, unchanged.
 package android.os;
 
 public class Process {
@@ -21,7 +23,26 @@ public class Process {
     public static void setThreadPriority(int p) { megler.Native.threadNice(p); }
     public static void setThreadPriority(int tid, int p) { if (tid == myTid() || tid == 0) megler.Native.threadNice(p); }
     public static int getThreadPriority(int tid) { return 0; }
-    public static void killProcess(int pid) { megler.Native.exit(); }
+    /*
+     * Google Play services' own code in an app's process (megler.MicroG) ends what it takes for its own process to start again
+     * with its modules changed (ChimeraModuleLdr: "Module config changed, forcing restart due to module ..."). On Android
+     * that is GmsCore's process; here it is the app's, and WhatsApp closed under its first screen two seconds after Google
+     * Play services had loaded a new module (690, a Lumia 650). Their call ends nothing here: the app goes on, and its next
+     * start has their new modules. A pid other than the process's names no process here. Who ends the app is in the log.
+     */
+    public static void killProcess(int pid) {
+        if (pid != myPid()) {
+            android.util.Log.w("Megler", "Process.killProcess(" + pid + "): no process of that id here; nothing ended");
+            return;
+        }
+        if (megler.MicroG.calledByHosted()) {
+            android.util.Log.w("Megler", "Process.killProcess: Google Play services' own code ends their process to start them again; "
+                + "here that process is the app's, which goes on", new Throwable("asked here"));
+            return;
+        }
+        android.util.Log.i("Megler", "Process.killProcess: the app ends its process", new Throwable("asked here"));
+        megler.Native.exit();
+    }
     /* when the process started: the first use of this class, early in the app's start */
     private static final long START_NANOS = System.nanoTime(), START_ELAPSED = SystemClock.elapsedRealtime(), START_UPTIME = SystemClock.uptimeMillis();
     /* (On desktop Windows the process is of the processor's own width: x86_64's and ARM64's are 64-bit; megler/Abis.java.) */
