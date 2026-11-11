@@ -734,7 +734,15 @@ public final class MicroG {
      * game stood still for the ten seconds of the wait at every start (0.1.0.681). On Android the provider is GmsCore's
      * process's, published once its Application is attached, and answers on a binder thread whatever the app's main thread
      * does.
+     *
+     * And it does not wait for a main thread that waits for it: one that stands waiting to enter a monitor this thread holds
+     * (or one whose holder waits for one of this thread's: Native.mainWaitsForMe, asked every 50 ms of the wait) attaches
+     * nothing until this thread goes on, and the wait was its ten seconds for nothing; the provider then answers as before.
+     * Citymapper's Application.onCreate initializes Google Maps (MapsInitializer, which loads a Dynamite module under
+     * DynamiteModule's class lock) while another thread, that lock held, asks the Chimera provider for a module of its own
+     * (the measurement library's): the app stood ten seconds at every start, its first picture 15 s after Play (0.1.0.690).
      */
+    private boolean saidMainWaits;
     private void attachOnMain() {
         if (attached != null) return;
         if (Looper.myLooper() == Looper.getMainLooper()) {
@@ -749,7 +757,15 @@ public final class MicroG {
         long until = SystemClock.uptimeMillis() + 10000, left;
         synchronized (attachEnded) {
             while (attached == null && !done[0] && (left = until - SystemClock.uptimeMillis()) > 0) {
-                try { attachEnded.wait(left); } catch (InterruptedException e) { Thread.currentThread().interrupt(); break; }
+                if (Native.mainWaitsForMe()) {
+                    if (!saidMainWaits) {
+                        saidMainWaits = true;
+                        android.util.Log.i("MicroG", "Google Play services' provider is asked by a thread (" + Thread.currentThread().getName()
+                            + ") holding a monitor that the main thread waits to enter: it answers before their Application is attached");
+                    }
+                    break;
+                }
+                try { attachEnded.wait(Math.min(left, 50)); } catch (InterruptedException e) { Thread.currentThread().interrupt(); break; }
             }
         }
     }

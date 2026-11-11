@@ -3585,7 +3585,8 @@ static int run_data(void)
                                          /* And a module's resources as Google Play services' DynamiteLoader makes them: the platform's
                                             with a ResourcesLoader of an APK of resources alone added (the app's assets/loader.apk). */
                                          "resources-loader",
-                                         /* And a LocationRequest as Android 12 makes one, and a request of the passive interval through LocationManager. */
+                                         /* And a LocationRequest as Android 12 makes one, and a request of the passive interval through LocationManager
+                                            (built with its minimum update interval set, as Android wants one; refused with none set). */
                                          "location-request",
                                          /* And a provider's file through a ContentProviderClient, as Google Play services' DynamiteLoader reads its configuration. */
                                          "provider-client-file",
@@ -3622,6 +3623,18 @@ static int run_data(void)
                                          /* And a list's rows taken out and put back as RecyclerView's scrap, heard as Android tells them
                                             whether they are shown: said once the window has the list, checked below. */
                                          "visibility-scrap",
+                                         /* And a view added to a group or inflated into one hears its layout parameters through its own
+                                            setLayoutParams, as Android's ViewGroup gives them (Citymapper's bottom sheet container). */
+                                         "add-view-params",
+                                         /* And ViewGroup.cleanupLayoutState takes a group's layout request back: a group whose requestLayout
+                                            calls it on itself (Compose's AndroidViewsHandler) hears each requestLayout of a child. */
+                                         "cleanup-layout-state",
+                                         /* And the calendar's events of a time, asked as CalendarContract's helpers ask: an empty cursor of
+                                            the columns asked for, not null (Citymapper reads its count on a worker thread at each start). */
+                                         "calendar-instances",
+                                         /* And the package "android" has the platform's signature, a certificate (microG's location service
+                                            reads it for every app it has a location for), given when asked for and not otherwise. */
+                                         "platform-signature",
                                          /* And a LayerDrawable told it is not visible: its layers drawn all the same, as Android's. */
                                          "layer-drawable-hidden",
                                          /* And a BoringLayout one line whatever its width, as Android's (a badge's text in two lines). */
@@ -4687,6 +4700,22 @@ static int run_gms_host(void)
         CHECK(find_line("I/GmsHostTest: provider asked under a lock true", 0) >= 0);
         say("  %s", at >= 0 ? line_at(at) : "a binding under the provider's lock: none");
     }
+    /*
+     * And their provider asked, before their Application is attached, by a thread holding a lock that the main thread then waits
+     * to enter (Main.askWhileMainWaits, the first thing the app does): the thread is answered at once and the main thread goes
+     * on, their Application attached after. The thread waited ten seconds for the main thread to attach it, which the main
+     * thread, waiting for the thread's lock, could not: Citymapper stood so at every start, Google Maps initialized in its
+     * Application.onCreate under DynamiteModule's lock while the thread that held it asked their Chimera provider (0.1.0.690).
+     */
+    {
+        int at = wait_line("I/GmsHostTest: the main thread entered the asking thread's lock after ", 0, 300);
+        const char *ms = at >= 0 ? strstr(line_at(at), " after ") : NULL;
+        CHECK(at >= 0 && ms && atol(ms + 7) < 5000 && strstr(ms, " ms, their provider answered true"));
+        CHECK(at >= 0 && find_line("I/GmsOwnTest: application attached", 0) > at);
+        CHECK(find_line("I/MicroG: Google Play services' provider is asked by a thread (gms-host-main-waits) holding a monitor that the main thread "
+                        "waits to enter: it answers before their Application is attached", 0) >= 0);
+        say("  %s", at >= 0 ? line_at(at) : "a provider asked while the main thread waits for the asking thread: nothing said");
+    }
     CHECK(wait_line("I/GmsOwnTest: settings network_location_opt_in=1", 0, 120) >= 0);
     CHECK(wait_line("I/MeglerLocation: Google Location Accuracy on: the user was asked, and said Allow -- Google Play services' network location may find "
                     "the phone from the Wi-Fi networks around it", 0, 60) >= 0);
@@ -4717,9 +4746,9 @@ static int run_gms_host(void)
     CHECK(wait_line("I/GmsOwnTest: network location alarm went off", 0, 60) >= 0);
     CHECK(wait_line("I/GmsOwnTest: network location second fix sent true", 0, 30) >= 0);
     /*
-     * Google Play services from a bundle (gms-own.apks: a base and the splits config.mdpi, config.xxhdpi and config.en), as
-     * Play Store installs Google's own, unpacked for 160 dpi in English and Russian: the app has their base and the splits
-     * kept, and their resources are those of all three. An activity of theirs, started by the app and run here as their
+     * Google Play services from a bundle (gms-own.apks: a base and the splits config.mdpi, config.xxhdpi, config.en and pack),
+     * as Play Store installs Google's own, unpacked for 160 dpi in English and Russian: the app has their base and the splits
+     * kept, and their resources are those of all four. An activity of theirs, started by the app and run here as their
      * account settings are, reads a picture that is in their density's split alone (16 x 16, mdpi's), the word of their
      * English split, and both again through a context of another configuration, as AppCompat wraps an activity's: the
      * picture was not there ("Manage your Google Account" ended Play Store on the Google logo's NotFoundException,
@@ -4728,11 +4757,23 @@ static int run_gms_host(void)
      * naming none, it has the platform's default for their target (Theme.DeviceDefault.Light.DarkActionBar, 0x0103013f),
      * not the number of the app's theme.
      */
-    CHECK(find_line("java: Google Play services are in 3 APKs, their base and the splits config.en, config.mdpi", 0) >= 0);
-    CHECK(find_line("I/MicroG: Google Play services' splits, whose resources and files join their base's: config.en, config.mdpi (3 APKs)", 0) >= 0);
+    CHECK(find_line("java: Google Play services are in 4 APKs, their base and the splits config.en, config.mdpi, pack", 0) >= 0);
+    CHECK(find_line("I/MicroG: Google Play services' splits, whose resources and files join their base's: config.en, config.mdpi, pack (4 APKs)", 0) >= 0);
     CHECK(wait_line("-> Google Play services' megler.test.gmsown.Lockup, here", 0, 60) >= 0);
     CHECK(wait_line("I/GmsOwnTest: lockup 16x16 word=english wrapped 16x16 word=english label=Google Play services (a stand-in) "
-                    "splits=[config.en, config.mdpi] host theme attribute false theme 0x103013f", 0, 120) >= 0);
+                    "splits=[config.en, config.mdpi, pack] host theme attribute false theme 0x103013f", 0, 120) >= 0);
+    /*
+     * Their assets read by native code (the app's library, jni/gmshost.c; their bundle has a split of assets alone, pack):
+     * the NDK's asset manager of their context's AssetManager reads their base's asset and their split's, lists the split's
+     * folder, and has none of the app's; that of the app's AssetManager reads the app's and none of theirs; and the same
+     * AssetManager is the same manager each time. AAssetManager_fromJava took no notice of the AssetManager it was given
+     * and looked in the app's APKs alone: the map library inside Google Play services (microG's MapLibre) found none of its
+     * sprites and glyphs, and Citymapper's map had no icons and no labels (0.1.0.690).
+     */
+    CHECK(find_line("java: AAssetManager_fromJava: another package's AssetManager -- native code reads the assets of its 4 APK(s), the first ", 0) >= 0);
+    CHECK(find_line("I/GmsHostTest: native assets: theirs [an asset of Google Play services' base] as Java reads it true, their split's "
+                    "[an asset of a split of Google Play services] folder [note.txt], the app's through theirs null; the app's [the host app's own asset], "
+                    "theirs through the app's null null folder []; one manager each true", 0) >= 0);
     /*
      * Android's Geocoder, answered by their geocode provider (the stand-in's GeocodeProvider, not exported), bound as the system
      * binds it -- the first request a synchronous one on the main thread, which binds it there before it waits -- and asked on
@@ -4770,6 +4811,7 @@ static int run_gms_host(void)
     CHECK(find_line("FATAL EXCEPTION", 0) < 0);
     say_app_lines("/GmsOwnTest: ");
     say_app_lines("/GmsHostTest: geocoder");
+    say_app_lines("/GmsHostTest: native assets");
     return g_failed;
 }
 

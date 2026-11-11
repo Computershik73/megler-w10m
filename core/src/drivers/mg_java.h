@@ -29,6 +29,13 @@ void mg_java_check_partial(bool on);
  * there -- which a Java app without native libraries does not need.
  */
 bool mg_java_ended(int *status, const char **reason);
+/*
+ * One of the APKs by the framework's number (megler.Native.addApk's answer; 0 the app's): NULL for a number that names
+ * none. For mg_java_ndk.c's AAssetManager_fromJava, which gives native code the APKs of another package's AssetManager.
+ * An APK once opened stays open while the app runs.
+ */
+struct mg_zip;
+const struct mg_zip *mg_java_apk(int number);
 
 /*
  * The shell's keyboard (megler.h, megler_keyboard_host): text, editing keys, the keyboard put away by the user, and how much of

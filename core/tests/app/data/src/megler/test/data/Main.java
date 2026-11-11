@@ -2005,6 +2005,10 @@ public class Main extends Activity {
         roundRectShape();
         visibilityAggregated();
         visibilityScrap();
+        addViewParams();
+        cleanupLayoutState();
+        calendarInstances();
+        platformSignature();
         layerDrawableHidden();
         boringLayoutOneLine();
         backgroundOffMainThread();
@@ -6422,6 +6426,175 @@ public class Main extends Activity {
         });
     }
 
+    /** A view that writes down each setLayoutParams it is given, and fills the parameters in there before the view has them, as
+     *  Citymapper's bottom sheet container gives its CoordinatorLayout parameters their behavior: a frame's place at the bottom. */
+    public static class ParamsHeard extends android.view.View {
+        final StringBuilder heard = new StringBuilder();
+        public ParamsHeard(Context c) { super(c); }
+        public ParamsHeard(Context c, android.util.AttributeSet attrs) { super(c, attrs); }
+        @Override public void setLayoutParams(android.view.ViewGroup.LayoutParams p) {
+            String name = p.getClass().getName();
+            heard.append(name.substring(name.lastIndexOf('.') + 1)).append(getParent() == null ? "" : "+parent").append(' ');
+            if (p instanceof android.widget.FrameLayout.LayoutParams) ((android.widget.FrameLayout.LayoutParams) p).gravity = android.view.Gravity.BOTTOM;
+            super.setLayoutParams(p);
+        }
+    }
+
+    /** A group that adds a child as a list adds its rows: in its layout, with or without the child's layout asked for. */
+    static class InLayoutGroup extends android.widget.FrameLayout {
+        InLayoutGroup(Context c) { super(c); }
+        void in(android.view.View v, android.view.ViewGroup.LayoutParams p) { addViewInLayout(v, -1, p); }
+        void in(android.view.View v, android.view.ViewGroup.LayoutParams p, boolean preventRequestLayout) { addViewInLayout(v, -1, p, preventRequestLayout); }
+    }
+
+    /**
+     * A view added to a group is given its layout parameters through its own setLayoutParams, as Android's ViewGroup gives
+     * them (addViewInner): the parameters it was added with, the group's default ones when it had none, the group's own made
+     * from another group's; inflated from a layout too; and its layout is asked for. Only addViewInLayout(.., true) sets
+     * them without a call. Megler set the field: a view that overrides setLayoutParams never heard its parameters as it was
+     * added. Citymapper's BottomSheetContainerView gives its CoordinatorLayout parameters their behavior there (its layout
+     * names none), and the screen that looks for its sheet ended the app with "Not inside a bottom sheet".
+     */
+    private void addViewParams() {
+        step("add-view-params", () -> {
+            final int bottom = android.view.Gravity.BOTTOM;
+            // added with parameters
+            android.widget.FrameLayout frame = new android.widget.FrameLayout(this);
+            ParamsHeard given = new ParamsHeard(this);
+            android.widget.FrameLayout.LayoutParams fp = new android.widget.FrameLayout.LayoutParams(3, 4);
+            frame.addView(given, fp);
+            boolean withParams = "FrameLayout$LayoutParams".equals(given.heard.toString().trim()) && given.getLayoutParams() == fp && fp.gravity == bottom
+                    && given.isLayoutRequested();
+            // added with none, and with another group's
+            android.widget.LinearLayout line = new android.widget.LinearLayout(this);
+            ParamsHeard bare = new ParamsHeard(this), foreign = new ParamsHeard(this);
+            line.addView(bare);
+            line.addView(foreign, new android.view.ViewGroup.LayoutParams(1, 2));
+            boolean made = "LinearLayout$LayoutParams".equals(bare.heard.toString().trim()) && "LinearLayout$LayoutParams".equals(foreign.heard.toString().trim())
+                    && foreign.getLayoutParams() instanceof android.widget.LinearLayout.LayoutParams && foreign.getLayoutParams().width == 1;
+            // added in a layout: told unless the group asks for no layout of it
+            InLayoutGroup group = new InLayoutGroup(this);
+            ParamsHeard quiet = new ParamsHeard(this), asked = new ParamsHeard(this);
+            android.widget.FrameLayout.LayoutParams qp = new android.widget.FrameLayout.LayoutParams(1, 1);
+            group.in(quiet, qp, true);
+            group.in(asked, new android.widget.FrameLayout.LayoutParams(1, 1));
+            boolean inLayout = quiet.heard.length() == 0 && quiet.getLayoutParams() == qp && qp.gravity != bottom && quiet.getParent() == group
+                    && "FrameLayout$LayoutParams".equals(asked.heard.toString().trim());
+            // inflated
+            android.view.ViewGroup inflated = (android.view.ViewGroup) android.view.LayoutInflater.from(this).inflate(R.layout.params_heard, null);
+            ParamsHeard child = (ParamsHeard) inflated.getChildAt(0);
+            android.view.ViewGroup.LayoutParams cp = child.getLayoutParams();
+            boolean fromLayout = "FrameLayout$LayoutParams".equals(child.heard.toString().trim()) && cp instanceof android.widget.FrameLayout.LayoutParams
+                    && ((android.widget.FrameLayout.LayoutParams) cp).gravity == bottom && cp.width == 7 && cp.height == 5;
+            detail = "with parameters [" + given.heard + "] " + withParams + ", made [" + bare.heard + "] [" + foreign.heard + "] " + made
+                    + ", in a layout [" + quiet.heard + "] [" + asked.heard + "] " + inLayout + ", inflated [" + child.heard + "] " + fromLayout;
+            return withParams && made && inLayout && fromLayout;
+        });
+    }
+
+    /** A group as Compose's AndroidViewsHandler is one: its requestLayout does not go on to View's -- it counts the request
+     *  and takes its own layout request back (cleanupLayoutState), so that the next request of a child reaches it too. */
+    static class QuietGroup extends android.widget.FrameLayout {
+        int asked;
+        QuietGroup(Context c) { super(c); }
+        @Override public void requestLayout() { asked++; cleanupLayoutState(this); }
+    }
+
+    /**
+     * ViewGroup.cleanupLayoutState takes a view's layout request back, as Android's: a group that has one asked (forceLayout)
+     * and whose requestLayout calls it on itself has none after a child is added (addView asks the group's layout), and so
+     * hears each requestLayout of the child, once each. It did nothing: the group kept its request, and the child's stopped
+     * at it (a view's requestLayout goes to a parent that has none asked) -- the views a Compose screen holds, whose parent
+     * (AndroidViewsHandler) is such a group, were not measured again when they asked.
+     */
+    private void cleanupLayoutState() {
+        step("cleanup-layout-state", () -> {
+            QuietGroup g = new QuietGroup(this);
+            g.forceLayout();
+            boolean forced = g.isLayoutRequested();
+            android.view.View child = new android.view.View(this);
+            int before = g.asked;
+            g.addView(child);
+            int added = g.asked - before;
+            boolean cleared = !g.isLayoutRequested();
+            child.requestLayout();
+            int heard = g.asked - before - added;
+            child.requestLayout();
+            int again = g.asked - before - added - heard;
+            detail = "forced " + forced + " added " + added + " cleared " + cleared + " heard " + heard + " again " + again + " child asked " + child.isLayoutRequested();
+            return forced && added == 1 && cleared && heard == 1 && again == 1 && child.isLayoutRequested();
+        });
+    }
+
+    /**
+     * The package "android" is signed with the platform's certificate: asked with GET_SIGNATURES it has one signature that
+     * is an X.509 certificate (as microG's location service reads it, for each app it has a location for: fewer than 25
+     * bytes are refused, "CertData to small", and the app's requests ended there) and is not the app's own; asked with
+     * GET_SIGNING_CERTIFICATES its signingInfo has the same; asked for neither it has none, as Android answers. It had one
+     * signature of no bytes, whatever was asked, and the app's own signingInfo.
+     */
+    private void platformSignature() {
+        step("platform-signature", () -> {
+            android.content.pm.PackageManager pm = getPackageManager();
+            android.content.pm.PackageInfo plain = pm.getPackageInfo("android", 0);
+            android.content.pm.Signature[] s = pm.getPackageInfo("android", android.content.pm.PackageManager.GET_SIGNATURES).signatures;
+            android.content.pm.PackageInfo signing = pm.getPackageInfo("android", android.content.pm.PackageManager.GET_SIGNING_CERTIFICATES);
+            android.content.pm.Signature[] signers = signing.signingInfo == null ? null : signing.signingInfo.getApkContentsSigners();
+            android.content.pm.Signature[] mine = pm.getPackageInfo(getPackageName(), android.content.pm.PackageManager.GET_SIGNATURES).signatures;
+            byte[] der = s != null && s.length == 1 ? s[0].toByteArray() : new byte[0];
+            java.security.cert.X509Certificate x = der.length == 0 ? null : (java.security.cert.X509Certificate)
+                    java.security.cert.CertificateFactory.getInstance("X.509").generateCertificate(new java.io.ByteArrayInputStream(der));
+            boolean own = mine != null && mine.length > 0 && s != null && s.length > 0 && mine[0].equals(s[0]);
+            boolean again = s != null && java.util.Arrays.equals(s, pm.getPackageInfo("android", android.content.pm.PackageManager.GET_SIGNATURES).signatures);
+            detail = "signatures " + (s == null ? "null" : s.length + " of " + der.length + " bytes") + " certificate " + (x == null ? "none" : x.getType() + " v" + x.getVersion())
+                    + " signers " + (signers == null ? "null" : String.valueOf(signers.length)) + " the app's own " + own + " plain " + java.util.Arrays.toString(plain.signatures)
+                    + " " + plain.signingInfo + " again " + again;
+            return s != null && s.length == 1 && der.length >= 25 && x != null && x.getPublicKey() != null && !own
+                    && signers != null && signers.length == 1 && signers[0].equals(s[0]) && signing.signatures == null
+                    && plain.signatures == null && plain.signingInfo == null && again
+                    && plain.versionCode == android.os.Build.VERSION.SDK_INT && "android".equals(plain.packageName);
+        });
+    }
+
+    /**
+     * The calendar's events of a time, asked as Android's CalendarContract.Instances.query asks: a cursor of the columns asked
+     * for with no rows, as a phone with no events answers (megler's ContentResolver for the calendar's authority), from the
+     * helper with a search and from Attendees', Reminders' and EventDays' too; and the addresses the helpers ask are
+     * Android's. The helpers were signatures alone and gave null: Citymapper, which may read the calendar, asks for the
+     * coming events on a worker thread at each start and reads the count of the cursor it is given -- a
+     * NullPointerException there ("FATAL EXCEPTION: DefaultDispatcher-worker").
+     */
+    private void calendarInstances() {
+        step("calendar-instances", () -> {
+            android.content.ContentResolver cr = getContentResolver();
+            String[] columns = { "calendar_id", "event_id", "title", "eventLocation", "allDay", "begin", "end", "calendar_access_level" };
+            long now = System.currentTimeMillis();
+            String said = "";
+            boolean held = true;
+            android.database.Cursor[] answers = {
+                android.provider.CalendarContract.Instances.query(cr, columns, now - 3600000L, now + 86400000L),
+                android.provider.CalendarContract.Instances.query(cr, columns, now - 3600000L, now + 86400000L, "station"),
+                android.provider.CalendarContract.Attendees.query(cr, 1, columns),
+                android.provider.CalendarContract.Reminders.query(cr, 1, columns),
+                android.provider.CalendarContract.EventDays.query(cr, 2461000, 7, columns),
+            };
+            for (android.database.Cursor c : answers) {
+                boolean empty = c != null && c.getCount() == 0 && !c.moveToFirst() && java.util.Arrays.equals(columns, c.getColumnNames());
+                said += (c == null ? "null" : c.getCount() + " of " + c.getColumnCount()) + " ";
+                held &= empty;
+                if (c != null) c.close();
+            }
+            boolean addresses = "content://com.android.calendar/instances/when".equals(String.valueOf(android.provider.CalendarContract.Instances.CONTENT_URI))
+                    && "content://com.android.calendar/instances/groupbyday".equals(String.valueOf(android.provider.CalendarContract.EventDays.CONTENT_URI))
+                    && "content://com.android.calendar/colors".equals(String.valueOf(android.provider.CalendarContract.Colors.CONTENT_URI))
+                    && "content://com.android.calendar/calendar_alerts".equals(String.valueOf(android.provider.CalendarContract.CalendarAlerts.CONTENT_URI))
+                    && "content://com.android.calendar/syncstate".equals(String.valueOf(android.provider.CalendarContract.SyncState.CONTENT_URI));
+            android.database.Cursor noDays = android.provider.CalendarContract.EventDays.query(cr, 2461000, 0, columns);
+            detail = "cursors " + said + "addresses " + addresses + " no days " + noDays;
+            return held && addresses && noDays == null;
+        });
+    }
+
     /**
      * A LayerDrawable told it is not visible draws its layers all the same, as Android's: its visibility is passed on to its
      * layers, which are drawn. A ripple with content (a LayerDrawable too) likewise. Megler drew only the layers that were
@@ -7373,7 +7546,10 @@ public class Main extends Activity {
      * provider (hidden: by reflection) -- names its provider and the quality the passive provider stands for (POWER_NONE); one
      * goes through a Parcel and comes back equal. And a request of the passive interval through LocationManager (Android 12's
      * requestLocationUpdates with a LocationRequest, by reflection) is handed a fix on the main thread and removed:
-     * "location-passive ok", which the test waits for. (LocationRequest is Android 12's: stubs/.)
+     * "location-passive ok", which the test waits for. (LocationRequest is Android 12's: stubs/.) A passive request is
+     * built with its minimum update interval set, as androidx's LocationRequestCompat builds every one (microG's network
+     * location asks for the GPS provider's fixes so); one whose minimum update interval was never set is refused
+     * (IllegalStateException), as Android refuses it. The check was the other way round, and microG's request failed.
      */
     private void locationRequest() {
         step("location-request", () -> {
@@ -7389,7 +7565,14 @@ public class Main extends Activity {
             android.location.LocationRequest back = android.location.LocationRequest.CREATOR.createFromParcel(p);
             p.recycle();
             final android.location.LocationManager lm = (android.location.LocationManager) getSystemService(Context.LOCATION_SERVICE);
-            android.location.LocationRequest passive = new android.location.LocationRequest.Builder(android.location.LocationRequest.PASSIVE_INTERVAL).build();
+            android.location.LocationRequest passive = new android.location.LocationRequest.Builder(android.location.LocationRequest.PASSIVE_INTERVAL)
+                    .setMinUpdateIntervalMillis(1000).build();
+            String implicit;
+            try {
+                implicit = "built " + new android.location.LocationRequest.Builder(android.location.LocationRequest.PASSIVE_INTERVAL).build();
+            } catch (IllegalStateException e) {
+                implicit = "refused";
+            }
             lm.getClass().getMethod("requestLocationUpdates", String.class, android.location.LocationRequest.class, java.util.concurrent.Executor.class,
                     android.location.LocationListener.class).invoke(lm, android.location.LocationManager.PASSIVE_PROVIDER, passive, getMainExecutor(),
                     new android.location.LocationListener() {
@@ -7413,10 +7596,13 @@ public class Main extends Activity {
                         public void onStatusChanged(String provider, int status, android.os.Bundle extras) {}
                     });
             detail = "built " + r + " minUpdate=" + r.getMinUpdateIntervalMillis() + " any.max=" + any.getMaxUpdates() + " deprecated " + deprecated + " provider=" + provider
-                    + " quality=" + quality + " back=" + back;
+                    + " quality=" + quality + " back=" + back + " passive: interval " + (passive.getIntervalMillis() == android.location.LocationRequest.PASSIVE_INTERVAL)
+                    + " minUpdate=" + passive.getMinUpdateIntervalMillis() + ", with none set " + implicit;
             return r.getIntervalMillis() == 6000 && r.getMaxUpdates() == 3 && r.getMinUpdateIntervalMillis() == 1000
                     && r.getQuality() == android.location.LocationRequest.QUALITY_BALANCED_POWER_ACCURACY && any.getMaxUpdates() == Integer.MAX_VALUE
-                    && "passive".equals(provider) && quality == 200 && r.equals(back);
+                    && "passive".equals(provider) && quality == 200 && r.equals(back)
+                    && passive.getIntervalMillis() == android.location.LocationRequest.PASSIVE_INTERVAL && passive.getMinUpdateIntervalMillis() == 1000
+                    && "refused".equals(implicit);
         });
     }
 

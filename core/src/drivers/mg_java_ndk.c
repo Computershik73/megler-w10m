@@ -17,11 +17,15 @@
  * libandroid: ANativeWindow_fromSurface on the framework's Surface of a
  * SurfaceView (its meglerView) or of a SurfaceTexture (its meglerTexture): a
  * window of the view's surface or of the texture, below. A Surface a driver
- * made carries its window as it always did.
+ * made carries its window as it always did. And AAssetManager_fromJava on
+ * the framework's AssetManager: the app's own is the app's asset manager,
+ * another package's a manager of that package's APKs (at the end).
  */
 #include "../bionic/mg_bionic.h"
 #include "../dvm/mg_dvm_internal.h"
 #include "../ndk/mg_ndk.h"
+#include "../zip/mg_zip.h"
+#include "mg_java.h"
 #include "mg_java_gfx.h"
 #include "mg_java_gl.h"
 
@@ -693,10 +697,62 @@ static mg_nwindow *g_window_from_surface(void *env, mg_jobj *surface)
     return NULL;
 }
 
+/* --------------------------------------------- the asset manager of an AssetManager
+ *
+ * AAssetManager_fromJava. The framework's AssetManager is one of three kinds (android/content/res/AssetManager.java): the
+ * app's own, whose native manager is the app's (ndk/mg_ndk.c: the assets of the app's APKs), as is a driver's stand-in for
+ * one and the platform's; and another package's (meglerForPackage: Google Play services' or microG's inside an app that
+ * hosts them, what createPackageContext gives), whose native manager reads that package's APK and then its splits, the ones
+ * its open() reads from Java (meglerPackageApk, meglerPackageSplits: the core's numbers of them). Android's is the native
+ * half of the very object, so native code reads what Java reads.
+ *
+ * It was the app's manager for every AssetManager. The map of microG's Google Maps is MapLibre's, whose native library is
+ * given the AssetManager of microG's context and opens the style's sprites and glyphs with it ("asset://sprites.json",
+ * "asset://Roboto%20Medium/0-255.pbf", files of microG's APK): they were looked for in the app's APKs, and Citymapper's log
+ * (0.1.0.690) had "Failed to load sprite: Could not read asset" and "Failed to load glyph range 0-255 for font stack Roboto
+ * Medium: Could not read asset" for every font of the style -- the pictures and the letters the map's style draws with.
+ */
+#define MAX_PACKAGE_APKS 40
+
+static void *g_am_from_java(void *env, mg_jobj *am)
+{
+    const mg_zip *apks[MAX_PACKAGE_APKS];
+    mg_jvalue v;
+    void *mgr;
+    int n = 0, base;
+    u32 i;
+    (void)env;
+    if (!am || !am->dvm || !mg_dvm_instance_of(am, "android/content/res/AssetManager")) return mg_asset_manager();
+    v.j = 0;
+    if (!mg_dvm_call_virtual(am, "meglerPackageApk", "()I", NULL, &v)) {
+        mg_dvm_clear_pending();
+        return mg_asset_manager();
+    }
+    base = v.i;
+    if (base <= 0) return mg_asset_manager();          /* the app's own (0); a package whose APK could not be opened has none */
+    if (mg_java_apk(base)) apks[n++] = mg_java_apk(base);
+    v.j = 0;
+    if (!mg_dvm_call_virtual(am, "meglerPackageSplits", "()[I", NULL, &v)) mg_dvm_clear_pending();
+    else if (v.l && v.l->kind == MG_J_PRIM_ARRAY) {
+        const i32 *numbers = (const i32 *)v.l->u.arr.data;
+        for (i = 0; i < v.l->u.arr.len && n < MAX_PACKAGE_APKS; i++)
+            if (mg_java_apk(numbers[i])) apks[n++] = mg_java_apk(numbers[i]);
+    }
+    mgr = mg_asset_manager_of(apks, n);
+    {
+        static volatile i32 said;
+        if (mg_atomic_add(&said, 1) <= 8)
+            mg_info("java: AAssetManager_fromJava: another package's AssetManager -- native code reads the assets of its %d APK(s), the first %s", n,
+                    n ? apks[0]->path : "none");
+    }
+    return mgr;
+}
+
 static const mg_sym k_java_ndk[] = {
     MG_WRAP("AndroidBitmap_getInfo", g_bitmap_get_info), MG_WRAP("AndroidBitmap_lockPixels", g_bitmap_lock),
     MG_WRAP("AndroidBitmap_unlockPixels", g_bitmap_unlock),
     MG_WRAP("ANativeWindow_fromSurface", g_window_from_surface),
+    MG_WRAP("AAssetManager_fromJava", g_am_from_java),
     MG_END
 };
 

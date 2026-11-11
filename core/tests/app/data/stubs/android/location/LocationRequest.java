@@ -15,6 +15,7 @@ public final class LocationRequest implements android.os.Parcelable {
         public Builder(long intervalMillis) {}
         public Builder setMaxUpdates(int maxUpdates) { return this; }
         public Builder setMinUpdateDistanceMeters(float meters) { return this; }
+        public Builder setMinUpdateIntervalMillis(long millis) { return this; }
         public LocationRequest build() { return null; }
     }
 }

@@ -3073,8 +3073,22 @@ still pending goes to `dispatchUncaughtException`, the group forgets it,
 1.4 and 1.6 and no other, as ART does. This holds for every engine, not only
 for Java apps: it is what a library is written against.
 
-**The NDK.** `AAssetManager_fromJava` is the APK's assets whatever object it
-is given. `AndroidBitmap_getInfo`, `_lockPixels` and `_unlockPixels`
+**The NDK.** `AAssetManager_fromJava` (`drivers/mg_java_ndk.c`) gives the
+assets of the `AssetManager` it is given. The app's own, the platform's and a
+driver's stand-in are the app's manager, the `assets/` folders of the app's
+APKs. Another package's -- what `createPackageContext` gives for the Google
+Play services or microG an app hosts -- is a manager of that package's APK
+and then its splits, the ones its `open()` reads from Java
+(`mg_asset_manager_of` in `ndk/mg_ndk.c`, the same manager for the same APKs
+each time). It was the app's assets whatever object it was given: the map of
+microG's Google Maps is MapLibre's, whose native library opens the style's
+sprites and glyphs with the `AssetManager` of microG's context, and
+Citymapper's map (0.1.0.690) had no icons and no labels ("Failed to load
+sprite: Could not read asset", "Failed to load glyph range 0-255 for font
+stack Roboto Medium: Could not read asset"). The gms-host app's library reads
+the stand-in Google Play services' assets so, one of a split of assets alone
+among them, and finds none of the app's there.
+`AndroidBitmap_getInfo`, `_lockPixels` and `_unlockPixels`
 (`drivers/mg_java_ndk.c`) work on the framework's `Bitmap`: the memory is the
 core's, B, G, R, A, and is turned to Android's R, G, B, A where it lies while
 it is locked; every bitmap is 32 bits a pixel here and `RGBA_8888` is what is
@@ -6066,6 +6080,15 @@ on a looper thread of its own and takes it back with `next()`.
   its own 0. The data app's step "location-request" builds requests, makes
   one of the deprecated provider, puts one through a parcel, and has one of
   the passive interval handed a fix.
+  And its `Builder.build()` refuses what Android's refuses, a request of the
+  passive interval whose minimum update interval was never set ("passive
+  location requests must have an explicit minimum update interval"). It had
+  the check the other way round and refused every passive request that did
+  set one, which is every one androidx's `LocationRequestCompat` makes:
+  microG's network location asks for the GPS provider's fixes so and failed
+  at each start ("GPS location retriever not initialized"; Citymapper,
+  0.1.0.690). The step builds a passive request with the interval set, and
+  has one with none set refused.
 - `android/location/Geocoder.java` and `Address.java` in place of the
   generated stubs, and `GeocoderParams.java`, `IGeocodeProvider.java`,
   `IGeocodeListener.java` and `com/android/location/provider/GeocodeProvider.java`,
@@ -6991,6 +7014,24 @@ on a looper thread of its own and takes it back with `next()`.
   `NullPointerException` there. The data app's step "viewgroup-flag" makes a
   `FrameLayout` whose override needs a field of its own: it is not called,
   and the group does not draw itself.
+  And `addViewInner` gives a child its layout parameters through the child's
+  own `setLayoutParams`, as Android's does (`addViewInLayout(.., true)` alone
+  sets the field): the framework's file set the field for every child, so a
+  view's override never ran as the view was added or inflated. Citymapper's
+  `BottomSheetContainerView` (11.60) puts its behavior into the
+  `CoordinatorLayout` parameters it is given there, its layout naming none,
+  and the fragments inside it, which look for that behavior as their views
+  are created, ended the app with "Not inside a bottom sheet" (0.1.0.690).
+  The step "add-view-params" adds a view that writes down each
+  `setLayoutParams` with parameters, with none, with another group's, in a
+  layout, and inflates one.
+  And `cleanupLayoutState` takes a view's layout request back
+  (`PFLAG_FORCE_LAYOUT`), as Android's: the generated method did nothing.
+  Compose's `AndroidViewsHandler`, the parent of every view a Compose screen
+  holds, calls it on itself in a `requestLayout` that does not go on to
+  `View`'s, so that the next request of a held view reaches it again; a group
+  that kept its request did not hear them. The step "cleanup-layout-state"
+  has such a group hear each request of its child.
 
 - `android/widget/TextView.java`, the cursor's and the selection handles'
   drawables (API 29): `getTextCursorDrawable` gives what the style or
@@ -7181,6 +7222,31 @@ on a looper thread of its own and takes it back with `next()`.
   `queryIntentServices` and `resolveContentProvider` so, and Messenger
   `resolveContentProvider`. The data app's step "package-flags" asks each
   for the app's own service, provider, receivers, uid and signatures.
+  And the package "android" has the platform's certificate for its
+  signature (`megler/PlatformSigner.java`, new in the overlay: the X.509
+  certificates of the META-INF signature file of the platform's resources
+  APK, read once), given as `signatures` with `GET_SIGNATURES` and as
+  `signingInfo` with `GET_SIGNING_CERTIFICATES`, and not otherwise. It had
+  one signature of no bytes. microG's location service asks, at each
+  location it has for an app, whether the app is the platform's
+  (`ExtendedPackageInfo.isPlatformPackage`) and wraps each of those
+  signatures in a `CertData`, which refuses fewer than 25 bytes: "Exception
+  while processing for WorkSource{}: CertData to small", the app's request
+  cancelled, and an app that asks Google Play services for locations never
+  had one under microG (Citymapper, 0.1.0.690). The data app's step
+  "platform-signature" reads the certificate both ways.
+- `android/provider/CalendarContract.java` in place of the generated stub,
+  whose query helpers gave null: `Instances.query` (both forms),
+  `Attendees.query`, `Reminders.query` and `EventDays.query` ask the
+  `ContentResolver` as Android's do, which answers the calendar's authority
+  with a cursor of the columns asked for and no rows, and the addresses the
+  generator left null are Android's. An app that may read the calendar reads
+  the cursor it is given: Citymapper asks for the coming events on a worker
+  thread at each start, and each of its logs had "FATAL EXCEPTION:
+  DefaultDispatcher-worker" with a `NullPointerException` at
+  `Cursor.getCount()` (0.1.0.690). The phone's own appointments are not read:
+  the calendar is empty. The data app's step "calendar-instances" asks each
+  helper.
 
 - `android/media/MediaMetadata.java`, in place of the generated stub, whose
   getters answered null and 0, whose `writeToParcel` wrote nothing and whose

@@ -27,11 +27,47 @@ import java.util.Locale;
  * last "network" fix, and the first "gps" fix of a request, each said with how accurate it is and its provider. Then asks
  * Android's Geocoder, which their geocode provider answers, and starts an activity of theirs, which runs here, as Play Store
  * starts their account settings ("Manage your Google Account"), and one whose onCreate fails, which the app outlives.
+ * And, at its start, reads assets through the NDK with their AssetManager and with its own (nativeAssets).
+ * And, first of all, asks their provider from a thread whose lock the main thread then waits for (askWhileMainWaits).
  */
 public class Main extends Activity {
+    static { System.loadLibrary("gmshost"); }
+
+    /* jni/gmshost.c: an asset's text and a folder's names as the NDK's AAssetManager of this AssetManager gives them. */
+    private static native String readAsset(android.content.res.AssetManager assets, String name);
+    private static native String listAssets(android.content.res.AssetManager assets, String folder);
+    private static native boolean sameManager(android.content.res.AssetManager a, android.content.res.AssetManager b);
+
+    /*
+     * Native code given the AssetManager of Google Play services' context reads Google Play services' assets, of their base
+     * and of their splits, and none of the app's; given the app's, the app's and none of theirs -- as Java reads them. The
+     * map library inside Google Play services (microG's libmapbox-gl.so) reads its sprites and glyphs so, with its own
+     * context's AssetManager: AAssetManager_fromJava gave the app's assets for every AssetManager, the files were looked
+     * for in the app's APKs, and a map in Citymapper had no icons and no labels ("Failed to load sprite: Could not read
+     * asset", "Failed to load glyph range 0-255 for font stack Roboto Medium: Could not read asset").
+     */
+    private void nativeAssets() {
+        try {
+            android.content.res.AssetManager mine = getAssets();
+            android.content.res.AssetManager theirs = createPackageContext("com.google.android.gms", CONTEXT_INCLUDE_CODE | CONTEXT_IGNORE_SECURITY).getAssets();
+            String java;
+            try (java.io.BufferedReader r = new java.io.BufferedReader(new java.io.InputStreamReader(theirs.open("gms-own-note.txt"), "UTF-8"))) {
+                java = r.readLine();
+            }
+            Log.i("GmsHostTest", "native assets: theirs [" + readAsset(theirs, "gms-own-note.txt") + "] as Java reads it " + (java != null && java.equals(readAsset(theirs, "gms-own-note.txt")))
+                + ", their split's [" + readAsset(theirs, "gmspack/note.txt") + "] folder [" + listAssets(theirs, "gmspack").trim() + "], the app's through theirs "
+                + readAsset(theirs, "host-note.txt") + "; the app's [" + readAsset(mine, "host-note.txt") + "], theirs through the app's "
+                + readAsset(mine, "gms-own-note.txt") + " " + readAsset(mine, "gmspack/note.txt") + " folder [" + listAssets(mine, "gmspack").trim() + "]; one manager each "
+                + (sameManager(theirs, theirs) && sameManager(mine, getApplicationContext().getAssets()) && !sameManager(mine, theirs)));
+        } catch (Throwable t) {
+            Log.i("GmsHostTest", "native assets FAILED " + t);
+        }
+    }
+
     @Override
     protected void onCreate(Bundle state) {
         super.onCreate(state);
+        askWhileMainWaits();
         TextView text = new TextView(this);
         text.setText("Starting a service of Google Play services' stand-in");
         setContentView(text);
@@ -51,6 +87,34 @@ public class Main extends Activity {
             }, Context.BIND_AUTO_CREATE);
         Log.i("GmsHostTest", "location api bind " + bound);
         askUnderLock();
+        nativeAssets();
+    }
+
+    /*
+     * Their provider asked, before their Application is attached, by a thread holding a lock that the main thread then waits to
+     * enter: as Citymapper's main thread, initializing Google Maps in its Application.onCreate, waited for DynamiteModule's lock
+     * while the thread that held it asked their Chimera provider. The thread is to be answered at once -- the main thread, which
+     * would attach their Application, stands until the thread lets the lock go -- not after the ten seconds it would wait.
+     */
+    private void askWhileMainWaits() {
+        final Object lock = new Object();
+        final java.util.concurrent.CountDownLatch held = new java.util.concurrent.CountDownLatch(1);
+        final boolean[] answered = new boolean[1];
+        new Thread(() -> {
+            synchronized (lock) {
+                held.countDown();
+                android.database.Cursor c = getContentResolver().query(android.net.Uri.parse("content://com.google.settings/partner"), null, "name=?",
+                                                                       new String[] { "main_waits" }, null);
+                answered[0] = c != null;
+                if (c != null) c.close();
+            }
+        }, "gms-host-main-waits").start();
+        try { held.await(); } catch (InterruptedException e) { }
+        final long began = android.os.SystemClock.uptimeMillis();
+        synchronized (lock) {
+            Log.i("GmsHostTest", "the main thread entered the asking thread's lock after " + (android.os.SystemClock.uptimeMillis() - began)
+                  + " ms, their provider answered " + answered[0]);
+        }
     }
 
     /*

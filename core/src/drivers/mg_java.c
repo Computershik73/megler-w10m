@@ -694,6 +694,7 @@ N(Native_askClearData) { c->ret.z = megler_ask_clear_data(J.package); }
 N(Native_askClearCache) { c->ret.z = megler_ask_clear_cache(J.package); }
 static void Native_frameMark(mg_jcall *c);
 static void Native_mainStarted(mg_jcall *c);
+static void Native_mainWaitsForMe(mg_jcall *c);
 static void Native_presentRect(mg_jcall *c);
 static void Native_checkPartial(mg_jcall *c);
 
@@ -1573,6 +1574,7 @@ static const mg_jhle k_native[] = {
     { "megler/Native", "uptimeNanos", NULL, Native_uptimeNanos },
     { "megler/Native", "frameMark", NULL, Native_frameMark },
     { "megler/Native", "mainStarted", NULL, Native_mainStarted },
+    { "megler/Native", "mainWaitsForMe", NULL, Native_mainWaitsForMe },
     { "megler/Native", "presentRect", NULL, Native_presentRect },
     { "megler/Native", "checkPartial", NULL, Native_checkPartial },
     { "megler/Native", "flag", NULL, Native_flag },
@@ -1704,6 +1706,16 @@ static bool present_canvas(void *user, void *canvas, int width, int height)
 }
 
 void mg_java_get_stats(mg_java_stats *out) { *out = J.stats; }
+
+const struct mg_zip *mg_java_apk(int number)
+{
+    const mg_zip *z;
+    if (number < 0 || number >= MAX_APKS) return NULL;
+    mg_lock_acquire(&J.lock);
+    z = J.apk_open[number] ? &J.apk[number] : NULL;
+    mg_lock_release(&J.lock);
+    return z;
+}
 
 static bool g_check_partial;
 void mg_java_check_partial(bool on) { g_check_partial = on; }
@@ -2178,6 +2190,18 @@ static void hot_watch(const mg_dvm_thread *t)
 
 /* megler.Native.mainStarted(), from megler.AppRunner.run on the app's main thread, before anything of the app runs. */
 N(Native_mainStarted) { hot_watch(mg_dvm_self()); }
+
+/*
+ * megler.Native.mainWaitsForMe(): whether the app's main thread stands waiting to enter a monitor that the calling thread
+ * holds, or one whose holder waits for one of the calling thread's (mg_dvm_waits_for): it runs nothing until this thread lets
+ * its monitor go. megler.MicroG asks while it waits for the main thread to attach Google Play services' Application. False on
+ * the main thread, and before the app's main thread has started.
+ */
+N(Native_mainWaitsForMe)
+{
+    const mg_dvm_thread *t = g_hot_main;
+    c->ret.z = t && t != mg_dvm_self() && mg_dvm_waits_for((mg_dvm_thread *)t, mg_thread_self_id());
+}
 
 /* megler.Native.frameMark(phase, redrawn), from megler.ViewRoot.doFrame on the main thread. */
 N(Native_frameMark)

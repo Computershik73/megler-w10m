@@ -27,6 +27,18 @@
 // again (told it was hidden before it went out, and nothing since) hears it is shown; Litho's LithoView, told it is not shown,
 // stops mounting until it hears otherwise.
 //
+// And addViewInner gives a child its layout parameters through the child's own setLayoutParams, as Android's does (but for
+// addViewInLayout(.., true), which sets the field, as Android's): the original set the field, so a view's override of
+// setLayoutParams never ran as the view was added or inflated. Citymapper's BottomSheetContainerView (11.60) gives its
+// CoordinatorLayout parameters their behavior there, and every screen that looks for the sheet above it ended the app with
+// "Not inside a bottom sheet".
+//
+// And cleanupLayoutState takes a view's layout request back (its PFLAG_FORCE_LAYOUT), as Android's does: it did nothing.
+// A group whose requestLayout does not go on to View's (Compose's AndroidViewsHandler, the parent of every view a Compose
+// screen holds) calls it on itself there, so that the next request of a child reaches it again; with nothing done the
+// group stayed "layout requested" from its making until its next layout, and a held view that asked for its layout
+// meanwhile (a child's requestLayout stops at a parent that has one asked) was not measured again.
+//
 // Everything else is the original's, unchanged.
 package android.view;
 
@@ -180,8 +192,9 @@ public abstract class ViewGroup extends View implements ViewParent, ViewManager 
     private void addViewInner(View child, int index, LayoutParams p, boolean preventRequestLayout) {
         if (child.mParent != null) throw new IllegalStateException("The specified child already has a parent. You must call removeView() on the child's parent first.");
         if (!checkLayoutParams(p)) p = generateLayoutParams(p);
-        child.mLayoutParams = p;
-        if (!preventRequestLayout) child.forceLayout();
+        /* Android's: the child's own setLayoutParams, which a view may override (and which asks for its layout) */
+        if (preventRequestLayout) child.mLayoutParams = p;
+        else child.setLayoutParams(p);
         if (index < 0 || index > mChildrenCount) index = mChildrenCount;
         if (mChildrenCount == mChildren.length) mChildren = java.util.Arrays.copyOf(mChildren, mChildrenCount * 2 + 4);
         System.arraycopy(mChildren, index, mChildren, index + 1, mChildrenCount - index);
@@ -732,7 +745,7 @@ public abstract class ViewGroup extends View implements ViewParent, ViewManager 
     protected void attachLayoutAnimationParameters(android.view.View p0, android.view.ViewGroup.LayoutParams p1, int p2, int p3) {}
     public java.util.ArrayList buildTouchDispatchChildList() { return new java.util.ArrayList(); }
     public void captureTransitioningViews(java.util.List p0) {}
-    protected void cleanupLayoutState(android.view.View p0) {}
+    protected void cleanupLayoutState(android.view.View child) { child.mPrivateFlags &= ~View.PFLAG_FORCE_LAYOUT; }
     public android.graphics.Bitmap createSnapshot(android.view.ViewDebug.CanvasProvider p0, boolean p1) { return null; }
     protected void debug(int p0) {}
     protected void destroyHardwareResources() {}

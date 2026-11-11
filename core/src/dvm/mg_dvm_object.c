@@ -1208,6 +1208,49 @@ bool mg_dvm_stuck_say(mg_dvm_thread *main_thread, double seconds, const void **i
     return true;
 }
 
+/*
+ * Whether a thread stands waiting to enter a monitor that another holds: `waiter` waits for a monitor of `holder`'s, or for
+ * one whose holder waits for one of `holder`'s, and so on, four monitors at most. That is exact, not a guess: a thread that
+ * waits to enter a monitor lets none of its own go, so `waiter` runs nothing until `holder` lets its monitor go. For
+ * megler.MicroG, whose threads wait for the app's main thread to attach Google Play services' Application
+ * (megler.Native.mainWaitsForMe): a main thread that waits for a monitor of the waiting thread's attaches nothing, and the
+ * thread waited its ten seconds for nothing (Citymapper, at every start).
+ *
+ * A thread that waits for no monitor is not stopped: its field alone is read. One that does is stopped while its monitor's
+ * owner is read (the monitor's object is its own while it waits, as mg_dvm_stuck_say reads it), under the VM's lock, which
+ * keeps the threads.
+ */
+bool mg_dvm_waits_for(mg_dvm_thread *waiter, u32 holder)
+{
+    mg_dvm_thread *t = waiter;
+    mg_thread_regs regs;
+    const u32 me = mg_thread_self_id();
+    bool found = false;
+    int k;
+    if (!waiter || !waiter->waiting_monitor) return false;
+    mg_dvm_lock();
+    for (k = 0; t && k < 4; ++k) {
+        mg_dvm_thread *next;
+        mg_jobj *o;
+        monitor *m;
+        u32 owner;
+        if (t->id == me || !t->waiting_monitor || !t->host || !mg_thread_suspend(t->host, &regs)) break;
+        o = t->waiting_monitor;
+        m = o ? (monitor *)MG_DVM_OBJ(o)->monitor : NULL;
+        owner = m ? m->owner : 0;
+        mg_thread_resume(t->host);
+        if (!owner || owner == t->id) break;
+        if (owner == holder) {
+            found = true;
+            break;
+        }
+        for (next = g_threads; next && next->id != owner; next = next->next) {}
+        t = next;
+    }
+    mg_dvm_unlock();
+    return found;
+}
+
 void mg_dvm_stacks_trace_start(void)
 {
     mg_thread *observer;

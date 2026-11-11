@@ -89,8 +89,15 @@ int mg_looper_remove_fd(void *looper, int fd);
 
 /* ----------------------------------------------------------- AAssetManager */
 
-/* The one asset manager: the "assets/" folders of the app's APKs. */
+/* The app's asset manager: the "assets/" folders of the app's APKs. */
 void *mg_asset_manager(void);
+/*
+ * An asset manager of other APKs than the app's, in the order they are looked in: what AAssetManager_fromJava gives for
+ * the framework's AssetManager of another package (drivers/mg_java_ndk.c: Google Play services' inside an app that hosts
+ * them). The same manager for the same APKs each time, and it lasts as long as the process does, as the APKs do.
+ */
+struct mg_zip;
+void *mg_asset_manager_of(const struct mg_zip *const *apks, int count);
 
 /* ----------------------------------------------------------- AConfiguration */
 
