@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Main's step "animation-set": a <set> given nothing itself. Each of its animations keeps its own duration and start
+     offset, and the set's duration is the longest of theirs. -->
+<set xmlns:android="http://schemas.android.com/apk/res/android">
+    <alpha android:fromAlpha="1.0" android:toAlpha="0.0" android:duration="100" android:startOffset="200" />
+    <translate android:fromYDelta="0" android:toYDelta="10%" android:duration="250" />
+</set>

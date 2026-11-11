@@ -2524,6 +2524,21 @@ static int g_fail_link(const char *a, const char *b)
  */
 static gssize g_readlinkat(int dirfd, const char *path, char *buf, size_t n) { (void)dirfd; return g_readlink(path, buf, n); }
 static int g_symlinkat(const char *target, int dirfd, const char *path) { (void)dirfd; return g_fail_link(target, path); }
+/* linkat: link's answer, there being no second name for a file here (Discord's libappmodules.so imports it). */
+static int g_linkat(int fromfd, const char *from, int tofd, const char *to, int flags) { (void)fromfd; (void)tofd; (void)flags; return g_fail_link(from, to); }
+/*
+ * chroot: an app may not change its root: the kernel's answer to a process without CAP_SYS_CHROOT is EPERM, after ENOENT
+ * or ENOTDIR for a path that is not a directory, which it looks up before it asks who is calling. (Android's own filter
+ * of an app's system calls does not let this one through at all; Rust's standard library, which is what imports it and
+ * linkat and killpg into Discord's libraries, has it for the programs that may.)
+ */
+static int g_chroot(const char *path)
+{
+    g_stat st;
+    if (g_stat_path(path, &st) != 0) return -1;
+    mg_set_errno((st.st_mode & G_S_IFDIR) ? GE_PERM : GE_NOTDIR);
+    return -1;
+}
 
 static int g_umask(int mask) { (void)mask; return 022; }
 /* The checked forms a library built with _FORTIFY_SOURCE calls: the same, the buffer's size being the caller's business. */
@@ -2911,6 +2926,117 @@ static int g_scandir(const char *path, g_dirent ***out, mg_addr filter, mg_addr 
 }
 
 static int g_alphasort(const g_dirent **a, const g_dirent **b) { return strcmp((*a)->d_name, (*b)->d_name); }
+
+/*
+ * ftw and nftw: every file below a path told to the caller's function, with its stat and what it is, until the function
+ * answers something other than 0, which is then the walk's result (bionic's ftw.cpp over its fts). What a file is, as
+ * bionic's <ftw.h> numbers it: 0 a file (FTW_F), 1 a directory, told before what is in it (FTW_D), 2 a directory that
+ * cannot be read, told once (FTW_DNR), 3 a directory told after what is in it (FTW_DP: nftw with FTW_DEPTH, 4), 4 a
+ * name stat failed on (FTW_NS). nftw's function is also given where the name starts in the path and how deep it lies
+ * below the path walked (struct FTW: base, level). The path is the one given with the names appended, "." and ".."
+ * left out, a directory's entries all read before the first is told: a function may remove what it is told (which is
+ * what the walk is mostly for: libkv_storage.so, Discord's key-value store, imports nftw). There are no links here to
+ * follow or not (FTW_PHYS, 1) and one file system (FTW_MOUNT, 2); with FTW_CHDIR (8) the working directory is each
+ * directory's while its entries are told, and what it was again once they are. As bionic: no descriptors allowed is
+ * EINVAL, a path that is not there fails with stat's error and nothing is told.
+ */
+typedef struct g_ftw {
+    int base, level;
+} g_ftw;
+enum { G_FTW_F = 0, G_FTW_D = 1, G_FTW_DNR = 2, G_FTW_DP = 3, G_FTW_NS = 4, G_FTW_DEPTH = 4, G_FTW_CHDIR = 8 };
+
+typedef struct ftw_walk {
+    mg_addr fn;
+    bool nftw;
+    int flags;
+    char *path;         /* the path being told, grown as the walk goes down */
+    size_t cap;
+} ftw_walk;
+
+static int ftw_tell(ftw_walk *w, const g_stat *st, int what, int base, int level)
+{
+    if (w->nftw) {
+        g_ftw f;
+        f.base = base;
+        f.level = level;
+        return MG_GFN(int (*)(const char *, const g_stat *, int, g_ftw *), w->fn)(w->path, st, what, &f);
+    }
+    return MG_GFN(int (*)(const char *, const g_stat *, int), w->fn)(w->path, st, what);
+}
+
+/* The file at w->path (its first `len` characters; the name from `base`), and for a directory what is below it. */
+static int ftw_visit(ftw_walk *w, size_t len, int base, int level)
+{
+    g_stat st;
+    g_dir *d;
+    char *from = NULL;
+    size_t at;
+    u32 i;
+    int r = 0;
+    bool depth = w->nftw && (w->flags & G_FTW_DEPTH), chdir_ = w->nftw && (w->flags & G_FTW_CHDIR);
+    memset(&st, 0, sizeof(st));
+    if (g_stat_path(w->path, &st) != 0) return ftw_tell(w, &st, G_FTW_NS, base, level);
+    if (!(st.st_mode & G_S_IFDIR)) return ftw_tell(w, &st, G_FTW_F, base, level);
+    d = g_opendir(w->path);
+    if (!d) return ftw_tell(w, &st, G_FTW_DNR, base, level);
+    if (!depth) r = ftw_tell(w, &st, G_FTW_D, base, level);
+    if (!r && chdir_) {
+        from = mg_strdup(g_cwd);
+        g_chdir(w->path);
+    }
+    /* (A path that ends in a slash, the root's, takes the names as they are.) */
+    at = len && w->path[len - 1] == '/' ? len : len + 1;
+    for (i = 0; !r && i < d->count; i++) {
+        const char *name = d->names[i];
+        size_t n = strlen(name);
+        if (!strcmp(name, ".") || !strcmp(name, "..")) continue;
+        if (at + n + 1 > w->cap) {
+            w->cap = (at + n + 1) * 2;
+            w->path = (char *)mg_realloc(w->path, w->cap);
+        }
+        w->path[at - 1] = '/';
+        memcpy(w->path + at, name, n + 1);
+        r = ftw_visit(w, at + n, (int)at, level + 1);
+    }
+    g_closedir(d);
+    w->path[len] = 0;
+    /* (Back where the directory was entered from, which is where fts is when it tells a directory left.) */
+    if (from) {
+        mg_strlcpy(g_cwd, from, sizeof(g_cwd));
+        free(from);
+    }
+    if (!r && depth) r = ftw_tell(w, &st, G_FTW_DP, base, level);
+    return r;
+}
+
+static int ftw_walk_path(const char *path, mg_addr fn, int nfds, int flags, bool nftw)
+{
+    ftw_walk w;
+    g_stat st;
+    const char *slash;
+    size_t len;
+    int r;
+    if (nfds < 1) {
+        mg_set_errno(GE_INVAL);
+        return -1;
+    }
+    if (g_stat_path(path, &st) != 0) return -1;
+    len = strlen(path);
+    w.fn = fn;
+    w.nftw = nftw;
+    w.flags = flags;
+    w.cap = len + 256;
+    w.path = (char *)mg_alloc(w.cap);
+    memcpy(w.path, path, len + 1);
+    /* The path's own name starts after its last slash, as fts has it; "/" is its whole name. */
+    slash = strrchr(path, '/');
+    r = ftw_visit(&w, len, slash && (slash != path || slash[1]) ? (int)(slash + 1 - path) : 0, 0);
+    free(w.path);
+    return r;
+}
+
+static int g_ftw_fn(const char *path, mg_addr fn, int nfds) { return ftw_walk_path(path, fn, nfds, 0, false); }
+static int g_nftw(const char *path, mg_addr fn, int nfds, int flags) { return ftw_walk_path(path, fn, nfds, flags, true); }
 
 /* ----------------------------------------------------- pipes and eventfds */
 
@@ -4380,12 +4506,13 @@ const mg_sym mg_tab_io[] = {
     IO("chdir", g_chdir), IO("getcwd", g_getcwd), IO("realpath", g_realpath), IO("readlink", g_readlink_said),
     IO("chmod", g_chmod), IO("fchmod", g_fchmod), IO("chown", g_chown), IO("lchown", g_chown), IO("utime", g_utime),
     IO("utimes", g_utimes), IO("lutimes", g_utimes), IO("futimes", g_futimes), IO("link", g_fail_link), IO("symlink", g_fail_link),
-    IO("readlinkat", g_readlinkat_said), IO("symlinkat", g_symlinkat), IO("utimensat", g_utimensat), IO("futimens", g_futimens), IO("futimesat", g_futimesat),
+    IO("readlinkat", g_readlinkat_said), IO("symlinkat", g_symlinkat), IO("linkat", g_linkat), IO("chroot", g_chroot), IO("utimensat", g_utimensat), IO("futimens", g_futimens), IO("futimesat", g_futimesat),
     IO("umask", g_umask), IO("flock", g_flock),
     IO("fchown", g_ok_fd),
     IO("opendir", g_opendir_said), IO("fdopendir", g_fdopendir), IO("readdir", g_readdir), IO("readdir64", g_readdir),
     IO("readdir_r", g_readdir_r), IO("readdir64_r", g_readdir_r), IO("closedir", g_closedir), IO("rewinddir", g_rewinddir),
     IO("telldir", g_telldir), IO("seekdir", g_seekdir), IO("dirfd", g_dirfd), IO("scandir", g_scandir), IO("scandir64", g_scandir),
+    IO("ftw", g_ftw_fn), IO("ftw64", g_ftw_fn), IO("nftw", g_nftw), IO("nftw64", g_nftw),
     IO("alphasort", g_alphasort), IO("alphasort64", g_alphasort), IO("getdents64", g_getdents64),
     IO("pipe", g_pipe), IO("pipe2", g_pipe2), IO("eventfd", g_eventfd), IO("memfd_create", g_memfd_create),
     IO("eventfd_read", g_eventfd_read), IO("eventfd_write", g_eventfd_write), IO("fchmodat", g_fchmodat),

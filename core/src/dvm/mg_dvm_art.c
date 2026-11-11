@@ -646,10 +646,16 @@ N(Thread_nativeInterrupt)
     mg_dvm_thread *t = thread_of(c->self);
     mg_jobj *lock = get(c->self, "lock").l;
     if ((mg_addr)t > 1) t->interrupted = true;
-    /* A thread asleep is waiting on its own lock (Thread.sleep): woken, it finds the flag. One waiting on another object finds it when that wait ends. */
+    /*
+     * A thread asleep or parked is waiting on its own lock (Thread.sleep): woken, it finds the flag. One waiting on another
+     * object is woken from that wait (mg_dvm_monitor_interrupt) -- with the thread's lock held, which the thread's end
+     * takes before its native peer is gone (end_peer): the peer read under it is there until the lock is let go.
+     */
     if (lock) {
         mg_dvm_monitor_enter(lock);
         mg_dvm_monitor_notify(lock, true);
+        t = thread_of(c->self);
+        if ((mg_addr)t > 1) mg_dvm_monitor_interrupt(t);
         mg_dvm_monitor_exit(lock);
     }
 }

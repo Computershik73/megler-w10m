@@ -82,7 +82,15 @@
 // again: see the overlay's ViewGroup) and removes the others (removeDetachedView). Taken out so, a row was still "shown" here,
 // so it heard that it was not as it left the window, where Android tells it nothing; Litho's LithoView, told so, stops
 // mounting and keeps what it has mounted (unbound) at its detach, where on Android it unmounts it. Messenger's chat list
-// (0.1.0.687) lost its pictures once views heard onVisibilityAggregated. Everything else is the original's, unchanged.
+// (0.1.0.687) lost its pictures once views heard onVisibilityAggregated.
+//
+// And drawFromParent asks the view's animation as Android's applyLegacyAnimation does, with the scale (getTransformation's
+// three arguments, which an animation of an app's own may be written for), and takes what its listener did meanwhile: a set
+// tells its listener inside that call (AnimationSet). A listener that ended the view's transition there -- androidx's
+// fragments and react-native-screens end a leaving view's so, ViewGroup.endViewTransition -- has taken the view from its
+// parent and from the window: it is not drawn into that parent's list any more, and no list of its own is recorded for it.
+// (An animation such a listener starts on the view at the set's end is cleared with the set, as Android's
+// finishAnimatingView clears whatever the view has then.) Everything else is the original's, unchanged.
 package android.view;
 
 import android.animation.StateListAnimator;
@@ -1386,9 +1394,12 @@ public class View implements Drawable.Callback, KeyEvent.Callback {
                 onAnimationStart();
             }
             mAnimTx.clear();
-            animating = a.getTransformation(android.view.animation.AnimationUtils.currentAnimationTimeMillis(), mAnimTx);
+            ViewGroup mine = mParent;
+            animating = a.getTransformation(android.view.animation.AnimationUtils.currentAnimationTimeMillis(), mAnimTx, 1f);
             if (animating) invalidateParent();
             else if (!a.getFillAfter()) { mAnimation = null; onAnimationEnd(); }
+            // Megler: a set's listener, told inside that, took the view from its parent (see the top of this file)
+            if (mParent != mine) return;
         }
         if (mVisibility != VISIBLE && !animating) return;
         int save = c.save();

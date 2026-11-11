@@ -1407,6 +1407,9 @@ public class Main extends Activity {
             child.startAnimation(fade);
             return true;
         });
+        animationSet();
+        waitInterrupt();
+        looperInterrupt();
         // A circular reveal played with another animator in an AnimatorSet, as Jamfish plays one as each song begins (the
         // reveal was null, and the set ended the app with a NullPointerException): it is an animator of the radius, and it
         // and the set run to their ends.
@@ -8343,6 +8346,407 @@ public class Main extends Activity {
         Scrapping(android.content.Context c) { super(c); }
         void scrap(android.view.View v) { detachViewFromParent(v); }
         void removeScrapped(android.view.View v) { removeDetachedView(v, false); }
+    }
+
+    /**
+     * Thread.interrupt ends another thread's Object.wait, timed or not, with InterruptedException and the flag taken: also
+     * when the interrupter holds the monitor, and when a third thread does (the wait ends once that lets go; interrupt
+     * itself does not wait for it). A thread already interrupted does not wait at all, and one waiting beside the
+     * interrupted one on the same object goes on waiting until it is notified. Thread.sleep ends for it as before.
+     * ExoPlayer ends a released player's loading thread with it (Loader.release; the thread waits in
+     * ConditionVariable.block for the player to ask for more): here that thread waited for good, with its data source
+     * open -- its connection, the cache's span it was writing -- and the player made next for the same video, as
+     * Aliucord makes one when the phone is turned, never got its first sample (0.1.0.690, a user's phone).
+     */
+    private void waitInterrupt() {
+        step("wait-interrupt", () -> {
+            StringBuilder all = new StringBuilder();
+            // 0: a wait with no time, 1: a timed one, 2: the interrupter holds the monitor, 3: a third thread holds it.
+            for (int n = 0; n < 4; n++) {
+                final Object gate = new Object();
+                final boolean[] waiting = new boolean[1];
+                final String[] got = new String[1];
+                final int kind = n;
+                Thread t = new Thread(() -> {
+                    synchronized (gate) {
+                        waiting[0] = true;
+                        try {
+                            if (kind == 1) gate.wait(60000);
+                            else gate.wait();
+                            got[0] = "woken";
+                        } catch (InterruptedException e) {
+                            got[0] = "interrupted, flag " + Thread.currentThread().isInterrupted();
+                        }
+                    }
+                }, "wait-interrupt-" + n);
+                t.start();
+                // In the wait: it said so with the monitor held, and the monitor can be taken.
+                for (int i = 0; i < 2000; i++) {
+                    synchronized (gate) { if (waiting[0]) break; }
+                    Thread.sleep(5);
+                }
+                if (kind == 2) {
+                    synchronized (gate) { t.interrupt(); }
+                } else if (kind == 3) {
+                    final boolean[] held = new boolean[1];
+                    final long[] left = new long[1];
+                    Thread holder = new Thread(() -> {
+                        synchronized (gate) {
+                            held[0] = true;
+                            try { Thread.sleep(1500); } catch (InterruptedException e) { }
+                            left[0] = android.os.SystemClock.uptimeMillis();
+                        }
+                    }, "wait-interrupt-holder");
+                    holder.start();
+                    for (int i = 0; i < 2000 && !held[0]; i++) Thread.sleep(5);
+                    t.interrupt();
+                    long returned = android.os.SystemClock.uptimeMillis();
+                    holder.join(20000);
+                    all.append(returned < left[0] ? "(interrupt did not wait for the holder) " : "(interrupt waited for the holder) ");
+                } else {
+                    t.interrupt();
+                }
+                t.join(20000);
+                all.append(n).append(": ").append(got[0]).append(t.isAlive() ? ", still alive" : "").append("; ");
+            }
+            // Interrupted before it waits: no wait. And the flag is taken by the exception.
+            final String[] early = new String[1];
+            Thread e = new Thread(() -> {
+                Object o = new Object();
+                Thread.currentThread().interrupt();
+                synchronized (o) {
+                    try {
+                        o.wait(60000);
+                        early[0] = "waited";
+                    } catch (InterruptedException x) {
+                        early[0] = "no wait, flag " + Thread.currentThread().isInterrupted();
+                    }
+                }
+            }, "wait-interrupt-early");
+            e.start();
+            e.join(20000);
+            all.append("early: ").append(early[0]).append(e.isAlive() ? ", still alive" : "").append("; ");
+            // Two waiting on one object: the one interrupted leaves, the other waits on until notified.
+            final Object shared = new Object();
+            final int[] in = new int[1];
+            final String[] pair = new String[2];
+            Thread[] two = new Thread[2];
+            for (int n = 0; n < 2; n++) {
+                final int me = n;
+                two[n] = new Thread(() -> {
+                    synchronized (shared) {
+                        in[0]++;
+                        try {
+                            shared.wait();
+                            pair[me] = "notified";
+                        } catch (InterruptedException x) {
+                            pair[me] = "interrupted";
+                        }
+                    }
+                }, "wait-interrupt-pair-" + n);
+                two[n].start();
+            }
+            for (int i = 0; i < 2000; i++) {
+                synchronized (shared) { if (in[0] == 2) break; }
+                Thread.sleep(5);
+            }
+            two[0].interrupt();
+            two[0].join(20000);
+            Thread.sleep(300);
+            String other = pair[1] == null && two[1].isAlive() ? "waiting on" : "left: " + pair[1];
+            synchronized (shared) { shared.notifyAll(); }
+            two[1].join(20000);
+            all.append("pair: ").append(pair[0]).append(", the other ").append(other).append(" then ").append(pair[1]).append("; ");
+            // A sleep, as before.
+            final String[] slept = new String[1];
+            Thread s = new Thread(() -> {
+                try {
+                    Thread.sleep(60000);
+                    slept[0] = "slept";
+                } catch (InterruptedException x) {
+                    slept[0] = "interrupted, flag " + Thread.currentThread().isInterrupted();
+                }
+            }, "wait-interrupt-sleep");
+            s.start();
+            Thread.sleep(200);
+            s.interrupt();
+            s.join(20000);
+            all.append("sleep: ").append(slept[0]).append(s.isAlive() ? ", still alive" : "");
+            detail = all.toString();
+            return ("0: interrupted, flag false; 1: interrupted, flag false; 2: interrupted, flag false; "
+                    + "(interrupt did not wait for the holder) 3: interrupted, flag false; early: no wait, flag false; "
+                    + "pair: interrupted, the other waiting on then notified; sleep: interrupted, flag false").equals(detail);
+        });
+    }
+
+    /**
+     * A Looper goes on when its thread is interrupted, as Android's does (its wait for a message is not one an interrupt
+     * ends): what is posted afterwards is handled, and its code finds the thread's flag set until it takes it. Here the
+     * interrupt ended the Looper as if it had quit, and nothing posted to it ran again.
+     */
+    private void looperInterrupt() {
+        step("looper-interrupt", () -> {
+            android.os.HandlerThread ht = new android.os.HandlerThread("looper-interrupt");
+            ht.start();
+            android.os.Handler h = new android.os.Handler(ht.getLooper());
+            final java.util.concurrent.CountDownLatch first = new java.util.concurrent.CountDownLatch(1);
+            final java.util.concurrent.CountDownLatch both = new java.util.concurrent.CountDownLatch(2);
+            final java.util.concurrent.CountDownLatch third = new java.util.concurrent.CountDownLatch(1);
+            final StringBuilder told = new StringBuilder();
+            h.post(first::countDown);
+            boolean before = first.await(20, java.util.concurrent.TimeUnit.SECONDS);
+            // Waiting for a message, with none due.
+            Thread.sleep(100);
+            ht.interrupt();
+            Thread.sleep(300);
+            h.post(() -> {
+                synchronized (told) { told.append("one, flag ").append(Thread.currentThread().isInterrupted()).append("; "); }
+                both.countDown();
+            });
+            h.postDelayed(() -> {
+                synchronized (told) { told.append("two, flag ").append(Thread.interrupted()).append("; "); }
+                both.countDown();
+            }, 200);
+            boolean after = both.await(20, java.util.concurrent.TimeUnit.SECONDS);
+            // The second took the flag (Thread.interrupted): a third finds none, and the Looper quits as ever.
+            h.post(() -> {
+                synchronized (told) { told.append("three, flag ").append(Thread.currentThread().isInterrupted()); }
+                third.countDown();
+            });
+            boolean last = third.await(20, java.util.concurrent.TimeUnit.SECONDS);
+            ht.quit();
+            ht.join(20000);
+            synchronized (told) {
+                detail = "before " + before + ", after " + after + " " + last + ": " + told + (ht.isAlive() ? ", still alive" : ", ended on quit");
+            }
+            return "before true, after true true: one, flag true; two, flag true; three, flag false, ended on quit".equals(detail);
+        });
+    }
+
+    /**
+     * androidx's FragmentAnim.EndViewTransitionAnimation, as its fragments have it, for the step "animation-set": what a removed
+     * fragment's view leaves with. A set of the one animation that goes on until the view's transition is ended, which it
+     * ends itself: from a run posted to the parent, once that finds no frame has asked the animation since the run before, and
+     * before the drawing that follows the animation's end.
+     */
+    private static final class Leaving extends android.view.animation.AnimationSet implements Runnable {
+        private final android.view.ViewGroup mParent;
+        private final android.view.View mChild;
+        private boolean mEnded, mTransitionEnded, mAnimating = true;
+        Leaving(android.view.animation.Animation a, android.view.ViewGroup parent, android.view.View child) {
+            super(false);
+            mParent = parent;
+            mChild = child;
+            addAnimation(a);
+            mParent.post(this);
+        }
+        @Override public boolean getTransformation(long now, android.view.animation.Transformation t) {
+            mAnimating = true;
+            if (mEnded) return !mTransitionEnded;
+            if (!super.getTransformation(now, t)) { mEnded = true; beforeNextDraw(); }
+            return true;
+        }
+        @Override public boolean getTransformation(long now, android.view.animation.Transformation t, float scale) {
+            mAnimating = true;
+            if (mEnded) return !mTransitionEnded;
+            if (!super.getTransformation(now, t, scale)) { mEnded = true; beforeNextDraw(); }
+            return true;
+        }
+        /* (OneShotPreDrawListener.add(mParent, this).) */
+        private void beforeNextDraw() {
+            mParent.getViewTreeObserver().addOnPreDrawListener(new android.view.ViewTreeObserver.OnPreDrawListener() {
+                @Override public boolean onPreDraw() {
+                    mParent.getViewTreeObserver().removeOnPreDrawListener(this);
+                    run();
+                    return true;
+                }
+            });
+        }
+        @Override public void run() {
+            if (!mEnded && mAnimating) { mAnimating = false; mParent.post(this); }
+            else { mParent.endViewTransition(mChild); mTransitionEnded = true; }
+        }
+    }
+
+    /**
+     * A set of view animations tells its listener, as Android's AnimationSet does: the start as the first of its animations
+     * starts and the end as the last has ended, inside the drawing of its view. androidx's fragments and react-native-screens
+     * take a screen away through that. The fragment's view is removed from its stack in a view transition and leaves with an
+     * EndViewTransitionAnimation (Leaving), whose listener, at the end, posts the end of the transition and the completion
+     * of the fragment's operation. react-native-screens' view starts that inside a set of its own, with an animation that
+     * only reports how far it is, and its stack refuses to end the view's transition until that set's listener has heard
+     * the end -- where it also tells the JavaScript side that the screens have changed. A set here told its listener
+     * nothing: the leaving screen stayed in its stack, drawn over the new one, whose appearing was never told (Discord,
+     * 0.1.0.690). The step plays that with a stack and views of its own and says, once the operation is complete and the
+     * stack was drawn twice more (or after six seconds), what the listeners heard and what became of the leaving view. A set
+     * that is no view's tells its listener as it is asked for its transformation, once each.
+     *
+     * And a set hands its animations what it was given itself and nothing else, made in code or from XML: a duration, a
+     * start offset that is added to their own and taken back at reset, fillAfter -- as the set is initialized, not before.
+     * Given no duration, its own is the longest of theirs (and its hint the longest of their hints, start offsets in).
+     * Here a set from XML gave each of its animations the longest's duration with its start offset in it.
+     */
+    private void animationSet() {
+        step("animation-set", () -> {
+            // In code: nothing given, then a duration, a start offset and fillAfter.
+            android.view.animation.AlphaAnimation a1 = new android.view.animation.AlphaAnimation(1f, 0f);
+            a1.setDuration(100);
+            a1.setStartOffset(200);
+            android.view.animation.TranslateAnimation a2 = new android.view.animation.TranslateAnimation(0, 0, 0, 10);
+            a2.setDuration(250);
+            android.view.animation.AnimationSet s = new android.view.animation.AnimationSet(false);
+            s.addAnimation(a1);
+            s.addAnimation(a2);
+            String plain = s.getDuration() + "/" + s.computeDurationHint();
+            s.initialize(10, 10, 20, 20);
+            plain += " " + lengths(s);
+            s.setDuration(80);
+            s.setStartOffset(40);
+            s.setFillAfter(true);
+            String before = s.getDuration() + " " + lengths(s);
+            s.initialize(10, 10, 20, 20);
+            String given = lengths(s);
+            s.initialize(10, 10, 20, 20);
+            String twice = lengths(s);
+            s.reset();
+            String reset = lengths(s);
+            // From XML: the same two sets.
+            android.view.animation.AnimationSet x = (android.view.animation.AnimationSet) android.view.animation.AnimationUtils.loadAnimation(this, R.anim.set_plain);
+            String xmlPlain = x.getDuration() + "/" + x.computeDurationHint() + " " + lengths(x);
+            x.initialize(10, 10, 20, 20);
+            xmlPlain += " | " + lengths(x);
+            android.view.animation.AnimationSet y = (android.view.animation.AnimationSet) android.view.animation.AnimationUtils.loadAnimation(this, R.anim.set_given);
+            String xmlGiven = y.getDuration() + "+" + y.getStartOffset() + " " + y.getFillAfter() + " " + lengths(y);
+            y.initialize(10, 10, 20, 20);
+            xmlGiven += " | " + lengths(y);
+            // No view's: asked for its transformation at times of the test's own.
+            android.view.animation.AnimationSet t = new android.view.animation.AnimationSet(true);
+            android.view.animation.AlphaAnimation b1 = new android.view.animation.AlphaAnimation(0f, 1f), b2 = new android.view.animation.AlphaAnimation(0f, 1f);
+            b1.setDuration(50);
+            b2.setDuration(120);
+            b2.setStartOffset(10);
+            t.addAnimation(b1);
+            t.addAnimation(b2);
+            final StringBuilder told = new StringBuilder();
+            t.setAnimationListener(new android.view.animation.Animation.AnimationListener() {
+                @Override public void onAnimationStart(android.view.animation.Animation a) { told.append("start "); }
+                @Override public void onAnimationRepeat(android.view.animation.Animation a) { told.append("repeat "); }
+                @Override public void onAnimationEnd(android.view.animation.Animation a) { told.append("end "); }
+            });
+            t.initialize(10, 10, 20, 20);
+            t.setStartTime(1000);
+            android.view.animation.Transformation tx = new android.view.animation.Transformation();
+            boolean first = t.getTransformation(1000, tx);
+            String atFirst = told.toString().trim();
+            boolean middle = t.getTransformation(1060, tx);
+            String atMiddle = told.toString().trim();
+            t.getTransformation(1130, tx);
+            boolean last = t.getTransformation(1140, tx);
+            String direct = atFirst + "," + atMiddle + "," + told.toString().trim() + " more " + first + " " + middle + " " + last + " from " + t.getStartTime()
+                    + " started " + t.hasStarted() + " ended " + t.hasEnded();
+            leaveStack();
+            detail = "in code: " + plain + "; " + before + "; " + given + "; " + twice + "; " + reset + ". From XML: " + xmlPlain + "; " + xmlGiven + ". Asked: " + direct;
+            return "250/300 100+200 250+0 false".equals(plain) && "80 100+200 250+0 false".equals(before) && "80+240 80+40 true".equals(given)
+                    && given.equals(twice) && "80+200 80+0 true".equals(reset)
+                    && "250/300 100+200 250+0 false | 100+200 250+0 false".equals(xmlPlain)
+                    && "80+40 true 100+200 250+0 false | 80+240 80+40 true".equals(xmlGiven)
+                    && "start,start,start end more true true false from 1000 started true ended true".equals(direct);
+        });
+    }
+
+    /* Each animation of the set as "duration+start offset", and whether the first fills after. */
+    private static String lengths(android.view.animation.AnimationSet s) {
+        StringBuilder b = new StringBuilder();
+        for (android.view.animation.Animation a : s.getAnimations()) b.append(a.getDuration()).append('+').append(a.getStartOffset()).append(' ');
+        return b.append(s.getAnimations().get(0).getFillAfter()).toString();
+    }
+
+    /* The screens of the step "animation-set": a new view comes into the stack and the old one leaves it. */
+    private void leaveStack() {
+        final boolean[] inDraw = new boolean[1], blocked = new boolean[1], completed = new boolean[1], said = new boolean[1];
+        final int[] drawnAfter = new int[1];
+        final float[] progress = { -1f };
+        final StringBuilder outer = new StringBuilder(), inner = new StringBuilder(), entered = new StringBuilder();
+        final android.view.View leaving = new android.view.View(this), entering = new android.view.View(this);
+        final android.widget.FrameLayout stack = new android.widget.FrameLayout(this) {
+            @Override protected void dispatchDraw(android.graphics.Canvas c) {
+                inDraw[0] = true;
+                try { super.dispatchDraw(c); } finally { inDraw[0] = false; }
+            }
+            @Override protected boolean drawChild(android.graphics.Canvas c, android.view.View child, long time) {
+                if (child == leaving && completed[0]) drawnAfter[0]++;
+                return super.drawChild(c, child, time);
+            }
+            // (react-native-screens' ScreenStack: no end of a view's transition until its set's listener has heard the end.)
+            @Override public void endViewTransition(android.view.View v) { if (!blocked[0]) super.endViewTransition(v); }
+        };
+        leaving.setBackgroundColor(0xff996633);
+        entering.setBackgroundColor(0xff339966);
+        stack.addView(leaving, new android.widget.FrameLayout.LayoutParams(20, 20));
+        ((android.view.ViewGroup) text.getParent()).addView(stack, new android.view.ViewGroup.LayoutParams(40, 40));
+        final Runnable say = () -> {
+            if (said[0]) return;
+            said[0] = true;
+            Log.i("DataTest", "animation-set leaving outer=" + outer.toString().trim() + " inner=" + inner.toString().trim() + " progress=" + progress[0]
+                    + " completed=" + completed[0] + " parent=" + (leaving.getParent() == null ? "null" : leaving.getParent() == stack ? "stack" : "other")
+                    + " attached=" + leaving.isAttachedToWindow() + " drawn-after=" + drawnAfter[0] + " entering=" + entered.toString().trim()
+                    + " animation=" + (entering.getAnimation() == null ? "null" : "kept"));
+            ((android.view.ViewGroup) stack.getParent()).removeView(stack);
+        };
+        stack.post(() -> {
+            // The new screen: androidx starts its animation as it is given, and react-native-screens' view gives a set.
+            stack.addView(entering, new android.widget.FrameLayout.LayoutParams(20, 20));
+            android.view.animation.AlphaAnimation fadeIn = new android.view.animation.AlphaAnimation(0f, 1f);
+            fadeIn.setDuration(40);
+            android.view.animation.AnimationSet in = new android.view.animation.AnimationSet(true);
+            in.addAnimation(fadeIn);
+            in.setAnimationListener(new android.view.animation.Animation.AnimationListener() {
+                @Override public void onAnimationStart(android.view.animation.Animation a) { entered.append(inDraw[0] ? "start-in-draw " : "start "); }
+                @Override public void onAnimationRepeat(android.view.animation.Animation a) {}
+                @Override public void onAnimationEnd(android.view.animation.Animation a) { entered.append(inDraw[0] ? "end-in-draw" : "end"); }
+            });
+            entering.startAnimation(in);
+            // The old one, as androidx's DefaultSpecialEffectsController takes a removed fragment's view away...
+            android.view.animation.AlphaAnimation fadeOut = new android.view.animation.AlphaAnimation(1f, 0f);
+            fadeOut.setDuration(60);
+            stack.startViewTransition(leaving);
+            final Leaving end = new Leaving(fadeOut, stack, leaving);
+            end.setAnimationListener(new android.view.animation.Animation.AnimationListener() {
+                @Override public void onAnimationStart(android.view.animation.Animation a) {}
+                @Override public void onAnimationRepeat(android.view.animation.Animation a) {}
+                @Override public void onAnimationEnd(android.view.animation.Animation a) {
+                    inner.append(inDraw[0] ? "end-in-draw" : "end");
+                    stack.post(() -> {
+                        stack.endViewTransition(leaving);
+                        completed[0] = true;
+                        stack.invalidate();
+                        stack.postDelayed(() -> { stack.invalidate(); stack.postDelayed(say, 150); }, 150);
+                    });
+                }
+            });
+            // ...and as react-native-screens' ScreensCoordinatorLayout.startAnimation starts what it is given for a fragment
+            // being removed: in a set of its own, with an animation as long that says how far it is.
+            android.view.animation.Animation far = new android.view.animation.Animation() {
+                @Override protected void applyTransformation(float t, android.view.animation.Transformation out) { progress[0] = t; }
+            };
+            far.setDuration(end.getDuration());
+            android.view.animation.AnimationSet out = new android.view.animation.AnimationSet(true);
+            out.addAnimation(end);
+            out.addAnimation(far);
+            blocked[0] = true;
+            out.setAnimationListener(new android.view.animation.Animation.AnimationListener() {
+                @Override public void onAnimationStart(android.view.animation.Animation a) { outer.append(inDraw[0] ? "start-in-draw " : "start "); }
+                @Override public void onAnimationRepeat(android.view.animation.Animation a) {}
+                @Override public void onAnimationEnd(android.view.animation.Animation a) {
+                    blocked[0] = false;
+                    outer.append(inDraw[0] ? "end-in-draw" : "end");
+                }
+            });
+            leaving.startAnimation(out);
+            // (The container's changes are applied once the animations are started.)
+            stack.removeView(leaving);
+            stack.postDelayed(say, 6000);
+        });
     }
 
     /**

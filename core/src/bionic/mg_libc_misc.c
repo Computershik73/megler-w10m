@@ -1935,6 +1935,23 @@ static long g_ptrace(int request, int pid, void *addr, void *data)
 
 /* setpgrp(): bionic's is setpgid(0, 0). */
 static int g_setpgrp(void) { return g_setpgid(0, 0); }
+/*
+ * killpg: a signal to a process group, which bionic sends as kill(-group, signal) after refusing a negative group
+ * (EINVAL). The one group here is the process's own (getpgid), named by its number or by 0: the signal is the process's,
+ * as kill(0, signal) is; any other group is not there (ESRCH). Discord's libappmodules.so imports it.
+ */
+static int g_killpg(int group, int sig)
+{
+    if (group < 0) {
+        mg_set_errno(GE_INVAL);
+        return -1;
+    }
+    if (group != 0 && group != g_getpid()) {
+        mg_set_errno(GE_SRCH);
+        return -1;
+    }
+    return g_kill(0, sig);
+}
 
 /*
  * The page size as data. Bionic exports __page_size and __page_shift on 32-bit devices, for code built with NDKs that read
@@ -2161,7 +2178,7 @@ const mg_sym mg_tab_misc[] = {
     M("arc4random", g_arc4random), M("arc4random_uniform", g_arc4random_uniform), M("arc4random_buf", g_arc4random_buf),
     M("getentropy", g_getentropy), M("getrandom", g_getrandom),
     M("sigaction", g_sigaction_fn), M("signal", g_signal), M("bsd_signal", g_signal), M("sysv_signal", g_signal), M("raise", g_raise),
-    M("kill", g_kill), M("tgkill", g_tgkill), M("sigprocmask", g_sigprocmask), M("sigemptyset", g_sigemptyset),
+    M("kill", g_kill), M("killpg", g_killpg), M("tgkill", g_tgkill), M("sigprocmask", g_sigprocmask), M("sigemptyset", g_sigemptyset),
     M("sigfillset", g_sigfillset), M("sigaddset", g_sigaddset), M("sigdelset", g_sigdelset), M("sigismember", g_sigismember),
     M("sigpending", g_sigpending), M("sigsuspend", g_sigsuspend), M("sigwait", g_sigwait), M("sigaltstack", g_sigaltstack),
     M("__libc_current_sigrtmin", g_sigrtmin), M("__libc_current_sigrtmax", g_sigrtmax),

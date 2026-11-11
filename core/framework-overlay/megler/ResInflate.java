@@ -1,5 +1,5 @@
 // Overlay of core/framework/src/megler/ResInflate.java (tools/build-framework.sh).
-// It differs in four places. The mask layer of a <ripple> is handed to the RippleDrawable before it is left out of the
+// It differs in five places. The mask layer of a <ripple> is handed to the RippleDrawable before it is left out of the
 // layers that are drawn. And an <adaptive-icon> is an AdaptiveIconDrawable (its background, foreground and monochrome
 // layers), where it was a LayerDrawable of its layers: launchers ask an icon whether it is adaptive, and draw it masked.
 // And an <inset>'s insets may be fractions of the drawable's bounds ("10%"), as Android 8 and later read them
@@ -9,6 +9,10 @@
 // And an animator's XML is read as Android's AnimatorInflater reads it: an element that is no animator's (a view animation's
 // <alpha>, say) is "Unknown animator name", thrown, where the original made a ValueAnimator of anything (animatorElement says
 // what that did to Messenger's first-run screen).
+// And a view animation's XML gives the animation what its attributes say and nothing else, as Android's Animation and
+// AnimationSet read it: a <set> hands its animations only what it was given itself (AnimationSet), so its startOffset,
+// fillBefore, fillAfter and repeatMode are set only where the XML has them -- and its duration: the original gave every
+// animation of a <set> the longest one's duration, start offset included, whether the set had a duration or not.
 // Everything else is the original's, unchanged.
 //
 // Why. Android's commonest ripple is one with nothing in it but a mask -- item_background_material, which is
@@ -514,7 +518,6 @@ public final class ResInflate {
             while ((tt = p.next()) != XmlPullParser.END_DOCUMENT && (p.getDepth() >= depth || tt != XmlPullParser.END_TAG)) {
                 if (tt == XmlPullParser.START_TAG && p.getDepth() == depth) s.addAnimation(anim(r, p, s));
             }
-            if (s.getDuration() > 0) s.setDuration(s.getDuration());
             return s;
         }
         case "alpha": { TypedArray ta = r.obtainAttributes(set, S.AlphaAnimation); a = new AlphaAnimation(ta.getFloat(S.AlphaAnimation_fromAlpha, 1), ta.getFloat(S.AlphaAnimation_toAlpha, 1)); ta.recycle(); break; }
@@ -555,12 +558,12 @@ public final class ResInflate {
     private static void common(Resources r, AttributeSet set, Animation a) {
         TypedArray ta = r.obtainAttributes(set, S.Animation);
         if (ta.hasValue(S.Animation_duration)) a.setDuration(ta.getInt(S.Animation_duration, 0));
-        a.setStartOffset(ta.getInt(S.Animation_startOffset, 0));
+        if (ta.hasValue(S.Animation_startOffset)) a.setStartOffset(ta.getInt(S.Animation_startOffset, 0));
         if (ta.hasValue(S.Animation_fillEnabled)) a.setFillEnabled(ta.getBoolean(S.Animation_fillEnabled, false));
-        a.setFillBefore(ta.getBoolean(S.Animation_fillBefore, true));
-        a.setFillAfter(ta.getBoolean(S.Animation_fillAfter, false));
+        if (ta.hasValue(S.Animation_fillBefore)) a.setFillBefore(ta.getBoolean(S.Animation_fillBefore, true));
+        if (ta.hasValue(S.Animation_fillAfter)) a.setFillAfter(ta.getBoolean(S.Animation_fillAfter, false));
         a.setRepeatCount(ta.getInt(S.Animation_repeatCount, 0));
-        a.setRepeatMode(ta.getInt(S.Animation_repeatMode, Animation.RESTART));
+        if (ta.hasValue(S.Animation_repeatMode)) a.setRepeatMode(ta.getInt(S.Animation_repeatMode, Animation.RESTART));
         int interp = ta.getResourceId(S.Animation_interpolator, 0);
         ta.recycle();
         if (interp != 0) { try { a.setInterpolator(interpolator(r, r.getAnimation(interp))); } catch (Exception e) {} }
