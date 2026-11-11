@@ -381,6 +381,35 @@ captures as errors. A successful inspection means the capture is consistent,
 not that DroidGuard obtained a fast program. Instrumentation may affect the
 VM's observations; a proposed fix must also pass an uninstrumented run.
 
+**The device-key token and an independent HTTP submission.** A separate
+fresh 26.43.30 client run captures `alkl.b("devicekey", map)` and the `jofz`
+message passed to `atvj.b`, without the native-memory inspection used in
+other experiments. The flow downloads its own signed program, initializes
+and runs it, and returns a non-null 2996-byte base64 token. The independent
+protobuf reader finds that token unchanged in field 1 of the 3047-byte
+request. The request also contains a nonzero Android ID, a session nonce,
+`missing_token`, and SDK/GMS version metadata. A nonempty token is therefore
+being sent; the fast-program failure alone does not establish that the
+device-key request has no DroidGuard token.
+
+In another fresh run, the diagnostic hook retains the device-key request
+before calling the original network method and throws deliberately, so GMS
+does not submit it. Its first submission is instead by WSL's `curl`, over
+HTTP/1.1, with the captured protobuf and GMS headers (`app`, `gmscoreFlow`,
+`gmsversion`, `device`, and `Content-Type: application/x-protobuf`). That
+3022-byte request, carrying a new 2971-byte token, gets HTTP 400 and 1664
+bytes of Google's HTML error page too. This is not a replay of an already
+submitted token. The alternate client changes HTTP/TLS defaults and has no
+successful Android control; this does not certify every detail of Megler's
+transport. It does reproduce the rejection outside that transport.
+
+Both experiments clear only the diagnostic client's `arcf` retry timestamp
+to make it attempt the request during the short test. They neither replace
+the token nor change the keystore, package certificate or VM's answers. No
+runtime change from these experiments is retained. The server's reason for
+rejecting the request remains unknown; no device-key or Wi-Fi-positioning
+fix has been demonstrated.
+
 **Following it on a phone** (flags in `Pictures\Megler\diag\<package>\flags`):
 `trace-syscalls` (a library's calls by number with the path each names:
 "/sys/fs/selinux/enforce" = -2 from `libdB21738DAE92C.so+0x2e18`, its own
