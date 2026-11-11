@@ -3917,6 +3917,8 @@ public class Main extends Activity {
             store.deleteEntry("megler-test-cert-set");
 
             String attested;
+            int attestationError = 0;
+            boolean attestationInfo = false;
             try {
                 java.security.KeyPairGenerator attest = java.security.KeyPairGenerator.getInstance("EC", "AndroidKeyStore");
                 attest.initialize(new android.security.keystore.KeyGenParameterSpec.Builder("megler-test-attested", android.security.keystore.KeyProperties.PURPOSE_SIGN)
@@ -3925,9 +3927,19 @@ public class Main extends Activity {
                 attested = "made";
             } catch (java.security.ProviderException e) {
                 attested = "ProviderException";
+                Throwable cause = e.getCause();
+                if (cause != null && "android.security.KeyStoreException".equals(cause.getClass().getName())) {
+                    attestationError = ((Integer) cause.getClass().getMethod("getErrorCode").invoke(cause)).intValue();
+                    attestationInfo = "Not implemented".equals(cause.getMessage())
+                            && ((Integer) cause.getClass().getMethod("getNumericErrorCode").invoke(cause)).intValue() == 12
+                            && Boolean.TRUE.equals(cause.getClass().getMethod("isSystemError").invoke(cause))
+                            && Boolean.FALSE.equals(cause.getClass().getMethod("isTransientFailure").invoke(cause))
+                            && ((Integer) cause.getClass().getMethod("getRetryPolicy").invoke(cause)).intValue() == 1
+                            && cause.toString().endsWith("(public error code: 12 internal Keystore code: -100)");
+                }
             }
-            boolean refused = "ProviderException".equals(attested) && !store.containsAlias("megler-test-attested");
-            detail = "ec=" + ecCert + " rsa-defaults=" + rsaDefaults + " set=" + set + " attested=" + attested + " kept=" + keptSubject + " run=" + run;
+            boolean refused = "ProviderException".equals(attested) && attestationError == -100 && attestationInfo && !store.containsAlias("megler-test-attested");
+            detail = "ec=" + ecCert + " rsa-defaults=" + rsaDefaults + " set=" + set + " attested=" + attested + " error=" + attestationError + " kept=" + keptSubject + " run=" + run;
             Log.i("DataTest", "keystore-certificates " + detail);
             return ecCert && rsaDefaults && set && refused && (run > 1 ? "CN=Megler test,O=Megler".equals(keptSubject) : kept == null);
         });

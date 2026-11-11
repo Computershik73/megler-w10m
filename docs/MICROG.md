@@ -469,6 +469,43 @@ nonempty field 2. That establishes local MAC generation, not server
 acceptance or a location fix. Do not copy a captured header or its device
 identifier into the repository.
 
+**Reference Android and attestation errors (2026-11-12).** On the explicitly
+selected rooted Android 11 reference device, GMS 26.26.34 (262634022) reports
+both signing certificates in its rotation history and the oldest certificate
+through the legacy API, as above. A scoped EC key-generation probe with a public
+test challenge fails with `ProviderException` caused by
+`android.security.KeyStoreException`, internal error `-100` (unimplemented).
+The probe removes only its own temporary alias and checks that it is absent.
+No existing device key is read or removed.
+
+That device nevertheless completes a fresh full/fast exchange. Its ordinary
+Cronet request fails with `ERR_CERT_INVALID` (internal code -207); standard
+Android HTTPS to the same host validates TLS. With the user's explicit approval,
+a temporary Frida agent sends the original GMS-built program requests through
+that verified HTTPS client, retaining Google's protobuf and RSA verification.
+Neither TLS verification nor the VM result is replaced. The full response has
+79,460 bytes of bytecode and a 10-second TTL. The native VM returns 24,987 bytes;
+those exact bytes become the fast request's field 10. Google returns a verified
+fast response with 82,668 bytes of bytecode, TTL 604800, and no retry-full request.
+The VM observes the `-100` attestation failure during this successful exchange.
+This rules out unsupported attestation alone as an explanation of Megler's
+failure; the Android ABI and GMS release differ from the phone's ARM32 26.43.30.
+Only class names, packet structure, lengths and verification results are
+exported from this reference exchange, not its requests, tokens or identifiers.
+
+Megler's attestation failure originally had no cause, and the generated
+`KeyStoreException` discarded the code and message. The provider now attaches
+`KeyStoreException(-100, "Not implemented")`; the exception preserves its code
+and message and classifies that failure as permanent, system-wide and
+`ERROR_UNIMPLEMENTED`. Other codes currently use the public API's fallback
+classification, rather than a complete KeyMint error table. The data app's
+`keystore-certificates` test fails before the change (`error=0`, 276 steps
+passed, one failed) and passes afterward (`error=-100`, 277 steps passed,
+445 runner checks, zero failed). A fresh uninstrumented 26.43.30 qemu run still
+fails the fast-response bytecode check after the full VM returns 2057 bytes (2064 with Android 14 error wording),
+and device-key acquisition still fails. This is an Android API compatibility
+fix, not a demonstrated DroidGuard fix.
+
 **Following it on a phone** (flags in `Pictures\Megler\diag\<package>\flags`):
 `trace-syscalls` (a library's calls by number with the path each names:
 "/sys/fs/selinux/enforce" = -2 from `libdB21738DAE92C.so+0x2e18`, its own
