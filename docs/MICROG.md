@@ -324,7 +324,7 @@ the hosted GMS `PackageInfo.signatures` and `signingInfo` with the APK's
 actual signer, read by `ApkSigner.fromSigningBlock`; the probe logs that the
 replacement was applied. The full VM then returned 1956 bytes, but the
 verified fast response still lacked `byteCode` and the device-key response
-was still 1664 bytes of HTML. Correcting those two fields alone did not fix
+was still 1664 bytes of HTML. Replacing those two fields alone did not fix
 the failure. The experiment is confined to the diagnostic client; no
 certificate substitution change is kept in the runtime.
 
@@ -410,6 +410,20 @@ runtime change from these experiments is retained. The server's reason for
 rejecting the request remains unknown; no device-key or Wi-Fi-positioning
 fix has been demonstrated.
 
+**Signing-certificate rotation changes the interpretation of that experiment.**
+The same APK's v3 signing block has proof-of-rotation attribute `0x3ba06f8c`:
+its first certificate hashes to
+`f0fd6c5b410f25cb25c3b53346c8972fae30f8ee7411df910480ad6b2d60db83`,
+and its next to the `7ce83c1b...` signer above. This is the
+[AOSP v3 rotation structure](https://source.android.com/docs/security/features/apksigning/v3).
+Android's legacy [`PackageInfo.signatures`](https://developer.android.com/reference/android/content/pm/PackageInfo#signatures)
+returns the oldest certificate after rotation. The native trace asks for
+`GET_SIGNATURES` (64), so Megler's old `f0fd6c5b...` value matches that API's
+expected certificate for this APK. Replacing it with the current signer was
+an experiment, not a demonstrated correction of the legacy field. It must
+not be used as evidence that the old certificate caused DroidGuard's failure.
+This does not validate the separate `SigningInfo` API's rotation semantics.
+
 **Native field reads and the hosted package's permissions.** A temporary
 JNI field trace on 26.43.30 shows that the full VM asks for GmsCore's
 `PackageInfo` with `GET_PERMISSIONS`, then reads `requestedPermissions` as
@@ -436,6 +450,24 @@ response without bytecode; supplying both those permissions and the APK's
 actual signer gets the same response. Neither experiment obtains a device
 key. The native field instrumentation and certificate substitution are not
 retained in the runtime.
+
+A further fresh run changes `Display.getType()` from its stub's
+`TYPE_UNKNOWN` (0) to `TYPE_INTERNAL` (1), using the populated permissions
+and keeping the correct legacy signing certificate. The hook logs each
+replacement, but the fast response is still verified, 30 bytes long and
+without bytecode, and no device key is obtained. That answer alone does not
+fix either failure; the display override is confined to the diagnostic app.
+
+**What a Spatula header proves.** In 26.43.30, `arcd.a(package)` reads
+the key through `arcg.b()` (`device_key` on disk), attempts `arcf.b()` if it is missing,
+and can still return a nonempty header if no key was obtained. Its base64
+protobuf (`hyfk`) then carries only the app/certificate message in field 1
+and a device identifier in field 3. With a device key it additionally sets field 2
+to the HMAC-SHA256 from `arcf.c`, and fields 4 and 5 to the key metadata.
+Thus the presence of `X-Goog-Spatula` is not a signing check: look for its
+nonempty field 2. That establishes local MAC generation, not server
+acceptance or a location fix. Do not copy a captured header or its device
+identifier into the repository.
 
 **Following it on a phone** (flags in `Pictures\Megler\diag\<package>\flags`):
 `trace-syscalls` (a library's calls by number with the path each names:
