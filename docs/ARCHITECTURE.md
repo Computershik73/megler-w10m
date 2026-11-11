@@ -1538,7 +1538,10 @@ shell removes an app's folders with such files in them (`files::remove`). Facebo
 read-only (`File.setReadOnly`) and loads only one that is: "Downloaded module
 file must be read only ... read only:false" (0.1.0.671), and none of its
 language packs loaded. A directory's mode, a file's other bits and the files
-of a link to one of the phone's folders are as they were. `test_file_modes`
+of a link to one of the phone's folders are as they were. A file's times are
+set as `utimensat` sets them (`mg_path_set_times`: `SetFileTime`, or for a
+file in a link through the handle its owner hands out to write it; a folder
+there is left as it is), so `File.setLastModified` changes the time. `test_file_modes`
 (`mg_storage_tests.c`), and the data app's step `file-read-only` through
 `java.io.File`.
 
@@ -1593,7 +1596,12 @@ entry's size and times from the listing itself (`mg_path_list_stat`, the
 directory's own information: `FileIdBothDirectoryInfo` through its handle),
 where asking each entry by its path would be a call to the broker each: the
 media provider indexes the phone's folders so (docs/JAVA.md, "The media
-provider: MediaStore").
+provider: MediaStore"). And Windows' own picture of a file there -- out of its
+thumbnail cache, a video's frame -- is the shell's to give
+(`megler_storage_host.thumbnail`): asked for without waiting, answered on a
+thread of the shell's, waited for by the core (`mg_run_storage_thumbnail`)
+for so long; an answer that comes later finds its request still there and is
+dropped.
 
 The shell's side is `player/StorageHost.cpp`. Its links are the three
 libraries' folders to save to as `Music`, `Pictures` and `Movies`
