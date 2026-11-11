@@ -1543,15 +1543,41 @@ void mg_jni_gc_roots(void (*fn)(mg_jobj *o, void *user), void *user)
         if (f->value.l) fn(f->value.l, user);
 }
 
+/*
+ * A local reference to an object that was there before, given to native code as an answer: remembered for the thread
+ * (the last sixteen), for GetObjectRefType -- the reference is the object's address, and the object may be held globally
+ * too. Nothing is remembered while nothing is held globally or weakly: every answer is local then.
+ */
+static mg_jobj *given_local(mg_jobj *o)
+{
+    mg_dvm_thread *t;
+    if (o && g_refs_live && g_dvm.running && (t = mg_dvm_self_existing()) != NULL) t->jni_locals[t->jni_local_at++ & 15] = o;
+    return o;
+}
+/* Whether the thread has such a reference to `o`; with `forget`, DeleteLocalRef's: the newest one is no more. */
+static bool local_given(const mg_jobj *o, bool forget)
+{
+    mg_dvm_thread *t = g_dvm.running ? mg_dvm_self_existing() : NULL;
+    u32 k;
+    if (!t || !o) return false;
+    for (k = 1; k <= 16; k++) {
+        mg_jobj **slot = &t->jni_locals[(t->jni_local_at - k) & 15];
+        if (*slot != o) continue;
+        if (forget) *slot = NULL;
+        return true;
+    }
+    return false;
+}
+
 static mg_jobj *j_NewGlobalRef(JNIEnvP e, mg_jobj *o) { (void)e; ref_counted(o, 1, 0); return mg_jni_ref(o); }
 static void j_DeleteGlobalRef(JNIEnvP e, mg_jobj *o) { (void)e; ref_counted(o, -1, 0); mg_jni_unref(o); }
 static mg_jobj *j_NewWeakGlobalRef(JNIEnvP e, mg_jobj *o) { (void)e; ref_counted(o, 0, 1); return mg_jni_ref(o); }
 static void j_DeleteWeakGlobalRef(JNIEnvP e, mg_jobj *o) { (void)e; ref_counted(o, 0, -1); mg_jni_unref(o); }
 
 static i32 j_PushLocalFrame(JNIEnvP e, i32 cap) { (void)e; (void)cap; return 0; }
-static mg_jobj *j_PopLocalFrame(JNIEnvP e, mg_jobj *result) { (void)e; return result; }
-static mg_jobj *j_NewRef(JNIEnvP e, mg_jobj *o) { (void)e; return mg_jni_ref(o); }
-static void j_DeleteRef(JNIEnvP e, mg_jobj *o) { (void)e; mg_jni_unref(o); }
+static mg_jobj *j_PopLocalFrame(JNIEnvP e, mg_jobj *result) { (void)e; return given_local(result); }
+static mg_jobj *j_NewRef(JNIEnvP e, mg_jobj *o) { (void)e; return given_local(mg_jni_ref(o)); }
+static void j_DeleteRef(JNIEnvP e, mg_jobj *o) { (void)e; if (g_refs_live) local_given(o, true); mg_jni_unref(o); }
 static u8 j_IsSameObject(JNIEnvP e, mg_jobj *a, mg_jobj *b) { (void)e; return a == b; }
 static i32 j_EnsureLocalCapacity(JNIEnvP e, i32 cap) { (void)e; (void)cap; return 0; }
 /* AllocObject: an object of the class, its constructor not run. A String is an empty string of its own, as ART gives one
@@ -1629,9 +1655,9 @@ static mg_jobj *j_NewObject(JNIEnvP e, mg_jobj *cls, jmeth *m, ...)
  * The Call<Type>Method families. Floating-point results go back as the guest's convention has them (gfloat, gdouble): as
  * bits in integer registers on 32-bit ARM, like every float that crosses to the guest there.
  */
-#define RET_L(v) return (v).l
+#define RET_L(v) return given_local((v).l)
 /* A field read hands the guest a reference of its own, which it may delete. */
-#define RET_LREF(v) return mg_jni_ref((v).l)
+#define RET_LREF(v) return given_local(mg_jni_ref((v).l))
 #define RET_Z(v) return (v).z
 #define RET_B(v) return (v).b
 #define RET_C(v) return (v).c
@@ -1894,7 +1920,7 @@ static mg_jobj *j_GetObjectArrayElement(JNIEnvP e, mg_jobj *a, i32 i)
         if (a && a->dvm && a->kind == MG_J_OBJ_ARRAY) mg_dvm_throw("java/lang/ArrayIndexOutOfBoundsException", "length=%d; index=%d", (int)a->u.oarr.len, (int)i);
         return NULL;
     }
-    return mg_jni_ref(a->u.oarr.v[i]);
+    return given_local(mg_jni_ref(a->u.oarr.v[i]));
 }
 static void j_SetObjectArrayElement(JNIEnvP e, mg_jobj *a, i32 i, mg_jobj *v)
 {
@@ -2077,8 +2103,11 @@ static bool handed_to_native(const mg_jobj *o)
  * local otherwise -- but local for a reference the running native method was handed, as Android's are, whatever else
  * refers to the object. Chromium's JavaParamRef checks each parameter so (scoped_java_ref.cc, "Check failed: env &&
  * env->GetObjectRefType(obj) == JNILocalRefType"), and its native code holds its Java peer globally and is handed it as the
- * caller of every call: Ozon's Cronet ended there (0.1.0.671). It is exact unless a library asks about a local reference
- * it got back from a call of its own to an object it also holds globally.
+ * caller of every call: Ozon's Cronet ended there (0.1.0.671). And local for a reference the thread got as an answer and
+ * has not deleted (given_local): Chromium checks those the same way as it takes them (ScopedJavaLocalRef), and what a
+ * call or FindClass answers with may well be held globally -- by Chromium itself, or by Play services' own Cronet in the
+ * same process: Ozon's Cronet 112 ended on its network thread there (0.1.0.690). What is left inexact: a global reference
+ * asked about while the thread holds such a local one to the same object is called local.
  */
 static i32 j_GetObjectRefType(JNIEnvP e, mg_jobj *o)
 {
@@ -2090,9 +2119,15 @@ static i32 j_GetObjectRefType(JNIEnvP e, mg_jobj *o)
     r = ref_find(o);
     if (r) kind = r->global > 0 ? 2 : r->weak > 0 ? 3 : 1;
     mg_lock_release(&g_refs_lock);
-    if (kind != 1 && handed_to_native(o)) kind = 1;
+    if (kind != 1 && (handed_to_native(o) || local_given(o, false))) kind = 1;
     return kind;
 }
+
+/* The answers that are objects that were there before, remembered as the local references they are. */
+static mg_jobj *l_FindClass(JNIEnvP e, const char *name) { return given_local(j_FindClass(e, name)); }
+static mg_jobj *l_GetSuperclass(JNIEnvP e, mg_jobj *cls) { return given_local(j_GetSuperclass(e, cls)); }
+static mg_jobj *l_GetObjectClass(JNIEnvP e, mg_jobj *o) { return given_local(j_GetObjectClass(e, o)); }
+static mg_jobj *l_ExceptionOccurred(JNIEnvP e) { return given_local(j_ExceptionOccurred(e)); }
 
 /* ------------------------------------------------------------- the tables */
 
@@ -2204,12 +2239,12 @@ void mg_jni_init(void)
     mg_jni_class("java/lang/RuntimeException", "java/lang/Exception");
     mg_jni_class("java/lang/Error", "java/lang/Throwable");
 
-    SLOT(4, j_GetVersion); SLOT(5, j_DefineClass); SLOT(6, j_FindClass); SLOT(7, j_FromReflectedMethod); SLOT(8, j_FromReflectedField);
-    SLOT(9, j_ToReflectedMethod); SLOT(10, j_GetSuperclass); SLOT(11, j_IsAssignableFrom); SLOT(12, j_ToReflectedField); SLOT(13, j_Throw);
-    SLOT(14, j_ThrowNew); SLOT(15, j_ExceptionOccurred); SLOT(16, j_ExceptionDescribe); SLOT(17, j_ExceptionClear); SLOT(18, j_FatalError);
+    SLOT(4, j_GetVersion); SLOT(5, j_DefineClass); SLOT(6, l_FindClass); SLOT(7, j_FromReflectedMethod); SLOT(8, j_FromReflectedField);
+    SLOT(9, j_ToReflectedMethod); SLOT(10, l_GetSuperclass); SLOT(11, j_IsAssignableFrom); SLOT(12, j_ToReflectedField); SLOT(13, j_Throw);
+    SLOT(14, j_ThrowNew); SLOT(15, l_ExceptionOccurred); SLOT(16, j_ExceptionDescribe); SLOT(17, j_ExceptionClear); SLOT(18, j_FatalError);
     SLOT(19, j_PushLocalFrame); SLOT(20, j_PopLocalFrame); SLOT(21, j_NewGlobalRef); SLOT(22, j_DeleteGlobalRef); SLOT(23, j_DeleteRef);
     SLOT(24, j_IsSameObject); SLOT(25, j_NewRef); SLOT(26, j_EnsureLocalCapacity); SLOT(27, j_AllocObject);
-    SLOT(28, j_NewObject); SLOT(29, j_NewObjectV); SLOT(30, j_NewObjectA); SLOT(31, j_GetObjectClass); SLOT(32, j_IsInstanceOf);
+    SLOT(28, j_NewObject); SLOT(29, j_NewObjectV); SLOT(30, j_NewObjectA); SLOT(31, l_GetObjectClass); SLOT(32, j_IsInstanceOf);
     SLOT(33, j_GetMethodID);
     SLOT3(34, j_CallObjectMethod); SLOT3(37, j_CallBooleanMethod); SLOT3(40, j_CallByteMethod); SLOT3(43, j_CallCharMethod);
     SLOT3(46, j_CallShortMethod); SLOT3(49, j_CallIntMethod); SLOT3(52, j_CallLongMethod); SLOT3(55, j_CallFloatMethod);

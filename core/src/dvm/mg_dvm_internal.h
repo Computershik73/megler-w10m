@@ -396,6 +396,13 @@ struct mg_dvm_thread {
     mg_jobj *native_target;
     const mg_jvalue *native_params;
     const char *native_shorty;
+    /*
+     * The objects JNI last gave this thread a local reference to as an answer -- a call's result, a field or an element
+     * read, a class found, NewLocalRef -- and that it has not deleted: slot (jni_local_at - 1) & 15 the newest. They too are
+     * local whatever else refers to the objects (GetObjectRefType). A native method's go with it (invoke_native).
+     */
+    mg_jobj *jni_locals[16];
+    u32 jni_local_at;
     /* The monitor it waits to enter, published while it enters a contended one; read with this thread suspended and the VM
      * lock held (trace-monitors, and a report of the main thread standing in a wait). */
     mg_jobj *volatile waiting_monitor;

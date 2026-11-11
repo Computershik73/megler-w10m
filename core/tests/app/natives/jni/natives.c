@@ -380,7 +380,7 @@ JNIEXPORT jstring JNICALL Java_megler_test_natives_Lib_find(JNIEnv *env, jclass 
 
 /* ------------------------------------------------------------- references */
 
-/* Each bit one thing that held; 0x3FFF is all of them. */
+/* Each bit one thing that held; 0xFFFF is all of them. */
 JNIEXPORT jint JNICALL Java_megler_test_natives_Lib_refs(JNIEnv *env, jclass cls, jobject o)
 {
     jobject global = (*env)->NewGlobalRef(env, o), local = (*env)->NewLocalRef(env, o), kept;
@@ -419,6 +419,55 @@ JNIEXPORT jint JNICALL Java_megler_test_natives_Lib_refs(JNIEnv *env, jclass cls
         /* ...and once the global one is gone, the weak one is what holds it. */
         if ((*env)->GetObjectRefType(env, held_weak) == JNIWeakGlobalRefType) bits |= 4096;
         (*env)->DeleteWeakGlobalRef(env, held_weak);
+    }
+    /*
+     * A reference JNI answers with is a local one though the object is held globally too -- a class found again, the class
+     * of an object, what a call returns, an array's element, a new local reference to a global or a weak one -- for as
+     * long as it is not deleted: Chromium checks each as it takes it into a ScopedJavaLocalRef, and Ozon's Cronet 112 ended
+     * on that. Once deleted, the global reference is a global one again.
+     */
+    {
+        jclass string = (*env)->FindClass(env, "java/lang/String"), again, of;
+        jobject string_global = (*env)->NewGlobalRef(env, string), text = (*env)->NewStringUTF(env, "text"), text_global, same, element, fresh;
+        jweak text_weak;
+        jobjectArray array = (*env)->NewObjectArray(env, 1, string, NULL);
+        int local_ok = 1, global_ok = 1;
+        (*env)->DeleteLocalRef(env, string);
+        global_ok &= (*env)->GetObjectRefType(env, string_global) == JNIGlobalRefType;
+        again = (*env)->FindClass(env, "java/lang/String");
+        local_ok &= (*env)->GetObjectRefType(env, again) == JNILocalRefType;
+        (*env)->DeleteLocalRef(env, again);
+        global_ok &= (*env)->GetObjectRefType(env, string_global) == JNIGlobalRefType;
+        of = (*env)->GetObjectClass(env, text);
+        local_ok &= (*env)->GetObjectRefType(env, of) == JNILocalRefType;
+        (*env)->DeleteLocalRef(env, of);
+        text_global = (*env)->NewGlobalRef(env, text);
+        (*env)->SetObjectArrayElement(env, array, 0, text);
+        (*env)->DeleteLocalRef(env, text);
+        global_ok &= (*env)->GetObjectRefType(env, text_global) == JNIGlobalRefType;
+        same = (*env)->CallObjectMethod(env, text_global, (*env)->GetMethodID(env, string_global, "toString", "()Ljava/lang/String;"));
+        local_ok &= same && (*env)->IsSameObject(env, same, text_global) && (*env)->GetObjectRefType(env, same) == JNILocalRefType;
+        (*env)->DeleteLocalRef(env, same);
+        global_ok &= (*env)->GetObjectRefType(env, text_global) == JNIGlobalRefType;
+        element = (*env)->GetObjectArrayElement(env, array, 0);
+        local_ok &= (*env)->GetObjectRefType(env, element) == JNILocalRefType;
+        (*env)->DeleteLocalRef(env, element);
+        fresh = (*env)->NewLocalRef(env, text_global);
+        local_ok &= (*env)->GetObjectRefType(env, fresh) == JNILocalRefType;
+        (*env)->DeleteLocalRef(env, fresh);
+        global_ok &= (*env)->GetObjectRefType(env, text_global) == JNIGlobalRefType;
+        text_weak = (*env)->NewWeakGlobalRef(env, text_global);
+        (*env)->DeleteGlobalRef(env, text_global);
+        global_ok &= (*env)->GetObjectRefType(env, text_weak) == JNIWeakGlobalRefType;
+        fresh = (*env)->NewLocalRef(env, text_weak);
+        local_ok &= (*env)->GetObjectRefType(env, fresh) == JNILocalRefType;
+        (*env)->DeleteLocalRef(env, fresh);
+        global_ok &= (*env)->GetObjectRefType(env, text_weak) == JNIWeakGlobalRefType;
+        (*env)->DeleteWeakGlobalRef(env, text_weak);
+        (*env)->DeleteGlobalRef(env, string_global);
+        (*env)->DeleteLocalRef(env, array);
+        if (local_ok) bits |= 16384;
+        if (global_ok) bits |= 32768;
     }
     (*env)->DeleteLocalRef(env, local);
     (*env)->DeleteGlobalRef(env, global);

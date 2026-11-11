@@ -573,6 +573,7 @@ static bool invoke_native(mg_dvm_thread *t, mg_dvm_method *m, mg_jobj *self, con
     t->native_target = target;
     t->native_params = params;
     t->native_shorty = m->shorty;
+    u32 outer_locals = t->jni_local_at;
     if (nat->native) {
         mg_jcall c;
         memset(&c, 0, sizeof(c));
@@ -620,6 +621,13 @@ static bool invoke_native(mg_dvm_thread *t, mg_dvm_method *m, mg_jobj *self, con
     t->native_target = outer_target;
     t->native_params = outer_params;
     t->native_shorty = outer_shorty;
+    /* The local references JNI gave the method are gone with it. */
+    if (t->jni_local_at != outer_locals) {
+        if (t->jni_local_at - outer_locals >= 16) memset(t->jni_locals, 0, sizeof(t->jni_locals));
+        else
+            while (t->jni_local_at != outer_locals) t->jni_locals[--t->jni_local_at & 15] = NULL;
+        t->jni_local_at = outer_locals;
+    }
     --t->native_depth;
     if (timed) native_time(t, nat, call_started);
     else if (outermost) t->native_ticks += nat->meter_avg;
