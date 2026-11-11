@@ -1160,6 +1160,66 @@ cameras are found as source groups, open after the prompt, and stream NV12
 in memory at the sizes they list, turned as said above. None of it has run on
 a phone.
 
+## The system's picker and camera app
+
+An app's "attach a file", "choose a picture" and "take a photo" send intents
+to Android's own apps: its documents UI and gallery (`ACTION_GET_CONTENT`,
+`ACTION_OPEN_DOCUMENT`, `ACTION_PICK` of pictures, Android 13's photo picker
+`MediaStore.ACTION_PICK_IMAGES`, which androidx's `PickVisualMedia` sends on
+Android 14) and its camera app (`ACTION_IMAGE_CAPTURE`, `ACTION_VIDEO_CAPTURE`;
+`INTENT_ACTION_STILL_IMAGE_CAMERA`). Megler answers them with Windows' own:
+
+- **The framework** (`megler.Pickers`) takes such an intent in
+  `AppRunner.startActivity` before the app's own activities and Google Play
+  services' (also wrapped in a chooser, `EXTRA_INITIAL_INTENTS` left out, and
+  named by the documents UI's or the camera's package, as an app starts what
+  `resolveActivity` answered), and asks the shell (`megler_system_host.pick`,
+  `core/include/megler.h`) with the intent's MIME types, one file or several
+  (`EXTRA_ALLOW_MULTIPLE`, `EXTRA_PICK_IMAGES_MAX`), a video's limit and
+  quality, and a folder of the app's data for the request
+  (`megler-picked/<request>`). The answer (`megler_pick_done`, from any
+  thread) reaches the main thread as an event of its own and goes to the
+  activity that asked once the app is in front again -- a phone's picker hides
+  the app's window, as another app's activity hides the caller on Android --
+  before it resumes, as `onActivityResult`: as Android's documents UI
+  answers, one file as the data and several as the `ClipData`; a photo written
+  to the app's `EXTRA_OUTPUT` through its own `ContentResolver` and answered
+  with no data, or a thumbnail of at most 50,000 pixels in `data`; a video to
+  its `EXTRA_OUTPUT`, its URI the data. `INTENT_ACTION_STILL_IMAGE_CAMERA`
+  opens Windows' camera app (`microsoft.windows.camera:`).
+- **The files** are the shell's copies, served as
+  `content://megler.picked/<request>/<name>` by a provider of the
+  framework's: `OpenableColumns`, `mime_type`, the photo picker's columns,
+  the documents' and `_data` (the copy's path); read only. Copies, because an
+  app reads a picked file after the picker has gone, and the access Windows'
+  broker gives to a picked file is the shell's alone, through the
+  `StorageFile` the picker handed it. A request's folder goes a week later.
+- **The package manager** answers those intents with the system's activity
+  of them (`com.android.documentsui`, and `com.android.camera2` where the
+  device has a camera), so that apps that ask before they offer the button
+  offer it; Google Play services' photo picker action no longer reads GmsCore.
+- **A WebView's** `<input type=file>` opens the picker whether the app's
+  chrome client leaves `onShowFileChooser` or the app gives none (Megler's
+  own client then, which is none to the app); an app's own client that
+  starts `FileChooserParams.createIntent` reaches it as `GET_CONTENT`.
+- **The shell** (`player/PickerHost.cpp`) shows `FileOpenPicker` --
+  filtered by the extensions of the types asked for, opening in the
+  pictures, videos or music library for an app that takes those -- or
+  `CameraCaptureUI` (Windows 10 Mobile's since 1511, a PC's with a camera),
+  on the UI thread, one at a time, and copies what came into the request's
+  folder. The flags `pick-cancel` and `pick-file-<name>` (the file `<name>`
+  in the Pictures library's folder `Megler`) answer the next request in the
+  user's place, nothing shown, for runs no one picks in.
+
+*Proven:* under qemu, the test app `pickers` on a stand-in for the shell's
+picker (`core/tests/mg_java_tests.c`, `system_pick`): every round trip above,
+the provider's columns and reading, the package manager's answers, the result
+waiting for the window and coming before `onResume`; and the `webview` app's
+form, a WebView with no chrome client whose file input, tapped, is given the
+stand-in's picture and read by the page. On this PC, `mg_shell_tests.exe`: the
+shell's filters, flags and copies. *Not yet seen:* Windows' picker and camera
+themselves, which need a user, on a phone and on a PC.
+
 ## Sensors
 
 An app's `android.hardware.SensorManager` and its native code's
