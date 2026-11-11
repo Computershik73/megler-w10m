@@ -3674,10 +3674,13 @@ static int run_data(void)
                                             Cronet transport use it: the builder and its options; UrlRequests through redirects, reads,
                                             uploads, failures and a cancel, on an HTTP/1.1 server of the app's own; its URLConnections;
                                             and, where conscrypt's TLS is (qemu), BidirectionalStreams over HTTP/2 to a server of the
-                                            app's own: echoes with trailers, flow control both ways, cancel and resets, and RFC 7541's
-                                            header compression examples. */
+                                            app's own: the first under a default SSLContext that gives no sockets (the engine's TLS is the
+                                            platform's own, whatever Play services' ProviderInstaller made the default), echoes with
+                                            trailers, flow control both ways, cancel and resets, and RFC 7541's header compression
+                                            examples. */
                                          "http-engine", "http-engine-request", "http-engine-upload", "http-engine-failures", "http-engine-connection",
-                                         "http-engine-stream", "http-engine-stream-flow", "http-engine-stream-cancel", "http-engine-hpack",
+                                         "http-engine-own-tls", "http-engine-stream", "http-engine-stream-flow", "http-engine-stream-cancel",
+                                         "http-engine-hpack",
                                          /* And RenderNodes and Pictures as display lists, as Compose uses them: nodes recorded once and drawn as their
                                             bitmaps were, three of a screen's size among them; the kids' properties changed and the parent not
                                             recorded again; nodes nested and moved; one discarded and recorded again; what a list keeps (a paint, a

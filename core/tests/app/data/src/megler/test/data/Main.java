@@ -7760,7 +7760,8 @@ public class Main extends Activity {
      * Android 14's HttpEngine (android.net.http; Megler's own engine, megler.http), as the Google Play Store and gRPC use it:
      * HttpEngineSteps says each step. The requests go to an HTTP/1.1 server of the app's own on 127.0.0.1, on both hosts;
      * the bidirectional streams to an HTTP/2 server of its own over TLS (localhost, the test authority's certificate, ALPN
-     * h2), so without conscrypt's TLS (the PC's run) those steps hold, as there is nothing to connect with.
+     * h2), so without conscrypt's TLS (the PC's run) those steps hold, as there is nothing to connect with. The first of
+     * them connects under a default SSLContext that is not the platform's, as Google Play services leaves a process's.
      */
     private void httpEngine() {
         final HttpEngineSteps[] h = new HttpEngineSteps[1];
@@ -7775,6 +7776,7 @@ public class Main extends Activity {
         step("http-engine-upload", () -> offMain(() -> said(h[0], h[0].upload())));
         step("http-engine-failures", () -> offMain(() -> said(h[0], h[0].failures())));
         step("http-engine-connection", () -> offMain(() -> said(h[0], h[0].connection())));
+        step("http-engine-own-tls", () -> !conscrypt || offMain(() -> said(h[0], h[0].ownTls())));
         step("http-engine-stream", () -> !conscrypt || offMain(() -> said(h[0], h[0].stream())));
         step("http-engine-stream-flow", () -> !conscrypt || offMain(() -> said(h[0], h[0].streamFlow())));
         step("http-engine-stream-cancel", () -> !conscrypt || offMain(() -> said(h[0], h[0].streamCancel())));

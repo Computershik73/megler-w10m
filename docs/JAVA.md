@@ -7826,15 +7826,25 @@ Android 9's libcore has, and a client of HTTP/2 of its own:
   not the response's (one of them gives the protocol, "http/1.1"); an app's
   Accept-Encoding is dropped, as Cronet drops it (the client asks for gzip and
   decodes it). https gets the platform's TLS and Android's host name check,
-  whatever defaults the app set for `HttpsURLConnection`.
+  whatever defaults the app set for `HttpsURLConnection` or for `SSLContext`.
 - `BidirectionalStream` (`Stream.java`): what gRPC's Cronet transport makes, a
   request's body and its response flowing both ways at once. HTTP/2 over TLS
   alone (an http URL is refused, as Cronet's are): `H2.java`, `Hpack.java` and
-  `Connections.java`. A connection is TLS by the platform's own context
-  (conscrypt; the app's network security configuration and Android's
-  authorities, as `HttpsURLConnection` trusts), the host's name checked by
-  Android's `OkHostnameVerifier`, ALPN offering "h2" alone (a server that does
-  not take it fails the stream, "net::ERR_ALPN_NEGOTIATION_FAILED"); one or
+  `Connections.java`. A connection is TLS by a context of the platform's own
+  conscrypt, made by the provider's name ("AndroidOpenSSL") and kept for the
+  process (the app's network security configuration and Android's authorities,
+  as `HttpsURLConnection` trusts), the host's name checked by Android's
+  `OkHostnameVerifier`, ALPN offering "h2" alone (a server that does not take
+  it fails the stream, "net::ERR_ALPN_NEGOTIATION_FAILED"). Not
+  `SSLContext.getDefault()`, as it was until 0.1.0.694: that one is the
+  process's to set, and Google Play services' ProviderInstaller sets it, in
+  every process it runs in, to the Conscrypt GmsCore carries
+  ("GmsCore_OpenSSL"), whose sockets take no ALPN protocols from
+  `SSLParameters` (its `Platform.setSSLParameters` reads the host name, the
+  endpoint identification and the cipher order; GmsCore 26.41.31). On a
+  Lumia 950 (0.1.0.690) the provider was installed 2.5 s before the Play
+  Store's first stream, "h2" was never offered, and every stream to
+  play-fe.googleapis.com ended "did not take HTTP/2 (ALPN none)". One or
   more for each host and port, shared by the engine's streams, the first
   thread that needs one making it while the others wait for it. This side's
   settings: no push, a megabyte that a stream may receive ahead of the app's
@@ -7902,7 +7912,10 @@ hosts, against an HTTP/1.1 server of the app's own on 127.0.0.1. Where
 conscrypt's TLS is (qemu), against an HTTP/2 server of the app's own over TLS
 (localhost, the test authority the app's configuration trusts, ALPN h2), whose
 frames are written by hand and which shares no code with the engine:
-"http-engine-stream", two echoes at once on one connection, each writing twice
+"http-engine-own-tls", the process's first connection of the engine's made
+while the default `SSLContext` is one that gives no sockets at all: the stream
+is answered over HTTP/2, the context was asked for nothing and is the default
+still; "http-engine-stream", two echoes at once on one connection, each writing twice
 and ending as gRPC does, the headers before the body, the trailers
 (grpc-status 0) before its end, and a GET, whose HEADERS end the request; the
 server saw the engine's settings, pseudo-headers and headers;
@@ -7920,10 +7933,12 @@ engine's classes on a desktop JVM, with its TLS): HTTP/2 to
 play-fe.googleapis.com over TLS 1.3, Google's compressed headers read, and a
 gRPC call to the Play Store's BrowseService without credentials answered in
 its trailers, apart from the headers ("grpc-status" 7, "Permission denied on
-the service."); a request to www.google.com/generate_204 got its 204. **Not
-tried on a phone** yet: the Play Store's log there says "HttpEngine: the app
-made one" and its HTTP/2 connections when the flag is on, and search
-suggestions answer.
+the service."); a request to www.google.com/generate_204 got its 204. **On a
+phone** it has run in one user's Play Store (the Lumia 950 above), where no
+stream got through; with the platform's context it is **not tried on a phone**
+yet: the Play Store's log there says "HttpEngine: the app made one" and its
+HTTP/2 connections ("HttpEngine: HTTP/2 to play-fe.googleapis.com:443 ...")
+when the flag is on, and search suggestions answer.
 
 Not there: QUIC; an HTTP cache (`wasCached` is false); Brotli; public key
 pinning; HTTP/2 for `UrlRequest` (it is HTTP/1.1, as Android's
