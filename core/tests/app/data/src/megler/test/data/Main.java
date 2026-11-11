@@ -3661,6 +3661,24 @@ public class Main extends Activity {
             }
         }
         Log.i("DataTest", "stuck-main ok waited=" + (android.os.SystemClock.uptimeMillis() - started) / 1000 + " s");
+        // And a monitor another thread holds while it sleeps, which the main thread waits to enter: the report says the holder's
+        // stack too, stuckHolder in it.
+        final Object held = new Object();
+        final java.util.concurrent.CountDownLatch taken = new java.util.concurrent.CountDownLatch(1);
+        new Thread(() -> stuckHolder(held, taken), "stuck-holder").start();
+        try { taken.await(); } catch (InterruptedException e) { }
+        started = android.os.SystemClock.uptimeMillis();
+        synchronized (held) {
+            Log.i("DataTest", "stuck-holder ok waited=" + (android.os.SystemClock.uptimeMillis() - started) / 1000 + " s");
+        }
+    }
+
+    /** Holds `held` for 6 s, asleep. */
+    private static void stuckHolder(Object held, java.util.concurrent.CountDownLatch taken) {
+        synchronized (held) {
+            taken.countDown();
+            try { Thread.sleep(6000); } catch (InterruptedException e) { }
+        }
     }
 
     /**

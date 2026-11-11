@@ -711,14 +711,29 @@ public final class MicroG {
         Application a = info.applicationInfo.className == null ? new Application() :
             (Application) loader().loadClass(info.applicationInfo.className).newInstance();
         attaching = a;
-        try { a.meglerAttach(context); attached = a; } finally { attaching = null; }
+        try { a.meglerAttach(context); attached = a; }
+        finally {
+            attaching = null;
+            synchronized (attachEnded) { attachEnded.notifyAll(); }
+        }
         return a;
     }
+    /* What attachOnMain's waiters wait on: notified as an attaching ends, whichever thread and whatever made it. */
+    private final Object attachEnded = new Object();
     /*
      * GmsCore's Application attached before its first provider starts, on the main thread, as Android does it: Play Store asks
      * GmsCore's flags provider (Phenotype) at its start, on a thread of its own, before anything else of GmsCore's runs, and
      * without it every answer was an IllegalStateException. That thread waits for the main thread, though not for long: one the
      * main thread waits on itself would not get it otherwise, and the provider then answers as before.
+     *
+     * It waits until GmsCore's Application is attached, by its own request or by anything else the main thread runs -- not
+     * for its own request alone. Smash Hit's GoogleApiHandler asked for GmsCore's Chimera provider (the dynamic lookup of
+     * the client library's service broker, with its GmsClientSupervisor's lock held) while the main thread was attaching
+     * the Application for a binding of Google Play services' Games service; the main thread then delivered that binding's
+     * onServiceConnected, which waits for the same lock, and the request behind it on the main thread's queue never ran: the
+     * game stood still for the ten seconds of the wait at every start (0.1.0.681). On Android the provider is GmsCore's
+     * process's, published once its Application is attached, and answers on a binder thread whatever the app's main thread
+     * does.
      */
     private void attachOnMain() {
         if (attached != null) return;
@@ -726,12 +741,17 @@ public final class MicroG {
             try { attached(); } catch (Throwable t) { android.util.Log.e("MicroG", "Attaching GmsCore's Application failed", t); }
             return;
         }
-        final java.util.concurrent.CountDownLatch done = new java.util.concurrent.CountDownLatch(1);
+        final boolean[] done = new boolean[1];
         onMain(() -> {
             try { attached(); } catch (Throwable t) { android.util.Log.e("MicroG", "Attaching GmsCore's Application failed", t); }
-            finally { done.countDown(); }
+            finally { synchronized (attachEnded) { done[0] = true; attachEnded.notifyAll(); } }
         });
-        try { done.await(10, java.util.concurrent.TimeUnit.SECONDS); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
+        long until = SystemClock.uptimeMillis() + 10000, left;
+        synchronized (attachEnded) {
+            while (attached == null && !done[0] && (left = until - SystemClock.uptimeMillis()) > 0) {
+                try { attachEnded.wait(left); } catch (InterruptedException e) { Thread.currentThread().interrupt(); break; }
+            }
+        }
     }
     /** microG's Application, made and created once, on the first thing of microG's that runs here. */
     private Application application() throws Exception {

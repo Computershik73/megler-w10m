@@ -1321,6 +1321,9 @@ static bool complete_integer(u32 name, i32 *v)
     case 0x8B9B: *v = GL_RGBA; return true;                     /* IMPLEMENTATION_COLOR_READ_FORMAT */
     case 0x8B9A: *v = 0x1401; return true;                      /* IMPLEMENTATION_COLOR_READ_TYPE: UNSIGNED_BYTE */
     case 0x846D: case 0x846E: v[0] = v[1] = 1; return true;     /* ALIASED_POINT_SIZE_RANGE, ALIASED_LINE_WIDTH_RANGE */
+    /* COMPRESSED_TEXTURE_FORMATS, SHADER_BINARY_FORMATS, PROGRAM_BINARY_FORMATS: as many as their NUM_ said (0), nothing
+       written. Jetpack Joyride asks for the first into a vector of that size, whose data is NULL. */
+    case 0x86A3: case 0x8DF8: case 0x87FF: return true;
     default: return false;
     }
 }

@@ -2313,6 +2313,31 @@ static void test_libc_gaps(const char *scratch)
         }
         if (fchmodat_) CHECK(fchmodat_(-100, "/syscall-files/log.gz", 0644, 0) == 0 && fchmodat_(-100, "/syscall-files/none", 0644, 0) == -1);
     }
+
+    say("getgrgid, getgrnam and initgroups: the app's one group, none other (Jetpack Joyride's libmortargame.so imports them)");
+    {
+        typedef struct { char *name, *passwd; u32 gid; char **mem; } t_group;
+        typedef t_group *(*getgrgid_fn)(u32);
+        typedef t_group *(*getgrnam_fn)(const char *);
+        typedef int (*initgroups_fn)(const char *, u32);
+        typedef int *(*errno_fn)(void);
+        getgrgid_fn getgrgid_ = (getgrgid_fn)mg_bionic_find("getgrgid");
+        getgrnam_fn getgrnam_ = (getgrnam_fn)mg_bionic_find("getgrnam");
+        initgroups_fn initgroups_ = (initgroups_fn)mg_bionic_find("initgroups");
+        errno_fn errno_ = (errno_fn)mg_bionic_find("__errno");
+        t_group *g;
+        CHECK(getgrgid_ && getgrnam_ && initgroups_ && errno_);
+        if (getgrgid_ && getgrnam_ && initgroups_ && errno_) {
+            g = getgrgid_(10100);
+            CHECK(g && g->gid == 10100 && g->name && !strcmp(g->name, "u0_a100") && g->mem && !g->mem[0]);
+            CHECK(getgrgid_(0) == NULL);
+            g = getgrnam_("u0_a100");
+            CHECK(g && g->gid == 10100);
+            CHECK(getgrnam_("root") == NULL);
+            CHECK(initgroups_("u0_a100", 10100) == 0);
+            CHECK(initgroups_("root", 0) == -1 && *errno_() == GE_PERM);
+        }
+    }
 }
 
 /*
@@ -2633,6 +2658,265 @@ static bool reads_as(mg_file *f, const char *text)
     char got[16] = { 0 };
     int err = 0;
     return f && mg_file_pread(f, got, strlen(text), 0, &err) == (i64)strlen(text) && !memcmp(got, text, strlen(text));
+}
+
+/* ------------------------------------------------------------------ inotify */
+
+typedef int (*ino_init1_fn)(int);
+typedef int (*ino_add_fn)(int, const char *, u32);
+typedef int (*ino_rm_fn)(int, int);
+typedef int (*ino_open_fn)(const char *, int, int);
+typedef long (*ino_io_fn)(int, void *, size_t);
+typedef int (*ino_fd_fn)(int);
+typedef int (*ino_path_fn)(const char *);
+typedef int (*ino_mkdir_fn)(const char *, int);
+typedef int (*ino_rename_fn)(const char *, const char *);
+typedef int (*ino_poll_fn)(void *, unsigned, int);
+typedef int (*ino_ioctl_fn)(int, unsigned, void *);
+typedef int *(*ino_errno_fn)(void);
+
+static struct {
+    ino_init1_fn init1;
+    ino_add_fn add;
+    ino_rm_fn rm;
+    ino_open_fn open;
+    ino_io_fn read, write;
+    ino_fd_fn close;
+    ino_path_fn unlink;
+    ino_mkdir_fn mkdir;
+    ino_rename_fn rename;
+    ino_errno_fn err;
+} INO;
+
+/*
+ * The events an inotify has queued, read at once (not waiting), as "wd:mask:name" joined by spaces (the mask in hex, the
+ * name left out where there is none), with each move's cookie in `cookies` (0 for the rest): "" when there are none.
+ */
+static void ino_events(int fd, char *out, size_t cap, u32 *cookies, int ncookies)
+{
+    u8 buf[1024];
+    long n = INO.read(fd, buf, sizeof(buf)), at = 0;
+    int k = 0;
+    size_t used = 0;
+    out[0] = 0;
+    while (n > 0 && at + 16 <= n) {
+        i32 wd;
+        u32 mask, cookie, len;
+        memcpy(&wd, buf + at, 4);
+        memcpy(&mask, buf + at + 4, 4);
+        memcpy(&cookie, buf + at + 8, 4);
+        memcpy(&len, buf + at + 12, 4);
+        if (cookies && k < ncookies) cookies[k] = cookie;
+        k++;
+        used += (size_t)snprintf(out + used, cap - used, "%s%d:%x%s%s", used ? " " : "", (int)wd, (unsigned)mask, len ? ":" : "",
+                                 len ? (const char *)buf + at + 16 : "");
+        if (used >= cap) break;
+        at += 16 + (long)len;
+    }
+}
+
+typedef struct ino_waiter {
+    const char *path;
+    volatile i32 ready;
+    i32 wd, mask, got;
+} ino_waiter;
+
+/* Firebase Cloud Messaging's C++ thread, as libmortargame.so has it: inotify_init, a watch on the file the Java side writes
+   for IN_CLOSE_WRITE alone, and a read that waits for the event. */
+static MG_HOSTCB void ino_wait_thread(void *arg)
+{
+    ino_waiter *w = (ino_waiter *)arg;
+    u8 buf[0x110];
+    int fd = INO.init1(0), wd = fd >= 0 ? INO.add(fd, w->path, 0x8 /* IN_CLOSE_WRITE */) : -1;
+    long n;
+    mg_atomic_xchg(&w->ready, 1);
+    n = wd >= 0 ? INO.read(fd, buf, sizeof(buf)) : -1;
+    if (n >= 16) {
+        memcpy(&w->wd, buf, 4);
+        memcpy(&w->mask, buf + 4, 4);
+    }
+    w->got = (i32)n;
+    if (fd >= 0) INO.close(fd);
+}
+
+/*
+ * inotify (bionic/mg_libc_io.c): the events of what the app's own calls do to files and directories, as Linux queues them.
+ * Jetpack Joyride's Firebase Cloud Messaging asserted that inotify_init gave a descriptor and ended in abort() at every
+ * start (0.1.0.681): here a thread waits in its read as Firebase's does while another writes the file and closes it, and
+ * the rest is what a watch says of files made, written, closed, moved and removed, and of directories.
+ */
+static void test_inotify(const char *scratch)
+{
+    ino_poll_fn poll_ = (ino_poll_fn)mg_bionic_find("poll");
+    ino_ioctl_fn ioctl_ = (ino_ioctl_fn)mg_bionic_find("ioctl");
+    const char *dir = "/inotify-files/msg", *store = "/inotify-files/msg/STORAGE", *moved = "/inotify-files/msg/STORAGE2";
+    char *host_dir = mg_sprintf("%s/inotify", scratch), got[512];
+    u32 cookies[4];
+    int fd, wd_dir, wd_file, f, avail = 0;
+    mg_pollfd p;
+    say("inotify: files made, written, closed, moved and removed, as watches on them and their directory are told; a read that waits for them");
+    INO.init1 = (ino_init1_fn)mg_bionic_find("inotify_init1");
+    INO.add = (ino_add_fn)mg_bionic_find("inotify_add_watch");
+    INO.rm = (ino_rm_fn)mg_bionic_find("inotify_rm_watch");
+    INO.open = (ino_open_fn)mg_bionic_find("open");
+    INO.read = (ino_io_fn)mg_bionic_find("read");
+    INO.write = (ino_io_fn)mg_bionic_find("write");
+    INO.close = (ino_fd_fn)mg_bionic_find("close");
+    INO.unlink = (ino_path_fn)mg_bionic_find("unlink");
+    INO.mkdir = (ino_mkdir_fn)mg_bionic_find("mkdir");
+    INO.rename = (ino_rename_fn)mg_bionic_find("rename");
+    INO.err = (ino_errno_fn)mg_bionic_find("__errno");
+    CHECK(INO.init1 && INO.add && INO.rm && INO.open && INO.read && INO.write && INO.close && INO.unlink && INO.mkdir && INO.rename && INO.err &&
+          poll_ && ioctl_ && mg_bionic_find("inotify_init"));
+    if (!(INO.init1 && INO.add && INO.rm && INO.open && INO.read && INO.write && INO.close && INO.unlink && INO.mkdir && INO.rename && INO.err &&
+          poll_ && ioctl_)) {
+        free(host_dir);
+        return;
+    }
+    mg_path_mkdirs(host_dir);
+    mg_fs_mount("/inotify-files", host_dir);
+    CHECK(INO.mkdir(dir, 0700) == 0);
+
+    /* Firebase's thread: waiting in read() until the Java side's file is written and closed. */
+    {
+        ino_waiter w;
+        mg_thread *t;
+        memset(&w, 0, sizeof(w));
+        w.path = store;
+        f = INO.open(store, 01 | 0100, 0600);       /* O_WRONLY | O_CREAT: the file is there before the watch, as Firebase makes it */
+        CHECK(f >= 0);
+        if (f >= 0) INO.close(f);
+        t = mg_thread_start(ino_wait_thread, &w, 256u * 1024u, "inotify-waiter");
+        while (!w.ready) mg_sleep_ns(1000000ull);
+        mg_sleep_ns(50000000ull);
+        CHECK(w.got == 0);                            /* still waiting */
+        f = INO.open(store, 01 | 02000, 0);         /* O_WRONLY | O_APPEND */
+        CHECK(f >= 0 && INO.write(f, "message", 7) == 7);
+        if (f >= 0) INO.close(f);
+        /* (Ten seconds at most: a read that is never woken fails the check and is left waiting, not the tests.) */
+        {
+            int waited;
+            for (waited = 0; waited < 1000 && !w.got; waited++) mg_sleep_ns(10000000ull);
+        }
+        CHECK(w.got == 16 && w.wd == 1 && w.mask == 0x8);
+        if (w.got) mg_thread_join(t);
+        else mg_thread_detach(t);
+    }
+
+    fd = INO.init1(04000 | 02000000);                /* IN_NONBLOCK | IN_CLOEXEC */
+    CHECK(fd >= 0);
+    CHECK(INO.init1(1) == -1 && *INO.err() == GE_INVAL);
+    CHECK(INO.read(fd, got, sizeof(got)) == -1 && *INO.err() == GE_AGAIN);
+    CHECK(INO.add(fd, "/inotify-files/msg/missing", 0xFFF) == -1 && *INO.err() == GE_NOENT);
+    CHECK(INO.add(fd, store, 0x01000000 | 0x8) == -1 && *INO.err() == GE_NOTDIR);     /* IN_ONLYDIR */
+    CHECK(INO.add(fd, store, 0) == -1 && *INO.err() == GE_INVAL);
+    CHECK(INO.add(42, store, 0x8) == -1);
+
+    /* A watch on the directory: a file made, written and closed in it, with its name. */
+    wd_dir = INO.add(fd, dir, 0x100 | 0x200 | 0x40 | 0x80 | 0x8 | 0x01000000);    /* CREATE DELETE MOVED_FROM MOVED_TO CLOSE_WRITE ONLYDIR */
+    CHECK(wd_dir >= 1);
+    f = INO.open("/inotify-files/msg/new", 01 | 0100, 0600);
+    CHECK(f >= 0 && INO.write(f, "x", 1) == 1);
+    if (f >= 0) INO.close(f);
+    ino_events(fd, got, sizeof(got), NULL, 0);
+    {
+        char want[128];
+        snprintf(want, sizeof(want), "%d:100:new %d:8:new", wd_dir, wd_dir);
+        CHECK(!strcmp(got, want));
+        if (strcmp(got, want)) say("  inotify: \"%s\", expected \"%s\"", got, want);
+    }
+
+    /* And one on the file: its writes, merged as the last unread event, and its close, told to the directory's first. */
+    wd_file = INO.add(fd, store, 0x2 | 0x8);          /* MODIFY CLOSE_WRITE */
+    CHECK(wd_file >= 1 && wd_file != wd_dir);
+    CHECK(INO.add(fd, store, 0x20000000 | 0x10) == wd_file);      /* IN_MASK_ADD: CLOSE_NOWRITE too, the same watch */
+    CHECK(INO.add(fd, store, 0x10000000 | 0x10) == -1 && *INO.err() == GE_EXIST);   /* IN_MASK_CREATE */
+    f = INO.open(store, 01 | 02000, 0);
+    CHECK(f >= 0 && INO.write(f, "a", 1) == 1 && INO.write(f, "b", 1) == 1);
+    p.fd = fd;
+    p.events = MG_POLLIN;
+    p.revents = 0;
+    CHECK(poll_(&p, 1, 0) == 1 && (p.revents & MG_POLLIN));
+    CHECK(ioctl_(fd, 0x541B /* FIONREAD */, &avail) == 0 && avail == 16);
+    if (f >= 0) INO.close(f);
+    f = INO.open(store, 0, 0);                        /* read only: IN_CLOSE_NOWRITE at its close */
+    if (f >= 0) INO.close(f);
+    {
+        char want[160];
+        u8 small[20];
+        snprintf(want, sizeof(want), "%d:2 %d:8:STORAGE %d:8 %d:10", wd_file, wd_dir, wd_file, wd_file);
+        /* (A buffer too small for the first record: EINVAL, the record left for the next read.) */
+        CHECK(INO.read(fd, small, 15) == -1 && *INO.err() == GE_INVAL);
+        ino_events(fd, got, sizeof(got), NULL, 0);
+        CHECK(!strcmp(got, want));
+        if (strcmp(got, want)) say("  inotify: \"%s\", expected \"%s\"", got, want);
+        CHECK(poll_(&p, 1, 0) == 0);
+    }
+
+    /* Moved: the directory's two events with one cookie; the file's watch goes with it, and its writes are told there. */
+    CHECK(INO.rename(store, moved) == 0);
+    ino_events(fd, got, sizeof(got), cookies, 4);
+    {
+        char want[160];
+        snprintf(want, sizeof(want), "%d:40:STORAGE %d:80:STORAGE2", wd_dir, wd_dir);
+        CHECK(!strcmp(got, want) && cookies[0] && cookies[0] == cookies[1]);
+        if (strcmp(got, want)) say("  inotify: \"%s\", expected \"%s\"", got, want);
+    }
+    f = INO.open(moved, 01 | 02000, 0);
+    CHECK(f >= 0 && INO.write(f, "c", 1) == 1);
+    if (f >= 0) INO.close(f);
+    ino_events(fd, got, sizeof(got), NULL, 0);
+    {
+        char want[160];
+        snprintf(want, sizeof(want), "%d:2 %d:8:STORAGE2 %d:8", wd_file, wd_dir, wd_file);
+        CHECK(!strcmp(got, want));
+        if (strcmp(got, want)) say("  inotify: \"%s\", expected \"%s\"", got, want);
+    }
+
+    /* Removed: the directory told, the file's watch ended (IN_IGNORED). A directory made in the watched one is one (IN_ISDIR). */
+    CHECK(INO.unlink(moved) == 0);
+    CHECK(INO.mkdir("/inotify-files/msg/sub", 0700) == 0);
+    ino_events(fd, got, sizeof(got), NULL, 0);
+    {
+        char want[160];
+        snprintf(want, sizeof(want), "%d:200:STORAGE2 %d:8000 %d:40000100:sub", wd_dir, wd_file, wd_dir);
+        CHECK(!strcmp(got, want));
+        if (strcmp(got, want)) say("  inotify: \"%s\", expected \"%s\"", got, want);
+    }
+    CHECK(INO.rm(fd, wd_file) == -1 && *INO.err() == GE_INVAL);
+
+    /* Taken off: IN_IGNORED, and nothing more of the directory. A one-shot watch tells once. */
+    CHECK(INO.rm(fd, wd_dir) == 0);
+    f = INO.open("/inotify-files/msg/after", 01 | 0100, 0600);
+    if (f >= 0) INO.close(f);
+    ino_events(fd, got, sizeof(got), NULL, 0);
+    {
+        char want[64];
+        snprintf(want, sizeof(want), "%d:8000", wd_dir);
+        CHECK(!strcmp(got, want));
+        if (strcmp(got, want)) say("  inotify: \"%s\", expected \"%s\"", got, want);
+    }
+    {
+        int once = INO.add(fd, dir, 0x100 | 0x80000000);     /* CREATE, ONESHOT */
+        char want[96];
+        f = INO.open("/inotify-files/msg/one", 01 | 0100, 0600);
+        if (f >= 0) INO.close(f);
+        f = INO.open("/inotify-files/msg/two", 01 | 0100, 0600);
+        if (f >= 0) INO.close(f);
+        ino_events(fd, got, sizeof(got), NULL, 0);
+        snprintf(want, sizeof(want), "%d:100:one %d:8000", once, once);
+        CHECK(once >= 1 && !strcmp(got, want));
+        if (strcmp(got, want)) say("  inotify: \"%s\", expected \"%s\"", got, want);
+    }
+    INO.close(fd);
+
+    /* By number, as libc's own (ARM's 360, 317 and 318, each ABI's own number). */
+    if (sizeof(long) >= sizeof(void *) && (g_sys = (syscall_fn)mg_bionic_find("syscall")) != NULL) {
+        int sfd = (int)sys(360, 0, 0, 0, 0, 0, 0), swd = sfd >= 0 ? (int)sys(317, sfd, (long)(mg_addr)dir, 0x100, 0, 0, 0) : -1;
+        CHECK(sfd >= 0 && swd >= 1 && sys(318, sfd, swd, 0, 0, 0, 0) == 0);
+        if (sfd >= 0) INO.close(sfd);
+    }
+    free(host_dir);
 }
 
 /*
@@ -6366,6 +6650,7 @@ int mg_tests_run(const char *libdir, const char *scratch, mg_test_sink sink, voi
     test_mmap_lock_order(scratch);
     test_libc_gaps(scratch);
     test_libm_rounding();
+    test_inotify(scratch);
     test_mmap_madvise(scratch);
     test_pread_threads(scratch);
     test_rename_in_use(scratch);

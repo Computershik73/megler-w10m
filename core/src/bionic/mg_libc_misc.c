@@ -678,6 +678,37 @@ static bool fault_signal_refused(long sig, long act)
     return true;
 }
 
+/* (madvise asks whose call it is: Go's runtime gives its heap's pages back by number, bionic/mg_libc_mem.c.) */
+static MG_THREAD_LOCAL mg_addr t_syscall_site;
+
+#if defined(_MSC_VER)
+#include <intrin.h>
+#pragma intrinsic(_ReturnAddress)
+#define SYSCALL_CALLER() _ReturnAddress()
+#else
+#define SYSCALL_CALLER() __builtin_return_address(0)
+#endif
+
+/*
+ * A call by number this layer does not answer (ENOSYS): said once for each number, with the first such call's arguments and
+ * whose code made it -- an svc's site, or syscall()'s caller. "syscall(120) is not supported" said nothing of what
+ * libpairipcore.so asked clone for.
+ */
+static void syscall_unanswered(long nr, long a, long b, long c, long d, const void *from)
+{
+    static volatile u32 said[32];
+    const char *lib = NULL;
+    const void *sym = NULL, *base = NULL;
+    if (nr >= 0 && nr < 1024) {
+        u32 bit = 1u << (nr & 31);
+        if (said[nr >> 5] & bit) return;
+        said[nr >> 5] |= bit;
+    }
+    if (from) mg_ld_symbol_at(from, &lib, &sym, &base);
+    mg_note_once("syscall(%ld) is not supported (0x%lx, 0x%lx, 0x%lx, 0x%lx, from %s+0x%x)", nr, (unsigned long)a, (unsigned long)b, (unsigned long)c,
+                 (unsigned long)d, lib ? lib : "the layer", lib ? (unsigned)((const u8 *)from - (const u8 *)base) : 0u);
+}
+
 /*
  * syscall(): the handful that code calls by number. ARM EABI numbers. Gecko's mozglue installs its signal handlers with
  * syscall(__NR_sigaction) (67), past libc's sigaction, whose old struct is bionic's 32-bit one.
@@ -704,6 +735,8 @@ static long g_syscall(long nr, long a, long b, long c, long d, long e, long f)
     typedef void (*exit_fn)(int);
     typedef int (*fallocate_fn)(int, i64, i64);
     typedef int (*eventfd_fn)(unsigned, int);
+    typedef int (*inotify_init1_fn)(int);
+    typedef int (*inotify_add_fn)(int, const char *, u32);
     typedef long (*io_fn)(int, void *, size_t);
     typedef int (*open_fn)(const char *, int, unsigned);
     typedef int (*openat_fn)(int, const char *, int, unsigned);
@@ -803,6 +836,11 @@ static long g_syscall(long nr, long a, long b, long c, long d, long e, long f)
     case 252: return ((epoll_wait_fn)mg_bionic_find("epoll_wait"))((int)a, (void *)(mg_addr)b, (int)c, (int)d);       /* epoll_wait */
     case 351: return ((eventfd_fn)mg_bionic_find("eventfd"))((unsigned)a, 0);                                         /* eventfd */
     case 356: return ((eventfd_fn)mg_bionic_find("eventfd"))((unsigned)a, (int)b);                                    /* eventfd2 */
+    /* inotify by number, as the libc's own (mg_libc_io.c). */
+    case 316: return ((inotify_init1_fn)mg_bionic_find("inotify_init1"))(0);                                          /* inotify_init */
+    case 360: return ((inotify_init1_fn)mg_bionic_find("inotify_init1"))((int)a);                                     /* inotify_init1 */
+    case 317: return ((inotify_add_fn)mg_bionic_find("inotify_add_watch"))((int)a, (const char *)(mg_addr)b, (u32)c); /* inotify_add_watch */
+    case 318: return ((fd2_fn)mg_bionic_find("inotify_rm_watch"))((int)a, (int)b);                                   /* inotify_rm_watch */
     /* Files by number, as the libc's own: TikTok Lite keeps its native libraries compressed in its APK, and its loader
        (libzoin) writes each out with syscall(__NR_open). That said "syscall(5) is not supported" and ENOSYS ("open
        decompress path failed ... 38 Function not implemented"), and the app ended at start without its libraries
@@ -992,14 +1030,11 @@ static long g_syscall(long nr, long a, long b, long c, long d, long e, long f)
     /* prctl as libc's: Go's runtime names its mappings by number (see g_prctl). */
     case 172: return g_prctl((int)a, (unsigned long)b, (unsigned long)c, (unsigned long)d, (unsigned long)e);          /* prctl */
     default:
-        mg_note_once("syscall(%ld) is not supported", nr);
+        syscall_unanswered(nr, a, b, c, d, t_syscall_site ? (const void *)t_syscall_site : SYSCALL_CALLER());
         mg_set_errno(GE_NOSYS);
         return -1;
     }
 }
-
-/* (madvise asks whose call it is: Go's runtime gives its heap's pages back by number, bionic/mg_libc_mem.c.) */
-static MG_THREAD_LOCAL mg_addr t_syscall_site;
 
 mg_addr mg_bionic_syscall_site(void) { return t_syscall_site; }
 
@@ -1822,6 +1857,16 @@ static int g_getgrnam_r(const char *name, g_group *grp, char *buf, size_t n, g_g
 {
     return group_into(name && !strcmp(name, "u0_a100"), grp, buf, n, result);
 }
+/* And their older forms, into a structure of the library's own (Jetpack Joyride's libmortargame.so imports them): NULL for any other. */
+static g_group *g_getgrgid(u32 gid)
+{
+    static g_group grp;
+    static char buf[32];
+    g_group *result = NULL;
+    group_into(gid == 10100, &grp, buf, sizeof(buf), &result);
+    return result;
+}
+static g_group *g_getgrnam(const char *name) { return name && !strcmp(name, "u0_a100") ? g_getgrgid(10100) : NULL; }
 
 /* The one user and group cannot be changed for others: setting them to what they are (or leaving them, -1) succeeds, anything else is not permitted. */
 static bool own_id(u32 id) { return id == 10100 || id == 0xFFFFFFFFu; }
@@ -1836,6 +1881,12 @@ static int g_set_two_ids(u32 real, u32 effective)
     if (own_id(real) && own_id(effective)) return 0;
     mg_set_errno(GE_PERM);
     return -1;
+}
+/* initgroups: the user's groups are the one given (bionic's getgrouplist), set as the ids are: its own group, nothing else. */
+static int g_initgroups(const char *user, u32 group)
+{
+    (void)user;
+    return g_set_one_id(group);
 }
 /* One process, a group of its own. */
 static int g_getpgid(int pid)
@@ -2121,7 +2172,7 @@ const mg_sym mg_tab_misc[] = {
     M("mkstemp64", g_mkstemp), M("mktemp", g_mktemp), M("mkdtemp", g_mkdtemp),
     M("getpwuid", g_getpwuid), M("getpwnam", g_getpwnam), M("getlogin", g_getlogin),
     M("getpwuid_r", g_getpwuid_r), M("getpwnam_r", g_getpwnam_r), M("getprogname", g_getprogname), MG_DATA("__progname", &g_progname),
-    M("getgrgid_r", g_getgrgid_r), M("getgrnam_r", g_getgrnam_r),
+    M("getgrgid_r", g_getgrgid_r), M("getgrnam_r", g_getgrnam_r), M("getgrgid", g_getgrgid), M("getgrnam", g_getgrnam), M("initgroups", g_initgroups),
     M("seteuid", g_set_one_id), M("setegid", g_set_one_id), M("setreuid", g_set_two_ids), M("setregid", g_set_two_ids),
     M("getpgid", g_getpgid), M("setpgid", g_setpgid), M("capget", g_capget), M("capset", g_capset),
     M("setpgrp", g_setpgrp), M("ptrace", g_ptrace), MG_DATA("__page_size", &g_page_size), MG_DATA("__page_shift", &g_page_shift),

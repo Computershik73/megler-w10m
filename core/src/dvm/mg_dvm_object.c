@@ -1142,7 +1142,8 @@ bool mg_dvm_stuck_say(mg_dvm_thread *main_thread, double seconds, const void **i
     static monitor_sample s[STUCK_THREADS];
     mg_dvm_thread *t;
     mg_thread_regs regs;
-    int count = 0, blocked = 0, i;
+    int count = 0, blocked = 0, holders = 0, i, k;
+    u32 want;
     bool main_copied = false;
     const void *on = NULL;
     memset(s, 0, sizeof(s));
@@ -1166,13 +1167,32 @@ bool mg_dvm_stuck_say(mg_dvm_thread *main_thread, double seconds, const void **i
         monitor_sample_copy(t, &s[count++]);
         mg_thread_resume(t->host);
     }
+    /*
+     * And the owner of the monitor the main thread waits for -- and that owner's owner, where it waits for another -- when
+     * it waits to enter none itself and so is not among those: what it does with the monitor held is what holds the main
+     * thread up. Smash Hit's main thread stood for good waiting for a HashMap of Google Play services' client library, and
+     * the report named only the number of the thread that held it (0.1.0.681).
+     */
+    for (k = 0, want = main_copied ? s[0].owner : 0; want && k < 4 && count < STUCK_THREADS; ++k) {
+        for (i = 0; i < count && s[i].thread != want; ++i) {}
+        if (i < count) {
+            want = s[i].owner;
+            continue;
+        }
+        for (t = g_threads; t && t->id != want; t = t->next) {}
+        if (!t || !t->host || !mg_thread_suspend(t->host, &regs)) break;
+        monitor_sample_copy(t, &s[count]);
+        mg_thread_resume(t->host);
+        want = s[count++].owner;
+        ++holders;
+    }
     mg_dvm_unlock();
     if (!main_copied) {
         mg_warn("stuck: the main thread has stood %.1f s in a wait, and could not be stopped to see where", seconds);
         return true;
     }
-    mg_warn("stuck: the main thread has stood %.1f s in a wait; its stack, and %d of the %d other threads that wait to enter a monitor:",
-            seconds, count - 1, blocked);
+    mg_warn("stuck: the main thread has stood %.1f s in a wait; its stack, %d of the %d other threads that wait to enter a monitor, and %d "
+            "holder%s of the monitors waited for:", seconds, count - 1 - holders, blocked, holders, holders == 1 ? "" : "s");
     for (i = 0; i < count; ++i) {
         const monitor_sample *x = &s[i];
         if (x->object)
