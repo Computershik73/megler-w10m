@@ -28,6 +28,19 @@ float sqrtf(float);
 double strtod(const char *, char **);
 double modf(double, double *);
 long lround(double);
+float floorf(float);
+float ceilf(float);
+float truncf(float);
+float roundf(float);
+float rintf(float);
+long lroundf(float);
+long lrintf(float);
+long long llroundf(float);
+double floor(double);
+double ceil(double);
+double round(double);
+long lrint(double);
+long long llround(double);
 int *__errno(void);
 int __android_log_print(int, const char *, const char *, ...);
 void qsort(void *, size_t, size_t, int (*)(const void *, const void *));
@@ -87,6 +100,24 @@ float t_sqrt(float x) { return sqrtf(x); }
 double t_sin(double x) { return sin(x); }
 double t_pow(double x, double y) { return pow(x, y); }
 long t_lround(double x) { return lround(x); }
+/*
+ * libm's rounding through the PLT, as an app's picture code calls it: Geekbench 5's Hough transform (Horizon Detection)
+ * calls lroundf and roundf for 21 angles at every edge pixel. A sum of every result over n values with halves among them
+ * (each a multiple of 1/256: the products are exact, whatever the compiler makes of them).
+ */
+long long t_round_sum(int n)
+{
+    long long sum = 0;
+    int i;
+    for (i = 0; i < n; i++) {
+        float x = (float)(i - n / 2) * 0.37109375f + 0.25f;
+        double d = (double)x * 1.5;
+        sum += lroundf(x) * 3 + lrintf(x) * 5 + (long)roundf(x) * 7 + (long)floorf(x) * 11 + (long)ceilf(x) * 13 + (long)truncf(x) * 17
+               + (long)rintf(x) * 19 + lround(d) * 23 + lrint(d) * 29 + (long)floor(d) * 31 + (long)ceil(d) * 37 + (long)round(d) * 41
+               + llroundf(x) * 43 + llround(d) * 47;
+    }
+    return sum;
+}
 double t_modf(double x, double *ip) { return modf(x, ip); }
 double t_strtod(const char *s) { return strtod(s, 0); }
 /* The host's function pointer, called with softfp arguments. */

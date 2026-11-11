@@ -69,7 +69,21 @@ exactly where softfp puts a double, and a 32-bit one where it puts a float. The
 wrapper converts bits to a value (`mg_d`, `mg_f`), calls the host's function, and
 converts back. All of libm, every OpenGL ES function with a float parameter, the JNI
 calls that return floats, and the NDK's `AMotionEvent_getX` are written this way; no
-assembly is involved.
+assembly is involved. The conversion is one `vmov` between the register files each
+way: MSVC's intrinsics for it (`_CopyFloatFromInt32` and its kin), where a `memcpy`
+became a store to the stack and a load into the other register file.
+
+libm's rounding to a whole number (`floor`, `ceil`, `trunc`, `round`, `rint`,
+`nearbyint`, `lround`, `lrint`, `llround`, `llrint`, of floats and doubles) is not
+the host's: it is worked out on the bits in the integer registers they come in, as
+bionic's FreeBSD libm does it (`round_f`, `round_d` in `bionic/mg_libm.c`). The
+UCRT's on the phone take the value apart in halfwords on the stack, with a call or
+three for each, and image code calls these once or twice a pixel: Geekbench 5's
+Horizon Detection calls `lroundf` and `roundf` for 21 angles at every edge pixel of
+its Hough transform, and was the one workload slower than Android's on the same
+phone. *Proven:* `test_libm_rounding` (every exponent of a float and a double at the
+fractions a rounding decides at, against the host's libm, on qemu and on the PC),
+and `t_round_sum` through a library's PLT, Thumb and ARM.
 
 The same holds the other way: the host calls a guest function through a pointer
 typed with integers, passing each float as its bits.
