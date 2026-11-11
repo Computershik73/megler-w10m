@@ -306,7 +306,9 @@ static void WINAPI emutls_free(void *p)
  */
 static MGC void *mgc___emutls_get_address(emutls_control *c)
 {
-    uintptr_t index = (uintptr_t)ReadPointerAcquire((PVOID const volatile *)&c->object.index);
+    /* (The compiler's own acquire load: winnt.h's ReadPointerAcquire is not declared for an app's package, WINAPI_FAMILY_APP,
+       and the package's Megler.exe did not compile.) */
+    uintptr_t index = (uintptr_t)__atomic_load_n(&c->object.index, __ATOMIC_ACQUIRE);
     emutls_array *a;
     void *p;
     if (!index) {
