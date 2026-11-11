@@ -670,6 +670,24 @@ N(Native_listFolder)
     free(t.text);
     free(host);
 }
+
+/*
+ * storageThumbnail(String path, int size, int mode): Windows' own picture of a file in one of the phone's folders, from
+ * the shell (megler_storage_host.thumbnail, mg_run_storage_thumbnail): the bytes of an image file, or null -- a file in no
+ * link, a shell that makes none, none to be had, or none within eight seconds. For megler.MediaProvider's thumbnails: a
+ * video's frame, which nothing else here gives, and a photo out of Windows' cache, sooner than it is decoded.
+ */
+N(Native_storageThumbnail)
+{
+    char *host = c->args[0].l ? mg_fs_host_path(text_of(c->args[0].l)) : NULL;
+    void *data = NULL;
+    size_t len = 0;
+    int status = 0;
+    if (host && mg_run_storage_thumbnail(host, c->args[1].i, c->args[2].i, 8000, &data, &len, &status) && len <= 0x7fffffff)
+        c->ret.l = bytes_of((const u8 *)data, len);
+    free(data);
+    free(host);
+}
 /* askClearData(): this app's data cleared when it next starts (megler_ask_clear_data), for Android's app info screen. */
 N(Native_askClearData) { c->ret.z = megler_ask_clear_data(J.package); }
 /* askClearCache(): this app's cache cleared when it next starts (megler_ask_clear_cache), for Android's app info screen. */
@@ -1559,6 +1577,7 @@ static const mg_jhle k_native[] = {
     { "megler/Native", "checkPartial", NULL, Native_checkPartial },
     { "megler/Native", "flag", NULL, Native_flag },
     { "megler/Native", "listFolder", NULL, Native_listFolder },
+    { "megler/Native", "storageThumbnail", NULL, Native_storageThumbnail },
     { "megler/Native", "askClearData", NULL, Native_askClearData },
     { "megler/Native", "askClearCache", NULL, Native_askClearCache },
     { NULL, NULL, NULL, NULL },

@@ -52,11 +52,14 @@
 // observers, on the provider's thread.
 //
 // Thumbnails. openTypedAssetFile with ContentResolver.EXTRA_SIZE (what ContentResolver.loadThumbnail asks for), the
-// thumbnails tables (MediaStore.Images.Thumbnails, Video.Thumbnails) and their items give a JPEG of the picture, decoded
-// subsampled and turned upright by its EXIF orientation (android.media.ThumbnailUtils), kept in the app's cache
-// (cache/megler-media) under the item's id and time, one made at a time: a Lumia 650 has 1 GB.
+// thumbnails tables (MediaStore.Images.Thumbnails, Video.Thumbnails) and their items give a JPEG of the picture, kept in the
+// app's cache (cache/megler-media) under the item's id and time, one made at a time: a Lumia 650 has 1 GB. Of a file in one
+// of the phone's folders -- a video always, a photo of more than WINDOWS_PHOTO_BYTES -- it is Windows' own picture of it
+// (the shell's megler_storage_host.thumbnail: a video's frame, which nothing else here gives, and Windows' cache of the
+// Camera Roll's pictures, sooner than a decode of the photo); of the rest, and where Windows has none, the picture decoded
+// subsampled and turned upright by its EXIF orientation (android.media.ThumbnailUtils).
 //
-// Not here: thumbnails of videos (MediaMetadataRetriever has no frames yet) and album art; tags of sounds (title, artist,
+// Not here: thumbnails of videos outside the phone's folders, and album art; tags of sounds (title, artist,
 // album: the file's name, "<unknown>" and its folder, as Android has them without tags); folders as rows of the Files
 // collection; trash that renames the file (IS_TRASHED is a flag); createWriteRequest and createDeleteRequest's dialog;
 // playlists and genres (empty); other apps' volumes and a memory card's own volume (a folder of one linked into /sdcard is
@@ -610,11 +613,16 @@ public final class MediaProvider extends ContentProvider {
         // One at a time: a photo of 13 megapixels is read whole to be decoded, and a phone has 1 GB.
         synchronized (sThumbnailing) {
             if (f.length() > 0) return f;
-            android.graphics.Bitmap b;
+            android.graphics.Bitmap b = null;
             try {
                 android.util.Size box = kind == FULL ? new android.util.Size(1024, 1024) : new android.util.Size(512, 512);
-                b = r.mediaType == MediaFiles.VIDEO ? android.media.ThumbnailUtils.createVideoThumbnail(new File(r.path), box, null)
-                                                   : android.media.ThumbnailUtils.createImageThumbnail(new File(r.path), box, null);
+                // Windows' own picture first, where the file is in one of the phone's folders: for a video always (there is
+                // no other way to its frame here), for a photo of more than WINDOWS_PHOTO_BYTES (out of Windows' cache, which
+                // the Photos app has filled, sooner than a decode of megabytes of JPEG on a Lumia).
+                if (r.mediaType == MediaFiles.VIDEO || r.size > WINDOWS_PHOTO_BYTES) b = windowsThumbnail(r, kind == MICRO ? 256 : box.getWidth());
+                // Else, and where Windows has none or the file is in none of the phone's folders, decoded here.
+                if (b == null) b = r.mediaType == MediaFiles.VIDEO ? android.media.ThumbnailUtils.createVideoThumbnail(new File(r.path), box, null)
+                                                                  : android.media.ThumbnailUtils.createImageThumbnail(new File(r.path), box, null);
                 if (b != null && kind == MICRO) b = android.media.ThumbnailUtils.extractThumbnail(b, 96, 96, android.media.ThumbnailUtils.OPTIONS_RECYCLE_INPUT);
             } catch (IOException | RuntimeException e) {
                 throw new FileNotFoundException("No thumbnail of " + r.path + ": " + e);
@@ -634,6 +642,43 @@ public final class MediaProvider extends ContentProvider {
                 throw new FileNotFoundException("No thumbnail of " + r.path);
             }
             return f;
+        }
+    }
+
+    /* A photo's size above which Windows' own picture is asked for before it is decoded here. */
+    static final long WINDOWS_PHOTO_BYTES = 256 * 1024;
+    private static volatile boolean sWindowsSaid, sWindowsNoneSaid;
+
+    /* Windows' own picture of a row's file (MediaFiles.windowsThumbnail), its longer side `size` at most; null where it has
+       none. The file's own size and turn, which tell a picture Windows did not turn, read from its headers first where they
+       were not yet. Said in the log the first time it gives one, and the first time it gives none. */
+    private android.graphics.Bitmap windowsThumbnail(Row r, int size) {
+        int[] m = shape(r.id);
+        if (m == null) return null;
+        if (m[3] == 0) {
+            readMeta(r);
+            m = shape(r.id);
+            if (m == null) return null;
+        }
+        long start = SystemClock.uptimeMillis();
+        android.graphics.Bitmap b = MediaFiles.windowsThumbnail(new File(r.path), size, m[2], m[0], m[1]);
+        String what = r.path.substring(Math.min(r.path.length(), ROOT.length() + 1));
+        if (b != null && !sWindowsSaid) {
+            sWindowsSaid = true;
+            Log.i(TAG, "media: thumbnails from Windows' own pictures, the first of " + what + ": " + b.getWidth() + "x" + b.getHeight() + " in "
+                    + (SystemClock.uptimeMillis() - start) + " ms");
+        } else if (b == null && !sWindowsNoneSaid) {
+            sWindowsNoneSaid = true;
+            Log.i(TAG, "media: Windows gave no picture of " + what + " (in none of the phone's folders, or none to be had): "
+                    + (r.mediaType == MediaFiles.VIDEO ? "no thumbnail" : "decoded here"));
+        }
+        return b;
+    }
+
+    /* A row's width, height, orientation, and whether its headers were read; null for a row that is not there. */
+    private int[] shape(long id) {
+        try (Cursor c = db().rawQuery("SELECT width, height, orientation, megler_meta FROM files WHERE _id = " + id, null)) {
+            return c.moveToFirst() ? new int[] { c.getInt(0), c.getInt(1), c.getInt(2), c.getInt(3) } : null;
         }
     }
 
