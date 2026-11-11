@@ -1024,8 +1024,8 @@ static MEGLER_CB void mic_stop(void *user)
  * The phone's picker and camera (megler_system_host.pick), for the pickers app: each request answered in turn, from a thread
  * of its own as the shell answers from its picker, with what g_pick_script says for it -- files of the test's own written into
  * the request's folder (photo.png, a picture of 640 x 480; doc.pdf; the camera's IMG_<time>.jpg, that picture again; its
- * VID_<time>.mp4), or "-", the user backing out. The first request hides the app's window while its "picker" is up and shows
- * it again a moment after the answer, as Windows 10 Mobile's FileOpenPicker does. What each request asked is said in
+ * VID_<time>.mp4), or "-", the user backing out. The first request hides the app's window while its "picker" is up, turns the
+ * screen meanwhile, and shows it again a moment after the answer, as Windows 10 Mobile's FileOpenPicker does. What each request asked is said in
  * g_pick_heard: "<kind> <types,> <o|m><max> s<start> d<duration> q<quality>;".
  */
 static bool g_pickers_app, g_webview_app;
@@ -1120,9 +1120,12 @@ static MG_HOSTCB void pick_answer(void *arg)
     int n = 0;
     bool hides = g_pickers_app && job->number == 0;
     if (hides) {
-        /* The picker comes up over the app: its window hidden, as Windows 10 Mobile's picker hides it. */
+        /* The picker comes up over the app: its window hidden, as Windows 10 Mobile's picker hides it -- and the phone turned
+           meanwhile, the app's surface with it, so that the activity that asked is made again before its answer comes. */
         mg_sleep_ns(50000000ull);
         megler_set_paused(true);
+        mg_sleep_ns(100000000ull);
+        megler_set_surface(g_screen_h, g_screen_w, g_screen_dpi, 1);
     }
     mg_sleep_ns(200000000ull);
     mg_strlcpy(copy, script, sizeof(copy));
@@ -4312,7 +4315,7 @@ static int run_pickers(void)
                                 "0 */* o0 s0 d0 q-1;0 application/pdf o0 s0 d0 q-1;1 image/jpeg o0 s1 d0 q-1;1 image/jpeg o0 s1 d0 q-1;"
                                 "2 video/mp4 o0 s2 d15 q0;0 image/* m0 s1 d0 q-1;";
     char text[160];
-    int at = -1, i, asked, stop, result, resume;
+    int at = -1, i, asked, stop, made, started, result, resume;
     expect_line("I/PickersTest: onCreate", &at, 120);
     for (i = 0; i < (int)MG_COUNT(steps); i++) {
         snprintf(text, sizeof(text), "I/PickersTest: %s ok", steps[i]);
@@ -4322,13 +4325,17 @@ static int run_pickers(void)
     expect_line(text, &at, 60);
     say("  the shell was asked: %s", g_pick_heard);
     CHECK(!strcmp(g_pick_heard, heard));
-    /* The first: asked, the window hidden by its picker (onStop), answered, and the result given once the window is back,
-       before onResume. */
+    /* The first: asked, the window hidden by its picker (onStop) and the screen turned meanwhile, answered; once the window is
+       back the activity that asked is made again for the turn, and the result is the new one's, after its onStart and before
+       its onResume, as Android hands a relaunched activity its pending result. */
     asked = find_line("I/MeglerPickers: request 1 (android.intent.action.GET_CONTENT of image/*) asked of the shell for megler.test.pickers.Main, request code 11", 0);
     stop = find_line("I/PickersTest: onStop", asked);
-    result = find_line("I/PickersTest: result 11 -1 content://megler.picked/1/photo.png", stop);
+    made = find_line("I/PickersTest: onCreate instance=2 restored step=1", stop);
+    started = find_line("I/PickersTest: onStart", made);
+    result = find_line("I/PickersTest: result 11 -1 content://megler.picked/1/photo.png instance=2", started);
     resume = find_line("I/PickersTest: onResume", result);
-    CHECK(asked >= 0 && stop > asked && result > stop && resume > result);
+    CHECK(asked >= 0 && stop > asked && made > stop && started > made && result > started && resume > result);
+    CHECK(find_line("relaunch megler.test.pickers.Main as megler.test.pickers.Main for the configuration changes", stop) > 0);
     CHECK(find_line("I/MeglerPickers: the answer waits for the app to be in front again", asked) > 0);
     /* What the core and the framework said of each: the requests, the answers, the results -- extensions, never names. */
     CHECK(find_line("java: the app asks for the phone's picker (request 1): a file of image/*", 0) >= 0);

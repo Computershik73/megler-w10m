@@ -38,6 +38,9 @@ public class Main extends Activity {
     private String detail = "";
     private Uri firstPicked;
     private static volatile String sOpenModes = "";
+    /* Which Main this is: the first picker turns the screen while it hides the window, and Main is made again (relaunch). */
+    private static int sInstances;
+    private final int instance = ++sInstances;
 
     /** What the app's FileProvider was asked to open, in order (Files.openFile). */
     static void heardOpen(String mode) { sOpenModes += mode + ";"; }
@@ -45,11 +48,29 @@ public class Main extends Activity {
     @Override
     protected void onCreate(Bundle state) {
         super.onCreate(state);
-        Log.i(T, "onCreate");
         TextView v = new TextView(this);
         v.setText("Pickers");
         setContentView(v);
+        if (state != null) {
+            // Made again where the screen turned under a picker: the steps go on from the result, which comes to this one.
+            step = state.getInt("step");
+            ok = state.getInt("ok");
+            failed = state.getInt("failed");
+            firstPicked = state.getParcelable("first");
+            Log.i(T, "onCreate instance=" + instance + " restored step=" + step);
+            return;
+        }
+        Log.i(T, "onCreate");
         v.post(this::next);
+    }
+
+    @Override
+    protected void onSaveInstanceState(Bundle out) {
+        super.onSaveInstanceState(out);
+        out.putInt("step", step);
+        out.putInt("ok", ok);
+        out.putInt("failed", failed);
+        out.putParcelable("first", firstPicked);
     }
 
     @Override protected void onStart() { super.onStart(); Log.i(T, "onStart"); }
@@ -144,7 +165,7 @@ public class Main extends Activity {
     protected void onActivityResult(int request, int code, Intent data) {
         super.onActivityResult(request, code, data);
         Log.i(T, "result " + request + " " + code + (data != null && data.getData() != null ? " " + data.getData() : "")
-                 + (data != null && data.getClipData() != null ? " clip " + data.getClipData().getItemCount() : ""));
+                 + (data != null && data.getClipData() != null ? " clip " + data.getClipData().getItemCount() : "") + " instance=" + instance);
         boolean good;
         try {
             good = check(request, code, data);
