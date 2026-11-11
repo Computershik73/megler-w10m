@@ -16,9 +16,14 @@
 //                 stops with an error is SCAN_FAILED.
 //   connect       the device by its address (and kind, where it was heard), a GattSession that maintains the connection,
 //                 and its services asked for afresh, which is what makes Windows connect: CONNECTION 1 once it has them,
-//                 or 0 with 133 when it could not reach the device. Then Windows' ConnectionStatus: a connection that drops
-//                 is CONNECTION 0 with Android's 8 (Windows says not why); with `auto` Windows makes it again whenever it
-//                 can (MaintainConnection) and it comes as CONNECTION 1, without, it is let go.
+//                 or 0 with 133 when it could not reach the device -- or when anything else went wrong: whatever Windows
+//                 throws or lacks, the app hears of a connection not made. The session is asked for by the device's id
+//                 where Windows has one (Windows 10 1709); Windows 10 Mobile has none, and there the session is the one
+//                 of the device's first service, once the services are there (a connection made `auto` is then tried
+//                 every few seconds until the device answers, there being no session to wait with). Then Windows'
+//                 ConnectionStatus: a connection that drops is CONNECTION 0 with Android's 8 (Windows says not why); with
+//                 `auto` Windows makes it again whenever it can (MaintainConnection) and it comes as CONNECTION 1,
+//                 without, it is let go.
 //   discover      every service's characteristics and descriptors, afresh, by their attribute handles. A characteristic
 //                 that notifies or indicates without a Client Characteristic Configuration descriptor among those Windows
 //                 lists has one made up for it, which stands for Windows' own call.

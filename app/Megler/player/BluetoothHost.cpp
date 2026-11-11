@@ -161,6 +161,34 @@ void guarded(F&& f) {
     } catch (const winrt::hresult_error& e) {
         shellLog::write(format("bluetooth: an error of Windows' in its event (0x%08X)", unsigned(e.code())));
     } catch (...) {
+        shellLog::write("bluetooth: an unexpected exception in an event of Windows'");
+    }
+}
+
+/*
+ * A later interface of a Windows object's, asked for as such. C++/WinRT reaches a member that is not of a class's first
+ * interface through a QueryInterface whose answer it does not look at: on a Windows that lacks the interface the call goes
+ * through null -- an access violation in the middle of a coroutine, on one of Windows' threads, which no handler catches
+ * and which ends the app. (0.1.0.690 on Windows 10 Mobile 10.0.15254: BluetoothLEDevice.BluetoothDeviceId, which is
+ * IBluetoothLEDevice4's and Windows 10 1709's. MCO Advanced ended as its radio was tapped in its list.) So nothing here
+ * calls such a member on the class itself. part<I>() gives the interface or throws -- hresult_no_interface for one
+ * Windows lacks, E_POINTER for no object at all, which an asynchronous operation of Windows' may end with too -- and the
+ * caller's handler tells the app the Android way. What is newer than the phone's Windows (UniversalApiContract 4.0, Windows
+ * 10 1703) is asked for with try_as and done without where there is none.
+ */
+template <class I, class T>
+I part(const T& object) {
+    if (!object) throw winrt::hresult_error(E_POINTER);
+    return object.template as<I>();
+}
+
+/// A device, a service or a session closed (IClosable is not their first interface either); nothing is thrown.
+template <class T>
+void closeOf(const T& object) noexcept {
+    try {
+        if (!object) return;
+        if (const auto closable = object.template try_as<winrt::Windows::Foundation::IClosable>()) closable.Close();
+    } catch (...) {
     }
 }
 
@@ -482,6 +510,7 @@ struct Conn {
     bool autoConnect = false;
     // Under gMutex:
     bool connected = false, ended = false;
+    bool making = true; // connectAsync is at it still: Windows' ConnectionStatus is not listened to yet
     BluetoothLEDevice device{nullptr};
     GattSession session{nullptr};
     winrt::event_token statusToken{};
@@ -529,15 +558,12 @@ void release(const std::shared_ptr<Conn>& c) {
         auto ch = chars.find(handle);
         if (ch != chars.end()) guarded([&] { ch->second.ValueChanged(t); });
     }
-    for (auto& s : services) guarded([&] { s.Close(); });
-    if (session) guarded([&] {
-        session.MaintainConnection(false);
-        session.Close();
-    });
-    if (device) guarded([&] {
-        device.ConnectionStatusChanged(token);
-        device.Close();
-    });
+    // (The session before the services: where it is one of theirs, it is told to let the link go while it still can be.)
+    if (session) guarded([&] { session.MaintainConnection(false); });
+    closeOf(session);
+    for (auto& s : services) closeOf(s);
+    if (device) guarded([&] { device.ConnectionStatusChanged(token); });
+    closeOf(device);
 }
 
 /// The connection could not be made: CONNECTION 0 with Android's status, and it is let go.
@@ -571,7 +597,48 @@ void statusChanged(const std::shared_ptr<Conn>& c, bool now) {
     }
 }
 
+/// Windows' ConnectionStatusChanged. Not listened to while the connection is being made: connectAsync says it made, once
+/// its services and its session are there (an app asks for the MTU and the services the moment it hears of the connection).
+void linkChanged(const std::shared_ptr<Conn>& c, bool now) {
+    {
+        std::lock_guard<std::mutex> lock(gMutex);
+        if (c->making) return;
+    }
+    statusChanged(c, now);
+}
+
+bool endedMeanwhile(const std::shared_ptr<Conn>& c) {
+    std::lock_guard<std::mutex> lock(gMutex);
+    return c->ended;
+}
+
+/// The connection's session, kept, and the link asked to be kept up through it. False for a connection that ended
+/// meanwhile, the session closed.
+bool keepSession(const std::shared_ptr<Conn>& c, const GattSession& session, const char* from) {
+    bool ended;
+    {
+        std::lock_guard<std::mutex> lock(gMutex);
+        ended = c->ended;
+        if (!ended) c->session = session;
+    }
+    if (ended) {
+        closeOf(session);
+        return false;
+    }
+    try {
+        session.MaintainConnection(true);
+        shellLog::write(format("bluetooth: connection %d: Windows' GATT session, from %s", c->conn, from));
+    } catch (const winrt::hresult_error& e) {
+        shellLog::write(format("bluetooth: connection %d: Windows' GATT session, from %s, does not keep the link up (0x%08X)", c->conn, from, unsigned(e.code())));
+    }
+    return true;
+}
+
+/// How long until a connection made `auto` is tried again, on a Windows that gives no session to wait with.
+constexpr std::chrono::seconds againAfter{5};
+
 winrt::fire_and_forget connectAsync(std::shared_ptr<Conn> c) {
+    std::string why;
     try {
         BluetoothLEDevice dev{nullptr};
         if (gTyped && c->type != MEGLER_BT_ADDRESS_UNKNOWN)
@@ -584,48 +651,116 @@ winrt::fire_and_forget connectAsync(std::shared_ptr<Conn> c) {
             co_return;
         }
         std::weak_ptr<Conn> weak = c;
+        bool ended;
         {
             std::lock_guard<std::mutex> lock(gMutex);
-            if (c->ended) {
-                dev.Close();
-                co_return;
-            }
-            c->device = dev;
-            c->statusToken = dev.ConnectionStatusChanged([weak](const BluetoothLEDevice& d, const winrt::Windows::Foundation::IInspectable&) {
-                guarded([&] {
-                    if (auto c = weak.lock()) statusChanged(c, d.ConnectionStatus() == BluetoothConnectionStatus::Connected);
+            ended = c->ended;
+            if (!ended) {
+                c->device = dev;
+                c->statusToken = dev.ConnectionStatusChanged([weak](const BluetoothLEDevice& d, const winrt::Windows::Foundation::IInspectable&) {
+                    guarded([&] {
+                        if (auto c = weak.lock()) linkChanged(c, d && d.ConnectionStatus() == BluetoothConnectionStatus::Connected);
+                    });
                 });
-            });
+            }
         }
-        GattSession session = co_await GattSession::FromDeviceIdAsync(dev.BluetoothDeviceId());
-        {
-            std::lock_guard<std::mutex> lock(gMutex);
-            if (c->ended) {
-                session.Close();
+        if (ended) {
+            closeOf(dev);
+            co_return;
+        }
+        /*
+         * The session: what keeps the link up (MaintainConnection) and knows its MTU. Windows 10 1709 and later give it for
+         * the device's id, before there is a link. The phone's Windows (10.0.15254) has no such id -- the device is asked
+         * for IBluetoothLEDevice4, and where it has none nothing of it is called -- and its session is the one the first of
+         * the device's services has, below.
+         */
+        GattSession session{nullptr};
+        if (const auto later = dev.try_as<IBluetoothLEDevice4>()) {
+            try {
+                if (const auto id = later.BluetoothDeviceId()) session = co_await GattSession::FromDeviceIdAsync(id);
+            } catch (const winrt::hresult_error& e) {
+                shellLog::write(format("bluetooth: connection %d: no GATT session for the device's id (0x%08X)", c->conn, unsigned(e.code())));
+            }
+            if (session && !keepSession(c, session, "the device's id")) co_return;
+        }
+        for (int attempt = 1;; attempt++) {
+            // The device's services, asked for afresh: what makes Windows connect to it.
+            const auto result = co_await part<IBluetoothLEDevice3>(dev).GetGattServicesAsync(BluetoothCacheMode::Uncached);
+            const auto status = result ? result.Status() : GattCommunicationStatus::Unreachable;
+            std::vector<GattDeviceService> services;
+            if (status == GattCommunicationStatus::Success)
+                if (const auto list = result.Services())
+                    for (const auto& s : list)
+                        if (s) services.push_back(s);
+            if (endedMeanwhile(c)) {
+                for (auto& s : services) closeOf(s);
                 co_return;
             }
-            c->session = session;
-        }
-        session.MaintainConnection(true);
-        // The device's services, asked for afresh: what makes Windows connect to it.
-        const auto result = co_await dev.GetGattServicesAsync(BluetoothCacheMode::Uncached);
-        if (result.Status() == GattCommunicationStatus::Success) {
-            {
-                std::lock_guard<std::mutex> lock(gMutex);
-                if (c->ended) co_return;
-                c->services.clear();
-                for (const auto& s : result.Services()) c->services.push_back(s);
+            if (status == GattCommunicationStatus::Success) {
+                if (!session) {
+                    for (const auto& s : services) {
+                        try {
+                            if (const auto third = s.try_as<IGattDeviceService3>()) session = third.Session();
+                        } catch (const winrt::hresult_error&) {
+                        }
+                        if (session) break;
+                    }
+                    if (!session)
+                        shellLog::write(format("bluetooth: connection %d: Windows gives no GATT session: its MTU is not known (23 is told), and the "
+                                               "link is Windows' to keep",
+                                               c->conn));
+                    else if (!keepSession(c, session, "its services")) {
+                        for (auto& s : services) closeOf(s);
+                        co_return;
+                    }
+                }
+                {
+                    std::lock_guard<std::mutex> lock(gMutex);
+                    ended = c->ended;
+                    if (!ended) {
+                        c->services = services;
+                        c->making = false;
+                    }
+                }
+                if (ended) {
+                    for (auto& s : services) closeOf(s);
+                    co_return;
+                }
+                statusChanged(c, true);
+                co_return;
             }
-            statusChanged(c, true);
-        } else if (!c->autoConnect) {
-            failed(c, gattError, std::string("its services: ") + statusName(result.Status()));
-        } else {
-            shellLog::write(format("bluetooth: connection %d to %s: not in range (%s); Windows makes it when it can", c->conn, addressText(c->address).c_str(),
-                                   statusName(result.Status())));
+            if (!c->autoConnect) {
+                failed(c, gattError, std::string("its services: ") + statusName(status));
+                co_return;
+            }
+            if (session) {
+                // (The session waits for the device: Windows connects when it hears it, and says so.)
+                shellLog::write(format("bluetooth: connection %d to %s: not in range (%s); Windows makes it when it can", c->conn, addressText(c->address).c_str(),
+                                       statusName(status)));
+                {
+                    std::lock_guard<std::mutex> lock(gMutex);
+                    c->making = false;
+                }
+                if (dev.ConnectionStatus() == BluetoothConnectionStatus::Connected) statusChanged(c, true);
+                co_return;
+            }
+            if (attempt == 1)
+                shellLog::write(format("bluetooth: connection %d to %s: not in range (%s); tried again every %d seconds, this Windows having no session to "
+                                       "wait with",
+                                       c->conn, addressText(c->address).c_str(), statusName(status), int(againAfter.count())));
+            co_await winrt::resume_after(againAfter);
+            if (endedMeanwhile(c)) co_return;
         }
     } catch (const winrt::hresult_error& e) {
-        failed(c, gattError, format("an error of Windows' (0x%08X)", unsigned(e.code())));
+        why = e.code() == E_NOINTERFACE ? std::string("this Windows' Bluetooth lacks an interface Megler needs (0x80004002)")
+                                        : format("an error of Windows' (0x%08X)", unsigned(e.code()));
+    } catch (const std::exception& e) {
+        why = std::string("an unexpected exception: ") + e.what();
+    } catch (...) {
+        why = "an unexpected exception";
     }
+    // Whatever went wrong, the app hears what Android says of a connection not made: status 133, disconnected.
+    guarded([&] { failed(c, gattError, why); });
 }
 
 /// On the worker: a connection made for `conn`, the one it had before let go.
