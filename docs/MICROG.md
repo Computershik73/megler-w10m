@@ -106,6 +106,26 @@ microG's ELF scope. The provider installer thus puts microG's Conscrypt
 (`GmsCore_OpenSSL`) first for the client, as on Android. Classes a module takes
 from its client (`MERGED_CLASSES`, Cronet's API) are not followed yet; the log
 says so when a module names any.
+
+The client library asks which module to load of Google Play services'
+provider (`content://com.google.android.gms.chimera`), under the class lock
+of its `DynamiteModule`. A thread that asks the provider before their
+Application is attached waits for the app's main thread to attach it
+(`MicroG.attachOnMain`, ten seconds at most), and ends the wait when their
+Application is attached by anything the main thread runs. It does not wait
+for a main thread that waits for it: one that stands waiting to enter a
+monitor the asking thread holds, or one whose holder waits for one of the
+asking thread's (`Native.mainWaitsForMe`, the runtime's `mg_dvm_waits_for`,
+asked every 50 ms of the wait), attaches nothing until the thread goes on,
+and the provider then answers before their Application is attached; the log
+says so once ("I/MicroG: Google Play services' provider is asked by a thread
+(...) holding a monitor that the main thread waits to enter"). Citymapper's
+`Application.onCreate` initializes Google Maps, which loads a module under
+that class lock, while a thread of the measurement library's, the lock held,
+asks the provider for its own: the app stood ten seconds at every start
+(0.1.0.690). On Android the provider is their process's and answers whatever
+the app's main thread does.
+
 ## Google's own Play services: their process, and their module scans
 
 Google's own Play services (not microG) run in the app that hosts them, and
