@@ -66,6 +66,13 @@
 // And an activity whose onCreate throws is taken off the stack at once and never stopped or destroyed, the one below
 // resumed (launch): one of Google Play services', which the app outlives, was destroyed later with no onCreate behind it.
 //
+// And the intents for Android's documents UI, gallery, photo picker and camera app (ACTION_GET_CONTENT, ACTION_OPEN_DOCUMENT,
+// ACTION_PICK of pictures, MediaStore.ACTION_PICK_IMAGES, ACTION_IMAGE_CAPTURE, ACTION_VIDEO_CAPTURE, the camera app's own) go
+// to Windows' picker and camera (megler.Pickers), before the activities of the app's own and of others: they threw
+// ActivityNotFoundException. Their answer comes as an event of the shell's (deliver, phase 12) and goes to the activity that
+// asked once the app is in front again (hostPause), to the one made again in its place where it was (relaunch); and the
+// provider of what was picked is the app's from its start (run).
+//
 // Everything else is the original's, unchanged.
 package megler;
 
@@ -169,6 +176,8 @@ public final class AppRunner {
         ContextImpl.setApplication(app);
         app.meglerAttach(base);
         installProviders(app);
+        // (and the provider of the files picked or taken for the app, megler.Pickers: links to them kept from an earlier run work)
+        Pickers.install();
         Looper.setInputSink(AppRunner::deliver);
         applyInsets();
         app.onCreate();
@@ -344,6 +353,7 @@ public final class AppRunner {
         sStack.set(idx, n);
         for (Activity o : sStack) if (o.meglerCaller() == a) o.meglerSetCaller(n);
         AppResults.replaced(a, n);
+        Pickers.replaced(a, n);
         n.meglerCreate(state);
         if (!n.isFinishing()) {
             n.meglerStart();
@@ -476,6 +486,11 @@ public final class AppRunner {
             if (request >= 0 && caller != null) sHandler.post(() -> caller.meglerActivityResult(request, Activity.RESULT_OK, null));
             return;
         }
+        // Android's documents UI, gallery, photo picker and camera app (megler.Pickers): Windows' picker and camera, the result to
+        // the caller once it is in front again. Before the app's own activities, as on Android, where these are the system's
+        // (an app that takes GET_CONTENT itself, a file manager, asks the system's when it wants a file); and before Google
+        // Play services', whose own photo picker an app may name.
+        if (Pickers.start(from instanceof Activity ? (Activity) from : top(), i, request)) return;
         // An activity of Google Play services, which this app hosts (megler.MicroG.activity): it runs here, in GmsCore's class
         // scope and with its context, as GmsCore's services do -- its sign-in hands its screens objects of this process.
         final Manifest.Component hosted = MicroG.activity(i);
@@ -591,12 +606,7 @@ public final class AppRunner {
         if ("android.settings.LOCATION_SOURCE_SETTINGS".equals(action)) {
             android.util.Log.d("Megler", "startActivity " + i + " -> Windows' location settings (ms-settings:privacy-location)");
             Native.openUrl("ms-settings:privacy-location");
-            final Activity caller = from instanceof Activity ? (Activity) from : top();
-            if (request >= 0 && caller != null) {
-                sWindowsCaller = caller;
-                sWindowsRequest = request;
-                sHandler.postDelayed(() -> windowsSettingsBack(true), 5000);
-            }
+            awaitWindowsPage(from instanceof Activity ? (Activity) from : top(), request);
             return;
         }
         /* a screen of the system's (the account chooser, Settings pages, the permission dialog): Megler has none of them -- asked for a
@@ -733,7 +743,7 @@ public final class AppRunner {
     }
 
     // ---- input from Megler
-    /** events: [n, then n x (phase, id, xbits, ybits), optional n x (timeLow, timeHigh)] -- phase 0 down, 1 move, 2 up, 3 cancel; 4 key (id = code, x = down); 5 back; 6 host pause (id 1) / resume (0); 7 text waiting; 8 insets changed; 9 web view events waiting; 10 the phone's messages and calls; 11 the surface resized or turned (megler.Screen) */
+    /** events: [n, then n x (phase, id, xbits, ybits), optional n x (timeLow, timeHigh)] -- phase 0 down, 1 move, 2 up, 3 cancel; 4 key (id = code, x = down); 5 back; 6 host pause (id 1) / resume (0); 7 text waiting; 8 insets changed; 9 web view events waiting; 10 the phone's messages and calls; 11 the surface resized or turned (megler.Screen); 12 the phone's picker or camera answered request `id` (megler.Pickers) */
     private static void deliver(int[] ev) {
         int n = ev[0];
         for (int k = 0; k < n; k++) {
@@ -749,6 +759,7 @@ public final class AppRunner {
                 if (phase == 9) { Web.deliver(); continue; }
                 if (phase == 10) { Phone.deliver(); continue; }
                 if (phase == 11) { Screen.changed(); continue; }
+                if (phase == 12) { Pickers.answered(id); continue; }
                 if (phase == 4) {
                     long t = SystemClock.uptimeMillis();
                     KeyEvent ke = new KeyEvent(t, t, ev[3 + 4 * k] != 0 ? KeyEvent.ACTION_DOWN : KeyEvent.ACTION_UP, id, 0);
@@ -836,6 +847,18 @@ public final class AppRunner {
     private static Activity sWindowsCaller;
     private static int sWindowsRequest = -1;
     /**
+     * A page of Windows' own opened for an activity that asked for a result (Windows' location settings, its camera app:
+     * megler.Pickers): it hears RESULT_CANCELED once the app is in front again, as from Android's Back on such a screen.
+     */
+    static void awaitWindowsPage(Activity caller, int request) {
+        if (request < 0 || caller == null) return;
+        sWindowsCaller = caller;
+        sWindowsRequest = request;
+        sHandler.postDelayed(() -> windowsSettingsBack(true), 5000);
+    }
+    /** Whether the shell's window is hidden now (hostPause): what comes for the app waits for it to be in front again (megler.Pickers). */
+    static boolean pausedByHost() { return sPausedByHost; }
+    /**
      * The answer of Windows' location settings to an activity that opened them for a result: RESULT_CANCELED, as Android's
      * Settings answers its Back, when the app is in front again (hostPause) -- or after five seconds when the page never hid
      * the app (fromTimer), so that the caller is not left waiting.
@@ -857,6 +880,8 @@ public final class AppRunner {
         ViewRoot.hostHidden(pause);
         // a result another app's activity left for this one comes first, as onActivityResult comes before onResume
         if (!pause) AppResults.resumed();
+        // (and what the phone's picker or camera answered while the app was hidden by it, likewise)
+        if (!pause) Pickers.resumed();
         if (!pause) windowsSettingsBack(false);
         // (and a request to turn the Bluetooth radio on that showed the phone's settings: the radio as it is now)
         if (!pause) Bluetooth.resumed();
