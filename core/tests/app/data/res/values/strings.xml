@@ -2,4 +2,5 @@
 <resources>
     <string name="app_name">Megler Data</string>
     <string name="sync_account_type">megler.test.synced</string>
+    <string name="shared_name">by-string</string>
 </resources>

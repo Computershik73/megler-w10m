@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Main's step "transition-name": views named for a shared element transition as a layout names them (Citymapper's place
+     page): in the layout itself, by a string resource, by a style; and one with no name. -->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:transitionName="frame">
+
+    <View
+        android:id="@+id/shared_by_string"
+        android:layout_width="10px"
+        android:layout_height="10px"
+        android:transitionName="@string/shared_name" />
+
+    <TextView
+        android:id="@+id/shared_by_style"
+        style="@style/SharedElement"
+        android:layout_width="10px"
+        android:layout_height="10px" />
+
+    <View
+        android:id="@+id/shared_unnamed"
+        android:layout_width="10px"
+        android:layout_height="10px" />
+</FrameLayout>

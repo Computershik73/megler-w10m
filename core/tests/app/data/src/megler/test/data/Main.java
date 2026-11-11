@@ -2015,6 +2015,7 @@ public class Main extends Activity {
         notificationChannel();
         notificationChannels(run);
         geocoding();
+        laterApis();
         sound();
         mediaCodec();
         network();
@@ -6725,6 +6726,26 @@ public class Main extends Activity {
             detail = "empty " + empty + " threw " + threw + " max " + max + "/" + stays + "/" + back.getMaxAddressLineIndex() + " negative " + negative + " same " + same + ": " + text;
             return empty && threw && max == 1 && stays == 1 && back.getMaxAddressLineIndex() == 1 && negative && same && "square".equals(a.getExtras().getString("kind")) &&
                    text.startsWith("Address[addressLines=[0:\"Красная площадь\",1:\"Москва, 109012\"],feature=Красная площадь,") && text.contains(",locality=Москва,");
+        });
+    }
+
+    /*
+     * Later APIs and attributes that apps and Google Play services met missing.
+     * A view named for a shared element transition where its layout is written -- android:transitionName in the layout, by
+     * a string resource, by a style -- which a fragment transaction asks of each shared element (Citymapper's place page);
+     * and setTransitionName still renames it.
+     */
+    private void laterApis() {
+        step("transition-name", () -> {
+            android.view.View root = android.view.LayoutInflater.from(this).inflate(R.layout.shared_elements, null);
+            android.view.View byString = root.findViewById(R.id.shared_by_string), byStyle = root.findViewById(R.id.shared_by_style);
+            android.view.View unnamed = root.findViewById(R.id.shared_unnamed), made = new android.view.View(this);
+            String frame = root.getTransitionName(), string = byString.getTransitionName(), style = byStyle.getTransitionName();
+            String none = unnamed.getTransitionName(), code = made.getTransitionName();
+            byStyle.setTransitionName("renamed");
+            detail = "frame=" + frame + " string=" + string + " style=" + style + " none=" + none + " made=" + code + " renamed=" + byStyle.getTransitionName();
+            return "frame".equals(frame) && "by-string".equals(string) && "by-style".equals(style) && none == null && code == null
+                   && "renamed".equals(byStyle.getTransitionName());
         });
     }
 

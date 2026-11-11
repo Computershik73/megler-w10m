@@ -37,6 +37,10 @@
 //    clips it, the outline worked out as the view's list is recorded (meglerNodeOutline); drawFromParent clipped the parent's
 //    list to it, worked out before the view was drawn: a background set after the layout had no bounds yet, and WhatsApp's
 //    card with its "Accept and continue" button in it was never drawn.
+//  - android:transitionName is read from the layout and the style, as Android's View reads it (the table of the attributes
+//    a view reads, megler.S.View, has not got it: sViewAttrs). The original knew only what setTransitionName was given, and
+//    a fragment transaction given a shared element named in its layout threw "Unique transitionNames are required for all
+//    sharedElements": Citymapper ended so as a place's page opened (0.1.0.690).
 //
 // Why. The original's invalidate asked the window to be drawn again whole, and the window cleared the screen and drew every
 // view, so a blinking cursor cost a whole screen. ViewRoot (overlaid) now keeps each window's dirty rectangle and draws only
@@ -278,14 +282,19 @@ public class View implements Drawable.Callback, KeyEvent.Callback {
     public View(Context c, AttributeSet attrs, int defStyleAttr, int defStyleRes) {
         this(c);
         if (attrs == null && defStyleAttr == 0 && defStyleRes == 0) return;
-        TypedArray a = c.obtainStyledAttributes(attrs, megler.S.View, defStyleAttr, defStyleRes);
+        TypedArray a = c.obtainStyledAttributes(attrs, sViewAttrs, defStyleAttr, defStyleRes);
         try { readViewAttributes(a); } finally { a.recycle(); }
     }
+    /* The attributes a view reads: megler.S.View, and after them android:transitionName, which that table has not. */
+    private static final int[] sViewAttrs = java.util.Arrays.copyOf(megler.S.View, megler.S.View.length + 1);
+    private static final int sTransitionNameAt = megler.S.View.length;
+    static { sViewAttrs[sTransitionNameAt] = android.R.attr.transitionName; }
     private void readViewAttributes(TypedArray a) {
         int pad = -1, pl = -1, pt = -1, pr = -1, pb = -1, ph = -1, pv = -1, ps = Integer.MIN_VALUE, pe = Integer.MIN_VALUE;
         float tx = 0, ty = 0, tz = 0, rot = 0, rx = 0, ry = 0, sx = 1, sy = 1;
         for (int i = 0, n = a.getIndexCount(); i < n; i++) {
             int at = a.getIndex(i);
+            if (at == sTransitionNameAt) { mTransitionName = a.getString(at); continue; }
             switch (at) {
             case megler.S.View_id: mID = a.getResourceId(at, NO_ID); break;
             case megler.S.View_tag: mTag = a.getText(at); break;

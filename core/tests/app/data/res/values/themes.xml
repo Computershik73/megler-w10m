@@ -5,4 +5,8 @@
     <style name="ProbeTheme">
         <item name="android:colorForeground">#FF111111</item>
     </style>
+    <!-- Main's step "transition-name": a view named for a shared element transition by its style. -->
+    <style name="SharedElement">
+        <item name="android:transitionName">by-style</item>
+    </style>
 </resources>
