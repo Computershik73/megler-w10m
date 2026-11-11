@@ -2845,9 +2845,13 @@ bool mg_path_set_times(const char *path, i64 atime_ns, i64 mtime_ns, int *err)
             return false;
         }
     } else {
+        /* (CreateFile2, as every open here: an app container has no CreateFileW. A folder opens with backup semantics.) */
+        CREATEFILE2_EXTENDED_PARAMETERS params;
         wchar_t *w = wide_path(path);
-        h = CreateFileW(w, FILE_WRITE_ATTRIBUTES, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, NULL, OPEN_EXISTING,
-                        FILE_FLAG_BACKUP_SEMANTICS, NULL);
+        memset(&params, 0, sizeof(params));
+        params.dwSize = sizeof(params);
+        params.dwFileFlags = FILE_FLAG_BACKUP_SEMANTICS;
+        h = CreateFile2(w, FILE_WRITE_ATTRIBUTES, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, OPEN_EXISTING, &params);
         free(w);
         if (h == INVALID_HANDLE_VALUE) {
             SET_ERR();
