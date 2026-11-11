@@ -58,10 +58,12 @@
 #define MAX_SPLITS 10
 
 /* The phases of an event as megler.AppRunner.deliver reads them. */
-enum { EV_DOWN = 0, EV_MOVE = 1, EV_UP = 2, EV_CANCEL = 3, EV_KEY = 4, EV_BACK = 5, EV_HOST_PAUSE = 6, EV_TEXT = 7, EV_INSETS = 8, EV_PHONE = 10, EV_SURFACE = 11 };
+enum { EV_DOWN = 0, EV_MOVE = 1, EV_UP = 2, EV_CANCEL = 3, EV_KEY = 4, EV_BACK = 5, EV_HOST_PAUSE = 6, EV_TEXT = 7, EV_INSETS = 8, EV_PHONE = 10, EV_SURFACE = 11,
+       EV_PICKED = 12 };
 
 #define MAX_TEXT 512
 #define MAX_PHONE 64
+#define MAX_PICKED 16
 
 static struct {
     const megler_run_config *config;
@@ -116,6 +118,12 @@ static struct {
      */
     char *phone[MAX_PHONE];
     int nphone;
+    /*
+     * The answers of the phone's picker and camera the app has not taken yet (megler_pick_done): "<id>\n<status>\n" and the
+     * name of each file followed by '\n', as Native.pickAnswer hands them to megler.Pickers. One EV_PICKED event each.
+     */
+    char *picked[MAX_PICKED];
+    int npicked;
     volatile i32 keyboard_height;      /* pixels of the surface's bottom the keyboard covers */
     volatile i32 enter_newline;        /* the field the keyboard was last shown for takes Enter as a new line */
     /* The battery as the app was last told of it by a broadcast (at the start: as it was then), and the core's count of its changes at that time. */
@@ -1141,6 +1149,89 @@ N(Native_permission)
     c->ret.i = answer;
 }
 
+/* What a file's name says of it in the log: its extension alone (".jpg"), never the name the user gave it. */
+static const char *extension_of(const char *name)
+{
+    const char *dot = strrchr(name, '.');
+    return dot && dot[1] && strlen(dot) <= 8 && !strchr(dot, ' ') ? dot : "(no extension)";
+}
+
+/*
+ * pick(id, kind, types, multiple, max, folder, durationS, quality, start): the phone's picker of files or its camera, for
+ * megler.Pickers (megler_system_host.pick, megler_pick_request): `folder` is the request's folder as the app sees it, which
+ * the shell is given as a host path. True when the shell will answer (megler_pick_done); false when it will not, or there
+ * is nothing here that picks -- the app hears RESULT_CANCELED then. What was asked is said in the log; no name of a file.
+ */
+N(Native_pick)
+{
+    static const char *const kinds[] = { "files", "a photo", "a video" };
+    const megler_system_host *s = &J.config->system;
+    megler_pick_request r;
+    char *host, *types, more[64] = "";
+    size_t i;
+    bool ok = false;
+    memset(&r, 0, sizeof(r));
+    r.id = (unsigned)c->args[0].i;
+    r.kind = c->args[1].i >= MEGLER_PICK_FILES && c->args[1].i <= MEGLER_PICK_VIDEO ? c->args[1].i : MEGLER_PICK_FILES;
+    r.types = c->args[2].l ? text_of(c->args[2].l) : "";
+    r.multiple = c->args[3].i != 0;
+    r.max = c->args[4].i > 0 ? c->args[4].i : 0;
+    host = c->args[5].l ? mg_fs_host_path(text_of(c->args[5].l)) : NULL;
+    r.folder = host ? host : "";
+    r.duration_s = c->args[6].i > 0 ? c->args[6].i : 0;
+    r.quality = c->args[7].i >= 0 && c->args[7].i <= 1 ? c->args[7].i : -1;
+    r.start = c->args[8].i >= MEGLER_PICK_START_DOCUMENTS && c->args[8].i <= MEGLER_PICK_START_MUSIC ? c->args[8].i : MEGLER_PICK_START_DOCUMENTS;
+    /* (The types on one line, for the log.) */
+    types = mg_strdup(r.types[0] ? r.types : "any type");
+    for (i = 0; types[i]; i++)
+        if (types[i] == '\n') types[i] = types[i + 1] ? ' ' : 0;
+    if (host && s->pick) ok = s->pick(s->user, &r);
+    if (r.kind == MEGLER_PICK_FILES) {
+        if (r.multiple && r.max) snprintf(more, sizeof(more), ", at most %d", r.max);
+        mg_info("java: the app asks for the phone's picker (request %u): %s of %s%s%s", r.id, r.multiple ? "several files" : "a file", types, more,
+                ok ? "" : s->pick ? ": the shell will not show one" : ": nothing here picks files");
+    } else {
+        if (r.duration_s) snprintf(more, sizeof(more), ", at most %d s", r.duration_s);
+        mg_info("java: the app asks for the phone's camera (request %u): %s%s%s%s", r.id, kinds[r.kind], more,
+                r.quality >= 0 ? (r.quality ? ", high quality" : ", low quality") : "", ok ? "" : s->pick ? ": the shell will not show it" : ": nothing here takes them");
+    }
+    free(types);
+    free(host);
+    c->ret.z = ok;
+}
+
+/* pickAnswer(id): the shell's answer to request `id` -- { status, the files' names... } -- taken from the queue; null while there is none. */
+N(Native_pickAnswer)
+{
+    char *item = NULL, *at, *end;
+    char head[24];
+    size_t hlen;
+    int i, n = 0;
+    mg_jobj *a;
+    snprintf(head, sizeof(head), "%u\n", (unsigned)c->args[0].i);
+    hlen = strlen(head);
+    c->ret.l = NULL;
+    mg_lock_acquire(&J.lock);
+    for (i = 0; i < J.npicked; i++)
+        if (!strncmp(J.picked[i], head, hlen)) {
+            item = J.picked[i];
+            memmove(&J.picked[i], &J.picked[i + 1], sizeof(char *) * (size_t)(J.npicked - i - 1));
+            J.npicked--;
+            break;
+        }
+    mg_lock_release(&J.lock);
+    if (!item) return;
+    for (at = item + hlen; *at; at++)
+        if (*at == '\n') n++;
+    a = mg_dvm_new_array("[Ljava/lang/String;", n);
+    for (i = 0, at = item + hlen; a && i < n && (end = strchr(at, '\n')) != NULL; i++, at = end + 1) {
+        *end = 0;
+        a->u.oarr.v[i] = mg_dvm_new_string(at);
+    }
+    free(item);
+    c->ret.l = a;
+}
+
 /* appsList(): apps.txt of the apps the phone has (megler_run_config.apps_dir), or null when there is none. */
 N(Native_appsList)
 {
@@ -1391,6 +1482,8 @@ static const mg_jhle k_native[] = {
     { "megler/Native", "launchApp", NULL, Native_launchApp },
     { "megler/Native", "uninstallApp", NULL, Native_uninstallApp },
     { "megler/Native", "permission", NULL, Native_permission },
+    { "megler/Native", "pick", NULL, Native_pick },
+    { "megler/Native", "pickAnswer", NULL, Native_pickAnswer },
     { "megler/Native", "appsList", NULL, Native_appsList },
     { "megler/Native", "appIcon", NULL, Native_appIcon },
     { "megler/Native", "appActivities", NULL, Native_appActivities },
@@ -2757,6 +2850,59 @@ void mg_java_phone_call(const char *number, i64 time_ms, int type, int duration_
     push_phone(mg_sprintf("c%lld\n%d\n%d\n%s", (long long)time_ms, type, duration_s < 0 ? 0 : duration_s, who), what);
     free(what);
     free(who);
+}
+
+/*
+ * The answer of the phone's picker or camera (megler_pick_done): queued for megler.Pickers with its event, or dropped (no Java
+ * app, or it has not taken sixteen before). The log has what came back -- how many files, their extensions -- and no names.
+ */
+void mg_java_picked(unsigned id, int status, int count, const char *const *names)
+{
+    static const char *const said[] = { "", "the user backed out", "Windows could not" };
+    char *item, *exts, files[32] = "";
+    int i, kept = 0;
+    bool queued = false;
+    if (status < MEGLER_PICK_OK || status > MEGLER_PICK_FAILED) status = MEGLER_PICK_FAILED;
+    if (status != MEGLER_PICK_OK || count < 0 || !names) count = 0;
+    item = mg_sprintf("%u\n%d\n", id, status);
+    exts = mg_strdup("");
+    for (i = 0; i < count; i++) {
+        const char *name = names[i];
+        char *more;
+        /* (A name, not a path: nothing that would take the app's provider out of the request's folder.) */
+        if (!name || !name[0] || strchr(name, '/') || strchr(name, '\\') || strchr(name, '\n') || !strcmp(name, ".") || !strcmp(name, "..")) continue;
+        more = mg_sprintf("%s%s\n", item, name);
+        free(item);
+        item = more;
+        more = mg_sprintf("%s%s%s", exts, kept ? " " : "", extension_of(name));
+        free(exts);
+        exts = more;
+        kept++;
+    }
+    if (status == MEGLER_PICK_OK && kept == 0) {
+        /* Picked, and nothing usable came: as Windows not managing it. */
+        free(item);
+        item = mg_sprintf("%u\n%d\n", id, MEGLER_PICK_FAILED);
+        status = MEGLER_PICK_FAILED;
+    }
+    if (status == MEGLER_PICK_OK) snprintf(files, sizeof(files), "%d file%s: ", kept, kept == 1 ? "" : "s");
+    if (!java_runs()) {
+        mg_info("java: the phone's answer to request %u came while no Java app runs: dropped", id);
+        free(item);
+        free(exts);
+        return;
+    }
+    mg_lock_acquire(&J.lock);
+    if (J.npicked < MAX_PICKED) {
+        J.picked[J.npicked++] = item;
+        queued = true;
+    }
+    mg_lock_release(&J.lock);
+    mg_info("java: the phone's answer to request %u: %s%s%s%s", id, said[status], files, status == MEGLER_PICK_OK ? exts : "",
+            queued ? "" : ", and the app has not taken the ones before: dropped");
+    free(exts);
+    if (queued) push_event(EV_PICKED, (int)id, 0, 0);
+    else free(item);
 }
 
 void mg_java_text_key(int key)

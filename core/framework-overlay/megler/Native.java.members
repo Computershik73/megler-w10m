@@ -113,6 +113,14 @@
      *  0 undecided, 1 granted, 2 denied (may be asked again), 3 denied for good. With `ask` the user is asked first and this
      *  thread waits, as long as they take: never on the main thread. A shell without it grants every group. */
     public static native int permission(String group, boolean ask);
+    /** The phone's picker of files (kind 0) or its camera, for a photo (1) or a video (2) (megler_system_host.pick, megler.Pickers):
+     *  request `id`, the MIME types each followed by '\n', several or one (at most `max`, 0 none), the request's folder as the
+     *  app sees it, where the shell puts what was picked or taken, a video's limit and quality (-1 none said), and where the
+     *  picker starts (0 documents, 1 pictures, 2 videos, 3 music). Returns at once: true when the shell will answer -- an
+     *  event for the main thread, which takes the answer with pickAnswer -- false when it will not. */
+    public static native boolean pick(int id, int kind, String types, boolean multiple, int max, String folder, int durationS, int quality, int start);
+    /** The shell's answer to request `id`, taken: { status (0 picked, 1 backed out, 2 failed), the files' names... }; null while none came. */
+    public static native String[] pickAnswer(int id);
     /** A colour of Material You's palettes made from a seed (megler_palette_tone): palette 0 neutral 1 ... 5 error, tone 0 to 100. */
     public static native int paletteTone(int seed, int palette, int tone);
     /** What that session plays: title, artist, album (or null), and a picture of at most 256x256 as ARGB pixels, or null. */

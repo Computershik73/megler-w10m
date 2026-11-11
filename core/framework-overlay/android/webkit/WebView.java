@@ -424,6 +424,9 @@ public class WebView extends AbsoluteLayout
 
         ensureProviderCreated();
         mProvider.init(javaScriptInterfaces, privateBrowsing);
+        // Megler: a chrome client while the app has given none (megler.Pickers.WebDefault): a page's <input type=file> opens
+        // the phone's picker, where with no client the WebView answers it with nothing; the rest is as with none.
+        mProvider.setWebChromeClient(megler.Pickers.webDefault());
         // Post condition of creating a webview is the CookieSyncManager.getInstance() is allowed.
         CookieSyncManager.setGetInstanceIsAllowed();
     }
@@ -1827,7 +1830,8 @@ public class WebView extends AbsoluteLayout
      */
     public void setWebChromeClient(WebChromeClient client) {
         checkThread();
-        mProvider.setWebChromeClient(client);
+        // Megler: none is Megler's own again, whose file input opens the picker (the constructor's).
+        mProvider.setWebChromeClient(client != null ? client : megler.Pickers.webDefault());
     }
 
     /**
@@ -1838,7 +1842,9 @@ public class WebView extends AbsoluteLayout
      */
     public WebChromeClient getWebChromeClient() {
         checkThread();
-        return mProvider.getWebChromeClient();
+        // Megler: Megler's own is none of the app's (the constructor's).
+        WebChromeClient client = mProvider.getWebChromeClient();
+        return client instanceof megler.Pickers.WebDefault ? null : client;
     }
 
     /**

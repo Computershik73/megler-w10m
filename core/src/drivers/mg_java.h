@@ -38,6 +38,8 @@ void mg_java_text(const char *utf8);
 /* megler_sms_received, megler_call_logged: queued for the app's main thread (megler.Phone, Native.pollPhone). */
 void mg_java_phone_sms(const char *from, const char *body, i64 time_ms);
 void mg_java_phone_call(const char *number, i64 time_ms, int type, int duration_s);
+/* megler_pick_done: the answer of the phone's picker or camera, queued for the app's main thread (megler.Pickers, Native.pickAnswer). */
+void mg_java_picked(unsigned id, int status, int count, const char *const *names);
 void mg_java_text_key(int key);
 void mg_java_keyboard_closed(void);
 /* An activity of the app another app asks for (megler_start_activity): started from the main loop. */
