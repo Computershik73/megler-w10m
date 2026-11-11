@@ -87,6 +87,7 @@ static void test_state(void)
 static void test_scan(void)
 {
     mg_bluetooth_standin_counts n;
+    megler_bluetooth_event untold;
     bool meshcore = false, beacon = false;
     char name[64];
     u64 until = mg_time_monotonic_ns() + 3000000000ull;
@@ -113,6 +114,15 @@ static void test_scan(void)
     CHECK_INT(mg_bluetooth_address_type(MG_BT_STANDIN_MESHCORE), MEGLER_BT_ADDRESS_RANDOM);
     CHECK(mg_bluetooth_name(MG_BT_STANDIN_MESHCORE, name, sizeof(name)) && !strcmp(name, "MeshCore-Test"));
     CHECK(mg_bluetooth_name(MG_BT_STANDIN_BEACON, name, sizeof(name)) && !strcmp(name, "Beacon"));
+    /* An advertisement that tells no kind of address (Windows before 10 2004, the phone's) leaves the kind known. */
+    memset(&untold, 0, sizeof(untold));
+    untold.kind = MEGLER_BT_EVENT_ADVERTISEMENT;
+    untold.address = MG_BT_STANDIN_MESHCORE;
+    untold.address_type = MEGLER_BT_ADDRESS_UNKNOWN;
+    untold.value = -50;
+    untold.extra = 1;
+    megler_bluetooth_push(&untold);
+    CHECK_INT(mg_bluetooth_address_type(MG_BT_STANDIN_MESHCORE), MEGLER_BT_ADDRESS_RANDOM);
     CHECK(mg_bluetooth_scan(MEGLER_BT_SCAN_OFF));
     mg_bluetooth_standin_get(&n);
     CHECK(n.scans == 1 && n.scans_active == 1 && n.scans_stopped == 1 && !n.scanning);

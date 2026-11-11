@@ -69,6 +69,12 @@ static const char *radio_name(int s)
     return s == MEGLER_BT_RADIO_ON ? "on" : s == MEGLER_BT_RADIO_OFF ? "off" : "not there (no radio that can be a Bluetooth LE central)";
 }
 
+/* An address's kind, for the log. */
+static const char *kind_name(int type)
+{
+    return type == MEGLER_BT_ADDRESS_RANDOM ? "random" : type == MEGLER_BT_ADDRESS_PUBLIC ? "public" : "of a kind not known";
+}
+
 static const char *bond_name(int b)
 {
     return b == MEGLER_BT_BOND_BONDED ? "bonded" : b == MEGLER_BT_BOND_BONDING ? "bonding" : "not bonded";
@@ -211,11 +217,12 @@ void megler_bluetooth_push(const megler_bluetooth_event *in)
         if (d) {
             if (!d->heard && g_devices_said < DEVICES_SAID) {
                 g_devices_said++;
-                snprintf(said, sizeof(said), "bluetooth: heard %s (%s)%s%s%s, %d dBm%s", addr, in->address_type == MEGLER_BT_ADDRESS_RANDOM ? "random" : "public",
+                snprintf(said, sizeof(said), "bluetooth: heard %s (%s)%s%s%s, %d dBm%s", addr, kind_name(in->address_type),
                          named ? " \"" : "", named ? name : "", named ? "\"" : "", in->value, in->extra ? ", takes connections" : "");
             }
             d->heard = true;
-            d->type = in->address_type;
+            /* (Windows before 10 2004 -- the phone's -- tells no advertisement's kind of address: what a pairing told of it stays.) */
+            if (in->address_type != MEGLER_BT_ADDRESS_UNKNOWN) d->type = in->address_type;
             d->rssi = in->value;
             d->rssi_ns = mg_time_monotonic_ns();
             if (named) mg_strlcpy(d->name, name, sizeof(d->name));
@@ -493,9 +500,7 @@ int mg_bluetooth_connect(u64 address, int address_type, bool auto_connect, int c
     conn = c->conn;
     mg_lock_release(&g_lock);
     mg_bluetooth_address_text(address, addr);
-    mg_info("bluetooth: connection %d to %s (%s)%s", conn, addr,
-            address_type == MEGLER_BT_ADDRESS_RANDOM ? "random" : address_type == MEGLER_BT_ADDRESS_PUBLIC ? "public" : "of a kind not known",
-            auto_connect ? ", made whenever it is in range" : "");
+    mg_info("bluetooth: connection %d to %s (%s)%s", conn, addr, kind_name(address_type), auto_connect ? ", made whenever it is in range" : "");
     host.connect(host.user, conn, address, address_type, auto_connect);
     return conn;
 }
