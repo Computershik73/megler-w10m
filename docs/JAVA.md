@@ -896,7 +896,12 @@ Java's calls arrive there.
   `video/*` refused, `getType`. `media-thumbnails`: `loadThumbnail` upright
   (its red left half on top), `getThumbnail` 30 x 40, `queryMiniThumbnail`'s
   JPEG in the app's cache, the MICRO kind 96 x 96, `EXTRA_SIZE`,
-  `ThumbnailUtils.extractThumbnail`, a video's `IOException`.
+  `ThumbnailUtils.extractThumbnail`; the video's thumbnail Windows' picture
+  of it -- the data app runs with `/sdcard/Movies` a link of a stand-in for
+  the shell's storage (`mg_java_tests.c`, `data_storage`), whose pictures
+  come a moment later on a thread of its own, green, 48 x 36 -- turned
+  upright by the clip's quarter turn (36 x 48); a clip in `DCIM`, no link
+  here, an `IOException`.
   `media-observer`: an observer of the images' collection hears an insert, an
   update and a delete, one of `file` alone hears its collection, a cursor
   hears them. `media-scanner`: `MediaScannerConnection.scanFile` answers a
@@ -4442,27 +4447,41 @@ gallery, Instagram's and VK's (0.1.0.690, on two phones).
   `ContentResolver.loadThumbnail` asks, now as Android's, decoded subsampled to
   about the size asked: it decoded the whole file), the thumbnails tables
   (`MediaStore.Images.Thumbnails`, `Video.Thumbnails`: `queryMiniThumbnail`
-  makes the few it is asked for) and their items give a JPEG of the picture
-  decoded subsampled and turned upright by its EXIF orientation
-  (`android.media.ThumbnailUtils`, no longer signatures alone), kept in the
-  app's cache (`cache/megler-media`) under the item's id and time, one made at
-  a time: a Lumia 650 has 1 GB. `MediaStore.Images.Thumbnails.getThumbnail` is
-  `loadThumbnail` of its kind's size, as Android 10's.
+  makes the few it is asked for) and their items give a JPEG of the picture,
+  kept in the app's cache (`cache/megler-media`) under the item's id and time,
+  one made at a time: a Lumia 650 has 1 GB. For a file in one of the phone's
+  folders -- a video always, a photo of more than 256 KB -- the picture is
+  Windows' own: the shell's `megler_storage_host.thumbnail` (megler.h), asked
+  for without waiting and answered from a thread of the shell's
+  (`StorageFile.GetThumbnailAsync`, `ThumbnailMode.SingleItem`, the whole
+  picture with its proportions; Windows' galleries' and list's views cut it),
+  out of Windows' thumbnail cache, which the Photos app fills, and a video's
+  frame, which nothing else here gives; the core waits up to eight seconds
+  (`mg_run_storage_thumbnail`). Windows gives it upright by the photo's EXIF
+  orientation or the video's matrix (seen on Windows 11); one as wide as the
+  file's own frame where the file is to be turned a quarter is turned here all
+  the same. Of the rest, and where Windows has none: the picture decoded
+  subsampled and turned upright by its EXIF orientation
+  (`android.media.ThumbnailUtils`, no longer signatures alone, which asks
+  Windows for a video's frame too). The log says the first picture Windows
+  gave and the first time it gave none.
+  `MediaStore.Images.Thumbnails.getThumbnail` is `loadThumbnail` of its kind's
+  size, as Android 10's.
 - **Change notifications**: an insert, update or delete tells the item's URI
   under both names of the volume, in its collection and in `file`, and the
   collections themselves (which an observer that takes no descendants hears,
   as Android 9's provider told them), on the provider's thread.
 
-Not here: thumbnails of videos and album art (`MediaMetadataRetriever` has
-no frames or pictures yet: an `IOException`, as Android's when it finds none),
+Not here: thumbnails of videos outside the phone's folders, and album art
+(`MediaMetadataRetriever` has no frames or pictures yet: an `IOException`, as
+Android's when it finds none),
 tags of sounds (the title is the file's name, the artist `<unknown>`, the album
 its folder, as Android has them for a file without tags), folders as rows of
 `file`, a trash that renames the file (`IS_TRASHED` is a flag),
 `createWriteRequest` and `createDeleteRequest`'s dialog, a memory card's own
 volume (a folder of one linked into `/sdcard` is part of it), the system's
 photo picker (`PICK_IMAGES`, another provider's: the system intents, branch
-`system-pickers`). Setting a file's times is not done by the layer (utime is
-answered and ignored).
+`system-pickers`).
 
 ### Notification channels
 

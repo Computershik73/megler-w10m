@@ -463,7 +463,9 @@ final class MediaSteps {
     /**
      * media-thumbnails: ContentResolver.loadThumbnail of the portrait -- upright, its left half (red) now on top --,
      * MediaStore's getThumbnail and queryMiniThumbnail (a JPEG in the app's cache, made then), its MICRO kind cut square,
-     * and a picture of a size through openTypedAssetFileDescriptor with EXTRA_SIZE. A video has none here: IOException.
+     * and a picture of a size through openTypedAssetFileDescriptor with EXTRA_SIZE. A video's is Windows' picture of it (the
+     * test's stand-in for the shell's, mg_java_tests.c: green, 48 x 36), its Movies being one of the phone's folders, turned
+     * upright by the video's own quarter turn; one in DCIM, which is none of them here, has none: IOException.
      */
     boolean thumbnails() throws Exception {
         Bitmap t = cr.loadThumbnail(portrait, new Size(20, 20), null);
@@ -483,15 +485,20 @@ final class MediaSteps {
         opts.putParcelable(ContentResolver.EXTRA_SIZE, new android.graphics.Point(64, 64));
         long sized;
         try (android.content.res.AssetFileDescriptor afd = cr.openTypedAssetFileDescriptor(portrait, "image/*", opts)) { sized = read(afd.createInputStream()).length; }
-        String video = "a thumbnail";
-        try { cr.loadThumbnail(clip, new Size(64, 64), null); } catch (IOException e) { video = "IOException"; }
+        Bitmap v = cr.loadThumbnail(clip, new Size(64, 64), null);
+        boolean videoOk = v != null && v.getWidth() == 36 && v.getHeight() == 48 && v.getPixel(18, 24) == 0xFF00FF00;
+        Uri elsewhere = save(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, "megler-clip-dcim.mp4", "video/mp4", "DCIM/Megler Test",
+                mp4(320, 240, 2500, utc(2022, 3, 4, 5, 6, 7)));
+        String video = (v == null ? "null" : v.getWidth() + "x" + v.getHeight() + "/" + Integer.toHexString(v.getPixel(v.getWidth() / 2, v.getHeight() / 2))) + ", elsewhere a thumbnail";
+        try { cr.loadThumbnail(elsewhere, new Size(64, 64), null); } catch (IOException e) { video = video.replace("a thumbnail", "IOException"); }
+        cr.delete(elsewhere, null, null);
         Bitmap square = android.media.ThumbnailUtils.extractThumbnail(Bitmap.createBitmap(40, 30, Bitmap.Config.ARGB_8888), 10, 10);
         detail = (t == null ? null : t.getWidth() + "x" + t.getHeight()) + " mini " + (mini == null ? null : mini.getWidth() + "x" + mini.getHeight())
                 + " path " + path + " micro " + (micro == null ? null : micro.getWidth() + "x" + micro.getHeight()) + " sized " + sized + " video " + video
                 + " square " + (square == null ? null : square.getWidth() + "x" + square.getHeight());
         return upright && mini != null && mini.getWidth() == 30 && mini.getHeight() == 40 && path != null && new File(path).length() > 0
                 && path.startsWith(ctx.getCacheDir().getPath() + "/megler-media/") && micro != null && micro.getWidth() == 96 && micro.getHeight() == 96
-                && sized > 0 && video.equals("IOException") && square != null && square.getWidth() == 10 && square.getHeight() == 10;
+                && sized > 0 && videoOk && video.endsWith("IOException") && square != null && square.getWidth() == 10 && square.getHeight() == 10;
     }
 
     /**

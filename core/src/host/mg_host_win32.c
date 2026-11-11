@@ -2818,6 +2818,54 @@ bool mg_path_set_writable(const char *path, bool writable, int *err)
     return ok != 0;
 }
 
+/* A time in nanoseconds since 1970 as a FILETIME (100 ns since 1601). */
+static FILETIME unix_ns_to_filetime(i64 ns)
+{
+    FILETIME ft;
+    i64 t = ns / 100 + 116444736000000000ll;
+    if (t < 0) t = 0;
+    ft.dwLowDateTime = (DWORD)(u64)t;
+    ft.dwHighDateTime = (DWORD)((u64)t >> 32);
+    return ft;
+}
+
+bool mg_path_set_times(const char *path, i64 atime_ns, i64 mtime_ns, int *err)
+{
+    FILETIME a, m;
+    HANDLE h;
+    BOOL ok;
+    if (mg_path_is_foreign(path)) {
+        /* (A handle to write the file through, which the owner's write access includes writing its times with.) */
+        h = foreign_handle(path, MG_O_WRITE, MG_FOREIGN_FILE, err);
+        if (!h) {
+            if (err && *err == MG_E_ISDIR) {
+                *err = 0;
+                return true;
+            }
+            return false;
+        }
+    } else {
+        /* (CreateFile2, as every open here: an app container has no CreateFileW. A folder opens with backup semantics.) */
+        CREATEFILE2_EXTENDED_PARAMETERS params;
+        wchar_t *w = wide_path(path);
+        memset(&params, 0, sizeof(params));
+        params.dwSize = sizeof(params);
+        params.dwFileFlags = FILE_FLAG_BACKUP_SEMANTICS;
+        h = CreateFile2(w, FILE_WRITE_ATTRIBUTES, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, OPEN_EXISTING, &params);
+        free(w);
+        if (h == INVALID_HANDLE_VALUE) {
+            SET_ERR();
+            return false;
+        }
+    }
+    a = unix_ns_to_filetime(atime_ns);
+    m = unix_ns_to_filetime(mtime_ns);
+    ok = SetFileTime(h, NULL, atime_ns == MG_TIME_KEEP ? NULL : &a, mtime_ns == MG_TIME_KEEP ? NULL : &m);
+    if (!ok) SET_ERR();
+    CloseHandle(h);
+    return ok != 0;
+}
+
 bool mg_path_stat(const char *path, mg_stat *st, int *err)
 {
     wchar_t *w;

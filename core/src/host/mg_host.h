@@ -524,6 +524,13 @@ MG_HOSTAPI bool mg_path_rename(const char *from, const char *to, int *err);
  * mg_path_remove and mg_path_rename, as POSIX's unlink and rename look at the folder, not at the file.
  */
 MG_HOSTAPI bool mg_path_set_writable(const char *path, bool writable, int *err);
+/*
+ * A file's times set, as utimensat sets them: its last access and its last change, in nanoseconds since 1970, each left
+ * as it is where it is MG_TIME_KEEP. A folder's too, but a folder of a foreign root's (one of the phone's own), which is
+ * left as it is (true): its owner hands out handles to write a file's times through, not a folder's.
+ */
+#define MG_TIME_KEEP INT64_MIN
+MG_HOSTAPI bool mg_path_set_times(const char *path, i64 atime_ns, i64 mtime_ns, int *err);
 /* Calls cb for every entry but . and ..; false with *err set when the directory cannot be listed. */
 typedef void (MG_HOSTCB *mg_dir_cb)(const char *name, bool is_dir, void *user);
 MG_HOSTAPI bool mg_path_list(const char *path, mg_dir_cb cb, void *user, int *err);

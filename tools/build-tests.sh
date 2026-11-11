@@ -675,9 +675,14 @@ PY
       "$OUT/mg_tests.exe" --angle-windows "$(w "$ANGLE_X64")" "$(w "$OUT/scratch-angle")" 9_3 || STATUS=1
     fi
     # The shell's storage host: the storage's tests once more, with Windows.Storage's own objects handing the handles over
-    # instead of the stand-in, on folders under a scratch folder of its own.
+    # instead of the stand-in, on folders under a scratch folder of its own. And Windows' pictures of files there: of a PNG,
+    # and of a second of video where ffmpeg is here to make one (MG_TEST_CLIP; without it the video's is left out, and said).
     rm -rf "$OUT/scratch-storage"
-    "$OUT/mg_tests.exe" --storage-windows "$(w "$OUT/scratch-storage")" || STATUS=1
+    CLIP=()
+    if command -v ffmpeg > /dev/null 2>&1 && ffmpeg -loglevel error -y -f lavfi -i "color=c=red:size=160x120:rate=10" -t 1 -pix_fmt yuv420p "$(w "$OUT/clip.mp4")" < /dev/null; then
+      CLIP=(env "MG_TEST_CLIP=$(w "$OUT/clip.mp4")")
+    fi
+    ${CLIP[@]+"${CLIP[@]}"} "$OUT/mg_tests.exe" --storage-windows "$(w "$OUT/scratch-storage")" || STATUS=1
     # The shell's start and its copies: files copied past the cache and mended, the log's last words written out at once,
     # the start's steps and watch, the plan of the copies of the package's Google APKs and their making after the start.
     rm -rf "$OUT/scratch-shell"

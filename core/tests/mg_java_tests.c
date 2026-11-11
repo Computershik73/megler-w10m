@@ -1187,6 +1187,159 @@ static MEGLER_CB bool system_pick(void *user, const megler_pick_request *r)
 }
 
 /*
+ * The phone's own folders for the data app (megler_storage_host): one link, /sdcard/Movies, a folder of the data folder's
+ * (phone-movies, kept from the first run to the second), handed over by the operating system's plain calls as the storage
+ * tests' stand-in does. And Windows' pictures of its files (thumbnail), answered a moment later on a thread of the stand-in's
+ * own as the shell answers: a PNG of 48 x 36, green -- as wide as a video's frame, which Windows was not seen to turn, so
+ * that the media provider turns it by the video's own quarter turn (the data app's step media-thumbnails). Each asked for is
+ * counted in g_pictures_asked.
+ */
+static char *g_movies_dir;
+static volatile i32 g_pictures_asked;
+
+static char *movies_path(int link, const char *rel)
+{
+    if (link != 0 || !g_movies_dir) return NULL;
+    return rel[0] ? mg_sprintf("%s/%s", g_movies_dir, rel) : mg_strdup(g_movies_dir);
+}
+
+static MEGLER_CB void *movies_open(void *user, int link, const char *rel, int flags, int kind, int *err)
+{
+    char *path = movies_path(link, rel);
+    void *h;
+    (void)user;
+    if (!path) {
+        *err = MEGLER_STORAGE_NOT_FOUND;
+        return NULL;
+    }
+    h = mg_host_open_handle(path, flags, kind, err);
+    free(path);
+    return h;
+}
+
+static MEGLER_CB bool movies_mkdir(void *user, int link, const char *rel, int *err)
+{
+    char *path = movies_path(link, rel);
+    bool ok = path && mg_path_mkdir(path, err);
+    (void)user;
+    if (!path) *err = MEGLER_STORAGE_NOT_FOUND;
+    free(path);
+    return ok;
+}
+
+static MEGLER_CB bool movies_remove(void *user, int link, const char *rel, bool dir, int *err)
+{
+    char *path = movies_path(link, rel);
+    bool ok = path && (dir ? mg_path_rmdir(path, err) : mg_path_remove(path, err));
+    (void)user;
+    if (!path) *err = MEGLER_STORAGE_NOT_FOUND;
+    free(path);
+    return ok;
+}
+
+static MEGLER_CB bool movies_rename(void *user, int from_link, const char *from, int to_link, const char *to, int *err)
+{
+    char *a = movies_path(from_link, from), *b = movies_path(to_link, to);
+    bool ok = a && b && mg_path_rename(a, b, err);
+    (void)user;
+    if (!a || !b) *err = MEGLER_STORAGE_NOT_FOUND;
+    free(a);
+    free(b);
+    return ok;
+}
+
+typedef struct movies_picture {
+    char *path;
+    megler_storage_thumbnail_done done;
+    void *core;
+} movies_picture;
+
+typedef struct picture_bytes {
+    u8 *data;
+    size_t len, cap;
+} picture_bytes;
+
+static MEGLER_CB bool picture_bytes_add(void *sink, const void *data, size_t size)
+{
+    picture_bytes *b = (picture_bytes *)sink;
+    if (b->len + size > b->cap) {
+        size_t cap = (b->len + size) * 2;
+        u8 *grown = (u8 *)realloc(b->data, cap);
+        if (!grown) return false;
+        b->data = grown;
+        b->cap = cap;
+    }
+    memcpy(b->data + b->len, data, size);
+    b->len += size;
+    return true;
+}
+
+static MG_HOSTCB void movies_picture_run(void *arg)
+{
+    movies_picture *p = (movies_picture *)arg;
+    mg_stat st;
+    mg_sleep_ns(30000000ull);
+    if (!mg_path_stat(p->path, &st, NULL) || st.is_dir) {
+        p->done(p->core, MEGLER_STORAGE_NOT_FOUND, NULL, 0);
+    } else {
+        u32 px[48 * 36];
+        picture_bytes png;
+        int i;
+        memset(&png, 0, sizeof(png));
+        for (i = 0; i < 48 * 36; i++) px[i] = 0xFF00FF00u;
+        if (mg_gfx_standin()->image_encode(NULL, px, 48, 36, 48 * 4, MEGLER_GFX_PNG, 100, picture_bytes_add, &png))
+            p->done(p->core, MEGLER_STORAGE_OK, png.data, png.len);
+        else
+            p->done(p->core, MEGLER_STORAGE_FAILED, NULL, 0);
+        free(png.data);
+    }
+    free(p->path);
+    free(p);
+}
+
+static MEGLER_CB bool movies_thumbnail(void *user, int link, const char *rel, int size, int mode, megler_storage_thumbnail_done done, void *core)
+{
+    char *path = movies_path(link, rel);
+    movies_picture *p;
+    mg_thread *t;
+    (void)user;
+    (void)size;
+    (void)mode;
+    if (!path) return false;
+    p = (movies_picture *)mg_alloc(sizeof(*p));
+    p->path = path;
+    p->done = done;
+    p->core = core;
+    mg_atomic_add(&g_pictures_asked, 1);
+    t = mg_thread_start(movies_picture_run, p, 0, "test-picture");
+    if (!t) {
+        free(p->path);
+        free(p);
+        return false;
+    }
+    mg_thread_detach(t);
+    return true;
+}
+
+static megler_storage_host data_storage(void)
+{
+    static const megler_storage_link movies[] = { { "Movies", true } };
+    megler_storage_host h;
+    memset(&h, 0, sizeof(h));
+    free(g_movies_dir);
+    g_movies_dir = mg_sprintf("%s/phone-movies", megler_data_dir());
+    mg_path_mkdirs(g_movies_dir);
+    h.links = movies;
+    h.link_count = 1;
+    h.open = movies_open;
+    h.make_folder = movies_mkdir;
+    h.remove = movies_remove;
+    h.rename = movies_rename;
+    h.thumbnail = movies_thumbnail;
+    return h;
+}
+
+/*
  * The phone's check of its user (megler_biometric_host), for the data app's step biometric: ready; it verifies the user
  * when its message has "Sign in" in it, else the user says no. What it was asked is said in g_bio_heard, the message's
  * lines joined by '|'.
@@ -1468,6 +1621,8 @@ static bool start(const char *apk, const char *android_root)
     cfg.microphone.start = mic_start;
     cfg.microphone.stop = mic_stop;
     g_mic_heard[0] = 0;
+    /* And the phone's own Movies, with Windows' pictures of what is in it: the data app's media steps. */
+    if (g_data_app) cfg.storage = data_storage();
     /* And a phone that checks its user (bio_verify): the data app's step biometric. */
     cfg.biometric.available = bio_available;
     cfg.biometric.verify = bio_verify;
@@ -3417,7 +3572,7 @@ static int run_data(void)
                                             makes one. And a proxy of an interface of 600 methods. And sound from Java: an
                                             AudioTrack written to, a MediaPlayer of a WAV and of an Ogg Vorbis asset, a SoundPool. */
                                          "xml", "asset-fd", "tasks", "wrapper-receiver", "viewgroup-flag", "text-drawables", "pfd-dup", "pfd-parcel",
-                                         "theme-selfref", "queue-next", "storage-stats", "broadcast-explicit", "service-stop-thread", "start-ids", "process-scope", "job-scheduler", "downloads", "rollback-service", "art-manager", "progress-subclass", "telephony", "microphone", "biometric", "ordered-broadcast", "hardware-accelerated", "descendant-invalidated", "image-matrix-before-layout", "delegate-last-scope", "asset-manager-manifest", "big-asset", "file-available", "path-iterator", "mutable-context", "exec", "crc32c", "nine-patch-constructors", "subscription-ids", "filter-categories", "intent-categories", "broadcast-identity", "arrays-ranges", "collection-factories", "unmodifiable-collectors", "thread-stack", "icu-number", "audio-route", "expand-template", "list-fragment", "fragment-saved-state", "stub-said", "handler-thread", "managed-dialog", "input-format", "dialog-of-stopped", "zip-path-validator", "list-row-click", "animation-listener", "circular-reveal", "animator-values", "detached-animator", "animator-listener", "animator-not-animation", "observer-merged", "typeface-descriptor", "device-provisioned", "users", "start-asked", "pending-intent-creator", "pending-intent-flags", "pending-intent-options", "alarm-replace-cancel", "alarm-listeners", "wake-lock", "cell-info-update", "messenger-forwarded", "insets-builder", "insets-consumed", "insets-siblings", "broadcast-handler", "prefs-spaced-key", "account-removed", "sync", "package-installer", "batch-operations", "wifi", "media-metadata", "playback-state", "remote-user-info", "media-key-controller", "container-state", "context-params", "theme-accent", "phone-apps", "phone-apps-activities", "phone-apps-signatures", "check-signatures", "install-intent", "install-session", "install-splits", "bitmap-bytes", "bitmap-reuse", "file-read-only", "component-state", "adaptive-icon", "idle-handler", "uri-builder", "html-tag-handler", "stats-manager", "credential-manager", "many-interfaces", "proxy-many-methods", "apk-path", "maps-paths", "apk-optimization",
+                                         "theme-selfref", "queue-next", "storage-stats", "broadcast-explicit", "service-stop-thread", "start-ids", "process-scope", "job-scheduler", "downloads", "rollback-service", "art-manager", "progress-subclass", "telephony", "microphone", "biometric", "ordered-broadcast", "hardware-accelerated", "descendant-invalidated", "image-matrix-before-layout", "delegate-last-scope", "asset-manager-manifest", "big-asset", "file-available", "path-iterator", "mutable-context", "exec", "crc32c", "nine-patch-constructors", "subscription-ids", "filter-categories", "intent-categories", "broadcast-identity", "arrays-ranges", "collection-factories", "unmodifiable-collectors", "thread-stack", "icu-number", "audio-route", "expand-template", "list-fragment", "fragment-saved-state", "stub-said", "handler-thread", "managed-dialog", "input-format", "dialog-of-stopped", "zip-path-validator", "list-row-click", "animation-listener", "circular-reveal", "animator-values", "detached-animator", "animator-listener", "animator-not-animation", "observer-merged", "typeface-descriptor", "device-provisioned", "users", "start-asked", "pending-intent-creator", "pending-intent-flags", "pending-intent-options", "alarm-replace-cancel", "alarm-listeners", "wake-lock", "cell-info-update", "messenger-forwarded", "insets-builder", "insets-consumed", "insets-siblings", "broadcast-handler", "prefs-spaced-key", "account-removed", "sync", "package-installer", "batch-operations", "wifi", "media-metadata", "playback-state", "remote-user-info", "media-key-controller", "container-state", "context-params", "theme-accent", "phone-apps", "phone-apps-activities", "phone-apps-signatures", "check-signatures", "install-intent", "install-session", "install-splits", "bitmap-bytes", "bitmap-reuse", "file-read-only", "file-times", "component-state", "adaptive-icon", "idle-handler", "uri-builder", "html-tag-handler", "stats-manager", "credential-manager", "many-interfaces", "proxy-many-methods", "apk-path", "maps-paths", "apk-optimization",
                                          /* And an <inset> whose insets are fractions of its bounds, WhatsApp's adaptive icon's 0.01% among them. */
                                          "inset-fraction",
                                          /* And a WorkSource through a Parcel and back, as a location request of Google Play services' carries one. */
@@ -3570,6 +3725,10 @@ static int run_data(void)
         int indexed = find_line("I/Megler: media: the shared storage indexed: ", 0);
         CHECK(indexed >= 0 && strstr(line_at(indexed), " files, ") && strstr(line_at(indexed), " folders listed, ") && strstr(line_at(indexed), " ms"));
         CHECK(find_line("I/Megler: media: the app saved Pictures/Megler Test/megler-portrait", 0) >= 0);
+        /* The video's thumbnail is Windows' picture of it, from the stand-in for the shell's (data_storage), turned upright by
+           the video's own quarter turn: 36 x 48. */
+        CHECK(g_pictures_asked > 0 && find_line("I/Megler: media: thumbnails from Windows' own pictures, the first of Movies/Megler Test/megler-clip", 0) >= 0);
+        CHECK(find_line(": 36x48 in ", 0) >= 0);
     }
     /* The app's network security configuration, said in the log once as it was read (android.security.net.config.XmlConfigSource):
        the base configuration with Android's authorities alone (its debug-overrides not counted), and a <domain-config> inside

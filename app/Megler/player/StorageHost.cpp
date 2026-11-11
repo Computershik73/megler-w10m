@@ -59,6 +59,8 @@ constexpr HANDLE_ACCESS_OPTIONS toDeleteAsSeen = HANDLE_ACCESS_OPTIONS(HAO_READ 
 constexpr std::chrono::seconds keptFor{30};
 constexpr size_t keptAtMost = 256;
 constexpr int workersAtMost = 4;
+/// Windows' pictures made at once at most: each is a decode of Windows' own, a video's frame among them, and a phone has 1 GB.
+constexpr int thumbnailWorkersAtMost = 2;
 
 /// What megler.h calls an error of Windows': the broker's are Win32 errors as
 /// HRESULTs (0x80070002 for a file that is not there, on the phone tried).
@@ -112,6 +114,7 @@ void unknown(const char* doing, const std::wstring& path, HRESULT hr) {
 struct Counts {
     std::atomic<unsigned> files{0}, folders{0}, whichever{0}, made{0}, removed{0}, renamed{0};
     std::atomic<unsigned> lookedUp{0}, known{0};
+    std::atomic<unsigned> thumbnails{0}, noThumbnail{0}, iconOnly{0};
     // A way round a refusal: how often it was taken, and the code of the first refusal that led to it.
     struct Detour {
         std::atomic<unsigned> times{0};
@@ -594,6 +597,7 @@ megler_storage_host StorageHost::callbacks() {
     host.make_folder = &makeFolderThunk;
     host.remove = &removeThunk;
     host.rename = &renameThunk;
+    host.thumbnail = &thumbnailThunk;
     shellLog::write(format("storage: %d of the phone's folders are in Android's storage: %s", host.link_count, names.c_str()));
     return host;
 }
@@ -635,6 +639,9 @@ std::string StorageHost::summary() {
     };
     for (const auto& d : detours)
         if (d.detour.times.load()) text += format("; %s %u times, first with 0x%08X", d.what, d.detour.times.load(), d.detour.first.load());
+    if (c.thumbnails.load() || c.noThumbnail.load())
+        text += format("; %u pictures of files made by Windows, %u asked for and none had (%u of them only the icon of their type)", c.thumbnails.load(),
+                       c.noThumbnail.load(), c.iconOnly.load());
     return text;
 }
 
@@ -680,6 +687,37 @@ void StorageHost::workerLoop() {
         lock.lock();
         job->finished = true;
         done_.notify_all();
+    }
+}
+
+void StorageHost::later(std::function<void()> work) {
+    std::lock_guard<std::mutex> lock(thumbMutex_);
+    thumbQueue_.push_back(std::move(work));
+    if (int(thumbQueue_.size()) > thumbIdle_ && thumbWorkers_ < thumbnailWorkersAtMost) {
+        thumbWorkers_++;
+        std::thread([this] { thumbnailLoop(); }).detach();
+    }
+    thumbWake_.notify_one();
+}
+
+void StorageHost::thumbnailLoop() {
+    try {
+        winrt::init_apartment(winrt::apartment_type::multi_threaded);
+    } catch (...) {
+    }
+    std::unique_lock<std::mutex> lock(thumbMutex_);
+    for (;;) {
+        thumbIdle_++;
+        thumbWake_.wait(lock, [this] { return !thumbQueue_.empty(); });
+        thumbIdle_--;
+        std::function<void()> work = std::move(thumbQueue_.front());
+        thumbQueue_.pop_front();
+        lock.unlock();
+        try {
+            work();
+        } catch (...) {
+        }
+        lock.lock();
     }
 }
 
@@ -990,6 +1028,59 @@ bool StorageHost::renameOnWorker(const Roots& roots, int fromRoot, const std::ws
         forget(fromRoot);
         forget(toRoot);
     }
+    return true;
+}
+
+// MARK: Windows' own pictures of files
+
+/// A file's picture as Windows makes it for its own galleries (StorageFile.GetThumbnailAsync), out of its cache of them
+/// where it has one: the bytes of an image file (what the thumbnail's stream holds: a BMP or a JPEG), upright. Windows gives
+/// the icon of the file's type where it can make nothing better, which is no picture of the file: none, then.
+std::vector<uint8_t> StorageHost::thumbnailOnWorker(const Roots& roots, int root, const std::wstring& path, int size, int mode, int& error) {
+    using winrt::Windows::Storage::FileProperties::ThumbnailMode;
+    using winrt::Windows::Storage::FileProperties::ThumbnailOptions;
+    using winrt::Windows::Storage::FileProperties::ThumbnailType;
+    using winrt::Windows::Storage::Streams::Buffer;
+    using winrt::Windows::Storage::Streams::InputStreamOptions;
+    std::vector<uint8_t> bytes;
+    const StorageFolder parent = folderAt(roots, root, parentOf(path), error);
+    if (!parent) return bytes;
+    const IStorageItem item = parent.TryGetItemAsync(nameOf(path)).get();
+    if (!item || !item.IsOfType(StorageItemTypes::File)) {
+        error = item ? MEGLER_STORAGE_IS_A_FOLDER : MEGLER_STORAGE_NOT_FOUND;
+        return bytes;
+    }
+    const ThumbnailMode how = mode == MEGLER_THUMBNAIL_SQUARE     ? ThumbnailMode::ListView
+                              : mode == MEGLER_THUMBNAIL_PICTURES ? ThumbnailMode::PicturesView
+                              : mode == MEGLER_THUMBNAIL_VIDEOS   ? ThumbnailMode::VideosView
+                                                                  : ThumbnailMode::SingleItem;
+    // (ResizeThumbnail: about the size asked for, where Windows' cache has a larger one.)
+    const auto thumbnail = item.as<StorageFile>().GetThumbnailAsync(how, uint32_t(size > 0 ? size : 256), ThumbnailOptions::ResizeThumbnail).get();
+    if (!thumbnail || thumbnail.Type() != ThumbnailType::Image || !thumbnail.Size() || thumbnail.Size() > 64u * 1024 * 1024) {
+        if (thumbnail && thumbnail.Type() == ThumbnailType::Icon) gCounts.iconOnly++;
+        error = MEGLER_STORAGE_FAILED;
+        return bytes;
+    }
+    const uint32_t length = uint32_t(thumbnail.Size());
+    Buffer buffer(length);
+    const auto read = thumbnail.ReadAsync(buffer, length, InputStreamOptions::None).get();
+    bytes.assign(read.data(), read.data() + read.Length());
+    if (bytes.empty()) error = MEGLER_STORAGE_FAILED;
+    return bytes;
+}
+
+bool StorageHost::thumbnailThunk(void* user, int link, const char* path, int size, int mode, megler_storage_thumbnail_done done, void* core) {
+    StorageHost& self = *static_cast<StorageHost*>(user);
+    const std::shared_ptr<const Roots> roots = self.given();
+    if (!roots || link < 0 || size_t(link) >= roots->size() || !path || !*path || !done) return false;
+    const std::wstring wide = widen(path);
+    self.later([&self, roots, link, wide, size, mode, done, core] {
+        std::vector<uint8_t> bytes;
+        int why = MEGLER_STORAGE_FAILED;
+        guarded("a picture of", shown((*roots)[size_t(link)].link.name, wide), why, [&] { bytes = self.thumbnailOnWorker(*roots, link, wide, size, mode, why); });
+        (bytes.empty() ? gCounts.noThumbnail : gCounts.thumbnails)++;
+        done(core, bytes.empty() ? why : MEGLER_STORAGE_OK, bytes.empty() ? nullptr : bytes.data(), bytes.size());
+    });
     return true;
 }
 

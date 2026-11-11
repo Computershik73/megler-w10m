@@ -185,6 +185,49 @@ public final class MediaFiles {
         else if (h[4] == 'f' && h[5] == 't' && h[6] == 'y' && h[7] == 'p') heif(f, m);
     }
 
+    /**
+     * Windows' own picture of a file in one of the phone's folders (Native.storageThumbnail, the shell's
+     * megler_storage_host.thumbnail): decoded, no larger than `size` either way, upright; null where Windows has none, or the
+     * file is in none of those folders. The whole picture, its proportions kept (Windows' SingleItem): its views of a
+     * gallery and its list cut the picture to their own proportions, and Android's thumbnails are whole. Windows turns a
+     * photo by its EXIF orientation and a video by its track's matrix (Windows 11 was seen to); one it did not turn -- a
+     * picture as wide as the file's own frame (`width` x `height`) where the file is to be turned a quarter (`orientation`)
+     * -- is turned here.
+     */
+    public static android.graphics.Bitmap windowsThumbnail(File file, int size, int orientation, int width, int height) {
+        byte[] data;
+        try {
+            data = Native.storageThumbnail(file.getPath(), size, 0);
+        } catch (UnsatisfiedLinkError e) {
+            return null;
+        }
+        if (data == null || data.length == 0) return null;
+        android.graphics.BitmapFactory.Options o = new android.graphics.BitmapFactory.Options();
+        o.inJustDecodeBounds = true;
+        android.graphics.BitmapFactory.decodeByteArray(data, 0, data.length, o);
+        int sample = o.outWidth > 0 && o.outHeight > 0 && size > 0 ? Math.min(o.outWidth, o.outHeight) / size : 1;
+        o = new android.graphics.BitmapFactory.Options();
+        o.inSampleSize = sample > 1 ? Integer.highestOneBit(sample) : 1;
+        android.graphics.Bitmap b = android.graphics.BitmapFactory.decodeByteArray(data, 0, data.length, o);
+        if (b == null) return null;
+        if ((orientation == 90 || orientation == 270) && width > 0 && height > 0 && width != height && b.getWidth() != b.getHeight()
+                && (b.getWidth() > b.getHeight()) == (width > height)) {
+            android.graphics.Matrix turn = new android.graphics.Matrix();
+            turn.setRotate(orientation, b.getWidth() / 2f, b.getHeight() / 2f);
+            android.graphics.Bitmap upright = android.graphics.Bitmap.createBitmap(b, 0, 0, b.getWidth(), b.getHeight(), turn, true);
+            if (upright != b) b.recycle();
+            b = upright;
+        }
+        float scale = size > 0 ? Math.min(size / (float) b.getWidth(), size / (float) b.getHeight()) : 1;
+        if (scale < 1) {
+            android.graphics.Bitmap s = android.graphics.Bitmap.createScaledBitmap(b, Math.max(1, Math.round(b.getWidth() * scale)),
+                    Math.max(1, Math.round(b.getHeight() * scale)), true);
+            if (s != b) b.recycle();
+            b = s;
+        }
+        return b;
+    }
+
     // ------------------------------------------------------------------------------------------------- reading helpers
 
     private static byte[] bytes(RandomAccessFile f, long at, int n) throws IOException {

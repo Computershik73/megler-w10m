@@ -6,8 +6,10 @@
 //    of it). The size comes from the file's headers (megler.MediaFiles), not from a decode of its bounds, which reads the
 //    whole file here. The old form's kinds: MINI_KIND within 512 x 384, MICRO_KIND cropped to 96 x 96.
 //  - extractThumbnail: the bitmap scaled to cover the size and its middle cut out, as Android's does.
-//  - createVideoThumbnail and createAudioThumbnail: a frame or the embedded picture as MediaMetadataRetriever gives them,
-//    which is nothing here yet: null, or for the forms with a size an IOException, as Android's says it found none.
+//  - createVideoThumbnail: a frame as MediaMetadataRetriever gives it, which is nothing here yet, else Windows' own picture of
+//    the video where it is in one of the phone's folders (megler.MediaFiles.windowsThumbnail); createAudioThumbnail: the
+//    embedded picture as MediaMetadataRetriever gives it. Where there is none: null, or for the forms with a size an
+//    IOException, as Android's says it found none.
 //
 // Why. The media provider (megler.MediaProvider) makes its thumbnails here, as Android's does; and apps call these
 // themselves -- extractThumbnail to cut a square avatar or preview, which answered null and was drawn as nothing.
@@ -96,23 +98,29 @@ public class ThumbnailUtils {
     }
 
     public static Bitmap createVideoThumbnail(File file, Size size, android.os.CancellationSignal signal) throws IOException {
-        Bitmap b = frame(file);
-        if (b == null) throw new IOException("No frame of " + file + " to make a thumbnail of: Megler's MediaMetadataRetriever has none yet");
+        Bitmap b = frame(file, Math.max(size.getWidth(), size.getHeight()));
+        if (b == null) throw new IOException("No frame of " + file + " to make a thumbnail of: Windows has none, and MediaMetadataRetriever none here");
         return fit(b, size);
     }
     public static Bitmap createVideoThumbnail(String filePath, int kind) {
-        Bitmap b = frame(new File(filePath));
+        Size s = kindSize(kind);
+        Bitmap b = frame(new File(filePath), Math.max(s.getWidth(), s.getHeight()));
         if (b == null) return null;
         b = fit(b, kindSize(kind));
         return kind == 3 ? extractThumbnail(b, TARGET_SIZE_MICRO_THUMBNAIL, TARGET_SIZE_MICRO_THUMBNAIL, OPTIONS_RECYCLE_INPUT) : b;
     }
-    private static Bitmap frame(File file) {
+    /* A frame of the video: MediaMetadataRetriever's, or Windows' own picture of it where the file is in one of the phone's
+       folders (megler.MediaFiles.windowsThumbnail), its longer side `size` at most. */
+    private static Bitmap frame(File file, int size) {
         try (MediaMetadataRetriever r = new MediaMetadataRetriever()) {
             r.setDataSource(file.getPath());
-            return r.getFrameAtTime(-1);
+            Bitmap b = r.getFrameAtTime(-1);
+            if (b != null) return b;
         } catch (RuntimeException e) {
-            return null;
         }
+        String mime = megler.MediaFiles.mimeOf(file.getName());
+        megler.MediaFiles.Meta m = megler.MediaFiles.read(file, mime != null ? mime : "video/mp4", file.lastModified());
+        return megler.MediaFiles.windowsThumbnail(file, size, m.orientation, m.width, m.height);
     }
 
     public static Bitmap extractThumbnail(Bitmap source, int width, int height) { return extractThumbnail(source, width, height, 0); }

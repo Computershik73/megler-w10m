@@ -144,3 +144,10 @@
      * phone's own folders were two calls to Windows' broker each.
      */
     public static native String listFolder(String path);
+    /**
+     * Windows' own picture of a file in one of the phone's folders (megler_storage_host.thumbnail): the bytes of an image file
+     * (BMP, JPEG or PNG), upright as Windows sees the file, its longer side about `size`; null for a file in none of them, a
+     * shell that makes none, none to be had or none within eight seconds. `mode` is megler.h's MEGLER_THUMBNAIL_* (0 the
+     * whole picture, 1 cut square). The caller waits (core/src/drivers/mg_java.c); the shell answers on a thread of its own.
+     */
+    public static native byte[] storageThumbnail(String path, int size, int mode);

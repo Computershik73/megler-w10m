@@ -36,6 +36,10 @@
 // Looking a path up costs a call to the broker for every folder on the way,
 // so the folders found are kept for a while.
 //
+// And Windows' own pictures of the files there (thumbnail): asked for by the
+// layer without waiting, made on threads of their own -- a video's frame may
+// take Windows a moment -- and answered through the layer's callback.
+//
 // One StorageHost serves the process: shared().
 #pragma once
 
@@ -131,10 +135,14 @@ private:
     static bool makeFolderThunk(void* user, int link, const char* path, int* error);
     static bool removeThunk(void* user, int link, const char* path, bool folder, int* error);
     static bool renameThunk(void* user, int fromLink, const char* from, int toLink, const char* to, int* error);
+    static bool thumbnailThunk(void* user, int link, const char* path, int size, int mode, megler_storage_thumbnail_done done, void* core);
 
     /// Runs `work` on one of the worker threads and returns when it has run.
     void run(const std::function<void()>& work);
     void workerLoop();
+    /// Runs `work` on one of the thumbnails' threads, later; returns at once.
+    void later(std::function<void()> work);
+    void thumbnailLoop();
     void search();
     /// A folder as a link, asked whether it answers, with its line in the log.
     static Root found(const std::string& name, const std::string& what, winrt::Windows::Storage::StorageFolder const& folder, const std::string& token);
@@ -147,6 +155,7 @@ private:
     bool removeOnWorker(const Roots& roots, int root, const std::wstring& path, bool folder, int& error);
     bool renameOnWorker(const Roots& roots, int fromRoot, const std::wstring& from, int toRoot, const std::wstring& to, int& error);
     bool removeEmptyFolder(winrt::Windows::Storage::StorageFolder const& folder, int& error);
+    std::vector<uint8_t> thumbnailOnWorker(const Roots& roots, int root, const std::wstring& path, int size, int mode, int& error);
 
     winrt::Windows::Storage::StorageFolder cached(int root, const std::wstring& path);
     void keep(int root, const std::wstring& path, winrt::Windows::Storage::StorageFolder const& folder);
@@ -176,6 +185,12 @@ private:
     };
     std::mutex cacheMutex_;
     std::unordered_map<std::wstring, Kept> cache_;
+
+    // The thumbnails' threads and what they have to do.
+    std::mutex thumbMutex_; // thumbQueue_, thumbWorkers_, thumbIdle_
+    std::condition_variable thumbWake_;
+    std::deque<std::function<void()>> thumbQueue_;
+    int thumbWorkers_ = 0, thumbIdle_ = 0;
 };
 
 } // namespace megler::app

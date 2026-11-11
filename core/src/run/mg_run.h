@@ -56,6 +56,14 @@ char *mg_run_own_storage(const char *data_dir, const char *package);
  * The links and their names are copied. Not while an app runs.
  */
 void mg_run_storage(const char *data_dir, const megler_storage_host *storage);
+/*
+ * The shell's own picture of a file in one of its links (megler_storage_host.thumbnail), `host_path` the file's host path
+ * (mg_fs_host_path: a foreign one), `size` and `mode` as megler.h has them: asked for, and waited for up to `timeout_ms`.
+ * True with the picture's bytes (an image file's, malloc'd) in *data and *size; false with *status saying why not --
+ * MEGLER_STORAGE_INVALID for a path in no link or a shell that makes none, MEGLER_STORAGE_BUSY when the shell did not
+ * answer in time (its answer, when it comes, is dropped), or the shell's own answer. Any thread.
+ */
+bool mg_run_storage_thumbnail(const char *host_path, int size, int mode, unsigned timeout_ms, void **data, size_t *len, int *status);
 
 /*
  * The phone's battery, in the words of Android's ACTION_BATTERY_CHANGED. mg_battery_read is the one place the layer's

@@ -2511,9 +2511,7 @@ static gssize g_readlink(const char *path, char *buf, size_t n)
 
 static int g_ok_fd(int fd, int a) { (void)fd; (void)a; return 0; }
 static int g_chown(const char *path, int u, int g) { (void)path; (void)u; (void)g; return 0; }
-static int g_utime(const char *path, const void *times) { (void)path; (void)times; return 0; }
-/* (The times of a file are not set here, by any of the utime calls: an app is told they were.) */
-static int g_futimes(int fd, const void *times) { (void)fd; (void)times; return 0; }
+
 static int g_fail_link(const char *a, const char *b)
 {
     (void)a; (void)b;
@@ -2526,10 +2524,7 @@ static int g_fail_link(const char *a, const char *b)
  */
 static gssize g_readlinkat(int dirfd, const char *path, char *buf, size_t n) { (void)dirfd; return g_readlink(path, buf, n); }
 static int g_symlinkat(const char *target, int dirfd, const char *path) { (void)dirfd; return g_fail_link(target, path); }
-static int g_utimensat(int dirfd, const char *path, const void *times, int flags) { (void)dirfd; (void)flags; return g_utime(path, times); }
-static int g_futimens(int fd, const void *times) { return g_futimes(fd, times); }
-/* (And futimesat, which libcore's natives look up by name: Yandex Maps' log said it was not there.) */
-static int g_futimesat(int dirfd, const char *path, const void *times) { (void)dirfd; return g_utime(path, times); }
+
 static int g_umask(int mask) { (void)mask; return 022; }
 /* The checked forms a library built with _FORTIFY_SOURCE calls: the same, the buffer's size being the caller's business. */
 static int g_umask_chk(int mask) { return g_umask(mask); }
@@ -4175,6 +4170,159 @@ static int g_fchmodat(int dirfd, const char *path, unsigned mode, int flags)
     return g_chmod(path, mode);
 }
 
+/*
+ * The times of a file set, as utimensat, utimes, utime and the rest of their kind set them (mg_path_set_times): they were
+ * answered and nothing done, and an app was told they were -- java.io.File.setLastModified said true and lastModified()
+ * gave the old time, and a file copied with its time kept (a backup restored, a gallery's photo) had the time of the copy.
+ * The guest's times are its own longs (its time_t and long: 32 bits on 32-bit ARM and x86, 64 on 64-bit), each pair
+ * the last access first, then the last change; utimensat's UTIME_NOW and UTIME_OMIT, and none at all for both now. A
+ * folder of the phone's own is left as it is, and a file in a link to read only refused (EACCES), as its writing is.
+ */
+#define G_UTIME_NOW ((1l << 30) - 1l)
+#define G_UTIME_OMIT ((1l << 30) - 2l)
+
+static i64 guest_long(const void *p)
+{
+    i64 wide;
+    i32 narrow;
+    if (MG_GUEST_LP64) {
+        memcpy(&wide, p, 8);
+        return wide;
+    }
+    memcpy(&narrow, p, 4);
+    return narrow;
+}
+
+static int times_normal(const char *g, i64 a, i64 m)
+{
+    char *h;
+    int err = 0;
+    bool ok;
+    if (!strncmp(g, "/dev/", 5) || is_synthetic(g)) return 0;
+    h = host_of_normal(g);
+    if (!h) {
+        if (leads_to_mount(g)) return 0;
+        mg_set_errno(GE_NOENT);
+        return -1;
+    }
+    if (in_read_only(g)) {
+        ok = false;
+        err = MG_E_ACCESS;
+    } else {
+        ok = mg_path_set_times(h, a, m, &err);
+    }
+    if (ok && g_ino_watches) {
+        mg_stat st;
+        ino_path(g, G_IN_ATTRIB, 0, mg_path_stat(h, &st, NULL) && st.is_dir);
+    }
+    free(h);
+    if (!ok) {
+        mg_set_errno(mg_errno_of(err));
+        return -1;
+    }
+    return 0;
+}
+
+/* The times set of `path`, relative to the directory `dirfd` as openat takes it, or of `dirfd`'s own file where `path` is NULL. */
+static int set_times(int dirfd, const char *path, i64 a, i64 m)
+{
+    char *g;
+    int r;
+    if (!path) {
+        gobj *o = fd_get(dirfd);
+        r = -1;
+        if (!o) mg_set_errno(GE_BADF);
+        else if (!o->path) mg_set_errno(GE_INVAL);
+        else r = times_normal(o->path, a, m);
+        if (o) fd_put(o);
+        return r;
+    }
+    if (!*path) {
+        mg_set_errno(GE_NOENT);
+        return -1;
+    }
+    if (dirfd != -100 && path[0] != '/') {
+        gobj *d = fd_get(dirfd);
+        char *full;
+        if (!d || !d->path) {
+            if (d) fd_put(d);
+            mg_set_errno(GE_BADF);
+            return -1;
+        }
+        full = mg_sprintf("%s/%s", d->path, path);
+        fd_put(d);
+        g = normalize(full);
+        free(full);
+    } else {
+        g = normalize(path);
+    }
+    r = times_normal(g, a, m);
+    free(g);
+    return r;
+}
+
+/* A pair of timespecs (or of timevals, `micro`), the guest's, as nanoseconds: now for none, and UTIME_NOW and UTIME_OMIT. */
+static void guest_times(const void *times, bool micro, i64 *a, i64 *m)
+{
+    const u8 *p = (const u8 *)times;
+    size_t word = MG_GUEST_LP64 ? 8 : 4;
+    int i;
+    i64 *out[2] = { a, m };
+    for (i = 0; i < 2; i++) {
+        i64 sec, frac;
+        if (!p) {
+            *out[i] = (i64)mg_time_realtime_ns();
+            continue;
+        }
+        sec = guest_long(p + 2 * word * (size_t)i);
+        frac = guest_long(p + 2 * word * (size_t)i + word);
+        if (!micro && frac == G_UTIME_NOW) *out[i] = (i64)mg_time_realtime_ns();
+        else if (!micro && frac == G_UTIME_OMIT) *out[i] = MG_TIME_KEEP;
+        else *out[i] = sec * 1000000000ll + (micro ? frac * 1000ll : frac);
+    }
+}
+
+static int g_utimensat(int dirfd, const char *path, const void *times, int flags)
+{
+    i64 a, m;
+    (void)flags;
+    guest_times(times, false, &a, &m);
+    return set_times(dirfd, path, a, m);
+}
+static int g_futimens(int fd, const void *times) { return g_utimensat(fd, NULL, times, 0); }
+static int g_utimes(const char *path, const void *times)
+{
+    i64 a, m;
+    guest_times(times, true, &a, &m);
+    return set_times(-100, path, a, m);
+}
+static int g_futimes(int fd, const void *times)
+{
+    i64 a, m;
+    guest_times(times, true, &a, &m);
+    return set_times(fd, NULL, a, m);
+}
+/* (And futimesat, which libcore's natives look up by name: Yandex Maps' log said it was not there.) */
+static int g_futimesat(int dirfd, const char *path, const void *times)
+{
+    i64 a, m;
+    guest_times(times, true, &a, &m);
+    return set_times(path ? dirfd : -100, path, a, m);
+}
+/* utime: a struct utimbuf, two time_t of whole seconds. */
+static int g_utime(const char *path, const void *times)
+{
+    i64 a, m;
+    if (!times) {
+        a = m = (i64)mg_time_realtime_ns();
+    } else {
+        size_t word = MG_GUEST_LP64 ? 8 : 4;
+        a = guest_long(times) * 1000000000ll;
+        m = guest_long((const u8 *)times + word) * 1000000000ll;
+    }
+    return set_times(-100, path, a, m);
+}
+
 static int g_fchmod(int fd, int mode)
 {
     int r = 0;
@@ -4231,7 +4379,7 @@ const mg_sym mg_tab_io[] = {
     IO("remove", g_remove), IO("rename", g_rename), IO("renameat", g_renameat),
     IO("chdir", g_chdir), IO("getcwd", g_getcwd), IO("realpath", g_realpath), IO("readlink", g_readlink_said),
     IO("chmod", g_chmod), IO("fchmod", g_fchmod), IO("chown", g_chown), IO("lchown", g_chown), IO("utime", g_utime),
-    IO("utimes", g_utime), IO("lutimes", g_utime), IO("futimes", g_futimes), IO("link", g_fail_link), IO("symlink", g_fail_link),
+    IO("utimes", g_utimes), IO("lutimes", g_utimes), IO("futimes", g_futimes), IO("link", g_fail_link), IO("symlink", g_fail_link),
     IO("readlinkat", g_readlinkat_said), IO("symlinkat", g_symlinkat), IO("utimensat", g_utimensat), IO("futimens", g_futimens), IO("futimesat", g_futimesat),
     IO("umask", g_umask), IO("flock", g_flock),
     IO("fchown", g_ok_fd),

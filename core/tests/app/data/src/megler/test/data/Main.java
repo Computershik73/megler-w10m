@@ -1931,6 +1931,7 @@ public class Main extends Activity {
         installs();
         bitmapBytes();
         fileReadOnly();
+        fileTimes();
         componentState();
         adaptiveIcon();
         launcherLoading();
@@ -5351,6 +5352,32 @@ public class Main extends Activity {
             detail = "wasWritable=" + wasWritable + " made=" + made + " readOnly=" + readOnly + " refused=" + refused + " writable=" + writable
                     + " again=" + again + " deleted=" + deleted;
             return wasWritable && made && readOnly && refused && writable && again && deleted;
+        });
+    }
+
+    /**
+     * A file's time set through java.io.File (setLastModified: libcore's utimes, the core's utimensat and its kind), as a
+     * backup restored or a photo copied with its time kept sets it: it was answered true and nothing done. In the app's own
+     * files, in the shared storage's Download and in the phone's own Movies (a link here: the stand-in's, mg_java_tests.c),
+     * two times one after the other; a file that is not there refused.
+     */
+    private void fileTimes() {
+        step("file-times", () -> {
+            File own = new File(getFilesDir(), "times.txt"), shared = new File("/sdcard/Download/megler-times.txt"), movies = new File("/sdcard/Movies/megler-times.txt");
+            StringBuilder said = new StringBuilder();
+            boolean ok = true;
+            for (File f : new File[] { own, shared, movies }) {
+                try (java.io.FileOutputStream out = new java.io.FileOutputStream(f)) { out.write(new byte[] { 't' }); }
+                long when = 1500000000000L, early = 1000000000000L;
+                boolean set = f.setLastModified(when), now = f.lastModified() == when;
+                boolean setEarly = f.setLastModified(early), nowEarly = f.lastModified() == early;
+                said.append(f.getPath()).append(": ").append(set).append('/').append(f.lastModified()).append(' ');
+                ok &= set && now && setEarly && nowEarly;
+                f.delete();
+            }
+            boolean missing = !new File(getFilesDir(), "no-such-file.txt").setLastModified(1500000000000L);
+            detail = said + "missing refused " + missing;
+            return ok && missing;
         });
     }
 
