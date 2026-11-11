@@ -4,6 +4,7 @@
 
 #include "library/PhoneAppsList.h"
 #include "player/PermissionHost.h"
+#include "player/PickerHost.h"
 
 #include "shell/AppPackage.h"
 #include "shell/Files.h"
@@ -195,6 +196,7 @@ void attach(Hooks hooks) {
     std::lock_guard<std::mutex> lock(gMutex);
     gDispatcher = winrt::Windows::UI::Core::CoreWindow::GetForCurrentThread().Dispatcher();
     gHooks = std::move(hooks);
+    pickerHost::attach(gDispatcher);
 }
 
 megler_system_host callbacks() {
@@ -205,6 +207,7 @@ megler_system_host callbacks() {
     host.launch_app = &launchAppThunk;
     host.uninstall_app = &uninstallAppThunk;
     host.permission = &permissionHost::thunk;
+    host.pick = &pickerHost::thunk;
     return host;
 }
 
