@@ -481,7 +481,7 @@ This passes under qemu; the Instagram run on Windows still needs verification.
 | `errno` | Linux numbers, per thread | the guest's own; host errors are translated |
 | `struct stat`, `dirent`, `sigaction`, `tm` | bionic's layouts | filled in field by field |
 | `FILE` | `__sF[3]`, 84 bytes apart, fields old headers read inline | this layer's own, with that layout at its start |
-| `malloc`/`memalign`/`free` | one `free` for all | every block has a header saying where the host's block starts |
+| `malloc`/`memalign`/`free` | one `free` for all; jemalloc's per-thread caches | every block has a header saying where the host's block starts; a thread that allocates fast keeps the small blocks it frees (4 KB and less, 32 KB of them at most) in a cache of its own, given back when it ends, and counts what it allocates there: threads that allocate at once wait neither for one word all of them add to nor for the host heap's lock (`bionic/mg_libc_mem.c`, "each thread's cache"; flag `no-malloc-cache`: none) |
 | file descriptors | pipes, eventfd, epoll, sockets | this layer's own table; pipes and eventfds are implemented here, sockets are the host's behind it (see "The network") |
 | paths | `/data/data/<pkg>`, `/sdcard`, `/proc/cpuinfo` | a mount table onto folders under `LocalState` (see "Files and the shared storage"); the `/proc` and `/sys` files code reads are made up |
 | signals | delivered asynchronously | between the app's own threads they are: a thread in the middle of Android code is stopped, sent to the handler and put back (`SuspendThread`, `SetThreadContext`, the vectored handler); one that waits or sleeps in this layer is woken for it. Nothing comes from outside the process |

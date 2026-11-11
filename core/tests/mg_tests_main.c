@@ -26,6 +26,9 @@
  *   mg_tests --dvm-bench <dir> [<android root> [milliseconds]]
  *       how fast the interpreter is on this machine: a counting loop and calls on the built-in java.lang, or with an
  *       Android root the benchmark of mg_dvm_bench.c on its libcore, each item run for about that long (300 ms)
+ *   mg_tests --malloc-bench [milliseconds] [threads]
+ *       how many malloc-and-free pairs threads make together, the guest's malloc's and the host's own under it, at 1, 2, 4
+ *       and up to 8 threads (4 unless told), each for that long (500 ms)
  *   mg_tests --apk <file>...
  *       what the layer makes of real APKs: the report the shell shows, and the icon
  *   mg_tests --java <hello | demos | natives | crash | data | gc | gl | webview | screen> <apk> <data dir> <android root> [picture dir | -] [verbose] [WIDTHxHEIGHT@DPI]
@@ -1474,6 +1477,11 @@ int main(int argc, char **argv)
     if (argc >= 4 && !strcmp(argv[1], "--dvm-link")) return link_mode(argc, argv);
     if (argc >= 3 && !strcmp(argv[1], "--dvm-init")) return init_mode(argc, argv);
     if (argc >= 3 && !strcmp(argv[1], "--dvm-natives")) return natives_mode(argv);
+    if (argc >= 2 && !strcmp(argv[1], "--malloc-bench")) {
+        mg_core_init();
+        mg_tests_malloc_bench(argc >= 3 ? atoi(argv[2]) : 500, argc >= 4 ? atoi(argv[3]) : 4);
+        return 0;
+    }
     if (argc >= 3 && !strcmp(argv[1], "--dvm-bench")) {
         mg_core_init();
         mg_dvm_tests_bench(argv[2], argc >= 4 ? argv[3] : NULL, argc >= 5 ? atoi(argv[4]) : 300);

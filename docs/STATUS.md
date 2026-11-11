@@ -384,7 +384,10 @@ after every block malloc gives, looked at when it is freed and each second while
 it lives, and freed blocks kept poisoned before they are given back, 8192 of them:
 a block written past its end, written after it was freed or freed twice is said,
 with the code that asked for it and that freed it; Windows' own heap says only
-c0000374 later, at another block; `bionic/mg_libc_mem.c`). Without any flag, on Windows, a
+c0000374 later, at another block; `bionic/mg_libc_mem.c`); and `no-malloc-cache`
+(no thread keeps a cache of the small blocks it frees: malloc as it was before the
+caches, every block the host heap's at once, to tell what they do on a phone;
+`bionic/mg_libc_mem.c`). Without any flag, on Windows, a
 watchdog looks every two seconds at who holds the log's lock, the guest
 threads' lock and the mappings' lock: one held by the same thread for ten seconds is an app that stands
 still, whose core lines have stopped while the shell's go on (urent did, on the
