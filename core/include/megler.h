@@ -1573,8 +1573,57 @@ typedef struct megler_display_host {
  *                with `ask`, the user is asked where they have not answered, on a thread of the framework's that waits
  *                (megler.MicroG gives Google Play services' context an attribution tag only where it is _GRANTED).
  *                Left NULL: every group is granted, nothing asked.
+ *   pick         The phone's own picker of files, or its camera, for what an app asks of Android's: its documents UI and
+ *                gallery (ACTION_GET_CONTENT, ACTION_OPEN_DOCUMENT, ACTION_PICK of pictures, Android 13's photo picker
+ *                MediaStore.ACTION_PICK_IMAGES) and its camera app (MediaStore.ACTION_IMAGE_CAPTURE, ACTION_VIDEO_CAPTURE).
+ *                See megler_pick_request. It comes on the app's main thread and returns at once: true when the shell will
+ *                answer (megler_pick_done, once), false when it will not (a picker is up already, or there is none) -- the
+ *                app is then told the user backed out. Left NULL: every such request is answered so.
  */
 enum { MEGLER_PERMISSION_UNDECIDED = 0, MEGLER_PERMISSION_GRANTED = 1, MEGLER_PERMISSION_DENIED = 2, MEGLER_PERMISSION_DENIED_FIXED = 3 };
+
+/*
+ * A request for the phone's picker or camera (megler_system_host.pick), made by the framework (megler.Pickers):
+ *   id          its number, which the answer names.
+ *   kind        MEGLER_PICK_FILES: files the user picks (Windows' FileOpenPicker); MEGLER_PICK_PHOTO or MEGLER_PICK_VIDEO:
+ *               a photo or a video the user takes (Windows' CameraCaptureUI).
+ *   types       the MIME types the app takes, as its intent has them (its type, EXTRA_MIME_TYPES), each followed by '\n':
+ *               "application/pdf\n", "image/png\nvideo/mp4\n"; a kind of them whole is its name, a slash and a star
+ *               (every picture), and any file at all a star, a slash and a star -- or "".
+ *   multiple    whether several may be picked (EXTRA_ALLOW_MULTIPLE, MediaStore.EXTRA_PICK_IMAGES_MAX above 1); `max` the
+ *               most the app takes, 0 for no limit.
+ *   folder      a host folder of the app's data, made for this request and empty, where the shell puts what the user
+ *               picked or took: a copy of each file, under the name the user saw it by (made unique within the folder).
+ *               Copies, because the app reads the file after the picker has gone -- at once, or the next day from a
+ *               link it kept -- from any of its threads, and the access Windows' broker lends to a picked file is the
+ *               shell's, through the StorageFile it handed over, and to nobody's path.
+ *   duration_s  a video's longest length in seconds (EXTRA_DURATION_LIMIT), 0 for none; `quality` its quality
+ *               (EXTRA_VIDEO_QUALITY: 0 low, 1 high), -1 where the app said none.
+ *   start       where the picker opens (MEGLER_PICK_START_*): the pictures, videos or music library, for an app that
+ *               takes those, else the documents.
+ * The strings are the call's alone: the shell copies what it keeps before it returns.
+ */
+enum { MEGLER_PICK_FILES = 0, MEGLER_PICK_PHOTO = 1, MEGLER_PICK_VIDEO = 2 };
+enum { MEGLER_PICK_START_DOCUMENTS = 0, MEGLER_PICK_START_PICTURES = 1, MEGLER_PICK_START_VIDEOS = 2, MEGLER_PICK_START_MUSIC = 3 };
+typedef struct megler_pick_request {
+    unsigned id;
+    int kind;
+    const char *types;
+    bool multiple;
+    int max;
+    const char *folder;
+    int duration_s, quality;
+    int start;
+} megler_pick_request;
+/*
+ * The answer to a request (megler_system_host.pick), from any thread, once: MEGLER_PICK_OK with the names of the `count`
+ * files the shell put in the request's folder, in the order picked (UTF-8, names alone); MEGLER_PICK_CANCELED when the
+ * user backed out; MEGLER_PICK_FAILED when Windows could not show the picker or the camera, or the copy failed (the shell's
+ * log says why). It reaches the app's main thread, which gives it to the activity that asked once the app is in front
+ * again (onActivityResult, as Android gives the result of another app's activity). With no Java app running it is dropped.
+ */
+enum { MEGLER_PICK_OK = 0, MEGLER_PICK_CANCELED = 1, MEGLER_PICK_FAILED = 2 };
+MEGLER_API void megler_pick_done(unsigned id, int status, int count, const char *const *names);
 
 typedef struct megler_system_host {
     void *user;
@@ -1584,6 +1633,7 @@ typedef struct megler_system_host {
     bool (MEGLER_CB *launch_app)(void *user, const char *package, const char *activity);
     bool (MEGLER_CB *uninstall_app)(void *user, const char *package);
     int (MEGLER_CB *permission)(void *user, const char *group, bool ask);
+    bool (MEGLER_CB *pick)(void *user, const megler_pick_request *request);
 } megler_system_host;
 
 /*
