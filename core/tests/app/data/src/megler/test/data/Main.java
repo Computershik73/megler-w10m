@@ -2007,6 +2007,7 @@ public class Main extends Activity {
         visibilityScrap();
         addViewParams();
         cleanupLayoutState();
+        calendarInstances();
         layerDrawableHidden();
         boringLayoutOneLine();
         backgroundOffMainThread();
@@ -6520,6 +6521,45 @@ public class Main extends Activity {
             int again = g.asked - before - added - heard;
             detail = "forced " + forced + " added " + added + " cleared " + cleared + " heard " + heard + " again " + again + " child asked " + child.isLayoutRequested();
             return forced && added == 1 && cleared && heard == 1 && again == 1 && child.isLayoutRequested();
+        });
+    }
+
+    /**
+     * The calendar's events of a time, asked as Android's CalendarContract.Instances.query asks: a cursor of the columns asked
+     * for with no rows, as a phone with no events answers (megler's ContentResolver for the calendar's authority), from the
+     * helper with a search and from Attendees', Reminders' and EventDays' too; and the addresses the helpers ask are
+     * Android's. The helpers were signatures alone and gave null: Citymapper, which may read the calendar, asks for the
+     * coming events on a worker thread at each start and reads the count of the cursor it is given -- a
+     * NullPointerException there ("FATAL EXCEPTION: DefaultDispatcher-worker").
+     */
+    private void calendarInstances() {
+        step("calendar-instances", () -> {
+            android.content.ContentResolver cr = getContentResolver();
+            String[] columns = { "calendar_id", "event_id", "title", "eventLocation", "allDay", "begin", "end", "calendar_access_level" };
+            long now = System.currentTimeMillis();
+            String said = "";
+            boolean held = true;
+            android.database.Cursor[] answers = {
+                android.provider.CalendarContract.Instances.query(cr, columns, now - 3600000L, now + 86400000L),
+                android.provider.CalendarContract.Instances.query(cr, columns, now - 3600000L, now + 86400000L, "station"),
+                android.provider.CalendarContract.Attendees.query(cr, 1, columns),
+                android.provider.CalendarContract.Reminders.query(cr, 1, columns),
+                android.provider.CalendarContract.EventDays.query(cr, 2461000, 7, columns),
+            };
+            for (android.database.Cursor c : answers) {
+                boolean empty = c != null && c.getCount() == 0 && !c.moveToFirst() && java.util.Arrays.equals(columns, c.getColumnNames());
+                said += (c == null ? "null" : c.getCount() + " of " + c.getColumnCount()) + " ";
+                held &= empty;
+                if (c != null) c.close();
+            }
+            boolean addresses = "content://com.android.calendar/instances/when".equals(String.valueOf(android.provider.CalendarContract.Instances.CONTENT_URI))
+                    && "content://com.android.calendar/instances/groupbyday".equals(String.valueOf(android.provider.CalendarContract.EventDays.CONTENT_URI))
+                    && "content://com.android.calendar/colors".equals(String.valueOf(android.provider.CalendarContract.Colors.CONTENT_URI))
+                    && "content://com.android.calendar/calendar_alerts".equals(String.valueOf(android.provider.CalendarContract.CalendarAlerts.CONTENT_URI))
+                    && "content://com.android.calendar/syncstate".equals(String.valueOf(android.provider.CalendarContract.SyncState.CONTENT_URI));
+            android.database.Cursor noDays = android.provider.CalendarContract.EventDays.query(cr, 2461000, 0, columns);
+            detail = "cursors " + said + "addresses " + addresses + " no days " + noDays;
+            return held && addresses && noDays == null;
         });
     }
 
