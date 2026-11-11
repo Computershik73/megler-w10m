@@ -2055,9 +2055,19 @@ static void wx_region_say(const u8 *p)
 
 static int g_mprotect(void *addr, size_t len, int prot)
 {
-    size_t size = MG_ALIGN_UP(len + ((mg_addr)addr & (MG_PAGE - 1)), MG_PAGE);
-    u8 *p = (u8 *)MG_ALIGN_DOWN((mg_addr)addr, (mg_addr)MG_PAGE);
+    size_t size = MG_ALIGN_UP(len, MG_PAGE);
+    u8 *p = (u8 *)addr;
     bool owned;
+    /*
+     * An address inside a page is refused, as Linux refuses it. Rounding it down protected a page the caller did not name:
+     * Gojek's protection library asks for a guard page at an address it has not aligned (a block's start plus its header and
+     * 4096), goes on when that is refused, and writes to the page before it -- which was the page this made no-access.
+     */
+    if ((mg_addr)addr & (MG_PAGE - 1)) {
+        mg_trace("mprotect(%p, %u, prot %d): not the start of a page, refused", addr, (unsigned)len, prot);
+        mg_set_errno(GE_INVAL);
+        return -1;
+    }
     mg_lock_acquire(&g_region_lock);
     owned = region_of(p) != NULL;
     mg_lock_release(&g_region_lock);

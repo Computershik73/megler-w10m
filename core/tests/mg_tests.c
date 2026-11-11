@@ -1717,6 +1717,20 @@ static void test_mmap_commit(void)
     c = mg_mem_committed(p, 64 * MB);
     CHECK(c == -1 || c == 0);
     CHECK(mprotect_(p + MB, MB, RW) == 0 && p[MB] == 0 && p[2 * MB - 1] == 0);
+    /* An address inside a page: EINVAL, and the page it is in keeps its access (Gojek's guard page at an unaligned address). */
+    {
+        typedef int *(*errno_fn)(void);
+        errno_fn errno_ = (errno_fn)mg_bionic_find("__errno");
+        CHECK(errno_ != NULL);
+        if (errno_) {
+            *errno_() = 0;
+            CHECK(mprotect_(p + MB + MG_PAGE + 25, MG_PAGE, NONE) == -1 && *errno_() == 22);
+            p[MB + MG_PAGE] = 5;
+            p[MB + 2 * MG_PAGE + 24] = 6;
+            CHECK(p[MB + MG_PAGE] == 5 && p[MB + 2 * MG_PAGE + 24] == 6);
+            CHECK(mprotect_(p + MB + MG_PAGE, MG_PAGE + 25, RW) == 0);
+        }
+    }
     CHECK(munmap_(p, 64 * MB) == 0);
     q = (u8 *)mmap_(NULL, MB, RW, PRIVATE | ANONYMOUS, -1, 0);
     CHECK(q && q != (u8 *)(mg_addr)-1);
