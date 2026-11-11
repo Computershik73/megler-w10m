@@ -1514,7 +1514,12 @@ shell, through `megler_storage_host` in `megler.h`: its links by name, each
 writable or not, and four functions. A link that is not writable is refused
 every change in `run/mg_run.c`, before the shell is asked, whichever part of
 the layer wanted it. A rename between a link and anything else is `EXDEV`, as
-between two file systems: the app copies and removes.
+between two file systems: the app copies and removes. A folder is also listed with each
+entry's size and times from the listing itself (`mg_path_list_stat`, the
+directory's own information: `FileIdBothDirectoryInfo` through its handle),
+where asking each entry by its path would be a call to the broker each: the
+media provider indexes the phone's folders so (docs/JAVA.md, "The media
+provider: MediaStore").
 
 The shell's side is `player/StorageHost.cpp`. Its links are the three
 libraries' folders to save to as `Music`, `Pictures` and `Movies`
