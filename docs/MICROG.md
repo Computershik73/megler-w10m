@@ -286,10 +286,47 @@ explains Google's decision. The missing attestation and other environment
 differences above are candidates, not an established root cause; the two
 software-attestation experiments do not prove that hardware attestation is
 the only remedy. No change has been demonstrated to obtain a device key or
-a Google Wi-Fi location fix. The detailed qemu trace used 26.41.31, not the
-phones' 26.43.30: that version still needs its own full-to-fast trace before
-assuming the same internal path. Play Integrity and SafetyNet were not
-validated by these runs.
+a Google Wi-Fi location fix. Play Integrity and SafetyNet were not validated
+by these runs.
+
+**Rechecked with 26.43.30, 2026-11-11.** A fresh qemu run on the current
+integration base, with versionCode 264330027 (190300-1006944126,
+armeabi-v7a), reproduces the same path. The APK was obtained from
+[APK Cafe](https://apk.cafe/download?file_id=3543596/google-play-services),
+SHA-256 `5e4c6fc21493dfa5113bbb7b5194a972649dfdc7e3e08e772393702d2033da8c`;
+Android's `apksigner verify --print-certs` verifies its signature and reports
+certificate SHA-256 `7ce83c1b71f3d572fed04c8d40c5cb10ff75e6d87d9df6fbd53f0468c2905053`.
+This is the same version and variant as the phone log, not an APK extracted
+from the phone. Its decompiled `byts.a` has the full-to-fast sequence above,
+and `byud.a` has the same signature and field-presence checks as `bvrp.a`.
+The fresh run downloads the same AA6305A5... VM, loads its native library,
+and returns 1960 bytes from `DroidGuard.ss`; `byuc.a` then returns 1 (the
+fast response's signature verifies), followed on that thread by
+`bywg.<init>(Ljava/lang/String;[B)V "byteCode" [B of 0`. Check-in succeeds.
+The result is also reproduced with 26.41.31 on fresh data (1939 bytes from
+the full VM, followed by `bvts` with the same missing field and empty extra).
+
+The same 26.43.30 APK was then hosted by a separate diagnostic app under
+qemu, through `MG_JAVA_GMS_APK`, with Google Services Framework beside it.
+The client binds the real DroidGuard service and invokes GMS's own
+`arcf` (`AppCertManager`) on a worker thread. The service connects, the full
+VM returns 1921 bytes, the fast response's signature verifies, and its
+missing `byteCode` throws as above. Check-in succeeds; the Android ID read
+by `brtb.d(context)`, which `arcf.b` uses, is nonzero. The device-key
+response is 1664 bytes starting with HTML, followed by `dmyc: Parsing
+Exception` and the missing device-key file, as on the phone. This reproduces
+the failure with GMS inside a client's process, not just as the main app.
+
+One further candidate was tested in that client on separate fresh data.
+Megler reports its fixed Google certificate (`f0fd6c5b...`) for GMS, whereas
+this APK's certificate is `7ce83c1b...`. Before binding, the probe replaced
+the hosted GMS `PackageInfo.signatures` and `signingInfo` with the APK's
+actual signer, read by `ApkSigner.fromSigningBlock`; the probe logs that the
+replacement was applied. The full VM then returned 1956 bytes, but the
+verified fast response still lacked `byteCode` and the device-key response
+was still 1664 bytes of HTML. Correcting those two fields alone did not fix
+the failure. The experiment is confined to the diagnostic client; no
+certificate substitution change is kept in the runtime.
 
 **Following it on a phone** (flags in `Pictures\Megler\diag\<package>\flags`):
 `trace-syscalls` (a library's calls by number with the path each names:
