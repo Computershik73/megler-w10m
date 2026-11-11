@@ -456,6 +456,27 @@ static void test_foreign_paths(const char *scratch)
         CHECK(!mg_map_open(&map, L0 "/nothing"));
     }
 
+    /*
+     * A file's times set (mg_path_set_times, as utimensat sets them): the last change to a time of the caller's, the last
+     * access left as it was, through the owner's handle; a folder of a root left as it is (true); a file not there refused.
+     * And a file of the host's own by its plain path.
+     */
+    {
+        mg_stat before, after;
+        char *own = mg_sprintf("%s/times.txt", scratch);
+        CHECK(mg_path_stat(L0 "/a.txt", &before, &err));
+        CHECK(mg_path_set_times(L0 "/a.txt", MG_TIME_KEEP, 1500000000ll * 1000000000ll, &err));
+        CHECK(mg_path_stat(L0 "/a.txt", &after, &err) && after.mtime_ns == 1500000000ll * 1000000000ll && after.size == before.size);
+        CHECK(mg_path_set_times(L0 "/a.txt", 1400000000ll * 1000000000ll, 1600000000ll * 1000000000ll + 500000000ll, &err));
+        CHECK(mg_path_stat(L0 "/a.txt", &after, &err) && after.mtime_ns == 1600000000ll * 1000000000ll + 500000000ll);
+        CHECK(!mg_path_set_times(L0 "/nothing", MG_TIME_KEEP, 1500000000ll * 1000000000ll, &err) && err == MG_E_NOENT);
+        CHECK(mg_path_set_times(L0, MG_TIME_KEEP, 1500000000ll * 1000000000ll, &err));
+        CHECK(mg_file_write_all(own, "own", 3));
+        CHECK(mg_path_set_times(own, MG_TIME_KEEP, 1234567890ll * 1000000000ll, &err) && mg_path_stat(own, &after, &err) && after.mtime_ns == 1234567890ll * 1000000000ll);
+        mg_path_remove(own, NULL);
+        free(own);
+    }
+
     /* Folders: made one at a time and all at once, listed through a handle, in the way of a file. */
     CHECK(mg_path_mkdir(L0 "/dir", &err));
     CHECK(!mg_path_mkdir(L0 "/dir", &err) && err == MG_E_EXIST);

@@ -1137,6 +1137,45 @@ bool mg_path_stat(const char *path, mg_stat *st, int *err)
     return true;
 }
 
+bool mg_path_set_times(const char *path, i64 atime_ns, i64 mtime_ns, int *err)
+{
+    struct timespec ts[2];
+    i64 t[2] = { atime_ns, mtime_ns };
+    int i, r;
+    for (i = 0; i < 2; i++) {
+        if (t[i] == MG_TIME_KEEP) {
+            ts[i].tv_sec = 0;
+            ts[i].tv_nsec = UTIME_OMIT;
+        } else {
+            ts[i].tv_sec = (time_t)(t[i] / 1000000000ll);
+            ts[i].tv_nsec = (long)(t[i] % 1000000000ll);
+            if (ts[i].tv_nsec < 0) {
+                ts[i].tv_nsec += 1000000000l;
+                ts[i].tv_sec--;
+            }
+        }
+    }
+    if (mg_path_is_foreign(path)) {
+        int fd = foreign_fd(path, MG_O_WRITE, MG_FOREIGN_FILE, err);
+        if (fd < 0) {
+            if (err && *err == MG_E_ISDIR) {
+                *err = 0;
+                return true;
+            }
+            return false;
+        }
+        r = futimens(fd, ts);
+        if (r != 0) SET_ERR();
+        close(fd);
+        return r == 0;
+    }
+    if (utimensat(AT_FDCWD, path, ts, 0) != 0) {
+        SET_ERR();
+        return false;
+    }
+    return true;
+}
+
 bool mg_path_mkdir(const char *path, int *err)
 {
     if (mg_path_is_foreign(path)) return mg_foreign_mkdir(path, err);
