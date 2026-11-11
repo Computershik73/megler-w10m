@@ -51,6 +51,9 @@ int pthread_mutex_lock(pthread_mutex_t *);
 int pthread_mutex_unlock(pthread_mutex_t *);
 int pthread_cond_wait(pthread_cond_t *, pthread_mutex_t *);
 int pthread_cond_broadcast(pthread_cond_t *);
+pthread_t pthread_self(void);
+int pthread_getattr_np(pthread_t, pthread_attr_t *);
+int pthread_attr_getstack(const pthread_attr_t *, void **, size_t *);
 int pipe(int[2]);
 ssize_t read(int, void *, size_t);
 ssize_t write(int, const void *, size_t);
@@ -166,6 +169,7 @@ struct t_native_state {
     int density, asset_length, package_ok, files_dir_ok, sdk_int, finished_drawing;
     char asset_text[32];
     int audio_ok, audio_callbacks;
+    int audio_stack_kb, audio_frame;
 };
 struct t_native_state t_native_state;
 
@@ -327,9 +331,38 @@ static void ask_java(void)
 static short g_pcm[3][2205];
 static int g_enqueued;
 
+/*
+ * A game's mixing function: 600 KB of buffers in its frame, the far end written first (Smash Hit's two, nested, take
+ * 128 KB each). The array's address is given to an empty asm, which keeps the array the frame's, whole.
+ */
+__attribute__((noinline)) static int mixing_frame(int seed)
+{
+    volatile unsigned char buf[600 * 1024];
+    __asm__ volatile("" : : "r"((const void *)buf) : "memory");
+    buf[0] = (unsigned char)seed;
+    buf[sizeof(buf) - 1] = (unsigned char)(seed + 1);
+    buf[300000] = 7;
+    return buf[0] + buf[sizeof(buf) - 1] + buf[300000];
+}
+
+/*
+ * The stack of the thread the callbacks come on, as Android's has it: pthread's default megabyte. The frame is tried
+ * only where 700 KB lie below this function, so that a thread with less fails the test instead of ending it.
+ */
+static void audio_thread_stack(void)
+{
+    pthread_attr_t attr;
+    void *base = 0;
+    size_t size = 0;
+    if (pthread_getattr_np(pthread_self(), &attr) != 0 || pthread_attr_getstack(&attr, &base, &size) != 0) return;
+    t_native_state.audio_stack_kb = (int)(size >> 10);
+    if ((char *)&attr > (char *)base && (size_t)((char *)&attr - (char *)base) >= 700 * 1024) t_native_state.audio_frame = mixing_frame(10);
+}
+
 static void queue_callback(SLBufferQueueItf queue, void *context)
 {
     (void)context;
+    if (!t_native_state.audio_callbacks) audio_thread_stack();
     if (g_enqueued < 3) {
         (*queue)->Enqueue(queue, g_pcm[g_enqueued], sizeof(g_pcm[0]));
         g_enqueued++;

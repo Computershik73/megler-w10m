@@ -212,7 +212,15 @@ static void ensure_mixer(void)
         g_host_open = run->audio.open && run->audio.open(run->audio.user, MG_AUDIO_RATE);
         if (!g_host_open) mg_warn("audio: no output; the app's sound is consumed silently");
     }
-    if (!g_mixer) g_mixer = mg_thread_start(mixer_thread, NULL, 256 * 1024, "audio-mixer");
+    /*
+     * The apps' own code runs on this thread: OpenSL ES buffer queues' callbacks and AAudio's data callbacks, where a
+     * game mixes its sound. Android has them on a thread with pthread's default stack, a megabyte, and a game's frames
+     * there are what it likes: Smash Hit's QiAudio::fillBuffer and QiAudioChannel::fillBuffer take 128 KB each, the
+     * second inside the first once a channel plays. On the 256 KB this thread had, the second's first store was below
+     * the stack -- a fault Windows has no stack to dispatch, so the process ended with nothing said, when the game's
+     * first channel played (0.1.0.690: closed after the splash screen).
+     */
+    if (!g_mixer) g_mixer = mg_thread_start(mixer_thread, NULL, ((size_t)1 << 20) + MG_STACK_FAULT_ROOM, "audio-mixer");
     mg_lock_release(&g_lock);
 }
 

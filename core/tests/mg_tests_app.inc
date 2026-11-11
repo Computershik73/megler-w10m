@@ -111,6 +111,7 @@ struct t_native_state {
     int density, asset_length, package_ok, files_dir_ok, sdk_int, finished_drawing;
     char asset_text[32];
     int audio_ok, audio_callbacks;
+    int audio_stack_kb, audio_frame;
 };
 
 /* The shell's audio output, standing in: what was handed over, counted. */
@@ -247,6 +248,14 @@ static void test_app(const char *libdir)
     CHECK_INT(G_AUDIO.rate, 44100);
     CHECK(G_AUDIO.loud >= 13200 && G_AUDIO.loud <= 13260);
     CHECK(G_AUDIO.peak >= 8188 && G_AUDIO.peak <= 8192 && G_AUDIO.mismatched == 0);
+    /*
+     * The callbacks' thread has the stack Android's audio callback thread has, pthread's default megabyte, and a frame
+     * of 600 KB written far end first runs on it (10 + 11 + 7). A game mixes its sound there: Smash Hit with two
+     * nested frames of 128 KB.
+     */
+    say("  the audio callbacks' thread: a stack of %d KB, the frame %d", s->audio_stack_kb, s->audio_frame);
+    CHECK(s->audio_stack_kb >= 1000);
+    CHECK_INT(s->audio_frame, 28);
 
     /* Touch, with a second finger; the event's floats go back to the guest as bits. */
     megler_touch(0, 7, 100.5f, 50.25f);

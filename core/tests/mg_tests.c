@@ -45,6 +45,7 @@
 #include "../src/jni/mg_jni_loop.h"
 #include "../src/ld/mg_ld.h"
 #include "../src/ndk/mg_egl.h"
+#include "../src/ndk/mg_audio.h"
 #include "../src/ndk/mg_media.h"
 #include "../src/sqlite/mg_sqlite.h"
 #if defined(MG_HAVE_SQLITE) && MG_HAVE_SQLITE
@@ -4639,6 +4640,62 @@ static void test_battery(void)
     }
 }
 
+/*
+ * The thread an app's sound callbacks come on (ndk/mg_audio.c's mixer: OpenSL ES buffer queues' callbacks, AAudio's data
+ * callbacks) has the stack Android's has, pthread's default megabyte. A game mixes its sound in the callback with what
+ * it likes in its frames -- Smash Hit two of 128 KB, one inside the other once a channel plays -- and on the 256 KB the
+ * thread had, the second's first store was below the stack: on the phone a fault Windows has no stack to dispatch, and
+ * the game closed after its splash screen with nothing said (0.1.0.690). Here a voice's buffer ends, and what its
+ * callback finds is the thread's stack as the host says it and, where 700 KB of it lie below, a frame of 600 KB written
+ * far end first. (A PC's Windows gives a thread the stack asked for; glibc may hand it a larger one an ended thread
+ * left.)
+ */
+static volatile i32 g_audio_cb_done;
+static size_t g_audio_cb_stack;
+static int g_audio_cb_frame;
+
+static MG_NOINLINE int audio_cb_frame(int seed)
+{
+    volatile unsigned char buf[600 * 1024];
+    buf[sizeof(buf) - 1] = (unsigned char)(seed + 1);
+    buf[0] = (unsigned char)seed;
+    buf[300000] = 7;
+    return buf[0] + buf[sizeof(buf) - 1] + buf[300000];
+}
+
+static void audio_cb(mg_voice *v, void *user)
+{
+    void *lo = NULL, *hi = NULL;
+    volatile int here = 0;
+    (void)v;
+    (void)user;
+    if (g_audio_cb_done) return;
+    mg_thread_stack_bounds(&lo, &hi);
+    g_audio_cb_stack = (size_t)((u8 *)hi - (u8 *)lo);
+    if (lo && (u8 *)&here > (u8 *)lo && (size_t)((u8 *)&here - (u8 *)lo) >= 700 * 1024) g_audio_cb_frame = audio_cb_frame(10 + here);
+    mg_atomic_xchg(&g_audio_cb_done, 1);
+}
+
+static void test_audio_callback_stack(void)
+{
+    static i16 pcm[2 * MG_AUDIO_CHUNK];
+    mg_voice *v = mg_voice_create(MG_AUDIO_RATE, 2, 16, false);
+    int waited;
+    say("the thread of an app's sound callbacks: a megabyte of stack, as Android's has");
+    CHECK(v != NULL);
+    if (!v) return;
+    mg_voice_set_done(v, audio_cb, NULL);
+    CHECK(mg_voice_enqueue(v, pcm, sizeof(pcm)));
+    mg_voice_set_playing(v, true);
+    /* (Ten seconds at most; the buffer is ten milliseconds.) */
+    for (waited = 0; waited < 1000 && !g_audio_cb_done; waited++) mg_sleep_ns(10000000ull);
+    CHECK(g_audio_cb_done == 1);
+    say("  a stack of %u KB, the frame %d", (unsigned)(g_audio_cb_stack >> 10), g_audio_cb_frame);
+    CHECK(g_audio_cb_stack >= ((size_t)1 << 20));
+    CHECK_INT(g_audio_cb_frame, 28);
+    mg_voice_destroy(v);
+}
+
 static void test_input(void)
 {
     enum { TAPS = 60000 };
@@ -6659,6 +6716,7 @@ int mg_tests_run(const char *libdir, const char *scratch, mg_test_sink sink, voi
     test_shm_views();
     test_free_stretches();
     test_input();
+    test_audio_callback_stack();
     {
         /* The stand-in for the shell's drawing under a Java app: it is what the Java driver's tests see pictures through. */
         int checks = 0;
