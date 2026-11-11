@@ -558,6 +558,42 @@ trace and shows no direct host-kernel opens of the three inspected paths
 does not demonstrate a generated-code or syscall-interception failure. It is
 not a full audit of all kernel calls or of the VM's environment checks.
 
+**Comparing the same signed APK on Android and Megler.** Later offline runs
+use the same signed diagnostic APK on both systems. The app verifies its
+73,066-byte program at runtime and both copies contain the same 293,088-byte
+ARM32 native library. Android returns about 33.9 KB and Megler about 2.2 KB.
+Turning off Megler's JIT or matching the reference's reported CPU capabilities
+and core count leaves Megler's result near 2.2 KB. Compressing the native entry
+in the VM APK forces the Android run to extract the library and still gives
+about 34 KB. These controls cover the tested JIT setting, CPU metadata and
+loading paths.
+
+The JNI trace also records whether a lookup succeeded and the caller's
+offset in the VM library. The first `ClassLoader.getParent` on Android is
+outside the VM. The common `getPackageInfo` and `generateKeyPair` lookups
+come from the same VM instruction, `0x3cff0`, on both systems. Both runs make
+two attested key-generation attempts and get a `ProviderException` each
+time. After the second error, Android looks up `ServiceManager.getService`
+from `0x3cd28`, gets a binder, calls `dump` and continues with more Java
+queries. Megler proceeds to package checks without that lookup. Android
+generates a non-attested key much later in the trace. The order does not
+establish that this is an immediate fallback from either attestation error.
+
+The early feature-query results agree in call order. The primary display's
+type and flags differ. In the isolated APK, setting the test screen to the
+reference's dimensions and supplying its type and flags still gives 2,229
+bytes in Megler. With the Megler type and flags supplied to the Android run
+the VM returns 33,899 bytes. The changes to those answers were confined to
+the diagnostic APK, which has no network permission.
+
+Android CPU samples and qemu instruction coverage also show that Android
+enters native routines at `0xd966` and `0xdaf8` that are absent from the
+Megler run. The sampling and coverage methods measure different things.
+Together with the JNI sequence they give points to investigate in the
+interpreter, but neither gives the reason for the branch or decodes the VM's
+result. The offline comparison uses a stand-in for GMS's RuntimeApi and does
+not test which result Google will accept.
+
 The temporary Android diagnostic package and the two VM-code transfer files
 are removed afterward. GMS caches, accounts and existing device keys are not
 edited. The remaining unresolved question is which collected signal or VM
