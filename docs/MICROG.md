@@ -410,6 +410,33 @@ runtime change from these experiments is retained. The server's reason for
 rejecting the request remains unknown; no device-key or Wi-Fi-positioning
 fix has been demonstrated.
 
+**Native field reads and the hosted package's permissions.** A temporary
+JNI field trace on 26.43.30 shows that the full VM asks for GmsCore's
+`PackageInfo` with `GET_PERMISSIONS`, then reads `requestedPermissions` as
+null. The service host parsed components but never those manifest tags;
+`GET_PERMISSIONS` could also take its basic version/signature-only path.
+
+The host now reads `uses-permission`, `uses-permission-sdk-23` and
+`uses-permission-sdk-m` outside the application, including declarations after
+it, deduplicates names, and respects `maxSdkVersion` as the client's manifest
+reader does. `GET_PERMISSIONS` asks for the complete manifest. Its granted
+bits agree with the hosted package context's existing permission policy.
+The gms-host/gms-own fixture checks this on a cold query: the hosted
+package's own three permissions, one duplicate, an expired declaration,
+and one declaration after the application. The new check fails against the
+old framework (59 checks, 1 failed) and passes with the change (59 checks,
+0 failed). A fresh, uninstrumented hosted GMS run with the changed framework
+still throws `bywg("byteCode", empty)` after the full VM returns 1888 bytes;
+its AppCertManager still fails to obtain a key.
+
+This corrects an observed answer to the VM, but is not a demonstrated
+DroidGuard fix. In separate client experiments, supplying all 401 applicable
+permissions from the exact GMS APK still gets the verified 30-byte fast
+response without bytecode; supplying both those permissions and the APK's
+actual signer gets the same response. Neither experiment obtains a device
+key. The native field instrumentation and certificate substitution are not
+retained in the runtime.
+
 **Following it on a phone** (flags in `Pictures\Megler\diag\<package>\flags`):
 `trace-syscalls` (a library's calls by number with the path each names:
 "/sys/fs/selinux/enforce" = -2 from `libdB21738DAE92C.so+0x2e18`, its own

@@ -118,11 +118,12 @@ public final class GooglePackages {
     }
     public static android.content.pm.PackageInfo packageInfo(String pkg) { return packageInfo(pkg, ~0); }
     /** As PackageManager.getPackageInfo(pkg, flags) gives it: Google Play services' read whole only where `flags` ask for its
-        components (megler.MicroG.packageInfoBasic). */
+        components or permissions (megler.MicroG.packageInfoBasic). */
     public static android.content.pm.PackageInfo packageInfo(String pkg, int flags) {
-        final int components = android.content.pm.PackageManager.GET_ACTIVITIES | android.content.pm.PackageManager.GET_RECEIVERS
-                             | android.content.pm.PackageManager.GET_SERVICES | android.content.pm.PackageManager.GET_PROVIDERS;
-        android.content.pm.PackageInfo microg = (flags & components) != 0 ? MicroG.packageInfo(pkg) : MicroG.packageInfoBasic(pkg);
+        final int fullManifest = android.content.pm.PackageManager.GET_ACTIVITIES | android.content.pm.PackageManager.GET_RECEIVERS
+                             | android.content.pm.PackageManager.GET_SERVICES | android.content.pm.PackageManager.GET_PROVIDERS
+                             | android.content.pm.PackageManager.GET_PERMISSIONS;
+        android.content.pm.PackageInfo microg = (flags & fullManifest) != 0 ? MicroG.packageInfo(pkg) : MicroG.packageInfoBasic(pkg);
         if (microg != null) return microg;
         android.content.pm.PackageInfo gsf = Gsf.packageInfo(pkg);
         if (gsf != null) return gsf;

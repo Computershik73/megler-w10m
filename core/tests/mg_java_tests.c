@@ -4693,6 +4693,7 @@ static int run_gms_host(void)
 {
     const bool deny = g_script_count && !strcmp(g_script[0], "deny");
     CHECK(wait_line("I/GmsOwnTest: main process true application=megler.test.gmshost current=megler.test.gmshost", 0, 600) >= 0);
+    CHECK(find_line("I/GmsHostTest: package permissions true", 0) >= 0);
     CHECK(find_line("I/MicroG: Google Play services' application runs in this process, megler.test.gmshost, as its main one", 0) >= 0);
     CHECK(find_line("I/GmsHostTest: started ComponentInfo{com.google.android.gms/megler.test.gmsown.Probe}", 0) >= 0);
     CHECK(wait_line("I/GmsOwnTest: attribution tag plain=null asked=false first=null asked=true", 0, 120) >= 0);
