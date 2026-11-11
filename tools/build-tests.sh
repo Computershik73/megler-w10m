@@ -589,7 +589,8 @@ elif [ "$MODE" = win ]; then
     [ -f "$OUT/mg-dl-$src.dll" ] || { echo "mg-dl-$src.dll was not made" >&2; exit 1; }
   done
   # The shell's start and its copies (shell/Files.cpp, ShellLog.cpp, Startup.cpp, BundledApks.cpp and Strings.cpp), the
-  # package volume Megler installs onto (shell/Placement.cpp), the apps' APKs in the shared folder (shell/SharedApks.cpp), and
+  # package volume Megler installs onto (shell/Placement.cpp), the apps' APKs in the shared folder (shell/SharedApks.cpp),
+  # the phone's picker and camera for an app without a user (player/PickerHost.cpp: its filters, its flags, its copies), and
   # an app's permissions as the shell keeps and decides them (player/PermissionRules.cpp, shell/Settings.cpp), the very
   # files the phone's package is built from, in a program of their own with the tests that drive them
   # (core/tests/mg_shell_windows.cpp): mg_tests.exe stands in for the shell's files and log, as its storage, codec and camera
@@ -598,13 +599,13 @@ elif [ "$MODE" = win ]; then
   SHELL_SRC=("$(w "$ROOT/app/Megler/shell/Files.cpp")" "$(w "$ROOT/app/Megler/shell/Strings.cpp")" "$(w "$ROOT/app/Megler/shell/ShellLog.cpp")"
              "$(w "$ROOT/app/Megler/shell/Startup.cpp")" "$(w "$ROOT/app/Megler/shell/BundledApks.cpp")" "$(w "$ROOT/app/Megler/shell/Placement.cpp")"
              "$(w "$ROOT/app/Megler/shell/SharedApks.cpp")" "$(w "$ROOT/app/Megler/shell/Settings.cpp")" "$(w "$ROOT/app/Megler/player/PermissionRules.cpp")"
-             "$(w "$ROOT/core/tests/mg_shell_windows.cpp")")
+             "$(w "$ROOT/app/Megler/player/PickerHost.cpp")" "$(w "$ROOT/core/tests/mg_shell_windows.cpp")")
   mkdir -p "$OUT/shellobj"
   rm -f "$OUT/shellobj/"*.obj
   INCLUDE="$INCLUDE;$(w "$SDK/Include/$SDKV/winrt");$(w "$SDK/Include/$SDKV/cppwinrt")" \
     "$VC/bin/Hostx64/x64/cl.exe" "${GFX_FLAGS[@]}" /Zc:__cplusplus /bigobj /DWINAPI_FAMILY=WINAPI_FAMILY_APP /O1 "$MP" "/Fo$(w "$OUT/shellobj")\\" "${SHELL_SRC[@]}" \
     | grep -v -E '^[A-Za-z0-9_]+\.cpp$' || true
-  for obj in Files Strings ShellLog Startup BundledApks Placement SharedApks Settings PermissionRules mg_shell_windows; do
+  for obj in Files Strings ShellLog Startup BundledApks Placement SharedApks Settings PermissionRules PickerHost mg_shell_windows; do
     [ -f "$OUT/shellobj/$obj.obj" ] || { echo "compile failed: $obj.cpp" >&2; exit 1; }
   done
   "$VC/bin/Hostx64/x64/link.exe" /nologo "/OUT:$(w "$OUT/mg_shell_tests.exe")" "$(w "$OUT/shellobj")\\*.obj" bcrypt.lib ole32.lib oleaut32.lib onecore.lib
