@@ -28,6 +28,7 @@ import java.util.Locale;
  * Android's Geocoder, which their geocode provider answers, and starts an activity of theirs, which runs here, as Play Store
  * starts their account settings ("Manage your Google Account"), and one whose onCreate fails, which the app outlives.
  * And, at its start, reads assets through the NDK with their AssetManager and with its own (nativeAssets).
+ * And, first of all, asks their provider from a thread whose lock the main thread then waits for (askWhileMainWaits).
  */
 public class Main extends Activity {
     static { System.loadLibrary("gmshost"); }
@@ -66,6 +67,7 @@ public class Main extends Activity {
     @Override
     protected void onCreate(Bundle state) {
         super.onCreate(state);
+        askWhileMainWaits();
         TextView text = new TextView(this);
         text.setText("Starting a service of Google Play services' stand-in");
         setContentView(text);
@@ -86,6 +88,33 @@ public class Main extends Activity {
         Log.i("GmsHostTest", "location api bind " + bound);
         askUnderLock();
         nativeAssets();
+    }
+
+    /*
+     * Their provider asked, before their Application is attached, by a thread holding a lock that the main thread then waits to
+     * enter: as Citymapper's main thread, initializing Google Maps in its Application.onCreate, waited for DynamiteModule's lock
+     * while the thread that held it asked their Chimera provider. The thread is to be answered at once -- the main thread, which
+     * would attach their Application, stands until the thread lets the lock go -- not after the ten seconds it would wait.
+     */
+    private void askWhileMainWaits() {
+        final Object lock = new Object();
+        final java.util.concurrent.CountDownLatch held = new java.util.concurrent.CountDownLatch(1);
+        final boolean[] answered = new boolean[1];
+        new Thread(() -> {
+            synchronized (lock) {
+                held.countDown();
+                android.database.Cursor c = getContentResolver().query(android.net.Uri.parse("content://com.google.settings/partner"), null, "name=?",
+                                                                       new String[] { "main_waits" }, null);
+                answered[0] = c != null;
+                if (c != null) c.close();
+            }
+        }, "gms-host-main-waits").start();
+        try { held.await(); } catch (InterruptedException e) { }
+        final long began = android.os.SystemClock.uptimeMillis();
+        synchronized (lock) {
+            Log.i("GmsHostTest", "the main thread entered the asking thread's lock after " + (android.os.SystemClock.uptimeMillis() - began)
+                  + " ms, their provider answered " + answered[0]);
+        }
     }
 
     /*

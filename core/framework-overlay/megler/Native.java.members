@@ -43,6 +43,13 @@
      */
     public static native void mainStarted();
     /**
+     * Whether the app's main thread stands waiting to enter a monitor that this thread holds, or one whose holder waits to
+     * enter one of this thread's: it runs nothing until this thread lets its monitor go (core/src/drivers/mg_java.c, the
+     * runtime's mg_dvm_waits_for). For megler.MicroG, whose threads wait for the main thread to attach Google Play services'
+     * Application: such a main thread attaches nothing. False on the main thread.
+     */
+    public static native boolean mainWaitsForMe();
+    /**
      * The rectangle of the screen's bitmap that the next Gfx.present on this thread has changed, [left, right) x [top, bottom):
      * the rest is as it was in the picture presented before. Told to the shell where it can take it
      * (megler_window_host.present_pixels_part). Called by megler.ViewRoot.drawAll before it presents part of the screen.

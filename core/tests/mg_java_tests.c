@@ -4690,6 +4690,22 @@ static int run_gms_host(void)
         CHECK(find_line("I/GmsHostTest: provider asked under a lock true", 0) >= 0);
         say("  %s", at >= 0 ? line_at(at) : "a binding under the provider's lock: none");
     }
+    /*
+     * And their provider asked, before their Application is attached, by a thread holding a lock that the main thread then waits
+     * to enter (Main.askWhileMainWaits, the first thing the app does): the thread is answered at once and the main thread goes
+     * on, their Application attached after. The thread waited ten seconds for the main thread to attach it, which the main
+     * thread, waiting for the thread's lock, could not: Citymapper stood so at every start, Google Maps initialized in its
+     * Application.onCreate under DynamiteModule's lock while the thread that held it asked their Chimera provider (0.1.0.690).
+     */
+    {
+        int at = wait_line("I/GmsHostTest: the main thread entered the asking thread's lock after ", 0, 300);
+        const char *ms = at >= 0 ? strstr(line_at(at), " after ") : NULL;
+        CHECK(at >= 0 && ms && atol(ms + 7) < 5000 && strstr(ms, " ms, their provider answered true"));
+        CHECK(at >= 0 && find_line("I/GmsOwnTest: application attached", 0) > at);
+        CHECK(find_line("I/MicroG: Google Play services' provider is asked by a thread (gms-host-main-waits) holding a monitor that the main thread "
+                        "waits to enter: it answers before their Application is attached", 0) >= 0);
+        say("  %s", at >= 0 ? line_at(at) : "a provider asked while the main thread waits for the asking thread: nothing said");
+    }
     CHECK(wait_line("I/GmsOwnTest: settings network_location_opt_in=1", 0, 120) >= 0);
     CHECK(wait_line("I/MeglerLocation: Google Location Accuracy on: the user was asked, and said Allow -- Google Play services' network location may find "
                     "the phone from the Wi-Fi networks around it", 0, 60) >= 0);

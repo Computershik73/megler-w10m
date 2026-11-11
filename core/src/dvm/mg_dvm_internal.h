@@ -668,6 +668,10 @@ void mg_dvm_stacks_trace_start(void);
    to enter a monitor (mg_dvm_object.c); true when said. False when the wait is its looper's, for its next message: then
    `idle_on` is the queue it waits on. From the main thread's sampler (mg_java.c, hot_main), never from the main thread. */
 bool mg_dvm_stuck_say(mg_dvm_thread *main_thread, double seconds, const void **idle_on);
+/* Whether `waiter` stands waiting to enter a monitor that the thread `holder` (its id) holds, or one whose holder waits to
+   enter one of `holder`'s (four monitors on at most): it goes nowhere until `holder` lets its monitor go. Not for `waiter`
+   itself to ask, nor a thread it waits for but `holder` (they are stopped to be read). */
+bool mg_dvm_waits_for(mg_dvm_thread *waiter, u32 holder);
 /* A thread as a report names it: its java.lang.Thread's name in quotes (ASCII; another character a ?), or "thread N". */
 void mg_dvm_thread_label(const mg_dvm_thread *t, char *out, size_t n);
 void mg_dvm_call_trace_add(const char *prefix);
