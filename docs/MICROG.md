@@ -540,6 +540,30 @@ alone does not identify the failed signal or establish a server verdict for the
 offline run; it supplies a reproducible native-collection comparison independent
 of GMS version, VM architecture and network transport.
 
+**Validation after the attestation-cause fix (2026-11-12).** With all temporary
+native tracing and simulated answers removed, `tools/build-tests.sh arm` and
+`tools/build-tests.sh win` both finish with exit code 0 and zero failed checks.
+ARM's main runs report 8751 and 8910 checks; Windows reports 8210 and 8332.
+The data app passes all 277 steps on both runs, including the strengthened
+keystore assertion (445 and 460 runner checks). Both suites run serially under
+the shared heavy-build lock with `MEGLER_JOBS=4`. Local logs are
+`build/droidguard-keystore-arm.log`, `build/droidguard-keystore-win.log` and
+`build/droidguard-keystore-exit.txt`. These are compatibility-suite results;
+the real GMS reproductions above still fail DroidGuard and device-key issuance.
+
+A subsequent offline qemu `-strace` run with `trace-hooks`, on the same retained
+runtime, returns 2131 bytes and exits normally. It emits no guest hook-code
+trace and shows no direct host-kernel opens of the three inspected paths
+(`/dev/binder`, `/sys/fs/selinux/enforce`, `/proc/cpuinfo`). This limited check
+does not demonstrate a generated-code or syscall-interception failure. It is
+not a full audit of all kernel calls or of the VM's environment checks.
+
+The temporary Android diagnostic package and the two VM-code transfer files
+are removed afterward. GMS caches, accounts and existing device keys are not
+edited. The remaining unresolved question is which collected signal or VM
+execution difference makes the fast-refresh response omit bytecode; no retained
+change has yet made Google accept that flow in Megler.
+
 **Following it on a phone** (flags in `Pictures\Megler\diag\<package>\flags`):
 `trace-syscalls` (a library's calls by number with the path each names:
 "/sys/fs/selinux/enforce" = -2 from `libdB21738DAE92C.so+0x2e18`, its own
