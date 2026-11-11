@@ -225,10 +225,9 @@ same, and there it was followed through (`trace-calls-within-com.google.ccc.
 abuse.droidguard`, `trace-syscalls`, `trace-files-libdB`, `trace-calls-bvts`,
 `trace-calls-java.io.PipedOutputStream`):
 
-- nothing of Megler's fails: the machine's classes load, its library loads
-  and runs, `initNative` and `ssNative` return, every call it makes of Java
-  through JNI and of the system is answered, and its results are what
-  DroidGuard's results are, protocol buffers of 1 to 2 KB ("DroidGuard.ss
+- no class-loading or native execution failure was observed on this path:
+  the machine's classes load, its library loads and runs, `initNative` and
+  `ssNative` return, and it produces results of 1 to 2 KB ("DroidGuard.ss
   returns [B of 1898: 0a06..."), the "full" one going to Google in the "fast"
   request;
 - Google's server answers that request with a signed answer that holds no
@@ -267,11 +266,30 @@ then with its RSA one, unexpired, together with a `/sys/fs/selinux/enforce`
 that says 1. The machine took both: it read the file, its pairs were made,
 and its "full" result grew from 1898 to 3750 bytes with their chains in it.
 Google's answers were the same: no "fast" program, an empty extra, and the
-device key's "Error 400". So the server's answer is its judgement of what
-the machine sees, and what it sees is what Megler is: a key store with no
-trusted environment to attest from, no verified boot, a device of no maker's.
-Changing that would take Megler claiming a hardware-backed key store and a
-device it is not, which it does not do.
+device key's "Error 400". These experiments did not fix either failure.
+
+**What this establishes, and what it does not.** The immediate failure is
+the program-creation response's missing `byteCode`, after native execution
+of the "full" program. In 26.41.31, `bvre.a` obtains and runs "full", puts
+its result in the "fast" request, and calls `bvrp.a` again. That parser
+verifies the response signature through `bvro.a` before checking the
+`byteCode` presence bit; a failed signature has a different exception,
+"Creation response signature verification failed." The `byteCode` error
+therefore does not mean a missing native entry point or a bytecode
+interpreter exception. The device-key protobuf error is a separate failure
+to parse an HTML response; it does not by itself identify why that request
+was rejected.
+
+Successful native returns and the size of the results do not establish
+that Megler answered every probe with Android's semantics. Neither response
+explains Google's decision. The missing attestation and other environment
+differences above are candidates, not an established root cause; the two
+software-attestation experiments do not prove that hardware attestation is
+the only remedy. No change has been demonstrated to obtain a device key or
+a Google Wi-Fi location fix. The detailed qemu trace used 26.41.31, not the
+phones' 26.43.30: that version still needs its own full-to-fast trace before
+assuming the same internal path. Play Integrity and SafetyNet were not
+validated by these runs.
 
 **Following it on a phone** (flags in `Pictures\Megler\diag\<package>\flags`):
 `trace-syscalls` (a library's calls by number with the path each names:
@@ -281,6 +299,14 @@ through the C library), `trace-calls-bywg` with 26.43.30 (`bvts` with
 26.41.31: the refusal, and the answer's extra bytes), and
 `trace-calls-com.google.ccc.abuse.droidguard.DroidGuard` (the machine's Java:
 the flow it was made for, and `run`'s and `ss`'s results with their length).
+For 26.43.30 also use `trace-calls-byud` to locate the creation-response
+parser's failure relative to those returns. Keep the sequence for the same
+flow and thread: the "full" machine's return, the fast-refresh request,
+then `bywg`'s construction with "byteCode" and the extra's length. A
+class-loader or native failure before the return is a different result
+from the qemu trace above. After a prospective fix, check that a device key
+is stored and loaded on the next start, and that Google's network location
+actually supplies a fix; the absence of `DGFRR` alone proves neither.
 
 ## Google's own Play services from Play Store: their splits
 
