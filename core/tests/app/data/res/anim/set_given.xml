@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Main's step "animation-set": a <set> given a duration, a start offset and fillAfter. Its animations have them once the
+     set is initialized (the start offset added to their own), and not before. -->
+<set xmlns:android="http://schemas.android.com/apk/res/android" android:duration="80" android:startOffset="40" android:fillAfter="true">
+    <alpha android:fromAlpha="1.0" android:toAlpha="0.0" android:duration="100" android:startOffset="200" />
+    <translate android:fromYDelta="0" android:toYDelta="10%" android:duration="250" />
+</set>
