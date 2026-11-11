@@ -1409,6 +1409,7 @@ public class Main extends Activity {
         });
         animationSet();
         waitInterrupt();
+        looperInterrupt();
         // A circular reveal played with another animator in an AnimatorSet, as Jamfish plays one as each song begins (the
         // reveal was null, and the set ended the app with a NullPointerException): it is an animator of the radius, and it
         // and the set run to their ends.
@@ -7637,6 +7638,50 @@ public class Main extends Activity {
             return ("0: interrupted, flag false; 1: interrupted, flag false; 2: interrupted, flag false; "
                     + "(interrupt did not wait for the holder) 3: interrupted, flag false; early: no wait, flag false; "
                     + "pair: interrupted, the other waiting on then notified; sleep: interrupted, flag false").equals(detail);
+        });
+    }
+
+    /**
+     * A Looper goes on when its thread is interrupted, as Android's does (its wait for a message is not one an interrupt
+     * ends): what is posted afterwards is handled, and its code finds the thread's flag set until it takes it. Here the
+     * interrupt ended the Looper as if it had quit, and nothing posted to it ran again.
+     */
+    private void looperInterrupt() {
+        step("looper-interrupt", () -> {
+            android.os.HandlerThread ht = new android.os.HandlerThread("looper-interrupt");
+            ht.start();
+            android.os.Handler h = new android.os.Handler(ht.getLooper());
+            final java.util.concurrent.CountDownLatch first = new java.util.concurrent.CountDownLatch(1);
+            final java.util.concurrent.CountDownLatch both = new java.util.concurrent.CountDownLatch(2);
+            final java.util.concurrent.CountDownLatch third = new java.util.concurrent.CountDownLatch(1);
+            final StringBuilder told = new StringBuilder();
+            h.post(first::countDown);
+            boolean before = first.await(20, java.util.concurrent.TimeUnit.SECONDS);
+            // Waiting for a message, with none due.
+            Thread.sleep(100);
+            ht.interrupt();
+            Thread.sleep(300);
+            h.post(() -> {
+                synchronized (told) { told.append("one, flag ").append(Thread.currentThread().isInterrupted()).append("; "); }
+                both.countDown();
+            });
+            h.postDelayed(() -> {
+                synchronized (told) { told.append("two, flag ").append(Thread.interrupted()).append("; "); }
+                both.countDown();
+            }, 200);
+            boolean after = both.await(20, java.util.concurrent.TimeUnit.SECONDS);
+            // The second took the flag (Thread.interrupted): a third finds none, and the Looper quits as ever.
+            h.post(() -> {
+                synchronized (told) { told.append("three, flag ").append(Thread.currentThread().isInterrupted()); }
+                third.countDown();
+            });
+            boolean last = third.await(20, java.util.concurrent.TimeUnit.SECONDS);
+            ht.quit();
+            ht.join(20000);
+            synchronized (told) {
+                detail = "before " + before + ", after " + after + " " + last + ": " + told + (ht.isAlive() ? ", still alive" : ", ended on quit");
+            }
+            return "before true, after true true: one, flag true; two, flag true; three, flag false, ended on quit".equals(detail);
         });
     }
 
