@@ -15,6 +15,7 @@
  * plain one does. core/tests is not where that is found out.
  */
 #include "mg_storage_tests.h"
+#include "mg_gfx_standin.h"
 
 #include <stdio.h>
 
@@ -127,6 +128,58 @@ static MEGLER_CB bool fake_remove(void *user, int root, const char *rel, bool di
     return ok;
 }
 
+/*
+ * The stand-in's pictures of files, answered as the shell answers: later, on a thread of its own. What it answers is the
+ * text "picture of <path> at <size>, <mode>" for a file that is there, MEGLER_STORAGE_NOT_FOUND for one that is not; a
+ * file named slow.png is answered half a second later; for one named none.png no answer is to come (false).
+ */
+typedef struct fake_picture {
+    int root, size, mode;
+    char *rel;
+    megler_storage_thumbnail_done done;
+    void *core;
+} fake_picture;
+
+static MG_HOSTCB void fake_picture_run(void *arg)
+{
+    fake_picture *f = (fake_picture *)arg;
+    char *path = fake_path(f->root, f->rel), text[256];
+    mg_stat st;
+    mg_sleep_ns(strstr(f->rel, "slow.png") ? 500000000ull : 20000000ull);
+    if (!path || !mg_path_stat(path, &st, NULL) || st.is_dir) {
+        f->done(f->core, MEGLER_STORAGE_NOT_FOUND, NULL, 0);
+    } else {
+        snprintf(text, sizeof(text), "picture of %s at %d, %d", f->rel, f->size, f->mode);
+        f->done(f->core, MEGLER_STORAGE_OK, text, strlen(text));
+    }
+    free(path);
+    free(f->rel);
+    free(f);
+}
+
+static MEGLER_CB bool fake_thumbnail(void *user, int root, const char *rel, int size, int mode, megler_storage_thumbnail_done done, void *core)
+{
+    fake_picture *f;
+    mg_thread *t;
+    (void)user;
+    if (strstr(rel, "none.png")) return false;
+    f = (fake_picture *)mg_alloc(sizeof(*f));
+    f->root = root;
+    f->rel = mg_strdup(rel);
+    f->size = size;
+    f->mode = mode;
+    f->done = done;
+    f->core = core;
+    t = mg_thread_start(fake_picture_run, f, 0, "fake-picture");
+    if (!t) {
+        free(f->rel);
+        free(f);
+        return false;
+    }
+    mg_thread_detach(t);
+    return true;
+}
+
 /* Set, the stand-in moves no folder into another folder: what a phone's shell is expected to say of that, tried here. */
 static bool g_fake_moves_no_folder;
 
@@ -180,6 +233,15 @@ static MEGLER_CB MG_HOSTCB bool counted_rename(void *user, int from_link, const 
     (void)user;
     mg_atomic_add(&g_calls, 1);
     return g_inner.rename(g_inner.user, from_link, from, to_link, to, err);
+}
+
+static volatile i32 g_pictures_asked;
+
+static MEGLER_CB MG_HOSTCB bool counted_thumbnail(void *user, int link, const char *path, int size, int mode, megler_storage_thumbnail_done done, void *core)
+{
+    (void)user;
+    mg_atomic_add(&g_pictures_asked, 1);
+    return g_inner.thumbnail(g_inner.user, link, path, size, mode, done, core);
 }
 
 static const mg_foreign k_counted = { NULL, counted_open, counted_mkdir, counted_remove, counted_rename };
@@ -921,6 +983,7 @@ static void test_layout(const char *data)
     host.make_folder = counted_mkdir;
     host.remove = counted_remove;
     host.rename = counted_rename;
+    host.thumbnail = g_inner.thumbnail ? counted_thumbnail : NULL;
     mg_run_files(data, data, PKG, &host);
 
     /* Five names, one place. */
@@ -1210,6 +1273,173 @@ typedef struct worker {
  * before the storage host is asked), each such name is made, read back, listed exactly as it was named, stat'ed, renamed,
  * and removed; and a name that needed nothing is still what it was on the host's own disk.
  */
+/* The size of a picture in an image file's bytes -- BMP, PNG or baseline JPEG -- or false. */
+static bool picture_size(const u8 *b, size_t n, int *w, int *h)
+{
+    size_t at;
+    if (n >= 26 && b[0] == 'B' && b[1] == 'M') {
+        *w = (int)mg_rd32(b + 18);
+        *h = (int)mg_rd32(b + 22);
+        if (*h < 0) *h = -*h;
+        return *w > 0 && *h > 0;
+    }
+    if (n >= 24 && b[0] == 0x89 && b[1] == 'P' && b[2] == 'N' && b[3] == 'G') {
+        *w = (int)((u32)b[16] << 24 | (u32)b[17] << 16 | (u32)b[18] << 8 | b[19]);
+        *h = (int)((u32)b[20] << 24 | (u32)b[21] << 16 | (u32)b[22] << 8 | b[23]);
+        return *w > 0 && *h > 0;
+    }
+    if (n < 4 || b[0] != 0xFF || b[1] != 0xD8) return false;
+    for (at = 2; at + 9 < n;) {
+        unsigned marker, len;
+        if (b[at] != 0xFF) return false;
+        marker = b[at + 1];
+        len = (unsigned)b[at + 2] << 8 | b[at + 3];
+        if (marker >= 0xC0 && marker <= 0xCF && marker != 0xC4 && marker != 0xC8 && marker != 0xCC) {
+            *h = (int)((unsigned)b[at + 5] << 8 | b[at + 6]);
+            *w = (int)((unsigned)b[at + 7] << 8 | b[at + 8]);
+            return *w > 0 && *h > 0;
+        }
+        at += 2 + len;
+    }
+    return false;
+}
+
+typedef struct picture_buf {
+    u8 *data;
+    size_t len, cap;
+} picture_buf;
+
+static MEGLER_CB bool picture_sink(void *sink, const void *data, size_t size)
+{
+    picture_buf *b = (picture_buf *)sink;
+    if (b->len + size > b->cap) {
+        size_t cap = (b->len + size) * 2;
+        u8 *grown = (u8 *)realloc(b->data, cap);
+        if (!grown) return false;
+        b->data = grown;
+        b->cap = cap;
+    }
+    memcpy(b->data + b->len, data, size);
+    b->len += size;
+    return true;
+}
+
+/* A file made (or made anew) with these bytes in it, through the C library. */
+static bool put_bytes(const char *path, const void *data, size_t len)
+{
+    int fd = C.open(path, T_WRONLY | T_CREAT | T_TRUNC, 0644);
+    bool ok;
+    if (fd < 0) return false;
+    ok = C.write(fd, data, (u32)len) == (i32)len;
+    return C.close(fd) == 0 && ok;
+}
+
+/*
+ * Pictures of files in a link, from whoever owns it (megler_storage_host.thumbnail): asked for without waiting, answered on
+ * a thread of theirs, and waited for by the layer (mg_run_storage_thumbnail) for so long. With the stand-in: its answer as
+ * it gave it; a file not there NOT_FOUND; a path in no link not asked about at all; no answer to come refused at once; an
+ * answer later than the wait BUSY, and when it comes, dropped. With the shell's own host (on a PC): Windows' picture of a
+ * PNG of 300 x 200 -- an image file's bytes, about the size asked for, as wide as the PNG -- and of a video where the run
+ * has one (MG_TEST_CLIP, made by tools/build-tests.sh with ffmpeg).
+ */
+static void test_thumbnails(bool shell)
+{
+    static const char *const gone = "/sdcard/Pictures/no-such-picture.png";
+    void *data = NULL;
+    size_t len = 0;
+    int status = -1, w = 0, h = 0;
+    i32 asked;
+    char *host;
+    say("pictures of files in a link, asked of their owner and waited for");
+    CHECK(g_inner.thumbnail != NULL);
+    if (!g_inner.thumbnail) return;
+    if (shell) {
+        /* A PNG of 300 x 200, its left half one colour and its right half another. */
+        u32 *px = (u32 *)mg_alloc(300 * 200 * 4);
+        picture_buf png;
+        int i;
+        memset(&png, 0, sizeof(png));
+        for (i = 0; i < 300 * 200; i++) px[i] = (i % 300) < 150 ? 0xFFFF0000u : 0xFF0000FFu;
+        CHECK(mg_gfx_standin()->image_encode(NULL, px, 300, 200, 300 * 4, MEGLER_GFX_PNG, 100, picture_sink, &png));
+        CHECK(png.len > 0 && put_bytes("/sdcard/Pictures/picture.png", png.data, png.len));
+        free(png.data);
+        free(px);
+    } else {
+        CHECK(put("/sdcard/Pictures/picture.png", "not really a picture"));
+        CHECK(put("/sdcard/Pictures/slow.png", "slow"));
+    }
+    host = mg_fs_host_path("/sdcard/Pictures/picture.png");
+    CHECK(host && mg_path_is_foreign(host));
+    asked = g_pictures_asked;
+    CHECK(mg_run_storage_thumbnail(host, 96, MEGLER_THUMBNAIL_WHOLE, 20000, &data, &len, &status) && status == MEGLER_STORAGE_OK && data && len > 0);
+    CHECK_INT(g_pictures_asked - asked, 1);
+    if (data && shell) {
+        CHECK(picture_size((const u8 *)data, len, &w, &h) && w > h && w <= 300 && h >= 40);
+        say("  Windows' picture of a PNG of 300 x 200, asked for at 96: %d x %d, %d bytes", w, h, (int)len);
+    } else if (data) {
+        CHECK(len == strlen("picture of picture.png at 96, 0") && !memcmp(data, "picture of picture.png at 96, 0", len));
+    }
+    free(data);
+    data = NULL;
+    free(host);
+    /* The square kind, through the same way. */
+    host = mg_fs_host_path("/sdcard/Pictures/picture.png");
+    CHECK(mg_run_storage_thumbnail(host, 64, MEGLER_THUMBNAIL_SQUARE, 20000, &data, &len, &status) && status == MEGLER_STORAGE_OK);
+    if (data && shell) CHECK(picture_size((const u8 *)data, len, &w, &h) && w == h);
+    else if (data) CHECK(len == strlen("picture of picture.png at 64, 1") && !memcmp(data, "picture of picture.png at 64, 1", len));
+    free(data);
+    data = NULL;
+    free(host);
+    /* A file that is not there, and a path in no link (the shared storage's own Download), which nobody is asked about. */
+    host = mg_fs_host_path(gone);
+    CHECK(!mg_run_storage_thumbnail(host, 96, MEGLER_THUMBNAIL_WHOLE, 20000, &data, &len, &status) && status == MEGLER_STORAGE_NOT_FOUND && !data);
+    free(host);
+    CHECK(put("/sdcard/Download/plain.png", "plain"));
+    host = mg_fs_host_path("/sdcard/Download/plain.png");
+    asked = g_pictures_asked;
+    CHECK(host && !mg_path_is_foreign(host));
+    CHECK(!mg_run_storage_thumbnail(host, 96, MEGLER_THUMBNAIL_WHOLE, 20000, &data, &len, &status) && status == MEGLER_STORAGE_INVALID && !data);
+    CHECK_INT(g_pictures_asked - asked, 0);
+    free(host);
+    CHECK(C.unlink("/sdcard/Download/plain.png") == 0);
+    if (!shell) {
+        /* No answer to come: refused at once. One later than the wait: BUSY, and its answer, when it comes, dropped. */
+        CHECK(put("/sdcard/Pictures/none.png", "none"));
+        host = mg_fs_host_path("/sdcard/Pictures/none.png");
+        CHECK(!mg_run_storage_thumbnail(host, 96, MEGLER_THUMBNAIL_WHOLE, 20000, &data, &len, &status) && status == MEGLER_STORAGE_FAILED && !data);
+        free(host);
+        host = mg_fs_host_path("/sdcard/Pictures/slow.png");
+        CHECK(!mg_run_storage_thumbnail(host, 96, MEGLER_THUMBNAIL_WHOLE, 100, &data, &len, &status) && status == MEGLER_STORAGE_BUSY && !data);
+        mg_sleep_ns(700000000ull);
+        CHECK(mg_run_storage_thumbnail(host, 96, MEGLER_THUMBNAIL_WHOLE, 20000, &data, &len, &status) && status == MEGLER_STORAGE_OK && len == strlen("picture of slow.png at 96, 0"));
+        free(data);
+        data = NULL;
+        free(host);
+        CHECK(C.unlink("/sdcard/Pictures/none.png") == 0 && C.unlink("/sdcard/Pictures/slow.png") == 0);
+    } else if (getenv("MG_TEST_CLIP")) {
+        /* A video's frame, which only Windows gives here: into the read-only link Books by the host's own path. */
+        size_t clip_len = 0;
+        void *clip = mg_file_read_all(getenv("MG_TEST_CLIP"), &clip_len);
+        char *to = mg_sprintf("%s/clip.mp4", g_roots[2]);
+        CHECK(clip && clip_len > 0 && mg_file_write_all(to, clip, clip_len));
+        host = mg_fs_host_path("/sdcard/Books/clip.mp4");
+        CHECK(mg_run_storage_thumbnail(host, 96, MEGLER_THUMBNAIL_WHOLE, 30000, &data, &len, &status) && status == MEGLER_STORAGE_OK && data);
+        if (data) {
+            CHECK(picture_size((const u8 *)data, len, &w, &h) && w > h);
+            say("  Windows' picture of a video of 160 x 120, asked for at 96: %d x %d, %d bytes", w, h, (int)len);
+        }
+        free(data);
+        data = NULL;
+        free(host);
+        mg_path_remove(to, NULL);
+        free(to);
+        free(clip);
+    } else {
+        say("  (no video to ask Windows for a picture of: MG_TEST_CLIP is not set -- tools/build-tests.sh win makes one with ffmpeg)");
+    }
+    CHECK(C.unlink("/sdcard/Pictures/picture.png") == 0);
+}
+
 static void test_odd_names(void)
 {
     static const char *const odd[] = { "arn:aws:remote-config:us-west-2:455205533140:appConfig:apiz0o87_ConfigurationCache.db", "a<b>c", "say \"so\"", "back\\slash",
@@ -1765,6 +1995,7 @@ static int run_in(const char *base, mg_storage_host_maker make, mg_test_sink sin
         g_inner.make_folder = fake_mkdir;
         g_inner.remove = fake_remove;
         g_inner.rename = fake_rename;
+        g_inner.thumbnail = fake_thumbnail;
     }
     if (g_inner.open && g_inner.make_folder && g_inner.remove && g_inner.rename) {
         test_foreign_paths(base);
@@ -1773,6 +2004,7 @@ static int run_in(const char *base, mg_storage_host_maker make, mg_test_sink sin
             test_clear_data(data);
             test_clear_cache(data);
             test_layout(data);
+            test_thumbnails(make != NULL);
             test_threads();
             test_odd_names();
             test_file_modes();

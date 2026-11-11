@@ -706,6 +706,29 @@ typedef struct megler_camera_host {
  *                it. MEGLER_STORAGE_OTHER_DEVICE when it cannot be done as a
  *                rename: the app is told EXDEV, and copies and removes, as
  *                it would between two disks.
+ *   thumbnail    Windows' own picture of a file in a link -- what the Photos
+ *                app and the file picker show of it, out of Windows' cache of
+ *                them where it has one, and a video's frame, which the layer
+ *                has no way to of its own -- asked for without waiting: true
+ *                when `done` will be called once, from any thread, false
+ *                when it will not be (it is not called then). `size` is the
+ *                length of the picture's longer side the caller wants, in
+ *                pixels; Windows gives about that. `mode`:
+ *                  MEGLER_THUMBNAIL_WHOLE     the whole of it, its proportions
+ *                      kept (Windows' ThumbnailMode.SingleItem);
+ *                  MEGLER_THUMBNAIL_SQUARE    its middle, cut square
+ *                      (ListView);
+ *                  MEGLER_THUMBNAIL_PICTURES, MEGLER_THUMBNAIL_VIDEOS  as
+ *                      Windows shows them in a gallery, cut wider than high
+ *                      (PicturesView, VideosView).
+ *                `done` is given `core` back, a status, and the picture as
+ *                the bytes of an image file (BMP, JPEG or PNG, upright as
+ *                the file says it is to be seen), which are the shell's
+ *                again when done returns; the status MEGLER_STORAGE_OK with
+ *                them, or why there are none: MEGLER_STORAGE_NOT_FOUND, or
+ *                MEGLER_STORAGE_FAILED (Windows had nothing better than the
+ *                icon of the file's type). May be left NULL: the layer makes
+ *                its own pictures of what it can decode.
  *
  * `path` is UTF-8 and relative to the link's folder, parts joined by "/",
  * none at either end; "" is the link's folder itself (only ever opened, as a
@@ -720,7 +743,8 @@ typedef struct megler_camera_host {
  * maps nor needs to know.
  *
  * The calls come on the app's own threads, any of them and several at once,
- * and never on the shell's UI thread; each returns when it is done. They are
+ * and never on the shell's UI thread; each returns when it is done, but
+ * thumbnail, which returns at once and answers through `done`. They are
  * the cost of every open() and stat() in a link, so what was found out about
  * a folder is worth keeping.
  *
@@ -740,6 +764,9 @@ typedef struct megler_storage_link {
     bool writable;
 } megler_storage_link;
 
+enum { MEGLER_THUMBNAIL_WHOLE = 0, MEGLER_THUMBNAIL_SQUARE = 1, MEGLER_THUMBNAIL_PICTURES = 2, MEGLER_THUMBNAIL_VIDEOS = 3 };
+typedef void (MEGLER_CB *megler_storage_thumbnail_done)(void *core, int status, const void *data, size_t size);
+
 typedef struct megler_storage_host {
     void *user;
     const megler_storage_link *links;
@@ -748,6 +775,7 @@ typedef struct megler_storage_host {
     bool (MEGLER_CB *make_folder)(void *user, int link, const char *path, int *error);
     bool (MEGLER_CB *remove)(void *user, int link, const char *path, bool folder, int *error);
     bool (MEGLER_CB *rename)(void *user, int from_link, const char *from, int to_link, const char *to, int *error);
+    bool (MEGLER_CB *thumbnail)(void *user, int link, const char *path, int size, int mode, megler_storage_thumbnail_done done, void *core);
 } megler_storage_host;
 
 /*

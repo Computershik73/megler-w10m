@@ -251,6 +251,99 @@ static MG_HOSTCB bool storage_rename(void *user, int from_link, const char *from
     return !*err && g_storage.rename(g_storage.user, from_link, from, to_link, to, err);
 }
 
+/*
+ * A thumbnail asked of the shell, which answers on a thread of its own when it has one (megler_storage_host.thumbnail):
+ * the caller waits for it here, for so long. Two hold the request -- the caller and the shell's answer to come -- and
+ * the last of them to let go frees it, so an answer that comes after the caller stopped waiting finds it still there.
+ */
+typedef struct thumb_request {
+    mg_lock lock;
+    mg_cond cond;
+    volatile i32 holders;
+    bool answered;
+    int status;
+    void *data;
+    size_t size;
+} thumb_request;
+
+static void thumb_let_go(thumb_request *r)
+{
+    if (mg_atomic_add(&r->holders, -1) != 0) return;
+    free(r->data);
+    free(r);
+}
+
+static MEGLER_CB void thumb_answer(void *core, int status, const void *data, size_t size)
+{
+    thumb_request *r = (thumb_request *)core;
+    void *copy = NULL;
+    if (status == MEGLER_STORAGE_OK && data && size) {
+        copy = malloc(size);
+        if (copy) memcpy(copy, data, size);
+        else status = MEGLER_STORAGE_FULL;
+    } else if (status == MEGLER_STORAGE_OK) {
+        status = MEGLER_STORAGE_FAILED;
+    }
+    mg_lock_acquire(&r->lock);
+    if (!r->answered) {
+        r->answered = true;
+        r->status = status;
+        r->data = copy;
+        r->size = copy ? size : 0;
+        copy = NULL;
+        mg_cond_broadcast(&r->cond);
+    }
+    mg_lock_release(&r->lock);
+    free(copy);
+    thumb_let_go(r);
+}
+
+bool mg_run_storage_thumbnail(const char *host_path, int size, int mode, unsigned timeout_ms, void **data, size_t *len, int *status)
+{
+    const char *p = host_path ? host_path + sizeof(MG_FOREIGN_PREFIX) - 1 : NULL;
+    thumb_request *r;
+    int link = 0, digits = 0;
+    u64 until;
+    bool got;
+    *data = NULL;
+    *len = 0;
+    *status = MEGLER_STORAGE_INVALID;
+    if (!host_path || !mg_path_is_foreign(host_path)) return false;
+    /* "megler-link:/<link>/<path in it>" (host/mg_host.h) */
+    for (; *p >= '0' && *p <= '9' && digits < 6; p++, digits++) link = link * 10 + (*p - '0');
+    if (!digits || *p != '/' || !p[1] || !g_storage.thumbnail || !link_there(link)) return false;
+    r = (thumb_request *)mg_alloc(sizeof(*r));
+    mg_lock_init(&r->lock);
+    mg_cond_init(&r->cond);
+    r->holders = 2;
+    if (!g_storage.thumbnail(g_storage.user, link, p + 1, size, mode, thumb_answer, r)) {
+        /* (Nobody is to answer: the shell's hold goes with the caller's.) */
+        *status = MEGLER_STORAGE_FAILED;
+        mg_atomic_add(&r->holders, -1);
+        thumb_let_go(r);
+        return false;
+    }
+    until = mg_time_monotonic_ns() + (u64)timeout_ms * 1000000ull;
+    mg_lock_acquire(&r->lock);
+    while (!r->answered) {
+        u64 now = mg_time_monotonic_ns();
+        if (now >= until) break;
+        mg_cond_wait_ns(&r->cond, &r->lock, until - now);
+    }
+    got = r->answered;
+    if (got) {
+        *status = r->status;
+        *data = r->data;
+        *len = r->size;
+        r->data = NULL;
+    } else {
+        *status = MEGLER_STORAGE_BUSY;
+    }
+    mg_lock_release(&r->lock);
+    thumb_let_go(r);
+    return got && *status == MEGLER_STORAGE_OK && *data;
+}
+
 /* Whether a link's name can be a folder of /sdcard: one part of a path, and not the folder the apps' own parts are in. */
 static bool link_name_ok(const char *name)
 {
