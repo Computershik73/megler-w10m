@@ -1032,7 +1032,8 @@ static bool g_pickers_app, g_webview_app;
 static char g_pick_heard[1024];
 static volatile i32 g_picks;
 static const char *const g_pick_script[] = { "photo.png", "photo.png doc.pdf", "photo.png", "photo.png", "-", "doc.pdf",
-                                             "IMG_20261111_120000.jpg", "IMG_20261111_120001.jpg", "VID_20261111_120002.mp4", "photo.png" };
+                                             "IMG_20261111_120000.jpg", "IMG_20261111_120001.jpg", "VID_20261111_120002.mp4", "photo.png",
+                                             "turned.jpg" };
 
 typedef struct pick_job {
     unsigned id;
@@ -1094,7 +1095,12 @@ static bool write_pick_file(const char *folder, const char *name)
 {
     char *path = mg_sprintf("%s/%s", folder, name);
     bool ok = false;
-    if (strstr(name, ".png") || strstr(name, ".jpg")) {
+    if (!strcmp(name, "turned.jpg")) {
+        /* A JPEG's start alone, its Exif saying a quarter turn (orientation 6): what a phone's camera writes held upright. */
+        static const u8 jpeg[] = { 0xFF, 0xD8, 0xFF, 0xE1, 0x00, 0x22, 'E', 'x', 'i', 'f', 0, 0, 'M', 'M', 0x00, 0x2A, 0, 0, 0, 8,
+                                   0x00, 0x01, 0x01, 0x12, 0x00, 0x03, 0, 0, 0, 1, 0x00, 0x06, 0, 0, 0, 0, 0, 0, 0xFF, 0xD9 };
+        ok = mg_file_write_all(path, jpeg, sizeof(jpeg));
+    } else if (strstr(name, ".png") || strstr(name, ".jpg")) {
         size_t size = 0;
         u8 *png = make_png(640, 480, &size);
         ok = png && mg_file_write_all(path, png, size);
@@ -4310,10 +4316,10 @@ static int run_wifi(void)
 static int run_pickers(void)
 {
     static const char *const steps[] = { "resolve", "get-content", "open-multiple", "pick-images", "pick-media", "cancel", "chooser",
-                                         "capture-output", "capture-inline", "video", "web-input", "write-refused" };
+                                         "capture-output", "capture-inline", "video", "web-input", "orientation", "write-refused" };
     static const char heard[] = "0 image/* o0 s1 d0 q-1;0 image/*,application/pdf m0 s0 d0 q-1;0 image/* m5 s1 d0 q-1;0 image/* o0 s1 d0 q-1;"
                                 "0 */* o0 s0 d0 q-1;0 application/pdf o0 s0 d0 q-1;1 image/jpeg o0 s1 d0 q-1;1 image/jpeg o0 s1 d0 q-1;"
-                                "2 video/mp4 o0 s2 d15 q0;0 image/* m0 s1 d0 q-1;";
+                                "2 video/mp4 o0 s2 d15 q0;0 image/* m0 s1 d0 q-1;0 image/jpeg o0 s1 d0 q-1;";
     char text[160];
     int at = -1, i, asked, stop, made, started, result, resume;
     expect_line("I/PickersTest: onCreate", &at, 120);

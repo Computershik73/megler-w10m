@@ -81,7 +81,7 @@ public class Main extends Activity {
     @Override protected void onDestroy() { super.onDestroy(); Log.i(T, "onDestroy"); }
 
     private static final String[] STEPS = { "resolve", "get-content", "open-multiple", "pick-images", "pick-media", "cancel", "chooser",
-                                            "capture-output", "capture-inline", "video", "web-input", "write-refused" };
+                                            "capture-output", "capture-inline", "video", "web-input", "orientation", "write-refused" };
 
     private void report(boolean good) {
         if (good) ok++;
@@ -150,6 +150,9 @@ public class Main extends Activity {
                 return;
             }
             case "web-input": webInput(); return;
+            case "orientation":
+                startActivityForResult(new Intent(Intent.ACTION_GET_CONTENT).setType("image/jpeg"), 20);
+                return;
             case "write-refused": report(writeRefused()); next(); return;
             default: next();
             }
@@ -252,6 +255,14 @@ public class Main extends Activity {
             if (!Uri.fromFile(out).equals(data.getData())) return fail("data " + data.getData());
             byte[] head = head(new FileInputStream(out), 12);
             return head.length == 12 && new String(head, 4, 8, "US-ASCII").equals("ftypmp42") || fail("the video written: " + out.length() + " bytes");
+        }
+        case 20: {
+            // A camera's JPEG held upright: its Exif says a quarter turn, as the photo picker's orientation column says it.
+            if (code != RESULT_OK || data == null || data.getData() == null) return fail("no result");
+            try (Cursor c = getContentResolver().query(data.getData(), new String[] { "orientation", "mime_type" }, null, null, null)) {
+                if (c == null || !c.moveToFirst()) return fail("no row");
+                return c.getInt(0) == 90 && "image/jpeg".equals(c.getString(1)) || fail("orientation " + c.getInt(0) + " " + c.getString(1));
+            }
         }
         default:
             return fail("request " + request);
