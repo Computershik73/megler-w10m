@@ -497,14 +497,48 @@ Megler's attestation failure originally had no cause, and the generated
 `KeyStoreException` discarded the code and message. The provider now attaches
 `KeyStoreException(-100, "Not implemented")`; the exception preserves its code
 and message and classifies that failure as permanent, system-wide and
-`ERROR_UNIMPLEMENTED`. Other codes currently use the public API's fallback
-classification, rather than a complete KeyMint error table. The data app's
+`ERROR_UNIMPLEMENTED`, following the
+[Android exception mapping](https://android.googlesource.com/platform/frameworks/base/+/refs/heads/main/keystore/java/android/security/KeyStoreException.java).
+Other codes currently use the public API's fallback classification, rather than a complete KeyMint error table. The data app's
 `keystore-certificates` test fails before the change (`error=0`, 276 steps
 passed, one failed) and passes afterward (`error=-100`, 277 steps passed,
 445 runner checks, zero failed). A fresh uninstrumented 26.43.30 qemu run still
-fails the fast-response bytecode check after the full VM returns 2057 bytes (2064 with Android 14 error wording),
+fails the fast-response bytecode check after the full VM returns 2057 bytes
+(2064 with Android 14 error wording),
 and device-key acquisition still fails. This is an Android API compatibility
 fix, not a demonstrated DroidGuard fix.
+
+**Matching the reference release and ARM32 program.** The opt-in capture app
+also supports GMS 26.26.34 (262634022), using `bohf.a`, `bofj.a`, and
+`bofu.c`/`bofu.b` for the same pass-through captures. Under qemu this release
+also selects full refresh: the VM returns 2134 bytes, those exact bytes become
+fast field 10, and Google returns the same verified 30-byte response without
+bytecode. Its full/fast timings are 245 ms for the VM and 72 ms for the fast
+request. Changing GMS releases therefore does not remove the failure.
+
+A separate offline diagnostic APK, with no network permission and its own
+storage, runs the exact ARM32 VM APK and full bytecode from that qemu exchange
+on the reference device. The first run returns 22,957 bytes on Android and
+2205 bytes in Megler. A bounded JNI-name tracer in that APK observes additional
+collection on Android; the exact result length varies with state and tracing
+(about 33.9 KB in later Android runs). It exports only class/method/field names,
+signatures, lookup success, and result lengths. It never exports the result.
+The comparison uses no GMS private storage. Matching SDK 30 and the two observed
+unavailable API lookups (`getDeviceId` and `isTransientFailure`) inside the
+isolated Megler diagnostic still returns only 2129 bytes. Those experimental
+API overrides are not runtime fixes and are not retained.
+
+A separate offline experiment supplies a simulated SELinux status file containing
+`1`: the VM's `fstatat64` and `openat` then succeed, but it still returns just
+2124 bytes. The simulated file is not retained, since it would not establish
+SELinux enforcement on Windows. The native property trace finds requests for
+`ro.boot.verifiedbootstate` and `ro.boot.vbmeta.digest`; both are absent in
+Megler and their values are empty on the reference device. This observation
+alone does not establish equal native property-presence semantics.
+The smaller result
+alone does not identify the failed signal or establish a server verdict for the
+offline run; it supplies a reproducible native-collection comparison independent
+of GMS version, VM architecture and network transport.
 
 **Following it on a phone** (flags in `Pictures\Megler\diag\<package>\flags`):
 `trace-syscalls` (a library's calls by number with the path each names:

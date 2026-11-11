@@ -11,22 +11,32 @@ import android.util.Log;
 public final class Probe {
     private static final AtomicInteger sequence = new AtomicInteger();
     private static File directory;
-    public static void install(ClassLoader gms, File out) throws Exception {
+    public static void install(ClassLoader gms, File out, int version) throws Exception {
         directory = out;
         if (!directory.mkdirs() && !directory.isDirectory()) throw new IOException("capture directory");
-        hook(gms, "byvy", "a", "request", "hzgv", "cudk");
-        hook(gms, "byuc", "a", "signed", "[B", "[B", "java.lang.String");
-        hook(gms, "byun", "c", "vm", "java.util.Map");
-        hook(gms, "byun", "b", "init");
+        if (version == 264330027) {
+            hook(gms, "byvy", "a", "request", "hzgv", "cudk");
+            hook(gms, "byuc", "a", "signed", "[B", "[B", "java.lang.String");
+            hook(gms, "byun", "c", "vm", "java.util.Map");
+            hook(gms, "byun", "b", "init");
+        } else if (version == 262634022) {
+            hook(gms, "bohf", "a", "request", "gafw", "cfyo");
+            hook(gms, "bofj", "a", "signed", "[B", "[B", "java.lang.String");
+            hook(gms, "bofu", "c", "vm", "java.util.Map");
+            hook(gms, "bofu", "b", "init");
+        } else throw new IllegalArgumentException("Unsupported probe GmsCore: " + version);
         Log.i("DGCapture", "Network, signature and VM-result capture installed");
     }
     private static void hook(ClassLoader loader, String cls, String name, String kind, String... types) throws Exception {
         Class<?>[] parameters = new Class<?>[types.length];
         for (int i = 0; i < types.length; i++) parameters[i] = Class.forName(types[i], false, loader);
         Method original = Class.forName(cls, false, loader).getDeclaredMethod(name, parameters);
+        hookMethod(original, kind);
+    }
+    private static void hookMethod(Method original, String kind) throws Exception {
         Capture hook = new Capture(kind);
         hook.backup = XposedBridge.hook0(hook, original, Capture.class.getMethod("callback", Object[].class));
-        if (hook.backup == null) throw new IllegalStateException("hook failed: " + cls);
+        if (hook.backup == null) throw new IllegalStateException("hook failed: " + original.getName());
     }
     private static String flow(Object request) throws Exception {
         Object config = request.getClass().getField("c").get(request);

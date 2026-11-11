@@ -2,7 +2,7 @@
 """Inspect the opt-in droidguard test app's captures without loading Google code.
 
 Run with Python's isolated mode: python -I tools/droidguard-inspect.py CAPTURE_DIR
-The field numbers are those of GmsCore 264330027. Output describes the messages;
+The field numbers are verified with GmsCore 264330027 and 262634022. Output describes the messages;
 it does not print the collected signals, device identifiers or encrypted token.
 """
 import argparse
