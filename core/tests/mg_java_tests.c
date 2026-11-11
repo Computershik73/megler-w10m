@@ -3673,6 +3673,11 @@ static int run_data(void)
                                             AudioSpecificConfig and with ADTS headers, a decoder that fills while its pictures wait, MP3. */
                                          "codec-avc", "codec-avc-flush", "codec-avc-inband", "codec-avc-async", "codec-aac", "codec-aac-adts", "codec-avc-full",
                                          "codec-mp3",
+                                         /* And protected media, of which Megler plays none and says so as an Android device without the
+                                            scheme does: no scheme supported by MediaDrm or MediaCrypto, neither to be made
+                                            (UnsupportedSchemeException, MediaCryptoException), no decoder of protected content, an
+                                            encrypted sample refused. */
+                                         "drm-no-scheme", "drm-no-secure-decoder",
                                          /* And the network from Java, on loopback: names, an HTTP server of the app's own and HttpURLConnection, UDP, a server
                                             socket closed under the thread waiting in accept, a java.nio selector, the interfaces, ConnectivityManager. */
                                          "net-localhost", "net-http", "net-udp", "net-close", "net-nio", "net-interfaces", "net-connectivity",

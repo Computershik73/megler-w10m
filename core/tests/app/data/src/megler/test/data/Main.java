@@ -2019,6 +2019,7 @@ public class Main extends Activity {
         sessionControllers();
         sound();
         mediaCodec();
+        protectedMedia();
         network();
         httpEngine();
         renderNodes();
@@ -7835,6 +7836,68 @@ public class Main extends Activity {
                     && back.getRatingStyle() == android.media.Rating.RATING_5_STARS && back.getStarRating() == 3.5f && back.isRated() && refused
                     && android.media.Rating.newPercentageRating(42f).getPercentRating() == 42f && android.media.Rating.newThumbRating(true).isThumbUp()
                     && !android.media.Rating.newHeartRating(false).hasHeart();
+        });
+    }
+
+    /**
+     * Protected media, of which Megler plays none: it has no content decryption module, and says so as an Android device
+     * without the scheme does. No scheme is supported, by MediaDrm's three questions or MediaCrypto's (Widevine, PlayReady,
+     * ClearKey, the common one); MediaDrm's list of schemes (Android 11's: by reflection) is empty; a MediaDrm cannot be
+     * made (UnsupportedSchemeException, with its message) nor a MediaCrypto (MediaCryptoException); no decoder says it
+     * plays protected content, and none is found for a format that asks for it; and a decoder given an encrypted sample
+     * refuses it (MediaCodec.CryptoException, ERROR_UNSUPPORTED_OPERATION).
+     */
+    private void protectedMedia() {
+        final java.util.UUID widevine = java.util.UUID.fromString("edef8ba9-79d6-4ace-a3c8-27dcd51d21ed"), playReady = java.util.UUID.fromString("9a04f079-9840-4286-ab92-e65be0885f95"),
+                clearKey = java.util.UUID.fromString("e2719d58-a985-b3c9-781a-b030af78d30e"), common = java.util.UUID.fromString("1077efec-c0b2-4d02-ace3-3c1e52e2fb4b");
+        step("drm-no-scheme", () -> {
+            StringBuilder supported = new StringBuilder();
+            for (java.util.UUID scheme : new java.util.UUID[] { widevine, playReady, clearKey, common }) {
+                if (android.media.MediaDrm.isCryptoSchemeSupported(scheme) || android.media.MediaDrm.isCryptoSchemeSupported(scheme, "video/mp4")
+                    || android.media.MediaDrm.isCryptoSchemeSupported(scheme, "video/mp4", android.media.MediaDrm.SECURITY_LEVEL_SW_SECURE_CRYPTO)
+                    || android.media.MediaCrypto.isCryptoSchemeSupported(scheme)) supported.append(scheme).append(' ');
+            }
+            Object schemes = android.media.MediaDrm.class.getMethod("getSupportedCryptoSchemes").invoke(null);
+            String drm = null, crypto = null;
+            Object made = null;
+            try { made = new android.media.MediaDrm(widevine); } catch (android.media.UnsupportedSchemeException e) { drm = e.getMessage(); }
+            try { made = new android.media.MediaCrypto(widevine, new byte[] { 1, 2, 3 }); } catch (android.media.MediaCryptoException e) { crypto = e.getMessage(); }
+            // (And the exceptions an app's player makes of its own keep what they were made with.)
+            String kept = new android.media.MediaDrmException("a message").getMessage() + "/" + new android.media.MediaDrmResetException("reset").getMessage();
+            detail = "supported: " + supported + ", schemes " + schemes + ", MediaDrm: " + drm + ", MediaCrypto: " + crypto + ", made " + made + ", kept " + kept;
+            return supported.length() == 0 && schemes instanceof java.util.List && ((java.util.List<?>) schemes).isEmpty() && made == null
+                    && "Failed to instantiate drm object.".equals(drm) && "Failed to instantiate crypto object.".equals(crypto) && "a message/reset".equals(kept);
+        });
+        step("drm-no-secure-decoder", () -> {
+            android.media.MediaCodecList all = new android.media.MediaCodecList(android.media.MediaCodecList.ALL_CODECS);
+            int decoders = 0, secure = 0;
+            for (android.media.MediaCodecInfo info : all.getCodecInfos()) {
+                if (info.isEncoder()) continue;
+                decoders++;
+                if (info.getName().endsWith(".secure")) secure++;
+                for (String type : info.getSupportedTypes()) {
+                    android.media.MediaCodecInfo.CodecCapabilities caps = info.getCapabilitiesForType(type);
+                    if (caps.isFeatureSupported(android.media.MediaCodecInfo.CodecCapabilities.FEATURE_SecurePlayback)
+                        || caps.isFeatureRequired(android.media.MediaCodecInfo.CodecCapabilities.FEATURE_SecurePlayback)) secure++;
+                }
+            }
+            android.media.MediaFormat plain = android.media.MediaFormat.createVideoFormat("video/avc", 1280, 720), wanted = android.media.MediaFormat.createVideoFormat("video/avc", 1280, 720);
+            wanted.setFeatureEnabled(android.media.MediaCodecInfo.CodecCapabilities.FEATURE_SecurePlayback, true);
+            String forPlain = all.findDecoderForFormat(plain), forSecure = all.findDecoderForFormat(wanted);
+            Stream s = Stream.read(getAssets(), "avc.mgau");
+            android.media.MediaCodec codec = android.media.MediaCodec.createDecoderByType("video/avc");
+            codec.configure(s.format(true), null, null, 0);
+            codec.start();
+            int in = codec.dequeueInputBuffer(1000000);
+            android.media.MediaCodec.CryptoInfo info = new android.media.MediaCodec.CryptoInfo();
+            info.set(1, new int[] { 0 }, new int[] { 16 }, new byte[16], new byte[16], android.media.MediaCodec.CRYPTO_MODE_AES_CTR);
+            int refused = -1;
+            try { codec.queueSecureInputBuffer(in, 0, info, 0, 0); } catch (android.media.MediaCodec.CryptoException e) { refused = e.getErrorCode(); }
+            codec.release();
+            detail = decoders + " decoders, " + secure + " of protected content, for a plain format " + forPlain + ", for a protected one " + forSecure
+                    + ", an encrypted sample refused with " + refused;
+            return decoders > 0 && secure == 0 && forPlain != null && forSecure == null && in >= 0
+                    && refused == android.media.MediaCodec.CryptoException.ERROR_UNSUPPORTED_OPERATION;
         });
     }
 
