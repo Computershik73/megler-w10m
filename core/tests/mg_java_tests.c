@@ -3660,6 +3660,13 @@ static int run_data(void)
                                             callbacks as they were when it began, kill), which androidx's MediaSessionCompat keeps its
                                             controllers' callbacks in. */
                                          "remote-callback-list",
+                                         /* And a media session's token and controllers, as an app that plays through its own session uses
+                                            them (Deezer's play button is a controller's TransportControls.play()): the token through a
+                                            Parcel, transport controls reaching the session's Callback on its handler's thread with the
+                                            controller's package, a controller's Callback and getters, a command and a media key through
+                                            the controller, a remote session's volume through its VolumeProvider, a Rating. */
+                                         "session-token", "session-controller", "session-controller-callback", "session-controller-command",
+                                         "session-remote-volume", "rating",
                                          "audio-track", "media-player", "media-player-ogg", "sound-pool",
                                          /* And MediaCodec over the stand-in for the shell's decoders: H.264 shown on a Surface in display
                                             order, a flush, parameter sets in a codec-config buffer, the asynchronous mode, AAC with an
