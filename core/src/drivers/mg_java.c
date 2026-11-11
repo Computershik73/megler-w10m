@@ -1705,6 +1705,16 @@ static bool present_canvas(void *user, void *canvas, int width, int height)
 
 void mg_java_get_stats(mg_java_stats *out) { *out = J.stats; }
 
+const struct mg_zip *mg_java_apk(int number)
+{
+    const mg_zip *z;
+    if (number < 0 || number >= MAX_APKS) return NULL;
+    mg_lock_acquire(&J.lock);
+    z = J.apk_open[number] ? &J.apk[number] : NULL;
+    mg_lock_release(&J.lock);
+    return z;
+}
+
 static bool g_check_partial;
 void mg_java_check_partial(bool on) { g_check_partial = on; }
 N(Native_checkPartial) { c->ret.z = g_check_partial; }

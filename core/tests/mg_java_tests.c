@@ -4716,9 +4716,9 @@ static int run_gms_host(void)
     CHECK(wait_line("I/GmsOwnTest: network location alarm went off", 0, 60) >= 0);
     CHECK(wait_line("I/GmsOwnTest: network location second fix sent true", 0, 30) >= 0);
     /*
-     * Google Play services from a bundle (gms-own.apks: a base and the splits config.mdpi, config.xxhdpi and config.en), as
-     * Play Store installs Google's own, unpacked for 160 dpi in English and Russian: the app has their base and the splits
-     * kept, and their resources are those of all three. An activity of theirs, started by the app and run here as their
+     * Google Play services from a bundle (gms-own.apks: a base and the splits config.mdpi, config.xxhdpi, config.en and pack),
+     * as Play Store installs Google's own, unpacked for 160 dpi in English and Russian: the app has their base and the splits
+     * kept, and their resources are those of all four. An activity of theirs, started by the app and run here as their
      * account settings are, reads a picture that is in their density's split alone (16 x 16, mdpi's), the word of their
      * English split, and both again through a context of another configuration, as AppCompat wraps an activity's: the
      * picture was not there ("Manage your Google Account" ended Play Store on the Google logo's NotFoundException,
@@ -4727,11 +4727,23 @@ static int run_gms_host(void)
      * naming none, it has the platform's default for their target (Theme.DeviceDefault.Light.DarkActionBar, 0x0103013f),
      * not the number of the app's theme.
      */
-    CHECK(find_line("java: Google Play services are in 3 APKs, their base and the splits config.en, config.mdpi", 0) >= 0);
-    CHECK(find_line("I/MicroG: Google Play services' splits, whose resources and files join their base's: config.en, config.mdpi (3 APKs)", 0) >= 0);
+    CHECK(find_line("java: Google Play services are in 4 APKs, their base and the splits config.en, config.mdpi, pack", 0) >= 0);
+    CHECK(find_line("I/MicroG: Google Play services' splits, whose resources and files join their base's: config.en, config.mdpi, pack (4 APKs)", 0) >= 0);
     CHECK(wait_line("-> Google Play services' megler.test.gmsown.Lockup, here", 0, 60) >= 0);
     CHECK(wait_line("I/GmsOwnTest: lockup 16x16 word=english wrapped 16x16 word=english label=Google Play services (a stand-in) "
-                    "splits=[config.en, config.mdpi] host theme attribute false theme 0x103013f", 0, 120) >= 0);
+                    "splits=[config.en, config.mdpi, pack] host theme attribute false theme 0x103013f", 0, 120) >= 0);
+    /*
+     * Their assets read by native code (the app's library, jni/gmshost.c; their bundle has a split of assets alone, pack):
+     * the NDK's asset manager of their context's AssetManager reads their base's asset and their split's, lists the split's
+     * folder, and has none of the app's; that of the app's AssetManager reads the app's and none of theirs; and the same
+     * AssetManager is the same manager each time. AAssetManager_fromJava took no notice of the AssetManager it was given
+     * and looked in the app's APKs alone: the map library inside Google Play services (microG's MapLibre) found none of its
+     * sprites and glyphs, and Citymapper's map had no icons and no labels (0.1.0.690).
+     */
+    CHECK(find_line("java: AAssetManager_fromJava: another package's AssetManager -- native code reads the assets of its 4 APK(s), the first ", 0) >= 0);
+    CHECK(find_line("I/GmsHostTest: native assets: theirs [an asset of Google Play services' base] as Java reads it true, their split's "
+                    "[an asset of a split of Google Play services] folder [note.txt], the app's through theirs null; the app's [the host app's own asset], "
+                    "theirs through the app's null null folder []; one manager each true", 0) >= 0);
     /*
      * Android's Geocoder, answered by their geocode provider (the stand-in's GeocodeProvider, not exported), bound as the system
      * binds it -- the first request a synchronous one on the main thread, which binds it there before it waits -- and asked on
@@ -4769,6 +4781,7 @@ static int run_gms_host(void)
     CHECK(find_line("FATAL EXCEPTION", 0) < 0);
     say_app_lines("/GmsOwnTest: ");
     say_app_lines("/GmsHostTest: geocoder");
+    say_app_lines("/GmsHostTest: native assets");
     return g_failed;
 }
 
