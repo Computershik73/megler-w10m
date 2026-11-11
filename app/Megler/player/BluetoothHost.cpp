@@ -182,6 +182,28 @@ I part(const T& object) {
     return object.template as<I>();
 }
 
+/// A read's ATT error, where its result has one to tell (the result's second interface).
+template <class I, class R>
+IReference<uint8_t> errorOf(const R& result) {
+    if (const auto second = result.template try_as<I>()) return second.ProtocolError();
+    return nullptr;
+}
+
+/// What a handler caught, for the log: called inside a `catch (...)`, which is what every coroutine here ends with -- an
+/// exception that leaves a fire_and_forget coroutine ends the process.
+std::string thrown() {
+    try {
+        throw;
+    } catch (const winrt::hresult_error& e) {
+        return e.code() == E_NOINTERFACE ? std::string("this Windows' Bluetooth lacks an interface Megler needs (0x80004002)")
+                                         : format("an error of Windows' (0x%08X)", unsigned(e.code()));
+    } catch (const std::exception& e) {
+        return std::string("an unexpected exception: ") + e.what();
+    } catch (...) {
+        return "an unexpected exception";
+    }
+}
+
 /// A device, a service or a session closed (IClosable is not their first interface either); nothing is thrown.
 template <class T>
 void closeOf(const T& object) noexcept {
@@ -273,9 +295,20 @@ void look() {
     std::string why, name;
     int state = MEGLER_BT_RADIO_NONE;
     std::vector<Paired> paired;
-    gTyped = ApiInformation::IsPropertyPresent(L"Windows.Devices.Bluetooth.BluetoothLEDevice", L"BluetoothAddressType");
-    gAdvertisementTyped = ApiInformation::IsPropertyPresent(L"Windows.Devices.Bluetooth.Advertisement.BluetoothLEAdvertisementReceivedEventArgs",
-                                                            L"BluetoothAddressType");
+    try {
+        gTyped = ApiInformation::IsPropertyPresent(L"Windows.Devices.Bluetooth.BluetoothLEDevice", L"BluetoothAddressType");
+        gAdvertisementTyped = ApiInformation::IsPropertyPresent(L"Windows.Devices.Bluetooth.Advertisement.BluetoothLEAdvertisementReceivedEventArgs",
+                                                                L"BluetoothAddressType");
+    } catch (const winrt::hresult_error&) {
+    }
+    /*
+     * What the rest of this file asks of Windows is all of UniversalApiContract 4.0 or older, which the type looked for
+     * below stands for: GetGattServicesAsync (IBluetoothLEDevice3), a service's GetCharacteristicsAsync, RequestAccessAsync,
+     * GetIncludedServicesAsync and Session (IGattDeviceService3), a characteristic's GetDescriptorsAsync and its writes with
+     * a result (IGattCharacteristic3), a descriptor's (IGattDescriptor2), a read's ProtocolError, the pairing's Custom and
+     * UnpairAsync (contract 2.0). The two things that are newer are asked for as interfaces where they are used: an
+     * advertisement's address kind (received) and the device's id (connectAsync).
+     */
     try {
         // (Windows 10 1703's GATT client, which reaches devices it is not paired with: GattSession, GetGattServicesAsync.)
         if (!ApiInformation::IsTypePresent(L"Windows.Devices.Bluetooth.GenericAttributeProfile.GattSession"))
@@ -304,11 +337,17 @@ void look() {
     if (state != MEGLER_BT_RADIO_NONE) {
         try {
             const auto all = DeviceInformation::FindAllAsync(BluetoothLEDevice::GetDeviceSelectorFromPairingState(true)).get();
-            for (const auto& d : all) {
+            const uint32_t count = all ? all.Size() : 0;
+            for (uint32_t i = 0; i < count; i++) {
                 try {
+                    const auto d = all.GetAt(i);
+                    if (!d) continue;
                     if (auto dev = BluetoothLEDevice::FromIdAsync(d.Id()).get()) {
-                        paired.push_back({dev.BluetoothAddress(), gTyped ? typeOf(dev.BluetoothAddressType()) : MEGLER_BT_ADDRESS_UNKNOWN, narrow(dev.Name())});
-                        dev.Close();
+                        int type = MEGLER_BT_ADDRESS_UNKNOWN;
+                        if (gTyped)
+                            if (const auto second = dev.try_as<IBluetoothLEDevice2>()) type = typeOf(second.BluetoothAddressType());
+                        paired.push_back({dev.BluetoothAddress(), type, narrow(dev.Name())});
+                        closeOf(dev);
                     }
                 } catch (const winrt::hresult_error&) {
                 }
@@ -326,7 +365,13 @@ void look() {
         gWhyNone = why;
         gPaired = paired;
     }
-    if (radio) radio.StateChanged([](const Radio& r, const winrt::Windows::Foundation::IInspectable&) { guarded([&] { radioChanged(r.State()); }); });
+    if (radio) guarded([&] {
+        radio.StateChanged([](const Radio& r, const winrt::Windows::Foundation::IInspectable&) {
+            guarded([&] {
+                if (r) radioChanged(r.State());
+            });
+        });
+    });
 }
 
 std::string summarize() {
@@ -378,21 +423,25 @@ std::map<uint64_t, Heard> gHeard;
 BluetoothLEAdvertisementWatcher gWatcher{nullptr}; // the worker's
 
 void appendSections(std::vector<uint8_t>& out, const BluetoothLEAdvertisement& a) {
+    if (!a) return;
     bool flags = false;
-    for (const auto& s : a.DataSections()) {
-        const IBuffer data = s.Data();
-        const uint32_t n = std::min<uint32_t>(data ? data.Length() : 0, 254);
-        out.push_back(uint8_t(n + 1));
-        out.push_back(s.DataType());
-        if (n) out.insert(out.end(), data.data(), data.data() + n);
-        flags |= s.DataType() == 0x01;
-    }
+    if (const auto sections = a.DataSections())
+        for (const auto& s : sections) {
+            if (!s) continue;
+            const IBuffer data = s.Data();
+            const uint32_t n = std::min<uint32_t>(data ? data.Length() : 0, 254);
+            out.push_back(uint8_t(n + 1));
+            out.push_back(s.DataType());
+            if (n) out.insert(out.end(), data.data(), data.data() + n);
+            flags |= s.DataType() == 0x01;
+        }
     // (The flags, where Windows keeps them apart from the sections.)
     if (!flags)
         if (const auto f = a.Flags()) out.insert(out.begin(), {uint8_t(2), uint8_t(1), uint8_t(uint32_t(f.Value()))});
 }
 
 void received(const BluetoothLEAdvertisementReceivedEventArgs& e) {
+    if (!e) return;
     const uint64_t address = e.BluetoothAddress();
     const auto type = e.AdvertisementType();
     std::vector<uint8_t> sections, all;
@@ -466,22 +515,30 @@ void scanOn(int mode) {
         if (mode == MEGLER_BT_SCAN_OFF) gHeard.clear();
     }
     if (mode == was) return;
-    if (!gWatcher) {
-        gWatcher = BluetoothLEAdvertisementWatcher();
-        gWatcher.Received([](const BluetoothLEAdvertisementWatcher&, const BluetoothLEAdvertisementReceivedEventArgs& e) { guarded([&] { received(e); }); });
-        gWatcher.Stopped([](const BluetoothLEAdvertisementWatcher&, const BluetoothLEAdvertisementWatcherStoppedEventArgs& e) { guarded([&] { stopped(e.Error()); }); });
-    }
-    if (gWatcher.Status() == BluetoothLEAdvertisementWatcherStatus::Started) gWatcher.Stop();
-    if (mode == MEGLER_BT_SCAN_OFF) {
-        shellLog::write("bluetooth: no longer scanning");
-        return;
-    }
-    // (A watcher stopping cannot start again yet.)
-    for (int i = 0; i < 100 && gWatcher.Status() == BluetoothLEAdvertisementWatcherStatus::Stopping; i++) std::this_thread::sleep_for(std::chrono::milliseconds(10));
     try {
+        if (!gWatcher) {
+            BluetoothLEAdvertisementWatcher watcher;
+            watcher.Received([](const BluetoothLEAdvertisementWatcher&, const BluetoothLEAdvertisementReceivedEventArgs& e) { guarded([&] { received(e); }); });
+            watcher.Stopped([](const BluetoothLEAdvertisementWatcher&, const BluetoothLEAdvertisementWatcherStoppedEventArgs& e) {
+                guarded([&] { stopped(e ? e.Error() : BluetoothError::OtherError); });
+            });
+            gWatcher = watcher;
+        }
+        if (gWatcher.Status() == BluetoothLEAdvertisementWatcherStatus::Started) gWatcher.Stop();
+        if (mode == MEGLER_BT_SCAN_OFF) {
+            shellLog::write("bluetooth: no longer scanning");
+            return;
+        }
+        // (A watcher stopping cannot start again yet.)
+        for (int i = 0; i < 100 && gWatcher.Status() == BluetoothLEAdvertisementWatcherStatus::Stopping; i++) std::this_thread::sleep_for(std::chrono::milliseconds(10));
         gWatcher.ScanningMode(mode == MEGLER_BT_SCAN_ACTIVE ? BluetoothLEScanningMode::Active : BluetoothLEScanningMode::Passive);
         gWatcher.Start();
     } catch (const winrt::hresult_error& e) {
+        // (A scan that would not stop is over all the same for the app, which hears no more of it.)
+        if (mode == MEGLER_BT_SCAN_OFF) {
+            shellLog::write(format("bluetooth: no longer scanning (Windows' watcher would not stop: 0x%08X)", unsigned(e.code())));
+            return;
+        }
         // Refused: the app's scans hear so (Windows' access refused, as an app's registration refused; else an inner error).
         shellLog::write(format("bluetooth: Windows would not scan (0x%08X)", unsigned(e.code())));
         {
@@ -751,13 +808,8 @@ winrt::fire_and_forget connectAsync(std::shared_ptr<Conn> c) {
             co_await winrt::resume_after(againAfter);
             if (endedMeanwhile(c)) co_return;
         }
-    } catch (const winrt::hresult_error& e) {
-        why = e.code() == E_NOINTERFACE ? std::string("this Windows' Bluetooth lacks an interface Megler needs (0x80004002)")
-                                        : format("an error of Windows' (0x%08X)", unsigned(e.code()));
-    } catch (const std::exception& e) {
-        why = std::string("an unexpected exception: ") + e.what();
     } catch (...) {
-        why = "an unexpected exception";
+        why = thrown();
     }
     // Whatever went wrong, the app hears what Android says of a connection not made: status 133, disconnected.
     guarded([&] { failed(c, gattError, why); });
@@ -794,6 +846,7 @@ void subscribe(const std::shared_ptr<Conn>& c, int handle, const GattCharacteris
     const int conn = c->conn;
     const auto token = ch.ValueChanged([conn, handle](const GattCharacteristic&, const GattValueChangedEventArgs& e) {
         guarded([&] {
+            if (!e) return;
             const std::vector<uint8_t> value = bytesOf(e.CharacteristicValue());
             pushEvent(MEGLER_BT_EVENT_CHANGED, conn, 0, handle, 0, &value);
         });
@@ -819,6 +872,7 @@ int handleOf(const GattCharacteristic& ch) { return int(ch.AttributeHandle()); }
 winrt::fire_and_forget discoverAsync(std::shared_ptr<Conn> c) {
     std::vector<megler_bluetooth_attribute> table;
     int status = 0;
+    std::string why;
     try {
         BluetoothLEDevice device{nullptr};
         std::vector<GattDeviceService> services;
@@ -833,44 +887,63 @@ winrt::fire_and_forget discoverAsync(std::shared_ptr<Conn> c) {
         }
         // (The connection's own, the first time; afresh after.)
         if (services.empty()) {
-            const auto r = co_await device.GetGattServicesAsync(BluetoothCacheMode::Uncached);
-            if (r.Status() != GattCommunicationStatus::Success) status = statusOf(r.Status(), r.ProtocolError());
-            else
-                for (const auto& s : r.Services()) services.push_back(s);
+            const auto r = co_await part<IBluetoothLEDevice3>(device).GetGattServicesAsync(BluetoothCacheMode::Uncached);
+            if (!r) status = gattError;
+            else if (r.Status() != GattCommunicationStatus::Success) status = statusOf(r.Status(), r.ProtocolError());
+            else if (const auto list = r.Services())
+                for (const auto& s : list)
+                    if (s) services.push_back(s);
         }
         std::map<int, GattCharacteristic> chars;
         std::map<int, GattDescriptor> descs;
         std::map<int, GattCharacteristic> cccds;
+        bool unreachable = false;
         for (const auto& s : services) {
             megler_bluetooth_attribute a{};
             a.kind = MEGLER_BT_ATTR_SERVICE;
             a.handle = int(s.AttributeHandle());
             uuidBytes(s.Uuid(), a.uuid);
-            auto cr = co_await s.GetCharacteristicsAsync(BluetoothCacheMode::Uncached);
+            const auto third = part<IGattDeviceService3>(s);
+            auto cr = co_await third.GetCharacteristicsAsync(BluetoothCacheMode::Uncached);
             // (Refused: Windows' consent for the device is asked for -- the first time, of the user -- and it is tried again.)
-            if (cr.Status() == GattCommunicationStatus::AccessDenied) {
-                const auto access = co_await s.RequestAccessAsync();
-                if (access == winrt::Windows::Devices::Enumeration::DeviceAccessStatus::Allowed) cr = co_await s.GetCharacteristicsAsync(BluetoothCacheMode::Uncached);
+            if (cr && cr.Status() == GattCommunicationStatus::AccessDenied) {
+                const auto access = co_await third.RequestAccessAsync();
+                if (access == winrt::Windows::Devices::Enumeration::DeviceAccessStatus::Allowed) cr = co_await third.GetCharacteristicsAsync(BluetoothCacheMode::Uncached);
+            }
+            const auto got = cr ? cr.Status() : GattCommunicationStatus::Unreachable;
+            // The device gone in the middle of it: the discovery failed, as Android says so (133) -- not a table of the
+            // services that happened to answer before, nor an empty one that says all is well.
+            if (got == GattCommunicationStatus::Unreachable && device.ConnectionStatus() != BluetoothConnectionStatus::Connected) {
+                shellLog::write(format("bluetooth: connection %d: the device no longer answers (its service at 0x%04x): its services are not told", c->conn,
+                                       a.handle));
+                status = gattError;
+                break;
             }
             // (A service Windows keeps to itself -- the keyboard's, HID -- is not the app's.)
-            if (cr.Status() != GattCommunicationStatus::Success) {
-                shellLog::write(format("bluetooth: connection %d: the service at 0x%04x left out: %s", c->conn, a.handle, statusName(cr.Status())));
+            if (got != GattCommunicationStatus::Success) {
+                shellLog::write(format("bluetooth: connection %d: the service at 0x%04x left out: %s", c->conn, a.handle, statusName(got)));
+                unreachable |= got == GattCommunicationStatus::Unreachable;
                 continue;
             }
             table.push_back(a);
             try {
-                const auto ir = co_await s.GetIncludedServicesAsync(BluetoothCacheMode::Cached);
-                if (ir.Status() == GattCommunicationStatus::Success)
-                    for (const auto& inc : ir.Services()) {
-                        megler_bluetooth_attribute i{};
-                        i.kind = MEGLER_BT_ATTR_INCLUDED;
-                        i.handle = int(inc.AttributeHandle());
-                        uuidBytes(inc.Uuid(), i.uuid);
-                        table.push_back(i);
-                    }
+                const auto ir = co_await third.GetIncludedServicesAsync(BluetoothCacheMode::Cached);
+                if (ir && ir.Status() == GattCommunicationStatus::Success)
+                    if (const auto list = ir.Services())
+                        for (const auto& inc : list) {
+                            if (!inc) continue;
+                            megler_bluetooth_attribute i{};
+                            i.kind = MEGLER_BT_ATTR_INCLUDED;
+                            i.handle = int(inc.AttributeHandle());
+                            uuidBytes(inc.Uuid(), i.uuid);
+                            table.push_back(i);
+                        }
             } catch (const winrt::hresult_error&) {
             }
-            for (const auto& ch : cr.Characteristics()) {
+            const auto list = cr.Characteristics();
+            if (!list) continue;
+            for (const auto& ch : list) {
+                if (!ch) continue;
                 megler_bluetooth_attribute k{};
                 k.kind = MEGLER_BT_ATTR_CHARACTERISTIC;
                 k.handle = handleOf(ch);
@@ -879,20 +952,28 @@ winrt::fire_and_forget discoverAsync(std::shared_ptr<Conn> c) {
                 table.push_back(k);
                 chars.emplace(k.handle, ch);
                 bool hasCccd = false;
-                const auto dr = co_await ch.GetDescriptorsAsync(BluetoothCacheMode::Uncached);
-                if (dr.Status() == GattCommunicationStatus::Success)
-                    for (const auto& d : dr.Descriptors()) {
-                        megler_bluetooth_attribute dd{};
-                        dd.kind = MEGLER_BT_ATTR_DESCRIPTOR;
-                        dd.handle = int(d.AttributeHandle());
-                        uuidBytes(d.Uuid(), dd.uuid);
-                        table.push_back(dd);
-                        descs.emplace(dd.handle, d);
-                        if (d.Uuid() == cccdUuid) {
-                            cccds.emplace(dd.handle, ch);
-                            hasCccd = true;
+                // (Descriptors Windows would not list are none: the characteristic is the app's all the same.)
+                GattDescriptorsResult dr{nullptr};
+                try {
+                    dr = co_await part<IGattCharacteristic3>(ch).GetDescriptorsAsync(BluetoothCacheMode::Uncached);
+                } catch (const winrt::hresult_error& e) {
+                    shellLog::write(format("bluetooth: connection %d: the descriptors of 0x%04x could not be read (0x%08X)", c->conn, k.handle, unsigned(e.code())));
+                }
+                if (dr && dr.Status() == GattCommunicationStatus::Success)
+                    if (const auto ds = dr.Descriptors())
+                        for (const auto& d : ds) {
+                            if (!d) continue;
+                            megler_bluetooth_attribute dd{};
+                            dd.kind = MEGLER_BT_ATTR_DESCRIPTOR;
+                            dd.handle = int(d.AttributeHandle());
+                            uuidBytes(d.Uuid(), dd.uuid);
+                            table.push_back(dd);
+                            descs.emplace(dd.handle, d);
+                            if (d.Uuid() == cccdUuid) {
+                                cccds.emplace(dd.handle, ch);
+                                hasCccd = true;
+                            }
                         }
-                    }
                 // Windows' own call stands for a Client Characteristic Configuration descriptor it does not list.
                 if (!hasCccd && (k.properties & 0x30)) {
                     megler_bluetooth_attribute dd{};
@@ -904,14 +985,21 @@ winrt::fire_and_forget discoverAsync(std::shared_ptr<Conn> c) {
                 }
             }
         }
-        {
+        // (None of its services reached, with Windows still calling it connected: failed as well, not a device with no services.)
+        if (!status && table.empty() && unreachable) status = gattError;
+        if (status) {
+            table.clear();
+        } else {
             std::lock_guard<std::mutex> lock(gMutex);
             c->chars = chars;
             c->descs = descs;
             c->cccds = cccds;
         }
-    } catch (const winrt::hresult_error& e) {
-        shellLog::write(format("bluetooth: connection %d: its services could not be read (0x%08X)", c->conn, unsigned(e.code())));
+    } catch (...) {
+        why = thrown();
+    }
+    if (!why.empty()) {
+        shellLog::write(format("bluetooth: connection %d: its services could not be read: %s", c->conn, why.c_str()));
         status = gattFailure;
         table.clear();
     }
@@ -936,57 +1024,75 @@ void attributeOf(const std::shared_ptr<Conn>& c, int handle, GattCharacteristic&
 winrt::fire_and_forget readAsync(std::shared_ptr<Conn> c, int handle) {
     int status = gattInvalidHandle;
     std::vector<uint8_t> value;
+    std::string why;
     try {
         GattCharacteristic ch{nullptr}, cccdOf{nullptr};
         GattDescriptor d{nullptr};
         attributeOf(c, handle, ch, cccdOf, d);
+        // (A read Windows ends with no result at all is the device not reached.)
         if (ch) {
             const auto r = co_await ch.ReadValueAsync(BluetoothCacheMode::Uncached);
-            status = statusOf(r.Status(), r.ProtocolError());
+            status = r ? statusOf(r.Status(), errorOf<IGattReadResult2>(r)) : gattError;
             if (!status) value = bytesOf(r.Value());
         } else if (cccdOf) {
             const auto r = co_await cccdOf.ReadClientCharacteristicConfigurationDescriptorAsync();
-            status = statusOf(r.Status(), r.ProtocolError());
+            status = r ? statusOf(r.Status(), errorOf<IGattReadClientCharacteristicConfigurationDescriptorResult2>(r)) : gattError;
             if (!status) value = {uint8_t(r.ClientCharacteristicConfigurationDescriptor()), 0};
         } else if (d) {
             const auto r = co_await d.ReadValueAsync(BluetoothCacheMode::Uncached);
-            status = statusOf(r.Status(), r.ProtocolError());
+            status = r ? statusOf(r.Status(), errorOf<IGattReadResult2>(r)) : gattError;
             if (!status) value = bytesOf(r.Value());
         }
-    } catch (const winrt::hresult_error& e) {
-        shellLog::write(format("bluetooth: connection %d: a read of 0x%04x failed (0x%08X)", c->conn, handle, unsigned(e.code())));
+    } catch (...) {
+        why = thrown();
+    }
+    if (!why.empty()) {
+        shellLog::write(format("bluetooth: connection %d: a read of 0x%04x failed: %s", c->conn, handle, why.c_str()));
         status = gattError;
+        value.clear();
     }
     pushEvent(MEGLER_BT_EVENT_READ, c->conn, status, handle, 0, &value);
 }
 
 winrt::fire_and_forget writeAsync(std::shared_ptr<Conn> c, int handle, std::vector<uint8_t> data, int type) {
     int status = gattInvalidHandle;
+    GattCharacteristic ch{nullptr}, cccdOf{nullptr};
+    GattDescriptor d{nullptr};
+    int subscribed = -1; // the characteristic whose changes this write subscribed to, until the device has answered
+    std::string why;
     try {
-        GattCharacteristic ch{nullptr}, cccdOf{nullptr};
-        GattDescriptor d{nullptr};
         attributeOf(c, handle, ch, cccdOf, d);
         if (ch) {
             // (Windows has no signed write: such a write goes without a response.)
             const auto option = type == MEGLER_BT_WRITE_REQUEST ? GattWriteOption::WriteWithResponse : GattWriteOption::WriteWithoutResponse;
-            const auto r = co_await ch.WriteValueWithResultAsync(bufferOf(data), option);
-            status = statusOf(r.Status(), r.ProtocolError());
+            const auto r = co_await part<IGattCharacteristic3>(ch).WriteValueWithResultAsync(bufferOf(data), option);
+            status = r ? statusOf(r.Status(), r.ProtocolError()) : gattError;
         } else if (cccdOf) {
             const uint8_t bits = data.empty() ? 0 : uint8_t(data[0] & 3);
             const auto value = static_cast<GattClientCharacteristicConfigurationDescriptorValue>(bits);
             const int of = handleOf(cccdOf);
+            const auto third = part<IGattCharacteristic3>(cccdOf);
             // Subscribed before the device is told, so that its first notification is not lost.
-            if (bits) subscribe(c, of, cccdOf);
-            const auto r = co_await cccdOf.WriteClientCharacteristicConfigurationDescriptorWithResultAsync(value);
-            status = statusOf(r.Status(), r.ProtocolError());
+            if (bits) {
+                subscribe(c, of, cccdOf);
+                subscribed = of;
+            }
+            const auto r = co_await third.WriteClientCharacteristicConfigurationDescriptorWithResultAsync(value);
+            status = r ? statusOf(r.Status(), r.ProtocolError()) : gattError;
             if (!bits || status) unsubscribe(c, of, cccdOf);
+            subscribed = -1;
         } else if (d) {
-            const auto r = co_await d.WriteValueWithResultAsync(bufferOf(data));
-            status = statusOf(r.Status(), r.ProtocolError());
+            const auto r = co_await part<IGattDescriptor2>(d).WriteValueWithResultAsync(bufferOf(data));
+            status = r ? statusOf(r.Status(), r.ProtocolError()) : gattError;
         }
-    } catch (const winrt::hresult_error& e) {
-        shellLog::write(format("bluetooth: connection %d: a write of 0x%04x failed (0x%08X)", c->conn, handle, unsigned(e.code())));
+    } catch (...) {
+        why = thrown();
+    }
+    if (!why.empty()) {
+        shellLog::write(format("bluetooth: connection %d: a write of 0x%04x failed: %s", c->conn, handle, why.c_str()));
         status = gattError;
+        // (The device was not told to notify: nothing is listened for.)
+        if (subscribed >= 0) unsubscribe(c, subscribed, cccdOf);
     }
     pushEvent(MEGLER_BT_EVENT_WRITTEN, c->conn, status, handle);
 }
@@ -1005,7 +1111,9 @@ winrt::fire_and_forget mtuAsync(std::shared_ptr<Conn> c, int want) {
             if (pdu > 23) break;
             co_await winrt::resume_after(std::chrono::milliseconds(100));
         }
-    } catch (const winrt::hresult_error&) {
+    } catch (...) {
+        // (A session that no longer tells it: the least there is.)
+        pdu = 23;
     }
     shellLog::write(format("bluetooth: connection %d: Windows' MTU is %d, the app asked for %d", c->conn, pdu, want));
     pushEvent(MEGLER_BT_EVENT_MTU, c->conn, 0, 0, std::min(want, std::max(pdu, 23)));
@@ -1046,7 +1154,7 @@ void finish(const std::shared_ptr<Asked>& a, bool accept, const std::string& pin
             if (a->kind == DevicePairingKinds::ProvidePin) a->args.Accept(hs(pin));
             else a->args.Accept();
         }
-        a->deferral.Complete();
+        if (a->deferral) a->deferral.Complete();
     });
 }
 
@@ -1070,8 +1178,11 @@ void requested(uint64_t address, int type, const std::string& name, const Device
                                                                                                                              : "a consent"));
     pushDevice(MEGLER_BT_EVENT_PAIRING, address, type, variantOf(a->kind), 0, key, name);
     [](std::weak_ptr<Asked> weak) -> winrt::fire_and_forget {
-        co_await winrt::resume_after(std::chrono::minutes(1));
-        if (auto a = weak.lock()) finish(a, false, std::string());
+        try {
+            co_await winrt::resume_after(std::chrono::minutes(1));
+            if (auto a = weak.lock()) finish(a, false, std::string());
+        } catch (...) {
+        }
     }(a);
 }
 
@@ -1115,7 +1226,12 @@ void replyOn(uint64_t address, int answer, const std::string& pin) {
         } else {
             message = "An app asks to pair with " + who + ".";
         }
-        finish(a, systemHost::askUser(title, message, buttons) == 1, std::string());
+        bool yes = false;
+        try {
+            yes = systemHost::askUser(title, message, buttons) == 1;
+        } catch (...) {
+        }
+        finish(a, yes, std::string());
     }).detach();
 }
 
@@ -1139,7 +1255,9 @@ int reasonOf(DevicePairingResultStatus s) {
 /// Windows' own pairing, on the UI thread, where its dialog asks for what the device wants.
 winrt::Windows::Foundation::IAsyncOperation<winrt::Windows::Devices::Enumeration::DevicePairingResult> pairOnUi(
     winrt::Windows::Devices::Enumeration::DeviceInformationPairing pairing) {
-    auto dispatcher = winrt::Windows::ApplicationModel::Core::CoreApplication::MainView().Dispatcher();
+    const auto view = winrt::Windows::ApplicationModel::Core::CoreApplication::MainView();
+    const auto dispatcher = part<winrt::Windows::ApplicationModel::Core::ICoreApplicationView2>(view).Dispatcher();
+    if (!dispatcher) throw winrt::hresult_error(E_POINTER);
     co_await winrt::resume_foreground(dispatcher);
     co_return co_await pairing.PairAsync();
 }
@@ -1147,6 +1265,7 @@ winrt::Windows::Foundation::IAsyncOperation<winrt::Windows::Devices::Enumeration
 winrt::fire_and_forget bondAsync(uint64_t address, int type, bool create) {
     BluetoothLEDevice dev{nullptr};
     bool own = false;
+    std::string why;
     try {
         {
             std::lock_guard<std::mutex> lock(gMutex);
@@ -1162,21 +1281,24 @@ winrt::fire_and_forget bondAsync(uint64_t address, int type, bool create) {
             co_return;
         }
         const std::string name = narrow(dev.Name());
-        auto pairing = dev.DeviceInformation().Pairing();
+        // (The device's pairing, each step by the interface that has it: part<> throws for one that is not there.)
+        const auto info = part<IBluetoothLEDevice2>(dev).DeviceInformation();
+        const auto pairing = part<winrt::Windows::Devices::Enumeration::IDeviceInformation2>(info).Pairing();
+        const auto second = part<winrt::Windows::Devices::Enumeration::IDeviceInformationPairing2>(pairing);
         if (!create) {
             bool removed = !pairing.IsPaired();
             if (!removed) {
-                const auto r = co_await pairing.UnpairAsync();
-                removed = r.Status() == DeviceUnpairingResultStatus::Unpaired || r.Status() == DeviceUnpairingResultStatus::AlreadyUnpaired;
+                const auto r = co_await second.UnpairAsync();
+                removed = r && (r.Status() == DeviceUnpairingResultStatus::Unpaired || r.Status() == DeviceUnpairingResultStatus::AlreadyUnpaired);
             }
             shellLog::write("bluetooth: " + addressText(address) + (removed ? " is no longer paired" : " stays paired: Windows did not unpair it"));
             pushDevice(MEGLER_BT_EVENT_BOND, address, type, removed ? MEGLER_BT_BOND_NONE : MEGLER_BT_BOND_BONDED, removed ? unbondRemoved : 0, 0, name);
-            if (own) dev.Close();
+            if (own) closeOf(dev);
             co_return;
         }
         if (pairing.IsPaired()) {
             pushDevice(MEGLER_BT_EVENT_BOND, address, type, MEGLER_BT_BOND_BONDED, 0, 0, name);
-            if (own) dev.Close();
+            if (own) closeOf(dev);
             co_return;
         }
         pushDevice(MEGLER_BT_EVENT_BOND, address, type, MEGLER_BT_BOND_BONDING, 0, 0, name);
@@ -1184,14 +1306,18 @@ winrt::fire_and_forget bondAsync(uint64_t address, int type, bool create) {
             std::lock_guard<std::mutex> lock(gMutex);
             gAskWindows.erase(address);
         }
-        auto custom = pairing.Custom();
+        const auto custom = second.Custom();
+        if (!custom) throw winrt::hresult_error(E_POINTER);
         const auto token = custom.PairingRequested([address, type, name](const DeviceInformationCustomPairing&, const DevicePairingRequestedEventArgs& args) {
-            guarded([&] { requested(address, type, name, args); });
+            guarded([&] {
+                if (args) requested(address, type, name, args);
+            });
         });
         const auto kinds = DevicePairingKinds::ConfirmOnly | DevicePairingKinds::DisplayPin | DevicePairingKinds::ProvidePin | DevicePairingKinds::ConfirmPinMatch;
         auto result = co_await custom.PairAsync(kinds);
         custom.PairingRequested(token);
-        auto status = result.Status();
+        // (A pairing Windows ends with no result is one that failed.)
+        auto status = result ? result.Status() : DevicePairingResultStatus::Failed;
         bool askWindows;
         {
             std::lock_guard<std::mutex> lock(gMutex);
@@ -1201,16 +1327,19 @@ winrt::fire_and_forget bondAsync(uint64_t address, int type, bool create) {
         if (askWindows && status != DevicePairingResultStatus::Paired && status != DevicePairingResultStatus::AlreadyPaired) {
             shellLog::write("bluetooth: " + addressText(address) + "'s PIN is asked of the user by Windows' own pairing");
             result = co_await pairOnUi(pairing);
-            status = result.Status();
+            status = result ? result.Status() : DevicePairingResultStatus::Failed;
         }
         const bool paired = status == DevicePairingResultStatus::Paired || status == DevicePairingResultStatus::AlreadyPaired;
         shellLog::write(format("bluetooth: %s %s (Windows' %d)", addressText(address).c_str(), paired ? "is paired" : "is not paired", int(status)));
         pushDevice(MEGLER_BT_EVENT_BOND, address, type, paired ? MEGLER_BT_BOND_BONDED : MEGLER_BT_BOND_NONE, paired ? 0 : reasonOf(status), 0, name);
-    } catch (const winrt::hresult_error& e) {
-        shellLog::write(format("bluetooth: the pairing with %s failed (0x%08X)", addressText(address).c_str(), unsigned(e.code())));
-        if (create) pushDevice(MEGLER_BT_EVENT_BOND, address, type, MEGLER_BT_BOND_NONE, unbondAuthFailed);
+    } catch (...) {
+        why = thrown();
     }
-    if (own && dev) guarded([&] { dev.Close(); });
+    if (!why.empty()) guarded([&] {
+        shellLog::write(format("bluetooth: the pairing with %s failed: %s", addressText(address).c_str(), why.c_str()));
+        if (create) pushDevice(MEGLER_BT_EVENT_BOND, address, type, MEGLER_BT_BOND_NONE, unbondAuthFailed);
+    });
+    if (own) closeOf(dev);
 }
 
 // ------------------------------------------------------------------ megler_bluetooth_host
@@ -1261,7 +1390,8 @@ void MEGLER_CB readThunk(void*, int conn, int handle) {
 }
 
 void MEGLER_CB writeThunk(void*, int conn, int handle, const unsigned char* data, int size, int type) {
-    std::vector<uint8_t> bytes(data, data + std::max(size, 0));
+    std::vector<uint8_t> bytes;
+    if (data && size > 0) bytes.assign(data, data + size);
     worker().post([conn, handle, bytes = std::move(bytes), type] {
         if (auto c = connOf(conn)) writeAsync(c, handle, bytes, type);
         else pushEvent(MEGLER_BT_EVENT_WRITTEN, conn, gattError, handle);
