@@ -2020,8 +2020,11 @@ public class Main extends Activity {
         notificationChannels(run);
         geocoding();
         laterApis();
+        remoteCallbacks();
+        sessionControllers();
         sound();
         mediaCodec();
+        protectedMedia();
         network();
         httpEngine();
         renderNodes();
@@ -5514,6 +5517,43 @@ public class Main extends Activity {
             detail = u + " path=" + u.getPath() + " hierarchical=" + u.isHierarchical() + "; " + bare + " path=" + bare.getPath();
             return "max:/:chat-list".equals(u.toString()) && "/:chat-list".equals(u.getPath()) && u.isHierarchical() && "a/b".equals(bare.getPath());
         });
+        step("url-query-sanitizer", () -> {
+            // Android's UrlQuerySanitizer, as an analytics library of HBO Max reads its app id (new UrlQuerySanitizer(url)
+            // .getValue("id"), which was null for every URL): a URL's parameters unescaped, a value's illegal characters
+            // made '_'; and one set up by hand -- registered parameters with their sanitizers, the others dropped, the first
+            // or the last of a repeated one, the list in the query's order, a script URL emptied.
+            android.net.UrlQuerySanitizer q = new android.net.UrlQuerySanitizer("https://example.test/config?id=app-1&name=a+b%41%zz&e&x=%3Cb%3E");
+            String simple = q.getValue("id") + "|" + q.getValue("name") + "|" + q.getValue("e") + "|" + q.getValue("x") + "|" + q.getValue("none")
+                    + "|" + q.hasParameter("e") + q.hasParameter("none") + "|" + q.getParameterSet().size() + "|" + q.getParameterList().size();
+            android.net.UrlQuerySanitizer own = new android.net.UrlQuerySanitizer();
+            own.registerParameter("t", android.net.UrlQuerySanitizer.getSpaceLegal());
+            own.registerParameters(new String[] { "u", "v" }, android.net.UrlQuerySanitizer.getUrlAndSpaceLegal());
+            own.registerParameter("w", android.net.UrlQuerySanitizer.getAmpLegal());
+            // (Where spaces are legal the ends are not cut and an illegal character is a space; where no white space is, they are.)
+            own.parseQuery("t=%20one two%09&dropped=1&u=http://h/p?a=1%26b&t=last&v=JavaScript:alert(1)&w=%20a%26b%09&&=");
+            StringBuilder list = new StringBuilder();
+            for (Object o : own.getParameterList()) {
+                android.net.UrlQuerySanitizer.ParameterValuePair pair = (android.net.UrlQuerySanitizer.ParameterValuePair) o;
+                list.append(pair.mParameter).append('=').append(pair.mValue).append(';');
+            }
+            String last = own.getValue("t");
+            own.setPreferFirstRepeatedParameter(true);
+            own.parseQuery("t=first&t=second");
+            String first = own.getValue("t");
+            own.setAllowUnregisteredParamaters(true);
+            own.setUnregisteredParameterValueSanitizer(android.net.UrlQuerySanitizer.getAllButNulLegal());
+            own.parseUrl("x://y?other=<%00>");
+            String other = own.getValue("other");
+            own.parseUrl("no-query");
+            detail = "simple=" + simple + " list=" + list + " last=" + last + " first=" + first + " other=" + other + " none=" + own.getParameterList().size()
+                    + " unescape=" + own.unescape("a%2Bb+c%4") + " sanitizer=" + (own.getValueSanitizer("t") == android.net.UrlQuerySanitizer.getSpaceLegal())
+                    + (own.getEffectiveValueSanitizer("zz") == android.net.UrlQuerySanitizer.getAllButNulLegal());
+            return "app-1|a_bA_zz||_b_|null|truefalse|4|4".equals(simple)
+                    && "t= one two ;u=http://h/p?a=1&b;t=last;v=;w=a&b;".equals(list.toString()) && "last".equals(last) && "first".equals(first)
+                    && "< >".equals(other) && own.getParameterList().isEmpty() && "a+b c%4".equals(own.unescape("a%2Bb+c%4"))
+                    && own.getValueSanitizer("t") == android.net.UrlQuerySanitizer.getSpaceLegal()
+                    && own.getEffectiveValueSanitizer("zz") == android.net.UrlQuerySanitizer.getAllButNulLegal();
+        });
         step("html-tag-handler", () -> {
             // Html.fromHtml as Android's: the spans of the elements it knows, a paragraph's line breaks after it, elements left
             // open ended with the text, character references read; and a TagHandler is given html and body before the rest,
@@ -7875,6 +7915,415 @@ public class Main extends Activity {
             detail = u.getPackageName() + " " + u.getPid() + " " + u.getUid();
             return "megler.test.data".equals(u.getPackageName()) && u.getPid() == 12 && u.getUid() == 10077 && u.equals(same) && u.hashCode() == same.hashCode()
                     && !u.equals(new android.media.session.MediaSessionManager.RemoteUserInfo("megler.test.data", 13, 10077));
+        });
+    }
+
+    /** A listener of the app's own, as an AIDL callback is within its own process: an interface whose binder is itself. */
+    private static final class Listener extends android.os.Binder implements android.os.IInterface {
+        final String name;
+        Listener(String name) { this.name = name; }
+        @Override public android.os.IBinder asBinder() { return this; }
+    }
+
+    /**
+     * Android's RemoteCallbackList, as androidx's MediaSessionCompat keeps its controllers' callbacks in one: callbacks by
+     * their binder, each with its cookie, one registered again taking the earlier one's place; a broadcast over the
+     * callbacks as they were when it began, and Android's refusals of one begun inside another or finished outside one; the
+     * one-call broadcast (hidden on Android: by reflection); and kill, after which nothing registers.
+     */
+    private void remoteCallbacks() {
+        step("remote-callback-list", () -> {
+            android.os.RemoteCallbackList<Listener> list = new android.os.RemoteCallbackList<>();
+            Listener a = new Listener("a"), b = new Listener("b");
+            boolean registered = list.register(a, "first") && list.register(b) && list.register(a, "again");
+            int count = list.getRegisteredCallbackCount();
+            int n = list.beginBroadcast();
+            boolean nested = false;
+            try { list.beginBroadcast(); } catch (IllegalStateException e) { nested = true; }
+            // (Unregistered while the broadcast is under way: still of this broadcast, not of the next.)
+            boolean unregistered = list.unregister(b);
+            java.util.TreeSet<String> heard = new java.util.TreeSet<>();
+            for (int i = 0; i < n; i++) heard.add(list.getBroadcastItem(i).name + "=" + list.getBroadcastCookie(i));
+            list.finishBroadcast();
+            boolean outside = false;
+            try { list.finishBroadcast(); } catch (IllegalStateException e) { outside = true; }
+            final StringBuilder next = new StringBuilder();
+            android.os.RemoteCallbackList.class.getMethod("broadcast", java.util.function.Consumer.class)
+                    .invoke(list, (java.util.function.Consumer<Listener>) l -> next.append(l.name));
+            boolean notAgain = !list.unregister(b);
+            Object cookie = list.getRegisteredCallbackCookie(0);
+            list.kill();
+            boolean killed = !list.register(b) && list.getRegisteredCallbackCount() == 0 && list.beginBroadcast() == 0;
+            list.finishBroadcast();
+            detail = "registered " + registered + ", count " + count + ", a broadcast of " + n + " " + heard + ", nested refused " + nested + ", outside refused " + outside
+                    + ", the next " + next + ", cookie " + cookie + ", killed " + killed;
+            return registered && count == 2 && n == 2 && nested && unregistered && "[a=again, b=null]".equals(heard.toString()) && outside
+                    && "a".equals(next.toString()) && notAgain && "again".equals(cookie) && killed;
+        });
+    }
+
+    /** Holds a looper's thread until the latch given back is counted down: what is posted to the looper meanwhile waits. */
+    private static java.util.concurrent.CountDownLatch hold(android.os.Looper looper) throws InterruptedException {
+        final java.util.concurrent.CountDownLatch held = new java.util.concurrent.CountDownLatch(1), go = new java.util.concurrent.CountDownLatch(1);
+        new android.os.Handler(looper).post(() -> {
+            held.countDown();
+            try { go.await(10, java.util.concurrent.TimeUnit.SECONDS); } catch (InterruptedException e) { }
+        });
+        held.await(5, java.util.concurrent.TimeUnit.SECONDS);
+        return go;
+    }
+
+    /** Waits until a looper's thread has done all that was posted to it before this, and what that posted in its turn. */
+    private static boolean drain(android.os.Looper looper) throws InterruptedException {
+        boolean done = true;
+        for (int pass = 0; pass < 2; pass++) {
+            final java.util.concurrent.CountDownLatch latch = new java.util.concurrent.CountDownLatch(1);
+            new android.os.Handler(looper).post(latch::countDown);
+            done &= latch.await(5, java.util.concurrent.TimeUnit.SECONDS);
+        }
+        return done;
+    }
+
+    private static android.media.session.MediaSession.QueueItem queueItem(String mediaId, String title, long id) {
+        return new android.media.session.MediaSession.QueueItem(new android.media.MediaDescription.Builder().setMediaId(mediaId).setTitle(title).build(), id);
+    }
+
+    /**
+     * A media session's token and controllers, as an app that plays through its own session uses them (androidx's
+     * MediaSessionCompat and MediaControllerCompat are made of these; Deezer's player screen holds a controller of the
+     * session its playback service made, and its play button is the controller's TransportControls.play()):
+     * the session's token, one and the same and equal through a Parcel, and a queue item through one; a controller made of
+     * the token, whose transport controls reach the session's Callback later, on the thread of the handler the callback was
+     * set with, with the controller's package to be asked for there -- also when the app has emptied that handler of its
+     * own, and not once the callback is taken away or the session released; a controller's Callback hearing each change on
+     * its handler's thread, and reading the same from the controller, the position brought to now; a command answered
+     * through its ResultReceiver and a media key through the controller; a remote session's volume through its
+     * VolumeProvider; and a Rating as Android's.
+     */
+    private void sessionControllers() {
+        step("session-token", () -> {
+            android.media.session.MediaSession session = new android.media.session.MediaSession(this, "session-token");
+            android.media.session.MediaSession.Token token = session.getSessionToken();
+            android.os.Parcel p = android.os.Parcel.obtain();
+            p.writeParcelable(token, 0);
+            queueItem("m1", "First", 7).writeToParcel(p, 0);
+            p.setDataPosition(0);
+            android.media.session.MediaSession.Token back = p.readParcelable(getClassLoader());
+            android.media.session.MediaSession.QueueItem item = android.media.session.MediaSession.QueueItem.CREATOR.createFromParcel(p);
+            p.recycle();
+            android.media.session.MediaController own = session.getController(), made = back == null ? null : new android.media.session.MediaController(this, back);
+            boolean refused = false, noId = false;
+            try { new android.media.session.MediaController(this, (android.media.session.MediaSession.Token) null); } catch (IllegalArgumentException e) { refused = true; }
+            try { queueItem("m2", "Second", android.media.session.MediaSession.QueueItem.UNKNOWN_ID); } catch (IllegalArgumentException e) { noId = true; }
+            Object tag = made == null ? null : android.media.session.MediaController.class.getMethod("getTag").invoke(made);
+            session.release();
+            detail = "token " + token + ", back " + back + ", the session's controller " + own + ", one made " + made + " of " + (made == null ? null : made.getPackageName())
+                    + " tag " + tag + ", item " + item + ", refused " + refused + " " + noId;
+            return token != null && token == session.getSessionToken() && token.equals(back) && token.hashCode() == back.hashCode() && own != null
+                    && token.equals(own.getSessionToken()) && own.getTransportControls() != null && made.getTransportControls() != null
+                    && getPackageName().equals(made.getPackageName()) && "session-token".equals(tag) && item.getQueueId() == 7
+                    && "m1".equals(item.getDescription().getMediaId()) && refused && noId;
+        });
+        step("session-controller", () -> {
+            final android.os.HandlerThread ht = new android.os.HandlerThread("session callbacks");
+            ht.start();
+            final android.os.Handler handler = new android.os.Handler(ht.getLooper());
+            final android.media.session.MediaSession session = new android.media.session.MediaSession(this, "session-controller");
+            final StringBuffer heard = new StringBuffer();
+            final String[] who = new String[1];
+            final boolean[] onThread = new boolean[1];
+            session.setCallback(new android.media.session.MediaSession.Callback() {
+                @Override public void onPlay() {
+                    android.media.session.MediaSessionManager.RemoteUserInfo u = session.getCurrentControllerInfo();
+                    who[0] = u.getPackageName() + " pid " + u.getPid() + " uid " + u.getUid();
+                    onThread[0] = android.os.Looper.myLooper() == ht.getLooper();
+                    heard.append("play;");
+                }
+                @Override public void onPause() { heard.append("pause;"); }
+                @Override public void onSeekTo(long position) { heard.append("seek " + position + ";"); }
+                @Override public void onSkipToNext() { heard.append("next;"); }
+                @Override public void onSkipToPrevious() { heard.append("previous;"); }
+                @Override public void onSkipToQueueItem(long id) { heard.append("item " + id + ";"); }
+                @Override public void onPlayFromMediaId(String id, android.os.Bundle extras) { heard.append("id " + id + " " + (extras == null ? null : extras.getString("k")) + ";"); }
+                @Override public void onPlayFromSearch(String query, android.os.Bundle extras) { heard.append("search '" + query + "';"); }
+                @Override public void onCustomAction(String action, android.os.Bundle extras) { heard.append("custom " + action + ";"); }
+                @Override public void onSetRating(android.media.Rating rating) { heard.append("rating " + rating.hasHeart() + ";"); }
+                @Override public void onStop() { heard.append("stop;"); }
+            }, handler);
+            android.media.session.MediaController.TransportControls controls = new android.media.session.MediaController(this, session.getSessionToken()).getTransportControls();
+            // The callback's thread is held while play() is asked and the app empties its own handler, as Deezer's service
+            // empties its: the call is the session's to keep.
+            java.util.concurrent.CountDownLatch go = hold(ht.getLooper());
+            controls.play();
+            boolean early = heard.length() != 0;
+            handler.removeCallbacksAndMessages(null);
+            go.countDown();
+            android.os.Bundle extras = new android.os.Bundle();
+            extras.putString("k", "v");
+            controls.pause();
+            controls.seekTo(42000);
+            controls.skipToNext();
+            controls.skipToPrevious();
+            controls.skipToQueueItem(7);
+            controls.playFromMediaId("track-1", extras);
+            controls.playFromSearch(null, null);
+            controls.sendCustomAction("shuffle", null);
+            controls.setRating(android.media.Rating.newHeartRating(true));
+            controls.stop();
+            boolean drained = drain(ht.getLooper());
+            String all = heard.toString();
+            boolean refused = false;
+            try { controls.playFromMediaId("", null); } catch (IllegalArgumentException e) { refused = true; }
+            // A call that waits when the callback is taken away is dropped, and none reaches a session released.
+            go = hold(ht.getLooper());
+            controls.play();
+            session.setCallback(null);
+            go.countDown();
+            drained &= drain(ht.getLooper());
+            session.release();
+            controls.play();
+            drained &= drain(ht.getLooper());
+            boolean dropped = heard.toString().equals(all);
+            ht.quit();
+            detail = "heard " + all + " from " + who[0] + ", on the handler's thread " + onThread[0] + ", before the thread was let go " + early + ", drained " + drained
+                    + ", an empty id refused " + refused + ", nothing after the callback went " + dropped;
+            return !early && drained && onThread[0] && (getPackageName() + " pid " + android.os.Process.myPid() + " uid " + android.os.Process.myUid()).equals(who[0])
+                    && "play;pause;seek 42000;next;previous;item 7;id track-1 v;search '';custom shuffle;rating true;stop;".equals(all) && refused && dropped;
+        });
+        step("session-controller-callback", () -> {
+            final android.os.HandlerThread ht = new android.os.HandlerThread("controller callbacks");
+            ht.start();
+            final android.media.session.MediaSession session = new android.media.session.MediaSession(this, "session-controller-callback");
+            android.media.session.MediaController controller = session.getController();
+            final StringBuffer heard = new StringBuffer(), other = new StringBuffer();
+            final boolean[] onThread = new boolean[1];
+            android.media.session.MediaController.Callback callback = new android.media.session.MediaController.Callback() {
+                @Override public void onPlaybackStateChanged(android.media.session.PlaybackState state) {
+                    onThread[0] = android.os.Looper.myLooper() == ht.getLooper();
+                    heard.append("state " + (state == null ? null : state.getState()) + ";");
+                }
+                @Override public void onMetadataChanged(android.media.MediaMetadata metadata) {
+                    heard.append("metadata " + (metadata == null ? null : metadata.getString(android.media.MediaMetadata.METADATA_KEY_TITLE)) + ";");
+                }
+                @Override public void onQueueChanged(java.util.List<android.media.session.MediaSession.QueueItem> queue) { heard.append("queue " + (queue == null ? null : queue.size()) + ";"); }
+                @Override public void onQueueTitleChanged(CharSequence title) { heard.append("title " + title + ";"); }
+                @Override public void onExtrasChanged(android.os.Bundle extras) { heard.append("extras " + (extras == null ? null : extras.getString("k")) + ";"); }
+                @Override public void onSessionEvent(String event, android.os.Bundle extras) { heard.append("event " + event + " " + (extras == null ? null : extras.getString("k")) + ";"); }
+                @Override public void onSessionDestroyed() { heard.append("destroyed;"); }
+            };
+            android.media.session.MediaController.Callback second = new android.media.session.MediaController.Callback() {
+                @Override public void onPlaybackStateChanged(android.media.session.PlaybackState state) { other.append("state;"); }
+            };
+            controller.registerCallback(callback, new android.os.Handler(ht.getLooper()));
+            controller.registerCallback(second, new android.os.Handler(ht.getLooper()));
+            controller.unregisterCallback(second);
+            android.os.Bundle extras = new android.os.Bundle();
+            extras.putString("k", "v");
+            session.setMetadata(new android.media.MediaMetadata.Builder().putString(android.media.MediaMetadata.METADATA_KEY_TITLE, "A song")
+                    .putLong(android.media.MediaMetadata.METADATA_KEY_DURATION, 1500).build());
+            // Playing from 1000 ms at double speed since a second ago, in a track of 1500 ms: for a controller it is at the end.
+            session.setPlaybackState(new android.media.session.PlaybackState.Builder()
+                    .setState(android.media.session.PlaybackState.STATE_PLAYING, 1000, 2f, android.os.SystemClock.elapsedRealtime() - 1000)
+                    .setActions(android.media.session.PlaybackState.ACTION_PAUSE).build());
+            session.setQueue(java.util.Arrays.asList(queueItem("m1", "First", 7), queueItem("m2", "Second", 8)));
+            session.setQueueTitle("Up next");
+            session.setExtras(extras);
+            session.setRatingType(android.media.Rating.RATING_HEART);
+            session.setFlags(android.media.session.MediaSession.FLAG_HANDLES_MEDIA_BUTTONS | android.media.session.MediaSession.FLAG_HANDLES_TRANSPORT_CONTROLS);
+            session.sendSessionEvent("ping", extras);
+            android.media.session.PlaybackState now = controller.getPlaybackState();
+            java.util.List<android.media.session.MediaSession.QueueItem> queue = controller.getQueue();
+            boolean read = now != null && now.getState() == android.media.session.PlaybackState.STATE_PLAYING && now.getPosition() == 1500
+                    && now.getActions() == android.media.session.PlaybackState.ACTION_PAUSE
+                    && "A song".equals(controller.getMetadata().getString(android.media.MediaMetadata.METADATA_KEY_TITLE)) && queue != null && queue.size() == 2
+                    && queue.get(1).getQueueId() == 8 && "m2".equals(queue.get(1).getDescription().getMediaId()) && "Up next".contentEquals(controller.getQueueTitle())
+                    && "v".equals(controller.getExtras().getString("k")) && controller.getRatingType() == android.media.Rating.RATING_HEART && controller.getFlags() == 3
+                    && getPackageName().equals(controller.getPackageName()) && controller.getSessionToken().equals(session.getSessionToken())
+                    && controller.getSessionActivity() == null;
+            session.setPlaybackState(new android.media.session.PlaybackState.Builder()
+                    .setState(android.media.session.PlaybackState.STATE_PAUSED, 1200, 0f, android.os.SystemClock.elapsedRealtime() - 1000).build());
+            android.media.session.PlaybackState paused = controller.getPlaybackState();
+            session.release();
+            boolean drained = drain(ht.getLooper());
+            boolean gone = controller.getPlaybackState() == null;
+            ht.quit();
+            detail = "heard " + heard + " on the handler's thread " + onThread[0] + ", the one unregistered " + other + ", read " + read + " (position "
+                    + (now == null ? null : now.getPosition()) + "), paused at " + (paused == null ? null : paused.getPosition()) + ", drained " + drained + ", no state once released " + gone;
+            return read && onThread[0] && drained && "metadata A song;state 3;queue 2;title Up next;extras v;event ping v;state 2;destroyed;".equals(heard.toString())
+                    && other.length() == 0 && paused != null && paused.getPosition() == 1200 && gone;
+        });
+        step("session-controller-command", () -> {
+            final android.os.HandlerThread ht = new android.os.HandlerThread("session commands");
+            ht.start();
+            final android.media.session.MediaSession session = new android.media.session.MediaSession(this, "session-controller-command");
+            final StringBuffer heard = new StringBuffer();
+            session.setCallback(new android.media.session.MediaSession.Callback() {
+                @Override public void onCommand(String command, android.os.Bundle args, android.os.ResultReceiver cb) {
+                    heard.append("command " + command + " " + (args == null ? null : args.getString("k")) + ";");
+                    android.os.Bundle answer = new android.os.Bundle();
+                    answer.putString("a", "answer");
+                    if (cb != null) cb.send(7, answer);
+                }
+                @Override public void onPlay() { heard.append("play from " + session.getCurrentControllerInfo().getPackageName() + ";"); }
+                @Override public void onSkipToNext() { heard.append("next;"); }
+            }, new android.os.Handler(ht.getLooper()));
+            session.setPlaybackState(new android.media.session.PlaybackState.Builder().setState(android.media.session.PlaybackState.STATE_PAUSED, 0, 1f)
+                    .setActions(android.media.session.PlaybackState.ACTION_PLAY).build());
+            android.media.session.MediaController controller = new android.media.session.MediaController(this, session.getSessionToken());
+            final String[] answered = new String[1];
+            final java.util.concurrent.CountDownLatch got = new java.util.concurrent.CountDownLatch(1);
+            android.os.Bundle args = new android.os.Bundle();
+            args.putString("k", "v");
+            controller.sendCommand("ask", args, new android.os.ResultReceiver(null) {
+                @Override protected void onReceiveResult(int code, android.os.Bundle data) {
+                    answered[0] = code + " " + (data == null ? null : data.getString("a"));
+                    got.countDown();
+                }
+            });
+            boolean inTime = got.await(5, java.util.concurrent.TimeUnit.SECONDS);
+            // A media key through the controller is the callback's to answer: its own answer (Android 9's) makes the call the
+            // session's state allows, and no other.
+            boolean play = controller.dispatchMediaButtonEvent(new android.view.KeyEvent(android.view.KeyEvent.ACTION_DOWN, android.view.KeyEvent.KEYCODE_MEDIA_PLAY));
+            boolean next = controller.dispatchMediaButtonEvent(new android.view.KeyEvent(android.view.KeyEvent.ACTION_DOWN, android.view.KeyEvent.KEYCODE_MEDIA_NEXT));
+            boolean letter = controller.dispatchMediaButtonEvent(new android.view.KeyEvent(android.view.KeyEvent.ACTION_DOWN, android.view.KeyEvent.KEYCODE_A));
+            boolean drained = drain(ht.getLooper());
+            boolean refused = false;
+            try { controller.sendCommand("", null, null); } catch (IllegalArgumentException e) { refused = true; }
+            session.release();
+            ht.quit();
+            detail = "heard " + heard + ", answered " + answered[0] + " in time " + inTime + ", keys taken: play " + play + " next " + next + " a letter " + letter
+                    + ", drained " + drained + ", an empty command refused " + refused;
+            return inTime && "7 answer".equals(answered[0]) && play && next && !letter && drained && refused
+                    && ("command ask v;play from " + getPackageName() + ";").equals(heard.toString());
+        });
+        step("session-remote-volume", () -> {
+            final android.os.HandlerThread ht = new android.os.HandlerThread("session volume");
+            ht.start();
+            final android.media.session.MediaSession session = new android.media.session.MediaSession(this, "session-remote-volume");
+            final StringBuffer heard = new StringBuffer();
+            session.setCallback(new android.media.session.MediaSession.Callback() { }, new android.os.Handler(ht.getLooper()));
+            android.media.session.MediaController controller = session.getController();
+            android.media.AudioManager audio = (android.media.AudioManager) getSystemService(AUDIO_SERVICE);
+            String phone = audio.getStreamVolume(android.media.AudioManager.STREAM_MUSIC) + "/" + audio.getStreamMaxVolume(android.media.AudioManager.STREAM_MUSIC);
+            android.media.session.MediaController.PlaybackInfo local = controller.getPlaybackInfo();
+            final android.media.VolumeProvider provider = new android.media.VolumeProvider(android.media.VolumeProvider.VOLUME_CONTROL_ABSOLUTE, 20, 7) {
+                @Override public void onSetVolumeTo(int volume) {
+                    heard.append("set " + volume + (android.os.Looper.myLooper() == ht.getLooper() ? "" : " OFF THE CALLBACK'S THREAD") + ";");
+                    setCurrentVolume(volume);
+                }
+                @Override public void onAdjustVolume(int direction) {
+                    heard.append("adjust " + direction + ";");
+                    setCurrentVolume(getCurrentVolume() + direction);
+                }
+            };
+            controller.registerCallback(new android.media.session.MediaController.Callback() {
+                @Override public void onAudioInfoChanged(android.media.session.MediaController.PlaybackInfo info) {
+                    heard.append("info " + info.getPlaybackType() + " " + info.getCurrentVolume() + "/" + info.getMaxVolume() + ";");
+                }
+            }, new android.os.Handler(ht.getLooper()));
+            session.setPlaybackToRemote(provider);
+            android.media.session.MediaController.PlaybackInfo remote = controller.getPlaybackInfo();
+            // (Past the provider's range: its most.)
+            controller.setVolumeTo(50, 0);
+            boolean drained = drain(ht.getLooper());
+            controller.adjustVolume(android.media.AudioManager.ADJUST_LOWER, 0);
+            drained &= drain(ht.getLooper());
+            controller.adjustVolume(android.media.AudioManager.ADJUST_MUTE, 0);
+            drained &= drain(ht.getLooper());
+            session.setPlaybackToLocal(new android.media.AudioAttributes.Builder().setUsage(android.media.AudioAttributes.USAGE_MEDIA)
+                    .setContentType(android.media.AudioAttributes.CONTENT_TYPE_MUSIC).build());
+            drained &= drain(ht.getLooper());
+            session.release();
+            ht.quit();
+            detail = "the phone's " + phone + ", local " + local.getPlaybackType() + " " + local.getCurrentVolume() + "/" + local.getMaxVolume() + ", remote "
+                    + remote.getPlaybackType() + " " + remote.getCurrentVolume() + "/" + remote.getMaxVolume() + " control " + remote.getVolumeControl() + ", heard " + heard
+                    + ", drained " + drained;
+            return local.getPlaybackType() == android.media.session.MediaController.PlaybackInfo.PLAYBACK_TYPE_LOCAL
+                    && phone.equals(local.getCurrentVolume() + "/" + local.getMaxVolume())
+                    && remote.getPlaybackType() == android.media.session.MediaController.PlaybackInfo.PLAYBACK_TYPE_REMOTE && remote.getCurrentVolume() == 7
+                    && remote.getMaxVolume() == 20 && remote.getVolumeControl() == android.media.VolumeProvider.VOLUME_CONTROL_ABSOLUTE && drained
+                    && provider.getCurrentVolume() == 19 && ("info 2 7/20;set 20;info 2 20/20;adjust -1;info 2 19/20;info 1 " + phone + ";").equals(heard.toString());
+        });
+        step("rating", () -> {
+            android.media.Rating heart = android.media.Rating.newHeartRating(true), stars = android.media.Rating.newStarRating(android.media.Rating.RATING_5_STARS, 3.5f);
+            android.media.Rating unrated = android.media.Rating.newUnratedRating(android.media.Rating.RATING_THUMB_UP_DOWN);
+            android.os.Parcel p = android.os.Parcel.obtain();
+            stars.writeToParcel(p, 0);
+            p.setDataPosition(0);
+            android.media.Rating back = android.media.Rating.CREATOR.createFromParcel(p);
+            p.recycle();
+            boolean refused = android.media.Rating.newStarRating(android.media.Rating.RATING_3_STARS, 4f) == null
+                    && android.media.Rating.newStarRating(android.media.Rating.RATING_HEART, 1f) == null && android.media.Rating.newPercentageRating(101f) == null
+                    && android.media.Rating.newUnratedRating(android.media.Rating.RATING_NONE) == null;
+            detail = heart + ", " + stars + ", " + unrated + ", through a Parcel " + back + ", refused " + refused;
+            return heart.getRatingStyle() == android.media.Rating.RATING_HEART && heart.hasHeart() && heart.isRated() && !heart.isThumbUp() && heart.getStarRating() == -1f
+                    && stars.getRatingStyle() == android.media.Rating.RATING_5_STARS && stars.getStarRating() == 3.5f && stars.getPercentRating() == -1f && !stars.hasHeart()
+                    && !unrated.isRated() && !unrated.isThumbUp() && unrated.getRatingStyle() == android.media.Rating.RATING_THUMB_UP_DOWN
+                    && back.getRatingStyle() == android.media.Rating.RATING_5_STARS && back.getStarRating() == 3.5f && back.isRated() && refused
+                    && android.media.Rating.newPercentageRating(42f).getPercentRating() == 42f && android.media.Rating.newThumbRating(true).isThumbUp()
+                    && !android.media.Rating.newHeartRating(false).hasHeart();
+        });
+    }
+
+    /**
+     * Protected media, of which Megler plays none: it has no content decryption module, and says so as an Android device
+     * without the scheme does. No scheme is supported, by MediaDrm's three questions or MediaCrypto's (Widevine, PlayReady,
+     * ClearKey, the common one); MediaDrm's list of schemes (Android 11's: by reflection) is empty; a MediaDrm cannot be
+     * made (UnsupportedSchemeException, with its message) nor a MediaCrypto (MediaCryptoException); no decoder says it
+     * plays protected content, and none is found for a format that asks for it; and a decoder given an encrypted sample
+     * refuses it (MediaCodec.CryptoException, ERROR_UNSUPPORTED_OPERATION).
+     */
+    private void protectedMedia() {
+        final java.util.UUID widevine = java.util.UUID.fromString("edef8ba9-79d6-4ace-a3c8-27dcd51d21ed"), playReady = java.util.UUID.fromString("9a04f079-9840-4286-ab92-e65be0885f95"),
+                clearKey = java.util.UUID.fromString("e2719d58-a985-b3c9-781a-b030af78d30e"), common = java.util.UUID.fromString("1077efec-c0b2-4d02-ace3-3c1e52e2fb4b");
+        step("drm-no-scheme", () -> {
+            StringBuilder supported = new StringBuilder();
+            for (java.util.UUID scheme : new java.util.UUID[] { widevine, playReady, clearKey, common }) {
+                if (android.media.MediaDrm.isCryptoSchemeSupported(scheme) || android.media.MediaDrm.isCryptoSchemeSupported(scheme, "video/mp4")
+                    || android.media.MediaDrm.isCryptoSchemeSupported(scheme, "video/mp4", android.media.MediaDrm.SECURITY_LEVEL_SW_SECURE_CRYPTO)
+                    || android.media.MediaCrypto.isCryptoSchemeSupported(scheme)) supported.append(scheme).append(' ');
+            }
+            Object schemes = android.media.MediaDrm.class.getMethod("getSupportedCryptoSchemes").invoke(null);
+            String drm = null, crypto = null;
+            Object made = null;
+            try { made = new android.media.MediaDrm(widevine); } catch (android.media.UnsupportedSchemeException e) { drm = e.getMessage(); }
+            try { made = new android.media.MediaCrypto(widevine, new byte[] { 1, 2, 3 }); } catch (android.media.MediaCryptoException e) { crypto = e.getMessage(); }
+            // (And the exceptions an app's player makes of its own keep what they were made with.)
+            String kept = new android.media.MediaDrmException("a message").getMessage() + "/" + new android.media.MediaDrmResetException("reset").getMessage();
+            detail = "supported: " + supported + ", schemes " + schemes + ", MediaDrm: " + drm + ", MediaCrypto: " + crypto + ", made " + made + ", kept " + kept;
+            return supported.length() == 0 && schemes instanceof java.util.List && ((java.util.List<?>) schemes).isEmpty() && made == null
+                    && "Failed to instantiate drm object.".equals(drm) && "Failed to instantiate crypto object.".equals(crypto) && "a message/reset".equals(kept);
+        });
+        step("drm-no-secure-decoder", () -> {
+            android.media.MediaCodecList all = new android.media.MediaCodecList(android.media.MediaCodecList.ALL_CODECS);
+            int decoders = 0, secure = 0;
+            for (android.media.MediaCodecInfo info : all.getCodecInfos()) {
+                if (info.isEncoder()) continue;
+                decoders++;
+                if (info.getName().endsWith(".secure")) secure++;
+                for (String type : info.getSupportedTypes()) {
+                    android.media.MediaCodecInfo.CodecCapabilities caps = info.getCapabilitiesForType(type);
+                    if (caps.isFeatureSupported(android.media.MediaCodecInfo.CodecCapabilities.FEATURE_SecurePlayback)
+                        || caps.isFeatureRequired(android.media.MediaCodecInfo.CodecCapabilities.FEATURE_SecurePlayback)) secure++;
+                }
+            }
+            android.media.MediaFormat plain = android.media.MediaFormat.createVideoFormat("video/avc", 1280, 720), wanted = android.media.MediaFormat.createVideoFormat("video/avc", 1280, 720);
+            wanted.setFeatureEnabled(android.media.MediaCodecInfo.CodecCapabilities.FEATURE_SecurePlayback, true);
+            String forPlain = all.findDecoderForFormat(plain), forSecure = all.findDecoderForFormat(wanted);
+            Stream s = Stream.read(getAssets(), "avc.mgau");
+            android.media.MediaCodec codec = android.media.MediaCodec.createDecoderByType("video/avc");
+            codec.configure(s.format(true), null, null, 0);
+            codec.start();
+            int in = codec.dequeueInputBuffer(1000000);
+            android.media.MediaCodec.CryptoInfo info = new android.media.MediaCodec.CryptoInfo();
+            info.set(1, new int[] { 0 }, new int[] { 16 }, new byte[16], new byte[16], android.media.MediaCodec.CRYPTO_MODE_AES_CTR);
+            int refused = -1;
+            try { codec.queueSecureInputBuffer(in, 0, info, 0, 0); } catch (android.media.MediaCodec.CryptoException e) { refused = e.getErrorCode(); }
+            codec.release();
+            detail = decoders + " decoders, " + secure + " of protected content, for a plain format " + forPlain + ", for a protected one " + forSecure
+                    + ", an encrypted sample refused with " + refused;
+            return decoders > 0 && secure == 0 && forPlain != null && forSecure == null && in >= 0
+                    && refused == android.media.MediaCodec.CryptoException.ERROR_UNSUPPORTED_OPERATION;
         });
     }
 
