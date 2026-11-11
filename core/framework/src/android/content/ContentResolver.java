@@ -30,6 +30,8 @@ public class ContentResolver {
         if (p != null) return p;
         if ("settings".equals(a)) return megler.SettingsProvider.INSTANCE;
         if ("downloads".equals(a)) return megler.Downloads.INSTANCE;
+        /* the photos, videos and sounds of the shared storage, MediaStore's (megler.MediaProvider) */
+        if ("media".equals(a)) return megler.MediaProvider.INSTANCE;
         /* the phone's text messages and calls that came while the app ran (megler.Phone) */
         if ("sms".equals(a)) return megler.Phone.SMS;
         if ("call_log".equals(a)) return megler.Phone.CALL_LOG;
@@ -92,7 +94,7 @@ public class ContentResolver {
         @Override public int update(Uri u, ContentValues v, String sel, String[] args) { return 0; }
     };
     public final Bundle call(Uri u, String method, String arg, Bundle extras) { ContentProvider p = provider(u); return p == null ? null : p.call(method, arg, extras); }
-    public final Bundle call(String authority, String method, String arg, Bundle extras) { ContentProvider p; synchronized (sProviders) { p = sProviders.get(authority); } return p == null ? null : p.call(method, arg, extras); }
+    public final Bundle call(String authority, String method, String arg, Bundle extras) { ContentProvider p = byAuthority(authority); return p == null ? null : p.call(method, arg, extras); }
     public final java.io.InputStream openInputStream(Uri u) throws java.io.FileNotFoundException {
         if (u == null) throw new java.io.FileNotFoundException("null uri");
         String s = u.getScheme();
@@ -121,8 +123,10 @@ public class ContentResolver {
         if (SCHEME_FILE.equals(s) || s == null) return new java.io.FileOutputStream(u.getPath(), mode.contains("a"));
         ContentProvider p = provider(u);
         if (p != null) {
+            // (Closing the stream closes the descriptor, as Android's AssetFileDescriptor.createOutputStream does: a provider
+            // hears that what was written is done -- the media provider reads the file's size and headers then.)
             android.os.ParcelFileDescriptor pfd = p.openFile(u, mode);
-            if (pfd != null) return new java.io.FileOutputStream(pfd.getFileDescriptor());
+            if (pfd != null) return new android.os.ParcelFileDescriptor.AutoCloseOutputStream(pfd);
         }
         throw new java.io.FileNotFoundException("No content provider: " + u);
     }
@@ -139,7 +143,11 @@ public class ContentResolver {
         android.os.ParcelFileDescriptor pfd = openFileDescriptor(u, mode);
         return new android.content.res.AssetFileDescriptor(pfd, 0, -1);
     }
-    public final android.content.res.AssetFileDescriptor openTypedAssetFileDescriptor(Uri u, String mime, Bundle o) throws java.io.FileNotFoundException { return openAssetFileDescriptor(u, "r"); }
+    public final android.content.res.AssetFileDescriptor openTypedAssetFileDescriptor(Uri u, String mime, Bundle o) throws java.io.FileNotFoundException {
+        ContentProvider p = provider(u);
+        if (p != null) return p.openTypedAssetFile(u, mime, o);
+        return openAssetFileDescriptor(u, "r");
+    }
     public final void registerContentObserver(Uri u, boolean descendants, ContentObserver o) { synchronized (sObservers) { sObservers.add(new Object[] { u, descendants, o }); } }
     public final void unregisterContentObserver(ContentObserver o) { synchronized (sObservers) { for (int i = sObservers.size() - 1; i >= 0; i--) if (sObservers.get(i)[2] == o) sObservers.remove(i); } }
     public void notifyChange(Uri u, ContentObserver observer) { notifyChange(u, observer, true); }
@@ -186,8 +194,36 @@ public class ContentResolver {
     public void startSync(Uri u, Bundle extras) { requestSync(null, u != null ? u.getAuthority() : null, extras); }
     public final Uri canonicalize(Uri u) { return u; }
     public final Uri uncanonicalize(Uri u) { return u; }
+    /*
+     * As Android's: the provider asked for a picture of about that size (openTypedAssetFile with EXTRA_SIZE, a Point: the media
+     * provider's thumbnail; any other provider's whole file), decoded subsampled to about that size (the larger of the two
+     * ratios, as Android's), and an IOException where there is none. The whole file decoded at its full size was what it was: a gallery of thumbnails of
+     * 13-megapixel photos, each 52 MB.
+     */
     public final android.graphics.Bitmap loadThumbnail(Uri u, android.util.Size s, android.os.CancellationSignal c) throws java.io.IOException {
-        try (java.io.InputStream in = openInputStream(u)) { return android.graphics.BitmapFactory.decodeStream(in); }
+        java.util.Objects.requireNonNull(u);
+        java.util.Objects.requireNonNull(s);
+        Bundle opts = new Bundle();
+        opts.putParcelable(EXTRA_SIZE, new android.graphics.Point(s.getWidth(), s.getHeight()));
+        android.content.res.AssetFileDescriptor afd = openTypedAssetFileDescriptor(u, "image/*", opts);
+        if (afd == null) throw new java.io.FileNotFoundException("No thumbnail of " + u);
+        byte[] data;
+        try (java.io.InputStream in = afd.createInputStream()) {
+            java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
+            byte[] b = new byte[16384];
+            for (int n; (n = in.read(b)) > 0; ) out.write(b, 0, n);
+            data = out.toByteArray();
+        }
+        if (c != null) c.throwIfCanceled();
+        android.graphics.BitmapFactory.Options o = new android.graphics.BitmapFactory.Options();
+        o.inJustDecodeBounds = true;
+        android.graphics.BitmapFactory.decodeByteArray(data, 0, data.length, o);
+        int sample = s.getWidth() > 0 && s.getHeight() > 0 ? Math.max(o.outWidth / s.getWidth(), o.outHeight / s.getHeight()) : 1;
+        o.inJustDecodeBounds = false;
+        o.inSampleSize = sample > 1 ? sample : 1;
+        android.graphics.Bitmap bitmap = android.graphics.BitmapFactory.decodeByteArray(data, 0, data.length, o);
+        if (bitmap == null) throw new java.io.IOException("Failed to decode the thumbnail of " + u);
+        return bitmap;
     }
     // ---- generated by tools/compat/fillmembers.py: the platform's members this class does not write (signatures only)
     public static android.content.Intent ACTION_SYNC_CONN_STATUS_CHANGED;
