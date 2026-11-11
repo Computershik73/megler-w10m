@@ -16,6 +16,12 @@ public class Away extends Activity {
     private int resumes;
 
     @Override
+    protected void onCreate(Bundle state) {
+        super.onCreate(state);
+        Log.i("CrashTest", "away referrer " + getReferrer());
+    }
+
+    @Override
     protected void onResume() {
         super.onResume();
         resumes++;

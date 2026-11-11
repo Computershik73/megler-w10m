@@ -203,6 +203,18 @@ public class Main extends Activity {
     };
 
     private void steps() {
+        // (Not Bluetooth's: this is the one test app made for Android 11 or later, and such an app has no android.test.base --
+        // JUnit 3's junit.framework -- unless its manifest asks for it, as on Android since 11. An app made for Android 10 or
+        // before has it: the data app's steps junit-*.)
+        step("no-test-base", () -> {
+            try {
+                Class.forName("junit.framework.Assert");
+                detail = "junit.framework.Assert is there";
+                return false;
+            } catch (ClassNotFoundException e) {
+                return true;
+            }
+        });
         step("adapter", () -> {
             manager = (BluetoothManager) getSystemService(Context.BLUETOOTH_SERVICE);
             adapter = manager.getAdapter();

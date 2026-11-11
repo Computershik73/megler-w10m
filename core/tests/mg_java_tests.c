@@ -157,6 +157,17 @@ static int find_line(const char *text, int from)
     return found;
 }
 
+/* How many lines of the log contain the text. */
+static int count_lines(const char *text)
+{
+    int i, n = 0;
+    mg_lock_acquire(&g_log_lock);
+    for (i = 0; i < g_nlines; i++)
+        if (strstr(g_lines[i], text)) n++;
+    mg_lock_release(&g_log_lock);
+    return n;
+}
+
 static const char *line_at(int i) { return i >= 0 && i < g_nlines ? g_lines[i] : ""; }
 const char *megler_data_dir(void);
 
@@ -1614,6 +1625,8 @@ static int run_screen(void)
     CHECK(halves(480, 800, RED, BLUE, true));
     write_picture("screen-4-back");
     CHECK(find_line("I/ScreenTest: Handled.onDestroy changing=false", 0) >= 0);
+    /* Its referrer the system's, which started it (megler.AppRunner.SHELL_REFERRER), each of the four times it was made. */
+    CHECK(count_lines("I/ScreenTest: Main.referrer android-app://android") == 4 && count_lines("I/ScreenTest: Main.referrer ") == 4);
     if (g_failed) say_app_lines("I/ScreenTest:");
     stop_and_end("I/ScreenTest: Main.onDestroy changing=false", &at);
     return g_failed;
@@ -2980,16 +2993,6 @@ void mg_tests_java_set_script(int count, char **steps)
 /* A battery nobody would take for the default: 37 of 100 and going down, off the charger, 3.712 V, 30.1 degrees. */
 static const mg_battery k_battery_run2 = { 37, 100, 3, 0, 2, 3712, 301, true, "Li-poly" };
 
-static int count_lines(const char *text)
-{
-    int i, n = 0;
-    mg_lock_acquire(&g_log_lock);
-    for (i = 0; i < g_nlines; i++)
-        if (strstr(g_lines[i], text)) n++;
-    mg_lock_release(&g_log_lock);
-    return n;
-}
-
 /*
  * The battery changing under the app, as the shell reports it (megler_set_battery). The app has a receiver registered for the
  * battery's broadcasts, which has heard the battery once already, when it was registered. It must hear each change once, on the
@@ -3211,8 +3214,11 @@ static int run_data(void)
                                             trusted for the names it gives it, the rest refused, pins), Android's key store's key pairs and their
                                             X.509 certificates (and an attestation challenge refused, and a key no provider takes refused at once),
                                             and the list of decoders: the stand-in's H.264, AAC and MP3 (mg_codec_standin.c), and no H.265. And
-                                            the phone's sensors, the stand-in's (mg_sensor_standin.c), listed and listened to. */
-                                         "battery", "connectivity", "dns-servers", "system-libs", "apache-http-legacy", "apache-http-client", "preloaded-drawables", "location", "sensors", "timezone", "locale", "phone-number", "tls", "tls-loopback", "tls-https",
+                                            the phone's sensors, the stand-in's (mg_sensor_standin.c), listed and listened to. And
+                                            android.test.base, which an app made for Android 10 or before has: junit.framework.Assert
+                                            as Facebook's SDK asserts the main thread, its failures worded as Android's, a TestSuite
+                                            of a TestCase's class run. */
+                                         "battery", "connectivity", "dns-servers", "system-libs", "apache-http-legacy", "apache-http-client", "junit-assert", "junit-messages", "junit-test-case", "preloaded-drawables", "location", "sensors", "timezone", "locale", "phone-number", "tls", "tls-loopback", "tls-https",
                                          "network-trust", "network-trust-domains", "network-trust-pins", "keystore", "keystore-certificates", "keystore-foreign-key", "path-op", "text-path", "base64-streams", "piped-streams", "trace-bytes", "codecs",
                                          /* And what Android's WebView asks of the platform before it shows a page, each answered as Android
                                             answers it: the app's id within its user (UserHandle.getAppId), whether cleartext HTTP is
@@ -3366,6 +3372,8 @@ static int run_data(void)
     }
     snprintf(text, sizeof(text), "I/DataTest: done ok=%d failed=0", (int)MG_COUNT(steps));
     expect_line(text, &at, 60);
+    /* android.test.base was put on its class path before its code, as for an app made for Android 10 or before (mg_java.c). */
+    CHECK(count_lines("java: the app's class path has android.test.base (JUnit 3's junit.framework, android.test) before its own code") == 1);
     /* The TLS the app had is the one the Android root gives: conscrypt's where its library is there and this host runs ARM code (mg_dvm.c). */
     {
         char *crypto = mg_sprintf("%s/lib/libjavacrypto.so", g_android_root ? g_android_root : ".");
@@ -3815,6 +3823,19 @@ static int run_crash(void)
     CHECK(find_line("I/CrashTest: first onDestroy null", 0) >= 0 && find_line("I/CrashTest: top onDestroy standard", 0) >= 0 &&
           find_line("I/CrashTest: top onDestroy single", 0) >= 0 && find_line("I/CrashTest: first onDestroy again", 0) > new_intent);
     CHECK(find_line("I/CrashTest: first unexpected result", 0) < 0);
+    /*
+     * Who started each (Activity.getReferrer), as Android says it: the system for the first First, started for the tap on the
+     * app's tile (megler.AppRunner.SHELL_REFERRER); the app for the activities it started, Gate made again as well, and while
+     * the second First hears its new intent; what the second First gave the activities it started (onProvideReferrer, their
+     * Intent.EXTRA_REFERRER); and the name Trampoline gave Away (Intent.EXTRA_REFERRER_NAME). It was null for every one.
+     */
+    CHECK(find_line("I/CrashTest: first referrer android-app://android", 0) >= 0);
+    CHECK(count_lines("I/CrashTest: gate referrer android-app://megler.test.crash") == 2 && count_lines("I/CrashTest: gate referrer ") == 2);
+    CHECK(find_line("I/CrashTest: top referrer standard android-app://megler.test.crash", 0) >= 0);
+    CHECK(find_line("I/CrashTest: first referrer again android-app://megler.test.crash", 0) >= 0);
+    CHECK(find_line("I/CrashTest: top referrer single https://megler.test/first-again", 0) >= 0);
+    CHECK(find_line("I/CrashTest: first onNewIntent referrer android-app://megler.test.crash", 0) >= 0);
+    CHECK(find_line("I/CrashTest: away referrer android-app://megler.test.crash.trampoline", 0) >= 0);
     for (tries = 0; tries < 3000 && running(); tries++) mg_sleep_ns(10000000ull);
     CHECK(g_exited && g_status == -1);
     say("  the app's end, as the shell is told it: %s", g_reason);
@@ -4073,7 +4094,8 @@ static int run_camera(void)
  */
 static int run_bluetooth(void)
 {
-    static const char *const steps[] = { "adapter", "permissions", "names", "scan", "scan-legacy", "connect", "discover", "mtu", "notify", "write",
+    /* (First, as an app made for Android 14 has it: no android.test.base, which it does not ask for -- JUnit 3's Assert not there.) */
+    static const char *const steps[] = { "no-test-base", "adapter", "permissions", "names", "scan", "scan-legacy", "connect", "discover", "mtu", "notify", "write",
                                          "write-no-response", "write-old", "read", "rssi", "bond-on-demand", "unbond", "bond-asked", "disconnect",
                                          "dropped", "unreachable" };
     mg_bluetooth_standin_counts n;
@@ -4110,6 +4132,7 @@ static int run_bluetooth(void)
           && find_line("bluetooth: C0:FF:EE:00:00:01's pairing not answered by the app: the user is asked", 0) >= 0);
     CHECK(find_line("bluetooth: the radio is off", 0) >= 0 && find_line("bluetooth: the phone's Bluetooth settings shown", 0) >= 0);
     CHECK(find_line(" FAILED", 0) < 0 && find_line("FATAL EXCEPTION", 0) < 0);
+    CHECK(find_line("java: the app's class path has android.test.base", 0) < 0);
     back_and_end("I/BluetoothTest: onDestroy", &at);
     if (g_failed) say_app_lines("/BluetoothTest: ");
     return g_failed;

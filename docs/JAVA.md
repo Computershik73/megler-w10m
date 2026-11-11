@@ -58,6 +58,7 @@ where; **expected** and **not verified** mean what they say.
 | `core/framework-overlay/` | what differs here from the Java framework as it came (`core/framework`): files that replace its files and members added to its classes, each saying at its top what differs and why |
 | `core/src/dvm/art/*.smali`, `mg_dvm_art_dex.h` | seven classes the runtime adds to libcore's: a security provider that stands in for conscrypt's where conscrypt's library is not in the Android root, with SSLContexts whose connections fail politely and a trust manager factory that trusts nothing, and the getter libcore asks for the phone's time zone |
 | `tools/build-framework.sh` | builds the framework's DEX from its sources in `core/framework` and the overlay |
+| `core/shared-libraries/`, `tools/build-shared-libraries.sh` | the platform's shared libraries that are Megler's own (`android.test.base`: JUnit 3's `junit.framework`, `android.test`), each a DEX file in the Android root that an app gets on its class path as Android gives it ("The platform's libraries an app asks for") |
 | `core/tests/app/`, `tools/build-test-app.sh` | the test apps, ordinary Android apps (aapt2, javac, d8), and their build |
 | `core/tests/mg_java_tests.c` | the test of the driver: the apps started through `megler_run`, their log and their pictures checked |
 | `core/tests/mg_gfx_standin.c`, `mg_gfx_tests.c`, `mg_gfx_natives_tests.c` | a stand-in for the shell's drawing (no anti-aliasing, text as boxes, PNG), and the tests of it and of `megler.Gfx` |
@@ -2748,6 +2749,34 @@ no native code or has it for 32-bit ARM.
   `NoSuchMethodError`, 576). The step "apache-http-client" makes the client
   as GSF does, with the app's context, and finds https on 443 through
   Apache's `SSLSocketFactory`.
+- **android.test.base**: JUnit 3's `junit.framework` and Android's
+  `android.test` base classes (`AndroidTestCase`, `InstrumentationTestCase`,
+  the test annotations) and `com.android.internal.util.Predicate`. Every app
+  had them on Android's boot class path up to Android 9; since Android 10 they
+  are a shared library, which the package manager of Android 14 -- the
+  Android Megler says it is -- adds to an app that targets Android 10 or
+  before (`AndroidTestBaseUpdater`) or whose manifest asks for
+  `android.test.base` or `android.test.runner`. The Java driver does the same
+  (`test_base_wanted`), the DEX file `framework/android.test.base.dex` before
+  the APK as the Apache client's is. Facebook's SDK of 2017 to 2019 asserts
+  with `junit.framework.Assert` that its activity callbacks are on the main
+  thread (`AppEventUtility.assertIsMainThread`): Zombie Road Trip 3.30, which
+  targets Android 8, ended at its first activity's `onCreate` on
+  "NoClassDefFoundError: junit/framework/Assert" (a Lumia 950, 0.1.0.681).
+  The classes are Megler's own (`core/shared-libraries/android.test.base`,
+  built by `tools/build-shared-libraries.sh`, which `dvm-android-root.sh`
+  calls), not the image's: Android's are JUnit 3.8's code, under the Common
+  Public License 1.0, which does not mix with the GPL. They are written to
+  the API Android documents -- the same classes, members and access as
+  Android 9's file, checked against it -- and fail as Android's do, in the
+  same words ("expected:<hello wor[l]d> but was:<hello wor[]d>", twenty
+  characters of context and "..." around a difference). The data app (made
+  for Android 9) calls them directly, as Facebook's SDK does: its steps
+  "junit-assert", "junit-messages" and "junit-test-case" (a `TestSuite` of a
+  `TestCase`'s class run into a `TestResult`); the Bluetooth app, made for
+  Android 14, finds no `junit.framework.Assert` (its step "no-test-base").
+  `PackageManager.getSystemSharedLibraryNames` names it beside the Apache
+  client.
 - **Input is asked for, not delivered.** The framework's main loop calls
   `Native.pollInput` between messages, every 8 ms at most. `megler_touch`,
   `megler_key` and `megler_set_paused` only queue (256 events; a move may be
@@ -6410,6 +6439,28 @@ on a looper thread of its own and takes it back with `next()`.
   name the app itself for an activity it launched, for a result or not. The
   crash app's `Gate`, started for a result, has `First` for its caller; its
   `Top`, started without one, has none.
+
+- `android/app/Activity.java`, `getReferrer`: who started the activity, as
+  Android says it -- the intent's `Intent.EXTRA_REFERRER` where it is a `Uri`,
+  else its `EXTRA_REFERRER_NAME` parsed, else `android-app://` and the package
+  that started it, which Android's `ActivityThread` hands `Activity.attach`.
+  That is the app's own for an activity it started, and kept while an
+  activity hears a new intent of the app's (`onNewIntent`). For the activity
+  the shell starts for the user's tap on the app's tile it is the system's,
+  `android-app://android` (`megler.AppRunner.SHELL_REFERRER`): on Android the
+  launcher's package is named, and Windows' Start is no Android package; the
+  platform's own name is one every app can see. An activity made again in
+  its place keeps it. And `onProvideReferrer`'s `Uri` goes into the intents
+  of the activities an activity starts (`Intent.EXTRA_REFERRER`), as
+  `Instrumentation.execStartActivity` puts it. `getReferrer` was a stub's
+  null: Device Info HW 5.27.1 keeps `getReferrer().getAuthority()` in its
+  `DeviceInfoActivity.onCreate` (`b1.J.g`) and ended at its start on a
+  `NullPointerException` (a Lumia 950, 0.1.0.681). The crash app's
+  activities say theirs (the first `First` the system's; `Gate`, before and
+  after it is made again, `Top` and the second `First` the app's; the second
+  `Top` and `Trampoline` what the second `First` provides; `Away` the name
+  `Trampoline` gives, a `String` under `EXTRA_REFERRER` passed over), and
+  the screen app's launcher activity the system's at each of its four makings.
 
 - `android/widget/LinearLayout.java`, four statements: what a child with a
   weight and a size of 0 is given when the layout's own size is not exact.

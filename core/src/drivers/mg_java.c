@@ -69,6 +69,7 @@ static struct {
     char activity[200], application[200], package[128];
     char guest_apk[400];               /* the APK's path as the app sees it */
     bool apache_http;                  /* the app gets Android's legacy Apache HTTP client (org.apache.http.legacy): see apache_http_wanted */
+    bool test_base;                    /* the app gets android.test.base (JUnit 3's junit.framework, android.test): see test_base_wanted */
     bool platform_app;                 /* an app of the platform's own (sharedUserId android.uid.system): see add_platform_framework */
     /*
      * The app's splits (megler_run_config.split_apks, as many as there is room for): their names from their manifests
@@ -2291,12 +2292,21 @@ static void call_trace_flag(const char *rest, void *user)
  * The platform's libraries the app's class loader has before the app's own code, as Android's LoadedApk puts a shared
  * library's jar ahead of the APK: Android's legacy Apache HTTP client (org.apache.http.legacy.dex in the Android root's
  * framework, tools/dvm-android-root.sh), when apache_http_wanted says so. Instagram's network library (liger) finds
- * org.apache.http.Header in its JNI_OnLoad; without it its start ended in "Failed to call JNI_OnLoad from 'liger'". Its
- * absence from the root is said and the app runs on.
+ * org.apache.http.Header in its JNI_OnLoad; without it its start ended in "Failed to call JNI_OnLoad from 'liger'". And
+ * android.test.base (android.test.base.dex, Megler's own: core/shared-libraries), when test_base_wanted says so: Zombie Road
+ * Trip 3.30's Facebook SDK asserts with junit.framework.Assert that its activity callbacks are on the main thread, and the
+ * app ended at its first activity's onCreate on "NoClassDefFoundError: junit/framework/Assert" (a Lumia 950, 0.1.0.681).
+ * A library's absence from the root is said and the app runs on.
  */
 static void add_shared_libraries(void)
 {
     char *path;
+    if (J.test_base) {
+        path = mg_sprintf("%s/framework/android.test.base.dex", J.root);
+        if (mg_dvm_add_dex_file(path)) mg_info("java: the app's class path has android.test.base (JUnit 3's junit.framework, android.test) before its own code");
+        else mg_warn("java: the app gets android.test.base (JUnit 3's junit.framework, android.test), and it is not in the Android root (%s)", path);
+        free(path);
+    }
     if (!J.apache_http) return;
     path = mg_sprintf("%s/framework/org.apache.http.legacy.dex", J.root);
     if (mg_dvm_add_dex_file(path)) mg_info("java: the app's class path has Android's legacy Apache HTTP client (org.apache.http.legacy) before its own code");
@@ -2525,6 +2535,16 @@ bool mg_java_ended(int *status, const char **reason)
 }
 
 /*
+ * The Android the app is made for, as the package manager reads it: its manifest's target, else its minimum, else Android 1.
+ * (YouTube 2.4.4, of 2011, names neither: made for Android 1 so, it has the Apache HTTP client below, without which it ended
+ * at its start on NoClassDefFoundError: org/apache/http/params/BasicHttpParams.)
+ */
+static int target_sdk(const mg_apk_info *info)
+{
+    return info->target_sdk > 0 ? info->target_sdk : info->min_sdk > 0 ? info->min_sdk : 1;
+}
+
+/*
  * Whether the app gets Android's old Apache HTTP client, org.apache.http.legacy, on its class path: as Android 9's package
  * manager gives it -- to an app whose manifest asks for it (<uses-library>, required or not) and to every app that targets
  * an Android before 9 (OrgApacheHttpLegacyUpdater). Since Android 9 it is not on the boot class path, so an app that has
@@ -2532,15 +2552,26 @@ bool mg_java_ended(int *status, const char **reason)
  */
 static bool apache_http_wanted(const mg_apk_info *info)
 {
-    /*
-     * (A manifest that names no target targets its minimum, and one that names neither Android 1: YouTube 2.4.4, of 2011,
-     * names neither, and ended at its start on NoClassDefFoundError: org/apache/http/params/BasicHttpParams.)
-     */
-    int target = info->target_sdk > 0 ? info->target_sdk : info->min_sdk > 0 ? info->min_sdk : 1;
     int i;
-    if (target < 28) return true;
+    if (target_sdk(info) < 28) return true;
     for (i = 0; i < info->nuses_libraries; i++)
         if (!strcmp(info->uses_libraries[i], "org.apache.http.legacy")) return true;
+    return false;
+}
+
+/*
+ * Whether the app gets android.test.base -- JUnit 3's junit.framework and Android's android.test base classes -- on its class
+ * path, as the package manager of Android 14, the Android Megler says it is, gives it (AndroidTestBaseUpdater): to every app
+ * that targets Android 10 or before, and to one whose manifest asks for it or for android.test.runner, which is built on it
+ * (<uses-library>, required or not). Up to Android 9 those classes were on the boot class path, every app's; an app made
+ * for Android 11 or later that asks for neither keeps its own copy of them, or has none.
+ */
+static bool test_base_wanted(const mg_apk_info *info)
+{
+    int i;
+    if (target_sdk(info) <= 29) return true;
+    for (i = 0; i < info->nuses_libraries; i++)
+        if (!strcmp(info->uses_libraries[i], "android.test.base") || !strcmp(info->uses_libraries[i], "android.test.runner")) return true;
     return false;
 }
 
@@ -2557,6 +2588,7 @@ static bool java_start(const megler_run_config *config, const mg_apk_info *info)
     mg_strlcpy(J.application, info->application, sizeof(J.application));
     mg_strlcpy(J.package, info->package, sizeof(J.package));
     J.apache_http = apache_http_wanted(info);
+    J.test_base = test_base_wanted(info);
     J.platform_app = !strcmp(info->shared_user_id, "android.uid.system");
     /* The splits, in megler_run's order, which is info->splits' (run/mg_run.c): as many as the framework reads. */
     J.nsplits = config->split_count < info->nsplits ? config->split_count : info->nsplits;
