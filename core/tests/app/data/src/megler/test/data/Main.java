@@ -2377,6 +2377,7 @@ public class Main extends Activity {
                     /* What the phone is sold as: not less than what is there, less than twice it, and never nothing; and what is left of it. */
                     && sold >= data.getTotalBytes() && sold < 2 * data.getTotalBytes() + 1000 && left > 0 && left <= sold;
         });
+        media(run);
         step("permissions", () -> {
             String read = android.Manifest.permission.READ_EXTERNAL_STORAGE, write = android.Manifest.permission.WRITE_EXTERNAL_STORAGE,
                    camera = android.Manifest.permission.CAMERA, vibrate = android.Manifest.permission.VIBRATE, contacts = android.Manifest.permission.READ_CONTACTS,
@@ -2452,6 +2453,30 @@ public class Main extends Activity {
             return dirs && names.containsAll(Arrays.asList("Alarms", "Android", "DCIM", "Documents", "Download", "Movies", "Music", "Notifications", "Pictures", "Podcasts", "Ringtones"))
                     && root.isDirectory() && root.canRead() && root.canWrite() && new File(root, "Android/data/megler.test.data").isDirectory();
         });
+    }
+
+    /**
+     * The phone's photos, videos and sounds through MediaStore (MediaSteps says each step): before the step "permissions",
+     * so that the first run has no storage permission yet and sees only what it saved itself, and the second, which has
+     * it, everything.
+     */
+    private void media(long run) {
+        final MediaSteps m = new MediaSteps(this, run);
+        step("media-save", () -> mediaSaid(m, m.save()));
+        step("media-gated", () -> mediaSaid(m, m.gated()));
+        step("media-query", () -> mediaSaid(m, m.query()));
+        step("media-bundle", () -> mediaSaid(m, m.bundle()));
+        step("media-read", () -> mediaSaid(m, m.read()));
+        step("media-thumbnails", () -> mediaSaid(m, m.thumbnails()));
+        step("media-observer", () -> mediaSaid(m, m.observer()));
+        step("media-scanner", () -> mediaSaid(m, m.scanner()));
+        step("media-delete", () -> mediaSaid(m, m.delete()));
+    }
+
+    private boolean mediaSaid(MediaSteps m, boolean held) {
+        detail = m.detail;
+        Log.i("DataTest", "media-said " + m.detail);
+        return held;
     }
 
     private static boolean isStandard(String name) {
