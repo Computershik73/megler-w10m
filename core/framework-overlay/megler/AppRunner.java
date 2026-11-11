@@ -880,8 +880,6 @@ public final class AppRunner {
         ViewRoot.hostHidden(pause);
         // a result another app's activity left for this one comes first, as onActivityResult comes before onResume
         if (!pause) AppResults.resumed();
-        // (and what the phone's picker or camera answered while the app was hidden by it, likewise)
-        if (!pause) Pickers.resumed();
         if (!pause) windowsSettingsBack(false);
         // (and a request to turn the Bluetooth radio on that showed the phone's settings: the radio as it is now)
         if (!pause) Bluetooth.resumed();
@@ -910,12 +908,18 @@ public final class AppRunner {
         sStoppedByHost.clear();
         // (Each meets the screen as it is now first, which may have been turned or resized while the window was hidden: made
         // again, it is where it is to be already.)
+        // (The one in front that the phone's picker or camera has answered is made again only as far as started: its answer
+        // comes before it resumes, below.)
         for (Activity s : stopped) {
             if (!sStack.contains(s) || s.isFinishing() || s.meglerStarted() || s.meglerWindowsHidden()) continue;
-            if (ensureConfiguration(s, s == a ? TO_RESUMED : TO_PAUSED) != s) continue;
+            if (ensureConfiguration(s, s != a ? TO_PAUSED : Pickers.waitsFor(s) ? TO_STARTED : TO_RESUMED) != s) continue;
             s.meglerRestart();
             s.meglerStart();
         }
+        // What the phone's picker or camera answered while the app was hidden by it: to the activity that asked -- started
+        // again, or made again in its place where the screen turned meanwhile -- before it resumes, as Android delivers a
+        // result (onRestart, onStart, onActivityResult, onResume; to the new activity after a relaunch).
+        Pickers.resumed();
         a = top();
         if (a == null || a.isFinishing()) return;
         if (!a.isResumedMegler()) {

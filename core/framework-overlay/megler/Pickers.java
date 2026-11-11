@@ -387,6 +387,12 @@ public final class Pickers {
     /** The app is in front again (AppRunner.hostPause): the answers that came meanwhile, given. */
     static void resumed() { deliverReady(); }
 
+    /** Whether an answer waits for activity `a` (AppRunner.hostPause makes it again only as far as started, then hands it over). */
+    static boolean waitsFor(Activity a) {
+        for (Pending p : sAnswered) if (p.caller == a) return true;
+        return false;
+    }
+
     /** An activity made again in its place (AppRunner.relaunch: the screen turned under the picker): a result it waits for is the new one's. */
     static void replaced(Activity old, Activity now) {
         for (Pending p : sAsked.values()) if (p.caller == old) p.caller = now;
@@ -401,8 +407,10 @@ public final class Pickers {
             return;
         }
         sSaidWaiting = false;
-        while (!sAnswered.isEmpty()) {
-            Pending p = sAnswered.remove(0);
+        // (those answered now: one an activity's onActivityResult asks for next, and the shell refuses, comes at a later turn)
+        ArrayList<Pending> now = new ArrayList<>(sAnswered);
+        sAnswered.clear();
+        for (Pending p : now) {
             try { finish(p); }
             catch (RuntimeException e) {
                 // (the app's onActivityResult threw: as on Android, its own exception, which ends it there; said here first)
