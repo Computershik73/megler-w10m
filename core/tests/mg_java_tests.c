@@ -3658,9 +3658,11 @@ static int run_data(void)
                                          "geocoder", "address",
                                          /* And later APIs and attributes that apps and Play services met missing: a view named for a
                                             shared element transition in its layout (android:transitionName: itself, by a string, by a
-                                            style); ListFormatter by a type and a width (Android 13) over ICU 60's list patterns; and
-                                            DeviceConfig (a system API): the process's own flags and their listeners. */
-                                         "transition-name", "list-formatter", "device-config",
+                                            style); ListFormatter by a type and a width (Android 13) over ICU 60's list patterns;
+                                            DeviceConfig (a system API): the process's own flags and their listeners; and
+                                            SeekBarPreference, hidden from apps' code and named in their preference files: made, bound
+                                            to its row's bar, dragged, refused, stepped by a key, set in code, read back. */
+                                         "transition-name", "list-formatter", "device-config", "seekbar-preference",
                                          "audio-track", "media-player", "media-player-ogg", "sound-pool",
                                          /* And MediaCodec over the stand-in for the shell's decoders: H.264 shown on a Surface in display
                                             order, a flush, parameter sets in a codec-config buffer, the asynchronous mode, AAC with an

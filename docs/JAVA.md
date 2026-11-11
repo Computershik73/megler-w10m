@@ -6861,6 +6861,23 @@ on a looper thread of its own and takes it back with `next()`.
   `EXTRA_SHOW_FRAGMENT`). Apktool M's Settings ended the app on the first and
   was empty on the second; it shows its seven headers and their screens.
   Not done: two panes, bread crumbs.
+- `android/preference/SeekBarPreference.java`, a class the framework's own
+  package did not have. Android hides it from an app's code and still makes
+  it for a preferences file that names it (`<SeekBarPreference android:max=
+  "100" android:defaultValue="60"/>`), as it makes any class of the package
+  by its tag; here the tag ended the screen with "InflateException: ...
+  ClassNotFoundException: android.preference.SeekBarPreference" -- spacedesk's
+  compression settings, on a Lumia 950 (0.1.0.679). It is Android 9's class
+  on this package's `Preference`: an int from 0 to `android:max` (0 with no
+  maximum, as Android's) kept under the key, the default written when the
+  screen has no value yet; the row is `Preference`'s with a `SeekBar` under
+  the title (or the bar of the app's own `android:layout`); a drag is told to
+  the change listener once, when the finger lifts, and a refusal puts the bar
+  back; a key's step is told at once. The data app's step
+  "seekbar-preference" makes a `PreferenceFragment`'s screen from such a file
+  and does all of that with touch events on the row's bar. Not done: the
+  value of a preference that is not persistent across a recreated activity
+  (the package saves no hierarchy state). Not tried in spacedesk itself.
 
 - `android/util/Xml.java`, the class names of `newPullParser` and
   `newSerializer`. The framework's own file asked only for Android 10's names of kXML's

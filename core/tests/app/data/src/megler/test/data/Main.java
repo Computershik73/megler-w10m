@@ -6740,6 +6740,11 @@ public class Main extends Activity {
      * DeviceConfig (Android 10's system API, which Play services' configurator reads and listens to): the process's own
      * flags -- set, read by type with a default, taken away, replaced as a set -- and a listener told on its executor of
      * each change in its namespace, of what changed only, and of none once it is removed.
+     * SeekBarPreference, which Android hides from an app's code and makes for a preferences file that names it (spacedesk's
+     * compression settings ended the app there): a fragment's screen from such a file, as the app makes it -- the default
+     * written and the maximum read; the row's bar bound to them; a finger's drag told to the change listener once, when it
+     * lifts, and kept; a refused one put back; a key's step told at once; values set in code held to 0..max; a disabled
+     * one's bar disabled; and another screen reads what is stored.
      */
     private void laterApis() {
         step("transition-name", () -> {
@@ -6811,6 +6816,119 @@ public class Main extends Activity {
                    && now.getLong("n", 0) == 5 && last
                    && heard.equals(java.util.Arrays.asList("megler_test a=12", "megler_test b=true", "megler_test b=gone", "megler_test n=5"));
         });
+        step("seekbar-preference", () -> {
+            android.content.SharedPreferences stored = android.preference.PreferenceManager.getDefaultSharedPreferences(this);
+            stored.edit().remove("seekbar_quality").remove("seekbar_plain").remove("seekbar_beside").commit();
+            android.app.FragmentManager fm = getFragmentManager();
+            android.preference.PreferenceFragment first = new android.preference.PreferenceFragment() {
+                @Override public void onCreate(Bundle saved) { super.onCreate(saved); addPreferencesFromResource(R.xml.seekbar_prefs); }
+            };
+            fm.beginTransaction().add(first, "seekbar-first").commit();
+            fm.executePendingTransactions();
+            android.preference.Preference q = first.findPreference("seekbar_quality"), p = first.findPreference("seekbar_plain");
+            if (!(q instanceof android.preference.SeekBarPreference) || !(p instanceof android.preference.SeekBarPreference)) {
+                detail = "made " + q + " and " + p;
+                return false;
+            }
+            android.preference.SeekBarPreference quality = (android.preference.SeekBarPreference) q, plain = (android.preference.SeekBarPreference) p;
+            boolean made = quality.getProgress() == 60 && stored.getInt("seekbar_quality", -1) == 60 && quality.getSummary() == null
+                           && plain.getProgress() == 0 && !stored.contains("seekbar_plain") && stored.getBoolean("seekbar_beside", false);
+            // The row, as the screen's list makes it, laid out 600 pixels wide for the finger.
+            android.widget.ListView list = new android.widget.ListView(this);
+            first.getPreferenceScreen().bind(list);
+            android.view.View row = quality.getView(null, list);
+            android.widget.SeekBar bar = seekBarIn(row);
+            if (bar == null) {
+                detail = "made " + made + ", no bar in the row " + row;
+                return false;
+            }
+            row.measure(android.view.View.MeasureSpec.makeMeasureSpec(600, android.view.View.MeasureSpec.EXACTLY),
+                        android.view.View.MeasureSpec.makeMeasureSpec(0, android.view.View.MeasureSpec.UNSPECIFIED));
+            row.layout(0, 0, row.getMeasuredWidth(), row.getMeasuredHeight());
+            boolean bound = bar.getMax() == 100 && bar.getProgress() == 60 && bar.isEnabled() && bar.getWidth() > 100 && bar.getHeight() > 0;
+            java.util.ArrayList<Object> told = new java.util.ArrayList<>();
+            final boolean[] take = { true };
+            quality.setOnPreferenceChangeListener((preference, value) -> { told.add(value); return take[0]; });
+            float y = bar.getHeight() / 2f, middle = bar.getWidth() / 2f, beyond = bar.getWidth() + 50;
+            // A drag from the middle to beyond the end: nothing told or kept while the finger is down, the end once it lifts.
+            touch(bar, android.view.MotionEvent.ACTION_DOWN, middle, y);
+            int downBar = bar.getProgress(), downValue = quality.getProgress(), downTold = told.size();
+            touch(bar, android.view.MotionEvent.ACTION_MOVE, beyond, y);
+            touch(bar, android.view.MotionEvent.ACTION_UP, beyond, y);
+            boolean dragged = downBar == 50 && downValue == 60 && downTold == 0 && bar.getProgress() == 100 && quality.getProgress() == 100
+                              && stored.getInt("seekbar_quality", -1) == 100 && told.equals(java.util.Arrays.asList((Object) 100));
+            // A touch in the middle that the listener refuses: the bar goes back, the value stays.
+            take[0] = false;
+            touch(bar, android.view.MotionEvent.ACTION_DOWN, middle, y);
+            touch(bar, android.view.MotionEvent.ACTION_UP, middle, y);
+            boolean refused = bar.getProgress() == 100 && quality.getProgress() == 100 && stored.getInt("seekbar_quality", -1) == 100
+                              && told.equals(java.util.Arrays.asList((Object) 100, 50));
+            // A key's step (a twentieth of the range), no drag: told at once.
+            take[0] = true;
+            boolean key = bar.onKeyDown(android.view.KeyEvent.KEYCODE_DPAD_LEFT,
+                                        new android.view.KeyEvent(android.view.KeyEvent.ACTION_DOWN, android.view.KeyEvent.KEYCODE_DPAD_LEFT));
+            boolean keyed = key && bar.getProgress() == 95 && quality.getProgress() == 95 && stored.getInt("seekbar_quality", -1) == 95
+                            && told.equals(java.util.Arrays.asList((Object) 100, 50, 95));
+            // Set in code: held to 0..max, kept, the listener not asked; the same row bound again shows it.
+            quality.setProgress(250);
+            int over = quality.getProgress(), overStored = stored.getInt("seekbar_quality", -1);
+            quality.setProgress(-3);
+            int under = quality.getProgress(), underStored = stored.getInt("seekbar_quality", -1);
+            quality.setMax(40);
+            quality.setProgress(70);
+            android.view.View again = quality.getView(row, list);
+            boolean coded = over == 100 && overStored == 100 && under == 0 && underStored == 0 && quality.getProgress() == 40 && told.size() == 3
+                            && again == row && bar.getMax() == 40 && bar.getProgress() == 40;
+            // The one with a title alone: no maximum, so 0 as Android has it; disabled, its bar is too.
+            plain.setEnabled(false);
+            android.view.View plainRow = plain.getView(null, list);
+            android.widget.SeekBar plainBar = seekBarIn(plainRow);
+            android.widget.TextView title = plainRow.findViewById(android.R.id.title);
+            boolean titled = plainBar != null && plainBar != bar && plainBar.getMax() == 0 && !plainBar.isEnabled() && title != null
+                             && "Plain".contentEquals(title.getText()) && title.getVisibility() == android.view.View.VISIBLE;
+            fm.beginTransaction().remove(first).commit();
+            fm.executePendingTransactions();
+            // Another screen of the same file reads what is stored.
+            stored.edit().putInt("seekbar_quality", 33).commit();
+            android.preference.PreferenceFragment second = new android.preference.PreferenceFragment() {
+                @Override public void onCreate(Bundle saved) { super.onCreate(saved); addPreferencesFromResource(R.xml.seekbar_prefs); }
+            };
+            fm.beginTransaction().add(second, "seekbar-second").commit();
+            fm.executePendingTransactions();
+            android.preference.Preference q2 = second.findPreference("seekbar_quality");
+            int read = q2 instanceof android.preference.SeekBarPreference ? ((android.preference.SeekBarPreference) q2).getProgress() : -1;
+            fm.beginTransaction().remove(second).commit();
+            fm.executePendingTransactions();
+            stored.edit().remove("seekbar_quality").remove("seekbar_plain").remove("seekbar_beside").commit();
+            detail = "made " + made + " bound " + bound + " (" + bar.getWidth() + "x" + bar.getHeight() + ") dragged " + dragged + " (down: bar " + downBar + " value "
+                     + downValue + ") refused " + refused + " keyed " + keyed + " coded " + coded + " (" + over + "/" + under + ") titled " + titled + " read " + read
+                     + " told " + told;
+            return made && bound && dragged && refused && keyed && coded && titled && read == 33;
+        });
+    }
+
+    /** The first SeekBar of a view's tree. */
+    private static android.widget.SeekBar seekBarIn(android.view.View v) {
+        if (v instanceof android.widget.SeekBar) return (android.widget.SeekBar) v;
+        if (v instanceof android.view.ViewGroup) {
+            android.view.ViewGroup g = (android.view.ViewGroup) v;
+            for (int i = 0; i < g.getChildCount(); i++) {
+                android.widget.SeekBar b = seekBarIn(g.getChildAt(i));
+                if (b != null) return b;
+            }
+        }
+        return null;
+    }
+
+    /** A finger's event at a place of a view. */
+    private static boolean touch(android.view.View v, int action, float x, float y) {
+        long now = android.os.SystemClock.uptimeMillis();
+        android.view.MotionEvent e = android.view.MotionEvent.obtain(now, now, action, x, y, 0);
+        try {
+            return v.dispatchTouchEvent(e);
+        } finally {
+            e.recycle();
+        }
     }
 
     private void markupRegex() {
