@@ -2182,6 +2182,62 @@ static int regex_run(const char *pattern, int cflags, const char *subject, int e
     return r;
 }
 
+/*
+ * What a walk (ftw, nftw) told its function, in the order told: "path what base level", what being F (a file), D (a
+ * directory entered), R (one not read), P (one left) or N (no stat); and what was wrong about a call (`bad`): a stat that
+ * is not the file's, a name that does not start where it is said to, a working directory that is not the file's.
+ */
+typedef struct t_ftw {
+    int base, level;
+} t_ftw;
+static struct {
+    char told[16][96];
+    int count, bad, stop_at;
+    bool chdir;
+    int (*stat)(const char *, void *);
+    char *(*getcwd)(char *, size_t);
+    int (*remove)(const char *);
+} g_walk;
+
+static void walk_begin(int stop_at, bool chdir, int (*remove_)(const char *))
+{
+    memset(g_walk.told, 0, sizeof(g_walk.told));
+    g_walk.count = g_walk.bad = 0;
+    g_walk.stop_at = stop_at;
+    g_walk.chdir = chdir;
+    g_walk.remove = remove_;
+}
+
+/* Where in the order told a line is, -1 when it was not told. */
+static int walk_has(const char *line)
+{
+    int i;
+    for (i = 0; i < g_walk.count && i < 16; i++)
+        if (!strcmp(g_walk.told[i], line)) return i;
+    return -1;
+}
+
+static int walk_told(const char *path, const void *st, int what, t_ftw *f)
+{
+    u8 now[256];
+    char cwd[128];
+    const char *slash = strrchr(path, '/');
+    if (g_walk.count < 16)
+        snprintf(g_walk.told[g_walk.count], sizeof(g_walk.told[0]), "%s %c %d %d", path, what >= 0 && what < 5 ? "FDRPN"[what] : '?',
+                 f ? f->base : -1, f ? f->level : -1);
+    /* (The stat up to the times, which every ABI's has in its first 56 bytes; not of what the walk is removing.) */
+    memset(now, 0, sizeof(now));
+    if (!g_walk.remove && (!st || g_walk.stat(path, now) != 0 || memcmp(now, st, 56))) g_walk.bad++;
+    if (f && f->base > 0 && path[f->base - 1] != '/') g_walk.bad++;
+    if (f && f->level > 0 && (!slash || f->base != (int)(slash + 1 - path))) g_walk.bad++;
+    if (g_walk.chdir && f && f->level > 0 &&
+        (!g_walk.getcwd(cwd, sizeof(cwd)) || strlen(cwd) != (size_t)(f->base - 1) || strncmp(cwd, path, (size_t)(f->base - 1))))
+        g_walk.bad++;
+    if (g_walk.remove && g_walk.remove(path) != 0) g_walk.bad++;
+    return g_walk.count++ == g_walk.stop_at ? 77 : 0;
+}
+static int walk_told3(const char *path, const void *st, int what) { return walk_told(path, st, what, NULL); }
+
 static void test_libc_gaps(const char *scratch)
 {
     enum { EXT = 1, ICASE = 2, NOSUB = 4, NEWLINE = 8 };
@@ -2336,6 +2392,111 @@ static void test_libc_gaps(const char *scratch)
             CHECK(getgrnam_("root") == NULL);
             CHECK(initgroups_("u0_a100", 10100) == 0);
             CHECK(initgroups_("root", 0) == -1 && *errno_() == GE_PERM);
+        }
+    }
+
+    say("ftw and nftw: a tree told before and after its directories, from inside them, stopped, removed by the walk; linkat, chroot, killpg");
+    {
+        typedef int (*nftw_fn)(const char *, int (*)(const char *, const void *, int, t_ftw *), int, int);
+        typedef int (*ftw_fn)(const char *, int (*)(const char *, const void *, int), int);
+        typedef int (*path_fn)(const char *);
+        typedef int (*mkdir_fn)(const char *, int);
+        typedef int (*open_fn)(const char *, int, int);
+        typedef long (*io_fn)(int, void *, size_t);
+        typedef int (*close_fn)(int);
+        typedef int (*stat_fn)(const char *, void *);
+        typedef char *(*getcwd_fn)(char *, size_t);
+        typedef int (*linkat_fn)(int, const char *, int, const char *, int);
+        typedef int (*killpg_fn)(int, int);
+        typedef int (*getpgid_fn)(int);
+        typedef int *(*errno_fn)(void);
+        nftw_fn nftw_ = (nftw_fn)mg_bionic_find("nftw");
+        ftw_fn ftw_ = (ftw_fn)mg_bionic_find("ftw");
+        path_fn chdir_ = (path_fn)mg_bionic_find("chdir"), chroot_ = (path_fn)mg_bionic_find("chroot"), remove_ = (path_fn)mg_bionic_find("remove");
+        mkdir_fn mkdir_ = (mkdir_fn)mg_bionic_find("mkdir");
+        open_fn open_ = (open_fn)mg_bionic_find("open");
+        io_fn write_ = (io_fn)mg_bionic_find("write");
+        close_fn close_ = (close_fn)mg_bionic_find("close");
+        stat_fn stat_ = (stat_fn)mg_bionic_find("stat");
+        getcwd_fn getcwd_ = (getcwd_fn)mg_bionic_find("getcwd");
+        linkat_fn linkat_ = (linkat_fn)mg_bionic_find("linkat");
+        killpg_fn killpg_ = (killpg_fn)mg_bionic_find("killpg");
+        getpgid_fn getpgid_ = (getpgid_fn)mg_bionic_find("getpgid");
+        errno_fn errno_ = (errno_fn)mg_bionic_find("__errno");
+        static const char *const dirs[] = { "/syscall-files/walk", "/syscall-files/walk/sub", "/syscall-files/walk/sub/deep", "/syscall-files/walk/empty" };
+        static const char *const files[] = { "/syscall-files/walk/a.txt", "/syscall-files/walk/sub/b.txt", "/syscall-files/walk/sub/deep/c.txt" };
+        char home[128], before[128], after[128];
+        u8 st[256];
+        int i, fd, made = 0;
+        mg_fs_mount("/syscall-files", scratch);
+        CHECK(nftw_ && ftw_ && mg_bionic_find("nftw64") && mg_bionic_find("ftw64") && chdir_ && chroot_ && remove_ && mkdir_ && open_ && write_ &&
+              close_ && stat_ && getcwd_ && linkat_ && killpg_ && getpgid_ && errno_);
+        if (nftw_ && ftw_ && chdir_ && chroot_ && remove_ && mkdir_ && open_ && write_ && close_ && stat_ && getcwd_ && linkat_ && killpg_ &&
+            getpgid_ && errno_) {
+            g_walk.stat = stat_;
+            g_walk.getcwd = getcwd_;
+            for (i = 0; i < 4; i++) mkdir_(dirs[i], 0700);
+            for (i = 0; i < 3; i++) {
+                fd = open_(files[i], 01 | 0100 | 01000, 0600);
+                if (fd >= 0 && write_(fd, "walked", 6) == 6) made++;
+                if (fd >= 0) close_(fd);
+            }
+            CHECK(made == 3);
+
+            /* A directory before what is in it; each told once, with where its name starts and how deep it is. */
+            walk_begin(-1, false, NULL);
+            CHECK(nftw_("/syscall-files/walk", walk_told, 8, 0) == 0 && g_walk.count == 7 && !g_walk.bad);
+            CHECK(walk_has("/syscall-files/walk D 15 0") == 0 && walk_has("/syscall-files/walk/a.txt F 20 1") > 0);
+            CHECK(walk_has("/syscall-files/walk/empty D 20 1") > 0);
+            CHECK(walk_has("/syscall-files/walk/sub D 20 1") > 0 && walk_has("/syscall-files/walk/sub/b.txt F 24 2") > walk_has("/syscall-files/walk/sub D 20 1"));
+            CHECK(walk_has("/syscall-files/walk/sub/deep D 24 2") > walk_has("/syscall-files/walk/sub D 20 1"));
+            CHECK(walk_has("/syscall-files/walk/sub/deep/c.txt F 29 3") > walk_has("/syscall-files/walk/sub/deep D 24 2"));
+            /* A path that ends in a slash: the names follow it, its own name is the nothing after it. */
+            walk_begin(-1, false, NULL);
+            CHECK(nftw_("/syscall-files/walk/sub/", walk_told, 8, 0) == 0 && g_walk.count == 4 && !g_walk.bad);
+            CHECK(walk_has("/syscall-files/walk/sub/ D 24 0") == 0 && walk_has("/syscall-files/walk/sub/b.txt F 24 1") > 0 &&
+                  walk_has("/syscall-files/walk/sub/deep/c.txt F 29 2") > 0);
+            /* What the function answers ends the walk and is its result. */
+            walk_begin(2, false, NULL);
+            CHECK(nftw_("/syscall-files/walk", walk_told, 8, 0) == 77 && g_walk.count == 3);
+            /* ftw: the same walk, its function told no more than the path, the stat and what it is. */
+            walk_begin(-1, false, NULL);
+            CHECK(ftw_("/syscall-files/walk", walk_told3, 8) == 0 && g_walk.count == 7 && !g_walk.bad);
+            CHECK(walk_has("/syscall-files/walk D -1 -1") == 0 && walk_has("/syscall-files/walk/sub/deep/c.txt F -1 -1") > 0);
+            /* A file is walked as itself; no descriptors to walk with, or nothing at the path, and nothing is told. */
+            walk_begin(-1, false, NULL);
+            CHECK(nftw_("/syscall-files/walk/a.txt", walk_told, 8, 0) == 0 && g_walk.count == 1 && walk_has("/syscall-files/walk/a.txt F 20 0") == 0);
+            walk_begin(-1, false, NULL);
+            CHECK(nftw_("/syscall-files/walk", walk_told, 0, 0) == -1 && *errno_() == GE_INVAL && g_walk.count == 0);
+            CHECK(nftw_("/syscall-files/walk/none", walk_told, 8, 0) == -1 && *errno_() == GE_NOENT && g_walk.count == 0);
+            CHECK(ftw_("/syscall-files/walk/none", walk_told3, 8) == -1 && *errno_() == GE_NOENT && g_walk.count == 0);
+            /* FTW_CHDIR (8): each file told from inside its directory, the directory the walk began in the one it ends in. */
+            CHECK(getcwd_(home, sizeof(home)) && chdir_("/syscall-files") == 0 && getcwd_(before, sizeof(before)) != NULL);
+            walk_begin(-1, true, NULL);
+            CHECK(nftw_("/syscall-files/walk", walk_told, 8, 8) == 0 && g_walk.count == 7 && !g_walk.bad);
+            CHECK(getcwd_(after, sizeof(after)) && !strcmp(before, after) && !strcmp(after, "/syscall-files"));
+            walk_begin(4, true, NULL);
+            CHECK(nftw_("/syscall-files/walk", walk_told, 8, 8) == 77 && getcwd_(after, sizeof(after)) && !strcmp(before, after));
+            /* FTW_DEPTH (4): a directory after what is in it, which is how a tree is removed -- by the function, as it goes. */
+            walk_begin(-1, true, remove_);
+            CHECK(nftw_("/syscall-files/walk", walk_told, 8, 4 | 8 | 1) == 0 && g_walk.count == 7 && !g_walk.bad);
+            CHECK(walk_has("/syscall-files/walk P 15 0") == 6 && walk_has("/syscall-files/walk/empty P 20 1") >= 0);
+            CHECK(walk_has("/syscall-files/walk/sub/deep P 24 2") > walk_has("/syscall-files/walk/sub/deep/c.txt F 29 3") &&
+                  walk_has("/syscall-files/walk/sub/deep/c.txt F 29 3") >= 0);
+            CHECK(walk_has("/syscall-files/walk/sub P 20 1") > walk_has("/syscall-files/walk/sub/deep P 24 2") &&
+                  walk_has("/syscall-files/walk/sub P 20 1") > walk_has("/syscall-files/walk/sub/b.txt F 24 2"));
+            CHECK(chdir_("/syscall-files/walk") == -1 && *errno_() == GE_NOENT && getcwd_(after, sizeof(after)) && !strcmp(before, after));
+            CHECK(chdir_(home) == 0);
+
+            /* No second name for a file, no other root, and one process group: the process's own. */
+            CHECK(linkat_(-100, "/syscall-files/plain.txt", -100, "/syscall-files/second.txt", 0) == -1 && *errno_() == GE_PERM);
+            CHECK(stat_("/syscall-files/second.txt", st) == -1);
+            CHECK(chroot_("/syscall-files") == -1 && *errno_() == GE_PERM);
+            CHECK(chroot_("/syscall-files/nowhere") == -1 && *errno_() == GE_NOENT);
+            CHECK(chroot_("/syscall-files/plain.txt") == -1 && *errno_() == GE_NOTDIR);
+            CHECK(killpg_(0, 0) == 0 && killpg_(getpgid_(0), 0) == 0);
+            CHECK(killpg_(getpgid_(0) + 1, 0) == -1 && *errno_() == GE_SRCH);
+            CHECK(killpg_(-1, 0) == -1 && *errno_() == GE_INVAL);
         }
     }
 }
