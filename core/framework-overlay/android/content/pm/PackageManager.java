@@ -41,6 +41,11 @@
 // (GET_CONTENT, OPEN_DOCUMENT, PICK of pictures, PICK_IMAGES, IMAGE_CAPTURE, VIDEO_CAPTURE) with the system's activity of them
 // (megler.Pickers.resolveInfo: com.android.documentsui, com.android.camera2 where there is a camera), as a phone answers:
 // they found nothing, and apps that ask before they offer a button ("attach", "take a photo") offered none.
+// And the package "android" has the platform's signatures (megler.PlatformSigner: the certificate the platform's resources
+// APK is signed with), given as Android gives a package's -- signatures with GET_SIGNATURES, signingInfo with
+// GET_SIGNING_CERTIFICATES, null otherwise: its signatures were one of no bytes whatever was asked, and its signingInfo the
+// running app's own. microG's location service reads the platform's signatures as certificates for each app it has a
+// location for, and the empty one ended every such app's location requests ("CertData to small"; Citymapper, 0.1.0.690).
 package android.content.pm;
 
 import android.content.ComponentName;
@@ -116,7 +121,8 @@ public class PackageManager {
             ApplicationInfo a = new ApplicationInfo();
             a.packageName = a.processName = "android"; a.flags = ApplicationInfo.FLAG_SYSTEM; a.targetSdkVersion = a.minSdkVersion = android.os.Build.VERSION.SDK_INT; a.enabled = true;
             p.applicationInfo = a;
-            p.signatures = new Signature[] { new Signature("") };
+            p.signatures = (flags & GET_SIGNATURES) != 0 ? megler.PlatformSigner.signatures() : null;
+            p.signingInfo = (flags & GET_SIGNING_CERTIFICATES) != 0 ? new SigningInfo(megler.PlatformSigner.signatures()) : null;
             return p;
         }
         if (!mine(pkg) && megler.GooglePackages.is(pkg)) return megler.GooglePackages.packageInfo(pkg, flags);

@@ -3631,6 +3631,9 @@ static int run_data(void)
                                          /* And the calendar's events of a time, asked as CalendarContract's helpers ask: an empty cursor of
                                             the columns asked for, not null (Citymapper reads its count on a worker thread at each start). */
                                          "calendar-instances",
+                                         /* And the package "android" has the platform's signature, a certificate (microG's location service
+                                            reads it for every app it has a location for), given when asked for and not otherwise. */
+                                         "platform-signature",
                                          /* And a LayerDrawable told it is not visible: its layers drawn all the same, as Android's. */
                                          "layer-drawable-hidden",
                                          /* And a BoringLayout one line whatever its width, as Android's (a badge's text in two lines). */

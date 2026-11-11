@@ -2008,6 +2008,7 @@ public class Main extends Activity {
         addViewParams();
         cleanupLayoutState();
         calendarInstances();
+        platformSignature();
         layerDrawableHidden();
         boringLayoutOneLine();
         backgroundOffMainThread();
@@ -6521,6 +6522,36 @@ public class Main extends Activity {
             int again = g.asked - before - added - heard;
             detail = "forced " + forced + " added " + added + " cleared " + cleared + " heard " + heard + " again " + again + " child asked " + child.isLayoutRequested();
             return forced && added == 1 && cleared && heard == 1 && again == 1 && child.isLayoutRequested();
+        });
+    }
+
+    /**
+     * The package "android" is signed with the platform's certificate: asked with GET_SIGNATURES it has one signature that
+     * is an X.509 certificate (as microG's location service reads it, for each app it has a location for: fewer than 25
+     * bytes are refused, "CertData to small", and the app's requests ended there) and is not the app's own; asked with
+     * GET_SIGNING_CERTIFICATES its signingInfo has the same; asked for neither it has none, as Android answers. It had one
+     * signature of no bytes, whatever was asked, and the app's own signingInfo.
+     */
+    private void platformSignature() {
+        step("platform-signature", () -> {
+            android.content.pm.PackageManager pm = getPackageManager();
+            android.content.pm.PackageInfo plain = pm.getPackageInfo("android", 0);
+            android.content.pm.Signature[] s = pm.getPackageInfo("android", android.content.pm.PackageManager.GET_SIGNATURES).signatures;
+            android.content.pm.PackageInfo signing = pm.getPackageInfo("android", android.content.pm.PackageManager.GET_SIGNING_CERTIFICATES);
+            android.content.pm.Signature[] signers = signing.signingInfo == null ? null : signing.signingInfo.getApkContentsSigners();
+            android.content.pm.Signature[] mine = pm.getPackageInfo(getPackageName(), android.content.pm.PackageManager.GET_SIGNATURES).signatures;
+            byte[] der = s != null && s.length == 1 ? s[0].toByteArray() : new byte[0];
+            java.security.cert.X509Certificate x = der.length == 0 ? null : (java.security.cert.X509Certificate)
+                    java.security.cert.CertificateFactory.getInstance("X.509").generateCertificate(new java.io.ByteArrayInputStream(der));
+            boolean own = mine != null && mine.length > 0 && s != null && s.length > 0 && mine[0].equals(s[0]);
+            boolean again = s != null && java.util.Arrays.equals(s, pm.getPackageInfo("android", android.content.pm.PackageManager.GET_SIGNATURES).signatures);
+            detail = "signatures " + (s == null ? "null" : s.length + " of " + der.length + " bytes") + " certificate " + (x == null ? "none" : x.getType() + " v" + x.getVersion())
+                    + " signers " + (signers == null ? "null" : String.valueOf(signers.length)) + " the app's own " + own + " plain " + java.util.Arrays.toString(plain.signatures)
+                    + " " + plain.signingInfo + " again " + again;
+            return s != null && s.length == 1 && der.length >= 25 && x != null && x.getPublicKey() != null && !own
+                    && signers != null && signers.length == 1 && signers[0].equals(s[0]) && signing.signatures == null
+                    && plain.signatures == null && plain.signingInfo == null && again
+                    && plain.versionCode == android.os.Build.VERSION.SDK_INT && "android".equals(plain.packageName);
         });
     }
 
