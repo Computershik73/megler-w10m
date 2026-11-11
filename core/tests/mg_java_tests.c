@@ -3368,7 +3368,13 @@ static int run_data(void)
     static const char *const steps[] = { "open", "kept", "insert", "query", "types", "update", "delete", "rollback", "commit", "constraint", "statement", "text",
                                          "bad-sql", "memory", "upgrade", "wal-restored", "left",
                                          /* And the storage as an app sees it. */
-                                         "environment", "own-folders", "cache-cleared", "volumes", "space", "permissions", "download", "list-root",
+                                         "environment", "own-folders", "cache-cleared", "volumes", "space",
+                                         /* And the phone's media through MediaStore (megler.MediaProvider): saved to the gallery,
+                                            seen as the storage permission lets it -- the first run only what it saved itself --,
+                                            queried with the app's SQL, read, thumbnailed, watched, scanned and deleted. */
+                                         "media-save", "media-gated", "media-query", "media-bundle", "media-read", "media-thumbnails",
+                                         "media-observer", "media-scanner", "media-delete",
+                                         "permissions", "download", "list-root",
                                          /* And the battery, the time zone, TLS (conscrypt's: a TLS server and client of the app's own on loopback,
                                             and an https URL through Android's HTTP client; or, where its library is not in the Android root, the
                                             stand-in that fails politely), the app's network security configuration (an authority of its own
@@ -3557,6 +3563,13 @@ static int run_data(void)
             int h2 = find_line("I/Megler: HttpEngine: HTTP/2 to localhost:", 0);
             CHECK(h2 >= 0 && strstr(line_at(h2), " (TLSv1.") && strstr(line_at(h2), " ms"));
         }
+    }
+    /* The media provider indexed the shared storage, said in the log with what it found and how long it took; and each file
+       the app saved to the gallery said with where it went. */
+    {
+        int indexed = find_line("I/Megler: media: the shared storage indexed: ", 0);
+        CHECK(indexed >= 0 && strstr(line_at(indexed), " files, ") && strstr(line_at(indexed), " folders listed, ") && strstr(line_at(indexed), " ms"));
+        CHECK(find_line("I/Megler: media: the app saved Pictures/Megler Test/megler-portrait", 0) >= 0);
     }
     /* The app's network security configuration, said in the log once as it was read (android.security.net.config.XmlConfigSource):
        the base configuration with Android's authorities alone (its debug-overrides not counted), and a <domain-config> inside

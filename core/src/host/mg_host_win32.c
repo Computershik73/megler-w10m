@@ -3318,7 +3318,7 @@ bool mg_path_rename(const char *from, const char *to, int *err)
  * picked on the card) -- is read with FileFullDirectoryInfo, which every one
  * answers; said once.
  */
-static bool list_handle(HANDLE h, mg_dir_cb cb, void *user, int *err)
+static bool list_handle(HANDLE h, mg_dir_cb cb, mg_dir_stat_cb stat_cb, void *user, int *err)
 {
     enum { LIST_BYTES = 16384 };
     static volatile LONG said;
@@ -3359,7 +3359,25 @@ static bool list_handle(HANDLE h, mg_dir_cb cb, void *user, int *err)
                 char *name = (char *)mg_alloc((size_t)(bytes > 0 ? bytes : 0) + 1);
                 if (bytes > 0) WideCharToMultiByte(CP_UTF8, 0, file, (int)n, name, bytes, NULL, NULL);
                 mg_name_from_host(name);
-                if (name[0]) cb(name, (attributes & FILE_ATTRIBUTE_DIRECTORY) != 0, user);
+                if (name[0] && stat_cb) {
+                    /* (What the entry says of itself: the two classes alike up to the name's length, times and size among it.) */
+                    mg_stat st;
+                    FILETIME ft;
+                    memset(&st, 0, sizeof(st));
+                    st.is_dir = (attributes & FILE_ATTRIBUTE_DIRECTORY) != 0;
+                    st.read_only = !st.is_dir && (attributes & FILE_ATTRIBUTE_READONLY) != 0;
+                    st.size = st.is_dir ? 0 : (u64)plain->EndOfFile.QuadPart;
+                    ft.dwLowDateTime = plain->LastWriteTime.LowPart; ft.dwHighDateTime = (DWORD)plain->LastWriteTime.HighPart;
+                    st.mtime_ns = (i64)filetime_to_unix_ns(ft);
+                    ft.dwLowDateTime = plain->LastAccessTime.LowPart; ft.dwHighDateTime = (DWORD)plain->LastAccessTime.HighPart;
+                    st.atime_ns = (i64)filetime_to_unix_ns(ft);
+                    ft.dwLowDateTime = plain->ChangeTime.LowPart; ft.dwHighDateTime = (DWORD)plain->ChangeTime.HighPart;
+                    st.ctime_ns = (i64)filetime_to_unix_ns(ft);
+                    st.id = full ? 0 : (u64)both->FileId.QuadPart;
+                    if (!(n >= 17 && is_aside(file))) stat_cb(name, &st, user);
+                } else if (name[0]) {
+                    cb(name, (attributes & FILE_ATTRIBUTE_DIRECTORY) != 0, user);
+                }
                 free(name);
             }
             if (!next) break;
@@ -3380,7 +3398,7 @@ bool mg_path_list(const char *path, mg_dir_cb cb, void *user, int *err)
         bool ok;
         h = foreign_handle(path, MG_O_READ, MG_FOREIGN_DIR, err);
         if (!h) return false;
-        ok = list_handle(h, cb, user, err);
+        ok = list_handle(h, cb, NULL, user, err);
         CloseHandle(h);
         return ok;
     }
@@ -3425,6 +3443,73 @@ bool mg_path_list(const char *path, mg_dir_cb cb, void *user, int *err)
     } while (FindNextFileW(h, &fd));
     FindClose(h);
     free(w);
+    return true;
+}
+
+bool mg_path_list_stat(const char *path, mg_dir_stat_cb cb, void *user, int *err)
+{
+    wchar_t *w, *dir;
+    size_t len;
+    WIN32_FIND_DATAW fd;
+    HANDLE h;
+    if (mg_path_is_foreign(path)) {
+        bool ok;
+        BY_HANDLE_FILE_INFORMATION self;
+        h = foreign_handle(path, MG_O_READ, MG_FOREIGN_DIR, err);
+        if (!h) return false;
+        /* The folder itself: its volume and its index on it, which two handles to it from two paths share. */
+        if (GetFileInformationByHandle(h, &self)) {
+            mg_stat st;
+            memset(&st, 0, sizeof(st));
+            st.is_dir = true;
+            st.mtime_ns = (i64)filetime_to_unix_ns(self.ftLastWriteTime);
+            st.atime_ns = (i64)filetime_to_unix_ns(self.ftLastAccessTime);
+            st.ctime_ns = (i64)filetime_to_unix_ns(self.ftCreationTime);
+            st.id = (((u64)self.nFileIndexHigh << 32) | self.nFileIndexLow) ^ ((u64)self.dwVolumeSerialNumber << 32);
+            if (!st.id) st.id = 1;
+            cb(".", &st, user);
+        }
+        ok = list_handle(h, NULL, cb, user, err);
+        CloseHandle(h);
+        return ok;
+    }
+    dir = wide_path(path);
+    len = wcslen(dir);
+    w = (wchar_t *)mg_alloc(sizeof(wchar_t) * (len + 3));
+    memcpy(w, dir, sizeof(wchar_t) * len);
+    if (len && dir[len - 1] != L'\\') w[len++] = L'\\';
+    w[len++] = L'*';
+    w[len] = 0;
+    free(dir);
+    h = FindFirstFileExW(w, FindExInfoBasic, &fd, FindExSearchNameMatch, NULL, 0);
+    free(w);
+    if (h == INVALID_HANDLE_VALUE) {
+        DWORD e = GetLastError();
+        if (e == ERROR_FILE_NOT_FOUND) {
+            mg_stat st;
+            if (mg_path_stat(path, &st, NULL) && st.is_dir) return true;
+        }
+        if (err) *err = err_of(e);
+        return false;
+    }
+    do {
+        mg_stat st;
+        char *name;
+        if (!wcscmp(fd.cFileName, L"..") || is_aside(fd.cFileName)) continue;
+        /* (The folder itself, ".", with no id: a folder of the app's own data is reached by one path.) */
+        memset(&st, 0, sizeof(st));
+        st.is_dir = (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) != 0;
+        st.read_only = !st.is_dir && (fd.dwFileAttributes & FILE_ATTRIBUTE_READONLY) != 0;
+        st.size = st.is_dir ? 0 : ((u64)fd.nFileSizeHigh << 32) | fd.nFileSizeLow;
+        st.mtime_ns = (i64)filetime_to_unix_ns(fd.ftLastWriteTime);
+        st.atime_ns = (i64)filetime_to_unix_ns(fd.ftLastAccessTime);
+        st.ctime_ns = (i64)filetime_to_unix_ns(fd.ftCreationTime);
+        name = utf8_of(fd.cFileName);
+        mg_name_from_host(name);
+        cb(name, &st, user);
+        free(name);
+    } while (FindNextFileW(h, &fd));
+    FindClose(h);
     return true;
 }
 

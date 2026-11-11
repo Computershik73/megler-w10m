@@ -867,6 +867,43 @@ Java's calls arrive there.
   asked -- the long calls, the old int ones multiplied as longs,
   `java.io.File`. `StorageStatsManager.getTotalBytes(UUID_DEFAULT)` is not
   less than what is there and less than twice it; `getFreeBytes` within it.
+- The phone's media through MediaStore ("The media provider: MediaStore", in
+  Design), nine steps before `permissions`, so that the first run has no
+  storage permission yet and sees only what it saved itself, and the second
+  everything. The files are made byte by byte: a PNG whose eXIf chunk turns it
+  a quarter and says when it was taken in no zone, a JPEG of headers alone
+  (the tests' decoder reads PNG only) turned half round with its zone, an MP4
+  of boxes alone (2.5 s, 320 x 240, a quarter turn), a WAV of 1.5 s, a PDF.
+  `media-save`: each saved as Android 10's way has it (insert pending, write,
+  `IS_PENDING=0`) where `RELATIVE_PATH` says, `(1)` after its name in the
+  second run, the extension of its type added; the app's pending item seen by
+  it, not where pending ones are excluded, alone where only they are; a folder
+  images may not go in and a type that is no image refused; the first run's
+  portrait in the second by its id, the app its owner still (the cache cleared
+  in between); `insertImage`; a new `DISPLAY_NAME` moving the file.
+  `media-gated`: a photo in `DCIM/Camera` the app did not save (written as a
+  file) not seen in the first run and seen in the second with its bucket (the
+  folder's path in small letters, hashed), relative path and no owner; hidden
+  files and a `.nomedia` folder never. `media-query`: a selection with
+  arguments, `IN`, `OR` over `file`'s media types, `LIMIT` in the sort order,
+  `external_primary` as `external`, `internal` empty, an item's URI, GROUP BY in
+  a Bundle and inside a selection, and what the headers said: sizes, turns,
+  `datetaken` with EXIF's zone and with the zone guessed, a video's length,
+  size and turn, a sound's length, album and artist, a PDF in `Download` a
+  document. `media-bundle`: AndroidX paging's query (sort columns, direction,
+  `LIMIT`, `OFFSET`) and `EXTRA_HONORED_ARGS`. `media-read`: the same bytes by
+  the item's stream, descriptor and typed descriptor as by its `_data` path;
+  `video/*` refused, `getType`. `media-thumbnails`: `loadThumbnail` upright
+  (its red left half on top), `getThumbnail` 30 x 40, `queryMiniThumbnail`'s
+  JPEG in the app's cache, the MICRO kind 96 x 96, `EXTRA_SIZE`,
+  `ThumbnailUtils.extractThumbnail`, a video's `IOException`.
+  `media-observer`: an observer of the images' collection hears an insert, an
+  update and a delete, one of `file` alone hears its collection, a cursor
+  hears them. `media-scanner`: `MediaScannerConnection.scanFile` answers a
+  file's URI and null for one under `.nomedia`; the broadcast indexes one;
+  a photo no one tells of is found by the next query (seen in the second
+  run). `media-delete`: the app's own item deleted with its file, another's
+  not. The C side checks the scan's line in the log.
 - `permissions`: Android's runtime permissions ("Permissions", in Design),
   asked five ways (`checkSelfPermission`, `checkCallingOrSelfPermission`,
   `checkPermission` with the app's own pid and uid,
@@ -4307,6 +4344,125 @@ are the app's while it runs. A cursor's content observers hear of a change of
 its notification URI (`AbstractCursor.setNotificationUri` registers with the
 resolver, `ContentObservable.registerObserver` registers at all: both were
 stubs that did nothing, and unregistering an observer threw).
+
+### The media provider: MediaStore
+
+`megler.MediaProvider` is Android's media provider (`content://media`, the
+system's MediaProvider) as an app sees it: the photos, videos, sounds,
+downloads and other files of the shared storage -- with the phone's own folders
+linked into it, the Camera Roll as `DCIM`, the libraries as `Pictures`, `Movies`
+and `Music` (docs/ARCHITECTURE.md, "Files and the shared storage") -- indexed,
+queried, read, saved to, thumbnailed and watched. Before it, `ContentResolver`
+answered every query of `media` with an empty cursor, and every app's own
+gallery was empty: Avito's photo picker, Telegram X's attach panel, WhatsApp's
+gallery, Instagram's and VK's (0.1.0.690, on two phones).
+
+- **The index** is one SQLite database of the app's own,
+  `<data dir>/.megler_media.db` (the app's data, not its cache: a Clear Cache
+  keeps the ids and what the app owns), a table `files` with Android 14's
+  columns. Ids are numbered as the files were found, oldest first, so that
+  `_id DESC` is newest first as on a phone. They are the app's own: another
+  app's index numbers the same files its own way.
+- **Queries** run the app's SQL against it, inside Android's filters: the
+  collection (`images/media`, `video/media`, `audio/media`, `file`,
+  `downloads`, an item by its id; `audio/albums` and `artists` made of the
+  sounds' rows; `genres` and `playlists` empty), what the app may see, pending,
+  trashed and favourite items (`QUERY_ARG_MATCH_*`, the URI's
+  `includePending`). The selection and its arguments, the sort order (with a
+  `LIMIT` in it, as apps wrote it), the URI's `limit`, a Bundle's
+  `QUERY_ARG_SQL_*`, `QUERY_ARG_LIMIT` and `OFFSET`, `QUERY_ARG_SORT_COLUMNS`
+  and `DIRECTION` and `QUERY_ARG_SQL_GROUP_BY` and `HAVING` all as SQLite takes
+  them; the selection in parentheses, so the old `1) GROUP BY (bucket_id` gives
+  albums as it did on Android 9. The cursor says which Bundle arguments it
+  honoured (`EXTRA_HONORED_ARGS`) and is told of changes. The volumes
+  `external` and `external_primary` are the shared storage, `internal` is empty.
+- **The scan.** A query looks at the storage when the last look is more than
+  1.5 s old; no thread watches it. Each folder is listed in one call that gives
+  every entry's size and time, `Native.listFolder` over the core's
+  `mg_path_list_stat` (`host/mg_host.h`): in a link, `File.length()` and
+  `lastModified()` are a call to Windows' broker each, and a Camera Roll of
+  thousands of photos was minutes of them. A folder whose time is what it was
+  and which has no folders in it is not listed again, unless that was 30 s ago
+  or more (a memory card's file system may leave a folder's time as it was).
+  Hidden files and folders, a folder with `.nomedia` and what is under it,
+  `Android/data` and `Android/obb` are left out, as Android's scanner leaves
+  them; `Android/media` is in. A folder reached by two paths is indexed once,
+  by the first in the order of their names: on a phone the Camera Roll is the
+  shell's `DCIM` and the pictures library's `Camera Roll`, under `Pictures`, at
+  once (the listing gives the folder's own id first; where the host has none,
+  its files' names, sizes and times tell it), and the log says which. Times
+  are kept in whole seconds, as libcore's `File.lastModified` has them. A scan that finds something, takes long, or is
+  the process's first is a line of the log ("media: the shared storage
+  indexed: ... files, ... new, ... changed, ... gone; ... folders listed, ...
+  unchanged, in ... ms"), and what it found is told to the collections.
+- **Metadata** that only a file's headers have -- width, height, orientation,
+  the time it was taken, a duration -- is read from them (`megler.MediaFiles`),
+  never by decoding pixels: JPEG's EXIF and frame header, PNG's IHDR and eXIf,
+  WebP's chunks, GIF, BMP, HEIF's `ispe`; MP4, 3GP, MOV and M4A's `mvhd`,
+  `tkhd` (its matrix the turn) and `hdlr`; MP3 (Xing, Info, VBRI, else its bit
+  rate), WAV, FLAC, Ogg. `datetaken` is EXIF's `DateTimeOriginal` as Android's
+  scanner reads it: at `OffsetTimeOriginal`, else moved to the zone the file's
+  own time is in, to the quarter of an hour, when that is less than a day off;
+  a video's creation time; else the file's time. A query that asks for those
+  columns has its rows read first, for up to 1.2 s; the rest are read on the
+  provider's thread, newest first, and the collections told when that is done.
+  `BitmapFactory`'s bounds would have read each whole file.
+- **What an app may see**, as Android 14 decides it (`megler.Permissions`):
+  images and videos with `READ_MEDIA_IMAGES` and `READ_MEDIA_VIDEO`, sounds with
+  `READ_MEDIA_AUDIO`; for an app whose target is Android 12L or older,
+  `READ_EXTERNAL_STORAGE` (or a `WRITE_EXTERNAL_STORAGE` it holds), which shows
+  the other files too; `MANAGE_EXTERNAL_STORAGE` everything.
+  `READ_MEDIA_VISUAL_USER_SELECTED` alone (Android 14's limited access) is all
+  the images and videos: there is no picker here for the user to choose the
+  few, and Megler's question is a yes or a no. What the app inserted itself it
+  always sees, writes and deletes; another's file it changes only with
+  `WRITE_EXTERNAL_STORAGE` or `MANAGE_EXTERNAL_STORAGE`.
+- **Saving.** `insert` makes the file at once, empty, under the collection's
+  folders as Android allows them (images in `DCIM` or `Pictures`, videos also
+  `Movies`, sounds in `Music`, `Ringtones` and their kind, downloads in
+  `Download`; another `RELATIVE_PATH`, or a MIME type of another kind, is
+  Android's `IllegalArgumentException`), its name made unique as Android makes
+  it (`name (1).jpg`) and given its type's extension where it has none;
+  `IS_PENDING` hides it from others until `update(IS_PENDING=0)`. `openFile` in
+  `"w"` gives the file, and when what was written is closed the row is read
+  again from it (`ContentResolver.openOutputStream` closes the descriptor with
+  the stream, as Android's does). An insert of `_data` indexes that file, the
+  app its owner. `update` renames and moves (`DISPLAY_NAME`, `RELATIVE_PATH`)
+  and sets the descriptive columns; `delete` deletes the file.
+  `MediaStore.Images.Media.insertImage` is an insert, a JPEG written and the
+  item made visible. A file the app wrote itself is indexed by
+  `MediaScannerConnection.scanFile` (its listener told the URI on the
+  provider's thread), `MediaStore.scanFile` and the old broadcast
+  `ACTION_MEDIA_SCANNER_SCAN_FILE` (`megler.Broadcasts`), or by the next query
+  once its folder's time has changed.
+- **Reading**: `openFile`, `openAssetFile`, `openTypedAssetFile` of an item
+  (a type it is not is `FileNotFoundException`), `openInputStream` of its URI
+  and of its `_data` path.
+- **Thumbnails**: `openTypedAssetFile` with `ContentResolver.EXTRA_SIZE` (what
+  `ContentResolver.loadThumbnail` asks, now as Android's, decoded subsampled to
+  about the size asked: it decoded the whole file), the thumbnails tables
+  (`MediaStore.Images.Thumbnails`, `Video.Thumbnails`: `queryMiniThumbnail`
+  makes the few it is asked for) and their items give a JPEG of the picture
+  decoded subsampled and turned upright by its EXIF orientation
+  (`android.media.ThumbnailUtils`, no longer signatures alone), kept in the
+  app's cache (`cache/megler-media`) under the item's id and time, one made at
+  a time: a Lumia 650 has 1 GB. `MediaStore.Images.Thumbnails.getThumbnail` is
+  `loadThumbnail` of its kind's size, as Android 10's.
+- **Change notifications**: an insert, update or delete tells the item's URI
+  under both names of the volume, in its collection and in `file`, and the
+  collections themselves (which an observer that takes no descendants hears,
+  as Android 9's provider told them), on the provider's thread.
+
+Not here: thumbnails of videos and album art (`MediaMetadataRetriever` has
+no frames or pictures yet: an `IOException`, as Android's when it finds none),
+tags of sounds (the title is the file's name, the artist `<unknown>`, the album
+its folder, as Android has them for a file without tags), folders as rows of
+`file`, a trash that renames the file (`IS_TRASHED` is a flag),
+`createWriteRequest` and `createDeleteRequest`'s dialog, a memory card's own
+volume (a folder of one linked into `/sdcard` is part of it), the system's
+photo picker (`PICK_IMAGES`, another provider's: the system intents, branch
+`system-pickers`). Setting a file's times is not done by the layer (utime is
+answered and ignored).
 
 ### Notification channels
 

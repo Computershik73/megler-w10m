@@ -136,3 +136,11 @@
     public static native void backDone(int seq, int answer);
     /** The app went to the back (AppRunner.moveTaskToBack): the Back being waited for, or the shell's next one, is the system's. */
     public static native void toBack();
+    /**
+     * A folder of the app's storage listed in one call, each entry with its kind, size and time: "d" or "f", the size in bytes,
+     * "/", the time of its last change in milliseconds since 1970, "/", its id (0: not known), "/", the name, "/", one after
+     * another, the folder itself first as "."; null when it cannot be listed (core/src/drivers/mg_java.c, mg_path_list_stat).
+     * For megler.MediaProvider, which indexes the shared storage: File.length() and lastModified() of each file in the
+     * phone's own folders were two calls to Windows' broker each.
+     */
+    public static native String listFolder(String path);
