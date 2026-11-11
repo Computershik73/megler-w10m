@@ -199,6 +199,44 @@ static MG_HOSTCB void list_one(const char *name, bool is_dir, void *user)
     if (is_dir) l->dirs++;
 }
 
+/* A listing with what each entry says of itself (mg_path_list_stat): its kind, size and time beside its name. */
+typedef struct stat_listing {
+    int count, dirs, selves;
+    u64 bytes, self_id;
+    i64 oldest, newest;
+    char names[16][64];
+    u64 sizes[16];
+} stat_listing;
+
+static MG_HOSTCB void stat_one(const char *name, const mg_stat *st, void *user)
+{
+    stat_listing *l = (stat_listing *)user;
+    /* (The folder itself comes first, as ".".) */
+    if (!strcmp(name, ".")) {
+        if (st->is_dir && !l->count) l->selves++;
+        l->self_id = st->id;
+        return;
+    }
+    if (l->count < 16) {
+        mg_strlcpy(l->names[l->count], name, sizeof(l->names[0]));
+        l->sizes[l->count] = st->is_dir ? (u64)-1 : st->size;
+    }
+    l->count++;
+    if (st->is_dir) l->dirs++;
+    else l->bytes += st->size;
+    if (!l->oldest || st->mtime_ns < l->oldest) l->oldest = st->mtime_ns;
+    if (st->mtime_ns > l->newest) l->newest = st->mtime_ns;
+}
+
+/* The size a stat listing gave a name: -1 for a folder, -2 for a name it did not give. */
+static i64 stat_listed(const stat_listing *l, const char *name)
+{
+    int i;
+    for (i = 0; i < l->count && i < 16; i++)
+        if (!strcmp(l->names[i], name)) return l->sizes[i] == (u64)-1 ? -1 : (i64)l->sizes[i];
+    return -2;
+}
+
 static bool listed(const listing *l, const char *name)
 {
     int i;
@@ -378,6 +416,41 @@ static void test_foreign_paths(const char *scratch)
     CHECK(mg_path_list(L0 "/dir", list_one, &seen, &err) && seen.count == 0);
     CHECK(!mg_path_list(L0 "/a.txt", list_one, &seen, &err) && err == MG_E_NOTDIR);
     CHECK(!mg_path_list(L0 "/nothing", list_one, &seen, &err) && err == MG_E_NOENT);
+    /*
+     * The same listings with each entry's size and time (what the media provider indexes the phone's folders by): the
+     * sizes the files have, the folders as folders, the times what each says of itself -- and the whole of it one call to
+     * whoever owns the root, the folder's handle, never one for each entry.
+     */
+    {
+        stat_listing sl;
+        mg_stat a_st;
+        u64 root_id, deep_id;
+        i32 calls = g_calls;
+        memset(&sl, 0, sizeof(sl));
+        CHECK(mg_path_list_stat(L0, stat_one, &sl, &err));
+        CHECK_INT(g_calls - calls, 1);
+        CHECK(sl.count == 3 && sl.dirs == 2 && stat_listed(&sl, "a.txt") == 6 && stat_listed(&sl, "dir") == -1 && stat_listed(&sl, "deep") == -1);
+        /* The folder itself, first: one id for it however often it is listed, another for another folder (where the host says
+           ids at all: a foreign folder's always). */
+        root_id = sl.self_id;
+        CHECK(sl.selves == 1 && root_id != 0);
+        CHECK(mg_path_stat(L0 "/a.txt", &a_st, &err) && sl.oldest > 1600000000ll * 1000000000ll && sl.newest >= a_st.mtime_ns && sl.oldest <= a_st.mtime_ns);
+        memset(&sl, 0, sizeof(sl));
+        CHECK(mg_path_list_stat(L0 "/deep/er", stat_one, &sl, &err) && sl.count == 2 && stat_listed(&sl, "inner.bin") == 3 && stat_listed(&sl, "still") == -1);
+        deep_id = sl.self_id;
+        CHECK(sl.selves == 1 && deep_id != 0 && deep_id != root_id);
+        memset(&sl, 0, sizeof(sl));
+        CHECK(mg_path_list_stat(L0 "/deep/er", stat_one, &sl, &err) && sl.self_id == deep_id);
+        memset(&sl, 0, sizeof(sl));
+        CHECK(mg_path_list_stat(L0 "/dir", stat_one, &sl, &err) && sl.count == 0 && sl.selves == 1);
+        CHECK(!mg_path_list_stat(L0 "/a.txt", stat_one, &sl, &err) && err == MG_E_NOTDIR);
+        CHECK(!mg_path_list_stat(L0 "/nothing", stat_one, &sl, &err) && err == MG_E_NOENT);
+        /* And an ordinary folder of the host's: the root's own, as the scratch folder has it. */
+        free(plain);
+        plain = mg_sprintf("%s/deep/er", g_roots[0]);
+        memset(&sl, 0, sizeof(sl));
+        CHECK(mg_path_list_stat(plain, stat_one, &sl, &err) && sl.count == 2 && stat_listed(&sl, "inner.bin") == 3 && stat_listed(&sl, "still") == -1);
+    }
     /* More entries than one bufferful of them (the Win32 host reads a directory 16 KB at a time). */
     CHECK(mg_path_mkdir(L1 "/many", &err));
     for (i = 0; i < 300; i++) {
@@ -388,6 +461,13 @@ static void test_foreign_paths(const char *scratch)
     CHECK_INT(i, 300);
     memset(&seen, 0, sizeof(seen));
     CHECK(mg_path_list(L1 "/many", list_one, &seen, &err) && seen.count == 300 && seen.dirs == 0);
+    {
+        stat_listing sl;
+        i32 calls = g_calls;
+        memset(&sl, 0, sizeof(sl));
+        CHECK(mg_path_list_stat(L1 "/many", stat_one, &sl, &err) && sl.count == 300 && sl.dirs == 0 && sl.bytes == 300);
+        CHECK_INT(g_calls - calls, 1);
+    }
     for (i = 0; i < 300; i++) {
         char *name = mg_sprintf(L1 "/many/a-file-with-a-name-long-enough-to-fill-the-buffer-%03d.dat", i);
         if (!mg_path_remove(name, &err)) break;

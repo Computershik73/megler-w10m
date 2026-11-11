@@ -1215,6 +1215,57 @@ bool mg_path_list(const char *path, mg_dir_cb cb, void *user, int *err)
     return true;
 }
 
+/* (Here each entry is asked of the directory, fstatat: what Linux's listing gives is the names alone, and a stat by the
+   directory's descriptor costs no lookup of the path.) An entry gone between the two is left out. */
+bool mg_path_list_stat(const char *path, mg_dir_stat_cb cb, void *user, int *err)
+{
+    DIR *d;
+    struct dirent *e;
+    bool foreign = mg_path_is_foreign(path);
+    if (foreign) {
+        int fd = foreign_fd(path, MG_O_READ, MG_FOREIGN_DIR, err);
+        if (fd < 0) return false;
+        d = fdopendir(fd);
+        if (!d) {
+            SET_ERR();
+            close(fd);
+            return false;
+        }
+    } else {
+        d = opendir(path);
+        if (!d) { SET_ERR(); return false; }
+    }
+    {
+        /* The directory itself first, its id its device's and its inode's. */
+        struct stat s;
+        mg_stat st;
+        if (fstat(dirfd(d), &s) == 0) {
+            memset(&st, 0, sizeof(st));
+            fill_stat(&s, &st);
+            st.size = 0;
+            st.id = (u64)s.st_ino ^ ((u64)s.st_dev << 40);
+            if (!st.id) st.id = 1;
+            cb(".", &st, user);
+        }
+    }
+    while ((e = readdir(d)) != NULL) {
+        struct stat s;
+        mg_stat st;
+        char *name;
+        if (!strcmp(e->d_name, ".") || !strcmp(e->d_name, "..")) continue;
+        if (fstatat(dirfd(d), e->d_name, &s, 0) != 0) continue;
+        memset(&st, 0, sizeof(st));
+        fill_stat(&s, &st);
+        if (st.is_dir) st.size = 0;
+        name = mg_strdup(e->d_name);
+        if (foreign) mg_name_from_host(name);
+        cb(name, &st, user);
+        free(name);
+    }
+    closedir(d);
+    return true;
+}
+
 bool mg_map_open(mg_map *m, const char *path)
 {
     struct stat s;

@@ -614,6 +614,53 @@ N(Native_displayRotation)
 N(Native_uptimeNanos) { c->ret.j = (i64)mg_time_monotonic_ns(); }
 /* flag(name): a switch for trying something on the phone (mg_flag): a file of that name in the data folder's flags. */
 N(Native_flag) { c->ret.z = mg_flag(text_of(c->args[0].l)); }
+
+/*
+ * listFolder(String path): a folder of the app's storage listed with each entry's kind, size and time, for the media
+ * provider (megler.MediaProvider), in one string: "d" or "f", the size in bytes, "/", the time of its last change in
+ * milliseconds since 1970, "/", its id (0 where the host does not say one), "/", its name, "/" -- one after another, the
+ * folder itself first as "." (mg_path_list_stat). A name never has a '/' in it. Null when the folder cannot be listed.
+ * One listing, where File.listFiles() and each entry's length() and lastModified() asked of every file in the phone's own
+ * folders were two calls to Windows' broker a file.
+ */
+typedef struct folder_text {
+    char *text;
+    size_t len, cap;
+} folder_text;
+
+static MG_HOSTCB void folder_entry(const char *name, const mg_stat *st, void *user)
+{
+    folder_text *t = (folder_text *)user;
+    char head[96];
+    size_t n = strlen(name), h;
+    if (!n || strchr(name, '/')) return;
+    h = (size_t)snprintf(head, sizeof(head), "%c%llu/%lld/%llu/", st->is_dir ? 'd' : 'f', (unsigned long long)st->size,
+                         (long long)(st->mtime_ns / 1000000), (unsigned long long)st->id);
+    if (h >= sizeof(head)) return;
+    if (t->len + h + n + 2 > t->cap) {
+        size_t cap = (t->len + h + n + 2) * 2 + 4096;
+        char *grown = (char *)realloc(t->text, cap);
+        if (!grown) return;
+        t->text = grown;
+        t->cap = cap;
+    }
+    memcpy(t->text + t->len, head, h);
+    memcpy(t->text + t->len + h, name, n);
+    t->len += h + n;
+    t->text[t->len++] = '/';
+    t->text[t->len] = 0;
+}
+
+N(Native_listFolder)
+{
+    char *host = c->args[0].l ? mg_fs_host_path(text_of(c->args[0].l)) : NULL;
+    folder_text t;
+    int err = 0;
+    memset(&t, 0, sizeof(t));
+    if (host && mg_path_list_stat(host, folder_entry, &t, &err)) c->ret.l = mg_dvm_new_string(t.text ? t.text : "");
+    free(t.text);
+    free(host);
+}
 /* askClearData(): this app's data cleared when it next starts (megler_ask_clear_data), for Android's app info screen. */
 N(Native_askClearData) { c->ret.z = megler_ask_clear_data(J.package); }
 /* askClearCache(): this app's cache cleared when it next starts (megler_ask_clear_cache), for Android's app info screen. */
@@ -1417,6 +1464,7 @@ static const mg_jhle k_native[] = {
     { "megler/Native", "presentRect", NULL, Native_presentRect },
     { "megler/Native", "checkPartial", NULL, Native_checkPartial },
     { "megler/Native", "flag", NULL, Native_flag },
+    { "megler/Native", "listFolder", NULL, Native_listFolder },
     { "megler/Native", "askClearData", NULL, Native_askClearData },
     { "megler/Native", "askClearCache", NULL, Native_askClearCache },
     { NULL, NULL, NULL, NULL },
