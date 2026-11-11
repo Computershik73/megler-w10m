@@ -37,6 +37,10 @@
 // getProviderInfo, getPackageUid, getInstalledApplications and queryContentProviders with one were stubs that found
 // nothing -- Facebook Lite's queryIntentServices and resolveContentProvider, and Messenger's resolveContentProvider.
 // And checkSignatures answers SIGNATURE_UNKNOWN_PACKAGE for a package the phone does not have, where every package matched.
+// And queryIntentActivities and resolveActivity answer the intents of Android's documents UI, photo picker and camera app
+// (GET_CONTENT, OPEN_DOCUMENT, PICK of pictures, PICK_IMAGES, IMAGE_CAPTURE, VIDEO_CAPTURE) with the system's activity of them
+// (megler.Pickers.resolveInfo: com.android.documentsui, com.android.camera2 where there is a camera), as a phone answers:
+// they found nothing, and apps that ask before they offer a button ("attach", "take a photo") offered none.
 package android.content.pm;
 
 import android.content.ComponentName;
@@ -318,6 +322,15 @@ public class PackageManager {
         String target = i.getComponent() != null ? i.getComponent().getPackageName() : i.getPackage();
         boolean other = target != null && !mine(target);
         megler.Manifest.Component c = other ? null : megler.Manifest.resolve(i);
+        // The system's documents UI, photo picker and camera app (megler.Pickers: Windows' picker and camera), first: what
+        // Android's picker answers is not looked for among Google Play services' activities (read whole for it, 3.8 s on a
+        // Lumia 650; and their own photo picker is not one that runs here).
+        ResolveInfo system = megler.Pickers.resolveInfo(i);
+        if (system != null) {
+            if (c != null) { ResolveInfo r = new ResolveInfo(); r.activityInfo = activity(c); l.add(r); }
+            l.add(system);
+            return l;
+        }
         megler.Manifest.Component hosted = c == null ? megler.MicroG.activity(i) : null;
         if (c != null) { ResolveInfo r = new ResolveInfo(); r.activityInfo = activity(c); l.add(r); }
         else if (hosted != null) { ResolveInfo r = new ResolveInfo(); r.activityInfo = hosted(hosted); l.add(r); return l; }
