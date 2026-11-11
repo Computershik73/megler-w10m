@@ -690,6 +690,15 @@ u32 mg_tls_alloc(void)
 void *mg_tls_get(u32 key) { return pthread_getspecific((pthread_key_t)key); }
 void mg_tls_set(u32 key, void *value) { pthread_setspecific((pthread_key_t)key, value); }
 
+u32 mg_tls_alloc_ending(void (*end)(void *value))
+{
+    pthread_key_t k;
+    if (pthread_key_create(&k, end) != 0) mg_fatal("out of thread-local slots");
+    return (u32)k;
+}
+void mg_tls_set_ending(u32 key, void *value) { pthread_setspecific((pthread_key_t)key, value); }
+const char *mg_heap_kind(void) { return "the C library's own heap"; }
+
 /* ------------------------------------------------- the guest thread pointer */
 
 /*
@@ -1128,6 +1137,45 @@ bool mg_path_stat(const char *path, mg_stat *st, int *err)
     return true;
 }
 
+bool mg_path_set_times(const char *path, i64 atime_ns, i64 mtime_ns, int *err)
+{
+    struct timespec ts[2];
+    i64 t[2] = { atime_ns, mtime_ns };
+    int i, r;
+    for (i = 0; i < 2; i++) {
+        if (t[i] == MG_TIME_KEEP) {
+            ts[i].tv_sec = 0;
+            ts[i].tv_nsec = UTIME_OMIT;
+        } else {
+            ts[i].tv_sec = (time_t)(t[i] / 1000000000ll);
+            ts[i].tv_nsec = (long)(t[i] % 1000000000ll);
+            if (ts[i].tv_nsec < 0) {
+                ts[i].tv_nsec += 1000000000l;
+                ts[i].tv_sec--;
+            }
+        }
+    }
+    if (mg_path_is_foreign(path)) {
+        int fd = foreign_fd(path, MG_O_WRITE, MG_FOREIGN_FILE, err);
+        if (fd < 0) {
+            if (err && *err == MG_E_ISDIR) {
+                *err = 0;
+                return true;
+            }
+            return false;
+        }
+        r = futimens(fd, ts);
+        if (r != 0) SET_ERR();
+        close(fd);
+        return r == 0;
+    }
+    if (utimensat(AT_FDCWD, path, ts, 0) != 0) {
+        SET_ERR();
+        return false;
+    }
+    return true;
+}
+
 bool mg_path_mkdir(const char *path, int *err)
 {
     if (mg_path_is_foreign(path)) return mg_foreign_mkdir(path, err);
@@ -1210,6 +1258,57 @@ bool mg_path_list(const char *path, mg_dir_cb cb, void *user, int *err)
             continue;
         }
         cb(e->d_name, is_dir, user);
+    }
+    closedir(d);
+    return true;
+}
+
+/* (Here each entry is asked of the directory, fstatat: what Linux's listing gives is the names alone, and a stat by the
+   directory's descriptor costs no lookup of the path.) An entry gone between the two is left out. */
+bool mg_path_list_stat(const char *path, mg_dir_stat_cb cb, void *user, int *err)
+{
+    DIR *d;
+    struct dirent *e;
+    bool foreign = mg_path_is_foreign(path);
+    if (foreign) {
+        int fd = foreign_fd(path, MG_O_READ, MG_FOREIGN_DIR, err);
+        if (fd < 0) return false;
+        d = fdopendir(fd);
+        if (!d) {
+            SET_ERR();
+            close(fd);
+            return false;
+        }
+    } else {
+        d = opendir(path);
+        if (!d) { SET_ERR(); return false; }
+    }
+    {
+        /* The directory itself first, its id its device's and its inode's. */
+        struct stat s;
+        mg_stat st;
+        if (fstat(dirfd(d), &s) == 0) {
+            memset(&st, 0, sizeof(st));
+            fill_stat(&s, &st);
+            st.size = 0;
+            st.id = (u64)s.st_ino ^ ((u64)s.st_dev << 40);
+            if (!st.id) st.id = 1;
+            cb(".", &st, user);
+        }
+    }
+    while ((e = readdir(d)) != NULL) {
+        struct stat s;
+        mg_stat st;
+        char *name;
+        if (!strcmp(e->d_name, ".") || !strcmp(e->d_name, "..")) continue;
+        if (fstatat(dirfd(d), e->d_name, &s, 0) != 0) continue;
+        memset(&st, 0, sizeof(st));
+        fill_stat(&s, &st);
+        if (st.is_dir) st.size = 0;
+        name = mg_strdup(e->d_name);
+        if (foreign) mg_name_from_host(name);
+        cb(name, &st, user);
+        free(name);
     }
     closedir(d);
     return true;

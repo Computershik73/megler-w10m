@@ -32,6 +32,7 @@ import java.net.URLStreamHandler;
 import java.net.URLStreamHandlerFactory;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
+import java.security.SecureRandom;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -45,17 +46,25 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.zip.CRC32;
+import javax.net.ssl.KeyManager;
 import javax.net.ssl.SSLContext;
+import javax.net.ssl.SSLContextSpi;
+import javax.net.ssl.SSLEngine;
 import javax.net.ssl.SSLParameters;
 import javax.net.ssl.SSLServerSocket;
+import javax.net.ssl.SSLServerSocketFactory;
+import javax.net.ssl.SSLSessionContext;
 import javax.net.ssl.SSLSocket;
+import javax.net.ssl.SSLSocketFactory;
+import javax.net.ssl.TrustManager;
 
 /**
  * Android 14's HttpEngine (android.net.http) as an app uses it, the Google Play Store first among them: its builder and
  * options, UrlRequests (redirects, reads into the app's buffers, uploads of a fixed length and chunked, failures, cancel)
  * against an HTTP/1.1 server of the test's own on 127.0.0.1, the engine's URLConnections, and BidirectionalStreams -- what
- * gRPC's Cronet transport makes -- against an HTTP/2 server of the test's own over TLS: two at once on one connection, the
- * request's body and the response's flowing both ways, headers, trailers, flow control both ways past the windows, cancel
+ * gRPC's Cronet transport makes -- against an HTTP/2 server of the test's own over TLS: the first of them in a process whose
+ * default SSLContext is not the platform's (the engine's TLS is its own), two at once on one connection, the request's body
+ * and the response's flowing both ways, headers, trailers, flow control both ways past the windows, cancel
  * and the server's reset, and RFC 7541's examples of header compression (C.6, Huffman's code and the dynamic table, sent
  * padded and cut by a CONTINUATION). The HTTP/2 server writes its frames by hand and reads what the engine writes (literal
  * fields, plain strings): it shares no code with the engine (megler.http). Each check says what it saw in `detail`.
@@ -675,6 +684,85 @@ final class HttpEngineSteps {
                     && headersG != null && headersG.contains(" :method=GET ") && headersG.endsWith(" end");
         } finally {
             server.close();
+        }
+    }
+
+    /**
+     * The engine's TLS is the platform's own, not the process's default context, which is the app's to replace -- and which
+     * Google Play services' ProviderInstaller replaces in every process it runs in, with a Conscrypt whose sockets take no
+     * ALPN protocols from SSLParameters. The step is the process's first connection of the engine's, as the Play Store's
+     * was: with a default context that gives no sockets at all, a stream reaches the server over HTTP/2 (ALPN h2), the
+     * context was asked for nothing, and it is the default still.
+     */
+    boolean ownTls() throws Exception {
+        SSLContext before = SSLContext.getDefault();
+        NoSockets spi = new NoSockets();
+        SSLContext apps = new SSLContext(spi, null, "megler-test") { };
+        H2Server server = new H2Server(tls, 0);
+        HttpEngine own = new HttpEngine.Builder(context).build();
+        SSLContext.setDefault(apps);
+        try {
+            StreamRecorder r = new StreamRecorder();
+            own.newBidirectionalStreamBuilder("https://localhost:" + server.port() + "/echo-get", callbacks, r).setHttpMethod("GET").build().start();
+            boolean ended = r.end.await(15, TimeUnit.SECONDS);
+            UrlResponseInfo i = r.info;
+            boolean still = SSLContext.getDefault() == apps;
+            detail = "ended=" + ended + " events=" + r.events + " '" + r.text() + "' error=" + r.error + " protocol=" + (i == null ? null : i.getNegotiatedProtocol())
+                    + " asked=" + spi.asked + " default-still=" + still + " server=" + server.log;
+            return ended && "got".equals(r.text()) && i != null && i.getHttpStatusCode() == 200 && "h2".equals(i.getNegotiatedProtocol())
+                    && "succeeded".equals(r.events.get(r.events.size() - 1)) && server.log.contains("alpn h2") && spi.asked.get() == 0 && still;
+        } finally {
+            SSLContext.setDefault(before);
+            server.close();
+            try {
+                own.shutdown();
+            } catch (IllegalStateException e) {
+                detail += " shutdown=" + e.getMessage();
+            }
+        }
+    }
+
+    /** A context that gives nothing and counts what it was asked for: the process's default while ownTls() runs. */
+    private static final class NoSockets extends SSLContextSpi {
+        final AtomicInteger asked = new AtomicInteger();
+
+        private IllegalStateException no(String what) {
+            asked.incrementAndGet();
+            return new IllegalStateException("the app's default SSLContext was asked for " + what);
+        }
+
+        @Override
+        protected void engineInit(KeyManager[] keys, TrustManager[] trust, SecureRandom random) {
+        }
+
+        @Override
+        protected SSLSocketFactory engineGetSocketFactory() {
+            throw no("a socket factory");
+        }
+
+        @Override
+        protected SSLServerSocketFactory engineGetServerSocketFactory() {
+            throw no("a server socket factory");
+        }
+
+        @Override
+        protected SSLEngine engineCreateSSLEngine() {
+            throw no("an engine");
+        }
+
+        @Override
+        protected SSLEngine engineCreateSSLEngine(String host, int port) {
+            throw no("an engine");
+        }
+
+        @Override
+        protected SSLSessionContext engineGetServerSessionContext() {
+            throw no("its server sessions");
+        }
+
+        @Override
+        protected SSLSessionContext engineGetClientSessionContext() {
+            throw no("its client sessions");
         }
     }
 

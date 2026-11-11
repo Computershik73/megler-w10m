@@ -58,6 +58,7 @@ where; **expected** and **not verified** mean what they say.
 | `core/framework-overlay/` | what differs here from the Java framework as it came (`core/framework`): files that replace its files and members added to its classes, each saying at its top what differs and why |
 | `core/src/dvm/art/*.smali`, `mg_dvm_art_dex.h` | seven classes the runtime adds to libcore's: a security provider that stands in for conscrypt's where conscrypt's library is not in the Android root, with SSLContexts whose connections fail politely and a trust manager factory that trusts nothing, and the getter libcore asks for the phone's time zone |
 | `tools/build-framework.sh` | builds the framework's DEX from its sources in `core/framework` and the overlay |
+| `core/shared-libraries/`, `tools/build-shared-libraries.sh` | the platform's shared libraries that are Megler's own (`android.test.base`: JUnit 3's `junit.framework`, `android.test`), each a DEX file in the Android root that an app gets on its class path as Android gives it ("The platform's libraries an app asks for") |
 | `core/tests/app/`, `tools/build-test-app.sh` | the test apps, ordinary Android apps (aapt2, javac, d8), and their build |
 | `core/tests/mg_java_tests.c` | the test of the driver: the apps started through `megler_run`, their log and their pictures checked |
 | `core/tests/mg_gfx_standin.c`, `mg_gfx_tests.c`, `mg_gfx_natives_tests.c` | a stand-in for the shell's drawing (no anti-aliasing, text as boxes, PNG), and the tests of it and of `megler.Gfx` |
@@ -866,6 +867,48 @@ Java's calls arrive there.
   asked -- the long calls, the old int ones multiplied as longs,
   `java.io.File`. `StorageStatsManager.getTotalBytes(UUID_DEFAULT)` is not
   less than what is there and less than twice it; `getFreeBytes` within it.
+- The phone's media through MediaStore ("The media provider: MediaStore", in
+  Design), nine steps before `permissions`, so that the first run has no
+  storage permission yet and sees only what it saved itself, and the second
+  everything. The files are made byte by byte: a PNG whose eXIf chunk turns it
+  a quarter and says when it was taken in no zone, a JPEG of headers alone
+  (the tests' decoder reads PNG only) turned half round with its zone, an MP4
+  of boxes alone (2.5 s, 320 x 240, a quarter turn), a WAV of 1.5 s, a PDF.
+  `media-save`: each saved as Android 10's way has it (insert pending, write,
+  `IS_PENDING=0`) where `RELATIVE_PATH` says, `(1)` after its name in the
+  second run, the extension of its type added; the app's pending item seen by
+  it, not where pending ones are excluded, alone where only they are; a folder
+  images may not go in and a type that is no image refused; the first run's
+  portrait in the second by its id, the app its owner still (the cache cleared
+  in between); `insertImage`; a new `DISPLAY_NAME` moving the file.
+  `media-gated`: a photo in `DCIM/Camera` the app did not save (written as a
+  file) not seen in the first run and seen in the second with its bucket (the
+  folder's path in small letters, hashed), relative path and no owner; hidden
+  files and a `.nomedia` folder never. `media-query`: a selection with
+  arguments, `IN`, `OR` over `file`'s media types, `LIMIT` in the sort order,
+  `external_primary` as `external`, `internal` empty, an item's URI, GROUP BY in
+  a Bundle and inside a selection, and what the headers said: sizes, turns,
+  `datetaken` with EXIF's zone and with the zone guessed, a video's length,
+  size and turn, a sound's length, album and artist, a PDF in `Download` a
+  document. `media-bundle`: AndroidX paging's query (sort columns, direction,
+  `LIMIT`, `OFFSET`) and `EXTRA_HONORED_ARGS`. `media-read`: the same bytes by
+  the item's stream, descriptor and typed descriptor as by its `_data` path;
+  `video/*` refused, `getType`. `media-thumbnails`: `loadThumbnail` upright
+  (its red left half on top), `getThumbnail` 30 x 40, `queryMiniThumbnail`'s
+  JPEG in the app's cache, the MICRO kind 96 x 96, `EXTRA_SIZE`,
+  `ThumbnailUtils.extractThumbnail`; the video's thumbnail Windows' picture
+  of it -- the data app runs with `/sdcard/Movies` a link of a stand-in for
+  the shell's storage (`mg_java_tests.c`, `data_storage`), whose pictures
+  come a moment later on a thread of its own, green, 48 x 36 -- turned
+  upright by the clip's quarter turn (36 x 48); a clip in `DCIM`, no link
+  here, an `IOException`.
+  `media-observer`: an observer of the images' collection hears an insert, an
+  update and a delete, one of `file` alone hears its collection, a cursor
+  hears them. `media-scanner`: `MediaScannerConnection.scanFile` answers a
+  file's URI and null for one under `.nomedia`; the broadcast indexes one;
+  a photo no one tells of is found by the next query (seen in the second
+  run). `media-delete`: the app's own item deleted with its file, another's
+  not. The C side checks the scan's line in the log.
 - `permissions`: Android's runtime permissions ("Permissions", in Design),
   asked five ways (`checkSelfPermission`, `checkCallingOrSelfPermission`,
   `checkPermission` with the app's own pid and uid,
@@ -2748,6 +2791,34 @@ no native code or has it for 32-bit ARM.
   `NoSuchMethodError`, 576). The step "apache-http-client" makes the client
   as GSF does, with the app's context, and finds https on 443 through
   Apache's `SSLSocketFactory`.
+- **android.test.base**: JUnit 3's `junit.framework` and Android's
+  `android.test` base classes (`AndroidTestCase`, `InstrumentationTestCase`,
+  the test annotations) and `com.android.internal.util.Predicate`. Every app
+  had them on Android's boot class path up to Android 9; since Android 10 they
+  are a shared library, which the package manager of Android 14 -- the
+  Android Megler says it is -- adds to an app that targets Android 10 or
+  before (`AndroidTestBaseUpdater`) or whose manifest asks for
+  `android.test.base` or `android.test.runner`. The Java driver does the same
+  (`test_base_wanted`), the DEX file `framework/android.test.base.dex` before
+  the APK as the Apache client's is. Facebook's SDK of 2017 to 2019 asserts
+  with `junit.framework.Assert` that its activity callbacks are on the main
+  thread (`AppEventUtility.assertIsMainThread`): Zombie Road Trip 3.30, which
+  targets Android 8, ended at its first activity's `onCreate` on
+  "NoClassDefFoundError: junit/framework/Assert" (a Lumia 950, 0.1.0.681).
+  The classes are Megler's own (`core/shared-libraries/android.test.base`,
+  built by `tools/build-shared-libraries.sh`, which `dvm-android-root.sh`
+  calls), not the image's: Android's are JUnit 3.8's code, under the Common
+  Public License 1.0, which does not mix with the GPL. They are written to
+  the API Android documents -- the same classes, members and access as
+  Android 9's file, checked against it -- and fail as Android's do, in the
+  same words ("expected:<hello wor[l]d> but was:<hello wor[]d>", twenty
+  characters of context and "..." around a difference). The data app (made
+  for Android 9) calls them directly, as Facebook's SDK does: its steps
+  "junit-assert", "junit-messages" and "junit-test-case" (a `TestSuite` of a
+  `TestCase`'s class run into a `TestResult`); the Bluetooth app, made for
+  Android 14, finds no `junit.framework.Assert` (its step "no-test-base").
+  `PackageManager.getSystemSharedLibraryNames` names it beside the Apache
+  client.
 - **Input is asked for, not delivered.** The framework's main loop calls
   `Native.pollInput` between messages, every 8 ms at most. `megler_touch`,
   `megler_key` and `megler_set_paused` only queue (256 events; a move may be
@@ -3002,8 +3073,22 @@ still pending goes to `dispatchUncaughtException`, the group forgets it,
 1.4 and 1.6 and no other, as ART does. This holds for every engine, not only
 for Java apps: it is what a library is written against.
 
-**The NDK.** `AAssetManager_fromJava` is the APK's assets whatever object it
-is given. `AndroidBitmap_getInfo`, `_lockPixels` and `_unlockPixels`
+**The NDK.** `AAssetManager_fromJava` (`drivers/mg_java_ndk.c`) gives the
+assets of the `AssetManager` it is given. The app's own, the platform's and a
+driver's stand-in are the app's manager, the `assets/` folders of the app's
+APKs. Another package's -- what `createPackageContext` gives for the Google
+Play services or microG an app hosts -- is a manager of that package's APK
+and then its splits, the ones its `open()` reads from Java
+(`mg_asset_manager_of` in `ndk/mg_ndk.c`, the same manager for the same APKs
+each time). It was the app's assets whatever object it was given: the map of
+microG's Google Maps is MapLibre's, whose native library opens the style's
+sprites and glyphs with the `AssetManager` of microG's context, and
+Citymapper's map (0.1.0.690) had no icons and no labels ("Failed to load
+sprite: Could not read asset", "Failed to load glyph range 0-255 for font
+stack Roboto Medium: Could not read asset"). The gms-host app's library reads
+the stand-in Google Play services' assets so, one of a split of assets alone
+among them, and finds none of the app's there.
+`AndroidBitmap_getInfo`, `_lockPixels` and `_unlockPixels`
 (`drivers/mg_java_ndk.c`) work on the framework's `Bitmap`: the memory is the
 core's, B, G, R, A, and is turned to Android's R, G, B, A where it lies while
 it is locked; every bitmap is 32 bits a pixel here and `RGBA_8888` is what is
@@ -4016,6 +4101,64 @@ app as Android's media keys, which go to its active session's
 `Callback.onMediaButtonEvent` as Android 9 sends them, and to the window when
 there is no session. The test app `data` (`media-session`) checks both ways.
 
+### A media session's controllers
+
+An app may drive its own player through its media session: its screens hold a
+`MediaController` (the support library's `MediaControllerCompat`) made from
+the session's token, press play on its `TransportControls`, and learn of the
+state and the track from a `MediaController.Callback`, while the playback
+service only answers the session's `Callback`. Deezer is built so. The
+session's token was null, a controller's `getTransportControls()` was null
+and `registerCallback` did nothing, so play never reached such an app's
+service and nothing was heard.
+
+- **The token.** `MediaSession.getSessionToken()` is the session's
+  `MediaSession.Token`, one object for its life, and equal to itself through
+  a `Parcel`. `new MediaController(context, token)` and `MediaSession.
+  getController()` are controllers of that session.
+- **To the session.** `TransportControls`' play, pause, stop, seek, skips,
+  fast forward and rewind, `playFromMediaId`/`Search`/`Uri` and their
+  `prepare` forms, `skipToQueueItem`, `setRating`, `setPlaybackSpeed` and
+  `sendCustomAction`, the controller's `sendCommand` (its `ResultReceiver`
+  handed on) and `dispatchMediaButtonEvent` are the session's `Callback`'s
+  methods, each posted to the handler the callback was set with (the
+  session's maker's looper, or the main one), as Android posts them. During
+  one, `getCurrentControllerInfo()` names the app itself, with its pid and
+  uid. Nothing is delivered after `setCallback(null)` or `release()`.
+- **From the session.** `setPlaybackState`, `setMetadata`, `setQueue`,
+  `setQueueTitle`, `setExtras`, `sendSessionEvent`, `setPlaybackToLocal`/
+  `Remote` and `release` reach every registered `MediaController.Callback` on
+  its handler (`onSessionDestroyed` last). The getters answer what the
+  session was last given; a playing state's position is carried forward by
+  the clock at its speed, as Android's is, and no further than the track's
+  duration.
+- **Volume.** `getPlaybackInfo()` is the music stream's volume, or the
+  session's `VolumeProvider`'s; `setVolumeTo` and `adjustVolume` go to the
+  provider (`onSetVolumeTo`, `onAdjustVolume`) or the stream, and
+  `VolumeProvider.setCurrentVolume` tells the controllers
+  (`onAudioInfoChanged`). `VolumeProvider` and `Rating` were generated
+  signatures and are written now.
+- **`RemoteCallbackList`**, which the support library keeps a session's
+  controllers' callbacks in, was signatures alone: it registered nothing
+  and a broadcast reached nobody. It is Android's now, by
+  binder, with cookies, `beginBroadcast`/`getBroadcastItem`/`finishBroadcast`
+  (one broadcast at a time), `broadcast(Consumer)` and `kill`.
+
+What Megler does not have: a session of another app (each app runs alone, and
+`MediaSessionManager.getActiveSessions` is empty), and
+`MediaBrowser`/`MediaBrowserService`, which are still signatures.
+
+The test app `data`: "remote-callback-list"; "session-token" (the token
+through a `Parcel`, a queue item likewise); "session-controller" (every
+transport control heard by the session's callback on its handler's thread,
+with the caller named, none after the callback is taken away);
+"session-controller-callback" (metadata, state, queue, title, extras, an
+event and the session's end heard by a controller's callback; the position
+carried forward and stopped at the duration); "session-controller-command"
+(a command answered through its `ResultReceiver`, a media button);
+"session-remote-volume" (a `VolumeProvider` set and adjusted through the
+controller, then the stream again); "rating".
+
 ### Installing, and the phone's other apps
 
 What a Java app asks of the phone beyond its window goes to the shell through
@@ -4278,6 +4421,139 @@ are the app's while it runs. A cursor's content observers hear of a change of
 its notification URI (`AbstractCursor.setNotificationUri` registers with the
 resolver, `ContentObservable.registerObserver` registers at all: both were
 stubs that did nothing, and unregistering an observer threw).
+
+### The media provider: MediaStore
+
+`megler.MediaProvider` is Android's media provider (`content://media`, the
+system's MediaProvider) as an app sees it: the photos, videos, sounds,
+downloads and other files of the shared storage -- with the phone's own folders
+linked into it, the Camera Roll as `DCIM`, the libraries as `Pictures`, `Movies`
+and `Music` (docs/ARCHITECTURE.md, "Files and the shared storage") -- indexed,
+queried, read, saved to, thumbnailed and watched. Before it, `ContentResolver`
+answered every query of `media` with an empty cursor, and every app's own
+gallery was empty: Avito's photo picker, Telegram X's attach panel, WhatsApp's
+gallery, Instagram's and VK's (0.1.0.690, on two phones).
+
+- **The index** is one SQLite database of the app's own,
+  `<data dir>/.megler_media.db` (the app's data, not its cache: a Clear Cache
+  keeps the ids and what the app owns), a table `files` with Android 14's
+  columns. Ids are numbered as the files were found, oldest first, so that
+  `_id DESC` is newest first as on a phone. They are the app's own: another
+  app's index numbers the same files its own way.
+- **Queries** run the app's SQL against it, inside Android's filters: the
+  collection (`images/media`, `video/media`, `audio/media`, `file`,
+  `downloads`, an item by its id; `audio/albums` and `artists` made of the
+  sounds' rows; `genres` and `playlists` empty), what the app may see, pending,
+  trashed and favourite items (`QUERY_ARG_MATCH_*`, the URI's
+  `includePending`). The selection and its arguments, the sort order (with a
+  `LIMIT` in it, as apps wrote it), the URI's `limit`, a Bundle's
+  `QUERY_ARG_SQL_*`, `QUERY_ARG_LIMIT` and `OFFSET`, `QUERY_ARG_SORT_COLUMNS`
+  and `DIRECTION` and `QUERY_ARG_SQL_GROUP_BY` and `HAVING` all as SQLite takes
+  them; the selection in parentheses, so the old `1) GROUP BY (bucket_id` gives
+  albums as it did on Android 9. The cursor says which Bundle arguments it
+  honoured (`EXTRA_HONORED_ARGS`) and is told of changes. The volumes
+  `external` and `external_primary` are the shared storage, `internal` is empty.
+- **The scan.** A query looks at the storage when the last look is more than
+  1.5 s old; no thread watches it. Each folder is listed in one call that gives
+  every entry's size and time, `Native.listFolder` over the core's
+  `mg_path_list_stat` (`host/mg_host.h`): in a link, `File.length()` and
+  `lastModified()` are a call to Windows' broker each, and a Camera Roll of
+  thousands of photos was minutes of them. A folder whose time is what it was
+  and which has no folders in it is not listed again, unless that was 30 s ago
+  or more (a memory card's file system may leave a folder's time as it was).
+  Hidden files and folders, a folder with `.nomedia` and what is under it,
+  `Android/data` and `Android/obb` are left out, as Android's scanner leaves
+  them; `Android/media` is in. A folder reached by two paths is indexed once,
+  by the first in the order of their names: on a phone the Camera Roll is the
+  shell's `DCIM` and the pictures library's `Camera Roll`, under `Pictures`, at
+  once (the listing gives the folder's own id first; where the host has none,
+  its files' names, sizes and times tell it), and the log says which. Times
+  are kept in whole seconds, as libcore's `File.lastModified` has them. A scan that finds something, takes long, or is
+  the process's first is a line of the log ("media: the shared storage
+  indexed: ... files, ... new, ... changed, ... gone; ... folders listed, ...
+  unchanged, in ... ms"), and what it found is told to the collections.
+- **Metadata** that only a file's headers have -- width, height, orientation,
+  the time it was taken, a duration -- is read from them (`megler.MediaFiles`),
+  never by decoding pixels: JPEG's EXIF and frame header, PNG's IHDR and eXIf,
+  WebP's chunks, GIF, BMP, HEIF's `ispe`; MP4, 3GP, MOV and M4A's `mvhd`,
+  `tkhd` (its matrix the turn) and `hdlr`; MP3 (Xing, Info, VBRI, else its bit
+  rate), WAV, FLAC, Ogg. `datetaken` is EXIF's `DateTimeOriginal` as Android's
+  scanner reads it: at `OffsetTimeOriginal`, else moved to the zone the file's
+  own time is in, to the quarter of an hour, when that is less than a day off;
+  a video's creation time; else the file's time. A query that asks for those
+  columns has its rows read first, for up to 1.2 s; the rest are read on the
+  provider's thread, newest first, and the collections told when that is done.
+  `BitmapFactory`'s bounds would have read each whole file.
+- **What an app may see**, as Android 14 decides it (`megler.Permissions`):
+  images and videos with `READ_MEDIA_IMAGES` and `READ_MEDIA_VIDEO`, sounds with
+  `READ_MEDIA_AUDIO`; for an app whose target is Android 12L or older,
+  `READ_EXTERNAL_STORAGE` (or a `WRITE_EXTERNAL_STORAGE` it holds), which shows
+  the other files too; `MANAGE_EXTERNAL_STORAGE` everything.
+  `READ_MEDIA_VISUAL_USER_SELECTED` alone (Android 14's limited access) is all
+  the images and videos: there is no picker here for the user to choose the
+  few, and Megler's question is a yes or a no. What the app inserted itself it
+  always sees, writes and deletes; another's file it changes only with
+  `WRITE_EXTERNAL_STORAGE` or `MANAGE_EXTERNAL_STORAGE`.
+- **Saving.** `insert` makes the file at once, empty, under the collection's
+  folders as Android allows them (images in `DCIM` or `Pictures`, videos also
+  `Movies`, sounds in `Music`, `Ringtones` and their kind, downloads in
+  `Download`; another `RELATIVE_PATH`, or a MIME type of another kind, is
+  Android's `IllegalArgumentException`), its name made unique as Android makes
+  it (`name (1).jpg`) and given its type's extension where it has none;
+  `IS_PENDING` hides it from others until `update(IS_PENDING=0)`. `openFile` in
+  `"w"` gives the file, and when what was written is closed the row is read
+  again from it (`ContentResolver.openOutputStream` closes the descriptor with
+  the stream, as Android's does). An insert of `_data` indexes that file, the
+  app its owner. `update` renames and moves (`DISPLAY_NAME`, `RELATIVE_PATH`)
+  and sets the descriptive columns; `delete` deletes the file.
+  `MediaStore.Images.Media.insertImage` is an insert, a JPEG written and the
+  item made visible. A file the app wrote itself is indexed by
+  `MediaScannerConnection.scanFile` (its listener told the URI on the
+  provider's thread), `MediaStore.scanFile` and the old broadcast
+  `ACTION_MEDIA_SCANNER_SCAN_FILE` (`megler.Broadcasts`), or by the next query
+  once its folder's time has changed.
+- **Reading**: `openFile`, `openAssetFile`, `openTypedAssetFile` of an item
+  (a type it is not is `FileNotFoundException`), `openInputStream` of its URI
+  and of its `_data` path.
+- **Thumbnails**: `openTypedAssetFile` with `ContentResolver.EXTRA_SIZE` (what
+  `ContentResolver.loadThumbnail` asks, now as Android's, decoded subsampled to
+  about the size asked: it decoded the whole file), the thumbnails tables
+  (`MediaStore.Images.Thumbnails`, `Video.Thumbnails`: `queryMiniThumbnail`
+  makes the few it is asked for) and their items give a JPEG of the picture,
+  kept in the app's cache (`cache/megler-media`) under the item's id and time,
+  one made at a time: a Lumia 650 has 1 GB. For a file in one of the phone's
+  folders -- a video always, a photo of more than 256 KB -- the picture is
+  Windows' own: the shell's `megler_storage_host.thumbnail` (megler.h), asked
+  for without waiting and answered from a thread of the shell's
+  (`StorageFile.GetThumbnailAsync`, `ThumbnailMode.SingleItem`, the whole
+  picture with its proportions; Windows' galleries' and list's views cut it),
+  out of Windows' thumbnail cache, which the Photos app fills, and a video's
+  frame, which nothing else here gives; the core waits up to eight seconds
+  (`mg_run_storage_thumbnail`). Windows gives it upright by the photo's EXIF
+  orientation or the video's matrix (seen on Windows 11); one as wide as the
+  file's own frame where the file is to be turned a quarter is turned here all
+  the same. Of the rest, and where Windows has none: the picture decoded
+  subsampled and turned upright by its EXIF orientation
+  (`android.media.ThumbnailUtils`, no longer signatures alone, which asks
+  Windows for a video's frame too). The log says the first picture Windows
+  gave and the first time it gave none.
+  `MediaStore.Images.Thumbnails.getThumbnail` is `loadThumbnail` of its kind's
+  size, as Android 10's.
+- **Change notifications**: an insert, update or delete tells the item's URI
+  under both names of the volume, in its collection and in `file`, and the
+  collections themselves (which an observer that takes no descendants hears,
+  as Android 9's provider told them), on the provider's thread.
+
+Not here: thumbnails of videos outside the phone's folders, and album art
+(`MediaMetadataRetriever` has no frames or pictures yet: an `IOException`, as
+Android's when it finds none),
+tags of sounds (the title is the file's name, the artist `<unknown>`, the album
+its folder, as Android has them for a file without tags), folders as rows of
+`file`, a trash that renames the file (`IS_TRASHED` is a flag),
+`createWriteRequest` and `createDeleteRequest`'s dialog, a memory card's own
+volume (a folder of one linked into `/sdcard` is part of it), the system's
+photo picker (`PICK_IMAGES`, another provider's: the system intents, branch
+`system-pickers`).
 
 ### Notification channels
 
@@ -5144,7 +5420,9 @@ each of the frame meter's lines a line "java: memory:" says the process's
 parts the core can name: the heap's blocks and large objects, the DEX files
 in memory and viewed, the native libraries' segments (`mg_ld_image_bytes`,
 read into committed memory), what the app's native code has from `malloc`
-and not freed (`mg_g_malloc_bytes`; the blocks are the host's), the app's
+and not freed (`mg_g_malloc_bytes`; the blocks are the host's) and the freed
+blocks the threads that allocate fast keep in their caches for their next
+(`mg_g_malloc_caches`, 32 KB a thread at most), the app's
 own mappings, anonymous and private copies of files, as far as they are
 mapped, not made no-access and not given back (`mg_mmap_usage`), and what
 madvise has given back. What is left of the process's figure is the
@@ -5661,12 +5939,13 @@ native code is.
 - Thread interruption does not wake a waiting thread. A thread's state is not
   freed when it ends.
 - The layer's libc now has every name the seven libraries import, but some
-  only refuse: `splice`, `inotify_*` (`ENOSYS`); `mkfifo`, `mknod`, `capset`
+  only refuse: `splice` (`ENOSYS`); `mkfifo`, `mknod`, `capset`
   (`EPERM`); the extended attributes (`ENOTSUP`); the terminal calls
   (`ENOTTY`); `setmntent` (no mount table); `seteuid` and its kin succeed for
   the app's own id and refuse any other. `sendfile`, `posix_fallocate64`,
   `pathconf`, `getgrgid_r` and the checked forms of `pread`, `pwrite` and
-  `readlink` do what they say.
+  `readlink` do what they say, and so does inotify (ARCHITECTURE.md,
+  "Watches").
 - **Two things about the loader, known and left** (`ld/mg_ld.c`, not this
   module's): a library is known by its file name alone and an app's own are
   looked for first, so an app that bundles a `libcrypto.so`, `libexpat.so` or
@@ -5859,6 +6138,15 @@ on a looper thread of its own and takes it back with `next()`.
   its own 0. The data app's step "location-request" builds requests, makes
   one of the deprecated provider, puts one through a parcel, and has one of
   the passive interval handed a fix.
+  And its `Builder.build()` refuses what Android's refuses, a request of the
+  passive interval whose minimum update interval was never set ("passive
+  location requests must have an explicit minimum update interval"). It had
+  the check the other way round and refused every passive request that did
+  set one, which is every one androidx's `LocationRequestCompat` makes:
+  microG's network location asks for the GPS provider's fixes so and failed
+  at each start ("GPS location retriever not initialized"; Citymapper,
+  0.1.0.690). The step builds a passive request with the interval set, and
+  has one with none set refused.
 - `android/location/Geocoder.java` and `Address.java` in place of the
   generated stubs, and `GeocoderParams.java`, `IGeocodeProvider.java`,
   `IGeocodeListener.java` and `com/android/location/provider/GeocodeProvider.java`,
@@ -6408,6 +6696,28 @@ on a looper thread of its own and takes it back with `next()`.
   crash app's `Gate`, started for a result, has `First` for its caller; its
   `Top`, started without one, has none.
 
+- `android/app/Activity.java`, `getReferrer`: who started the activity, as
+  Android says it -- the intent's `Intent.EXTRA_REFERRER` where it is a `Uri`,
+  else its `EXTRA_REFERRER_NAME` parsed, else `android-app://` and the package
+  that started it, which Android's `ActivityThread` hands `Activity.attach`.
+  That is the app's own for an activity it started, and kept while an
+  activity hears a new intent of the app's (`onNewIntent`). For the activity
+  the shell starts for the user's tap on the app's tile it is the system's,
+  `android-app://android` (`megler.AppRunner.SHELL_REFERRER`): on Android the
+  launcher's package is named, and Windows' Start is no Android package; the
+  platform's own name is one every app can see. An activity made again in
+  its place keeps it. And `onProvideReferrer`'s `Uri` goes into the intents
+  of the activities an activity starts (`Intent.EXTRA_REFERRER`), as
+  `Instrumentation.execStartActivity` puts it. `getReferrer` was a stub's
+  null: Device Info HW 5.27.1 keeps `getReferrer().getAuthority()` in its
+  `DeviceInfoActivity.onCreate` (`b1.J.g`) and ended at its start on a
+  `NullPointerException` (a Lumia 950, 0.1.0.681). The crash app's
+  activities say theirs (the first `First` the system's; `Gate`, before and
+  after it is made again, `Top` and the second `First` the app's; the second
+  `Top` and `Trampoline` what the second `First` provides; `Away` the name
+  `Trampoline` gives, a `String` under `EXTRA_REFERRER` passed over), and
+  the screen app's launcher activity the system's at each of its four makings.
+
 - `android/widget/LinearLayout.java`, four statements: what a child with a
   weight and a size of 0 is given when the layout's own size is not exact.
   Android has two rules. For an app written for Android 7 or later the space
@@ -6632,6 +6942,23 @@ on a looper thread of its own and takes it back with `next()`.
   `EXTRA_SHOW_FRAGMENT`). Apktool M's Settings ended the app on the first and
   was empty on the second; it shows its seven headers and their screens.
   Not done: two panes, bread crumbs.
+- `android/preference/SeekBarPreference.java`, a class the framework's own
+  package did not have. Android hides it from an app's code and still makes
+  it for a preferences file that names it (`<SeekBarPreference android:max=
+  "100" android:defaultValue="60"/>`), as it makes any class of the package
+  by its tag; here the tag ended the screen with "InflateException: ...
+  ClassNotFoundException: android.preference.SeekBarPreference" -- spacedesk's
+  compression settings, on a Lumia 950 (0.1.0.679). It is Android 9's class
+  on this package's `Preference`: an int from 0 to `android:max` (0 with no
+  maximum, as Android's) kept under the key, the default written when the
+  screen has no value yet; the row is `Preference`'s with a `SeekBar` under
+  the title (or the bar of the app's own `android:layout`); a drag is told to
+  the change listener once, when the finger lifts, and a refusal puts the bar
+  back; a key's step is told at once. The data app's step
+  "seekbar-preference" makes a `PreferenceFragment`'s screen from such a file
+  and does all of that with touch events on the row's bar. Not done: the
+  value of a preference that is not persistent across a recreated activity
+  (the package saves no hierarchy state). Not tried in spacedesk itself.
 
 - `android/util/Xml.java`, the class names of `newPullParser` and
   `newSerializer`. The framework's own file asked only for Android 10's names of kXML's
@@ -6745,6 +7072,24 @@ on a looper thread of its own and takes it back with `next()`.
   `NullPointerException` there. The data app's step "viewgroup-flag" makes a
   `FrameLayout` whose override needs a field of its own: it is not called,
   and the group does not draw itself.
+  And `addViewInner` gives a child its layout parameters through the child's
+  own `setLayoutParams`, as Android's does (`addViewInLayout(.., true)` alone
+  sets the field): the framework's file set the field for every child, so a
+  view's override never ran as the view was added or inflated. Citymapper's
+  `BottomSheetContainerView` (11.60) puts its behavior into the
+  `CoordinatorLayout` parameters it is given there, its layout naming none,
+  and the fragments inside it, which look for that behavior as their views
+  are created, ended the app with "Not inside a bottom sheet" (0.1.0.690).
+  The step "add-view-params" adds a view that writes down each
+  `setLayoutParams` with parameters, with none, with another group's, in a
+  layout, and inflates one.
+  And `cleanupLayoutState` takes a view's layout request back
+  (`PFLAG_FORCE_LAYOUT`), as Android's: the generated method did nothing.
+  Compose's `AndroidViewsHandler`, the parent of every view a Compose screen
+  holds, calls it on itself in a `requestLayout` that does not go on to
+  `View`'s, so that the next request of a held view reaches it again; a group
+  that kept its request did not hear them. The step "cleanup-layout-state"
+  has such a group hear each request of its child.
 
 - `android/widget/TextView.java`, the cursor's and the selection handles'
   drawables (API 29): `getTextCursorDrawable` gives what the style or
@@ -6935,6 +7280,31 @@ on a looper thread of its own and takes it back with `next()`.
   `queryIntentServices` and `resolveContentProvider` so, and Messenger
   `resolveContentProvider`. The data app's step "package-flags" asks each
   for the app's own service, provider, receivers, uid and signatures.
+  And the package "android" has the platform's certificate for its
+  signature (`megler/PlatformSigner.java`, new in the overlay: the X.509
+  certificates of the META-INF signature file of the platform's resources
+  APK, read once), given as `signatures` with `GET_SIGNATURES` and as
+  `signingInfo` with `GET_SIGNING_CERTIFICATES`, and not otherwise. It had
+  one signature of no bytes. microG's location service asks, at each
+  location it has for an app, whether the app is the platform's
+  (`ExtendedPackageInfo.isPlatformPackage`) and wraps each of those
+  signatures in a `CertData`, which refuses fewer than 25 bytes: "Exception
+  while processing for WorkSource{}: CertData to small", the app's request
+  cancelled, and an app that asks Google Play services for locations never
+  had one under microG (Citymapper, 0.1.0.690). The data app's step
+  "platform-signature" reads the certificate both ways.
+- `android/provider/CalendarContract.java` in place of the generated stub,
+  whose query helpers gave null: `Instances.query` (both forms),
+  `Attendees.query`, `Reminders.query` and `EventDays.query` ask the
+  `ContentResolver` as Android's do, which answers the calendar's authority
+  with a cursor of the columns asked for and no rows, and the addresses the
+  generator left null are Android's. An app that may read the calendar reads
+  the cursor it is given: Citymapper asks for the coming events on a worker
+  thread at each start, and each of its logs had "FATAL EXCEPTION:
+  DefaultDispatcher-worker" with a `NullPointerException` at
+  `Cursor.getCount()` (0.1.0.690). The phone's own appointments are not read:
+  the calendar is empty. The data app's step "calendar-instances" asks each
+  helper.
 
 - `android/media/MediaMetadata.java`, in place of the generated stub, whose
   getters answered null and 0, whose `writeToParcel` wrote nothing and whose
@@ -7597,15 +7967,25 @@ Android 9's libcore has, and a client of HTTP/2 of its own:
   not the response's (one of them gives the protocol, "http/1.1"); an app's
   Accept-Encoding is dropped, as Cronet drops it (the client asks for gzip and
   decodes it). https gets the platform's TLS and Android's host name check,
-  whatever defaults the app set for `HttpsURLConnection`.
+  whatever defaults the app set for `HttpsURLConnection` or for `SSLContext`.
 - `BidirectionalStream` (`Stream.java`): what gRPC's Cronet transport makes, a
   request's body and its response flowing both ways at once. HTTP/2 over TLS
   alone (an http URL is refused, as Cronet's are): `H2.java`, `Hpack.java` and
-  `Connections.java`. A connection is TLS by the platform's own context
-  (conscrypt; the app's network security configuration and Android's
-  authorities, as `HttpsURLConnection` trusts), the host's name checked by
-  Android's `OkHostnameVerifier`, ALPN offering "h2" alone (a server that does
-  not take it fails the stream, "net::ERR_ALPN_NEGOTIATION_FAILED"); one or
+  `Connections.java`. A connection is TLS by a context of the platform's own
+  conscrypt, made by the provider's name ("AndroidOpenSSL") and kept for the
+  process (the app's network security configuration and Android's authorities,
+  as `HttpsURLConnection` trusts), the host's name checked by Android's
+  `OkHostnameVerifier`, ALPN offering "h2" alone (a server that does not take
+  it fails the stream, "net::ERR_ALPN_NEGOTIATION_FAILED"). Not
+  `SSLContext.getDefault()`, as it was until 0.1.0.694: that one is the
+  process's to set, and Google Play services' ProviderInstaller sets it, in
+  every process it runs in, to the Conscrypt GmsCore carries
+  ("GmsCore_OpenSSL"), whose sockets take no ALPN protocols from
+  `SSLParameters` (its `Platform.setSSLParameters` reads the host name, the
+  endpoint identification and the cipher order; GmsCore 26.41.31). On a
+  Lumia 950 (0.1.0.690) the provider was installed 2.5 s before the Play
+  Store's first stream, "h2" was never offered, and every stream to
+  play-fe.googleapis.com ended "did not take HTTP/2 (ALPN none)". One or
   more for each host and port, shared by the engine's streams, the first
   thread that needs one making it while the others wait for it. This side's
   settings: no push, a megabyte that a stream may receive ahead of the app's
@@ -7673,7 +8053,10 @@ hosts, against an HTTP/1.1 server of the app's own on 127.0.0.1. Where
 conscrypt's TLS is (qemu), against an HTTP/2 server of the app's own over TLS
 (localhost, the test authority the app's configuration trusts, ALPN h2), whose
 frames are written by hand and which shares no code with the engine:
-"http-engine-stream", two echoes at once on one connection, each writing twice
+"http-engine-own-tls", the process's first connection of the engine's made
+while the default `SSLContext` is one that gives no sockets at all: the stream
+is answered over HTTP/2, the context was asked for nothing and is the default
+still; "http-engine-stream", two echoes at once on one connection, each writing twice
 and ending as gRPC does, the headers before the body, the trailers
 (grpc-status 0) before its end, and a GET, whose HEADERS end the request; the
 server saw the engine's settings, pseudo-headers and headers;
@@ -7691,10 +8074,12 @@ engine's classes on a desktop JVM, with its TLS): HTTP/2 to
 play-fe.googleapis.com over TLS 1.3, Google's compressed headers read, and a
 gRPC call to the Play Store's BrowseService without credentials answered in
 its trailers, apart from the headers ("grpc-status" 7, "Permission denied on
-the service."); a request to www.google.com/generate_204 got its 204. **Not
-tried on a phone** yet: the Play Store's log there says "HttpEngine: the app
-made one" and its HTTP/2 connections when the flag is on, and search
-suggestions answer.
+the service."); a request to www.google.com/generate_204 got its 204. **On a
+phone** it has run in one user's Play Store (the Lumia 950 above), where no
+stream got through; with the platform's context it is **not tried on a phone**
+yet: the Play Store's log there says "HttpEngine: the app made one" and its
+HTTP/2 connections ("HttpEngine: HTTP/2 to play-fe.googleapis.com:443 ...")
+when the flag is on, and search suggestions answer.
 
 Not there: QUIC; an HTTP cache (`wasCached` is false); Brotli; public key
 pinning; HTTP/2 for `UrlRequest` (it is HTTP/1.1, as Android's
@@ -7935,6 +8320,37 @@ The tests:
   `renderFrame` alone takes 9.6 to 10.6 ms for 1080p. Microsoft's H.264
   decoder works in software here; it would use the graphics processor if it
   were given a Direct3D device manager, which it is not yet.
+
+### Protected media: there is no DRM
+
+Megler has no content decryption module: no Widevine, no PlayReady, no
+ClearKey, and no secure decoder. It says so the way an Android device without
+a scheme does, and nothing pretends otherwise (no keys, no attestation):
+
+- `MediaDrm.isCryptoSchemeSupported` (all three forms) and `MediaCrypto.
+  isCryptoSchemeSupported` are false for every UUID, and `MediaDrm.
+  getSupportedCryptoSchemes()` is empty;
+- `new MediaDrm(uuid)` throws `UnsupportedSchemeException` and `new
+  MediaCrypto(uuid, data)` throws `MediaCryptoException`, with Android's
+  messages; `MediaDrmException`, `MediaDrmResetException` and
+  `MediaCryptoException` keep their messages (they were generated classes
+  that dropped them);
+- `MediaCodecList` has no `.secure` decoder, no decoder has
+  `FEATURE_SecurePlayback`, a format that requires it finds none, and
+  `MediaCodec.queueSecureInputBuffer` of an encrypted sample throws
+  `MediaCodec.CryptoException` (`ERROR_UNSUPPORTED_OPERATION`).
+
+`MediaDrm` was a generated class: an object whose `openSession()` was null.
+A player went on with it until the null failed somewhere inside it (HBO Max:
+a `NullPointerException` in its DRM session, retried four times). Now
+ExoPlayer and media3 take the path they have for such a device: their
+`FrameworkMediaDrm` cannot be made, and the session fails with "Attempting
+to open a session using a dummy ExoMediaDrm" (media3's error 6006), or the
+app is told the scheme is unsupported (6001) where it asks first. An app
+that streams only protected video shows its own error for that; it cannot
+play here. Clear streams play as before.
+
+The test app `data`: "drm-no-scheme" and "drm-no-secure-decoder".
 
 ### The cameras
 

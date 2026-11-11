@@ -1524,6 +1524,42 @@ u32 mg_tls_alloc(void)
 void *mg_tls_get(u32 key) { return TlsGetValue(key); }
 void mg_tls_set(u32 key, void *value) { TlsSetValue(key, value); }
 
+/*
+ * Fiber-local slots, whose callback Windows calls on every thread that ends with a value in one (and in the core's ELF on
+ * x86 the core's function is cdecl where Windows calls stdcall): each slot's through a function of its own here.
+ */
+static void (*volatile g_ending[4])(void *);
+static void WINAPI ending0(PVOID v) { if (v && g_ending[0]) g_ending[0](v); }
+static void WINAPI ending1(PVOID v) { if (v && g_ending[1]) g_ending[1](v); }
+static void WINAPI ending2(PVOID v) { if (v && g_ending[2]) g_ending[2](v); }
+static void WINAPI ending3(PVOID v) { if (v && g_ending[3]) g_ending[3](v); }
+
+u32 mg_tls_alloc_ending(void (*end)(void *value))
+{
+    static PFLS_CALLBACK_FUNCTION const calls[4] = { ending0, ending1, ending2, ending3 };
+    static volatile LONG taken;
+    LONG i = InterlockedIncrement(&taken) - 1;
+    DWORD k;
+    if (i >= 4) mg_fatal("out of thread-local slots with an end");
+    g_ending[i] = end;
+    k = FlsAlloc(calls[i]);
+    if (k == FLS_OUT_OF_INDEXES) mg_fatal("out of fiber-local slots");
+    return k;
+}
+void mg_tls_set_ending(u32 key, void *value) { FlsSetValue(key, value); }
+
+/*
+ * The C runtime's malloc is HeapAlloc on the process heap (the UCRT's __acrt_heap), which Windows 10 makes one of two
+ * kinds: the NT heap, whose low-fragmentation front end serialises threads that free and allocate blocks of many sizes,
+ * or the segment heap (an app's own manifest, a packaged app by default on the desktop). Each has its signature two
+ * pointers into its header: 0xffeeffee the NT heap's segment, 0xddeeddee the segment heap's.
+ */
+const char *mg_heap_kind(void)
+{
+    const u32 sig = *(const volatile u32 *)((const u8 *)GetProcessHeap() + 2 * sizeof(void *));
+    return sig == 0xffeeffeeu ? "the NT heap" : sig == 0xddeeddeeu ? "the segment heap" : "a heap of a kind not known here";
+}
+
 /* ------------------------------------------------- the guest thread pointer
  *
  * Windows on ARM keeps the TEB in TPIDRURW (c13, c0, 2), readable from user
@@ -2782,6 +2818,54 @@ bool mg_path_set_writable(const char *path, bool writable, int *err)
     return ok != 0;
 }
 
+/* A time in nanoseconds since 1970 as a FILETIME (100 ns since 1601). */
+static FILETIME unix_ns_to_filetime(i64 ns)
+{
+    FILETIME ft;
+    i64 t = ns / 100 + 116444736000000000ll;
+    if (t < 0) t = 0;
+    ft.dwLowDateTime = (DWORD)(u64)t;
+    ft.dwHighDateTime = (DWORD)((u64)t >> 32);
+    return ft;
+}
+
+bool mg_path_set_times(const char *path, i64 atime_ns, i64 mtime_ns, int *err)
+{
+    FILETIME a, m;
+    HANDLE h;
+    BOOL ok;
+    if (mg_path_is_foreign(path)) {
+        /* (A handle to write the file through, which the owner's write access includes writing its times with.) */
+        h = foreign_handle(path, MG_O_WRITE, MG_FOREIGN_FILE, err);
+        if (!h) {
+            if (err && *err == MG_E_ISDIR) {
+                *err = 0;
+                return true;
+            }
+            return false;
+        }
+    } else {
+        /* (CreateFile2, as every open here: an app container has no CreateFileW. A folder opens with backup semantics.) */
+        CREATEFILE2_EXTENDED_PARAMETERS params;
+        wchar_t *w = wide_path(path);
+        memset(&params, 0, sizeof(params));
+        params.dwSize = sizeof(params);
+        params.dwFileFlags = FILE_FLAG_BACKUP_SEMANTICS;
+        h = CreateFile2(w, FILE_WRITE_ATTRIBUTES, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, OPEN_EXISTING, &params);
+        free(w);
+        if (h == INVALID_HANDLE_VALUE) {
+            SET_ERR();
+            return false;
+        }
+    }
+    a = unix_ns_to_filetime(atime_ns);
+    m = unix_ns_to_filetime(mtime_ns);
+    ok = SetFileTime(h, NULL, atime_ns == MG_TIME_KEEP ? NULL : &a, mtime_ns == MG_TIME_KEEP ? NULL : &m);
+    if (!ok) SET_ERR();
+    CloseHandle(h);
+    return ok != 0;
+}
+
 bool mg_path_stat(const char *path, mg_stat *st, int *err)
 {
     wchar_t *w;
@@ -3282,7 +3366,7 @@ bool mg_path_rename(const char *from, const char *to, int *err)
  * picked on the card) -- is read with FileFullDirectoryInfo, which every one
  * answers; said once.
  */
-static bool list_handle(HANDLE h, mg_dir_cb cb, void *user, int *err)
+static bool list_handle(HANDLE h, mg_dir_cb cb, mg_dir_stat_cb stat_cb, void *user, int *err)
 {
     enum { LIST_BYTES = 16384 };
     static volatile LONG said;
@@ -3323,7 +3407,25 @@ static bool list_handle(HANDLE h, mg_dir_cb cb, void *user, int *err)
                 char *name = (char *)mg_alloc((size_t)(bytes > 0 ? bytes : 0) + 1);
                 if (bytes > 0) WideCharToMultiByte(CP_UTF8, 0, file, (int)n, name, bytes, NULL, NULL);
                 mg_name_from_host(name);
-                if (name[0]) cb(name, (attributes & FILE_ATTRIBUTE_DIRECTORY) != 0, user);
+                if (name[0] && stat_cb) {
+                    /* (What the entry says of itself: the two classes alike up to the name's length, times and size among it.) */
+                    mg_stat st;
+                    FILETIME ft;
+                    memset(&st, 0, sizeof(st));
+                    st.is_dir = (attributes & FILE_ATTRIBUTE_DIRECTORY) != 0;
+                    st.read_only = !st.is_dir && (attributes & FILE_ATTRIBUTE_READONLY) != 0;
+                    st.size = st.is_dir ? 0 : (u64)plain->EndOfFile.QuadPart;
+                    ft.dwLowDateTime = plain->LastWriteTime.LowPart; ft.dwHighDateTime = (DWORD)plain->LastWriteTime.HighPart;
+                    st.mtime_ns = (i64)filetime_to_unix_ns(ft);
+                    ft.dwLowDateTime = plain->LastAccessTime.LowPart; ft.dwHighDateTime = (DWORD)plain->LastAccessTime.HighPart;
+                    st.atime_ns = (i64)filetime_to_unix_ns(ft);
+                    ft.dwLowDateTime = plain->ChangeTime.LowPart; ft.dwHighDateTime = (DWORD)plain->ChangeTime.HighPart;
+                    st.ctime_ns = (i64)filetime_to_unix_ns(ft);
+                    st.id = full ? 0 : (u64)both->FileId.QuadPart;
+                    if (!(n >= 17 && is_aside(file))) stat_cb(name, &st, user);
+                } else if (name[0]) {
+                    cb(name, (attributes & FILE_ATTRIBUTE_DIRECTORY) != 0, user);
+                }
                 free(name);
             }
             if (!next) break;
@@ -3344,7 +3446,7 @@ bool mg_path_list(const char *path, mg_dir_cb cb, void *user, int *err)
         bool ok;
         h = foreign_handle(path, MG_O_READ, MG_FOREIGN_DIR, err);
         if (!h) return false;
-        ok = list_handle(h, cb, user, err);
+        ok = list_handle(h, cb, NULL, user, err);
         CloseHandle(h);
         return ok;
     }
@@ -3389,6 +3491,73 @@ bool mg_path_list(const char *path, mg_dir_cb cb, void *user, int *err)
     } while (FindNextFileW(h, &fd));
     FindClose(h);
     free(w);
+    return true;
+}
+
+bool mg_path_list_stat(const char *path, mg_dir_stat_cb cb, void *user, int *err)
+{
+    wchar_t *w, *dir;
+    size_t len;
+    WIN32_FIND_DATAW fd;
+    HANDLE h;
+    if (mg_path_is_foreign(path)) {
+        bool ok;
+        BY_HANDLE_FILE_INFORMATION self;
+        h = foreign_handle(path, MG_O_READ, MG_FOREIGN_DIR, err);
+        if (!h) return false;
+        /* The folder itself: its volume and its index on it, which two handles to it from two paths share. */
+        if (GetFileInformationByHandle(h, &self)) {
+            mg_stat st;
+            memset(&st, 0, sizeof(st));
+            st.is_dir = true;
+            st.mtime_ns = (i64)filetime_to_unix_ns(self.ftLastWriteTime);
+            st.atime_ns = (i64)filetime_to_unix_ns(self.ftLastAccessTime);
+            st.ctime_ns = (i64)filetime_to_unix_ns(self.ftCreationTime);
+            st.id = (((u64)self.nFileIndexHigh << 32) | self.nFileIndexLow) ^ ((u64)self.dwVolumeSerialNumber << 32);
+            if (!st.id) st.id = 1;
+            cb(".", &st, user);
+        }
+        ok = list_handle(h, NULL, cb, user, err);
+        CloseHandle(h);
+        return ok;
+    }
+    dir = wide_path(path);
+    len = wcslen(dir);
+    w = (wchar_t *)mg_alloc(sizeof(wchar_t) * (len + 3));
+    memcpy(w, dir, sizeof(wchar_t) * len);
+    if (len && dir[len - 1] != L'\\') w[len++] = L'\\';
+    w[len++] = L'*';
+    w[len] = 0;
+    free(dir);
+    h = FindFirstFileExW(w, FindExInfoBasic, &fd, FindExSearchNameMatch, NULL, 0);
+    free(w);
+    if (h == INVALID_HANDLE_VALUE) {
+        DWORD e = GetLastError();
+        if (e == ERROR_FILE_NOT_FOUND) {
+            mg_stat st;
+            if (mg_path_stat(path, &st, NULL) && st.is_dir) return true;
+        }
+        if (err) *err = err_of(e);
+        return false;
+    }
+    do {
+        mg_stat st;
+        char *name;
+        if (!wcscmp(fd.cFileName, L"..") || is_aside(fd.cFileName)) continue;
+        /* (The folder itself, ".", with no id: a folder of the app's own data is reached by one path.) */
+        memset(&st, 0, sizeof(st));
+        st.is_dir = (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) != 0;
+        st.read_only = !st.is_dir && (fd.dwFileAttributes & FILE_ATTRIBUTE_READONLY) != 0;
+        st.size = st.is_dir ? 0 : ((u64)fd.nFileSizeHigh << 32) | fd.nFileSizeLow;
+        st.mtime_ns = (i64)filetime_to_unix_ns(fd.ftLastWriteTime);
+        st.atime_ns = (i64)filetime_to_unix_ns(fd.ftLastAccessTime);
+        st.ctime_ns = (i64)filetime_to_unix_ns(fd.ftCreationTime);
+        name = utf8_of(fd.cFileName);
+        mg_name_from_host(name);
+        cb(name, &st, user);
+        free(name);
+    } while (FindNextFileW(h, &fd));
+    FindClose(h);
     return true;
 }
 

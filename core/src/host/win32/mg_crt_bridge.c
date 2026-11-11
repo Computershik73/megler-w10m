@@ -297,9 +297,18 @@ static void WINAPI emutls_free(void *p)
     free(a);
 }
 
+/*
+ * A variable's number is read as it is, with acquire order (it is written once, under the lock, with release order): every
+ * thread reads it at every access to the variable, and an interlocked compare-exchange there -- a write to the variable's
+ * control, which all threads share -- had every thread that touched a thread-local variable at once wait for the others'
+ * caches: the guest's malloc, which reads its thread's cache through one at every malloc and free, ran 58 M/s of
+ * malloc-and-free pairs on one thread and 31 on four.
+ */
 static MGC void *mgc___emutls_get_address(emutls_control *c)
 {
-    uintptr_t index = (uintptr_t)InterlockedCompareExchangePointer((void *volatile *)&c->object.index, NULL, NULL);
+    /* (The compiler's own acquire load: winnt.h's ReadPointerAcquire is not declared for an app's package, WINAPI_FAMILY_APP,
+       and the package's Megler.exe did not compile.) */
+    uintptr_t index = (uintptr_t)__atomic_load_n(&c->object.index, __ATOMIC_ACQUIRE);
     emutls_array *a;
     void *p;
     if (!index) {

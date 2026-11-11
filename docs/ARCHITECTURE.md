@@ -69,7 +69,21 @@ exactly where softfp puts a double, and a 32-bit one where it puts a float. The
 wrapper converts bits to a value (`mg_d`, `mg_f`), calls the host's function, and
 converts back. All of libm, every OpenGL ES function with a float parameter, the JNI
 calls that return floats, and the NDK's `AMotionEvent_getX` are written this way; no
-assembly is involved.
+assembly is involved. The conversion is one `vmov` between the register files each
+way: MSVC's intrinsics for it (`_CopyFloatFromInt32` and its kin), where a `memcpy`
+became a store to the stack and a load into the other register file.
+
+libm's rounding to a whole number (`floor`, `ceil`, `trunc`, `round`, `rint`,
+`nearbyint`, `lround`, `lrint`, `llround`, `llrint`, of floats and doubles) is not
+the host's: it is worked out on the bits in the integer registers they come in, as
+bionic's FreeBSD libm does it (`round_f`, `round_d` in `bionic/mg_libm.c`). The
+UCRT's on the phone take the value apart in halfwords on the stack, with a call or
+three for each, and image code calls these once or twice a pixel: Geekbench 5's
+Horizon Detection calls `lroundf` and `roundf` for 21 angles at every edge pixel of
+its Hough transform, and was the one workload slower than Android's on the same
+phone. *Proven:* `test_libm_rounding` (every exponent of a float and a double at the
+fractions a rounding decides at, against the host's libm, on qemu and on the PC),
+and `t_round_sum` through a library's PLT, Thumb and ARM.
 
 The same holds the other way: the host calls a guest function through a pointer
 typed with integers, passing each float as its bits.
@@ -467,7 +481,7 @@ This passes under qemu; the Instagram run on Windows still needs verification.
 | `errno` | Linux numbers, per thread | the guest's own; host errors are translated |
 | `struct stat`, `dirent`, `sigaction`, `tm` | bionic's layouts | filled in field by field |
 | `FILE` | `__sF[3]`, 84 bytes apart, fields old headers read inline | this layer's own, with that layout at its start |
-| `malloc`/`memalign`/`free` | one `free` for all | every block has a header saying where the host's block starts |
+| `malloc`/`memalign`/`free` | one `free` for all; jemalloc's per-thread caches | every block has a header saying where the host's block starts; a thread that allocates fast keeps the small blocks it frees (4 KB and less, 32 KB of them at most) in a cache of its own, given back when it ends, and counts what it allocates there: threads that allocate at once wait neither for one word all of them add to nor for the host heap's lock (`bionic/mg_libc_mem.c`, "each thread's cache"; flag `no-malloc-cache`: none) |
 | file descriptors | pipes, eventfd, epoll, sockets | this layer's own table; pipes and eventfds are implemented here, sockets are the host's behind it (see "The network") |
 | paths | `/data/data/<pkg>`, `/sdcard`, `/proc/cpuinfo` | a mount table onto folders under `LocalState` (see "Files and the shared storage"); the `/proc` and `/sys` files code reads are made up |
 | signals | delivered asynchronously | between the app's own threads they are: a thread in the middle of Android code is stopped, sent to the handler and put back (`SuspendThread`, `SetThreadContext`, the vectored handler); one that waits or sleeps in this layer is woken for it. Nothing comes from outside the process |
@@ -1160,6 +1174,66 @@ cameras are found as source groups, open after the prompt, and stream NV12
 in memory at the sizes they list, turned as said above. None of it has run on
 a phone.
 
+## The system's picker and camera app
+
+An app's "attach a file", "choose a picture" and "take a photo" send intents
+to Android's own apps: its documents UI and gallery (`ACTION_GET_CONTENT`,
+`ACTION_OPEN_DOCUMENT`, `ACTION_PICK` of pictures, Android 13's photo picker
+`MediaStore.ACTION_PICK_IMAGES`, which androidx's `PickVisualMedia` sends on
+Android 14) and its camera app (`ACTION_IMAGE_CAPTURE`, `ACTION_VIDEO_CAPTURE`;
+`INTENT_ACTION_STILL_IMAGE_CAMERA`). Megler answers them with Windows' own:
+
+- **The framework** (`megler.Pickers`) takes such an intent in
+  `AppRunner.startActivity` before the app's own activities and Google Play
+  services' (also wrapped in a chooser, `EXTRA_INITIAL_INTENTS` left out, and
+  named by the documents UI's or the camera's package, as an app starts what
+  `resolveActivity` answered), and asks the shell (`megler_system_host.pick`,
+  `core/include/megler.h`) with the intent's MIME types, one file or several
+  (`EXTRA_ALLOW_MULTIPLE`, `EXTRA_PICK_IMAGES_MAX`), a video's limit and
+  quality, and a folder of the app's data for the request
+  (`megler-picked/<request>`). The answer (`megler_pick_done`, from any
+  thread) reaches the main thread as an event of its own and goes to the
+  activity that asked once the app is in front again -- a phone's picker hides
+  the app's window, as another app's activity hides the caller on Android --
+  before it resumes, as `onActivityResult`: as Android's documents UI
+  answers, one file as the data and several as the `ClipData`; a photo written
+  to the app's `EXTRA_OUTPUT` through its own `ContentResolver` and answered
+  with no data, or a thumbnail of at most 50,000 pixels in `data`; a video to
+  its `EXTRA_OUTPUT`, its URI the data. `INTENT_ACTION_STILL_IMAGE_CAMERA`
+  opens Windows' camera app (`microsoft.windows.camera:`).
+- **The files** are the shell's copies, served as
+  `content://megler.picked/<request>/<name>` by a provider of the
+  framework's: `OpenableColumns`, `mime_type`, the photo picker's columns,
+  the documents' and `_data` (the copy's path); read only. Copies, because an
+  app reads a picked file after the picker has gone, and the access Windows'
+  broker gives to a picked file is the shell's alone, through the
+  `StorageFile` the picker handed it. A request's folder goes a week later.
+- **The package manager** answers those intents with the system's activity
+  of them (`com.android.documentsui`, and `com.android.camera2` where the
+  device has a camera), so that apps that ask before they offer the button
+  offer it; Google Play services' photo picker action no longer reads GmsCore.
+- **A WebView's** `<input type=file>` opens the picker whether the app's
+  chrome client leaves `onShowFileChooser` or the app gives none (Megler's
+  own client then, which is none to the app); an app's own client that
+  starts `FileChooserParams.createIntent` reaches it as `GET_CONTENT`.
+- **The shell** (`player/PickerHost.cpp`) shows `FileOpenPicker` --
+  filtered by the extensions of the types asked for, opening in the
+  pictures, videos or music library for an app that takes those -- or
+  `CameraCaptureUI` (Windows 10 Mobile's since 1511, a PC's with a camera),
+  on the UI thread, one at a time, and copies what came into the request's
+  folder. The flags `pick-cancel` and `pick-file-<name>` (the file `<name>`
+  in the Pictures library's folder `Megler`) answer the next request in the
+  user's place, nothing shown, for runs no one picks in.
+
+*Proven:* under qemu, the test app `pickers` on a stand-in for the shell's
+picker (`core/tests/mg_java_tests.c`, `system_pick`): every round trip above,
+the provider's columns and reading, the package manager's answers, the result
+waiting for the window and coming before `onResume`; and the `webview` app's
+form, a WebView with no chrome client whose file input, tapped, is given the
+stand-in's picture and read by the page. On this PC, `mg_shell_tests.exe`: the
+shell's filters, flags and copies. *Not yet seen:* Windows' picker and camera
+themselves, which need a user, on a phone and on a PC.
+
 ## Sensors
 
 An app's `android.hardware.SensorManager` and its native code's
@@ -1331,7 +1405,7 @@ thread.
 | Android | Windows |
 |---|---|
 | a scan (`startScan`, `startLeScan`) | `BluetoothLEAdvertisementWatcher`, active unless every scan is opportunistic; an advertisement and its scan response, two of Windows' events, are one record, the device's last of each, their AD structures as Windows got them; connectable from the advertisement's type |
-| `connectGatt` | `BluetoothLEDevice.FromBluetoothAddressAsync` (with the address's kind where it was heard), a `GattSession` with `MaintainConnection`, and the device's services asked for afresh, which makes Windows connect: connected once it has them, 133 when it could not reach the device; then `ConnectionStatusChanged`: a drop is Android's 8 (Windows says not why), and with `autoConnect` Windows makes the connection again whenever it can |
+| `connectGatt` | `BluetoothLEDevice.FromBluetoothAddressAsync` (with the address's kind where it was heard) and the device's services asked for afresh, which makes Windows connect: connected once it has them, 133 when it could not reach the device -- or when anything else of Windows' failed; a `GattSession` with `MaintainConnection`, asked for by the device's id where Windows has one (`BluetoothDeviceId`, Windows 10 1709) and, on Windows 10 Mobile, which has none, the one of the device's first service -- with `autoConnect` the services are asked for again there every five seconds until the device answers, there being no session to wait with; then `ConnectionStatusChanged`: a drop is Android's 8 (Windows says not why), and with `autoConnect` Windows makes the connection again whenever it can |
 | `discoverServices` | every service's characteristics and descriptors, uncached, by their attribute handles, which are Android's instance ids; a service Windows keeps to itself (HID) left out; a notifying characteristic whose Client Characteristic Configuration descriptor Windows does not list has one made up |
 | `readCharacteristic`, `writeCharacteristic`, the descriptors' | `ReadValueAsync`, `WriteValueWithResultAsync` (with or without response); Windows' status made Android's: the ATT error as it is, 133 unreachable, 257 refused |
 | the Client Characteristic Configuration descriptor written | `WriteClientCharacteristicConfigurationDescriptorWithResultAsync`, `ValueChanged` subscribed to first: each notification and indication is `onCharacteristicChanged` |
@@ -1339,6 +1413,26 @@ thread.
 | `readRemoteRssi` | none: Windows tells no connection's signal; the core answers with the last advertisement's |
 | `createBond`, `removeBond` | Windows' pairing with a ceremony of Megler's (`DeviceInformationCustomPairing`), `UnpairAsync` |
 | `ACTION_REQUEST_ENABLE`, `enable()` | the phone's Bluetooth settings (`ms-settings:bluetooth`): Megler cannot turn the radio on |
+
+**What a Windows lacks.** The host is compiled with a later Windows' headers
+than the phone's Windows knows (10.0.15254 has the contracts of Windows 10
+1703), and C++/WinRT reaches a member of a class's later interface through a
+`QueryInterface` whose answer it does not look at: on a Windows without the
+interface the call goes through null, on one of Windows' threads, and the
+process ends. That is how 0.1.0.690 ended MeshCore's app as its radio was
+tapped: `BluetoothLEDevice.BluetoothDeviceId` is `IBluetoothLEDevice4`'s, and
+Windows 10 1709's. So the host calls nothing of a later interface on the class
+itself: each is asked for as such -- one it needs gives the interface or
+throws (`part<I>`), one the phone's Windows lacks is done without (`try_as`:
+the device's id, an advertisement's kind of address) -- no result of an
+operation, no element of a list and no argument of an event is taken for an
+object before it is looked at, and every coroutine and every handler of an
+event ends with a catch-all, an exception that leaves one being the end of the
+process as well. What the app hears is what Android says of such a thing: a
+connection not made (133, disconnected), a discovery that failed (257, or 133
+when the device no longer answers), a read or a write with 133, the MTU 23, a
+bond not made; the log says which of Windows' answers it was
+("bluetooth: connection 1 to ... not made: ...").
 
 **Pairing.** As on Android, a read or a write the device refuses for want of
 pairing (`GATT_INSUFFICIENT_AUTHENTICATION` or `_ENCRYPTION`) while it is not
@@ -1362,14 +1456,30 @@ RSSI from the last advertisement, advertisements dropped past the bound while
 the answers wait, nothing after the app's end) and the test app `bluetooth` in
 Java, as MeshCore's app uses it (docs/JAVA.md). `BluetoothHost.cpp` builds into
 the phone's package and the PC's, and into the PC's test program, whose
-`--bluetooth-windows` says this PC's radio through it and the core's and
-listens passively for three seconds (nothing sent, connected to or paired
-with) -- on the PC this was written on, which has no Bluetooth adapter, it
-says so. *Expected:* everything the shell does with a real device -- a scan's
+`--bluetooth-windows` first has the host connect to devices made up as
+Windows gives them (`core/tests/mg_bluetooth_windows.cpp`, C++/WinRT
+implementations handed to the host in place of Windows' own,
+`BluetoothHost::devicesFrom`; 62 checks): a MeshCore radio as Windows 10
+Mobile shows it -- no `IBluetoothLEDevice4`, the session from its first
+service, an MTU that is 23 at first, nulls in Windows' lists, a service
+Windows refuses, a characteristic and a descriptor without their later
+interfaces -- gone through as flutter_blue_plus goes (connect, MTU, services,
+notifications on, writes, reads, the link lost and made again, disconnect),
+and each way a connection is not made or a discovery fails (no device, an
+object that is no device, no `IBluetoothLEDevice3`, out of range, no result,
+a throw, no session, a device gone meanwhile, a disconnect while Windows is
+asking), with what the app hears of each and no event twice or after a close.
+Then it says this PC's radio through the host and the core's and listens
+passively for three seconds (nothing sent, connected to or paired with) --
+on the PC this was written on, which has no Bluetooth adapter, it says so.
+*Expected:* everything the shell does with a real device -- a scan's
 records, a connection, its database, writes, notifications, the MTU Windows
 negotiates, pairing with a PIN -- which only a phone (or a PC) with a MeshCore
-radio in range can show; whether Windows 10 Mobile takes a custom pairing
-ceremony, or a PIN must go through its own dialog.
+radio in range can show: the made-up devices answer as Windows' interfaces
+say, not as the phone's radio does (whether its Windows gives the services of
+a device it is not paired with, and a session with them); whether Windows 10
+Mobile takes a custom pairing ceremony, or a PIN must go through its own
+dialog.
 
 ## Wi-Fi
 
@@ -1464,7 +1574,10 @@ shell removes an app's folders with such files in them (`files::remove`). Facebo
 read-only (`File.setReadOnly`) and loads only one that is: "Downloaded module
 file must be read only ... read only:false" (0.1.0.671), and none of its
 language packs loaded. A directory's mode, a file's other bits and the files
-of a link to one of the phone's folders are as they were. `test_file_modes`
+of a link to one of the phone's folders are as they were. A file's times are
+set as `utimensat` sets them (`mg_path_set_times`: `SetFileTime`, or for a
+file in a link through the handle its owner hands out to write it; a folder
+there is left as it is), so `File.setLastModified` changes the time. `test_file_modes`
 (`mg_storage_tests.c`), and the data app's step `file-read-only` through
 `java.io.File`.
 
@@ -1514,7 +1627,17 @@ shell, through `megler_storage_host` in `megler.h`: its links by name, each
 writable or not, and four functions. A link that is not writable is refused
 every change in `run/mg_run.c`, before the shell is asked, whichever part of
 the layer wanted it. A rename between a link and anything else is `EXDEV`, as
-between two file systems: the app copies and removes.
+between two file systems: the app copies and removes. A folder is also listed with each
+entry's size and times from the listing itself (`mg_path_list_stat`, the
+directory's own information: `FileIdBothDirectoryInfo` through its handle),
+where asking each entry by its path would be a call to the broker each: the
+media provider indexes the phone's folders so (docs/JAVA.md, "The media
+provider: MediaStore"). And Windows' own picture of a file there -- out of its
+thumbnail cache, a video's frame -- is the shell's to give
+(`megler_storage_host.thumbnail`): asked for without waiting, answered on a
+thread of the shell's, waited for by the core (`mg_run_storage_thumbnail`)
+for so long; an answer that comes later finds its request still there and is
+dropped.
 
 The shell's side is `player/StorageHost.cpp`. Its links are the three
 libraries' folders to save to as `Music`, `Pictures` and `Movies`
@@ -1558,6 +1681,29 @@ through its own C library, what an app does to files, in a folder of its own
 way Windows answered. **Settings › Check the Folders** runs it, and so does a
 package built with `tools/build-appx.sh arm --auto storage`, into
 `megler-auto.log`.
+
+**Watches (inotify).** `inotify_init`, `inotify_init1`, `inotify_add_watch`
+and `inotify_rm_watch`, in the C library and by number, give a descriptor that
+reads the events of what the app's own calls do to the files and directories
+it watches (`bionic/mg_libc_io.c`, "inotify"): a file made (`IN_CREATE`, from
+an open with `O_CREAT` that made it, and `mkdir`'s with `IN_ISDIR`), opened,
+read, written or truncated, closed after writing or not (when its last
+descriptor goes, as Linux releases a file), its mode changed, moved
+(`IN_MOVED_FROM` and `IN_MOVED_TO` with one cookie, `IN_MOVE_SELF`) and
+removed (`IN_DELETE`, `IN_DELETE_SELF`, then `IN_IGNORED`). Every file call of
+the app comes through this file, its Java's (libcore's natives) as much as its
+native libraries', so what one thread writes another is told of; what another
+process changes is not seen. A watch is of a path: a file moved takes its
+watches with it. The events are queued and read as Linux's (a record of 16
+bytes and the name padded to 16, the same event as the last unread one not
+queued twice, `IN_Q_OVERFLOW` past 16384), with `poll`, `select`, `epoll` and
+`FIONREAD`; with no watch anywhere the file calls look nothing up.
+Firebase Cloud Messaging's C++ library waits in one for the file its Java side
+writes the messages into, and asserted that `inotify_init` gave a descriptor:
+with `ENOSYS` Jetpack Joyride ended in `abort()` at every start (0.1.0.681).
+*Proven:* `mg_tests`' "inotify" (under qemu and on the PC): a thread waiting
+in `read` as Firebase's does while another writes the file and closes it, and
+each kind of event on a file and on its directory.
 
 ## The network
 

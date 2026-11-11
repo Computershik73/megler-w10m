@@ -26,7 +26,12 @@
 //     is told of each kind of group -- a refused group Megler has nothing behind, Megler's no over Windows' yes, a group
 //     asked every time --, the groups a manifest asks for, and Google Play services' own location in Megler's settings;
 //   - the versions of the apps' own packages (shell/PackageVersions.h): which Megler made one, the next one a build makes
-//     of an app (Aurora Store's update of an app made its package again with the same version, 0x80073CFB), Windows' order.
+//     of an app (Aurora Store's update of an app made its package again with the same version, 0x80073CFB), Windows' order;
+//   - the phone's picker and camera for an app (player/PickerHost.cpp): Windows' picker's filter, start and view for the
+//     MIME types an app asks for, the flags that answer a request in place of the user (pick-cancel, pick-file-<name>), and
+//     files handed over copied into the request's folder -- a name already there made unique, one missing a failure -- with
+//     the core told (megler_pick_done, stood in for below), and the thunk answering from the flags with no window to show a
+//     picker over. The pickers themselves need a user and an app's window: not here.
 //
 // A Lumia 630's Megler 0.1.0.671 was ended at every start while it made those copies on its UI thread before its window
 // was shown (library/Library.cpp); what is tested here is the way they are made since.
@@ -37,6 +42,7 @@
 
 #include "library/Library.h"
 #include "player/PermissionHost.h"
+#include "player/PickerHost.h"
 #include "shell/AppPackage.h"
 #include "shell/BundledApks.h"
 #include "shell/Files.h"
@@ -89,6 +95,25 @@ const SingleApp& single() {
 
 extern "C" char* megler_apk_report(const char*) { return nullptr; }
 extern "C" void megler_free(void*) {}
+
+// The core's side of the picker (player/PickerHost.cpp answers it): each answer kept for the tests, from whatever thread.
+namespace {
+struct PickDone {
+    unsigned id = 0;
+    int status = -1;
+    std::vector<std::string> names;
+};
+std::mutex gPickMutex;
+std::vector<PickDone> gPicksDone;
+} // namespace
+extern "C" void megler_pick_done(unsigned id, int status, int count, const char* const* names) {
+    PickDone d;
+    d.id = id;
+    d.status = status;
+    for (int i = 0; i < count; ++i) d.names.push_back(names[i]);
+    std::lock_guard<std::mutex> lock(gPickMutex);
+    gPicksDone.push_back(d);
+}
 
 using namespace megler::app;
 
@@ -1074,6 +1099,127 @@ void testPermissions() {
 
 } // namespace
 
+/// The answer the core was given for request `id`, waited for up to five seconds (the flags answer from a thread of their own).
+bool pickAnswer(unsigned id, PickDone& out) {
+    for (int tries = 0; tries < 500; ++tries) {
+        {
+            std::lock_guard<std::mutex> lock(gPickMutex);
+            for (const PickDone& d : gPicksDone)
+                if (d.id == id) {
+                    out = d;
+                    return true;
+                }
+        }
+        Sleep(10);
+    }
+    return false;
+}
+
+bool has(const std::vector<std::wstring>& list, const wchar_t* e) { return std::find(list.begin(), list.end(), e) != list.end(); }
+
+/// The phone's picker and camera for an app (player/PickerHost.cpp), without a user: what Windows' picker is given, the flags
+/// that answer in the user's place, and the files handed over copied into the request's folder.
+void testPicker(const std::wstring& root) {
+    printf("the phone's picker and camera for an app (player/PickerHost.cpp)\n");
+    pickerHost::Filter f = pickerHost::filterFor("image/*\n", MEGLER_PICK_START_PICTURES);
+    check(has(f.extensions, L".jpg") && has(f.extensions, L".png") && has(f.extensions, L".heic") && !has(f.extensions, L"*") && f.thumbnails &&
+              f.start == MEGLER_PICK_START_PICTURES,
+          "image/*: the pictures' extensions, in the pictures library, with thumbnails");
+    f = pickerHost::filterFor("image/*\nvideo/*\n", MEGLER_PICK_START_PICTURES);
+    check(has(f.extensions, L".jpg") && has(f.extensions, L".mp4") && f.thumbnails, "pictures and videos (the photo picker's): both kinds' extensions, thumbnails");
+    f = pickerHost::filterFor("application/pdf\n", MEGLER_PICK_START_DOCUMENTS);
+    check(f.extensions.size() == 1 && f.extensions[0] == L".pdf" && !f.thumbnails && f.start == MEGLER_PICK_START_DOCUMENTS, "application/pdf: .pdf alone, a list in the documents");
+    f = pickerHost::filterFor("image/*\napplication/pdf\n", MEGLER_PICK_START_DOCUMENTS);
+    check(has(f.extensions, L".png") && has(f.extensions, L".pdf") && !f.thumbnails, "pictures and PDFs: both, as a list");
+    f = pickerHost::filterFor("IMAGE/X-ICON\n", MEGLER_PICK_START_PICTURES);
+    check(has(f.extensions, L".ico") && has(f.extensions, L".jpg"), "a type of a known kind without a list of its own (image/x-icon): the kind's");
+    f = pickerHost::filterFor("*/*\n", MEGLER_PICK_START_DOCUMENTS);
+    check(f.extensions.size() == 1 && f.extensions[0] == L"*", "*/*: every file");
+    f = pickerHost::filterFor("", MEGLER_PICK_START_DOCUMENTS);
+    check(f.extensions.size() == 1 && f.extensions[0] == L"*", "no type: every file");
+    f = pickerHost::filterFor("application/x-unknown\nimage/png\n", MEGLER_PICK_START_DOCUMENTS);
+    check(f.extensions.size() == 1 && f.extensions[0] == L"*", "a type Windows' picker has no extensions for among them: every file");
+
+    // The flags: pick-cancel first; pick-file-<name>, one for a request of one file, every one (at most `max`) for several.
+    const std::wstring flags = gLocal + L"\\flags";
+    files::makeDirectories(flags);
+    files::write(flags + L"\\pick-file-b.pdf", "");
+    files::write(flags + L"\\pick-file-a.png", "");
+    files::write(flags + L"\\pick-file-c.png", "");
+    files::write(flags + L"\\ui-shot-x", "");
+    pickerHost::FlagAnswer a = pickerHost::takeFlags(flags, false, 0);
+    check(a.found && !a.cancel && a.names.size() == 1 && a.names[0] == L"a.png" && !files::exists(flags + L"\\pick-file-a.png") &&
+              files::exists(flags + L"\\pick-file-b.pdf"),
+          "a request of one file takes the first pick-file- flag by name, and that flag goes");
+    a = pickerHost::takeFlags(flags, true, 1);
+    check(a.found && a.names.size() == 1 && a.names[0] == L"b.pdf", "a request of several with at most one takes one");
+    files::write(flags + L"\\pick-file-d.png", "");
+    a = pickerHost::takeFlags(flags, true, 0);
+    check(a.found && a.names.size() == 2 && a.names[0] == L"c.png" && a.names[1] == L"d.png" && files::exists(flags + L"\\ui-shot-x"),
+          "a request of several takes every pick-file- flag left, and no other flag");
+    a = pickerHost::takeFlags(flags, false, 0);
+    check(!a.found, "with none left, the user is asked");
+    files::write(flags + L"\\pick-cancel", "");
+    files::write(flags + L"\\pick-file-e.png", "");
+    a = pickerHost::takeFlags(flags, false, 0);
+    check(a.found && a.cancel && !files::exists(flags + L"\\pick-cancel") && files::exists(flags + L"\\pick-file-e.png"), "pick-cancel answers before a file, and goes");
+    files::remove(flags + L"\\pick-file-e.png");
+
+    // Files handed over, copied into the request's folder: their names, the bytes, a name already there made unique.
+    const std::wstring source = root + L"\\picker-source", folder = root + L"\\LocalState\\data\\app\\megler-picked\\1";
+    files::makeDirectories(source);
+    files::makeDirectories(folder);
+    makeFile(source + L"\\photo one.png", 300000, 7);
+    makeFile(source + L"\\doc.pdf", 1000, 8);
+    pickerHost::Answer got = pickerHost::answerFromFolder(1, source, {L"photo one.png", L"doc.pdf"}, folder);
+    PickDone done;
+    check(got.status == MEGLER_PICK_OK && got.names.size() == 2 && got.names[0] == "photo one.png" && got.names[1] == "doc.pdf", "two files handed over: copied under their names");
+    check(pickAnswer(1, done) && done.status == MEGLER_PICK_OK && done.names == got.names, "the core told: picked, their names");
+    check(files::same(source + L"\\photo one.png", folder + L"\\photo one.png") && files::same(source + L"\\doc.pdf", folder + L"\\doc.pdf"), "the copies are the files");
+    got = pickerHost::answerFromFolder(2, source, {L"photo one.png"}, folder);
+    check(got.status == MEGLER_PICK_OK && got.names.size() == 1 && got.names[0] != "photo one.png" && got.names[0].find(".png") != std::string::npos &&
+              files::same(source + L"\\photo one.png", folder + L"\\" + widen(got.names[0])),
+          "a name already in the folder made unique (" + (got.names.empty() ? std::string("none") : got.names[0]) + ")");
+    got = pickerHost::answerFromFolder(3, source, {L"missing.png"}, folder);
+    check(got.status == MEGLER_PICK_FAILED && pickAnswer(3, done) && done.status == MEGLER_PICK_FAILED && done.names.empty(), "a file that is not there: Windows failing");
+    {
+        std::string text = writtenLog();
+        check(text.find("photo one") == std::string::npos && text.find("(.png .pdf)") != std::string::npos, "the log names the extensions, not the files");
+    }
+
+    // The thunk with the flags in place: answered from a thread of its own, no window needed -- a picker's request and the
+    // camera's, its copy named as Android's camera names a photo.
+    pickerHost::setFlagSource(source);
+    files::write(flags + L"\\pick-file-doc.pdf", "");
+    const std::string folder8 = narrow(root + L"\\LocalState\\data\\app\\megler-picked\\8");
+    files::makeDirectories(widen(folder8));
+    megler_pick_request r = {};
+    r.id = 8;
+    r.kind = MEGLER_PICK_FILES;
+    r.types = "application/pdf\n";
+    r.folder = folder8.c_str();
+    check(pickerHost::thunk(nullptr, &r) && pickAnswer(8, done) && done.status == MEGLER_PICK_OK && done.names.size() == 1 && done.names[0] == "doc.pdf" &&
+              files::same(source + L"\\doc.pdf", widen(folder8) + L"\\doc.pdf"),
+          "pick-file-doc.pdf answers a request in the user's place");
+    files::write(flags + L"\\pick-file-photo one.png", "");
+    const std::string folder9 = narrow(root + L"\\LocalState\\data\\app\\megler-picked\\9");
+    files::makeDirectories(widen(folder9));
+    r.id = 9;
+    r.kind = MEGLER_PICK_PHOTO;
+    r.types = "image/jpeg\n";
+    r.folder = folder9.c_str();
+    const bool taken = pickerHost::thunk(nullptr, &r) && pickAnswer(9, done) && done.status == MEGLER_PICK_OK && done.names.size() == 1 &&
+                       done.names[0].rfind("IMG_", 0) == 0 && done.names[0].size() == 23 &&
+                       files::same(source + L"\\photo one.png", widen(folder9) + L"\\" + widen(done.names[0]));
+    check(taken, "and the camera's, as IMG_<date>_<time>.jpg (" + (done.names.empty() ? std::string("none") : done.names[0]) + ")");
+    files::write(flags + L"\\pick-cancel", "");
+    r.id = 10;
+    check(pickerHost::thunk(nullptr, &r) && pickAnswer(10, done) && done.status == MEGLER_PICK_CANCELED, "pick-cancel answers as the user backing out");
+    r.id = 11;
+    check(!pickerHost::thunk(nullptr, &r), "with no flag and no window to show a picker over, the thunk answers false at once");
+    pickerHost::setFlagSource(L"");
+}
+
 int wmain(int argc, wchar_t** argv) {
     if (argc < 2) {
         printf("usage: mg_shell_tests <scratch folder>\n");
@@ -1101,6 +1247,7 @@ int wmain(int argc, wchar_t** argv) {
     testPackageVersions();
     testTreeSize(root);
     testPermissions();
+    testPicker(root);
     shellLog::flush();
     printf("shell: %d checks, %d failed\n", gChecks, gFailed);
     return gFailed ? 1 : 0;

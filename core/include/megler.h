@@ -706,6 +706,29 @@ typedef struct megler_camera_host {
  *                it. MEGLER_STORAGE_OTHER_DEVICE when it cannot be done as a
  *                rename: the app is told EXDEV, and copies and removes, as
  *                it would between two disks.
+ *   thumbnail    Windows' own picture of a file in a link -- what the Photos
+ *                app and the file picker show of it, out of Windows' cache of
+ *                them where it has one, and a video's frame, which the layer
+ *                has no way to of its own -- asked for without waiting: true
+ *                when `done` will be called once, from any thread, false
+ *                when it will not be (it is not called then). `size` is the
+ *                length of the picture's longer side the caller wants, in
+ *                pixels; Windows gives about that. `mode`:
+ *                  MEGLER_THUMBNAIL_WHOLE     the whole of it, its proportions
+ *                      kept (Windows' ThumbnailMode.SingleItem);
+ *                  MEGLER_THUMBNAIL_SQUARE    its middle, cut square
+ *                      (ListView);
+ *                  MEGLER_THUMBNAIL_PICTURES, MEGLER_THUMBNAIL_VIDEOS  as
+ *                      Windows shows them in a gallery, cut wider than high
+ *                      (PicturesView, VideosView).
+ *                `done` is given `core` back, a status, and the picture as
+ *                the bytes of an image file (BMP, JPEG or PNG, upright as
+ *                the file says it is to be seen), which are the shell's
+ *                again when done returns; the status MEGLER_STORAGE_OK with
+ *                them, or why there are none: MEGLER_STORAGE_NOT_FOUND, or
+ *                MEGLER_STORAGE_FAILED (Windows had nothing better than the
+ *                icon of the file's type). May be left NULL: the layer makes
+ *                its own pictures of what it can decode.
  *
  * `path` is UTF-8 and relative to the link's folder, parts joined by "/",
  * none at either end; "" is the link's folder itself (only ever opened, as a
@@ -720,7 +743,8 @@ typedef struct megler_camera_host {
  * maps nor needs to know.
  *
  * The calls come on the app's own threads, any of them and several at once,
- * and never on the shell's UI thread; each returns when it is done. They are
+ * and never on the shell's UI thread; each returns when it is done, but
+ * thumbnail, which returns at once and answers through `done`. They are
  * the cost of every open() and stat() in a link, so what was found out about
  * a folder is worth keeping.
  *
@@ -740,6 +764,9 @@ typedef struct megler_storage_link {
     bool writable;
 } megler_storage_link;
 
+enum { MEGLER_THUMBNAIL_WHOLE = 0, MEGLER_THUMBNAIL_SQUARE = 1, MEGLER_THUMBNAIL_PICTURES = 2, MEGLER_THUMBNAIL_VIDEOS = 3 };
+typedef void (MEGLER_CB *megler_storage_thumbnail_done)(void *core, int status, const void *data, size_t size);
+
 typedef struct megler_storage_host {
     void *user;
     const megler_storage_link *links;
@@ -748,6 +775,7 @@ typedef struct megler_storage_host {
     bool (MEGLER_CB *make_folder)(void *user, int link, const char *path, int *error);
     bool (MEGLER_CB *remove)(void *user, int link, const char *path, bool folder, int *error);
     bool (MEGLER_CB *rename)(void *user, int from_link, const char *from, int to_link, const char *to, int *error);
+    bool (MEGLER_CB *thumbnail)(void *user, int link, const char *path, int size, int mode, megler_storage_thumbnail_done done, void *core);
 } megler_storage_host;
 
 /*
@@ -1573,8 +1601,57 @@ typedef struct megler_display_host {
  *                with `ask`, the user is asked where they have not answered, on a thread of the framework's that waits
  *                (megler.MicroG gives Google Play services' context an attribution tag only where it is _GRANTED).
  *                Left NULL: every group is granted, nothing asked.
+ *   pick         The phone's own picker of files, or its camera, for what an app asks of Android's: its documents UI and
+ *                gallery (ACTION_GET_CONTENT, ACTION_OPEN_DOCUMENT, ACTION_PICK of pictures, Android 13's photo picker
+ *                MediaStore.ACTION_PICK_IMAGES) and its camera app (MediaStore.ACTION_IMAGE_CAPTURE, ACTION_VIDEO_CAPTURE).
+ *                See megler_pick_request. It comes on the app's main thread and returns at once: true when the shell will
+ *                answer (megler_pick_done, once), false when it will not (a picker is up already, or there is none) -- the
+ *                app is then told the user backed out. Left NULL: every such request is answered so.
  */
 enum { MEGLER_PERMISSION_UNDECIDED = 0, MEGLER_PERMISSION_GRANTED = 1, MEGLER_PERMISSION_DENIED = 2, MEGLER_PERMISSION_DENIED_FIXED = 3 };
+
+/*
+ * A request for the phone's picker or camera (megler_system_host.pick), made by the framework (megler.Pickers):
+ *   id          its number, which the answer names.
+ *   kind        MEGLER_PICK_FILES: files the user picks (Windows' FileOpenPicker); MEGLER_PICK_PHOTO or MEGLER_PICK_VIDEO:
+ *               a photo or a video the user takes (Windows' CameraCaptureUI).
+ *   types       the MIME types the app takes, as its intent has them (its type, EXTRA_MIME_TYPES), each followed by '\n':
+ *               "application/pdf\n", "image/png\nvideo/mp4\n"; a kind of them whole is its name, a slash and a star
+ *               (every picture), and any file at all a star, a slash and a star -- or "".
+ *   multiple    whether several may be picked (EXTRA_ALLOW_MULTIPLE, MediaStore.EXTRA_PICK_IMAGES_MAX above 1); `max` the
+ *               most the app takes, 0 for no limit.
+ *   folder      a host folder of the app's data, made for this request and empty, where the shell puts what the user
+ *               picked or took: a copy of each file, under the name the user saw it by (made unique within the folder).
+ *               Copies, because the app reads the file after the picker has gone -- at once, or the next day from a
+ *               link it kept -- from any of its threads, and the access Windows' broker lends to a picked file is the
+ *               shell's, through the StorageFile it handed over, and to nobody's path.
+ *   duration_s  a video's longest length in seconds (EXTRA_DURATION_LIMIT), 0 for none; `quality` its quality
+ *               (EXTRA_VIDEO_QUALITY: 0 low, 1 high), -1 where the app said none.
+ *   start       where the picker opens (MEGLER_PICK_START_*): the pictures, videos or music library, for an app that
+ *               takes those, else the documents.
+ * The strings are the call's alone: the shell copies what it keeps before it returns.
+ */
+enum { MEGLER_PICK_FILES = 0, MEGLER_PICK_PHOTO = 1, MEGLER_PICK_VIDEO = 2 };
+enum { MEGLER_PICK_START_DOCUMENTS = 0, MEGLER_PICK_START_PICTURES = 1, MEGLER_PICK_START_VIDEOS = 2, MEGLER_PICK_START_MUSIC = 3 };
+typedef struct megler_pick_request {
+    unsigned id;
+    int kind;
+    const char *types;
+    bool multiple;
+    int max;
+    const char *folder;
+    int duration_s, quality;
+    int start;
+} megler_pick_request;
+/*
+ * The answer to a request (megler_system_host.pick), from any thread, once: MEGLER_PICK_OK with the names of the `count`
+ * files the shell put in the request's folder, in the order picked (UTF-8, names alone); MEGLER_PICK_CANCELED when the
+ * user backed out; MEGLER_PICK_FAILED when Windows could not show the picker or the camera, or the copy failed (the shell's
+ * log says why). It reaches the app's main thread, which gives it to the activity that asked once the app is in front
+ * again (onActivityResult, as Android gives the result of another app's activity). With no Java app running it is dropped.
+ */
+enum { MEGLER_PICK_OK = 0, MEGLER_PICK_CANCELED = 1, MEGLER_PICK_FAILED = 2 };
+MEGLER_API void megler_pick_done(unsigned id, int status, int count, const char *const *names);
 
 typedef struct megler_system_host {
     void *user;
@@ -1584,6 +1661,7 @@ typedef struct megler_system_host {
     bool (MEGLER_CB *launch_app)(void *user, const char *package, const char *activity);
     bool (MEGLER_CB *uninstall_app)(void *user, const char *package);
     int (MEGLER_CB *permission)(void *user, const char *group, bool ask);
+    bool (MEGLER_CB *pick)(void *user, const megler_pick_request *request);
 } megler_system_host;
 
 /*

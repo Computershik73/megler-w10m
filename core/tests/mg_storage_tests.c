@@ -15,6 +15,7 @@
  * plain one does. core/tests is not where that is found out.
  */
 #include "mg_storage_tests.h"
+#include "mg_gfx_standin.h"
 
 #include <stdio.h>
 
@@ -127,6 +128,58 @@ static MEGLER_CB bool fake_remove(void *user, int root, const char *rel, bool di
     return ok;
 }
 
+/*
+ * The stand-in's pictures of files, answered as the shell answers: later, on a thread of its own. What it answers is the
+ * text "picture of <path> at <size>, <mode>" for a file that is there, MEGLER_STORAGE_NOT_FOUND for one that is not; a
+ * file named slow.png is answered half a second later; for one named none.png no answer is to come (false).
+ */
+typedef struct fake_picture {
+    int root, size, mode;
+    char *rel;
+    megler_storage_thumbnail_done done;
+    void *core;
+} fake_picture;
+
+static MG_HOSTCB void fake_picture_run(void *arg)
+{
+    fake_picture *f = (fake_picture *)arg;
+    char *path = fake_path(f->root, f->rel), text[256];
+    mg_stat st;
+    mg_sleep_ns(strstr(f->rel, "slow.png") ? 500000000ull : 20000000ull);
+    if (!path || !mg_path_stat(path, &st, NULL) || st.is_dir) {
+        f->done(f->core, MEGLER_STORAGE_NOT_FOUND, NULL, 0);
+    } else {
+        snprintf(text, sizeof(text), "picture of %s at %d, %d", f->rel, f->size, f->mode);
+        f->done(f->core, MEGLER_STORAGE_OK, text, strlen(text));
+    }
+    free(path);
+    free(f->rel);
+    free(f);
+}
+
+static MEGLER_CB bool fake_thumbnail(void *user, int root, const char *rel, int size, int mode, megler_storage_thumbnail_done done, void *core)
+{
+    fake_picture *f;
+    mg_thread *t;
+    (void)user;
+    if (strstr(rel, "none.png")) return false;
+    f = (fake_picture *)mg_alloc(sizeof(*f));
+    f->root = root;
+    f->rel = mg_strdup(rel);
+    f->size = size;
+    f->mode = mode;
+    f->done = done;
+    f->core = core;
+    t = mg_thread_start(fake_picture_run, f, 0, "fake-picture");
+    if (!t) {
+        free(f->rel);
+        free(f);
+        return false;
+    }
+    mg_thread_detach(t);
+    return true;
+}
+
 /* Set, the stand-in moves no folder into another folder: what a phone's shell is expected to say of that, tried here. */
 static bool g_fake_moves_no_folder;
 
@@ -182,6 +235,15 @@ static MEGLER_CB MG_HOSTCB bool counted_rename(void *user, int from_link, const 
     return g_inner.rename(g_inner.user, from_link, from, to_link, to, err);
 }
 
+static volatile i32 g_pictures_asked;
+
+static MEGLER_CB MG_HOSTCB bool counted_thumbnail(void *user, int link, const char *path, int size, int mode, megler_storage_thumbnail_done done, void *core)
+{
+    (void)user;
+    mg_atomic_add(&g_pictures_asked, 1);
+    return g_inner.thumbnail(g_inner.user, link, path, size, mode, done, core);
+}
+
 static const mg_foreign k_counted = { NULL, counted_open, counted_mkdir, counted_remove, counted_rename };
 
 /* ------------------------------------------------------- the host layer */
@@ -197,6 +259,44 @@ static MG_HOSTCB void list_one(const char *name, bool is_dir, void *user)
     if (l->count < 16) mg_strlcpy(l->names[l->count], name, sizeof(l->names[0]));
     l->count++;
     if (is_dir) l->dirs++;
+}
+
+/* A listing with what each entry says of itself (mg_path_list_stat): its kind, size and time beside its name. */
+typedef struct stat_listing {
+    int count, dirs, selves;
+    u64 bytes, self_id;
+    i64 oldest, newest;
+    char names[16][64];
+    u64 sizes[16];
+} stat_listing;
+
+static MG_HOSTCB void stat_one(const char *name, const mg_stat *st, void *user)
+{
+    stat_listing *l = (stat_listing *)user;
+    /* (The folder itself comes first, as ".".) */
+    if (!strcmp(name, ".")) {
+        if (st->is_dir && !l->count) l->selves++;
+        l->self_id = st->id;
+        return;
+    }
+    if (l->count < 16) {
+        mg_strlcpy(l->names[l->count], name, sizeof(l->names[0]));
+        l->sizes[l->count] = st->is_dir ? (u64)-1 : st->size;
+    }
+    l->count++;
+    if (st->is_dir) l->dirs++;
+    else l->bytes += st->size;
+    if (!l->oldest || st->mtime_ns < l->oldest) l->oldest = st->mtime_ns;
+    if (st->mtime_ns > l->newest) l->newest = st->mtime_ns;
+}
+
+/* The size a stat listing gave a name: -1 for a folder, -2 for a name it did not give. */
+static i64 stat_listed(const stat_listing *l, const char *name)
+{
+    int i;
+    for (i = 0; i < l->count && i < 16; i++)
+        if (!strcmp(l->names[i], name)) return l->sizes[i] == (u64)-1 ? -1 : (i64)l->sizes[i];
+    return -2;
 }
 
 static bool listed(const listing *l, const char *name)
@@ -356,6 +456,27 @@ static void test_foreign_paths(const char *scratch)
         CHECK(!mg_map_open(&map, L0 "/nothing"));
     }
 
+    /*
+     * A file's times set (mg_path_set_times, as utimensat sets them): the last change to a time of the caller's, the last
+     * access left as it was, through the owner's handle; a folder of a root left as it is (true); a file not there refused.
+     * And a file of the host's own by its plain path.
+     */
+    {
+        mg_stat before, after;
+        char *own = mg_sprintf("%s/times.txt", scratch);
+        CHECK(mg_path_stat(L0 "/a.txt", &before, &err));
+        CHECK(mg_path_set_times(L0 "/a.txt", MG_TIME_KEEP, 1500000000ll * 1000000000ll, &err));
+        CHECK(mg_path_stat(L0 "/a.txt", &after, &err) && after.mtime_ns == 1500000000ll * 1000000000ll && after.size == before.size);
+        CHECK(mg_path_set_times(L0 "/a.txt", 1400000000ll * 1000000000ll, 1600000000ll * 1000000000ll + 500000000ll, &err));
+        CHECK(mg_path_stat(L0 "/a.txt", &after, &err) && after.mtime_ns == 1600000000ll * 1000000000ll + 500000000ll);
+        CHECK(!mg_path_set_times(L0 "/nothing", MG_TIME_KEEP, 1500000000ll * 1000000000ll, &err) && err == MG_E_NOENT);
+        CHECK(mg_path_set_times(L0, MG_TIME_KEEP, 1500000000ll * 1000000000ll, &err));
+        CHECK(mg_file_write_all(own, "own", 3));
+        CHECK(mg_path_set_times(own, MG_TIME_KEEP, 1234567890ll * 1000000000ll, &err) && mg_path_stat(own, &after, &err) && after.mtime_ns == 1234567890ll * 1000000000ll);
+        mg_path_remove(own, NULL);
+        free(own);
+    }
+
     /* Folders: made one at a time and all at once, listed through a handle, in the way of a file. */
     CHECK(mg_path_mkdir(L0 "/dir", &err));
     CHECK(!mg_path_mkdir(L0 "/dir", &err) && err == MG_E_EXIST);
@@ -378,6 +499,41 @@ static void test_foreign_paths(const char *scratch)
     CHECK(mg_path_list(L0 "/dir", list_one, &seen, &err) && seen.count == 0);
     CHECK(!mg_path_list(L0 "/a.txt", list_one, &seen, &err) && err == MG_E_NOTDIR);
     CHECK(!mg_path_list(L0 "/nothing", list_one, &seen, &err) && err == MG_E_NOENT);
+    /*
+     * The same listings with each entry's size and time (what the media provider indexes the phone's folders by): the
+     * sizes the files have, the folders as folders, the times what each says of itself -- and the whole of it one call to
+     * whoever owns the root, the folder's handle, never one for each entry.
+     */
+    {
+        stat_listing sl;
+        mg_stat a_st;
+        u64 root_id, deep_id;
+        i32 calls = g_calls;
+        memset(&sl, 0, sizeof(sl));
+        CHECK(mg_path_list_stat(L0, stat_one, &sl, &err));
+        CHECK_INT(g_calls - calls, 1);
+        CHECK(sl.count == 3 && sl.dirs == 2 && stat_listed(&sl, "a.txt") == 6 && stat_listed(&sl, "dir") == -1 && stat_listed(&sl, "deep") == -1);
+        /* The folder itself, first: one id for it however often it is listed, another for another folder (where the host says
+           ids at all: a foreign folder's always). */
+        root_id = sl.self_id;
+        CHECK(sl.selves == 1 && root_id != 0);
+        CHECK(mg_path_stat(L0 "/a.txt", &a_st, &err) && sl.oldest > 1600000000ll * 1000000000ll && sl.newest >= a_st.mtime_ns && sl.oldest <= a_st.mtime_ns);
+        memset(&sl, 0, sizeof(sl));
+        CHECK(mg_path_list_stat(L0 "/deep/er", stat_one, &sl, &err) && sl.count == 2 && stat_listed(&sl, "inner.bin") == 3 && stat_listed(&sl, "still") == -1);
+        deep_id = sl.self_id;
+        CHECK(sl.selves == 1 && deep_id != 0 && deep_id != root_id);
+        memset(&sl, 0, sizeof(sl));
+        CHECK(mg_path_list_stat(L0 "/deep/er", stat_one, &sl, &err) && sl.self_id == deep_id);
+        memset(&sl, 0, sizeof(sl));
+        CHECK(mg_path_list_stat(L0 "/dir", stat_one, &sl, &err) && sl.count == 0 && sl.selves == 1);
+        CHECK(!mg_path_list_stat(L0 "/a.txt", stat_one, &sl, &err) && err == MG_E_NOTDIR);
+        CHECK(!mg_path_list_stat(L0 "/nothing", stat_one, &sl, &err) && err == MG_E_NOENT);
+        /* And an ordinary folder of the host's: the root's own, as the scratch folder has it. */
+        free(plain);
+        plain = mg_sprintf("%s/deep/er", g_roots[0]);
+        memset(&sl, 0, sizeof(sl));
+        CHECK(mg_path_list_stat(plain, stat_one, &sl, &err) && sl.count == 2 && stat_listed(&sl, "inner.bin") == 3 && stat_listed(&sl, "still") == -1);
+    }
     /* More entries than one bufferful of them (the Win32 host reads a directory 16 KB at a time). */
     CHECK(mg_path_mkdir(L1 "/many", &err));
     for (i = 0; i < 300; i++) {
@@ -388,6 +544,13 @@ static void test_foreign_paths(const char *scratch)
     CHECK_INT(i, 300);
     memset(&seen, 0, sizeof(seen));
     CHECK(mg_path_list(L1 "/many", list_one, &seen, &err) && seen.count == 300 && seen.dirs == 0);
+    {
+        stat_listing sl;
+        i32 calls = g_calls;
+        memset(&sl, 0, sizeof(sl));
+        CHECK(mg_path_list_stat(L1 "/many", stat_one, &sl, &err) && sl.count == 300 && sl.dirs == 0 && sl.bytes == 300);
+        CHECK_INT(g_calls - calls, 1);
+    }
     for (i = 0; i < 300; i++) {
         char *name = mg_sprintf(L1 "/many/a-file-with-a-name-long-enough-to-fill-the-buffer-%03d.dat", i);
         if (!mg_path_remove(name, &err)) break;
@@ -841,6 +1004,7 @@ static void test_layout(const char *data)
     host.make_folder = counted_mkdir;
     host.remove = counted_remove;
     host.rename = counted_rename;
+    host.thumbnail = g_inner.thumbnail ? counted_thumbnail : NULL;
     mg_run_files(data, data, PKG, &host);
 
     /* Five names, one place. */
@@ -1130,6 +1294,173 @@ typedef struct worker {
  * before the storage host is asked), each such name is made, read back, listed exactly as it was named, stat'ed, renamed,
  * and removed; and a name that needed nothing is still what it was on the host's own disk.
  */
+/* The size of a picture in an image file's bytes -- BMP, PNG or baseline JPEG -- or false. */
+static bool picture_size(const u8 *b, size_t n, int *w, int *h)
+{
+    size_t at;
+    if (n >= 26 && b[0] == 'B' && b[1] == 'M') {
+        *w = (int)mg_rd32(b + 18);
+        *h = (int)mg_rd32(b + 22);
+        if (*h < 0) *h = -*h;
+        return *w > 0 && *h > 0;
+    }
+    if (n >= 24 && b[0] == 0x89 && b[1] == 'P' && b[2] == 'N' && b[3] == 'G') {
+        *w = (int)((u32)b[16] << 24 | (u32)b[17] << 16 | (u32)b[18] << 8 | b[19]);
+        *h = (int)((u32)b[20] << 24 | (u32)b[21] << 16 | (u32)b[22] << 8 | b[23]);
+        return *w > 0 && *h > 0;
+    }
+    if (n < 4 || b[0] != 0xFF || b[1] != 0xD8) return false;
+    for (at = 2; at + 9 < n;) {
+        unsigned marker, len;
+        if (b[at] != 0xFF) return false;
+        marker = b[at + 1];
+        len = (unsigned)b[at + 2] << 8 | b[at + 3];
+        if (marker >= 0xC0 && marker <= 0xCF && marker != 0xC4 && marker != 0xC8 && marker != 0xCC) {
+            *h = (int)((unsigned)b[at + 5] << 8 | b[at + 6]);
+            *w = (int)((unsigned)b[at + 7] << 8 | b[at + 8]);
+            return *w > 0 && *h > 0;
+        }
+        at += 2 + len;
+    }
+    return false;
+}
+
+typedef struct picture_buf {
+    u8 *data;
+    size_t len, cap;
+} picture_buf;
+
+static MEGLER_CB bool picture_sink(void *sink, const void *data, size_t size)
+{
+    picture_buf *b = (picture_buf *)sink;
+    if (b->len + size > b->cap) {
+        size_t cap = (b->len + size) * 2;
+        u8 *grown = (u8 *)realloc(b->data, cap);
+        if (!grown) return false;
+        b->data = grown;
+        b->cap = cap;
+    }
+    memcpy(b->data + b->len, data, size);
+    b->len += size;
+    return true;
+}
+
+/* A file made (or made anew) with these bytes in it, through the C library. */
+static bool put_bytes(const char *path, const void *data, size_t len)
+{
+    int fd = C.open(path, T_WRONLY | T_CREAT | T_TRUNC, 0644);
+    bool ok;
+    if (fd < 0) return false;
+    ok = C.write(fd, data, (u32)len) == (i32)len;
+    return C.close(fd) == 0 && ok;
+}
+
+/*
+ * Pictures of files in a link, from whoever owns it (megler_storage_host.thumbnail): asked for without waiting, answered on
+ * a thread of theirs, and waited for by the layer (mg_run_storage_thumbnail) for so long. With the stand-in: its answer as
+ * it gave it; a file not there NOT_FOUND; a path in no link not asked about at all; no answer to come refused at once; an
+ * answer later than the wait BUSY, and when it comes, dropped. With the shell's own host (on a PC): Windows' picture of a
+ * PNG of 300 x 200 -- an image file's bytes, about the size asked for, as wide as the PNG -- and of a video where the run
+ * has one (MG_TEST_CLIP, made by tools/build-tests.sh with ffmpeg).
+ */
+static void test_thumbnails(bool shell)
+{
+    static const char *const gone = "/sdcard/Pictures/no-such-picture.png";
+    void *data = NULL;
+    size_t len = 0;
+    int status = -1, w = 0, h = 0;
+    i32 asked;
+    char *host;
+    say("pictures of files in a link, asked of their owner and waited for");
+    CHECK(g_inner.thumbnail != NULL);
+    if (!g_inner.thumbnail) return;
+    if (shell) {
+        /* A PNG of 300 x 200, its left half one colour and its right half another. */
+        u32 *px = (u32 *)mg_alloc(300 * 200 * 4);
+        picture_buf png;
+        int i;
+        memset(&png, 0, sizeof(png));
+        for (i = 0; i < 300 * 200; i++) px[i] = (i % 300) < 150 ? 0xFFFF0000u : 0xFF0000FFu;
+        CHECK(mg_gfx_standin()->image_encode(NULL, px, 300, 200, 300 * 4, MEGLER_GFX_PNG, 100, picture_sink, &png));
+        CHECK(png.len > 0 && put_bytes("/sdcard/Pictures/picture.png", png.data, png.len));
+        free(png.data);
+        free(px);
+    } else {
+        CHECK(put("/sdcard/Pictures/picture.png", "not really a picture"));
+        CHECK(put("/sdcard/Pictures/slow.png", "slow"));
+    }
+    host = mg_fs_host_path("/sdcard/Pictures/picture.png");
+    CHECK(host && mg_path_is_foreign(host));
+    asked = g_pictures_asked;
+    CHECK(mg_run_storage_thumbnail(host, 96, MEGLER_THUMBNAIL_WHOLE, 20000, &data, &len, &status) && status == MEGLER_STORAGE_OK && data && len > 0);
+    CHECK_INT(g_pictures_asked - asked, 1);
+    if (data && shell) {
+        CHECK(picture_size((const u8 *)data, len, &w, &h) && w > h && w <= 300 && h >= 40);
+        say("  Windows' picture of a PNG of 300 x 200, asked for at 96: %d x %d, %d bytes", w, h, (int)len);
+    } else if (data) {
+        CHECK(len == strlen("picture of picture.png at 96, 0") && !memcmp(data, "picture of picture.png at 96, 0", len));
+    }
+    free(data);
+    data = NULL;
+    free(host);
+    /* The square kind, through the same way. */
+    host = mg_fs_host_path("/sdcard/Pictures/picture.png");
+    CHECK(mg_run_storage_thumbnail(host, 64, MEGLER_THUMBNAIL_SQUARE, 20000, &data, &len, &status) && status == MEGLER_STORAGE_OK);
+    if (data && shell) CHECK(picture_size((const u8 *)data, len, &w, &h) && w == h);
+    else if (data) CHECK(len == strlen("picture of picture.png at 64, 1") && !memcmp(data, "picture of picture.png at 64, 1", len));
+    free(data);
+    data = NULL;
+    free(host);
+    /* A file that is not there, and a path in no link (the shared storage's own Download), which nobody is asked about. */
+    host = mg_fs_host_path(gone);
+    CHECK(!mg_run_storage_thumbnail(host, 96, MEGLER_THUMBNAIL_WHOLE, 20000, &data, &len, &status) && status == MEGLER_STORAGE_NOT_FOUND && !data);
+    free(host);
+    CHECK(put("/sdcard/Download/plain.png", "plain"));
+    host = mg_fs_host_path("/sdcard/Download/plain.png");
+    asked = g_pictures_asked;
+    CHECK(host && !mg_path_is_foreign(host));
+    CHECK(!mg_run_storage_thumbnail(host, 96, MEGLER_THUMBNAIL_WHOLE, 20000, &data, &len, &status) && status == MEGLER_STORAGE_INVALID && !data);
+    CHECK_INT(g_pictures_asked - asked, 0);
+    free(host);
+    CHECK(C.unlink("/sdcard/Download/plain.png") == 0);
+    if (!shell) {
+        /* No answer to come: refused at once. One later than the wait: BUSY, and its answer, when it comes, dropped. */
+        CHECK(put("/sdcard/Pictures/none.png", "none"));
+        host = mg_fs_host_path("/sdcard/Pictures/none.png");
+        CHECK(!mg_run_storage_thumbnail(host, 96, MEGLER_THUMBNAIL_WHOLE, 20000, &data, &len, &status) && status == MEGLER_STORAGE_FAILED && !data);
+        free(host);
+        host = mg_fs_host_path("/sdcard/Pictures/slow.png");
+        CHECK(!mg_run_storage_thumbnail(host, 96, MEGLER_THUMBNAIL_WHOLE, 100, &data, &len, &status) && status == MEGLER_STORAGE_BUSY && !data);
+        mg_sleep_ns(700000000ull);
+        CHECK(mg_run_storage_thumbnail(host, 96, MEGLER_THUMBNAIL_WHOLE, 20000, &data, &len, &status) && status == MEGLER_STORAGE_OK && len == strlen("picture of slow.png at 96, 0"));
+        free(data);
+        data = NULL;
+        free(host);
+        CHECK(C.unlink("/sdcard/Pictures/none.png") == 0 && C.unlink("/sdcard/Pictures/slow.png") == 0);
+    } else if (getenv("MG_TEST_CLIP")) {
+        /* A video's frame, which only Windows gives here: into the read-only link Books by the host's own path. */
+        size_t clip_len = 0;
+        void *clip = mg_file_read_all(getenv("MG_TEST_CLIP"), &clip_len);
+        char *to = mg_sprintf("%s/clip.mp4", g_roots[2]);
+        CHECK(clip && clip_len > 0 && mg_file_write_all(to, clip, clip_len));
+        host = mg_fs_host_path("/sdcard/Books/clip.mp4");
+        CHECK(mg_run_storage_thumbnail(host, 96, MEGLER_THUMBNAIL_WHOLE, 30000, &data, &len, &status) && status == MEGLER_STORAGE_OK && data);
+        if (data) {
+            CHECK(picture_size((const u8 *)data, len, &w, &h) && w > h);
+            say("  Windows' picture of a video of 160 x 120, asked for at 96: %d x %d, %d bytes", w, h, (int)len);
+        }
+        free(data);
+        data = NULL;
+        free(host);
+        mg_path_remove(to, NULL);
+        free(to);
+        free(clip);
+    } else {
+        say("  (no video to ask Windows for a picture of: MG_TEST_CLIP is not set -- tools/build-tests.sh win makes one with ffmpeg)");
+    }
+    CHECK(C.unlink("/sdcard/Pictures/picture.png") == 0);
+}
+
 static void test_odd_names(void)
 {
     static const char *const odd[] = { "arn:aws:remote-config:us-west-2:455205533140:appConfig:apiz0o87_ConfigurationCache.db", "a<b>c", "say \"so\"", "back\\slash",
@@ -1685,6 +2016,7 @@ static int run_in(const char *base, mg_storage_host_maker make, mg_test_sink sin
         g_inner.make_folder = fake_mkdir;
         g_inner.remove = fake_remove;
         g_inner.rename = fake_rename;
+        g_inner.thumbnail = fake_thumbnail;
     }
     if (g_inner.open && g_inner.make_folder && g_inner.remove && g_inner.rename) {
         test_foreign_paths(base);
@@ -1693,6 +2025,7 @@ static int run_in(const char *base, mg_storage_host_maker make, mg_test_sink sin
             test_clear_data(data);
             test_clear_cache(data);
             test_layout(data);
+            test_thumbnails(make != NULL);
             test_threads();
             test_odd_names();
             test_file_modes();

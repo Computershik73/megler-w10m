@@ -3,6 +3,9 @@
 # no other, as the Google logo of Google Play services' account screens is (ProductLockupView), so the base has none of it;
 # its word gms_split_word is English's in config.en alone. The test unpacks the bundle as the shell unpacks one, for 160 dpi
 # in English and Russian: config.mdpi and config.en are kept, config.xxhdpi left out (core/tests/mg_java_tests.c).
+# And a split of assets alone (pack: split/pack/assets), kept as well: its file and the base's (assets/) are what the
+# hosting app's native code reads through their AssetManager, as the map library inside Google Play services reads its own.
 config mdpi
 config xxhdpi
 config en
+assets pack

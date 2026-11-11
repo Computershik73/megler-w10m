@@ -9,7 +9,7 @@
 // where Windows Hello can check the user (megler.Biometrics). And Bluetooth and Bluetooth LE
 // (android.hardware.bluetooth, .bluetooth_le) where the phone has a radio for LE's central side (megler.Bluetooth). And getSystemAvailableFeatures lists those same
 // features and the OpenGL ES version, and getSystemSharedLibraryNames the legacy
-// Apache HTTP client, where both said nothing.
+// Apache HTTP client and android.test.base, where both said nothing.
 // And getPackageInfo names the app's split APKs (splitNames, splitRevisionCodes),
 // as ApplicationInfo does: an app in several APKs that checks for its splits by
 // this way of asking found none, where the original left them empty. Its version
@@ -37,6 +37,15 @@
 // getProviderInfo, getPackageUid, getInstalledApplications and queryContentProviders with one were stubs that found
 // nothing -- Facebook Lite's queryIntentServices and resolveContentProvider, and Messenger's resolveContentProvider.
 // And checkSignatures answers SIGNATURE_UNKNOWN_PACKAGE for a package the phone does not have, where every package matched.
+// And queryIntentActivities and resolveActivity answer the intents of Android's documents UI, photo picker and camera app
+// (GET_CONTENT, OPEN_DOCUMENT, PICK of pictures, PICK_IMAGES, IMAGE_CAPTURE, VIDEO_CAPTURE) with the system's activity of them
+// (megler.Pickers.resolveInfo: com.android.documentsui, com.android.camera2 where there is a camera), as a phone answers:
+// they found nothing, and apps that ask before they offer a button ("attach", "take a photo") offered none.
+// And the package "android" has the platform's signatures (megler.PlatformSigner: the certificate the platform's resources
+// APK is signed with), given as Android gives a package's -- signatures with GET_SIGNATURES, signingInfo with
+// GET_SIGNING_CERTIFICATES, null otherwise: its signatures were one of no bytes whatever was asked, and its signingInfo the
+// running app's own. microG's location service reads the platform's signatures as certificates for each app it has a
+// location for, and the empty one ended every such app's location requests ("CertData to small"; Citymapper, 0.1.0.690).
 package android.content.pm;
 
 import android.content.ComponentName;
@@ -112,7 +121,8 @@ public class PackageManager {
             ApplicationInfo a = new ApplicationInfo();
             a.packageName = a.processName = "android"; a.flags = ApplicationInfo.FLAG_SYSTEM; a.targetSdkVersion = a.minSdkVersion = android.os.Build.VERSION.SDK_INT; a.enabled = true;
             p.applicationInfo = a;
-            p.signatures = new Signature[] { new Signature("") };
+            p.signatures = (flags & GET_SIGNATURES) != 0 ? megler.PlatformSigner.signatures() : null;
+            p.signingInfo = (flags & GET_SIGNING_CERTIFICATES) != 0 ? new SigningInfo(megler.PlatformSigner.signatures()) : null;
             return p;
         }
         if (!mine(pkg) && megler.GooglePackages.is(pkg)) return megler.GooglePackages.packageInfo(pkg, flags);
@@ -235,10 +245,11 @@ public class PackageManager {
     }
     /*
      * The device's features as Android lists them: every one hasSystemFeature says yes to, and the OpenGL ES version of the
-     * device's configuration (ConfigurationInfo.meglerDevice), as the platform adds it. And its shared libraries: the one an
-     * app can ask for and have, Android's legacy Apache HTTP client (drivers/mg_java.c). Both said nothing before, and Play
-     * Store described to Google's server a device with no touchscreen, no screen, no OpenGL ES and no libraries; its table of
-     * contents asked again for the device's configuration after each upload ("Failed to converge on device config for TOC").
+     * device's configuration (ConfigurationInfo.meglerDevice), as the platform adds it. And its shared libraries: those an
+     * app can ask for and have, Android's legacy Apache HTTP client and android.test.base (drivers/mg_java.c). Both said
+     * nothing before, and Play Store described to Google's server a device with no touchscreen, no screen, no OpenGL ES and
+     * no libraries; its table of contents asked again for the device's configuration after each upload ("Failed to converge
+     * on device config for TOC").
      */
     public FeatureInfo[] getSystemAvailableFeatures() {
         ArrayList<FeatureInfo> l = new ArrayList<>();
@@ -258,7 +269,7 @@ public class PackageManager {
         l.add(gl);
         return l.toArray(new FeatureInfo[0]);
     }
-    public String[] getSystemSharedLibraryNames() { return new String[] { "org.apache.http.legacy" }; }
+    public String[] getSystemSharedLibraryNames() { return new String[] { "android.test.base", "org.apache.http.legacy" }; }
     /* The app's own as megler.Permissions has them; Google's packages hold theirs, as a phone's system apps; another app's are
        not known here, and are granted as before. */
     public int checkPermission(String perm, String pkg) { return mine(pkg) ? megler.Permissions.check(perm) : PERMISSION_GRANTED; }
@@ -318,6 +329,15 @@ public class PackageManager {
         String target = i.getComponent() != null ? i.getComponent().getPackageName() : i.getPackage();
         boolean other = target != null && !mine(target);
         megler.Manifest.Component c = other ? null : megler.Manifest.resolve(i);
+        // The system's documents UI, photo picker and camera app (megler.Pickers: Windows' picker and camera), first: what
+        // Android's picker answers is not looked for among Google Play services' activities (read whole for it, 3.8 s on a
+        // Lumia 650; and their own photo picker is not one that runs here).
+        ResolveInfo system = megler.Pickers.resolveInfo(i);
+        if (system != null) {
+            if (c != null) { ResolveInfo r = new ResolveInfo(); r.activityInfo = activity(c); l.add(r); }
+            l.add(system);
+            return l;
+        }
         megler.Manifest.Component hosted = c == null ? megler.MicroG.activity(i) : null;
         if (c != null) { ResolveInfo r = new ResolveInfo(); r.activityInfo = activity(c); l.add(r); }
         else if (hosted != null) { ResolveInfo r = new ResolveInfo(); r.activityInfo = hosted(hosted); l.add(r); return l; }

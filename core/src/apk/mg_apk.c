@@ -652,7 +652,7 @@ typedef struct lib_walk {
     int count;
 } lib_walk;
 
-enum { L_UNITY, L_UE4, L_COCOS, L_GODOT, L_SDL, L_MAIN, L_GDX, L_FLUTTER, L_MONO, L_IL2CPP, L_DEXPROTECTOR, L_VULKAN_ONLY };
+enum { L_UNITY, L_UE4, L_COCOS, L_GODOT, L_SDL, L_MAIN, L_GDX, L_FLUTTER, L_MONO, L_IL2CPP, L_DEXPROTECTOR, L_VULKAN_ONLY, L_PAIRIP };
 
 static void lib_seen(const mg_zip_entry *e, void *user)
 {
@@ -672,6 +672,7 @@ static void lib_seen(const mg_zip_entry *e, void *user)
     if (!strcmp(name, "libgdx.so")) w->has[L_GDX] = true;
     if (!strcmp(name, "libflutter.so")) w->has[L_FLUTTER] = true;
     if (!strcmp(name, "libdexprotector.so")) w->has[L_DEXPROTECTOR] = true;
+    if (!strcmp(name, "libpairipcore.so")) w->has[L_PAIRIP] = true;
 }
 
 static void abi_seen(const mg_zip_entry *e, void *user)
@@ -1098,6 +1099,15 @@ static void classify(mg_apk_info *info, mg_zip *const *zips, int nzips, char (*b
         note(info, "Built with SDL: its SDLActivity runs as a Java app, and the game draws with OpenGL ES on the activity's surface.");
     if (w.has[L_DEXPROTECTOR])
         note(info, "Protected by DexProtector: most of the app's code is encrypted in the APK and decrypted while it starts by a packed native library made for Android's own runtime. Such an app may stop before its first screen.");
+    /*
+     * PairIP (libpairipcore.so, Google Play's protection): its VM's program forks a process (clone with no flags) that attaches
+     * to the app with ptrace and writes into its memory; with ENOSYS the VM ends the app in abort() (Earn to Die Rogue's
+     * startup program, libpairipcore.so+0x2e4b0, under qemu). In a Unity game its native protection is worse off still: the
+     * engine's protected functions are decrypted by that VM through the app's Java, which the Unity driver does not run, and
+     * the game ended executing them encrypted (0.1.0.681).
+     */
+    if (w.has[L_PAIRIP])
+        note(info, "Protected by Google Play's PairIP, whose checks start a process that traces the app (fork and ptrace): Windows gives an app neither, and such an app may end as it starts.");
     if (!strcmp(info->engine, "native-activity") && info->has_code && strcmp(info->activity, "android.app.NativeActivity"))
         note(info, "Its activity (%s) is the app's own Java class on top of NativeActivity. That Java code is not run here: the app starts, and gets as far as it can without it.",
              info->activity);

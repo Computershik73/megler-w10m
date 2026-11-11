@@ -45,6 +45,7 @@
 #include "../src/jni/mg_jni_loop.h"
 #include "../src/ld/mg_ld.h"
 #include "../src/ndk/mg_egl.h"
+#include "../src/ndk/mg_audio.h"
 #include "../src/ndk/mg_media.h"
 #include "../src/sqlite/mg_sqlite.h"
 #if defined(MG_HAVE_SQLITE) && MG_HAVE_SQLITE
@@ -1717,6 +1718,20 @@ static void test_mmap_commit(void)
     c = mg_mem_committed(p, 64 * MB);
     CHECK(c == -1 || c == 0);
     CHECK(mprotect_(p + MB, MB, RW) == 0 && p[MB] == 0 && p[2 * MB - 1] == 0);
+    /* An address inside a page: EINVAL, and the page it is in keeps its access (Gojek's guard page at an unaligned address). */
+    {
+        typedef int *(*errno_fn)(void);
+        errno_fn errno_ = (errno_fn)mg_bionic_find("__errno");
+        CHECK(errno_ != NULL);
+        if (errno_) {
+            *errno_() = 0;
+            CHECK(mprotect_(p + MB + MG_PAGE + 25, MG_PAGE, NONE) == -1 && *errno_() == 22);
+            p[MB + MG_PAGE] = 5;
+            p[MB + 2 * MG_PAGE + 24] = 6;
+            CHECK(p[MB + MG_PAGE] == 5 && p[MB + 2 * MG_PAGE + 24] == 6);
+            CHECK(mprotect_(p + MB + MG_PAGE, MG_PAGE + 25, RW) == 0);
+        }
+    }
     CHECK(munmap_(p, 64 * MB) == 0);
     q = (u8 *)mmap_(NULL, MB, RW, PRIVATE | ANONYMOUS, -1, 0);
     CHECK(q && q != (u8 *)(mg_addr)-1);
@@ -2182,6 +2197,62 @@ static int regex_run(const char *pattern, int cflags, const char *subject, int e
     return r;
 }
 
+/*
+ * What a walk (ftw, nftw) told its function, in the order told: "path what base level", what being F (a file), D (a
+ * directory entered), R (one not read), P (one left) or N (no stat); and what was wrong about a call (`bad`): a stat that
+ * is not the file's, a name that does not start where it is said to, a working directory that is not the file's.
+ */
+typedef struct t_ftw {
+    int base, level;
+} t_ftw;
+static struct {
+    char told[16][96];
+    int count, bad, stop_at;
+    bool chdir;
+    int (*stat)(const char *, void *);
+    char *(*getcwd)(char *, size_t);
+    int (*remove)(const char *);
+} g_walk;
+
+static void walk_begin(int stop_at, bool chdir, int (*remove_)(const char *))
+{
+    memset(g_walk.told, 0, sizeof(g_walk.told));
+    g_walk.count = g_walk.bad = 0;
+    g_walk.stop_at = stop_at;
+    g_walk.chdir = chdir;
+    g_walk.remove = remove_;
+}
+
+/* Where in the order told a line is, -1 when it was not told. */
+static int walk_has(const char *line)
+{
+    int i;
+    for (i = 0; i < g_walk.count && i < 16; i++)
+        if (!strcmp(g_walk.told[i], line)) return i;
+    return -1;
+}
+
+static int walk_told(const char *path, const void *st, int what, t_ftw *f)
+{
+    u8 now[256];
+    char cwd[128];
+    const char *slash = strrchr(path, '/');
+    if (g_walk.count < 16)
+        snprintf(g_walk.told[g_walk.count], sizeof(g_walk.told[0]), "%s %c %d %d", path, what >= 0 && what < 5 ? "FDRPN"[what] : '?',
+                 f ? f->base : -1, f ? f->level : -1);
+    /* (The stat up to the times, which every ABI's has in its first 56 bytes; not of what the walk is removing.) */
+    memset(now, 0, sizeof(now));
+    if (!g_walk.remove && (!st || g_walk.stat(path, now) != 0 || memcmp(now, st, 56))) g_walk.bad++;
+    if (f && f->base > 0 && path[f->base - 1] != '/') g_walk.bad++;
+    if (f && f->level > 0 && (!slash || f->base != (int)(slash + 1 - path))) g_walk.bad++;
+    if (g_walk.chdir && f && f->level > 0 &&
+        (!g_walk.getcwd(cwd, sizeof(cwd)) || strlen(cwd) != (size_t)(f->base - 1) || strncmp(cwd, path, (size_t)(f->base - 1))))
+        g_walk.bad++;
+    if (g_walk.remove && g_walk.remove(path) != 0) g_walk.bad++;
+    return g_walk.count++ == g_walk.stop_at ? 77 : 0;
+}
+static int walk_told3(const char *path, const void *st, int what) { return walk_told(path, st, what, NULL); }
+
 static void test_libc_gaps(const char *scratch)
 {
     enum { EXT = 1, ICASE = 2, NOSUB = 4, NEWLINE = 8 };
@@ -2313,6 +2384,321 @@ static void test_libc_gaps(const char *scratch)
         }
         if (fchmodat_) CHECK(fchmodat_(-100, "/syscall-files/log.gz", 0644, 0) == 0 && fchmodat_(-100, "/syscall-files/none", 0644, 0) == -1);
     }
+
+    say("getgrgid, getgrnam and initgroups: the app's one group, none other (Jetpack Joyride's libmortargame.so imports them)");
+    {
+        typedef struct { char *name, *passwd; u32 gid; char **mem; } t_group;
+        typedef t_group *(*getgrgid_fn)(u32);
+        typedef t_group *(*getgrnam_fn)(const char *);
+        typedef int (*initgroups_fn)(const char *, u32);
+        typedef int *(*errno_fn)(void);
+        getgrgid_fn getgrgid_ = (getgrgid_fn)mg_bionic_find("getgrgid");
+        getgrnam_fn getgrnam_ = (getgrnam_fn)mg_bionic_find("getgrnam");
+        initgroups_fn initgroups_ = (initgroups_fn)mg_bionic_find("initgroups");
+        errno_fn errno_ = (errno_fn)mg_bionic_find("__errno");
+        t_group *g;
+        CHECK(getgrgid_ && getgrnam_ && initgroups_ && errno_);
+        if (getgrgid_ && getgrnam_ && initgroups_ && errno_) {
+            g = getgrgid_(10100);
+            CHECK(g && g->gid == 10100 && g->name && !strcmp(g->name, "u0_a100") && g->mem && !g->mem[0]);
+            CHECK(getgrgid_(0) == NULL);
+            g = getgrnam_("u0_a100");
+            CHECK(g && g->gid == 10100);
+            CHECK(getgrnam_("root") == NULL);
+            CHECK(initgroups_("u0_a100", 10100) == 0);
+            CHECK(initgroups_("root", 0) == -1 && *errno_() == GE_PERM);
+        }
+    }
+
+    say("ftw and nftw: a tree told before and after its directories, from inside them, stopped, removed by the walk; linkat, chroot, killpg");
+    {
+        typedef int (*nftw_fn)(const char *, int (*)(const char *, const void *, int, t_ftw *), int, int);
+        typedef int (*ftw_fn)(const char *, int (*)(const char *, const void *, int), int);
+        typedef int (*path_fn)(const char *);
+        typedef int (*mkdir_fn)(const char *, int);
+        typedef int (*open_fn)(const char *, int, int);
+        typedef long (*io_fn)(int, void *, size_t);
+        typedef int (*close_fn)(int);
+        typedef int (*stat_fn)(const char *, void *);
+        typedef char *(*getcwd_fn)(char *, size_t);
+        typedef int (*linkat_fn)(int, const char *, int, const char *, int);
+        typedef int (*killpg_fn)(int, int);
+        typedef int (*getpgid_fn)(int);
+        typedef int *(*errno_fn)(void);
+        nftw_fn nftw_ = (nftw_fn)mg_bionic_find("nftw");
+        ftw_fn ftw_ = (ftw_fn)mg_bionic_find("ftw");
+        path_fn chdir_ = (path_fn)mg_bionic_find("chdir"), chroot_ = (path_fn)mg_bionic_find("chroot"), remove_ = (path_fn)mg_bionic_find("remove");
+        mkdir_fn mkdir_ = (mkdir_fn)mg_bionic_find("mkdir");
+        open_fn open_ = (open_fn)mg_bionic_find("open");
+        io_fn write_ = (io_fn)mg_bionic_find("write");
+        close_fn close_ = (close_fn)mg_bionic_find("close");
+        stat_fn stat_ = (stat_fn)mg_bionic_find("stat");
+        getcwd_fn getcwd_ = (getcwd_fn)mg_bionic_find("getcwd");
+        linkat_fn linkat_ = (linkat_fn)mg_bionic_find("linkat");
+        killpg_fn killpg_ = (killpg_fn)mg_bionic_find("killpg");
+        getpgid_fn getpgid_ = (getpgid_fn)mg_bionic_find("getpgid");
+        errno_fn errno_ = (errno_fn)mg_bionic_find("__errno");
+        static const char *const dirs[] = { "/syscall-files/walk", "/syscall-files/walk/sub", "/syscall-files/walk/sub/deep", "/syscall-files/walk/empty" };
+        static const char *const files[] = { "/syscall-files/walk/a.txt", "/syscall-files/walk/sub/b.txt", "/syscall-files/walk/sub/deep/c.txt" };
+        char home[128], before[128], after[128];
+        u8 st[256];
+        int i, fd, made = 0;
+        mg_fs_mount("/syscall-files", scratch);
+        CHECK(nftw_ && ftw_ && mg_bionic_find("nftw64") && mg_bionic_find("ftw64") && chdir_ && chroot_ && remove_ && mkdir_ && open_ && write_ &&
+              close_ && stat_ && getcwd_ && linkat_ && killpg_ && getpgid_ && errno_);
+        if (nftw_ && ftw_ && chdir_ && chroot_ && remove_ && mkdir_ && open_ && write_ && close_ && stat_ && getcwd_ && linkat_ && killpg_ &&
+            getpgid_ && errno_) {
+            g_walk.stat = stat_;
+            g_walk.getcwd = getcwd_;
+            for (i = 0; i < 4; i++) mkdir_(dirs[i], 0700);
+            for (i = 0; i < 3; i++) {
+                fd = open_(files[i], 01 | 0100 | 01000, 0600);
+                if (fd >= 0 && write_(fd, "walked", 6) == 6) made++;
+                if (fd >= 0) close_(fd);
+            }
+            CHECK(made == 3);
+
+            /* A directory before what is in it; each told once, with where its name starts and how deep it is. */
+            walk_begin(-1, false, NULL);
+            CHECK(nftw_("/syscall-files/walk", walk_told, 8, 0) == 0 && g_walk.count == 7 && !g_walk.bad);
+            CHECK(walk_has("/syscall-files/walk D 15 0") == 0 && walk_has("/syscall-files/walk/a.txt F 20 1") > 0);
+            CHECK(walk_has("/syscall-files/walk/empty D 20 1") > 0);
+            CHECK(walk_has("/syscall-files/walk/sub D 20 1") > 0 && walk_has("/syscall-files/walk/sub/b.txt F 24 2") > walk_has("/syscall-files/walk/sub D 20 1"));
+            CHECK(walk_has("/syscall-files/walk/sub/deep D 24 2") > walk_has("/syscall-files/walk/sub D 20 1"));
+            CHECK(walk_has("/syscall-files/walk/sub/deep/c.txt F 29 3") > walk_has("/syscall-files/walk/sub/deep D 24 2"));
+            /* A path that ends in a slash: the names follow it, its own name is the nothing after it. */
+            walk_begin(-1, false, NULL);
+            CHECK(nftw_("/syscall-files/walk/sub/", walk_told, 8, 0) == 0 && g_walk.count == 4 && !g_walk.bad);
+            CHECK(walk_has("/syscall-files/walk/sub/ D 24 0") == 0 && walk_has("/syscall-files/walk/sub/b.txt F 24 1") > 0 &&
+                  walk_has("/syscall-files/walk/sub/deep/c.txt F 29 2") > 0);
+            /* What the function answers ends the walk and is its result. */
+            walk_begin(2, false, NULL);
+            CHECK(nftw_("/syscall-files/walk", walk_told, 8, 0) == 77 && g_walk.count == 3);
+            /* ftw: the same walk, its function told no more than the path, the stat and what it is. */
+            walk_begin(-1, false, NULL);
+            CHECK(ftw_("/syscall-files/walk", walk_told3, 8) == 0 && g_walk.count == 7 && !g_walk.bad);
+            CHECK(walk_has("/syscall-files/walk D -1 -1") == 0 && walk_has("/syscall-files/walk/sub/deep/c.txt F -1 -1") > 0);
+            /* A file is walked as itself; no descriptors to walk with, or nothing at the path, and nothing is told. */
+            walk_begin(-1, false, NULL);
+            CHECK(nftw_("/syscall-files/walk/a.txt", walk_told, 8, 0) == 0 && g_walk.count == 1 && walk_has("/syscall-files/walk/a.txt F 20 0") == 0);
+            walk_begin(-1, false, NULL);
+            CHECK(nftw_("/syscall-files/walk", walk_told, 0, 0) == -1 && *errno_() == GE_INVAL && g_walk.count == 0);
+            CHECK(nftw_("/syscall-files/walk/none", walk_told, 8, 0) == -1 && *errno_() == GE_NOENT && g_walk.count == 0);
+            CHECK(ftw_("/syscall-files/walk/none", walk_told3, 8) == -1 && *errno_() == GE_NOENT && g_walk.count == 0);
+            /* FTW_CHDIR (8): each file told from inside its directory, the directory the walk began in the one it ends in. */
+            CHECK(getcwd_(home, sizeof(home)) && chdir_("/syscall-files") == 0 && getcwd_(before, sizeof(before)) != NULL);
+            walk_begin(-1, true, NULL);
+            CHECK(nftw_("/syscall-files/walk", walk_told, 8, 8) == 0 && g_walk.count == 7 && !g_walk.bad);
+            CHECK(getcwd_(after, sizeof(after)) && !strcmp(before, after) && !strcmp(after, "/syscall-files"));
+            walk_begin(4, true, NULL);
+            CHECK(nftw_("/syscall-files/walk", walk_told, 8, 8) == 77 && getcwd_(after, sizeof(after)) && !strcmp(before, after));
+            /* FTW_DEPTH (4): a directory after what is in it, which is how a tree is removed -- by the function, as it goes. */
+            walk_begin(-1, true, remove_);
+            CHECK(nftw_("/syscall-files/walk", walk_told, 8, 4 | 8 | 1) == 0 && g_walk.count == 7 && !g_walk.bad);
+            CHECK(walk_has("/syscall-files/walk P 15 0") == 6 && walk_has("/syscall-files/walk/empty P 20 1") >= 0);
+            CHECK(walk_has("/syscall-files/walk/sub/deep P 24 2") > walk_has("/syscall-files/walk/sub/deep/c.txt F 29 3") &&
+                  walk_has("/syscall-files/walk/sub/deep/c.txt F 29 3") >= 0);
+            CHECK(walk_has("/syscall-files/walk/sub P 20 1") > walk_has("/syscall-files/walk/sub/deep P 24 2") &&
+                  walk_has("/syscall-files/walk/sub P 20 1") > walk_has("/syscall-files/walk/sub/b.txt F 24 2"));
+            CHECK(chdir_("/syscall-files/walk") == -1 && *errno_() == GE_NOENT && getcwd_(after, sizeof(after)) && !strcmp(before, after));
+            CHECK(chdir_(home) == 0);
+
+            /* No second name for a file, no other root, and one process group: the process's own. */
+            CHECK(linkat_(-100, "/syscall-files/plain.txt", -100, "/syscall-files/second.txt", 0) == -1 && *errno_() == GE_PERM);
+            CHECK(stat_("/syscall-files/second.txt", st) == -1);
+            CHECK(chroot_("/syscall-files") == -1 && *errno_() == GE_PERM);
+            CHECK(chroot_("/syscall-files/nowhere") == -1 && *errno_() == GE_NOENT);
+            CHECK(chroot_("/syscall-files/plain.txt") == -1 && *errno_() == GE_NOTDIR);
+            CHECK(killpg_(0, 0) == 0 && killpg_(getpgid_(0), 0) == 0);
+            CHECK(killpg_(getpgid_(0) + 1, 0) == -1 && *errno_() == GE_SRCH);
+            CHECK(killpg_(-1, 0) == -1 && *errno_() == GE_INVAL);
+        }
+    }
+}
+
+/*
+ * libm's rounding to a whole number, which the core works out on the bits (bionic/mg_libm.c), against the host's libm,
+ * whose results IEEE 754 decides (to nearest, the default mode): every exponent of a float and of a double, with the
+ * fractions a rounding decides at -- just under, at and just over a half, the largest, an odd and an even whole part --
+ * both signs, zeros, denormals, infinities and NaNs, and random bits. The integer ones where the result has room.
+ */
+static u32 g_round_seed = 12345;
+static u32 round_rand(void)
+{
+    g_round_seed = g_round_seed * 1664525u + 1013904223u;
+    return g_round_seed;
+}
+
+static int rounding_floats(u32 *out)
+{
+    int n = 0, e, s, j;
+    for (e = 0; e < 256; e++) {
+        u32 picks[16];
+        int np = 0, k = 150 - e;
+        picks[np++] = 0;
+        picks[np++] = 1;
+        picks[np++] = 0x7FFFFF;
+        picks[np++] = 0x400000;
+        picks[np++] = 0x3FFFFF;
+        picks[np++] = 0x400001;
+        if (k >= 1 && k <= 23) {
+            /* (k bits of fraction below the units: the half is bit k - 1; the unit's bit k is the last of the whole part.) */
+            u32 half = 1u << (k - 1);
+            picks[np++] = half;
+            picks[np++] = half - 1;
+            picks[np++] = half + 1;
+            picks[np++] = (half << 1) | half;
+            picks[np++] = (half << 1) | (half - 1);
+            picks[np++] = (half << 1) - 1;
+        }
+        picks[np++] = round_rand();
+        picks[np++] = round_rand();
+        for (s = 0; s < 2; s++)
+            for (j = 0; j < np; j++) out[n++] = ((u32)s << 31) | ((u32)e << 23) | (picks[j] & 0x7FFFFFu);
+    }
+    for (j = 0; j < 1000; j++) out[n++] = round_rand();
+    return n;
+}
+
+static int rounding_doubles(u64 *out)
+{
+    int n = 0, e, s, j;
+    for (e = 0; e < 2048; e++) {
+        u64 picks[16];
+        int np = 0, k = 1075 - e;
+        picks[np++] = 0;
+        picks[np++] = 1;
+        picks[np++] = 0xFFFFFFFFFFFFFull;
+        picks[np++] = 0x8000000000000ull;
+        picks[np++] = 0x7FFFFFFFFFFFFull;
+        picks[np++] = 0x8000000000001ull;
+        if (k >= 1 && k <= 52) {
+            u64 half = 1ull << (k - 1);
+            picks[np++] = half;
+            picks[np++] = half - 1;
+            picks[np++] = half + 1;
+            picks[np++] = (half << 1) | half;
+            picks[np++] = (half << 1) | (half - 1);
+            picks[np++] = (half << 1) - 1;
+        }
+        picks[np++] = ((u64)round_rand() << 32) | round_rand();
+        for (s = 0; s < 2; s++)
+            for (j = 0; j < np; j++) out[n++] = ((u64)s << 63) | ((u64)e << 52) | (picks[j] & 0xFFFFFFFFFFFFFull);
+    }
+    for (j = 0; j < 1000; j++) out[n++] = ((u64)round_rand() << 32) | round_rand();
+    return n;
+}
+
+static void test_libm_rounding(void)
+{
+    typedef gfloat (*ff_fn)(gfloat);
+    typedef gdouble (*dd_fn)(gdouble);
+    typedef glong (*lf_fn)(gfloat);
+    typedef glong (*ld_fn)(gdouble);
+    typedef i64 (*llf_fn)(gfloat);
+    typedef i64 (*lld_fn)(gdouble);
+    static const char *const fnames[] = { "floorf", "ceilf", "truncf", "roundf", "rintf", "nearbyintf" };
+    static const char *const dnames[] = { "floor", "ceil", "trunc", "round", "rint", "nearbyint" };
+    float (*const fref[])(float) = { floorf, ceilf, truncf, roundf, rintf, nearbyintf };
+    double (*const dref[])(double) = { floor, ceil, trunc, round, rint, nearbyint };
+    u32 *fv = (u32 *)mg_alloc(sizeof(u32) * 20000);
+    u64 *dv = (u64 *)mg_alloc(sizeof(u64) * 70000);
+    int nf = rounding_floats(fv), nd = rounding_doubles(dv), i, f;
+    say("libm's rounding on the bits: %d floats and %d doubles, against the host's", nf, nd);
+    for (f = 0; f < 6; f++) {
+        ff_fn fn = (ff_fn)mg_bionic_find(fnames[f]);
+        dd_fn dn = (dd_fn)mg_bionic_find(dnames[f]);
+        int bad = 0;
+        CHECK(fn && dn);
+        if (!fn || !dn) continue;
+        for (i = 0; i < nf; i++) {
+            float want = fref[f](mg_f(fv[i])), got = mg_gf(fn(mg_gfb(mg_f(fv[i]))));
+            if (isnan(want) ? !isnan(got) : mg_fb(got) != mg_fb(want)) {
+                if (!bad++) say("  %s(%08x) = %08x, the host's %08x", fnames[f], (unsigned)fv[i], (unsigned)mg_fb(got), (unsigned)mg_fb(want));
+            }
+        }
+        CHECK_INT(bad, 0);
+        bad = 0;
+        for (i = 0; i < nd; i++) {
+            double want = dref[f](mg_d(dv[i])), got = mg_gd(dn(mg_gdb(mg_d(dv[i]))));
+            if (isnan(want) ? !isnan(got) : mg_db(got) != mg_db(want)) {
+                if (!bad++)
+                    say("  %s(%08x%08x) = %08x%08x, the host's %08x%08x", dnames[f], (unsigned)(dv[i] >> 32), (unsigned)dv[i],
+                        (unsigned)(mg_db(got) >> 32), (unsigned)mg_db(got), (unsigned)(mg_db(want) >> 32), (unsigned)mg_db(want));
+            }
+        }
+        CHECK_INT(bad, 0);
+    }
+    {
+        lf_fn lroundf_ = (lf_fn)mg_bionic_find("lroundf"), lrintf_ = (lf_fn)mg_bionic_find("lrintf");
+        ld_fn lround_ = (ld_fn)mg_bionic_find("lround"), lrint_ = (ld_fn)mg_bionic_find("lrint");
+        llf_fn llroundf_ = (llf_fn)mg_bionic_find("llroundf"), llrintf_ = (llf_fn)mg_bionic_find("llrintf");
+        lld_fn llround_ = (lld_fn)mg_bionic_find("llround"), llrint_ = (lld_fn)mg_bionic_find("llrint");
+        int bad = 0;
+        CHECK(lroundf_ && lrintf_ && lround_ && lrint_ && llroundf_ && llrintf_ && llround_ && llrint_);
+        if (lroundf_ && lrintf_ && lround_ && lrint_ && llroundf_ && llrintf_ && llround_ && llrint_) {
+            /* (In the range of a 32-bit long, which every guest's long holds, and of a 64-bit one; out of it, C's conversion.) */
+            for (i = 0; i < nf; i++) {
+                float x = mg_f(fv[i]);
+                gfloat g = mg_gfb(x);
+                if (!(fabsf(x) < 2147483520.0f)) continue;
+                if (lroundf_(g) != (glong)lroundf(x) || lrintf_(g) != (glong)lrintf(x) || llroundf_(g) != (i64)llroundf(x) || llrintf_(g) != (i64)llrintf(x)) {
+                    if (!bad++)
+                        say("  lroundf, lrintf, llroundf, llrintf(%08x) = %ld %ld %lld %lld, the host's %ld %ld %lld %lld", (unsigned)fv[i], (long)lroundf_(g),
+                            (long)lrintf_(g), (long long)llroundf_(g), (long long)llrintf_(g), (long)lroundf(x), (long)lrintf(x), (long long)llroundf(x),
+                            (long long)llrintf(x));
+                }
+            }
+            for (i = 0; i < nd; i++) {
+                double x = mg_d(dv[i]);
+                gdouble g = mg_gdb(x);
+                if (!(fabs(x) < 2147483647.0)) continue;
+                if (lround_(g) != (glong)lround(x) || lrint_(g) != (glong)lrint(x) || llround_(g) != (i64)llround(x) || llrint_(g) != (i64)llrint(x)) {
+                    if (!bad++)
+                        say("  lround, lrint, llround, llrint(%08x%08x) = %ld %ld %lld %lld, the host's %ld %ld %lld %lld", (unsigned)(dv[i] >> 32), (unsigned)dv[i],
+                            (long)lround_(g), (long)lrint_(g), (long long)llround_(g), (long long)llrint_(g), (long)lround(x), (long)lrint(x),
+                            (long long)llround(x), (long long)llrint(x));
+                }
+            }
+            for (i = 0; i < nf; i++) {
+                float x = mg_f(fv[i]);
+                if (!(fabsf(x) < 9.2e18f)) continue;
+                if (llroundf_(mg_gfb(x)) != (i64)llroundf(x) || llrintf_(mg_gfb(x)) != (i64)llrintf(x)) {
+                    if (!bad++) say("  llroundf, llrintf(%08x) wrong", (unsigned)fv[i]);
+                }
+            }
+            for (i = 0; i < nd; i++) {
+                double x = mg_d(dv[i]);
+                if (!(fabs(x) < 9.2e18)) continue;
+                if (llround_(mg_gdb(x)) != (i64)llround(x) || llrint_(mg_gdb(x)) != (i64)llrint(x)) {
+                    if (!bad++) say("  llround, llrint(%08x%08x) wrong", (unsigned)(dv[i] >> 32), (unsigned)dv[i]);
+                }
+            }
+            CHECK_INT(bad, 0);
+            /* A few by name: halves, the sign of a zero, a whole number of 2^23 and more. */
+            CHECK_INT(lroundf_(mg_gfb(-2.5f)), -3);
+            CHECK_INT(lrintf_(mg_gfb(-2.5f)), -2);
+            CHECK_INT(lrintf_(mg_gfb(3.5f)), 4);
+            CHECK_INT(lroundf_(mg_gfb(0.49999997f)), 0);
+            CHECK_INT(lroundf_(mg_gfb(8388609.0f)), 8388609);
+            CHECK_INT(lroundf_(mg_gfb(-1073741824.0f)), -1073741824);
+            CHECK(llroundf_(mg_gfb(1099511627776.0f)) == 1099511627776ll);
+            CHECK(llround_(mg_gdb(-4503599627370497.0)) == -4503599627370497ll);
+            CHECK_INT(lround_(mg_gdb(-2147483648.0)), (glong)-2147483647 - 1);
+        }
+        {
+            ff_fn roundf_ = (ff_fn)mg_bionic_find("roundf"), ceilf_ = (ff_fn)mg_bionic_find("ceilf"), floorf_ = (ff_fn)mg_bionic_find("floorf");
+            if (roundf_ && ceilf_ && floorf_) {
+                CHECK(mg_fb(mg_gf(roundf_(mg_gfb(-0.25f)))) == 0x80000000u);
+                CHECK(mg_fb(mg_gf(ceilf_(mg_gfb(-0.5f)))) == 0x80000000u);
+                CHECK(mg_gf(floorf_(mg_gfb(-0.5f))) == -1.0f);
+                CHECK(mg_gf(roundf_(mg_gfb(-0.5f))) == -1.0f);
+                CHECK(isnan(mg_gf(roundf_(mg_gfb(mg_f(0x7FA00000u))))) && (mg_fb(mg_gf(roundf_(mg_gfb(mg_f(0x7FA00000u))))) & 0x00400000u));
+            }
+        }
+    }
+    free(fv);
+    free(dv);
 }
 
 /*
@@ -2448,6 +2834,265 @@ static bool reads_as(mg_file *f, const char *text)
     char got[16] = { 0 };
     int err = 0;
     return f && mg_file_pread(f, got, strlen(text), 0, &err) == (i64)strlen(text) && !memcmp(got, text, strlen(text));
+}
+
+/* ------------------------------------------------------------------ inotify */
+
+typedef int (*ino_init1_fn)(int);
+typedef int (*ino_add_fn)(int, const char *, u32);
+typedef int (*ino_rm_fn)(int, int);
+typedef int (*ino_open_fn)(const char *, int, int);
+typedef long (*ino_io_fn)(int, void *, size_t);
+typedef int (*ino_fd_fn)(int);
+typedef int (*ino_path_fn)(const char *);
+typedef int (*ino_mkdir_fn)(const char *, int);
+typedef int (*ino_rename_fn)(const char *, const char *);
+typedef int (*ino_poll_fn)(void *, unsigned, int);
+typedef int (*ino_ioctl_fn)(int, unsigned, void *);
+typedef int *(*ino_errno_fn)(void);
+
+static struct {
+    ino_init1_fn init1;
+    ino_add_fn add;
+    ino_rm_fn rm;
+    ino_open_fn open;
+    ino_io_fn read, write;
+    ino_fd_fn close;
+    ino_path_fn unlink;
+    ino_mkdir_fn mkdir;
+    ino_rename_fn rename;
+    ino_errno_fn err;
+} INO;
+
+/*
+ * The events an inotify has queued, read at once (not waiting), as "wd:mask:name" joined by spaces (the mask in hex, the
+ * name left out where there is none), with each move's cookie in `cookies` (0 for the rest): "" when there are none.
+ */
+static void ino_events(int fd, char *out, size_t cap, u32 *cookies, int ncookies)
+{
+    u8 buf[1024];
+    long n = INO.read(fd, buf, sizeof(buf)), at = 0;
+    int k = 0;
+    size_t used = 0;
+    out[0] = 0;
+    while (n > 0 && at + 16 <= n) {
+        i32 wd;
+        u32 mask, cookie, len;
+        memcpy(&wd, buf + at, 4);
+        memcpy(&mask, buf + at + 4, 4);
+        memcpy(&cookie, buf + at + 8, 4);
+        memcpy(&len, buf + at + 12, 4);
+        if (cookies && k < ncookies) cookies[k] = cookie;
+        k++;
+        used += (size_t)snprintf(out + used, cap - used, "%s%d:%x%s%s", used ? " " : "", (int)wd, (unsigned)mask, len ? ":" : "",
+                                 len ? (const char *)buf + at + 16 : "");
+        if (used >= cap) break;
+        at += 16 + (long)len;
+    }
+}
+
+typedef struct ino_waiter {
+    const char *path;
+    volatile i32 ready;
+    i32 wd, mask, got;
+} ino_waiter;
+
+/* Firebase Cloud Messaging's C++ thread, as libmortargame.so has it: inotify_init, a watch on the file the Java side writes
+   for IN_CLOSE_WRITE alone, and a read that waits for the event. */
+static MG_HOSTCB void ino_wait_thread(void *arg)
+{
+    ino_waiter *w = (ino_waiter *)arg;
+    u8 buf[0x110];
+    int fd = INO.init1(0), wd = fd >= 0 ? INO.add(fd, w->path, 0x8 /* IN_CLOSE_WRITE */) : -1;
+    long n;
+    mg_atomic_xchg(&w->ready, 1);
+    n = wd >= 0 ? INO.read(fd, buf, sizeof(buf)) : -1;
+    if (n >= 16) {
+        memcpy(&w->wd, buf, 4);
+        memcpy(&w->mask, buf + 4, 4);
+    }
+    w->got = (i32)n;
+    if (fd >= 0) INO.close(fd);
+}
+
+/*
+ * inotify (bionic/mg_libc_io.c): the events of what the app's own calls do to files and directories, as Linux queues them.
+ * Jetpack Joyride's Firebase Cloud Messaging asserted that inotify_init gave a descriptor and ended in abort() at every
+ * start (0.1.0.681): here a thread waits in its read as Firebase's does while another writes the file and closes it, and
+ * the rest is what a watch says of files made, written, closed, moved and removed, and of directories.
+ */
+static void test_inotify(const char *scratch)
+{
+    ino_poll_fn poll_ = (ino_poll_fn)mg_bionic_find("poll");
+    ino_ioctl_fn ioctl_ = (ino_ioctl_fn)mg_bionic_find("ioctl");
+    const char *dir = "/inotify-files/msg", *store = "/inotify-files/msg/STORAGE", *moved = "/inotify-files/msg/STORAGE2";
+    char *host_dir = mg_sprintf("%s/inotify", scratch), got[512];
+    u32 cookies[4];
+    int fd, wd_dir, wd_file, f, avail = 0;
+    mg_pollfd p;
+    say("inotify: files made, written, closed, moved and removed, as watches on them and their directory are told; a read that waits for them");
+    INO.init1 = (ino_init1_fn)mg_bionic_find("inotify_init1");
+    INO.add = (ino_add_fn)mg_bionic_find("inotify_add_watch");
+    INO.rm = (ino_rm_fn)mg_bionic_find("inotify_rm_watch");
+    INO.open = (ino_open_fn)mg_bionic_find("open");
+    INO.read = (ino_io_fn)mg_bionic_find("read");
+    INO.write = (ino_io_fn)mg_bionic_find("write");
+    INO.close = (ino_fd_fn)mg_bionic_find("close");
+    INO.unlink = (ino_path_fn)mg_bionic_find("unlink");
+    INO.mkdir = (ino_mkdir_fn)mg_bionic_find("mkdir");
+    INO.rename = (ino_rename_fn)mg_bionic_find("rename");
+    INO.err = (ino_errno_fn)mg_bionic_find("__errno");
+    CHECK(INO.init1 && INO.add && INO.rm && INO.open && INO.read && INO.write && INO.close && INO.unlink && INO.mkdir && INO.rename && INO.err &&
+          poll_ && ioctl_ && mg_bionic_find("inotify_init"));
+    if (!(INO.init1 && INO.add && INO.rm && INO.open && INO.read && INO.write && INO.close && INO.unlink && INO.mkdir && INO.rename && INO.err &&
+          poll_ && ioctl_)) {
+        free(host_dir);
+        return;
+    }
+    mg_path_mkdirs(host_dir);
+    mg_fs_mount("/inotify-files", host_dir);
+    CHECK(INO.mkdir(dir, 0700) == 0);
+
+    /* Firebase's thread: waiting in read() until the Java side's file is written and closed. */
+    {
+        ino_waiter w;
+        mg_thread *t;
+        memset(&w, 0, sizeof(w));
+        w.path = store;
+        f = INO.open(store, 01 | 0100, 0600);       /* O_WRONLY | O_CREAT: the file is there before the watch, as Firebase makes it */
+        CHECK(f >= 0);
+        if (f >= 0) INO.close(f);
+        t = mg_thread_start(ino_wait_thread, &w, 256u * 1024u, "inotify-waiter");
+        while (!w.ready) mg_sleep_ns(1000000ull);
+        mg_sleep_ns(50000000ull);
+        CHECK(w.got == 0);                            /* still waiting */
+        f = INO.open(store, 01 | 02000, 0);         /* O_WRONLY | O_APPEND */
+        CHECK(f >= 0 && INO.write(f, "message", 7) == 7);
+        if (f >= 0) INO.close(f);
+        /* (Ten seconds at most: a read that is never woken fails the check and is left waiting, not the tests.) */
+        {
+            int waited;
+            for (waited = 0; waited < 1000 && !w.got; waited++) mg_sleep_ns(10000000ull);
+        }
+        CHECK(w.got == 16 && w.wd == 1 && w.mask == 0x8);
+        if (w.got) mg_thread_join(t);
+        else mg_thread_detach(t);
+    }
+
+    fd = INO.init1(04000 | 02000000);                /* IN_NONBLOCK | IN_CLOEXEC */
+    CHECK(fd >= 0);
+    CHECK(INO.init1(1) == -1 && *INO.err() == GE_INVAL);
+    CHECK(INO.read(fd, got, sizeof(got)) == -1 && *INO.err() == GE_AGAIN);
+    CHECK(INO.add(fd, "/inotify-files/msg/missing", 0xFFF) == -1 && *INO.err() == GE_NOENT);
+    CHECK(INO.add(fd, store, 0x01000000 | 0x8) == -1 && *INO.err() == GE_NOTDIR);     /* IN_ONLYDIR */
+    CHECK(INO.add(fd, store, 0) == -1 && *INO.err() == GE_INVAL);
+    CHECK(INO.add(42, store, 0x8) == -1);
+
+    /* A watch on the directory: a file made, written and closed in it, with its name. */
+    wd_dir = INO.add(fd, dir, 0x100 | 0x200 | 0x40 | 0x80 | 0x8 | 0x01000000);    /* CREATE DELETE MOVED_FROM MOVED_TO CLOSE_WRITE ONLYDIR */
+    CHECK(wd_dir >= 1);
+    f = INO.open("/inotify-files/msg/new", 01 | 0100, 0600);
+    CHECK(f >= 0 && INO.write(f, "x", 1) == 1);
+    if (f >= 0) INO.close(f);
+    ino_events(fd, got, sizeof(got), NULL, 0);
+    {
+        char want[128];
+        snprintf(want, sizeof(want), "%d:100:new %d:8:new", wd_dir, wd_dir);
+        CHECK(!strcmp(got, want));
+        if (strcmp(got, want)) say("  inotify: \"%s\", expected \"%s\"", got, want);
+    }
+
+    /* And one on the file: its writes, merged as the last unread event, and its close, told to the directory's first. */
+    wd_file = INO.add(fd, store, 0x2 | 0x8);          /* MODIFY CLOSE_WRITE */
+    CHECK(wd_file >= 1 && wd_file != wd_dir);
+    CHECK(INO.add(fd, store, 0x20000000 | 0x10) == wd_file);      /* IN_MASK_ADD: CLOSE_NOWRITE too, the same watch */
+    CHECK(INO.add(fd, store, 0x10000000 | 0x10) == -1 && *INO.err() == GE_EXIST);   /* IN_MASK_CREATE */
+    f = INO.open(store, 01 | 02000, 0);
+    CHECK(f >= 0 && INO.write(f, "a", 1) == 1 && INO.write(f, "b", 1) == 1);
+    p.fd = fd;
+    p.events = MG_POLLIN;
+    p.revents = 0;
+    CHECK(poll_(&p, 1, 0) == 1 && (p.revents & MG_POLLIN));
+    CHECK(ioctl_(fd, 0x541B /* FIONREAD */, &avail) == 0 && avail == 16);
+    if (f >= 0) INO.close(f);
+    f = INO.open(store, 0, 0);                        /* read only: IN_CLOSE_NOWRITE at its close */
+    if (f >= 0) INO.close(f);
+    {
+        char want[160];
+        u8 small[20];
+        snprintf(want, sizeof(want), "%d:2 %d:8:STORAGE %d:8 %d:10", wd_file, wd_dir, wd_file, wd_file);
+        /* (A buffer too small for the first record: EINVAL, the record left for the next read.) */
+        CHECK(INO.read(fd, small, 15) == -1 && *INO.err() == GE_INVAL);
+        ino_events(fd, got, sizeof(got), NULL, 0);
+        CHECK(!strcmp(got, want));
+        if (strcmp(got, want)) say("  inotify: \"%s\", expected \"%s\"", got, want);
+        CHECK(poll_(&p, 1, 0) == 0);
+    }
+
+    /* Moved: the directory's two events with one cookie; the file's watch goes with it, and its writes are told there. */
+    CHECK(INO.rename(store, moved) == 0);
+    ino_events(fd, got, sizeof(got), cookies, 4);
+    {
+        char want[160];
+        snprintf(want, sizeof(want), "%d:40:STORAGE %d:80:STORAGE2", wd_dir, wd_dir);
+        CHECK(!strcmp(got, want) && cookies[0] && cookies[0] == cookies[1]);
+        if (strcmp(got, want)) say("  inotify: \"%s\", expected \"%s\"", got, want);
+    }
+    f = INO.open(moved, 01 | 02000, 0);
+    CHECK(f >= 0 && INO.write(f, "c", 1) == 1);
+    if (f >= 0) INO.close(f);
+    ino_events(fd, got, sizeof(got), NULL, 0);
+    {
+        char want[160];
+        snprintf(want, sizeof(want), "%d:2 %d:8:STORAGE2 %d:8", wd_file, wd_dir, wd_file);
+        CHECK(!strcmp(got, want));
+        if (strcmp(got, want)) say("  inotify: \"%s\", expected \"%s\"", got, want);
+    }
+
+    /* Removed: the directory told, the file's watch ended (IN_IGNORED). A directory made in the watched one is one (IN_ISDIR). */
+    CHECK(INO.unlink(moved) == 0);
+    CHECK(INO.mkdir("/inotify-files/msg/sub", 0700) == 0);
+    ino_events(fd, got, sizeof(got), NULL, 0);
+    {
+        char want[160];
+        snprintf(want, sizeof(want), "%d:200:STORAGE2 %d:8000 %d:40000100:sub", wd_dir, wd_file, wd_dir);
+        CHECK(!strcmp(got, want));
+        if (strcmp(got, want)) say("  inotify: \"%s\", expected \"%s\"", got, want);
+    }
+    CHECK(INO.rm(fd, wd_file) == -1 && *INO.err() == GE_INVAL);
+
+    /* Taken off: IN_IGNORED, and nothing more of the directory. A one-shot watch tells once. */
+    CHECK(INO.rm(fd, wd_dir) == 0);
+    f = INO.open("/inotify-files/msg/after", 01 | 0100, 0600);
+    if (f >= 0) INO.close(f);
+    ino_events(fd, got, sizeof(got), NULL, 0);
+    {
+        char want[64];
+        snprintf(want, sizeof(want), "%d:8000", wd_dir);
+        CHECK(!strcmp(got, want));
+        if (strcmp(got, want)) say("  inotify: \"%s\", expected \"%s\"", got, want);
+    }
+    {
+        int once = INO.add(fd, dir, 0x100 | 0x80000000);     /* CREATE, ONESHOT */
+        char want[96];
+        f = INO.open("/inotify-files/msg/one", 01 | 0100, 0600);
+        if (f >= 0) INO.close(f);
+        f = INO.open("/inotify-files/msg/two", 01 | 0100, 0600);
+        if (f >= 0) INO.close(f);
+        ino_events(fd, got, sizeof(got), NULL, 0);
+        snprintf(want, sizeof(want), "%d:100:one %d:8000", once, once);
+        CHECK(once >= 1 && !strcmp(got, want));
+        if (strcmp(got, want)) say("  inotify: \"%s\", expected \"%s\"", got, want);
+    }
+    INO.close(fd);
+
+    /* By number, as libc's own (ARM's 360, 317 and 318, each ABI's own number). */
+    if (sizeof(long) >= sizeof(void *) && (g_sys = (syscall_fn)mg_bionic_find("syscall")) != NULL) {
+        int sfd = (int)sys(360, 0, 0, 0, 0, 0, 0), swd = sfd >= 0 ? (int)sys(317, sfd, (long)(mg_addr)dir, 0x100, 0, 0, 0) : -1;
+        CHECK(sfd >= 0 && swd >= 1 && sys(318, sfd, swd, 0, 0, 0, 0) == 0);
+        if (sfd >= 0) INO.close(sfd);
+    }
+    free(host_dir);
 }
 
 /*
@@ -3059,6 +3704,15 @@ static void test_libc_odds(void)
             }
             CHECK(odd == 0);
             {
+                /* memalign's big block at 64 whatever smaller alignment it asks for, as malloc's of its size is. */
+                u8 *a16 = (u8 *)gmemalign(16, 300), *a32 = (u8 *)gmemalign(32, 4000), *a8 = (u8 *)gmemalign(8, 256);
+                CHECK(a16 && a32 && a8 && ((mg_addr)a16 & 63) == 0 && ((mg_addr)a32 & 63) == 0 && ((mg_addr)a8 & 63) == 0);
+                CHECK(a16 && gusable(a16) == MG_ALIGN_UP(300, (size_t)align) && a32 && gusable(a32) == 4000);
+                gfree(a16);
+                gfree(a32);
+                gfree(a8);
+            }
+            {
                 /* A big block (256 bytes or more) at 64, as jemalloc's runs and pages leave it -- Geekbench 5's zlib loads
                    its 64 KB hash table with an aligned NEON load -- through calloc, and through realloc's every turn: small
                    to big, bigger, smaller, small again, its contents kept each time. */
@@ -3093,6 +3747,490 @@ static void test_libc_odds(void)
             }
         }
     }
+}
+
+/* ------------------------------------------------------------------ malloc across threads
+ *
+ * How many malloc-and-free pairs threads make together, the guest's malloc's and the host's own under it: Geekbench 5's
+ * multi-core workloads, threads of C++ that allocate and free all the time, scaled worse on the HP Elite x3 than Android
+ * did on the same phone (690).
+ */
+typedef void *(*bench_malloc_fn)(size_t);
+typedef void (*bench_free_fn)(void *);
+
+typedef struct malloc_racer {
+    bench_malloc_fn m;
+    bench_free_fn f;
+    int pattern;                       /* MALLOC_MIXED, MALLOC_SMALL or MALLOC_PAIRS */
+    volatile i32 *state;               /* 0 wait, 1 run, 2 stop */
+    u32 seed;
+    u64 pairs;
+} malloc_racer;
+
+enum { MALLOC_MIXED, MALLOC_SMALL, MALLOC_PAIRS };
+#define RACER_SLOTS 1024
+
+static u32 racer_next(u32 *s)
+{
+    *s ^= *s << 13;
+    *s ^= *s >> 17;
+    *s ^= *s << 5;
+    return *s;
+}
+
+/* Sizes as a C++ program's: most of a few dozen bytes, some of a few kilobytes, a few of tens of kilobytes (none `small`). */
+static size_t racer_size(u32 *s, bool small)
+{
+    u32 r = racer_next(s) % 100;
+    if (r < 80) return 8 + racer_next(s) % 248;
+    if (r < 95 || small) return 256 + racer_next(s) % 3840;
+    return 4096 + racer_next(s) % 61440;
+}
+
+/*
+ * MALLOC_MIXED: a working set of RACER_SLOTS blocks of those sizes, one replaced at random each turn; MALLOC_SMALL: the same
+ * of 4 KB and less; MALLOC_PAIRS: two small blocks made and freed at once, last first, as a function's temporaries are.
+ */
+static MG_HOSTCB void malloc_racer_main(void *arg)
+{
+    malloc_racer *r = (malloc_racer *)arg;
+    void **slot = (void **)calloc(RACER_SLOTS, sizeof(void *));
+    u32 s = r->seed, i;
+    u64 n = 0;
+    while (*r->state == 0) mg_thread_yield();
+    while (slot && *r->state == 1) {
+        for (i = 0; i < 256; i++) {
+            if (r->pattern != MALLOC_PAIRS) {
+                u32 k = racer_next(&s) & (RACER_SLOTS - 1);
+                if (slot[k]) r->f(slot[k]);
+                slot[k] = r->m(racer_size(&s, r->pattern == MALLOC_SMALL));
+                if (slot[k]) *(volatile u8 *)slot[k] = 1;
+            } else {
+                size_t size = 16 + (i & 7) * 24;
+                u8 *a = (u8 *)r->m(size), *b = (u8 *)r->m(size * 2);
+                if (a) *(volatile u8 *)a = 1;
+                if (b) *(volatile u8 *)b = 1;
+                r->f(b);
+                r->f(a);
+            }
+        }
+        n += r->pattern == MALLOC_PAIRS ? 512 : 256;
+    }
+    for (i = 0; slot && i < RACER_SLOTS; i++)
+        if (slot[i]) r->f(slot[i]);
+    free(slot);
+    r->pairs = n;
+}
+
+/* Millions of malloc-and-free pairs a second that `threads` threads (8 at most) make together in `ms` milliseconds. */
+static double malloc_race(bench_malloc_fn m, bench_free_fn f, int pattern, int threads, u32 ms)
+{
+    malloc_racer r[8];
+    mg_thread *t[8];
+    volatile i32 state = 0;
+    u64 t0, t1, pairs = 0;
+    int i;
+    for (i = 0; i < threads; i++) {
+        r[i].m = m;
+        r[i].f = f;
+        r[i].pattern = pattern;
+        r[i].state = &state;
+        r[i].seed = 0x9E3779B9u * (u32)(i + 1);
+        r[i].pairs = 0;
+        t[i] = mg_thread_start(malloc_racer_main, &r[i], 256u * 1024u, "malloc-racer");
+    }
+    mg_sleep_ns(20000000ull);
+    t0 = mg_time_monotonic_ns();
+    mg_atomic_xchg(&state, 1);
+    mg_sleep_ns((u64)ms * 1000000ull);
+    mg_atomic_xchg(&state, 2);
+    t1 = mg_time_monotonic_ns();
+    for (i = 0; i < threads; i++)
+        if (t[i]) {
+            mg_thread_join(t[i]);
+            pairs += r[i].pairs;
+        }
+    return t1 > t0 ? (double)pairs * 1000.0 / (double)(t1 - t0) : 0.0;
+}
+
+/* One line of the race at 1, 2, 4 (and 8) threads: millions a second, and how many times one thread's that is. */
+static void malloc_race_line(const char *what, bench_malloc_fn m, bench_free_fn f, int pattern, int max_threads, u32 ms)
+{
+    char line[300];
+    size_t at;
+    double one = 0;
+    int n;
+    at = (size_t)snprintf(line, sizeof(line), "  %s:", what);
+    for (n = 1; n <= max_threads && n <= 8 && at < sizeof(line); n *= 2) {
+        double v = malloc_race(m, f, pattern, n, ms);
+        if (n == 1) {
+            one = v;
+            at += (size_t)snprintf(line + at, sizeof(line) - at, " 1 thread %.1f M/s", v);
+        } else {
+            at += (size_t)snprintf(line + at, sizeof(line) - at, ", %d threads %.1f M/s (%.2fx)", n, v, one > 0 ? v / one : 0.0);
+        }
+    }
+    say("%s", line);
+}
+
+static void *host_malloc(size_t n) { return malloc(n); }
+static void host_free(void *p) { free(p); }
+
+/* (The threads' caches of freed blocks off for the first of each pair of lines -- malloc as it was before them -- and on for the second.) */
+void mg_tests_malloc_bench(int ms, int max_threads)
+{
+    bench_malloc_fn gmalloc = (bench_malloc_fn)mg_bionic_find("malloc");
+    bench_free_fn gfree = (bench_free_fn)mg_bionic_find("free");
+    if (!gmalloc || !gfree) return;
+    say("malloc-and-free pairs a second, threads together (the host's malloc takes its blocks from %s; %d processors):", mg_heap_kind(),
+        mg_cpu_count());
+    mg_g_malloc_caches_allow(0);
+    malloc_race_line("the guest's malloc without caches, mixed sizes", gmalloc, gfree, MALLOC_MIXED, max_threads, (u32)ms);
+    mg_g_malloc_caches_allow(1);
+    malloc_race_line("the guest's malloc, mixed sizes", gmalloc, gfree, MALLOC_MIXED, max_threads, (u32)ms);
+    malloc_race_line("the host's malloc, mixed sizes", host_malloc, host_free, MALLOC_MIXED, max_threads, (u32)ms);
+    mg_g_malloc_caches_allow(0);
+    malloc_race_line("the guest's malloc without caches, mixed sizes of 4 KB and less", gmalloc, gfree, MALLOC_SMALL, max_threads, (u32)ms);
+    mg_g_malloc_caches_allow(1);
+    malloc_race_line("the guest's malloc, mixed sizes of 4 KB and less", gmalloc, gfree, MALLOC_SMALL, max_threads, (u32)ms);
+    malloc_race_line("the host's malloc, mixed sizes of 4 KB and less", host_malloc, host_free, MALLOC_SMALL, max_threads, (u32)ms);
+    mg_g_malloc_caches_allow(0);
+    malloc_race_line("the guest's malloc without caches, pairs", gmalloc, gfree, MALLOC_PAIRS, max_threads, (u32)ms);
+    mg_g_malloc_caches_allow(1);
+    malloc_race_line("the guest's malloc, pairs", gmalloc, gfree, MALLOC_PAIRS, max_threads, (u32)ms);
+    malloc_race_line("the host's malloc, pairs", host_malloc, host_free, MALLOC_PAIRS, max_threads, (u32)ms);
+    mg_g_malloc_caches_allow(-1);
+}
+
+/*
+ * The guest's malloc family as threads use it at once, each fast enough to keep a cache of the blocks it frees
+ * (mg_libc_mem.c, "each thread's cache"): blocks made by one thread and freed or reallocated by another, at bionic's
+ * alignment and of jemalloc's sizes whichever cache they pass through, calloc's zeroed, realloc's contents kept; what is
+ * counted as allocated back where it was once the threads are gone, and their caches gone with them.
+ */
+typedef struct malloc_fns {
+    void *(*m)(size_t);
+    void *(*c)(size_t, size_t);
+    void *(*r)(void *, size_t);
+    void *(*a)(size_t, size_t);
+    void (*f)(void *);
+    size_t (*usable)(const void *);
+} malloc_fns;
+
+typedef struct malloc_share {
+    const malloc_fns *fn;
+    void *volatile *slots;
+    u32 nslots, rounds, seed;
+    volatile i32 bad, ops;
+    u32 caches_seen;                   /* the threads with caches a thread saw before it ended */
+    u64 cached_seen;
+} malloc_share;
+
+static size_t share_quantum(void) { return MG_ARCH_ARM32 ? 8 : 16; }
+static void *xchg_ptr(void *volatile *at, void *value)
+{
+    void *was;
+    do was = *at;
+    while (mg_atomic_cas_ptr(at, was, value) != was);
+    return was;
+}
+static size_t share_usable(size_t n) { return MG_ALIGN_UP(n ? n : 1, share_quantum()); }
+
+/* A block of `size` bytes filled so that its size and every byte of it can be told again: the size in its first four, then a byte of the size's. */
+static void share_fill(u8 *p, size_t size)
+{
+    u32 s = (u32)size;
+    size_t i;
+    if (size < 4) return;
+    memcpy(p, &s, 4);
+    for (i = 4; i < size; i++) p[i] = (u8)(s * 7u + (u32)i);
+}
+
+/* Whether a filled block is as it was filled, of malloc_usable_size's and at an alignment a block of its size has (`align` at least). */
+static bool share_check(const malloc_fns *fn, const u8 *p, size_t size, size_t align)
+{
+    u32 s = (u32)size;
+    size_t i, want = share_usable(size) >= 256 ? 64 : share_quantum();
+    if (align < want) align = want;
+    if (fn->usable(p) != share_usable(size) || ((mg_addr)p & (align - 1))) return false;
+    if (size < 4) return true;
+    if (memcmp(p, &s, 4)) return false;
+    for (i = 4; i < size; i++)
+        if (p[i] != (u8)(s * 7u + (u32)i)) return false;
+    return true;
+}
+
+/* A block's size as share_fill wrote it (0 for one of fewer than four bytes, which none of these is). */
+static size_t share_size(const u8 *p)
+{
+    u32 s;
+    memcpy(&s, p, 4);
+    return s;
+}
+
+static size_t share_pick(u32 *s)
+{
+    u32 r = racer_next(s) % 100;
+    if (r < 70) return 4 + racer_next(s) % 252;
+    if (r < 95) return 256 + racer_next(s) % 3900;
+    return 4097 + racer_next(s) % 12000;
+}
+
+/*
+ * Each round a slot is taken at random: a block found there is checked and then freed, or reallocated to another size
+ * (its contents checked again) and put back; an empty one gets a new block from malloc, calloc (zero checked), memalign
+ * or realloc of NULL. Every block passes between the threads in the slots.
+ */
+static MG_HOSTCB void malloc_sharer(void *arg)
+{
+    malloc_share *sh = (malloc_share *)arg;
+    const malloc_fns *fn = sh->fn;
+    u32 s = sh->seed, i;
+    for (i = 0; i < sh->rounds; i++) {
+        u32 k = racer_next(&s) % sh->nslots, how = racer_next(&s) % 8;
+        u8 *p = (u8 *)xchg_ptr(&sh->slots[k], NULL);
+        size_t size;
+        if (p) {
+            size = share_size(p);
+            if (!share_check(fn, p, size, 0)) mg_atomic_add(&sh->bad, 1);
+            if (how < 5) {
+                fn->f(p);
+                continue;
+            }
+            {
+                size_t to = share_pick(&s), keep = to < size ? to : size, j;
+                u8 *q = (u8 *)fn->r(p, to);
+                bool same = q != NULL;
+                for (j = 4; same && j < keep; j++) same = q[j] == (u8)((u32)size * 7u + (u32)j);
+                if (!same || !q) {
+                    mg_atomic_add(&sh->bad, 1);
+                    if (q) fn->f(q);
+                    continue;
+                }
+                p = q;
+                size = to;
+            }
+        } else {
+            size = share_pick(&s);
+            if (how < 3) {
+                p = (u8 *)fn->m(size);
+            } else if (how < 5) {
+                size_t z;
+                bool zero = true;
+                p = (u8 *)fn->c(1, size);
+                for (z = 0; p && z < share_usable(size); z++) zero &= p[z] == 0;
+                if (!zero) mg_atomic_add(&sh->bad, 1);
+            } else if (how < 7) {
+                size_t align = how == 5 ? 64 : 128;
+                p = (u8 *)fn->a(align, size);
+                if (p && (fn->usable(p) != share_usable(size) || ((mg_addr)p & (align - 1)))) mg_atomic_add(&sh->bad, 1);
+            } else {
+                p = (u8 *)fn->r(NULL, size);
+            }
+            if (!p) {
+                mg_atomic_add(&sh->bad, 1);
+                continue;
+            }
+        }
+        share_fill(p, size);
+        p = (u8 *)xchg_ptr(&sh->slots[k], p);
+        /* (Another thread filled the slot meanwhile: its block is checked and freed here.) */
+        if (p) {
+            if (!share_check(fn, p, share_size(p), 0)) mg_atomic_add(&sh->bad, 1);
+            fn->f(p);
+        }
+        mg_atomic_add(&sh->ops, 1);
+    }
+    mg_g_malloc_caches(&sh->caches_seen, &sh->cached_seen);
+}
+
+/* A producer's blocks for a consumer: made here, checked, freed or reallocated and freed there. */
+typedef struct malloc_pipe {
+    const malloc_fns *fn;
+    void *volatile ring[64];
+    u32 count;
+    volatile i32 bad;
+} malloc_pipe;
+
+static size_t pipe_size(u32 i) { return 4 + (i * 37u) % 700u + (i % 50u == 0 ? 3000u : 0u); }
+
+static MG_HOSTCB void malloc_producer(void *arg)
+{
+    malloc_pipe *pp = (malloc_pipe *)arg;
+    u32 i;
+    for (i = 0; i < pp->count; i++) {
+        size_t size = pipe_size(i);
+        u8 *p = (u8 *)(i % 3 == 0 ? pp->fn->c(size, 1) : pp->fn->m(size));
+        if (!p) {
+            mg_atomic_add(&pp->bad, 1);
+            p = (u8 *)pp->fn->m(4);
+            size = 4;
+        }
+        share_fill(p, size);
+        while (mg_atomic_cas_ptr(&pp->ring[i % 64], NULL, p) != NULL) mg_thread_yield();
+    }
+}
+
+static MG_HOSTCB void malloc_consumer(void *arg)
+{
+    malloc_pipe *pp = (malloc_pipe *)arg;
+    u32 i;
+    for (i = 0; i < pp->count; i++) {
+        u8 *p;
+        while ((p = (u8 *)xchg_ptr(&pp->ring[i % 64], NULL)) == NULL) mg_thread_yield();
+        if (!share_check(pp->fn, p, share_size(p), 0)) mg_atomic_add(&pp->bad, 1);
+        if (i % 4 == 1) {
+            size_t size = share_size(p);
+            u8 *q = (u8 *)pp->fn->r(p, size * 2 + 100);
+            if (!q || share_size(q) != size || ((mg_addr)q & (share_usable(size * 2 + 100) >= 256 ? 63 : share_quantum() - 1)))
+                mg_atomic_add(&pp->bad, 1);
+            p = q;
+        }
+        pp->fn->f(p);
+    }
+}
+
+/* A thread that allocates fast enough to keep a cache, leaves blocks in it, and says what it saw before it ends. */
+typedef struct malloc_leaver {
+    const malloc_fns *fn;
+    u32 caches;
+    u64 cached;
+    bool reused;
+} malloc_leaver;
+
+static MG_HOSTCB void malloc_leaver_main(void *arg)
+{
+    malloc_leaver *lv = (malloc_leaver *)arg;
+    void *keep[40];
+    u32 i;
+    for (i = 0; i < 4000; i++) lv->fn->f(lv->fn->m(16 + (i % 40) * 8));
+    for (i = 0; i < 40; i++) keep[i] = lv->fn->m(16 + i * 8);
+    for (i = 0; i < 40; i++) lv->fn->f(keep[i]);
+    /* (The last block freed is the next of its size: a cache's, the last in first out.) */
+    lv->reused = lv->fn->m(16 + 39 * 8) == keep[39];
+    lv->fn->f(keep[39]);
+    mg_g_malloc_caches(&lv->caches, &lv->cached);
+}
+
+static void test_malloc_threads(void)
+{
+    malloc_fns fn;
+    u32 caches0 = 0, caches1 = 0;
+    u64 cached0 = 0, cached1 = 0, bytes0, bytes1;
+    fn.m = (void *(*)(size_t))mg_bionic_find("malloc");
+    fn.c = (void *(*)(size_t, size_t))mg_bionic_find("calloc");
+    fn.r = (void *(*)(void *, size_t))mg_bionic_find("realloc");
+    fn.a = (void *(*)(size_t, size_t))mg_bionic_find("memalign");
+    fn.f = (void (*)(void *))mg_bionic_find("free");
+    fn.usable = (size_t (*)(const void *))mg_bionic_find("malloc_usable_size");
+    CHECK(fn.m && fn.c && fn.r && fn.a && fn.f && fn.usable);
+    if (!fn.m || !fn.c || !fn.r || !fn.a || !fn.f || !fn.usable) return;
+    mg_g_malloc_caches_allow(1);
+    bytes0 = mg_g_malloc_bytes();
+    mg_g_malloc_caches(&caches0, &cached0);
+    {
+        /* This thread's own cache: the block freed last is the next of its bin, calloc's zeroed though it was written, and
+           a realloc within a bin stays where it is. */
+        u32 i;
+        u8 *a, *b;
+        for (i = 0; i < 2000; i++) fn.f(fn.m(24 + (i % 7) * 40));
+        a = (u8 *)fn.m(100);
+        if (a) memset(a, 0xAB, fn.usable(a));
+        fn.f(a);
+        b = (u8 *)fn.c(100, 1);
+        CHECK(b == a && b && fn.usable(b) == share_usable(100));
+        for (i = 0; b && i < share_usable(100); i++)
+            if (b[i]) break;
+        CHECK(b && i == share_usable(100));
+        fn.f(b);
+        a = (u8 *)fn.m(300);
+        if (a) share_fill(a, 300);
+        b = (u8 *)fn.r(a, 310);
+        CHECK(a && b == a && share_size(b) == 300 && b[299] == (u8)(300u * 7u + 299u) && fn.usable(b) == share_usable(310) && ((mg_addr)b & 63) == 0);
+        fn.f(b);
+        a = (u8 *)fn.m(316);
+        CHECK(a == b && fn.usable(a) == share_usable(316));
+        fn.f(a);
+    }
+    {
+        malloc_leaver lv;
+        mg_thread *t;
+        memset(&lv, 0, sizeof(lv));
+        lv.fn = &fn;
+        mg_g_malloc_caches(&caches0, &cached0);
+        t = mg_thread_start(malloc_leaver_main, &lv, 256u * 1024u, "malloc-leaver");
+        CHECK(t != NULL);
+        if (t) mg_thread_join(t);
+        mg_g_malloc_caches(&caches1, &cached1);
+        CHECK(lv.reused && lv.caches == caches0 + 1 && lv.cached > cached0);
+        CHECK(caches1 == caches0 && cached1 == cached0);
+    }
+    {
+        malloc_pipe pp;
+        mg_thread *tp, *tc;
+        memset(&pp, 0, sizeof(pp));
+        pp.fn = &fn;
+        pp.count = 20000;
+        tp = mg_thread_start(malloc_producer, &pp, 256u * 1024u, "malloc-producer");
+        tc = mg_thread_start(malloc_consumer, &pp, 256u * 1024u, "malloc-consumer");
+        CHECK(tp && tc);
+        if (tp) mg_thread_join(tp);
+        if (tc) mg_thread_join(tc);
+        CHECK(pp.bad == 0);
+    }
+    {
+        static void *volatile slots[512];
+        malloc_share sh[4];
+        mg_thread *t[4];
+        int i;
+        u32 k;
+        for (i = 0; i < 4; i++) {
+            memset(&sh[i], 0, sizeof(sh[i]));
+            sh[i].fn = &fn;
+            sh[i].slots = slots;
+            sh[i].nslots = 512;
+            sh[i].rounds = 30000;
+            sh[i].seed = 0x2545F491u * (u32)(i + 3);
+        }
+        for (i = 0; i < 4; i++) t[i] = mg_thread_start(malloc_sharer, &sh[i], 256u * 1024u, "malloc-sharer");
+        for (i = 0; i < 4; i++)
+            if (t[i]) mg_thread_join(t[i]);
+        for (k = 0; k < 512; k++) {
+            u8 *p = (u8 *)slots[k];
+            slots[k] = NULL;
+            if (p && !share_check(&fn, p, share_size(p), 0)) sh[0].bad++;
+            fn.f(p);
+        }
+        CHECK(t[0] && t[1] && t[2] && t[3]);
+        CHECK(sh[0].bad + sh[1].bad + sh[2].bad + sh[3].bad == 0);
+        CHECK(sh[0].caches_seen > caches0);
+    }
+    /* What is counted as allocated is what it was (the threads' parts in their caches, back in the whole as they ended), give or
+       take what another of the process's threads allocated meanwhile; and their caches are gone. */
+    bytes1 = mg_g_malloc_bytes();
+    mg_g_malloc_caches(&caches1, &cached1);
+    CHECK(bytes1 - bytes0 < 65536 || bytes0 - bytes1 < 65536);
+    CHECK(caches1 == caches0);
+    {
+        /* And how fast: one thread and four, blocks of mixed sizes and pairs, without the caches (malloc as it was before them)
+           and with them. */
+        static const int patterns[2] = { MALLOC_MIXED, MALLOC_PAIRS };
+        static const char *const names[2] = { "mixed sizes", "pairs" };
+        int k;
+        say("  malloc across threads (the host's malloc takes its blocks from %s), malloc-and-free pairs a second:", mg_heap_kind());
+        for (k = 0; k < 2; k++) {
+            double off1, off4, on1, on4;
+            mg_g_malloc_caches_allow(0);
+            off1 = malloc_race(fn.m, fn.f, patterns[k], 1, 150);
+            off4 = malloc_race(fn.m, fn.f, patterns[k], 4, 150);
+            mg_g_malloc_caches_allow(1);
+            on1 = malloc_race(fn.m, fn.f, patterns[k], 1, 150);
+            on4 = malloc_race(fn.m, fn.f, patterns[k], 4, 150);
+            say("    %s: without the threads' caches 1 thread %.1f M/s, 4 threads %.1f M/s (%.2fx); with them %.1f M/s, %.1f M/s (%.2fx)",
+                names[k], off1, off4, off1 > 0 ? off4 / off1 : 0.0, on1, on4, on1 > 0 ? on4 / on1 : 0.0);
+        }
+    }
+    mg_g_malloc_caches_allow(-1);
 }
 
 /* ------------------------------------------------------------------ the decoders behind a Java app's MediaCodec */
@@ -3677,6 +4815,62 @@ static void test_battery(void)
     }
 }
 
+/*
+ * The thread an app's sound callbacks come on (ndk/mg_audio.c's mixer: OpenSL ES buffer queues' callbacks, AAudio's data
+ * callbacks) has the stack Android's has, pthread's default megabyte. A game mixes its sound in the callback with what
+ * it likes in its frames -- Smash Hit two of 128 KB, one inside the other once a channel plays -- and on the 256 KB the
+ * thread had, the second's first store was below the stack: on the phone a fault Windows has no stack to dispatch, and
+ * the game closed after its splash screen with nothing said (0.1.0.690). Here a voice's buffer ends, and what its
+ * callback finds is the thread's stack as the host says it and, where 700 KB of it lie below, a frame of 600 KB written
+ * far end first. (A PC's Windows gives a thread the stack asked for; glibc may hand it a larger one an ended thread
+ * left.)
+ */
+static volatile i32 g_audio_cb_done;
+static size_t g_audio_cb_stack;
+static int g_audio_cb_frame;
+
+static MG_NOINLINE int audio_cb_frame(int seed)
+{
+    volatile unsigned char buf[600 * 1024];
+    buf[sizeof(buf) - 1] = (unsigned char)(seed + 1);
+    buf[0] = (unsigned char)seed;
+    buf[300000] = 7;
+    return buf[0] + buf[sizeof(buf) - 1] + buf[300000];
+}
+
+static void audio_cb(mg_voice *v, void *user)
+{
+    void *lo = NULL, *hi = NULL;
+    volatile int here = 0;
+    (void)v;
+    (void)user;
+    if (g_audio_cb_done) return;
+    mg_thread_stack_bounds(&lo, &hi);
+    g_audio_cb_stack = (size_t)((u8 *)hi - (u8 *)lo);
+    if (lo && (u8 *)&here > (u8 *)lo && (size_t)((u8 *)&here - (u8 *)lo) >= 700 * 1024) g_audio_cb_frame = audio_cb_frame(10 + here);
+    mg_atomic_xchg(&g_audio_cb_done, 1);
+}
+
+static void test_audio_callback_stack(void)
+{
+    static i16 pcm[2 * MG_AUDIO_CHUNK];
+    mg_voice *v = mg_voice_create(MG_AUDIO_RATE, 2, 16, false);
+    int waited;
+    say("the thread of an app's sound callbacks: a megabyte of stack, as Android's has");
+    CHECK(v != NULL);
+    if (!v) return;
+    mg_voice_set_done(v, audio_cb, NULL);
+    CHECK(mg_voice_enqueue(v, pcm, sizeof(pcm)));
+    mg_voice_set_playing(v, true);
+    /* (Ten seconds at most; the buffer is ten milliseconds.) */
+    for (waited = 0; waited < 1000 && !g_audio_cb_done; waited++) mg_sleep_ns(10000000ull);
+    CHECK(g_audio_cb_done == 1);
+    say("  a stack of %u KB, the frame %d", (unsigned)(g_audio_cb_stack >> 10), g_audio_cb_frame);
+    CHECK(g_audio_cb_stack >= ((size_t)1 << 20));
+    CHECK_INT(g_audio_cb_frame, 28);
+    mg_voice_destroy(v);
+}
+
 static void test_input(void)
 {
     enum { TAPS = 60000 };
@@ -4128,6 +5322,21 @@ static void test_stop_in_handler(mg_lib *lib, int how)
 }
 #endif
 
+/* What t_round_sum (guest/t_basic.c) adds up, with the host's libm. */
+static i64 round_sum_expected(int n)
+{
+    i64 sum = 0;
+    int i;
+    for (i = 0; i < n; i++) {
+        float x = (float)(i - n / 2) * 0.37109375f + 0.25f;
+        double d = (double)x * 1.5;
+        sum += (i64)lroundf(x) * 3 + (i64)lrintf(x) * 5 + (i64)roundf(x) * 7 + (i64)floorf(x) * 11 + (i64)ceilf(x) * 13 + (i64)truncf(x) * 17
+               + (i64)rintf(x) * 19 + (i64)lround(d) * 23 + (i64)lrint(d) * 29 + (i64)floor(d) * 31 + (i64)ceil(d) * 37 + (i64)round(d) * 41
+               + llroundf(x) * 43 + llround(d) * 47;
+    }
+    return sum;
+}
+
 static void test_library(mg_lib *lib, const char *what, const char *scratch)
 {
     char buf[128], word[16];
@@ -4158,6 +5367,13 @@ static void test_library(mg_lib *lib, const char *what, const char *scratch)
     CHECK(near(mg_gd(FN(lib, gdouble (*)(gdouble), "t_sin")(mg_gdb(0.5))), sin(0.5)));
     CHECK(near(mg_gd(FN(lib, gdouble (*)(gdouble, gdouble), "t_pow")(mg_gdb(2.0), mg_gdb(10.0))), 1024.0));
     CHECK_INT(FN(lib, long (*)(gdouble), "t_lround")(mg_gdb(-2.5)), -3);
+    {
+        /* libm's rounding through the library's PLT (ARM entries in the ARM one, as Geekbench's are), against the host's. */
+        u64 began = mg_time_monotonic_ns();
+        i64 got = FN(lib, i64 (*)(int), "t_round_sum")(8192);
+        CHECK(got == round_sum_expected(8192));
+        say("  libm's rounding through the PLT: 8192 x 14 calls in %.1f ms", (double)(mg_time_monotonic_ns() - began) / 1e6);
+    }
     CHECK(near(mg_gd(FN(lib, gdouble (*)(gdouble, double *), "t_modf")(mg_gdb(3.75), &ip)), 0.75) && near(ip, 3.0));
     CHECK(near(mg_gd(FN(lib, gdouble (*)(const char *), "t_strtod")("-12.5e2")), -1250.0));
     CHECK(near(mg_gd(FN(lib, gdouble (*)(void *, gdouble, gdouble), "t_call_d")((void *)host_hypot, mg_gdb(3.0), mg_gdb(4.0))), 5.0));
@@ -5652,6 +6868,7 @@ int mg_tests_run(const char *libdir, const char *scratch, mg_test_sink sink, voi
     test_camera();
     test_battery();
     test_libc_odds();
+    test_malloc_threads();
     test_appx_manifest();
     test_appx_pri();
     test_arsc(libdir);
@@ -5664,6 +6881,8 @@ int mg_tests_run(const char *libdir, const char *scratch, mg_test_sink sink, voi
     test_mmap_write_back_unlocked(scratch);
     test_mmap_lock_order(scratch);
     test_libc_gaps(scratch);
+    test_libm_rounding();
+    test_inotify(scratch);
     test_mmap_madvise(scratch);
     test_pread_threads(scratch);
     test_rename_in_use(scratch);
@@ -5672,6 +6891,7 @@ int mg_tests_run(const char *libdir, const char *scratch, mg_test_sink sink, voi
     test_shm_views();
     test_free_stretches();
     test_input();
+    test_audio_callback_stack();
     {
         /* The stand-in for the shell's drawing under a Java app: it is what the Java driver's tests see pictures through. */
         int checks = 0;

@@ -11,6 +11,8 @@
 //                Megler with megler:uninstall?package=.
 //   permission   player/PermissionHost.h: what Windows' privacy settings or the user said of a permission group, and its
 //                question (Windows' own, or Megler's dialog through `ask`) when the app requests one.
+//   pick         player/PickerHost.h: Windows' FileOpenPicker and CameraCaptureUI for the app's intents to Android's documents
+//                UI, photo picker and camera app, what the user picked or took copied into a folder of the app's.
 #pragma once
 
 #include "megler.h"

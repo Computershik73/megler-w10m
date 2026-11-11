@@ -149,6 +149,7 @@ void megler_stop(void) { mg_run_stop(); }
 void megler_start_activity(const char *activity_class) { mg_java_start_activity(activity_class); }
 void megler_sms_received(const char *from, const char *body, int64_t time_ms) { mg_java_phone_sms(from, body, time_ms); }
 void megler_call_logged(const char *number, int64_t time_ms, int type, int duration_s) { mg_java_phone_call(number, time_ms, type, duration_s); }
+void megler_pick_done(unsigned id, int status, int count, const char *const *names) { mg_java_picked(id, status, count, names); }
 
 bool megler_clear_data_asked(const char *package) { return g_data_dir[0] && mg_run_clear_data_asked(megler_storage_dir(), package); }
 bool megler_clear_cache_asked(const char *package) { return g_data_dir[0] && mg_run_clear_cache_asked(megler_storage_dir(), package); }

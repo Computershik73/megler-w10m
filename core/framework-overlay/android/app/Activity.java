@@ -54,6 +54,11 @@
 // And getCallingActivity and getCallingPackage name who started the activity for a result -- none when it was started
 // without one, as on Android, where they named whoever started it; Android 14's getLaunchedFromUid and
 // getLaunchedFromPackage name that one, the app itself, whether for a result or not.
+//
+// And getReferrer says who started the activity, as Android's: the intent's EXTRA_REFERRER or EXTRA_REFERRER_NAME, else the
+// package that started it -- the app's own, or the system's for the activity the shell starts (AppRunner.SHELL_REFERRER) --
+// and what onProvideReferrer gives goes into the intents of the activities this one starts. It was null, and Device Info HW
+// ended at its start.
 // Everything else is the original's, unchanged.
 package android.app;
 
@@ -87,6 +92,10 @@ public class Activity extends ContextThemeWrapper implements Window.Callback, Ke
     private Intent mResultData;
     private Activity mParent, mCaller;
     private int mRequestCode = -1;
+    /* The package that started it, as ActivityThread hands Activity.attach the referrer of its record (getReferrer): the app's
+       own, for an activity it started; the system's, for the one the shell started for the user's tap on the app's tile
+       (AppRunner.SHELL_REFERRER); one made again in its place keeps it (AppRunner.relaunch). */
+    private String mReferrer;
     private final Handler mHandler = new Handler(Looper.getMainLooper());
     private ActionBar mActionBar;
     private final ArrayList<Application.ActivityLifecycleCallbacks> mLifecycleCallbacks = new ArrayList<>();
@@ -119,6 +128,7 @@ public class Activity extends ContextThemeWrapper implements Window.Callback, Ke
         mInfo = info;
         mCaller = caller;
         mRequestCode = requestCode;
+        mReferrer = megler.Native.packageName();
         /* the component it was started as, as Android's ActivityRecord has it: the manifest's activity, which an app's
            component factory may have made of another class (Facebook's makes its splash screen's class for its main activity) */
         mComponent = new ComponentName(getPackageName(), info != null && info.name != null ? info.name : getClass().getName());
@@ -230,6 +240,9 @@ public class Activity extends ContextThemeWrapper implements Window.Callback, Ke
     private boolean windowShown() { return mWindow != null && mWindow.peekDecorView() != null && megler.ViewRoot.of(mWindow.peekDecorView()) != null; }
     public final Activity meglerCaller() { return mCaller; }
     public final int meglerRequestCode() { return mRequestCode; }
+    /** The package that started it (getReferrer); set by AppRunner where that is not the app. */
+    public final String meglerReferrer() { return mReferrer; }
+    public final void meglerSetReferrer(String pkg) { mReferrer = pkg; }
     /** It passed its caller's request on (FLAG_ACTIVITY_FORWARD_RESULT): its own result goes to no one. */
     public final void meglerForwardedResult() { mRequestCode = -1; }
     public final int meglerResultCode() { return mResultCode; }
@@ -317,7 +330,14 @@ public class Activity extends ContextThemeWrapper implements Window.Callback, Ke
     public void meglerNewIntent(Intent i) {
         boolean up = isResumedMegler();
         if (up) meglerPause();
-        onNewIntent(i);
+        // The new intent's referrer while it hears it, as Instrumentation.callActivityOnNewIntent has it: the app's, which sent it.
+        String was = mReferrer;
+        mReferrer = megler.Native.packageName();
+        try {
+            onNewIntent(i);
+        } finally {
+            mReferrer = was;
+        }
         if (up) meglerResume();
     }
     protected void onActivityResult(int request, int result, Intent data) {}
@@ -518,6 +538,22 @@ public class Activity extends ContextThemeWrapper implements Window.Callback, Ke
     public ComponentName getCallingActivity() { return mCaller != null && mRequestCode >= 0 ? mCaller.getComponentName() : null; }
     public String getLaunchedFromPackage() { return mCaller != null ? getPackageName() : null; }
     public int getLaunchedFromUid() { return mCaller != null ? android.os.Process.myUid() : android.os.Process.INVALID_UID; }
+    /*
+     * Who started it, as Android's: the intent's Intent.EXTRA_REFERRER where it is a Uri (an activity's onProvideReferrer puts
+     * it there as it starts another), else its EXTRA_REFERRER_NAME parsed, else android-app:// and the package that started it
+     * (mReferrer). It was a stub's null, and Device Info HW 5.27.1's DeviceInfoActivity, which keeps
+     * getReferrer().getAuthority() (b1.J.g), ended at its start on a NullPointerException (a Lumia 950, 0.1.0.681).
+     */
+    public android.net.Uri getReferrer() {
+        Intent intent = getIntent();
+        if (intent != null) {
+            android.net.Uri given = intent.getParcelableExtra(Intent.EXTRA_REFERRER, android.net.Uri.class);
+            if (given != null) return given;
+            String name = intent.getStringExtra(Intent.EXTRA_REFERRER_NAME);
+            if (name != null) return android.net.Uri.parse(name);
+        }
+        return mReferrer != null ? new android.net.Uri.Builder().scheme("android-app").authority(mReferrer).build() : null;
+    }
     public int getTaskId() { return 1; }
     public final void setResult(int code) { mResultCode = code; mResultData = null; }
     public final void setResult(int code, Intent data) { mResultCode = code; mResultData = data; }
@@ -525,6 +561,9 @@ public class Activity extends ContextThemeWrapper implements Window.Callback, Ke
     @Override public void startActivity(Intent i, Bundle o) { startActivityForResult(i, -1, o); }
     public void startActivityForResult(Intent i, int request) { startActivityForResult(i, request, null); }
     public void startActivityForResult(Intent i, int request, Bundle o) {
+        // The referrer this activity gives what it starts, put in the intent as Instrumentation.execStartActivity puts it.
+        android.net.Uri referrer = onProvideReferrer();
+        if (referrer != null && i != null) i.putExtra(Intent.EXTRA_REFERRER, referrer);
         if (request >= 0 && !windowShown() && megler.Manifest.resolve(i) != null) mStartedActivity = true;
         megler.AppRunner.startActivity(this, i, request, o);
     }
@@ -805,7 +844,6 @@ public class Activity extends ContextThemeWrapper implements Window.Callback, Ke
             public int getMaxNumPictureInPictureActions() { return 0; }
             public android.media.session.MediaController getMediaController() { return (android.media.session.MediaController) megler.Fill.get(meglerFill, "MediaController"); }
             public int getNextAutofillId() { return 0; }
-            public android.net.Uri getReferrer() { return null; }
             public android.view.SearchEvent getSearchEvent() { return null; }
             public android.os.IBinder getShareableActivityToken() { return null; }
             public android.app.VoiceInteractor getVoiceInteractor() { return null; }

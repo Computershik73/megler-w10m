@@ -539,7 +539,11 @@ public class WebChromeClient {
      */
     public boolean onShowFileChooser(WebView webView, ValueCallback<Uri[]> filePathCallback,
             FileChooserParams fileChooserParams) {
-        return false;
+        // Megler: the phone's picker (or its camera, for an input that asks for capture), where Android's returns false and
+        // the WebView then does nothing -- an app that leaves a page's <input type=file> to the platform has it work here
+        // (megler.Pickers.forWebView). An app's own client that starts FileChooserParams.createIntent goes to the same
+        // picker through startActivityForResult.
+        return megler.Pickers.forWebView(filePathCallback, fileChooserParams);
     }
 
     /**

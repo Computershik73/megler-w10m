@@ -63,6 +63,8 @@ public class Main extends Activity {
         count = state == null ? 1 : state.getInt("count") + 1;
         Object kept = getLastNonConfigurationInstance();
         Log.i(TAG, "Main.onCreate count=" + count + " state=" + (state == null ? "none" : "saved") + " retained=" + (kept == null ? "none" : kept));
+        // Who started it (Activity.getReferrer): the system, which started it for the tap on its tile -- and still, made again.
+        Log.i(TAG, "Main.referrer " + getReferrer());
         FrameLayout root = new FrameLayout(this);
         LinearLayout halves = new LinearLayout(this);
         halves.setOrientation(LinearLayout.HORIZONTAL);

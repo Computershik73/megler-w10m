@@ -340,6 +340,7 @@ public class Main extends Activity {
         dnsServers();
         systemLibs();
         apacheHttpLegacy();
+        androidTestBase();
         preloadedDrawables();
         location();
         sensors();
@@ -1406,6 +1407,9 @@ public class Main extends Activity {
             child.startAnimation(fade);
             return true;
         });
+        animationSet();
+        waitInterrupt();
+        looperInterrupt();
         // A circular reveal played with another animator in an AnimatorSet, as Jamfish plays one as each song begins (the
         // reveal was null, and the set ended the app with a NullPointerException): it is an animator of the radius, and it
         // and the set run to their ends.
@@ -1930,6 +1934,7 @@ public class Main extends Activity {
         installs();
         bitmapBytes();
         fileReadOnly();
+        fileTimes();
         componentState();
         adaptiveIcon();
         launcherLoading();
@@ -2003,6 +2008,10 @@ public class Main extends Activity {
         roundRectShape();
         visibilityAggregated();
         visibilityScrap();
+        addViewParams();
+        cleanupLayoutState();
+        calendarInstances();
+        platformSignature();
         layerDrawableHidden();
         boringLayoutOneLine();
         backgroundOffMainThread();
@@ -2013,8 +2022,12 @@ public class Main extends Activity {
         notificationChannel();
         notificationChannels(run);
         geocoding();
+        laterApis();
+        remoteCallbacks();
+        sessionControllers();
         sound();
         mediaCodec();
+        protectedMedia();
         network();
         httpEngine();
         renderNodes();
@@ -2377,6 +2390,7 @@ public class Main extends Activity {
                     /* What the phone is sold as: not less than what is there, less than twice it, and never nothing; and what is left of it. */
                     && sold >= data.getTotalBytes() && sold < 2 * data.getTotalBytes() + 1000 && left > 0 && left <= sold;
         });
+        media(run);
         step("permissions", () -> {
             String read = android.Manifest.permission.READ_EXTERNAL_STORAGE, write = android.Manifest.permission.WRITE_EXTERNAL_STORAGE,
                    camera = android.Manifest.permission.CAMERA, vibrate = android.Manifest.permission.VIBRATE, contacts = android.Manifest.permission.READ_CONTACTS,
@@ -2452,6 +2466,30 @@ public class Main extends Activity {
             return dirs && names.containsAll(Arrays.asList("Alarms", "Android", "DCIM", "Documents", "Download", "Movies", "Music", "Notifications", "Pictures", "Podcasts", "Ringtones"))
                     && root.isDirectory() && root.canRead() && root.canWrite() && new File(root, "Android/data/megler.test.data").isDirectory();
         });
+    }
+
+    /**
+     * The phone's photos, videos and sounds through MediaStore (MediaSteps says each step): before the step "permissions",
+     * so that the first run has no storage permission yet and sees only what it saved itself, and the second, which has
+     * it, everything.
+     */
+    private void media(long run) {
+        final MediaSteps m = new MediaSteps(this, run);
+        step("media-save", () -> mediaSaid(m, m.save()));
+        step("media-gated", () -> mediaSaid(m, m.gated()));
+        step("media-query", () -> mediaSaid(m, m.query()));
+        step("media-bundle", () -> mediaSaid(m, m.bundle()));
+        step("media-read", () -> mediaSaid(m, m.read()));
+        step("media-thumbnails", () -> mediaSaid(m, m.thumbnails()));
+        step("media-observer", () -> mediaSaid(m, m.observer()));
+        step("media-scanner", () -> mediaSaid(m, m.scanner()));
+        step("media-delete", () -> mediaSaid(m, m.delete()));
+    }
+
+    private boolean mediaSaid(MediaSteps m, boolean held) {
+        detail = m.detail;
+        Log.i("DataTest", "media-said " + m.detail);
+        return held;
     }
 
     private static boolean isStandard(String name) {
@@ -2801,6 +2839,127 @@ public class Main extends Activity {
             detail = "https on " + port + " through " + factory.getClass().getName() + ", layered " + layered;
             return port == 443 && "org.apache.http.conn.ssl.SSLSocketFactory".equals(factory.getClass().getName()) && layered;
         });
+    }
+
+    /**
+     * android.test.base, which an app made for Android 10 or before has on its class path (this one targets Android 9) and
+     * which this app's code calls directly (compiled against stubs/junit): junit.framework.Assert as Facebook's SDK calls it
+     * in AppEventUtility.assertIsMainThread from its activity callbacks -- Zombie Road Trip ended at its start on
+     * NoClassDefFoundError: junit/framework/Assert there -- holding on the main thread, failing elsewhere with the
+     * AssertionFailedError (an AssertionError) Android's throws, and the classes the app's class loader's, as a shared
+     * library's are; the failures worded as Android's; and a TestCase's tests run by a TestSuite of its class.
+     */
+    private void androidTestBase() {
+        step("junit-assert", () -> {
+            boolean main = android.os.Looper.myLooper() == android.os.Looper.getMainLooper();
+            // AppEventUtility.assertIsMainThread and assertIsNotMainThread, as the game's Facebook SDK has them.
+            junit.framework.Assert.assertTrue("Call must be made on the main thread", main);
+            String told = null, failed = null;
+            try {
+                junit.framework.Assert.assertFalse("Call cannot be made on the main thread", main);
+            } catch (AssertionError e) {
+                told = e instanceof junit.framework.AssertionFailedError ? e.getMessage() : "not an AssertionFailedError: " + e;
+            }
+            try {
+                junit.framework.Assert.assertTrue(!main);
+            } catch (junit.framework.AssertionFailedError e) {
+                failed = e.getMessage();
+            }
+            boolean appLoader = junit.framework.Assert.class.getClassLoader() == Main.class.getClassLoader();
+            detail = "main=" + main + " told=" + told + " failed=" + failed + " the app's class loader " + appLoader;
+            return main && "Call cannot be made on the main thread".equals(told) && "".equals(failed) && appLoader;
+        });
+        step("junit-messages", () -> {
+            String[] said = new String[5];
+            String head = "0123456789abcdefghijklmno", tail = "ABCDEFGHIJKLMNOPQRSTUVWXY";
+            junit.framework.Assert.assertEquals(1.0, 1.05, 0.1);
+            try {
+                junit.framework.Assert.assertEquals(1, 2);
+            } catch (junit.framework.AssertionFailedError e) {
+                said[0] = e.getMessage();
+            }
+            try {
+                junit.framework.Assert.assertEquals("words", "hello world", "hello word");
+            } catch (junit.framework.ComparisonFailure e) {
+                said[1] = e.getMessage() + " | " + e.getExpected() + " | " + e.getActual();
+            }
+            try {
+                junit.framework.Assert.assertEquals(null, head + "x" + tail, head + "yz" + tail);
+            } catch (junit.framework.ComparisonFailure e) {
+                said[2] = e.getMessage();
+            }
+            try {
+                junit.framework.Assert.assertNull("thing");
+            } catch (junit.framework.AssertionFailedError e) {
+                said[3] = e.getMessage();
+            }
+            try {
+                junit.framework.Assert.assertSame("a", "b");
+            } catch (junit.framework.AssertionFailedError e) {
+                said[4] = e.getMessage();
+            }
+            detail = Arrays.toString(said);
+            return "expected:<1> but was:<2>".equals(said[0])
+                && "words expected:<hello wor[l]d> but was:<hello wor[]d> | hello world | hello word".equals(said[1])
+                && "expected:<...56789abcdefghijklmno[x]ABCDEFGHIJKLMNOPQRST...> but was:<...56789abcdefghijklmno[yz]ABCDEFGHIJKLMNOPQRST...>".equals(said[2])
+                && "Expected: <null> but was: thing".equals(said[3]) && "expected same:<a> was not:<b>".equals(said[4]);
+        });
+        // A suite of JunitSample's class: its three public tests, and one for the test method that is not public, which fails
+        // saying so; setUp and tearDown around each of the three.
+        step("junit-test-case", () -> {
+            JunitSample.setUps = JunitSample.tearDowns = 0;
+            junit.framework.TestSuite suite = new junit.framework.TestSuite(JunitSample.class);
+            junit.framework.TestResult result = new junit.framework.TestResult();
+            suite.run(result);
+            java.util.TreeSet<String> failures = new java.util.TreeSet<>(), errors = new java.util.TreeSet<>();
+            for (java.util.Enumeration<junit.framework.TestFailure> e = result.failures(); e.hasMoreElements();) {
+                junit.framework.TestFailure f = e.nextElement();
+                failures.add(((junit.framework.TestCase) f.failedTest()).getName() + ": " + f.thrownException().getMessage() + (f.isFailure() ? "" : " (not a failure)"));
+            }
+            for (java.util.Enumeration<junit.framework.TestFailure> e = result.errors(); e.hasMoreElements();) {
+                junit.framework.TestFailure f = e.nextElement();
+                errors.add(((junit.framework.TestCase) f.failedTest()).getName() + ": " + f.thrownException() + (f.isFailure() ? " (a failure)" : ""));
+            }
+            detail = "tests=" + suite.testCount() + " cases=" + suite.countTestCases() + " run=" + result.runCount() + " failures=" + failures + " errors=" + errors
+                + " setUps=" + JunitSample.setUps + " tearDowns=" + JunitSample.tearDowns + " successful=" + result.wasSuccessful();
+            return suite.testCount() == 4 && suite.countTestCases() == 4 && result.runCount() == 4 && !result.wasSuccessful()
+                && "[testFails: on purpose, warning: Test method isn't public: testHidden(megler.test.data.Main.JunitSample)]".equals(failures.toString())
+                && "[testThrows: java.lang.IllegalStateException: thrown]".equals(errors.toString()) && JunitSample.setUps == 3 && JunitSample.tearDowns == 3;
+        });
+    }
+
+    /** A test case as an app's own would be (step junit-test-case): three tests, one that holds, one that fails and one that throws, and one not public. */
+    public static class JunitSample extends junit.framework.TestCase {
+        static int setUps, tearDowns;
+
+        public JunitSample(String name) {
+            super(name);
+        }
+
+        @Override
+        protected void setUp() {
+            setUps++;
+        }
+
+        @Override
+        protected void tearDown() {
+            tearDowns++;
+        }
+
+        public void testHolds() {
+            assertEquals(4, 2 + 2);
+        }
+
+        public void testFails() {
+            fail("on purpose");
+        }
+
+        public void testThrows() {
+            throw new IllegalStateException("thrown");
+        }
+
+        void testHidden() {
+        }
     }
 
     /**
@@ -3661,6 +3820,24 @@ public class Main extends Activity {
             }
         }
         Log.i("DataTest", "stuck-main ok waited=" + (android.os.SystemClock.uptimeMillis() - started) / 1000 + " s");
+        // And a monitor another thread holds while it sleeps, which the main thread waits to enter: the report says the holder's
+        // stack too, stuckHolder in it.
+        final Object held = new Object();
+        final java.util.concurrent.CountDownLatch taken = new java.util.concurrent.CountDownLatch(1);
+        new Thread(() -> stuckHolder(held, taken), "stuck-holder").start();
+        try { taken.await(); } catch (InterruptedException e) { }
+        started = android.os.SystemClock.uptimeMillis();
+        synchronized (held) {
+            Log.i("DataTest", "stuck-holder ok waited=" + (android.os.SystemClock.uptimeMillis() - started) / 1000 + " s");
+        }
+    }
+
+    /** Holds `held` for 6 s, asleep. */
+    private static void stuckHolder(Object held, java.util.concurrent.CountDownLatch taken) {
+        synchronized (held) {
+            taken.countDown();
+            try { Thread.sleep(6000); } catch (InterruptedException e) { }
+        }
     }
 
     /**
@@ -5190,6 +5367,32 @@ public class Main extends Activity {
     }
 
     /**
+     * A file's time set through java.io.File (setLastModified: libcore's utimes, the core's utimensat and its kind), as a
+     * backup restored or a photo copied with its time kept sets it: it was answered true and nothing done. In the app's own
+     * files, in the shared storage's Download and in the phone's own Movies (a link here: the stand-in's, mg_java_tests.c),
+     * two times one after the other; a file that is not there refused.
+     */
+    private void fileTimes() {
+        step("file-times", () -> {
+            File own = new File(getFilesDir(), "times.txt"), shared = new File("/sdcard/Download/megler-times.txt"), movies = new File("/sdcard/Movies/megler-times.txt");
+            StringBuilder said = new StringBuilder();
+            boolean ok = true;
+            for (File f : new File[] { own, shared, movies }) {
+                try (java.io.FileOutputStream out = new java.io.FileOutputStream(f)) { out.write(new byte[] { 't' }); }
+                long when = 1500000000000L, early = 1000000000000L;
+                boolean set = f.setLastModified(when), now = f.lastModified() == when;
+                boolean setEarly = f.setLastModified(early), nowEarly = f.lastModified() == early;
+                said.append(f.getPath()).append(": ").append(set).append('/').append(f.lastModified()).append(' ');
+                ok &= set && now && setEarly && nowEarly;
+                f.delete();
+            }
+            boolean missing = !new File(getFilesDir(), "no-such-file.txt").setLastModified(1500000000000L);
+            detail = said + "missing refused " + missing;
+            return ok && missing;
+        });
+    }
+
+    /**
      * The enabled state of a component and of an application: of the app's own, the platform's, Google Play services' and the
      * phone's other app's, the default; of a package the phone does not have, IllegalArgumentException, as Android answers.
      * Facebook asks so for Meta's App Manager, and took a default for the App Manager being there: it showed the terms of phones
@@ -5316,6 +5519,43 @@ public class Main extends Activity {
             android.net.Uri bare = new android.net.Uri.Builder().encodedPath("a/b").build();
             detail = u + " path=" + u.getPath() + " hierarchical=" + u.isHierarchical() + "; " + bare + " path=" + bare.getPath();
             return "max:/:chat-list".equals(u.toString()) && "/:chat-list".equals(u.getPath()) && u.isHierarchical() && "a/b".equals(bare.getPath());
+        });
+        step("url-query-sanitizer", () -> {
+            // Android's UrlQuerySanitizer, as an analytics library of HBO Max reads its app id (new UrlQuerySanitizer(url)
+            // .getValue("id"), which was null for every URL): a URL's parameters unescaped, a value's illegal characters
+            // made '_'; and one set up by hand -- registered parameters with their sanitizers, the others dropped, the first
+            // or the last of a repeated one, the list in the query's order, a script URL emptied.
+            android.net.UrlQuerySanitizer q = new android.net.UrlQuerySanitizer("https://example.test/config?id=app-1&name=a+b%41%zz&e&x=%3Cb%3E");
+            String simple = q.getValue("id") + "|" + q.getValue("name") + "|" + q.getValue("e") + "|" + q.getValue("x") + "|" + q.getValue("none")
+                    + "|" + q.hasParameter("e") + q.hasParameter("none") + "|" + q.getParameterSet().size() + "|" + q.getParameterList().size();
+            android.net.UrlQuerySanitizer own = new android.net.UrlQuerySanitizer();
+            own.registerParameter("t", android.net.UrlQuerySanitizer.getSpaceLegal());
+            own.registerParameters(new String[] { "u", "v" }, android.net.UrlQuerySanitizer.getUrlAndSpaceLegal());
+            own.registerParameter("w", android.net.UrlQuerySanitizer.getAmpLegal());
+            // (Where spaces are legal the ends are not cut and an illegal character is a space; where no white space is, they are.)
+            own.parseQuery("t=%20one two%09&dropped=1&u=http://h/p?a=1%26b&t=last&v=JavaScript:alert(1)&w=%20a%26b%09&&=");
+            StringBuilder list = new StringBuilder();
+            for (Object o : own.getParameterList()) {
+                android.net.UrlQuerySanitizer.ParameterValuePair pair = (android.net.UrlQuerySanitizer.ParameterValuePair) o;
+                list.append(pair.mParameter).append('=').append(pair.mValue).append(';');
+            }
+            String last = own.getValue("t");
+            own.setPreferFirstRepeatedParameter(true);
+            own.parseQuery("t=first&t=second");
+            String first = own.getValue("t");
+            own.setAllowUnregisteredParamaters(true);
+            own.setUnregisteredParameterValueSanitizer(android.net.UrlQuerySanitizer.getAllButNulLegal());
+            own.parseUrl("x://y?other=<%00>");
+            String other = own.getValue("other");
+            own.parseUrl("no-query");
+            detail = "simple=" + simple + " list=" + list + " last=" + last + " first=" + first + " other=" + other + " none=" + own.getParameterList().size()
+                    + " unescape=" + own.unescape("a%2Bb+c%4") + " sanitizer=" + (own.getValueSanitizer("t") == android.net.UrlQuerySanitizer.getSpaceLegal())
+                    + (own.getEffectiveValueSanitizer("zz") == android.net.UrlQuerySanitizer.getAllButNulLegal());
+            return "app-1|a_bA_zz||_b_|null|truefalse|4|4".equals(simple)
+                    && "t= one two ;u=http://h/p?a=1&b;t=last;v=;w=a&b;".equals(list.toString()) && "last".equals(last) && "first".equals(first)
+                    && "< >".equals(other) && own.getParameterList().isEmpty() && "a+b c%4".equals(own.unescape("a%2Bb+c%4"))
+                    && own.getValueSanitizer("t") == android.net.UrlQuerySanitizer.getSpaceLegal()
+                    && own.getEffectiveValueSanitizer("zz") == android.net.UrlQuerySanitizer.getAllButNulLegal();
         });
         step("html-tag-handler", () -> {
             // Html.fromHtml as Android's: the spans of the elements it knows, a paragraph's line breaks after it, elements left
@@ -6229,6 +6469,175 @@ public class Main extends Activity {
         });
     }
 
+    /** A view that writes down each setLayoutParams it is given, and fills the parameters in there before the view has them, as
+     *  Citymapper's bottom sheet container gives its CoordinatorLayout parameters their behavior: a frame's place at the bottom. */
+    public static class ParamsHeard extends android.view.View {
+        final StringBuilder heard = new StringBuilder();
+        public ParamsHeard(Context c) { super(c); }
+        public ParamsHeard(Context c, android.util.AttributeSet attrs) { super(c, attrs); }
+        @Override public void setLayoutParams(android.view.ViewGroup.LayoutParams p) {
+            String name = p.getClass().getName();
+            heard.append(name.substring(name.lastIndexOf('.') + 1)).append(getParent() == null ? "" : "+parent").append(' ');
+            if (p instanceof android.widget.FrameLayout.LayoutParams) ((android.widget.FrameLayout.LayoutParams) p).gravity = android.view.Gravity.BOTTOM;
+            super.setLayoutParams(p);
+        }
+    }
+
+    /** A group that adds a child as a list adds its rows: in its layout, with or without the child's layout asked for. */
+    static class InLayoutGroup extends android.widget.FrameLayout {
+        InLayoutGroup(Context c) { super(c); }
+        void in(android.view.View v, android.view.ViewGroup.LayoutParams p) { addViewInLayout(v, -1, p); }
+        void in(android.view.View v, android.view.ViewGroup.LayoutParams p, boolean preventRequestLayout) { addViewInLayout(v, -1, p, preventRequestLayout); }
+    }
+
+    /**
+     * A view added to a group is given its layout parameters through its own setLayoutParams, as Android's ViewGroup gives
+     * them (addViewInner): the parameters it was added with, the group's default ones when it had none, the group's own made
+     * from another group's; inflated from a layout too; and its layout is asked for. Only addViewInLayout(.., true) sets
+     * them without a call. Megler set the field: a view that overrides setLayoutParams never heard its parameters as it was
+     * added. Citymapper's BottomSheetContainerView gives its CoordinatorLayout parameters their behavior there (its layout
+     * names none), and the screen that looks for its sheet ended the app with "Not inside a bottom sheet".
+     */
+    private void addViewParams() {
+        step("add-view-params", () -> {
+            final int bottom = android.view.Gravity.BOTTOM;
+            // added with parameters
+            android.widget.FrameLayout frame = new android.widget.FrameLayout(this);
+            ParamsHeard given = new ParamsHeard(this);
+            android.widget.FrameLayout.LayoutParams fp = new android.widget.FrameLayout.LayoutParams(3, 4);
+            frame.addView(given, fp);
+            boolean withParams = "FrameLayout$LayoutParams".equals(given.heard.toString().trim()) && given.getLayoutParams() == fp && fp.gravity == bottom
+                    && given.isLayoutRequested();
+            // added with none, and with another group's
+            android.widget.LinearLayout line = new android.widget.LinearLayout(this);
+            ParamsHeard bare = new ParamsHeard(this), foreign = new ParamsHeard(this);
+            line.addView(bare);
+            line.addView(foreign, new android.view.ViewGroup.LayoutParams(1, 2));
+            boolean made = "LinearLayout$LayoutParams".equals(bare.heard.toString().trim()) && "LinearLayout$LayoutParams".equals(foreign.heard.toString().trim())
+                    && foreign.getLayoutParams() instanceof android.widget.LinearLayout.LayoutParams && foreign.getLayoutParams().width == 1;
+            // added in a layout: told unless the group asks for no layout of it
+            InLayoutGroup group = new InLayoutGroup(this);
+            ParamsHeard quiet = new ParamsHeard(this), asked = new ParamsHeard(this);
+            android.widget.FrameLayout.LayoutParams qp = new android.widget.FrameLayout.LayoutParams(1, 1);
+            group.in(quiet, qp, true);
+            group.in(asked, new android.widget.FrameLayout.LayoutParams(1, 1));
+            boolean inLayout = quiet.heard.length() == 0 && quiet.getLayoutParams() == qp && qp.gravity != bottom && quiet.getParent() == group
+                    && "FrameLayout$LayoutParams".equals(asked.heard.toString().trim());
+            // inflated
+            android.view.ViewGroup inflated = (android.view.ViewGroup) android.view.LayoutInflater.from(this).inflate(R.layout.params_heard, null);
+            ParamsHeard child = (ParamsHeard) inflated.getChildAt(0);
+            android.view.ViewGroup.LayoutParams cp = child.getLayoutParams();
+            boolean fromLayout = "FrameLayout$LayoutParams".equals(child.heard.toString().trim()) && cp instanceof android.widget.FrameLayout.LayoutParams
+                    && ((android.widget.FrameLayout.LayoutParams) cp).gravity == bottom && cp.width == 7 && cp.height == 5;
+            detail = "with parameters [" + given.heard + "] " + withParams + ", made [" + bare.heard + "] [" + foreign.heard + "] " + made
+                    + ", in a layout [" + quiet.heard + "] [" + asked.heard + "] " + inLayout + ", inflated [" + child.heard + "] " + fromLayout;
+            return withParams && made && inLayout && fromLayout;
+        });
+    }
+
+    /** A group as Compose's AndroidViewsHandler is one: its requestLayout does not go on to View's -- it counts the request
+     *  and takes its own layout request back (cleanupLayoutState), so that the next request of a child reaches it too. */
+    static class QuietGroup extends android.widget.FrameLayout {
+        int asked;
+        QuietGroup(Context c) { super(c); }
+        @Override public void requestLayout() { asked++; cleanupLayoutState(this); }
+    }
+
+    /**
+     * ViewGroup.cleanupLayoutState takes a view's layout request back, as Android's: a group that has one asked (forceLayout)
+     * and whose requestLayout calls it on itself has none after a child is added (addView asks the group's layout), and so
+     * hears each requestLayout of the child, once each. It did nothing: the group kept its request, and the child's stopped
+     * at it (a view's requestLayout goes to a parent that has none asked) -- the views a Compose screen holds, whose parent
+     * (AndroidViewsHandler) is such a group, were not measured again when they asked.
+     */
+    private void cleanupLayoutState() {
+        step("cleanup-layout-state", () -> {
+            QuietGroup g = new QuietGroup(this);
+            g.forceLayout();
+            boolean forced = g.isLayoutRequested();
+            android.view.View child = new android.view.View(this);
+            int before = g.asked;
+            g.addView(child);
+            int added = g.asked - before;
+            boolean cleared = !g.isLayoutRequested();
+            child.requestLayout();
+            int heard = g.asked - before - added;
+            child.requestLayout();
+            int again = g.asked - before - added - heard;
+            detail = "forced " + forced + " added " + added + " cleared " + cleared + " heard " + heard + " again " + again + " child asked " + child.isLayoutRequested();
+            return forced && added == 1 && cleared && heard == 1 && again == 1 && child.isLayoutRequested();
+        });
+    }
+
+    /**
+     * The package "android" is signed with the platform's certificate: asked with GET_SIGNATURES it has one signature that
+     * is an X.509 certificate (as microG's location service reads it, for each app it has a location for: fewer than 25
+     * bytes are refused, "CertData to small", and the app's requests ended there) and is not the app's own; asked with
+     * GET_SIGNING_CERTIFICATES its signingInfo has the same; asked for neither it has none, as Android answers. It had one
+     * signature of no bytes, whatever was asked, and the app's own signingInfo.
+     */
+    private void platformSignature() {
+        step("platform-signature", () -> {
+            android.content.pm.PackageManager pm = getPackageManager();
+            android.content.pm.PackageInfo plain = pm.getPackageInfo("android", 0);
+            android.content.pm.Signature[] s = pm.getPackageInfo("android", android.content.pm.PackageManager.GET_SIGNATURES).signatures;
+            android.content.pm.PackageInfo signing = pm.getPackageInfo("android", android.content.pm.PackageManager.GET_SIGNING_CERTIFICATES);
+            android.content.pm.Signature[] signers = signing.signingInfo == null ? null : signing.signingInfo.getApkContentsSigners();
+            android.content.pm.Signature[] mine = pm.getPackageInfo(getPackageName(), android.content.pm.PackageManager.GET_SIGNATURES).signatures;
+            byte[] der = s != null && s.length == 1 ? s[0].toByteArray() : new byte[0];
+            java.security.cert.X509Certificate x = der.length == 0 ? null : (java.security.cert.X509Certificate)
+                    java.security.cert.CertificateFactory.getInstance("X.509").generateCertificate(new java.io.ByteArrayInputStream(der));
+            boolean own = mine != null && mine.length > 0 && s != null && s.length > 0 && mine[0].equals(s[0]);
+            boolean again = s != null && java.util.Arrays.equals(s, pm.getPackageInfo("android", android.content.pm.PackageManager.GET_SIGNATURES).signatures);
+            detail = "signatures " + (s == null ? "null" : s.length + " of " + der.length + " bytes") + " certificate " + (x == null ? "none" : x.getType() + " v" + x.getVersion())
+                    + " signers " + (signers == null ? "null" : String.valueOf(signers.length)) + " the app's own " + own + " plain " + java.util.Arrays.toString(plain.signatures)
+                    + " " + plain.signingInfo + " again " + again;
+            return s != null && s.length == 1 && der.length >= 25 && x != null && x.getPublicKey() != null && !own
+                    && signers != null && signers.length == 1 && signers[0].equals(s[0]) && signing.signatures == null
+                    && plain.signatures == null && plain.signingInfo == null && again
+                    && plain.versionCode == android.os.Build.VERSION.SDK_INT && "android".equals(plain.packageName);
+        });
+    }
+
+    /**
+     * The calendar's events of a time, asked as Android's CalendarContract.Instances.query asks: a cursor of the columns asked
+     * for with no rows, as a phone with no events answers (megler's ContentResolver for the calendar's authority), from the
+     * helper with a search and from Attendees', Reminders' and EventDays' too; and the addresses the helpers ask are
+     * Android's. The helpers were signatures alone and gave null: Citymapper, which may read the calendar, asks for the
+     * coming events on a worker thread at each start and reads the count of the cursor it is given -- a
+     * NullPointerException there ("FATAL EXCEPTION: DefaultDispatcher-worker").
+     */
+    private void calendarInstances() {
+        step("calendar-instances", () -> {
+            android.content.ContentResolver cr = getContentResolver();
+            String[] columns = { "calendar_id", "event_id", "title", "eventLocation", "allDay", "begin", "end", "calendar_access_level" };
+            long now = System.currentTimeMillis();
+            String said = "";
+            boolean held = true;
+            android.database.Cursor[] answers = {
+                android.provider.CalendarContract.Instances.query(cr, columns, now - 3600000L, now + 86400000L),
+                android.provider.CalendarContract.Instances.query(cr, columns, now - 3600000L, now + 86400000L, "station"),
+                android.provider.CalendarContract.Attendees.query(cr, 1, columns),
+                android.provider.CalendarContract.Reminders.query(cr, 1, columns),
+                android.provider.CalendarContract.EventDays.query(cr, 2461000, 7, columns),
+            };
+            for (android.database.Cursor c : answers) {
+                boolean empty = c != null && c.getCount() == 0 && !c.moveToFirst() && java.util.Arrays.equals(columns, c.getColumnNames());
+                said += (c == null ? "null" : c.getCount() + " of " + c.getColumnCount()) + " ";
+                held &= empty;
+                if (c != null) c.close();
+            }
+            boolean addresses = "content://com.android.calendar/instances/when".equals(String.valueOf(android.provider.CalendarContract.Instances.CONTENT_URI))
+                    && "content://com.android.calendar/instances/groupbyday".equals(String.valueOf(android.provider.CalendarContract.EventDays.CONTENT_URI))
+                    && "content://com.android.calendar/colors".equals(String.valueOf(android.provider.CalendarContract.Colors.CONTENT_URI))
+                    && "content://com.android.calendar/calendar_alerts".equals(String.valueOf(android.provider.CalendarContract.CalendarAlerts.CONTENT_URI))
+                    && "content://com.android.calendar/syncstate".equals(String.valueOf(android.provider.CalendarContract.SyncState.CONTENT_URI));
+            android.database.Cursor noDays = android.provider.CalendarContract.EventDays.query(cr, 2461000, 0, columns);
+            detail = "cursors " + said + "addresses " + addresses + " no days " + noDays;
+            return held && addresses && noDays == null;
+        });
+    }
+
     /**
      * A LayerDrawable told it is not visible draws its layers all the same, as Android's: its visibility is passed on to its
      * layers, which are drawn. A ripple with content (a LayerDrawable too) likewise. Megler drew only the layers that were
@@ -6534,6 +6943,208 @@ public class Main extends Activity {
             return empty && threw && max == 1 && stays == 1 && back.getMaxAddressLineIndex() == 1 && negative && same && "square".equals(a.getExtras().getString("kind")) &&
                    text.startsWith("Address[addressLines=[0:\"Красная площадь\",1:\"Москва, 109012\"],feature=Красная площадь,") && text.contains(",locality=Москва,");
         });
+    }
+
+    /*
+     * Later APIs and attributes that apps and Google Play services met missing.
+     * A view named for a shared element transition where its layout is written -- android:transitionName in the layout, by
+     * a string resource, by a style -- which a fragment transaction asks of each shared element (Citymapper's place page);
+     * and setTransitionName still renames it.
+     * ListFormatter.getInstance with a type and a width (Android 13; Citymapper lists a route's lines with it) over ICU
+     * 60's list patterns: "and", "or" and units, in English and in Russian, by a Locale and by a ULocale; a width ICU 60's
+     * data has no pattern of is the next wider one, and holds the items anyway; and no type or no width is refused.
+     * DeviceConfig (Android 10's system API, which Play services' configurator reads and listens to): the process's own
+     * flags -- set, read by type with a default, taken away, replaced as a set -- and a listener told on its executor of
+     * each change in its namespace, of what changed only, and of none once it is removed.
+     * SeekBarPreference, which Android hides from an app's code and makes for a preferences file that names it (spacedesk's
+     * compression settings ended the app there): a fragment's screen from such a file, as the app makes it -- the default
+     * written and the maximum read; the row's bar bound to them; a finger's drag told to the change listener once, when it
+     * lifts, and kept; a refused one put back; a key's step told at once; values set in code held to 0..max; a disabled
+     * one's bar disabled; and another screen reads what is stored.
+     */
+    private void laterApis() {
+        step("transition-name", () -> {
+            android.view.View root = android.view.LayoutInflater.from(this).inflate(R.layout.shared_elements, null);
+            android.view.View byString = root.findViewById(R.id.shared_by_string), byStyle = root.findViewById(R.id.shared_by_style);
+            android.view.View unnamed = root.findViewById(R.id.shared_unnamed), made = new android.view.View(this);
+            String frame = root.getTransitionName(), string = byString.getTransitionName(), style = byStyle.getTransitionName();
+            String none = unnamed.getTransitionName(), code = made.getTransitionName();
+            byStyle.setTransitionName("renamed");
+            detail = "frame=" + frame + " string=" + string + " style=" + style + " none=" + none + " made=" + code + " renamed=" + byStyle.getTransitionName();
+            return "frame".equals(frame) && "by-string".equals(string) && "by-style".equals(style) && none == null && code == null
+                   && "renamed".equals(byStyle.getTransitionName());
+        });
+        step("list-formatter", () -> {
+            java.util.Locale ru = new java.util.Locale("ru", "RU");
+            android.icu.text.ListFormatter.Type and = android.icu.text.ListFormatter.Type.AND, or = android.icu.text.ListFormatter.Type.OR;
+            android.icu.text.ListFormatter.Type units = android.icu.text.ListFormatter.Type.UNITS;
+            android.icu.text.ListFormatter.Width wide = android.icu.text.ListFormatter.Width.WIDE, narrow = android.icu.text.ListFormatter.Width.NARROW;
+            android.icu.text.ListFormatter.Width shorter = android.icu.text.ListFormatter.Width.SHORT;
+            String three = android.icu.text.ListFormatter.getInstance(java.util.Locale.US, and, wide).format("A", "B", "C");
+            String two = android.icu.text.ListFormatter.getInstance(java.util.Locale.US, and, wide).format(java.util.Arrays.asList("A", "B"));
+            String either = android.icu.text.ListFormatter.getInstance(android.icu.util.ULocale.US, or, wide).format("A", "B", "C");
+            String unit = android.icu.text.ListFormatter.getInstance(java.util.Locale.US, units, wide).format("A", "B", "C");
+            String unitNarrow = android.icu.text.ListFormatter.getInstance(java.util.Locale.US, units, narrow).format("A", "B", "C");
+            String ruAnd = android.icu.text.ListFormatter.getInstance(ru, and, wide).format("A", "B", "C");
+            String ruOr = android.icu.text.ListFormatter.getInstance(android.icu.util.ULocale.forLocale(ru), or, wide).format("A", "B", "C");
+            String andNarrow = android.icu.text.ListFormatter.getInstance(java.util.Locale.US, and, narrow).format("A", "B", "C");
+            String orShort = android.icu.text.ListFormatter.getInstance(ru, or, shorter).format("A", "B", "C");
+            String plain = android.icu.text.ListFormatter.getInstance(java.util.Locale.US).format("A", "B", "C");
+            boolean noType = false, noWidth = false;
+            try { android.icu.text.ListFormatter.getInstance(java.util.Locale.US, null, wide); } catch (NullPointerException e) { noType = true; }
+            try { android.icu.text.ListFormatter.getInstance(android.icu.util.ULocale.US, and, null); } catch (NullPointerException e) { noWidth = true; }
+            detail = "and=" + three + " | " + two + " or=" + either + " unit=" + unit + " | " + unitNarrow + " ru=" + ruAnd + " | " + ruOr + " and-narrow=" + andNarrow
+                     + " ru-or-short=" + orShort + " plain=" + plain + " refused " + noType + " " + noWidth;
+            return "A, B, and C".equals(three) && "A and B".equals(two) && "A, B, or C".equals(either) && "A, B, C".equals(unit) && "A B C".equals(unitNarrow)
+                   && "A, B и C".equals(ruAnd) && "A, B или C".equals(ruOr) && andNarrow.startsWith("A") && andNarrow.contains("B") && andNarrow.endsWith("C")
+                   && orShort.startsWith("A") && orShort.contains("B") && orShort.endsWith("C") && "A, B, and C".equals(plain) && noType && noWidth;
+        });
+        step("device-config", () -> {
+            String ns = "megler_test";
+            java.util.ArrayList<String> heard = new java.util.ArrayList<>();
+            android.provider.DeviceConfig.OnPropertiesChangedListener listener = p -> {
+                StringBuilder s = new StringBuilder(p.getNamespace());
+                for (String name : new java.util.TreeSet<>(p.getKeyset())) s.append(' ').append(name).append('=').append(p.getString(name, "gone"));
+                heard.add(s.toString());
+            };
+            android.provider.DeviceConfig.addOnPropertiesChangedListener(ns, Runnable::run, listener);
+            boolean none = android.provider.DeviceConfig.getProperty(ns, "a") == null && android.provider.DeviceConfig.getInt(ns, "a", 7) == 7
+                           && android.provider.DeviceConfig.getProperties(ns).getKeyset().isEmpty();
+            boolean set = android.provider.DeviceConfig.setProperty(ns, "a", "12", false) && android.provider.DeviceConfig.setProperty(ns, "b", "true", false)
+                          && android.provider.DeviceConfig.setProperty("megler_other", "c", "x", false) && android.provider.DeviceConfig.setProperty(ns, "a", "12", false);
+            boolean read = "12".equals(android.provider.DeviceConfig.getProperty(ns, "a")) && android.provider.DeviceConfig.getInt(ns, "a", 0) == 12
+                           && android.provider.DeviceConfig.getBoolean(ns, "b", false) && android.provider.DeviceConfig.getInt(ns, "b", 5) == 5
+                           && "d".equals(android.provider.DeviceConfig.getString(ns, "zz", "d")) && android.provider.DeviceConfig.getProperty(ns, "c") == null;
+            java.util.Set<String> some = android.provider.DeviceConfig.getProperties(ns, "a", "zz").getKeyset();
+            java.util.Set<String> all = android.provider.DeviceConfig.getProperties(ns).getKeyset();
+            boolean deleted = android.provider.DeviceConfig.deleteProperty(ns, "b") && android.provider.DeviceConfig.getProperty(ns, "b") == null;
+            boolean replaced = android.provider.DeviceConfig.setProperties(new android.provider.DeviceConfig.Properties.Builder(ns).setString("a", "12").setLong("n", 5).build());
+            android.provider.DeviceConfig.Properties now = android.provider.DeviceConfig.getProperties(ns);
+            android.provider.DeviceConfig.removeOnPropertiesChangedListener(listener);
+            android.provider.DeviceConfig.setProperty(ns, "a", "13", false);
+            boolean last = "13".equals(android.provider.DeviceConfig.getProperty(ns, "a"));
+            android.provider.DeviceConfig.deleteProperty(ns, "a");
+            android.provider.DeviceConfig.deleteProperty(ns, "n");
+            android.provider.DeviceConfig.deleteProperty("megler_other", "c");
+            detail = "none " + none + " set " + set + " read " + read + " some " + some + " all " + all + " deleted " + deleted + " replaced " + replaced + " now "
+                     + new java.util.TreeSet<>(now.getKeyset()) + " n=" + now.getLong("n", 0) + " last " + last + " heard " + heard;
+            return none && set && read && some.size() == 1 && some.contains("a") && all.size() == 2 && deleted && replaced && now.getKeyset().size() == 2
+                   && now.getLong("n", 0) == 5 && last
+                   && heard.equals(java.util.Arrays.asList("megler_test a=12", "megler_test b=true", "megler_test b=gone", "megler_test n=5"));
+        });
+        step("seekbar-preference", () -> {
+            android.content.SharedPreferences stored = android.preference.PreferenceManager.getDefaultSharedPreferences(this);
+            stored.edit().remove("seekbar_quality").remove("seekbar_plain").remove("seekbar_beside").commit();
+            android.app.FragmentManager fm = getFragmentManager();
+            android.preference.PreferenceFragment first = new android.preference.PreferenceFragment() {
+                @Override public void onCreate(Bundle saved) { super.onCreate(saved); addPreferencesFromResource(R.xml.seekbar_prefs); }
+            };
+            fm.beginTransaction().add(first, "seekbar-first").commit();
+            fm.executePendingTransactions();
+            android.preference.Preference q = first.findPreference("seekbar_quality"), p = first.findPreference("seekbar_plain");
+            if (!(q instanceof android.preference.SeekBarPreference) || !(p instanceof android.preference.SeekBarPreference)) {
+                detail = "made " + q + " and " + p;
+                return false;
+            }
+            android.preference.SeekBarPreference quality = (android.preference.SeekBarPreference) q, plain = (android.preference.SeekBarPreference) p;
+            boolean made = quality.getProgress() == 60 && stored.getInt("seekbar_quality", -1) == 60 && quality.getSummary() == null
+                           && plain.getProgress() == 0 && !stored.contains("seekbar_plain") && stored.getBoolean("seekbar_beside", false);
+            // The row, as the screen's list makes it, laid out 600 pixels wide for the finger.
+            android.widget.ListView list = new android.widget.ListView(this);
+            first.getPreferenceScreen().bind(list);
+            android.view.View row = quality.getView(null, list);
+            android.widget.SeekBar bar = seekBarIn(row);
+            if (bar == null) {
+                detail = "made " + made + ", no bar in the row " + row;
+                return false;
+            }
+            row.measure(android.view.View.MeasureSpec.makeMeasureSpec(600, android.view.View.MeasureSpec.EXACTLY),
+                        android.view.View.MeasureSpec.makeMeasureSpec(0, android.view.View.MeasureSpec.UNSPECIFIED));
+            row.layout(0, 0, row.getMeasuredWidth(), row.getMeasuredHeight());
+            boolean bound = bar.getMax() == 100 && bar.getProgress() == 60 && bar.isEnabled() && bar.getWidth() > 100 && bar.getHeight() > 0;
+            java.util.ArrayList<Object> told = new java.util.ArrayList<>();
+            final boolean[] take = { true };
+            quality.setOnPreferenceChangeListener((preference, value) -> { told.add(value); return take[0]; });
+            float y = bar.getHeight() / 2f, middle = bar.getWidth() / 2f, beyond = bar.getWidth() + 50;
+            // A drag from the middle to beyond the end: nothing told or kept while the finger is down, the end once it lifts.
+            touch(bar, android.view.MotionEvent.ACTION_DOWN, middle, y);
+            int downBar = bar.getProgress(), downValue = quality.getProgress(), downTold = told.size();
+            touch(bar, android.view.MotionEvent.ACTION_MOVE, beyond, y);
+            touch(bar, android.view.MotionEvent.ACTION_UP, beyond, y);
+            boolean dragged = downBar == 50 && downValue == 60 && downTold == 0 && bar.getProgress() == 100 && quality.getProgress() == 100
+                              && stored.getInt("seekbar_quality", -1) == 100 && told.equals(java.util.Arrays.asList((Object) 100));
+            // A touch in the middle that the listener refuses: the bar goes back, the value stays.
+            take[0] = false;
+            touch(bar, android.view.MotionEvent.ACTION_DOWN, middle, y);
+            touch(bar, android.view.MotionEvent.ACTION_UP, middle, y);
+            boolean refused = bar.getProgress() == 100 && quality.getProgress() == 100 && stored.getInt("seekbar_quality", -1) == 100
+                              && told.equals(java.util.Arrays.asList((Object) 100, 50));
+            // A key's step (a twentieth of the range), no drag: told at once.
+            take[0] = true;
+            boolean key = bar.onKeyDown(android.view.KeyEvent.KEYCODE_DPAD_LEFT,
+                                        new android.view.KeyEvent(android.view.KeyEvent.ACTION_DOWN, android.view.KeyEvent.KEYCODE_DPAD_LEFT));
+            boolean keyed = key && bar.getProgress() == 95 && quality.getProgress() == 95 && stored.getInt("seekbar_quality", -1) == 95
+                            && told.equals(java.util.Arrays.asList((Object) 100, 50, 95));
+            // Set in code: held to 0..max, kept, the listener not asked; the same row bound again shows it.
+            quality.setProgress(250);
+            int over = quality.getProgress(), overStored = stored.getInt("seekbar_quality", -1);
+            quality.setProgress(-3);
+            int under = quality.getProgress(), underStored = stored.getInt("seekbar_quality", -1);
+            quality.setMax(40);
+            quality.setProgress(70);
+            android.view.View again = quality.getView(row, list);
+            boolean coded = over == 100 && overStored == 100 && under == 0 && underStored == 0 && quality.getProgress() == 40 && told.size() == 3
+                            && again == row && bar.getMax() == 40 && bar.getProgress() == 40;
+            // The one with a title alone: no maximum, so 0 as Android has it; disabled, its bar is too.
+            plain.setEnabled(false);
+            android.view.View plainRow = plain.getView(null, list);
+            android.widget.SeekBar plainBar = seekBarIn(plainRow);
+            android.widget.TextView title = plainRow.findViewById(android.R.id.title);
+            boolean titled = plainBar != null && plainBar != bar && plainBar.getMax() == 0 && !plainBar.isEnabled() && title != null
+                             && "Plain".contentEquals(title.getText()) && title.getVisibility() == android.view.View.VISIBLE;
+            fm.beginTransaction().remove(first).commit();
+            fm.executePendingTransactions();
+            // Another screen of the same file reads what is stored.
+            stored.edit().putInt("seekbar_quality", 33).commit();
+            android.preference.PreferenceFragment second = new android.preference.PreferenceFragment() {
+                @Override public void onCreate(Bundle saved) { super.onCreate(saved); addPreferencesFromResource(R.xml.seekbar_prefs); }
+            };
+            fm.beginTransaction().add(second, "seekbar-second").commit();
+            fm.executePendingTransactions();
+            android.preference.Preference q2 = second.findPreference("seekbar_quality");
+            int read = q2 instanceof android.preference.SeekBarPreference ? ((android.preference.SeekBarPreference) q2).getProgress() : -1;
+            fm.beginTransaction().remove(second).commit();
+            fm.executePendingTransactions();
+            stored.edit().remove("seekbar_quality").remove("seekbar_plain").remove("seekbar_beside").commit();
+            detail = "made " + made + " bound " + bound + " (" + bar.getWidth() + "x" + bar.getHeight() + ") dragged " + dragged + " (down: bar " + downBar + " value "
+                     + downValue + ") refused " + refused + " keyed " + keyed + " coded " + coded + " (" + over + "/" + under + ") titled " + titled + " read " + read
+                     + " told " + told;
+            return made && bound && dragged && refused && keyed && coded && titled && read == 33;
+        });
+    }
+
+    /** The first SeekBar of a view's tree. */
+    private static android.widget.SeekBar seekBarIn(android.view.View v) {
+        if (v instanceof android.widget.SeekBar) return (android.widget.SeekBar) v;
+        if (v instanceof android.view.ViewGroup) {
+            android.view.ViewGroup g = (android.view.ViewGroup) v;
+            for (int i = 0; i < g.getChildCount(); i++) {
+                android.widget.SeekBar b = seekBarIn(g.getChildAt(i));
+                if (b != null) return b;
+            }
+        }
+        return null;
+    }
+
+    /** A finger's event at a place of a view. */
+    private static boolean touch(android.view.View v, int action, float x, float y) {
+        long now = android.os.SystemClock.uptimeMillis();
+        android.view.MotionEvent e = android.view.MotionEvent.obtain(now, now, action, x, y, 0);
+        try {
+            return v.dispatchTouchEvent(e);
+        } finally {
+            e.recycle();
+        }
     }
 
     private void markupRegex() {
@@ -6978,7 +7589,10 @@ public class Main extends Activity {
      * provider (hidden: by reflection) -- names its provider and the quality the passive provider stands for (POWER_NONE); one
      * goes through a Parcel and comes back equal. And a request of the passive interval through LocationManager (Android 12's
      * requestLocationUpdates with a LocationRequest, by reflection) is handed a fix on the main thread and removed:
-     * "location-passive ok", which the test waits for. (LocationRequest is Android 12's: stubs/.)
+     * "location-passive ok", which the test waits for. (LocationRequest is Android 12's: stubs/.) A passive request is
+     * built with its minimum update interval set, as androidx's LocationRequestCompat builds every one (microG's network
+     * location asks for the GPS provider's fixes so); one whose minimum update interval was never set is refused
+     * (IllegalStateException), as Android refuses it. The check was the other way round, and microG's request failed.
      */
     private void locationRequest() {
         step("location-request", () -> {
@@ -6994,7 +7608,14 @@ public class Main extends Activity {
             android.location.LocationRequest back = android.location.LocationRequest.CREATOR.createFromParcel(p);
             p.recycle();
             final android.location.LocationManager lm = (android.location.LocationManager) getSystemService(Context.LOCATION_SERVICE);
-            android.location.LocationRequest passive = new android.location.LocationRequest.Builder(android.location.LocationRequest.PASSIVE_INTERVAL).build();
+            android.location.LocationRequest passive = new android.location.LocationRequest.Builder(android.location.LocationRequest.PASSIVE_INTERVAL)
+                    .setMinUpdateIntervalMillis(1000).build();
+            String implicit;
+            try {
+                implicit = "built " + new android.location.LocationRequest.Builder(android.location.LocationRequest.PASSIVE_INTERVAL).build();
+            } catch (IllegalStateException e) {
+                implicit = "refused";
+            }
             lm.getClass().getMethod("requestLocationUpdates", String.class, android.location.LocationRequest.class, java.util.concurrent.Executor.class,
                     android.location.LocationListener.class).invoke(lm, android.location.LocationManager.PASSIVE_PROVIDER, passive, getMainExecutor(),
                     new android.location.LocationListener() {
@@ -7018,10 +7639,13 @@ public class Main extends Activity {
                         public void onStatusChanged(String provider, int status, android.os.Bundle extras) {}
                     });
             detail = "built " + r + " minUpdate=" + r.getMinUpdateIntervalMillis() + " any.max=" + any.getMaxUpdates() + " deprecated " + deprecated + " provider=" + provider
-                    + " quality=" + quality + " back=" + back;
+                    + " quality=" + quality + " back=" + back + " passive: interval " + (passive.getIntervalMillis() == android.location.LocationRequest.PASSIVE_INTERVAL)
+                    + " minUpdate=" + passive.getMinUpdateIntervalMillis() + ", with none set " + implicit;
             return r.getIntervalMillis() == 6000 && r.getMaxUpdates() == 3 && r.getMinUpdateIntervalMillis() == 1000
                     && r.getQuality() == android.location.LocationRequest.QUALITY_BALANCED_POWER_ACCURACY && any.getMaxUpdates() == Integer.MAX_VALUE
-                    && "passive".equals(provider) && quality == 200 && r.equals(back);
+                    && "passive".equals(provider) && quality == 200 && r.equals(back)
+                    && passive.getIntervalMillis() == android.location.LocationRequest.PASSIVE_INTERVAL && passive.getMinUpdateIntervalMillis() == 1000
+                    && "refused".equals(implicit);
         });
     }
 
@@ -7297,6 +7921,415 @@ public class Main extends Activity {
         });
     }
 
+    /** A listener of the app's own, as an AIDL callback is within its own process: an interface whose binder is itself. */
+    private static final class Listener extends android.os.Binder implements android.os.IInterface {
+        final String name;
+        Listener(String name) { this.name = name; }
+        @Override public android.os.IBinder asBinder() { return this; }
+    }
+
+    /**
+     * Android's RemoteCallbackList, as androidx's MediaSessionCompat keeps its controllers' callbacks in one: callbacks by
+     * their binder, each with its cookie, one registered again taking the earlier one's place; a broadcast over the
+     * callbacks as they were when it began, and Android's refusals of one begun inside another or finished outside one; the
+     * one-call broadcast (hidden on Android: by reflection); and kill, after which nothing registers.
+     */
+    private void remoteCallbacks() {
+        step("remote-callback-list", () -> {
+            android.os.RemoteCallbackList<Listener> list = new android.os.RemoteCallbackList<>();
+            Listener a = new Listener("a"), b = new Listener("b");
+            boolean registered = list.register(a, "first") && list.register(b) && list.register(a, "again");
+            int count = list.getRegisteredCallbackCount();
+            int n = list.beginBroadcast();
+            boolean nested = false;
+            try { list.beginBroadcast(); } catch (IllegalStateException e) { nested = true; }
+            // (Unregistered while the broadcast is under way: still of this broadcast, not of the next.)
+            boolean unregistered = list.unregister(b);
+            java.util.TreeSet<String> heard = new java.util.TreeSet<>();
+            for (int i = 0; i < n; i++) heard.add(list.getBroadcastItem(i).name + "=" + list.getBroadcastCookie(i));
+            list.finishBroadcast();
+            boolean outside = false;
+            try { list.finishBroadcast(); } catch (IllegalStateException e) { outside = true; }
+            final StringBuilder next = new StringBuilder();
+            android.os.RemoteCallbackList.class.getMethod("broadcast", java.util.function.Consumer.class)
+                    .invoke(list, (java.util.function.Consumer<Listener>) l -> next.append(l.name));
+            boolean notAgain = !list.unregister(b);
+            Object cookie = list.getRegisteredCallbackCookie(0);
+            list.kill();
+            boolean killed = !list.register(b) && list.getRegisteredCallbackCount() == 0 && list.beginBroadcast() == 0;
+            list.finishBroadcast();
+            detail = "registered " + registered + ", count " + count + ", a broadcast of " + n + " " + heard + ", nested refused " + nested + ", outside refused " + outside
+                    + ", the next " + next + ", cookie " + cookie + ", killed " + killed;
+            return registered && count == 2 && n == 2 && nested && unregistered && "[a=again, b=null]".equals(heard.toString()) && outside
+                    && "a".equals(next.toString()) && notAgain && "again".equals(cookie) && killed;
+        });
+    }
+
+    /** Holds a looper's thread until the latch given back is counted down: what is posted to the looper meanwhile waits. */
+    private static java.util.concurrent.CountDownLatch hold(android.os.Looper looper) throws InterruptedException {
+        final java.util.concurrent.CountDownLatch held = new java.util.concurrent.CountDownLatch(1), go = new java.util.concurrent.CountDownLatch(1);
+        new android.os.Handler(looper).post(() -> {
+            held.countDown();
+            try { go.await(10, java.util.concurrent.TimeUnit.SECONDS); } catch (InterruptedException e) { }
+        });
+        held.await(5, java.util.concurrent.TimeUnit.SECONDS);
+        return go;
+    }
+
+    /** Waits until a looper's thread has done all that was posted to it before this, and what that posted in its turn. */
+    private static boolean drain(android.os.Looper looper) throws InterruptedException {
+        boolean done = true;
+        for (int pass = 0; pass < 2; pass++) {
+            final java.util.concurrent.CountDownLatch latch = new java.util.concurrent.CountDownLatch(1);
+            new android.os.Handler(looper).post(latch::countDown);
+            done &= latch.await(5, java.util.concurrent.TimeUnit.SECONDS);
+        }
+        return done;
+    }
+
+    private static android.media.session.MediaSession.QueueItem queueItem(String mediaId, String title, long id) {
+        return new android.media.session.MediaSession.QueueItem(new android.media.MediaDescription.Builder().setMediaId(mediaId).setTitle(title).build(), id);
+    }
+
+    /**
+     * A media session's token and controllers, as an app that plays through its own session uses them (androidx's
+     * MediaSessionCompat and MediaControllerCompat are made of these; Deezer's player screen holds a controller of the
+     * session its playback service made, and its play button is the controller's TransportControls.play()):
+     * the session's token, one and the same and equal through a Parcel, and a queue item through one; a controller made of
+     * the token, whose transport controls reach the session's Callback later, on the thread of the handler the callback was
+     * set with, with the controller's package to be asked for there -- also when the app has emptied that handler of its
+     * own, and not once the callback is taken away or the session released; a controller's Callback hearing each change on
+     * its handler's thread, and reading the same from the controller, the position brought to now; a command answered
+     * through its ResultReceiver and a media key through the controller; a remote session's volume through its
+     * VolumeProvider; and a Rating as Android's.
+     */
+    private void sessionControllers() {
+        step("session-token", () -> {
+            android.media.session.MediaSession session = new android.media.session.MediaSession(this, "session-token");
+            android.media.session.MediaSession.Token token = session.getSessionToken();
+            android.os.Parcel p = android.os.Parcel.obtain();
+            p.writeParcelable(token, 0);
+            queueItem("m1", "First", 7).writeToParcel(p, 0);
+            p.setDataPosition(0);
+            android.media.session.MediaSession.Token back = p.readParcelable(getClassLoader());
+            android.media.session.MediaSession.QueueItem item = android.media.session.MediaSession.QueueItem.CREATOR.createFromParcel(p);
+            p.recycle();
+            android.media.session.MediaController own = session.getController(), made = back == null ? null : new android.media.session.MediaController(this, back);
+            boolean refused = false, noId = false;
+            try { new android.media.session.MediaController(this, (android.media.session.MediaSession.Token) null); } catch (IllegalArgumentException e) { refused = true; }
+            try { queueItem("m2", "Second", android.media.session.MediaSession.QueueItem.UNKNOWN_ID); } catch (IllegalArgumentException e) { noId = true; }
+            Object tag = made == null ? null : android.media.session.MediaController.class.getMethod("getTag").invoke(made);
+            session.release();
+            detail = "token " + token + ", back " + back + ", the session's controller " + own + ", one made " + made + " of " + (made == null ? null : made.getPackageName())
+                    + " tag " + tag + ", item " + item + ", refused " + refused + " " + noId;
+            return token != null && token == session.getSessionToken() && token.equals(back) && token.hashCode() == back.hashCode() && own != null
+                    && token.equals(own.getSessionToken()) && own.getTransportControls() != null && made.getTransportControls() != null
+                    && getPackageName().equals(made.getPackageName()) && "session-token".equals(tag) && item.getQueueId() == 7
+                    && "m1".equals(item.getDescription().getMediaId()) && refused && noId;
+        });
+        step("session-controller", () -> {
+            final android.os.HandlerThread ht = new android.os.HandlerThread("session callbacks");
+            ht.start();
+            final android.os.Handler handler = new android.os.Handler(ht.getLooper());
+            final android.media.session.MediaSession session = new android.media.session.MediaSession(this, "session-controller");
+            final StringBuffer heard = new StringBuffer();
+            final String[] who = new String[1];
+            final boolean[] onThread = new boolean[1];
+            session.setCallback(new android.media.session.MediaSession.Callback() {
+                @Override public void onPlay() {
+                    android.media.session.MediaSessionManager.RemoteUserInfo u = session.getCurrentControllerInfo();
+                    who[0] = u.getPackageName() + " pid " + u.getPid() + " uid " + u.getUid();
+                    onThread[0] = android.os.Looper.myLooper() == ht.getLooper();
+                    heard.append("play;");
+                }
+                @Override public void onPause() { heard.append("pause;"); }
+                @Override public void onSeekTo(long position) { heard.append("seek " + position + ";"); }
+                @Override public void onSkipToNext() { heard.append("next;"); }
+                @Override public void onSkipToPrevious() { heard.append("previous;"); }
+                @Override public void onSkipToQueueItem(long id) { heard.append("item " + id + ";"); }
+                @Override public void onPlayFromMediaId(String id, android.os.Bundle extras) { heard.append("id " + id + " " + (extras == null ? null : extras.getString("k")) + ";"); }
+                @Override public void onPlayFromSearch(String query, android.os.Bundle extras) { heard.append("search '" + query + "';"); }
+                @Override public void onCustomAction(String action, android.os.Bundle extras) { heard.append("custom " + action + ";"); }
+                @Override public void onSetRating(android.media.Rating rating) { heard.append("rating " + rating.hasHeart() + ";"); }
+                @Override public void onStop() { heard.append("stop;"); }
+            }, handler);
+            android.media.session.MediaController.TransportControls controls = new android.media.session.MediaController(this, session.getSessionToken()).getTransportControls();
+            // The callback's thread is held while play() is asked and the app empties its own handler, as Deezer's service
+            // empties its: the call is the session's to keep.
+            java.util.concurrent.CountDownLatch go = hold(ht.getLooper());
+            controls.play();
+            boolean early = heard.length() != 0;
+            handler.removeCallbacksAndMessages(null);
+            go.countDown();
+            android.os.Bundle extras = new android.os.Bundle();
+            extras.putString("k", "v");
+            controls.pause();
+            controls.seekTo(42000);
+            controls.skipToNext();
+            controls.skipToPrevious();
+            controls.skipToQueueItem(7);
+            controls.playFromMediaId("track-1", extras);
+            controls.playFromSearch(null, null);
+            controls.sendCustomAction("shuffle", null);
+            controls.setRating(android.media.Rating.newHeartRating(true));
+            controls.stop();
+            boolean drained = drain(ht.getLooper());
+            String all = heard.toString();
+            boolean refused = false;
+            try { controls.playFromMediaId("", null); } catch (IllegalArgumentException e) { refused = true; }
+            // A call that waits when the callback is taken away is dropped, and none reaches a session released.
+            go = hold(ht.getLooper());
+            controls.play();
+            session.setCallback(null);
+            go.countDown();
+            drained &= drain(ht.getLooper());
+            session.release();
+            controls.play();
+            drained &= drain(ht.getLooper());
+            boolean dropped = heard.toString().equals(all);
+            ht.quit();
+            detail = "heard " + all + " from " + who[0] + ", on the handler's thread " + onThread[0] + ", before the thread was let go " + early + ", drained " + drained
+                    + ", an empty id refused " + refused + ", nothing after the callback went " + dropped;
+            return !early && drained && onThread[0] && (getPackageName() + " pid " + android.os.Process.myPid() + " uid " + android.os.Process.myUid()).equals(who[0])
+                    && "play;pause;seek 42000;next;previous;item 7;id track-1 v;search '';custom shuffle;rating true;stop;".equals(all) && refused && dropped;
+        });
+        step("session-controller-callback", () -> {
+            final android.os.HandlerThread ht = new android.os.HandlerThread("controller callbacks");
+            ht.start();
+            final android.media.session.MediaSession session = new android.media.session.MediaSession(this, "session-controller-callback");
+            android.media.session.MediaController controller = session.getController();
+            final StringBuffer heard = new StringBuffer(), other = new StringBuffer();
+            final boolean[] onThread = new boolean[1];
+            android.media.session.MediaController.Callback callback = new android.media.session.MediaController.Callback() {
+                @Override public void onPlaybackStateChanged(android.media.session.PlaybackState state) {
+                    onThread[0] = android.os.Looper.myLooper() == ht.getLooper();
+                    heard.append("state " + (state == null ? null : state.getState()) + ";");
+                }
+                @Override public void onMetadataChanged(android.media.MediaMetadata metadata) {
+                    heard.append("metadata " + (metadata == null ? null : metadata.getString(android.media.MediaMetadata.METADATA_KEY_TITLE)) + ";");
+                }
+                @Override public void onQueueChanged(java.util.List<android.media.session.MediaSession.QueueItem> queue) { heard.append("queue " + (queue == null ? null : queue.size()) + ";"); }
+                @Override public void onQueueTitleChanged(CharSequence title) { heard.append("title " + title + ";"); }
+                @Override public void onExtrasChanged(android.os.Bundle extras) { heard.append("extras " + (extras == null ? null : extras.getString("k")) + ";"); }
+                @Override public void onSessionEvent(String event, android.os.Bundle extras) { heard.append("event " + event + " " + (extras == null ? null : extras.getString("k")) + ";"); }
+                @Override public void onSessionDestroyed() { heard.append("destroyed;"); }
+            };
+            android.media.session.MediaController.Callback second = new android.media.session.MediaController.Callback() {
+                @Override public void onPlaybackStateChanged(android.media.session.PlaybackState state) { other.append("state;"); }
+            };
+            controller.registerCallback(callback, new android.os.Handler(ht.getLooper()));
+            controller.registerCallback(second, new android.os.Handler(ht.getLooper()));
+            controller.unregisterCallback(second);
+            android.os.Bundle extras = new android.os.Bundle();
+            extras.putString("k", "v");
+            session.setMetadata(new android.media.MediaMetadata.Builder().putString(android.media.MediaMetadata.METADATA_KEY_TITLE, "A song")
+                    .putLong(android.media.MediaMetadata.METADATA_KEY_DURATION, 1500).build());
+            // Playing from 1000 ms at double speed since a second ago, in a track of 1500 ms: for a controller it is at the end.
+            session.setPlaybackState(new android.media.session.PlaybackState.Builder()
+                    .setState(android.media.session.PlaybackState.STATE_PLAYING, 1000, 2f, android.os.SystemClock.elapsedRealtime() - 1000)
+                    .setActions(android.media.session.PlaybackState.ACTION_PAUSE).build());
+            session.setQueue(java.util.Arrays.asList(queueItem("m1", "First", 7), queueItem("m2", "Second", 8)));
+            session.setQueueTitle("Up next");
+            session.setExtras(extras);
+            session.setRatingType(android.media.Rating.RATING_HEART);
+            session.setFlags(android.media.session.MediaSession.FLAG_HANDLES_MEDIA_BUTTONS | android.media.session.MediaSession.FLAG_HANDLES_TRANSPORT_CONTROLS);
+            session.sendSessionEvent("ping", extras);
+            android.media.session.PlaybackState now = controller.getPlaybackState();
+            java.util.List<android.media.session.MediaSession.QueueItem> queue = controller.getQueue();
+            boolean read = now != null && now.getState() == android.media.session.PlaybackState.STATE_PLAYING && now.getPosition() == 1500
+                    && now.getActions() == android.media.session.PlaybackState.ACTION_PAUSE
+                    && "A song".equals(controller.getMetadata().getString(android.media.MediaMetadata.METADATA_KEY_TITLE)) && queue != null && queue.size() == 2
+                    && queue.get(1).getQueueId() == 8 && "m2".equals(queue.get(1).getDescription().getMediaId()) && "Up next".contentEquals(controller.getQueueTitle())
+                    && "v".equals(controller.getExtras().getString("k")) && controller.getRatingType() == android.media.Rating.RATING_HEART && controller.getFlags() == 3
+                    && getPackageName().equals(controller.getPackageName()) && controller.getSessionToken().equals(session.getSessionToken())
+                    && controller.getSessionActivity() == null;
+            session.setPlaybackState(new android.media.session.PlaybackState.Builder()
+                    .setState(android.media.session.PlaybackState.STATE_PAUSED, 1200, 0f, android.os.SystemClock.elapsedRealtime() - 1000).build());
+            android.media.session.PlaybackState paused = controller.getPlaybackState();
+            session.release();
+            boolean drained = drain(ht.getLooper());
+            boolean gone = controller.getPlaybackState() == null;
+            ht.quit();
+            detail = "heard " + heard + " on the handler's thread " + onThread[0] + ", the one unregistered " + other + ", read " + read + " (position "
+                    + (now == null ? null : now.getPosition()) + "), paused at " + (paused == null ? null : paused.getPosition()) + ", drained " + drained + ", no state once released " + gone;
+            return read && onThread[0] && drained && "metadata A song;state 3;queue 2;title Up next;extras v;event ping v;state 2;destroyed;".equals(heard.toString())
+                    && other.length() == 0 && paused != null && paused.getPosition() == 1200 && gone;
+        });
+        step("session-controller-command", () -> {
+            final android.os.HandlerThread ht = new android.os.HandlerThread("session commands");
+            ht.start();
+            final android.media.session.MediaSession session = new android.media.session.MediaSession(this, "session-controller-command");
+            final StringBuffer heard = new StringBuffer();
+            session.setCallback(new android.media.session.MediaSession.Callback() {
+                @Override public void onCommand(String command, android.os.Bundle args, android.os.ResultReceiver cb) {
+                    heard.append("command " + command + " " + (args == null ? null : args.getString("k")) + ";");
+                    android.os.Bundle answer = new android.os.Bundle();
+                    answer.putString("a", "answer");
+                    if (cb != null) cb.send(7, answer);
+                }
+                @Override public void onPlay() { heard.append("play from " + session.getCurrentControllerInfo().getPackageName() + ";"); }
+                @Override public void onSkipToNext() { heard.append("next;"); }
+            }, new android.os.Handler(ht.getLooper()));
+            session.setPlaybackState(new android.media.session.PlaybackState.Builder().setState(android.media.session.PlaybackState.STATE_PAUSED, 0, 1f)
+                    .setActions(android.media.session.PlaybackState.ACTION_PLAY).build());
+            android.media.session.MediaController controller = new android.media.session.MediaController(this, session.getSessionToken());
+            final String[] answered = new String[1];
+            final java.util.concurrent.CountDownLatch got = new java.util.concurrent.CountDownLatch(1);
+            android.os.Bundle args = new android.os.Bundle();
+            args.putString("k", "v");
+            controller.sendCommand("ask", args, new android.os.ResultReceiver(null) {
+                @Override protected void onReceiveResult(int code, android.os.Bundle data) {
+                    answered[0] = code + " " + (data == null ? null : data.getString("a"));
+                    got.countDown();
+                }
+            });
+            boolean inTime = got.await(5, java.util.concurrent.TimeUnit.SECONDS);
+            // A media key through the controller is the callback's to answer: its own answer (Android 9's) makes the call the
+            // session's state allows, and no other.
+            boolean play = controller.dispatchMediaButtonEvent(new android.view.KeyEvent(android.view.KeyEvent.ACTION_DOWN, android.view.KeyEvent.KEYCODE_MEDIA_PLAY));
+            boolean next = controller.dispatchMediaButtonEvent(new android.view.KeyEvent(android.view.KeyEvent.ACTION_DOWN, android.view.KeyEvent.KEYCODE_MEDIA_NEXT));
+            boolean letter = controller.dispatchMediaButtonEvent(new android.view.KeyEvent(android.view.KeyEvent.ACTION_DOWN, android.view.KeyEvent.KEYCODE_A));
+            boolean drained = drain(ht.getLooper());
+            boolean refused = false;
+            try { controller.sendCommand("", null, null); } catch (IllegalArgumentException e) { refused = true; }
+            session.release();
+            ht.quit();
+            detail = "heard " + heard + ", answered " + answered[0] + " in time " + inTime + ", keys taken: play " + play + " next " + next + " a letter " + letter
+                    + ", drained " + drained + ", an empty command refused " + refused;
+            return inTime && "7 answer".equals(answered[0]) && play && next && !letter && drained && refused
+                    && ("command ask v;play from " + getPackageName() + ";").equals(heard.toString());
+        });
+        step("session-remote-volume", () -> {
+            final android.os.HandlerThread ht = new android.os.HandlerThread("session volume");
+            ht.start();
+            final android.media.session.MediaSession session = new android.media.session.MediaSession(this, "session-remote-volume");
+            final StringBuffer heard = new StringBuffer();
+            session.setCallback(new android.media.session.MediaSession.Callback() { }, new android.os.Handler(ht.getLooper()));
+            android.media.session.MediaController controller = session.getController();
+            android.media.AudioManager audio = (android.media.AudioManager) getSystemService(AUDIO_SERVICE);
+            String phone = audio.getStreamVolume(android.media.AudioManager.STREAM_MUSIC) + "/" + audio.getStreamMaxVolume(android.media.AudioManager.STREAM_MUSIC);
+            android.media.session.MediaController.PlaybackInfo local = controller.getPlaybackInfo();
+            final android.media.VolumeProvider provider = new android.media.VolumeProvider(android.media.VolumeProvider.VOLUME_CONTROL_ABSOLUTE, 20, 7) {
+                @Override public void onSetVolumeTo(int volume) {
+                    heard.append("set " + volume + (android.os.Looper.myLooper() == ht.getLooper() ? "" : " OFF THE CALLBACK'S THREAD") + ";");
+                    setCurrentVolume(volume);
+                }
+                @Override public void onAdjustVolume(int direction) {
+                    heard.append("adjust " + direction + ";");
+                    setCurrentVolume(getCurrentVolume() + direction);
+                }
+            };
+            controller.registerCallback(new android.media.session.MediaController.Callback() {
+                @Override public void onAudioInfoChanged(android.media.session.MediaController.PlaybackInfo info) {
+                    heard.append("info " + info.getPlaybackType() + " " + info.getCurrentVolume() + "/" + info.getMaxVolume() + ";");
+                }
+            }, new android.os.Handler(ht.getLooper()));
+            session.setPlaybackToRemote(provider);
+            android.media.session.MediaController.PlaybackInfo remote = controller.getPlaybackInfo();
+            // (Past the provider's range: its most.)
+            controller.setVolumeTo(50, 0);
+            boolean drained = drain(ht.getLooper());
+            controller.adjustVolume(android.media.AudioManager.ADJUST_LOWER, 0);
+            drained &= drain(ht.getLooper());
+            controller.adjustVolume(android.media.AudioManager.ADJUST_MUTE, 0);
+            drained &= drain(ht.getLooper());
+            session.setPlaybackToLocal(new android.media.AudioAttributes.Builder().setUsage(android.media.AudioAttributes.USAGE_MEDIA)
+                    .setContentType(android.media.AudioAttributes.CONTENT_TYPE_MUSIC).build());
+            drained &= drain(ht.getLooper());
+            session.release();
+            ht.quit();
+            detail = "the phone's " + phone + ", local " + local.getPlaybackType() + " " + local.getCurrentVolume() + "/" + local.getMaxVolume() + ", remote "
+                    + remote.getPlaybackType() + " " + remote.getCurrentVolume() + "/" + remote.getMaxVolume() + " control " + remote.getVolumeControl() + ", heard " + heard
+                    + ", drained " + drained;
+            return local.getPlaybackType() == android.media.session.MediaController.PlaybackInfo.PLAYBACK_TYPE_LOCAL
+                    && phone.equals(local.getCurrentVolume() + "/" + local.getMaxVolume())
+                    && remote.getPlaybackType() == android.media.session.MediaController.PlaybackInfo.PLAYBACK_TYPE_REMOTE && remote.getCurrentVolume() == 7
+                    && remote.getMaxVolume() == 20 && remote.getVolumeControl() == android.media.VolumeProvider.VOLUME_CONTROL_ABSOLUTE && drained
+                    && provider.getCurrentVolume() == 19 && ("info 2 7/20;set 20;info 2 20/20;adjust -1;info 2 19/20;info 1 " + phone + ";").equals(heard.toString());
+        });
+        step("rating", () -> {
+            android.media.Rating heart = android.media.Rating.newHeartRating(true), stars = android.media.Rating.newStarRating(android.media.Rating.RATING_5_STARS, 3.5f);
+            android.media.Rating unrated = android.media.Rating.newUnratedRating(android.media.Rating.RATING_THUMB_UP_DOWN);
+            android.os.Parcel p = android.os.Parcel.obtain();
+            stars.writeToParcel(p, 0);
+            p.setDataPosition(0);
+            android.media.Rating back = android.media.Rating.CREATOR.createFromParcel(p);
+            p.recycle();
+            boolean refused = android.media.Rating.newStarRating(android.media.Rating.RATING_3_STARS, 4f) == null
+                    && android.media.Rating.newStarRating(android.media.Rating.RATING_HEART, 1f) == null && android.media.Rating.newPercentageRating(101f) == null
+                    && android.media.Rating.newUnratedRating(android.media.Rating.RATING_NONE) == null;
+            detail = heart + ", " + stars + ", " + unrated + ", through a Parcel " + back + ", refused " + refused;
+            return heart.getRatingStyle() == android.media.Rating.RATING_HEART && heart.hasHeart() && heart.isRated() && !heart.isThumbUp() && heart.getStarRating() == -1f
+                    && stars.getRatingStyle() == android.media.Rating.RATING_5_STARS && stars.getStarRating() == 3.5f && stars.getPercentRating() == -1f && !stars.hasHeart()
+                    && !unrated.isRated() && !unrated.isThumbUp() && unrated.getRatingStyle() == android.media.Rating.RATING_THUMB_UP_DOWN
+                    && back.getRatingStyle() == android.media.Rating.RATING_5_STARS && back.getStarRating() == 3.5f && back.isRated() && refused
+                    && android.media.Rating.newPercentageRating(42f).getPercentRating() == 42f && android.media.Rating.newThumbRating(true).isThumbUp()
+                    && !android.media.Rating.newHeartRating(false).hasHeart();
+        });
+    }
+
+    /**
+     * Protected media, of which Megler plays none: it has no content decryption module, and says so as an Android device
+     * without the scheme does. No scheme is supported, by MediaDrm's three questions or MediaCrypto's (Widevine, PlayReady,
+     * ClearKey, the common one); MediaDrm's list of schemes (Android 11's: by reflection) is empty; a MediaDrm cannot be
+     * made (UnsupportedSchemeException, with its message) nor a MediaCrypto (MediaCryptoException); no decoder says it
+     * plays protected content, and none is found for a format that asks for it; and a decoder given an encrypted sample
+     * refuses it (MediaCodec.CryptoException, ERROR_UNSUPPORTED_OPERATION).
+     */
+    private void protectedMedia() {
+        final java.util.UUID widevine = java.util.UUID.fromString("edef8ba9-79d6-4ace-a3c8-27dcd51d21ed"), playReady = java.util.UUID.fromString("9a04f079-9840-4286-ab92-e65be0885f95"),
+                clearKey = java.util.UUID.fromString("e2719d58-a985-b3c9-781a-b030af78d30e"), common = java.util.UUID.fromString("1077efec-c0b2-4d02-ace3-3c1e52e2fb4b");
+        step("drm-no-scheme", () -> {
+            StringBuilder supported = new StringBuilder();
+            for (java.util.UUID scheme : new java.util.UUID[] { widevine, playReady, clearKey, common }) {
+                if (android.media.MediaDrm.isCryptoSchemeSupported(scheme) || android.media.MediaDrm.isCryptoSchemeSupported(scheme, "video/mp4")
+                    || android.media.MediaDrm.isCryptoSchemeSupported(scheme, "video/mp4", android.media.MediaDrm.SECURITY_LEVEL_SW_SECURE_CRYPTO)
+                    || android.media.MediaCrypto.isCryptoSchemeSupported(scheme)) supported.append(scheme).append(' ');
+            }
+            Object schemes = android.media.MediaDrm.class.getMethod("getSupportedCryptoSchemes").invoke(null);
+            String drm = null, crypto = null;
+            Object made = null;
+            try { made = new android.media.MediaDrm(widevine); } catch (android.media.UnsupportedSchemeException e) { drm = e.getMessage(); }
+            try { made = new android.media.MediaCrypto(widevine, new byte[] { 1, 2, 3 }); } catch (android.media.MediaCryptoException e) { crypto = e.getMessage(); }
+            // (And the exceptions an app's player makes of its own keep what they were made with.)
+            String kept = new android.media.MediaDrmException("a message").getMessage() + "/" + new android.media.MediaDrmResetException("reset").getMessage();
+            detail = "supported: " + supported + ", schemes " + schemes + ", MediaDrm: " + drm + ", MediaCrypto: " + crypto + ", made " + made + ", kept " + kept;
+            return supported.length() == 0 && schemes instanceof java.util.List && ((java.util.List<?>) schemes).isEmpty() && made == null
+                    && "Failed to instantiate drm object.".equals(drm) && "Failed to instantiate crypto object.".equals(crypto) && "a message/reset".equals(kept);
+        });
+        step("drm-no-secure-decoder", () -> {
+            android.media.MediaCodecList all = new android.media.MediaCodecList(android.media.MediaCodecList.ALL_CODECS);
+            int decoders = 0, secure = 0;
+            for (android.media.MediaCodecInfo info : all.getCodecInfos()) {
+                if (info.isEncoder()) continue;
+                decoders++;
+                if (info.getName().endsWith(".secure")) secure++;
+                for (String type : info.getSupportedTypes()) {
+                    android.media.MediaCodecInfo.CodecCapabilities caps = info.getCapabilitiesForType(type);
+                    if (caps.isFeatureSupported(android.media.MediaCodecInfo.CodecCapabilities.FEATURE_SecurePlayback)
+                        || caps.isFeatureRequired(android.media.MediaCodecInfo.CodecCapabilities.FEATURE_SecurePlayback)) secure++;
+                }
+            }
+            android.media.MediaFormat plain = android.media.MediaFormat.createVideoFormat("video/avc", 1280, 720), wanted = android.media.MediaFormat.createVideoFormat("video/avc", 1280, 720);
+            wanted.setFeatureEnabled(android.media.MediaCodecInfo.CodecCapabilities.FEATURE_SecurePlayback, true);
+            String forPlain = all.findDecoderForFormat(plain), forSecure = all.findDecoderForFormat(wanted);
+            Stream s = Stream.read(getAssets(), "avc.mgau");
+            android.media.MediaCodec codec = android.media.MediaCodec.createDecoderByType("video/avc");
+            codec.configure(s.format(true), null, null, 0);
+            codec.start();
+            int in = codec.dequeueInputBuffer(1000000);
+            android.media.MediaCodec.CryptoInfo info = new android.media.MediaCodec.CryptoInfo();
+            info.set(1, new int[] { 0 }, new int[] { 16 }, new byte[16], new byte[16], android.media.MediaCodec.CRYPTO_MODE_AES_CTR);
+            int refused = -1;
+            try { codec.queueSecureInputBuffer(in, 0, info, 0, 0); } catch (android.media.MediaCodec.CryptoException e) { refused = e.getErrorCode(); }
+            codec.release();
+            detail = decoders + " decoders, " + secure + " of protected content, for a plain format " + forPlain + ", for a protected one " + forSecure
+                    + ", an encrypted sample refused with " + refused;
+            return decoders > 0 && secure == 0 && forPlain != null && forSecure == null && in >= 0
+                    && refused == android.media.MediaCodec.CryptoException.ERROR_UNSUPPORTED_OPERATION;
+        });
+    }
+
     /** A FrameLayout whose setWillNotDraw needs what its own constructor makes, as Chromium's CompositorView does. */
     private static final class WillNotDrawProbe extends android.widget.FrameLayout {
         private final Object made = new Object();
@@ -7313,6 +8346,407 @@ public class Main extends Activity {
         Scrapping(android.content.Context c) { super(c); }
         void scrap(android.view.View v) { detachViewFromParent(v); }
         void removeScrapped(android.view.View v) { removeDetachedView(v, false); }
+    }
+
+    /**
+     * Thread.interrupt ends another thread's Object.wait, timed or not, with InterruptedException and the flag taken: also
+     * when the interrupter holds the monitor, and when a third thread does (the wait ends once that lets go; interrupt
+     * itself does not wait for it). A thread already interrupted does not wait at all, and one waiting beside the
+     * interrupted one on the same object goes on waiting until it is notified. Thread.sleep ends for it as before.
+     * ExoPlayer ends a released player's loading thread with it (Loader.release; the thread waits in
+     * ConditionVariable.block for the player to ask for more): here that thread waited for good, with its data source
+     * open -- its connection, the cache's span it was writing -- and the player made next for the same video, as
+     * Aliucord makes one when the phone is turned, never got its first sample (0.1.0.690, a user's phone).
+     */
+    private void waitInterrupt() {
+        step("wait-interrupt", () -> {
+            StringBuilder all = new StringBuilder();
+            // 0: a wait with no time, 1: a timed one, 2: the interrupter holds the monitor, 3: a third thread holds it.
+            for (int n = 0; n < 4; n++) {
+                final Object gate = new Object();
+                final boolean[] waiting = new boolean[1];
+                final String[] got = new String[1];
+                final int kind = n;
+                Thread t = new Thread(() -> {
+                    synchronized (gate) {
+                        waiting[0] = true;
+                        try {
+                            if (kind == 1) gate.wait(60000);
+                            else gate.wait();
+                            got[0] = "woken";
+                        } catch (InterruptedException e) {
+                            got[0] = "interrupted, flag " + Thread.currentThread().isInterrupted();
+                        }
+                    }
+                }, "wait-interrupt-" + n);
+                t.start();
+                // In the wait: it said so with the monitor held, and the monitor can be taken.
+                for (int i = 0; i < 2000; i++) {
+                    synchronized (gate) { if (waiting[0]) break; }
+                    Thread.sleep(5);
+                }
+                if (kind == 2) {
+                    synchronized (gate) { t.interrupt(); }
+                } else if (kind == 3) {
+                    final boolean[] held = new boolean[1];
+                    final long[] left = new long[1];
+                    Thread holder = new Thread(() -> {
+                        synchronized (gate) {
+                            held[0] = true;
+                            try { Thread.sleep(1500); } catch (InterruptedException e) { }
+                            left[0] = android.os.SystemClock.uptimeMillis();
+                        }
+                    }, "wait-interrupt-holder");
+                    holder.start();
+                    for (int i = 0; i < 2000 && !held[0]; i++) Thread.sleep(5);
+                    t.interrupt();
+                    long returned = android.os.SystemClock.uptimeMillis();
+                    holder.join(20000);
+                    all.append(returned < left[0] ? "(interrupt did not wait for the holder) " : "(interrupt waited for the holder) ");
+                } else {
+                    t.interrupt();
+                }
+                t.join(20000);
+                all.append(n).append(": ").append(got[0]).append(t.isAlive() ? ", still alive" : "").append("; ");
+            }
+            // Interrupted before it waits: no wait. And the flag is taken by the exception.
+            final String[] early = new String[1];
+            Thread e = new Thread(() -> {
+                Object o = new Object();
+                Thread.currentThread().interrupt();
+                synchronized (o) {
+                    try {
+                        o.wait(60000);
+                        early[0] = "waited";
+                    } catch (InterruptedException x) {
+                        early[0] = "no wait, flag " + Thread.currentThread().isInterrupted();
+                    }
+                }
+            }, "wait-interrupt-early");
+            e.start();
+            e.join(20000);
+            all.append("early: ").append(early[0]).append(e.isAlive() ? ", still alive" : "").append("; ");
+            // Two waiting on one object: the one interrupted leaves, the other waits on until notified.
+            final Object shared = new Object();
+            final int[] in = new int[1];
+            final String[] pair = new String[2];
+            Thread[] two = new Thread[2];
+            for (int n = 0; n < 2; n++) {
+                final int me = n;
+                two[n] = new Thread(() -> {
+                    synchronized (shared) {
+                        in[0]++;
+                        try {
+                            shared.wait();
+                            pair[me] = "notified";
+                        } catch (InterruptedException x) {
+                            pair[me] = "interrupted";
+                        }
+                    }
+                }, "wait-interrupt-pair-" + n);
+                two[n].start();
+            }
+            for (int i = 0; i < 2000; i++) {
+                synchronized (shared) { if (in[0] == 2) break; }
+                Thread.sleep(5);
+            }
+            two[0].interrupt();
+            two[0].join(20000);
+            Thread.sleep(300);
+            String other = pair[1] == null && two[1].isAlive() ? "waiting on" : "left: " + pair[1];
+            synchronized (shared) { shared.notifyAll(); }
+            two[1].join(20000);
+            all.append("pair: ").append(pair[0]).append(", the other ").append(other).append(" then ").append(pair[1]).append("; ");
+            // A sleep, as before.
+            final String[] slept = new String[1];
+            Thread s = new Thread(() -> {
+                try {
+                    Thread.sleep(60000);
+                    slept[0] = "slept";
+                } catch (InterruptedException x) {
+                    slept[0] = "interrupted, flag " + Thread.currentThread().isInterrupted();
+                }
+            }, "wait-interrupt-sleep");
+            s.start();
+            Thread.sleep(200);
+            s.interrupt();
+            s.join(20000);
+            all.append("sleep: ").append(slept[0]).append(s.isAlive() ? ", still alive" : "");
+            detail = all.toString();
+            return ("0: interrupted, flag false; 1: interrupted, flag false; 2: interrupted, flag false; "
+                    + "(interrupt did not wait for the holder) 3: interrupted, flag false; early: no wait, flag false; "
+                    + "pair: interrupted, the other waiting on then notified; sleep: interrupted, flag false").equals(detail);
+        });
+    }
+
+    /**
+     * A Looper goes on when its thread is interrupted, as Android's does (its wait for a message is not one an interrupt
+     * ends): what is posted afterwards is handled, and its code finds the thread's flag set until it takes it. Here the
+     * interrupt ended the Looper as if it had quit, and nothing posted to it ran again.
+     */
+    private void looperInterrupt() {
+        step("looper-interrupt", () -> {
+            android.os.HandlerThread ht = new android.os.HandlerThread("looper-interrupt");
+            ht.start();
+            android.os.Handler h = new android.os.Handler(ht.getLooper());
+            final java.util.concurrent.CountDownLatch first = new java.util.concurrent.CountDownLatch(1);
+            final java.util.concurrent.CountDownLatch both = new java.util.concurrent.CountDownLatch(2);
+            final java.util.concurrent.CountDownLatch third = new java.util.concurrent.CountDownLatch(1);
+            final StringBuilder told = new StringBuilder();
+            h.post(first::countDown);
+            boolean before = first.await(20, java.util.concurrent.TimeUnit.SECONDS);
+            // Waiting for a message, with none due.
+            Thread.sleep(100);
+            ht.interrupt();
+            Thread.sleep(300);
+            h.post(() -> {
+                synchronized (told) { told.append("one, flag ").append(Thread.currentThread().isInterrupted()).append("; "); }
+                both.countDown();
+            });
+            h.postDelayed(() -> {
+                synchronized (told) { told.append("two, flag ").append(Thread.interrupted()).append("; "); }
+                both.countDown();
+            }, 200);
+            boolean after = both.await(20, java.util.concurrent.TimeUnit.SECONDS);
+            // The second took the flag (Thread.interrupted): a third finds none, and the Looper quits as ever.
+            h.post(() -> {
+                synchronized (told) { told.append("three, flag ").append(Thread.currentThread().isInterrupted()); }
+                third.countDown();
+            });
+            boolean last = third.await(20, java.util.concurrent.TimeUnit.SECONDS);
+            ht.quit();
+            ht.join(20000);
+            synchronized (told) {
+                detail = "before " + before + ", after " + after + " " + last + ": " + told + (ht.isAlive() ? ", still alive" : ", ended on quit");
+            }
+            return "before true, after true true: one, flag true; two, flag true; three, flag false, ended on quit".equals(detail);
+        });
+    }
+
+    /**
+     * androidx's FragmentAnim.EndViewTransitionAnimation, as its fragments have it, for the step "animation-set": what a removed
+     * fragment's view leaves with. A set of the one animation that goes on until the view's transition is ended, which it
+     * ends itself: from a run posted to the parent, once that finds no frame has asked the animation since the run before, and
+     * before the drawing that follows the animation's end.
+     */
+    private static final class Leaving extends android.view.animation.AnimationSet implements Runnable {
+        private final android.view.ViewGroup mParent;
+        private final android.view.View mChild;
+        private boolean mEnded, mTransitionEnded, mAnimating = true;
+        Leaving(android.view.animation.Animation a, android.view.ViewGroup parent, android.view.View child) {
+            super(false);
+            mParent = parent;
+            mChild = child;
+            addAnimation(a);
+            mParent.post(this);
+        }
+        @Override public boolean getTransformation(long now, android.view.animation.Transformation t) {
+            mAnimating = true;
+            if (mEnded) return !mTransitionEnded;
+            if (!super.getTransformation(now, t)) { mEnded = true; beforeNextDraw(); }
+            return true;
+        }
+        @Override public boolean getTransformation(long now, android.view.animation.Transformation t, float scale) {
+            mAnimating = true;
+            if (mEnded) return !mTransitionEnded;
+            if (!super.getTransformation(now, t, scale)) { mEnded = true; beforeNextDraw(); }
+            return true;
+        }
+        /* (OneShotPreDrawListener.add(mParent, this).) */
+        private void beforeNextDraw() {
+            mParent.getViewTreeObserver().addOnPreDrawListener(new android.view.ViewTreeObserver.OnPreDrawListener() {
+                @Override public boolean onPreDraw() {
+                    mParent.getViewTreeObserver().removeOnPreDrawListener(this);
+                    run();
+                    return true;
+                }
+            });
+        }
+        @Override public void run() {
+            if (!mEnded && mAnimating) { mAnimating = false; mParent.post(this); }
+            else { mParent.endViewTransition(mChild); mTransitionEnded = true; }
+        }
+    }
+
+    /**
+     * A set of view animations tells its listener, as Android's AnimationSet does: the start as the first of its animations
+     * starts and the end as the last has ended, inside the drawing of its view. androidx's fragments and react-native-screens
+     * take a screen away through that. The fragment's view is removed from its stack in a view transition and leaves with an
+     * EndViewTransitionAnimation (Leaving), whose listener, at the end, posts the end of the transition and the completion
+     * of the fragment's operation. react-native-screens' view starts that inside a set of its own, with an animation that
+     * only reports how far it is, and its stack refuses to end the view's transition until that set's listener has heard
+     * the end -- where it also tells the JavaScript side that the screens have changed. A set here told its listener
+     * nothing: the leaving screen stayed in its stack, drawn over the new one, whose appearing was never told (Discord,
+     * 0.1.0.690). The step plays that with a stack and views of its own and says, once the operation is complete and the
+     * stack was drawn twice more (or after six seconds), what the listeners heard and what became of the leaving view. A set
+     * that is no view's tells its listener as it is asked for its transformation, once each.
+     *
+     * And a set hands its animations what it was given itself and nothing else, made in code or from XML: a duration, a
+     * start offset that is added to their own and taken back at reset, fillAfter -- as the set is initialized, not before.
+     * Given no duration, its own is the longest of theirs (and its hint the longest of their hints, start offsets in).
+     * Here a set from XML gave each of its animations the longest's duration with its start offset in it.
+     */
+    private void animationSet() {
+        step("animation-set", () -> {
+            // In code: nothing given, then a duration, a start offset and fillAfter.
+            android.view.animation.AlphaAnimation a1 = new android.view.animation.AlphaAnimation(1f, 0f);
+            a1.setDuration(100);
+            a1.setStartOffset(200);
+            android.view.animation.TranslateAnimation a2 = new android.view.animation.TranslateAnimation(0, 0, 0, 10);
+            a2.setDuration(250);
+            android.view.animation.AnimationSet s = new android.view.animation.AnimationSet(false);
+            s.addAnimation(a1);
+            s.addAnimation(a2);
+            String plain = s.getDuration() + "/" + s.computeDurationHint();
+            s.initialize(10, 10, 20, 20);
+            plain += " " + lengths(s);
+            s.setDuration(80);
+            s.setStartOffset(40);
+            s.setFillAfter(true);
+            String before = s.getDuration() + " " + lengths(s);
+            s.initialize(10, 10, 20, 20);
+            String given = lengths(s);
+            s.initialize(10, 10, 20, 20);
+            String twice = lengths(s);
+            s.reset();
+            String reset = lengths(s);
+            // From XML: the same two sets.
+            android.view.animation.AnimationSet x = (android.view.animation.AnimationSet) android.view.animation.AnimationUtils.loadAnimation(this, R.anim.set_plain);
+            String xmlPlain = x.getDuration() + "/" + x.computeDurationHint() + " " + lengths(x);
+            x.initialize(10, 10, 20, 20);
+            xmlPlain += " | " + lengths(x);
+            android.view.animation.AnimationSet y = (android.view.animation.AnimationSet) android.view.animation.AnimationUtils.loadAnimation(this, R.anim.set_given);
+            String xmlGiven = y.getDuration() + "+" + y.getStartOffset() + " " + y.getFillAfter() + " " + lengths(y);
+            y.initialize(10, 10, 20, 20);
+            xmlGiven += " | " + lengths(y);
+            // No view's: asked for its transformation at times of the test's own.
+            android.view.animation.AnimationSet t = new android.view.animation.AnimationSet(true);
+            android.view.animation.AlphaAnimation b1 = new android.view.animation.AlphaAnimation(0f, 1f), b2 = new android.view.animation.AlphaAnimation(0f, 1f);
+            b1.setDuration(50);
+            b2.setDuration(120);
+            b2.setStartOffset(10);
+            t.addAnimation(b1);
+            t.addAnimation(b2);
+            final StringBuilder told = new StringBuilder();
+            t.setAnimationListener(new android.view.animation.Animation.AnimationListener() {
+                @Override public void onAnimationStart(android.view.animation.Animation a) { told.append("start "); }
+                @Override public void onAnimationRepeat(android.view.animation.Animation a) { told.append("repeat "); }
+                @Override public void onAnimationEnd(android.view.animation.Animation a) { told.append("end "); }
+            });
+            t.initialize(10, 10, 20, 20);
+            t.setStartTime(1000);
+            android.view.animation.Transformation tx = new android.view.animation.Transformation();
+            boolean first = t.getTransformation(1000, tx);
+            String atFirst = told.toString().trim();
+            boolean middle = t.getTransformation(1060, tx);
+            String atMiddle = told.toString().trim();
+            t.getTransformation(1130, tx);
+            boolean last = t.getTransformation(1140, tx);
+            String direct = atFirst + "," + atMiddle + "," + told.toString().trim() + " more " + first + " " + middle + " " + last + " from " + t.getStartTime()
+                    + " started " + t.hasStarted() + " ended " + t.hasEnded();
+            leaveStack();
+            detail = "in code: " + plain + "; " + before + "; " + given + "; " + twice + "; " + reset + ". From XML: " + xmlPlain + "; " + xmlGiven + ". Asked: " + direct;
+            return "250/300 100+200 250+0 false".equals(plain) && "80 100+200 250+0 false".equals(before) && "80+240 80+40 true".equals(given)
+                    && given.equals(twice) && "80+200 80+0 true".equals(reset)
+                    && "250/300 100+200 250+0 false | 100+200 250+0 false".equals(xmlPlain)
+                    && "80+40 true 100+200 250+0 false | 80+240 80+40 true".equals(xmlGiven)
+                    && "start,start,start end more true true false from 1000 started true ended true".equals(direct);
+        });
+    }
+
+    /* Each animation of the set as "duration+start offset", and whether the first fills after. */
+    private static String lengths(android.view.animation.AnimationSet s) {
+        StringBuilder b = new StringBuilder();
+        for (android.view.animation.Animation a : s.getAnimations()) b.append(a.getDuration()).append('+').append(a.getStartOffset()).append(' ');
+        return b.append(s.getAnimations().get(0).getFillAfter()).toString();
+    }
+
+    /* The screens of the step "animation-set": a new view comes into the stack and the old one leaves it. */
+    private void leaveStack() {
+        final boolean[] inDraw = new boolean[1], blocked = new boolean[1], completed = new boolean[1], said = new boolean[1];
+        final int[] drawnAfter = new int[1];
+        final float[] progress = { -1f };
+        final StringBuilder outer = new StringBuilder(), inner = new StringBuilder(), entered = new StringBuilder();
+        final android.view.View leaving = new android.view.View(this), entering = new android.view.View(this);
+        final android.widget.FrameLayout stack = new android.widget.FrameLayout(this) {
+            @Override protected void dispatchDraw(android.graphics.Canvas c) {
+                inDraw[0] = true;
+                try { super.dispatchDraw(c); } finally { inDraw[0] = false; }
+            }
+            @Override protected boolean drawChild(android.graphics.Canvas c, android.view.View child, long time) {
+                if (child == leaving && completed[0]) drawnAfter[0]++;
+                return super.drawChild(c, child, time);
+            }
+            // (react-native-screens' ScreenStack: no end of a view's transition until its set's listener has heard the end.)
+            @Override public void endViewTransition(android.view.View v) { if (!blocked[0]) super.endViewTransition(v); }
+        };
+        leaving.setBackgroundColor(0xff996633);
+        entering.setBackgroundColor(0xff339966);
+        stack.addView(leaving, new android.widget.FrameLayout.LayoutParams(20, 20));
+        ((android.view.ViewGroup) text.getParent()).addView(stack, new android.view.ViewGroup.LayoutParams(40, 40));
+        final Runnable say = () -> {
+            if (said[0]) return;
+            said[0] = true;
+            Log.i("DataTest", "animation-set leaving outer=" + outer.toString().trim() + " inner=" + inner.toString().trim() + " progress=" + progress[0]
+                    + " completed=" + completed[0] + " parent=" + (leaving.getParent() == null ? "null" : leaving.getParent() == stack ? "stack" : "other")
+                    + " attached=" + leaving.isAttachedToWindow() + " drawn-after=" + drawnAfter[0] + " entering=" + entered.toString().trim()
+                    + " animation=" + (entering.getAnimation() == null ? "null" : "kept"));
+            ((android.view.ViewGroup) stack.getParent()).removeView(stack);
+        };
+        stack.post(() -> {
+            // The new screen: androidx starts its animation as it is given, and react-native-screens' view gives a set.
+            stack.addView(entering, new android.widget.FrameLayout.LayoutParams(20, 20));
+            android.view.animation.AlphaAnimation fadeIn = new android.view.animation.AlphaAnimation(0f, 1f);
+            fadeIn.setDuration(40);
+            android.view.animation.AnimationSet in = new android.view.animation.AnimationSet(true);
+            in.addAnimation(fadeIn);
+            in.setAnimationListener(new android.view.animation.Animation.AnimationListener() {
+                @Override public void onAnimationStart(android.view.animation.Animation a) { entered.append(inDraw[0] ? "start-in-draw " : "start "); }
+                @Override public void onAnimationRepeat(android.view.animation.Animation a) {}
+                @Override public void onAnimationEnd(android.view.animation.Animation a) { entered.append(inDraw[0] ? "end-in-draw" : "end"); }
+            });
+            entering.startAnimation(in);
+            // The old one, as androidx's DefaultSpecialEffectsController takes a removed fragment's view away...
+            android.view.animation.AlphaAnimation fadeOut = new android.view.animation.AlphaAnimation(1f, 0f);
+            fadeOut.setDuration(60);
+            stack.startViewTransition(leaving);
+            final Leaving end = new Leaving(fadeOut, stack, leaving);
+            end.setAnimationListener(new android.view.animation.Animation.AnimationListener() {
+                @Override public void onAnimationStart(android.view.animation.Animation a) {}
+                @Override public void onAnimationRepeat(android.view.animation.Animation a) {}
+                @Override public void onAnimationEnd(android.view.animation.Animation a) {
+                    inner.append(inDraw[0] ? "end-in-draw" : "end");
+                    stack.post(() -> {
+                        stack.endViewTransition(leaving);
+                        completed[0] = true;
+                        stack.invalidate();
+                        stack.postDelayed(() -> { stack.invalidate(); stack.postDelayed(say, 150); }, 150);
+                    });
+                }
+            });
+            // ...and as react-native-screens' ScreensCoordinatorLayout.startAnimation starts what it is given for a fragment
+            // being removed: in a set of its own, with an animation as long that says how far it is.
+            android.view.animation.Animation far = new android.view.animation.Animation() {
+                @Override protected void applyTransformation(float t, android.view.animation.Transformation out) { progress[0] = t; }
+            };
+            far.setDuration(end.getDuration());
+            android.view.animation.AnimationSet out = new android.view.animation.AnimationSet(true);
+            out.addAnimation(end);
+            out.addAnimation(far);
+            blocked[0] = true;
+            out.setAnimationListener(new android.view.animation.Animation.AnimationListener() {
+                @Override public void onAnimationStart(android.view.animation.Animation a) { outer.append(inDraw[0] ? "start-in-draw " : "start "); }
+                @Override public void onAnimationRepeat(android.view.animation.Animation a) {}
+                @Override public void onAnimationEnd(android.view.animation.Animation a) {
+                    blocked[0] = false;
+                    outer.append(inDraw[0] ? "end-in-draw" : "end");
+                }
+            });
+            leaving.startAnimation(out);
+            // (The container's changes are applied once the animations are started.)
+            stack.removeView(leaving);
+            stack.postDelayed(say, 6000);
+        });
     }
 
     /**
@@ -7483,7 +8917,8 @@ public class Main extends Activity {
      * Android 14's HttpEngine (android.net.http; Megler's own engine, megler.http), as the Google Play Store and gRPC use it:
      * HttpEngineSteps says each step. The requests go to an HTTP/1.1 server of the app's own on 127.0.0.1, on both hosts;
      * the bidirectional streams to an HTTP/2 server of its own over TLS (localhost, the test authority's certificate, ALPN
-     * h2), so without conscrypt's TLS (the PC's run) those steps hold, as there is nothing to connect with.
+     * h2), so without conscrypt's TLS (the PC's run) those steps hold, as there is nothing to connect with. The first of
+     * them connects under a default SSLContext that is not the platform's, as Google Play services leaves a process's.
      */
     private void httpEngine() {
         final HttpEngineSteps[] h = new HttpEngineSteps[1];
@@ -7498,6 +8933,7 @@ public class Main extends Activity {
         step("http-engine-upload", () -> offMain(() -> said(h[0], h[0].upload())));
         step("http-engine-failures", () -> offMain(() -> said(h[0], h[0].failures())));
         step("http-engine-connection", () -> offMain(() -> said(h[0], h[0].connection())));
+        step("http-engine-own-tls", () -> !conscrypt || offMain(() -> said(h[0], h[0].ownTls())));
         step("http-engine-stream", () -> !conscrypt || offMain(() -> said(h[0], h[0].stream())));
         step("http-engine-stream-flow", () -> !conscrypt || offMain(() -> said(h[0], h[0].streamFlow())));
         step("http-engine-stream-cancel", () -> !conscrypt || offMain(() -> said(h[0], h[0].streamCancel())));

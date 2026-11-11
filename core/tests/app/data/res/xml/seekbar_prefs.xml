@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Main's step "seekbar-preference": a settings screen with Android's SeekBarPreference, which a preferences file may name
+     though an app's code may not (the class is hidden) - one in a category with a maximum, a default and no title, as
+     spacedesk's compression quality is, and one with a title alone. -->
+<PreferenceScreen xmlns:android="http://schemas.android.com/apk/res/android">
+    <PreferenceCategory android:title="Quality">
+        <SeekBarPreference
+            android:max="100"
+            android:key="seekbar_quality"
+            android:summary="not shown"
+            android:defaultValue="60"/>
+    </PreferenceCategory>
+    <SeekBarPreference
+        android:title="Plain"
+        android:key="seekbar_plain"/>
+    <CheckBoxPreference
+        android:title="Beside"
+        android:key="seekbar_beside"
+        android:defaultValue="true"/>
+</PreferenceScreen>

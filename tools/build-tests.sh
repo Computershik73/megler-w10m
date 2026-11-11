@@ -77,9 +77,12 @@
 #       overlay goes by), and a picture whose Present is refused.
 #       And the shell's Bluetooth for an app's android.bluetooth
 #       (app/Megler/player/BluetoothHost.cpp: Windows.Devices.Bluetooth),
-#       built in likewise and run as --bluetooth-windows: the PC's radio
-#       and a passive scan of three seconds -- nothing connected to or
-#       paired with -- or, on a PC without a radio, a line that says so.
+#       built in likewise and run as --bluetooth-windows: connections to
+#       devices made up as Windows gives them (core/tests/
+#       mg_bluetooth_windows.cpp: the phone's interfaces and no more, and
+#       each way Windows has of not answering), then the PC's radio and a
+#       passive scan of three seconds -- nothing connected to or paired
+#       with -- or, on a PC without a radio, a line that says so.
 #       And the shell's Wi-Fi for an app's WifiManager (app/Megler/player/
 #       WifiHost.cpp: Windows.Devices.WiFi), built in likewise and run as
 #       --wifi-windows: the PC's adapter, one scan and its networks, the
@@ -152,8 +155,12 @@
 # And `bluetooth`, Bluetooth LE's central side as MeshCore's app uses it, on a
 # stand-in for the shell's radio (core/tests/mg_bluetooth_standin.c). And
 # `wifi`, WifiManager's scans as Google Play services' network location uses
-# them, on a stand-in for the shell's Wi-Fi (core/tests/mg_wifi_standin.c). Their
-# pictures are written to build/java-pictures as BMP files. Each is then run
+# them, on a stand-in for the shell's Wi-Fi (core/tests/mg_wifi_standin.c). And
+# `pickers`, the intents of Android's documents UI, photo picker and camera app
+# answered by a stand-in for the shell's picker and camera (mg_java_tests.c,
+# system_pick): the results, the picked files' provider and the package
+# manager's answers. Their pictures are written to build/java-pictures as BMP
+# files. Each is then run
 # once more with its calls of the shell's drawing recorded
 # (build/gfx-records/<app>.rec), for the Windows build to draw again.
 # --no-java leaves these out.
@@ -263,7 +270,7 @@ EOF
     # Bundles of split APKs, unpacked as the shell unpacks them.
     MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL="*" wsl.exe -- bash -c "rm -rf $WB/scratch-bundles && qemu-arm -L /usr/arm-linux-gnueabihf $WB/mg_tests --bundles '$WROOT/build/guest/java' $WB/scratch-bundles '$WROOT/build/bundles' 2>&1; STATUS=\$?; rm -rf $WB/scratch-bundles; exit \$STATUS" || STATUS=1
     if [ "$JAVA" = 1 ]; then
-      for app in hello demos natives crash gc gl screen bluetooth wifi; do
+      for app in hello demos natives crash gc gl screen bluetooth wifi pickers; do
         if [ ! -f "$ROOT/build/guest/java/$app.apk" ]; then
           echo "(the Java test app $app is not run: build/guest/java/$app.apk was not built -- its native library needs the NDK, see tools/build-test-app.sh)"
           continue
@@ -585,7 +592,8 @@ elif [ "$MODE" = win ]; then
     [ -f "$OUT/mg-dl-$src.dll" ] || { echo "mg-dl-$src.dll was not made" >&2; exit 1; }
   done
   # The shell's start and its copies (shell/Files.cpp, ShellLog.cpp, Startup.cpp, BundledApks.cpp and Strings.cpp), the
-  # package volume Megler installs onto (shell/Placement.cpp), the apps' APKs in the shared folder (shell/SharedApks.cpp), and
+  # package volume Megler installs onto (shell/Placement.cpp), the apps' APKs in the shared folder (shell/SharedApks.cpp),
+  # the phone's picker and camera for an app without a user (player/PickerHost.cpp: its filters, its flags, its copies), and
   # an app's permissions as the shell keeps and decides them (player/PermissionRules.cpp, shell/Settings.cpp), the very
   # files the phone's package is built from, in a program of their own with the tests that drive them
   # (core/tests/mg_shell_windows.cpp): mg_tests.exe stands in for the shell's files and log, as its storage, codec and camera
@@ -594,13 +602,13 @@ elif [ "$MODE" = win ]; then
   SHELL_SRC=("$(w "$ROOT/app/Megler/shell/Files.cpp")" "$(w "$ROOT/app/Megler/shell/Strings.cpp")" "$(w "$ROOT/app/Megler/shell/ShellLog.cpp")"
              "$(w "$ROOT/app/Megler/shell/Startup.cpp")" "$(w "$ROOT/app/Megler/shell/BundledApks.cpp")" "$(w "$ROOT/app/Megler/shell/Placement.cpp")"
              "$(w "$ROOT/app/Megler/shell/SharedApks.cpp")" "$(w "$ROOT/app/Megler/shell/Settings.cpp")" "$(w "$ROOT/app/Megler/player/PermissionRules.cpp")"
-             "$(w "$ROOT/core/tests/mg_shell_windows.cpp")")
+             "$(w "$ROOT/app/Megler/player/PickerHost.cpp")" "$(w "$ROOT/core/tests/mg_shell_windows.cpp")")
   mkdir -p "$OUT/shellobj"
   rm -f "$OUT/shellobj/"*.obj
   INCLUDE="$INCLUDE;$(w "$SDK/Include/$SDKV/winrt");$(w "$SDK/Include/$SDKV/cppwinrt")" \
     "$VC/bin/Hostx64/x64/cl.exe" "${GFX_FLAGS[@]}" /Zc:__cplusplus /bigobj /DWINAPI_FAMILY=WINAPI_FAMILY_APP /O1 "$MP" "/Fo$(w "$OUT/shellobj")\\" "${SHELL_SRC[@]}" \
     | grep -v -E '^[A-Za-z0-9_]+\.cpp$' || true
-  for obj in Files Strings ShellLog Startup BundledApks Placement SharedApks Settings PermissionRules mg_shell_windows; do
+  for obj in Files Strings ShellLog Startup BundledApks Placement SharedApks Settings PermissionRules PickerHost mg_shell_windows; do
     [ -f "$OUT/shellobj/$obj.obj" ] || { echo "compile failed: $obj.cpp" >&2; exit 1; }
   done
   "$VC/bin/Hostx64/x64/link.exe" /nologo "/OUT:$(w "$OUT/mg_shell_tests.exe")" "$(w "$OUT/shellobj")\\*.obj" bcrypt.lib ole32.lib oleaut32.lib onecore.lib
@@ -670,9 +678,14 @@ PY
       "$OUT/mg_tests.exe" --angle-windows "$(w "$ANGLE_X64")" "$(w "$OUT/scratch-angle")" 9_3 || STATUS=1
     fi
     # The shell's storage host: the storage's tests once more, with Windows.Storage's own objects handing the handles over
-    # instead of the stand-in, on folders under a scratch folder of its own.
+    # instead of the stand-in, on folders under a scratch folder of its own. And Windows' pictures of files there: of a PNG,
+    # and of a second of video where ffmpeg is here to make one (MG_TEST_CLIP; without it the video's is left out, and said).
     rm -rf "$OUT/scratch-storage"
-    "$OUT/mg_tests.exe" --storage-windows "$(w "$OUT/scratch-storage")" || STATUS=1
+    CLIP=()
+    if command -v ffmpeg > /dev/null 2>&1 && ffmpeg -loglevel error -y -f lavfi -i "color=c=red:size=160x120:rate=10" -t 1 -pix_fmt yuv420p "$(w "$OUT/clip.mp4")" < /dev/null; then
+      CLIP=(env "MG_TEST_CLIP=$(w "$OUT/clip.mp4")")
+    fi
+    ${CLIP[@]+"${CLIP[@]}"} "$OUT/mg_tests.exe" --storage-windows "$(w "$OUT/scratch-storage")" || STATUS=1
     # The shell's start and its copies: files copied past the cache and mended, the log's last words written out at once,
     # the start's steps and watch, the plan of the copies of the package's Google APKs and their making after the start.
     rm -rf "$OUT/scratch-shell"

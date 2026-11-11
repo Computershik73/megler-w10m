@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The test app for the system's picker and camera (tools/build-test-app.sh): what an app sends to Android's documents UI,
+     photo picker and camera app (ACTION_GET_CONTENT, ACTION_OPEN_DOCUMENT of several, MediaStore.ACTION_PICK_IMAGES,
+     ACTION_PICK of MediaStore's pictures, a chooser of one, MediaStore.ACTION_IMAGE_CAPTURE to its own FileProvider's URI and
+     without one, ACTION_VIDEO_CAPTURE to a file, a WebView's file input), answered by the test's stand-in for the shell's
+     picker (core/tests/mg_java_tests.c, system_pick) with files of its own, or a cancel. The results, the picked files'
+     provider (its columns, its reading, its refusal to be written), and what the package manager answers of those intents.
+     Files is the app's own FileProvider, as androidx's is to a camera. Each step is a line of the log, which the test
+     (run_pickers) reads. -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="megler.test.pickers" android:versionCode="1" android:versionName="1.0">
+    <uses-sdk android:minSdkVersion="21" android:targetSdkVersion="29" />
+    <uses-permission android:name="android.permission.CAMERA" />
+    <application android:label="@string/app_name">
+        <activity android:name=".Main" android:label="@string/app_name" android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+        <provider android:name=".Files" android:authorities="megler.test.pickers.files" android:exported="false" android:grantUriPermissions="true" />
+    </application>
+</manifest>

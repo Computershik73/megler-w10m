@@ -127,6 +127,9 @@ public final class Broadcasts {
     /** To the receivers that hold `permission` and, with `also` not null, that hold it as well (`holdsAlso`) or do not. */
     public static void send(Context from, Intent i, String permission, String also, boolean holdsAlso) { send(from, i, permission, also, holdsAlso, null); }
     private static void send(Context from, Intent i, String permission, String also, boolean holdsAlso, Bundle options) {
+        // The old way to have a saved file shown in the gallery (ACTION_MEDIA_SCANNER_SCAN_FILE, which Android's media
+        // scanner hears): the media provider indexes it (megler.MediaProvider). The app's own receivers hear it too.
+        MediaProvider.broadcast(i);
         // A broadcast for microG's package goes to microG's receivers (megler.MicroG), as Android sends it to that app.
         if (MicroG.send(from, i)) return;
         // And one of the implicit broadcasts Google's system configuration lets through (CHECKIN_COMPLETE) to its receivers too.

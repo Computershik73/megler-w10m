@@ -29,6 +29,8 @@ public class Gate extends Activity {
         if (state != null) Log.i("CrashTest", "gate recreated state=" + state.getInt("gate.saved", -1) + " component=" + getComponentName().getClassName());
         // Started for a result: who asked, which its result goes to (Top, started without one, has no one).
         Log.i("CrashTest", "gate caller=" + (getCallingActivity() == null ? null : getCallingActivity().getClassName()) + " package=" + getCallingPackage());
+        // And who started it (Activity.getReferrer): the app, before it is made again and after.
+        Log.i("CrashTest", "gate referrer " + getReferrer());
     }
 
     @Override

@@ -485,16 +485,63 @@ static const u8 *asset_bytes(g_asset *a)
 static int g_asset_manager_tag;
 void *mg_asset_manager(void) { return &g_asset_manager_tag; }
 
+/*
+ * A manager of other APKs than the app's (mg_asset_manager_of): another package's, whose assets native code asks for with
+ * that package's AssetManager. There was the app's manager alone, whatever AssetManager native code named: the map of
+ * microG's Google Maps (MapLibre's libmapbox-gl.so, given the AssetManager of microG's context) asked for microG's
+ * sprites and glyphs ("asset://Roboto%20Medium/0-255.pbf"), they were looked for in the app's APKs, and every one was
+ * "Could not read asset" (Citymapper, 0.1.0.690).
+ */
+typedef struct g_asset_set {
+    struct g_asset_set *next;
+    int count;
+    const mg_zip *apks[1];             /* `count` of them */
+} g_asset_set;
+
+static g_asset_set *g_asset_sets;
+static mg_lock g_asset_sets_lock = MG_LOCK_INIT;
+
+void *mg_asset_manager_of(const struct mg_zip *const *apks, int count)
+{
+    g_asset_set *s;
+    if (count < 0) count = 0;
+    mg_lock_acquire(&g_asset_sets_lock);
+    for (s = g_asset_sets; s; s = s->next)
+        if (s->count == count && (!count || !memcmp(s->apks, apks, sizeof(*apks) * (size_t)count))) break;
+    if (!s) {
+        s = (g_asset_set *)mg_alloc(sizeof(*s) + sizeof(*apks) * (size_t)count);
+        s->count = count;
+        if (count) memcpy(s->apks, apks, sizeof(*apks) * (size_t)count);
+        s->next = g_asset_sets;
+        g_asset_sets = s;
+    }
+    mg_lock_release(&g_asset_sets_lock);
+    return s;
+}
+
+/* The i-th APK a manager reads, NULL past its last: the set's for one of mg_asset_manager_of's, the app's for any other. */
+static const mg_zip *manager_apk(void *mgr, int i)
+{
+    const g_asset_set *s = NULL;
+    if (mgr && mgr != (void *)&g_asset_manager_tag) {
+        mg_lock_acquire(&g_asset_sets_lock);
+        for (s = g_asset_sets; s && (void *)s != mgr; s = s->next) {}
+        mg_lock_release(&g_asset_sets_lock);
+    }
+    if (!s) return mg_ld_apk_at(i);
+    return i >= 0 && i < s->count ? s->apks[i] : NULL;
+}
+
 static g_asset *g_am_open(void *mgr, const char *name, int mode)
 {
     char path[512];
     int i;
-    (void)mgr; (void)mode;
+    (void)mode;
     if (!name) return NULL;
     while (*name == '/') name++;
     snprintf(path, sizeof(path), "assets/%s", name);
     for (i = 0;; i++) {
-        const mg_zip *z = mg_ld_apk_at(i);
+        const mg_zip *z = manager_apk(mgr, i);
         const mg_zip_entry *e;
         g_asset *a;
         if (!z) return NULL;
@@ -599,12 +646,11 @@ static g_asset_dir *g_am_open_dir(void *mgr, const char *name)
     g_asset_dir *d = (g_asset_dir *)mg_alloc(sizeof(*d));
     char prefix[512];
     int i;
-    (void)mgr;
     while (name && *name == '/') name++;
     if (name && *name) snprintf(prefix, sizeof(prefix), "assets/%s/", name);
     else snprintf(prefix, sizeof(prefix), "assets/");
     d->skip = strlen(prefix);
-    for (i = 0; mg_ld_apk_at(i); i++) mg_zip_each(mg_ld_apk_at(i), prefix, dir_collect, d);
+    for (i = 0; manager_apk(mgr, i); i++) mg_zip_each(manager_apk(mgr, i), prefix, dir_collect, d);
     return d;
 }
 static const char *g_ad_next(g_asset_dir *d) { return d && d->at < d->count ? d->names[d->at++] : NULL; }
@@ -617,7 +663,7 @@ static void g_ad_close(g_asset_dir *d)
     free(d->names);
     free(d);
 }
-static void *g_am_from_java(void *env, void *obj) { (void)env; (void)obj; return mg_asset_manager(); }
+/* (AAssetManager_fromJava is drivers/mg_java_ndk.c's: the app's manager, or one of another package's APKs for that package's AssetManager.) */
 
 /* ========================================================== AConfiguration */
 
@@ -881,7 +927,7 @@ const mg_sym mg_tab_ndk[] = {
     N("AKeyEvent_getAction", g_key_action), N("AKeyEvent_getKeyCode", g_key_code), N("AKeyEvent_getRepeatCount", g_key_repeat),
     N("AKeyEvent_getFlags", g_mo_flags), N("AKeyEvent_getMetaState", g_mo_meta), N("AKeyEvent_getScanCode", g_mo_zero),
     N("AKeyEvent_getDownTime", g_mo_down_time), N("AKeyEvent_getEventTime", g_mo_event_time),
-    N("AAssetManager_open", g_am_open), N("AAssetManager_openDir", g_am_open_dir), N("AAssetManager_fromJava", g_am_from_java),
+    N("AAssetManager_open", g_am_open), N("AAssetManager_openDir", g_am_open_dir),
     N("AAsset_close", g_asset_close), N("AAsset_read", g_asset_read), N("AAsset_seek", g_asset_seek), N("AAsset_seek64", g_asset_seek64),
     N("AAsset_getLength", g_asset_length), N("AAsset_getLength64", g_asset_length64), N("AAsset_getRemainingLength", g_asset_remaining),
     N("AAsset_getRemainingLength64", g_asset_remaining64), N("AAsset_getBuffer", g_asset_buffer), N("AAsset_isAllocated", g_asset_is_allocated),

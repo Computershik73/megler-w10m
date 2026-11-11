@@ -91,6 +91,7 @@
 #include "../src/ndk/mg_egl.h"
 #include "../src/run/mg_run.h"
 #include "../src/zip/mg_zip.h"
+#include "zlib.h"
 #include "mg_camera_standin.h"
 #include "mg_location_standin.h"
 #include "mg_wifi_standin.h"
@@ -155,6 +156,17 @@ static int find_line(const char *text, int from)
         if (strstr(g_lines[i], text)) found = i;
     mg_lock_release(&g_log_lock);
     return found;
+}
+
+/* How many lines of the log contain the text. */
+static int count_lines(const char *text)
+{
+    int i, n = 0;
+    mg_lock_acquire(&g_log_lock);
+    for (i = 0; i < g_nlines; i++)
+        if (strstr(g_lines[i], text)) n++;
+    mg_lock_release(&g_log_lock);
+    return n;
 }
 
 static const char *line_at(int i) { return i >= 0 && i < g_nlines ? g_lines[i] : ""; }
@@ -1020,6 +1032,314 @@ static MEGLER_CB void mic_stop(void *user)
 }
 
 /*
+ * The phone's picker and camera (megler_system_host.pick), for the pickers app: each request answered in turn, from a thread
+ * of its own as the shell answers from its picker, with what g_pick_script says for it -- files of the test's own written into
+ * the request's folder (photo.png, a picture of 640 x 480; doc.pdf; the camera's IMG_<time>.jpg, that picture again; its
+ * VID_<time>.mp4), or "-", the user backing out. The first request hides the app's window while its "picker" is up, turns the
+ * screen meanwhile, and shows it again a moment after the answer, as Windows 10 Mobile's FileOpenPicker does. What each request asked is said in
+ * g_pick_heard: "<kind> <types,> <o|m><max> s<start> d<duration> q<quality>;".
+ */
+static bool g_pickers_app, g_webview_app;
+static char g_pick_heard[1024];
+static volatile i32 g_picks;
+static const char *const g_pick_script[] = { "photo.png", "photo.png doc.pdf", "photo.png", "photo.png", "-", "doc.pdf",
+                                             "IMG_20261111_120000.jpg", "IMG_20261111_120001.jpg", "VID_20261111_120002.mp4", "photo.png",
+                                             "turned.jpg" };
+
+typedef struct pick_job {
+    unsigned id;
+    int number;                        /* which request of the run, from 0 */
+    char folder[600];
+} pick_job;
+
+/* A PNG of w x h, its rows a gradient: zlib's deflate, the chunks' checksums. The caller frees it. */
+static u8 *make_png(int w, int h, size_t *size)
+{
+    size_t raw_len = (size_t)h * (size_t)(1 + 3 * w), at = 0;
+    uLongf z_len = compressBound((uLong)raw_len);
+    u8 *raw = (u8 *)malloc(raw_len), *z = (u8 *)malloc(z_len), *png = NULL;
+    int x, y;
+    if (raw && z) {
+        for (y = 0; y < h; y++) {
+            raw[at++] = 0;
+            for (x = 0; x < w; x++) {
+                raw[at++] = (u8)(x * 255 / w);
+                raw[at++] = (u8)(y * 255 / h);
+                raw[at++] = 0x80;
+            }
+        }
+        if (compress(z, &z_len, raw, (uLong)raw_len) == Z_OK && (png = (u8 *)malloc(8 + 25 + 12 + z_len + 12)) != NULL) {
+            static const u8 sig[8] = { 0x89, 'P', 'N', 'G', 0x0d, 0x0a, 0x1a, 0x0a };
+            u8 ihdr[13];
+            size_t n = 0;
+            const u8 *chunks[3];
+            const char *types[3] = { "IHDR", "IDAT", "IEND" };
+            size_t lens[3];
+            int k;
+            memcpy(png, sig, 8);
+            n = 8;
+            ihdr[0] = (u8)(w >> 24); ihdr[1] = (u8)(w >> 16); ihdr[2] = (u8)(w >> 8); ihdr[3] = (u8)w;
+            ihdr[4] = (u8)(h >> 24); ihdr[5] = (u8)(h >> 16); ihdr[6] = (u8)(h >> 8); ihdr[7] = (u8)h;
+            ihdr[8] = 8; ihdr[9] = 2; ihdr[10] = 0; ihdr[11] = 0; ihdr[12] = 0;
+            chunks[0] = ihdr; lens[0] = 13;
+            chunks[1] = z; lens[1] = z_len;
+            chunks[2] = NULL; lens[2] = 0;
+            for (k = 0; k < 3; k++) {
+                uLong crc;
+                png[n++] = (u8)(lens[k] >> 24); png[n++] = (u8)(lens[k] >> 16); png[n++] = (u8)(lens[k] >> 8); png[n++] = (u8)lens[k];
+                memcpy(png + n, types[k], 4);
+                if (lens[k]) memcpy(png + n + 4, chunks[k], lens[k]);
+                crc = crc32(0, png + n, (uInt)(4 + lens[k]));
+                n += 4 + lens[k];
+                png[n++] = (u8)(crc >> 24); png[n++] = (u8)(crc >> 16); png[n++] = (u8)(crc >> 8); png[n++] = (u8)crc;
+            }
+            *size = n;
+        }
+    }
+    free(raw);
+    free(z);
+    return png;
+}
+
+/* One of the test's files, written into a request's folder under `name`: what its extension says it is. */
+static bool write_pick_file(const char *folder, const char *name)
+{
+    char *path = mg_sprintf("%s/%s", folder, name);
+    bool ok = false;
+    if (!strcmp(name, "turned.jpg")) {
+        /* A JPEG's start alone, its Exif saying a quarter turn (orientation 6): what a phone's camera writes held upright. */
+        static const u8 jpeg[] = { 0xFF, 0xD8, 0xFF, 0xE1, 0x00, 0x22, 'E', 'x', 'i', 'f', 0, 0, 'M', 'M', 0x00, 0x2A, 0, 0, 0, 8,
+                                   0x00, 0x01, 0x01, 0x12, 0x00, 0x03, 0, 0, 0, 1, 0x00, 0x06, 0, 0, 0, 0, 0, 0, 0xFF, 0xD9 };
+        ok = mg_file_write_all(path, jpeg, sizeof(jpeg));
+    } else if (strstr(name, ".png") || strstr(name, ".jpg")) {
+        size_t size = 0;
+        u8 *png = make_png(640, 480, &size);
+        ok = png && mg_file_write_all(path, png, size);
+        free(png);
+    } else if (strstr(name, ".pdf")) {
+        static const char pdf[] = "%PDF-1.4\n1 0 obj << /Type /Catalog >> endobj\ntrailer << /Root 1 0 R >>\n%%EOF\n";
+        ok = mg_file_write_all(path, pdf, sizeof(pdf) - 1);
+    } else if (strstr(name, ".mp4")) {
+        static const u8 mp4[] = { 0, 0, 0, 0x18, 'f', 't', 'y', 'p', 'm', 'p', '4', '2', 0, 0, 0, 0, 'i', 's', 'o', 'm', 'm', 'p', '4', '2',
+                                  0, 0, 0, 8, 'f', 'r', 'e', 'e' };
+        ok = mg_file_write_all(path, mp4, sizeof(mp4));
+    }
+    free(path);
+    return ok;
+}
+
+static MG_HOSTCB void pick_answer(void *arg)
+{
+    pick_job *job = (pick_job *)arg;
+    const char *script = job->number < (int)MG_COUNT(g_pick_script) ? g_pick_script[job->number] : "-";
+    const char *names[4];
+    char copy[200], *word, *space;
+    int n = 0;
+    bool hides = g_pickers_app && job->number == 0;
+    if (hides) {
+        /* The picker comes up over the app: its window hidden, as Windows 10 Mobile's picker hides it -- and the phone turned
+           meanwhile, the app's surface with it, so that the activity that asked is made again before its answer comes. */
+        mg_sleep_ns(50000000ull);
+        megler_set_paused(true);
+        mg_sleep_ns(100000000ull);
+        megler_set_surface(g_screen_h, g_screen_w, g_screen_dpi, 1);
+    }
+    mg_sleep_ns(200000000ull);
+    mg_strlcpy(copy, script, sizeof(copy));
+    for (word = copy; strcmp(script, "-") && word && *word && n < 4; word = space ? space + 1 : NULL) {
+        space = strchr(word, ' ');
+        if (space) *space = 0;
+        if (write_pick_file(job->folder, word)) names[n++] = word;
+    }
+    megler_pick_done(job->id, strcmp(script, "-") ? MEGLER_PICK_OK : MEGLER_PICK_CANCELED, n, names);
+    if (hides) {
+        /* The window back a moment after the picker's answer, which waits for it. */
+        mg_sleep_ns(300000000ull);
+        megler_set_paused(false);
+    }
+    free(job);
+}
+
+static MEGLER_CB bool system_pick(void *user, const megler_pick_request *r)
+{
+    pick_job *job;
+    char types[200];
+    size_t n = strlen(g_pick_heard), i;
+    mg_thread *t;
+    (void)user;
+    mg_strlcpy(types, r->types, sizeof(types));
+    for (i = 0; types[i]; i++)
+        if (types[i] == '\n') types[i] = types[i + 1] ? ',' : 0;
+    snprintf(g_pick_heard + n, sizeof(g_pick_heard) - n, "%d %s %c%d s%d d%d q%d;", r->kind, types, r->multiple ? 'm' : 'o', r->max, r->start,
+             r->duration_s, r->quality);
+    job = (pick_job *)calloc(1, sizeof(*job));
+    if (!job) return false;
+    job->id = r->id;
+    job->number = (int)mg_atomic_add(&g_picks, 1) - 1;
+    mg_strlcpy(job->folder, r->folder, sizeof(job->folder));
+    t = mg_thread_start(pick_answer, job, 0, "test picker");
+    if (!t) {
+        free(job);
+        return false;
+    }
+    mg_thread_detach(t);
+    return true;
+}
+
+/*
+ * The phone's own folders for the data app (megler_storage_host): one link, /sdcard/Movies, a folder of the data folder's
+ * (phone-movies, kept from the first run to the second), handed over by the operating system's plain calls as the storage
+ * tests' stand-in does. And Windows' pictures of its files (thumbnail), answered a moment later on a thread of the stand-in's
+ * own as the shell answers: a PNG of 48 x 36, green -- as wide as a video's frame, which Windows was not seen to turn, so
+ * that the media provider turns it by the video's own quarter turn (the data app's step media-thumbnails). Each asked for is
+ * counted in g_pictures_asked.
+ */
+static char *g_movies_dir;
+static volatile i32 g_pictures_asked;
+
+static char *movies_path(int link, const char *rel)
+{
+    if (link != 0 || !g_movies_dir) return NULL;
+    return rel[0] ? mg_sprintf("%s/%s", g_movies_dir, rel) : mg_strdup(g_movies_dir);
+}
+
+static MEGLER_CB void *movies_open(void *user, int link, const char *rel, int flags, int kind, int *err)
+{
+    char *path = movies_path(link, rel);
+    void *h;
+    (void)user;
+    if (!path) {
+        *err = MEGLER_STORAGE_NOT_FOUND;
+        return NULL;
+    }
+    h = mg_host_open_handle(path, flags, kind, err);
+    free(path);
+    return h;
+}
+
+static MEGLER_CB bool movies_mkdir(void *user, int link, const char *rel, int *err)
+{
+    char *path = movies_path(link, rel);
+    bool ok = path && mg_path_mkdir(path, err);
+    (void)user;
+    if (!path) *err = MEGLER_STORAGE_NOT_FOUND;
+    free(path);
+    return ok;
+}
+
+static MEGLER_CB bool movies_remove(void *user, int link, const char *rel, bool dir, int *err)
+{
+    char *path = movies_path(link, rel);
+    bool ok = path && (dir ? mg_path_rmdir(path, err) : mg_path_remove(path, err));
+    (void)user;
+    if (!path) *err = MEGLER_STORAGE_NOT_FOUND;
+    free(path);
+    return ok;
+}
+
+static MEGLER_CB bool movies_rename(void *user, int from_link, const char *from, int to_link, const char *to, int *err)
+{
+    char *a = movies_path(from_link, from), *b = movies_path(to_link, to);
+    bool ok = a && b && mg_path_rename(a, b, err);
+    (void)user;
+    if (!a || !b) *err = MEGLER_STORAGE_NOT_FOUND;
+    free(a);
+    free(b);
+    return ok;
+}
+
+typedef struct movies_picture {
+    char *path;
+    megler_storage_thumbnail_done done;
+    void *core;
+} movies_picture;
+
+typedef struct picture_bytes {
+    u8 *data;
+    size_t len, cap;
+} picture_bytes;
+
+static MEGLER_CB bool picture_bytes_add(void *sink, const void *data, size_t size)
+{
+    picture_bytes *b = (picture_bytes *)sink;
+    if (b->len + size > b->cap) {
+        size_t cap = (b->len + size) * 2;
+        u8 *grown = (u8 *)realloc(b->data, cap);
+        if (!grown) return false;
+        b->data = grown;
+        b->cap = cap;
+    }
+    memcpy(b->data + b->len, data, size);
+    b->len += size;
+    return true;
+}
+
+static MG_HOSTCB void movies_picture_run(void *arg)
+{
+    movies_picture *p = (movies_picture *)arg;
+    mg_stat st;
+    mg_sleep_ns(30000000ull);
+    if (!mg_path_stat(p->path, &st, NULL) || st.is_dir) {
+        p->done(p->core, MEGLER_STORAGE_NOT_FOUND, NULL, 0);
+    } else {
+        u32 px[48 * 36];
+        picture_bytes png;
+        int i;
+        memset(&png, 0, sizeof(png));
+        for (i = 0; i < 48 * 36; i++) px[i] = 0xFF00FF00u;
+        if (mg_gfx_standin()->image_encode(NULL, px, 48, 36, 48 * 4, MEGLER_GFX_PNG, 100, picture_bytes_add, &png))
+            p->done(p->core, MEGLER_STORAGE_OK, png.data, png.len);
+        else
+            p->done(p->core, MEGLER_STORAGE_FAILED, NULL, 0);
+        free(png.data);
+    }
+    free(p->path);
+    free(p);
+}
+
+static MEGLER_CB bool movies_thumbnail(void *user, int link, const char *rel, int size, int mode, megler_storage_thumbnail_done done, void *core)
+{
+    char *path = movies_path(link, rel);
+    movies_picture *p;
+    mg_thread *t;
+    (void)user;
+    (void)size;
+    (void)mode;
+    if (!path) return false;
+    p = (movies_picture *)mg_alloc(sizeof(*p));
+    p->path = path;
+    p->done = done;
+    p->core = core;
+    mg_atomic_add(&g_pictures_asked, 1);
+    t = mg_thread_start(movies_picture_run, p, 0, "test-picture");
+    if (!t) {
+        free(p->path);
+        free(p);
+        return false;
+    }
+    mg_thread_detach(t);
+    return true;
+}
+
+static megler_storage_host data_storage(void)
+{
+    static const megler_storage_link movies[] = { { "Movies", true } };
+    megler_storage_host h;
+    memset(&h, 0, sizeof(h));
+    free(g_movies_dir);
+    g_movies_dir = mg_sprintf("%s/phone-movies", megler_data_dir());
+    mg_path_mkdirs(g_movies_dir);
+    h.links = movies;
+    h.link_count = 1;
+    h.open = movies_open;
+    h.make_folder = movies_mkdir;
+    h.remove = movies_remove;
+    h.rename = movies_rename;
+    h.thumbnail = movies_thumbnail;
+    return h;
+}
+
+/*
  * The phone's check of its user (megler_biometric_host), for the data app's step biometric: ready; it verifies the user
  * when its message has "Sign in" in it, else the user says no. What it was asked is said in g_bio_heard, the message's
  * lines joined by '|'.
@@ -1270,12 +1590,17 @@ static bool start(const char *apk, const char *android_root)
     cfg.system.launch_app = system_launch;
     cfg.system.uninstall_app = system_uninstall;
     cfg.system.permission = system_permission;
+    /* The phone's picker and camera, answered by the test for the pickers app and the WebView's file input (system_pick); any
+       other app has none here. */
+    if (g_pickers_app || g_webview_app) cfg.system.pick = system_pick;
+    g_pick_heard[0] = 0;
     g_system_heard[0] = 0;
     g_permissions_asked[0] = 0;
     cfg.apps_dir = phone_apps_fixture();
     /* Decoders for MediaCodec that decode nothing but take samples only as a real one must have them (mg_codec_standin.c). */
     cfg.codec = *mg_codec_standin();
-    if (g_camera_app) cfg.camera = *mg_camera_standin();
+    /* (The pickers app has them too: the package manager answers a camera app's intents where the device has a camera.) */
+    if (g_camera_app || g_pickers_app) cfg.camera = *mg_camera_standin();
     /* The phone in Moscow, the location on (mg_location_standin.c). */
     cfg.location = *mg_location_standin();
     /* Its Wi-Fi on, four networks in range, connected to the first (mg_wifi_standin.c), its scans counted from each start. */
@@ -1296,6 +1621,8 @@ static bool start(const char *apk, const char *android_root)
     cfg.microphone.start = mic_start;
     cfg.microphone.stop = mic_stop;
     g_mic_heard[0] = 0;
+    /* And the phone's own Movies, with Windows' pictures of what is in it: the data app's media steps. */
+    if (g_data_app) cfg.storage = data_storage();
     /* And a phone that checks its user (bio_verify): the data app's step biometric. */
     cfg.biometric.available = bio_available;
     cfg.biometric.verify = bio_verify;
@@ -1614,6 +1941,8 @@ static int run_screen(void)
     CHECK(halves(480, 800, RED, BLUE, true));
     write_picture("screen-4-back");
     CHECK(find_line("I/ScreenTest: Handled.onDestroy changing=false", 0) >= 0);
+    /* Its referrer the system's, which started it (megler.AppRunner.SHELL_REFERRER), each of the four times it was made. */
+    CHECK(count_lines("I/ScreenTest: Main.referrer android-app://android") == 4 && count_lines("I/ScreenTest: Main.referrer ") == 4);
     if (g_failed) say_app_lines("I/ScreenTest:");
     stop_and_end("I/ScreenTest: Main.onDestroy changing=false", &at);
     return g_failed;
@@ -2980,16 +3309,6 @@ void mg_tests_java_set_script(int count, char **steps)
 /* A battery nobody would take for the default: 37 of 100 and going down, off the charger, 3.712 V, 30.1 degrees. */
 static const mg_battery k_battery_run2 = { 37, 100, 3, 0, 2, 3712, 301, true, "Li-poly" };
 
-static int count_lines(const char *text)
-{
-    int i, n = 0;
-    mg_lock_acquire(&g_log_lock);
-    for (i = 0; i < g_nlines; i++)
-        if (strstr(g_lines[i], text)) n++;
-    mg_lock_release(&g_log_lock);
-    return n;
-}
-
 /*
  * The battery changing under the app, as the shell reports it (megler_set_battery). The app has a receiver registered for the
  * battery's broadcasts, which has heard the battery once already, when it was registered. It must hear each change once, on the
@@ -3204,15 +3523,24 @@ static int run_data(void)
     static const char *const steps[] = { "open", "kept", "insert", "query", "types", "update", "delete", "rollback", "commit", "constraint", "statement", "text",
                                          "bad-sql", "memory", "upgrade", "wal-restored", "left",
                                          /* And the storage as an app sees it. */
-                                         "environment", "own-folders", "cache-cleared", "volumes", "space", "permissions", "download", "list-root",
+                                         "environment", "own-folders", "cache-cleared", "volumes", "space",
+                                         /* And the phone's media through MediaStore (megler.MediaProvider): saved to the gallery,
+                                            seen as the storage permission lets it -- the first run only what it saved itself --,
+                                            queried with the app's SQL, read, thumbnailed, watched, scanned and deleted. */
+                                         "media-save", "media-gated", "media-query", "media-bundle", "media-read", "media-thumbnails",
+                                         "media-observer", "media-scanner", "media-delete",
+                                         "permissions", "download", "list-root",
                                          /* And the battery, the time zone, TLS (conscrypt's: a TLS server and client of the app's own on loopback,
                                             and an https URL through Android's HTTP client; or, where its library is not in the Android root, the
                                             stand-in that fails politely), the app's network security configuration (an authority of its own
                                             trusted for the names it gives it, the rest refused, pins), Android's key store's key pairs and their
                                             X.509 certificates (and an attestation challenge refused, and a key no provider takes refused at once),
                                             and the list of decoders: the stand-in's H.264, AAC and MP3 (mg_codec_standin.c), and no H.265. And
-                                            the phone's sensors, the stand-in's (mg_sensor_standin.c), listed and listened to. */
-                                         "battery", "connectivity", "dns-servers", "system-libs", "apache-http-legacy", "apache-http-client", "preloaded-drawables", "location", "sensors", "timezone", "locale", "phone-number", "tls", "tls-loopback", "tls-https",
+                                            the phone's sensors, the stand-in's (mg_sensor_standin.c), listed and listened to. And
+                                            android.test.base, which an app made for Android 10 or before has: junit.framework.Assert
+                                            as Facebook's SDK asserts the main thread, its failures worded as Android's, a TestSuite
+                                            of a TestCase's class run. */
+                                         "battery", "connectivity", "dns-servers", "system-libs", "apache-http-legacy", "apache-http-client", "junit-assert", "junit-messages", "junit-test-case", "preloaded-drawables", "location", "sensors", "timezone", "locale", "phone-number", "tls", "tls-loopback", "tls-https",
                                          "network-trust", "network-trust-domains", "network-trust-pins", "keystore", "keystore-certificates", "keystore-foreign-key", "path-op", "text-path", "base64-streams", "piped-streams", "trace-bytes", "codecs",
                                          /* And what Android's WebView asks of the platform before it shows a page, each answered as Android
                                             answers it: the app's id within its user (UserHandle.getAppId), whether cleartext HTTP is
@@ -3244,7 +3572,7 @@ static int run_data(void)
                                             makes one. And a proxy of an interface of 600 methods. And sound from Java: an
                                             AudioTrack written to, a MediaPlayer of a WAV and of an Ogg Vorbis asset, a SoundPool. */
                                          "xml", "asset-fd", "tasks", "wrapper-receiver", "viewgroup-flag", "text-drawables", "pfd-dup", "pfd-parcel",
-                                         "theme-selfref", "queue-next", "storage-stats", "broadcast-explicit", "service-stop-thread", "start-ids", "process-scope", "job-scheduler", "downloads", "rollback-service", "art-manager", "progress-subclass", "telephony", "microphone", "biometric", "ordered-broadcast", "hardware-accelerated", "descendant-invalidated", "image-matrix-before-layout", "delegate-last-scope", "asset-manager-manifest", "big-asset", "file-available", "path-iterator", "mutable-context", "exec", "crc32c", "nine-patch-constructors", "subscription-ids", "filter-categories", "intent-categories", "broadcast-identity", "arrays-ranges", "collection-factories", "unmodifiable-collectors", "thread-stack", "icu-number", "audio-route", "expand-template", "list-fragment", "fragment-saved-state", "stub-said", "handler-thread", "managed-dialog", "input-format", "dialog-of-stopped", "zip-path-validator", "list-row-click", "animation-listener", "circular-reveal", "animator-values", "detached-animator", "animator-listener", "animator-not-animation", "observer-merged", "typeface-descriptor", "device-provisioned", "users", "start-asked", "pending-intent-creator", "pending-intent-flags", "pending-intent-options", "alarm-replace-cancel", "alarm-listeners", "wake-lock", "cell-info-update", "messenger-forwarded", "insets-builder", "insets-consumed", "insets-siblings", "broadcast-handler", "prefs-spaced-key", "account-removed", "sync", "package-installer", "batch-operations", "wifi", "media-metadata", "playback-state", "remote-user-info", "media-key-controller", "container-state", "context-params", "theme-accent", "phone-apps", "phone-apps-activities", "phone-apps-signatures", "check-signatures", "install-intent", "install-session", "install-splits", "bitmap-bytes", "bitmap-reuse", "file-read-only", "component-state", "adaptive-icon", "idle-handler", "uri-builder", "html-tag-handler", "stats-manager", "credential-manager", "many-interfaces", "proxy-many-methods", "apk-path", "maps-paths", "apk-optimization",
+                                         "theme-selfref", "queue-next", "storage-stats", "broadcast-explicit", "service-stop-thread", "start-ids", "process-scope", "job-scheduler", "downloads", "rollback-service", "art-manager", "progress-subclass", "telephony", "microphone", "biometric", "ordered-broadcast", "hardware-accelerated", "descendant-invalidated", "image-matrix-before-layout", "delegate-last-scope", "asset-manager-manifest", "big-asset", "file-available", "path-iterator", "mutable-context", "exec", "crc32c", "nine-patch-constructors", "subscription-ids", "filter-categories", "intent-categories", "broadcast-identity", "arrays-ranges", "collection-factories", "unmodifiable-collectors", "thread-stack", "icu-number", "audio-route", "expand-template", "list-fragment", "fragment-saved-state", "stub-said", "handler-thread", "managed-dialog", "input-format", "dialog-of-stopped", "zip-path-validator", "list-row-click", "animation-listener", "animation-set", "wait-interrupt", "looper-interrupt", "circular-reveal", "animator-values", "detached-animator", "animator-listener", "animator-not-animation", "observer-merged", "typeface-descriptor", "device-provisioned", "users", "start-asked", "pending-intent-creator", "pending-intent-flags", "pending-intent-options", "alarm-replace-cancel", "alarm-listeners", "wake-lock", "cell-info-update", "messenger-forwarded", "insets-builder", "insets-consumed", "insets-siblings", "broadcast-handler", "prefs-spaced-key", "account-removed", "sync", "package-installer", "batch-operations", "wifi", "media-metadata", "playback-state", "remote-user-info", "media-key-controller", "container-state", "context-params", "theme-accent", "phone-apps", "phone-apps-activities", "phone-apps-signatures", "check-signatures", "install-intent", "install-session", "install-splits", "bitmap-bytes", "bitmap-reuse", "file-read-only", "file-times", "component-state", "adaptive-icon", "idle-handler", "uri-builder", "url-query-sanitizer", "html-tag-handler", "stats-manager", "credential-manager", "many-interfaces", "proxy-many-methods", "apk-path", "maps-paths", "apk-optimization",
                                          /* And an <inset> whose insets are fractions of its bounds, WhatsApp's adaptive icon's 0.01% among them. */
                                          "inset-fraction",
                                          /* And a WorkSource through a Parcel and back, as a location request of Google Play services' carries one. */
@@ -3257,7 +3585,8 @@ static int run_data(void)
                                          /* And a module's resources as Google Play services' DynamiteLoader makes them: the platform's
                                             with a ResourcesLoader of an APK of resources alone added (the app's assets/loader.apk). */
                                          "resources-loader",
-                                         /* And a LocationRequest as Android 12 makes one, and a request of the passive interval through LocationManager. */
+                                         /* And a LocationRequest as Android 12 makes one, and a request of the passive interval through LocationManager
+                                            (built with its minimum update interval set, as Android wants one; refused with none set). */
                                          "location-request",
                                          /* And a provider's file through a ContentProviderClient, as Google Play services' DynamiteLoader reads its configuration. */
                                          "provider-client-file",
@@ -3294,6 +3623,18 @@ static int run_data(void)
                                          /* And a list's rows taken out and put back as RecyclerView's scrap, heard as Android tells them
                                             whether they are shown: said once the window has the list, checked below. */
                                          "visibility-scrap",
+                                         /* And a view added to a group or inflated into one hears its layout parameters through its own
+                                            setLayoutParams, as Android's ViewGroup gives them (Citymapper's bottom sheet container). */
+                                         "add-view-params",
+                                         /* And ViewGroup.cleanupLayoutState takes a group's layout request back: a group whose requestLayout
+                                            calls it on itself (Compose's AndroidViewsHandler) hears each requestLayout of a child. */
+                                         "cleanup-layout-state",
+                                         /* And the calendar's events of a time, asked as CalendarContract's helpers ask: an empty cursor of
+                                            the columns asked for, not null (Citymapper reads its count on a worker thread at each start). */
+                                         "calendar-instances",
+                                         /* And the package "android" has the platform's signature, a certificate (microG's location service
+                                            reads it for every app it has a location for), given when asked for and not otherwise. */
+                                         "platform-signature",
                                          /* And a LayerDrawable told it is not visible: its layers drawn all the same, as Android's. */
                                          "layer-drawable-hidden",
                                          /* And a BoringLayout one line whatever its width, as Android's (a badge's text in two lines). */
@@ -3328,12 +3669,35 @@ static int run_data(void)
                                          /* And Android's Geocoder with no geocode provider (no Google Play services): not present, no
                                             addresses and no error, the arguments checked; and an Address as Android's, through a Parcel. */
                                          "geocoder", "address",
+                                         /* And later APIs and attributes that apps and Play services met missing: a view named for a
+                                            shared element transition in its layout (android:transitionName: itself, by a string, by a
+                                            style); ListFormatter by a type and a width (Android 13) over ICU 60's list patterns;
+                                            DeviceConfig (a system API): the process's own flags and their listeners; and
+                                            SeekBarPreference, hidden from apps' code and named in their preference files: made, bound
+                                            to its row's bar, dragged, refused, stepped by a key, set in code, read back. */
+                                         "transition-name", "list-formatter", "device-config", "seekbar-preference",
+                                         /* And Android's RemoteCallbackList (callbacks by their binder with cookies, a broadcast over the
+                                            callbacks as they were when it began, kill), which androidx's MediaSessionCompat keeps its
+                                            controllers' callbacks in. */
+                                         "remote-callback-list",
+                                         /* And a media session's token and controllers, as an app that plays through its own session uses
+                                            them (Deezer's play button is a controller's TransportControls.play()): the token through a
+                                            Parcel, transport controls reaching the session's Callback on its handler's thread with the
+                                            controller's package, a controller's Callback and getters, a command and a media key through
+                                            the controller, a remote session's volume through its VolumeProvider, a Rating. */
+                                         "session-token", "session-controller", "session-controller-callback", "session-controller-command",
+                                         "session-remote-volume", "rating",
                                          "audio-track", "media-player", "media-player-ogg", "sound-pool",
                                          /* And MediaCodec over the stand-in for the shell's decoders: H.264 shown on a Surface in display
                                             order, a flush, parameter sets in a codec-config buffer, the asynchronous mode, AAC with an
                                             AudioSpecificConfig and with ADTS headers, a decoder that fills while its pictures wait, MP3. */
                                          "codec-avc", "codec-avc-flush", "codec-avc-inband", "codec-avc-async", "codec-aac", "codec-aac-adts", "codec-avc-full",
                                          "codec-mp3",
+                                         /* And protected media, of which Megler plays none and says so as an Android device without the
+                                            scheme does: no scheme supported by MediaDrm or MediaCrypto, neither to be made
+                                            (UnsupportedSchemeException, MediaCryptoException), no decoder of protected content, an
+                                            encrypted sample refused. */
+                                         "drm-no-scheme", "drm-no-secure-decoder",
                                          /* And the network from Java, on loopback: names, an HTTP server of the app's own and HttpURLConnection, UDP, a server
                                             socket closed under the thread waiting in accept, a java.nio selector, the interfaces, ConnectivityManager. */
                                          "net-localhost", "net-http", "net-udp", "net-close", "net-nio", "net-interfaces", "net-connectivity",
@@ -3341,10 +3705,13 @@ static int run_data(void)
                                             Cronet transport use it: the builder and its options; UrlRequests through redirects, reads,
                                             uploads, failures and a cancel, on an HTTP/1.1 server of the app's own; its URLConnections;
                                             and, where conscrypt's TLS is (qemu), BidirectionalStreams over HTTP/2 to a server of the
-                                            app's own: echoes with trailers, flow control both ways, cancel and resets, and RFC 7541's
-                                            header compression examples. */
+                                            app's own: the first under a default SSLContext that gives no sockets (the engine's TLS is the
+                                            platform's own, whatever Play services' ProviderInstaller made the default), echoes with
+                                            trailers, flow control both ways, cancel and resets, and RFC 7541's header compression
+                                            examples. */
                                          "http-engine", "http-engine-request", "http-engine-upload", "http-engine-failures", "http-engine-connection",
-                                         "http-engine-stream", "http-engine-stream-flow", "http-engine-stream-cancel", "http-engine-hpack",
+                                         "http-engine-own-tls", "http-engine-stream", "http-engine-stream-flow", "http-engine-stream-cancel",
+                                         "http-engine-hpack",
                                          /* And RenderNodes and Pictures as display lists, as Compose uses them: nodes recorded once and drawn as their
                                             bitmaps were, three of a screen's size among them; the kids' properties changed and the parent not
                                             recorded again; nodes nested and moved; one discarded and recorded again; what a list keeps (a paint, a
@@ -3366,6 +3733,8 @@ static int run_data(void)
     }
     snprintf(text, sizeof(text), "I/DataTest: done ok=%d failed=0", (int)MG_COUNT(steps));
     expect_line(text, &at, 60);
+    /* android.test.base was put on its class path before its code, as for an app made for Android 10 or before (mg_java.c). */
+    CHECK(count_lines("java: the app's class path has android.test.base (JUnit 3's junit.framework, android.test) before its own code") == 1);
     /* The TLS the app had is the one the Android root gives: conscrypt's where its library is there and this host runs ARM code (mg_dvm.c). */
     {
         char *crypto = mg_sprintf("%s/lib/libjavacrypto.so", g_android_root ? g_android_root : ".");
@@ -3388,6 +3757,17 @@ static int run_data(void)
             int h2 = find_line("I/Megler: HttpEngine: HTTP/2 to localhost:", 0);
             CHECK(h2 >= 0 && strstr(line_at(h2), " (TLSv1.") && strstr(line_at(h2), " ms"));
         }
+    }
+    /* The media provider indexed the shared storage, said in the log with what it found and how long it took; and each file
+       the app saved to the gallery said with where it went. */
+    {
+        int indexed = find_line("I/Megler: media: the shared storage indexed: ", 0);
+        CHECK(indexed >= 0 && strstr(line_at(indexed), " files, ") && strstr(line_at(indexed), " folders listed, ") && strstr(line_at(indexed), " ms"));
+        CHECK(find_line("I/Megler: media: the app saved Pictures/Megler Test/megler-portrait", 0) >= 0);
+        /* The video's thumbnail is Windows' picture of it, from the stand-in for the shell's (data_storage), turned upright by
+           the video's own quarter turn: 36 x 48. */
+        CHECK(g_pictures_asked > 0 && find_line("I/Megler: media: thumbnails from Windows' own pictures, the first of Movies/Megler Test/megler-clip", 0) >= 0);
+        CHECK(find_line(": 36x48 in ", 0) >= 0);
     }
     /* The app's network security configuration, said in the log once as it was read (android.security.net.config.XmlConfigSource):
        the base configuration with Android's authorities alone (its debug-overrides not counted), and a <domain-config> inside
@@ -3542,6 +3922,12 @@ static int run_data(void)
     /* The view animation of the step "animation-listener": its listener told through the view's handler, after the frames that
        started and ended it, not inside its parent's dispatchDraw (Animation.fireStart; Telegram's settings ended the app). */
     CHECK(wait_line("I/DataTest: animation-listener heard=start end", 0, 30) >= 0);
+    /* The screens of the step "animation-set", the old one leaving its stack as androidx's fragments and react-native-screens
+       take one away: both sets' listeners heard the start and the end inside the drawing, as Android's AnimationSet tells them;
+       the leaving view's own set told its end, the progress came to 1, the operation was completed, and the view is out of the
+       stack and the window and not drawn again (AnimationSet.getTransformation; Discord's first screen stayed over its login). */
+    CHECK(wait_line("I/DataTest: animation-set leaving outer=start-in-draw end-in-draw inner=end-in-draw progress=1.0 completed=true parent=null "
+                    "attached=false drawn-after=0 entering=start-in-draw end-in-draw animation=null", 0, 30) >= 0);
     /* The child of the step "detached-animator", fading through View.animate() when it was taken from its list's scrap and removed
        (RecyclerView's layout taking a stale child): nothing heard inside the removal, so it was still in the scrap to be unscrapped
        (Spotify's carousel met null there), and its animation went on to its end, the listener told once, afterwards. */
@@ -3679,6 +4065,11 @@ static int run_data(void)
           && find_line("stuck:   megler/test/data/Main.stuckMain line ", 0) >= 0);
     /* And not its looper's wait for the next message, which is the main thread with nothing to do (looper_idle). */
     CHECK(find_line("in wait() of a android/os/MessageQueue", 0) < 0);
+    /* Then a monitor another thread holds for 6 s while it sleeps: the report says the holder's stack as well as the main
+       thread's. Smash Hit's said only the holder's number (0.1.0.681). */
+    expect_line("I/DataTest: stuck-holder ok", &at, 60);
+    CHECK(find_line("and 1 holder of the monitors waited for:", 0) >= 0 && find_line("stuck: thread ", 0) >= 0
+          && find_line("stuck:   megler/test/data/Main.stuckHolder line ", 0) >= 0);
     /* A translucent activity over the app's (F11, Main$Clear): the one below paused, not stopped, its window still there. TikTok
        Lite's consent dialog, translucent, left the screen black behind it (package 619). */
     megler_key(141, true);
@@ -3810,6 +4201,19 @@ static int run_crash(void)
     CHECK(find_line("I/CrashTest: first onDestroy null", 0) >= 0 && find_line("I/CrashTest: top onDestroy standard", 0) >= 0 &&
           find_line("I/CrashTest: top onDestroy single", 0) >= 0 && find_line("I/CrashTest: first onDestroy again", 0) > new_intent);
     CHECK(find_line("I/CrashTest: first unexpected result", 0) < 0);
+    /*
+     * Who started each (Activity.getReferrer), as Android says it: the system for the first First, started for the tap on the
+     * app's tile (megler.AppRunner.SHELL_REFERRER); the app for the activities it started, Gate made again as well, and while
+     * the second First hears its new intent; what the second First gave the activities it started (onProvideReferrer, their
+     * Intent.EXTRA_REFERRER); and the name Trampoline gave Away (Intent.EXTRA_REFERRER_NAME). It was null for every one.
+     */
+    CHECK(find_line("I/CrashTest: first referrer android-app://android", 0) >= 0);
+    CHECK(count_lines("I/CrashTest: gate referrer android-app://megler.test.crash") == 2 && count_lines("I/CrashTest: gate referrer ") == 2);
+    CHECK(find_line("I/CrashTest: top referrer standard android-app://megler.test.crash", 0) >= 0);
+    CHECK(find_line("I/CrashTest: first referrer again android-app://megler.test.crash", 0) >= 0);
+    CHECK(find_line("I/CrashTest: top referrer single https://megler.test/first-again", 0) >= 0);
+    CHECK(find_line("I/CrashTest: first onNewIntent referrer android-app://megler.test.crash", 0) >= 0);
+    CHECK(find_line("I/CrashTest: away referrer android-app://megler.test.crash.trampoline", 0) >= 0);
     for (tries = 0; tries < 3000 && running(); tries++) mg_sleep_ns(10000000ull);
     CHECK(g_exited && g_status == -1);
     say("  the app's end, as the shell is told it: %s", g_reason);
@@ -4068,7 +4472,8 @@ static int run_camera(void)
  */
 static int run_bluetooth(void)
 {
-    static const char *const steps[] = { "adapter", "permissions", "names", "scan", "scan-legacy", "connect", "discover", "mtu", "notify", "write",
+    /* (First, as an app made for Android 14 has it: no android.test.base, which it does not ask for -- JUnit 3's Assert not there.) */
+    static const char *const steps[] = { "no-test-base", "adapter", "permissions", "names", "scan", "scan-legacy", "connect", "discover", "mtu", "notify", "write",
                                          "write-no-response", "write-old", "read", "rssi", "bond-on-demand", "unbond", "bond-asked", "disconnect",
                                          "dropped", "unreachable" };
     mg_bluetooth_standin_counts n;
@@ -4105,6 +4510,7 @@ static int run_bluetooth(void)
           && find_line("bluetooth: C0:FF:EE:00:00:01's pairing not answered by the app: the user is asked", 0) >= 0);
     CHECK(find_line("bluetooth: the radio is off", 0) >= 0 && find_line("bluetooth: the phone's Bluetooth settings shown", 0) >= 0);
     CHECK(find_line(" FAILED", 0) < 0 && find_line("FATAL EXCEPTION", 0) < 0);
+    CHECK(find_line("java: the app's class path has android.test.base", 0) < 0);
     back_and_end("I/BluetoothTest: onDestroy", &at);
     if (g_failed) say_app_lines("/BluetoothTest: ");
     return g_failed;
@@ -4141,6 +4547,87 @@ static int run_wifi(void)
     CHECK(find_line(" FAILED", 0) < 0 && find_line("FATAL EXCEPTION", 0) < 0 && find_line("I/MeglerWifi: a scan refused", 0) < 0);
     back_and_end("I/WifiTest: onDestroy", &at);
     if (g_failed) say_app_lines("/WifiTest: ");
+    return g_failed;
+}
+
+/*
+ * The system's picker and camera (the test app pickers, on the test's stand-in for the shell's, system_pick): each intent an
+ * app sends Android's documents UI, photo picker and camera app answered as the app expects -- the files' URIs and ClipData,
+ * the photo written to the app's own FileProvider and a thumbnail without one, the video to a file: URI, RESULT_CANCELED for
+ * a cancel, a chooser unwrapped, a WebView's file input left to the platform -- and what the package manager says of those
+ * intents. The first request's picker hides the window: its result waits until the window is back and comes before onResume.
+ * What the shell was asked for each, and the log saying what was asked and answered with no file's name in it.
+ */
+static int run_pickers(void)
+{
+    static const char *const steps[] = { "resolve", "get-content", "open-multiple", "pick-images", "pick-media", "cancel", "chooser",
+                                         "capture-output", "capture-inline", "video", "web-input", "orientation", "write-refused" };
+    static const char heard[] = "0 image/* o0 s1 d0 q-1;0 image/*,application/pdf m0 s0 d0 q-1;0 image/* m5 s1 d0 q-1;0 image/* o0 s1 d0 q-1;"
+                                "0 */* o0 s0 d0 q-1;0 application/pdf o0 s0 d0 q-1;1 image/jpeg o0 s1 d0 q-1;1 image/jpeg o0 s1 d0 q-1;"
+                                "2 video/mp4 o0 s2 d15 q0;0 image/* m0 s1 d0 q-1;0 image/jpeg o0 s1 d0 q-1;";
+    char text[160];
+    int at = -1, i, asked, stop, made, started, result, resume;
+    expect_line("I/PickersTest: onCreate", &at, 120);
+    for (i = 0; i < (int)MG_COUNT(steps); i++) {
+        snprintf(text, sizeof(text), "I/PickersTest: %s ok", steps[i]);
+        expect_line(text, &at, 120);
+    }
+    snprintf(text, sizeof(text), "I/PickersTest: done ok=%d failed=0", (int)MG_COUNT(steps));
+    expect_line(text, &at, 60);
+    say("  the shell was asked: %s", g_pick_heard);
+    CHECK(!strcmp(g_pick_heard, heard));
+    /* The first: asked, the window hidden by its picker (onStop) and the screen turned meanwhile, answered; once the window is
+       back the activity that asked is made again for the turn, and the result is the new one's, after its onStart and before
+       its onResume, as Android hands a relaunched activity its pending result. */
+    asked = find_line("I/MeglerPickers: request 1 (android.intent.action.GET_CONTENT of image/*) asked of the shell for megler.test.pickers.Main, request code 11", 0);
+    stop = find_line("I/PickersTest: onStop", asked);
+    made = find_line("I/PickersTest: onCreate instance=2 restored step=1", stop);
+    started = find_line("I/PickersTest: onStart", made);
+    result = find_line("I/PickersTest: result 11 -1 content://megler.picked/1/photo.png instance=2", started);
+    resume = find_line("I/PickersTest: onResume", result);
+    CHECK(asked >= 0 && stop > asked && made > stop && started > made && result > started && resume > result);
+    CHECK(find_line("relaunch megler.test.pickers.Main as megler.test.pickers.Main for the configuration changes", stop) > 0);
+    CHECK(find_line("I/MeglerPickers: the answer waits for the app to be in front again", asked) > 0);
+    /* What the core and the framework said of each: the requests, the answers, the results -- extensions, never names. */
+    CHECK(find_line("java: the app asks for the phone's picker (request 1): a file of image/*", 0) >= 0);
+    CHECK(find_line("java: the app asks for the phone's picker (request 2): several files of image/* application/pdf", 0) >= 0);
+    CHECK(find_line("java: the app asks for the phone's picker (request 3): several files of image/*, at most 5", 0) >= 0);
+    CHECK(find_line("java: the app asks for the phone's camera (request 9): a video, at most 15 s, low quality", 0) >= 0);
+    CHECK(find_line("java: the phone's answer to request 2: 2 files: .png .pdf", 0) >= 0);
+    CHECK(find_line("java: the phone's answer to request 9: 1 file: .mp4", 0) >= 0);
+    CHECK(find_line("java: the phone's answer to request 5: the user backed out", 0) >= 0);
+    CHECK(find_line("I/MeglerPickers: request 2 (android.intent.action.OPEN_DOCUMENT of image/* application/pdf): RESULT_OK, 2 files (.png .pdf) in the ClipData, "
+                    "to megler.test.pickers.Main (request code 12)", 0) >= 0);
+    CHECK(find_line("I/MeglerPickers: request 5 (android.intent.action.GET_CONTENT of */*): RESULT_CANCELED, the user backed out", 0) >= 0);
+    CHECK(find_line("I/MeglerPickers: request 7 (android.media.action.IMAGE_CAPTURE of image/jpeg): RESULT_OK, the photo (.jpg) written to the app's content: URI", 0) >= 0);
+    CHECK(find_line("I/MeglerPickers: request 8 (android.media.action.IMAGE_CAPTURE of image/jpeg): RESULT_OK, a photo of ", 0) >= 0);
+    CHECK(find_line("I/MeglerPickers: request 9 (android.media.action.VIDEO_CAPTURE of video/mp4): RESULT_OK, the video (.mp4) written to the app's file: URI", 0) >= 0);
+    CHECK(find_line("I/MeglerPickers: request 10 (a WebView's file input of image/*): the page's file input has 1 file (.png)", 0) >= 0);
+    CHECK(find_line("W/MeglerPickers: a picked file opened to write (mode w): refused", 0) >= 0);
+    mg_lock_acquire(&g_log_lock);
+    for (i = 0; i < g_nlines; i++)
+        if ((strstr(g_lines[i], "java: ") || strstr(g_lines[i], "/MeglerPickers: ")) && (strstr(g_lines[i], "photo.png") || strstr(g_lines[i], "doc.pdf") || strstr(g_lines[i], "IMG_") || strstr(g_lines[i], "VID_"))) {
+            say("  a line that names a picked file: %s", g_lines[i]);
+            g_failed++;
+        }
+    g_checks++;
+    mg_lock_release(&g_log_lock);
+    {
+        /* The camera's photo went where the app said, and its copy here with it; a picked file stays for the app to read later. */
+        char *taken = mg_sprintf("%s/megler-picked/7", mg_fs_internal_dir()), *kept = mg_sprintf("%s/megler-picked/1/photo.png", mg_fs_internal_dir());
+        char *taken_host = mg_fs_host_path(taken), *kept_host = mg_fs_host_path(kept);
+        mg_stat st;
+        int err = 0;
+        CHECK(taken_host && !mg_path_stat(taken_host, &st, &err));
+        CHECK(kept_host && mg_path_stat(kept_host, &st, &err) && st.size > 0);
+        free(taken);
+        free(kept);
+        free(taken_host);
+        free(kept_host);
+    }
+    CHECK(find_line(" FAILED", 0) < 0 && find_line("FATAL EXCEPTION", 0) < 0 && find_line("ActivityNotFoundException", 0) < 0);
+    back_and_end("I/PickersTest: onDestroy", &at);
+    if (g_failed) say_app_lines("/PickersTest: ");
     return g_failed;
 }
 
@@ -4222,6 +4709,35 @@ static int run_gms_host(void)
      * Allow) and the answer written into Google's settings (the stand-in's, as Google Services Framework's are), once.
      */
     CHECK(wait_line("I/GmsHostTest: location api connected true", 0, 300) >= 0);
+    /*
+     * Their provider asked by a thread of the app's that holds a lock, while their Application (attached slowly, App) was being
+     * attached for a binding whose onServiceConnected wants that lock (Main.askUnderLock): the binding comes once the attaching
+     * is done. Smash Hit's main thread stood ten seconds there at every start: the thread waited for a request of its own
+     * behind that binding on the main thread's queue (0.1.0.681).
+     */
+    {
+        int at = wait_line("I/GmsHostTest: bound under the provider's lock after ", 0, 300);
+        const char *ms = strstr(line_at(at), " after ");
+        CHECK(at >= 0 && ms && atol(ms + 7) < 8000);
+        CHECK(find_line("I/GmsHostTest: provider asked under a lock true", 0) >= 0);
+        say("  %s", at >= 0 ? line_at(at) : "a binding under the provider's lock: none");
+    }
+    /*
+     * And their provider asked, before their Application is attached, by a thread holding a lock that the main thread then waits
+     * to enter (Main.askWhileMainWaits, the first thing the app does): the thread is answered at once and the main thread goes
+     * on, their Application attached after. The thread waited ten seconds for the main thread to attach it, which the main
+     * thread, waiting for the thread's lock, could not: Citymapper stood so at every start, Google Maps initialized in its
+     * Application.onCreate under DynamiteModule's lock while the thread that held it asked their Chimera provider (0.1.0.690).
+     */
+    {
+        int at = wait_line("I/GmsHostTest: the main thread entered the asking thread's lock after ", 0, 300);
+        const char *ms = at >= 0 ? strstr(line_at(at), " after ") : NULL;
+        CHECK(at >= 0 && ms && atol(ms + 7) < 5000 && strstr(ms, " ms, their provider answered true"));
+        CHECK(at >= 0 && find_line("I/GmsOwnTest: application attached", 0) > at);
+        CHECK(find_line("I/MicroG: Google Play services' provider is asked by a thread (gms-host-main-waits) holding a monitor that the main thread "
+                        "waits to enter: it answers before their Application is attached", 0) >= 0);
+        say("  %s", at >= 0 ? line_at(at) : "a provider asked while the main thread waits for the asking thread: nothing said");
+    }
     CHECK(wait_line("I/GmsOwnTest: settings network_location_opt_in=1", 0, 120) >= 0);
     CHECK(wait_line("I/MeglerLocation: Google Location Accuracy on: the user was asked, and said Allow -- Google Play services' network location may find "
                     "the phone from the Wi-Fi networks around it", 0, 60) >= 0);
@@ -4252,9 +4768,9 @@ static int run_gms_host(void)
     CHECK(wait_line("I/GmsOwnTest: network location alarm went off", 0, 60) >= 0);
     CHECK(wait_line("I/GmsOwnTest: network location second fix sent true", 0, 30) >= 0);
     /*
-     * Google Play services from a bundle (gms-own.apks: a base and the splits config.mdpi, config.xxhdpi and config.en), as
-     * Play Store installs Google's own, unpacked for 160 dpi in English and Russian: the app has their base and the splits
-     * kept, and their resources are those of all three. An activity of theirs, started by the app and run here as their
+     * Google Play services from a bundle (gms-own.apks: a base and the splits config.mdpi, config.xxhdpi, config.en and pack),
+     * as Play Store installs Google's own, unpacked for 160 dpi in English and Russian: the app has their base and the splits
+     * kept, and their resources are those of all four. An activity of theirs, started by the app and run here as their
      * account settings are, reads a picture that is in their density's split alone (16 x 16, mdpi's), the word of their
      * English split, and both again through a context of another configuration, as AppCompat wraps an activity's: the
      * picture was not there ("Manage your Google Account" ended Play Store on the Google logo's NotFoundException,
@@ -4263,11 +4779,23 @@ static int run_gms_host(void)
      * naming none, it has the platform's default for their target (Theme.DeviceDefault.Light.DarkActionBar, 0x0103013f),
      * not the number of the app's theme.
      */
-    CHECK(find_line("java: Google Play services are in 3 APKs, their base and the splits config.en, config.mdpi", 0) >= 0);
-    CHECK(find_line("I/MicroG: Google Play services' splits, whose resources and files join their base's: config.en, config.mdpi (3 APKs)", 0) >= 0);
+    CHECK(find_line("java: Google Play services are in 4 APKs, their base and the splits config.en, config.mdpi, pack", 0) >= 0);
+    CHECK(find_line("I/MicroG: Google Play services' splits, whose resources and files join their base's: config.en, config.mdpi, pack (4 APKs)", 0) >= 0);
     CHECK(wait_line("-> Google Play services' megler.test.gmsown.Lockup, here", 0, 60) >= 0);
     CHECK(wait_line("I/GmsOwnTest: lockup 16x16 word=english wrapped 16x16 word=english label=Google Play services (a stand-in) "
-                    "splits=[config.en, config.mdpi] host theme attribute false theme 0x103013f", 0, 120) >= 0);
+                    "splits=[config.en, config.mdpi, pack] host theme attribute false theme 0x103013f", 0, 120) >= 0);
+    /*
+     * Their assets read by native code (the app's library, jni/gmshost.c; their bundle has a split of assets alone, pack):
+     * the NDK's asset manager of their context's AssetManager reads their base's asset and their split's, lists the split's
+     * folder, and has none of the app's; that of the app's AssetManager reads the app's and none of theirs; and the same
+     * AssetManager is the same manager each time. AAssetManager_fromJava took no notice of the AssetManager it was given
+     * and looked in the app's APKs alone: the map library inside Google Play services (microG's MapLibre) found none of its
+     * sprites and glyphs, and Citymapper's map had no icons and no labels (0.1.0.690).
+     */
+    CHECK(find_line("java: AAssetManager_fromJava: another package's AssetManager -- native code reads the assets of its 4 APK(s), the first ", 0) >= 0);
+    CHECK(find_line("I/GmsHostTest: native assets: theirs [an asset of Google Play services' base] as Java reads it true, their split's "
+                    "[an asset of a split of Google Play services] folder [note.txt], the app's through theirs null; the app's [the host app's own asset], "
+                    "theirs through the app's null null folder []; one manager each true", 0) >= 0);
     /*
      * Android's Geocoder, answered by their geocode provider (the stand-in's GeocodeProvider, not exported), bound as the system
      * binds it -- the first request a synchronous one on the main thread, which binds it there before it waits -- and asked on
@@ -4305,6 +4833,7 @@ static int run_gms_host(void)
     CHECK(find_line("FATAL EXCEPTION", 0) < 0);
     say_app_lines("/GmsOwnTest: ");
     say_app_lines("/GmsHostTest: geocoder");
+    say_app_lines("/GmsHostTest: native assets");
     return g_failed;
 }
 
@@ -4498,6 +5027,18 @@ static int run_webview(void)
     megler_key(142, false);
     /* A second WebView, a banner, drawn through a RenderNode, dismissed and destroyed between its draws: the app goes on. */
     CHECK(wait_line("I/WebViewTest: dismiss ok", 0, 300) >= 0);
+    /*
+     * A page's <input type=file> in a WebView the app gives no chrome client (it is none to the app: getWebChromeClient is
+     * null): tapped, it opens the phone's picker -- the stand-in (system_pick) picks its picture -- where Android's WebView
+     * with no client answers it with nothing; and the page reads the file through the picked file's content: URI, its name,
+     * type and bytes as Chromium has them from the provider (megler.Pickers).
+     */
+    line = wait_line("I/WebViewTest: file-at ", 0, 300);
+    CHECK(line >= 0 && sscanf(strstr(line_at(line), "file-at ") + 8, "%d,%d", &x, &y) == 2);
+    CHECK(line >= 0 && strstr(line_at(line), "chrome-client=null"));
+    if (line >= 0) tap(x, y);
+    CHECK(wait_line("I/WebViewTest: file-input ok photo.png image/png ", 0, 300) >= 0);
+    CHECK(find_line("I/MeglerPickers: request 1 (a WebView's file input of image/*): the page's file input has 1 file (.png)", 0) >= 0);
     expect_line("I/WebViewTest: done", &at, 120);
     for (i = 0; i < g_nlines; i++)
         if (strstr(g_lines[i], "/WebViewTest: ") && strstr(g_lines[i], " FAILED")) say("  %s", g_lines[i]);
@@ -4522,6 +5063,8 @@ int mg_tests_java_run(const char *which, const char *apk, const char *android_ro
     g_crash_app = !strcmp(which, "crash");
     g_camera_app = !strcmp(which, "camera");
     g_bluetooth_app = !strcmp(which, "bluetooth");
+    g_pickers_app = !strcmp(which, "pickers");
+    g_webview_app = !strcmp(which, "webview");
     g_data_app = !strcmp(which, "data");
     g_microg_app = !strcmp(which, "microg");
     /* gms-host runs where Windows finds the phone by the cell network alone (600 m), as Transit's user's phone does: Google Play
@@ -4644,6 +5187,7 @@ int mg_tests_java_run(const char *which, const char *apk, const char *android_ro
         else if (!strcmp(which, "scroll")) run_scroll();
         else if (!strcmp(which, "bluetooth")) run_bluetooth();
         else if (!strcmp(which, "wifi")) run_wifi();
+        else if (!strcmp(which, "pickers")) run_pickers();
         else if (g_any_app) run_app();
         else run_hello();
         if (running()) {

@@ -24,14 +24,213 @@
 #define L2(n) MG_SF_L_LL(g_##n##l, n)
 
 D1(sin) D1(cos) D1(tan) D1(asin) D1(acos) D1(atan) D1(sinh) D1(cosh) D1(tanh) D1(asinh) D1(acosh) D1(atanh)
-D1(exp) D1(exp2) D1(expm1) D1(log) D1(log2) D1(log10) D1(log1p) D1(sqrt) D1(cbrt) D1(fabs) D1(floor) D1(ceil)
-D1(round) D1(trunc) D1(rint) D1(nearbyint) D1(erf) D1(erfc) D1(tgamma) D1(lgamma) D1(logb)
+D1(exp) D1(exp2) D1(expm1) D1(log) D1(log2) D1(log10) D1(log1p) D1(sqrt) D1(cbrt) D1(fabs)
+D1(erf) D1(erfc) D1(tgamma) D1(lgamma) D1(logb)
 D2(atan2) D2(pow) D2(hypot) D2(fmod) D2(remainder) D2(fmin) D2(fmax) D2(fdim) D2(copysign) D2(nextafter)
 
 F1(sinf) F1(cosf) F1(tanf) F1(asinf) F1(acosf) F1(atanf) F1(sinhf) F1(coshf) F1(tanhf) F1(asinhf) F1(acoshf) F1(atanhf)
-F1(expf) F1(exp2f) F1(expm1f) F1(logf) F1(log2f) F1(log10f) F1(log1pf) F1(sqrtf) F1(cbrtf) F1(fabsf) F1(floorf) F1(ceilf)
-F1(roundf) F1(truncf) F1(rintf) F1(nearbyintf) F1(erff) F1(erfcf) F1(tgammaf) F1(lgammaf) F1(logbf)
+F1(expf) F1(exp2f) F1(expm1f) F1(logf) F1(log2f) F1(log10f) F1(log1pf) F1(sqrtf) F1(cbrtf) F1(fabsf)
+F1(erff) F1(erfcf) F1(tgammaf) F1(lgammaf) F1(logbf)
 F2(atan2f) F2(powf) F2(hypotf) F2(fmodf) F2(remainderf) F2(fminf) F2(fmaxf) F2(fdimf) F2(copysignf) F2(nextafterf)
+
+/*
+ * Rounding to a whole number: floor, ceil, trunc, round, rint and nearbyint, and lround, lrint, llround and llrint, of floats
+ * and doubles -- worked out on the bits in integer registers, as bionic's (FreeBSD's) libm does them, not by the host's.
+ * The host's on the phone, the UCRT's, store the value to the stack and take it apart in halfwords there (roundf calls
+ * _fd_int twice, which loads, masks and stores halfwords of it, and loads it back whole; lroundf calls _fdtest, then
+ * roundf, then compares and converts), and a guest's softfp float went through the stack into a VFP register for them and
+ * back: Geekbench 5's Horizon Detection calls lroundf and roundf for each of 21 angles at every edge pixel of its 9
+ * megapixel picture (its Hough transform, libgeekbench.so+0x23191c), and ran at 0.74 of Android's speed on the same phone
+ * where its other workloads ran 1.2 to 1.9 times as fast. Here the guest's bits come in r0 (r0:r1 for a double) and go back
+ * so, with no float register and no memory in between.
+ *
+ * The results are IEEE 754's: halves away from zero for round and lround, to even for rint, nearbyint, lrint and llrint
+ * (the rounding mode is always to nearest here: fesetround, below, takes no other), the sign of a zero kept, a NaN given
+ * back quiet (as bionic's x + x makes it), inexact never raised (nothing reads the exceptions: fetestexcept, below). An
+ * integer too big for the result, an infinity and a NaN go to the result by the C conversion of the value, which is what
+ * the guest's own compiler makes of bionic's `(long)roundf(x)`: saturated, and 0 for a NaN, on ARM.
+ */
+enum { R_TRUNC, R_FLOOR, R_CEIL, R_ROUND, R_RINT };
+
+/* (Made in each wrapper with its rounding: one call of the guest's is a few instructions and no switch.) */
+#if defined(_MSC_VER)
+#define ROUND_INLINE static __forceinline
+#else
+#define ROUND_INLINE static inline __attribute__((always_inline))
+#endif
+
+#if MG_GUEST_SOFTFP
+#define F_BITS(x) (x)
+#define F_GUEST(b) (b)
+#define D_BITS(x) (x)
+#define D_GUEST(b) (b)
+#else
+#define F_BITS(x) mg_fb(x)
+#define F_GUEST(b) mg_f(b)
+#define D_BITS(x) mg_db(x)
+#define D_GUEST(b) mg_d(b)
+#endif
+
+/* A float's bits rounded to a whole number by `how`. */
+ROUND_INLINE u32 round_f(u32 u, int how)
+{
+    u32 sign = u & 0x80000000u, a = u & 0x7FFFFFFFu, one, frac, whole;
+    int e = (int)(a >> 23) - 127;
+    if (e >= 23) return a > 0x7F800000u ? u | 0x00400000u : u;   /* whole already, an infinity, or a NaN made quiet */
+    if (e < 0) {
+        /* |x| < 1: a zero or a one of its sign. */
+        bool up;
+        if (!a) return u;
+        switch (how) {
+        case R_FLOOR: up = sign != 0; break;
+        case R_CEIL: up = !sign; break;
+        case R_ROUND: up = a >= 0x3F000000u; break;            /* 0.5 and more */
+        case R_RINT: up = a > 0x3F000000u; break;              /* more than 0.5: a half goes to the even 0 */
+        default: up = false; break;
+        }
+        return sign | (up ? 0x3F800000u : 0);
+    }
+    one = 0x00800000u >> e;            /* a unit of the whole number, where it is in the bits */
+    frac = a & (one - 1);
+    if (!frac) return u;
+    whole = a - frac;
+    switch (how) {
+    case R_FLOOR: if (sign) whole += one; break;           /* (a carry out of the fraction raises the exponent, as it should) */
+    case R_CEIL: if (!sign) whole += one; break;
+    case R_ROUND: if (frac >= one >> 1) whole += one; break;
+    case R_RINT: if (frac > one >> 1 || (frac == one >> 1 && (whole & one))) whole += one; break;
+    default: break;
+    }
+    return sign | whole;
+}
+
+/* And a double's. */
+ROUND_INLINE u64 round_d(u64 u, int how)
+{
+    u64 sign = u & 0x8000000000000000ull, a = u & 0x7FFFFFFFFFFFFFFFull, one, frac, whole;
+    int e = (int)(a >> 52) - 1023;
+    if (e >= 52) return a > 0x7FF0000000000000ull ? u | 0x0008000000000000ull : u;
+    if (e < 0) {
+        bool up;
+        if (!a) return u;
+        switch (how) {
+        case R_FLOOR: up = sign != 0; break;
+        case R_CEIL: up = !sign; break;
+        case R_ROUND: up = a >= 0x3FE0000000000000ull; break;
+        case R_RINT: up = a > 0x3FE0000000000000ull; break;
+        default: up = false; break;
+        }
+        return sign | (up ? 0x3FF0000000000000ull : 0);
+    }
+    one = 0x0010000000000000ull >> e;
+    frac = a & (one - 1);
+    if (!frac) return u;
+    whole = a - frac;
+    switch (how) {
+    case R_FLOOR: if (sign) whole += one; break;
+    case R_CEIL: if (!sign) whole += one; break;
+    case R_ROUND: if (frac >= one >> 1) whole += one; break;
+    case R_RINT: if (frac > one >> 1 || (frac == one >> 1 && (whole & one))) whole += one; break;
+    default: break;
+    }
+    return sign | whole;
+}
+
+/*
+ * A whole float as a 32-bit integer where |v| < 2^23, every whole float below that being exact in one; false for one of
+ * 2^23 or more, an infinity and a NaN, which the wrappers convert as C does (exact where the result has room for it).
+ */
+ROUND_INLINE bool small_f(u32 v, i32 *r)
+{
+    int e = (int)((v >> 23) & 0xFF) - 127;
+    u32 m;
+    if (e >= 23) return false;
+    if (e < 0) {
+        *r = 0;
+        return true;
+    }
+    m = ((v & 0x007FFFFFu) | 0x00800000u) >> (23 - e);   /* (exact: the value is whole) */
+    *r = (v >> 31) ? -(i32)m : (i32)m;
+    return true;
+}
+
+/* A whole double as a 32-bit integer where |v| < 2^31; false otherwise. */
+ROUND_INLINE bool small_d(u64 v, i32 *r)
+{
+    int e = (int)((v >> 52) & 0x7FF) - 1023;
+    u32 m;
+    if (e >= 31) return false;
+    if (e < 0) {
+        *r = 0;
+        return true;
+    }
+    m = (u32)(((v & 0x000FFFFFFFFFFFFFull) | 0x0010000000000000ull) >> (52 - e));
+    *r = (v >> 63) ? -(i32)m : (i32)m;
+    return true;
+}
+
+static gfloat g_floorf(gfloat x) { return F_GUEST(round_f(F_BITS(x), R_FLOOR)); }
+static gfloat g_ceilf(gfloat x) { return F_GUEST(round_f(F_BITS(x), R_CEIL)); }
+static gfloat g_truncf(gfloat x) { return F_GUEST(round_f(F_BITS(x), R_TRUNC)); }
+static gfloat g_roundf(gfloat x) { return F_GUEST(round_f(F_BITS(x), R_ROUND)); }
+static gfloat g_rintf(gfloat x) { return F_GUEST(round_f(F_BITS(x), R_RINT)); }
+static gdouble g_floor(gdouble x) { return D_GUEST(round_d(D_BITS(x), R_FLOOR)); }
+static gdouble g_ceil(gdouble x) { return D_GUEST(round_d(D_BITS(x), R_CEIL)); }
+static gdouble g_trunc(gdouble x) { return D_GUEST(round_d(D_BITS(x), R_TRUNC)); }
+static gdouble g_round(gdouble x) { return D_GUEST(round_d(D_BITS(x), R_ROUND)); }
+static gdouble g_rint(gdouble x) { return D_GUEST(round_d(D_BITS(x), R_RINT)); }
+/* (rint without inexact: the same here.) */
+static gfloat g_nearbyintf(gfloat x) { return F_GUEST(round_f(F_BITS(x), R_RINT)); }
+static gdouble g_nearbyint(gdouble x) { return D_GUEST(round_d(D_BITS(x), R_RINT)); }
+
+static glong g_lroundf(gfloat x)
+{
+    u32 v = round_f(F_BITS(x), R_ROUND);
+    i32 r;
+    return small_f(v, &r) ? (glong)r : (glong)mg_f(v);
+}
+static glong g_lrintf(gfloat x)
+{
+    u32 v = round_f(F_BITS(x), R_RINT);
+    i32 r;
+    return small_f(v, &r) ? (glong)r : (glong)mg_f(v);
+}
+static i64 g_llroundf(gfloat x)
+{
+    u32 v = round_f(F_BITS(x), R_ROUND);
+    i32 r;
+    return small_f(v, &r) ? (i64)r : (i64)mg_f(v);
+}
+static i64 g_llrintf(gfloat x)
+{
+    u32 v = round_f(F_BITS(x), R_RINT);
+    i32 r;
+    return small_f(v, &r) ? (i64)r : (i64)mg_f(v);
+}
+static glong g_lround(gdouble x)
+{
+    u64 v = round_d(D_BITS(x), R_ROUND);
+    i32 r;
+    return small_d(v, &r) ? (glong)r : (glong)mg_d(v);
+}
+static glong g_lrint(gdouble x)
+{
+    u64 v = round_d(D_BITS(x), R_RINT);
+    i32 r;
+    return small_d(v, &r) ? (glong)r : (glong)mg_d(v);
+}
+static i64 g_llround(gdouble x)
+{
+    u64 v = round_d(D_BITS(x), R_ROUND);
+    i32 r;
+    return small_d(v, &r) ? (i64)r : (i64)mg_d(v);
+}
+static i64 g_llrint(gdouble x)
+{
+    u64 v = round_d(D_BITS(x), R_RINT);
+    i32 r;
+    return small_d(v, &r) ? (i64)r : (i64)mg_d(v);
+}
 
 L1(sin) L1(cos) L1(tan) L1(asin) L1(acos) L1(atan) L1(exp) L1(log) L1(log10) L1(log2) L1(sqrt) L1(cbrt) L1(fabs)
 L1(floor) L1(ceil) L1(round) L1(trunc) L1(rint) L1(nearbyint) L1(expm1) L1(log1p)
@@ -63,17 +262,9 @@ static gdouble g_remquo(gdouble x, gdouble y, int *q) { return mg_gdb(remquo(mg_
 static gfloat g_remquof(gfloat x, gfloat y, int *q) { return mg_gfb(remquof(mg_gf(x), mg_gf(y), q)); }
 static gdouble g_nan(const char *tag) { return mg_gdb(nan(tag)); }
 static gfloat g_nanf(const char *tag) { return mg_gfb(nanf(tag)); }
-static glong g_lround(gdouble x) { return lround(mg_gd(x)); }
-static glong g_lroundf(gfloat x) { return lroundf(mg_gf(x)); }
 static glong g_lroundl(gldouble x) { return lround(mg_gld(x)); }
-static i64 g_llround(gdouble x) { return llround(mg_gd(x)); }
-static i64 g_llroundf(gfloat x) { return llroundf(mg_gf(x)); }
 static i64 g_llroundl(gldouble x) { return llround(mg_gld(x)); }
-static glong g_lrint(gdouble x) { return lrint(mg_gd(x)); }
-static glong g_lrintf(gfloat x) { return lrintf(mg_gf(x)); }
 static glong g_lrintl(gldouble x) { return lrint(mg_gld(x)); }
-static i64 g_llrint(gdouble x) { return llrint(mg_gd(x)); }
-static i64 g_llrintf(gfloat x) { return llrintf(mg_gf(x)); }
 static i64 g_llrintl(gldouble x) { return llrint(mg_gld(x)); }
 static int g_ilogb(gdouble x) { return ilogb(mg_gd(x)); }
 static int g_ilogbf(gfloat x) { return ilogbf(mg_gf(x)); }

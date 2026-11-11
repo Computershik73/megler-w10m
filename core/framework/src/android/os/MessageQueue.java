@@ -5,6 +5,10 @@ package android.os;
  * When nothing is due, the idle handlers run, as Android runs them: once for each message next() returns, and one that
  * answers false is removed. Launcher3 waits for the main thread to be idle that way before each step of loading its apps;
  * with handlers that never ran, Nova Launcher waited ten seconds at each.
+ *
+ * An interrupt of the thread does not end the wait for a message, as it does not end Android's (which waits in epoll,
+ * where Thread.interrupt reaches nothing): the wait goes on, and the thread has its flag again as next() returns, for the
+ * message's code to find as it does there. Here it ended the Looper: next() returned null, as for a queue that has quit.
  */
 public final class MessageQueue {
     private Message head;
@@ -50,20 +54,25 @@ public final class MessageQueue {
     Message next(boolean main) {
         // The idle handlers still to run before this call returns a message: -1 until it first finds nothing due.
         int pendingIdle = -1;
+        boolean interrupted = false;
         for (;;) {
             if (main) Looper.deliverInput();
             mNativeLooper = megler.Native.nativeLooperPoll();
             IdleHandler[] idlers = null;
             synchronized (this) {
-                if (quitting) return null;
+                if (quitting) { if (interrupted) Thread.currentThread().interrupt(); return null; }
                 long now = SystemClock.uptimeMillis();
-                if (head != null && head.when <= now) { Message m = head; head = m.next; m.next = null; return m; }
+                if (head != null && head.when <= now) {
+                    Message m = head; head = m.next; m.next = null;
+                    if (interrupted) Thread.currentThread().interrupt();
+                    return m;
+                }
                 if (pendingIdle < 0) pendingIdle = mIdleHandlers.size();
                 if (pendingIdle > 0) idlers = mIdleHandlers.toArray(new IdleHandler[0]);
                 else {
                     long wait = head == null ? 8 : Math.min(8, head.when - now);
                     if (!main) wait = head == null ? (mNativeLooper ? 8 : 0) : Math.max(1, mNativeLooper ? Math.min(8, head.when - now) : head.when - now);
-                    try { if (wait <= 0) wait(); else wait(wait); } catch (InterruptedException e) { return null; }
+                    try { if (wait <= 0) wait(); else wait(wait); } catch (InterruptedException e) { interrupted = true; }
                 }
             }
             if (idlers == null) continue;

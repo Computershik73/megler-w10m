@@ -361,7 +361,7 @@ struct mg_dvm_thread {
     u64 steps_left;                    /* under a step limit: instructions this call from C may still execute; all ones once it is used up */
     mg_jvalue scratch;                 /* where a field with no slot of its own is read from and written to */
     mg_jobj *peer;                     /* its java.lang.Thread, with libcore: made when first asked for */
-    bool interrupted;
+    volatile bool interrupted;         /* Thread.interrupt: Object.wait and Thread.sleep end for it and throw (mg_dvm_monitor_interrupt) */
     /*
      * While a library's JNI_OnLoad runs on this thread: the frame that was on
      * top when it was called, and whether the library is the app's. A
@@ -396,12 +396,20 @@ struct mg_dvm_thread {
     mg_jobj *native_target;
     const mg_jvalue *native_params;
     const char *native_shorty;
+    /*
+     * The objects JNI last gave this thread a local reference to as an answer -- a call's result, a field or an element
+     * read, a class found, NewLocalRef -- and that it has not deleted: slot (jni_local_at - 1) & 15 the newest. They too are
+     * local whatever else refers to the objects (GetObjectRefType). A native method's go with it (invoke_native).
+     */
+    mg_jobj *jni_locals[16];
+    u32 jni_local_at;
     /* The monitor it waits to enter, published while it enters a contended one; read with this thread suspended and the VM
      * lock held (trace-monitors, and a report of the main thread standing in a wait). */
     mg_jobj *volatile waiting_monitor;
     volatile u64 monitor_wait_ns;
     /* The object whose wait() it is in (mg_dvm_monitor_wait), for a report of the main thread standing in one (mg_dvm_stuck_say). */
     mg_jobj *volatile waiting_on;
+    volatile i32 wait_sync;            /* exchanged between setting and reading `waiting_on` and `interrupted`: see mg_dvm_monitor_wait */
     /*
      * What it has made (mg_dvm_get_stats sums every thread's), and the bytes not yet counted toward the next collection:
      * counted by the thread alone, and handed to the collector a few kilobytes at a time (alloc_raw), so that an
@@ -668,6 +676,10 @@ void mg_dvm_stacks_trace_start(void);
    to enter a monitor (mg_dvm_object.c); true when said. False when the wait is its looper's, for its next message: then
    `idle_on` is the queue it waits on. From the main thread's sampler (mg_java.c, hot_main), never from the main thread. */
 bool mg_dvm_stuck_say(mg_dvm_thread *main_thread, double seconds, const void **idle_on);
+/* Whether `waiter` stands waiting to enter a monitor that the thread `holder` (its id) holds, or one whose holder waits to
+   enter one of `holder`'s (four monitors on at most): it goes nowhere until `holder` lets its monitor go. Not for `waiter`
+   itself to ask, nor a thread it waits for but `holder` (they are stopped to be read). */
+bool mg_dvm_waits_for(mg_dvm_thread *waiter, u32 holder);
 /* A thread as a report names it: its java.lang.Thread's name in quotes (ASCII; another character a ?), or "thread N". */
 void mg_dvm_thread_label(const mg_dvm_thread *t, char *out, size_t n);
 void mg_dvm_call_trace_add(const char *prefix);
@@ -862,6 +874,7 @@ void mg_dvm_monitor_enter(mg_jobj *o);
 bool mg_dvm_monitor_exit(mg_jobj *o);
 bool mg_dvm_monitor_wait(mg_jobj *o, i64 ms);
 bool mg_dvm_monitor_notify(mg_jobj *o, bool all);
+void mg_dvm_monitor_interrupt(mg_dvm_thread *t);
 
 /* Leaves an existing object pending. */
 void mg_dvm_throw_object(mg_jobj *e);

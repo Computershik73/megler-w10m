@@ -334,6 +334,16 @@ MG_HOSTAPI void mg_thread_whole_stack(void);
 MG_HOSTAPI u32 mg_tls_alloc(void);
 MG_HOSTAPI void *mg_tls_get(u32 key);
 MG_HOSTAPI void mg_tls_set(u32 key, void *value);
+/*
+ * A slot of the host's own whose value, while it is not NULL, is given to `end` on its thread as the thread ends -- any
+ * thread, started here or not (the shell's, the system's pool's): FlsAlloc's callback on Windows, a pthread key's
+ * destructor on POSIX. At most four such slots. mg_tls_set_ending sets the calling thread's value.
+ */
+MG_HOSTAPI u32 mg_tls_alloc_ending(void (MG_HOSTCB *end)(void *value));
+MG_HOSTAPI void mg_tls_set_ending(u32 key, void *value);
+/* What the C runtime's malloc takes its blocks from, in words for the log: on Windows its heap's kind ("the segment heap",
+   "the NT heap"), read from the heap's own header. */
+MG_HOSTAPI const char *mg_heap_kind(void);
 
 /* ------------------------------------------------- the guest thread pointer
  *
@@ -514,9 +524,31 @@ MG_HOSTAPI bool mg_path_rename(const char *from, const char *to, int *err);
  * mg_path_remove and mg_path_rename, as POSIX's unlink and rename look at the folder, not at the file.
  */
 MG_HOSTAPI bool mg_path_set_writable(const char *path, bool writable, int *err);
+/*
+ * A file's times set, as utimensat sets them: its last access and its last change, in nanoseconds since 1970, each left
+ * as it is where it is MG_TIME_KEEP. A folder's too, but a folder of a foreign root's (one of the phone's own), which is
+ * left as it is (true): its owner hands out handles to write a file's times through, not a folder's.
+ */
+#define MG_TIME_KEEP INT64_MIN
+MG_HOSTAPI bool mg_path_set_times(const char *path, i64 atime_ns, i64 mtime_ns, int *err);
 /* Calls cb for every entry but . and ..; false with *err set when the directory cannot be listed. */
 typedef void (MG_HOSTCB *mg_dir_cb)(const char *name, bool is_dir, void *user);
 MG_HOSTAPI bool mg_path_list(const char *path, mg_dir_cb cb, void *user, int *err);
+/*
+ * The same, each entry with what mg_path_stat would say of it -- its kind, size and times; `id` and `read_only` may be 0 --
+ * taken from the listing itself, as Windows' directory listings have them: no entry is opened or asked about by its path.
+ * Asked by path, an entry of a foreign directory (one of the phone's own folders) is a call to Windows' broker each, and
+ * two of them for its size and time; a folder of three thousand photos was minutes of that, its listing a moment. For the
+ * media provider (megler.MediaProvider), which indexes the shared storage. A file a rename put aside is left out, and
+ * left where it is: mg_path_list deletes those.
+ *
+ * Before the entries, the directory itself, named ".", with its `id` where the host can tell it (0 where not): the same
+ * folder reached by two paths has one id. On a phone the Camera Roll is the shell's /sdcard/DCIM and the pictures
+ * library's "Camera Roll" folder, under /sdcard/Pictures, at once (player/StorageHost.cpp), and the media provider
+ * indexes it once so.
+ */
+typedef void (MG_HOSTCB *mg_dir_stat_cb)(const char *name, const mg_stat *st, void *user);
+MG_HOSTAPI bool mg_path_list_stat(const char *path, mg_dir_stat_cb cb, void *user, int *err);
 
 /*
  * Names Windows refuses. Android allows every character in a name but '/' and NUL; Windows refuses < > : " \ | ? * and

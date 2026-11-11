@@ -296,10 +296,25 @@ static inline u32 mg_rd32(const void *p) { u32 v; memcpy(&v, p, 4); return v; }
 static inline void mg_wr16(void *p, u16 v) { memcpy(p, &v, 2); }
 static inline void mg_wr32(void *p, u32 v) { memcpy(p, &v, 4); }
 
-/* Floats cross the guest boundary as their bits on 32-bit ARM (see docs/ARCHITECTURE.md, "Floating point"). */
+/*
+ * Floats cross the guest boundary as their bits on 32-bit ARM (see docs/ARCHITECTURE.md, "Floating point"). MSVC for ARM
+ * makes a memcpy between an integer and a float a store to the stack and a load from it, into the other register file --
+ * at every float a wrapper takes and every one it gives back (`str r0, [sp]; vldr s0, [sp]` before libm's call, `vstr s0,
+ * [sp]; ldr r0, [sp]` after it, in package 668's g_roundf) -- so there the bits are moved by its intrinsics, one `vmov`
+ * each. GCC makes the memcpy a `vmov` itself.
+ */
+#if defined(_MSC_VER) && defined(_M_ARM)
+#include <intrin.h>
+static inline float mg_f(u32 bits) { return _CopyFloatFromInt32((__int32)bits); }
+static inline u32 mg_fb(float f) { return (u32)_CopyInt32FromFloat(f); }
+static inline double mg_d(u64 bits) { return _CopyDoubleFromInt64((__int64)bits); }
+static inline u64 mg_db(double d) { return (u64)_CopyInt64FromDouble(d); }
+#else
 static inline float mg_f(u32 bits) { float f; memcpy(&f, &bits, 4); return f; }
 static inline u32 mg_fb(float f) { u32 b; memcpy(&b, &f, 4); return b; }
 static inline double mg_d(u64 bits) { double d; memcpy(&d, &bits, 8); return d; }
+static inline u64 mg_db(double d) { u64 b; memcpy(&b, &d, 8); return b; }
+#endif
 
 /*
  * A float or a double as guest code passes it to the core and takes it back, in a function the guest calls or a guest
@@ -323,6 +338,5 @@ static inline double mg_gd(gdouble x) { return x; }
 static inline gfloat mg_gfb(float f) { return f; }
 #define mg_gdb(d) ((gdouble)(d))
 #endif
-static inline u64 mg_db(double d) { u64 b; memcpy(&b, &d, 8); return b; }
 
 #endif /* MG_BASE_H */

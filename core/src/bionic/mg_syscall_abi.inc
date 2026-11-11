@@ -85,6 +85,9 @@ static const u16 g_abi_nr[][2] = {
     {232, 252},    /* epoll_wait */
     {233, 251},    /* epoll_ctl */
     {234, 268},    /* tgkill */
+    {253, 316},    /* inotify_init */
+    {254, 317},    /* inotify_add_watch */
+    {255, 318},    /* inotify_rm_watch */
     {257, 322},    /* openat */
     {258, 323},    /* mkdirat */
     {260, 325},    /* fchownat */
@@ -108,6 +111,7 @@ static const u16 g_abi_nr[][2] = {
     {291, 357},    /* epoll_create1 */
     {292, 358},    /* dup3 */
     {293, 359},    /* pipe2 */
+    {294, 360},    /* inotify_init1 */
     {299, 365},    /* recvmmsg */
     {302, 369},    /* prlimit64 */
     {306, 373},    /* syncfs */
@@ -126,6 +130,9 @@ static const u16 g_abi_nr[][2] = {
     {23, 41},      /* dup */
     {24, 358},     /* dup3 */
     {25, 55},      /* fcntl */
+    {26, 360},     /* inotify_init1 */
+    {27, 317},     /* inotify_add_watch */
+    {28, 318},     /* inotify_rm_watch */
     {29, 54},      /* ioctl */
     {32, 143},     /* flock */
     {34, 323},     /* mkdirat */
@@ -295,6 +302,9 @@ static const u16 g_abi_nr[][2] = {
     {268, 266},    /* statfs64 */
     {269, 267},    /* fstatfs64 */
     {270, 268},    /* tgkill */
+    {291, 316},    /* inotify_init */
+    {292, 317},    /* inotify_add_watch */
+    {293, 318},    /* inotify_rm_watch */
     {295, 322},    /* openat */
     {296, 323},    /* mkdirat */
     {298, 325},    /* fchownat */
@@ -318,6 +328,7 @@ static const u16 g_abi_nr[][2] = {
     {329, 357},    /* epoll_create1 */
     {330, 358},    /* dup3 */
     {331, 359},    /* pipe2 */
+    {332, 360},    /* inotify_init1 */
     {337, 365},    /* recvmmsg */
     {340, 369},    /* prlimit64 */
     {344, 373},    /* syncfs */

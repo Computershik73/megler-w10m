@@ -1,0 +1,1 @@
+the host app's own asset

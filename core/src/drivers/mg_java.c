@@ -58,10 +58,12 @@
 #define MAX_SPLITS 10
 
 /* The phases of an event as megler.AppRunner.deliver reads them. */
-enum { EV_DOWN = 0, EV_MOVE = 1, EV_UP = 2, EV_CANCEL = 3, EV_KEY = 4, EV_BACK = 5, EV_HOST_PAUSE = 6, EV_TEXT = 7, EV_INSETS = 8, EV_PHONE = 10, EV_SURFACE = 11 };
+enum { EV_DOWN = 0, EV_MOVE = 1, EV_UP = 2, EV_CANCEL = 3, EV_KEY = 4, EV_BACK = 5, EV_HOST_PAUSE = 6, EV_TEXT = 7, EV_INSETS = 8, EV_PHONE = 10, EV_SURFACE = 11,
+       EV_PICKED = 12 };
 
 #define MAX_TEXT 512
 #define MAX_PHONE 64
+#define MAX_PICKED 16
 
 static struct {
     const megler_run_config *config;
@@ -69,6 +71,7 @@ static struct {
     char activity[200], application[200], package[128];
     char guest_apk[400];               /* the APK's path as the app sees it */
     bool apache_http;                  /* the app gets Android's legacy Apache HTTP client (org.apache.http.legacy): see apache_http_wanted */
+    bool test_base;                    /* the app gets android.test.base (JUnit 3's junit.framework, android.test): see test_base_wanted */
     bool platform_app;                 /* an app of the platform's own (sharedUserId android.uid.system): see add_platform_framework */
     /*
      * The app's splits (megler_run_config.split_apks, as many as there is room for): their names from their manifests
@@ -115,6 +118,12 @@ static struct {
      */
     char *phone[MAX_PHONE];
     int nphone;
+    /*
+     * The answers of the phone's picker and camera the app has not taken yet (megler_pick_done): "<id>\n<status>\n" and the
+     * name of each file followed by '\n', as Native.pickAnswer hands them to megler.Pickers. One EV_PICKED event each.
+     */
+    char *picked[MAX_PICKED];
+    int npicked;
     volatile i32 keyboard_height;      /* pixels of the surface's bottom the keyboard covers */
     volatile i32 enter_newline;        /* the field the keyboard was last shown for takes Enter as a new line */
     /* The battery as the app was last told of it by a broadcast (at the start: as it was then), and the core's count of its changes at that time. */
@@ -614,12 +623,78 @@ N(Native_displayRotation)
 N(Native_uptimeNanos) { c->ret.j = (i64)mg_time_monotonic_ns(); }
 /* flag(name): a switch for trying something on the phone (mg_flag): a file of that name in the data folder's flags. */
 N(Native_flag) { c->ret.z = mg_flag(text_of(c->args[0].l)); }
+
+/*
+ * listFolder(String path): a folder of the app's storage listed with each entry's kind, size and time, for the media
+ * provider (megler.MediaProvider), in one string: "d" or "f", the size in bytes, "/", the time of its last change in
+ * milliseconds since 1970, "/", its id (0 where the host does not say one), "/", its name, "/" -- one after another, the
+ * folder itself first as "." (mg_path_list_stat). A name never has a '/' in it. Null when the folder cannot be listed.
+ * One listing, where File.listFiles() and each entry's length() and lastModified() asked of every file in the phone's own
+ * folders were two calls to Windows' broker a file.
+ */
+typedef struct folder_text {
+    char *text;
+    size_t len, cap;
+} folder_text;
+
+static MG_HOSTCB void folder_entry(const char *name, const mg_stat *st, void *user)
+{
+    folder_text *t = (folder_text *)user;
+    char head[96];
+    size_t n = strlen(name), h;
+    if (!n || strchr(name, '/')) return;
+    h = (size_t)snprintf(head, sizeof(head), "%c%llu/%lld/%llu/", st->is_dir ? 'd' : 'f', (unsigned long long)st->size,
+                         (long long)(st->mtime_ns / 1000000), (unsigned long long)st->id);
+    if (h >= sizeof(head)) return;
+    if (t->len + h + n + 2 > t->cap) {
+        size_t cap = (t->len + h + n + 2) * 2 + 4096;
+        char *grown = (char *)realloc(t->text, cap);
+        if (!grown) return;
+        t->text = grown;
+        t->cap = cap;
+    }
+    memcpy(t->text + t->len, head, h);
+    memcpy(t->text + t->len + h, name, n);
+    t->len += h + n;
+    t->text[t->len++] = '/';
+    t->text[t->len] = 0;
+}
+
+N(Native_listFolder)
+{
+    char *host = c->args[0].l ? mg_fs_host_path(text_of(c->args[0].l)) : NULL;
+    folder_text t;
+    int err = 0;
+    memset(&t, 0, sizeof(t));
+    if (host && mg_path_list_stat(host, folder_entry, &t, &err)) c->ret.l = mg_dvm_new_string(t.text ? t.text : "");
+    free(t.text);
+    free(host);
+}
+
+/*
+ * storageThumbnail(String path, int size, int mode): Windows' own picture of a file in one of the phone's folders, from
+ * the shell (megler_storage_host.thumbnail, mg_run_storage_thumbnail): the bytes of an image file, or null -- a file in no
+ * link, a shell that makes none, none to be had, or none within eight seconds. For megler.MediaProvider's thumbnails: a
+ * video's frame, which nothing else here gives, and a photo out of Windows' cache, sooner than it is decoded.
+ */
+N(Native_storageThumbnail)
+{
+    char *host = c->args[0].l ? mg_fs_host_path(text_of(c->args[0].l)) : NULL;
+    void *data = NULL;
+    size_t len = 0;
+    int status = 0;
+    if (host && mg_run_storage_thumbnail(host, c->args[1].i, c->args[2].i, 8000, &data, &len, &status) && len <= 0x7fffffff)
+        c->ret.l = bytes_of((const u8 *)data, len);
+    free(data);
+    free(host);
+}
 /* askClearData(): this app's data cleared when it next starts (megler_ask_clear_data), for Android's app info screen. */
 N(Native_askClearData) { c->ret.z = megler_ask_clear_data(J.package); }
 /* askClearCache(): this app's cache cleared when it next starts (megler_ask_clear_cache), for Android's app info screen. */
 N(Native_askClearCache) { c->ret.z = megler_ask_clear_cache(J.package); }
 static void Native_frameMark(mg_jcall *c);
 static void Native_mainStarted(mg_jcall *c);
+static void Native_mainWaitsForMe(mg_jcall *c);
 static void Native_presentRect(mg_jcall *c);
 static void Native_checkPartial(mg_jcall *c);
 
@@ -1140,6 +1215,89 @@ N(Native_permission)
     c->ret.i = answer;
 }
 
+/* What a file's name says of it in the log: its extension alone (".jpg"), never the name the user gave it. */
+static const char *extension_of(const char *name)
+{
+    const char *dot = strrchr(name, '.');
+    return dot && dot[1] && strlen(dot) <= 8 && !strchr(dot, ' ') ? dot : "(no extension)";
+}
+
+/*
+ * pick(id, kind, types, multiple, max, folder, durationS, quality, start): the phone's picker of files or its camera, for
+ * megler.Pickers (megler_system_host.pick, megler_pick_request): `folder` is the request's folder as the app sees it, which
+ * the shell is given as a host path. True when the shell will answer (megler_pick_done); false when it will not, or there
+ * is nothing here that picks -- the app hears RESULT_CANCELED then. What was asked is said in the log; no name of a file.
+ */
+N(Native_pick)
+{
+    static const char *const kinds[] = { "files", "a photo", "a video" };
+    const megler_system_host *s = &J.config->system;
+    megler_pick_request r;
+    char *host, *types, more[64] = "";
+    size_t i;
+    bool ok = false;
+    memset(&r, 0, sizeof(r));
+    r.id = (unsigned)c->args[0].i;
+    r.kind = c->args[1].i >= MEGLER_PICK_FILES && c->args[1].i <= MEGLER_PICK_VIDEO ? c->args[1].i : MEGLER_PICK_FILES;
+    r.types = c->args[2].l ? text_of(c->args[2].l) : "";
+    r.multiple = c->args[3].i != 0;
+    r.max = c->args[4].i > 0 ? c->args[4].i : 0;
+    host = c->args[5].l ? mg_fs_host_path(text_of(c->args[5].l)) : NULL;
+    r.folder = host ? host : "";
+    r.duration_s = c->args[6].i > 0 ? c->args[6].i : 0;
+    r.quality = c->args[7].i >= 0 && c->args[7].i <= 1 ? c->args[7].i : -1;
+    r.start = c->args[8].i >= MEGLER_PICK_START_DOCUMENTS && c->args[8].i <= MEGLER_PICK_START_MUSIC ? c->args[8].i : MEGLER_PICK_START_DOCUMENTS;
+    /* (The types on one line, for the log.) */
+    types = mg_strdup(r.types[0] ? r.types : "any type");
+    for (i = 0; types[i]; i++)
+        if (types[i] == '\n') types[i] = types[i + 1] ? ' ' : 0;
+    if (host && s->pick) ok = s->pick(s->user, &r);
+    if (r.kind == MEGLER_PICK_FILES) {
+        if (r.multiple && r.max) snprintf(more, sizeof(more), ", at most %d", r.max);
+        mg_info("java: the app asks for the phone's picker (request %u): %s of %s%s%s", r.id, r.multiple ? "several files" : "a file", types, more,
+                ok ? "" : s->pick ? ": the shell will not show one" : ": nothing here picks files");
+    } else {
+        if (r.duration_s) snprintf(more, sizeof(more), ", at most %d s", r.duration_s);
+        mg_info("java: the app asks for the phone's camera (request %u): %s%s%s%s", r.id, kinds[r.kind], more,
+                r.quality >= 0 ? (r.quality ? ", high quality" : ", low quality") : "", ok ? "" : s->pick ? ": the shell will not show it" : ": nothing here takes them");
+    }
+    free(types);
+    free(host);
+    c->ret.z = ok;
+}
+
+/* pickAnswer(id): the shell's answer to request `id` -- { status, the files' names... } -- taken from the queue; null while there is none. */
+N(Native_pickAnswer)
+{
+    char *item = NULL, *at, *end;
+    char head[24];
+    size_t hlen;
+    int i, n = 0;
+    mg_jobj *a;
+    snprintf(head, sizeof(head), "%u\n", (unsigned)c->args[0].i);
+    hlen = strlen(head);
+    c->ret.l = NULL;
+    mg_lock_acquire(&J.lock);
+    for (i = 0; i < J.npicked; i++)
+        if (!strncmp(J.picked[i], head, hlen)) {
+            item = J.picked[i];
+            memmove(&J.picked[i], &J.picked[i + 1], sizeof(char *) * (size_t)(J.npicked - i - 1));
+            J.npicked--;
+            break;
+        }
+    mg_lock_release(&J.lock);
+    if (!item) return;
+    for (at = item + hlen; *at; at++)
+        if (*at == '\n') n++;
+    a = mg_dvm_new_array("[Ljava/lang/String;", n);
+    for (i = 0, at = item + hlen; a && i < n && (end = strchr(at, '\n')) != NULL; i++, at = end + 1) {
+        *end = 0;
+        a->u.oarr.v[i] = mg_dvm_new_string(at);
+    }
+    free(item);
+    c->ret.l = a;
+}
+
 /* appsList(): apps.txt of the apps the phone has (megler_run_config.apps_dir), or null when there is none. */
 N(Native_appsList)
 {
@@ -1390,6 +1548,8 @@ static const mg_jhle k_native[] = {
     { "megler/Native", "launchApp", NULL, Native_launchApp },
     { "megler/Native", "uninstallApp", NULL, Native_uninstallApp },
     { "megler/Native", "permission", NULL, Native_permission },
+    { "megler/Native", "pick", NULL, Native_pick },
+    { "megler/Native", "pickAnswer", NULL, Native_pickAnswer },
     { "megler/Native", "appsList", NULL, Native_appsList },
     { "megler/Native", "appIcon", NULL, Native_appIcon },
     { "megler/Native", "appActivities", NULL, Native_appActivities },
@@ -1414,9 +1574,12 @@ static const mg_jhle k_native[] = {
     { "megler/Native", "uptimeNanos", NULL, Native_uptimeNanos },
     { "megler/Native", "frameMark", NULL, Native_frameMark },
     { "megler/Native", "mainStarted", NULL, Native_mainStarted },
+    { "megler/Native", "mainWaitsForMe", NULL, Native_mainWaitsForMe },
     { "megler/Native", "presentRect", NULL, Native_presentRect },
     { "megler/Native", "checkPartial", NULL, Native_checkPartial },
     { "megler/Native", "flag", NULL, Native_flag },
+    { "megler/Native", "listFolder", NULL, Native_listFolder },
+    { "megler/Native", "storageThumbnail", NULL, Native_storageThumbnail },
     { "megler/Native", "askClearData", NULL, Native_askClearData },
     { "megler/Native", "askClearCache", NULL, Native_askClearCache },
     { NULL, NULL, NULL, NULL },
@@ -1543,6 +1706,16 @@ static bool present_canvas(void *user, void *canvas, int width, int height)
 }
 
 void mg_java_get_stats(mg_java_stats *out) { *out = J.stats; }
+
+const struct mg_zip *mg_java_apk(int number)
+{
+    const mg_zip *z;
+    if (number < 0 || number >= MAX_APKS) return NULL;
+    mg_lock_acquire(&J.lock);
+    z = J.apk_open[number] ? &J.apk[number] : NULL;
+    mg_lock_release(&J.lock);
+    return z;
+}
 
 static bool g_check_partial;
 void mg_java_check_partial(bool on) { g_check_partial = on; }
@@ -1684,18 +1857,22 @@ static void meter_census(void)
     if (process) {
         /* And the parts of it the core can name: the Java heap's memory, the DEX files, what madvise has given back. */
         mg_dvm_heap_info hi;
-        u64 dex_read = 0, dex_viewed = 0, given = 0, again = 0, anon = 0, files = 0;
+        u64 dex_read = 0, dex_viewed = 0, given = 0, again = 0, anon = 0, files = 0, cached = 0;
+        u32 caches = 0;
         mg_dvm_heap_stats(&hi);
         mg_dvm_dex_memory(&dex_read, &dex_viewed);
         mg_mmap_given_back(&given, &again);
         mg_mmap_usage(&anon, &files);
+        /* (And what the threads that allocate fast keep of the blocks they freed, for their next: mg_libc_mem.c, "each thread's cache".) */
+        mg_g_malloc_caches(&caches, &cached);
         snprintf(mem, sizeof(mem), "the process %u MB (the heap's blocks %u MB in %u arenas of 1 MB, %u given back so far, and large objects "
-                 "%u MB; DEX files %u MB in memory, %u MB viewed in their APKs; native libraries %u MB; the app's malloc %u MB; the app's mappings "
-                 "%u MB anonymous and %u MB of files; %u MB given back with madvise, %u MB of it touched again)", (unsigned)(process >> 20),
+                 "%u MB; DEX files %u MB in memory, %u MB viewed in their APKs; native libraries %u MB; the app's malloc %u MB, and %u KB of "
+                 "freed blocks in %u threads' caches; the app's mappings %u MB anonymous and %u MB of files; %u MB given back with madvise, %u MB "
+                 "of it touched again)", (unsigned)(process >> 20),
                  (unsigned)(hi.reserved >> 20), (unsigned)hi.arenas, (unsigned)hi.released,
                  (unsigned)(hi.large_bytes >> 20), (unsigned)(dex_read >> 20), (unsigned)(dex_viewed >> 20), (unsigned)(mg_ld_image_bytes() >> 20),
-                 (unsigned)(mg_g_malloc_bytes() >> 20), (unsigned)(anon >> 20), (unsigned)(files >> 20), (unsigned)(given >> 20),
-                 (unsigned)(again >> 20));
+                 (unsigned)(mg_g_malloc_bytes() >> 20), (unsigned)(cached >> 10), (unsigned)caches, (unsigned)(anon >> 20), (unsigned)(files >> 20),
+                 (unsigned)(given >> 20), (unsigned)(again >> 20));
         /*
          * And the addresses: a 32-bit process has 2 GB of them, and what the next allocation needs is a stretch of them free,
          * whoever makes it. Yandex Maps ran out of them with 1.2 GB of its 2 GB of memory used, and the shell's own drawing
@@ -2014,6 +2191,18 @@ static void hot_watch(const mg_dvm_thread *t)
 /* megler.Native.mainStarted(), from megler.AppRunner.run on the app's main thread, before anything of the app runs. */
 N(Native_mainStarted) { hot_watch(mg_dvm_self()); }
 
+/*
+ * megler.Native.mainWaitsForMe(): whether the app's main thread stands waiting to enter a monitor that the calling thread
+ * holds, or one whose holder waits for one of the calling thread's (mg_dvm_waits_for): it runs nothing until this thread lets
+ * its monitor go. megler.MicroG asks while it waits for the main thread to attach Google Play services' Application. False on
+ * the main thread, and before the app's main thread has started.
+ */
+N(Native_mainWaitsForMe)
+{
+    const mg_dvm_thread *t = g_hot_main;
+    c->ret.z = t && t != mg_dvm_self() && mg_dvm_waits_for((mg_dvm_thread *)t, mg_thread_self_id());
+}
+
 /* megler.Native.frameMark(phase, redrawn), from megler.ViewRoot.doFrame on the main thread. */
 N(Native_frameMark)
 {
@@ -2287,12 +2476,21 @@ static void call_trace_flag(const char *rest, void *user)
  * The platform's libraries the app's class loader has before the app's own code, as Android's LoadedApk puts a shared
  * library's jar ahead of the APK: Android's legacy Apache HTTP client (org.apache.http.legacy.dex in the Android root's
  * framework, tools/dvm-android-root.sh), when apache_http_wanted says so. Instagram's network library (liger) finds
- * org.apache.http.Header in its JNI_OnLoad; without it its start ended in "Failed to call JNI_OnLoad from 'liger'". Its
- * absence from the root is said and the app runs on.
+ * org.apache.http.Header in its JNI_OnLoad; without it its start ended in "Failed to call JNI_OnLoad from 'liger'". And
+ * android.test.base (android.test.base.dex, Megler's own: core/shared-libraries), when test_base_wanted says so: Zombie Road
+ * Trip 3.30's Facebook SDK asserts with junit.framework.Assert that its activity callbacks are on the main thread, and the
+ * app ended at its first activity's onCreate on "NoClassDefFoundError: junit/framework/Assert" (a Lumia 950, 0.1.0.681).
+ * A library's absence from the root is said and the app runs on.
  */
 static void add_shared_libraries(void)
 {
     char *path;
+    if (J.test_base) {
+        path = mg_sprintf("%s/framework/android.test.base.dex", J.root);
+        if (mg_dvm_add_dex_file(path)) mg_info("java: the app's class path has android.test.base (JUnit 3's junit.framework, android.test) before its own code");
+        else mg_warn("java: the app gets android.test.base (JUnit 3's junit.framework, android.test), and it is not in the Android root (%s)", path);
+        free(path);
+    }
     if (!J.apache_http) return;
     path = mg_sprintf("%s/framework/org.apache.http.legacy.dex", J.root);
     if (mg_dvm_add_dex_file(path)) mg_info("java: the app's class path has Android's legacy Apache HTTP client (org.apache.http.legacy) before its own code");
@@ -2521,6 +2719,16 @@ bool mg_java_ended(int *status, const char **reason)
 }
 
 /*
+ * The Android the app is made for, as the package manager reads it: its manifest's target, else its minimum, else Android 1.
+ * (YouTube 2.4.4, of 2011, names neither: made for Android 1 so, it has the Apache HTTP client below, without which it ended
+ * at its start on NoClassDefFoundError: org/apache/http/params/BasicHttpParams.)
+ */
+static int target_sdk(const mg_apk_info *info)
+{
+    return info->target_sdk > 0 ? info->target_sdk : info->min_sdk > 0 ? info->min_sdk : 1;
+}
+
+/*
  * Whether the app gets Android's old Apache HTTP client, org.apache.http.legacy, on its class path: as Android 9's package
  * manager gives it -- to an app whose manifest asks for it (<uses-library>, required or not) and to every app that targets
  * an Android before 9 (OrgApacheHttpLegacyUpdater). Since Android 9 it is not on the boot class path, so an app that has
@@ -2528,15 +2736,26 @@ bool mg_java_ended(int *status, const char **reason)
  */
 static bool apache_http_wanted(const mg_apk_info *info)
 {
-    /*
-     * (A manifest that names no target targets its minimum, and one that names neither Android 1: YouTube 2.4.4, of 2011,
-     * names neither, and ended at its start on NoClassDefFoundError: org/apache/http/params/BasicHttpParams.)
-     */
-    int target = info->target_sdk > 0 ? info->target_sdk : info->min_sdk > 0 ? info->min_sdk : 1;
     int i;
-    if (target < 28) return true;
+    if (target_sdk(info) < 28) return true;
     for (i = 0; i < info->nuses_libraries; i++)
         if (!strcmp(info->uses_libraries[i], "org.apache.http.legacy")) return true;
+    return false;
+}
+
+/*
+ * Whether the app gets android.test.base -- JUnit 3's junit.framework and Android's android.test base classes -- on its class
+ * path, as the package manager of Android 14, the Android Megler says it is, gives it (AndroidTestBaseUpdater): to every app
+ * that targets Android 10 or before, and to one whose manifest asks for it or for android.test.runner, which is built on it
+ * (<uses-library>, required or not). Up to Android 9 those classes were on the boot class path, every app's; an app made
+ * for Android 11 or later that asks for neither keeps its own copy of them, or has none.
+ */
+static bool test_base_wanted(const mg_apk_info *info)
+{
+    int i;
+    if (target_sdk(info) <= 29) return true;
+    for (i = 0; i < info->nuses_libraries; i++)
+        if (!strcmp(info->uses_libraries[i], "android.test.base") || !strcmp(info->uses_libraries[i], "android.test.runner")) return true;
     return false;
 }
 
@@ -2553,6 +2772,7 @@ static bool java_start(const megler_run_config *config, const mg_apk_info *info)
     mg_strlcpy(J.application, info->application, sizeof(J.application));
     mg_strlcpy(J.package, info->package, sizeof(J.package));
     J.apache_http = apache_http_wanted(info);
+    J.test_base = test_base_wanted(info);
     J.platform_app = !strcmp(info->shared_user_id, "android.uid.system");
     /* The splits, in megler_run's order, which is info->splits' (run/mg_run.c): as many as the framework reads. */
     J.nsplits = config->split_count < info->nsplits ? config->split_count : info->nsplits;
@@ -2721,6 +2941,59 @@ void mg_java_phone_call(const char *number, i64 time_ms, int type, int duration_
     push_phone(mg_sprintf("c%lld\n%d\n%d\n%s", (long long)time_ms, type, duration_s < 0 ? 0 : duration_s, who), what);
     free(what);
     free(who);
+}
+
+/*
+ * The answer of the phone's picker or camera (megler_pick_done): queued for megler.Pickers with its event, or dropped (no Java
+ * app, or it has not taken sixteen before). The log has what came back -- how many files, their extensions -- and no names.
+ */
+void mg_java_picked(unsigned id, int status, int count, const char *const *names)
+{
+    static const char *const said[] = { "", "the user backed out", "Windows could not" };
+    char *item, *exts, files[32] = "";
+    int i, kept = 0;
+    bool queued = false;
+    if (status < MEGLER_PICK_OK || status > MEGLER_PICK_FAILED) status = MEGLER_PICK_FAILED;
+    if (status != MEGLER_PICK_OK || count < 0 || !names) count = 0;
+    item = mg_sprintf("%u\n%d\n", id, status);
+    exts = mg_strdup("");
+    for (i = 0; i < count; i++) {
+        const char *name = names[i];
+        char *more;
+        /* (A name, not a path: nothing that would take the app's provider out of the request's folder.) */
+        if (!name || !name[0] || strchr(name, '/') || strchr(name, '\\') || strchr(name, '\n') || !strcmp(name, ".") || !strcmp(name, "..")) continue;
+        more = mg_sprintf("%s%s\n", item, name);
+        free(item);
+        item = more;
+        more = mg_sprintf("%s%s%s", exts, kept ? " " : "", extension_of(name));
+        free(exts);
+        exts = more;
+        kept++;
+    }
+    if (status == MEGLER_PICK_OK && kept == 0) {
+        /* Picked, and nothing usable came: as Windows not managing it. */
+        free(item);
+        item = mg_sprintf("%u\n%d\n", id, MEGLER_PICK_FAILED);
+        status = MEGLER_PICK_FAILED;
+    }
+    if (status == MEGLER_PICK_OK) snprintf(files, sizeof(files), "%d file%s: ", kept, kept == 1 ? "" : "s");
+    if (!java_runs()) {
+        mg_info("java: the phone's answer to request %u came while no Java app runs: dropped", id);
+        free(item);
+        free(exts);
+        return;
+    }
+    mg_lock_acquire(&J.lock);
+    if (J.npicked < MAX_PICKED) {
+        J.picked[J.npicked++] = item;
+        queued = true;
+    }
+    mg_lock_release(&J.lock);
+    mg_info("java: the phone's answer to request %u: %s%s%s%s", id, said[status], files, status == MEGLER_PICK_OK ? exts : "",
+            queued ? "" : ", and the app has not taken the ones before: dropped");
+    free(exts);
+    if (queued) push_event(EV_PICKED, (int)id, 0, 0);
+    else free(item);
 }
 
 void mg_java_text_key(int key)

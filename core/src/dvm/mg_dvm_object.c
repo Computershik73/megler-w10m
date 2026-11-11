@@ -1142,7 +1142,8 @@ bool mg_dvm_stuck_say(mg_dvm_thread *main_thread, double seconds, const void **i
     static monitor_sample s[STUCK_THREADS];
     mg_dvm_thread *t;
     mg_thread_regs regs;
-    int count = 0, blocked = 0, i;
+    int count = 0, blocked = 0, holders = 0, i, k;
+    u32 want;
     bool main_copied = false;
     const void *on = NULL;
     memset(s, 0, sizeof(s));
@@ -1166,13 +1167,32 @@ bool mg_dvm_stuck_say(mg_dvm_thread *main_thread, double seconds, const void **i
         monitor_sample_copy(t, &s[count++]);
         mg_thread_resume(t->host);
     }
+    /*
+     * And the owner of the monitor the main thread waits for -- and that owner's owner, where it waits for another -- when
+     * it waits to enter none itself and so is not among those: what it does with the monitor held is what holds the main
+     * thread up. Smash Hit's main thread stood for good waiting for a HashMap of Google Play services' client library, and
+     * the report named only the number of the thread that held it (0.1.0.681).
+     */
+    for (k = 0, want = main_copied ? s[0].owner : 0; want && k < 4 && count < STUCK_THREADS; ++k) {
+        for (i = 0; i < count && s[i].thread != want; ++i) {}
+        if (i < count) {
+            want = s[i].owner;
+            continue;
+        }
+        for (t = g_threads; t && t->id != want; t = t->next) {}
+        if (!t || !t->host || !mg_thread_suspend(t->host, &regs)) break;
+        monitor_sample_copy(t, &s[count]);
+        mg_thread_resume(t->host);
+        want = s[count++].owner;
+        ++holders;
+    }
     mg_dvm_unlock();
     if (!main_copied) {
         mg_warn("stuck: the main thread has stood %.1f s in a wait, and could not be stopped to see where", seconds);
         return true;
     }
-    mg_warn("stuck: the main thread has stood %.1f s in a wait; its stack, and %d of the %d other threads that wait to enter a monitor:",
-            seconds, count - 1, blocked);
+    mg_warn("stuck: the main thread has stood %.1f s in a wait; its stack, %d of the %d other threads that wait to enter a monitor, and %d "
+            "holder%s of the monitors waited for:", seconds, count - 1 - holders, blocked, holders, holders == 1 ? "" : "s");
     for (i = 0; i < count; ++i) {
         const monitor_sample *x = &s[i];
         if (x->object)
@@ -1186,6 +1206,49 @@ bool mg_dvm_stuck_say(mg_dvm_thread *main_thread, double seconds, const void **i
         stuck_frames(x, i ? STUCK_FRAMES : 32);
     }
     return true;
+}
+
+/*
+ * Whether a thread stands waiting to enter a monitor that another holds: `waiter` waits for a monitor of `holder`'s, or for
+ * one whose holder waits for one of `holder`'s, and so on, four monitors at most. That is exact, not a guess: a thread that
+ * waits to enter a monitor lets none of its own go, so `waiter` runs nothing until `holder` lets its monitor go. For
+ * megler.MicroG, whose threads wait for the app's main thread to attach Google Play services' Application
+ * (megler.Native.mainWaitsForMe): a main thread that waits for a monitor of the waiting thread's attaches nothing, and the
+ * thread waited its ten seconds for nothing (Citymapper, at every start).
+ *
+ * A thread that waits for no monitor is not stopped: its field alone is read. One that does is stopped while its monitor's
+ * owner is read (the monitor's object is its own while it waits, as mg_dvm_stuck_say reads it), under the VM's lock, which
+ * keeps the threads.
+ */
+bool mg_dvm_waits_for(mg_dvm_thread *waiter, u32 holder)
+{
+    mg_dvm_thread *t = waiter;
+    mg_thread_regs regs;
+    const u32 me = mg_thread_self_id();
+    bool found = false;
+    int k;
+    if (!waiter || !waiter->waiting_monitor) return false;
+    mg_dvm_lock();
+    for (k = 0; t && k < 4; ++k) {
+        mg_dvm_thread *next;
+        mg_jobj *o;
+        monitor *m;
+        u32 owner;
+        if (t->id == me || !t->waiting_monitor || !t->host || !mg_thread_suspend(t->host, &regs)) break;
+        o = t->waiting_monitor;
+        m = o ? (monitor *)MG_DVM_OBJ(o)->monitor : NULL;
+        owner = m ? m->owner : 0;
+        mg_thread_resume(t->host);
+        if (!owner || owner == t->id) break;
+        if (owner == holder) {
+            found = true;
+            break;
+        }
+        for (next = g_threads; next && next->id != owner; next = next->next) {}
+        t = next;
+    }
+    mg_dvm_unlock();
+    return found;
 }
 
 void mg_dvm_stacks_trace_start(void)
@@ -1295,8 +1358,15 @@ bool mg_dvm_monitor_wait(mg_jobj *o, i64 ms)
         u32 seen = m->notified;
         u64 started = mg_time_monotonic_ns(), deadline = ms > 0 ? started + (u64)ms * 1000000ull : 0;
         mg_dvm_thread *self = mg_dvm_self();
+        /*
+         * Or until the thread is interrupted (Thread.interrupt), which Object.wait and Thread.sleep then throw for: at once
+         * when it already was, as Java's do. The object is told before the flag is looked at, and Thread.interrupt sets the
+         * flag before it looks for the object, each with the processor's writes settled between (the exchange): one of the
+         * two sees what the other wrote, so no interrupt falls between this look and the wait (mg_dvm_monitor_interrupt).
+         */
         self->waiting_on = o;
-        while (m->notified == seen) {
+        mg_atomic_xchg(&self->wait_sync, 1);
+        while (m->notified == seen && !self->interrupted) {
             u64 now;
             if (!deadline) {
                 mg_cond_wait(&m->cv, &m->mu);
@@ -1312,6 +1382,45 @@ bool mg_dvm_monitor_wait(mg_jobj *o, i64 ms)
     m->owner = me;
     m->count = held;
     return true;
+}
+
+/*
+ * Thread.interrupt for a thread that may be inside wait() on any object: the wait ends, and Object.wait finds the flag,
+ * already set by the caller, and throws InterruptedException. ExoPlayer ends a released player's loading thread so
+ * (Loader.release interrupts it), a thread that waits in ConditionVariable.block for the player to ask for more: left
+ * waiting for good, it never closed its data source, and what that held -- the connection, the cache's span being
+ * written -- was never let go.
+ *
+ * The waiter is woken through its monitor's condition, which has to be signalled with the monitor's lock held or by its
+ * owner, or the signal can fall between the waiter's look at the flag and its wait. The lock is only tried: whoever owns
+ * the monitor in Java may hold it for long, or be waiting for this very thread. When the try fails with an owner, the
+ * waiter is past that look (it owned the lock until its wait let go of it) and the signal reaches it; with no owner, a
+ * waiter is between the two, and a moment later it is not.
+ */
+void mg_dvm_monitor_interrupt(mg_dvm_thread *t)
+{
+    u32 me = mg_thread_self_id();
+    int tries;
+    mg_atomic_xchg(&t->wait_sync, 1);
+    for (tries = 0; tries < 200; tries++) {
+        mg_jobj *o = t->waiting_on;
+        monitor *m = o ? (monitor *)MG_DVM_OBJ(o)->monitor : NULL;
+        if (!m || !t->interrupted) return;
+        if (m->owner == me) {
+            mg_cond_broadcast(&m->cv);
+            return;
+        }
+        if (mg_lock_try(&m->mu)) {
+            mg_cond_broadcast(&m->cv);
+            mg_lock_release(&m->mu);
+            return;
+        }
+        if (m->owner) {
+            mg_cond_broadcast(&m->cv);
+            return;
+        }
+        mg_sleep_ns(100000);
+    }
 }
 
 bool mg_dvm_monitor_notify(mg_jobj *o, bool all)

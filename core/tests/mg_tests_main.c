@@ -26,6 +26,9 @@
  *   mg_tests --dvm-bench <dir> [<android root> [milliseconds]]
  *       how fast the interpreter is on this machine: a counting loop and calls on the built-in java.lang, or with an
  *       Android root the benchmark of mg_dvm_bench.c on its libcore, each item run for about that long (300 ms)
+ *   mg_tests --malloc-bench [milliseconds] [threads]
+ *       how many malloc-and-free pairs threads make together, the guest's malloc's and the host's own under it, at 1, 2, 4
+ *       and up to 8 threads (4 unless told), each for that long (500 ms)
  *   mg_tests --apk <file>...
  *       what the layer makes of real APKs: the report the shell shows, and the icon
  *   mg_tests --java <hello | demos | natives | crash | data | gc | gl | webview | screen> <apk> <data dir> <android root> [picture dir | -] [verbose] [WIDTHxHEIGHT@DPI]
@@ -68,10 +71,13 @@
  *       any other says so and does nothing
  *   mg_tests --bluetooth-windows <scratch dir>
  *       the shell's Bluetooth (app/Megler/player/BluetoothHost.cpp: Windows.Devices.Bluetooth) through megler_bluetooth_host,
- *       under the core's for android.bluetooth: this PC's radio, the devices it is paired with, and a passive scan of three
- *       seconds -- nothing sent, connected to or paired with -- its advertisements counted, each device's first said. A PC
- *       without Bluetooth, or with the radio off, says so and has nothing to check. Only in the build tools/build-tests.sh win
- *       makes; any other says so and does nothing
+ *       under the core's for android.bluetooth. First, connections to devices made up in mg_bluetooth_windows.cpp, which answer
+ *       as Windows 10 Mobile's Windows does (no IBluetoothLEDevice4, which ended every connecting app in 0.1.0.690): made,
+ *       the MTU, the services, reads, writes, notifications, the link lost and made again, and every way Windows has of not
+ *       answering, each told the app as Android tells it; no radio is used. Then this PC's radio, the devices it is paired
+ *       with, and a passive scan of three seconds -- nothing sent, connected to or paired with -- its advertisements counted,
+ *       each device's first said; a PC without Bluetooth, or with the radio off, says so and leaves that part out. Only in
+ *       the build tools/build-tests.sh win makes; any other says so and does nothing
  *   mg_tests --wifi-windows <scratch dir>
  *       the shell's Wi-Fi (app/Megler/player/WifiHost.cpp: Windows.Devices.WiFi) through megler_wifi_host, under the core's for
  *       WifiManager: Windows' access, this PC's adapter and radio, one scan -- its networks counted, the first eight said with
@@ -102,6 +108,7 @@
  *       load real Android libraries from a folder, say what each needed and what was done to it,
  *       run their constructors, and try the few functions known by name (OpenSSL's)
  */
+#include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -1063,22 +1070,409 @@ static int sensors_windows_mode(int argc, char **argv)
 /* ---------------------------------------------------- --bluetooth-windows */
 
 #ifdef MG_BLUETOOTH_WINDOWS
-/* mg_bluetooth_windows.cpp: the shell's own megler_bluetooth_host. */
+/* mg_bluetooth_windows.cpp: the shell's own megler_bluetooth_host, and the devices made up for it (the words are there). */
 MG_HOSTAPI const megler_bluetooth_host *mg_bluetooth_windows_host(void);
 MG_HOSTAPI void mg_bluetooth_windows_summary(char *out, size_t size);
+MG_HOSTAPI void mg_bluetooth_windows_devices(int made_up, int again_ms);
+MG_HOSTAPI void mg_bluetooth_windows_device(unsigned long long address, const char *what);
+MG_HOSTAPI int mg_bluetooth_windows_asked(unsigned long long address);
+MG_HOSTAPI int mg_bluetooth_windows_state(unsigned long long address);
+MG_HOSTAPI int mg_bluetooth_windows_listeners(unsigned long long address, int handle);
+MG_HOSTAPI int mg_bluetooth_windows_notify(unsigned long long address, int handle, const unsigned char *data, int size);
+MG_HOSTAPI void mg_bluetooth_windows_link(unsigned long long address, int up);
+
+static int g_bt_checks, g_bt_failed;
+
+static void bt_check(bool ok, const char *format, ...)
+{
+    char what[400];
+    va_list args;
+    va_start(args, format);
+    vsnprintf(what, sizeof(what), format, args);
+    va_end(args);
+    g_bt_checks++;
+    if (!ok) g_bt_failed++;
+    printf("  %s %s\n", ok ? "ok" : "FAIL", what);
+}
+
+/* A connection's events that were not the one waited for, in the order they came. */
+#define BT_KEPT 32
+static megler_bluetooth_event *g_bt_kept[BT_KEPT];
+static int g_bt_nkept;
+
+/*
+ * The connection's next event of that kind, waited for up to `ms` (to be freed); NULL for none. Its events come from
+ * Windows' threads, in no order the test can know -- a notification before the write's answer or after --: one of another
+ * kind or another connection's is kept for when it is asked for. What is no connection's (the radio's state) is let go.
+ */
+static megler_bluetooth_event *bt_event(int kind, int conn, int ms)
+{
+    u64 until = mg_time_monotonic_ns() + (u64)ms * 1000000ull;
+    int i;
+    for (i = 0; i < g_bt_nkept; i++) {
+        megler_bluetooth_event *e = g_bt_kept[i];
+        if (e->kind != kind || e->conn != conn) continue;
+        memmove(&g_bt_kept[i], &g_bt_kept[i + 1], (size_t)(g_bt_nkept - i - 1) * sizeof(g_bt_kept[0]));
+        g_bt_nkept--;
+        return e;
+    }
+    for (;;) {
+        u64 now = mg_time_monotonic_ns();
+        megler_bluetooth_event *e;
+        if (now >= until) return NULL;
+        e = mg_bluetooth_next((int)((until - now) / 1000000ull) + 1);
+        if (!e) continue;
+        if (e->kind == kind && e->conn == conn) return e;
+        if (e->kind < MEGLER_BT_EVENT_CONNECTION || e->kind > MEGLER_BT_EVENT_RSSI || g_bt_nkept == BT_KEPT) mg_bluetooth_free(e);
+        else g_bt_kept[g_bt_nkept++] = e;
+    }
+}
+
+/* The connection's next CONNECTION: 1 for made, 0 for not or no longer (its status in *status), -1 for none in `ms`. */
+static int bt_connection(int conn, int ms, int *status)
+{
+    megler_bluetooth_event *e = bt_event(MEGLER_BT_EVENT_CONNECTION, conn, ms);
+    int made;
+    *status = -1;
+    if (!e) return -1;
+    made = e->value ? 1 : 0;
+    *status = e->status;
+    mg_bluetooth_free(e);
+    return made;
+}
+
+/* A connection (not `auto`) to a made-up device of that word (mg_bluetooth_windows.cpp), and what CONNECTION is to say of it. */
+static int bt_connect(u64 address, const char *what, int made_want, int status_want, const char *says)
+{
+    int conn, status = -1, made;
+    mg_bluetooth_windows_device(address, what);
+    conn = mg_bluetooth_connect(address, MEGLER_BT_ADDRESS_UNKNOWN, false, 0);
+    made = conn ? bt_connection(conn, 5000, &status) : -1;
+    bt_check(made == made_want && status == status_want, "%s: CONNECTION %d, status %d", says, made, status);
+    return conn;
+}
+
+/* The MTU asked for: what MTU says it is; less than 0 for a status, or for no answer. */
+static int bt_mtu(int conn, int want)
+{
+    megler_bluetooth_event *e;
+    int mtu;
+    if (!mg_bluetooth_mtu(conn, want)) return -1;
+    e = bt_event(MEGLER_BT_EVENT_MTU, conn, 3000);
+    if (!e) return -1;
+    mtu = e->status ? -e->status : e->value;
+    mg_bluetooth_free(e);
+    return mtu;
+}
+
+/* The attribute at the handle read: READ's status (-1 for no answer), its bytes in `out` (64 of them at most). */
+static int bt_read(int conn, int handle, u8 out[64], int *size)
+{
+    megler_bluetooth_event *e;
+    int status;
+    *size = 0;
+    if (!mg_bluetooth_read(conn, handle)) return -1;
+    e = bt_event(MEGLER_BT_EVENT_READ, conn, 3000);
+    if (!e) return -1;
+    status = e->handle == handle ? e->status : -1;
+    if (e->data && e->size > 0) {
+        *size = e->size < 64 ? e->size : 64;
+        memcpy(out, e->data, (size_t)*size);
+    }
+    mg_bluetooth_free(e);
+    return status;
+}
+
+/* A read that is to end with that status and, with 0, those bytes. */
+static void bt_reads(int conn, int handle, int want, const char *bytes, int count, const char *what)
+{
+    u8 got[64];
+    int size = 0, status = bt_read(conn, handle, got, &size);
+    bt_check(status == want && (want || (size == count && !memcmp(got, bytes, (size_t)count))), "a read of 0x%04x, %s: status %d, %d bytes", handle, what, status,
+             size);
+}
+
+/* The attribute at the handle written: WRITTEN's status, -1 for no answer. */
+static int bt_write(int conn, int handle, const char *data, int size, int type)
+{
+    megler_bluetooth_event *e;
+    int status;
+    if (!mg_bluetooth_write(conn, handle, (const u8 *)data, size, type)) return -1;
+    e = bt_event(MEGLER_BT_EVENT_WRITTEN, conn, 3000);
+    if (!e) return -1;
+    status = e->handle == handle ? e->status : -1;
+    mg_bluetooth_free(e);
+    return status;
+}
+
+/* A write (with a response) that is to end with that status. */
+static void bt_writes(int conn, int handle, int want, const char *what)
+{
+    int status = bt_write(conn, handle, "new", 3, MEGLER_BT_WRITE_REQUEST);
+    bt_check(status == want, "a write of 0x%04x, %s: status %d", handle, what, status);
+}
+
+/* The connection's next CHANGED: whether it is of that handle with those bytes. */
+static bool bt_changed(int conn, int handle, const char *bytes, int count)
+{
+    megler_bluetooth_event *e = bt_event(MEGLER_BT_EVENT_CHANGED, conn, 3000);
+    bool ok = e && e->handle == handle && e->size == count && (!count || (e->data && !memcmp(e->data, bytes, (size_t)count)));
+    if (e) mg_bluetooth_free(e);
+    return ok;
+}
+
+/* The connection's services asked for: SERVICES (to be freed), NULL for no answer. */
+static megler_bluetooth_event *bt_discover(int conn)
+{
+    if (!mg_bluetooth_discover(conn)) return NULL;
+    return bt_event(MEGLER_BT_EVENT_SERVICES, conn, 5000);
+}
+
+/* What the made-up device of the word "phone" has, as SERVICES is to tell it: by the handles, in Windows' order. */
+static const struct {
+    int kind, handle, properties;
+} g_bt_phone[] = {
+    {MEGLER_BT_ATTR_SERVICE, 0x10, 0},           {MEGLER_BT_ATTR_CHARACTERISTIC, 0x12, 0x0C}, {MEGLER_BT_ATTR_CHARACTERISTIC, 0x15, 0x10},
+    {MEGLER_BT_ATTR_DESCRIPTOR, 0x16, 0},        {MEGLER_BT_ATTR_SERVICE, 0x20, 0},           {MEGLER_BT_ATTR_CHARACTERISTIC, 0x22, 0x02},
+    {MEGLER_BT_ATTR_CHARACTERISTIC, 0x24, 0x02}, {MEGLER_BT_ATTR_CHARACTERISTIC, 0x26, 0x02}, {MEGLER_BT_ATTR_CHARACTERISTIC, 0x28, 0x0A},
+    {MEGLER_BT_ATTR_CHARACTERISTIC, 0x2A, 0x0A}, {MEGLER_BT_ATTR_CHARACTERISTIC, 0x2C, 0x20}, {MEGLER_BT_ATTR_DESCRIPTOR, 0x1002C, 0},
+    {MEGLER_BT_ATTR_CHARACTERISTIC, 0x2E, 0x08}, {MEGLER_BT_ATTR_CHARACTERISTIC, 0x30, 0x0A}, {MEGLER_BT_ATTR_DESCRIPTOR, 0x31, 0},
+    {MEGLER_BT_ATTR_DESCRIPTOR, 0x32, 0},
+};
+#define BT_PHONE ((int)(sizeof(g_bt_phone) / sizeof(g_bt_phone[0])))
+
+static bool bt_phone_table(const megler_bluetooth_event *e)
+{
+    int i;
+    if (!e || e->status || e->count != BT_PHONE || !e->attributes) return false;
+    for (i = 0; i < BT_PHONE; i++)
+        if (e->attributes[i].kind != g_bt_phone[i].kind || e->attributes[i].handle != g_bt_phone[i].handle || e->attributes[i].properties != g_bt_phone[i].properties)
+            return false;
+    return true;
+}
+
+/*
+ * Connections to devices that are made up (mg_bluetooth_windows.cpp), through the shell's host and the core's as an app's
+ * BluetoothGatt goes: no radio is used, and none is needed. The first is a radio like MeshCore's as the phone's Windows
+ * gives it, used the way flutter_blue_plus uses one -- connected to, the MTU, the services, notifications on, writes with
+ * and without a response, reads --, with an attribute for each way Windows has of not answering; the rest are the devices a
+ * connection is not made to, or is lost to, or is made to late. What is checked is what the app hears, which is to be what
+ * Android says in each case; that the process is still there to hear it is the first thing every line of it shows.
+ */
+static void bluetooth_made_up(void)
+{
+    static const u8 uart[16] = {0x6E, 0x40, 0x00, 0x01, 0xB5, 0xA3, 0xF3, 0x93, 0xE0, 0xA9, 0xE5, 0x0E, 0x24, 0xDC, 0xCA, 0x9E};
+    static const u8 cccd[16] = {0x00, 0x00, 0x29, 0x02, 0x00, 0x00, 0x10, 0x00, 0x80, 0x00, 0x00, 0x80, 0x5F, 0x9B, 0x34, 0xFB};
+    static const struct {
+        const char *what, *says;
+        bool device; /* there is a device of Windows', which is to be closed */
+    } not_made[] = {
+        {"none", "a device Windows does not have", false},
+        {"not-a-device", "something of Windows' that is no device", false},
+        {"old", "a device without IBluetoothLEDevice3, whose services cannot be asked for", true},
+        {"unreachable", "a device out of range", true},
+        {"no-result", "a device whose services' asking ends with no result", true},
+        {"throws", "a device whose services' asking fails", true},
+    };
+    const u64 phone = 0xC0DE00000001ull, other = 0xC0DE00000100ull;
+    megler_bluetooth_event *e;
+    int conn, again, made, status, more, state, asked, mtu, i;
+    u64 a;
+
+    printf("  connections to devices made up as Windows gives them (no radio is used):\n");
+    mg_bluetooth_windows_devices(1, 50);
+
+    /* The phone's Windows, and a radio like MeshCore's: what ended the app in 0.1.0.690. */
+    conn = bt_connect(phone, "phone", 1, 0, "a device without IBluetoothLEDevice4, as Windows 10 Mobile's are");
+    state = mg_bluetooth_windows_state(phone);
+    asked = mg_bluetooth_windows_asked(phone);
+    bt_check(state == (1 | 2 | 16) && asked == 1, "its link is up, the session of its first service keeps it up, its changes are listened to; its services asked for once (%d, %d)",
+             state, asked);
+    mtu = bt_mtu(conn, 512);
+    bt_check(mtu == 247, "the MTU, asked for as 512: the session's 247, waited for while Windows still says 23 (%d)", mtu);
+    mtu = bt_mtu(conn, 100);
+    bt_check(mtu == 100, "asked for as 100: no more than asked (%d)", mtu);
+    e = bt_discover(conn);
+    bt_check(bt_phone_table(e), "its services: 2 services, 10 characteristics, 4 descriptors by their handles -- none for a null in a list of Windows', none of the service "
+                                "Windows keeps to itself (status %d, %d attributes)",
+             e ? e->status : -1, e ? e->count : -1);
+    bt_check(bt_phone_table(e) && !memcmp(e->attributes[0].uuid, uart, 16) && !memcmp(e->attributes[11].uuid, cccd, 16),
+             "the UART service's UUID as it is written; the characteristic that indicates and has no descriptor listed got a Client Characteristic Configuration at 0x1002c");
+    if (e) mg_bluetooth_free(e);
+
+    status = bt_write(conn, 0x16, "\x01\x00", 2, MEGLER_BT_WRITE_REQUEST);
+    bt_check(status == 0 && mg_bluetooth_windows_listeners(phone, 0x15) == 1, "notifications turned on (01 00 written to 0x0016): status %d, Windows' ValueChanged listened to",
+             status);
+    bt_reads(conn, 0x16, 0, "\x01\x00", 2, "the Client Characteristic Configuration back");
+    status = bt_write(conn, 0x12, "hi", 2, MEGLER_BT_WRITE_REQUEST);
+    bt_check(status == 0 && bt_changed(conn, 0x15, "\x01hi", 3), "a write with a response to 0x0012 (status %d), and the device's answer notified at 0x0015", status);
+    status = bt_write(conn, 0x12, "hi", 2, MEGLER_BT_WRITE_COMMAND);
+    bt_check(status == 0 && bt_changed(conn, 0x15, "\x00hi", 3), "a write without a response (status %d), which the device got as one", status);
+    status = bt_write(conn, 0x12, NULL, 0, MEGLER_BT_WRITE_REQUEST);
+    bt_check(status == 0 && bt_changed(conn, 0x15, "\x01", 1), "a write of no bytes (status %d)", status);
+    mg_bluetooth_windows_notify(phone, 0x15, NULL, -1);
+    mg_bluetooth_windows_notify(phone, 0x15, (const unsigned char *)"abc", 3);
+    bt_check(bt_changed(conn, 0x15, "abc", 3), "an event of Windows' without arguments is passed over; the notification after it is told");
+
+    bt_reads(conn, 0x22, 0, "Megler", 6, "a characteristic");
+    bt_reads(conn, 0x24, 5, "", 0, "refused by the device (the ATT error as it is)");
+    bt_reads(conn, 0x26, 257, "", 0, "refused, on a result with no interface that tells the error (GATT_FAILURE)");
+    bt_reads(conn, 0x28, 133, "", 0, "which Windows ends with no result");
+    bt_reads(conn, 0x2A, 133, "", 0, "which Windows fails");
+    bt_reads(conn, 0x31, 0, "about", 5, "a descriptor");
+    bt_reads(conn, 0x32, 2, "", 0, "a descriptor, refused by the device");
+    bt_reads(conn, 0x1002C, 257, "", 0, "the made-up Client Characteristic Configuration, refused");
+    bt_reads(conn, 0x99, 1, "", 0, "no attribute of the device's (GATT_INVALID_HANDLE)");
+    bt_writes(conn, 0x28, 133, "which Windows ends with no result");
+    bt_writes(conn, 0x2A, 133, "which Windows fails");
+    bt_writes(conn, 0x2E, 133, "a characteristic without IGattCharacteristic3");
+    bt_writes(conn, 0x30, 3, "refused by the device (the ATT error as it is)");
+    bt_writes(conn, 0x31, 0, "a descriptor");
+    bt_reads(conn, 0x31, 0, "new", 3, "that descriptor back");
+    bt_writes(conn, 0x32, 133, "a descriptor without IGattDescriptor2");
+    bt_writes(conn, 0x99, 1, "no attribute of the device's");
+    status = bt_write(conn, 0x1002C, "\x02\x00", 2, MEGLER_BT_WRITE_REQUEST);
+    bt_check(status == 133 && mg_bluetooth_windows_listeners(phone, 0x2C) == 0, "indications turned on where Windows fails it: status %d, and nothing is listened to", status);
+    status = bt_write(conn, 0x16, "\x00\x00", 2, MEGLER_BT_WRITE_REQUEST);
+    bt_check(status == 0 && mg_bluetooth_windows_listeners(phone, 0x15) == 0, "notifications turned off: status %d, and no longer listened to", status);
+    mg_bluetooth_rssi(conn);
+    e = bt_event(MEGLER_BT_EVENT_RSSI, conn, 3000);
+    bt_check(e && e->status == 257, "its signal, of which Windows tells none and no advertisement was heard: status %d", e ? e->status : -1);
+    if (e) mg_bluetooth_free(e);
+
+    mg_bluetooth_windows_link(phone, 0);
+    made = bt_connection(conn, 3000, &status);
+    state = mg_bluetooth_windows_state(phone);
+    bt_check(made == 0 && status == 8 && state == (4 | 8), "the link lost: CONNECTION %d, status %d; the session and the device closed, nothing listened to (%d)", made, status,
+             state);
+    bt_reads(conn, 0x22, 133, "", 0, "after that");
+    again = mg_bluetooth_connect(phone, MEGLER_BT_ADDRESS_UNKNOWN, false, conn);
+    made = bt_connection(conn, 5000, &status);
+    e = bt_discover(conn);
+    bt_check(again == conn && made == 1 && status == 0 && bt_phone_table(e), "connected to again, as the same BluetoothGatt: CONNECTION %d, status %d, and its services", made,
+             status);
+    if (e) mg_bluetooth_free(e);
+    mg_bluetooth_disconnect(conn, false);
+    made = bt_connection(conn, 3000, &status);
+    state = mg_bluetooth_windows_state(phone);
+    bt_check(made == 0 && status == 0 && state == (4 | 8), "disconnected by the app: CONNECTION %d, status %d; the session and the device closed (%d)", made, status, state);
+    mg_bluetooth_disconnect(conn, true);
+
+    /* A connection that is not made: Android's 133, and the device of Windows' let go. */
+    for (i = 0; i < (int)(sizeof(not_made) / sizeof(not_made[0])); i++) {
+        a = other + (u64)i;
+        conn = bt_connect(a, not_made[i].what, 0, 133, not_made[i].says);
+        state = mg_bluetooth_windows_state(a);
+        if (not_made[i].device) bt_check((state & (1 | 8 | 16)) == 8, "    its device of Windows' is closed, and not listened to (%d)", state);
+        mg_bluetooth_disconnect(conn, true);
+    }
+
+    /* Made `auto`, on a Windows that gives no session to wait for the device with: tried again until it answers. */
+    a = other + 0x10;
+    mg_bluetooth_windows_device(a, "later");
+    conn = mg_bluetooth_connect(a, MEGLER_BT_ADDRESS_UNKNOWN, true, 0);
+    made = bt_connection(conn, 5000, &status);
+    asked = mg_bluetooth_windows_asked(a);
+    bt_check(made == 1 && status == 0 && asked == 3, "made `auto` to a device in range the third time: CONNECTION %d, status %d, its services asked for %d times", made, status,
+             asked);
+    mg_bluetooth_windows_link(a, 0);
+    made = bt_connection(conn, 3000, &status);
+    state = mg_bluetooth_windows_state(a);
+    bt_check(made == 0 && status == 8 && state == (2 | 16), "its link lost: CONNECTION %d, status %d; it is not let go -- the session keeps it, its changes are listened to (%d)",
+             made, status, state);
+    mg_bluetooth_windows_link(a, 1);
+    made = bt_connection(conn, 3000, &status);
+    bt_check(made == 1 && status == 0, "its link made again by Windows: CONNECTION %d, status %d", made, status);
+    mg_bluetooth_disconnect(conn, false);
+    made = bt_connection(conn, 3000, &status);
+    state = mg_bluetooth_windows_state(a);
+    bt_check(made == 0 && status == 0 && state == (4 | 8), "disconnected by the app: CONNECTION %d, status %d; let go now (%d)", made, status, state);
+    mg_bluetooth_disconnect(conn, true);
+
+    a = other + 0x11;
+    mg_bluetooth_windows_device(a, "unreachable");
+    conn = mg_bluetooth_connect(a, MEGLER_BT_ADDRESS_UNKNOWN, true, 0);
+    made = bt_connection(conn, 400, &status);
+    asked = mg_bluetooth_windows_asked(a);
+    bt_check(made == -1 && asked >= 3, "made `auto` to a device never in range: the app hears nothing, and it is tried again and again (%d times in 0.4 s)", asked);
+    mg_bluetooth_disconnect(conn, true);
+    mg_sleep_ns(200000000ull);
+    asked = mg_bluetooth_windows_asked(a);
+    mg_sleep_ns(200000000ull);
+    state = mg_bluetooth_windows_state(a);
+    bt_check(mg_bluetooth_windows_asked(a) == asked && (state & 8), "closed by the app: tried no more, its device closed (%d)", state);
+
+    /* What the session and the services of an older Windows, or of none, leave. */
+    a = other + 0x12;
+    conn = bt_connect(a, "no-session", 1, 0, "a device whose services have no GATT session");
+    mtu = bt_mtu(conn, 512);
+    state = mg_bluetooth_windows_state(a);
+    bt_check(mtu == 23 && state == (1 | 16), "its MTU is told as 23, the link is Windows' to keep (%d, %d)", mtu, state);
+    mg_bluetooth_disconnect(conn, true);
+
+    a = other + 0x13;
+    conn = bt_connect(a, "old-services", 1, 0, "a device whose services are without IGattDeviceService3");
+    mtu = bt_mtu(conn, 512);
+    e = bt_discover(conn);
+    bt_check(mtu == 23 && e && e->status == 257 && e->count == 0, "its MTU is 23 (%d), its services are not told: status %d, %d attributes", mtu, e ? e->status : -1,
+             e ? e->count : -1);
+    if (e) mg_bluetooth_free(e);
+    mg_bluetooth_disconnect(conn, true);
+
+    a = other + 0x14;
+    conn = bt_connect(a, "leaves", 1, 0, "a device that goes out of range as its characteristics are asked for");
+    e = bt_discover(conn);
+    made = bt_connection(conn, 3000, &status);
+    bt_check(e && e->status == 133 && e->count == 0 && made == 0 && status == 8, "its services failed (status %d, %d attributes), the link lost: CONNECTION %d, status %d",
+             e ? e->status : -1, e ? e->count : -1, made, status);
+    if (e) mg_bluetooth_free(e);
+    mg_bluetooth_disconnect(conn, true);
+
+    a = other + 0x15;
+    conn = bt_connect(a, "newer", 1, 0, "a device of a later Windows (IBluetoothLEDevice4) whose id cannot be had");
+    mtu = bt_mtu(conn, 512);
+    bt_check(mtu == 247, "its session is its services': the MTU is %d", mtu);
+    mg_bluetooth_disconnect(conn, true);
+
+    /* Ended by the app while Windows is still at it. */
+    a = other + 0x16;
+    mg_bluetooth_windows_device(a, "slow");
+    conn = mg_bluetooth_connect(a, MEGLER_BT_ADDRESS_UNKNOWN, false, 0);
+    for (i = 0; i < 300 && !mg_bluetooth_windows_asked(a); i++) mg_sleep_ns(10000000ull);
+    mg_bluetooth_disconnect(conn, false);
+    made = bt_connection(conn, 3000, &status);
+    more = bt_connection(conn, 300, &again);
+    state = mg_bluetooth_windows_state(a);
+    bt_check(made == 0 && status == 0 && more == -1 && (state & (1 | 8)) == 8,
+             "disconnected while Windows was asking for its services: CONNECTION %d, status %d, once -- nothing when the services came; its device closed (%d)", made, status,
+             state);
+    mg_bluetooth_disconnect(conn, true);
+
+    /* Nothing more than was asked for: no connection said twice, no answer given twice. */
+    bt_event(0, 0, 200);
+    for (i = 0; i < g_bt_nkept; i++) {
+        printf("  (left over: an event of kind %d of connection %d, status %d, value %d)\n", g_bt_kept[i]->kind, g_bt_kept[i]->conn, g_bt_kept[i]->status,
+               g_bt_kept[i]->value);
+        mg_bluetooth_free(g_bt_kept[i]);
+    }
+    bt_check(g_bt_nkept == 0, "every event was one waited for (%d were not)", g_bt_nkept);
+    g_bt_nkept = 0;
+    mg_bluetooth_windows_devices(0, 0);
+}
 #endif
 
 /*
- * This PC's Bluetooth through the shell's host and the core's, as an app's android.bluetooth uses them: the radio, then a
- * passive scan of three seconds (nothing is sent: no scan request, no connection, no pairing) whose advertisements come
- * through the core's queue, each device's first said. A PC without a radio, or with it off, says so and checks nothing.
+ * The shell's Bluetooth host and the core's, as an app's android.bluetooth uses them. Connections first, to devices made
+ * up for it (bluetooth_made_up): those need no radio. Then this PC's Bluetooth: the radio, and a passive scan of three
+ * seconds (nothing is sent: no scan request, no connection, no pairing) whose advertisements come through the core's queue,
+ * each device's first said. A PC without a radio, or with it off, says so and leaves that part out.
  */
 static int bluetooth_windows_mode(int argc, char **argv)
 {
 #ifdef MG_BLUETOOTH_WINDOWS
     megler_config config;
     char summary[1500], name[128];
-    int checks = 0, failed = 0, ads = 0, devices = 0, state, i;
+    int checks, failed, ads = 0, devices = 0, state, i;
     u64 seen[64];
     u64 until;
     (void)argc;
@@ -1090,11 +1484,15 @@ static int bluetooth_windows_mode(int argc, char **argv)
     mg_bluetooth_windows_summary(summary, sizeof(summary));
     printf("  Windows' Bluetooth: %s\n", summary);
     state = mg_bluetooth_state(name, sizeof(name));
+    bluetooth_made_up();
+    checks = g_bt_checks;
+    failed = g_bt_failed;
     if (state != MEGLER_BT_RADIO_ON) {
-        printf("(%s: --bluetooth-windows has nothing to listen to, and nothing is checked)\n0 checks, 0 failed\n",
+        printf("(%s: --bluetooth-windows has nothing to listen to, and the radio's part is not checked)\n",
                state == MEGLER_BT_RADIO_OFF ? "this PC's Bluetooth radio is off" : "no Bluetooth LE radio on this PC");
         mg_bluetooth_end();
-        return 0;
+        printf("%d checks, %d failed\n", checks, failed);
+        return failed ? 1 : 0;
     }
     printf("  the radio is on, named \"%s\"; listening (passive) for three seconds\n", name);
     mg_bluetooth_scan(MEGLER_BT_SCAN_PASSIVE);
@@ -1474,6 +1872,11 @@ int main(int argc, char **argv)
     if (argc >= 4 && !strcmp(argv[1], "--dvm-link")) return link_mode(argc, argv);
     if (argc >= 3 && !strcmp(argv[1], "--dvm-init")) return init_mode(argc, argv);
     if (argc >= 3 && !strcmp(argv[1], "--dvm-natives")) return natives_mode(argv);
+    if (argc >= 2 && !strcmp(argv[1], "--malloc-bench")) {
+        mg_core_init();
+        mg_tests_malloc_bench(argc >= 3 ? atoi(argv[2]) : 500, argc >= 4 ? atoi(argv[3]) : 4);
+        return 0;
+    }
     if (argc >= 3 && !strcmp(argv[1], "--dvm-bench")) {
         mg_core_init();
         mg_dvm_tests_bench(argv[2], argc >= 4 ? argv[3] : NULL, argc >= 5 ? atoi(argv[4]) : 300);

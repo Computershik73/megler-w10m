@@ -5,6 +5,8 @@
  * it, and the host's allocators do not all agree to that (an aligned block on
  * Windows has its own free). So every guest block carries a small header that
  * says where the host's block starts, and free() needs to know nothing else.
+ * A thread that allocates a lot keeps the small blocks it frees in a cache of
+ * its own, as jemalloc's threads do on Android ("each thread's cache", below).
  */
 #include "mg_bionic.h"
 
@@ -22,10 +24,11 @@ typedef struct ghdr {
 
 #define HDR(p) ((ghdr *)((u8 *)(p) - sizeof(ghdr)))
 
-/* What the guest has asked malloc for and not freed, in bytes, modulo 2^32 (mg_g_malloc_bytes): its blocks are the host's. */
+/*
+ * What the guest has asked malloc for and not freed, in bytes, modulo 2^32 (mg_g_malloc_bytes): its blocks are the host's.
+ * A thread with a cache counts its own in it (tcache.malloced); this word is the rest's, and the ended caches'.
+ */
 static volatile i32 g_malloced;
-
-u64 mg_g_malloc_bytes(void) { return (u32)mg_atomic_add(&g_malloced, 0); }
 
 /*
  * The alignment of every block malloc gives, bionic's: Android 9's jemalloc hands out multiples of its quantum, 16 bytes,
@@ -56,6 +59,21 @@ u64 mg_g_malloc_bytes(void) { return (u32)mg_atomic_add(&g_malloced, 0); }
 #define BIG_BLOCK ((size_t)256)
 #define BIG_ALIGN ((size_t)64)
 static size_t block_align(size_t n) { return USABLE(n) >= BIG_BLOCK ? BIG_ALIGN : G_ALIGN; }
+
+/*
+ * The biggest block a thread's cache keeps (below), and the host's bytes behind a block of usable size u: u, but from
+ * BIG_BLOCK to TC_MAX the top of u's bin there, eight to a doubling (264 to 288 bytes are 288, 2049 to 2304 are 2304), so
+ * that every block of a bin is big enough for anything asked of the bin. A few per cent of those blocks' bytes; malloc_usable_size
+ * stays USABLE.
+ */
+#define TC_MAX ((size_t)4096)
+static size_t host_usable(size_t u)
+{
+    size_t step = BIG_BLOCK / 8;
+    if (u <= BIG_BLOCK || u > TC_MAX) return u;
+    while (u - 1 >= step * 16) step *= 2;
+    return MG_ALIGN_UP(u, step);
+}
 
 /*
  * The flag malloc-guard, a diagnosis (64-bit processors; off by default): every block is followed by GUARD bytes of 0xFD
@@ -272,17 +290,277 @@ static bool guarded_free(void *p, mg_addr freer)
     return true;
 }
 
+/*
+ * Each thread's cache of the blocks it has freed, as Android's jemalloc keeps one for each thread (its tcache): a thread
+ * that allocates a lot takes its small blocks from its cache and frees them into it, touching neither the host's heap nor
+ * anything another thread touches. Before, every block came from the host's malloc and went back to its free, and every
+ * one counted its bytes into one word that every thread added to: threads that allocated at once waited for each other
+ * there, and in the heap's own lock where the heap is the NT heap. On this PC (x64, the NT heap) four threads freeing and
+ * allocating blocks of mixed sizes made 1.4 to 1.6 times what one made, eight fewer than one, and four freeing and
+ * allocating small pairs 1.26 times (mg_tests --malloc-bench); Geekbench 5's multi-core workloads, threads of C++ that
+ * allocate all the time, scaled worse on the HP Elite x3 than Android's on the same phone (690).
+ *
+ * A cache keeps blocks of up to TC_MAX bytes in bins: one bin for each usable size below BIG_BLOCK, any block of which is
+ * as good as any other, and eight to a doubling above it, whose blocks the host makes of the bin's top size (host_usable).
+ * A bin keeps up to 16 blocks (8 above 128 bytes, 4 above a kilobyte), a cache TC_BYTES of the host's at most; a full bin
+ * gives its older half back to the host, and every TC_TRIM takes and puts the cache gives back half of what each bin did
+ * not need since the last time. A block in a cache is still the host's whole block, its header kept: any thread's cache
+ * takes it, or the host's free, so a block freed by another thread than the one that made it -- a consumer's of a
+ * producer's -- is no different, and nothing is owned. Big blocks, memalign's at more than a block's own alignment and
+ * malloc-guard's are the host's at once.
+ *
+ * Only a thread that allocates fast has a cache: TC_WARM mallocs within TC_WARM_MS milliseconds. The hundreds of threads
+ * an app has that seldom allocate keep none, and allocate as before. A thread that ends gives its cache back to the host,
+ * whoever started it (mg_tls_alloc_ending: a fiber-local slot's callback on Windows). What a thread with a cache asks for
+ * and frees is counted in its cache, and mg_g_malloc_bytes adds the caches up. The flag no-malloc-cache: no thread has
+ * one, and malloc is as it was before (to tell its effect on a phone); none either while malloc-guard is on.
+ */
+#define TC_SMALL ((u32)(BIG_BLOCK / G_ALIGN) - 1)
+#define TC_BINS (TC_SMALL + 33)
+#define TC_BYTES ((u32)32768)
+#define TC_TRIM 1024u
+#define TC_WARM 256u
+#define TC_WARM_MS 100u
+
+typedef struct tcache {
+    void *head[TC_BINS];               /* each bin's blocks, the last freed first, each linked through its first word */
+    u8 count[TC_BINS];
+    u8 low[TC_BINS];                   /* the fewest the bin has had since the last trim */
+    u32 bytes;                         /* the host's bytes behind its blocks */
+    u32 events;                        /* takes and puts since the last trim */
+    volatile i32 malloced;             /* the thread's part of g_malloced */
+    struct tcache *next, *prev;
+} tcache;
+
+static MG_THREAD_LOCAL tcache *t_cache;
+/* Towards a cache: the mallocs since `t_since` (milliseconds), and whether the thread's cache has gone with its end. */
+static MG_THREAD_LOCAL u32 t_mallocs, t_since;
+static MG_THREAD_LOCAL bool t_ended;
+
+static tcache *g_caches;
+static u32 g_cache_count;
+static bool g_cache_slot_made;
+static u32 g_cache_slot;
+static mg_lock g_caches_lock = MG_LOCK_INIT;
+/* Whether threads may have caches: -1 not decided yet (the flag no-malloc-cache), and the tests' mg_g_malloc_caches_allow. */
+static volatile i32 g_caches_allowed = -1;
+
+/* The bin of usable size u, G_ALIGN to TC_MAX: one for each size below BIG_BLOCK (2^8), then eight to a doubling. */
+static u32 tc_bin(size_t u)
+{
+    u32 k = 8;
+    if (u < BIG_BLOCK) return (u32)(u / G_ALIGN) - 1;
+    if (u == BIG_BLOCK) return TC_SMALL;
+    while ((u - 1) >> (k + 1)) k++;
+    return TC_SMALL + 1 + (k - 8) * 8 + (u32)((u - 1) >> (k - 3)) - 8;
+}
+
+/* The host's bytes behind each block of bin b: host_usable of its sizes. */
+static u32 tc_bin_bytes(u32 b)
+{
+    u32 r;
+    if (b < TC_SMALL) return (b + 1) * (u32)G_ALIGN;
+    if (b == TC_SMALL) return (u32)BIG_BLOCK;
+    r = b - TC_SMALL - 1;
+    return (r % 8 + 9) << (r / 8 + 5);
+}
+
+static void host_release(void *p) { free((u8 *)p - HDR(p)->offset); }
+
+/* The `n` blocks of bin b freed longest ago given back to the host. */
+static void bin_release(tcache *tc, u32 b, u32 n)
+{
+    void **link = &tc->head[b], *p;
+    u32 keep = tc->count[b] - n, i;
+    for (i = 0; i < keep; i++) link = (void **)*link;
+    p = *link;
+    *link = NULL;
+    while (p) {
+        void *next = *(void **)p;
+        host_release(p);
+        p = next;
+    }
+    tc->count[b] = (u8)keep;
+    if (tc->low[b] > keep) tc->low[b] = (u8)keep;
+    tc->bytes -= n * tc_bin_bytes(b);
+}
+
+/* Half of what each bin did not need since the last trim given back. */
+static void cache_trim(tcache *tc)
+{
+    u32 b;
+    tc->events = 0;
+    for (b = 0; b < TC_BINS; b++) {
+        if (tc->low[b]) bin_release(tc, b, (tc->low[b] + 1u) / 2u);
+        tc->low[b] = tc->count[b];
+    }
+}
+
+/* A block of n bytes from the cache, or NULL. */
+static void *cache_take(tcache *tc, size_t n)
+{
+    size_t u = USABLE(n);
+    u32 b;
+    u8 *p;
+    if (u > TC_MAX) return NULL;
+    if (++tc->events >= TC_TRIM) cache_trim(tc);
+    b = tc_bin(u);
+    p = (u8 *)tc->head[b];
+    if (!p) return NULL;
+    tc->head[b] = *(void **)p;
+    if (--tc->count[b] < tc->low[b]) tc->low[b] = tc->count[b];
+    tc->bytes -= tc_bin_bytes(b);
+    HDR(p)->size = (u32)n;
+    tc->malloced += (i32)n;
+    return p;
+}
+
+/* The freed block p, of `size` bytes, kept in the cache: false when it is the host's to free. */
+static bool cache_put(tcache *tc, void *p, u32 size)
+{
+    size_t u = USABLE(size), align;
+    u32 b, bytes, room;
+    if (u > TC_MAX) return false;
+    /* (A memalign's block made at more than a block of its size is, or at less than a big block's: the host's.) */
+    align = u >= BIG_BLOCK ? BIG_ALIGN : G_ALIGN;
+    if (HDR(p)->offset > align + sizeof(ghdr) || ((mg_addr)p & (align - 1))) return false;
+    if (++tc->events >= TC_TRIM) cache_trim(tc);
+    b = tc_bin(u);
+    if (tc->head[b] == p) {
+        /* (Freed again, the second time right after the first: two mallocs to come would have had it each.) */
+        static volatile i32 said;
+        if (mg_atomic_add(&said, 1) <= 5) mg_warn("malloc: the block at %p (%u bytes) was freed twice in a row; the second free is left undone", p, (unsigned)size);
+        return true;
+    }
+    bytes = tc_bin_bytes(b);
+    room = bytes <= 128 ? 16 : bytes <= 1024 ? 8 : 4;
+    if (tc->count[b] >= room) bin_release(tc, b, room / 2);
+    if (tc->bytes + bytes > TC_BYTES) return false;
+    *(void **)p = tc->head[b];
+    tc->head[b] = p;
+    tc->count[b]++;
+    tc->bytes += bytes;
+    tc->malloced -= (i32)size;
+    return true;
+}
+
+/* Every block of the cache given back to the host, its count to g_malloced, and the cache freed. */
+static void cache_drop(tcache *tc)
+{
+    u32 b;
+    for (b = 0; b < TC_BINS; b++)
+        if (tc->count[b]) bin_release(tc, b, tc->count[b]);
+    mg_lock_acquire(&g_caches_lock);
+    if (tc->prev) tc->prev->next = tc->next;
+    else g_caches = tc->next;
+    if (tc->next) tc->next->prev = tc->prev;
+    g_cache_count--;
+    mg_atomic_add(&g_malloced, tc->malloced);
+    mg_lock_release(&g_caches_lock);
+    free(tc);
+}
+
+/* The thread ends (any thread: the host's slot with an end): its cache goes. */
+static MG_HOSTCB void cache_end(void *v)
+{
+    tcache *tc = (tcache *)v;
+#if !defined(MG_CORE_ELF)
+    /* (The ELF core's thread-local variables are fiber-local data too, whose end may have come before this one: left alone there.) */
+    if (t_cache == tc) {
+        t_cache = NULL;
+        t_ended = true;
+    }
+#endif
+    cache_drop(tc);
+}
+
+/* A malloc on a thread with no cache: one made for it once it has allocated fast enough (TC_WARM in TC_WARM_MS), or NULL. */
+static MG_NOINLINE tcache *cache_warm(void)
+{
+    tcache *tc;
+    u32 now;
+    bool first = false;
+    if (++t_mallocs < TC_WARM) return NULL;
+    t_mallocs = 0;
+    now = (u32)(mg_time_monotonic_ns() / 1000000u);
+    if (now - t_since > TC_WARM_MS || t_ended) {
+        t_since = now;
+        return NULL;
+    }
+    if (g_caches_allowed < 0) g_caches_allowed = mg_flag("no-malloc-cache") ? 0 : 1;
+    if (!g_caches_allowed) return NULL;
+    tc = (tcache *)calloc(1, sizeof(*tc));
+    if (!tc) return NULL;
+    mg_lock_acquire(&g_caches_lock);
+    if (!g_cache_slot_made) {
+        g_cache_slot = mg_tls_alloc_ending(cache_end);
+        g_cache_slot_made = first = true;
+    }
+    tc->next = g_caches;
+    if (g_caches) g_caches->prev = tc;
+    g_caches = tc;
+    g_cache_count++;
+    mg_lock_release(&g_caches_lock);
+    mg_tls_set_ending(g_cache_slot, tc);
+    t_cache = tc;
+    if (first)
+        mg_info("malloc: thread %u allocates fast enough to keep a cache of the small blocks it frees, the first to (the host's malloc "
+                "takes its blocks from %s)", (unsigned)mg_thread_self_id(), mg_heap_kind());
+    return tc;
+}
+
+/* The calling thread's cache, or NULL: none while malloc-guard is on. */
+static tcache *thread_cache(void)
+{
+    tcache *tc;
+    if (guarding()) return NULL;
+    tc = t_cache;
+    return tc ? tc : cache_warm();
+}
+
+/* The thread's part of g_malloced: its cache's, or the word all threads without one add to. */
+static void counted(i32 delta)
+{
+    tcache *tc = t_cache;
+    if (tc) tc->malloced += delta;
+    else mg_atomic_add(&g_malloced, delta);
+}
+
+u64 mg_g_malloc_bytes(void)
+{
+    tcache *tc;
+    u32 sum;
+    mg_lock_acquire(&g_caches_lock);
+    sum = (u32)mg_atomic_add(&g_malloced, 0);
+    for (tc = g_caches; tc; tc = tc->next) sum += (u32)tc->malloced;
+    mg_lock_release(&g_caches_lock);
+    return sum;
+}
+
+void mg_g_malloc_caches(u32 *threads, u64 *bytes)
+{
+    tcache *tc;
+    *bytes = 0;
+    mg_lock_acquire(&g_caches_lock);
+    *threads = g_cache_count;
+    for (tc = g_caches; tc; tc = tc->next) *bytes += tc->bytes;
+    mg_lock_release(&g_caches_lock);
+}
+
+void mg_g_malloc_caches_allow(int allow) { mg_atomic_xchg(&g_caches_allowed, allow < 0 ? -1 : allow ? 1 : 0); }
+
 /* A block of n bytes at a multiple of align, its header right before it, from a host block made bigger to hold both
    (zeroed by the host for calloc's). */
 static void *aligned_block(size_t align, size_t n, bool zero, mg_addr caller)
 {
-    size_t extra = guarding() ? GUARD : 0;
+    size_t extra = guarding() ? GUARD : 0, bytes;
     u8 *raw, *p;
     if ((align & (align - 1)) || n > 0x7FFFFF00u - align) {
         mg_set_errno(GE_INVAL);
         return NULL;
     }
-    raw = (u8 *)(zero ? calloc(1, USABLE(n) + align + sizeof(ghdr) + extra) : malloc(USABLE(n) + align + sizeof(ghdr) + extra));
+    bytes = host_usable(USABLE(n)) + align + sizeof(ghdr) + extra;
+    raw = (u8 *)(zero ? calloc(1, bytes) : malloc(bytes));
     if (!raw) {
         mg_set_errno(GE_NOMEM);
         return NULL;
@@ -295,7 +573,7 @@ static void *aligned_block(size_t align, size_t n, bool zero, mg_addr caller)
         memset(p + USABLE(n), 0xFD, GUARD);
         live_add(p);
     }
-    mg_atomic_add(&g_malloced, (i32)n);
+    counted((i32)n);
     return p;
 }
 
@@ -318,15 +596,20 @@ static void *plain_block(size_t n, bool zero, mg_addr caller)
         memset(raw + G_ALIGN + USABLE(n), 0xFD, GUARD);
         live_add(raw + G_ALIGN);
     }
-    mg_atomic_add(&g_malloced, (i32)n);
+    counted((i32)n);
     return raw + G_ALIGN;
 }
 
 void *mg_g_malloc(size_t n)
 {
+    tcache *tc;
     if (n > 0x7FFFFF00u) {
         mg_set_errno(GE_NOMEM);
         return NULL;
+    }
+    if ((tc = thread_cache()) != NULL) {
+        void *p = cache_take(tc, n);
+        if (p) return p;
     }
     return plain_block(n, false, (mg_addr)CALLER());
 }
@@ -334,9 +617,14 @@ void *mg_g_malloc(size_t n)
 void *mg_g_calloc(size_t n, size_t m)
 {
     u64 total = (u64)n * (u64)m;
+    tcache *tc;
     if (total > 0x7FFFFF00u) {
         mg_set_errno(GE_NOMEM);
         return NULL;
+    }
+    if ((tc = thread_cache()) != NULL) {
+        void *p = cache_take(tc, (size_t)total);
+        if (p) return memset(p, 0, USABLE((size_t)total));
     }
     return plain_block((size_t)total, true, (mg_addr)CALLER());
 }
@@ -344,19 +632,31 @@ void *mg_g_calloc(size_t n, size_t m)
 void mg_g_free(void *p)
 {
     u32 size;
+    tcache *tc;
     if (!p) return;
     size = HDR(p)->size;
     if (guarding()) {
-        if (guarded_free(p, (mg_addr)CALLER())) mg_atomic_add(&g_malloced, -(i32)size);
+        if (guarded_free(p, (mg_addr)CALLER())) counted(-(i32)size);
         return;
     }
-    mg_atomic_add(&g_malloced, -(i32)size);
+    tc = t_cache;
+    if (tc) {
+        if (cache_put(tc, p, size)) return;
+        tc->malloced -= (i32)size;
+    } else {
+        mg_atomic_add(&g_malloced, -(i32)size);
+    }
     free((u8 *)p - HDR(p)->offset);
 }
 
+/*
+ * memalign's block: at `align`, and at least where malloc's of its size is -- a big block at BIG_ALIGN. memalign(16, 300)
+ * on 32-bit ARM was at 16 alone, where malloc(300) is at 64 and jemalloc's run of 320-byte blocks leaves one at 64 too.
+ */
 static void *g_memalign(size_t align, size_t n)
 {
     if (align <= G_ALIGN) return mg_g_malloc(n);
+    if (align < block_align(n)) align = block_align(n);
     return aligned_block(align, n, false, (mg_addr)CALLER());
 }
 
@@ -372,6 +672,12 @@ void *mg_g_realloc(void *p, size_t n)
     if (n > 0x7FFFFF00u) {
         mg_set_errno(GE_NOMEM);
         return NULL;
+    }
+    /* The host's bytes behind it the same, and its place what its new size asks for: it stays, the host not asked. */
+    if (!guarding() && host_usable(USABLE(n)) == host_usable(USABLE(HDR(p)->size)) && !((mg_addr)p & (block_align(n) - 1))) {
+        counted((i32)((u32)n - HDR(p)->size));
+        HDR(p)->size = (u32)n;
+        return p;
     }
     /* The host's realloc, in place where it can: a block at the quantum or at BIG_ALIGN (or a memalign's of no more) stays
        one, at what its new size asks for (block_align); where the host's new block puts it elsewhere, it is moved inside. */
@@ -390,7 +696,7 @@ void *mg_g_realloc(void *p, size_t n)
             }
             q = grown + G_ALIGN;
         } else {
-            need = USABLE(n) + align + sizeof(ghdr);
+            need = host_usable(USABLE(n)) + align + sizeof(ghdr);
             if (need < off + keep) need = off + keep;
             grown = (u8 *)realloc(raw, need);
             if (!grown) {
@@ -402,7 +708,7 @@ void *mg_g_realloc(void *p, size_t n)
         }
         HDR(q)->offset = (u32)((u8 *)q - grown);
         HDR(q)->size = (u32)n;
-        mg_atomic_add(&g_malloced, (i32)((u32)n - was));
+        counted((i32)((u32)n - was));
         return q;
     }
     /* An aligned block: the host cannot grow it in place and keep the alignment (nor a block's guard). */
@@ -411,7 +717,7 @@ void *mg_g_realloc(void *p, size_t n)
     if (!q) return NULL;
     memcpy(q, p, USABLE(old) < USABLE(n) ? USABLE(old) : USABLE(n));
     if (guarding()) {
-        if (guarded_free(p, (mg_addr)CALLER())) mg_atomic_add(&g_malloced, -(i32)old);
+        if (guarded_free(p, (mg_addr)CALLER())) counted(-(i32)old);
     } else {
         mg_g_free(p);
     }
@@ -1749,9 +2055,19 @@ static void wx_region_say(const u8 *p)
 
 static int g_mprotect(void *addr, size_t len, int prot)
 {
-    size_t size = MG_ALIGN_UP(len + ((mg_addr)addr & (MG_PAGE - 1)), MG_PAGE);
-    u8 *p = (u8 *)MG_ALIGN_DOWN((mg_addr)addr, (mg_addr)MG_PAGE);
+    size_t size = MG_ALIGN_UP(len, MG_PAGE);
+    u8 *p = (u8 *)addr;
     bool owned;
+    /*
+     * An address inside a page is refused, as Linux refuses it. Rounding it down protected a page the caller did not name:
+     * Gojek's protection library asks for a guard page at an address it has not aligned (a block's start plus its header and
+     * 4096), goes on when that is refused, and writes to the page before it -- which was the page this made no-access.
+     */
+    if ((mg_addr)addr & (MG_PAGE - 1)) {
+        mg_trace("mprotect(%p, %u, prot %d): not the start of a page, refused", addr, (unsigned)len, prot);
+        mg_set_errno(GE_INVAL);
+        return -1;
+    }
     mg_lock_acquire(&g_region_lock);
     owned = region_of(p) != NULL;
     mg_lock_release(&g_region_lock);

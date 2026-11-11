@@ -6,7 +6,7 @@ import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.Socket;
 import java.net.UnknownHostException;
-import java.security.NoSuchAlgorithmException;
+import java.security.GeneralSecurityException;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -25,9 +25,10 @@ import javax.net.ssl.SSLSocketFactory;
 /**
  * An engine's HTTP/2 connections, one or more for each host and port, shared by its streams (Chromium's sessions):
  * a stream takes a connection that can take it, or the first thread that needs one makes it while the others wait for it.
- * A connection is TLS by the platform's own context (conscrypt, the app's network security configuration and Android's
- * authorities, what HttpsURLConnection trusts), the host's name checked as Android's HTTP client checks it, and ALPN
- * offering "h2" alone. A connection with no stream for five minutes is let go; one the server has been quiet on for 30 s is
+ * A connection is TLS by a context of the platform's own conscrypt (never the process's default one, which an app or
+ * Google Play services may have replaced), trusting what the app's network security configuration and Android's authorities
+ * make trusted, as HttpsURLConnection does; the host's name checked as Android's HTTP client checks it, and ALPN offering
+ * "h2" alone. A connection with no stream for five minutes is let go; one the server has been quiet on for 30 s is
  * asked for a PING when it is taken again, and closed if no answer comes in 10 s (a phone suspended, a network changed: its
  * streams then fail as a closed connection's, and the next ones make a new one).
  */
@@ -197,16 +198,31 @@ final class Connections {
         android.util.Log.i("Megler", line);
     }
 
-    /** The platform's TLS, as Android's HTTP client has it, whatever defaults the app has set for HttpsURLConnection. */
+    /** The platform's TLS, as Android's HTTP client has it, whatever defaults the app has set for HttpsURLConnection or
+     *  for SSLContext. */
     static final class Tls {
         private static HostnameVerifier verifier;
+        private static SSLSocketFactory factory;
 
-        static SSLSocketFactory factory() throws IOException {
-            try {
-                return SSLContext.getDefault().getSocketFactory();
-            } catch (NoSuchAlgorithmException e) {
-                throw new SSLException("no TLS here: " + e.getMessage(), e);
+        /**
+         * Sockets of the platform's conscrypt ("AndroidOpenSSL") with the platform's trust, as Chromium's engine has a TLS of
+         * its own: not SSLContext.getDefault(), which is the process's to set. Google Play services' ProviderInstaller makes
+         * the Conscrypt it carries the default provider and the default context, and that one's sockets take no ALPN
+         * protocols from SSLParameters (its Platform.setSSLParameters reads the host name, the endpoint identification and
+         * the cipher order): through it "h2" was never offered, and every stream of the Play Store's ended "did not take
+         * HTTP/2 (ALPN none)" (a Lumia 950, 0.1.0.690, from 2.5 s after the provider was installed).
+         */
+        static synchronized SSLSocketFactory factory() throws IOException {
+            if (factory == null) {
+                try {
+                    SSLContext context = SSLContext.getInstance("TLS", "AndroidOpenSSL");
+                    context.init(null, null, null);
+                    factory = context.getSocketFactory();
+                } catch (GeneralSecurityException e) {
+                    throw new SSLException("no TLS here: " + e.getMessage(), e);
+                }
             }
+            return factory;
         }
 
         /** Android's own host name check (okhttp's OkHostnameVerifier); HttpsURLConnection's default where it is not there. */

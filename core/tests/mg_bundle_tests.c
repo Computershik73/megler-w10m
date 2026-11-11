@@ -927,6 +927,11 @@ int mg_bundle_tests_run(const char *java_dir, const char *scratch, const char *r
         test_engine_app(java_dir, scratch, "cocos2d-x", cocos, (int)MG_COUNT(cocos), "With cocos2d-x", NULL);
         /* (Minecraft: Story Mode's: it was refused as an app built on sdl.) */
         test_engine_app(java_dir, scratch, "SDL", sdl, (int)MG_COUNT(sdl), "Built with SDL", NULL);
+        /* (Google Play's PairIP, said: its checks fork a process that traces the app, as Earn to Die Rogue's do.) */
+        {
+            static const char *const pairip[] = { "libgdx.so", "libpairipcore.so" };
+            test_engine_app(java_dir, scratch, "PairIP", pairip, (int)MG_COUNT(pairip), "Built with libGDX", "Protected by Google Play's PairIP");
+        }
     }
     test_big_library(java_dir, scratch);
     if (real_dir)

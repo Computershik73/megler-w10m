@@ -50,6 +50,8 @@ typedef struct mg_dvm_test_config {
 void mg_tests_set_dvm(const char *fixtures, const char *apk, int trace);
 void mg_tests_set_dvm_android(const char *root);
 int mg_dvm_tests_run(const mg_dvm_test_config *config, mg_test_sink sink, void *user, int *checks);
+/* How many malloc-and-free pairs threads make together, the guest's malloc's and the host's, printed (mg_tests --malloc-bench). */
+void mg_tests_malloc_bench(int ms, int max_threads);
 /* How fast the interpreter is on this machine, printed. */
 void mg_dvm_tests_bench(const char *fixtures, const char *android_root, int ms);
 

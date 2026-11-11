@@ -42,6 +42,8 @@ import java.nio.charset.StandardCharsets;
  *    with the keyboard, and the field has the text;
  *  - layers: a page of Chromium's layers that paint only part of themselves (LAYERS), whose boxes the log places (layers-at)
  *    and the test finds whole in the picture; the test's key F12 lets the app go on.
+ *  - file-input: a page's <input type=file> in a WebView the app gives no chrome client, which the test taps (file-at): the
+ *    phone's picker -- the test's stand-in, which picks a picture of its own -- and the page reads the file it was handed.
  * The test (core/tests/mg_java_tests.c, run_webview) reads the lines, taps, types, and looks at the picture.
  */
 public class Main extends Activity {
@@ -397,11 +399,51 @@ public class Main extends Activity {
                     boolean ok = h == 20000 && drawn > 0 && drawn <= root.getHeight() && detached >= (onGraphicsProcessor() ? 0 : 1)
                             && detached <= getResources().getDisplayMetrics().heightPixels;
                     Log.i(T, "dismiss " + (ok ? "ok" : "FAILED") + " size=" + w + "x" + h + " drawn=" + drawn + " detached=" + detached + " window=" + root.getHeight());
-                    Log.i(T, "done");
+                    fileInput();
                 }, 500);
             }
         });
         banner.loadUrl(base + "/page");
+    }
+
+    /** What the upload page's script says of the file its input was given: "<name> <type> <size> <bytes read>". */
+    final class Upload {
+        @JavascriptInterface
+        public void picked(String what) {
+            String[] f = what.split(" ");
+            boolean ok = f.length == 4 && f[0].equals("photo.png") && f[1].equals("image/png") && f[2].equals(f[3]) && !f[2].equals("0");
+            Log.i(T, "file-input " + (ok ? "ok" : "FAILED") + " " + what);
+            Log.i(T, "done");
+        }
+    }
+
+    /**
+     * A page's <input type=file> in a WebView the app gives no chrome client, over the window, as an app shows a web form: its
+     * middle said (file-at) for the test to tap. The platform opens the phone's picker for it (megler.Pickers' chrome client,
+     * where Android's WebView with no client answers a file input with nothing), and the page reads the file Chromium was
+     * handed -- its name, its type and its bytes, through the picked file's content: URI -- and tells the app (Upload).
+     */
+    private void fileInput() {
+        final WebView form = new WebView(this);
+        final android.view.ViewGroup root = (android.view.ViewGroup) web.getParent();
+        form.getSettings().setJavaScriptEnabled(true);
+        form.addJavascriptInterface(new Upload(), "upload");
+        form.setWebViewClient(new WebViewClient() {
+            boolean once;
+
+            @Override
+            public void onPageFinished(WebView view, String url) {
+                if (once) return;
+                once = true;
+                main.postDelayed(() -> {
+                    int[] at = new int[2];
+                    form.getLocationOnScreen(at);
+                    Log.i(T, "file-at " + (at[0] + form.getWidth() / 2) + "," + (at[1] + form.getHeight() / 2) + " chrome-client=" + form.getWebChromeClient());
+                }, 800);
+            }
+        });
+        root.addView(form, new android.view.ViewGroup.LayoutParams(android.view.ViewGroup.LayoutParams.MATCH_PARENT, android.view.ViewGroup.LayoutParams.MATCH_PARENT));
+        form.loadUrl(base + "/upload");
     }
 
     private static void drawThroughNode(WebView view, int w, int h) {
@@ -480,6 +522,8 @@ public class Main extends Activity {
                     send(out, "200 OK", "text/html; charset=utf-8", PAGE, "Set-Cookie: megler=1; Path=/\r\n");
                 } else if (path.equals("/check-cookie")) {
                     send(out, "200 OK", "text/html; charset=utf-8", "<!DOCTYPE html><html><body style=\"background:#1e78c8\">cookie=" + cookie + "</body></html>", "");
+                } else if (path.equals("/upload")) {
+                    send(out, "200 OK", "text/html; charset=utf-8", UPLOAD, "");
                 } else if (path.equals("/layers")) {
                     send(out, "200 OK", "text/html; charset=utf-8", LAYERS, "");
                 } else if (path.equals("/login")) {
@@ -520,6 +564,18 @@ public class Main extends Activity {
             + " #full { position: absolute; left: 240px; top: 120px; width: 100px; height: 100px; will-change: transform; background: #1fd07a; }</style>"
             + "</head><body><div id=\"check\"><input type=\"checkbox\"><div id=\"box\"></div></div>"
             + "<div id=\"plain\"><div id=\"inner\"></div></div><div id=\"full\"></div></body></html>";
+
+    /** A form of one file input, as big as the page; what it is given is read whole and told to the app (Upload). */
+    private static final String UPLOAD = "<!DOCTYPE html><html><head>"
+            + "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><title>upload</title>"
+            + "<style>html, body { margin: 0; height: 100%; background: #fff; }"
+            + " #up { position: absolute; left: 0; top: 0; width: 100%; height: 100%; }</style></head>"
+            + "<body><input id=\"up\" type=\"file\" accept=\"image/*\"><script>"
+            + "document.getElementById('up').onchange = function() { var f = this.files[0];"
+            + " if (!f) { upload.picked('none'); return; } var r = new FileReader();"
+            + " r.onload = function() { upload.picked(f.name + ' ' + f.type + ' ' + f.size + ' ' + r.result.byteLength); };"
+            + " r.onerror = function() { upload.picked(f.name + ' unreadable ' + r.error); }; r.readAsArrayBuffer(f); };"
+            + "</script></body></html>";
 
     /** The page: a yellow bar along the top, blue below, a text field; its script names the page and tells the app. */
     private static final String PAGE = "<!DOCTYPE html><html><head>"
