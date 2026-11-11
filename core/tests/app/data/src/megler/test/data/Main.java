@@ -1408,6 +1408,7 @@ public class Main extends Activity {
             return true;
         });
         animationSet();
+        waitInterrupt();
         // A circular reveal played with another animator in an AnimatorSet, as Jamfish plays one as each song begins (the
         // reveal was null, and the set ended the app with a NullPointerException): it is an animator of the radius, and it
         // and the set run to their ends.
@@ -7506,6 +7507,137 @@ public class Main extends Activity {
         Scrapping(android.content.Context c) { super(c); }
         void scrap(android.view.View v) { detachViewFromParent(v); }
         void removeScrapped(android.view.View v) { removeDetachedView(v, false); }
+    }
+
+    /**
+     * Thread.interrupt ends another thread's Object.wait, timed or not, with InterruptedException and the flag taken: also
+     * when the interrupter holds the monitor, and when a third thread does (the wait ends once that lets go; interrupt
+     * itself does not wait for it). A thread already interrupted does not wait at all, and one waiting beside the
+     * interrupted one on the same object goes on waiting until it is notified. Thread.sleep ends for it as before.
+     * ExoPlayer ends a released player's loading thread with it (Loader.release; the thread waits in
+     * ConditionVariable.block for the player to ask for more): here that thread waited for good, with its data source
+     * open -- its connection, the cache's span it was writing -- and the player made next for the same video, as
+     * Aliucord makes one when the phone is turned, never got its first sample (0.1.0.690, a user's phone).
+     */
+    private void waitInterrupt() {
+        step("wait-interrupt", () -> {
+            StringBuilder all = new StringBuilder();
+            // 0: a wait with no time, 1: a timed one, 2: the interrupter holds the monitor, 3: a third thread holds it.
+            for (int n = 0; n < 4; n++) {
+                final Object gate = new Object();
+                final boolean[] waiting = new boolean[1];
+                final String[] got = new String[1];
+                final int kind = n;
+                Thread t = new Thread(() -> {
+                    synchronized (gate) {
+                        waiting[0] = true;
+                        try {
+                            if (kind == 1) gate.wait(60000);
+                            else gate.wait();
+                            got[0] = "woken";
+                        } catch (InterruptedException e) {
+                            got[0] = "interrupted, flag " + Thread.currentThread().isInterrupted();
+                        }
+                    }
+                }, "wait-interrupt-" + n);
+                t.start();
+                // In the wait: it said so with the monitor held, and the monitor can be taken.
+                for (int i = 0; i < 2000; i++) {
+                    synchronized (gate) { if (waiting[0]) break; }
+                    Thread.sleep(5);
+                }
+                if (kind == 2) {
+                    synchronized (gate) { t.interrupt(); }
+                } else if (kind == 3) {
+                    final boolean[] held = new boolean[1];
+                    final long[] left = new long[1];
+                    Thread holder = new Thread(() -> {
+                        synchronized (gate) {
+                            held[0] = true;
+                            try { Thread.sleep(1500); } catch (InterruptedException e) { }
+                            left[0] = android.os.SystemClock.uptimeMillis();
+                        }
+                    }, "wait-interrupt-holder");
+                    holder.start();
+                    for (int i = 0; i < 2000 && !held[0]; i++) Thread.sleep(5);
+                    t.interrupt();
+                    long returned = android.os.SystemClock.uptimeMillis();
+                    holder.join(20000);
+                    all.append(returned < left[0] ? "(interrupt did not wait for the holder) " : "(interrupt waited for the holder) ");
+                } else {
+                    t.interrupt();
+                }
+                t.join(20000);
+                all.append(n).append(": ").append(got[0]).append(t.isAlive() ? ", still alive" : "").append("; ");
+            }
+            // Interrupted before it waits: no wait. And the flag is taken by the exception.
+            final String[] early = new String[1];
+            Thread e = new Thread(() -> {
+                Object o = new Object();
+                Thread.currentThread().interrupt();
+                synchronized (o) {
+                    try {
+                        o.wait(60000);
+                        early[0] = "waited";
+                    } catch (InterruptedException x) {
+                        early[0] = "no wait, flag " + Thread.currentThread().isInterrupted();
+                    }
+                }
+            }, "wait-interrupt-early");
+            e.start();
+            e.join(20000);
+            all.append("early: ").append(early[0]).append(e.isAlive() ? ", still alive" : "").append("; ");
+            // Two waiting on one object: the one interrupted leaves, the other waits on until notified.
+            final Object shared = new Object();
+            final int[] in = new int[1];
+            final String[] pair = new String[2];
+            Thread[] two = new Thread[2];
+            for (int n = 0; n < 2; n++) {
+                final int me = n;
+                two[n] = new Thread(() -> {
+                    synchronized (shared) {
+                        in[0]++;
+                        try {
+                            shared.wait();
+                            pair[me] = "notified";
+                        } catch (InterruptedException x) {
+                            pair[me] = "interrupted";
+                        }
+                    }
+                }, "wait-interrupt-pair-" + n);
+                two[n].start();
+            }
+            for (int i = 0; i < 2000; i++) {
+                synchronized (shared) { if (in[0] == 2) break; }
+                Thread.sleep(5);
+            }
+            two[0].interrupt();
+            two[0].join(20000);
+            Thread.sleep(300);
+            String other = pair[1] == null && two[1].isAlive() ? "waiting on" : "left: " + pair[1];
+            synchronized (shared) { shared.notifyAll(); }
+            two[1].join(20000);
+            all.append("pair: ").append(pair[0]).append(", the other ").append(other).append(" then ").append(pair[1]).append("; ");
+            // A sleep, as before.
+            final String[] slept = new String[1];
+            Thread s = new Thread(() -> {
+                try {
+                    Thread.sleep(60000);
+                    slept[0] = "slept";
+                } catch (InterruptedException x) {
+                    slept[0] = "interrupted, flag " + Thread.currentThread().isInterrupted();
+                }
+            }, "wait-interrupt-sleep");
+            s.start();
+            Thread.sleep(200);
+            s.interrupt();
+            s.join(20000);
+            all.append("sleep: ").append(slept[0]).append(s.isAlive() ? ", still alive" : "");
+            detail = all.toString();
+            return ("0: interrupted, flag false; 1: interrupted, flag false; 2: interrupted, flag false; "
+                    + "(interrupt did not wait for the holder) 3: interrupted, flag false; early: no wait, flag false; "
+                    + "pair: interrupted, the other waiting on then notified; sleep: interrupted, flag false").equals(detail);
+        });
     }
 
     /**

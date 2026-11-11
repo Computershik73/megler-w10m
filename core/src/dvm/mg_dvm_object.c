@@ -1315,8 +1315,15 @@ bool mg_dvm_monitor_wait(mg_jobj *o, i64 ms)
         u32 seen = m->notified;
         u64 started = mg_time_monotonic_ns(), deadline = ms > 0 ? started + (u64)ms * 1000000ull : 0;
         mg_dvm_thread *self = mg_dvm_self();
+        /*
+         * Or until the thread is interrupted (Thread.interrupt), which Object.wait and Thread.sleep then throw for: at once
+         * when it already was, as Java's do. The object is told before the flag is looked at, and Thread.interrupt sets the
+         * flag before it looks for the object, each with the processor's writes settled between (the exchange): one of the
+         * two sees what the other wrote, so no interrupt falls between this look and the wait (mg_dvm_monitor_interrupt).
+         */
         self->waiting_on = o;
-        while (m->notified == seen) {
+        mg_atomic_xchg(&self->wait_sync, 1);
+        while (m->notified == seen && !self->interrupted) {
             u64 now;
             if (!deadline) {
                 mg_cond_wait(&m->cv, &m->mu);
@@ -1332,6 +1339,45 @@ bool mg_dvm_monitor_wait(mg_jobj *o, i64 ms)
     m->owner = me;
     m->count = held;
     return true;
+}
+
+/*
+ * Thread.interrupt for a thread that may be inside wait() on any object: the wait ends, and Object.wait finds the flag,
+ * already set by the caller, and throws InterruptedException. ExoPlayer ends a released player's loading thread so
+ * (Loader.release interrupts it), a thread that waits in ConditionVariable.block for the player to ask for more: left
+ * waiting for good, it never closed its data source, and what that held -- the connection, the cache's span being
+ * written -- was never let go.
+ *
+ * The waiter is woken through its monitor's condition, which has to be signalled with the monitor's lock held or by its
+ * owner, or the signal can fall between the waiter's look at the flag and its wait. The lock is only tried: whoever owns
+ * the monitor in Java may hold it for long, or be waiting for this very thread. When the try fails with an owner, the
+ * waiter is past that look (it owned the lock until its wait let go of it) and the signal reaches it; with no owner, a
+ * waiter is between the two, and a moment later it is not.
+ */
+void mg_dvm_monitor_interrupt(mg_dvm_thread *t)
+{
+    u32 me = mg_thread_self_id();
+    int tries;
+    mg_atomic_xchg(&t->wait_sync, 1);
+    for (tries = 0; tries < 200; tries++) {
+        mg_jobj *o = t->waiting_on;
+        monitor *m = o ? (monitor *)MG_DVM_OBJ(o)->monitor : NULL;
+        if (!m || !t->interrupted) return;
+        if (m->owner == me) {
+            mg_cond_broadcast(&m->cv);
+            return;
+        }
+        if (mg_lock_try(&m->mu)) {
+            mg_cond_broadcast(&m->cv);
+            mg_lock_release(&m->mu);
+            return;
+        }
+        if (m->owner) {
+            mg_cond_broadcast(&m->cv);
+            return;
+        }
+        mg_sleep_ns(100000);
+    }
 }
 
 bool mg_dvm_monitor_notify(mg_jobj *o, bool all)

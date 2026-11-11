@@ -361,7 +361,7 @@ struct mg_dvm_thread {
     u64 steps_left;                    /* under a step limit: instructions this call from C may still execute; all ones once it is used up */
     mg_jvalue scratch;                 /* where a field with no slot of its own is read from and written to */
     mg_jobj *peer;                     /* its java.lang.Thread, with libcore: made when first asked for */
-    bool interrupted;
+    volatile bool interrupted;         /* Thread.interrupt: Object.wait and Thread.sleep end for it and throw (mg_dvm_monitor_interrupt) */
     /*
      * While a library's JNI_OnLoad runs on this thread: the frame that was on
      * top when it was called, and whether the library is the app's. A
@@ -402,6 +402,7 @@ struct mg_dvm_thread {
     volatile u64 monitor_wait_ns;
     /* The object whose wait() it is in (mg_dvm_monitor_wait), for a report of the main thread standing in one (mg_dvm_stuck_say). */
     mg_jobj *volatile waiting_on;
+    volatile i32 wait_sync;            /* exchanged between setting and reading `waiting_on` and `interrupted`: see mg_dvm_monitor_wait */
     /*
      * What it has made (mg_dvm_get_stats sums every thread's), and the bytes not yet counted toward the next collection:
      * counted by the thread alone, and handed to the collector a few kilobytes at a time (alloc_raw), so that an
@@ -862,6 +863,7 @@ void mg_dvm_monitor_enter(mg_jobj *o);
 bool mg_dvm_monitor_exit(mg_jobj *o);
 bool mg_dvm_monitor_wait(mg_jobj *o, i64 ms);
 bool mg_dvm_monitor_notify(mg_jobj *o, bool all);
+void mg_dvm_monitor_interrupt(mg_dvm_thread *t);
 
 /* Leaves an existing object pending. */
 void mg_dvm_throw_object(mg_jobj *e);
