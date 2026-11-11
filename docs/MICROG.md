@@ -328,6 +328,59 @@ was still 1664 bytes of HTML. Correcting those two fields alone did not fix
 the failure. The experiment is confined to the diagnostic client; no
 certificate substitution change is kept in the runtime.
 
+**The complete full-to-fast exchange.** The opt-in diagnostic app
+`core/tests/app/droidguard` captures GmsCore 264330027's request protobufs
+(`byvy.a`), the exact response bodies and signatures given to its verifier
+(`byuc.a`), and the full VM's result (`byun.c`). Its hooks call the original
+methods and return their results unchanged. The hook bridge is loaded in a
+child DEX scope, outside the parent class path the VM searches. The app
+captures at most 128 calls, with at most 2 MiB per byte array, in its own
+`files/capture` folder. It is built with the other Java test apps and is run
+explicitly, not by the normal suites; it needs internet access and Google's
+26.43.30 APK mounted through `MG_JAVA_GMS_APK`.
+
+On fresh test data, an independent protobuf reader finds the full VM's 1882
+bytes unchanged in field 10 of the fast request. The fast response is
+exactly 30 bytes: field 2 is an empty URL, field 3 the 20-byte VM checksum,
+field 4 is 604800 seconds, and field 6 is true. Field 1 (`byteCode`) is absent.
+OpenSSL independently verifies its SHA-256/RSA signature with the public key
+from `byuc`, so this is not just Megler's signature verifier accepting it.
+GMS carries field 6 to `bytx.d`; after parsing, `byts.a` would throw `bytt`,
+whose message is "Server requested the module to retry the full collection."
+Its parser first throws for the missing bytecode, however. This retry flag
+does not identify the signal the server objected to.
+
+The full reply's program has a ten-second lifetime. In a timed run the reply
+arrives at elapsed time 88545 ms and the fast request starts at 89335 ms:
+790 ms later, including 428 ms running the VM. Expiry of that window does
+not explain this failure. Another fresh run uses
+`no-plt-rewrite-libdB21738DAE92C.so`; the linker confirms zero PLT entries
+rewritten, but the same verified 30-byte response without bytecode returns.
+Leaving this library's PLT unchanged alone does not fix it. The main payload
+of the VM result is opaque in these captures; its bytes and the retry flag
+do not by themselves establish which environment check failed.
+
+To repeat the capture under qemu after building the test app, with the same
+heavy-job lock and `MEGLER_JOBS=4` as any test run:
+
+```sh
+data=$(mktemp -d /tmp/megler-droidguard.XXXXXX)
+MG_JAVA_GMS_APK=/path/to/GmsCore.apk \
+MG_JAVA_GSF_APK=/path/to/GoogleServicesFramework.apk \
+qemu-arm -L /usr/arm-linux-gnueabihf /path/to/mg_tests --java app \
+  /path/to/droidguard.apk "$data" /path/to/android-root - \
+  0 720x1280@320 wait:120000
+python3 -I tools/droidguard-inspect.py \
+  "$data/apps/megler.test.droidguard/data/files/capture"
+```
+
+`tools/droidguard-inspect.py` checks field 10 against the preceding VM result
+on the same thread and describes the response's fields without printing
+device identifiers or the token. It reports mismatches and malformed
+captures as errors. A successful inspection means the capture is consistent,
+not that DroidGuard obtained a fast program. Instrumentation may affect the
+VM's observations; a proposed fix must also pass an uninstrumented run.
+
 **Following it on a phone** (flags in `Pictures\Megler\diag\<package>\flags`):
 `trace-syscalls` (a library's calls by number with the path each names:
 "/sys/fs/selinux/enforce" = -2 from `libdB21738DAE92C.so+0x2e18`, its own
