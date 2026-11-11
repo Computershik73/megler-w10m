@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Main's step "add-view-params": a view that overrides setLayoutParams, inflated as a FrameLayout's child, as Citymapper's
+     bottom sheet container is in its CoordinatorLayout (its labs_gms_fragment): the view hears the parameters the frame made
+     for it from these attributes. -->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent">
+    <view class="megler.test.data.Main$ParamsHeard"
+        android:layout_width="7px"
+        android:layout_height="5px" />
+</FrameLayout>

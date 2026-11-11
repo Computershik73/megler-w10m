@@ -2005,6 +2005,7 @@ public class Main extends Activity {
         roundRectShape();
         visibilityAggregated();
         visibilityScrap();
+        addViewParams();
         layerDrawableHidden();
         boringLayoutOneLine();
         backgroundOffMainThread();
@@ -6418,6 +6419,72 @@ public class Main extends Activity {
             ((android.view.ViewGroup) text.getParent()).addView(list, new android.view.ViewGroup.LayoutParams(20, 20));
             detail = "in the window now " + list.isAttachedToWindow();
             return true;
+        });
+    }
+
+    /** A view that writes down each setLayoutParams it is given, and fills the parameters in there before the view has them, as
+     *  Citymapper's bottom sheet container gives its CoordinatorLayout parameters their behavior: a frame's place at the bottom. */
+    public static class ParamsHeard extends android.view.View {
+        final StringBuilder heard = new StringBuilder();
+        public ParamsHeard(Context c) { super(c); }
+        public ParamsHeard(Context c, android.util.AttributeSet attrs) { super(c, attrs); }
+        @Override public void setLayoutParams(android.view.ViewGroup.LayoutParams p) {
+            String name = p.getClass().getName();
+            heard.append(name.substring(name.lastIndexOf('.') + 1)).append(getParent() == null ? "" : "+parent").append(' ');
+            if (p instanceof android.widget.FrameLayout.LayoutParams) ((android.widget.FrameLayout.LayoutParams) p).gravity = android.view.Gravity.BOTTOM;
+            super.setLayoutParams(p);
+        }
+    }
+
+    /** A group that adds a child as a list adds its rows: in its layout, with or without the child's layout asked for. */
+    static class InLayoutGroup extends android.widget.FrameLayout {
+        InLayoutGroup(Context c) { super(c); }
+        void in(android.view.View v, android.view.ViewGroup.LayoutParams p) { addViewInLayout(v, -1, p); }
+        void in(android.view.View v, android.view.ViewGroup.LayoutParams p, boolean preventRequestLayout) { addViewInLayout(v, -1, p, preventRequestLayout); }
+    }
+
+    /**
+     * A view added to a group is given its layout parameters through its own setLayoutParams, as Android's ViewGroup gives
+     * them (addViewInner): the parameters it was added with, the group's default ones when it had none, the group's own made
+     * from another group's; inflated from a layout too; and its layout is asked for. Only addViewInLayout(.., true) sets
+     * them without a call. Megler set the field: a view that overrides setLayoutParams never heard its parameters as it was
+     * added. Citymapper's BottomSheetContainerView gives its CoordinatorLayout parameters their behavior there (its layout
+     * names none), and the screen that looks for its sheet ended the app with "Not inside a bottom sheet".
+     */
+    private void addViewParams() {
+        step("add-view-params", () -> {
+            final int bottom = android.view.Gravity.BOTTOM;
+            // added with parameters
+            android.widget.FrameLayout frame = new android.widget.FrameLayout(this);
+            ParamsHeard given = new ParamsHeard(this);
+            android.widget.FrameLayout.LayoutParams fp = new android.widget.FrameLayout.LayoutParams(3, 4);
+            frame.addView(given, fp);
+            boolean withParams = "FrameLayout$LayoutParams".equals(given.heard.toString().trim()) && given.getLayoutParams() == fp && fp.gravity == bottom
+                    && given.isLayoutRequested();
+            // added with none, and with another group's
+            android.widget.LinearLayout line = new android.widget.LinearLayout(this);
+            ParamsHeard bare = new ParamsHeard(this), foreign = new ParamsHeard(this);
+            line.addView(bare);
+            line.addView(foreign, new android.view.ViewGroup.LayoutParams(1, 2));
+            boolean made = "LinearLayout$LayoutParams".equals(bare.heard.toString().trim()) && "LinearLayout$LayoutParams".equals(foreign.heard.toString().trim())
+                    && foreign.getLayoutParams() instanceof android.widget.LinearLayout.LayoutParams && foreign.getLayoutParams().width == 1;
+            // added in a layout: told unless the group asks for no layout of it
+            InLayoutGroup group = new InLayoutGroup(this);
+            ParamsHeard quiet = new ParamsHeard(this), asked = new ParamsHeard(this);
+            android.widget.FrameLayout.LayoutParams qp = new android.widget.FrameLayout.LayoutParams(1, 1);
+            group.in(quiet, qp, true);
+            group.in(asked, new android.widget.FrameLayout.LayoutParams(1, 1));
+            boolean inLayout = quiet.heard.length() == 0 && quiet.getLayoutParams() == qp && qp.gravity != bottom && quiet.getParent() == group
+                    && "FrameLayout$LayoutParams".equals(asked.heard.toString().trim());
+            // inflated
+            android.view.ViewGroup inflated = (android.view.ViewGroup) android.view.LayoutInflater.from(this).inflate(R.layout.params_heard, null);
+            ParamsHeard child = (ParamsHeard) inflated.getChildAt(0);
+            android.view.ViewGroup.LayoutParams cp = child.getLayoutParams();
+            boolean fromLayout = "FrameLayout$LayoutParams".equals(child.heard.toString().trim()) && cp instanceof android.widget.FrameLayout.LayoutParams
+                    && ((android.widget.FrameLayout.LayoutParams) cp).gravity == bottom && cp.width == 7 && cp.height == 5;
+            detail = "with parameters [" + given.heard + "] " + withParams + ", made [" + bare.heard + "] [" + foreign.heard + "] " + made
+                    + ", in a layout [" + quiet.heard + "] [" + asked.heard + "] " + inLayout + ", inflated [" + child.heard + "] " + fromLayout;
+            return withParams && made && inLayout && fromLayout;
         });
     }
 
