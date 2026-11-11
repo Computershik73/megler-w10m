@@ -6737,6 +6737,9 @@ public class Main extends Activity {
      * ListFormatter.getInstance with a type and a width (Android 13; Citymapper lists a route's lines with it) over ICU
      * 60's list patterns: "and", "or" and units, in English and in Russian, by a Locale and by a ULocale; a width ICU 60's
      * data has no pattern of is the next wider one, and holds the items anyway; and no type or no width is refused.
+     * DeviceConfig (Android 10's system API, which Play services' configurator reads and listens to): the process's own
+     * flags -- set, read by type with a default, taken away, replaced as a set -- and a listener told on its executor of
+     * each change in its namespace, of what changed only, and of none once it is removed.
      */
     private void laterApis() {
         step("transition-name", () -> {
@@ -6774,6 +6777,39 @@ public class Main extends Activity {
             return "A, B, and C".equals(three) && "A and B".equals(two) && "A, B, or C".equals(either) && "A, B, C".equals(unit) && "A B C".equals(unitNarrow)
                    && "A, B и C".equals(ruAnd) && "A, B или C".equals(ruOr) && andNarrow.startsWith("A") && andNarrow.contains("B") && andNarrow.endsWith("C")
                    && orShort.startsWith("A") && orShort.contains("B") && orShort.endsWith("C") && "A, B, and C".equals(plain) && noType && noWidth;
+        });
+        step("device-config", () -> {
+            String ns = "megler_test";
+            java.util.ArrayList<String> heard = new java.util.ArrayList<>();
+            android.provider.DeviceConfig.OnPropertiesChangedListener listener = p -> {
+                StringBuilder s = new StringBuilder(p.getNamespace());
+                for (String name : new java.util.TreeSet<>(p.getKeyset())) s.append(' ').append(name).append('=').append(p.getString(name, "gone"));
+                heard.add(s.toString());
+            };
+            android.provider.DeviceConfig.addOnPropertiesChangedListener(ns, Runnable::run, listener);
+            boolean none = android.provider.DeviceConfig.getProperty(ns, "a") == null && android.provider.DeviceConfig.getInt(ns, "a", 7) == 7
+                           && android.provider.DeviceConfig.getProperties(ns).getKeyset().isEmpty();
+            boolean set = android.provider.DeviceConfig.setProperty(ns, "a", "12", false) && android.provider.DeviceConfig.setProperty(ns, "b", "true", false)
+                          && android.provider.DeviceConfig.setProperty("megler_other", "c", "x", false) && android.provider.DeviceConfig.setProperty(ns, "a", "12", false);
+            boolean read = "12".equals(android.provider.DeviceConfig.getProperty(ns, "a")) && android.provider.DeviceConfig.getInt(ns, "a", 0) == 12
+                           && android.provider.DeviceConfig.getBoolean(ns, "b", false) && android.provider.DeviceConfig.getInt(ns, "b", 5) == 5
+                           && "d".equals(android.provider.DeviceConfig.getString(ns, "zz", "d")) && android.provider.DeviceConfig.getProperty(ns, "c") == null;
+            java.util.Set<String> some = android.provider.DeviceConfig.getProperties(ns, "a", "zz").getKeyset();
+            java.util.Set<String> all = android.provider.DeviceConfig.getProperties(ns).getKeyset();
+            boolean deleted = android.provider.DeviceConfig.deleteProperty(ns, "b") && android.provider.DeviceConfig.getProperty(ns, "b") == null;
+            boolean replaced = android.provider.DeviceConfig.setProperties(new android.provider.DeviceConfig.Properties.Builder(ns).setString("a", "12").setLong("n", 5).build());
+            android.provider.DeviceConfig.Properties now = android.provider.DeviceConfig.getProperties(ns);
+            android.provider.DeviceConfig.removeOnPropertiesChangedListener(listener);
+            android.provider.DeviceConfig.setProperty(ns, "a", "13", false);
+            boolean last = "13".equals(android.provider.DeviceConfig.getProperty(ns, "a"));
+            android.provider.DeviceConfig.deleteProperty(ns, "a");
+            android.provider.DeviceConfig.deleteProperty(ns, "n");
+            android.provider.DeviceConfig.deleteProperty("megler_other", "c");
+            detail = "none " + none + " set " + set + " read " + read + " some " + some + " all " + all + " deleted " + deleted + " replaced " + replaced + " now "
+                     + new java.util.TreeSet<>(now.getKeyset()) + " n=" + now.getLong("n", 0) + " last " + last + " heard " + heard;
+            return none && set && read && some.size() == 1 && some.contains("a") && all.size() == 2 && deleted && replaced && now.getKeyset().size() == 2
+                   && now.getLong("n", 0) == 5 && last
+                   && heard.equals(java.util.Arrays.asList("megler_test a=12", "megler_test b=true", "megler_test b=gone", "megler_test n=5"));
         });
     }
 
