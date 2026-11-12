@@ -694,8 +694,16 @@ closed-port stall in both blocking and non-blocking mode. Both attempts
 reached the test's five-second deadline. With the Winsock loopback
 timeout change, the same checks returned `ECONNREFUSED` in 500 ms and
 501 ms respectively. The test also exchanged HTTP with its own loopback
-listener. All 19 network checks passed. The device-key exchange still
-needs a Transit run with the new runtime.
+listener. All 19 network checks passed.
+
+Transit with runtime 691 and GMS 26.43.30 on the same Lumia completed
+the `devicekey` VM init in 17.4 seconds. The caller waited 41.0 seconds
+in total and returned a nonempty token after `ssNative` finished, within
+the 60-second deadline. The same attempt still received HTTP 400 from
+`/auth/devicekey`, followed by `Parsing Exception` and reports that the
+device key was absent. Check-in succeeded. The run logged no FindTiles
+call, so the disappearance of Transit's weak-GPS banner does not
+establish that Google supplied a Wi-Fi position.
 
 For 26.43.30, `trace-calls-atvj` identifies the endpoint and
 `trace-calls-alkl` shows the elapsed time and return of the token call.
