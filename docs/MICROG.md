@@ -614,20 +614,68 @@ different VM address also reduces the result to 2,103 bytes. These controls
 show that changing executable bytes is sufficient to shorten the VM's
 collection, independently of Megler's syscall answers.
 
-On ARM Windows Megler now treats `libdB21738DAE92C.so` like its other
-libraries that inspect their code. It leaves the PLT alone and puts the
+On ARM Windows Megler treats DroidGuard like its other libraries that
+inspect their code. It leaves the PLT alone and puts the
 syscall at a hardware breakpoint. The same Megler syscall handler does
 the call and resumes after it. The qemu host has no hardware breakpoints
-for guest code and still uses the patched instruction. The Self-test loads
-its own ARM library under the VM's name in its scratch directory. It checks
-the original instruction and zero PLT rewrites on a host with breakpoints,
-the trap instruction on qemu, and the shim's result for both the direct
-call and a call through the PLT.
+for guest code and still uses the patched instruction.
 
-The offline controls establish one compatibility fault. Fast-refresh
-acceptance and device-key issuance still need a run on ARM Windows with the
-new loader behavior. The Android diagnostic package and its transfer files
-were removed after the comparison.
+A fresh GmsCore 26.43.30 exchange fetched VM `276FB66A...`,
+`libd4B1BB84DDE6C.so`. Its ARM syscall stub still has `svc #0` at
+`0x2e18`. Both libraries export the same DroidGuard `initNative` and
+`closeNative` JNI functions. The loader now identifies them by those
+two defined function exports in the ELF itself, so a new library name
+does not re-enable patching. The Self-test checks the identification
+using a fixture with both exports and a name of its own. It checks the
+original instruction and zero PLT rewrites on a host with breakpoints,
+the trap instruction on qemu, and the shim's result for both calls.
+
+In a separate qemu diagnostic on the first VM, an external debugger
+restored the one remaining changed instruction before JNI initialization
+and used virtual breakpoints to route each syscall through Megler's
+existing trap handler. The executable segment matched the file at the
+start of the run. The same offline program returned 6,496 bytes,
+compared with 2,227 in the patched control. All 212 syscalls went through
+Megler. This is a test harness for the offline program and does not
+exercise Windows' hardware breakpoint delivery.
+The corresponding live GmsCore run verified the new full and check-in
+responses and loaded the new VM. It stalled during initialization under
+the debugger before sending a fast request.
+
+The Android diagnostic package and its transfer files were removed after
+the comparison.
+
+**Lumia 650 with the original VM instructions.** Transit on 0.1.0.690,
+using `pristine-libdB21738DAE92C.so`, reported one syscall site at a hardware
+breakpoint and traced calls from `+0x2e18` through Megler. The previous log
+had fast-refresh errors. The pristine run had none, although it does not
+show whether a fresh fast program was accepted. The device-key request
+still failed three times with the protobuf end-group error, including once
+after a successful check-in.
+
+In 26.43.30, `atvj.b` checks HTTP status only after the response future has
+returned a parsed `jofy`. In the streaming path, `dmzh.call` reads the body
+through `dmzc.a`, and `dmzd.kk` reports a parse failure as
+`dmyc("Parsing Exception")`. The saved independent HTTP 400 response from
+the earlier qemu experiment starts with HTML. Its first byte, `0x3c`,
+looks like a protobuf end-group tag, so that response can account for the
+same error. The first Lumia log did not include the HTTP status.
+A later Transit run on the same Lumia showed three POSTs to
+`/auth/devicekey`, each followed by HTTP 400 in
+`CronetUrlRequest.j` and the same protobuf parse failure. GmsCore never
+reached the step that writes the key.
+
+Seven saved qemu request and header pairs had the same nonzero GServices
+Android ID in the `device` header and protobuf field 2, and
+`app=com.google.android.gms`. Both inspected GMS releases set field 6 to
+`missing_token` in their own request builder. The next comparison needs
+the token returned by DroidGuard for the same attempt. For 26.43.30,
+`trace-calls-atvj` identifies the endpoint and `trace-calls-alkl` can
+distinguish a null return from a token. With Cronet 157,
+`trace-calls-org.chromium.net.impl.CronetUrlRequest` shows the status
+at `j`; `trace-calls-m1.ic` shows it in the response constructor. Match
+the status to the request and parser failure. Keep only metadata from
+these traces, since they can include token prefixes.
 
 **Following it on a phone** (flags in `Pictures\Megler\diag\<package>\flags`):
 `trace-syscalls` (a library's calls by number with the path each names:
@@ -638,7 +686,8 @@ through the C library), `trace-calls-bywg` with 26.43.30 (`bvts` with
 `trace-calls-com.google.ccc.abuse.droidguard.DroidGuard` (the machine's Java:
 the flow it was made for, and `run`'s and `ss`'s results with their length).
 On an older package with hardware breakpoint support, also set
-`pristine-libdB21738DAE92C.so`; the fix selects that mode by default.
+`pristine-<library-name>` using the actual VM name. The fix selects
+that mode by default.
 Expect the loader's "left as the file has it" line with one system call
 at a hardware breakpoint, zero PLT rewrites, and no warning about falling
 back to a patched instruction. With `trace-syscalls`, calls from

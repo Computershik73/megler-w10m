@@ -378,7 +378,7 @@ one's UDF: the system call by number, or the guest's thread pointer into the
 register. A site past the breakpoints is patched as in any other library, and
 said. A sigreturn's `svc` is neither: a handler returns to this layer here,
 never through its restorer. Where the host has none (qemu's Linux), such a
-library is patched as any other. Which libraries: `lib_pristine`
+library is patched as any other. Which libraries: `mg_patch_lib_pristine`
 (`arm/mg_patch.c`); the flag `pristine-<library>` adds one, for trying. In
 `libmetasec_ov.so` that is four sites: its `syscall()` stub's `svc`, its
 `vfork`'s, and two thread-pointer reads.
