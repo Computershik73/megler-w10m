@@ -569,9 +569,10 @@ about 34 KB. These controls cover the tested JIT setting, CPU metadata and
 loading paths.
 
 The JNI trace also records whether a lookup succeeded and the caller's
-offset in the VM library. The first `ClassLoader.getParent` on Android is
-outside the VM. The common `getPackageInfo` and `generateKeyPair` lookups
-come from the same VM instruction, `0x3cff0`, on both systems. Both runs make
+offset in the VM library. The trace does not attribute the first
+`ClassLoader.getParent` on Android to the VM. The common `getPackageInfo` and
+`generateKeyPair` lookups come from the same VM instruction, `0x3cff0`, on both
+systems. Both runs make
 two attested key-generation attempts and get a `ProviderException` each
 time. After the second error, Android looks up `ServiceManager.getService`
 from `0x3cd28`, gets a binder, calls `dump` and continues with more Java
@@ -594,11 +595,39 @@ interpreter, but neither gives the reason for the branch or decodes the VM's
 result. The offline comparison uses a stand-in for GMS's RuntimeApi and does
 not test which result Google will accept.
 
-The temporary Android diagnostic package and the two VM-code transfer files
-are removed afterward. GMS caches, accounts and existing device keys are not
-edited. The remaining unresolved question is which collected signal or VM
-execution difference makes the fast-refresh response omit bytecode; no retained
-change has yet made Google accept that flow in Megler.
+**The VM responds to changes in its executable code.** Before running the
+same ARM32 program, the offline APK compares the VM's executable segment
+with the file. All 289,648 bytes agree on Android. The Megler run differs
+at 556 bytes with ordinary patching and at four with
+`no-plt-rewrite-libdB21738DAE92C.so`. Those four bytes are at `0x2e18`,
+where Megler turns the VM's ARM `svc #0` (`0xef000000`) into a `udf`
+(`0xe7f00af6`) so that Megler, rather than the host kernel, does the
+Android call. Megler returns 2,228 bytes in both runs.
+
+The same APK on the Mi 4c returns 34,018 bytes with the original code. It
+returns 2,104 bytes with that exact replacement in place, while the
+diagnostic's signal handler routes all eleven calls at that instruction
+through Android's own syscall entry and returns their results to the VM.
+When it installs the replacement and then restores the instruction before
+running, the result is 33,920 bytes. An equivalent Thumb instruction at a
+different VM address also reduces the result to 2,103 bytes. These controls
+show that changing executable bytes is sufficient to shorten the VM's
+collection, independently of Megler's syscall answers.
+
+On ARM Windows Megler now treats `libdB21738DAE92C.so` like its other
+libraries that inspect their code. It leaves the PLT alone and puts the
+syscall at a hardware breakpoint. The same Megler syscall handler does
+the call and resumes after it. The qemu host has no hardware breakpoints
+for guest code and still uses the patched instruction. The Self-test loads
+its own ARM library under the VM's name in its scratch directory. It checks
+the original instruction and zero PLT rewrites on a host with breakpoints,
+the trap instruction on qemu, and the shim's result for both the direct
+call and a call through the PLT.
+
+The offline controls establish one compatibility fault. Fast-refresh
+acceptance and device-key issuance still need a run on ARM Windows with the
+new loader behavior. The Android diagnostic package and its transfer files
+were removed after the comparison.
 
 **Following it on a phone** (flags in `Pictures\Megler\diag\<package>\flags`):
 `trace-syscalls` (a library's calls by number with the path each names:
@@ -608,6 +637,12 @@ through the C library), `trace-calls-bywg` with 26.43.30 (`bvts` with
 26.41.31: the refusal, and the answer's extra bytes), and
 `trace-calls-com.google.ccc.abuse.droidguard.DroidGuard` (the machine's Java:
 the flow it was made for, and `run`'s and `ss`'s results with their length).
+On an older package with hardware breakpoint support, also set
+`pristine-libdB21738DAE92C.so`; the fix selects that mode by default.
+Expect the loader's "left as the file has it" line with one system call
+at a hardware breakpoint, zero PLT rewrites, and no warning about falling
+back to a patched instruction. With `trace-syscalls`, calls from
+`libdB21738DAE92C.so+0x2e18` should still reach Megler.
 For 26.43.30 also use `trace-calls-byud` to locate the creation-response
 parser's failure relative to those returns. Keep the sequence for the same
 flow and thread: the "full" machine's return, the fast-refresh request,
