@@ -381,6 +381,14 @@ static const ElfW(Sym) *lib_lookup(const mg_lib *lib, const char *name, u32 gh, 
     return NULL;
 }
 
+#if MG_ARCH_ARM32
+bool mg_ld_exports_function(const mg_lib *lib, const char *name)
+{
+    const ElfW(Sym) *s = lib_lookup(lib, name, gnu_hash(name), sysv_hash(name));
+    return s && ELF_ST_TYPE(s->st_info) == STT_FUNC;
+}
+#endif
+
 static mg_addr sym_address(const mg_lib *lib, const ElfW(Sym) *s)
 {
     mg_addr a = (mg_addr)lib->base + s->st_value;

@@ -106,6 +106,11 @@ u8 *mg_island_alloc(mg_lib *lib, mg_addr near_addr, size_t size, size_t reach);
 
 /* arm/mg_patch.c: everything done to one executable segment before it is made executable. */
 void mg_patch_segment(mg_lib *lib, u8 *seg, size_t size);
+#if MG_ARCH_ARM32
+/* A defined function of this ELF alone. Does not run an IFUNC resolver. */
+bool mg_ld_exports_function(const mg_lib *lib, const char *name);
+bool mg_patch_lib_pristine(const mg_lib *lib);
+#endif
 /* How many thread-pointer reads a file's executable bytes hold, to size the islands before mapping. */
 u32 mg_patch_count_tp_reads(const u8 *bytes, size_t size);
 /* A stub for an import nothing provides: logs the name when called, returns 0. In the library's island. */

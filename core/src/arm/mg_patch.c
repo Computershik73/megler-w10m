@@ -482,17 +482,16 @@ bool mg_patch_tp_target(mg_addr pc, int *reg, mg_addr *target)
  * never through its restorer. Where the host has no breakpoints (qemu's Linux), such a library is patched as any other.
  * The flag pristine-<library> makes another library so.
  */
-static bool lib_pristine(const mg_lib *lib)
+bool mg_patch_lib_pristine(const mg_lib *lib)
 {
-    static const char *const names[] = {
-        "libmetasec_ov.so",
-        /* DroidGuard returns a shorter result if its code changes, including when its ARM syscall stub becomes a UDF. */
-        "libdB21738DAE92C.so",
-    };
     char flag[96];
-    size_t i;
-    for (i = 0; i < MG_COUNT(names); i++)
-        if (!strcmp(lib->name, names[i])) return true;
+    if (!strcmp(lib->name, "libmetasec_ov.so")) return true;
+    /*
+     * DroidGuard returns a shorter result if its code changes, including when its ARM syscall stub becomes a UDF.
+     * The server can send a VM with another library name. Both VMs export these same JNI functions.
+     */
+    if (mg_ld_exports_function(lib, "Java_com_google_ccc_abuse_droidguard_DroidGuard_initNative") &&
+        mg_ld_exports_function(lib, "Java_com_google_ccc_abuse_droidguard_DroidGuard_closeNative")) return true;
     snprintf(flag, sizeof(flag), "pristine-%s", lib->name);
     return mg_flag(flag);
 }
@@ -577,7 +576,7 @@ static void watch_segment(mg_lib *lib, u8 *seg, size_t size)
 
 void mg_patch_segment(mg_lib *lib, u8 *seg, size_t size)
 {
-    if (lib_pristine(lib) && mg_breakpoints_available()) {
+    if (mg_breakpoints_available() && mg_patch_lib_pristine(lib)) {
         watch_segment(lib, seg, size);
         return;
     }

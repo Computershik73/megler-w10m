@@ -44,6 +44,9 @@
 #include "../src/jni/mg_jni.h"
 #include "../src/jni/mg_jni_loop.h"
 #include "../src/ld/mg_ld.h"
+#if MG_ARCH_ARM32
+#include "../src/ld/mg_ld_internal.h"
+#endif
 #include "../src/ndk/mg_egl.h"
 #include "../src/ndk/mg_audio.h"
 #include "../src/ndk/mg_media.h"
@@ -5870,32 +5873,20 @@ static void test_small_pc_report(mg_lib *lib, const char *what)
 #endif
 
 #if MG_ARCH_ARM32
-static void test_droidguard_syscall(const char *libdir, const char *scratch)
+static void test_droidguard_syscall(const mg_lib *basic)
 {
-    char source[1024], named[1024];
-    size_t size;
-    u8 *file;
     mg_lib *lib;
     mg_ld_stats stats;
     mg_addr svc, target;
     bool watched = mg_breakpoints_available();
-    bool copied;
     int before = mg_breakpoint_count();
 
     say("guest library: DroidGuard's syscall with its original instruction where the host can watch it");
-    /* Give our one-syscall fixture the VM's name only inside the test's scratch directory. */
-    snprintf(source, sizeof(source), "%s/libt_pristine.so", libdir);
-    snprintf(named, sizeof(named), "%s/libdB21738DAE92C.so", scratch);
-    file = mg_file_read_all(source, &size);
-    CHECK(file != NULL);
-    if (!file) return;
-    copied = mg_file_write_all(named, file, size);
-    free(file);
-    CHECK(copied);
-    if (!copied) return;
-    lib = mg_ld_load_file(named);
+    CHECK(!mg_patch_lib_pristine(basic));
+    lib = mg_ld_load("libt_pristine.so");
     CHECK(lib != NULL);
     if (!lib) return;
+    CHECK(mg_patch_lib_pristine(lib));
     CHECK(mg_ld_init(lib));
     svc = (mg_addr)SYM(lib, "t_pristine_pid");
     CHECK(svc != 0 && (svc & 3) == 0);
@@ -5974,7 +5965,7 @@ static void test_guest(const char *libdir, const char *scratch)
 #endif
 
 #if MG_ARCH_ARM32
-    test_droidguard_syscall(libdir, scratch);
+    test_droidguard_syscall(basic);
     /* Both ISAs must return the shim pid (4242), never the host kernel's pid.
      * Literal r7 loads and a 4-byte-aligned guest sp reproduce Chromium's stub. */
     {
