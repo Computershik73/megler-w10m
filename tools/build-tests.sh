@@ -232,6 +232,7 @@ mapfile -t ZSRCS < <(cd "$ROOT" && find core/third_party/zlib -maxdepth 1 -name 
 if [ "$MODE" = arm ]; then
   # The guest libraries again when any of their sources is newer than the first of them build-guest.sh makes.
   { [ -f "$ROOT/build/guest/armeabi-v7a/libt_basic.so" ] \
+    && [ -f "$ROOT/build/guest/armeabi-v7a/libt_pristine.so" ] \
     && [ -z "$(find "$ROOT/core/tests/guest" -type f -newer "$ROOT/build/guest/armeabi-v7a/libt_basic.so" -print -quit)" ]; } || bash "$ROOT/tools/build-guest.sh" > /dev/null
   WROOT="/mnt/${ROOT:1:1}${ROOT:2}"
   cat > "$ROOT/build/tests-arm.sh" <<EOF

@@ -484,7 +484,11 @@ bool mg_patch_tp_target(mg_addr pc, int *reg, mg_addr *target)
  */
 static bool lib_pristine(const mg_lib *lib)
 {
-    static const char *const names[] = { "libmetasec_ov.so" };
+    static const char *const names[] = {
+        "libmetasec_ov.so",
+        /* DroidGuard returns a shorter result if its code changes, including when its ARM syscall stub becomes a UDF. */
+        "libdB21738DAE92C.so",
+    };
     char flag[96];
     size_t i;
     for (i = 0; i < MG_COUNT(names); i++)

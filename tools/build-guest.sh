@@ -113,6 +113,7 @@ if [ "$ABI" = armeabi-v7a ]; then
   "$CLANG" "${COMMON[@]}" -mthumb -Wl,--hash-style=both   -Wl,-soname,libt_svc.so -o "$(w "$OUT/libt_svc.so")" "$(w "$SRC/t_svc.c")" "${SYS[@]}"
   "$CLANG" "${COMMON[@]}" -mthumb -Wl,--hash-style=both   -Wl,-soname,libt_svc_diag.so -o "$(w "$OUT/libt_svc_diag.so")" "$(w "$SRC/t_svc.c")" "${SYS[@]}"
   "$CLANG" "${COMMON[@]}" -marm -Wl,--hash-style=both   -Wl,-soname,libt_svc_arm.so -o "$(w "$OUT/libt_svc_arm.so")" "$(w "$SRC/t_svc.c")" "${SYS[@]}"
+  "$CLANG" "${COMMON[@]}" -marm -Wl,--hash-style=both   -Wl,-soname,libt_pristine.so -o "$(w "$OUT/libt_pristine.so")" "$(w "$SRC/t_pristine.c")" "${SYS[@]}"
 elif [ "$ABI" = arm64-v8a ]; then
   # ARM64's svc 0 led out to the core through pieces of island (arm64/mg_patch_arm64.c), and the flag trap-svc's traps.
   "$CLANG" "${COMMON[@]}" -Wl,--hash-style=both   -Wl,-soname,libt_svc.so -o "$(w "$OUT/libt_svc.so")" "$(w "$SRC/t_svc.c")" "${SYS[@]}"
