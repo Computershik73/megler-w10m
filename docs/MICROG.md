@@ -668,14 +668,38 @@ reached the step that writes the key.
 Seven saved qemu request and header pairs had the same nonzero GServices
 Android ID in the `device` header and protobuf field 2, and
 `app=com.google.android.gms`. Both inspected GMS releases set field 6 to
-`missing_token` in their own request builder. The next comparison needs
-the token returned by DroidGuard for the same attempt. For 26.43.30,
-`trace-calls-atvj` identifies the endpoint and `trace-calls-alkl` can
-distinguish a null return from a token. With Cronet 157,
+`missing_token` in their own request builder.
+
+In a further Lumia run, all three device-key token calls took just over
+60 seconds (60.083, 60.024 and 60.031). Their encoded returns contained
+an error marker. Each return was immediately followed by the device-key
+POST and HTTP 400. GmsCore's `byxc.c` waits up to 60 seconds for this call
+and encodes an error into the token on timeout. In a separate run on the
+same build, the worker thread spent 136–141 seconds between entering
+`DroidGuard.initNative` and returning from `DroidGuard.init`. Once that
+thread got to `ssNative`, each of five calls completed within 13 ms.
+
+Tracing the calls inside `DroidGuard` located the delay on the Lumia. A
+`Socket` constructor for TCP loopback port 7810 spent 130.328 seconds
+before the worker handled its exception. That `init` took 140.068 seconds
+overall. The next `init` reached the same constructor within 155 ms.
+The phone's old network self-test already recorded about 127 seconds
+for a blocking connect to a closed loopback port. A different DroidGuard
+run read about 186 MB from `GmsCore.apk` in 22 seconds, so that read alone
+cannot explain the timeout. A successful device-key request with a
+completed token still needs verification.
+
+For 26.43.30, `trace-calls-atvj` identifies the endpoint and
+`trace-calls-alkl` shows the elapsed time and return of the token call.
+With Cronet 157,
 `trace-calls-org.chromium.net.impl.CronetUrlRequest` shows the status
 at `j`; `trace-calls-m1.ic` shows it in the response constructor. Match
 the status to the request and parser failure. Keep only metadata from
 these traces, since they can include token prefixes.
+Use `trace-calls-within-com.google.ccc.abuse.droidguard.DroidGuard` to time
+the loopback probe inside `init`. Check for the socket exception well before
+the 60-second deadline, then for a device-key token without the encoded
+error, the response status and the stored key.
 
 **Following it on a phone** (flags in `Pictures\Megler\diag\<package>\flags`):
 `trace-syscalls` (a library's calls by number with the path each names:
