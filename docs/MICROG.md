@@ -225,10 +225,9 @@ same, and there it was followed through (`trace-calls-within-com.google.ccc.
 abuse.droidguard`, `trace-syscalls`, `trace-files-libdB`, `trace-calls-bvts`,
 `trace-calls-java.io.PipedOutputStream`):
 
-- nothing of Megler's fails: the machine's classes load, its library loads
-  and runs, `initNative` and `ssNative` return, every call it makes of Java
-  through JNI and of the system is answered, and its results are what
-  DroidGuard's results are, protocol buffers of 1 to 2 KB ("DroidGuard.ss
+- no class-loading or native execution failure was observed on this path:
+  the machine's classes load, its library loads and runs, `initNative` and
+  `ssNative` return, and it produces results of 1 to 2 KB ("DroidGuard.ss
   returns [B of 1898: 0a06..."), the "full" one going to Google in the "fast"
   request;
 - Google's server answers that request with a signed answer that holds no
@@ -267,11 +266,368 @@ then with its RSA one, unexpired, together with a `/sys/fs/selinux/enforce`
 that says 1. The machine took both: it read the file, its pairs were made,
 and its "full" result grew from 1898 to 3750 bytes with their chains in it.
 Google's answers were the same: no "fast" program, an empty extra, and the
-device key's "Error 400". So the server's answer is its judgement of what
-the machine sees, and what it sees is what Megler is: a key store with no
-trusted environment to attest from, no verified boot, a device of no maker's.
-Changing that would take Megler claiming a hardware-backed key store and a
-device it is not, which it does not do.
+device key's "Error 400". These experiments did not fix either failure.
+
+**What this establishes, and what it does not.** The immediate failure is
+the program-creation response's missing `byteCode`, after native execution
+of the "full" program. In 26.41.31, `bvre.a` obtains and runs "full", puts
+its result in the "fast" request, and calls `bvrp.a` again. That parser
+verifies the response signature through `bvro.a` before checking the
+`byteCode` presence bit; a failed signature has a different exception,
+"Creation response signature verification failed." The `byteCode` error
+therefore does not mean a missing native entry point or a bytecode
+interpreter exception. The device-key protobuf error is a separate failure
+to parse an HTML response; it does not by itself identify why that request
+was rejected.
+
+Successful native returns and the size of the results do not establish
+that Megler answered every probe with Android's semantics. Neither response
+explains Google's decision. The missing attestation and other environment
+differences above are candidates, not an established root cause; the two
+software-attestation experiments do not prove that hardware attestation is
+the only remedy. No change has been demonstrated to obtain a device key or
+a Google Wi-Fi location fix. Play Integrity and SafetyNet were not validated
+by these runs.
+
+**Rechecked with 26.43.30, 2026-11-11.** A fresh qemu run on the current
+integration base, with versionCode 264330027 (190300-1006944126,
+armeabi-v7a), reproduces the same path. The APK was obtained from
+[APK Cafe](https://apk.cafe/download?file_id=3543596/google-play-services),
+SHA-256 `5e4c6fc21493dfa5113bbb7b5194a972649dfdc7e3e08e772393702d2033da8c`;
+Android's `apksigner verify --print-certs` verifies its signature and reports
+certificate SHA-256 `7ce83c1b71f3d572fed04c8d40c5cb10ff75e6d87d9df6fbd53f0468c2905053`.
+This is the same version and variant as the phone log, not an APK extracted
+from the phone. Its decompiled `byts.a` has the full-to-fast sequence above,
+and `byud.a` has the same signature and field-presence checks as `bvrp.a`.
+The fresh run downloads the same AA6305A5... VM, loads its native library,
+and returns 1960 bytes from `DroidGuard.ss`; `byuc.a` then returns 1 (the
+fast response's signature verifies), followed on that thread by
+`bywg.<init>(Ljava/lang/String;[B)V "byteCode" [B of 0`. Check-in succeeds.
+The result is also reproduced with 26.41.31 on fresh data (1939 bytes from
+the full VM, followed by `bvts` with the same missing field and empty extra).
+
+The same 26.43.30 APK was then hosted by a separate diagnostic app under
+qemu, through `MG_JAVA_GMS_APK`, with Google Services Framework beside it.
+The client binds the real DroidGuard service and invokes GMS's own
+`arcf` (`AppCertManager`) on a worker thread. The service connects, the full
+VM returns 1921 bytes, the fast response's signature verifies, and its
+missing `byteCode` throws as above. Check-in succeeds; the Android ID read
+by `brtb.d(context)`, which `arcf.b` uses, is nonzero. The device-key
+response is 1664 bytes starting with HTML, followed by `dmyc: Parsing
+Exception` and the missing device-key file, as on the phone. This reproduces
+the failure with GMS inside a client's process, not just as the main app.
+
+One further candidate was tested in that client on separate fresh data.
+Megler reports its fixed Google certificate (`f0fd6c5b...`) for GMS, whereas
+this APK's certificate is `7ce83c1b...`. Before binding, the probe replaced
+the hosted GMS `PackageInfo.signatures` and `signingInfo` with the APK's
+actual signer, read by `ApkSigner.fromSigningBlock`; the probe logs that the
+replacement was applied. The full VM then returned 1956 bytes, but the
+verified fast response still lacked `byteCode` and the device-key response
+was still 1664 bytes of HTML. Replacing those two fields alone did not fix
+the failure. The experiment is confined to the diagnostic client; no
+certificate substitution change is kept in the runtime.
+
+**The complete full-to-fast exchange.** The opt-in diagnostic app
+`core/tests/app/droidguard` captures GmsCore 264330027's request protobufs
+(`byvy.a`), the exact response bodies and signatures given to its verifier
+(`byuc.a`), and the full VM's result (`byun.c`). Its hooks call the original
+methods and return their results unchanged. The hook bridge is loaded in a
+child DEX scope, outside the parent class path the VM searches. The app
+captures at most 128 calls, with at most 2 MiB per byte array, in its own
+`files/capture` folder. It is built with the other Java test apps and is run
+explicitly, not by the normal suites; it needs internet access and Google's
+26.43.30 APK mounted through `MG_JAVA_GMS_APK`.
+
+On fresh test data, an independent protobuf reader finds the full VM's 1882
+bytes unchanged in field 10 of the fast request. The fast response is
+exactly 30 bytes: field 2 is an empty URL, field 3 the 20-byte VM checksum,
+field 4 is 604800 seconds, and field 6 is true. Field 1 (`byteCode`) is absent.
+OpenSSL independently verifies its SHA-256/RSA signature with the public key
+from `byuc`, so this is not just Megler's signature verifier accepting it.
+GMS carries field 6 to `bytx.d`; after parsing, `byts.a` would throw `bytt`,
+whose message is "Server requested the module to retry the full collection."
+Its parser first throws for the missing bytecode, however. This retry flag
+does not identify the signal the server objected to.
+
+The full reply's program has a ten-second lifetime. In a timed run the reply
+arrives at elapsed time 88545 ms and the fast request starts at 89335 ms:
+790 ms later, including 428 ms running the VM. Expiry of that window does
+not explain this failure. Another fresh run uses
+`no-plt-rewrite-libdB21738DAE92C.so`; the linker confirms zero PLT entries
+rewritten, but the same verified 30-byte response without bytecode returns.
+Leaving this library's PLT unchanged alone does not fix it. The main payload
+of the VM result is opaque in these captures; its bytes and the retry flag
+do not by themselves establish which environment check failed.
+
+To repeat the capture under qemu after building the test app, with the same
+heavy-job lock and `MEGLER_JOBS=4` as any test run:
+
+```sh
+data=$(mktemp -d /tmp/megler-droidguard.XXXXXX)
+MG_JAVA_GMS_APK=/path/to/GmsCore.apk \
+MG_JAVA_GSF_APK=/path/to/GoogleServicesFramework.apk \
+qemu-arm -L /usr/arm-linux-gnueabihf /path/to/mg_tests --java app \
+  /path/to/droidguard.apk "$data" /path/to/android-root - \
+  0 720x1280@320 wait:120000
+python3 -I tools/droidguard-inspect.py \
+  "$data/apps/megler.test.droidguard/data/files/capture"
+```
+
+`tools/droidguard-inspect.py` checks field 10 against the preceding VM result
+on the same thread and describes the response's fields without printing
+device identifiers or the token. It reports mismatches and malformed
+captures as errors. A successful inspection means the capture is consistent,
+not that DroidGuard obtained a fast program. Instrumentation may affect the
+VM's observations; a proposed fix must also pass an uninstrumented run.
+
+**The device-key token and an independent HTTP submission.** A separate
+fresh 26.43.30 client run captures `alkl.b("devicekey", map)` and the `jofz`
+message passed to `atvj.b`, without the native-memory inspection used in
+other experiments. The flow downloads its own signed program, initializes
+and runs it, and returns a non-null 2996-byte base64 token. The independent
+protobuf reader finds that token unchanged in field 1 of the 3047-byte
+request. The request also contains a nonzero Android ID, a session nonce,
+`missing_token`, and SDK/GMS version metadata. A nonempty token is therefore
+being sent; the fast-program failure alone does not establish that the
+device-key request has no DroidGuard token.
+
+In another fresh run, the diagnostic hook retains the device-key request
+before calling the original network method and throws deliberately, so GMS
+does not submit it. Its first submission is instead by WSL's `curl`, over
+HTTP/1.1, with the captured protobuf and GMS headers (`app`, `gmscoreFlow`,
+`gmsversion`, `device`, and `Content-Type: application/x-protobuf`). That
+3022-byte request, carrying a new 2971-byte token, gets HTTP 400 and 1664
+bytes of Google's HTML error page too. This is not a replay of an already
+submitted token. The alternate client changes HTTP/TLS defaults and has no
+successful Android control; this does not certify every detail of Megler's
+transport. It does reproduce the rejection outside that transport.
+
+Both experiments clear only the diagnostic client's `arcf` retry timestamp
+to make it attempt the request during the short test. They neither replace
+the token nor change the keystore, package certificate or VM's answers. No
+runtime change from these experiments is retained. The server's reason for
+rejecting the request remains unknown; no device-key or Wi-Fi-positioning
+fix has been demonstrated.
+
+**Signing-certificate rotation changes the interpretation of that experiment.**
+The same APK's v3 signing block has proof-of-rotation attribute `0x3ba06f8c`:
+its first certificate hashes to
+`f0fd6c5b410f25cb25c3b53346c8972fae30f8ee7411df910480ad6b2d60db83`,
+and its next to the `7ce83c1b...` signer above. This is the
+[AOSP v3 rotation structure](https://source.android.com/docs/security/features/apksigning/v3).
+Android's legacy [`PackageInfo.signatures`](https://developer.android.com/reference/android/content/pm/PackageInfo#signatures)
+returns the oldest certificate after rotation. The native trace asks for
+`GET_SIGNATURES` (64), so Megler's old `f0fd6c5b...` value matches that API's
+expected certificate for this APK. Replacing it with the current signer was
+an experiment, not a demonstrated correction of the legacy field. It must
+not be used as evidence that the old certificate caused DroidGuard's failure.
+This does not validate the separate `SigningInfo` API's rotation semantics.
+
+**Native field reads and the hosted package's permissions.** A temporary
+JNI field trace on 26.43.30 shows that the full VM asks for GmsCore's
+`PackageInfo` with `GET_PERMISSIONS`, then reads `requestedPermissions` as
+null. The service host parsed components but never those manifest tags;
+`GET_PERMISSIONS` could also take its basic version/signature-only path.
+
+The host now reads `uses-permission`, `uses-permission-sdk-23` and
+`uses-permission-sdk-m` outside the application, including declarations after
+it, deduplicates names, and respects `maxSdkVersion` as the client's manifest
+reader does. `GET_PERMISSIONS` asks for the complete manifest. Its granted
+bits agree with the hosted package context's existing permission policy.
+The gms-host/gms-own fixture checks this on a cold query: the hosted
+package's own three permissions, one duplicate, an expired declaration,
+and one declaration after the application. The new check fails against the
+old framework (59 checks, 1 failed) and passes with the change (59 checks,
+0 failed). A fresh, uninstrumented hosted GMS run with the changed framework
+still throws `bywg("byteCode", empty)` after the full VM returns 1888 bytes;
+its AppCertManager still fails to obtain a key.
+
+This corrects an observed answer to the VM, but is not a demonstrated
+DroidGuard fix. In separate client experiments, supplying all 401 applicable
+permissions from the exact GMS APK still gets the verified 30-byte fast
+response without bytecode; supplying both those permissions and the APK's
+actual signer gets the same response. Neither experiment obtains a device
+key. The native field instrumentation and certificate substitution are not
+retained in the runtime.
+
+A further fresh run changes `Display.getType()` from its stub's
+`TYPE_UNKNOWN` (0) to `TYPE_INTERNAL` (1), using the populated permissions
+and keeping the correct legacy signing certificate. The hook logs each
+replacement, but the fast response is still verified, 30 bytes long and
+without bytecode, and no device key is obtained. That answer alone does not
+fix either failure; the display override is confined to the diagnostic app.
+
+**What a Spatula header proves.** In 26.43.30, `arcd.a(package)` reads
+the key through `arcg.b()` (`device_key` on disk), attempts `arcf.b()` if it is missing,
+and can still return a nonempty header if no key was obtained. Its base64
+protobuf (`hyfk`) then carries only the app/certificate message in field 1
+and a device identifier in field 3. With a device key it additionally sets field 2
+to the HMAC-SHA256 from `arcf.c`, and fields 4 and 5 to the key metadata.
+Thus the presence of `X-Goog-Spatula` is not a signing check: look for its
+nonempty field 2. That establishes local MAC generation, not server
+acceptance or a location fix. Do not copy a captured header or its device
+identifier into the repository.
+
+**Reference Android and attestation errors (2026-11-12).** On the explicitly
+selected rooted Android 11 reference device, GMS 26.26.34 (262634022) reports
+both signing certificates in its rotation history and the oldest certificate
+through the legacy API, as above. A scoped EC key-generation probe with a public
+test challenge fails with `ProviderException` caused by
+`android.security.KeyStoreException`, internal error `-100` (unimplemented).
+The probe removes only its own temporary alias and checks that it is absent.
+No existing device key is read or removed.
+
+That device nevertheless completes a fresh full/fast exchange. Its ordinary
+Cronet request fails with `ERR_CERT_INVALID` (internal code -207); standard
+Android HTTPS to the same host validates TLS. With the user's explicit approval,
+a temporary Frida agent sends the original GMS-built program requests through
+that verified HTTPS client, retaining Google's protobuf and RSA verification.
+Neither TLS verification nor the VM result is replaced. The full response has
+79,460 bytes of bytecode and a 10-second TTL. The native VM returns 24,987 bytes;
+those exact bytes become the fast request's field 10. Google returns a verified
+fast response with 82,668 bytes of bytecode, TTL 604800, and no retry-full request.
+The VM observes the `-100` attestation failure during this successful exchange.
+This rules out unsupported attestation alone as an explanation of Megler's
+failure; the Android ABI and GMS release differ from the phone's ARM32 26.43.30.
+Only class names, packet structure, lengths and verification results are
+exported from this reference exchange, not its requests, tokens or identifiers.
+
+Megler's attestation failure originally had no cause, and the generated
+`KeyStoreException` discarded the code and message. The provider now attaches
+`KeyStoreException(-100, "Not implemented")`; the exception preserves its code
+and message and classifies that failure as permanent, system-wide and
+`ERROR_UNIMPLEMENTED`, following the
+[Android exception mapping](https://android.googlesource.com/platform/frameworks/base/+/refs/heads/main/keystore/java/android/security/KeyStoreException.java).
+Other codes currently use the public API's fallback classification, rather than a complete KeyMint error table. The data app's
+`keystore-certificates` test fails before the change (`error=0`, 276 steps
+passed, one failed) and passes afterward (`error=-100`, 277 steps passed,
+445 runner checks, zero failed). A fresh uninstrumented 26.43.30 qemu run still
+fails the fast-response bytecode check after the full VM returns 2057 bytes
+(2064 with Android 14 error wording),
+and device-key acquisition still fails. This is an Android API compatibility
+fix, not a demonstrated DroidGuard fix.
+
+**Matching the reference release and ARM32 program.** The opt-in capture app
+also supports GMS 26.26.34 (262634022), using `bohf.a`, `bofj.a`, and
+`bofu.c`/`bofu.b` for the same pass-through captures. Under qemu this release
+also selects full refresh: the VM returns 2134 bytes, those exact bytes become
+fast field 10, and Google returns the same verified 30-byte response without
+bytecode. Its full/fast timings are 245 ms for the VM and 72 ms for the fast
+request. Changing GMS releases therefore does not remove the failure.
+
+A separate offline diagnostic APK, with no network permission and its own
+storage, runs the exact ARM32 VM APK and full bytecode from that qemu exchange
+on the reference device. The first run returns 22,957 bytes on Android and
+2205 bytes in Megler. A bounded JNI-name tracer in that APK observes additional
+collection on Android; the exact result length varies with state and tracing
+(about 33.9 KB in later Android runs). It exports only class/method/field names,
+signatures, lookup success, and result lengths. It never exports the result.
+The comparison uses no GMS private storage. Matching SDK 30 and the two observed
+unavailable API lookups (`getDeviceId` and `isTransientFailure`) inside the
+isolated Megler diagnostic still returns only 2129 bytes. Those experimental
+API overrides are not runtime fixes and are not retained.
+
+A separate offline experiment supplies a simulated SELinux status file containing
+`1`: the VM's `fstatat64` and `openat` then succeed, but it still returns just
+2124 bytes. The simulated file is not retained, since it would not establish
+SELinux enforcement on Windows. The native property trace finds requests for
+`ro.boot.verifiedbootstate` and `ro.boot.vbmeta.digest`; both are absent in
+Megler and their values are empty on the reference device. This observation
+alone does not establish equal native property-presence semantics.
+The smaller result
+alone does not identify the failed signal or establish a server verdict for the
+offline run; it supplies a reproducible native-collection comparison independent
+of GMS version, VM architecture and network transport.
+
+**Validation after the attestation-cause fix (2026-11-12).** With all temporary
+native tracing and simulated answers removed, `tools/build-tests.sh arm` and
+`tools/build-tests.sh win` both finish with exit code 0 and zero failed checks.
+ARM's main runs report 8751 and 8910 checks; Windows reports 8210 and 8332.
+The data app passes all 277 steps on both runs, including the strengthened
+keystore assertion (445 and 460 runner checks). Both suites run serially under
+the shared heavy-build lock with `MEGLER_JOBS=4`. Local logs are
+`build/droidguard-keystore-arm.log`, `build/droidguard-keystore-win.log` and
+`build/droidguard-keystore-exit.txt`. These are compatibility-suite results;
+the real GMS reproductions above still fail DroidGuard and device-key issuance.
+
+A subsequent offline qemu `-strace` run with `trace-hooks`, on the same retained
+runtime, returns 2131 bytes and exits normally. It emits no guest hook-code
+trace and shows no direct host-kernel opens of the three inspected paths
+(`/dev/binder`, `/sys/fs/selinux/enforce`, `/proc/cpuinfo`). This limited check
+does not demonstrate a generated-code or syscall-interception failure. It is
+not a full audit of all kernel calls or of the VM's environment checks.
+
+**Comparing the same signed APK on Android and Megler.** Later offline runs
+use the same signed diagnostic APK on both systems. The app verifies its
+73,066-byte program at runtime and both copies contain the same 293,088-byte
+ARM32 native library. Android returns about 33.9 KB and Megler about 2.2 KB.
+Turning off Megler's JIT or matching the reference's reported CPU capabilities
+and core count leaves Megler's result near 2.2 KB. Compressing the native entry
+in the VM APK forces the Android run to extract the library and still gives
+about 34 KB. These controls cover the tested JIT setting, CPU metadata and
+loading paths.
+
+The JNI trace also records whether a lookup succeeded and the caller's
+offset in the VM library. The trace does not attribute the first
+`ClassLoader.getParent` on Android to the VM. The common `getPackageInfo` and
+`generateKeyPair` lookups come from the same VM instruction, `0x3cff0`, on both
+systems. Both runs make
+two attested key-generation attempts and get a `ProviderException` each
+time. After the second error, Android looks up `ServiceManager.getService`
+from `0x3cd28`, gets a binder, calls `dump` and continues with more Java
+queries. Megler proceeds to package checks without that lookup. Android
+generates a non-attested key much later in the trace. The order does not
+establish that this is an immediate fallback from either attestation error.
+
+The early feature-query results agree in call order. The primary display's
+type and flags differ. In the isolated APK, setting the test screen to the
+reference's dimensions and supplying its type and flags still gives 2,229
+bytes in Megler. With the Megler type and flags supplied to the Android run
+the VM returns 33,899 bytes. The changes to those answers were confined to
+the diagnostic APK, which has no network permission.
+
+Android CPU samples and qemu instruction coverage also show that Android
+enters native routines at `0xd966` and `0xdaf8` that are absent from the
+Megler run. The sampling and coverage methods measure different things.
+Together with the JNI sequence they give points to investigate in the
+interpreter, but neither gives the reason for the branch or decodes the VM's
+result. The offline comparison uses a stand-in for GMS's RuntimeApi and does
+not test which result Google will accept.
+
+**The VM responds to changes in its executable code.** Before running the
+same ARM32 program, the offline APK compares the VM's executable segment
+with the file. All 289,648 bytes agree on Android. The Megler run differs
+at 556 bytes with ordinary patching and at four with
+`no-plt-rewrite-libdB21738DAE92C.so`. Those four bytes are at `0x2e18`,
+where Megler turns the VM's ARM `svc #0` (`0xef000000`) into a `udf`
+(`0xe7f00af6`) so that Megler, rather than the host kernel, does the
+Android call. Megler returns 2,228 bytes in both runs.
+
+The same APK on the Mi 4c returns 34,018 bytes with the original code. It
+returns 2,104 bytes with that exact replacement in place, while the
+diagnostic's signal handler routes all eleven calls at that instruction
+through Android's own syscall entry and returns their results to the VM.
+When it installs the replacement and then restores the instruction before
+running, the result is 33,920 bytes. An equivalent Thumb instruction at a
+different VM address also reduces the result to 2,103 bytes. These controls
+show that changing executable bytes is sufficient to shorten the VM's
+collection, independently of Megler's syscall answers.
+
+On ARM Windows Megler now treats `libdB21738DAE92C.so` like its other
+libraries that inspect their code. It leaves the PLT alone and puts the
+syscall at a hardware breakpoint. The same Megler syscall handler does
+the call and resumes after it. The qemu host has no hardware breakpoints
+for guest code and still uses the patched instruction. The Self-test loads
+its own ARM library under the VM's name in its scratch directory. It checks
+the original instruction and zero PLT rewrites on a host with breakpoints,
+the trap instruction on qemu, and the shim's result for both the direct
+call and a call through the PLT.
+
+The offline controls establish one compatibility fault. Fast-refresh
+acceptance and device-key issuance still need a run on ARM Windows with the
+new loader behavior. The Android diagnostic package and its transfer files
+were removed after the comparison.
 
 **Following it on a phone** (flags in `Pictures\Megler\diag\<package>\flags`):
 `trace-syscalls` (a library's calls by number with the path each names:
@@ -281,6 +637,20 @@ through the C library), `trace-calls-bywg` with 26.43.30 (`bvts` with
 26.41.31: the refusal, and the answer's extra bytes), and
 `trace-calls-com.google.ccc.abuse.droidguard.DroidGuard` (the machine's Java:
 the flow it was made for, and `run`'s and `ss`'s results with their length).
+On an older package with hardware breakpoint support, also set
+`pristine-libdB21738DAE92C.so`; the fix selects that mode by default.
+Expect the loader's "left as the file has it" line with one system call
+at a hardware breakpoint, zero PLT rewrites, and no warning about falling
+back to a patched instruction. With `trace-syscalls`, calls from
+`libdB21738DAE92C.so+0x2e18` should still reach Megler.
+For 26.43.30 also use `trace-calls-byud` to locate the creation-response
+parser's failure relative to those returns. Keep the sequence for the same
+flow and thread: the "full" machine's return, the fast-refresh request,
+then `bywg`'s construction with "byteCode" and the extra's length. A
+class-loader or native failure before the return is a different result
+from the qemu trace above. After a prospective fix, check that a device key
+is stored and loaded on the next start, and that Google's network location
+actually supplies a fix; the absence of `DGFRR` alone proves neither.
 
 ## Google's own Play services from Play Store: their splits
 

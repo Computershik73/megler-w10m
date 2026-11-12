@@ -447,7 +447,10 @@ public final class KeyStoreProvider extends Provider {
                 synchronized (KeyStoreProvider.class) {
                     if (meglerKeys().remove(mAlias) != null) save();
                 }
-                throw new ProviderException("Failed to generate attestation certificate chain");
+                // Keymaster's KM_ERROR_UNIMPLEMENTED (-100), also returned by Android devices without
+                // attestation. Callers distinguish this from a provider failure with no cause.
+                throw new ProviderException("Failed to generate key pair.",
+                        new android.security.KeyStoreException(-100, "Not implemented"));
             }
             try {
                 // The generator of the first other provider that has one, from its service: getInstance(algorithm, provider) would

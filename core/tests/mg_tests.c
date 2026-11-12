@@ -5869,6 +5869,48 @@ static void test_small_pc_report(mg_lib *lib, const char *what)
 }
 #endif
 
+#if MG_ARCH_ARM32
+static void test_droidguard_syscall(const char *libdir, const char *scratch)
+{
+    char source[1024], named[1024];
+    size_t size;
+    u8 *file;
+    mg_lib *lib;
+    mg_ld_stats stats;
+    mg_addr svc, target;
+    bool watched = mg_breakpoints_available();
+    bool copied;
+    int before = mg_breakpoint_count();
+
+    say("guest library: DroidGuard's syscall with its original instruction where the host can watch it");
+    /* Give our one-syscall fixture the VM's name only inside the test's scratch directory. */
+    snprintf(source, sizeof(source), "%s/libt_pristine.so", libdir);
+    snprintf(named, sizeof(named), "%s/libdB21738DAE92C.so", scratch);
+    file = mg_file_read_all(source, &size);
+    CHECK(file != NULL);
+    if (!file) return;
+    copied = mg_file_write_all(named, file, size);
+    free(file);
+    CHECK(copied);
+    if (!copied) return;
+    lib = mg_ld_load_file(named);
+    CHECK(lib != NULL);
+    if (!lib) return;
+    CHECK(mg_ld_init(lib));
+    svc = (mg_addr)SYM(lib, "t_pristine_pid");
+    CHECK(svc != 0 && (svc & 3) == 0);
+    if (!svc || (svc & 3) != 0) return;
+    svc += 8;                              /* push {r7,lr}; mov r7,#20; svc #0 */
+    CHECK_INT(mg_rd32((const void *)svc), watched ? 0xEF000000u : 0xE7F00AF6u);
+    CHECK_INT(mg_breakpoint_count(), before + (watched ? 1 : 0));
+    CHECK(mg_patch_svc_target(svc, &target) && target == svc + 4);
+    mg_ld_get_stats(lib, &stats);
+    CHECK_INT(stats.plt_entries, watched ? 0 : 1);
+    CHECK_INT(FN(lib, int (*)(void), "t_pristine_pid")(), 4242);
+    CHECK_INT(FN(lib, int (*)(void), "t_pristine_libc_pid")(), 4242);
+}
+#endif
+
 static void test_guest(const char *libdir, const char *scratch)
 {
     mg_lib *basic, *dep;
@@ -5932,6 +5974,7 @@ static void test_guest(const char *libdir, const char *scratch)
 #endif
 
 #if MG_ARCH_ARM32
+    test_droidguard_syscall(libdir, scratch);
     /* Both ISAs must return the shim pid (4242), never the host kernel's pid.
      * Literal r7 loads and a 4-byte-aligned guest sp reproduce Chromium's stub. */
     {

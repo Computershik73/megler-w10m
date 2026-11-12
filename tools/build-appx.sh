@@ -635,6 +635,7 @@ if [ "$DESKTOP" = 0 ] && { ! ls "$GUEST"/*.so > /dev/null 2>&1 || [ ! -f "$DEMO"
    || [ ! -f "$GUEST/libt_jni.so" ] || [ "$ROOT/core/tests/guest/t_jni.c" -nt "$GUEST/libt_jni.so" ] \
    || [ ! -f "$GUEST/runtime/libt_ruser.so" ] \
    || [ ! -f "$GUEST/libt_svc_arm.so" ] || [ ! -f "$GUEST/libt_svc_diag.so" ] \
+   || [ ! -f "$GUEST/libt_pristine.so" ] \
    || [ "$ROOT/core/tests/guest/t_svc.c" -nt "$GUEST/libt_svc.so" ] \
    || [ ! -f "$GUEST/libt_go.so" ] || [ "$ROOT/core/tests/guest/t_go.c" -nt "$GUEST/libt_go.so" ]; }; then
   echo "    building the guest test libraries (tools/build-guest.sh)"

@@ -103,6 +103,7 @@ public class Main extends Activity {
         new Thread(() -> {
             synchronized (lock) {
                 held.countDown();
+                packagePermissions();
                 android.database.Cursor c = getContentResolver().query(android.net.Uri.parse("content://com.google.settings/partner"), null, "name=?",
                                                                        new String[] { "main_waits" }, null);
                 answered[0] = c != null;
@@ -115,6 +116,24 @@ public class Main extends Activity {
             Log.i("GmsHostTest", "the main thread entered the asking thread's lock after " + (android.os.SystemClock.uptimeMillis() - began)
                   + " ms, their provider answered " + answered[0]);
         }
+    }
+
+    /* A cold GET_PERMISSIONS query of the hosted package: its own manifest, not the client's, including tags after application. */
+    private void packagePermissions() {
+        boolean ok = false;
+        try {
+            android.content.pm.PackageInfo info = getPackageManager().getPackageInfo("com.google.android.gms", android.content.pm.PackageManager.GET_PERMISSIONS);
+            String[] names = info.requestedPermissions;
+            int[] flags = info.requestedPermissionsFlags;
+            List<String> permissions = names == null ? java.util.Collections.<String>emptyList() : java.util.Arrays.asList(names);
+            ok = permissions.size() == 3 && permissions.contains("android.permission.ACCESS_NETWORK_STATE")
+                && permissions.contains("android.permission.READ_PHONE_STATE") && permissions.contains("android.permission.ACCESS_WIFI_STATE")
+                && flags != null && flags.length == names.length;
+            if (flags != null) for (int flag : flags) ok &= (flag & android.content.pm.PackageInfo.REQUESTED_PERMISSION_GRANTED) != 0;
+            android.content.pm.PackageInfo components = getPackageManager().getPackageInfo("com.google.android.gms", android.content.pm.PackageManager.GET_SERVICES);
+            ok &= java.util.Arrays.equals(names, components.requestedPermissions);
+        } catch (Exception error) { Log.i("GmsHostTest", "package permissions error " + error); }
+        Log.i("GmsHostTest", "package permissions " + ok);
     }
 
     /*

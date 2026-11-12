@@ -341,6 +341,7 @@ public final class MicroG {
         info.applicationInfo = a;
         XmlBlock.Parser p = new XmlBlock(manifest, APK).newParser();
         Entry current = null; Receiver receiver = null; IntentFilter filter = null; boolean inApp = false;
+        ArrayList<String> permissions = new ArrayList<>();
         int event;
         while ((event = p.next()) != org.xmlpull.v1.XmlPullParser.END_DOCUMENT) {
             String tag = p.getName();
@@ -360,6 +361,10 @@ public final class MicroG {
             } else if ("uses-sdk".equals(tag)) {
                 a.minSdkVersion = p.getAttributeIntValue(NS, "minSdkVersion", 19);
                 a.targetSdkVersion = p.getAttributeIntValue(NS, "targetSdkVersion", a.minSdkVersion);
+            } else if (!inApp && ("uses-permission".equals(tag) || "uses-permission-sdk-23".equals(tag) || "uses-permission-sdk-m".equals(tag))) {
+                String name = p.getAttributeValue(NS, "name");
+                int max = p.getAttributeIntValue(NS, "maxSdkVersion", 0);
+                if (name != null && (max <= 0 || max >= Build.VERSION.SDK_INT) && !permissions.contains(name)) permissions.add(name);
             } else if ("application".equals(tag)) {
                 inApp = true; a.className = full(p.getAttributeValue(NS, "name"));
                 a.enabled = p.getAttributeBooleanValue(NS, "enabled", true);
@@ -404,6 +409,12 @@ public final class MicroG {
         info.providers = providers.toArray(new ProviderInfo[0]);
         info.receivers = new ActivityInfo[receivers.size()];
         for (int n = 0; n < receivers.size(); n++) info.receivers[n] = receivers.get(n).info;
+        if (!permissions.isEmpty()) {
+            info.requestedPermissions = permissions.toArray(new String[0]);
+            info.requestedPermissionsFlags = new int[permissions.size()];
+            // Its package context grants these checks as the hosted system app (PackageContext.checkPermission).
+            Arrays.fill(info.requestedPermissionsFlags, PackageInfo.REQUESTED_PERMISSION_GRANTED);
+        }
         // The existing Google compatibility identity is also used for the separately installed replacement.
         info.signatures = new Signature[] {GooglePackages.signature()};
         info.signingInfo = new SigningInfo(info.signatures);
