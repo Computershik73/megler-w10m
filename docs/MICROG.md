@@ -689,6 +689,14 @@ run read about 186 MB from `GmsCore.apk` in 22 seconds, so that read alone
 cannot explain the timeout. A successful device-key request with a
 completed token still needs verification.
 
+On the same Lumia, an isolated network-check package reproduced the
+closed-port stall in both blocking and non-blocking mode. Both attempts
+reached the test's five-second deadline. With the Winsock loopback
+timeout change, the same checks returned `ECONNREFUSED` in 500 ms and
+501 ms respectively. The test also exchanged HTTP with its own loopback
+listener. All 19 network checks passed. The device-key exchange still
+needs a Transit run with the new runtime.
+
 For 26.43.30, `trace-calls-atvj` identifies the endpoint and
 `trace-calls-alkl` shows the elapsed time and return of the token call.
 With Cronet 157,

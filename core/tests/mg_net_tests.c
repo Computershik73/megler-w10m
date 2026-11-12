@@ -62,7 +62,8 @@ static void say(const char *fmt, ...)
 enum {
     AF_UNIX_ = 1, AF_INET_ = 2, AF_INET6_ = 10, SOCK_STREAM_ = 1, SOCK_DGRAM_ = 2, SOCK_SEQPACKET_ = 5, SOCK_NONBLOCK_ = 04000, SOCK_CLOEXEC_ = 02000000,
     SOL_SOCKET_ = 1, SO_REUSEADDR_ = 2, SO_TYPE_ = 3, SO_ERROR_ = 4, SO_SNDBUF_ = 7, SO_RCVBUF_ = 8, SO_KEEPALIVE_ = 9, SO_PRIORITY_ = 12, SO_LINGER_ = 13,
-    SO_RCVTIMEO_ = 20, SO_ACCEPTCONN_ = 30, SO_DOMAIN_ = 39, IPPROTO_TCP_ = 6, IPPROTO_UDP_ = 17, IPPROTO_IPV6_ = 41, TCP_NODELAY_ = 1, TCP_KEEPIDLE_ = 4,
+    SO_RCVTIMEO_ = 20, SO_SNDTIMEO_ = 21, SO_ACCEPTCONN_ = 30, SO_DOMAIN_ = 39, IPPROTO_TCP_ = 6, IPPROTO_UDP_ = 17, IPPROTO_IPV6_ = 41,
+    TCP_NODELAY_ = 1, TCP_KEEPIDLE_ = 4,
     IPV6_V6ONLY_ = 26, MSG_PEEK_ = 2, MSG_TRUNC_ = 0x20, MSG_DONTWAIT_ = 0x40, MSG_WAITALL_ = 0x100, SHUT_RD_ = 0, SHUT_WR_ = 1, SHUT_RDWR_ = 2,
     POLLIN_ = 1, POLLOUT_ = 4, POLLERR_ = 8, POLLHUP_ = 0x10, POLLNVAL_ = 0x20, POLLRDHUP_ = 0x2000, O_NONBLOCK_ = 04000, F_GETFL_ = 3, F_SETFL_ = 4,
     F_GETFD_ = 1, FIONREAD_ = 0x541B, SIOCGIFFLAGS_ = 0x8913, SIOCGIFINDEX_ = 0x8933, IFF_UP_ = 1, IFF_LOOPBACK_ = 8, EPOLLIN_ = 1, EPOLLET_ = (int)0x80000000u,
@@ -336,7 +337,6 @@ static void test_nonblocking_connect(void)
     int l = listener(false, &port), s, r, e, v = -1, c, n;
     u32 len = sizeof(v);
     u64 t0;
-    bool answered;
     say("network: a connection made without blocking: EINPROGRESS, poll for writability, SO_ERROR");
     s = N.socket(AF_INET_, SOCK_STREAM_ | SOCK_NONBLOCK_, 0);
     CHECK(l >= 0 && s >= 0);
@@ -361,13 +361,6 @@ static void test_nonblocking_connect(void)
     N.close(s);
     N.close(l);
 
-    /*
-     * Without blocking first, with a short wait. The phone (0.1.0.138) does not refuse a connection to a closed
-     * port of its own loopback: the SYN goes unanswered, a non-blocking attempt is still EINPROGRESS after 5 s, and
-     * a blocking one ended only after 127 s. There "no answer within 2 s" is the phone's behaviour, said and not
-     * counted, and the blocking attempt is left out so the Self-test does not wait two minutes. Anywhere else it is
-     * refused at once, and no answer is a failure.
-     */
     say("network: refused: a port nobody listens on, not blocking and blocking");
     l = listener(false, &port);
     N.close(l);
@@ -375,17 +368,12 @@ static void test_nonblocking_connect(void)
     t0 = now_ms();
     r = N.connect(s, sa, sa4(sa, k_lo4, port));
     e = err();
-    answered = true;
     if (r == -1 && e == GE_INPROGRESS) {
         p.fd = s;
         p.events = POLLOUT_;
-        n = N.poll(&p, 1, 2000);
-        if (n == 0 && !strcmp(mg_host_name(), "win32-arm")) {
-            answered = false;
-            say("  no answer within 2 s: this phone does not refuse a connection to a closed port of its own loopback but lets it "
-                "time out (a blocking one took about two minutes); the phone's behaviour, not counted, and the blocking attempt left out");
-        } else {
-            CHECK(n == 1 && (p.revents & POLLERR_));
+        n = N.poll(&p, 1, 5000);
+        CHECK(n == 1 && (p.revents & POLLERR_));
+        if (n == 1) {
             len = sizeof(v);
             CHECK(N.getsockopt(s, SOL_SOCKET_, SO_ERROR_, &v, &len) == 0 && v == GE_CONNREFUSED);
             /* Asked for, the error is gone. */
@@ -395,10 +383,13 @@ static void test_nonblocking_connect(void)
     } else {
         CHECK(r == -1 && e == GE_CONNREFUSED);
     }
-    if (answered) say("  refused without blocking after %d ms", (int)(now_ms() - t0));
+    say("  connect and poll took %d ms", (int)(now_ms() - t0));
     N.close(s);
-    if (!answered) return;
     s = N.socket(AF_INET_, SOCK_STREAM_, 0);
+    {
+        t_timeval timeout = { 5, 0 };
+        CHECK(N.setsockopt(s, SOL_SOCKET_, SO_SNDTIMEO_, timeout, sizeof(timeout)) == 0);
+    }
     t0 = now_ms();
     r = N.connect(s, sa, 16);
     CHECK(r == -1 && err() == GE_CONNREFUSED);
@@ -1480,6 +1471,38 @@ static void check_loopback_udp(void)
     if (b >= 0) N.close(b);
 }
 
+static void check_loopback_refused(void)
+{
+    t_timeval timeout = { 5, 0 };
+    u8 sa[28];
+    u16 port = 0;
+    int listener_fd = listener(false, &port), s;
+    u32 len;
+    u64 start;
+    if (listener_fd < 0) {
+        STEP(false, "reserve a loopback port to check refusal");
+        return;
+    }
+    N.close(listener_fd);
+    len = sa6(sa, k_mapped_lo, port);
+    start = now_ms();
+    s = connect_within(sa, len, 5000);
+    STEP(s < 0 && err() == GE_CONNREFUSED, "non-blocking connect to a closed loopback port: refused in %d ms", (int)(now_ms() - start));
+    if (s >= 0) N.close(s);
+
+    s = N.socket(AF_INET6_, SOCK_STREAM_, 0);
+    STEP(s >= 0, "an IPv6 TCP socket for an IPv4-mapped loopback address");
+    if (s < 0) return;
+    if (N.setsockopt(s, SOL_SOCKET_, SO_SNDTIMEO_, timeout, sizeof(timeout)) == 0) {
+        start = now_ms();
+        STEP(N.connect(s, sa, len) < 0 && err() == GE_CONNREFUSED,
+             "blocking connect to a closed loopback port: refused in %d ms", (int)(now_ms() - start));
+    } else {
+        STEP(false, "set a test deadline on the loopback socket");
+    }
+    N.close(s);
+}
+
 static void check_interfaces(void)
 {
     t_ifaddrs *list = NULL, *f, *g;
@@ -1527,6 +1550,7 @@ int mg_net_check_run(const char *public_host, const char *path, mg_test_sink sin
         if (public_host) check_internet(public_host, path ? path : "/");
         else noted("(the internet is left out: no public name was given)");
         check_loopback_tcp();
+        check_loopback_refused();
         check_loopback_udp();
     }
     failed = t_failed;
