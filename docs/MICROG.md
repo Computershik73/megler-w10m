@@ -705,6 +705,23 @@ device key was absent. Check-in succeeded. The run logged no FindTiles
 call, so the disappearance of Transit's weak-GPS banner does not
 establish that Google supplied a Wi-Fi position.
 
+After restarting Transit with that registration still present, GmsCore
+read a nonzero Android ID before collecting the device-key signals.
+The VM init took 14.8 seconds, and the token call returned after 44.6
+seconds. The request again received HTTP 400 and the key was still
+absent. This rules out a zero ID and the 60-second token timeout for
+that attempt. It does not establish that the server accepted the
+registration or the token.
+
+The signed `devicekey` program responses captured in qemu have a
+10-second TTL. That is shorter than the phone's two observed init
+durations. The qemu run that submitted its request first with curl
+formed the request 98 ms after capturing the signed program and
+submitted it as soon as the capture appeared. It still received HTTP
+400. The delay observed on the phone therefore cannot account for
+all the rejections. A successful `/auth/devicekey` exchange on the
+Android reference remains needed for comparison.
+
 For 26.43.30, `trace-calls-atvj` identifies the endpoint and
 `trace-calls-alkl` shows the elapsed time and return of the token call.
 With Cronet 157,
