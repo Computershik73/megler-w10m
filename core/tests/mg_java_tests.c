@@ -3633,6 +3633,9 @@ static int run_data(void)
                                             it was made with -- so a SpannableString of one keeps the spans, and a TextView shows it (Ozon's
                                             chat). */
                                          "precomputed-text",
+                                         /* And ColorSpace has the named spaces, the RGB ones as ColorSpace.Rgb (YouTube casts sRGB to it in
+                                            its settings), connectors between them, and Color the colours of a space. */
+                                         "color-space",
                                          /* And ViewGroup.cleanupLayoutState takes a group's layout request back: a group whose requestLayout
                                             calls it on itself (Compose's AndroidViewsHandler) hears each requestLayout of a child. */
                                          "cleanup-layout-state",

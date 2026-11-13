@@ -6701,6 +6701,99 @@ public class Main extends Activity {
                 + ", widths " + part + " " + line + ", in a view " + shown + " (" + view.getLineCount() + " lines, " + view.getMeasuredWidth() + " wide), its parameters " + same;
             return chars && spans && copied && paragraphs && kept && set && refused && widths && shown && same;
         });
+        // ColorSpace has the named spaces Android documents, the RGB ones as ColorSpace.Rgb with their primaries, white point and
+        // transfer function, and Color has the colours of them. Every name was one nameless sRGB that was no Rgb, and YouTube,
+        // which casts the space to Rgb while its settings are laid out, ended there.
+        step("color-space", () -> {
+            android.graphics.ColorSpace srgb = android.graphics.ColorSpace.get(android.graphics.ColorSpace.Named.SRGB);
+            android.graphics.ColorSpace p3 = android.graphics.ColorSpace.get(android.graphics.ColorSpace.Named.DISPLAY_P3);
+            // What YouTube does with it: the named space is an Rgb.
+            boolean isRgb = srgb instanceof android.graphics.ColorSpace.Rgb && "sRGB IEC61966-2.1".equals(srgb.getName()) && srgb.getId() == 0
+                && srgb.getModel() == android.graphics.ColorSpace.Model.RGB && srgb.getComponentCount() == 3 && srgb.isSrgb() && !srgb.isWideGamut();
+            if (!isRgb) {
+                detail = "sRGB is a " + srgb.getClass().getName() + ": " + srgb;
+                return false;
+            }
+            android.graphics.ColorSpace.Rgb rgb = (android.graphics.ColorSpace.Rgb) srgb;
+            android.graphics.ColorSpace.Rgb.TransferParameters curve = rgb.getTransferParameters();
+            // Every name has a space of its place, an Rgb but for XYZ and L*a*b*, and a colour comes back from XYZ as it went.
+            String wrong = "";
+            int count = 0;
+            for (android.graphics.ColorSpace.Named name : android.graphics.ColorSpace.Named.values()) {
+                android.graphics.ColorSpace space = android.graphics.ColorSpace.get(name);
+                boolean isXyzOrLab = name == android.graphics.ColorSpace.Named.CIE_XYZ || name == android.graphics.ColorSpace.Named.CIE_LAB;
+                count++;
+                if (space == null || space.getId() != name.ordinal() || (space instanceof android.graphics.ColorSpace.Rgb) == isXyzOrLab
+                        || (space.getModel() == android.graphics.ColorSpace.Model.RGB) == isXyzOrLab
+                        || !colorNear(space.fromXyz(space.toXyz(0.25f, 0.5f, 0.75f)), 0.25f, 0.5f, 0.75f, 2e-3f)) wrong += " " + name;
+            }
+            boolean named = wrong.isEmpty() && count >= 16;
+            // The transfer function: sRGB's parameters, and half of the code is a fifth of the light.
+            boolean curved = curve != null && Math.abs(curve.g - 2.4) < 1e-9 && Math.abs(curve.d - 0.04045) < 1e-9 && Math.abs(curve.a - 1 / 1.055) < 1e-9
+                && colorNear(rgb.toLinear(0.5f, 0.5f, 0.5f), 0.21404f, 0.21404f, 0.21404f, 1e-4f)
+                && colorNear(rgb.fromLinear(0.21404f, 0.21404f, 0.21404f), 0.5f, 0.5f, 0.5f, 1e-4f) && Math.abs(rgb.getEotf().applyAsDouble(0.5) - 0.21404) < 1e-4;
+            // The primaries and the white point make the transform: white is D65, and red's column and the inverse's are sRGB's.
+            float[] m = rgb.getTransform();
+            boolean xyz = colorNear(srgb.toXyz(1f, 1f, 1f), 0.9505f, 1.0f, 1.0891f, 1e-3f) && colorNear(m, 0.4124f, 0.2126f, 0.0193f, 1e-3f)
+                && colorNear(rgb.getInverseTransform(), 3.2406f, -0.9689f, 0.0557f, 2e-3f) && rgb.getPrimaries().length == 6
+                && Math.abs(rgb.getPrimaries()[0] - 0.64f) < 1e-6f && Math.abs(rgb.getWhitePoint()[0] - 0.31271f) < 1e-6f;
+            // A wide gamut is told by the triangle of the primaries, or by a range beyond 0 to 1.
+            boolean wide = p3.isWideGamut() && !p3.isSrgb() && !android.graphics.ColorSpace.get(android.graphics.ColorSpace.Named.BT709).isWideGamut()
+                && android.graphics.ColorSpace.get(android.graphics.ColorSpace.Named.ADOBE_RGB).isWideGamut()
+                && !android.graphics.ColorSpace.get(android.graphics.ColorSpace.Named.SMPTE_C).isWideGamut()
+                && android.graphics.ColorSpace.get(android.graphics.ColorSpace.Named.LINEAR_EXTENDED_SRGB).isWideGamut();
+            // Between two spaces: Display P3's red is outside sRGB and is cut to its red, grey stays grey, sRGB's red is inside P3.
+            android.graphics.ColorSpace.Connector toSrgb = android.graphics.ColorSpace.connect(p3, srgb), toP3 = android.graphics.ColorSpace.connect(srgb, p3);
+            boolean connected = colorNear(toSrgb.transform(1f, 0f, 0f), 1f, 0f, 0f, 0f) && colorNear(toSrgb.transform(0.5f, 0.5f, 0.5f), 0.5f, 0.5f, 0.5f, 1e-3f)
+                && colorNear(toP3.transform(1f, 0f, 0f), 0.9175f, 0.2003f, 0.1386f, 2e-3f) && toSrgb.getSource() == p3 && toSrgb.getDestination() == srgb
+                && colorNear(android.graphics.ColorSpace.connect(srgb, srgb).transform(0.1f, 0.2f, 0.3f), 0.1f, 0.2f, 0.3f, 0f)
+                && android.graphics.ColorSpace.connect(p3).getDestination().equals(srgb);
+            // Another white point: sRGB adapted to D50 has the transform colour profiles carry, and is found again by it.
+            android.graphics.ColorSpace d50 = android.graphics.ColorSpace.adapt(srgb, android.graphics.ColorSpace.ILLUMINANT_D50);
+            float[] profile = ((android.graphics.ColorSpace.Rgb) d50).getTransform();
+            boolean adapted = d50 != srgb && !d50.isSrgb() && colorNear(profile, 0.4361f, 0.2225f, 0.0139f, 1e-3f)
+                && colorNear(d50.toXyz(1f, 1f, 1f), 0.9642f, 1.0f, 0.8252f, 1e-3f) && android.graphics.ColorSpace.match(profile, curve) == srgb
+                && android.graphics.ColorSpace.adapt(srgb, android.graphics.ColorSpace.ILLUMINANT_D65) == srgb;
+            // Through XYZ of D50 to L*a*b* and back: white is L 100. And a space made of sRGB's numbers is sRGB without a name.
+            android.graphics.ColorSpace lab = android.graphics.ColorSpace.get(android.graphics.ColorSpace.Named.CIE_LAB);
+            android.graphics.ColorSpace.Rgb made = new android.graphics.ColorSpace.Rgb("made", m, curve), gamma = new android.graphics.ColorSpace.Rgb("gamma", m, 2.2);
+            boolean other = colorNear(android.graphics.ColorSpace.connect(srgb, lab).transform(1f, 1f, 1f), 100f, 0f, 0f, 0.1f)
+                && colorNear(android.graphics.ColorSpace.connect(lab, srgb).transform(100f, 0f, 0f), 1f, 1f, 1f, 2e-3f) && made.isSrgb()
+                && made.getId() == android.graphics.ColorSpace.MIN_ID && !made.equals(srgb) && !gamma.isSrgb() && Math.abs(gamma.getPrimaries()[2] - 0.3f) < 1e-3f;
+            // Packed colours: an sRGB one is the int, one of Display P3 keeps its space and its components, and each converts.
+            long red = android.graphics.Color.pack(1f, 0f, 0f, 1f, p3), plain = android.graphics.Color.pack(0x80336699);
+            long moved = android.graphics.Color.convert(0xffff0000, p3);
+            boolean packed = android.graphics.Color.colorSpace(red) == p3 && !android.graphics.Color.isSrgb(red) && android.graphics.Color.isWideGamut(red)
+                && android.graphics.Color.red(red) == 1f && android.graphics.Color.green(red) == 0f && android.graphics.Color.alpha(red) == 1f
+                && android.graphics.Color.toArgb(red) == 0xffff0000 && android.graphics.Color.colorSpace(plain) == srgb
+                && android.graphics.Color.toArgb(plain) == 0x80336699 && android.graphics.Color.red(plain) == 0x33 / 255f
+                && android.graphics.Color.alpha(plain) == 0x80 / 255f && android.graphics.Color.isInColorSpace(moved, p3)
+                && Math.abs(android.graphics.Color.red(moved) - 0.9175f) < 2e-3f && Math.abs(android.graphics.Color.green(moved) - 0.2003f) < 2e-3f
+                && android.graphics.Color.toArgb(moved) == 0xffff0000
+                && Math.abs(android.graphics.Color.luminance(android.graphics.Color.pack(1f, 1f, 1f)) - 1f) < 1e-4f
+                && android.graphics.Color.pack(0.5f, 0.25f, 1f, 1f, srgb) == android.graphics.Color.pack(0xff8040ff);
+            // And Color objects: of a space, with its components, converted to another.
+            android.graphics.Color object = android.graphics.Color.valueOf(red), back = object.convert(srgb), opaque = android.graphics.Color.valueOf(0xff336699);
+            boolean objects = object.getColorSpace() == p3 && object.getModel() == android.graphics.ColorSpace.Model.RGB && object.getComponentCount() == 4
+                && object.getComponents().length == 4 && object.getComponent(0) == 1f && object.alpha() == 1f && object.isWideGamut() && !object.isSrgb()
+                && object.toArgb() == 0xffff0000 && object.pack() == red && back.isSrgb() && back.red() == 1f && back.green() == 0f
+                && opaque.getColorSpace() == srgb && opaque.isSrgb() && opaque.toArgb() == 0xff336699
+                && opaque.pack() == android.graphics.Color.pack(0xff336699) && opaque.equals(android.graphics.Color.valueOf(0xff336699))
+                && android.graphics.Color.valueOf(0.2f, 0.4f, 0.6f, 1f, p3).getColorSpace() == p3;
+            // Android 14's members, by their names (the app is built for Android 10): the data space of a named space.
+            Object dataSpace = android.graphics.ColorSpace.class.getMethod("getDataSpace").invoke(srgb);
+            Object ofData = android.graphics.ColorSpace.class.getMethod("getFromDataSpace", int.class).invoke(null, 143261696);
+            boolean later = Integer.valueOf(142671872).equals(dataSpace) && ofData == p3 && android.graphics.ColorSpace.Named.valueOf("BT2020_PQ").ordinal() == 17;
+            detail = "an Rgb " + isRgb + ", named " + named + " (" + count + (wrong.isEmpty() ? "" : ", wrong:" + wrong) + "), transfer " + curved + ", transform " + xyz
+                + ", wide gamut " + wide + ", connectors " + connected + ", adapted " + adapted + ", L*a*b* and made spaces " + other + ", packed colours " + packed
+                + ", Color objects " + objects + ", Android 14's " + later;
+            return named && curved && xyz && wide && connected && adapted && other && packed && objects && later;
+        });
+    }
+
+    /** Whether the first three numbers are these, each to within eps. */
+    private static boolean colorNear(float[] v, float a, float b, float c, float eps) {
+        return Math.abs(v[0] - a) <= eps && Math.abs(v[1] - b) <= eps && Math.abs(v[2] - c) <= eps;
     }
 
     /** A group as Compose's AndroidViewsHandler is one: its requestLayout does not go on to View's -- it counts the request
