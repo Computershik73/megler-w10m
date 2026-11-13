@@ -1,4 +1,5 @@
-/* The kernel's user helpers, done where Windows has no such page: see mg_kuser.h. */
+/* The kernel's user helpers, done where Windows has no such page, and the instructions Linux's kernel does for old ARM code:
+   see mg_kuser.h. */
 #include "mg_kuser.h"
 
 #include "../host/mg_host.h"
@@ -112,5 +113,44 @@ bool mg_kuser_read(mg_addr address, const u8 *insn, bool thumb, u32 *regs, mg_ad
     if (wb) regs[rn] = base;
     regs[rt] = MG_KUSER_VERSION;
     *next = ((mg_addr)insn + len) | (thumb ? 1u : 0u);
+    return true;
+}
+
+/* Whether an instruction of the condition `cond` (its top four bits, not 1111) runs with the flags of `cpsr`. */
+static bool cond_holds(u32 cond, u32 cpsr)
+{
+    bool n = (cpsr >> 31) & 1, z = (cpsr >> 30) & 1, c = (cpsr >> 29) & 1, v = (cpsr >> 28) & 1, r;
+    switch (cond >> 1) {
+    case 0: r = z; break;                  /* EQ, NE */
+    case 1: r = c; break;                  /* CS, CC */
+    case 2: r = n; break;                  /* MI, PL */
+    case 3: r = v; break;                  /* VS, VC */
+    case 4: r = c && !z; break;            /* HI, LS */
+    case 5: r = n == v; break;             /* GE, LT */
+    case 6: r = n == v && !z; break;       /* GT, LE */
+    default: return true;                  /* AL */
+    }
+    return (cond & 1) ? !r : r;
+}
+
+bool mg_kuser_swp(const u8 *insn, u32 *regs, u32 cpsr)
+{
+    u32 w32 = (u32)insn[0] | ((u32)insn[1] << 8) | ((u32)insn[2] << 16) | ((u32)insn[3] << 24);
+    u32 rn = (w32 >> 16) & 15, rt = (w32 >> 12) & 15, rt2 = w32 & 15, at, value;
+    if ((w32 & 0x0fb00ff0u) != 0x01000090u || (w32 >> 28) == 15 || rn == 15 || rt == 15 || rt2 == 15) return false;
+    if (!cond_holds(w32 >> 28, cpsr)) return true;
+    at = regs[rn];
+    value = regs[rt2];
+    if (!(w32 & 0x00400000u) && (at & 3u)) return false;
+    if (w32 & 0x00400000u) {
+        /* A byte: the word it is in, put back whole with the one byte new, until no other thread wrote between. */
+        volatile i32 *word = (volatile i32 *)(mg_addr)(at & ~3u);
+        u32 shift = (at & 3u) * 8, was;
+        do was = (u32)*word;
+        while ((u32)mg_atomic_cas(word, (i32)was, (i32)((was & ~(0xffu << shift)) | ((value & 0xffu) << shift))) != was);
+        regs[rt] = (was >> shift) & 0xffu;
+    } else {
+        regs[rt] = (u32)mg_atomic_xchg((volatile i32 *)(mg_addr)at, (i32)value);
+    }
     return true;
 }

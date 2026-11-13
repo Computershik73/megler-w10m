@@ -334,6 +334,19 @@ static MG_HOSTCB bool on_fault(mg_fault *f)
         }
 #endif
         if (f->kind == MG_FAULT_BREAKPOINT) return false;
+#if MG_ARCH_ARM32
+        /*
+         * SWP or SWPB in ARM code, which this processor does not run (arm/mg_kuser.h): done here, as Linux's kernel does
+         * it, and the thread on after it.
+         */
+        if (f->cpsr && !(*f->cpsr & 0x20u) && !(f->regs[15] & 3u) && mg_kuser_swp((const u8 *)pc, f->regs, *f->cpsr)) {
+            static volatile i32 said;
+            if (!said && !mg_atomic_xchg(&said, 1))
+                mg_info("SWP in the app's ARM code (old code's locks), which this processor does not run: each one is a fault, done in its place");
+            mg_fault_resume_at(f, pc + 4);
+            return true;
+        }
+#endif
         if (mg_ld_plt_target(pc, &target) || mg_stubs_once_target(pc, &target)) {
             mg_fault_resume_at(f, target);
             mg_atomic_add(&g_plt_rescues, 1);

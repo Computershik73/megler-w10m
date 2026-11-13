@@ -3699,4 +3699,35 @@ __asm__(".text\n"
         "  blx r1\n"
         "  pop {r4, pc}\n"
         ".size t_call_small, .-t_call_small\n");
+
+/*
+ * SWP and SWPB (mg_tests.c, test_swp), as old ARM code has them and an ARMv8 processor refuses them (arm/mg_kuser.h); in
+ * ARM state, which alone has them, whatever the library's own, and by their encodings, which an assembler for ARMv8 would
+ * not write. t_swp_word(at, value) and t_swp_byte(at, value) exchange and return what was there; t_swp_never's is
+ * conditional on flags that say no (swpne after a comparison of a register with itself) and returns 77.
+ */
+__asm__(".text\n"
+        ".syntax unified\n"
+        ".arm\n"
+        ".p2align 2\n"
+        ".globl t_swp_word\n.type t_swp_word, %function\n"
+        "t_swp_word:\n"
+        "  mov r2, r0\n"
+        "  .inst 0xe1020091\n"          /* swp r0, r1, [r2] */
+        "  bx lr\n"
+        ".size t_swp_word, .-t_swp_word\n"
+        ".globl t_swp_byte\n.type t_swp_byte, %function\n"
+        "t_swp_byte:\n"
+        "  mov r2, r0\n"
+        "  .inst 0xe1420091\n"          /* swpb r0, r1, [r2] */
+        "  bx lr\n"
+        ".size t_swp_byte, .-t_swp_byte\n"
+        ".globl t_swp_never\n.type t_swp_never, %function\n"
+        "t_swp_never:\n"
+        "  mov r2, r0\n"
+        "  mov r0, #77\n"
+        "  cmp r2, r2\n"
+        "  .inst 0x11020091\n"          /* swpne r0, r1, [r2] */
+        "  bx lr\n"
+        ".size t_swp_never, .-t_swp_never\n" T_RS_STATE);
 #endif

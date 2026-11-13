@@ -5871,6 +5871,27 @@ static void test_small_pc_report(mg_lib *lib, const char *what)
     }
     mg_log_set_sink(g_small_pc_before, g_small_pc_before_user);
 }
+
+/*
+ * SWP and SWPB in a library's ARM code (guest/t_basic.c), which an ARMv8 processor refuses and the fault handler then does
+ * (mg_core.c, arm/mg_kuser.h): a word and a byte are exchanged, what was there given, the byte's neighbours left; one whose
+ * condition fails changes nothing. Where the processor runs them itself the same holds.
+ */
+static void test_swp(mg_lib *lib)
+{
+    static volatile u32 word;
+    static volatile u8 bytes[8];
+    int i;
+    say("SWP and SWPB in ARM code");
+    word = 0x11223344u;
+    for (i = 0; i < 8; i++) bytes[i] = (u8)(i + 1);
+    CHECK(FN(lib, u32 (*)(volatile u32 *, u32), "t_swp_word")(&word, 5) == 0x11223344u && word == 5);
+    CHECK(FN(lib, u32 (*)(volatile u32 *, u32), "t_swp_word")(&word, 0xfffffff0u) == 5 && word == 0xfffffff0u);
+    CHECK(FN(lib, u32 (*)(volatile u8 *, u32), "t_swp_byte")(&bytes[2], 0x1ffu) == 3 && bytes[2] == 0xff);
+    CHECK(FN(lib, u32 (*)(volatile u8 *, u32), "t_swp_byte")(&bytes[7], 0x80u) == 8 && bytes[7] == 0x80);
+    CHECK(bytes[0] == 1 && bytes[1] == 2 && bytes[3] == 4 && bytes[4] == 5 && bytes[5] == 6 && bytes[6] == 7);
+    CHECK(FN(lib, u32 (*)(volatile u32 *, u32), "t_swp_never")(&word, 9) == 77 && word == 0xfffffff0u);
+}
 #endif
 
 #if MG_ARCH_ARM32
@@ -6206,6 +6227,7 @@ static void test_guest_arm(const char *scratch)
         CHECK(st.arm_functions > 20);
         test_library(arm, "ARM mode, packed relocations", scratch);
         test_small_pc_report(arm, "ARM mode");
+        test_swp(arm);
     }
 }
 
@@ -6770,7 +6792,10 @@ static void arsc_string_seen(const u8 *s, size_t len, void *user)
  * returns, each to the caller's lr; __kuser_cmpxchg and __kuser_cmpxchg64 swap when the value is the old one (r0 0, C set)
  * and leave it otherwise (r0 not 0, C clear) -- on a host whose addresses fit in a register; and a load of the version at
  * 0xffff0ffc, in each form old code reads it, gives 5 and goes on past the load, its base written back where it says so.
- * An address that is no helper, and a load of another address, are not taken.
+ * An address that is no helper, and a load of another address, are not taken. SWP and SWPB, which a processor of today
+ * refuses (mg_kuser_swp): not taken with pc among the registers, as another instruction or of a word that is not aligned;
+ * left undone, and gone past, where the condition fails; done -- a word, and a byte whose neighbours stay -- on a host whose
+ * addresses fit in a register.
  */
 static void test_kuser(void)
 {
@@ -6821,6 +6846,41 @@ static void test_kuser(void)
     r[1] = 0xffff0f00u;
     code[0] = 0xc8; code[1] = 0x69;
     CHECK(!mg_kuser_read(0xffff0ffcu, code, true, r, &next));
+    /* swp r0, r1, [pc]; mul r2, r1, r0; the same bits where no condition is; swp r0, r1, [r2] of an address that is no word's */
+    memset(r, 0, sizeof(r));
+    code[0] = 0x91; code[1] = 0x00; code[2] = 0x0f; code[3] = 0xe1;
+    CHECK(!mg_kuser_swp(code, r, 0));
+    code[2] = 0x02; code[3] = 0xe0;
+    CHECK(!mg_kuser_swp(code, r, 0));
+    code[3] = 0xf1;
+    CHECK(!mg_kuser_swp(code, r, 0));
+    r[2] = 0x1002u;
+    code[3] = 0xe1;
+    CHECK(!mg_kuser_swp(code, r, 0));
+    /* swpne r0, r1, [r2] with Z set: nothing read or written (r2 is 0), the registers as they were */
+    r[0] = 77; r[2] = 0;
+    code[3] = 0x11;
+    CHECK(mg_kuser_swp(code, r, 0x40000000u) && r[0] == 77);
+    if (sizeof(void *) == 4) {
+        static volatile u32 cell = 0x11223344u;
+        static volatile u8 cells[4] = { 1, 2, 3, 4 };
+        r[1] = 5; r[2] = (u32)(mg_addr)&cell;
+        code[3] = 0xe1;
+        CHECK(mg_kuser_swp(code, r, 0) && r[0] == 0x11223344u && cell == 5);
+        /* swpne with Z clear */
+        r[1] = 6;
+        code[3] = 0x11;
+        CHECK(mg_kuser_swp(code, r, 0) && r[0] == 5 && cell == 6);
+        /* swpge: not with N alone, done with N and V */
+        r[0] = 77; r[1] = 9;
+        code[3] = 0xa1;
+        CHECK(mg_kuser_swp(code, r, 0x80000000u) && r[0] == 77 && cell == 6);
+        CHECK(mg_kuser_swp(code, r, 0x90000000u) && r[0] == 6 && cell == 9);
+        /* swpb r3, r4, [r5] */
+        r[4] = 0x1ffu; r[5] = (u32)(mg_addr)&cells[1];
+        code[0] = 0x94; code[1] = 0x30; code[2] = 0x45; code[3] = 0xe1;
+        CHECK(mg_kuser_swp(code, r, 0) && r[3] == 2 && cells[0] == 1 && cells[1] == 0xff && cells[2] == 3 && cells[3] == 4);
+    }
 }
 
 /*
