@@ -1039,6 +1039,10 @@ public class Main extends Activity {
         // refused, every mutator refused, copies, serialization. By reflection, as above (CollectionFactories.java).
         step("collection-factories", () -> (detail = CollectionFactories.factories()).isEmpty());
         step("unmodifiable-collectors", () -> (detail = CollectionFactories.collectors()).isEmpty());
+        // Java 9's Objects.requireNonNullElse, requireNonNullElseGet, checkIndex, checkFromToIndex and checkFromIndexSize
+        // (Android 11; Amazon Shopping's start ended on a NoSuchMethodError of requireNonNullElse) and Java 9 to 11's
+        // Optional.isEmpty, ifPresentOrElse, or, stream and orElseThrow() (Android 13), the libcore overlay's; by reflection.
+        step("objects-java9", () -> (detail = CollectionFactories.objects()).isEmpty());
         // The frame stacks of threads Java starts: two thousand calls deep on a thread of the default size, twenty thousand
         // on one that asked for 16 MB, and a recursion without end the StackOverflowError it is on Android, caught there.
         step("thread-stack", () -> {
@@ -1864,6 +1868,17 @@ public class Main extends Activity {
             boolean before = run == 1 || (p.getInt(key, 0) == 7 && "x y".equals(p.getString("with space", null)) && p.getAll().size() == 2);
             return before && p.edit().putInt(key, 7).putString("with space", "x y").commit();
         });
+        // A null key, which Android keeps: what one run commits under it, and under a key that is the two characters the file
+        // writes for it, the next reads from the file, each its own (a null key ended every write of the file in a
+        // NullPointerException: Lemana PRO).
+        step("prefs-null-key", () -> {
+            android.content.SharedPreferences p = getSharedPreferences("nullkey", MODE_PRIVATE);
+            String like = "\\0";
+            detail = "found " + p.getAll();
+            boolean before = run == 1 || ("of null".equals(p.getString(null, null)) && p.getInt(like, 0) == 5 && p.getBoolean("after", false)
+                && p.contains(null) && p.getAll().size() == 3 && p.getAll().containsKey(null));
+            return before && p.edit().putString(null, "of null").putInt(like, 5).putBoolean("after", true).commit();
+        });
         // An account removed is told as Android 8 and later tell it: ACCOUNT_REMOVED with its name and type, and
         // LOGIN_ACCOUNTS_CHANGED (Play Store learns so, through Google Play services, that its account is gone). Its user data and
         // an auth token set in between are told to no one: LOGIN_ACCOUNTS_CHANGED twice, for the account added and removed.
@@ -1946,6 +1961,20 @@ public class Main extends Activity {
             String source = getApplicationInfo().sourceDir, code = getPackageCodePath();
             detail = "sourceDir=" + source + " codePath=" + code + " there=" + new java.io.File(source).isFile();
             return source.equals("/data/app/" + getPackageName() + "-1/base.apk") && source.equals(code) && new java.io.File(source).isFile();
+        });
+        step("archive-meta-data", () -> {
+            // An APK asked about as a file (PackageManager.getPackageArchiveInfo) gives its application's own meta-data with
+            // GET_META_DATA -- a string, a number, a boolean and a resource, and none of a service's -- and null without it
+            // (Alibaba's SecurityGuard reads its plug-ins' so; Goofish ended with a NullPointerException in Bundle.getString).
+            android.content.pm.PackageManager pm = getPackageManager();
+            String apk = getApplicationInfo().sourceDir;
+            android.content.pm.PackageInfo plain = pm.getPackageArchiveInfo(apk, 0);
+            android.content.pm.PackageInfo with = pm.getPackageArchiveInfo(apk, android.content.pm.PackageManager.GET_META_DATA);
+            android.os.Bundle none = plain == null ? null : plain.applicationInfo.metaData, m = with == null ? null : with.applicationInfo.metaData;
+            detail = "plain=" + plain + " without=" + none + " with=" + m;
+            return plain != null && none == null && m != null && m.size() == 4 && "plugin-1.2".equals(m.getString("megler.test.word"))
+                && m.getInt("megler.test.number") == 7 && m.getBoolean("megler.test.flag") && m.getInt("megler.test.sync") == R.xml.syncadapter
+                && getPackageName().equals(with.packageName);
         });
         step("maps-paths", () -> {
             // /proc/self/maps as Android's has it: the APK mapped under its Android path, Android's own libraries where the
@@ -2234,6 +2263,53 @@ public class Main extends Activity {
         new android.os.Handler().postDelayed(() -> {
             boolean ok = seen[0] && seen[1] && seen[2] && !seen[3];
             Log.i("DataTest", "panel-root " + (ok ? "ok" : "FAILED") + " root=" + seen[0] + "/" + seen[1] + " surface=" + seen[2] + "/" + seen[3]);
+            getWindowManager().removeView(root);
+            quietPopup();
+        }, 500);
+    }
+
+    private boolean touchSeen;
+    @Override public boolean dispatchTouchEvent(android.view.MotionEvent e) { touchSeen = true; return super.dispatchTouchEvent(e); }
+
+    /**
+     * A small window that takes no focus over the activity, as a popup of Compose that is not focusable is (FLAG_NOT_FOCUSABLE
+     * and no other flag): a touch outside it goes to the activity under it, as on Android, where such a window is not modal.
+     * It took every touch on the screen (Reddit). The touch is given to megler.ViewRoot, as the shell gives one.
+     * And its root view gives the window manager the window's parameters again in every onLayout, as Compose's PopupLayout
+     * does: that asks for no other layout, and the window is laid out once or twice, not in every frame (quiet-popup-layout).
+     */
+    private void quietPopup() {
+        final boolean[] popupTouched = new boolean[1];
+        final android.view.WindowManager.LayoutParams lp = new android.view.WindowManager.LayoutParams(2, 2,
+                android.view.WindowManager.LayoutParams.TYPE_APPLICATION_PANEL, android.view.WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
+                android.graphics.PixelFormat.TRANSLUCENT);
+        lp.gravity = android.view.Gravity.TOP | android.view.Gravity.LEFT;
+        lp.token = getWindow().getDecorView().getWindowToken();
+        final int[] layouts = new int[1];
+        final android.widget.FrameLayout root = new android.widget.FrameLayout(this) {
+            @Override public boolean dispatchTouchEvent(android.view.MotionEvent e) { popupTouched[0] = true; return true; }
+            @Override protected void onLayout(boolean changed, int l, int t, int r, int b) {
+                super.onLayout(changed, l, t, r, b);
+                layouts[0]++;
+                getWindowManager().updateViewLayout(this, lp);
+            }
+        };
+        getWindowManager().addView(root, lp);
+        new android.os.Handler().postDelayed(() -> {
+            try {
+                android.util.DisplayMetrics m = getResources().getDisplayMetrics();
+                float x = m.widthPixels / 2f, y = m.heightPixels / 2f;
+                long now = android.os.SystemClock.uptimeMillis();
+                java.lang.reflect.Method touch = Class.forName("megler.ViewRoot").getMethod("dispatchTouch", android.view.MotionEvent.class);
+                touchSeen = false;
+                touch.invoke(null, android.view.MotionEvent.obtain(now, now, android.view.MotionEvent.ACTION_DOWN, x, y, 0));
+                touch.invoke(null, android.view.MotionEvent.obtain(now, now + 10, android.view.MotionEvent.ACTION_CANCEL, x, y, 0));
+                boolean ok = touchSeen && !popupTouched[0];
+                Log.i("DataTest", "quiet-popup-touch " + (ok ? "ok" : "FAILED") + " activity=" + touchSeen + " popup=" + popupTouched[0]);
+                Log.i("DataTest", "quiet-popup-layout " + (layouts[0] >= 1 && layouts[0] <= 3 ? "ok" : "FAILED") + " layouts=" + layouts[0]);
+            } catch (Exception e) {
+                Log.i("DataTest", "quiet-popup-touch FAILED " + e);
+            }
             getWindowManager().removeView(root);
         }, 500);
     }
@@ -6545,6 +6621,179 @@ public class Main extends Activity {
                     + ", in a layout [" + quiet.heard + "] [" + asked.heard + "] " + inLayout + ", inflated [" + child.heard + "] " + fromLayout;
             return withParams && made && inLayout && fromLayout;
         });
+        // A table whose rows and cells leave layout_width or layout_height out inflates, with Android's sizes for what is left
+        // out: a row is MATCH_PARENT wide whatever it says and WRAP_CONTENT high, a cell MATCH_PARENT wide and WRAP_CONTENT high
+        // (TableLayout.LayoutParams and TableRow.LayoutParams, setBaseAttributes). It ended in "You must supply a layout_height
+        // attribute" (Device Info HW). And it is measured and laid out: each cell has a width and a height.
+        step("table-cells", () -> {
+            final int match = android.view.ViewGroup.LayoutParams.MATCH_PARENT, wrap = android.view.ViewGroup.LayoutParams.WRAP_CONTENT;
+            android.widget.TableLayout table = (android.widget.TableLayout) android.view.LayoutInflater.from(this).inflate(R.layout.table_cells, null);
+            android.widget.TableRow first = (android.widget.TableRow) table.getChildAt(0), second = (android.widget.TableRow) table.getChildAt(1);
+            android.view.ViewGroup.LayoutParams r1 = first.getLayoutParams(), r2 = second.getLayoutParams();
+            android.widget.TableRow.LayoutParams c1 = (android.widget.TableRow.LayoutParams) first.getChildAt(0).getLayoutParams(),
+                c2 = (android.widget.TableRow.LayoutParams) first.getChildAt(1).getLayoutParams(), c3 = (android.widget.TableRow.LayoutParams) second.getChildAt(0).getLayoutParams();
+            boolean rows = r1 instanceof android.widget.TableLayout.LayoutParams && r1.width == match && r1.height == wrap && r2.width == match && r2.height == 30;
+            boolean cells = c1.width == 0 && c1.height == wrap && c1.weight == 1f && c2.width == match && c2.height == wrap && c2.weight == 2f
+                && c3.width == match && c3.height == 12;
+            table.measure(android.view.View.MeasureSpec.makeMeasureSpec(300, android.view.View.MeasureSpec.EXACTLY), android.view.View.MeasureSpec.makeMeasureSpec(0, android.view.View.MeasureSpec.UNSPECIFIED));
+            table.layout(0, 0, table.getMeasuredWidth(), table.getMeasuredHeight());
+            android.view.View value = first.getChildAt(1), x = second.getChildAt(0);
+            boolean laid = first.getWidth() == 300 && second.getWidth() == 300 && second.getHeight() == 30 && value.getWidth() > 0 && value.getHeight() > 0
+                && x.getWidth() > 0 && x.getHeight() == 12;
+            detail = "rows " + r1.width + "x" + r1.height + " " + r2.width + "x" + r2.height + ", cells " + c1.width + "x" + c1.height + " " + c2.width + "x" + c2.height
+                + " " + c3.width + "x" + c3.height + ", laid out " + first.getWidth() + "x" + first.getHeight() + " " + second.getWidth() + "x" + second.getHeight()
+                + " value " + value.getWidth() + "x" + value.getHeight() + " x " + x.getWidth() + "x" + x.getHeight();
+            return rows && cells && laid;
+        });
+        // PrecomputedText is the text it was made of: its characters and its spans, its paragraphs (each ends after its line
+        // feed) and the parameters a Builder was told. It was signatures alone -- no characters, getSpans null -- so a
+        // SpannableString made of one, which androidx's PrecomputedTextCompat hands on as it is from Android 10, ended in a
+        // NullPointerException (Ozon's chat). It takes a span and gives it up, but not one that changes the metrics; a
+        // range's width is measured with the parameters' paint; and a TextView that took the parameters shows the text,
+        // spans and both lines, and names the same parameters.
+        step("precomputed-text", () -> {
+            final int ex = android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE;
+            android.text.SpannableString src = new android.text.SpannableString("first line" + (char) 10 + "second");
+            Object color = new android.text.style.ForegroundColorSpan(0xff102030), style = new android.text.style.StyleSpan(android.graphics.Typeface.BOLD);
+            src.setSpan(color, 0, 5, ex);
+            src.setSpan(style, 6, 10, ex);
+            android.text.TextPaint paint = new android.text.TextPaint();
+            paint.setTextSize(20);
+            android.text.PrecomputedText.Params params = new android.text.PrecomputedText.Params.Builder(paint)
+                .setBreakStrategy(android.text.Layout.BREAK_STRATEGY_SIMPLE).setHyphenationFrequency(android.text.Layout.HYPHENATION_FREQUENCY_NONE).build();
+            android.text.PrecomputedText text = android.text.PrecomputedText.create(src, params);
+            boolean chars = text.length() == 17 && text.charAt(11) == 's' && text.toString().equals(src.toString()) && text.subSequence(11, 17).toString().equals("second");
+            Object[] all = text.getSpans(0, text.length(), Object.class);
+            boolean spans = all != null && all.length == 2 && text.getSpanStart(color) == 0 && text.getSpanEnd(color) == 5 && text.getSpanStart(style) == 6
+                && text.getSpanEnd(style) == 10 && text.getSpanFlags(style) == ex;
+            android.text.SpannableString copy = android.text.SpannableString.valueOf(text);
+            boolean copied = copy.toString().equals(src.toString()) && copy.getSpans(0, copy.length(), Object.class).length == 2 && copy.getSpanEnd(color) == 5;
+            boolean paragraphs = text.getParagraphCount() == 2 && text.getParagraphStart(0) == 0 && text.getParagraphEnd(0) == 11 && text.getParagraphStart(1) == 11
+                && text.getParagraphEnd(1) == 17 && android.text.PrecomputedText.create("", params).getParagraphCount() == 0;
+            android.text.PrecomputedText.Params got = text.getParams();
+            boolean kept = got.getTextPaint().getTextSize() == 20f && got.getBreakStrategy() == android.text.Layout.BREAK_STRATEGY_SIMPLE
+                && got.getHyphenationFrequency() == android.text.Layout.HYPHENATION_FREQUENCY_NONE && got.getTextDirection() != null
+                && got.equals(new android.text.PrecomputedText.Params.Builder(paint).setBreakStrategy(android.text.Layout.BREAK_STRATEGY_SIMPLE)
+                    .setHyphenationFrequency(android.text.Layout.HYPHENATION_FREQUENCY_NONE).build())
+                && !got.equals(new android.text.PrecomputedText.Params.Builder(paint).build());
+            Object under = new android.text.style.UnderlineSpan();
+            text.setSpan(under, 11, 17, ex);
+            boolean set = text.getSpanStart(under) == 11 && text.getSpans(0, 17, Object.class).length == 3;
+            text.removeSpan(under);
+            set = set && text.getSpanStart(under) == -1;
+            boolean refused = false;
+            try { text.setSpan(new android.text.style.StyleSpan(android.graphics.Typeface.ITALIC), 0, 3, ex); } catch (IllegalArgumentException e) { refused = true; }
+            float part = text.getWidth(0, 5), line = text.getWidth(0, 10);
+            boolean widths = part > 0 && line > part && text.getWidth(3, 3) == 0;
+            android.widget.TextView view = new android.widget.TextView(this);
+            view.setTextMetricsParams(params);
+            view.setText(text);
+            view.measure(android.view.View.MeasureSpec.makeMeasureSpec(0, android.view.View.MeasureSpec.UNSPECIFIED), android.view.View.MeasureSpec.makeMeasureSpec(0, android.view.View.MeasureSpec.UNSPECIFIED));
+            view.layout(0, 0, view.getMeasuredWidth(), view.getMeasuredHeight());
+            CharSequence in = view.getText();
+            boolean shown = in.toString().equals(src.toString()) && in instanceof android.text.Spanned
+                && ((android.text.Spanned) in).getSpans(0, 17, android.text.style.ForegroundColorSpan.class).length == 1 && view.getLineCount() == 2
+                && view.getMeasuredWidth() > 0 && view.getTextSize() == 20f && view.getBreakStrategy() == android.text.Layout.BREAK_STRATEGY_SIMPLE
+                && view.getHyphenationFrequency() == android.text.Layout.HYPHENATION_FREQUENCY_NONE;
+            boolean same = view.getTextMetricsParams().equals(params) && view.getTextMetricsParams().getTextPaint() != view.getPaint();
+            detail = "chars " + chars + " (" + text.length() + "), spans " + spans + " (" + (all == null ? "null" : "" + all.length) + "), copied " + copied
+                + ", paragraphs " + paragraphs + " (" + text.getParagraphCount() + "), parameters " + kept + ", span set and removed " + set + ", metric span refused " + refused
+                + ", widths " + part + " " + line + ", in a view " + shown + " (" + view.getLineCount() + " lines, " + view.getMeasuredWidth() + " wide), its parameters " + same;
+            return chars && spans && copied && paragraphs && kept && set && refused && widths && shown && same;
+        });
+        // ColorSpace has the named spaces Android documents, the RGB ones as ColorSpace.Rgb with their primaries, white point and
+        // transfer function, and Color has the colours of them. Every name was one nameless sRGB that was no Rgb, and YouTube,
+        // which casts the space to Rgb while its settings are laid out, ended there.
+        step("color-space", () -> {
+            android.graphics.ColorSpace srgb = android.graphics.ColorSpace.get(android.graphics.ColorSpace.Named.SRGB);
+            android.graphics.ColorSpace p3 = android.graphics.ColorSpace.get(android.graphics.ColorSpace.Named.DISPLAY_P3);
+            // What YouTube does with it: the named space is an Rgb.
+            boolean isRgb = srgb instanceof android.graphics.ColorSpace.Rgb && "sRGB IEC61966-2.1".equals(srgb.getName()) && srgb.getId() == 0
+                && srgb.getModel() == android.graphics.ColorSpace.Model.RGB && srgb.getComponentCount() == 3 && srgb.isSrgb() && !srgb.isWideGamut();
+            if (!isRgb) {
+                detail = "sRGB is a " + srgb.getClass().getName() + ": " + srgb;
+                return false;
+            }
+            android.graphics.ColorSpace.Rgb rgb = (android.graphics.ColorSpace.Rgb) srgb;
+            android.graphics.ColorSpace.Rgb.TransferParameters curve = rgb.getTransferParameters();
+            // Every name has a space of its place, an Rgb but for XYZ and L*a*b*, and a colour comes back from XYZ as it went.
+            String wrong = "";
+            int count = 0;
+            for (android.graphics.ColorSpace.Named name : android.graphics.ColorSpace.Named.values()) {
+                android.graphics.ColorSpace space = android.graphics.ColorSpace.get(name);
+                boolean isXyzOrLab = name == android.graphics.ColorSpace.Named.CIE_XYZ || name == android.graphics.ColorSpace.Named.CIE_LAB;
+                count++;
+                if (space == null || space.getId() != name.ordinal() || (space instanceof android.graphics.ColorSpace.Rgb) == isXyzOrLab
+                        || (space.getModel() == android.graphics.ColorSpace.Model.RGB) == isXyzOrLab
+                        || !colorNear(space.fromXyz(space.toXyz(0.25f, 0.5f, 0.75f)), 0.25f, 0.5f, 0.75f, 2e-3f)) wrong += " " + name;
+            }
+            boolean named = wrong.isEmpty() && count >= 16;
+            // The transfer function: sRGB's parameters, and half of the code is a fifth of the light.
+            boolean curved = curve != null && Math.abs(curve.g - 2.4) < 1e-9 && Math.abs(curve.d - 0.04045) < 1e-9 && Math.abs(curve.a - 1 / 1.055) < 1e-9
+                && colorNear(rgb.toLinear(0.5f, 0.5f, 0.5f), 0.21404f, 0.21404f, 0.21404f, 1e-4f)
+                && colorNear(rgb.fromLinear(0.21404f, 0.21404f, 0.21404f), 0.5f, 0.5f, 0.5f, 1e-4f) && Math.abs(rgb.getEotf().applyAsDouble(0.5) - 0.21404) < 1e-4;
+            // The primaries and the white point make the transform: white is D65, and red's column and the inverse's are sRGB's.
+            float[] m = rgb.getTransform();
+            boolean xyz = colorNear(srgb.toXyz(1f, 1f, 1f), 0.9505f, 1.0f, 1.0891f, 1e-3f) && colorNear(m, 0.4124f, 0.2126f, 0.0193f, 1e-3f)
+                && colorNear(rgb.getInverseTransform(), 3.2406f, -0.9689f, 0.0557f, 2e-3f) && rgb.getPrimaries().length == 6
+                && Math.abs(rgb.getPrimaries()[0] - 0.64f) < 1e-6f && Math.abs(rgb.getWhitePoint()[0] - 0.31271f) < 1e-6f;
+            // A wide gamut is told by the triangle of the primaries, or by a range beyond 0 to 1.
+            boolean wide = p3.isWideGamut() && !p3.isSrgb() && !android.graphics.ColorSpace.get(android.graphics.ColorSpace.Named.BT709).isWideGamut()
+                && android.graphics.ColorSpace.get(android.graphics.ColorSpace.Named.ADOBE_RGB).isWideGamut()
+                && !android.graphics.ColorSpace.get(android.graphics.ColorSpace.Named.SMPTE_C).isWideGamut()
+                && android.graphics.ColorSpace.get(android.graphics.ColorSpace.Named.LINEAR_EXTENDED_SRGB).isWideGamut();
+            // Between two spaces: Display P3's red is outside sRGB and is cut to its red, grey stays grey, sRGB's red is inside P3.
+            android.graphics.ColorSpace.Connector toSrgb = android.graphics.ColorSpace.connect(p3, srgb), toP3 = android.graphics.ColorSpace.connect(srgb, p3);
+            boolean connected = colorNear(toSrgb.transform(1f, 0f, 0f), 1f, 0f, 0f, 0f) && colorNear(toSrgb.transform(0.5f, 0.5f, 0.5f), 0.5f, 0.5f, 0.5f, 1e-3f)
+                && colorNear(toP3.transform(1f, 0f, 0f), 0.9175f, 0.2003f, 0.1386f, 2e-3f) && toSrgb.getSource() == p3 && toSrgb.getDestination() == srgb
+                && colorNear(android.graphics.ColorSpace.connect(srgb, srgb).transform(0.1f, 0.2f, 0.3f), 0.1f, 0.2f, 0.3f, 0f)
+                && android.graphics.ColorSpace.connect(p3).getDestination().equals(srgb);
+            // Another white point: sRGB adapted to D50 has the transform colour profiles carry, and is found again by it.
+            android.graphics.ColorSpace d50 = android.graphics.ColorSpace.adapt(srgb, android.graphics.ColorSpace.ILLUMINANT_D50);
+            float[] profile = ((android.graphics.ColorSpace.Rgb) d50).getTransform();
+            boolean adapted = d50 != srgb && !d50.isSrgb() && colorNear(profile, 0.4361f, 0.2225f, 0.0139f, 1e-3f)
+                && colorNear(d50.toXyz(1f, 1f, 1f), 0.9642f, 1.0f, 0.8252f, 1e-3f) && android.graphics.ColorSpace.match(profile, curve) == srgb
+                && android.graphics.ColorSpace.adapt(srgb, android.graphics.ColorSpace.ILLUMINANT_D65) == srgb;
+            // Through XYZ of D50 to L*a*b* and back: white is L 100. And a space made of sRGB's numbers is sRGB without a name.
+            android.graphics.ColorSpace lab = android.graphics.ColorSpace.get(android.graphics.ColorSpace.Named.CIE_LAB);
+            android.graphics.ColorSpace.Rgb made = new android.graphics.ColorSpace.Rgb("made", m, curve), gamma = new android.graphics.ColorSpace.Rgb("gamma", m, 2.2);
+            boolean other = colorNear(android.graphics.ColorSpace.connect(srgb, lab).transform(1f, 1f, 1f), 100f, 0f, 0f, 0.1f)
+                && colorNear(android.graphics.ColorSpace.connect(lab, srgb).transform(100f, 0f, 0f), 1f, 1f, 1f, 2e-3f) && made.isSrgb()
+                && made.getId() == android.graphics.ColorSpace.MIN_ID && !made.equals(srgb) && !gamma.isSrgb() && Math.abs(gamma.getPrimaries()[2] - 0.3f) < 1e-3f;
+            // Packed colours: an sRGB one is the int, one of Display P3 keeps its space and its components, and each converts.
+            long red = android.graphics.Color.pack(1f, 0f, 0f, 1f, p3), plain = android.graphics.Color.pack(0x80336699);
+            long moved = android.graphics.Color.convert(0xffff0000, p3);
+            boolean packed = android.graphics.Color.colorSpace(red) == p3 && !android.graphics.Color.isSrgb(red) && android.graphics.Color.isWideGamut(red)
+                && android.graphics.Color.red(red) == 1f && android.graphics.Color.green(red) == 0f && android.graphics.Color.alpha(red) == 1f
+                && android.graphics.Color.toArgb(red) == 0xffff0000 && android.graphics.Color.colorSpace(plain) == srgb
+                && android.graphics.Color.toArgb(plain) == 0x80336699 && android.graphics.Color.red(plain) == 0x33 / 255f
+                && android.graphics.Color.alpha(plain) == 0x80 / 255f && android.graphics.Color.isInColorSpace(moved, p3)
+                && Math.abs(android.graphics.Color.red(moved) - 0.9175f) < 2e-3f && Math.abs(android.graphics.Color.green(moved) - 0.2003f) < 2e-3f
+                && android.graphics.Color.toArgb(moved) == 0xffff0000
+                && Math.abs(android.graphics.Color.luminance(android.graphics.Color.pack(1f, 1f, 1f)) - 1f) < 1e-4f
+                && android.graphics.Color.pack(0.5f, 0.25f, 1f, 1f, srgb) == android.graphics.Color.pack(0xff8040ff);
+            // And Color objects: of a space, with its components, converted to another.
+            android.graphics.Color object = android.graphics.Color.valueOf(red), back = object.convert(srgb), opaque = android.graphics.Color.valueOf(0xff336699);
+            boolean objects = object.getColorSpace() == p3 && object.getModel() == android.graphics.ColorSpace.Model.RGB && object.getComponentCount() == 4
+                && object.getComponents().length == 4 && object.getComponent(0) == 1f && object.alpha() == 1f && object.isWideGamut() && !object.isSrgb()
+                && object.toArgb() == 0xffff0000 && object.pack() == red && back.isSrgb() && back.red() == 1f && back.green() == 0f
+                && opaque.getColorSpace() == srgb && opaque.isSrgb() && opaque.toArgb() == 0xff336699
+                && opaque.pack() == android.graphics.Color.pack(0xff336699) && opaque.equals(android.graphics.Color.valueOf(0xff336699))
+                && android.graphics.Color.valueOf(0.2f, 0.4f, 0.6f, 1f, p3).getColorSpace() == p3;
+            // Android 14's members, by their names (the app is built for Android 10): the data space of a named space.
+            Object dataSpace = android.graphics.ColorSpace.class.getMethod("getDataSpace").invoke(srgb);
+            Object ofData = android.graphics.ColorSpace.class.getMethod("getFromDataSpace", int.class).invoke(null, 143261696);
+            boolean later = Integer.valueOf(142671872).equals(dataSpace) && ofData == p3 && android.graphics.ColorSpace.Named.valueOf("BT2020_PQ").ordinal() == 17;
+            detail = "an Rgb " + isRgb + ", named " + named + " (" + count + (wrong.isEmpty() ? "" : ", wrong:" + wrong) + "), transfer " + curved + ", transform " + xyz
+                + ", wide gamut " + wide + ", connectors " + connected + ", adapted " + adapted + ", L*a*b* and made spaces " + other + ", packed colours " + packed
+                + ", Color objects " + objects + ", Android 14's " + later;
+            return named && curved && xyz && wide && connected && adapted && other && packed && objects && later;
+        });
+    }
+
+    /** Whether the first three numbers are these, each to within eps. */
+    private static boolean colorNear(float[] v, float a, float b, float c, float eps) {
+        return Math.abs(v[0] - a) <= eps && Math.abs(v[1] - b) <= eps && Math.abs(v[2] - c) <= eps;
     }
 
     /** A group as Compose's AndroidViewsHandler is one: its requestLayout does not go on to View's -- it counts the request

@@ -487,6 +487,7 @@ static const mg_jhle g_android[] = {
     { "java/lang/Object", "hashCode", NULL, ret_zero },
     { "java/lang/Class", "getName", NULL, class_getName },
     { "java/lang/Class", "getClassLoader", NULL, ctx_getClassLoader },
+    { "java/lang/Class", "forName", NULL, loader_loadClass },
     { "java/lang/ClassLoader", "loadClass", NULL, loader_loadClass },
     { "java/lang/ClassLoader", "findClass", NULL, loader_loadClass },
     { "java/lang/ClassLoader", "findLibrary", NULL, loader_findLibrary },

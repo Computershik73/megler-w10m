@@ -60,6 +60,15 @@
 // controller's hide and show of the bars are kept by the decor (megler.DecorView, overlaid). The original's controller did
 // the keyboard alone, and the shell kept every app in full screen whatever it asked.
 //
+// And in which window a touch outside a window goes to (dispatchTouch): a window with FLAG_NOT_FOCUSABLE takes only the
+// touches inside it, as on Android, where a window is modal only with neither FLAG_NOT_TOUCH_MODAL nor FLAG_NOT_FOCUSABLE.
+// The original looked at FLAG_NOT_TOUCH_MODAL alone, and a popup of Compose that takes no focus (PopupProperties(focusable =
+// false): the flag FLAG_NOT_FOCUSABLE and no other) took every touch on the screen: Reddit, with a 2x2 popup over its feed,
+// answered nothing once the first post had loaded.
+//
+// And in WindowManager.updateViewLayout called from the window's own layout with the parameters the window has
+// (setLayoutParams): it asks for no other layout. See the note there.
+//
 // Why. Where a frame's time goes -- in Java and in which part of the frame, in the shell's drawing, in handing the picture
 // over -- is measured from the core's side (core/src/drivers/mg_java.c, "the frame meter", a line in the log every five
 // seconds while the app draws), and only the frame itself knows where its phases begin. Nothing else changes: the calls
@@ -247,7 +256,21 @@ public final class ViewRoot implements ViewParent {
      * where it is and its size, which the next layout compares (performLayout): Yandex Maps updated a window's parameters in
      * nearly every frame, each a whole screen drawn again (package 530).
      */
+    private static boolean same(WindowManager.LayoutParams a, WindowManager.LayoutParams b) {
+        return a.width == b.width && a.height == b.height && a.x == b.x && a.y == b.y && a.type == b.type && a.flags == b.flags
+            && a.softInputMode == b.softInputMode && a.gravity == b.gravity && a.format == b.format && a.windowAnimations == b.windowAnimations
+            && a.alpha == b.alpha && a.dimAmount == b.dimAmount && a.screenBrightness == b.screenBrightness
+            && a.layoutInDisplayCutoutMode == b.layoutInDisplayCutoutMode && a.screenOrientation == b.screenOrientation
+            && a.systemUiVisibility == b.systemUiVisibility && a.horizontalMargin == b.horizontalMargin && a.verticalMargin == b.verticalMargin
+            && a.token == b.token && String.valueOf(a.getTitle()).equals(String.valueOf(b.getTitle()));
+    }
     public void setLayoutParams(WindowManager.LayoutParams lp) {
+        /* The parameters the window has, given again from its own layout: nothing to do. Android asks the view for a layout
+           here too, but a view asked during its own layout is not laid out again for that (the request ends with the layout
+           it was made in), while here such a request stays for the next frame (View.requestLayout) -- and a window whose root
+           view gives the window manager its parameters in every onLayout, as a popup of Compose does (PopupLayout), was laid
+           out again in every frame, which gave them again: frames without end and none of them drawn (Reddit). */
+        if (mInLayout && same(mLp, lp)) return;
         boolean looks = lp.type != mLp.type || lp.flags != mLp.flags || lp.format != mLp.format || lp.alpha != mLp.alpha || lp.dimAmount != mLp.dimAmount;
         mLp.copyFrom(lp);
         mView.setLayoutParams(mLp);
@@ -1079,7 +1102,9 @@ public final class ViewRoot implements ViewParent {
                 ViewRoot r = sRoots.get(i);
                 if (r.mOwnerStopped || r.mView.getVisibility() != View.VISIBLE || (r.mLp.flags & WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE) != 0) continue;
                 boolean inside = x >= r.mX && y >= r.mY && x < r.mX + r.mW && y < r.mY + r.mH;
-                boolean modal = (r.mLp.flags & WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL) == 0;
+                /* As Android's (WindowManager.LayoutParams.isModal): a window that takes no focus is not modal either, whatever
+                   FLAG_NOT_TOUCH_MODAL says -- touches outside it go to the windows under it. */
+                boolean modal = (r.mLp.flags & (WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL | WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE)) == 0;
                 if (inside || modal) {
                     if (!inside && (r.mLp.flags & WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH) != 0) {
                         MotionEvent o = MotionEvent.obtain(e); o.setAction(MotionEvent.ACTION_OUTSIDE); o.offsetLocation(-r.mX, -r.mY);

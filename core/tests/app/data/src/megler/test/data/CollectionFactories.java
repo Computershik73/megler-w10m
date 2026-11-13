@@ -323,4 +323,60 @@ final class CollectionFactories {
         });
         return bad.toString();
     }
+
+    /** An Optional's method by reflection; what it throws, thrown as it is. */
+    private static Object on(Object o, String name, Class<?>[] types, Object... args) throws Throwable {
+        try {
+            return o.getClass().getMethod(name, types).invoke(o, args);
+        } catch (InvocationTargetException e) {
+            throw e.getCause();
+        }
+    }
+
+    /**
+     * The step objects-java9: Java 9's members of Objects (Android 11) and Java 9 to 11's of Optional (Android 13), which the
+     * libcore overlay gives Android 9's classes (Objects.java.members, Optional.java.members).
+     */
+    static String objects() throws Throwable {
+        final StringBuilder bad = new StringBuilder();
+        final Class<?> o = java.util.Objects.class;
+        final Class<?>[] two = objects(2), supplied = { Object.class, java.util.function.Supplier.class };
+        final Class<?>[] ints2 = { int.class, int.class }, ints3 = { int.class, int.class, int.class }, none = {};
+        final Class<? extends Throwable> IOOBE = IndexOutOfBoundsException.class;
+        check(bad, "else-own", "a".equals(call(o, "requireNonNullElse", two, "a", "b")));
+        check(bad, "else-default", "b".equals(call(o, "requireNonNullElse", two, null, "b")));
+        refused(bad, "else-both-null", NPE, () -> call(o, "requireNonNullElse", two, null, null));
+        final java.util.function.Supplier<Object> c = () -> "c", nothing = () -> null;
+        check(bad, "else-get-own", "a".equals(call(o, "requireNonNullElseGet", supplied, "a", nothing)));
+        check(bad, "else-get-supplied", "c".equals(call(o, "requireNonNullElseGet", supplied, null, c)));
+        refused(bad, "else-get-null", NPE, () -> call(o, "requireNonNullElseGet", supplied, null, nothing));
+        refused(bad, "else-get-no-supplier", NPE, () -> call(o, "requireNonNullElseGet", supplied, null, null));
+        check(bad, "index", Integer.valueOf(2).equals(call(o, "checkIndex", ints2, 2, 3)));
+        refused(bad, "index-at-length", IOOBE, () -> call(o, "checkIndex", ints2, 3, 3));
+        refused(bad, "index-negative", IOOBE, () -> call(o, "checkIndex", ints2, -1, 3));
+        check(bad, "from-to", Integer.valueOf(1).equals(call(o, "checkFromToIndex", ints3, 1, 3, 3)));
+        refused(bad, "from-to-past", IOOBE, () -> call(o, "checkFromToIndex", ints3, 1, 4, 3));
+        refused(bad, "from-to-reversed", IOOBE, () -> call(o, "checkFromToIndex", ints3, 2, 1, 3));
+        check(bad, "from-size", Integer.valueOf(1).equals(call(o, "checkFromIndexSize", ints3, 1, 2, 3)));
+        refused(bad, "from-size-past", IOOBE, () -> call(o, "checkFromIndexSize", ints3, 2, 2, 3));
+        refused(bad, "from-size-overflow", IOOBE, () -> call(o, "checkFromIndexSize", ints3, 2, Integer.MAX_VALUE, 3));
+
+        final java.util.Optional<String> full = java.util.Optional.of("v"), empty = java.util.Optional.empty();
+        check(bad, "is-empty", Boolean.TRUE.equals(on(empty, "isEmpty", none)) && Boolean.FALSE.equals(on(full, "isEmpty", none)));
+        final StringBuilder heard = new StringBuilder();
+        final java.util.function.Consumer<String> hears = v -> heard.append(v);
+        final Runnable absent = () -> heard.append('-');
+        final Class<?>[] orElse = { java.util.function.Consumer.class, Runnable.class }, supplier = { java.util.function.Supplier.class };
+        on(full, "ifPresentOrElse", orElse, hears, absent);
+        on(empty, "ifPresentOrElse", orElse, hears, absent);
+        check(bad, "if-present-or-else", "v-".contentEquals(heard));
+        final java.util.function.Supplier<java.util.Optional<String>> other = () -> java.util.Optional.of("w"), nullOne = () -> null;
+        check(bad, "or-own", on(full, "or", supplier, other) == full);
+        check(bad, "or-other", java.util.Optional.of("w").equals(on(empty, "or", supplier, other)));
+        refused(bad, "or-null", NPE, () -> on(empty, "or", supplier, nullOne));
+        check(bad, "stream", ((Stream<?>) on(full, "stream", none)).count() == 1 && ((Stream<?>) on(empty, "stream", none)).count() == 0);
+        check(bad, "or-else-throw", "v".equals(on(full, "orElseThrow", none)));
+        refused(bad, "or-else-throw-empty", java.util.NoSuchElementException.class, () -> on(empty, "orElseThrow", none));
+        return bad.toString();
+    }
 }

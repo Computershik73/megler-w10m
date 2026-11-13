@@ -29,4 +29,17 @@ bool mg_kuser_call(mg_addr pc, u32 *regs, u32 *cpsr, u32 tls, mg_addr *resume);
  */
 bool mg_kuser_read(mg_addr address, const u8 *insn, bool thumb, u32 *regs, mg_addr *next);
 
+/*
+ * SWP and SWPB (`swp Rt, Rt2, [Rn]`, ARM state only), with which code exchanged a register and memory in one step before
+ * ARMv6 had LDREX and STREX. An ARMv7 processor of several cores runs them only where the system turns them on, an ARMv8
+ * one not at all: the instruction is undefined there, and Linux does it in the kernel (Android's init asks for that:
+ * abi.swp), which Windows does not. `insn` is the instruction the processor refused: when it is one of the two it is done
+ * here, the exchange in one step for every other thread -- or left undone where its condition does not hold with the flags
+ * of `cpsr`, as the processor leaves an instruction whose condition fails -- and the thread goes on after it. False for any
+ * other instruction, for one with pc among its registers, and for SWP of a word that is not aligned, which Linux refuses
+ * too. Boost's spinlock for ARM (spinlock_gcc_arm.hpp, which every shared_ptr's count is kept under) locks so: Plague Inc
+ * ended at its first exception_ptr (0.1.0.695).
+ */
+bool mg_kuser_swp(const u8 *insn, u32 *regs, u32 cpsr);
+
 #endif
