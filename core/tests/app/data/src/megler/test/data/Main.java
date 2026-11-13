@@ -2261,6 +2261,8 @@ public class Main extends Activity {
      * A small window that takes no focus over the activity, as a popup of Compose that is not focusable is (FLAG_NOT_FOCUSABLE
      * and no other flag): a touch outside it goes to the activity under it, as on Android, where such a window is not modal.
      * It took every touch on the screen (Reddit). The touch is given to megler.ViewRoot, as the shell gives one.
+     * And its root view gives the window manager the window's parameters again in every onLayout, as Compose's PopupLayout
+     * does: that asks for no other layout, and the window is laid out once or twice, not in every frame (quiet-popup-layout).
      */
     private void quietPopup() {
         final boolean[] popupTouched = new boolean[1];
@@ -2269,8 +2271,14 @@ public class Main extends Activity {
                 android.graphics.PixelFormat.TRANSLUCENT);
         lp.gravity = android.view.Gravity.TOP | android.view.Gravity.LEFT;
         lp.token = getWindow().getDecorView().getWindowToken();
+        final int[] layouts = new int[1];
         final android.widget.FrameLayout root = new android.widget.FrameLayout(this) {
             @Override public boolean dispatchTouchEvent(android.view.MotionEvent e) { popupTouched[0] = true; return true; }
+            @Override protected void onLayout(boolean changed, int l, int t, int r, int b) {
+                super.onLayout(changed, l, t, r, b);
+                layouts[0]++;
+                getWindowManager().updateViewLayout(this, lp);
+            }
         };
         getWindowManager().addView(root, lp);
         new android.os.Handler().postDelayed(() -> {
@@ -2284,6 +2292,7 @@ public class Main extends Activity {
                 touch.invoke(null, android.view.MotionEvent.obtain(now, now + 10, android.view.MotionEvent.ACTION_CANCEL, x, y, 0));
                 boolean ok = touchSeen && !popupTouched[0];
                 Log.i("DataTest", "quiet-popup-touch " + (ok ? "ok" : "FAILED") + " activity=" + touchSeen + " popup=" + popupTouched[0]);
+                Log.i("DataTest", "quiet-popup-layout " + (layouts[0] >= 1 && layouts[0] <= 3 ? "ok" : "FAILED") + " layouts=" + layouts[0]);
             } catch (Exception e) {
                 Log.i("DataTest", "quiet-popup-touch FAILED " + e);
             }
