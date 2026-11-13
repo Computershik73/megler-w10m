@@ -60,6 +60,12 @@
 // controller's hide and show of the bars are kept by the decor (megler.DecorView, overlaid). The original's controller did
 // the keyboard alone, and the shell kept every app in full screen whatever it asked.
 //
+// And in which window a touch outside a window goes to (dispatchTouch): a window with FLAG_NOT_FOCUSABLE takes only the
+// touches inside it, as on Android, where a window is modal only with neither FLAG_NOT_TOUCH_MODAL nor FLAG_NOT_FOCUSABLE.
+// The original looked at FLAG_NOT_TOUCH_MODAL alone, and a popup of Compose that takes no focus (PopupProperties(focusable =
+// false): the flag FLAG_NOT_FOCUSABLE and no other) took every touch on the screen: Reddit, with a 2x2 popup over its feed,
+// answered nothing once the first post had loaded.
+//
 // Why. Where a frame's time goes -- in Java and in which part of the frame, in the shell's drawing, in handing the picture
 // over -- is measured from the core's side (core/src/drivers/mg_java.c, "the frame meter", a line in the log every five
 // seconds while the app draws), and only the frame itself knows where its phases begin. Nothing else changes: the calls
@@ -1079,7 +1085,9 @@ public final class ViewRoot implements ViewParent {
                 ViewRoot r = sRoots.get(i);
                 if (r.mOwnerStopped || r.mView.getVisibility() != View.VISIBLE || (r.mLp.flags & WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE) != 0) continue;
                 boolean inside = x >= r.mX && y >= r.mY && x < r.mX + r.mW && y < r.mY + r.mH;
-                boolean modal = (r.mLp.flags & WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL) == 0;
+                /* As Android's (WindowManager.LayoutParams.isModal): a window that takes no focus is not modal either, whatever
+                   FLAG_NOT_TOUCH_MODAL says -- touches outside it go to the windows under it. */
+                boolean modal = (r.mLp.flags & (WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL | WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE)) == 0;
                 if (inside || modal) {
                     if (!inside && (r.mLp.flags & WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH) != 0) {
                         MotionEvent o = MotionEvent.obtain(e); o.setAction(MotionEvent.ACTION_OUTSIDE); o.offsetLocation(-r.mX, -r.mY);

@@ -2250,6 +2250,44 @@ public class Main extends Activity {
             boolean ok = seen[0] && seen[1] && seen[2] && !seen[3];
             Log.i("DataTest", "panel-root " + (ok ? "ok" : "FAILED") + " root=" + seen[0] + "/" + seen[1] + " surface=" + seen[2] + "/" + seen[3]);
             getWindowManager().removeView(root);
+            quietPopup();
+        }, 500);
+    }
+
+    private boolean touchSeen;
+    @Override public boolean dispatchTouchEvent(android.view.MotionEvent e) { touchSeen = true; return super.dispatchTouchEvent(e); }
+
+    /**
+     * A small window that takes no focus over the activity, as a popup of Compose that is not focusable is (FLAG_NOT_FOCUSABLE
+     * and no other flag): a touch outside it goes to the activity under it, as on Android, where such a window is not modal.
+     * It took every touch on the screen (Reddit). The touch is given to megler.ViewRoot, as the shell gives one.
+     */
+    private void quietPopup() {
+        final boolean[] popupTouched = new boolean[1];
+        final android.view.WindowManager.LayoutParams lp = new android.view.WindowManager.LayoutParams(2, 2,
+                android.view.WindowManager.LayoutParams.TYPE_APPLICATION_PANEL, android.view.WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
+                android.graphics.PixelFormat.TRANSLUCENT);
+        lp.gravity = android.view.Gravity.TOP | android.view.Gravity.LEFT;
+        lp.token = getWindow().getDecorView().getWindowToken();
+        final android.widget.FrameLayout root = new android.widget.FrameLayout(this) {
+            @Override public boolean dispatchTouchEvent(android.view.MotionEvent e) { popupTouched[0] = true; return true; }
+        };
+        getWindowManager().addView(root, lp);
+        new android.os.Handler().postDelayed(() -> {
+            try {
+                android.util.DisplayMetrics m = getResources().getDisplayMetrics();
+                float x = m.widthPixels / 2f, y = m.heightPixels / 2f;
+                long now = android.os.SystemClock.uptimeMillis();
+                java.lang.reflect.Method touch = Class.forName("megler.ViewRoot").getMethod("dispatchTouch", android.view.MotionEvent.class);
+                touchSeen = false;
+                touch.invoke(null, android.view.MotionEvent.obtain(now, now, android.view.MotionEvent.ACTION_DOWN, x, y, 0));
+                touch.invoke(null, android.view.MotionEvent.obtain(now, now + 10, android.view.MotionEvent.ACTION_CANCEL, x, y, 0));
+                boolean ok = touchSeen && !popupTouched[0];
+                Log.i("DataTest", "quiet-popup-touch " + (ok ? "ok" : "FAILED") + " activity=" + touchSeen + " popup=" + popupTouched[0]);
+            } catch (Exception e) {
+                Log.i("DataTest", "quiet-popup-touch FAILED " + e);
+            }
+            getWindowManager().removeView(root);
         }, 500);
     }
 
