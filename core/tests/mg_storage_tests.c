@@ -21,6 +21,7 @@
 
 #include "../include/megler.h"
 #include "../src/bionic/mg_bionic.h"
+#include "../src/bionic/mg_fd.h"
 #include "../src/mg_base.h"
 #include "../src/host/mg_host.h"
 #include "../src/run/mg_run.h"
