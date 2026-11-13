@@ -3701,6 +3701,27 @@ __asm__(".text\n"
         ".size t_call_small, .-t_call_small\n");
 
 /*
+ * An instruction no processor has (mg_tests.c, test_refused_report), in the library's own state: UDF, of a number that is
+ * neither one of the loader's traps nor one Windows gives a meaning of its own (a breakpoint, a fast fail, an assertion).
+ */
+#if defined(__thumb__)
+#define T_REFUSED ".inst.n 0xde42\n"
+#else
+#define T_REFUSED ".inst 0xe7f123f4\n"
+#endif
+__asm__(".text\n"
+        ".syntax unified\n" T_RS_STATE
+        ".p2align 2\n"
+        ".globl t_refused\n.type t_refused, %function\n" T_RS_FUNC
+        "t_refused:\n"
+        "  mov r0, #1\n"
+        "  mov r1, #2\n"
+        "  " T_REFUSED
+        "  mov r0, #0\n"
+        "  bx lr\n"
+        ".size t_refused, .-t_refused\n");
+
+/*
  * SWP and SWPB (mg_tests.c, test_swp), as old ARM code has them and an ARMv8 processor refuses them (arm/mg_kuser.h); in
  * ARM state, which alone has them, whatever the library's own, and by their encodings, which an assembler for ARMv8 would
  * not write. t_swp_word(at, value) and t_swp_byte(at, value) exchange and return what was there; t_swp_never's is

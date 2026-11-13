@@ -5873,6 +5873,41 @@ static void test_small_pc_report(mg_lib *lib, const char *what)
 }
 
 /*
+ * The crash report of an instruction the processor refuses (mg_core.c, refused_code), under a guard as above: it says the
+ * state the code is in and the code's bytes around the instruction, the instruction's own after a bar.
+ */
+static char g_refused_report[1500];
+
+static void refused_sink(int level, const char *line, void *user)
+{
+    (void)user;
+    if (strstr(line, "fault: illegal instruction")) mg_strlcpy(g_refused_report, line, sizeof(g_refused_report));
+    if (g_small_pc_before) g_small_pc_before(level, line, g_small_pc_before_user);
+}
+
+static void test_refused_report(mg_lib *lib, bool thumb)
+{
+    void *fn = SYM(lib, "t_refused");
+    bool faulted = false;
+    say("the crash report of an instruction the processor refuses, %s: the code's bytes around it", thumb ? "Thumb-2" : "ARM mode");
+    CHECK(fn != NULL);
+    if (!fn || !mg_guest_tp_get()) {
+        CHECK(mg_guest_tp_get() != NULL);
+        return;
+    }
+    mg_log_get_sink(&g_small_pc_before, &g_small_pc_before_user);
+    mg_log_set_sink(refused_sink, NULL);
+    g_refused_report[0] = 0;
+    (void)mg_jni_call_native_guarded(fn, NULL, "()I", NULL, &faulted);
+    mg_log_set_sink(g_small_pc_before, g_small_pc_before_user);
+    CHECK(faulted);
+    CHECK(strstr(g_refused_report, thumb ? "\n  the code there (Thumb), the refused instruction after the bar:"
+                                         : "\n  the code there (ARM), the refused instruction after the bar:") != NULL);
+    CHECK(strstr(g_refused_report, thumb ? " | 42 de " : " | f4 23 f1 e7 ") != NULL);
+    if (!strstr(g_refused_report, " | ")) say("  %s", g_refused_report[0] ? g_refused_report : "(no report)");
+}
+
+/*
  * SWP and SWPB in a library's ARM code (guest/t_basic.c), which an ARMv8 processor refuses and the fault handler then does
  * (mg_core.c, arm/mg_kuser.h): a word and a byte are exchanged, what was there given, the byte's neighbours left; one whose
  * condition fails changes nothing. Where the processor runs them itself the same holds.
@@ -5984,6 +6019,7 @@ static void test_guest(const char *libdir, const char *scratch)
     test_unresolved_imports();
 #if MG_ARCH_ARM32
     test_small_pc_report(basic, "Thumb-2");
+    test_refused_report(basic, true);
 #endif
 
 #if MG_ARCH_ARM32
@@ -6227,6 +6263,7 @@ static void test_guest_arm(const char *scratch)
         CHECK(st.arm_functions > 20);
         test_library(arm, "ARM mode, packed relocations", scratch);
         test_small_pc_report(arm, "ARM mode");
+        test_refused_report(arm, false);
         test_swp(arm);
     }
 }

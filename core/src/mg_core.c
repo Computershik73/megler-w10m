@@ -126,6 +126,25 @@ static void registers_line(const mg_fault *f, char *out, size_t cap)
     if (n + 24 < cap) snprintf(out + n, cap - n, " %s %08x", MG_ARCH_ARM32 ? "cpsr" : MG_ARCH_ARM64 ? "pstate" : "flags", f->cpsr ? *f->cpsr : 0);
 }
 
+/*
+ * The code around an instruction the processor refused, for the report of it: an instruction this processor lacks, a trap
+ * put there on purpose and bytes that are no code at all are told apart by these, and the report had none of them (BBVA's
+ * packed library, 0.1.0.695). The eight bytes before it and the twelve from it, in the order they lie in memory; of the
+ * instruction's own page only, which was read to run it.
+ */
+static void refused_code(const mg_fault *f, mg_addr pc, char *out, size_t cap)
+{
+    mg_addr page = pc & ~(mg_addr)(MG_PAGE - 1), at = pc - page >= 8 ? pc - 8 : page, end = page + MG_PAGE - pc >= 12 ? pc + 12 : page + MG_PAGE;
+#if MG_ARCH_ARM32
+    const char *state = (f->regs[15] & 1u) || (f->cpsr && (*f->cpsr & 0x20u)) ? " (Thumb)" : " (ARM)";
+#else
+    const char *state = "";
+#endif
+    size_t n = (size_t)snprintf(out, cap, "\n  the code there%s, the refused instruction after the bar:", state);
+    (void)f;
+    for (; at < end && n + 6 < cap; at++) n += (size_t)snprintf(out + n, cap - n, "%s %02x", at == pc ? " |" : "", (unsigned)*(const u8 *)at);
+}
+
 #if MG_ARCH_ARM32
 /*
  * The path a traced call by number names (open, openat, stat64, fstatat64, access, faccessat, readlink, readlinkat and the
@@ -401,6 +420,10 @@ static MG_HOSTCB bool on_fault(mg_fault *f)
         if (lib && base) {
             size_t n = strlen(report);
             snprintf(report + n, sizeof(report) - n, "\n  %s+0x%x", lib, (unsigned)(pc - (mg_addr)base));
+        }
+        if (f->kind == MG_FAULT_ILLEGAL && pc) {
+            size_t n = strlen(report);
+            refused_code(f, pc, report + n, sizeof(report) - n);
         }
         if (f->kind == MG_FAULT_ACCESS && f->address < 0x100) {
             /*
