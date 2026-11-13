@@ -3629,6 +3629,10 @@ static int run_data(void)
                                          /* And a table whose rows and cells leave layout_width or layout_height out inflates, with Android's
                                             sizes for what is left out (Device Info HW). */
                                          "table-cells",
+                                         /* And PrecomputedText is the text it was made of -- characters, spans, paragraphs and the parameters
+                                            it was made with -- so a SpannableString of one keeps the spans, and a TextView shows it (Ozon's
+                                            chat). */
+                                         "precomputed-text",
                                          /* And ViewGroup.cleanupLayoutState takes a group's layout request back: a group whose requestLayout
                                             calls it on itself (Compose's AndroidViewsHandler) hears each requestLayout of a child. */
                                          "cleanup-layout-state",

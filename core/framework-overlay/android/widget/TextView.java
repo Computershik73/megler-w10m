@@ -23,6 +23,12 @@
 // but one with an ellipsis has it where that wider width ended. A LinearLayout not given an exact width measures a weighted
 // child at its own width first and at its share after: Transit's search cards' single-line titles kept the layout of the
 // first measure, and the line was cut at the view's edge with no ellipsis ("<color|1e212d/f0f0f1>Ch", 0.1.0.684).
+//
+// And the text metrics parameters (PrecomputedText.Params) are this view's: setTextMetricsParams takes the paint, the
+// break strategy and the hyphenation frequency it is given, getTextMetricsParams gives the view's with a paint of its
+// own, getTextDirectionHeuristic names a direction (it was null), and setPrecomputedText sets the text it is given with
+// its spans. The first did nothing, the second gave the view's own paint with a Builder's defaults, the last set a plain
+// string (android/text/PrecomputedText.java here has why they matter).
 // Everything else is the original's, unchanged.
 package android.widget;
 
@@ -993,9 +999,20 @@ public class TextView extends View implements ViewTreeObserver.OnPreDrawListener
     public boolean isSuggestionsEnabled() { return false; }
     public void setTextClassifier(android.view.textclassifier.TextClassifier c) {}
     public android.view.textclassifier.TextClassifier getTextClassifier() { return android.view.textclassifier.TextClassifier.NO_OP; }
-    public void setTextMetricsParams(android.text.PrecomputedText.Params p) {}
-    public android.text.PrecomputedText.Params getTextMetricsParams() { return new android.text.PrecomputedText.Params.Builder(getPaint()).build(); }
-    public void setPrecomputedText(Object p) { setText(String.valueOf(p)); }
+    /** The paint, the direction and the line breaking a text was measured with (PrecomputedText), taken as this view's. */
+    public void setTextMetricsParams(android.text.PrecomputedText.Params p) {
+        mTextPaint.set(p.getTextPaint());
+        mLetterSpacing = mTextPaint.getLetterSpacing();
+        mBreakStrategy = p.getBreakStrategy();
+        mHyphenation = p.getHyphenationFrequency();
+        relayout();
+    }
+    /** This view's, with a paint of its own: what a text measured for this view is made with. */
+    public android.text.PrecomputedText.Params getTextMetricsParams() {
+        return new android.text.PrecomputedText.Params.Builder(new TextPaint(mTextPaint)).setTextDirection(getTextDirectionHeuristic())
+            .setBreakStrategy(mBreakStrategy).setHyphenationFrequency(mHyphenation).build();
+    }
+    public void setPrecomputedText(Object p) { setText(p instanceof CharSequence ? (CharSequence) p : String.valueOf(p)); }
     public float getLineSpacingExtraMegler() { return mSpacingAdd; }
     public void setEnabled(boolean e) { super.setEnabled(e); if (!e && megler.InputMethods.focused() == this) megler.InputMethods.hide(); }
     public boolean extractText(ExtractedTextRequest r, ExtractedText out) { out.text = mText; out.selectionStart = getSelectionStart(); out.selectionEnd = getSelectionEnd(); return true; }
@@ -1063,7 +1080,7 @@ public class TextView extends View implements ViewTreeObserver.OnPreDrawListener
     public boolean getShiftDrawingOffsetForStartOverhang() { return (megler.Fill.get(meglerFill, "ShiftDrawingOffsetForStartOverhang") instanceof Boolean ? (Boolean) megler.Fill.get(meglerFill, "ShiftDrawingOffsetForStartOverhang") : false); }
     public java.util.Locale getSpellCheckerLocale() { return null; }
     public android.view.inputmethod.TextBoundsInfo getTextBoundsInfo(android.graphics.RectF p0) { return null; }
-    public android.text.TextDirectionHeuristic getTextDirectionHeuristic() { return null; }
+    public android.text.TextDirectionHeuristic getTextDirectionHeuristic() { return android.text.TextDirectionHeuristics.FIRSTSTRONG_LTR; }
     public android.os.LocaleList getTextLocales() { return null; }
     public java.util.Locale getTextServicesLocale() { return null; }
     protected int getTopPaddingOffset() { return 0; }

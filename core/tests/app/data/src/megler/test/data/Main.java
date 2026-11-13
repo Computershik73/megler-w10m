@@ -6645,6 +6645,62 @@ public class Main extends Activity {
                 + " value " + value.getWidth() + "x" + value.getHeight() + " x " + x.getWidth() + "x" + x.getHeight();
             return rows && cells && laid;
         });
+        // PrecomputedText is the text it was made of: its characters and its spans, its paragraphs (each ends after its line
+        // feed) and the parameters a Builder was told. It was signatures alone -- no characters, getSpans null -- so a
+        // SpannableString made of one, which androidx's PrecomputedTextCompat hands on as it is from Android 10, ended in a
+        // NullPointerException (Ozon's chat). It takes a span and gives it up, but not one that changes the metrics; a
+        // range's width is measured with the parameters' paint; and a TextView that took the parameters shows the text,
+        // spans and both lines, and names the same parameters.
+        step("precomputed-text", () -> {
+            final int ex = android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE;
+            android.text.SpannableString src = new android.text.SpannableString("first line" + (char) 10 + "second");
+            Object color = new android.text.style.ForegroundColorSpan(0xff102030), style = new android.text.style.StyleSpan(android.graphics.Typeface.BOLD);
+            src.setSpan(color, 0, 5, ex);
+            src.setSpan(style, 6, 10, ex);
+            android.text.TextPaint paint = new android.text.TextPaint();
+            paint.setTextSize(20);
+            android.text.PrecomputedText.Params params = new android.text.PrecomputedText.Params.Builder(paint)
+                .setBreakStrategy(android.text.Layout.BREAK_STRATEGY_SIMPLE).setHyphenationFrequency(android.text.Layout.HYPHENATION_FREQUENCY_NONE).build();
+            android.text.PrecomputedText text = android.text.PrecomputedText.create(src, params);
+            boolean chars = text.length() == 17 && text.charAt(11) == 's' && text.toString().equals(src.toString()) && text.subSequence(11, 17).toString().equals("second");
+            Object[] all = text.getSpans(0, text.length(), Object.class);
+            boolean spans = all != null && all.length == 2 && text.getSpanStart(color) == 0 && text.getSpanEnd(color) == 5 && text.getSpanStart(style) == 6
+                && text.getSpanEnd(style) == 10 && text.getSpanFlags(style) == ex;
+            android.text.SpannableString copy = android.text.SpannableString.valueOf(text);
+            boolean copied = copy.toString().equals(src.toString()) && copy.getSpans(0, copy.length(), Object.class).length == 2 && copy.getSpanEnd(color) == 5;
+            boolean paragraphs = text.getParagraphCount() == 2 && text.getParagraphStart(0) == 0 && text.getParagraphEnd(0) == 11 && text.getParagraphStart(1) == 11
+                && text.getParagraphEnd(1) == 17 && android.text.PrecomputedText.create("", params).getParagraphCount() == 0;
+            android.text.PrecomputedText.Params got = text.getParams();
+            boolean kept = got.getTextPaint().getTextSize() == 20f && got.getBreakStrategy() == android.text.Layout.BREAK_STRATEGY_SIMPLE
+                && got.getHyphenationFrequency() == android.text.Layout.HYPHENATION_FREQUENCY_NONE && got.getTextDirection() != null
+                && got.equals(new android.text.PrecomputedText.Params.Builder(paint).setBreakStrategy(android.text.Layout.BREAK_STRATEGY_SIMPLE)
+                    .setHyphenationFrequency(android.text.Layout.HYPHENATION_FREQUENCY_NONE).build())
+                && !got.equals(new android.text.PrecomputedText.Params.Builder(paint).build());
+            Object under = new android.text.style.UnderlineSpan();
+            text.setSpan(under, 11, 17, ex);
+            boolean set = text.getSpanStart(under) == 11 && text.getSpans(0, 17, Object.class).length == 3;
+            text.removeSpan(under);
+            set = set && text.getSpanStart(under) == -1;
+            boolean refused = false;
+            try { text.setSpan(new android.text.style.StyleSpan(android.graphics.Typeface.ITALIC), 0, 3, ex); } catch (IllegalArgumentException e) { refused = true; }
+            float part = text.getWidth(0, 5), line = text.getWidth(0, 10);
+            boolean widths = part > 0 && line > part && text.getWidth(3, 3) == 0;
+            android.widget.TextView view = new android.widget.TextView(this);
+            view.setTextMetricsParams(params);
+            view.setText(text);
+            view.measure(android.view.View.MeasureSpec.makeMeasureSpec(0, android.view.View.MeasureSpec.UNSPECIFIED), android.view.View.MeasureSpec.makeMeasureSpec(0, android.view.View.MeasureSpec.UNSPECIFIED));
+            view.layout(0, 0, view.getMeasuredWidth(), view.getMeasuredHeight());
+            CharSequence in = view.getText();
+            boolean shown = in.toString().equals(src.toString()) && in instanceof android.text.Spanned
+                && ((android.text.Spanned) in).getSpans(0, 17, android.text.style.ForegroundColorSpan.class).length == 1 && view.getLineCount() == 2
+                && view.getMeasuredWidth() > 0 && view.getTextSize() == 20f && view.getBreakStrategy() == android.text.Layout.BREAK_STRATEGY_SIMPLE
+                && view.getHyphenationFrequency() == android.text.Layout.HYPHENATION_FREQUENCY_NONE;
+            boolean same = view.getTextMetricsParams().equals(params) && view.getTextMetricsParams().getTextPaint() != view.getPaint();
+            detail = "chars " + chars + " (" + text.length() + "), spans " + spans + " (" + (all == null ? "null" : "" + all.length) + "), copied " + copied
+                + ", paragraphs " + paragraphs + " (" + text.getParagraphCount() + "), parameters " + kept + ", span set and removed " + set + ", metric span refused " + refused
+                + ", widths " + part + " " + line + ", in a view " + shown + " (" + view.getLineCount() + " lines, " + view.getMeasuredWidth() + " wide), its parameters " + same;
+            return chars && spans && copied && paragraphs && kept && set && refused && widths && shown && same;
+        });
     }
 
     /** A group as Compose's AndroidViewsHandler is one: its requestLayout does not go on to View's -- it counts the request
