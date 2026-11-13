@@ -3723,10 +3723,12 @@ __asm__(".text\n"
 
 /*
  * SWP and SWPB (mg_tests.c, test_swp), as old ARM code has them and an ARMv8 processor refuses them (arm/mg_kuser.h); in
- * ARM state, which alone has them, whatever the library's own, and by their encodings, which an assembler for ARMv8 would
- * not write. t_swp_word(at, value) and t_swp_byte(at, value) exchange and return what was there; t_swp_never's is
- * conditional on flags that say no (swpne after a comparison of a register with itself) and returns 77.
+ * ARM state, which alone has them, so in the ARM-mode library alone (the Thumb-2 one is checked to have no ARM function),
+ * and by their encodings, which an assembler for ARMv8 would not write. t_swp_word(at, value) and t_swp_byte(at, value)
+ * exchange and return what was there; t_swp_never's is conditional on flags that say no (swpne after a comparison of a
+ * register with itself) and returns 77.
  */
+#if !defined(__thumb__)
 __asm__(".text\n"
         ".syntax unified\n"
         ".arm\n"
@@ -3750,5 +3752,6 @@ __asm__(".text\n"
         "  cmp r2, r2\n"
         "  .inst 0x11020091\n"          /* swpne r0, r1, [r2] */
         "  bx lr\n"
-        ".size t_swp_never, .-t_swp_never\n" T_RS_STATE);
+        ".size t_swp_never, .-t_swp_never\n");
+#endif
 #endif
