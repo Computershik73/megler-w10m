@@ -761,14 +761,22 @@ static void tap(int x, int y)
  * functions are called on the app's main thread.
  */
 static struct {
-    volatile i32 shown, hidden;        /* how many times each was asked */
-    volatile i32 kind, flags, enter;   /* of the last show */
+    volatile i32 shown, hidden;        /* how many times each was asked: a show afresh, and a hide */
+    volatile i32 again;                /* shows of the last show's field once more (MEGLER_KEYBOARD_F_AGAIN), counted apart */
+    volatile i32 again_wrong;          /* ... of those, the ones whose three were not the last show's */
+    volatile i32 kind, flags, enter;   /* of the last show afresh */
     u32 thread;                        /* the thread the last request came on */
 } K;
 
 static MEGLER_CB void keyboard_show(void *user, int kind, int flags, int enter)
 {
     (void)user;
+    if (flags & MEGLER_KEYBOARD_F_AGAIN) {
+        K.thread = mg_thread_self_id();
+        if (kind != K.kind || (flags & ~MEGLER_KEYBOARD_F_AGAIN) != K.flags || enter != K.enter) mg_atomic_add(&K.again_wrong, 1);
+        mg_atomic_add(&K.again, 1);
+        return;
+    }
     K.kind = kind;
     K.flags = flags;
     K.enter = enter;
@@ -2348,6 +2356,14 @@ static bool shown_times(i32 count)
     return K.shown == count;
 }
 
+/* Waits until the app has asked for the keyboard of the same field once more (MEGLER_KEYBOARD_F_AGAIN) `count` times in all, or more. */
+static bool again_times(i32 count)
+{
+    int tries;
+    for (tries = 0; tries < 1000 && K.again < count && running(); tries++) mg_sleep_ns(10000000ull);
+    return K.again >= count;
+}
+
 /*
  * The row "typing" of the demos list opens a screen with four text fields (core/tests/app/demos, Typing). The test is
  * the keyboard: a touch of a field must ask for it, with the field's kind; what it then sends must arrive in the field,
@@ -2356,7 +2372,7 @@ static bool shown_times(i32 count)
 static void type_into_fields(const int row[4], int *at)
 {
     int name[4], number[4], secret[4], note[4], layout, typed, fewer;
-    i32 shown, hidden;
+    i32 shown, hidden, again;
     memset(name, 0, sizeof(name));
     say("the keyboard: text typed into the demos app's fields");
     /* Typed while no field has the focus: it goes nowhere, and the framework's log says so (megler.InputMethods in the overlay). */
@@ -2478,13 +2494,47 @@ static void type_into_fields(const int row[4], int *at)
     tap(name[0] + 60, name[1] + name[3] / 2);
     CHECK(shown_times(shown + 1) && K.kind == MEGLER_KEYBOARD_TEXT);
     settle();
+    /*
+     * The field that has the keyboard, touched where its cursor already is: the keyboard is asked for once more as it is
+     * (MEGLER_KEYBOARD_F_AGAIN, with the field's own three) and not afresh, so that a shell's keyboard keeps what it is
+     * composing (megler.h; issue #7). The first touch here puts the cursor at the text's end, wherever the touch before
+     * left it; the second finds it there. (A touch of the field that has the focus asks twice, at the touch and at its
+     * click: one more or two.)
+     */
+    tap(name[0] + name[2] - 8, name[1] + name[3] / 2);
+    mg_sleep_ns(300000000ull);
+    settle();
+    shown = K.shown;
+    again = K.again;
+    tap(name[0] + name[2] - 8, name[1] + name[3] / 2);
+    CHECK(again_times(again + 1));
+    mg_sleep_ns(300000000ull);
+    settle();
+    CHECK(K.shown == shown && K.again_wrong == 0);
+    /* What the keyboard then types goes in at the cursor, and the field is as the keyboard left it: touched there, once more. */
+    megler_text_commit("?");
+    expect_line("I/DemoTest: typing: name=\"\xD0\xB6HeXll!?\" cursor=8", at, 30);
+    again = K.again;
+    tap(name[0] + name[2] - 8, name[1] + name[3] / 2);
+    CHECK(again_times(again + 1));
+    mg_sleep_ns(300000000ull);
+    settle();
+    CHECK(K.shown == shown && K.again_wrong == 0);
+    /* Touched at its beginning the cursor moves there: the keyboard begins afresh (and the touch's click asks once more). */
+    again = K.again;
+    tap(name[0] + 3, name[1] + name[3] / 2);
+    CHECK(shown_times(shown + 1) && K.kind == MEGLER_KEYBOARD_TEXT && K.flags == 0);
+    CHECK(again_times(again + 1));
+    settle();
+    megler_text_commit("#");
+    expect_line("I/DemoTest: typing: name=\"#\xD0\xB6HeXll!?\" cursor=1", at, 30);
     /* Back: the screen goes, and with it the field that wanted the keyboard. */
     megler_key(4, true);
     megler_key(4, false);
-    expect_line("I/DemoTest: typing: destroyed name=\"\xD0\xB6HeXll!\"", at, 30);
+    expect_line("I/DemoTest: typing: destroyed name=\"#\xD0\xB6HeXll!?\"", at, 30);
     settle();
     CHECK(K.hidden > hidden);
-    say("  the keyboard was asked for %d times and sent away %d times", (int)K.shown, (int)K.hidden);
+    say("  the keyboard was asked for %d times afresh and %d times once more, and sent away %d times", (int)K.shown, (int)K.again, (int)K.hidden);
 }
 
 /* The last line from `from` on that holds `text`, or -1. */

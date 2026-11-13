@@ -1447,9 +1447,16 @@ typedef struct megler_gfx_host {
  *   show   A text field wants the keyboard: the user touched it, or the app asked for it. `kind` is what is typed there
  *          (MEGLER_KEYBOARD_*), `flags` more about it (MEGLER_KEYBOARD_F_*), `enter` what the Enter key does there
  *          (MEGLER_ENTER_*), for the key's label and so that the shell knows whether Enter can mean a new line. `show` while
- *          the keyboard is already up means that another field is being edited now -- the three may differ, the keyboard
- *          stays up -- or the same field once more (the framework asks when a field takes the focus and again when it is
- *          touched): a repeated `show` must be harmless.
+ *          the keyboard is already up is one of two things, and `flags` say which. Without MEGLER_KEYBOARD_F_AGAIN
+ *          another field is being edited now, or the same one whose text, cursor or kind the app or the user changed
+ *          under the keyboard (Android's restartInput): the three may differ, the keyboard stays up, and it begins
+ *          afresh -- what it was composing stays in the field as it was typed and is the keyboard's to replace no
+ *          longer. With MEGLER_KEYBOARD_F_AGAIN it is the field of the last `show` once more, its three the same, its
+ *          text and cursor as the keyboard left them (the framework asks again when the field that has the focus is
+ *          touched, and an app may ask whenever it likes): the keyboard stays as it is, with whatever it is composing.
+ *          Such a `show` must be harmless; a shell that began afresh at it would take from a keyboard that composes
+ *          (Chinese, Japanese) what it was composing, in any app that asks often. A shell that is not showing the
+ *          keyboard for a field of those three (it was put away meanwhile) takes it as any other `show`.
  *   hide   No field wants it any more: the field lost the focus, its screen went away, or the app asked.
  *
  *   Both are called on the app's main thread -- the thread megler_run made for the app, on which its views live -- from
@@ -1461,8 +1468,11 @@ typedef struct megler_gfx_host {
  * in the order of the calls, also among each other and with megler_key. They do nothing for an app that is not Java.
  *
  *   megler_text_commit      Text the user typed, pasted or chose from the suggestions, UTF-8: put at the cursor of the field
- *                         being edited, in place of its selection. There is no composing text: a keyboard that composes
- *                         (as for Chinese or Japanese) sends each piece when it is final.
+ *                         being edited, in place of its selection. There is no composing text. Of a keyboard that composes
+ *                         (as for Chinese or Japanese) a shell sends each piece when it is final; or, as Megler's
+ *                         shell for Windows does, what is composed as it is typed, and when the keyboard replaces it
+ *                         -- the letters typed, by the characters chosen for them -- a Backspace for each character
+ *                         that goes and then the new text.
  *   megler_text_key         An editing key (MEGLER_TEXT_*). Backspace deletes the selection, or what is before the cursor (a
  *                         surrogate pair whole). Enter does what `enter` said: a new line, or the field's action (Done
  *                         closes the keyboard, Next moves on, Search and Go and Send are the app's). The others -- Delete,
@@ -1486,6 +1496,7 @@ enum {
     MEGLER_KEYBOARD_F_CAP_ALL = 16,
     MEGLER_KEYBOARD_F_SIGNED = 32,           /* a number that may have a sign, a decimal point */
     MEGLER_KEYBOARD_F_DECIMAL = 64,
+    MEGLER_KEYBOARD_F_AGAIN = 128,           /* the field of the last `show` once more, as the keyboard left it: nothing afresh (see `show`) */
 };
 enum { MEGLER_ENTER_DONE = 0, MEGLER_ENTER_NEWLINE, MEGLER_ENTER_GO, MEGLER_ENTER_SEARCH, MEGLER_ENTER_SEND, MEGLER_ENTER_NEXT, MEGLER_ENTER_PREVIOUS };
 enum { MEGLER_TEXT_BACKSPACE = 1, MEGLER_TEXT_ENTER, MEGLER_TEXT_DELETE, MEGLER_TEXT_LEFT, MEGLER_TEXT_RIGHT, MEGLER_TEXT_UP, MEGLER_TEXT_DOWN, MEGLER_TEXT_HOME, MEGLER_TEXT_END };

@@ -3670,9 +3670,21 @@ focused view's `InputConnection`).
   flags (several lines, no suggestions, capitals, signed, decimal), and what
   Enter does (a new line, Done, Go, Search, Send, Next, Previous). **Both are
   called on the app's main thread**, from inside the framework, and must
-  return at once. `show` comes again for the same field (the framework asks
-  when a field takes the focus and again when it is touched): ten times for
-  five touched fields in the test.
+  return at once. `show` comes again for the same field -- the field that
+  has the focus touched (at the touch and at its click), an app's own
+  `showSoftInput` -- and since 0.1.0.698 it says so: when the keyboard is up
+  for that very input connection and kind, and the field's selection and
+  length are as the keyboard left them, it is
+  `megler.Native.showKeyboardAgain` and the shell hears
+  `MEGLER_KEYBOARD_F_AGAIN`, at which it leaves its keyboard alone with what
+  it is composing. Any other `show` begins afresh: another field, a restart
+  (`setText`, `setInputType`, `restartInput`: a new connection), a cursor
+  moved by a touch or by the app, a view that is no `TextView`, the keyboard
+  closed since (`megler.InputMethods.ask`, in the overlay). Before, the shell
+  could not tell the two and began afresh at every one, which ended whatever
+  a Chinese or Japanese keyboard was composing (issue #7). The test touches
+  the field that has the keyboard where its cursor is, types, touches it
+  again (once more each time) and then at its beginning (afresh).
 - **The shell tells**, from any thread: `megler_text_commit` (typed text),
   `megler_text_key` (Backspace, Enter, Delete, the arrows, Home, End),
   `megler_keyboard_closed`, `megler_keyboard_height`. Each is queued and reaches

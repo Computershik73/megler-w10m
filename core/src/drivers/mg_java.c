@@ -1045,19 +1045,14 @@ N(Native_systemBars)
 /* ----------------------------------------------------------- the keyboard */
 
 /*
- * showKeyboard(show, inputType, imeOptions): the framework wants the shell's keyboard for the field being edited, or wants
- * it gone. Android's two words about the field are turned into the shell's three (megler.h): what is typed there, more
- * about it, and what Enter does. Called on the app's main thread; the shell's function returns at once.
+ * The shell's keyboard asked for, for the field being edited. Android's two words about the field are turned into the
+ * shell's three (megler.h): what is typed there, more about it (and `more`, MEGLER_KEYBOARD_F_AGAIN or 0), and what Enter
+ * does. Called on the app's main thread; the shell's function returns at once.
  */
-N(Native_showKeyboard)
+static void keyboard_show(i32 type, i32 ime, int more)
 {
     const megler_keyboard_host *k = &J.config->keyboard;
-    i32 type = c->args[1].i, ime = c->args[2].i;
-    int cls = type & 0xF, variation = type & 0xFF0, action = ime & 0xFF, kind, flags = 0, enter;
-    if (!c->args[0].z) {
-        if (k->hide) k->hide(k->user);
-        return;
-    }
+    int cls = type & 0xF, variation = type & 0xFF0, action = ime & 0xFF, kind, flags = more, enter;
     if (cls == 2) {
         /* TYPE_CLASS_NUMBER; its variation 0x10 is a PIN. */
         kind = variation == 0x10 ? MEGLER_KEYBOARD_NUMBER_PASSWORD : MEGLER_KEYBOARD_NUMBER;
@@ -1086,6 +1081,30 @@ N(Native_showKeyboard)
     mg_atomic_xchg(&J.enter_newline, enter == MEGLER_ENTER_NEWLINE);
     if (k->show) k->show(k->user, kind, flags, enter);
     else mg_note_once("java: the app asked for the keyboard, and the shell gave the layer none to ask (megler_run_config.keyboard)");
+}
+
+/*
+ * showKeyboard(show, inputType, imeOptions): the framework wants the shell's keyboard for the field being edited -- a field
+ * to begin afresh in -- or wants it gone.
+ */
+N(Native_showKeyboard)
+{
+    const megler_keyboard_host *k = &J.config->keyboard;
+    if (!c->args[0].z) {
+        if (k->hide) k->hide(k->user);
+        return;
+    }
+    keyboard_show(c->args[1].i, c->args[2].i, 0);
+}
+
+/*
+ * showKeyboardAgain(inputType, imeOptions): the framework wants the keyboard for the field it last asked it for, once
+ * more, the field's text and cursor as the keyboard left them (megler.InputMethods.ask decides that): the shell is told so
+ * (MEGLER_KEYBOARD_F_AGAIN), and leaves its keyboard what it is composing.
+ */
+N(Native_showKeyboardAgain)
+{
+    keyboard_show(c->args[0].i, c->args[1].i, MEGLER_KEYBOARD_F_AGAIN);
 }
 
 /* pollText(): the oldest thing the keyboard sent, as a String[1], or null. Asked once for each EV_TEXT event. */
@@ -1542,6 +1561,7 @@ static const mg_jhle k_native[] = {
     { "megler/Native", "pollText", NULL, Native_pollText },
     { "megler/Native", "pollPhone", NULL, Native_pollPhone },
     { "megler/Native", "showKeyboard", NULL, Native_showKeyboard },
+    { "megler/Native", "showKeyboardAgain", NULL, Native_showKeyboardAgain },
     { "megler/Native", "systemBars", NULL, Native_systemBars },
     { "megler/Native", "mediaSessionState", NULL, Native_mediaSessionState },
     { "megler/Native", "installApk", NULL, Native_installApk },
