@@ -621,9 +621,41 @@ static void x86_cpu_read(x86_cpu *c)
 }
 #endif
 
+/* "/sys/devices/system/cpu/cpu<N>/<rest>": <rest>, with N in *n; NULL for any other path. */
+static const char *cpu_file(const char *g, int *n)
+{
+    const char *p = g + 27;
+    if (strncmp(g, "/sys/devices/system/cpu/cpu", 27) || *p < '0' || *p > '9') return NULL;
+    for (*n = 0; *p >= '0' && *p <= '9' && *n < 100000; p++) *n = *n * 10 + (*p - '0');
+    return *p == '/' ? p + 1 : NULL;
+}
+
+/* Every one of `cpus` processors, as the kernel writes a list of them: "0-3". */
+static void cpu_list(textbuf *t, int cpus)
+{
+    if (cpus > 1) tb_add(t, "0-%d\n", cpus - 1);
+    else tb_add(t, "0\n");
+}
+
+/* The processors from `from` up to `to` of `cpus`, as the kernel writes a set of them: hexadecimal, 32 processors a group,
+   the highest group first, with as many digits as the processors there are need. */
+static void cpu_mask(textbuf *t, int from, int to, int cpus)
+{
+    int groups = (cpus + 31) / 32, k;
+    for (k = groups - 1; k >= 0; k--) {
+        int bits = k == groups - 1 && cpus % 32 ? cpus % 32 : 32, b;
+        u32 v = 0;
+        for (b = 0; b < 32; b++) {
+            if (k * 32 + b >= from && k * 32 + b < to) v |= (u32)1 << b;
+        }
+        tb_add(t, "%0*x%s", (bits + 3) / 4, (unsigned)v, k ? "," : "\n");
+    }
+}
+
 static char *synthetic(const char *g, size_t *size)
 {
     textbuf t;
+    const char *rest;
     int cpus = mg_cpu_count(), i;
     memset(&t, 0, sizeof(t));
     if (!strcmp(g, "/proc/cpuinfo")) {
@@ -711,13 +743,26 @@ static char *synthetic(const char *g, size_t *size)
         tb_add(&t, "Linux version 4.4.0-megler (megler@w10m) #1 SMP PREEMPT\n");
     } else if (!strcmp(g, "/sys/devices/system/cpu/possible") || !strcmp(g, "/sys/devices/system/cpu/present") ||
                !strcmp(g, "/sys/devices/system/cpu/online")) {
-        if (cpus > 1) tb_add(&t, "0-%d\n", cpus - 1);
-        else tb_add(&t, "0\n");
+        cpu_list(&t, cpus);
     } else if (!strncmp(g, "/sys/devices/system/cpu/cpu", 27) && strstr(g, "/cpufreq/")) {
         const char *leaf = strrchr(g, '/') + 1;
         if (atoi(g + 27) >= cpus) return NULL;
         if (!strcmp(leaf, "cpuinfo_max_freq") || !strcmp(leaf, "scaling_max_freq") || !strcmp(leaf, "scaling_cur_freq")) tb_add(&t, "1800000\n");
         else if (!strcmp(leaf, "cpuinfo_min_freq") || !strcmp(leaf, "scaling_min_freq")) tb_add(&t, "300000\n");
+        else return NULL;
+    } else if ((rest = cpu_file(g, &i)) != NULL && (!strncmp(rest, "topology/", 9) || !strcmp(rest, "cpu_capacity"))) {
+        /* A processor's place among the others, for code that spreads its threads over the cores by these files: one package
+           of cores of one thread each, all of the kernel's whole capacity. Goofish's Flutter engine stops with "siblings file
+           failed" and writes through a null pointer without them; Unity 6 reads cpu_capacity. Both the names the kernel has
+           had for a package's and a core's processors are answered. */
+        const char *leaf = rest + 9;
+        if (i >= cpus) return NULL;
+        if (!strcmp(rest, "cpu_capacity")) tb_add(&t, "1024\n");
+        else if (!strcmp(leaf, "core_siblings_list") || !strcmp(leaf, "package_cpus_list")) cpu_list(&t, cpus);
+        else if (!strcmp(leaf, "core_siblings") || !strcmp(leaf, "package_cpus")) cpu_mask(&t, 0, cpus, cpus);
+        else if (!strcmp(leaf, "thread_siblings_list") || !strcmp(leaf, "core_cpus_list") || !strcmp(leaf, "core_id")) tb_add(&t, "%d\n", i);
+        else if (!strcmp(leaf, "thread_siblings") || !strcmp(leaf, "core_cpus")) cpu_mask(&t, i, i + 1, cpus);
+        else if (!strcmp(leaf, "physical_package_id")) tb_add(&t, "0\n");
         else return NULL;
     } else if (!strcmp(g, CHROME_COMMAND_LINE)) {
         tb_add(&t, "chrome --single-process --in-process-gpu\n");

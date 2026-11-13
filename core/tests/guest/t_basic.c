@@ -614,6 +614,62 @@ int t_boot_id(void)
     return uuid_shaped(a) && uuid_shaped(u1) && uuid_shaped(u2) && same && differ;
 }
 
+/* How many bits a line of hexadecimal groups ("ff", "0000000f,ffffffff") has set, or -1 when it is not one. */
+static int mask_bits(const char *s)
+{
+    int i, bits = 0;
+    for (i = 0; s[i] && s[i] != '\n'; i++) {
+        int d = s[i] >= '0' && s[i] <= '9' ? s[i] - '0' : s[i] >= 'a' && s[i] <= 'f' ? s[i] - 'a' + 10 : s[i] == ',' ? 0 : -1;
+        if (d < 0) return -1;
+        for (; d; d >>= 1) bits += d & 1;
+    }
+    return i && s[i] == '\n' ? bits : -1;
+}
+
+/* A processor's place among the others (/sys/devices/system/cpu/cpu<N>/topology, cpu_capacity), which code that spreads
+   its threads over the cores reads: the package of the first and of the last processor is every processor there is, as
+   a list and as a mask; a core is its one processor; the capacity is the kernel's whole 1024; and the processor after
+   the last has no such files. 1 when so. */
+int t_cpu_topology(void)
+{
+    char all[128], line[128], path[96];
+    int i, last = 0;
+    first_line("/sys/devices/system/cpu/possible", all, sizeof(all));
+    if (all[0] != '0') return -1;
+    for (i = 0; all[i] && all[i] != '-'; i++) {}
+    if (all[i] == '-') {
+        for (i++; all[i] >= '0' && all[i] <= '9'; i++) last = last * 10 + (all[i] - '0');
+    }
+    first_line("/sys/devices/system/cpu/cpu0/topology/core_siblings_list", line, sizeof(line));
+    if (strcmp(line, all)) return -2;
+    snprintf(path, sizeof(path), "/sys/devices/system/cpu/cpu%d/topology/package_cpus_list", last);
+    first_line(path, line, sizeof(line));
+    if (strcmp(line, all)) return -3;
+    first_line("/sys/devices/system/cpu/cpu0/topology/core_siblings", line, sizeof(line));
+    if (mask_bits(line) != last + 1) return -4;
+    first_line("/sys/devices/system/cpu/cpu0/topology/thread_siblings", line, sizeof(line));
+    if (mask_bits(line) != 1) return -5;
+    for (i = 0; line[i] != '\n'; i++) {}
+    if (line[i - 1] != '1') return -6;
+    first_line("/sys/devices/system/cpu/cpu0/topology/thread_siblings_list", line, sizeof(line));
+    if (strcmp(line, "0\n")) return -7;
+    snprintf(path, sizeof(path), "/sys/devices/system/cpu/cpu%d/topology/core_id", last);
+    first_line(path, line, sizeof(line));
+    snprintf(all, sizeof(all), "%d\n", last);
+    if (strcmp(line, all)) return -8;
+    first_line("/sys/devices/system/cpu/cpu0/topology/physical_package_id", line, sizeof(line));
+    if (strcmp(line, "0\n")) return -9;
+    snprintf(path, sizeof(path), "/sys/devices/system/cpu/cpu%d/cpu_capacity", last);
+    first_line(path, line, sizeof(line));
+    if (strcmp(line, "1024\n")) return -10;
+    snprintf(path, sizeof(path), "/sys/devices/system/cpu/cpu%d/topology/core_siblings_list", last + 1);
+    if (fopen(path, "r")) return -11;
+    snprintf(path, sizeof(path), "/sys/devices/system/cpu/cpu%d/cpu_capacity", last + 1);
+    if (fopen(path, "r")) return -12;
+    if (fopen("/sys/devices/system/cpu/cpu0/topology/no_such_file", "r")) return -13;
+    return 1;
+}
+
 /* A line of /proc/self/status that starts with `key`, as the kernel writes it ("VmHWM:\t    1234 kB"): its number of
    kB, or -1. */
 static long status_kb(const char *key)
