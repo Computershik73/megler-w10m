@@ -432,7 +432,10 @@ static MG_HOSTCB void left_one(const char *name, bool is_dir, void *user)
  * The other apps that have run here, each with a folder in <data dir>/apps: their own parts of the shared storage are where
  * this app finds them, as on Android 9, where an app with the storage permission reaches every app's Android/data and
  * Android/obb (Android 11 stopped that). A file manager puts a file where a game looks for one: Asphalt 9 reads its
- * qaTestingConfigs.txt in its own two folders. The names of folders that cannot be a package's are passed over.
+ * qaTestingConfigs.txt in its own two folders. The names of folders that cannot be a package's are passed over. They are
+ * looked for when the app first asks for a path that may be in one of them, or lists Android/data or Android/obb
+ * (mg_fs_other_apps): a phone on which 155 apps had run spent a tenth of a second on them at every app's start, and their
+ * mounts left none for the app's APK (0.1.0.696).
  */
 typedef struct other_apps {
     const char *data_dir;
@@ -454,6 +457,21 @@ static MG_HOSTCB void other_app(const char *name, bool is_dir, void *user)
 }
 
 char *mg_run_own_storage(const char *data_dir, const char *package) { return mg_sprintf("%s/apps/%s/sdcard", data_dir, package); }
+
+/* mg_fs_other_apps' `find`: `user` is the storage's folder, a copy of the name kept for it. */
+static void other_apps_find(void *user)
+{
+    other_apps others;
+    char *apps;
+    others.data_dir = (const char *)user;
+    others.count = 0;
+    apps = mg_sprintf("%s/apps", others.data_dir);
+    mg_path_list(apps, other_app, &others, NULL);
+    free(apps);
+    if (others.count > 1)
+        mg_info("storage: the own parts of %d other app(s) are in /sdcard/Android/data and obb, as on Android 9 (looked for now: a path asked for one)",
+                others.count - 1);
+}
 
 /*
  * The services every app shares -- microG, which Android runs once for all apps -- keep their data in one folder beside the
@@ -597,9 +615,9 @@ void mg_run_files(const char *data_dir, const char *storage_dir, const char *pac
 {
     char *services = mg_sprintf("%s/services/%s", storage_dir, services_folder());
     char *internal;
-    char *own = mg_run_own_storage(storage_dir, package), *apps;
+    static char *others_dir;           /* the storage's folder as other_apps_find is told it */
+    char *own = mg_run_own_storage(storage_dir, package), *was;
     left_behind left;
-    other_apps others;
     mg_run_clear_data_if_asked(data_dir, storage_dir, package);
     mg_run_clear_cache_if_asked(data_dir, storage_dir, package);
     internal = internal_dir(data_dir, storage_dir, package);
@@ -608,12 +626,10 @@ void mg_run_files(const char *data_dir, const char *storage_dir, const char *pac
     mg_fs_mount(SERVICES_GUEST, services);
     free(services);
     mg_run_storage(storage_dir, storage);
-    others.data_dir = storage_dir;
-    others.count = 0;
-    apps = mg_sprintf("%s/apps", storage_dir);
-    mg_path_list(apps, other_app, &others, NULL);
-    free(apps);
-    if (others.count > 1) mg_info("storage: the own parts of %d other app(s) are in /sdcard/Android/data and obb, as on Android 9", others.count - 1);
+    was = others_dir;
+    others_dir = mg_strdup(storage_dir);
+    mg_fs_other_apps(other_apps_find, others_dir);
+    free(was);
     /*
      * Until the storage was shared every app had a whole one to itself, in the folder its own part is still kept in. What an app put
      * there outside Android/data and Android/obb is still on the disk and no longer in /sdcard. Nothing is moved; it is said.

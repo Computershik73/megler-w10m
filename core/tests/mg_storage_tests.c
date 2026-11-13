@@ -1700,6 +1700,80 @@ static void test_threads(void)
     CHECK_INT(seen.count, 0);
 }
 
+/*
+ * More other apps than the table of mounts once had places for (320: on a phone where 155 apps had run, their two parts
+ * each left none for Play Store's APK, which is mounted after them -- 0.1.0.696). What is mounted after the folders are
+ * set up is there, every other app's part is reached and listed, and with their folders gone their mounts are too.
+ */
+static void test_many_apps(const char *data)
+{
+    enum { CROWD = 170 };
+    dir_seen seen;
+    char name[160];
+    char *p, *apk;
+    int i, data_before, obb_before;
+    say("the shared storage: %d other apps", (int)CROWD);
+    read_dir("/sdcard/Android/data", &seen);
+    data_before = seen.count;
+    read_dir("/sdcard/Android/obb", &seen);
+    obb_before = seen.count;
+    CHECK(data_before >= 1 && obb_before >= 1);
+    for (i = 0; i < CROWD; i++) {
+        p = mg_sprintf("%s/apps/com.crowd.a%03d/sdcard/Android/data/com.crowd.a%03d", data, i, i);
+        CHECK(mg_path_mkdirs(p));
+        free(p);
+        p = mg_sprintf("%s/apps/com.crowd.a%03d/sdcard/Android/obb/com.crowd.a%03d", data, i, i);
+        CHECK(mg_path_mkdirs(p));
+        free(p);
+    }
+    p = mg_sprintf("%s/apps/com.crowd.a%03d/sdcard/Android/obb/com.crowd.a%03d/main.obb", data, CROWD - 1, CROWD - 1);
+    CHECK(mg_file_write_all(p, "obb", 3));
+    free(p);
+    mg_run_files(data, data, PKG, NULL);
+    /* The app's APK, as the driver mounts it: after the folders are set up, before any path asked for another app's part. */
+    apk = mg_sprintf("%s/crowd-base.apk", data);
+    CHECK(mg_file_write_all(apk, "PK", 2));
+    mg_fs_mount("/data/app/" PKG "-1/base.apk", apk);
+    CHECK(!strcmp(get("/data/app/" PKG "-1/base.apk"), "PK"));
+    /* The app's own part asks for nobody's; the last app's does, and all of them are there. */
+    CHECK(is_dir("/sdcard/Android/data/" PKG));
+    snprintf(name, sizeof(name), "/sdcard/Android/obb/com.crowd.a%03d/main.obb", CROWD - 1);
+    CHECK(!strcmp(get(name), "obb"));
+    CHECK(is_dir("/sdcard/Android/data/com.crowd.a000") && is_dir("/sdcard/Android/obb/com.crowd.a000"));
+    CHECK(put("/sdcard/Android/data/com.crowd.a000/put.txt", "put"));
+    p = mg_sprintf("%s/apps/com.crowd.a000/sdcard/Android/data/com.crowd.a000/put.txt", data);
+    {
+        char *text = text_of(p);
+        CHECK(!strcmp(text, "put"));
+        free(text);
+    }
+    free(p);
+    read_dir("/sdcard/Android/data", &seen);
+    CHECK_INT(seen.count, data_before + CROWD);
+    read_dir("/sdcard/Android/obb", &seen);
+    CHECK_INT(seen.count, obb_before + CROWD);
+    CHECK(C.rmdir("/sdcard/Android/data/com.crowd.a001") == -1 && last_errno() == GE_BUSY);
+    CHECK_INT(stat_errno("/sdcard/Android/data/com.crowd.nobody"), GE_NOENT);
+    /* And what is mounted after all of them. */
+    mg_fs_mount("/system/priv-app/GmsCore/GmsCore.apk", apk);
+    CHECK(!strcmp(get("/system/priv-app/GmsCore/GmsCore.apk"), "PK") && !strcmp(get("/data/app/" PKG "-1/base.apk"), "PK"));
+    /* Their folders gone, the next look finds the apps there were before, and the listings are as they were. */
+    for (i = 0; i < CROWD; i++) {
+        p = mg_sprintf("%s/apps/com.crowd.a%03d", data, i);
+        wipe(p, 0);
+        mg_path_rmdir(p, NULL);
+        free(p);
+    }
+    mg_path_remove(apk, NULL);
+    free(apk);
+    mg_run_files(data, data, PKG, NULL);
+    read_dir("/sdcard/Android/data", &seen);
+    CHECK_INT(seen.count, data_before);
+    read_dir("/sdcard/Android/obb", &seen);
+    CHECK_INT(seen.count, obb_before);
+    CHECK_INT(stat_errno("/sdcard/Android/data/com.crowd.a000"), GE_NOENT);
+}
+
 /* With no link at all the storage is the layer's own folders and nothing is asked of anyone. */
 static void test_no_links(const char *data)
 {
@@ -2033,6 +2107,7 @@ static int run_in(const char *base, mg_storage_host_maker make, mg_test_sink sin
             test_shared_mapping_shortened();
             test_check();
             test_no_links(data);
+            test_many_apps(data);
             /* As the tests after this one found things: no links, nobody to ask, and the current directory where it was. */
             C.chdir("/");
         }

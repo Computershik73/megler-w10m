@@ -44,9 +44,22 @@ typedef struct mount {
     size_t exact;                      /* how much of `guest` is matched letter for letter: all of it, or as far as the shared storage */
     bool link;                         /* one of the phone's own folders */
     bool read_only;
+    bool other;                        /* another app's own part of the shared storage (mg_fs_other_app) */
 } mount;
-static mount g_mounts[320];            /* the app's own, every other app's two parts, the links */
-static int g_nmounts;
+/*
+ * The mounts: the app's own, the links, every other app's two parts. They are kept in blocks that are never moved, and a
+ * mount is whole before the count says it is there, so that a thread looking a path up is not in the way of one that adds
+ * a mount (the other apps' parts are added when a path first asks for one: mg_fs_other_apps). As many as are asked for:
+ * the table had 320 places once, and on a phone where 155 other apps had run their parts left none for the APKs, which
+ * are mounted last -- Play Store and Google Play services found neither their base.apk nor GmsCore.apk and went
+ * (0.1.0.696).
+ */
+#define MOUNT_BLOCK 256
+static mount *g_mount_blocks[256];
+static volatile i32 g_nmounts;
+static mg_lock g_mount_lock = MG_LOCK_INIT;        /* held by whoever changes the table */
+#define MOUNT_AT(i) (&g_mount_blocks[(i) / MOUNT_BLOCK][(i) % MOUNT_BLOCK])
+enum { MOUNT_LINK = 1, MOUNT_READ_ONLY = 2, MOUNT_OTHER = 4 };
 static char g_package[160] = "com.example.app";
 static char g_internal[256] = "/data/data/com.example.app";
 static char g_external[64] = EXTERNAL;
@@ -88,32 +101,68 @@ static bool mount_same(const mount *m, const char *g, size_t n)
 
 static mount *mount_find(const char *guest_prefix)
 {
-    int i;
-    for (i = 0; i < g_nmounts; i++)
-        if (!strcmp(g_mounts[i].guest, guest_prefix)) return &g_mounts[i];
+    i32 i, n = g_nmounts;
+    for (i = 0; i < n; i++)
+        if (!strcmp(MOUNT_AT(i)->guest, guest_prefix)) return MOUNT_AT(i);
     return NULL;
 }
 
-void mg_fs_mount(const char *guest_prefix, const char *host_dir)
+/* A mount of `kind` (MOUNT_*, 0 for a plain one) made, or the one of that name given another folder and that kind. */
+static void mount_put(const char *guest_prefix, const char *host_dir, int kind)
 {
-    mount *m = mount_find(guest_prefix);
+    mount *m;
+    i32 n;
+    bool added = false;
+    mg_lock_acquire(&g_mount_lock);
+    m = mount_find(guest_prefix);
+    n = g_nmounts;
     if (m) {
-        free(m->host);
+        char *was = m->host;
         m->host = mg_strdup(host_dir);
-        m->link = m->read_only = false;
-        return;
-    }
-    if (g_nmounts >= (int)MG_COUNT(g_mounts)) {
+        free(was);
+    } else if ((size_t)n >= MOUNT_BLOCK * MG_COUNT(g_mount_blocks)) {
+        mg_lock_release(&g_mount_lock);
         mg_err("files: no room for one more mount: %s does not exist", guest_prefix);
         return;
+    } else {
+        if (!g_mount_blocks[n / MOUNT_BLOCK]) g_mount_blocks[n / MOUNT_BLOCK] = (mount *)mg_alloc(MOUNT_BLOCK * sizeof(mount));
+        m = MOUNT_AT(n);
+        memset(m, 0, sizeof(*m));
+        m->guest = mg_strdup(guest_prefix);
+        m->host = mg_strdup(host_dir);
+        m->glen = strlen(guest_prefix);
+        m->exact = !strncmp(guest_prefix, EXTERNAL "/", EXTERNAL_LEN + 1) ? EXTERNAL_LEN + 1 : m->glen;
+        added = true;
     }
-    m = &g_mounts[g_nmounts++];
-    memset(m, 0, sizeof(*m));
-    m->guest = mg_strdup(guest_prefix);
-    m->host = mg_strdup(host_dir);
-    m->glen = strlen(guest_prefix);
-    m->exact = !strncmp(guest_prefix, EXTERNAL "/", EXTERNAL_LEN + 1) ? EXTERNAL_LEN + 1 : m->glen;
+    m->link = (kind & MOUNT_LINK) != 0;
+    m->read_only = (kind & MOUNT_READ_ONLY) != 0;
+    m->other = (kind & MOUNT_OTHER) != 0;
+    /* (Whole before it is counted: whoever reads the table meanwhile sees it or does not.) */
+    if (added) mg_atomic_xchg(&g_nmounts, n + 1);
+    mg_lock_release(&g_mount_lock);
 }
+
+/* The mounts of one kind taken out of the table: what is left keeps its order. */
+static void mounts_drop(int kind)
+{
+    i32 k, n = 0, count;
+    mg_lock_acquire(&g_mount_lock);
+    count = g_nmounts;
+    for (k = 0; k < count; k++) {
+        mount *m = MOUNT_AT(k);
+        if (((kind & MOUNT_LINK) && m->link) || ((kind & MOUNT_OTHER) && m->other)) {
+            free(m->guest);
+            free(m->host);
+        } else {
+            if (n != k) *MOUNT_AT(n) = *m;
+            n++;
+        }
+    }
+    mg_atomic_xchg(&g_nmounts, n);
+    mg_lock_release(&g_mount_lock);
+}
+
+void mg_fs_mount(const char *guest_prefix, const char *host_dir) { mount_put(guest_prefix, host_dir, 0); }
 
 void mg_fs_configure(const char *package, const char *internal_dir, const char *external_dir)
 {
@@ -152,17 +201,9 @@ void mg_fs_shared_storage(const char *shared_dir, const mg_fs_link *links, int c
 {
     char *p, *h;
     size_t i;
-    int k, n = 0;
+    int k;
     /* The links there were are gone: the table is what this call says. */
-    for (k = 0; k < g_nmounts; k++) {
-        if (g_mounts[k].link) {
-            free(g_mounts[k].guest);
-            free(g_mounts[k].host);
-        } else {
-            g_mounts[n++] = g_mounts[k];
-        }
-    }
-    g_nmounts = n;
+    mounts_drop(MOUNT_LINK);
     mg_path_mkdirs(shared_dir);
     mg_fs_mount(EXTERNAL, shared_dir);
     free(g_space_dir);
@@ -183,15 +224,9 @@ void mg_fs_shared_storage(const char *shared_dir, const mg_fs_link *links, int c
         free(p);
     }
     for (k = 0; k < count; k++) {
-        mount *m;
         p = mg_sprintf(EXTERNAL "/%s", links[k].name);
         h = mg_sprintf(MG_FOREIGN_PREFIX "%d", links[k].root);
-        mg_fs_mount(p, h);
-        m = mount_find(p);
-        if (m) {
-            m->link = true;
-            m->read_only = links[k].read_only;
-        }
+        mount_put(p, h, MOUNT_LINK | (links[k].read_only ? MOUNT_READ_ONLY : 0));
         free(p);
         free(h);
     }
@@ -207,11 +242,60 @@ void mg_fs_other_app(const char *package, const char *external_dir)
         char *h = mg_sprintf("%s/Android/%s/%s", external_dir, parts[i], package);
         if (mg_path_stat(h, &st, NULL) && st.is_dir) {
             char *p = mg_sprintf(EXTERNAL "/Android/%s/%s", parts[i], package);
-            mg_fs_mount(p, h);
+            mount_put(p, h, MOUNT_OTHER);
             free(p);
         }
         free(h);
     }
+}
+
+/*
+ * The other apps' parts are looked for when a path first asks for one (mg_fs_other_apps): `g_others_find` mounts them
+ * (mg_fs_other_app), once.
+ */
+static void (*g_others_find)(void *user);
+static void *g_others_user;
+static volatile i32 g_others_wanted;               /* 1: not looked for yet */
+static mg_lock g_others_lock = MG_LOCK_INIT;
+
+void mg_fs_other_apps(void (*find)(void *user), void *user)
+{
+    mg_lock_acquire(&g_others_lock);
+    mounts_drop(MOUNT_OTHER);
+    g_others_find = find;
+    g_others_user = user;
+    mg_atomic_xchg(&g_others_wanted, find ? 1 : 0);
+    mg_lock_release(&g_others_lock);
+}
+
+/*
+ * What a normalized path is to the apps' own parts of the shared storage: 0 nothing, 1 the folder they are listed in
+ * (Android/data, Android/obb), 2 a path in one of them, which has a package's name after it.
+ */
+static int apps_part_of(const char *g)
+{
+    static const char *const parts[] = { "/Android/data", "/Android/obb" };
+    size_t i;
+    if (strncmp(g, EXTERNAL, EXTERNAL_LEN)) return 0;
+    for (i = 0; i < MG_COUNT(parts); i++) {
+        size_t n = EXTERNAL_LEN + strlen(parts[i]);
+        if (strlen(g) < n || !ascii_same(g + EXTERNAL_LEN, parts[i], n - EXTERNAL_LEN, true)) continue;
+        if (!g[n]) return 1;
+        if (g[n] == '/') return 2;
+    }
+    return 0;
+}
+
+/* The other apps' parts mounted, if they are still to be looked for: before a path that may be in one is looked up. */
+static void others_mount(void)
+{
+    if (!g_others_wanted) return;
+    mg_lock_acquire(&g_others_lock);
+    if (g_others_wanted) {
+        if (g_others_find) g_others_find(g_others_user);
+        mg_atomic_xchg(&g_others_wanted, 0);
+    }
+    mg_lock_release(&g_others_lock);
 }
 
 const char *mg_fs_internal_dir(void) { return g_internal; }
@@ -289,18 +373,31 @@ static char *normalize(const char *path)
     return without_alias(proc_self(out));
 }
 
-/* The mount a normalized path is in: the one with the longest prefix. */
-static const mount *mount_of(const char *g)
+static const mount *mount_longest(const char *g)
 {
     const mount *best = NULL;
     size_t len = strlen(g);
-    int i;
-    for (i = 0; i < g_nmounts; i++) {
-        const mount *m = &g_mounts[i];
+    i32 i, n = g_nmounts;
+    for (i = 0; i < n; i++) {
+        const mount *m = MOUNT_AT(i);
         if (len < m->glen || !mount_same(m, g, m->glen)) continue;
         /* A whole component: "/sdcard" is not a prefix of "/sdcard2". */
         if (m->glen > 1 && g[m->glen] && g[m->glen] != '/') continue;
         if (!best || m->glen > best->glen) best = m;
+    }
+    return best;
+}
+
+/*
+ * The mount a normalized path is in: the one with the longest prefix. A path in Android/data or Android/obb that is in
+ * no mount of its own may be in another app's part, which are mounted now if they have not been looked for yet.
+ */
+static const mount *mount_of(const char *g)
+{
+    const mount *best = mount_longest(g);
+    if (g_others_wanted && (!best || best->glen <= EXTERNAL_LEN) && apps_part_of(g) == 2) {
+        others_mount();
+        best = mount_longest(g);
     }
     return best;
 }
@@ -339,10 +436,12 @@ static bool is_mount_point(const char *g)
 static bool leads_to_mount(const char *g)
 {
     size_t len = strlen(g), i;
-    int k;
+    i32 k, n;
     if (len == 1) return g_nmounts > 0;
-    for (k = 0; k < g_nmounts; k++) {
-        const mount *m = &g_mounts[k];
+    if (apps_part_of(g)) others_mount();
+    n = g_nmounts;
+    for (k = 0; k < n; k++) {
+        const mount *m = MOUNT_AT(k);
         if (m->glen > len && m->guest[len] == '/' && mount_same(m, g, len)) return true;
     }
     for (i = 0; i < MG_COUNT(k_aliases); i++)
@@ -2811,8 +2910,9 @@ static g_dir *g_opendir(const char *path)
     /* What is mounted below it is in it, whether or not the host's folder has an entry of that name. */
     glen = strlen(g);
     any_case = !strncmp(g, EXTERNAL, EXTERNAL_LEN) && (!g[EXTERNAL_LEN] || g[EXTERNAL_LEN] == '/');
+    if (apps_part_of(g)) others_mount();
     for (k = 0; k < g_nmounts; k++) {
-        const mount *m = &g_mounts[k];
+        const mount *m = MOUNT_AT(k);
         if (m->glen <= glen || (glen > 1 && m->guest[glen] != '/') || !mount_same(m, g, glen)) continue;
         /* (A link is a folder, and asking whether it is costs a call to whoever owns it.) */
         dir_add_mounted(d, g, m->guest, m->link ? NULL : m->host, any_case);
