@@ -557,6 +557,8 @@ void scanOn(int mode) {
 // ------------------------------------------------------------------ connections
 
 const winrt::guid cccdUuid{0x00002902, 0x0000, 0x1000, {0x80, 0x00, 0x00, 0x80, 0x5f, 0x9b, 0x34, 0xfb}};
+/// The Generic Attribute service's Service Changed characteristic, whose configuration Windows keeps to itself (writeAsync).
+const winrt::guid serviceChangedUuid{0x00002a05, 0x0000, 0x1000, {0x80, 0x00, 0x00, 0x80, 0x5f, 0x9b, 0x34, 0xfb}};
 /// A Client Characteristic Configuration descriptor Windows did not list stands at a handle no attribute can have.
 constexpr int madeUpCccd = 0x10000;
 
@@ -1093,7 +1095,18 @@ winrt::fire_and_forget writeAsync(std::shared_ptr<Conn> c, int handle, std::vect
             }
             const auto r = co_await third.WriteClientCharacteristicConfigurationDescriptorWithResultAsync(value);
             status = r ? statusOf(r.Status(), r.ProtocolError()) : gattError;
-            if (!bits || status) unsubscribe(c, of, cccdOf);
+            // The Generic Attribute service's Service Changed (0x2A05): Windows keeps its configuration to itself and refuses
+            // an app's write of it, where Android's stack lets the write through. An app that subscribes to it as it connects
+            // and ends the connection when that fails (flutter_blue_plus does at every connection: MCO Advanced said a GATT
+            // error and never connected) is told the write is done. Windows is the one that hears of changed services:
+            // nothing is listened for.
+            const bool kept = r && r.Status() == GattCommunicationStatus::AccessDenied && cccdOf.Uuid() == serviceChangedUuid;
+            if (kept) {
+                shellLog::write(format("bluetooth: connection %d: Windows keeps Service Changed's configuration (0x%04x) to itself; the app is told it is written",
+                                       c->conn, handle));
+                status = 0;
+            }
+            if (!bits || status || kept) unsubscribe(c, of, cccdOf);
             subscribed = -1;
         } else if (d) {
             const auto r = co_await part<IGattDescriptor2>(d).WriteValueWithResultAsync(bufferOf(data));
