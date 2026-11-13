@@ -3672,6 +3672,10 @@ struct mg_sock {
     volatile LONG error_pending;       /* ... and its error has not been asked for yet */
     volatile LONG peer_closed;         /* FD_CLOSE: the other side sends no more */
     volatile LONG reset;               /* ... because the connection was reset or aborted */
+#if MG_UWP && defined(_M_ARM)
+    volatile LONG loopback_connect;    /* 1: shortened TCP_MAXRT, 2: restored after this attempt */
+    DWORD saved_maxrt;
+#endif
     int reuseaddr;                     /* kept here, not given to Windows (mg_sock_set) */
     struct mg_ping *ping;              /* a ping socket's own (ping_open): no Windows socket then */
 };
@@ -3768,6 +3772,19 @@ static void addr_from_native(const struct sockaddr *sa, int len, mg_sockaddr *a)
     }
 }
 
+#if MG_UWP && defined(_M_ARM)
+static int loopback_connect_finished(mg_sock *k, int error)
+{
+    LONG state = InterlockedCompareExchange(&k->loopback_connect, 2, 1);
+    if (state == 1) {
+        if (setsockopt(k->s, IPPROTO_TCP, TCP_MAXRT, (const char *)&k->saved_maxrt, sizeof(k->saved_maxrt)) != 0)
+            mg_note_once("network: could not restore the TCP retransmission timeout after loopback connect");
+    }
+    if (state && error == WSAETIMEDOUT) return WSAECONNREFUSED;
+    return error;
+}
+#endif
+
 /* The thread pool's wait fired: the socket's network events, taken and kept as far as select() cannot say them later, and the news passed on. */
 static VOID CALLBACK sock_event(PTP_CALLBACK_INSTANCE instance, PVOID context, PTP_WAIT wait, TP_WAIT_RESULT result)
 {
@@ -3781,6 +3798,9 @@ static VOID CALLBACK sock_event(PTP_CALLBACK_INSTANCE instance, PVOID context, P
     if (WSAEnumNetworkEvents(k->s, k->ev, &ne) == 0) {
         if (ne.lNetworkEvents & FD_CONNECT) {
             int e = ne.iErrorCode[FD_CONNECT_BIT];
+#if MG_UWP && defined(_M_ARM)
+            e = loopback_connect_finished(k, e);
+#endif
             if (e) {
                 InterlockedExchange(&k->connect_error, e);
                 InterlockedExchange(&k->error_pending, 1);
@@ -4172,6 +4192,9 @@ bool mg_sock_connect(mg_sock *k, const mg_sockaddr *a, int *err)
         *err = MG_NE_AFNOSUPPORT;
         return false;
     }
+#if MG_UWP && defined(_M_ARM)
+    InterlockedExchange(&k->loopback_connect, 0);
+#endif
     if (k->type == MG_SOCK_STREAM && a->family && is_loopback(a)) {
         /*
          * Windows answers a connection to a port of this machine that nobody
@@ -4186,6 +4209,22 @@ bool mg_sock_connect(mg_sock *k, const mg_sockaddr *a, int *err)
         p.Rtt = TCP_INITIAL_RTO_UNSPECIFIED_RTT;
         p.MaxSynRetransmissions = TCP_INITIAL_RTO_NO_SYN_RETRANSMISSIONS;
         WSAIoctl(k->s, SIO_TCP_INITIAL_RTO, &p, sizeof(p), NULL, 0, &got, NULL, NULL);
+#if MG_UWP && defined(_M_ARM)
+        /*
+         * On Windows 10 Mobile a closed loopback port can silently drop the
+         * SYN. Bound the attempt at the socket, even if the guest waits in
+         * poll. Restore the TCP setting when the attempt completes.
+         */
+        {
+            DWORD timeout = 2;
+            int size = sizeof(k->saved_maxrt);
+            if (getsockopt(k->s, IPPROTO_TCP, TCP_MAXRT, (char *)&k->saved_maxrt, &size) == 0 &&
+                setsockopt(k->s, IPPROTO_TCP, TCP_MAXRT, (const char *)&timeout, sizeof(timeout)) == 0)
+                InterlockedExchange(&k->loopback_connect, 1);
+            else
+                mg_note_once("network: could not shorten the loopback TCP connect timeout");
+        }
+#endif
     }
     if (k->type == MG_SOCK_DGRAM) {
         /*
@@ -4201,6 +4240,9 @@ bool mg_sock_connect(mg_sock *k, const mg_sockaddr *a, int *err)
     InterlockedExchange(&k->connect_error, 0);
     InterlockedExchange(&k->connecting, 1);
     if (connect(k->s, (const struct sockaddr *)&ss, len) == 0) {
+#if MG_UWP && defined(_M_ARM)
+        loopback_connect_finished(k, 0);
+#endif
         InterlockedExchange(&k->connecting, 0);
         return true;
     }
@@ -4209,6 +4251,9 @@ bool mg_sock_connect(mg_sock *k, const mg_sockaddr *a, int *err)
         *err = MG_NE_INPROGRESS;
         return false;
     }
+#if MG_UWP && defined(_M_ARM)
+    e = loopback_connect_finished(k, e);
+#endif
     InterlockedExchange(&k->connecting, 0);
     *err = net_err(e);
     return false;
@@ -4337,6 +4382,9 @@ int mg_sock_error(mg_sock *k)
     kept = InterlockedExchange(&k->connect_error, 0);
     if (getsockopt(k->s, SOL_SOCKET, SO_ERROR, (char *)&e, &len) != 0) e = 0;
     if (!e) e = (int)kept;
+#if MG_UWP && defined(_M_ARM)
+    if (e) e = loopback_connect_finished(k, e);
+#endif
     if (e) InterlockedExchange(&k->failed, 1);
     InterlockedExchange(&k->error_pending, 0);
     return net_err(e);

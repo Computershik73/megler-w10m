@@ -614,20 +614,157 @@ different VM address also reduces the result to 2,103 bytes. These controls
 show that changing executable bytes is sufficient to shorten the VM's
 collection, independently of Megler's syscall answers.
 
-On ARM Windows Megler now treats `libdB21738DAE92C.so` like its other
-libraries that inspect their code. It leaves the PLT alone and puts the
+On ARM Windows Megler treats DroidGuard like its other libraries that
+inspect their code. It leaves the PLT alone and puts the
 syscall at a hardware breakpoint. The same Megler syscall handler does
 the call and resumes after it. The qemu host has no hardware breakpoints
-for guest code and still uses the patched instruction. The Self-test loads
-its own ARM library under the VM's name in its scratch directory. It checks
-the original instruction and zero PLT rewrites on a host with breakpoints,
-the trap instruction on qemu, and the shim's result for both the direct
-call and a call through the PLT.
+for guest code and still uses the patched instruction.
 
-The offline controls establish one compatibility fault. Fast-refresh
-acceptance and device-key issuance still need a run on ARM Windows with the
-new loader behavior. The Android diagnostic package and its transfer files
-were removed after the comparison.
+A fresh GmsCore 26.43.30 exchange fetched VM `276FB66A...`,
+`libd4B1BB84DDE6C.so`. Its ARM syscall stub still has `svc #0` at
+`0x2e18`. Both libraries export the same DroidGuard `initNative` and
+`closeNative` JNI functions. The loader now identifies them by those
+two defined function exports in the ELF itself, so a new library name
+does not re-enable patching. The Self-test checks the identification
+using a fixture with both exports and a name of its own. It checks the
+original instruction and zero PLT rewrites on a host with breakpoints,
+the trap instruction on qemu, and the shim's result for both calls.
+
+In a separate qemu diagnostic on the first VM, an external debugger
+restored the one remaining changed instruction before JNI initialization
+and used virtual breakpoints to route each syscall through Megler's
+existing trap handler. The executable segment matched the file at the
+start of the run. The same offline program returned 6,496 bytes,
+compared with 2,227 in the patched control. All 212 syscalls went through
+Megler. This is a test harness for the offline program and does not
+exercise Windows' hardware breakpoint delivery.
+The corresponding live GmsCore run verified the new full and check-in
+responses and loaded the new VM. It stalled during initialization under
+the debugger before sending a fast request.
+
+The Android diagnostic package and its transfer files were removed after
+the comparison.
+
+**Lumia 650 with the original VM instructions.** Transit on 0.1.0.690,
+using `pristine-libdB21738DAE92C.so`, reported one syscall site at a hardware
+breakpoint and traced calls from `+0x2e18` through Megler. The previous log
+had fast-refresh errors. The pristine run had none, although it does not
+show whether a fresh fast program was accepted. The device-key request
+still failed three times with the protobuf end-group error, including once
+after a successful check-in.
+
+In 26.43.30, `atvj.b` checks HTTP status only after the response future has
+returned a parsed `jofy`. In the streaming path, `dmzh.call` reads the body
+through `dmzc.a`, and `dmzd.kk` reports a parse failure as
+`dmyc("Parsing Exception")`. The saved independent HTTP 400 response from
+the earlier qemu experiment starts with HTML. Its first byte, `0x3c`,
+looks like a protobuf end-group tag, so that response can account for the
+same error. The first Lumia log did not include the HTTP status.
+A later Transit run on the same Lumia showed three POSTs to
+`/auth/devicekey`, each followed by HTTP 400 in
+`CronetUrlRequest.j` and the same protobuf parse failure. GmsCore never
+reached the step that writes the key.
+
+Seven saved qemu request and header pairs had the same nonzero GServices
+Android ID in the `device` header and protobuf field 2, and
+`app=com.google.android.gms`. Both inspected GMS releases set field 6 to
+`missing_token` in their own request builder.
+
+In a further Lumia run, all three device-key token calls took just over
+60 seconds (60.083, 60.024 and 60.031). Their encoded returns contained
+an error marker. Each return was immediately followed by the device-key
+POST and HTTP 400. GmsCore's `byxc.c` waits up to 60 seconds for this call
+and encodes an error into the token on timeout. In a separate run on the
+same build, the worker thread spent 136–141 seconds between entering
+`DroidGuard.initNative` and returning from `DroidGuard.init`. Once that
+thread got to `ssNative`, each of five calls completed within 13 ms.
+
+Tracing the calls inside `DroidGuard` located the delay on the Lumia. A
+`Socket` constructor for TCP loopback port 7810 spent 130.328 seconds
+before the worker handled its exception. That `init` took 140.068 seconds
+overall. The next `init` reached the same constructor within 155 ms.
+The phone's old network self-test already recorded about 127 seconds
+for a blocking connect to a closed loopback port. A different DroidGuard
+run read about 186 MB from `GmsCore.apk` in 22 seconds, so that read alone
+cannot explain the timeout. A successful device-key request with a
+completed token still needs verification.
+
+On the same Lumia, an isolated network-check package reproduced the
+closed-port stall in both blocking and non-blocking mode. Both attempts
+reached the test's five-second deadline. With the Winsock loopback
+timeout change, the same checks returned `ECONNREFUSED` in 500 ms and
+501 ms respectively. The test also exchanged HTTP with its own loopback
+listener. All 19 network checks passed.
+
+Transit with runtime 691 and GMS 26.43.30 on the same Lumia completed
+the `devicekey` VM init in 17.4 seconds. The caller waited 41.0 seconds
+in total and returned a nonempty token after `ssNative` finished, within
+the 60-second deadline. The same attempt still received HTTP 400 from
+`/auth/devicekey`, followed by `Parsing Exception` and reports that the
+device key was absent. Check-in succeeded. The run logged no FindTiles
+call, so the disappearance of Transit's weak-GPS banner does not
+establish that Google supplied a Wi-Fi position.
+
+After restarting Transit with that registration still present, GmsCore
+read a nonzero Android ID before collecting the device-key signals.
+The VM init took 14.8 seconds, and the token call returned after 44.6
+seconds. The request again received HTTP 400 and the key was still
+absent. This rules out a zero ID and the 60-second token timeout for
+that attempt. It does not establish that the server accepted the
+registration or the token.
+
+The signed `devicekey` program responses captured in qemu have a
+10-second TTL. That is shorter than the phone's two observed init
+durations. The qemu run that submitted its request first with curl
+formed the request 98 ms after capturing the signed program and
+submitted it as soon as the capture appeared. It still received HTTP
+400. The delay observed on the phone therefore cannot account for
+all the rejections. A successful `/auth/devicekey` exchange on the
+Android reference remains needed for comparison.
+
+The Android 11 reference with GMS 26.26.34 already had a device-key file.
+A refresh assembled a new token of 8076 base64 characters in 265 ms,
+then built the protobuf with a nonzero device ID and the literal
+`missing_token`. GMS's own Cronet failed with `ERR_CERT_INVALID` in the
+exception chain, before an HTTP result was available. The diagnostic
+advanced the retry in memory and left the existing key file in place.
+This run gives a reference for request construction, but no HTTP control
+for the Lumia's 400.
+
+The same Android reference then made one new device-key request using
+Android's standard HTTPS client with certificate verification. The
+diagnostic forwarded GMS's original headers and 8129-byte protobuf body
+once. Its 8078-character token took 295 ms to collect. Google returned
+HTTP 400 and a 1664-byte body. The diagnostic preserved the existing key
+file and recorded only status and lengths. This reproduces the rejection
+outside Megler with a substantially larger token. It does not establish
+that a native Cronet request from a stock Android device would fail.
+
+With the owner's approval, the same reference sent a new original request
+through GMS's own Cronet 149.0.7827.159. For the connection to
+`android.googleapis.com` alone, a temporary native hook enabled
+`SSLConfig::ignore_certificate_errors` while the certificate result was
+processed, then restored its previous value. The checked function bytes
+and object offsets came from that exact ARM64 library. The token took
+338 ms to collect. Cronet completed TLS and reported HTTP 400 over
+`h2`; GMS then raised `Parsing Exception` caused by a protobuf end-group
+error. The existing device-key file remained present. The hook was
+detached and the GMS main process restarted to discard the pooled TLS
+connection. Thus the rejection also occurs through native Cronet on this
+rooted Android reference. A successful stock-device control is still
+absent.
+
+For 26.43.30, `trace-calls-atvj` identifies the endpoint and
+`trace-calls-alkl` shows the elapsed time and return of the token call.
+With Cronet 157,
+`trace-calls-org.chromium.net.impl.CronetUrlRequest` shows the status
+at `j`; `trace-calls-m1.ic` shows it in the response constructor. Match
+the status to the request and parser failure. Keep only metadata from
+these traces, since they can include token prefixes.
+Use `trace-calls-within-com.google.ccc.abuse.droidguard.DroidGuard` to time
+the loopback probe inside `init`. Check for the socket exception well before
+the 60-second deadline, then for a device-key token without the encoded
+error, the response status and the stored key.
 
 **Following it on a phone** (flags in `Pictures\Megler\diag\<package>\flags`):
 `trace-syscalls` (a library's calls by number with the path each names:
@@ -638,7 +775,8 @@ through the C library), `trace-calls-bywg` with 26.43.30 (`bvts` with
 `trace-calls-com.google.ccc.abuse.droidguard.DroidGuard` (the machine's Java:
 the flow it was made for, and `run`'s and `ss`'s results with their length).
 On an older package with hardware breakpoint support, also set
-`pristine-libdB21738DAE92C.so`; the fix selects that mode by default.
+`pristine-<library-name>` using the actual VM name. The fix selects
+that mode by default.
 Expect the loader's "left as the file has it" line with one system call
 at a hardware breakpoint, zero PLT rewrites, and no warning about falling
 back to a patched instruction. With `trace-syscalls`, calls from

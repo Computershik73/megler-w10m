@@ -378,7 +378,7 @@ one's UDF: the system call by number, or the guest's thread pointer into the
 register. A site past the breakpoints is patched as in any other library, and
 said. A sigreturn's `svc` is neither: a handler returns to this layer here,
 never through its restorer. Where the host has none (qemu's Linux), such a
-library is patched as any other. Which libraries: `lib_pristine`
+library is patched as any other. Which libraries: `mg_patch_lib_pristine`
 (`arm/mg_patch.c`); the flag `pristine-<library>` adds one, for trying. In
 `libmetasec_ov.so` that is four sites: its `syscall()` stub's `svc`, its
 `vfork`'s, and two thread-pointer reads.
@@ -1840,11 +1840,17 @@ with an `SSLException`, as it did before there were sockets.
 port on 127.0.0.1 is not refused. The SYN goes unanswered: a non-blocking
 connect is still `EINPROGRESS` after 5 s, and a blocking one ended with
 `ECONNREFUSED` only after about two minutes (127 s). The PC and Linux refuse
-it at once. This is the phone's app-container loopback, not the layer's. The
-test now tries without blocking first. On the phone it counts "no answer
-within 2 s" as the phone's behaviour, says so, and leaves out the blocking
-attempt. An app that probes a local port that is not open waits that long
-too.
+it at once. In a later Transit run, the same delay in a DroidGuard loopback
+probe exceeded Google Play services' 60-second deadline for a device-key
+token (see [MICROG.md](MICROG.md)).
+
+In the ARM32 app container, Megler sets Winsock's `TCP_MAXRT` to two
+seconds for a loopback TCP connection attempt, restores the socket's old
+setting when the attempt ends, and reports `ECONNREFUSED` if it expired.
+This covers IPv4, IPv6 and IPv4-mapped loopback addresses. The network test
+requires a refusal for both blocking and non-blocking connects, and the
+on-device `--auto net` check tries both modes through an IPv4-mapped IPv6
+socket.
 
 ## The Java side
 
