@@ -722,6 +722,15 @@ submitted it as soon as the capture appeared. It still received HTTP
 all the rejections. A successful `/auth/devicekey` exchange on the
 Android reference remains needed for comparison.
 
+The Android 11 reference with GMS 26.26.34 already had a device-key file.
+A refresh assembled a new token of 8076 base64 characters in 265 ms,
+then built the protobuf with a nonzero device ID and the literal
+`missing_token`. GMS's own Cronet failed with `ERR_CERT_INVALID` in the
+exception chain, before an HTTP result was available. The diagnostic
+advanced the retry in memory and left the existing key file in place.
+This run gives a reference for request construction, but no HTTP control
+for the Lumia's 400.
+
 For 26.43.30, `trace-calls-atvj` identifies the endpoint and
 `trace-calls-alkl` shows the elapsed time and return of the token call.
 With Cronet 157,
