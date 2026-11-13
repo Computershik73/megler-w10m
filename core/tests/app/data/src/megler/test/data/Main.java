@@ -1039,6 +1039,10 @@ public class Main extends Activity {
         // refused, every mutator refused, copies, serialization. By reflection, as above (CollectionFactories.java).
         step("collection-factories", () -> (detail = CollectionFactories.factories()).isEmpty());
         step("unmodifiable-collectors", () -> (detail = CollectionFactories.collectors()).isEmpty());
+        // Java 9's Objects.requireNonNullElse, requireNonNullElseGet, checkIndex, checkFromToIndex and checkFromIndexSize
+        // (Android 11; Amazon Shopping's start ended on a NoSuchMethodError of requireNonNullElse) and Java 9 to 11's
+        // Optional.isEmpty, ifPresentOrElse, or, stream and orElseThrow() (Android 13), the libcore overlay's; by reflection.
+        step("objects-java9", () -> (detail = CollectionFactories.objects()).isEmpty());
         // The frame stacks of threads Java starts: two thousand calls deep on a thread of the default size, twenty thousand
         // on one that asked for 16 MB, and a recursion without end the StackOverflowError it is on Android, caught there.
         step("thread-stack", () -> {

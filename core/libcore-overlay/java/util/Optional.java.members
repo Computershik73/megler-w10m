@@ -1,0 +1,39 @@
+
+    // Megler: Java 9 to 11's isEmpty, ifPresentOrElse, or, stream and orElseThrow(), which Android has from Android 13
+    // (API 33) and Android 9's Optional has not; apps built for a later Android call them as they call the Java 9 members of
+    // Objects, List, Set and Map beside this file.
+
+    public boolean isEmpty() {
+        return value == null;
+    }
+
+    public void ifPresentOrElse(java.util.function.Consumer<? super T> action, Runnable emptyAction) {
+        if (value != null) {
+            action.accept(value);
+        } else {
+            emptyAction.run();
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    public Optional<T> or(java.util.function.Supplier<? extends Optional<? extends T>> supplier) {
+        Objects.requireNonNull(supplier);
+        if (value != null) {
+            return this;
+        }
+        return Objects.requireNonNull((Optional<T>) supplier.get());
+    }
+
+    public java.util.stream.Stream<T> stream() {
+        if (value == null) {
+            return java.util.stream.Stream.empty();
+        }
+        return java.util.stream.Stream.of(value);
+    }
+
+    public T orElseThrow() {
+        if (value == null) {
+            throw new NoSuchElementException("No value present");
+        }
+        return value;
+    }
