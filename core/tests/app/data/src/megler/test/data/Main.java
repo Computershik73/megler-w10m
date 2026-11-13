@@ -1962,6 +1962,20 @@ public class Main extends Activity {
             detail = "sourceDir=" + source + " codePath=" + code + " there=" + new java.io.File(source).isFile();
             return source.equals("/data/app/" + getPackageName() + "-1/base.apk") && source.equals(code) && new java.io.File(source).isFile();
         });
+        step("archive-meta-data", () -> {
+            // An APK asked about as a file (PackageManager.getPackageArchiveInfo) gives its application's own meta-data with
+            // GET_META_DATA -- a string, a number, a boolean and a resource, and none of a service's -- and null without it
+            // (Alibaba's SecurityGuard reads its plug-ins' so; Goofish ended with a NullPointerException in Bundle.getString).
+            android.content.pm.PackageManager pm = getPackageManager();
+            String apk = getApplicationInfo().sourceDir;
+            android.content.pm.PackageInfo plain = pm.getPackageArchiveInfo(apk, 0);
+            android.content.pm.PackageInfo with = pm.getPackageArchiveInfo(apk, android.content.pm.PackageManager.GET_META_DATA);
+            android.os.Bundle none = plain == null ? null : plain.applicationInfo.metaData, m = with == null ? null : with.applicationInfo.metaData;
+            detail = "plain=" + plain + " without=" + none + " with=" + m;
+            return plain != null && none == null && m != null && m.size() == 4 && "plugin-1.2".equals(m.getString("megler.test.word"))
+                && m.getInt("megler.test.number") == 7 && m.getBoolean("megler.test.flag") && m.getInt("megler.test.sync") == R.xml.syncadapter
+                && getPackageName().equals(with.packageName);
+        });
         step("maps-paths", () -> {
             // /proc/self/maps as Android's has it: the APK mapped under its Android path, Android's own libraries where the
             // system keeps them, and none of them in the app's own library folder (Zona takes such a one for an injected library).
