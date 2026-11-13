@@ -1868,6 +1868,17 @@ public class Main extends Activity {
             boolean before = run == 1 || (p.getInt(key, 0) == 7 && "x y".equals(p.getString("with space", null)) && p.getAll().size() == 2);
             return before && p.edit().putInt(key, 7).putString("with space", "x y").commit();
         });
+        // A null key, which Android keeps: what one run commits under it, and under a key that is the two characters the file
+        // writes for it, the next reads from the file, each its own (a null key ended every write of the file in a
+        // NullPointerException: Lemana PRO).
+        step("prefs-null-key", () -> {
+            android.content.SharedPreferences p = getSharedPreferences("nullkey", MODE_PRIVATE);
+            String like = "\\0";
+            detail = "found " + p.getAll();
+            boolean before = run == 1 || ("of null".equals(p.getString(null, null)) && p.getInt(like, 0) == 5 && p.getBoolean("after", false)
+                && p.contains(null) && p.getAll().size() == 3 && p.getAll().containsKey(null));
+            return before && p.edit().putString(null, "of null").putInt(like, 5).putBoolean("after", true).commit();
+        });
         // An account removed is told as Android 8 and later tell it: ACCOUNT_REMOVED with its name and type, and
         // LOGIN_ACCOUNTS_CHANGED (Play Store learns so, through Google Play services, that its account is gone). Its user data and
         // an auth token set in between are told to no one: LOGIN_ACCOUNTS_CHANGED twice, for the account added and removed.

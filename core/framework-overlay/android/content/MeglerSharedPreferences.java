@@ -12,7 +12,11 @@
 // wrote its whole copy on every change: a process that had read the file before the user turned device registration on in
 // microG's settings turned it off again with its next write of any other setting (seen on the phone). Such a file is read
 // again when another process has written it since (its time and length), and a write puts this process's changes alone
-// on what the file holds then. Everything else is the original's.
+// on what the file holds then.
+//
+// And a null key is kept, as Android keeps it: writing the file ended in a NullPointerException with one in the map, at every
+// write from then on, so nothing the app saved afterwards reached the file (Lemana PRO: the InAppStory SDK puts a value under
+// a null key). Everything else is the original's.
 package android.content;
 
 import java.io.*;
@@ -64,6 +68,9 @@ public final class MeglerSharedPreferences implements SharedPreferences {
         for (int i = 0; i < s.length(); i++) { char c = s.charAt(i); if (c == '\\' && i + 1 < s.length()) { char n = s.charAt(++i); b.append(n == 'n' ? '\n' : n); } else b.append(c); }
         return b.toString();
     }
+    /* A null key, which Android keeps (its map holds it and the XML has an entry with no name): a backslash and a zero,
+       which no written key is -- esc doubles a key's own backslashes. */
+    private static final String NULL_KEY = "\\0";
     private File written() { return new File(file.getPath() + ".new"); }
     private void load() {
         // (Not in a shared file: there it may be another process's write in progress.)
@@ -90,7 +97,7 @@ public final class MeglerSharedPreferences implements SharedPreferences {
                 char t = line.charAt(0);
                 int sp = keyEnd(line);
                 if (sp < 0) continue;
-                String k = unesc(line.substring(2, sp)), v = line.substring(sp + 1);
+                String raw = line.substring(2, sp), k = NULL_KEY.equals(raw) ? null : unesc(raw), v = line.substring(sp + 1);
                 try {
                     read(map, t, k, v);
                 } catch (NumberFormatException e) {
@@ -131,7 +138,7 @@ public final class MeglerSharedPreferences implements SharedPreferences {
     private boolean write(File to) {
         try (FileOutputStream out = new FileOutputStream(to); Writer w = new OutputStreamWriter(out, "UTF-8")) {
             for (Map.Entry<String, Object> e : map.entrySet()) {
-                Object v = e.getValue(); String k = esc(e.getKey()).replace(" ", "\\ ");
+                Object v = e.getValue(); String k = e.getKey() == null ? NULL_KEY : esc(e.getKey()).replace(" ", "\\ ");
                 if (v instanceof String) w.write("s " + k + " " + esc((String) v) + "\n");
                 else if (v instanceof Integer) w.write("i " + k + " " + v + "\n");
                 else if (v instanceof Long) w.write("l " + k + " " + v + "\n");
