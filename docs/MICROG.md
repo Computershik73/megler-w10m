@@ -731,6 +731,15 @@ advanced the retry in memory and left the existing key file in place.
 This run gives a reference for request construction, but no HTTP control
 for the Lumia's 400.
 
+The same Android reference then made one new device-key request using
+Android's standard HTTPS client with certificate verification. The
+diagnostic forwarded GMS's original headers and 8129-byte protobuf body
+once. Its 8078-character token took 295 ms to collect. Google returned
+HTTP 400 and a 1664-byte body. The diagnostic preserved the existing key
+file and recorded only status and lengths. This reproduces the rejection
+outside Megler with a substantially larger token. It does not establish
+that a native Cronet request from a stock Android device would fail.
+
 For 26.43.30, `trace-calls-atvj` identifies the endpoint and
 `trace-calls-alkl` shows the elapsed time and return of the token call.
 With Cronet 157,
