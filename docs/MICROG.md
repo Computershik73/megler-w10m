@@ -740,6 +740,20 @@ file and recorded only status and lengths. This reproduces the rejection
 outside Megler with a substantially larger token. It does not establish
 that a native Cronet request from a stock Android device would fail.
 
+With the owner's approval, the same reference sent a new original request
+through GMS's own Cronet 149.0.7827.159. For the connection to
+`android.googleapis.com` alone, a temporary native hook enabled
+`SSLConfig::ignore_certificate_errors` while the certificate result was
+processed, then restored its previous value. The checked function bytes
+and object offsets came from that exact ARM64 library. The token took
+338 ms to collect. Cronet completed TLS and reported HTTP 400 over
+`h2`; GMS then raised `Parsing Exception` caused by a protobuf end-group
+error. The existing device-key file remained present. The hook was
+detached and the GMS main process restarted to discard the pooled TLS
+connection. Thus the rejection also occurs through native Cronet on this
+rooted Android reference. A successful stock-device control is still
+absent.
+
 For 26.43.30, `trace-calls-atvj` identifies the endpoint and
 `trace-calls-alkl` shows the elapsed time and return of the token call.
 With Cronet 157,
