@@ -6607,6 +6607,30 @@ public class Main extends Activity {
                     + ", in a layout [" + quiet.heard + "] [" + asked.heard + "] " + inLayout + ", inflated [" + child.heard + "] " + fromLayout;
             return withParams && made && inLayout && fromLayout;
         });
+        // A table whose rows and cells leave layout_width or layout_height out inflates, with Android's sizes for what is left
+        // out: a row is MATCH_PARENT wide whatever it says and WRAP_CONTENT high, a cell MATCH_PARENT wide and WRAP_CONTENT high
+        // (TableLayout.LayoutParams and TableRow.LayoutParams, setBaseAttributes). It ended in "You must supply a layout_height
+        // attribute" (Device Info HW). And it is measured and laid out: each cell has a width and a height.
+        step("table-cells", () -> {
+            final int match = android.view.ViewGroup.LayoutParams.MATCH_PARENT, wrap = android.view.ViewGroup.LayoutParams.WRAP_CONTENT;
+            android.widget.TableLayout table = (android.widget.TableLayout) android.view.LayoutInflater.from(this).inflate(R.layout.table_cells, null);
+            android.widget.TableRow first = (android.widget.TableRow) table.getChildAt(0), second = (android.widget.TableRow) table.getChildAt(1);
+            android.view.ViewGroup.LayoutParams r1 = first.getLayoutParams(), r2 = second.getLayoutParams();
+            android.widget.TableRow.LayoutParams c1 = (android.widget.TableRow.LayoutParams) first.getChildAt(0).getLayoutParams(),
+                c2 = (android.widget.TableRow.LayoutParams) first.getChildAt(1).getLayoutParams(), c3 = (android.widget.TableRow.LayoutParams) second.getChildAt(0).getLayoutParams();
+            boolean rows = r1 instanceof android.widget.TableLayout.LayoutParams && r1.width == match && r1.height == wrap && r2.width == match && r2.height == 30;
+            boolean cells = c1.width == 0 && c1.height == wrap && c1.weight == 1f && c2.width == match && c2.height == wrap && c2.weight == 2f
+                && c3.width == match && c3.height == 12;
+            table.measure(android.view.View.MeasureSpec.makeMeasureSpec(300, android.view.View.MeasureSpec.EXACTLY), android.view.View.MeasureSpec.makeMeasureSpec(0, android.view.View.MeasureSpec.UNSPECIFIED));
+            table.layout(0, 0, table.getMeasuredWidth(), table.getMeasuredHeight());
+            android.view.View value = first.getChildAt(1), x = second.getChildAt(0);
+            boolean laid = first.getWidth() == 300 && second.getWidth() == 300 && second.getHeight() == 30 && value.getWidth() > 0 && value.getHeight() > 0
+                && x.getWidth() > 0 && x.getHeight() == 12;
+            detail = "rows " + r1.width + "x" + r1.height + " " + r2.width + "x" + r2.height + ", cells " + c1.width + "x" + c1.height + " " + c2.width + "x" + c2.height
+                + " " + c3.width + "x" + c3.height + ", laid out " + first.getWidth() + "x" + first.getHeight() + " " + second.getWidth() + "x" + second.getHeight()
+                + " value " + value.getWidth() + "x" + value.getHeight() + " x " + x.getWidth() + "x" + x.getHeight();
+            return rows && cells && laid;
+        });
     }
 
     /** A group as Compose's AndroidViewsHandler is one: its requestLayout does not go on to View's -- it counts the request

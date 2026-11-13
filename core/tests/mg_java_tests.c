@@ -3626,6 +3626,9 @@ static int run_data(void)
                                          /* And a view added to a group or inflated into one hears its layout parameters through its own
                                             setLayoutParams, as Android's ViewGroup gives them (Citymapper's bottom sheet container). */
                                          "add-view-params",
+                                         /* And a table whose rows and cells leave layout_width or layout_height out inflates, with Android's
+                                            sizes for what is left out (Device Info HW). */
+                                         "table-cells",
                                          /* And ViewGroup.cleanupLayoutState takes a group's layout request back: a group whose requestLayout
                                             calls it on itself (Compose's AndroidViewsHandler) hears each requestLayout of a child. */
                                          "cleanup-layout-state",
