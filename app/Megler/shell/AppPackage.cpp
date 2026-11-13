@@ -14,6 +14,7 @@
 #include "shell/PickedFile.h"
 #include "shell/Placement.h"
 #include "shell/Platform.h"
+#include "shell/Settings.h"
 #include "shell/SharedApks.h"
 #include "shell/ShellLog.h"
 #include "shell/Strings.h"
@@ -26,6 +27,7 @@
 
 #include <atomic>
 #include <chrono>
+#include <map>
 #include <mutex>
 #include <thread>
 
@@ -142,76 +144,9 @@ std::string oneLine(std::string s) {
 }
 
 /*
- * The package volume Megler's own package is installed on, which every package Megler installs goes to (installWithPackageManager):
- * the phone's memory, or the memory card where Settings › System › Storage saves new apps there or Megler was moved there.
- * Windows puts a package where its user saves new apps unless it is told a volume, and an app's package on another storage
- * than Megler's gets that storage's publisher cache folder, or none: it found neither Android's files nor its APK there, and
- * Megler, the other way round, none of the APKs it hands over (docs/PER-APP-PACKAGES.md, "A memory card"). Asked of Windows's
- * package manager at each install (FindPackageVolumes, GetPackageVolumesAsync where that will not answer), the volume being
- * the one whose store path holds Megler's install folder (placement::volumeHolding). Null where neither answers or no volume
- * holds it: the package then goes where Windows puts new apps, as before. The log says which, the first time and whenever
- * it is another.
- */
-winrt::Windows::Management::Deployment::PackageVolume installVolume() {
-    using namespace winrt::Windows::Management::Deployment;
-    static std::mutex mutex;
-    static std::string said;  // the last said
-    std::vector<PackageVolume> volumes;
-    std::string why;
-    try {
-        for (auto const& volume : PackageManager().FindPackageVolumes()) volumes.push_back(volume);
-    } catch (hresult_error const& e) {
-        why = format("FindPackageVolumes: 0x%08x", unsigned(e.code()));
-        try {
-            for (auto const& volume : PackageManager().GetPackageVolumesAsync().get()) volumes.push_back(volume);
-        } catch (hresult_error const& again) {
-            why += format("; GetPackageVolumesAsync: 0x%08x", unsigned(again.code()));
-        }
-    }
-    std::vector<placement::Volume> places;
-    for (auto const& volume : volumes) {
-        placement::Volume place;
-        try {
-            place.name = volume.Name();
-            place.storePath = volume.PackageStorePath();
-            place.mountPoint = volume.MountPoint();
-        } catch (hresult_error const&) {
-        }
-        places.push_back(place);
-    }
-    const std::wstring install = platform::installDirectory();
-    const int at = placement::volumeHolding(places, install, placement::volumeOf(install));
-    std::string line;
-    if (at >= 0) {
-        bool system = false;
-        try {
-            system = volumes[at].IsSystemVolume();
-        } catch (hresult_error const&) {
-        }
-        line = "app package: packages are installed on Megler's own volume, " + narrow(places[at].storePath) + " (mounted at " +
-               narrow(places[at].mountPoint) + ", " + narrow(places[at].name) +
-               (system ? ", the system's)" : ", not the system's: a memory card or another drive)");
-    } else {
-        std::string listed;
-        for (const auto& place : places) listed += (listed.empty() ? "" : ", ") + narrow(place.storePath);
-        line = volumes.empty() ? "app package: Windows did not list its package volumes (" + why + "): packages go where Windows puts new apps"
-                               : "app package: none of the package volumes (" + listed + ") holds Megler's install folder " + narrow(install) +
-                                     ": packages go where Windows puts new apps";
-    }
-    {
-        std::lock_guard<std::mutex> lock(mutex);
-        if (line != said) {
-            said = line;
-            shellLog::write(line);
-        }
-    }
-    return at >= 0 ? volumes[at] : nullptr;
-}
-
-/*
- * AddPackageAsync onto `volume` (installVolume), or as before where there is none. Where Windows has not that call or will not
- * take a volume with it (E_NOINTERFACE, E_NOTIMPL or E_INVALIDARG thrown), as before too, said once; whatever else it throws
- * or answers is the caller's, as it was.
+ * AddPackageAsync onto `volume` (the one Megler's apps are kept on, or Megler's own: installWithPackageManager), or with none
+ * named where there is none. Where Windows has not that call or will not take a volume with it (E_NOINTERFACE, E_NOTIMPL or
+ * E_INVALIDARG thrown), with none named too, said once; whatever else it throws or answers is the caller's.
  */
 winrt::Windows::Management::Deployment::DeploymentResult addPackage(winrt::Windows::Management::Deployment::PackageManager const& manager,
                                                                     winrt::Windows::Foundation::Uri const& package,
@@ -412,9 +347,9 @@ const std::string& meglerOnCard() {
         const std::wstring install = platform::installDirectory(), shared = sharedFolder();
         const bool onCard = platform::isMobile() && !placement::onSystemDrive(install);
         const std::string said = placement::meglerOnCardText(onCard, shared.empty(), platform::isMobile());
-        if (!said.empty())
-            shellLog::write(std::string("app package: Megler ") + (onCard ? "is installed on the memory card" : "has no shared folder") +
-                            ": its apps may not reach its files; " + placement::summary(install, platform::localStateDirectory(), shared));
+        shellLog::write("app package: Megler's folders: " + placement::summary(install, platform::localStateDirectory(), shared) +
+                        (onCard ? "; Megler is on the memory card" : "") +
+                        (said.empty() ? "" : "; with no shared folder none of its apps can be installed as an app of its own"));
         return said;
     }();
     return text;
@@ -1035,6 +970,235 @@ void rememberRefusal(const std::wstring& path, const InstallResult& result) {
     files::write(platform::localStateDirectory() + L"\\install-refusal.txt", text);
 }
 
+/*
+ * Windows's package volumes, as its package manager lists them to Megler (FindPackageVolumes; GetPackageVolumesAsync where
+ * that will not answer, or lists none): a phone's memory and its memory card, a PC's drives that hold apps. Asked at each
+ * install and each listing of the apps, since a card comes and goes. None where Windows will not say: a package then goes
+ * where Windows puts new apps, as every one did before Megler named a volume.
+ *
+ * The flag test-second-volume adds one that is not there (null in `volumes`), for the question and Megler's Settings to be
+ * tried where Windows has one volume (a PC with one drive, a phone with no card): it can be chosen; a package installed
+ * "on" it goes where Windows puts it, and moving one there fails, which is said as any move that fails is.
+ */
+struct Volumes {
+    std::vector<winrt::Windows::Management::Deployment::PackageVolume> volumes;
+    std::vector<placement::Volume> places;  // each one's, by the same index
+    int meglers = -1;                       // the one Megler's own package is installed on (placement::volumeHolding)
+    std::string why;                        // why there are none, where Windows said
+};
+
+Volumes packageVolumes() {
+    using namespace winrt::Windows::Management::Deployment;
+    Volumes all;
+#if !defined(MEGLER_XBOX)
+    if (flagSet(L"no-package-manager")) {
+        all.why = "the flag no-package-manager";
+        return all;
+    }
+#endif
+    try {
+        for (auto const& volume : PackageManager().FindPackageVolumes()) all.volumes.push_back(volume);
+        if (all.volumes.empty()) all.why = "FindPackageVolumes listed none";
+    } catch (hresult_error const& e) {
+        all.why = format("FindPackageVolumes: 0x%08x", unsigned(e.code()));
+    }
+    if (all.volumes.empty()) {
+        try {
+            for (auto const& volume : PackageManager().GetPackageVolumesAsync().get()) all.volumes.push_back(volume);
+            if (all.volumes.empty()) all.why += "; GetPackageVolumesAsync listed none";
+        } catch (hresult_error const& e) {
+            all.why += format("; GetPackageVolumesAsync: 0x%08x", unsigned(e.code()));
+        }
+    }
+    for (auto const& volume : all.volumes) {
+        placement::Volume place;
+        try {
+            place.name = volume.Name();
+            place.storePath = volume.PackageStorePath();
+            place.mountPoint = volume.MountPoint();
+            place.system = volume.IsSystemVolume();
+            place.offline = volume.IsOffline();
+        } catch (hresult_error const&) {
+        }
+        all.places.push_back(place);
+    }
+    if (!all.volumes.empty() && flagSet(L"test-second-volume")) {
+        placement::Volume pretend;
+        pretend.name = L"\\\\?\\Volume{00000000-0000-0000-0000-00007e577e57}";
+        pretend.storePath = L"T:\\WindowsApps";
+        pretend.mountPoint = L"T:\\";
+        all.volumes.push_back(PackageVolume(nullptr));
+        all.places.push_back(pretend);
+    }
+    const std::wstring install = platform::installDirectory();
+    all.meglers = placement::volumeHolding(all.places, install, placement::volumeOf(install));
+    return all;
+}
+
+/// What a volume of `all` is called in a sentence: "the phone's memory", "the memory card (D:)", "drive D:".
+std::string volumeSaid(const Volumes& all, int at) {
+    std::string title = placement::volumeTitle(all.places[size_t(at)], platform::isMobile());
+    if (title.compare(0, 4, "The ") == 0 || title.compare(0, 6, "Drive ") == 0) title[0] = char(title[0] - 'A' + 'a');
+    return title;
+}
+
+/*
+ * Where Megler's apps' packages are kept, of `all`: the volume the user chose (settings::appsVolume) while it is there, else
+ * Megler's own (placement::appsPlace). The log says the volumes Windows listed and which one it is, the first time and
+ * whenever either is another: what a phone lists to Megler, and where it then puts a package, nobody has written down.
+ */
+placement::AppsPlace keptPlace(const Volumes& all) {
+    const std::string chosen = settings::megler(settings::appsVolume).value_or("");
+    const placement::AppsPlace place = placement::appsPlace(all.places, widen(chosen), all.meglers);
+    std::string line;
+    if (all.places.empty()) {
+        line = "app package: Windows did not list its package volumes (" + (all.why.empty() ? std::string("it listed none") : all.why) +
+               "): packages go where Windows puts new apps";
+    } else {
+        for (size_t i = 0; i < all.places.size(); i++) {
+            const placement::Volume& v = all.places[i];
+            line += std::string(line.empty() ? "app package: Windows's package volumes: " : "; ") + narrow(v.storePath) + " (mounted at " +
+                    narrow(v.mountPoint) + ", " + narrow(v.name) + (v.system ? ", the system's" : "") + (v.offline ? ", offline" : "") +
+                    (int(i) == all.meglers ? ", Megler's own" : "") + (all.volumes[i] ? "" : ", the pretend one of the flag test-second-volume") + ")";
+        }
+        const std::string gone = chosen.empty() ? std::string("none is chosen") : "the one chosen (" + chosen + ") is not there";
+        if (place.volume >= 0)
+            line += ". The apps' packages are kept on " + narrow(all.places[size_t(place.volume)].storePath) +
+                    (place.chosen ? std::string(", which the user chose") : ", Megler's own volume: " + gone);
+        else
+            line += ". None holds Megler's install folder " + narrow(platform::installDirectory()) + ", and " + gone +
+                    ": packages go where Windows puts new apps";
+        if (place.ask) line += "; the user is asked before the next install";
+    }
+    static std::mutex mutex;
+    static std::string said;  // the last said
+    std::lock_guard<std::mutex> lock(mutex);
+    if (line != said) {
+        said = line;
+        shellLog::write(line);
+    }
+    return place;
+}
+
+/// Of `all`, the volume `package`'s install folder is on; -1 where Windows does not say.
+int volumeByFolder(const Volumes& all, const Package& package) {
+    try {
+        const std::wstring folder(package.InstalledLocation().Path());
+        return placement::volumeHolding(all.places, folder, placement::volumeOf(folder));
+    } catch (hresult_error const&) {
+        return -1;
+    }
+}
+
+/*
+ * Of `all`, the volume the package of the identity name `identity` (Megler's publisher's) is installed on, with its full
+ * name in `fullName`; -1 where it is not installed, or Windows does not say. Each volume is asked for it; where none has
+ * it, the package manager's own list, and InstallationManager's where that is refused, say its install folder.
+ */
+int volumeOfPackage(const Volumes& all, const std::string& identity, std::wstring& fullName) {
+    using namespace winrt::Windows::Management::Deployment;
+    const std::wstring name = widen(identity);
+    std::wstring family;
+    try {
+        family = name + L"_" + std::wstring(Package::Current().Id().PublisherId());
+    } catch (hresult_error const&) {
+        return -1;
+    }
+    for (size_t i = 0; i < all.volumes.size(); i++) {
+        if (!all.volumes[i]) continue;
+        try {
+            for (auto const& package : all.volumes[i].FindPackagesForUser(L"", family)) {
+                fullName = package.Id().FullName();
+                return int(i);
+            }
+        } catch (hresult_error const&) {
+        }
+    }
+    try {
+        for (auto const& package : PackageManager().FindPackagesForUser(L"", family)) {
+            fullName = package.Id().FullName();
+            return volumeByFolder(all, package);
+        }
+    } catch (hresult_error const&) {
+    }
+#if !defined(MEGLER_XBOX)
+    std::vector<Package> mine;
+    std::string why;
+    if (publisherPackages(mine, why)) {
+        for (auto const& package : mine) {
+            try {
+                if (std::wstring(package.Id().Name()) != name) continue;
+                fullName = package.Id().FullName();
+                return volumeByFolder(all, package);
+            } catch (hresult_error const&) {
+            }
+        }
+    }
+#endif
+    return -1;
+}
+
+/// The package `fullName` moved to the volume `to` of `all`, with its private files, by Windows's package manager
+/// (MovePackageToVolumeAsync, which closes the app). What it said where it did not.
+InstallResult movePackage(const Volumes& all, const std::wstring& fullName, int to, const std::function<void(const std::string&)>& progress) {
+    using namespace winrt::Windows::Management::Deployment;
+    const std::string where = volumeSaid(all, to), package = narrow(fullName);
+    if (!all.volumes[size_t(to)]) {
+        shellLog::write("app package: " + package + " is not moved to " + where + ": that is the pretend volume of the flag test-second-volume");
+        return {false, "Windows did not move it to " + where + ": that is the pretend volume of the flag test-second-volume."};
+    }
+    int32_t code = 0;
+    std::string said;
+    try {
+        progress("Moving it to " + where + "…");
+        shellLog::flush();
+        const DeploymentResult result =
+            PackageManager().MovePackageToVolumeAsync(fullName, DeploymentOptions::ForceApplicationShutdown, all.volumes[size_t(to)]).get();
+        if (result.ErrorText().empty()) {
+            shellLog::write("app package: " + package + " moved to " + narrow(all.places[size_t(to)].storePath) + " (" + where +
+                            ") by Windows's package manager");
+            return {true, "Moved to " + where + "."};
+        }
+        code = result.ExtendedErrorCode();
+        said = format("0x%08x ", unsigned(code)) + narrow(result.ErrorText());
+    } catch (hresult_error const& e) {
+        code = e.code();
+        said = format("0x%08x ", unsigned(code)) + narrow(e.message());
+    }
+    shellLog::write("app package: Windows's package manager did not move " + package + " to " + narrow(all.places[size_t(to)].storePath) + " (" +
+                    where + "): " + said);
+    return {false, "Windows did not move it to " + where + ": " + oneLine(said), code == E_ACCESSDENIED};
+}
+
+/*
+ * What an install that was done answers. An app's own package (`identity`) that is not on the volume the apps are kept on
+ * (`kept`, of `all`) -- it was updated where it was, or Windows put it elsewhere than it was told -- is moved there; where
+ * Windows will not, the install is done all the same and says where the app is (InstallResult::note).
+ */
+InstallResult settled(const Volumes& all, const std::string& identity, int kept, const std::function<void(const std::string&)>& progress) {
+    InstallResult done{true, "Installed."};
+    if (identity.empty() || kept < 0 || all.volumes.size() < 2) return done;
+    std::wstring fullName;
+    const int at = volumeOfPackage(all, identity, fullName);
+    if (at == kept) {
+        shellLog::write("app package: " + identity + " is on " + volumeSaid(all, kept) + ", where the apps are kept");
+        return done;
+    }
+    if (at < 0) {
+        shellLog::write("app package: which volume " + identity + " is on Windows does not say: it is left there (the apps are kept on " +
+                        volumeSaid(all, kept) + ")");
+        return done;
+    }
+    shellLog::write("app package: " + identity + " is on " + volumeSaid(all, at) + ", and the apps are kept on " + volumeSaid(all, kept) +
+                    ": it is moved there");
+    const InstallResult moved = movePackage(all, fullName, kept, progress);
+    if (!moved.ok)
+        done.note = "It is on " + volumeSaid(all, at) + ", not on " + volumeSaid(all, kept) + " where Megler's apps are kept: " + moved.said +
+                    (moved.said.empty() || moved.said.back() == '.' ? "" : ".") +
+                    " Megler's Settings, Apps' Storage, tries again; Windows's Settings › System › Storage moves an app too.";
+    return done;
+}
+
 }  // namespace
 
 std::string accessDeniedText(const std::string& meanwhile) {
@@ -1057,7 +1221,8 @@ std::string accessDeniedText(const std::string& meanwhile) {
            meanwhile;
 }
 
-InstallResult installWithPackageManager(const std::wstring& path, const std::function<void(const std::string&)>& progress) {
+InstallResult installWithPackageManager(const std::wstring& path, const std::function<void(const std::string&)>& progress,
+                                        const std::string& identity) {
     using namespace winrt::Windows::Management::Deployment;
     const DeploymentOptions mobileDevelopment = static_cast<DeploymentOptions>(0x8000);
     const DeploymentOptions tries[] = {DeploymentOptions::ForceApplicationShutdown, DeploymentOptions::None,
@@ -1073,8 +1238,27 @@ InstallResult installWithPackageManager(const std::wstring& path, const std::fun
 #else
     const bool managerless = false;
 #endif
-    // (Onto the volume Megler itself is on, where there is one to name: installVolume, addPackage.)
-    const PackageVolume volume = managerless ? PackageVolume(nullptr) : installVolume();
+    /*
+     * Where it goes (shell/AppPackage.h): Megler's own package onto the volume Megler is on; an app's onto the one the apps
+     * are kept on -- unless it is installed on another, where it is updated as Windows updates a package, no volume named,
+     * and moved after (settled). With no volume to name, where Windows puts new apps.
+     */
+    const Volumes all = packageVolumes();
+    const placement::AppsPlace place = keptPlace(all);
+    PackageVolume volume{nullptr};
+    int kept = -1;
+    if (identity.empty()) {
+        if (all.meglers >= 0) volume = all.volumes[size_t(all.meglers)];
+    } else if (place.volume >= 0) {
+        kept = place.volume;
+        std::wstring installedAs;
+        const int was = all.volumes.size() >= 2 ? volumeOfPackage(all, identity, installedAs) : -1;
+        if (was < 0 || was == kept)
+            volume = all.volumes[size_t(kept)];
+        else
+            shellLog::write("app package: " + identity + " is installed on " + volumeSaid(all, was) + ", and the apps are kept on " +
+                            volumeSaid(all, kept) + ": it is updated where it is, and moved after");
+    }
     bool first = true;
     for (const DeploymentOptions options : tries) {
         if (managerless) break;
@@ -1101,7 +1285,7 @@ InstallResult installWithPackageManager(const std::wstring& path, const std::fun
                     shellLog::write(format("app package: %s installed by Windows's deployment engine (options 0x%x%s)",
                                            narrow(path.substr(path.find_last_of(L'\\') + 1)).c_str(), unsigned(options),
                                            way ? ", asked of a PackageManager of a fresh activation factory after a refusal for access" : ""));
-                    return {true, "Installed."};
+                    return settled(all, identity, kept, progress);
                 }
                 code = result.ExtendedErrorCode();
                 said = format("0x%08x ", unsigned(code)) + narrow(result.ErrorText());
@@ -1119,6 +1303,30 @@ InstallResult installWithPackageManager(const std::wstring& path, const std::fun
         denied = denied && code == E_ACCESSDENIED;
         if (!(unsigned(options) & 0x8000) && asTheStore.empty()) asTheStore = said;
     }
+    /*
+     * An app's package refused onto the volume named, and not for access: once more with none named, where Windows puts new
+     * apps. An app on another storage than the one chosen, which its install then says (settled), is more than no app; what
+     * Windows refuses a volume for on a phone nobody has written down. (Megler's own package is where it is.)
+     */
+    if (volume && !identity.empty() && !denied) {
+        try {
+            progress("Installing it where Windows puts new apps…");
+            shellLog::flush();
+            const DeploymentResult result =
+                PackageManager().AddPackageAsync(winrt::Windows::Foundation::Uri(uri), nullptr, DeploymentOptions::ForceApplicationShutdown).get();
+            if (result.ErrorText().empty()) {
+                shellLog::write("app package: " + narrow(path.substr(path.find_last_of(L'\\') + 1)) +
+                                " installed by Windows's deployment engine with no volume named, after it was refused onto " +
+                                volumeSaid(all, kept) + ": " + said);
+                return settled(all, identity, kept, progress);
+            }
+            shellLog::write(format("app package: the deployment engine refused it with no volume named too: 0x%08x ",
+                                   unsigned(result.ExtendedErrorCode())) + narrow(result.ErrorText()));
+        } catch (hresult_error const& e) {
+            shellLog::write(format("app package: the deployment engine could not be asked with no volume named: 0x%08x ", unsigned(e.code())) +
+                            narrow(e.message()));
+        }
+    }
 #if !defined(MEGLER_XBOX)
     /*
      * Refused for access every time (no packageManagement: a phone without its interop unlock's capability part), the
@@ -1131,7 +1339,7 @@ InstallResult installWithPackageManager(const std::wstring& path, const std::fun
         if (installByInstallationManager(path, progress, byInstallationManager)) {
             shellLog::write("app package: " + file + " installed by InstallationManager, as the Store installs" +
                             (managerless ? std::string(" (the flag no-package-manager)") : std::string(": Windows's deployment engine refused Megler for access")));
-            return {true, "Installed."};
+            return settled(all, identity, kept, progress);
         }
         shellLog::write("app package: InstallationManager did not install " + file + " either: " + byInstallationManager);
     }
@@ -1323,7 +1531,7 @@ InstallResult install(const Made& made, const std::function<void(const std::stri
     if (result.ok) registerForThisUser(made.fullName);
     return result;
 #else
-    return installWithPackageManager(made.appx, progress);
+    return installWithPackageManager(made.appx, progress, made.identity);
 #endif
 }
 
@@ -1705,6 +1913,146 @@ InstallResult uninstall(const InstalledApp& app) {
         if (code == E_ACCESSDENIED) sayRefusedForAccess();
         return otherWay({false, "Windows's package manager could not be asked to uninstall it: " + said, code == E_ACCESSDENIED});
     }
+#endif
+}
+
+AppsStorage appsStorage(std::vector<InstalledApp>& apps) {
+    AppsStorage storage;
+#if defined(MEGLER_XBOX)
+    // (An Xbox has one place for its apps, and its Device Portal installs them: nothing to choose.)
+    (void)apps;
+    return storage;
+#else
+    if (isSingleApp()) return storage;
+    using namespace winrt::Windows::Management::Deployment;
+    const Volumes all = packageVolumes();
+    const placement::AppsPlace place = keptPlace(all);
+    storage.ask = place.ask;
+    storage.chosen = place.chosen;
+    storage.why = all.why;
+    for (size_t i = 0; i < all.places.size(); i++) {
+        AppsVolume volume;
+        volume.place = all.places[i];
+        volume.title = placement::volumeTitle(volume.place, platform::isMobile());
+        volume.megler = int(i) == all.meglers;
+        volume.kept = int(i) == place.volume;
+        // Its free space: of a folder on it Megler may ask it of (its own LocalState is on the volume Megler is on), else as
+        // the package manager says it.
+        const std::wstring folders[] = {volume.megler ? platform::localStateDirectory() : std::wstring(), volume.place.mountPoint,
+                                        volume.place.storePath};
+        for (const std::wstring& folder : folders) {
+            ULARGE_INTEGER free = {}, total = {};
+            if (folder.empty() || !GetDiskFreeSpaceExW(folder.c_str(), &free, &total, nullptr)) continue;
+            volume.freeBytes = free.QuadPart;
+            volume.totalBytes = total.QuadPart;
+            break;
+        }
+        if (!volume.freeBytes && all.volumes[i]) {
+            try {
+                volume.freeBytes = all.volumes[i].GetAvailableSpaceAsync().get();
+            } catch (hresult_error const&) {
+            }
+        }
+        storage.volumes.push_back(volume);
+    }
+    // Which volume each app is on. One volume: that one. More: each volume's own list of the user's packages; for what no
+    // volume lists, the install folder, as the package manager says it, and InstallationManager where that is refused.
+    if (all.volumes.size() == 1) {
+        for (InstalledApp& app : apps) app.volume = 0;
+    } else if (all.volumes.size() >= 2 && !apps.empty()) {
+        std::map<std::string, int> where;  // by a package's full name
+        const std::wstring publisherId(Package::Current().Id().PublisherId());
+        const auto ours = [&publisherId](const Package& package) {
+            const auto id = package.Id();
+            return std::wstring(id.Name()).compare(0, 10, L"MeglerApp.") == 0 && std::wstring(id.PublisherId()) == publisherId;
+        };
+        std::string refused;
+        for (size_t i = 0; i < all.volumes.size(); i++) {
+            if (!all.volumes[i]) continue;
+            try {
+                for (auto const& package : all.volumes[i].FindPackagesForUser(L""))
+                    if (ours(package)) where[narrow(std::wstring(package.Id().FullName()))] = int(i);
+            } catch (hresult_error const& e) {
+                refused += format("%s%s: 0x%08x", refused.empty() ? "" : "; ", narrow(all.places[i].storePath).c_str(), unsigned(e.code()));
+            }
+        }
+        const auto missing = [&] {
+            for (const InstalledApp& app : apps)
+                if (!where.count(app.fullName)) return true;
+            return false;
+        };
+        const auto byFolder = [&](const Package& package) {
+            try {
+                if (!ours(package)) return;
+                const std::string fullName = narrow(std::wstring(package.Id().FullName()));
+                if (where.count(fullName)) return;
+                const int at = volumeByFolder(all, package);
+                if (at >= 0) where[fullName] = at;
+            } catch (hresult_error const&) {
+            }
+        };
+        if (missing()) {
+            try {
+                for (auto const& package : PackageManager().FindPackagesForUser(L"")) byFolder(package);
+            } catch (hresult_error const&) {
+            }
+        }
+        if (missing()) {
+            std::vector<Package> mine;
+            std::string why;
+            if (publisherPackages(mine, why))
+                for (auto const& package : mine) byFolder(package);
+        }
+        size_t unknown = 0;
+        for (InstalledApp& app : apps) {
+            const auto it = where.find(app.fullName);
+            app.volume = it == where.end() ? -1 : it->second;
+            if (app.volume < 0) unknown++;
+        }
+        // Said when it is another answer than the last: what a phone's volumes say of their packages is not written down.
+        std::string line = format("app package: of the %u apps' packages, ", unsigned(apps.size()));
+        for (size_t i = 0; i < all.places.size(); i++) {
+            size_t n = 0;
+            for (const InstalledApp& app : apps)
+                if (app.volume == int(i)) n++;
+            line += format("%u on ", unsigned(n)) + narrow(all.places[i].storePath) + ", ";
+        }
+        line += format("%u on a volume Windows does not say", unsigned(unknown)) +
+                (refused.empty() ? std::string() : " (a volume's own list was refused: " + refused + ")");
+        static std::mutex mutex;
+        static std::string said;
+        std::lock_guard<std::mutex> lock(mutex);
+        if (line != said) {
+            said = line;
+            shellLog::write(line);
+        }
+    }
+    return storage;
+#endif
+}
+
+void keepAppsOn(const std::string& volumeName) {
+    settings::setMegler(settings::appsVolume, volumeName);
+    shellLog::write("app package: Megler's apps are kept on " + volumeName + " from now on: the user chose it");
+}
+
+InstallResult moveToKeptVolume(const InstalledApp& app, const std::function<void(const std::string&)>& progress) {
+#if defined(MEGLER_XBOX)
+    (void)app;
+    (void)progress;
+    return {false, "An Xbox keeps its apps where the console puts them."};
+#else
+    std::lock_guard<std::mutex> one(gDeployMutex);
+    const Volumes all = packageVolumes();
+    const placement::AppsPlace place = keptPlace(all);
+    if (place.volume < 0)
+        return {false, "Windows lists Megler no storage to move it to" + (all.why.empty() ? std::string() : " (" + all.why + ")") +
+                           ". Windows's Settings › System › Storage moves an app."};
+    std::wstring fullName;
+    const int at = volumeOfPackage(all, app.identity, fullName);
+    if (fullName.empty()) fullName = widen(app.fullName);
+    if (at == place.volume) return {true, "It is on " + volumeSaid(all, at) + " already."};
+    return movePackage(all, fullName, place.volume, progress);
 #endif
 }
 

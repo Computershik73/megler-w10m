@@ -11,6 +11,7 @@
 // the app's private files stay in its own LocalState.
 #pragma once
 
+#include "shell/Placement.h"
 #include "shell/SharedApks.h"
 
 #include <cstdint>
@@ -38,14 +39,14 @@ const SingleApp& single();
 inline bool isSingleApp() { return !single().package.empty(); }
 /// An app's own package: why its app cannot start from what Megler put in the shared folder for it -- Windows gave the package
 /// no shared folder, or its APK or Android's files are not there (or cannot be read), as when the package and Megler are on
-/// different storage, a memory card and the phone's memory -- in words for its screen, with what to do (placement::missingText,
-/// ui/StartScreen.cpp); the app is not opened then. Empty when nothing is missing, and in Megler. Looked at at the first call,
-/// which says it in the log with each folder and its drive.
+/// different storage, a memory card and the phone's memory, should Windows keep their shared folders apart there -- in words
+/// for its screen, with what to do (placement::missingText, ui/StartScreen.cpp); the app is not opened then. Empty when
+/// nothing is missing, and in Megler. Looked at at the first call, which says it in the log with each folder and its drive.
 const std::string& singleAppProblem();
-/// Megler itself (not an app's own package) installed where its apps may not reach its files: on a phone, on the memory card
-/// (not on the drive Windows is on: placement::onSystemDrive), or anywhere with no shared folder. What it says once at its
-/// start and above the Library (placement::meglerOnCardText); empty when neither. Looked at at the first call, which says it in
-/// the log.
+/// Megler itself (not an app's own package) with no shared folder from Windows: what it says once at its start and above
+/// the Library (placement::meglerOnCardText), and where it should be then; empty with a shared folder, wherever Megler is
+/// (on a memory card too: since 0.1.0.698 that alone is nothing to say). Looked at at the first call, which says in the
+/// log where Megler is.
 const std::string& meglerOnCard();
 
 /// The scheme of the links by which a package of Megler's asks another (megler:install, megler:run...): the protocol this
@@ -132,6 +133,9 @@ struct InstallResult {
     /// the restricted capability packageManagement, which Windows 10 Mobile grants a sideloaded app only with the capability
     /// part of the phone's interop unlock. What is said then is accessDeniedText, not Windows's "Access is denied.".
     bool accessDenied = false;
+    /// What else is to be said of an install that was done: that the package could not be moved to where Megler's apps are
+    /// kept (appsStorage), with what Windows said. Empty as a rule.
+    std::string note;
 };
 
 /// What Megler says where Windows refused it for access (InstallResult::accessDenied): that Windows does not let Megler
@@ -140,15 +144,24 @@ struct InstallResult {
 /// Windows rarely refuses it: there, that Windows refused Megler the packageManagement capability.
 std::string accessDeniedText(const std::string& meanwhile);
 
-/// Installs `made` by Windows's deployment engine (installWithPackageManager); on an Xbox, through the console's own Device
-/// Portal (shell/DevicePortal.h), the way an app installs packages there (DesktopMode_uwp's). Off the UI thread.
+/// Installs `made` by Windows's deployment engine (installWithPackageManager, on the volume Megler's apps are kept on:
+/// appsStorage); on an Xbox, through the console's own Device Portal (shell/DevicePortal.h), the way an app installs
+/// packages there (DesktopMode_uwp's). Off the UI thread.
 InstallResult install(const Made& made, const std::function<void(const std::string&)>& progress);
 /// A package installed by Windows's deployment engine itself (PackageManager.AddPackageAsync, the restricted capability
 /// packageManagement), which reads it where it lies: nothing of it goes through Megler's memory. Installed as the Store
 /// installs an app, and as a developer's package (of which a phone takes only so many) only where that is refused. An update
 /// of Megler's own package closes Megler. Not installed, with what Windows said, when every option was refused; written down
 /// then as the last refusal (LocalState\install-refusal.txt, which Save All Logs takes along). Off the UI thread.
-InstallResult installWithPackageManager(const std::wstring& path, const std::function<void(const std::string&)>& progress);
+///
+/// Where it goes: Megler's own package (`identity` empty) to the package volume Megler is installed on. An app's own
+/// (`identity`, its identity name) to the one volume Megler's apps are kept on (appsStorage: the one the user chose, else
+/// Megler's own); one that is installed on another volume is updated where it is, as Windows updates a package, and moved
+/// there after (InstallResult::note says when Windows did not move it). Windows is told no volume, and puts the package
+/// where it puts new apps, where it lists Megler none -- and where the package goes in by the system's installer
+/// (Windows.Phone.Management.Deployment's, the way where Windows refuses Megler the deployment engine), which takes none.
+InstallResult installWithPackageManager(const std::wstring& path, const std::function<void(const std::string&)>& progress,
+                                        const std::string& identity = {});
 /// Under the flag diag-deploy (LocalState\flags): whether Windows's deployment engine takes Megler's calls now, asked four
 /// ways on a thread of its own and said in the log as "deploy probe (<when>): ..." -- the engine's answer to a package that
 /// is not there (0x80070002 or the like where it takes the call, 0x80070005 where it refuses Megler), through C++/WinRT's
@@ -165,6 +178,7 @@ struct InstalledApp {
     std::string version;         // the version of the Megler that made it: "0.1.0.358" (madeByVersion of packageVersion)
     std::string fullName;        // its full name, which it is uninstalled by
     std::string packageVersion;  // the package's own version: "0.1.682.1" since 0.1.0.682 (appPackageVersion), else as version
+    int volume = -1;             // of AppsStorage::volumes, the one it is installed on (appsStorage fills it); -1: not known
 };
 /// The apps' own packages of Megler's publisher installed on the phone; false, with why, when they could not be listed.
 /// Windows's package manager lists them (the restricted capability packageQuery, which a phone grants only with its
@@ -184,6 +198,37 @@ std::string madeByVersion(const std::string& packageVersion);
 /// Uninstalls one by Windows's package manager (packageManagement; on an Xbox, through its Device Portal): the package goes,
 /// with the app's own LocalState; what it has in the shared folder stays. Off the UI thread.
 InstallResult uninstall(const InstalledApp& app);
+
+/// A package volume Megler's apps can be kept on: a phone's memory, its memory card; a PC's drive.
+struct AppsVolume {
+    placement::Volume place;
+    std::string title;        // "The phone's memory", "The memory card (D:)", "Drive D:" (placement::volumeTitle)
+    uint64_t freeBytes = 0;   // free and whole, 0 where Windows does not say
+    uint64_t totalBytes = 0;
+    bool megler = false;      // Megler itself is installed on it
+    bool kept = false;        // Megler's apps are kept on it: new packages are installed there, the others moved there
+};
+/// Where Megler's apps' packages are kept: one package volume for them all -- Google Play services and Play Store too --
+/// and none of an app's own. Where Windows has more than one (a phone with a memory card), the user is asked before the
+/// first install (ui/SeparateApps.cpp) and may choose another in Megler's Settings since, which moves the apps there. What
+/// is kept there is an app's package and its private files (its LocalState, which Windows moves along); the apps' APKs,
+/// Android's files and the apps' shared storage are in Megler's shared folder, which Windows keeps in the user's own
+/// folder -- a phone's memory -- wherever the packages are.
+struct AppsStorage {
+    std::vector<AppsVolume> volumes;  // none on an Xbox, in an app's own package, and where Windows lists Megler none
+    bool ask = false;                 // more than one to choose of, and none chosen (or the one chosen is gone): ask
+    bool chosen = false;              // the one kept is the user's choice (else Megler's own volume)
+    std::string why;                  // why there are none, where Windows said
+};
+/// The package volumes and where the apps are kept, and each of `apps` (installedApps' list) told the volume it is on
+/// (InstalledApp::volume). Slow (Windows's package manager lists each volume's packages): off the UI thread.
+AppsStorage appsStorage(std::vector<InstalledApp>& apps);
+/// The apps are kept on the volume named `volumeName` (AppsVolume::place.name) from now on: remembered in Megler's
+/// settings (settings::appsVolume). The packages installed elsewhere are moved one by one (moveToKeptVolume).
+void keepAppsOn(const std::string& volumeName);
+/// Moves an app's own package, with its private files, to the volume the apps are kept on (PackageManager's
+/// MovePackageToVolumeAsync, which closes the app); done at once when it is there already. Off the UI thread.
+InstallResult moveToKeptVolume(const InstalledApp& app, const std::function<void(const std::string&)>& progress);
 
 #if defined(MEGLER_XBOX)
 /// Whether the Xbox's Device Portal asked, the last time, for a user name and password Megler has not got, or refused those
