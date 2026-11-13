@@ -1,10 +1,12 @@
-// Where Megler's packages and their folders are: on which volume a path is, and which package volume Megler itself is
-// installed on -- every package it installs goes there (shell/AppPackage.cpp, installWithPackageManager; docs/PER-APP-PACKAGES.md,
-// "A memory card").
+// Where Megler's packages and their folders are: on which volume a path is, which package volume Megler itself is installed
+// on, and which one its apps' packages are kept on -- one for them all, which the user chooses once where there is more than
+// one (shell/AppPackage.cpp, appsStorage and installWithPackageManager; docs/PER-APP-PACKAGES.md, "A memory card").
 //
-// Windows 10 keeps a package installed on another volume than the system's with its app data on that volume, and gives it the
-// publisher cache folder of that volume, or none: Megler in the phone's memory and an app's package on the memory card (or the
-// other way round) do not see each other's shared folder, where Android's files and the app's APK are.
+// Windows 10 keeps a package installed on another volume than the system's with its app data on that volume. Its publisher
+// cache folder, Megler's shared folder where Android's files and the apps' APKs are, was feared to be that volume's own, or
+// none; what is known since says it is the user's, one wherever a package is (a Lumia 950's Google Play Store in the phone's
+// memory read there what its Megler had put, 0.1.0.696, and Windows makes the folder's path of the user's profile folder and
+// the publisher's id alone). An app's own package still says what it lacks where it finds neither (missingFor).
 #pragma once
 
 #include <string>
@@ -21,6 +23,8 @@ struct Volume {
     std::wstring name;        // its volume's name: "\\?\Volume{...}"
     std::wstring storePath;   // where its packages are installed: "C:\Program Files\WindowsApps", "D:\WindowsApps"
     std::wstring mountPoint;  // where it is mounted: "C:\", "D:\"
+    bool system = false;      // Windows's own: a phone's memory
+    bool offline = false;     // not there now: a memory card taken out
 };
 
 /// Of `volumes`, the index of the one `installFolder` (Package.InstalledLocation: "D:\WindowsApps\Megler_...") is on: the
@@ -29,6 +33,25 @@ struct Volume {
 /// data volume may be "U:\" and "C:\Data\" both); else the longest mount point the folder is under; -1 for none. Names are
 /// compared without regard to case, "\\?\" before a drive and a separator at the end.
 int volumeHolding(const std::vector<Volume>& volumes, const std::wstring& installFolder, const std::wstring& installVolume = {});
+
+/// Of `volumes`, the index of the one named `name` ("\\?\Volume{...}", compared as volumeHolding compares); -1 for none, or
+/// for no name.
+int volumeNamed(const std::vector<Volume>& volumes, const std::wstring& name);
+
+/// Where Megler's apps' packages are kept, one volume for them all.
+struct AppsPlace {
+    int volume = -1;      // of the volumes, the one a new package is installed on; -1: Windows is told none
+    bool chosen = false;  // it is the one the user chose
+    bool ask = false;     // the user is to be asked before the next install: more than one to choose of, and none chosen
+};
+/// Where the apps are kept: of `volumes`, the one the user chose (`chosenName`, a volume's name, as Megler's settings keep
+/// it) while it is there; else Megler's own (`meglers`, an index or -1), and the user is asked where two or more volumes are
+/// there to choose of -- also when the one chosen is gone (a card taken out, another put in) -- and not where there is one.
+AppsPlace appsPlace(const std::vector<Volume>& volumes, const std::wstring& chosenName, int meglers);
+
+/// What a package volume is called on Megler's screens: "The phone's memory" and "The memory card (D:)" on a phone, "Drive
+/// C: (Windows's)" and "Drive D:" on desktop Windows; its store path where it has no drive.
+std::string volumeTitle(const Volume& volume, bool mobile);
 
 /// The volume `folder` is on, as the handle of the folder says it ("\\?\Volume{...}"); empty where Windows does not say.
 std::wstring volumeOf(const std::wstring& folder);
@@ -54,13 +77,14 @@ enum class Missing {
 /// another package is there and cannot be read.
 Missing missingFor(const std::wstring& shared, const std::wstring& apk, const std::wstring& androidRoot);
 /// What an app's own package says on its screen for `missing` (not nothing): what it lacks and why, and what to do -- keep the
-/// app and Megler on the same storage, the app (or Megler) moved to the phone's memory (on desktop Windows, to the system
-/// drive), or the app installed again from Megler.
+/// app where Megler is, by Megler's Settings (Apps' Storage, which moves the apps) or Windows's (the app moved), or the app
+/// installed again from Megler.
 std::string missingText(Missing missing, const std::string& label, const std::wstring& shared, bool mobile);
 
-/// What Megler says once at its start, and above its Library, where it is installed on a phone's memory card (`onCard`: not on
-/// the drive Windows is on; a phone's only, `mobile`) or was given no shared folder (`noSharedFolder`): that its apps may not
-/// reach its files, and that the phone's memory is where Megler should be. Empty when neither.
+/// What Megler says once at its start, and above its Library, where Windows gave it no shared folder (`noSharedFolder`): no
+/// app can be installed as an app of its own, and where Megler should be then -- a phone's memory where it is on the memory
+/// card (`onCard`: not on the drive Windows is on; a phone's only, `mobile`). Empty with a shared folder, wherever Megler
+/// is: until 0.1.0.698 Megler on the card said that the phone's memory is where it should be, which nothing bore out.
 std::string meglerOnCardText(bool onCard, bool noSharedFolder, bool mobile);
 
 } // namespace megler::app::placement
