@@ -519,14 +519,15 @@ void AppShell::poll() {
                 }
             }
         }
-        // Megler on the memory card, or given no shared folder, says so once a run: its apps may not reach its files, and the
-        // phone's memory is where it should be (shell/Placement.h). The Library says it above its list as well (ui/Components.cpp).
+        // Megler given no shared folder says so once a run: none of its apps can be installed as an app of its own, and where
+        // Megler should be then (shell/Placement.h). On a memory card with a shared folder it has nothing to say (since
+        // 0.1.0.698: Windows keeps one shared folder for a publisher's packages wherever they are). The Library says it above
+        // its list as well (ui/Components.cpp).
         if (!appPackage::isSingleApp() && !placementSaid_) {
             placementSaid_ = true;
             if (const std::string& onCard = appPackage::meglerOnCard(); !onCard.empty()) {
                 DialogSpec spec;
-                spec.title = platform::isMobile() && !placement::onSystemDrive(platform::installDirectory()) ? "Megler Is on the Memory Card"
-                                                                                                            : "Megler Has No Shared Folder";
+                spec.title = "Megler Has No Shared Folder";
                 spec.message = onCard;
                 spec.buttons = {"OK"};
                 dialogWhenFree(std::move(spec), nullptr);

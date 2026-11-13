@@ -23,6 +23,7 @@
 #include "ui/AppShell.h"
 #include "ui/GooglePlay.h"
 #include "ui/Ota.h"
+#include "ui/SeparateApps.h"
 #include "ui/SharedFolders.h"
 #include "ui/Theme.h"
 
@@ -83,6 +84,16 @@ public:
         if (!host_ || !showsPhone()) return;
         // The phone's folders are looked for while Megler starts: shown once they are known.
         if (!linksShown_ && StorageHost::shared().searched()) rebuild();
+        // Apps' Storage: built again when what it shows changed (a list came, an app was moved), and what is being moved now.
+        if (showsAppsStorage()) {
+            if (storageSignature(separateApps::storage()) != storageShown_) {
+                rebuild();
+            } else if (storageNow_) {
+                const std::string now = separateApps::working();
+                storageNow_.Text(hs(now));
+                setVisible(storageNow_, !now.empty());
+            }
+        }
         // Memory moves; once a second is plenty.
         if (++ticks_ % 4 != 0 || !memory_) return;
         if (auto value = memory_.Children().GetAt(1).try_as<TextBlock>()) value.Text(hs(platform::memorySummary()));
@@ -91,6 +102,8 @@ public:
     /// Shown again (Megler's page of the app's settings, back from its App Permissions): what they come to may have changed.
     void appeared() override {
         if (host_ && forApp() && !sub_) rebuild();
+        // (Megler's: the package volumes looked at again, a memory card put in since.)
+        if (showsAppsStorage()) separateApps::refresh(shell_);
     }
 
 private:
@@ -224,6 +237,117 @@ private:
                                (suffix.empty() ? std::string(": none is for this one.") : ": this Megler takes Megler_<version>_" + suffix + ".appx.") +
                                " What is downloaded is checked against the SHA-256 GitHub gives, and installed as an update copied to "
                                "Pictures\\Megler is.");
+    }
+
+    /// Apps' Storage is Megler's own alone: not an app's settings, nor in an app's own package, nor on an Xbox, where the
+    /// console puts the apps.
+    bool showsAppsStorage() const {
+#if defined(MEGLER_XBOX)
+        return false;
+#else
+        return !forApp() && !appPackage::isSingleApp();
+#endif
+    }
+
+    /// What the section Apps' Storage shows, to see when it has changed.
+    static std::string storageSignature(const separateApps::Storage& st) {
+        std::string s = std::string(st.known ? "k" : "u") + (st.storage.ask ? "a" : "-") + (st.storage.chosen ? "c" : "-");
+        for (size_t i = 0; i < st.storage.volumes.size(); i++) {
+            const appPackage::AppsVolume& v = st.storage.volumes[i];
+            s += format("|%d%d%d:%d:%llu", int(v.kept), int(v.megler), int(v.place.offline), i < st.apps.size() ? st.apps[i] : 0,
+                        (unsigned long long)(v.freeBytes >> 24));
+        }
+        return s + format("|%d", st.elsewhere);
+    }
+
+    /// Where Megler's apps' packages are kept (ui/SeparateApps.h, appPackage::AppsStorage): one package volume for them all
+    /// -- Google Play services and Google Play Store too -- chosen here, or before the first install; choosing another moves
+    /// every app there.
+    UIElement appsStorageSection() {
+        const auto& p = palette();
+        const separateApps::Storage st = separateApps::storage();
+        storageShown_ = storageSignature(st);
+        const bool mobile = platform::isMobile();
+        const std::string windowsWay = mobile ? "the phone's Settings › System › Storage" : "Windows's Settings › System › Storage";
+        std::vector<UIElement> rows;
+        if (!st.known) {
+            rows.push_back(listItem("Looking…", "Megler is asking Windows which storage its apps can be kept on"));
+        } else if (st.storage.volumes.empty()) {
+            rows.push_back(listItem("Where Windows Puts New Apps",
+                                    "Windows lists Megler no storage to choose of" + (st.storage.why.empty() ? std::string() : " (" + st.storage.why + ")") +
+                                        ": its apps go where Windows puts new apps, which " + windowsWay + " sets (New apps will save to) and "
+                                        "where an app is moved."));
+        } else {
+            int total = 0;
+            for (int n : st.apps) total += n;
+            for (size_t i = 0; i < st.storage.volumes.size(); i++) {
+                const appPackage::AppsVolume& v = st.storage.volumes[i];
+                const int here = i < st.apps.size() ? st.apps[i] : 0;
+                std::string detail = v.freeBytes ? formattedByteCount(v.freeBytes) + " free" +
+                                                       (v.totalBytes ? " of " + formattedByteCount(v.totalBytes) : std::string())
+                                                 : std::string();
+                const auto more = [&detail](const std::string& what) { detail += (detail.empty() ? "" : " · ") + what; };
+                if (v.place.offline) more("not there now");
+                if (v.megler) more("Megler is here");
+                if (here) more(format("%d of Megler's apps", here));
+                // (None is shown chosen while the question is still to be answered: the next install asks.)
+                const bool chosen = v.kept && !st.storage.ask;
+                const bool usable = !v.place.offline && !v.place.name.empty();
+                const std::string name = narrow(v.place.name), title = v.title;
+                const int toMove = total - here;
+                rows.push_back(button(choiceRow(title, detail, chosen), [this, usable, chosen, name, title, toMove] {
+                    if (!usable) {
+                        shell_.alert("Not There Now", title + " is not there now, or Windows gives it no name to keep the choice by.");
+                        return;
+                    }
+                    if (chosen && !toMove) return;
+                    chooseAppsVolume(name, title, toMove);
+                }, ButtonKind::plain, title));
+            }
+            if (!st.storage.ask && st.elsewhere > 0)
+                rows.push_back(button(listItem(format(st.elsewhere == 1 ? "Move %d App Here" : "Move %d Apps Here", st.elsewhere),
+                                               "Installed elsewhere, or Windows did not move them: Megler asks Windows to move each again",
+                                               glyphs::folder),
+                                      [this] {
+                                          separateApps::moveAllToKept(shell_);
+                                          rebuild();
+                                      },
+                                      ButtonKind::plain, "Move the Apps Here"));
+        }
+        // What is being moved or installed now (refresh keeps it).
+        const std::string now = separateApps::working();
+        storageNow_ = text(now, font::bodyMedium, weightNormal(), p.primary);
+        storageNow_.TextWrapping(TextWrapping::Wrap);
+        storageNow_.Margin(ThicknessHelper::FromLengths(16, 8, 24, 8));
+        setVisible(storageNow_, !now.empty());
+        rows.push_back(storageNow_);
+        return listSection("Apps' Storage", rows,
+                           std::string("One place for every app Megler installs, Google Play services and Google Play Store too: no app has a "
+                                       "place of its own, and choosing another moves them all. What is kept there is each app's own package "
+                                       "and its private data. The apps' APKs and Android's files are in Megler's shared folder, which Windows "
+                                       "keeps ") +
+                               (mobile ? "in the phone's memory" : "in your user folder") + " wherever the apps are. Megler itself is moved in " +
+                               windowsWay + ".");
+    }
+
+    /// Another volume chosen for the apps (or the one chosen, with apps still elsewhere): asked once more, then kept and
+    /// the apps moved (separateApps::keepAppsOn).
+    void chooseAppsVolume(const std::string& name, const std::string& title, int toMove) {
+        const std::weak_ptr<SettingsBody> weak = weak_from_this();
+        const std::string moved = toMove ? format(toMove == 1 ? ", and moves the %d it has installed elsewhere there now"
+                                                              : ", and moves the %d it has installed elsewhere there now, one after another",
+                                                  toMove) + " -- Google Play services and Google Play Store as any other. An app that is open "
+                                                            "is closed."
+                                         : std::string(".");
+        shell_.confirm("Keep the Apps Here?",
+                       title + ": Megler installs its apps there from now on" + moved +
+                           " The apps' APKs and Android's files stay in Megler's shared folder" +
+                           (platform::isMobile() ? ", in the phone's memory." : "."),
+                       toMove ? "Move" : "Keep Here", false, [this, weak, name] {
+                           if (!weak.lock()) return;
+                           separateApps::keepAppsOn(shell_, name);
+                           rebuild();
+                       });
     }
 
     /// The language and region apps are told (player/PhoneState.h): the phone's, English (United States), or another tag.
@@ -707,6 +831,8 @@ private:
         add(column, locationSection());
         if (!forApp()) add(column, themeSection());
         if (!forApp() && !appPackage::isSingleApp()) add(column, updatesSection());
+        storageNow_ = nullptr;
+        if (showsAppsStorage()) add(column, appsStorageSection());
 
         if (showsPhone()) {
             add(column, storageSection());
@@ -749,6 +875,8 @@ private:
     Grid memory_{nullptr};
     int ticks_ = 0;
     bool linksShown_ = false; // the Android Storage section was built after the search for the links was over
+    std::string storageShown_;          // what Apps' Storage showed when it was built (storageSignature)
+    TextBlock storageNow_{nullptr};     // ... and its line of what is being moved now
     bool adding_ = false;     // the folder picker or a dialog is up
     bool checking_ = false;   // StorageHost::check is going through the folders
 };
