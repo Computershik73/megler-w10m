@@ -397,6 +397,18 @@ static void ret_null(mg_jcall *c) { c->ret.l = NULL; }
 static void player_getContext(mg_jcall *c) { c->ret.l = U.activity; }
 static void ret_self(mg_jcall *c) { c->ret.l = mg_jni_ref(c->self); }
 
+/* Unity 6 finds Java's classes through its player, forName(name, initialize, loader): the class of a name with dots, as
+   ClassLoader.loadClass gives one. */
+static void player_forName(mg_jcall *c)
+{
+    const char *name = mg_jni_string(c->args[0].l);
+    char *jni = mg_strdup(name ? name : "java/lang/Object"), *p;
+    for (p = jni; *p; p++)
+        if (*p == '.') *p = '/';
+    c->ret.l = mg_jni_class_object(jni);
+    free(jni);
+}
+
 /* The engine's own way of saying it cannot go on is a dialog; here it is a line in the log. */
 static void dialog_text(mg_jcall *c)
 {
@@ -423,6 +435,11 @@ static const mg_jhle g_unity[] = {
     { PLAYER, "getNetworkConnectivity", NULL, ret_zero },
     { PLAYER, "getSplashMode", NULL, ret_zero },
     { PLAYER, "executeGLThreadJobs", NULL, ret_void },
+    /* Unity 6's: the classes it asks its player for, which had none and ended the game in strlen of a null pointer before
+       its first frame (Vector, Cut the Rope), and the jobs it has the player run on the main thread, of which the engine's
+       Java has none here. */
+    { PLAYER, "forName", NULL, player_forName },
+    { PLAYER, "executeMainThreadJobs", NULL, ret_void },
     { PLAYER, "disableLogger", NULL, ret_void },
     { PLAYER, "kill", NULL, ret_void },
     { PLAYER, "beginIndeterminateProgress", NULL, ret_void },
