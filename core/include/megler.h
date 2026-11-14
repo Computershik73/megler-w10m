@@ -2029,6 +2029,15 @@ typedef struct megler_wifi_host {
     bool (MEGLER_CB *connection)(void *user, megler_wifi_network *out);
 } megler_wifi_host;
 
+/*
+ * A font of the host's own, for an app whose own code draws text with Android's fonts (megler_run_config.host_fonts).
+ */
+typedef struct megler_host_font {
+    const char *path;       /* the font's file on the host, UTF-8: one the app's process can open and map */
+    int index;              /* the face in a collection (.ttc), else 0 */
+    const char *langs;      /* what it is for, as fonts.xml's `lang` says it: "ja", "zh-Hans", "und-Arab und-Hebr" (letters, digits, '-', spaces) */
+} megler_host_font;
+
 typedef struct megler_run_config {
     const char *apk_path;
     /* Optional installed microG APK. Opened as the service package; no copy in each client. */
@@ -2113,6 +2122,19 @@ typedef struct megler_run_config {
      * none but itself.
      */
     const char *apps_dir;
+    /*
+     * The host's own fonts for the writing the Android root has none for (0.1.0.698, issue #7). A Java app's views are
+     * drawn by megler_gfx_host, whose text falls back on the host's fonts by itself; but what draws its own text reads
+     * Android's font list, /system/etc/fonts.xml, and the files it names in /system/fonts -- a WebView's Chromium and
+     * Flutter, through Skia -- and the root has Roboto and a few more, nothing for Chinese, Japanese, Korean, Arabic,
+     * Hebrew, Thai, India's writing or emoji: such a page was boxes. Each font given here is a family of its own that
+     * follows Android's in the list the app reads (the root's own list is not changed), in this order, which is the order
+     * a character with no language to go by is looked for in; its file is read where the host has it, nothing copied,
+     * and mapped as a view of the file (bionic/mg_libc_mem.c). A font whose file is not there is left out. NULL or 0:
+     * Android's list as the root has it. Read at megler_run and not kept: the strings may go once it has returned.
+     */
+    const megler_host_font *host_fonts;
+    int host_font_count;
     /* The app has ended: by its own exit (status), by a crash (reason names it), or by megler_stop. Called once, from any thread. */
     void (MEGLER_CB *on_exit)(void *user, int status, const char *reason);
     void *user;

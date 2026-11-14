@@ -702,6 +702,22 @@ bool mg_run_start(const megler_run_config *config)
                         (!strcmp(info.package, "com.google.android.gms") && mg_apk_is_microg(config->apk_path));
     if (g_services_microg) mg_info("run: Google Play services are microG's: their data is the shared folder's services/data-microg");
     g_config.gsf_apk_path = config->gsf_apk_path ? mg_strdup(config->gsf_apk_path) : NULL;
+    /* The host's fonts are the caller's until this returns (megler.h), and read by the driver on the app's thread: kept. */
+    g_config.host_fonts = NULL;
+    g_config.host_font_count = 0;
+    if (config->host_fonts && config->host_font_count > 0) {
+        int count = config->host_font_count > 64 ? 64 : config->host_font_count, kept = 0;
+        megler_host_font *fonts = (megler_host_font *)mg_alloc((size_t)count * sizeof(*fonts));
+        for (i = 0; i < count; i++) {
+            if (!config->host_fonts[i].path || !config->host_fonts[i].langs) continue;
+            fonts[kept].path = mg_strdup(config->host_fonts[i].path);
+            fonts[kept].index = config->host_fonts[i].index;
+            fonts[kept].langs = mg_strdup(config->host_fonts[i].langs);
+            kept++;
+        }
+        g_config.host_fonts = fonts;
+        g_config.host_font_count = kept;
+    }
     /*
      * The drivers see the splits as one list, of those the reading took (a split of another app is no split of this one),
      * in the order of info.splits, which names them.

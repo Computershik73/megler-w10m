@@ -45,6 +45,7 @@ typedef struct mount {
     bool link;                         /* one of the phone's own folders */
     bool read_only;
     bool other;                        /* another app's own part of the shared storage (mg_fs_other_app) */
+    bool host_file;                    /* one file of the host's own that nobody here writes (mg_fs_mount_host_file): mapped as a view */
 } mount;
 /*
  * The mounts: the app's own, the links, every other app's two parts. They are kept in blocks that are never moved, and a
@@ -59,7 +60,7 @@ static mount *g_mount_blocks[256];
 static volatile i32 g_nmounts;
 static mg_lock g_mount_lock = MG_LOCK_INIT;        /* held by whoever changes the table */
 #define MOUNT_AT(i) (&g_mount_blocks[(i) / MOUNT_BLOCK][(i) % MOUNT_BLOCK])
-enum { MOUNT_LINK = 1, MOUNT_READ_ONLY = 2, MOUNT_OTHER = 4 };
+enum { MOUNT_LINK = 1, MOUNT_READ_ONLY = 2, MOUNT_OTHER = 4, MOUNT_HOST_FILE = 8 };
 static char g_package[160] = "com.example.app";
 static char g_internal[256] = "/data/data/com.example.app";
 static char g_external[64] = EXTERNAL;
@@ -137,6 +138,7 @@ static void mount_put(const char *guest_prefix, const char *host_dir, int kind)
     m->link = (kind & MOUNT_LINK) != 0;
     m->read_only = (kind & MOUNT_READ_ONLY) != 0;
     m->other = (kind & MOUNT_OTHER) != 0;
+    m->host_file = (kind & MOUNT_HOST_FILE) != 0;
     /* (Whole before it is counted: whoever reads the table meanwhile sees it or does not.) */
     if (added) mg_atomic_xchg(&g_nmounts, n + 1);
     mg_lock_release(&g_mount_lock);
@@ -163,6 +165,112 @@ static void mounts_drop(int kind)
 }
 
 void mg_fs_mount(const char *guest_prefix, const char *host_dir) { mount_put(guest_prefix, host_dir, 0); }
+
+void mg_fs_mount_host_file(const char *guest_path, const char *host_file) { mount_put(guest_path, host_file, MOUNT_READ_ONLY | MOUNT_HOST_FILE); }
+
+/* Whether a font's `lang` may go into the list as it is: tags of letters, digits and '-', with spaces between. */
+static bool font_langs_ok(const char *langs)
+{
+    size_t i;
+    if (!langs || !langs[0] || langs[0] == ' ') return false;
+    for (i = 0; langs[i]; i++) {
+        char c = langs[i];
+        if (i >= 120 || !((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '-' || c == ' ')) return false;
+    }
+    return langs[i - 1] != ' ';
+}
+
+/* What a font's file is called in the guest by what it is on the host: a collection stays one by its name. */
+static const char *font_ext(const char *path)
+{
+    const char *dot = strrchr(path, '.');
+    if (dot && strlen(dot) == 4) {
+        char e[4];
+        int i;
+        for (i = 0; i < 3; i++) e[i] = (char)(dot[i + 1] | 0x20);
+        e[3] = 0;
+        if (!strcmp(e, "ttc")) return ".ttc";
+        if (!strcmp(e, "otf")) return ".otf";
+        if (!strcmp(e, "otc")) return ".otc";
+    }
+    return ".ttf";
+}
+
+int mg_fs_host_fonts(const char *guest_root, const char *list, const char *made, const mg_fs_font *fonts, int count, char *said, size_t said_size)
+{
+    static const char end[] = "</familyset>";
+    const size_t end_len = sizeof(end) - 1;
+    size_t size = 0, was_size = 0, head = 0, n, cap, at, said_n = 0;
+    u8 *xml, *was;
+    char *out, *guest;
+    bool found = false;
+    int i, used = 0;
+    if (said && said_size) said[0] = 0;
+    if (!guest_root || !list || !made || !fonts || count <= 0) return 0;
+    xml = mg_file_read_all(list, &size);
+    if (!xml) return 0;
+    /* The families go in before the list's end, its last </familyset>. */
+    for (at = size; at >= end_len && !found; at--) {
+        if (!memcmp(xml + at - end_len, end, end_len)) {
+            head = at - end_len;
+            found = true;
+        }
+    }
+    if (!found) {
+        free(xml);
+        return 0;
+    }
+    cap = size + (size_t)count * 320 + 160;
+    out = (char *)mg_alloc(cap);
+    memcpy(out, xml, head);
+    n = head;
+    n += (size_t)snprintf(out + n, cap - n, "    <!-- The host's own fonts (megler_run_config.host_fonts). -->\n");
+    for (i = 0; i < count; i++) {
+        const mg_fs_font *f = &fonts[i];
+        const char *ext;
+        mg_stat st;
+        if (!f->path || !f->path[0] || f->index < 0 || !font_langs_ok(f->langs) || !mg_path_stat(f->path, &st, NULL) || st.is_dir || !st.size) continue;
+        ext = font_ext(f->path);
+        guest = mg_sprintf("%s/fonts/host/%d%s", guest_root, used, ext);
+        mount_put(guest, f->path, MOUNT_READ_ONLY | MOUNT_HOST_FILE);
+        free(guest);
+        n += (size_t)snprintf(out + n, cap - n, "    <family lang=\"%s\">\n        <font weight=\"400\" style=\"normal\"", f->langs);
+        if (f->index) n += (size_t)snprintf(out + n, cap - n, " index=\"%d\"", f->index);
+        n += (size_t)snprintf(out + n, cap - n, ">host/%d%s</font>\n    </family>\n", used, ext);
+        if (said && said_n + 2 < said_size)
+            said_n += (size_t)snprintf(said + said_n, said_size - said_n, "%s%s", used ? ", " : "", f->langs);
+        if (said && said_n >= said_size) said_n = said_size - 1;
+        used++;
+    }
+    if (!used) {
+        free(out);
+        free(xml);
+        return 0;
+    }
+    memcpy(out + n, xml + head, size - head);
+    n += size - head;
+    free(xml);
+    /* Written when it is not there as it should be: every start of the app but the first, and the first after another font, writes nothing. */
+    was = mg_file_read_all(made, &was_size);
+    if (!was || was_size != n || memcmp(was, out, n)) {
+        char *dir = mg_strdup(made), *slash = strrchr(dir, '/'), *back = strrchr(dir, '\\');
+        if (back && (!slash || back > slash)) slash = back;
+        if (slash) {
+            *slash = 0;
+            mg_path_mkdirs(dir);
+        }
+        free(dir);
+        if (!mg_file_write_all(made, out, n)) used = 0;
+    }
+    free(was);
+    free(out);
+    if (used) {
+        guest = mg_sprintf("%s/etc/fonts.xml", guest_root);
+        mount_put(guest, made, MOUNT_READ_ONLY);
+        free(guest);
+    }
+    return used;
+}
 
 void mg_fs_configure(const char *package, const char *internal_dir, const char *external_dir)
 {
@@ -454,6 +562,16 @@ static bool in_read_only(const char *g)
 {
     const mount *m = mount_of(g);
     return m && m->read_only;
+}
+
+/*
+ * Whether a normalized path is a file the app is only to read that is no link's, whose owner refuses a write by
+ * itself: a file of the host's own, or one Megler made for the app to read (mg_fs_host_fonts).
+ */
+static bool in_fixed_file(const char *g)
+{
+    const mount *m = mount_longest(g);
+    return m && m->read_only && !m->link;
 }
 
 char *mg_fs_host_path(const char *guest_path)
@@ -1386,6 +1504,8 @@ static int g_open(const char *path, int flags, int mode)
         if (!why && !is_dir && (flags & G_O_DIRECTORY)) why = GE_NOTDIR;
         /* A file made read-only (chmod) is not opened for writing, whoever this process is on the host (root under qemu). */
         if (!why && !is_dir && acc && read_only) why = GE_ACCES;
+        /* Nor is a file of the host's own, which Android has on a file system mounted read-only (/system). */
+        if (!why && !is_dir && (acc || (flags & G_O_TRUNC)) && in_fixed_file(g)) why = GE_ROFS;
         if (!why && !is_dir) {
             if (acc == 0) hf = MG_O_READ;
             else if (acc == 1) hf = MG_O_WRITE;
@@ -2081,6 +2201,24 @@ void *mg_fd_file_map(int fd, u64 offset, size_t len, void **base, size_t *mapped
         p = mg_file_map(o->file, offset, len, base, mapped);
         if (!p) mg_set_errno(GE_NODEV);
     }
+    fd_put(o);
+    return p;
+}
+
+/*
+ * The same view for a private read-only mapping, of a file of the host's own alone (mg_fs_mount_host_file): nobody here
+ * writes such a file, so the view shows what a copy made now would hold for as long as it is mapped. NULL for any other
+ * descriptor, with errno as it was: the caller makes its copy.
+ */
+void *mg_fd_host_file_map(int fd, u64 offset, size_t len, void **base, size_t *mapped)
+{
+    void *p = NULL;
+    mg_stat st;
+    const mount *m;
+    WITH_FD(fd, o, NULL)
+    if (o->type == OBJ_FILE && (o->flags & G_O_ACCMODE) == 0 && o->path && (m = mount_longest(o->path)) != NULL && m->host_file &&
+        !o->path[m->glen] && mg_file_stat(o->file, &st) && offset + len <= st.size)
+        p = mg_file_map(o->file, offset, len, base, mapped);
     fd_put(o);
     return p;
 }

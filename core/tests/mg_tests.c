@@ -1799,6 +1799,152 @@ static void test_mmap_file(const char *scratch)
 }
 
 /*
+ * The host's own fonts in Android's font list (bionic/mg_libc_io.c, mg_fs_host_fonts; megler_run_config.host_fonts,
+ * issue #7): the list the app reads is the root's with a family for each font whose file is there, before its end, the
+ * root's own left as it was; a font's file is read where the host has it under a name of the guest's, is not opened for
+ * writing, and a private read-only mapping of it -- as Skia and FreeType map a font -- is a view of the file, none of it
+ * memory of the process's own (on Windows, where that is said), where a private mapping of any other file is a copy.
+ */
+static void test_host_fonts(const char *scratch)
+{
+    typedef int (*open_fn)(const char *, int, int);
+    typedef gssize (*read_fn)(int, void *, size_t);
+    typedef void *(*mmap_fn)(void *, size_t, int, int, int, goff);
+    typedef int (*munmap_fn)(void *, size_t);
+    typedef int (*close_fn)(int);
+    enum { READ = 1, PRIVATE = 0x02, CHUNK = 65536, LEN = 2 * 65536 + 300 };
+    static const char root_list[] =
+        "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n"
+        "<familyset version=\"23\">\n"
+        "    <family name=\"sans-serif\">\n"
+        "        <font weight=\"400\" style=\"normal\">Roboto-Regular.ttf</font>\n"
+        "    </family>\n"
+        "</familyset>\n";
+    open_fn open_ = (open_fn)mg_bionic_find("open");
+    read_fn read_ = (read_fn)mg_bionic_find("read");
+    mmap_fn mmap_ = (mmap_fn)mg_bionic_find("mmap");
+    munmap_fn munmap_ = (munmap_fn)mg_bionic_find("munmap");
+    close_fn close_ = (close_fn)mg_bionic_find("close");
+    char *etc = mg_sprintf("%s/fonts-root/etc", scratch), *list = mg_sprintf("%s/fonts-root/etc/fonts.xml", scratch);
+    char *dir = mg_sprintf("%s/fonts of the host", scratch), *font = mg_sprintf("%s/fonts of the host/A Font.TTC", scratch);
+    char *gone = mg_sprintf("%s/fonts of the host/none.ttf", scratch), *made = mg_sprintf("%s/fonts-made/app.xml", scratch);
+    u8 *data = (u8 *)mg_alloc(LEN), *p, *was;
+    char said[200], text[2048];
+    mg_fs_font fonts[4];
+    mg_file *f;
+    size_t was_size = 0;
+    int err = 0, fd, i, n;
+    gssize got;
+    bool same = true;
+    i64 c;
+    say("fonts: the host's own fonts follow Android's in the font list, and are mapped as views of their files");
+    CHECK(open_ && read_ && mmap_ && munmap_ && close_);
+    if (!open_ || !read_ || !mmap_ || !munmap_ || !close_) return;
+    for (i = 0; i < LEN; i++) data[i] = (u8)(i * 13 + (i >> 7));
+    CHECK(mg_path_mkdirs(etc) && mg_path_mkdirs(dir));
+    CHECK(mg_file_write_all(list, root_list, sizeof(root_list) - 1));
+    f = mg_file_open(font, MG_O_WRITE | MG_O_CREATE | MG_O_TRUNC, &err);
+    CHECK(f && mg_file_write(f, data, LEN, &err) == LEN);
+    if (f) mg_file_close(f);
+    /* A face of a collection for two languages; a font whose file is not there; one whose langs are no langs; the file's first face. */
+    fonts[0].path = font, fonts[0].index = 2, fonts[0].langs = "ja zh-Hans";
+    fonts[1].path = gone, fonts[1].index = 0, fonts[1].langs = "und-Arab";
+    fonts[2].path = font, fonts[2].index = 0, fonts[2].langs = "ko\"><bad";
+    fonts[3].path = font, fonts[3].index = 0, fonts[3].langs = "ko";
+    n = mg_fs_host_fonts("/fonts-test", list, made, fonts, 4, said, sizeof(said));
+    CHECK_INT(n, 2);
+    CHECK(!strcmp(said, "ja zh-Hans, ko"));
+    say("  %d of 4 fonts used, for %s", n, said);
+    /* The list as the app reads it. */
+    fd = open_("/fonts-test/etc/fonts.xml", 0, 0);
+    CHECK(fd >= 0);
+    if (fd >= 0) {
+        got = read_(fd, text, sizeof(text) - 1);
+        CHECK(got > (gssize)sizeof(root_list));
+        text[got > 0 ? got : 0] = 0;
+        CHECK(strstr(text, "<family name=\"sans-serif\">") && strstr(text, ">Roboto-Regular.ttf</font>"));
+        CHECK(strstr(text, "<family lang=\"ja zh-Hans\">\n        <font weight=\"400\" style=\"normal\" index=\"2\">host/0.ttc</font>\n    </family>\n"));
+        CHECK(strstr(text, "<family lang=\"ko\">\n        <font weight=\"400\" style=\"normal\">host/1.ttc</font>\n    </family>\n"));
+        CHECK(!strstr(text, "bad") && !strstr(text, "und-Arab") && !strstr(text, "host/2"));
+        CHECK(got > 13 && !strcmp(text + got - 13, "</familyset>\n") && strstr(text, "</familyset>") == text + got - 13);
+        close_(fd);
+    }
+    /* The root's own list is as it was. */
+    was = mg_file_read_all(list, &was_size);
+    CHECK(was && was_size == sizeof(root_list) - 1 && !memcmp(was, root_list, was_size));
+    free(was);
+    /* The font: read, mapped as a view, not written. */
+    fd = open_("/fonts-test/fonts/host/0.ttc", 0, 0);
+    CHECK(fd >= 0);
+    if (fd >= 0) {
+        p = (u8 *)mmap_(NULL, LEN, READ, PRIVATE, fd, 0);
+        CHECK(p && p != (u8 *)(mg_addr)-1);
+        if (p && p != (u8 *)(mg_addr)-1) {
+            for (i = 0; i < LEN; i++)
+                if (p[i] != data[i]) same = false;
+            CHECK(same);
+            c = mg_mem_committed(p, 2 * CHUNK);
+            CHECK(c == -1 || c == 0);
+            say("  a private read-only mapping of a font: %s; %lld bytes of the process's own (-1: the host does not say)",
+                same ? "its bytes" : "NOT its bytes", (long long)c);
+            CHECK(munmap_(p, LEN) == 0);
+        }
+        /* From a page's offset. */
+        p = (u8 *)mmap_(NULL, CHUNK, READ, PRIVATE, fd, 4096);
+        CHECK(p && p != (u8 *)(mg_addr)-1);
+        if (p && p != (u8 *)(mg_addr)-1) {
+            CHECK(!memcmp(p, data + 4096, CHUNK));
+            CHECK(munmap_(p, CHUNK) == 0);
+        }
+        close_(fd);
+    }
+    *mg_errno_ptr() = 0;
+    fd = open_("/fonts-test/fonts/host/0.ttc", 02, 0);            /* O_RDWR */
+    CHECK(fd < 0 && *mg_errno_ptr() == GE_ROFS);
+    if (fd >= 0) close_(fd);
+    *mg_errno_ptr() = 0;
+    fd = open_("/fonts-test/etc/fonts.xml", 01 | 01000, 0);       /* O_WRONLY | O_TRUNC */
+    CHECK(fd < 0 && *mg_errno_ptr() == GE_ROFS);
+    if (fd >= 0) close_(fd);
+    /* The same file under an ordinary mount: a private mapping of it is a copy, as any file's is. */
+    mg_fs_mount("/fonts-plain", dir);
+    fd = open_("/fonts-plain/A Font.TTC", 0, 0);
+    CHECK(fd >= 0);
+    if (fd >= 0) {
+        p = (u8 *)mmap_(NULL, 2 * CHUNK, READ, PRIVATE, fd, 0);
+        CHECK(p && p != (u8 *)(mg_addr)-1);
+        if (p && p != (u8 *)(mg_addr)-1) {
+            CHECK(!memcmp(p, data, 2 * CHUNK));
+            c = mg_mem_committed(p, 2 * CHUNK);
+            CHECK(c == -1 || c >= 2 * CHUNK);
+            CHECK(munmap_(p, 2 * CHUNK) == 0);
+        }
+        close_(fd);
+    }
+    /* Asked again, as at the app's next start: the same list. And with no font that is there, no list of Megler's. */
+    was = mg_file_read_all(made, &was_size);
+    n = mg_fs_host_fonts("/fonts-test", list, made, fonts, 4, said, sizeof(said));
+    CHECK_INT(n, 2);
+    {
+        size_t now_size = 0;
+        u8 *now = mg_file_read_all(made, &now_size);
+        CHECK(was && now && now_size == was_size && !memcmp(was, now, now_size));
+        free(now);
+    }
+    free(was);
+    CHECK_INT(mg_fs_host_fonts("/fonts-none", list, made, fonts + 1, 2, said, sizeof(said)), 0);
+    CHECK(said[0] == 0 && open_("/fonts-none/etc/fonts.xml", 0, 0) < 0);
+    CHECK_INT(mg_fs_host_fonts("/fonts-none", gone, made, fonts, 4, said, sizeof(said)), 0);
+    free(data);
+    free(etc);
+    free(list);
+    free(dir);
+    free(font);
+    free(gone);
+    free(made);
+}
+
+/*
  * A file mapped shared shows what is written to it through a descriptor afterwards (bionic/mg_libc_mem.c,
  * mg_mem_file_written), as a kernel's mapping of a file does. Bolt (Psiphon's database, in WhatsApp's libgojni.so) maps
  * its file read-only and shared, from a descriptor open for writing, past the file's end; writes it with pwrite, and
@@ -7009,6 +7155,7 @@ int mg_tests_run(const char *libdir, const char *scratch, mg_test_sink sink, voi
     test_syscall_fds(scratch);
     test_mmap_commit();
     test_mmap_file(scratch);
+    test_host_fonts(scratch);
     test_mmap_file_written(scratch);
     test_mmap_write_back_unlocked(scratch);
     test_mmap_lock_order(scratch);

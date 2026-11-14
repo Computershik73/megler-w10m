@@ -825,7 +825,10 @@ static void g_delete_sized(void *p, size_t n) { (void)n; mg_g_free(p); }
  *
  * A file mapped read-only and shared (MAP_SHARED, PROT_READ, the descriptor opened read-only) is a view of the file
  * itself (mg_fd_file_map), which costs the app no memory of its own: the WebView maps its ICU data and its .pak files so,
- * 55 MB of them, each read into memory of the app's before. Any other mapping of a file is a copy of what it holds.
+ * 55 MB of them, each read into memory of the app's before. So is a private read-only mapping of a file of the host's
+ * own that nobody here writes (mg_fd_host_file_map: Windows's fonts, which Skia and FreeType map so, 13 to 21 MB each for
+ * Chinese, Japanese and Korean, for as long as a typeface is used); making such a mapping writable later is refused
+ * (EACCES), which nothing that maps a font does. Any other mapping of a file is a copy of what it holds.
  *
  * Anonymous memory an allocator is done with and gives back with madvise (MADV_DONTNEED, MADV_FREE) is the system's
  * again: its readable and writable pages are decommitted, and stay the app's -- touched again, a page is committed again,
@@ -1621,6 +1624,26 @@ static void *g_mmap_common(void *addr, size_t len, int prot, int flags, int fd, 
                 mg_trace("mmap(%p, %u, prot %d, flags 0x%x, fd %d) -> %p, a view of the file", addr, (unsigned)len, prot, (unsigned)flags, fd, (void *)p);
                 return p;
             }
+        }
+    }
+    if (!(flags & (G_MAP_SHARED | G_MAP_FIXED | G_MAP_ANONYMOUS)) && (prot & 7) == G_PROT_READ) {
+        /* Private and read-only, of a file of the host's own (a font of Windows's): a view of the file as well (see the top). */
+        void *base = NULL;
+        size_t mapped = 0;
+        p = (u8 *)mg_fd_host_file_map(fd, offset, len, &base, &mapped);
+        if (p) {
+            r = (region *)mg_alloc(sizeof(*r));
+            r->base = p;
+            r->size = size;
+            r->view = base;
+            r->view_size = mapped;
+            r->live = (u8 *)mg_alloc(size / MG_PAGE / 8 + 1);
+            region_mark(r, 0, size, true);
+            mg_lock_acquire(&g_region_lock);
+            region_link(r);
+            mg_lock_release(&g_region_lock);
+            mg_trace("mmap(%p, %u, prot %d, flags 0x%x, fd %d) -> %p, a view of the host's file", addr, (unsigned)len, prot, (unsigned)flags, fd, (void *)p);
+            return p;
         }
     }
     if (flags & G_MAP_FIXED) {

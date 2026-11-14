@@ -2365,6 +2365,45 @@ static void mount_apk(void)
 }
 
 /*
+ * The host's own fonts (megler_run_config.host_fonts) after Android's in the font list the app's own code reads,
+ * /system/etc/fonts.xml: a WebView's Chromium and Flutter draw their text with Skia, which takes its fonts from that list
+ * and the files it names, and the root has none for Chinese, Japanese, Korean and more (issue #7: such text in a WebView
+ * was boxes). The list is made in Megler's data folder, a file for each app (fonts/<the package>.xml), since two apps
+ * may start at once; the root's own is left as it is (bionic/mg_libc_io.c, mg_fs_host_fonts).
+ */
+static void mount_host_fonts(void)
+{
+    const megler_host_font *fonts = J.config->host_fonts;
+    const char *megler_dir = megler_data_dir();
+    int count = J.config->host_font_count, i, n;
+    mg_fs_font *given;
+    char *list, *made, said[480];
+    if (!fonts || count <= 0) return;
+    if (!megler_dir || !megler_dir[0]) {
+        mg_info("java: the host's %d fonts are not added to Android's font list: there is no folder of Megler's to make the list in", count);
+        return;
+    }
+    if (count > 64) count = 64;
+    given = (mg_fs_font *)mg_alloc((size_t)count * sizeof(*given));
+    for (i = 0; i < count; i++) {
+        given[i].path = fonts[i].path;
+        given[i].index = fonts[i].index;
+        given[i].langs = fonts[i].langs;
+    }
+    list = mg_sprintf("%s/etc/fonts.xml", J.root);
+    made = mg_sprintf("%s/fonts/%s.xml", megler_dir, J.package);
+    n = mg_fs_host_fonts("/system", list, made, given, count, said, sizeof(said));
+    if (n)
+        mg_info("java: Android's font list (/system/etc/fonts.xml) has %d of the host's %d fonts after its own, for %s", n, count, said);
+    else
+        mg_info("java: Android's font list is the root's own: none of the host's %d fonts could be added (their files, the root's etc/fonts.xml, or %s)",
+                count, made);
+    free(list);
+    free(made);
+    free(given);
+}
+
+/*
  * The app's native libraries, where Android puts them when it installs an
  * app: the folder the framework names as ApplicationInfo.nativeLibraryDir
  * (<data>/lib), each a file of its own. The class loader looks there
@@ -2633,6 +2672,7 @@ static MG_HOSTCB void main_thread(void *arg)
         /* A feature split's code joins the app's class path after the base's, as its class loader has it on Android. */
         for (i = 0; i < J.nsplits; i++) J.split_code[i] = mg_dvm_add_apk(J.config->split_apks[i]) > 0;
         mount_apk();
+        mount_host_fonts();
         place_libraries();
         open_apk(0, J.config->apk_path);
         open_apk(1, res);

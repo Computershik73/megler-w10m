@@ -808,6 +808,50 @@ static bool g_crash_app;
 static bool g_microg_app;
 /* The camera app: it alone has cameras (the stand-in), so that the others still see a phone without one. */
 static bool g_camera_app;
+/*
+ * The WebView app is given fonts of Windows' own (megler_run_config.host_fonts), as the shell gives an app those it
+ * finds: the files of the Windows these tests run on, or beside (WSL has its disk at /mnt/c), by the names Windows 10
+ * and 11 keep them under -- or of the folder MG_JAVA_HOST_FONTS, "none" for none. What each is for, and the writing the
+ * app's page must then have a font for (the app's "writings" line). None found: the page's writing is the root's alone.
+ */
+static bool g_webview_app;
+static const struct { const char *file, *langs, *writings; } g_font_files[] = {
+    { "segoeui.ttf", "und-Arab und-Hebr", "arabic hebrew" },
+    { "LeelawUI.ttf", "und-Thai", "thai" },
+    { "Nirmala.ttc", "und-Deva", "devanagari" },      /* Windows 11's */
+    { "Nirmala.ttf", "und-Deva", "devanagari" },      /* Windows 10's */
+    { "seguiemj.ttf", "und-Zsye", "emoji" },
+    { "msyh.ttc", "zh-Hans", "han" },
+    { "YuGothR.ttc", "ja", "kana" },
+    { "malgun.ttf", "ko", "hangul" },
+};
+static megler_host_font g_fonts_given[MG_COUNT(g_font_files)];
+static const char *g_fonts_writings[MG_COUNT(g_font_files)];
+static int g_fonts_given_count;
+
+static void find_host_fonts(void)
+{
+    static const char *const folders[] = { "/mnt/c/Windows/Fonts", "C:\\Windows\\Fonts" };
+    const char *asked = getenv("MG_JAVA_HOST_FONTS");
+    size_t f, i;
+    g_fonts_given_count = 0;
+    for (f = 0; f < (asked ? 1 : MG_COUNT(folders)) && !g_fonts_given_count; f++) {
+        const char *folder = asked ? asked : folders[f];
+        for (i = 0; i < MG_COUNT(g_font_files); i++) {
+            char *path = mg_sprintf("%s/%s", folder, g_font_files[i].file);
+            mg_stat st;
+            int err = 0;
+            if (!mg_path_stat(path, &st, &err) || st.size < 1024) {
+                free(path);
+                continue;
+            }
+            g_fonts_given[g_fonts_given_count].path = path;
+            g_fonts_given[g_fonts_given_count].index = 0;
+            g_fonts_given[g_fonts_given_count].langs = g_font_files[i].langs;
+            g_fonts_writings[g_fonts_given_count++] = g_font_files[i].writings;
+        }
+    }
+}
 /* The Bluetooth app: it alone has a radio (the stand-in), so that the others still see a phone without one. */
 static bool g_bluetooth_app;
 /* natives' second run: the flag native-entry-at-start, its start asking its library for NativeActivity's entry (run_natives). */
@@ -1569,6 +1613,11 @@ static bool start(const char *apk, const char *android_root)
     cfg.gsf_apk_path = getenv("MG_JAVA_GSF_APK");
     cfg.splits_dir = g_splits_dir;
     cfg.android_root = android_root;
+    if (g_webview_app) {
+        find_host_fonts();
+        cfg.host_fonts = g_fonts_given_count ? g_fonts_given : NULL;
+        cfg.host_font_count = g_fonts_given_count;
+    }
     /* Unless another is asked for, a small phone at Android's base density: a dp is a pixel, and the layout's numbers can be read off the picture. */
     cfg.width = g_screen_w;
     cfg.height = g_screen_h;
@@ -5007,6 +5056,36 @@ static int run_webview(void)
     }
     line = find_line("I/WebViewTest: provider ok", 0);
     if (line >= 0) say("  %s", strstr(line_at(line), "provider ok"));
+    /*
+     * The writing the page has a font for (issue #7: Japanese and Chinese were boxes in a WebView). The root's own fonts
+     * are Latin's, Greek's and Cyrillic's; for the rest Chromium's Skia has the host's fonts, after Android's own in
+     * Android's font list as the driver made it (drivers/mg_java.c, mount_host_fonts) -- here Windows' fonts where
+     * find_host_fonts found them, each of which must have given the page the writing it is for.
+     */
+    line = wait_line("I/WebViewTest: writings ", 0, 120);
+    CHECK(line >= 0 && strstr(line_at(line), " latin=1"));
+    if (line >= 0) {
+        const char *said = strstr(line_at(line), "writings ");
+        say("  %s (with %d of Windows' fonts given)", said, g_fonts_given_count);
+        for (i = 0; i < g_fonts_given_count; i++) {
+            const char *w = g_fonts_writings[i];
+            while (*w) {
+                size_t n = strcspn(w, " ");
+                snprintf(text, sizeof(text), " %.*s=1", (int)n, w);
+                CHECK(strstr(said, text) != NULL);
+                if (!strstr(said, text)) say("  no font for%s with %s given for %s", text, g_fonts_given[i].path, g_fonts_given[i].langs);
+                w += n;
+                while (*w == ' ') w++;
+            }
+        }
+        if (g_fonts_given_count) {
+            int has = find_line("java: Android's font list (/system/etc/fonts.xml) has ", 0);
+            CHECK(has >= 0);
+            if (has >= 0) say("  %s", strstr(line_at(has), "java: "));
+        } else {
+            say("  (none of Windows' fonts found to give the app: the page's writing is the root's own)");
+        }
+    }
     /* androidx.webkit's way to the WebView's support-library glue: found, and its features asked. */
     line = find_line("I/WebViewTest: glue ", 0);
     if (line >= 0) say("  %s", strstr(line_at(line), "glue "));
@@ -5127,6 +5206,7 @@ int mg_tests_java_run(const char *which, const char *apk, const char *android_ro
     if (g_any_app && getenv("MG_JAVA_SPLITS")) g_splits_dir = mg_strdup(getenv("MG_JAVA_SPLITS"));
     g_crash_app = !strcmp(which, "crash");
     g_camera_app = !strcmp(which, "camera");
+    g_webview_app = !strcmp(which, "webview");
     g_bluetooth_app = !strcmp(which, "bluetooth");
     g_pickers_app = !strcmp(which, "pickers");
     g_webview_app = !strcmp(which, "webview");
