@@ -1,4 +1,7 @@
     // Megler: members added to the original's megler.Native (tools/build-framework.sh, "X.java.members").
+    /** The host's keyboard for the field it was last asked for (showKeyboard), once more: its text and cursor are as the
+     *  keyboard left them, and it keeps what it is composing (megler.h, MEGLER_KEYBOARD_F_AGAIN; megler.InputMethods.ask). */
+    public static native void showKeyboardAgain(int inputType, int imeOptions);
     // Which way up the screen is drawn, Display.getRotation's Surface.ROTATION_0 to _270 (megler_set_surface, the core's
     // mg_run_surface); screenWidth, screenHeight and density say the surface as it is now, and change with it (megler.Screen).
     public static native int displayRotation();

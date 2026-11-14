@@ -3670,9 +3670,21 @@ focused view's `InputConnection`).
   flags (several lines, no suggestions, capitals, signed, decimal), and what
   Enter does (a new line, Done, Go, Search, Send, Next, Previous). **Both are
   called on the app's main thread**, from inside the framework, and must
-  return at once. `show` comes again for the same field (the framework asks
-  when a field takes the focus and again when it is touched): ten times for
-  five touched fields in the test.
+  return at once. `show` comes again for the same field -- the field that
+  has the focus touched (at the touch and at its click), an app's own
+  `showSoftInput` -- and since 0.1.0.699 it says so: when the keyboard is up
+  for that very input connection and kind, and the field's selection and
+  length are as the keyboard left them, it is
+  `megler.Native.showKeyboardAgain` and the shell hears
+  `MEGLER_KEYBOARD_F_AGAIN`, at which it leaves its keyboard alone with what
+  it is composing. Any other `show` begins afresh: another field, a restart
+  (`setText`, `setInputType`, `restartInput`: a new connection), a cursor
+  moved by a touch or by the app, a view that is no `TextView`, the keyboard
+  closed since (`megler.InputMethods.ask`, in the overlay). Before, the shell
+  could not tell the two and began afresh at every one, which ended whatever
+  a Chinese or Japanese keyboard was composing (issue #7). The test touches
+  the field that has the keyboard where its cursor is, types, touches it
+  again (once more each time) and then at its beginning (afresh).
 - **The shell tells**, from any thread: `megler_text_commit` (typed text),
   `megler_text_key` (Backspace, Enter, Delete, the arrows, Home, End),
   `megler_keyboard_closed`, `megler_keyboard_height`. Each is queued and reaches
@@ -3762,6 +3774,56 @@ left or its Enter pressed says whether the field holds that: `keyboard: the
 password field ... holds what the keyboard typed (N characters)`, or holds a
 different number and not what was typed. The demos test types "pw", a
 Backspace and "w" into its password field and checks the first.
+
+**The shell's text service, and a keyboard that composes (0.1.0.699, issue
+#7).** The shell (`app/Megler/ui/PlayerScreen.cpp`) is a text field to
+Windows: a `CoreTextEditContext` whose text is what the keyboard typed since
+the field was asked for, after a fixed beginning. The contract carries no
+composing text: what a Chinese, Japanese or Korean keyboard composes reaches
+the app as it is typed, and is taken back by Backspaces and typed again as
+the keyboard changes it, a candidate chosen at last the same way. That needs
+the composition to live until the user ends it, and until 0.1.0.699 the shell
+ended it at every `show`: the text service's focus was left and taken again,
+whatever was asked. Now:
+
+- `show` with `MEGLER_KEYBOARD_F_AGAIN`, while the text service has the
+  field: the keyboard is shown and nothing else.
+- `show` for a field of the same scope while the text service has the focus
+  (another field, or the same with its text or cursor changed): the text is
+  begun afresh (`NotifyTextChanged`), the focus kept, so the keyboard no
+  longer goes and comes between two fields of a kind.
+- Otherwise as before: the focus left, the scope set, the focus taken.
+- The text is not begun afresh (grown past 200 characters, or deleted into
+  its beginning) under a composition, but when it is over.
+- `LayoutRequested` answers as Microsoft's custom edit control sample does:
+  screen coordinates in raw pixels, the control the app's picture, the text a
+  line high where the app was last touched (it was the window's top row, one
+  DIP high, unscaled). `SelectionRequested` gives both ends of the selection
+  as the keyboard set them.
+
+None of it could be tried where the fault is: there is no Windows 10 Mobile
+and no keyboard that composes at this PC, and which of these ended the
+reporter's compositions, if any, is not known. So the log says it. Each field's
+counts end with `it composed N times (K canceled)` and `the app asked for the
+field once more M times`; `player: the keyboard's language is ja` is said when
+it changes; and a trace, `player: composing: ...`, at most 200 lines a run and
+in numbers only (positions and lengths, never a character), is opened by a
+keyboard language of zh, ja or ko, by a character of such a script typed, or
+by the flag `trace-keyboard`. It tells every change of the text with what the
+app got for it, the selection, where a composition begins and ends (and
+whether canceled), every asking of the app's and what the shell did for it,
+the pane coming and going with its height, the focus taken by Windows, the
+Backspace and Enter keys, and the text begun afresh. The flag
+`keyboard-refocus` is the old way, the focus left and taken again at every
+asking, to tell the two apart on a phone.
+
+What was tried is the plain typing, at a PC with the x64 package and its
+hardware keyboard, in the WebView test app's field: the letters arrive through
+the text service, Backspace takes them back, and a second tap in the field is
+answered `the app asks for a field of the same kind ...: its text afresh, the
+focus kept`, the typing going on after it. (The arrow keys of a hardware
+keyboard do not reach an app, now as before: the shell's key handler knows
+Enter, Backspace and Escape.)
 
 **What the keyboard does to a window is Android's.** The window's
 `softInputMode` decides (`adjustMode` in the overlay's `megler/ViewRoot.java`):
@@ -5184,8 +5246,63 @@ than "loading" or "something went wrong, try again later", its canvases
 having lost their GPU contexts (hardware buffers, below, came after; not yet
 tried with it). Via, a browser built on the WebView, shows a search engine's
 page of results over https; Chinese text in it is boxes (the root has no CJK
-font). Twice a fresh start's first connection, to an address that took one a
-moment later, failed with ENETUNREACH, and the page with it; not explained.
+font; the host's fonts, next, came after). Twice a fresh start's first
+connection, to an address that took one a moment later, failed with
+ENETUNREACH, and the page with it; not explained.
+
+**Its fonts for the writing the root has none for are the host's (0.1.0.699,
+issue #7).** A view's text is drawn by the shell, whose DirectWrite falls back
+on Windows' fonts by itself. Chromium draws its own, through Skia, which reads
+Android's font list, `/system/etc/fonts.xml`, and the files it names in
+`/system/fonts`; the root has Android 9's whole list and the fonts of Latin,
+Greek and Cyrillic only, and Skia leaves out a family whose file is not
+there. So Chinese, Japanese, Korean, Arabic, Hebrew, Thai, Hindi and emoji in
+a page were the box of a missing glyph, each of them (Google's sign-in page
+in Japanese, as the issue has it).
+
+- The shell finds Windows' fonts (`GfxHost::hostFonts`,
+  `app/Megler/player/GfxHost.cpp`): for each of 29 writings the regular face
+  of the first of Windows' families for it that is there and has its
+  characters, or of any family that has them, with the file DirectWrite reads
+  it from and the face's number in a collection. A file the process cannot
+  open itself is copied once through DirectWrite's own loader, into the shared
+  folder's `fonts` (`LocalState\host-fonts` with no shared folder); the flag
+  `test-font-copies` copies every one. The log has them:
+  `session: Windows' fonts for Android's font list: 14, found in 0 ms: ...
+  Microsoft YaHei UI (MSYH.TTC, face 1) for zh-Hans; ...`.
+- It gives them in `megler_run_config.host_fonts` (`megler_host_font`: path,
+  index, langs), for a Java app. The driver (`mount_host_fonts`,
+  `drivers/mg_java.c`) has `mg_fs_host_fonts` (`bionic/mg_libc_io.c`) write
+  `<data>/fonts/<package>.xml`, the root's list with a family for each font
+  after Android's own (`<family lang="ja"><font weight="400" style="normal"
+  index="1">host/12.ttc</font></family>`), which the app reads as
+  `/system/etc/fonts.xml`; the root's own file is not changed. Each font is
+  `/system/fonts/host/<n>.<ext>`: the host's file where it lies, nothing
+  copied, read-only (EROFS), and mapped as a view of the file
+  (`bionic/mg_libc_mem.c`), so a font of 20 MB costs the pages that are read.
+  The log: `java: Android's font list (/system/etc/fonts.xml) has 14 of the
+  host's 14 fonts after its own, for ...`.
+- A native-engine app has no `/system` of the root's and none of this.
+
+The WebView test app checks it (`writings` in its `Main.java`): two
+characters of each writing drawn on a canvas one after the other must differ,
+since a character no font has is the same box every time. The Java tests give
+the app the fonts of the Windows they run on or beside (`find_host_fonts` in
+`core/tests/mg_java_tests.c`: `/mnt/c/Windows/Fonts` under WSL; the folder
+`MG_JAVA_HOST_FONTS`, `none` for none) and ask for the writing of each font
+given. Under qemu with the ARM WebView: `writings latin=1 han=1 kana=1
+hangul=1 arabic=1 hebrew=1 thai=1 devanagari=1 emoji=1` with seven fonts
+given, all but `latin` 0 with none, and the picture has the line of writing
+under the field where it had a row of boxes. At a PC, the x64 package and the
+shell's own finding: 14 fonts, the same line of ones and the same picture,
+also with `test-font-copies` (14 copies, 89 MB, found and written in 172 ms).
+
+Not tried: a phone. Whether a Windows 10 Mobile app may open the system's
+font files itself is not known here (if not, the copies are made, and those
+for Chinese, Japanese and Korean are some 70 MB of the shared folder, once
+for all apps); nor which families DirectWrite has there, nor what the
+mappings cost a 32-bit process. Flutter reads the same list and was not
+tried.
 
 **Canvases and WebGL** are drawn by Chromium's GPU service into hardware
 buffers (`AHardwareBuffer`, `ndk/mg_ahb.c`) it makes EGL images of

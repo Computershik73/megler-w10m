@@ -124,7 +124,7 @@ Border warningCard(std::string_view message) {
 UIElement platformWarnings() {
     const bool canRun = platform::canRunAndroidCode();
     const bool angle = platform::angle().present;
-    // Megler on the memory card, or given no shared folder: its apps may not reach its files (shell/Placement.h).
+    // Megler given no shared folder: none of its apps can be installed as an app of its own (shell/Placement.h).
     const std::string& onCard = appPackage::meglerOnCard();
     if (canRun && angle && onCard.empty()) return nullptr;
     auto column = vstack(0);

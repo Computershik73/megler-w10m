@@ -52,6 +52,11 @@ int mg_fd_close(int fd);
  * mg_fd_shm_map gives: NULL with GE_NODEV for anything else, or where the range is past the file's end.
  */
 void *mg_fd_file_map(int fd, u64 offset, size_t len, void **base, size_t *mapped);
+/*
+ * The same view for a mapping that is private and read-only, where the descriptor is of a file of the host's own
+ * (mg_fs_mount_host_file) opened read-only and the range is within it; NULL for anything else, errno left as it was.
+ */
+void *mg_fd_host_file_map(int fd, u64 offset, size_t len, void **base, size_t *mapped);
 void *mg_fd_shm_map(int fd, u64 offset, size_t len, bool code, bool *writable, void **base, size_t *mapped);
 /* A descriptor on a host file (MG_O_* flags), for handing the guest a file that has no guest path -- the APK itself. */
 int mg_fd_open_host(const char *host_path, int host_flags);
@@ -121,6 +126,29 @@ int mg_fd_wait_locked(u64 timeout_ns);
 
 /* Where a prefix of Android's file system is on the host. */
 void mg_fs_mount(const char *guest_prefix, const char *host_dir);
+/*
+ * One file of the host's own under a guest path of its own: a file that is there whether or not Megler is, which nobody
+ * here writes, renames or removes -- a font of Windows's. It is not opened for writing (EROFS), and a private read-only
+ * mapping of it is a view of the file as a shared one is (mg_fd_host_file_map): a copy of a font for Chinese is 20 MB of
+ * the app's own memory for as long as it draws with it.
+ */
+void mg_fs_mount_host_file(const char *guest_path, const char *host_file);
+/*
+ * The host's own fonts made part of Android's font list (megler_run_config.host_fonts). `list` is the host path of the
+ * Android root's etc/fonts.xml, which is read and not changed; `made` is where the list the app reads is written: the
+ * root's, with a family for each of `fonts` whose file is there before its end, in their order, as
+ *     <family lang="zh-Hans"><font weight="400" style="normal" index="1">host/0.ttc</font></family>
+ * It is mounted as <guest_root>/etc/fonts.xml and each font's file as <guest_root>/fonts/host/<n>.<ttf|ttc|otf|otc>
+ * (mg_fs_mount_host_file), where n counts the fonts used. Returns how many were used -- 0 with nothing mounted as the
+ * list where there is no list to add to, no font's file is there, or `made` cannot be written -- and, in `said`, their
+ * langs for the log. `made` is written only when it does not hold that list already.
+ */
+typedef struct mg_fs_font {
+    const char *path;                  /* the host's file */
+    int index;                         /* the face in a collection */
+    const char *langs;                 /* fonts.xml's lang: letters, digits, '-', and spaces between tags */
+} mg_fs_font;
+int mg_fs_host_fonts(const char *guest_root, const char *list, const char *made, const mg_fs_font *fonts, int count, char *said, size_t said_size);
 /*
  * The host's path for a path of the app's under one of its mounts (not "/" alone): /data/data/<package>/..., /sdcard/...;
  * NULL for any other path, the host's own among them. Freed by the caller.

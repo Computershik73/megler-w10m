@@ -1447,9 +1447,16 @@ typedef struct megler_gfx_host {
  *   show   A text field wants the keyboard: the user touched it, or the app asked for it. `kind` is what is typed there
  *          (MEGLER_KEYBOARD_*), `flags` more about it (MEGLER_KEYBOARD_F_*), `enter` what the Enter key does there
  *          (MEGLER_ENTER_*), for the key's label and so that the shell knows whether Enter can mean a new line. `show` while
- *          the keyboard is already up means that another field is being edited now -- the three may differ, the keyboard
- *          stays up -- or the same field once more (the framework asks when a field takes the focus and again when it is
- *          touched): a repeated `show` must be harmless.
+ *          the keyboard is already up is one of two things, and `flags` say which. Without MEGLER_KEYBOARD_F_AGAIN
+ *          another field is being edited now, or the same one whose text, cursor or kind the app or the user changed
+ *          under the keyboard (Android's restartInput): the three may differ, the keyboard stays up, and it begins
+ *          afresh -- what it was composing stays in the field as it was typed and is the keyboard's to replace no
+ *          longer. With MEGLER_KEYBOARD_F_AGAIN it is the field of the last `show` once more, its three the same, its
+ *          text and cursor as the keyboard left them (the framework asks again when the field that has the focus is
+ *          touched, and an app may ask whenever it likes): the keyboard stays as it is, with whatever it is composing.
+ *          Such a `show` must be harmless; a shell that began afresh at it would take from a keyboard that composes
+ *          (Chinese, Japanese) what it was composing, in any app that asks often. A shell that is not showing the
+ *          keyboard for a field of those three (it was put away meanwhile) takes it as any other `show`.
  *   hide   No field wants it any more: the field lost the focus, its screen went away, or the app asked.
  *
  *   Both are called on the app's main thread -- the thread megler_run made for the app, on which its views live -- from
@@ -1461,8 +1468,11 @@ typedef struct megler_gfx_host {
  * in the order of the calls, also among each other and with megler_key. They do nothing for an app that is not Java.
  *
  *   megler_text_commit      Text the user typed, pasted or chose from the suggestions, UTF-8: put at the cursor of the field
- *                         being edited, in place of its selection. There is no composing text: a keyboard that composes
- *                         (as for Chinese or Japanese) sends each piece when it is final.
+ *                         being edited, in place of its selection. There is no composing text. Of a keyboard that composes
+ *                         (as for Chinese or Japanese) a shell sends each piece when it is final; or, as Megler's
+ *                         shell for Windows does, what is composed as it is typed, and when the keyboard replaces it
+ *                         -- the letters typed, by the characters chosen for them -- a Backspace for each character
+ *                         that goes and then the new text.
  *   megler_text_key         An editing key (MEGLER_TEXT_*). Backspace deletes the selection, or what is before the cursor (a
  *                         surrogate pair whole). Enter does what `enter` said: a new line, or the field's action (Done
  *                         closes the keyboard, Next moves on, Search and Go and Send are the app's). The others -- Delete,
@@ -1486,6 +1496,7 @@ enum {
     MEGLER_KEYBOARD_F_CAP_ALL = 16,
     MEGLER_KEYBOARD_F_SIGNED = 32,           /* a number that may have a sign, a decimal point */
     MEGLER_KEYBOARD_F_DECIMAL = 64,
+    MEGLER_KEYBOARD_F_AGAIN = 128,           /* the field of the last `show` once more, as the keyboard left it: nothing afresh (see `show`) */
 };
 enum { MEGLER_ENTER_DONE = 0, MEGLER_ENTER_NEWLINE, MEGLER_ENTER_GO, MEGLER_ENTER_SEARCH, MEGLER_ENTER_SEND, MEGLER_ENTER_NEXT, MEGLER_ENTER_PREVIOUS };
 enum { MEGLER_TEXT_BACKSPACE = 1, MEGLER_TEXT_ENTER, MEGLER_TEXT_DELETE, MEGLER_TEXT_LEFT, MEGLER_TEXT_RIGHT, MEGLER_TEXT_UP, MEGLER_TEXT_DOWN, MEGLER_TEXT_HOME, MEGLER_TEXT_END };
@@ -2018,6 +2029,15 @@ typedef struct megler_wifi_host {
     bool (MEGLER_CB *connection)(void *user, megler_wifi_network *out);
 } megler_wifi_host;
 
+/*
+ * A font of the host's own, for an app whose own code draws text with Android's fonts (megler_run_config.host_fonts).
+ */
+typedef struct megler_host_font {
+    const char *path;       /* the font's file on the host, UTF-8: one the app's process can open and map */
+    int index;              /* the face in a collection (.ttc), else 0 */
+    const char *langs;      /* what it is for, as fonts.xml's `lang` says it: "ja", "zh-Hans", "und-Arab und-Hebr" (letters, digits, '-', spaces) */
+} megler_host_font;
+
 typedef struct megler_run_config {
     const char *apk_path;
     /* Optional installed microG APK. Opened as the service package; no copy in each client. */
@@ -2102,6 +2122,19 @@ typedef struct megler_run_config {
      * none but itself.
      */
     const char *apps_dir;
+    /*
+     * The host's own fonts for the writing the Android root has none for (0.1.0.699, issue #7). A Java app's views are
+     * drawn by megler_gfx_host, whose text falls back on the host's fonts by itself; but what draws its own text reads
+     * Android's font list, /system/etc/fonts.xml, and the files it names in /system/fonts -- a WebView's Chromium and
+     * Flutter, through Skia -- and the root has Roboto and a few more, nothing for Chinese, Japanese, Korean, Arabic,
+     * Hebrew, Thai, India's writing or emoji: such a page was boxes. Each font given here is a family of its own that
+     * follows Android's in the list the app reads (the root's own list is not changed), in this order, which is the order
+     * a character with no language to go by is looked for in; its file is read where the host has it, nothing copied,
+     * and mapped as a view of the file (bionic/mg_libc_mem.c). A font whose file is not there is left out. NULL or 0:
+     * Android's list as the root has it. Read at megler_run and not kept: the strings may go once it has returned.
+     */
+    const megler_host_font *host_fonts;
+    int host_font_count;
     /* The app has ended: by its own exit (status), by a crash (reason names it), or by megler_stop. Called once, from any thread. */
     void (MEGLER_CB *on_exit)(void *user, int status, const char *reason);
     void *user;

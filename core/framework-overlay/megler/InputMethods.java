@@ -12,6 +12,19 @@
 // And, for a password field the keyboard typed into, whether the field holds what the keyboard typed, when the field is
 // left or its Enter pressed: the lengths and yes or no, never the characters. Facebook said a password was wrong that the
 // user had typed right; with the dots in its field nobody could see what it held.
+//
+// And it differs in how the host is asked for the keyboard (ask). The original calls Native.showKeyboard for every show
+// and every restart alike, so the host could not tell the field it already serves, asked for once more -- a touch of the
+// field that has the focus (twice: the touch and its click), an app's showSoftInput -- from a field to begin afresh in,
+// and began afresh each time. A keyboard that was composing (Chinese, Japanese: the letters typed stand in the field until
+// the characters are chosen for them) lost what it composed there: it stayed in the field as typed (issue #7 of
+// megler-w10m). Now a show for the connection the host was last asked for, of the same kind, while the keyboard is up
+// and the field's selection and length are as the keyboard left them, is Native.showKeyboardAgain, and the host leaves
+// its keyboard alone. Anything else is showKeyboard as before: another field; a restart (the app set the text or the
+// kind, which makes a new connection, as Android's restartInput does); a cursor the user or the app moved (Android tells
+// its keyboard by updateSelection, which ends a composition too; here the keyboard's next replacement would count its
+// Backspaces from the wrong place); a view that is no TextView, whose selection is not known here; the keyboard closed or
+// sent away since.
 package megler;
 
 import android.view.KeyEvent;
@@ -34,6 +47,11 @@ public final class InputMethods {
     /* For a password field: what the keyboard's text and Backspaces make of the text the field had (typed at its end), and whether it was typed into. */
     private static StringBuilder sTyped;
     private static boolean sTypedInto;
+    /* What the host was last asked the keyboard for, while that stands (null once the keyboard was sent away or closed): the
+       connection and Android's two words about its field; and the field's selection and length as the keyboard last left
+       them (a length of -1: no TextView, not known). */
+    private static InputConnection sAsked;
+    private static int sAskedType, sAskedIme, sLeftStart = -1, sLeftEnd = -1, sLeftLength = -1;
     private InputMethods() {}
     public static View focused() { return sFocused; }
     public static boolean shown() { return sShown; }
@@ -52,16 +70,43 @@ public final class InputMethods {
         sTypedInto = false;
     }
     private static void finish() { if (sConn != null) sConn.finishComposingText(); checkTyped(); sConn = null; sFocused = null; }
-    public static void restart(View v) { if (v == sFocused) { sConn = null; start(v); if (sShown) Native.showKeyboard(true, sInfo.inputType, sInfo.imeOptions); } }
+    public static void restart(View v) { if (v == sFocused) { sConn = null; start(v); if (sShown) ask(true); } }
     public static boolean show(View v) {
         if (v == null) return false;
         if (v != sFocused) start(v);
         if (sConn == null) return false;
+        boolean up = sShown;
         sShown = true;
-        Native.showKeyboard(true, sInfo != null ? sInfo.inputType : 1, sInfo != null ? sInfo.imeOptions : 0);
+        ask(up);
         return true;
     }
-    public static boolean hide() { boolean was = sShown; sShown = false; Native.showKeyboard(false, 0, 0); return was; }
+    public static boolean hide() { boolean was = sShown; sShown = false; sAsked = null; Native.showKeyboard(false, 0, 0); return was; }
+    /**
+     * The host is asked for its keyboard, for the field being edited (`up`: it was up already, as far as is known here). Once
+     * more as it is, when it is up for this very connection and kind and the field's selection and length are as the
+     * keyboard left them: what the keyboard is composing is still good. Afresh otherwise (the header says which and why).
+     */
+    private static void ask(boolean up) {
+        int type = sInfo != null ? sInfo.inputType : 1, ime = sInfo != null ? sInfo.imeOptions : 0;
+        boolean again = up && sConn != null && sAsked == sConn && sAskedType == type && sAskedIme == ime && asLeft();
+        sAsked = sConn; sAskedType = type; sAskedIme = ime;
+        if (again) { Native.showKeyboardAgain(type, ime); return; }
+        left();
+        Native.showKeyboard(true, type, ime);
+    }
+    /** The edited field's selection and length, noted: what the host's keyboard knows of the field from now on. */
+    private static void left() {
+        if (sFocused instanceof android.widget.TextView) {
+            android.widget.TextView t = (android.widget.TextView) sFocused;
+            sLeftStart = t.getSelectionStart(); sLeftEnd = t.getSelectionEnd(); sLeftLength = t.length();
+        } else sLeftLength = -1;
+    }
+    /** Whether they are still that. */
+    private static boolean asLeft() {
+        if (sLeftLength < 0 || !(sFocused instanceof android.widget.TextView)) return false;
+        android.widget.TextView t = (android.widget.TextView) sFocused;
+        return sLeftStart == t.getSelectionStart() && sLeftEnd == t.getSelectionEnd() && sLeftLength == t.length();
+    }
     /** The host has text for us (an event in the input queue said so). */
     public static void deliverPending() {
         String[] items = Native.pollText();
@@ -69,7 +114,7 @@ public final class InputMethods {
         for (String it : items) {
             if (it.isEmpty()) continue;
             char k = it.charAt(0);
-            if (k == 'h') { sShown = false; continue; }           /* the host closed the keyboard */
+            if (k == 'h') { sShown = false; sAsked = null; continue; }   /* the host closed the keyboard */
             int state = sConn != null ? 1 : sFocused == null ? 2 : 3;
             View target = sFocused;
             int before = state == 1 && state != sSaid ? length(target) : -1;
@@ -77,6 +122,8 @@ public final class InputMethods {
             if (state == 1) typed(k, it);
             if (state != sSaid) tell(state, k, it, target, before, took);
         }
+        /* The field is as the keyboard left it now (and as the field's own watchers made that), while it is still the one the keyboard is up for. */
+        if (sAsked != null && sAsked == sConn) left();
     }
     /** One thing the keyboard sent, as the original's deliverPending handles it; false when a commit was refused. */
     private static boolean apply(char k, String it) {

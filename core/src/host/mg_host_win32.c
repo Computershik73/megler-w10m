@@ -680,8 +680,26 @@ u64 mg_process_cpu_ns(void)
  * (mg_thread_set_x18_report) when no thread is stopped: nothing may be logged while one is, it may hold the log's lock.
  * That is after the last mg_thread_resume of the stops under way, and at the end of an interruption. A comparison and,
  * rarely, an interlocked exchange: cheap enough for every stop.
+ *
+ * Windows gives x18 only when it is asked for by name: CONTEXT_ARM64_X18 is in none of CONTEXT_FULL, CONTEXT_INTEGER and
+ * CONTEXT_CONTROL ("in NT user-mode threads, x18 contains a pointer to the TEB and should generally not be set without
+ * intending to", winnt.h). From 0.1.0.673, where this came in, to 0.1.0.698 it was not asked for, and what was compared
+ * was the zero the context had been cleared to: every stop of every thread counted as one with x18 gone bad -- the
+ * ARM64 logs of 0.1.0.678 have "x18 0000000000000000, not its TEB" at ntdll, dwrite, Megler.exe, the core and compiled
+ * code alike, 4,400 such stops in three seconds of Spotify -- and no thread in guest code was interrupted for a signal
+ * any more, mg_thread_interrupt leaving one whose x18 is bad. Now it is asked for (thread_context, below), into a context
+ * whose X18 is first a value no TEB is: one that comes back so was not given, and is not compared (g_x18_not_read). It is
+ * read only: a context that is written -- SetThreadContext's, the one NtContinue takes back -- names CONTEXT_FULL alone.
+ * (Not run: there is no ARM64 Windows here. The interruptions' report says how many stops had no x18.)
  */
 #if defined(_M_ARM64)
+#ifndef CONTEXT_ARM64_X18
+#define CONTEXT_ARM64_X18 (CONTEXT_ARM64 | 0x10L)
+#endif
+/* What a context's X18 is before Windows is asked for it: odd, which no TEB's address is. */
+#define X18_NOT_READ 0x5831385831385831ull
+/* Whether this Windows would not read a context with CONTEXT_ARM64_X18 named, and how many stops had no x18 given. */
+static volatile LONG g_x18_no_flag, g_x18_not_read;
 enum { X18_PLACES = 32 };
 static struct x18_place {
     volatile LONG64 pc;                /* 0: the place is free */
@@ -697,6 +715,10 @@ static bool x18_check(const mg_thread *t, const CONTEXT *c)
 {
     int i;
     if (!t->teb || c->X18 == t->teb) return false;
+    if (c->X18 == X18_NOT_READ) {
+        InterlockedIncrement(&g_x18_not_read);
+        return false;
+    }
     InterlockedIncrement(&g_x18_stops);
     for (i = 0; i < X18_PLACES && c->Pc; i++) {
         struct x18_place *p = &g_x18_places[i];
@@ -774,13 +796,18 @@ static volatile LONG g_ctx_read, g_ctx_said, g_ctx_no_request;
 
 /*
  * Whether an interruption asks Windows where it stopped the thread, and leaves one it stopped in the kernel
- * (stopped_in_kernel, below): on x64 and x86, where that was proven (t_fs_access, t_signal_regs). Not on ARM32 or ARM64,
- * which no device has run it on: what their Windows answers CONTEXT_EXCEPTION_REQUEST is not known, and were it to say
+ * (stopped_in_kernel, below): on x64 and x86, where that was proven (t_fs_access, t_signal_regs). Not on ARM32, which no
+ * device has run it on: what its Windows answers CONTEXT_EXCEPTION_REQUEST is not known, and were it to say
  * CONTEXT_SERVICE_ACTIVE of a thread stopped in user mode, every interruption of guest code would be left, for ever. There
  * an interruption reads a thread's registers as 0.1.0.645 did, and takes them; whether ARM32's come back from NtContinue
  * not their own is what t_signal_regs of the phone's Self-test says.
+ *
+ * On ARM64 too from 0.1.0.699, though no ARM64 Windows has run it either. Its interruptions were all left anyway, from
+ * 0.1.0.673 on, by the x18 check's mistake (above): the worst this can do is what was. And with that mended they are
+ * back, on the kernel whose NtContinue gave x64 registers not the thread's own; .NET's runtime asks the same of an
+ * ARM64 Windows before it sends a thread elsewhere. The report below tells what it answered.
  */
-#if defined(_M_X64) || defined(_M_IX86)
+#if defined(_M_X64) || defined(_M_IX86) || defined(_M_ARM64)
 #define ASK_WHERE_STOPPED 1
 #else
 #define ASK_WHERE_STOPPED 0
@@ -795,6 +822,15 @@ void mg_thread_interrupt_report(char *out, size_t size)
              (long)g_int_redirected, (long)g_int_landed, (long)g_int_resumed, (long)g_int_elsewhere, (long)g_int_in_kernel, (long)g_int_busy,
              (long)g_int_no_handle, (long)g_int_suspend_failed, (long)g_int_get_failed, (long)g_int_set_failed, (long)g_int_error, (long)g_ctx_said,
              (long)g_ctx_read, !ASK_WHERE_STOPPED ? " (not asked on this processor)" : g_ctx_no_request ? " (GetThreadContext would not be asked to)" : "");
+#if defined(_M_ARM64)
+    {
+        /* (The collector's stops among them: x18_check is theirs too.) */
+        size_t n = strlen(out);
+        if (n < size)
+            snprintf(out + n, size - n, "; x18 was not its TEB at %ld stops, not given by Windows at %ld%s", (long)g_x18_stops, (long)g_x18_not_read,
+                     g_x18_no_flag ? " (GetThreadContext would not be asked for it)" : "");
+    }
+#endif
 }
 
 static void *scratch_word(void);
@@ -833,21 +869,38 @@ static mg_addr context_pc(const CONTEXT *c)
 }
 
 /*
- * A stopped thread's registers (`what`: CONTEXT_FULL, or less), with what Windows says of where it stopped
- * (CONTEXT_EXCEPTION_REQUEST, below) where it is asked (ASK_WHERE_STOPPED). A Windows that would not take the request is
- * asked without it from then on.
+ * A stopped thread's registers (thread_context: `flags` of them, and on ARM64 x18, to look at), with what Windows says of
+ * where it stopped (stopped_context: `what` is CONTEXT_FULL, or less; CONTEXT_EXCEPTION_REQUEST, below) where it is asked
+ * (ASK_WHERE_STOPPED). A Windows that would not take the request is asked without it from then on.
  */
+static BOOL thread_context(HANDLE h, CONTEXT *ctx, DWORD flags)
+{
+    memset(ctx, 0, sizeof(*ctx));
+#if defined(_M_ARM64)
+    /* With x18, which is not among `flags` whatever they are (x18_check's account, above); without, where Windows will not. */
+    ctx->X18 = X18_NOT_READ;
+    if (!g_x18_no_flag) {
+        ctx->ContextFlags = flags | CONTEXT_ARM64_X18;
+        if (GetThreadContext(h, ctx)) return TRUE;
+        memset(ctx, 0, sizeof(*ctx));
+        ctx->X18 = X18_NOT_READ;
+        ctx->ContextFlags = flags;
+        if (!GetThreadContext(h, ctx)) return FALSE;
+        InterlockedExchange(&g_x18_no_flag, 1);
+        return TRUE;
+    }
+#endif
+    ctx->ContextFlags = flags;
+    return GetThreadContext(h, ctx);
+}
+
 static BOOL stopped_context(HANDLE h, CONTEXT *ctx, DWORD what)
 {
     BOOL ok;
     bool ask = ASK_WHERE_STOPPED && !g_ctx_no_request;
-    memset(ctx, 0, sizeof(*ctx));
-    ctx->ContextFlags = what | (ask ? CONTEXT_EXCEPTION_REQUEST : 0);
-    ok = GetThreadContext(h, ctx);
+    ok = thread_context(h, ctx, what | (ask ? CONTEXT_EXCEPTION_REQUEST : 0));
     if (!ok && ask) {
-        memset(ctx, 0, sizeof(*ctx));
-        ctx->ContextFlags = what;
-        ok = GetThreadContext(h, ctx);
+        ok = thread_context(h, ctx, what);
         if (ok) InterlockedExchange(&g_ctx_no_request, 1);
     }
     return ok;
@@ -1127,7 +1180,7 @@ const char *mg_breakpoints_why(void) { return ""; }
 WINBASEAPI DWORD WINAPI SuspendThread(HANDLE hThread);
 WINBASEAPI BOOL WINAPI GetThreadContext(HANDLE hThread, LPCONTEXT lpContext);
 #endif
-#if WINAPI_FAMILY == WINAPI_FAMILY_APP && defined(_M_X64)
+#if WINAPI_FAMILY == WINAPI_FAMILY_APP && (defined(_M_X64) || defined(_M_ARM64))
 /* (Left out of the app partition by the SDK's headers too; WindowsApp.lib has it, from the memory api-set.) */
 WINBASEAPI BOOL WINAPI ReadProcessMemory(HANDLE hProcess, LPCVOID lpBaseAddress, LPVOID lpBuffer, SIZE_T nSize, SIZE_T *lpNumberOfBytesRead);
 #endif
@@ -1141,7 +1194,8 @@ static volatile LONG g_stop_again, g_stop_retries, g_stop_most, g_stop_gave_up;
  * Whether this is a 64-bit Windows on an x64 processor, where the registers were seen not to be the thread's own
  * (mg_fault_set_handler). Not x86's: on a 64-bit Windows a 32-bit thread's registers are WOW64's copy of them, its own
  * there too -- the tests' thread had them all 513 times it was stopped at its loop's pc with CONTEXT_SERVICE_ACTIVE or
- * CONTEXT_EXCEPTION_ACTIVE. Nor ARM64's or the phone's ARM32: not seen.
+ * CONTEXT_EXCEPTION_ACTIVE. Nor the phone's ARM32: not seen. An ARM64 Windows' are looked at too from 0.1.0.699
+ * (regs_not_its_own's ARM64 half), unseen: none has run the tests.
  */
 static volatile LONG g_stop_look;
 
@@ -1178,6 +1232,26 @@ static bool regs_not_its_own(const CONTEXT *c)
     if (!(c->ContextFlags & CONTEXT_EXCEPTION_REPORTING) || !(c->ContextFlags & CONTEXT_SERVICE_ACTIVE)) return false;
     if (!ReadProcessMemory(GetCurrentProcess(), (LPCVOID)(DWORD_PTR)(c->Rip - 2), before, sizeof(before), &got) || got != sizeof(before)) return true;
     return !((before[0] == 0x0f && before[1] == 0x05) || (before[0] == 0xcd && before[1] == 0x2e));
+}
+#elif defined(_M_ARM64)
+/*
+ * The same of a thread stopped on ARM64, which is taken to be as x64 without having been seen: no ARM64 Windows has run
+ * the tests, but NtContinue and the way a stopped thread's registers are gathered are one kernel's, the registers a
+ * function keeps for its caller are x19-x28 there, and what a missed one costs is an object freed while a thread still
+ * holds it. (An ARM64 log of 0.1.0.678 has Spotify end on an `aget` that found an Object[] where the code had put an
+ * array of numbers, once in some runs; whether that was this is not known.) An ordinary system call's stub there is
+ * `svc #n` and its return: the instruction before the pc is the svc (d4000001 with the number in bits 5-20). A system
+ * call of guest code is not one: its svc is patched away (arm64/mg_patch_arm64.c). If Windows says otherwise than is
+ * supposed here, the stops are given up on and counted (mg_thread_suspend_report), 20 ms or so each.
+ */
+static bool regs_not_its_own(const CONTEXT *c)
+{
+    DWORD before = 0;
+    SIZE_T got = 0;
+    if (!(c->ContextFlags & CONTEXT_EXCEPTION_REPORTING) || !(c->ContextFlags & CONTEXT_SERVICE_ACTIVE)) return false;
+    if ((c->Pc & 3) || !ReadProcessMemory(GetCurrentProcess(), (LPCVOID)(DWORD_PTR)(c->Pc - 4), &before, sizeof(before), &got) || got != sizeof(before))
+        return true;
+    return (before & 0xFFE0001Fu) != 0xD4000001u;
 }
 #endif
 
@@ -1232,7 +1306,7 @@ bool mg_thread_suspend(mg_thread *t, mg_thread_regs *out)
             return false;
         }
         /* SuspendThread only asks; GetThreadContext returns once the thread has stopped, with its registers. */
-#if defined(_M_X64)
+#if defined(_M_X64) || defined(_M_ARM64)
         if (!stopped_context(h, &ctx, CONTEXT_INTEGER | CONTEXT_CONTROL)) {
 #else
         memset(&ctx, 0, sizeof(ctx));
@@ -1243,7 +1317,7 @@ bool mg_thread_suspend(mg_thread *t, mg_thread_regs *out)
             self_give(t);
             return false;
         }
-#if defined(_M_X64)
+#if defined(_M_X64) || defined(_M_ARM64)
         if (!g_stop_look || !regs_not_its_own(&ctx)) break;
         if (tries == STOP_TRIES) {
             InterlockedIncrement(&g_stop_gave_up);
@@ -2208,6 +2282,9 @@ void mg_fault_set_handler(mg_fault_handler h)
             USHORT process = 0, native = 0;
             if (!fn || (fn(GetCurrentProcess(), &process, &native) && native == IMAGE_FILE_MACHINE_AMD64)) InterlockedExchange(&g_stop_look, 1);
         }
+#elif defined(_M_ARM64)
+        /* (An ARM64 process runs on an ARM64 processor's Windows alone.) */
+        InterlockedExchange(&g_stop_look, 1);
 #endif
         SetUnhandledExceptionFilter(on_unhandled);
         signal(SIGABRT, on_abort);

@@ -33,6 +33,8 @@ import java.nio.charset.StandardCharsets;
  *  - load: a page from the server is loaded (onPageFinished), and its script has run (its title);
  *  - bridge: the page's script has called an object the app gave it with addJavascriptInterface;
  *  - draw: the WebView drawn into a bitmap of the app's has the page's colours where the page has them;
+ *  - writings: which writing the page has a font for (a line that says, with no "ok": the fonts for all but Latin are the
+ *    host's, and the test knows which it gave);
  *  - js: evaluateJavascript gives the script's value back;
  *  - cookies: a cookie the server set is in CookieManager, a cookie the app set there is sent with the server's cookie on
  *    the next request;
@@ -214,6 +216,30 @@ public class Main extends Activity {
             String v = value == null ? "" : value.replace("\"", "");
             boolean ok = v.startsWith("200.30.90.255 ");
             Log.i(T, "canvas " + (ok ? "ok" : "FAILED") + " rgba=" + v);
+            writings();
+        });
+    }
+
+    /**
+     * Which writing the page has a font for. Two characters of each are drawn on a canvas, one after the other in the same
+     * place, and the pictures compared: a character no font has is drawn as the first font's box for a missing glyph, the
+     * same box for every such character, so two that differ (and are not nothing) are two glyphs of a font. Latin is the
+     * root's own Roboto; the others are fonts of the host's where the host gave them (megler_run_config.host_fonts: the
+     * root has none for them, and without them every one is a box, as issue #7 has it of Japanese and Chinese). The page
+     * shows the same writing under its field (PAGE's #w).
+     */
+    private void writings() {
+        web.evaluateJavascript("(function(){ var c = document.createElement('canvas'); c.width = 64; c.height = 48;"
+                + " var x = c.getContext('2d'); function ink(s) { x.clearRect(0, 0, 64, 48); x.font = '32px sans-serif';"
+                + " x.textBaseline = 'middle'; x.fillStyle = '#000'; x.fillText(s, 8, 24);"
+                + " var d = x.getImageData(0, 0, 64, 48).data, h = 7, n = 0;"
+                + " for (var i = 0; i < d.length; i++) { if (d[i]) n++; h = (h * 31 + d[i]) | 0; } return n ? n + ':' + h : ''; }"
+                + " var out = []; [['latin', 'A', 'B'], ['han', '\\u4e2d', '\\u6587'], ['kana', '\\u3042', '\\u30a4'],"
+                + " ['hangul', '\\ud55c', '\\uad6d'], ['arabic', '\\u0639', '\\u0628'], ['hebrew', '\\u05d0', '\\u05d1'],"
+                + " ['thai', '\\u0e01', '\\u0e02'], ['devanagari', '\\u0905', '\\u0915'], ['emoji', '\\ud83d\\ude00', '\\ud83d\\ude80']]"
+                + ".forEach(function(p) { var a = ink(p[1]), b = ink(p[2]); out.push(p[0] + '=' + (a && b && a != b ? 1 : 0)); });"
+                + " c.remove(); return out.join(' '); })()", value -> {
+            Log.i(T, "writings " + (value == null ? "" : value.replace("\"", "")));
             js();
         });
     }
@@ -577,13 +603,20 @@ public class Main extends Activity {
             + " r.onerror = function() { upload.picked(f.name + ' unreadable ' + r.error); }; r.readAsArrayBuffer(f); };"
             + "</script></body></html>";
 
-    /** The page: a yellow bar along the top, blue below, a text field; its script names the page and tells the app. */
+    /**
+     * The page: a yellow bar along the top, blue below, a text field, and under it a line in the writing of Chinese,
+     * Japanese, Korean, Arabic, Hebrew, Thai and Hindi and an emoji (#w: for the picture; writings() is the check); its
+     * script names the page and tells the app.
+     */
     private static final String PAGE = "<!DOCTYPE html><html><head>"
             + "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><title>start</title>"
             + "<style>html, body { margin: 0; height: 100%; background: #1e78c8; color: #fff; font: 20px sans-serif; }"
             + " #bar { position: absolute; left: 0; top: 0; width: 100%; height: 40px; background: #ffd200; }"
-            + " #f { position: absolute; left: 20px; top: 120px; width: 200px; height: 40px; font-size: 20px; }</style></head>"
+            + " #f { position: absolute; left: 20px; top: 120px; width: 200px; height: 40px; font-size: 20px; }"
+            + " #w { position: absolute; left: 20px; top: 180px; font-size: 16px; white-space: nowrap; }</style></head>"
             + "<body><div id=\"bar\"></div><input id=\"f\" type=\"text\" value=\"\">"
+            + "<div id=\"w\">&#x4e2d;&#x6587; &#x65e5;&#x672c;&#x8a9e; &#xd55c;&#xad6d;&#xc5b4; &#x639;&#x631;&#x628;&#x64a;"
+            + " &#x5e2;&#x5d1;&#x5e8;&#x5d9;&#x5ea; &#xe44;&#xe17;&#xe22; &#x939;&#x93f;&#x928;&#x94d;&#x926;&#x940; &#x1f600;</div>"
             + "<script>document.title = 'loaded'; if (window.megler) megler.report(document.title);</script>"
             + "</body></html>";
 }

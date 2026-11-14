@@ -280,6 +280,46 @@ void testPlacement(const std::wstring& root) {
     check(volumeHolding(phone, L"E:\\Apps\\Megler_0.1.0.673_arm__7p434m16tbgc6") == -1 && volumeHolding({}, L"C:\\Program Files\\WindowsApps\\Megler") == -1 &&
               volumeHolding(pc, L"") == -1 && volumeHolding(pc, L"WindowsApps\\Megler") == -1 && volumeHolding({{L"", L"", L""}}, L"C:\\x") == -1,
           "none where no volume holds it, there are none, or the folder is none or not absolute");
+    // Where the apps are kept: the volume the user chose, by its name; Megler's own until then, and the question where there
+    // is more than one to choose of.
+    using placement::appsPlace;
+    using placement::volumeNamed;
+    check(volumeNamed(phone, L"\\\\?\\Volume{BBBBBBBB-0000-0000-0000-000000000000}\\") == 1 && volumeNamed(phone, L"") == -1 &&
+              volumeNamed(phone, L"\\\\?\\Volume{dddddddd-0000-0000-0000-000000000000}") == -1 && volumeNamed(mounted, L"") == -1,
+          "a volume by its name, without regard to case or a separator at the end; none for no name");
+    placement::AppsPlace place = appsPlace(phone, L"", 1);
+    check(place.volume == 1 && !place.chosen && place.ask, "nothing chosen, a phone with a card: Megler's own volume, and the user is asked");
+    place = appsPlace(phone, L"\\\\?\\Volume{aaaaaaaa-0000-0000-0000-000000000000}", 1);
+    check(place.volume == 0 && place.chosen && !place.ask, "the phone's memory chosen, Megler on the card: the phone's memory, no question");
+    place = appsPlace(phone, L"\\\\?\\Volume{bbbbbbbb-0000-0000-0000-000000000000}", 0);
+    check(place.volume == 1 && place.chosen && !place.ask, "the card chosen, Megler in the phone's memory: the card");
+    const std::vector<Volume> alone = {phone[0]};
+    place = appsPlace(alone, L"", 0);
+    check(place.volume == 0 && !place.chosen && !place.ask, "one volume: nothing to ask");
+    place = appsPlace(alone, L"\\\\?\\Volume{bbbbbbbb-0000-0000-0000-000000000000}", 0);
+    check(place.volume == 0 && !place.chosen && !place.ask, "the card chosen and taken out for good: Megler's own, nothing to ask with one left");
+    std::vector<Volume> cardOut = phone;
+    cardOut[1].offline = true;
+    place = appsPlace(cardOut, L"\\\\?\\Volume{bbbbbbbb-0000-0000-0000-000000000000}", 0);
+    check(place.volume == 0 && !place.chosen && !place.ask, "the card chosen and not there now: Megler's own, and no question while one is left");
+    std::vector<Volume> otherCard = phone;
+    otherCard[1].name = L"\\\\?\\Volume{eeeeeeee-0000-0000-0000-000000000000}";
+    place = appsPlace(otherCard, L"\\\\?\\Volume{bbbbbbbb-0000-0000-0000-000000000000}", 0);
+    check(place.volume == 0 && !place.chosen && place.ask, "another card than the one chosen: the user is asked again");
+    place = appsPlace(phone, L"", -1);
+    check(place.volume == -1 && place.ask, "Megler's own volume not known: Windows is told none, and the user is asked");
+    place = appsPlace(mounted, L"", 1);
+    check(place.volume == 1 && !place.ask, "volumes without names, by which no choice could be kept: no question");
+    place = appsPlace({}, L"\\\\?\\Volume{bbbbbbbb-0000-0000-0000-000000000000}", -1);
+    check(place.volume == -1 && !place.chosen && !place.ask, "no volumes listed: none, no question");
+    std::vector<Volume> titled = phone;
+    titled[0].system = true;
+    check(placement::volumeTitle(titled[0], true) == "The phone's memory" && placement::volumeTitle(titled[1], true) == "The memory card (D:)" &&
+              placement::volumeTitle({L"\\\\?\\Volume{x}", L"", L""}, true) == "The memory card",
+          "a phone's volumes as Megler's screens call them");
+    check(placement::volumeTitle({pc[0].name, pc[0].storePath, pc[0].mountPoint, true}, false) == "Drive C: (Windows's)" &&
+              placement::volumeTitle(pc[1], false) == "Drive D:" && placement::volumeTitle({L"\\\\?\\Volume{x}", L"", L""}, false) == "\\\\?\\Volume{x}",
+          "a PC's: " + placement::volumeTitle(pc[1], false));
     // The drives the log says.
     check(placement::driveOf(L"C:\\Data\\Users") == L"C:" && placement::driveOf(L"d:/WPSystem") == L"D:" && placement::driveOf(L"\\\\?\\e:\\x") == L"E:" &&
               placement::driveOf(L"\\\\?\\Volume{abc}\\x") == L"\\\\?\\Volume{abc}" && placement::driveOf(L"\\\\server\\share\\x") == L"\\\\server\\share" &&
@@ -331,19 +371,22 @@ void testMissing(const std::wstring& root) {
               "its screen says why and what to do: " + text);
     }
     check(placement::missingText(Missing::nothing, "Telegram", shared, true).empty(), "nothing missing, nothing said");
+    check(placement::missingText(Missing::apk, "Telegram", shared, true).find("Megler's Settings, Apps' Storage") != std::string::npos,
+          "and that Megler's Settings move its apps to where Megler is");
     check(placement::missingText(Missing::apk, "Telegram", shared, false).find("Settings › Apps") != std::string::npos,
           "on desktop Windows, the system drive and Settings › Apps");
-    // What Megler says of itself at its start: on a phone's memory card, or with no shared folder.
-    check(placement::meglerOnCardText(false, false, true).empty() && placement::meglerOnCardText(true, false, false).empty(),
-          "Megler in the phone's memory, or on a PC's other drive with a shared folder, says nothing");
-    const std::string onCard = placement::meglerOnCardText(true, false, true);
-    check(onCard.find("Megler is installed on the memory card") != std::string::npos &&
-              onCard.find("the phone's memory is where Megler should be") != std::string::npos && onCard.find("Settings › System › Storage") != std::string::npos,
-          "Megler on the memory card: " + onCard);
-    const std::string none = placement::meglerOnCardText(true, true, true), pc = placement::meglerOnCardText(false, true, false);
+    // What Megler says of itself at its start: nothing with a shared folder, wherever it is -- its apps find the one shared
+    // folder from either storage -- and that no app can be installed where Windows gave it none.
+    check(placement::meglerOnCardText(false, false, true).empty() && placement::meglerOnCardText(true, false, false).empty() &&
+              placement::meglerOnCardText(true, false, true).empty(),
+          "Megler with a shared folder says nothing: in the phone's memory, on a PC's other drive, on the memory card");
+    const std::string none = placement::meglerOnCardText(true, true, true), pc = placement::meglerOnCardText(false, true, false),
+                      inMemory = placement::meglerOnCardText(false, true, true);
     check(none.find("Megler is installed on the memory card") != std::string::npos && none.find("no shared folder there") != std::string::npos &&
-              pc.find("no shared folder") != std::string::npos && pc.find("system drive") != std::string::npos,
-          "and with no shared folder, on a phone and on a PC: " + pc);
+              none.find("Settings › System › Storage") != std::string::npos && pc.find("no shared folder") != std::string::npos &&
+              pc.find("system drive") != std::string::npos && inMemory.find("no shared folder") != std::string::npos &&
+              inMemory.find("is installed on the memory card") == std::string::npos,
+          "with no shared folder, on a phone's card, in its memory and on a PC: " + none);
 }
 
 void testFiles(const std::wstring& root) {

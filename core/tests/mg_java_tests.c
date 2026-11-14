@@ -761,14 +761,22 @@ static void tap(int x, int y)
  * functions are called on the app's main thread.
  */
 static struct {
-    volatile i32 shown, hidden;        /* how many times each was asked */
-    volatile i32 kind, flags, enter;   /* of the last show */
+    volatile i32 shown, hidden;        /* how many times each was asked: a show afresh, and a hide */
+    volatile i32 again;                /* shows of the last show's field once more (MEGLER_KEYBOARD_F_AGAIN), counted apart */
+    volatile i32 again_wrong;          /* ... of those, the ones whose three were not the last show's */
+    volatile i32 kind, flags, enter;   /* of the last show afresh */
     u32 thread;                        /* the thread the last request came on */
 } K;
 
 static MEGLER_CB void keyboard_show(void *user, int kind, int flags, int enter)
 {
     (void)user;
+    if (flags & MEGLER_KEYBOARD_F_AGAIN) {
+        K.thread = mg_thread_self_id();
+        if (kind != K.kind || (flags & ~MEGLER_KEYBOARD_F_AGAIN) != K.flags || enter != K.enter) mg_atomic_add(&K.again_wrong, 1);
+        mg_atomic_add(&K.again, 1);
+        return;
+    }
     K.kind = kind;
     K.flags = flags;
     K.enter = enter;
@@ -800,6 +808,50 @@ static bool g_crash_app;
 static bool g_microg_app;
 /* The camera app: it alone has cameras (the stand-in), so that the others still see a phone without one. */
 static bool g_camera_app;
+/*
+ * The WebView app is given fonts of Windows' own (megler_run_config.host_fonts), as the shell gives an app those it
+ * finds: the files of the Windows these tests run on, or beside (WSL has its disk at /mnt/c), by the names Windows 10
+ * and 11 keep them under -- or of the folder MG_JAVA_HOST_FONTS, "none" for none. What each is for, and the writing the
+ * app's page must then have a font for (the app's "writings" line). None found: the page's writing is the root's alone.
+ */
+static bool g_webview_app;
+static const struct { const char *file, *langs, *writings; } g_font_files[] = {
+    { "segoeui.ttf", "und-Arab und-Hebr", "arabic hebrew" },
+    { "LeelawUI.ttf", "und-Thai", "thai" },
+    { "Nirmala.ttc", "und-Deva", "devanagari" },      /* Windows 11's */
+    { "Nirmala.ttf", "und-Deva", "devanagari" },      /* Windows 10's */
+    { "seguiemj.ttf", "und-Zsye", "emoji" },
+    { "msyh.ttc", "zh-Hans", "han" },
+    { "YuGothR.ttc", "ja", "kana" },
+    { "malgun.ttf", "ko", "hangul" },
+};
+static megler_host_font g_fonts_given[MG_COUNT(g_font_files)];
+static const char *g_fonts_writings[MG_COUNT(g_font_files)];
+static int g_fonts_given_count;
+
+static void find_host_fonts(void)
+{
+    static const char *const folders[] = { "/mnt/c/Windows/Fonts", "C:\\Windows\\Fonts" };
+    const char *asked = getenv("MG_JAVA_HOST_FONTS");
+    size_t f, i;
+    g_fonts_given_count = 0;
+    for (f = 0; f < (asked ? 1 : MG_COUNT(folders)) && !g_fonts_given_count; f++) {
+        const char *folder = asked ? asked : folders[f];
+        for (i = 0; i < MG_COUNT(g_font_files); i++) {
+            char *path = mg_sprintf("%s/%s", folder, g_font_files[i].file);
+            mg_stat st;
+            int err = 0;
+            if (!mg_path_stat(path, &st, &err) || st.size < 1024) {
+                free(path);
+                continue;
+            }
+            g_fonts_given[g_fonts_given_count].path = path;
+            g_fonts_given[g_fonts_given_count].index = 0;
+            g_fonts_given[g_fonts_given_count].langs = g_font_files[i].langs;
+            g_fonts_writings[g_fonts_given_count++] = g_font_files[i].writings;
+        }
+    }
+}
 /* The Bluetooth app: it alone has a radio (the stand-in), so that the others still see a phone without one. */
 static bool g_bluetooth_app;
 /* natives' second run: the flag native-entry-at-start, its start asking its library for NativeActivity's entry (run_natives). */
@@ -1561,6 +1613,11 @@ static bool start(const char *apk, const char *android_root)
     cfg.gsf_apk_path = getenv("MG_JAVA_GSF_APK");
     cfg.splits_dir = g_splits_dir;
     cfg.android_root = android_root;
+    if (g_webview_app) {
+        find_host_fonts();
+        cfg.host_fonts = g_fonts_given_count ? g_fonts_given : NULL;
+        cfg.host_font_count = g_fonts_given_count;
+    }
     /* Unless another is asked for, a small phone at Android's base density: a dp is a pixel, and the layout's numbers can be read off the picture. */
     cfg.width = g_screen_w;
     cfg.height = g_screen_h;
@@ -2348,6 +2405,14 @@ static bool shown_times(i32 count)
     return K.shown == count;
 }
 
+/* Waits until the app has asked for the keyboard of the same field once more (MEGLER_KEYBOARD_F_AGAIN) `count` times in all, or more. */
+static bool again_times(i32 count)
+{
+    int tries;
+    for (tries = 0; tries < 1000 && K.again < count && running(); tries++) mg_sleep_ns(10000000ull);
+    return K.again >= count;
+}
+
 /*
  * The row "typing" of the demos list opens a screen with four text fields (core/tests/app/demos, Typing). The test is
  * the keyboard: a touch of a field must ask for it, with the field's kind; what it then sends must arrive in the field,
@@ -2356,7 +2421,7 @@ static bool shown_times(i32 count)
 static void type_into_fields(const int row[4], int *at)
 {
     int name[4], number[4], secret[4], note[4], layout, typed, fewer;
-    i32 shown, hidden;
+    i32 shown, hidden, again;
     memset(name, 0, sizeof(name));
     say("the keyboard: text typed into the demos app's fields");
     /* Typed while no field has the focus: it goes nowhere, and the framework's log says so (megler.InputMethods in the overlay). */
@@ -2478,13 +2543,47 @@ static void type_into_fields(const int row[4], int *at)
     tap(name[0] + 60, name[1] + name[3] / 2);
     CHECK(shown_times(shown + 1) && K.kind == MEGLER_KEYBOARD_TEXT);
     settle();
+    /*
+     * The field that has the keyboard, touched where its cursor already is: the keyboard is asked for once more as it is
+     * (MEGLER_KEYBOARD_F_AGAIN, with the field's own three) and not afresh, so that a shell's keyboard keeps what it is
+     * composing (megler.h; issue #7). The first touch here puts the cursor at the text's end, wherever the touch before
+     * left it; the second finds it there. (A touch of the field that has the focus asks twice, at the touch and at its
+     * click: one more or two.)
+     */
+    tap(name[0] + name[2] - 8, name[1] + name[3] / 2);
+    mg_sleep_ns(300000000ull);
+    settle();
+    shown = K.shown;
+    again = K.again;
+    tap(name[0] + name[2] - 8, name[1] + name[3] / 2);
+    CHECK(again_times(again + 1));
+    mg_sleep_ns(300000000ull);
+    settle();
+    CHECK(K.shown == shown && K.again_wrong == 0);
+    /* What the keyboard then types goes in at the cursor, and the field is as the keyboard left it: touched there, once more. */
+    megler_text_commit("?");
+    expect_line("I/DemoTest: typing: name=\"\xD0\xB6HeXll!?\" cursor=8", at, 30);
+    again = K.again;
+    tap(name[0] + name[2] - 8, name[1] + name[3] / 2);
+    CHECK(again_times(again + 1));
+    mg_sleep_ns(300000000ull);
+    settle();
+    CHECK(K.shown == shown && K.again_wrong == 0);
+    /* Touched at its beginning the cursor moves there: the keyboard begins afresh (and the touch's click asks once more). */
+    again = K.again;
+    tap(name[0] + 3, name[1] + name[3] / 2);
+    CHECK(shown_times(shown + 1) && K.kind == MEGLER_KEYBOARD_TEXT && K.flags == 0);
+    CHECK(again_times(again + 1));
+    settle();
+    megler_text_commit("#");
+    expect_line("I/DemoTest: typing: name=\"#\xD0\xB6HeXll!?\" cursor=1", at, 30);
     /* Back: the screen goes, and with it the field that wanted the keyboard. */
     megler_key(4, true);
     megler_key(4, false);
-    expect_line("I/DemoTest: typing: destroyed name=\"\xD0\xB6HeXll!\"", at, 30);
+    expect_line("I/DemoTest: typing: destroyed name=\"#\xD0\xB6HeXll!?\"", at, 30);
     settle();
     CHECK(K.hidden > hidden);
-    say("  the keyboard was asked for %d times and sent away %d times", (int)K.shown, (int)K.hidden);
+    say("  the keyboard was asked for %d times afresh and %d times once more, and sent away %d times", (int)K.shown, (int)K.again, (int)K.hidden);
 }
 
 /* The last line from `from` on that holds `text`, or -1. */
@@ -4957,6 +5056,36 @@ static int run_webview(void)
     }
     line = find_line("I/WebViewTest: provider ok", 0);
     if (line >= 0) say("  %s", strstr(line_at(line), "provider ok"));
+    /*
+     * The writing the page has a font for (issue #7: Japanese and Chinese were boxes in a WebView). The root's own fonts
+     * are Latin's, Greek's and Cyrillic's; for the rest Chromium's Skia has the host's fonts, after Android's own in
+     * Android's font list as the driver made it (drivers/mg_java.c, mount_host_fonts) -- here Windows' fonts where
+     * find_host_fonts found them, each of which must have given the page the writing it is for.
+     */
+    line = wait_line("I/WebViewTest: writings ", 0, 120);
+    CHECK(line >= 0 && strstr(line_at(line), " latin=1"));
+    if (line >= 0) {
+        const char *said = strstr(line_at(line), "writings ");
+        say("  %s (with %d of Windows' fonts given)", said, g_fonts_given_count);
+        for (i = 0; i < g_fonts_given_count; i++) {
+            const char *w = g_fonts_writings[i];
+            while (*w) {
+                size_t n = strcspn(w, " ");
+                snprintf(text, sizeof(text), " %.*s=1", (int)n, w);
+                CHECK(strstr(said, text) != NULL);
+                if (!strstr(said, text)) say("  no font for%s with %s given for %s", text, g_fonts_given[i].path, g_fonts_given[i].langs);
+                w += n;
+                while (*w == ' ') w++;
+            }
+        }
+        if (g_fonts_given_count) {
+            int has = find_line("java: Android's font list (/system/etc/fonts.xml) has ", 0);
+            CHECK(has >= 0);
+            if (has >= 0) say("  %s", strstr(line_at(has), "java: "));
+        } else {
+            say("  (none of Windows' fonts found to give the app: the page's writing is the root's own)");
+        }
+    }
     /* androidx.webkit's way to the WebView's support-library glue: found, and its features asked. */
     line = find_line("I/WebViewTest: glue ", 0);
     if (line >= 0) say("  %s", strstr(line_at(line), "glue "));
@@ -5077,6 +5206,7 @@ int mg_tests_java_run(const char *which, const char *apk, const char *android_ro
     if (g_any_app && getenv("MG_JAVA_SPLITS")) g_splits_dir = mg_strdup(getenv("MG_JAVA_SPLITS"));
     g_crash_app = !strcmp(which, "crash");
     g_camera_app = !strcmp(which, "camera");
+    g_webview_app = !strcmp(which, "webview");
     g_bluetooth_app = !strcmp(which, "bluetooth");
     g_pickers_app = !strcmp(which, "pickers");
     g_webview_app = !strcmp(which, "webview");

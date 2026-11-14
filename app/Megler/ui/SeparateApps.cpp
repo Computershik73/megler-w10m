@@ -28,9 +28,11 @@ namespace {
 
 struct Job {
     bool install = true;   // else uninstall
+    bool move = false;     // neither: the installed package moved to where Megler's apps are kept (appPackage::moveToKeptVolume)
     ApkEntry entry;        // the app, as the library had it when asked
-    std::string package;   // its Android package (empty for a picked APK until it is read)
+    std::string package;   // its Android package (empty for a picked APK until it is read, and for a package moved that the library has no APK of)
     std::string id;        // its library id
+    std::string identity;  // a move: the package's identity name
     bool whenRead = false; // the library is still to read it
     std::shared_ptr<PickedFile> picked; // an APK picked to be installed, read where it is
 };
@@ -50,6 +52,22 @@ std::vector<std::function<void()>> gListWaiters; // what waits for the list (ask
 int gDone = 0, gTotal = 0;           // of the jobs since the worker started
 bool gRefused = false;               // the last install or uninstall done or refused was refused for access (installsRefused)
 bool gSettling = false;              // the shared folder's APK folders are being settled (settleApks): the worker's jobs wait
+/*
+ * Where the apps' packages are kept (appPackage::AppsStorage), as the last listing found it: one package volume for them
+ * all, which the user is asked for before the first install where Windows has more than one (requirePlace).
+ */
+appPackage::AppsStorage gStorage;
+bool gStorageKnown = false;          // a listing has looked at it
+bool gPlaceAsked = false;            // the question is up
+bool gPlacePutOff = false;           // ... and was answered "Not Now" (or dismissed) last: nothing is installed by itself until it is answered
+std::vector<std::function<void()>> gPlaceWaiters; // the installs that wait for its answer
+
+/// Of gStorage's volumes, the one the apps are kept on; -1 where Windows lists none. Under gMutex.
+int keptVolumeLocked() {
+    for (size_t i = 0; i < gStorage.volumes.size(); i++)
+        if (gStorage.volumes[i].kept) return int(i);
+    return -1;
+}
 
 /// How an install or an uninstall of `package` ended, as far as access goes: refused for it (Megler has not got
 /// packageManagement), or not.
@@ -277,12 +295,17 @@ void listInstalled() {
         gReachable = true;
         gGeneration++;
     });
+    // Where they are kept, and which volume each is on (Windows's package manager again, each volume's packages).
+    appPackage::AppsStorage storage;
+    if (ok) storage = appPackage::appsStorage(apps);
     {
         std::lock_guard<std::mutex> lock(gMutex);
         if (ok) {
             gInstalled = apps;
             gListed = true;
             gProblem.clear();
+            gStorage = storage;
+            gStorageKnown = true;
         } else {
             gProblem = error;
         }
@@ -305,11 +328,35 @@ void listInstalled() {
 
 /// One job. Off the UI thread.
 void run(Job& job, int number, int total) {
-    const std::string title = job.entry.title();
+    const std::string title = job.move && job.entry.id.empty() ? job.identity : job.entry.title();
     auto stepOf = [&](const std::string& what) {
         return total > 1 ? format("%s (%d of %d): ", title.c_str(), number, total) + what : what;
     };
-    if (job.install) {
+    if (job.move) {
+        // The installed package, with its private files, to the volume Megler's apps are kept on: Windows moves it, and
+        // closes the app first. The APK is not the package's (the shared folder's), and stays where it is.
+        appPackage::InstalledApp app;
+        {
+            std::lock_guard<std::mutex> lock(gMutex);
+            for (const auto& a : gInstalled)
+                if (a.identity == job.identity) app = a;
+        }
+        if (app.fullName.empty()) {
+            setStep(job.package, "It is not installed.");
+            return;
+        }
+        setStep(job.package, stepOf("Moving it…"));
+        const appPackage::InstallResult result =
+            appPackage::moveToKeptVolume(app, [&](const std::string& said) { setStep(job.package, stepOf(said)); });
+        if (result.ok) {
+            std::lock_guard<std::mutex> lock(gMutex);
+            const int kept = keptVolumeLocked();
+            for (auto& a : gInstalled)
+                if (a.identity == job.identity) a.volume = kept;
+        }
+        shellLog::write("separate apps: " + job.identity + (result.ok ? " moved: " : " not moved: ") + result.said);
+        setStep(job.package, total > 1 && !result.ok ? title + ": " + result.said : result.said);
+    } else if (job.install) {
         // The app as it is to be packed: a picked APK read where it is, one the library is reading once it has, or the
         // library's entry.
         ApkEntry entry = job.entry;
@@ -440,7 +487,9 @@ void run(Job& job, int number, int total) {
             gInstalled.erase(std::remove_if(gInstalled.begin(), gInstalled.end(),
                                             [&](const appPackage::InstalledApp& a) { return a.identity == made.identity; }),
                              gInstalled.end());
-            gInstalled.push_back({made.identity, appPackage::meglerVersion(), made.fullName, made.version});
+            // (On the volume the apps are kept on, unless the install says it could not be moved there: the next list says where.)
+            gInstalled.push_back({made.identity, appPackage::meglerVersion(), made.fullName, made.version,
+                                  result.note.empty() ? keptVolumeLocked() : -1});
             gGeneration++;
         }
         // The library's entry is that APK now, and Megler's own copy, if it had one, goes: one copy of it on the phone. (In the
@@ -448,7 +497,9 @@ void run(Job& job, int number, int total) {
         if (!replacement.path.empty()) files::write(Library::instance().directory() + L"\\" + widen(job.id) + L".json", replacement.report);
         appPackage::sharedApkInstalled(made);
         Library::instance().adopt(job.id, made.fullName, made.apkFolder);
-        setStep(package, "Installed. Its APK is kept once, in the shared folder, where the app and Megler read it.");
+        // (And where it is, when Windows did not move it to where Megler's apps are kept: InstallResult::note.)
+        setStep(package, "Installed. Its APK is kept once, in the shared folder, where the app and Megler read it." +
+                             (result.note.empty() ? std::string() : " " + result.note));
     } else {
         appPackage::InstalledApp app;
         {
@@ -561,7 +612,7 @@ void enqueue(AppShell& shell, Job job) {
             Status& s = gStatus[job.package];
             if (s.queued) return;
             s.queued = true;
-            s.step = job.install ? "Waiting…" : "Waiting to uninstall…";
+            s.step = job.move ? "Waiting to be moved…" : job.install ? "Waiting…" : "Waiting to uninstall…";
         }
         gTotal++;
         if (!gWorking) gWorkingLine = job.picked ? "Reading " + job.picked->name() + "…" : "Starting…";
@@ -569,6 +620,116 @@ void enqueue(AppShell& shell, Job job) {
         gGeneration++;
     }
     startWorker(shell);
+}
+
+/// The volumes one may choose of: those that are there and have a name, by which the choice is kept (placement::appsPlace).
+bool choosable(const appPackage::AppsVolume& volume) { return !volume.place.offline && !volume.place.name.empty(); }
+
+/// "12.3 GB free · Megler is here".
+std::string volumeDetail(const appPackage::AppsVolume& volume) {
+    std::string said = volume.freeBytes ? formattedByteCount(volume.freeBytes) + " free" : std::string();
+    if (volume.megler) said += std::string(said.empty() ? "" : " · ") + "Megler is here";
+    return said;
+}
+
+/// A move of every installed package of Megler's apps that is on another volume than the one they are kept on -- Google
+/// Play services and Google Play Store as any other, and those the library has no APK of. How many. UI thread.
+int moveElsewhere(AppShell& shell) {
+    std::vector<appPackage::InstalledApp> elsewhere;
+    {
+        std::lock_guard<std::mutex> lock(gMutex);
+        const int kept = keptVolumeLocked();
+        if (kept < 0) return 0;
+        for (const auto& a : gInstalled)
+            if (a.volume >= 0 && a.volume != kept) elsewhere.push_back(a);
+    }
+    if (elsewhere.empty()) return 0;
+    const auto entries = Library::instance().entries();
+    int asked = 0;
+    for (const auto& app : elsewhere) {
+        Job job;
+        job.install = false;
+        job.move = true;
+        job.identity = app.identity;
+        for (const auto& e : entries)
+            if (!e.report.package.empty() && identityOf(e.report.package) == app.identity) {
+                job.entry = e;
+                job.id = e.id;
+                job.package = e.report.package;
+            }
+        enqueue(shell, std::move(job));
+        asked++;
+    }
+    shellLog::write(format("separate apps: %d of Megler's apps' packages are on another volume than the one they are kept on: each is moved", asked));
+    return asked;
+}
+
+/// The apps are kept on the volume named `name` from now on: remembered, the installs that waited for the answer go on,
+/// and the packages installed elsewhere are moved. UI thread.
+void placeChosen(AppShell& shell, const std::string& name, const char* where) {
+    appPackage::keepAppsOn(name);
+    std::vector<std::function<void()>> waiters;
+    {
+        std::lock_guard<std::mutex> lock(gMutex);
+        gStorage.ask = false;
+        gStorage.chosen = true;
+        for (auto& volume : gStorage.volumes) volume.kept = narrow(volume.place.name) == name;
+        gPlacePutOff = false;
+        waiters.swap(gPlaceWaiters);
+        gGeneration++;
+    }
+    shellLog::write(std::string("separate apps: where Megler's apps are kept was chosen ") + where + ": " + name);
+    // (Those asked for first: each is installed on the volume chosen, or updated where it is and moved after.)
+    for (auto& then : waiters) then();
+    moveElsewhere(shell);
+}
+
+/// The question before the first install where Windows has more than one package volume: which of them Megler's apps are
+/// kept on, one for them all. UI thread.
+void askPlace(AppShell& shell) {
+    appPackage::AppsStorage storage;
+    {
+        std::lock_guard<std::mutex> lock(gMutex);
+        storage = gStorage;
+    }
+    const bool mobile = platform::isMobile();
+    AppShell::DialogSpec spec;
+    spec.title = "Where to Keep the Apps";
+    spec.message = std::string("Megler keeps the apps it installs in one place, the same for all of them -- Google Play services and Google "
+                               "Play Store too. Choose it once. Megler's Settings (Apps' Storage) change it later, and move the apps.\n\n"
+                               "Kept there: each app's own package and its private data. The apps' APKs and Android's files are in Megler's "
+                               "shared folder, which Windows keeps ") +
+                   (mobile ? "in the phone's memory wherever the apps are." : "in your user folder wherever the apps are.");
+    spec.buttons = {"Not Now"};
+    std::vector<std::string> names;
+    for (const auto& volume : storage.volumes) {
+        if (!choosable(volume)) continue;
+        spec.choices.push_back({volume.title, volumeDetail(volume)});
+        names.push_back(narrow(volume.place.name));
+    }
+    shellLog::write(format("separate apps: asking where Megler's apps are kept, of %u volumes, before the first install", unsigned(names.size())));
+    std::weak_ptr<AppShell> weak = shell.weak_from_this();
+    shell.dialogWhenFree(std::move(spec), [weak, names](int button, std::string) {
+        const int chosen = button - 1;  // (after the one button)
+        {
+            std::lock_guard<std::mutex> lock(gMutex);
+            gPlaceAsked = false;
+        }
+        auto self = weak.lock();
+        if (self && chosen >= 0 && size_t(chosen) < names.size()) {
+            placeChosen(*self, names[size_t(chosen)], "before the first install");
+            return;
+        }
+        // Not Now, or dismissed: nothing is installed, and what waited for the answer is dropped. An install asked for by
+        // hand asks again; Google Play's own (ui/GooglePlay.cpp) waits for the answer.
+        {
+            std::lock_guard<std::mutex> lock(gMutex);
+            gPlaceWaiters.clear();
+            gPlacePutOff = true;
+            gGeneration++;
+        }
+        shellLog::write("separate apps: where Megler's apps are kept was not chosen: nothing is installed until it is");
+    });
 }
 
 } // namespace
@@ -713,8 +874,55 @@ bool requireList(AppShell& shell, std::function<void()> retry) {
     return false;
 }
 
+bool requirePlace(AppShell& shell, std::function<void()> retry) {
+    bool listing = false;
+    {
+        std::lock_guard<std::mutex> lock(gMutex);
+        if (gStorageKnown) {
+            if (!gStorage.ask) return true;
+            if (retry) gPlaceWaiters.push_back(std::move(retry));
+            if (gPlaceAsked) return false;
+            gPlaceAsked = true;
+        } else {
+            // (Not looked at yet: the list's lister has answered and the list is still coming, which looks at it.)
+            listing = gListing;
+            if (!listing || !retry) return true;
+        }
+    }
+    if (listing)
+        askList(shell, std::move(retry));
+    else
+        askPlace(shell);
+    return false;
+}
+
+bool placePutOff() {
+    std::lock_guard<std::mutex> lock(gMutex);
+    return gStorageKnown && gStorage.ask && gPlacePutOff;
+}
+
+Storage storage() {
+    Storage s;
+    std::lock_guard<std::mutex> lock(gMutex);
+    s.known = gStorageKnown;
+    s.storage = gStorage;
+    s.apps.assign(gStorage.volumes.size(), 0);
+    const int kept = keptVolumeLocked();
+    for (const auto& a : gInstalled) {
+        if (a.volume < 0 || size_t(a.volume) >= s.apps.size()) continue;
+        s.apps[size_t(a.volume)]++;
+        if (kept >= 0 && a.volume != kept) s.elsewhere++;
+    }
+    return s;
+}
+
+void keepAppsOn(AppShell& shell, const std::string& volumeName) { placeChosen(shell, volumeName, "in Megler's Settings"); }
+
+void moveAllToKept(AppShell& shell) { moveElsewhere(shell); }
+
 void install(AppShell& shell, const std::string& apkId, bool whenRead) {
     if (!requireList(shell, [&shell, apkId, whenRead] { install(shell, apkId, whenRead); })) return;
+    if (!requirePlace(shell, [&shell, apkId, whenRead] { install(shell, apkId, whenRead); })) return;
     const auto entry = Library::instance().find(apkId);
     if (!entry || (!whenRead && entry->report.package.empty())) return;
     shellLog::write("separate apps: install " + apkId);
@@ -728,6 +936,7 @@ void install(AppShell& shell, const std::string& apkId, bool whenRead) {
 
 void installPicked(AppShell& shell, std::shared_ptr<PickedFile> picked, const std::string& apkId) {
     if (!requireList(shell, [&shell, picked, apkId] { installPicked(shell, picked, apkId); })) return;
+    if (!requirePlace(shell, [&shell, picked, apkId] { installPicked(shell, picked, apkId); })) return;
     shellLog::write("separate apps: install " + picked->name() + " where it is, as " + apkId);
     Job job;
     job.id = apkId;

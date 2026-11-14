@@ -84,6 +84,43 @@ int volumeHolding(const std::vector<Volume>& volumes, const std::wstring& instal
     return longestHolding(volumes, folder, &Volume::mountPoint);
 }
 
+int volumeNamed(const std::vector<Volume>& volumes, const std::wstring& name) {
+    const std::wstring wanted = normal(name);
+    if (wanted.empty()) return -1;
+    for (size_t i = 0; i < volumes.size(); i++)
+        if (!volumes[i].name.empty() && normal(volumes[i].name) == wanted) return int(i);
+    return -1;
+}
+
+AppsPlace appsPlace(const std::vector<Volume>& volumes, const std::wstring& chosenName, int meglers) {
+    AppsPlace place;
+    const int chosen = volumeNamed(volumes, chosenName);
+    if (chosen >= 0 && !volumes[size_t(chosen)].offline) {
+        place.volume = chosen;
+        place.chosen = true;
+        return place;
+    }
+    place.volume = meglers >= 0 && size_t(meglers) < volumes.size() ? meglers : -1;
+    // (One to choose of is one that is there and has a name, by which the choice is kept.)
+    size_t there = 0;
+    for (const Volume& volume : volumes)
+        if (!volume.offline && !volume.name.empty()) there++;
+    place.ask = there >= 2;
+    return place;
+}
+
+std::string volumeTitle(const Volume& volume, bool mobile) {
+    std::wstring drive = driveOf(volume.mountPoint);
+    if (drive.size() != 2) drive = driveOf(volume.storePath);
+    const std::string letter = drive.size() == 2 ? narrow(drive) : std::string();
+    if (mobile) {
+        if (volume.system) return "The phone's memory";
+        return letter.empty() ? std::string("The memory card") : "The memory card (" + letter + ")";
+    }
+    if (letter.empty()) return narrow(volume.storePath.empty() ? volume.name : volume.storePath);
+    return "Drive " + letter + (volume.system ? " (Windows's)" : "");
+}
+
 std::wstring volumeOf(const std::wstring& folder) {
     if (driveOf(folder).empty()) return {};
     CREATEFILE2_EXTENDED_PARAMETERS params = {};
@@ -134,19 +171,20 @@ Missing missingFor(const std::wstring& shared, const std::wstring& apk, const st
 
 std::string missingText(Missing missing, const std::string& label, const std::wstring& shared, bool mobile) {
     const std::string card = mobile ? "the memory card" : "another drive";
-    const std::string why = "As a rule, that is because the app and Megler are on different storage -- one on " + card + ", the other in the " +
-                            (mobile ? "phone's memory" : "system drive") + " -- and Windows gives each storage a shared folder of its own. ";
-    const std::string what = mobile ? "Keep the app and Megler on the same storage: move the app (or Megler) to the phone's memory in Settings › "
-                                      "System › Storage (the memory card, Apps & games, the app, Move), or install the app again from Megler's "
-                                      "Library."
-                                    : "Keep the app and Megler on the same drive: move the app (or Megler) to the system drive in Settings › Apps "
-                                      "(the app, Move), or install the app again from Megler's Library.";
+    const std::string why = "That may be because the app and Megler are on different storage -- one on " + card + ", the other in the " +
+                            (mobile ? "phone's memory" : "system drive") + " -- and Windows keeps their shared folders apart here. ";
+    const std::string what = mobile ? "Keep the app where Megler is: in Megler's Settings, Apps' Storage, choose the storage Megler itself is on "
+                                      "(Megler moves its apps there), or move the app in the phone's Settings › System › Storage (Apps & games, "
+                                      "the app, Move), or install the app again from Megler's Library."
+                                    : "Keep the app where Megler is: in Megler's Settings, Apps' Storage, choose the drive Megler itself is on "
+                                      "(Megler moves its apps there), or move the app in Windows's Settings › Apps (the app, Move), or install "
+                                      "the app again from Megler's Library.";
     switch (missing) {
     case Missing::nothing:
         return {};
     case Missing::sharedFolder:
         return label + " can't start: Windows gave it no shared folder, which is where Megler keeps Android's files and the app's APK for "
-                       "it. That happens when the app is installed on " + card + ". " + what;
+                       "it. That may be because the app is installed on " + card + ". " + what;
     case Missing::apk:
         return label + " can't start: its APK is not in its shared folder, or can't be read there (" + narrow(shared) + "). " + why + what;
     case Missing::androidFiles:
@@ -158,21 +196,13 @@ std::string missingText(Missing missing, const std::string& label, const std::ws
 
 std::string meglerOnCardText(bool onCard, bool noSharedFolder, bool mobile) {
     onCard = onCard && mobile;
-    if (!onCard && !noSharedFolder) return {};
-    std::string text;
-    if (onCard)
-        text = "Megler is installed on the memory card. The apps it installs read Android's files and their APKs from Megler's shared folder, "
-               "which Windows keeps apart for each storage: an app in the phone's memory does not see the memory card's. Megler installs its "
-               "apps beside itself, on the memory card, but the phone's memory is where Megler should be: move it there in Settings › "
-               "System › Storage (the memory card, Apps & games, Megler, Move), set New apps will save to: This device, and install the apps "
-               "again from the Library.";
-    if (noSharedFolder)
-        text += std::string(text.empty() ? "" : " ") + "Windows gave Megler no shared folder" + (onCard ? " there" : "") +
-                ", where its apps find Android's files and their APKs: no app can be installed as an app of its own" +
-                (onCard   ? " until Megler is in the phone's memory."
-                 : mobile ? ". As a rule that is because Megler is on the memory card: move it to the phone's memory."
-                          : ". As a rule that is because Megler is installed on another drive than Windows's: install it on the system drive.");
-    return text;
+    if (!noSharedFolder) return {};
+    return std::string(onCard ? "Megler is installed on the memory card, and " : "") + "Windows gave Megler no shared folder" +
+           (onCard ? " there" : "") + ", where its apps find Android's files and their APKs: no app can be installed as an app of its own" +
+           (onCard   ? " until Megler is in the phone's memory. Move it there in Settings › System › Storage (the memory card, Apps & games, "
+                       "Megler, Move)."
+            : mobile ? ". As a rule that is because Megler is on the memory card: move it to the phone's memory."
+                     : ". As a rule that is because Megler is installed on another drive than Windows's: install it on the system drive.");
 }
 
 } // namespace megler::app::placement

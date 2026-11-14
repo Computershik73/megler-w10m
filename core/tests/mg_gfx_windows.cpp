@@ -657,6 +657,56 @@ int mg_gfx_windows_check_video(const megler_gfx_host* h, void (*line)(const char
     return failed;
 }
 
+/// Windows' fonts for Android's font list (GfxHost::hostFonts, megler_run_config.host_fonts): what this machine has is
+/// said, and checked for what the core needs of each -- a file that opens as the core opens one and begins as a font
+/// does, a face's number only in a collection, langs that fonts.xml carries (the core takes no others), no font twice --
+/// and that nothing is copied where the files open. Which fonts a Windows has is its own matter: only that it has some
+/// (every Windows has Segoe UI). Lines to `line`; checks that failed.
+int mg_gfx_windows_check_host_fonts(void (*line)(const char* text, void* user), int* checks) {
+    using megler::app::GfxHost;
+    int failed = 0;
+    char text[400];
+    auto check = [&](bool ok, const char* what, const std::string& of) {
+        ++*checks;
+        if (ok) return;
+        ++failed;
+        snprintf(text, sizeof(text), "  FAIL Windows' fonts for Android's font list: %s (%s)", what, of.c_str());
+        line(text, nullptr);
+    };
+    std::string said;
+    const std::vector<GfxHost::HostFont> fonts = GfxHost::hostFonts(L"", false, &said);
+    line(("  " + said).c_str(), nullptr);
+    check(!fonts.empty(), "none found", "every Windows has Segoe UI");
+    for (size_t i = 0; i < fonts.size(); i++) {
+        const GfxHost::HostFont& f = fonts[i];
+        std::string name;
+        for (wchar_t c : f.family) name += c < 128 ? char(c) : '?';
+        unsigned char magic[4] = {};
+        DWORD got = 0;
+        const HANDLE h = CreateFile2(f.path.c_str(), GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, OPEN_EXISTING, nullptr);
+        check(h != INVALID_HANDLE_VALUE, "a font's file does not open", name);
+        if (h != INVALID_HANDLE_VALUE) {
+            const bool read = ReadFile(h, magic, 4, &got, nullptr) && got == 4;
+            CloseHandle(h);
+            const bool collection = !memcmp(magic, "ttcf", 4);
+            check(read && (collection || !memcmp(magic, "\0\1\0\0", 4) || !memcmp(magic, "OTTO", 4) || !memcmp(magic, "true", 4)),
+                  "a font's file does not begin as a font does", name);
+            check(collection ? f.index >= 0 : f.index == 0, "a face's number in a file that is no collection", name);
+        }
+        check(!f.copied, "a copy where none was asked for", name);
+        bool plain = !f.langs.empty() && f.langs.size() <= 120 && f.langs.front() != ' ' && f.langs.back() != ' ';
+        for (size_t k = 0; plain && k < f.langs.size(); k++) {
+            const char c = f.langs[k];
+            plain = (c >= '0' && c <= '9') || (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || c == '-' || (c == ' ' && f.langs[k + 1] != ' ');
+        }
+        check(plain, "langs that fonts.xml does not carry", f.langs);
+        for (size_t k = 0; k < i; k++)
+            check(fonts[k].index != f.index || _wcsicmp(fonts[k].path.c_str(), f.path.c_str()) != 0 || fonts[k].langs.size() + 1 + f.langs.size() > 120,
+                  "a font twice", name);
+    }
+    return failed;
+}
+
 /// A picture kept on the graphics processor (megler_gfx_host.texture_frame and draw_texture: the WebView's draw functor, a
 /// TextureView's frames) made by a device of Direct3D feature level 9_3, as ANGLE's is on a Lumia 650's Adreno 304: there
 /// Direct3D shares a texture in B8G8R8A8_UNORM alone -- one in R8G8B8A8_UNORM it refuses to make shared at all, which is why

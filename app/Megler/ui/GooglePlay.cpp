@@ -131,6 +131,10 @@ void ensureInstalled(AppShell& shell) {
     if ((installed(gmsPackage) && installed(storePackage)) || !listed) return;
     // (Nor while the library's copies of the package's APKs are being made after the start: they are its entries to be.)
     if (!separateApps::working().empty() || gCopying || bundledApks::copying()) return;
+    // Nor once the question where Megler's apps are kept (separateApps::requirePlace, which this install asks first where
+    // Windows has more than one package volume) was put off: asked every minute, it would come back every minute. An
+    // install by hand, or Settings' Apps' Storage, answers it, and this goes on.
+    if (separateApps::placePutOff()) return;
     for (Bundled& b : gBundled) {
         if (installed(b.package)) continue;
         const auto entry = entryOf(b.package);
@@ -197,6 +201,9 @@ std::string pending() {
         if (!installed(b.package) && separateApps::status(b.package).accessDenied)
             return "Google Play was chosen, but Windows does not let Megler install apps yet (above). Once it does, Megler installs "
                    "Google Play services and Google Play Store when it is opened again. Until then, apps run with microG.";
+    if (separateApps::placePutOff())
+        return "Google Play was chosen: Megler installs its Google Play services and Google Play Store once it is told where to keep "
+               "its apps -- in Settings (Apps' Storage), or when an app is installed. Until then, apps run with microG.";
     return "Google Play was chosen: Megler installs its Google Play services, then Google Play Store. Apps run with microG "
            "until Google Play services is installed.";
 }

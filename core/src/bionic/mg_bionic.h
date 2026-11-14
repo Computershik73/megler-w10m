@@ -329,6 +329,15 @@ char *mg_g_strdup(const char *s);
  * app's): its Android/data/<package> and Android/obb/<package> are there for
  * this app too, those of them that exist, as Android 9 lets an app with the
  * storage permission reach them. Nothing for this app's own package.
+ *
+ * mg_fs_other_apps: who looks for the other apps' parts, and not before a path
+ * asks for one: `find` is called once, with `user`, the first time a path in
+ * /storage/emulated/0/Android/data or Android/obb is in no mount of this
+ * app's own, or one of the two folders is listed, and calls mg_fs_other_app
+ * for each app it finds (it reads the host's folders alone, no guest path).
+ * Most apps never ask, and the folders of some hundred apps that ran here take
+ * a tenth of a second to look through on a phone. The parts an earlier `find`
+ * mounted are gone. NULL: nobody looks.
  */
 typedef struct mg_fs_link {
     const char *name;
@@ -338,6 +347,7 @@ typedef struct mg_fs_link {
 void mg_fs_configure(const char *package, const char *internal_dir, const char *external_dir);
 void mg_fs_shared_storage(const char *shared_dir, const mg_fs_link *links, int count);
 void mg_fs_other_app(const char *package, const char *external_dir);
+void mg_fs_other_apps(void (*find)(void *user), void *user);
 /* The host path of a guest path, malloc'd; NULL for a path that has no place (it then does not exist). */
 char *mg_fs_host_path(const char *guest_path);
 const char *mg_fs_internal_dir(void);  /* guest paths */

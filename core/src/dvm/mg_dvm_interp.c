@@ -265,6 +265,49 @@ void mg_dvm_stub_called(const mg_dvm_method *caller, mg_dvm_method *m)
         mg_info("api: %s.%s%s is a stub here (its signature alone), first called from native code or the runtime", m->cls->name, m->name, m->sig);
 }
 
+/*
+ * An aget or aput whose array is not of the kind the instruction reads (array_kind_error: thrown, pending). No
+ * method's code does that: Android's verifier has proven an `aget`'s array one of ints or floats before the method ever
+ * ran. So the register holds what the code did not put there, and that is the runtime's doing -- a value read from the
+ * wrong place, or an object let go while something still held it and its memory given to another. Spotify on an ARM64
+ * Windows ended so in 0.1.0.678, "aget on a [Ljava/lang/Object;" in ConstraintLayout's solver, once in some runs, and
+ * nothing in the log said more. So the error says where -- the register, the method's pc, the array's length, whether
+ * the method has compiled code -- and the first few are said in the log with every register of the frame: its word, or
+ * the class of the object the word is the address of. (Classes only: no string's text.)
+ */
+static volatile i32 g_array_kind_lines;
+
+static void array_kind_error(mg_dvm_frame *f, u32 pc, u16 w, u32 areg, mg_jobj *a)
+{
+    mg_dvm_method *m = f->m;
+    const char *cls = mg_dvm_class_of(a)->name;
+    i32 length = a->kind == MG_J_PRIM_ARRAY || a->kind == MG_J_OBJ_ARRAY ? (i32)mg_dvm_array_length(a) : -1;
+    unsigned esz = a->kind == MG_J_PRIM_ARRAY ? (unsigned)a->u.arr.esz : 0;
+    if (mg_atomic_add(&g_array_kind_lines, 1) <= 4) {
+        char line[1600];
+        size_t n = 0;
+        u32 i;
+        mg_warn("dvm: %s at 0x%x of %s.%s%s found v%u a %s (kind %d, element size %u, length %d), which no code that Android's verifier passed "
+                "does: the register holds what was not put in it. The method %s compiled code. The frame's registers follow.",
+                mg_dvm_insn_name(w), (unsigned)pc, m->cls->name, m->name, m->sig, (unsigned)areg, cls, (int)a->kind, esz, (int)length,
+                m->jit ? "has" : "has no");
+        line[0] = 0;
+        mg_dvm_heap_lock();
+        for (i = 0; i < m->regs && n + 160 < sizeof(line); i++) {
+            mg_addr v = (mg_addr)f->regs[i];
+            mg_jobj *o = v ? (mg_jobj *)mg_dvm_heap_find(v) : NULL;
+            if (o && (mg_addr)(uintptr_t)o == v)
+                n += (size_t)snprintf(line + n, sizeof(line) - n, " v%u=%.100s", (unsigned)i, mg_dvm_class_of(o)->name);
+            else
+                n += (size_t)snprintf(line + n, sizeof(line) - n, " v%u=0x%llx%s", (unsigned)i, (unsigned long long)v, o ? " (inside an object)" : "");
+        }
+        mg_dvm_heap_unlock();
+        mg_warn("dvm: ... %u registers (%u of them the arguments, last):%s%s", (unsigned)m->regs, (unsigned)m->ins, line, i < m->regs ? " ..." : "");
+    }
+    mg_dvm_throw("java/lang/InternalError", "%s on a %s (v%u at 0x%x of %s.%s, length %d, %s)", mg_dvm_insn_name(w), cls, (unsigned)areg, (unsigned)pc,
+                 m->cls->name, m->name, (int)length, m->jit ? "compiled" : "interpreted");
+}
+
 static void call_trace_enter(mg_dvm_thread *t, mg_dvm_method *m, const char *how, const mg_dvm_reg *argv, u32 argc)
 {
     char strings[400];
@@ -1443,8 +1486,11 @@ static const u16 *payload_at(const mg_dvm_method *m, u32 pc, i32 off, u16 ident)
         a = RL(bc_ & 0xFF);                                                                                                      \
         i = RI(bc_ >> 8);                                                                                                        \
         if (!a) THROW("java/lang/NullPointerException", "Attempt to %s a null array", (w & 0xFF) >= 0x4b ? "write to" : "read from"); \
-        if ((size) ? (a->kind != MG_J_PRIM_ARRAY || a->u.arr.esz != (size)) : a->kind != MG_J_OBJ_ARRAY)                          \
-            THROW("java/lang/InternalError", "%s on a %s", mg_dvm_insn_name(w), mg_dvm_class_of(a)->name);                        \
+        if ((size) ? (a->kind != MG_J_PRIM_ARRAY || a->u.arr.esz != (size)) : a->kind != MG_J_OBJ_ARRAY) {                        \
+            f->pc = pc;                                                                                                          \
+            array_kind_error(f, pc, w, bc_ & 0xFF, a);                                                                           \
+            goto exception;                                                                                                      \
+        }                                                                                                                        \
         if ((u32)i >= (u32)mg_dvm_array_length(a))                                                                               \
             THROW("java/lang/ArrayIndexOutOfBoundsException", "length=%d; index=%d", (int)mg_dvm_array_length(a), (int)i);        \
     }
@@ -1931,7 +1977,7 @@ int mg_dvm_jit_op(mg_dvm_thread *t, mg_dvm_frame *f, u32 pc)
             return 1;
         }
         if (a->kind != MG_J_OBJ_ARRAY) {
-            mg_dvm_throw("java/lang/InternalError", "%s on a %s", mg_dvm_insn_name(w), mg_dvm_class_of(a)->name);
+            array_kind_error(f, pc, w, bc & 0xFF, a);
             return 1;
         }
         if ((u32)i >= (u32)mg_dvm_array_length(a)) {

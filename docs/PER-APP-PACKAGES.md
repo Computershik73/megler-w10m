@@ -138,9 +138,11 @@ developer's packages and refuses one more with 0x80073d11
 so, and a Lumia 650 had 20 developer's packages (the portal's PackageOrigin 5),
 Megler's and its four apps' among them, installed so by 0.1.0.612 to 0.1.0.639.
 The packages are listed by `PackageManager.FindPackagesForUser` (the restricted
-capability `packageQuery`) and uninstalled by `RemovePackageAsync`. Every package
-goes onto the package volume Megler itself is installed on, the phone's memory or
-a memory card, not where Windows saves new apps (below, "A memory card").
+capability `packageQuery`) and uninstalled by `RemovePackageAsync`. Megler's own
+update goes onto the package volume Megler itself is installed on; an app's
+package onto the one volume Megler's apps are kept on, which the user chooses
+once where Windows has more than one -- the phone's memory or a memory card --
+and not where Windows saves new apps (below, "A memory card").
 
 A phone needs its full interop unlock for this, the capability part included:
 `packageManagement` is a restricted capability, and Windows 10 Mobile grants it
@@ -872,11 +874,12 @@ What that did to Megler:
   a path up to the drive's root and make what it could there (an app container
   is refused most of it, which was all that stood in the way).
 
-What Megler does since 2026-11-08:
+What Megler does since 2026-11-08 (where its apps' packages go is another matter
+since 0.1.0.699: "One place for the apps", below):
 
-- Every package it installs -- an app's, Update All's, Google's apps', its own
-  update -- goes onto **the package volume Megler itself is on**
-  (`installVolume`, `shell/AppPackage.cpp`): Windows's package manager lists its
+- Megler knows **the package volume it is itself on** (`packageVolumes`,
+  `shell/AppPackage.cpp`), where its own update goes, and until 0.1.0.699 every
+  package it installed: Windows's package manager lists its
   volumes (`FindPackageVolumes`, else `GetPackageVolumesAsync`), and the one that
   holds Megler's install folder (`Package::Current().InstalledLocation()`) is the
   one whose store path the folder is in, else whose volume name the folder's own
@@ -888,10 +891,11 @@ What Megler does since 2026-11-08:
   volume)` (`addPackage`); where none is found, Windows lists none, or the call
   with a volume is not there or not taken (E_NOINTERFACE, E_NOTIMPL or
   E_INVALIDARG thrown, said once), the call is as before. What Windows answers is
-  taken as before, every set of options in its turn. The log says the volume
-  once, and again when it is another: `app package: packages are installed on
-  Megler's own volume, C:\Data\Programs\WindowsApps (mounted at ...,
-  \\?\Volume{...}, the system's)`.
+  taken as before, every set of options in its turn. The log says the volumes
+  once, and again when they or the choice are other: `app package: Windows's
+  package volumes: C:\Data\Programs\WindowsApps (mounted at ..., \\?\Volume{...},
+  the system's, Megler's own); D:\WindowsApps (...). The apps' packages are kept
+  on ...`.
 - **Paths that are not absolute are refused** by every function of
   `shell/Files.cpp` (ERROR_BAD_PATHNAME, the first said in the log once), and
   `files::removeTree` refuses a drive's or a volume's root: nothing is listed,
@@ -905,16 +909,18 @@ What Megler does since 2026-11-08:
   (`appPackage::singleAppProblem`, `placement::missingFor`) it reads the first
   bytes of its APK and Android's `complete` in its shared folder; where Windows
   gave it no shared folder, or either is not there or cannot be read, its app is
-  not opened, and its screen (`ui/StartScreen.cpp`) says so: the app and Megler
-  are on different storage; keep them on the same, the app (or Megler) moved to
-  the phone's memory in Settings › System › Storage, or the app installed again
+  not opened, and its screen (`ui/StartScreen.cpp`) says so: that may be because
+  the app and Megler are on different storage; keep the app where Megler is, by
+  Megler's Settings (Apps' Storage, which moves the apps), by the phone's
+  Settings › System › Storage (the app moved), or the app installed again
   from Megler's Library (**Open Megler**). The log says which was missing, where
   it was looked for, and each folder with its drive.
-- **Megler on the card says so** once at each start, a dialog, and above the
-  Library (`appPackage::meglerOnCard`, a phone's install folder not on the drive
-  Windows is on, or no shared folder anywhere): its apps may not reach its files,
-  the phone's memory is where it should be, and New apps will save to: This
-  device. Megler still installs its apps beside itself on the card.
+- **Megler with no shared folder says so** once at each start, a dialog, and
+  above the Library (`appPackage::meglerOnCard`): no app can be installed as an
+  app of its own, and where Megler should be then (a phone's memory, where it is
+  on the card). Until 0.1.0.699 Megler on the card said at every start that the
+  phone's memory is where it should be, whether or not it had a shared folder;
+  nothing bore that out (below), and with a shared folder it says nothing now.
 - **The log says where everything is.** At each start, `storage: the install
   folder on C: (\\?\Volume{...}), LocalState on C:, the shared folder on C:
   (...); Windows on C:`; Save All Logs' summary says it as `Folders:`, and the
@@ -940,32 +946,115 @@ What Megler does since 2026-11-08:
   without it before (a file put aside, then the plain rename), and its locks
   count a file system without them as granted.
 
+### One place for the apps (0.1.0.699)
+
+A user's report of 2026-11-14 (0.1.0.696, a phone with a card, no shell log):
+Megler was installed on the card, and Google Play services and Google Play Store
+went to the phone's memory; moved to the card by the phone's Settings, Play Store
+ended as it started, on the card and in the phone's memory alike. The second was
+another fault -- the app's logs came from the shared folder and said it: the file
+layer's mount table was full, 155 apps having run on that phone (fixed apart,
+`mg_libc_io.c`). The first is not explained: the 696 named Megler's own volume
+at every install, and no log of Megler's own (its LocalState) came with the
+report. Whatever it was, a volume found by where Megler happens to be is not
+what the user asked Windows for, and nothing in Megler said or let one say where
+its apps go. Since 0.1.0.699:
+
+- **One volume for all of Megler's apps**, Google Play services and Google Play
+  Store as any other, and none of an app's own (`appPackage::AppsStorage`,
+  `placement::appsPlace`). It is kept by its volume's name in Megler's settings
+  (`megler.appsVolume`, `shell/Settings.h`). Megler's own update is not part of
+  it: it goes where Megler is, and Megler itself is moved by Windows's Settings.
+- **Asked once, before the first install of anything** -- as a rule Google Play
+  services, which Megler installs by itself after its first start -- where
+  Windows lists two or more package volumes that are there and have names, and
+  none is chosen (`separateApps::requirePlace`, the dialog "Where to Keep the
+  Apps": each volume with its free space and "Megler is here", and Not Now). An
+  install by hand, an update and Update All ask the same, and go on once a
+  volume is chosen. Not Now installs nothing; what Megler installs by itself
+  (Google Play) then waits and the Library says why, and the next install by
+  hand asks again. With one volume nothing is asked: there is nothing to choose.
+  The question comes again when the volume chosen is gone for another (a card
+  taken out and another put in); while the chosen card is merely not there and
+  one volume is left, packages go to Megler's own volume, unasked.
+- **Changed in Megler's Settings, Apps' Storage**: the volumes, each with its
+  free space, how many of Megler's apps are on it, and which is chosen. Choosing
+  another is confirmed ("Keep the Apps Here?") and remembered, and every package
+  of Megler's apps that is elsewhere is moved there, one after another, by
+  `PackageManager.MovePackageToVolumeAsync` (which closes the app, and takes its
+  private files along). "Move N Apps Here" is there while some are still
+  elsewhere: Windows refused a move, or an app was moved by the phone's Settings.
+  There is no setting for one app.
+- **An install names the volume**: a new package is added on it
+  (`AddPackageAsync` with the volume). A package that is installed on another
+  volume is updated where it is, as Windows updates a package, and moved after;
+  where Windows will not move it the install is done all the same, and the app's
+  step and the log say where it is and what Windows said. Where the package goes
+  in by the system's installer (`InstallationManager`, the way where Windows
+  refuses Megler the deployment engine) no volume can be named: Windows puts it
+  where it saves new apps, and it is moved after if Megler may.
+- **What is kept there, and what is not.** A package and its private files (its
+  LocalState: the app's own data) are on the volume chosen. The apps' APKs,
+  Android's files, Google's apps' files and the apps' shared storage are in
+  Megler's shared folder (since 0.1.0.645 a package carries no APK), which
+  Windows keeps in the user's own folder -- a phone's memory -- wherever the
+  packages are. So the card takes less off the phone's memory than "everything
+  on the card" suggests: some 11 MB of package for each app and what the app
+  itself writes. The question and Settings say so. Moving the shared folder's
+  content is not something a package can ask of Windows.
+- **The log says it all**: the volumes with store path, mount point and name,
+  which is Megler's own and which the apps are kept on, by whose choice; the
+  question, its answer; for each install where the package was and where it is
+  told to go; each move and what Windows said. A phone with a card that still
+  puts a package elsewhere will say there what it was told and what it did.
+- An Xbox has none of this (the console puts apps where it will), nor has an
+  app's own package.
+
+That the shared folder is one for the user, wherever a package is, is taken
+from this: that user's Google Play Store, on another volume than its Megler,
+found in its shared folder what Megler had put there (its logs, which are
+written there, name the files it opened); and `GetPublisherCacheFolder`'s path
+is made of the user's profile folder and the publisher's id, with no volume in
+it. It is not tried on a phone with a card by us.
+
+*Tried* on a PC (0.1.0.697, a build for this, x64): the flag `test-second-volume`
+(Megler's LocalState\flags) adds a pretend second package volume, `T:\WindowsApps`
+(desktop Windows and a phone alike; it has no volume of Windows's behind it, so a
+move to it is refused with those words and an install on it goes where Windows
+puts it). With it: the question before the first install, with both volumes; Not
+Now, and the next install asking again; a volume chosen, the install going on,
+the package updated where it was and the move asked for; Settings' Apps' Storage
+with the volumes, the count of apps and "Move 6 Apps Here"; the other volume
+chosen there through "Keep the Apps Here?"; and one volume alone without the
+flag. *Not tried*, for want of a phone with a card at this PC: any of it on
+Windows 10 Mobile -- what its volumes are called, whether `AddPackageAsync` puts a
+new package on the card when told, whether `MovePackageToVolumeAsync` is granted
+to Megler there and how long a move of Google Play services takes, and that an
+app on the card with Megler in the phone's memory (and the other way round)
+starts.
+
 *Proven* on a PC (`tools/build-tests.sh win`, `mg_shell_tests`): the volume
-chosen for a PC's, a phone's and a phone-with-a-card's volumes; paths that are not
+chosen for a PC's, a phone's and a phone-with-a-card's volumes; which volume the
+apps are kept on and whether the user is asked (nothing chosen, a volume chosen,
+one volume, the chosen card gone or not there, another card, volumes without
+names, none listed) and what the volumes are called on a phone and a PC; paths that are not
 absolute refused and no drive's root removed; what an app's own package finds
 missing and says; what Megler says of itself on the card; the copies made by
 reading and writing where CopyFile2 is refused, and compared through the cache
 where uncached reads are, each said once (`files::testing`); and
 `tools/log-mirror-test.sh`, a copy's time kept to two seconds. *Not known* until a
-phone with a card is tried: whether Windows 10 Mobile gives a package on the card a
-publisher cache folder at all, and the same one to Megler and its apps there;
-what its package volumes' store paths and mount points are (the log line above
-says them); whether the deployment engine moves an app's package installed on the
-other storage when its update is told Megler's volume, or refuses it (its refusal
-is said on the app's page as any other: uninstall it and install it again);
-whether the card's encryption of an app's files keeps the publisher's other
-packages from reading what one of them put in the shared folder there; and
-whether the deployment engine reads a package that Megler on the card made in its
-LocalState there, which is encrypted for Megler.
+phone with a card is tried: what its package volumes' store paths and mount
+points are (the log line above says them); and whether the deployment engine
+reads a package that Megler on the card made in its LocalState there, which is
+encrypted for Megler.
 
-What a user with a memory card does: keep Megler in the phone's memory (Settings
-› System › Storage: the memory card, Apps & games, Megler, Move), set New apps will
-save to: This device, and open Megler: it says nothing of the card any more. An app
-of Megler's that says it cannot start is moved to the phone's memory the same way,
-or installed again from its page in Megler's Library (Install Again, or Update All
-after an update of Megler). Save All Logs then shows each package's drive (its
-summary's `Megler's packages` and `Folders`), and the log the volume each install
-went to.
+What a user with a memory card does: install Megler where they like, answer the
+question at the first install, and change the answer in Megler's Settings, Apps'
+Storage, which moves the apps. An app of Megler's that says it cannot start is
+moved where Megler is the same way, or installed again from its page in Megler's
+Library (Install Again, or Update All after an update of Megler). Save All Logs
+shows each package's drive (its summary's `Megler's packages` and `Folders`), and
+Megler's log the volumes, the choice, and where each install and move went.
 
 ## What follows (not done yet)
 

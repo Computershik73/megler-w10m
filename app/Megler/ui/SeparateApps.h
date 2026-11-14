@@ -82,4 +82,30 @@ void askList(AppShell& shell, std::function<void()> then);
 /// is asked for again for the next try. UI thread.
 bool requireList(AppShell& shell, std::function<void()> retry = {});
 
+/*
+ * Where the apps' packages are kept: one package volume for all of Megler's apps, Google Play services and Google Play
+ * Store too, and none of an app's own (appPackage::AppsStorage, docs/PER-APP-PACKAGES.md "A memory card"). Where Windows
+ * has more than one -- a phone with a memory card -- and none is chosen, the first install of anything asks ("Where to
+ * Keep the Apps") and goes on once it is answered; the answer is remembered (settings::appsVolume), and Megler's Settings,
+ * Apps' Storage, change it since, which moves every app there.
+ */
+/// Whether an install may begin as far as that goes; else false, and the question is up (or the list that looks at the
+/// volumes still coming): `retry` is called once it is answered with a volume, and dropped when it is put off. UI thread.
+bool requirePlace(AppShell& shell, std::function<void()> retry = {});
+/// Whether the question was put off ("Not Now") and is still to be answered: what Megler installs by itself (Google Play:
+/// ui/GooglePlay.cpp) waits, and an install asked for by hand asks again.
+bool placePutOff();
+struct Storage {
+    bool known = false;               // a list of the apps' packages has come since Megler started, which looks at the volumes
+    appPackage::AppsStorage storage;  // the volumes, and which the apps are kept on
+    std::vector<int> apps;            // how many of Megler's apps' packages are on each
+    int elsewhere = 0;                // ... on another than the one they are kept on
+};
+Storage storage();
+/// The apps are kept on the volume named `volumeName` from now on (Megler's Settings): remembered, and every package of
+/// Megler's apps on another volume moved there, one after another on the worker thread. UI thread.
+void keepAppsOn(AppShell& shell, const std::string& volumeName);
+/// Those still elsewhere (a move Windows refused) moved again. UI thread.
+void moveAllToKept(AppShell& shell);
+
 } // namespace megler::app::ui::separateApps

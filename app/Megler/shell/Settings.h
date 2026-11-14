@@ -67,6 +67,12 @@ constexpr const char* googleServices = "megler.googleServices";
 /// services and Google Play Store, apps running with microG until then; "no", apps run with microG; empty: not asked.
 constexpr const char* googlePlay = "megler.googlePlay";
 
+/// The package volume Megler's apps' packages are kept on, one for them all (shell/AppPackage.h, appsStorage): its volume's
+/// name, "\\?\Volume{...}", as the user chose it before the first install where there is more than one -- a phone with a
+/// memory card, a PC with more than one drive for apps -- or in Megler's Settings since; empty: none chosen, Megler's own
+/// volume, and the question where there is more than one.
+constexpr const char* appsVolume = "megler.appsVolume";
+
 /// Whether Google Play services' own features may use the phone's location in every app's process (player/PermissionHost.h,
 /// gmsLocation): "granted", "denied"; empty: not asked yet. Megler's alone, one answer for every app; asked in whichever
 /// package Google Play services first want it, and changed in Megler's Settings and in any app's App Permissions.

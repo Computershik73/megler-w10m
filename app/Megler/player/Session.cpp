@@ -239,11 +239,13 @@ bool start(const ApkEntry& apk, winrt::Windows::UI::Xaml::Controls::SwapChainPan
     // Google Play Store with Google's own Google Play services always, which it waits for to be installed (AppShell::playStoreCanStart):
     // with microG's its front page had no Android ID ("Server error").
     const bool playStore = apk.report.package == "com.android.vending";
+    // An app that is Java, which has Android's /system (one with a native engine has none).
+    const bool java = apk.report.engine == "java";
     // What the app's own package declares to Windows of the phone's messages and calls, which are watched for it alone
     // (megler_appx_capabilities; -1, a report that names no permissions: both, as before).
     const int capabilities = apk.report.capabilities();
     const bool messages = capabilities < 0 || (capabilities & MEGLER_APPX_CAP_CHAT), calls = capabilities < 0 || (capabilities & MEGLER_APPX_CAP_CALL_HISTORY);
-    std::thread([window, audio, width, height, densityDpi, rotation, playStore, messages, calls] {
+    std::thread([window, audio, width, height, densityDpi, rotation, playStore, java, messages, calls] {
         // The flags a diagnosis over USB asked for, in place before the run reads them (shell/PicturesDiag.h).
         picturesDiag::waitForFlags();
         megler_run_config config = {};
@@ -340,6 +342,27 @@ bool start(const ApkEntry& apk, winrt::Windows::UI::Xaml::Controls::SwapChainPan
         config.media_session = mediaControls::callbacks();
         config.system = systemHost::callbacks();
         config.apps_dir = gAppsDir.empty() ? nullptr : gAppsDir.c_str();
+        // Windows' own fonts for the writing Android's fonts in the root have nothing for (issue #7): what draws its own text
+        // by Android's font list -- a WebView's Chromium -- gets them after Android's own (megler_run_config.host_fonts;
+        // GfxHost::hostFonts finds them, and says what it found). A font Windows does not let the app open is copied once,
+        // for every app, into the shared folder; the flag "test-font-copies" has all of them copied, to try that way.
+        std::vector<GfxHost::HostFont> fontsFound;
+        std::vector<std::string> fontPaths;
+        std::vector<megler_host_font> fontsGiven;
+        if (java) {
+            const std::wstring shared = appPackage::sharedFolder();
+            std::string said;
+            fontsFound = GfxHost::hostFonts(shared.empty() ? platform::localStateDirectory() + L"\\host-fonts" : shared + L"\\fonts",
+                                            files::exists(platform::localStateDirectory() + L"\\flags\\test-font-copies"), &said);
+            shellLog::write("session: " + said);
+            fontPaths.reserve(fontsFound.size());
+            for (const GfxHost::HostFont& font : fontsFound) {
+                fontPaths.push_back(narrow(font.path));
+                fontsGiven.push_back(megler_host_font{fontPaths.back().c_str(), font.index, font.langs.c_str()});
+            }
+            config.host_fonts = fontsGiven.empty() ? nullptr : fontsGiven.data();
+            config.host_font_count = int(fontsGiven.size());
+        }
         config.on_exit = &onExit;
         config.user = nullptr;
         const bool started = megler_run(&config);
