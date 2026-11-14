@@ -50,6 +50,7 @@
 #include "ui/Components.h"
 
 #include <winrt/Windows.Storage.AccessCache.h>
+#include <winrt/Windows.Globalization.h>
 #include <winrt/Windows.UI.Text.Core.h>
 
 #include <cmath>
@@ -300,6 +301,7 @@ public:
                 keyToken_ = Window::Current().CoreWindow().KeyDown([this](auto&&, winrt::Windows::UI::Core::KeyEventArgs const& e) {
                     if (e.VirtualKey() == winrt::Windows::System::VirtualKey::Enter && keyboardWanted_ && editFocused_) {
                         // (Unless the same Enter came as a line feed in the text a moment ago: see editTextUpdating.)
+                        keyboardNote("an Enter key");
                         if (std::chrono::steady_clock::now() - lastNewline_ > std::chrono::milliseconds(150)) session::textKey(MEGLER_TEXT_ENTER);
                         e.Handled(true);
                         return;
@@ -630,6 +632,11 @@ private:
         const auto flags = platform::localStateDirectory() + L"\\flags\\";
         const bool measure = files::exists(flags + L"trace-fps");
         traceFps_ = measure;
+        // The keyboard's flags: the text service's focus left and taken again at every asking, as until 0.1.0.698
+        // (showKeyboard); and what the keyboard does written down whatever its language (keyboardNote).
+        keyboardRefocus_ = files::exists(flags + L"keyboard-refocus");
+        if (keyboardRefocus_) shellLog::write("player: the flag keyboard-refocus: the text service's focus is left and taken again whenever the app asks for the keyboard");
+        if (files::exists(flags + L"trace-keyboard")) openKeyboardTrace("the flag trace-keyboard");
         const int cap = measure && files::exists(flags + L"render-960")
             ? 960 : settings::getInt(settings::renderCap, settings::renderCapDefault);
         const double longer = std::max(pixelWidth, pixelHeight);
@@ -1049,6 +1056,8 @@ private:
                 // The app's own layout keeps the field in view (it is told the height); Windows is not to push the page up.
                 e.EnsuredFocusedElementInView(true);
                 keyboardUp_ = true;
+                if (traceKeyboard_)
+                    keyboardNote(format("the keyboard's pane comes, %.0f DIPs high%s", double(e.OccludedRect().Height), composing_ ? ", during a composition" : ""));
                 if (!keyboardWanted_) {
                     // Nobody asked for it: it goes again, or it would hide the navigation bar with nothing to put it away.
                     shellLog::write("player: the keyboard came up though the app had not asked for it: put away again");
@@ -1062,6 +1071,7 @@ private:
                 e.EnsuredFocusedElementInView(true);
                 keyboardUp_ = false;
                 occludedDips_ = 0;
+                keyboardNote(composing_ ? "the keyboard's pane goes, during a composition" : "the keyboard's pane goes");
                 showNavigationBar(false);
                 session::keyboardHeight(0);
                 // Gone because the app moved from one field to the next: its own "put away" for the field it left, or the
@@ -1110,26 +1120,89 @@ private:
                 request.Text(winrt::hstring(keyboardText_.substr(size_t(start), size_t(end - start))));
             });
             editContext_.SelectionRequested([this](auto&&, CoreTextSelectionRequestedEventArgs const& e) {
-                CoreTextRange caret{};
-                caret.StartCaretPosition = caret.EndCaretPosition = editCaret_;
-                e.Request().Selection(caret);
+                // Both ends, as the keyboard itself last set them (it was the end alone, a caret).
+                CoreTextRange selection{};
+                selection.StartCaretPosition = editAnchor_;
+                selection.EndCaretPosition = editCaret_;
+                e.Request().Selection(selection);
             });
             editContext_.TextUpdating([this](auto&&, CoreTextTextUpdatingEventArgs const& e) { editTextUpdating(e); });
             editContext_.SelectionUpdating([this](auto&&, CoreTextSelectionUpdatingEventArgs const& e) {
-                // (The app's cursor is not moved: typing goes on where the app's own cursor is.)
-                editCaret_ = std::min(std::max(e.Selection().EndCaretPosition, 0), int32_t(keyboardText_.size()));
+                // (The app's cursor is not moved: typing goes on where the app's own cursor is.) Both ends are kept, and
+                // given back when the keyboard asks: a keyboard that composes may select what it is converting.
+                const int32_t size = int32_t(keyboardText_.size());
+                editAnchor_ = std::min(std::max(e.Selection().StartCaretPosition, 0), size);
+                editCaret_ = std::min(std::max(e.Selection().EndCaretPosition, editAnchor_), size);
+                if (traceKeyboard_) keyboardNote(format("the keyboard sets the selection to %d..%d of %d", editAnchor_, editCaret_, size));
                 e.Result(CoreTextSelectionUpdatingResult::Succeeded);
             });
-            editContext_.FormatUpdating([](auto&&, CoreTextFormatUpdatingEventArgs const& e) { e.Result(CoreTextFormatUpdatingResult::Succeeded); });
-            editContext_.LayoutRequested([](auto&&, CoreTextLayoutRequestedEventArgs const& e) {
-                // Where the field is, for the keyboard's own windows (candidates): the app's whole picture will do.
+            editContext_.FormatUpdating([this](auto&&, CoreTextFormatUpdatingEventArgs const& e) {
+                // (How the keyboard would have what it composes shown, underlined: the app's field shows it as typed text.)
+                formatsAsked_++;
+                e.Result(CoreTextFormatUpdatingResult::Succeeded);
+            });
+            editContext_.LayoutRequested([this](auto&&, CoreTextLayoutRequestedEventArgs const& e) {
+                // Where the field and the text being typed are, for the keyboard's own windows (the candidates of a
+                // keyboard that composes): on the screen and in raw pixels, as Microsoft's custom edit control sample gives
+                // them (which warns that candidates do not appear for bounds of no width or height). The shell does not
+                // know the app's field: the control is the app's whole picture, and the text is taken to be where the app
+                // was last touched -- a field is tapped to be typed into -- a line high. (Until 0.1.0.698 it was the
+                // window's top row, one DIP high, in view pixels.)
+                layoutsAsked_++;
                 const winrt::Windows::Foundation::Rect window = Window::Current().CoreWindow().Bounds();
+                float scale = 1;
+                try {
+                    scale = float(winrt::Windows::Graphics::Display::DisplayInformation::GetForCurrentView().RawPixelsPerViewPixel());
+                } catch (const hresult_error&) {
+                }
+                if (!(scale > 0)) scale = 1;
+                const float line = 24;
+                float x = 0, y = 0;
+                if (lastTouchKnown_) {
+                    x = std::min(std::max(lastTouch_.X, 0.0f), std::max(window.Width - 2, 0.0f));
+                    y = std::min(std::max(lastTouch_.Y - line / 2, 0.0f), std::max(window.Height - line, 0.0f));
+                }
                 auto bounds = e.Request().LayoutBounds();
-                bounds.ControlBounds(window);
-                bounds.TextBounds(winrt::Windows::Foundation::Rect{window.X, window.Y, window.Width, 1});
+                bounds.ControlBounds(winrt::Windows::Foundation::Rect{window.X * scale, window.Y * scale, window.Width * scale, window.Height * scale});
+                bounds.TextBounds(winrt::Windows::Foundation::Rect{(window.X + x) * scale, (window.Y + y) * scale, 2 * scale, line * scale});
+            });
+            // A keyboard that composes (Chinese, Japanese, Korean: what is typed stays its own until a candidate is chosen):
+            // when it begins and when it is over. What it composes reaches the app as it is typed and is taken back and
+            // typed again as it changes (keyboardTyped); nothing here ends a composition, and the text is not begun afresh
+            // under one (startKeyboardTextLater).
+            editContext_.CompositionStarted([this](auto&&, CoreTextCompositionStartedEventArgs const&) {
+                composing_ = true;
+                typing_.composed++;
+                layoutsAsked_ = formatsAsked_ = 0;
+                keyboardLanguageLooked();
+                if (traceKeyboard_)
+                    keyboardNote(format("a composition begins: the text is %d long, the selection %d..%d", int(keyboardText_.size()), editAnchor_, editCaret_));
+            });
+            editContext_.CompositionCompleted([this](auto&&, CoreTextCompositionCompletedEventArgs const& e) {
+                composing_ = false;
+                bool canceled = false;
+                uint32_t segments = 0;
+                try {
+                    canceled = e.IsCanceled();
+                    segments = e.CompositionSegments().Size();
+                } catch (const hresult_error&) {
+                }
+                if (canceled) typing_.canceled++;
+                if (traceKeyboard_)
+                    keyboardNote(format("the composition is over%s, in %u segments: the text is %d long, the selection %d..%d; meanwhile the keyboard "
+                                        "asked %d times where the text is and %d times for a format",
+                                        canceled ? " (canceled)" : "", unsigned(segments), int(keyboardText_.size()), editAnchor_, editCaret_, layoutsAsked_,
+                                        formatsAsked_));
+                if (afreshAfterComposing_) {
+                    afreshAfterComposing_ = false;
+                    startKeyboardTextLater();
+                }
             });
             editContext_.FocusRemoved([this](auto&&, auto&&) {
                 editFocused_ = false;
+                keyboardNote(composing_ ? "Windows takes the text service's focus from the field, during a composition"
+                                        : "Windows takes the text service's focus from the field");
+                composing_ = afreshAfterComposing_ = false;
                 if (keyboardWanted_) shellLog::write("player: Windows took the text service's focus away from the app's field");
             });
         } catch (const hresult_error& e) {
@@ -1205,8 +1278,72 @@ private:
         }
     }
 
-    /// The app asked for the keyboard (UI thread). Asked again for the same
-    /// field, it only starts the text afresh.
+    /// One line of the keyboard's trace, "player: composing: ...": what the text service and the keyboard's pane do, in
+    /// numbers only -- positions and lengths, never a character of the text. Written once the trace is open
+    /// (openKeyboardTrace), and no more than 200 lines of it in a run of an app.
+    void keyboardNote(const std::string& what) {
+        if (!traceKeyboard_ || traceKeyboardLines_ > 200) return;
+        if (++traceKeyboardLines_ > 200) {
+            shellLog::write("player: composing: (200 lines of this: no more in this run of the app)");
+            return;
+        }
+        shellLog::write("player: composing: " + what);
+    }
+
+    /// The trace is opened: by a keyboard whose language is composed, by a character of such a script typed, or by the
+    /// flag trace-keyboard. Issue #7 (a Lumia 950: Japanese and Chinese committed as typed, no candidate to choose) could
+    /// not be tried here -- no Windows 10 Mobile and no such keyboard at this PC -- and the log of a phone that has it says
+    /// with this what ended the composition: an asking of the app's, the pane, the focus, a key.
+    void openKeyboardTrace(const char* why) {
+        if (traceKeyboard_) return;
+        traceKeyboard_ = true;
+        shellLog::write(format("player: composing: what the keyboard and the text service do is written from here on, in numbers and never the "
+                               "text (%s)",
+                               why));
+    }
+
+    /// A character of a script that is composed: Hangul, the CJK radicals, symbols, kana and ideographs, the full-width
+    /// forms, and the first half of an ideograph beyond the basic plane.
+    static bool composedScript(wchar_t c) {
+        return (c >= 0x1100 && c <= 0x11FF) || (c >= 0x2E80 && c <= 0x9FFF) || (c >= 0xAC00 && c <= 0xD7AF) || (c >= 0xD840 && c <= 0xD87F) ||
+               (c >= 0xF900 && c <= 0xFAFF) || (c >= 0xFF00 && c <= 0xFFEF);
+    }
+
+    /// The language the keyboard types in, said in the log when it is another than before; Chinese, Japanese or Korean
+    /// opens the keyboard's trace.
+    void keyboardLanguageLooked() {
+        std::wstring tag;
+        try {
+            const auto language = winrt::Windows::UI::Text::Core::CoreTextServicesManager::GetForCurrentView().InputLanguage();
+            if (language) tag = language.LanguageTag().c_str();
+        } catch (const hresult_error&) {
+        }
+        if (tag.empty()) {
+            try {
+                tag = winrt::Windows::Globalization::Language::CurrentInputMethodLanguageTag().c_str();
+            } catch (const hresult_error&) {
+            }
+        }
+        if (tag == keyboardLanguage_) return;
+        keyboardLanguage_ = tag;
+        shellLog::write("player: the keyboard's language is " + (tag.empty() ? std::string("not told") : narrow(tag)));
+        if (tag.size() < 2) return;
+        const auto lower = [](wchar_t c) { return c >= L'A' && c <= L'Z' ? wchar_t(c + (L'a' - L'A')) : c; };
+        const std::wstring two{lower(tag[0]), lower(tag[1])};
+        if (two == L"zh" || two == L"ja" || two == L"ko") openKeyboardTrace("the keyboard's language is one that is composed");
+    }
+
+    /// The app asked for the keyboard (UI thread). What the text service is told depends on what it has:
+    ///  - the field of the last asking once more, as the keyboard left it (MEGLER_KEYBOARD_F_AGAIN, megler.h: a tap on the
+    ///    field being typed into), while the text service has that field: the keyboard is shown, and nothing else.
+    ///    Whatever the keyboard is composing -- a Chinese or Japanese keyboard's candidates -- goes on;
+    ///  - another field of the same kind, or that one with its text or cursor changed, while the text service has the
+    ///    focus: the text afresh, which ends a composition as it should, and the focus kept, so the keyboard does not go
+    ///    and come;
+    ///  - else the focus is taken, and left first where the kind is another: a new scope is the text service's to read
+    ///    at the next focus.
+    /// Until 0.1.0.698 every asking was the last of these, the focus left and taken again, and with it whatever was being
+    /// composed ended (issue #7). The flag keyboard-refocus is that old way, to tell the two apart on a phone.
     void showKeyboard(int kind, int flags, int enter) {
         using winrt::Windows::UI::Text::Core::CoreTextInputScope;
         if (!editContext_ || !running_ || menuShown_) return;
@@ -1222,23 +1359,47 @@ private:
         case MEGLER_KEYBOARD_NUMBER_PASSWORD: scope = CoreTextInputScope::PasswordNumeric; break;
         default: break;
         }
+        keyboardLanguageLooked();
+        const bool held = keyboardWanted_ && editFocused_ && scope == editScope_ && !keyboardRefocus_;
+        if (held && (flags & MEGLER_KEYBOARD_F_AGAIN)) {
+            typing_.again++;
+            keyboardNote(composing_ ? "the app asks for the field it has once more, during a composition: the keyboard is left as it is"
+                                    : "the app asks for the field it has once more: the keyboard is left as it is");
+            try {
+                winrt::Windows::UI::ViewManagement::InputPane::GetForCurrentView().TryShow();
+            } catch (const hresult_error&) {
+            }
+            return;
+        }
         if (!keyboardWanted_)
             shellLog::write(format("player: the app asks for the keyboard (kind %d, flags 0x%X, Enter %d)", kind, unsigned(flags), enter));
         typingTold();
         typing_.kind = kind;
         keyboardWanted_ = true;
         try {
-            // A new scope is the text service's to read at the next focus: so the focus is left and taken again (which may
-            // send the keyboard away for a moment: not the user's doing, the pane's hiding handler knows by ownHide_).
-            if (editFocused_) {
-                ownHide_ = std::chrono::steady_clock::now();
-                editContext_.NotifyFocusLeave();
+            if (held) {
+                if (traceKeyboard_)
+                    keyboardNote(format("the app asks for a field of the same kind (%d, flags 0x%X)%s: its text afresh, the focus kept", kind,
+                                        unsigned(flags), composing_ ? ", during a composition" : ""));
+                startKeyboardText();
+            } else {
+                if (traceKeyboard_)
+                    keyboardNote(format("the app asks for a field (kind %d, flags 0x%X)%s: the text service's focus is %s", kind, unsigned(flags),
+                                        composing_ ? ", during a composition" : "", editFocused_ ? "left and taken again" : "taken"));
+                composing_ = afreshAfterComposing_ = false;
+                // A new scope is the text service's to read at the next focus: so the focus is left and taken again (which
+                // may send the keyboard away for a moment: not the user's doing, the pane's hiding handler knows by ownHide_).
+                if (editFocused_) {
+                    ownHide_ = std::chrono::steady_clock::now();
+                    editContext_.NotifyFocusLeave();
+                }
+                editFocused_ = false;
+                editContext_.InputScope(scope);
+                editScope_ = scope;
+                startKeyboardText();
+                editContext_.NotifyFocusEnter();
+                editFocused_ = true;
             }
-            editFocused_ = false;
-            editContext_.InputScope(scope);
-            startKeyboardText();
-            editContext_.NotifyFocusEnter();
-            editFocused_ = true;
         } catch (const hresult_error& e) {
             shellLog::write("player: the text service would not take the app's field: " + narrow(e.message()));
         }
@@ -1251,6 +1412,7 @@ private:
     /// The app no longer wants it, or (`byUser`) Back was pressed while it was up.
     void putKeyboardAway(bool byUser) {
         if (!keyboardWanted_ && !keyboardUp_) return;
+        keyboardNote(byUser ? "Back, or the menu, puts the keyboard away" : "the app sends the keyboard away");
         typingTold();
         keyboardWanted_ = false;
         // (The app's own: if it asks again at once, for the next field, the going Windows tells of afterwards is this one.)
@@ -1265,6 +1427,7 @@ private:
 
     /// The app's field gives up the text service's focus, and with it the keyboard.
     void dropKeyboardFocus() {
+        composing_ = afreshAfterComposing_ = false;
         if (!editContext_ || !editFocused_) return;
         editFocused_ = false;
         try {
@@ -1277,7 +1440,8 @@ private:
     void startKeyboardText() {
         const int32_t before = int32_t(keyboardText_.size());
         keyboardText_ = keyboardStart;
-        editCaret_ = int32_t(keyboardText_.size());
+        editAnchor_ = editCaret_ = int32_t(keyboardText_.size());
+        afreshAfterComposing_ = false;
         if (!editContext_ || !editFocused_) return;
         try {
             winrt::Windows::UI::Text::Core::CoreTextRange all{}, caret{};
@@ -1301,22 +1465,52 @@ private:
         for (wchar_t c : inserted) enter = enter || c == L'\r' || c == L'\n';
         if (enter) inserted.erase(std::remove_if(inserted.begin(), inserted.end(), [](wchar_t c) { return c == L'\r' || c == L'\n'; }), inserted.end());
         const std::wstring now = keyboardText_.substr(0, size_t(start)) + inserted + keyboardText_.substr(size_t(end));
-        editCaret_ = std::min(std::max(e.NewSelection().EndCaretPosition, 0), int32_t(now.size()));
+        // The selection as the keyboard leaves it, both ends.
+        const winrt::Windows::UI::Text::Core::CoreTextRange selection = e.NewSelection();
+        editAnchor_ = std::min(std::max(selection.StartCaretPosition, 0), int32_t(now.size()));
+        editCaret_ = std::min(std::max(selection.EndCaretPosition, editAnchor_), int32_t(now.size()));
         e.Result(winrt::Windows::UI::Text::Core::CoreTextTextUpdatingResult::Succeeded);
+        if (!traceKeyboard_) {
+            for (wchar_t c : inserted) {
+                if (!composedScript(c)) continue;
+                openKeyboardTrace("a character of a script that is composed was typed");
+                break;
+            }
+        }
         const bool afresh = keyboardTyped(now);
+        if (traceKeyboard_)
+            keyboardNote(format("%d..%d of the text's %d replaced by %d%s, the selection then %d..%d%s: the app gets %d Backspaces and %d characters%s",
+                                start, end, size, int(inserted.size()), enter ? " and a line feed" : "", editAnchor_, editCaret_,
+                                composing_ ? ", composing" : "", toldGone_, toldAdded_, afresh ? "; the text is to begin afresh" : ""));
         if (enter) {
             session::textKey(MEGLER_TEXT_ENTER);
             lastNewline_ = std::chrono::steady_clock::now();
         }
-        // (The text service may not be told of a change while it is telling of one: the text is started afresh after.)
+        // Not under what the keyboard is composing, which a change of the text told to the text service ends: once that
+        // is over (CompositionCompleted).
         if (afresh) {
-            std::weak_ptr<Page> alive = weak_from_this();
-            try {
-                Window::Current().Dispatcher().RunAsync(winrt::Windows::UI::Core::CoreDispatcherPriority::Normal, [this, alive] {
-                    if (!alive.expired() && keyboardWanted_) startKeyboardText();
-                });
-            } catch (const hresult_error&) {
-            }
+            if (composing_)
+                afreshAfterComposing_ = true;
+            else
+                startKeyboardTextLater();
+        }
+    }
+
+    /// startKeyboardText once the text service's event that is being answered is over (it may not be told of a change
+    /// while it is telling of one); and should a composition have begun by then, once that is over.
+    void startKeyboardTextLater() {
+        std::weak_ptr<Page> alive = weak_from_this();
+        try {
+            Window::Current().Dispatcher().RunAsync(winrt::Windows::UI::Core::CoreDispatcherPriority::Normal, [this, alive] {
+                if (alive.expired() || !keyboardWanted_) return;
+                if (composing_) {
+                    afreshAfterComposing_ = true;
+                    return;
+                }
+                keyboardNote("the text is begun afresh for the keyboard (it had grown long, or was deleted into its beginning)");
+                startKeyboardText();
+            });
+        } catch (const hresult_error&) {
         }
     }
 
@@ -1325,6 +1519,7 @@ private:
     /// the fixed beginning; with only that left the app is told all the same.
     void keyboardBackspace() {
         session::textKey(MEGLER_TEXT_BACKSPACE);
+        keyboardNote(composing_ ? "a Backspace key, during a composition" : "a Backspace key");
         typing_.byKey++;
         typing_.lastByKey = std::chrono::steady_clock::now();
         if (typing_.lastByKey - typing_.lastByText < std::chrono::milliseconds(200)) typing_.close++;
@@ -1338,7 +1533,7 @@ private:
         if (from > 0 && IS_LOW_SURROGATE(keyboardText_[size_t(from)]) && IS_HIGH_SURROGATE(keyboardText_[size_t(from - 1)])) --from;
         const int32_t to = editCaret_;
         keyboardText_.erase(size_t(from), size_t(to - from));
-        editCaret_ = from;
+        editAnchor_ = editCaret_ = from;
         try {
             winrt::Windows::UI::Text::Core::CoreTextRange gone{}, caret{};
             gone.StartCaretPosition = from;
@@ -1358,14 +1553,17 @@ private:
         typing_ = Typing{};
         if (!t.typed && !t.byText && !t.byKey) return;
         shellLog::write(format("player: in that field (kind %d) the keyboard typed %d characters and took back %d by Backspace keys and %d "
-                               "by changes to its text%s",
+                               "by changes to its text%s%s%s",
                                t.kind, t.typed, t.byKey, t.byText,
-                               t.close ? format(", %d times a key and a change within 0.2 s of each other", t.close).c_str() : ""));
+                               t.close ? format(", %d times a key and a change within 0.2 s of each other", t.close).c_str() : "",
+                               t.composed ? format("; it composed %d times (%d canceled)", t.composed, t.canceled).c_str() : "",
+                               t.again ? format("; the app asked for the field once more %d times", t.again).c_str() : ""));
     }
 
     /// The text as the keyboard has made it: the difference told to the app.
     /// True when the text should be started afresh.
     bool keyboardTyped(const std::wstring& now) {
+        toldGone_ = toldAdded_ = 0;
         if (now == keyboardText_) return false;
         if (!keyboardWanted_) {
             keyboardText_ = now;
@@ -1382,6 +1580,8 @@ private:
         for (int i = 0; i < gone; ++i) session::textKey(MEGLER_TEXT_BACKSPACE);
         const std::wstring added = now.substr(common);
         if (!added.empty()) session::textCommit(narrow(added));
+        toldGone_ = gone;
+        toldAdded_ = int(added.size());
         typing_.typed += int(added.size());
         if (gone > 0) {
             typing_.byText += gone;
@@ -1421,6 +1621,13 @@ private:
             const Point position = point.Position();
             noteCornerTap(position);
             if (!running_ || menuShown_) return;
+            // (Where the app was last touched, in the window: where the text being typed is taken to be when the keyboard
+            // asks -- the edit context's LayoutRequested.)
+            try {
+                lastTouch_ = e.GetCurrentPoint(nullptr).Position();
+                lastTouchKnown_ = true;
+            } catch (const hresult_error&) {
+            }
             const uint32_t pointer = point.PointerId();
             if (touches_.count(pointer)) return;
             // The lowest pointer id no finger is using: the first finger is 0,
@@ -1552,8 +1759,21 @@ private:
 
     winrt::Windows::UI::Text::Core::CoreTextEditContext editContext_{nullptr};
     std::wstring keyboardText_;   // what the edit context holds, as the app was last told it
-    int32_t editCaret_ = 0;       // the text service's caret in it
+    int32_t editCaret_ = 0;       // the text service's caret in it: the end of its selection
+    int32_t editAnchor_ = 0;      // ... and the selection's start (the same, as a rule)
     bool editFocused_ = false;    // the edit context has the text service's focus
+    // The scope it took the focus with: an asking for a field of that scope keeps the focus (showKeyboard).
+    winrt::Windows::UI::Text::Core::CoreTextInputScope editScope_ = winrt::Windows::UI::Text::Core::CoreTextInputScope::Default;
+    bool composing_ = false;            // the keyboard is composing: between CompositionStarted and CompositionCompleted
+    bool afreshAfterComposing_ = false; // the text is to begin afresh once that is over
+    bool keyboardRefocus_ = false;      // the flag keyboard-refocus: the focus left and taken again at every asking
+    bool traceKeyboard_ = false;        // the keyboard's trace is open (openKeyboardTrace)
+    int traceKeyboardLines_ = 0;        // ... and how many lines of it this run has
+    std::wstring keyboardLanguage_;     // the keyboard's language as the log last said it
+    int layoutsAsked_ = 0, formatsAsked_ = 0; // LayoutRequested and FormatUpdating since the composition began
+    int toldGone_ = 0, toldAdded_ = 0;  // what keyboardTyped last told the app: Backspaces, and characters
+    Point lastTouch_{};                 // where the app was last touched, in the window's DIPs
+    bool lastTouchKnown_ = false;
     std::chrono::steady_clock::time_point lastNewline_{}; // the last Enter that came as a line feed in the text
     bool keyboardAttached_ = false;
     bool keyboardWanted_ = false; // the app asked for the keyboard and has not been told it is gone
@@ -1570,6 +1790,9 @@ private:
         int byText = 0;           // characters taken back by a change to the text
         int byKey = 0;            // Backspace keys
         int close = 0;            // a Backspace key and a change that took a character back, within 0.2 s of each other
+        int composed = 0;         // compositions begun (a keyboard that composes: Chinese, Japanese, Korean)
+        int canceled = 0;         // ... of which canceled
+        int again = 0;            // askings for this same field, untouched (MEGLER_KEYBOARD_F_AGAIN)
         std::chrono::steady_clock::time_point lastByText{}, lastByKey{};
     } typing_;
     bool navigationBarShown_ = false; // out of full-screen mode while the keyboard is up

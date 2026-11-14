@@ -3775,6 +3775,56 @@ password field ... holds what the keyboard typed (N characters)`, or holds a
 different number and not what was typed. The demos test types "pw", a
 Backspace and "w" into its password field and checks the first.
 
+**The shell's text service, and a keyboard that composes (0.1.0.698, issue
+#7).** The shell (`app/Megler/ui/PlayerScreen.cpp`) is a text field to
+Windows: a `CoreTextEditContext` whose text is what the keyboard typed since
+the field was asked for, after a fixed beginning. The contract carries no
+composing text: what a Chinese, Japanese or Korean keyboard composes reaches
+the app as it is typed, and is taken back by Backspaces and typed again as
+the keyboard changes it, a candidate chosen at last the same way. That needs
+the composition to live until the user ends it, and until 0.1.0.698 the shell
+ended it at every `show`: the text service's focus was left and taken again,
+whatever was asked. Now:
+
+- `show` with `MEGLER_KEYBOARD_F_AGAIN`, while the text service has the
+  field: the keyboard is shown and nothing else.
+- `show` for a field of the same scope while the text service has the focus
+  (another field, or the same with its text or cursor changed): the text is
+  begun afresh (`NotifyTextChanged`), the focus kept, so the keyboard no
+  longer goes and comes between two fields of a kind.
+- Otherwise as before: the focus left, the scope set, the focus taken.
+- The text is not begun afresh (grown past 200 characters, or deleted into
+  its beginning) under a composition, but when it is over.
+- `LayoutRequested` answers as Microsoft's custom edit control sample does:
+  screen coordinates in raw pixels, the control the app's picture, the text a
+  line high where the app was last touched (it was the window's top row, one
+  DIP high, unscaled). `SelectionRequested` gives both ends of the selection
+  as the keyboard set them.
+
+None of it could be tried where the fault is: there is no Windows 10 Mobile
+and no keyboard that composes at this PC, and which of these ended the
+reporter's compositions, if any, is not known. So the log says it. Each field's
+counts end with `it composed N times (K canceled)` and `the app asked for the
+field once more M times`; `player: the keyboard's language is ja` is said when
+it changes; and a trace, `player: composing: ...`, at most 200 lines a run and
+in numbers only (positions and lengths, never a character), is opened by a
+keyboard language of zh, ja or ko, by a character of such a script typed, or
+by the flag `trace-keyboard`. It tells every change of the text with what the
+app got for it, the selection, where a composition begins and ends (and
+whether canceled), every asking of the app's and what the shell did for it,
+the pane coming and going with its height, the focus taken by Windows, the
+Backspace and Enter keys, and the text begun afresh. The flag
+`keyboard-refocus` is the old way, the focus left and taken again at every
+asking, to tell the two apart on a phone.
+
+What was tried is the plain typing, at a PC with the x64 package and its
+hardware keyboard, in the WebView test app's field: the letters arrive through
+the text service, Backspace takes them back, and a second tap in the field is
+answered `the app asks for a field of the same kind ...: its text afresh, the
+focus kept`, the typing going on after it. (The arrow keys of a hardware
+keyboard do not reach an app, now as before: the shell's key handler knows
+Enter, Backspace and Escape.)
+
 **What the keyboard does to a window is Android's.** The window's
 `softInputMode` decides (`adjustMode` in the overlay's `megler/ViewRoot.java`):
 
