@@ -45,7 +45,7 @@ inline bool isSingleApp() { return !single().package.empty(); }
 const std::string& singleAppProblem();
 /// Megler itself (not an app's own package) with no shared folder from Windows: what it says once at its start and above
 /// the Library (placement::meglerOnCardText), and where it should be then; empty with a shared folder, wherever Megler is
-/// (on a memory card too: since 0.1.0.698 that alone is nothing to say). Looked at at the first call, which says in the
+/// (on a memory card too: since 0.1.0.699 that alone is nothing to say). Looked at at the first call, which says in the
 /// log where Megler is.
 const std::string& meglerOnCard();
 

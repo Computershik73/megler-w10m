@@ -632,7 +632,7 @@ private:
         const auto flags = platform::localStateDirectory() + L"\\flags\\";
         const bool measure = files::exists(flags + L"trace-fps");
         traceFps_ = measure;
-        // The keyboard's flags: the text service's focus left and taken again at every asking, as until 0.1.0.698
+        // The keyboard's flags: the text service's focus left and taken again at every asking, as until 0.1.0.699
         // (showKeyboard); and what the keyboard does written down whatever its language (keyboardNote).
         keyboardRefocus_ = files::exists(flags + L"keyboard-refocus");
         if (keyboardRefocus_) shellLog::write("player: the flag keyboard-refocus: the text service's focus is left and taken again whenever the app asks for the keyboard");
@@ -1146,7 +1146,7 @@ private:
                 // keyboard that composes): on the screen and in raw pixels, as Microsoft's custom edit control sample gives
                 // them (which warns that candidates do not appear for bounds of no width or height). The shell does not
                 // know the app's field: the control is the app's whole picture, and the text is taken to be where the app
-                // was last touched -- a field is tapped to be typed into -- a line high. (Until 0.1.0.698 it was the
+                // was last touched -- a field is tapped to be typed into -- a line high. (Until 0.1.0.699 it was the
                 // window's top row, one DIP high, in view pixels.)
                 layoutsAsked_++;
                 const winrt::Windows::Foundation::Rect window = Window::Current().CoreWindow().Bounds();
@@ -1342,7 +1342,7 @@ private:
     ///    and come;
     ///  - else the focus is taken, and left first where the kind is another: a new scope is the text service's to read
     ///    at the next focus.
-    /// Until 0.1.0.698 every asking was the last of these, the focus left and taken again, and with it whatever was being
+    /// Until 0.1.0.699 every asking was the last of these, the focus left and taken again, and with it whatever was being
     /// composed ended (issue #7). The flag keyboard-refocus is that old way, to tell the two apart on a phone.
     void showKeyboard(int kind, int flags, int enter) {
         using winrt::Windows::UI::Text::Core::CoreTextInputScope;

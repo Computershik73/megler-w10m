@@ -521,7 +521,7 @@ void AppShell::poll() {
         }
         // Megler given no shared folder says so once a run: none of its apps can be installed as an app of its own, and where
         // Megler should be then (shell/Placement.h). On a memory card with a shared folder it has nothing to say (since
-        // 0.1.0.698: Windows keeps one shared folder for a publisher's packages wherever they are). The Library says it above
+        // 0.1.0.699: Windows keeps one shared folder for a publisher's packages wherever they are). The Library says it above
         // its list as well (ui/Components.cpp).
         if (!appPackage::isSingleApp() && !placementSaid_) {
             placementSaid_ = true;

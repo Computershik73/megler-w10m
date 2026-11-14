@@ -84,7 +84,7 @@ std::string missingText(Missing missing, const std::string& label, const std::ws
 /// What Megler says once at its start, and above its Library, where Windows gave it no shared folder (`noSharedFolder`): no
 /// app can be installed as an app of its own, and where Megler should be then -- a phone's memory where it is on the memory
 /// card (`onCard`: not on the drive Windows is on; a phone's only, `mobile`). Empty with a shared folder, wherever Megler
-/// is: until 0.1.0.698 Megler on the card said that the phone's memory is where it should be, which nothing bore out.
+/// is: until 0.1.0.699 Megler on the card said that the phone's memory is where it should be, which nothing bore out.
 std::string meglerOnCardText(bool onCard, bool noSharedFolder, bool mobile);
 
 } // namespace megler::app::placement

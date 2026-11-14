@@ -875,10 +875,10 @@ What that did to Megler:
   is refused most of it, which was all that stood in the way).
 
 What Megler does since 2026-11-08 (where its apps' packages go is another matter
-since 0.1.0.698: "One place for the apps", below):
+since 0.1.0.699: "One place for the apps", below):
 
 - Megler knows **the package volume it is itself on** (`packageVolumes`,
-  `shell/AppPackage.cpp`), where its own update goes, and until 0.1.0.698 every
+  `shell/AppPackage.cpp`), where its own update goes, and until 0.1.0.699 every
   package it installed: Windows's package manager lists its
   volumes (`FindPackageVolumes`, else `GetPackageVolumesAsync`), and the one that
   holds Megler's install folder (`Package::Current().InstalledLocation()`) is the
@@ -918,7 +918,7 @@ since 0.1.0.698: "One place for the apps", below):
 - **Megler with no shared folder says so** once at each start, a dialog, and
   above the Library (`appPackage::meglerOnCard`): no app can be installed as an
   app of its own, and where Megler should be then (a phone's memory, where it is
-  on the card). Until 0.1.0.698 Megler on the card said at every start that the
+  on the card). Until 0.1.0.699 Megler on the card said at every start that the
   phone's memory is where it should be, whether or not it had a shared folder;
   nothing bore that out (below), and with a shared folder it says nothing now.
 - **The log says where everything is.** At each start, `storage: the install
@@ -946,7 +946,7 @@ since 0.1.0.698: "One place for the apps", below):
   without it before (a file put aside, then the plain rename), and its locks
   count a file system without them as granted.
 
-### One place for the apps (0.1.0.698)
+### One place for the apps (0.1.0.699)
 
 A user's report of 2026-11-14 (0.1.0.696, a phone with a card, no shell log):
 Megler was installed on the card, and Google Play services and Google Play Store
@@ -958,7 +958,7 @@ layer's mount table was full, 155 apps having run on that phone (fixed apart,
 at every install, and no log of Megler's own (its LocalState) came with the
 report. Whatever it was, a volume found by where Megler happens to be is not
 what the user asked Windows for, and nothing in Megler said or let one say where
-its apps go. Since 0.1.0.698:
+its apps go. Since 0.1.0.699:
 
 - **One volume for all of Megler's apps**, Google Play services and Google Play
   Store as any other, and none of an app's own (`appPackage::AppsStorage`,

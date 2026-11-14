@@ -3672,7 +3672,7 @@ focused view's `InputConnection`).
   called on the app's main thread**, from inside the framework, and must
   return at once. `show` comes again for the same field -- the field that
   has the focus touched (at the touch and at its click), an app's own
-  `showSoftInput` -- and since 0.1.0.698 it says so: when the keyboard is up
+  `showSoftInput` -- and since 0.1.0.699 it says so: when the keyboard is up
   for that very input connection and kind, and the field's selection and
   length are as the keyboard left them, it is
   `megler.Native.showKeyboardAgain` and the shell hears
@@ -3775,14 +3775,14 @@ password field ... holds what the keyboard typed (N characters)`, or holds a
 different number and not what was typed. The demos test types "pw", a
 Backspace and "w" into its password field and checks the first.
 
-**The shell's text service, and a keyboard that composes (0.1.0.698, issue
+**The shell's text service, and a keyboard that composes (0.1.0.699, issue
 #7).** The shell (`app/Megler/ui/PlayerScreen.cpp`) is a text field to
 Windows: a `CoreTextEditContext` whose text is what the keyboard typed since
 the field was asked for, after a fixed beginning. The contract carries no
 composing text: what a Chinese, Japanese or Korean keyboard composes reaches
 the app as it is typed, and is taken back by Backspaces and typed again as
 the keyboard changes it, a candidate chosen at last the same way. That needs
-the composition to live until the user ends it, and until 0.1.0.698 the shell
+the composition to live until the user ends it, and until 0.1.0.699 the shell
 ended it at every `show`: the text service's focus was left and taken again,
 whatever was asked. Now:
 
@@ -5250,7 +5250,7 @@ font; the host's fonts, next, came after). Twice a fresh start's first
 connection, to an address that took one a moment later, failed with
 ENETUNREACH, and the page with it; not explained.
 
-**Its fonts for the writing the root has none for are the host's (0.1.0.698,
+**Its fonts for the writing the root has none for are the host's (0.1.0.699,
 issue #7).** A view's text is drawn by the shell, whose DirectWrite falls back
 on Windows' fonts by itself. Chromium draws its own, through Skia, which reads
 Android's font list, `/system/etc/fonts.xml`, and the files it names in

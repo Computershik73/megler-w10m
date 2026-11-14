@@ -2123,7 +2123,7 @@ typedef struct megler_run_config {
      */
     const char *apps_dir;
     /*
-     * The host's own fonts for the writing the Android root has none for (0.1.0.698, issue #7). A Java app's views are
+     * The host's own fonts for the writing the Android root has none for (0.1.0.699, issue #7). A Java app's views are
      * drawn by megler_gfx_host, whose text falls back on the host's fonts by itself; but what draws its own text reads
      * Android's font list, /system/etc/fonts.xml, and the files it names in /system/fonts -- a WebView's Chromium and
      * Flutter, through Skia -- and the root has Roboto and a few more, nothing for Chinese, Japanese, Korean, Arabic,
