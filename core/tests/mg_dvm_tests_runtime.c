@@ -378,6 +378,22 @@ static void test_limits(void)
     A[0].i = 100000;
     CHECK_INT(call("t/Arith", "sumTo", "(I)I").i, (i32)(u32)(100000ull * 100001ull / 2));
     CHECK_STR(thrown(), "");
+
+    /* An array read or written as another kind than it is, which verified code never does (array_kind_error): the error
+       says the register, the place and the array's length, and the thread goes on. */
+    {
+        static const char read[] = "java.lang.InternalError: aget on a [Ljava/lang/Object; (v2 at 0x1 of t/Misc.wrongRead, length 3, ";
+        static const char store[] = "java.lang.InternalError: aput-object on a [I (v2 at 0x1 of t/Misc.wrongStore, length 5, ";
+        A[0].l = mg_dvm_new_array("[Ljava/lang/Object;", 3);
+        call("t/Misc", "wrongRead", "(Ljava/lang/Object;)I");
+        CHECK(!strncmp(thrown(), read, sizeof(read) - 1));
+        A[0].l = mg_dvm_new_array("[I", 5);
+        call("t/Misc", "wrongStore", "(Ljava/lang/Object;)V");
+        CHECK(!strncmp(thrown(), store, sizeof(store) - 1));
+        A[0].l = mg_dvm_new_array("[I", 5);
+        CHECK_INT(call("t/Misc", "wrongRead", "(Ljava/lang/Object;)I").i, 0);
+        CHECK_STR(thrown(), "");
+    }
 }
 
 /* ------------------------------------------------------------- what is refused */

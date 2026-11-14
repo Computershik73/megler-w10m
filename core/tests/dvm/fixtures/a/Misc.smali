@@ -68,6 +68,22 @@
     goto :loop
 .end method
 
+# What Android's verifier would refuse, and no register of verified code can hold: an int read from whatever array is
+# given, and an object stored into it. (The runtime's error for it says where.)
+.method public static wrongRead(Ljava/lang/Object;)I
+    .registers 3
+    const/4 v0, 0x0
+    aget v0, p0, v0
+    return v0
+.end method
+
+.method public static wrongStore(Ljava/lang/Object;)V
+    .registers 3
+    const/4 v0, 0x0
+    aput-object p0, p0, v0
+    return-void
+.end method
+
 # Catches everything and goes round again: only the step limit ends it, and nothing may catch that.
 .method public static stubborn()V
     .registers 2
