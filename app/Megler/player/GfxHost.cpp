@@ -7410,6 +7410,181 @@ bool start() {
     return ok;
 }
 
+// MARK: Windows' fonts for Android's font list
+
+/// A writing (or a use) Android's own fonts in the root have nothing for, and Windows' fonts for it (GfxHost::hostFonts).
+struct FontSlot {
+    const char* langs;           // as a family's `lang` in Android's fonts.xml
+    UINT32 samples[3];           // characters a font for it has, every one (0 ends them)
+    const wchar_t* families[6];  // Windows' families for it: the first that is there and has them (NULL ends them)
+};
+
+/// In the order the families follow Android's own in the list, which is the order a character with no language to go by
+/// is looked for in: the small alphabets, then signs and emoji, then Chinese, Japanese and Korean as Android has them
+/// (Simplified, Traditional, Japanese, Korean: what a Han character is drawn with when nothing says its language). The
+/// phone's names follow the PC's (Windows Phone 8.1 had DengXian, Microsoft MHei, Yu Gothic and Microsoft NeoGothic).
+const FontSlot fontSlots[] = {
+    {"und-Arab", {0x0627, 0x0644}, {L"Segoe UI"}},
+    {"und-Hebr", {0x05D0}, {L"Segoe UI"}},
+    {"und-Armn", {0x0531}, {L"Segoe UI"}},
+    {"und-Geor", {0x10D0}, {L"Segoe UI"}},
+    {"und-Thai", {0x0E01}, {L"Leelawadee UI"}},
+    {"und-Laoo", {0x0E81}, {L"Leelawadee UI"}},
+    {"und-Khmr", {0x1780}, {L"Leelawadee UI"}},
+    {"und-Deva", {0x0905}, {L"Nirmala UI"}},
+    {"und-Beng", {0x0985}, {L"Nirmala UI"}},
+    {"und-Guru", {0x0A05}, {L"Nirmala UI"}},
+    {"und-Gujr", {0x0A85}, {L"Nirmala UI"}},
+    {"und-Orya", {0x0B05}, {L"Nirmala UI"}},
+    {"und-Taml", {0x0B85}, {L"Nirmala UI"}},
+    {"und-Telu", {0x0C05}, {L"Nirmala UI"}},
+    {"und-Knda", {0x0C85}, {L"Nirmala UI"}},
+    {"und-Mlym", {0x0D05}, {L"Nirmala UI"}},
+    {"und-Sinh", {0x0D85}, {L"Nirmala UI"}},
+    {"und-Ethi", {0x1200}, {L"Ebrima"}},
+    {"und-Mymr", {0x1000}, {L"Myanmar Text"}},
+    {"und-Tibt", {0x0F40}, {L"Microsoft Himalaya"}},
+    {"und-Mong", {0x1820}, {L"Mongolian Baiti"}},
+    {"und-Cher", {0x13A0}, {L"Gadugi"}},
+    {"und-Cans", {0x1401}, {L"Gadugi"}},
+    {"und-Zsym", {0x2600, 0x2713}, {L"Segoe UI Symbol"}},
+    {"und-Zsye", {0x1F600}, {L"Segoe UI Emoji"}},
+    {"zh-Hans", {0x8FD9, 0x4E2D}, {L"Microsoft YaHei UI", L"Microsoft YaHei", L"DengXian", L"SimSun"}},
+    {"zh-Hant zh-Bopo", {0x9019, 0x3105}, {L"Microsoft JhengHei UI", L"Microsoft JhengHei", L"Microsoft MHei", L"MingLiU"}},
+    {"ja", {0x3042, 0x30A2, 0x65E5}, {L"Yu Gothic UI", L"Yu Gothic", L"Meiryo UI", L"Meiryo", L"MS UI Gothic"}},
+    {"ko", {0xD55C, 0x3131}, {L"Malgun Gothic", L"Microsoft NeoGothic"}},
+};
+
+/// A font of the system's collection: its file and the face's number in it.
+struct SystemFont {
+    std::wstring path;  // empty: the collection's loader is not the one of local files, so only its bytes are to be had
+    std::wstring family;
+    UINT32 index = 0;
+    Ref<IDWriteFontFile> file;
+};
+
+std::string fontUtf8(const std::wstring& text) {
+    const int n = text.empty() ? 0 : WideCharToMultiByte(CP_UTF8, 0, text.data(), int(text.size()), nullptr, 0, nullptr, nullptr);
+    std::string out(size_t(n > 0 ? n : 0), '\0');
+    if (n > 0) WideCharToMultiByte(CP_UTF8, 0, text.data(), int(text.size()), &out[0], n, nullptr, nullptr);
+    return out;
+}
+
+/// The regular face of a family of the collection.
+Ref<IDWriteFont> regularFont(IDWriteFontCollection* fonts, UINT32 familyIndex) {
+    Ref<IDWriteFontFamily> family;
+    Ref<IDWriteFont> font;
+    if (FAILED(fonts->GetFontFamily(familyIndex, family.put())) ||
+        FAILED(family->GetFirstMatchingFont(DWRITE_FONT_WEIGHT_NORMAL, DWRITE_FONT_STRETCH_NORMAL, DWRITE_FONT_STYLE_NORMAL, font.put())))
+        font.reset();
+    return font;
+}
+
+std::wstring familyNameOf(IDWriteFontCollection* fonts, UINT32 familyIndex) {
+    Ref<IDWriteFontFamily> family;
+    Ref<IDWriteLocalizedStrings> names;
+    UINT32 at = 0;
+    BOOL exists = FALSE;
+    wchar_t name[128] = L"";
+    if (FAILED(fonts->GetFontFamily(familyIndex, family.put())) || FAILED(family->GetFamilyNames(names.put()))) return L"a font";
+    if (FAILED(names->FindLocaleName(L"en-us", &at, &exists)) || !exists) at = 0;
+    return SUCCEEDED(names->GetString(at, name, 128)) && name[0] ? std::wstring(name) : std::wstring(L"a font");
+}
+
+bool fontHasAll(IDWriteFont* font, const UINT32* samples) {
+    for (int i = 0; i < 3 && samples[i]; i++) {
+        BOOL has = FALSE;
+        if (FAILED(font->HasCharacter(samples[i], &has)) || !has) return false;
+    }
+    return true;
+}
+
+/// Where a font is: its one file (a font in several is none for Android's list) and which face of it.
+bool fontFileOf(IDWriteFont* font, SystemFont* out) {
+    Ref<IDWriteFontFace> face;
+    Ref<IDWriteFontFileLoader> loader;
+    IDWriteFontFile* file = nullptr;
+    const void* key = nullptr;
+    UINT32 count = 0, keySize = 0, length = 0;
+    if (FAILED(font->CreateFontFace(face.put())) || FAILED(face->GetFiles(&count, nullptr)) || count != 1) return false;
+    if (FAILED(face->GetFiles(&count, &file)) || !file) return false;
+    out->file.attach(file);
+    out->index = face->GetIndex();
+    out->path.clear();
+    if (FAILED(file->GetReferenceKey(&key, &keySize)) || FAILED(file->GetLoader(loader.put()))) return false;
+    Ref<IDWriteLocalFontFileLoader> local = loader.as<IDWriteLocalFontFileLoader>();
+    if (local && SUCCEEDED(local->GetFilePathLengthFromKey(key, keySize, &length)) && length) {
+        std::wstring path(size_t(length) + 1, L'\0');
+        if (SUCCEEDED(local->GetFilePathFromKey(key, keySize, &path[0], length + 1))) {
+            path.resize(length);
+            out->path = path;
+        }
+    }
+    return true;
+}
+
+/// Whether the process can open the file to read, as the core will open it.
+bool fontOpens(const std::wstring& path) {
+    const HANDLE h = CreateFile2(path.c_str(), GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, OPEN_EXISTING, nullptr);
+    if (h == INVALID_HANDLE_VALUE) return false;
+    CloseHandle(h);
+    return true;
+}
+
+uint64_t fontFileSize(const std::wstring& path) {
+    WIN32_FILE_ATTRIBUTE_DATA data = {};
+    if (!GetFileAttributesExW(path.c_str(), GetFileExInfoStandard, &data) || (data.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)) return 0;
+    return (uint64_t(data.nFileSizeHigh) << 32) | data.nFileSizeLow;
+}
+
+/// A font's bytes, as DirectWrite's own loader reads them, in a file of the folder: `name`, which gets what the bytes
+/// begin as for an extension where it has none. A file of that name and the font's size is the copy already (another
+/// app's process may be reading it: it is not written again). 1: written now; 0: it was there; -1: not to be had.
+int copyFont(IDWriteFontFile* file, const std::wstring& folder, std::wstring name, std::wstring* to, uint64_t* size) {
+    Ref<IDWriteFontFileLoader> loader;
+    Ref<IDWriteFontFileStream> stream;
+    const void* key = nullptr;
+    const void* bytes = nullptr;
+    void* context = nullptr;
+    UINT32 keySize = 0;
+    UINT64 total = 0;
+    if (FAILED(file->GetReferenceKey(&key, &keySize)) || FAILED(file->GetLoader(loader.put())) ||
+        FAILED(loader->CreateStreamFromKey(key, keySize, stream.put())) || FAILED(stream->GetFileSize(&total)) || total < 12)
+        return -1;
+    if (name.find(L'.') == std::wstring::npos) {
+        if (FAILED(stream->ReadFileFragment(&bytes, 0, 4, &context)) || !bytes) return -1;
+        name += !memcmp(bytes, "ttcf", 4) ? L".ttc" : !memcmp(bytes, "OTTO", 4) ? L".otf" : L".ttf";
+        stream->ReleaseFileFragment(context);
+    }
+    *to = folder + L"\\" + name;
+    *size = total;
+    if (fontFileSize(*to) == total) return 0;
+    CreateDirectoryW(folder.c_str(), nullptr);
+    // Under a name of this process's, then given its own: two apps starting at once each write theirs.
+    const std::wstring part = *to + L"." + std::to_wstring(GetCurrentProcessId()) + L".part";
+    const HANDLE h = CreateFile2(part.c_str(), GENERIC_WRITE, 0, CREATE_ALWAYS, nullptr);
+    if (h == INVALID_HANDLE_VALUE) return -1;
+    bool ok = true;
+    for (UINT64 at = 0; ok && at < total;) {
+        const UINT64 n = total - at < (1u << 20) ? total - at : (1u << 20);
+        DWORD wrote = 0;
+        bytes = nullptr;
+        context = nullptr;
+        if (FAILED(stream->ReadFileFragment(&bytes, at, n, &context))) {
+            ok = false;
+            break;
+        }
+        ok = bytes && WriteFile(h, bytes, DWORD(n), &wrote, nullptr) && wrote == DWORD(n);
+        stream->ReleaseFileFragment(context);
+        at += n;
+    }
+    CloseHandle(h);
+    // (Not replaced because another process put its copy there meanwhile and reads it: that one is the copy.)
+    if (ok && !MoveFileExW(part.c_str(), to->c_str(), MOVEFILE_REPLACE_EXISTING)) ok = fontFileSize(*to) == total;
+    DeleteFileW(part.c_str());
+    return ok ? 1 : -1;
+}
+
 } // namespace
 
 // MARK: GfxHost
@@ -7561,6 +7736,133 @@ void GfxHost::setFontFolder(const wchar_t* folder) {
     if (s.started.load()) return;
     s.fontFolder = folder ? folder : L"";
     while (!s.fontFolder.empty() && (s.fontFolder.back() == L'\\' || s.fontFolder.back() == L'/')) s.fontFolder.pop_back();
+}
+
+std::vector<GfxHost::HostFont> GfxHost::hostFonts(const std::wstring& copies, bool copyAll, std::string* said) {
+    const ULONGLONG began = GetTickCount64();
+    const size_t slots = sizeof(fontSlots) / sizeof(fontSlots[0]);
+    std::vector<HostFont> out;
+    std::vector<SystemFont> from;  // out's fonts, as DirectWrite has them
+    std::vector<SystemFont> found(slots);
+    std::vector<char> have(slots, 0);
+    std::string text, none, lost;
+    char number[96];
+    size_t missing = 0;
+    int copied = 0, written = 0;
+    uint64_t writtenBytes = 0;
+    Ref<IDWriteFactory> factory;
+    Ref<IDWriteFontCollection> fonts;
+    HRESULT hr = createDirectWrite(factory.put());
+    if (SUCCEEDED(hr)) hr = factory->GetSystemFontCollection(fonts.put(), FALSE);
+    if (FAILED(hr) || !fonts) {
+        snprintf(number, sizeof(number), "(0x%08lX)", static_cast<unsigned long>(hr));
+        if (said) *said = std::string("Windows' fonts for Android's font list: none, DirectWrite's collection of them is not to be had ") + number;
+        return out;
+    }
+    // By Windows' names for them.
+    for (size_t i = 0; i < slots; i++) {
+        for (int k = 0; !have[i] && k < 6 && fontSlots[i].families[k]; k++) {
+            UINT32 index = 0;
+            BOOL exists = FALSE;
+            if (FAILED(fonts->FindFamilyName(fontSlots[i].families[k], &index, &exists)) || !exists) continue;
+            Ref<IDWriteFont> font = regularFont(fonts.get(), index);
+            if (!font || !fontHasAll(font.get(), fontSlots[i].samples) || !fontFileOf(font.get(), &found[i])) continue;
+            found[i].family = fontSlots[i].families[k];
+            have[i] = 1;
+        }
+        if (!have[i]) missing++;
+    }
+    // And where no family of those names is there: by what a family has, each family looked at once.
+    if (missing) {
+        const UINT32 count = fonts->GetFontFamilyCount();
+        for (UINT32 index = 0; index < count && missing; index++) {
+            Ref<IDWriteFont> font = regularFont(fonts.get(), index);
+            SystemFont where;
+            int located = -1;
+            if (!font || font->IsSymbolFont()) continue;
+            for (size_t i = 0; i < slots && located; i++) {
+                if (have[i] || !fontHasAll(font.get(), fontSlots[i].samples)) continue;
+                if (located < 0) {
+                    located = fontFileOf(font.get(), &where) ? 1 : 0;
+                    if (located) where.family = familyNameOf(fonts.get(), index);
+                }
+                if (!located) break;
+                found[i] = where;
+                have[i] = 1;
+                missing--;
+            }
+        }
+    }
+    // One font for several of them is one family of the list, for all of them (as long as its `lang` stays one the core takes).
+    for (size_t i = 0; i < slots; i++) {
+        if (!have[i]) {
+            none += (none.empty() ? "" : ", ") + std::string(fontSlots[i].langs);
+            continue;
+        }
+        size_t at = 0;
+        for (; at < out.size(); at++)
+            if (from[at].index == found[i].index && from[at].family == found[i].family && !_wcsicmp(from[at].path.c_str(), found[i].path.c_str()) &&
+                out[at].langs.size() + 1 + strlen(fontSlots[i].langs) <= 120)
+                break;
+        if (at < out.size()) {
+            out[at].langs += std::string(" ") + fontSlots[i].langs;
+            continue;
+        }
+        HostFont font;
+        font.path = found[i].path;
+        font.index = int(found[i].index);
+        font.langs = fontSlots[i].langs;
+        font.family = found[i].family;
+        out.push_back(font);
+        from.push_back(found[i]);
+    }
+    // A file the process cannot open is copied, where there is a folder for copies.
+    for (size_t i = 0; i < out.size();) {
+        const bool opens = !out[i].path.empty() && fontOpens(out[i].path);
+        bool usable = opens;
+        if ((!opens || copyAll) && !copies.empty()) {
+            std::wstring name, to;
+            uint64_t size = 0;
+            const size_t slash = out[i].path.find_last_of(L"\\/");
+            if (!out[i].path.empty()) name = slash == std::wstring::npos ? out[i].path : out[i].path.substr(slash + 1);
+            if (name.empty())
+                for (wchar_t c : out[i].family) name += (c >= L'0' && c <= L'9') || (c >= L'A' && c <= L'Z') || (c >= L'a' && c <= L'z') ? c : L'-';
+            const int done = copyFont(from[i].file.get(), copies, name, &to, &size);
+            if (done >= 0 && fontOpens(to)) {
+                out[i].path = to;
+                out[i].copied = true;
+                usable = true;
+                copied++;
+                if (done) written++, writtenBytes += size;
+            }
+        }
+        if (usable) {
+            i++;
+            continue;
+        }
+        lost += (lost.empty() ? "" : ", ") + fontUtf8(out[i].family) + " for " + out[i].langs;
+        out.erase(out.begin() + ptrdiff_t(i));
+        from.erase(from.begin() + ptrdiff_t(i));
+    }
+    for (const HostFont& font : out) {
+        const size_t slash = font.path.find_last_of(L"\\/");
+        text += text.empty() ? "" : "; ";
+        text += fontUtf8(font.family) + " (" + fontUtf8(slash == std::wstring::npos ? font.path : font.path.substr(slash + 1));
+        if (font.index) snprintf(number, sizeof(number), ", face %d", font.index), text += number;
+        text += font.copied ? ", a copy) for " : ") for ";
+        text += font.langs;
+    }
+    snprintf(number, sizeof(number), "%u, found in %u ms", unsigned(out.size()), unsigned(GetTickCount64() - began));
+    text = std::string("Windows' fonts for Android's font list: ") + number + (text.empty() ? "" : ": ") + text;
+    if (!none.empty()) text += "; no font here for " + none;
+    if (copied) {
+        snprintf(number, sizeof(number), "; %d are copies made through DirectWrite (%d written now, %.1f MB)", copied, written, double(writtenBytes) / 1048576.0);
+        text += number;
+        if (!copyAll) text += ", Windows not letting the app open the files themselves";
+    }
+    if (!lost.empty()) text += "; left out, their files neither opened nor copied: " + lost;
+    if (said) *said = text;
+    return out;
 }
 
 GfxHost::Counts GfxHost::counts() {

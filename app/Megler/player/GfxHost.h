@@ -141,6 +141,8 @@
 #include "megler.h"
 
 #include <cstdint>
+#include <string>
+#include <vector>
 
 struct ID3D11Device;
 struct ID3D11Texture2D;
@@ -251,6 +253,25 @@ public:
     /// family whose files are not there is the system's nearest, as all are
     /// without this. Before the first drawing.
     void setFontFolder(const wchar_t* folder);
+
+    /// One of Windows' own fonts for writing Android's fonts have nothing for (hostFonts).
+    struct HostFont {
+        std::wstring path;    // its file: one the process can open
+        int index = 0;        // the face in it, where the file is a collection
+        std::string langs;    // what it is for, as a family's `lang` in Android's fonts.xml: "ja", "und-Arab und-Hebr"
+        std::wstring family;  // the family DirectWrite has it as
+        bool copied = false;  // `path` is a copy of the font's file, in `copies`
+    };
+    /// Windows' fonts for megler_run_config.host_fonts (megler.h): what draws its own text by Android's font list -- a
+    /// WebView's Chromium, through Skia -- has nothing in the Android root for Chinese, Japanese, Korean, Arabic, Hebrew,
+    /// Thai, India's writing, emoji and more, and Windows has. For each such writing the regular face of the first of
+    /// Windows' families for it that is there and has its characters, or of any family that has them where none of those
+    /// names is (a phone's fonts are not a PC's), with the file DirectWrite reads it from; one font for several is given
+    /// once. In the order they are to follow Android's own. A font whose file the process cannot open itself (or every
+    /// font, `copyAll`: a test's way) is copied once, through DirectWrite's own loader, into the folder `copies`, where
+    /// a copy of the same size is taken as it is; with no folder, or no copy, it is left out. `said`: a line for the log.
+    /// Any thread; before megler_run.
+    static std::vector<HostFont> hostFonts(const std::wstring& copies, bool copyAll, std::string* said);
 
     /// What has been done so far, for a test or a line in a log.
     struct Counts {

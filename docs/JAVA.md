@@ -5246,8 +5246,63 @@ than "loading" or "something went wrong, try again later", its canvases
 having lost their GPU contexts (hardware buffers, below, came after; not yet
 tried with it). Via, a browser built on the WebView, shows a search engine's
 page of results over https; Chinese text in it is boxes (the root has no CJK
-font). Twice a fresh start's first connection, to an address that took one a
-moment later, failed with ENETUNREACH, and the page with it; not explained.
+font; the host's fonts, next, came after). Twice a fresh start's first
+connection, to an address that took one a moment later, failed with
+ENETUNREACH, and the page with it; not explained.
+
+**Its fonts for the writing the root has none for are the host's (0.1.0.698,
+issue #7).** A view's text is drawn by the shell, whose DirectWrite falls back
+on Windows' fonts by itself. Chromium draws its own, through Skia, which reads
+Android's font list, `/system/etc/fonts.xml`, and the files it names in
+`/system/fonts`; the root has Android 9's whole list and the fonts of Latin,
+Greek and Cyrillic only, and Skia leaves out a family whose file is not
+there. So Chinese, Japanese, Korean, Arabic, Hebrew, Thai, Hindi and emoji in
+a page were the box of a missing glyph, each of them (Google's sign-in page
+in Japanese, as the issue has it).
+
+- The shell finds Windows' fonts (`GfxHost::hostFonts`,
+  `app/Megler/player/GfxHost.cpp`): for each of 29 writings the regular face
+  of the first of Windows' families for it that is there and has its
+  characters, or of any family that has them, with the file DirectWrite reads
+  it from and the face's number in a collection. A file the process cannot
+  open itself is copied once through DirectWrite's own loader, into the shared
+  folder's `fonts` (`LocalState\host-fonts` with no shared folder); the flag
+  `test-font-copies` copies every one. The log has them:
+  `session: Windows' fonts for Android's font list: 14, found in 0 ms: ...
+  Microsoft YaHei UI (MSYH.TTC, face 1) for zh-Hans; ...`.
+- It gives them in `megler_run_config.host_fonts` (`megler_host_font`: path,
+  index, langs), for a Java app. The driver (`mount_host_fonts`,
+  `drivers/mg_java.c`) has `mg_fs_host_fonts` (`bionic/mg_libc_io.c`) write
+  `<data>/fonts/<package>.xml`, the root's list with a family for each font
+  after Android's own (`<family lang="ja"><font weight="400" style="normal"
+  index="1">host/12.ttc</font></family>`), which the app reads as
+  `/system/etc/fonts.xml`; the root's own file is not changed. Each font is
+  `/system/fonts/host/<n>.<ext>`: the host's file where it lies, nothing
+  copied, read-only (EROFS), and mapped as a view of the file
+  (`bionic/mg_libc_mem.c`), so a font of 20 MB costs the pages that are read.
+  The log: `java: Android's font list (/system/etc/fonts.xml) has 14 of the
+  host's 14 fonts after its own, for ...`.
+- A native-engine app has no `/system` of the root's and none of this.
+
+The WebView test app checks it (`writings` in its `Main.java`): two
+characters of each writing drawn on a canvas one after the other must differ,
+since a character no font has is the same box every time. The Java tests give
+the app the fonts of the Windows they run on or beside (`find_host_fonts` in
+`core/tests/mg_java_tests.c`: `/mnt/c/Windows/Fonts` under WSL; the folder
+`MG_JAVA_HOST_FONTS`, `none` for none) and ask for the writing of each font
+given. Under qemu with the ARM WebView: `writings latin=1 han=1 kana=1
+hangul=1 arabic=1 hebrew=1 thai=1 devanagari=1 emoji=1` with seven fonts
+given, all but `latin` 0 with none, and the picture has the line of writing
+under the field where it had a row of boxes. At a PC, the x64 package and the
+shell's own finding: 14 fonts, the same line of ones and the same picture,
+also with `test-font-copies` (14 copies, 89 MB, found and written in 172 ms).
+
+Not tried: a phone. Whether a Windows 10 Mobile app may open the system's
+font files itself is not known here (if not, the copies are made, and those
+for Chinese, Japanese and Korean are some 70 MB of the shared folder, once
+for all apps); nor which families DirectWrite has there, nor what the
+mappings cost a 32-bit process. Flutter reads the same list and was not
+tried.
 
 **Canvases and WebGL** are drawn by Chromium's GPU service into hardware
 buffers (`AHardwareBuffer`, `ndk/mg_ahb.c`) it makes EGL images of

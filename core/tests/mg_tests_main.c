@@ -574,6 +574,7 @@ MG_HOSTAPI int mg_gfx_windows_check_gl(const megler_gfx_host *h, void (MEGLER_CB
 MG_HOSTAPI int mg_gfx_windows_check_canvas(const megler_gfx_host *h, void (MEGLER_CB *line)(const char *text, void *user), int *checks);
 MG_HOSTAPI int mg_gfx_windows_check_video(const megler_gfx_host *h, void (MEGLER_CB *line)(const char *text, void *user), int *checks);
 MG_HOSTAPI int mg_gfx_windows_check_texture_9_3(const megler_gfx_host *h, void (MEGLER_CB *line)(const char *text, void *user), int *checks);
+MG_HOSTAPI int mg_gfx_windows_check_host_fonts(void (MEGLER_CB *line)(const char *text, void *user), int *checks);
 
 /* A pixel of a 32 x 32 picture, as a check: a line when it is not what it should be. */
 static int gfx_loss_pixel(const u32 *px, int x, int y, u32 want, const char *what)
@@ -677,6 +678,8 @@ static int gfx_windows_mode(int argc, char **argv)
     config.out_dir = strcmp(argv[2], "-") ? argv[2] : NULL;
     printf("(drawing %s)\n", ways[way]);
     failed = mg_gfx_scenes_run(&config, NULL, NULL, &checks);
+    /* Windows' fonts for Android's font list, which the shell finds through DirectWrite whichever way it draws. */
+    failed += mg_gfx_windows_check_host_fonts(print_line, &checks);
     if ((way == 0 || way == 3) && mg_gfx_windows_on_gpu()) {
         failed += mg_gfx_windows_check_present(config.host, print_line, &checks);
         failed += mg_gfx_windows_check_canvas(config.host, print_line, &checks);
