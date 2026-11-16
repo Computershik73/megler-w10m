@@ -7240,6 +7240,29 @@ public class Main extends Activity {
                 + " y " + y.getWidth() + "x" + y.getHeight() + " at " + y.getLeft() + "," + y.getTop();
             return cells && laid;
         });
+        // A SearchView's query field and close button have Android's ids, found by name as apps find them: the field
+        // (getIdentifier("android:id/search_src_text"), an AutoCompleteTextView) and its IME options. YouTube ReVanced Extended's
+        // settings stopped on the null found there. And the field takes text as an edit text does.
+        step("search-view-ids", () -> {
+            android.widget.SearchView sv = new android.widget.SearchView(this);
+            int src = getResources().getIdentifier("android:id/search_src_text", null, null);
+            int close = getResources().getIdentifier("android:id/search_close_btn", null, null);
+            android.view.View field = src != 0 ? sv.findViewById(src) : null;
+            android.view.View button = close != 0 ? sv.findViewById(close) : null;
+            boolean typed = false;
+            if (field instanceof android.widget.TextView) {
+                android.widget.TextView t = (android.widget.TextView) field;
+                t.setImeOptions(t.getImeOptions() | android.view.inputmethod.EditorInfo.IME_FLAG_NO_EXTRACT_UI);
+                sv.setQuery("cats", false);
+                typed = "cats".contentEquals(sv.getQuery()) && "cats".contentEquals(t.getText())
+                    && (t.getImeOptions() & android.view.inputmethod.EditorInfo.IME_FLAG_NO_EXTRACT_UI) != 0;
+            }
+            detail = "search_src_text 0x" + Integer.toHexString(src) + " " + (field == null ? "not found" : field.getClass().getName())
+                + ", search_close_btn 0x" + Integer.toHexString(close) + " " + (button == null ? "not found" : button.getClass().getName())
+                + ", typed " + typed;
+            // (SearchView.SearchAutoComplete is hidden from the SDK: the field is told by its public class.)
+            return field instanceof android.widget.AutoCompleteTextView && button instanceof android.widget.ImageView && typed;
+        });
         // A LayerDrawable has a constant state, and its copy is a drawable of its own kind with the layers' copies at their
         // ids and insets (LayerDrawable.meglerCopy): a ripple made in code is copied so for each view it is the background of
         // (getConstantState().newDrawable().mutate(): YouTube's watch page, which stopped on the null state). Checked: a
