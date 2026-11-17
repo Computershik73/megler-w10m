@@ -712,6 +712,7 @@ N(Native_askClearCache) { c->ret.z = megler_ask_clear_cache(J.package); }
 static void Native_frameMark(mg_jcall *c);
 static void Native_mainStarted(mg_jcall *c);
 static void Native_mainWaitsForMe(mg_jcall *c);
+static void Native_mainStands(mg_jcall *c);
 static void Native_presentRect(mg_jcall *c);
 static void Native_checkPartial(mg_jcall *c);
 
@@ -1615,6 +1616,7 @@ static const mg_jhle k_native[] = {
     { "megler/Native", "frameMark", NULL, Native_frameMark },
     { "megler/Native", "mainStarted", NULL, Native_mainStarted },
     { "megler/Native", "mainWaitsForMe", NULL, Native_mainWaitsForMe },
+    { "megler/Native", "mainStands", NULL, Native_mainStands },
     { "megler/Native", "presentRect", NULL, Native_presentRect },
     { "megler/Native", "checkPartial", NULL, Native_checkPartial },
     { "megler/Native", "flag", NULL, Native_flag },
@@ -2241,6 +2243,21 @@ N(Native_mainWaitsForMe)
 {
     const mg_dvm_thread *t = g_hot_main;
     c->ret.z = t && t != mg_dvm_self() && mg_dvm_waits_for((mg_dvm_thread *)t, mg_thread_self_id());
+}
+
+/*
+ * megler.Native.mainStands(notIn): a number for the wait() the app's main thread stands in, or 0 when it is in none or in one
+ * of `notIn` (its message queue: there it takes what is posted to it). The number is the time the thread has spent in the
+ * waits it has left, which grows as each ends: the same number twice is the same wait, or two with none of any length
+ * between them, and megler.MicroG, which asks, takes a quarter of a second of one number for a main thread that runs
+ * nothing posted to it. The thread's fields alone are read, and the objects compared, not looked into. 0 on the main thread,
+ * and before the app's main thread has started.
+ */
+N(Native_mainStands)
+{
+    const mg_dvm_thread *t = g_hot_main;
+    const mg_jobj *on = t && t != mg_dvm_self() ? t->waiting_on : NULL;
+    c->ret.j = !on || on == c->args[0].l ? 0 : (i64)(t->waited_ns + 1);
 }
 
 /* megler.Native.frameMark(phase, redrawn), from megler.ViewRoot.doFrame on the main thread. */

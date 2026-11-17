@@ -292,8 +292,11 @@ EOF
       # user allows them it, and none where the user refuses it (`deny`), the user asked once (mg_java_tests.c, run_gms_host).
       if [ -f "$ROOT/build/guest/java/gms-own.apks" ] && [ -f "$ROOT/build/guest/java/gms-host.apk" ]; then
         for answer in allow deny; do
+          # (The second run asks their provider while the main thread stands on a latch, the first while it waits for a monitor:
+          # their Application is attached once a run, so one run cannot show both. Main.askWhileMainStands.)
+          stands=; [ "$answer" = deny ] && stands="MG_TEST_GMS_MAIN_STANDS=1 "
           echo "the Java test app gms-host (build/guest/java/gms-host.apk), hosting the stand-in for Google's own Play services (gms-own.apks): their own location, the user's answer $answer"
-          MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL="*" wsl.exe -- bash -c "cp -u '$WROOT/build/guest/java/gms-host.apk' $WB/gms-host.apk && cp -u '$WROOT/build/guest/java/gms-own.apks' $WB/gms-own.apks && rm -rf $WB/java-data-gms-host && MG_JAVA_GMS_APK=$WB/gms-own.apks qemu-arm -L /usr/arm-linux-gnueabihf $WB/mg_tests --java gms-host $WB/gms-host.apk $WB/java-data-gms-host $WB/android-root - 0 480x800@160 $answer 2>&1" || STATUS=1
+          MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL="*" wsl.exe -- bash -c "cp -u '$WROOT/build/guest/java/gms-host.apk' $WB/gms-host.apk && cp -u '$WROOT/build/guest/java/gms-own.apks' $WB/gms-own.apks && rm -rf $WB/java-data-gms-host && ${stands}MG_JAVA_GMS_APK=$WB/gms-own.apks qemu-arm -L /usr/arm-linux-gnueabihf $WB/mg_tests --java gms-host $WB/gms-host.apk $WB/java-data-gms-host $WB/android-root - 0 480x800@160 $answer 2>&1" || STATUS=1
         done
       fi
       # The app in several APKs, from each of its bundles: unpacked as the shell unpacks one, for a screen of 320 dpi, and run.

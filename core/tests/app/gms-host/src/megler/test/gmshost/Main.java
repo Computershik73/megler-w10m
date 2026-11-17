@@ -67,7 +67,9 @@ public class Main extends Activity {
     @Override
     protected void onCreate(Bundle state) {
         super.onCreate(state);
-        askWhileMainWaits();
+        /* (One or the other: their Application is attached once, and each is about a provider asked before it is.) */
+        if (System.getenv("MG_TEST_GMS_MAIN_STANDS") != null) askWhileMainStands();
+        else askWhileMainWaits();
         TextView text = new TextView(this);
         text.setText("Starting a service of Google Play services' stand-in");
         setContentView(text);
@@ -116,6 +118,31 @@ public class Main extends Activity {
             Log.i("GmsHostTest", "the main thread entered the asking thread's lock after " + (android.os.SystemClock.uptimeMillis() - began)
                   + " ms, their provider answered " + answered[0]);
         }
+    }
+
+    /*
+     * Their provider asked, before their Application is attached, by a thread that the main thread stands waiting for on a
+     * latch: as Google Drive's StartupActivity.onCreate awaits a CountDownLatch that a thread counts down once it has asked
+     * their provider for the accounts. The main thread runs nothing posted to it meanwhile, so their Application is to be
+     * attached on the asking thread, a quarter of a second into the wait -- not left unattached after ten seconds of it. (Run
+     * with MG_TEST_GMS_MAIN_STANDS set, in place of askWhileMainWaits.)
+     */
+    private void askWhileMainStands() {
+        final java.util.concurrent.CountDownLatch asked = new java.util.concurrent.CountDownLatch(1);
+        final boolean[] answered = new boolean[1];
+        final long began = android.os.SystemClock.uptimeMillis();
+        new Thread(() -> {
+            try {
+                packagePermissions();
+                android.database.Cursor c = getContentResolver().query(android.net.Uri.parse("content://com.google.settings/partner"), null, "name=?",
+                                                                       new String[] { "main_stands" }, null);
+                answered[0] = c != null;
+                if (c != null) c.close();
+            } finally { asked.countDown(); }
+        }, "gms-host-main-stands").start();
+        try { asked.await(); } catch (InterruptedException e) { }
+        Log.i("GmsHostTest", "the main thread stood on the asking thread's latch for " + (android.os.SystemClock.uptimeMillis() - began)
+              + " ms, their provider answered " + answered[0]);
     }
 
     /* A cold GET_PERMISSIONS query of the hosted package: its own manifest, not the client's, including tags after application. */

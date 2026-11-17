@@ -725,15 +725,19 @@ public final class MicroG {
         Application a = info.applicationInfo.className == null ? new Application() :
             (Application) loader().loadClass(info.applicationInfo.className).newInstance();
         attaching = a;
+        attachingOn = Thread.currentThread();
         try { a.meglerAttach(context); attached = a; }
         finally {
             attaching = null;
+            attachingOn = null;
             synchronized (attachEnded) { attachEnded.notifyAll(); }
         }
         return a;
     }
     /* What attachOnMain's waiters wait on: notified as an attaching ends, whichever thread and whatever made it. */
     private final Object attachEnded = new Object();
+    /* The thread that is attaching it, which is not always the main one (attachOnMain); null while none is. */
+    private volatile Thread attachingOn;
     /*
      * GmsCore's Application attached before its first provider starts, on the main thread, as Android does it: Play Store asks
      * GmsCore's flags provider (Phenotype) at its start, on a thread of its own, before anything else of GmsCore's runs, and
@@ -755,10 +759,21 @@ public final class MicroG {
      * Citymapper's Application.onCreate initializes Google Maps (MapsInitializer, which loads a Dynamite module under
      * DynamiteModule's class lock) while another thread, that lock held, asks the Chimera provider for a module of its own
      * (the measurement library's): the app stood ten seconds at every start, its first picture 15 s after Play (0.1.0.690).
+     *
+     * And a main thread that stands in a wait of another kind -- parked on a latch, a future, a lock; anywhere but in its
+     * message queue -- for a quarter of a second (Native.mainStands) runs nothing posted to it either, and whether it waits
+     * for this thread cannot be known: their Application is then attached here, on the asking thread, and so it is when the
+     * ten seconds have passed. The provider is not handed out with no Application attached in either case. Google Drive's
+     * StartupActivity.onCreate awaits a CountDownLatch that a thread of its own counts down once it has their accounts; the
+     * thread waited its ten seconds for the main thread and was then given their provider with nothing attached -- their
+     * flags not set up, "IllegalArgumentException: null reference" from every GoogleAuthUtil call, a NullPointerException
+     * in GoogleApiHandler -- so that Drive stood black for 16 s at every start and then asked for an account to be added
+     * on a phone that was signed in (0.1.0.699; Google Docs and Vendora ended the same way). On Android their Application
+     * is attached on GmsCore's own main thread, which no app's main thread keeps waiting.
      */
-    private boolean saidMainWaits;
+    private boolean saidMainWaits, saidAttachedHere;
     private void attachOnMain() {
-        if (attached != null) return;
+        if (attached != null || attachingOn == Thread.currentThread()) return;
         if (Looper.myLooper() == Looper.getMainLooper()) {
             try { attached(); } catch (Throwable t) { android.util.Log.e("MicroG", "Attaching GmsCore's Application failed", t); }
             return;
@@ -768,9 +783,17 @@ public final class MicroG {
             try { attached(); } catch (Throwable t) { android.util.Log.e("MicroG", "Attaching GmsCore's Application failed", t); }
             finally { synchronized (attachEnded) { done[0] = true; attachEnded.notifyAll(); } }
         });
+        final Object queue = Looper.getMainLooper().getQueue();
         long until = SystemClock.uptimeMillis() + 10000, left;
+        long stands = 0, since = 0;     /* the wait the main thread was last seen in outside its queue, and when it was first seen in it */
+        String here = null;             /* why their Application is attached on this thread, when it is */
         synchronized (attachEnded) {
-            while (attached == null && !done[0] && (left = until - SystemClock.uptimeMillis()) > 0) {
+            while (attached == null && !done[0]) {
+                long now = SystemClock.uptimeMillis(), in;
+                if ((left = until - now) <= 0) {
+                    here = "the main thread has not attached their Application in ten seconds";
+                    break;
+                }
                 if (Native.mainWaitsForMe()) {
                     if (!saidMainWaits) {
                         saidMainWaits = true;
@@ -779,9 +802,23 @@ public final class MicroG {
                     }
                     break;
                 }
+                in = Native.mainStands(queue);
+                if (in == 0 || in != stands) { stands = in; since = now; }
+                else if (now - since >= 250) {
+                    here = "the main thread stands in a wait outside its message queue";
+                    break;
+                }
                 try { attachEnded.wait(Math.min(left, 50)); } catch (InterruptedException e) { Thread.currentThread().interrupt(); break; }
             }
         }
+        if (here == null) return;
+        /* (Outside attachEnded's monitor: attached() takes this object's and then that one.) */
+        if (!saidAttachedHere) {
+            saidAttachedHere = true;
+            android.util.Log.i("MicroG", "Google Play services' provider is asked by a thread (" + Thread.currentThread().getName() + ") and " + here
+                + ": their Application is attached on the asking thread");
+        }
+        try { attached(); } catch (Throwable t) { android.util.Log.e("MicroG", "Attaching GmsCore's Application failed", t); }
     }
     /** microG's Application, made and created once, on the first thing of microG's that runs here. */
     private Application application() throws Exception {

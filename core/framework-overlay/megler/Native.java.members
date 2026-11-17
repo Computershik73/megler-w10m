@@ -53,6 +53,14 @@
      */
     public static native boolean mainWaitsForMe();
     /**
+     * A number for the wait() the app's main thread stands in -- the same number for as long as it is the same wait, another
+     * for its next -- or 0 when it is in none, or in a wait of {@code notIn}: its message queue, where it waits for the next
+     * message and takes one posted to it. A thread parked (LockSupport, so a CountDownLatch, a Future, a lock) is in a wait of
+     * its Thread's own lock. For megler.MicroG, whose threads wait for the main thread to attach Google Play services'
+     * Application: a main thread that stands in such a wait runs nothing posted to it. 0 on the main thread.
+     */
+    public static native long mainStands(Object notIn);
+    /**
      * The rectangle of the screen's bitmap that the next Gfx.present on this thread has changed, [left, right) x [top, bottom):
      * the rest is as it was in the picture presented before. Told to the shell where it can take it
      * (megler_window_host.present_pixels_part). Called by megler.ViewRoot.drawAll before it presents part of the screen.

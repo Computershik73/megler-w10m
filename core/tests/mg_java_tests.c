@@ -1706,6 +1706,9 @@ static bool start(const char *apk, const char *android_root)
     if (g_verbose >= 3 && mg_bionic_find("setenv")) ((int (*)(const char *, const char *, int))mg_bionic_find("setenv"))("TL_VIEW_DUMP", "1", 1);
     /* MG_JAVA_VD_TRACE=1: every vector drawable an app draws is said in its log, with its tint and filter (android.graphics.drawable.VectorDrawable's TL_VD_TRACE). */
     if (getenv("MG_JAVA_VD_TRACE") && mg_bionic_find("setenv")) ((int (*)(const char *, const char *, int))mg_bionic_find("setenv"))("TL_VD_TRACE", "1", 1);
+    /* MG_TEST_GMS_MAIN_STANDS=1: gms-host asks Google Play services' provider while its main thread stands on a latch (run_gms_host). */
+    if (getenv("MG_TEST_GMS_MAIN_STANDS") && mg_bionic_find("setenv"))
+        ((int (*)(const char *, const char *, int))mg_bionic_find("setenv"))("MG_TEST_GMS_MAIN_STANDS", "1", 1);
     if (getenv("MG_MICROG_DROIDGUARD_TEST") && mg_bionic_find("setenv"))
         ((int (*)(const char *, const char *, int))mg_bionic_find("setenv"))("MG_MICROG_DROIDGUARD_TEST", "1", 1);
     if (getenv("MG_MICROG_DROIDGUARD_HANDLE_TEST") && mg_bionic_find("setenv"))
@@ -4906,7 +4909,7 @@ static int run_gms_host(void)
      * thread, waiting for the thread's lock, could not: Citymapper stood so at every start, Google Maps initialized in its
      * Application.onCreate under DynamiteModule's lock while the thread that held it asked their Chimera provider (0.1.0.690).
      */
-    {
+    if (!getenv("MG_TEST_GMS_MAIN_STANDS")) {
         int at = wait_line("I/GmsHostTest: the main thread entered the asking thread's lock after ", 0, 300);
         const char *ms = at >= 0 ? strstr(line_at(at), " after ") : NULL;
         CHECK(at >= 0 && ms && atol(ms + 7) < 5000 && strstr(ms, " ms, their provider answered true"));
@@ -4914,6 +4917,23 @@ static int run_gms_host(void)
         CHECK(find_line("I/MicroG: Google Play services' provider is asked by a thread (gms-host-main-waits) holding a monitor that the main thread "
                         "waits to enter: it answers before their Application is attached", 0) >= 0);
         say("  %s", at >= 0 ? line_at(at) : "a provider asked while the main thread waits for the asking thread: nothing said");
+    } else {
+        /*
+         * Or, run with MG_TEST_GMS_MAIN_STANDS (the second of the two runs), by a thread that the main thread stands waiting
+         * for on a latch (Main.askWhileMainStands): the main thread runs nothing posted to it, so their Application is
+         * attached on the asking thread a quarter of a second into the wait, and the provider answers with it attached (the
+         * stand-in's takes two seconds to attach). The thread waited ten seconds for the main thread and was then given the
+         * provider with no Application attached: Google Drive, whose StartupActivity.onCreate awaits a latch so, stood black
+         * for 16 s at every start and then found no account on a phone that was signed in (0.1.0.699).
+         */
+        int at = wait_line("I/GmsHostTest: the main thread stood on the asking thread's latch for ", 0, 300);
+        const char *ms = at >= 0 ? strstr(line_at(at), " for ") : NULL;
+        int attached = find_line("I/GmsOwnTest: application attached", 0);
+        CHECK(at >= 0 && ms && atol(ms + 5) < 8000 && strstr(ms, " ms, their provider answered true"));
+        CHECK(at >= 0 && attached >= 0 && attached < at);
+        CHECK(find_line("I/MicroG: Google Play services' provider is asked by a thread (gms-host-main-stands) and the main thread stands in a wait "
+                        "outside its message queue: their Application is attached on the asking thread", 0) >= 0);
+        say("  %s", at >= 0 ? line_at(at) : "a provider asked while the main thread stands on the asking thread's latch: nothing said");
     }
     CHECK(wait_line("I/GmsOwnTest: settings network_location_opt_in=1", 0, 120) >= 0);
     CHECK(wait_line("I/MeglerLocation: Google Location Accuracy on: the user was asked, and said Allow -- Google Play services' network location may find "
