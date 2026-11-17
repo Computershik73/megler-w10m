@@ -2331,6 +2331,7 @@ public class Main extends Activity {
         notificationChannel();
         notificationChannels(run);
         geocoding();
+        playServicesClasses();
         laterApis();
         remoteCallbacks();
         sessionControllers();
@@ -8480,6 +8481,43 @@ public class Main extends Activity {
             detail = "empty " + empty + " threw " + threw + " max " + max + "/" + stays + "/" + back.getMaxAddressLineIndex() + " negative " + negative + " same " + same + ": " + text;
             return empty && threw && max == 1 && stays == 1 && back.getMaxAddressLineIndex() == 1 && negative && same && "square".equals(a.getExtras().getString("kind")) &&
                    text.startsWith("Address[addressLines=[0:\"Красная площадь\",1:\"Москва, 109012\"],feature=Красная площадь,") && text.contains(",locality=Москва,");
+        });
+    }
+
+    /*
+     * System APIs that Google Play services' own services are made with and do not carry, on a phone where the system has
+     * nothing behind them (each of them missing was NoClassDefFoundError when the service was created).
+     * A GeofenceProvider of Android's location provider library, which GmsCore's location service makes: its binder is
+     * there and stays the same one, and with no geofencing hardware nobody tells the provider of any; and a
+     * GeofenceHardwareRequest is the value Android's is, with its defaults and its check of the source technologies.
+     */
+    private void playServicesClasses() {
+        step("geofence-provider", () -> {
+            final int[] told = {0};
+            com.android.location.provider.GeofenceProvider provider = new com.android.location.provider.GeofenceProvider() {
+                @Override
+                public void onGeofenceHardwareChange(android.hardware.location.GeofenceHardware hardware) {
+                    told[0]++;
+                }
+            };
+            android.os.IBinder binder = provider.getBinder();
+            boolean same = binder != null && binder == provider.getBinder();
+            android.hardware.location.GeofenceHardwareRequest r = android.hardware.location.GeofenceHardwareRequest.createCircularGeofence(55.7539, 37.6208, 150);
+            // (GEOFENCE_UNCERTAIN; 30 s; entered, exited and uncertain; 5 s; SOURCE_TECHNOLOGY_GNSS)
+            boolean defaults = r.getLastTransition() == 4 && r.getUnknownTimer() == 30000 && r.getMonitorTransitions() == 7 &&
+                               r.getNotificationResponsiveness() == 5000 && r.getSourceTechnologies() == 1;
+            r.setLastTransition(1);
+            r.setUnknownTimer(60000);
+            r.setMonitorTransitions(3);
+            r.setNotificationResponsiveness(1000);
+            r.setSourceTechnologies(2 | 8 | 64);
+            boolean refused = false;
+            try { r.setSourceTechnologies(64); } catch (IllegalArgumentException e) { refused = true; }
+            boolean set = r.getLatitude() == 55.7539 && r.getLongitude() == 37.6208 && r.getRadius() == 150 && r.getLastTransition() == 1 &&
+                          r.getUnknownTimer() == 60000 && r.getMonitorTransitions() == 3 && r.getNotificationResponsiveness() == 1000 &&
+                          r.getSourceTechnologies() == 10;
+            detail = "binder " + binder + " same " + same + " told " + told[0] + " defaults " + defaults + " set " + set + " refused " + refused;
+            return same && told[0] == 0 && defaults && set && refused;
         });
     }
 

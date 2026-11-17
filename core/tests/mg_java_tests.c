@@ -3840,6 +3840,9 @@ static int run_data(void)
                                          /* And Android's Geocoder with no geocode provider (no Google Play services): not present, no
                                             addresses and no error, the arguments checked; and an Address as Android's, through a Parcel. */
                                          "geocoder", "address",
+                                         /* And system APIs that Play services' own services are made with: a GeofenceProvider with no
+                                            geofencing hardware to be told of, and a hardware geofence's request as a value. */
+                                         "geofence-provider",
                                          /* And later APIs and attributes that apps and Play services met missing: a view named for a
                                             shared element transition in its layout (android:transitionName: itself, by a string, by a
                                             style); ListFormatter by a type and a width (Android 13) over ICU 60's list patterns;

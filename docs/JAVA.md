@@ -6477,6 +6477,23 @@ on a looper thread of its own and takes it back with `next()`.
   Google Play services' (a place at a point and of a name in the request's
   locale, an error, the listener forms, the first request a synchronous one
   on the main thread).
+- `com/android/location/provider/GeofenceProvider.java` and
+  `android/hardware/location/GeofenceHardware.java` and
+  `GeofenceHardwareRequest.java`, which the framework did not have. Google
+  Play services' location service makes its hardware geofencer when it is
+  created (unless flags of its say otherwise), a subclass of
+  `GeofenceProvider`, a class of Android's location provider library that
+  the module does not carry: `NoClassDefFoundError`, "Binding
+  com.google.android.location.internal.GoogleLocationManagerService failed"
+  and a null binding, so no fused location from Play services, in the logs
+  of eight apps (0.1.0.695 and 0.1.0.696). The provider is Android's:
+  `getBinder` for its service's `onBind`, and `onGeofenceHardwareChange`,
+  which the system calls where the phone has geofencing hardware. Here
+  nothing binds it and it is never given any; `GeofenceHardware` has
+  Android's constants and methods and cannot be made, the request is
+  Android's value. Not there yet: the same library's `LocationProviderBase`,
+  `SignificantPlaceProvider` and `...Unbundled` classes, which Play services
+  name too. The data app's step "geofence-provider".
 - `android/content/res/AssetManager.java`, `Resources.java` and
   `ResourcesImpl.java`, another package's splits: an `AssetManager` made for
   another package (`meglerForPackage`) takes its splits too, whose tables are
