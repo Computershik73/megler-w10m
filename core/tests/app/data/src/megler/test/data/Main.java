@@ -4130,10 +4130,14 @@ public class Main extends Activity {
     }
 
     /** The harness's F12 (mg_java_tests.c, run_data): the main thread made to stand in Object.wait (stuckMain); F11: a translucent
-        activity over this one (Clear). */
+        activity over this one (Clear); F10: an activity started under an Instrumentation of the app's own (replacedInstrumentation). */
     @Override public boolean onKeyDown(int keyCode, android.view.KeyEvent event) {
         if (keyCode == android.view.KeyEvent.KEYCODE_F12) {
             stuckMain();
+            return true;
+        }
+        if (keyCode == android.view.KeyEvent.KEYCODE_F10) {
+            replacedInstrumentation();
             return true;
         }
         if (keyCode == android.view.KeyEvent.KEYCODE_F11) {
@@ -4168,6 +4172,85 @@ public class Main extends Activity {
                 sWatchStop = false;
                 finish();
             }, 500);
+        }
+    }
+
+    /*
+     * An Instrumentation of the app's own in ActivityThread's hidden mInstrumentation, which holds the platform's and passes on
+     * to it: as TikTok Lite's "mini" app puts one there (its ActivityDispatchService), to make an activity of its own for the
+     * name of one whose class is in a feature module it does not have yet. From then on it is the one asked: newActivity for
+     * the next activity started -- Main$Absent, in the manifest and of no class, for which it has the platform's make
+     * Main$Stand -- and each step of that one's life, before the activity hears of the step (the number after each step is
+     * how many the activity had heard of by then). The activity is the component it was started as. Megler had no such
+     * field (NoSuchFieldException: mInstrumentation), and asked no Instrumentation anything.
+     */
+    static volatile Seen sSeen;
+    static final class Seen extends android.app.Instrumentation {
+        final android.app.Instrumentation platform;
+        final java.lang.reflect.Field field;
+        final Object thread;
+        final StringBuilder said = new StringBuilder();
+        Seen(android.app.Instrumentation platform, java.lang.reflect.Field field, Object thread) {
+            this.platform = platform;
+            this.field = field;
+            this.thread = thread;
+        }
+        private void say(String step, Activity a) {
+            if (a instanceof Stand) said.append(' ').append(step).append(((Stand) a).heard);
+        }
+        @Override public Activity newActivity(ClassLoader cl, String className, android.content.Intent intent)
+                throws InstantiationException, IllegalAccessException, ClassNotFoundException {
+            boolean absent = className.endsWith(".Main$Absent");
+            if (absent) said.append("new:").append(className.substring(className.lastIndexOf('.') + 1));
+            return platform.newActivity(cl, absent ? Stand.class.getName() : className, intent);
+        }
+        @Override public void callActivityOnCreate(Activity a, Bundle state) { say("create", a); platform.callActivityOnCreate(a, state); }
+        @Override public void callActivityOnStart(Activity a) { say("start", a); platform.callActivityOnStart(a); }
+        @Override public void callActivityOnPostCreate(Activity a, Bundle state) { say("postCreate", a); platform.callActivityOnPostCreate(a, state); }
+        @Override public void callActivityOnResume(Activity a) { say("resume", a); platform.callActivityOnResume(a); }
+        @Override public void callActivityOnPause(Activity a) { say("pause", a); platform.callActivityOnPause(a); }
+        @Override public void callActivityOnStop(Activity a) { say("stop", a); platform.callActivityOnStop(a); }
+        @Override public void callActivityOnDestroy(Activity a) { say("destroy", a); platform.callActivityOnDestroy(a); }
+    }
+    private void replacedInstrumentation() {
+        try {
+            Class<?> at = Class.forName("android.app.ActivityThread");
+            Object thread = at.getMethod("currentActivityThread").invoke(null);
+            java.lang.reflect.Field field = at.getDeclaredField("mInstrumentation");
+            field.setAccessible(true);
+            Seen seen = new Seen((android.app.Instrumentation) field.get(thread), field, thread);
+            field.set(thread, seen);
+            sSeen = seen;
+            startActivity(new android.content.Intent().setClassName(this, getPackageName() + ".Main$Absent"));
+        } catch (Throwable t) {
+            Log.i("DataTest", "instrumentation-replaced FAILED: " + t);
+        }
+    }
+    public static class Stand extends Activity {
+        int heard;
+        @Override protected void onCreate(Bundle state) { super.onCreate(state); heard++; }
+        @Override protected void onStart() { super.onStart(); heard++; }
+        @Override protected void onPostCreate(Bundle state) { super.onPostCreate(state); heard++; }
+        @Override protected void onResume() {
+            super.onResume();
+            heard++;
+            new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(this::finish, 300);
+        }
+        @Override protected void onPause() { super.onPause(); heard++; }
+        @Override protected void onStop() { super.onStop(); heard++; }
+        @Override protected void onDestroy() {
+            super.onDestroy();
+            Seen seen = sSeen;
+            String said = seen == null ? "none" : seen.said.toString(), as = getComponentName().getClassName();
+            boolean back = false;
+            try {
+                seen.field.set(seen.thread, seen.platform);
+                back = seen.field.get(seen.thread) == seen.platform;
+            } catch (Throwable t) {
+                said += " " + t;
+            }
+            boolean held = "new:Main$Absent create0 start1 postCreate2 resume3 pause4 stop5 destroy6".equals(said) && as.endsWith(".Main$Absent") && back;
+            Log.i("DataTest", "instrumentation-replaced " + (held ? "ok" : "FAILED") + " said=[" + said + "] as=" + as + " back=" + back);
         }
     }
 
@@ -6870,6 +6953,18 @@ public class Main extends Activity {
                     + ", getApplication " + fromGetter + ", currentApplication " + fromCurrent + ", AppGlobals " + fromGlobals;
             return app instanceof DataApplication && "field true current true".equals(DataApplication.seenInOnCreate) && current.get(null) == thread
                     && fromField == app && apps != null && apps.contains(app) && fromGetter == app && fromCurrent == app && fromGlobals == app;
+        });
+        // ActivityThread's hidden mInstrumentation, which an app puts an Instrumentation of its own in (TikTok Lite's "mini" app):
+        // there, of that type, holding the Instrumentation getInstrumentation gives. (That one put there is the one asked from
+        // then on: replacedInstrumentation, the harness's F10.)
+        step("activity-thread-instrumentation", () -> {
+            Class<?> at = Class.forName("android.app.ActivityThread");
+            Object thread = at.getMethod("currentActivityThread").invoke(null);
+            java.lang.reflect.Field field = at.getDeclaredField("mInstrumentation");
+            field.setAccessible(true);
+            Object held = field.get(thread), given = at.getMethod("getInstrumentation").invoke(thread);
+            detail = "a field of " + field.getType().getName() + " holding " + held + ", getInstrumentation " + given;
+            return field.getType() == android.app.Instrumentation.class && held instanceof android.app.Instrumentation && given == held;
         });
         // The hidden ServiceManager, which Shizuku's SystemServiceHelper reaches by reflection for the system's binders (Sui asks it
         // for "package"): there (Morphe Manager ended at its start without the class), the platform's own services each a binder

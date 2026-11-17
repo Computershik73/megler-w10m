@@ -7,18 +7,28 @@
 // Android's do. Tuya Smart's library loader (ThingLibraryLoader.getContext) takes its Context from
 // currentActivityThread()'s mInitialApplication, on a worker thread while the Application starts: the field was not there
 // (NoSuchFieldException), it had no Context, and the thread ended with "context is null" (0.1.0.673).
+// And in mInstrumentation, Android's hidden field of the process's Instrumentation, with getInstrumentation: the one that
+// makes the app's Application and activities and calls their lifecycle (android.app.Instrumentation, overlaid, says how),
+// which an app replaces with its own by reflection. TikTok Lite from Google Play (its "mini" app) does, while its
+// Application is attached: the field was not there (NoSuchFieldException: mInstrumentation, 0.1.0.699), and its own was
+// never in place.
 // Everything else is the original's, unchanged.
 package android.app;
 
 /** The hidden ActivityThread apps reach by reflection for the process's Application (ActivityThread.currentApplication() and
  *  friends): one per process, answering from what AppRunner set up. */
 public final class ActivityThread {
+    /* Megler: the platform's own Instrumentation, which mInstrumentation holds until an app puts another there. */
+    private static final Instrumentation sPlatformInstrumentation = new Instrumentation();
     /** Android's: the process's ActivityThread, which apps read as a field too (currentActivityThread gives it). */
     private static volatile ActivityThread sCurrentActivityThread = new ActivityThread();
     /** Android's: the process's Application, from the moment it is made (meglerApplicationMade), as Android sets it. */
     Application mInitialApplication;
     /** Android's: the Applications made in the process. */
     final java.util.ArrayList<Application> mAllApplications = new java.util.ArrayList<>();
+    /** Android's: the process's Instrumentation, which the app's Application and activities are made and called through.
+     *  An app may put its own here; whoever makes or calls one takes what is here at that moment (meglerInstrumentation). */
+    Instrumentation mInstrumentation = sPlatformInstrumentation;
 
     public static ActivityThread currentActivityThread() { return sCurrentActivityThread; }
     public static Application currentApplication() { ActivityThread t = sCurrentActivityThread; return t != null ? t.mInitialApplication : null; }
@@ -44,6 +54,17 @@ public final class ActivityThread {
     public static boolean isSystem() { return false; }
 
     public Application getApplication() { return mInitialApplication; }
+    public Instrumentation getInstrumentation() { return mInstrumentation; }
+    /** Megler: the Instrumentation the app's components are made and called through now: what mInstrumentation holds, the
+     *  app's own if it has put one there (the platform's, should it have left the field empty). */
+    public static Instrumentation meglerInstrumentation() {
+        ActivityThread t = sCurrentActivityThread;
+        Instrumentation i = t != null ? t.mInstrumentation : null;
+        return i != null ? i : sPlatformInstrumentation;
+    }
+    /** Megler: the platform's own, for what is another process's on Android and no business of the app's Instrumentation:
+     *  the activities of Google Play services hosted here, and Megler's screens of Android's Settings. */
+    public static Instrumentation meglerPlatformInstrumentation() { return sPlatformInstrumentation; }
     public String getProcessName() { return currentProcessName(); }
     public android.content.Context getSystemContext() { return currentApplication(); }
     public android.os.Looper getLooper() { return android.os.Looper.getMainLooper(); }
@@ -87,7 +108,6 @@ public final class ActivityThread {
     public android.app.Activity getActivity(android.os.IBinder p0) { return null; }
     public android.app.ActivityThread.ActivityClientRecord getActivityClient(android.os.IBinder p0) { return null; }
     public java.util.concurrent.Executor getExecutor() { return null; }
-    public android.app.Instrumentation getInstrumentation() { return null; }
     public android.app.Activity getLastCreatedActivity() { return null; }
     public android.app.LoadedApk getPackageInfoNoCheck(android.content.pm.ApplicationInfo p0) { return null; }
     public java.lang.String getProfileFilePath() { return null; }

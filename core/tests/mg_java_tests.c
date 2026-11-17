@@ -3729,6 +3729,8 @@ static int run_data(void)
                                          /* And the process's Application through ActivityThread's hidden fields, on a thread of the Application's
                                             own while it is created, as Tuya Smart's library loader asks, and afterwards. */
                                          "activity-thread-application",
+                                         /* And its Instrumentation in the hidden mInstrumentation, which TikTok Lite's "mini" app replaces. */
+                                         "activity-thread-instrumentation",
                                          /* And the hidden ServiceManager, the platform's services each a binder that refuses every
                                             transaction and any other name a service that is not there, as Shizuku's SystemServiceHelper
                                             asks it (Morphe Manager ended at its start without the class); and its "window" cast to
@@ -4265,6 +4267,13 @@ static int run_data(void)
     expect_line("I/DataTest: stuck-holder ok", &at, 60);
     CHECK(find_line("and 1 holder of the monitors waited for:", 0) >= 0 && find_line("stuck: thread ", 0) >= 0
           && find_line("stuck:   megler/test/data/Main.stuckHolder line ", 0) >= 0);
+    /* An Instrumentation of the app's own put in ActivityThread.mInstrumentation (F10, Main.replacedInstrumentation): it is asked
+       for the next activity started, makes one of another class for a name of no class, and is called at each step of that
+       one's life before the activity is, as TikTok Lite's "mini" app has its own make the activities of a feature module it
+       does not have yet (the field was not there: NoSuchFieldException, 0.1.0.699). */
+    megler_key(140, true);
+    megler_key(140, false);
+    expect_line("I/DataTest: instrumentation-replaced ok", &at, 30);
     /* A translucent activity over the app's (F11, Main$Clear): the one below paused, not stopped, its window still there. TikTok
        Lite's consent dialog, translucent, left the screen black behind it (package 619). */
     megler_key(141, true);

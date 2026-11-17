@@ -51,6 +51,9 @@
         <activity android:name=".Main$Answer" android:exported="true" />
         <!-- A translucent activity over Main, as TikTok Lite's consent dialog is (Main's "translucent-over", F11). -->
         <activity android:name=".Main$Clear" android:theme="@android:style/Theme.Translucent.NoTitleBar" android:exported="false" />
+        <!-- An activity of no class, as those of a feature module that is not installed are: an Instrumentation of the app's own
+             makes Main$Stand for its name (Main's "instrumentation-replaced", F10), as TikTok Lite's "mini" app does. -->
+        <activity android:name=".Main$Absent" android:theme="@android:style/Theme.Translucent.NoTitleBar" android:exported="false" />
         <!-- (Off also names Google Play services' SMS Retriever's action, as an app that hears its code so has a receiver for it:
              the report says so, and the app's own package declares the text messages for it: the test's C side, start().) -->
         <receiver android:name=".Main$Off" android:enabled="false" android:exported="false">

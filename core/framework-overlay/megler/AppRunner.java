@@ -171,21 +171,30 @@ public final class AppRunner {
         // As Android's handleBindApplication, before the app's code can make anything of TLS: its network security configuration.
         android.security.net.config.NetworkSecurityConfigProvider.install(base);
         String appCls = applicationClass != null ? applicationClass : Manifest.applicationClass;
+        // The Application is made and attached by the process's Instrumentation, as Android's LoadedApk.makeApplication has
+        // it made (android.app.Instrumentation.newApplication, overlaid: the component factory makes it, applicationMade
+        // below hears of it, it is attached), and its onCreate called by the one that is the process's then: the app may
+        // have put its own in ActivityThread.mInstrumentation meanwhile, as TikTok Lite's "mini" app does while it is attached.
         Application app;
-        try { app = sFactory.instantiateApplication(classLoader(), appCls != null ? appCls : Application.class.getName()); }
-        catch (ClassNotFoundException e) { android.util.Log.w("Megler", "no application class " + appCls); app = new Application(); }
-        sApp = app;
-        // (The process's from now on, for code that asks ActivityThread by reflection, its fields as well as its methods.)
-        android.app.ActivityThread.meglerApplicationMade(app);
-        Application.meglerSet(app);
-        ContextImpl.setApplication(app);
-        app.meglerAttach(base);
+        sMakingApplication = true;
+        try {
+            app = android.app.ActivityThread.meglerInstrumentation().newApplication(classLoader(), appCls != null ? appCls : Application.class.getName(), base);
+        } catch (ClassNotFoundException e) {
+            if (sApp != null) throw e;         // (not its class: one its attachBaseContext looked for)
+            android.util.Log.w("Megler", "no application class " + appCls);
+            app = new Application();
+            processApplication(app);
+            app.meglerAttach(base);
+        } finally {
+            sMakingApplication = false;
+        }
+        if (sApp != app) processApplication(app);       // (an Instrumentation of the app's own that made it by itself)
         installProviders(app);
         // (and the provider of the files picked or taken for the app, megler.Pickers: links to them kept from an earlier run work)
         Pickers.install();
         Looper.setInputSink(AppRunner::deliver);
         applyInsets();
-        app.onCreate();
+        android.app.ActivityThread.meglerInstrumentation().callApplicationOnCreate(app);
         Syncs.started();
         Installs.sweep(app);
         Manifest.Component launcher = Manifest.activity(activityClass);
@@ -200,6 +209,24 @@ public final class AppRunner {
         Looper.loop();
     }
     public static Application application() { return sApp; }
+    /* run() is having the process's Application made (Instrumentation.newApplication). */
+    private static boolean sMakingApplication;
+    /** The process's Application from now on, for whoever asks: here, Application and the contexts, and ActivityThread, for
+     *  code that asks it by reflection, its fields as well as its methods. */
+    private static void processApplication(Application app) {
+        sApp = app;
+        android.app.ActivityThread.meglerApplicationMade(app);
+        Application.meglerSet(app);
+        ContextImpl.setApplication(app);
+    }
+    /**
+     * The platform's Instrumentation has made an Application and is about to attach it: the process's own, when run() asked
+     * for it, is the process's from this moment, before its attachBaseContext, where apps ask for it already (as run() set
+     * it when it made it itself). One an app has made through an Instrumentation later is not the process's.
+     */
+    public static void applicationMade(Application app) {
+        if (sMakingApplication && sApp == null) processApplication(app);
+    }
     /* Android's LoggingHandler: FATAL EXCEPTION, the thread, the process and the stack. A thread of Google Play services' ends
        alone, as GmsCore's own process would on Android: as the pre-handler runs before any other, it gives the thread a handler
        of its own that says so and goes no further. MicroG's default one (ServiceCrashes) did that, but an app's handler made
@@ -327,9 +354,14 @@ public final class AppRunner {
     private static Activity make(String cls, Intent intent, Activity caller, int request, Manifest.Component info) throws Exception {
         // Megler's screens of Android's Settings are the system's, not the app's: its factory does not make them. Google Play
         // services' activities hosted here are GmsCore's, made in its scope on its context with its Application (MicroG).
-        boolean gms = MicroG.hosts(info);
-        Activity a = SystemScreens.isScreen(cls) ? (Activity) Class.forName(cls).newInstance()
-                : gms ? MicroG.newActivity(cls) : sFactory.instantiateActivity(classLoader(), cls, intent);
+        // The app's own are made by the process's Instrumentation (ActivityThread.mInstrumentation: the platform's asks the
+        // app's component factory, as before; an app's own may make another class for the name, as TikTok Lite's "mini" app
+        // does). The other two are other processes' on Android: the app's Instrumentation neither makes them nor is called
+        // at the steps of their life (Activity.meglerOtherProcess).
+        boolean gms = MicroG.hosts(info), screen = SystemScreens.isScreen(cls);
+        Activity a = screen ? (Activity) Class.forName(cls).newInstance()
+                : gms ? MicroG.newActivity(cls) : android.app.ActivityThread.meglerInstrumentation().newActivity(classLoader(), cls, intent);
+        if (gms || screen) a.meglerOtherProcess();
         Context base = gms ? MicroG.activityBase() : ContextImpl.forActivity();
         a.meglerAttach(base, gms ? MicroG.activityApplication() : sApp, intent, info, caller, request);
         return a;
@@ -447,7 +479,7 @@ public final class AppRunner {
         // (An <activity-alias> runs the activity it names, as launch does.)
         String cls = "activity-alias".equals(info.kind) && info.parentActivity != null ? info.parentActivity : info.name;
         android.util.Log.d("Megler", "child " + cls + " of " + parent.getClass().getName());
-        Activity a = sFactory.instantiateActivity(classLoader(), cls, intent);
+        Activity a = android.app.ActivityThread.meglerInstrumentation().newActivity(classLoader(), cls, intent);
         a.meglerSetParent(parent);
         a.meglerAttach(ContextImpl.forActivity(), sApp, intent, info, null, -1);
         return a;

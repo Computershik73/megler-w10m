@@ -7299,6 +7299,29 @@ on a looper thread of its own and takes it back with `next()`.
   on a thread of its own in its `onCreate`, and the step
   "activity-thread-application" checks what it found and every other way.
 
+- `android/app/Instrumentation.java` (in place of the generated stub),
+  `android/app/ActivityThread.java`, `android/app/Activity.java` and
+  `megler/AppRunner.java`: the process's `Instrumentation` in
+  `ActivityThread`'s hidden field `mInstrumentation`, and asked as Android
+  asks it. The Application is made and attached by its `newApplication` and
+  started by its `callApplicationOnCreate`, the app's activities are made by
+  its `newActivity`, and each step of an activity's life goes through its
+  `callActivityOn...` (create, post-create, start, restart, resume, pause,
+  stop, destroy, new intent, save and restore state) -- through the one in
+  the field at that moment, so one an app puts there is the one asked from
+  then on. TikTok Lite's "mini" app puts its own there
+  (`ActivityDispatchService`) to make an activity of its own for the name
+  of one whose class is in a feature module it does not have yet: there
+  was no such field (`NoSuchFieldException: mInstrumentation`, 0.1.0.699).
+  The activities of the Google Play services hosted and Megler's own
+  system screens are other processes' on Android and keep to the
+  platform's `Instrumentation`. Not there: `Activity.mInstrumentation` and
+  `execStartActivity` (starts do not go through it), the Applications of
+  an app's other processes and its content providers. The data app's steps
+  "activity-thread-instrumentation" and, at the harness's F10,
+  "instrumentation-replaced" check the field and an `Instrumentation` put
+  in it.
+
 - `android/app/DialogFragment.java`, in place of the generated stub, whose
   `show()` did nothing: `onCreateDialog` was never called and `getDialog()`
   was null. VK mp3 mod's sign-in, when VK asks for a confirmation code, shows
