@@ -8005,6 +8005,91 @@ public class Main extends Activity {
             Log.i("DataTest", "wrapper-copy " + detail);
             return inseted && clipped && scaled && rotated && none && patched && listed && rippled && iconed;
         });
+        // A slider's thumb as WhatsApp's chat theme preview (Settings > Chats > Theme) gives Material's Slider one with
+        // setCustomThumbDrawable(id): the Slider takes getResources().getDrawable(id).mutate().getConstantState().newDrawable()
+        // without asking whether there is a state, and sizes the copy to its thumb by its intrinsic size. The drawable is a
+        // layer list from XML, a rounded shape under a vector icon, each layer inset (res/drawable/thumb_layers.xml): 0.1.0.699
+        // ended on the null state a LayerDrawable had then. Checked: the copy is a layer list of its own with its own copies
+        // of the shape and the icon, as large as the icon with its insets, and drawn at that size it shows the shape round the
+        // icon, as the original does.
+        step("thumb-copy", () -> {
+            android.graphics.drawable.Drawable d = getResources().getDrawable(R.drawable.thumb_layers, null);
+            android.graphics.drawable.Drawable.ConstantState s = d.mutate().getConstantState();
+            android.graphics.drawable.Drawable c = s != null ? s.newDrawable() : null;
+            boolean copied = false, drawn = false;
+            int w = -2, h = -2, shape = 1, icon = 1, corner = 1, same = 0;
+            if (c instanceof android.graphics.drawable.LayerDrawable && d instanceof android.graphics.drawable.LayerDrawable && c != d) {
+                android.graphics.drawable.LayerDrawable l = (android.graphics.drawable.LayerDrawable) c, o = (android.graphics.drawable.LayerDrawable) d;
+                copied = l.getNumberOfLayers() == 2 && l.getDrawable(0) instanceof android.graphics.drawable.GradientDrawable
+                    && l.getDrawable(1) instanceof android.graphics.drawable.VectorDrawable && l.getDrawable(0) != o.getDrawable(0)
+                    && l.getDrawable(1) != o.getDrawable(1) && l.getDrawable(0).getCallback() == l && o.getDrawable(0).getCallback() == o;
+                // Material's adjustCustomThumbDrawableBounds, for a thumb 112 pixels across: the copy scaled to fit it.
+                w = c.getIntrinsicWidth();
+                h = c.getIntrinsicHeight();
+                float scale = w > 0 && h > 0 ? 112f / Math.max(w, h) : 1f;
+                c.setBounds(0, 0, (int) (w * scale), (int) (h * scale));
+                d.setBounds(c.getBounds());
+                android.graphics.Bitmap bm = android.graphics.Bitmap.createBitmap(92, 112, android.graphics.Bitmap.Config.ARGB_8888);
+                android.graphics.Bitmap bo = android.graphics.Bitmap.createBitmap(92, 112, android.graphics.Bitmap.Config.ARGB_8888);
+                c.draw(new android.graphics.Canvas(bm));
+                d.draw(new android.graphics.Canvas(bo));
+                shape = bm.getPixel(10, 50);
+                icon = bm.getPixel(44, 56);
+                corner = bm.getPixel(1, 1);
+                for (int y = 0; y < 112; y += 4) for (int x = 0; x < 92; x += 4) if (bm.getPixel(x, y) == bo.getPixel(x, y)) same++;
+                drawn = shape == 0xff336699 && icon == 0xffff8000 && corner == 0 && same == 23 * 28;
+            }
+            // A layer of no size of its own adds nothing to the list's size, its insets neither (Android's getIntrinsicWidth): the
+            // shape inset by 30 each side is left out, the 20 x 10 one with its insets of 2 counts. They made it 59 x 59.
+            android.graphics.drawable.ShapeDrawable box = new android.graphics.drawable.ShapeDrawable();
+            box.setIntrinsicWidth(20);
+            box.setIntrinsicHeight(10);
+            android.graphics.drawable.LayerDrawable sizeless = new android.graphics.drawable.LayerDrawable(new android.graphics.drawable.Drawable[] {
+                new android.graphics.drawable.GradientDrawable(), box });
+            sizeless.setLayerInset(0, 30, 30, 30, 30);
+            sizeless.setLayerInset(1, 2, 2, 2, 2);
+            android.graphics.drawable.LayerDrawable none = new android.graphics.drawable.LayerDrawable(new android.graphics.drawable.Drawable[] {
+                new android.graphics.drawable.ColorDrawable(0xff000000) });
+            none.setLayerInset(0, 5, 5, 5, 5);
+            String sizes = sizeless.getIntrinsicWidth() + "x" + sizeless.getIntrinsicHeight() + ", " + none.getIntrinsicWidth() + "x" + none.getIntrinsicHeight();
+            // The middle thumb's icon is a tinted <bitmap> in a <rotate> (ic_brightness_6_with_bg): a bitmap's copy has the tint,
+            // gravity and alpha its state had when it was asked for (a white square drawn green in the middle of its bounds),
+            // and what is set on the drawable afterwards stays its own; a shape's copy has the shape's tint.
+            android.graphics.Bitmap white = android.graphics.Bitmap.createBitmap(8, 8, android.graphics.Bitmap.Config.ARGB_8888);
+            white.eraseColor(0xffffffff);
+            android.graphics.drawable.BitmapDrawable glyph = new android.graphics.drawable.BitmapDrawable(getResources(), white);
+            glyph.setGravity(android.view.Gravity.CENTER);
+            glyph.setTintList(android.content.res.ColorStateList.valueOf(0xff00aa00));
+            android.graphics.drawable.RotateDrawable turned = new android.graphics.drawable.RotateDrawable();
+            turned.setDrawable(glyph);
+            turned.setFromDegrees(90);
+            turned.setToDegrees(90);
+            android.graphics.drawable.LayerDrawable middle = new android.graphics.drawable.LayerDrawable(new android.graphics.drawable.Drawable[] { turned });
+            android.graphics.drawable.Drawable.ConstantState glyphState = glyph.getConstantState();
+            android.graphics.drawable.Drawable mc = middle.mutate().getConstantState().newDrawable(getResources());
+            glyph.setAlpha(10);
+            glyph.setTintList(android.content.res.ColorStateList.valueOf(0xffff0000));
+            android.graphics.drawable.Drawable before = glyphState.newDrawable(getResources()), after = glyph.getConstantState().newDrawable(getResources());
+            android.graphics.Bitmap mb = android.graphics.Bitmap.createBitmap(32, 32, android.graphics.Bitmap.Config.ARGB_8888);
+            mc.setBounds(0, 0, 32, 32);
+            mc.draw(new android.graphics.Canvas(mb));
+            android.graphics.drawable.GradientDrawable plainShape = new android.graphics.drawable.GradientDrawable();
+            plainShape.setTint(0xff0000ff);
+            android.graphics.drawable.Drawable sc = plainShape.getConstantState().newDrawable();
+            android.graphics.Bitmap sb = android.graphics.Bitmap.createBitmap(8, 8, android.graphics.Bitmap.Config.ARGB_8888);
+            sc.setBounds(0, 0, 8, 8);
+            sc.draw(new android.graphics.Canvas(sb));
+            int glyphMiddle = mb.getPixel(16, 16), glyphCorner = mb.getPixel(1, 1), shapeTint = sb.getPixel(4, 4);
+            boolean tinted = glyphMiddle == 0xff00aa00 && glyphCorner == 0 && before.getAlpha() == 255 && after.getAlpha() == 10
+                && after instanceof android.graphics.drawable.BitmapDrawable && ((android.graphics.drawable.BitmapDrawable) after).getGravity() == android.view.Gravity.CENTER
+                && shapeTint == 0xff0000ff;
+            detail = "copied=" + copied + " size " + w + "x" + h + " drawn=" + drawn + " (shape " + Integer.toHexString(shape) + ", icon "
+                + Integer.toHexString(icon) + ", corner " + Integer.toHexString(corner) + ", " + same + " of 644 points as the original's) sizeless "
+                + sizes + " tinted=" + tinted + " (glyph " + Integer.toHexString(glyphMiddle) + "/" + Integer.toHexString(glyphCorner) + ", alpha "
+                + before.getAlpha() + " then " + after.getAlpha() + ", shape " + Integer.toHexString(shapeTint) + ")";
+            Log.i("DataTest", "thumb-copy " + detail);
+            return copied && w == 92 && h == 112 && drawn && "24x14, -1x-1".equals(sizes) && tinted;
+        });
         // A reference that comes to @null is no value in a styled attribute array: WhatsApp tints an image of its settings
         // with a colour that is @null by day and a colour by night (app:tint="@color/..."), and AppCompat asks hasValue and
         // getResourceId before it reads a colour list. Android's ApplyStyle turns a reference resolved to @null back into
@@ -8123,6 +8208,42 @@ public class Main extends Activity {
             Log.i("DataTest", "vsync-callback " + detail);
             return called && Boolean.TRUE.equals(got[0]) && got[1] == null && Boolean.TRUE.equals(got[2]) && Boolean.TRUE.equals(got[3])
                 && Boolean.TRUE.equals(got[4]) && Boolean.TRUE.equals(got[5]);
+        });
+        // A Looper told quitSafely() handles the messages that were due when it was told, those at the front first, and ends
+        // without those of a later time; quit() handles none of them; neither takes another. WebRTC's EglRenderer.release
+        // (Viber's registration screen, each time it opens) posts its clean-up at the front of its render thread's queue,
+        // quitSafely()s the thread and waits for the clean-up: quitting dropped everything here, and when the render thread
+        // had not yet taken the clean-up Viber's main thread waited for good. The threads are kept busy meanwhile, so that
+        // nothing is taken before the quit.
+        step("looper-quit-safely", () -> {
+            final StringBuilder ran = new StringBuilder();
+            String[] how = { "safely", "quit" };
+            StringBuilder told = new StringBuilder();
+            for (String way : how) {
+                android.os.HandlerThread ht = new android.os.HandlerThread("looper-" + way);
+                ht.start();
+                android.os.Handler h = new android.os.Handler(ht.getLooper());
+                final java.util.concurrent.CountDownLatch busy = new java.util.concurrent.CountDownLatch(1), go = new java.util.concurrent.CountDownLatch(1);
+                h.post(() -> {
+                    busy.countDown();
+                    try { go.await(5, java.util.concurrent.TimeUnit.SECONDS); } catch (InterruptedException e) { }
+                });
+                busy.await(5, java.util.concurrent.TimeUnit.SECONDS);
+                synchronized (ran) { ran.setLength(0); }
+                h.post(() -> { synchronized (ran) { ran.append(" posted"); } });
+                h.postAtFrontOfQueue(() -> { synchronized (ran) { ran.append(" front"); } });
+                h.postDelayed(() -> { synchronized (ran) { ran.append(" later"); } }, 60000);
+                if (way.equals("safely")) ht.quitSafely(); else ht.quit();
+                boolean taken = h.post(() -> { synchronized (ran) { ran.append(" after"); } });
+                go.countDown();
+                ht.join(5000);
+                synchronized (ran) {
+                    told.append(told.length() > 0 ? "; " : "").append(way).append(":").append(ran.length() > 0 ? ran : " nothing")
+                        .append(taken ? ", one more taken" : "").append(ht.isAlive() ? ", still running" : ", ended");
+                }
+            }
+            detail = told.toString();
+            return "safely: front posted, ended; quit: nothing, ended".equals(detail);
         });
         // PrecomputedText is the text it was made of: its characters and its spans, its paragraphs (each ends after its line
         // feed) and the parameters a Builder was told. It was signatures alone -- no characters, getSpans null -- so a

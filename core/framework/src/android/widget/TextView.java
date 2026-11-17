@@ -428,7 +428,10 @@ public class TextView extends View implements ViewTreeObserver.OnPreDrawListener
     public final KeyListener getKeyListener() { return mKeyListener; }
     public void setFilters(InputFilter[] f) { mFilters = f == null ? new InputFilter[0] : f; if (mText instanceof Editable) ((Editable) mText).setFilters(mFilters); }
     public InputFilter[] getFilters() { return mFilters; }
-    public void setTextIsSelectable(boolean s) { mTextIsSelectable = s; setFocusableInTouchMode(s); setFocusable(s); setClickable(s); setLongClickable(s); if (s) { setMovementMethod(ArrowKeyMovementMethod.getInstance()); setText(mText, BufferType.SPANNABLE); } }
+    /* Nothing changes when the view already is, or is not, selectable, as on Android (its Editor's flag is compared first):
+       Viber's boxes of an activation code, EditTexts, are each told setTextIsSelectable(false), which left them neither
+       focusable nor clickable -- a tap of one took no focus and brought no keyboard. */
+    public void setTextIsSelectable(boolean s) { if (s == mTextIsSelectable) return; mTextIsSelectable = s; setFocusableInTouchMode(s); setFocusable(s); setClickable(s); setLongClickable(s); if (s) { setMovementMethod(ArrowKeyMovementMethod.getInstance()); setText(mText, BufferType.SPANNABLE); } }
     public boolean isTextSelectable() { return mTextIsSelectable; }
     public boolean isTextEditable() { return mText instanceof Editable && onCheckIsTextEditor() && isEnabled(); }
     public void setFreezesText(boolean f) { mFreezesText = f; }

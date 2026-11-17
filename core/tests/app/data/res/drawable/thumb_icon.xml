@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The icon of res/drawable/thumb_layers.xml: a square of one colour, 48 pixels across. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="48px"
+    android:height="48px"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path android:fillColor="#FFFF8000" android:pathData="M0,0h24v24h-24z" />
+</vector>

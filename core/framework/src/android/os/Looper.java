@@ -25,8 +25,8 @@ public final class Looper {
     public MessageQueue getQueue() { return mQueue; }
     public Thread getThread() { return mThread; }
     public boolean isCurrentThread() { return Thread.currentThread() == mThread; }
-    public void quit() { mQueue.quit(); }
-    public void quitSafely() { mQueue.quit(); }
+    public void quit() { mQueue.quit(false); }
+    public void quitSafely() { mQueue.quit(true); }
     public static void loop() {
         Looper me = myLooper();
         boolean main = me == sMain;
