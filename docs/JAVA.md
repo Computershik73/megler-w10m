@@ -800,7 +800,13 @@ ids from `AUTOINCREMENT`. `query` with a selection and arguments, ordered,
 read through a `Cursor`. `types`: `Cursor.getType` for each of the five, a
 blob byte for byte, an integer read as a string and a real as an int.
 `update` and `delete` with their counts. `rollback`: a transaction ended
-without `setTransactionSuccessful` leaves nothing. `commit`. `constraint`:
+without `setTransactionSuccessful` leaves nothing. `commit`.
+`deferred-transaction`: the hidden `getThreadSession` found among
+`SQLiteDatabase`'s declared methods and the session's `beginTransaction`
+with the mode 0, as androidx.sqlite and Google Play services reach a
+deferred transaction; while it has only read, a second connection to the
+file takes the write lock; what it then writes is committed by the
+database's `endTransaction`. `constraint`:
 `insertOrThrow` of a duplicate is `SQLiteConstraintException`, `insert`
 answers -1. `statement`: `compileStatement`, `simpleQueryForLong`,
 `executeUpdateDelete`. `text`: Cyrillic, a euro sign and an emoji go in and
@@ -862,6 +868,15 @@ Java's calls arrive there.
   hidden `getVolumeList`, `getVolumePaths` and `getVolumeState`, called by
   reflection as an old file manager calls them, give the same volume, its
   path, and `unknown` for a path that is none. `UUID_DEFAULT` is Android's.
+- `volume-infos`: the storage daemon's volumes, read the way Files by Google
+  looks for an SD card and a USB drive: the hidden `getVolumes` among
+  `StorageManager`'s declared methods, `android.os.storage.VolumeInfo` and
+  `DiskInfo` by name, a volume's `path`, `fsUuid`, `disk` and `state` as
+  fields. Two volumes, mounted and on no disk: the private one at
+  `Environment.getDataDirectory()` and the emulated one, with the primary
+  `StorageVolume`'s id, whose folder of the user (`getPathForUser`) is the
+  shared storage. `getDisks` is empty; `findVolumeById` finds "private" and
+  nothing for an id that is none.
 - `space`: `StatFs` on the shared storage and on `/data`: a total of at least
   a gigabyte, free space within it, and the same answer whichever way it is
   asked -- the long calls, the old int ones multiplied as longs,
@@ -4611,8 +4626,21 @@ rescheduled, after its interval when it repeats, at once when work was
 enqueued meanwhile. Scheduling it again or cancelling it stops it if it runs
 (`onStopJob`). `JobInfo` keeps what its Builder is told (its service,
 transient extras, network type, latency, period, backoff, ...), where it kept
-the id and extras only. Not done: jobs persisted across runs, constraints
-other than the time, content triggers.
+the id and extras only. A job with content triggers
+(`JobInfo.Builder.addTriggerContentUri`) waits for a change of one of its
+URIs told to `ContentResolver.notifyChange` (those below it too with
+`FLAG_NOTIFY_FOR_DESCENDANTS`), as Android's ContentObserverController holds
+it: it runs once no further change has come for its update delay (10 s unless
+it says), at the latest its maximum delay after the first (2 minutes), with
+`JobParameters.getTriggeredContentUris` and `getTriggeredContentAuthorities`
+filled (the first 50 URIs, null beyond); scheduled again from its own run,
+it takes over the changes told meanwhile and runs at once for them; one with
+an override deadline runs at it, changed or not. It is watched by observers
+registered while it waits, so an app without such jobs pays nothing. WorkManager's
+content-URI work is such a job: run at once, as it was, it was scheduled again by
+each of its runs (Files by Google: job ids 30 to 1246 in a session). Not done:
+jobs persisted across runs, constraints other than the time and the content
+triggers.
 
 `megler.Processes`: a component the manifest puts in another process
 (`android:process`) runs in a class scope of the app's own APK
@@ -4923,6 +4951,29 @@ of 2.5 s, the collations `LOCALIZED` (ASCII case ignored) and `UNICODE` (byte
 order) that Android registers on every connection, strings bound and read as
 the UTF-16 Java keeps them in. An app's path
 (`/data/data/<package>/databases/x.db`) is turned into the host's.
+
+**Transactions and the session.** `beginTransaction` is SQLite's `BEGIN
+EXCLUSIVE` and `beginTransactionNonExclusive` its `BEGIN IMMEDIATE`, as on
+Android. A deferred one -- plain `BEGIN`, which takes no write lock until
+something is written, so that a transaction that only reads keeps no other
+connection or process out -- is Android 15's `beginTransactionReadOnly`, and
+before it is reached only by reflection: the hidden
+`SQLiteDatabase.getThreadSession()` and the session's
+`beginTransaction(0, listener, 0, null)`. Google Play services' databases do
+that (26.41.31; where the method is not found, "Unable to reflect
+getThreadSession" in the log and an exclusive transaction for each read, which
+is what every app that hosts them had here), and androidx.sqlite looks the two
+up the same way for its `beginTransactionReadOnly` (Files by Google).
+`SQLiteDatabase.getThreadSession` (not public, as on Android) gives a
+`SQLiteSession` (`core/framework-overlay`) with Android's transaction calls --
+the three modes, `hasTransaction`, `hasNestedTransaction`, `hasConnection`,
+`beginTransaction`, `setTransactionSuccessful`, `endTransaction`,
+`yieldTransaction` -- and none of the statements Android's session runs as
+well. The database here is one connection, which a transaction keeps for its
+thread: there is one session, it answers for the thread that asks, and its
+transaction is the database's own, ended through either. A transaction keeps
+its mode, with which a yield begins it again, and the framework's own
+`beginTransactionReadOnly` is deferred too (it began an immediate one).
 
 **Which SQLite.** These natives, as written for the framework on iOS, take
 whatever SQLite the system has, and use 35 functions of its API, none of them new: `open_v2`,
@@ -6468,6 +6519,42 @@ on a looper thread of its own and takes it back with `next()`.
   Google Play services' (a place at a point and of a name in the request's
   locale, an error, the listener forms, the first request a synchronous one
   on the main thread).
+- `com/android/location/provider/GeofenceProvider.java` and
+  `android/hardware/location/GeofenceHardware.java` and
+  `GeofenceHardwareRequest.java`, which the framework did not have. Google
+  Play services' location service makes its hardware geofencer when it is
+  created (unless flags of its say otherwise), a subclass of
+  `GeofenceProvider`, a class of Android's location provider library that
+  the module does not carry: `NoClassDefFoundError`, "Binding
+  com.google.android.location.internal.GoogleLocationManagerService failed"
+  and a null binding, so no fused location from Play services, in the logs
+  of eight apps (0.1.0.695 and 0.1.0.696). The provider is Android's:
+  `getBinder` for its service's `onBind`, and `onGeofenceHardwareChange`,
+  which the system calls where the phone has geofencing hardware. Here
+  nothing binds it and it is never given any; `GeofenceHardware` has
+  Android's constants and methods and cannot be made, the request is
+  Android's value. Not there yet: the same library's `LocationProviderBase`,
+  `SignificantPlaceProvider` and `...Unbundled` classes, which Play services
+  name too. The data app's step "geofence-provider".
+- `android/net/wifi/sharedconnectivity/service/SharedConnectivityService.java`
+  and, in `android/net/wifi/sharedconnectivity/app`, `NetworkProviderInfo.java`,
+  `HotspotNetwork.java`, `KnownNetwork.java`,
+  `HotspotNetworkConnectionStatus.java`, `KnownNetworkConnectionStatus.java`
+  and `SharedConnectivitySettingsState.java`, Android 14's system API that the
+  framework did not have: the service through which Google Play services'
+  tethering module tells the Wi-Fi settings of the hotspots and known
+  networks of the user's other devices. Play services start their
+  `TetherService` in every process that hosts them, and from Android 14 on
+  its `onCreate` makes one, a class the module does not carry:
+  `NoClassDefFoundError`, "Starting
+  com.google.android.gms.magictether.service.TetherService failed" in the
+  logs of eighteen apps (0.1.0.673 to 0.1.0.699). The values are Android's,
+  with their builders' checks and their parcels. The service is what
+  Android's is where the system names no shared connectivity service:
+  nothing binds it, what it sets is told to nobody, its `on...` methods are
+  never called, and `areHotspotNetworksEnabledForService` and
+  `areKnownNetworksEnabledForService` say no. The data app's step
+  "shared-connectivity".
 - `android/content/res/AssetManager.java`, `Resources.java` and
   `ResourcesImpl.java`, another package's splits: an `AssetManager` made for
   another package (`meglerForPackage`) takes its splits too, whose tables are
@@ -6574,7 +6661,19 @@ on a looper thread of its own and takes it back with `next()`.
   `getStorageVolumes` did not exist before Android 7. There is one volume,
   the shared storage, which the framework's own `StorageVolume` describes; a path
   that is no volume is "unknown". And `UUID_DEFAULT` is Android's constant
-  (it was null), which is what `getUuidForPath` answers.
+  (it was null), which is what `getUuidForPath` answers. The storage
+  daemon's view, hidden as well: `getVolumes` was a generated empty list and
+  `VolumeInfo.java` and `DiskInfo.java` were not there, so that Files by
+  Google, which reads them by reflection for an SD card and a USB drive,
+  logged "Unable to obtain StorageManager volumes" at each look
+  (`ClassNotFoundException: android.os.storage.DiskInfo`). The two classes
+  are Android's values, and `getVolumes` answers what Android answers on a
+  phone without a removable medium: the private volume at `/data` and the
+  emulated one ("emulated;0", primary, the user's), neither on a disk;
+  `getDisks` is empty, `findVolumeById`, `findVolumeByUuid` and
+  `getBestVolumeDescription` look in that list, `getWritablePrivateVolumes`
+  is the private one. No SD card or USB drive is made up. The data app's
+  step "volume-infos".
 - `android/os/Environment.java`: `getDataDirectory()` is `/data`, as on
   Android; the framework's own file answered the app's own folder, so that the documented
   `new File(getDataDirectory(), "data/" + packageName + ...)` named that
@@ -7347,6 +7446,29 @@ on a looper thread of its own and takes it back with `next()`.
   null" (0.1.0.673). The data app's Application (`DataApplication`) asks so
   on a thread of its own in its `onCreate`, and the step
   "activity-thread-application" checks what it found and every other way.
+
+- `android/app/Instrumentation.java` (in place of the generated stub),
+  `android/app/ActivityThread.java`, `android/app/Activity.java` and
+  `megler/AppRunner.java`: the process's `Instrumentation` in
+  `ActivityThread`'s hidden field `mInstrumentation`, and asked as Android
+  asks it. The Application is made and attached by its `newApplication` and
+  started by its `callApplicationOnCreate`, the app's activities are made by
+  its `newActivity`, and each step of an activity's life goes through its
+  `callActivityOn...` (create, post-create, start, restart, resume, pause,
+  stop, destroy, new intent, save and restore state) -- through the one in
+  the field at that moment, so one an app puts there is the one asked from
+  then on. TikTok Lite's "mini" app puts its own there
+  (`ActivityDispatchService`) to make an activity of its own for the name
+  of one whose class is in a feature module it does not have yet: there
+  was no such field (`NoSuchFieldException: mInstrumentation`, 0.1.0.699).
+  The activities of the Google Play services hosted and Megler's own
+  system screens are other processes' on Android and keep to the
+  platform's `Instrumentation`. Not there: `Activity.mInstrumentation` and
+  `execStartActivity` (starts do not go through it), the Applications of
+  an app's other processes and its content providers. The data app's steps
+  "activity-thread-instrumentation" and, at the harness's F10,
+  "instrumentation-replaced" check the field and an `Instrumentation` put
+  in it.
 
 - `android/app/DialogFragment.java`, in place of the generated stub, whose
   `show()` did nothing: `onCreateDialog` was never called and `getDialog()`

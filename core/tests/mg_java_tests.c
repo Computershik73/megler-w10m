@@ -3647,10 +3647,10 @@ static void app_results(int *at)
 
 static int run_data(void)
 {
-    static const char *const steps[] = { "open", "kept", "insert", "query", "types", "update", "delete", "rollback", "commit", "constraint", "statement", "text",
-                                         "bad-sql", "memory", "upgrade", "wal-restored", "left",
+    static const char *const steps[] = { "open", "kept", "insert", "query", "types", "update", "delete", "rollback", "commit", "deferred-transaction", "constraint",
+                                         "statement", "text", "bad-sql", "memory", "upgrade", "wal-restored", "left",
                                          /* And the storage as an app sees it. */
-                                         "environment", "own-folders", "cache-cleared", "volumes", "space",
+                                         "environment", "own-folders", "cache-cleared", "volumes", "volume-infos", "space",
                                          /* And the phone's media through MediaStore (megler.MediaProvider): saved to the gallery,
                                             seen as the storage permission lets it -- the first run only what it saved itself --,
                                             queried with the app's SQL, read, thumbnailed, watched, scanned and deleted. */
@@ -3703,7 +3703,7 @@ static int run_data(void)
                                             makes one. And a proxy of an interface of 600 methods. And sound from Java: an
                                             AudioTrack written to, a MediaPlayer of a WAV and of an Ogg Vorbis asset, a SoundPool. */
                                          "xml", "asset-fd", "tasks", "wrapper-receiver", "viewgroup-flag", "text-drawables", "pfd-dup", "pfd-parcel",
-                                         "theme-selfref", "queue-next", "storage-stats", "broadcast-explicit", "service-stop-thread", "start-ids", "process-scope", "job-scheduler", "downloads", "rollback-service", "art-manager", "progress-subclass", "telephony", "microphone", "biometric", "ordered-broadcast", "hardware-accelerated", "descendant-invalidated", "invalidate-override", "image-matrix-before-layout", "delegate-last-scope", "asset-manager-manifest", "big-asset", "file-available", "path-iterator", "mutable-context", "exec", "crc32c", "nine-patch-constructors", "subscription-ids", "filter-categories", "intent-categories", "broadcast-identity", "arrays-ranges", "collection-factories", "unmodifiable-collectors", "objects-java9", "thread-stack", "icu-number", "icu-new-units", "audio-route", "expand-template", "list-fragment", "fragment-saved-state", "stub-said", "handler-thread", "managed-dialog", "input-format", "dialog-of-stopped", "zoom-buttons", "zip-path-validator", "list-row-click", "animation-listener", "animation-set", "wait-interrupt", "looper-interrupt", "circular-reveal", "animator-values", "detached-animator", "animator-listener", "animator-not-animation", "observer-merged", "typeface-descriptor", "device-provisioned", "users", "start-asked", "pending-intent-creator", "pending-intent-flags", "pending-intent-options", "alarm-replace-cancel", "alarm-listeners", "wake-lock", "cell-info-update", "messenger-forwarded", "insets-builder", "insets-consumed", "insets-siblings", "broadcast-handler", "broadcast-unregistered", "prefs-spaced-key", "prefs-null-key", "account-removed", "sync", "google-signed-out", "package-installer", "batch-operations", "wifi", "media-metadata", "playback-state", "remote-user-info", "media-key-controller", "container-state", "context-params", "theme-accent", "phone-apps", "phone-apps-source", "phone-apps-activities", "phone-apps-signatures", "check-signatures", "install-intent", "install-session", "install-splits", "bitmap-bytes", "bitmap-reuse", "file-read-only", "file-times", "component-state", "adaptive-icon", "idle-handler", "uri-builder", "url-query-sanitizer", "html-tag-handler", "stats-manager", "credential-manager", "many-interfaces", "proxy-many-methods", "apk-path", "archive-meta-data", "maps-paths", "apk-optimization",
+                                         "theme-selfref", "queue-next", "storage-stats", "broadcast-explicit", "service-stop-thread", "start-ids", "process-scope", "job-scheduler", "job-content-trigger", "downloads", "rollback-service", "art-manager", "progress-subclass", "telephony", "microphone", "biometric", "ordered-broadcast", "hardware-accelerated", "descendant-invalidated", "invalidate-override", "image-matrix-before-layout", "delegate-last-scope", "asset-manager-manifest", "big-asset", "file-available", "path-iterator", "mutable-context", "exec", "crc32c", "nine-patch-constructors", "subscription-ids", "filter-categories", "intent-categories", "broadcast-identity", "arrays-ranges", "collection-factories", "unmodifiable-collectors", "objects-java9", "thread-stack", "icu-number", "icu-new-units", "audio-route", "expand-template", "list-fragment", "fragment-saved-state", "stub-said", "handler-thread", "managed-dialog", "input-format", "dialog-of-stopped", "zoom-buttons", "zip-path-validator", "list-row-click", "animation-listener", "animation-set", "wait-interrupt", "looper-interrupt", "circular-reveal", "animator-values", "detached-animator", "animator-listener", "animator-not-animation", "observer-merged", "typeface-descriptor", "device-provisioned", "users", "start-asked", "pending-intent-creator", "pending-intent-flags", "pending-intent-options", "alarm-replace-cancel", "alarm-listeners", "wake-lock", "cell-info-update", "messenger-forwarded", "insets-builder", "insets-consumed", "insets-siblings", "broadcast-handler", "broadcast-unregistered", "prefs-spaced-key", "prefs-null-key", "account-removed", "sync", "google-signed-out", "package-installer", "batch-operations", "wifi", "media-metadata", "playback-state", "remote-user-info", "media-key-controller", "container-state", "context-params", "theme-accent", "phone-apps", "phone-apps-source", "phone-apps-activities", "phone-apps-signatures", "check-signatures", "install-intent", "install-session", "install-splits", "bitmap-bytes", "bitmap-reuse", "file-read-only", "file-times", "component-state", "adaptive-icon", "idle-handler", "uri-builder", "url-query-sanitizer", "html-tag-handler", "stats-manager", "credential-manager", "many-interfaces", "proxy-many-methods", "apk-path", "archive-meta-data", "maps-paths", "apk-optimization",
                                          /* And an <inset> whose insets are fractions of its bounds, WhatsApp's adaptive icon's 0.01% among them. */
                                          "inset-fraction",
                                          /* And a WorkSource through a Parcel and back, as a location request of Google Play services' carries one. */
@@ -3732,6 +3732,8 @@ static int run_data(void)
                                          /* And the process's Application through ActivityThread's hidden fields, on a thread of the Application's
                                             own while it is created, as Tuya Smart's library loader asks, and afterwards. */
                                          "activity-thread-application",
+                                         /* And its Instrumentation in the hidden mInstrumentation, which TikTok Lite's "mini" app replaces. */
+                                         "activity-thread-instrumentation",
                                          /* And the hidden ServiceManager, the platform's services each a binder that refuses every
                                             transaction and any other name a service that is not there, as Shizuku's SystemServiceHelper
                                             asks it (Morphe Manager ended at its start without the class); and its "window" cast to
@@ -3841,6 +3843,10 @@ static int run_data(void)
                                          /* And Android's Geocoder with no geocode provider (no Google Play services): not present, no
                                             addresses and no error, the arguments checked; and an Address as Android's, through a Parcel. */
                                          "geocoder", "address",
+                                         /* And system APIs that Play services' own services are made with: a GeofenceProvider with no
+                                            geofencing hardware to be told of, and a hardware geofence's request as a value; and
+                                            Android 14's SharedConnectivityService, which nothing binds, with the values it is told. */
+                                         "geofence-provider", "shared-connectivity",
                                          /* And later APIs and attributes that apps and Play services met missing: a view named for a
                                             shared element transition in its layout (android:transitionName: itself, by a string, by a
                                             style); ListFormatter by a type and a width (Android 13) over ICU 60's list patterns;
@@ -4086,6 +4092,16 @@ static int run_data(void)
     CHECK(wait_line("I/DataTest: job 42 work=one,two,", 0, 30) >= 0);
     /* And a service that is no JobService but gives its JobServiceEngine's binder, as AndroidX's JobIntentService: its work taken through the engine. */
     CHECK(wait_line("I/DataTest: job 43 work=three,four, through its engine", 0, 30) >= 0);
+    /* The jobs of the step "job-content-trigger", held until their content changed and told what did: the two descendants
+       told (once each, the other URI not); the one of a deadline, at it, with nothing its own changed; the one scheduled
+       again from its run, at once with the change told during it; the one that asked for another run, with its change again. */
+    CHECK(wait_line("I/DataTest: job 44 run=1 uris=[content://megler.test.data.jobs/watched/7, content://megler.test.data.jobs/watched/8] "
+                    "authorities=[megler.test.data.jobs] deadline=false", 0, 30) >= 0);
+    CHECK(wait_line("I/DataTest: job 45 run=1 uris=null authorities=null deadline=true", 0, 30) >= 0);
+    CHECK(wait_line("I/DataTest: job 46 run=1 uris=[content://megler.test.data.jobs/again/1] authorities=[megler.test.data.jobs] deadline=false", 0, 30) >= 0);
+    CHECK(wait_line("I/DataTest: job 46 run=2 uris=[content://megler.test.data.jobs/again/2] authorities=[megler.test.data.jobs] deadline=false", 0, 30) >= 0);
+    CHECK(wait_line("I/DataTest: job 47 run=1 uris=[content://megler.test.data.jobs/failed] authorities=[megler.test.data.jobs] deadline=false", 0, 30) >= 0);
+    CHECK(wait_line("I/DataTest: job 47 run=2 uris=[content://megler.test.data.jobs/failed] authorities=[megler.test.data.jobs] deadline=false", 0, 60) >= 0);
     /* The download of the step "downloads": done, its row and file with the server's five bytes, the cookie sent, its cursor's
        observer told. */
     CHECK(wait_line("I/DataTest: downloads ok status=200 bytes=5 body=hello cookie=true observed=true file=5", 0, 30) >= 0);
@@ -4258,6 +4274,13 @@ static int run_data(void)
     expect_line("I/DataTest: stuck-holder ok", &at, 60);
     CHECK(find_line("and 1 holder of the monitors waited for:", 0) >= 0 && find_line("stuck: thread ", 0) >= 0
           && find_line("stuck:   megler/test/data/Main.stuckHolder line ", 0) >= 0);
+    /* An Instrumentation of the app's own put in ActivityThread.mInstrumentation (F10, Main.replacedInstrumentation): it is asked
+       for the next activity started, makes one of another class for a name of no class, and is called at each step of that
+       one's life before the activity is, as TikTok Lite's "mini" app has its own make the activities of a feature module it
+       does not have yet (the field was not there: NoSuchFieldException, 0.1.0.699). */
+    megler_key(140, true);
+    megler_key(140, false);
+    expect_line("I/DataTest: instrumentation-replaced ok", &at, 30);
     /* A translucent activity over the app's (F11, Main$Clear): the one below paused, not stopped, its window still there. TikTok
        Lite's consent dialog, translucent, left the screen black behind it (package 619). */
     megler_key(141, true);

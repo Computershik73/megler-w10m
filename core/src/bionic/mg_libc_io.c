@@ -1010,6 +1010,9 @@ static char *synthetic(const char *g, size_t *size)
         if (atoi(g + 27) >= cpus) return NULL;
         if (!strcmp(leaf, "cpuinfo_max_freq") || !strcmp(leaf, "scaling_max_freq") || !strcmp(leaf, "scaling_cur_freq")) tb_add(&t, "1800000\n");
         else if (!strcmp(leaf, "cpuinfo_min_freq") || !strcmp(leaf, "scaling_min_freq")) tb_add(&t, "300000\n");
+        /* (The governor of a frequency that is the highest there is at every read, as these leaves say this one is: the
+           kernel's "performance", which keeps it there. CPU-Z shows the governor, and logged FileNotFoundException for it.) */
+        else if (!strcmp(leaf, "scaling_governor")) tb_add(&t, "performance\n");
         else return NULL;
     } else if ((rest = cpu_file(g, &i)) != NULL && (!strncmp(rest, "topology/", 9) || !strcmp(rest, "cpu_capacity"))) {
         /* A processor's place among the others, for code that spreads its threads over the cores by these files: one package

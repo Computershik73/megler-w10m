@@ -222,6 +222,48 @@ public class Main extends Activity {
             }
             return count(db) == 3 && DatabaseUtils.longForQuery(db, "SELECT stars FROM notes WHERE title = 'delta'", null) == 2;
         });
+        step("deferred-transaction", () -> {
+            /* A deferred transaction, which takes no write lock until it writes, the way androidx.sqlite (Room's read
+               transactions) and Google Play services reach one before Android 15: SQLiteDatabase's hidden getThreadSession,
+               found among its declared methods, and the session's beginTransaction with the mode 0. While it has only read, a
+               second connection to the file takes the write lock at once (after beginTransaction, an exclusive one, it would
+               wait and say the database is locked); what it writes then is committed by the database's own endTransaction. */
+            java.lang.reflect.Method getThreadSession = SQLiteDatabase.class.getDeclaredMethod("getThreadSession");
+            getThreadSession.setAccessible(true);
+            java.lang.reflect.Method begin = getThreadSession.getReturnType().getDeclaredMethod("beginTransaction", int.class,
+                    android.database.sqlite.SQLiteTransactionListener.class, int.class, android.os.CancellationSignal.class);
+            Object session = getThreadSession.invoke(db);
+            boolean had = (Boolean) session.getClass().getMethod("hasTransaction").invoke(session);
+            begin.invoke(session, 0, null, 0, null);
+            boolean inside, has, nested, free = false;
+            long read;
+            String refused = null;
+            try {
+                inside = db.inTransaction();
+                has = (Boolean) session.getClass().getMethod("hasTransaction").invoke(session);
+                nested = (Boolean) session.getClass().getMethod("hasNestedTransaction").invoke(session);
+                read = count(db);
+                SQLiteDatabase second = SQLiteDatabase.openDatabase(db.getPath(), null, SQLiteDatabase.OPEN_READWRITE);
+                try {
+                    second.beginTransactionNonExclusive();
+                    second.endTransaction();
+                    free = true;
+                } catch (SQLiteException e) {
+                    refused = e.toString();
+                } finally {
+                    second.close();
+                }
+                db.insertOrThrow("notes", null, note("epsilon", "deferred", 3, 1.0, null));
+                db.setTransactionSuccessful();
+            } finally {
+                db.endTransaction();
+            }
+            long after = count(db);
+            int removed = db.delete("notes", "title = ?", new String[] { "epsilon" });
+            detail = "session=" + session.getClass().getName() + " had=" + had + " inside=" + inside + " has=" + has + " nested=" + nested + " read=" + read
+                    + " free=" + free + (refused != null ? " (" + refused + ")" : "") + " after=" + after + " removed=" + removed;
+            return !had && inside && has && !nested && read == 3 && free && !db.inTransaction() && after == 4 && removed == 1 && count(db) == 3;
+        });
         step("constraint", () -> {
             boolean thrown = false;
             try {
@@ -469,6 +511,44 @@ public class Main extends Activity {
             detail = "result=" + r + " pending=" + pending + " latency=" + (pending != null ? pending.getMinLatencyMillis() : -1);
             return r == android.app.job.JobScheduler.RESULT_SUCCESS && pending != null && Work.class.getName().equals(pending.getService().getClassName())
                 && pending.getMinLatencyMillis() == 100;
+        });
+        // A job that waits for a change of content (JobInfo.Builder.addTriggerContentUri) is held until one is told, and its
+        // parameters say what changed, as Android's: Files by Google's WorkManager work of that kind ran at once, was enqueued
+        // again and ran, for ever. 44 waits for descendants of a URI and is told two (and one that is not its own); 45 has a
+        // deadline and nothing of its own changes (a descendant, of a trigger that does not ask for them); 46 is scheduled
+        // again from its run, after another change: told to the new job, which runs at once; 47 asks to be run again and
+        // is told its change again. The changes are told a while after the step, so a job run at once would have none.
+        step("job-content-trigger", () -> {
+            final android.app.job.JobScheduler js = (android.app.job.JobScheduler) getSystemService(JOB_SCHEDULER_SERVICE);
+            android.content.ComponentName work = new android.content.ComponentName(this, Work.class);
+            final android.net.Uri base = android.net.Uri.parse("content://megler.test.data.jobs");
+            android.app.job.JobInfo.TriggerContentUri watched = new android.app.job.JobInfo.TriggerContentUri(android.net.Uri.withAppendedPath(base, "watched"),
+                    android.app.job.JobInfo.TriggerContentUri.FLAG_NOTIFY_FOR_DESCENDANTS);
+            int r = js.schedule(new android.app.job.JobInfo.Builder(44, work).addTriggerContentUri(watched).setTriggerContentUpdateDelay(600).build());
+            r &= js.schedule(new android.app.job.JobInfo.Builder(45, work)
+                    .addTriggerContentUri(new android.app.job.JobInfo.TriggerContentUri(android.net.Uri.withAppendedPath(base, "exact"), 0)).setOverrideDeadline(3000).build());
+            r &= js.schedule(Work.again(this));
+            r &= js.schedule(new android.app.job.JobInfo.Builder(47, work)
+                    .addTriggerContentUri(new android.app.job.JobInfo.TriggerContentUri(android.net.Uri.withAppendedPath(base, "failed"), 0))
+                    .setTriggerContentUpdateDelay(500).setTriggerContentMaxDelay(1000).setBackoffCriteria(1000, android.app.job.JobInfo.BACKOFF_POLICY_LINEAR).build());
+            new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(() -> {
+                android.content.ContentResolver cr = getContentResolver();
+                cr.notifyChange(android.net.Uri.withAppendedPath(base, "watched/7"), null);
+                cr.notifyChange(android.net.Uri.withAppendedPath(base, "other/1"), null);
+                cr.notifyChange(android.net.Uri.withAppendedPath(base, "watched/8"), null);
+                cr.notifyChange(android.net.Uri.withAppendedPath(base, "watched/7"), null);
+                cr.notifyChange(android.net.Uri.withAppendedPath(base, "exact/1"), null);
+                cr.notifyChange(android.net.Uri.withAppendedPath(base, "again/1"), null);
+                cr.notifyChange(android.net.Uri.withAppendedPath(base, "failed"), null);
+            }, 1500);
+            android.app.job.JobInfo pending = js.getPendingJob(44), plain = js.getPendingJob(41);
+            android.app.job.JobInfo.TriggerContentUri[] kept = pending != null ? pending.getTriggerContentUris() : null;
+            detail = "result=" + r + " kept=" + (kept != null ? kept.length + " " + kept[0].getUri() + " flags=" + kept[0].getFlags() : "null")
+                     + " delays=" + (pending != null ? pending.getTriggerContentUpdateDelay() + "," + pending.getTriggerContentMaxDelay() : "")
+                     + " plain=" + (plain != null ? java.util.Arrays.toString(plain.getTriggerContentUris()) : "none");
+            return r == android.app.job.JobScheduler.RESULT_SUCCESS && kept != null && kept.length == 1 && kept[0].equals(watched)
+                && pending.getTriggerContentUpdateDelay() == 600 && pending.getTriggerContentMaxDelay() == -1
+                && (plain == null || plain.getTriggerContentUris() == null);
         });
         // A download enqueued in the system's download provider (content://downloads, as DownloadManager and Play Store's old
         // downloader do), from a server of this app's own on 127.0.0.1 that wants the row's cookie: its cursor's observer hears
@@ -2251,6 +2331,7 @@ public class Main extends Activity {
         notificationChannel();
         notificationChannels(run);
         geocoding();
+        playServicesClasses();
         laterApis();
         remoteCallbacks();
         sessionControllers();
@@ -2708,6 +2789,51 @@ public class Main extends Activity {
                     && sm.getStorageVolume(new File(root, "Download")) != null
                     && "41217664-9172-527a-b3d5-edabb50a7d69".equals(android.os.storage.StorageManager.UUID_DEFAULT.toString())
                     && android.os.storage.StorageManager.UUID_DEFAULT.equals(sm.getUuidForPath(getFilesDir()));
+        });
+        step("volume-infos", () -> {
+            /* The storage daemon's volumes, all hidden, the way Files by Google looks for an SD card and a USB drive: getVolumes
+               found among StorageManager's declared methods, VolumeInfo and DiskInfo by name, a volume's path, fsUuid, disk and
+               state as fields and its user from getMountUserId, a disk's kind from isAdoptable, isSd and isUsb. A phone without
+               a removable medium has two, mounted and on no disk: the private one at /data and the emulated one, which is the
+               volume getStorageVolumes describes. */
+            android.os.storage.StorageManager sm = (android.os.storage.StorageManager) getSystemService(Context.STORAGE_SERVICE);
+            java.lang.reflect.Method getVolumes = android.os.storage.StorageManager.class.getDeclaredMethod("getVolumes");
+            getVolumes.setAccessible(true);
+            java.util.List<?> list = (java.util.List<?>) getVolumes.invoke(sm);
+            Class<?> disk = Class.forName("android.os.storage.DiskInfo"), volume = Class.forName("android.os.storage.VolumeInfo");
+            java.lang.reflect.Field path = volume.getDeclaredField("path"), fsUuid = volume.getDeclaredField("fsUuid"), onDisk = volume.getDeclaredField("disk"),
+                                    state = volume.getDeclaredField("state");
+            java.lang.reflect.Method mountUser = volume.getDeclaredMethod("getMountUserId"), type = volume.getDeclaredMethod("getType"),
+                                     forUser = volume.getDeclaredMethod("getPathForUser", int.class), id = volume.getDeclaredMethod("getId");
+            boolean kinds = disk.getDeclaredMethod("isAdoptable").getReturnType() == boolean.class && disk.getDeclaredMethod("isSd").getReturnType() == boolean.class
+                    && disk.getDeclaredMethod("isUsb").getReturnType() == boolean.class;
+            int user = (Integer) Context.class.getMethod("getUserId").invoke(this);
+            StringBuilder said = new StringBuilder();
+            boolean ok = kinds && list.size() == 2, sawPrivate = false, sawShared = false;
+            for (Object v : list) {
+                int owner = (Integer) mountUser.invoke(v), kind = (Integer) type.invoke(v);
+                said.append(id.invoke(v)).append(" type=").append(kind).append(" state=").append(state.getInt(v)).append(" user=").append(owner).append(" path=")
+                    .append(path.get(v)).append(" uuid=").append(fsUuid.get(v)).append(" disk=").append(onDisk.get(v)).append("; ");
+                /* (2 is VolumeInfo.STATE_MOUNTED) */
+                ok &= volume.isInstance(v) && state.getInt(v) == 2 && onDisk.get(v) == null && fsUuid.get(v) == null && (owner < 0 || owner == user);
+                if (kind == 1 /* TYPE_PRIVATE */) {
+                    sawPrivate = true;
+                    ok &= "private".equals(id.invoke(v)) && android.os.Environment.getDataDirectory().getPath().equals(path.get(v)) && forUser.invoke(v, user) == null;
+                } else if (kind == 2 /* TYPE_EMULATED */) {
+                    sawShared = true;
+                    ok &= sm.getPrimaryStorageVolume().getClass().getMethod("getId").invoke(sm.getPrimaryStorageVolume()).equals(id.invoke(v))
+                            && owner == user && root.equals(forUser.invoke(v, user)) && root.getParent().equals(path.get(v))
+                            && (Boolean) volume.getMethod("isPrimary").invoke(v) && (Boolean) volume.getMethod("isMountedWritable").invoke(v)
+                            && "Internal storage".equals(volume.getMethod("getDescription").invoke(v));
+                } else {
+                    ok = false;
+                }
+            }
+            java.util.List<?> disks = (java.util.List<?>) android.os.storage.StorageManager.class.getMethod("getDisks").invoke(sm);
+            Object found = android.os.storage.StorageManager.class.getMethod("findVolumeById", String.class).invoke(sm, "private");
+            detail = said + "disks=" + disks.size() + " found=" + (found != null);
+            return ok && sawPrivate && sawShared && disks.isEmpty() && volume.isInstance(found)
+                    && android.os.storage.StorageManager.class.getMethod("findVolumeById", String.class).invoke(sm, "public:179,1") == null;
         });
         step("space", () -> {
             android.os.StatFs fs = new android.os.StatFs(root.getPath()), data = new android.os.StatFs(android.os.Environment.getDataDirectory().getPath());
@@ -4157,10 +4283,14 @@ public class Main extends Activity {
     }
 
     /** The harness's F12 (mg_java_tests.c, run_data): the main thread made to stand in Object.wait (stuckMain); F11: a translucent
-        activity over this one (Clear). */
+        activity over this one (Clear); F10: an activity started under an Instrumentation of the app's own (replacedInstrumentation). */
     @Override public boolean onKeyDown(int keyCode, android.view.KeyEvent event) {
         if (keyCode == android.view.KeyEvent.KEYCODE_F12) {
             stuckMain();
+            return true;
+        }
+        if (keyCode == android.view.KeyEvent.KEYCODE_F10) {
+            replacedInstrumentation();
             return true;
         }
         if (keyCode == android.view.KeyEvent.KEYCODE_F11) {
@@ -4195,6 +4325,85 @@ public class Main extends Activity {
                 sWatchStop = false;
                 finish();
             }, 500);
+        }
+    }
+
+    /*
+     * An Instrumentation of the app's own in ActivityThread's hidden mInstrumentation, which holds the platform's and passes on
+     * to it: as TikTok Lite's "mini" app puts one there (its ActivityDispatchService), to make an activity of its own for the
+     * name of one whose class is in a feature module it does not have yet. From then on it is the one asked: newActivity for
+     * the next activity started -- Main$Absent, in the manifest and of no class, for which it has the platform's make
+     * Main$Stand -- and each step of that one's life, before the activity hears of the step (the number after each step is
+     * how many the activity had heard of by then). The activity is the component it was started as. Megler had no such
+     * field (NoSuchFieldException: mInstrumentation), and asked no Instrumentation anything.
+     */
+    static volatile Seen sSeen;
+    static final class Seen extends android.app.Instrumentation {
+        final android.app.Instrumentation platform;
+        final java.lang.reflect.Field field;
+        final Object thread;
+        final StringBuilder said = new StringBuilder();
+        Seen(android.app.Instrumentation platform, java.lang.reflect.Field field, Object thread) {
+            this.platform = platform;
+            this.field = field;
+            this.thread = thread;
+        }
+        private void say(String step, Activity a) {
+            if (a instanceof Stand) said.append(' ').append(step).append(((Stand) a).heard);
+        }
+        @Override public Activity newActivity(ClassLoader cl, String className, android.content.Intent intent)
+                throws InstantiationException, IllegalAccessException, ClassNotFoundException {
+            boolean absent = className.endsWith(".Main$Absent");
+            if (absent) said.append("new:").append(className.substring(className.lastIndexOf('.') + 1));
+            return platform.newActivity(cl, absent ? Stand.class.getName() : className, intent);
+        }
+        @Override public void callActivityOnCreate(Activity a, Bundle state) { say("create", a); platform.callActivityOnCreate(a, state); }
+        @Override public void callActivityOnStart(Activity a) { say("start", a); platform.callActivityOnStart(a); }
+        @Override public void callActivityOnPostCreate(Activity a, Bundle state) { say("postCreate", a); platform.callActivityOnPostCreate(a, state); }
+        @Override public void callActivityOnResume(Activity a) { say("resume", a); platform.callActivityOnResume(a); }
+        @Override public void callActivityOnPause(Activity a) { say("pause", a); platform.callActivityOnPause(a); }
+        @Override public void callActivityOnStop(Activity a) { say("stop", a); platform.callActivityOnStop(a); }
+        @Override public void callActivityOnDestroy(Activity a) { say("destroy", a); platform.callActivityOnDestroy(a); }
+    }
+    private void replacedInstrumentation() {
+        try {
+            Class<?> at = Class.forName("android.app.ActivityThread");
+            Object thread = at.getMethod("currentActivityThread").invoke(null);
+            java.lang.reflect.Field field = at.getDeclaredField("mInstrumentation");
+            field.setAccessible(true);
+            Seen seen = new Seen((android.app.Instrumentation) field.get(thread), field, thread);
+            field.set(thread, seen);
+            sSeen = seen;
+            startActivity(new android.content.Intent().setClassName(this, getPackageName() + ".Main$Absent"));
+        } catch (Throwable t) {
+            Log.i("DataTest", "instrumentation-replaced FAILED: " + t);
+        }
+    }
+    public static class Stand extends Activity {
+        int heard;
+        @Override protected void onCreate(Bundle state) { super.onCreate(state); heard++; }
+        @Override protected void onStart() { super.onStart(); heard++; }
+        @Override protected void onPostCreate(Bundle state) { super.onPostCreate(state); heard++; }
+        @Override protected void onResume() {
+            super.onResume();
+            heard++;
+            new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(this::finish, 300);
+        }
+        @Override protected void onPause() { super.onPause(); heard++; }
+        @Override protected void onStop() { super.onStop(); heard++; }
+        @Override protected void onDestroy() {
+            super.onDestroy();
+            Seen seen = sSeen;
+            String said = seen == null ? "none" : seen.said.toString(), as = getComponentName().getClassName();
+            boolean back = false;
+            try {
+                seen.field.set(seen.thread, seen.platform);
+                back = seen.field.get(seen.thread) == seen.platform;
+            } catch (Throwable t) {
+                said += " " + t;
+            }
+            boolean held = "new:Main$Absent create0 start1 postCreate2 resume3 pause4 stop5 destroy6".equals(said) && as.endsWith(".Main$Absent") && back;
+            Log.i("DataTest", "instrumentation-replaced " + (held ? "ok" : "FAILED") + " said=[" + said + "] as=" + as + " back=" + back);
         }
     }
 
@@ -5126,13 +5335,38 @@ public class Main extends Activity {
         }
     }
 
-    /** The jobs of the step "job-scheduler": 41 says its extra and finishes later, from a thread; 42 takes its work. */
+    /**
+     * The jobs of the step "job-scheduler": 41 says its extra and finishes later, from a thread; 42 takes its work. And those of
+     * the step "job-content-trigger" (44 to 47), which say what they were told changed: 46 tells another change and schedules
+     * itself again in its first run, 47 asks for another run from its first.
+     */
     public static final class Work extends android.app.job.JobService {
+        private static int runs46, runs47;
+        static android.app.job.JobInfo again(Context c) {
+            return new android.app.job.JobInfo.Builder(46, new android.content.ComponentName(c, Work.class))
+                    .addTriggerContentUri(new android.app.job.JobInfo.TriggerContentUri(android.net.Uri.parse("content://megler.test.data.jobs/again"),
+                            android.app.job.JobInfo.TriggerContentUri.FLAG_NOTIFY_FOR_DESCENDANTS))
+                    .setTriggerContentUpdateDelay(500).build();
+        }
         @Override public boolean onStartJob(final android.app.job.JobParameters p) {
             if (p.getJobId() == 41) {
                 Log.i("DataTest", "job 41 said=" + p.getExtras().getString("said") + " network=" + (p.getNetwork() != null));
                 new Thread(() -> jobFinished(p, false)).start();
                 return true;
+            }
+            if (p.getJobId() >= 44 && p.getJobId() <= 47) {
+                int run = p.getJobId() == 46 ? ++runs46 : p.getJobId() == 47 ? ++runs47 : 1;
+                Log.i("DataTest", "job " + p.getJobId() + " run=" + run + " uris=" + java.util.Arrays.toString(p.getTriggeredContentUris())
+                                  + " authorities=" + java.util.Arrays.toString(p.getTriggeredContentAuthorities()) + " deadline=" + p.isOverrideDeadlineExpired());
+                if (p.getJobId() == 46 && run == 1) {
+                    getContentResolver().notifyChange(android.net.Uri.parse("content://megler.test.data.jobs/again/2"), null);
+                    ((android.app.job.JobScheduler) getSystemService(JOB_SCHEDULER_SERVICE)).schedule(again(this));
+                }
+                if (p.getJobId() == 47 && run == 1) {
+                    new Thread(() -> jobFinished(p, true)).start();
+                    return true;
+                }
+                return false;
             }
             StringBuilder got = new StringBuilder();
             for (android.app.job.JobWorkItem w; (w = p.dequeueWork()) != null; ) {
@@ -6873,6 +7107,18 @@ public class Main extends Activity {
             return app instanceof DataApplication && "field true current true".equals(DataApplication.seenInOnCreate) && current.get(null) == thread
                     && fromField == app && apps != null && apps.contains(app) && fromGetter == app && fromCurrent == app && fromGlobals == app;
         });
+        // ActivityThread's hidden mInstrumentation, which an app puts an Instrumentation of its own in (TikTok Lite's "mini" app):
+        // there, of that type, holding the Instrumentation getInstrumentation gives. (That one put there is the one asked from
+        // then on: replacedInstrumentation, the harness's F10.)
+        step("activity-thread-instrumentation", () -> {
+            Class<?> at = Class.forName("android.app.ActivityThread");
+            Object thread = at.getMethod("currentActivityThread").invoke(null);
+            java.lang.reflect.Field field = at.getDeclaredField("mInstrumentation");
+            field.setAccessible(true);
+            Object held = field.get(thread), given = at.getMethod("getInstrumentation").invoke(thread);
+            detail = "a field of " + field.getType().getName() + " holding " + held + ", getInstrumentation " + given;
+            return field.getType() == android.app.Instrumentation.class && held instanceof android.app.Instrumentation && given == held;
+        });
         // The hidden ServiceManager, which Shizuku's SystemServiceHelper reaches by reflection for the system's binders (Sui asks it
         // for "package"): there (Morphe Manager ended at its start without the class), the platform's own services each a binder
         // that stands for it -- the same one each time, its interface's descriptor, alive, no local interface, every transaction
@@ -8300,6 +8546,163 @@ public class Main extends Activity {
             detail = "empty " + empty + " threw " + threw + " max " + max + "/" + stays + "/" + back.getMaxAddressLineIndex() + " negative " + negative + " same " + same + ": " + text;
             return empty && threw && max == 1 && stays == 1 && back.getMaxAddressLineIndex() == 1 && negative && same && "square".equals(a.getExtras().getString("kind")) &&
                    text.startsWith("Address[addressLines=[0:\"Красная площадь\",1:\"Москва, 109012\"],feature=Красная площадь,") && text.contains(",locality=Москва,");
+        });
+    }
+
+    /*
+     * System APIs that Google Play services' own services are made with and do not carry, on a phone where the system has
+     * nothing behind them (each of them missing was NoClassDefFoundError when the service was created).
+     * A GeofenceProvider of Android's location provider library, which GmsCore's location service makes: its binder is
+     * there and stays the same one, and with no geofencing hardware nobody tells the provider of any; and a
+     * GeofenceHardwareRequest is the value Android's is, with its defaults and its check of the source technologies.
+     * A SharedConnectivityService (Android 14), made and given its context as Play services' tethering service does in its
+     * onCreate: it takes the settings' state, the networks and their statuses, gives a binder of the settings' interface,
+     * and, as nothing binds it, is never asked to connect; the system shows no app's networks; and the values it is told --
+     * the settings' state, a hotspot and a known network with the device that offers them, their statuses -- are Android's:
+     * built, checked, equal by what they hold, and the same through a Parcel.
+     */
+    private void playServicesClasses() {
+        step("geofence-provider", () -> {
+            final int[] told = {0};
+            com.android.location.provider.GeofenceProvider provider = new com.android.location.provider.GeofenceProvider() {
+                @Override
+                public void onGeofenceHardwareChange(android.hardware.location.GeofenceHardware hardware) {
+                    told[0]++;
+                }
+            };
+            android.os.IBinder binder = provider.getBinder();
+            boolean same = binder != null && binder == provider.getBinder();
+            android.hardware.location.GeofenceHardwareRequest r = android.hardware.location.GeofenceHardwareRequest.createCircularGeofence(55.7539, 37.6208, 150);
+            // (GEOFENCE_UNCERTAIN; 30 s; entered, exited and uncertain; 5 s; SOURCE_TECHNOLOGY_GNSS)
+            boolean defaults = r.getLastTransition() == 4 && r.getUnknownTimer() == 30000 && r.getMonitorTransitions() == 7 &&
+                               r.getNotificationResponsiveness() == 5000 && r.getSourceTechnologies() == 1;
+            r.setLastTransition(1);
+            r.setUnknownTimer(60000);
+            r.setMonitorTransitions(3);
+            r.setNotificationResponsiveness(1000);
+            r.setSourceTechnologies(2 | 8 | 64);
+            boolean refused = false;
+            try { r.setSourceTechnologies(64); } catch (IllegalArgumentException e) { refused = true; }
+            boolean set = r.getLatitude() == 55.7539 && r.getLongitude() == 37.6208 && r.getRadius() == 150 && r.getLastTransition() == 1 &&
+                          r.getUnknownTimer() == 60000 && r.getMonitorTransitions() == 3 && r.getNotificationResponsiveness() == 1000 &&
+                          r.getSourceTechnologies() == 10;
+            detail = "binder " + binder + " same " + same + " told " + told[0] + " defaults " + defaults + " set " + set + " refused " + refused;
+            return same && told[0] == 0 && defaults && set && refused;
+        });
+        step("shared-connectivity", () -> {
+            final int[] asked = {0};
+            class Sharing extends android.net.wifi.sharedconnectivity.service.SharedConnectivityService {
+                Sharing(android.content.Context base) {
+                    attachBaseContext(base);
+                }
+
+                @Override
+                public void onConnectHotspotNetwork(android.net.wifi.sharedconnectivity.app.HotspotNetwork network) {
+                    asked[0]++;
+                }
+
+                @Override
+                public void onDisconnectHotspotNetwork(android.net.wifi.sharedconnectivity.app.HotspotNetwork network) {
+                    asked[0]++;
+                }
+
+                @Override
+                public void onConnectKnownNetwork(android.net.wifi.sharedconnectivity.app.KnownNetwork network) {
+                    asked[0]++;
+                }
+
+                @Override
+                public void onForgetKnownNetwork(android.net.wifi.sharedconnectivity.app.KnownNetwork network) {
+                    asked[0]++;
+                }
+            }
+            Sharing service = new Sharing(getBaseContext());
+            android.app.PendingIntent settings =
+                android.app.PendingIntent.getActivity(this, 0, new android.content.Intent(this, Main.class), android.app.PendingIntent.FLAG_IMMUTABLE);
+            android.net.wifi.sharedconnectivity.app.SharedConnectivitySettingsState state =
+                new android.net.wifi.sharedconnectivity.app.SharedConnectivitySettingsState.Builder().setInstantTetherEnabled(false)
+                    .setInstantTetherSettingsPendingIntent(settings).build();
+            service.setSettingsState(state);
+            android.os.IBinder binder = service.onBind(new android.content.Intent());
+            boolean bound = binder != null && "android.net.wifi.sharedconnectivity.service.ISharedConnectivityService".equals(binder.getInterfaceDescriptor());
+            // (DEVICE_TYPE_PHONE; NETWORK_TYPE_CELLULAR; WifiInfo.SECURITY_TYPE_PSK; NETWORK_SOURCE_NEARBY_SELF)
+            android.net.wifi.sharedconnectivity.app.NetworkProviderInfo phone =
+                new android.net.wifi.sharedconnectivity.app.NetworkProviderInfo.Builder("Pixel", "Pixel 8").setDeviceType(1).setBatteryPercentage(64)
+                    .setBatteryCharging(true).setConnectionStrength(3).build();
+            android.os.Bundle extras = new android.os.Bundle();
+            extras.putLong("original_device_id", 77);
+            android.net.wifi.sharedconnectivity.app.HotspotNetwork hotspot =
+                new android.net.wifi.sharedconnectivity.app.HotspotNetwork.Builder().setDeviceId(5).setNetworkProviderInfo(phone).setHostNetworkType(1)
+                    .setNetworkName("Carrier").setHotspotSsid("Pixel hotspot").setHotspotBssid("02:00:00:00:00:01").addHotspotSecurityType(2).setExtras(extras)
+                    .build();
+            android.net.wifi.sharedconnectivity.app.KnownNetwork known =
+                new android.net.wifi.sharedconnectivity.app.KnownNetwork.Builder().setNetworkSource(1).setSsid("Home").addSecurityType(2)
+                    .setNetworkProviderInfo(phone).build();
+            service.setHotspotNetworks(java.util.Arrays.asList(hotspot));
+            service.setKnownNetworks(java.util.Arrays.asList(known));
+            // (CONNECTION_STATUS_ENABLING_HOTSPOT; CONNECTION_STATUS_SAVED)
+            android.net.wifi.sharedconnectivity.app.HotspotNetworkConnectionStatus enabling =
+                new android.net.wifi.sharedconnectivity.app.HotspotNetworkConnectionStatus.Builder().setStatus(1).setHotspotNetwork(hotspot).build();
+            android.net.wifi.sharedconnectivity.app.KnownNetworkConnectionStatus saved =
+                new android.net.wifi.sharedconnectivity.app.KnownNetworkConnectionStatus.Builder().setStatus(1).setKnownNetwork(known).build();
+            service.updateHotspotNetworkConnectionStatus(enabling);
+            service.updateKnownNetworkConnectionStatus(saved);
+            boolean shown = android.net.wifi.sharedconnectivity.service.SharedConnectivityService.areHotspotNetworksEnabledForService(this) ||
+                            android.net.wifi.sharedconnectivity.service.SharedConnectivityService.areKnownNetworksEnabledForService(this);
+            android.os.Parcel p = android.os.Parcel.obtain();
+            state.writeToParcel(p, 0);
+            enabling.writeToParcel(p, 0);
+            saved.writeToParcel(p, 0);
+            p.setDataPosition(0);
+            android.net.wifi.sharedconnectivity.app.SharedConnectivitySettingsState state2 =
+                android.net.wifi.sharedconnectivity.app.SharedConnectivitySettingsState.CREATOR.createFromParcel(p);
+            android.net.wifi.sharedconnectivity.app.HotspotNetworkConnectionStatus enabling2 =
+                android.net.wifi.sharedconnectivity.app.HotspotNetworkConnectionStatus.CREATOR.createFromParcel(p);
+            android.net.wifi.sharedconnectivity.app.KnownNetworkConnectionStatus saved2 =
+                android.net.wifi.sharedconnectivity.app.KnownNetworkConnectionStatus.CREATOR.createFromParcel(p);
+            p.recycle();
+            android.net.wifi.sharedconnectivity.app.HotspotNetwork hotspot2 = enabling2.getHotspotNetwork();
+            android.net.wifi.sharedconnectivity.app.NetworkProviderInfo phone2 = hotspot2.getNetworkProviderInfo();
+            boolean same = state2.equals(state) && state2 != state && !state2.isInstantTetherEnabled() &&
+                           settings.equals(state2.getInstantTetherSettingsPendingIntent()) && state2.getExtras().isEmpty() && enabling2.equals(enabling) &&
+                           enabling2.getStatus() == 1 && hotspot2.getDeviceId() == 5 && hotspot2.getHostNetworkType() == 1 &&
+                           "Carrier".equals(hotspot2.getNetworkName()) && "Pixel hotspot".equals(hotspot2.getHotspotSsid()) &&
+                           "02:00:00:00:00:01".equals(hotspot2.getHotspotBssid()) && hotspot2.getHotspotSecurityTypes().size() == 1 &&
+                           hotspot2.getHotspotSecurityTypes().contains(2) && hotspot2.getExtras().getLong("original_device_id") == 77 &&
+                           phone2.getDeviceType() == 1 && "Pixel".equals(phone2.getDeviceName()) && "Pixel 8".equals(phone2.getModelName()) &&
+                           phone2.getBatteryPercentage() == 64 && phone2.isBatteryCharging() && phone2.getConnectionStrength() == 3 &&
+                           saved2.equals(saved) && saved2.getStatus() == 1 && saved2.getKnownNetwork().getNetworkSource() == 1 &&
+                           "Home".equals(saved2.getKnownNetwork().getSsid()) && saved2.getKnownNetwork().getSecurityTypes().contains(2) &&
+                           phone.equals(saved2.getKnownNetwork().getNetworkProviderInfo());
+            boolean device = false, security = false, nearby = false, battery = false, status = false;
+            try {
+                new android.net.wifi.sharedconnectivity.app.HotspotNetwork.Builder().setNetworkProviderInfo(phone).setNetworkName("Carrier").build();
+            } catch (IllegalArgumentException e) {
+                device = true;
+            }
+            try {
+                new android.net.wifi.sharedconnectivity.app.KnownNetwork.Builder().setNetworkSource(2).setSsid("Home").build();
+            } catch (IllegalArgumentException e) {
+                security = true;
+            }
+            try {
+                new android.net.wifi.sharedconnectivity.app.KnownNetwork.Builder().setNetworkSource(1).setSsid("Home").addSecurityType(2).build();
+            } catch (IllegalArgumentException e) {
+                nearby = true;
+            }
+            try {
+                new android.net.wifi.sharedconnectivity.app.NetworkProviderInfo.Builder("Pixel", "Pixel 8").setBatteryPercentage(101).build();
+            } catch (IllegalArgumentException e) {
+                battery = true;
+            }
+            try {
+                new android.net.wifi.sharedconnectivity.app.KnownNetworkConnectionStatus.Builder().setStatus(3).setKnownNetwork(known).build();
+            } catch (IllegalArgumentException e) {
+                status = true;
+            }
+            detail = "bound " + bound + " asked " + asked[0] + " shown " + shown + " same " + same + " refused " + device + " " + security + " " + nearby + " " +
+                     battery + " " + status + ": " + state2 + " " + saved2;
+            return bound && asked[0] == 0 && !shown && same && device && security && nearby && battery && status;
         });
     }
 
