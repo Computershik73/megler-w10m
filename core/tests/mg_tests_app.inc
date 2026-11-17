@@ -317,8 +317,8 @@ static void test_app(const char *libdir)
      * what it gave reached the app's callback in the buffers the app had queued, whole and in order -- twelve buffers of
      * ten milliseconds, from the ramp's first sample to its 1920th -- and it was told to stop, once, when the recorder
      * was stopped. The second, at 48000 Hz stereo, which the shell's microphone refused: the app heard silence, three
-     * buffers of it. Every call was answered as Android answers it (no step failed), no callback came after a Destroy
-     * had returned, and none comes now.
+     * buffers of it. A third, of 8-bit sound, was not made: SL_RESULT_CONTENT_UNSUPPORTED, which is 9. Every call was
+     * answered as Android answers it (no step failed), no callback came after a Destroy had returned, and none comes now.
      */
     WAIT_FOR(s->rec_done);
     say("  the recorders: %d buffers heard (samples %d to %d), %d of silence, %d samples wrong, %d callbacks, step %d failed", s->rec_buffers,

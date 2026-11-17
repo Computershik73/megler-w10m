@@ -553,11 +553,29 @@ static int record_once(SLEngineItf engine, int base, unsigned millihertz, unsign
     return 0;
 }
 
+/* A recorder of 8-bit sound, which the microphone is not heard in: SL_RESULT_CONTENT_UNSUPPORTED (9), and no object. 0, or the step that failed. */
+static int record_refused(SLEngineItf engine, int base)
+{
+    unsigned from[6] = { 3, 1, 0xFFFFFFFFu, 0, 0, 0 }, to[2] = { 0x800007BDu, 2 }, format[7] = { 2, 1, 16000000, 8, 8, 4, 2 };
+    void *source[2], *sink[2];
+    const void *ids[1];
+    const unsigned required[1] = { 1 };
+    SLObjectItf recorder = (SLObjectItf)(void *)from;
+    source[0] = from;
+    source[1] = 0;
+    sink[0] = to;
+    sink[1] = format;
+    ids[0] = SL_IID_ANDROIDSIMPLEBUFFERQUEUE;
+    REC_STEP(1, (*engine)->CreateAudioRecorder(engine, &recorder, source, sink, 1, ids, required) == 9 && !recorder);
+    return 0;
+}
+
 static void *record_thread(void *arg)
 {
     int failed = record_once(g_engine, 0, 16000000, 1, 0, &t_native_state.rec_buffers, REC_BUFFERS);
     (void)arg;
     if (!failed) failed = record_once(g_engine, 20, 48000000, 2, &g_rec_turn, &t_native_state.rec_silent, REC_SILENT);
+    if (!failed) failed = record_refused(g_engine, 40);
     t_native_state.rec_failed = failed;
     t_native_state.rec_done = 1;
     return 0;
