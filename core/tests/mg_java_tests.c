@@ -4009,6 +4009,10 @@ static int run_data(void)
                                             list of colours have: an inset made in code is copied for each row of a menu (EhViewer's
                                             drawer, Material's NavigationView). */
                                          "wrapper-copy",
+                                         /* And a slider's thumb from XML, a shape and a vector icon in an inset layer list, copied
+                                            through its constant state and sized as Material's Slider does (WhatsApp's chat theme
+                                            preview). */
+                                         "thumb-copy",
                                          /* And a reference that comes to @null is no value in a styled attribute array: a tint that is a
                                             colour @null by day leaves the image without one (WhatsApp's settings on a PC). */
                                          "null-reference",

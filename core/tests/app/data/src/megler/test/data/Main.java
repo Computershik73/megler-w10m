@@ -8005,6 +8005,45 @@ public class Main extends Activity {
             Log.i("DataTest", "wrapper-copy " + detail);
             return inseted && clipped && scaled && rotated && none && patched && listed && rippled && iconed;
         });
+        // A slider's thumb as WhatsApp's chat theme preview (Settings > Chats > Theme) gives Material's Slider one with
+        // setCustomThumbDrawable(id): the Slider takes getResources().getDrawable(id).mutate().getConstantState().newDrawable()
+        // without asking whether there is a state, and sizes the copy to its thumb by its intrinsic size. The drawable is a
+        // layer list from XML, a rounded shape under a vector icon, each layer inset (res/drawable/thumb_layers.xml): 0.1.0.699
+        // ended on the null state a LayerDrawable had then. Checked: the copy is a layer list of its own with its own copies
+        // of the shape and the icon, as large as the icon with its insets, and drawn at that size it shows the shape round the
+        // icon, as the original does.
+        step("thumb-copy", () -> {
+            android.graphics.drawable.Drawable d = getResources().getDrawable(R.drawable.thumb_layers, null);
+            android.graphics.drawable.Drawable.ConstantState s = d.mutate().getConstantState();
+            android.graphics.drawable.Drawable c = s != null ? s.newDrawable() : null;
+            boolean copied = false, drawn = false;
+            int w = -2, h = -2, shape = 1, icon = 1, corner = 1, same = 0;
+            if (c instanceof android.graphics.drawable.LayerDrawable && d instanceof android.graphics.drawable.LayerDrawable && c != d) {
+                android.graphics.drawable.LayerDrawable l = (android.graphics.drawable.LayerDrawable) c, o = (android.graphics.drawable.LayerDrawable) d;
+                copied = l.getNumberOfLayers() == 2 && l.getDrawable(0) instanceof android.graphics.drawable.GradientDrawable
+                    && l.getDrawable(1) instanceof android.graphics.drawable.VectorDrawable && l.getDrawable(0) != o.getDrawable(0)
+                    && l.getDrawable(1) != o.getDrawable(1) && l.getDrawable(0).getCallback() == l && o.getDrawable(0).getCallback() == o;
+                // Material's adjustCustomThumbDrawableBounds, for a thumb 112 pixels across: the copy scaled to fit it.
+                w = c.getIntrinsicWidth();
+                h = c.getIntrinsicHeight();
+                float scale = w > 0 && h > 0 ? 112f / Math.max(w, h) : 1f;
+                c.setBounds(0, 0, (int) (w * scale), (int) (h * scale));
+                d.setBounds(c.getBounds());
+                android.graphics.Bitmap bm = android.graphics.Bitmap.createBitmap(92, 112, android.graphics.Bitmap.Config.ARGB_8888);
+                android.graphics.Bitmap bo = android.graphics.Bitmap.createBitmap(92, 112, android.graphics.Bitmap.Config.ARGB_8888);
+                c.draw(new android.graphics.Canvas(bm));
+                d.draw(new android.graphics.Canvas(bo));
+                shape = bm.getPixel(10, 50);
+                icon = bm.getPixel(44, 56);
+                corner = bm.getPixel(1, 1);
+                for (int y = 0; y < 112; y += 4) for (int x = 0; x < 92; x += 4) if (bm.getPixel(x, y) == bo.getPixel(x, y)) same++;
+                drawn = shape == 0xff336699 && icon == 0xffff8000 && corner == 0 && same == 23 * 28;
+            }
+            detail = "copied=" + copied + " size " + w + "x" + h + " drawn=" + drawn + " (shape " + Integer.toHexString(shape) + ", icon "
+                + Integer.toHexString(icon) + ", corner " + Integer.toHexString(corner) + ", " + same + " of 644 points as the original's)";
+            Log.i("DataTest", "thumb-copy " + detail);
+            return copied && w == 92 && h == 112 && drawn;
+        });
         // A reference that comes to @null is no value in a styled attribute array: WhatsApp tints an image of its settings
         // with a colour that is @null by day and a colour by night (app:tint="@color/..."), and AppCompat asks hasValue and
         // getResourceId before it reads a colour list. Android's ApplyStyle turns a reference resolved to @null back into
