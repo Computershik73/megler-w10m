@@ -4234,6 +4234,25 @@ app as Android's media keys, which go to its active session's
 `Callback.onMediaButtonEvent` as Android 9 sends them, and to the window when
 there is no session. The test app `data` (`media-session`) checks both ways.
 
+An app that is neither seen nor heard is left alone by the core. The Java
+driver's sampler (`hot_main`, `drivers/mg_java.c`) woke every 5 ms and said
+its lines every ten seconds for hours under a Twitter, a Telegram and a
+Facebook Lite silent in the background, until the batteries of an Elite x3
+and a Lumia 950 were at 4% (0.1.0.695, 0.1.0.696). While the app is not on
+the screen (`megler_set_paused`) and nothing of it has been heard for ten
+seconds (`mg_audio_heard_within`, `ndk/mg_audio.c`: the mixer says of each
+chunk whether a sample of it is not zero in the output's 16 bits), the main
+thread is not sampled, the sampler looks once a second whether that still
+holds, and the memory's lines come once a minute: `hot: the app is not on the
+screen and nothing of it is heard: ...` from the next ten seconds' lines on,
+and `hot: the main thread is sampled again, after N s` within a second of the
+app's being shown or heard. An app that has ended (`mg_run_over`) has no
+sampler, and the mixer hands the shell's output nothing more of it: YouTube,
+ended, had a hundred blocks of silence a second played for five hours, to
+Windows an app playing, and an Elite x3's battery went from 90% to 1%
+(0.1.0.695). `mg_tests` checks the measure (a voice's silence, a tone, its
+end), and the hello app's test the sampler's rest and its return.
+
 ### A media session's controllers
 
 An app may drive its own player through its media session: its screens hold a

@@ -27,6 +27,8 @@ static char **g_splits;
 static int g_nsplits;
 static char g_error[400];
 static volatile i32 g_active, g_ended, g_frames;
+/* What mg_run_set_paused was last told (mg_run_paused). */
+static volatile i32 g_paused;
 static const mg_driver *g_driver;
 static bool g_started_once;
 
@@ -98,6 +100,8 @@ void mg_run_orientation_requested(int requested)
     if (d->orientation) d->orientation(d->user, requested);
 }
 bool mg_run_active(void) { return g_active != 0; }
+bool mg_run_over(void) { return g_ended != 0; }
+bool mg_run_paused(void) { return g_paused != 0; }
 u32 mg_run_frames(void) { return (u32)g_frames; }
 void mg_run_count_frame(void) { mg_atomic_add(&g_frames, 1); }
 
@@ -875,6 +879,7 @@ void mg_run_set_paused(bool paused)
 {
     /* Android hands an app in the background no sensor events: the phone's are stopped meanwhile. */
     mg_sensors_set_paused(paused);
+    mg_atomic_xchg(&g_paused, paused ? 1 : 0);
     if (g_active && g_driver && g_driver->set_paused) g_driver->set_paused(paused);
 }
 

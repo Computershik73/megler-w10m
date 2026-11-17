@@ -34,6 +34,12 @@ static mg_lock g_lock = MG_LOCK_INIT;
 static mg_voice *g_voices;
 static mg_thread *g_mixer;
 static bool g_host_open;
+/*
+ * How many chunks in a row the mix has been silence -- no sample that is not zero in the 16 bits the output takes --
+ * counted by the mixer's thread alone and read by anyone (mg_audio_heard_within). All ones: nothing has been heard yet.
+ */
+#define NEVER_HEARD 0xFFFFFFFFu
+static volatile u32 g_silent_chunks = NEVER_HEARD;
 
 /* One sample of a voice's own format as a float in -1..1. */
 static float sample_at(const mg_voice *v, const u8 *frame, int channel)
@@ -149,6 +155,7 @@ static MG_HOSTCB void mixer_thread(void *arg)
         const megler_run_config *run = mg_run_config();
         struct { mg_voice *v; u32 ended; mg_voice_done_fn fn; void *user; } done[32];
         int ndone = 0, i;
+        bool mixed = false, heard = false;
         mg_voice *v, **link;
         memset(mix, 0, sizeof(mix));
         mg_lock_acquire(&g_lock);
@@ -160,6 +167,7 @@ static MG_HOSTCB void mixer_thread(void *arg)
             }
             if (v->playing && v->count) {
                 u32 ended = mix_voice(v, mix, MG_AUDIO_CHUNK);
+                mixed = true;
                 if (ended && v->done && ndone < (int)MG_COUNT(done)) {
                     done[ndone].v = v;
                     done[ndone].ended = ended;
@@ -176,7 +184,20 @@ static MG_HOSTCB void mixer_thread(void *arg)
             u32 k;
             for (k = 0; k < done[i].ended; k++) done[i].fn(done[i].v, done[i].user);
         }
-        if (g_host_open && run->audio.write) {
+        /*
+         * Whether anything of this chunk is heard: a voice playing zeroes, or too low for 16 bits (a sample is cut towards
+         * zero below), is silence.
+         */
+        for (i = 0; mixed && !heard && i < MG_AUDIO_CHUNK * 2; i++) heard = mix[i] * 32767.0f >= 1.0f || mix[i] * 32767.0f <= -1.0f;
+        if (heard) g_silent_chunks = 0;
+        else if (g_silent_chunks < NEVER_HEARD - 1) g_silent_chunks++;
+        /*
+         * An app that has ended is heard no more, and the shell's output is given nothing of it: YouTube, ended, had the mixer
+         * hand the output a hundred blocks of silence a second for five hours, to Windows an app playing, never suspended, and
+         * an Elite x3's battery went from 90% to 1% (0.1.0.695). What its threads still queue is consumed at the mixer's own
+         * pace, as with no output.
+         */
+        if (g_host_open && run->audio.write && !mg_run_over()) {
             for (i = 0; i < MG_AUDIO_CHUNK * 2; i++) {
                 float s = mix[i] * 32767.0f;
                 out[i] = (i16)(s > 32767.0f ? 32767 : s < -32768.0f ? -32768 : (i32)s);
@@ -192,6 +213,12 @@ static MG_HOSTCB void mixer_thread(void *arg)
             else if (now - next > 200000000ull) next = now;
         }
     }
+}
+
+bool mg_audio_heard_within(u32 ms)
+{
+    const u32 silent = g_silent_chunks;
+    return silent != NEVER_HEARD && (u64)silent * (MG_AUDIO_CHUNK * 1000 / MG_AUDIO_RATE) < ms;
 }
 
 /*

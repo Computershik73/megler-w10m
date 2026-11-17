@@ -2280,11 +2280,20 @@ static int run_hello(void)
     say("  in all so far: %u classes linked, %u objects (%u KB), %u KB of tables and classes", (unsigned)c1.dvm.classes_linked, (unsigned)c1.dvm.objects,
         (unsigned)(c1.dvm.object_bytes >> 10), (unsigned)(c1.dvm.meta_bytes >> 10));
 
-    /* The shell hides the app and shows it again. */
-    megler_set_paused(true);
-    expect_line("I/HelloTest: onPause draws=true", &at, 30);
-    megler_set_paused(false);
-    expect_line("I/HelloTest: onResume", &at, 30);
+    /*
+     * The shell hides the app and shows it again. Hidden and not heard, its main thread is no longer sampled from the
+     * sampler's next ten seconds' lines on (hot_main), and it is again within a second of the app's being shown: Twitter,
+     * Telegram and Facebook Lite in the background had the sampler wake every 5 ms for hours (0.1.0.695, 0.1.0.696).
+     */
+    {
+        const int before = g_nlines;
+        megler_set_paused(true);
+        expect_line("I/HelloTest: onPause draws=true", &at, 30);
+        CHECK(wait_line("hot: the app is not on the screen and nothing of it is heard", before, 40) >= 0);
+        megler_set_paused(false);
+        expect_line("I/HelloTest: onResume", &at, 30);
+        CHECK(wait_line("hot: the main thread is sampled again, after ", before, 30) >= 0);
+    }
     {
         /*
          * A view that draws as Compose's does (Layers, in the bottom left corner): its nodes changed thirty times once the app

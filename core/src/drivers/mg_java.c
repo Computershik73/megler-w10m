@@ -32,6 +32,7 @@
 #include "../host/mg_host.h"
 #include "../mg_core.h"
 #include "../ld/mg_ld.h"
+#include "../ndk/mg_audio.h"
 #include "../ndk/mg_egl.h"
 #include "../ndk/mg_ndk.h"
 #include "../run/mg_run.h"
@@ -2141,6 +2142,15 @@ static bool main_waits(const mg_dvm_thread *t, const mg_dvm_method *m)
 /* The thread hot_main samples: the app's main thread, from hot_watch on. */
 static const mg_dvm_thread *volatile g_hot_main;
 
+/*
+ * Whether the sampler rests: the app is not on the screen (megler_set_paused) and nothing of it has been heard for ten
+ * seconds. Twitter, Telegram and Facebook Lite in the background, silent, had this thread wake every 5 ms and say its lines
+ * every ten seconds for hours, until the batteries of an Elite x3 and a Lumia 950 were at 4% (0.1.0.695, 0.1.0.696): where a
+ * main thread nobody sees spends its time can wait. An app that is heard is sampled as before -- its music's hitches in the
+ * background still say whose they are.
+ */
+static bool hot_rests(void) { return mg_run_paused() && !mg_audio_heard_within(10000); }
+
 static MG_HOSTCB void hot_main(void *arg)
 {
     u32 samples = 0, outside = 0, collecting = 0, stuck_said = 0;
@@ -2153,6 +2163,8 @@ static MG_HOSTCB void hot_main(void *arg)
         const mg_dvm_method *m, *from = NULL;
         u64 now;
         mg_sleep_ns(5000000ull);
+        /* An app that has ended has no main thread to sample: the sampler ends with it, and wakes an ended app's process no more. */
+        if (mg_run_over()) return;
         t = g_hot_main;
         m = t ? t->running : NULL;
         if (m && (m->flags & DVM_ACC_NATIVE)) from = t->running_from;
@@ -2204,6 +2216,29 @@ static MG_HOSTCB void hot_main(void *arg)
             meter_census();
             memset(g_hot, 0, sizeof(g_hot));
             samples = outside = collecting = 0;
+            /*
+             * The rest (hot_rests), from one ten seconds' lines on, so that a window hidden for a moment -- a picker over it --
+             * changes nothing: looked at once a second, and the memory's lines once a minute, which say what an app left in
+             * the background goes on making.
+             */
+            if (hot_rests()) {
+                u32 seconds = 0;
+                mg_info("hot: the app is not on the screen and nothing of it is heard: the main thread is not sampled meanwhile, "
+                        "and the memory's lines come once a minute");
+                while (hot_rests() && !mg_run_over()) {
+                    mg_sleep_ns(1000000000ull);
+                    if (++seconds % 60 == 0) {
+                        mg_dvm_made_say();
+                        meter_census();
+                    }
+                }
+                if (mg_run_over()) return;
+                mg_info("hot: the main thread is sampled again, after %.0f s", (double)(mg_time_monotonic_ns() - now) / 1e9);
+                /* (A wait seen before the rest is counted from here: nobody saw the thread stand in it meanwhile.) */
+                wait_since = 0;
+                wait_said = false;
+                now = mg_time_monotonic_ns();
+            }
             since = now;
         }
     }

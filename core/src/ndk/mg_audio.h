@@ -43,6 +43,12 @@ u64 mg_voice_position(mg_voice *v);
 
 /* A film's sound has begun: with the flag "record-film", the half minute the mixer records starts here. */
 void mg_audio_film_begins(void);
+/*
+ * Whether the app was heard within the last `ms` milliseconds of the mixer's time: whether one of the chunks it mixed in
+ * them had a sample that is not zero in the output's 16 bits. A voice that plays silence is not heard; false too before the
+ * first voice. Any thread. The Java driver's sampler asks, to rest while the app is neither seen nor heard (drivers/mg_java.c).
+ */
+bool mg_audio_heard_within(u32 ms);
 
 /*
  * PCM written into a stream, which waits while the stream's buffers are full: AAudio's written streams

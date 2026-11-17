@@ -11,6 +11,13 @@ extern "C" {
 
 bool mg_run_start(const megler_run_config *config);
 bool mg_run_active(void);
+/*
+ * The app has ended (mg_run_ended): true from then on, a process running one app. Unlike !mg_run_active(), false before the
+ * app starts and where a driver was started without mg_run_start (the tests).
+ */
+bool mg_run_over(void);
+/* The app is not on the screen: what megler_set_paused last said. */
+bool mg_run_paused(void);
 const char *mg_run_last_error(void);
 void mg_run_set_error(const char *fmt, ...) MG_PRINTF(1, 2);
 void mg_run_touch(int phase, int pointer_id, float x, float y);

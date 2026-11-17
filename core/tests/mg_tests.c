@@ -5132,6 +5132,47 @@ static void test_audio_callback_stack(void)
     mg_voice_destroy(v);
 }
 
+/*
+ * Whether the app is heard (mg_audio_heard_within): the mixer says of each chunk whether a sample of it is not zero in the
+ * output's 16 bits. A voice that plays silence is not heard, one that plays a tone is, and no more a moment after its last
+ * buffer. The Java driver's sampler rests by it while an app in the background is silent, and the shell stops its output
+ * by the same measure of its own (AudioHost): a Twitter, a Telegram and a Facebook Lite that played nothing were "playing"
+ * to Windows for hours, a hundred blocks of silence a second, and never suspended (0.1.0.695, 0.1.0.696).
+ */
+static void test_audio_heard(void)
+{
+    static i16 quiet[2 * MG_AUDIO_CHUNK * 20], tone[2 * MG_AUDIO_CHUNK * 20];
+    mg_voice *v = mg_voice_create(MG_AUDIO_RATE, 2, 16, false);
+    bool heard = false, silent = false;
+    int waited, i;
+    say("whether the app is heard: a voice's silence is not, its tone is, and no more once the tone has ended");
+    CHECK(v != NULL);
+    if (!v) return;
+    for (i = 0; i < (int)MG_COUNT(tone); i++) tone[i] = (i16)((i & 2) ? 8000 : -8000);
+    /* 200 ms of silence, played to its end: nothing was heard in its last 100 ms. */
+    CHECK(mg_voice_enqueue(v, quiet, sizeof(quiet)));
+    mg_voice_set_playing(v, true);
+    for (waited = 0; waited < 1000 && mg_voice_queued(v); waited++) mg_sleep_ns(10000000ull);
+    CHECK_INT(mg_voice_queued(v), 0);
+    CHECK(!mg_audio_heard_within(100));
+    /* 200 ms of a tone: heard. (Asked of the last five seconds, so that a test thread kept waiting does not miss it.) */
+    CHECK(mg_voice_enqueue(v, tone, sizeof(tone)));
+    for (waited = 0; waited < 1000 && !heard; waited++) {
+        heard = mg_audio_heard_within(5000);
+        if (!heard) mg_sleep_ns(10000000ull);
+    }
+    CHECK(heard);
+    /* And once it has ended, the mixer's time goes on in silence: not heard in the last 300 ms, still heard in the last minute. */
+    for (waited = 0; waited < 1000 && mg_voice_queued(v); waited++) mg_sleep_ns(10000000ull);
+    for (waited = 0; waited < 1000 && !silent; waited++) {
+        silent = !mg_audio_heard_within(300);
+        if (!silent) mg_sleep_ns(10000000ull);
+    }
+    CHECK(silent);
+    CHECK(mg_audio_heard_within(60000));
+    mg_voice_destroy(v);
+}
+
 static void test_input(void)
 {
     enum { TAPS = 60000 };
@@ -7387,6 +7428,7 @@ int mg_tests_run(const char *libdir, const char *scratch, mg_test_sink sink, voi
     test_free_stretches();
     test_input();
     test_audio_callback_stack();
+    test_audio_heard();
     {
         /* The stand-in for the shell's drawing under a Java app: it is what the Java driver's tests see pictures through. */
         int checks = 0;
