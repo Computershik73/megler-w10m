@@ -200,7 +200,8 @@ public final class AppRunner {
         Looper.loop();
     }
     public static Application application() { return sApp; }
-    /* Android's LoggingHandler: FATAL EXCEPTION, the thread, the process and the stack. A thread of Google Play services' ends
+    /* Android's LoggingHandler: FATAL EXCEPTION, the thread, the process and the stack. A thread of Google Play services' (or of
+       another of the app's own processes, megler.Processes: the line names whose, Processes.threadsOf) ends
        alone, as GmsCore's own process would on Android: as the pre-handler runs before any other, it gives the thread a handler
        of its own that says so and goes no further. MicroG's default one (ServiceCrashes) did that, but an app's handler made
        default later sits over it: Weather Channel's Taboola handler called System.exit(0) when a thread of GmsCore's crashed. */
@@ -216,7 +217,7 @@ public final class AppRunner {
         }
     }
     static final Thread.UncaughtExceptionHandler SERVICE_THREAD_ENDS = (t, e) ->
-        android.util.Log.e("Megler", "Google Play services' thread " + t.getName() + " ended with an uncaught exception; on Android its process would, and the app goes on", e);
+        android.util.Log.e("Megler", Processes.threadsOf(Native.thrownInService(e)) + " thread " + t.getName() + " ended with an uncaught exception; on Android its process would, and the app goes on", e);
     static final class UncaughtLogger implements Thread.UncaughtExceptionHandler {
         final UncaughtLogging logging = new UncaughtLogging();
         public void uncaughtException(Thread t, Throwable e) {

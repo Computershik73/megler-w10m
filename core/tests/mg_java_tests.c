@@ -4044,6 +4044,9 @@ static int run_data(void)
        loader's after, with the APK's Twin). */
     CHECK(wait_line("I/DataTest: process-loader path=true parent=BootClassLoader elements=1 apk=true libraries=true defined=true above=true opened=false/true twin=app", 0, 30) >= 0);
     CHECK(find_line("elsewhere.dex: opened by the code of scope", 0) >= 0);
+    /* A thread of that process ending with an uncaught exception ends alone, as one of Google Play services' does, and the log
+       names the process (megler.Processes.threadsOf): Facebook Lite's ":fbns" was "Google Play services' thread AppCreate". */
+    CHECK(wait_line("E/Megler: process megler.test.data:elsewhere's thread ElsewhereEnds ended with an uncaught exception; on Android its process would, and the app goes on", 0, 30) >= 0);
     /*
      * Its DEX file, which the APK deflates, inflated into the data folder on the first run and viewed from there, not read into
      * memory; the second run finds it there and makes none (dvm/mg_dvm_apk.c).

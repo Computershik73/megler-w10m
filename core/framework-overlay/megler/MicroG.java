@@ -706,8 +706,9 @@ public final class MicroG {
         private final Thread.UncaughtExceptionHandler under;
         ServiceCrashes(Thread.UncaughtExceptionHandler under) { this.under = under; }
         @Override public void uncaughtException(Thread t, Throwable e) {
-            if (t != Looper.getMainLooper().getThread() && Native.thrownInService(e) != 0) {
-                android.util.Log.e("Megler", "Google Play services' thread " + t.getName() + " ended with an uncaught exception; on Android its process would, and the app goes on", e);
+            int scope = t != Looper.getMainLooper().getThread() ? Native.thrownInService(e) : 0;
+            if (scope != 0) {
+                android.util.Log.e("Megler", Processes.threadsOf(scope) + " thread " + t.getName() + " ended with an uncaught exception; on Android its process would, and the app goes on", e);
                 return;
             }
             if (under != null) under.uncaughtException(t, e);

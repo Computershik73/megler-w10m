@@ -17,6 +17,8 @@ public final class ServiceClassLoader extends dalvik.system.PathClassLoader {
     private final String libraries;
     /* The parent it was made with; another one there is the app's doing (loadClass). */
     private final ClassLoader madeUnder;
+    /* The loaders by their scopes (1 to 15), for the log to say whose a thread is (megler.Processes.threadsOf). */
+    private static final ServiceClassLoader[] sByScope = new ServiceClassLoader[16];
     /** A service hosted here (Google Play services, the WebView): no parent, the platform's classes being the scope's own. */
     public ServiceClassLoader(String apk) throws java.io.IOException {
         this(apk, null, null);
@@ -38,7 +40,14 @@ public final class ServiceClassLoader extends dalvik.system.PathClassLoader {
         this.libraries = libraries;
         this.madeUnder = parent;
         scope = openApk(apk);
+        synchronized (sByScope) { if (scope > 0 && scope < sByScope.length) sByScope[scope] = this; }
     }
+    /** The loader of a class scope, or null when it is none's. */
+    static ServiceClassLoader ofScope(int scope) {
+        synchronized (sByScope) { return scope > 0 && scope < sByScope.length ? sByScope[scope] : null; }
+    }
+    /** The APK it is over, by the name it was given. */
+    String apk() { return apk; }
     /* Where findLibrary looks, for the path list to say the same. */
     private static String libraryPath(String apk, String libraries) {
         String stored = apk + "!/lib/" + Abis.PRIMARY;

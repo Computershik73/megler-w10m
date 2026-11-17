@@ -421,6 +421,12 @@ public class Main extends Activity {
                     data.recycle();
                     reply.recycle();
                     Log.i("DataTest", "process-loader " + said);
+                    // A thread of that process ending with an uncaught exception ends alone, and the log names the process.
+                    data = android.os.Parcel.obtain();
+                    reply = android.os.Parcel.obtain();
+                    try { b.transact(10, data, reply, 0); } catch (android.os.RemoteException e) { Log.i("DataTest", "process-thread " + e); }
+                    data.recycle();
+                    reply.recycle();
                     // Then a broadcast from that process, its extra an object of that process's class: this process's receiver
                     // has it as one of its own class (megler.Processes.forLoader).
                     registerReceiver(new android.content.BroadcastReceiver() {
@@ -5090,6 +5096,11 @@ public class Main extends Activity {
         @Override public android.os.IBinder onBind(android.content.Intent intent) {
             return new android.os.Binder() {
                 @Override protected boolean onTransact(int code, android.os.Parcel data, android.os.Parcel reply, int flags) {
+                    if (code == 10) {
+                        // a thread of this process that ends with an uncaught exception (the log names whose it was)
+                        new Thread(() -> { throw new IllegalStateException("a thread of elsewhere's ends"); }, "ElsewhereEnds").start();
+                        return true;
+                    }
                     if (code == 9) {
                         reply.writeString(loader(Elsewhere.this));
                         return true;

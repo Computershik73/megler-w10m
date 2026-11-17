@@ -4629,6 +4629,11 @@ and a class a DEX reference does not find never asks the loader (a loader of
 the app's that opens a file only when a class is missing is asked by
 `loadClass` and `Class.forName` alone).
 
+An uncaught exception of a thread of such a process ends that thread alone,
+as one of Google Play services' does, and the log says whose it was
+("process com.facebook.lite:fbns's thread ..."; `megler.Processes.threadsOf`):
+it said "Google Play services' thread" for every scope.
+
 ### Downloads
 
 `megler.Downloads` is the system's download provider
