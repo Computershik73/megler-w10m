@@ -3644,7 +3644,7 @@ static void test_appx_manifest(void)
         "    <Capability Name=\"privateNetworkClientServer\" />\r\n    <!-- The libraries. -->\r\n"
         "    <uap:Capability Name=\"picturesLibrary\" />\r\n    <uap:Capability Name=\"videosLibrary\" />\r\n"
         "    <uap:Capability Name=\"musicLibrary\" />\r\n    <uap:Capability Name=\"documentsLibrary\" />\r\n"
-        "    <uap:Capability Name=\"removableStorage\" />\r\n    <uap:Capability Name=\"chat\" />\r\n"
+        "    <uap:Capability Name=\"removableStorage\" />\r\n    <uap:Capability Name=\"voipCall\" />\r\n    <uap:Capability Name=\"chat\" />\r\n"
         "    <uap2:Capability Name=\"phoneCallHistoryPublic\" />\r\n    <uap3:Capability Name=\"backgroundMediaPlayback\" />\r\n"
         "    <rescap:Capability Name=\"codeGeneration\" />\r\n    <rescap:Capability Name=\"packageManagement\" />\r\n"
         "    <rescap:Capability Name=\"packageQuery\" />\r\n    <!-- The devices. -->\r\n    <DeviceCapability Name=\"webcam\" />\r\n"
@@ -3668,6 +3668,8 @@ static void test_appx_manifest(void)
     static const char *const wifi_alone[] = { "android.permission.ACCESS_WIFI_STATE", "android.permission.CHANGE_WIFI_STATE",
                                               "android.permission.ACCESS_BACKGROUND_LOCATION" };
     static const char *const nearby_wifi[] = { "android.permission.NEARBY_WIFI_DEVICES" };
+    /* An app of calls (imo Lite's): the microphone, and Android's permission to say where a call's sound goes. */
+    static const char *const calls[] = { "android.permission.INTERNET", "android.permission.RECORD_AUDIO", "android.permission.MODIFY_AUDIO_SETTINGS" };
     char err[200], name[64], name2[64];
     char *m, *m2;
     say("an app's own package: its manifest from Megler's");
@@ -3748,6 +3750,10 @@ static void test_appx_manifest(void)
     /* Bluetooth's: Android 12's permissions of nearby devices, and the Androids' before it. */
     CHECK_INT((int)mg_appx_capabilities(bluetooth, (int)MG_COUNT(bluetooth), false), MG_APPX_CAP_PICTURES | MG_APPX_CAP_NETWORK | MG_APPX_CAP_BLUETOOTH);
     CHECK_INT((int)mg_appx_capabilities(bluetooth_old, (int)MG_COUNT(bluetooth_old), false), MG_APPX_CAP_PICTURES | MG_APPX_CAP_BLUETOOTH);
+    /* MODIFY_AUDIO_SETTINGS: voipCall, which a phone asks of a package that routes a call's sound; recording alone asks none. */
+    CHECK_INT((int)mg_appx_capabilities(calls, (int)MG_COUNT(calls), false),
+              MG_APPX_CAP_PICTURES | MG_APPX_CAP_NETWORK | MG_APPX_CAP_MICROPHONE | MG_APPX_CAP_VOIP);
+    CHECK_INT((int)mg_appx_capabilities(calls, 2, false), MG_APPX_CAP_PICTURES | MG_APPX_CAP_NETWORK | MG_APPX_CAP_MICROPHONE);
     m = mg_appx_app_manifest(megler, "com.example.camera", "Camera", NULL, NULL, (int)mg_appx_capabilities(permissions, (int)MG_COUNT(permissions), false),
                              err, sizeof(err));
     CHECK(m != NULL);
@@ -3761,7 +3767,7 @@ static void test_appx_manifest(void)
                     "    <DeviceCapability Name=\"bluetooth.rfcomm\">\r\n      <Device Id=\"any\"><Function Type=\"name:serialPort\" /></Device>\r\n"
                     "    </DeviceCapability>\r\n  </Capabilities>\r\n  <Extensions><Extension Category=\"windows.publisherCacheFolders\" />") != NULL);
     /* Nothing it did not ask for, and none of Megler's that no app's package has. */
-    CHECK(!strstr(m, "videosLibrary") && !strstr(m, "documentsLibrary") && !strstr(m, "removableStorage") && !strstr(m, "\"chat\"") &&
+    CHECK(!strstr(m, "videosLibrary") && !strstr(m, "documentsLibrary") && !strstr(m, "removableStorage") && !strstr(m, "\"chat\"") && !strstr(m, "voipCall") &&
           !strstr(m, "phoneCallHistoryPublic") && !strstr(m, "packageManagement") && !strstr(m, "\"location\"") && !strstr(m, "\"microphone\"") &&
           !strstr(m, "Name=\"bluetooth\"") && !strstr(m, "wiFiControl") &&
           !strstr(m, "The network:") && !strstr(m, "The libraries.") && !strstr(m, "The devices."));
@@ -3779,6 +3785,13 @@ static void test_appx_manifest(void)
     CHECK(m && strstr(m, "    <rescap:Capability Name=\"packageQuery\" />\r\n    <DeviceCapability Name=\"location\" />\r\n"
                          "    <DeviceCapability Name=\"wiFiControl\" />\r\n    <DeviceCapability Name=\"bluetooth.rfcomm\">") != NULL &&
           !strstr(m, "Name=\"bluetooth\""));
+    free(m);
+    /* An app of calls (imo Lite's): voipCall in Megler's place for it, among the libraries', and the microphone. */
+    m = mg_appx_app_manifest(megler, "com.imo.android.imoimlite", "imo Lite", NULL, NULL, (int)mg_appx_capabilities(calls, (int)MG_COUNT(calls), false), err,
+                             sizeof(err));
+    CHECK(m && strstr(m, "    <uap:Capability Name=\"picturesLibrary\" />\r\n    <uap:Capability Name=\"voipCall\" />\r\n"
+                         "    <uap3:Capability Name=\"backgroundMediaPlayback\" />\r\n") != NULL &&
+          strstr(m, "    <rescap:Capability Name=\"packageQuery\" />\r\n    <DeviceCapability Name=\"microphone\" />\r\n") != NULL);
     free(m);
     /* An app that asks for nothing Windows guards: the pictures library and Megler's own alone, no network. */
     m = mg_appx_app_manifest(megler, "com.example.calculator", "Calculator", NULL, NULL, (int)mg_appx_capabilities(NULL, 0, false), err, sizeof(err));

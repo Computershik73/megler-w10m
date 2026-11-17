@@ -122,6 +122,11 @@
     <uap:Capability Name="musicLibrary" />
     <uap:Capability Name="documentsLibrary" />
     <uap:Capability Name="removableStorage" />
+    <!-- Where a call's sound goes on a phone (player/AudioHost.cpp: Windows.Phone.Media.Devices' AudioRoutingManager): the
+         earpiece when an Android app's AudioManager is in MODE_IN_COMMUNICATION, the loudspeaker after its
+         setSpeakerphoneOn; Android's MODIFY_AUDIO_SETTINGS. The phone's audio policy service gives SetAudioEndpoint only
+         to a package that declares this, and answers 0x80070005 to any other: imo Lite's call was refused the earpiece. -->
+    <uap:Capability Name="voipCall" />
     <!-- The phone's text messages and calls for an Android app (player/PhoneEvents.cpp, the framework's megler.Phone):
          Android's RECEIVE_SMS and READ_SMS, READ_PHONE_STATE and READ_CALL_LOG. A message that comes in and a call of
          the history are told to the app that runs, nothing older: WhatsApp's code comes by a message or by a missed

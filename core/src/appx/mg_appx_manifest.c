@@ -219,6 +219,13 @@ static const struct {
     { "android.permission.BLUETOOTH_ADVERTISE", MG_APPX_CAP_BLUETOOTH },
     { "android.permission.BLUETOOTH", MG_APPX_CAP_BLUETOOTH },
     { "android.permission.BLUETOOTH_ADMIN", MG_APPX_CAP_BLUETOOTH },
+    /*
+     * Where a call's sound goes (player/AudioHost.cpp, Windows.Phone.Media.Devices' AudioRoutingManager): Android lets an app
+     * say so, with AudioManager's setMode and setSpeakerphoneOn, only with MODIFY_AUDIO_SETTINGS. The phone's audio policy
+     * service (AudioSrvPolicyManager.dll) answers SetAudioEndpoint with 0x80070005 to a package that declares no voipCall:
+     * imo Lite's call was refused the earpiece, and the loudspeaker its speaker button asked for.
+     */
+    { "android.permission.MODIFY_AUDIO_SETTINGS", MG_APPX_CAP_VOIP },
 };
 
 unsigned mg_appx_capabilities(const char *const *permissions, int count, bool sms_retriever)
@@ -250,6 +257,7 @@ static const struct {
     { "picturesLibrary", MG_APPX_CAP_PICTURES },
     { "videosLibrary", MG_APPX_CAP_VIDEOS },
     { "musicLibrary", MG_APPX_CAP_MUSIC },
+    { "voipCall", MG_APPX_CAP_VOIP },
     { "chat", MG_APPX_CAP_CHAT },
     { "phoneCallHistoryPublic", MG_APPX_CAP_CALL_HISTORY },
     { "webcam", MG_APPX_CAP_WEBCAM },

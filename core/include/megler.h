@@ -2503,6 +2503,8 @@ MEGLER_API bool megler_appx_app_identity(const char *android_package, char *out,
  *   WIFI          wiFiControl (a device capability): a location permission (ACCESS_FINE_LOCATION, ACCESS_COARSE_LOCATION): the
  *                 Wi-Fi networks a scan hears, which Android gives only to an app that may have the location, and which
  *                 Google Play services in the app finds the phone's location from; NEARBY_WIFI_DEVICES too
+ *   VOIP          voipCall: MODIFY_AUDIO_SETTINGS, Android's permission to say where a call's sound goes (setMode,
+ *                 setSpeakerphoneOn): a phone routes it to the earpiece or the loudspeaker only for a package with this
  * Megler's other capabilities are every package's (codeGeneration, packageQuery, backgroundMediaPlayback) or no app's
  * (documentsLibrary and removableStorage, which want file types declared; packageManagement).
  */
@@ -2518,6 +2520,7 @@ enum {
     MEGLER_APPX_CAP_CALL_HISTORY = 256,
     MEGLER_APPX_CAP_BLUETOOTH = 512,
     MEGLER_APPX_CAP_WIFI = 1024,
+    MEGLER_APPX_CAP_VOIP = 2048,
 };
 MEGLER_API unsigned megler_appx_capabilities(const char *const *permissions, int count, bool sms_retriever);
 /* That package's manifest, made from Megler's (the text of its AppxManifest.xml): the identity name, phone product id and
