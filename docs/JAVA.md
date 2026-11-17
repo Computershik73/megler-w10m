@@ -4234,7 +4234,40 @@ app as Android's media keys, which go to its active session's
 `Callback.onMediaButtonEvent` as Android 9 sends them, and to the window when
 there is no session. The test app `data` (`media-session`) checks both ways.
 
-An app that is neither seen nor heard is left alone by the core. The Java
+An app that plays nothing is not to pass for one that plays. To Windows a
+sound output is an app playing, whether it is given sound or silence, and such
+an app is not suspended: Twitter, Telegram and Facebook Lite, silent in the
+background, ran on there for hours, until the batteries of an Elite x3 and a
+Lumia 950 were at 4% (0.1.0.695, 0.1.0.696). So the shell's sound host
+(`player/AudioHost.h`) lets go of a Java app's output -- Windows.Media's
+player, or the XAudio2 engine -- once the application is in Windows'
+background (`EnteredBackground`, `session::setBackground`) with nothing of the
+app heard for ten seconds and its media session not saying it plays, and makes
+it again at the app's first sound (that block waits for it, two seconds at the
+most), when its session says it plays, for a call, and when the application
+leaves the background. The ten seconds are the sound host's own thread's, a
+second at the most for each time it comes round, so the time the app was
+suspended is none of them. An app that is heard, or whose session says it
+plays, keeps its output as before: music goes on with the screen off. The log
+says each turn:
+
+- `audio: nothing audible for 10 s in the background: the output is paused so
+  that Windows can suspend the app`;
+- `audio: the output is resumed at the first sound` (or `as the app's media
+  session says it plays`, `for a call`, `as the app comes back from the
+  background`);
+- `audio: nothing audible for 10 s in the background, but the app's media
+  session says it plays: the output is kept`.
+
+An app that has ended has no output from then on (`AudioHost::end`, from the
+run's `on_exit`: `audio: the app has ended: its sound output is closed`):
+YouTube, ended, had its player given silence for five hours. The flag
+`keep-sound-output` keeps the output of an app in the background, as before,
+to compare the two on a phone (`flag: keep-sound-output is on: ...`); an ended
+app's output is closed with it too. None of this has a test here: it is the
+shell's, and whether Windows suspends the app is seen on a phone alone.
+
+An app that is neither seen nor heard is left alone by the core too. The Java
 driver's sampler (`hot_main`, `drivers/mg_java.c`) woke every 5 ms and said
 its lines every ten seconds for hours under a Twitter, a Telegram and a
 Facebook Lite silent in the background, until the batteries of an Elite x3

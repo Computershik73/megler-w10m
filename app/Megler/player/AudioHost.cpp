@@ -31,6 +31,10 @@ constexpr int ringSize = 16;
 constexpr int queuedMilliseconds = 50;
 /// After a failure to build the engine, how long until the next try.
 constexpr unsigned long long retryMilliseconds = 2000;
+/// How long a media app is in the background, and unheard, before its output is let go of (AudioHost.h).
+constexpr unsigned quietMilliseconds = 10000;
+/// How long the first block heard after that waits for the output to be made again.
+constexpr int madeWaitMilliseconds = 2000;
 
 long long qpcNow() {
     LARGE_INTEGER t;
@@ -282,6 +286,7 @@ AudioHost::~AudioHost() {
         quit_ = true;
     }
     wake_.notify_all();
+    made_.notify_all();
     if (owner_.joinable()) owner_.join();
 }
 
@@ -446,46 +451,110 @@ void AudioHost::retireMedia(std::shared_ptr<MediaOut>& out) {
     out.reset();
 }
 
-void AudioHost::mediaSessionPlays() {
-    if (sessionPlayed_.exchange(true) || !media_.load()) return;
+void AudioHost::mediaSession(bool plays) {
+    const bool played = sessionPlaying_.exchange(plays);
+    if (!plays) return; // (the owner thread sees that within its half second: nothing is to be made for it)
+    const bool first = !sessionPlayed_.exchange(true);
+    // The player is to be made, the first time; and after a rest the output, before the session's first sound.
+    if ((played && !first) || !media_.load()) return;
     std::lock_guard<std::mutex> lock(mutex_);
     wake_.notify_all();
+}
+
+void AudioHost::setBackground(bool background) {
+    if (background_.exchange(background) == background) return;
+    std::lock_guard<std::mutex> lock(mutex_);
+    wake_.notify_all();
+}
+
+void AudioHost::end() {
+    if (ended_.exchange(true)) return;
+    std::lock_guard<std::mutex> lock(mutex_);
+    wake_.notify_all();
+    // (A block of the mixer's waiting for the output waits no longer.)
+    made_.notify_all();
 }
 
 void AudioHost::ownerLoop() {
     const HRESULT com = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
     const std::wstring flags = platform::localStateDirectory() + L"\\flags\\";
     const bool playerAlways = files::exists(flags + L"audio-player"), xaudioAlways = files::exists(flags + L"audio-xaudio2");
+    const bool keepOutput = files::exists(flags + L"keep-sound-output");
     if (playerAlways) shellLog::write("flag: audio-player is on");
     if (xaudioAlways) shellLog::write("flag: audio-xaudio2 is on");
+    if (keepOutput) shellLog::write("flag: keep-sound-output is on: an app in the background, unheard, keeps its sound output");
     // A media app's sound goes through Windows.Media's player (MediaOut), every other through XAudio2 (Engine).
     const auto playerWanted = [&] {
         return media_.load() && route_.load() == MEGLER_AUDIO_ROUTE_DEFAULT && !mediaFailed_.load() && !xaudioAlways &&
                (playerAlways || sessionPlayed_.load());
     };
+    // Whether the app could do without an output, were it silent (AudioHost.h): a media app in Windows' background, not in a
+    // call.
+    const auto unseen = [&] { return !keepOutput && media_.load() && background_.load() && route_.load() == MEGLER_AUDIO_ROUTE_DEFAULT; };
+    /*
+     * For how long it has been so with nothing of it heard, in milliseconds, counted by this thread as it comes round, a second
+     * at the most each time: the hours Windows had the app suspended are then none of them, and an app that comes back -- this
+     * thread runs again before the application is told so -- is not taken for one silent in the background all the while,
+     * its output let go of only to be made again a moment later. The count stops at ten seconds (quietMilliseconds).
+     */
+    unsigned long long countedAt = GetTickCount64(), heardSeen = 0;
+    unsigned unheardFor = 0;
+    // Ten seconds of it with the app's media session not saying it plays, or the app's end: the output rests.
+    const auto rests = [&] { return ended_.load() || (unheardFor >= quietMilliseconds && !sessionPlaying_.load()); };
+    // The phone's endpoint as before a call the app made.
+    const auto routeAsBefore = [&] {
+        if (!routedOnce_) return;
+        const std::string failed = setPhoneEndpoint(endpointDefault);
+        shellLog::write(failed.empty() ? std::string("audio: routed as before the call") : "audio: the call's sound could not be routed: " + failed);
+        routedOnce_ = false;
+    };
+    // After a rest the output is there again, or could not be made: a block of the mixer's that waited for it (write) goes on.
+    const auto restOver = [&] {
+        if (!quiet_.load()) return;
+        std::lock_guard<std::mutex> lock(mutex_);
+        quiet_.store(false);
+        made_.notify_all();
+    };
     unsigned long long retryAt = 0;
     unsigned failures = 0;
+    // The rest, the app's end, and an output kept for a silent app's media session have been said in the log.
+    bool resting = false, endSaid = false, keptSaid = false;
     for (;;) {
         std::shared_ptr<Engine> old;
         std::shared_ptr<MediaOut> oldMedia;
-        bool have = false, haveMedia = false, wasLost = false, wantMedia = false;
+        bool have = false, haveMedia = false, wasLost = false, wantMedia = false, rest = false;
         int rate = 0, route = 0;
         {
             std::unique_lock<std::mutex> lock(mutex_);
-            const bool settled = playerWanted() ? mediaOut_ && mediaOut_->rate == rate_.load() && !mediaOut_->broken.load() && !engine_
-                                                : !mediaOut_ && (engine_ ? engine_->rate == rate_.load() && engine_->route == route_.load()
-                                                                         : GetTickCount64() < retryAt);
-            if (!quit_ && !lost_.load() && settled) wake_.wait_for(lock, std::chrono::milliseconds(500));
+            // (Whether the output rests is as this thread last found it, here; it is found anew after the wait.)
+            const bool rested = rests();
+            const bool settled = rested          ? !mediaOut_ && !engine_
+                                 : playerWanted() ? mediaOut_ && mediaOut_->rate == rate_.load() && !mediaOut_->broken.load() && !engine_
+                                                  : !mediaOut_ && (engine_ ? engine_->rate == rate_.load() && engine_->route == route_.load()
+                                                                           : GetTickCount64() < retryAt);
+            // (A block heard while this thread was busy, of an app whose output rests, waits for the output in write(), and
+            // the word it sent here found nobody waiting: no wait then.)
+            const bool heardMeanwhile = rested && !ended_.load() && lastAudible_.load() != heardSeen;
+            if (!quit_ && !lost_.load() && settled && !heardMeanwhile) wake_.wait_for(lock, std::chrono::milliseconds(500));
             if (quit_) break;
             rate = rate_.load();
             route = route_.load();
-            wantMedia = playerWanted();
+            const unsigned long long now = GetTickCount64(), heardAt = lastAudible_.load();
+            const unsigned step = unsigned(std::min<unsigned long long>(now - countedAt, 1000));
+            unheardFor = unseen() && heardAt == heardSeen ? std::min<unsigned>(unheardFor + step, quietMilliseconds) : 0;
+            countedAt = now;
+            heardSeen = heardAt;
+            rest = rests();
+            wantMedia = !rest && playerWanted();
             wasLost = lost_.exchange(false);
             if (mediaOut_ && (!wantMedia || mediaOut_->broken.load() || mediaOut_->rate != rate)) oldMedia = std::move(mediaOut_);
             haveMedia = mediaOut_ != nullptr;
             // (An engine still good plays on until the player is there.)
-            if (engine_ && (wasLost || engine_->rate != rate || engine_->route != route || (wantMedia && haveMedia))) old = std::move(engine_);
+            if (engine_ && (rest || wasLost || engine_->rate != rate || engine_->route != route || (wantMedia && haveMedia)))
+                old = std::move(engine_);
             have = engine_ != nullptr;
+            // (From here on the mixer's blocks have no output, and the first of them heard asks for it: write.)
+            if (rest) quiet_.store(true);
         }
         if (oldMedia) {
             if (oldMedia->broken.load()) {
@@ -494,6 +563,39 @@ void AudioHost::ownerLoop() {
                 shellLog::write("audio: the app's sound goes through XAudio2 from now on");
             }
             retireMedia(oldMedia);
+        }
+        if (rest) {
+            // The engine goes too, with what it still holds: silence, or the last 50 ms of an app that has ended.
+            retire(old);
+            routeAsBefore();
+            const bool ended = ended_.load();
+            if (ended ? !endSaid : !resting) {
+                shellLog::write(ended ? "audio: the app has ended: its sound output is closed"
+                                      : "audio: nothing audible for 10 s in the background: the output is paused so that Windows can "
+                                        "suspend the app");
+                setStatus(ended ? "none: the app has ended" : "paused in the background");
+            }
+            resting = true;
+            endSaid = ended;
+            logCounts();
+            continue;
+        }
+        if (resting) {
+            resting = false;
+            // (The ten seconds are counted anew from here: a session that has just said it plays is not yet heard.)
+            unheardFor = 0;
+            const char* const why = !background_.load()                   ? "as the app comes back from the background"
+                                    : route != MEGLER_AUDIO_ROUTE_DEFAULT ? "for a call"
+                                    : sessionPlaying_.load()              ? "as the app's media session says it plays"
+                                                                          : "at the first sound";
+            shellLog::write(std::string("audio: the output is resumed ") + why);
+        }
+        // Why an app silent in the background still has its output, which to Windows is an app playing: said once each time.
+        if (unheardFor < quietMilliseconds) {
+            keptSaid = false;
+        } else if (!keptSaid) {
+            keptSaid = true;
+            shellLog::write("audio: nothing audible for 10 s in the background, but the app's media session says it plays: the output is kept");
         }
         if (wantMedia && !haveMedia) {
             std::string why;
@@ -527,12 +629,8 @@ void AudioHost::ownerLoop() {
                 }
                 retire(old);
             }
-            // The phone's endpoint as before a call the app made.
-            if (routedOnce_) {
-                const std::string failed = setPhoneEndpoint(endpointDefault);
-                shellLog::write(failed.empty() ? std::string("audio: routed as before the call") : "audio: the call's sound could not be routed: " + failed);
-                routedOnce_ = false;
-            }
+            routeAsBefore();
+            restOver();
             logCounts();
             continue;
         }
@@ -575,6 +673,7 @@ void AudioHost::ownerLoop() {
                 retryAt = GetTickCount64() + retryMilliseconds;
             }
         }
+        restOver();
         logCounts();
     }
     std::shared_ptr<Engine> last;
@@ -610,7 +709,9 @@ void AudioHost::logCounts() {
         engine = engine_;
         media = mediaOut_;
     }
-    std::string output = "there is no engine";
+    std::string output = ended_.load()   ? "there is no output, the app having ended"
+                         : quiet_.load() ? "the output is paused, the app being in the background and unheard"
+                                         : "there is no engine";
     if (media) {
         // How far behind what it has taken the player plays: the delay the app's sound has on its way to the speaker,
         // beyond the 50 ms queued here.
@@ -659,6 +760,16 @@ void AudioHost::write(const int16_t* samples, int frames) {
     if (peak == 0) ++blocksSilent_;
     else lastAudible_.store(GetTickCount64());
     for (int seen = peak_.load(); peak > seen && !peak_.compare_exchange_weak(seen, peak);) {}
+
+    // The first sound of an app whose output rests (AudioHost.h): the owner thread is woken to make the output again, and
+    // the block waits for it, two seconds at the most -- a messenger's notification is then heard whole, a moment late,
+    // not without its beginning. (The owner thread clears quiet_ once the output is there or could not be made, so the
+    // blocks after this one do not wait.)
+    if (peak != 0 && quiet_.load() && !ended_.load()) {
+        std::unique_lock<std::mutex> lock(mutex_);
+        wake_.notify_all();
+        made_.wait_for(lock, std::chrono::milliseconds(madeWaitMilliseconds), [this] { return !quiet_.load() || quit_ || ended_.load(); });
+    }
 
     std::shared_ptr<Engine> held;
     std::shared_ptr<MediaOut> media;

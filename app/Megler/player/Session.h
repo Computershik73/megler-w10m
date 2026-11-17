@@ -87,4 +87,9 @@ void setSuspended(bool suspended);
 void setVisible(bool visible);
 void setFocused(bool focused);
 
+/// The application is in Windows' background (its EnteredBackground: minimized, or the screen off) or out of it again
+/// (LeavingBackground), said before an app runs too. It is the app's sound host's to know (AudioHost::setBackground): an
+/// app silent there has no sound output, so that Windows can suspend it.
+void setBackground(bool background);
+
 } // namespace megler::app::session

@@ -107,9 +107,10 @@ void onButton(SystemMediaTransportControls const&, SystemMediaTransportControlsB
 // MARK: The app's media session
 
 void stateThunk(void*, int state, long long actions) {
-    // A media app's sound goes through Windows.Media's player once its session plays (player/AudioHost.h).
-    if (state != STATE_NONE && state != STATE_ERROR && state != STATE_STOPPED && state != STATE_PAUSED)
-        if (const auto audio = session::audio()) audio->mediaSessionPlays();
+    // A media app's sound goes through Windows.Media's player once its session plays, and in the background its output is
+    // kept for as long as the session says so, heard or not (player/AudioHost.h).
+    const bool plays = state != STATE_NONE && state != STATE_ERROR && state != STATE_STOPPED && state != STATE_PAUSED;
+    if (const auto audio = session::audio()) audio->mediaSession(plays);
     onUi([state, actions] {
         gSessionSaid = state != STATE_NONE;
         gControls.IsStopEnabled((actions & ACTION_STOP) != 0);

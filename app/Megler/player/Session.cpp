@@ -54,6 +54,9 @@ std::vector<std::shared_ptr<AudioHost>> gOldAudio;
 // What megler_run_config points at, alive for the rest of the process.
 std::string gApkPath, gSplitsDir, gAppsDir;
 bool gSuspended = false, gVisible = true, gFocused = true;
+// The application is in Windows' background (setBackground): the sound host is told, which lets go of the output of an
+// app that is silent there (player/AudioHost.h).
+bool gBackground = false;
 // A Java app is heard in the background, as on Android (its own music and video players keep playing there, and the
 // system media controls stand for it: player/MediaControls.cpp); an engine's game is not, whether or not it stops its
 // own sound when paused.
@@ -151,10 +154,18 @@ void onExit(void*, int status, const char* reason) {
     shellLog::flush();
     // And into the log's copy in the shared folder, for Save All Logs: the process may end before the mirror's next pass.
     logMirror::now();
-    std::lock_guard<std::mutex> lock(gMutex);
-    gSnapshot.state = State::exited;
-    gSnapshot.exitStatus = status;
-    gSnapshot.reason = why;
+    std::shared_ptr<AudioHost> audio;
+    {
+        std::lock_guard<std::mutex> lock(gMutex);
+        gSnapshot.state = State::exited;
+        gSnapshot.exitStatus = status;
+        gSnapshot.reason = why;
+        audio = gAudio;
+    }
+    // The app's sound output is let go of at once: an app that has ended plays nothing, and an output Windows takes for
+    // playing kept Megler from being suspended. YouTube, ended, on an Elite x3: the player was given silence for five
+    // hours, and the battery went from 90% to 1% (0.1.0.695).
+    if (audio) audio->end();
 }
 
 } // namespace
@@ -218,6 +229,8 @@ bool start(const ApkEntry& apk, winrt::Windows::UI::Xaml::Controls::SwapChainPan
         gSplitsDir = apk.splitsDir.empty() ? std::string() : narrow(apk.splitsDir);
         window = gWindow = std::make_shared<WindowHost>(panel, width, height);
         audio = gAudio = std::make_shared<AudioHost>();
+        // (An app may be started with Megler in the background already.)
+        audio->setBackground(gBackground);
         gBackgroundAudio = apk.report.engine == "java";
         gSurface = Surface{width, height, densityDpi, rotation};
         gSurfaceWaiting = Surface{};
@@ -384,6 +397,8 @@ bool start(const ApkEntry& apk, winrt::Windows::UI::Xaml::Controls::SwapChainPan
         config.on_exit = &onExit;
         config.user = nullptr;
         const bool started = megler_run(&config);
+        // (An app that did not start plays nothing: its sound host, which is kept, lets go of its output.)
+        if (!started && audio) audio->end();
         Surface waiting;
         {
             std::lock_guard<std::mutex> lock(gMutex);
@@ -508,6 +523,13 @@ void setFocused(bool focused) {
         gFocused = focused;
     }
     tell();
+}
+
+void setBackground(bool background) {
+    // (The sound host alone is told, and whether or not the app runs yet: the app itself knows of paused and not, above.)
+    std::lock_guard<std::mutex> lock(gMutex);
+    gBackground = background;
+    if (gAudio) gAudio->setBackground(background);
 }
 
 } // namespace megler::app::session
