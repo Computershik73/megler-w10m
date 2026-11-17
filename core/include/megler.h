@@ -196,6 +196,15 @@ MEGLER_API bool megler_apk_icon_splits(const char *apk_path, const char *splits_
  * one, an XML one (adaptive, vector) drawn. "certificates" are those the APK is signed with, each its DER in hex digits: the
  * APK Signing Block's v3 signer's, else its v2 one's, else the v1 PKCS#7 file's under META-INF (megler.PhoneApps gives them
  * as the app's signatures; Google Play compares them with its own record). `splits_dir` as megler_apk_report_splits has it.
+ *
+ * An app with services another app may bind (exported: said so, or not said and with an intent filter) gets services.json
+ * beside it, and one without has none --
+ *
+ *   { "package": "org.example", "services": [ { "name": "org.example.Plugin", "label": "Example plug-in", "icon": 2131558402,
+ *                 "permission": "org.example.BIND", "exported": true, "filters": [ ... ] } ] }
+ *
+ * -- each as an activity is described, and with the permission its binder is to hold where the manifest names one
+ * (megler.HostedApps binds such a service inside the app that asks: Total Commander's plug-ins).
  * False when the APK's manifest cannot be read or the description cannot be written.
  */
 MEGLER_API bool megler_apk_describe_activities(const char *apk_path, const char *splits_dir, const char *out_dir);

@@ -4511,6 +4511,56 @@ What a Java app asks of the phone beyond its window goes to the shell through
     started by its class alone, as before.
   - The test apps `crossapp` and `plugin`, in two runs on one data folder
     (`MG_JAVA_OTHER_APKS`, `MG_JAVA_START_ACTIVITY=@<file>`).
+- **Other apps: their services.** Each app is a Windows package and a
+  process of its own, and no Binder call passes from one to another:
+  `bindService` for another app's service answered false, and
+  `queryIntentServices` found none. Total Commander lists its plug-ins by
+  their service's action (`com.android.tcplugins.IPluginFunctions`, no
+  package) and binds `PluginService` in the plug-in's package, so every
+  plug-in was "not installed", and then "failed to connect".
+  `megler.HostedApps` runs the other app's service inside the app that asks,
+  as `megler.MicroG` runs Google Play services: the other app's APK
+  (`/data/app/<package>-1/base.apk`) in a class scope of its own
+  (`megler.ServiceClassLoader`), its Application made once, with a Context
+  that answers for that package (its name, resources, class loader,
+  `ApplicationInfo`, folders), the service made and bound, and its Binder
+  handed to the caller's `ServiceConnection` on the main thread. The caller's
+  proxy and the service's stub are classes of two scopes, so each call is a
+  transaction with a `Parcel`, as between processes.
+  - Which services: beside `activities.json` Megler writes `services.json`,
+    the app's exported services with their labels, icons, permissions and
+    intent filters (`Native.appServices`, `megler.PhoneApps.services`).
+    `queryIntentServices` and `resolveService` find those an intent reaches
+    by its component, by its action within a package, or by its action
+    alone; `getServiceInfo` and `getPackageInfo` with `GET_SERVICES` tell of
+    them. A service is bound by its component or by its action within the
+    package the intent names.
+  - What is refused, with a line of the log saying why (`hosted apps: ... is
+    not bound here: ...`), and not listed either: Google's packages (they
+    have their own ways); a service whose permission is
+    `android.permission.BIND_...` or one the asking app does not request; an
+    app whose base APK is over 16 MB (`MAX_APK_BYTES`: its code and heap are
+    the asking app's, on phones with 1 GB); a fifth package in one process
+    (`MAX_HOSTS`).
+  - The hosted package's data is `/data/megler-services/hosted/<package>`,
+    in the folder every app shares, not the folder of that app run on its
+    own, which another Windows package cannot open. What a plug-in saves when
+    its service runs inside another app is not what it has when started from
+    its own tile, and the other way round; two apps that host one package
+    share that folder. Its code runs with the asking app's permissions; its
+    content providers are not made; only its base APK is read.
+  - The hosted code's own `bindService`, `startService` and `stopService` for
+    its own services are resolved in its own manifest, exported or not, in
+    the same scope (Total Commander's LAN plug-in binds its
+    `ForegroundService` and casts the Binder to its class). Its activities
+    are not hosted: one it starts opens in that app's own process.
+  - `megler.HostedApps.binder(context, intent)` is the same for Megler's own
+    classes: the Binder of a package's service by an Intent, in this process,
+    or null. `megler.HostedApps.handle(package, handler)` sets Megler's own
+    answer for a package's services, asked before the phone's apps are looked
+    at.
+  - The test apps `crossapp` and `plugin` (`services`, `bind`, `call`,
+    `callback`, `bind-action`, `unbind`, `refused`, `entry`, `handler`).
 - **Other apps: their signatures, uids, comings and goings.**
   - `activities.json` also has the certificates the APK is signed with
     (`"certificates"`, each DER in hex): the APK Signing Block's v3 signer's,

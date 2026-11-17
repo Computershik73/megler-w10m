@@ -1,21 +1,31 @@
 package megler.test.crossapp;
 
 import android.app.Activity;
+import android.content.ComponentName;
+import android.content.Context;
 import android.content.Intent;
+import android.content.ServiceConnection;
 import android.content.pm.ApplicationInfo;
 import android.content.pm.PackageInfo;
 import android.content.pm.PackageManager;
 import android.content.pm.ResolveInfo;
+import android.content.pm.ServiceInfo;
 import android.net.Uri;
 import android.os.Binder;
 import android.os.Bundle;
+import android.os.IBinder;
+import android.os.Looper;
+import android.os.Parcel;
 import android.os.Parcelable;
+import android.os.RemoteException;
 import android.util.Log;
 import android.widget.TextView;
 
 import java.io.File;
+import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 
@@ -25,15 +35,19 @@ import megler.test.shared.Tag;
 /**
  * One app working with another the phone has (the test app plugin), as Total Commander works with its plug-ins. A thread of
  * the app's goes through the steps and says how each went; what the other app got of them the test sees in that app's own
- * run, which follows this one (core/tests/mg_java_tests.c: run_crossapp, run_plugin).
+ * run, which follows this one (core/tests/mg_java_tests.c: run_crossapp, run_plugin). The other app's service it binds runs
+ * inside this app (megler.HostedApps), and says so in this run.
  */
 public class Main extends Activity {
     private static final String T = "CrossAppTest";
     private static final String PLUGIN = "megler.test.plugin";
     /* Where the intents for the other app wait for it, in the folder every app has (megler.PhoneApps). */
     private static final File INTENTS = new File("/data/megler-services/intents/" + PLUGIN);
+    /* The other app's service: its class, its action, and its interface's name (megler.test.plugin.PluginService). */
+    private static final String SERVICE = PLUGIN + ".PluginService", IPLUGIN = PLUGIN + ".IPlugin";
     private int ok, failed;
     private String detail = "";
+    private Conn first, second;
 
     @Override
     protected void onCreate(Bundle state) {
@@ -91,6 +105,60 @@ public class Main extends Activity {
 
     private static Uri uri(String path) { return Uri.parse("content://megler.test.crossapp/" + path); }
 
+    /* A binding: what the connection heard, and on which thread. */
+    private static final class Conn implements ServiceConnection {
+        private final CountDownLatch connected = new CountDownLatch(1);
+        volatile IBinder binder;
+        volatile ComponentName name;
+        volatile boolean main;
+
+        @Override
+        public void onServiceConnected(ComponentName n, IBinder b) {
+            name = n;
+            binder = b;
+            main = Looper.myLooper() == Looper.getMainLooper();
+            connected.countDown();
+        }
+
+        @Override
+        public void onServiceDisconnected(ComponentName n) {}
+
+        IBinder await() throws InterruptedException {
+            connected.await(30, TimeUnit.SECONDS);
+            return binder;
+        }
+    }
+
+    /* What the other app's service says of where it runs: its first transaction. */
+    private static final class Said {
+        String pkg, label, files, app;
+        int apps, made, own;
+
+        @Override
+        public String toString() { return pkg + " '" + label + "' " + files + " " + app + " apps=" + apps + " made=" + made + " own=" + own; }
+    }
+
+    private static Said describe(IBinder b) throws RemoteException {
+        Parcel d = Parcel.obtain(), r = Parcel.obtain();
+        try {
+            Said s = new Said();
+            d.writeInterfaceToken(IPLUGIN);
+            if (!b.transact(IBinder.FIRST_CALL_TRANSACTION, d, r, 0)) return s;
+            r.readException();
+            s.pkg = r.readString();
+            s.label = r.readString();
+            s.files = r.readString();
+            s.app = r.readString();
+            s.apps = r.readInt();
+            s.made = r.readInt();
+            s.own = r.readInt();
+            return s;
+        } finally {
+            d.recycle();
+            r.recycle();
+        }
+    }
+
     private void steps() {
         PackageManager pm = getPackageManager();
         /* The other app is installed: its package's version and label, and its launcher's intent. */
@@ -109,6 +177,159 @@ public class Main extends Activity {
             ResolveInfo none = pm.resolveActivity(new Intent(PLUGIN + ".SHOW").setPackage(PLUGIN).setDataAndType(uri("notes/1"), "image/png"), 0);
             detail = "resolved=" + (r == null ? null : r.activityInfo.packageName + "/" + r.activityInfo.name) + " none=" + none;
             return r != null && PLUGIN.equals(r.activityInfo.packageName) && (PLUGIN + ".Shown").equals(r.activityInfo.name) && none == null;
+        });
+        /*
+         * The other app's services another app may bind, found as Total Commander finds its plug-ins: by the action alone,
+         * whichever package has it. The exported one with that action is found, with its own label; the package's services
+         * are told of, and the one service by its class. The one for the plug-in alone is nobody else's, and the one behind
+         * a permission this app does not ask for is told of but not found: what is found can be bound.
+         */
+        step("services", () -> {
+            List<ResolveInfo> found = pm.queryIntentServices(new Intent(IPLUGIN), 0);
+            ResolveInfo one = pm.resolveService(new Intent(IPLUGIN).setPackage(PLUGIN), 0);
+            ServiceInfo byClass = pm.getServiceInfo(new ComponentName(PLUGIN, SERVICE), 0);
+            ArrayList<String> names = new ArrayList<>();
+            PackageInfo p = pm.getPackageInfo(PLUGIN, PackageManager.GET_SERVICES);
+            if (p.services != null) for (ServiceInfo s : p.services) names.add(s.name.substring(s.name.lastIndexOf('.') + 1));
+            int others = pm.queryIntentServices(new Intent(PLUGIN + ".PRIVATE"), 0).size() + pm.queryIntentServices(new Intent(PLUGIN + ".GUARDED").setPackage(PLUGIN), 0).size()
+                + pm.queryIntentServices(new Intent().setComponent(new ComponentName(PLUGIN, PLUGIN + ".Private")), 0).size();
+            detail = "found=" + found.size() + " one=" + (one == null ? null : one.serviceInfo.packageName + "/" + one.serviceInfo.name) + " names=" + names + " others=" + others;
+            if (found.size() != 1 || one == null || byClass == null) return false;
+            ServiceInfo s = found.get(0).serviceInfo;
+            CharSequence label = found.get(0).loadLabel(pm);
+            one.loadIcon(pm);
+            detail += " label=" + label + " exported=" + s.exported + " byClass=" + byClass.name;
+            return PLUGIN.equals(s.packageName) && SERVICE.equals(s.name) && s.exported && "Plug-in service".contentEquals(label) && SERVICE.equals(one.serviceInfo.name)
+                && SERVICE.equals(byClass.name) && PLUGIN.equals(byClass.packageName) && PLUGIN.equals(byClass.applicationInfo.packageName)
+                && names.contains("PluginService") && names.contains("Guarded") && !names.contains("Private") && others == 0;
+        });
+        /* That service bound as Total Commander binds a plug-in's, by the action and the class: the connection hears of it on the main thread. */
+        step("bind", () -> {
+            first = new Conn();
+            boolean bound = bindService(new Intent(IPLUGIN).setComponent(new ComponentName(PLUGIN, SERVICE)), first, Context.BIND_AUTO_CREATE);
+            IBinder b = first.await();
+            detail = "bound=" + bound + " name=" + first.name + " binder=" + (b == null ? null : b.getClass().getName()) + " main=" + first.main;
+            return bound && b != null && first.main && new ComponentName(PLUGIN, SERVICE).equals(first.name);
+        });
+        /*
+         * A call of it, a transaction as an AIDL proxy makes: the service is the other app's in everything that tells one app
+         * from another -- its package, its resources, its Application, made once, a files folder of its own in the folder
+         * every app has -- inside this app, which stays itself. And the service has bound a service of its own, in its own
+         * classes.
+         */
+        step("call", () -> {
+            Said s = describe(first.binder);
+            for (int n = 0; n < 50 && s.own != 1; n++) {
+                Thread.sleep(100);
+                s = describe(first.binder);
+            }
+            boolean served = s.files != null && new File(s.files, "served.txt").isFile();
+            detail = s + " served=" + served + " mine=" + getPackageName() + " '" + getString(R.string.app_name) + "' " + getApplication().getClass().getName();
+            return PLUGIN.equals(s.pkg) && "Megler Plug-in".equals(s.label) && ("/data/megler-services/hosted/" + PLUGIN + "/files").equals(s.files)
+                && (PLUGIN + ".App").equals(s.app) && s.apps == 1 && s.made == 1 && s.own == 1 && served
+                && "megler.test.crossapp".equals(getPackageName()) && "Megler Cross-app".equals(getString(R.string.app_name));
+        });
+        /* A Binder of this app's handed to the service in a call, and called back by it before the call returns. */
+        step("callback", () -> {
+            String[] heard = { null };
+            Binder callback = new Binder() {
+                @Override
+                protected boolean onTransact(int code, Parcel data, Parcel reply, int flags) throws RemoteException {
+                    if (code != IBinder.FIRST_CALL_TRANSACTION) return super.onTransact(code, data, reply, flags);
+                    data.enforceInterface(PLUGIN + ".ICallback");
+                    heard[0] = data.readString();
+                    reply.writeNoException();
+                    reply.writeInt(41);
+                    return true;
+                }
+            };
+            Parcel d = Parcel.obtain(), r = Parcel.obtain();
+            int answer;
+            try {
+                d.writeInterfaceToken(IPLUGIN);
+                d.writeStrongBinder(callback);
+                d.writeString("hello");
+                boolean taken = first.binder.transact(IBinder.FIRST_CALL_TRANSACTION + 1, d, r, 0);
+                r.readException();
+                answer = r.readInt();
+                detail = "taken=" + taken + " heard=" + heard[0] + " answer=" + answer;
+                return taken && "plugin heard: hello".equals(heard[0]) && answer == 42;
+            } finally {
+                d.recycle();
+                r.recycle();
+            }
+        });
+        /* Bound again by the action within the package: the same service, the same Binder, and nothing made twice. */
+        step("bind-action", () -> {
+            second = new Conn();
+            boolean bound = bindService(new Intent(IPLUGIN).setPackage(PLUGIN), second, Context.BIND_AUTO_CREATE);
+            IBinder b = second.await();
+            Said s = b == null ? new Said() : describe(b);
+            detail = "bound=" + bound + " same=" + (b == first.binder) + " name=" + second.name + " " + s;
+            return bound && b != null && b == first.binder && new ComponentName(PLUGIN, SERVICE).equals(second.name) && s.apps == 1 && s.made == 1;
+        });
+        /* Both bindings ended: the service is destroyed, and bound again it is made again, in the Application that was made once. */
+        step("unbind", () -> {
+            unbindService(second);
+            unbindService(first);
+            first = new Conn();
+            boolean bound = bindService(new Intent(IPLUGIN).setComponent(new ComponentName(PLUGIN, SERVICE)), first, Context.BIND_AUTO_CREATE);
+            IBinder b = first.await();
+            Said s = b == null ? new Said() : describe(b);
+            detail = "bound=" + bound + " " + s;
+            return bound && b != null && s.apps == 1 && s.made == 2;
+        });
+        /*
+         * What is not bound, and answers false as Android does for a service that is not there: the other app's service for
+         * itself alone, the one behind a permission this app does not ask for, a service of an app the phone has not, and
+         * an action with no package.
+         */
+        step("refused", () -> {
+            Conn none = new Conn();
+            boolean own = bindService(new Intent().setComponent(new ComponentName(PLUGIN, PLUGIN + ".Private")), none, Context.BIND_AUTO_CREATE);
+            boolean guarded = bindService(new Intent(PLUGIN + ".GUARDED").setPackage(PLUGIN), none, Context.BIND_AUTO_CREATE);
+            boolean absent = bindService(new Intent("megler.test.absent.ACTION").setComponent(new ComponentName("megler.test.absent", "megler.test.absent.Service")), none, Context.BIND_AUTO_CREATE);
+            boolean nowhere = bindService(new Intent(IPLUGIN), none, Context.BIND_AUTO_CREATE);
+            Thread.sleep(300);
+            detail = "own=" + own + " guarded=" + guarded + " absent=" + absent + " nowhere=" + nowhere + " heard=" + none.binder;
+            return !own && !guarded && !absent && !nowhere && none.binder == null;
+        });
+        /*
+         * Megler's own way to it, which the bindings above go through and its other classes may use (megler.HostedApps.binder:
+         * a service of a package by an Intent, in this process): the Binder, here from a thread that is not the main one; null
+         * for what is refused.
+         */
+        step("entry", () -> {
+            Method binder = Class.forName("megler.HostedApps").getMethod("binder", Context.class, Intent.class);
+            IBinder b = (IBinder) binder.invoke(null, this, new Intent(IPLUGIN).setPackage(PLUGIN));
+            Object refused = binder.invoke(null, this, new Intent(PLUGIN + ".GUARDED").setPackage(PLUGIN));
+            Object absent = binder.invoke(null, this, new Intent(IPLUGIN).setPackage("megler.test.absent"));
+            Said s = b == null ? new Said() : describe(b);
+            detail = "same=" + (b == first.binder) + " refused=" + refused + " absent=" + absent + " " + s;
+            return b != null && b == first.binder && refused == null && absent == null && PLUGIN.equals(s.pkg) && s.apps == 1 && s.made == 2;
+        });
+        /*
+         * A handler for a package (megler.HostedApps.handle), which is how Megler answers for a service of a package itself:
+         * it is asked before the phone's apps are looked at, its Binder is what a binding and the entry give, and what it
+         * leaves (null) goes on as without it. Taken away, the package has no service again.
+         */
+        step("handler", () -> {
+            String handled = "megler.test.handled";
+            Class<?> hosted = Class.forName("megler.HostedApps"), type = Class.forName("megler.HostedApps$PackageHandler");
+            Method handle = hosted.getMethod("handle", String.class, type), binder = hosted.getMethod("binder", Context.class, Intent.class);
+            Binder answer = new Binder();
+            Object handler = java.lang.reflect.Proxy.newProxyInstance(getClassLoader(), new Class<?>[] { type }, (proxy, method, args) ->
+                "bind".equals(method.getName()) && (handled + ".ACTION").equals(((Intent) args[1]).getAction()) ? answer : null);
+            handle.invoke(null, handled, handler);
+            Conn c = new Conn(), other = new Conn();
+            boolean bound = bindService(new Intent(handled + ".ACTION").setPackage(handled), c, Context.BIND_AUTO_CREATE);
+            IBinder got = c.await();
+            boolean left = bindService(new Intent(handled + ".OTHER").setPackage(handled), other, Context.BIND_AUTO_CREATE);
+            Object direct = binder.invoke(null, this, new Intent(handled + ".ACTION").setPackage(handled));
+            handle.invoke(null, handled, null);
+            boolean after = bindService(new Intent(handled + ".ACTION").setPackage(handled), other, Context.BIND_AUTO_CREATE);
+            detail = "bound=" + bound + " got=" + (got == answer) + " name=" + c.name + " main=" + c.main + " left=" + left + " direct=" + (direct == answer) + " after=" + after;
+            return bound && got == answer && c.main && new ComponentName(handled, handled + ".ACTION").equals(c.name) && !left && direct == answer && !after;
         });
         /* Such an intent started: the other app is asked for that activity, and the intent waits for it, written out. */
         step("send-implicit", () -> {

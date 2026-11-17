@@ -1406,6 +1406,14 @@ N(Native_appActivities)
     c->ret.l = apps_package_ok(package) ? apps_file(mg_sprintf("%s/%s/activities.json", J.config->apps_dir, package)) : NULL;
 }
 
+/* appServices(package): that app's services another app may bind, the bytes of <package>/services.json in the same folder;
+   null when it has none. */
+N(Native_appServices)
+{
+    const char *package = text_of(c->args[0].l);
+    c->ret.l = apps_package_ok(package) ? apps_file(mg_sprintf("%s/%s/services.json", J.config->apps_dir, package)) : NULL;
+}
+
 /* appResIcon(package, id): the picture of that app's icon resource `id`, a PNG, from <package>/ in the same folder; null when
    there is none. */
 N(Native_appResIcon)
@@ -1612,6 +1620,7 @@ static const mg_jhle k_native[] = {
     { "megler/Native", "appsList", NULL, Native_appsList },
     { "megler/Native", "appIcon", NULL, Native_appIcon },
     { "megler/Native", "appActivities", NULL, Native_appActivities },
+    { "megler/Native", "appServices", NULL, Native_appServices },
     { "megler/Native", "appResIcon", NULL, Native_appResIcon },
     { "megler/Native", "appInstall", NULL, Native_appInstall },
     { "megler/Native", "mediaSessionMetadata", NULL, Native_mediaSessionMetadata },

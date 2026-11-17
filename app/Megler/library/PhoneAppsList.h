@@ -6,7 +6,8 @@
 //                                    version name, version code, separated by tabs (UTF-8)
 //   <shared>\phone-apps\<package>.png its icon
 //   <shared>\phone-apps\<package>\  its activities (megler_apk_describe_activities: activities.json and the pictures of their
-//                                    icons), for a launcher or a shortcut maker that lists them; source.txt says which APK they
+//                                    icons), for a launcher or a shortcut maker that lists them, and the services another app
+//                                    may bind (services.json, where it has any: a plug-in's); source.txt says which APK they
 //                                    are of, so that they are written again only for another
 //   <shared>\phone-apps\installs\<name>.txt  what Megler's installer last told of the APK an app handed it under that
 //                                    name (installOutcome): "<when>\t<what>\t<why>"; the app's installer session waits

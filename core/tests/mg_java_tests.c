@@ -62,10 +62,11 @@
  *
  * `crossapp` and `plugin` are two apps that work together, as Total Commander and its plug-ins do, in two runs with one
  * data folder. The first has the second listed among the phone's apps (MG_JAVA_OTHER_APKS=<the plugin's APK>; any app can
- * be given others so, `app` too): it finds it installed, resolves an intent to an activity of it and asks the shell for that
- * activity, with the whole Intent written where the other app reads it. The second is then started as the shell starts an
- * app another one asked for (MG_JAVA_START_ACTIVITY=@<the first's data folder>/launch-request.txt): with that activity and
- * no other, and the Intent whole.
+ * be given others so, `app` too): it finds it installed, finds its service by the service's action, binds it and calls it
+ * -- the second app's code runs inside the first for that (megler.HostedApps) -- resolves an intent to an activity of it and
+ * asks the shell for that activity, with the whole Intent written where the other app reads it. The second is then started
+ * as the shell starts an app another one asked for (MG_JAVA_START_ACTIVITY=@<the first's data folder>/launch-request.txt):
+ * with that activity and no other, and the Intent whole.
  *
  * `first` is hello started as the player starts an app on a PC's window or on an Xbox's television (`pc`, `xbox`): the
  * player's busy overlay must go at the app's first picture, whichever way it came and at whatever size, the surface changed
@@ -1567,7 +1568,7 @@ static void other_apks(const char *dir, FILE *list)
         report_value(report, "versionCode", code, sizeof(code));
         if (package[0] && mg_path_stat(apk, &st, NULL)) {
             char *own = mg_sprintf("%s/%s", dir, package), *path = mg_sprintf("%s/source.txt", own);
-            char *source = mg_sprintf("description 2\n%s\n%llu\n%s\n", apk, (unsigned long long)st.size, code[0] ? code : "0");
+            char *source = mg_sprintf("description 3\n%s\n%llu\n%s\n", apk, (unsigned long long)st.size, code[0] ? code : "0");
             const bool described = megler_apk_describe_activities(apk, NULL, own);
             fprintf(list, "%s\t%s\t%s\t%s\t%s\n", package, activity, label[0] ? label : package, version, code[0] ? code : "0");
             mg_file_write_all(path, source, strlen(source));
@@ -1654,7 +1655,7 @@ static const char *phone_apps_fixture(void)
            app finds the other app's APK, /data/app/com.example.other-1/base.apk (phone-apps-source). */
         {
             static const char apk[] = "PK the other app's APK";
-            char *file = mg_sprintf("%s/other.apk", dir), *source = mg_sprintf("description 2\n%s\n%u\n3\n", file, (unsigned)(sizeof(apk) - 1));
+            char *file = mg_sprintf("%s/other.apk", dir), *source = mg_sprintf("description 3\n%s\n%u\n3\n", file, (unsigned)(sizeof(apk) - 1));
             mg_file_write_all(file, apk, sizeof(apk) - 1);
             path = mg_sprintf("%s/source.txt", own);
             mg_file_write_all(path, source, strlen(source));
@@ -4914,15 +4915,23 @@ static int run_pickers(void)
 
 /*
  * Two apps that work together, as Total Commander and its plug-ins do; this is the one that asks (the test app crossapp; the
- * phone has the test app plugin beside it, MG_JAVA_OTHER_APKS). It finds the other app installed, resolves an intent to its
- * activity and asks for that activity twice: by an intent its filter takes, and by its class for a result, with an Intent of
- * everything. The shell hears the package and the class each time; the request names the file the Intent was written into
- * as well (megler.PhoneApps), and the last one stays in the data folder for the plugin app's run, which is started with it
- * and says what it got (run_plugin).
+ * phone has the test app plugin beside it, MG_JAVA_OTHER_APKS). It finds the other app installed. It finds the other app's
+ * service as Total Commander finds a plug-in's (by the action alone), binds it by the action and the class, and calls it:
+ * the service runs inside this app (megler.HostedApps), made by the other app's own classes in an Application of that app
+ * made once, with that app's package name, resources and a data folder of its own in the folder every app shares, and the
+ * Binder it gives takes a call and calls back a Binder handed to it. Bound again by the action within the package it is the
+ * same service; unbound it is destroyed, and bound again made again. The other app's service for itself alone, the one
+ * behind a permission this app does not ask for, and a service of an app the phone has not are not bound (false, and the
+ * log says why). Megler's own entry gives the same Binder, and a handler set for a package answers for it. Then it resolves
+ * an intent to the other app's activity and asks for that activity twice: by an intent its filter takes, and by its class
+ * for a result, with an Intent of everything. The shell hears the package and the class each time; the request names the
+ * file the Intent was written into as well (megler.PhoneApps), and the last one stays in the data folder for the plugin
+ * app's run, which is started with it and says what it got (run_plugin).
  */
 static int run_crossapp(void)
 {
-    static const char *const steps[] = { "installed", "resolve", "send-implicit", "send" };
+    static const char *const steps[] = { "installed", "resolve", "services", "bind", "call", "callback", "bind-action", "unbind", "refused", "entry",
+                                         "handler", "send-implicit", "send" };
     static const char want[] = "launch=megler.test.plugin/megler.test.plugin.Shown;launch=megler.test.plugin/megler.test.plugin.Shown;";
     static const char asked[] = "megler.test.plugin.Shown~";
     char text[120], heard[sizeof(g_system_heard)], *path, *request;
@@ -4945,6 +4954,19 @@ static int run_crossapp(void)
     CHECK(request && size > sizeof(asked) - 1 && !memcmp(request, asked, sizeof(asked) - 1));
     free(request);
     free(path);
+    /* The other app's service ran here: its package hosted once, its Application made once, the service made twice (bound,
+       unbound, bound again) and destroyed once, with the service of its own it binds; and each refusal has its reason. */
+    CHECK(find_line("hosted apps: megler.test.plugin 1.7 runs inside megler.test.crossapp for its services (3 in its manifest), its data in "
+                    "/data/megler-services/hosted/megler.test.plugin", 0) >= 0);
+    CHECK(find_line("I/PluginTest: application created 1 package=megler.test.plugin", 0) >= 0 && find_line("I/PluginTest: application created 2", 0) < 0);
+    CHECK(find_line("I/PluginTest: service created 1 package=megler.test.plugin", 0) >= 0 && find_line("I/PluginTest: service created 2 package=megler.test.plugin", 0) >= 0 &&
+          find_line("I/PluginTest: service created 3", 0) < 0);
+    CHECK(find_line("I/PluginTest: service bound action=megler.test.plugin.IPlugin", 0) >= 0);
+    CHECK(find_line("hosted apps: bound megler.test.plugin/megler.test.plugin.PluginService for megler.test.plugin.IPlugin: megler.test.plugin.PluginService$", 0) >= 0);
+    CHECK(find_line("I/PluginTest: its own service bound megler.test.plugin/.Private local=true", 0) >= 0);
+    CHECK(find_line("I/PluginTest: service destroyed", 0) >= 0 && find_line("I/PluginTest: its own service destroyed", 0) >= 0);
+    CHECK(find_line("hosted apps: megler.test.plugin has no service another app may bind for megler.test.plugin/.Private", 0) >= 0);
+    CHECK(find_line("hosted apps: megler.test.plugin/megler.test.plugin.Guarded is not bound here: this app does not ask for its permission megler.test.plugin.BIND", 0) >= 0);
     CHECK(find_line("phone apps: starting megler.test.plugin/megler.test.plugin.Shown", 0) >= 0);
     CHECK(find_line("phone apps: megler.test.crossapp.Main waits for the result of megler.test.plugin/megler.test.plugin.Shown (request 77)", 0) >= 0);
     /* What cannot go to another app's process is said, by its key and class, and the rest goes. */

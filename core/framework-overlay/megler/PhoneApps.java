@@ -20,6 +20,13 @@
 // told as Android tells it when the list changes (an app installed, updated or removed in Megler): ACTION_PACKAGE_ADDED,
 // ACTION_PACKAGE_REPLACED, ACTION_PACKAGE_REMOVED and ACTION_PACKAGE_FULLY_REMOVED, the list being read again every three
 // seconds once the app has asked for it; Google Play went on showing a removed app as installed.
+//
+// Their services another app may bind, as the shell described them beside the activities (services.json: Native.appServices;
+// the exported ones, each with its label, its icon, its permission and its intent filters): getPackageInfo with GET_SERVICES
+// and getServiceInfo tell of them, and queryIntentServices and resolveService find those an intent reaches -- by its
+// component, by its action within the package it names, or by its action alone -- which megler.HostedApps would bind here.
+// Total Commander lists its plug-ins so (the action com.android.tcplugins.IPluginFunctions, no package), and took every
+// plug-in for not installed.
 package megler;
 
 import android.content.ComponentName;
@@ -63,6 +70,22 @@ public final class PhoneApps {
         }
     }
 
+    /** One of an app's services another app may bind, as the shell described it. */
+    public static final class Service {
+        public final String name, label, permission;
+        public final int icon;
+        public final boolean enabled;
+        final java.util.List<Filter> filters;
+        Service(String name, String label, String permission, int icon, boolean enabled, java.util.List<Filter> filters) {
+            this.name = name; this.label = label; this.permission = permission; this.icon = icon; this.enabled = enabled; this.filters = filters;
+        }
+        /** Whether one of its filters takes the intent. */
+        boolean takes(Intent i) {
+            for (Filter f : filters) if (f.takes(i)) return true;
+            return false;
+        }
+    }
+
     /** An intent filter as the shell described it: as Android's resolver has it, the action, every category, the data. */
     static final class Filter {
         final java.util.List<String> actions, categories, schemes, hosts, types;
@@ -96,6 +119,9 @@ public final class PhoneApps {
     private static final java.util.HashMap<String, android.graphics.Bitmap> sIcons = new java.util.HashMap<>();
     /* The activities read for each app, with the version they were read at: read again for another version. */
     private static final java.util.HashMap<String, Object[]> sActivities = new java.util.HashMap<>();
+    /* The services read for each app: { the version they were read at, the list, when }. Most apps have none, and an intent
+       with no package asks every app: an app found with none is asked again after a minute, not each time. */
+    private static final java.util.HashMap<String, Object[]> sServices = new java.util.HashMap<>();
 
     /** The apps, but this one; read again when two seconds have passed, as the shell rewrites the list when the library changes. */
     public static synchronized java.util.List<App> all() {
@@ -238,6 +264,92 @@ public final class PhoneApps {
             sActivities.put(a.packageName, d);
             return d;
         }
+    }
+
+    /** The app's services another app may bind, as the shell described them; none when it has none or is not described. */
+    @SuppressWarnings("unchecked")
+    public static java.util.List<Service> services(App a) {
+        long now = android.os.SystemClock.uptimeMillis();
+        synchronized (sServices) {
+            Object[] had = sServices.get(a.packageName);
+            if (had != null && (Long) had[0] == a.versionCode && (!((java.util.List<Service>) had[1]).isEmpty() || now - (Long) had[2] < 60000))
+                return (java.util.List<Service>) had[1];
+            java.util.ArrayList<Service> list = new java.util.ArrayList<>();
+            byte[] json = Native.appServices(a.packageName);
+            if (json != null) {
+                try {
+                    org.json.JSONArray all = new org.json.JSONObject(new String(json, java.nio.charset.StandardCharsets.UTF_8)).getJSONArray("services");
+                    for (int k = 0; k < all.length(); k++) {
+                        org.json.JSONObject o = all.getJSONObject(k);
+                        java.util.ArrayList<Filter> filters = new java.util.ArrayList<>();
+                        org.json.JSONArray fs = o.optJSONArray("filters");
+                        for (int f = 0; fs != null && f < fs.length(); f++) {
+                            org.json.JSONObject x = fs.getJSONObject(f);
+                            filters.add(new Filter(strings(x, "actions"), strings(x, "categories"), strings(x, "schemes"), strings(x, "hosts"), strings(x, "types")));
+                        }
+                        list.add(new Service(o.getString("name"), o.has("label") ? o.getString("label") : null, o.has("permission") ? o.getString("permission") : null,
+                                             (int) o.optLong("icon", 0), o.optBoolean("enabled", true), filters));
+                    }
+                } catch (RuntimeException | org.json.JSONException e) {
+                    android.util.Log.w("Megler", "phone apps: the services of " + a.packageName + " cannot be read: " + e);
+                    list.clear();
+                }
+            }
+            sServices.put(a.packageName, new Object[] { a.versionCode, list, now });
+            return list;
+        }
+    }
+
+    /** The app's service an intent is for: the one its component names, else the first whose filter takes it; or null. */
+    public static Service service(App a, Intent i) {
+        ComponentName c = i.getComponent();
+        if (c == null && i.getAction() == null) return null;
+        String name = c != null ? c.getClassName() : null;
+        if (name != null && name.startsWith(".")) name = a.packageName + name;
+        for (Service s : services(a)) if (name != null ? s.name.equals(name) : s.takes(i)) return s;
+        return null;
+    }
+
+    /** As Android's package manager tells of it: its label its own or else the app's. */
+    public static android.content.pm.ServiceInfo serviceInfo(App a, Service s) {
+        android.content.pm.ServiceInfo i = new android.content.pm.ServiceInfo();
+        i.name = s.name;
+        i.packageName = a.packageName;
+        i.nonLocalizedLabel = s.label != null ? s.label : a.label;
+        i.icon = s.icon;
+        i.applicationInfo = applicationInfo(a);
+        i.exported = true;
+        i.enabled = s.enabled;
+        i.permission = s.permission;
+        i.processName = a.packageName;
+        return i;
+    }
+
+    /**
+     * The services of the other apps an intent reaches: the one its component names, or those whose filters take its action
+     * -- within the package it names, or in every app when it names none, as an app lists its plug-ins. Only those that would
+     * be bound here when asked for (megler.HostedApps.refusal): what is listed can be used. Google's packages have their own
+     * answers (megler.MicroG, megler.GooglePackages), and the app's own services are not these.
+     */
+    public static java.util.List<ResolveInfo> queryServices(Intent i) {
+        java.util.ArrayList<ResolveInfo> l = new java.util.ArrayList<>();
+        ComponentName c = i.getComponent();
+        String target = c != null ? c.getPackageName() : i.getPackage();
+        if (c == null && i.getAction() == null) return l;
+        if (target != null && (target.equals(Native.packageName()) || GooglePackages.is(target))) return l;
+        for (App a : all()) {
+            if (target != null ? !target.equals(a.packageName) : GooglePackages.is(a.packageName)) continue;
+            String name = c != null ? c.getClassName() : null;
+            if (name != null && name.startsWith(".")) name = a.packageName + name;
+            for (Service s : services(a)) {
+                if (name != null ? !s.name.equals(name) : !s.takes(i)) continue;
+                if (HostedApps.refusal(a, s) != null) continue;
+                ResolveInfo r = new ResolveInfo();
+                r.serviceInfo = serviceInfo(a, s);
+                l.add(r);
+            }
+        }
+        return l;
     }
 
     private static java.util.List<String> strings(org.json.JSONObject o, String key) throws org.json.JSONException {
@@ -399,6 +511,14 @@ public final class PhoneApps {
                 p.activities = new ActivityInfo[acts.size()];
                 for (int k = 0; k < acts.size(); k++) p.activities[k] = activityInfo(a, acts.get(k));
             } else if (a.activity != null) p.activities = new ActivityInfo[] { activityInfo(a, (String) null) };
+        }
+        // Its services another app may bind: the others are not described, and are nobody else's.
+        if ((flags & android.content.pm.PackageManager.GET_SERVICES) != 0) {
+            java.util.List<Service> list = services(a);
+            if (!list.isEmpty()) {
+                p.services = new android.content.pm.ServiceInfo[list.size()];
+                for (int k = 0; k < list.size(); k++) p.services[k] = serviceInfo(a, list.get(k));
+            }
         }
         return p;
     }
