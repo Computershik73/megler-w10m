@@ -1836,6 +1836,117 @@ end:
     mg_java_gl_set_shell(was);
 }
 
+/*
+ * The hand-over of a draw between the thread that asks for it and the render thread (mg_java_webview.c, wv_ask), with the
+ * wait of four seconds made 300 ms. A draw the render thread has begun is waited for to its end, three times the wait
+ * here, and answered with its picture: the asker is never back while Chromium is in the functor's callbacks. A request the
+ * render thread does not take -- it is in the last callback of another functor, released, which does not return -- is
+ * withdrawn at the wait's end: answered -1, as is the next at once, and when the render thread is let go it does not draw
+ * what was withdrawn. It says it is back, and the next draw is drawn: the functors were not given up.
+ */
+static struct {
+    volatile i32 slow_ms;              /* how long draw_gl takes */
+    volatile i32 hold, held, gone;     /* on_destroyed stays until `hold` is taken back; it is there; it has returned */
+} FH;
+
+static void fh_draw_gl(i32 id, void *data, const t_fn_params *p)
+{
+    if (FH.slow_ms) mg_sleep_ns((u64)FH.slow_ms * 1000000ull);
+    fn_draw_gl(id, data, p);
+}
+
+static void fh_destroyed(i32 id, void *data)
+{
+    (void)id;
+    (void)data;
+    FH.held = 1;
+    while (FH.hold) mg_sleep_ns(2000000ull);
+    FH.gone = 1;
+}
+
+static void test_draw_functor_handover(void)
+{
+    enum { WAIT_MS = 300 };
+    static t_fn_callbacks cb, cb_held;
+    static megler_gfx_host host;
+    const t_fn_table *table = (const t_fn_table *)mg_java_webview_draw_fn_table();
+    const megler_gfx_host *was = mg_java_gl_shell();
+    static int data;
+    i64 drawn = 0;
+    i32 id, held;
+    u64 t0, first, second;
+    int tries;
+    say("The draw functor's hand-over: a draw begun is waited for to its end, one not taken is withdrawn and never drawn");
+    if (!table || !table->create_functor_v3 || !table->release_functor) return;
+    memset(&FT, 0, sizeof(FT));
+    memset(&FH, 0, sizeof(FH));
+    memset(&host, 0, sizeof(host));
+    host.texture_frame = fn_texture_frame;
+    host.draw_texture = fn_draw_texture;
+    mg_java_gl_set_shell(&host);
+    cb.on_sync = (void *)fn_on_sync;
+    cb.on_context_destroyed = (void *)fn_context_destroyed;
+    cb.on_destroyed = (void *)fn_destroyed;
+    cb.draw_gl = (void *)fh_draw_gl;
+    cb_held = cb;
+    cb_held.on_destroyed = (void *)fh_destroyed;
+    id = ((i32 (*)(void *, i32, const t_fn_callbacks *))table->create_functor_v3)(&data, 4, &cb);
+    held = ((i32 (*)(void *, i32, const t_fn_callbacks *))table->create_functor_v3)(&data, 4, &cb_held);
+    CHECK(id > 0 && held > 0 && held != id);
+    if (id <= 0 || held <= 0) goto end;
+    mg_java_webview_wait_ms(WAIT_MS);
+    /* A draw that outlasts the wait three times: waited for, and its picture the answer. */
+    FH.slow_ms = 3 * WAIT_MS;
+    t0 = mg_time_monotonic_ns();
+    drawn = mg_java_webview_draw_functor(id, 0, 0, 100, 50);
+    first = mg_time_monotonic_ns() - t0;
+    CHECK_HEX((u32)drawn, 0x40000000 + id);
+    CHECK(first >= 3ull * WAIT_MS * 1000000ull);
+    CHECK(FT.syncs == 1 && FT.draws == 1 && FT.frames == 1);
+    FH.slow_ms = 0;
+    /* And the next is drawn as any: a long draw gives nothing up. */
+    drawn = mg_java_webview_draw_functor(id, 0, 0, 100, 50);
+    CHECK_HEX((u32)drawn, 0x40000000 + id);
+    CHECK(FT.syncs == 2 && FT.draws == 2 && FT.frames == 2);
+    /* The render thread kept in the other functor's last callback: a draw asked for now is not taken. */
+    FH.hold = 1;
+    ((void (*)(i32))table->release_functor)(held);
+    for (tries = 0; tries < 1000 && !FH.held; tries++) mg_sleep_ns(2000000ull);
+    CHECK(FH.held);
+    t0 = mg_time_monotonic_ns();
+    drawn = mg_java_webview_draw_functor(id, 0, 0, 100, 50);
+    first = mg_time_monotonic_ns() - t0;
+    CHECK(drawn == -1);
+    CHECK(first >= (u64)WAIT_MS * 1000000ull);
+    /* Not asked again while the render thread has not answered: -1 at once. */
+    t0 = mg_time_monotonic_ns();
+    drawn = mg_java_webview_draw_functor(id, 0, 0, 100, 50);
+    second = mg_time_monotonic_ns() - t0;
+    CHECK(drawn == -1);
+    CHECK(second < (u64)WAIT_MS * 1000000ull / 2);
+    CHECK(FT.syncs == 2 && FT.draws == 2 && !FH.gone);
+    /* Let go: the render thread is back, and what was withdrawn is not drawn. */
+    FH.hold = 0;
+    for (tries = 0; tries < 1000 && !FH.gone; tries++) mg_sleep_ns(2000000ull);
+    CHECK(FH.gone);
+    mg_sleep_ns(100000000ull);
+    CHECK(FT.syncs == 2 && FT.draws == 2 && FT.frames == 2);
+    /* It answers again (a moment after its callback returned), and the functor is drawn: once. */
+    for (tries = 0, drawn = -1; tries < 400 && drawn == -1; tries++) {
+        drawn = mg_java_webview_draw_functor(id, 0, 0, 100, 50);
+        if (drawn == -1) mg_sleep_ns(5000000ull);
+    }
+    CHECK_HEX((u32)drawn, 0x40000000 + id);
+    CHECK(FT.syncs == 3 && FT.draws == 3 && FT.frames == 3 && FT.in_order);
+    ((void (*)(i32))table->release_functor)(id);
+    for (tries = 0; tries < 400 && !FT.gone; tries++) mg_sleep_ns(5000000ull);
+    CHECK(FT.gone == 1);
+end:
+    mg_java_webview_wait_ms(0);
+    mg_java_webview_forget_egl();
+    mg_java_gl_set_shell(was);
+}
+
 int mg_gl_natives_tests_run(mg_test_sink sink, void *user, int *checks)
 {
     t_sink = sink;
@@ -1859,6 +1970,7 @@ int mg_gl_natives_tests_run(mg_test_sink sink, void *user, int *checks)
     test_webview_display();
     mg_egl_webview_own_display(false);
     test_draw_functor();
+    test_draw_functor_handover();
     test_fence_syncs();
     test_doomed();
     test_turns();

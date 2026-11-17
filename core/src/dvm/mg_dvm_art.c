@@ -313,24 +313,35 @@ static bool alias_loader(mg_jobj *loader, int scope, const char *source)
 static u8 *g_legacy_dex;
 static size_t g_legacy_size;
 
-N(ServiceClassLoader_openApk) {
-    const char *path = mg_dvm_string_utf8(c->args[0].l);
+/*
+ * A service loader's scope, made over its APK: one of scopes 1 to 15, the APK's DEX files in it and its native libraries the
+ * linker's for that scope. megler.ServiceClassLoader is a PathClassLoader, as Android's loader of a package's process is,
+ * and its path list's DexFile opens the APK in its constructor (DexFile_openDexFileNative, below), which is where the scope
+ * is made; openApk, which the loader calls next, makes it where that did not (a path libcore's File does not see). The scope,
+ * or 0 with an exception thrown. A scope nothing was put in is free again: the loader asks twice when the APK cannot be read.
+ */
+static int service_scope_open(mg_jobj *loader, const char *path)
+{
     char *host;
     char *legacy;
     u8 *legacy_dex;
     size_t legacy_size = 0;
-    int scope;
-    if (!path) { npe("apk"); return; }
+    int scope, added = 0;
     mg_dvm_lock();
     for (scope = 1; scope < SERVICE_SCOPES && g_service_loaders[scope]; scope++);
-    if (scope < SERVICE_SCOPES) g_service_loaders[scope] = c->self;
+    if (scope < SERVICE_SCOPES) g_service_loaders[scope] = loader;
     mg_dvm_unlock();
-    if (scope == SERVICE_SCOPES) { mg_dvm_throw("java/lang/IllegalStateException", "Too many service loaders"); return; }
+    if (scope == SERVICE_SCOPES) { mg_dvm_throw("java/lang/IllegalStateException", "Too many service loaders"); return 0; }
     host = mg_fs_host_path(path);
-    if (!host || (!mg_dvm_add_apk_scope(host, scope) || !mg_ld_add_service_apk(host, scope))) {
+    if (!host || (added = mg_dvm_add_apk_scope(host, scope)) < 1 || !mg_ld_add_service_apk(host, scope)) {
         free(host);
+        if (added < 1) {
+            mg_dvm_lock();
+            g_service_loaders[scope] = NULL;
+            mg_dvm_unlock();
+        }
         mg_dvm_throw("java/io/IOException", "Cannot load service APK %s", path);
-        return;
+        return 0;
     }
     free(host);
     /* A separately loaded service may declare Android's optional Apache HTTP
@@ -357,6 +368,17 @@ N(ServiceClassLoader_openApk) {
     }
     if (legacy_dex) mg_dvm_add_dex_scope(legacy_dex, legacy_size, "org.apache.http.legacy.dex", scope);
     g_service_apks[scope] = mg_strdup(path);
+    return scope;
+}
+
+N(ServiceClassLoader_openApk) {
+    const char *path = mg_dvm_string_utf8(c->args[0].l);
+    int scope;
+    if (!path) { npe("apk"); return; }
+    /* (Its path list's DexFile has opened the APK, and made the scope, where libcore saw the file.) */
+    scope = mg_dvm_loader_scope(c->self);
+    if (scope < 1 || scope >= SERVICE_SCOPES || g_service_loaders[scope] != c->self) scope = service_scope_open(c->self, path);
+    else if (!g_service_apks[scope]) { mg_dvm_throw("java/io/IOException", "Cannot load service APK %s", path); return; }
     c->ret.i = scope;
 }
 N(ServiceClassLoader_findClassNative) {
@@ -1258,17 +1280,144 @@ void mg_dvm_dex_source_added(const char *guest_path)
     else mg_atomic_add(&g_nsources, -1);
 }
 
+/*
+ * A service scope's files besides its APK. The code of a scope sees the platform's classes and its own scope's, never the
+ * app's path (mg_dvm_class.c, definition), so a file that code opens joins its scope, once: one opened for the scope's own
+ * loader (BaseDexClassLoader.addDexPath, a DexFile made for it), and, in a scope that is another of the app's own processes
+ * (megler.Processes), one opened for no loader at all, as the app's own process's joins the app's path. Facebook Lite keeps
+ * all but its shell in DEX files it unpacks into its data folder and opens with DexFile.loadDex(path, out, 0) in every one of
+ * its processes; its push process ":fbns" found them on the app's path already ("there", below), had none of their classes
+ * in its scope, and neither its Application's delegate (com.facebook.lite.LeanClientApplication) nor its service
+ * (com.facebook.rti.push.service.FbnsService) was found (packages 696, 699).
+ */
+#define MAX_SCOPE_SOURCES 128
+static struct {
+    int scope;
+    char *source;
+} g_scope_sources[MAX_SCOPE_SOURCES];
+static int g_nscope_sources;
+static mg_lock g_scope_sources_lock = MG_LOCK_INIT;
+
+/*
+ * The bytes of a DEX file read before, when the file at this path is that one: of its size, with its header's checksum and
+ * SHA-1 (bytes 8 to 32). A second scope shares them, as scopes share an APK's DEX files (mg_dvm_apk.c): Facebook Lite's
+ * larger one is 10 MB, and each of its processes would hold a copy.
+ */
+static const u8 *dex_read_before(const char *host, size_t *size)
+{
+    u8 head[32];
+    mg_stat st;
+    mg_file *f;
+    const u8 *found = NULL;
+    u32 i, n;
+    int err = 0;
+    bool read;
+    if (!(f = mg_file_open(host, MG_O_READ, &err))) return NULL;
+    read = mg_file_stat(f, &st) && st.size >= 0x70 && mg_file_pread(f, head, sizeof(head), 0, &err) == (i64)sizeof(head);
+    mg_file_close(f);
+    if (!read) return NULL;
+    mg_dvm_lock();
+    for (i = 0, n = mg_dvm_dex_count(); i < n && !found; i++) {
+        mg_dvm_dex *d = mg_dvm_dex_at(i);
+        if (d && d->b && !d->lazy && !d->boot && d->size == st.size && !memcmp(d->b, head, sizeof(head))) found = d->b;
+    }
+    mg_dvm_unlock();
+    if (found) *size = (size_t)st.size;
+    return found;
+}
+
+/* Whether the file's classes are in the scope: put there now, or before. */
+static bool scope_source_add(int scope, const char *source)
+{
+    char *host;
+    size_t n = strlen(source);
+    bool there = false, shared = false;
+    int i;
+    mg_lock_acquire(&g_scope_sources_lock);
+    for (i = 0; i < g_nscope_sources && !there; i++) there = g_scope_sources[i].scope == scope && !strcmp(g_scope_sources[i].source, source);
+    if (!there && (host = mg_fs_host_path(source)) != NULL) {
+        if (n > 4 && !strcmp(source + n - 4, ".dex")) {
+            const char *slash = strrchr(source, '/');
+            size_t size = 0;
+            u8 *read = NULL;
+            const u8 *data = dex_read_before(host, &size);
+            shared = data != NULL;
+            if (!data) data = read = mg_file_read_all(host, &size);
+            there = data && mg_dvm_add_dex_scope(data, size, slash ? slash + 1 : source, scope);
+            if (!there) free(read);
+        } else {
+            there = mg_dvm_add_apk_scope(host, scope) > 0;
+        }
+        free(host);
+        if (there) {
+            if (g_nscope_sources < MAX_SCOPE_SOURCES) {
+                g_scope_sources[g_nscope_sources].scope = scope;
+                g_scope_sources[g_nscope_sources].source = mg_strdup(source);
+                g_nscope_sources++;
+            }
+            mg_info("dvm: %s: opened by the code of scope %d, whose classes its own are from now on%s", source, scope,
+                    shared ? " (its bytes are the ones read before, shared)" : "");
+        }
+    }
+    mg_lock_release(&g_scope_sources_lock);
+    return there;
+}
+
+/*
+ * The scope of another of the app's own processes whose code is opening a file: that of the innermost frame of an app's code
+ * or a service's, when it is a service scope over an APK the app itself runs from. 0 for the app's own process, and for a
+ * service hosted here (Google Play services, the WebView), whose files opened for no loader go where they always did.
+ */
+static int opening_process_scope(void)
+{
+    mg_dvm_frame *f;
+    for (f = mg_dvm_self()->top; f; f = f->prev) {
+        mg_dvm_class *k = f->m ? f->m->cls : NULL;
+        i32 i, known = g_nsources;
+        if (!k || (k->scope <= 0 && !mg_dvm_class_is_app(k))) continue;
+        if (k->scope <= 0 || k->scope >= SERVICE_SCOPES || !g_service_apks[k->scope]) return 0;
+        for (i = 0; i < known && i < MAX_SOURCES; i++)
+            if (g_sources[i] && !strcmp(g_sources[i], g_service_apks[k->scope])) return k->scope;
+        return 0;
+    }
+    return 0;
+}
+
 N(DexFile_openDexFileNative)
 {
     const char *source = mg_dvm_string_utf8(c->args[0].l);
     mg_jobj *cookie;
+    mg_dvm_class *lk = c->args[3].l ? mg_dvm_class_of(c->args[3].l) : NULL;
     char *host;
     size_t n;
     i32 i, known = g_nsources;
+    int own = 0;
     bool there = false;
     if (!source) {
         mg_dvm_throw("java/lang/NullPointerException", "sourceName == null");
         return;
+    }
+    /*
+     * A service's scope before all else, the app's own APK being one's too (another of its processes): a service loader's
+     * path list opening its APK, in its constructor, makes the scope (service_scope_open); what else is opened for that
+     * loader, or by the code of another of the app's processes for no loader (or the boot class path's, which says as little),
+     * joins the scope (above).
+     */
+    if (lk && !strcmp(lk->name, "megler/ServiceClassLoader")) {
+        own = mg_dvm_loader_scope(c->args[3].l);
+        if (!own) {
+            if (!service_scope_open(c->args[3].l, source)) return;
+            there = true;
+        }
+    } else if (!lk || !strcmp(lk->name, "java/lang/BootClassLoader")) {
+        own = opening_process_scope();
+    }
+    if (own > 0 && own < SERVICE_SCOPES) {
+        if (!(g_service_apks[own] && !strcmp(g_service_apks[own], source)) && !scope_source_add(own, source)) {
+            mg_dvm_throw("java/io/IOException", "No original dex files found for dex location %s", source);
+            return;
+        }
+        there = true;
     }
     for (i = 0; i < known && !there; i++) there = !strcmp(g_sources[i], source);
     /* openDexFileNative(sourceName, outputName, flags, loader, elements): a loader other than the app's over a service's APK

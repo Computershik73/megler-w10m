@@ -456,6 +456,19 @@ public class Main extends Activity {
                     data.recycle();
                     reply.recycle();
                     Log.i("DataTest", "process-scope " + said + " here=" + Main.class.getClassLoader().getClass().getSimpleName().equals("ServiceClassLoader"));
+                    // What that process reads of its loader by reflection, and a DEX file it opened for no loader (Elsewhere.loader).
+                    data = android.os.Parcel.obtain();
+                    reply = android.os.Parcel.obtain();
+                    try { b.transact(9, data, reply, 0); said = reply.readString(); } catch (android.os.RemoteException e) { said = String.valueOf(e); }
+                    data.recycle();
+                    reply.recycle();
+                    Log.i("DataTest", "process-loader " + said);
+                    // A thread of that process ending with an uncaught exception ends alone, and the log names the process.
+                    data = android.os.Parcel.obtain();
+                    reply = android.os.Parcel.obtain();
+                    try { b.transact(10, data, reply, 0); } catch (android.os.RemoteException e) { Log.i("DataTest", "process-thread " + e); }
+                    data.recycle();
+                    reply.recycle();
                     // Then a broadcast from that process, its extra an object of that process's class: this process's receiver
                     // has it as one of its own class (megler.Processes.forLoader).
                     registerReceiver(new android.content.BroadcastReceiver() {
@@ -5339,9 +5352,70 @@ public class Main extends Activity {
                 return String.valueOf(e);
             }
         }
+        /**
+         * What an app reads of its process's class loader (code 9), as Facebook Lite's shell does in every one of its processes:
+         * the loader is a PathClassLoader whose pathList's dexElements hold the APK's DexFile and whose library folders are the
+         * app's; a class that DexFile defines for the loader is this process's own; a loader the app puts in its parent field
+         * is asked for what the process has not; and a DEX file this process opens for no loader (DexFile.loadDex, as Facebook
+         * Lite opens the ones it unpacks) has its classes in this process: its ModuleProbe is found here, and its Twin is the
+         * APK's, which comes first.
+         */
+        static String loader(android.content.Context c) {
+            try {
+                final ClassLoader l = Elsewhere.class.getClassLoader();
+                java.lang.reflect.Field f = dalvik.system.BaseDexClassLoader.class.getDeclaredField("pathList");
+                f.setAccessible(true);
+                Object list = f.get(l);
+                f = list.getClass().getDeclaredField("dexElements");
+                f.setAccessible(true);
+                Object[] elements = (Object[]) f.get(list);
+                f = elements[0].getClass().getDeclaredField("dexFile");
+                f.setAccessible(true);
+                dalvik.system.DexFile apk = (dalvik.system.DexFile) f.get(elements[0]);
+                f = list.getClass().getDeclaredField("nativeLibraryDirectories");
+                f.setAccessible(true);
+                boolean libraries = ((java.util.List<?>) f.get(list)).contains(new java.io.File(c.getApplicationInfo().nativeLibraryDir));
+                Class<?> defined = (Class<?>) dalvik.system.DexFile.class.getMethod("loadClassBinaryName", String.class, ClassLoader.class, java.util.List.class)
+                        .invoke(apk, "megler/test/data/Twin", l, null);
+                f = ClassLoader.class.getDeclaredField("parent");
+                f.setAccessible(true);
+                final ClassLoader made = l.getParent();
+                Class<?> above;
+                f.set(l, new ClassLoader(made) {
+                    @Override protected Class<?> findClass(String name) throws ClassNotFoundException {
+                        if (name.equals("megler.test.data.Nowhere")) return Elsewhere.class;
+                        throw new ClassNotFoundException(name);
+                    }
+                });
+                try { above = l.loadClass("megler.test.data.Nowhere"); } finally { f.set(l, made); }
+                java.io.File dex = new java.io.File(c.getCacheDir(), "elsewhere.dex");
+                try (java.io.InputStream in = c.getAssets().open("module.dex"); java.io.OutputStream out = new java.io.FileOutputStream(dex)) {
+                    byte[] b = new byte[8192];
+                    for (int n; (n = in.read(b)) > 0; ) out.write(b, 0, n);
+                }
+                boolean before;
+                try { l.loadClass("megler.test.data.ModuleProbe"); before = true; } catch (ClassNotFoundException e) { before = false; }
+                dalvik.system.DexFile.loadDex(dex.getPath(), null, 0);
+                Class<?> probe = l.loadClass("megler.test.data.ModuleProbe");
+                return "path=" + (l instanceof dalvik.system.PathClassLoader) + " parent=" + (made == null ? "null" : made.getClass().getSimpleName()) + " elements=" + elements.length
+                        + " apk=" + c.getApplicationInfo().sourceDir.equals(apk.getName()) + " libraries=" + libraries + " defined=" + (defined == Twin.class)
+                        + " above=" + (above == Elsewhere.class) + " opened=" + before + "/" + (probe.getClassLoader() == l) + " twin=" + probe.getMethod("twin").invoke(null);
+            } catch (Throwable e) {
+                return String.valueOf(e instanceof java.lang.reflect.InvocationTargetException ? e.getCause() : e);
+            }
+        }
         @Override public android.os.IBinder onBind(android.content.Intent intent) {
             return new android.os.Binder() {
                 @Override protected boolean onTransact(int code, android.os.Parcel data, android.os.Parcel reply, int flags) {
+                    if (code == 10) {
+                        // a thread of this process that ends with an uncaught exception (the log names whose it was)
+                        new Thread(() -> { throw new IllegalStateException("a thread of elsewhere's ends"); }, "ElsewhereEnds").start();
+                        return true;
+                    }
+                    if (code == 9) {
+                        reply.writeString(loader(Elsewhere.this));
+                        return true;
+                    }
                     if (code >= 4 && code <= 8) {
                         String path = data.readString();
                         reply.writeString(fileLock(code, path, data.readInt() != 0));

@@ -70,6 +70,20 @@ public final class Processes {
         return null;
     }
 
+    /**
+     * Whose the threads of class scope `scope` are, for the log (Native.thrownInService says the scope): "process <name>'s" for
+     * one of the app's other processes, and a service hosted here by its package. An uncaught exception of Facebook Lite's
+     * ":fbns" was logged as that of "Google Play services' thread AppCreate".
+     */
+    public static String threadsOf(int scope) {
+        ServiceClassLoader l = ServiceClassLoader.ofScope(scope);
+        String process = nameOf(l);
+        if (process != null) return "process " + process + "'s";
+        if (l == null || MicroG.APK.equals(l.apk())) return "Google Play services'";
+        if (Gsf.APK.equals(l.apk())) return "the Google Services Framework's";
+        return "the hosted " + l.apk().substring(l.apk().lastIndexOf('/') + 1) + "'s";
+    }
+
     private static void named(Scope s, boolean in) {
         synchronized (sScopes) {
             java.util.ArrayList<Scope> l = new java.util.ArrayList<>(java.util.Arrays.asList(sNamed));

@@ -4692,6 +4692,42 @@ every install from Play Store ended in "Can't install the app" (its error 1000,
 package 574). The test app `splits` has a service in a process of its own
 (`.Other`, `:other`) that loads the library of its split and calls it.
 
+The scope's loader is a `PathClassLoader`, as Android's loader of a process
+is: `megler.ServiceClassLoader` extends it, its path list holds the APK's
+`DexFile` (which, opening the APK for that loader, is what makes the scope:
+`DexFile_openDexFileNative`, `dvm/mg_dvm_art.c`) and the library folders
+`findLibrary` looks in, and its parent is the boot class path's loader, as
+the app's own loader's is (a hosted service's has none, as before). Facebook
+Lite's shell reads `BaseDexClassLoader.pathList`'s `dexElements` in every one
+of its processes and puts a loader of its own in the loader's `parent` field;
+in its push process `:fbns` that was "Expected receiver of type
+dalvik/system/BaseDexClassLoader, but got megler/ServiceClassLoader"
+(packages 696, 699). A class is looked for in the scope first (all of a
+scope's classes are there at once), and a parent the app has put there is
+asked for what the scope has not.
+
+A file the code of such a process opens for no loader (`DexFile.loadDex`), or
+one opened for the scope's loader, joins that scope, once, as one the app's
+own process opens joins the app's path; a loose DEX file whose bytes were
+read before (same size, checksum and SHA-1) shares them. Facebook Lite keeps
+all but its shell in DEX files it unpacks into its data folder and opens so
+in each process: `:fbns` found them on the app's path already, got none of
+their classes, and neither its Application's delegate
+(`com.facebook.lite.LeanClientApplication`) nor its service
+(`com.facebook.rti.push.service.FbnsService`) was found. A hosted service's
+code (Google Play services, the WebView) opening a file for no loader does
+what it did. The data test app's `:elsewhere` process reads its loader as
+Facebook Lite does and opens a DEX file of its own ("process-loader"). Not
+done: the scope is over the base APK alone (code in a split is not in it),
+and a class a DEX reference does not find never asks the loader (a loader of
+the app's that opens a file only when a class is missing is asked by
+`loadClass` and `Class.forName` alone).
+
+An uncaught exception of a thread of such a process ends that thread alone,
+as one of Google Play services' does, and the log says whose it was
+("process com.facebook.lite:fbns's thread ..."; `megler.Processes.threadsOf`):
+it said "Google Play services' thread" for every scope.
+
 ### Downloads
 
 `megler.Downloads` is the system's download provider
@@ -5205,11 +5241,39 @@ released functor (`release_functor`) has `on_context_destroyed` (with the
 context current) and `on_destroyed` on the render thread; its pbuffer and
 picture go with it. The log says "webview: pages are drawn on the graphics
 processor" and "draw functor N drawn" with the time a draw takes. A draw that
-fails three times in a row, or one that takes more than four seconds (fifteen
-on a display of OpenGL ES 2, below), has the
-pages drawn in software from then on, as below. `mg_gl_tests.c`'s draw functor
-test checks the table, the threads, the order of the callbacks, the
-parameters, the picture handed over and the release with the tests' stand-in.
+fails three times in a row has the pages drawn in software from then on, as
+below. One that takes long does not. The UI thread's wait for a draw
+(`wv_ask`) is HWUI's for a frame, and once the render thread has taken the
+request it lasts until Chromium has drawn: after four seconds (fifteen on a
+display of OpenGL ES 2, below) the log says "draw functor N has been drawing
+for 4000 ms on the render thread: waited for to its end", and then "draw
+functor N's draw ended after M ms". Before, such a draw was left behind after
+four seconds and the pages were drawn in software from then on, on the UI
+thread, while the render thread was still in the functor: Candy Crush Saga,
+whose pages' first frames took Chromium 4.9 and 5.6 s on an Adreno 430 while
+the game's own thread drew on the same display, ended during those software
+frames, in Chromium's compositor (`libwebviewchromium.so+0x3879a08`: a page
+that starts a view transition while it is drawn in software ends there, in
+the software frame sink's manager, which has no shared images to save the
+transition in -- the webview test app's page did so under qemu when it was
+given `document.startViewTransition` and a `WebView.draw` into a bitmap;
+Chromium 128's own, and still so wherever a page is drawn in software). Only a
+request the render thread has not taken in that time -- it is in a released
+functor's last callbacks, say -- is withdrawn, under the lock the render
+thread takes it under, so that it is never begun ("the render thread did not
+take draw functor N's draw in 4000 ms: withdrawn"); none is made until the
+render thread is back at its wait ("the render thread answers again, M ms
+after a draw was withdrawn"), and meanwhile the WebView records the functor's
+last picture again where it was and asks to be drawn again a tenth of a second
+later (`WebFunctors.BUSY`, `WebView.meglerDrawFunctor`): no frame of it is
+drawn in software. `mg_gl_tests.c`'s draw functor tests check the table, the
+threads, the order of the callbacks, the parameters, the picture handed over
+and the release with the tests' stand-in, and the hand-over: a draw three
+times as long as the wait answered with its picture, a request made while the
+render thread is kept in another functor's last callback answered -1 and
+never drawn, the next answered -1 at once, and the functor drawn again once
+the render thread is back (`mg_tests --gl-only <scratch dir> <android root |
+->` runs those tests alone).
 
 **Drawing in software.** A canvas that is not hardware-accelerated -- a
 `Bitmap`'s, the window's with `no-view-lists`, or any canvas where the draw
@@ -5372,9 +5436,9 @@ each at that size) are let go, and Chromium made its tiles before too. A
 program of Skia's is compiled by D3DCompile on the phone's processor the first
 time it is needed, and a page's first frames wait for theirs; ANGLE keeps them
 for the next start (`EGL_ANDROID_blob_cache`, `angle-cache` in the app's
-data). So on a display of OpenGL ES 2 the UI thread waits up to 15 s for a
-functor's draw, not 4, before it gives pages up to software
-(`WV_WAIT_ES2_MS`); the log says each slow frame's time ("webview: slow
+data). The UI thread waits for such a draw to its end, as for any the render
+thread has begun; on a display of OpenGL ES 2 the log speaks of it after 15 s,
+not 4 (`WV_WAIT_ES2_MS`), and says each slow frame's time ("webview: slow
 frame").
 
 **The WebView's developer-mode flags, and HitTestOpaqueness.** The WebView in

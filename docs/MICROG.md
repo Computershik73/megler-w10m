@@ -1557,6 +1557,10 @@ mirrors identify the defining loader, and GC retains the loader. JNI class
 wrappers do not overwrite the client's wrappers; FindClass in a scoped native
 method uses its defining namespace. This is an explicit service-loader path;
 ordinary arbitrary Android ClassLoader delegation is still not fully implemented.
+The loader is a `PathClassLoader` over the service's APK (its path list has
+the APK's `DexFile` and its stored libraries' folder, and resources of the
+APK are found through it, as on Android); it has no parent, the platform's
+classes being the scope's own.
 
 ## A module's own scope (child scopes)
 
