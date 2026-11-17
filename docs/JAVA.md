@@ -4859,12 +4859,28 @@ options and `#include "sqlite3.c"`:
   instead of taking its journal for one left behind and rolling it back, or
   writing beside it. With the table alone it did, and Phenotype's database had
   no table Packages in several apps' logs (576). As Windows suspends the app,
-  the shell waits up to a second for its connections to let their locks go
-  (`megler_settle_databases`), since Windows freezes it as it is and a lock
-  it kept would hold the other apps up until it came back; the log says when
-  one was kept all the same. The core tests lock the file
+  the shell has its locks let go (`megler_settle_databases`), since Windows
+  freezes it as it is and a lock it kept would hold the other apps up until
+  it came back: YouTube, suspended 16 s after its start with one, had every
+  other app told "database is locked" for three hours (a user's Lumia 950,
+  696), a wait for the count of locks to come down being of no use while the
+  app's other threads took new ones. From that call until the app resumes
+  (`megler_resume_databases`) the locks only come down: a thread that would
+  begin to read waits, holding nothing (one that holds a lock on another
+  database is let through, since waiting it would keep that); a read or a
+  transaction under way goes on to its end; and a writer waiting for readers
+  to leave does not keep PENDING's byte while it waits, which would keep every
+  new reader of every app out, though it keeps RESERVED, which SQLite counts
+  on. The shell gives that what Windows leaves it (`SuspendingOperation`'s
+  deadline less three seconds for the files and the logs, between one second
+  and two), and the log says what Windows gave, and for a lock kept all the
+  same its file, its level and its thread. Should the app run ten seconds
+  without being told it is back, its threads go on by themselves. The core
+  tests lock the file
   through a handle of their own as another process would (its writer, its
-  writer waiting, its reader), and on the PC start a second process
+  writer waiting, its reader), suspend and resume (a reader of another thread
+  waits and then reads, a writer turned away gives PENDING up and commits
+  once the reader has left), and on the PC start a second process
   (`mg_tests --sqlite-hold`) that holds a write with its journal while the
   first reads beside it and cannot write; **its mutexes on
   the host layer's locks** (`SQLITE_THREADSAFE=1`, serialized, named to SQLite

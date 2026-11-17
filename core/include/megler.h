@@ -2216,11 +2216,19 @@ MEGLER_API void megler_set_surface(int width, int height, int density_dpi, int r
 /* The app went to the background or came back; lost or gained input focus. */
 MEGLER_API void megler_set_paused(bool paused);
 /*
- * Waits up to `ms` milliseconds until the app holds no lock on a database: Windows freezes a suspended app as it is, and a
- * lock it held would keep the other apps waiting on that database (Google Play services' are every app's). The shell calls
- * it as the app is suspended. True when none is held.
+ * The app is being suspended: Windows freezes a suspended app as it is, and a lock it held on a database would keep the
+ * other apps waiting on that database for as long as it is frozen (Google Play services' are every app's). From this call
+ * on no thread of the app begins to read or write a database: it waits, holding no lock, until megler_resume_databases.
+ * Those in the middle of a read or a transaction go on to its end. Waits up to `ms` milliseconds for the locks they hold
+ * to be let go: true when none is held, and when one still is, false, with the log naming its file, its level and its
+ * thread. The shell calls it as the app is suspended, with what it can spare of the time Windows gives it. Any thread.
  */
 MEGLER_API bool megler_settle_databases(int ms);
+/*
+ * The app is back: its threads read and write databases again. The shell calls it as the app resumes; should it not, they
+ * go on by themselves once the app has run ten seconds (a frozen app runs none), and the log says so. Any thread.
+ */
+MEGLER_API void megler_resume_databases(void);
 /*
  * Writes what the app wrote into its shared mappings of files to the files now (they hold it, not the files, until msync,
  * munmap or the app's end): Windows ends a suspended app without notice. The shell calls it as the app is suspended.

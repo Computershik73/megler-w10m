@@ -6757,6 +6757,22 @@ static int sq_int(sqlite3 *db, const char *sql)
     return v;
 }
 
+/* A thread that counts the test's table through a connection of its own, and says when it has. */
+typedef struct sq_reader {
+    const char *path;
+    volatile i32 done;
+    int count;
+} sq_reader;
+
+static MG_HOSTCB void sq_reader_main(void *arg)
+{
+    sq_reader *r = (sq_reader *)arg;
+    sqlite3 *db = NULL;
+    if (sqlite3_open_v2(r->path, &db, SQLITE_OPEN_READONLY, NULL) == SQLITE_OK) r->count = sq_int(db, "SELECT count(*) FROM t");
+    sqlite3_close(db);
+    r->done = 1;
+}
+
 int mg_tests_sqlite_hold(const char *db, const char *flag)
 {
     sqlite3 *h = NULL;
@@ -6893,8 +6909,85 @@ static void test_sqlite(const char *scratch)
             CHECK(mg_sqlite_locks_held() == 0 && megler_settle_databases(20));
             CHECK(!mg_file_locked_elsewhere(other, RESERVED, 1) && !mg_file_locked_elsewhere(other, PENDING, 1) &&
                   !mg_file_locked_elsewhere(other, SHARED_FIRST, SHARED_SIZE));
+            /*
+             * And from then until the app is back (megler_resume_databases) nothing new begins: Windows freezes a suspended
+             * app as it is, and waiting for the locks to be let go is of no use while its other threads take new ones.
+             * YouTube, frozen with a lock 16 s after its start, kept every other app out of Google Play services'
+             * databases for three hours (a user's Lumia 950, 696). A thread that would begin to read waits, holding
+             * nothing, and reads once the app is back.
+             */
+            {
+                sq_reader r;
+                mg_thread *t;
+                u64 began = mg_time_monotonic_ns();
+                int tries;
+                say("SQLite: the app suspended: no read begins, a writer waiting for readers lets them in, what is under way ends");
+                memset(&r, 0, sizeof(r));
+                r.path = path;
+                r.count = -1;
+                CHECK(megler_settle_databases(0));
+                t = mg_thread_start(sq_reader_main, &r, 256u * 1024u, "sqlite-reader");
+                CHECK(t != NULL);
+                for (tries = 0; t && tries < 500 && mg_sqlite_waiting() < 1 && !r.done; tries++) mg_sleep_ns(10000000ull);
+                CHECK(mg_sqlite_waiting() == 1 && mg_sqlite_locks_held() == 0 && !r.done);
+                mg_sleep_ns(100000000ull);
+                CHECK(mg_sqlite_waiting() == 1 && !r.done && !mg_file_locked_elsewhere(other, SHARED_FIRST, SHARED_SIZE));
+                megler_resume_databases();
+                if (t) mg_thread_join(t);
+                CHECK(r.done && r.count == 7 && mg_sqlite_waiting() == 0 && mg_sqlite_locks_held() == 0);
+                /* (Let go by megler_resume_databases, and not by the ten seconds after which the waiting ends by itself.) */
+                CHECK(mg_time_monotonic_ns() - began < 8000000000ull);
+            }
+            /*
+             * A writer that waits for a reader of another process to leave holds PENDING's byte while it waits, which keeps
+             * new readers out: frozen with it, it would keep every reader of every app out. It gives the byte up as the app
+             * is suspended, and each time it asks again and is turned away. RESERVED, which SQLite counts on, it keeps, and
+             * it commits once the reader has left, suspended or not.
+             */
+            CHECK(mg_file_lock(other, SHARED_FIRST, SHARED_SIZE, false, &err));
+            CHECK_INT(sqlite3_exec(a, "BEGIN IMMEDIATE; UPDATE t SET v = 9 WHERE id = 1", NULL, NULL, NULL), SQLITE_OK);
+            CHECK_INT(sqlite3_exec(a, "COMMIT", NULL, NULL, NULL), SQLITE_BUSY);
+            CHECK(mg_file_locked_elsewhere(other, PENDING, 1) && mg_file_locked_elsewhere(other, RESERVED, 1));
+            CHECK(mg_sqlite_locks_held() == 1 && !megler_settle_databases(20));
+            CHECK(!mg_file_locked_elsewhere(other, PENDING, 1) && mg_file_locked_elsewhere(other, RESERVED, 1));
+            CHECK_INT(sqlite3_exec(a, "COMMIT", NULL, NULL, NULL), SQLITE_BUSY);
+            CHECK(!mg_file_locked_elsewhere(other, PENDING, 1) && mg_file_locked_elsewhere(other, RESERVED, 1));
+            mg_file_unlock(other, SHARED_FIRST, SHARED_SIZE);
+            CHECK_INT(sqlite3_exec(a, "COMMIT", NULL, NULL, NULL), SQLITE_OK);
+            CHECK(mg_sqlite_locks_held() == 0 && megler_settle_databases(20));
+            CHECK(!mg_file_locked_elsewhere(other, RESERVED, 1) && !mg_file_locked_elsewhere(other, PENDING, 1) &&
+                  !mg_file_locked_elsewhere(other, SHARED_FIRST, SHARED_SIZE));
+            megler_resume_databases();
+            /*
+             * And a thread that holds a lock is not kept from taking another: in a transaction of one database it reads a
+             * second, and waiting there it would keep the first's lock for as long as the app is suspended.
+             */
+            {
+                char *second = mg_sprintf("%s/sqlite-second.db", scratch);
+                u64 began;
+                mg_path_remove(second, NULL);
+                b = NULL;
+                CHECK_INT(sqlite3_open_v2(second, &b, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE, NULL), SQLITE_OK);
+                CHECK_INT(sqlite3_exec(b, "CREATE TABLE u(x); INSERT INTO u VALUES(7);", NULL, NULL, NULL), SQLITE_OK);
+                CHECK_INT(sqlite3_exec(a, "BEGIN IMMEDIATE", NULL, NULL, NULL), SQLITE_OK);
+                began = mg_time_monotonic_ns();
+                CHECK(!megler_settle_databases(0));
+                CHECK_INT(sq_int(b, "SELECT x FROM u"), 7);
+                CHECK(mg_sqlite_waiting() == 0 && mg_time_monotonic_ns() - began < 8000000000ull);
+                CHECK_INT(sqlite3_exec(a, "COMMIT", NULL, NULL, NULL), SQLITE_OK);
+                CHECK(mg_sqlite_locks_held() == 0 && megler_settle_databases(0));
+                /* The app is back: a thread that holds nothing reads at once, and what was written while it was suspended is there. */
+                megler_resume_databases();
+                CHECK_INT(sq_int(a, "SELECT v FROM t WHERE id = 1"), 9);
+                sqlite3_close(b);
+                b = NULL;
+                mg_path_remove(second, NULL);
+                free(second);
+            }
             mg_file_close(other);
         }
+        /* (Whatever went wrong above, the tests after this one read databases.) */
+        megler_resume_databases();
         sqlite3_close(a);
     }
 #ifdef _WIN32

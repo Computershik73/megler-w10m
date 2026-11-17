@@ -30,6 +30,7 @@
 #include "ui/AppShell.h"
 #include "ui/Theme.h"
 
+#include <chrono>
 #include <exception>
 
 using namespace winrt;
@@ -123,13 +124,28 @@ struct App : ApplicationT<App, Markup::IXamlMetadataProvider> {
         } catch (const hresult_error&) {
         }
 
-        Suspending([this](auto&&, SuspendingEventArgs const&) {
+        Suspending([this](auto&&, SuspendingEventArgs const& e) {
             shellLog::write("app: suspending");
             session::setSuspended(true);
             if (shell_) shell_->suspending();
             // Windows freezes the app as it is: a database lock it held would keep the other apps' Play services waiting
-            // until it came back. A second at most for its transactions to end.
-            if (!megler_settle_databases(1000)) shellLog::write("app: suspended with a database still locked");
+            // until it came back (YouTube, suspended 16 s after its start with one, had every other app told "database is
+            // locked" for three hours: a user's Lumia 950, 696). From here until the app resumes none of its threads begins
+            // to read or write a database, and those in the middle of it are waited for. Windows says when this handler is
+            // to be done (some five seconds from now on a phone), and may end an app that is not: the databases get what is
+            // left of that once three seconds are kept for the rest of the handler (the files' second and the logs), no
+            // less than the second they had before and no more than two, and half of it where Windows gives under two.
+            long long leftMs = 5000;
+            try {
+                leftMs = std::chrono::duration_cast<std::chrono::milliseconds>(e.SuspendingOperation().Deadline() - winrt::clock::now()).count();
+            } catch (const hresult_error&) {
+            }
+            long long databasesMs = leftMs - 3000;
+            if (databasesMs > 2000) databasesMs = 2000;
+            if (databasesMs < 1000) databasesMs = leftMs >= 2000 ? 1000 : leftMs / 2;
+            if (databasesMs < 0) databasesMs = 0;
+            shellLog::write(format("app: Windows gives %lld ms to suspend in, %d of them for the databases' locks", leftMs, int(databasesMs)));
+            if (!megler_settle_databases(int(databasesMs))) shellLog::write("app: suspended with a database still locked");
             // And what the app wrote into its files' shared mappings, to the files: Windows may end it while it is suspended.
             megler_settle_files();
             shellLog::flush();
@@ -140,6 +156,8 @@ struct App : ApplicationT<App, Markup::IXamlMetadataProvider> {
         });
         Resuming([this](auto&&, auto&&) {
             shellLog::write("app: resuming");
+            // (First of all: the app's threads that waited to read a database since it was suspended go on.)
+            megler_resume_databases();
             appPackage::probeDeployment("resumed");
             if (shell_) shell_->resuming();
             session::setSuspended(false);

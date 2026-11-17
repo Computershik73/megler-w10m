@@ -39,6 +39,18 @@ bool mg_sqlite_available(void);
 bool mg_sqlite_start(void);
 /* How many of this process's connections hold a lock on their database now, which other processes' may be waiting on. */
 int mg_sqlite_locks_held(void);
+/*
+ * The app is being suspended, and Windows will freeze its process as it is: from this call until mg_sqlite_resume no
+ * thread begins to read or write a database (it waits, holding no lock), those in the middle of a read or a transaction
+ * go on to its end, and a writer waiting for readers does not keep them out while it waits (mg_sqlite.c, "The app
+ * suspended"). Waits up to `ms` for the locks held to be let go: true when none is left, and where one is, false, with
+ * the log saying which file, at what level, and by which thread.
+ */
+bool mg_sqlite_settle(int ms);
+/* The app is back: the threads that waited go on. (Left uncalled, they go on by themselves after ten seconds of running.) */
+void mg_sqlite_resume(void);
+/* How many threads wait to begin reading a database now, between the two. */
+int mg_sqlite_waiting(void);
 
 #ifdef __cplusplus
 }

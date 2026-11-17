@@ -133,15 +133,8 @@ void megler_set_insets(int left, int top, int right, int bottom) { mg_java_set_i
 void megler_set_surface(int width, int height, int density_dpi, int rotation) { mg_run_set_surface(width, height, density_dpi, rotation); }
 void megler_set_paused(bool paused) { mg_run_set_paused(paused); }
 
-bool megler_settle_databases(int ms)
-{
-    u64 until = mg_time_monotonic_ns() + (u64)(ms > 0 ? ms : 0) * 1000000u;
-    while (mg_sqlite_locks_held() > 0) {
-        if (mg_time_monotonic_ns() >= until) return false;
-        mg_sleep_ns(5000000ull);
-    }
-    return true;
-}
+bool megler_settle_databases(int ms) { return mg_sqlite_settle(ms); }
+void megler_resume_databases(void) { mg_sqlite_resume(); }
 /* (A second at most for the lock: Windows gives the suspending app little time, and the UI thread is the one asking.) */
 void megler_settle_files(void) { mg_mem_write_back_all_until(mg_time_monotonic_ns() + 1000000000ull); }
 void megler_set_focused(bool focused) { mg_run_set_focused(focused); }
