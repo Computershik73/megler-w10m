@@ -149,6 +149,13 @@ public class ContentResolver {
         if (p != null) return p.openTypedAssetFile(u, mime, o);
         return openAssetFileDescriptor(u, "r");
     }
+    /* The same with a signal to cancel by, which nothing here waits on: these answered null, and a null descriptor is no
+       FileNotFoundException to the app that asked (the platform's openFile, openAssetFile and openTypedAssetFile are these). */
+    public android.content.res.AssetFileDescriptor openAssetFile(android.net.Uri p0, java.lang.String p1, android.os.CancellationSignal p2) throws java.io.FileNotFoundException { return openAssetFileDescriptor(p0, p1); }
+    public android.content.res.AssetFileDescriptor openAssetFileDescriptor(android.net.Uri p0, java.lang.String p1, android.os.CancellationSignal p2) throws java.io.FileNotFoundException { return openAssetFileDescriptor(p0, p1); }
+    public android.os.ParcelFileDescriptor openFile(android.net.Uri p0, java.lang.String p1, android.os.CancellationSignal p2) throws java.io.FileNotFoundException { return openFileDescriptor(p0, p1); }
+    public android.content.res.AssetFileDescriptor openTypedAssetFile(android.net.Uri p0, java.lang.String p1, android.os.Bundle p2, android.os.CancellationSignal p3) throws java.io.FileNotFoundException { return openTypedAssetFileDescriptor(p0, p1, p2); }
+    public android.content.res.AssetFileDescriptor openTypedAssetFileDescriptor(android.net.Uri p0, java.lang.String p1, android.os.Bundle p2, android.os.CancellationSignal p3) throws java.io.FileNotFoundException { return openTypedAssetFileDescriptor(p0, p1, p2); }
     public final void registerContentObserver(Uri u, boolean descendants, ContentObserver o) { synchronized (sObservers) { sObservers.add(new Object[] { u, descendants, o }); } }
     public final void unregisterContentObserver(ContentObserver o) { synchronized (sObservers) { for (int i = sObservers.size() - 1; i >= 0; i--) if (sObservers.get(i)[2] == o) sObservers.remove(i); } }
     public void notifyChange(Uri u, ContentObserver observer) { notifyChange(u, observer, true); }
@@ -331,11 +338,6 @@ public class ContentResolver {
     public void notifyChange(java.lang.Iterable p0, android.database.ContentObserver p1, int p2) {}
     public void notifyChange(java.util.Collection p0, android.database.ContentObserver p1, int p2) {}
     public void notifyChange(android.net.Uri[] p0, android.database.ContentObserver p1, int p2, int p3) {}
-    public android.content.res.AssetFileDescriptor openAssetFile(android.net.Uri p0, java.lang.String p1, android.os.CancellationSignal p2) { return null; }
-    public android.content.res.AssetFileDescriptor openAssetFileDescriptor(android.net.Uri p0, java.lang.String p1, android.os.CancellationSignal p2) { return null; }
-    public android.os.ParcelFileDescriptor openFile(android.net.Uri p0, java.lang.String p1, android.os.CancellationSignal p2) { return null; }
-    public android.content.res.AssetFileDescriptor openTypedAssetFile(android.net.Uri p0, java.lang.String p1, android.os.Bundle p2, android.os.CancellationSignal p3) { return null; }
-    public android.content.res.AssetFileDescriptor openTypedAssetFileDescriptor(android.net.Uri p0, java.lang.String p1, android.os.Bundle p2, android.os.CancellationSignal p3) { return null; }
     public void putCache(android.net.Uri p0, android.os.Bundle p1) {}
     public boolean refresh(android.net.Uri p0, android.os.Bundle p1, android.os.CancellationSignal p2) { return false; }
     public void registerContentObserver(android.net.Uri p0, boolean p1, android.database.ContentObserver p2, int p3) {}
