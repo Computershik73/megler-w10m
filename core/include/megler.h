@@ -1586,7 +1586,9 @@ typedef struct megler_display_host {
  *                one app (its base and its splits). `name` is the file's name, for showing. True: the shell took it, and
  *                the app is told its install goes on; false: the app is told it cannot be installed.
  *   launch_app   Another app the phone has, to start: an Android package and the activity's class name, or NULL for its
- *                launcher activity (a launcher's tap, an app opening another). True: the shell starts it.
+ *                launcher activity (a launcher's tap, an app opening another). True: the shell starts it. The name may
+ *                be more than a class ("<class>~<the file of the Intent>"): the shell hands it to that app's
+ *                megler_start_activity as it is.
  *   uninstall_app  Another app the phone has, to uninstall: an Android package (an app store's Uninstall,
  *                PackageInstaller.uninstall; ACTION_DELETE of package:<name>). True: the shell asks the user. It is gone
  *                when apps_dir's apps.txt no longer has it; installs/<package>.uninstall.txt says when the user said no.
@@ -2241,7 +2243,10 @@ MEGLER_API void megler_stop(void);
  * Another app asks this one to show one of its activities, by class name: what Android's startActivity of an intent that
  * names a component of this app does (microG's sign-in, LoginActivity, asked for by Play Store's AccountManager through
  * megler_system_host.launch_app). A Java app's main thread starts it on top of what it shows, if its manifest has the
- * activity and exports it; asked before the app runs, once its first activity is up. Any thread; the latest ask wins.
+ * activity and exports it; asked before the app runs, it is the app's first activity, in place of its launcher one, as
+ * Android starts a process for the activity asked for. The name is handed on as launch_app got it: after the class it may
+ * carry '~' and the name of the file the asking app wrote its whole Intent into (megler.PhoneApps), which the app asked
+ * reads; at most 199 bytes in all. Any thread; the latest ask wins.
  */
 MEGLER_API void megler_start_activity(const char *activity_class);
 /*

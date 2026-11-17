@@ -1227,6 +1227,22 @@ N(Native_launchApp)
     c->ret.z = s->launch_app ? s->launch_app(s->user, package, activity && activity[0] ? activity : NULL) : false;
 }
 
+/*
+ * requestedActivity(): the activity another app asked for (megler_start_activity) and the main loop has not handed on yet,
+ * taken; null when there is none. megler.AppRunner.run asks before it starts the launcher activity: an app started for an
+ * activity of its own starts with that one (Total Commander's plug-ins, woken by their LoadingActivity).
+ */
+N(Native_requestedActivity)
+{
+    char name[200];
+    c->ret.l = NULL;
+    if (!g_activity_requested || mg_atomic_cas(&g_activity_requested, 1, 0) != 1) return;
+    mg_lock_acquire(&g_requested_lock);
+    mg_strlcpy(name, g_requested_activity, sizeof(name));
+    mg_lock_release(&g_requested_lock);
+    c->ret.l = mg_dvm_new_string(name);
+}
+
 /* uninstallApp(package): another app the phone has, to uninstall; true when the shell asks the user (megler_system_host). */
 N(Native_uninstallApp)
 {
@@ -1588,6 +1604,7 @@ static const mg_jhle k_native[] = {
     { "megler/Native", "mediaSessionState", NULL, Native_mediaSessionState },
     { "megler/Native", "installApk", NULL, Native_installApk },
     { "megler/Native", "launchApp", NULL, Native_launchApp },
+    { "megler/Native", "requestedActivity", NULL, Native_requestedActivity },
     { "megler/Native", "uninstallApp", NULL, Native_uninstallApp },
     { "megler/Native", "permission", NULL, Native_permission },
     { "megler/Native", "pick", NULL, Native_pick },

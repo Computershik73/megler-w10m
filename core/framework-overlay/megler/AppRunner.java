@@ -196,7 +196,27 @@ public final class AppRunner {
         String startedAs = entry != null && "activity-alias".equals(entry.kind) && activityClass.equals(entry.parentActivity) ? entry.name : activityClass;
         main.setComponent(new ComponentName(Native.packageName(), startedAs));
         main.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-        launch(activityClass, main, null, -1, launcher, null, SHELL_REFERRER);
+        // Started because another app asked for one of its activities (megler_start_activity before the app ran): that activity
+        // is the app's first, with the intent the other app wrote, as Android starts the process for it -- not the launcher
+        // activity and then it. Total Commander wakes its plug-ins by their LoadingActivity, and each opened with its main screen
+        // as well. A request for nothing this app exports, or for an activity that was not made, leaves the start the launcher's:
+        // startActivity makes the activity from the main loop, so the launcher's turn comes there too, after it.
+        String request = Native.requestedActivity();
+        Intent asked = request == null ? null : requested(request);
+        if (asked != null) {
+            final int launched = sLaunched;
+            AppResults.requested(asked.getComponent().getClassName());
+            try { startActivity(app, asked, -1, null); }
+            catch (RuntimeException e) { android.util.Log.w("Megler", "the activity another app asked for was not started; the app starts as from its launcher", e); }
+            sHandler.post(() -> {
+                if (sLaunched != launched) return;
+                try { launch(activityClass, main, null, -1, launcher, null, SHELL_REFERRER); }
+                catch (RuntimeException e) { throw e; }
+                catch (Exception e) { throw new RuntimeException(e); }
+            });
+        } else {
+            launch(activityClass, main, null, -1, launcher, null, SHELL_REFERRER);
+        }
         Looper.loop();
     }
     public static Application application() { return sApp; }
@@ -278,6 +298,8 @@ public final class AppRunner {
      * platform's own name stands for it, a package every app can see (PackageManager answers for "android").
      */
     static final String SHELL_REFERRER = "android";
+    /* The activities made so far (launch): run() tells by it whether the activity another app asked for was. */
+    private static int sLaunched;
 
     static Activity launch(String cls, Intent intent, Activity caller, int request, Manifest.Component info) throws Exception {
         return launch(cls, intent, caller, request, info, null, null);
@@ -290,6 +312,7 @@ public final class AppRunner {
         android.util.Log.d("Megler", "launch " + cls);
         Activity prev = top();
         Activity a = make(cls, intent, caller, request, info);
+        sLaunched++;
         if (referrer != null) a.meglerSetReferrer(referrer);
         final boolean prevResumed = prev != null && prev.isResumedMegler();
         if (prevResumed) prev.meglerPause();
@@ -462,17 +485,33 @@ public final class AppRunner {
      * asks for), from the main loop: started as Android starts an intent that names a component of this app -- if the
      * manifest has the activity and exports it, as Android requires of a component another app starts.
      */
-    public static void startRequested(String cls) {
+    public static void startRequested(String request) {
+        Intent i = requested(request);
+        if (i == null) return;
+        AppResults.requested(i.getComponent().getClassName());
+        startActivity(sApp != null ? sApp : ContextImpl.app(), i, -1, null);
+    }
+    /*
+     * The intent of another app's request: the one it wrote for the activity when the request names its file
+     * (megler.PhoneApps.asked: its action, data, type, categories, flags and extras, which Total Commander's Wi-Fi plug-in
+     * has the files to send in), else the plain one for the class; null, with a line in the log, for an activity the manifest
+     * does not have or does not export.
+     */
+    private static Intent requested(String request) {
+        Object[] asked = PhoneApps.asked(request, classLoader());
+        String cls = (String) asked[0];
         Manifest.Component c = Manifest.activity(cls);
         if (c == null || !c.exported) {
             android.util.Log.w("Megler", "another app asked for " + cls + ", which this app " + (c == null ? "does not have" : "does not export"));
-            return;
+            return null;
         }
-        Context from = sApp != null ? sApp : ContextImpl.app();
-        Intent i = new Intent().setClassName(Native.packageName(), cls).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-        android.util.Log.i("Megler", "another app asked for " + cls);
-        AppResults.requested(cls);
-        startActivity(from, i, -1, null);
+        Intent i = ((Intent) asked[1]).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        // (what the intent is like, not what it says: its data and extras are the user's)
+        Bundle extras = i.getExtras();
+        android.util.Log.i("Megler", "another app asked for " + cls + (request.length() == cls.length() ? "" : " with its intent: action " + i.getAction()
+            + ", type " + i.getType() + ", " + (i.getData() == null ? "no" : i.getData().getScheme() + ":") + " data, flags 0x" + Integer.toHexString(i.getFlags())
+            + ", " + (extras == null ? 0 : extras.size()) + " extra(s)"));
+        return i;
     }
     /** Context.startActivity: an activity of the app's own, or something the host can open (a web page, mail, the store). */
     public static void startActivity(Context from, Intent i, int request, Bundle opts) {

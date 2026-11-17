@@ -422,7 +422,80 @@ public final class PhoneApps {
         // An alias has no class: what is started is the activity it stands for, as Android starts it.
         Activity x = activity(a, activity);
         if (x != null && x.target != null) activity = x.target;
+        // An intent that names the package and what to do, not who does it: the first of that app's activities whose filter
+        // takes it, as Android resolves it within the package (MAIN alone is the app itself, its launcher's business).
+        if (activity == null && i.getAction() != null && !Intent.ACTION_MAIN.equals(i.getAction()))
+            for (Activity y : activities(a))
+                if (y.enabled && y.exported && y.takes(i)) { activity = y.target != null ? y.target : y.name; break; }
         return new String[] { target, activity };
+    }
+
+    /*
+     * The whole Intent goes with the request for another app's activity: written out (megler.Flat) into a file of the services'
+     * shared folder, intents/<that app's package>/<token>, which the request names after the activity's class, "<class>~<token>"
+     * -- the shell hands the name on as it is (megler_start_activity), and no class has a '~' in its name. The app asked reads
+     * the file and deletes it (asked, from megler.AppRunner). Only the package and the class went, so that Total Commander's
+     * Wi-Fi plug-in, asked to send files (an action, a type and the list of the files among the extras), opened with nothing to
+     * send. With no shared folder, or a name too long for the shell's request (200 bytes), the class goes alone, as before.
+     */
+    private static final String INTENTS = MicroG.SHARED + "/intents";
+    private static int sSent;
+
+    private static String withIntent(String pkg, String activity, Intent i) {
+        try {
+            if (!new java.io.File(MicroG.SHARED).isDirectory()) return activity;
+            java.io.File dir = new java.io.File(INTENTS, pkg);
+            dir.mkdirs();
+            sweep(dir);
+            String token;
+            synchronized (PhoneApps.class) { token = Integer.toHexString(android.os.Process.myPid()) + "-" + Long.toHexString(System.currentTimeMillis()) + "-" + (++sSent); }
+            if (activity.length() + 1 + token.length() >= 200) return activity;
+            byte[] bytes = Flat.intent(i);
+            java.io.File file = new java.io.File(dir, token), tmp = new java.io.File(dir, token + ".new");
+            try (java.io.FileOutputStream out = new java.io.FileOutputStream(tmp)) { out.write(bytes); }
+            if (!tmp.renameTo(file)) { tmp.delete(); return activity; }
+            return activity + "~" + token;
+        } catch (Exception e) {
+            android.util.Log.w("Megler", "phone apps: the intent for " + pkg + "/" + activity + " cannot be written (" + e + "); the activity is asked for without it");
+            return activity;
+        }
+    }
+
+    /* Intents nobody read (the app asked did not start): gone after a day, so that the folder does not grow. */
+    private static void sweep(java.io.File dir) {
+        java.io.File[] files = dir.listFiles();
+        if (files == null) return;
+        long old = System.currentTimeMillis() - 24 * 3600 * 1000L;
+        for (java.io.File f : files) if (f.lastModified() < old) f.delete();
+    }
+
+    /**
+     * What another app asked this one for (megler.AppRunner.startRequested): the activity's class and, when the request names
+     * an Intent's file ("<class>~<token>", withIntent), that Intent, read and deleted, made by `l`'s classes; the plain intent
+     * for the class otherwise. Its component is this app's activity either way. Never null: { class, Intent }.
+     */
+    public static Object[] asked(String request, ClassLoader l) {
+        int at = request.indexOf('~');
+        String cls = at < 0 ? request : request.substring(0, at), token = at < 0 ? null : request.substring(at + 1);
+        Intent i = null;
+        if (token != null && !token.isEmpty() && token.matches("[0-9a-f-]+")) {
+            java.io.File file = new java.io.File(new java.io.File(INTENTS, Native.packageName()), token);
+            try {
+                java.io.ByteArrayOutputStream bytes = new java.io.ByteArrayOutputStream();
+                try (java.io.FileInputStream in = new java.io.FileInputStream(file)) {
+                    byte[] part = new byte[8192];
+                    for (int n; (n = in.read(part)) > 0; ) bytes.write(part, 0, n);
+                }
+                i = Flat.intent(bytes.toByteArray(), l);
+            } catch (Exception e) {
+                android.util.Log.w("Megler", "phone apps: the intent another app wrote for " + cls + " cannot be read (" + e + ")");
+            }
+            file.delete();
+        }
+        if (i == null) i = new Intent();
+        i.setComponent(new ComponentName(Native.packageName(), cls));
+        i.setPackage(null);
+        return new Object[] { cls, i };
     }
 
     /** An intent for an activity of another app the phone has: started by the shell, true; any other intent, false. */
@@ -430,7 +503,7 @@ public final class PhoneApps {
         String[] t = target(i);
         if (t == null) return false;
         android.util.Log.i("Megler", "phone apps: starting " + t[0] + (t[1] != null ? "/" + t[1] : ""));
-        if (!Native.launchApp(t[0], t[1])) android.util.Log.w("Megler", "phone apps: " + t[0] + " was not started");
+        if (!Native.launchApp(t[0], t[1] == null ? null : withIntent(t[0], t[1], i))) android.util.Log.w("Megler", "phone apps: " + t[0] + " was not started");
         return true;
     }
 }

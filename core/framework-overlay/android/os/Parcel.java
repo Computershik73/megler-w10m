@@ -20,6 +20,8 @@
 // And the bytes marshall gives carry the table of objects with them, and unmarshall gives a parcel its table back (see
 // marshall): Facebook keeps an activity's Parcelables as their marshalled bytes, and Messenger, restoring one in a parcel of
 // its own, read null for every object in it and ended.
+// And a parcel's bytes and its table can be taken apart and put together again (meglerBytes, meglerObjects, meglerRestore):
+// megler.Flat writes a Parcelable for another app's process so, its table's objects each written out in turn.
 // Everything else is the original's, unchanged.
 package android.os;
 
@@ -101,6 +103,18 @@ public final class Parcel {
         Object[] objects;
         synchronized (MARSHALLED) { objects = MARSHALLED.get(key); }
         if (objects != null && objects.length == n) mObjects.addAll(java.util.Arrays.asList(objects));
+    }
+    /*
+     * For megler.Flat, which writes an Intent's Parcelables for another app -- another process, where this one's table is
+     * not: the bytes written so far, the table they point into, and a parcel made of both again, to read from its start.
+     * Total Commander hands its Wi-Fi plug-in the files to send as a list of Uris among the Intent's extras.
+     */
+    public byte[] meglerBytes() { return java.util.Arrays.copyOf(mBuf, mSize); }
+    public Object[] meglerObjects() { return mObjects.toArray(); }
+    public void meglerRestore(byte[] bytes, Object[] objects) {
+        grow(bytes.length); System.arraycopy(bytes, 0, mBuf, 0, bytes.length); mSize = bytes.length; mPos = 0;
+        mObjects.clear();
+        if (objects != null) mObjects.addAll(java.util.Arrays.asList(objects));
     }
     public void appendFrom(Parcel p, int off, int len) {
         int at = put(len); System.arraycopy(p.mBuf, off, mBuf, at, len);

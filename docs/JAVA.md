@@ -4477,6 +4477,40 @@ What a Java app asks of the phone beyond its window goes to the shell through
   install folders cannot be read by an app container on Windows 10 Mobile
   (Megler's own check fails after each install), which is why Megler, which
   has the APKs, writes this for them.
+- **Other apps: the whole Intent.** An activity of another app is started
+  with the Intent the app made, not with its class alone. `megler.PhoneApps`
+  writes the Intent (`megler.Flat`: the action, the data and its type, the
+  categories, the flags and the extras) into a file of the folder every app
+  shares, `/data/megler-services/intents/<the other package>/<token>`, and
+  asks the shell for `<class>~<token>`; the shell hands that name on as it is
+  (`megler_start_activity`), so its code is unchanged. The app asked reads
+  the file and deletes it (`megler.AppRunner`). Started for it, the app's
+  first activity is the one asked for (`Native.requestedActivity`), not its
+  launcher activity and then it. Before, Total Commander's Wi-Fi plug-in,
+  asked to send files (`WifiSendActivity`: an action, a type and the list of
+  the files in the extras), opened with nothing to send, behind its main
+  screen.
+  - An intent that names the package and an action, with no class, goes to
+    the first exported activity of that app whose filter takes it.
+  - Megler's `Parcel` keeps objects beside its bytes and is of one process,
+    so `megler.Flat` writes the values itself: strings, numbers, their
+    arrays and lists, `Bundle`, `Uri`, `Intent`, `ComponentName`, a
+    `Serializable`, and any other `Parcelable` by its class's name and what
+    it writes, read by the class of that name the other app has. A
+    `Parcelable` of a class the other app has not is left out, and the log
+    says so (Android fails the whole `Bundle` there). A Binder and a file
+    descriptor do not go, and the log of the asking app says which extra
+    stayed. `FLAG_GRANT_READ_URI_PERMISSION` goes as a flag; nothing is
+    granted by it.
+  - The result of `startActivityForResult` comes back the same way
+    (`megler.AppResults`, `/data/megler-services/results/`): its Intent is
+    whole too, a list of Uris among its extras included.
+  - An app on microG and an app on Google's own Play services have different
+    services' folders (`services\data-microg`, `services\data`), and neither
+    the Intent nor the result passes between such two: the activity is
+    started by its class alone, as before.
+  - The test apps `crossapp` and `plugin`, in two runs on one data folder
+    (`MG_JAVA_OTHER_APKS`, `MG_JAVA_START_ACTIVITY=@<file>`).
 - **Other apps: their signatures, uids, comings and goings.**
   - `activities.json` also has the certificates the APK is signed with
     (`"certificates"`, each DER in hex): the APK Signing Block's v3 signer's,

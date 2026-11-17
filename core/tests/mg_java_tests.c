@@ -60,6 +60,13 @@
  * their outlines, one given a new background once the screen is laid out -- lie below its edge until the app scrolls to them;
  * their pixels are looked at then. Run again with the flag no-node-damage (the script's "no-node-damage").
  *
+ * `crossapp` and `plugin` are two apps that work together, as Total Commander and its plug-ins do, in two runs with one
+ * data folder. The first has the second listed among the phone's apps (MG_JAVA_OTHER_APKS=<the plugin's APK>; any app can
+ * be given others so, `app` too): it finds it installed, resolves an intent to an activity of it and asks the shell for that
+ * activity, with the whole Intent written where the other app reads it. The second is then started as the shell starts an
+ * app another one asked for (MG_JAVA_START_ACTIVITY=@<the first's data folder>/launch-request.txt): with that activity and
+ * no other, and the Intent whole.
+ *
  * `first` is hello started as the player starts an app on a PC's window or on an Xbox's television (`pc`, `xbox`): the
  * player's busy overlay must go at the app's first picture, whichever way it came and at whatever size, the surface changed
  * and the bars' insets told as the app starts (an Xbox's), and the pictures after the change come at the new size.
@@ -1495,13 +1502,86 @@ static MEGLER_CB int system_permission(void *user, const char *group, bool ask)
     return state;
 }
 
+/*
+ * The shell's part in one app starting another's activity: what is heard is the package and the activity's class. The request
+ * may carry more after the class -- '~' and the name of the file the app wrote the whole intent into (megler.PhoneApps) --
+ * which the shell hands on as it is: the latest request is kept whole in the data folder's launch-request.txt, for a run of
+ * that other app to be started with (MG_JAVA_START_ACTIVITY=@<that file>: the crossapp and plugin test apps).
+ */
 static MEGLER_CB bool system_launch(void *user, const char *package, const char *activity)
 {
-    char t[200];
+    char t[420];
+    const char *more = activity ? strchr(activity, '~') : NULL;
     (void)user;
-    snprintf(t, sizeof(t), "launch=%s/%s;", package, activity ? activity : "-");
+    snprintf(t, sizeof(t), "launch=%s/%.*s;", package, activity ? (int)(more ? (size_t)(more - activity) : strlen(activity)) : 1, activity ? activity : "-");
     system_heard(t);
+    if (activity) {
+        char *path = mg_sprintf("%s/launch-request.txt", megler_data_dir());
+        mg_file_write_all(path, activity, strlen(activity));
+        free(path);
+    }
     return true;
+}
+
+/* The value of a string (or a number) of an APK's report (megler_apk_report) by its key, "" for none. */
+static void report_value(const char *report, const char *key, char *out, size_t size)
+{
+    char find[48];
+    const char *at;
+    size_t n = 0;
+    out[0] = 0;
+    snprintf(find, sizeof(find), "\"%s\":", key);
+    at = report ? strstr(report, find) : NULL;
+    if (!at) return;
+    at += strlen(find);
+    if (*at == '"') {
+        for (at++; *at && *at != '"' && n + 1 < size; at++) {
+            if (*at == '\\' && at[1]) at++;
+            out[n++] = *at;
+        }
+    } else {
+        while (*at && *at != ',' && *at != '}' && n + 1 < size) out[n++] = *at++;
+    }
+    out[n] = 0;
+}
+
+/*
+ * MG_JAVA_OTHER_APKS: further apps the phone has, the paths of their APKs with ':' between them. Each is listed and described
+ * in the apps folder as the shell does it (library/PhoneAppsList.cpp): its line in apps.txt, its activities
+ * (megler_apk_describe_activities) and where its APK is (source.txt), so that the app run finds it installed and can read
+ * its APK at /data/app/<package>-1/base.apk: the crossapp test app with the plugin one, Total Commander with its plug-ins.
+ */
+static void other_apks(const char *dir, FILE *list)
+{
+    const char *all = getenv("MG_JAVA_OTHER_APKS");
+    while (all && *all) {
+        const char *end = strchr(all, ':');
+        size_t n = end ? (size_t)(end - all) : strlen(all);
+        char *apk = mg_sprintf("%.*s", (int)n, all), *report = megler_apk_report(apk);
+        char package[128], activity[160], label[96], version[48], code[24];
+        mg_stat st;
+        report_value(report, "package", package, sizeof(package));
+        report_value(report, "activity", activity, sizeof(activity));
+        report_value(report, "label", label, sizeof(label));
+        report_value(report, "versionName", version, sizeof(version));
+        report_value(report, "versionCode", code, sizeof(code));
+        if (package[0] && mg_path_stat(apk, &st, NULL)) {
+            char *own = mg_sprintf("%s/%s", dir, package), *path = mg_sprintf("%s/source.txt", own);
+            char *source = mg_sprintf("description 2\n%s\n%llu\n%s\n", apk, (unsigned long long)st.size, code[0] ? code : "0");
+            const bool described = megler_apk_describe_activities(apk, NULL, own);
+            fprintf(list, "%s\t%s\t%s\t%s\t%s\n", package, activity, label[0] ? label : package, version, code[0] ? code : "0");
+            mg_file_write_all(path, source, strlen(source));
+            say("  another app the phone has: %s (%s), %s", package, apk, described ? "described" : "NOT described");
+            free(source);
+            free(path);
+            free(own);
+        } else {
+            say("  (MG_JAVA_OTHER_APKS: %s is not an APK that can be read)", apk);
+        }
+        megler_free(report);
+        free(apk);
+        all = end ? end + 1 : NULL;
+    }
 }
 
 /*
@@ -1527,6 +1607,7 @@ static const char *phone_apps_fixture(void)
     f = fopen(path, "wb");
     if (f) {
         fputs("com.example.other\tcom.example.other.Main\tOther\t1.0\t3\n", f);
+        other_apks(dir, f);
         fclose(f);
     }
     free(path);
@@ -1782,8 +1863,22 @@ static bool start(const char *apk, const char *android_root)
     }
     g_start_ns = mg_time_monotonic_ns();
     /* MG_JAVA_START_ACTIVITY: an activity of the app another app asks for, as the shell hands it over (Play Store asking
-       microG for its sign-in): started once the app's first activity is up. */
-    if (getenv("MG_JAVA_START_ACTIVITY")) megler_start_activity(getenv("MG_JAVA_START_ACTIVITY"));
+       microG for its sign-in) before the app runs: the app's first activity, in place of its launcher one. "@<file>" is
+       the request that file holds: the one another app's run left (system_launch), with the name of its intent's file. */
+    if (getenv("MG_JAVA_START_ACTIVITY")) {
+        const char *ask = getenv("MG_JAVA_START_ACTIVITY");
+        if (ask[0] == '@') {
+            size_t size = 0;
+            char *text = (char *)mg_file_read_all(ask + 1, &size), request[200];
+            snprintf(request, sizeof(request), "%.*s", text ? (int)size : 0, text ? text : "");
+            request[strcspn(request, "\r\n")] = 0;
+            say("  another app's request, from %s: %s", ask + 1, request[0] ? request : "(none)");
+            if (request[0]) megler_start_activity(request);
+            free(text);
+        } else {
+            megler_start_activity(ask);
+        }
+    }
     if (megler_run(&cfg)) return true;
 #if !MG_HOST_ARM32
     {
@@ -3610,7 +3705,8 @@ static void system_requests(void)
  * Main.Answer). Asked for Answer as another app asks, the app finishes it with its result, writes that in the services' folder
  * for com.example.other, which waits for it, and brings that app to the front (launch_app with no activity). Then the app asks
  * com.example.other for its activity Main for a result and puts Answer's result where that app would have written it; when
- * the shell shows the app again, onActivityResult has it: RESULT_OK and the extras of plain types (an int[] is not passed).
+ * the shell shows the app again, onActivityResult has it: RESULT_OK and its intent whole (megler.Flat), the int[] among its
+ * extras too.
  */
 static void app_results(int *at)
 {
@@ -3627,7 +3723,7 @@ static void app_results(int *at)
     CHECK(n >= sizeof(want) - 1 && !strcmp(heard + n - (sizeof(want) - 1), want));
     megler_set_paused(true);
     megler_set_paused(false);
-    expect_line("I/DataTest: app-results answered request=77 result=-1 authAccount=someone@example.com n=7 skipped=false", at, 30);
+    expect_line("I/DataTest: app-results answered request=77 result=-1 authAccount=someone@example.com n=7 skipped=true", at, 30);
     /*
      * Then Android's Settings screens that Megler has (megler.SystemScreens), which the app opens: its own info (Force stop,
      * Clear storage), which Back closes; then the accounts of a type it names, none, which Back closes too.
@@ -4816,6 +4912,109 @@ static int run_pickers(void)
     return g_failed;
 }
 
+/*
+ * Two apps that work together, as Total Commander and its plug-ins do; this is the one that asks (the test app crossapp; the
+ * phone has the test app plugin beside it, MG_JAVA_OTHER_APKS). It finds the other app installed, resolves an intent to its
+ * activity and asks for that activity twice: by an intent its filter takes, and by its class for a result, with an Intent of
+ * everything. The shell hears the package and the class each time; the request names the file the Intent was written into
+ * as well (megler.PhoneApps), and the last one stays in the data folder for the plugin app's run, which is started with it
+ * and says what it got (run_plugin).
+ */
+static int run_crossapp(void)
+{
+    static const char *const steps[] = { "installed", "resolve", "send-implicit", "send" };
+    static const char want[] = "launch=megler.test.plugin/megler.test.plugin.Shown;launch=megler.test.plugin/megler.test.plugin.Shown;";
+    static const char asked[] = "megler.test.plugin.Shown~";
+    char text[120], heard[sizeof(g_system_heard)], *path, *request;
+    size_t size = 0;
+    int at = -1, i;
+    expect_line("I/CrossAppTest: onCreate", &at, 120);
+    for (i = 0; i < (int)MG_COUNT(steps); i++) {
+        snprintf(text, sizeof(text), "I/CrossAppTest: %s ok", steps[i]);
+        expect_line(text, &at, 120);
+    }
+    snprintf(text, sizeof(text), "I/CrossAppTest: done ok=%d failed=0", (int)MG_COUNT(steps));
+    expect_line(text, &at, 60);
+    mg_lock_acquire(&g_system_lock);
+    mg_strlcpy(heard, g_system_heard, sizeof(heard));
+    mg_lock_release(&g_system_lock);
+    say("  the app asked of the phone: %s", heard);
+    CHECK(!strcmp(heard, want));
+    path = mg_sprintf("%s/launch-request.txt", megler_data_dir());
+    request = (char *)mg_file_read_all(path, &size);
+    CHECK(request && size > sizeof(asked) - 1 && !memcmp(request, asked, sizeof(asked) - 1));
+    free(request);
+    free(path);
+    CHECK(find_line("phone apps: starting megler.test.plugin/megler.test.plugin.Shown", 0) >= 0);
+    CHECK(find_line("phone apps: megler.test.crossapp.Main waits for the result of megler.test.plugin/megler.test.plugin.Shown (request 77)", 0) >= 0);
+    /* What cannot go to another app's process is said, by its key and class, and the rest goes. */
+    CHECK(find_line("an intent for another app: its extra binder (android.os.Binder) stays here: a Binder reaches no other app's process", 0) >= 0);
+    CHECK(find_line(" FAILED", 0) < 0 && find_line("FATAL EXCEPTION", 0) < 0);
+    back_and_end("I/CrossAppTest: onDestroy", &at);
+    if (g_failed) say_app_lines("/CrossAppTest: ");
+    return g_failed;
+}
+
+/*
+ * The app asked (the test app plugin), started as the shell starts it for the request the crossapp app's run left
+ * (MG_JAVA_START_ACTIVITY=@<its data folder>/launch-request.txt, in the same data folder): its first activity is the one
+ * asked for, Shown, not its launcher one and then it, and Shown's intent is the one the other app wrote, whole -- the
+ * action, the data and its type, both categories, the flags, and every extra a process can hand another: strings and
+ * numbers, arrays, a Bundle, a list of Uris, a Parcelable and a Serializable of classes both apps have (made by this app's
+ * own classes), an Intent. The Parcelable of a class this app has not is left out, with a line saying so. The file the
+ * intent came in is gone; the other request's, which no run was started with, is still there. Shown finishes with a
+ * result: it is written for the app that waits for it, that app is brought to the front, and this one ends with its last
+ * activity.
+ */
+static int run_plugin(void)
+{
+    static const char *const lines[] = {
+        "I/PluginTest: application created 1 package=megler.test.plugin",
+        "D/Megler: launch megler.test.plugin.Shown",
+        "I/PluginTest: shown action=megler.test.plugin.SHOW data=content://megler.test.crossapp/notes/7?x=1#part type=text/plain "
+            "component=megler.test.plugin/.Shown package=null",
+        "I/PluginTest: shown flags=0x10000001 categories=[android.intent.category.DEFAULT, megler.test.category.EXTRA]",
+        "I/PluginTest: shown keys=[android.intent.extra.STREAM, big, bytes, count, flag, inner, longs, nested, note, notes, ratio, strings, tag, text, uris, wide]",
+        "I/PluginTest: shown text=hello, plug-in wide=e9 4e2d 1f600 count=42 big=1234567890123 flag=true ratio=2.5 longs=[1, -2, 3000000000] "
+            "bytes=[1, -2, 127] strings=[a, null, c] nested=in/5/[x, y]",
+        "I/PluginTest: shown uris=[content://megler.test.crossapp/files/a.txt, content://megler.test.crossapp/files/b%20c.txt] uri=true "
+            "stream=content://megler.test.crossapp/files/a.txt",
+        "I/PluginTest: shown note=Note(7, seven, content://megler.test.crossapp/notes/7, [t1, t2], v, Note(8, eight, null, [], null)) mine=true "
+            "notes=[Note(1, one, null, [], null), Note(2, two, null, [], null)] tag=Tag(blue, 3) mine=true",
+        "I/PluginTest: shown only=null binder=null inner=megler.test.INNER/down",
+        "I/PluginTest: shown left=1 application=megler.test.plugin.App created=1",
+    };
+    static const char want[] = "launch=megler.test.crossapp/-;";
+    char heard[sizeof(g_system_heard)];
+    size_t n;
+    int at = -1, i, tries;
+    for (i = 0; i < (int)MG_COUNT(lines); i++) expect_line(lines[i], &at, 120);
+    /* What Megler said of the request -- what the intent is like, nothing of its data or extras -- and of what it left out. */
+    CHECK(find_line("I/Megler: another app asked for megler.test.plugin.Shown with its intent: action megler.test.plugin.SHOW, type text/plain, content: data, "
+                    "flags 0x10000001, 16 extra(s)", 0) >= 0);
+    CHECK(find_line("an intent from another app: its megler.test.crossapp.Only cannot be read here", 0) >= 0);
+    CHECK(wait_line("phone apps: megler.test.plugin.Shown finished with -1; back to megler.test.crossapp", 0, 60) >= 0);
+    expect_line("I/PluginTest: shown onDestroy", &at, 60);
+    for (tries = 0; tries < 3000 && running(); tries++) mg_sleep_ns(10000000ull);
+    CHECK(g_exited && g_status == 0);
+    if (g_exited) say("  the app ended with status %d%s%s", g_status, g_reason[0] ? ": " : "", g_reason);
+    else say("  the app did not end with its only activity");
+    mg_lock_acquire(&g_system_lock);
+    mg_strlcpy(heard, g_system_heard, sizeof(heard));
+    mg_lock_release(&g_system_lock);
+    say("  the app asked of the phone: %s", heard);
+    n = strlen(heard);
+    CHECK(n >= sizeof(want) - 1 && !strcmp(heard + n - (sizeof(want) - 1), want));
+    /* The launcher activity was not made, before the one asked for or after it. */
+    CHECK(find_line("D/Megler: launch megler.test.plugin.Main", 0) < 0 && find_line("I/PluginTest: main onCreate", 0) < 0);
+    CHECK(find_line(" FAILED", 0) < 0 && find_line("FATAL EXCEPTION", 0) < 0);
+    if (g_failed) {
+        say_app_lines("/PluginTest: ");
+        say_app_lines("/Megler: ");
+    }
+    return g_failed;
+}
+
 /* Regression: a client and GmsCore carry incompatible classes of identical names. */
 static int run_microg(void)
 {
@@ -5432,6 +5631,8 @@ int mg_tests_java_run(const char *which, const char *apk, const char *android_ro
         else if (!strcmp(which, "bluetooth")) run_bluetooth();
         else if (!strcmp(which, "wifi")) run_wifi();
         else if (!strcmp(which, "pickers")) run_pickers();
+        else if (!strcmp(which, "crossapp")) run_crossapp();
+        else if (!strcmp(which, "plugin")) run_plugin();
         else if (g_any_app) run_app();
         else run_hello();
         if (running()) {

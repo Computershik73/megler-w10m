@@ -161,7 +161,10 @@
 # `pickers`, the intents of Android's documents UI, photo picker and camera app
 # answered by a stand-in for the shell's picker and camera (mg_java_tests.c,
 # system_pick): the results, the picked files' provider and the package
-# manager's answers. Their pictures are written to build/java-pictures as BMP
+# manager's answers. And `crossapp` with `plugin`, two apps that work together
+# as Total Commander and its plug-ins do: the first asks for an activity of
+# the second with a whole Intent, the second is started for it and reads it.
+# Their pictures are written to build/java-pictures as BMP
 # files. Each is then run
 # once more with its calls of the shell's drawing recorded
 # (build/gfx-records/<app>.rec), for the Windows build to draw again.
@@ -281,6 +284,19 @@ EOF
         echo "the Java test app $app (build/guest/java/$app.apk), through megler_run"
         MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL="*" wsl.exe -- bash -c "cp -u '$WROOT/build/guest/java/$app.apk' $WB/$app.apk && rm -rf $WB/java-data-$app && qemu-arm -L /usr/arm-linux-gnueabihf $WB/mg_tests --java $app $WB/$app.apk $WB/java-data-$app $WB/android-root '$WROOT/build/java-pictures' 2>&1" || STATUS=1
       done
+      # Two apps that work together, as Total Commander and its plug-ins do: `crossapp`, the app that asks, with `plugin` among
+      # the phone's apps (MG_JAVA_OTHER_APKS); then `plugin`, started as the shell starts an app for the activity another one
+      # asked for, with the request the first run left in the data folder the two runs share (mg_java_tests.c: run_crossapp,
+      # run_plugin).
+      if [ -f "$ROOT/build/guest/java/crossapp.apk" ] && [ -f "$ROOT/build/guest/java/plugin.apk" ]; then
+        echo "the Java test app crossapp (build/guest/java/crossapp.apk), through megler_run: the app plugin (build/guest/java/plugin.apk) is on the phone beside it"
+        MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL="*" wsl.exe -- bash -c "cp -u '$WROOT/build/guest/java/crossapp.apk' $WB/crossapp.apk && cp -u '$WROOT/build/guest/java/plugin.apk' $WB/plugin.apk && rm -rf $WB/java-data-crossapp && MG_JAVA_OTHER_APKS=$WB/plugin.apk qemu-arm -L /usr/arm-linux-gnueabihf $WB/mg_tests --java crossapp $WB/crossapp.apk $WB/java-data-crossapp $WB/android-root - 2>&1" || STATUS=1
+        echo "the Java test app plugin (build/guest/java/plugin.apk), through megler_run: started for the activity the app crossapp asked for"
+        # (The request's file by a variable: a ~ after the @ would stay a ~.)
+        MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL="*" wsl.exe -- bash -c "ASKED=$WB/java-data-crossapp/launch-request.txt; MG_JAVA_START_ACTIVITY=@\$ASKED qemu-arm -L /usr/arm-linux-gnueabihf $WB/mg_tests --java plugin $WB/plugin.apk $WB/java-data-crossapp $WB/android-root - 2>&1" || STATUS=1
+      else
+        echo "(the Java test apps crossapp and plugin are not run: they were not built, see tools/build-test-app.sh)"
+      fi
       # Optional real microG integration, including a conflicting client GMS class.
       # Fetch the pinned upstream APK with tools/microg-fetch.sh first.
       if [ -f "$ROOT/build/microg/GmsCore.apk" ] && [ -f "$ROOT/build/guest/java/microg.apk" ]; then

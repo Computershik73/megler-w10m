@@ -111,6 +111,11 @@
     /** Another app the phone has, started: its package, and its activity's class or null for its launcher activity. */
     public static native boolean launchApp(String packageName, String activity);
     /**
+     * The activity another app asked this one for (megler_start_activity) that the app has not been handed yet, taken: what
+     * megler.AppRunner.startRequested would get next; null when there is none. megler.AppRunner.run asks as the app starts.
+     */
+    public static native String requestedActivity();
+    /**
      * The apps the phone has (megler_run_config.apps_dir), a line for each: package, launcher activity, label, version name,
      * version code, separated by tabs; null when the shell told none. megler.PhoneApps reads it.
      */
