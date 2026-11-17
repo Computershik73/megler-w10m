@@ -115,6 +115,11 @@ typedef struct mg_java_gl_stats {
     u32 threads;                       /* GL threads started (GLSurfaceView) */
 } mg_java_gl_stats;
 void mg_java_gl_get_stats(mg_java_gl_stats *out);
+/*
+ * The pacing of a surface's swaps, and of a native window's posts (mg_java_ndk.c): how many nanoseconds the one at `now`
+ * waits before it returns, *due (0 before the first) brought on to when it may.
+ */
+u64 mg_java_gl_pace(u64 *due, u64 now);
 /* For a test that gives the core another OpenGL ES (mg_egl_set_provider): EGL and every function are looked up again. */
 void mg_java_gl_reset(void);
 

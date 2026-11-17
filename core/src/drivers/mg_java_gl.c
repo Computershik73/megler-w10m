@@ -1376,19 +1376,31 @@ static bool read_back(gl_surf *s, gl_ctx *x)
 }
 
 /*
- * A swap returns no sooner than a sixtieth of a second after the one before was due, as a swap interval of 1 has it. The
- * display's turn the swapping thread holds is let go of while it waits (mg_egl_turn_pause): the display's other threads
- * draw meanwhile.
+ * How long a swap at `now` waits before it returns, with *due brought on to when it may: no sooner than a sixtieth of a
+ * second after the one before was due, as a swap interval of 1 has it. Frames that come late are owed the time, a tenth of
+ * a second at the most: quick ones after them wait for nothing until it is made up. A surface's first swap waits for
+ * nothing, and neither does one later than what is owed: what it is late by is forgotten there, and it is not made a
+ * sixtieth later still (Asphalt Nitro's frames of 60 ms on a Lumia 950 XL: every second one of them waited a whole
+ * period more, an eighth of the little it drew a second).
+ */
+u64 mg_java_gl_pace(u64 *due, u64 now)
+{
+    const u64 period = 16666667ull;
+    if (!*due || now > *due + 100000000ull) *due = now;
+    else *due += period;
+    return *due > now ? *due - now : 0;
+}
+
+/*
+ * A swap is paced (mg_java_gl_pace). The display's turn the swapping thread holds is let go of while it waits
+ * (mg_egl_turn_pause): the display's other threads draw meanwhile.
  */
 static void pace(gl_surf *s)
 {
-    const u64 period = 16666667ull;
-    u64 now = mg_time_monotonic_ns();
-    if (!s->due || now > s->due + 100000000ull) s->due = now;
-    s->due += period;
-    if (s->due > now) {
+    u64 wait = mg_java_gl_pace(&s->due, mg_time_monotonic_ns());
+    if (wait) {
         void *paused = mg_egl_turn_pause();
-        mg_sleep_ns(s->due - now);
+        mg_sleep_ns(wait);
         mg_egl_turn_resume(paused);
     }
 }

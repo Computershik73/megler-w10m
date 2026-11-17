@@ -567,19 +567,16 @@ static int vw_unlock(mg_nwindow *b)
     view_window *w = (view_window *)b;
     if (!w->locked) return NW_BAD_VALUE;
     if (vw_valid(b)) {
-        const u64 period = 16666667ull;
-        u64 now;
+        u64 wait;
         if (w->texture) {
             post_texture(w);
             texture_said(w);
         } else {
             post(w);
         }
-        /* No sooner than a sixtieth of a second after the post before, as a queued buffer is taken on Android. */
-        now = mg_time_monotonic_ns();
-        if (!w->due || now > w->due + 100000000ull) w->due = now;
-        w->due += period;
-        if (w->due > now) mg_sleep_ns(w->due - now);
+        /* No sooner than a sixtieth of a second after the post before was due, as a queued buffer is taken on Android. */
+        wait = mg_java_gl_pace(&w->due, mg_time_monotonic_ns());
+        if (wait) mg_sleep_ns(wait);
     }
     mg_atomic_xchg(&w->locked, 0);
     return vw_valid(b) ? 0 : NW_GONE;

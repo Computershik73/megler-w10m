@@ -4477,6 +4477,35 @@ static int run_gl(void)
     line = wait_line("I/GlTest: continuous 30 frames in ", 0, 120);
     CHECK(line >= 0 && sscanf(strstr(line_at(line), " in ") + 4, "%ld", &ms) == 1 && ms >= 480);
     say("  thirty frames drawn continuously took %ld ms", ms);
+    /*
+     * The pacing itself, on times made up. A surface's first swap waits for nothing, and one 5 ms after it waits its sixtieth
+     * of a second out. Frames of 60 ms wait for nothing at all: every second one of them waited a whole period more, being
+     * later than the tenth of a second a surface is owed (Asphalt Nitro at 15 frames a second on a Lumia 950 XL). And after
+     * one late frame the quick ones wait for nothing until what it was late by is made up: the fourth of them here.
+     */
+    {
+        const u64 period = 16666667ull, a_ms = 1000000ull;
+        u64 due = 0, now = 1000 * a_ms, waited = 0;
+        int k;
+        CHECK(mg_java_gl_pace(&due, now) == 0);
+        now += 5 * a_ms;
+        CHECK(mg_java_gl_pace(&due, now) == period - 5 * a_ms);
+        now = due;
+        for (k = 0; k < 20; k++) {
+            now += 60 * a_ms;
+            waited += mg_java_gl_pace(&due, now);
+        }
+        CHECK(waited == 0 && due == now);
+        now += 60 * a_ms;
+        waited += mg_java_gl_pace(&due, now);
+        for (k = 0; k < 3; k++) {
+            now += 5 * a_ms;
+            waited += mg_java_gl_pace(&due, now);
+        }
+        CHECK(waited == 0);
+        now += 5 * a_ms;
+        CHECK(mg_java_gl_pace(&due, now) == 5 * period - 80 * a_ms);
+    }
     /* RENDERMODE_WHEN_DIRTY: nothing drawn while nothing asks, one frame for one requestRender. An event on the GL thread. */
     expect_line("I/GlTest: when-dirty idle frames=0", &at, 60);
     expect_line("I/GlTest: request-render frames=1", &at, 60);
