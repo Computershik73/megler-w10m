@@ -4569,8 +4569,21 @@ rescheduled, after its interval when it repeats, at once when work was
 enqueued meanwhile. Scheduling it again or cancelling it stops it if it runs
 (`onStopJob`). `JobInfo` keeps what its Builder is told (its service,
 transient extras, network type, latency, period, backoff, ...), where it kept
-the id and extras only. Not done: jobs persisted across runs, constraints
-other than the time, content triggers.
+the id and extras only. A job with content triggers
+(`JobInfo.Builder.addTriggerContentUri`) waits for a change of one of its
+URIs told to `ContentResolver.notifyChange` (those below it too with
+`FLAG_NOTIFY_FOR_DESCENDANTS`), as Android's ContentObserverController holds
+it: it runs once no further change has come for its update delay (10 s unless
+it says), at the latest its maximum delay after the first (2 minutes), with
+`JobParameters.getTriggeredContentUris` and `getTriggeredContentAuthorities`
+filled (the first 50 URIs, null beyond); scheduled again from its own run,
+it takes over the changes told meanwhile and runs at once for them; one with
+an override deadline runs at it, changed or not. It is watched by observers
+registered while it waits, so an app without such jobs pays nothing. WorkManager's
+content-URI work is such a job: run at once, as it was, it was scheduled again by
+each of its runs (Files by Google: job ids 30 to 1246 in a session). Not done:
+jobs persisted across runs, constraints other than the time and the content
+triggers.
 
 `megler.Processes`: a component the manifest puts in another process
 (`android:process`) runs in a class scope of the app's own APK

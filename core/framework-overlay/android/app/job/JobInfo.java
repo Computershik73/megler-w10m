@@ -1,14 +1,18 @@
 // Overlay of core/framework/src/android/app/job/JobInfo.java (tools/build-framework.sh).
 // It differs in what a job's info keeps: everything its Builder is told that Megler's job scheduler goes by or an app asks
 // back -- its service, its transient extras, its network type, its minimum latency and deadline, whether and how often it
-// repeats, its backoff, whether it is persisted, its other constraints and its priority -- where the original kept its id and
-// extras alone, and getService() was null.
+// repeats, its backoff, whether it is persisted, its other constraints and its priority, and the content URIs whose change
+// it waits for with their two delays -- where the original kept its id and extras alone, and getService() was null.
 //
 // Why. Jobs were kept and never run, and a job's info kept its id and extras only: Play Store's download service has its
 // downloads done by jobs of its DownloadJobService (needing a network), and asks the pending job's service by its class
 // (getPendingJob(...).getService(), which was null). Megler runs a job as Android's job scheduler does once its constraints
 // hold, network ones taken to hold while the phone has a network: its service made as the app's others are (megler.Services:
 // in its process's scope, megler.Processes), on the main thread, after its minimum latency.
+//
+// And the content triggers were dropped (getTriggerContentUris() null), so the scheduler ran such a job at once: Files by
+// Google's WorkManager work that waits for a change of the media ran, ended, was enqueued again and ran, for ever, every two
+// seconds (job ids from 30 to 1246 in an hour). They are kept as Android keeps them, the delays -1 when not set.
 //
 // Everything else is the original's, unchanged.
 package android.app.job;
@@ -20,13 +24,22 @@ public class JobInfo implements android.os.Parcelable {
     private final int mNetworkType, mBackoffPolicy, mPriority;
     private final long mMinLatency, mMaxDelay, mInterval, mFlex, mInitialBackoff;
     private final boolean mPeriodic, mPersisted, mCharging, mIdle, mBatteryNotLow, mStorageNotLow, mExpedited, mImportantWhileForeground, mPrefetch, mUserInitiated;
+    private final TriggerContentUri[] mTriggerContentUris; private final long mTriggerContentUpdateDelay, mTriggerContentMaxDelay;
     JobInfo(Builder b) {
         mId = b.id; mExtras = b.extras; mService = b.service; mTransientExtras = b.transientExtras; mNetworkType = b.networkType;
         mBackoffPolicy = b.backoffPolicy; mPriority = b.priority; mMinLatency = b.minLatency; mMaxDelay = b.maxDelay; mInterval = b.interval;
         mFlex = b.flex; mInitialBackoff = b.initialBackoff; mPeriodic = b.periodic; mPersisted = b.persisted; mCharging = b.charging; mIdle = b.idle;
         mBatteryNotLow = b.batteryNotLow; mStorageNotLow = b.storageNotLow; mExpedited = b.expedited; mImportantWhileForeground = b.importantWhileForeground;
         mPrefetch = b.prefetch; mUserInitiated = b.userInitiated;
+        mTriggerContentUris = b.triggers != null ? b.triggers.toArray(new TriggerContentUri[0]) : null;
+        mTriggerContentUpdateDelay = b.triggerUpdateDelay; mTriggerContentMaxDelay = b.triggerMaxDelay;
     }
+    /** The content URIs a change of which the job waits for, or null when it waits for none. */
+    public TriggerContentUri[] getTriggerContentUris() { return mTriggerContentUris; }
+    /** How long after the last change told the job runs, or -1 when the Builder was not told (the scheduler's 10 s then). */
+    public long getTriggerContentUpdateDelay() { return mTriggerContentUpdateDelay; }
+    /** How long after the first change told the job runs at the latest, or -1 when the Builder was not told (2 minutes then). */
+    public long getTriggerContentMaxDelay() { return mTriggerContentMaxDelay; }
     public int getId() { return mId; } public android.os.PersistableBundle getExtras() { return mExtras; } public android.content.ComponentName getService() { return mService; }
     public android.os.Bundle getTransientExtras() { return mTransientExtras; }
     public int getNetworkType() { return mNetworkType; }
@@ -58,11 +71,13 @@ public class JobInfo implements android.os.Parcelable {
         private int networkType = NETWORK_TYPE_NONE, backoffPolicy = BACKOFF_POLICY_EXPONENTIAL, priority = PRIORITY_DEFAULT;
         private long minLatency, maxDelay, interval, flex, initialBackoff = DEFAULT_INITIAL_BACKOFF_MILLIS;
         private boolean periodic, persisted, charging, idle, batteryNotLow, storageNotLow, expedited, importantWhileForeground, prefetch, userInitiated;
+        private java.util.ArrayList<TriggerContentUri> triggers; private long triggerUpdateDelay = -1, triggerMaxDelay = -1;
         public Builder(int id, android.content.ComponentName service) { this.id = id; this.service = service; }
         public Builder setExtras(android.os.PersistableBundle e) { extras = e; return this; } public Builder setTransientExtras(android.os.Bundle e) { transientExtras = e; return this; } public Builder setRequiredNetworkType(int t) { networkType = t; return this; }
         public Builder setRequiredNetwork(android.net.NetworkRequest r) { networkType = r != null ? NETWORK_TYPE_ANY : NETWORK_TYPE_NONE; return this; } public Builder setRequiresCharging(boolean b) { charging = b; return this; } public Builder setRequiresDeviceIdle(boolean b) { idle = b; return this; }
-        public Builder setRequiresBatteryNotLow(boolean b) { batteryNotLow = b; return this; } public Builder setRequiresStorageNotLow(boolean b) { storageNotLow = b; return this; } public Builder addTriggerContentUri(TriggerContentUri u) { return this; }
-        public Builder setTriggerContentUpdateDelay(long d) { return this; } public Builder setTriggerContentMaxDelay(long d) { return this; }
+        public Builder setRequiresBatteryNotLow(boolean b) { batteryNotLow = b; return this; } public Builder setRequiresStorageNotLow(boolean b) { storageNotLow = b; return this; }
+        public Builder addTriggerContentUri(TriggerContentUri u) { if (triggers == null) triggers = new java.util.ArrayList<>(); triggers.add(u); return this; }
+        public Builder setTriggerContentUpdateDelay(long d) { triggerUpdateDelay = d; return this; } public Builder setTriggerContentMaxDelay(long d) { triggerMaxDelay = d; return this; }
         public Builder setPeriodic(long i) { return setPeriodic(i, i); }
         public Builder setPeriodic(long i, long f) { periodic = true; interval = Math.max(i, getMinPeriodMillis()); flex = Math.max(Math.min(f, interval), getMinFlexMillis()); return this; }
         public Builder setMinimumLatency(long l) { minLatency = l; return this; } public Builder setOverrideDeadline(long d) { maxDelay = d; return this; }
@@ -90,6 +105,8 @@ public class JobInfo implements android.os.Parcelable {
         public TriggerContentUri(android.net.Uri uri, int flags) { mUri = uri; mFlags = flags; }
         public android.net.Uri getUri() { return mUri; }
         public int getFlags() { return mFlags; }
+        @Override public boolean equals(Object o) { return o instanceof TriggerContentUri && java.util.Objects.equals(((TriggerContentUri) o).mUri, mUri) && ((TriggerContentUri) o).mFlags == mFlags; }
+        @Override public int hashCode() { return (mUri == null ? 0 : mUri.hashCode()) ^ mFlags; }
         public int describeContents() { return 0; }
         public void writeToParcel(android.os.Parcel p, int f) { p.writeParcelable(mUri, f); p.writeInt(mFlags); }
         public static final Creator<TriggerContentUri> CREATOR = new Creator<TriggerContentUri>() { public TriggerContentUri createFromParcel(android.os.Parcel p) { return new TriggerContentUri(p.readParcelable(null), p.readInt()); } public TriggerContentUri[] newArray(int n) { return new TriggerContentUri[n]; } };
@@ -148,9 +165,6 @@ public class JobInfo implements android.os.Parcelable {
     public long getMinimumNetworkChunkBytes() { return 0L; }
     public android.net.NetworkRequest getRequiredNetwork() { return null; }
     public java.lang.String getTraceTag() { return null; }
-    public long getTriggerContentMaxDelay() { return 0L; }
-    public long getTriggerContentUpdateDelay() { return 0L; }
-    public android.app.job.JobInfo.TriggerContentUri[] getTriggerContentUris() { return null; }
     public boolean isExemptedFromAppStandby() { return false; }
     // ---- end of generated members
 }

@@ -470,6 +470,44 @@ public class Main extends Activity {
             return r == android.app.job.JobScheduler.RESULT_SUCCESS && pending != null && Work.class.getName().equals(pending.getService().getClassName())
                 && pending.getMinLatencyMillis() == 100;
         });
+        // A job that waits for a change of content (JobInfo.Builder.addTriggerContentUri) is held until one is told, and its
+        // parameters say what changed, as Android's: Files by Google's WorkManager work of that kind ran at once, was enqueued
+        // again and ran, for ever. 44 waits for descendants of a URI and is told two (and one that is not its own); 45 has a
+        // deadline and nothing of its own changes (a descendant, of a trigger that does not ask for them); 46 is scheduled
+        // again from its run, after another change: told to the new job, which runs at once; 47 asks to be run again and
+        // is told its change again. The changes are told a while after the step, so a job run at once would have none.
+        step("job-content-trigger", () -> {
+            final android.app.job.JobScheduler js = (android.app.job.JobScheduler) getSystemService(JOB_SCHEDULER_SERVICE);
+            android.content.ComponentName work = new android.content.ComponentName(this, Work.class);
+            final android.net.Uri base = android.net.Uri.parse("content://megler.test.data.jobs");
+            android.app.job.JobInfo.TriggerContentUri watched = new android.app.job.JobInfo.TriggerContentUri(android.net.Uri.withAppendedPath(base, "watched"),
+                    android.app.job.JobInfo.TriggerContentUri.FLAG_NOTIFY_FOR_DESCENDANTS);
+            int r = js.schedule(new android.app.job.JobInfo.Builder(44, work).addTriggerContentUri(watched).setTriggerContentUpdateDelay(600).build());
+            r &= js.schedule(new android.app.job.JobInfo.Builder(45, work)
+                    .addTriggerContentUri(new android.app.job.JobInfo.TriggerContentUri(android.net.Uri.withAppendedPath(base, "exact"), 0)).setOverrideDeadline(3000).build());
+            r &= js.schedule(Work.again(this));
+            r &= js.schedule(new android.app.job.JobInfo.Builder(47, work)
+                    .addTriggerContentUri(new android.app.job.JobInfo.TriggerContentUri(android.net.Uri.withAppendedPath(base, "failed"), 0))
+                    .setTriggerContentUpdateDelay(500).setTriggerContentMaxDelay(1000).setBackoffCriteria(1000, android.app.job.JobInfo.BACKOFF_POLICY_LINEAR).build());
+            new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(() -> {
+                android.content.ContentResolver cr = getContentResolver();
+                cr.notifyChange(android.net.Uri.withAppendedPath(base, "watched/7"), null);
+                cr.notifyChange(android.net.Uri.withAppendedPath(base, "other/1"), null);
+                cr.notifyChange(android.net.Uri.withAppendedPath(base, "watched/8"), null);
+                cr.notifyChange(android.net.Uri.withAppendedPath(base, "watched/7"), null);
+                cr.notifyChange(android.net.Uri.withAppendedPath(base, "exact/1"), null);
+                cr.notifyChange(android.net.Uri.withAppendedPath(base, "again/1"), null);
+                cr.notifyChange(android.net.Uri.withAppendedPath(base, "failed"), null);
+            }, 1500);
+            android.app.job.JobInfo pending = js.getPendingJob(44), plain = js.getPendingJob(41);
+            android.app.job.JobInfo.TriggerContentUri[] kept = pending != null ? pending.getTriggerContentUris() : null;
+            detail = "result=" + r + " kept=" + (kept != null ? kept.length + " " + kept[0].getUri() + " flags=" + kept[0].getFlags() : "null")
+                     + " delays=" + (pending != null ? pending.getTriggerContentUpdateDelay() + "," + pending.getTriggerContentMaxDelay() : "")
+                     + " plain=" + (plain != null ? java.util.Arrays.toString(plain.getTriggerContentUris()) : "none");
+            return r == android.app.job.JobScheduler.RESULT_SUCCESS && kept != null && kept.length == 1 && kept[0].equals(watched)
+                && pending.getTriggerContentUpdateDelay() == 600 && pending.getTriggerContentMaxDelay() == -1
+                && (plain == null || plain.getTriggerContentUris() == null);
+        });
         // A download enqueued in the system's download provider (content://downloads, as DownloadManager and Play Store's old
         // downloader do), from a server of this app's own on 127.0.0.1 that wants the row's cookie: its cursor's observer hears
         // it go (ContentObservable, AbstractCursor.setNotificationUri), DOWNLOAD_COMPLETE comes with its id, and its row and its
@@ -5061,13 +5099,38 @@ public class Main extends Activity {
         }
     }
 
-    /** The jobs of the step "job-scheduler": 41 says its extra and finishes later, from a thread; 42 takes its work. */
+    /**
+     * The jobs of the step "job-scheduler": 41 says its extra and finishes later, from a thread; 42 takes its work. And those of
+     * the step "job-content-trigger" (44 to 47), which say what they were told changed: 46 tells another change and schedules
+     * itself again in its first run, 47 asks for another run from its first.
+     */
     public static final class Work extends android.app.job.JobService {
+        private static int runs46, runs47;
+        static android.app.job.JobInfo again(Context c) {
+            return new android.app.job.JobInfo.Builder(46, new android.content.ComponentName(c, Work.class))
+                    .addTriggerContentUri(new android.app.job.JobInfo.TriggerContentUri(android.net.Uri.parse("content://megler.test.data.jobs/again"),
+                            android.app.job.JobInfo.TriggerContentUri.FLAG_NOTIFY_FOR_DESCENDANTS))
+                    .setTriggerContentUpdateDelay(500).build();
+        }
         @Override public boolean onStartJob(final android.app.job.JobParameters p) {
             if (p.getJobId() == 41) {
                 Log.i("DataTest", "job 41 said=" + p.getExtras().getString("said") + " network=" + (p.getNetwork() != null));
                 new Thread(() -> jobFinished(p, false)).start();
                 return true;
+            }
+            if (p.getJobId() >= 44 && p.getJobId() <= 47) {
+                int run = p.getJobId() == 46 ? ++runs46 : p.getJobId() == 47 ? ++runs47 : 1;
+                Log.i("DataTest", "job " + p.getJobId() + " run=" + run + " uris=" + java.util.Arrays.toString(p.getTriggeredContentUris())
+                                  + " authorities=" + java.util.Arrays.toString(p.getTriggeredContentAuthorities()) + " deadline=" + p.isOverrideDeadlineExpired());
+                if (p.getJobId() == 46 && run == 1) {
+                    getContentResolver().notifyChange(android.net.Uri.parse("content://megler.test.data.jobs/again/2"), null);
+                    ((android.app.job.JobScheduler) getSystemService(JOB_SCHEDULER_SERVICE)).schedule(again(this));
+                }
+                if (p.getJobId() == 47 && run == 1) {
+                    new Thread(() -> jobFinished(p, true)).start();
+                    return true;
+                }
+                return false;
             }
             StringBuilder got = new StringBuilder();
             for (android.app.job.JobWorkItem w; (w = p.dequeueWork()) != null; ) {
