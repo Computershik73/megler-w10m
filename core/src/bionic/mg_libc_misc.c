@@ -1644,6 +1644,12 @@ static int g_sigsuspend(const gulong *set)
     mg_set_errno(GE_INTR);
     return -1;
 }
+/* pause: that wait with the mask the thread has. (Microsoft OneDrive's libQt.so imports it, and there was none.) */
+static int g_pause(void)
+{
+    gulong blocked = mg_gthread_self()->sig_blocked;
+    return g_sigsuspend(&blocked);
+}
 static int g_sigwait(const gulong *set, int *sig) { (void)set; (void)sig; mg_set_errno(GE_INVAL); return GE_INVAL; }
 
 typedef struct g_stack_t {
@@ -2202,7 +2208,7 @@ const mg_sym mg_tab_misc[] = {
     M("sigaction", g_sigaction_fn), M("signal", g_signal), M("bsd_signal", g_signal), M("sysv_signal", g_signal), M("raise", g_raise),
     M("kill", g_kill), M("killpg", g_killpg), M("tgkill", g_tgkill), M("sigprocmask", g_sigprocmask), M("sigemptyset", g_sigemptyset),
     M("sigfillset", g_sigfillset), M("sigaddset", g_sigaddset), M("sigdelset", g_sigdelset), M("sigismember", g_sigismember),
-    M("sigpending", g_sigpending), M("sigsuspend", g_sigsuspend), M("sigwait", g_sigwait), M("sigaltstack", g_sigaltstack),
+    M("sigpending", g_sigpending), M("sigsuspend", g_sigsuspend), M("pause", g_pause), M("sigwait", g_sigwait), M("sigaltstack", g_sigaltstack),
     M("__libc_current_sigrtmin", g_sigrtmin), M("__libc_current_sigrtmax", g_sigrtmax),
     M("localeconv", g_localeconv), M("setlocale", g_setlocale), M("newlocale", g_newlocale), M("uselocale", g_uselocale),
     M("freelocale", g_freelocale), M("duplocale", g_duplocale), M("nl_langinfo", g_nl_langinfo), M("nl_langinfo_l", g_nl_langinfo),

@@ -5758,6 +5758,8 @@ static void test_library(mg_lib *lib, const char *what, const char *scratch)
     CHECK_INT(FN(lib, int (*)(int), "t_big_frame")(10), 56);
     /* Signals between threads: a thread stopped and let go twenty times, wherever it was found. */
     CHECK_INT(FN(lib, int (*)(int), "t_signals")(20), 0);
+    /* pause: a thread waits in it past a signal it has blocked, until a handler has run on it. */
+    CHECK_INT(FN(lib, int (*)(void), "t_pause")(), 0);
     /* A thread stopped as the collector stops one, 20000 times while signals keep sending it back: its registers its own. */
     test_stop_signalled(lib);
 #if MG_ARCH_X86_64 || (MG_ARCH_X86 && MG_HOST_WINDOWS)
