@@ -4,7 +4,9 @@
 // a component back until the code it loads after the start is there. And a service stopped from another thread is destroyed
 // on the main thread, as on Android, and a start has its id when it is asked for (postStart). And a service the manifest puts in
 // another process (android:process) is made in that process's class scope, with its Application (megler.Processes). And the
-// services running can be listed (running), for a configuration change they hear (megler.Screen). Everything else is the
+// services running can be listed (running), for a configuration change they hear (megler.Screen). And a service that is
+// none of the app's own nor Google's is asked of megler.HostedApps, which runs another app's service inside this one (Total
+// Commander's plug-ins): one call where each of bind, unbind, start, stop and stopSelf finds none. Everything else is the
 // original's, unchanged.
 package megler;
 
@@ -58,7 +60,7 @@ public final class Services {
         ComponentName external = MicroG.start(from, i);
         if (external != null) return external;
         Manifest.Component c = find(i);
-        if (c == null) return null;
+        if (c == null) return HostedApps.start(from, i);
         postStart(sLastStart, c.name, id -> {
             try { Service s = create(c); s.onStartCommand(Processes.forLoader(i, s.getClass().getClassLoader()), 0, id); } catch (Throwable t) { android.util.Log.e("Megler", "service " + c.name + " failed", t); }
         });
@@ -94,13 +96,16 @@ public final class Services {
     public static boolean stop(Intent i) {
         if (MicroG.stop(i)) return true;
         Manifest.Component c = find(i);
-        if (c == null || !sRunning.containsKey(c.name)) return false;
+        if (c == null) return HostedApps.stop(i);
+        if (!sRunning.containsKey(c.name)) return false;
         MicroG.onMain(() -> { Service s; synchronized (sRunning) { s = sRunning.remove(c.name); } if (s != null) s.onDestroy(); });
         return true;
     }
     /** Service.stopSelfResult: true when the service stops, false when a later start keeps it or it is not running. */
     public static boolean stopSelf(Service s, int id) {
-        int hosted = MicroG.stopSelf(s, id);
+        // (Another app's service hosted here is asked first: MicroG.stopSelf reads Google Play services to answer.)
+        int hosted = HostedApps.stopSelf(s, id);
+        if (hosted < 0) hosted = MicroG.stopSelf(s, id);
         if (hosted >= 0) return hosted > 0;
         String k = null;
         synchronized (sRunning) { for (java.util.Map.Entry<String, Service> e : sRunning.entrySet()) if (e.getValue() == s) k = e.getKey(); }
@@ -121,7 +126,7 @@ public final class Services {
             return true;
         }
         Manifest.Component c = find(i);
-        if (c == null) return false;
+        if (c == null) return HostedApps.bind(from, i, conn);
         new Handler(Looper.getMainLooper()).post(() -> {
             try {
                 Service s = create(c);
@@ -133,7 +138,7 @@ public final class Services {
         });
         return true;
     }
-    public static void unbind(ServiceConnection conn) { if (!MicroG.unbind(conn)) sBound.remove(conn); }
+    public static void unbind(ServiceConnection conn) { if (!MicroG.unbind(conn) && !HostedApps.unbind(conn)) sBound.remove(conn); }
 
     /** A system service by name, or null for those Megler has nothing for. */
     public static Object system(String name, Context c) {

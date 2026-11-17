@@ -196,6 +196,15 @@ MEGLER_API bool megler_apk_icon_splits(const char *apk_path, const char *splits_
  * one, an XML one (adaptive, vector) drawn. "certificates" are those the APK is signed with, each its DER in hex digits: the
  * APK Signing Block's v3 signer's, else its v2 one's, else the v1 PKCS#7 file's under META-INF (megler.PhoneApps gives them
  * as the app's signatures; Google Play compares them with its own record). `splits_dir` as megler_apk_report_splits has it.
+ *
+ * An app with services another app may bind (exported: said so, or not said and with an intent filter) gets services.json
+ * beside it, and one without has none --
+ *
+ *   { "package": "org.example", "services": [ { "name": "org.example.Plugin", "label": "Example plug-in", "icon": 2131558402,
+ *                 "permission": "org.example.BIND", "exported": true, "filters": [ ... ] } ] }
+ *
+ * -- each as an activity is described, and with the permission its binder is to hold where the manifest names one
+ * (megler.HostedApps binds such a service inside the app that asks: Total Commander's plug-ins).
  * False when the APK's manifest cannot be read or the description cannot be written.
  */
 MEGLER_API bool megler_apk_describe_activities(const char *apk_path, const char *splits_dir, const char *out_dir);
@@ -1586,7 +1595,9 @@ typedef struct megler_display_host {
  *                one app (its base and its splits). `name` is the file's name, for showing. True: the shell took it, and
  *                the app is told its install goes on; false: the app is told it cannot be installed.
  *   launch_app   Another app the phone has, to start: an Android package and the activity's class name, or NULL for its
- *                launcher activity (a launcher's tap, an app opening another). True: the shell starts it.
+ *                launcher activity (a launcher's tap, an app opening another). True: the shell starts it. The name may
+ *                be more than a class ("<class>~<the file of the Intent>"): the shell hands it to that app's
+ *                megler_start_activity as it is.
  *   uninstall_app  Another app the phone has, to uninstall: an Android package (an app store's Uninstall,
  *                PackageInstaller.uninstall; ACTION_DELETE of package:<name>). True: the shell asks the user. It is gone
  *                when apps_dir's apps.txt no longer has it; installs/<package>.uninstall.txt says when the user said no.
@@ -2241,7 +2252,10 @@ MEGLER_API void megler_stop(void);
  * Another app asks this one to show one of its activities, by class name: what Android's startActivity of an intent that
  * names a component of this app does (microG's sign-in, LoginActivity, asked for by Play Store's AccountManager through
  * megler_system_host.launch_app). A Java app's main thread starts it on top of what it shows, if its manifest has the
- * activity and exports it; asked before the app runs, once its first activity is up. Any thread; the latest ask wins.
+ * activity and exports it; asked before the app runs, it is the app's first activity, in place of its launcher one, as
+ * Android starts a process for the activity asked for. The name is handed on as launch_app got it: after the class it may
+ * carry '~' and the name of the file the asking app wrote its whole Intent into (megler.PhoneApps), which the app asked
+ * reads; at most 199 bytes in all. Any thread; the latest ask wins.
  */
 MEGLER_API void megler_start_activity(const char *activity_class);
 /*

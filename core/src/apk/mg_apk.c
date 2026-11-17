@@ -1861,7 +1861,7 @@ bool megler_apk_icon_splits(const char *apk_path, const char *splits_dir, uint8_
 
 bool megler_apk_icon(const char *apk_path, uint8_t **data, size_t *size) { return megler_apk_icon_splits(apk_path, NULL, data, size); }
 
-/* ------------------------------------------------- the activities, for another app's launcher */
+/* ------------------------------------------------- the activities and the services, for another app */
 
 #define ATTR_EXPORTED 0x01010010u
 #define ATTR_MIME_TYPE 0x01010026u
@@ -1871,9 +1871,10 @@ bool megler_apk_icon(const char *apk_path, uint8_t **data, size_t *size) { retur
 typedef struct acts_ctx {
     char package[200];
     const icon_apks *apks;     /* every APK's resources, for the labels */
-    mg_jbuf out, act, filters;  /* the description; the activity being read; its filters */
-    bool in_application, in_activity, in_filter, began, listed, exported_given, exported;
-    int nfilters;
+    mg_jbuf out, act, filters;  /* the description; the activity or the service being read; its filters */
+    mg_jbuf services;           /* the services another app may bind, which have a file of their own */
+    bool in_application, in_activity, in_filter, began, listed, exported_given, exported, is_service;
+    int nfilters, nservices;
     /* the filter being read */
     char actions[16][160], categories[16][160], schemes[8][32], hosts[8][160], types[8][96];
     int nactions, ncategories, nschemes, nhosts, ntypes;
@@ -1958,9 +1959,10 @@ static void acts_start(void *user, const char *tag, const attr *attrs, int nattr
         mg_jraw(&c->out, "[");
         acts_icon(c, icon);
         c->listed = true;
-    } else if (c->in_application && !c->in_activity && (!strcmp(tag, "activity") || !strcmp(tag, "activity-alias")) && name) {
+    } else if (c->in_application && !c->in_activity && (!strcmp(tag, "activity") || !strcmp(tag, "activity-alias") || !strcmp(tag, "service")) && name) {
         char text[200];
         c->in_activity = true;
+        c->is_service = !strcmp(tag, "service");
         c->exported_given = false;
         c->nfilters = 0;
         jbuf_reset(&c->act);
@@ -1990,6 +1992,9 @@ static void acts_start(void *user, const char *tag, const attr *attrs, int nattr
             } else if (a->id == ATTR_EXPORTED && a->type == 0x12) {
                 c->exported_given = true;
                 c->exported = a->data != 0;
+            } else if (a->id == ATTR_PERMISSION && c->is_service && a->type == 0x03 && a->text[0]) {
+                mg_jkey(&c->act, "permission", false);
+                mg_jstr(&c->act, a->text);
             }
         }
     } else if (c->in_activity && !strcmp(tag, "intent-filter")) {
@@ -2025,18 +2030,23 @@ static void acts_end(void *user, const char *tag)
         acts_array(j, "hosts", c->hosts[0], c->nhosts, sizeof(c->hosts[0]));
         acts_array(j, "types", c->types[0], c->ntypes, sizeof(c->types[0]));
         mg_jraw(j, "}");
-    } else if ((!strcmp(tag, "activity") || !strcmp(tag, "activity-alias")) && c->in_activity) {
-        c->in_activity = false;
-        if (c->out.s && c->out.s[c->out.n - 1] != '[') mg_jraw(&c->out, ",");
-        mg_jraw(&c->out, "{");
-        mg_jraw(&c->out, c->act.s ? c->act.s : "");
+    } else if ((!strcmp(tag, "activity") || !strcmp(tag, "activity-alias") || !strcmp(tag, "service")) && c->in_activity &&
+               c->is_service == !strcmp(tag, "service")) {
         /* Not said: exported when it has a filter, as Android before 12 has it. */
-        mg_jkey(&c->out, "exported", false);
-        mg_jraw(&c->out, (c->exported_given ? c->exported : c->nfilters > 0) ? "true" : "false");
-        mg_jkey(&c->out, "filters", false);
-        mg_jraw(&c->out, "[");
-        mg_jraw(&c->out, c->filters.s ? c->filters.s : "");
-        mg_jraw(&c->out, "]}");
+        bool exported = c->exported_given ? c->exported : c->nfilters > 0;
+        mg_jbuf *j = c->is_service ? &c->services : &c->out;
+        c->in_activity = false;
+        /* A service another app may not bind is not listed: an app has dozens of its own, and they are nobody else's. */
+        if (c->is_service && !exported) return;
+        if (c->is_service ? c->nservices++ > 0 : (c->out.s && c->out.s[c->out.n - 1] != '[')) mg_jraw(j, ",");
+        mg_jraw(j, "{");
+        mg_jraw(j, c->act.s ? c->act.s : "");
+        mg_jkey(j, "exported", false);
+        mg_jraw(j, exported ? "true" : "false");
+        mg_jkey(j, "filters", false);
+        mg_jraw(j, "[");
+        mg_jraw(j, c->filters.s ? c->filters.s : "");
+        mg_jraw(j, "]}");
     } else if (!strcmp(tag, "application")) {
         c->in_application = false;
     }
@@ -2245,6 +2255,24 @@ bool megler_apk_describe_activities(const char *apk_path, const char *splits_dir
         path = mg_sprintf("%s/activities.json", out_dir);
         ok = mg_file_write_all(path, c->out.s, c->out.n);
         free(path);
+        /* The services another app may bind, where the app has any: most have none, and then there is no file to read. */
+        path = mg_sprintf("%s/services.json", out_dir);
+        if (ok && c->nservices) {
+            mg_jbuf s;
+            memset(&s, 0, sizeof(s));
+            mg_jraw(&s, "{");
+            mg_jkey(&s, "package", true);
+            mg_jstr(&s, c->package);
+            mg_jkey(&s, "services", false);
+            mg_jraw(&s, "[");
+            mg_jraw(&s, c->services.s);
+            mg_jraw(&s, "]}");
+            ok = mg_file_write_all(path, s.s, s.n);
+            jbuf_reset(&s);
+        } else {
+            mg_path_remove(path, NULL);
+        }
+        free(path);
         for (k = 0; ok && k < c->nicons; k++) {
             size_t size = 0;
             u8 *png = icon_of_id(a, c->icons[k], &size);
@@ -2259,6 +2287,7 @@ bool megler_apk_describe_activities(const char *apk_path, const char *splits_dir
     jbuf_reset(&c->out);
     jbuf_reset(&c->act);
     jbuf_reset(&c->filters);
+    jbuf_reset(&c->services);
     free(c);
     apks_close(a);
     mg_apk_free_list(splits, n);

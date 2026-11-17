@@ -8,8 +8,9 @@
 //  - the caller notes there, in results/<package>/<activity>.caller, that it waits for that activity (its own package), and
 //    keeps which of its activities asked and with which request code;
 //  - the app the activity is in, when an activity another app asked for (AppRunner.startRequested) finishes, writes its result
-//    beside that note (<activity>.json: the result code, and the intent's action, data and extras of plain types) and brings
-//    the caller to the front, as finishing the activity shows the caller's task on Android;
+//    beside that note (<activity>.json: the result code, and the intent -- its action, data and extras of plain types, and
+//    the whole of it as megler.Flat writes one for another process, which the caller reads when it can) and brings the
+//    caller to the front, as finishing the activity shows the caller's task on Android;
 //  - the caller, in front again, gives the result to the activity that asked (onActivityResult, before it resumes). With none
 //    written yet (the user came back without finishing the other app's screen) it goes on waiting.
 package megler;
@@ -87,7 +88,8 @@ public final class AppResults {
         try {
             JSONObject o = new JSONObject(text);
             code = o.getInt("code");
-            if (o.has("intent")) data = intent(o.getJSONObject("intent"));
+            if (o.has("flat")) data = Flat.intent(android.util.Base64.decode(o.getString("flat"), android.util.Base64.NO_WRAP), AppRunner.classLoader());
+            if (data == null && o.has("intent")) data = intent(o.getJSONObject("intent"));
         } catch (Exception e) {
             Log.w(TAG, "phone apps: the result of " + w.what + " cannot be read: " + e);
         }
@@ -117,6 +119,8 @@ public final class AppResults {
             o.put("code", a.meglerResultCode());
             Intent data = a.meglerResultData();
             if (data != null) o.put("intent", json(data));
+            // (and the whole of it, megler.Flat: its type, flags and the extras that are not plain values, a list of Uris)
+            if (data != null) o.put("flat", android.util.Base64.encodeToString(Flat.intent(data), android.util.Base64.NO_WRAP));
             if (!write(new File(dir, cls + ".json"), o.toString())) return;
         } catch (Exception e) {
             Log.w(TAG, "phone apps: the result of " + cls + " for " + caller + " cannot be written: " + e);

@@ -46,6 +46,10 @@
 // GET_SIGNING_CERTIFICATES, null otherwise: its signatures were one of no bytes whatever was asked, and its signingInfo the
 // running app's own. microG's location service reads the platform's signatures as certificates for each app it has a
 // location for, and the empty one ended every such app's location requests ("CertData to small"; Citymapper, 0.1.0.690).
+// And the other apps' services another app may bind (megler.PhoneApps.queryServices, megler.HostedApps, which binds them
+// inside this app): queryIntentServices and resolveService find them after the app's own and Google's, getServiceInfo and
+// getPackageInfo with GET_SERVICES tell of them, and getResourcesForApplication gives the resources of an app whose service
+// runs here. Total Commander lists its plug-ins by their service's action and took each for not installed.
 package android.content.pm;
 
 import android.content.ComponentName;
@@ -190,7 +194,7 @@ public class PackageManager {
     public ActivityInfo getReceiverInfo(ComponentName c, ComponentInfoFlags flags) throws NameNotFoundException { return getReceiverInfo(c, (int) flags.getValue()); }
     public ProviderInfo getProviderInfo(ComponentName c, ComponentInfoFlags flags) throws NameNotFoundException { return getProviderInfo(c, (int) flags.getValue()); }
     public ActivityInfo getReceiverInfo(ComponentName c, int flags) throws NameNotFoundException { for (megler.Manifest.Component r : megler.Manifest.receivers) if (r.name.equals(c.getClassName())) return activity(r); throw new NameNotFoundException(c.toString()); }
-    public ServiceInfo getServiceInfo(ComponentName c, int flags) throws NameNotFoundException { ServiceInfo external = megler.MicroG.resolve(new Intent().setComponent(c)); if (external != null) return external; for (megler.Manifest.Component s : megler.Manifest.services) if (s.name.equals(c.getClassName())) return service(s); throw new NameNotFoundException(c.toString()); }
+    public ServiceInfo getServiceInfo(ComponentName c, int flags) throws NameNotFoundException { ServiceInfo external = megler.MicroG.resolve(new Intent().setComponent(c)); if (external != null) return external; ServiceInfo other = otherService(c); if (other != null) return other; for (megler.Manifest.Component s : megler.Manifest.services) if (s.name.equals(c.getClassName())) return service(s); throw new NameNotFoundException(c.toString()); }
     public ServiceInfo getServiceInfo(ComponentName c, ComponentInfoFlags flags) throws NameNotFoundException { return getServiceInfo(c, (int) flags.getValue()); }
     public ProviderInfo getProviderInfo(ComponentName c, int flags) throws NameNotFoundException { for (megler.Manifest.Component p : megler.Manifest.providers) if (p.name.equals(c.getClassName())) return provider(p); throw new NameNotFoundException(c.toString()); }
     public ProviderInfo resolveContentProvider(String authority, int flags) {
@@ -319,7 +323,14 @@ public class PackageManager {
         try { return megler.ContextImpl.app().getResources().getDrawable(res); } catch (Exception e) { return null; }
     }
     public CharSequence getText(String pkg, int res, ApplicationInfo a) { try { return megler.ContextImpl.app().getResources().getText(res); } catch (Exception e) { return null; } }
-    public android.content.res.Resources getResourcesForApplication(String pkg) throws NameNotFoundException { android.content.Context external = megler.MicroG.context(pkg); if (external == null) external = megler.Gsf.context(pkg); if (external != null) return external.getResources(); if ("android".equals(pkg)) return android.content.res.Resources.meglerPlatform(); if (!mine(pkg)) throw new NameNotFoundException(pkg); return megler.ContextImpl.app().getResources(); }
+    /* Another app's service that app lets others bind (megler.PhoneApps), or null. */
+    private static ServiceInfo otherService(ComponentName c) {
+        if (c == null || mine(c.getPackageName()) || megler.GooglePackages.is(c.getPackageName())) return null;
+        megler.PhoneApps.App a = megler.PhoneApps.find(c.getPackageName());
+        megler.PhoneApps.Service s = a == null ? null : megler.PhoneApps.service(a, new Intent().setComponent(c));
+        return s == null ? null : megler.PhoneApps.serviceInfo(a, s);
+    }
+    public android.content.res.Resources getResourcesForApplication(String pkg) throws NameNotFoundException { android.content.Context external = megler.MicroG.context(pkg); if (external == null) external = megler.Gsf.context(pkg); if (external == null) external = megler.HostedApps.context(pkg); if (external != null) return external.getResources(); if ("android".equals(pkg)) return android.content.res.Resources.meglerPlatform(); if (!mine(pkg)) throw new NameNotFoundException(pkg); return megler.ContextImpl.app().getResources(); }
     public android.content.res.Resources getResourcesForApplication(ApplicationInfo a) throws NameNotFoundException { return getResourcesForApplication(a.packageName); }
     public android.content.res.Resources getResourcesForActivity(ComponentName c) { return megler.ContextImpl.app().getResources(); }
     public String getInstallerPackageName(String pkg) { return "com.android.vending"; }
@@ -364,7 +375,8 @@ public class PackageManager {
     public ResolveInfo resolveService(Intent i, ResolveInfoFlags flags) { return resolveService(i, (int) flags.getValue()); }
     public List<ResolveInfo> queryIntentServices(Intent i, ResolveInfoFlags flags) { return queryIntentServices(i, (int) flags.getValue()); }
     /** The app's own services the intent reaches; and an intent meant for Google Play services (push registration, its APIs)
-     *  resolves to it, as it is installed (megler.GooglePackages) -- apps take the first answer without checking for none. */
+     *  resolves to it, as it is installed (megler.GooglePackages) -- apps take the first answer without checking for none.
+     *  Then the other apps' services it reaches, which would be bound here (megler.PhoneApps.queryServices). */
     public List<ResolveInfo> queryIntentServices(Intent i, int flags) {
         ArrayList<ResolveInfo> l = new ArrayList<>();
         for (megler.Manifest.Component c : megler.Manifest.match(megler.Manifest.services, i)) { ResolveInfo r = new ResolveInfo(); r.serviceInfo = service(c); l.add(r); }
@@ -375,6 +387,7 @@ public class PackageManager {
             try { s.applicationInfo = megler.GooglePackages.applicationInfo(s.packageName); } catch (Exception e) {}
             r.serviceInfo = s; l.add(r);
         }
+        l.addAll(megler.PhoneApps.queryServices(i));
         return l;
     }
     private static boolean googleService(Intent i) {

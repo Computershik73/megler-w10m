@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The other app of the two that work together (tools/build-test-app.sh): the test app crossapp asks it for its activity
+     Shown with a whole Intent, as Total Commander asks its Wi-Fi plug-in to send files, and the run of this app that follows
+     is started with that request (core/tests/mg_java_tests.c, run_plugin): Shown is its first activity, not Main, and says
+     the Intent it got, value by value. And it has a service that app binds (PluginService, by its action or its class),
+     which then runs inside that app (megler.HostedApps): one beside it for the plug-in alone (Private, not exported) and one
+     behind a permission that app does not ask for (Guarded), neither of which another app gets. Once the service runs
+     inside that app, so do the plug-in's screens that are asked for there, as the LAN plug-in's "New server" inside Total
+     Commander: Panel, which the other app opens for a result, and Inner, the plug-in's alone, which its service opens. -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="megler.test.plugin" android:versionCode="7" android:versionName="1.7">
+    <uses-sdk android:minSdkVersion="21" android:targetSdkVersion="29" />
+    <permission android:name="megler.test.plugin.BIND" android:protectionLevel="signature" />
+    <application android:name=".App" android:label="@string/app_name">
+        <activity android:name=".Main" android:label="@string/app_name" android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+        <activity android:name=".Shown" android:label="@string/shown" android:exported="true">
+            <intent-filter>
+                <action android:name="megler.test.plugin.SHOW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/*" />
+            </intent-filter>
+        </activity>
+        <activity android:name=".Panel">
+            <intent-filter>
+                <action android:name="megler.test.plugin.PANEL" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </activity>
+        <activity android:name=".Inner" android:label="@string/inner" android:exported="false" />
+        <service android:name=".PluginService" android:label="@string/service" android:exported="true">
+            <intent-filter>
+                <action android:name="megler.test.plugin.IPlugin" />
+                <category android:name="megler.test.plugin.PluginService" />
+            </intent-filter>
+        </service>
+        <service android:name=".Private" android:exported="false">
+            <intent-filter>
+                <action android:name="megler.test.plugin.PRIVATE" />
+            </intent-filter>
+        </service>
+        <service android:name=".Guarded" android:exported="true" android:permission="megler.test.plugin.BIND">
+            <intent-filter>
+                <action android:name="megler.test.plugin.GUARDED" />
+            </intent-filter>
+        </service>
+    </application>
+</manifest>
