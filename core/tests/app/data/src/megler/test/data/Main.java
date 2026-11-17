@@ -2747,6 +2747,51 @@ public class Main extends Activity {
                     && "41217664-9172-527a-b3d5-edabb50a7d69".equals(android.os.storage.StorageManager.UUID_DEFAULT.toString())
                     && android.os.storage.StorageManager.UUID_DEFAULT.equals(sm.getUuidForPath(getFilesDir()));
         });
+        step("volume-infos", () -> {
+            /* The storage daemon's volumes, all hidden, the way Files by Google looks for an SD card and a USB drive: getVolumes
+               found among StorageManager's declared methods, VolumeInfo and DiskInfo by name, a volume's path, fsUuid, disk and
+               state as fields and its user from getMountUserId, a disk's kind from isAdoptable, isSd and isUsb. A phone without
+               a removable medium has two, mounted and on no disk: the private one at /data and the emulated one, which is the
+               volume getStorageVolumes describes. */
+            android.os.storage.StorageManager sm = (android.os.storage.StorageManager) getSystemService(Context.STORAGE_SERVICE);
+            java.lang.reflect.Method getVolumes = android.os.storage.StorageManager.class.getDeclaredMethod("getVolumes");
+            getVolumes.setAccessible(true);
+            java.util.List<?> list = (java.util.List<?>) getVolumes.invoke(sm);
+            Class<?> disk = Class.forName("android.os.storage.DiskInfo"), volume = Class.forName("android.os.storage.VolumeInfo");
+            java.lang.reflect.Field path = volume.getDeclaredField("path"), fsUuid = volume.getDeclaredField("fsUuid"), onDisk = volume.getDeclaredField("disk"),
+                                    state = volume.getDeclaredField("state");
+            java.lang.reflect.Method mountUser = volume.getDeclaredMethod("getMountUserId"), type = volume.getDeclaredMethod("getType"),
+                                     forUser = volume.getDeclaredMethod("getPathForUser", int.class), id = volume.getDeclaredMethod("getId");
+            boolean kinds = disk.getDeclaredMethod("isAdoptable").getReturnType() == boolean.class && disk.getDeclaredMethod("isSd").getReturnType() == boolean.class
+                    && disk.getDeclaredMethod("isUsb").getReturnType() == boolean.class;
+            int user = (Integer) Context.class.getMethod("getUserId").invoke(this);
+            StringBuilder said = new StringBuilder();
+            boolean ok = kinds && list.size() == 2, sawPrivate = false, sawShared = false;
+            for (Object v : list) {
+                int owner = (Integer) mountUser.invoke(v), kind = (Integer) type.invoke(v);
+                said.append(id.invoke(v)).append(" type=").append(kind).append(" state=").append(state.getInt(v)).append(" user=").append(owner).append(" path=")
+                    .append(path.get(v)).append(" uuid=").append(fsUuid.get(v)).append(" disk=").append(onDisk.get(v)).append("; ");
+                /* (2 is VolumeInfo.STATE_MOUNTED) */
+                ok &= volume.isInstance(v) && state.getInt(v) == 2 && onDisk.get(v) == null && fsUuid.get(v) == null && (owner < 0 || owner == user);
+                if (kind == 1 /* TYPE_PRIVATE */) {
+                    sawPrivate = true;
+                    ok &= "private".equals(id.invoke(v)) && android.os.Environment.getDataDirectory().getPath().equals(path.get(v)) && forUser.invoke(v, user) == null;
+                } else if (kind == 2 /* TYPE_EMULATED */) {
+                    sawShared = true;
+                    ok &= sm.getPrimaryStorageVolume().getClass().getMethod("getId").invoke(sm.getPrimaryStorageVolume()).equals(id.invoke(v))
+                            && owner == user && root.equals(forUser.invoke(v, user)) && root.getParent().equals(path.get(v))
+                            && (Boolean) volume.getMethod("isPrimary").invoke(v) && (Boolean) volume.getMethod("isMountedWritable").invoke(v)
+                            && "Internal storage".equals(volume.getMethod("getDescription").invoke(v));
+                } else {
+                    ok = false;
+                }
+            }
+            java.util.List<?> disks = (java.util.List<?>) android.os.storage.StorageManager.class.getMethod("getDisks").invoke(sm);
+            Object found = android.os.storage.StorageManager.class.getMethod("findVolumeById", String.class).invoke(sm, "private");
+            detail = said + "disks=" + disks.size() + " found=" + (found != null);
+            return ok && sawPrivate && sawShared && disks.isEmpty() && volume.isInstance(found)
+                    && android.os.storage.StorageManager.class.getMethod("findVolumeById", String.class).invoke(sm, "public:179,1") == null;
+        });
         step("space", () -> {
             android.os.StatFs fs = new android.os.StatFs(root.getPath()), data = new android.os.StatFs(android.os.Environment.getDataDirectory().getPath());
             long total = fs.getTotalBytes(), free = fs.getAvailableBytes();

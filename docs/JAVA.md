@@ -862,6 +862,15 @@ Java's calls arrive there.
   hidden `getVolumeList`, `getVolumePaths` and `getVolumeState`, called by
   reflection as an old file manager calls them, give the same volume, its
   path, and `unknown` for a path that is none. `UUID_DEFAULT` is Android's.
+- `volume-infos`: the storage daemon's volumes, read the way Files by Google
+  looks for an SD card and a USB drive: the hidden `getVolumes` among
+  `StorageManager`'s declared methods, `android.os.storage.VolumeInfo` and
+  `DiskInfo` by name, a volume's `path`, `fsUuid`, `disk` and `state` as
+  fields. Two volumes, mounted and on no disk: the private one at
+  `Environment.getDataDirectory()` and the emulated one, with the primary
+  `StorageVolume`'s id, whose folder of the user (`getPathForUser`) is the
+  shared storage. `getDisks` is empty; `findVolumeById` finds "private" and
+  nothing for an id that is none.
 - `space`: `StatFs` on the shared storage and on `/data`: a total of at least
   a gigabyte, free space within it, and the same answer whichever way it is
   asked -- the long calls, the old int ones multiplied as longs,
@@ -6545,7 +6554,19 @@ on a looper thread of its own and takes it back with `next()`.
   `getStorageVolumes` did not exist before Android 7. There is one volume,
   the shared storage, which the framework's own `StorageVolume` describes; a path
   that is no volume is "unknown". And `UUID_DEFAULT` is Android's constant
-  (it was null), which is what `getUuidForPath` answers.
+  (it was null), which is what `getUuidForPath` answers. The storage
+  daemon's view, hidden as well: `getVolumes` was a generated empty list and
+  `VolumeInfo.java` and `DiskInfo.java` were not there, so that Files by
+  Google, which reads them by reflection for an SD card and a USB drive,
+  logged "Unable to obtain StorageManager volumes" at each look
+  (`ClassNotFoundException: android.os.storage.DiskInfo`). The two classes
+  are Android's values, and `getVolumes` answers what Android answers on a
+  phone without a removable medium: the private volume at `/data` and the
+  emulated one ("emulated;0", primary, the user's), neither on a disk;
+  `getDisks` is empty, `findVolumeById`, `findVolumeByUuid` and
+  `getBestVolumeDescription` look in that list, `getWritablePrivateVolumes`
+  is the private one. No SD card or USB drive is made up. The data app's
+  step "volume-infos".
 - `android/os/Environment.java`: `getDataDirectory()` is `/data`, as on
   Android; the framework's own file answered the app's own folder, so that the documented
   `new File(getDataDirectory(), "data/" + packageName + ...)` named that

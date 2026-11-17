@@ -3650,7 +3650,7 @@ static int run_data(void)
     static const char *const steps[] = { "open", "kept", "insert", "query", "types", "update", "delete", "rollback", "commit", "constraint", "statement", "text",
                                          "bad-sql", "memory", "upgrade", "wal-restored", "left",
                                          /* And the storage as an app sees it. */
-                                         "environment", "own-folders", "cache-cleared", "volumes", "space",
+                                         "environment", "own-folders", "cache-cleared", "volumes", "volume-infos", "space",
                                          /* And the phone's media through MediaStore (megler.MediaProvider): saved to the gallery,
                                             seen as the storage permission lets it -- the first run only what it saved itself --,
                                             queried with the app's SQL, read, thumbnailed, watched, scanned and deleted. */
