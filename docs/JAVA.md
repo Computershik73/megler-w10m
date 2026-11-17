@@ -4552,15 +4552,36 @@ What a Java app asks of the phone beyond its window goes to the shell through
   - The hosted code's own `bindService`, `startService` and `stopService` for
     its own services are resolved in its own manifest, exported or not, in
     the same scope (Total Commander's LAN plug-in binds its
-    `ForegroundService` and casts the Binder to its class). Its activities
-    are not hosted: one it starts opens in that app's own process.
+    `ForegroundService` and casts the Binder to its class).
+  - Its activities, once its service runs here: a plug-in's service and its
+    screens are one app. Total Commander's LAN plug-in asks its host to start
+    its `ConnectActivity` ("New server"), which begins with the service's
+    own instance (a static field), saves the server in the plug-in's
+    preferences and tells the service by a broadcast within the package; in
+    the plug-in's own process there is no such service and the preferences
+    are another folder's. So an activity of a package that is hosted here
+    opens here (`megler.HostedApps.activity`, asked by
+    `AppRunner.startActivity` before the phone's apps): made by the
+    package's class loader with a Context of that package, its theme and
+    label the manifest's (the application's where it names none), on the
+    asking app's activity stack, its result handed back as within one app.
+    The asking app is given the exported ones (one with an intent filter is
+    exported unless it says not, as before Android 12) whose permission, if
+    any, it requests; the hosted code is given all of its own, by a class or
+    by an action with no package (the host app's own activities first).
+    `Context.startActivity` of a hosted service goes the same way. The
+    launcher's intent is not taken: it opens the app itself. No package is
+    hosted for an activity alone: without its service bound, the other app's
+    activity opens in that app's own process, as above. Launch modes are not
+    applied to hosted activities.
   - `megler.HostedApps.binder(context, intent)` is the same for Megler's own
     classes: the Binder of a package's service by an Intent, in this process,
     or null. `megler.HostedApps.handle(package, handler)` sets Megler's own
     answer for a package's services, asked before the phone's apps are looked
     at.
   - The test apps `crossapp` and `plugin` (`services`, `bind`, `call`,
-    `callback`, `bind-action`, `unbind`, `refused`, `entry`, `handler`).
+    `callback`, `bind-action`, `unbind`, `refused`, `entry`, `handler`,
+    `activity`, `activity-own`, `activity-refused`).
 - **Other apps: their signatures, uids, comings and goings.**
   - `activities.json` also has the certificates the APK is signed with
     (`"certificates"`, each DER in hex): the APK Signing Block's v3 signer's,

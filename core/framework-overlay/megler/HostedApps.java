@@ -30,12 +30,22 @@
 // of its own that throws ends alone (megler.AppRunner.UncaughtLogging: a service scope's thread). Its content providers are
 // not made, and only its base APK is read (no splits).
 //
+// Its activities, once it runs here: a plug-in's service and its screens are one app -- Total Commander's LAN plug-in asks
+// its host to start its ConnectActivity ("New server"), which begins with a call of the service's static instance and tells
+// the service of the server it saved by a broadcast within its package. In the plug-in's own app (megler.PhoneApps.start)
+// there is no such instance, and the settings are another folder's. So an activity of a package that is hosted here already
+// is made here too (activity, newActivity; megler.AppRunner.startActivity and make): in the package's class scope, on a
+// Context of that package, with the Application its services have -- one another app may open when the asking app wants
+// it, any of its own when the package's own code does. No package is hosted for an activity alone: an app that only starts
+// another's activity gets that app, as before.
+//
 // The hosted code's own use of its services goes the same way: its Context's bindService, startService and stopService reach
 // megler.Services, which finds none of the asking app's and asks here, where a hosted package's intents for itself are
 // resolved in its own manifest, exported or not. (The LAN plug-in's service binds its own ForegroundService and casts the
 // Binder to its class: one scope, one instance.)
 package megler;
 
+import android.app.Activity;
 import android.app.Application;
 import android.app.Service;
 import android.content.ComponentName;
@@ -166,6 +176,12 @@ public final class HostedApps {
         String p = from == null ? null : from.getPackageName();
         if (p == null || p.equals(Native.packageName())) return null;
         synchronized (sHosts) { return sHosts.get(p); }
+    }
+    /* The hosted package that activity is one of, or null. */
+    private static Host hostOf(Manifest.Component c) {
+        if (c == null) return null;
+        synchronized (sHosts) { for (Host h : sHosts.values()) if (h.activities.contains(c)) return h; }
+        return null;
     }
     /* The package an intent is for: its component's, else the one it names, else the asking hosted package's own. */
     private static String packageOf(Host own, Intent i) {
@@ -374,12 +390,76 @@ public final class HostedApps {
         return -1;
     }
 
+    /**
+     * The activity an intent opens in a package that runs here already for its services, or null (megler.AppRunner.startActivity
+     * asks, after Google Play services' and before the phone's other apps). The intent names the package, by its component
+     * or setPackage; the activity is one another app may open -- exported, enabled, behind no permission this app does not ask
+     * for -- or any enabled one of the package when its own code asks (`from` its Context, its service or its activity). An
+     * intent of the package's own code that names no package is its own when its action is not Android's and the asking app
+     * has no activity for it. Never the launcher's intent, which is the package's own app.
+     */
+    public static Manifest.Component activity(Context from, Intent i) {
+        // (What tells an intent is none of these first: every activity an app starts is asked of here.)
+        synchronized (sHosts) { if (sHosts.isEmpty()) return null; }
+        if (i == null || PhoneApps.isLauncherIntent(i)) return null;
+        Host own = hostOf(from);
+        String pkg = i.getComponent() != null ? i.getComponent().getPackageName() : i.getPackage();
+        if (pkg == null) {
+            String action = i.getAction();
+            if (own == null || action == null || action.startsWith("android.") || Manifest.resolve(i) != null) return null;
+            pkg = own.pkg;
+        }
+        Host h;
+        synchronized (sHosts) { h = sHosts.get(pkg); }
+        if (h == null) return null;
+        ArrayList<Manifest.Component> open = new ArrayList<>();
+        for (Manifest.Component c : h.activities)
+            if (c.enabled && (own == h || (c.exported && (c.permission == null || Manifest.permissions.contains(c.permission))))) open.add(c);
+        Manifest.Component c = Manifest.resolveIn(open, i);
+        if (c == null && i.getComponent() != null && Manifest.resolveIn(h.activities, i) != null)
+            said("hosted apps: " + named(i) + " is not opened here: it is not for other apps, or behind a permission this app does not ask for");
+        return c;
+    }
+
+    /**
+     * The intent an activity of a hosted package (activity) is started with: a copy, its extras in that package's class scope,
+     * as a Parcel between two processes makes them (megler.Processes.forLoader), its component the activity's.
+     */
+    static Intent intentFor(Manifest.Component c, Intent i) {
+        Host h = hostOf(c);
+        if (h == null) return i;
+        Intent intent = Processes.forLoader(new Intent(i), h.loader());
+        if (intent.getComponent() == null) intent.setComponent(new ComponentName(h.pkg, c.name));
+        return intent;
+    }
+
+    /**
+     * An activity of a hosted package, made and attached (megler.AppRunner.make): by the package's classes, on a Context of
+     * that package of its own, with the package's Application, made first as for its services. Null when the component is
+     * none of a hosted package's.
+     */
+    static Activity newActivity(String cls, Intent intent, Activity caller, int request, Manifest.Component info) throws Exception {
+        Host h = hostOf(info);
+        return h == null ? null : h.activity(cls, intent, caller, request, info);
+    }
+
+    /** The label of the hosted package a Context is of (an activity of it whose manifest names no title), or null. */
+    static CharSequence label(Context c) {
+        synchronized (sHosts) { if (sHosts.isEmpty()) return null; }
+        Host h = hostOf(c);
+        return h == null ? null : h.info.nonLocalizedLabel != null ? h.info.nonLocalizedLabel : h.pkg;
+    }
+
     /* One other package in this process: its APK's resources and manifest, its class scope, its Application, its services. */
     private static final class Host {
         final String pkg, apk;
         final ApplicationInfo info;
         final Resources resources;
         final HostContext context;
+        /* Its preferences' objects: one file, one object, whichever of its contexts asks. */
+        final HashMap<String, SharedPreferences> prefs = new HashMap<>();
+        /* Its activities and their aliases, as its manifest has them: `exported` as Android reads it, a theme in each. */
+        final ArrayList<Manifest.Component> activities;
         final HashMap<String, Entry> entries = new HashMap<>();
         final HashMap<String, Running> running = new HashMap<>();
         final HashMap<String, Integer> startIds = new HashMap<>();
@@ -406,6 +486,7 @@ public final class HostedApps {
             XmlBlock.Parser p = new XmlBlock(manifest, apk).newParser();
             boolean inApp = false;
             Entry service = null;
+            HashSet<String> closed = new HashSet<>();
             int event;
             while ((event = p.next()) != XmlPullParser.END_DOCUMENT) {
                 String tag = p.getName();
@@ -433,9 +514,31 @@ public final class HostedApps {
                 } else if (service != null && "action".equals(tag)) {
                     String action = p.getAttributeValue(NS, "name");
                     if (action != null) service.actions.add(action);
+                } else if (inApp && ("activity".equals(tag) || "activity-alias".equals(tag))) {
+                    // (One that says it is not for other apps; the rest are read below.)
+                    if (!p.getAttributeBooleanValue(NS, "exported", true)) closed.add(full(p.getAttributeValue(NS, "name")));
                 }
             }
-            context = new HostContext(resources, new HashMap<>());
+            activities = Manifest.activitiesIn(manifest, apk, pkg);
+            for (Manifest.Component c : activities) {
+                // One that does not say is for other apps when it has a filter, as Android before 12 has it (and as the shell
+                // describes the app's activities: megler_apk_describe_activities).
+                if (!c.exported && !closed.contains(c.name) && !c.filters.isEmpty()) c.exported = true;
+                // A theme of the package's own choosing in each: an activity with none would get the asking app's
+                // (android.app.Activity.meglerAttach), a number of another app's resources.
+                if (c.theme == 0) c.theme = defaultTheme();
+            }
+            context = new HostContext(resources, prefs);
+        }
+        /* The theme of what names none: the application's, else what the package's target SDK selects on Android
+           (megler.ContextImpl.defaultTheme, which says it of the app itself). */
+        int defaultTheme() {
+            if (info.theme != 0) return info.theme;
+            int t = info.targetSdkVersion;
+            if (t < 11) return IR.style.Theme;
+            if (t < 14) return IR.style.Theme_Holo;
+            if (t < 24) return IR.style.Theme_DeviceDefault;
+            return IR.style.Theme_DeviceDefault_Light_DarkActionBar;
         }
         private String full(String name) {
             return name == null ? null : name.startsWith(".") ? pkg + name : name.indexOf('.') < 0 ? pkg + "." + name : name;
@@ -503,6 +606,13 @@ public final class HostedApps {
             synchronized (running) { if (!running.values().remove(r)) return; }
             try { r.service.onDestroy(); } catch (Throwable t) { android.util.Log.e("Megler", "hosted apps: a service of " + pkg + " failed as it was destroyed", t); }
         }
+        /* One of its activities, made and attached (main thread): a base Context of its own, as each of an app's has. */
+        Activity activity(String cls, Intent intent, Activity caller, int request, Manifest.Component c) throws Exception {
+            Application app = application();
+            Activity a = (Activity) loader().loadClass(cls).newInstance();
+            a.meglerAttach(new HostContext(resources, prefs), app, intent, c, caller, request);
+            return a;
+        }
 
         /*
          * The hosted package's Context: the asking app's in what the system gives (its services, its package manager, its
@@ -515,7 +625,6 @@ public final class HostedApps {
             private Resources.Theme theme;
             private int themeId;
             private android.view.LayoutInflater inflater;
-            /* (A configuration context keeps its preferences' objects: one file, one object, whichever context asks.) */
             HostContext(Resources r, HashMap<String, SharedPreferences> prefs) {
                 super(ContextImpl.app());
                 resources = r;
@@ -532,7 +641,7 @@ public final class HostedApps {
             @Override public synchronized Resources.Theme getTheme() {
                 if (theme == null) {
                     theme = resources.newTheme();
-                    theme.applyStyle(themeId != 0 ? themeId : info.theme != 0 ? info.theme : IR.style.Theme_DeviceDefault_Light_DarkActionBar, true);
+                    theme.applyStyle(themeId != 0 ? themeId : defaultTheme(), true);
                 }
                 return theme;
             }
@@ -578,6 +687,10 @@ public final class HostedApps {
             @Override public ComponentName startService(Intent i) { return Services.start(this, i); }
             @Override public ComponentName startForegroundService(Intent i) { return Services.start(this, i); }
             @Override public boolean stopService(Intent i) { return Services.stop(i); }
+            // And its activities, which may be its own (activity): the LAN plug-in's service starts its screens itself when
+            // Total Commander does not for it.
+            @Override public void startActivity(Intent i) { AppRunner.startActivity(this, i, -1, null); }
+            @Override public void startActivity(Intent i, android.os.Bundle options) { AppRunner.startActivity(this, i, -1, options); }
         }
     }
 }

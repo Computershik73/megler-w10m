@@ -36,7 +36,8 @@ import megler.test.shared.Tag;
  * One app working with another the phone has (the test app plugin), as Total Commander works with its plug-ins. A thread of
  * the app's goes through the steps and says how each went; what the other app got of them the test sees in that app's own
  * run, which follows this one (core/tests/mg_java_tests.c: run_crossapp, run_plugin). The other app's service it binds runs
- * inside this app (megler.HostedApps), and says so in this run.
+ * inside this app (megler.HostedApps), and says so in this run; and so do that app's screens asked for once it does, which
+ * is why the activity for the other app's own run is asked for before the service is bound.
  */
 public class Main extends Activity {
     private static final String T = "CrossAppTest";
@@ -48,6 +49,11 @@ public class Main extends Activity {
     private int ok, failed;
     private String detail = "";
     private Conn first, second;
+    /* The result of the other app's screen that ran here (request 78), and whether this screen is in front. */
+    private volatile CountDownLatch answered;
+    private volatile Intent answer;
+    private volatile int answerCode;
+    private volatile boolean front;
 
     @Override
     protected void onCreate(Bundle state) {
@@ -57,6 +63,29 @@ public class Main extends Activity {
         v.setText("Cross-app");
         setContentView(v);
         new Thread(this::steps, "steps").start();
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        front = true;
+    }
+
+    @Override
+    protected void onPause() {
+        front = false;
+        super.onPause();
+    }
+
+    @Override
+    protected void onActivityResult(int request, int result, Intent data) {
+        super.onActivityResult(request, result, data);
+        Log.i(T, "result of " + request + ": " + result);
+        if (request != 78) return;
+        answerCode = result;
+        answer = data;
+        CountDownLatch l = answered;
+        if (l != null) l.countDown();
     }
 
     @Override
@@ -159,6 +188,25 @@ public class Main extends Activity {
         }
     }
 
+    /* What the other app's service says of its screens: what it heard of them, how many of each were made, what its own one said. */
+    private static String[] state(IBinder b) throws RemoteException {
+        Parcel d = Parcel.obtain(), r = Parcel.obtain();
+        try {
+            d.writeInterfaceToken(IPLUGIN);
+            if (!b.transact(IBinder.FIRST_CALL_TRANSACTION + 2, d, r, 0)) return new String[] { null, "-1", "-1", null };
+            r.readException();
+            return new String[] { r.readString(), String.valueOf(r.readInt()), String.valueOf(r.readInt()), r.readString() };
+        } finally {
+            d.recycle();
+            r.recycle();
+        }
+    }
+
+    private boolean inFront() throws InterruptedException {
+        for (int n = 0; n < 100 && !front; n++) Thread.sleep(100);
+        return front;
+    }
+
     private void steps() {
         PackageManager pm = getPackageManager();
         /* The other app is installed: its package's version and label, and its launcher's intent. */
@@ -177,6 +225,51 @@ public class Main extends Activity {
             ResolveInfo none = pm.resolveActivity(new Intent(PLUGIN + ".SHOW").setPackage(PLUGIN).setDataAndType(uri("notes/1"), "image/png"), 0);
             detail = "resolved=" + (r == null ? null : r.activityInfo.packageName + "/" + r.activityInfo.name) + " none=" + none;
             return r != null && PLUGIN.equals(r.activityInfo.packageName) && (PLUGIN + ".Shown").equals(r.activityInfo.name) && none == null;
+        });
+        /* Such an intent started: the other app is asked for that activity, and the intent waits for it, written out. */
+        step("send-implicit", () -> {
+            int before = waiting();
+            Intent show = new Intent(PLUGIN + ".SHOW").setPackage(PLUGIN).setDataAndType(uri("notes/1"), "text/plain").putExtra("text", "first");
+            boolean sent = onMain(() -> startActivity(show));
+            detail += " sent=" + sent + " waiting=" + before + "->" + waiting();
+            return sent && before == 0 && waiting() == 1;
+        });
+        /*
+         * The other app's activity by its class, for a result, with an Intent of everything: an action, data with a type, two
+         * categories, flags, and extras -- strings, numbers, arrays, a Bundle, a list of Uris (what Total Commander's Wi-Fi
+         * plug-in gets the files to send in), a Parcelable and a Serializable of classes both apps have, an Intent. A
+         * Parcelable this app alone has goes and is left out where it is read; a Binder does not go at all.
+         */
+        step("send", () -> {
+            Intent i = new Intent(PLUGIN + ".SHOW").setClassName(PLUGIN, PLUGIN + ".Shown").setDataAndType(uri("notes/7?x=1#part"), "text/plain")
+                .addCategory(Intent.CATEGORY_DEFAULT).addCategory("megler.test.category.EXTRA").addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+            i.putExtra("text", "hello, plug-in").putExtra("wide", "é中😀").putExtra("count", 42).putExtra("big", 1234567890123L)
+                .putExtra("flag", true).putExtra("ratio", 2.5).putExtra("longs", new long[] { 1, -2, 3000000000L }).putExtra("bytes", new byte[] { 1, -2, 127 })
+                .putExtra("strings", new String[] { "a", null, "c" });
+            Bundle nested = new Bundle();
+            nested.putString("inner", "in");
+            nested.putInt("n", 5);
+            nested.putStringArrayList("list", new ArrayList<>(Arrays.asList("x", "y")));
+            i.putExtra("nested", nested);
+            ArrayList<Uri> uris = new ArrayList<>(Arrays.asList(uri("files/a.txt"), uri("files/b%20c.txt")));
+            i.putParcelableArrayListExtra("uris", uris);
+            i.putExtra(Intent.EXTRA_STREAM, uris.get(0));
+            Bundle more = new Bundle();
+            more.putString("k", "v");
+            i.putExtra("note", new Note(7, "seven", uri("notes/7"), more, new Note(8, "eight", null, null, null), "t1", "t2"));
+            i.putExtra("notes", new Parcelable[] { new Note(1, "one", null, null, null), new Note(2, "two", null, null, null) });
+            i.putExtra("tag", new Tag("blue", 3));
+            i.putExtra("only", new Only(5));
+            i.putExtra("inner", new Intent("megler.test.INNER").putExtra("deep", "down"));
+            Bundle binder = new Bundle();
+            binder.putBinder("binder", new Binder());
+            i.putExtras(binder);
+            boolean sent = onMain(() -> startActivityForResult(i, 77));
+            String[] names = INTENTS.list();
+            detail += " sent=" + sent + " waiting=" + Arrays.toString(names);
+            if (names == null || names.length != 2) return false;
+            for (String name : names) if (!name.matches("[0-9a-f-]+")) return false;
+            return sent;
         });
         /*
          * The other app's services another app may bind, found as Total Commander finds its plug-ins: by the action alone,
@@ -331,50 +424,76 @@ public class Main extends Activity {
             detail = "bound=" + bound + " got=" + (got == answer) + " name=" + c.name + " main=" + c.main + " left=" + left + " direct=" + (direct == answer) + " after=" + after;
             return bound && got == answer && c.main && new ComponentName(handled, handled + ".ACTION").equals(c.name) && !left && direct == answer && !after;
         });
-        /* Such an intent started: the other app is asked for that activity, and the intent waits for it, written out. */
-        step("send-implicit", () -> {
+        /*
+         * A screen of the other app asked for now that its service runs here, by an action within the package and for a
+         * result, as Total Commander opens its LAN plug-in's "New server": it runs here too (megler.HostedApps.activity), as
+         * the other app's -- its package, its label for a title, its Application, its service's own instance -- with the
+         * extra made by its own class, and its result comes back with one made by this app's. The service hears the
+         * broadcast the screen sends within its package. Nothing is asked of the phone: no intent waits for the other app
+         * but the two from before.
+         */
+        step("activity", () -> {
             int before = waiting();
-            Intent show = new Intent(PLUGIN + ".SHOW").setPackage(PLUGIN).setDataAndType(uri("notes/1"), "text/plain").putExtra("text", "first");
-            boolean sent = onMain(() -> startActivity(show));
-            detail += " sent=" + sent + " waiting=" + before + "->" + waiting();
-            return sent && before == 0 && waiting() == 1;
+            answered = new CountDownLatch(1);
+            Intent panel = new Intent(PLUGIN + ".PANEL").setPackage(PLUGIN).putExtra("note", new Note(9, "nine", null, null, null));
+            boolean sent = onMain(() -> startActivityForResult(panel, 78));
+            boolean came = answered.await(30, TimeUnit.SECONDS);
+            Intent data = answer;
+            Object note = data == null ? null : data.getParcelableExtra("note");
+            String where = data == null ? null : data.getStringExtra("where");
+            String[] s = state(first.binder);
+            for (int n = 0; n < 50 && s[0] == null; n++) {
+                Thread.sleep(100);
+                s = state(first.binder);
+            }
+            boolean back = inFront();
+            detail += " sent=" + sent + " came=" + came + " code=" + answerCode + " action=" + (data == null ? null : data.getAction()) + " note=" + note + " mine=" + (note instanceof Note)
+                + " where=" + where + " state=" + Arrays.toString(s) + " back=" + back + " waiting=" + before + "->" + waiting();
+            return sent && came && answerCode == RESULT_OK && data != null && (PLUGIN + ".PANEL_DONE").equals(data.getAction()) && note instanceof Note && ((Note) note).id == 10
+                && (PLUGIN + "|Megler Plug-in|" + PLUGIN + "/.Panel|true").equals(where) && ("panel 1 in " + PLUGIN).equals(s[0]) && "1".equals(s[1]) && "0".equals(s[2]) && back
+                && before == 2 && waiting() == 2;
         });
         /*
-         * The other app's activity by its class, for a result, with an Intent of everything: an action, data with a type, two
-         * categories, flags, and extras -- strings, numbers, arrays, a Bundle, a list of Uris (what Total Commander's Wi-Fi
-         * plug-in gets the files to send in), a Parcelable and a Serializable of classes both apps have, an Intent. A
-         * Parcelable this app alone has goes and is left out where it is read; a Binder does not go at all.
+         * The other app's screen for itself alone, which its service opens (a call asks it to): made here as the plug-in's
+         * own. It opens the first screen again by an action with no package, which here is the plug-in's, not this app's nor
+         * the phone's, and has its result, of the plug-in's own classes; then this app's screen is in front again.
          */
-        step("send", () -> {
-            Intent i = new Intent(PLUGIN + ".SHOW").setClassName(PLUGIN, PLUGIN + ".Shown").setDataAndType(uri("notes/7?x=1#part"), "text/plain")
-                .addCategory(Intent.CATEGORY_DEFAULT).addCategory("megler.test.category.EXTRA").addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
-            i.putExtra("text", "hello, plug-in").putExtra("wide", "é中😀").putExtra("count", 42).putExtra("big", 1234567890123L)
-                .putExtra("flag", true).putExtra("ratio", 2.5).putExtra("longs", new long[] { 1, -2, 3000000000L }).putExtra("bytes", new byte[] { 1, -2, 127 })
-                .putExtra("strings", new String[] { "a", null, "c" });
-            Bundle nested = new Bundle();
-            nested.putString("inner", "in");
-            nested.putInt("n", 5);
-            nested.putStringArrayList("list", new ArrayList<>(Arrays.asList("x", "y")));
-            i.putExtra("nested", nested);
-            ArrayList<Uri> uris = new ArrayList<>(Arrays.asList(uri("files/a.txt"), uri("files/b%20c.txt")));
-            i.putParcelableArrayListExtra("uris", uris);
-            i.putExtra(Intent.EXTRA_STREAM, uris.get(0));
-            Bundle more = new Bundle();
-            more.putString("k", "v");
-            i.putExtra("note", new Note(7, "seven", uri("notes/7"), more, new Note(8, "eight", null, null, null), "t1", "t2"));
-            i.putExtra("notes", new Parcelable[] { new Note(1, "one", null, null, null), new Note(2, "two", null, null, null) });
-            i.putExtra("tag", new Tag("blue", 3));
-            i.putExtra("only", new Only(5));
-            i.putExtra("inner", new Intent("megler.test.INNER").putExtra("deep", "down"));
-            Bundle binder = new Bundle();
-            binder.putBinder("binder", new Binder());
-            i.putExtras(binder);
-            boolean sent = onMain(() -> startActivityForResult(i, 77));
-            String[] names = INTENTS.list();
-            detail += " sent=" + sent + " waiting=" + Arrays.toString(names);
-            if (names == null || names.length != 2) return false;
-            for (String name : names) if (!name.matches("[0-9a-f-]+")) return false;
-            return sent;
+        step("activity-own", () -> {
+            Parcel d = Parcel.obtain(), r = Parcel.obtain();
+            boolean taken;
+            try {
+                d.writeInterfaceToken(IPLUGIN);
+                taken = first.binder.transact(IBinder.FIRST_CALL_TRANSACTION + 3, d, r, 0);
+                r.readException();
+            } finally {
+                d.recycle();
+                r.recycle();
+            }
+            String want = PLUGIN + "|Inner|true|5/-1/" + PLUGIN + ".PANEL_DONE/Note(10, ten, null, [], null)", heard = "panel 2 in " + PLUGIN;
+            String[] s = state(first.binder);
+            for (int n = 0; n < 100 && !(want.equals(s[3]) && heard.equals(s[0])); n++) {
+                Thread.sleep(100);
+                s = state(first.binder);
+            }
+            Thread.sleep(300);
+            boolean back = inFront();
+            detail = "taken=" + taken + " state=" + Arrays.toString(s) + " back=" + back + " waiting=" + waiting();
+            return taken && want.equals(s[3]) && heard.equals(s[0]) && "2".equals(s[1]) && "1".equals(s[2]) && back && waiting() == 2;
+        });
+        /*
+         * What does not open here (megler.HostedApps.activity answers none, and the request goes on to the phone as before):
+         * the other app's screen for itself alone when this app asks for it, its launcher's intent, which is that app
+         * itself, its action with no package, an app that does not run here. What another app may open does, by its class.
+         */
+        step("activity-refused", () -> {
+            Method activity = Class.forName("megler.HostedApps").getMethod("activity", Context.class, Intent.class);
+            Object inner = activity.invoke(null, this, new Intent().setClassName(PLUGIN, PLUGIN + ".Inner"));
+            Object launcher = activity.invoke(null, this, pm.getLaunchIntentForPackage(PLUGIN));
+            Object nowhere = activity.invoke(null, this, new Intent(PLUGIN + ".PANEL"));
+            Object absent = activity.invoke(null, this, new Intent(PLUGIN + ".PANEL").setPackage("megler.test.absent"));
+            Object panel = activity.invoke(null, this, new Intent().setClassName(PLUGIN, PLUGIN + ".Panel"));
+            detail = "inner=" + inner + " launcher=" + launcher + " nowhere=" + nowhere + " absent=" + absent + " panel=" + (panel != null);
+            return inner == null && launcher == null && nowhere == null && absent == null && panel != null;
         });
         Log.i(T, "done ok=" + ok + " failed=" + failed);
     }

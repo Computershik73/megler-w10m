@@ -289,6 +289,10 @@ public final class AppRunner {
         return !sStack.isEmpty() && sStack.get(0) == a;
     }
     public static CharSequence appLabel(Context c) {
+        // (An activity of another package that runs here, megler.HostedApps: that app's label, not this one's number read in
+        // its resources.)
+        CharSequence hosted = HostedApps.label(c);
+        if (hosted != null) return hosted;
         try { if (Manifest.appLabel != 0) return c.getResources().getText(Manifest.appLabel); } catch (Exception e) {}
         return Native.packageName();
     }
@@ -350,6 +354,9 @@ public final class AppRunner {
     private static Activity make(String cls, Intent intent, Activity caller, int request, Manifest.Component info) throws Exception {
         // Megler's screens of Android's Settings are the system's, not the app's: its factory does not make them. Google Play
         // services' activities hosted here are GmsCore's, made in its scope on its context with its Application (MicroG).
+        // And an activity of another app whose services run here is that package's, made the same way (megler.HostedApps).
+        Activity other = HostedApps.newActivity(cls, intent, caller, request, info);
+        if (other != null) return other;
         boolean gms = MicroG.hosts(info);
         Activity a = SystemScreens.isScreen(cls) ? (Activity) Class.forName(cls).newInstance()
                 : gms ? MicroG.newActivity(cls) : sFactory.instantiateActivity(classLoader(), cls, intent);
@@ -563,6 +570,23 @@ public final class AppRunner {
             sHandler.post(() -> {
                 try { launch(cls, intent, caller, request, hosted); }
                 catch (Throwable t) { android.util.Log.e("Megler", "starting " + cls + " failed", t); }
+            });
+            return;
+        }
+        // An activity of another app whose services run in this process already (megler.HostedApps.activity): it runs here
+        // too, in that package's class scope, on its context and with its Application -- a plug-in's screen and its service
+        // are one app. Total Commander starts the LAN plug-in's ConnectActivity for it ("New server"), which begins with
+        // the service's static instance and saves the server where the service reads it: in the plug-in's own app (below)
+        // neither is there.
+        final Manifest.Component plugged = HostedApps.activity(from, i);
+        if (plugged != null) {
+            final Activity caller = from instanceof Activity ? (Activity) from : top();
+            final Intent intent = HostedApps.intentFor(plugged, i);
+            final String cls = "activity-alias".equals(plugged.kind) && plugged.parentActivity != null ? plugged.parentActivity : plugged.name;
+            android.util.Log.i("Megler", "hosted apps: " + intent.getComponent().getPackageName() + "/" + cls + " opens inside " + Native.packageName());
+            sHandler.post(() -> {
+                try { launch(cls, intent, caller, request, plugged); }
+                catch (Throwable t) { android.util.Log.e("Megler", "hosted apps: starting " + cls + " failed", t); }
             });
             return;
         }

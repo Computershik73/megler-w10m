@@ -4915,23 +4915,28 @@ static int run_pickers(void)
 
 /*
  * Two apps that work together, as Total Commander and its plug-ins do; this is the one that asks (the test app crossapp; the
- * phone has the test app plugin beside it, MG_JAVA_OTHER_APKS). It finds the other app installed. It finds the other app's
+ * phone has the test app plugin beside it, MG_JAVA_OTHER_APKS). It finds the other app installed. It resolves an intent to
+ * the other app's activity and asks for that activity twice: by an intent its filter takes, and by its class for a result,
+ * with an Intent of everything. The shell hears the package and the class each time; the request names the file the Intent
+ * was written into as well (megler.PhoneApps), and the last one stays in the data folder for the plugin app's run, which
+ * is started with it and says what it got (run_plugin). Then it finds the other app's
  * service as Total Commander finds a plug-in's (by the action alone), binds it by the action and the class, and calls it:
  * the service runs inside this app (megler.HostedApps), made by the other app's own classes in an Application of that app
  * made once, with that app's package name, resources and a data folder of its own in the folder every app shares, and the
  * Binder it gives takes a call and calls back a Binder handed to it. Bound again by the action within the package it is the
  * same service; unbound it is destroyed, and bound again made again. The other app's service for itself alone, the one
  * behind a permission this app does not ask for, and a service of an app the phone has not are not bound (false, and the
- * log says why). Megler's own entry gives the same Binder, and a handler set for a package answers for it. Then it resolves
- * an intent to the other app's activity and asks for that activity twice: by an intent its filter takes, and by its class
- * for a result, with an Intent of everything. The shell hears the package and the class each time; the request names the
- * file the Intent was written into as well (megler.PhoneApps), and the last one stays in the data folder for the plugin
- * app's run, which is started with it and says what it got (run_plugin).
+ * log says why). Megler's own entry gives the same Binder, and a handler set for a package answers for it. And now that the
+ * other app's service runs here, so do its screens that are asked for here (megler.HostedApps.activity; Total Commander's
+ * LAN plug-in's "New server"): one this app opens for a result, which says it is the other app's, with its service's
+ * instance, tells the service by a broadcast within its package and answers; one for the plug-in alone, which the service
+ * opens itself and which opens the first again by an action with no package. Neither is asked of the shell. This app is
+ * not given the screen for the plug-in alone, nor the launcher's intent, here.
  */
 static int run_crossapp(void)
 {
-    static const char *const steps[] = { "installed", "resolve", "services", "bind", "call", "callback", "bind-action", "unbind", "refused", "entry",
-                                         "handler", "send-implicit", "send" };
+    static const char *const steps[] = { "installed", "resolve", "send-implicit", "send", "services", "bind", "call", "callback", "bind-action", "unbind",
+                                         "refused", "entry", "handler", "activity", "activity-own", "activity-refused" };
     static const char want[] = "launch=megler.test.plugin/megler.test.plugin.Shown;launch=megler.test.plugin/megler.test.plugin.Shown;";
     static const char asked[] = "megler.test.plugin.Shown~";
     char text[120], heard[sizeof(g_system_heard)], *path, *request;
@@ -4967,6 +4972,20 @@ static int run_crossapp(void)
     CHECK(find_line("I/PluginTest: service destroyed", 0) >= 0 && find_line("I/PluginTest: its own service destroyed", 0) >= 0);
     CHECK(find_line("hosted apps: megler.test.plugin has no service another app may bind for megler.test.plugin/.Private", 0) >= 0);
     CHECK(find_line("hosted apps: megler.test.plugin/megler.test.plugin.Guarded is not bound here: this app does not ask for its permission megler.test.plugin.BIND", 0) >= 0);
+    /* Its screens ran here too once its service did: the one this app asked for, and the one the service opened itself,
+       which opened the first again. Each said whose it was, and the service heard both; none was asked of the phone (the
+       two launches above are all). The screen for the plug-in alone is not this app's to open here. */
+    CHECK(find_line("hosted apps: megler.test.plugin/megler.test.plugin.Panel opens inside megler.test.crossapp", 0) >= 0);
+    CHECK(find_line("hosted apps: megler.test.plugin/megler.test.plugin.Inner opens inside megler.test.crossapp", 0) >= 0);
+    CHECK(find_line("D/Megler: launch megler.test.plugin.Panel", 0) >= 0 && find_line("D/Megler: launch megler.test.plugin.Inner", 0) >= 0);
+    CHECK(find_line("I/PluginTest: panel created 1 package=megler.test.plugin title=Megler Plug-in note=Note(9, nine, null, [], null) mine=true application=1 "
+                    "service=true", 0) >= 0);
+    CHECK(find_line("I/PluginTest: inner created 1 megler.test.plugin|Inner|true", 0) >= 0);
+    CHECK(find_line("I/PluginTest: panel created 2 package=megler.test.plugin title=Megler Plug-in note=null mine=false application=1 service=true", 0) >= 0);
+    CHECK(find_line("I/PluginTest: service heard panel 1 in megler.test.plugin", 0) >= 0 && find_line("I/PluginTest: service heard panel 2 in megler.test.plugin", 0) >= 0);
+    CHECK(find_line("I/PluginTest: inner heard megler.test.plugin|Inner|true|5/-1/megler.test.plugin.PANEL_DONE/Note(10, ten, null, [], null)", 0) >= 0);
+    CHECK(find_line("I/CrossAppTest: result of 78: -1", 0) >= 0 && find_line("I/CrossAppTest: result of 77", 0) < 0 && find_line("I/CrossAppTest: result of 5", 0) < 0);
+    CHECK(find_line("hosted apps: megler.test.plugin/.Inner is not opened here: it is not for other apps", 0) >= 0);
     CHECK(find_line("phone apps: starting megler.test.plugin/megler.test.plugin.Shown", 0) >= 0);
     CHECK(find_line("phone apps: megler.test.crossapp.Main waits for the result of megler.test.plugin/megler.test.plugin.Shown (request 77)", 0) >= 0);
     /* What cannot go to another app's process is said, by its key and class, and the rest goes. */

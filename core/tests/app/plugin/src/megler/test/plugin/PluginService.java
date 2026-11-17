@@ -1,8 +1,11 @@
 package megler.test.plugin;
 
 import android.app.Service;
+import android.content.BroadcastReceiver;
 import android.content.ComponentName;
+import android.content.Context;
 import android.content.Intent;
+import android.content.IntentFilter;
 import android.content.ServiceConnection;
 import android.os.Binder;
 import android.os.IBinder;
@@ -20,17 +23,36 @@ import java.io.IOException;
  * is no class of this app's, so each call is a transaction with a Parcel. It tells where it runs -- its Context's package,
  * a string of its own resources, its files folder, its Application -- and calls back the Binder it is handed. And it binds
  * a service of its own that no other app may, and takes that one's Binder for the class it is: the plug-in's code is one
- * scope here, as in its own process (Total Commander's LAN plug-in does so with its ForegroundService).
+ * scope here, as in its own process (Total Commander's LAN plug-in does so with its ForegroundService). Its screens count on
+ * it as that plug-in's do: they take its instance from a static field, and tell it what was saved by a broadcast within the
+ * package, which it hears with a receiver it registers; and it opens one of them itself.
  */
 public class PluginService extends Service {
     private static final String T = "PluginTest";
     static final String DESCRIPTOR = "megler.test.plugin.IPlugin", CALLBACK = "megler.test.plugin.ICallback";
+    /* What the plug-in's screens tell the service with (Panel). */
+    static final String SAVED = "megler.test.plugin.SAVED";
     /* describe(): the package, the label, the files folder, the Application's class, how many Applications and services were made, its own service bound. */
     static final int DESCRIBE = IBinder.FIRST_CALL_TRANSACTION;
     /* callBack(Binder, String): calls the Binder's first transaction with "plugin heard: <the string>", answers its answer plus one. */
     static final int CALL_BACK = IBinder.FIRST_CALL_TRANSACTION + 1;
+    /* state(): what the service heard of its screens, how many of each were made, what the one of its own said. */
+    static final int STATE = IBinder.FIRST_CALL_TRANSACTION + 2;
+    /* open(): the service opens the plug-in's screen for itself alone (Inner). */
+    static final int OPEN = IBinder.FIRST_CALL_TRANSACTION + 3;
     static int made;
+    /* The service that runs, for the plug-in's screens. */
+    static volatile PluginService instance;
     private volatile boolean own;
+    private volatile String heard;
+
+    private final BroadcastReceiver saved = new BroadcastReceiver() {
+        @Override
+        public void onReceive(Context context, Intent intent) {
+            heard = intent.getStringExtra("name") + " in " + context.getPackageName();
+            Log.i(T, "service heard " + heard);
+        }
+    };
 
     private final ServiceConnection mine = new ServiceConnection() {
         @Override
@@ -78,6 +100,19 @@ public class PluginService extends Service {
                 reply.writeInt(answer + 1);
                 return true;
             }
+            case STATE:
+                data.enforceInterface(DESCRIPTOR);
+                reply.writeNoException();
+                reply.writeString(heard);
+                reply.writeInt(Panel.created);
+                reply.writeInt(Inner.created);
+                reply.writeString(Inner.said);
+                return true;
+            case OPEN:
+                data.enforceInterface(DESCRIPTOR);
+                startActivity(new Intent(PluginService.this, Inner.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+                reply.writeNoException();
+                return true;
             default:
                 return super.onTransact(code, data, reply, flags);
             }
@@ -96,6 +131,8 @@ public class PluginService extends Service {
         }
         boolean asked = bindService(new Intent(this, Private.class), mine, BIND_AUTO_CREATE);
         if (!asked) Log.e(T, "its own service was not bound");
+        registerReceiver(saved, new IntentFilter(SAVED));
+        instance = this;
     }
 
     @Override
@@ -106,6 +143,8 @@ public class PluginService extends Service {
 
     @Override
     public void onDestroy() {
+        if (instance == this) instance = null;
+        unregisterReceiver(saved);
         unbindService(mine);
         Log.i(T, "service destroyed");
         super.onDestroy();
