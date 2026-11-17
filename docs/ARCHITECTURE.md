@@ -879,6 +879,19 @@ can share (`eglGetCurrentContext` as the share of a context made elsewhere).
 The configuration `onSurfaceCreated` is given is what the app's
 `EGLConfigChooser` chose, or one of the sizes it asked for.
 
+A surface that cannot be made does not end the thread. Refused beside a context
+that holds what the renderer made (a surface here is memory of the same Direct3D
+device as the app's textures, so a game that fills it leaves no room for one:
+Age of History II after a suspension), the context is lost, as Android's is when
+an app in the background loses its graphics memory: it is let go of with all it
+held, a new one is made, the surface is asked for again at once, and the
+renderer gets `onSurfaceCreated`. Refused beside a new context as well, it is
+asked for again every second. A frame the view asked for meanwhile
+(`RENDERMODE_WHEN_DIRTY` is asked once) is drawn on the surface made later. The
+log says each (`java: GLThread N has no surface to draw on ...`), and with an
+`EGL_BAD_ALLOC` whether the Direct3D device is there and what memory is left
+(`egl: as it was refused, ...`).
+
 **Composition, as built (the first way; `mg_java_gl.c`).** A window surface is a pbuffer on
 ANGLE's device. At each swap its frame is read back into memory (`glReadPixels`
 on the default framebuffer, whatever the app had bound; as B, G, R, A where
@@ -905,8 +918,12 @@ threads that swap (GL frames), one call at a time under the compositor's lock.
 **Pacing.** A swap of a window surface returns no sooner than a sixtieth of a
 second after the one before was due, as a swap interval of 1 would have it, so
 a renderer in `RENDERMODE_CONTINUOUSLY` draws about sixty frames a second and
-not as many as it can. The shell's own `Present(1)` paces the screen as well.
-A swap of a pbuffer does nothing and returns at once, as on Android.
+not as many as it can. Late frames are owed their time, a tenth of a second at
+the most, and the quick ones after them wait for nothing until it is made up; a
+swap later than that, and a surface's first, wait for nothing (`mg_java_gl_pace`,
+which paces a native window's posts too). The shell's own `Present(1)` paces the
+screen as well. A swap of a pbuffer does nothing and returns at once, as on
+Android.
 
 **What a swap costs.** The log says it every five seconds while GL frames
 are shown (`java: OpenGL frames ...`: reading back, composing, the shell's
