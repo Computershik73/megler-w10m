@@ -11,7 +11,8 @@
  * its extensions list. Contexts of OpenGL ES 2 and 3 are made; one of version 1 where asked for (mg_gl_standin_reset) as
  * ANGLE makes it, only with a configuration -- without one it is refused with EGL_BAD_MATCH, as ANGLE refuses it -- and
  * otherwise refused, as an EGL without OpenGL ES 1 refuses it. All contexts share their objects. A texture keeps its pixels (glTexImage2D and
- * glTexSubImage2D of RGBA, RGB and RGB 5-6-5); an EGL image of a texture (EGL_KHR_gl_texture_2D_image, which its EGL lists)
+ * glTexSubImage2D of RGBA, RGB, the packed 5-6-5, 4-4-4-4 and 5-5-5-1, and the formats of one and two bytes: alpha, luminance,
+ * luminance and alpha, red, red and green); an EGL image of a texture (EGL_KHR_gl_texture_2D_image, which its EGL lists)
  * shares them with a texture made of it (glEGLImageTargetTexture2DOES); a framebuffer object with a texture for its colour
  * is what glClear fills and glReadPixels reads. Anything it does not have is "no such function".
  */

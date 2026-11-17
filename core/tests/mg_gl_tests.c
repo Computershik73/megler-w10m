@@ -651,6 +651,92 @@ static void test_hardware_buffers(void)
 }
 
 /*
+ * The stand-in's textures of one and two bytes a pixel (GL_ALPHA, GL_LUMINANCE, GL_LUMINANCE_ALPHA), read through a
+ * framebuffer object as OpenGL samples them: alpha alone over black, luminance as grey, rows as the unpack alignment lays
+ * them out. (It took every format but RGBA for three bytes a pixel and read past the end of what it was given: LocalSend's
+ * Flutter engine, Impeller on OpenGL ES 2, faulted in it giving its glyph atlas, 4096x1024 of GL_ALPHA.)
+ */
+static void test_texture_formats(void)
+{
+    void *(*get_display)(void *) = (void *(*)(void *))mg_egl_resolve("eglGetDisplay");
+    void *(MG_GLAPI *create_ctx)(void *, void *, void *, const int *) = (void *(MG_GLAPI *)(void *, void *, void *, const int *))mg_gl_standin("eglCreateContext");
+    unsigned (MG_GLAPI *make_current)(void *, void *, void *, void *) = (unsigned (MG_GLAPI *)(void *, void *, void *, void *))mg_gl_standin("eglMakeCurrent");
+    unsigned (MG_GLAPI *destroy_ctx)(void *, void *) = (unsigned (MG_GLAPI *)(void *, void *))mg_gl_standin("eglDestroyContext");
+    void (MG_GLAPI *gen_textures)(i32, u32 *) = (void (MG_GLAPI *)(i32, u32 *))mg_gl_standin("glGenTextures");
+    void (MG_GLAPI *delete_textures)(i32, const u32 *) = (void (MG_GLAPI *)(i32, const u32 *))mg_gl_standin("glDeleteTextures");
+    void (MG_GLAPI *bind_texture)(u32, u32) = (void (MG_GLAPI *)(u32, u32))mg_gl_standin("glBindTexture");
+    void (MG_GLAPI *tex_image)(u32, i32, i32, i32, i32, i32, u32, u32, const void *) =
+        (void (MG_GLAPI *)(u32, i32, i32, i32, i32, i32, u32, u32, const void *))mg_gl_standin("glTexImage2D");
+    void (MG_GLAPI *tex_sub_image)(u32, i32, i32, i32, i32, i32, u32, u32, const void *) =
+        (void (MG_GLAPI *)(u32, i32, i32, i32, i32, i32, u32, u32, const void *))mg_gl_standin("glTexSubImage2D");
+    void (MG_GLAPI *pixel_store)(u32, i32) = (void (MG_GLAPI *)(u32, i32))mg_gl_standin("glPixelStorei");
+    void (MG_GLAPI *gen_fbos)(i32, u32 *) = (void (MG_GLAPI *)(i32, u32 *))mg_gl_standin("glGenFramebuffers");
+    void (MG_GLAPI *bind_fbo)(u32, u32) = (void (MG_GLAPI *)(u32, u32))mg_gl_standin("glBindFramebuffer");
+    void (MG_GLAPI *fbo_texture)(u32, u32, u32, u32, i32) = (void (MG_GLAPI *)(u32, u32, u32, u32, i32))mg_gl_standin("glFramebufferTexture2D");
+    void (MG_GLAPI *read_pixels)(i32, i32, i32, i32, u32, u32, void *) = (void (MG_GLAPI *)(i32, i32, i32, i32, u32, u32, void *))mg_gl_standin("glReadPixels");
+    static const int es2[] = { 0x3098, 2, 0x3038 };
+    /* Three pixels of luminance and alpha a row, six bytes, each row filled to eight by the unpack alignment of 4. */
+    static const u8 la[16] = { 10, 11, 20, 21, 30, 31, 0, 0, 40, 41, 50, 51, 60, 61, 0, 0 };
+    static const u8 grey[2] = { 77, 88 };
+    u8 *alpha = (u8 *)malloc(16), read[64];
+    void *d, *ctx;
+    u32 tex = 0, fbo = 0;
+    int i;
+    bool a_ok = true, la_ok = true, l_ok;
+    say("EGL: the stand-in's textures of one and two bytes a pixel, read through a framebuffer object");
+    CHECK(get_display && create_ctx && make_current && destroy_ctx && tex_image && tex_sub_image && pixel_store && read_pixels && alpha);
+    if (!get_display || !create_ctx || !make_current || !destroy_ctx || !tex_image || !tex_sub_image || !pixel_store || !read_pixels || !alpha) {
+        free(alpha);
+        return;
+    }
+    d = get_display(NULL);
+    ctx = create_ctx(d, NULL, NULL, es2);
+    CHECK(ctx && make_current(d, NULL, NULL, ctx));
+    if (!ctx) {
+        free(alpha);
+        return;
+    }
+    for (i = 0; i < 16; i++) alpha[i] = (u8)(i * 10 + 5);
+    gen_textures(1, &tex);
+    bind_texture(0x0DE1, tex);
+    /* 8x2 of GL_ALPHA, sixteen bytes and no more. */
+    pixel_store(0x0CF5, 1);
+    tex_image(0x0DE1, 0, 0x1906, 8, 2, 0, 0x1906, 0x1401, alpha);
+    gen_fbos(1, &fbo);
+    bind_fbo(0x8D40, fbo);
+    fbo_texture(0x8D40, 0x8CE0, 0x0DE1, tex, 0);
+    memset(read, 0xee, sizeof(read));
+    read_pixels(0, 0, 8, 2, 0x1908, 0x1401, read);
+    for (i = 0; i < 16; i++)
+        if (read[i * 4] != 0 || read[i * 4 + 1] != 0 || read[i * 4 + 2] != 0 || read[i * 4 + 3] != alpha[i]) a_ok = false;
+    CHECK(a_ok);
+    /* 3x2 of GL_LUMINANCE_ALPHA at 5,0, and 2x1 of GL_LUMINANCE at 0,1. */
+    pixel_store(0x0CF5, 4);
+    tex_sub_image(0x0DE1, 0, 5, 0, 3, 2, 0x190A, 0x1401, la);
+    pixel_store(0x0CF5, 1);
+    tex_sub_image(0x0DE1, 0, 0, 1, 2, 1, 0x1909, 0x1401, grey);
+    pixel_store(0x0CF5, 4);
+    memset(read, 0xee, sizeof(read));
+    read_pixels(0, 0, 8, 2, 0x1908, 0x1401, read);
+    for (i = 0; i < 6; i++) {
+        const u8 *p = read + ((i / 3) * 8 + 5 + i % 3) * 4, *in = la + (i / 3) * 8 + (i % 3) * 2;
+        if (p[0] != in[0] || p[1] != in[0] || p[2] != in[0] || p[3] != in[1]) la_ok = false;
+    }
+    CHECK(la_ok);
+    l_ok = read[8 * 4] == 77 && read[8 * 4 + 1] == 77 && read[8 * 4 + 2] == 77 && read[8 * 4 + 3] == 255 && read[9 * 4] == 88 && read[9 * 4 + 3] == 255;
+    CHECK(l_ok);
+    /* What neither touched is the alpha still. */
+    CHECK(read[10 * 4] == 0 && read[10 * 4 + 3] == alpha[10] && read[4 * 4 + 3] == alpha[4]);
+    say("  8x2 of GL_ALPHA %s, 3x2 of GL_LUMINANCE_ALPHA in rows of eight bytes %s, 2x1 of GL_LUMINANCE %s", a_ok ? "read back" : "NOT read back",
+        la_ok ? "read back" : "NOT read back", l_ok ? "read back" : "NOT read back");
+    bind_fbo(0x8D40, 0);
+    delete_textures(1, &tex);
+    make_current(d, NULL, NULL, NULL);
+    destroy_ctx(d, ctx);
+    free(alpha);
+}
+
+/*
  * The WebView's display (mg_egl.c, webview_display): Chromium's code is given a display of its own, so that its GPU thread
  * and an app's drawing threads never have contexts of one ANGLE display current at once. Asked for by the library a call
  * comes from: libwebviewchromium.so's gets the WebView's, any other the app's. It is initialised and told the same as the
@@ -1769,6 +1855,7 @@ int mg_gl_natives_tests_run(mg_test_sink sink, void *user, int *checks)
     test_context_es1();
     test_complete_configs();
     test_hardware_buffers();
+    test_texture_formats();
     test_webview_display();
     mg_egl_webview_own_display(false);
     test_draw_functor();
