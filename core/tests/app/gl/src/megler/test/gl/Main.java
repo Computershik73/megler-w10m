@@ -45,6 +45,7 @@ public class Main extends Activity {
     private TextView label;
     private EglThread eglThread;
     private volatile int frames, created;
+    private int resumes;
     private volatile long firstFrameNs;
     private volatile boolean continuousSaid;
 
@@ -83,8 +84,10 @@ public class Main extends Activity {
     @Override
     protected void onResume() {
         super.onResume();
+        /* From the second time on the context is kept over a pause, as a game keeps it (libGDX asks for that). */
+        if (++resumes == 2) glView.setPreserveEGLContextOnPause(true);
         glView.onResume();
-        Log.i(T, "onResume");
+        Log.i(T, "onResume " + resumes + " keeps-context=" + glView.getPreserveEGLContextOnPause());
     }
 
     @Override

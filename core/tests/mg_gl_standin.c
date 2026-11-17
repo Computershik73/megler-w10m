@@ -292,15 +292,31 @@ static MG_GLAPI unsigned e_DestroyContext(void *d, void *ctx)
     free(ctx);
     return 1;
 }
+/* Surfaces to refuse (mg_gl_standin_refuse_surfaces): how many more, and of what size. */
+static int g_refuse, g_refuse_w, g_refuse_h;
 static MG_GLAPI void *e_CreatePbuffer(void *d, void *c, const int *attribs)
 {
     sb_surface *s = (sb_surface *)calloc(1, sizeof(*s));
     int i;
+    bool refuse;
     (void)d; (void)c;
     s->w = s->h = 1;
     for (i = 0; attribs && attribs[i] != 0x3038; i += 2) {
         if (attribs[i] == 0x3057) s->w = attribs[i + 1];
         if (attribs[i] == 0x3056) s->h = attribs[i + 1];
+    }
+    /* As a Direct3D with no room for the surface's textures: EGL_BAD_ALLOC. */
+    mg_lock_acquire(&g_lock);
+    refuse = g_refuse > 0 && s->w == g_refuse_w && s->h == g_refuse_h;
+    if (refuse) {
+        g_refuse--;
+        S.stats.refused_surfaces++;
+    }
+    mg_lock_release(&g_lock);
+    if (refuse) {
+        free(s);
+        t_egl_error = 0x3003;
+        return NULL;
     }
     s->px = (u8 *)calloc((size_t)s->w * (size_t)s->h, 4);
     mg_lock_acquire(&g_lock);
@@ -1414,6 +1430,15 @@ void mg_gl_standin_stats_get(mg_gl_standin_stats *out)
 
 void mg_gl_standin_set_dwell(u64 ns) { g_dwell_ns = ns; }
 
+void mg_gl_standin_refuse_surfaces(int count, int width, int height)
+{
+    mg_lock_acquire(&g_lock);
+    g_refuse = count;
+    g_refuse_w = width;
+    g_refuse_h = height;
+    mg_lock_release(&g_lock);
+}
+
 void mg_gl_standin_reset(bool bgra, bool es1)
 {
     mg_lock_acquire(&g_lock);
@@ -1422,6 +1447,7 @@ void mg_gl_standin_reset(bool bgra, bool es1)
     S.es1 = es1;
     g_level = g_displays = g_displays_warp = 0;
     g_last_warp = false;
+    g_refuse = 0;
     mg_lock_release(&g_lock);
 }
 
