@@ -424,8 +424,10 @@ public final class PhoneApps {
         if (x != null && x.target != null) activity = x.target;
         // An intent that names the package and what to do, not who does it: the first of that app's activities whose filter
         // takes it, as Android resolves it within the package (MAIN alone is the app itself, its launcher's business).
-        if (activity == null && i.getAction() != null && !Intent.ACTION_MAIN.equals(i.getAction()))
-            for (Activity y : activities(a))
+        // An app the shell has not described has no activities to look among: it is started as from its launcher.
+        java.util.List<Activity> acts = activities(a);
+        if (activity == null && acts != null && i.getAction() != null && !Intent.ACTION_MAIN.equals(i.getAction()))
+            for (Activity y : acts)
                 if (y.enabled && y.exported && y.takes(i)) { activity = y.target != null ? y.target : y.name; break; }
         return new String[] { target, activity };
     }
