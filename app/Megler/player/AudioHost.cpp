@@ -31,8 +31,10 @@ constexpr int ringSize = 16;
 constexpr int queuedMilliseconds = 50;
 /// After a failure to build the engine, how long until the next try.
 constexpr unsigned long long retryMilliseconds = 2000;
-/// How long a media app is in the background, and unheard, before its output is let go of (AudioHost.h).
+/// How long a media app is in the background, and unheard, before its output is let go of (AudioHost.h)...
 constexpr unsigned quietMilliseconds = 10000;
+/// ...and one whose media session says it is paused: Play on the lock screen, or on a headset, is to find the app running.
+constexpr unsigned pausedMilliseconds = 300000;
 /// How long the first block heard after that waits for the output to be made again.
 constexpr int madeWaitMilliseconds = 2000;
 
@@ -451,7 +453,8 @@ void AudioHost::retireMedia(std::shared_ptr<MediaOut>& out) {
     out.reset();
 }
 
-void AudioHost::mediaSession(bool plays) {
+void AudioHost::mediaSession(bool plays, bool paused) {
+    sessionPaused_.store(paused && !plays);
     const bool played = sessionPlaying_.exchange(plays);
     if (!plays) return; // (the owner thread sees that within its half second: nothing is to be made for it)
     const bool first = !sessionPlayed_.exchange(true);
@@ -495,12 +498,19 @@ void AudioHost::ownerLoop() {
      * For how long it has been so with nothing of it heard, in milliseconds, counted by this thread as it comes round, a second
      * at the most each time: the hours Windows had the app suspended are then none of them, and an app that comes back -- this
      * thread runs again before the application is told so -- is not taken for one silent in the background all the while,
-     * its output let go of only to be made again a moment later. The count stops at ten seconds (quietMilliseconds).
+     * its output let go of only to be made again a moment later. The count stops at five minutes (pausedMilliseconds).
      */
     unsigned long long countedAt = GetTickCount64(), heardSeen = 0;
     unsigned unheardFor = 0;
-    // Ten seconds of it with the app's media session not saying it plays, or the app's end: the output rests.
-    const auto rests = [&] { return ended_.load() || (unheardFor >= quietMilliseconds && !sessionPlaying_.load()); };
+    /*
+     * How much of it the output is kept through: ten seconds, and five minutes while the app's media session says it is
+     * paused. A player paused with the screen off is the one Play on the lock screen, or on a headset, is pressed for a
+     * moment later, and an app Windows has suspended hears nothing of that: Spotify, paused there, would have played again
+     * only once it was opened.
+     */
+    const auto patience = [&] { return sessionPaused_.load() ? pausedMilliseconds : quietMilliseconds; };
+    // That long with the app's media session not saying it plays, or the app's end: the output rests.
+    const auto rests = [&] { return ended_.load() || (unheardFor >= patience() && !sessionPlaying_.load()); };
     // The phone's endpoint as before a call the app made.
     const auto routeAsBefore = [&] {
         if (!routedOnce_) return;
@@ -517,8 +527,10 @@ void AudioHost::ownerLoop() {
     };
     unsigned long long retryAt = 0;
     unsigned failures = 0;
-    // The rest, the app's end, and an output kept for a silent app's media session have been said in the log.
-    bool resting = false, endSaid = false, keptSaid = false;
+    // The rest and the app's end have been said in the log; and why a silent app's output is kept: 1, its media session says
+    // it plays, 2, it says it is paused.
+    bool resting = false, endSaid = false;
+    int keptSaid = 0;
     for (;;) {
         std::shared_ptr<Engine> old;
         std::shared_ptr<MediaOut> oldMedia;
@@ -541,7 +553,7 @@ void AudioHost::ownerLoop() {
             route = route_.load();
             const unsigned long long now = GetTickCount64(), heardAt = lastAudible_.load();
             const unsigned step = unsigned(std::min<unsigned long long>(now - countedAt, 1000));
-            unheardFor = unseen() && heardAt == heardSeen ? std::min<unsigned>(unheardFor + step, quietMilliseconds) : 0;
+            unheardFor = unseen() && heardAt == heardSeen ? std::min<unsigned>(unheardFor + step, pausedMilliseconds) : 0;
             countedAt = now;
             heardSeen = heardAt;
             rest = rests();
@@ -570,9 +582,10 @@ void AudioHost::ownerLoop() {
             routeAsBefore();
             const bool ended = ended_.load();
             if (ended ? !endSaid : !resting) {
-                shellLog::write(ended ? "audio: the app has ended: its sound output is closed"
-                                      : "audio: nothing audible for 10 s in the background: the output is paused so that Windows can "
-                                        "suspend the app");
+                shellLog::write(ended ? std::string("audio: the app has ended: its sound output is closed")
+                                      : format("audio: nothing audible for %u s in the background: the output is paused so that Windows can "
+                                               "suspend the app",
+                                               unheardFor / 1000));
                 setStatus(ended ? "none: the app has ended" : "paused in the background");
             }
             resting = true;
@@ -590,12 +603,16 @@ void AudioHost::ownerLoop() {
                                                                           : "at the first sound";
             shellLog::write(std::string("audio: the output is resumed ") + why);
         }
-        // Why an app silent in the background still has its output, which to Windows is an app playing: said once each time.
+        // Why an app silent in the background still has its output, which to Windows is an app playing: said once each time,
+        // and again when its session's pause is what keeps it.
         if (unheardFor < quietMilliseconds) {
-            keptSaid = false;
-        } else if (!keptSaid) {
-            keptSaid = true;
-            shellLog::write("audio: nothing audible for 10 s in the background, but the app's media session says it plays: the output is kept");
+            keptSaid = 0;
+        } else if (const int kept = sessionPlaying_.load() ? 1 : 2; kept != keptSaid) {
+            keptSaid = kept;
+            shellLog::write(kept == 1 ? "audio: nothing audible for 10 s in the background, but the app's media session says it plays: the "
+                                        "output is kept"
+                                      : "audio: nothing audible for 10 s in the background, but the app's media session is paused: the "
+                                        "output is kept for five minutes, so that Play finds the app running");
         }
         if (wantMedia && !haveMedia) {
             std::string why;

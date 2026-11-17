@@ -4248,16 +4248,22 @@ most), when its session says it plays, for a call, and when the application
 leaves the background. The ten seconds are the sound host's own thread's, a
 second at the most for each time it comes round, so the time the app was
 suspended is none of them. An app that is heard, or whose session says it
-plays, keeps its output as before: music goes on with the screen off. The log
-says each turn:
+plays, keeps its output as before: music goes on with the screen off. An app
+whose session says it is paused (`STATE_PAUSED`) keeps it for five minutes
+rather than ten seconds: Play on the lock screen, or on a headset, is pressed
+a moment after a pause, and an app Windows has suspended hears nothing of it
+-- Spotify, paused with the screen off, would have played again only once it
+was opened. The log says each turn:
 
 - `audio: nothing audible for 10 s in the background: the output is paused so
-  that Windows can suspend the app`;
+  that Windows can suspend the app` (`for 300 s` after a session's pause);
 - `audio: the output is resumed at the first sound` (or `as the app's media
   session says it plays`, `for a call`, `as the app comes back from the
   background`);
 - `audio: nothing audible for 10 s in the background, but the app's media
-  session says it plays: the output is kept`.
+  session says it plays: the output is kept`, or `... but the app's media
+  session is paused: the output is kept for five minutes, so that Play finds
+  the app running`.
 
 An app that has ended has no output from then on (`AudioHost::end`, from the
 run's `on_exit`: `audio: the app has ended: its sound output is closed`):

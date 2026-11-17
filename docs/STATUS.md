@@ -404,7 +404,8 @@ c0000374 later, at another block; `bionic/mg_libc_mem.c`); and `no-malloc-cache`
 (no thread keeps a cache of the small blocks it frees: malloc as it was before the
 caches, every block the host heap's at once, to tell what they do on a phone;
 `bionic/mg_libc_mem.c`); and `keep-sound-output` (the shell's: a Java app in
-Windows' background, unheard for ten seconds and its media session not playing,
+Windows' background, unheard for ten seconds and its media session not playing
+(five minutes when the session is paused),
 keeps its sound output, which is otherwise let go of until its first sound so
 that Windows can suspend the app -- to compare the two on a phone;
 `player/AudioHost.cpp`, docs/JAVA.md, "Sound in the background"). Without any flag, on Windows, a

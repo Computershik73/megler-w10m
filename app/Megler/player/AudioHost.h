@@ -51,7 +51,10 @@
 // and its media session not saying it plays (mediaSession), has its player and
 // its engine let go of -- until its first sound, its session's playing, or
 // its coming back, when they are made again. The first block heard waits for
-// that, two seconds at the most, so that a short sound is heard whole. Not
+// that, two seconds at the most, so that a short sound is heard whole. An app
+// whose media session says it is paused keeps them for five minutes, not ten
+// seconds: Play on the lock screen, or on a headset, is pressed a moment after
+// a pause, and an app Windows has suspended hears nothing of it. Not
 // during a call (a route asked), and not a game's engine, which is no media
 // app's. An app that has ended (end) has no output from then on: YouTube,
 // ended, was given silence to play for five hours so (695). The flag
@@ -96,9 +99,10 @@ public:
     /// Before prepare: the output is a media app's (AudioCategory_Media, heard in the background) rather than a game's.
     void setMedia(bool media) { media_.store(media); }
 
-    /// Any thread: what the app's media session says, whether it plays now. A media app's sound goes to Windows.Media's
-    /// player from the first time it does; and while it does, the output is kept in the background, heard or not.
-    void mediaSession(bool plays);
+    /// Any thread: what the app's media session says, whether it plays now, or is paused. A media app's sound goes to
+    /// Windows.Media's player from the first time it plays; while it does, the output is kept in the background, heard or
+    /// not, and for five minutes while it is paused.
+    void mediaSession(bool plays, bool paused);
 
     /// Any thread: the app is in Windows' background (the application's EnteredBackground) or out of it again. A media
     /// app there, unheard, has its output let go of until it is heard or back (see the top of this file).
@@ -162,9 +166,10 @@ private:
     std::shared_ptr<MediaOut> mediaOut_;
     /// The player failed, or could not be made: XAudio2 for the rest of the run.
     std::atomic<bool> mediaFailed_{false};
-    /// The app's media session has said it plays (mediaSession), once at the least; and it says so now.
+    /// The app's media session has said it plays (mediaSession), once at the least; it says so now; it says it is paused.
     std::atomic<bool> sessionPlayed_{false};
     std::atomic<bool> sessionPlaying_{false};
+    std::atomic<bool> sessionPaused_{false};
     /// The app is in Windows' background (setBackground).
     std::atomic<bool> background_{false};
     /// The app has ended (end).
