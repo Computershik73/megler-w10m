@@ -1169,6 +1169,41 @@ public class Main extends Activity {
                    && "1.3 million".equals(compactLong) && "12.30".equals(fixed) && "$1,234.50".equals(money) && "5 kilometers".equals(km)
                    && "+12345".equals(sign) && "120".equals(digits) && even.intValue() == 2 && "1,234.5".equals(old) && "1.3M".equals(oldCompact) && !rounder;
         });
+        // The units Android 11 and later have and Android 9's ICU has not (Breezy Weather reads MeasureUnit.PERCENT for a
+        // humidity): the constants are there for an app's code, NumberFormatter writes them, and ICU's own MeasureFormat has
+        // their words: a sign in any language, the name in English at full width, a percentage as the locale writes one, and
+        // a unit that is another under a new name in that unit's words. The units ICU always had are written as before.
+        step("icu-new-units", () -> {
+            android.icu.util.MeasureUnit percent = android.icu.util.MeasureUnit.PERCENT, atm = android.icu.util.MeasureUnit.ATMOSPHERE;
+            String number = android.icu.number.NumberFormatter.withLocale(java.util.Locale.US).unit(percent)
+                .precision(android.icu.number.Precision.integer()).format(50).toString();
+            String mille = android.icu.number.NumberFormatter.withLocale(java.util.Locale.US).unit(android.icu.util.MeasureUnit.PERMILLE)
+                .precision(android.icu.number.Precision.integer()).format(50).toString();
+            String pressure = android.icu.number.NumberFormatter.withLocale(java.util.Locale.US).unit(atm).format(3).toString();
+            String full = android.icu.number.NumberFormatter.withLocale(java.util.Locale.US).unit(android.icu.util.MeasureUnit.KILOPASCAL)
+                .unitWidth(android.icu.number.NumberFormatter.UnitWidth.FULL_NAME).format(101).toString();
+            android.icu.text.MeasureFormat narrow = android.icu.text.MeasureFormat.getInstance(java.util.Locale.US, android.icu.text.MeasureFormat.FormatWidth.SHORT);
+            android.icu.text.MeasureFormat wide = android.icu.text.MeasureFormat.getInstance(java.util.Locale.US, android.icu.text.MeasureFormat.FormatWidth.WIDE);
+            android.icu.text.MeasureFormat german = android.icu.text.MeasureFormat.getInstance(java.util.Locale.GERMANY, android.icu.text.MeasureFormat.FormatWidth.SHORT);
+            android.icu.text.MeasureFormat russian = android.icu.text.MeasureFormat.getInstance(new java.util.Locale("ru", "RU"), android.icu.text.MeasureFormat.FormatWidth.WIDE);
+            String name = narrow.getUnitDisplayName(percent), wideName = wide.getUnitDisplayName(atm);
+            String shown = narrow.format(new android.icu.util.Measure(3, atm));
+            String one = wide.format(new android.icu.util.Measure(1, atm)), several = wide.format(new android.icu.util.Measure(3, atm));
+            String de = german.format(new android.icu.util.Measure(50, percent));
+            String tonnes = wide.format(new android.icu.util.Measure(2, android.icu.util.MeasureUnit.TONNE));
+            String days = russian.getUnitDisplayName(android.icu.util.MeasureUnit.DAY_PERSON), day = russian.getUnitDisplayName(android.icu.util.MeasureUnit.forIdentifier("day"));
+            String km = narrow.format(new android.icu.util.Measure(5, android.icu.util.MeasureUnit.KILOMETER));
+            android.icu.util.MeasureUnit named = android.icu.util.MeasureUnit.forIdentifier("percent");
+            boolean same = named == percent && "percent".equals(percent.getIdentifier())
+                           && "concentr".equals(percent.getType()) && android.icu.util.MeasureUnit.getAvailable("pressure").contains(atm);
+            detail = "number=" + number + " mille=" + mille + " pressure=" + pressure + " full=" + full + " name=" + name + " wide-name=" + wideName + " shown=" + shown
+                     + " one=" + one + " several=" + several + " de=" + de + " tonnes=" + tonnes + " days=" + days + " day=" + day + " km=" + km + " named=" + named.getType() + "/" + named.getSubtype()
+                     + " id=" + percent.getIdentifier() + " listed=" + android.icu.util.MeasureUnit.getAvailable("pressure").contains(atm) + " same=" + same;
+            return "50%".equals(number) && "50‰".equals(mille) && "3 atm".equals(pressure) && "101 kilopascals".equals(full) && "%".equals(name)
+                   && "atmospheres".equals(wideName) && "3 atm".equals(shown) && "1 atmosphere".equals(one) && "3 atmospheres".equals(several)
+                   && de != null && de.length() == 4 && de.startsWith("50") && de.endsWith("%") && !Character.isDigit(de.charAt(2))
+                   && "2 metric tons".equals(tonnes) && days != null && days.equals(day) && "5 km".equals(km) && same;
+        });
         // Where a call's sound goes, as the app's AudioManager has it (WhatsApp's calls): MODE_IN_COMMUNICATION is the
         // earpiece, setSpeakerphoneOn(true) the loudspeaker, and setCommunicationDevice either of the two communication
         // devices there are; MODE_NORMAL ends it. Android 12's methods by reflection: the app is built against Android 10.

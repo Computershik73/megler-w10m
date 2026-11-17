@@ -7,6 +7,7 @@ public final class ULocale implements java.io.Serializable, Comparable<ULocale> 
     public static ULocale forLocale(java.util.Locale locale) { return null; }
     public static ULocale addLikelySubtags(ULocale locale) { return null; }
     public java.util.Locale toLocale() { return null; }
+    public String getLanguage() { return null; }
     public String getCountry() { return null; }
     public String getKeywordValue(String keyword) { return null; }
     public ULocale setKeywordValue(String keyword, String value) { return null; }
