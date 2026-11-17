@@ -443,11 +443,39 @@ static int sq_characteristics(sqlite3_file *file) { (void)file; return 0; }
 static const sqlite3_io_methods k_io = { 1, sq_close, sq_read, sq_write, sq_truncate, sq_sync, sq_size, sq_lock, sq_unlock, sq_check_reserved, sq_control, sq_sector, sq_characteristics,
                                          NULL, NULL, NULL, NULL, NULL, NULL };
 
+static const char *path_tail(const char *path);
+
+/* The host's refusal for the log. */
+static const char *refusal_said(int err)
+{
+    switch (err) {
+    case MG_E_NOENT: return "no such file";
+    case MG_E_ACCESS: return "access denied";
+    case MG_E_BUSY: return "in use";
+    case MG_E_ISDIR: return "a directory";
+    case MG_E_NOSPC: return "no space";
+    case MG_E_EXIST: return "exists";
+    default: return "an I/O error";
+    }
+}
+
+/*
+ * How many times more a file is asked for once Windows has refused it for access or as in use, and how long the wait before
+ * try N is, in N of them: as SQLite's own Windows layer (winRetryIoerr: ten, 25 ms), 1.4 s in all. A file just deleted
+ * stays in its folder, refusing every open for access, until the last handle to it is closed -- a scanner's or an indexer's,
+ * another thread's, another app's -- and the next transaction's journal has the name of the last one's, deleted a moment
+ * ago. Asked once, Total Commander's media scan (0.1.0.699) had 88 of its MediaStore rows refused "unable to open database
+ * file (code 14)" in three minutes, each between rows that were taken.
+ */
+enum { SQ_OPEN_TRIES_MORE = 10, SQ_OPEN_WAIT_MS = 25 };
+/* (The log is told of the first of each: a scan can meet hundreds.) */
+static volatile i32 g_open_retried, g_open_refused;
+
 static int vfs_open(sqlite3_vfs *vfs, const char *name, sqlite3_file *file, int flags, int *out_flags)
 {
     sq_file *s = (sq_file *)file;
     char temp[700];
-    int how = MG_O_READ, err = 0;
+    int how = MG_O_READ, err = 0, first = 0, tries = 0;
     (void)vfs;
     memset(s, 0, sizeof(*s));
     if (!name) {
@@ -462,13 +490,28 @@ static int vfs_open(sqlite3_vfs *vfs, const char *name, sqlite3_file *file, int 
     if (flags & SQLITE_OPEN_READWRITE) how |= MG_O_WRITE;
     if (flags & SQLITE_OPEN_CREATE) how |= MG_O_CREATE;
     if (flags & SQLITE_OPEN_EXCLUSIVE) how |= MG_O_EXCL;
-    s->f = mg_file_open(name, how, &err);
-    if (!s->f && (flags & SQLITE_OPEN_READWRITE) && !(flags & SQLITE_OPEN_CREATE) && err == MG_E_ACCESS) {
-        /* It is there and may only be read: SQLite is given it so, and told. */
-        s->f = mg_file_open(name, MG_O_READ, &err);
-        flags = (flags & ~SQLITE_OPEN_READWRITE) | SQLITE_OPEN_READONLY;
+    for (;;) {
+        s->f = mg_file_open(name, how, &err);
+        if (!s->f && (flags & SQLITE_OPEN_READWRITE) && !(flags & SQLITE_OPEN_CREATE) && err == MG_E_ACCESS) {
+            /* It is there and may only be read: SQLite is given it so, and told. (Refused that too, it is asked for again
+               below as it was: to read and write.) */
+            s->f = mg_file_open(name, MG_O_READ, &err);
+            if (s->f) flags = (flags & ~SQLITE_OPEN_READWRITE) | SQLITE_OPEN_READONLY;
+        }
+        if (s->f || (err != MG_E_ACCESS && err != MG_E_BUSY) || tries == SQ_OPEN_TRIES_MORE) break;
+        if (!tries) first = err;
+        tries++;
+        mg_sleep_ns((u64)(SQ_OPEN_WAIT_MS * tries) * 1000000u);
     }
-    if (!s->f) return SQLITE_CANTOPEN;
+    if (s->f && tries && mg_atomic_add(&g_open_retried, 1) <= 20)
+        mg_info("sqlite: %s was refused (%s) and opened at try %d", path_tail(name), refusal_said(first), tries + 1);
+    if (!s->f) {
+        if (err != MG_E_NOENT && mg_atomic_add(&g_open_refused, 1) <= 20)
+            mg_warn("sqlite: %s could not be opened%s%s%s: %s, asked %d time(s)", path_tail(name), flags & SQLITE_OPEN_READWRITE ? " to write" : "",
+                    flags & SQLITE_OPEN_CREATE ? ", or made" : "", flags & SQLITE_OPEN_MAIN_DB ? "" : " (a journal or a scratch file)",
+                    refusal_said(err), tries + 1);
+        return SQLITE_CANTOPEN;
+    }
     s->path = mg_strdup(name);
     s->delete_on_close = (flags & SQLITE_OPEN_DELETEONCLOSE) != 0;
     /* Only a database itself is locked; its journal belongs to whoever holds the database. */
