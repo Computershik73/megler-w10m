@@ -5035,6 +5035,25 @@ static int run_gms_host(void)
     CHECK(find_line("geocoder FAILED", 0) < 0 && find_line("geocoder on the main thread FAILED", 0) < 0 && find_line("geocoder listener FAILED", 0) < 0 &&
           find_line("of an error FAILED", 0) < 0);
     /*
+     * A provider of the app's own (WhoAsks) asked by their code, hosted here (the stand-in's Probe, on a thread of its own),
+     * is told that Google Play services ask it for the length of the call, as on Android, where the call comes from their
+     * process: getCallingPackage is their package and Binder.getCallingUid their uid (10014, the shared one), the app's with
+     * the identity cleared and theirs again restored; a provider of theirs that it asks from inside the call is told the
+     * app asks, and their code that is asked for the caller there is told the app's uid; and once the call is over the
+     * thread's caller is the app again. Asked by the app, it is told the app throughout. Every provider call was the app's
+     * own: Files by Google's provider of a folder for Quick Share (FolderSharingContentProvider), which answers Google Play
+     * services alone, threw UnsupportedOperationException on their thread, and no folder was shared (0.1.0.699).
+     */
+    CHECK(wait_line("I/GmsOwnTest: the app's provider asked by Google Play services: caller com.google.android.gms uid 10014 com.google.uid.shared:10014, "
+                    "uid cleared 10100 megler.test.gmshost restored 10014 com.google.uid.shared:10014, "
+                    "identity cleared megler.test.gmshost 10100 megler.test.gmshost restored com.google.android.gms 10014 com.google.uid.shared:10014, "
+                    "their provider asked from inside: caller megler.test.gmshost uid 10100, then com.google.android.gms 10014 com.google.uid.shared:10014; "
+                    "after the call uid 10100", 0, 120) >= 0);
+    CHECK(wait_line("I/GmsHostTest: the app's provider asked by the app: caller megler.test.gmshost uid 10100 megler.test.gmshost, "
+                    "uid cleared 10100 megler.test.gmshost restored 10100 megler.test.gmshost, "
+                    "identity cleared megler.test.gmshost 10100 megler.test.gmshost restored megler.test.gmshost 10100 megler.test.gmshost, "
+                    "their provider asked from inside: caller megler.test.gmshost uid 10100, then megler.test.gmshost 10100 megler.test.gmshost", 0, 60) >= 0);
+    /*
      * And an activity of theirs whose onCreate throws, having asked to be finished after (their help screen, whose layout's
      * logo was missing, 0.1.0.686): the app goes on, the activity is taken off the stack and never destroyed -- their
      * lifecycle threw at its destruction -- and the app's activity is resumed after it.

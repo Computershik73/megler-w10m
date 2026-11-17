@@ -27,7 +27,8 @@ public class ContentResolver {
     private static ContentProvider provider(Uri u) { if (u == null || !SCHEME_CONTENT.equals(u.getScheme())) return null; return byAuthority(u.getAuthority()); }
     private static ContentProvider byAuthority(String a) {
         ContentProvider p; synchronized (sProviders) { p = sProviders.get(a); }
-        if (p != null) return p;
+        /* A provider of the app's: as it is, or for Google Play services' hosted code one that names them as the caller (megler.Callers). */
+        if (p != null) return megler.Callers.through(p);
         if ("settings".equals(a)) return megler.SettingsProvider.INSTANCE;
         if ("downloads".equals(a)) return megler.Downloads.INSTANCE;
         /* the photos, videos and sounds of the shared storage, MediaStore's (megler.MediaProvider) */
@@ -94,7 +95,7 @@ public class ContentResolver {
         @Override public int update(Uri u, ContentValues v, String sel, String[] args) { return 0; }
     };
     public final Bundle call(Uri u, String method, String arg, Bundle extras) { ContentProvider p = provider(u); return p == null ? null : p.call(method, arg, extras); }
-    public final Bundle call(String authority, String method, String arg, Bundle extras) { ContentProvider p; synchronized (sProviders) { p = sProviders.get(authority); } return p == null ? null : p.call(method, arg, extras); }
+    public final Bundle call(String authority, String method, String arg, Bundle extras) { ContentProvider p; synchronized (sProviders) { p = sProviders.get(authority); } p = megler.Callers.through(p); return p == null ? null : p.call(method, arg, extras); }
     public final java.io.InputStream openInputStream(Uri u) throws java.io.FileNotFoundException {
         if (u == null) throw new java.io.FileNotFoundException("null uri");
         String s = u.getScheme();

@@ -5,6 +5,7 @@ import android.content.ContentValues;
 import android.database.Cursor;
 import android.database.MatrixCursor;
 import android.net.Uri;
+import android.os.Binder;
 import android.util.Log;
 
 import java.util.HashMap;
@@ -22,6 +23,13 @@ public class GoogleSettings extends ContentProvider {
 
     @Override
     public synchronized Cursor query(Uri uri, String[] projection, String selection, String[] args, String order) {
+        /* Who asks, said back (content://com.google.settings/caller): the hosting app's provider asks so from inside a call
+           that Google Play services' own code made into it (gms-host's WhoAsks), and it is the app that asks then. */
+        if (args == null && "caller".equals(uri.getLastPathSegment())) {
+            MatrixCursor who = new MatrixCursor(new String[] { "said" });
+            who.addRow(new Object[] { "caller " + getCallingPackage() + " uid " + Binder.getCallingUid() });
+            return who;
+        }
         MatrixCursor c = new MatrixCursor(new String[] { "value" });
         String name = args != null && args.length > 0 ? args[0] : uri.getLastPathSegment();
         if (name != null && values.containsKey(name)) c.addRow(new Object[] { values.get(name) });
