@@ -779,6 +779,31 @@ public class Main extends Activity {
             detail = "added " + added + " set " + set + " laid " + laid + " removed " + removed + " hidden " + hidden + " own " + own;
             return added == 0 && set == 0 && laid == 0 && removed == 0 && hidden == 0 && own == 2;
         });
+        // The same as a view is made, where such a method finds the fields it reads not yet set. The text size row of Telegram's
+        // Chat Settings (ThemeActivity's TextSizeCell) invalidates its preview and its seek bar in its invalidate(), and its
+        // constructor -- setWillNotDraw(false), the seek bar added, then the preview made -- has no preview at its first
+        // addView. In 0.1.0.699 addView called the row's invalidate(): a NullPointerException inside the list's layout, which
+        // Telegram's own container catches and keeps to itself, so RecyclerView stayed "computing a layout" and the adapter's
+        // next notification ended the app (IllegalStateException under ThemeActivity). Nothing reaches it while it is made.
+        step("invalidate-in-constructor", () -> {
+            final int[] calls = new int[1];
+            android.widget.FrameLayout row = new android.widget.FrameLayout(this) {
+                final android.view.View bar, preview;
+                {
+                    setWillNotDraw(false);
+                    bar = new android.view.View(Main.this);
+                    bar.setImportantForAccessibility(android.view.View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+                    addView(bar, new android.widget.FrameLayout.LayoutParams(android.view.ViewGroup.LayoutParams.MATCH_PARENT, 38, android.view.Gravity.LEFT | android.view.Gravity.TOP));
+                    preview = new android.view.View(Main.this);
+                    addView(preview, new android.widget.FrameLayout.LayoutParams(android.view.ViewGroup.LayoutParams.MATCH_PARENT, android.view.ViewGroup.LayoutParams.WRAP_CONTENT, android.view.Gravity.LEFT | android.view.Gravity.TOP));
+                }
+                @Override public void invalidate() { calls[0]++; super.invalidate(); preview.invalidate(); bar.invalidate(); }
+            };
+            int made = calls[0];
+            row.invalidate();
+            detail = "children " + row.getChildCount() + " willNotDraw " + row.willNotDraw() + " calls as made " + made + " own " + (calls[0] - made);
+            return row.getChildCount() == 2 && !row.willNotDraw() && made == 0 && calls[0] == 1;
+        });
         // An image matrix set before the view is laid out, then the scale type made MATRIX, as Material's FloatingActionButton
         // does as it is made: once laid out, the view draws by that matrix.
         step("image-matrix-before-layout", () -> {
