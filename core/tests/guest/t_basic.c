@@ -513,6 +513,56 @@ int t_signals(int rounds)
     return 0;
 }
 
+/*
+ * pause: a thread waits in it, with the mask it has, until a handler has run on it, and is told -1 and EINTR (Microsoft
+ * OneDrive's libQt.so imports it). A signal the thread has blocked does not end the wait; the next one, which it has
+ * not, does. 0, or: 1 nothing was set up, 2 the thread did not reach pause, 3 the blocked signal ended it, 4 the other
+ * did not (the thread is left there), 5 its answer was not -1 and EINTR, 6 the handler did not run once, on that thread.
+ */
+int pause(void);
+int sigprocmask(int, const t_word *, t_word *);
+static volatile int g_pause_at, g_pause_said, g_pause_errno, g_pause_handled;
+static void on_pause_signal(int sig, void *info, void *context)
+{
+    (void)info; (void)context;
+    g_pause_handled += tls_index == 9 && sig == SIG_GO ? 1 : 100;
+}
+static void *pauser(void *arg)
+{
+    t_word stop = (t_word)1 << (SIG_STOP - 1);
+    tls_index = 9;
+    sigprocmask(0 /* SIG_BLOCK */, &stop, 0);
+    g_pause_at = 1;
+    g_pause_said = pause();
+    g_pause_errno = *__errno();
+    g_pause_at = 2;
+    return arg;
+}
+int t_pause(void)
+{
+    t_sigaction on = T_SIGACTION(on_pause_signal, 0, 4 | 0x10000000), was_stop, was_go;
+    pthread_t t;
+    long until;
+    int r = 0;
+    g_pause_at = g_pause_handled = g_pause_said = g_pause_errno = 0;
+    if (sigaction(SIG_STOP, &on, &was_stop) || sigaction(SIG_GO, &on, &was_go) || pthread_create(&t, 0, pauser, 0)) return 1;
+    for (until = now_ms() + 3000; !g_pause_at && now_ms() < until;) usleep(1000);
+    if (!g_pause_at) return 2;
+    usleep(20000);                                 /* it is in pause */
+    if (pthread_kill(t, SIG_STOP)) return 1;
+    usleep(50000);
+    if (g_pause_at != 1 || g_pause_handled) r = 3;
+    if (pthread_kill(t, SIG_GO)) return 1;
+    for (until = now_ms() + 3000; g_pause_at != 2 && now_ms() < until;) usleep(1000);
+    if (g_pause_at != 2) return r ? r : 4;
+    pthread_join(t, 0);
+    sigaction(SIG_STOP, &was_stop, 0);
+    sigaction(SIG_GO, &was_go, 0);
+    if (r) return r;
+    if (g_pause_said != -1 || g_pause_errno != 4 /* EINTR */) return 5;
+    return g_pause_handled == 1 ? 0 : 6;
+}
+
 int t_files(const char *dir)
 {
     char path[256], line[64];

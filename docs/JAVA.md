@@ -3084,7 +3084,15 @@ name. Native code's `dlopen` of a path takes the same file
 app wrote into a folder no library had come from was "not found". A library
 is loaded once, by its name: a second request finds it and does not run
 `JNI_OnLoad` again, even for another file of that name, of which Android would
-load a second copy. What comes back when it fails is ART's sentence
+load a second copy. The `JNI_OnLoad` that is run is the one `dlsym` of the
+library's handle finds, which is how ART looks for it: the library's own, or
+else that of a library it needs, breadth-first over what each needs
+(`mg_ld_sym_deep`), and run then even when it has run before for another
+library. Microsoft OneDrive's `libcore.so` has none, and the `libQt.so` it
+needs has the one that keeps the JavaVM for both; up to 0.1.0.729 only a
+library's own was run, and OneDrive ended at every start with "JavaVM can't be
+null for XpJniEnv" (`libt_onload.so` and `libt_onload_dep.so`, `t_onload.c`).
+What comes back when it fails is ART's sentence
 (`dlopen failed: library "..." not found`, `JNI_ERR returned from JNI_OnLoad in
 "..."`, `Bad JNI version returned from JNI_OnLoad in "...": N`); a library the
 APK does not have at all never gets that far, and is libcore's own
@@ -3274,8 +3282,24 @@ for the display's frames through Java's `Choreographer`; `ASurfaceControl_*`
 answer none. Each lookup in the system's libraries that finds nothing now
 says so in the log, once (`dl: dlsym(NAME) found nothing`). The Dart VM
 reads `/proc/cpuinfo` for ARMv7 and its features (vfp, neon, idiva), which
-says so, as `getauxval(AT_HWCAP)` does. No Flutter app has been run here yet:
-the next step is a phone's log of one.
+says so, as `getauxval(AT_HWCAP)` does.
+
+The first Flutter app run here is LocalSend 1.18.2 (Dart 3.11), under qemu
+over the test host's stand-in for a driver of OpenGL ES 2.0. Two answers of
+the system ended it on the way. Dart's `Platform.resolvedExecutable` asks
+`lstat` of `/proc/self/exe` before it reads the link, and copies as many
+bytes as it was told: `lstat` said "no such file" of the link `readlink`
+read, and the engine ended in `memcpy` with a length of -1; `lstat` says a
+link of it now. Dart's `NetworkInterface.list` asks Linux's kernel on a
+socket of `AF_NETLINK`, which was refused ("SocketException: Failed listing
+interfaces", thrown at the app's start); it is answered now (see "The
+network" in ARCHITECTURE.md). With both the engine says "Using the Impeller
+rendering backend (OpenGLES)", takes a configuration of OpenGL ES 2 where
+EGL has none of 3, starts the app's isolates and draws about eight frames a
+second there; LocalSend lists the host's addresses, starts its HTTPS server
+on port 53317, joins its multicast group and hears its own announcement.
+The stand-in runs no shaders, so a picture taken there is the frame's clear
+colour alone: what a Flutter app draws is still a phone's to show.
 
 ### A SurfaceView drawn by native code
 

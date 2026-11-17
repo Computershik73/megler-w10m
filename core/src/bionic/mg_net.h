@@ -56,6 +56,11 @@ int mg_net_interfaces_android(mg_gif **out);
 u32 mg_net_if_flags(const mg_gif *f);
 /* The ioctls that ask about interfaces (SIOCGIFCONF, SIOCGIFFLAGS and the rest): 0, -1 with errno set, or -2 for a request that is not one of them. */
 int mg_net_if_ioctl(unsigned request, void *arg);
+/*
+ * NETLINK_ROUTE (mg_netdb.c): what Linux's kernel answers the messages an app sent it on a socket of AF_NETLINK, `put` called
+ * once for each datagram of the answer, in their order. `pid`: the socket's port number, which every answer carries.
+ */
+void mg_net_rtnetlink(const u8 *req, u32 n, u32 pid, void (*put)(void *to, const u8 *msg, u32 len), void *to);
 
 #ifdef __cplusplus
 }

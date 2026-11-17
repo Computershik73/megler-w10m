@@ -451,6 +451,50 @@ static void test_context_es1(void)
 }
 
 /*
+ * The stand-in's complete mode, the driver of OpenGL ES 2.0 alone that a real app is run over (--java app), says what it is
+ * in its configuration as well: asked for a configuration that renders OpenGL ES 3, EGL has none, and the one of 2 says 1
+ * and 2, as ANGLE's say 3 only where its renderer makes 3.0; a context of 2 is made with it. (It said 3 and refused the
+ * context of 3: LocalSend's Flutter engine, which asks for 3 first and for 2 only when no configuration has it, stopped
+ * with "Could not create onscreen context" and then faulted in libflutter.so on the configuration it had not got.) The
+ * other mode makes 3.0 and has the configuration of it.
+ */
+static void test_complete_configs(void)
+{
+    typedef void *(*fn_create)(void *, void *, void *, const int *);
+    void *(*get_display)(void *) = (void *(*)(void *))mg_egl_resolve("eglGetDisplay");
+    unsigned (*choose)(void *, const int *, void **, int, int *) = (unsigned (*)(void *, const int *, void **, int, int *))mg_egl_resolve("eglChooseConfig");
+    unsigned (*attrib)(void *, void *, int, int *) = (unsigned (*)(void *, void *, int, int *))mg_egl_resolve("eglGetConfigAttrib");
+    fn_create create = (fn_create)mg_egl_resolve("eglCreateContext");
+    unsigned (*destroy)(void *, void *) = (unsigned (*)(void *, void *))mg_egl_resolve("eglDestroyContext");
+    static const int want3[] = { 0x3033 /* EGL_SURFACE_TYPE */, 0x4 /* window */, 0x3040 /* EGL_RENDERABLE_TYPE */, 0x40 /* OpenGL ES 3 */, 0x3038 };
+    static const int want2[] = { 0x3033, 0x4, 0x3040, 0x4 /* OpenGL ES 2 */, 0x3038 };
+    static const int any[] = { 0x3040, -1 /* EGL_DONT_CARE */, 0x3038 };
+    static const int es2[] = { 0x3098, 2, 0x3038 };
+    void *d, *c3 = (void *)1, *c2 = NULL, *c = NULL, *two;
+    int n3 = -1, n2 = -1, n = -1, says = 0, conforms = 0;
+    say("EGL: the complete stand-in, OpenGL ES 2.0 alone, has no configuration of OpenGL ES 3 and one of 2; the other has one of 3");
+    CHECK(get_display && choose && attrib && create && destroy);
+    if (!get_display || !choose || !attrib || !create || !destroy) return;
+    d = get_display(NULL);
+    mg_gl_standin_set_complete(true);
+    CHECK(choose(d, want3, &c3, 1, &n3) && n3 == 0);
+    CHECK(choose(d, want2, &c2, 1, &n2) && n2 == 1 && c2 != NULL);
+    CHECK(choose(d, any, &c, 1, &n) && n == 1 && c == c2);
+    CHECK(attrib(d, c2, 0x3040, &says) && says == 0x5);
+    CHECK(attrib(d, c2, 0x3042 /* EGL_CONFORMANT */, &conforms) && conforms == 0x5);
+    two = create(d, c2, NULL, es2);
+    CHECK(two != NULL);
+    if (two) destroy(d, two);
+    mg_gl_standin_set_complete(false);
+    say("  complete: %d configurations of OpenGL ES 3, %d of 2, which renders 0x%x; a context of 2: %s", n3, n2, (unsigned)says, two ? "made" : "refused");
+    c3 = NULL;
+    n3 = -1;
+    says = 0;
+    CHECK(choose(d, want3, &c3, 1, &n3) && n3 == 1 && c3 != NULL);
+    CHECK(attrib(d, c3, 0x3040, &says) && says == 0x45);
+}
+
+/*
  * Hardware buffers (ndk/mg_ahb.c) and EGL images of them (mg_egl.c), as Chromium's GPU service and the ANGLE inside it use
  * them, over the stand-in, whose textures keep their pixels and whose EGL images share them: a 4x2 R8G8B8A8 buffer laid out
  * where ANGLE reads it (the ANativeWindowBuffer two pointers in, laid out with the guest's pointers: 96 bytes in 32-bit
@@ -604,6 +648,92 @@ static void test_hardware_buffers(void)
     if (again) release(again);
     release(b);
     CHECK(mg_bionic_find("AHardwareBuffer_getId") != NULL);
+}
+
+/*
+ * The stand-in's textures of one and two bytes a pixel (GL_ALPHA, GL_LUMINANCE, GL_LUMINANCE_ALPHA), read through a
+ * framebuffer object as OpenGL samples them: alpha alone over black, luminance as grey, rows as the unpack alignment lays
+ * them out. (It took every format but RGBA for three bytes a pixel and read past the end of what it was given: LocalSend's
+ * Flutter engine, Impeller on OpenGL ES 2, faulted in it giving its glyph atlas, 4096x1024 of GL_ALPHA.)
+ */
+static void test_texture_formats(void)
+{
+    void *(*get_display)(void *) = (void *(*)(void *))mg_egl_resolve("eglGetDisplay");
+    void *(MG_GLAPI *create_ctx)(void *, void *, void *, const int *) = (void *(MG_GLAPI *)(void *, void *, void *, const int *))mg_gl_standin("eglCreateContext");
+    unsigned (MG_GLAPI *make_current)(void *, void *, void *, void *) = (unsigned (MG_GLAPI *)(void *, void *, void *, void *))mg_gl_standin("eglMakeCurrent");
+    unsigned (MG_GLAPI *destroy_ctx)(void *, void *) = (unsigned (MG_GLAPI *)(void *, void *))mg_gl_standin("eglDestroyContext");
+    void (MG_GLAPI *gen_textures)(i32, u32 *) = (void (MG_GLAPI *)(i32, u32 *))mg_gl_standin("glGenTextures");
+    void (MG_GLAPI *delete_textures)(i32, const u32 *) = (void (MG_GLAPI *)(i32, const u32 *))mg_gl_standin("glDeleteTextures");
+    void (MG_GLAPI *bind_texture)(u32, u32) = (void (MG_GLAPI *)(u32, u32))mg_gl_standin("glBindTexture");
+    void (MG_GLAPI *tex_image)(u32, i32, i32, i32, i32, i32, u32, u32, const void *) =
+        (void (MG_GLAPI *)(u32, i32, i32, i32, i32, i32, u32, u32, const void *))mg_gl_standin("glTexImage2D");
+    void (MG_GLAPI *tex_sub_image)(u32, i32, i32, i32, i32, i32, u32, u32, const void *) =
+        (void (MG_GLAPI *)(u32, i32, i32, i32, i32, i32, u32, u32, const void *))mg_gl_standin("glTexSubImage2D");
+    void (MG_GLAPI *pixel_store)(u32, i32) = (void (MG_GLAPI *)(u32, i32))mg_gl_standin("glPixelStorei");
+    void (MG_GLAPI *gen_fbos)(i32, u32 *) = (void (MG_GLAPI *)(i32, u32 *))mg_gl_standin("glGenFramebuffers");
+    void (MG_GLAPI *bind_fbo)(u32, u32) = (void (MG_GLAPI *)(u32, u32))mg_gl_standin("glBindFramebuffer");
+    void (MG_GLAPI *fbo_texture)(u32, u32, u32, u32, i32) = (void (MG_GLAPI *)(u32, u32, u32, u32, i32))mg_gl_standin("glFramebufferTexture2D");
+    void (MG_GLAPI *read_pixels)(i32, i32, i32, i32, u32, u32, void *) = (void (MG_GLAPI *)(i32, i32, i32, i32, u32, u32, void *))mg_gl_standin("glReadPixels");
+    static const int es2[] = { 0x3098, 2, 0x3038 };
+    /* Three pixels of luminance and alpha a row, six bytes, each row filled to eight by the unpack alignment of 4. */
+    static const u8 la[16] = { 10, 11, 20, 21, 30, 31, 0, 0, 40, 41, 50, 51, 60, 61, 0, 0 };
+    static const u8 grey[2] = { 77, 88 };
+    u8 *alpha = (u8 *)malloc(16), read[64];
+    void *d, *ctx;
+    u32 tex = 0, fbo = 0;
+    int i;
+    bool a_ok = true, la_ok = true, l_ok;
+    say("EGL: the stand-in's textures of one and two bytes a pixel, read through a framebuffer object");
+    CHECK(get_display && create_ctx && make_current && destroy_ctx && tex_image && tex_sub_image && pixel_store && read_pixels && alpha);
+    if (!get_display || !create_ctx || !make_current || !destroy_ctx || !tex_image || !tex_sub_image || !pixel_store || !read_pixels || !alpha) {
+        free(alpha);
+        return;
+    }
+    d = get_display(NULL);
+    ctx = create_ctx(d, NULL, NULL, es2);
+    CHECK(ctx && make_current(d, NULL, NULL, ctx));
+    if (!ctx) {
+        free(alpha);
+        return;
+    }
+    for (i = 0; i < 16; i++) alpha[i] = (u8)(i * 10 + 5);
+    gen_textures(1, &tex);
+    bind_texture(0x0DE1, tex);
+    /* 8x2 of GL_ALPHA, sixteen bytes and no more. */
+    pixel_store(0x0CF5, 1);
+    tex_image(0x0DE1, 0, 0x1906, 8, 2, 0, 0x1906, 0x1401, alpha);
+    gen_fbos(1, &fbo);
+    bind_fbo(0x8D40, fbo);
+    fbo_texture(0x8D40, 0x8CE0, 0x0DE1, tex, 0);
+    memset(read, 0xee, sizeof(read));
+    read_pixels(0, 0, 8, 2, 0x1908, 0x1401, read);
+    for (i = 0; i < 16; i++)
+        if (read[i * 4] != 0 || read[i * 4 + 1] != 0 || read[i * 4 + 2] != 0 || read[i * 4 + 3] != alpha[i]) a_ok = false;
+    CHECK(a_ok);
+    /* 3x2 of GL_LUMINANCE_ALPHA at 5,0, and 2x1 of GL_LUMINANCE at 0,1. */
+    pixel_store(0x0CF5, 4);
+    tex_sub_image(0x0DE1, 0, 5, 0, 3, 2, 0x190A, 0x1401, la);
+    pixel_store(0x0CF5, 1);
+    tex_sub_image(0x0DE1, 0, 0, 1, 2, 1, 0x1909, 0x1401, grey);
+    pixel_store(0x0CF5, 4);
+    memset(read, 0xee, sizeof(read));
+    read_pixels(0, 0, 8, 2, 0x1908, 0x1401, read);
+    for (i = 0; i < 6; i++) {
+        const u8 *p = read + ((i / 3) * 8 + 5 + i % 3) * 4, *in = la + (i / 3) * 8 + (i % 3) * 2;
+        if (p[0] != in[0] || p[1] != in[0] || p[2] != in[0] || p[3] != in[1]) la_ok = false;
+    }
+    CHECK(la_ok);
+    l_ok = read[8 * 4] == 77 && read[8 * 4 + 1] == 77 && read[8 * 4 + 2] == 77 && read[8 * 4 + 3] == 255 && read[9 * 4] == 88 && read[9 * 4 + 3] == 255;
+    CHECK(l_ok);
+    /* What neither touched is the alpha still. */
+    CHECK(read[10 * 4] == 0 && read[10 * 4 + 3] == alpha[10] && read[4 * 4 + 3] == alpha[4]);
+    say("  8x2 of GL_ALPHA %s, 3x2 of GL_LUMINANCE_ALPHA in rows of eight bytes %s, 2x1 of GL_LUMINANCE %s", a_ok ? "read back" : "NOT read back",
+        la_ok ? "read back" : "NOT read back", l_ok ? "read back" : "NOT read back");
+    bind_fbo(0x8D40, 0);
+    delete_textures(1, &tex);
+    make_current(d, NULL, NULL, NULL);
+    destroy_ctx(d, ctx);
+    free(alpha);
 }
 
 /*
@@ -1723,7 +1853,9 @@ int mg_gl_natives_tests_run(mg_test_sink sink, void *user, int *checks)
     test_version();
     test_context_versions();
     test_context_es1();
+    test_complete_configs();
     test_hardware_buffers();
+    test_texture_formats();
     test_webview_display();
     mg_egl_webview_own_display(false);
     test_draw_functor();

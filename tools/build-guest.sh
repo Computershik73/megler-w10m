@@ -26,6 +26,9 @@
 #   libt_jni.so        native methods of a class the Dalvik runtime's tests have in DEX
 #   libt_xposed.so     stands in for Aliucord's libaliuhook.so: XposedBridge's natives by their JNI names, a JNI_OnLoad
 #                      that fails (t_xposed.c); the runtime loads it without the one and answers the others itself
+#   libt_onload.so, libt_onload_dep.so
+#                      a library without a JNI_OnLoad and the one it needs, which has it, as Microsoft OneDrive's
+#                      libcore.so and libQt.so (t_onload.c): Java loads the first, and the second's JNI_OnLoad is run
 #   libt_svc.so, libt_svc_diag.so, libt_svc_arm.so
 #                      armeabi-v7a: direct ARM EABI system calls (t_svc.c), Thumb and ARM; arm64-v8a: libt_svc.so and
 #                      libt_svc_diag.so, svc 0 led out to the core, and left traps by the flag trap-svc
@@ -109,6 +112,9 @@ fi
 "$CLANG" "${COMMON[@]}" ${THUMB[@]+"${THUMB[@]}"} -Wl,--hash-style=both   -Wl,-soname,libt_jni.so -o "$(w "$OUT/libt_jni.so")" "$(w "$SRC/t_jni.c")" "${SYS[@]}"
 # And one that stands in for Aliucord's libaliuhook.so: loaded without its JNI_OnLoad, its natives the runtime's own.
 "$CLANG" "${COMMON[@]}" ${THUMB[@]+"${THUMB[@]}"} -Wl,--hash-style=both   -Wl,-soname,libt_xposed.so -o "$(w "$OUT/libt_xposed.so")" "$(w "$SRC/t_xposed.c")" "${SYS[@]}"
+# And a pair like Microsoft OneDrive's libcore.so and libQt.so: the one Java loads has no JNI_OnLoad, the one it needs has.
+"$CLANG" "${COMMON[@]}" ${THUMB[@]+"${THUMB[@]}"} -Wl,--hash-style=both -DDEP -Wl,-soname,libt_onload_dep.so -o "$(w "$OUT/libt_onload_dep.so")" "$(w "$SRC/t_onload.c")" "${SYS[@]}"
+"$CLANG" "${COMMON[@]}" ${THUMB[@]+"${THUMB[@]}"} -Wl,--hash-style=both -Wl,-soname,libt_onload.so -o "$(w "$OUT/libt_onload.so")" "$(w "$SRC/t_onload.c")" "-L$(w "$OUT")" -lt_onload_dep "${SYS[@]}"
 if [ "$ABI" = armeabi-v7a ]; then
   "$CLANG" "${COMMON[@]}" -mthumb -Wl,--hash-style=both   -Wl,-soname,libt_svc.so -o "$(w "$OUT/libt_svc.so")" "$(w "$SRC/t_svc.c")" "${SYS[@]}"
   "$CLANG" "${COMMON[@]}" -mthumb -Wl,--hash-style=both   -Wl,-soname,libt_svc_diag.so -o "$(w "$OUT/libt_svc_diag.so")" "$(w "$SRC/t_svc.c")" "${SYS[@]}"

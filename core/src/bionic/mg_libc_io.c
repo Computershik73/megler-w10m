@@ -2383,6 +2383,7 @@ typedef struct g_stat {
 #endif
 
 #define G_S_IFREG 0100000u
+#define G_S_IFLNK 0120000u
 #define G_S_IFDIR 0040000u
 #define G_S_IFCHR 0020000u
 #define G_S_IFIFO 0010000u
@@ -2488,6 +2489,34 @@ static int g_stat_path(const char *path, g_stat *out)
     return 0;
 }
 
+/*
+ * The one symbolic link there is: the process's executable, /proc/self/exe (and under the process's number, and
+ * /proc/thread-self), which readlink, below, reads.
+ */
+static bool is_exe_link(const char *path)
+{
+    char *g = path && *path ? normalize(path) : NULL;
+    bool is = g && !strcmp(g, "/proc/self/exe");
+    free(g);
+    return is;
+}
+
+/*
+ * lstat, which does not follow a link: of that one, a link's answer, as Linux gives it for a /proc link (all may follow
+ * it, its size 0); of anything else, stat's. It said "no such file" of a link readlink read. Dart's runtime
+ * (Platform.resolvedExecutable) asks lstat whether /proc/self/exe is a link before it reads it, takes its own -1 for a
+ * length, and copies that many bytes: LocalSend's Flutter engine ended there, in memcpy, three seconds into its start.
+ * (What the link names is no file here: stat, which follows it, finds none.)
+ */
+static int g_lstat_path(const char *path, g_stat *out)
+{
+    if (is_exe_link(path)) {
+        fill_special(out, G_S_IFLNK | 0777, 0, "/proc/self/exe");
+        return 0;
+    }
+    return g_stat_path(path, out);
+}
+
 static int g_fstat(int fd, g_stat *out)
 {
     mg_stat st;
@@ -2522,7 +2551,6 @@ static int g_fstat(int fd, g_stat *out)
 
 static int g_fstatat(int dirfd, const char *path, g_stat *out, int flags)
 {
-    (void)flags;
     if (dirfd != -100 && path && path[0] != '/') {
         gobj *d = fd_get(dirfd);
         char *full;
@@ -2538,7 +2566,8 @@ static int g_fstatat(int dirfd, const char *path, g_stat *out, int flags)
         free(full);
         return r;
     }
-    return g_stat_path(path, out);
+    /* (AT_SYMLINK_NOFOLLOW is lstat.) */
+    return (flags & 0x100) ? g_lstat_path(path, out) : g_stat_path(path, out);
 }
 
 /*
@@ -2827,7 +2856,7 @@ static char *g_realpath(const char *path, char *out)
 static gssize g_readlink(const char *path, char *buf, size_t n)
 {
     /* The one link code reads: its own executable, the zygote of the ABI's width. */
-    if (path && !strcmp(path, "/proc/self/exe")) {
+    if (is_exe_link(path)) {
         const char *exe = MG_GUEST_LP64 ? "/system/bin/app_process64" : "/system/bin/app_process32";
         size_t len = strlen(exe);
         if (len > n) len = n;
@@ -4801,6 +4830,7 @@ static int g_open_2_said(const char *path, int flags) { int r = g_open_2(path, f
 static int g_openat_said(int dirfd, const char *path, int flags, int mode) { int r = g_openat(dirfd, path, flags, mode); FILE_SAID("openat", path, r); return r; }
 static int g_openat_2_said(int dirfd, const char *path, int flags) { int r = g_openat_2(dirfd, path, flags); FILE_SAID("openat", path, r); return r; }
 static int g_stat_said(const char *path, g_stat *out) { int r = g_stat_path(path, out); FILE_SAID("stat", path, r); return r; }
+static int g_lstat_said(const char *path, g_stat *out) { int r = g_lstat_path(path, out); FILE_SAID("lstat", path, r); return r; }
 static int g_fstatat_said(int dirfd, const char *path, g_stat *out, int flags) { int r = g_fstatat(dirfd, path, out, flags); FILE_SAID("fstatat", path, r); return r; }
 static int g_access_said(const char *path, int mode) { int r = g_access(path, mode); FILE_SAID("access", path, r); return r; }
 static int g_faccessat_said(int dirfd, const char *path, int mode, int flags) { int r = g_faccessat(dirfd, path, mode, flags); FILE_SAID("faccessat", path, r); return r; }
@@ -4832,7 +4862,7 @@ const mg_sym mg_tab_io[] = {
     IO("ftruncate", g_ftruncate), IO("ftruncate64", g_ftruncate64), IO("truncate", g_truncate),
     IO("posix_fadvise", g_posix_fadvise), IO("posix_fadvise64", g_posix_fadvise64), IO("posix_fallocate", g_posix_fallocate), IO("fallocate", g_fallocate), IO("fallocate64", g_fallocate64),
     IO("fsync", g_fsync), IO("fdatasync", g_fsync), IO("sync", g_sync),
-    IO("stat", g_stat_said), IO("stat64", g_stat_said), IO("lstat", g_stat_said), IO("lstat64", g_stat_said),
+    IO("stat", g_stat_said), IO("stat64", g_stat_said), IO("lstat", g_lstat_said), IO("lstat64", g_lstat_said),
     IO("fstat", g_fstat), IO("fstat64", g_fstat), IO("fstatat", g_fstatat_said), IO("fstatat64", g_fstatat_said),
     IO("access", g_access_said), IO("faccessat", g_faccessat_said),
     IO("statfs", g_statfs_fn), IO("statfs64", g_statfs_fn), IO("fstatfs", g_fstatfs_fn), IO("fstatfs64", g_fstatfs_fn),

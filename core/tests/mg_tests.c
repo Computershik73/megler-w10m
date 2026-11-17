@@ -3898,6 +3898,14 @@ static void test_appx_pri(void)
     CHECK(!mg_appx_pri_rename(file, sizeof(file), placeholder, 1, 2, "MeglerApp.short", out, err, sizeof(err)));
 }
 
+/* st_mode of bionic's struct stat, where each ABI has it. */
+static u32 guest_stat_mode(const void *st)
+{
+    u32 mode;
+    memcpy(&mode, (const u8 *)st + (MG_ARCH_X86_64 ? 24 : 16), 4);
+    return mode;
+}
+
 static void test_libc_odds(void)
 {
     const u32 *size = (const u32 *)mg_bionic_find("__page_size"), *shift = (const u32 *)mg_bionic_find("__page_shift");
@@ -3921,15 +3929,38 @@ static void test_libc_odds(void)
     /*
      * getauxval: what every Linux process's vector has -- AT_EXECFN, the path it was started from, an app's its zygote's (it was
      * zero: a string read through null), the clock's ticks, the app's ids -- and zero with ENOENT for what it has not. And the
-     * process's executable through realpath is what readlink says it links to.
+     * process's executable through realpath is what readlink says it links to; lstat, by either of its names and as fstatat
+     * told not to follow, says a link of it, under the process's number too (it said there was no such file, and Dart's
+     * runtime, which asks before it reads the link, copied 4 GB: LocalSend), and a file is no link.
      */
     {
         typedef unsigned long (*auxval_fn)(unsigned long);
         typedef char *(*realpath_fn)(const char *, char *);
+        typedef int (*lstat_fn)(const char *, void *);
+        typedef int (*fstatat_fn)(int, const char *, void *, int);
+        typedef long (*readlink_fn)(const char *, char *, size_t);
         auxval_fn aux = (auxval_fn)mg_bionic_find("getauxval");
         realpath_fn real = (realpath_fn)mg_bionic_find("realpath");
+        lstat_fn lstat_ = (lstat_fn)mg_bionic_find("lstat"), lstat64_ = (lstat_fn)mg_bionic_find("lstat64");
+        fstatat_fn fstatat_ = (fstatat_fn)mg_bionic_find("fstatat64");
+        readlink_fn readlink_ = (readlink_fn)mg_bionic_find("readlink");
         const char *exe = MG_GUEST_LP64 ? "/system/bin/app_process64" : "/system/bin/app_process32";
         static char path[4096];
+        u32 st[64];
+        CHECK(lstat_ && lstat64_ && fstatat_ && readlink_);
+        if (lstat_ && lstat64_ && fstatat_ && readlink_) {
+            memset(st, 0, sizeof(st));
+            CHECK(lstat64_("/proc/self/exe", st) == 0 && guest_stat_mode(st) == (0120000u | 0777));
+            memset(st, 0, sizeof(st));
+            CHECK(lstat_("/proc/4242/exe", st) == 0 && (guest_stat_mode(st) & 0170000u) == 0120000u);
+            memset(st, 0, sizeof(st));
+            CHECK(fstatat_(-100, "/proc/self/exe", st, 0x100 /* AT_SYMLINK_NOFOLLOW */) == 0 && (guest_stat_mode(st) & 0170000u) == 0120000u);
+            memset(path, 0, sizeof(path));
+            CHECK(readlink_("/proc/4242/exe", path, sizeof(path) - 1) == (long)strlen(exe) && !strcmp(path, exe));
+            memset(st, 0, sizeof(st));
+            CHECK(lstat64_("/proc/cpuinfo", st) == 0 && (guest_stat_mode(st) & 0170000u) == 0100000u);
+            CHECK(lstat64_("/proc/self/no-such-link", st) == -1);
+        }
         CHECK(aux && aux(31) != 0 && aux(17) == 100 && aux(11) == 10100 && aux(14) == 10100);
         /* (A string's address fits an unsigned long where the guest's ABI is the host's: not in MSVC's x64 build.) */
         if (aux && sizeof(unsigned long) == sizeof(void *)) CHECK(!strcmp((const char *)(mg_addr)aux(31), exe));
@@ -5754,6 +5785,8 @@ static void test_library(mg_lib *lib, const char *what, const char *scratch)
     CHECK_INT(FN(lib, int (*)(int), "t_big_frame")(10), 56);
     /* Signals between threads: a thread stopped and let go twenty times, wherever it was found. */
     CHECK_INT(FN(lib, int (*)(int), "t_signals")(20), 0);
+    /* pause: a thread waits in it past a signal it has blocked, until a handler has run on it. */
+    CHECK_INT(FN(lib, int (*)(void), "t_pause")(), 0);
     /* A thread stopped as the collector stops one, 20000 times while signals keep sending it back: its registers its own. */
     test_stop_signalled(lib);
 #if MG_ARCH_X86_64 || (MG_ARCH_X86 && MG_HOST_WINDOWS)
