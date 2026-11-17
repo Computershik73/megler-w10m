@@ -2484,15 +2484,16 @@ static bool again_times(i32 count)
 }
 
 /*
- * The row "typing" of the demos list opens a screen with four text fields (core/tests/app/demos, Typing). The test is
- * the keyboard: a touch of a field must ask for it, with the field's kind; what it then sends must arrive in the field,
- * in order, text and editing keys alike; and the field's own pixels must show it.
+ * The row "typing" of the demos list opens a screen with four text fields and a box of one digit (core/tests/app/demos,
+ * Typing). The test is the keyboard: a touch of a field must ask for it, with the field's kind; what it then sends must
+ * arrive in the field, in order, text and editing keys alike; and the field's own pixels must show it.
  */
 static void type_into_fields(const int row[4], int *at)
 {
-    int name[4], number[4], secret[4], note[4], layout, typed, fewer;
+    int name[4], number[4], secret[4], note[4], code[4], layout, typed, fewer;
     i32 shown, hidden, again;
     memset(name, 0, sizeof(name));
+    memset(code, 0, sizeof(code));
     say("the keyboard: text typed into the demos app's fields");
     /* Typed while no field has the focus: it goes nowhere, and the framework's log says so (megler.InputMethods in the overlay). */
     megler_text_commit("x");
@@ -2507,7 +2508,7 @@ static void type_into_fields(const int row[4], int *at)
     expect_line("I/DemoTest: typing: created", at, 30);
     layout = wait_line("I/DemoTest: typing: layout name=", *at, 30);
     CHECK(layout >= 0 && rect_in(line_at(layout), "name", name) && rect_in(line_at(layout), "number", number) && rect_in(line_at(layout), "secret", secret)
-          && rect_in(line_at(layout), "note", note));
+          && rect_in(line_at(layout), "note", note) && rect_in(line_at(layout), "code", code));
     settle();
     if (layout < 0) return;
 
@@ -2599,6 +2600,13 @@ static void type_into_fields(const int row[4], int *at)
     expect_line("I/DemoTest: typing: note=\"one|two\" cursor=7", at, 30);
     settle();
     write_picture("demos-9-fields");
+    /* A box of one digit as Viber's activation code is made of (EnterCodeEditTextLayout), told setTextIsSelectable(false): a
+       touch asks for the keyboard, for a number, and what it sends arrives. Such a box took no touch at all (0.1.0.699). */
+    shown = K.shown;
+    tap(code[0] + code[2] / 2, code[1] + code[3] / 2);
+    CHECK(shown_times(shown + 1) && K.kind == MEGLER_KEYBOARD_NUMBER && K.flags == 0);
+    megler_text_commit("7");
+    expect_line("I/DemoTest: typing: code=\"7\" cursor=1", at, 30);
 
     /* The keyboard says how much of the surface it covers, then that the user put it away: the app goes on, and the next touch of a field asks again. */
     hidden = K.hidden;
