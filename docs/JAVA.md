@@ -4598,6 +4598,37 @@ every install from Play Store ended in "Can't install the app" (its error 1000,
 package 574). The test app `splits` has a service in a process of its own
 (`.Other`, `:other`) that loads the library of its split and calls it.
 
+The scope's loader is a `PathClassLoader`, as Android's loader of a process
+is: `megler.ServiceClassLoader` extends it, its path list holds the APK's
+`DexFile` (which, opening the APK for that loader, is what makes the scope:
+`DexFile_openDexFileNative`, `dvm/mg_dvm_art.c`) and the library folders
+`findLibrary` looks in, and its parent is the boot class path's loader, as
+the app's own loader's is (a hosted service's has none, as before). Facebook
+Lite's shell reads `BaseDexClassLoader.pathList`'s `dexElements` in every one
+of its processes and puts a loader of its own in the loader's `parent` field;
+in its push process `:fbns` that was "Expected receiver of type
+dalvik/system/BaseDexClassLoader, but got megler/ServiceClassLoader"
+(packages 696, 699). A class is looked for in the scope first (all of a
+scope's classes are there at once), and a parent the app has put there is
+asked for what the scope has not.
+
+A file the code of such a process opens for no loader (`DexFile.loadDex`), or
+one opened for the scope's loader, joins that scope, once, as one the app's
+own process opens joins the app's path; a loose DEX file whose bytes were
+read before (same size, checksum and SHA-1) shares them. Facebook Lite keeps
+all but its shell in DEX files it unpacks into its data folder and opens so
+in each process: `:fbns` found them on the app's path already, got none of
+their classes, and neither its Application's delegate
+(`com.facebook.lite.LeanClientApplication`) nor its service
+(`com.facebook.rti.push.service.FbnsService`) was found. A hosted service's
+code (Google Play services, the WebView) opening a file for no loader does
+what it did. The data test app's `:elsewhere` process reads its loader as
+Facebook Lite does and opens a DEX file of its own ("process-loader"). Not
+done: the scope is over the base APK alone (code in a split is not in it),
+and a class a DEX reference does not find never asks the loader (a loader of
+the app's that opens a file only when a class is missing is asked by
+`loadClass` and `Class.forName` alone).
+
 ### Downloads
 
 `megler.Downloads` is the system's download provider

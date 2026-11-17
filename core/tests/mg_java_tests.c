@@ -4037,6 +4037,13 @@ static int run_data(void)
     CHECK(wait_line("I/DataTest: process-scope process=megler.test.data:elsewhere marker=0 loader=ServiceClassLoader application=true here=false", 0, 30) >= 0);
     /* Its scope has the APK's DEX files read for the app's own, not a copy (dvm/mg_dvm_apk.c). */
     CHECK(find_line("of its DEX files are the ones read before, shared", 0) >= 0);
+    /* Its loader is a PathClassLoader under the boot class path's, as Android's loader of a process is, read by reflection as
+       Facebook Lite's shell reads it (megler.ServiceClassLoader): one dexElement, the APK's DexFile, which defines the process's
+       own Twin for the loader; the app's library folder on its path; a parent the app put there asked for a class the process
+       has not; and a DEX file the process opened for no loader in the process's scope (its ModuleProbe not there before, the
+       loader's after, with the APK's Twin). */
+    CHECK(wait_line("I/DataTest: process-loader path=true parent=BootClassLoader elements=1 apk=true libraries=true defined=true above=true opened=false/true twin=app", 0, 30) >= 0);
+    CHECK(find_line("elsewhere.dex: opened by the code of scope", 0) >= 0);
     /*
      * Its DEX file, which the APK deflates, inflated into the data folder on the first run and viewed from there, not read into
      * memory; the second run finds it there and makes none (dvm/mg_dvm_apk.c).
