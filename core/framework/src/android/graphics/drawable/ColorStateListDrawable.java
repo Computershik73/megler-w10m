@@ -31,6 +31,20 @@ public class ColorStateListDrawable extends Drawable implements Drawable.Callbac
     @Override protected boolean onStateChange(int[] state) { invalidateSelf(); return isStateful(); }
     public boolean hasFocusStateSpecified() { return false; }
     @Override public Drawable mutate() { return this; }
+    /* Megler: the constant state, which Android's has: a copy is a drawable of these colours, at this one's alpha and colour
+       filter as they are when the copy is asked for (DrawableWrapper says why a drawable Android gives a state has one). */
+    private ConstantState mMeglerState;
+    @Override public ConstantState getConstantState() {
+        if (mMeglerState == null) mMeglerState = new ConstantState() {
+            @Override public Drawable newDrawable() {
+                ColorStateListDrawable c = new ColorStateListDrawable(mColors);
+                c.mAlpha = mAlpha;
+                c.mPaint.setColorFilter(mPaint.getColorFilter());
+                return c;
+            }
+        };
+        return mMeglerState;
+    }
     public void invalidateDrawable(Drawable d) { invalidateSelf(); }
     public void scheduleDrawable(Drawable d, Runnable r, long when) { scheduleSelf(r, when); }
     public void unscheduleDrawable(Drawable d, Runnable r) { unscheduleSelf(r); }

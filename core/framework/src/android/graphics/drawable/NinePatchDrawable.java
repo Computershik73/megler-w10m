@@ -9,6 +9,25 @@ public class NinePatchDrawable extends Drawable {
     private final Rect mPadding;
     public NinePatchDrawable(Resources r, Bitmap b, byte[] chunk, Rect padding, String src) { mPatch = new NinePatch(b, chunk, src); mPadding = padding != null ? new Rect(padding) : new Rect(mPatch.padding); }
     public NinePatchDrawable(NinePatch p) { mPatch = p; mPadding = new Rect(p.padding); }
+    /*
+     * Megler: the constant state, which Android's has: the nine-patch and its padding, and nothing a drawable can change
+     * (its alpha, colour filter and tint are each copy's own, as BitmapDrawable's state is its bitmap). Apps copy a
+     * drawable through its state without asking whether there is one (DrawableWrapper has an instance), and Resources
+     * keeps an image's state and gives every later asker a copy (loadDrawable), so the image of a nine-patch is read and
+     * kept once, not once for each view that has it as a background.
+     */
+    private NinePatchDrawable(NinePatch p, Rect padding) { mPatch = p; mPadding = new Rect(padding); }
+    private ConstantState mMeglerState;
+    @Override public ConstantState getConstantState() {
+        if (mMeglerState == null) {
+            final NinePatch patch = mPatch;
+            final Rect padding = new Rect(mPadding);
+            mMeglerState = new ConstantState() {
+                @Override public Drawable newDrawable() { return new NinePatchDrawable(patch, padding); }
+            };
+        }
+        return mMeglerState;
+    }
     @Override public void draw(Canvas c) { mPaint.setColorFilter(meglerTintFilter()); mPatch.draw(c, getBounds(), mPaint); }
     @Override public boolean getPadding(Rect p) { p.set(mPadding); return (p.left | p.top | p.right | p.bottom) != 0; }
     @Override public int getIntrinsicWidth() { return mPatch.getWidth(); }

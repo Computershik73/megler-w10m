@@ -144,6 +144,24 @@ public class AdaptiveIconDrawable extends Drawable implements Drawable.Callback 
         return this;
     }
     public void clearMutated() {}
+    /* The constant state, which Android's has: a copy is an icon of each layer's own copy -- or of the layer itself where it
+       has no constant state, as LayerDrawable's copy -- at this one's alpha (launchers copy the icons they keep). */
+    private ConstantState mMeglerState;
+    @Override public ConstantState getConstantState() {
+        if (mMeglerState == null) mMeglerState = new ConstantState() {
+            @Override public Drawable newDrawable() { return newDrawable(null); }
+            @Override public Drawable newDrawable(android.content.res.Resources res) {
+                AdaptiveIconDrawable c = new AdaptiveIconDrawable(meglerCopy(mBackground, res), meglerCopy(mForeground, res), meglerCopy(mMonochrome, res));
+                c.mAlpha = mAlpha; c.mOpacity = mOpacity;
+                return c;
+            }
+        };
+        return mMeglerState;
+    }
+    private static Drawable meglerCopy(Drawable d, android.content.res.Resources res) {
+        ConstantState s = d != null ? d.getConstantState() : null;
+        return s != null ? s.newDrawable(res) : d;
+    }
 
     @Override public void invalidateDrawable(Drawable who) { invalidateSelf(); }
     @Override public void scheduleDrawable(Drawable who, Runnable what, long when) { scheduleSelf(what, when); }

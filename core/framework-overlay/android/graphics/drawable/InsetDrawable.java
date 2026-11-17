@@ -3,7 +3,8 @@
 // InsetDrawable.InsetValue): the constructors that take fractions keep them (InsetDrawable(Drawable, float) made one with no
 // inset at all), and megler.ResInflate gives an <inset> whose android:inset or android:insetLeft ... is a fraction ("10%",
 // TypedValue.TYPE_FRACTION) as one (meglerInsets). The drawable's bounds, its intrinsic size and its padding are worked out
-// from them as Android's are.
+// from them as Android's are. And it says what its copy through the constant state is (meglerNewAround; DrawableWrapper has
+// the state).
 //
 // Why. WhatsApp's adaptive icon (mipmap/icon, Settings > Chats > Theme and its Appearance screen) has an inset of 0.01% round
 // its foreground. The inflater read it with getDimensionPixelOffset, which throws for a fraction as Android's does, and the
@@ -43,6 +44,9 @@ public class InsetDrawable extends DrawableWrapper {
         return new InsetDrawable(d, new InsetValue(fractions[0], pixels[0]), new InsetValue(fractions[1], pixels[1]),
                                  new InsetValue(fractions[2], pixels[2]), new InsetValue(fractions[3], pixels[3]));
     }
+
+    /** Megler: an inset drawable of these insets round that drawable, for a copy through the constant state (DrawableWrapper). */
+    @Override DrawableWrapper meglerNewAround(Drawable d) { return new InsetDrawable(d, l, t, r, b); }
 
     /** The insets for these bounds, in pixels. */
     private void insets(Rect bounds, Rect out) {

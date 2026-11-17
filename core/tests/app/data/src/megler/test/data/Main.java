@@ -7417,6 +7417,112 @@ public class Main extends Activity {
             Log.i("DataTest", "layer-copy " + detail);
             return rippled && shown && laid && crossed && shared;
         });
+        // The wrappers that Android gives a constant state have one, and so have a nine-patch, a shape and a list of colours
+        // (DrawableWrapper.getConstantState): Material's NavigationView copies the InsetDrawable it made in code round its
+        // rows' shape for every row (itemBackground.getConstantState().newDrawable(): EhViewer, which stopped on the null
+        // state), and the rows' ripple has such an inset as its mask. Checked: an inset's copy is an inset of the same insets
+        // round the shape's own copy, and draws it inside them; a clip's, a scale's and a rotation's copies are of their
+        // kinds and settings; a wrapper that is none of these has no state, as Android's; a nine-patch's copy has its size
+        // and padding and an alpha of its own; a colour list's copy draws its colour; the ripple with an inset as its mask
+        // is copied; and an adaptive icon's copy has its layers' copies.
+        step("wrapper-copy", () -> {
+            android.graphics.drawable.ShapeDrawable shape = new android.graphics.drawable.ShapeDrawable(new android.graphics.drawable.shapes.OvalShape());
+            shape.getPaint().setColor(0xff00ff00);
+            shape.setIntrinsicWidth(20);
+            shape.setIntrinsicHeight(30);
+            android.graphics.drawable.InsetDrawable inset = new android.graphics.drawable.InsetDrawable(shape, 4, 2, 6, 8);
+            android.graphics.drawable.Drawable.ConstantState is = inset.getConstantState();
+            android.graphics.drawable.Drawable ic = is != null ? is.newDrawable() : null;
+            boolean inseted = false;
+            String at = "none";
+            int middle = 0, corner = 1;
+            if (ic != null && ic.getClass() == android.graphics.drawable.InsetDrawable.class && ic != inset) {
+                android.graphics.drawable.Drawable in = ((android.graphics.drawable.InsetDrawable) ic).getDrawable();
+                ic.setBounds(0, 0, 100, 50);
+                at = in != null ? in.getBounds().toShortString() : "no drawable";
+                android.graphics.Bitmap bm = android.graphics.Bitmap.createBitmap(100, 50, android.graphics.Bitmap.Config.ARGB_8888);
+                ic.draw(new android.graphics.Canvas(bm));
+                middle = bm.getPixel(49, 22);
+                corner = bm.getPixel(1, 1);
+                inseted = in instanceof android.graphics.drawable.ShapeDrawable && in != shape && in.getBounds().equals(new android.graphics.Rect(4, 2, 94, 42))
+                    && in.getCallback() == ic && shape.getCallback() == inset && inset.getDrawable() == shape && is == inset.getConstantState()
+                    && ((android.graphics.drawable.ShapeDrawable) in).getPaint().getColor() == 0xff00ff00
+                    && ((android.graphics.drawable.ShapeDrawable) in).getShape() instanceof android.graphics.drawable.shapes.OvalShape
+                    && ((android.graphics.drawable.ShapeDrawable) in).getShape() != shape.getShape()
+                    && ic.getIntrinsicWidth() == 30 && ic.getIntrinsicHeight() == 40 && middle == 0xff00ff00 && corner == 0;
+            }
+            android.graphics.drawable.ClipDrawable clip = new android.graphics.drawable.ClipDrawable(new android.graphics.drawable.ColorDrawable(0xffff0000),
+                android.view.Gravity.LEFT, android.graphics.drawable.ClipDrawable.HORIZONTAL);
+            android.graphics.drawable.Drawable cc = clip.getConstantState() != null ? clip.getConstantState().newDrawable(getResources()) : null;
+            boolean clipped = false;
+            if (cc != null && cc.getClass() == android.graphics.drawable.ClipDrawable.class && cc != clip) {
+                android.graphics.Bitmap bm = android.graphics.Bitmap.createBitmap(10, 4, android.graphics.Bitmap.Config.ARGB_8888);
+                cc.setBounds(0, 0, 10, 4);
+                cc.setLevel(5000);
+                cc.draw(new android.graphics.Canvas(bm));
+                clipped = bm.getPixel(2, 2) == 0xffff0000 && bm.getPixel(8, 2) == 0 && ((android.graphics.drawable.ClipDrawable) cc).getDrawable() != clip.getDrawable();
+            }
+            android.graphics.drawable.ScaleDrawable scale = new android.graphics.drawable.ScaleDrawable(new android.graphics.drawable.ColorDrawable(0xff0000ff),
+                android.view.Gravity.CENTER, 1f, 1f);
+            android.graphics.drawable.Drawable sc = scale.getConstantState() != null ? scale.getConstantState().newDrawable() : null;
+            boolean scaled = sc != null && sc.getClass() == android.graphics.drawable.ScaleDrawable.class && sc != scale
+                && ((android.graphics.drawable.ScaleDrawable) sc).getDrawable() instanceof android.graphics.drawable.ColorDrawable
+                && ((android.graphics.drawable.ScaleDrawable) sc).getDrawable() != scale.getDrawable();
+            android.graphics.drawable.RotateDrawable rotate = new android.graphics.drawable.RotateDrawable();
+            rotate.setDrawable(new android.graphics.drawable.ColorDrawable(0xff0000ff));
+            rotate.setFromDegrees(10);
+            rotate.setToDegrees(50);
+            android.graphics.drawable.Drawable rc = rotate.getConstantState() != null ? rotate.getConstantState().newDrawable() : null;
+            boolean rotated = rc != null && rc.getClass() == android.graphics.drawable.RotateDrawable.class && rc != rotate
+                && ((android.graphics.drawable.RotateDrawable) rc).getFromDegrees() == 10 && ((android.graphics.drawable.RotateDrawable) rc).getToDegrees() == 50
+                && ((android.graphics.drawable.RotateDrawable) rc).getDrawable() instanceof android.graphics.drawable.ColorDrawable
+                && ((android.graphics.drawable.RotateDrawable) rc).getDrawable() != rotate.getDrawable();
+            android.graphics.drawable.Drawable bare = new android.graphics.drawable.DrawableWrapper(new android.graphics.drawable.ColorDrawable(0xff000000)) {};
+            boolean none = bare.getConstantState() == null;
+            android.graphics.Bitmap b = android.graphics.Bitmap.createBitmap(9, 9, android.graphics.Bitmap.Config.ARGB_8888);
+            b.eraseColor(0xff00ff00);
+            java.nio.ByteBuffer c = java.nio.ByteBuffer.allocate(32 + 4 * 4 + 9 * 4).order(java.nio.ByteOrder.nativeOrder());
+            c.put((byte) 1).put((byte) 2).put((byte) 2).put((byte) 9).putInt(0).putInt(0);
+            c.putInt(1).putInt(2).putInt(3).putInt(4).putInt(0);
+            c.putInt(3).putInt(6).putInt(3).putInt(6);
+            for (int i = 0; i < 9; i++) c.putInt(1);
+            android.graphics.drawable.NinePatchDrawable nine = new android.graphics.drawable.NinePatchDrawable(getResources(), new android.graphics.NinePatch(b, c.array(), null));
+            android.graphics.drawable.Drawable nc = nine.getConstantState() != null ? nine.getConstantState().newDrawable(getResources()) : null;
+            android.graphics.Rect pad = new android.graphics.Rect(), padCopy = new android.graphics.Rect();
+            boolean patched = false;
+            if (nc instanceof android.graphics.drawable.NinePatchDrawable && nc != nine) {
+                nine.getPadding(pad);
+                nc.getPadding(padCopy);
+                nc.setAlpha(100);
+                patched = nc.getIntrinsicWidth() == 9 && nc.getIntrinsicHeight() == 9 && pad.equals(new android.graphics.Rect(1, 3, 2, 4)) && padCopy.equals(pad)
+                    && nc.getAlpha() == 100 && nine.getAlpha() == 255 && nine.getConstantState() == nine.getConstantState();
+            }
+            android.graphics.drawable.ColorStateListDrawable list = new android.graphics.drawable.ColorStateListDrawable(android.content.res.ColorStateList.valueOf(0xff0000ff));
+            android.graphics.drawable.Drawable lc = list.getConstantState() != null ? list.getConstantState().newDrawable() : null;
+            boolean listed = false;
+            if (lc instanceof android.graphics.drawable.ColorStateListDrawable && lc != list) {
+                android.graphics.Bitmap bm = android.graphics.Bitmap.createBitmap(4, 4, android.graphics.Bitmap.Config.ARGB_8888);
+                lc.setBounds(0, 0, 4, 4);
+                lc.draw(new android.graphics.Canvas(bm));
+                listed = bm.getPixel(2, 2) == 0xff0000ff;
+            }
+            android.graphics.drawable.RippleDrawable ripple = new android.graphics.drawable.RippleDrawable(android.content.res.ColorStateList.valueOf(0x40ffffff), null, inset);
+            android.graphics.drawable.Drawable pc = ripple.getConstantState() != null ? ripple.getConstantState().newDrawable() : null;
+            boolean rippled = pc instanceof android.graphics.drawable.RippleDrawable && pc != ripple;
+            android.graphics.drawable.ColorDrawable back = new android.graphics.drawable.ColorDrawable(0xff102030);
+            android.graphics.drawable.AdaptiveIconDrawable icon = new android.graphics.drawable.AdaptiveIconDrawable(back, new android.graphics.drawable.ColorDrawable(0xff405060));
+            android.graphics.drawable.Drawable ac = icon.getConstantState() != null ? icon.getConstantState().newDrawable() : null;
+            boolean iconed = ac instanceof android.graphics.drawable.AdaptiveIconDrawable && ac != icon
+                && ((android.graphics.drawable.AdaptiveIconDrawable) ac).getBackground() instanceof android.graphics.drawable.ColorDrawable
+                && ((android.graphics.drawable.AdaptiveIconDrawable) ac).getBackground() != back
+                && ((android.graphics.drawable.ColorDrawable) ((android.graphics.drawable.AdaptiveIconDrawable) ac).getBackground()).getColor() == 0xff102030
+                && ((android.graphics.drawable.AdaptiveIconDrawable) ac).getForeground() instanceof android.graphics.drawable.ColorDrawable && icon.getBackground() == back;
+            detail = "inseted=" + inseted + " (the shape at " + at + ", middle " + Integer.toHexString(middle) + ", corner " + Integer.toHexString(corner)
+                + ") clipped=" + clipped + " scaled=" + scaled + " rotated=" + rotated + " none=" + none + " patched=" + patched + " (padding "
+                + padCopy.toShortString() + ") listed=" + listed + " rippled=" + rippled + " iconed=" + iconed;
+            Log.i("DataTest", "wrapper-copy " + detail);
+            return inseted && clipped && scaled && rotated && none && patched && listed && rippled && iconed;
+        });
         // A reference that comes to @null is no value in a styled attribute array: WhatsApp tints an image of its settings
         // with a colour that is @null by day and a colour by night (app:tint="@color/..."), and AppCompat asks hasValue and
         // getResourceId before it reads a colour list. Android's ApplyStyle turns a reference resolved to @null back into

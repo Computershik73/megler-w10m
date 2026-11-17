@@ -6,6 +6,8 @@ public class ClipDrawable extends DrawableWrapper {
     public static final int HORIZONTAL = 1, VERTICAL = 2;
     private final int mGravity, mOrientation;
     public ClipDrawable(Drawable d, int gravity, int orientation) { super(d); mGravity = gravity; mOrientation = orientation; }
+    /** Megler: a clip of this one's gravity and orientation round that drawable, for a copy through the constant state (DrawableWrapper). */
+    @Override DrawableWrapper meglerNewAround(Drawable d) { return new ClipDrawable(d, mGravity, mOrientation); }
     @Override protected boolean onLevelChange(int l) { super.onLevelChange(l); invalidateSelf(); return true; }
     @Override public void draw(Canvas c) {
         Drawable d = getDrawable();

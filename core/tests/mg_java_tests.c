@@ -3756,6 +3756,10 @@ static int run_data(void)
                                          /* And a LayerDrawable has a constant state, whose copy is a drawable of its kind with the layers'
                                             copies: a ripple, a layer list with ids and insets, a transition (YouTube's watch page). */
                                          "layer-copy",
+                                         /* And the wrappers Android gives a constant state have one, as a nine-patch, a shape and a
+                                            list of colours have: an inset made in code is copied for each row of a menu (EhViewer's
+                                            drawer, Material's NavigationView). */
+                                         "wrapper-copy",
                                          /* And a reference that comes to @null is no value in a styled attribute array: a tint that is a
                                             colour @null by day leaves the image without one (WhatsApp's settings on a PC). */
                                          "null-reference",
