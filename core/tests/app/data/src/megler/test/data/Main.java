@@ -7294,6 +7294,36 @@ public class Main extends Activity {
             detail = said + "tab_content has its TabHost " + host;
             return same && host;
         });
+        // The built-in screens, as YouTube measures them to tell a phone from a tablet (Android 13 and on): the displays of
+        // ALL_INCLUDING_DISABLED, each one whose type (Display.getType, hidden: by reflection) is TYPE_INTERNAL, its smallest
+        // width in dp from getCurrentSizeRange and the density. That is the configuration's smallestScreenWidthDp. There were none
+        // (no display of that category, a type unknown), and YouTube told its server the form factor was unknown: a channel's
+        // page was refused. No presentation display.
+        step("display-form-factor", () -> {
+            android.hardware.display.DisplayManager dm = (android.hardware.display.DisplayManager) getSystemService(DISPLAY_SERVICE);
+            android.view.Display[] all = dm.getDisplays("android.hardware.display.category.ALL_INCLUDING_DISABLED");
+            int internal = 0, widest = 0;
+            for (android.view.Display d : all) {
+                int type;
+                try {
+                    type = (Integer) android.view.Display.class.getMethod("getType").invoke(d);
+                } catch (ReflectiveOperationException e) {
+                    type = -1;
+                }
+                if (type != 1) continue;
+                internal++;
+                android.graphics.Point small = new android.graphics.Point(), large = new android.graphics.Point();
+                d.getCurrentSizeRange(small, large);
+                android.util.DisplayMetrics m = new android.util.DisplayMetrics();
+                d.getMetrics(m);
+                widest = Math.max(widest, (int) (small.x / m.density + 0.5f));
+            }
+            int sw = getResources().getConfiguration().smallestScreenWidthDp;
+            int presentation = dm.getDisplays(android.hardware.display.DisplayManager.DISPLAY_CATEGORY_PRESENTATION).length;
+            detail = all.length + " displays of ALL_INCLUDING_DISABLED, " + internal + " internal, smallest width " + widest
+                + " dp, the configuration's " + sw + " dp, presentation displays " + presentation;
+            return internal == 1 && widest > 0 && Math.abs(widest - sw) <= 1 && presentation == 0;
+        });
         // A LayerDrawable has a constant state, and its copy is a drawable of its own kind with the layers' copies at their
         // ids and insets (LayerDrawable.meglerCopy): a ripple made in code is copied so for each view it is the background of
         // (getConstantState().newDrawable().mutate(): YouTube's watch page, which stopped on the null state). Checked: a

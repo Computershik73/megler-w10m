@@ -3738,6 +3738,9 @@ static int run_data(void)
                                          /* And the framework's numbers of the platform's internal resources (megler.IR) are the
                                             table's that is read, as getIdentifier finds them by name. */
                                          "platform-ids",
+                                         /* And the built-in screen, as YouTube measures it for its form factor: a display of
+                                            ALL_INCLUDING_DISABLED whose type is internal, its smallest width the configuration's. */
+                                         "display-form-factor",
                                          /* And a LayerDrawable has a constant state, whose copy is a drawable of its kind with the layers'
                                             copies: a ripple, a layer list with ids and insets, a transition (YouTube's watch page). */
                                          "layer-copy",
