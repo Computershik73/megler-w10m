@@ -487,17 +487,24 @@ void AudioHost::ownerLoop() {
     if (playerAlways) shellLog::write("flag: audio-player is on");
     if (xaudioAlways) shellLog::write("flag: audio-xaudio2 is on");
     if (keepOutput) shellLog::write("flag: keep-sound-output is on: an app in the background, unheard, keeps its sound output");
-    // A media app's sound goes through Windows.Media's player (MediaOut), every other through XAudio2 (Engine).
-    const auto playerWanted = [&] {
-        return media_.load() && route_.load() == MEGLER_AUDIO_ROUTE_DEFAULT && !mediaFailed_.load() && !xaudioAlways &&
-               (playerAlways || sessionPlayed_.load());
-    };
     /*
      * Settings' In the Background (shell/Settings.h, background): whether the app, minimized and unheard, is to rest, or to
      * run on, which it does by keeping its output. Asked each time this thread comes round: changed in the app's own
      * package, from the player's menu, it counts from then on. Said in the log at the start and when it changes.
      */
     bool restsThere = false, restsThereSaid = false;
+    /*
+     * A media app's sound goes through Windows.Media's player (MediaOut), every other through XAudio2 (Engine). And a Java
+     * app's that is to run on in the background (Keeps Running) through the player from the start, whether its media session
+     * has played or not: only a player keeps an app from being suspended there. Telegram, minimized with its XAudio2 output
+     * of the Media category kept, was suspended 0.3 s later on the HP Elite x3 (0.1.0.731, as in 0.1.0.696), and ran on
+     * with the player's (a log going on minutes after Windows' word that it suspends it). The output is the player's
+     * already as the app is minimized: Windows decides within a moment of it, before another output could be made.
+     */
+    const auto playerWanted = [&] {
+        return media_.load() && route_.load() == MEGLER_AUDIO_ROUTE_DEFAULT && !mediaFailed_.load() && !xaudioAlways &&
+               (playerAlways || sessionPlayed_.load() || !restsThere);
+    };
     // Whether the app could do without an output, were it silent (AudioHost.h): a media app in Windows' background, not in a
     // call, that is to rest there.
     const auto unseen = [&] {
@@ -638,7 +645,9 @@ void AudioHost::ownerLoop() {
             std::shared_ptr<MediaOut> made = makeMedia(rate, why);
             if (made) {
                 shellLog::write(format("audio: Windows.Media's player playing the mixer's 16-bit stereo at %d Hz, %s; built in %llu ms", rate,
-                                       playerAlways ? "as the flag audio-player has it" : "the app's media session playing (it goes on in the background)",
+                                       playerAlways           ? "as the flag audio-player has it"
+                                       : sessionPlayed_.load() ? "the app's media session playing (it goes on in the background)"
+                                                               : "the app running on in the background (Settings, In the Background: Keeps Running)",
                                        GetTickCount64() - began));
                 setStatus(format("%d Hz", rate));
                 failures = 0;

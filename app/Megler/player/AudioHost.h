@@ -50,7 +50,11 @@
 // a download goes on -- so which it is to be is the user's choice, Settings'
 // In the Background (shell/Settings.h, background), Megler's and each app's
 // own: Keeps Running, the output is kept, as in the releases up to 699, and
-// that is what an app goes by when nothing is chosen; or Rests, an app neither
+// that is what an app goes by when nothing is chosen -- the player's, from the
+// app's start, as only a player keeps an app running in the background (an
+// XAudio2 output of the Media category did not: Telegram was suspended 0.3 s
+// after it was minimized, 696 and 731, until its output was the player's,
+// whether its media session had played or not); or Rests, an app neither
 // seen nor heard has no output. A media app that rests and has been in Windows'
 // background (setBackground) for ten seconds, with nothing of it heard for ten
 // and its media session not saying it plays (mediaSession), has its player and
