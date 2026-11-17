@@ -54,7 +54,8 @@ public class DateUtils {
             time = false;
         }
         if (withPreposition && c != null) {
-            // The platform's preposition_for_time or _date in the context's language, found by name: megler.IR's numbers are another release's.
+            // The platform's preposition_for_time or _date in the context's language, found by name in the table that is read
+            // (megler.IR's numbers were once another release's).
             try {
                 final android.content.res.Resources res = c.getResources();
                 final int id = res.getIdentifier(time ? "preposition_for_time" : "preposition_for_date", "string", "android");

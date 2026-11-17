@@ -7263,6 +7263,37 @@ public class Main extends Activity {
             // (SearchView.SearchAutoComplete is hidden from the SDK: the field is told by its public class.)
             return field instanceof android.widget.AutoCompleteTextView && button instanceof android.widget.ImageView && typed;
         });
+        // The framework's own numbers of the platform's internal resources (megler.IR, read here by reflection) are those of the
+        // platform's table that is read, as getIdentifier finds them by name: they were another release's, and DecorView's
+        // title frame, TabActivity's tab_content and Html's unknown_image named nothing in this table. And IR's tab_content
+        // inflates into the TabHost it is.
+        step("platform-ids", () -> {
+            String[][] names = { { "id", "search_src_text" }, { "id", "title_container" }, { "id", "action_bar" }, { "layout", "tab_content" },
+                { "drawable", "unknown_image" }, { "string", "preposition_for_date" }, { "style", "Theme.DeviceDefault.Light.DarkActionBar" } };
+            StringBuilder said = new StringBuilder();
+            boolean same = true;
+            int tabContent = 0;
+            for (String[] n : names) {
+                int byName = getResources().getIdentifier(n[1], n[0], "android"), ir;
+                try {
+                    ir = Class.forName("megler.IR$" + n[0]).getField(n[1].replace('.', '_')).getInt(null);
+                } catch (ReflectiveOperationException e) {
+                    ir = -1;
+                }
+                if (n[1].equals("tab_content")) tabContent = ir;
+                same &= byName != 0 && ir == byName;
+                said.append(n[0]).append('/').append(n[1]).append(" 0x").append(Integer.toHexString(ir)).append(ir == byName ? "" : " (table 0x" + Integer.toHexString(byName) + ")").append(", ");
+            }
+            android.view.View tabs = null;
+            try {
+                tabs = android.view.LayoutInflater.from(this).inflate(tabContent, null);
+            } catch (RuntimeException e) {
+                said.append("tab_content: ").append(e).append(", ");
+            }
+            boolean host = tabs != null && tabs.findViewById(android.R.id.tabhost) != null;
+            detail = said + "tab_content has its TabHost " + host;
+            return same && host;
+        });
         // A LayerDrawable has a constant state, and its copy is a drawable of its own kind with the layers' copies at their
         // ids and insets (LayerDrawable.meglerCopy): a ripple made in code is copied so for each view it is the background of
         // (getConstantState().newDrawable().mutate(): YouTube's watch page, which stopped on the null state). Checked: a

@@ -3735,6 +3735,9 @@ static int run_data(void)
                                          /* And a SearchView's query field and close button have Android's ids, found by name
                                             (YouTube ReVanced Extended's settings). */
                                          "search-view-ids",
+                                         /* And the framework's numbers of the platform's internal resources (megler.IR) are the
+                                            table's that is read, as getIdentifier finds them by name. */
+                                         "platform-ids",
                                          /* And a LayerDrawable has a constant state, whose copy is a drawable of its kind with the layers'
                                             copies: a ripple, a layer list with ids and insets, a transition (YouTube's watch page). */
                                          "layer-copy",

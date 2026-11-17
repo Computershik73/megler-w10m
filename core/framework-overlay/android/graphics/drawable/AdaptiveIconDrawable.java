@@ -45,8 +45,8 @@ public class AdaptiveIconDrawable extends Drawable implements Drawable.Callback 
 
     /**
      * The platform's mask on 100 x 100: config_icon_mask (Android 9's emulator image has a rounded square), or a circle
-     * when it cannot be read. By its name: megler.IR's numbers are another release's, and its number there is another
-     * string here.
+     * when it cannot be read. By its name, as the platform's table that is read has it (megler.IR's numbers were once another
+     * release's, and its number then was another string here).
      */
     private static synchronized Path mask() {
         if (sMask == null) {
