@@ -5935,7 +5935,8 @@ keeps a local reference in a local, which is what local references are for.
   keeps its referent that time, a finalizable object with no room to be queued
   is kept for a later collection; and before the first growth there are small
   ones in the collector's own data. A collection is now given up only when a
-  thread cannot be stopped, and the log says which and why. Once it holds
+  thread cannot be stopped, and the log says which and why (or when a stop
+  stands still: "the stop's watch", below). Once it holds
   enough (2048 objects), the mark is shared with helper
   threads of the collector's own, one fewer than the processors and three at
   the most: the stack becomes a pool they take chunks of into stacks of their
@@ -5949,6 +5950,19 @@ keeps a local reference in a local, which is what local references are for.
   while it runs are born marked. The same helpers share it, a block at a
   time; and the threads are stopped and resumed by all of them at once, each
   taking the next thread of a list made first.
+- *A round is the helpers' to join.* Whatever is shared (`run_round`: the
+  stop, the roots, the mark, the written pages, the resume, the sweep) is
+  claimed piece by piece, the collecting thread does it itself, each helper
+  that has woken by then takes part, and the round ends when those that
+  joined have returned: no helper is waited for to begin. They all were, and
+  Messenger's first collection never ended (Lumia 950, 0.1.0.696): it made
+  its helpers and at once stopped the app's threads in a round, one of them
+  inside the shell's making of its Direct2D device; a thread Windows has just
+  made runs nothing of its own before it has had the loader's lock and the
+  process heap's, and a stopped thread held one. The collector's threads are
+  now also waited for where they are made, before anything is stopped, until
+  each runs its own code (`helpers_start`, 300 ms at the most; the log says
+  when one has not come). "marked by N threads" is how many took part.
 - No generations and no compaction. Fragmentation is limited by size classes.
 
 **The heap.** It is no longer the C heap.
@@ -6076,7 +6090,25 @@ keeps a local reference in a local, which is what local references are for.
 - Because the locks are taken first, no stopped thread holds one of them.
 - Between the stop and the resume the collector allocates nothing, frees
   nothing and logs nothing. A stopped thread may hold the C library's heap
-  lock or the log's.
+  lock or the log's. Nor does it format a number or read a thread's name
+  there (the line of the threads that made the most is put together after
+  the resume: the C library's first formatted print on a thread allocates),
+  make a thread, or touch a thread-local variable for the first time (the
+  desktop builds' are emulated and allocated at first use). The lock of the
+  list of objects with fields by name is one of the collection's own, taken
+  before the stop with the others.
+- *The stop's watch.* For a lock nobody knew of: a thread of the collector's
+  looks every 250 ms while threads are stopped whether the stop moves (a
+  thread stopped, a step begun, a reference looked at by any marking thread),
+  and after 5 s of nothing it lets the stopped threads go itself. The
+  collecting thread, when it comes back, reads nothing more of them, frees
+  nothing, clears no reference, and the log says "gc: ...: not collected:
+  nothing moved for N ms with the threads stopped (the step): they were let
+  go". The next collection that allocations ask for comes a second later at
+  the soonest (twice as long after each further one given up in a row, a
+  minute at the most); one the app asks for, or one before an
+  `OutOfMemoryError`, at once. From where the references are cleared the
+  stop is no longer given up.
 - A thread is registered by `mg_dvm_self` (it already is), with its `mg_thread`
   and its stack's top. It is unregistered when it ends: the end of a Java
   thread, `DetachCurrentThread`, and the bionic layer's thread exit for guest

@@ -16,11 +16,14 @@
  * Inside objects it is exact: a class's reference slots (made at its first instance, mg_dvm_gc_class_ready), all of an
  * object array, nothing of a string or a primitive array, and the JNI layer's by-name fields marked as objects.
  *
- * Between the stop and the resume nothing is allocated, freed or logged: a stopped thread may hold the C library's heap lock
- * or the log's. The mark stack is the collector's own, kept from one collection to the next and grown before a stop to as
- * many entries as the heap has objects, where that can be had ("the collector's own memory"); should it run out all the
- * same, the overflow is finished by going over the heap for marked objects instead of allocating. The mark is shared with
- * helper threads of the collector's own once there is enough of it ("marking in parallel").
+ * Between the stop and the resume nothing is allocated, freed, formatted or logged, no thread is made, and no lock is taken
+ * but the collector's own and those the collection took before the stop: a stopped thread may hold the C library's heap
+ * lock, the log's, or Windows' loader lock. The mark stack is the collector's own, kept from one collection to the next
+ * and grown before a stop to as many entries as the heap has objects, where that can be had ("the collector's own
+ * memory"); should it run out all the same, the overflow is finished by going over the heap for marked objects instead of
+ * allocating. The mark is shared with helper threads of the collector's own once there is enough of it ("marking in
+ * parallel"), which a stop never waits for; and a stop in which nothing moves is given up, the threads let go by a watch
+ * ("the stop's watch").
  */
 #include <setjmp.h>
 #include <stdio.h>
@@ -157,6 +160,7 @@ typedef struct marker {
     u64 marked, marked_bytes, conservative, conservative_bytes;   /* objects marked; their bytes; marked first by a conservative root */
     bool counting_conservative;
     u32 classes, strings;              /* exact roots read: classes, interned strings */
+    volatile u32 beat;                 /* goes on while this thread reads roots and follows objects (the stop's watch) */
 } marker;
 
 typedef struct gc_state {
@@ -229,6 +233,16 @@ static volatile bool g_parallel;       /* the mark shared with the helpers right
  */
 static volatile bool g_alongside;
 /*
+ * A stop, from before its first thread is stopped until its last is let go ("the stop's watch", below): open; then either
+ * committed by the collecting thread, which from there on does what cannot be left half done (the references' clearing,
+ * the resume), or given up by the watch, which has let the threads go. Given up, their stacks and the JNI layer's by-name
+ * fields are the running threads' again and nothing of them is read (stop_lost), and what was marked means nothing.
+ */
+enum { WINDOW_NONE, WINDOW_OPEN, WINDOW_COMMITTED, WINDOW_GIVEN_UP };
+static volatile i32 g_window;
+static volatile i32 g_stop_moved;      /* goes on with each thread stopped and each step of a stop begun */
+#define stop_lost() (g_window == WINDOW_GIVEN_UP)
+/*
  * The machine near the end of its memory: Play Store's heap on a Lumia 650 grew from 133 to 270 MB while a marking that
  * gave way to the app took 8.7 s, until Windows ended it with the phone's 927 MB gone. Then the markers keep their usual
  * priority, and one that makes a budget's worth while the marking goes on waits for it (budget_after keeps the budget
@@ -275,6 +289,7 @@ static bool g_counting = true;
 /* An object reached: marked, and its references to follow later. `o` is an object's start, or anything else (ignored: nothing is read of it before the heap has said it is an object). */
 static void reach(marker *k, void *o)
 {
+    k->beat++;
     if (!o || !(g_parallel || g_alongside ? mg_dvm_heap_set_mark_shared(o) : mg_dvm_heap_set_mark(o))) return;
     k->marked++;
     if (k->counting_conservative) k->conservative++;
@@ -325,6 +340,8 @@ static void follow(marker *k, void *p)
     mg_dvm_obj *o = (mg_dvm_obj *)p;
     mg_jobj *j = &o->j;
     u32 i;
+    /* (A stop given up: the by-name fields are the running threads' to move again, and nothing found is of use.) */
+    if (stop_lost()) return;
     if (j->kind == MG_J_OBJ_ARRAY) {
         /* (An array a stopped thread is making may have its length and not yet its elements: mg_dvm_alloc_array.) */
         if (j->u.oarr.v)
@@ -397,6 +414,17 @@ static void follow_by(void *p, void *k) { follow((marker *)k, p); }
  * runtime's threads (nothing stops them), and neither allocate nor log: their stacks are made with them, before the first
  * collection. Yandex Maps' collections marked 770,000 objects in 325 ms on one thread, every five seconds. The flag
  * no-parallel-gc keeps it on the one.
+ *
+ * A round (run_round) is the helpers' to join, not theirs to be waited for: the collecting thread does a round's work
+ * itself, each helper that has woken by then takes part of it, and the round ends when those that joined have returned.
+ * Each round's work is claimed piece by piece (a thread to stop, a part of the class table, a chunk of the pool, a block
+ * to sweep), so any number of threads completes it. Every helper was waited for: Messenger's first collection made its
+ * helpers and, the next instant, stopped the app's threads in a round -- one of them inside the shell's making of its
+ * Direct2D device, where Windows loads libraries; a thread Windows has just made runs nothing of its own before it has
+ * had the loader's lock and the process heap's, so the helpers never came to their round, the round never ended, and the
+ * app stood still at its first screen with every thread stopped (Lumia 950, 0.1.0.696). Now the helpers are also waited
+ * for where they are made, before anything is stopped (helpers_start, for BORN_WAIT_NS at the most), and each touches
+ * there what a thread's first use of would allocate (marker_words_touched).
  */
 #define MAX_HELPERS (MG_DVM_GC_WORKERS - 1)
 #define HELPER_STACK 16384u            /* entries in a marking thread's own stack */
@@ -416,6 +444,15 @@ static void (*g_round_fn)(void *arg, int worker);   /* what the helpers do this 
 static void *g_round_arg;
 static volatile i32 g_any_idle;
 static bool g_done;
+/* Under g_mark_lock: a round that helpers may still join, and how many have; the collector's threads that have started running. */
+static bool g_round_open;
+static u32 g_joined;
+static int g_born;
+static mg_cond g_mark_born = MG_COND_INIT;
+#define BORN_WAIT_NS 300000000ull      /* how long the first collection waits for the collector's threads to start running */
+static void (*volatile g_helper_wakes)(void);   /* the tests': called by a helper woken for a round, before it joins */
+
+void mg_dvm_gc_set_helper_wakes(void (*fn)(void)) { g_helper_wakes = fn; }
 
 /*
  * The priority a marking thread takes for a round: while the app goes on beside it (marking alongside), the lowest, below
@@ -523,21 +560,56 @@ static void mark_shared(marker *k)
     }
 }
 
+/*
+ * This thread's own words of the marking, touched before anything is stopped: where a thread's variables are emulated (the
+ * desktop builds: -femulated-tls, mg_crt_bridge.c), a thread's first use of one allocates it from the process heap, and
+ * that first use was a helper's first round -- a stop.
+ */
+static void marker_words_touched(void)
+{
+    volatile int *level = &t_marker_level;
+    volatile i32 *raised = &t_marker_raised;
+    (void)*level;
+    (void)*raised;
+}
+
+/* A thread of the collector's has come to its own code: Windows has finished making it (helpers_start waits for this). */
+static void born(void)
+{
+    marker_words_touched();
+    mg_lock_acquire(&g_mark_lock);
+    g_born++;
+    mg_cond_signal(&g_mark_born);
+    mg_lock_release(&g_mark_lock);
+}
+
 static MG_HOSTCB void helper_main(void *arg)
 {
     int worker = (int)((marker *)arg - g_markers);
-    /*
-     * From the first round: the helpers are made before any (helpers_start), and one that starts running late must still
-     * take its part in it, which the others wait for.
-     */
     u32 seen = 0;
+    born();
     for (;;) {
+        void (*fn)(void *arg, int worker) = NULL;
+        void (*wakes)(void);
+        void *fn_arg = NULL;
         mg_lock_acquire(&g_mark_lock);
         while (g_generation == seen) mg_cond_wait(&g_mark_start, &g_mark_lock);
-        seen = g_generation;
         mg_lock_release(&g_mark_lock);
+        wakes = g_helper_wakes;
+        if (wakes) wakes();
+        /* The round that woke it, or a later one, while it is open: one that ended meanwhile was done without this thread. */
+        mg_lock_acquire(&g_mark_lock);
+        seen = g_generation;
+        if (g_round_open) {
+            fn = g_round_fn;
+            fn_arg = g_round_arg;
+            g_joined++;
+            g_working++;
+        }
+        mg_lock_release(&g_mark_lock);
+        if (!fn) continue;
         marker_priority();
-        g_round_fn(g_round_arg, worker);
+        fn(fn_arg, worker);
         mg_lock_acquire(&g_mark_lock);
         g_finished++;
         mg_cond_signal(&g_mark_end);
@@ -545,43 +617,71 @@ static MG_HOSTCB void helper_main(void *arg)
     }
 }
 
-/* The helpers, once, before any collection stops anything (they are made with their stacks). */
+static bool watch_start(void);
+
+/*
+ * The collector's threads -- the helpers with their stacks, and the stop's watch -- made once, before the first collection
+ * stops anything, and waited for until each runs its own code: until then a new thread is Windows' to start (the loader's
+ * lock, the process heap), which it could not while a stopped thread held either. One that takes longer than BORN_WAIT_NS
+ * is not waited for: it joins the rounds, or watches the stops, from when it has come.
+ */
 static void helpers_start(void)
 {
-    int want, i;
+    int want, i, started = 0, came;
+    u64 t0, now;
     if (g_helpers_tried) return;
     g_helpers_tried = true;
+    t0 = mg_time_monotonic_ns();
+    if (watch_start()) started++;
     want = mg_cpu_count() - 1;
     if (want > MAX_HELPERS) want = MAX_HELPERS;
-    if (want < 1 || mg_flag("no-parallel-gc")) return;
-    for (i = 0; i <= want; i++) {
-        g_markers[i].stack = (void **)malloc(sizeof(void *) * HELPER_STACK);
-        if (!g_markers[i].stack) break;
-        g_markers[i].cap = HELPER_STACK;
-        if (i) {
-            mg_thread *th = mg_thread_start(helper_main, &g_markers[i], (size_t)64 << 10, "gc marker");
-            if (!th) break;
-            marker_thread_known(th);
-            mg_thread_detach(th);
-            g_nhelpers = i;
+    if (want >= 1 && !mg_flag("no-parallel-gc"))
+        for (i = 0; i <= want; i++) {
+            g_markers[i].stack = (void **)malloc(sizeof(void *) * HELPER_STACK);
+            if (!g_markers[i].stack) break;
+            g_markers[i].cap = HELPER_STACK;
+            if (i) {
+                mg_thread *th = mg_thread_start(helper_main, &g_markers[i], (size_t)64 << 10, "gc marker");
+                if (!th) break;
+                marker_thread_known(th);
+                mg_thread_detach(th);
+                g_nhelpers = i;
+                started++;
+            }
         }
-    }
+    mg_lock_acquire(&g_mark_lock);
+    while (g_born < started && (now = mg_time_monotonic_ns()) < t0 + BORN_WAIT_NS)
+        mg_cond_wait_ns(&g_mark_born, &g_mark_lock, t0 + BORN_WAIT_NS - now);
+    came = g_born;
+    mg_lock_release(&g_mark_lock);
+    if (came < started)
+        mg_warn("gc: %d of the collector's %d threads have not started running %u ms after they were made: the collection goes on without them",
+                started - came, started, (unsigned)((mg_time_monotonic_ns() - t0) / 1000000u));
 }
 
-/* `fn` run by the collecting thread (worker 0) and every helper at once, until each has returned. */
-static void run_round(void (*fn)(void *arg, int worker), void *arg)
+/*
+ * `fn` run by the collecting thread (worker 0) and each helper that wakes while it does, until each of them has returned;
+ * how many ran it. No helper is waited for to begin: one that cannot run now (see "marking in parallel") is done without.
+ */
+static int run_round(void (*fn)(void *arg, int worker), void *arg)
 {
+    int ran;
     mg_lock_acquire(&g_mark_lock);
     g_round_fn = fn;
     g_round_arg = arg;
     g_finished = 0;
+    g_joined = 0;
+    g_round_open = true;
     g_generation++;
     mg_cond_broadcast(&g_mark_start);
     mg_lock_release(&g_mark_lock);
     fn(arg, 0);
     mg_lock_acquire(&g_mark_lock);
-    while (g_finished < (u32)g_nhelpers) mg_cond_wait(&g_mark_end, &g_mark_lock);
+    g_round_open = false;
+    while (g_finished < g_joined) mg_cond_wait(&g_mark_end, &g_mark_lock);
+    ran = (int)g_joined + 1;
     mg_lock_release(&g_mark_lock);
+    return ran;
 }
 
 int mg_dvm_gc_share(void (*fn)(void *arg, int worker), void *arg)
@@ -590,8 +690,7 @@ int mg_dvm_gc_share(void (*fn)(void *arg, int worker), void *arg)
         fn(arg, 0);
         return 1;
     }
-    run_round(fn, arg);
-    return g_nhelpers + 1;
+    return run_round(fn, arg);
 }
 
 static void mark_round(void *arg, int worker)
@@ -657,7 +756,7 @@ static void roots_round(void *arg, int worker)
 /* A round (mark_round, roots_round) by the collecting thread and the helpers, the collecting thread's stack their pool. */
 static void shared(void (*round)(void *arg, int worker))
 {
-    int i;
+    int i, ran;
     g_pool = G.main.stack;
     g_npool = G.main.n;
     g_pool_cap = G.main.cap;
@@ -671,12 +770,13 @@ static void shared(void (*round)(void *arg, int worker))
     }
     g_parallel = true;
     mg_lock_acquire(&g_mark_lock);
-    g_working = g_nhelpers + 1;
+    /* (The collecting thread; each helper counts itself in as it joins the round: helper_main.) */
+    g_working = 1;
     g_idle = 0;
     g_any_idle = 0;
     g_done = false;
     mg_lock_release(&g_mark_lock);
-    run_round(round, NULL);
+    ran = run_round(round, NULL);
     g_parallel = false;
     for (i = 0; i <= g_nhelpers; i++) {
         marker *k = &g_markers[i];
@@ -687,7 +787,7 @@ static void shared(void (*round)(void *arg, int worker))
         G.main.classes += k->classes;
         G.main.strings += k->strings;
     }
-    G.markers = (u32)g_nhelpers + 1;
+    if ((u32)ran > G.markers) G.markers = (u32)ran;
 }
 
 /* The collecting thread's stack drained by it and the helpers together. */
@@ -772,15 +872,166 @@ static void list_thread(mg_dvm_thread *t, void *user)
     g_stopped[g_nstopped++].t = t;
 }
 
+/*
+ * The stop's watch: a thread of the collector's own that looks, every WATCH_TICK_NS while threads are stopped, whether the
+ * stop moves -- a thread stopped, a step begun, a reference looked at by any marking thread (marker.beat) -- and after
+ * WATCH_TICKS looks in a row that found nothing moved gives the stop up: it lets every stopped thread go itself, and the
+ * collecting thread, when it comes back from whatever kept it, finds the stop given up, reads no more of the threads
+ * (stop_lost), frees nothing, clears no reference, and says "not collected" once it is through; the next collection the
+ * allocations ask for comes no sooner than a second later (twice as long after each one more given up in a row, a minute
+ * at the most), one asked for by the app or by an allocation about to fail at once.
+ *
+ * What it is for: a stopped thread holds whatever lock it held where it was stopped, and the collecting thread or a
+ * helper that asks for that lock waits until the thread goes on, which was never. Everything known to take one is kept
+ * out of a stop (see the top of this file), and this is for what is not known: Messenger stood still for ever at its
+ * first collection (Lumia 950, 0.1.0.696; "marking in parallel"). A stop given up is a collection put off, by some
+ * seconds in which the app did not run.
+ *
+ * What is left: a marking thread that the system kept from running for the whole wait, in the middle of a stopped
+ * thread's frame stack, goes on reading it when the thread runs again (words read as they change keep an object or do
+ * not, and nothing is freed; a segment the thread gives back meanwhile would be read after it is gone). And from where
+ * the collecting thread has committed the stop (stop_committed: the references are being cleared, the threads let go)
+ * nothing is given up.
+ */
+#define WATCH_TICK_NS 250000000ull
+#define WATCH_TICKS 20                 /* 5 s */
+#define RETRY_FIRST_MS 1000
+#define RETRY_MOST_MS 60000
+static mg_lock g_watch_lock = MG_LOCK_INIT;
+static mg_cond g_watch_wake = MG_COND_INIT;
+static volatile i32 g_watch_ticks = WATCH_TICKS;
+static volatile i32 g_stops_given_up;
+static const char *volatile g_stop_step = "";       /* what the collecting thread does in the stop, for the log */
+/* Under g_watch_lock: the threads of this stop as listed, each not stopped (yet), stopped, or let go by the watch. */
+static mg_thread *g_stop_host[MAX_STOPPED];
+static volatile i32 g_stop_state[MAX_STOPPED];
+static int g_stop_listed;
+static const char *g_given_up_step = "";
+static u32 g_given_up_ms;
+static int g_given_up_running;         /* stops given up one after another */
+static volatile i32 g_retry_at;        /* when allocations may ask for a collection again, in ms of the clock (0: now) */
+static void (*volatile g_in_stop)(int stop);        /* the tests': called by the collecting thread with the threads stopped */
+
+void mg_dvm_gc_set_in_stop(void (*fn)(int stop)) { g_in_stop = fn; }
+void mg_dvm_gc_set_stop_watch(u32 ticks) { mg_atomic_xchg(&g_watch_ticks, ticks ? (i32)ticks : WATCH_TICKS); }
+u32 mg_dvm_gc_stops_given_up(void) { return (u32)g_stops_given_up; }
+
+static u32 stop_progress(void)
+{
+    u32 n = (u32)g_stop_moved + G.main.beat;
+    int i;
+    for (i = 0; i <= MAX_HELPERS; i++) n += g_markers[i].beat;
+    return n;
+}
+
+/* The collecting thread begins `step` of a stop (a constant string). */
+static void stop_step(const char *step)
+{
+    g_stop_step = step;
+    mg_atomic_add(&g_stop_moved, 1);
+}
+
+/* The watch, under its lock: every thread this stop has stopped let go, and those it stops from now on let go at once (stop_some). */
+static void threads_let_go(u32 ms)
+{
+    int i;
+    g_given_up_step = g_stop_step;
+    g_given_up_ms = ms;
+    for (i = 0; i < g_stop_listed; i++)
+        if (mg_atomic_xchg(&g_stop_state[i], 2) == 1) mg_thread_resume(g_stop_host[i]);
+    mg_atomic_add(&g_stops_given_up, 1);
+}
+
+static MG_HOSTCB void watch_main(void *arg)
+{
+    u32 seen = 0;
+    i32 still = 0;
+    u64 since = 0;
+    bool fresh = true;
+    (void)arg;
+    born();
+    mg_lock_acquire(&g_watch_lock);
+    for (;;) {
+        u32 now;
+        u64 at;
+        if (g_window != WINDOW_OPEN) {
+            fresh = true;
+            mg_cond_wait(&g_watch_wake, &g_watch_lock);
+            continue;
+        }
+        now = stop_progress();
+        at = mg_time_monotonic_ns();
+        if (fresh || now != seen) {
+            fresh = false;
+            seen = now;
+            still = 0;
+            since = at;
+        } else if (++still >= g_watch_ticks && at - since >= (u64)g_watch_ticks * WATCH_TICK_NS) {
+            /* (Looks counted as well as time: a process Windows suspended and woke has the time gone by and nothing looked at.) */
+            if (mg_atomic_cas(&g_window, WINDOW_OPEN, WINDOW_GIVEN_UP) == WINDOW_OPEN) threads_let_go((u32)((at - since) / 1000000u));
+            continue;
+        }
+        mg_cond_wait_ns(&g_watch_wake, &g_watch_lock, WATCH_TICK_NS);
+    }
+}
+
+/* The watch's thread, made with the helpers (helpers_start); without one, a stop is as long as it takes. */
+static bool watch_start(void)
+{
+    mg_thread *th = mg_thread_start(watch_main, NULL, (size_t)64 << 10, "gc watch");
+    if (!th) return false;
+    mg_thread_detach(th);
+    return true;
+}
+
+/* A stop begins: its threads listed, none stopped yet. */
+static void window_open(void)
+{
+    int i;
+    mg_lock_acquire(&g_watch_lock);
+    for (i = 0; i < g_nstopped; i++) {
+        g_stop_host[i] = g_stopped[i].t->host;
+        g_stop_state[i] = 0;
+    }
+    g_stop_listed = g_nstopped;
+    stop_step("stopping the threads");
+    mg_atomic_xchg(&g_window, WINDOW_OPEN);
+    mg_cond_signal(&g_watch_wake);
+    mg_lock_release(&g_watch_lock);
+}
+
+/*
+ * The collecting thread, before what cannot be left half done: whether the stop still holds, and from here on the watch
+ * leaves it alone.
+ */
+static bool stop_committed(void)
+{
+    const i32 was = mg_atomic_cas(&g_window, WINDOW_OPEN, WINDOW_COMMITTED);
+    return was == WINDOW_OPEN || was == WINDOW_COMMITTED;
+}
+
+/* Whether allocations are to wait with their next collection (a stop was given up a moment ago). */
+static bool stop_put_off(void)
+{
+    const i32 at = g_retry_at;
+    if (!at) return false;
+    if ((i32)((u32)(mg_time_monotonic_ns() / 1000000u) - (u32)at) < 0) return true;
+    mg_atomic_cas(&g_retry_at, at, 0);
+    return false;
+}
+
 static void stop_some(void *arg, int worker)
 {
     (void)arg;
     (void)worker;
     for (;;) {
         i32 i = mg_atomic_add(&g_stop_next, 1) - 1;
-        if (i >= g_nstopped) return;
+        if (i >= g_nstopped || stop_lost()) return;
+        mg_atomic_add(&g_stop_moved, 1);
         /* Gone: a thread that ended without the host's hook (one the host did not start). Nothing of it is scanned. */
         if (!mg_thread_suspend(g_stopped[i].t->host, &g_stopped[i].regs)) g_stopped[i].t = NULL;
+        /* (Stopped after the watch gave the stop up and went over the threads: let go here.) */
+        else if (mg_atomic_cas(&g_stop_state[i], 0, 1) != 0) mg_thread_resume(g_stop_host[i]);
     }
 }
 
@@ -807,6 +1058,7 @@ static void stop_threads(void)
         g_nstopped = 0;
         return;
     }
+    window_open();
     g_stop_next = 0;
     mg_dvm_gc_share(stop_some, NULL);
     for (i = 0; i < g_nstopped; i++)
@@ -814,10 +1066,37 @@ static void stop_threads(void)
     g_nstopped = kept;
 }
 
-static void resume_threads(void)
+/*
+ * The threads let go; false when the watch had let them go before (the stop given up): the collection is then one that
+ * did not happen (g_stop_failed, with why), said by its caller once the collection's locks are given back.
+ */
+static bool resume_threads(void)
 {
-    g_stop_next = 0;
-    mg_dvm_gc_share(resume_some, NULL);
+    u32 wait = RETRY_FIRST_MS;
+    i32 at;
+    int i;
+    if (g_window == WINDOW_NONE) return true;      /* (nothing was stopped: the listing failed) */
+    if (stop_committed()) {
+        g_stop_next = 0;
+        mg_dvm_gc_share(resume_some, NULL);
+        mg_atomic_xchg(&g_window, WINDOW_NONE);
+        g_given_up_running = 0;
+        mg_atomic_xchg(&g_retry_at, 0);
+        return true;
+    }
+    /* (The watch's lock: it has let the last thread go by the time it gives this.) */
+    mg_lock_acquire(&g_watch_lock);
+    mg_atomic_xchg(&g_window, WINDOW_NONE);
+    mg_lock_release(&g_watch_lock);
+    g_stop_failed = true;
+    snprintf(g_stop_failed_why, sizeof(g_stop_failed_why), "nothing moved for %u ms with the threads stopped (%s): they were let go",
+             (unsigned)g_given_up_ms, g_given_up_step);
+    g_given_up_running++;
+    for (i = 1; i < g_given_up_running && wait < RETRY_MOST_MS; i++) wait *= 2;
+    if (wait > RETRY_MOST_MS) wait = RETRY_MOST_MS;
+    at = (i32)((u32)(mg_time_monotonic_ns() / 1000000u) + wait);
+    mg_atomic_xchg(&g_retry_at, at ? at : 1);
+    return false;
 }
 
 /*
@@ -830,7 +1109,8 @@ static void scan_frames(mg_dvm_thread *t, void *user)
     marker *k = user ? (marker *)user : &G.main;
     mg_dvm_reg *top;
     int i;
-    if (!t->stack) return;
+    /* (A stop given up: the thread runs again, and its segments are its own to give back.) */
+    if (!t->stack || stop_lost()) return;
     for (i = 0; i < t->nsegs && i < DVM_STACK_SEGS; i++) {
         mg_dvm_reg *base = t->segs[i].base, *end = t->segs[i].sp;
         if (base && end > base && end <= base + t->segs[i].committed) scan_words(k, (mg_addr)base, (mg_addr)end);
@@ -862,6 +1142,8 @@ static void stopped_scanned(marker *k, int i)
     mg_dvm_thread *t = g_stopped[i].t;
     mg_addr lo = t->stack_lo, hi = t->stack_hi;
     int j;
+    /* (A stop given up: the thread runs again, or was never stopped and these are no registers of its.) */
+    if (stop_lost()) return;
     for (j = 0; j < r->n; j++) reach_word(k, r->r[j]);
     /* (And, of a thread running a signal's handler, the registers of the code the signal interrupted: mg_host.h.) */
     for (j = 0; j < r->n_was; j++) reach_word(k, r->was[j]);
@@ -1010,7 +1292,10 @@ static void mark(void)
      * they are shared, after the other roots ("the exact roots ... shared").
      */
     G.roots_shared = g_nhelpers > 0;
+    /* (A stop the watch gave up before it began: nothing of it is of use.) */
+    if (stop_lost()) return;
     if (!G.roots_shared) {
+        stop_step("the classes and strings");
         mg_dvm_each_linked_locked(class_roots, NULL);
         t1 = mg_time_monotonic_ns();
         G.classes_ns = t1 - t0;
@@ -1018,6 +1303,7 @@ static void mark(void)
         t2 = mg_time_monotonic_ns();
         G.strings_ns = t2 - t1;
     }
+    stop_step("the exact roots");
     mg_dvm_threads_each(exact_thread_roots, NULL);
     mg_dvm_proxy_roots(reach_ref, NULL);
     mg_dvm_hook_roots(reach_ref, NULL);
@@ -1032,6 +1318,7 @@ static void mark(void)
     reach_ref(g_pending_refs, NULL);
     G.roots_ns = mg_time_monotonic_ns() - t0;
     if (G.roots_shared) {
+        stop_step("the classes and strings");
         t1 = mg_time_monotonic_ns();
         g_root_next = 0;
         g_root_class_parts = (mg_dvm_class_buckets() + ROOT_BUCKETS - 1) / ROOT_BUCKETS;
@@ -1041,12 +1328,15 @@ static void mark(void)
     }
     G.classes = G.main.classes;
     G.strings = G.main.strings;
+    stop_step("what the exact roots reach");
     drain();
     /* What only the conservative scans find, counted apart: the next phone log says how much that is. */
     G.main.counting_conservative = true;
     t1 = mg_time_monotonic_ns();
+    stop_step("the stacks");
     conservative_roots();
     G.stacks_ns = mg_time_monotonic_ns() - t1;
+    stop_step("what the stacks reach");
     drain();
     G.main.counting_conservative = false;
     while (G.overflow) {
@@ -1210,7 +1500,8 @@ bool mg_dvm_gc_counted(size_t bytes)
 {
     if (!g_enabled || !g_dvm.running || t_collecting) return false;
     count(&g_since, bytes);
-    return due();
+    /* (After a stop that was given up, not at once again: "the stop's watch".) */
+    return due() && !stop_put_off();
 }
 
 /*
@@ -1241,20 +1532,29 @@ static void note_maker(mg_dvm_thread *t, void *user)
     k->bytes[i] = made;
 }
 
-static void say_makers(char *out, size_t n)
+/* With the world stopped: which they are (numbers alone; nothing formatted, no thread's name read). */
+static void makers_noted(makers *k)
 {
-    makers k;
+    memset(k, 0, sizeof(*k));
+    mg_dvm_threads_each(note_maker, k);
+}
+
+/*
+ * The line of them, after the threads go on and before the runtime's lock is given back (none of them ends before that):
+ * a thread's name is read from its java.lang.Thread and the megabytes are formatted by the C library, which keeps locks
+ * of its own for both -- they were taken with the world stopped.
+ */
+static void makers_said(const makers *k, char *out, size_t n)
+{
     size_t at = 0;
     int i;
-    memset(&k, 0, sizeof(k));
     out[0] = 0;
-    mg_dvm_threads_each(note_maker, &k);
-    for (i = 0; i < MAKERS && k.t[i] && at + 60 < n; i++) {
+    for (i = 0; i < MAKERS && k->t[i] && at + 60 < n; i++) {
         char name[48];
-        mg_dvm_thread_label(k.t[i], name, sizeof(name));
-        at += (size_t)snprintf(out + at, n - at, "%s%s %.1f MB", i ? ", " : "", name, (double)k.bytes[i] / 1048576.0);
+        mg_dvm_thread_label(k->t[i], name, sizeof(name));
+        at += (size_t)snprintf(out + at, n - at, "%s%s %.1f MB", i ? ", " : "", name, (double)k->bytes[i] / 1048576.0);
     }
-    if (at && at + 30 < n) snprintf(out + at, n - at, " (of %.1f MB)", (double)k.all / 1048576.0);
+    if (at && at + 30 < n) snprintf(out + at, n - at, " (of %.1f MB)", (double)k->all / 1048576.0);
 }
 
 /* The world stopped, everything reachable marked; `sweep`: and what is not, freed. False when not every thread could be stopped. */
@@ -1312,8 +1612,11 @@ static bool collect(const char *reason, bool sweep, mg_dvm_gc_result *out)
     u64 t0, t1 = 0, t2 = 0, t3;
     u32 objects;
     bool ok, clear_soft = !strcmp(reason, "out of memory");
+    makers made;
+    void (*in_stop)(int stop);
     large[0] = classes[0] = 0;
     memset(out, 0, sizeof(*out));
+    memset(&made, 0, sizeof(made));
     if (!g_dvm.running || t_collecting) {
         mg_strlcpy(out->not_collected, !g_dvm.running ? "the runtime is not running" : "this thread is collecting already", sizeof(out->not_collected));
         return false;
@@ -1336,6 +1639,7 @@ static bool collect(const char *reason, bool sweep, mg_dvm_gc_result *out)
         return true;
     }
     t_collecting = true;
+    marker_words_touched();
     g_busy = 1;
     g_counting = true;
     t0 = mg_time_monotonic_ns();
@@ -1344,21 +1648,31 @@ static bool collect(const char *reason, bool sweep, mg_dvm_gc_result *out)
     mg_jni_gc_lock(true);
     mg_lock_acquire(&g_final_lock);
     mg_dvm_heap_lock();
+    /* (And the by-name fields' list, which the marking reads: no stopped thread is in the middle of adding to it.) */
+    mg_lock_acquire(&g_fields_lock);
     objects = mg_dvm_heap_objects();
     marking_ready(objects, references_now());
     stop_threads();
     t1 = mg_time_monotonic_ns();
     ok = !g_stop_failed;
-    if (!ok) mg_strlcpy(out->not_collected, g_stop_failed_why, sizeof(out->not_collected));
     if (ok) {
-        if (sweep) say_makers(out->makers, sizeof(out->makers));
+        in_stop = g_in_stop;
+        if (in_stop) {
+            stop_step("the tests' call");
+            in_stop(0);
+        }
+        if (sweep) makers_noted(&made);
+        stop_step("clearing the marks");
         mg_dvm_heap_clear_marks();
         mark();
-        /* A census decides nothing: what it found stays as it is. */
-        if (sweep && g_referent >= 0) process_references(clear_soft);
+        /* A census decides nothing: what it found stays as it is. (Nor does a stop the watch gave up.) */
+        if (sweep && g_referent >= 0 && stop_committed()) process_references(clear_soft);
     }
-    resume_threads();
+    if (!resume_threads()) ok = false;
     t2 = mg_time_monotonic_ns();
+    mg_lock_release(&g_fields_lock);
+    if (!ok) mg_strlcpy(out->not_collected, g_stop_failed_why, sizeof(out->not_collected));
+    else if (sweep) makers_said(&made, out->makers, sizeof(out->makers));
     out->objects = objects;
     out->live_objects = G.main.marked;
     out->live_bytes = G.main.marked_bytes;
@@ -1505,8 +1819,12 @@ static void roots_pushed(roots_took *took, bool strings)
 {
     u64 t0 = mg_time_monotonic_ns(), t1, t2;
     u32 i;
+    /* (A stop the watch gave up before it began: nothing of it is of use.) */
+    if (stop_lost()) return;
+    stop_step("the classes and strings");
     class_roots_pushed(strings);
     t1 = mg_time_monotonic_ns();
+    stop_step("the exact roots");
     mg_dvm_threads_each(exact_thread_roots, NULL);
     mg_dvm_proxy_roots(reach_ref, NULL);
     mg_dvm_hook_roots(reach_ref, NULL);
@@ -1522,22 +1840,29 @@ static void roots_pushed(roots_took *took, bool strings)
     took->classes_ns = t1 - t0;
     took->exact_ns = t2 - t1;
     G.main.counting_conservative = true;
+    stop_step("the stacks");
     conservative_roots();
     G.main.counting_conservative = false;
     took->stacks_ns = mg_time_monotonic_ns() - t2;
 }
 
-/* The runtime's locks the collection holds while the world is stopped, so that no stopped thread holds one. */
+/*
+ * The runtime's locks the collection holds while the world is stopped, so that no stopped thread holds one: the by-name
+ * fields' list's among them (it was taken at the second stop, where a thread stopped in mg_dvm_gc_has_fields held it).
+ */
 static void locks_take(void)
 {
     mg_dvm_lock();
     mg_jni_gc_lock(true);
     mg_lock_acquire(&g_final_lock);
     mg_dvm_heap_lock();
+    mg_lock_acquire(&g_fields_lock);
 }
 
+/* (The by-name fields' list's always: the sweep takes it for each object with such fields that it frees.) */
 static void locks_give(bool heap_too)
 {
+    mg_lock_release(&g_fields_lock);
     mg_lock_release(&g_final_lock);
     mg_jni_gc_lock(false);
     mg_dvm_unlock();
@@ -1566,13 +1891,12 @@ static void written_round(void *arg, int worker)
     mark_shared(k);
 }
 
+/* (Their list's lock is the collection's since before the stop: locks_take.) */
 static void follow_with_fields(void)
 {
     u32 i;
-    mg_lock_acquire(&g_fields_lock);
     for (i = 0; i < g_nwith_fields; i++)
         if (mg_dvm_heap_is_marked(g_with_fields[i])) follow(&G.main, g_with_fields[i]);
-    mg_lock_release(&g_fields_lock);
 }
 
 static void collect_alongside(void)
@@ -1582,19 +1906,23 @@ static void collect_alongside(void)
     u64 faults0, faults1 = 0, faults2 = 0, faults3 = 0;   /* the process's page faults at each stop's start and end */
     u32 objects, written = 0, released = 0, since0 = 0, native0 = 0, followed = 0;
     u64 held = 0, black = 0, traced = 0;
-    char makers[200], large[600], classes[900];
+    char made_by[200], large[600], classes[900];
     bool ok, hurried;
     mg_dvm_gc_result r;
     mg_dvm_heap_info hi;
     roots_took first, second;
+    makers made;
+    void (*in_stop)(int stop);
     memset(&r, 0, sizeof(r));
     memset(&hi, 0, sizeof(hi));
     memset(&first, 0, sizeof(first));
     memset(&second, 0, sizeof(second));
-    makers[0] = large[0] = classes[0] = 0;
+    memset(&made, 0, sizeof(made));
+    made_by[0] = large[0] = classes[0] = 0;
     mg_lock_acquire(&g_gc_lock);
     helpers_start();
     t_collecting = true;
+    marker_words_touched();
     g_collector = NULL;
     g_counting = false;
     /* Behind from the start where the last one was found behind (g_hurry). */
@@ -1615,7 +1943,13 @@ static void collect_alongside(void)
     t1 = mg_time_monotonic_ns();
     ok = !g_stop_failed;
     if (ok) {
-        say_makers(makers, sizeof(makers));
+        in_stop = g_in_stop;
+        if (in_stop) {
+            stop_step("the tests' call");
+            in_stop(1);
+        }
+        makers_noted(&made);
+        stop_step("clearing the marks");
         tm = mg_time_monotonic_ns();
         mg_dvm_heap_clear_marks();
         tm = mg_time_monotonic_ns() - tm;
@@ -1626,9 +1960,14 @@ static void collect_alongside(void)
         roots_pushed(&first, true);
     }
     faults1 = mg_mem_page_faults();
-    resume_threads();
+    /* (Given up by the watch: nothing is marked alongside, and what is made is made unmarked again -- the heap is locked.) */
+    if (!resume_threads()) {
+        ok = false;
+        mg_dvm_heap_alloc_black(false);
+    }
     g_busy = 0;
     t2 = mg_time_monotonic_ns();
+    if (ok) makers_said(&made, made_by, sizeof(made_by));
     locks_give(true);
     if (!ok) {
         t_collecting = false;
@@ -1659,8 +1998,14 @@ static void collect_alongside(void)
     t5 = mg_time_monotonic_ns();
     ok = !g_stop_failed;
     if (ok) {
+        in_stop = g_in_stop;
+        if (in_stop) {
+            stop_step("the tests' call");
+            in_stop(2);
+        }
         roots_pushed(&second, false);
         tp = mg_time_monotonic_ns();
+        stop_step("the written pages' objects");
         if (g_nhelpers) {
             /* The marked large objects and the objects with fields by name on this thread, into the pool; the arenas shared. */
             mg_dvm_heap_each_marked_large(follow_main);
@@ -1676,15 +2021,17 @@ static void collect_alongside(void)
         }
         td = mg_time_monotonic_ns();
         tp = td - tp;
+        stop_step("what the written pages' objects reach");
         drain();
         while (G.overflow) heap_rescan_marked();
         tq = mg_time_monotonic_ns();
         td = tq - td;
-        if (g_referent >= 0) process_references(false);
+        /* (From here the stop is not given up; one given up before clears no reference, and nothing is freed after it.) */
+        if (g_referent >= 0 && stop_committed()) process_references(false);
         tq = mg_time_monotonic_ns() - tq;
     }
     faults3 = mg_mem_page_faults();
-    resume_threads();
+    if (!resume_threads()) ok = false;
     t7 = mg_time_monotonic_ns();
     locks_give(false);
     /* The heap still locked: nothing is being made, and what is made from now on is made unmarked. */
@@ -1736,7 +2083,7 @@ static void collect_alongside(void)
                 (unsigned)r.freed_objects, (double)traced / 1048576.0, (double)held / 1048576.0, (double)black / 1048576.0,
                 (unsigned)mg_dvm_heap_objects(), (double)g_budget / 1048576.0, (unsigned)(hi.reserved >> 20), (unsigned)hi.arenas,
                 (unsigned)released, (unsigned)G.peak, (unsigned)G.main.cap, G.rescans ? ", overflowed" : "", (unsigned)g_nstopped,
-                makers[0] ? "; made since the last by " : "", makers);
+                made_by[0] ? "; made since the last by " : "", made_by);
     }
     t_collecting = false;
     if (ok) {
