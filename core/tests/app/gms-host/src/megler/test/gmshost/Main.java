@@ -26,7 +26,8 @@ import java.util.Locale;
  * location has handed a fix of the Wi-Fi's to their fused provider by then -- asks LocationManager as an app of it does: the
  * last "network" fix, and the first "gps" fix of a request, each said with how accurate it is and its provider. Then asks
  * Android's Geocoder, which their geocode provider answers, and starts an activity of theirs, which runs here, as Play Store
- * starts their account settings ("Manage your Google Account"), and one whose onCreate fails, which the app outlives.
+ * starts their account settings ("Manage your Google Account"), and one whose onCreate fails, which the app outlives; and
+ * asks its own provider who asks it (WhoAsks), which their Probe asks as well.
  * And, at its start, reads assets through the NDK with their AssetManager and with its own (nativeAssets).
  * And, first of all, asks their provider from a thread whose lock the main thread then waits for (askWhileMainWaits).
  */
@@ -273,6 +274,20 @@ public class Main extends Activity {
         }
     }
 
+    /*
+     * The app's own provider asked by the app, with Google Play services hosted: it is told the app asks it, its package and
+     * its uid, as it is on Android -- only their own code's calls into it come from them (WhoAsks, and the stand-in's Probe).
+     */
+    private void askOwnProvider() {
+        String said = null;
+        try (android.database.Cursor c = getContentResolver().query(WhoAsks.URI, null, null, null, null)) {
+            if (c != null && c.moveToFirst()) said = c.getString(0);
+        } catch (Throwable t) {
+            said = "FAILED " + t;
+        }
+        Log.i("GmsHostTest", "the app's provider asked by the app: " + said);
+    }
+
     private void askLocationManager() {
         final LocationManager lm = (LocationManager) getSystemService(LOCATION_SERVICE);
         try {
@@ -286,6 +301,8 @@ public class Main extends Activity {
                     // made on the main thread, which then waits for its answer), the rest on a thread of the app's own.
                     geocodeOnMain();
                     new Thread(Main.this::geocode, "gms-host-geocoder").start();
+                    // And the app's own provider, which says who asks it: the app here (and Google Play services, when their Probe does).
+                    new Thread(Main.this::askOwnProvider, "gms-host-own-provider").start();
                     // Then an activity of Google Play services', which runs here (their stand-in's Lockup says what it read), and
                     // one whose onCreate fails (Broken), which the app outlives, this one resumed after.
                     startActivity(new Intent("megler.test.gmsown.LOCKUP").setPackage("com.google.android.gms"));

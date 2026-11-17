@@ -7,11 +7,13 @@ public class Binder implements IBinder {
     public Binder() {}
     public Binder(String descriptor) { mDescriptor = descriptor; }
     public static final int getCallingPid() { return android.os.Process.myPid(); }
-    public static final int getCallingUid() { return android.os.Process.myUid(); }
+    /* The app's uid, the one process's -- or Google Play services', for the length of a call their hosted code makes into a
+       provider of the app's, until the provider clears the identity (megler.Callers: Files by Google's shared folder). */
+    public static final int getCallingUid() { return megler.Callers.callingUid(); }
     public static final int getCallingUidOrThrow() { return getCallingUid(); }
     public static final UserHandle getCallingUserHandle() { return UserHandle.getUserHandleForUid(getCallingUid()); }
-    public static final long clearCallingIdentity() { return 0; }
-    public static final void restoreCallingIdentity(long token) {}
+    public static final long clearCallingIdentity() { return megler.Callers.clear(false); }
+    public static final void restoreCallingIdentity(long token) { megler.Callers.restore(token); }
     public static final int getThreadStrictModePolicy() { return 0; }
     public static final void setThreadStrictModePolicy(int policyMask) {}
     public static final void flushPendingCommands() {}

@@ -2786,6 +2786,71 @@ public class Main extends Activity {
             return ("written by run " + run).equals(now) && file.length() == now.length() + 1 && names != null && Arrays.asList(names).contains("megler-data-test.txt")
                     && new File("/sdcard/Download/megler-data-test.txt").length() == file.length() && (run == 1 || ("written by run " + (run - 1)).equals(before));
         });
+        /* A folder moved out of a folder of the phone's own (Movies here, the stand-in's link: mg_java_tests.c; a phone's DCIM is
+           one), as Files by Google moves it. The rename is refused (EXDEV: another file system, to an app), so each file is
+           copied and removed, and the copy is checked as that app checks it: the descriptor is the path's file (fstat against
+           lstat), and the bytes copied are the source's AssetFileDescriptor.getLength() -- which for a file:// URI declares no
+           length and so is the file's size (ParcelFileDescriptor.getStatSize, by fstat). It was -1, and every copy counted as
+           failed, an empty file's too. And what is not a file has no size (a socket), and a declared length stays (an asset). */
+        step("link-move", () -> {
+            File from = new File("/sdcard/Movies/megler-move"), to = new File("/sdcard/Download/megler-moved");
+            String[] names = { ".nomedia", "small.bin", "large.bin" };
+            int[] sizes = { 0, 5, 70000 };
+            for (File dir : new File[] { from, to }) {   /* what a run cut short left */
+                for (String n : names) new File(dir, n).delete();
+                dir.delete();
+            }
+            boolean made = from.mkdirs();
+            for (int i = 0; i < names.length; i++) {
+                byte[] b = new byte[sizes[i]];
+                for (int k = 0; k < b.length; k++) b[k] = (byte) (k * 7 + i);
+                try (java.io.FileOutputStream out = new java.io.FileOutputStream(new File(from, names[i]))) { out.write(b); }
+            }
+            int errno = 0;
+            try { android.system.Os.rename(from.getPath(), to.getPath()); } catch (android.system.ErrnoException e) { errno = e.errno; }
+            boolean refused = errno == android.system.OsConstants.EXDEV && !from.renameTo(to) && from.isDirectory() && !to.exists();
+            boolean ok = made && refused && to.mkdirs();
+            StringBuilder said = new StringBuilder();
+            android.content.ContentResolver cr = getContentResolver();
+            for (int i = 0; i < names.length; i++) {
+                File src = new File(from, names[i]).getCanonicalFile(), dst = new File(to, names[i]);
+                android.net.Uri uri = android.net.Uri.fromFile(src);
+                long copied = 0, length, declared, stat, dup;
+                android.os.ParcelFileDescriptor in = cr.openFileDescriptor(uri, "r");
+                android.system.StructStat a = android.system.Os.fstat(in.getFileDescriptor()), b = android.system.Os.lstat(src.getPath());
+                boolean same = a.st_dev == b.st_dev && a.st_ino == b.st_ino && !android.system.OsConstants.S_ISLNK(b.st_mode);
+                try (java.io.InputStream is = new android.os.ParcelFileDescriptor.AutoCloseInputStream(in); java.io.OutputStream os = new java.io.FileOutputStream(dst)) {
+                    byte[] buf = new byte[8192];
+                    for (int n; (n = is.read(buf)) > 0; copied += n) os.write(buf, 0, n);
+                }
+                try (android.content.res.AssetFileDescriptor afd = cr.openAssetFileDescriptor(uri, "r")) {
+                    length = afd.getLength();
+                    declared = afd.getDeclaredLength();
+                    stat = afd.getParcelFileDescriptor().getStatSize();
+                    try (android.os.ParcelFileDescriptor d = android.os.ParcelFileDescriptor.dup(afd.getFileDescriptor())) { dup = d.getStatSize(); }
+                }
+                said.append(names[i]).append(": same file ").append(same).append(", copied ").append(copied).append(", length ").append(length).append(" declared ").append(declared)
+                        .append(" stat ").append(stat).append('/').append(dup).append(", target ").append(dst.length()).append("; ");
+                ok &= same && copied == sizes[i] && length == copied && declared == android.content.res.AssetFileDescriptor.UNKNOWN_LENGTH && stat == copied && dup == copied
+                        && dst.length() == copied && src.delete();
+            }
+            boolean gone = from.delete() && !from.exists();
+            String[] moved = to.list();
+            if (moved != null) Arrays.sort(moved);
+            boolean there = Arrays.equals(moved, new String[] { ".nomedia", "large.bin", "small.bin" });
+            for (String n : names) new File(to, n).delete();
+            boolean cleaned = to.delete();
+            java.io.FileDescriptor s1 = new java.io.FileDescriptor(), s2 = new java.io.FileDescriptor();
+            android.system.Os.socketpair(android.system.OsConstants.AF_UNIX, android.system.OsConstants.SOCK_STREAM, 0, s1, s2);
+            long socket, asset, assetDeclared;
+            try (android.os.ParcelFileDescriptor d = android.os.ParcelFileDescriptor.dup(s1)) { socket = d.getStatSize(); }
+            android.system.Os.close(s1);
+            android.system.Os.close(s2);
+            try (android.content.res.AssetFileDescriptor afd = getAssets().openNonAssetFd("resources.arsc")) { asset = afd.getLength(); assetDeclared = afd.getDeclaredLength(); }
+            detail = "rename errno " + errno + " (EXDEV is " + android.system.OsConstants.EXDEV + "); " + said + "source folder gone " + gone + ", moved " + Arrays.toString(moved)
+                    + ", socket " + socket + ", asset " + asset + " declared " + assetDeclared;
+            return ok && gone && there && cleaned && socket == -1 && asset > 12 && asset == assetDeclared;
+        });
         step("list-root", () -> {
             File[] list = root.listFiles();
             java.util.ArrayList<String> names = new java.util.ArrayList<>();

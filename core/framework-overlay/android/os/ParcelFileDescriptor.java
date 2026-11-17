@@ -19,6 +19,11 @@
 // And the file it was opened from is said (meglerFile), for android.content.res.loader.ResourcesProvider.loadFromApk, which
 // opens an APK by its descriptor: Google Play services' modules' resources.
 //
+// And getStatSize() asks the descriptor (Os.fstat), as Android's: the size of a regular file or a link, -1 of anything else
+// (a socket, a pipe) or of a descriptor that cannot be asked. It was the length of the file open() was given, and -1 for
+// every descriptor made another way (dup, fromFd, adoptFd, one read from a Parcel), whatever it was a descriptor of.
+// AssetFileDescriptor.getLength() goes by it (see there: Files by Google's copies).
+//
 // Everything else is the original's, unchanged.
 package android.os;
 
@@ -83,7 +88,16 @@ public class ParcelFileDescriptor implements Parcelable, Closeable {
     /* Detached: the number is the caller's, and closing this no longer closes it. */
     private boolean mDetached;
     public int detachFd() { mDetached = true; return getFd(); }
-    public long getStatSize() { return mFile != null ? mFile.length() : -1; }
+    /** As Android's: the size fstat says, of a regular file (S_IFREG) or a link (S_IFLNK); -1 of anything else, and where fstat fails. */
+    public long getStatSize() {
+        try {
+            Object st = meglerOs("fstat", mFd);
+            int kind = st.getClass().getField("st_mode").getInt(st) & 0170000;
+            return kind == 0100000 || kind == 0120000 ? st.getClass().getField("st_size").getLong(st) : -1;
+        } catch (IOException | ReflectiveOperationException e) {
+            return -1;
+        }
+    }
     /** Megler: the file this was opened from (open), or null: what ResourcesProvider.loadFromApk opens the APK by. */
     public File meglerFile() { return mFile; }
     public void close() throws IOException { if (mOwner != null && !mDetached) mOwner.close(); }

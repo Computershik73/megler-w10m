@@ -4521,6 +4521,26 @@ What a Java app asks of the phone beyond its window goes to the shell through
     com.google.android.gms"), and WhatsApp's search for its Google Drive backup
     failed until it said it took too long (package 485); Play Store warned of
     the same.
+  - Who called a provider (`megler/Callers.java`). Everything runs in the app's
+    process, so a provider is told the app calls it: `getCallingPackage` is
+    the app's package and `Binder.getCallingUid` its uid. Except a provider of
+    the app's own that Google Play services' hosted code calls
+    (`MicroG.calledByHosted`, asked in `ContentResolver`): for the length of
+    that call, on that thread, it is told their package and their uid (10014,
+    whose packages are theirs), as on Android, where the call comes from
+    their process; `Binder.clearCallingIdentity` makes the uid the app's and
+    `ContentProvider.clearCallingIdentity` the package too, until restored. A
+    provider that the app's asks from inside the call is told the app, and so
+    is their code asked for the uid there. Files by Google hands Quick Share a
+    folder as a `content://` URI of its `FolderSharingContentProvider`, which
+    answers no caller but `com.google.android.gms`: told its own package it
+    threw `UnsupportedOperationException` on their thread, and no folder was
+    shared (0.1.0.699). The gms-host app's provider `WhoAsks` says what it is
+    told when the stand-in's code asks it, and when the app does. Which code
+    is theirs is told by its class loader (GmsCore's, or one under it): code
+    of theirs that an app's client library runs in the app through that
+    loader -- on Android inside the app's process, the app's call -- counts
+    as theirs here too.
   - Once the app has asked for the list, it is read again every three seconds.
     What changes is told as Android tells it: `ACTION_PACKAGE_ADDED`; for a new
     version `ACTION_PACKAGE_REMOVED` and `ACTION_PACKAGE_ADDED` (both
@@ -7275,6 +7295,26 @@ on a looper thread of its own and takes it back with `next()`.
   The data app's step "asset-fd" opens `resources.arsc` (stored) with
   `openNonAssetFd`, detaches the number from its `ParcelFileDescriptor`
   and reads the table's header where the entry starts.
+
+- `android/content/res/AssetFileDescriptor.java`, `getLength()`, and
+  `android/os/ParcelFileDescriptor.java`, `getStatSize()`. Where no length
+  was declared (-1: a whole file, as `ContentResolver.openAssetFileDescriptor`
+  gives a `file://` or a `content://` URI's) `getLength()` is the size of the
+  file the descriptor is of, as Android's -- `getStatSize()`, which now asks
+  the descriptor (`Os.fstat`: a regular file's or a link's size, -1 of a
+  socket or a pipe) and was the length of the file `open()` was given and -1
+  for every descriptor made another way. `getLength()` gave the declared -1.
+  `getDeclaredLength()` is still what was declared, and `MediaPlayer` and
+  `SoundPool`, which play "to the end" for -1, go by it. Files by Google
+  checks each file it has copied by `getLength()` of the source: moving a
+  folder out of `/sdcard/DCIM` -- one of the phone's own folders, which
+  nothing is renamed out of (`EXDEV`, "Failed to rename file"), so the app
+  copies -- every copy was called failed ("Failed to copy the file"), the
+  empty `.nomedia` too, and nothing was moved (0.1.0.699). The data app's step
+  "link-move" moves a folder of three files out of `/sdcard/Movies` so: the
+  rename refused, each file copied through the resolver and its length
+  compared, the sizes of a file's and a socket's descriptor, and an asset's
+  declared length.
 
 - `android/app/ActivityManager.java`, `RecentTaskInfo`, which
   `AppTask.getTaskInfo()` returns: the fields it has from `TaskInfo` on

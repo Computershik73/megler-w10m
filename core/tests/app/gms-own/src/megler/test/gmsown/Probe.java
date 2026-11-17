@@ -4,6 +4,9 @@ import android.app.Application;
 import android.app.Service;
 import android.content.Context;
 import android.content.Intent;
+import android.database.Cursor;
+import android.net.Uri;
+import android.os.Binder;
 import android.os.IBinder;
 import android.util.Log;
 import com.google.android.gms.libs.identity.ClientIdentity;
@@ -20,6 +23,8 @@ import com.google.android.gms.libs.identity.ClientIdentity;
  * which asks no one (Megler's framework says whether it has asked); then for an identity, at once (none yet: the question is
  * on its way); then until the answer has come, ten seconds at most. An attribution context keeps its own tag whatever was
  * answered.
+ *
+ * And, after that, who a provider of the hosting app's is told asks it when their code does (askTheApp).
  */
 public class Probe extends Service {
     @Override
@@ -44,10 +49,27 @@ public class Probe extends Service {
                 Log.i("GmsOwnTest", "attribution context FAILED " + e);
             }
             Log.i("GmsOwnTest", "attribution tag later=" + tag + " again=" + ClientIdentity.c(base) + " attributed=" + (attributed == null ? null : tagOf(attributed)));
+            askTheApp();
         }, "gms-own-probe");
         later.start();
         stopSelf(id);
         return START_NOT_STICKY;
+    }
+
+    /*
+     * A provider of the hosting app's asked by their code, on a thread of theirs: the provider is told that Google Play
+     * services ask it, their package and their uid, as on Android, where the call comes from their process (the gms-host
+     * app's WhoAsks says what it was told; with an app that has no such provider it is null). And nothing of that stays
+     * with the thread once the call is over: the uid is the app's again.
+     */
+    private void askTheApp() {
+        String said = null;
+        try (Cursor c = getContentResolver().query(Uri.parse("content://megler.test.gmshost.whoasks/caller"), null, null, null, null)) {
+            if (c != null && c.moveToFirst()) said = c.getString(0);
+        } catch (Throwable t) {
+            said = "FAILED " + t;
+        }
+        Log.i("GmsOwnTest", "the app's provider asked by Google Play services: " + said + "; after the call uid " + Binder.getCallingUid());
     }
 
     /** Whether the user has been asked in this process (Megler's framework, megler.Permissions.gmsAsked). */
