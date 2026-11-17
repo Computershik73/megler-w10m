@@ -670,6 +670,55 @@ int t_cpu_topology(void)
     return 1;
 }
 
+/* The number a file's first line is, or -1 when the line is not one. */
+static long first_number(const char *path)
+{
+    char line[64];
+    int i;
+    long n = 0;
+    first_line(path, line, sizeof(line));
+    for (i = 0; line[i] >= '0' && line[i] <= '9'; i++) n = n * 10 + (line[i] - '0');
+    return i && line[i] == '\n' ? n : -1;
+}
+
+/* A processor's frequency files (/sys/devices/system/cpu/cpu<N>/cpufreq), as CPU-Z reads them: the lowest and the highest
+   frequency of the processor and of its policy, the frequency now within them, and the governor, a word that agrees with
+   them -- "performance" is the kernel's name for a frequency kept at the policy's highest -- the same for the first and
+   the last processor; the processor after the last has no such files, and no processor a leaf that is not one of these.
+   1 when so. */
+int t_cpu_freq(void)
+{
+    char all[128], line[64], path[96];
+    int i, last = 0, cpu;
+    first_line("/sys/devices/system/cpu/possible", all, sizeof(all));
+    for (i = 0; all[i] && all[i] != '-'; i++) {}
+    if (all[i] == '-') {
+        for (i++; all[i] >= '0' && all[i] <= '9'; i++) last = last * 10 + (all[i] - '0');
+    }
+    for (cpu = 0; cpu <= last; cpu += last ? last : 1) {
+        long lowest, highest, low, high, now;
+        snprintf(path, sizeof(path), "/sys/devices/system/cpu/cpu%d/cpufreq/cpuinfo_min_freq", cpu);
+        lowest = first_number(path);
+        snprintf(path, sizeof(path), "/sys/devices/system/cpu/cpu%d/cpufreq/cpuinfo_max_freq", cpu);
+        highest = first_number(path);
+        snprintf(path, sizeof(path), "/sys/devices/system/cpu/cpu%d/cpufreq/scaling_min_freq", cpu);
+        low = first_number(path);
+        snprintf(path, sizeof(path), "/sys/devices/system/cpu/cpu%d/cpufreq/scaling_max_freq", cpu);
+        high = first_number(path);
+        snprintf(path, sizeof(path), "/sys/devices/system/cpu/cpu%d/cpufreq/scaling_cur_freq", cpu);
+        now = first_number(path);
+        if (lowest <= 0 || lowest > low || low > now || now > high || high > highest) return -1;
+        snprintf(path, sizeof(path), "/sys/devices/system/cpu/cpu%d/cpufreq/scaling_governor", cpu);
+        first_line(path, line, sizeof(line));
+        if (strcmp(line, "performance\n")) return -2;
+        if (now != high) return -3;
+    }
+    snprintf(path, sizeof(path), "/sys/devices/system/cpu/cpu%d/cpufreq/scaling_governor", last + 1);
+    if (fopen(path, "r")) return -4;
+    if (fopen("/sys/devices/system/cpu/cpu0/cpufreq/no_such_file", "r")) return -5;
+    return 1;
+}
+
 /* A line of /proc/self/status that starts with `key`, as the kernel writes it ("VmHWM:\t    1234 kB"): its number of
    kB, or -1. */
 static long status_kb(const char *key)
