@@ -8209,6 +8209,42 @@ public class Main extends Activity {
             return called && Boolean.TRUE.equals(got[0]) && got[1] == null && Boolean.TRUE.equals(got[2]) && Boolean.TRUE.equals(got[3])
                 && Boolean.TRUE.equals(got[4]) && Boolean.TRUE.equals(got[5]);
         });
+        // A Looper told quitSafely() handles the messages that were due when it was told, those at the front first, and ends
+        // without those of a later time; quit() handles none of them; neither takes another. WebRTC's EglRenderer.release
+        // (Viber's registration screen, each time it opens) posts its clean-up at the front of its render thread's queue,
+        // quitSafely()s the thread and waits for the clean-up: quitting dropped everything here, and when the render thread
+        // had not yet taken the clean-up Viber's main thread waited for good. The threads are kept busy meanwhile, so that
+        // nothing is taken before the quit.
+        step("looper-quit-safely", () -> {
+            final StringBuilder ran = new StringBuilder();
+            String[] how = { "safely", "quit" };
+            StringBuilder told = new StringBuilder();
+            for (String way : how) {
+                android.os.HandlerThread ht = new android.os.HandlerThread("looper-" + way);
+                ht.start();
+                android.os.Handler h = new android.os.Handler(ht.getLooper());
+                final java.util.concurrent.CountDownLatch busy = new java.util.concurrent.CountDownLatch(1), go = new java.util.concurrent.CountDownLatch(1);
+                h.post(() -> {
+                    busy.countDown();
+                    try { go.await(5, java.util.concurrent.TimeUnit.SECONDS); } catch (InterruptedException e) { }
+                });
+                busy.await(5, java.util.concurrent.TimeUnit.SECONDS);
+                synchronized (ran) { ran.setLength(0); }
+                h.post(() -> { synchronized (ran) { ran.append(" posted"); } });
+                h.postAtFrontOfQueue(() -> { synchronized (ran) { ran.append(" front"); } });
+                h.postDelayed(() -> { synchronized (ran) { ran.append(" later"); } }, 60000);
+                if (way.equals("safely")) ht.quitSafely(); else ht.quit();
+                boolean taken = h.post(() -> { synchronized (ran) { ran.append(" after"); } });
+                go.countDown();
+                ht.join(5000);
+                synchronized (ran) {
+                    told.append(told.length() > 0 ? "; " : "").append(way).append(":").append(ran.length() > 0 ? ran : " nothing")
+                        .append(taken ? ", one more taken" : "").append(ht.isAlive() ? ", still running" : ", ended");
+                }
+            }
+            detail = told.toString();
+            return "safely: front posted, ended; quit: nothing, ended".equals(detail);
+        });
         // PrecomputedText is the text it was made of: its characters and its spans, its paragraphs (each ends after its line
         // feed) and the parameters a Builder was told. It was signatures alone -- no characters, getSpans null -- so a
         // SpannableString made of one, which androidx's PrecomputedTextCompat hands on as it is from Android 10, ended in a

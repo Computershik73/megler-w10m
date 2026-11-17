@@ -48,7 +48,25 @@ public final class MessageQueue {
     }
     synchronized boolean hasCallback(Handler h, Runnable r) { for (Message p = head; p != null; p = p.next) if (p.target == h && p.callback == r && r != null) return true; return false; }
     synchronized boolean hasAny(Handler h) { for (Message p = head; p != null; p = p.next) if (p.target == h) return true; return false; }
-    synchronized void quit() { quitting = true; notifyAll(); }
+    /*
+     * Android's quit(safe): the queue takes no more messages, and the Looper ends once it has handled what is left -- after
+     * Looper.quit() nothing, after quitSafely() the messages that were due when it was asked (those of a later time go).
+     * Both dropped every message here: WebRTC's EglRenderer.release (Viber's registration screen, each time it opened) posts
+     * its clean-up at the front of its render thread's queue, quitSafely()s that thread and waits for the clean-up -- which
+     * never ran when the thread had not taken it before the quit, and the main thread waited for ever.
+     */
+    synchronized void quit(boolean safe) {
+        if (quitting) return;
+        quitting = true;
+        long now = SystemClock.uptimeMillis();
+        if (!safe || head == null || head.when > now) head = null;
+        else {
+            Message p = head;
+            while (p.next != null && p.next.when <= now) p = p.next;
+            p.next = null;
+        }
+        notifyAll();
+    }
 
     private boolean mNativeLooper;
     Message next(boolean main) {
@@ -60,13 +78,14 @@ public final class MessageQueue {
             mNativeLooper = megler.Native.nativeLooperPoll();
             IdleHandler[] idlers = null;
             synchronized (this) {
-                if (quitting) { if (interrupted) Thread.currentThread().interrupt(); return null; }
                 long now = SystemClock.uptimeMillis();
                 if (head != null && head.when <= now) {
                     Message m = head; head = m.next; m.next = null;
                     if (interrupted) Thread.currentThread().interrupt();
                     return m;
                 }
+                // (A queue that has quit ends once what quit(safe) left is handled.)
+                if (quitting) { if (interrupted) Thread.currentThread().interrupt(); return null; }
                 if (pendingIdle < 0) pendingIdle = mIdleHandlers.size();
                 if (pendingIdle > 0) idlers = mIdleHandlers.toArray(new IdleHandler[0]);
                 else {

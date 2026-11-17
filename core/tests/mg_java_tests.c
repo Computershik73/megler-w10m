@@ -4025,6 +4025,9 @@ static int run_data(void)
                                          /* And Choreographer's vsync callbacks are called at the next frame with its data, and one removed
                                             is not (YouTube's watch page waited for one for ever). */
                                          "vsync-callback",
+                                         /* And a Looper's quitSafely handles what was due before it ends, the front of the queue first, and
+                                            quit nothing (Viber's main thread waited for good for WebRTC's EglRenderer.release). */
+                                         "looper-quit-safely",
                                          /* And PrecomputedText is the text it was made of -- characters, spans, paragraphs and the parameters
                                             it was made with -- so a SpannableString of one keeps the spans, and a TextView shows it (Ozon's
                                             chat). */
