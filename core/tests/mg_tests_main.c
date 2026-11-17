@@ -1834,6 +1834,19 @@ int main(int argc, char **argv)
         megler_init(&config);
         return mg_tests_smoke_run(argv[2], argc >= 5 ? atoi(argv[4]) : 1500);
     }
+    /* SQLite as guest code with its process ended while it writes: <guest library dir> <scratch> [times] [seed]. */
+    if (argc >= 4 && !strcmp(argv[1], "--guest-sqlite"))
+        return mg_tests_guest_sqlite(argv[2], argv[3], argc >= 5 ? atoi(argv[4]) : 12, argc >= 6 ? (unsigned)strtoul(argv[5], NULL, 10) : 0) ? 1 : 0;
+    /* One step of it in this process: <guest library dir> <scratch> <setup | work | check | all> <1: a write-ahead log, 0: a journal> [seed];
+       or "two" for the step: two copies of the library on one database, which damages it as things are. */
+    if (argc >= 6 && !strcmp(argv[1], "--guest-sqlite-step")) {
+        megler_config config;
+        memset(&config, 0, sizeof(config));
+        config.data_dir = argv[3];
+        config.package_dir = argv[3];
+        megler_init(&config);
+        return mg_tests_guest_sqlite_step(argv[2], argv[3], argv[4], atoi(argv[5]), argc >= 7 ? (unsigned)strtoul(argv[6], NULL, 10) : 1, NULL, NULL) ? 1 : 0;
+    }
 #endif
     if (argc >= 3 && !strcmp(argv[1], "--probe")) {
         /* The device probe, as the app's Device checks runs it; argv[2] is where its step log goes. */
@@ -1906,7 +1919,8 @@ int main(int argc, char **argv)
         return 0;
     }
     if (argc < 3) {
-        fprintf(stderr, "usage: %s <guest library dir | -> <scratch dir>\n       %s --load <dir> <library>...\n", argv[0], argv[0]);
+        fprintf(stderr, "usage: %s <guest library dir | -> <scratch dir>\n       %s --load <dir> <library>...\n"
+                        "       %s --guest-sqlite <guest library dir> <scratch dir> [times] [seed]\n", argv[0], argv[0], argv[0]);
         return 2;
     }
     {

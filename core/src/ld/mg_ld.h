@@ -112,6 +112,8 @@ mg_lib *mg_ld_lib_of(const void *addr);
 bool mg_ld_lib_is_go(const mg_lib *lib);
 void *mg_ld_lib_base(const mg_lib *lib);
 const char *mg_ld_lib_name(const mg_lib *lib);
+/* The scope it was loaded in (mg_ld_set_scope): 0 the app's own, another for each copy a service or a module has of it. */
+int mg_ld_lib_scope(const mg_lib *lib);
 /* The address space a library holds: its image and the code the patcher adds beside it. */
 size_t mg_ld_lib_extent(const mg_lib *lib);
 /* The nearest exported symbol at or below an address, for crash reports and dladdr. */

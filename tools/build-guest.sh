@@ -36,6 +36,10 @@
 #   libt_go.so         one of Go's by its build ID note: a goroutine's stack in its heap given back with madvise by
 #                      number, and the reservations Go's runtime makes for its heap as it starts (t_go.c); on x86, whose
 #                      own system calls (int 0x80) are not led out to the core, only the reservations are tried
+#   libt_sqlite.so     SQLite as an app carries it (Signal's SQLCipher, Telegram's): the amalgamation of build/sqlite with
+#                      its own unix VFS over the layer's file calls, and a driver of it (t_sqlite.c). The one library
+#                      here the NDK builds, against bionic's own headers as an app's is: where there is no NDK it is not
+#                      built, and the tests say that they leave it out
 #   libt_same.so, libt_user.so, and in runtime/ another libt_same.so and libt_ruser.so:
 #                      two libraries of one name, the app's and the runtime's, and one
 #                      of each kind that needs "libt_same.so" (t_same.c, t_user.c)
@@ -133,6 +137,24 @@ fi
 # Imports nothing provides, which the loader names as it loads them: a few, and more than its line has room for.
 "$CLANG" "${COMMON[@]}" ${THUMB[@]+"${THUMB[@]}"} -Wl,--hash-style=both -Wl,-soname,libt_unres.so -o "$(w "$OUT/libt_unres.so")" "$(w "$SRC/t_unres.c")" "${SYS[@]}"
 "$CLANG" "${COMMON[@]}" ${THUMB[@]+"${THUMB[@]}"} -Wl,--hash-style=both -DMANY -Wl,-soname,libt_unres_many.so -o "$(w "$OUT/libt_unres_many.so")" "$(w "$SRC/t_unres.c")" "${SYS[@]}"
+
+# SQLite itself with its unix VFS (os_unix.c: pread and pwrite, fsync, ftruncate, fcntl's locks, the mapped -shm file of
+# a write-ahead log), and what drives it in the tests (t_sqlite.c). The NDK's clang and sysroot build it, as they build
+# an app's; made again only when it is older than what it is made of -- the amalgamation takes the longest of all here.
+NDK="${MEGLER_NDK:-${USERPROFILE:-}/Documents/android-ndk-r21e}"
+NDKCC="$NDK/toolchains/llvm/prebuilt/windows-x86_64/bin/clang.exe"
+SQLITE="$ROOT/build/sqlite"
+case "$ABI" in
+  armeabi-v7a) NDKT=(--target=armv7a-linux-androideabi21 -mthumb) ;;
+  arm64-v8a) NDKT=(--target=aarch64-linux-android21) ;;
+  x86_64) NDKT=(--target=x86_64-linux-android21) ;;
+  *) NDKT=(--target=i686-linux-android21) ;;
+esac
+if [ ! -f "$NDKCC" ] || [ ! -f "$SQLITE/sqlite3.c" ]; then
+  echo "(libt_sqlite.so is not built: it takes the NDK at $NDK (MEGLER_NDK) and build/sqlite/sqlite3.c)"
+elif [ ! -f "$OUT/libt_sqlite.so" ] || [ "$SRC/t_sqlite.c" -nt "$OUT/libt_sqlite.so" ] || [ "$SQLITE/sqlite3.c" -nt "$OUT/libt_sqlite.so" ]; then
+  "$NDKCC" "${NDKT[@]}" -O2 -fPIC -shared -Wl,-soname,libt_sqlite.so -DSQLITE_THREADSAFE=1 -DSQLITE_OMIT_LOAD_EXTENSION -DUSE_PREAD64 -DHAVE_USLEEP=1 -DHAVE_FDATASYNC=1 "-I$(w "$SQLITE")" -o "$(w "$OUT/libt_sqlite.so")" "$(w "$SRC/t_sqlite.c")" "$(w "$SQLITE/sqlite3.c")"
+fi
 
 # One file name twice: the app's, and the one that stands for a library of the Android root's.
 mkdir -p "$OUT/runtime"
