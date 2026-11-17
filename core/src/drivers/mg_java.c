@@ -2353,6 +2353,33 @@ static void mount_gms_splits(void)
 }
 
 /*
+ * mg_fs_other_apks' `find`: where another app's APK is on the host, as the shell said when it described that app
+ * (megler_run_config.apps_dir: the second line of <package>/source.txt, after the description's form). NULL when the app
+ * is not described, or its APK is not a file this package can see.
+ */
+static char *other_apk_find(const char *package, void *user)
+{
+    char *path, *text, *line, *end, *apk = NULL;
+    size_t size = 0;
+    mg_stat st;
+    (void)user;
+    if (!apps_package_ok(package)) return NULL;
+    path = mg_sprintf("%s/%s/source.txt", J.config->apps_dir, package);
+    text = (char *)mg_file_read_all(path, &size);
+    free(path);
+    if (!text) return NULL;
+    line = (char *)memchr(text, '\n', size);
+    if (line && (end = (char *)memchr(line + 1, '\n', size - (size_t)(line + 1 - text))) != NULL && end > line + 1) {
+        *end = 0;
+        if (end[-1] == '\r') end[-1] = 0;
+        if (mg_path_stat(line + 1, &st, NULL) && !st.is_dir) apk = mg_strdup(line + 1);
+    }
+    free(text);
+    if (apk) mg_info("java: the APK of %s is /data/app/%s-1/base.apk, to be read (a path asked for it)", package, package);
+    return apk;
+}
+
+/*
  * Gives the APK its Android path, /data/app/<package>-1/base.apk, and tells the runtime that its classes are on the class path under that name. And the
  * splits theirs, beside it, under the names Android gives installed splits (split_config.armeabi_v7a.apk), each a mount of
  * its own file wherever the shell keeps it; those with code are on the class path under their names too.
@@ -2380,6 +2407,7 @@ static void mount_apk(void)
         mg_fs_mount(J.guest_splits[i], J.config->split_apks[i]);
         if (J.split_code[i]) mg_dvm_dex_source_added(J.guest_splits[i]);
     }
+    if (J.config->apps_dir) mg_fs_other_apks(other_apk_find, NULL);
     free(dir);
     free(guest_dir);
 }

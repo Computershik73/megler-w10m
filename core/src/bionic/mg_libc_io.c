@@ -406,6 +406,48 @@ static void others_mount(void)
     mg_lock_release(&g_others_lock);
 }
 
+/*
+ * Another app's APK, /data/app/<package>-1/base.apk, is in no mount until a path asks for something of that folder:
+ * `g_apk_find` then says where that app's APK is on the host (mg_fs_other_apks), and it is mounted there to be read.
+ */
+#define APPS_DIR "/data/app/"
+#define APPS_DIR_LEN 10
+static char *(*g_apk_find)(const char *package, void *user);
+static void *g_apk_user;
+static mg_lock g_apk_lock = MG_LOCK_INIT;
+
+void mg_fs_other_apks(char *(*find)(const char *package, void *user), void *user)
+{
+    mg_lock_acquire(&g_apk_lock);
+    g_apk_find = find;
+    g_apk_user = user;
+    mg_lock_release(&g_apk_lock);
+}
+
+/* The APK of the app whose folder a normalized path in /data/app names, mounted if it is another app's that has one and
+   was not mounted yet: true when it was mounted now. */
+static bool other_apk_mount(const char *g)
+{
+    const char *name = g + APPS_DIR_LEN, *end = strchr(name, '/');
+    size_t n = end ? (size_t)(end - name) : strlen(name);
+    char package[160], *guest, *host;
+    bool mounted = false;
+    if (n < 3 || n - 2 >= sizeof(package) || name[n - 2] != '-' || name[n - 1] != '1') return false;
+    memcpy(package, name, n - 2);
+    package[n - 2] = 0;
+    if (!strcmp(package, g_package)) return false;
+    guest = mg_sprintf(APPS_DIR "%s-1/base.apk", package);
+    mg_lock_acquire(&g_apk_lock);
+    if (g_apk_find && !mount_find(guest) && (host = g_apk_find(package, g_apk_user)) != NULL) {
+        mount_put(guest, host, MOUNT_READ_ONLY);
+        free(host);
+        mounted = true;
+    }
+    mg_lock_release(&g_apk_lock);
+    free(guest);
+    return mounted;
+}
+
 const char *mg_fs_internal_dir(void) { return g_internal; }
 const char *mg_fs_external_dir(void) { return g_external; }
 const char *mg_fs_package(void) { return g_package; }
@@ -498,7 +540,8 @@ static const mount *mount_longest(const char *g)
 
 /*
  * The mount a normalized path is in: the one with the longest prefix. A path in Android/data or Android/obb that is in
- * no mount of its own may be in another app's part, which are mounted now if they have not been looked for yet.
+ * no mount of its own may be in another app's part, which are mounted now if they have not been looked for yet; one in
+ * /data/app that is in none may be of another app's APK, which is mounted now if that app has one (other_apk_mount).
  */
 static const mount *mount_of(const char *g)
 {
@@ -507,6 +550,7 @@ static const mount *mount_of(const char *g)
         others_mount();
         best = mount_longest(g);
     }
+    if (g_apk_find && (!best || best->glen < APPS_DIR_LEN) && !strncmp(g, APPS_DIR, APPS_DIR_LEN) && other_apk_mount(g)) best = mount_longest(g);
     return best;
 }
 

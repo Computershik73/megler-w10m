@@ -5870,6 +5870,32 @@ public class Main extends Activity {
                     + (fallback != null ? " " + fallback.getIntrinsicWidth() : "");
             return listed && open != null && "com.example.other.Main".equals(open.getComponent().getClassName()) && info && launcherApps && defaultIcon;
         });
+        // Another app has the places Android gives an installed app (LibChecker lists only apps that have a sourceDir,
+        // issue #9), and its APK is there to be read, not written: the file the apps folder's source.txt names. An app
+        // that is not there has no folder.
+        step("phone-apps-source", () -> {
+            android.content.pm.PackageManager pm = getPackageManager();
+            android.content.pm.ApplicationInfo other = null;
+            for (android.content.pm.ApplicationInfo a : pm.getInstalledApplications(0)) if ("com.example.other".equals(a.packageName)) other = a;
+            if (other == null) { detail = "not among the installed applications"; return false; }
+            String apk = "/data/app/com.example.other-1/base.apk";
+            java.io.File file = new java.io.File(String.valueOf(other.sourceDir));
+            String head = null;
+            boolean written = false;
+            try (java.io.FileInputStream in = new java.io.FileInputStream(file)) {
+                byte[] b = new byte[64];
+                int n = in.read(b);
+                head = new String(b, 0, Math.max(n, 0), "ISO-8859-1");
+            } catch (java.io.IOException e) { head = String.valueOf(e); }
+            try (java.io.FileOutputStream out = new java.io.FileOutputStream(file, true)) { out.write(1); written = true; } catch (java.io.IOException e) {}
+            boolean none = new java.io.File("/data/app/com.example.none-1/base.apk").exists() || new java.io.File("/data/app/com.example.none-1").exists();
+            boolean folder = file.getParentFile().isDirectory();
+            detail = "sourceDir=" + other.sourceDir + " publicSourceDir=" + other.publicSourceDir + " nativeLibraryDir=" + other.nativeLibraryDir
+                    + " dataDir=" + other.dataDir + " length=" + file.length() + " head=" + head + " written=" + written + " folder=" + folder + " none=" + none;
+            return apk.equals(other.sourceDir) && apk.equals(other.publicSourceDir) && other.nativeLibraryDir != null
+                && other.nativeLibraryDir.startsWith("/data/app/com.example.other-1/lib/") && "/data/data/com.example.other".equals(other.dataDir)
+                && file.isFile() && file.length() == 24 && "PK the other app's APK".equals(head) && !written && folder && !none;
+        });
         // Its activities, every one, as the shell described them (the apps folder's com.example.other/activities.json), as a
         // shortcut maker lists them: each with whether it is exported; both launcher entries, the alias's too; the one that
         // makes shortcuts, with its own label and icon (3 x 3, the app's is 2 x 2); not for a link. Then two are started by

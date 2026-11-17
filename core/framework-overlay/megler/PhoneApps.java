@@ -298,6 +298,14 @@ public final class PhoneApps {
         i.uid = a.uid;
         i.flags = ApplicationInfo.FLAG_INSTALLED | ApplicationInfo.FLAG_HAS_CODE;
         i.targetSdkVersion = i.minSdkVersion = android.os.Build.VERSION.SDK_INT;
+        // Where Android has an installed app's APK and its folders, as the running app's own are named: an app that lists
+        // the others takes one with no sourceDir for no app at all (LibChecker showed itself alone, issue #9). The APK is
+        // there to be read when this package can see the other's (mg_fs_other_apks); its data is its own.
+        String dir = "/data/app/" + a.packageName + "-1";
+        i.sourceDir = i.publicSourceDir = dir + "/base.apk";
+        String abi = Abis.PRIMARY;
+        i.nativeLibraryDir = dir + "/lib/" + (abi.equals("arm64-v8a") ? "arm64" : abi.equals("armeabi-v7a") ? "arm" : abi);
+        i.dataDir = i.deviceProtectedDataDir = "/data/data/" + a.packageName;
         return i;
     }
 
