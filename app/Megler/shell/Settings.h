@@ -90,6 +90,13 @@ constexpr const char* foldersNotNow = "megler.folders.notNow";
 /// anything else, at start, at most once in six hours.
 constexpr const char* otaAtStart = "megler.ota";
 
+/// What a Java app does while it is minimized, not closed, and unheard (player/AudioHost.h): "run", it keeps its sound
+/// output, which to Windows is an app playing, and so runs on there -- its messages arrive, its downloads go on, and the
+/// battery is used until the app is closed; "rest", the output is let go of once the app has been unheard for ten
+/// seconds, and Windows suspends the app until it is opened again. Empty: "run". An app that is heard, music playing,
+/// goes on with either, and an app that has ended runs on with neither.
+constexpr const char* background = "megler.background";
+
 } // namespace megler::app::settings
 
 namespace megler::app::settings::location {

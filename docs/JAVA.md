@@ -4234,12 +4234,33 @@ app as Android's media keys, which go to its active session's
 `Callback.onMediaButtonEvent` as Android 9 sends them, and to the window when
 there is no session. The test app `data` (`media-session`) checks both ways.
 
-An app that plays nothing is not to pass for one that plays. To Windows a
-sound output is an app playing, whether it is given sound or silence, and such
-an app is not suspended: Twitter, Telegram and Facebook Lite, silent in the
-background, ran on there for hours, until the batteries of an Elite x3 and a
-Lumia 950 were at 4% (0.1.0.695, 0.1.0.696). So the shell's sound host
-(`player/AudioHost.h`) lets go of a Java app's output -- Windows.Media's
+To Windows a sound output is an app playing, whether it is given sound or
+silence, and such an app is not suspended: Twitter, Telegram and Facebook
+Lite, silent in the background, ran on there for hours, until the batteries of
+an Elite x3 and a Lumia 950 were at 4% (0.1.0.695, 0.1.0.696). It is also the
+one way a minimized app runs on at all on a phone: a messenger suspended gets
+no message, a download stops. So which it is to be is the user's choice,
+**In the Background** in Megler's Settings and in each app's own (the setting
+`megler.background`, `shell/Settings.h`; an app's own over Megler's, "As in
+Megler" at the top):
+
+- **Keeps Running** (`run`, and what an app goes by when nothing is chosen):
+  the app keeps its output, heard or not, until it ends, as in the releases up
+  to 0.1.0.699. Minimized, it runs on and uses the battery until it is closed;
+- **Rests** (`rest`): an app that plays nothing is not to pass for one that
+  plays, as below.
+
+The sound host asks the setting each time its thread comes round, so an app's
+own, changed in the app's own package from the player's menu, counts at once;
+changed in Megler, it counts at the app's next start. The log says which it is
+at the start and at each change: `audio: minimized, the app runs on: its sound
+output is kept, heard or not, until the app ends (Settings, In the Background:
+Keeps Running)`, or `audio: minimized and unheard, the app rests: ... (Settings,
+In the Background: Rests)`. A game with an engine of its own has no such
+output and is suspended with either.
+
+Of an app that rests, the shell's sound host
+(`player/AudioHost.h`) lets go of the output -- Windows.Media's
 player, or the XAudio2 engine -- once the application is in Windows'
 background (`EnteredBackground`, `session::setBackground`) with nothing of the
 app heard for ten seconds and its media session not saying it plays, and makes
@@ -4265,11 +4286,12 @@ was opened. The log says each turn:
   session is paused: the output is kept for five minutes, so that Play finds
   the app running`.
 
-An app that has ended has no output from then on (`AudioHost::end`, from the
-run's `on_exit`: `audio: the app has ended: its sound output is closed`):
-YouTube, ended, had its player given silence for five hours. The flag
-`keep-sound-output` keeps the output of an app in the background, as before,
-to compare the two on a phone (`flag: keep-sound-output is on: ...`); an ended
+An app that has ended has no output from then on, whichever is chosen
+(`AudioHost::end`, from the run's `on_exit`: `audio: the app has ended: its
+sound output is closed`): YouTube, ended, had its player given silence for
+five hours. The flag `keep-sound-output` keeps the output of an app that
+rests, as Keeps Running does, to compare the two on a phone without changing
+the setting (`flag: keep-sound-output is on: ...`); an ended
 app's output is closed with it too. None of this has a test here: it is the
 shell's, and whether Windows suspends the app is seen on a phone alone.
 

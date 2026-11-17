@@ -42,11 +42,16 @@
 // for the rest of the run. Flags: audio-player has every Java app's sound go
 // through the player from the start, audio-xaudio2 none.
 //
-// An app neither seen nor heard has no output. To Windows an output is an app
-// playing, whether there is sound in what it is given or not, and an app that
-// plays is not suspended: Twitter, Telegram and Facebook Lite, silent in the
-// background, ran on there for hours, until the batteries of an Elite x3 and a
-// Lumia 950 were at 4% (695, 696). So a media app that has been in Windows'
+// To Windows an output is an app playing, whether there is sound in what it is
+// given or not, and an app that plays is not suspended: Twitter, Telegram and
+// Facebook Lite, silent in the background, ran on there for hours, until the
+// batteries of an Elite x3 and a Lumia 950 were at 4% (695, 696). That is also
+// the one way a minimized app runs on at all -- a messenger's messages arrive,
+// a download goes on -- so which it is to be is the user's choice, Settings'
+// In the Background (shell/Settings.h, background), Megler's and each app's
+// own: Keeps Running, the output is kept, as in the releases up to 699, and
+// that is what an app goes by when nothing is chosen; or Rests, an app neither
+// seen nor heard has no output. A media app that rests and has been in Windows'
 // background (setBackground) for ten seconds, with nothing of it heard for ten
 // and its media session not saying it plays (mediaSession), has its player and
 // its engine let go of -- until its first sound, its session's playing, or

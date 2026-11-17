@@ -4,6 +4,7 @@
 
 #include "shell/Files.h"
 #include "shell/Platform.h"
+#include "shell/Settings.h"
 #include "shell/ShellLog.h"
 #include "shell/Strings.h"
 
@@ -491,9 +492,17 @@ void AudioHost::ownerLoop() {
         return media_.load() && route_.load() == MEGLER_AUDIO_ROUTE_DEFAULT && !mediaFailed_.load() && !xaudioAlways &&
                (playerAlways || sessionPlayed_.load());
     };
+    /*
+     * Settings' In the Background (shell/Settings.h, background): whether the app, minimized and unheard, is to rest, or to
+     * run on, which it does by keeping its output. Asked each time this thread comes round: changed in the app's own
+     * package, from the player's menu, it counts from then on. Said in the log at the start and when it changes.
+     */
+    bool restsThere = false, restsThereSaid = false;
     // Whether the app could do without an output, were it silent (AudioHost.h): a media app in Windows' background, not in a
-    // call.
-    const auto unseen = [&] { return !keepOutput && media_.load() && background_.load() && route_.load() == MEGLER_AUDIO_ROUTE_DEFAULT; };
+    // call, that is to rest there.
+    const auto unseen = [&] {
+        return !keepOutput && restsThere && media_.load() && background_.load() && route_.load() == MEGLER_AUDIO_ROUTE_DEFAULT;
+    };
     /*
      * For how long it has been so with nothing of it heard, in milliseconds, counted by this thread as it comes round, a second
      * at the most each time: the hours Windows had the app suspended are then none of them, and an app that comes back -- this
@@ -536,6 +545,15 @@ void AudioHost::ownerLoop() {
         std::shared_ptr<MediaOut> oldMedia;
         bool have = false, haveMedia = false, wasLost = false, wantMedia = false, rest = false;
         int rate = 0, route = 0;
+        if (const bool restsNow = settings::get(settings::background, "") == "rest"; restsNow != restsThere || !restsThereSaid) {
+            restsThere = restsNow;
+            restsThereSaid = true;
+            if (media_.load())
+                shellLog::write(restsNow ? "audio: minimized and unheard, the app rests: its sound output is let go of after ten seconds, so "
+                                           "that Windows can suspend it (Settings, In the Background: Rests)"
+                                         : "audio: minimized, the app runs on: its sound output is kept, heard or not, until the app ends "
+                                           "(Settings, In the Background: Keeps Running)");
+        }
         {
             std::unique_lock<std::mutex> lock(mutex_);
             // (Whether the output rests is as this thread last found it, here; it is found anew after the wait.)

@@ -222,6 +222,29 @@ private:
                            "The Google Play services a heavy app runs with. microG takes far less memory where an app needs little of Google's." + applies());
     }
 
+    /// What an app does while it is minimized, not closed (player/AudioHost.h): it runs on, its sound output kept, which is
+    /// what an app goes by when nothing is chosen; or it rests, suspended by Windows once it has been unheard for ten seconds.
+    UIElement backgroundSection() {
+        const auto mine = own(settings::background);
+        const bool set = !forApp() || mine.has_value(), rests = mine.value_or("") == "rest";
+        std::vector<UIElement> rows;
+        if (forApp()) {
+            rows.push_back(choice("As in Megler", meglerOr(settings::background, "") == "rest" ? "Rests" : "Keeps running", !mine,
+                                  [this] { put(settings::background, std::nullopt); }));
+        }
+        rows.push_back(choice("Keeps Running", "Minimized, the app runs on: its messages arrive, its downloads go on. It uses the battery until it is closed",
+                              set && !rests, [this] { put(settings::background, std::string("run")); }));
+        rows.push_back(choice("Rests", "Minimized and unheard for ten seconds, the app is suspended by Windows until it is opened again: nothing "
+                                       "of it arrives meanwhile, and the battery is spared",
+                              set && rests, [this] { put(settings::background, std::string("rest")); }));
+        // (An app's own, changed in its own package, is what its sound host asks about each time round: AudioHost.cpp.)
+        return listSection("In the Background", rows,
+                           "What an app does while it is minimized, not closed. Windows suspends an app that plays nothing, so an app "
+                           "that is to run on keeps its sound output, silent. Music that plays goes on with either; a closed app runs on "
+                           "with neither, and a game with an engine of its own is suspended with either." +
+                               (scope_.own ? std::string(" It applies at once.") : applies()));
+    }
+
     /// Megler's own updates from GitHub (ui/Ota.h): asked for at start or only when asked, and Check Now with where it stands.
     UIElement updatesSection() {
         std::vector<UIElement> rows;
@@ -842,6 +865,7 @@ private:
         if (scope_.own) add(column, storageSizesSection());
         add(column, renderSection());
         add(column, servicesSection());
+        add(column, backgroundSection());
         if (!forApp()) add(column, gmsLocationSection());
         add(column, localeSection());
         add(column, locationSection());
