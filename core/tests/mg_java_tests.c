@@ -4873,6 +4873,13 @@ static int run_gms_host(void)
     const bool deny = g_script_count && !strcmp(g_script[0], "deny");
     CHECK(wait_line("I/GmsOwnTest: main process true application=megler.test.gmshost current=megler.test.gmshost", 0, 600) >= 0);
     CHECK(find_line("I/GmsHostTest: package permissions true", 0) >= 0);
+    /* Android 14's Credential Manager, which answers "no credential" here, is kept from an app whose manifest has AndroidX's
+       credential provider for Google Play services (gms-host's) while they are hosted: X's Google button did nothing. (The
+       data app, with neither, is given it: its step credential-manager.) */
+    CHECK(wait_line("I/GmsHostTest: credential service null, of the application null", 0, 60) >= 0);
+    CHECK(find_line("I/MicroG: the app has a credential provider of its own for Google Play services "
+                    "(androidx.credentials.playservices.CredentialProviderPlayServicesImpl): Android 14's Credential Manager, which has "
+                    "no provider to ask here, is not given to it", 0) >= 0);
     CHECK(find_line("I/MicroG: Google Play services' application runs in this process, megler.test.gmshost, as its main one", 0) >= 0);
     CHECK(find_line("I/GmsHostTest: started ComponentInfo{com.google.android.gms/megler.test.gmsown.Probe}", 0) >= 0);
     CHECK(wait_line("I/GmsOwnTest: attribution tag plain=null asked=false first=null asked=true", 0, 120) >= 0);

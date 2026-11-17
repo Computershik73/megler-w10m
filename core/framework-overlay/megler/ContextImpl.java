@@ -145,6 +145,7 @@ public final class ContextImpl extends Context {
             synchronized (sServices) { Object s = sServices.get(name); if (s == null) { s = new PhoneLayoutInflater(getApplicationContext() != null ? getApplicationContext() : this); sServices.put(name, s); } return s; }
         }
         if (WINDOW_SERVICE.equals(name)) return new android.view.WindowManagerImpl(this);
+        if (CREDENTIAL_SERVICE.equals(name) && credentialsOfPlayServices()) return null;
         synchronized (sServices) {
             Object s = sServices.get(name);
             if (s != null) return s;
@@ -154,6 +155,35 @@ public final class ContextImpl extends Context {
             return s;
         }
     }
+    /*
+     * Whether Android 14's Credential Manager is kept from the app, for Google Play services to sign its user in: where they
+     * are here and the app carries a credential provider of AndroidX's for the Androids before 14 (a service of its manifest
+     * with the meta-data androidx.credentials.CREDENTIAL_PROVIDER_KEY: Play services', in every app that offers "Sign in with
+     * Google" so). On Android 14 that Credential Manager asks the phone's credential providers, of which Google Play services
+     * are one; here it has none to ask and answers "no credential" (android.credentials.CredentialManager), which is right
+     * for an app's saved passwords and wrong for its Google button: X's (com.twitter.android, 0.1.0.696, Google Play services
+     * 26.41 hosted) did nothing at every tap, "GetCredentialResponse error returned from framework". With no "credential"
+     * service AndroidX takes the app's own provider, as on Android 13, and that one asks Google Play services' sign-in API.
+     * The flag framework-credentials keeps Android 14's.
+     */
+    private static int sCredentialsOfPlayServices = -1;
+    private static synchronized boolean credentialsOfPlayServices() {
+        if (sCredentialsOfPlayServices >= 0) return sCredentialsOfPlayServices == 1;
+        String provider = null;
+        if (MicroG.installed() && !Native.flag("framework-credentials")) {
+            Manifest.read();
+            for (Manifest.Component c : Manifest.services) {
+                if (c.metaData == null || (provider = c.metaData.getString("androidx.credentials.CREDENTIAL_PROVIDER_KEY")) == null) continue;
+                break;
+            }
+        }
+        sCredentialsOfPlayServices = provider != null ? 1 : 0;
+        if (provider != null)
+            android.util.Log.i("MicroG", "the app has a credential provider of its own for Google Play services (" + provider
+                + "): Android 14's Credential Manager, which has no provider to ask here, is not given to it");
+        return provider != null;
+    }
+
     private static final HashMap<Class<?>, String> sNames = new HashMap<>();
     static {
         String[][] m = {

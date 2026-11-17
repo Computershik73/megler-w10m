@@ -88,6 +88,10 @@ public class Main extends Activity {
                 public void onServiceDisconnected(ComponentName name) {}
             }, Context.BIND_AUTO_CREATE);
         Log.i("GmsHostTest", "location api bind " + bound);
+        /* An app with AndroidX's Play services credential provider in its manifest (this one) is not given Android 14's
+           Credential Manager while Google Play services are here: AndroidX then asks them, as on Android 13. */
+        Log.i("GmsHostTest", "credential service " + getSystemService("credential") + ", of the application "
+            + getApplicationContext().getSystemService("credential"));
         askUnderLock();
         nativeAssets();
     }
