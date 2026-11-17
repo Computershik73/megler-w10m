@@ -112,12 +112,63 @@ struct t_native_state {
     char asset_text[32];
     int audio_ok, audio_callbacks;
     int audio_stack_kb, audio_frame;
+    int rec_done, rec_failed, rec_buffers, rec_first, rec_last, rec_silent, rec_bad, rec_callbacks, rec_late;
 };
 
 /* The shell's audio output, standing in: what was handed over, counted. */
 static struct {
     int rate, frames, loud, peak, mismatched;
 } G_AUDIO;
+
+/*
+ * The shell's microphone, standing in. The first time it is asked it hears a ramp, from 1 in steps of 3, which it gives
+ * ten milliseconds at a time until told to stop -- a second of it at the most, half of what the ring it is pushed into
+ * holds (mg_mic.c), so that none is lost however slowly an emulator has the recorder take it. Asked again it refuses, as
+ * Windows does for a user who said no.
+ */
+static struct {
+    volatile i32 asked, stops, on;
+    int rate[4], channels[4];
+} G_MIC;
+
+static MG_HOSTCB void app_mic_hears(void *arg)
+{
+    i16 chunk[960];
+    const int frames = G_MIC.rate[0] / 100, channels = G_MIC.channels[0];
+    int given = 0, i;
+    (void)arg;
+    if (frames * channels > (int)MG_COUNT(chunk)) return;
+    while (G_MIC.on && given < G_MIC.rate[0]) {
+        for (i = 0; i < frames * channels; i++) chunk[i] = (i16)(1 + 3 * (given * channels + i));
+        megler_microphone_push(chunk, frames);
+        given += frames;
+        mg_sleep_ns(1000000ull);
+    }
+}
+
+static MEGLER_CB bool app_mic_start(void *user, int rate, int channels)
+{
+    const i32 asked = mg_atomic_add(&G_MIC.asked, 1);
+    mg_thread *t;
+    (void)user;
+    if (asked <= (i32)MG_COUNT(G_MIC.rate)) {
+        G_MIC.rate[asked - 1] = rate;
+        G_MIC.channels[asked - 1] = channels;
+    }
+    if (asked != 1) return false;
+    mg_atomic_xchg(&G_MIC.on, 1);
+    t = mg_thread_start(app_mic_hears, NULL, (size_t)256 << 10, "test-microphone");
+    if (!t) return false;
+    mg_thread_detach(t);
+    return true;
+}
+
+static MEGLER_CB void app_mic_stop(void *user)
+{
+    (void)user;
+    mg_atomic_xchg(&G_MIC.on, 0);
+    mg_atomic_add(&G_MIC.stops, 1);
+}
 
 static MEGLER_CB bool audio_open(void *user, int rate)
 {
@@ -164,7 +215,7 @@ static void test_app(const char *libdir)
     volatile struct t_native_state *s;
     mg_lib *lib;
     mg_stat st;
-    int frames;
+    int frames, rec_callbacks;
     say("an app, start to end (NativeActivity)");
     if (!megler_data_dir()[0]) {
         say("  (skipped: no data directory -- megler_init was not called)");
@@ -198,7 +249,10 @@ static void test_app(const char *libdir)
     cfg.on_exit = app_exited;
     cfg.audio.open = audio_open;
     cfg.audio.write = audio_write;
+    cfg.microphone.start = app_mic_start;
+    cfg.microphone.stop = app_mic_stop;
     memset(&G_AUDIO, 0, sizeof(G_AUDIO));
+    memset(&G_MIC, 0, sizeof(G_MIC));
     CHECK(megler_run(&cfg));
     if (!megler_running()) {
         say("  not running: %s", megler_last_error());
@@ -256,6 +310,31 @@ static void test_app(const char *libdir)
     say("  the audio callbacks' thread: a stack of %d KB, the frame %d", s->audio_stack_kb, s->audio_frame);
     CHECK(s->audio_stack_kb >= 1000);
     CHECK_INT(s->audio_frame, 28);
+
+    /*
+     * The microphone, through OpenSL ES recorders driven as WebRTC drives its own (imo Lite's calls ended where the
+     * engine had no recorder to make). The first, at 16000 Hz mono: the shell's microphone was asked for just that, and
+     * what it gave reached the app's callback in the buffers the app had queued, whole and in order -- twelve buffers of
+     * ten milliseconds, from the ramp's first sample to its 1920th -- and it was told to stop, once, when the recorder
+     * was stopped. The second, at 48000 Hz stereo, which the shell's microphone refused: the app heard silence, three
+     * buffers of it. Every call was answered as Android answers it (no step failed), no callback came after a Destroy
+     * had returned, and none comes now.
+     */
+    WAIT_FOR(s->rec_done);
+    say("  the recorders: %d buffers heard (samples %d to %d), %d of silence, %d samples wrong, %d callbacks, step %d failed", s->rec_buffers,
+        s->rec_first, s->rec_last, s->rec_silent, s->rec_bad, s->rec_callbacks, s->rec_failed);
+    CHECK_INT(s->rec_done, 1);
+    CHECK_INT(s->rec_failed, 0);
+    CHECK_INT(s->rec_buffers, 12);
+    CHECK(s->rec_first == 1 && s->rec_last == 1 + 3 * (12 * 160 - 1));
+    CHECK_INT(s->rec_silent, 3);
+    CHECK_INT(s->rec_bad, 0);
+    CHECK_INT(G_MIC.asked, 2);
+    CHECK(G_MIC.rate[0] == 16000 && G_MIC.channels[0] == 1 && G_MIC.rate[1] == 48000 && G_MIC.channels[1] == 2);
+    CHECK_INT(G_MIC.stops, 1);
+    rec_callbacks = s->rec_callbacks;
+    mg_sleep_ns(30000000ull);
+    CHECK(s->rec_callbacks == rec_callbacks && s->rec_late == 0);
 
     /* Touch, with a second finger; the event's floats go back to the guest as bits. */
     megler_touch(0, 7, 100.5f, 50.25f);

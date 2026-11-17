@@ -1054,6 +1054,29 @@ keeps running.
 *Proven:* a guest playing three buffers at 22050 Hz mono through the callback chain
 arrives as the right number of frames at the right level on both channels.
 
+The engine also makes audio recorders (`CreateAudioRecorder`), which a call's native
+voice engine hears the microphone through: from the audio input into a buffer queue of
+16-bit (or float) PCM, mono or stereo. A recorder has a thread of its own, started the
+first time it is set recording. It asks the shell for the microphone as Java's
+`AudioRecord` does (`ndk/mg_mic.c`, the ring both read from; at the rate and in the
+channels of the recorder's format, so nothing is resampled in the core), copies what is
+heard, ten milliseconds at a time, into the buffers the app queued, and calls the
+queue's callback for each one filled, where the app queues it again. What is heard while
+no buffer is queued is dropped; stopping keeps the queue and `Clear` empties it;
+`Destroy` returns once no callback runs. `SLAndroidConfigurationItf` keeps the recording
+preset and the performance mode, before `Realize` as after it. With no microphone, or
+after the user's no, the app is given silence at the microphone's pace. One recording
+has the microphone at a time: a second one takes it over, and the first hears silence.
+The recorder's calls are logged (`opensl: recorder: ...`, the first 120). The echo
+canceller, gain control and noise suppressor interfaces are not there (the shell's
+capture is in the Communications category during a call, which takes the echo out).
+
+*Proven:* a guest that drives two recorders in the order WebRTC's
+`opensles_recorder.cc` makes its calls, while its player plays: the harness's
+microphone is asked for 16000 Hz mono and its ramp reaches the callback whole and in
+order in the queued buffers; a second, refused microphone gives silence; a third
+buffer in a queue of two is refused, and no callback comes after `Destroy`.
+
 AAudio's output streams (`ndk/mg_aaudio.c`, as `libaaudio.so`) are voices of the same
 mixer, each fed from a ring of sixteen buffers of its own, a burst long (10 ms, or the
 frames per callback the app asked for), of which four wait to be played at a time

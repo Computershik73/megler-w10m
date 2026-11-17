@@ -142,7 +142,8 @@ typedef const struct SLEngineItf_ *const *SLEngineItf;
 struct SLEngineItf_ {
     void *CreateLEDDevice, *CreateVibraDevice;
     unsigned (*CreateAudioPlayer)(SLEngineItf, SLObjectItf *, void *, void *, unsigned, const void *, const void *);
-    void *CreateAudioRecorder, *CreateMidiPlayer, *CreateListener, *Create3DGroup;
+    unsigned (*CreateAudioRecorder)(SLEngineItf, SLObjectItf *, void *, void *, unsigned, const void *, const void *);
+    void *CreateMidiPlayer, *CreateListener, *Create3DGroup;
     unsigned (*CreateOutputMix)(SLEngineItf, SLObjectItf *, unsigned, const void *, const void *);
 };
 typedef const struct SLPlayItf_ *const *SLPlayItf;
@@ -156,8 +157,19 @@ struct SLBufferQueueItf_ {
     unsigned (*GetState)(SLBufferQueueItf, void *);
     unsigned (*RegisterCallback)(SLBufferQueueItf, void (*)(SLBufferQueueItf, void *), void *);
 };
-extern const void *SL_IID_ENGINE, *SL_IID_PLAY, *SL_IID_BUFFERQUEUE;
+typedef const struct SLRecordItf_ *const *SLRecordItf;
+struct SLRecordItf_ {
+    unsigned (*SetRecordState)(SLRecordItf, unsigned);
+    unsigned (*GetRecordState)(SLRecordItf, unsigned *);
+};
+typedef const struct SLAndroidConfigurationItf_ *const *SLAndroidConfigurationItf;
+struct SLAndroidConfigurationItf_ {
+    unsigned (*SetConfiguration)(SLAndroidConfigurationItf, const char *, const void *, unsigned);
+    unsigned (*GetConfiguration)(SLAndroidConfigurationItf, const char *, unsigned *, void *);
+};
+extern const void *SL_IID_ENGINE, *SL_IID_PLAY, *SL_IID_BUFFERQUEUE, *SL_IID_RECORD, *SL_IID_ANDROIDSIMPLEBUFFERQUEUE, *SL_IID_ANDROIDCONFIGURATION;
 unsigned slCreateEngine(SLObjectItf *, unsigned, const void *, unsigned, const void *, const void *);
+int usleep(unsigned);
 
 enum { CMD_INPUT_CREATED = 1, CMD_WINDOW_CREATED, CMD_WINDOW_DESTROYED, CMD_FOCUS, CMD_BLUR, CMD_START, CMD_RESUME, CMD_PAUSE, CMD_STOP, CMD_DESTROY, CMD_INPUT_DESTROYED };
 
@@ -170,6 +182,12 @@ struct t_native_state {
     char asset_text[32];
     int audio_ok, audio_callbacks;
     int audio_stack_kb, audio_frame;
+    /*
+     * The recorders (record_thread): over, and the step that went wrong (0: none); the buffers of the microphone's sound
+     * looked at, their first and last sample; the buffers of silence looked at; the samples in either that were not what
+     * they should be; the callbacks that queued a buffer again, and those that came after a Destroy had returned.
+     */
+    int rec_done, rec_failed, rec_buffers, rec_first, rec_last, rec_silent, rec_bad, rec_callbacks, rec_late;
 };
 struct t_native_state t_native_state;
 
@@ -370,6 +388,9 @@ static void queue_callback(SLBufferQueueItf queue, void *context)
     t_native_state.audio_callbacks++;
 }
 
+/* The one engine an app has: its players and its recorders are made by it. */
+static SLEngineItf g_engine;
+
 static void start_audio(void)
 {
     SLObjectItf engine_object = 0, mix = 0, player = 0;
@@ -399,6 +420,7 @@ static void start_audio(void)
     if (slCreateEngine(&engine_object, 0, 0, 0, 0, 0) != 0) return;
     (*engine_object)->Realize(engine_object, 0);
     (*engine_object)->GetInterface(engine_object, SL_IID_ENGINE, &engine);
+    g_engine = engine;
     (*engine)->CreateOutputMix(engine, &mix, 0, 0, 0);
     (*mix)->Realize(mix, 0);
 #if defined(__LP64__)
@@ -416,6 +438,140 @@ static void start_audio(void)
     g_enqueued = 1;
     (*play)->SetPlayState(play, 3);
     t_native_state.audio_ok = 1;
+}
+
+/*
+ * A call's microphone, in the order WebRTC's opensles_recorder.cc makes its calls: the recorder made from the microphone
+ * into a queue of two buffers of ten milliseconds (16 bits), with the queue and the configuration asked for as required;
+ * the recording preset set before Realize; both buffers queued before SetRecordState(RECORDING); each queued again from
+ * the callback that hands it back filled; and at the end stopped, cleared, its callback taken away and destroyed, by a
+ * thread that is not the callbacks'. All this while the player above plays, as in a call.
+ *
+ * Twice: at 16000 Hz mono, where the test's microphone gives a ramp from 1 in steps of 3, of which the first twelve
+ * buffers are looked at; then at 48000 Hz stereo, where the test's microphone refuses, as a user who says no makes it,
+ * and three buffers of silence are looked at.
+ */
+enum { REC_BUFFERS = 12, REC_SILENT = 3 };
+static short g_rec_pcm[2][960];
+static SLRecordItf g_rec_record;
+static volatile int g_rec_samples;     /* in a buffer: 160, then 960 */
+static volatile int g_rec_destroyed;
+static int g_rec_turn;                 /* which of the two buffers the next callback hands back */
+static short g_rec_expected = 1;       /* the ramp's next sample */
+
+static void record_callback(SLBufferQueueItf queue, void *context)
+{
+    short *pcm = g_rec_pcm[g_rec_turn];
+    const int samples = g_rec_samples;
+    unsigned state = 0;
+    int i;
+    if (g_rec_destroyed) {
+        t_native_state.rec_late++;
+        return;
+    }
+    /* (WebRTC asks this first, and takes nothing once the recorder does not record.) */
+    if ((*g_rec_record)->GetRecordState(g_rec_record, &state) != 0 || state != 3) return;
+    if (context) {
+        /* The recorder whose microphone was refused. */
+        if (t_native_state.rec_silent < REC_SILENT) {
+            for (i = 0; i < samples; i++)
+                if (pcm[i]) t_native_state.rec_bad++;
+            t_native_state.rec_silent++;
+        }
+    } else if (t_native_state.rec_buffers < REC_BUFFERS) {
+        for (i = 0; i < samples; i++, g_rec_expected = (short)(g_rec_expected + 3))
+            if (pcm[i] != g_rec_expected) t_native_state.rec_bad++;
+        if (!t_native_state.rec_buffers) t_native_state.rec_first = pcm[0];
+        t_native_state.rec_last = pcm[samples - 1];
+        t_native_state.rec_buffers++;
+    }
+    /* Queued again, holding what no microphone here gives: what the next callback finds in it was written. */
+    for (i = 0; i < samples; i++) pcm[i] = 0x5555;
+    g_rec_turn ^= 1;
+    (*queue)->Enqueue(queue, pcm, (unsigned)samples * sizeof(short));
+    t_native_state.rec_callbacks++;
+}
+
+#define REC_STEP(n, ok)                \
+    do {                               \
+        if (!(ok)) return base + (n);  \
+    } while (0)
+
+/* One recorder from its making to its end; `count` is what its callbacks count, of which `enough` are waited for. 0, or the step that failed. */
+static int record_once(SLEngineItf engine, int base, unsigned millihertz, unsigned channels, void *context, const volatile int *count, int enough)
+{
+    /* SL_DATALOCATOR_IODEVICE: SL_IODEVICE_AUDIOINPUT, SL_DEFAULTDEVICEID_AUDIOINPUT, and no device object (a pointer: at 16 on the 64-bit ABIs);
+       SL_DATALOCATOR_ANDROIDSIMPLEBUFFERQUEUE with two buffers; PCM, 16 bits, front centre or front left and right, little-endian */
+    unsigned from[6] = { 3, 1, 0xFFFFFFFFu, 0, 0, 0 }, to[2] = { 0x800007BDu, 2 }, format[7] = { 2, 0, 0, 16, 16, 0, 2 };
+    void *source[2], *sink[2];
+    const void *ids[2];
+    const unsigned required[2] = { 1, 1 };
+    struct { unsigned count, index; } queued = { 9, 9 };
+    SLObjectItf recorder = 0;
+    SLAndroidConfigurationItf config = 0;
+    SLBufferQueueItf queue = 0;
+    unsigned preset = 4, size = 4, told = 0, state = 0, bytes;     /* SL_ANDROID_RECORDING_PRESET_VOICE_COMMUNICATION */
+    int i, k;
+    format[1] = channels;
+    format[2] = millihertz;
+    format[5] = channels == 2 ? 3 : 4;
+    source[0] = from;
+    source[1] = 0;
+    sink[0] = to;
+    sink[1] = format;
+    ids[0] = SL_IID_ANDROIDSIMPLEBUFFERQUEUE;
+    ids[1] = SL_IID_ANDROIDCONFIGURATION;
+    g_rec_samples = (int)(millihertz / 100000 * channels);
+    bytes = (unsigned)g_rec_samples * sizeof(short);
+    g_rec_turn = 0;
+    g_rec_record = 0;
+    for (k = 0; k < 2; k++)
+        for (i = 0; i < 960; i++) g_rec_pcm[k][i] = 0x5555;
+    REC_STEP(1, (*engine)->CreateAudioRecorder(engine, &recorder, source, sink, 2, ids, required) == 0 && recorder);
+    g_rec_destroyed = 0;
+    /* The configuration is asked for and set before Realize. */
+    REC_STEP(2, (*recorder)->GetInterface(recorder, SL_IID_ANDROIDCONFIGURATION, &config) == 0 && config);
+    REC_STEP(3, (*config)->SetConfiguration(config, "androidRecordingPreset", &preset, sizeof(preset)) == 0);
+    REC_STEP(4, (*config)->GetConfiguration(config, "androidRecordingPreset", &size, &told) == 0 && told == 4 && size == 4);
+    REC_STEP(5, (*recorder)->Realize(recorder, 0) == 0);
+    REC_STEP(6, (*recorder)->GetInterface(recorder, SL_IID_RECORD, &g_rec_record) == 0 && g_rec_record);
+    REC_STEP(7, (*recorder)->GetInterface(recorder, SL_IID_ANDROIDSIMPLEBUFFERQUEUE, &queue) == 0 && queue);
+    REC_STEP(8, (*queue)->RegisterCallback(queue, record_callback, context) == 0);
+    REC_STEP(9, (*queue)->GetState(queue, &queued) == 0 && queued.count == 0 && queued.index == 0);
+    /* Two buffers, all the queue was made for: a third is refused (SL_RESULT_BUFFER_INSUFFICIENT). */
+    REC_STEP(10, (*queue)->Enqueue(queue, g_rec_pcm[0], bytes) == 0 && (*queue)->Enqueue(queue, g_rec_pcm[1], bytes) == 0);
+    REC_STEP(11, (*queue)->Enqueue(queue, g_rec_pcm[0], bytes) == 7 && (*queue)->GetState(queue, &queued) == 0 && queued.count == 2);
+    REC_STEP(12, (*g_rec_record)->GetRecordState(g_rec_record, &state) == 0 && state == 1 && (*g_rec_record)->SetRecordState(g_rec_record, 3) == 0 &&
+                     (*g_rec_record)->GetRecordState(g_rec_record, &state) == 0 && state == 3);
+    for (i = 0; i < 1000 && *count < enough; i++) usleep(2000);
+    REC_STEP(13, *count >= enough);
+    REC_STEP(14, (*g_rec_record)->SetRecordState(g_rec_record, 1) == 0 && (*g_rec_record)->GetRecordState(g_rec_record, &state) == 0 && state == 1);
+    REC_STEP(15, (*queue)->Clear(queue) == 0 && (*queue)->GetState(queue, &queued) == 0 && queued.count == 0 && queued.index == 0);
+    REC_STEP(16, (*queue)->RegisterCallback(queue, 0, 0) == 0);
+    (*recorder)->Destroy(recorder);
+    g_rec_destroyed = 1;
+    return 0;
+}
+
+static void *record_thread(void *arg)
+{
+    int failed = record_once(g_engine, 0, 16000000, 1, 0, &t_native_state.rec_buffers, REC_BUFFERS);
+    (void)arg;
+    if (!failed) failed = record_once(g_engine, 20, 48000000, 2, &g_rec_turn, &t_native_state.rec_silent, REC_SILENT);
+    t_native_state.rec_failed = failed;
+    t_native_state.rec_done = 1;
+    return 0;
+}
+
+static void start_recorder(void)
+{
+    pthread_t thread;
+    if (!g_engine) {
+        t_native_state.rec_failed = 99;
+        t_native_state.rec_done = 1;
+        return;
+    }
+    pthread_create(&thread, 0, record_thread, 0);
 }
 
 static void read_asset_and_save(void)
@@ -485,6 +641,7 @@ static void *app_thread(void *arg)
     ask_java();
     read_asset_and_save();
     start_audio();
+    start_recorder();
     while (!destroyed) {
         int ident, events;
         void *data;
