@@ -1030,6 +1030,7 @@ static void *f_tex_resolve(const char *name)
     if (!strcmp(name, "glBindTexture")) return (void *)f_bind_texture;
     if (!strcmp(name, "glGetString")) return (void *)f_get_string;
     if (!strcmp(name, "glTexStorage2D")) return (void *)f_storage_2d;
+    if (!strcmp(name, "glCompressedTexImage2D")) return (void *)f_compressed_2d;
     return NULL;
 }
 
@@ -1260,7 +1261,8 @@ static void test_textures_pressed(void)
     mg_gltex_reset();
     g_tex_ext = "GL_EXT_texture_compression_s3tc";
     mg_gltex_set_host(f_tex_resolve);
-    (void)mg_gltex_wrap("glCompressedTexImage2D", (void *)f_compressed_2d);
+    /* (The app asks for no glCompressedTexImage2D, as one with no compressed textures of its own: what packs a
+       glTexImage2D is found without it.) */
     image = (image_fn)mg_gltex_wrap("glTexImage2D", (void *)f_image_2d);
     sub_image = (sub_image_fn)mg_gltex_wrap("glTexSubImage2D", (void *)f_sub_image_2d);
     storage = (storage_fn)mg_gltex_wrap("glTexStorage2D", (void *)f_storage_2d);
