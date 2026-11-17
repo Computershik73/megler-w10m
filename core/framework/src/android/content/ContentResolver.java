@@ -180,7 +180,7 @@ public class ContentResolver {
     public void notifyChange(Uri u, ContentObserver observer, boolean sync, int user) { notifyChange(u, observer, sync); }
     public void notifyChange(Uri u, ContentObserver observer, int flags, int user) { notifyChange(u, observer, flags); }
     public void notifyChange(Uri[] uris, ContentObserver observer, int flags, int user) { notifyChange(java.util.Arrays.asList(uris), observer, flags); }
-    public void notifyChange(java.util.Iterable uris, ContentObserver observer, int flags) {
+    public void notifyChange(java.lang.Iterable uris, ContentObserver observer, int flags) {
         ArrayList<Uri> list = new ArrayList<>();
         for (Object u : uris) list.add((Uri) u);
         notifyChange(list, observer, flags);
@@ -383,7 +383,6 @@ public class ContentResolver {
     public android.graphics.drawable.Drawable getTypeDrawable(java.lang.String p0) { return null; }
     public android.content.ContentResolver.MimeTypeInfo getTypeInfo(java.lang.String p0) { return null; }
     public int getUserId() { return 0; }
-    public void notifyChange(java.lang.Iterable p0, android.database.ContentObserver p1, int p2) {}
     public void putCache(android.net.Uri p0, android.os.Bundle p1) {}
     public boolean refresh(android.net.Uri p0, android.os.Bundle p1, android.os.CancellationSignal p2) { return false; }
     public int resolveUserId(android.net.Uri p0) { return 0; }
