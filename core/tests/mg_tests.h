@@ -25,6 +25,16 @@ int mg_tests_run(const char *libdir, const char *scratch, mg_test_sink sink, voi
 int mg_tests_sqlite_hold(const char *db, const char *flag);
 
 /*
+ * SQLite as guest code, as an app carries it (guest/t_sqlite.c), with the process that writes ended over and over
+ * (mg_tests --guest-sqlite): `kills` times in each journal mode, at moments that follow from `seed` (0: from the clock),
+ * the database checked by a new process each time; where no process can be forked, only the tests in one process.
+ * Returns the number of failures. mg_tests_guest_sqlite_step is one step of it in this process, after megler_init (mg_tests
+ * --guest-sqlite-step): "setup", "work" (which never ends by itself), "check", or "all"; not 0 when it failed.
+ */
+int mg_tests_guest_sqlite(const char *libdir, const char *scratch, int kills, unsigned seed);
+int mg_tests_guest_sqlite_step(const char *libdir, const char *scratch, const char *step, int wal, unsigned seed, void (*started)(void *), void *user);
+
+/*
  * The Dalvik runtime's part of the tests (mg_dvm_tests.c), which mg_tests_run
  * runs with the rest. `fixtures` is the folder of its DEX files: `dvm` beside
  * the guest test libraries, unless mg_tests_set_dvm names another (the PC's

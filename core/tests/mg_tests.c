@@ -7212,6 +7212,245 @@ static void test_sqlite(const char *scratch)
 }
 #endif
 
+/*
+ * SQLite as an app carries it: the amalgamation built as guest code with its own unix VFS (guest/t_sqlite.c,
+ * libt_sqlite.so), which is how Signal's SQLCipher and Telegram's SQLite reach their databases -- through the layer's
+ * open, pread and pwrite, fsync, ftruncate, fcntl's locks, the mapped -shm file of a write-ahead log, unlink. A bank
+ * whose money only moves and whose log says what was moved, written by threads with a connection each, in both journal
+ * modes; and, as a run of its own where a process can be forked (mg_tests --guest-sqlite), the process ended at a random
+ * moment of the writing, over and over, with the database checked by a new process each time.
+ * Left out with a line where the library was not built: it takes the NDK (tools/build-guest.sh).
+ */
+#if MG_GUEST_CODE
+#define SQL_OPEN(l, path) FN(l, void *(*)(const char *), "t_sql_open")(path)
+#define SQL_CLOSE(l, db) FN(l, int (*)(void *), "t_sql_close")(db)
+#define SQL_EXEC(l, db, sql) FN(l, int (*)(void *, const char *), "t_sql_exec")(db, sql)
+#define SQL_INT(l, db, sql) FN(l, int (*)(void *, const char *), "t_sql_int")(db, sql)
+#define SQL_OK(l, db) FN(l, int (*)(void *), "t_sql_ok")(db)
+#define SQL_SAID(l) FN(l, const char *(*)(void), "t_sql_said")()
+#define SQL_SETUP(l, path, wal) FN(l, int (*)(const char *, int), "t_sql_setup")(path, wal)
+#define SQL_START(l, path, threads, rounds, seed) FN(l, void *(*)(const char *, int, int, unsigned), "t_sql_work_start")(path, threads, rounds, seed)
+#define SQL_WAIT(l, job, moved) FN(l, int (*)(void *, int *), "t_sql_work_wait")(job, moved)
+#define SQL_CHECK(l, path) FN(l, int (*)(const char *), "t_sql_check")(path)
+
+/* The library, loaded as the linker scope `scope`'s own (0: the app's). */
+static mg_lib *sql_library(const char *libdir, int scope)
+{
+    char *path = mg_sprintf("%s/libt_sqlite.so", libdir);
+    int previous = mg_ld_set_scope(scope);
+    mg_stat st;
+    mg_lib *lib = mg_path_stat(path, &st, NULL) ? mg_ld_load_file(path) : NULL;
+    if (lib && !mg_ld_init(lib)) lib = NULL;
+    mg_ld_set_scope(previous);
+    if (!lib) say("(SQLite as guest code is not tried: %s is not there -- tools/build-guest.sh makes it with the NDK)", path);
+    free(path);
+    return lib;
+}
+
+/* A database's files, gone from the folder the tests keep them in. */
+static void sql_remove(const char *dir, const char *name)
+{
+    static const char *const ends[] = { "", "-wal", "-shm", "-journal" };
+    size_t i;
+    for (i = 0; i < sizeof(ends) / sizeof(ends[0]); i++) {
+        char *path = mg_sprintf("%s/%s%s", dir, name, ends[i]);
+        mg_path_remove(path, NULL);
+        free(path);
+    }
+}
+
+/* The folder of the databases, where the guest has it. */
+static char *sql_folder(const char *scratch)
+{
+    char *dir = mg_sprintf("%s/guest-sqlite", scratch);
+    mg_path_mkdirs(dir);
+    mg_fs_mount("/sql", dir);
+    return dir;
+}
+
+static void test_guest_sqlite(const char *libdir, const char *scratch)
+{
+    mg_lib *lib = sql_library(libdir, 0);
+    char *dir;
+    int wal;
+    if (!lib) return;
+    say("SQLite %s as guest code, its unix VFS on the layer's files", FN(lib, const char *(*)(void), "t_sql_version")());
+    dir = sql_folder(scratch);
+    for (wal = 1; wal >= 0; wal--) {
+        /* (Fewer with a rollback journal, each of which is flushed several times: a phone's storage takes its time.) */
+        int rounds = wal ? 100 : 25, errors, moved = 0, bad;
+        const char *path = wal ? "/sql/bank-wal.db" : "/sql/bank-journal.db";
+        u64 began = mg_time_monotonic_ns();
+        sql_remove(dir, wal ? "bank-wal.db" : "bank-journal.db");
+        CHECK_INT(SQL_SETUP(lib, path, wal), 0);
+        errors = SQL_WAIT(lib, SQL_START(lib, path, 4, rounds, 7u + (unsigned)wal), &moved);
+        if (errors) say("  %s", SQL_SAID(lib));
+        CHECK_INT(errors, 0);
+        CHECK_INT(moved, 4 * rounds);
+        bad = SQL_CHECK(lib, path);
+        say("  %s: %d transfers by 4 threads in %u ms, then %s", wal ? "a write-ahead log" : "a rollback journal", moved,
+            (unsigned)((mg_time_monotonic_ns() - began) / 1000000u), SQL_SAID(lib));
+        CHECK_INT(bad, 0);
+    }
+    free(dir);
+}
+
+/*
+ * One step of the run that ends its process (mg_tests --guest-sqlite-step, after megler_init): "setup" makes the bank of
+ * one journal mode, "work" writes to it with four threads until the process is ended (`started`, when there is one, is
+ * told once they run), "check" says whether the database is whole; "all" is the tests above by themselves. Not 0 when
+ * the step failed.
+ */
+int mg_tests_guest_sqlite_step(const char *libdir, const char *scratch, const char *step, int wal, unsigned seed, void (*started)(void *), void *user)
+{
+    const char *path = wal ? "/sql/kill-wal.db" : "/sql/kill-journal.db";
+    mg_lib *lib;
+    char *dir;
+    int result = 1;
+    g_sink = NULL;
+    if (!mg_core_init()) return 1;
+    mg_path_mkdirs(scratch);
+    if (!strcmp(step, "all")) {
+        g_checks = g_failed = 0;
+        test_guest_sqlite(libdir, scratch);
+        say("%d checks, %d failed", g_checks, g_failed);
+        return g_failed || !g_checks;
+    }
+    lib = sql_library(libdir, 0);
+    if (!lib) return 1;
+    dir = sql_folder(scratch);
+    if (!strcmp(step, "setup")) {
+        sql_remove(dir, wal ? "kill-wal.db" : "kill-journal.db");
+        result = SQL_SETUP(lib, path, wal);
+        if (result) say("  setting up: %s", SQL_SAID(lib));
+    } else if (!strcmp(step, "work")) {
+        /* Four threads that write until the process is ended: coming back from the wait is a failure of theirs. */
+        void *job = SQL_START(lib, path, 4, 100000000, seed);
+        if (started) started(user);
+        else say("  writing");
+        SQL_WAIT(lib, job, NULL);
+        say("  the writers stopped by themselves: %s", SQL_SAID(lib));
+    } else if (!strcmp(step, "check")) {
+        result = SQL_CHECK(lib, path);
+        say("  %s%s", result ? "DAMAGED: " : "", SQL_SAID(lib));
+    }
+    free(dir);
+    return result;
+}
+
+#if !defined(_WIN32) && !defined(MG_CORE_ELF)
+#include <signal.h>
+#include <sys/wait.h>
+#include <unistd.h>
+
+static void sql_started(void *user)
+{
+    char c = 1;
+    if (write(*(int *)user, &c, 1) != 1) {}
+}
+
+/* One step in a process of its own, begun as a run of the tests begins; its exit status, or -1 for one ended by a signal. */
+static pid_t sql_fork(const char *libdir, const char *scratch, const char *step, int wal, unsigned seed, int *ready)
+{
+    pid_t pid;
+    fflush(stdout);
+    pid = fork();
+    if (pid == 0) {
+        megler_config config;
+        int result;
+        memset(&config, 0, sizeof(config));
+        config.data_dir = scratch;
+        config.package_dir = scratch;
+        megler_init(&config);
+        result = mg_tests_guest_sqlite_step(libdir, scratch, step, wal, seed, ready ? sql_started : NULL, ready);
+        fflush(stdout);
+        _exit(result ? 1 : 0);
+    }
+    return pid;
+}
+
+static int sql_wait(pid_t pid)
+{
+    int status = 0;
+    if (pid <= 0 || waitpid(pid, &status, 0) != pid) return -2;
+    return WIFEXITED(status) ? WEXITSTATUS(status) : -1;
+}
+
+int mg_tests_guest_sqlite(const char *libdir, const char *scratch, int kills, unsigned seed)
+{
+    int wal, failed = 0;
+    mg_path_mkdirs(scratch);
+    if (!seed) seed = (unsigned)(mg_time_realtime_ns() / 1000000u) | 1u;
+    printf("SQLite as guest code, its process ended %d times in each journal mode at moments chosen from the seed %u\n", kills, seed);
+    for (wal = 1; wal >= 0; wal--) {
+        const char *mode = wal ? "a write-ahead log" : "a rollback journal";
+        int k, damaged = 0, stopped = 0;
+        if (sql_wait(sql_fork(libdir, scratch, "setup", wal, 0, NULL)) != 0) {
+            printf("FAIL: %s: the database could not be set up\n", mode);
+            failed++;
+            continue;
+        }
+        for (k = 0; k < kills; k++) {
+            int ready[2];
+            pid_t pid;
+            char c;
+            seed = seed * 1664525u + 1013904223u;
+            if (pipe(ready) != 0) return failed + 1;
+            pid = sql_fork(libdir, scratch, "work", wal, seed, &ready[1]);
+            close(ready[1]);
+            /* (Until its threads are started, or it is gone.) */
+            if (read(ready[0], &c, 1) != 1) {}
+            close(ready[0]);
+            usleep(((seed >> 10) % 1200u) * 1000u);
+            kill(pid, SIGKILL);
+            if (sql_wait(pid) != -1) stopped++;
+            if (sql_wait(sql_fork(libdir, scratch, "check", wal, 0, NULL)) != 0) damaged++;
+        }
+        printf("%s%s: %d times ended while 4 threads wrote: %d times the database was damaged after, %d times the writers had stopped before\n",
+               damaged || stopped ? "FAIL: " : "", mode, kills, damaged, stopped);
+        failed += damaged + stopped;
+    }
+    /* And the tests that need no second process, by themselves. */
+    if (sql_wait(sql_fork(libdir, scratch, "all", 0, 0, NULL)) != 0) failed++;
+    printf("SQLite as guest code: %s\n", failed ? "FAILED" : "all as it should be");
+    return failed;
+}
+#else
+/* (No process is forked here: the tests in one process only. The steps of the other run are for a script to start and end.) */
+int mg_tests_guest_sqlite(const char *libdir, const char *scratch, int kills, unsigned seed)
+{
+    megler_config config;
+    (void)kills;
+    (void)seed;
+    memset(&config, 0, sizeof(config));
+    config.data_dir = scratch;
+    config.package_dir = scratch;
+    megler_init(&config);
+    return mg_tests_guest_sqlite_step(libdir, scratch, "all", 0, 0, NULL, NULL);
+}
+#endif
+#else
+int mg_tests_guest_sqlite_step(const char *libdir, const char *scratch, const char *step, int wal, unsigned seed, void (*started)(void *), void *user)
+{
+    (void)libdir;
+    (void)scratch;
+    (void)step;
+    (void)wal;
+    (void)seed;
+    (void)started;
+    (void)user;
+    printf("(this build runs no guest code)\n");
+    return 1;
+}
+
+int mg_tests_guest_sqlite(const char *libdir, const char *scratch, int kills, unsigned seed)
+{
+    (void)kills;
+    (void)seed;
+    return mg_tests_guest_sqlite_step(libdir, scratch, "all", 0, 0, NULL, NULL);
+}
+#endif
+
 /* The strings of a table's resources, as a count and a hash of them in their order. */
 typedef struct arsc_strings {
     u32 n;
@@ -7449,6 +7688,7 @@ int mg_tests_run(const char *libdir, const char *scratch, mg_test_sink sink, voi
 #endif
         if (libdir) {
             test_guest(libdir, scratch);
+            test_guest_sqlite(libdir, scratch);
             test_app(libdir);
             test_dvm(libdir, scratch, true);
 #if MG_ARCH_ARM32
