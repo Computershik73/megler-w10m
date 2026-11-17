@@ -312,7 +312,7 @@ public final class AppRunner {
             updateOrientation();
             throw e;
         }
-        if (!a.isFinishing()) { a.meglerStart(); if (state != null) a.meglerRestoreState(state); a.meglerResume(); }
+        if (!a.isFinishing()) { a.meglerStart(); if (state != null) a.meglerRestoreState(state); a.meglerPostCreate(state); a.meglerResume(); }
         if (prev != null && !a.isFinishing()) {
             final Activity p = prev;
             // the one below stops once the new one covers it (a translucent or floating window leaves it visible, as Android's
@@ -375,6 +375,7 @@ public final class AppRunner {
         if (!n.isFinishing()) {
             n.meglerStart();
             n.meglerRestoreState(state);
+            n.meglerPostCreate(state);
             if (to == TO_RESUMED || to == TO_PAUSED) n.meglerResume();
             if (to == TO_PAUSED) n.meglerPause();
             else if (to == TO_STOPPED) n.meglerStop();

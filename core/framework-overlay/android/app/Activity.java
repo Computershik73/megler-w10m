@@ -170,9 +170,17 @@ public class Activity extends ContextThemeWrapper implements Window.Callback, Ke
             mVisibleFromClient = !ta.getBoolean(0, false);
             ta.recycle();
         } catch (RuntimeException e) { mVisibleFromClient = true; }
-        if (!mFinished) onPostCreate(state);            /* as ActivityThread: an activity that finished in onCreate goes no further */
         each(c -> c.onActivityPostCreated(this, state));
     }
+    /*
+     * onPostCreate, which is not a part of the creation: as ActivityThread.handleStartActivity, it comes after onStart and
+     * onRestoreInstanceState and before onResume, for an activity that did not finish in onCreate (whose start the caller
+     * leaves out, and this with it). Called at the end of the creation, before onStart, it found no view in the fragments an
+     * activity's onCreate had added, which FragmentActivity creates the views of in onStart: Viber's ConversationActivity
+     * asks its ConversationFragment's getViewLifecycleOwner() there, and every conversation opened ended the app with
+     * "Can't access the Fragment View's LifecycleOwner for ConversationFragment when getView() is null" (673).
+     */
+    public final void meglerPostCreate(Bundle state) { onPostCreate(state); }
     public final void meglerStart() {
         each(c -> c.onActivityPreStarted(this));
         mCalled = false; onStart(); mStarted = true;

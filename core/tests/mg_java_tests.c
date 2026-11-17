@@ -1910,6 +1910,9 @@ static int run_screen(void)
     expect_line("I/ScreenTest: App.onCreate w=480 h=800 sw=480 orientation=1 dpi=160", &at, 120);
     expect_line("I/ScreenTest: Main.onCreate count=1 state=none retained=none", &at, 60);
     expect_line("I/ScreenTest: Main.config w=480 h=800 sw=480 orientation=1 dpi=160 rotation=0 metrics=480x800 res=narrow", &at, 30);
+    /* onPostCreate after onStart (and, below, after onRestoreInstanceState) and before onResume: not at the creation's end. */
+    expect_line("I/ScreenTest: Main.onStart", &at, 30);
+    expect_line("I/ScreenTest: Main.onPostCreate state=none", &at, 30);
     expect_line("I/ScreenTest: Main.onResume", &at, 30);
     settle();
     CHECK(halves(480, 800, RED, BLUE, true));
@@ -1936,6 +1939,7 @@ static int run_screen(void)
     expect_line("I/ScreenTest: Main.config w=800 h=480 sw=480 orientation=2 dpi=160 rotation=1 metrics=800x480 res=wide", &at, 10);
     expect_line("I/ScreenTest: Main.onStart", &at, 10);
     expect_line("I/ScreenTest: Main.onRestoreInstanceState field=typed", &at, 10);
+    expect_line("I/ScreenTest: Main.onPostCreate state=saved", &at, 10);
     expect_line("I/ScreenTest: Main.onResume", &at, 10);
     CHECK(wait_line("I/ScreenTest: App.display 0 rotation=1 size=800x480", 0, 10) >= 0);
     settle();
