@@ -2665,6 +2665,116 @@ static void test_libc_gaps(const char *scratch)
             CHECK(killpg_(-1, 0) == -1 && *errno_() == GE_INVAL);
         }
     }
+
+    say("strptime: an HTTP date, the composite and the twelve-hour conversions, what follows from a date; __pwrite_chk, f*xattr, tmpnam");
+    {
+        typedef struct { int sec, min, hour, mday, mon, year, wday, yday, isdst; glong gmtoff; const char *zone; } t_tm;
+        typedef char *(*strptime_fn)(const char *, const char *, t_tm *);
+        typedef gtime (*timegm_fn)(t_tm *);
+        typedef gssize (*pwrite_chk_fn)(int, const void *, size_t, goff, size_t);
+        typedef gssize (*pread_fn)(int, void *, size_t, goff);
+        typedef int (*open_fn)(const char *, int, int);
+        typedef int (*close_fn)(int);
+        typedef gssize (*fsetx_fn)(int, const char *, const void *, size_t, int);
+        typedef gssize (*fgetx_fn)(int, const char *, void *, size_t);
+        typedef int (*fremovex_fn)(int, const char *);
+        typedef char *(*tmpnam_fn)(char *);
+        typedef int *(*errno_fn)(void);
+        strptime_fn strptime_ = (strptime_fn)mg_bionic_find("strptime");
+        timegm_fn timegm_ = (timegm_fn)mg_bionic_find("timegm");
+        pwrite_chk_fn pwrite_chk_ = (pwrite_chk_fn)mg_bionic_find("__pwrite_chk");
+        pread_fn pread_ = (pread_fn)mg_bionic_find("pread");
+        open_fn open_ = (open_fn)mg_bionic_find("open");
+        close_fn close_ = (close_fn)mg_bionic_find("close");
+        fsetx_fn fsetx_ = (fsetx_fn)mg_bionic_find("fsetxattr");
+        fgetx_fn fgetx_ = (fgetx_fn)mg_bionic_find("fgetxattr");
+        fremovex_fn fremovex_ = (fremovex_fn)mg_bionic_find("fremovexattr");
+        tmpnam_fn tmpnam_ = (tmpnam_fn)mg_bionic_find("tmpnam");
+        errno_fn errno_ = (errno_fn)mg_bionic_find("__errno");
+        t_tm tm;
+        const char *end;
+        char buf[16], first[64], own[64];
+        int fd;
+        CHECK(strptime_ && mg_bionic_find("strptime_l") && timegm_ && pwrite_chk_ && pread_ && open_ && close_ && fsetx_ && fgetx_ && fremovex_ &&
+              mg_bionic_find("flistxattr") && tmpnam_ && errno_);
+        if (strptime_ && timegm_) {
+            /* The Date header of an HTTP answer (RFC 1123), as Google Drive reads it: the whole text, and the day of the
+               week and of the year worked out from the date. */
+            memset(&tm, 0, sizeof(tm));
+            tm.wday = 9;
+            end = strptime_("Tue, 17 Nov 2026 08:06:45 GMT", "%a, %d %b %Y %H:%M:%S GMT", &tm);
+            CHECK(end && !*end && tm.year == 126 && tm.mon == 10 && tm.mday == 17 && tm.hour == 8 && tm.min == 6 && tm.sec == 45);
+            CHECK(tm.wday == 2 && tm.yday == 320 && timegm_(&tm) == (gtime)1794902805);
+            /* An offset from UTC, with and without a colon, and Z; the zone's name. */
+            memset(&tm, 0, sizeof(tm));
+            end = strptime_("2026-11-17T08:06:45+0300", "%Y-%m-%dT%H:%M:%S%z", &tm);
+            CHECK(end && !*end && tm.gmtoff == 10800 && tm.year == 126 && tm.mon == 10 && tm.mday == 17);
+            end = strptime_("-05:30|", "%z", &tm);
+            CHECK(end && *end == '|' && tm.gmtoff == -19800);
+            tm.gmtoff = 7;
+            end = strptime_("12:00 Z 13:01 UTC", "%H:%M %z %H:%M %Z", &tm);
+            CHECK(end && !*end && tm.gmtoff == 0 && tm.hour == 13 && tm.min == 1 && tm.zone && !strcmp(tm.zone, "UTC"));
+            CHECK(strptime_("+3", "%z", &tm) == NULL && strptime_("+0560", "%z", &tm) == NULL);
+            /* The composite conversions; a leap second; the names whole and in lower case; spaces of the format for any of the text's. */
+            memset(&tm, 0, sizeof(tm));
+            end = strptime_("1999-12-31 23:59:60", "%F %T", &tm);
+            CHECK(end && !*end && tm.year == 99 && tm.mon == 11 && tm.mday == 31 && tm.hour == 23 && tm.min == 59 && tm.sec == 60 && tm.wday == 5 &&
+                  tm.yday == 364);
+            memset(&tm, 0, sizeof(tm));
+            end = strptime_("friday   december 31 23:59 1999x", "%A %B %d %R %Y", &tm);
+            CHECK(end && *end == 'x' && tm.year == 99 && tm.mon == 11 && tm.mday == 31 && tm.hour == 23 && tm.min == 59 && tm.wday == 5);
+            memset(&tm, 0, sizeof(tm));
+            end = strptime_("Thu Feb 29 01:02:03 2024", "%c", &tm);
+            CHECK(end && !*end && tm.year == 124 && tm.mon == 1 && tm.mday == 29 && tm.hour == 1 && tm.min == 2 && tm.sec == 3 && tm.wday == 4 && tm.yday == 59);
+            memset(&tm, 0, sizeof(tm));
+            end = strptime_("11/17/26", "%D", &tm);
+            CHECK(end && !*end && tm.year == 126 && tm.mon == 10 && tm.mday == 17 && tm.wday == 2);
+            /* Two digits of a year alone and with their century; the year's day gives the month and its day. */
+            memset(&tm, 0, sizeof(tm));
+            CHECK(strptime_("01/02/69", "%d/%m/%y", &tm) && tm.year == 69 && tm.mon == 1 && tm.mday == 1 && tm.wday == 6 && tm.yday == 31);
+            CHECK(strptime_("01/02/68", "%d/%m/%y", &tm) && tm.year == 168 && tm.wday == 3);
+            memset(&tm, 0, sizeof(tm));
+            CHECK(strptime_("2026", "%C%y", &tm) && tm.year == 126);
+            memset(&tm, 0, sizeof(tm));
+            end = strptime_("2024 060", "%Y %j", &tm);
+            CHECK(end && !*end && tm.year == 124 && tm.yday == 59 && tm.mon == 1 && tm.mday == 29 && tm.wday == 4);
+            /* The twelve-hour clock, its half before or after the hour. */
+            memset(&tm, 0, sizeof(tm));
+            CHECK(strptime_("12:05 am", "%I:%M %p", &tm) && tm.hour == 0 && tm.min == 5);
+            CHECK(strptime_("12:05 PM", "%I:%M %p", &tm) && tm.hour == 12);
+            CHECK(strptime_("PM 7:30", "%p %I:%M", &tm) && tm.hour == 19 && tm.min == 30);
+            CHECK(strptime_("07:30:15 AM", "%r", &tm) && tm.hour == 7 && tm.sec == 15);
+            /* A day of one digit after spaces, a literal '%', and where the text stops being read. */
+            memset(&tm, 0, sizeof(tm));
+            end = strptime_("sep  5 %rest", "%b %e%n%%", &tm);
+            CHECK(end && !strcmp(end, "rest") && tm.mon == 8 && tm.mday == 5);
+            /* What does not match is NULL: a number out of its limits, no such name, another separator, a conversion unknown, a format ending in '%'. */
+            CHECK(strptime_("32", "%d", &tm) == NULL && strptime_("Xyz", "%a", &tm) == NULL && strptime_("2026/11", "%Y-%m", &tm) == NULL);
+            CHECK(strptime_("5", "%Q", &tm) == NULL && strptime_("5", "%d%", &tm) == NULL && strptime_("", "%d", &tm) == NULL);
+        }
+        mg_fs_mount("/syscall-files", scratch);
+        if (pwrite_chk_ && pread_ && open_ && close_ && fsetx_ && fgetx_ && fremovex_ && errno_) {
+            fd = open_("/syscall-files/chk.bin", 2 | 0100 | 01000, 0600);
+            CHECK(fd >= 0 && pwrite_chk_(fd, "abcdef", 6, 0, 6) == 6 && pwrite_chk_(fd, "XY", 2, 2, 2) == 2);
+            memset(buf, 0, sizeof(buf));
+            CHECK(pread_(fd, buf, 6, 0) == 6 && !memcmp(buf, "abXYef", 6));
+            /* No extended attributes on these files, by a descriptor as by a path. */
+            *errno_() = 0;
+            CHECK(fsetx_(fd, "user.megler", "x", 1, 0) == -1 && *errno_() == GE_OPNOTSUPP);
+            *errno_() = 0;
+            CHECK(fgetx_(fd, "user.megler", buf, sizeof(buf)) == -1 && *errno_() == GE_OPNOTSUPP);
+            *errno_() = 0;
+            CHECK(fremovex_(fd, "user.megler") == -1 && *errno_() == GE_OPNOTSUPP);
+            if (fd >= 0) close_(fd);
+        }
+        if (tmpnam_) {
+            /* A name no file has under the temporary directory: in the function's own buffer, then in the caller's, another one. */
+            char *name = tmpnam_(NULL);
+            CHECK(name && !strncmp(name, "/data/local/tmp/tmp.", 20) && strlen(name) == 30);
+            snprintf(first, sizeof(first), "%s", name ? name : "");
+            CHECK(tmpnam_(own) == own && !strncmp(own, "/data/local/tmp/tmp.", 20) && strcmp(own, first) != 0);
+        }
+    }
 }
 
 /*

@@ -1779,6 +1779,28 @@ static char *g_mktemp(char *tmpl)
     return tmpl;
 }
 
+/* tmpnam: a name under the temporary directory that no file has, in the caller's buffer (L_tmpnam bytes) or in one of
+   its own; no file is made, as bionic's makes none. */
+static char *g_tmpnam(char *s)
+{
+    typedef int (*access_fn)(const char *, int);
+    static const char chars[] = "abcdefghijklmnopqrstuvwxyz0123456789";
+    static char own[32];
+    access_fn access_ = (access_fn)mg_bionic_find("access");
+    int tries, i;
+    if (!s) s = own;
+    for (tries = 0; tries < 100; tries++) {
+        u8 r[10];
+        char name[11];
+        mg_random(r, 10);
+        for (i = 0; i < 10; i++) name[i] = chars[r[i] % 36];
+        name[10] = 0;
+        snprintf(s, 32, "/data/local/tmp/tmp.%s", name);
+        if (!access_ || access_(s, 0) != 0) return s;
+    }
+    return NULL;
+}
+
 static char *g_mkdtemp(char *tmpl)
 {
     typedef int (*mkdir_fn)(const char *, int);
@@ -2186,7 +2208,7 @@ const mg_sym mg_tab_misc[] = {
     M("freelocale", g_freelocale), M("duplocale", g_duplocale), M("nl_langinfo", g_nl_langinfo), M("nl_langinfo_l", g_nl_langinfo),
     M("__ctype_get_mb_cur_max", g_mb_cur_max),
     M("basename", g_basename), M("__gnu_basename", g_basename), M("dirname", g_dirname), M("mkstemp", g_mkstemp),
-    M("mkstemp64", g_mkstemp), M("mktemp", g_mktemp), M("mkdtemp", g_mkdtemp),
+    M("mkstemp64", g_mkstemp), M("mktemp", g_mktemp), M("mkdtemp", g_mkdtemp), M("tmpnam", g_tmpnam),
     M("getpwuid", g_getpwuid), M("getpwnam", g_getpwnam), M("getlogin", g_getlogin),
     M("getpwuid_r", g_getpwuid_r), M("getpwnam_r", g_getpwnam_r), M("getprogname", g_getprogname), MG_DATA("__progname", &g_progname),
     M("getgrgid_r", g_getgrgid_r), M("getgrnam_r", g_getgrnam_r), M("getgrgid", g_getgrgid), M("getgrnam", g_getgrnam), M("initgroups", g_initgroups),

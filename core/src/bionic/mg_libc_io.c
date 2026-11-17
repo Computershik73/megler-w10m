@@ -2884,6 +2884,11 @@ static gssize g_pwrite64_chk(int fd, const void *buf, size_t n, i64 offset, size
     (void)buf_size;
     return g_pwrite64(fd, buf, n, offset);
 }
+static gssize g_pwrite_chk(int fd, const void *buf, size_t n, goff offset, size_t buf_size)
+{
+    (void)buf_size;
+    return g_pwrite(fd, buf, n, offset);
+}
 static gssize g_readlink_chk(const char *path, char *buf, size_t n, size_t buf_size)
 {
     (void)buf_size;
@@ -4808,10 +4813,13 @@ const mg_sym mg_tab_io[] = {
     IO("read", g_read), IO("write", g_write), IO("__read_chk", g_read), IO("__write_chk", g_write),
     IO("pread", g_pread), IO("pread64", g_pread64), IO("pwrite", g_pwrite), IO("pwrite64", g_pwrite64),
     IO("__pread_chk", g_pread_chk), IO("__pread64_chk", g_pread64_chk), IO("__umask_chk", g_umask_chk),
-    IO("__pwrite64_chk", g_pwrite64_chk), IO("__readlink_chk", g_readlink_chk),
+    IO("__pwrite64_chk", g_pwrite64_chk), IO("__pwrite_chk", g_pwrite_chk), IO("__readlink_chk", g_readlink_chk),
     IO("sendfile", g_sendfile), IO("sendfile64", g_sendfile64), IO("posix_fallocate64", g_posix_fallocate64), IO("splice", g_io_nosys),
     IO("mkfifo", g_io_perm), IO("mknod", g_io_perm), IO("pathconf", g_pathconf), IO("fpathconf", g_fpathconf),
     IO("getxattr", g_io_notsup), IO("setxattr", g_io_notsup), IO("listxattr", g_io_notsup), IO("removexattr", g_io_notsup),
+    /* (By descriptor and of a link itself, the same answer: Google Play services' libAppDataSearch.so imports the first.) */
+    IO("fgetxattr", g_io_notsup), IO("fsetxattr", g_io_notsup), IO("flistxattr", g_io_notsup), IO("fremovexattr", g_io_notsup),
+    IO("lgetxattr", g_io_notsup), IO("lsetxattr", g_io_notsup), IO("llistxattr", g_io_notsup), IO("lremovexattr", g_io_notsup),
     IO("inotify_init", g_inotify_init), IO("inotify_init1", g_inotify_init1), IO("inotify_add_watch", g_inotify_add_watch),
     IO("inotify_rm_watch", g_inotify_rm_watch),
     /* (close_range is for a child about to exec, and no child is started here.) */

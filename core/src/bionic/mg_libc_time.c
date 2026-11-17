@@ -379,6 +379,276 @@ static size_t g_strftime(char *out, size_t cap, const char *fmt, const g_tm *tm)
 
 static size_t g_strftime_l(char *out, size_t cap, const char *fmt, const g_tm *tm, void *loc) { (void)loc; return g_strftime(out, cap, fmt, tm); }
 
+/* ------------------------------------------------------------- strptime */
+
+/* What strptime has read of a date, for what follows from it once the whole text is read: the year of a century and of
+   two digits, the hour of a twelve-hour clock, the day of the week and of the year of a whole date. */
+typedef struct sp_seen {
+    bool year, mon, mday, yday, century, two, hour12;
+    int cent, yy, half;         /* half: 1 AM, 2 PM */
+} sp_seen;
+
+static bool sp_space(char c) { return c == ' ' || (c >= 9 && c <= 13); }
+static char sp_lower(char c) { return c >= 'A' && c <= 'Z' ? (char)(c + 32) : c; }
+static bool sp_letter(char c) { return (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z'); }
+
+/* A number within its limits, of no more digits than the upper limit has; spaces before it are passed over. */
+static bool sp_num(const char **s, int *out, int lo, int hi)
+{
+    const char *p = *s;
+    int v = 0, room = hi;
+    while (sp_space(*p)) p++;
+    if (*p < '0' || *p > '9') return false;
+    do {
+        v = v * 10 + (*p++ - '0');
+        room /= 10;
+    } while (v * 10 <= hi && room && *p >= '0' && *p <= '9');
+    if (v < lo || v > hi) return false;
+    *s = p;
+    *out = v;
+    return true;
+}
+
+/* One of n names, whole or its first three letters, in either case: which one, or -1. */
+static int sp_name(const char **s, const char *const *names, int n)
+{
+    int i;
+    for (i = 0; i < n; i++) {
+        size_t len = strlen(names[i]), k = 0;
+        while (k < len && sp_lower((*s)[k]) == sp_lower(names[i][k])) k++;
+        if (k == len || k >= 3) {
+            *s += k == len ? len : 3;
+            return i;
+        }
+    }
+    return -1;
+}
+
+static const char *sp_parse(const char *s, const char *fmt, g_tm *tm, sp_seen *seen)
+{
+    for (; *fmt; fmt++) {
+        int v;
+        if (sp_space(*fmt)) {
+            while (sp_space(*s)) s++;
+            continue;
+        }
+        if (*fmt != '%') {
+            if (*s++ != *fmt) return NULL;
+            continue;
+        }
+        fmt++;
+        if (*fmt == 'E' || *fmt == 'O') fmt++;
+        switch (*fmt) {
+        case '%':
+            if (*s++ != '%') return NULL;
+            break;
+        case 'a': case 'A':
+            if ((v = sp_name(&s, g_wd, 7)) < 0) return NULL;
+            tm->tm_wday = v;
+            break;
+        case 'b': case 'B': case 'h':
+            if ((v = sp_name(&s, g_mn, 12)) < 0) return NULL;
+            tm->tm_mon = v;
+            seen->mon = true;
+            break;
+        case 'c':
+            if (!(s = sp_parse(s, "%a %b %e %H:%M:%S %Y", tm, seen))) return NULL;
+            break;
+        case 'C':
+            if (!sp_num(&s, &seen->cent, 0, 99)) return NULL;
+            seen->century = true;
+            break;
+        case 'd': case 'e':
+            if (!sp_num(&s, &tm->tm_mday, 1, 31)) return NULL;
+            seen->mday = true;
+            break;
+        case 'D': case 'x':
+            if (!(s = sp_parse(s, "%m/%d/%y", tm, seen))) return NULL;
+            break;
+        case 'F':
+            if (!(s = sp_parse(s, "%Y-%m-%d", tm, seen))) return NULL;
+            break;
+        case 'H': case 'k':
+            if (!sp_num(&s, &tm->tm_hour, 0, 23)) return NULL;
+            seen->hour12 = false;
+            break;
+        case 'I': case 'l':
+            if (!sp_num(&s, &v, 1, 12)) return NULL;
+            tm->tm_hour = v % 12;
+            seen->hour12 = true;
+            break;
+        case 'j':
+            if (!sp_num(&s, &v, 1, 366)) return NULL;
+            tm->tm_yday = v - 1;
+            seen->yday = true;
+            break;
+        case 'm':
+            if (!sp_num(&s, &v, 1, 12)) return NULL;
+            tm->tm_mon = v - 1;
+            seen->mon = true;
+            break;
+        case 'M':
+            if (!sp_num(&s, &tm->tm_min, 0, 59)) return NULL;
+            break;
+        case 'n': case 't':
+            while (sp_space(*s)) s++;
+            break;
+        case 'p':
+            while (sp_space(*s)) s++;
+            if (sp_lower(s[0]) == 'a' && sp_lower(s[1]) == 'm') seen->half = 1;
+            else if (sp_lower(s[0]) == 'p' && sp_lower(s[1]) == 'm') seen->half = 2;
+            else return NULL;
+            s += 2;
+            break;
+        case 'r':
+            if (!(s = sp_parse(s, "%I:%M:%S %p", tm, seen))) return NULL;
+            break;
+        case 'R':
+            if (!(s = sp_parse(s, "%H:%M", tm, seen))) return NULL;
+            break;
+        case 'S':
+            if (!sp_num(&s, &tm->tm_sec, 0, 61)) return NULL;
+            break;
+        case 's': {
+            /* Seconds since the epoch: the local time of that moment, whole. */
+            i64 t = 0;
+            gtime moment;
+            bool neg = false;
+            while (sp_space(*s)) s++;
+            if (*s == '-') {
+                neg = true;
+                s++;
+            }
+            if (*s < '0' || *s > '9') return NULL;
+            while (*s >= '0' && *s <= '9') t = t * 10 + (*s++ - '0');
+            moment = (gtime)(neg ? -t : t);
+            g_localtime_r(&moment, tm);
+            memset(seen, 0, sizeof(*seen));
+            break;
+        }
+        case 'T': case 'X':
+            if (!(s = sp_parse(s, "%H:%M:%S", tm, seen))) return NULL;
+            break;
+        case 'U': case 'W':
+            /* (The week of the year: read, and nothing is worked out from it, as bionic's.) */
+            if (!sp_num(&s, &v, 0, 53)) return NULL;
+            break;
+        case 'u':
+            if (!sp_num(&s, &v, 1, 7)) return NULL;
+            tm->tm_wday = v % 7;
+            break;
+        case 'w':
+            if (!sp_num(&s, &tm->tm_wday, 0, 6)) return NULL;
+            break;
+        case 'Y':
+            if (!sp_num(&s, &v, 0, 9999)) return NULL;
+            tm->tm_year = v - 1900;
+            seen->year = true;
+            seen->two = seen->century = false;
+            break;
+        case 'y':
+            if (!sp_num(&s, &seen->yy, 0, 99)) return NULL;
+            seen->two = true;
+            break;
+        case 'Z': {
+            /* A zone's name: GMT and UTC are no offset; any other is read and says nothing here. */
+            size_t k = 0;
+            while (sp_letter(s[k])) k++;
+            if (!k) return NULL;
+            if ((k == 3 && (!strncmp(s, "GMT", 3) || !strncmp(s, "UTC", 3))) || (k == 2 && !strncmp(s, "UT", 2)) || (k == 1 && *s == 'Z')) {
+                tm->tm_isdst = 0;
+                tm->tm_gmtoff = 0;
+                tm->tm_zone = g_utc_name;
+            }
+            s += k;
+            break;
+        }
+        case 'z': {
+            /* Z, or +hh, +hhmm, +hh:mm and their negatives. */
+            int sign, digits = 0, hh = 0, mm = 0;
+            while (sp_space(*s)) s++;
+            if (*s == 'Z') {
+                s++;
+                tm->tm_isdst = 0;
+                tm->tm_gmtoff = 0;
+                tm->tm_zone = g_utc_name;
+                break;
+            }
+            if (*s != '+' && *s != '-') return NULL;
+            sign = *s++ == '-' ? -1 : 1;
+            while (digits < 4) {
+                if (*s >= '0' && *s <= '9') {
+                    if (digits < 2) hh = hh * 10 + (*s - '0');
+                    else mm = mm * 10 + (*s - '0');
+                    s++;
+                    digits++;
+                } else if (digits == 2 && *s == ':' && s[1] >= '0' && s[1] <= '9') {
+                    s++;
+                } else {
+                    break;
+                }
+            }
+            if ((digits != 2 && digits != 4) || mm >= 60) return NULL;
+            tm->tm_isdst = 0;
+            tm->tm_gmtoff = (glong)(sign * (hh * 3600 + mm * 60));
+            break;
+        }
+        default:
+            /* (The format's end after a '%' among them.) */
+            return NULL;
+        }
+    }
+    return s;
+}
+
+/*
+ * strptime: a text read into a broken-down time by a format, the C locale's names in either case; where the text stops
+ * matching, NULL, and otherwise the text's first character not read. Fields the format does not name stay as they were.
+ * Google Drive's libcello_native.so reads the Date header of each answer with it ("Failed to parse Date header" where
+ * the name was missing).
+ */
+static char *g_strptime(const char *s, const char *fmt, g_tm *tm)
+{
+    sp_seen seen;
+    const char *end;
+    memset(&seen, 0, sizeof(seen));
+    end = sp_parse(s, fmt, tm, &seen);
+    if (!end) return NULL;
+    if (seen.two) {
+        /* Two digits of a year: of the century read with them, or 1969-1999 for 69-99 and 2000-2068 for 00-68. */
+        tm->tm_year = seen.century ? seen.cent * 100 + seen.yy - 1900 : seen.yy < 69 ? seen.yy + 100 : seen.yy;
+        seen.year = true;
+    } else if (seen.century) {
+        tm->tm_year = seen.cent * 100 - 1900;
+        seen.year = true;
+    }
+    if (seen.hour12 && seen.half == 2) tm->tm_hour += 12;
+    if (seen.year && seen.yday && !(seen.mon && seen.mday)) {
+        /* The month and its day follow from the year's day. */
+        int y = tm->tm_year + 1900, m, d = tm->tm_yday;
+        for (m = 0; m < 12; m++) {
+            int len = g_mdays[m] + (m == 1 && leap(y) ? 1 : 0);
+            if (d < len) break;
+            d -= len;
+        }
+        if (m < 12) {
+            tm->tm_mon = m;
+            tm->tm_mday = d + 1;
+            seen.mon = seen.mday = true;
+        }
+    }
+    if (seen.year && seen.mon && seen.mday) {
+        /* And the day of the week and of the year from a whole date. */
+        g_tm day = *tm;
+        day.tm_hour = day.tm_min = day.tm_sec = 0;
+        civil(from_civil(&day), &day);
+        tm->tm_wday = day.tm_wday;
+        tm->tm_yday = day.tm_yday;
+    }
+    return (char *)end;
+}
+static char *g_strptime_l(const char *s, const char *fmt, g_tm *tm, void *loc) { (void)loc; return g_strptime(s, fmt, tm); }
+
 static char *g_asctime_r(const g_tm *tm, char *buf)
 {
     snprintf(buf, 26, "%.3s %.3s %2d %02d:%02d:%02d %d\n", g_wd[(unsigned)tm->tm_wday % 7], g_mn[(unsigned)tm->tm_mon % 12], tm->tm_mday,
@@ -454,7 +724,8 @@ const mg_sym mg_tab_time[] = {
     MG_WRAP("gmtime", g_gmtime), MG_WRAP("gmtime_r", g_gmtime_r), MG_WRAP("localtime", g_localtime), MG_WRAP("localtime_r", g_localtime_r),
     MG_WRAP("mktime", g_mktime), MG_WRAP("timegm", g_timegm), MG_WRAP("timelocal", g_mktime), MG_WRAP("difftime", g_difftime),
     MG_WRAP("gmtime64_r", g_gmtime64_r), MG_WRAP("localtime64_r", g_localtime64_r), MG_WRAP("timegm64", g_timegm64), MG_WRAP("mktime64", g_mktime64),
-    MG_WRAP("strftime", g_strftime), MG_WRAP("strftime_l", g_strftime_l), MG_WRAP("asctime", g_asctime), MG_WRAP("asctime_r", g_asctime_r),
+    MG_WRAP("strftime", g_strftime), MG_WRAP("strftime_l", g_strftime_l), MG_WRAP("strptime", g_strptime), MG_WRAP("strptime_l", g_strptime_l),
+    MG_WRAP("asctime", g_asctime), MG_WRAP("asctime_r", g_asctime_r),
     MG_WRAP("ctime", g_ctime), MG_WRAP("ctime_r", g_ctime_r), MG_WRAP("tzset", g_tzset), MG_WRAP("settimeofday", g_settimeofday),
     MG_WRAP("getitimer", g_getitimer), MG_WRAP("setitimer", g_setitimer), MG_WRAP("alarm", g_alarm),
     MG_WRAP("timer_create", g_timer_fail), MG_WRAP("timer_settime", g_timer_fail), MG_WRAP("timer_delete", g_timer_fail),
