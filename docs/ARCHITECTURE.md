@@ -1759,12 +1759,30 @@ entry (`AF_PACKET`) and its addresses, as Linux's `getifaddrs` lists them;
 `if_nametoindex` and `SIOCGIFFLAGS`. Interfaces that are down and the host's
 own tunnels are left out.
 
+Code with no `getifaddrs` to call -- Android's C library has it from API 24
+on only -- asks Linux's kernel for the same lists on a socket of
+`AF_NETLINK`, `NETLINK_ROUTE`: Dart's `NetworkInterface.list` in every
+Flutter app, Go's `net.Interfaces`, Chromium. That socket is one of the
+app's own (below) and what is sent on it is answered at once
+(`mg_net_rtnetlink` in `mg_netdb.c`): the dumps of `RTM_GETLINK` and
+`RTM_GETADDR` as `RTM_NEWLINK` and `RTM_NEWADDR` messages made of that same
+list, in datagrams of 2048 bytes at the most (Dart's buffer), ended by
+`NLMSG_DONE`. Routes, neighbours and one link asked for by its index are not
+answered (`EOPNOTSUPP`, noted in the log once), a request that would change
+anything is `EPERM`, nothing is announced to the groups a socket binds (an
+app waiting there for a change of address hears none), and a netlink
+protocol other than `NETLINK_ROUTE` is `EACCES`, as an app is told on
+Android.
+
 **The app's own sockets.** `AF_UNIX` is implemented in the process, in
 `mg_net.c`: `socketpair` of stream, datagram and seqpacket sockets, and names
 (paths or abstract) bound, listened on and connected to. Nothing outside the
 app could be reached on a phone anyway. Libraries make such a pair as a
 wake-up channel, and libcore makes one to stand in for a socket it closes
-under a blocked thread.
+under a blocked thread. The `AF_NETLINK` socket above is kept there too: its
+port is the process's id for the first one and a number of its own for each
+other, as Linux gives them, since code compares an answer's port with
+`getpid()` or with `getsockname`.
 
 ### Waiting on sockets with everything else
 

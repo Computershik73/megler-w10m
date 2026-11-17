@@ -19,6 +19,10 @@
  * on and connected to within the app (nothing outside it could be reached on
  * a phone anyway). Libraries make a pair as a wake-up channel, and libcore
  * makes one to stand in for a socket it closes under a blocked thread.
+ * Sockets of AF_NETLINK, NETLINK_ROUTE are this file's own as well: what the
+ * app sends Linux's kernel is answered into the socket's own queue (the lists
+ * of interfaces and of addresses, mg_netdb.c), and nothing is ever announced
+ * to the groups one may join.
  *
  * No ancillary data: what sendmsg is given beside the data is not sent, and
  * recvmsg returns none -- no descriptors pass over AF_UNIX.
@@ -38,6 +42,7 @@
 #define G_O_CLOEXEC 02000000
 
 #define G_SOL_SOCKET 1
+#define G_SOL_NETLINK 270
 #define G_SO_DEBUG 1
 #define G_SO_REUSEADDR 2
 #define G_SO_TYPE 3
@@ -187,6 +192,9 @@ typedef struct gsock {
     struct gsock **queue;              /* listening: connections made and not yet accepted */
     int nqueue, backlog;
     struct gsock *next_bound;
+    /* AF_NETLINK, the app's own too: its answers are messages in the ring above. */
+    u32 nl_pid, nl_groups;             /* its port, which the kernel's answers carry, and the groups it was bound to */
+    bool nl_first;                     /* its port is the process's id, which the first such socket of a process gets */
 } gsock;
 
 static i32 sock_read(void *obj, void *buf, u32 n, bool nonblock);
@@ -861,7 +869,8 @@ static i32 local_recv(gsock *s, u8 *buf, u32 n, int flags, int *said, bool nonbl
                 mg_fd_notify_locked();
             }
             if (take < len && said) *said = 1;
-            done = take;
+            /* (MSG_TRUNC on a netlink socket: how long the datagram is, which is how a reader sizes its buffer, with MSG_PEEK.) */
+            done = (flags & G_MSG_TRUNC) && s->family == G_AF_NETLINK ? len : take;
             break;
         }
         if (s->peer_done || s->shut_rd) break;          /* the end */
@@ -1028,6 +1037,94 @@ static int local_connect(gsock *s, const void *sa, u32 len, bool nonblock)
     return e;
 }
 
+/* --------------------------------------- the app's own sockets: AF_NETLINK
+ *
+ * NETLINK_ROUTE alone. The other end is Linux's kernel, which here is
+ * mg_net_rtnetlink (mg_netdb.c): what is sent is answered at once, datagram
+ * by datagram, into the socket's own messages, and reading, poll and closing
+ * are those of the sockets above.
+ */
+
+static volatile i32 g_nl_first;        /* a socket has the process's id for its port */
+static volatile i32 g_nl_ports;        /* how many were given another */
+
+static gsock *netlink_new(int kind, int protocol)
+{
+    gsock *s = sock_new(G_AF_NETLINK, kind, protocol);
+    s->state = S_CONNECTED;
+    /*
+     * Its port, which Linux gives at bind or at the first send: the process's id (getpid() is 4242 here) for the first such
+     * socket a process has, and a negative number of the kernel's choosing for another beside it. Code compares the port of
+     * an answer with getpid(), or with what getsockname says.
+     */
+    s->nl_first = !mg_atomic_xchg(&g_nl_first, 1);
+    s->nl_pid = s->nl_first ? 4242u : (u32)-4096 - (u32)mg_atomic_add(&g_nl_ports, 1);
+    return s;
+}
+
+/* A struct sockaddr_nl: the family, two bytes of nothing, the port and the groups. 0, or the errno. */
+static int netlink_addr(const void *sa, u32 len, u32 *pid, u32 *groups)
+{
+    if (!sa) return GE_FAULT;
+    if (len < 12 || mg_rd16(sa) != G_AF_NETLINK) return GE_INVAL;
+    *pid = mg_rd32((const u8 *)sa + 4);
+    *groups = mg_rd32((const u8 *)sa + 8);
+    return 0;
+}
+
+static void give_netlink_name(u32 pid, u32 groups, void *out, u32 *len)
+{
+    u8 buf[12];
+    memset(buf, 0, sizeof(buf));
+    mg_wr16(buf, G_AF_NETLINK);
+    mg_wr32(buf + 4, pid);
+    mg_wr32(buf + 8, groups);
+    mg_net_give(buf, sizeof(buf), out, len);
+}
+
+/* A datagram of the kernel's answer: one more message to read. Takes the lock. */
+static void netlink_put(void *to, const u8 *msg, u32 len)
+{
+    gsock *s = (gsock *)to;
+    mg_fd_lock();
+    msg_put(s, msg, len);
+    mg_fd_notify_locked();
+    mg_fd_unlock();
+}
+
+/* What is sent goes to the kernel, whose port is 0; another port, or a group, is not an app's to send to (EPERM). */
+static i32 netlink_send(gsock *s, const u8 *buf, u32 n, const void *to, u32 tolen)
+{
+    u32 pid = 0, groups = 0;
+    int e;
+    if (to && (e = netlink_addr(to, tolen, &pid, &groups)) != 0) return fail(e);
+    if (pid || groups) return fail(GE_PERM);
+    mg_net_rtnetlink(buf, n, s->nl_pid, netlink_put, s);
+    return (i32)n;
+}
+
+/* bind: a port of the app's choosing is taken as it is, and 0 leaves the one the socket has. The groups are kept and said back; nothing is ever announced to them. */
+static int netlink_bind(gsock *s, const void *sa, u32 len)
+{
+    u32 pid = 0, groups = 0;
+    int e = netlink_addr(sa, len, &pid, &groups);
+    if (e) return e;
+    if (pid) s->nl_pid = pid;
+    s->nl_groups = groups;
+    return 0;
+}
+
+/* connect: to the kernel alone, or to AF_UNSPEC, which is no peer. */
+static int netlink_connect(const void *sa, u32 len)
+{
+    u32 pid = 0, groups = 0;
+    int e;
+    if (!sa) return GE_FAULT;
+    if (len >= 2 && mg_rd16(sa) == G_AF_UNSPEC) return 0;
+    if ((e = netlink_addr(sa, len, &pid, &groups)) != 0) return e;
+    return pid || groups ? GE_PERM : 0;
+}
+
 /* ----------------------------------------------- the host's sockets: waiting */
 
 /*
@@ -1140,6 +1237,7 @@ static i32 send_any(gsock *s, const void *buf, u32 n, int flags, const void *to,
     if (!s->host) {
         const char *name = NULL;
         u32 namelen = 0;
+        if (s->family == G_AF_NETLINK) return netlink_send(s, (const u8 *)buf, n, to, tolen);
         if (to && (e = local_name_of(to, tolen, &name, &namelen)) != 0) return fail(e);
         return local_send(s, (const u8 *)buf, n, flags, name, namelen, nonblock);
     }
@@ -1173,6 +1271,7 @@ static i32 recv_any(gsock *s, void *buf, u32 n, int flags, void *from, u32 *from
         r = local_recv(s, (u8 *)buf, n, flags, &cut, nonblock);
         if (r >= 0 && from && fromlen) {
             if (s->type == G_SOCK_STREAM) *fromlen = 0;
+            else if (s->family == G_AF_NETLINK) give_netlink_name(0, 0, from, fromlen);    /* (the kernel) */
             else give_local_name(NULL, 0, from, fromlen);
         }
     } else {
@@ -1365,9 +1464,16 @@ static int g_socket(int domain, int type, int protocol)
         if (!h) return fail(gerr(err));
         s = sock_new(domain, kind, protocol ? protocol : kind == G_SOCK_STREAM ? G_IPPROTO_TCP : kind == G_SOCK_DGRAM ? G_IPPROTO_UDP : 0);
         s->host = h;
+    } else if (domain == G_AF_NETLINK) {
+        /* SOCK_RAW and SOCK_DGRAM are one thing here, as on Linux. NETLINK_ROUTE (0) alone: the other protocols are the system's, which Android's policy refuses an app. */
+        if (kind != G_SOCK_RAW && kind != G_SOCK_DGRAM) return fail(GE_SOCKTNOSUPPORT);
+        if (protocol) {
+            mg_note_once("network: an AF_NETLINK socket of protocol %d was asked for; NETLINK_ROUTE alone is an app's, and the app is told so (EACCES)", protocol);
+            return fail(GE_ACCES);
+        }
+        mg_note_once("network: a socket of AF_NETLINK, NETLINK_ROUTE: the app asks Linux's kernel itself for the interfaces and their addresses, and is answered from the host's list");
+        return sock_register(netlink_new(kind, protocol), flags);
     } else {
-        if (domain == G_AF_NETLINK)
-            mg_note_once("network: an AF_NETLINK socket was asked for (Linux's kernel telling of routes and addresses); there is none here, and the app is told so (EAFNOSUPPORT)");
         return fail(domain == G_AF_PACKET ? GE_PERM : GE_AFNOSUPPORT);
     }
     fd = sock_register(s, flags);
@@ -1411,7 +1517,7 @@ static int g_bind(int fd, const void *sa, u32 len)
     HOLD_OR_FAIL(fd, s, held, nonblock, -1)
     (void)nonblock;
     if (!s->host) {
-        e = local_bind(s, sa, len);
+        e = s->family == G_AF_NETLINK ? netlink_bind(s, sa, len) : local_bind(s, sa, len);
     } else if ((e = mg_net_sockaddr_in(sa, len, &a)) == 0) {
         /* AF_UNSPEC with the wildcard address is taken as AF_INET's by an IPv4 socket, as Linux does for old code. */
         if (!a.family && s->family == G_AF_INET && !mg_rd32(a.addr)) a.family = MG_AF_INET;
@@ -1510,7 +1616,7 @@ static int g_connect(int fd, const void *sa, u32 len)
     int e = 0, err = 0;
     HOLD_OR_FAIL(fd, s, held, nonblock, -1)
     if (!s->host) {
-        e = local_connect(s, sa, len, nonblock);
+        e = s->family == G_AF_NETLINK ? netlink_connect(sa, len) : local_connect(s, sa, len, nonblock);
         mg_fd_let_go(held);
         return e ? fail(e) : 0;
     }
@@ -1622,6 +1728,10 @@ static int name_of(int fd, void *addr, u32 *len, bool peer)
     (void)nonblock;
     if (!addr || !len) {
         e = GE_FAULT;
+    } else if (s->family == G_AF_NETLINK) {
+        /* Its own port and groups; the other end is the kernel, port 0. */
+        if (peer) give_netlink_name(0, 0, addr, len);
+        else give_netlink_name(s->nl_pid, s->nl_groups, addr, len);
     } else if (!s->host) {
         mg_fd_lock();
         if (!peer) give_local_name(s->name, s->namelen, addr, len);
@@ -1785,6 +1895,8 @@ static int setsockopt_held(gsock *s, int level, int name, const void *val, u32 l
         default: return GE_NOPROTOOPT;
         }
     }
+    /* (SOL_NETLINK: joining a group, NETLINK_NO_ENOBUFS and the like are taken and change nothing.) */
+    if (s->family == G_AF_NETLINK) return level == G_SOL_NETLINK ? 0 : GE_NOPROTOOPT;
     if (local) return GE_OPNOTSUPP;
     if (level == G_IPPROTO_TCP) {
         if (s->type != G_SOCK_STREAM) return GE_NOPROTOOPT;
@@ -1960,6 +2072,7 @@ static int getsockopt_held(gsock *s, int level, int name, void *val, u32 *len)
         default: return GE_NOPROTOOPT;
         }
     }
+    if (s->family == G_AF_NETLINK) return level == G_SOL_NETLINK ? give_int(0, val, len) : GE_NOPROTOOPT;
     if (local) return GE_OPNOTSUPP;
     if (level == G_IPPROTO_TCP) {
         int option, *kept, fallback;
@@ -2067,6 +2180,7 @@ static void sock_close(void *obj)
     gsock *s = (gsock *)obj;
     /* (A first connection closed before anyone learnt how it went is not said: the next one is.) */
     if (s->first) mg_atomic_xchg(&g_first_connection, 0);
+    if (s->nl_first) mg_atomic_xchg(&g_nl_first, 0);       /* (the process's id is the next netlink socket's port again) */
     io_said(s);
     if (s->host) mg_sock_close(s->host);
     else local_close(s);

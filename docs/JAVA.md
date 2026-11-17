@@ -3267,8 +3267,24 @@ for the display's frames through Java's `Choreographer`; `ASurfaceControl_*`
 answer none. Each lookup in the system's libraries that finds nothing now
 says so in the log, once (`dl: dlsym(NAME) found nothing`). The Dart VM
 reads `/proc/cpuinfo` for ARMv7 and its features (vfp, neon, idiva), which
-says so, as `getauxval(AT_HWCAP)` does. No Flutter app has been run here yet:
-the next step is a phone's log of one.
+says so, as `getauxval(AT_HWCAP)` does.
+
+The first Flutter app run here is LocalSend 1.18.2 (Dart 3.11), under qemu
+over the test host's stand-in for a driver of OpenGL ES 2.0. Two answers of
+the system ended it on the way. Dart's `Platform.resolvedExecutable` asks
+`lstat` of `/proc/self/exe` before it reads the link, and copies as many
+bytes as it was told: `lstat` said "no such file" of the link `readlink`
+read, and the engine ended in `memcpy` with a length of -1; `lstat` says a
+link of it now. Dart's `NetworkInterface.list` asks Linux's kernel on a
+socket of `AF_NETLINK`, which was refused ("SocketException: Failed listing
+interfaces", thrown at the app's start); it is answered now (see "The
+network" in ARCHITECTURE.md). With both the engine says "Using the Impeller
+rendering backend (OpenGLES)", takes a configuration of OpenGL ES 2 where
+EGL has none of 3, starts the app's isolates and draws about eight frames a
+second there; LocalSend lists the host's addresses, starts its HTTPS server
+on port 53317, joins its multicast group and hears its own announcement.
+The stand-in runs no shaders, so a picture taken there is the frame's clear
+colour alone: what a Flutter app draws is still a phone's to show.
 
 ### A SurfaceView drawn by native code
 

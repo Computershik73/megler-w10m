@@ -790,6 +790,251 @@ int mg_net_if_ioctl(unsigned request, void *arg)
     return 0;
 }
 
+/* ---------------------------------------------------------- NETLINK_ROUTE
+ *
+ * What Linux's kernel answers on a socket of AF_NETLINK, NETLINK_ROUTE (the
+ * socket is mg_net.c's): the list of links (RTM_GETLINK) and the list of
+ * addresses (RTM_GETADDR). That is how a program lists the interfaces where
+ * the C library gives it no getifaddrs -- Android's has one from API 24 on
+ * only -- so Dart's dart:io (NetworkInterface.list of every Flutter app), Go's
+ * net.Interfaces and Chromium's own getifaddrs all speak it themselves.
+ * LocalSend, a Flutter app, could not learn its own address without it
+ * ("SocketException: Failed listing interfaces").
+ *
+ * A message is Linux's, in the machine's byte order: a struct nlmsghdr (its
+ * length, type, flags, sequence number and port, 16 bytes), the header of its
+ * kind (struct ifinfomsg, struct ifaddrmsg), and attributes -- a length and a
+ * type of 16 bits each, the value, zeros up to four bytes. The lists are the
+ * ones getifaddrs gives above. Nothing else is answered: one link asked for by
+ * its index, the routes and the neighbours, which Android would tell, are
+ * EOPNOTSUPP (the log says so once), and what would change anything is EPERM,
+ * as an app is told on Android.
+ */
+
+#define G_NLMSG_ERROR 2
+#define G_NLMSG_DONE 3
+#define G_NLM_F_REQUEST 1
+#define G_NLM_F_MULTI 2
+#define G_NLM_F_ACK 4
+#define G_NLM_F_DUMP 0x300             /* NLM_F_ROOT | NLM_F_MATCH: the kernel takes either of them for "the whole list" */
+#define G_RTM_BASE 16
+#define G_RTM_NEWLINK 16
+#define G_RTM_GETLINK 18
+#define G_RTM_NEWADDR 20
+#define G_RTM_GETADDR 22
+#define G_IFLA_ADDRESS 1
+#define G_IFLA_BROADCAST 2
+#define G_IFLA_IFNAME 3
+#define G_IFLA_MTU 4
+#define G_IFLA_OPERSTATE 16
+#define G_IFA_ADDRESS 1
+#define G_IFA_LOCAL 2
+#define G_IFA_LABEL 3
+#define G_IFA_BROADCAST 4
+#define G_IFA_CACHEINFO 6
+#define G_IFA_FLAGS 8
+#define G_IFA_F_PERMANENT 0x80
+
+/*
+ * A datagram of the answer holds as many messages as fit, as Linux's do. (Linux fills up to a page; a reader whose buffer is
+ * smaller loses the rest of the datagram, and Dart's is 2048 bytes.) A message of a list is no longer than NL_MESSAGE.
+ */
+enum { NL_DATAGRAM = 2048, NL_MESSAGE = 128 };
+
+typedef struct nl_out {
+    void (*put)(void *to, const u8 *msg, u32 len);
+    void *to;
+    u32 n;
+    u8 buf[NL_DATAGRAM];
+} nl_out;
+
+static void nl_flush(nl_out *o)
+{
+    if (o->n) o->put(o->to, o->buf, o->n);
+    o->n = 0;
+}
+
+/* One more message of the datagram being filled, which goes out first when it has no room for it. */
+static void nl_add(nl_out *o, const u8 *m, u32 len)
+{
+    if (o->n + len > sizeof(o->buf)) nl_flush(o);
+    memcpy(o->buf + o->n, m, len);
+    o->n += len;
+}
+
+static void nl_head(u8 *m, u32 len, u16 type, u16 flags, u32 seq, u32 pid)
+{
+    mg_wr32(m, len);
+    mg_wr16(m + 4, type);
+    mg_wr16(m + 6, flags);
+    mg_wr32(m + 8, seq);
+    mg_wr32(m + 12, pid);
+}
+
+/* An attribute at the message's end, *n: its length and type, the value, and zeros up to four bytes. */
+static void nl_attr(u8 *m, u32 *n, u16 type, const void *value, u32 len)
+{
+    u8 *p = m + *n;
+    u32 padded = (len + 3) & ~3u;
+    memset(p, 0, 4 + padded);
+    mg_wr16(p, (u16)(4 + len));
+    mg_wr16(p + 2, type);
+    memcpy(p + 4, value, len);
+    *n += 4 + padded;
+}
+
+static void nl_attr32(u8 *m, u32 *n, u16 type, u32 value)
+{
+    u8 v[4];
+    mg_wr32(v, value);
+    nl_attr(m, n, type, v, 4);
+}
+
+/* RTM_NEWLINK: an interface. Its length. */
+static u32 nl_link(u8 *m, const mg_gif *f, u32 seq, u32 pid)
+{
+    u8 ll[20], all[8];
+    /* IF_OPER_UNKNOWN is what Linux says of its loopback; the others are IF_OPER_UP or IF_OPER_DOWN. */
+    u8 state = (u8)(f->host.kind == MG_IF_LOOPBACK ? 0 : (f->host.flags & MG_IFF_RUNNING) ? 6 : 2);
+    u32 n = 32, hw;
+    link_addr(f, ll);
+    hw = ll[11] < 8 ? ll[11] : 8;
+    /* struct ifinfomsg: the family (none), the hardware's type, the index, the flags, and which of them changed (none). */
+    memset(m + 16, 0, 16);
+    mg_wr16(m + 18, mg_rd16(ll + 8));
+    mg_wr32(m + 20, f->host.index);
+    mg_wr32(m + 24, mg_net_if_flags(f));
+    nl_attr(m, &n, G_IFLA_IFNAME, f->name, (u32)strlen(f->name) + 1);
+    nl_attr(m, &n, G_IFLA_OPERSTATE, &state, 1);
+    nl_attr32(m, &n, G_IFLA_MTU, f->host.mtu);
+    if (hw) {
+        /* The hardware's address, and the one that reaches every station of the link (a loopback's are zeros). */
+        nl_attr(m, &n, G_IFLA_ADDRESS, ll + 12, hw);
+        memset(all, f->host.kind == MG_IF_LOOPBACK ? 0 : 0xFF, sizeof(all));
+        nl_attr(m, &n, G_IFLA_BROADCAST, all, hw);
+    }
+    nl_head(m, n, G_RTM_NEWLINK, G_NLM_F_MULTI, seq, pid);
+    return n;
+}
+
+/* RTM_NEWADDR: the address `k` of an interface. Its length. */
+static u32 nl_addr(u8 *m, const mg_gif *f, int k, u32 seq, u32 pid)
+{
+    const u8 *a = f->host.addrs[k].addr.addr;
+    bool v6 = f->host.addrs[k].addr.family == MG_AF_INET6;
+    int prefix = f->host.addrs[k].prefix, j;
+    u8 cache[16], scope;
+    u32 n = 24;
+    /* RT_SCOPE_HOST for the machine's own address, RT_SCOPE_LINK for a link-local one, RT_SCOPE_UNIVERSE for the rest. */
+    if (v6) scope = (u8)(is_loopback_v6(a) ? 254 : (a[0] == 0xFE && (a[1] & 0xC0) == 0x80) ? 253 : 0);
+    else scope = (u8)(a[0] == 127 ? 254 : (a[0] == 169 && a[1] == 254) ? 253 : 0);
+    /* struct ifaddrmsg: the family, the prefix's length, the flags (permanent: no lifetime is known here), the scope, the interface's index. */
+    m[16] = (u8)(v6 ? G_AF_INET6 : G_AF_INET);
+    m[17] = (u8)prefix;
+    m[18] = G_IFA_F_PERMANENT;
+    m[19] = scope;
+    mg_wr32(m + 20, f->host.index);
+    nl_attr(m, &n, G_IFA_ADDRESS, a, v6 ? 16 : 4);
+    if (!v6) {
+        /* IPv4's: the address once more as the local one (IFA_ADDRESS is the far end's on a point-to-point link), the broadcast address, the interface's name. */
+        nl_attr(m, &n, G_IFA_LOCAL, a, 4);
+        if (f->host.flags & MG_IFF_BROADCAST) {
+            u8 mask[16], bc[4];
+            mask_of(MG_AF_INET, prefix, mask);
+            for (j = 0; j < 4; j++) bc[j] = (u8)(a[j] | (u8)~mask[j]);
+            nl_attr(m, &n, G_IFA_BROADCAST, bc, 4);
+        }
+        nl_attr(m, &n, G_IFA_LABEL, f->name, (u32)strlen(f->name) + 1);
+    }
+    nl_attr32(m, &n, G_IFA_FLAGS, G_IFA_F_PERMANENT);
+    /* struct ifa_cacheinfo: preferred and valid for ever; when it was made and last changed is not known. */
+    memset(cache, 0, sizeof(cache));
+    mg_wr32(cache, 0xFFFFFFFFu);
+    mg_wr32(cache + 4, 0xFFFFFFFFu);
+    nl_attr(m, &n, G_IFA_CACHEINFO, cache, sizeof(cache));
+    nl_head(m, n, G_RTM_NEWADDR, G_NLM_F_MULTI, seq, pid);
+    return n;
+}
+
+/* NLMSG_ERROR, a datagram of its own: the errno, negative (0: an acknowledgement), and the request -- whole with an error, its header alone with none. */
+static void nl_error(nl_out *o, const u8 *h, u32 len, int e, u32 seq, u32 pid)
+{
+    u32 echoed = e ? len : 16, total = 20 + echoed, padded = (total + 3) & ~3u;
+    u8 *m = (u8 *)mg_alloc(padded);
+    nl_head(m, total, G_NLMSG_ERROR, 0, seq, pid);
+    mg_wr32(m + 16, (u32)-e);
+    memcpy(m + 20, h, echoed);
+    nl_flush(o);
+    o->put(o->to, m, padded);
+    free(m);
+}
+
+void mg_net_rtnetlink(const u8 *req, u32 n, u32 pid, void (*put)(void *to, const u8 *msg, u32 len), void *to)
+{
+    nl_out o;
+    mg_gif *list = NULL;
+    int count = -1, i, k, v6;          /* (the interfaces are asked for once, when the first list is wanted) */
+    u8 m[NL_MESSAGE];
+    u32 at = 0;
+    o.put = put;
+    o.to = to;
+    o.n = 0;
+    while (at + 16 <= n) {
+        const u8 *h = req + at;
+        u32 len = mg_rd32(h), seq = mg_rd32(h + 8);
+        u16 type = mg_rd16(h + 4), flags = mg_rd16(h + 6);
+        int e = 0, sent = 0;
+        bool listed = false;
+        if (len < 16 || len > n - at) break;
+        /* (What is no request, a control message, and a request too short to say its family are passed over, as the kernel passes them.) */
+        if ((flags & G_NLM_F_REQUEST) && type >= G_RTM_BASE && len > 16) {
+            int family = h[16];
+            if (((type - G_RTM_BASE) & 3) != 2) {
+                /* RTM_NEW*, RTM_DEL*, RTM_SET*: not an app's to do. */
+                e = GE_PERM;
+            } else if ((type == G_RTM_GETLINK || type == G_RTM_GETADDR) && (flags & G_NLM_F_DUMP)) {
+                if (count < 0) {
+                    count = mg_net_interfaces_android(&list);
+                    if (count < 0) count = 0;
+                }
+                if (type == G_RTM_GETLINK) {
+                    for (i = 0; i < count; i++, sent++) nl_add(&o, m, nl_link(m, &list[i], seq, pid));
+                } else {
+                    /* IPv4's of every interface, then IPv6's in datagrams of their own, as the kernel goes through its families; one family alone when the request names it. */
+                    for (v6 = 0; v6 < 2; v6++) {
+                        if (family == (v6 ? G_AF_INET : G_AF_INET6)) continue;
+                        for (i = 0; i < count; i++) {
+                            for (k = 0; k < list[i].host.naddrs; k++) {
+                                if (list[i].host.addrs[k].addr.family != (v6 ? MG_AF_INET6 : MG_AF_INET)) continue;
+                                nl_add(&o, m, nl_addr(m, &list[i], k, seq, pid));
+                                sent++;
+                            }
+                        }
+                        nl_flush(&o);
+                    }
+                }
+                /* NLMSG_DONE ends the list, in a datagram of its own: the list's outcome, 0. */
+                nl_flush(&o);
+                nl_head(m, 20, G_NLMSG_DONE, G_NLM_F_MULTI, seq, pid);
+                mg_wr32(m + 16, 0);
+                nl_add(&o, m, 20);
+                nl_flush(&o);
+                listed = true;
+                if (mg_net_trace_wanted())
+                    mg_net_trace("netlink: %s listed (family %d asked): %d messages", type == G_RTM_GETLINK ? "the links" : "the addresses", family, sent);
+            } else {
+                e = GE_OPNOTSUPP;
+                mg_note_once("network: NETLINK_ROUTE was asked what is not answered here (message type %u, flags 0x%x); the app is told EOPNOTSUPP", (unsigned)type,
+                             (unsigned)flags);
+            }
+        }
+        if (e || (!listed && (flags & G_NLM_F_ACK))) nl_error(&o, h, len, e, seq, pid);
+        at += (len + 3) & ~3u;
+    }
+    nl_flush(&o);
+    free(list);
+}
+
 /* -------------------------------------------------------------- resolving */
 
 /* What needs no network: "localhost" and its kin, as Android's /system/etc/hosts has them. 0: not one of them; else how many addresses. */
