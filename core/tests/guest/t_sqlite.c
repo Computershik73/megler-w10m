@@ -11,10 +11,14 @@
  * Unlike the other guest libraries this one is built with the NDK (its headers and libc stand-in), since SQLite includes
  * the C library's headers: tools/build-guest.sh makes it only where the NDK and the amalgamation are.
  */
+#include <fcntl.h>
 #include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/mman.h>
+#include <sys/stat.h>
+#include <unistd.h>
 #include "sqlite3.h"
 
 #define ACCOUNTS 64
@@ -313,4 +317,82 @@ int t_sql_check(const char *path)
     }
     if (!bad) snprintf(g_said, sizeof(g_said), "%d rows in the log", rows);
     return bad;
+}
+
+static unsigned long long ino_at(const char *path)
+{
+    struct stat st;
+    return stat(path, &st) == 0 ? (unsigned long long)st.st_ino : 0;
+}
+
+static unsigned long long ino_of(int fd)
+{
+    struct stat st;
+    return fstat(fd, &st) == 0 ? (unsigned long long)st.st_ino : 0;
+}
+
+static int starts(int fd, const char *with)
+{
+    char got[4] = { 0 };
+    return pread(fd, got, 3, 0) == 3 && !memcmp(got, with, 3);
+}
+
+/*
+ * What SQLite knows an open file by, its inode number (stat, fstat), in the folder `dir`, which `too` names as well: 0
+ * when the numbers are as a Linux file system's, else the step at which they first are not (said in t_sql_said):
+ *
+ *   1  a file has one number by its path, by a descriptor of it and by the folder's other name;
+ *   2  unlinked while open and made again at its path, it is another file with another number, which the path now has;
+ *   3  and another file to a shared mapping of the old one: neither's bytes reach the other;
+ *   4  renamed while open it keeps its number at its new path, and a file made at the old path has another;
+ *   5  a file replaced by a rename while open keeps its number, which is not that of what replaced it.
+ */
+int t_sql_file_ids(const char *dir, const char *too)
+{
+    char a[300], b[300], c[300];
+    static const char old_bytes[16] = "old old old old", new_bytes[16] = "new new new new";
+    int one = -1, two = -1, three = -1, step = 0;
+    unsigned char *map = MAP_FAILED;
+    unsigned long long first = 0, second = 0, third;
+    snprintf(a, sizeof(a), "%s/ids-a", dir);
+    snprintf(b, sizeof(b), "%s/ids-b", dir);
+    snprintf(c, sizeof(c), "%s/ids-a", too);
+    unlink(a);
+    unlink(b);
+    snprintf(g_said, sizeof(g_said), "the numbers are a file system's");
+    one = open(a, O_RDWR | O_CREAT | O_EXCL, 0600);
+    if (one >= 0) first = ino_of(one);
+    if (one < 0 || !first || ino_at(a) != first || ino_at(c) != first || write(one, old_bytes, 16) != 16 || ftruncate(one, 4096) != 0) step = 1;
+    if (!step) {
+        map = (unsigned char *)mmap(NULL, 4096, PROT_READ | PROT_WRITE, MAP_SHARED, one, 0);
+        if (unlink(a) != 0 || (two = open(a, O_RDWR | O_CREAT | O_EXCL, 0600)) < 0) step = 2;
+        else second = ino_of(two);
+        if (!step && (!second || second == first || ino_of(one) != first || ino_at(a) != second || ino_at(c) != second)) step = 2;
+    }
+    if (!step) {
+        if (map == MAP_FAILED || write(two, new_bytes, 16) != 16 || memcmp(map, old_bytes, 3) != 0) step = 3;
+        else {
+            memcpy(map, "OLD", 3);
+            if (msync(map, 4096, MS_SYNC) != 0 || !starts(two, "new") || !starts(one, "OLD")) step = 3;
+        }
+    }
+    if (!step) {
+        if (rename(a, b) != 0 || ino_at(b) != second || ino_of(two) != second) step = 4;
+        else if ((three = open(a, O_RDWR | O_CREAT | O_EXCL, 0600)) < 0 || !(third = ino_of(three)) || third == second || third == first || ino_at(a) != third) step = 4;
+    }
+    if (!step) {
+        third = ino_of(three);
+        if (rename(a, b) != 0 || ino_at(b) != third || ino_of(three) != third || ino_of(two) != second || !starts(two, "new")) step = 5;
+    }
+    if (step) {
+        snprintf(g_said, sizeof(g_said), "step %d: the first file's number is %llu, by its descriptor %llu; the second's %llu, by its descriptor %llu; %s has %llu and %s %llu",
+                 step, first, one >= 0 ? ino_of(one) : 0, second, two >= 0 ? ino_of(two) : 0, a, ino_at(a), b, ino_at(b));
+    }
+    if (map != MAP_FAILED) munmap(map, 4096);
+    if (one >= 0) close(one);
+    if (two >= 0) close(two);
+    if (three >= 0) close(three);
+    unlink(a);
+    unlink(b);
+    return step;
 }

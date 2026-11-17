@@ -7259,13 +7259,118 @@ static void sql_remove(const char *dir, const char *name)
     }
 }
 
-/* The folder of the databases, where the guest has it. */
+/* The folder of the databases, which the guest has under two names, as an app has its data folder. */
 static char *sql_folder(const char *scratch)
 {
     char *dir = mg_sprintf("%s/guest-sqlite", scratch);
     mg_path_mkdirs(dir);
     mg_fs_mount("/sql", dir);
+    mg_fs_mount("/sql-too", dir);
     return dir;
+}
+
+/* Two connections that take turns: what one commits the other counts at once. How many times it did not. */
+static int sql_turns(mg_lib *la, void *a, mg_lib *lb, void *b, int turns)
+{
+    int i, wrong = 0, before = SQL_INT(la, a, "SELECT count(*) FROM seen");
+    for (i = 0; i < turns; i++) {
+        bool odd = (i & 1) != 0;
+        int wrote = odd ? SQL_EXEC(lb, b, "INSERT INTO seen(n) VALUES(1)") : SQL_EXEC(la, a, "INSERT INTO seen(n) VALUES(1)");
+        int counted = odd ? SQL_INT(la, a, "SELECT count(*) FROM seen") : SQL_INT(lb, b, "SELECT count(*) FROM seen");
+        if (wrote != 0 || counted != before + i + 1) {
+            if (!wrong++) say("  turn %d: the write gave %d, the other connection counts %d rows where %d are (%s)", i, wrote, counted, before + i + 1, SQL_SAID(odd ? la : lb));
+        }
+    }
+    return wrong;
+}
+
+/*
+ * One database open through two paths, `pa` in the library `la` and `pb` in `lb`: `turns` turns, then two threads of
+ * each at once with `rounds` transfers to make, then the whole of it checked.
+ */
+static void sql_two(const char *what, mg_lib *la, const char *pa, mg_lib *lb, const char *pb, int turns, int rounds)
+{
+    void *a = SQL_OPEN(la, pa), *b = SQL_OPEN(lb, pb), *ja, *jb;
+    int errors, moved_a = 0, moved_b = 0, bad;
+    CHECK(a != NULL && b != NULL);
+    if (a && b) {
+        CHECK_INT(SQL_EXEC(la, a, "CREATE TABLE IF NOT EXISTS seen(n INTEGER)"), 0);
+        CHECK_INT(sql_turns(la, a, lb, b, turns), 0);
+    }
+    if (a) CHECK_INT(SQL_CLOSE(la, a), 0);
+    if (b) CHECK_INT(SQL_CLOSE(lb, b), 0);
+    ja = SQL_START(la, pa, 2, rounds, 31);
+    jb = SQL_START(lb, pb, 2, rounds, 32);
+    errors = SQL_WAIT(la, ja, &moved_a);
+    if (errors) say("  %s: %s", pa, SQL_SAID(la));
+    CHECK_INT(errors, 0);
+    errors = SQL_WAIT(lb, jb, &moved_b);
+    if (errors) say("  %s: %s", pb, SQL_SAID(lb));
+    CHECK_INT(errors, 0);
+    bad = SQL_CHECK(la, pa);
+    say("  %s: %d and %d transfers at once, then %s", what, moved_a, moved_b, SQL_SAID(la));
+    CHECK_INT(bad, 0);
+}
+
+/*
+ * What SQLite takes from the file layer beyond reads and writes: a file's inode number, by which it knows an open file.
+ * One database under the two names of one folder (/data/data/<package> and /data/user/0/<package> on Android) is one
+ * file to it, with one set of locks and one index of the write-ahead log. A database deleted and made again at its path
+ * while a connection to the old one stays open (Telegram, whose close had failed on an unfinalized statement before it
+ * made its database anew) is another file: SQLite keeps what it knows of an open file (the locks, the write-ahead log's
+ * index and its mapping) by the numbers, and takes all of it for the new file when they are the old one's.
+ */
+static void test_guest_sqlite_names(mg_lib *lib, const char *dir)
+{
+    typedef int (*unlink_fn)(const char *);
+    unlink_fn unlink_ = (unlink_fn)mg_bionic_find("unlink");
+    void *old, *made;
+    int i, rc = 0, step = FN(lib, int (*)(const char *, const char *), "t_sql_file_ids")("/sql", "/sql-too");
+    if (step) say("  a file's inode number: %s", SQL_SAID(lib));
+    CHECK_INT(step, 0);
+    sql_two("a write-ahead log under the folder's two names", lib, "/sql/bank-wal.db", lib, "/sql-too/bank-wal.db", 40, 60);
+    sql_two("a rollback journal under the folder's two names", lib, "/sql/bank-journal.db", lib, "/sql-too/bank-journal.db", 10, 15);
+    sql_remove(dir, "again.db");
+    old = SQL_OPEN(lib, "/sql/again.db");
+    CHECK(old != NULL && unlink_ != NULL);
+    if (!old || !unlink_) return;
+    CHECK_INT(SQL_EXEC(lib, old, "PRAGMA journal_mode = WAL"), 0);
+    CHECK_INT(SQL_EXEC(lib, old, "CREATE TABLE t(n INTEGER, pad BLOB)"), 0);
+    for (i = 0; i < 30 && !rc; i++) rc = SQL_EXEC(lib, old, "INSERT INTO t(n, pad) VALUES(1, zeroblob(3000))");
+    CHECK_INT(rc, 0);
+    CHECK_INT(SQL_INT(lib, old, "SELECT count(*) FROM t"), 30);
+    CHECK_INT(unlink_("/sql/again.db"), 0);
+    unlink_("/sql/again.db-wal");
+    unlink_("/sql/again.db-shm");
+    made = SQL_OPEN(lib, "/sql/again.db");
+    CHECK(made != NULL);
+    if (made) {
+        CHECK_INT(SQL_EXEC(lib, made, "PRAGMA journal_mode = WAL"), 0);
+        CHECK_INT(SQL_EXEC(lib, made, "CREATE TABLE u(m INTEGER, pad BLOB)"), 0);
+        for (i = 0, rc = 0; i < 50 && !rc; i++) rc = SQL_EXEC(lib, made, "INSERT INTO u(m, pad) VALUES(2, zeroblob(2000))");
+        if (rc) say("  the database made again: %s", SQL_SAID(lib));
+        CHECK_INT(rc, 0);
+        CHECK_INT(SQL_INT(lib, made, "SELECT count(*) FROM u"), 50);
+        rc = SQL_OK(lib, made);
+        if (rc) say("  the database made again: %s", SQL_SAID(lib));
+        CHECK_INT(rc, 0);
+        /* The old connection still has the file it opened, as on Linux, and nothing of the new one. */
+        CHECK_INT(SQL_INT(lib, old, "SELECT count(*) FROM t"), 30);
+        CHECK(SQL_INT(lib, old, "SELECT count(*) FROM u") < -1000);
+        CHECK_INT(SQL_CLOSE(lib, made), 0);
+    }
+    CHECK_INT(SQL_CLOSE(lib, old), 0);
+    /* And what is at the path after both are closed is the new one, whole. */
+    made = SQL_OPEN(lib, "/sql/again.db");
+    CHECK(made != NULL);
+    if (made) {
+        CHECK_INT(SQL_INT(lib, made, "SELECT count(*) FROM u"), 50);
+        rc = SQL_OK(lib, made);
+        if (rc) say("  the database made again, opened anew: %s", SQL_SAID(lib));
+        CHECK_INT(rc, 0);
+        CHECK_INT(SQL_CLOSE(lib, made), 0);
+    }
+    say("  a database deleted and made again under an open connection is a new file");
 }
 
 static void test_guest_sqlite(const char *libdir, const char *scratch)
@@ -7292,6 +7397,7 @@ static void test_guest_sqlite(const char *libdir, const char *scratch)
             (unsigned)((mg_time_monotonic_ns() - began) / 1000000u), SQL_SAID(lib));
         CHECK_INT(bad, 0);
     }
+    test_guest_sqlite_names(lib, dir);
     free(dir);
 }
 

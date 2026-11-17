@@ -1063,6 +1063,7 @@ typedef struct gobj {
     int flags;                     /* the guest's O_* flags */
     mg_file *file;
     char *path;                    /* guest path, for files and directories */
+    u32 ino;                       /* OBJ_FILE: its inode number (file_ino), its own for as long as it is open */
     u8 *mem;
     size_t mem_size;
     u64 pos;
@@ -1147,6 +1148,7 @@ static gobj *g_fds[MAX_FDS];
 static u8 g_cloexec[MAX_FDS];
 static mg_lock g_io_lock = MG_LOCK_INIT;
 static bool g_io_inited;
+static u32 file_ino(const char *host_path);
 
 /*
  * The descriptors' lock is never taken by a thread that holds the mappings' lock (mg_libc_mem.c). A thread that holds this
@@ -1397,6 +1399,7 @@ int mg_fd_open_host(const char *host_path, int host_flags)
     o->type = OBJ_FILE;
     o->refs = 1;
     o->file = f;
+    o->ino = file_ino(host_path);
     o->flags = (host_flags & MG_O_WRITE) ? ((host_flags & MG_O_READ) ? 2 : 1) : 0;
     fd = fd_new(o);
     if (fd < 0) obj_destroy(o);
@@ -1559,8 +1562,10 @@ static int g_open(const char *path, int flags, int mode)
             if (flags & G_O_TRUNC) hf |= MG_O_TRUNC;
             if (flags & G_O_APPEND) hf |= MG_O_APPEND;
             o->file = mg_file_open(h, hf, &err);
-            if (o->file) o->type = OBJ_FILE;
-            else if (!asked && err == MG_E_ISDIR) is_dir = true;
+            if (o->file) {
+                o->type = OBJ_FILE;
+                o->ino = file_ino(h);
+            } else if (!asked && err == MG_E_ISDIR) is_dir = true;
             else why = mg_errno_of(err);
         }
         if (!why && is_dir) {
@@ -2049,7 +2054,7 @@ i32 mg_fd_held_pread(void *held, void *buf, u32 n, u64 offset)
 bool mg_fd_held_same(const void *a, const void *b)
 {
     const gobj *x = (const gobj *)a, *y = (const gobj *)b;
-    return x == y || (x && y && x->type == OBJ_FILE && y->type == OBJ_FILE && x->path && y->path && !strcmp(x->path, y->path));
+    return x == y || (x && y && x->type == OBJ_FILE && y->type == OBJ_FILE && x->ino == y->ino && x->path && y->path && !strcmp(x->path, y->path));
 }
 void mg_fd_let_go(void *held)
 {
@@ -2391,11 +2396,127 @@ static u32 path_hash(const char *s)
     return h ? h : 1;
 }
 
-static void fill_stat(g_stat *out, const mg_stat *st, const char *gpath)
+/*
+ * A file's inode number (st_ino), which with the device's is what a program knows an open file by. SQLite keeps what it
+ * holds of an open file -- its locks, the index of its write-ahead log and the mapping of that -- under the two numbers,
+ * once for all the connections of the process (os_unix.c's unixInodeInfo). The number is the hash of the file's path on
+ * the host, so that one file under the two names of a folder mounted twice (/data/data/<package> and
+ * /data/user/0/<package>) is one file, until a file open at the path is unlinked, renamed away or replaced by a rename:
+ * the open file keeps its number, as an inode's stays with its file, and what is at the path next has another. Telegram
+ * made its database again at its path while a connection to the old one was still open (the close had failed on an
+ * unfinalized statement, after "database disk image is malformed"): by the path's hash alone SQLite took the new file
+ * for the old one, with the old write-ahead log's index, and from then on every statement failed with "no such table".
+ *
+ * `g_inos`: the paths, by their hash, whose number is not that hash, few at a time; one is dropped once no open file has
+ * its number or the hash (inos_swept, when the list grows). All of it under g_io_lock. A file held only by a mapping,
+ * with no descriptor left, is not seen here: its path may get its number again, as every path did before.
+ */
+typedef struct ino_named {
+    u32 key, ino;
+} ino_named;
+#define INOS_MAX 64
+static ino_named g_inos[INOS_MAX];
+static volatile i32 g_ninos;
+static u32 g_inos_made;
+
+static ino_named *inos_find(u32 key)
+{
+    i32 i;
+    for (i = 0; i < g_ninos; i++) {
+        if (g_inos[i].key == key) return &g_inos[i];
+    }
+    return NULL;
+}
+
+static u32 ino_of_key(u32 key)
+{
+    ino_named *e = g_ninos ? inos_find(key) : NULL;
+    return e ? e->ino : key;
+}
+
+/* How many descriptors' files have the number. */
+static int ino_open(u32 ino)
+{
+    int i, n = 0;
+    for (i = 0; i < MAX_FDS; i++) {
+        if (g_fds[i] && g_fds[i]->type == OBJ_FILE && g_fds[i]->ino == ino) n++;
+    }
+    return n;
+}
+
+static void inos_swept(void)
+{
+    i32 i, kept = 0;
+    for (i = 0; i < g_ninos; i++) {
+        if (ino_open(g_inos[i].ino) || ino_open(g_inos[i].key)) g_inos[kept++] = g_inos[i];
+    }
+    g_ninos = kept;
+}
+
+/* A number that no open file has, for the path with the hash `key`. */
+static u32 ino_fresh(u32 key)
+{
+    u32 ino;
+    do ino = key ^ (++g_inos_made * 2654435761u); while (!ino || ino == key || ino_open(ino));
+    return ino;
+}
+
+/* The path with the hash `key` has the number `ino` from now on. */
+static void inos_set(u32 key, u32 ino)
+{
+    ino_named *e = inos_find(key);
+    if (!e) {
+        if (g_ninos >= 16) inos_swept();
+        e = &g_inos[g_ninos < INOS_MAX ? g_ninos++ : (i32)(++g_inos_made % INOS_MAX)];
+        e->key = key;
+    }
+    e->ino = ino;
+}
+
+static u32 file_ino(const char *host_path)
+{
+    u32 key = path_hash(host_path), ino = key;
+    if (g_ninos) {
+        mg_lock_acquire(&g_io_lock);
+        ino = ino_of_key(key);
+        mg_lock_release(&g_io_lock);
+    }
+    return ino;
+}
+
+/* The name at the host path `h` is gone (unlink): a file still open there keeps its number, and the path has a new one. */
+static void file_unlinked(const char *h)
+{
+    u32 key = path_hash(h);
+    mg_lock_acquire(&g_io_lock);
+    if (ino_open(ino_of_key(key))) inos_set(key, ino_fresh(key));
+    mg_lock_release(&g_io_lock);
+}
+
+/*
+ * The host path `a` was renamed to `b`. An open file that was at `a` is at `b` now, with its number, and `a` has a new
+ * one; a file that was at `b` and is still open is at no path any more, and `b` has another number than its.
+ */
+static void file_renamed(const char *a, const char *b)
+{
+    u32 ka = path_hash(a), kb = path_hash(b), ia;
+    if (ka == kb) return;
+    mg_lock_acquire(&g_io_lock);
+    ia = ino_of_key(ka);
+    if (ino_open(ia)) {
+        inos_set(kb, ia);
+        inos_set(ka, ino_fresh(ka));
+    } else if (ino_open(ino_of_key(kb))) {
+        inos_set(kb, ino_fresh(kb));
+    }
+    mg_lock_release(&g_io_lock);
+}
+
+static void fill_stat(g_stat *out, const mg_stat *st, u32 ino)
 {
     memset(out, 0, sizeof(*out));
     out->st_dev = 0x801;
-    out->st_ino = path_hash(gpath);
+    out->st_ino = ino;
 #if !MG_GUEST_LP64
     out->st_ino32 = (u32)out->st_ino;              /* (the kernel's stat64 has it twice) */
 #endif
@@ -2420,7 +2541,7 @@ static void fill_special(g_stat *out, u32 mode, u64 size, const char *gpath)
     memset(&st, 0, sizeof(st));
     st.size = size;
     st.mtime_ns = st.atime_ns = st.ctime_ns = (i64)mg_time_realtime_ns();
-    fill_stat(out, &st, gpath);
+    fill_stat(out, &st, path_hash(gpath));
     out->st_mode = mode;
 }
 
@@ -2479,7 +2600,8 @@ static int g_stat_path(const char *path, g_stat *out)
         free(g);
         return -1;
     }
-    fill_stat(out, &st, g);
+    /* (A directory's is its guest path's, as fstat of one opened has it.) */
+    fill_stat(out, &st, st.is_dir ? path_hash(g) : file_ino(h));
     free(h);
     free(g);
     return 0;
@@ -2496,7 +2618,7 @@ static int g_fstat(int fd, g_stat *out)
             mg_set_errno(GE_IO);
             r = -1;
         } else {
-            fill_stat(out, &st, o->path);
+            fill_stat(out, &st, o->ino ? o->ino : path_hash(o->path));
         }
         break;
     case OBJ_MEM:
@@ -2667,8 +2789,9 @@ static int g_fstatvfs_fn(int fd, g_statvfs *out) { (void)fd; return g_statvfs_fn
  */
 static int fixed_name(const char *g, int why) { return is_mount_point(g) || leads_to_mount(g) ? why : 0; }
 
-/* (`done`: what the watches are told once it is done, of the normalized path `g`: inotify, below.) */
-#define PATH_OP(name, fixed, call, done)            \
+/* (`after`: what follows when it is done, with the host path `h`; `done`: what the watches are then told, of the normalized
+   path `g`: inotify, below.) */
+#define PATH_OP(name, fixed, call, after, done)     \
     static int name(const char *path)               \
     {                                               \
         char *g, *h;                                \
@@ -2687,6 +2810,7 @@ static int fixed_name(const char *g, int why) { return is_mount_point(g) || lead
             return -1;                              \
         }                                           \
         ok = call;                                  \
+        if (ok) after;                              \
         free(h);                                    \
         if (!ok) {                                  \
             free(g);                                \
@@ -2709,9 +2833,9 @@ static void ino_removed(const char *g, bool dir)
     ino_self(g, G_IN_DELETE_SELF, dir);
 }
 
-PATH_OP(g_unlink, GE_BUSY, mg_path_remove(h, &err), ino_removed(g, false))
-PATH_OP(g_rmdir, GE_BUSY, mg_path_rmdir(h, &err), ino_removed(g, true))
-PATH_OP(mkdir_host, GE_EXIST, mg_path_mkdir(h, &err), ino_path(g, G_IN_CREATE, 0, true))
+PATH_OP(g_unlink, GE_BUSY, mg_path_remove(h, &err), file_unlinked(h), ino_removed(g, false))
+PATH_OP(g_rmdir, GE_BUSY, mg_path_rmdir(h, &err), (void)0, ino_removed(g, true))
+PATH_OP(mkdir_host, GE_EXIST, mg_path_mkdir(h, &err), (void)0, ino_path(g, G_IN_CREATE, 0, true))
 
 static int g_mkdir(const char *path, int mode) { (void)mode; return mkdir_host(path); }
 static int g_mkdirat(int dirfd, const char *path, int mode) { (void)dirfd; (void)mode; return mkdir_host(path); }
@@ -2746,6 +2870,7 @@ static int g_rename(const char *from, const char *to)
     if (g_ino_watches && a && b && strcmp(ga, gb)) replaced = mg_path_stat(b, &st, NULL);
     /* (Between a link and anything else the host layer says EXDEV, as between two file systems: the app copies and removes.) */
     ok = a && b && mg_path_rename(a, b, &err);
+    if (ok) file_renamed(a, b);
     if (!ok) mg_set_errno(why ? why : a && b ? mg_errno_of(err) : GE_ACCES);
     if (ok && g_ino_watches && strcmp(ga, gb)) ino_renamed(ga, gb, mg_path_stat(b, &st, NULL) && st.is_dir, replaced);
     free(ga);
