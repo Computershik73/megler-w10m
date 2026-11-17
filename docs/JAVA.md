@@ -7835,7 +7835,11 @@ its quanta, 32-bit float, is made 16-bit and pushed to the core
 `ByteBuffer`. A blocking read waits for what it asked for; after a second of
 nothing it is given silence, so that the app does not hang. `stop` and
 `release` let the microphone go (`micStop`). With no microphone, or after the
-user's no, a record is silence at the microphone's pace, as before.
+user's no, a record is silence at the microphone's pace, as before. The ring
+is the core's (`ndk/mg_mic.c`), shared with OpenSL ES's audio recorders
+(`ndk/mg_opensles.c`, ARCHITECTURE.md "Sound"), which native voice engines
+record through; one recording has the microphone at a time, and a later one
+takes it over.
 `hasSystemFeature` has `android.hardware.microphone`. `MediaRecorder`, which
 encodes as it records (AAC, AMR), is not done yet. The data app's step
 `microphone` records from the harness's microphone, which hears a ramp, and

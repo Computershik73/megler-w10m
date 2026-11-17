@@ -34,6 +34,7 @@
 #include "../ld/mg_ld.h"
 #include "../ndk/mg_audio.h"
 #include "../ndk/mg_egl.h"
+#include "../ndk/mg_mic.h"
 #include "../ndk/mg_ndk.h"
 #include "../run/mg_run.h"
 #include "../zip/mg_zip.h"
@@ -857,47 +858,12 @@ N(Native_battery)
 }
 
 /*
- * The microphone (megler_microphone_host): what an AudioRecord reads. The shell pushes what it hears into a ring of two
- * seconds (megler_microphone_push); micRead takes it out, waiting for it when asked to block. When nothing comes for a
- * second (the microphone gone), a blocking read is given silence, so that the app does not hang. One recording at a time,
- * as on Android: a second start takes the microphone over.
+ * The microphone (megler_microphone_host): what an AudioRecord reads, out of the ring the shell pushes what it hears into
+ * (ndk/mg_mic.c, which OpenSL ES's recorder reads too). When nothing comes for a second (the microphone gone), a blocking
+ * read is given silence, so that the app does not hang. One recording at a time, as on Android: a second start takes the
+ * microphone over. `g_mic` is the recording the last micStart began: the one micRead reads and micStop ends.
  */
-static struct {
-    mg_lock lock;
-    mg_cond more;
-    bool inited, on;
-    i16 *ring;
-    u32 cap, head, count;   /* samples */
-    int channels;
-} MIC = { MG_LOCK_INIT };
-
-static void mic_init(void)
-{
-    static mg_lock once = MG_LOCK_INIT;
-    mg_lock_acquire(&once);
-    if (!MIC.inited) {
-        mg_cond_init(&MIC.more);
-        MIC.inited = true;
-    }
-    mg_lock_release(&once);
-}
-
-void megler_microphone_push(const int16_t *samples, int frames)
-{
-    u32 n, i;
-    if (!MIC.inited || frames <= 0 || !samples) return;
-    mg_lock_acquire(&MIC.lock);
-    if (MIC.on && MIC.ring) {
-        n = (u32)frames * (u32)MIC.channels;
-        for (i = 0; i < n; i++) {
-            MIC.ring[(MIC.head + MIC.count) % MIC.cap] = samples[i];
-            if (MIC.count < MIC.cap) MIC.count++;
-            else MIC.head = (MIC.head + 1) % MIC.cap;   /* full: the oldest goes */
-        }
-        mg_cond_broadcast(&MIC.more);
-    }
-    mg_lock_release(&MIC.lock);
-}
+static volatile u32 g_mic;
 
 /* micStart(rate, channels): the microphone asked of the shell; true when it hears. */
 N(Native_micStart)
@@ -905,40 +871,19 @@ N(Native_micStart)
     const megler_microphone_host *h = &J.config->microphone;
     int rate = c->args[0].i, channels = c->args[1].i == 2 ? 2 : 1;
     bool ok;
-    mic_init();
     if (rate < 4000 || rate > 192000) rate = 44100;
-    mg_lock_acquire(&MIC.lock);
-    free(MIC.ring);
-    MIC.cap = (u32)rate * (u32)channels * 2u;
-    MIC.ring = (i16 *)mg_alloc(sizeof(i16) * MIC.cap);
-    MIC.channels = channels;
-    MIC.head = MIC.count = 0;
-    MIC.on = true;
-    mg_lock_release(&MIC.lock);
-    ok = h->start ? h->start(h->user, rate, channels) : false;
+    g_mic = mg_mic_start(h, rate, channels);
+    ok = g_mic != 0;
     mg_info("java: the app records at %d Hz in %d channel%s: %s", rate, channels, channels == 2 ? "s" : "",
             ok ? "the microphone hears" : h->start ? "the microphone was refused; the app reads silence" : "no microphone here; the app reads silence");
-    if (!ok) {
-        mg_lock_acquire(&MIC.lock);
-        MIC.on = false;
-        mg_lock_release(&MIC.lock);
-    }
     c->ret.z = ok;
 }
 
 /* micStop(): the microphone no longer wanted. */
 N(Native_micStop)
 {
-    const megler_microphone_host *h = &J.config->microphone;
-    bool was;
     (void)c;
-    mic_init();
-    mg_lock_acquire(&MIC.lock);
-    was = MIC.on;
-    MIC.on = false;
-    mg_cond_broadcast(&MIC.more);
-    mg_lock_release(&MIC.lock);
-    if (was && h->stop) h->stop(h->user);
+    mg_mic_stop(g_mic);
 }
 
 /* audioRoute(route): where the app's sound is to go, as its AudioManager has it (megler_audio_host.route). */
@@ -957,28 +902,11 @@ N(Native_audioRoute)
 N(Native_micRead)
 {
     mg_jobj *a = c->args[0].l;
-    i32 off = c->args[1].i, want = c->args[2].i, got = 0;
+    i32 off = c->args[1].i, want = c->args[2].i;
     bool blocking = c->args[3].z != 0;
-    i16 *out;
     c->ret.i = 0;
     if (!a || off < 0 || want <= 0 || (u32)off + (u32)want > a->u.arr.len) return;
-    out = (i16 *)a->u.arr.data + off;
-    mic_init();
-    mg_lock_acquire(&MIC.lock);
-    while (got < want) {
-        while (MIC.count > 0 && got < want) {
-            out[got++] = MIC.ring[MIC.head];
-            MIC.head = (MIC.head + 1) % MIC.cap;
-            MIC.count--;
-        }
-        if (got >= want || !blocking || !MIC.on) break;
-        if (!mg_cond_wait_ns(&MIC.more, &MIC.lock, 1000000000ull) && MIC.count == 0) {
-            /* Nothing for a second: silence for the rest, as a microphone that hears nothing gives. */
-            while (got < want) out[got++] = 0;
-        }
-    }
-    mg_lock_release(&MIC.lock);
-    c->ret.i = got;
+    c->ret.i = mg_mic_read(g_mic, (i16 *)a->u.arr.data + off, want, blocking);
 }
 
 /* memoryLimit(), memoryInUse(): the process's limit (1 GB where the shell gives none, as sysconf has it) and its use, in bytes. */
