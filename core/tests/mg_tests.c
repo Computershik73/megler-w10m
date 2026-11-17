@@ -2502,7 +2502,7 @@ static void test_libc_gaps(const char *scratch)
         }
     }
 
-    say("j0 and j1, eventfd_read and eventfd_write, fchmodat");
+    say("j0 and j1, erfcl and its like, eventfd_read and eventfd_write, fchmodat");
     {
         typedef gdouble (*d_fn)(gdouble);                /* (as guest code calls them: softfp's bits on 32-bit ARM) */
         typedef int (*eventfd_fn)(unsigned, int);
@@ -2527,6 +2527,20 @@ static void test_libc_gaps(const char *scratch)
             CHECK(fabs(J1(1) - 0.4400505857449335) < 1e-12 && fabs(J1(-1) + 0.4400505857449335) < 1e-12 && fabs(J1(15) - 0.2051040386135228) < 1e-10);
 #undef J0
 #undef J1
+        }
+        {
+            /* The long double ones (imo Lite's call engine, libimostream.so, imports erfcl): gldouble, computed in double. */
+            typedef gldouble (*l_fn)(gldouble);
+            l_fn erfl_ = (l_fn)mg_bionic_find("erfl"), erfcl_ = (l_fn)mg_bionic_find("erfcl");
+            l_fn tgammal_ = (l_fn)mg_bionic_find("tgammal"), lgammal_ = (l_fn)mg_bionic_find("lgammal");
+            CHECK(erfl_ && erfcl_ && tgammal_ && lgammal_);
+            if (erfl_ && erfcl_ && tgammal_ && lgammal_) {
+#define L(fn, x) mg_gld(fn(mg_gldb(x)))
+                CHECK(fabs(L(erfcl_, 0.5) - 0.4795001221869535) < 1e-12 && fabs(L(erfl_, 0.5) - 0.5204998778130465) < 1e-12);
+                CHECK(L(erfcl_, 0.0) == 1.0 && fabs(L(erfcl_, -2.0) - 1.9953222650189527) < 1e-12);
+                CHECK(fabs(L(tgammal_, 5.0) - 24.0) < 1e-9 && fabs(L(lgammal_, 10.0) - 12.801827480081469) < 1e-9);
+#undef L
+            }
         }
         if (eventfd_ && efd_read && efd_write && close_) {
             fd = eventfd_(0, 0);

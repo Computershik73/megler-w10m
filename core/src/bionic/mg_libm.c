@@ -234,6 +234,8 @@ static i64 g_llrint(gdouble x)
 
 L1(sin) L1(cos) L1(tan) L1(asin) L1(acos) L1(atan) L1(exp) L1(log) L1(log10) L1(log2) L1(sqrt) L1(cbrt) L1(fabs)
 L1(floor) L1(ceil) L1(round) L1(trunc) L1(rint) L1(nearbyint) L1(expm1) L1(log1p)
+/* (imo Lite's call engine, libimostream.so, imports erfcl.) */
+L1(erf) L1(erfc) L1(tgamma) L1(lgamma)
 L2(atan2) L2(pow) L2(fmod) L2(hypot) L2(fmin) L2(fmax) L2(copysign) L2(nextafter) L2(remainder)
 
 static gdouble g_exp10(gdouble x) { return mg_gdb(pow(10.0, mg_gd(x))); }
@@ -408,6 +410,7 @@ const mg_sym mg_tab_math[] = {
     DM(powl), DM(sqrtl), DM(cbrtl), DM(fabsl), DM(floorl), DM(ceill), DM(roundl), DM(truncl), DM(rintl), DM(nearbyintl),
     DM(fmodl), DM(hypotl), DM(ldexpl), MG_WRAP("scalbnl", g_ldexpl), DM(frexpl), DM(modfl), DM(fminl), DM(fmaxl), DM(copysignl),
     DM(lroundl), DM(llroundl), DM(lrintl), DM(llrintl), DM(fmal), DM(nextafterl), DM(remainderl), DM(expm1l), DM(log1pl),
+    DM(erfl), DM(erfcl), DM(tgammal), DM(lgammal),
     MG_WRAP("isnan", g_isnan), MG_WRAP("__isnan", g_isnan), MG_WRAP("isnanf", g_isnanf), MG_WRAP("__isnanf", g_isnanf),
     MG_WRAP("__isnanl", g_isnanl), MG_WRAP("isinf", g_isinf), MG_WRAP("__isinf", g_isinf), MG_WRAP("__isinff", g_isinff),
     MG_WRAP("isinff", g_isinff), MG_WRAP("__isinfl", g_isinfl), MG_WRAP("__isfinite", g_finite), MG_WRAP("__isfinitef", g_finitef),
