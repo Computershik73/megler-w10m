@@ -4758,6 +4758,15 @@ static int run_crash(void)
     expect_line("I/CrashTest: away-top finishAffinity finishing=true", &at, 60);
     expect_line("I/CrashTest: trampoline back after the affinity went", &at, 60);
     CHECK(find_line("I/CrashTest: away onResume 2", 0) < 0 && find_line("I/CrashTest: away-top onDestroy", 0) >= 0);
+    /*
+     * An activity of launch mode singleTask started again by the one above it, with no flag: the one on the stack is
+     * brought back (onNewIntent; onRestart first when it had been stopped, which depends on how soon Over asks) and the one
+     * above goes, as on Android; the layer made a second one (Viber's RegistrationActivity, four in one session, 0.1.0.699).
+     */
+    expect_line("I/CrashTest: hub onCreate creations=1", &at, 60);
+    expect_line("I/CrashTest: over onCreate", &at, 60);
+    expect_line("I/CrashTest: hub onNewIntent again creations=1", &at, 60);
+    CHECK(find_line("I/CrashTest: over onDestroy finishing=true", 0) >= 0 && find_line("I/CrashTest: hub onCreate creations=2", 0) < 0);
     expect_line("I/CrashTest: second onCreate, about to throw", &at, 60);
     CHECK(find_line("I/CrashTest: main onStart", 0) < 0 && find_line("I/CrashTest: main onRestart", 0) < 0);
     /* (The second First stayed through SINGLE_TOP, and goes only when it finishes itself for Trampoline.) */

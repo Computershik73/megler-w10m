@@ -6,7 +6,9 @@
 // Android never does. Instagram's signed-out screen, started again so, took that for its flow cancelled and finished,
 // and with no activity left the app ended (status 0). The activity is found by its class, as Android compares
 // realActivity: one started through an <activity-alias> is found by an intent that names the activity itself, where the
-// original compared the names they were started as.
+// original compared the names they were started as. An activity of launch mode singleTask or singleInstance already in
+// the stack is brought back so too, with or without the flag, as Android brings back the one in its task (the original
+// made another).
 //
 // And in one more: a media key from the phone (its media controls: the lock screen's and the volume flyout's play and
 // pause) goes to the app's active media session first, as Android hands it to the session rather than to the window
@@ -656,15 +658,25 @@ public final class AppRunner {
             if (intent.getComponent() == null) intent.setComponent(new ComponentName(Native.packageName(), c.name));
             sHandler.post(() -> {
                 try {
-                    if ((intent.getFlags() & Intent.FLAG_ACTIVITY_CLEAR_TOP) != 0) {
-                        // the activity itself, as Android compares realActivity: one started through an <activity-alias> is its target's
-                        String real = "activity-alias".equals(c.kind) && c.parentActivity != null ? c.parentActivity : c.name;
+                    // the activity itself, as Android compares realActivity: one started through an <activity-alias> is its target's,
+                    // whose launch mode is the one that counts
+                    String real = "activity-alias".equals(c.kind) && c.parentActivity != null ? c.parentActivity : c.name;
+                    Manifest.Component realInfo = real.equals(c.name) ? c : Manifest.activity(real);
+                    int mode = realInfo != null ? realInfo.launchMode : c.launchMode;
+                    /*
+                     * FLAG_ACTIVITY_CLEAR_TOP, or an activity of launch mode singleTask (2) or singleInstance (3): one of it
+                     * already on the stack is brought back with the intent and the activities above it go, as Android does
+                     * with an instance of it in its task -- the app's stack is its one task here, and taskAffinity is not
+                     * looked at. Viber's RegistrationActivity (singleTask) was made anew at every start, four of it in one
+                     * session (0.1.0.699), where Android gives the one there onNewIntent.
+                     */
+                    if ((intent.getFlags() & Intent.FLAG_ACTIVITY_CLEAR_TOP) != 0 || mode == 2 || mode == 3) {
                         // not one that is finishing, as Android passes over those: Instagram's main activity, finished in
                         // its onCreate, was started again (onRestart, onStart) and failed for the state it never made
                         for (int k = sStack.size() - 1; k >= 0; k--) if (!sStack.get(k).isFinishing() && sStack.get(k).getClass().getName().equals(real)) {
                             Activity existing = sStack.get(k);
                             while (top() != existing) finishNow(top(), false);
-                            if ((intent.getFlags() & 0x20000000 /* SINGLE_TOP */) != 0 || c.launchMode != 0) {
+                            if ((intent.getFlags() & 0x20000000 /* SINGLE_TOP */) != 0 || mode != 0) {
                                 // singleTop, singleTask, singleInstance, or asked for: the intent comes to it, as Android brings it
                                 // back -- onRestart and onStart when it was stopped, onNewIntent, then onResume
                                 boolean up = existing.isResumedMegler();
@@ -681,7 +693,7 @@ public final class AppRunner {
                             break;
                         }
                     }
-                    if ((intent.getFlags() & 0x20000000 /* SINGLE_TOP */) != 0 || c.launchMode == 1) {
+                    if ((intent.getFlags() & 0x20000000 /* SINGLE_TOP */) != 0 || mode == 1) {
                         Activity t = top();
                         if (t != null && !t.isFinishing() && startedAs(t).equals(intent.getComponent().getClassName())) { t.meglerNewIntent(intent); return; }
                     }
