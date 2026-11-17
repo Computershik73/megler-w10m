@@ -1721,6 +1721,43 @@ public class Main extends Activity {
             }, 500);
             return true;
         });
+        // A change told as Android's ContentService tells it (ContentResolver.notifyChange): an observer at the changed URI or
+        // below it hears it, one above it only if it takes descendants (and none that takes them when the change skips them),
+        // ".../a/b" is not ".../a/bc", the observer that tells hears it only if it asks for its own, and a collection of URIs
+        // is told (Android 11's notifyChange of a Collection, by reflection: a stub that told no one).
+        step("observer-tree", () -> {
+            final android.content.ContentResolver cr = getContentResolver();
+            final StringBuilder heard = new StringBuilder();
+            class Heard extends android.database.ContentObserver {
+                final String name; final boolean self;
+                Heard(String name, boolean self) { super(null); this.name = name; this.self = self; }
+                @Override public boolean deliverSelfNotifications() { return self; }
+                @Override public void onChange(boolean selfChange, android.net.Uri u) { heard.append(name).append(selfChange ? "*" : "").append(':').append(u.getLastPathSegment()).append(' '); }
+            }
+            android.net.Uri a = android.net.Uri.parse("content://megler.test.data.tree/a");
+            android.net.Uri b = android.net.Uri.withAppendedPath(a, "b"), bc = android.net.Uri.withAppendedPath(a, "bc");
+            Heard[] all = { new Heard("A", false), new Heard("AD", false), new Heard("B", false), new Heard("BC", false), new Heard("S", true), new Heard("N", false) };
+            cr.registerContentObserver(a, false, all[0]);
+            cr.registerContentObserver(a, true, all[1]);
+            cr.registerContentObserver(b, false, all[2]);
+            cr.registerContentObserver(bc, true, all[3]);
+            cr.registerContentObserver(b, false, all[4]);
+            cr.registerContentObserver(b, false, all[5]);
+            try {
+                cr.notifyChange(b, all[4]);
+                heard.append("| ");
+                cr.notifyChange(a, all[5]);
+                heard.append("| ");
+                cr.notifyChange(a, null, android.content.ContentResolver.NOTIFY_SKIP_NOTIFY_FOR_DESCENDANTS);
+                heard.append("| ");
+                android.content.ContentResolver.class.getMethod("notifyChange", java.util.Collection.class, android.database.ContentObserver.class, int.class)
+                    .invoke(cr, java.util.Collections.singletonList(android.net.Uri.withAppendedPath(bc, "x")), null, 0);
+            } finally {
+                for (Heard h : all) cr.unregisterContentObserver(h);
+            }
+            detail = heard.toString().trim();
+            return detail.equals("AD:b B:b S*:b N:b | A:a AD:a B:a BC:a S:a | A:a B:a S:a N:a | AD:x BC:x");
+        });
         // A typeface built from a font file open on a descriptor (Typeface.Builder(FileDescriptor), as Google Play services
         // loads its downloaded fonts): made, and the descriptor still open after.
         step("typeface-descriptor", () -> {
