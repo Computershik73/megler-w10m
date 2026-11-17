@@ -8052,11 +8052,43 @@ public class Main extends Activity {
                 new android.graphics.drawable.ColorDrawable(0xff000000) });
             none.setLayerInset(0, 5, 5, 5, 5);
             String sizes = sizeless.getIntrinsicWidth() + "x" + sizeless.getIntrinsicHeight() + ", " + none.getIntrinsicWidth() + "x" + none.getIntrinsicHeight();
+            // The middle thumb's icon is a tinted <bitmap> in a <rotate> (ic_brightness_6_with_bg): a bitmap's copy has the tint,
+            // gravity and alpha its state had when it was asked for (a white square drawn green in the middle of its bounds),
+            // and what is set on the drawable afterwards stays its own; a shape's copy has the shape's tint.
+            android.graphics.Bitmap white = android.graphics.Bitmap.createBitmap(8, 8, android.graphics.Bitmap.Config.ARGB_8888);
+            white.eraseColor(0xffffffff);
+            android.graphics.drawable.BitmapDrawable glyph = new android.graphics.drawable.BitmapDrawable(getResources(), white);
+            glyph.setGravity(android.view.Gravity.CENTER);
+            glyph.setTintList(android.content.res.ColorStateList.valueOf(0xff00aa00));
+            android.graphics.drawable.RotateDrawable turned = new android.graphics.drawable.RotateDrawable();
+            turned.setDrawable(glyph);
+            turned.setFromDegrees(90);
+            turned.setToDegrees(90);
+            android.graphics.drawable.LayerDrawable middle = new android.graphics.drawable.LayerDrawable(new android.graphics.drawable.Drawable[] { turned });
+            android.graphics.drawable.Drawable.ConstantState glyphState = glyph.getConstantState();
+            android.graphics.drawable.Drawable mc = middle.mutate().getConstantState().newDrawable(getResources());
+            glyph.setAlpha(10);
+            glyph.setTintList(android.content.res.ColorStateList.valueOf(0xffff0000));
+            android.graphics.drawable.Drawable before = glyphState.newDrawable(getResources()), after = glyph.getConstantState().newDrawable(getResources());
+            android.graphics.Bitmap mb = android.graphics.Bitmap.createBitmap(32, 32, android.graphics.Bitmap.Config.ARGB_8888);
+            mc.setBounds(0, 0, 32, 32);
+            mc.draw(new android.graphics.Canvas(mb));
+            android.graphics.drawable.GradientDrawable plainShape = new android.graphics.drawable.GradientDrawable();
+            plainShape.setTint(0xff0000ff);
+            android.graphics.drawable.Drawable sc = plainShape.getConstantState().newDrawable();
+            android.graphics.Bitmap sb = android.graphics.Bitmap.createBitmap(8, 8, android.graphics.Bitmap.Config.ARGB_8888);
+            sc.setBounds(0, 0, 8, 8);
+            sc.draw(new android.graphics.Canvas(sb));
+            int glyphMiddle = mb.getPixel(16, 16), glyphCorner = mb.getPixel(1, 1), shapeTint = sb.getPixel(4, 4);
+            boolean tinted = glyphMiddle == 0xff00aa00 && glyphCorner == 0 && before.getAlpha() == 255 && after.getAlpha() == 10
+                && after instanceof android.graphics.drawable.BitmapDrawable && ((android.graphics.drawable.BitmapDrawable) after).getGravity() == android.view.Gravity.CENTER
+                && shapeTint == 0xff0000ff;
             detail = "copied=" + copied + " size " + w + "x" + h + " drawn=" + drawn + " (shape " + Integer.toHexString(shape) + ", icon "
                 + Integer.toHexString(icon) + ", corner " + Integer.toHexString(corner) + ", " + same + " of 644 points as the original's) sizeless "
-                + sizes;
+                + sizes + " tinted=" + tinted + " (glyph " + Integer.toHexString(glyphMiddle) + "/" + Integer.toHexString(glyphCorner) + ", alpha "
+                + before.getAlpha() + " then " + after.getAlpha() + ", shape " + Integer.toHexString(shapeTint) + ")";
             Log.i("DataTest", "thumb-copy " + detail);
-            return copied && w == 92 && h == 112 && drawn && "24x14, -1x-1".equals(sizes);
+            return copied && w == 92 && h == 112 && drawn && "24x14, -1x-1".equals(sizes) && tinted;
         });
         // A reference that comes to @null is no value in a styled attribute array: WhatsApp tints an image of its settings
         // with a colour that is @null by day and a colour by night (app:tint="@color/..."), and AppCompat asks hasValue and
