@@ -485,6 +485,12 @@ static void other_apps_find(void *user)
  * registration turned on, the check-in's Android ID, the accounts it signed in.
  */
 #define SERVICES_GUEST "/data/megler-services"
+/*
+ * And the folder an app's requests for its feature modules go to the Play Store in, and the Play Store's answers come back
+ * in (megler.PlaySplits, docs/PLAY-FEATURE-DELIVERY.md): <storage_dir>/services/play-splits, the same to every app
+ * whichever Google Play services it is run with -- the app may be on microG and the Play Store is not.
+ */
+#define PLAY_SPLITS_GUEST "/data/megler-play-splits"
 static bool service_package(const char *package)
 {
     return !strcmp(package, "com.google.android.gms") || !strcmp(package, "com.google.android.gsf") ||
@@ -683,6 +689,10 @@ void mg_run_files(const char *data_dir, const char *storage_dir, const char *pac
     mg_fs_configure(package, internal, own);
     mg_path_mkdirs(services);
     mg_fs_mount(SERVICES_GUEST, services);
+    free(services);
+    services = mg_sprintf("%s/services/play-splits", storage_dir);
+    mg_path_mkdirs(services);
+    mg_fs_mount(PLAY_SPLITS_GUEST, services);
     free(services);
     mg_run_storage(storage_dir, storage);
     was = others_dir;

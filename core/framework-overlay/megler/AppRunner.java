@@ -496,6 +496,8 @@ public final class AppRunner {
      * manifest has the activity and exports it, as Android requires of a component another app starts.
      */
     public static void startRequested(String cls) {
+        // (not an activity, but an app's requests for its feature modules, in the Play Store: megler.PlaySplits)
+        if (PlaySplits.requested(cls)) return;
         Manifest.Component c = Manifest.activity(cls);
         if (c == null || !c.exported) {
             android.util.Log.w("Megler", "another app asked for " + cls + ", which this app " + (c == null ? "does not have" : "does not export"));

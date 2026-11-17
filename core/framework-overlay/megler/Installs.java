@@ -106,6 +106,8 @@ public final class Installs {
         final int id;
         final File dir;
         final String packageName;
+        /** SessionParams.MODE_INHERIT_EXISTING: what the session holds is added to the APKs the app is installed with. */
+        final boolean inherit;
         boolean committed;
         /*
          * The names the app wrote its files under (openWrite), and the file each is in the folder: getNames gives the names
@@ -114,8 +116,9 @@ public final class Installs {
          * (status 6573) while the folder's names, an .apk added, were given (package 554).
          */
         final java.util.LinkedHashMap<String, String> written = new java.util.LinkedHashMap<>();
-        Session(int id, File dir, String packageName) { this.id = id; this.dir = dir; this.packageName = packageName; }
+        Session(int id, File dir, String packageName, boolean inherit) { this.id = id; this.dir = dir; this.packageName = packageName; this.inherit = inherit; }
         public int id() { return id; }
+        public boolean inherit() { return inherit; }
         public String packageName() { return packageName; }
         public boolean committed() { return committed; }
     }
@@ -123,14 +126,15 @@ public final class Installs {
     private static final java.util.HashMap<Integer, Session> sSessions = new java.util.HashMap<>();
     private static int sNext = 1;
 
-    public static synchronized int create(String packageName) {
+    public static int create(String packageName) { return create(packageName, false); }
+    public static synchronized int create(String packageName, boolean inherit) {
         Context app = AppRunner.application();
         int id = sNext++;
         File dir = new File(app != null ? app.getCacheDir() : new File("/data/local/tmp"), "megler-session-" + id);
         deleteTree(dir);
         dir.mkdirs();
-        sSessions.put(id, new Session(id, dir, packageName));
-        android.util.Log.i("Megler", "install: session " + id + " made" + (packageName != null ? " for " + packageName : ""));
+        sSessions.put(id, new Session(id, dir, packageName, inherit));
+        android.util.Log.i("Megler", "install: session " + id + " made" + (packageName != null ? " for " + packageName : "") + (inherit ? ", to add to the APKs it is installed with" : ""));
         return id;
     }
 
@@ -186,6 +190,10 @@ public final class Installs {
             finish(s, status, pkg, 3 /* STATUS_FAILURE_ABORTED */, "not for this phone");
             return;
         }
+        // A session that inherits the installed APKs and holds splits alone: they are added to the app's splits where it is
+        // installed, as Android's installer does (Play Store adds an app's on-demand feature modules so). One that holds a
+        // base too replaces the app, and goes Megler's way as a whole.
+        if (s.inherit && pkg != null && files.length > 0 && addSplits(s, status, pkg, files)) return;
         long want = apk != null ? apk.versionCode & 0xffffffffL : -1;
         String name = (pkg != null ? pkg : "app") + (files.length > 1 ? ".apks" : ".apk");
         // what there is before Megler has it: the app at its version, if the phone has it, and what Megler last told of the name
@@ -311,6 +319,29 @@ public final class Installs {
     private static String outcome(String name) {
         byte[] b = Native.appInstall(name);
         return b != null ? new String(b, java.nio.charset.StandardCharsets.UTF_8) : null;
+    }
+
+    /**
+     * The splits of a session that inherits the installed APKs, added to the app (Native.addSplit: this app or another the
+     * phone has). False, and nothing added, when a file is no split of the app -- a base, a session to be installed as a
+     * whole; else the session ends here, well or with the installer's STATUS_FAILURE_INVALID for a split that could not be
+     * added (one of another version than the app's, as Android refuses it).
+     */
+    private static boolean addSplits(Session s, android.content.IntentSender status, String pkg, File[] files) {
+        StringBuilder names = new StringBuilder();
+        // looked at first, all of them; then added
+        for (int pass = 0; pass < 2; pass++) for (File f : files) {
+            String name = Native.addSplit(pkg, f.getPath(), pass == 1);
+            if (name == null && pass == 0) return false;
+            if (name == null || name.isEmpty()) {
+                finish(s, status, pkg, 4 /* STATUS_FAILURE_INVALID */, f.getName() + " is a split that could not be added to the " + pkg + " the phone has"
+                                                                        + (names.length() > 0 ? " (added before it: " + names + ")" : ""));
+                return true;
+            }
+            if (pass == 1) names.append(names.length() > 0 ? ", " : "").append(name);
+        }
+        finish(s, status, pkg, 0, (files.length == 1 ? "the split " : "the splits ") + names + " added to " + pkg + ", which has " + (files.length == 1 ? "it" : "them") + " from its next start");
+        return true;
     }
 
     /* The session's outcome to its IntentSender, on the main thread; the session and its files gone. */

@@ -161,8 +161,12 @@
 # `pickers`, the intents of Android's documents UI, photo picker and camera app
 # answered by a stand-in for the shell's picker and camera (mg_java_tests.c,
 # system_pick): the results, the picked files' provider and the package
-# manager's answers. Their pictures are written to build/java-pictures as BMP
-# files. Each is then run
+# manager's answers. And `playclient` and `playstore`, Play Feature Delivery
+# (docs/PLAY-FEATURE-DELIVERY.md): an app that asks the Play Store for a
+# feature module as Play Core does, and a stand-in for the Play Store, run in
+# turn over one data folder as a phone's two processes have a folder in common
+# (six runs; mg_java_tests.c, run_playclient). Their pictures are written to
+# build/java-pictures as BMP files. Each is then run
 # once more with its calls of the shell's drawing recorded
 # (build/gfx-records/<app>.rec), for the Windows build to draw again.
 # --no-java leaves these out.
@@ -308,6 +312,19 @@ EOF
         echo "the Java test app splits (build/guest/java/splits.$bundle), unpacked and run through megler_run"
         MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL="*" wsl.exe -- bash -c "cp -u '$WROOT/build/guest/java/splits.$bundle' $WB/splits.$bundle && rm -rf $WB/java-data-splits && qemu-arm -L /usr/arm-linux-gnueabihf $WB/mg_tests --java splits $WB/splits.$bundle $WB/java-data-splits $WB/android-root '$WROOT/build/java-pictures' 0 720x1280@320 2>&1" || STATUS=1
       done
+      # Play Feature Delivery: the app that asks the Play Store for a feature module (playclient) and the stand-in for the Play
+      # Store (playstore), in turn over one data folder -- the client on a phone without the Play Store, then with one that
+      # takes no request up; the Play Store taking the request up and adding the module's split; the client with the module,
+      # asking for a second; the Play Store handing that one over as a file; the client taking it (run_playclient).
+      if [ -f "$ROOT/build/guest/java/playclient.apk" ] && [ -f "$ROOT/build/guest/java/playstore.apk" ]; then
+        MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL="*" wsl.exe -- bash -c "cp -u '$WROOT/build/guest/java/playclient.apk' $WB/playclient.apk && cp -u '$WROOT/build/guest/java/playstore.apk' $WB/playstore.apk && rm -rf $WB/java-data-play" || STATUS=1
+        for run in playclient:no-store playclient playstore playclient playstore playclient; do
+          app=${run%%:*}
+          script=; [ "$run" != "$app" ] && script=${run#*:}
+          echo "the Java test app $app (build/guest/java/$app.apk), through megler_run: Play Feature Delivery, ${script:-on what the runs before it left}"
+          MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL="*" wsl.exe -- bash -c "qemu-arm -L /usr/arm-linux-gnueabihf $WB/mg_tests --java $app $WB/$app.apk $WB/java-data-play $WB/android-root - 0 480x800@160 $script 2>&1" || STATUS=1
+        done
+      fi
       # The database app, twice: the second run on the data folder the first left, to find what it wrote. Only where the core has SQLite in it.
       if [ -n "$SQLITE_GCC" ] && [ -f "$ROOT/build/guest/java/data.apk" ]; then
         for run in 1 2; do

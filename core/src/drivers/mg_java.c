@@ -1333,6 +1333,90 @@ N(Native_appInstall)
     const char *name = text_of(c->args[0].l);
     c->ret.l = apps_package_ok(name) ? apps_file(mg_sprintf("%s/installs/%s.txt", J.config->apps_dir, name)) : NULL;
 }
+
+static char *other_apk_find(const char *package, void *user);
+
+/* A split's name as a part of a file's name: letters, digits, '_' and '.', and no "..". */
+static bool split_name_ok(const char *name)
+{
+    const char *p;
+    if (!name[0] || name[0] == '.' || strstr(name, "..")) return false;
+    for (p = name; *p; p++)
+        if (!((*p >= 'a' && *p <= 'z') || (*p >= 'A' && *p <= 'Z') || (*p >= '0' && *p <= '9') || *p == '_' || *p == '.')) return false;
+    return true;
+}
+
+/* One file's bytes into a new file; false, and nothing kept, when either could not be opened or the writing stopped short. */
+static bool copy_file(const char *from, const char *to)
+{
+    mg_file *in = mg_file_open(from, MG_O_READ, NULL), *out = in ? mg_file_open(to, MG_O_WRITE | MG_O_CREATE | MG_O_TRUNC, NULL) : NULL;
+    u8 *buf = (u8 *)mg_alloc(65536);
+    bool ok = in && out;
+    i64 n = 0;
+    while (ok && (n = mg_file_read(in, buf, 65536, NULL)) > 0) ok = mg_file_write(out, buf, (size_t)n, NULL) == n;
+    if (n < 0) ok = false;
+    if (out) mg_file_close(out);
+    if (in) mg_file_close(in);
+    free(buf);
+    if (!ok) mg_path_remove(to, NULL);
+    return ok;
+}
+
+/*
+ * addSplit(package, path, add): a split APK for an app the phone has -- this one, or another whose APK the shell told of
+ * (other_apk_find) -- put among that app's splits, as Android's installer does with a session that inherits the installed
+ * APKs (megler.Installs; Play Store adds an app's on-demand feature modules so: docs/PLAY-FEATURE-DELIVERY.md). The file,
+ * by its path among this app's files, has to be a split of that package at the installed base's version. It is copied into
+ * the folder the app's splits are read from at its start (megler_run_config.splits_dir, which the shell keeps beside the
+ * base as <base>.splits) under Android's name for an installed split, split_<name>.apk, whole or not at all. The split's
+ * name; "" when the file is a split of that app which could not be added; null when it is no split of that app at all (a
+ * base APK, which is a session to install as a whole). Without `add` the file is looked at and nothing is copied: the
+ * same answers, for a session to be decided on before any of it is added. The app has the split from its next start: one
+ * that runs is not given it.
+ */
+N(Native_addSplit)
+{
+    const char *package = text_of(c->args[0].l), *guest = text_of(c->args[1].l), *why = NULL;
+    bool own = !strcmp(package, J.package), add = c->args[2].z != 0;
+    char *host = mg_fs_host_path(guest), *base = own ? mg_strdup(J.config->apk_path) : other_apk_find(package, NULL), *dir = NULL, *to = NULL, *tmp = NULL;
+    mg_apk_info *part = (mg_apk_info *)mg_alloc(sizeof(*part)), *whole = (mg_apk_info *)mg_alloc(sizeof(*whole));
+    bool split = false;
+    c->ret.l = NULL;
+    if (!host || !mg_apk_read_info(host, part) || strcmp(part->package, package) || !part->split[0]) why = "the file is not a split of that app";
+    else if ((split = true) && !base) why = "where that app's APK is, is not known here";
+    else if (!mg_apk_read_info(base, whole) || whole->version_code != part->version_code) why = "the split is of another version than the app the phone has";
+    else if (!split_name_ok(part->split)) why = "the split's name is no file's name";
+    else if (!add) c->ret.l = mg_dvm_new_string(part->split);
+    else {
+        char **have = NULL;
+        mg_stat st;
+        int n;
+        dir = own && J.config->splits_dir ? mg_strdup(J.config->splits_dir) : mg_sprintf("%s.splits", base);
+        to = mg_sprintf("%s/split_%s.apk", dir, part->split);
+        tmp = mg_sprintf("%s.new", to);
+        mg_path_mkdirs(dir);
+        n = mg_apk_list_splits(dir, &have);
+        mg_apk_free_list(have, n);
+        if (n >= MAX_SPLITS && !mg_path_stat(to, &st, NULL))
+            mg_warn("java: %s has %d splits already, and a Java app is run with %d of them: the split %s may not be opened", package, n, MAX_SPLITS, part->split);
+        if (!copy_file(host, tmp)) why = "the file could not be copied to the app's splits";
+        else if (!mg_path_rename(tmp, to, NULL)) {
+            why = "the split the app has could not be replaced";
+            mg_path_remove(tmp, NULL);
+        } else c->ret.l = mg_dvm_new_string(part->split);
+    }
+    if (why && split) c->ret.l = mg_dvm_new_string("");
+    if (why && !split) mg_info("java: a file of an install session for %s is no split to add to it", package);
+    else if (why) mg_warn("java: a split is not added to %s: %s", package, why);
+    else if (add) mg_info("java: the split %s is added to %s (split_%s.apk beside its other splits); the app has it from its next start", part->split, package, part->split);
+    free(tmp);
+    free(to);
+    free(dir);
+    free(whole);
+    free(part);
+    free(base);
+    free(host);
+}
 /*
  * setOrientation(requested): how the activity in front wants the screen held, Android's SCREEN_ORIENTATION_* (megler.AppRunner
  * says it as activities come and go and as one calls setRequestedOrientation, "behind" already resolved), to the shell
@@ -1525,6 +1609,7 @@ static const mg_jhle k_native[] = {
     { "megler/Native", "appActivities", NULL, Native_appActivities },
     { "megler/Native", "appResIcon", NULL, Native_appResIcon },
     { "megler/Native", "appInstall", NULL, Native_appInstall },
+    { "megler/Native", "addSplit", NULL, Native_addSplit },
     { "megler/Native", "mediaSessionMetadata", NULL, Native_mediaSessionMetadata },
     { "megler/Native", "setClipboard", NULL, Native_setClipboard },
     { "megler/Native", "getClipboard", NULL, Native_getClipboard },

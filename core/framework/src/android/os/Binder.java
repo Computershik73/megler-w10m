@@ -7,13 +7,45 @@ public class Binder implements IBinder {
     public Binder() {}
     public Binder(String descriptor) { mDescriptor = descriptor; }
     public static final int getCallingPid() { return android.os.Process.myPid(); }
-    /* The app's uid, the one process's -- or Google Play services', for the length of a call their hosted code makes into a
-       provider of the app's, until the provider clears the identity (megler.Callers: Files by Google's shared folder). */
-    public static final int getCallingUid() { return megler.Callers.callingUid(); }
+    /*
+     * The app's uid, the one process's -- or, for the length of a call made as another's: Google Play services', for a call
+     * their hosted code makes into a provider of the app's (megler.Callers: Files by Google's shared folder); another app's,
+     * for a call passed on from its process (megler.PlaySplits gives the Play Store's split install service the request an
+     * app made of it, meglerCallingUid) -- until the callee clears the identity, as Binder tells a service on Android.
+     */
+    public static final int getCallingUid() {
+        if (Thread.currentThread() == sMeglerCaller && !sMeglerCallerCleared) return sMeglerCallerUid;
+        return megler.Callers.callingUid();
+    }
+    // Megler: the call passed on from another app's process (megler.PlaySplits), on the thread that makes it, until
+    // meglerCallingUid(-1). One such call at a time.
+    private static volatile Thread sMeglerCaller;
+    private static volatile int sMeglerCallerUid;
+    private static volatile boolean sMeglerCallerCleared;
+    private static final long RELAYED = 0x4D45474C52450001L, RELAYED_CLEARED = 0x4D45474C52450002L;
+    /** @hide */
+    public static void meglerCallingUid(int uid) {
+        sMeglerCallerUid = uid;
+        sMeglerCallerCleared = false;
+        sMeglerCaller = uid < 0 ? null : Thread.currentThread();
+    }
     public static final int getCallingUidOrThrow() { return getCallingUid(); }
     public static final UserHandle getCallingUserHandle() { return UserHandle.getUserHandleForUid(getCallingUid()); }
-    public static final long clearCallingIdentity() { return megler.Callers.clear(false); }
-    public static final void restoreCallingIdentity(long token) { megler.Callers.restore(token); }
+    public static final long clearCallingIdentity() {
+        if (Thread.currentThread() == sMeglerCaller) {
+            boolean was = sMeglerCallerCleared;
+            sMeglerCallerCleared = true;
+            return was ? RELAYED_CLEARED : RELAYED;
+        }
+        return megler.Callers.clear(false);
+    }
+    public static final void restoreCallingIdentity(long token) {
+        if (token == RELAYED || token == RELAYED_CLEARED) {
+            if (Thread.currentThread() == sMeglerCaller) sMeglerCallerCleared = token == RELAYED_CLEARED;
+            return;
+        }
+        megler.Callers.restore(token);
+    }
     public static final int getThreadStrictModePolicy() { return 0; }
     public static final void setThreadStrictModePolicy(int policyMask) {}
     public static final void flushPendingCommands() {}

@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The stand-in for the Play Store as far as an app's request for a feature module goes (tools/build-test-app.sh;
+     docs/PLAY-FEATURE-DELIVERY.md): an app of the Play Store's package, com.android.vending, with a split install service
+     under the action Play Core binds. Megler takes up the request of the other test app (playclient) in this app's process
+     and passes it to that service as the app's call (megler.PlaySplits); the service checks whose call it is and whether
+     that app is in front, as the Play Store's does, and answers as the Play Store does: the callback's onStartInstall, the
+     session's states as broadcasts to the app's package, and the module itself: for `extra` a PackageInstaller session
+     that inherits the app's APKs and holds the split, for `files` the split as a file of the app's FileProvider that
+     SplitCompat is to copy. The split is the APK this app carries (carries/, assets/carried.apk): a split of playclient.
+     What it does is in the log, which the test (core/tests/mg_java_tests.c, run_playstore) reads. -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="com.android.vending" android:versionCode="1" android:versionName="1.0">
+    <uses-sdk android:minSdkVersion="21" android:targetSdkVersion="28" />
+    <application android:label="@string/app_name">
+        <activity android:name="megler.test.playstore.Main" android:label="@string/app_name" android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+        <service android:name="megler.test.playstore.Splits" android:exported="true">
+            <intent-filter>
+                <action android:name="com.google.android.play.core.splitinstall.BIND_SPLIT_INSTALL_SERVICE" />
+            </intent-filter>
+        </service>
+        <provider android:name="megler.test.playstore.Files" android:authorities="com.android.vending.test.files" android:exported="false" android:grantUriPermissions="true" />
+    </application>
+</manifest>

@@ -37,6 +37,8 @@ final class PlayStore {
         if ("com.google.android.finsky.ageverification.BIND".equals(i.getAction())) return AGE_SIGNALS;
         if ("com.google.android.play.core.integrityservice.BIND_INTEGRITY_SERVICE".equals(i.getAction())) return INTEGRITY;
         if ("com.google.android.play.core.expressintegrityservice.BIND_EXPRESS_INTEGRITY_SERVICE".equals(i.getAction())) return EXPRESS_INTEGRITY;
+        // Play Feature Delivery's is no answer made here: the app's requests go to the Play Store the phone has (megler.PlaySplits).
+        if (PlaySplits.ACTION.equals(i.getAction())) return PlaySplits.bind(i);
         return null;
     }
 

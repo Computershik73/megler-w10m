@@ -147,6 +147,8 @@ public final class Broadcasts {
         if (MicroG.send(from, i)) return;
         // And one of the implicit broadcasts Google's system configuration lets through (CHECKIN_COMPLETE) to its receivers too.
         MicroG.sendImplicit(from, i);
+        // The Play Store's word to another app of the feature modules that app asked it for goes to that app (megler.PlaySplits).
+        if (PlaySplits.broadcast(i)) return;
         ArrayList<Object[]> targets = targets(from, i, permission, also, holdsAlso);
         Handler main = new Handler(Looper.getMainLooper());
         final Object[] sender = sharedSender(from, options);
