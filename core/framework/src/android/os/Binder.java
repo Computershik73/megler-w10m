@@ -7,7 +7,17 @@ public class Binder implements IBinder {
     public Binder() {}
     public Binder(String descriptor) { mDescriptor = descriptor; }
     public static final int getCallingPid() { return android.os.Process.myPid(); }
-    public static final int getCallingUid() { return android.os.Process.myUid(); }
+    public static final int getCallingUid() { return Thread.currentThread() == sMeglerCaller ? sMeglerCallerUid : android.os.Process.myUid(); }
+    // Megler: a call passed on from another app's process (megler.PlaySplits gives the Play Store's split install service the
+    // request an app made of it) is that app's call: for the thread that makes it, until meglerCallingUid(-1), the calling
+    // uid is the app's -- what Binder tells the service on Android. One such call at a time.
+    private static volatile Thread sMeglerCaller;
+    private static volatile int sMeglerCallerUid;
+    /** @hide */
+    public static void meglerCallingUid(int uid) {
+        sMeglerCallerUid = uid;
+        sMeglerCaller = uid < 0 ? null : Thread.currentThread();
+    }
     public static final int getCallingUidOrThrow() { return getCallingUid(); }
     public static final UserHandle getCallingUserHandle() { return UserHandle.getUserHandleForUid(getCallingUid()); }
     public static final long clearCallingIdentity() { return 0; }

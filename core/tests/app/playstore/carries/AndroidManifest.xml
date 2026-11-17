@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The feature module the stand-in Play Store has for the app playclient (megler.test.playclient): a split of that app,
+     named extra, with code alone. tools/build-test-app.sh makes it the Play Store stand-in's assets/carried.apk. -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="megler.test.playclient" split="extra" android:versionCode="1" android:isFeatureSplit="true">
+    <application android:hasCode="true" />
+</manifest>

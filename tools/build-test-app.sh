@@ -32,6 +32,13 @@
 # platform's resources with a ResourcesLoader, as Google Play services'
 # DynamiteLoader puts a module's.
 #
+# An app with a carries/ folder (an AndroidManifest.xml and src/) carries an
+# APK made of those two alone, as assets/carried.apk: the manifest as aapt2
+# links it with no resources, and the sources' classes.dex. It is a split of
+# another app -- its manifest names that app's package and the split -- which
+# the stand-in for the Play Store (playstore) adds to that app (playclient)
+# as the Play Store adds an app's on-demand feature module.
+#
 # An app with a stubs/ folder is compiled against those classes before
 # android.jar's, and they are not in its DEX file: the platform's classes as a
 # later Android has them, for code that calls what android.jar has not (the data
@@ -187,14 +194,35 @@ for app in "$APPS"/*/; do
     [ -f "$W/loader.apk" ] || { echo "aapt2 could not make $name's loader APK" >&2; exit 1; }
     LOADER="$(m "$W/loader.apk")"
   fi
-  python - "$(m "$W/base.apk")" "$(m "$W/dex/classes.dex")" "$(m "$apk")" "$(m "$W/lib")" "$MODULE" "$LOADER" <<'EOF'
+  CARRIED=-
+  CARRIEDDEX=-
+  if [ -d "$app/carries" ]; then
+    # A split APK of another app: a manifest that names that app and the split, linked with no resources, and code.
+    mkdir -p "$W/carried-classes" "$W/carried-dex"
+    "$BT/aapt2.exe" link -o "$(m "$W/carried.apk")" -I "$(m "$JAR")" --manifest "$(m "$app/carries/AndroidManifest.xml")" 2>&1 | { grep -v "is compressed" || true; }
+    [ -f "$W/carried.apk" ] || { echo "aapt2 could not make the APK $name carries" >&2; exit 1; }
+    find "$app/carries/src" -name '*.java' | sed -E 's|^/([a-zA-Z])/|\1:/|; s|.*|"&"|' > "$W/carried-sources.arg"
+    "$JDK/bin/javac" -nowarn -source 8 -target 8 -encoding UTF-8 -bootclasspath "$(m "$JAR")" -d "$(m "$W/carried-classes")" "@$(m "$W/carried-sources.arg")" 2> "$W/javac.log" \
+      || { grep -v '^Note:\|^warning:' "$W/javac.log" | head -40 >&2; echo "javac failed for the APK $name carries" >&2; exit 1; }
+    (cd "$W/carried-classes" && "$JDK/bin/jar" cf ../carried.jar .)
+    "$JDK/bin/java" -cp "$(m "$BT/lib/d8.jar")" com.android.tools.r8.D8 --release --min-api 26 --lib "$(m "$JAR")" --output "$(m "$W/carried-dex")" "$(m "$W/carried.jar")" 2> "$W/d8.log" \
+      || { head -40 "$W/d8.log" >&2; echo "d8 failed for the APK $name carries" >&2; exit 1; }
+    CARRIED="$(m "$W/carried.apk")"
+    CARRIEDDEX="$(m "$W/carried-dex/classes.dex")"
+  fi
+  python - "$(m "$W/base.apk")" "$(m "$W/dex/classes.dex")" "$(m "$apk")" "$(m "$W/lib")" "$MODULE" "$LOADER" "$CARRIED" "$CARRIEDDEX" <<'EOF'
 import os, shutil, sys, zipfile
-base, dex, out, libs, module, loader = sys.argv[1:7]
+base, dex, out, libs, module, loader, carried, carried_dex = sys.argv[1:9]
 shutil.copyfile(base, out)
+if carried != '-':
+    with zipfile.ZipFile(carried, 'a', zipfile.ZIP_DEFLATED) as z:
+        z.write(carried_dex, 'classes.dex')
 with zipfile.ZipFile(out, 'a', zipfile.ZIP_DEFLATED) as z:
     z.write(dex, 'classes.dex')
     if loader != '-':
         z.write(loader, 'assets/loader.apk', zipfile.ZIP_STORED)
+    if carried != '-':
+        z.write(carried, 'assets/carried.apk', zipfile.ZIP_STORED)
     if module != '-':
         z.write(module, 'assets/module.dex')
         # 3 MB of a pattern that deflates well, byte i being (i * 31 + (i >> 12)) & 255: AssetManager.open inflates an
