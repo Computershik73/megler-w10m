@@ -498,6 +498,15 @@ static void test_gc_stops_and_locks(void)
     mg_dvm_gc_set_alongside(true);
     mg_dvm_gc_set_min_budget(1u << 20);
     for (i = 0; i < 3000; i++) mg_dvm_new_array("[B", 2000);
+    /* (At least three of them while the thread works: more made until they have come, for twenty seconds at the most -- in
+       the emulator, beside the other tests, two had come by the time the first 6 MB were made.) */
+    until = mg_time_monotonic_ns() + 20000000000ull;
+    for (;;) {
+        mg_dvm_gc_totals(&after, &pause);
+        if (after >= before + 3 || mg_time_monotonic_ns() >= until) break;
+        for (i = 0; i < 300; i++) mg_dvm_new_array("[B", 2000);
+        mg_sleep_ns(20000000ull);
+    }
     mg_sleep_ns(300000000ull);
     g_fields_stop = 1;
     while (!g_fields_done) mg_thread_yield();

@@ -2401,7 +2401,9 @@ static int run_hello(void)
        ended, the shell's cue to close as the app goes. */
     {
         int tries;
-        const int answer = megler_back(400, 10000);
+        /* (A second of quiet: the app's end, after its activity is destroyed, took 180 to 410 ms in the emulator beside the
+           other tests, and a quiet of 400 ms then said "showed nothing new".) */
+        const int answer = megler_back(1000, 10000);
         expect_line("I/HelloTest: back 4 finishes in 100 ms", &at, 10);
         CHECK(answer == MEGLER_BACK_ENDED);
         expect_line("I/HelloTest: onDestroy presses=12", &at, 30);
