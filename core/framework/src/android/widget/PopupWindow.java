@@ -154,20 +154,37 @@ public class PopupWindow {
         WindowManager.LayoutParams p = createParams();
         p.token = anchor.getWindowToken();
         preparePopup();
-        findDropDownPosition(anchor, p, xoff, yoff, gravity);
+        /*
+         * Placed under the anchor and added first; then, of a size its content decides, measured in its window and placed
+         * where that size has it go (above the anchor when it does not fit under it). Its content is not measured before its
+         * window has it, as on Android, where nothing of a popup is: OneDrive's drop-down menu is a ComposeView, which cannot
+         * be measured before it is in a window ("Cannot locate windowRecomposer; View ... is not attached to a window"), and
+         * the app ended as the menu was opened.
+         */
+        findDropDownPosition(anchor, p, xoff, yoff, gravity, false);
         mWindowManager.addView(mDecorView, p);
+        if (mWidth < 0 || mHeight < 0) {
+            findDropDownPosition(anchor, p, xoff, yoff, gravity, true);
+            mWindowManager.updateViewLayout(mDecorView, p);
+        }
     }
     private void findDropDownPosition(View anchor, WindowManager.LayoutParams p, int xoff, int yoff, int gravity) {
+        findDropDownPosition(anchor, p, xoff, yoff, gravity, true);
+    }
+    /* `measure`: a size the content decides is measured (the popup is in its window); otherwise it is taken as none. */
+    private void findDropDownPosition(View anchor, WindowManager.LayoutParams p, int xoff, int yoff, int gravity, boolean measure) {
         anchor.getLocationOnScreen(mTmp);
         int ax = mTmp[0], ay = mTmp[1];
         int sw = megler.Native.screenWidth(), sh = megler.Native.screenHeight();
         // measure to flip above when it does not fit below, and to keep it on screen
         int w = mWidth, h = mHeight;
-        if (w < 0 || h < 0) {
+        if ((w < 0 || h < 0) && measure) {
             mDecorView.measure(View.MeasureSpec.makeMeasureSpec(sw, mWidth == ViewGroup.LayoutParams.MATCH_PARENT ? View.MeasureSpec.EXACTLY : View.MeasureSpec.AT_MOST), View.MeasureSpec.makeMeasureSpec(sh, View.MeasureSpec.AT_MOST));
             if (w < 0) w = mDecorView.getMeasuredWidth();
             if (h < 0) h = mDecorView.getMeasuredHeight();
         }
+        if (w < 0) w = 0;
+        if (h < 0) h = 0;
         int x = ax + xoff, y = ay + (mOverlapAnchor ? 0 : anchor.getHeight()) + yoff;
         if ((Gravity.getAbsoluteGravity(gravity, anchor.getLayoutDirection()) & Gravity.HORIZONTAL_GRAVITY_MASK) == Gravity.RIGHT) x = ax + anchor.getWidth() - w + xoff;
         Rect frame = new Rect();

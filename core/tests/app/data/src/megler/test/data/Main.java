@@ -1759,6 +1759,26 @@ public class Main extends Activity {
             }, 500);
             return true;
         });
+        // A drop-down popup whose content cannot be measured before it is in a window, as a ComposeView cannot (OneDrive's menu
+        // ended the app: "Cannot locate windowRecomposer ... not attached to a window"): shown, its content measured attached.
+        step("popup-measured-attached", () -> {
+            final boolean[] unattached = new boolean[1];
+            final int[] measures = new int[1];
+            android.view.View content = new android.view.View(this) {
+                @Override protected void onMeasure(int w, int h) {
+                    measures[0]++;
+                    if (!isAttachedToWindow()) { unattached[0] = true; throw new IllegalStateException("measured before it is in a window"); }
+                    setMeasuredDimension(120, 80);
+                }
+            };
+            android.widget.PopupWindow popup = new android.widget.PopupWindow(content, android.view.ViewGroup.LayoutParams.WRAP_CONTENT,
+                    android.view.ViewGroup.LayoutParams.WRAP_CONTENT);
+            popup.showAsDropDown(text);
+            boolean showing = popup.isShowing();
+            popup.dismiss();
+            detail = "showing=" + showing + " measures=" + measures[0] + " unattached=" + unattached[0];
+            return showing && measures[0] > 0 && !unattached[0];
+        });
         // A change told as Android's ContentService tells it (ContentResolver.notifyChange): an observer at the changed URI or
         // below it hears it, one above it only if it takes descendants (and none that takes them when the change skips them),
         // ".../a/b" is not ".../a/bc", the observer that tells hears it only if it asks for its own, and a collection of URIs
