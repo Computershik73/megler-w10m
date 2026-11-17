@@ -653,9 +653,12 @@ public final class MicroG {
     /**
      * Whether the code that called into the framework is Google Play services' own, hosted in an app's process: the closest
      * class loader up the stack is GmsCore's (isGmsLoader), and the app is not GmsCore itself. android.os.Process.killProcess
-     * asks, as their call means their own process there.
+     * asks, as their call means their own process there. Where they are not loaded at all, as in most apps, the stack is not
+     * looked at: every call of an app's into a provider of its own asks this (megler.Callers).
      */
     public static boolean calledByHosted() {
+        MicroG g = loaded();
+        if (g == null || g.loader == null) return false;
         return !GooglePackages.GMS.equals(Native.packageName()) && isGmsLoader(dalvik.system.VMStack.getClosestUserClassLoader());
     }
     private synchronized ClassLoader loader() {
