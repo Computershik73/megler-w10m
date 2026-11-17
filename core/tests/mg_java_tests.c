@@ -2289,6 +2289,9 @@ static int run_hello(void)
         const int before = g_nlines;
         megler_set_paused(true);
         expect_line("I/HelloTest: onPause draws=true", &at, 30);
+        /* (and, its activity stopped, the activity told to let go of what only its UI needed: TRIM_MEMORY_UI_HIDDEN) */
+        expect_line("I/HelloTest: onStop", &at, 30);
+        expect_line("I/HelloTest: onTrimMemory 20", &at, 30);
         CHECK(wait_line("hot: the app is not on the screen and nothing of it is heard", before, 40) >= 0);
         megler_set_paused(false);
         expect_line("I/HelloTest: onResume", &at, 30);

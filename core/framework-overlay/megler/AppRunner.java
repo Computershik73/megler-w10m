@@ -923,6 +923,26 @@ public final class AppRunner {
     }
     /** The activities the host's hidden window stopped (hostPause), in the stack's order: started again as it comes back. */
     private static final ArrayList<Activity> sStoppedByHost = new ArrayList<>();
+    /*
+     * As Android's ActivityThread is told once no window of the process's is seen (ActivityManager's TRIM_MEMORY_UI_HIDDEN,
+     * after the activities stopped): the activities, the services that run and the Application -- and through it the
+     * callbacks registered with it -- are asked to let go of what only their UI needed. Glide clears its memory cache of
+     * images there. It was never told, and a minimized app, which the shell keeps running (Settings, In the Background),
+     * kept every cache it had. An exception of an app's there is logged, not the end of the app it would be on Android.
+     */
+    private static void trimMemory(int level) {
+        ArrayList<ComponentCallbacks2> to = new ArrayList<>(sStack);
+        to.addAll(Services.running());
+        if (sApp != null) to.add(sApp);
+        android.util.Log.i("Megler", "the window is hidden: onTrimMemory(" + level + ") to " + to.size() + " component(s)");
+        for (ComponentCallbacks2 c : to) {
+            try {
+                c.onTrimMemory(level);
+            } catch (RuntimeException e) {
+                android.util.Log.w("Megler", "onTrimMemory of " + c.getClass().getName(), e);
+            }
+        }
+    }
     private static void hostPause(boolean pause) {
         if (pause == sPausedByHost) return;
         sPausedByHost = pause;
@@ -950,6 +970,7 @@ public final class AppRunner {
                 s.meglerStop(true);
                 sStoppedByHost.add(0, s);
             }
+            trimMemory(android.content.ComponentCallbacks2.TRIM_MEMORY_UI_HIDDEN);
             return;
         }
         // Those it stopped start again, the lowest first, unless they went meanwhile or another covered them (a stop of the
