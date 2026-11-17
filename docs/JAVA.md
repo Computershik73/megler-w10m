@@ -800,7 +800,13 @@ ids from `AUTOINCREMENT`. `query` with a selection and arguments, ordered,
 read through a `Cursor`. `types`: `Cursor.getType` for each of the five, a
 blob byte for byte, an integer read as a string and a real as an int.
 `update` and `delete` with their counts. `rollback`: a transaction ended
-without `setTransactionSuccessful` leaves nothing. `commit`. `constraint`:
+without `setTransactionSuccessful` leaves nothing. `commit`.
+`deferred-transaction`: the hidden `getThreadSession` found among
+`SQLiteDatabase`'s declared methods and the session's `beginTransaction`
+with the mode 0, as androidx.sqlite and Google Play services reach a
+deferred transaction; while it has only read, a second connection to the
+file takes the write lock; what it then writes is committed by the
+database's `endTransaction`. `constraint`:
 `insertOrThrow` of a duplicate is `SQLiteConstraintException`, `insert`
 answers -1. `statement`: `compileStatement`, `simpleQueryForLong`,
 `executeUpdateDelete`. `text`: Cyrillic, a euro sign and an emoji go in and
@@ -4903,6 +4909,29 @@ of 2.5 s, the collations `LOCALIZED` (ASCII case ignored) and `UNICODE` (byte
 order) that Android registers on every connection, strings bound and read as
 the UTF-16 Java keeps them in. An app's path
 (`/data/data/<package>/databases/x.db`) is turned into the host's.
+
+**Transactions and the session.** `beginTransaction` is SQLite's `BEGIN
+EXCLUSIVE` and `beginTransactionNonExclusive` its `BEGIN IMMEDIATE`, as on
+Android. A deferred one -- plain `BEGIN`, which takes no write lock until
+something is written, so that a transaction that only reads keeps no other
+connection or process out -- is Android 15's `beginTransactionReadOnly`, and
+before it is reached only by reflection: the hidden
+`SQLiteDatabase.getThreadSession()` and the session's
+`beginTransaction(0, listener, 0, null)`. Google Play services' databases do
+that (26.41.31; where the method is not found, "Unable to reflect
+getThreadSession" in the log and an exclusive transaction for each read, which
+is what every app that hosts them had here), and androidx.sqlite looks the two
+up the same way for its `beginTransactionReadOnly` (Files by Google).
+`SQLiteDatabase.getThreadSession` (not public, as on Android) gives a
+`SQLiteSession` (`core/framework-overlay`) with Android's transaction calls --
+the three modes, `hasTransaction`, `hasNestedTransaction`, `hasConnection`,
+`beginTransaction`, `setTransactionSuccessful`, `endTransaction`,
+`yieldTransaction` -- and none of the statements Android's session runs as
+well. The database here is one connection, which a transaction keeps for its
+thread: there is one session, it answers for the thread that asks, and its
+transaction is the database's own, ended through either. A transaction keeps
+its mode, with which a yield begins it again, and the framework's own
+`beginTransactionReadOnly` is deferred too (it began an immediate one).
 
 **Which SQLite.** These natives, as written for the framework on iOS, take
 whatever SQLite the system has, and use 35 functions of its API, none of them new: `open_v2`,

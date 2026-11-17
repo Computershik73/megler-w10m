@@ -222,6 +222,48 @@ public class Main extends Activity {
             }
             return count(db) == 3 && DatabaseUtils.longForQuery(db, "SELECT stars FROM notes WHERE title = 'delta'", null) == 2;
         });
+        step("deferred-transaction", () -> {
+            /* A deferred transaction, which takes no write lock until it writes, the way androidx.sqlite (Room's read
+               transactions) and Google Play services reach one before Android 15: SQLiteDatabase's hidden getThreadSession,
+               found among its declared methods, and the session's beginTransaction with the mode 0. While it has only read, a
+               second connection to the file takes the write lock at once (after beginTransaction, an exclusive one, it would
+               wait and say the database is locked); what it writes then is committed by the database's own endTransaction. */
+            java.lang.reflect.Method getThreadSession = SQLiteDatabase.class.getDeclaredMethod("getThreadSession");
+            getThreadSession.setAccessible(true);
+            java.lang.reflect.Method begin = getThreadSession.getReturnType().getDeclaredMethod("beginTransaction", int.class,
+                    android.database.sqlite.SQLiteTransactionListener.class, int.class, android.os.CancellationSignal.class);
+            Object session = getThreadSession.invoke(db);
+            boolean had = (Boolean) session.getClass().getMethod("hasTransaction").invoke(session);
+            begin.invoke(session, 0, null, 0, null);
+            boolean inside, has, nested, free = false;
+            long read;
+            String refused = null;
+            try {
+                inside = db.inTransaction();
+                has = (Boolean) session.getClass().getMethod("hasTransaction").invoke(session);
+                nested = (Boolean) session.getClass().getMethod("hasNestedTransaction").invoke(session);
+                read = count(db);
+                SQLiteDatabase second = SQLiteDatabase.openDatabase(db.getPath(), null, SQLiteDatabase.OPEN_READWRITE);
+                try {
+                    second.beginTransactionNonExclusive();
+                    second.endTransaction();
+                    free = true;
+                } catch (SQLiteException e) {
+                    refused = e.toString();
+                } finally {
+                    second.close();
+                }
+                db.insertOrThrow("notes", null, note("epsilon", "deferred", 3, 1.0, null));
+                db.setTransactionSuccessful();
+            } finally {
+                db.endTransaction();
+            }
+            long after = count(db);
+            int removed = db.delete("notes", "title = ?", new String[] { "epsilon" });
+            detail = "session=" + session.getClass().getName() + " had=" + had + " inside=" + inside + " has=" + has + " nested=" + nested + " read=" + read
+                    + " free=" + free + (refused != null ? " (" + refused + ")" : "") + " after=" + after + " removed=" + removed;
+            return !had && inside && has && !nested && read == 3 && free && !db.inTransaction() && after == 4 && removed == 1 && count(db) == 3;
+        });
         step("constraint", () -> {
             boolean thrown = false;
             try {
