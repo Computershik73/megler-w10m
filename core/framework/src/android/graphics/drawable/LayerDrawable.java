@@ -60,8 +60,26 @@ public class LayerDrawable extends Drawable implements Drawable.Callback {
        are one (MigProfileImage's user tile: the picture's round shape, a badge and the initials, in Litho's MatrixDrawable),
        and so are ripples with their content (RippleDrawable), a view's background told it is not shown. */
     @Override public void draw(Canvas c) { for (Layer y : mLayers) if (y.d != null) y.d.draw(c); }
-    @Override public int getIntrinsicWidth() { int w = -1; for (Layer y : mLayers) if (y.d != null) w = Math.max(w, (y.w > 0 ? y.w : y.d.getIntrinsicWidth()) + y.l + y.r); return w; }
-    @Override public int getIntrinsicHeight() { int h = -1; for (Layer y : mLayers) if (y.d != null) h = Math.max(h, (y.h > 0 ? y.h : y.d.getIntrinsicHeight()) + y.t + y.b); return h; }
+    /* The largest of the layers' sizes with their insets; a layer of no size of its own (a shape without <size>, a colour)
+       counts for nothing, its insets neither, as Android's: they made a shape layer inset by 30 pixels each side 59 wide. */
+    @Override public int getIntrinsicWidth() {
+        int w = -1;
+        for (Layer y : mLayers) {
+            if (y.d == null) continue;
+            int own = y.w > 0 ? y.w : y.d.getIntrinsicWidth();
+            if (own >= 0) w = Math.max(w, own + y.l + y.r);
+        }
+        return w;
+    }
+    @Override public int getIntrinsicHeight() {
+        int h = -1;
+        for (Layer y : mLayers) {
+            if (y.d == null) continue;
+            int own = y.h > 0 ? y.h : y.d.getIntrinsicHeight();
+            if (own >= 0) h = Math.max(h, own + y.t + y.b);
+        }
+        return h;
+    }
     @Override public boolean getPadding(Rect p) {
         p.set(0, 0, 0, 0);
         Rect q = new Rect();

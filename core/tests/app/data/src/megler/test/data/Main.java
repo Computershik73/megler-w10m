@@ -8039,10 +8039,24 @@ public class Main extends Activity {
                 for (int y = 0; y < 112; y += 4) for (int x = 0; x < 92; x += 4) if (bm.getPixel(x, y) == bo.getPixel(x, y)) same++;
                 drawn = shape == 0xff336699 && icon == 0xffff8000 && corner == 0 && same == 23 * 28;
             }
+            // A layer of no size of its own adds nothing to the list's size, its insets neither (Android's getIntrinsicWidth): the
+            // shape inset by 30 each side is left out, the 20 x 10 one with its insets of 2 counts. They made it 59 x 59.
+            android.graphics.drawable.ShapeDrawable box = new android.graphics.drawable.ShapeDrawable();
+            box.setIntrinsicWidth(20);
+            box.setIntrinsicHeight(10);
+            android.graphics.drawable.LayerDrawable sizeless = new android.graphics.drawable.LayerDrawable(new android.graphics.drawable.Drawable[] {
+                new android.graphics.drawable.GradientDrawable(), box });
+            sizeless.setLayerInset(0, 30, 30, 30, 30);
+            sizeless.setLayerInset(1, 2, 2, 2, 2);
+            android.graphics.drawable.LayerDrawable none = new android.graphics.drawable.LayerDrawable(new android.graphics.drawable.Drawable[] {
+                new android.graphics.drawable.ColorDrawable(0xff000000) });
+            none.setLayerInset(0, 5, 5, 5, 5);
+            String sizes = sizeless.getIntrinsicWidth() + "x" + sizeless.getIntrinsicHeight() + ", " + none.getIntrinsicWidth() + "x" + none.getIntrinsicHeight();
             detail = "copied=" + copied + " size " + w + "x" + h + " drawn=" + drawn + " (shape " + Integer.toHexString(shape) + ", icon "
-                + Integer.toHexString(icon) + ", corner " + Integer.toHexString(corner) + ", " + same + " of 644 points as the original's)";
+                + Integer.toHexString(icon) + ", corner " + Integer.toHexString(corner) + ", " + same + " of 644 points as the original's) sizeless "
+                + sizes;
             Log.i("DataTest", "thumb-copy " + detail);
-            return copied && w == 92 && h == 112 && drawn;
+            return copied && w == 92 && h == 112 && drawn && "24x14, -1x-1".equals(sizes);
         });
         // A reference that comes to @null is no value in a styled attribute array: WhatsApp tints an image of its settings
         // with a colour that is @null by day and a colour by night (app:tint="@color/..."), and AppCompat asks hasValue and
