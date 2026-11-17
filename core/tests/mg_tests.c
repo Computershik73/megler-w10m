@@ -7312,6 +7312,32 @@ static void sql_two(const char *what, mg_lib *la, const char *pa, mg_lib *lb, co
     CHECK_INT(bad, 0);
 }
 
+/* What the file layer says of a database's files (mg_libc_io.c's db_file and the lines by it), kept while it is listened to. */
+static char g_sql_lines[1500];
+static mg_log_sink g_sql_before;
+static void *g_sql_before_user;
+
+static void sql_sink(int level, const char *line, void *user)
+{
+    size_t have = strlen(g_sql_lines);
+    (void)user;
+    if (strstr(line, "files: ") && have + strlen(line) + 2 < sizeof(g_sql_lines)) snprintf(g_sql_lines + have, sizeof(g_sql_lines) - have, "%s\n", line);
+    if (g_sql_before) g_sql_before(level, line, g_sql_before_user);
+}
+
+static void sql_listen(bool on)
+{
+    if (on) {
+        g_sql_lines[0] = 0;
+        mg_log_get_sink(&g_sql_before, &g_sql_before_user);
+        mg_log_set_sink(sql_sink, NULL);
+    } else {
+        size_t n = strlen(g_sql_lines);
+        mg_log_set_sink(g_sql_before, g_sql_before_user);
+        if (n && g_sql_lines[n - 1] == '\n') g_sql_lines[n - 1] = 0;
+    }
+}
+
 /*
  * What SQLite takes from the file layer beyond reads and writes: a file's inode number, by which it knows an open file.
  * One database under the two names of one folder (/data/data/<package> and /data/user/0/<package> on Android) is one
@@ -7339,9 +7365,15 @@ static void test_guest_sqlite_names(mg_lib *lib, const char *dir)
     for (i = 0; i < 30 && !rc; i++) rc = SQL_EXEC(lib, old, "INSERT INTO t(n, pad) VALUES(1, zeroblob(3000))");
     CHECK_INT(rc, 0);
     CHECK_INT(SQL_INT(lib, old, "SELECT count(*) FROM t"), 30);
+    sql_listen(true);
     CHECK_INT(unlink_("/sql/again.db"), 0);
     unlink_("/sql/again.db-wal");
     unlink_("/sql/again.db-shm");
+    sql_listen(false);
+    /* Which the log says of the database, for it is seldom meant; not of its write-ahead log and the index of that, which
+       SQLite itself unlinks open at every last close. */
+    CHECK_INT(count_in(g_sql_lines, "files: the database /sql/again.db was unlinked while 1 descriptor(s) of it are open"), 1);
+    CHECK(!strstr(g_sql_lines, "again.db-"));
     made = SQL_OPEN(lib, "/sql/again.db");
     CHECK(made != NULL);
     if (made) {
@@ -7373,6 +7405,41 @@ static void test_guest_sqlite_names(mg_lib *lib, const char *dir)
     say("  a database deleted and made again under an open connection is a new file");
 }
 
+/*
+ * Two SQLites on one database, which the log says: each takes fcntl's locks, and all of them are granted in the one
+ * process an app is here, so nothing keeps the two apart. An app's library loaded once more, in a linker scope of its
+ * own, for a process of the app's or for hosted Google Play services is that (Telegram's :widgets process has a copy of
+ * libtmessages.49.so, with its SQLite). In strict turns with a rollback journal, as here, the two still agree, each
+ * reading the file anew when the other has written; at once they do not (the step "two" of mg_tests
+ * --guest-sqlite-step).
+ */
+static void test_guest_sqlite_said(mg_lib *lib, const char *libdir, const char *dir)
+{
+    mg_lib *other = sql_library(libdir, 9);
+    void *a, *b = NULL;
+    CHECK(other != NULL && other != lib);
+    if (!other) return;
+    sql_remove(dir, "said.db");
+    sql_listen(true);
+    a = SQL_OPEN(lib, "/sql/said.db");
+    CHECK(a != NULL);
+    if (a) {
+        CHECK_INT(SQL_EXEC(lib, a, "CREATE TABLE seen(n INTEGER)"), 0);
+        /* (One library's locks on it, however many: nothing to say.) */
+        CHECK(!strstr(g_sql_lines, "is locked by two libraries"));
+        /* The other copy has it by the folder's other name: one file by its inode number. */
+        b = SQL_OPEN(other, "/sql-too/said.db");
+        CHECK(b != NULL);
+    }
+    if (a && b) CHECK_INT(sql_turns(lib, a, other, b, 6), 0);
+    sql_listen(false);
+    say("  two copies of the library on one database: %s", g_sql_lines[0] ? g_sql_lines : "(no line)");
+    CHECK_INT(count_in(g_sql_lines, "/sql-too/said.db is locked by two libraries at once, "), 1);
+    CHECK(strstr(g_sql_lines, "(linker scope 0) and ") != NULL && strstr(g_sql_lines, "(scope 9)") != NULL);
+    if (b) CHECK_INT(SQL_CLOSE(other, b), 0);
+    if (a) CHECK_INT(SQL_CLOSE(lib, a), 0);
+}
+
 static void test_guest_sqlite(const char *libdir, const char *scratch)
 {
     mg_lib *lib = sql_library(libdir, 0);
@@ -7398,6 +7465,7 @@ static void test_guest_sqlite(const char *libdir, const char *scratch)
         CHECK_INT(bad, 0);
     }
     test_guest_sqlite_names(lib, dir);
+    test_guest_sqlite_said(lib, libdir, dir);
     free(dir);
 }
 
@@ -7406,6 +7474,7 @@ static void test_guest_sqlite(const char *libdir, const char *scratch)
  * one journal mode, "work" writes to it with four threads until the process is ended (`started`, when there is one, is
  * told once they run), "check" says whether the database is whole; "all" is the tests above by themselves. Not 0 when
  * the step failed.
+ * "two": one database and two copies of SQLite, as two processes of an app have them here; see there.
  */
 int mg_tests_guest_sqlite_step(const char *libdir, const char *scratch, const char *step, int wal, unsigned seed, void (*started)(void *), void *user)
 {
@@ -7439,6 +7508,26 @@ int mg_tests_guest_sqlite_step(const char *libdir, const char *scratch, const ch
     } else if (!strcmp(step, "check")) {
         result = SQL_CHECK(lib, path);
         say("  %s%s", result ? "DAMAGED: " : "", SQL_SAID(lib));
+    } else if (!strcmp(step, "two")) {
+        /*
+         * Two copies of the library, each in a linker scope of its own, on one database: what two processes of an app are
+         * here (an android:process of its own, hosted Google Play services), which are one Windows process with a copy of
+         * the app's libraries each. Not part of the tests' run, for it does not hold: SQLite's locks are fcntl's, which
+         * are granted to all in one process, and each copy has a mapping of its own of the write-ahead log's index.
+         */
+        mg_lib *other = sql_library(libdir, 9);
+        path = wal ? "/sql/two-wal.db" : "/sql/two-journal.db";
+        g_checks = g_failed = 0;
+        sql_remove(dir, wal ? "two-wal.db" : "two-journal.db");
+        sql_listen(true);
+        if (other && SQL_SETUP(lib, path, wal) == 0)
+            sql_two(wal ? "a write-ahead log and two copies of SQLite" : "a rollback journal and two copies of SQLite", lib, path, other, path, 40, 60);
+        sql_listen(false);
+        /* (What the log says of it, which is all a phone's log has of this.) */
+        say("  %s", g_sql_lines[0] ? g_sql_lines : "(the file layer said nothing)");
+        CHECK(strstr(g_sql_lines, "is locked by two libraries at once") != NULL);
+        say("%d checks, %d failed", g_checks, g_failed);
+        result = g_failed || !g_checks;
     }
     free(dir);
     return result;

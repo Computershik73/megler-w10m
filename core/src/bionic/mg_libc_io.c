@@ -1064,6 +1064,7 @@ typedef struct gobj {
     mg_file *file;
     char *path;                    /* guest path, for files and directories */
     u32 ino;                       /* OBJ_FILE: its inode number (file_ino), its own for as long as it is open */
+    const mg_lib *locker;          /* OBJ_FILE: the library whose code first set a lock on it with fcntl (db_locked) */
     u8 *mem;
     size_t mem_size;
     u64 pos;
@@ -1457,6 +1458,38 @@ static void file_said(const char *what, const char *path, long result, const voi
 #define FILE_CALLER() __builtin_return_address(0)
 #endif
 #define FILE_SAID(what, path, result) file_said(what, path, (long)(result), FILE_CALLER())
+
+/*
+ * What goes wrong with a database's files is said, 40 lines a run at the most: a write that failed or came short, a size
+ * that could not be set, a flush the disk refused, the database unlinked, renamed or replaced while a descriptor of it is
+ * open, and one database locked by two libraries (db_locked). Signal's and Telegram's databases were found malformed on
+ * phones (0.1.0.696 and 0.1.0.699), and their logs had nothing of the file layer's that tells why. A database is known
+ * by its name: one that ends with .db, .sqlite or .sqlite3, and the files SQLite keeps beside it.
+ */
+static volatile i32 g_db_lines;
+
+/* 1: a database's own file, by its name; 2: its write-ahead log, the index of that, or its rollback journal; 0: neither. */
+static int db_file(const char *path)
+{
+    static const char *const ends[] = { ".db", ".sqlite", ".sqlite3" };
+    static const char *const beside[] = { "-wal", "-shm", "-journal" };
+    size_t n = path ? strlen(path) : 0, i, k;
+    for (k = 0; k <= MG_COUNT(beside); k++) {
+        size_t m = n;
+        if (k) {
+            size_t b = strlen(beside[k - 1]);
+            if (n <= b || memcmp(path + n - b, beside[k - 1], b)) continue;
+            m = n - b;
+        }
+        for (i = 0; i < MG_COUNT(ends); i++) {
+            size_t e = strlen(ends[i]);
+            if (m > e && !memcmp(path + m - e, ends[i], e)) return k ? 2 : 1;
+        }
+    }
+    return 0;
+}
+
+static bool db_line(void) { return mg_atomic_add(&g_db_lines, 1) <= 40; }
 
 /*
  * A file opened over and over: the first 200 opens of one path within 10 s are said once, with the Java frames of the
@@ -1883,6 +1916,8 @@ static i32 obj_write(gobj *o, const void *buf, u32 n, bool positioned, u64 offse
     }
     case OBJ_FILE:
         r = positioned ? mg_file_pwrite(o->file, buf, n, offset, &err) : mg_file_write(o->file, buf, n, &err);
+        if ((r < 0 || (u64)r < n) && db_file(o->path) && db_line())
+            mg_warn("files: a write of %u bytes to %s came to %ld (errno %d)", (unsigned)n, o->path, (long)r, r < 0 ? mg_errno_of(err) : 0);
         if (r < 0) {
             mg_set_errno(mg_errno_of(err));
         } else if (r > 0 && mg_mem_file_copies()) {
@@ -2303,9 +2338,15 @@ static int g_ftruncate64(int fd, i64 size)
         fd_put(o);
         return r;
     }
-    if (o->type != OBJ_FILE) mg_set_errno(GE_INVAL);
-    else if (!mg_file_truncate(o->file, (u64)size, &err)) mg_set_errno(mg_errno_of(err));
-    else r = 0;
+    if (o->type != OBJ_FILE) {
+        mg_set_errno(GE_INVAL);
+    } else if (!mg_file_truncate(o->file, (u64)size, &err)) {
+        if (db_file(o->path) && db_line())
+            mg_warn("files: %s could not be cut or grown to %lld bytes (errno %d)", o->path, (long long)size, mg_errno_of(err));
+        mg_set_errno(mg_errno_of(err));
+    } else {
+        r = 0;
+    }
     if (!r && g_ino_watches) ino_path(o->path, G_IN_MODIFY, 0, false);
     fd_put(o);
     return r;
@@ -2327,7 +2368,10 @@ static int g_posix_fadvise(int fd, goff offset, goff len, int advice) { return g
 static int g_fsync(int fd)
 {
     WITH_FD(fd, o, -1)
-    if (o->type == OBJ_FILE) mg_file_sync(o->file);
+    /* (The answer is 0 as it always was here; a database's flush that the disk refused is said. Not a descriptor's that
+       only reads, which Windows does not flush.) */
+    if (o->type == OBJ_FILE && !mg_file_sync(o->file) && (o->flags & 3) && db_file(o->path) && db_line())
+        mg_warn("files: %s could not be flushed to the disk (fsync, which answers 0 all the same)", o->path);
     fd_put(o);
     return 0;
 }
@@ -2484,32 +2528,45 @@ static u32 file_ino(const char *host_path)
     return ino;
 }
 
-/* The name at the host path `h` is gone (unlink): a file still open there keeps its number, and the path has a new one. */
-static void file_unlinked(const char *h)
+/*
+ * The name at the host path `h` is gone (unlink; `g`, the guest's name of it): a file still open there keeps its number,
+ * and the path has a new one. A database's is said: not its write-ahead log's or the index of that, which SQLite unlinks
+ * with their descriptors open whenever the last connection closes.
+ */
+static void file_unlinked(const char *h, const char *g)
 {
     u32 key = path_hash(h);
+    int open;
     mg_lock_acquire(&g_io_lock);
-    if (ino_open(ino_of_key(key))) inos_set(key, ino_fresh(key));
+    open = ino_open(ino_of_key(key));
+    if (open) inos_set(key, ino_fresh(key));
     mg_lock_release(&g_io_lock);
+    if (open && db_file(g) == 1 && db_line()) mg_warn("files: the database %s was unlinked while %d descriptor(s) of it are open", g, open);
 }
 
 /*
  * The host path `a` was renamed to `b`. An open file that was at `a` is at `b` now, with its number, and `a` has a new
  * one; a file that was at `b` and is still open is at no path any more, and `b` has another number than its.
  */
-static void file_renamed(const char *a, const char *b)
+static void file_renamed(const char *a, const char *b, const char *ga, const char *gb)
 {
     u32 ka = path_hash(a), kb = path_hash(b), ia;
+    int moved, replaced = 0;
     if (ka == kb) return;
     mg_lock_acquire(&g_io_lock);
     ia = ino_of_key(ka);
-    if (ino_open(ia)) {
+    moved = ino_open(ia);
+    if (moved) {
         inos_set(kb, ia);
         inos_set(ka, ino_fresh(ka));
-    } else if (ino_open(ino_of_key(kb))) {
+    } else if ((replaced = ino_open(ino_of_key(kb))) != 0) {
         inos_set(kb, ino_fresh(kb));
     }
     mg_lock_release(&g_io_lock);
+    /* (Said of a database, as its unlinking is: `ga` and `gb` are the guest's names of the two.) */
+    if (moved && db_file(ga) == 1 && db_line()) mg_warn("files: the database %s was renamed to %s while %d descriptor(s) of it are open", ga, gb, moved);
+    if (replaced && db_file(gb) == 1 && db_line())
+        mg_warn("files: the database %s was replaced by a rename of %s while %d descriptor(s) of it are open", gb, ga, replaced);
 }
 
 static void fill_stat(g_stat *out, const mg_stat *st, u32 ino)
@@ -2833,7 +2890,7 @@ static void ino_removed(const char *g, bool dir)
     ino_self(g, G_IN_DELETE_SELF, dir);
 }
 
-PATH_OP(g_unlink, GE_BUSY, mg_path_remove(h, &err), file_unlinked(h), ino_removed(g, false))
+PATH_OP(g_unlink, GE_BUSY, mg_path_remove(h, &err), file_unlinked(h, g), ino_removed(g, false))
 PATH_OP(g_rmdir, GE_BUSY, mg_path_rmdir(h, &err), (void)0, ino_removed(g, true))
 PATH_OP(mkdir_host, GE_EXIST, mg_path_mkdir(h, &err), (void)0, ino_path(g, G_IN_CREATE, 0, true))
 
@@ -2870,7 +2927,7 @@ static int g_rename(const char *from, const char *to)
     if (g_ino_watches && a && b && strcmp(ga, gb)) replaced = mg_path_stat(b, &st, NULL);
     /* (Between a link and anything else the host layer says EXDEV, as between two file systems: the app copies and removes.) */
     ok = a && b && mg_path_rename(a, b, &err);
-    if (ok) file_renamed(a, b);
+    if (ok) file_renamed(a, b, ga, gb);
     if (!ok) mg_set_errno(why ? why : a && b ? mg_errno_of(err) : GE_ACCES);
     if (ok && g_ino_watches && strcmp(ga, gb)) ino_renamed(ga, gb, mg_path_stat(b, &st, NULL) && st.is_dir, replaced);
     free(ga);
@@ -4107,6 +4164,42 @@ static int g_dup3(int fd, int nfd, int flags)
 static int g_dup2(int fd, int nfd) { return g_dup3(fd, nfd, 0); }
 
 /*
+ * A lock set with fcntl on a database's file, by the code that `ret` is an address of. Every lock is granted here: all of
+ * an app's code is one process, and a process's own locks never stop it. One SQLite keeps its connections apart by
+ * itself and loses nothing by that. Two of them have only these locks between them, and each writes over what the other
+ * wrote: an app's library loaded once more, in a linker scope of its own, for a process of the app's (android:process)
+ * or for hosted Google Play services, as Telegram's libtmessages.49.so is for its :widgets process, or two libraries
+ * with a SQLite each. Said once for a database, of its own file (the index of its write-ahead log has locks too, which
+ * would say the same again), when a library sets its first lock on a descriptor of it that another library has locked
+ * through a descriptor still open.
+ */
+static void db_locked(gobj *o, const void *ret)
+{
+    static u32 said[8];
+    static u32 nsaid;
+    const mg_lib *lib, *other = NULL;
+    u32 i;
+    if (o->type != OBJ_FILE || o->locker || !o->ino || !ret || db_file(o->path) != 1) return;
+    lib = mg_ld_lib_of(ret);
+    if (!lib) return;
+    mg_lock_acquire(&g_io_lock);
+    o->locker = lib;
+    for (i = 0; i < MAX_FDS && !other; i++) {
+        const gobj *x = g_fds[i];
+        if (x && x != o && x->type == OBJ_FILE && x->ino == o->ino && x->locker && x->locker != lib) other = x->locker;
+    }
+    for (i = 0; other && i < MG_COUNT(said); i++) {
+        if (said[i] == o->ino) other = NULL;
+    }
+    if (other) said[nsaid++ % MG_COUNT(said)] = o->ino;
+    mg_lock_release(&g_io_lock);
+    if (other && db_line())
+        mg_warn("files: %s is locked by two libraries at once, %s (linker scope %d) and %s (scope %d): fcntl's locks are granted to both, "
+                "and neither SQLite knows what the other writes", o->path, mg_ld_lib_name(other), mg_ld_lib_scope(other), mg_ld_lib_name(lib),
+                mg_ld_lib_scope(lib));
+}
+
+/*
  * fcntl's third argument is an int or a pointer, as the command has it, and is taken here as wide as a pointer: an int
  * is its low half (on the 64-bit ABIs a caller leaves the rest of the register as it was).
  */
@@ -4153,7 +4246,16 @@ static int g_fcntl(int fd, int cmd, uintptr_t parg)
             mg_wr16((u8 *)parg, 2);
         }
         break;
-    default: break;                                /* setting locks, and the rest: granted */
+    case 6:  /* F_SETLK */
+    case 7:  /* F_SETLKW */
+    case 13: /* F_SETLK64 */
+    case 14: /* F_SETLKW64 */
+    case 37: /* F_OFD_SETLK */
+    case 38: /* F_OFD_SETLKW */
+        /* Granted, as every lock is (see F_GETLK). One that is not an unlocking (l_type F_UNLCK, 2), of a database: db_locked. */
+        if (parg && mg_rd16((const u8 *)parg) != 2) db_locked(o, FILE_CALLER());
+        break;
+    default: break;                                /* the rest: granted */
     }
     fd_put(o);
     return r;

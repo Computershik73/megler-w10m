@@ -29,7 +29,8 @@ int mg_tests_sqlite_hold(const char *db, const char *flag);
  * (mg_tests --guest-sqlite): `kills` times in each journal mode, at moments that follow from `seed` (0: from the clock),
  * the database checked by a new process each time; where no process can be forked, only the tests in one process.
  * Returns the number of failures. mg_tests_guest_sqlite_step is one step of it in this process, after megler_init (mg_tests
- * --guest-sqlite-step): "setup", "work" (which never ends by itself), "check", or "all"; not 0 when it failed.
+ * --guest-sqlite-step): "setup", "work" (which never ends by itself), "check", or "all"; not 0 when it failed. And "two",
+ * which is no part of that and fails as things are: one database written by two copies of the library at once.
  */
 int mg_tests_guest_sqlite(const char *libdir, const char *scratch, int kills, unsigned seed);
 int mg_tests_guest_sqlite_step(const char *libdir, const char *scratch, const char *step, int wal, unsigned seed, void (*started)(void *), void *user);
