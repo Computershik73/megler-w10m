@@ -11,6 +11,9 @@
  *   mg_tests --dvm-only <fixtures dir> <scratch dir> <android root | -> [trace] [guest library dir]
  *       only the Dalvik runtime's tests: on Android's own libcore from that root
  *       (tools/dvm-android-root.sh makes one), or with "-" on the built-in java.lang
+ *   mg_tests --gl-only <scratch dir> <android root | ->
+ *       only the tests of OpenGL ES from Java and of the WebView's draw functor (mg_gl_tests.c), which the first form runs
+ *       after the runtime's: the runtime started on that root's libcore, or with "-" on the built-in java.lang
  *   mg_tests --dvm-link <android root> <dex file>...
  *       what those DEX files need of Android's libcore and do not find: the
  *       runtime is started on the boot class path of that root, the files are
@@ -127,6 +130,7 @@
 #include "mg_gfx_record.h"
 #include "mg_gfx_scenes.h"
 #include "mg_gfx_standin.h"
+#include "mg_gfx_tests.h"
 #include "mg_storage_tests.h"
 #include "mg_tests.h"
 
@@ -1869,6 +1873,22 @@ int main(int argc, char **argv)
         config.trace = argc >= 6 ? atoi(argv[5]) : 0;
         config.guest_dir = argc >= 7 ? argv[6] : NULL;
         failed = mg_dvm_tests_run(&config, NULL, NULL, &checks);
+        printf("%d checks, %d failed\n", checks, failed);
+        return failed ? 1 : 0;
+    }
+    if (argc >= 4 && !strcmp(argv[1], "--gl-only")) {
+        /* Only OpenGL ES's natives' tests, with the runtime they need started for them: <scratch> <android root | ->. */
+        megler_config config;
+        int checks = 0, failed;
+        memset(&config, 0, sizeof(config));
+        config.data_dir = argv[2];
+        config.package_dir = argv[2];
+        megler_init(&config);
+        if (!(argv[3][0] == '-' && !argv[3][1] ? mg_dvm_start(NULL, 0) : mg_dvm_start_android(argv[3]))) {
+            printf("the runtime did not start\n");
+            return 1;
+        }
+        failed = mg_gl_natives_tests_run(NULL, NULL, &checks);
         printf("%d checks, %d failed\n", checks, failed);
         return failed ? 1 : 0;
     }

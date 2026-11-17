@@ -5088,11 +5088,39 @@ released functor (`release_functor`) has `on_context_destroyed` (with the
 context current) and `on_destroyed` on the render thread; its pbuffer and
 picture go with it. The log says "webview: pages are drawn on the graphics
 processor" and "draw functor N drawn" with the time a draw takes. A draw that
-fails three times in a row, or one that takes more than four seconds (fifteen
-on a display of OpenGL ES 2, below), has the
-pages drawn in software from then on, as below. `mg_gl_tests.c`'s draw functor
-test checks the table, the threads, the order of the callbacks, the
-parameters, the picture handed over and the release with the tests' stand-in.
+fails three times in a row has the pages drawn in software from then on, as
+below. One that takes long does not. The UI thread's wait for a draw
+(`wv_ask`) is HWUI's for a frame, and once the render thread has taken the
+request it lasts until Chromium has drawn: after four seconds (fifteen on a
+display of OpenGL ES 2, below) the log says "draw functor N has been drawing
+for 4000 ms on the render thread: waited for to its end", and then "draw
+functor N's draw ended after M ms". Before, such a draw was left behind after
+four seconds and the pages were drawn in software from then on, on the UI
+thread, while the render thread was still in the functor: Candy Crush Saga,
+whose pages' first frames took Chromium 4.9 and 5.6 s on an Adreno 430 while
+the game's own thread drew on the same display, ended during those software
+frames, in Chromium's compositor (`libwebviewchromium.so+0x3879a08`: a page
+that starts a view transition while it is drawn in software ends there, in
+the software frame sink's manager, which has no shared images to save the
+transition in -- the webview test app's page did so under qemu when it was
+given `document.startViewTransition` and a `WebView.draw` into a bitmap;
+Chromium 128's own, and still so wherever a page is drawn in software). Only a
+request the render thread has not taken in that time -- it is in a released
+functor's last callbacks, say -- is withdrawn, under the lock the render
+thread takes it under, so that it is never begun ("the render thread did not
+take draw functor N's draw in 4000 ms: withdrawn"); none is made until the
+render thread is back at its wait ("the render thread answers again, M ms
+after a draw was withdrawn"), and meanwhile the WebView records the functor's
+last picture again where it was and asks to be drawn again a tenth of a second
+later (`WebFunctors.BUSY`, `WebView.meglerDrawFunctor`): no frame of it is
+drawn in software. `mg_gl_tests.c`'s draw functor tests check the table, the
+threads, the order of the callbacks, the parameters, the picture handed over
+and the release with the tests' stand-in, and the hand-over: a draw three
+times as long as the wait answered with its picture, a request made while the
+render thread is kept in another functor's last callback answered -1 and
+never drawn, the next answered -1 at once, and the functor drawn again once
+the render thread is back (`mg_tests --gl-only <scratch dir> <android root |
+->` runs those tests alone).
 
 **Drawing in software.** A canvas that is not hardware-accelerated -- a
 `Bitmap`'s, the window's with `no-view-lists`, or any canvas where the draw
@@ -5255,9 +5283,9 @@ each at that size) are let go, and Chromium made its tiles before too. A
 program of Skia's is compiled by D3DCompile on the phone's processor the first
 time it is needed, and a page's first frames wait for theirs; ANGLE keeps them
 for the next start (`EGL_ANDROID_blob_cache`, `angle-cache` in the app's
-data). So on a display of OpenGL ES 2 the UI thread waits up to 15 s for a
-functor's draw, not 4, before it gives pages up to software
-(`WV_WAIT_ES2_MS`); the log says each slow frame's time ("webview: slow
+data). The UI thread waits for such a draw to its end, as for any the render
+thread has begun; on a display of OpenGL ES 2 the log speaks of it after 15 s,
+not 4 (`WV_WAIT_ES2_MS`), and says each slow frame's time ("webview: slow
 frame").
 
 **The WebView's developer-mode flags, and HitTestOpaqueness.** The WebView in
