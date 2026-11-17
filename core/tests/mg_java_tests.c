@@ -4415,12 +4415,29 @@ static int run_crash(void)
 
 /* --------------------------------------------------------------------- gl */
 
+/* The swaps of window surfaces so far. */
+static u64 gl_swaps(void)
+{
+    mg_java_gl_stats st;
+    mg_java_gl_get_stats(&st);
+    return (u64)st.swaps;
+}
+
+/* Whether the GL threads have swapped since there were `before` swaps: waited for, ten seconds at the most. */
+static bool gl_swapped_since(u64 before)
+{
+    int tries;
+    for (tries = 0; tries < 1000 && gl_swaps() == before && running(); tries++) mg_sleep_ns(10000000ull);
+    return gl_swaps() > before;
+}
+
 /*
  * `gl`: OpenGL ES from Java (core/tests/app/gl), with the stand-in that draws (mg_gl_standin.c) where ANGLE would be. A
  * GLSurfaceView's renderer on the layer's GL thread -- its calls in Android's order, sixty frames a second at most, none
  * when not asked for in RENDERMODE_WHEN_DIRTY and one when asked, an event queued to it, a fixed size, a pause and a
- * resume that bring a new context; EGL14 on a pbuffer; EGL10 and GL10 on a SurfaceView of the app's own thread. And the
- * picture: the frames under the views, where the views left holes, the label over the GL view.
+ * resume that bring a new context, a pause and a resume with the context kept, and a surface refused at a resume, which
+ * loses the context; EGL14 on a pbuffer; EGL10 and GL10 on a SurfaceView of the app's own thread. And the picture: the
+ * frames under the views, where the views left holes, the label over the GL view.
  */
 static int run_gl(void)
 {
@@ -4460,6 +4477,35 @@ static int run_gl(void)
     line = wait_line("I/GlTest: continuous 30 frames in ", 0, 120);
     CHECK(line >= 0 && sscanf(strstr(line_at(line), " in ") + 4, "%ld", &ms) == 1 && ms >= 480);
     say("  thirty frames drawn continuously took %ld ms", ms);
+    /*
+     * The pacing itself, on times made up. A surface's first swap waits for nothing, and one 5 ms after it waits its sixtieth
+     * of a second out. Frames of 60 ms wait for nothing at all: every second one of them waited a whole period more, being
+     * later than the tenth of a second a surface is owed (Asphalt Nitro at 15 frames a second on a Lumia 950 XL). And after
+     * one late frame the quick ones wait for nothing until what it was late by is made up: the fourth of them here.
+     */
+    {
+        const u64 period = 16666667ull, a_ms = 1000000ull;
+        u64 due = 0, now = 1000 * a_ms, waited = 0;
+        int k;
+        CHECK(mg_java_gl_pace(&due, now) == 0);
+        now += 5 * a_ms;
+        CHECK(mg_java_gl_pace(&due, now) == period - 5 * a_ms);
+        now = due;
+        for (k = 0; k < 20; k++) {
+            now += 60 * a_ms;
+            waited += mg_java_gl_pace(&due, now);
+        }
+        CHECK(waited == 0 && due == now);
+        now += 60 * a_ms;
+        waited += mg_java_gl_pace(&due, now);
+        for (k = 0; k < 3; k++) {
+            now += 5 * a_ms;
+            waited += mg_java_gl_pace(&due, now);
+        }
+        CHECK(waited == 0);
+        now += 5 * a_ms;
+        CHECK(mg_java_gl_pace(&due, now) == 5 * period - 80 * a_ms);
+    }
     /* RENDERMODE_WHEN_DIRTY: nothing drawn while nothing asks, one frame for one requestRender. An event on the GL thread. */
     expect_line("I/GlTest: when-dirty idle frames=0", &at, 60);
     expect_line("I/GlTest: request-render frames=1", &at, 60);
@@ -4527,6 +4573,64 @@ static int run_gl(void)
         mg_java_gl_get_stats(&st1);
     }
     CHECK(st1.swaps > st0.swaps);
+    /*
+     * From its second onResume on the app keeps its context over a pause, as a game does (libGDX): paused and resumed, it gets
+     * a new surface and the renderer is not told to make its things again. Then the surface refused as the app comes back
+     * (EGL_BAD_ALLOC, as Direct3D refused Age of History II's beside 1.2 GB of the game's): the context is lost -- let go of,
+     * a new one made, the surface asked for again at once -- so the renderer is told (created 3), and draws. And one refused
+     * twice running: the second time, beside a context with nothing in it, nothing more is lost; it is asked for again a
+     * second later, the renderer told then (created 4).
+     */
+    {
+        int sw = 0, sh = 0;
+        u64 before;
+        const char *size = strstr(line_at(at), "changed ");
+        mg_gl_standin_stats sb;
+        /* (The surface the thread makes is told from the other view's by its size.) */
+        CHECK(size && sscanf(size + 8, "%dx%d", &sw, &sh) == 2 && sw > 0 && sh > 0 && (sw != egl[2] || sh != egl[3]));
+        megler_set_paused(true);
+        expect_line("I/GlTest: onPause", &at, 30);
+        mg_sleep_ns(300000000ull);
+        before = gl_swaps();
+        megler_set_paused(false);
+        expect_line("I/GlTest: onResume 3 keeps-context=true", &at, 30);
+        expect_line("I/GlTest: changed ", &at, 30);
+        CHECK(gl_swapped_since(before));
+        CHECK(find_line("I/GlTest: created 3", 0) < 0 && find_line("has no surface to draw on", 0) < 0);
+        megler_set_paused(true);
+        expect_line("I/GlTest: onPause", &at, 30);
+        mg_sleep_ns(300000000ull);
+        before = gl_swaps();
+        mg_gl_standin_refuse_surfaces(1, sw, sh);
+        megler_set_paused(false);
+        expect_line("I/GlTest: onResume 4", &at, 30);
+        expect_line("egl: eglCreatePbufferSurface was refused (EGL error 0x3003)", &at, 30);
+        expect_line("egl: as it was refused, the Direct3D device is not known; memory: ", &at, 30);
+        expect_line("java: GLThread 1 has no surface to draw on beside what its context holds: the context is lost", &at, 30);
+        expect_line("I/GlTest: created 3 thread=GLThread ", &at, 60);
+        CHECK(strstr(line_at(at), "current=true version=2") != NULL);
+        expect_line("I/GlTest: changed ", &at, 30);
+        CHECK(gl_swapped_since(before));
+        mg_gl_standin_stats_get(&sb);
+        CHECK(sb.refused_surfaces == 1 && find_line("asks again every second", 0) < 0);
+        megler_set_paused(true);
+        expect_line("I/GlTest: onPause", &at, 30);
+        mg_sleep_ns(300000000ull);
+        before = gl_swaps();
+        mg_gl_standin_refuse_surfaces(2, sw, sh);
+        megler_set_paused(false);
+        expect_line("I/GlTest: onResume 5", &at, 30);
+        expect_line("java: GLThread 1 has no surface to draw on beside what its context holds: the context is lost", &at, 30);
+        expect_line("java: GLThread 1 has no surface to draw on; it goes on without one and asks again every second", &at, 30);
+        expect_line("java: GLThread 1 has a surface again", &at, 30);
+        expect_line("I/GlTest: created 4 thread=GLThread ", &at, 60);
+        expect_line("I/GlTest: changed ", &at, 30);
+        CHECK(gl_swapped_since(before));
+        mg_gl_standin_stats_get(&sb);
+        CHECK(sb.refused_surfaces == 3 && count_lines("the context is lost") == 2 && find_line("I/GlTest: created 5", 0) < 0);
+        mg_gl_standin_refuse_surfaces(0, 0, 0);
+        mg_java_gl_get_stats(&st1);
+    }
     say("  %u swaps of window surfaces, %u of them shown, on %u GL threads; %d pictures in all, %d of them as a part", (unsigned)st1.swaps, (unsigned)st1.shown,
         (unsigned)st1.threads, (int)W.pictures, (int)W.parts);
     /* Composed here, a new GL frame under unchanged views is handed over as the part it changed; the test's shell hands whole pictures. */

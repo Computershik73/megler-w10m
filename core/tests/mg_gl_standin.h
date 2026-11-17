@@ -41,6 +41,7 @@ typedef struct mg_gl_standin_stats {
     i32 refused_es1_no_config;         /* of them, those made where version 1 is, but asked for without a configuration */
     void *last_config;                 /* the configuration the last context made was made with (NULL: none) */
     i32 refused_versions;              /* contexts of a version above what it makes (3.0, or 2.0 in the complete mode) refused */
+    i32 refused_surfaces;              /* surfaces refused because a test asked for that (mg_gl_standin_refuse_surfaces) */
     float clear[4];                    /* the last clear colour */
     i32 largest_es;                    /* the newest version a context was made for */
     i32 dropped;                       /* clears, draws and reads of a surface whose keyed mutex was not held: dropped */
@@ -55,6 +56,11 @@ void mg_gl_standin_stats_get(mg_gl_standin_stats *out);
  * last on any thread, and a clear of another context's counts as stale.
  */
 void mg_gl_standin_set_dwell(u64 ns);
+/*
+ * The next `count` surfaces of this size that are asked for are refused with EGL_BAD_ALLOC, as a Direct3D with no room for
+ * a surface's textures beside the app's refuses one (0: none are refused).
+ */
+void mg_gl_standin_refuse_surfaces(int count, int width, int height);
 /* Back to nothing made and nothing counted; whether GL_EXT_read_format_bgra is listed, and whether version 1 is made. */
 void mg_gl_standin_reset(bool bgra, bool es1);
 /*
