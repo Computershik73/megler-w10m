@@ -210,9 +210,24 @@ static unsigned e_KeyedMutex(void *mutex, int acquire)
     mg_lock_release(&g_lock);
     return ok;
 }
+/*
+ * What the one configuration says it renders, and conforms to: OpenGL ES 1, 2 and 3 -- and no 3 in the complete mode, a
+ * driver of OpenGL ES 2.0 alone (see there), as ANGLE's configurations have the bit of 3 only where its renderer makes 3.0
+ * (Direct3D feature level 10.1 and up). An app chooses by it: LocalSend's Flutter engine (Impeller) asks for a
+ * configuration of OpenGL ES 3 first and for one of 2 only when there is none, and, given one of 3 whose context was then
+ * refused, went on with no context and read a configuration it had not got.
+ */
+static int config_renderable(void) { return g_complete ? 0x05 : 0x45; }
 static MG_GLAPI unsigned e_ChooseConfig(void *d, const int *attribs, void **configs, int size, int *num)
 {
-    (void)d; (void)attribs;
+    int i;
+    (void)d;
+    /* Asked for a kind of rendering the configuration has not, EGL has no configuration: none is not an error. */
+    for (i = 0; attribs && attribs[i] != 0x3038; i += 2)
+        if ((attribs[i] == 0x3040 || attribs[i] == 0x3042) && attribs[i + 1] != -1 && (attribs[i + 1] & ~config_renderable())) {
+            if (num) *num = 0;
+            return 1;
+        }
     if (configs && size > 0) configs[0] = (void *)(mg_addr)0xC0F;
     if (num) *num = 1;
     return 1;
@@ -225,7 +240,7 @@ static MG_GLAPI unsigned e_GetConfigAttrib(void *d, void *c, int attrib, int *va
     case 0x3025: *value = 24; break;                                          /* depth */
     case 0x3026: *value = 8; break;                                           /* stencil */
     case 0x3033: *value = 5; break;                                           /* window and pbuffer */
-    case 0x3040: case 0x3042: *value = 0x45; break;                           /* renderable and conformant: OpenGL ES 1, 2, 3 */
+    case 0x3040: case 0x3042: *value = config_renderable(); break;            /* renderable and conformant: OpenGL ES 1, 2, 3 */
     case 0x302E: *value = 1; break;
     /* And the rest of what a config says, as a driver's one config of 8888 with depth and stencil would. */
     case 0x3020: *value = 32; break;                                          /* buffer size */

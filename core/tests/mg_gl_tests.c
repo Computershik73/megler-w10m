@@ -451,6 +451,50 @@ static void test_context_es1(void)
 }
 
 /*
+ * The stand-in's complete mode, the driver of OpenGL ES 2.0 alone that a real app is run over (--java app), says what it is
+ * in its configuration as well: asked for a configuration that renders OpenGL ES 3, EGL has none, and the one of 2 says 1
+ * and 2, as ANGLE's say 3 only where its renderer makes 3.0; a context of 2 is made with it. (It said 3 and refused the
+ * context of 3: LocalSend's Flutter engine, which asks for 3 first and for 2 only when no configuration has it, stopped
+ * with "Could not create onscreen context" and then faulted in libflutter.so on the configuration it had not got.) The
+ * other mode makes 3.0 and has the configuration of it.
+ */
+static void test_complete_configs(void)
+{
+    typedef void *(*fn_create)(void *, void *, void *, const int *);
+    void *(*get_display)(void *) = (void *(*)(void *))mg_egl_resolve("eglGetDisplay");
+    unsigned (*choose)(void *, const int *, void **, int, int *) = (unsigned (*)(void *, const int *, void **, int, int *))mg_egl_resolve("eglChooseConfig");
+    unsigned (*attrib)(void *, void *, int, int *) = (unsigned (*)(void *, void *, int, int *))mg_egl_resolve("eglGetConfigAttrib");
+    fn_create create = (fn_create)mg_egl_resolve("eglCreateContext");
+    unsigned (*destroy)(void *, void *) = (unsigned (*)(void *, void *))mg_egl_resolve("eglDestroyContext");
+    static const int want3[] = { 0x3033 /* EGL_SURFACE_TYPE */, 0x4 /* window */, 0x3040 /* EGL_RENDERABLE_TYPE */, 0x40 /* OpenGL ES 3 */, 0x3038 };
+    static const int want2[] = { 0x3033, 0x4, 0x3040, 0x4 /* OpenGL ES 2 */, 0x3038 };
+    static const int any[] = { 0x3040, -1 /* EGL_DONT_CARE */, 0x3038 };
+    static const int es2[] = { 0x3098, 2, 0x3038 };
+    void *d, *c3 = (void *)1, *c2 = NULL, *c = NULL, *two;
+    int n3 = -1, n2 = -1, n = -1, says = 0, conforms = 0;
+    say("EGL: the complete stand-in, OpenGL ES 2.0 alone, has no configuration of OpenGL ES 3 and one of 2; the other has one of 3");
+    CHECK(get_display && choose && attrib && create && destroy);
+    if (!get_display || !choose || !attrib || !create || !destroy) return;
+    d = get_display(NULL);
+    mg_gl_standin_set_complete(true);
+    CHECK(choose(d, want3, &c3, 1, &n3) && n3 == 0);
+    CHECK(choose(d, want2, &c2, 1, &n2) && n2 == 1 && c2 != NULL);
+    CHECK(choose(d, any, &c, 1, &n) && n == 1 && c == c2);
+    CHECK(attrib(d, c2, 0x3040, &says) && says == 0x5);
+    CHECK(attrib(d, c2, 0x3042 /* EGL_CONFORMANT */, &conforms) && conforms == 0x5);
+    two = create(d, c2, NULL, es2);
+    CHECK(two != NULL);
+    if (two) destroy(d, two);
+    mg_gl_standin_set_complete(false);
+    say("  complete: %d configurations of OpenGL ES 3, %d of 2, which renders 0x%x; a context of 2: %s", n3, n2, (unsigned)says, two ? "made" : "refused");
+    c3 = NULL;
+    n3 = -1;
+    says = 0;
+    CHECK(choose(d, want3, &c3, 1, &n3) && n3 == 1 && c3 != NULL);
+    CHECK(attrib(d, c3, 0x3040, &says) && says == 0x45);
+}
+
+/*
  * Hardware buffers (ndk/mg_ahb.c) and EGL images of them (mg_egl.c), as Chromium's GPU service and the ANGLE inside it use
  * them, over the stand-in, whose textures keep their pixels and whose EGL images share them: a 4x2 R8G8B8A8 buffer laid out
  * where ANGLE reads it (the ANativeWindowBuffer two pointers in, laid out with the guest's pointers: 96 bytes in 32-bit
@@ -1723,6 +1767,7 @@ int mg_gl_natives_tests_run(mg_test_sink sink, void *user, int *checks)
     test_version();
     test_context_versions();
     test_context_es1();
+    test_complete_configs();
     test_hardware_buffers();
     test_webview_display();
     mg_egl_webview_own_display(false);
