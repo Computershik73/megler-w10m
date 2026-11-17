@@ -8490,6 +8490,11 @@ public class Main extends Activity {
      * A GeofenceProvider of Android's location provider library, which GmsCore's location service makes: its binder is
      * there and stays the same one, and with no geofencing hardware nobody tells the provider of any; and a
      * GeofenceHardwareRequest is the value Android's is, with its defaults and its check of the source technologies.
+     * A SharedConnectivityService (Android 14), made and given its context as Play services' tethering service does in its
+     * onCreate: it takes the settings' state, the networks and their statuses, gives a binder of the settings' interface,
+     * and, as nothing binds it, is never asked to connect; the system shows no app's networks; and the values it is told --
+     * the settings' state, a hotspot and a known network with the device that offers them, their statuses -- are Android's:
+     * built, checked, equal by what they hold, and the same through a Parcel.
      */
     private void playServicesClasses() {
         step("geofence-provider", () -> {
@@ -8518,6 +8523,121 @@ public class Main extends Activity {
                           r.getSourceTechnologies() == 10;
             detail = "binder " + binder + " same " + same + " told " + told[0] + " defaults " + defaults + " set " + set + " refused " + refused;
             return same && told[0] == 0 && defaults && set && refused;
+        });
+        step("shared-connectivity", () -> {
+            final int[] asked = {0};
+            class Sharing extends android.net.wifi.sharedconnectivity.service.SharedConnectivityService {
+                Sharing(android.content.Context base) {
+                    attachBaseContext(base);
+                }
+
+                @Override
+                public void onConnectHotspotNetwork(android.net.wifi.sharedconnectivity.app.HotspotNetwork network) {
+                    asked[0]++;
+                }
+
+                @Override
+                public void onDisconnectHotspotNetwork(android.net.wifi.sharedconnectivity.app.HotspotNetwork network) {
+                    asked[0]++;
+                }
+
+                @Override
+                public void onConnectKnownNetwork(android.net.wifi.sharedconnectivity.app.KnownNetwork network) {
+                    asked[0]++;
+                }
+
+                @Override
+                public void onForgetKnownNetwork(android.net.wifi.sharedconnectivity.app.KnownNetwork network) {
+                    asked[0]++;
+                }
+            }
+            Sharing service = new Sharing(getBaseContext());
+            android.app.PendingIntent settings =
+                android.app.PendingIntent.getActivity(this, 0, new android.content.Intent(this, Main.class), android.app.PendingIntent.FLAG_IMMUTABLE);
+            android.net.wifi.sharedconnectivity.app.SharedConnectivitySettingsState state =
+                new android.net.wifi.sharedconnectivity.app.SharedConnectivitySettingsState.Builder().setInstantTetherEnabled(false)
+                    .setInstantTetherSettingsPendingIntent(settings).build();
+            service.setSettingsState(state);
+            android.os.IBinder binder = service.onBind(new android.content.Intent());
+            boolean bound = binder != null && "android.net.wifi.sharedconnectivity.service.ISharedConnectivityService".equals(binder.getInterfaceDescriptor());
+            // (DEVICE_TYPE_PHONE; NETWORK_TYPE_CELLULAR; WifiInfo.SECURITY_TYPE_PSK; NETWORK_SOURCE_NEARBY_SELF)
+            android.net.wifi.sharedconnectivity.app.NetworkProviderInfo phone =
+                new android.net.wifi.sharedconnectivity.app.NetworkProviderInfo.Builder("Pixel", "Pixel 8").setDeviceType(1).setBatteryPercentage(64)
+                    .setBatteryCharging(true).setConnectionStrength(3).build();
+            android.os.Bundle extras = new android.os.Bundle();
+            extras.putLong("original_device_id", 77);
+            android.net.wifi.sharedconnectivity.app.HotspotNetwork hotspot =
+                new android.net.wifi.sharedconnectivity.app.HotspotNetwork.Builder().setDeviceId(5).setNetworkProviderInfo(phone).setHostNetworkType(1)
+                    .setNetworkName("Carrier").setHotspotSsid("Pixel hotspot").setHotspotBssid("02:00:00:00:00:01").addHotspotSecurityType(2).setExtras(extras)
+                    .build();
+            android.net.wifi.sharedconnectivity.app.KnownNetwork known =
+                new android.net.wifi.sharedconnectivity.app.KnownNetwork.Builder().setNetworkSource(1).setSsid("Home").addSecurityType(2)
+                    .setNetworkProviderInfo(phone).build();
+            service.setHotspotNetworks(java.util.Arrays.asList(hotspot));
+            service.setKnownNetworks(java.util.Arrays.asList(known));
+            // (CONNECTION_STATUS_ENABLING_HOTSPOT; CONNECTION_STATUS_SAVED)
+            android.net.wifi.sharedconnectivity.app.HotspotNetworkConnectionStatus enabling =
+                new android.net.wifi.sharedconnectivity.app.HotspotNetworkConnectionStatus.Builder().setStatus(1).setHotspotNetwork(hotspot).build();
+            android.net.wifi.sharedconnectivity.app.KnownNetworkConnectionStatus saved =
+                new android.net.wifi.sharedconnectivity.app.KnownNetworkConnectionStatus.Builder().setStatus(1).setKnownNetwork(known).build();
+            service.updateHotspotNetworkConnectionStatus(enabling);
+            service.updateKnownNetworkConnectionStatus(saved);
+            boolean shown = android.net.wifi.sharedconnectivity.service.SharedConnectivityService.areHotspotNetworksEnabledForService(this) ||
+                            android.net.wifi.sharedconnectivity.service.SharedConnectivityService.areKnownNetworksEnabledForService(this);
+            android.os.Parcel p = android.os.Parcel.obtain();
+            state.writeToParcel(p, 0);
+            enabling.writeToParcel(p, 0);
+            saved.writeToParcel(p, 0);
+            p.setDataPosition(0);
+            android.net.wifi.sharedconnectivity.app.SharedConnectivitySettingsState state2 =
+                android.net.wifi.sharedconnectivity.app.SharedConnectivitySettingsState.CREATOR.createFromParcel(p);
+            android.net.wifi.sharedconnectivity.app.HotspotNetworkConnectionStatus enabling2 =
+                android.net.wifi.sharedconnectivity.app.HotspotNetworkConnectionStatus.CREATOR.createFromParcel(p);
+            android.net.wifi.sharedconnectivity.app.KnownNetworkConnectionStatus saved2 =
+                android.net.wifi.sharedconnectivity.app.KnownNetworkConnectionStatus.CREATOR.createFromParcel(p);
+            p.recycle();
+            android.net.wifi.sharedconnectivity.app.HotspotNetwork hotspot2 = enabling2.getHotspotNetwork();
+            android.net.wifi.sharedconnectivity.app.NetworkProviderInfo phone2 = hotspot2.getNetworkProviderInfo();
+            boolean same = state2.equals(state) && state2 != state && !state2.isInstantTetherEnabled() &&
+                           settings.equals(state2.getInstantTetherSettingsPendingIntent()) && state2.getExtras().isEmpty() && enabling2.equals(enabling) &&
+                           enabling2.getStatus() == 1 && hotspot2.getDeviceId() == 5 && hotspot2.getHostNetworkType() == 1 &&
+                           "Carrier".equals(hotspot2.getNetworkName()) && "Pixel hotspot".equals(hotspot2.getHotspotSsid()) &&
+                           "02:00:00:00:00:01".equals(hotspot2.getHotspotBssid()) && hotspot2.getHotspotSecurityTypes().size() == 1 &&
+                           hotspot2.getHotspotSecurityTypes().contains(2) && hotspot2.getExtras().getLong("original_device_id") == 77 &&
+                           phone2.getDeviceType() == 1 && "Pixel".equals(phone2.getDeviceName()) && "Pixel 8".equals(phone2.getModelName()) &&
+                           phone2.getBatteryPercentage() == 64 && phone2.isBatteryCharging() && phone2.getConnectionStrength() == 3 &&
+                           saved2.equals(saved) && saved2.getStatus() == 1 && saved2.getKnownNetwork().getNetworkSource() == 1 &&
+                           "Home".equals(saved2.getKnownNetwork().getSsid()) && saved2.getKnownNetwork().getSecurityTypes().contains(2) &&
+                           phone.equals(saved2.getKnownNetwork().getNetworkProviderInfo());
+            boolean device = false, security = false, nearby = false, battery = false, status = false;
+            try {
+                new android.net.wifi.sharedconnectivity.app.HotspotNetwork.Builder().setNetworkProviderInfo(phone).setNetworkName("Carrier").build();
+            } catch (IllegalArgumentException e) {
+                device = true;
+            }
+            try {
+                new android.net.wifi.sharedconnectivity.app.KnownNetwork.Builder().setNetworkSource(2).setSsid("Home").build();
+            } catch (IllegalArgumentException e) {
+                security = true;
+            }
+            try {
+                new android.net.wifi.sharedconnectivity.app.KnownNetwork.Builder().setNetworkSource(1).setSsid("Home").addSecurityType(2).build();
+            } catch (IllegalArgumentException e) {
+                nearby = true;
+            }
+            try {
+                new android.net.wifi.sharedconnectivity.app.NetworkProviderInfo.Builder("Pixel", "Pixel 8").setBatteryPercentage(101).build();
+            } catch (IllegalArgumentException e) {
+                battery = true;
+            }
+            try {
+                new android.net.wifi.sharedconnectivity.app.KnownNetworkConnectionStatus.Builder().setStatus(3).setKnownNetwork(known).build();
+            } catch (IllegalArgumentException e) {
+                status = true;
+            }
+            detail = "bound " + bound + " asked " + asked[0] + " shown " + shown + " same " + same + " refused " + device + " " + security + " " + nearby + " " +
+                     battery + " " + status + ": " + state2 + " " + saved2;
+            return bound && asked[0] == 0 && !shown && same && device && security && nearby && battery && status;
         });
     }
 

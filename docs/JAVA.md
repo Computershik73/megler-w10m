@@ -6494,6 +6494,25 @@ on a looper thread of its own and takes it back with `next()`.
   Android's value. Not there yet: the same library's `LocationProviderBase`,
   `SignificantPlaceProvider` and `...Unbundled` classes, which Play services
   name too. The data app's step "geofence-provider".
+- `android/net/wifi/sharedconnectivity/service/SharedConnectivityService.java`
+  and, in `android/net/wifi/sharedconnectivity/app`, `NetworkProviderInfo.java`,
+  `HotspotNetwork.java`, `KnownNetwork.java`,
+  `HotspotNetworkConnectionStatus.java`, `KnownNetworkConnectionStatus.java`
+  and `SharedConnectivitySettingsState.java`, Android 14's system API that the
+  framework did not have: the service through which Google Play services'
+  tethering module tells the Wi-Fi settings of the hotspots and known
+  networks of the user's other devices. Play services start their
+  `TetherService` in every process that hosts them, and from Android 14 on
+  its `onCreate` makes one, a class the module does not carry:
+  `NoClassDefFoundError`, "Starting
+  com.google.android.gms.magictether.service.TetherService failed" in the
+  logs of eighteen apps (0.1.0.673 to 0.1.0.699). The values are Android's,
+  with their builders' checks and their parcels. The service is what
+  Android's is where the system names no shared connectivity service:
+  nothing binds it, what it sets is told to nobody, its `on...` methods are
+  never called, and `areHotspotNetworksEnabledForService` and
+  `areKnownNetworksEnabledForService` say no. The data app's step
+  "shared-connectivity".
 - `android/content/res/AssetManager.java`, `Resources.java` and
   `ResourcesImpl.java`, another package's splits: an `AssetManager` made for
   another package (`meglerForPackage`) takes its splits too, whose tables are
