@@ -1882,6 +1882,8 @@ static MG_HOSTCB void gl_main(void *arg)
     layer *l = NULL;
     int w = 0, h = 0;
     bool created = false, changed = false;
+    /* When a surface that could not be made is asked for again; 0 while there is no such failure. */
+    u64 bad_until = 0;
     mg_jobj *thrown = NULL;
     mg_jvalue v, args[3];
     /* A thread of the app's: its native code may run on it (a renderer's onDrawFrame calling the app's library). */
@@ -1946,12 +1948,31 @@ static MG_HOSTCB void gl_main(void *arg)
             mg_lock_acquire(&g_window_lock);
             l = layer_of(g->view, true);
             mg_lock_release(&g_window_lock);
+            /* (A surface that could not be made a moment ago is not asked for at every wake.) */
+            if (!s && bad_until && mg_time_monotonic_ns() < bad_until) {
+                gl_wait(seen);
+                continue;
+            }
             s = surf_new(sw, sh, l);
             if (old) {
                 make_current(NULL, x);
                 surf_free(old);
             }
-            if (!s) break;
+            if (!s) {
+                /* No surface could be made, which is not the thread's end: as Android's GLThread with a surface it cannot
+                   make, it goes on running the view's events and tries again a second later. Ended, it left the app
+                   waiting for a frame that could not come: Age of History II (libGDX) came back from a suspension with
+                   1.2 GB in use, its surface was refused (EGL_BAD_ALLOC), and its next onPause waited four seconds for
+                   the thread to answer and then asked to be killed, over and over. */
+                if (!bad_until) mg_warn("java: %s has no surface to draw on; it goes on without one and asks again every second", name);
+                bad_until = mg_time_monotonic_ns() + 1000000000ull;
+                w = h = 0;
+                tell_egl(g, x, NULL);
+                gl_wait(seen);
+                continue;
+            }
+            if (bad_until) mg_info("java: %s has a surface again", name);
+            bad_until = 0;
             w = sw;
             h = sh;
             changed = true;
