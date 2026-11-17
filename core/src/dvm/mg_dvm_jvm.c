@@ -223,6 +223,15 @@ static void set_java_loaded(mg_lib *lib)
  * unpacked by the app, gave way to the older version's, whose natives were not
  * the new Java's.
  *
+ * The JNI_OnLoad that is run is the one dlsym(handle, "JNI_OnLoad") finds, as
+ * ART looks for it: the library's own, or else that of a library it needs,
+ * breadth-first over what each needs (mg_ld_sym_deep) -- run then even when it
+ * has run before for another library, as ART runs it. Microsoft OneDrive's
+ * libcore.so has none, and the libQt.so it needs has the one that keeps the
+ * JavaVM for both: while only a library's own was run, libcore.so found no
+ * JavaVM and the app ended at every start ("JavaVM can't be null for
+ * XpJniEnv", abort).
+ *
  * While JNI_OnLoad runs, the thread says so (onload_*): FindClass in there is
  * for the loader the library is loaded for. An exception JNI_OnLoad leaves
  * stays pending when the library is otherwise loaded, and is what
@@ -244,7 +253,7 @@ static bool load_native(const char *name_or_path, bool runtime, char *why, size_
 #if MG_GUEST_CODE
     const char *slash = strrchr(name_or_path, '/'), *base = slash ? slash + 1 : name_or_path;
     mg_dvm_thread *t = mg_dvm_self();
-    mg_lib *lib = runtime ? mg_ld_find_runtime_lib(base) : mg_ld_find_lib(base);
+    mg_lib *lib = runtime ? mg_ld_find_runtime_lib(base) : mg_ld_find_lib(base), *in = NULL;
     mg_dvm_frame *was_frame;
     bool was_running, was_app;
     int was_scope;
@@ -283,11 +292,12 @@ static bool load_native(const char *name_or_path, bool runtime, char *why, size_
         return false;
     }
     set_java_loaded(lib);
-    onload = mg_ld_sym(lib, "JNI_OnLoad");
-    if (!onload || mg_ld_lib_of(onload) != lib) return true;    /* a library need not have one */
+    /* Its own, or that of a library it needs (see above). */
+    onload = mg_ld_sym_deep(lib, "JNI_OnLoad", &in);
+    if (!onload || !in || mg_ld_lib_of(onload) != in) return true;    /* a library need not have one */
     if (!runtime) {
-        void *hook0 = mg_ld_sym(lib, "Java_de_robv_android_xposed_XposedBridge_hook0");
-        if (hook0 && mg_ld_lib_of(hook0) == lib) {
+        void *hook0 = mg_ld_sym(in, "Java_de_robv_android_xposed_XposedBridge_hook0");
+        if (hook0 && mg_ld_lib_of(hook0) == in) {
             mg_info("dvm: %s is an Xposed bridge over LSPlant, which needs ART: its JNI_OnLoad is not run, and XposedBridge's natives are the "
                     "runtime's own (mg_dvm_hook.c)",
                     name_or_path);

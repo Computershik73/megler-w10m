@@ -3069,7 +3069,15 @@ name. Native code's `dlopen` of a path takes the same file
 app wrote into a folder no library had come from was "not found". A library
 is loaded once, by its name: a second request finds it and does not run
 `JNI_OnLoad` again, even for another file of that name, of which Android would
-load a second copy. What comes back when it fails is ART's sentence
+load a second copy. The `JNI_OnLoad` that is run is the one `dlsym` of the
+library's handle finds, which is how ART looks for it: the library's own, or
+else that of a library it needs, breadth-first over what each needs
+(`mg_ld_sym_deep`), and run then even when it has run before for another
+library. Microsoft OneDrive's `libcore.so` has none, and the `libQt.so` it
+needs has the one that keeps the JavaVM for both; up to 0.1.0.729 only a
+library's own was run, and OneDrive ended at every start with "JavaVM can't be
+null for XpJniEnv" (`libt_onload.so` and `libt_onload_dep.so`, `t_onload.c`).
+What comes back when it fails is ART's sentence
 (`dlopen failed: library "..." not found`, `JNI_ERR returned from JNI_OnLoad in
 "..."`, `Bad JNI version returned from JNI_OnLoad in "...": N`); a library the
 APK does not have at all never gets that far, and is libcore's own
