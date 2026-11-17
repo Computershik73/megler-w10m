@@ -125,6 +125,14 @@
     /** What Megler last wrote of the APK it was handed under `name` (installApk): installs/<name>.txt of the same folder,
      *  "<when>\t<what>\t<why>", UTF-8 -- declined, incompatible, failed or busy; null when it has written nothing. */
     public static native byte[] appInstall(String name);
+    /**
+     * A split APK (by its path among the app's own files) put among the splits of an app the phone has, this one or another,
+     * as Android's installer does with a session that inherits the installed APKs (megler.Installs): the split's name; ""
+     * when the file is a split of that app which could not be added (another version's, no room); null when it is no split
+     * of that app at all. Without `add` the file is looked at and nothing is copied: the same answers. The app has the
+     * split from its next start.
+     */
+    public static native String addSplit(String packageName, String path, boolean add);
     /** Another app the phone has, to uninstall (megler_system_host.uninstall_app): true when the shell asks the user. */
     public static native boolean uninstallApp(String packageName);
     /** Whether the app may have what a dangerous permission group guards (megler_system_host.permission, megler.Permissions):
