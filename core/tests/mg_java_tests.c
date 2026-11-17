@@ -3656,7 +3656,10 @@ static int run_data(void)
                                             queried with the app's SQL, read, thumbnailed, watched, scanned and deleted. */
                                          "media-save", "media-gated", "media-query", "media-bundle", "media-read", "media-thumbnails",
                                          "media-observer", "media-scanner", "media-delete",
-                                         "permissions", "download", "list-root",
+                                         "permissions", "download",
+                                         /* And a folder moved out of a folder of the phone's own, as Files by Google moves one out of DCIM: the
+                                            rename refused, each file copied and checked by its AssetFileDescriptor's length. */
+                                         "link-move", "list-root",
                                          /* And the battery, the time zone, TLS (conscrypt's: a TLS server and client of the app's own on loopback,
                                             and an https URL through Android's HTTP client; or, where its library is not in the Android root, the
                                             stand-in that fails politely), the app's network security configuration (an authority of its own

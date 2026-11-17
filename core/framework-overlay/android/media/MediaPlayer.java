@@ -102,7 +102,7 @@ public class MediaPlayer implements AudioRouting {
         mFd = n; mFdOff = offset; mFdLen = length; mState = INITIALIZED;
     }
     public void setDataSource(AssetFileDescriptor afd) throws java.io.IOException {
-        if (afd.getFileDescriptor() != null && megler.Audio.fdOf(afd.getFileDescriptor()) >= 0) setDataSource(afd.getFileDescriptor(), afd.getStartOffset(), afd.getLength());
+        if (afd.getFileDescriptor() != null && megler.Audio.fdOf(afd.getFileDescriptor()) >= 0) setDataSource(afd.getFileDescriptor(), afd.getStartOffset(), afd.getDeclaredLength());   /* the declared length, as Android's: none (-1) is the whole file */
         else if (afd.meglerAssetName() != null) { checkIdle(); mBytes = megler.Native.readAsset(afd.meglerAssetName()); if (mBytes == null) throw new java.io.IOException("no asset " + afd.meglerAssetName()); mState = INITIALIZED; }
         else throw new java.io.IOException("unreadable AssetFileDescriptor");
     }

@@ -7254,6 +7254,26 @@ on a looper thread of its own and takes it back with `next()`.
   `openNonAssetFd`, detaches the number from its `ParcelFileDescriptor`
   and reads the table's header where the entry starts.
 
+- `android/content/res/AssetFileDescriptor.java`, `getLength()`, and
+  `android/os/ParcelFileDescriptor.java`, `getStatSize()`. Where no length
+  was declared (-1: a whole file, as `ContentResolver.openAssetFileDescriptor`
+  gives a `file://` or a `content://` URI's) `getLength()` is the size of the
+  file the descriptor is of, as Android's -- `getStatSize()`, which now asks
+  the descriptor (`Os.fstat`: a regular file's or a link's size, -1 of a
+  socket or a pipe) and was the length of the file `open()` was given and -1
+  for every descriptor made another way. `getLength()` gave the declared -1.
+  `getDeclaredLength()` is still what was declared, and `MediaPlayer` and
+  `SoundPool`, which play "to the end" for -1, go by it. Files by Google
+  checks each file it has copied by `getLength()` of the source: moving a
+  folder out of `/sdcard/DCIM` -- one of the phone's own folders, which
+  nothing is renamed out of (`EXDEV`, "Failed to rename file"), so the app
+  copies -- every copy was called failed ("Failed to copy the file"), the
+  empty `.nomedia` too, and nothing was moved (0.1.0.699). The data app's step
+  "link-move" moves a folder of three files out of `/sdcard/Movies` so: the
+  rename refused, each file copied through the resolver and its length
+  compared, the sizes of a file's and a socket's descriptor, and an asset's
+  declared length.
+
 - `android/app/ActivityManager.java`, `RecentTaskInfo`, which
   `AppTask.getTaskInfo()` returns: the fields it has from `TaskInfo` on
   Android 10 and later (`taskId`, `isRunning`, `numActivities`, `baseIntent`,
