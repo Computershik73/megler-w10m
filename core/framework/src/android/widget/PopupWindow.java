@@ -167,12 +167,20 @@ public class PopupWindow {
         findDropDownPosition(anchor, p, xoff, yoff, gravity, false);
         mWindowManager.addView(mDecorView, p);
         if (mWidth < 0 || mHeight < 0) {
+            // (Its window attaches and measures it at its first frame, megler.ViewRoot: placed then, by the size it was given,
+            // before it is drawn.)
             final View decor = mDecorView;
-            decor.post(() -> {
-                if (!isShowing() || mDecorView != decor || mAnchor != anchor) return;
-                WindowManager.LayoutParams lp = (WindowManager.LayoutParams) decor.getLayoutParams();
-                findDropDownPosition(anchor, lp, mAnchorXoff, mAnchorYoff, mAnchorGravity, true);
-                mWindowManager.updateViewLayout(decor, lp);
+            decor.getViewTreeObserver().addOnPreDrawListener(new android.view.ViewTreeObserver.OnPreDrawListener() {
+                @Override public boolean onPreDraw() {
+                    decor.getViewTreeObserver().removeOnPreDrawListener(this);
+                    if (!isShowing() || mDecorView != decor || mAnchor != anchor) return true;
+                    WindowManager.LayoutParams lp = (WindowManager.LayoutParams) decor.getLayoutParams();
+                    int x = lp.x, y = lp.y;
+                    findDropDownPosition(anchor, lp, mAnchorXoff, mAnchorYoff, mAnchorGravity, true);
+                    if (lp.x == x && lp.y == y) return true;
+                    mWindowManager.updateViewLayout(decor, lp);
+                    return false;
+                }
             });
         }
     }
