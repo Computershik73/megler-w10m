@@ -4298,6 +4298,17 @@ Keeps Running)`, or `audio: minimized and unheard, the app rests: ... (Settings,
 In the Background: Rests)`. A game with an engine of its own has no such
 output and is suspended with either.
 
+An output alone keeps only an app Windows takes for a player running: one whose
+media session has played, with the system media controls its own. Any other,
+Telegram among them, Windows suspends 0.3 s after it is minimized, its output
+XAudio2's or Windows.Media's player's alike (an HP Elite x3, 0.1.0.696, 731 and
+732). So under Keeps Running a Java app also holds an extended execution
+session (`player/Session.cpp`, keepRunning: `ExtendedExecutionReason::
+Unspecified`), asked for at its start and each time it is shown again: minimized,
+it runs on for as long as Windows lets it, some ten minutes on a phone, then is
+suspended until it is shown. The log says `background: an extended execution
+session is held ...`, Windows' denial, or its taking the session back.
+
 Of an app that rests, the shell's sound host
 (`player/AudioHost.h`) lets go of the output -- Windows.Media's
 player, or the XAudio2 engine -- once the application is in Windows'
