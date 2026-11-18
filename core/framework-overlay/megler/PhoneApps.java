@@ -54,20 +54,25 @@ public final class PhoneApps {
         public final String name, target, label;
         public final int icon;
         public final boolean enabled, exported;
-        final java.util.List<Filter> filters;
-        Activity(String name, String target, String label, int icon, boolean enabled, boolean exported, java.util.List<Filter> filters) {
+        final java.util.List<Manifest.Filter> filters;
+        Activity(String name, String target, String label, int icon, boolean enabled, boolean exported, java.util.List<Manifest.Filter> filters) {
             this.name = name; this.target = target; this.label = label; this.icon = icon; this.enabled = enabled; this.exported = exported;
             this.filters = filters;
         }
         boolean launcher() {
-            for (Filter f : filters) if (f.actions.contains(Intent.ACTION_MAIN) && f.categories.contains(Intent.CATEGORY_LAUNCHER)) return true;
+            for (Manifest.Filter f : filters) if (f.actions.contains(Intent.ACTION_MAIN) && f.categories.contains(Intent.CATEGORY_LAUNCHER)) return true;
             return false;
         }
         /** Whether one of its filters takes the intent. */
-        boolean takes(Intent i) {
-            for (Filter f : filters) if (f.takes(i)) return true;
-            return false;
+        boolean takes(Intent i) { return filterFor(i, IntentMatch.typeOf(i), false) != null; }
+        /** The first of its filters that takes the intent, of MIME type `type`; with `defaultOnly` one with CATEGORY_DEFAULT too, as
+         *  startActivity resolves (megler.Resolver). Null when none does. */
+        public Manifest.Filter filterFor(Intent i, String type, boolean defaultOnly) {
+            for (Manifest.Filter f : filters) if (IntentMatch.matches(f, i, type, defaultOnly)) return f;
+            return null;
         }
+        /** Its filters, as the shell described them. */
+        public java.util.List<Manifest.Filter> filters() { return filters; }
     }
 
     /** One of an app's services another app may bind, as the shell described it. */
@@ -75,42 +80,45 @@ public final class PhoneApps {
         public final String name, label, permission;
         public final int icon;
         public final boolean enabled;
-        final java.util.List<Filter> filters;
-        Service(String name, String label, String permission, int icon, boolean enabled, java.util.List<Filter> filters) {
+        final java.util.List<Manifest.Filter> filters;
+        Service(String name, String label, String permission, int icon, boolean enabled, java.util.List<Manifest.Filter> filters) {
             this.name = name; this.label = label; this.permission = permission; this.icon = icon; this.enabled = enabled; this.filters = filters;
         }
         /** Whether one of its filters takes the intent. */
         boolean takes(Intent i) {
-            for (Filter f : filters) if (f.takes(i)) return true;
+            String type = IntentMatch.typeOf(i);
+            for (Manifest.Filter f : filters) if (IntentMatch.matches(f, i, type, false)) return true;
             return false;
         }
     }
 
-    /** An intent filter as the shell described it: as Android's resolver has it, the action, every category, the data. */
-    static final class Filter {
-        final java.util.List<String> actions, categories, schemes, hosts, types;
-        Filter(java.util.List<String> actions, java.util.List<String> categories, java.util.List<String> schemes, java.util.List<String> hosts,
-               java.util.List<String> types) {
-            this.actions = actions; this.categories = categories; this.schemes = schemes; this.hosts = hosts; this.types = types;
-        }
-        boolean takes(Intent i) {
-            if (i.getAction() != null ? !actions.contains(i.getAction()) : actions.isEmpty()) return false;
-            if (i.getCategories() != null) for (String c : i.getCategories()) if (!categories.contains(c)) return false;
-            android.net.Uri data = i.getData();
-            String type = i.getType(), scheme = data != null ? data.getScheme() : null;
-            if (type == null && scheme == null) return schemes.isEmpty() && types.isEmpty();
-            if (type != null) {
-                boolean typed = false;
-                for (String t : types) if (t.equals(type) || t.equals("*/*") || (t.endsWith("/*") && type.startsWith(t.substring(0, t.length() - 1)))) typed = true;
-                if (!typed) return false;
-            } else if (!types.isEmpty()) return false;
-            if (scheme != null) {
-                // A filter of types alone takes content: and file: data (Android's IntentFilter.matchData).
-                if (schemes.isEmpty()) return type != null && ("content".equals(scheme) || "file".equals(scheme));
-                if (!schemes.contains(scheme)) return false;
-                if (!hosts.isEmpty() && (data.getHost() == null || !hosts.contains(data.getHost()))) return false;
-            }
-            return true;
+    /*
+     * An intent filter as the shell described it (megler_apk_describe_activities), as Android's resolver has it: the action,
+     * every category, the data -- schemes, hosts each with its port, paths and scheme-specific parts, types -- its priority
+     * and autoVerify; megler.IntentMatch matches it as the app's own filters are matched. A description of before (Megler
+     * 0.1.0.734 and earlier) has no ports, paths or parts, until the shell describes the app again.
+     */
+    static Manifest.Filter filter(org.json.JSONObject x) throws org.json.JSONException {
+        Manifest.Filter f = new Manifest.Filter();
+        f.actions.addAll(strings(x, "actions"));
+        f.categories.addAll(strings(x, "categories"));
+        f.schemes.addAll(strings(x, "schemes"));
+        f.hosts.addAll(strings(x, "hosts"));
+        f.mimeTypes.addAll(strings(x, "types"));
+        org.json.JSONArray ports = x.optJSONArray("ports");
+        for (int k = 0; k < f.hosts.size(); k++) f.ports.add(ports != null && k < ports.length() ? ports.optInt(k, -1) : -1);
+        parts(x.optJSONArray("paths"), f.paths);
+        parts(x.optJSONArray("ssps"), f.ssps);
+        f.priority = x.optInt("priority", 0);
+        f.autoVerify = x.optBoolean("autoVerify", false);
+        return f;
+    }
+
+    private static void parts(org.json.JSONArray a, java.util.List<IntentMatch.Part> out) throws org.json.JSONException {
+        for (int k = 0; a != null && k < a.length(); k++) {
+            org.json.JSONObject o = a.getJSONObject(k);
+            int kind = IntentMatch.kindOf(o.optString("kind"));
+            if (kind >= 0 && o.has("value")) out.add(new IntentMatch.Part(kind, o.getString("value")));
         }
     }
 
@@ -246,12 +254,9 @@ public final class PhoneApps {
                     list = new java.util.ArrayList<>();
                     for (int k = 0; k < acts.length(); k++) {
                         org.json.JSONObject o = acts.getJSONObject(k);
-                        java.util.ArrayList<Filter> filters = new java.util.ArrayList<>();
+                        java.util.ArrayList<Manifest.Filter> filters = new java.util.ArrayList<>();
                         org.json.JSONArray fs = o.optJSONArray("filters");
-                        for (int f = 0; fs != null && f < fs.length(); f++) {
-                            org.json.JSONObject x = fs.getJSONObject(f);
-                            filters.add(new Filter(strings(x, "actions"), strings(x, "categories"), strings(x, "schemes"), strings(x, "hosts"), strings(x, "types")));
-                        }
+                        for (int f = 0; fs != null && f < fs.length(); f++) filters.add(filter(fs.getJSONObject(f)));
                         list.add(new Activity(o.getString("name"), o.has("target") ? o.getString("target") : null, o.has("label") ? o.getString("label") : null,
                                               (int) o.optLong("icon", 0), o.optBoolean("enabled", true), o.optBoolean("exported", false), filters));
                     }
@@ -281,12 +286,9 @@ public final class PhoneApps {
                     org.json.JSONArray all = new org.json.JSONObject(new String(json, java.nio.charset.StandardCharsets.UTF_8)).getJSONArray("services");
                     for (int k = 0; k < all.length(); k++) {
                         org.json.JSONObject o = all.getJSONObject(k);
-                        java.util.ArrayList<Filter> filters = new java.util.ArrayList<>();
+                        java.util.ArrayList<Manifest.Filter> filters = new java.util.ArrayList<>();
                         org.json.JSONArray fs = o.optJSONArray("filters");
-                        for (int f = 0; fs != null && f < fs.length(); f++) {
-                            org.json.JSONObject x = fs.getJSONObject(f);
-                            filters.add(new Filter(strings(x, "actions"), strings(x, "categories"), strings(x, "schemes"), strings(x, "hosts"), strings(x, "types")));
-                        }
+                        for (int f = 0; fs != null && f < fs.length(); f++) filters.add(filter(fs.getJSONObject(f)));
                         list.add(new Service(o.getString("name"), o.has("label") ? o.getString("label") : null, o.has("permission") ? o.getString("permission") : null,
                                              (int) o.optLong("icon", 0), o.optBoolean("enabled", true), filters));
                     }
