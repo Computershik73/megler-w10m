@@ -980,6 +980,8 @@ static MEGLER_CB void media_metadata(void *user, const char *title, const char *
 
 /* What the app asked of the phone (megler_system_host): "launch=com.example.other/com.example.other.Main;install=Viewed.apk;". */
 static char g_system_heard[512];
+/* The launches of the apps the data app's links went to (links_requests), apart from what system_requests checks. */
+static char g_links_heard[256];
 static mg_lock g_system_lock = MG_LOCK_INIT;
 
 static void system_heard(const char *what)
@@ -1531,6 +1533,12 @@ static MEGLER_CB bool system_launch(void *user, const char *package, const char 
     const char *more = activity ? strchr(activity, '~') : NULL;
     (void)user;
     snprintf(t, sizeof(t), "launch=%s/%.*s;", package, activity ? (int)(more ? (size_t)(more - activity) : strlen(activity)) : 1, activity ? activity : "-");
+    if (!strcmp(package, "com.example.browser") || !strcmp(package, "com.example.maps")) {
+        mg_lock_acquire(&g_system_lock);
+        if (strlen(g_links_heard) + strlen(t) + 1 < sizeof(g_links_heard)) strcat(g_links_heard, t);
+        mg_lock_release(&g_system_lock);
+        return true;
+    }
     system_heard(t);
     if (activity) {
         char *path = mg_sprintf("%s/launch-request.txt", megler_data_dir());
@@ -1624,6 +1632,9 @@ static const char *phone_apps_fixture(void)
     f = fopen(path, "wb");
     if (f) {
         fputs("com.example.other\tcom.example.other.Main\tOther\t1.0\t3\n", f);
+        /* A browser and a maps app, for the data app's links (links_requests). */
+        fputs("com.example.browser\tcom.example.browser.Main\tExample Browser\t1.0\t1\n", f);
+        fputs("com.example.maps\tcom.example.maps.Main\tExample Maps\t1.0\t1\n", f);
         /* The other of Play Feature Delivery's two apps (run_playclient): the Play Store on the client's phone, unless the run
            is of a phone without one; the client on the Play Store's. */
         if (g_play_client && !g_play_no_store) fputs("com.android.vending\tmegler.test.playstore.Main\tPlay Store\t1.0\t1\n", f);
@@ -1671,6 +1682,41 @@ static const char *phone_apps_fixture(void)
         path = mg_sprintf("%s/7f080001.png", own);
         mg_file_write_all(path, png3, sizeof(png3));
         free(path);
+        /* The browser: its filter takes web links of any host. The maps app: geo:, and its site's places, a filter that asks to
+           be verified (https://maps.example.org/place/..., which says nothing of it). Both as the shell describes them. */
+        {
+            static const char launcher[] = "{\"id\":1,\"actions\":[\"android.intent.action.MAIN\"],\"categories\":[\"android.intent.category.LAUNCHER\"],"
+                                           "\"schemes\":[],\"hosts\":[],\"types\":[],\"ports\":[],\"paths\":[],\"ssps\":[]}";
+            char *browser = mg_sprintf("{\"package\":\"com.example.browser\",\"label\":\"Example Browser\",\"icon\":0,\"activities\":["
+                                       "{\"name\":\"com.example.browser.Main\",\"label\":\"Example Browser\",\"exported\":true,\"filters\":[%s,"
+                                       "{\"id\":2,\"actions\":[\"android.intent.action.VIEW\"],\"categories\":[\"android.intent.category.DEFAULT\","
+                                       "\"android.intent.category.BROWSABLE\"],\"schemes\":[\"http\",\"https\"],\"hosts\":[],\"types\":[],\"ports\":[],"
+                                       "\"paths\":[],\"ssps\":[]}]}],\"certificates\":[\"3003020107\"]}", launcher);
+            char *maps = mg_sprintf("{\"package\":\"com.example.maps\",\"label\":\"Example Maps\",\"icon\":0,\"activities\":["
+                                    "{\"name\":\"com.example.maps.Main\",\"label\":\"Example Maps\",\"exported\":true,\"filters\":[%s,"
+                                    "{\"id\":2,\"actions\":[\"android.intent.action.VIEW\"],\"categories\":[\"android.intent.category.DEFAULT\","
+                                    "\"android.intent.category.BROWSABLE\"],\"schemes\":[\"geo\"],\"hosts\":[],\"types\":[],\"ports\":[],\"paths\":[],"
+                                    "\"ssps\":[]},"
+                                    "{\"id\":3,\"actions\":[\"android.intent.action.VIEW\"],\"categories\":[\"android.intent.category.DEFAULT\","
+                                    "\"android.intent.category.BROWSABLE\"],\"schemes\":[\"https\"],\"hosts\":[\"maps.example.org\"],\"types\":[],"
+                                    "\"ports\":[-1],\"paths\":[{\"kind\":\"prefix\",\"value\":\"/place/\"}],\"ssps\":[],\"autoVerify\":true}]}],"
+                                    "\"certificates\":[\"3003020107\"]}", launcher);
+            const char *names[2] = { "com.example.browser", "com.example.maps" }, *texts[2] = { browser, maps };
+            int k;
+            for (k = 0; k < 2; k++) {
+                char *app = mg_sprintf("%s/%s", dir, names[k]), *file = mg_sprintf("%s/activities.json", app);
+                mg_path_mkdirs(app);
+                mg_file_write_all(file, texts[k], strlen(texts[k]));
+                free(file);
+                free(app);
+            }
+            free(browser);
+            free(maps);
+            /* (No default apps from an earlier run: the steps set theirs and take them back.) */
+            path = mg_sprintf("%s/defaults.ini", dir);
+            remove(path);
+            free(path);
+        }
         /* Which APK that is, as the shell writes it beside the description (PhoneAppsList.cpp): the file is where the data
            app finds the other app's APK, /data/app/com.example.other-1/base.apk (phone-apps-source). */
         {
@@ -1782,6 +1828,7 @@ static bool start(const char *apk, const char *android_root)
     if (g_pickers_app || g_webview_app) cfg.system.pick = system_pick;
     g_pick_heard[0] = 0;
     g_system_heard[0] = 0;
+    g_links_heard[0] = 0;
     g_permissions_asked[0] = 0;
     cfg.apps_dir = phone_apps_fixture();
     /* Decoders for MediaCodec that decode nothing but take samples only as a real one must have them (mg_codec_standin.c). */
@@ -1892,6 +1939,13 @@ static bool start(const char *apk, const char *android_root)
             CHECK(json && strstr(json, "{\"name\":\"megler.test.crash.IconLight\",\"enabled\":true,\"target\":\"megler.test.crash.First\",\"exported\":true,"
                                        "\"filters\":[{\"id\":1,\"actions\":[\"android.intent.action.MAIN\"],\"categories\":[\"android.intent.category.LAUNCHER\"],"
                                        "\"schemes\":[],\"hosts\":[],\"types\":[],\"ports\":[],\"paths\":[],\"ssps\":[]}]}"));
+        }
+        /* The data app's filters for links, as Android's IntentFilter has them: a path pattern, a path prefix, a host's port. */
+        if (g_data_app) {
+            CHECK(json && strstr(json, "\"schemes\":[\"https\"],\"hosts\":[\"github.example\"],\"types\":[],\"ports\":[-1],"
+                                       "\"paths\":[{\"kind\":\"glob\",\"value\":\"/.*/.*\"}],\"ssps\":[]}"));
+            CHECK(json && strstr(json, "\"hosts\":[\"open\"],\"types\":[],\"ports\":[-1],\"paths\":[{\"kind\":\"prefix\",\"value\":\"/item/\"}]"));
+            CHECK(json && strstr(json, "\"schemes\":[\"megler-port\"],\"hosts\":[\"here\"],\"types\":[],\"ports\":[8080],"));
         }
         if (json) say("  activities described: %.200s", json);
         free(json);
@@ -3900,6 +3954,37 @@ static void media_session_keys(void)
 }
 
 /*
+ * Where the data app's links went (its steps "link-...", megler.Resolver): its own sign-in page on a site its filter is not
+ * verified for, to Windows' browser and not to itself, the log saying the link's scheme and host and not its code; a web link
+ * to the browser the user chose; geo: to the app chosen "Always"; "Open with" shown with this app and the maps app, and
+ * closed; and the maps app's place, its site asked off the main thread and silent on it, to Windows' browser.
+ */
+static void links_requests(void)
+{
+    static const char want[] = "launch=com.example.browser/com.example.browser.Main;launch=com.example.maps/com.example.maps.Main;";
+    char heard[sizeof(g_links_heard)];
+    int tries;
+    CHECK(wait_line("I/Megler: links: https://github.example -> Windows' browser: the browser: ", 0, 30) >= 0);
+    CHECK(find_line("is not approved for github.example (not verified, not allowed in its settings)", 0) >= 0);
+    CHECK(wait_line("java: the app opens https://github.example/login/device?user_code=AB-CD", 0, 30) >= 0);
+    CHECK(find_line("links: https://github.example/login", 0) < 0 && find_line("I/DataTest: linked ", 0) < 0);
+    CHECK(wait_line("I/Megler: links: https://example.net -> com.example.browser/Main: the browser", 0, 30) >= 0);
+    CHECK(wait_line("I/Megler: links: geo: -> com.example.maps/Main: the user's \"Always\" for android.intent.action.VIEW|geo|", 0, 30) >= 0);
+    CHECK(wait_line("I/Megler: links: geo: -> Open with: this app's megler.test.data/Main$Linked, com.example.maps/Main (2 activities take it)", 0, 30) >= 0);
+    CHECK(wait_line("I/Megler: links: geo: -> Open with was closed, nothing opened", 0, 30) >= 0);
+    CHECK(wait_line("I/Megler: links: https://maps.example.org -> Windows' browser: the browser: Example Maps is not approved for maps.example.org", 0, 60) >= 0);
+    for (tries = 0; tries < 150; tries++) {
+        mg_lock_acquire(&g_system_lock);
+        mg_strlcpy(heard, g_links_heard, sizeof(heard));
+        mg_lock_release(&g_system_lock);
+        if (!strcmp(heard, want)) break;
+        mg_sleep_ns(20000000ull);
+    }
+    say("  the links started: %s", heard);
+    CHECK(!strcmp(heard, want));
+}
+
+/*
  * What the data app asked of the phone (megler_system_host), in order: to start the other app the apps folder has, by its
  * launch intent; to install the APK it opened with ACTION_VIEW; to install its PackageInstaller sessions' files, by their
  * apps' names. Their status comes back to the app once Megler has told it: STATUS_FAILURE_ABORTED (3) for the one the user
@@ -4237,7 +4322,13 @@ static int run_data(void)
                                             recorded again; nodes nested and moved; one discarded and recorded again; what a list keeps (a paint, a
                                             path, a matrix and a picture as they were, a bitmap as it is); two hundred nodes of 1440 x 2560. */
                                          "render-nodes", "render-node-props", "render-node-nested", "render-node-rerecord", "render-node-snapshots",
-                                         "render-node-memory" };
+                                         "render-node-memory",
+                                         /* And links and addresses as Android resolves them (megler.Resolver): the paths, ports and
+                                            CATEGORY_DEFAULT of filters; a site's links not verified for the app going to the browser
+                                            (Komi Store's sign-in, issue #12), unless the user allowed them; the browser the user chose;
+                                            "Always"; "Open with"; and a site asked whether it is an app's (links_requests). */
+                                         "intent-filter-data", "link-unverified", "link-default-browser", "link-always", "link-chooser",
+                                         "link-verified-unknown" };
     int at = -1, want = 0, run = 0, line, i;
     char text[120];
     if (g_script_count) sscanf(g_script[0], "run:%d", &want);
@@ -4562,6 +4653,7 @@ static int run_data(void)
     bars_and_insets();
     media_session_keys();
     system_requests();
+    links_requests();
     app_results(&at);
     /*
      * The second run has the flags trace-net, trace-exceptions and trace-stacks on (tools/build-tests.sh puts them in its

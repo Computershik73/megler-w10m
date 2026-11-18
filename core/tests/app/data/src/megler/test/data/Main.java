@@ -2444,6 +2444,7 @@ public class Main extends Activity {
         network();
         httpEngine();
         renderNodes();
+        links();
         Log.i("DataTest", "done ok=" + ok + " failed=" + failed);
         doneLogged = true;
         mediaSession();
@@ -11437,6 +11438,108 @@ public class Main extends Activity {
             Log.i("DataTest", "render-node-memory nodes=" + many.size() + " bytes=" + bytes + " ms=" + ms + (error == null ? "" : " " + error));
             return error == null && many.size() == 200 && bytes < 200 * 2048 && shown;
         });
+    }
+
+    /** Opened by a link the steps of links() resolve to it; none of them starts it, so that Main is not paused under them. */
+    public static class Linked extends Activity {
+        @Override
+        protected void onCreate(Bundle state) {
+            super.onCreate(state);
+            Log.i("DataTest", "linked " + getIntent().getData());
+            finish();
+        }
+    }
+
+    private static void defaults(String key, String value) throws Exception {
+        Class.forName("megler.Defaults").getMethod("set", String.class, String.class).invoke(null, key, value);
+    }
+
+    private static String first(java.util.List<android.content.pm.ResolveInfo> l) {
+        return l.isEmpty() ? "none" : l.get(0).activityInfo.packageName + "/" + l.get(0).activityInfo.name;
+    }
+
+    /*
+     * What an implicit intent with data opens, as Android resolves it (megler.Resolver, megler.IntentMatch): the paths, ports,
+     * types and CATEGORY_DEFAULT of the filters; web links to the apps approved for their domains, else to the default browser
+     * (Windows' own, "com.android.browser" to the package manager, or the one chosen); "Always"; and "Open with". The apps
+     * folder (phone_apps_fixture) has a browser, com.example.browser, and a maps app, com.example.maps, whose filter for
+     * https://maps.example.org/place/ asks to be verified. Where a link goes when started is the log's and the phone's to say
+     * (the test's C side, links_requests).
+     */
+    private void links() {
+        final android.content.pm.PackageManager pm = getPackageManager();
+        final int DEFAULT_ONLY = android.content.pm.PackageManager.MATCH_DEFAULT_ONLY, ALL = 0x00020000;
+        final String linked = Linked.class.getName();
+        step("intent-filter-data", () -> {
+            String item = first(pm.queryIntentActivities(view("megler-data://open/item/5"), DEFAULT_ONLY));
+            String otherPath = first(pm.queryIntentActivities(view("megler-data://open/other"), DEFAULT_ONLY));
+            String port = first(pm.queryIntentActivities(view("megler-port://here:8080/x"), DEFAULT_ONLY));
+            String wrongPort = first(pm.queryIntentActivities(view("megler-port://here:9090/x"), DEFAULT_ONLY));
+            String noPort = first(pm.queryIntentActivities(view("megler-port://here/x"), DEFAULT_ONLY));
+            int noDefault = pm.queryIntentActivities(view("megler-nodefault:x"), DEFAULT_ONLY).size(), anyCategory = pm.queryIntentActivities(view("megler-nodefault:x"), 0).size();
+            StringBuilder geo = new StringBuilder();
+            for (android.content.pm.ResolveInfo r : pm.queryIntentActivities(view("geo:1,2"), DEFAULT_ONLY)) geo.append(r.activityInfo.packageName).append(',');
+            String own = getPackageName();
+            detail = "item=" + item + " otherPath=" + otherPath + " port=" + port + " wrongPort=" + wrongPort + " noPort=" + noPort + " noDefault=" + noDefault + "/" + anyCategory
+                    + " geo=" + geo;
+            return item.equals(own + "/" + linked) && otherPath.equals("none") && port.equals(own + "/" + linked) && wrongPort.equals("none") && noPort.equals("none")
+                    && noDefault == 0 && anyCategory == 1 && geo.toString().contains(own + ",") && geo.toString().contains("com.example.maps,");
+        });
+        // A filter of the app's own for a site that is not verified for it takes none of that site's links: they go to the browser,
+        // unless the user allowed the app those links (links.<package>=all) -- and then only those its filter takes.
+        step("link-unverified", () -> {
+            String asked = first(pm.queryIntentActivities(view("https://github.example/login/device?user_code=AB-CD"), DEFAULT_ONLY));
+            boolean listed = false;
+            for (android.content.pm.ResolveInfo r : pm.queryIntentActivities(view("https://github.example/login/device"), ALL)) if (linked.equals(r.activityInfo.name)) listed = true;
+            startActivity(view("https://github.example/login/device?user_code=AB-CD"));
+            defaults("links." + getPackageName(), "all");
+            String allowed = first(pm.queryIntentActivities(view("https://github.example/a/b"), DEFAULT_ONLY));
+            String root = first(pm.queryIntentActivities(view("https://github.example/"), DEFAULT_ONLY));
+            defaults("links." + getPackageName(), null);
+            detail = "asked=" + asked + " listed=" + listed + " allowed=" + allowed + " root=" + root;
+            return asked.equals("com.android.browser/com.android.browser.Browser") && listed && allowed.equals(getPackageName() + "/" + linked)
+                    && root.equals("com.android.browser/com.android.browser.Browser");
+        });
+        // The browser the user chose: web links go to it, and the package manager says so; Windows' own again once it is taken back.
+        step("link-default-browser", () -> {
+            defaults("browser", "com.example.browser/com.example.browser.Main");
+            String chosen = first(pm.queryIntentActivities(view("https://example.net/page"), DEFAULT_ONLY));
+            startActivity(view("https://example.net/page"));
+            defaults("browser", null);
+            String windows = first(pm.queryIntentActivities(view("https://example.net/page"), DEFAULT_ONLY));
+            boolean both = false;
+            for (android.content.pm.ResolveInfo r : pm.queryIntentActivities(view("https://example.net/page"), ALL)) if ("com.example.browser".equals(r.activityInfo.packageName)) both = true;
+            detail = "chosen=" + chosen + " windows=" + windows + " all=" + both;
+            return chosen.equals("com.example.browser/com.example.browser.Main") && windows.equals("com.android.browser/com.android.browser.Browser") && both;
+        });
+        // "Always" for geo: (this app and the maps app take it): it goes to the one chosen, with no question.
+        step("link-always", () -> {
+            defaults("always.android.intent.action.VIEW|geo|", "com.example.maps/com.example.maps.Main");
+            startActivity(view("geo:1,2"));
+            defaults("always.android.intent.action.VIEW|geo|", null);
+            return true;
+        });
+        // Without it, "Open with": the two, here closed again with nothing opened.
+        step("link-chooser", () -> {
+            startActivity(view("geo:3,4"));
+            java.lang.reflect.Field f = Class.forName("megler.Chooser").getDeclaredField("sShown");
+            f.setAccessible(true);
+            android.app.Dialog d = (android.app.Dialog) f.get(null);
+            boolean showing = d != null && d.isShowing();
+            if (d != null) d.cancel();
+            detail = "dialog=" + d + " showing=" + showing;
+            return showing;
+        });
+        // A filter that asks to be verified (the maps app's for maps.example.org): its site is asked, off the main thread; the link
+        // goes to the browser when the site does not say the app is its.
+        step("link-verified-unknown", () -> {
+            startActivity(view("https://maps.example.org/place/x"));
+            return true;
+        });
+    }
+
+    private static android.content.Intent view(String uri) {
+        return new android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(uri));
     }
 
     private static String describe(android.content.Intent battery) {

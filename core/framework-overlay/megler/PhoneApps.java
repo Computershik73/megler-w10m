@@ -622,6 +622,15 @@ public final class PhoneApps {
         return new Object[] { cls, i };
     }
 
+    /** An intent for an activity of another app the phone has, started by the shell; a result asked for (`request`, 0 or more)
+     *  comes back to the caller when it is in front again (megler.AppResults), as AppRunner.startActivity has it. */
+    static void startWith(android.content.Context from, Intent i, int request) {
+        String[] t = target(i);
+        if (t == null) return;
+        if (request >= 0) AppResults.await(from instanceof android.app.Activity ? (android.app.Activity) from : AppRunner.top(), request, t[0], t[1]);
+        start(i);
+    }
+
     /** An intent for an activity of another app the phone has: started by the shell, true; any other intent, false. */
     public static boolean start(Intent i) {
         String[] t = target(i);

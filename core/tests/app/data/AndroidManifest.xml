@@ -46,6 +46,39 @@
             </intent-filter>
         </receiver>
         <receiver android:name=".Main$Target" android:exported="false" />
+        <!-- Links and addresses (Main's steps "intent-filter-data" and "link-..."), as megler.Resolver matches them: a filter for a
+             site's links that is not verified, as Komi Store's for github.com (its sign-in page, /login/device, matches
+             "/.*/.*" too); the app's own scheme, of one path prefix; geo:, as a maps app's; a port; and one without
+             CATEGORY_DEFAULT, which startActivity's implicit intents do not reach. -->
+        <activity android:name=".Main$Linked" android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="https" />
+                <data android:host="github.example" />
+                <data android:pathPattern="/.*/.*" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:scheme="megler-data" android:host="open" android:pathPrefix="/item/" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:scheme="geo" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:scheme="megler-port" android:host="here" android:port="8080" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <data android:scheme="megler-nodefault" />
+            </intent-filter>
+        </activity>
         <!-- Asked for by another app (megler_start_activity, from the test's C side) and finished with a result for it: the result
              of an activity one app starts in another for one (Main's "app-results"). -->
         <activity android:name=".Main$Answer" android:exported="true" />

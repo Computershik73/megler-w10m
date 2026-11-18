@@ -18,7 +18,10 @@
 // installer first (megler.Installs), as Android hands it to its package installer, rather than to an activity of the app's
 // that takes the content or file scheme. And an intent for an activity of another app the phone has goes to the shell,
 // which starts that app (megler.PhoneApps). Started for a result, its result comes back to the caller as the caller is in
-// front again (megler.AppResults): Play Store hears so that microG's sign-in, in microG's app, added the account.
+// front again (megler.AppResults): Play Store hears so that microG's sign-in, in microG's app, added the account. And an
+// implicit intent with data -- a link, an address, a file of a type -- is resolved as Android resolves it, among the app's
+// activities and the other apps' (megler.Resolver): a web link to the apps approved for its domain, else to the default
+// browser; "Open with" where several take it.
 //
 // And the app's components are made by the factory its manifest names (android:appComponentFactory), as Android 9's
 // ActivityThread makes them: the factory is made with the app's class loader and asked for the class loader first
@@ -650,61 +653,14 @@ public final class AppRunner {
         // Android's screens about the Bluetooth radio (BluetoothAdapter.ACTION_REQUEST_ENABLE and the like): the phone's
         // Bluetooth settings, the result as the radio turns out (megler.Bluetooth.request).
         if (Bluetooth.request(from instanceof Activity ? (Activity) from : top(), i, request)) return;
+        // A link, an address, a file of a type, for no package (megler.Resolver): the activity of this app's or of another
+        // app's that takes it, as Android resolves it -- a web link to the apps approved for its domain, else to the browser
+        // --, or "Open with" where several do. Nothing taking it, it goes on below as before.
+        if (Resolver.start(from, i, request)) return;
         Manifest.Component c = Manifest.resolve(i);
         android.util.Log.d("Megler", "startActivity " + i + (c != null ? " -> " + c.name : " (not an activity of this app)"));
         if (c != null) {
-            final Activity caller = from instanceof Activity ? (Activity) from : top();
-            final Intent intent = new Intent(i);
-            if (intent.getComponent() == null) intent.setComponent(new ComponentName(Native.packageName(), c.name));
-            sHandler.post(() -> {
-                try {
-                    // the activity itself, as Android compares realActivity: one started through an <activity-alias> is its target's,
-                    // whose launch mode is the one that counts
-                    String real = "activity-alias".equals(c.kind) && c.parentActivity != null ? c.parentActivity : c.name;
-                    Manifest.Component realInfo = real.equals(c.name) ? c : Manifest.activity(real);
-                    int mode = realInfo != null ? realInfo.launchMode : c.launchMode;
-                    /*
-                     * FLAG_ACTIVITY_CLEAR_TOP, or an activity of launch mode singleTask (2) or singleInstance (3): one of it
-                     * already on the stack is brought back with the intent and the activities above it go, as Android does
-                     * with an instance of it in its task -- the app's stack is its one task here, and taskAffinity is not
-                     * looked at. Viber's RegistrationActivity (singleTask) was made anew at every start, four of it in one
-                     * session (0.1.0.699), where Android gives the one there onNewIntent.
-                     */
-                    if ((intent.getFlags() & Intent.FLAG_ACTIVITY_CLEAR_TOP) != 0 || mode == 2 || mode == 3) {
-                        // not one that is finishing, as Android passes over those: Instagram's main activity, finished in
-                        // its onCreate, was started again (onRestart, onStart) and failed for the state it never made
-                        for (int k = sStack.size() - 1; k >= 0; k--) if (!sStack.get(k).isFinishing() && sStack.get(k).getClass().getName().equals(real)) {
-                            Activity existing = sStack.get(k);
-                            while (top() != existing) finishNow(top(), false);
-                            if ((intent.getFlags() & 0x20000000 /* SINGLE_TOP */) != 0 || mode != 0) {
-                                // singleTop, singleTask, singleInstance, or asked for: the intent comes to it, as Android brings it
-                                // back -- onRestart and onStart when it was stopped, onNewIntent, then onResume
-                                boolean up = existing.isResumedMegler();
-                                // (meeting the screen as it is now first: made again, the intent goes to the new one)
-                                if (!up) existing = ensureConfiguration(existing, TO_STARTED);
-                                if (!up && !existing.meglerVisible()) { existing.meglerRestart(); existing.meglerStart(); }
-                                existing.meglerNewIntent(intent);
-                                if (!up) existing.meglerResume();
-                                updateOrientation();
-                                return;
-                            }
-                            // standard: it goes, and the activity is started again with this intent (below)
-                            finishNow(existing, false);
-                            break;
-                        }
-                    }
-                    if ((intent.getFlags() & 0x20000000 /* SINGLE_TOP */) != 0 || mode == 1) {
-                        Activity t = top();
-                        if (t != null && !t.isFinishing() && startedAs(t).equals(intent.getComponent().getClassName())) { t.meglerNewIntent(intent); return; }
-                    }
-                    // an <activity-alias> starts the activity it names; the intent keeps the alias as its component, as on Android
-                    launch("activity-alias".equals(c.kind) && c.parentActivity != null ? c.parentActivity : c.name, intent, caller, request, c);
-                } catch (Throwable t) {
-                    android.util.Log.e("Megler", "starting " + c.name + " failed", t);
-                    if (t instanceof RuntimeException) throw (RuntimeException) t;
-                    throw new RuntimeException(t);
-                }
-            });
+            startOwn(from, i, request, c);
             return;
         }
         // The phone's home screen (ACTION_MAIN with CATEGORY_HOME, of no activity of the app's own): the app goes to the back, as
@@ -759,6 +715,62 @@ public final class AppRunner {
             return;
         }
         throw new ActivityNotFoundException("No Activity found to handle " + i);
+    }
+    /** An activity of the app's own, `c`, started with the intent: brought back where it is on the stack and its launch mode or
+     *  the intent's flags say so, made anew otherwise (megler.Resolver starts one so too). */
+    static void startOwn(Context from, Intent i, int request, Manifest.Component c) {
+        final Activity caller = from instanceof Activity ? (Activity) from : top();
+        final Intent intent = new Intent(i);
+        if (intent.getComponent() == null) intent.setComponent(new ComponentName(Native.packageName(), c.name));
+        sHandler.post(() -> {
+            try {
+                // the activity itself, as Android compares realActivity: one started through an <activity-alias> is its target's,
+                // whose launch mode is the one that counts
+                String real = "activity-alias".equals(c.kind) && c.parentActivity != null ? c.parentActivity : c.name;
+                Manifest.Component realInfo = real.equals(c.name) ? c : Manifest.activity(real);
+                int mode = realInfo != null ? realInfo.launchMode : c.launchMode;
+                /*
+                 * FLAG_ACTIVITY_CLEAR_TOP, or an activity of launch mode singleTask (2) or singleInstance (3): one of it
+                 * already on the stack is brought back with the intent and the activities above it go, as Android does
+                 * with an instance of it in its task -- the app's stack is its one task here, and taskAffinity is not
+                 * looked at. Viber's RegistrationActivity (singleTask) was made anew at every start, four of it in one
+                 * session (0.1.0.699), where Android gives the one there onNewIntent.
+                 */
+                if ((intent.getFlags() & Intent.FLAG_ACTIVITY_CLEAR_TOP) != 0 || mode == 2 || mode == 3) {
+                    // not one that is finishing, as Android passes over those: Instagram's main activity, finished in
+                    // its onCreate, was started again (onRestart, onStart) and failed for the state it never made
+                    for (int k = sStack.size() - 1; k >= 0; k--) if (!sStack.get(k).isFinishing() && sStack.get(k).getClass().getName().equals(real)) {
+                        Activity existing = sStack.get(k);
+                        while (top() != existing) finishNow(top(), false);
+                        if ((intent.getFlags() & 0x20000000 /* SINGLE_TOP */) != 0 || mode != 0) {
+                            // singleTop, singleTask, singleInstance, or asked for: the intent comes to it, as Android brings it
+                            // back -- onRestart and onStart when it was stopped, onNewIntent, then onResume
+                            boolean up = existing.isResumedMegler();
+                            // (meeting the screen as it is now first: made again, the intent goes to the new one)
+                            if (!up) existing = ensureConfiguration(existing, TO_STARTED);
+                            if (!up && !existing.meglerVisible()) { existing.meglerRestart(); existing.meglerStart(); }
+                            existing.meglerNewIntent(intent);
+                            if (!up) existing.meglerResume();
+                            updateOrientation();
+                            return;
+                        }
+                        // standard: it goes, and the activity is started again with this intent (below)
+                        finishNow(existing, false);
+                        break;
+                    }
+                }
+                if ((intent.getFlags() & 0x20000000 /* SINGLE_TOP */) != 0 || mode == 1) {
+                    Activity t = top();
+                    if (t != null && !t.isFinishing() && startedAs(t).equals(intent.getComponent().getClassName())) { t.meglerNewIntent(intent); return; }
+                }
+                // an <activity-alias> starts the activity it names; the intent keeps the alias as its component, as on Android
+                launch("activity-alias".equals(c.kind) && c.parentActivity != null ? c.parentActivity : c.name, intent, caller, request, c);
+            } catch (Throwable t) {
+                android.util.Log.e("Megler", "starting " + c.name + " failed", t);
+                if (t instanceof RuntimeException) throw (RuntimeException) t;
+                throw new RuntimeException(t);
+            }
+        });
     }
     /** Activity.finish: the one below comes back (with the result when it asked for one). */
     public static void finish(Activity a) { sHandler.post(() -> finishNow(a, true)); }

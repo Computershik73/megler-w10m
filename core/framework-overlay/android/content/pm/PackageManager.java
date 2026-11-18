@@ -50,6 +50,10 @@
 // inside this app): queryIntentServices and resolveService find them after the app's own and Google's, getServiceInfo and
 // getPackageInfo with GET_SERVICES tell of them, and getResourcesForApplication gives the resources of an app whose service
 // runs here. Total Commander lists its plug-ins by their service's action and took each for not installed.
+// And queryIntentActivities and resolveActivity of an implicit intent with data (a link, an address, a file of a type) answer
+// as startActivity resolves it (megler.Resolver): the app's activities and the other apps' whose filters take it -- path,
+// port and type looked at, CATEGORY_DEFAULT with MATCH_DEFAULT_ONLY --, a web link's the apps approved for its domain or else
+// the default browser ("com.android.browser" for Windows' own), the one it opens first.
 package android.content.pm;
 
 import android.content.ComponentName;
@@ -98,6 +102,8 @@ public class PackageManager {
         a.softInputMode = c.windowSoftInputMode; a.processName = process(c); a.taskAffinity = c.taskAffinity;
         return a;
     }
+    /** An activity of the app's own as this tells of it (megler.Resolver's too). */
+    public static ActivityInfo meglerActivityInfo(megler.Manifest.Component c) { return activity(c); }
     /** An activity of Google Play services that runs here (megler.MicroG.activity), as its package describes it. */
     private static ActivityInfo hosted(megler.Manifest.Component c) {
         ActivityInfo a = activity(c);
@@ -350,6 +356,9 @@ public class PackageManager {
             return l;
         }
         megler.Manifest.Component hosted = c == null ? megler.MicroG.activity(i) : null;
+        // A link, an address, a file of a type, for no package: the app's activities and the other apps' whose filters take
+        // it, a web link's as Android 12 resolves it (megler.Resolver), with Windows' browser.
+        if (hosted == null && megler.Resolver.applies(i)) return megler.Resolver.query(i, flags);
         if (c != null) { ResolveInfo r = new ResolveInfo(); r.activityInfo = activity(c); l.add(r); }
         else if (hosted != null) { ResolveInfo r = new ResolveInfo(); r.activityInfo = hosted(hosted); l.add(r); return l; }
         else if (!other && i.getData() != null && ("http".equals(i.getData().getScheme()) || "https".equals(i.getData().getScheme()) || "mailto".equals(i.getData().getScheme()))) {
