@@ -29,13 +29,15 @@ struct Item {
 };
 
 /// The app's activities in <dir>\<package> (megler_apk_describe_activities), written again only when the APK is another one:
-/// its path, size and version are in source.txt there, after the description's form (3: with services.json, the services
-/// another app may bind, where the app has any; 2: with the APK's certificates; the descriptions of before have neither).
+/// its path, size and version are in source.txt there, after the description's form (4: with each filter's ports, paths,
+/// scheme-specific parts, priority and autoVerify, which Android's resolver matches a link by; 3: with services.json, the
+/// services another app may bind, where the app has any; 2: with the APK's certificates; the descriptions of before have
+/// neither).
 /// False when they could not be read.
 bool describe(const std::wstring& dir, const Item& item) {
     if (item.apk.empty()) return false;
     const std::wstring out = dir + L"\\" + widen(item.package);
-    const std::string source = "description 3\n" + narrow(item.apk) + "\n" + std::to_string((unsigned long long)files::size(item.apk)) +
+    const std::string source = "description 4\n" + narrow(item.apk) + "\n" + std::to_string((unsigned long long)files::size(item.apk)) +
                                "\n" + std::to_string((long long)item.versionCode) + "\n";
     std::string had;
     if (files::read(out + L"\\source.txt", had) && had == source && files::exists(out + L"\\activities.json")) return true;

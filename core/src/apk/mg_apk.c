@@ -1867,6 +1867,25 @@ bool megler_apk_icon(const char *apk_path, uint8_t **data, size_t *size) { retur
 #define ATTR_MIME_TYPE 0x01010026u
 #define ATTR_SCHEME 0x01010027u
 #define ATTR_HOST 0x01010028u
+#define ATTR_PORT 0x01010029u
+#define ATTR_PATH 0x0101002au
+#define ATTR_PATH_PREFIX 0x0101002bu
+#define ATTR_PATH_PATTERN 0x0101002cu
+#define ATTR_PATH_SUFFIX 0x0101061eu
+#define ATTR_PATH_ADVANCED 0x01010620u
+#define ATTR_SSP 0x010103e3u
+#define ATTR_SSP_PREFIX 0x010103e4u
+#define ATTR_SSP_PATTERN 0x010103e5u
+#define ATTR_SSP_SUFFIX 0x0101061fu
+#define ATTR_SSP_ADVANCED 0x01010621u
+#define ATTR_PRIORITY 0x0101001cu
+#define ATTR_AUTO_VERIFY 0x010104eeu
+
+/* A <data> path or scheme-specific part of a filter, as Android's PatternMatcher has it: its kind and its text. */
+typedef struct acts_part {
+    const char *kind; /* "literal", "prefix", "glob" (android:pathPattern), "advanced", "suffix" */
+    char value[160];
+} acts_part;
 
 typedef struct acts_ctx {
     char package[200];
@@ -1877,7 +1896,10 @@ typedef struct acts_ctx {
     int nfilters, nservices;
     /* the filter being read */
     char actions[16][160], categories[16][160], schemes[8][32], hosts[8][160], types[8][96];
-    int nactions, ncategories, nschemes, nhosts, ntypes;
+    int ports[8]; /* each host's, -1 for none: Android's AuthorityEntry is a <data>'s host with its port */
+    acts_part paths[16], ssps[8];
+    int nactions, ncategories, nschemes, nhosts, ntypes, npaths, nssps, priority;
+    bool auto_verify;
     /* the icons the app and its activities name, each once */
     u32 icons[64];
     int nicons;
@@ -1999,19 +2021,73 @@ static void acts_start(void *user, const char *tag, const attr *attrs, int nattr
         }
     } else if (c->in_activity && !strcmp(tag, "intent-filter")) {
         c->in_filter = true;
-        c->nactions = c->ncategories = c->nschemes = c->nhosts = c->ntypes = 0;
+        c->nactions = c->ncategories = c->nschemes = c->nhosts = c->ntypes = c->npaths = c->nssps = c->priority = 0;
+        c->auto_verify = false;
+        for (i = 0; i < nattrs; i++) {
+            if (attrs[i].id == ATTR_PRIORITY && attrs[i].type >= 0x10 && attrs[i].type <= 0x11) c->priority = (int)attrs[i].data;
+            if (attrs[i].id == ATTR_AUTO_VERIFY && attrs[i].type == 0x12) c->auto_verify = attrs[i].data != 0;
+        }
     } else if (c->in_filter && !strcmp(tag, "action") && name && c->nactions < (int)MG_COUNT(c->actions)) {
         mg_strlcpy(c->actions[c->nactions++], name->text, sizeof(c->actions[0]));
     } else if (c->in_filter && !strcmp(tag, "category") && name && c->ncategories < (int)MG_COUNT(c->categories)) {
         mg_strlcpy(c->categories[c->ncategories++], name->text, sizeof(c->categories[0]));
     } else if (c->in_filter && !strcmp(tag, "data")) {
+        /* Each attribute's text, a string resource's where it names one (Shazam's scheme is "@string/..."), as Android's
+           package parser reads them; a port goes with the host of its <data>, and one without a host is not looked at. */
+        char host[160] = "", port[16] = "";
         for (i = 0; i < nattrs; i++) {
             const attr *a = &attrs[i];
-            if (a->id == ATTR_SCHEME && c->nschemes < (int)MG_COUNT(c->schemes)) mg_strlcpy(c->schemes[c->nschemes++], a->text, sizeof(c->schemes[0]));
-            if (a->id == ATTR_HOST && c->nhosts < (int)MG_COUNT(c->hosts)) mg_strlcpy(c->hosts[c->nhosts++], a->text, sizeof(c->hosts[0]));
-            if (a->id == ATTR_MIME_TYPE && c->ntypes < (int)MG_COUNT(c->types)) mg_strlcpy(c->types[c->ntypes++], a->text, sizeof(c->types[0]));
+            const char *kind = NULL;
+            acts_part *parts = NULL;
+            int *n = NULL, cap = 0;
+            char text[160];
+            if (a->id == ATTR_PORT && a->type >= 0x10 && a->type <= 0x11) snprintf(text, sizeof(text), "%u", (unsigned)a->data);
+            else if (a->type == 0x03 || a->type == 0x01) acts_label(c, a, text, sizeof(text));
+            else continue;
+            if (!text[0]) continue;
+            if (a->id == ATTR_SCHEME && c->nschemes < (int)MG_COUNT(c->schemes)) mg_strlcpy(c->schemes[c->nschemes++], text, sizeof(c->schemes[0]));
+            else if (a->id == ATTR_HOST) mg_strlcpy(host, text, sizeof(host));
+            else if (a->id == ATTR_PORT) mg_strlcpy(port, text, sizeof(port));
+            else if (a->id == ATTR_MIME_TYPE && c->ntypes < (int)MG_COUNT(c->types)) mg_strlcpy(c->types[c->ntypes++], text, sizeof(c->types[0]));
+            else if (a->id == ATTR_PATH) kind = "literal", parts = c->paths, n = &c->npaths, cap = (int)MG_COUNT(c->paths);
+            else if (a->id == ATTR_PATH_PREFIX) kind = "prefix", parts = c->paths, n = &c->npaths, cap = (int)MG_COUNT(c->paths);
+            else if (a->id == ATTR_PATH_PATTERN) kind = "glob", parts = c->paths, n = &c->npaths, cap = (int)MG_COUNT(c->paths);
+            else if (a->id == ATTR_PATH_ADVANCED) kind = "advanced", parts = c->paths, n = &c->npaths, cap = (int)MG_COUNT(c->paths);
+            else if (a->id == ATTR_PATH_SUFFIX) kind = "suffix", parts = c->paths, n = &c->npaths, cap = (int)MG_COUNT(c->paths);
+            else if (a->id == ATTR_SSP) kind = "literal", parts = c->ssps, n = &c->nssps, cap = (int)MG_COUNT(c->ssps);
+            else if (a->id == ATTR_SSP_PREFIX) kind = "prefix", parts = c->ssps, n = &c->nssps, cap = (int)MG_COUNT(c->ssps);
+            else if (a->id == ATTR_SSP_PATTERN) kind = "glob", parts = c->ssps, n = &c->nssps, cap = (int)MG_COUNT(c->ssps);
+            else if (a->id == ATTR_SSP_ADVANCED) kind = "advanced", parts = c->ssps, n = &c->nssps, cap = (int)MG_COUNT(c->ssps);
+            else if (a->id == ATTR_SSP_SUFFIX) kind = "suffix", parts = c->ssps, n = &c->nssps, cap = (int)MG_COUNT(c->ssps);
+            if (kind && *n < cap) {
+                parts[*n].kind = kind;
+                mg_strlcpy(parts[*n].value, text, sizeof(parts[0].value));
+                (*n)++;
+            }
+        }
+        if (host[0] && c->nhosts < (int)MG_COUNT(c->hosts)) {
+            c->ports[c->nhosts] = port[0] ? atoi(port) : -1;
+            mg_strlcpy(c->hosts[c->nhosts++], host, sizeof(c->hosts[0]));
         }
     }
+}
+
+/* `n` paths or scheme-specific parts as a member that is an array of { "kind", "value" }. */
+static void acts_parts(mg_jbuf *j, const char *key, const acts_part *parts, int n)
+{
+    int k;
+    mg_jkey(j, key, false);
+    mg_jraw(j, "[");
+    for (k = 0; k < n; k++) {
+        if (k) mg_jraw(j, ",");
+        mg_jraw(j, "{");
+        mg_jkey(j, "kind", true);
+        mg_jstr(j, parts[k].kind);
+        mg_jkey(j, "value", false);
+        mg_jstr(j, parts[k].value);
+        mg_jraw(j, "}");
+    }
+    mg_jraw(j, "]");
 }
 
 static void acts_end(void *user, const char *tag)
@@ -2029,6 +2105,26 @@ static void acts_end(void *user, const char *tag)
         acts_array(j, "schemes", c->schemes[0], c->nschemes, sizeof(c->schemes[0]));
         acts_array(j, "hosts", c->hosts[0], c->nhosts, sizeof(c->hosts[0]));
         acts_array(j, "types", c->types[0], c->ntypes, sizeof(c->types[0]));
+        {
+            int k;
+            mg_jkey(j, "ports", false);
+            mg_jraw(j, "[");
+            for (k = 0; k < c->nhosts; k++) {
+                if (k) mg_jraw(j, ",");
+                mg_jint(j, c->ports[k]);
+            }
+            mg_jraw(j, "]");
+        }
+        acts_parts(j, "paths", c->paths, c->npaths);
+        acts_parts(j, "ssps", c->ssps, c->nssps);
+        if (c->priority) {
+            mg_jkey(j, "priority", false);
+            mg_jint(j, c->priority);
+        }
+        if (c->auto_verify) {
+            mg_jkey(j, "autoVerify", false);
+            mg_jraw(j, "true");
+        }
         mg_jraw(j, "}");
     } else if ((!strcmp(tag, "activity") || !strcmp(tag, "activity-alias") || !strcmp(tag, "service")) && c->in_activity &&
                c->is_service == !strcmp(tag, "service")) {

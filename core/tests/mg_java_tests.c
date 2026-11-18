@@ -1584,7 +1584,7 @@ static void other_apks(const char *dir, FILE *list)
         report_value(report, "versionCode", code, sizeof(code));
         if (package[0] && mg_path_stat(apk, &st, NULL)) {
             char *own = mg_sprintf("%s/%s", dir, package), *path = mg_sprintf("%s/source.txt", own);
-            char *source = mg_sprintf("description 3\n%s\n%llu\n%s\n", apk, (unsigned long long)st.size, code[0] ? code : "0");
+            char *source = mg_sprintf("description 4\n%s\n%llu\n%s\n", apk, (unsigned long long)st.size, code[0] ? code : "0");
             const bool described = megler_apk_describe_activities(apk, NULL, own);
             fprintf(list, "%s\t%s\t%s\t%s\t%s\n", package, activity, label[0] ? label : package, version, code[0] ? code : "0");
             mg_file_write_all(path, source, strlen(source));
@@ -1675,7 +1675,7 @@ static const char *phone_apps_fixture(void)
            app finds the other app's APK, /data/app/com.example.other-1/base.apk (phone-apps-source). */
         {
             static const char apk[] = "PK the other app's APK";
-            char *file = mg_sprintf("%s/other.apk", dir), *source = mg_sprintf("description 3\n%s\n%u\n3\n", file, (unsigned)(sizeof(apk) - 1));
+            char *file = mg_sprintf("%s/other.apk", dir), *source = mg_sprintf("description 4\n%s\n%u\n3\n", file, (unsigned)(sizeof(apk) - 1));
             mg_file_write_all(file, apk, sizeof(apk) - 1);
             path = mg_sprintf("%s/source.txt", own);
             mg_file_write_all(path, source, strlen(source));
@@ -1891,7 +1891,7 @@ static bool start(const char *apk, const char *android_root)
             CHECK(json && strstr(json, "{\"name\":\"megler.test.crash.IconDark\",\"enabled\":false,\"target\":\"megler.test.crash.Second\",\"exported\":true,"));
             CHECK(json && strstr(json, "{\"name\":\"megler.test.crash.IconLight\",\"enabled\":true,\"target\":\"megler.test.crash.First\",\"exported\":true,"
                                        "\"filters\":[{\"id\":1,\"actions\":[\"android.intent.action.MAIN\"],\"categories\":[\"android.intent.category.LAUNCHER\"],"
-                                       "\"schemes\":[],\"hosts\":[],\"types\":[]}]}"));
+                                       "\"schemes\":[],\"hosts\":[],\"types\":[],\"ports\":[],\"paths\":[],\"ssps\":[]}]}"));
         }
         if (json) say("  activities described: %.200s", json);
         free(json);
