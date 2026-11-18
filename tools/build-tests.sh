@@ -296,8 +296,9 @@ EOF
         echo "the Java test app crossapp (build/guest/java/crossapp.apk), through megler_run: the app plugin (build/guest/java/plugin.apk) is on the phone beside it"
         MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL="*" wsl.exe -- bash -c "cp -u '$WROOT/build/guest/java/crossapp.apk' $WB/crossapp.apk && cp -u '$WROOT/build/guest/java/plugin.apk' $WB/plugin.apk && rm -rf $WB/java-data-crossapp && MG_JAVA_OTHER_APKS=$WB/plugin.apk qemu-arm -L /usr/arm-linux-gnueabihf $WB/mg_tests --java crossapp $WB/crossapp.apk $WB/java-data-crossapp $WB/android-root - 2>&1" || STATUS=1
         echo "the Java test app plugin (build/guest/java/plugin.apk), through megler_run: started for the activity the app crossapp asked for"
-        # (The request's file by a variable: a ~ after the @ would stay a ~.)
-        MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL="*" wsl.exe -- bash -c "ASKED=$WB/java-data-crossapp/launch-request.txt; MG_JAVA_START_ACTIVITY=@\$ASKED qemu-arm -L /usr/arm-linux-gnueabihf $WB/mg_tests --java plugin $WB/plugin.apk $WB/java-data-crossapp $WB/android-root - 2>&1" || STATUS=1
+        # (The request's file through $(echo ...): a ~ after the @ would stay a ~, and a variable set in the command line
+        # is empty there -- wsl.exe has the line expanded by a shell of its own first.)
+        MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL="*" wsl.exe -- bash -c "MG_JAVA_START_ACTIVITY=@\$(echo $WB/java-data-crossapp/launch-request.txt) qemu-arm -L /usr/arm-linux-gnueabihf $WB/mg_tests --java plugin $WB/plugin.apk $WB/java-data-crossapp $WB/android-root - 2>&1" || STATUS=1
       else
         echo "(the Java test apps crossapp and plugin are not run: they were not built, see tools/build-test-app.sh)"
       fi

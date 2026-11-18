@@ -766,6 +766,9 @@ public final class AppRunner {
         android.util.Log.d("Megler", "finish " + a.getClass().getName());
         int idx = sStack.indexOf(a);
         if (idx < 0) return;
+        // (Finishing from here on, as Android's finishActivityLocked marks one: an activity cleared from above another brought
+        // back -- FLAG_ACTIVITY_CLEAR_TOP, a singleTask one -- or the app's end says isFinishing() in its onPause and onDestroy.)
+        a.meglerMarkFinished();
         boolean wasTop = idx == sStack.size() - 1;
         if (a.isResumedMegler()) a.meglerPause();
         sStack.remove(idx);
