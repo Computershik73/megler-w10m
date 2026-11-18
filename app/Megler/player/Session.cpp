@@ -54,10 +54,87 @@ std::vector<std::shared_ptr<AudioHost>> gOldAudio;
 // What megler_run_config points at, alive for the rest of the process.
 std::string gApkPath, gSplitsDir, gAppsDir;
 bool gSuspended = false, gVisible = true, gFocused = true;
+// The application is in Windows' background (setBackground): the sound host is told, which lets go of the output of an
+// app that is silent there (player/AudioHost.h).
+bool gBackground = false;
 // A Java app is heard in the background, as on Android (its own music and video players keep playing there, and the
 // system media controls stand for it: player/MediaControls.cpp); an engine's game is not, whether or not it stops its
 // own sound when paused.
 bool gBackgroundAudio = false;
+
+/*
+ * Settings' In the Background, Keeps Running (shell/Settings.h, background): a Java app holds an extended execution session
+ * (ExtendedExecutionReason::Unspecified) while it is on the screen, asked for at its start and each time it is shown again,
+ * so that minimized it runs on for as long as Windows lets it -- some ten minutes on a phone (a Lumia 650's was taken back
+ * at ten, "system policy", 0.1.0.655) -- where it was suspended 0.3 s after it was minimized: Telegram on an HP Elite x3
+ * (0.1.0.696, 731 and 732, its output XAudio2's or Windows.Media's player's alike). A messenger gets a message sent, a
+ * download goes on, for those minutes. Rests holds none; an app that ends lets go of it. What Windows answers, and when it
+ * takes the session back, is said in the log. gKeepMutex guards gKeep and gKeepAsking.
+ */
+std::mutex gKeepMutex;
+winrt::Windows::ApplicationModel::ExtendedExecution::ExtendedExecutionSession gKeep{nullptr};
+bool gKeepAsking = false;
+
+void keepRunningEnd(const char* why) {
+    winrt::Windows::ApplicationModel::ExtendedExecution::ExtendedExecutionSession held{nullptr};
+    {
+        std::lock_guard<std::mutex> lock(gKeepMutex);
+        held = gKeep;
+        gKeep = nullptr;
+    }
+    if (!held) return;
+    try {
+        held.Close();
+    } catch (const winrt::hresult_error&) {
+    }
+    shellLog::write(std::string("background: the extended execution session is let go of: ") + why);
+}
+
+winrt::fire_and_forget keepRunning() {
+    using namespace winrt::Windows::ApplicationModel::ExtendedExecution;
+    if (settings::get(settings::background, "") == "rest") {
+        keepRunningEnd("Settings, In the Background: Rests");
+        co_return;
+    }
+    {
+        std::lock_guard<std::mutex> lock(gKeepMutex);
+        if (gKeep || gKeepAsking) co_return;
+        gKeepAsking = true;
+    }
+    ExtendedExecutionSession asked{nullptr};
+    ExtendedExecutionResult result = ExtendedExecutionResult::Denied;
+    std::string failed;
+    try {
+        asked = ExtendedExecutionSession();
+        asked.Reason(ExtendedExecutionReason::Unspecified);
+        asked.Description(L"Runs on in the background (Settings, In the Background: Keeps Running)");
+        asked.Revoked([](auto&&, ExtendedExecutionRevokedEventArgs const& e) {
+            const bool resumed = e.Reason() == ExtendedExecutionRevokedReason::Resumed;
+            keepRunningEnd(resumed ? "Windows took it back as the app was resumed; asked for again when it is shown"
+                                   : "Windows took it back (system policy): minimized, the app is suspended from now on, until it is shown again");
+        });
+        result = co_await asked.RequestExtensionAsync();
+    } catch (const winrt::hresult_error& e) {
+        failed = narrow(std::wstring(e.message()));
+    }
+    {
+        std::lock_guard<std::mutex> lock(gKeepMutex);
+        gKeepAsking = false;
+        if (failed.empty() && result == ExtendedExecutionResult::Allowed) gKeep = asked;
+    }
+    if (!failed.empty()) {
+        shellLog::write("background: no extended execution session: " + failed);
+    } else if (result == ExtendedExecutionResult::Allowed) {
+        shellLog::write("background: an extended execution session is held: minimized, the app runs on for as long as Windows lets it "
+                        "(Settings, In the Background: Keeps Running)");
+    } else {
+        shellLog::write("background: Windows denied an extended execution session: minimized, the app is suspended");
+        try {
+            if (asked) asked.Close();
+        } catch (const winrt::hresult_error&) {
+        }
+    }
+}
 
 // The surface the app was started with or last told of (megler_set_surface), and one asked for while it was still
 // starting, which is told once megler_run has returned (width 0: none).
@@ -151,10 +228,20 @@ void onExit(void*, int status, const char* reason) {
     shellLog::flush();
     // And into the log's copy in the shared folder, for Save All Logs: the process may end before the mirror's next pass.
     logMirror::now();
-    std::lock_guard<std::mutex> lock(gMutex);
-    gSnapshot.state = State::exited;
-    gSnapshot.exitStatus = status;
-    gSnapshot.reason = why;
+    std::shared_ptr<AudioHost> audio;
+    {
+        std::lock_guard<std::mutex> lock(gMutex);
+        gSnapshot.state = State::exited;
+        gSnapshot.exitStatus = status;
+        gSnapshot.reason = why;
+        audio = gAudio;
+    }
+    // (Nothing to run on minimized any more: Keeps Running's session goes, keepRunning.)
+    keepRunningEnd("the app has ended");
+    // The app's sound output is let go of at once: an app that has ended plays nothing, and an output Windows takes for
+    // playing kept Megler from being suspended. YouTube, ended, on an Elite x3: the player was given silence for five
+    // hours, and the battery went from 90% to 1% (0.1.0.695).
+    if (audio) audio->end();
 }
 
 } // namespace
@@ -218,6 +305,8 @@ bool start(const ApkEntry& apk, winrt::Windows::UI::Xaml::Controls::SwapChainPan
         gSplitsDir = apk.splitsDir.empty() ? std::string() : narrow(apk.splitsDir);
         window = gWindow = std::make_shared<WindowHost>(panel, width, height);
         audio = gAudio = std::make_shared<AudioHost>();
+        // (An app may be started with Megler in the background already.)
+        audio->setBackground(gBackground);
         gBackgroundAudio = apk.report.engine == "java";
         gSurface = Surface{width, height, densityDpi, rotation};
         gSurfaceWaiting = Surface{};
@@ -230,6 +319,8 @@ bool start(const ApkEntry& apk, winrt::Windows::UI::Xaml::Controls::SwapChainPan
     // permissions go with it, as Android resets them; the core clears the files when it starts the app.
     if (megler_clear_data_asked(apk.report.package.c_str())) permissionHost::forgetAll(apk.report.package);
     audio->setMedia(gBackgroundAudio);
+    // (And, a Java app, it is to run on minimized: Keeps Running's session, above.)
+    if (gBackgroundAudio) keepRunning();
     // The sound output takes a second and a half to build the first time:
     // begun now, at the rate the core's mixer runs at, it is there before the
     // app's first sound.
@@ -384,6 +475,8 @@ bool start(const ApkEntry& apk, winrt::Windows::UI::Xaml::Controls::SwapChainPan
         config.on_exit = &onExit;
         config.user = nullptr;
         const bool started = megler_run(&config);
+        // (An app that did not start plays nothing: its sound host, which is kept, lets go of its output.)
+        if (!started && audio) audio->end();
         Surface waiting;
         {
             std::lock_guard<std::mutex> lock(gMutex);
@@ -508,6 +601,19 @@ void setFocused(bool focused) {
         gFocused = focused;
     }
     tell();
+}
+
+void setBackground(bool background) {
+    // (The sound host alone is told, and whether or not the app runs yet: the app itself knows of paused and not, above.)
+    bool keep;
+    {
+        std::lock_guard<std::mutex> lock(gMutex);
+        gBackground = background;
+        if (gAudio) gAudio->setBackground(background);
+        keep = !background && gBackgroundAudio && (gSnapshot.state == State::running || gSnapshot.state == State::starting);
+    }
+    // Shown again: Keeps Running's session asked for anew, should Windows have taken it back meanwhile (keepRunning).
+    if (keep) keepRunning();
 }
 
 } // namespace megler::app::session

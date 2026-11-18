@@ -61,6 +61,7 @@ static void say(const char *fmt, ...)
 /* Linux's numbers, as an app has them. */
 enum {
     AF_UNIX_ = 1, AF_INET_ = 2, AF_INET6_ = 10, SOCK_STREAM_ = 1, SOCK_DGRAM_ = 2, SOCK_SEQPACKET_ = 5, SOCK_NONBLOCK_ = 04000, SOCK_CLOEXEC_ = 02000000,
+    AF_NETLINK_ = 16, SOCK_RAW_ = 3, RTM_GETLINK_ = 18, RTM_GETADDR_ = 22,
     SOL_SOCKET_ = 1, SO_REUSEADDR_ = 2, SO_TYPE_ = 3, SO_ERROR_ = 4, SO_SNDBUF_ = 7, SO_RCVBUF_ = 8, SO_KEEPALIVE_ = 9, SO_PRIORITY_ = 12, SO_LINGER_ = 13,
     SO_RCVTIMEO_ = 20, SO_SNDTIMEO_ = 21, SO_ACCEPTCONN_ = 30, SO_DOMAIN_ = 39, IPPROTO_TCP_ = 6, IPPROTO_UDP_ = 17, IPPROTO_IPV6_ = 41,
     TCP_NODELAY_ = 1, TCP_KEEPIDLE_ = 4,
@@ -1174,6 +1175,208 @@ static void test_interfaces(void)
     N.close(s);
 }
 
+/* ----------------------------------------------------------- NETLINK_ROUTE */
+
+/* The value of an attribute of a netlink message whose attributes begin at `from`, and its length: NULL when it has none of the type. */
+static const u8 *nl_attr_of(const u8 *h, u32 from, u16 type, u32 *len)
+{
+    u32 end = mg_rd32(h), at = from;
+    while (at + 4 <= end) {
+        u32 n = mg_rd16(h + at);
+        if (n < 4 || at + n > end) break;
+        if (mg_rd16(h + at + 2) == type) {
+            *len = n - 4;
+            return h + at + 4;
+        }
+        at += (n + 3) & ~3u;
+    }
+    return NULL;
+}
+
+typedef struct nl_list {
+    int count, datagrams;
+    bool whole;                        /* every datagram and message of it was as the kernel's are, to the NLMSG_DONE */
+    bool lo;                           /* the loopback was in it: its link, or 127.0.0.1/8 of the host's scope on it */
+} nl_list;
+
+/*
+ * A list asked for as Dart's dart:io asks (a struct nlmsghdr and a struct rtgenmsg, 17 bytes said and 20 sent, NLM_F_REQUEST |
+ * NLM_F_ROOT) and read as it reads: datagram after datagram into 2048 bytes until NLMSG_DONE. Every message is of the
+ * list (NLM_F_MULTI), has the request's sequence number and the socket's port, and comes from the kernel, port 0.
+ */
+static nl_list netlink_list(int s, u16 type, u8 family, u32 seq, u32 pid, u32 lo_index)
+{
+    nl_list r;
+    u8 rq[20], buf[2048], from[16];
+    bool done = false;
+    int guard;
+    memset(&r, 0, sizeof(r));
+    r.whole = true;
+    memset(rq, 0, sizeof(rq));
+    mg_wr32(rq, 17);
+    mg_wr16(rq + 4, type);
+    mg_wr16(rq + 6, 0x101);
+    mg_wr32(rq + 8, seq);
+    rq[16] = family;
+    if (N.send(s, rq, sizeof(rq), 0) != (i32)sizeof(rq)) r.whole = false;
+    for (guard = 0; guard < 64 && !done && r.whole; guard++) {
+        u32 from_len = sizeof(from), at = 0;
+        /* (How long the next datagram is, as a reader that sizes its buffer first asks: MSG_PEEK | MSG_TRUNC.) */
+        i32 size = N.recv(s, buf, 16, MSG_PEEK_ | MSG_TRUNC_ | MSG_DONTWAIT_);
+        i32 n = N.recvfrom(s, buf, sizeof(buf), MSG_DONTWAIT_, from, &from_len);
+        if (n < 16 || size != n || from_len != 12 || mg_rd16(from) != AF_NETLINK_ || mg_rd32(from + 4) != 0) {
+            r.whole = false;
+            break;
+        }
+        r.datagrams++;
+        while (at + 16 <= (u32)n && !done) {
+            const u8 *h = buf + at, *v;
+            u32 len = mg_rd32(h), vlen = 0;
+            u16 t = mg_rd16(h + 4);
+            if (len < 16 || len > (u32)n - at || !(mg_rd16(h + 6) & 2) || mg_rd32(h + 8) != seq || mg_rd32(h + 12) != pid) {
+                r.whole = false;
+                break;
+            }
+            if (t == 3) {                            /* NLMSG_DONE */
+                done = true;
+            } else if (t != type - 2) {              /* RTM_NEWLINK, RTM_NEWADDR */
+                r.whole = false;
+            } else if (type == RTM_GETLINK_) {
+                /* A struct ifinfomsg: the hardware's type at 2, the index at 4, the flags at 8; IFLA_IFNAME is attribute 3. */
+                r.count++;
+                v = nl_attr_of(h, 32, 3, &vlen);
+                if (!v) r.whole = false;
+                else if (vlen == 3 && !memcmp(v, "lo", 3)) r.lo = mg_rd16(h + 18) == 772 && mg_rd32(h + 20) == lo_index && (mg_rd32(h + 24) & IFF_LOOPBACK_);
+            } else {
+                /* A struct ifaddrmsg: the family, the prefix's length, flags, the scope, the index; IFA_ADDRESS is attribute 1. */
+                r.count++;
+                v = nl_attr_of(h, 24, 1, &vlen);
+                if (!v || vlen != (h[16] == AF_INET_ ? 4u : 16u) || (family && h[16] != family)) r.whole = false;
+                else if (h[16] == AF_INET_ && !memcmp(v, k_lo4, 4)) r.lo = h[17] == 8 && h[19] == 254 && mg_rd32(h + 20) == lo_index;
+            }
+            at += (len + 3) & ~3u;
+        }
+    }
+    if (!done) r.whole = false;
+    return r;
+}
+
+/*
+ * A socket of AF_NETLINK, NETLINK_ROUTE: the lists of links and of addresses that a program asks Linux's kernel for
+ * itself where it has no getifaddrs -- Dart's dart:io (NetworkInterface.list of a Flutter app: LocalSend failed "listing
+ * interfaces" and never learnt its address), Go's net.Interfaces. They are getifaddrs' lists.
+ */
+static void test_netlink(void)
+{
+    int (*getpid_)(void) = (int (*)(void))mg_bionic_find("getpid");
+    t_ifaddrs *list = NULL, *f;
+    u8 sa[16], rq[32], buf[256];
+    mg_pollfd p;
+    nl_list links, addrs, v4;
+    int s, s2, n_links = 0, n_addrs = 0, n_v4 = 0, v = 0;
+    u32 len, pid, pid2, lo = N.if_nametoindex("lo");
+    i32 n;
+    say("network: a socket of AF_NETLINK, NETLINK_ROUTE: the kernel's lists of links and of addresses, which Dart and Go ask for themselves");
+    CHECK(N.getifaddrs(&list) == 0);
+    for (f = list; f; f = f->ifa_next) {
+        int family = f->ifa_addr ? mg_rd16(f->ifa_addr) : 0;
+        if (family == 17) n_links++;
+        if (family == AF_INET_ || family == AF_INET6_) n_addrs++;
+        if (family == AF_INET_) n_v4++;
+    }
+    N.freeifaddrs(list);
+    /* NETLINK_ROUTE alone is an app's (Android's policy refuses it the others), and a netlink socket is never a stream. */
+    CHECK(N.socket(AF_NETLINK_, SOCK_RAW_, 15 /* NETLINK_KOBJECT_UEVENT */) == -1 && err() == GE_ACCES);
+    CHECK(N.socket(AF_NETLINK_, SOCK_STREAM_, 0) == -1 && err() == GE_SOCKTNOSUPPORT);
+    s = N.socket(AF_NETLINK_, SOCK_RAW_ | SOCK_CLOEXEC_, 0);
+    CHECK(s >= 0);
+    if (s < 0) return;
+    /* Bound to no port of its choosing it has the process's id for one (Go compares each answer's port with what getsockname says); a second socket has another. */
+    memset(sa, 0, sizeof(sa));
+    mg_wr16(sa, AF_NETLINK_);
+    CHECK(N.bind(s, sa, 12) == 0);
+    memset(sa, 0xEE, sizeof(sa));
+    len = sizeof(sa);
+    CHECK(N.getsockname(s, sa, &len) == 0 && len == 12 && mg_rd16(sa) == AF_NETLINK_ && mg_rd32(sa + 8) == 0);
+    pid = mg_rd32(sa + 4);
+    CHECK(getpid_ && pid == (u32)getpid_());
+    s2 = N.socket(AF_NETLINK_, SOCK_DGRAM_, 0);
+    len = sizeof(sa);
+    CHECK(s2 >= 0 && N.getsockname(s2, sa, &len) == 0);
+    pid2 = mg_rd32(sa + 4);
+    CHECK(pid2 && pid2 != pid);
+    memset(sa, 0xEE, sizeof(sa));
+    len = sizeof(sa);
+    CHECK(N.getpeername(s, sa, &len) == 0 && len == 12 && mg_rd16(sa) == AF_NETLINK_ && mg_rd32(sa + 4) == 0);
+    len = sizeof(v);
+    CHECK(N.getsockopt(s, SOL_SOCKET_, SO_DOMAIN_, &v, &len) == 0 && v == AF_NETLINK_);
+    len = sizeof(v);
+    CHECK(N.getsockopt(s, SOL_SOCKET_, SO_TYPE_, &v, &len) == 0 && v == SOCK_RAW_);
+    v = 1;
+    CHECK(N.setsockopt(s, 270 /* SOL_NETLINK */, 1 /* NETLINK_ADD_MEMBERSHIP */, &v, sizeof(v)) == 0);
+    /* Nothing to read until something was asked. */
+    p.fd = s;
+    p.events = POLLIN_ | POLLOUT_;
+    p.revents = 0;
+    CHECK(N.poll(&p, 1, 0) == 1 && (p.revents & (POLLIN_ | POLLOUT_ | POLLHUP_)) == POLLOUT_);
+    CHECK(N.recv(s, buf, sizeof(buf), MSG_DONTWAIT_) == -1 && err() == GE_AGAIN);
+    /* The lists: every interface getifaddrs has as a link, every address of IPv4 and IPv6 it has; IPv4's alone when the request names that family. */
+    links = netlink_list(s, RTM_GETLINK_, 0, 7, pid, lo);
+    CHECK(links.whole && links.lo);
+    CHECK_INT(links.count, n_links);
+    addrs = netlink_list(s, RTM_GETADDR_, 0, 8, pid, lo);
+    CHECK(addrs.whole && addrs.lo);
+    CHECK_INT(addrs.count, n_addrs);
+    v4 = netlink_list(s2, RTM_GETADDR_, AF_INET_, 9, pid2, lo);
+    CHECK(v4.whole && v4.lo);
+    CHECK_INT(v4.count, n_v4);
+    CHECK(N.recv(s, buf, sizeof(buf), MSG_DONTWAIT_) == -1 && err() == GE_AGAIN);
+    /*
+     * What is not answered is refused as the kernel refuses, with NLMSG_ERROR: the errno, negative, and the request. The
+     * list of routes (RTM_GETROUTE, a struct rtmsg of 12 bytes) is EOPNOTSUPP here; making a link (RTM_NEWLINK) is EPERM.
+     */
+    memset(rq, 0, sizeof(rq));
+    mg_wr32(rq, 28);
+    mg_wr16(rq + 4, 26);
+    mg_wr16(rq + 6, 0x301);
+    mg_wr32(rq + 8, 10);
+    CHECK_INT(N.send(s, rq, 28, 0), 28);
+    memset(buf, 0, sizeof(buf));
+    n = N.recv(s, buf, sizeof(buf), MSG_DONTWAIT_);
+    CHECK_INT(n, 48);
+    CHECK(mg_rd32(buf) == 48 && mg_rd16(buf + 4) == 2 && (i32)mg_rd32(buf + 16) == -GE_OPNOTSUPP && mg_rd32(buf + 8) == 10 && mg_rd32(buf + 12) == pid);
+    CHECK(!memcmp(buf + 20, rq, 28));
+    mg_wr32(rq, 32);
+    mg_wr16(rq + 4, 16);
+    mg_wr16(rq + 6, 5);                              /* NLM_F_REQUEST | NLM_F_ACK */
+    mg_wr32(rq + 8, 11);
+    CHECK_INT(N.send(s, rq, 32, 0), 32);
+    memset(buf, 0, sizeof(buf));
+    n = N.recv(s, buf, sizeof(buf), MSG_DONTWAIT_);
+    CHECK_INT(n, 52);
+    CHECK(mg_rd16(buf + 4) == 2 && (i32)mg_rd32(buf + 16) == -GE_PERM && mg_rd32(buf + 8) == 11);
+    /* The kernel, port 0, is the one an app may send to and connect to; another socket's port is not. */
+    memset(sa, 0, sizeof(sa));
+    mg_wr16(sa, AF_NETLINK_);
+    mg_wr32(sa + 4, pid2);
+    CHECK(N.sendto(s, rq, 32, 0, sa, 12) == -1 && err() == GE_PERM);
+    CHECK(N.connect(s, sa, 12) == -1 && err() == GE_PERM);
+    mg_wr32(sa + 4, 0);
+    CHECK(N.connect(s, sa, 12) == 0);
+    CHECK_INT(N.sendto(s, rq, 32, 0, sa, 12), 32);
+    CHECK_INT(N.recv(s, buf, sizeof(buf), MSG_DONTWAIT_), 52);
+    CHECK(N.recv(s2, buf, sizeof(buf), MSG_DONTWAIT_) == -1 && err() == GE_AGAIN);
+    /* The process's id is the port of the next first socket, once this one is closed. */
+    N.close(s);
+    s = N.socket(AF_NETLINK_, SOCK_RAW_, 0);
+    len = sizeof(sa);
+    CHECK(s >= 0 && N.getsockname(s, sa, &len) == 0 && mg_rd32(sa + 4) == pid);
+    N.close(s);
+    N.close(s2);
+    say("  %d links in %d datagrams, %d addresses in %d, %d of them IPv4's in %d; the first socket's port is the process's id, %u", links.count, links.datagrams,
+        addrs.count, addrs.datagrams, v4.count, v4.datagrams, (unsigned)pid);
+}
+
 /* ------------------------------------------------- EINTR, and closing under a wait */
 
 #if MG_HOST_ARM32
@@ -1594,6 +1797,7 @@ int mg_net_tests_run(mg_test_sink sink, void *user, int *checks)
             if (probe >= 0) N.close(probe);
             test_names();
             test_interfaces();
+            test_netlink();
             test_unix();
             goto out;
         }
@@ -1615,6 +1819,7 @@ int mg_net_tests_run(mg_test_sink sink, void *user, int *checks)
     test_unix();
     test_names();
     test_interfaces();
+    test_netlink();
 #if MG_HOST_ARM32
     test_interrupted();
 #else

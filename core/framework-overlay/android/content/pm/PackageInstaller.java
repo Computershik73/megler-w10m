@@ -21,6 +21,7 @@ public class PackageInstaller {
     static SessionInfo meglerOf(megler.Installs.Session s) {
         SessionInfo i = new SessionInfo();
         i.meglerId = s.id(); i.meglerPackage = s.packageName(); i.meglerInstaller = megler.Native.packageName(); i.meglerSealed = s.committed();
+        i.meglerMode = s.inherit() ? 2 /* MODE_INHERIT_EXISTING */ : 1;
         i.isCommitted = s.committed();
         return i;
     }
@@ -240,7 +241,8 @@ public class PackageInstaller {
     public void checkInstallConstraints(java.util.List p0, android.content.pm.PackageInstaller.InstallConstraints p1, java.util.concurrent.Executor p2, java.util.function.Consumer p3) {}
     public void commitSessionAfterInstallConstraintsAreMet(int p0, android.content.IntentSender p1, android.content.pm.PackageInstaller.InstallConstraints p2, long p3) {}
     public int createSession(android.content.pm.PackageInstaller.SessionParams p0) {
-        return megler.Installs.create(p0 == null ? null : (java.lang.String) p0.meglerProps.get("AppPackageName"));
+        return megler.Installs.create(p0 == null ? null : (java.lang.String) p0.meglerProps.get("AppPackageName"),
+                                      p0 != null && java.lang.Integer.valueOf(SessionParams.MODE_INHERIT_EXISTING).equals(p0.meglerProps.get("Mode")));
     }
     public android.content.pm.PackageInstaller.SessionInfo getActiveStagedSession() { return null; }
     public java.util.List getActiveStagedSessions() { return new java.util.ArrayList(); }
@@ -455,7 +457,7 @@ public class PackageInstaller {
         public int unarchiveId;
         public java.lang.String volumeUuid;
         public java.util.List whitelistedRestrictedPermissions;
-        public SessionParams(int p0) {}
+        public SessionParams(int p0) { meglerProps.put("Mode", java.lang.Integer.valueOf(p0)); }
         public SessionParams(android.os.Parcel p0) {}
         public boolean areHiddenOptionsSet() { return false; }
         public android.content.pm.PackageInstaller.SessionParams copy() { return new android.content.pm.PackageInstaller.SessionParams(); }

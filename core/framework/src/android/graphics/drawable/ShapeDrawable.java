@@ -31,6 +31,35 @@ public class ShapeDrawable extends Drawable {
             outline.setAlpha(getAlpha() / 255.0f);
         }
     }
+    /*
+     * Megler: the constant state, which Android's has. A copy is a ShapeDrawable -- whatever class this one is, as
+     * Android's ShapeState.newDrawable gives -- of the shape's clone, a copy of the paint, and this one's sizes, padding,
+     * shader factory, alpha and tint as they are when the copy is asked for. Apps copy a drawable through its state without
+     * asking whether there is one (DrawableWrapper has an instance), and a wrapper's or a layer list's copy takes its
+     * drawables' own copies.
+     */
+    private ConstantState mMeglerState;
+    @Override public ConstantState getConstantState() {
+        if (mMeglerState == null) mMeglerState = new ConstantState() {
+            @Override public Drawable newDrawable() { return meglerCopy(); }
+        };
+        return mMeglerState;
+    }
+    private ShapeDrawable meglerCopy() {
+        ShapeDrawable c = new ShapeDrawable();
+        c.mPaint.set(mPaint);
+        if (mShape != null) {
+            try { c.mShape = mShape.clone(); }
+            catch (CloneNotSupportedException e) { c.mShape = mShape; }
+        }
+        c.mW = mW; c.mH = mH;
+        if (mPadding != null) c.mPadding = new Rect(mPadding);
+        c.mShaderFactory = mShaderFactory;
+        c.mAlpha = mAlpha;
+        c.mTintList = mTintList; c.mTintMode = mTintMode; c.mColorFilter = mColorFilter;
+        if (meglerFill != null) c.meglerFill = new java.util.HashMap<>(meglerFill);
+        return c;
+    }
     /** Draws the shape: subclasses override this to draw it their way. */
     protected void onDraw(Shape shape, Canvas c, Paint p) { shape.draw(c, p); }
     /* the drawable's alpha scales the paint's own when drawing, as Android's does: setting it must not make a transparent paint opaque */

@@ -83,6 +83,7 @@ typedef unsigned EGLBoolean, EGLenum;
 #define EGL_BAD_MATCH 0x3009
 #define EGL_BAD_NATIVE_WINDOW 0x300B
 #define EGL_BAD_SURFACE 0x300D
+#define EGL_CONTEXT_LOST 0x300E
 #define EGL_DRAW 0x3059
 #define EGL_READ 0x305A
 #define EGL_SURFACE_TYPE 0x3033
@@ -759,6 +760,31 @@ static surface *window_surface(EGLSurface h)
 static EGLSurface window_real(surface *s, int *width, int *height) { return (EGLSurface)s->window->ops->egl_handle(s->native, width, height); }
 
 /*
+ * What there was as a call was refused for want of memory (EGL_BAD_ALLOC) or with the context lost, said the first few
+ * times: whether ANGLE's Direct3D device is still there, the memory in use, the addresses left, the graphics memory. The
+ * error alone does not tell a device removed over a suspension from a Direct3D with no room (an Adreno's takes addresses 32 MB
+ * at a time, so 300 MB free in stretches of 18 are none): Age of History II's surface was refused as the app came back
+ * with 1.2 GB in use, and its log could not say which it was.
+ */
+static void refused_state(EGLint e)
+{
+    static volatile i32 said;
+    u32 free_mb = 0, largest = 0, reserved = 0, committed = 0, used = 0, budget = 0, gone;
+    char text[320];
+    size_t at;
+    if ((e != EGL_BAD_ALLOC && e != EGL_CONTEXT_LOST) || mg_atomic_add(&said, 1) > 5) return;
+    gone = mg_egl_device_removed();
+    if (gone) at = (size_t)snprintf(text, sizeof(text), "the Direct3D device has been removed (0x%x)", (unsigned)gone);
+    else at = (size_t)snprintf(text, sizeof(text), "the Direct3D device %s", g_d3d_device ? "is there" : "is not known");
+    at += (size_t)snprintf(text + at, sizeof(text) - at, "; memory: %u MB in use of %u", (unsigned)(mg_mem_usage() >> 20), (unsigned)(mg_mem_limit() >> 20));
+    if (mg_host_address_space(&free_mb, &largest, &reserved, &committed) && at < sizeof(text))
+        at += (size_t)snprintf(text + at, sizeof(text) - at, ", addresses %u MB free (the largest stretch %u), %u committed", (unsigned)free_mb, (unsigned)largest,
+                               (unsigned)committed);
+    if (mg_egl_gpu_memory(&used, &budget) && at < sizeof(text)) snprintf(text + at, sizeof(text) - at, ", graphics memory %u of %u MB", (unsigned)used, (unsigned)budget);
+    mg_warn("egl: as it was refused, %s", text);
+}
+
+/*
  * An EGL call of the app's that EGL refused: said in the log, the first ten of each kind, with the error -- which stays the
  * app's to read with eglGetError, as if nothing had asked first.
  */
@@ -771,6 +797,7 @@ static void refused(const char *what, volatile i32 *said)
     if (e && e != EGL_SUCCESS) g_error = e;
     n = mg_atomic_add(said, 1);
     if (n <= 10) mg_warn("egl: %s was refused (EGL error 0x%x)%s", what, (unsigned)e, n == 10 ? "; the next of these are not said" : "");
+    refused_state(e);
 }
 
 /* The OpenGL ES version a context was asked for (1.0 where nothing says, as EGL has it), and the rest of what was asked, as words. */

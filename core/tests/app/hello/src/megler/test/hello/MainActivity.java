@@ -155,6 +155,13 @@ public class MainActivity extends Activity {
         Log.i("HelloTest", "onStop");
     }
 
+    /* Told once the shell's window is hidden whole, after onStop, as Android tells a process whose UI no one sees. */
+    @Override
+    public void onTrimMemory(int level) {
+        super.onTrimMemory(level);
+        Log.i("HelloTest", "onTrimMemory " + level);
+    }
+
     @Override
     protected void onDestroy() {
         super.onDestroy();

@@ -11,7 +11,8 @@
  * its extensions list. Contexts of OpenGL ES 2 and 3 are made; one of version 1 where asked for (mg_gl_standin_reset) as
  * ANGLE makes it, only with a configuration -- without one it is refused with EGL_BAD_MATCH, as ANGLE refuses it -- and
  * otherwise refused, as an EGL without OpenGL ES 1 refuses it. All contexts share their objects. A texture keeps its pixels (glTexImage2D and
- * glTexSubImage2D of RGBA, RGB and RGB 5-6-5); an EGL image of a texture (EGL_KHR_gl_texture_2D_image, which its EGL lists)
+ * glTexSubImage2D of RGBA, RGB, the packed 5-6-5, 4-4-4-4 and 5-5-5-1, and the formats of one and two bytes: alpha, luminance,
+ * luminance and alpha, red, red and green); an EGL image of a texture (EGL_KHR_gl_texture_2D_image, which its EGL lists)
  * shares them with a texture made of it (glEGLImageTargetTexture2DOES); a framebuffer object with a texture for its colour
  * is what glClear fills and glReadPixels reads. Anything it does not have is "no such function".
  */
@@ -41,6 +42,7 @@ typedef struct mg_gl_standin_stats {
     i32 refused_es1_no_config;         /* of them, those made where version 1 is, but asked for without a configuration */
     void *last_config;                 /* the configuration the last context made was made with (NULL: none) */
     i32 refused_versions;              /* contexts of a version above what it makes (3.0, or 2.0 in the complete mode) refused */
+    i32 refused_surfaces;              /* surfaces refused because a test asked for that (mg_gl_standin_refuse_surfaces) */
     float clear[4];                    /* the last clear colour */
     i32 largest_es;                    /* the newest version a context was made for */
     i32 dropped;                       /* clears, draws and reads of a surface whose keyed mutex was not held: dropped */
@@ -55,6 +57,11 @@ void mg_gl_standin_stats_get(mg_gl_standin_stats *out);
  * last on any thread, and a clear of another context's counts as stale.
  */
 void mg_gl_standin_set_dwell(u64 ns);
+/*
+ * The next `count` surfaces of this size that are asked for are refused with EGL_BAD_ALLOC, as a Direct3D with no room for
+ * a surface's textures beside the app's refuses one (0: none are refused).
+ */
+void mg_gl_standin_refuse_surfaces(int count, int width, int height);
 /* Back to nothing made and nothing counted; whether GL_EXT_read_format_bgra is listed, and whether version 1 is made. */
 void mg_gl_standin_reset(bool bgra, bool es1);
 /*

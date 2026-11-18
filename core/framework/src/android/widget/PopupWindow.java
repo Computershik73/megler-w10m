@@ -154,20 +154,53 @@ public class PopupWindow {
         WindowManager.LayoutParams p = createParams();
         p.token = anchor.getWindowToken();
         preparePopup();
-        findDropDownPosition(anchor, p, xoff, yoff, gravity);
+        /*
+         * Placed under the anchor and added first; then, of a size its content decides, measured in its window and placed
+         * where that size has it go (above the anchor when it does not fit under it) -- once the main loop's turn that showed
+         * it is over. Its content is measured neither before its window has it nor within showAsDropDown, as on Android, where
+         * the first measure of a popup is its window's first traversal, after the call: OneDrive's drop-down menu is a
+         * ComposeView, which cannot be measured before it is in a window ("Cannot locate windowRecomposer; View ... is not
+         * attached to a window"), nor before the app has given the popup's root the ViewTreeLifecycleOwner Compose looks
+         * for there, which it does after showAsDropDown returns ("ViewTreeLifecycleOwner not found from
+         * android.widget.PopupWindow$PopupDecor"); the app ended as the menu was opened.
+         */
+        findDropDownPosition(anchor, p, xoff, yoff, gravity, false);
         mWindowManager.addView(mDecorView, p);
+        if (mWidth < 0 || mHeight < 0) {
+            // (Its window attaches and measures it at its first frame, megler.ViewRoot: placed then, by the size it was given,
+            // before it is drawn.)
+            final View decor = mDecorView;
+            decor.getViewTreeObserver().addOnPreDrawListener(new android.view.ViewTreeObserver.OnPreDrawListener() {
+                @Override public boolean onPreDraw() {
+                    decor.getViewTreeObserver().removeOnPreDrawListener(this);
+                    if (!isShowing() || mDecorView != decor || mAnchor != anchor) return true;
+                    WindowManager.LayoutParams lp = (WindowManager.LayoutParams) decor.getLayoutParams();
+                    int x = lp.x, y = lp.y;
+                    findDropDownPosition(anchor, lp, mAnchorXoff, mAnchorYoff, mAnchorGravity, true);
+                    if (lp.x == x && lp.y == y) return true;
+                    mWindowManager.updateViewLayout(decor, lp);
+                    return false;
+                }
+            });
+        }
     }
     private void findDropDownPosition(View anchor, WindowManager.LayoutParams p, int xoff, int yoff, int gravity) {
+        findDropDownPosition(anchor, p, xoff, yoff, gravity, true);
+    }
+    /* `measure`: a size the content decides is measured (the popup is in its window); otherwise it is taken as none. */
+    private void findDropDownPosition(View anchor, WindowManager.LayoutParams p, int xoff, int yoff, int gravity, boolean measure) {
         anchor.getLocationOnScreen(mTmp);
         int ax = mTmp[0], ay = mTmp[1];
         int sw = megler.Native.screenWidth(), sh = megler.Native.screenHeight();
         // measure to flip above when it does not fit below, and to keep it on screen
         int w = mWidth, h = mHeight;
-        if (w < 0 || h < 0) {
+        if ((w < 0 || h < 0) && measure) {
             mDecorView.measure(View.MeasureSpec.makeMeasureSpec(sw, mWidth == ViewGroup.LayoutParams.MATCH_PARENT ? View.MeasureSpec.EXACTLY : View.MeasureSpec.AT_MOST), View.MeasureSpec.makeMeasureSpec(sh, View.MeasureSpec.AT_MOST));
             if (w < 0) w = mDecorView.getMeasuredWidth();
             if (h < 0) h = mDecorView.getMeasuredHeight();
         }
+        if (w < 0) w = 0;
+        if (h < 0) h = 0;
         int x = ax + xoff, y = ay + (mOverlapAnchor ? 0 : anchor.getHeight()) + yoff;
         if ((Gravity.getAbsoluteGravity(gravity, anchor.getLayoutDirection()) & Gravity.HORIZONTAL_GRAVITY_MASK) == Gravity.RIGHT) x = ax + anchor.getWidth() - w + xoff;
         Rect frame = new Rect();

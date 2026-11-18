@@ -99,6 +99,13 @@ public class Main extends Activity {
         Log.i(TAG, "Main.onRestoreInstanceState field=" + field.getText());
     }
 
+    /* (After onStart and onRestoreInstanceState and before onResume, as Android's.) */
+    @Override
+    protected void onPostCreate(Bundle state) {
+        super.onPostCreate(state);
+        Log.i(TAG, "Main.onPostCreate state=" + (state == null ? "none" : "saved"));
+    }
+
     @Override
     protected void onStart() {
         super.onStart();

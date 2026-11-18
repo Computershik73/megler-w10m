@@ -100,6 +100,10 @@ final class CronetNetLog {
         File dir = new File(ContextImpl.app().getFilesDir(), "netlog-" + n);
         try {
             dir.mkdirs();
+            // Cronet asks whether <dir>/netlog.json is writable (base::PathIsWritable: access(W_OK)) before it starts, and a
+            // file that is not there yet is not ("Path is not writable"): it is made empty first. Cronet writes its log into
+            // netlog.json.inprogress/ beside it and stitches it into this file when the log is stopped.
+            new File(dir, "netlog.json").createNewFile();
             context.getClass().getMethod("startNetLogToDisk", String.class, boolean.class, int.class).invoke(context, dir.getPath(), true, MOST);
             android.util.Log.i("Megler", "cronet-netlog: Cronet's network log of " + context.getClass().getName() + "@"
                 + Integer.toHexString(System.identityHashCode(context)) + " goes to " + dir + " (everything, at most " + (MOST >> 20) + " MB)");

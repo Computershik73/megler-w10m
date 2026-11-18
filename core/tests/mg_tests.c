@@ -1030,6 +1030,7 @@ static void *f_tex_resolve(const char *name)
     if (!strcmp(name, "glBindTexture")) return (void *)f_bind_texture;
     if (!strcmp(name, "glGetString")) return (void *)f_get_string;
     if (!strcmp(name, "glTexStorage2D")) return (void *)f_storage_2d;
+    if (!strcmp(name, "glCompressedTexImage2D")) return (void *)f_compressed_2d;
     return NULL;
 }
 
@@ -1260,7 +1261,8 @@ static void test_textures_pressed(void)
     mg_gltex_reset();
     g_tex_ext = "GL_EXT_texture_compression_s3tc";
     mg_gltex_set_host(f_tex_resolve);
-    (void)mg_gltex_wrap("glCompressedTexImage2D", (void *)f_compressed_2d);
+    /* (The app asks for no glCompressedTexImage2D, as one with no compressed textures of its own: what packs a
+       glTexImage2D is found without it.) */
     image = (image_fn)mg_gltex_wrap("glTexImage2D", (void *)f_image_2d);
     sub_image = (sub_image_fn)mg_gltex_wrap("glTexSubImage2D", (void *)f_sub_image_2d);
     storage = (storage_fn)mg_gltex_wrap("glTexStorage2D", (void *)f_storage_2d);
@@ -2500,7 +2502,7 @@ static void test_libc_gaps(const char *scratch)
         }
     }
 
-    say("j0 and j1, eventfd_read and eventfd_write, fchmodat");
+    say("j0 and j1, erfcl and its like, eventfd_read and eventfd_write, fchmodat");
     {
         typedef gdouble (*d_fn)(gdouble);                /* (as guest code calls them: softfp's bits on 32-bit ARM) */
         typedef int (*eventfd_fn)(unsigned, int);
@@ -2525,6 +2527,20 @@ static void test_libc_gaps(const char *scratch)
             CHECK(fabs(J1(1) - 0.4400505857449335) < 1e-12 && fabs(J1(-1) + 0.4400505857449335) < 1e-12 && fabs(J1(15) - 0.2051040386135228) < 1e-10);
 #undef J0
 #undef J1
+        }
+        {
+            /* The long double ones (imo Lite's call engine, libimostream.so, imports erfcl): gldouble, computed in double. */
+            typedef gldouble (*l_fn)(gldouble);
+            l_fn erfl_ = (l_fn)mg_bionic_find("erfl"), erfcl_ = (l_fn)mg_bionic_find("erfcl");
+            l_fn tgammal_ = (l_fn)mg_bionic_find("tgammal"), lgammal_ = (l_fn)mg_bionic_find("lgammal");
+            CHECK(erfl_ && erfcl_ && tgammal_ && lgammal_);
+            if (erfl_ && erfcl_ && tgammal_ && lgammal_) {
+#define L(fn, x) mg_gld(fn(mg_gldb(x)))
+                CHECK(fabs(L(erfcl_, 0.5) - 0.4795001221869535) < 1e-12 && fabs(L(erfl_, 0.5) - 0.5204998778130465) < 1e-12);
+                CHECK(L(erfcl_, 0.0) == 1.0 && fabs(L(erfcl_, -2.0) - 1.9953222650189527) < 1e-12);
+                CHECK(fabs(L(tgammal_, 5.0) - 24.0) < 1e-9 && fabs(L(lgammal_, 10.0) - 12.801827480081469) < 1e-9);
+#undef L
+            }
         }
         if (eventfd_ && efd_read && efd_write && close_) {
             fd = eventfd_(0, 0);
@@ -2661,6 +2677,116 @@ static void test_libc_gaps(const char *scratch)
             CHECK(killpg_(0, 0) == 0 && killpg_(getpgid_(0), 0) == 0);
             CHECK(killpg_(getpgid_(0) + 1, 0) == -1 && *errno_() == GE_SRCH);
             CHECK(killpg_(-1, 0) == -1 && *errno_() == GE_INVAL);
+        }
+    }
+
+    say("strptime: an HTTP date, the composite and the twelve-hour conversions, what follows from a date; __pwrite_chk, f*xattr, tmpnam");
+    {
+        typedef struct { int sec, min, hour, mday, mon, year, wday, yday, isdst; glong gmtoff; const char *zone; } t_tm;
+        typedef char *(*strptime_fn)(const char *, const char *, t_tm *);
+        typedef gtime (*timegm_fn)(t_tm *);
+        typedef gssize (*pwrite_chk_fn)(int, const void *, size_t, goff, size_t);
+        typedef gssize (*pread_fn)(int, void *, size_t, goff);
+        typedef int (*open_fn)(const char *, int, int);
+        typedef int (*close_fn)(int);
+        typedef gssize (*fsetx_fn)(int, const char *, const void *, size_t, int);
+        typedef gssize (*fgetx_fn)(int, const char *, void *, size_t);
+        typedef int (*fremovex_fn)(int, const char *);
+        typedef char *(*tmpnam_fn)(char *);
+        typedef int *(*errno_fn)(void);
+        strptime_fn strptime_ = (strptime_fn)mg_bionic_find("strptime");
+        timegm_fn timegm_ = (timegm_fn)mg_bionic_find("timegm");
+        pwrite_chk_fn pwrite_chk_ = (pwrite_chk_fn)mg_bionic_find("__pwrite_chk");
+        pread_fn pread_ = (pread_fn)mg_bionic_find("pread");
+        open_fn open_ = (open_fn)mg_bionic_find("open");
+        close_fn close_ = (close_fn)mg_bionic_find("close");
+        fsetx_fn fsetx_ = (fsetx_fn)mg_bionic_find("fsetxattr");
+        fgetx_fn fgetx_ = (fgetx_fn)mg_bionic_find("fgetxattr");
+        fremovex_fn fremovex_ = (fremovex_fn)mg_bionic_find("fremovexattr");
+        tmpnam_fn tmpnam_ = (tmpnam_fn)mg_bionic_find("tmpnam");
+        errno_fn errno_ = (errno_fn)mg_bionic_find("__errno");
+        t_tm tm;
+        const char *end;
+        char buf[16], first[64], own[64];
+        int fd;
+        CHECK(strptime_ && mg_bionic_find("strptime_l") && timegm_ && pwrite_chk_ && pread_ && open_ && close_ && fsetx_ && fgetx_ && fremovex_ &&
+              mg_bionic_find("flistxattr") && tmpnam_ && errno_);
+        if (strptime_ && timegm_) {
+            /* The Date header of an HTTP answer (RFC 1123), as Google Drive reads it: the whole text, and the day of the
+               week and of the year worked out from the date. */
+            memset(&tm, 0, sizeof(tm));
+            tm.wday = 9;
+            end = strptime_("Tue, 17 Nov 2026 08:06:45 GMT", "%a, %d %b %Y %H:%M:%S GMT", &tm);
+            CHECK(end && !*end && tm.year == 126 && tm.mon == 10 && tm.mday == 17 && tm.hour == 8 && tm.min == 6 && tm.sec == 45);
+            CHECK(tm.wday == 2 && tm.yday == 320 && timegm_(&tm) == (gtime)1794902805);
+            /* An offset from UTC, with and without a colon, and Z; the zone's name. */
+            memset(&tm, 0, sizeof(tm));
+            end = strptime_("2026-11-17T08:06:45+0300", "%Y-%m-%dT%H:%M:%S%z", &tm);
+            CHECK(end && !*end && tm.gmtoff == 10800 && tm.year == 126 && tm.mon == 10 && tm.mday == 17);
+            end = strptime_("-05:30|", "%z", &tm);
+            CHECK(end && *end == '|' && tm.gmtoff == -19800);
+            tm.gmtoff = 7;
+            end = strptime_("12:00 Z 13:01 UTC", "%H:%M %z %H:%M %Z", &tm);
+            CHECK(end && !*end && tm.gmtoff == 0 && tm.hour == 13 && tm.min == 1 && tm.zone && !strcmp(tm.zone, "UTC"));
+            CHECK(strptime_("+3", "%z", &tm) == NULL && strptime_("+0560", "%z", &tm) == NULL);
+            /* The composite conversions; a leap second; the names whole and in lower case; spaces of the format for any of the text's. */
+            memset(&tm, 0, sizeof(tm));
+            end = strptime_("1999-12-31 23:59:60", "%F %T", &tm);
+            CHECK(end && !*end && tm.year == 99 && tm.mon == 11 && tm.mday == 31 && tm.hour == 23 && tm.min == 59 && tm.sec == 60 && tm.wday == 5 &&
+                  tm.yday == 364);
+            memset(&tm, 0, sizeof(tm));
+            end = strptime_("friday   december 31 23:59 1999x", "%A %B %d %R %Y", &tm);
+            CHECK(end && *end == 'x' && tm.year == 99 && tm.mon == 11 && tm.mday == 31 && tm.hour == 23 && tm.min == 59 && tm.wday == 5);
+            memset(&tm, 0, sizeof(tm));
+            end = strptime_("Thu Feb 29 01:02:03 2024", "%c", &tm);
+            CHECK(end && !*end && tm.year == 124 && tm.mon == 1 && tm.mday == 29 && tm.hour == 1 && tm.min == 2 && tm.sec == 3 && tm.wday == 4 && tm.yday == 59);
+            memset(&tm, 0, sizeof(tm));
+            end = strptime_("11/17/26", "%D", &tm);
+            CHECK(end && !*end && tm.year == 126 && tm.mon == 10 && tm.mday == 17 && tm.wday == 2);
+            /* Two digits of a year alone and with their century; the year's day gives the month and its day. */
+            memset(&tm, 0, sizeof(tm));
+            CHECK(strptime_("01/02/69", "%d/%m/%y", &tm) && tm.year == 69 && tm.mon == 1 && tm.mday == 1 && tm.wday == 6 && tm.yday == 31);
+            CHECK(strptime_("01/02/68", "%d/%m/%y", &tm) && tm.year == 168 && tm.wday == 3);
+            memset(&tm, 0, sizeof(tm));
+            CHECK(strptime_("2026", "%C%y", &tm) && tm.year == 126);
+            memset(&tm, 0, sizeof(tm));
+            end = strptime_("2024 060", "%Y %j", &tm);
+            CHECK(end && !*end && tm.year == 124 && tm.yday == 59 && tm.mon == 1 && tm.mday == 29 && tm.wday == 4);
+            /* The twelve-hour clock, its half before or after the hour. */
+            memset(&tm, 0, sizeof(tm));
+            CHECK(strptime_("12:05 am", "%I:%M %p", &tm) && tm.hour == 0 && tm.min == 5);
+            CHECK(strptime_("12:05 PM", "%I:%M %p", &tm) && tm.hour == 12);
+            CHECK(strptime_("PM 7:30", "%p %I:%M", &tm) && tm.hour == 19 && tm.min == 30);
+            CHECK(strptime_("07:30:15 AM", "%r", &tm) && tm.hour == 7 && tm.sec == 15);
+            /* A day of one digit after spaces, a literal '%', and where the text stops being read. */
+            memset(&tm, 0, sizeof(tm));
+            end = strptime_("sep  5 %rest", "%b %e%n%%", &tm);
+            CHECK(end && !strcmp(end, "rest") && tm.mon == 8 && tm.mday == 5);
+            /* What does not match is NULL: a number out of its limits, no such name, another separator, a conversion unknown, a format ending in '%'. */
+            CHECK(strptime_("32", "%d", &tm) == NULL && strptime_("Xyz", "%a", &tm) == NULL && strptime_("2026/11", "%Y-%m", &tm) == NULL);
+            CHECK(strptime_("5", "%Q", &tm) == NULL && strptime_("5", "%d%", &tm) == NULL && strptime_("", "%d", &tm) == NULL);
+        }
+        mg_fs_mount("/syscall-files", scratch);
+        if (pwrite_chk_ && pread_ && open_ && close_ && fsetx_ && fgetx_ && fremovex_ && errno_) {
+            fd = open_("/syscall-files/chk.bin", 2 | 0100 | 01000, 0600);
+            CHECK(fd >= 0 && pwrite_chk_(fd, "abcdef", 6, 0, 6) == 6 && pwrite_chk_(fd, "XY", 2, 2, 2) == 2);
+            memset(buf, 0, sizeof(buf));
+            CHECK(pread_(fd, buf, 6, 0) == 6 && !memcmp(buf, "abXYef", 6));
+            /* No extended attributes on these files, by a descriptor as by a path. */
+            *errno_() = 0;
+            CHECK(fsetx_(fd, "user.megler", "x", 1, 0) == -1 && *errno_() == GE_OPNOTSUPP);
+            *errno_() = 0;
+            CHECK(fgetx_(fd, "user.megler", buf, sizeof(buf)) == -1 && *errno_() == GE_OPNOTSUPP);
+            *errno_() = 0;
+            CHECK(fremovex_(fd, "user.megler") == -1 && *errno_() == GE_OPNOTSUPP);
+            if (fd >= 0) close_(fd);
+        }
+        if (tmpnam_) {
+            /* A name no file has under the temporary directory: in the function's own buffer, then in the caller's, another one. */
+            char *name = tmpnam_(NULL);
+            CHECK(name && !strncmp(name, "/data/local/tmp/tmp.", 20) && strlen(name) == 30);
+            snprintf(first, sizeof(first), "%s", name ? name : "");
+            CHECK(tmpnam_(own) == own && !strncmp(own, "/data/local/tmp/tmp.", 20) && strcmp(own, first) != 0);
         }
     }
 }
@@ -3518,7 +3644,7 @@ static void test_appx_manifest(void)
         "    <Capability Name=\"privateNetworkClientServer\" />\r\n    <!-- The libraries. -->\r\n"
         "    <uap:Capability Name=\"picturesLibrary\" />\r\n    <uap:Capability Name=\"videosLibrary\" />\r\n"
         "    <uap:Capability Name=\"musicLibrary\" />\r\n    <uap:Capability Name=\"documentsLibrary\" />\r\n"
-        "    <uap:Capability Name=\"removableStorage\" />\r\n    <uap:Capability Name=\"chat\" />\r\n"
+        "    <uap:Capability Name=\"removableStorage\" />\r\n    <uap:Capability Name=\"voipCall\" />\r\n    <uap:Capability Name=\"chat\" />\r\n"
         "    <uap2:Capability Name=\"phoneCallHistoryPublic\" />\r\n    <uap3:Capability Name=\"backgroundMediaPlayback\" />\r\n"
         "    <rescap:Capability Name=\"codeGeneration\" />\r\n    <rescap:Capability Name=\"packageManagement\" />\r\n"
         "    <rescap:Capability Name=\"packageQuery\" />\r\n    <!-- The devices. -->\r\n    <DeviceCapability Name=\"webcam\" />\r\n"
@@ -3542,6 +3668,8 @@ static void test_appx_manifest(void)
     static const char *const wifi_alone[] = { "android.permission.ACCESS_WIFI_STATE", "android.permission.CHANGE_WIFI_STATE",
                                               "android.permission.ACCESS_BACKGROUND_LOCATION" };
     static const char *const nearby_wifi[] = { "android.permission.NEARBY_WIFI_DEVICES" };
+    /* An app of calls (imo Lite's): the microphone, and Android's permission to say where a call's sound goes. */
+    static const char *const calls[] = { "android.permission.INTERNET", "android.permission.RECORD_AUDIO", "android.permission.MODIFY_AUDIO_SETTINGS" };
     char err[200], name[64], name2[64];
     char *m, *m2;
     say("an app's own package: its manifest from Megler's");
@@ -3622,6 +3750,10 @@ static void test_appx_manifest(void)
     /* Bluetooth's: Android 12's permissions of nearby devices, and the Androids' before it. */
     CHECK_INT((int)mg_appx_capabilities(bluetooth, (int)MG_COUNT(bluetooth), false), MG_APPX_CAP_PICTURES | MG_APPX_CAP_NETWORK | MG_APPX_CAP_BLUETOOTH);
     CHECK_INT((int)mg_appx_capabilities(bluetooth_old, (int)MG_COUNT(bluetooth_old), false), MG_APPX_CAP_PICTURES | MG_APPX_CAP_BLUETOOTH);
+    /* MODIFY_AUDIO_SETTINGS: voipCall, which a phone asks of a package that routes a call's sound; recording alone asks none. */
+    CHECK_INT((int)mg_appx_capabilities(calls, (int)MG_COUNT(calls), false),
+              MG_APPX_CAP_PICTURES | MG_APPX_CAP_NETWORK | MG_APPX_CAP_MICROPHONE | MG_APPX_CAP_VOIP);
+    CHECK_INT((int)mg_appx_capabilities(calls, 2, false), MG_APPX_CAP_PICTURES | MG_APPX_CAP_NETWORK | MG_APPX_CAP_MICROPHONE);
     m = mg_appx_app_manifest(megler, "com.example.camera", "Camera", NULL, NULL, (int)mg_appx_capabilities(permissions, (int)MG_COUNT(permissions), false),
                              err, sizeof(err));
     CHECK(m != NULL);
@@ -3635,7 +3767,7 @@ static void test_appx_manifest(void)
                     "    <DeviceCapability Name=\"bluetooth.rfcomm\">\r\n      <Device Id=\"any\"><Function Type=\"name:serialPort\" /></Device>\r\n"
                     "    </DeviceCapability>\r\n  </Capabilities>\r\n  <Extensions><Extension Category=\"windows.publisherCacheFolders\" />") != NULL);
     /* Nothing it did not ask for, and none of Megler's that no app's package has. */
-    CHECK(!strstr(m, "videosLibrary") && !strstr(m, "documentsLibrary") && !strstr(m, "removableStorage") && !strstr(m, "\"chat\"") &&
+    CHECK(!strstr(m, "videosLibrary") && !strstr(m, "documentsLibrary") && !strstr(m, "removableStorage") && !strstr(m, "\"chat\"") && !strstr(m, "voipCall") &&
           !strstr(m, "phoneCallHistoryPublic") && !strstr(m, "packageManagement") && !strstr(m, "\"location\"") && !strstr(m, "\"microphone\"") &&
           !strstr(m, "Name=\"bluetooth\"") && !strstr(m, "wiFiControl") &&
           !strstr(m, "The network:") && !strstr(m, "The libraries.") && !strstr(m, "The devices."));
@@ -3653,6 +3785,13 @@ static void test_appx_manifest(void)
     CHECK(m && strstr(m, "    <rescap:Capability Name=\"packageQuery\" />\r\n    <DeviceCapability Name=\"location\" />\r\n"
                          "    <DeviceCapability Name=\"wiFiControl\" />\r\n    <DeviceCapability Name=\"bluetooth.rfcomm\">") != NULL &&
           !strstr(m, "Name=\"bluetooth\""));
+    free(m);
+    /* An app of calls (imo Lite's): voipCall in Megler's place for it, among the libraries', and the microphone. */
+    m = mg_appx_app_manifest(megler, "com.imo.android.imoimlite", "imo Lite", NULL, NULL, (int)mg_appx_capabilities(calls, (int)MG_COUNT(calls), false), err,
+                             sizeof(err));
+    CHECK(m && strstr(m, "    <uap:Capability Name=\"picturesLibrary\" />\r\n    <uap:Capability Name=\"voipCall\" />\r\n"
+                         "    <uap3:Capability Name=\"backgroundMediaPlayback\" />\r\n") != NULL &&
+          strstr(m, "    <rescap:Capability Name=\"packageQuery\" />\r\n    <DeviceCapability Name=\"microphone\" />\r\n") != NULL);
     free(m);
     /* An app that asks for nothing Windows guards: the pictures library and Megler's own alone, no network. */
     m = mg_appx_app_manifest(megler, "com.example.calculator", "Calculator", NULL, NULL, (int)mg_appx_capabilities(NULL, 0, false), err, sizeof(err));
@@ -3759,6 +3898,14 @@ static void test_appx_pri(void)
     CHECK(!mg_appx_pri_rename(file, sizeof(file), placeholder, 1, 2, "MeglerApp.short", out, err, sizeof(err)));
 }
 
+/* st_mode of bionic's struct stat, where each ABI has it. */
+static u32 guest_stat_mode(const void *st)
+{
+    u32 mode;
+    memcpy(&mode, (const u8 *)st + (MG_ARCH_X86_64 ? 24 : 16), 4);
+    return mode;
+}
+
 static void test_libc_odds(void)
 {
     const u32 *size = (const u32 *)mg_bionic_find("__page_size"), *shift = (const u32 *)mg_bionic_find("__page_shift");
@@ -3782,15 +3929,38 @@ static void test_libc_odds(void)
     /*
      * getauxval: what every Linux process's vector has -- AT_EXECFN, the path it was started from, an app's its zygote's (it was
      * zero: a string read through null), the clock's ticks, the app's ids -- and zero with ENOENT for what it has not. And the
-     * process's executable through realpath is what readlink says it links to.
+     * process's executable through realpath is what readlink says it links to; lstat, by either of its names and as fstatat
+     * told not to follow, says a link of it, under the process's number too (it said there was no such file, and Dart's
+     * runtime, which asks before it reads the link, copied 4 GB: LocalSend), and a file is no link.
      */
     {
         typedef unsigned long (*auxval_fn)(unsigned long);
         typedef char *(*realpath_fn)(const char *, char *);
+        typedef int (*lstat_fn)(const char *, void *);
+        typedef int (*fstatat_fn)(int, const char *, void *, int);
+        typedef long (*readlink_fn)(const char *, char *, size_t);
         auxval_fn aux = (auxval_fn)mg_bionic_find("getauxval");
         realpath_fn real = (realpath_fn)mg_bionic_find("realpath");
+        lstat_fn lstat_ = (lstat_fn)mg_bionic_find("lstat"), lstat64_ = (lstat_fn)mg_bionic_find("lstat64");
+        fstatat_fn fstatat_ = (fstatat_fn)mg_bionic_find("fstatat64");
+        readlink_fn readlink_ = (readlink_fn)mg_bionic_find("readlink");
         const char *exe = MG_GUEST_LP64 ? "/system/bin/app_process64" : "/system/bin/app_process32";
         static char path[4096];
+        u32 st[64];
+        CHECK(lstat_ && lstat64_ && fstatat_ && readlink_);
+        if (lstat_ && lstat64_ && fstatat_ && readlink_) {
+            memset(st, 0, sizeof(st));
+            CHECK(lstat64_("/proc/self/exe", st) == 0 && guest_stat_mode(st) == (0120000u | 0777));
+            memset(st, 0, sizeof(st));
+            CHECK(lstat_("/proc/4242/exe", st) == 0 && (guest_stat_mode(st) & 0170000u) == 0120000u);
+            memset(st, 0, sizeof(st));
+            CHECK(fstatat_(-100, "/proc/self/exe", st, 0x100 /* AT_SYMLINK_NOFOLLOW */) == 0 && (guest_stat_mode(st) & 0170000u) == 0120000u);
+            memset(path, 0, sizeof(path));
+            CHECK(readlink_("/proc/4242/exe", path, sizeof(path) - 1) == (long)strlen(exe) && !strcmp(path, exe));
+            memset(st, 0, sizeof(st));
+            CHECK(lstat64_("/proc/cpuinfo", st) == 0 && (guest_stat_mode(st) & 0170000u) == 0100000u);
+            CHECK(lstat64_("/proc/self/no-such-link", st) == -1);
+        }
         CHECK(aux && aux(31) != 0 && aux(17) == 100 && aux(11) == 10100 && aux(14) == 10100);
         /* (A string's address fits an unsigned long where the guest's ABI is the host's: not in MSVC's x64 build.) */
         if (aux && sizeof(unsigned long) == sizeof(void *)) CHECK(!strcmp((const char *)(mg_addr)aux(31), exe));
@@ -5020,6 +5190,47 @@ static void test_audio_callback_stack(void)
     mg_voice_destroy(v);
 }
 
+/*
+ * Whether the app is heard (mg_audio_heard_within): the mixer says of each chunk whether a sample of it is not zero in the
+ * output's 16 bits. A voice that plays silence is not heard, one that plays a tone is, and no more a moment after its last
+ * buffer. The Java driver's sampler rests by it while an app in the background is silent, and the shell stops its output
+ * by the same measure of its own (AudioHost): a Twitter, a Telegram and a Facebook Lite that played nothing were "playing"
+ * to Windows for hours, a hundred blocks of silence a second, and never suspended (0.1.0.695, 0.1.0.696).
+ */
+static void test_audio_heard(void)
+{
+    static i16 quiet[2 * MG_AUDIO_CHUNK * 20], tone[2 * MG_AUDIO_CHUNK * 20];
+    mg_voice *v = mg_voice_create(MG_AUDIO_RATE, 2, 16, false);
+    bool heard = false, silent = false;
+    int waited, i;
+    say("whether the app is heard: a voice's silence is not, its tone is, and no more once the tone has ended");
+    CHECK(v != NULL);
+    if (!v) return;
+    for (i = 0; i < (int)MG_COUNT(tone); i++) tone[i] = (i16)((i & 2) ? 8000 : -8000);
+    /* 200 ms of silence, played to its end: nothing was heard in its last 100 ms. */
+    CHECK(mg_voice_enqueue(v, quiet, sizeof(quiet)));
+    mg_voice_set_playing(v, true);
+    for (waited = 0; waited < 1000 && mg_voice_queued(v); waited++) mg_sleep_ns(10000000ull);
+    CHECK_INT(mg_voice_queued(v), 0);
+    CHECK(!mg_audio_heard_within(100));
+    /* 200 ms of a tone: heard. (Asked of the last five seconds, so that a test thread kept waiting does not miss it.) */
+    CHECK(mg_voice_enqueue(v, tone, sizeof(tone)));
+    for (waited = 0; waited < 1000 && !heard; waited++) {
+        heard = mg_audio_heard_within(5000);
+        if (!heard) mg_sleep_ns(10000000ull);
+    }
+    CHECK(heard);
+    /* And once it has ended, the mixer's time goes on in silence: not heard in the last 300 ms, still heard in the last minute. */
+    for (waited = 0; waited < 1000 && mg_voice_queued(v); waited++) mg_sleep_ns(10000000ull);
+    for (waited = 0; waited < 1000 && !silent; waited++) {
+        silent = !mg_audio_heard_within(300);
+        if (!silent) mg_sleep_ns(10000000ull);
+    }
+    CHECK(silent);
+    CHECK(mg_audio_heard_within(60000));
+    mg_voice_destroy(v);
+}
+
 static void test_input(void)
 {
     enum { TAPS = 60000 };
@@ -5574,6 +5785,8 @@ static void test_library(mg_lib *lib, const char *what, const char *scratch)
     CHECK_INT(FN(lib, int (*)(int), "t_big_frame")(10), 56);
     /* Signals between threads: a thread stopped and let go twenty times, wherever it was found. */
     CHECK_INT(FN(lib, int (*)(int), "t_signals")(20), 0);
+    /* pause: a thread waits in it past a signal it has blocked, until a handler has run on it. */
+    CHECK_INT(FN(lib, int (*)(void), "t_pause")(), 0);
     /* A thread stopped as the collector stops one, 20000 times while signals keep sending it back: its registers its own. */
     test_stop_signalled(lib);
 #if MG_ARCH_X86_64 || (MG_ARCH_X86 && MG_HOST_WINDOWS)
@@ -5640,6 +5853,7 @@ static void test_library(mg_lib *lib, const char *what, const char *scratch)
 #endif
     CHECK_INT(FN(lib, int (*)(void), "t_boot_id")(), 1);
     CHECK_INT(FN(lib, int (*)(void), "t_cpu_topology")(), 1);
+    CHECK_INT(FN(lib, int (*)(void), "t_cpu_freq")(), 1);
     CHECK_INT(FN(lib, int (*)(void), "t_proc_status")(), 1);
     CHECK_INT(FN(lib, int (*)(void), "t_proc_pid")(), 1);
     CHECK_INT(FN(lib, int (*)(void), "t_smaps")(), 4);
@@ -6757,6 +6971,22 @@ static int sq_int(sqlite3 *db, const char *sql)
     return v;
 }
 
+/* A thread that counts the test's table through a connection of its own, and says when it has. */
+typedef struct sq_reader {
+    const char *path;
+    volatile i32 done;
+    int count;
+} sq_reader;
+
+static MG_HOSTCB void sq_reader_main(void *arg)
+{
+    sq_reader *r = (sq_reader *)arg;
+    sqlite3 *db = NULL;
+    if (sqlite3_open_v2(r->path, &db, SQLITE_OPEN_READONLY, NULL) == SQLITE_OK) r->count = sq_int(db, "SELECT count(*) FROM t");
+    sqlite3_close(db);
+    r->done = 1;
+}
+
 int mg_tests_sqlite_hold(const char *db, const char *flag)
 {
     sqlite3 *h = NULL;
@@ -6893,8 +7123,85 @@ static void test_sqlite(const char *scratch)
             CHECK(mg_sqlite_locks_held() == 0 && megler_settle_databases(20));
             CHECK(!mg_file_locked_elsewhere(other, RESERVED, 1) && !mg_file_locked_elsewhere(other, PENDING, 1) &&
                   !mg_file_locked_elsewhere(other, SHARED_FIRST, SHARED_SIZE));
+            /*
+             * And from then until the app is back (megler_resume_databases) nothing new begins: Windows freezes a suspended
+             * app as it is, and waiting for the locks to be let go is of no use while its other threads take new ones.
+             * YouTube, frozen with a lock 16 s after its start, kept every other app out of Google Play services'
+             * databases for three hours (a user's Lumia 950, 696). A thread that would begin to read waits, holding
+             * nothing, and reads once the app is back.
+             */
+            {
+                sq_reader r;
+                mg_thread *t;
+                u64 began = mg_time_monotonic_ns();
+                int tries;
+                say("SQLite: the app suspended: no read begins, a writer waiting for readers lets them in, what is under way ends");
+                memset(&r, 0, sizeof(r));
+                r.path = path;
+                r.count = -1;
+                CHECK(megler_settle_databases(0));
+                t = mg_thread_start(sq_reader_main, &r, 256u * 1024u, "sqlite-reader");
+                CHECK(t != NULL);
+                for (tries = 0; t && tries < 500 && mg_sqlite_waiting() < 1 && !r.done; tries++) mg_sleep_ns(10000000ull);
+                CHECK(mg_sqlite_waiting() == 1 && mg_sqlite_locks_held() == 0 && !r.done);
+                mg_sleep_ns(100000000ull);
+                CHECK(mg_sqlite_waiting() == 1 && !r.done && !mg_file_locked_elsewhere(other, SHARED_FIRST, SHARED_SIZE));
+                megler_resume_databases();
+                if (t) mg_thread_join(t);
+                CHECK(r.done && r.count == 7 && mg_sqlite_waiting() == 0 && mg_sqlite_locks_held() == 0);
+                /* (Let go by megler_resume_databases, and not by the ten seconds after which the waiting ends by itself.) */
+                CHECK(mg_time_monotonic_ns() - began < 8000000000ull);
+            }
+            /*
+             * A writer that waits for a reader of another process to leave holds PENDING's byte while it waits, which keeps
+             * new readers out: frozen with it, it would keep every reader of every app out. It gives the byte up as the app
+             * is suspended, and each time it asks again and is turned away. RESERVED, which SQLite counts on, it keeps, and
+             * it commits once the reader has left, suspended or not.
+             */
+            CHECK(mg_file_lock(other, SHARED_FIRST, SHARED_SIZE, false, &err));
+            CHECK_INT(sqlite3_exec(a, "BEGIN IMMEDIATE; UPDATE t SET v = 9 WHERE id = 1", NULL, NULL, NULL), SQLITE_OK);
+            CHECK_INT(sqlite3_exec(a, "COMMIT", NULL, NULL, NULL), SQLITE_BUSY);
+            CHECK(mg_file_locked_elsewhere(other, PENDING, 1) && mg_file_locked_elsewhere(other, RESERVED, 1));
+            CHECK(mg_sqlite_locks_held() == 1 && !megler_settle_databases(20));
+            CHECK(!mg_file_locked_elsewhere(other, PENDING, 1) && mg_file_locked_elsewhere(other, RESERVED, 1));
+            CHECK_INT(sqlite3_exec(a, "COMMIT", NULL, NULL, NULL), SQLITE_BUSY);
+            CHECK(!mg_file_locked_elsewhere(other, PENDING, 1) && mg_file_locked_elsewhere(other, RESERVED, 1));
+            mg_file_unlock(other, SHARED_FIRST, SHARED_SIZE);
+            CHECK_INT(sqlite3_exec(a, "COMMIT", NULL, NULL, NULL), SQLITE_OK);
+            CHECK(mg_sqlite_locks_held() == 0 && megler_settle_databases(20));
+            CHECK(!mg_file_locked_elsewhere(other, RESERVED, 1) && !mg_file_locked_elsewhere(other, PENDING, 1) &&
+                  !mg_file_locked_elsewhere(other, SHARED_FIRST, SHARED_SIZE));
+            megler_resume_databases();
+            /*
+             * And a thread that holds a lock is not kept from taking another: in a transaction of one database it reads a
+             * second, and waiting there it would keep the first's lock for as long as the app is suspended.
+             */
+            {
+                char *second = mg_sprintf("%s/sqlite-second.db", scratch);
+                u64 began;
+                mg_path_remove(second, NULL);
+                b = NULL;
+                CHECK_INT(sqlite3_open_v2(second, &b, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE, NULL), SQLITE_OK);
+                CHECK_INT(sqlite3_exec(b, "CREATE TABLE u(x); INSERT INTO u VALUES(7);", NULL, NULL, NULL), SQLITE_OK);
+                CHECK_INT(sqlite3_exec(a, "BEGIN IMMEDIATE", NULL, NULL, NULL), SQLITE_OK);
+                began = mg_time_monotonic_ns();
+                CHECK(!megler_settle_databases(0));
+                CHECK_INT(sq_int(b, "SELECT x FROM u"), 7);
+                CHECK(mg_sqlite_waiting() == 0 && mg_time_monotonic_ns() - began < 8000000000ull);
+                CHECK_INT(sqlite3_exec(a, "COMMIT", NULL, NULL, NULL), SQLITE_OK);
+                CHECK(mg_sqlite_locks_held() == 0 && megler_settle_databases(0));
+                /* The app is back: a thread that holds nothing reads at once, and what was written while it was suspended is there. */
+                megler_resume_databases();
+                CHECK_INT(sq_int(a, "SELECT v FROM t WHERE id = 1"), 9);
+                sqlite3_close(b);
+                b = NULL;
+                mg_path_remove(second, NULL);
+                free(second);
+            }
             mg_file_close(other);
         }
+        /* (Whatever went wrong above, the tests after this one read databases.) */
+        megler_resume_databases();
         sqlite3_close(a);
     }
 #ifdef _WIN32
@@ -6963,6 +7270,440 @@ static void test_sqlite(const char *scratch)
     (void)scratch;
     say("(this build has no SQLite in it: build/sqlite/sqlite3.c was not there)");
     CHECK(!mg_sqlite_available() && !mg_sqlite_start());
+}
+#endif
+
+/*
+ * SQLite as an app carries it: the amalgamation built as guest code with its own unix VFS (guest/t_sqlite.c,
+ * libt_sqlite.so), which is how Signal's SQLCipher and Telegram's SQLite reach their databases -- through the layer's
+ * open, pread and pwrite, fsync, ftruncate, fcntl's locks, the mapped -shm file of a write-ahead log, unlink. A bank
+ * whose money only moves and whose log says what was moved, written by threads with a connection each, in both journal
+ * modes; and, as a run of its own where a process can be forked (mg_tests --guest-sqlite), the process ended at a random
+ * moment of the writing, over and over, with the database checked by a new process each time.
+ * Left out with a line where the library was not built: it takes the NDK (tools/build-guest.sh).
+ */
+#if MG_GUEST_CODE
+#define SQL_OPEN(l, path) FN(l, void *(*)(const char *), "t_sql_open")(path)
+#define SQL_CLOSE(l, db) FN(l, int (*)(void *), "t_sql_close")(db)
+#define SQL_EXEC(l, db, sql) FN(l, int (*)(void *, const char *), "t_sql_exec")(db, sql)
+#define SQL_INT(l, db, sql) FN(l, int (*)(void *, const char *), "t_sql_int")(db, sql)
+#define SQL_OK(l, db) FN(l, int (*)(void *), "t_sql_ok")(db)
+#define SQL_SAID(l) FN(l, const char *(*)(void), "t_sql_said")()
+#define SQL_SETUP(l, path, wal) FN(l, int (*)(const char *, int), "t_sql_setup")(path, wal)
+#define SQL_START(l, path, threads, rounds, seed) FN(l, void *(*)(const char *, int, int, unsigned), "t_sql_work_start")(path, threads, rounds, seed)
+#define SQL_WAIT(l, job, moved) FN(l, int (*)(void *, int *), "t_sql_work_wait")(job, moved)
+#define SQL_CHECK(l, path) FN(l, int (*)(const char *), "t_sql_check")(path)
+
+/* The library, loaded as the linker scope `scope`'s own (0: the app's). */
+static mg_lib *sql_library(const char *libdir, int scope)
+{
+    char *path = mg_sprintf("%s/libt_sqlite.so", libdir);
+    int previous = mg_ld_set_scope(scope);
+    mg_stat st;
+    mg_lib *lib = mg_path_stat(path, &st, NULL) ? mg_ld_load_file(path) : NULL;
+    if (lib && !mg_ld_init(lib)) lib = NULL;
+    mg_ld_set_scope(previous);
+    if (!lib) say("(SQLite as guest code is not tried: %s is not there -- tools/build-guest.sh makes it with the NDK)", path);
+    free(path);
+    return lib;
+}
+
+/* A database's files, gone from the folder the tests keep them in. */
+static void sql_remove(const char *dir, const char *name)
+{
+    static const char *const ends[] = { "", "-wal", "-shm", "-journal" };
+    size_t i;
+    for (i = 0; i < sizeof(ends) / sizeof(ends[0]); i++) {
+        char *path = mg_sprintf("%s/%s%s", dir, name, ends[i]);
+        mg_path_remove(path, NULL);
+        free(path);
+    }
+}
+
+/* The folder of the databases, which the guest has under two names, as an app has its data folder. */
+static char *sql_folder(const char *scratch)
+{
+    char *dir = mg_sprintf("%s/guest-sqlite", scratch);
+    mg_path_mkdirs(dir);
+    mg_fs_mount("/sql", dir);
+    mg_fs_mount("/sql-too", dir);
+    return dir;
+}
+
+/* Two connections that take turns: what one commits the other counts at once. How many times it did not. */
+static int sql_turns(mg_lib *la, void *a, mg_lib *lb, void *b, int turns)
+{
+    int i, wrong = 0, before = SQL_INT(la, a, "SELECT count(*) FROM seen");
+    for (i = 0; i < turns; i++) {
+        bool odd = (i & 1) != 0;
+        int wrote = odd ? SQL_EXEC(lb, b, "INSERT INTO seen(n) VALUES(1)") : SQL_EXEC(la, a, "INSERT INTO seen(n) VALUES(1)");
+        int counted = odd ? SQL_INT(la, a, "SELECT count(*) FROM seen") : SQL_INT(lb, b, "SELECT count(*) FROM seen");
+        if (wrote != 0 || counted != before + i + 1) {
+            if (!wrong++) say("  turn %d: the write gave %d, the other connection counts %d rows where %d are (%s)", i, wrote, counted, before + i + 1, SQL_SAID(odd ? la : lb));
+        }
+    }
+    return wrong;
+}
+
+/*
+ * One database open through two paths, `pa` in the library `la` and `pb` in `lb`: `turns` turns, then two threads of
+ * each at once with `rounds` transfers to make, then the whole of it checked.
+ */
+static void sql_two(const char *what, mg_lib *la, const char *pa, mg_lib *lb, const char *pb, int turns, int rounds)
+{
+    void *a = SQL_OPEN(la, pa), *b = SQL_OPEN(lb, pb), *ja, *jb;
+    int errors, moved_a = 0, moved_b = 0, bad;
+    CHECK(a != NULL && b != NULL);
+    if (a && b) {
+        CHECK_INT(SQL_EXEC(la, a, "CREATE TABLE IF NOT EXISTS seen(n INTEGER)"), 0);
+        CHECK_INT(sql_turns(la, a, lb, b, turns), 0);
+    }
+    if (a) CHECK_INT(SQL_CLOSE(la, a), 0);
+    if (b) CHECK_INT(SQL_CLOSE(lb, b), 0);
+    ja = SQL_START(la, pa, 2, rounds, 31);
+    jb = SQL_START(lb, pb, 2, rounds, 32);
+    errors = SQL_WAIT(la, ja, &moved_a);
+    if (errors) say("  %s: %s", pa, SQL_SAID(la));
+    CHECK_INT(errors, 0);
+    errors = SQL_WAIT(lb, jb, &moved_b);
+    if (errors) say("  %s: %s", pb, SQL_SAID(lb));
+    CHECK_INT(errors, 0);
+    bad = SQL_CHECK(la, pa);
+    say("  %s: %d and %d transfers at once, then %s", what, moved_a, moved_b, SQL_SAID(la));
+    CHECK_INT(bad, 0);
+}
+
+/* What the file layer says of a database's files (mg_libc_io.c's db_file and the lines by it), kept while it is listened to. */
+static char g_sql_lines[1500];
+static mg_log_sink g_sql_before;
+static void *g_sql_before_user;
+
+static void sql_sink(int level, const char *line, void *user)
+{
+    size_t have = strlen(g_sql_lines);
+    (void)user;
+    if (strstr(line, "files: ") && have + strlen(line) + 2 < sizeof(g_sql_lines)) snprintf(g_sql_lines + have, sizeof(g_sql_lines) - have, "%s\n", line);
+    if (g_sql_before) g_sql_before(level, line, g_sql_before_user);
+}
+
+static void sql_listen(bool on)
+{
+    if (on) {
+        g_sql_lines[0] = 0;
+        mg_log_get_sink(&g_sql_before, &g_sql_before_user);
+        mg_log_set_sink(sql_sink, NULL);
+    } else {
+        size_t n = strlen(g_sql_lines);
+        mg_log_set_sink(g_sql_before, g_sql_before_user);
+        if (n && g_sql_lines[n - 1] == '\n') g_sql_lines[n - 1] = 0;
+    }
+}
+
+/*
+ * What SQLite takes from the file layer beyond reads and writes: a file's inode number, by which it knows an open file.
+ * One database under the two names of one folder (/data/data/<package> and /data/user/0/<package> on Android) is one
+ * file to it, with one set of locks and one index of the write-ahead log. A database deleted and made again at its path
+ * while a connection to the old one stays open (Telegram, whose close had failed on an unfinalized statement before it
+ * made its database anew) is another file: SQLite keeps what it knows of an open file (the locks, the write-ahead log's
+ * index and its mapping) by the numbers, and takes all of it for the new file when they are the old one's.
+ */
+static void test_guest_sqlite_names(mg_lib *lib, const char *dir)
+{
+    typedef int (*unlink_fn)(const char *);
+    unlink_fn unlink_ = (unlink_fn)mg_bionic_find("unlink");
+    void *old, *made;
+    int i, rc = 0, step = FN(lib, int (*)(const char *, const char *), "t_sql_file_ids")("/sql", "/sql-too");
+    if (step) say("  a file's inode number: %s", SQL_SAID(lib));
+    CHECK_INT(step, 0);
+    sql_two("a write-ahead log under the folder's two names", lib, "/sql/bank-wal.db", lib, "/sql-too/bank-wal.db", 40, 60);
+    sql_two("a rollback journal under the folder's two names", lib, "/sql/bank-journal.db", lib, "/sql-too/bank-journal.db", 10, 15);
+    sql_remove(dir, "again.db");
+    old = SQL_OPEN(lib, "/sql/again.db");
+    CHECK(old != NULL && unlink_ != NULL);
+    if (!old || !unlink_) return;
+    CHECK_INT(SQL_EXEC(lib, old, "PRAGMA journal_mode = WAL"), 0);
+    CHECK_INT(SQL_EXEC(lib, old, "CREATE TABLE t(n INTEGER, pad BLOB)"), 0);
+    for (i = 0; i < 30 && !rc; i++) rc = SQL_EXEC(lib, old, "INSERT INTO t(n, pad) VALUES(1, zeroblob(3000))");
+    CHECK_INT(rc, 0);
+    CHECK_INT(SQL_INT(lib, old, "SELECT count(*) FROM t"), 30);
+    sql_listen(true);
+    CHECK_INT(unlink_("/sql/again.db"), 0);
+    unlink_("/sql/again.db-wal");
+    unlink_("/sql/again.db-shm");
+    sql_listen(false);
+    /* Which the log says of the database, for it is seldom meant; not of its write-ahead log and the index of that, which
+       SQLite itself unlinks open at every last close. */
+    CHECK_INT(count_in(g_sql_lines, "files: the database /sql/again.db was unlinked while 1 descriptor(s) of it are open"), 1);
+    CHECK(!strstr(g_sql_lines, "again.db-"));
+    made = SQL_OPEN(lib, "/sql/again.db");
+    CHECK(made != NULL);
+    if (made) {
+        CHECK_INT(SQL_EXEC(lib, made, "PRAGMA journal_mode = WAL"), 0);
+        CHECK_INT(SQL_EXEC(lib, made, "CREATE TABLE u(m INTEGER, pad BLOB)"), 0);
+        for (i = 0, rc = 0; i < 50 && !rc; i++) rc = SQL_EXEC(lib, made, "INSERT INTO u(m, pad) VALUES(2, zeroblob(2000))");
+        if (rc) say("  the database made again: %s", SQL_SAID(lib));
+        CHECK_INT(rc, 0);
+        CHECK_INT(SQL_INT(lib, made, "SELECT count(*) FROM u"), 50);
+        rc = SQL_OK(lib, made);
+        if (rc) say("  the database made again: %s", SQL_SAID(lib));
+        CHECK_INT(rc, 0);
+        /* The old connection still has the file it opened, as on Linux, and nothing of the new one. */
+        CHECK_INT(SQL_INT(lib, old, "SELECT count(*) FROM t"), 30);
+        CHECK(SQL_INT(lib, old, "SELECT count(*) FROM u") < -1000);
+        CHECK_INT(SQL_CLOSE(lib, made), 0);
+    }
+    CHECK_INT(SQL_CLOSE(lib, old), 0);
+    /* And what is at the path after both are closed is the new one, whole. */
+    made = SQL_OPEN(lib, "/sql/again.db");
+    CHECK(made != NULL);
+    if (made) {
+        CHECK_INT(SQL_INT(lib, made, "SELECT count(*) FROM u"), 50);
+        rc = SQL_OK(lib, made);
+        if (rc) say("  the database made again, opened anew: %s", SQL_SAID(lib));
+        CHECK_INT(rc, 0);
+        CHECK_INT(SQL_CLOSE(lib, made), 0);
+    }
+    say("  a database deleted and made again under an open connection is a new file");
+}
+
+/*
+ * Two SQLites on one database, which the log says: each takes fcntl's locks, and all of them are granted in the one
+ * process an app is here, so nothing keeps the two apart. An app's library loaded once more, in a linker scope of its
+ * own, for a process of the app's or for hosted Google Play services is that (Telegram's :widgets process has a copy of
+ * libtmessages.49.so, with its SQLite). In strict turns with a rollback journal, as here, the two still agree, each
+ * reading the file anew when the other has written; at once they do not (the step "two" of mg_tests
+ * --guest-sqlite-step).
+ */
+static void test_guest_sqlite_said(mg_lib *lib, const char *libdir, const char *dir)
+{
+    mg_lib *other = sql_library(libdir, 9);
+    void *a, *b = NULL;
+    CHECK(other != NULL && other != lib);
+    if (!other) return;
+    sql_remove(dir, "said.db");
+    sql_listen(true);
+    a = SQL_OPEN(lib, "/sql/said.db");
+    CHECK(a != NULL);
+    if (a) {
+        CHECK_INT(SQL_EXEC(lib, a, "CREATE TABLE seen(n INTEGER)"), 0);
+        /* (One library's locks on it, however many: nothing to say.) */
+        CHECK(!strstr(g_sql_lines, "is locked by two libraries"));
+        /* The other copy has it by the folder's other name: one file by its inode number. */
+        b = SQL_OPEN(other, "/sql-too/said.db");
+        CHECK(b != NULL);
+    }
+    if (a && b) CHECK_INT(sql_turns(lib, a, other, b, 6), 0);
+    sql_listen(false);
+    say("  two copies of the library on one database: %s", g_sql_lines[0] ? g_sql_lines : "(no line)");
+    CHECK_INT(count_in(g_sql_lines, "/sql-too/said.db is locked by two libraries at once, "), 1);
+    CHECK(strstr(g_sql_lines, "(linker scope 0) and ") != NULL && strstr(g_sql_lines, "(scope 9)") != NULL);
+    if (b) CHECK_INT(SQL_CLOSE(other, b), 0);
+    if (a) CHECK_INT(SQL_CLOSE(lib, a), 0);
+}
+
+static void test_guest_sqlite(const char *libdir, const char *scratch)
+{
+    mg_lib *lib = sql_library(libdir, 0);
+    char *dir;
+    int wal;
+    if (!lib) return;
+    say("SQLite %s as guest code, its unix VFS on the layer's files", FN(lib, const char *(*)(void), "t_sql_version")());
+    dir = sql_folder(scratch);
+    for (wal = 1; wal >= 0; wal--) {
+        /* (Fewer with a rollback journal, each of which is flushed several times: a phone's storage takes its time.) */
+        int rounds = wal ? 100 : 25, errors, moved = 0, bad;
+        const char *path = wal ? "/sql/bank-wal.db" : "/sql/bank-journal.db";
+        u64 began = mg_time_monotonic_ns();
+        sql_remove(dir, wal ? "bank-wal.db" : "bank-journal.db");
+        CHECK_INT(SQL_SETUP(lib, path, wal), 0);
+        errors = SQL_WAIT(lib, SQL_START(lib, path, 4, rounds, 7u + (unsigned)wal), &moved);
+        if (errors) say("  %s", SQL_SAID(lib));
+        CHECK_INT(errors, 0);
+        CHECK_INT(moved, 4 * rounds);
+        bad = SQL_CHECK(lib, path);
+        say("  %s: %d transfers by 4 threads in %u ms, then %s", wal ? "a write-ahead log" : "a rollback journal", moved,
+            (unsigned)((mg_time_monotonic_ns() - began) / 1000000u), SQL_SAID(lib));
+        CHECK_INT(bad, 0);
+    }
+    test_guest_sqlite_names(lib, dir);
+    test_guest_sqlite_said(lib, libdir, dir);
+    free(dir);
+}
+
+/*
+ * One step of the run that ends its process (mg_tests --guest-sqlite-step, after megler_init): "setup" makes the bank of
+ * one journal mode, "work" writes to it with four threads until the process is ended (`started`, when there is one, is
+ * told once they run), "check" says whether the database is whole; "all" is the tests above by themselves. Not 0 when
+ * the step failed.
+ * "two": one database and two copies of SQLite, as two processes of an app have them here; see there.
+ */
+int mg_tests_guest_sqlite_step(const char *libdir, const char *scratch, const char *step, int wal, unsigned seed, void (*started)(void *), void *user)
+{
+    const char *path = wal ? "/sql/kill-wal.db" : "/sql/kill-journal.db";
+    mg_lib *lib;
+    char *dir;
+    int result = 1;
+    g_sink = NULL;
+    if (!mg_core_init()) return 1;
+    mg_path_mkdirs(scratch);
+    if (!strcmp(step, "all")) {
+        g_checks = g_failed = 0;
+        test_guest_sqlite(libdir, scratch);
+        say("%d checks, %d failed", g_checks, g_failed);
+        return g_failed || !g_checks;
+    }
+    lib = sql_library(libdir, 0);
+    if (!lib) return 1;
+    dir = sql_folder(scratch);
+    if (!strcmp(step, "setup")) {
+        sql_remove(dir, wal ? "kill-wal.db" : "kill-journal.db");
+        result = SQL_SETUP(lib, path, wal);
+        if (result) say("  setting up: %s", SQL_SAID(lib));
+    } else if (!strcmp(step, "work")) {
+        /* Four threads that write until the process is ended: coming back from the wait is a failure of theirs. */
+        void *job = SQL_START(lib, path, 4, 100000000, seed);
+        if (started) started(user);
+        else say("  writing");
+        SQL_WAIT(lib, job, NULL);
+        say("  the writers stopped by themselves: %s", SQL_SAID(lib));
+    } else if (!strcmp(step, "check")) {
+        result = SQL_CHECK(lib, path);
+        say("  %s%s", result ? "DAMAGED: " : "", SQL_SAID(lib));
+    } else if (!strcmp(step, "two")) {
+        /*
+         * Two copies of the library, each in a linker scope of its own, on one database: what two processes of an app are
+         * here (an android:process of its own, hosted Google Play services), which are one Windows process with a copy of
+         * the app's libraries each. Not part of the tests' run, for it does not hold: SQLite's locks are fcntl's, which
+         * are granted to all in one process, and each copy has a mapping of its own of the write-ahead log's index.
+         */
+        mg_lib *other = sql_library(libdir, 9);
+        path = wal ? "/sql/two-wal.db" : "/sql/two-journal.db";
+        g_checks = g_failed = 0;
+        sql_remove(dir, wal ? "two-wal.db" : "two-journal.db");
+        sql_listen(true);
+        if (other && SQL_SETUP(lib, path, wal) == 0)
+            sql_two(wal ? "a write-ahead log and two copies of SQLite" : "a rollback journal and two copies of SQLite", lib, path, other, path, 40, 60);
+        sql_listen(false);
+        /* (What the log says of it, which is all a phone's log has of this.) */
+        say("  %s", g_sql_lines[0] ? g_sql_lines : "(the file layer said nothing)");
+        CHECK(strstr(g_sql_lines, "is locked by two libraries at once") != NULL);
+        say("%d checks, %d failed", g_checks, g_failed);
+        result = g_failed || !g_checks;
+    }
+    free(dir);
+    return result;
+}
+
+#if !defined(_WIN32) && !defined(MG_CORE_ELF)
+#include <signal.h>
+#include <sys/wait.h>
+#include <unistd.h>
+
+static void sql_started(void *user)
+{
+    char c = 1;
+    if (write(*(int *)user, &c, 1) != 1) {}
+}
+
+/* One step in a process of its own, begun as a run of the tests begins; its exit status, or -1 for one ended by a signal. */
+static pid_t sql_fork(const char *libdir, const char *scratch, const char *step, int wal, unsigned seed, int *ready)
+{
+    pid_t pid;
+    fflush(stdout);
+    pid = fork();
+    if (pid == 0) {
+        megler_config config;
+        int result;
+        memset(&config, 0, sizeof(config));
+        config.data_dir = scratch;
+        config.package_dir = scratch;
+        megler_init(&config);
+        result = mg_tests_guest_sqlite_step(libdir, scratch, step, wal, seed, ready ? sql_started : NULL, ready);
+        fflush(stdout);
+        _exit(result ? 1 : 0);
+    }
+    return pid;
+}
+
+static int sql_wait(pid_t pid)
+{
+    int status = 0;
+    if (pid <= 0 || waitpid(pid, &status, 0) != pid) return -2;
+    return WIFEXITED(status) ? WEXITSTATUS(status) : -1;
+}
+
+int mg_tests_guest_sqlite(const char *libdir, const char *scratch, int kills, unsigned seed)
+{
+    int wal, failed = 0;
+    mg_path_mkdirs(scratch);
+    if (!seed) seed = (unsigned)(mg_time_realtime_ns() / 1000000u) | 1u;
+    printf("SQLite as guest code, its process ended %d times in each journal mode at moments chosen from the seed %u\n", kills, seed);
+    for (wal = 1; wal >= 0; wal--) {
+        const char *mode = wal ? "a write-ahead log" : "a rollback journal";
+        int k, damaged = 0, stopped = 0;
+        if (sql_wait(sql_fork(libdir, scratch, "setup", wal, 0, NULL)) != 0) {
+            printf("FAIL: %s: the database could not be set up\n", mode);
+            failed++;
+            continue;
+        }
+        for (k = 0; k < kills; k++) {
+            int ready[2];
+            pid_t pid;
+            char c;
+            seed = seed * 1664525u + 1013904223u;
+            if (pipe(ready) != 0) return failed + 1;
+            pid = sql_fork(libdir, scratch, "work", wal, seed, &ready[1]);
+            close(ready[1]);
+            /* (Until its threads are started, or it is gone.) */
+            if (read(ready[0], &c, 1) != 1) {}
+            close(ready[0]);
+            usleep(((seed >> 10) % 1200u) * 1000u);
+            kill(pid, SIGKILL);
+            if (sql_wait(pid) != -1) stopped++;
+            if (sql_wait(sql_fork(libdir, scratch, "check", wal, 0, NULL)) != 0) damaged++;
+        }
+        printf("%s%s: %d times ended while 4 threads wrote: %d times the database was damaged after, %d times the writers had stopped before\n",
+               damaged || stopped ? "FAIL: " : "", mode, kills, damaged, stopped);
+        failed += damaged + stopped;
+    }
+    /* And the tests that need no second process, by themselves. */
+    if (sql_wait(sql_fork(libdir, scratch, "all", 0, 0, NULL)) != 0) failed++;
+    printf("SQLite as guest code: %s\n", failed ? "FAILED" : "all as it should be");
+    return failed;
+}
+#else
+/* (No process is forked here: the tests in one process only. The steps of the other run are for a script to start and end.) */
+int mg_tests_guest_sqlite(const char *libdir, const char *scratch, int kills, unsigned seed)
+{
+    megler_config config;
+    (void)kills;
+    (void)seed;
+    memset(&config, 0, sizeof(config));
+    config.data_dir = scratch;
+    config.package_dir = scratch;
+    megler_init(&config);
+    return mg_tests_guest_sqlite_step(libdir, scratch, "all", 0, 0, NULL, NULL);
+}
+#endif
+#else
+int mg_tests_guest_sqlite_step(const char *libdir, const char *scratch, const char *step, int wal, unsigned seed, void (*started)(void *), void *user)
+{
+    (void)libdir;
+    (void)scratch;
+    (void)step;
+    (void)wal;
+    (void)seed;
+    (void)started;
+    (void)user;
+    printf("(this build runs no guest code)\n");
+    return 1;
+}
+
+int mg_tests_guest_sqlite(const char *libdir, const char *scratch, int kills, unsigned seed)
+{
+    (void)kills;
+    (void)seed;
+    return mg_tests_guest_sqlite_step(libdir, scratch, "all", 0, 0, NULL, NULL);
 }
 #endif
 
@@ -7182,6 +7923,7 @@ int mg_tests_run(const char *libdir, const char *scratch, mg_test_sink sink, voi
     test_free_stretches();
     test_input();
     test_audio_callback_stack();
+    test_audio_heard();
     {
         /* The stand-in for the shell's drawing under a Java app: it is what the Java driver's tests see pictures through. */
         int checks = 0;
@@ -7202,6 +7944,7 @@ int mg_tests_run(const char *libdir, const char *scratch, mg_test_sink sink, voi
 #endif
         if (libdir) {
             test_guest(libdir, scratch);
+            test_guest_sqlite(libdir, scratch);
             test_app(libdir);
             test_dvm(libdir, scratch, true);
 #if MG_ARCH_ARM32

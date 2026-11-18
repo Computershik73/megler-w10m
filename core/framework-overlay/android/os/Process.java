@@ -7,8 +7,8 @@
 // its start with "No supported ABIs found on this device" (package 270). And in myProcessName, which names the process of
 // the code that asks, as Application.getProcessName does (overlaid). And in setThreadPriority, which sets the calling
 // thread's priority (megler.Native.threadNice) where the original did nothing. And in killProcess, which ends nothing when
-// Google Play services' own code asks it or the pid is not the process's, and says who ended the app. Everything else is
-// the original's, unchanged.
+// Google Play services' own code asks it or the pid is not the process's, and otherwise ends the process without returning
+// and says who ended the app. Everything else is the original's, unchanged.
 package android.os;
 
 public class Process {
@@ -29,6 +29,12 @@ public class Process {
      * that is GmsCore's process; here it is the app's, and WhatsApp closed under its first screen two seconds after Google
      * Play services had loaded a new module (690, a Lumia 650). Their call ends nothing here: the app goes on, and its next
      * start has their new modules. A pid other than the process's names no process here. Who ends the app is in the log.
+     *
+     * The app's own call ends the process there and then and does not return, as Android's (a SIGKILL): the code after it
+     * is written to never run. Returning from it, with the app only asked to finish, left libGDX's AndroidGraphics.pause
+     * in its loop -- "waiting for pause synchronization took too long; assuming deadlock and killing", killProcess, wait
+     * four seconds, again -- on the main thread, which then could not finish anything: Age of History II asked 5300
+     * times in six hours in the background (699, a Lumia 950 XL).
      */
     public static void killProcess(int pid) {
         if (pid != myPid()) {
@@ -41,7 +47,8 @@ public class Process {
             return;
         }
         android.util.Log.i("Megler", "Process.killProcess: the app ends its process", new Throwable("asked here"));
-        megler.Native.exit();
+        /* (halt, not exit: no shutdown hooks, as a killed process runs none.) */
+        Runtime.getRuntime().halt(0);
     }
     /* when the process started: the first use of this class, early in the app's start */
     private static final long START_NANOS = System.nanoTime(), START_ELAPSED = SystemClock.elapsedRealtime(), START_UPTIME = SystemClock.uptimeMillis();

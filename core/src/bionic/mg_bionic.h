@@ -338,6 +338,15 @@ char *mg_g_strdup(const char *s);
  * Most apps never ask, and the folders of some hundred apps that ran here take
  * a tenth of a second to look through on a phone. The parts an earlier `find`
  * mounted are gone. NULL: nobody looks.
+ *
+ * mg_fs_other_apks: who knows where another app's APK is. The first time a
+ * path in /data/app/<package>-1 of a package that is not this app's is in no
+ * mount, `find` is asked for that package's APK: the host path of the file
+ * (malloc'd, freed here), or NULL when the app has none here. The file is then
+ * /data/app/<package>-1/base.apk, to be read and not written -- where
+ * ApplicationInfo.sourceDir says another app's APK is (megler.PhoneApps), as
+ * on Android, where every app's APK is readable by all. `find` reads the
+ * host's files alone, no guest path. NULL: no other app's APK is there.
  */
 typedef struct mg_fs_link {
     const char *name;
@@ -348,6 +357,7 @@ void mg_fs_configure(const char *package, const char *internal_dir, const char *
 void mg_fs_shared_storage(const char *shared_dir, const mg_fs_link *links, int count);
 void mg_fs_other_app(const char *package, const char *external_dir);
 void mg_fs_other_apps(void (*find)(void *user), void *user);
+void mg_fs_other_apks(char *(*find)(const char *package, void *user), void *user);
 /* The host path of a guest path, malloc'd; NULL for a path that has no place (it then does not exist). */
 char *mg_fs_host_path(const char *guest_path);
 const char *mg_fs_internal_dir(void);  /* guest paths */

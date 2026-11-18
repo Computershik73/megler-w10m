@@ -152,7 +152,22 @@ public class Activity extends ContextThemeWrapper implements Window.Callback, Ke
      * Lifecycle on them (ON_CREATE after onCreate, ON_PAUSE before onPause...), and Compose sets its content once that is CREATED */
     private interface Step { void on(Application.ActivityLifecycleCallbacks c); }
     private void each(Step s) { for (Application.ActivityLifecycleCallbacks c : callbacks()) s.on(c); }
-    public final void meglerCreate(Bundle state) {
+    /*
+     * The Instrumentation each step of its life is called through, as Android's ActivityThread and Activity call theirs:
+     * the process's, as it is at that step (ActivityThread.mInstrumentation, where an app may have put its own: TikTok Lite's
+     * "mini" app does). The megler* methods below are what ActivityThread's side does around the call; meglerPerformCreate,
+     * -Pause and -Destroy are Android's Activity.performCreate, performPause and performDestroy, which the platform's
+     * Instrumentation calls for callActivityOnCreate, -OnPause and -OnDestroy, and the other calls come to the activity's own
+     * onStart, onResume... An activity that is another process's on Android (meglerOtherProcess: Google Play services'
+     * hosted here, Megler's screens of Android's Settings) keeps to the platform's own Instrumentation.
+     */
+    private boolean mOtherProcess;
+    public final void meglerOtherProcess() { mOtherProcess = true; }
+    private Instrumentation instrumentation() {
+        return mOtherProcess ? ActivityThread.meglerPlatformInstrumentation() : ActivityThread.meglerInstrumentation();
+    }
+    public final void meglerCreate(Bundle state) { instrumentation().callActivityOnCreate(this, state); }
+    final void meglerPerformCreate(Bundle state) {
         // as Activity.attach: the activity is its inflater's private factory, after any the app sets (FragmentActivity makes
         // <fragment> and FragmentContainerView there)
         getLayoutInflater().setPrivateFactory(this);
@@ -170,22 +185,30 @@ public class Activity extends ContextThemeWrapper implements Window.Callback, Ke
             mVisibleFromClient = !ta.getBoolean(0, false);
             ta.recycle();
         } catch (RuntimeException e) { mVisibleFromClient = true; }
-        if (!mFinished) onPostCreate(state);            /* as ActivityThread: an activity that finished in onCreate goes no further */
         each(c -> c.onActivityPostCreated(this, state));
     }
+    /*
+     * onPostCreate, which is not a part of the creation: as ActivityThread.handleStartActivity, it comes after onStart and
+     * onRestoreInstanceState and before onResume, for an activity that did not finish in onCreate (whose start the caller
+     * leaves out, and this with it). Called at the end of the creation, before onStart, it found no view in the fragments an
+     * activity's onCreate had added, which FragmentActivity creates the views of in onStart: Viber's ConversationActivity
+     * asks its ConversationFragment's getViewLifecycleOwner() there, and every conversation opened ended the app with
+     * "Can't access the Fragment View's LifecycleOwner for ConversationFragment when getView() is null" (673).
+     */
+    public final void meglerPostCreate(Bundle state) { instrumentation().callActivityOnPostCreate(this, state); }
     public final void meglerStart() {
         each(c -> c.onActivityPreStarted(this));
-        mCalled = false; onStart(); mStarted = true;
+        mCalled = false; instrumentation().callActivityOnStart(this); mStarted = true;
         fragmentHost(FragmentManager.HOST_STARTED);
         if (mLoaders != null) mLoaders.doStart();
         each(c -> c.onActivityPostStarted(this));
     }
-    public final void meglerRestart() { onRestart(); }
+    public final void meglerRestart() { instrumentation().callActivityOnRestart(this); }
     public final void meglerResume() {
         each(c -> c.onActivityPreResumed(this));
         mLastNonConfig = null;             /* as Activity.performResume: only onCreate and onStart had it */
         mCalled = false;
-        onResume();
+        instrumentation().callActivityOnResume(this);
         mResumed = true;
         fragmentHost(FragmentManager.HOST_RESUMED);
         onPostResume();
@@ -195,11 +218,14 @@ public class Activity extends ContextThemeWrapper implements Window.Callback, Ke
         mStartedActivity = false;
     }
     public final void meglerPause() {
+        instrumentation().callActivityOnPause(this);
+        android.content.MeglerSharedPreferences.flushAll();      /* as QueuedWork after onPause */
+    }
+    final void meglerPerformPause() {
         each(c -> c.onActivityPrePaused(this));
         fragmentHost(FragmentManager.HOST_STARTED);            /* fragments pause before the activity, as performPause */
         mResumed = false; onPause();
         each(c -> c.onActivityPostPaused(this));
-        android.content.MeglerSharedPreferences.flushAll();      /* as QueuedWork after onPause */
     }
     public final void meglerStop() { meglerStop(false); }
     /* keepWindows: stopped because the host's window is hidden whole (the app in the background, the screen off), as Android
@@ -209,7 +235,7 @@ public class Activity extends ContextThemeWrapper implements Window.Callback, Ke
         if (mStarted) {                                  /* one that finished in onCreate never started, and does not stop */
             each(c -> c.onActivityPreStopped(this));
             fragmentHost(FragmentManager.HOST_ACTIVITY_CREATED);
-            mStarted = false; onStop();
+            mStarted = false; instrumentation().callActivityOnStop(this);
             if (mLoaders != null) mLoaders.doStop();
             each(c -> c.onActivityPostStopped(this));
         }
@@ -219,14 +245,17 @@ public class Activity extends ContextThemeWrapper implements Window.Callback, Ke
         if (!mWindowsHidden) { mWindowsHidden = true; megler.ViewRoot.ownerStopped(this, true); }
     }
     public final void meglerDestroy() {
+        instrumentation().callActivityOnDestroy(this);
+        if (mWindow != null) mWindow.meglerDestroy();
+        /* the windows it left open go with it, as ActivityThread.handleDestroyActivity has WindowManagerGlobal.closeAll remove them */
+        megler.ViewRoot.closeAll(this);
+    }
+    final void meglerPerformDestroy() {
         each(c -> c.onActivityPreDestroyed(this));
         fragmentHost(FragmentManager.HOST_NONE);
         mDestroyed = true; onDestroy();
         if (mLoaders != null) mLoaders.doDestroy();
         each(c -> c.onActivityPostDestroyed(this));
-        if (mWindow != null) mWindow.meglerDestroy();
-        /* the windows it left open go with it, as ActivityThread.handleDestroyActivity has WindowManagerGlobal.closeAll remove them */
-        megler.ViewRoot.closeAll(this);
     }
     /* Whether its windows other than its own are hidden: it was stopped and is not on the screen again (ViewRoot.ownerStopped). */
     private boolean mWindowsHidden;
@@ -334,7 +363,7 @@ public class Activity extends ContextThemeWrapper implements Window.Callback, Ke
         String was = mReferrer;
         mReferrer = megler.Native.packageName();
         try {
-            onNewIntent(i);
+            instrumentation().callActivityOnNewIntent(this, i);
         } finally {
             mReferrer = was;
         }
@@ -396,8 +425,8 @@ public class Activity extends ContextThemeWrapper implements Window.Callback, Ke
     public void recreate() { megler.AppRunner.recreate(this); }
     /* For AppRunner.recreate: the state the activity saves, as Android saves it before it is destroyed to be made again; that
        state given back after onStart; and that it is being made again (isChangingConfigurations). */
-    public final Bundle meglerSaveState() { Bundle b = new Bundle(); onSaveInstanceState(b); return b; }
-    public final void meglerRestoreState(Bundle b) { if (b != null) onRestoreInstanceState(b); }
+    public final Bundle meglerSaveState() { Bundle b = new Bundle(); instrumentation().callActivityOnSaveInstanceState(this, b); return b; }
+    public final void meglerRestoreState(Bundle b) { if (b != null) instrumentation().callActivityOnRestoreInstanceState(this, b); }
     public final void meglerChanging(boolean changing) { mChangingConfigurations = changing; }
     /* Made again for these configuration changes (0: recreate): isChangingConfigurations and getChangingConfigurations say so. */
     public final void meglerChanging(int changes) { mChangingConfigurations = true; mChangingConfigFlags = changes; }

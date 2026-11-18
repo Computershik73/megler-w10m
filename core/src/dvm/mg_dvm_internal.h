@@ -969,8 +969,9 @@ void mg_dvm_heap_each_marked_large(void (*fn)(void *o));
 /* ...and the sweep, shared among the collector's threads (mg_dvm_gc_share); how many there were. */
 u32 mg_dvm_heap_sweep(void (*dying)(void *o), bool poison, u64 *freed_objects, u64 *freed_bytes);
 /*
- * mg_dvm_gc.c: `fn` run at once by the collecting thread (worker 0) and each of the collector's helper threads (1 on),
- * until every one has returned; with its lock held, while the helpers have nothing else to do. How many ran it.
+ * mg_dvm_gc.c: `fn` run at once by the collecting thread (worker 0) and each of the collector's helper threads (1 on)
+ * that wakes while it does, until each of those has returned; with its lock held, while the helpers have nothing else to
+ * do. The work is to be claimed piece by piece: any number of them, and any of them, may take part. How many ran it.
  */
 #define MG_DVM_GC_WORKERS 4
 int mg_dvm_gc_share(void (*fn)(void *arg, int worker), void *arg);

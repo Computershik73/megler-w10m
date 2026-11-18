@@ -27,7 +27,8 @@ public class ContentResolver {
     private static ContentProvider provider(Uri u) { if (u == null || !SCHEME_CONTENT.equals(u.getScheme())) return null; return byAuthority(u.getAuthority()); }
     private static ContentProvider byAuthority(String a) {
         ContentProvider p; synchronized (sProviders) { p = sProviders.get(a); }
-        if (p != null) return p;
+        /* A provider of the app's: as it is, or for Google Play services' hosted code one that names them as the caller (megler.Callers). */
+        if (p != null) return megler.Callers.through(p);
         if ("settings".equals(a)) return megler.SettingsProvider.INSTANCE;
         if ("downloads".equals(a)) return megler.Downloads.INSTANCE;
         /* the photos, videos and sounds of the shared storage, MediaStore's (megler.MediaProvider) */
@@ -94,7 +95,7 @@ public class ContentResolver {
         @Override public int update(Uri u, ContentValues v, String sel, String[] args) { return 0; }
     };
     public final Bundle call(Uri u, String method, String arg, Bundle extras) { ContentProvider p = provider(u); return p == null ? null : p.call(method, arg, extras); }
-    public final Bundle call(String authority, String method, String arg, Bundle extras) { ContentProvider p; synchronized (sProviders) { p = sProviders.get(authority); } return p == null ? null : p.call(method, arg, extras); }
+    public final Bundle call(String authority, String method, String arg, Bundle extras) { ContentProvider p; synchronized (sProviders) { p = sProviders.get(authority); } p = megler.Callers.through(p); return p == null ? null : p.call(method, arg, extras); }
     public final java.io.InputStream openInputStream(Uri u) throws java.io.FileNotFoundException {
         if (u == null) throw new java.io.FileNotFoundException("null uri");
         String s = u.getScheme();
@@ -148,18 +149,75 @@ public class ContentResolver {
         if (p != null) return p.openTypedAssetFile(u, mime, o);
         return openAssetFileDescriptor(u, "r");
     }
-    public final void registerContentObserver(Uri u, boolean descendants, ContentObserver o) { synchronized (sObservers) { sObservers.add(new Object[] { u, descendants, o }); } }
-    public final void unregisterContentObserver(ContentObserver o) { synchronized (sObservers) { for (int i = sObservers.size() - 1; i >= 0; i--) if (sObservers.get(i)[2] == o) sObservers.remove(i); } }
-    public void notifyChange(Uri u, ContentObserver observer) { notifyChange(u, observer, true); }
-    public void notifyChange(Uri u, ContentObserver observer, boolean sync) {
-        ArrayList<Object[]> list; synchronized (sObservers) { list = new ArrayList<>(sObservers); }
-        String us = u.toString();
-        for (Object[] e : list) {
-            String os = e[0].toString();
-            if (e[2] != observer && (us.equals(os) || ((Boolean) e[1] && us.startsWith(os)))) ((ContentObserver) e[2]).dispatchChange(false, u);
-        }
+    /* The same with a signal to cancel by, which nothing here waits on: these answered null, and a null descriptor is no
+       FileNotFoundException to the app that asked (the platform's openFile, openAssetFile and openTypedAssetFile are these). */
+    public android.content.res.AssetFileDescriptor openAssetFile(android.net.Uri p0, java.lang.String p1, android.os.CancellationSignal p2) throws java.io.FileNotFoundException { return openAssetFileDescriptor(p0, p1); }
+    public android.content.res.AssetFileDescriptor openAssetFileDescriptor(android.net.Uri p0, java.lang.String p1, android.os.CancellationSignal p2) throws java.io.FileNotFoundException { return openAssetFileDescriptor(p0, p1); }
+    public android.os.ParcelFileDescriptor openFile(android.net.Uri p0, java.lang.String p1, android.os.CancellationSignal p2) throws java.io.FileNotFoundException { return openFileDescriptor(p0, p1); }
+    public android.content.res.AssetFileDescriptor openTypedAssetFile(android.net.Uri p0, java.lang.String p1, android.os.Bundle p2, android.os.CancellationSignal p3) throws java.io.FileNotFoundException { return openTypedAssetFileDescriptor(p0, p1, p2); }
+    public android.content.res.AssetFileDescriptor openTypedAssetFileDescriptor(android.net.Uri p0, java.lang.String p1, android.os.Bundle p2, android.os.CancellationSignal p3) throws java.io.FileNotFoundException { return openTypedAssetFileDescriptor(p0, p1, p2); }
+    public final void registerContentObserver(Uri u, boolean descendants, ContentObserver o) {
+        if (u == null || o == null) throw new NullPointerException("registerContentObserver: " + (u == null ? "no URI" : "no observer"));
+        synchronized (sObservers) { sObservers.add(new Object[] { u, descendants, o }); }
     }
-    public void notifyChange(Uri u, ContentObserver observer, int flags) { notifyChange(u, observer, true); }
+    /* (Android's for another user, which is the one user here: the stubs registered nothing.) */
+    public void registerContentObserver(Uri u, boolean descendants, ContentObserver o, int user) { registerContentObserver(u, descendants, o); }
+    public void registerContentObserverAsUser(Uri u, boolean descendants, ContentObserver o, android.os.UserHandle user) { registerContentObserver(u, descendants, o); }
+    public final void unregisterContentObserver(ContentObserver o) { synchronized (sObservers) { for (int i = sObservers.size() - 1; i >= 0; i--) if (sObservers.get(i)[2] == o) sObservers.remove(i); } }
+    /*
+     * A change told, as Android's ContentService tells it. Its tree of observers has a level for the authority and one for each
+     * segment of the path (the scheme is not in it): an observer registered at a changed URI or anywhere below it is told,
+     * unless the change says NOTIFY_SKIP_NOTIFY_FOR_DESCENDANTS and the observer takes descendants (the notifier tells more
+     * particular URIs for those); one above it only if it takes descendants. Here an observer registered below a changed URI
+     * was never told, the segments were compared as text ("content://a/b" took a change of "content://a/bc"), and the
+     * overloads with flags, a collection of URIs or a user were generated stubs that told no one. The observer that tells is
+     * told too if it asks for its own changes (deliverSelfNotifications), with selfChange; each observer hears the URIs of
+     * one telling in one dispatch, with its flags.
+     */
+    public void notifyChange(Uri u, ContentObserver observer) { notifyChange(u, observer, true); }
+    public void notifyChange(Uri u, ContentObserver observer, boolean sync) { notifyChange(java.util.Collections.singletonList(u), observer, sync ? NOTIFY_SYNC_TO_NETWORK : 0); }
+    public void notifyChange(Uri u, ContentObserver observer, int flags) { notifyChange(java.util.Collections.singletonList(u), observer, flags); }
+    public void notifyChange(Uri u, ContentObserver observer, boolean sync, int user) { notifyChange(u, observer, sync); }
+    public void notifyChange(Uri u, ContentObserver observer, int flags, int user) { notifyChange(u, observer, flags); }
+    public void notifyChange(Uri[] uris, ContentObserver observer, int flags, int user) { notifyChange(java.util.Arrays.asList(uris), observer, flags); }
+    public void notifyChange(java.lang.Iterable uris, ContentObserver observer, int flags) {
+        ArrayList<Uri> list = new ArrayList<>();
+        for (Object u : uris) list.add((Uri) u);
+        notifyChange(list, observer, flags);
+    }
+    public void notifyChange(java.util.Collection uris, ContentObserver observer, int flags) {
+        ArrayList<Object[]> list; synchronized (sObservers) { list = new ArrayList<>(sObservers); }
+        boolean wantsSelf = observer != null && observer.deliverSelfNotifications();
+        java.util.LinkedHashMap<ContentObserver, ArrayList<Uri>> told = new java.util.LinkedHashMap<>();
+        for (Object o : uris) {
+            Uri u = (Uri) o;
+            if (u == null) throw new NullPointerException("notifyChange: no URI");
+            java.util.List<String> changed = treeSegments(u);
+            for (Object[] e : list) {
+                ContentObserver to = (ContentObserver) e[2];
+                if (to == observer && !wantsSelf) continue;
+                if (!tells(treeSegments((Uri) e[0]), (Boolean) e[1], changed, flags)) continue;
+                ArrayList<Uri> its = told.get(to);
+                if (its == null) told.put(to, its = new ArrayList<>());
+                if (!its.contains(u)) its.add(u);
+            }
+        }
+        for (java.util.Map.Entry<ContentObserver, ArrayList<Uri>> t : told.entrySet()) t.getKey().dispatchChange(t.getKey() == observer, t.getValue(), flags);
+    }
+    /* A URI's levels in that tree: its authority, then its path's segments. */
+    private static java.util.List<String> treeSegments(Uri u) {
+        ArrayList<String> s = new ArrayList<>();
+        s.add(u.getAuthority());
+        s.addAll(u.getPathSegments());
+        return s;
+    }
+    /* Whether an observer registered at `at` hears a change of `changed` (both as tree levels). */
+    private static boolean tells(java.util.List<String> at, boolean descendants, java.util.List<String> changed, int flags) {
+        int n = Math.min(at.size(), changed.size());
+        for (int i = 0; i < n; i++) if (!java.util.Objects.equals(at.get(i), changed.get(i))) return false;
+        if (at.size() >= changed.size()) return !(descendants && (flags & NOTIFY_SKIP_NOTIFY_FOR_DESCENDANTS) != 0);   /* at it, or below it */
+        return descendants;                                                                                            /* above it */
+    }
     public void takePersistableUriPermission(Uri u, int flags) {}
     public void releasePersistableUriPermission(Uri u, int flags) {}
     public java.util.List<UriPermission> getPersistedUriPermissions() { return new ArrayList<>(); }
@@ -325,20 +383,8 @@ public class ContentResolver {
     public android.graphics.drawable.Drawable getTypeDrawable(java.lang.String p0) { return null; }
     public android.content.ContentResolver.MimeTypeInfo getTypeInfo(java.lang.String p0) { return null; }
     public int getUserId() { return 0; }
-    public void notifyChange(android.net.Uri p0, android.database.ContentObserver p1, int p2, int p3) {}
-    public void notifyChange(android.net.Uri p0, android.database.ContentObserver p1, boolean p2, int p3) {}
-    public void notifyChange(java.lang.Iterable p0, android.database.ContentObserver p1, int p2) {}
-    public void notifyChange(java.util.Collection p0, android.database.ContentObserver p1, int p2) {}
-    public void notifyChange(android.net.Uri[] p0, android.database.ContentObserver p1, int p2, int p3) {}
-    public android.content.res.AssetFileDescriptor openAssetFile(android.net.Uri p0, java.lang.String p1, android.os.CancellationSignal p2) { return null; }
-    public android.content.res.AssetFileDescriptor openAssetFileDescriptor(android.net.Uri p0, java.lang.String p1, android.os.CancellationSignal p2) { return null; }
-    public android.os.ParcelFileDescriptor openFile(android.net.Uri p0, java.lang.String p1, android.os.CancellationSignal p2) { return null; }
-    public android.content.res.AssetFileDescriptor openTypedAssetFile(android.net.Uri p0, java.lang.String p1, android.os.Bundle p2, android.os.CancellationSignal p3) { return null; }
-    public android.content.res.AssetFileDescriptor openTypedAssetFileDescriptor(android.net.Uri p0, java.lang.String p1, android.os.Bundle p2, android.os.CancellationSignal p3) { return null; }
     public void putCache(android.net.Uri p0, android.os.Bundle p1) {}
     public boolean refresh(android.net.Uri p0, android.os.Bundle p1, android.os.CancellationSignal p2) { return false; }
-    public void registerContentObserver(android.net.Uri p0, boolean p1, android.database.ContentObserver p2, int p3) {}
-    public void registerContentObserverAsUser(android.net.Uri p0, boolean p1, android.database.ContentObserver p2, android.os.UserHandle p3) {}
     public int resolveUserId(android.net.Uri p0) { return 0; }
     public void takePersistableUriPermission(java.lang.String p0, android.net.Uri p1, int p2) {}
     public int update(android.net.Uri p0, android.content.ContentValues p1, android.os.Bundle p2) { return 0; }

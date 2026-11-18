@@ -7,7 +7,16 @@
 //
 // Why. On Android every AssetFileDescriptor has one, and code takes the number from it: Chromium's ApkAssets.open (Brave
 // 1.97) calls afd.getParcelFileDescriptor().detachFd() to map icudtl.dat and its .pak files from the APK, and ended in a
-// NullPointerException that its native side turned into a fatal error. Everything else is the original's, unchanged.
+// NullPointerException that its native side turned into a fatal error.
+//
+// And in getLength(): for a descriptor with no declared length (UNKNOWN_LENGTH: a whole file, as ContentResolver's
+// openAssetFileDescriptor makes of a file:// URI and ContentProvider.openAssetFile of what openFile returned) it is the
+// size of the descriptor's file (ParcelFileDescriptor.getStatSize), as Android's; getDeclaredLength() stays what was
+// declared. It was the declared length in both, so -1 for a whole file. Files by Google checks each file it copies by it
+// (bytes written against the source's getLength()): moving a folder out of DCIM, a folder of the phone's own that a rename
+// cannot leave, it copied every file whole and called each copy failed, the empty .nomedia too.
+//
+// Everything else is the original's, unchanged.
 package android.content.res;
 
 import java.io.*;
@@ -31,7 +40,12 @@ public class AssetFileDescriptor implements Closeable {
     public android.os.Bundle getExtras() { return null; }
     public FileDescriptor getFileDescriptor() { return fd; }
     public long getStartOffset() { return start; }
-    public long getLength() { return length; }
+    /** As Android's: the declared length, or with none the size of the descriptor's file, or UNKNOWN_LENGTH where that is not known either (see the top). */
+    public long getLength() {
+        if (length >= 0) return length;
+        long size = pfd != null ? pfd.getStatSize() : -1;
+        return size >= 0 ? size : UNKNOWN_LENGTH;
+    }
     public long getDeclaredLength() { return length; }
     /** Megler's own: the asset this describes, for players that read it by name. */
     public String meglerAssetName() { return asset; }

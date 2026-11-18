@@ -300,6 +300,232 @@ static void test_gc_alongside(void)
 }
 
 /*
+ * A stop and the locks its stopped threads hold (mg_dvm_gc.c, "marking in parallel" and "the stop's watch"). Messenger's
+ * first collection never ended on a Lumia 950 (0.1.0.696): its threads were stopped, one of them inside Windows where a
+ * lock of the process's is held, while the collector's helper threads, made an instant before, had yet to start running
+ * -- which takes that lock -- and the stop waited for every helper. Windows' locks are not to be had here; the lock is the
+ * tests' own, and a thread of the runtime's holds it while it is stopped:
+ *  - the helpers ask for it as they wake for a round: the collection is complete without them, on the one thread, and
+ *    they mark again once they have had it;
+ *  - the collecting thread asks for it inside a stop -- one that stops the app throughout, then each of the two of a
+ *    collection alongside the app, threads moving arrays about meanwhile: the holder would give it as soon as it saw it
+ *    asked for, and it does not run. The watch gives the stop up, the threads go on, the collection says that it did not
+ *    happen, nothing is freed or lost, and the next collection frees what there is to free;
+ *  - a thread puts objects on the list of those with fields by name and takes them off it (mg_dvm_gc_has_fields, under
+ *    the list's lock) while collections run alongside: the list's lock is the collection's from before each stop, where
+ *    the second stop asked for it with that thread stopped inside. No stop is given up.
+ */
+#define WIDE_ROWS 256
+#define WIDE_COLS 256
+static mg_jobj *g_wide;
+static mg_lock g_held_lock = MG_LOCK_INIT;
+static volatile i32 g_held_stage;      /* 1 the thread holds the lock, 2 it is to let go, 3 it has */
+static volatile i32 g_helpers_kept, g_stop_blocks, g_stop_armed, g_stop_asked;
+static volatile i32 g_fields_stop, g_fields_done, g_fields_turns;
+
+static MG_HOSTCB void lock_holder_main(void *p)
+{
+    mg_dvm_self();
+    mg_lock_acquire(&g_held_lock);
+    mg_atomic_xchg(&g_held_stage, 1);
+    /* (`p`: it gives the lock as soon as it sees the collecting thread ask for it, which is when it runs again.) */
+    while (g_held_stage == 1 && !(p && g_stop_asked)) mg_thread_yield();
+    mg_lock_release(&g_held_lock);
+    mg_atomic_xchg(&g_held_stage, 3);
+}
+
+/* Whether the lock's holder comes to `stage` within ten seconds. */
+static bool held_comes_to(i32 stage)
+{
+    const u64 until = mg_time_monotonic_ns() + 10000000000ull;
+    while (g_held_stage != stage && mg_time_monotonic_ns() < until) mg_sleep_ns(1000000ull);
+    return g_held_stage == stage;
+}
+
+static bool holder_started(bool gives_when_asked)
+{
+    mg_thread *th;
+    mg_atomic_xchg(&g_held_stage, 0);
+    th = mg_thread_start(lock_holder_main, (void *)(mg_addr)(gives_when_asked ? 1 : 0), (size_t)256 << 10, "holder");
+    if (!th) return false;
+    mg_thread_detach(th);
+    return held_comes_to(1);
+}
+
+/* A helper of the collector's, woken for a round. */
+static void helper_asks_for_lock(void)
+{
+    mg_atomic_add(&g_helpers_kept, 1);
+    mg_lock_acquire(&g_held_lock);
+    mg_lock_release(&g_held_lock);
+}
+
+/* The collecting thread, the threads stopped: at the stop told (0 one that stops the app throughout, 1 and 2 those alongside), once. */
+static void stop_asks_for_lock(int stop)
+{
+    if (stop != g_stop_blocks || !mg_atomic_xchg(&g_stop_armed, 0)) return;
+    mg_atomic_xchg(&g_stop_asked, 1);
+    mg_lock_acquire(&g_held_lock);
+    mg_lock_release(&g_held_lock);
+}
+
+static MG_HOSTCB void fields_main(void *p)
+{
+    u32 n = 0;
+    (void)p;
+    mg_dvm_self();
+    while (!g_fields_stop) {
+        mg_jobj *o = g_along->u.oarr.v[0]->u.oarr.v[n++ % ALONG_COLS];
+        mg_dvm_gc_has_fields(o);
+        mg_dvm_gc_fields_gone(o);
+        mg_atomic_add(&g_fields_turns, 1);
+    }
+    mg_atomic_xchg(&g_fields_done, 1);
+}
+
+static void test_gc_stops_and_locks(void)
+{
+    mg_dvm_gc_result r;
+    u64 before = 0, after = 0, pause = 0, until;
+    u32 i, k, given_up, most = 0;
+    i32 kept;
+    int stop, t;
+    mg_thread *th;
+    say("the collector: a stop and the locks its stopped threads hold");
+    mg_dvm_gc_alongside_wait();
+    mg_dvm_gc_set_min_budget(64u << 20);
+    g_along = mg_dvm_new_array("[Ljava/lang/Object;", ALONG_ROWS);
+    mg_dvm_add_root(&g_along);
+    for (i = 0; i < ALONG_ROWS; i++) {
+        mg_jobj *row = mg_dvm_new_array("[Ljava/lang/Object;", ALONG_COLS);
+        g_along->u.oarr.v[i] = row;
+        for (k = 0; k < ALONG_COLS; k++) row->u.oarr.v[k] = along_new(i * ALONG_COLS + k);
+    }
+    /* (Enough to mark for the helpers to come to it: a round is theirs to join, and a short one is over before they wake.) */
+    g_wide = mg_dvm_new_array("[Ljava/lang/Object;", WIDE_ROWS);
+    mg_dvm_add_root(&g_wide);
+    for (i = 0; i < WIDE_ROWS; i++) {
+        mg_jobj *row = mg_dvm_new_array("[Ljava/lang/Object;", WIDE_COLS);
+        g_wide->u.oarr.v[i] = row;
+        for (k = 0; k < WIDE_COLS; k++) row->u.oarr.v[k] = mg_dvm_new_array("[I", 1);
+    }
+    CHECK(mg_dvm_gc("before the stops' tests", &r));
+    given_up = mg_dvm_gc_stops_given_up();
+
+    /* The helpers, kept by a lock that a stopped thread holds. */
+    g_helpers_kept = 0;
+    CHECK(holder_started(false));
+    mg_dvm_gc_set_helper_wakes(helper_asks_for_lock);
+    for (i = 0; i < 2000; i++) mg_dvm_new_array("[B", 100);
+    CHECK(mg_dvm_gc("the helpers kept by a lock", &r));
+    CHECK(r.freed_objects >= 1900);
+    CHECK_INT((i32)r.markers, 1);
+    CHECK(r.live_objects >= (u32)(WIDE_ROWS * WIDE_COLS));
+    CHECK_INT((i32)along_damage(), 0);
+    kept = g_helpers_kept;
+    mg_dvm_gc_set_helper_wakes(NULL);
+    mg_atomic_xchg(&g_held_stage, 2);
+    CHECK(held_comes_to(3));
+    for (i = 0; i < 10 && most < 2; i++) {
+        mg_sleep_ns(20000000ull);
+        CHECK(mg_dvm_gc("the helpers back", &r));
+        if (r.markers > most) most = r.markers;
+    }
+    say("  %d helpers kept by a lock that a stopped thread held: marked on the one thread; the lock theirs, by %u threads", (int)kept, (unsigned)most);
+    CHECK(!kept || most >= 2);
+    CHECK_INT((i32)(mg_dvm_gc_stops_given_up() - given_up), 0);
+
+    /* The collecting thread, kept by one inside a stop: the watch lets the threads go after two looks (half a second). */
+    mg_dvm_gc_set_in_stop(stop_asks_for_lock);
+    for (stop = 0; stop <= 2; stop++) {
+        given_up = mg_dvm_gc_stops_given_up();
+        mg_atomic_xchg(&g_stop_asked, 0);
+        mg_atomic_xchg(&g_stop_blocks, stop);
+        CHECK(holder_started(true));
+        mg_dvm_gc_set_stop_watch(2);
+        for (i = 0; i < 2000; i++) mg_dvm_new_array("[B", 100);
+        if (!stop) {
+            mg_atomic_xchg(&g_stop_armed, 1);
+            CHECK(!mg_dvm_gc("a lock asked for in the stop", &r));
+            CHECK(strstr(r.not_collected, "they were let go") != NULL);
+            CHECK(strstr(r.not_collected, "the tests' call") != NULL);
+            CHECK_INT((i32)r.freed_objects, 0);
+        } else {
+            g_along_stop = g_along_done = 0;
+            for (t = 0; t < 2; t++) {
+                th = mg_thread_start(along_main, (void *)(mg_addr)(t + 1), (size_t)256 << 10, "along");
+                CHECK(th != NULL);
+                if (th) mg_thread_detach(th);
+                else mg_atomic_add(&g_along_done, 1);
+            }
+            mg_dvm_gc_totals(&before, &pause);
+            mg_dvm_gc_set_alongside(true);
+            mg_dvm_gc_set_min_budget(1u << 20);
+            mg_atomic_xchg(&g_stop_armed, 1);
+            until = mg_time_monotonic_ns() + 30000000000ull;
+            for (i = 0; i < 40000 && mg_dvm_gc_stops_given_up() == given_up && mg_time_monotonic_ns() < until; i++) mg_dvm_new_array("[B", 2000);
+            g_along_stop = 1;
+            while (g_along_done < 2) mg_thread_yield();
+            mg_dvm_gc_alongside_wait();
+            mg_dvm_gc_set_alongside(false);
+            mg_dvm_gc_set_min_budget(64u << 20);
+            mg_dvm_gc_alongside_wait();
+            mg_dvm_gc_totals(&after, &pause);
+            say("  a collection alongside given up at its stop %d (%u collections were complete meanwhile)", stop, (unsigned)(after - before));
+            for (i = 0; i < 2000; i++) mg_dvm_new_array("[B", 100);
+        }
+        mg_dvm_gc_set_stop_watch(0);
+        CHECK_INT((i32)(mg_dvm_gc_stops_given_up() - given_up), 1);
+        CHECK_INT(g_stop_asked, 1);
+        CHECK(held_comes_to(3));
+        CHECK_INT((i32)along_damage(), 0);
+        CHECK(mg_dvm_gc("after a stop given up", &r));
+        CHECK(r.freed_objects >= 1900);
+        CHECK(r.live_objects >= (u32)(WIDE_ROWS * WIDE_COLS));
+        CHECK_INT((i32)along_damage(), 0);
+    }
+    mg_dvm_gc_set_in_stop(NULL);
+
+    /* The list of the objects with fields by name, changed by a thread while collections run alongside. */
+    given_up = mg_dvm_gc_stops_given_up();
+    for (k = 0; k < ALONG_COLS; k++) mg_dvm_gc_has_fields(g_along->u.oarr.v[1]->u.oarr.v[k]);
+    g_fields_stop = g_fields_done = g_fields_turns = 0;
+    th = mg_thread_start(fields_main, NULL, (size_t)256 << 10, "fields");
+    CHECK(th != NULL);
+    if (th) mg_thread_detach(th);
+    else g_fields_done = 1;
+    mg_dvm_gc_totals(&before, &pause);
+    mg_dvm_gc_set_alongside(true);
+    mg_dvm_gc_set_min_budget(1u << 20);
+    for (i = 0; i < 3000; i++) mg_dvm_new_array("[B", 2000);
+    /* (At least three of them while the thread works: more made until they have come, for twenty seconds at the most -- in
+       the emulator, beside the other tests, two had come by the time the first 6 MB were made.) */
+    until = mg_time_monotonic_ns() + 20000000000ull;
+    for (;;) {
+        mg_dvm_gc_totals(&after, &pause);
+        if (after >= before + 3 || mg_time_monotonic_ns() >= until) break;
+        for (i = 0; i < 300; i++) mg_dvm_new_array("[B", 2000);
+        mg_sleep_ns(20000000ull);
+    }
+    mg_sleep_ns(300000000ull);
+    g_fields_stop = 1;
+    while (!g_fields_done) mg_thread_yield();
+    mg_dvm_gc_alongside_wait();
+    mg_dvm_gc_set_alongside(false);
+    mg_dvm_gc_set_min_budget(64u << 20);
+    mg_dvm_gc_alongside_wait();
+    mg_dvm_gc_totals(&after, &pause);
+    for (k = 0; k < ALONG_COLS; k++) mg_dvm_gc_fields_gone(g_along->u.oarr.v[1]->u.oarr.v[k]);
+    say("  %u collections alongside while a thread changed the list of the objects with fields by name %d times", (unsigned)(after - before),
+        (int)g_fields_turns);
+    CHECK(after >= before + 3);
+    CHECK_INT((i32)(mg_dvm_gc_stops_given_up() - given_up), 0);
+    CHECK_INT((i32)along_damage(), 0);
+    g_along = NULL;
+    g_wide = NULL;
+}
+
+/*
  * Blocks a collection leaves empty go back to the host past the first 8 MB of them (mg_dvm_heap.c): 40 MB of small arrays
  * made and let go, then collected without the tests' poison (which keeps every freed cell from use), leave the heap's
  * memory at most 20 MB above where it was; and what is made after is made in blocks committed again, as zero memory.
@@ -651,6 +877,7 @@ void test_gc(void)
     test_gc_collect();
     test_gc_parallel();
     test_gc_alongside();
+    test_gc_stops_and_locks();
     /* Where the objects so far were made (the samples of every 256 KB a thread makes), said and forgotten: and so said again with nothing new. */
     mg_dvm_made_say();
     mg_dvm_made_say();

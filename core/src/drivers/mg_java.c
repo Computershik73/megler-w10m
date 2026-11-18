@@ -32,7 +32,9 @@
 #include "../host/mg_host.h"
 #include "../mg_core.h"
 #include "../ld/mg_ld.h"
+#include "../ndk/mg_audio.h"
 #include "../ndk/mg_egl.h"
+#include "../ndk/mg_mic.h"
 #include "../ndk/mg_ndk.h"
 #include "../run/mg_run.h"
 #include "../zip/mg_zip.h"
@@ -712,6 +714,7 @@ N(Native_askClearCache) { c->ret.z = megler_ask_clear_cache(J.package); }
 static void Native_frameMark(mg_jcall *c);
 static void Native_mainStarted(mg_jcall *c);
 static void Native_mainWaitsForMe(mg_jcall *c);
+static void Native_mainStands(mg_jcall *c);
 static void Native_presentRect(mg_jcall *c);
 static void Native_checkPartial(mg_jcall *c);
 
@@ -855,47 +858,12 @@ N(Native_battery)
 }
 
 /*
- * The microphone (megler_microphone_host): what an AudioRecord reads. The shell pushes what it hears into a ring of two
- * seconds (megler_microphone_push); micRead takes it out, waiting for it when asked to block. When nothing comes for a
- * second (the microphone gone), a blocking read is given silence, so that the app does not hang. One recording at a time,
- * as on Android: a second start takes the microphone over.
+ * The microphone (megler_microphone_host): what an AudioRecord reads, out of the ring the shell pushes what it hears into
+ * (ndk/mg_mic.c, which OpenSL ES's recorder reads too). When nothing comes for a second (the microphone gone), a blocking
+ * read is given silence, so that the app does not hang. One recording at a time, as on Android: a second start takes the
+ * microphone over. `g_mic` is the recording the last micStart began: the one micRead reads and micStop ends.
  */
-static struct {
-    mg_lock lock;
-    mg_cond more;
-    bool inited, on;
-    i16 *ring;
-    u32 cap, head, count;   /* samples */
-    int channels;
-} MIC = { MG_LOCK_INIT };
-
-static void mic_init(void)
-{
-    static mg_lock once = MG_LOCK_INIT;
-    mg_lock_acquire(&once);
-    if (!MIC.inited) {
-        mg_cond_init(&MIC.more);
-        MIC.inited = true;
-    }
-    mg_lock_release(&once);
-}
-
-void megler_microphone_push(const int16_t *samples, int frames)
-{
-    u32 n, i;
-    if (!MIC.inited || frames <= 0 || !samples) return;
-    mg_lock_acquire(&MIC.lock);
-    if (MIC.on && MIC.ring) {
-        n = (u32)frames * (u32)MIC.channels;
-        for (i = 0; i < n; i++) {
-            MIC.ring[(MIC.head + MIC.count) % MIC.cap] = samples[i];
-            if (MIC.count < MIC.cap) MIC.count++;
-            else MIC.head = (MIC.head + 1) % MIC.cap;   /* full: the oldest goes */
-        }
-        mg_cond_broadcast(&MIC.more);
-    }
-    mg_lock_release(&MIC.lock);
-}
+static volatile u32 g_mic;
 
 /* micStart(rate, channels): the microphone asked of the shell; true when it hears. */
 N(Native_micStart)
@@ -903,40 +871,19 @@ N(Native_micStart)
     const megler_microphone_host *h = &J.config->microphone;
     int rate = c->args[0].i, channels = c->args[1].i == 2 ? 2 : 1;
     bool ok;
-    mic_init();
     if (rate < 4000 || rate > 192000) rate = 44100;
-    mg_lock_acquire(&MIC.lock);
-    free(MIC.ring);
-    MIC.cap = (u32)rate * (u32)channels * 2u;
-    MIC.ring = (i16 *)mg_alloc(sizeof(i16) * MIC.cap);
-    MIC.channels = channels;
-    MIC.head = MIC.count = 0;
-    MIC.on = true;
-    mg_lock_release(&MIC.lock);
-    ok = h->start ? h->start(h->user, rate, channels) : false;
+    g_mic = mg_mic_start(h, rate, channels);
+    ok = g_mic != 0;
     mg_info("java: the app records at %d Hz in %d channel%s: %s", rate, channels, channels == 2 ? "s" : "",
             ok ? "the microphone hears" : h->start ? "the microphone was refused; the app reads silence" : "no microphone here; the app reads silence");
-    if (!ok) {
-        mg_lock_acquire(&MIC.lock);
-        MIC.on = false;
-        mg_lock_release(&MIC.lock);
-    }
     c->ret.z = ok;
 }
 
 /* micStop(): the microphone no longer wanted. */
 N(Native_micStop)
 {
-    const megler_microphone_host *h = &J.config->microphone;
-    bool was;
     (void)c;
-    mic_init();
-    mg_lock_acquire(&MIC.lock);
-    was = MIC.on;
-    MIC.on = false;
-    mg_cond_broadcast(&MIC.more);
-    mg_lock_release(&MIC.lock);
-    if (was && h->stop) h->stop(h->user);
+    mg_mic_stop(g_mic);
 }
 
 /* audioRoute(route): where the app's sound is to go, as its AudioManager has it (megler_audio_host.route). */
@@ -955,28 +902,11 @@ N(Native_audioRoute)
 N(Native_micRead)
 {
     mg_jobj *a = c->args[0].l;
-    i32 off = c->args[1].i, want = c->args[2].i, got = 0;
+    i32 off = c->args[1].i, want = c->args[2].i;
     bool blocking = c->args[3].z != 0;
-    i16 *out;
     c->ret.i = 0;
     if (!a || off < 0 || want <= 0 || (u32)off + (u32)want > a->u.arr.len) return;
-    out = (i16 *)a->u.arr.data + off;
-    mic_init();
-    mg_lock_acquire(&MIC.lock);
-    while (got < want) {
-        while (MIC.count > 0 && got < want) {
-            out[got++] = MIC.ring[MIC.head];
-            MIC.head = (MIC.head + 1) % MIC.cap;
-            MIC.count--;
-        }
-        if (got >= want || !blocking || !MIC.on) break;
-        if (!mg_cond_wait_ns(&MIC.more, &MIC.lock, 1000000000ull) && MIC.count == 0) {
-            /* Nothing for a second: silence for the rest, as a microphone that hears nothing gives. */
-            while (got < want) out[got++] = 0;
-        }
-    }
-    mg_lock_release(&MIC.lock);
-    c->ret.i = got;
+    c->ret.i = mg_mic_read(g_mic, (i16 *)a->u.arr.data + off, want, blocking);
 }
 
 /* memoryLimit(), memoryInUse(): the process's limit (1 GB where the shell gives none, as sysconf has it) and its use, in bytes. */
@@ -1225,6 +1155,22 @@ N(Native_launchApp)
     c->ret.z = s->launch_app ? s->launch_app(s->user, package, activity && activity[0] ? activity : NULL) : false;
 }
 
+/*
+ * requestedActivity(): the activity another app asked for (megler_start_activity) and the main loop has not handed on yet,
+ * taken; null when there is none. megler.AppRunner.run asks before it starts the launcher activity: an app started for an
+ * activity of its own starts with that one (Total Commander's plug-ins, woken by their LoadingActivity).
+ */
+N(Native_requestedActivity)
+{
+    char name[200];
+    c->ret.l = NULL;
+    if (!g_activity_requested || mg_atomic_cas(&g_activity_requested, 1, 0) != 1) return;
+    mg_lock_acquire(&g_requested_lock);
+    mg_strlcpy(name, g_requested_activity, sizeof(name));
+    mg_lock_release(&g_requested_lock);
+    c->ret.l = mg_dvm_new_string(name);
+}
+
 /* uninstallApp(package): another app the phone has, to uninstall; true when the shell asks the user (megler_system_host). */
 N(Native_uninstallApp)
 {
@@ -1388,6 +1334,14 @@ N(Native_appActivities)
     c->ret.l = apps_package_ok(package) ? apps_file(mg_sprintf("%s/%s/activities.json", J.config->apps_dir, package)) : NULL;
 }
 
+/* appServices(package): that app's services another app may bind, the bytes of <package>/services.json in the same folder;
+   null when it has none. */
+N(Native_appServices)
+{
+    const char *package = text_of(c->args[0].l);
+    c->ret.l = apps_package_ok(package) ? apps_file(mg_sprintf("%s/%s/services.json", J.config->apps_dir, package)) : NULL;
+}
+
 /* appResIcon(package, id): the picture of that app's icon resource `id`, a PNG, from <package>/ in the same folder; null when
    there is none. */
 N(Native_appResIcon)
@@ -1402,6 +1356,90 @@ N(Native_appInstall)
 {
     const char *name = text_of(c->args[0].l);
     c->ret.l = apps_package_ok(name) ? apps_file(mg_sprintf("%s/installs/%s.txt", J.config->apps_dir, name)) : NULL;
+}
+
+static char *other_apk_find(const char *package, void *user);
+
+/* A split's name as a part of a file's name: letters, digits, '_' and '.', and no "..". */
+static bool split_name_ok(const char *name)
+{
+    const char *p;
+    if (!name[0] || name[0] == '.' || strstr(name, "..")) return false;
+    for (p = name; *p; p++)
+        if (!((*p >= 'a' && *p <= 'z') || (*p >= 'A' && *p <= 'Z') || (*p >= '0' && *p <= '9') || *p == '_' || *p == '.')) return false;
+    return true;
+}
+
+/* One file's bytes into a new file; false, and nothing kept, when either could not be opened or the writing stopped short. */
+static bool copy_file(const char *from, const char *to)
+{
+    mg_file *in = mg_file_open(from, MG_O_READ, NULL), *out = in ? mg_file_open(to, MG_O_WRITE | MG_O_CREATE | MG_O_TRUNC, NULL) : NULL;
+    u8 *buf = (u8 *)mg_alloc(65536);
+    bool ok = in && out;
+    i64 n = 0;
+    while (ok && (n = mg_file_read(in, buf, 65536, NULL)) > 0) ok = mg_file_write(out, buf, (size_t)n, NULL) == n;
+    if (n < 0) ok = false;
+    if (out) mg_file_close(out);
+    if (in) mg_file_close(in);
+    free(buf);
+    if (!ok) mg_path_remove(to, NULL);
+    return ok;
+}
+
+/*
+ * addSplit(package, path, add): a split APK for an app the phone has -- this one, or another whose APK the shell told of
+ * (other_apk_find) -- put among that app's splits, as Android's installer does with a session that inherits the installed
+ * APKs (megler.Installs; Play Store adds an app's on-demand feature modules so: docs/PLAY-FEATURE-DELIVERY.md). The file,
+ * by its path among this app's files, has to be a split of that package at the installed base's version. It is copied into
+ * the folder the app's splits are read from at its start (megler_run_config.splits_dir, which the shell keeps beside the
+ * base as <base>.splits) under Android's name for an installed split, split_<name>.apk, whole or not at all. The split's
+ * name; "" when the file is a split of that app which could not be added; null when it is no split of that app at all (a
+ * base APK, which is a session to install as a whole). Without `add` the file is looked at and nothing is copied: the
+ * same answers, for a session to be decided on before any of it is added. The app has the split from its next start: one
+ * that runs is not given it.
+ */
+N(Native_addSplit)
+{
+    const char *package = text_of(c->args[0].l), *guest = text_of(c->args[1].l), *why = NULL;
+    bool own = !strcmp(package, J.package), add = c->args[2].z != 0;
+    char *host = mg_fs_host_path(guest), *base = own ? mg_strdup(J.config->apk_path) : other_apk_find(package, NULL), *dir = NULL, *to = NULL, *tmp = NULL;
+    mg_apk_info *part = (mg_apk_info *)mg_alloc(sizeof(*part)), *whole = (mg_apk_info *)mg_alloc(sizeof(*whole));
+    bool split = false;
+    c->ret.l = NULL;
+    if (!host || !mg_apk_read_info(host, part) || strcmp(part->package, package) || !part->split[0]) why = "the file is not a split of that app";
+    else if ((split = true) && !base) why = "where that app's APK is, is not known here";
+    else if (!mg_apk_read_info(base, whole) || whole->version_code != part->version_code) why = "the split is of another version than the app the phone has";
+    else if (!split_name_ok(part->split)) why = "the split's name is no file's name";
+    else if (!add) c->ret.l = mg_dvm_new_string(part->split);
+    else {
+        char **have = NULL;
+        mg_stat st;
+        int n;
+        dir = own && J.config->splits_dir ? mg_strdup(J.config->splits_dir) : mg_sprintf("%s.splits", base);
+        to = mg_sprintf("%s/split_%s.apk", dir, part->split);
+        tmp = mg_sprintf("%s.new", to);
+        mg_path_mkdirs(dir);
+        n = mg_apk_list_splits(dir, &have);
+        mg_apk_free_list(have, n);
+        if (n >= MAX_SPLITS && !mg_path_stat(to, &st, NULL))
+            mg_warn("java: %s has %d splits already, and a Java app is run with %d of them: the split %s may not be opened", package, n, MAX_SPLITS, part->split);
+        if (!copy_file(host, tmp)) why = "the file could not be copied to the app's splits";
+        else if (!mg_path_rename(tmp, to, NULL)) {
+            why = "the split the app has could not be replaced";
+            mg_path_remove(tmp, NULL);
+        } else c->ret.l = mg_dvm_new_string(part->split);
+    }
+    if (why && split) c->ret.l = mg_dvm_new_string("");
+    if (why && !split) mg_info("java: a file of an install session for %s is no split to add to it", package);
+    else if (why) mg_warn("java: a split is not added to %s: %s", package, why);
+    else if (add) mg_info("java: the split %s is added to %s (split_%s.apk beside its other splits); the app has it from its next start", part->split, package, part->split);
+    free(tmp);
+    free(to);
+    free(dir);
+    free(whole);
+    free(part);
+    free(base);
+    free(host);
 }
 /*
  * setOrientation(requested): how the activity in front wants the screen held, Android's SCREEN_ORIENTATION_* (megler.AppRunner
@@ -1586,6 +1624,7 @@ static const mg_jhle k_native[] = {
     { "megler/Native", "mediaSessionState", NULL, Native_mediaSessionState },
     { "megler/Native", "installApk", NULL, Native_installApk },
     { "megler/Native", "launchApp", NULL, Native_launchApp },
+    { "megler/Native", "requestedActivity", NULL, Native_requestedActivity },
     { "megler/Native", "uninstallApp", NULL, Native_uninstallApp },
     { "megler/Native", "permission", NULL, Native_permission },
     { "megler/Native", "pick", NULL, Native_pick },
@@ -1593,8 +1632,10 @@ static const mg_jhle k_native[] = {
     { "megler/Native", "appsList", NULL, Native_appsList },
     { "megler/Native", "appIcon", NULL, Native_appIcon },
     { "megler/Native", "appActivities", NULL, Native_appActivities },
+    { "megler/Native", "appServices", NULL, Native_appServices },
     { "megler/Native", "appResIcon", NULL, Native_appResIcon },
     { "megler/Native", "appInstall", NULL, Native_appInstall },
+    { "megler/Native", "addSplit", NULL, Native_addSplit },
     { "megler/Native", "mediaSessionMetadata", NULL, Native_mediaSessionMetadata },
     { "megler/Native", "setClipboard", NULL, Native_setClipboard },
     { "megler/Native", "getClipboard", NULL, Native_getClipboard },
@@ -1615,6 +1656,7 @@ static const mg_jhle k_native[] = {
     { "megler/Native", "frameMark", NULL, Native_frameMark },
     { "megler/Native", "mainStarted", NULL, Native_mainStarted },
     { "megler/Native", "mainWaitsForMe", NULL, Native_mainWaitsForMe },
+    { "megler/Native", "mainStands", NULL, Native_mainStands },
     { "megler/Native", "presentRect", NULL, Native_presentRect },
     { "megler/Native", "checkPartial", NULL, Native_checkPartial },
     { "megler/Native", "flag", NULL, Native_flag },
@@ -2139,6 +2181,15 @@ static bool main_waits(const mg_dvm_thread *t, const mg_dvm_method *m)
 /* The thread hot_main samples: the app's main thread, from hot_watch on. */
 static const mg_dvm_thread *volatile g_hot_main;
 
+/*
+ * Whether the sampler rests: the app is not on the screen (megler_set_paused) and nothing of it has been heard for ten
+ * seconds. Twitter, Telegram and Facebook Lite in the background, silent, had this thread wake every 5 ms and say its lines
+ * every ten seconds for hours, until the batteries of an Elite x3 and a Lumia 950 were at 4% (0.1.0.695, 0.1.0.696): where a
+ * main thread nobody sees spends its time can wait. An app that is heard is sampled as before -- its music's hitches in the
+ * background still say whose they are.
+ */
+static bool hot_rests(void) { return mg_run_paused() && !mg_audio_heard_within(10000); }
+
 static MG_HOSTCB void hot_main(void *arg)
 {
     u32 samples = 0, outside = 0, collecting = 0, stuck_said = 0;
@@ -2151,6 +2202,8 @@ static MG_HOSTCB void hot_main(void *arg)
         const mg_dvm_method *m, *from = NULL;
         u64 now;
         mg_sleep_ns(5000000ull);
+        /* An app that has ended has no main thread to sample: the sampler ends with it, and wakes an ended app's process no more. */
+        if (mg_run_over()) return;
         t = g_hot_main;
         m = t ? t->running : NULL;
         if (m && (m->flags & DVM_ACC_NATIVE)) from = t->running_from;
@@ -2202,6 +2255,29 @@ static MG_HOSTCB void hot_main(void *arg)
             meter_census();
             memset(g_hot, 0, sizeof(g_hot));
             samples = outside = collecting = 0;
+            /*
+             * The rest (hot_rests), from one ten seconds' lines on, so that a window hidden for a moment -- a picker over it --
+             * changes nothing: looked at once a second, and the memory's lines once a minute, which say what an app left in
+             * the background goes on making.
+             */
+            if (hot_rests()) {
+                u32 seconds = 0;
+                mg_info("hot: the app is not on the screen and nothing of it is heard: the main thread is not sampled meanwhile, "
+                        "and the memory's lines come once a minute");
+                while (hot_rests() && !mg_run_over()) {
+                    mg_sleep_ns(1000000000ull);
+                    if (++seconds % 60 == 0) {
+                        mg_dvm_made_say();
+                        meter_census();
+                    }
+                }
+                if (mg_run_over()) return;
+                mg_info("hot: the main thread is sampled again, after %.0f s", (double)(mg_time_monotonic_ns() - now) / 1e9);
+                /* (A wait seen before the rest is counted from here: nobody saw the thread stand in it meanwhile.) */
+                wait_since = 0;
+                wait_said = false;
+                now = mg_time_monotonic_ns();
+            }
             since = now;
         }
     }
@@ -2241,6 +2317,21 @@ N(Native_mainWaitsForMe)
 {
     const mg_dvm_thread *t = g_hot_main;
     c->ret.z = t && t != mg_dvm_self() && mg_dvm_waits_for((mg_dvm_thread *)t, mg_thread_self_id());
+}
+
+/*
+ * megler.Native.mainStands(notIn): a number for the wait() the app's main thread stands in, or 0 when it is in none or in one
+ * of `notIn` (its message queue: there it takes what is posted to it). The number is the time the thread has spent in the
+ * waits it has left, which grows as each ends: the same number twice is the same wait, or two with none of any length
+ * between them, and megler.MicroG, which asks, takes a quarter of a second of one number for a main thread that runs
+ * nothing posted to it. The thread's fields alone are read, and the objects compared, not looked into. 0 on the main thread,
+ * and before the app's main thread has started.
+ */
+N(Native_mainStands)
+{
+    const mg_dvm_thread *t = g_hot_main;
+    const mg_jobj *on = t && t != mg_dvm_self() ? t->waiting_on : NULL;
+    c->ret.j = !on || on == c->args[0].l ? 0 : (i64)(t->waited_ns + 1);
 }
 
 /* megler.Native.frameMark(phase, redrawn), from megler.ViewRoot.doFrame on the main thread. */
@@ -2353,6 +2444,33 @@ static void mount_gms_splits(void)
 }
 
 /*
+ * mg_fs_other_apks' `find`: where another app's APK is on the host, as the shell said when it described that app
+ * (megler_run_config.apps_dir: the second line of <package>/source.txt, after the description's form). NULL when the app
+ * is not described, or its APK is not a file this package can see.
+ */
+static char *other_apk_find(const char *package, void *user)
+{
+    char *path, *text, *line, *end, *apk = NULL;
+    size_t size = 0;
+    mg_stat st;
+    (void)user;
+    if (!apps_package_ok(package)) return NULL;
+    path = mg_sprintf("%s/%s/source.txt", J.config->apps_dir, package);
+    text = (char *)mg_file_read_all(path, &size);
+    free(path);
+    if (!text) return NULL;
+    line = (char *)memchr(text, '\n', size);
+    if (line && (end = (char *)memchr(line + 1, '\n', size - (size_t)(line + 1 - text))) != NULL && end > line + 1) {
+        *end = 0;
+        if (end[-1] == '\r') end[-1] = 0;
+        if (mg_path_stat(line + 1, &st, NULL) && !st.is_dir) apk = mg_strdup(line + 1);
+    }
+    free(text);
+    if (apk) mg_info("java: the APK of %s is /data/app/%s-1/base.apk, to be read (a path asked for it)", package, package);
+    return apk;
+}
+
+/*
  * Gives the APK its Android path, /data/app/<package>-1/base.apk, and tells the runtime that its classes are on the class path under that name. And the
  * splits theirs, beside it, under the names Android gives installed splits (split_config.armeabi_v7a.apk), each a mount of
  * its own file wherever the shell keeps it; those with code are on the class path under their names too.
@@ -2380,6 +2498,7 @@ static void mount_apk(void)
         mg_fs_mount(J.guest_splits[i], J.config->split_apks[i]);
         if (J.split_code[i]) mg_dvm_dex_source_added(J.guest_splits[i]);
     }
+    if (J.config->apps_dir) mg_fs_other_apks(other_apk_find, NULL);
     free(dir);
     free(guest_dir);
 }

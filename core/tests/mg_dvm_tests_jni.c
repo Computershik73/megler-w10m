@@ -386,6 +386,40 @@ static void test_guest_natives(const char *guest_dir)
     CHECK_INT(vcall(g, "locked", "()I").i, 0);
     CHECK_STR(thrown(), "");
 }
+
+/*
+ * A library loaded by Java whose JNI_OnLoad is in a library it needs: Microsoft OneDrive's libcore.so has none, and the
+ * libQt.so it needs has the one that keeps the JavaVM, which libcore.so then reads. ART finds JNI_OnLoad with
+ * dlsym(handle), which looks in the library and then in what it needs; while only a library's own was run here, OneDrive
+ * ended at every start ("JavaVM can't be null for XpJniEnv"). libt_onload.so needs libt_onload_dep.so (guest/t_onload.c).
+ */
+static void test_onload_of_needed(void)
+{
+    mg_lib *lib, *dep;
+    void *vm_of, *calls_of;
+    say("JNI_OnLoad of a library that the one Java loads needs");
+    CHECK(mg_dvm_load_library("libt_onload.so"));
+    CHECK_STR(thrown(), "");
+    lib = mg_ld_find_lib("libt_onload.so");
+    dep = mg_ld_find_lib("libt_onload_dep.so");
+    CHECK(lib && dep && lib != dep);
+    if (!lib || !dep) return;
+    CHECK(mg_ld_sym(lib, "JNI_OnLoad") == NULL && mg_ld_sym(dep, "JNI_OnLoad") != NULL);
+    vm_of = mg_ld_sym(lib, "t_onload_vm");
+    calls_of = mg_ld_sym(lib, "t_onload_calls");
+    CHECK(vm_of && calls_of);
+    if (!vm_of || !calls_of) return;
+    /* The needed library's JNI_OnLoad has run, once, with the JavaVM. */
+    CHECK(MG_GFN(void *(*)(void), vm_of)() == mg_jni_vm());
+    CHECK_INT(MG_GFN(int (*)(void), calls_of)(), 1);
+    /* Loaded by Java already: nothing is run again. */
+    CHECK(mg_dvm_load_library("libt_onload.so"));
+    CHECK_INT(MG_GFN(int (*)(void), calls_of)(), 1);
+    /* The needed one, which Java has not loaded itself yet: its JNI_OnLoad runs for it too, as ART's does. */
+    CHECK(mg_dvm_load_library("libt_onload_dep.so"));
+    CHECK_INT(MG_GFN(int (*)(void), calls_of)(), 2);
+    CHECK_STR(thrown(), "");
+}
 #endif
 
 /*
@@ -437,8 +471,10 @@ void test_jni(const char *guest_dir, const char *fixtures)
     test_guarded_call();
 #endif
 #if MG_GUEST_CODE
-    if (guest_dir) test_guest_natives(guest_dir);
-    else say("(no guest libraries were named: native methods in a guest library are not tested)");
+    if (guest_dir) {
+        test_guest_natives(guest_dir);
+        test_onload_of_needed();
+    } else say("(no guest libraries were named: native methods in a guest library are not tested)");
 #else
     (void)guest_dir;
 #endif

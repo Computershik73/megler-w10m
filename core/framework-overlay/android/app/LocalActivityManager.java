@@ -58,6 +58,7 @@ public class LocalActivityManager {
                 if (!a.isFinishing()) {
                     a.meglerStart();
                     if (r.instanceState != null) a.meglerRestoreState(r.instanceState);
+                    a.meglerPostCreate(r.instanceState);
                 }
                 r.instanceState = null;
                 r.curState = STARTED;

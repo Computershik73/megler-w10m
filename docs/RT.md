@@ -36,7 +36,7 @@ fields with namespace .../uap/windows10/4", 0x80080204 -- and taken by 15063's M
 [table of namespaces](https://learn.microsoft.com/en-us/uwp/schemas/appxpackage/uapmanifestschema/what-s-changed-in-windows-10)),
 its capabilities and `windows.publisherCacheFolders` are all in 14393's schema
 (`Include\10.0.14393.0\winrt\AppxManifestTypes.xsd`: `codeGeneration`, `chat`, `phoneCallHistoryPublic`,
-`backgroundMediaPlayback`, the libraries, `removableStorage`; a restricted capability is any name there). It depends
+`backgroundMediaPlayback`, the libraries, `removableStorage`, `voipCall`; a restricted capability is any name there). It depends
 on no framework package (VCLibs, .NET Native): the C runtime is linked in, and ANGLE's is in the package.
 
 ## What people change in other apps' manifests

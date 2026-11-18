@@ -196,6 +196,15 @@ MEGLER_API bool megler_apk_icon_splits(const char *apk_path, const char *splits_
  * one, an XML one (adaptive, vector) drawn. "certificates" are those the APK is signed with, each its DER in hex digits: the
  * APK Signing Block's v3 signer's, else its v2 one's, else the v1 PKCS#7 file's under META-INF (megler.PhoneApps gives them
  * as the app's signatures; Google Play compares them with its own record). `splits_dir` as megler_apk_report_splits has it.
+ *
+ * An app with services another app may bind (exported: said so, or not said and with an intent filter) gets services.json
+ * beside it, and one without has none --
+ *
+ *   { "package": "org.example", "services": [ { "name": "org.example.Plugin", "label": "Example plug-in", "icon": 2131558402,
+ *                 "permission": "org.example.BIND", "exported": true, "filters": [ ... ] } ] }
+ *
+ * -- each as an activity is described, and with the permission its binder is to hold where the manifest names one
+ * (megler.HostedApps binds such a service inside the app that asks: Total Commander's plug-ins).
  * False when the APK's manifest cannot be read or the description cannot be written.
  */
 MEGLER_API bool megler_apk_describe_activities(const char *apk_path, const char *splits_dir, const char *out_dir);
@@ -1586,7 +1595,9 @@ typedef struct megler_display_host {
  *                one app (its base and its splits). `name` is the file's name, for showing. True: the shell took it, and
  *                the app is told its install goes on; false: the app is told it cannot be installed.
  *   launch_app   Another app the phone has, to start: an Android package and the activity's class name, or NULL for its
- *                launcher activity (a launcher's tap, an app opening another). True: the shell starts it.
+ *                launcher activity (a launcher's tap, an app opening another). True: the shell starts it. The name may
+ *                be more than a class ("<class>~<the file of the Intent>"): the shell hands it to that app's
+ *                megler_start_activity as it is.
  *   uninstall_app  Another app the phone has, to uninstall: an Android package (an app store's Uninstall,
  *                PackageInstaller.uninstall; ACTION_DELETE of package:<name>). True: the shell asks the user. It is gone
  *                when apps_dir's apps.txt no longer has it; installs/<package>.uninstall.txt says when the user said no.
@@ -2216,11 +2227,19 @@ MEGLER_API void megler_set_surface(int width, int height, int density_dpi, int r
 /* The app went to the background or came back; lost or gained input focus. */
 MEGLER_API void megler_set_paused(bool paused);
 /*
- * Waits up to `ms` milliseconds until the app holds no lock on a database: Windows freezes a suspended app as it is, and a
- * lock it held would keep the other apps waiting on that database (Google Play services' are every app's). The shell calls
- * it as the app is suspended. True when none is held.
+ * The app is being suspended: Windows freezes a suspended app as it is, and a lock it held on a database would keep the
+ * other apps waiting on that database for as long as it is frozen (Google Play services' are every app's). From this call
+ * on no thread of the app begins to read or write a database: it waits, holding no lock, until megler_resume_databases.
+ * Those in the middle of a read or a transaction go on to its end. Waits up to `ms` milliseconds for the locks they hold
+ * to be let go: true when none is held, and when one still is, false, with the log naming its file, its level and its
+ * thread. The shell calls it as the app is suspended, with what it can spare of the time Windows gives it. Any thread.
  */
 MEGLER_API bool megler_settle_databases(int ms);
+/*
+ * The app is back: its threads read and write databases again. The shell calls it as the app resumes; should it not, they
+ * go on by themselves once the app has run ten seconds (a frozen app runs none), and the log says so. Any thread.
+ */
+MEGLER_API void megler_resume_databases(void);
 /*
  * Writes what the app wrote into its shared mappings of files to the files now (they hold it, not the files, until msync,
  * munmap or the app's end): Windows ends a suspended app without notice. The shell calls it as the app is suspended.
@@ -2233,7 +2252,10 @@ MEGLER_API void megler_stop(void);
  * Another app asks this one to show one of its activities, by class name: what Android's startActivity of an intent that
  * names a component of this app does (microG's sign-in, LoginActivity, asked for by Play Store's AccountManager through
  * megler_system_host.launch_app). A Java app's main thread starts it on top of what it shows, if its manifest has the
- * activity and exports it; asked before the app runs, once its first activity is up. Any thread; the latest ask wins.
+ * activity and exports it; asked before the app runs, it is the app's first activity, in place of its launcher one, as
+ * Android starts a process for the activity asked for. The name is handed on as launch_app got it: after the class it may
+ * carry '~' and the name of the file the asking app wrote its whole Intent into (megler.PhoneApps), which the app asked
+ * reads; at most 199 bytes in all. Any thread; the latest ask wins.
  */
 MEGLER_API void megler_start_activity(const char *activity_class);
 /*
@@ -2495,6 +2517,8 @@ MEGLER_API bool megler_appx_app_identity(const char *android_package, char *out,
  *   WIFI          wiFiControl (a device capability): a location permission (ACCESS_FINE_LOCATION, ACCESS_COARSE_LOCATION): the
  *                 Wi-Fi networks a scan hears, which Android gives only to an app that may have the location, and which
  *                 Google Play services in the app finds the phone's location from; NEARBY_WIFI_DEVICES too
+ *   VOIP          voipCall: MODIFY_AUDIO_SETTINGS, Android's permission to say where a call's sound goes (setMode,
+ *                 setSpeakerphoneOn): a phone routes it to the earpiece or the loudspeaker only for a package with this
  * Megler's other capabilities are every package's (codeGeneration, packageQuery, backgroundMediaPlayback) or no app's
  * (documentsLibrary and removableStorage, which want file types declared; packageManagement).
  */
@@ -2510,6 +2534,7 @@ enum {
     MEGLER_APPX_CAP_CALL_HISTORY = 256,
     MEGLER_APPX_CAP_BLUETOOTH = 512,
     MEGLER_APPX_CAP_WIFI = 1024,
+    MEGLER_APPX_CAP_VOIP = 2048,
 };
 MEGLER_API unsigned megler_appx_capabilities(const char *const *permissions, int count, bool sms_retriever);
 /* That package's manifest, made from Megler's (the text of its AppxManifest.xml): the identity name, phone product id and

@@ -73,6 +73,7 @@ public class MeasureUnit implements java.io.Serializable {
     MeasureUnit() {}
     public String getType() { return null; }
     public String getSubtype() { return null; }
+    public static MeasureUnit internalGetInstance(String type, String subtype) { return null; }
     public static java.util.Set<MeasureUnit> getAvailable(String type) { return null; }
     public static java.util.Set<MeasureUnit> getAvailable() { return null; }
 }

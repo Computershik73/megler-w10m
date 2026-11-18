@@ -157,7 +157,18 @@ public final class ViewRoot implements ViewParent {
         if (under) for (int i = at + 1; i < sRoots.size(); i++) if (sRoots.get(i).focusable() && !sRoots.get(i).mOwnerStopped) { r.mHasFocus = false; break; }
         if (v.getLayoutParams() == null) v.setLayoutParams(r.mLp);
         fullRedraw("a window added: " + r.windowName());
-        r.attach();
+        /*
+         * A sub-window (a PopupWindow's, a drop-down's, a panel's: types 1000 to 1999) hears it is attached at its first
+         * frame (performLayout), as ViewRootImpl dispatches it in its first traversal, after addView has returned: the app
+         * that showed it gives its root what its views need first -- OneDrive gives its drop-down's root the
+         * ViewTreeLifecycleOwner a ComposeView looks for there as it is attached, after showAsDropDown, and ended at every
+         * start of its gallery while the popup was attached within the call ("ViewTreeLifecycleOwner not found from
+         * android.widget.PopupWindow$PopupDecor"). The other windows are attached here, as before.
+         */
+        if (r.mLp != null && r.mLp.type >= WindowManager.LayoutParams.FIRST_SUB_WINDOW && r.mLp.type <= WindowManager.LayoutParams.LAST_SUB_WINDOW)
+            r.mAttachPending = true;
+        else
+            r.attach();
         if (r.mHasFocus) for (ViewRoot o : sRoots) if (o != r && o.mHasFocus && r.focusable()) { o.mHasFocus = false; o.mView.dispatchWindowFocusChanged(false); o.mObserver.meglerWindowFocus(false); }
         scheduleFrame();
         return r;
@@ -228,7 +239,10 @@ public final class ViewRoot implements ViewParent {
             fullRedraw("a window panned for the keyboard: " + windowName());
         }
     }
+    /* A sub-window added and not attached yet: it is at its first frame (add). */
+    private boolean mAttachPending;
     private void attach() {
+        mAttachPending = false;
         // as ViewRootImpl: the window's insets are known by the time its views hear they are attached (getRootWindowInsets)
         if (mWindowInsets == null) mWindowInsets = computeInsets();
         mView.meglerAttach(this);
@@ -241,8 +255,12 @@ public final class ViewRoot implements ViewParent {
         boolean hadFocus = mHasFocus;
         sRoots.remove(this);
         if (sTouchTarget == this) sTouchTarget = null;
-        mView.meglerDetach();
-        mObserver.meglerAttached(false);
+        // (one removed before its first frame was never attached, and is not detached)
+        if (!mAttachPending) {
+            mView.meglerDetach();
+            mObserver.meglerAttached(false);
+        }
+        mAttachPending = false;
         if (hadFocus) {
             for (int i = sRoots.size() - 1; i >= 0; i--) {
                 ViewRoot o = sRoots.get(i);
@@ -872,6 +890,8 @@ public final class ViewRoot implements ViewParent {
         if (v instanceof android.view.ViewGroup) { android.view.ViewGroup g = (android.view.ViewGroup) v; for (int i = 0; i < g.getChildCount(); i++) dump(g.getChildAt(i), depth + 1); }
     }
     private void performLayout() {
+        // (a sub-window's first frame: attached now, before its first measure, as ViewRootImpl's first traversal does: add)
+        if (mAttachPending) attach();
         int sw = screenW(), sh = screenH();
         if (mInsetsDirty || mFirst) {
             mInsetsDirty = false;

@@ -56,7 +56,7 @@ public class SoundPool {
     }
     public int load(AssetFileDescriptor afd, int priority) {
         if (afd == null) return 0;
-        final FileDescriptor fd = afd.getFileDescriptor(); final long off = afd.getStartOffset(), len = afd.getLength(); final String asset = afd.meglerAssetName();
+        final FileDescriptor fd = afd.getFileDescriptor(); final long off = afd.getStartOffset(), len = afd.getDeclaredLength() /* none (-1): read to the end */; final String asset = afd.meglerAssetName();
         return enqueue(() -> {
             int n = fd != null ? megler.Audio.fdOf(fd) : -1;
             if (n >= 0) return megler.Audio.soundLoadFd(n, off, len);

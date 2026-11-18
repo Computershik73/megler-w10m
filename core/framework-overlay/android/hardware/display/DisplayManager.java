@@ -4,7 +4,10 @@
 // exception seen under qemu). It is the screen's size, upright, as Android's is for a phone.
 // And in the display listeners, which the original dropped: they are kept, and each hears onDisplayChanged(0) on its handler
 // when the screen is resized or turned (megler.Screen), as Android tells them of a rotation or a new size: a camera preview or
-// a game that turns its picture with the display asks it again then. Everything else is the original's.
+// a game that turns its picture with the display asks it again then. And in getDisplays of a category: the phone's screen for
+// ALL_INCLUDING_DISABLED and BUILT_IN_DISPLAYS, as Android's, where the original answered none for every category: YouTube
+// measures the built-in screens so (Android 13 and on) and, finding none, told its server the form factor was unknown, which
+// refused a channel's page ("Request contains an invalid argument"). Everything else is the original's.
 package android.hardware.display;
 public final class DisplayManager {
     public static final String DISPLAY_CATEGORY_PRESENTATION = "android.hardware.display.category.PRESENTATION";
@@ -17,7 +20,11 @@ public final class DisplayManager {
     private static final android.view.Display sD = new android.view.Display();
     public android.view.Display getDisplay(int id) { return id == 0 ? sD : null; }
     public android.view.Display[] getDisplays() { return new android.view.Display[] { sD }; }
-    public android.view.Display[] getDisplays(String cat) { return cat == null ? getDisplays() : new android.view.Display[0]; }
+    /** A category's displays: the one screen there is is built in and on; no presentation or rear display (a second screen). */
+    public android.view.Display[] getDisplays(String cat) {
+        return cat == null || DISPLAY_CATEGORY_ALL_INCLUDING_DISABLED.equals(cat) || DISPLAY_CATEGORY_BUILT_IN_DISPLAYS.equals(cat)
+            ? getDisplays() : new android.view.Display[0];
+    }
     /* The listeners registered, each with the handler it is to hear on (null: the main thread's). */
     private static final java.util.ArrayList<Object[]> sListeners = new java.util.ArrayList<>();
     public void registerDisplayListener(DisplayListener l, android.os.Handler h) {

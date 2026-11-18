@@ -26,7 +26,8 @@ import java.util.Locale;
  * location has handed a fix of the Wi-Fi's to their fused provider by then -- asks LocationManager as an app of it does: the
  * last "network" fix, and the first "gps" fix of a request, each said with how accurate it is and its provider. Then asks
  * Android's Geocoder, which their geocode provider answers, and starts an activity of theirs, which runs here, as Play Store
- * starts their account settings ("Manage your Google Account"), and one whose onCreate fails, which the app outlives.
+ * starts their account settings ("Manage your Google Account"), and one whose onCreate fails, which the app outlives; and
+ * asks its own provider who asks it (WhoAsks), which their Probe asks as well.
  * And, at its start, reads assets through the NDK with their AssetManager and with its own (nativeAssets).
  * And, first of all, asks their provider from a thread whose lock the main thread then waits for (askWhileMainWaits).
  */
@@ -67,7 +68,9 @@ public class Main extends Activity {
     @Override
     protected void onCreate(Bundle state) {
         super.onCreate(state);
-        askWhileMainWaits();
+        /* (One or the other: their Application is attached once, and each is about a provider asked before it is.) */
+        if (System.getenv("MG_TEST_GMS_MAIN_STANDS") != null) askWhileMainStands();
+        else askWhileMainWaits();
         TextView text = new TextView(this);
         text.setText("Starting a service of Google Play services' stand-in");
         setContentView(text);
@@ -86,6 +89,10 @@ public class Main extends Activity {
                 public void onServiceDisconnected(ComponentName name) {}
             }, Context.BIND_AUTO_CREATE);
         Log.i("GmsHostTest", "location api bind " + bound);
+        /* An app with AndroidX's Play services credential provider in its manifest (this one) is not given Android 14's
+           Credential Manager while Google Play services are here: AndroidX then asks them, as on Android 13. */
+        Log.i("GmsHostTest", "credential service " + getSystemService("credential") + ", of the application "
+            + getApplicationContext().getSystemService("credential"));
         askUnderLock();
         nativeAssets();
     }
@@ -116,6 +123,31 @@ public class Main extends Activity {
             Log.i("GmsHostTest", "the main thread entered the asking thread's lock after " + (android.os.SystemClock.uptimeMillis() - began)
                   + " ms, their provider answered " + answered[0]);
         }
+    }
+
+    /*
+     * Their provider asked, before their Application is attached, by a thread that the main thread stands waiting for on a
+     * latch: as Google Drive's StartupActivity.onCreate awaits a CountDownLatch that a thread counts down once it has asked
+     * their provider for the accounts. The main thread runs nothing posted to it meanwhile, so their Application is to be
+     * attached on the asking thread, a quarter of a second into the wait -- not left unattached after ten seconds of it. (Run
+     * with MG_TEST_GMS_MAIN_STANDS set, in place of askWhileMainWaits.)
+     */
+    private void askWhileMainStands() {
+        final java.util.concurrent.CountDownLatch asked = new java.util.concurrent.CountDownLatch(1);
+        final boolean[] answered = new boolean[1];
+        final long began = android.os.SystemClock.uptimeMillis();
+        new Thread(() -> {
+            try {
+                packagePermissions();
+                android.database.Cursor c = getContentResolver().query(android.net.Uri.parse("content://com.google.settings/partner"), null, "name=?",
+                                                                       new String[] { "main_stands" }, null);
+                answered[0] = c != null;
+                if (c != null) c.close();
+            } finally { asked.countDown(); }
+        }, "gms-host-main-stands").start();
+        try { asked.await(); } catch (InterruptedException e) { }
+        Log.i("GmsHostTest", "the main thread stood on the asking thread's latch for " + (android.os.SystemClock.uptimeMillis() - began)
+              + " ms, their provider answered " + answered[0]);
     }
 
     /* A cold GET_PERMISSIONS query of the hosted package: its own manifest, not the client's, including tags after application. */
@@ -242,6 +274,20 @@ public class Main extends Activity {
         }
     }
 
+    /*
+     * The app's own provider asked by the app, with Google Play services hosted: it is told the app asks it, its package and
+     * its uid, as it is on Android -- only their own code's calls into it come from them (WhoAsks, and the stand-in's Probe).
+     */
+    private void askOwnProvider() {
+        String said = null;
+        try (android.database.Cursor c = getContentResolver().query(WhoAsks.URI, null, null, null, null)) {
+            if (c != null && c.moveToFirst()) said = c.getString(0);
+        } catch (Throwable t) {
+            said = "FAILED " + t;
+        }
+        Log.i("GmsHostTest", "the app's provider asked by the app: " + said);
+    }
+
     private void askLocationManager() {
         final LocationManager lm = (LocationManager) getSystemService(LOCATION_SERVICE);
         try {
@@ -255,6 +301,8 @@ public class Main extends Activity {
                     // made on the main thread, which then waits for its answer), the rest on a thread of the app's own.
                     geocodeOnMain();
                     new Thread(Main.this::geocode, "gms-host-geocoder").start();
+                    // And the app's own provider, which says who asks it: the app here (and Google Play services, when their Probe does).
+                    new Thread(Main.this::askOwnProvider, "gms-host-own-provider").start();
                     // Then an activity of Google Play services', which runs here (their stand-in's Lockup says what it read), and
                     // one whose onCreate fails (Broken), which the app outlives, this one resumed after.
                     startActivity(new Intent("megler.test.gmsown.LOCKUP").setPackage("com.google.android.gms"));

@@ -215,6 +215,16 @@ public class ActivityManager {
     public java.util.List<RunningAppProcessInfo> getRunningAppProcesses() {
         java.util.ArrayList<RunningAppProcessInfo> l = new java.util.ArrayList<>();
         l.add(new RunningAppProcessInfo(megler.Native.packageName(), android.os.Process.myPid(), new String[] { megler.Native.packageName() }));
+        // The apps whose requests for feature modules the Play Store is working on (megler.PlaySplits): they asked from the
+        // front, where its service looks for them, and are behind only because the phone shows one app. (Their processes
+        // are other ones of Windows: no pid of this one's kind.)
+        String[] served = megler.PlaySplits.served();
+        if (served != null) for (String p : served) {
+            megler.PhoneApps.App a = megler.PhoneApps.find(p);
+            RunningAppProcessInfo info = new RunningAppProcessInfo(p, 0, new String[] { p });
+            if (a != null) info.uid = a.uid;
+            l.add(info);
+        }
         return l;
     }
     public java.util.List<RunningTaskInfo> getRunningTasks(int max) { return new java.util.ArrayList<>(); }

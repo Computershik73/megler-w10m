@@ -37,8 +37,9 @@ public final class SQLiteDatabase extends SQLiteClosable {
     private long mHandle;
     private boolean mWal;
     final ReentrantLock mLock = new ReentrantLock(true);
-    private static final class Txn { boolean successful, childFailed; SQLiteTransactionListener listener; Txn parent; }
+    private static final class Txn { boolean successful, childFailed; int mode; SQLiteTransactionListener listener; Txn parent; }
     private Txn mTxn;
+    private final SQLiteSession mSession = new SQLiteSession(this);
 
     private SQLiteDatabase(String path, int flags, CursorFactory factory, DatabaseErrorHandler errorHandler) {
         mPath = path; mFlags = flags; mFactory = factory;
@@ -120,18 +121,30 @@ public final class SQLiteDatabase extends SQLiteClosable {
     @Override public void close() { acquire(); try { super.close(); } finally { release(); } }
     @Override protected void finalize() throws Throwable { try { if (mHandle != 0) { megler.Sqlite.close(mHandle); mHandle = 0; } } finally { super.finalize(); } }
     // ---- transactions
-    public void beginTransaction() { beginTransaction(null, true); }
-    public void beginTransactionNonExclusive() { beginTransaction(null, false); }
-    public void beginTransactionReadOnly() { beginTransaction(null, false); }
-    public void beginTransactionWithListener(SQLiteTransactionListener l) { beginTransaction(l, true); }
-    public void beginTransactionWithListenerNonExclusive(SQLiteTransactionListener l) { beginTransaction(l, false); }
-    public void beginTransactionWithListenerReadOnly(SQLiteTransactionListener l) { beginTransaction(l, false); }
-    private void beginTransaction(SQLiteTransactionListener listener, boolean exclusive) {
+    public void beginTransaction() { beginTransaction(null, SQLiteSession.TRANSACTION_MODE_EXCLUSIVE); }
+    public void beginTransactionNonExclusive() { beginTransaction(null, SQLiteSession.TRANSACTION_MODE_IMMEDIATE); }
+    /* (Android 15's; a deferred transaction, which before it is reached through getThreadSession) */
+    public void beginTransactionReadOnly() { beginTransaction(null, SQLiteSession.TRANSACTION_MODE_DEFERRED); }
+    public void beginTransactionWithListener(SQLiteTransactionListener l) { beginTransaction(l, SQLiteSession.TRANSACTION_MODE_EXCLUSIVE); }
+    public void beginTransactionWithListenerNonExclusive(SQLiteTransactionListener l) { beginTransaction(l, SQLiteSession.TRANSACTION_MODE_IMMEDIATE); }
+    public void beginTransactionWithListenerReadOnly(SQLiteTransactionListener l) { beginTransaction(l, SQLiteSession.TRANSACTION_MODE_DEFERRED); }
+    /**
+     * The calling thread's session (hidden on Android, and not public: androidx.sqlite and Google Play services find it among the
+     * declared methods and begin a deferred transaction through it). The one connection is every thread's, so there is one.
+     */
+    SQLiteSession getThreadSession() { handle(); return mSession; }
+    /** Begins a transaction of a SQLiteSession mode, or a nested one (whose mode says nothing: the outer one's lock is held). */
+    void beginTransaction(SQLiteTransactionListener listener, int mode) {
         acquire();
         boolean ok = false;
         try {
-            if (mTxn == null) { int rc = megler.Sqlite.exec(handle(), exclusive ? "BEGIN EXCLUSIVE;" : "BEGIN IMMEDIATE;"); if (rc != 0) throw error("BEGIN"); }
-            Txn t = new Txn(); t.listener = listener; t.parent = mTxn; mTxn = t;
+            if (mTxn == null) {
+                /* As Android's session: the write lock at once for the two modes that ask for it, sqlite's deferred BEGIN for any other. */
+                String begin = mode == SQLiteSession.TRANSACTION_MODE_EXCLUSIVE ? "BEGIN EXCLUSIVE;" : mode == SQLiteSession.TRANSACTION_MODE_IMMEDIATE ? "BEGIN IMMEDIATE;" : "BEGIN;";
+                int rc = megler.Sqlite.exec(handle(), begin);
+                if (rc != 0) throw error("BEGIN");
+            }
+            Txn t = new Txn(); t.mode = mode; t.listener = listener; t.parent = mTxn; mTxn = t;
             if (listener != null) {
                 try { listener.onBegin(); }
                 catch (RuntimeException e) { if (t.parent == null) megler.Sqlite.exec(handle(), "ROLLBACK;"); mTxn = t.parent; throw e; }
@@ -164,6 +177,7 @@ public final class SQLiteDatabase extends SQLiteClosable {
         if (listenerError != null) throw listenerError;
     }
     public boolean inTransaction() { return mTxn != null && mLock.isHeldByCurrentThread(); }
+    boolean inNestedTransaction() { return mTxn != null && mTxn.parent != null && mLock.isHeldByCurrentThread(); }
     public boolean isDbLockedByCurrentThread() { return mLock.isHeldByCurrentThread(); }
     @Deprecated public boolean isDbLockedByOtherThreads() { return mLock.isLocked() && !mLock.isHeldByCurrentThread(); }
     @Deprecated public boolean yieldIfContended() { return yieldIfContendedSafely(); }
@@ -171,10 +185,11 @@ public final class SQLiteDatabase extends SQLiteClosable {
     public boolean yieldIfContendedSafely(long sleepAfterYieldDelay) {
         if (mTxn == null || mTxn.parent != null || !mLock.hasQueuedThreads()) return false;
         SQLiteTransactionListener l = mTxn.listener;
+        int mode = mTxn.mode;
         setTransactionSuccessful();
         endTransaction();
         if (sleepAfterYieldDelay > 0) { try { Thread.sleep(sleepAfterYieldDelay); } catch (InterruptedException e) {} }
-        beginTransaction(l, true);
+        beginTransaction(l, mode);
         return true;
     }
     // ---- settings

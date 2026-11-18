@@ -185,7 +185,7 @@ std::string describeCapabilities(int capabilities) {
                  {MEGLER_APPX_CAP_WEBCAM, "the camera"},             {MEGLER_APPX_CAP_MICROPHONE, "the microphone"},
                  {MEGLER_APPX_CAP_LOCATION, "the location"},         {MEGLER_APPX_CAP_CHAT, "text messages"},
                  {MEGLER_APPX_CAP_CALL_HISTORY, "the call history"}, {MEGLER_APPX_CAP_BLUETOOTH, "Bluetooth"},
-                 {MEGLER_APPX_CAP_WIFI, "the Wi-Fi networks around"}};
+                 {MEGLER_APPX_CAP_WIFI, "the Wi-Fi networks around"}, {MEGLER_APPX_CAP_VOIP, "where a call's sound goes"}};
     std::string out;
     for (const auto& n : names)
         if (capabilities & n.cap) out += (out.empty() ? "" : ", ") + std::string(n.what);
@@ -2066,25 +2066,45 @@ InstallResult uninstall(const InstalledApp& app) {
         return again;
     };
     if (flagSet(L"no-package-manager")) return otherWay({false, "the flag no-package-manager", false});
-    try {
-        const auto result = winrt::Windows::Management::Deployment::PackageManager().RemovePackageAsync(widen(app.fullName)).get();
-        if (result.ErrorText().empty()) {
-            unregisterServiceApk(app.fullName);
-            shellLog::write("app package: " + app.fullName + " uninstalled by Windows's package manager");
-            return {true, "Uninstalled."};
+    /*
+     * Asked of C++/WinRT's PackageManager, and where that is refused for access, of one made from an activation factory of
+     * its own, at once and again after 3 s, as an install is (installWithPackageManager): a phone resumed from suspension
+     * refuses the first (0x80070005) where one asked a moment later takes the call. Asked once, a Lumia's Megler (0.1.0.699,
+     * Windows 10.0.15254) had two uninstalls refused so, InstallationManager's way with them, and the apps stayed on the
+     * phone, while it uninstalled another twenty minutes earlier.
+     */
+    InstallResult refused{false, "Windows's package manager could not be asked to uninstall it", false};
+    for (int way = 0; way < 3; way++) {
+        int32_t code = 0;
+        try {
+            if (way == 2) std::this_thread::sleep_for(std::chrono::seconds(3));
+            const winrt::Windows::Management::Deployment::PackageManager manager =
+                way == 0 ? winrt::Windows::Management::Deployment::PackageManager() : freshPackageManager();
+            if (!manager) {
+                shellLog::write("app package: no PackageManager from an activation factory of its own");
+                break;
+            }
+            const auto result = manager.RemovePackageAsync(widen(app.fullName)).get();
+            if (result.ErrorText().empty()) {
+                unregisterServiceApk(app.fullName);
+                shellLog::write("app package: " + app.fullName + " uninstalled by Windows's package manager" +
+                                (way ? ", asked of a PackageManager of a fresh activation factory after a refusal for access" : ""));
+                return {true, "Uninstalled."};
+            }
+            code = result.ExtendedErrorCode();
+            const std::string said = format("0x%08x ", unsigned(code)) + narrow(result.ErrorText());
+            shellLog::write("app package: Windows's package manager did not uninstall " + app.fullName + (way ? " (fresh): " : ": ") + said);
+            refused = {false, "Windows's package manager did not uninstall it: " + said, code == E_ACCESSDENIED};
+        } catch (hresult_error const& e) {
+            code = e.code();
+            const std::string said = format("0x%08x ", unsigned(code)) + narrow(e.message());
+            shellLog::write("app package: Windows's package manager could not be asked to uninstall " + app.fullName + (way ? " (fresh): " : ": ") + said);
+            refused = {false, "Windows's package manager could not be asked to uninstall it: " + said, code == E_ACCESSDENIED};
         }
-        const int32_t code = result.ExtendedErrorCode();
-        const std::string said = format("0x%08x ", unsigned(code)) + narrow(result.ErrorText());
-        shellLog::write("app package: Windows's package manager did not uninstall " + app.fullName + ": " + said);
-        if (code == E_ACCESSDENIED) sayRefusedForAccess();
-        return otherWay({false, "Windows's package manager did not uninstall it: " + said, code == E_ACCESSDENIED});
-    } catch (hresult_error const& e) {
-        const int32_t code = e.code();
-        const std::string said = format("0x%08x ", unsigned(code)) + narrow(e.message());
-        shellLog::write("app package: Windows's package manager could not be asked to uninstall " + app.fullName + ": " + said);
-        if (code == E_ACCESSDENIED) sayRefusedForAccess();
-        return otherWay({false, "Windows's package manager could not be asked to uninstall it: " + said, code == E_ACCESSDENIED});
+        if (code != E_ACCESSDENIED) break;
     }
+    if (refused.accessDenied) sayRefusedForAccess();
+    return otherWay(refused);
 #endif
 }
 

@@ -1257,6 +1257,31 @@ static mg_dvm_method *boot_member(mg_dvm_class *c, const char *name, const char 
 }
 
 /*
+ * Static fields a boot class lacks, as its methods (boot_member): the static field of the same name and type that
+ * megler.members.<the class's name> declares is the one Android added to a class of core-libart's later (ICU's
+ * MeasureUnit.PERCENT, Android 11's: Breezy Weather stopped with NoSuchFieldError). The field stays that class's own: a
+ * read of it initialises megler.members' class and takes its value, an sget asking the field's class for both. The class
+ * and then its superclasses are asked. Only the code's own reads come here: reflection and JNI look in the class itself.
+ * NULL when there is none.
+ */
+static mg_dvm_field *boot_member_field(mg_dvm_class *c, const char *name, const char *type)
+{
+    mg_dvm_class *k;
+    for (k = c; k; k = k->super) {
+        char members[300];
+        mg_dvm_class *e;
+        int i;
+        if (!k->dex || !k->dex->boot || k->dex->app || k->dex->scope != 0) continue;
+        if ((size_t)snprintf(members, sizeof(members), "megler/members/%s", k->name) >= sizeof(members) || !mg_dvm_class_exists(members)) continue;
+        e = mg_dvm_find_class(members);
+        if (!e) return NULL;
+        for (i = 0; i < e->nsfields; i++)
+            if (e->sfields[i].name == name && e->sfields[i].type == type) return &e->sfields[i];
+    }
+    return NULL;
+}
+
+/*
  * A constructor a class does not declare, from its superclasses, as ART resolves an invoke-direct of one: R8 takes out a
  * constructor that only hands its arguments on to its superclass's (an app of minSdk 21 or more), and its callers then
  * call the class's <init> for the superclass's. Spotify's RxJava (FlowableOnBackpressureLatest) stopped at its start with
@@ -1334,6 +1359,10 @@ mg_dvm_field *mg_dvm_resolve_field(mg_dvm_dex *d, u32 idx, bool is_static)
         type = mg_dvm_intern(mg_dvm_dex_type(d, mg_dvm_rd16(fi + 2)));
         name = mg_dvm_intern(mg_dvm_dex_string(d, mg_dvm_rd32(fi + 4), NULL));
         f = find_field_interned(c, name, type, is_static);
+        if (!f && is_static && !find_field_interned(c, name, type, false)) {
+            f = boot_member_field(c, name, type);
+            if (!f && mg_dvm_pending()) return NULL;
+        }
         if (!f) {
             if (find_field_interned(c, name, type, !is_static)) {
                 mg_dvm_throw("java/lang/IncompatibleClassChangeError", "%s.%s is %s", c->name, name, is_static ? "not static" : "static");

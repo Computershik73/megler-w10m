@@ -3,8 +3,10 @@
 // its own here (megler.Processes) -- is that process's ("com.android.vending:background"), where the original said the
 // package's for all. Play Store's Application builds a different graph of its services in its background process, chosen
 // by that name; there it built its main process's, and the background process's services found none of theirs in it
-// (MultiUserCoordinatorService: ClassCastException), and no install was ever processed (package 548). Everything else is
-// the original's, unchanged.
+// (MultiUserCoordinatorService: ClassCastException), and no install was ever processed (package 548). And in onTrimMemory,
+// which passes the level on to the ComponentCallbacks2 registered with it, as Android's does (the original's did nothing;
+// megler.AppRunner tells it TRIM_MEMORY_UI_HIDDEN once the shell's window is hidden). Everything else is the original's,
+// unchanged.
 package android.app;
 
 import android.content.ComponentCallbacks;
@@ -53,7 +55,11 @@ public class Application extends android.content.ContextWrapper implements andro
     public void onCreate() {}
     public void onTerminate() {}
     public void onLowMemory() { for (ComponentCallbacks c : new ArrayList<>(mComponentCallbacks)) c.onLowMemory(); }
-    public void onTrimMemory(int level) {}
+    /* (As Android's: to the callbacks registered with it that take the level, ComponentCallbacks2.) */
+    public void onTrimMemory(int level) {
+        for (ComponentCallbacks c : new ArrayList<>(mComponentCallbacks))
+            if (c instanceof android.content.ComponentCallbacks2) ((android.content.ComponentCallbacks2) c).onTrimMemory(level);
+    }
     public void onConfigurationChanged(android.content.res.Configuration c) { for (ComponentCallbacks cb : new ArrayList<>(mComponentCallbacks)) cb.onConfigurationChanged(c); }
     @Override public Context getApplicationContext() { return this; }
     public void registerActivityLifecycleCallbacks(ActivityLifecycleCallbacks c) { synchronized (mCallbacks) { mCallbacks.add(c); } }

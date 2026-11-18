@@ -12,5 +12,13 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+        <!-- As AndroidX's credentials-play-services-auth puts in an app's manifest: its credential provider for the Androids
+             before 14, which asks Google Play services (the class is named and never made here). -->
+        <service android:name="androidx.credentials.playservices.CredentialProviderMetadataHolder" android:enabled="true" android:exported="false">
+            <meta-data android:name="androidx.credentials.CREDENTIAL_PROVIDER_KEY"
+                       android:value="androidx.credentials.playservices.CredentialProviderPlayServicesImpl" />
+        </service>
+        <!-- A provider of the app's own, which says who asks it: the app, or Google Play services' code hosted in it. -->
+        <provider android:name=".WhoAsks" android:authorities="megler.test.gmshost.whoasks" android:exported="true" />
     </application>
 </manifest>

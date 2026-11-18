@@ -45,8 +45,8 @@ public class AdaptiveIconDrawable extends Drawable implements Drawable.Callback 
 
     /**
      * The platform's mask on 100 x 100: config_icon_mask (Android 9's emulator image has a rounded square), or a circle
-     * when it cannot be read. By its name: megler.IR's numbers are another release's, and its number there is another
-     * string here.
+     * when it cannot be read. By its name, as the platform's table that is read has it (megler.IR's numbers were once another
+     * release's, and its number then was another string here).
      */
     private static synchronized Path mask() {
         if (sMask == null) {
@@ -144,6 +144,24 @@ public class AdaptiveIconDrawable extends Drawable implements Drawable.Callback 
         return this;
     }
     public void clearMutated() {}
+    /* The constant state, which Android's has: a copy is an icon of each layer's own copy -- or of the layer itself where it
+       has no constant state, as LayerDrawable's copy -- at this one's alpha (launchers copy the icons they keep). */
+    private ConstantState mMeglerState;
+    @Override public ConstantState getConstantState() {
+        if (mMeglerState == null) mMeglerState = new ConstantState() {
+            @Override public Drawable newDrawable() { return newDrawable(null); }
+            @Override public Drawable newDrawable(android.content.res.Resources res) {
+                AdaptiveIconDrawable c = new AdaptiveIconDrawable(meglerCopy(mBackground, res), meglerCopy(mForeground, res), meglerCopy(mMonochrome, res));
+                c.mAlpha = mAlpha; c.mOpacity = mOpacity;
+                return c;
+            }
+        };
+        return mMeglerState;
+    }
+    private static Drawable meglerCopy(Drawable d, android.content.res.Resources res) {
+        ConstantState s = d != null ? d.getConstantState() : null;
+        return s != null ? s.newDrawable(res) : d;
+    }
 
     @Override public void invalidateDrawable(Drawable who) { invalidateSelf(); }
     @Override public void scheduleDrawable(Drawable who, Runnable what, long when) { scheduleSelf(what, when); }

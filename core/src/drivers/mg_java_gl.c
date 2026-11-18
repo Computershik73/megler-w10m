@@ -1376,19 +1376,31 @@ static bool read_back(gl_surf *s, gl_ctx *x)
 }
 
 /*
- * A swap returns no sooner than a sixtieth of a second after the one before was due, as a swap interval of 1 has it. The
- * display's turn the swapping thread holds is let go of while it waits (mg_egl_turn_pause): the display's other threads
- * draw meanwhile.
+ * How long a swap at `now` waits before it returns, with *due brought on to when it may: no sooner than a sixtieth of a
+ * second after the one before was due, as a swap interval of 1 has it. Frames that come late are owed the time, a tenth of
+ * a second at the most: quick ones after them wait for nothing until it is made up. A surface's first swap waits for
+ * nothing, and neither does one later than what is owed: what it is late by is forgotten there, and it is not made a
+ * sixtieth later still (Asphalt Nitro's frames of 60 ms on a Lumia 950 XL: every second one of them waited a whole
+ * period more, an eighth of the little it drew a second).
+ */
+u64 mg_java_gl_pace(u64 *due, u64 now)
+{
+    const u64 period = 16666667ull;
+    if (!*due || now > *due + 100000000ull) *due = now;
+    else *due += period;
+    return *due > now ? *due - now : 0;
+}
+
+/*
+ * A swap is paced (mg_java_gl_pace). The display's turn the swapping thread holds is let go of while it waits
+ * (mg_egl_turn_pause): the display's other threads draw meanwhile.
  */
 static void pace(gl_surf *s)
 {
-    const u64 period = 16666667ull;
-    u64 now = mg_time_monotonic_ns();
-    if (!s->due || now > s->due + 100000000ull) s->due = now;
-    s->due += period;
-    if (s->due > now) {
+    u64 wait = mg_java_gl_pace(&s->due, mg_time_monotonic_ns());
+    if (wait) {
         void *paused = mg_egl_turn_pause();
-        mg_sleep_ns(s->due - now);
+        mg_sleep_ns(wait);
         mg_egl_turn_resume(paused);
     }
 }
@@ -1882,6 +1894,12 @@ static MG_HOSTCB void gl_main(void *arg)
     layer *l = NULL;
     int w = 0, h = 0;
     bool created = false, changed = false;
+    /* When a surface that could not be made is asked for again; 0 while there is no such failure. */
+    u64 bad_until = 0;
+    /* The context was let go of for a surface that could not be made beside it: the one made next flushes what it held away. */
+    bool lost = false;
+    /* The view asked for a frame (meglerFrame said so once) and it has not been drawn yet: its surface could not be made. */
+    bool owed = false;
     mg_jobj *thrown = NULL;
     mg_jvalue v, args[3];
     /* A thread of the app's: its native code may run on it (a renderer's onDrawFrame calling the app's library). */
@@ -1933,10 +1951,19 @@ static MG_HOSTCB void gl_main(void *arg)
         }
         sw = (i32)((state >> 32) & 0xFFFF);
         sh = (i32)((state >> 16) & 0xFFFF);
+        /* (A renderer that draws when asked is asked once: the frame is owed until it is drawn, on a surface made later too.) */
+        if (state & FRAME_DRAW) owed = true;
         if (!x) {
             x = ctx_new(g->version, NULL);
             if (!x) break;
             make_current(NULL, x);
+            if (lost) {
+                /* (Direct3D destroys what was let go of when its work is flushed: before the surface is asked for again.) */
+                typedef void (*fn_flush)(void);
+                fn_flush flush = FN(fn_flush, F_FLUSH, "glFlush");
+                if (flush) flush();
+                lost = false;
+            }
             created = false;
             tell_egl(g, x, NULL);
         }
@@ -1946,12 +1973,53 @@ static MG_HOSTCB void gl_main(void *arg)
             mg_lock_acquire(&g_window_lock);
             l = layer_of(g->view, true);
             mg_lock_release(&g_window_lock);
+            /* (A surface that could not be made a moment ago is not asked for at every wake.) */
+            if (!s && bad_until && mg_time_monotonic_ns() < bad_until) {
+                gl_wait(seen);
+                continue;
+            }
             s = surf_new(sw, sh, l);
             if (old) {
                 make_current(NULL, x);
                 surf_free(old);
             }
-            if (!s) break;
+            if (!s) {
+                /*
+                 * Refused beside a context that holds what the renderer made: here a surface is memory of the same Direct3D
+                 * device as the app's textures (on Android it is the compositor's), so there is no room for it while they
+                 * are there. The context is lost, as Android's is when the graphics memory is taken from an app in the
+                 * background: let go of with all it held, a new one made, the surface asked for again at once, and the
+                 * renderer told to make its things again (onSurfaceCreated; libGDX loads its managed textures again).
+                 * Age of History II came back from a suspension with 1.2 GB in use, 29 of Direct3D's 32 MB stretches of
+                 * addresses and none free for a 30th, and its 1280x720 surface was refused (EGL_BAD_ALLOC); the context,
+                 * let go of five seconds later as the thread ended, gave back 520 MB and 19 of the stretches. Once: a new
+                 * context with nothing in it is not let go of for the same.
+                 */
+                if (created) {
+                    mg_warn("java: %s has no surface to draw on beside what its context holds: the context is lost, and the renderer makes its things again in a new one", name);
+                    make_current(NULL, NULL);
+                    ctx_free(x);
+                    x = NULL;
+                    created = false;
+                    lost = true;
+                    w = h = 0;
+                    tell_egl(g, NULL, NULL);
+                    continue;
+                }
+                /* No surface could be made, which is not the thread's end: as Android's GLThread with a surface it cannot
+                   make, it goes on running the view's events and tries again a second later. Ended, it left the app
+                   waiting for a frame that could not come: Age of History II (libGDX) came back from a suspension with
+                   1.2 GB in use, its surface was refused (EGL_BAD_ALLOC), and its next onPause waited four seconds for
+                   the thread to answer and then asked to be killed, over and over. */
+                if (!bad_until) mg_warn("java: %s has no surface to draw on; it goes on without one and asks again every second", name);
+                bad_until = mg_time_monotonic_ns() + 1000000000ull;
+                w = h = 0;
+                tell_egl(g, x, NULL);
+                gl_wait(seen);
+                continue;
+            }
+            if (bad_until) mg_info("java: %s has a surface again", name);
+            bad_until = 0;
             w = sw;
             h = sh;
             changed = true;
@@ -1978,7 +2046,8 @@ static MG_HOSTCB void gl_main(void *arg)
             if (!mg_dvm_call_virtual(g->renderer, "onSurfaceChanged", "(Ljavax/microedition/khronos/opengles/GL10;II)V", args, NULL)) break;
             changed = false;
         }
-        if (state & FRAME_DRAW) {
+        if (owed) {
+            owed = false;
             args[0].l = g->gl10;
             if (!mg_dvm_call_virtual(g->renderer, "onDrawFrame", "(Ljavax/microedition/khronos/opengles/GL10;)V", args, NULL)) break;
             /* (The renderer may have made another context current: the frame is this one's.) */

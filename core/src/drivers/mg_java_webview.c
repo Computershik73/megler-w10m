@@ -317,9 +317,12 @@ enum {
     WV_FUNCTORS = 32,
     WV_ROUND = 64,                     /* a pbuffer's size, rounded up to this: a part that changes a little keeps its pbuffer */
     WV_PICTURES = 0x40000000,          /* the shell's ids of functors' pictures: above any a TextureView's texture is given */
-    WV_WAIT_MS = 4000,                 /* the most the UI thread waits for a functor drawn */
-    WV_WAIT_ES2_MS = 15000,            /* the same on a display of OpenGL ES 2 at most (Direct3D 9_3): see wv_ask */
+    WV_WAIT_MS = 4000,                 /* how long the UI thread waits for a functor's draw before it looks why: see wv_ask */
+    WV_WAIT_ES2_MS = 15000,            /* the same on a display of OpenGL ES 2 at most (Direct3D 9_3) */
 };
+
+/* wv_ask's answer where the render thread was not asked, or the request was withdrawn: megler.WebFunctors.BUSY. */
+#define WV_BUSY ((i64)-1)
 
 typedef struct aw_sync_params {
     i32 version;
@@ -378,11 +381,13 @@ static struct {
     i32 next_id;
     i32 releases;                      /* functors released whose last callbacks are owed */
     wv_functor f[WV_FUNCTORS];
-    /* the draw asked for, and its answer */
+    /* the draw asked for (asked: until the render thread takes it, or the asker withdraws it), and its answer */
     bool asked, done;
     i32 ask_id, ask_l, ask_t, ask_w, ask_h;
     i64 answer;
-    volatile i32 stuck;                /* a draw outlasted WV_WAIT_MS (WV_WAIT_ES2_MS): no more are asked for */
+    bool behind;                       /* a request was withdrawn: none is made until the render thread is back at its wait */
+    u64 behind_since;
+    i32 wait_ms;                       /* a test's, in place of WV_WAIT_MS (mg_java_webview_wait_ms) */
     /* the render thread's own */
     i32 egl;                           /* 0 not tried, 1 ready, 2 none */
     EGLDisplay display;
@@ -773,14 +778,19 @@ static void wv_releases(void)
     int i;
     for (i = 0; i < WV_FUNCTORS; i++) {
         wv_functor *f = &W.f[i];
+        u64 t0;
         if (!f->id || !f->released) continue;
         mg_lock_release(&g_wv_lock);
+        t0 = mg_time_monotonic_ns();
         if (f->drawn && f->cb.on_context_destroyed && W.egl == 1 && f->surface && W.make_current(W.display, f->surface, f->surface, W.context))
             MG_GFN(void (*)(i32, void *), f->cb.on_context_destroyed)(f->id, f->data);
         if (f->cb.on_destroyed) MG_GFN(void (*)(i32, void *), f->cb.on_destroyed)(f->id, f->data);
         if (f->surface) wv_surface_free(f);
         mg_java_gl_share_gone(WV_PICTURES + f->id);
         mg_info("webview: draw functor %d gone, drawn %u times", (int)f->id, (unsigned)f->draws);
+        /* (What a draw asked for meanwhile waited for: wv_ask.) */
+        if (mg_time_monotonic_ns() - t0 >= 1000000000ull)
+            mg_info("webview: draw functor %d's last callbacks took %d ms", (int)f->id, (int)((mg_time_monotonic_ns() - t0) / 1000000ull));
         mg_lock_acquire(&g_wv_lock);
         memset(f, 0, sizeof(*f));
         W.releases--;
@@ -797,7 +807,13 @@ static MG_HOSTCB void wv_main(void *arg)
     mg_thread_runs_app_code();
     mg_lock_acquire(&g_wv_lock);
     for (;;) {
-        while (!W.asked && W.releases <= 0) mg_cond_wait(&g_wv_wake, &g_wv_lock);
+        while (!W.asked && W.releases <= 0 && !W.behind) mg_cond_wait(&g_wv_wake, &g_wv_lock);
+        if (W.behind) {
+            /* Back from what kept it while a request waited and was withdrawn (wv_ask): draws are asked for again. */
+            W.behind = false;
+            mg_info("webview: the render thread answers again, %d ms after a draw was withdrawn: functors are drawn again",
+                    (int)((mg_time_monotonic_ns() - W.behind_since) / 1000000ull));
+        }
         if (W.releases > 0) wv_releases();
         if (W.asked) {
             wv_functor *f = wv_find(W.ask_id);
@@ -836,26 +852,44 @@ static bool wv_start(void)
 }
 
 /* megler.WebFunctors.nativeOn(): whether Chromium is given the table, and the render thread may be asked to draw. */
-N(WF_on) { c->ret.z = wv_wanted() && !W.stuck; }
+N(WF_on) { c->ret.z = wv_wanted(); }
 
 /*
  * The functor drawn on the render thread, the part of the view at (l, t), w x h; the calling thread waits. The shell's id of
- * its picture and the pbuffer's size (id | width << 32 | height << 48), 0 when it was not drawn.
+ * its picture and the pbuffer's size (id | width << 32 | height << 48); 0 when it could not be drawn; WV_BUSY when the
+ * render thread was not asked, or did not take the request and it was withdrawn.
+ *
+ * The wait is HWUI's for a frame it cannot let go of, and once the render thread has taken the request it has no end of its
+ * own: Chromium is then in the functor's callbacks, and a UI thread that went on would be in the same WebView with it. It
+ * did: a draw that outlasted four seconds was left behind, still drawing, and the page was drawn in software from then on,
+ * on the UI thread. Candy Crush Saga's pages took Chromium 4.9 and 5.6 seconds to draw (their first frames, with the game's
+ * own thread drawing on the same display), and the app ended during the software frames that followed, in Chromium's
+ * compositor (libwebviewchromium.so+0x3879a08: a frame's view transition saved by a frame sink manager given no shared
+ * images, which is where a page that starts a view transition ends when it is drawn in software -- the webview test app's
+ * did under qemu, given document.startViewTransition and a draw into a bitmap; Chromium 128's own). So a draw that takes
+ * long is said in the log and waited for to its end. Only a request the render thread has not
+ * taken by then -- it is in a released functor's last callbacks, or does not run -- is withdrawn, under the lock it would
+ * take it under, so that it is never started; and none is made until the render thread is back at its wait (W.behind), the
+ * WebView showing its last picture meanwhile (android.webkit.WebView.meglerDrawFunctor). The pages stay on the graphics
+ * processor throughout.
+ *
+ * (At Direct3D feature level 9_3 -- OpenGL ES 2 at most -- a draw that needs a program of Skia's not made yet waits for it
+ * to be compiled, by D3DCompile on the phone's processor -- a Lumia 650's Cortex-A7 -- and the first frames of a page need
+ * ten and more of them, which ANGLE keeps for the next start: EGL_ANDROID_blob_cache. There the log speaks later.)
  */
 static i64 wv_ask(i32 id, i32 l, i32 t, i32 w, i32 h)
 {
-    /*
-     * At Direct3D feature level 9_3 (OpenGL ES 2 at most) a draw that needs a program of Skia's not made yet waits for it to
-     * be compiled, by D3DCompile on the phone's processor -- a Lumia 650's Cortex-A7 -- and the first frames of a page need
-     * ten and more of them (ANGLE keeps them for the next start: EGL_ANDROID_blob_cache). Such a draw is waited for longer
-     * before pages are given up to software for good.
-     */
-    const int wait_ms = WP.version == 2 ? WV_WAIT_ES2_MS : WV_WAIT_MS;
-    u64 until;
+    const int wait_ms = W.wait_ms > 0 ? W.wait_ms : WP.version == 2 ? WV_WAIT_ES2_MS : WV_WAIT_MS;
+    u64 t0, until;
     i64 answer = 0;
-    if (W.stuck || !wv_start()) return 0;
+    if (!wv_start()) return 0;
     mg_lock_acquire(&g_wv_serial);
     mg_lock_acquire(&g_wv_lock);
+    if (W.behind) {
+        mg_lock_release(&g_wv_lock);
+        mg_lock_release(&g_wv_serial);
+        return WV_BUSY;
+    }
     W.ask_id = id;
     W.ask_l = l;
     W.ask_t = t;
@@ -864,17 +898,30 @@ static i64 wv_ask(i32 id, i32 l, i32 t, i32 w, i32 h)
     W.done = false;
     W.asked = true;
     mg_cond_signal(&g_wv_wake);
-    until = mg_time_monotonic_ns() + (u64)wait_ms * 1000000u;
+    t0 = mg_time_monotonic_ns();
+    until = t0 + (u64)wait_ms * 1000000u;
     while (!W.done) {
         u64 now = mg_time_monotonic_ns();
         if (now >= until) break;
         mg_cond_wait_ns(&g_wv_answered, &g_wv_lock, until - now);
     }
-    if (W.done) {
-        answer = W.answer;
+    if (!W.done && W.asked) {
+        /* Not taken: withdrawn, and the render thread woken to say when it is back. */
+        W.asked = false;
+        W.behind = true;
+        W.behind_since = mg_time_monotonic_ns();
+        mg_cond_signal(&g_wv_wake);
+        answer = WV_BUSY;
+        mg_warn("webview: the render thread did not take draw functor %d's draw in %d ms: withdrawn, and none is asked for until it answers",
+                (int)id, wait_ms);
     } else {
-        mg_atomic_xchg(&W.stuck, 1);
-        mg_warn("webview: draw functor %d was not drawn in %d ms: pages are drawn in software from now on", (int)id, wait_ms);
+        if (!W.done) {
+            /* Taken, and Chromium still draws. */
+            mg_warn("webview: draw functor %d has been drawing for %d ms on the render thread: waited for to its end", (int)id, wait_ms);
+            while (!W.done) mg_cond_wait(&g_wv_answered, &g_wv_lock);
+            mg_info("webview: draw functor %d's draw ended after %d ms", (int)id, (int)((mg_time_monotonic_ns() - t0) / 1000000ull));
+        }
+        answer = W.answer;
     }
     mg_lock_release(&g_wv_lock);
     mg_lock_release(&g_wv_serial);
@@ -887,6 +934,13 @@ N(WF_draw) { c->ret.j = wv_wanted() ? wv_ask(c->args[0].i, c->args[1].i, c->args
 const void *mg_java_webview_draw_fn_table(void) { return &k_draw_fn_table; }
 
 i64 mg_java_webview_draw_functor(i32 functor, int left, int top, int width, int height) { return wv_ask(functor, left, top, width, height); }
+
+void mg_java_webview_wait_ms(int ms)
+{
+    mg_lock_acquire(&g_wv_lock);
+    W.wait_ms = ms;
+    mg_lock_release(&g_wv_lock);
+}
 
 void mg_java_webview_forget_egl(void)
 {

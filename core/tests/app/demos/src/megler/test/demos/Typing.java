@@ -15,11 +15,11 @@ import android.widget.TextView;
 
 /**
  * Four text fields, one of each kind a keyboard is told apart by: a line of text whose Enter is "Done", a number, a password, and
- * a note of several lines. Every change of a field's text and every editor action is a line of the log, with line ends written
- * as "|" so that a line of the log stays one.
+ * a note of several lines; and a box of one digit, as Viber's activation code is made of. Every change of a field's text and
+ * every editor action is a line of the log, with line ends written as "|" so that a line of the log stays one.
  */
 public class Typing extends Activity {
-    private EditText name, number, secret, note;
+    private EditText name, number, secret, note, code;
 
     /*
      * A field that keeps its cursor out of a word, as WhatsApp's MentionableEntry keeps it out of a mention: its
@@ -143,6 +143,16 @@ public class Typing extends Activity {
         number = field(root, "number", InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_DECIMAL, EditorInfo.IME_ACTION_NEXT, 80);
         secret = field(root, "secret", InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD, 0, 80);
         note = field(root, "note", InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_MULTI_LINE | InputType.TYPE_TEXT_FLAG_CAP_SENTENCES, 0, 200);
+        // A box of one digit as Viber makes each of the four of its activation code (EnterCodeEditTextLayout): 40 x 40, a number
+        // one character long, centred, its cursor hidden, and told setTextIsSelectable(false) -- which an EditText, not
+        // selectable to begin with, takes as nothing on Android, and which left it neither focusable nor clickable here.
+        code = field(root, "code", InputType.TYPE_CLASS_NUMBER, EditorInfo.IME_FLAG_NO_EXTRACT_UI, 40);
+        code.setLayoutParams(new LinearLayout.LayoutParams(40, 40));
+        code.setPadding(0, 0, 0, 0);
+        code.setFilters(new android.text.InputFilter[] { new android.text.InputFilter.LengthFilter(1) });
+        code.setGravity(android.view.Gravity.CENTER);
+        code.setCursorVisible(false);
+        code.setTextIsSelectable(false);
         setContentView(root);
         // (Android 11's View.setWindowInsetsAnimationCallback, by reflection: the app is built against Android 10.)
         try {
@@ -157,7 +167,7 @@ public class Typing extends Activity {
     @Override
     public void onWindowFocusChanged(boolean focus) {
         super.onWindowFocusChanged(focus);
-        if (focus) Log.i("DemoTest", "typing: layout name=" + place(name) + " number=" + place(number) + " secret=" + place(secret) + " note=" + place(note));
+        if (focus) Log.i("DemoTest", "typing: layout name=" + place(name) + " number=" + place(number) + " secret=" + place(secret) + " note=" + place(note) + " code=" + place(code));
     }
 
     @Override

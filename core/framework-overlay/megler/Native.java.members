@@ -53,6 +53,14 @@
      */
     public static native boolean mainWaitsForMe();
     /**
+     * A number for the wait() the app's main thread stands in -- the same number for as long as it is the same wait, another
+     * for its next -- or 0 when it is in none, or in a wait of {@code notIn}: its message queue, where it waits for the next
+     * message and takes one posted to it. A thread parked (LockSupport, so a CountDownLatch, a Future, a lock) is in a wait of
+     * its Thread's own lock. For megler.MicroG, whose threads wait for the main thread to attach Google Play services'
+     * Application: a main thread that stands in such a wait runs nothing posted to it. 0 on the main thread.
+     */
+    public static native long mainStands(Object notIn);
+    /**
      * The rectangle of the screen's bitmap that the next Gfx.present on this thread has changed, [left, right) x [top, bottom):
      * the rest is as it was in the picture presented before. Told to the shell where it can take it
      * (megler_window_host.present_pixels_part). Called by megler.ViewRoot.drawAll before it presents part of the screen.
@@ -103,6 +111,11 @@
     /** Another app the phone has, started: its package, and its activity's class or null for its launcher activity. */
     public static native boolean launchApp(String packageName, String activity);
     /**
+     * The activity another app asked this one for (megler_start_activity) that the app has not been handed yet, taken: what
+     * megler.AppRunner.startRequested would get next; null when there is none. megler.AppRunner.run asks as the app starts.
+     */
+    public static native String requestedActivity();
+    /**
      * The apps the phone has (megler_run_config.apps_dir), a line for each: package, launcher activity, label, version name,
      * version code, separated by tabs; null when the shell told none. megler.PhoneApps reads it.
      */
@@ -112,11 +125,22 @@
     /** That app's activities as the shell described them for a launcher (megler_apk_describe_activities): the bytes of its
      *  activities.json, UTF-8; null when there are none (core/src/drivers/mg_java.c). */
     public static native byte[] appActivities(String packageName);
+    /** That app's services another app may bind, described with its activities: the bytes of its services.json, UTF-8; null
+     *  when it has none. megler.PhoneApps reads it, megler.HostedApps binds them. */
+    public static native byte[] appServices(String packageName);
     /** The picture of that app's icon resource `id` (one its activities name), a PNG; null when there is none. */
     public static native byte[] appResIcon(String packageName, int id);
     /** What Megler last wrote of the APK it was handed under `name` (installApk): installs/<name>.txt of the same folder,
      *  "<when>\t<what>\t<why>", UTF-8 -- declined, incompatible, failed or busy; null when it has written nothing. */
     public static native byte[] appInstall(String name);
+    /**
+     * A split APK (by its path among the app's own files) put among the splits of an app the phone has, this one or another,
+     * as Android's installer does with a session that inherits the installed APKs (megler.Installs): the split's name; ""
+     * when the file is a split of that app which could not be added (another version's, no room); null when it is no split
+     * of that app at all. Without `add` the file is looked at and nothing is copied: the same answers. The app has the
+     * split from its next start.
+     */
+    public static native String addSplit(String packageName, String path, boolean add);
     /** Another app the phone has, to uninstall (megler_system_host.uninstall_app): true when the shell asks the user. */
     public static native boolean uninstallApp(String packageName);
     /** Whether the app may have what a dangerous permission group guards (megler_system_host.permission, megler.Permissions):

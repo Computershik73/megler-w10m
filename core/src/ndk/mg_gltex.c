@@ -1154,7 +1154,7 @@ static bool image_packed(u32 target, i32 level, i32 internal, i32 w, i32 h, i32 
     i32 levels;
     if (!t || level != 0 || border || (internal != GL_RGBA && internal != GL_RGBA8) || format != GL_RGBA || type != GL_UNSIGNED_BYTE || !pixels ||
         T.unpack_buffer || T.skip_rows || T.skip_pixels || w <= 0 || h <= 0 || w > 16384 || h > 16384 || (w & 3) || (h & 3) ||
-        (u32)w * (u32)h < PRESSED_MIN_PIXELS || !policy() || !can_pack(GL_RGBA8) || !addresses_short())
+        (u32)w * (u32)h < PRESSED_MIN_PIXELS || !h_compressed_2d || !policy() || !can_pack(GL_RGBA8) || !addresses_short())
         return false;
     for (levels = 1, lw = (u32)w, lh = (u32)h; lw > 1 || lh > 1; levels++) {
         lw = lw > 1 ? lw / 2 : 1;
@@ -1514,6 +1514,9 @@ void mg_gltex_set_host(void *(*resolve)(const char *name))
     if (!h_bind_texture) h_bind_texture = (fn_enum_uint)resolve("glBindTexture");
     if (!h_get_string) h_get_string = (fn_get_string)resolve("glGetString");
     if (!h_storage_2d) h_storage_2d = (fn_tex_storage_2d)resolve("glTexStorage2D");
+    /* glTexImage2D's large textures are packed through this one, which an app that has no compressed textures of its own
+       never asks for (Age of History II: a libGDX game of PNG pictures, which ended at address 0 on its first large one). */
+    if (!h_compressed_2d) h_compressed_2d = (fn_compressed_2d)resolve("glCompressedTexImage2D");
     /* And what reading an ETC upload out of the app's unpack buffer takes. */
     if (!h_map_range) h_map_range = (fn_map_range)resolve("glMapBufferRange");
     if (!h_unmap) h_unmap = (fn_unmap)resolve("glUnmapBuffer");

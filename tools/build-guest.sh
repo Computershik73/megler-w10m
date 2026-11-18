@@ -26,6 +26,9 @@
 #   libt_jni.so        native methods of a class the Dalvik runtime's tests have in DEX
 #   libt_xposed.so     stands in for Aliucord's libaliuhook.so: XposedBridge's natives by their JNI names, a JNI_OnLoad
 #                      that fails (t_xposed.c); the runtime loads it without the one and answers the others itself
+#   libt_onload.so, libt_onload_dep.so
+#                      a library without a JNI_OnLoad and the one it needs, which has it, as Microsoft OneDrive's
+#                      libcore.so and libQt.so (t_onload.c): Java loads the first, and the second's JNI_OnLoad is run
 #   libt_svc.so, libt_svc_diag.so, libt_svc_arm.so
 #                      armeabi-v7a: direct ARM EABI system calls (t_svc.c), Thumb and ARM; arm64-v8a: libt_svc.so and
 #                      libt_svc_diag.so, svc 0 led out to the core, and left traps by the flag trap-svc
@@ -33,6 +36,10 @@
 #   libt_go.so         one of Go's by its build ID note: a goroutine's stack in its heap given back with madvise by
 #                      number, and the reservations Go's runtime makes for its heap as it starts (t_go.c); on x86, whose
 #                      own system calls (int 0x80) are not led out to the core, only the reservations are tried
+#   libt_sqlite.so     SQLite as an app carries it (Signal's SQLCipher, Telegram's): the amalgamation of build/sqlite with
+#                      its own unix VFS over the layer's file calls, and a driver of it (t_sqlite.c). The one library
+#                      here the NDK builds, against bionic's own headers as an app's is: where there is no NDK it is not
+#                      built, and the tests say that they leave it out
 #   libt_same.so, libt_user.so, and in runtime/ another libt_same.so and libt_ruser.so:
 #                      two libraries of one name, the app's and the runtime's, and one
 #                      of each kind that needs "libt_same.so" (t_same.c, t_user.c)
@@ -109,6 +116,9 @@ fi
 "$CLANG" "${COMMON[@]}" ${THUMB[@]+"${THUMB[@]}"} -Wl,--hash-style=both   -Wl,-soname,libt_jni.so -o "$(w "$OUT/libt_jni.so")" "$(w "$SRC/t_jni.c")" "${SYS[@]}"
 # And one that stands in for Aliucord's libaliuhook.so: loaded without its JNI_OnLoad, its natives the runtime's own.
 "$CLANG" "${COMMON[@]}" ${THUMB[@]+"${THUMB[@]}"} -Wl,--hash-style=both   -Wl,-soname,libt_xposed.so -o "$(w "$OUT/libt_xposed.so")" "$(w "$SRC/t_xposed.c")" "${SYS[@]}"
+# And a pair like Microsoft OneDrive's libcore.so and libQt.so: the one Java loads has no JNI_OnLoad, the one it needs has.
+"$CLANG" "${COMMON[@]}" ${THUMB[@]+"${THUMB[@]}"} -Wl,--hash-style=both -DDEP -Wl,-soname,libt_onload_dep.so -o "$(w "$OUT/libt_onload_dep.so")" "$(w "$SRC/t_onload.c")" "${SYS[@]}"
+"$CLANG" "${COMMON[@]}" ${THUMB[@]+"${THUMB[@]}"} -Wl,--hash-style=both -Wl,-soname,libt_onload.so -o "$(w "$OUT/libt_onload.so")" "$(w "$SRC/t_onload.c")" "-L$(w "$OUT")" -lt_onload_dep "${SYS[@]}"
 if [ "$ABI" = armeabi-v7a ]; then
   "$CLANG" "${COMMON[@]}" -mthumb -Wl,--hash-style=both   -Wl,-soname,libt_svc.so -o "$(w "$OUT/libt_svc.so")" "$(w "$SRC/t_svc.c")" "${SYS[@]}"
   "$CLANG" "${COMMON[@]}" -mthumb -Wl,--hash-style=both   -Wl,-soname,libt_svc_diag.so -o "$(w "$OUT/libt_svc_diag.so")" "$(w "$SRC/t_svc.c")" "${SYS[@]}"
@@ -127,6 +137,24 @@ fi
 # Imports nothing provides, which the loader names as it loads them: a few, and more than its line has room for.
 "$CLANG" "${COMMON[@]}" ${THUMB[@]+"${THUMB[@]}"} -Wl,--hash-style=both -Wl,-soname,libt_unres.so -o "$(w "$OUT/libt_unres.so")" "$(w "$SRC/t_unres.c")" "${SYS[@]}"
 "$CLANG" "${COMMON[@]}" ${THUMB[@]+"${THUMB[@]}"} -Wl,--hash-style=both -DMANY -Wl,-soname,libt_unres_many.so -o "$(w "$OUT/libt_unres_many.so")" "$(w "$SRC/t_unres.c")" "${SYS[@]}"
+
+# SQLite itself with its unix VFS (os_unix.c: pread and pwrite, fsync, ftruncate, fcntl's locks, the mapped -shm file of
+# a write-ahead log), and what drives it in the tests (t_sqlite.c). The NDK's clang and sysroot build it, as they build
+# an app's; made again only when it is older than what it is made of -- the amalgamation takes the longest of all here.
+NDK="${MEGLER_NDK:-${USERPROFILE:-}/Documents/android-ndk-r21e}"
+NDKCC="$NDK/toolchains/llvm/prebuilt/windows-x86_64/bin/clang.exe"
+SQLITE="$ROOT/build/sqlite"
+case "$ABI" in
+  armeabi-v7a) NDKT=(--target=armv7a-linux-androideabi21 -mthumb) ;;
+  arm64-v8a) NDKT=(--target=aarch64-linux-android21) ;;
+  x86_64) NDKT=(--target=x86_64-linux-android21) ;;
+  *) NDKT=(--target=i686-linux-android21) ;;
+esac
+if [ ! -f "$NDKCC" ] || [ ! -f "$SQLITE/sqlite3.c" ]; then
+  echo "(libt_sqlite.so is not built: it takes the NDK at $NDK (MEGLER_NDK) and build/sqlite/sqlite3.c)"
+elif [ ! -f "$OUT/libt_sqlite.so" ] || [ "$SRC/t_sqlite.c" -nt "$OUT/libt_sqlite.so" ] || [ "$SQLITE/sqlite3.c" -nt "$OUT/libt_sqlite.so" ]; then
+  "$NDKCC" "${NDKT[@]}" -O2 -fPIC -shared -Wl,-soname,libt_sqlite.so -DSQLITE_THREADSAFE=1 -DSQLITE_OMIT_LOAD_EXTENSION -DUSE_PREAD64 -DHAVE_USLEEP=1 -DHAVE_FDATASYNC=1 "-I$(w "$SQLITE")" -o "$(w "$OUT/libt_sqlite.so")" "$(w "$SRC/t_sqlite.c")" "$(w "$SQLITE/sqlite3.c")"
+fi
 
 # One file name twice: the app's, and the one that stands for a library of the Android root's.
 mkdir -p "$OUT/runtime"

@@ -35,5 +35,8 @@
         <!-- Started by Trampoline, of an affinity of their own: AwayTop finishes it, both go, and Trampoline comes back (Away's comment). -->
         <activity android:name=".Away" android:taskAffinity="megler.test.crash.away" />
         <activity android:name=".AwayTop" android:taskAffinity="megler.test.crash.away" />
+        <!-- Of launch mode singleTask, started again by Over above it with no flag: brought back, Over gone (Hub's comment). -->
+        <activity android:name=".Hub" android:launchMode="singleTask" />
+        <activity android:name=".Over" />
     </application>
 </manifest>

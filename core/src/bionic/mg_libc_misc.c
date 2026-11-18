@@ -1644,6 +1644,12 @@ static int g_sigsuspend(const gulong *set)
     mg_set_errno(GE_INTR);
     return -1;
 }
+/* pause: that wait with the mask the thread has. (Microsoft OneDrive's libQt.so imports it, and there was none.) */
+static int g_pause(void)
+{
+    gulong blocked = mg_gthread_self()->sig_blocked;
+    return g_sigsuspend(&blocked);
+}
 static int g_sigwait(const gulong *set, int *sig) { (void)set; (void)sig; mg_set_errno(GE_INVAL); return GE_INVAL; }
 
 typedef struct g_stack_t {
@@ -1777,6 +1783,28 @@ static char *g_mktemp(char *tmpl)
     }
     mg_fd_close(fd);
     return tmpl;
+}
+
+/* tmpnam: a name under the temporary directory that no file has, in the caller's buffer (L_tmpnam bytes) or in one of
+   its own; no file is made, as bionic's makes none. */
+static char *g_tmpnam(char *s)
+{
+    typedef int (*access_fn)(const char *, int);
+    static const char chars[] = "abcdefghijklmnopqrstuvwxyz0123456789";
+    static char own[32];
+    access_fn access_ = (access_fn)mg_bionic_find("access");
+    int tries, i;
+    if (!s) s = own;
+    for (tries = 0; tries < 100; tries++) {
+        u8 r[10];
+        char name[11];
+        mg_random(r, 10);
+        for (i = 0; i < 10; i++) name[i] = chars[r[i] % 36];
+        name[10] = 0;
+        snprintf(s, 32, "/data/local/tmp/tmp.%s", name);
+        if (!access_ || access_(s, 0) != 0) return s;
+    }
+    return NULL;
 }
 
 static char *g_mkdtemp(char *tmpl)
@@ -2180,13 +2208,13 @@ const mg_sym mg_tab_misc[] = {
     M("sigaction", g_sigaction_fn), M("signal", g_signal), M("bsd_signal", g_signal), M("sysv_signal", g_signal), M("raise", g_raise),
     M("kill", g_kill), M("killpg", g_killpg), M("tgkill", g_tgkill), M("sigprocmask", g_sigprocmask), M("sigemptyset", g_sigemptyset),
     M("sigfillset", g_sigfillset), M("sigaddset", g_sigaddset), M("sigdelset", g_sigdelset), M("sigismember", g_sigismember),
-    M("sigpending", g_sigpending), M("sigsuspend", g_sigsuspend), M("sigwait", g_sigwait), M("sigaltstack", g_sigaltstack),
+    M("sigpending", g_sigpending), M("sigsuspend", g_sigsuspend), M("pause", g_pause), M("sigwait", g_sigwait), M("sigaltstack", g_sigaltstack),
     M("__libc_current_sigrtmin", g_sigrtmin), M("__libc_current_sigrtmax", g_sigrtmax),
     M("localeconv", g_localeconv), M("setlocale", g_setlocale), M("newlocale", g_newlocale), M("uselocale", g_uselocale),
     M("freelocale", g_freelocale), M("duplocale", g_duplocale), M("nl_langinfo", g_nl_langinfo), M("nl_langinfo_l", g_nl_langinfo),
     M("__ctype_get_mb_cur_max", g_mb_cur_max),
     M("basename", g_basename), M("__gnu_basename", g_basename), M("dirname", g_dirname), M("mkstemp", g_mkstemp),
-    M("mkstemp64", g_mkstemp), M("mktemp", g_mktemp), M("mkdtemp", g_mkdtemp),
+    M("mkstemp64", g_mkstemp), M("mktemp", g_mktemp), M("mkdtemp", g_mkdtemp), M("tmpnam", g_tmpnam),
     M("getpwuid", g_getpwuid), M("getpwnam", g_getpwnam), M("getlogin", g_getlogin),
     M("getpwuid_r", g_getpwuid_r), M("getpwnam_r", g_getpwnam_r), M("getprogname", g_getprogname), MG_DATA("__progname", &g_progname),
     M("getgrgid_r", g_getgrgid_r), M("getgrnam_r", g_getgrnam_r), M("getgrgid", g_getgrgid), M("getgrnam", g_getgrnam), M("initgroups", g_initgroups),

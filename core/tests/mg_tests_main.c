@@ -11,6 +11,9 @@
  *   mg_tests --dvm-only <fixtures dir> <scratch dir> <android root | -> [trace] [guest library dir]
  *       only the Dalvik runtime's tests: on Android's own libcore from that root
  *       (tools/dvm-android-root.sh makes one), or with "-" on the built-in java.lang
+ *   mg_tests --gl-only <scratch dir> <android root | ->
+ *       only the tests of OpenGL ES from Java and of the WebView's draw functor (mg_gl_tests.c), which the first form runs
+ *       after the runtime's: the runtime started on that root's libcore, or with "-" on the built-in java.lang
  *   mg_tests --dvm-link <android root> <dex file>...
  *       what those DEX files need of Android's libcore and do not find: the
  *       runtime is started on the boot class path of that root, the files are
@@ -127,6 +130,7 @@
 #include "mg_gfx_record.h"
 #include "mg_gfx_scenes.h"
 #include "mg_gfx_standin.h"
+#include "mg_gfx_tests.h"
 #include "mg_storage_tests.h"
 #include "mg_tests.h"
 
@@ -1830,6 +1834,19 @@ int main(int argc, char **argv)
         megler_init(&config);
         return mg_tests_smoke_run(argv[2], argc >= 5 ? atoi(argv[4]) : 1500);
     }
+    /* SQLite as guest code with its process ended while it writes: <guest library dir> <scratch> [times] [seed]. */
+    if (argc >= 4 && !strcmp(argv[1], "--guest-sqlite"))
+        return mg_tests_guest_sqlite(argv[2], argv[3], argc >= 5 ? atoi(argv[4]) : 12, argc >= 6 ? (unsigned)strtoul(argv[5], NULL, 10) : 0) ? 1 : 0;
+    /* One step of it in this process: <guest library dir> <scratch> <setup | work | check | all> <1: a write-ahead log, 0: a journal> [seed];
+       or "two" for the step: two copies of the library on one database, which damages it as things are. */
+    if (argc >= 6 && !strcmp(argv[1], "--guest-sqlite-step")) {
+        megler_config config;
+        memset(&config, 0, sizeof(config));
+        config.data_dir = argv[3];
+        config.package_dir = argv[3];
+        megler_init(&config);
+        return mg_tests_guest_sqlite_step(argv[2], argv[3], argv[4], atoi(argv[5]), argc >= 7 ? (unsigned)strtoul(argv[6], NULL, 10) : 1, NULL, NULL) ? 1 : 0;
+    }
 #endif
     if (argc >= 3 && !strcmp(argv[1], "--probe")) {
         /* The device probe, as the app's Device checks runs it; argv[2] is where its step log goes. */
@@ -1872,6 +1889,22 @@ int main(int argc, char **argv)
         printf("%d checks, %d failed\n", checks, failed);
         return failed ? 1 : 0;
     }
+    if (argc >= 4 && !strcmp(argv[1], "--gl-only")) {
+        /* Only OpenGL ES's natives' tests, with the runtime they need started for them: <scratch> <android root | ->. */
+        megler_config config;
+        int checks = 0, failed;
+        memset(&config, 0, sizeof(config));
+        config.data_dir = argv[2];
+        config.package_dir = argv[2];
+        megler_init(&config);
+        if (!(argv[3][0] == '-' && !argv[3][1] ? mg_dvm_start(NULL, 0) : mg_dvm_start_android(argv[3]))) {
+            printf("the runtime did not start\n");
+            return 1;
+        }
+        failed = mg_gl_natives_tests_run(NULL, NULL, &checks);
+        printf("%d checks, %d failed\n", checks, failed);
+        return failed ? 1 : 0;
+    }
     if (argc >= 4 && !strcmp(argv[1], "--dvm-link")) return link_mode(argc, argv);
     if (argc >= 3 && !strcmp(argv[1], "--dvm-init")) return init_mode(argc, argv);
     if (argc >= 3 && !strcmp(argv[1], "--dvm-natives")) return natives_mode(argv);
@@ -1886,7 +1919,8 @@ int main(int argc, char **argv)
         return 0;
     }
     if (argc < 3) {
-        fprintf(stderr, "usage: %s <guest library dir | -> <scratch dir>\n       %s --load <dir> <library>...\n", argv[0], argv[0]);
+        fprintf(stderr, "usage: %s <guest library dir | -> <scratch dir>\n       %s --load <dir> <library>...\n"
+                        "       %s --guest-sqlite <guest library dir> <scratch dir> [times] [seed]\n", argv[0], argv[0], argv[0]);
         return 2;
     }
     {

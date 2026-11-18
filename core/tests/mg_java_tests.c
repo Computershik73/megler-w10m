@@ -48,6 +48,14 @@
  * found, and what Android would tell it of its splits. Checked besides: the picture only a split has, in the window; and
  * the .xapk's expansion file, which the app finds in its own Android/obb.
  *
+ * `playclient` and `playstore` are Play Feature Delivery (docs/PLAY-FEATURE-DELIVERY.md): an app that asks the Play Store
+ * for a feature module as Play Core does, and a stand-in for the Play Store whose split install service answers as the
+ * Play Store's. They are two processes on a phone, with a folder in common; here they are run in turn over one data folder
+ * (run_playclient): the client told promptly that there is no Play Store, or that it did not take the request up; the
+ * Play Store's run taking the request up as the client's call, and its installer session adding the split to the client's
+ * APKs; the client started with the module, and answered from what the Play Store said; and a module handed over as a
+ * file, which the client copies and loads as SplitCompat does.
+ *
  * `screen` has its surface resized and turned from the host's side, as the shell does for a PC's window and a phone turned
  * (megler_set_surface): an activity that takes no configuration change is made again with its saved state, its views' and
  * what it retained, unless a size changed across none of the sizes its resources are made for; one that takes them all hears
@@ -59,6 +67,14 @@
  * `scroll` is a screen made as WhatsApp's first one is: a ScrollView over a column taller than it, whose cards -- clipped to
  * their outlines, one given a new background once the screen is laid out -- lie below its edge until the app scrolls to them;
  * their pixels are looked at then. Run again with the flag no-node-damage (the script's "no-node-damage").
+ *
+ * `crossapp` and `plugin` are two apps that work together, as Total Commander and its plug-ins do, in two runs with one
+ * data folder. The first has the second listed among the phone's apps (MG_JAVA_OTHER_APKS=<the plugin's APK>; any app can
+ * be given others so, `app` too): it finds it installed, finds its service by the service's action, binds it and calls it
+ * -- the second app's code runs inside the first for that (megler.HostedApps) -- resolves an intent to an activity of it and
+ * asks the shell for that activity, with the whole Intent written where the other app reads it. The second is then started
+ * as the shell starts an app another one asked for (MG_JAVA_START_ACTIVITY=@<the first's data folder>/launch-request.txt):
+ * with that activity and no other, and the Intent whole.
  *
  * `first` is hello started as the player starts an app on a PC's window or on an Xbox's television (`pc`, `xbox`): the
  * player's busy overlay must go at the app's first picture, whichever way it came and at whatever size, the surface changed
@@ -864,6 +880,14 @@ static bool g_direct;
 /* `splits`: the folder of splits the bundle was unpacked into, which the app is started with; and whether it was an .xapk. */
 static char *g_splits_dir;
 static bool g_xapk;
+/*
+ * `playclient` and `playstore` (run_playclient): which of the two the run is of; for the client's, whether the phone has
+ * no Play Store, and how far the earlier runs came -- 0 no Play Store, 1 one that does not answer, 2 the module added, 3
+ * the second module's file there to take.
+ */
+#define PLAY_CLIENT "megler.test.playclient"
+static bool g_play_client, g_play_store, g_play_no_store;
+static int g_play_phase;
 
 /* Whether the app is still there to wait for. */
 static bool running(void)
@@ -1495,13 +1519,86 @@ static MEGLER_CB int system_permission(void *user, const char *group, bool ask)
     return state;
 }
 
+/*
+ * The shell's part in one app starting another's activity: what is heard is the package and the activity's class. The request
+ * may carry more after the class -- '~' and the name of the file the app wrote the whole intent into (megler.PhoneApps) --
+ * which the shell hands on as it is: the latest request is kept whole in the data folder's launch-request.txt, for a run of
+ * that other app to be started with (MG_JAVA_START_ACTIVITY=@<that file>: the crossapp and plugin test apps).
+ */
 static MEGLER_CB bool system_launch(void *user, const char *package, const char *activity)
 {
-    char t[200];
+    char t[420];
+    const char *more = activity ? strchr(activity, '~') : NULL;
     (void)user;
-    snprintf(t, sizeof(t), "launch=%s/%s;", package, activity ? activity : "-");
+    snprintf(t, sizeof(t), "launch=%s/%.*s;", package, activity ? (int)(more ? (size_t)(more - activity) : strlen(activity)) : 1, activity ? activity : "-");
     system_heard(t);
+    if (activity) {
+        char *path = mg_sprintf("%s/launch-request.txt", megler_data_dir());
+        mg_file_write_all(path, activity, strlen(activity));
+        free(path);
+    }
     return true;
+}
+
+/* The value of a string (or a number) of an APK's report (megler_apk_report) by its key, "" for none. */
+static void report_value(const char *report, const char *key, char *out, size_t size)
+{
+    char find[48];
+    const char *at;
+    size_t n = 0;
+    out[0] = 0;
+    snprintf(find, sizeof(find), "\"%s\":", key);
+    at = report ? strstr(report, find) : NULL;
+    if (!at) return;
+    at += strlen(find);
+    if (*at == '"') {
+        for (at++; *at && *at != '"' && n + 1 < size; at++) {
+            if (*at == '\\' && at[1]) at++;
+            out[n++] = *at;
+        }
+    } else {
+        while (*at && *at != ',' && *at != '}' && n + 1 < size) out[n++] = *at++;
+    }
+    out[n] = 0;
+}
+
+/*
+ * MG_JAVA_OTHER_APKS: further apps the phone has, the paths of their APKs with ':' between them. Each is listed and described
+ * in the apps folder as the shell does it (library/PhoneAppsList.cpp): its line in apps.txt, its activities
+ * (megler_apk_describe_activities) and where its APK is (source.txt), so that the app run finds it installed and can read
+ * its APK at /data/app/<package>-1/base.apk: the crossapp test app with the plugin one, Total Commander with its plug-ins.
+ */
+static void other_apks(const char *dir, FILE *list)
+{
+    const char *all = getenv("MG_JAVA_OTHER_APKS");
+    while (all && *all) {
+        const char *end = strchr(all, ':');
+        size_t n = end ? (size_t)(end - all) : strlen(all);
+        char *apk = mg_sprintf("%.*s", (int)n, all), *report = megler_apk_report(apk);
+        char package[128], activity[160], label[96], version[48], code[24];
+        mg_stat st;
+        report_value(report, "package", package, sizeof(package));
+        report_value(report, "activity", activity, sizeof(activity));
+        report_value(report, "label", label, sizeof(label));
+        report_value(report, "versionName", version, sizeof(version));
+        report_value(report, "versionCode", code, sizeof(code));
+        if (package[0] && mg_path_stat(apk, &st, NULL)) {
+            char *own = mg_sprintf("%s/%s", dir, package), *path = mg_sprintf("%s/source.txt", own);
+            char *source = mg_sprintf("description 3\n%s\n%llu\n%s\n", apk, (unsigned long long)st.size, code[0] ? code : "0");
+            const bool described = megler_apk_describe_activities(apk, NULL, own);
+            fprintf(list, "%s\t%s\t%s\t%s\t%s\n", package, activity, label[0] ? label : package, version, code[0] ? code : "0");
+            mg_file_write_all(path, source, strlen(source));
+            say("  another app the phone has: %s (%s), %s", package, apk, described ? "described" : "NOT described");
+            free(source);
+            free(path);
+            free(own);
+        } else {
+            say("  (MG_JAVA_OTHER_APKS: %s is not an APK that can be read)", apk);
+        }
+        megler_free(report);
+        free(apk);
+        all = end ? end + 1 : NULL;
+    }
 }
 
 /*
@@ -1527,6 +1624,11 @@ static const char *phone_apps_fixture(void)
     f = fopen(path, "wb");
     if (f) {
         fputs("com.example.other\tcom.example.other.Main\tOther\t1.0\t3\n", f);
+        /* The other of Play Feature Delivery's two apps (run_playclient): the Play Store on the client's phone, unless the run
+           is of a phone without one; the client on the Play Store's. */
+        if (g_play_client && !g_play_no_store) fputs("com.android.vending\tmegler.test.playstore.Main\tPlay Store\t1.0\t1\n", f);
+        if (g_play_store) fputs(PLAY_CLIENT "\t" PLAY_CLIENT ".Main\tPlay client\t1.0\t1\n", f);
+        other_apks(dir, f);
         fclose(f);
     }
     free(path);
@@ -1569,6 +1671,34 @@ static const char *phone_apps_fixture(void)
         path = mg_sprintf("%s/7f080001.png", own);
         mg_file_write_all(path, png3, sizeof(png3));
         free(path);
+        /* Which APK that is, as the shell writes it beside the description (PhoneAppsList.cpp): the file is where the data
+           app finds the other app's APK, /data/app/com.example.other-1/base.apk (phone-apps-source). */
+        {
+            static const char apk[] = "PK the other app's APK";
+            char *file = mg_sprintf("%s/other.apk", dir), *source = mg_sprintf("description 3\n%s\n%u\n3\n", file, (unsigned)(sizeof(apk) - 1));
+            mg_file_write_all(file, apk, sizeof(apk) - 1);
+            path = mg_sprintf("%s/source.txt", own);
+            mg_file_write_all(path, source, strlen(source));
+            free(path);
+            free(source);
+            free(file);
+        }
+        free(own);
+    }
+    /* Which APK the Play Store's phone has the client installed from: the copy in the library the client's runs are of,
+       beside which the Play Store's installer adds a split (megler.Native.addSplit). */
+    if (g_play_store) {
+        char *own = mg_sprintf("%s/" PLAY_CLIENT, dir), *file = mg_sprintf("%s/library/playclient.apk", megler_data_dir()), *source;
+        mg_stat st;
+        memset(&st, 0, sizeof(st));
+        mg_path_stat(file, &st, NULL);
+        source = mg_sprintf("description 2\n%s\n%u\n1\n", file, (unsigned)st.size);
+        mg_path_mkdirs(own);
+        path = mg_sprintf("%s/source.txt", own);
+        mg_file_write_all(path, source, strlen(source));
+        free(path);
+        free(source);
+        free(file);
         free(own);
     }
     return dir;
@@ -1694,6 +1824,9 @@ static bool start(const char *apk, const char *android_root)
     if (g_verbose >= 3 && mg_bionic_find("setenv")) ((int (*)(const char *, const char *, int))mg_bionic_find("setenv"))("TL_VIEW_DUMP", "1", 1);
     /* MG_JAVA_VD_TRACE=1: every vector drawable an app draws is said in its log, with its tint and filter (android.graphics.drawable.VectorDrawable's TL_VD_TRACE). */
     if (getenv("MG_JAVA_VD_TRACE") && mg_bionic_find("setenv")) ((int (*)(const char *, const char *, int))mg_bionic_find("setenv"))("TL_VD_TRACE", "1", 1);
+    /* MG_TEST_GMS_MAIN_STANDS=1: gms-host asks Google Play services' provider while its main thread stands on a latch (run_gms_host). */
+    if (getenv("MG_TEST_GMS_MAIN_STANDS") && mg_bionic_find("setenv"))
+        ((int (*)(const char *, const char *, int))mg_bionic_find("setenv"))("MG_TEST_GMS_MAIN_STANDS", "1", 1);
     if (getenv("MG_MICROG_DROIDGUARD_TEST") && mg_bionic_find("setenv"))
         ((int (*)(const char *, const char *, int))mg_bionic_find("setenv"))("MG_MICROG_DROIDGUARD_TEST", "1", 1);
     if (getenv("MG_MICROG_DROIDGUARD_HANDLE_TEST") && mg_bionic_find("setenv"))
@@ -1767,8 +1900,25 @@ static bool start(const char *apk, const char *android_root)
     }
     g_start_ns = mg_time_monotonic_ns();
     /* MG_JAVA_START_ACTIVITY: an activity of the app another app asks for, as the shell hands it over (Play Store asking
-       microG for its sign-in): started once the app's first activity is up. */
-    if (getenv("MG_JAVA_START_ACTIVITY")) megler_start_activity(getenv("MG_JAVA_START_ACTIVITY"));
+       microG for its sign-in) before the app runs: the app's first activity, in place of its launcher one. "@<file>" is
+       the request that file holds: the one another app's run left (system_launch), with the name of its intent's file. */
+    if (getenv("MG_JAVA_START_ACTIVITY")) {
+        const char *ask = getenv("MG_JAVA_START_ACTIVITY");
+        if (ask[0] == '@') {
+            size_t size = 0;
+            char *text = (char *)mg_file_read_all(ask + 1, &size), request[200];
+            snprintf(request, sizeof(request), "%.*s", text ? (int)size : 0, text ? text : "");
+            request[strcspn(request, "\r\n")] = 0;
+            say("  another app's request, from %s: %s", ask + 1, request[0] ? request : "(none)");
+            if (request[0]) megler_start_activity(request);
+            free(text);
+        } else {
+            megler_start_activity(ask);
+        }
+    }
+    /* The stand-in Play Store is started as the shell starts the Play Store for an app's request for a feature module: with
+       the word that the app has one, where an activity's name is (megler.PlaySplits.MARKER). */
+    if (g_play_store) megler_start_activity("megler.PlaySplits." PLAY_CLIENT);
     if (megler_run(&cfg)) return true;
 #if !MG_HOST_ARM32
     {
@@ -1898,6 +2048,9 @@ static int run_screen(void)
     expect_line("I/ScreenTest: App.onCreate w=480 h=800 sw=480 orientation=1 dpi=160", &at, 120);
     expect_line("I/ScreenTest: Main.onCreate count=1 state=none retained=none", &at, 60);
     expect_line("I/ScreenTest: Main.config w=480 h=800 sw=480 orientation=1 dpi=160 rotation=0 metrics=480x800 res=narrow", &at, 30);
+    /* onPostCreate after onStart (and, below, after onRestoreInstanceState) and before onResume: not at the creation's end. */
+    expect_line("I/ScreenTest: Main.onStart", &at, 30);
+    expect_line("I/ScreenTest: Main.onPostCreate state=none", &at, 30);
     expect_line("I/ScreenTest: Main.onResume", &at, 30);
     settle();
     CHECK(halves(480, 800, RED, BLUE, true));
@@ -1924,6 +2077,7 @@ static int run_screen(void)
     expect_line("I/ScreenTest: Main.config w=800 h=480 sw=480 orientation=2 dpi=160 rotation=1 metrics=800x480 res=wide", &at, 10);
     expect_line("I/ScreenTest: Main.onStart", &at, 10);
     expect_line("I/ScreenTest: Main.onRestoreInstanceState field=typed", &at, 10);
+    expect_line("I/ScreenTest: Main.onPostCreate state=saved", &at, 10);
     expect_line("I/ScreenTest: Main.onResume", &at, 10);
     CHECK(wait_line("I/ScreenTest: App.display 0 rotation=1 size=800x480", 0, 10) >= 0);
     settle();
@@ -2261,11 +2415,23 @@ static int run_hello(void)
     say("  in all so far: %u classes linked, %u objects (%u KB), %u KB of tables and classes", (unsigned)c1.dvm.classes_linked, (unsigned)c1.dvm.objects,
         (unsigned)(c1.dvm.object_bytes >> 10), (unsigned)(c1.dvm.meta_bytes >> 10));
 
-    /* The shell hides the app and shows it again. */
-    megler_set_paused(true);
-    expect_line("I/HelloTest: onPause draws=true", &at, 30);
-    megler_set_paused(false);
-    expect_line("I/HelloTest: onResume", &at, 30);
+    /*
+     * The shell hides the app and shows it again. Hidden and not heard, its main thread is no longer sampled from the
+     * sampler's next ten seconds' lines on (hot_main), and it is again within a second of the app's being shown: Twitter,
+     * Telegram and Facebook Lite in the background had the sampler wake every 5 ms for hours (0.1.0.695, 0.1.0.696).
+     */
+    {
+        const int before = g_nlines;
+        megler_set_paused(true);
+        expect_line("I/HelloTest: onPause draws=true", &at, 30);
+        /* (and, its activity stopped, the activity told to let go of what only its UI needed: TRIM_MEMORY_UI_HIDDEN) */
+        expect_line("I/HelloTest: onStop", &at, 30);
+        expect_line("I/HelloTest: onTrimMemory 20", &at, 30);
+        CHECK(wait_line("hot: the app is not on the screen and nothing of it is heard", before, 40) >= 0);
+        megler_set_paused(false);
+        expect_line("I/HelloTest: onResume", &at, 30);
+        CHECK(wait_line("hot: the main thread is sampled again, after ", before, 30) >= 0);
+    }
     {
         /*
          * A view that draws as Compose's does (Layers, in the bottom left corner): its nodes changed thirty times once the app
@@ -2331,7 +2497,9 @@ static int run_hello(void)
        ended, the shell's cue to close as the app goes. */
     {
         int tries;
-        const int answer = megler_back(400, 10000);
+        /* (A second of quiet: the app's end, after its activity is destroyed, took 180 to 410 ms in the emulator beside the
+           other tests, and a quiet of 400 ms then said "showed nothing new".) */
+        const int answer = megler_back(1000, 10000);
         expect_line("I/HelloTest: back 4 finishes in 100 ms", &at, 10);
         CHECK(answer == MEGLER_BACK_ENDED);
         expect_line("I/HelloTest: onDestroy presses=12", &at, 30);
@@ -2414,15 +2582,16 @@ static bool again_times(i32 count)
 }
 
 /*
- * The row "typing" of the demos list opens a screen with four text fields (core/tests/app/demos, Typing). The test is
- * the keyboard: a touch of a field must ask for it, with the field's kind; what it then sends must arrive in the field,
- * in order, text and editing keys alike; and the field's own pixels must show it.
+ * The row "typing" of the demos list opens a screen with four text fields and a box of one digit (core/tests/app/demos,
+ * Typing). The test is the keyboard: a touch of a field must ask for it, with the field's kind; what it then sends must
+ * arrive in the field, in order, text and editing keys alike; and the field's own pixels must show it.
  */
 static void type_into_fields(const int row[4], int *at)
 {
-    int name[4], number[4], secret[4], note[4], layout, typed, fewer;
+    int name[4], number[4], secret[4], note[4], code[4], layout, typed, fewer;
     i32 shown, hidden, again;
     memset(name, 0, sizeof(name));
+    memset(code, 0, sizeof(code));
     say("the keyboard: text typed into the demos app's fields");
     /* Typed while no field has the focus: it goes nowhere, and the framework's log says so (megler.InputMethods in the overlay). */
     megler_text_commit("x");
@@ -2437,7 +2606,7 @@ static void type_into_fields(const int row[4], int *at)
     expect_line("I/DemoTest: typing: created", at, 30);
     layout = wait_line("I/DemoTest: typing: layout name=", *at, 30);
     CHECK(layout >= 0 && rect_in(line_at(layout), "name", name) && rect_in(line_at(layout), "number", number) && rect_in(line_at(layout), "secret", secret)
-          && rect_in(line_at(layout), "note", note));
+          && rect_in(line_at(layout), "note", note) && rect_in(line_at(layout), "code", code));
     settle();
     if (layout < 0) return;
 
@@ -2529,6 +2698,13 @@ static void type_into_fields(const int row[4], int *at)
     expect_line("I/DemoTest: typing: note=\"one|two\" cursor=7", at, 30);
     settle();
     write_picture("demos-9-fields");
+    /* A box of one digit as Viber's activation code is made of (EnterCodeEditTextLayout), told setTextIsSelectable(false): a
+       touch asks for the keyboard, for a number, and what it sends arrives. Such a box took no touch at all (0.1.0.699). */
+    shown = K.shown;
+    tap(code[0] + code[2] / 2, code[1] + code[3] / 2);
+    CHECK(shown_times(shown + 1) && K.kind == MEGLER_KEYBOARD_NUMBER && K.flags == 0);
+    megler_text_commit("7");
+    expect_line("I/DemoTest: typing: code=\"7\" cursor=1", at, 30);
 
     /* The keyboard says how much of the surface it covers, then that the user put it away: the app goes on, and the next touch of a field asks again. */
     hidden = K.hidden;
@@ -3391,6 +3567,192 @@ static int run_splits(void)
     return g_failed;
 }
 
+/* ------------------------------------------------- Play Feature Delivery */
+
+/*
+ * playclient and playstore (docs/PLAY-FEATURE-DELIVERY.md): an app that asks the Play Store for a feature module as Play
+ * Core does, and a stand-in for the Play Store. On a phone they are two processes with a folder in common
+ * (<storage>/services/play-splits); here a process runs one app, so they are run in turn over one data folder, each run
+ * finding what the one before left (tools/build-tests.sh):
+ *
+ *   playclient no-store   a phone without the Play Store: the app is told PLAY_STORE_NOT_FOUND at once
+ *   playclient            a phone with one: the request is written and the Play Store asked for -- the test's shell starts
+ *                         nothing -- and the app is told SERVICE_DIED once twenty seconds pass with the request not taken up
+ *   playstore             started as the shell starts the Play Store for the request: Megler takes it up and passes it to
+ *                         the app's own service as the client's call; the service installs the module `extra`, and the
+ *                         split is added to the client's APKs
+ *   playclient            the client has the module: its class loads, the request asked again is answered from what the
+ *                         Play Store said, the service's other calls are answered, and the module `files` is asked for
+ *   playstore             hands `files` over as a file of its provider, which is copied to where the client can read it
+ *   playclient            takes the file as SplitCompat takes one, and loads it
+ *
+ * The client is run from a copy in <data dir>/library, as the shell keeps an app, its splits in the folder beside it; that
+ * copy is the app the Play Store's phone has (phone_apps_fixture).
+ */
+#define PLAY_FOLDER "services/play-splits/" PLAY_CLIENT
+
+static bool play_file(const char *rest)
+{
+    char *path = mg_sprintf("%s/%s", megler_data_dir(), rest);
+    mg_stat st;
+    const bool is = mg_path_stat(path, &st, NULL) && !st.is_dir && st.size > 0;
+    free(path);
+    return is;
+}
+
+/* What the app asked of the phone, once it has asked `want` (or nothing, for ""). */
+static void play_asked(const char *want)
+{
+    char heard[sizeof(g_system_heard)];
+    int tries;
+    for (tries = 0; tries < 150; tries++) {
+        mg_lock_acquire(&g_system_lock);
+        mg_strlcpy(heard, g_system_heard, sizeof(heard));
+        mg_lock_release(&g_system_lock);
+        if (!strcmp(heard, want) || !*want) break;
+        mg_sleep_ns(20000000ull);
+    }
+    say("  asked of the phone: %s", *heard ? heard : "(nothing)");
+    CHECK(!strcmp(heard, want));
+}
+
+/* The client's copy in the library, and the folder of its splits when the Play Store has added one; which run this is. */
+static const char *play_client_before(const char *apk)
+{
+    char *dir = mg_sprintf("%s/library", megler_data_dir()), *copy = mg_sprintf("%s/library/playclient.apk", megler_data_dir());
+    size_t size = 0;
+    void *bytes = mg_file_read_all(apk, &size);
+    mg_path_mkdirs(dir);
+    CHECK(bytes && mg_file_write_all(copy, bytes, size));
+    free(bytes);
+    free(dir);
+    if (play_file("library/playclient.apk.splits/split_extra.apk")) g_splits_dir = mg_sprintf("%s.splits", copy);
+    g_play_phase = g_play_no_store ? 0 : !g_splits_dir ? 1 : !play_file(PLAY_FOLDER "/2.request") ? 2 : 3;
+    say("the Play client's run %d: %s", g_play_phase,
+        g_play_phase == 0 ? "a phone without the Play Store" : g_play_phase == 1 ? "a Play Store that does not take the request up"
+        : g_play_phase == 2 ? "the module extra added by the Play Store" : "the module files there to take");
+    return copy;
+}
+
+static int run_playclient(void)
+{
+    static const char *const steps0[] = { "bound", "no-store" }, *const steps1[] = { "bound", "unanswered" };
+    static const char *const steps2[] = { "split-listed", "split-loaded", "bound", "replayed", "session-states", "deferred", "cancel-unknown", "files-asked" };
+    static const char *const steps3[] = { "split-listed", "split-loaded", "bound", "files-given", "files-loaded" };
+    const char *const *steps = g_play_phase == 0 ? steps0 : g_play_phase == 1 ? steps1 : g_play_phase == 2 ? steps2 : steps3;
+    const int count = g_play_phase == 0 ? (int)MG_COUNT(steps0) : g_play_phase == 1 ? (int)MG_COUNT(steps1) : g_play_phase == 2 ? (int)MG_COUNT(steps2)
+                    : (int)MG_COUNT(steps3);
+    static const char launch[] = "launch=com.android.vending/megler.PlaySplits." PLAY_CLIENT ";";
+    char text[160];
+    int at = -1, i;
+    expect_line("I/PlayClientTest: onCreate", &at, 120);
+    expect_line(g_play_phase < 2 ? "I/PlayClientTest: splits null files-asked=false"
+                : g_play_phase == 2 ? "I/PlayClientTest: splits [extra] files-asked=false" : "I/PlayClientTest: splits [extra] files-asked=true", &at, 60);
+    for (i = 0; i < count; i++) {
+        snprintf(text, sizeof(text), "I/PlayClientTest: %s ok", steps[i]);
+        expect_line(text, &at, 120);
+    }
+    snprintf(text, sizeof(text), "I/PlayClientTest: done ok=%d failed=0", count);
+    expect_line(text, &at, 60);
+    /* The bind is Megler's stand-in's in every run: the Play Store is another process, if the phone has it at all. */
+    CHECK(find_line("I/MeglerPlaySplits: the app binds the Play Store's split install service", 0) >= 0);
+    switch (g_play_phase) {
+    case 0:
+        /* No Play Store among the phone's apps: Play Core's error for that, at once; nothing written, nothing started. */
+        CHECK(find_line("I/MeglerPlaySplits: the app is told error -14: the phone has no Play Store to ask for [module extra]", 0) >= 0);
+        CHECK(find_line("I/PlayClientTest: asked extra: error -14 quick=true", 0) >= 0);
+        CHECK(!play_file(PLAY_FOLDER "/1.request"));
+        play_asked("");
+        break;
+    case 1:
+        /* The request written and the Play Store asked for, with the word that this app has a request; none comes up here,
+           and the app is not left waiting. */
+        CHECK(find_line("I/MeglerPlaySplits: request 1 ([module extra]): the Play Store is started for it", 0) >= 0);
+        CHECK(find_line("I/MeglerPlaySplits: the app is told error -9: the Play Store did not take request 1", 0) >= 0);
+        CHECK(find_line("I/PlayClientTest: asked extra: error -9 quick=false", 0) >= 0);
+        CHECK(play_file(PLAY_FOLDER "/1.request") && !play_file(PLAY_FOLDER "/1.events"));
+        play_asked(launch);
+        break;
+    case 2:
+        /* The request of the run before, which the Play Store has answered since: said again from its events, and the Play
+           Store not started for it. The module `files` is a new request, and the Play Store is started for that. */
+        CHECK(find_line("I/MeglerPlaySplits: request 1 ([module extra]) asked again: answered from what the Play Store said of it", 0) >= 0);
+        CHECK(find_line("I/MeglerPlaySplits: request 1: session 41 is in state 5", 0) >= 0);
+        CHECK(find_line("I/MeglerPlaySplits: the app asks for its sessions: 0", 0) >= 0);
+        CHECK(find_line("I/MeglerPlaySplits: the app is told error -5: a deferred install or uninstall (transaction 8) asked for [module extra]", 0) >= 0);
+        CHECK(find_line("I/MeglerPlaySplits: the app is told error -4: session 77 to cancel is none the Play Store is working on for this app", 0) >= 0);
+        CHECK(wait_line("I/MeglerPlaySplits: request 2 ([module files]): the Play Store is started for it", 0, 30) >= 0);
+        CHECK(play_file(PLAY_FOLDER "/2.request"));
+        play_asked(launch);
+        break;
+    default:
+        /* The file the Play Store handed over, where this app reads it; nothing more is asked of the Play Store. */
+        CHECK(find_line("I/MeglerPlaySplits: request 2 ([module files]) asked again: answered from what the Play Store said of it", 0) >= 0);
+        CHECK(find_line("I/MeglerPlaySplits: request 2: session 42 is in state 3, with 1 split files to take", 0) >= 0);
+        CHECK(play_file(PLAY_FOLDER "/files/42/files.apk"));
+        play_asked("");
+        break;
+    }
+    CHECK(find_line(" FAILED", 0) < 0 && find_line("FATAL EXCEPTION", 0) < 0);
+    back_and_end("I/PlayClientTest: onDestroy", &at);
+    if (g_failed) {
+        say_app_lines("/PlayClientTest: ");
+        say_app_lines("/MeglerPlaySplits: ");
+    }
+    return g_failed;
+}
+
+static int run_playstore(void)
+{
+    /* The client's latest request: for the module the stand-in installs with a session, or for the one it hands over as a file. */
+    const bool files = play_file(PLAY_FOLDER "/2.request");
+    const int request = files ? 2 : 1, session = files ? 42 : 41, last = files ? 3 : 5;
+    char text[200];
+    int at = -1, said = -1, i;
+    expect_line("I/PlayStoreTest: onCreate", &at, 120);
+    /* Megler takes the request up in the Play Store's process, and binds the Play Store's own service for it. */
+    snprintf(text, sizeof(text), "I/MeglerPlaySplits: request %d of " PLAY_CLIENT " ([module %s]) is taken up: passed to the Play Store's split install service as the app's call",
+             request, files ? "files" : "extra");
+    expect_line(text, &said, 120);
+    expect_line("I/PlayStoreTest: service bound action=com.google.android.play.core.splitinstall.BIND_SPLIT_INSTALL_SERVICE", &at, 60);
+    /* The service is called as the client: the call's package is one of the calling uid's, and that app is in front. */
+    snprintf(text, sizeof(text), "I/PlayStoreTest: startInstall package=" PLAY_CLIENT " modules=[%s] playcore=11004 caller-owns=true", files ? "files" : "extra");
+    expect_line(text, &at, 60);
+    snprintf(text, sizeof(text), "I/PlayStoreTest: Start install for package: " PLAY_CLIENT " session %d", session);
+    expect_line(text, &at, 60);
+    /* What the service says, kept in its order for the client: the callback's call, then each state. */
+    snprintf(text, sizeof(text), "I/MeglerPlaySplits: request %d of " PLAY_CLIENT ": the Play Store calls the callback (call 2)", request);
+    expect_line(text, &said, 60);
+    for (i = 1; i <= last; i++) {
+        snprintf(text, sizeof(text), "I/MeglerPlaySplits: request %d of " PLAY_CLIENT ": the Play Store says session %d is in state %d", request, session, i);
+        expect_line(text, &said, 120);
+    }
+    snprintf(text, sizeof(text), "I/MeglerPlaySplits: request %d of " PLAY_CLIENT " is over: the app is shown again", request);
+    expect_line(text, &said, 60);
+    if (files) {
+        /* The split read out of the Play Store's provider here, where it can be, into the folder the client reads. */
+        CHECK(find_line("I/PlayStoreTest: the provider's file files.apk is opened", 0) >= 0);
+        CHECK(find_line("I/MeglerPlaySplits: request 2 of " PLAY_CLIENT ": 1 split files copied for the app to take", 0) >= 0);
+        CHECK(play_file(PLAY_FOLDER "/files/42/files.apk"));
+    } else {
+        /* The session that inherits the client's APKs: its split added beside the client's APK in the library. */
+        CHECK(find_line("I/Megler: install: session 1 made for " PLAY_CLIENT ", to add to the APKs it is installed with", 0) >= 0);
+        CHECK(find_line("java: the split extra is added to " PLAY_CLIENT " (split_extra.apk beside its other splits); the app has it from its next start", 0) >= 0);
+        CHECK(find_line("I/PlayStoreTest: install session 1 status=0 package=" PLAY_CLIENT, 0) >= 0);
+        CHECK(play_file("library/playclient.apk.splits/split_extra.apk"));
+    }
+    CHECK(play_file(files ? PLAY_FOLDER "/2.events" : PLAY_FOLDER "/1.events"));
+    /* And the client is asked for again, as it was before the Play Store came in front of it. */
+    play_asked("launch=" PLAY_CLIENT "/-;");
+    CHECK(find_line(" FAILED", 0) < 0 && find_line("FATAL EXCEPTION", 0) < 0 && find_line("I/PlayStoreTest: refused", 0) < 0);
+    back_and_end("I/PlayStoreTest: onDestroy", &at);
+    if (g_failed) {
+        say_app_lines("/PlayStoreTest: ");
+        say_app_lines("/MeglerPlaySplits: ");
+    }
+    return g_failed;
+}
+
 /* The script (g_script, above), as main gives it. */
 void mg_tests_java_set_script(int count, char **steps)
 {
@@ -3582,7 +3944,8 @@ static void system_requests(void)
  * Main.Answer). Asked for Answer as another app asks, the app finishes it with its result, writes that in the services' folder
  * for com.example.other, which waits for it, and brings that app to the front (launch_app with no activity). Then the app asks
  * com.example.other for its activity Main for a result and puts Answer's result where that app would have written it; when
- * the shell shows the app again, onActivityResult has it: RESULT_OK and the extras of plain types (an int[] is not passed).
+ * the shell shows the app again, onActivityResult has it: RESULT_OK and its intent whole (megler.Flat), the int[] among its
+ * extras too.
  */
 static void app_results(int *at)
 {
@@ -3599,7 +3962,7 @@ static void app_results(int *at)
     CHECK(n >= sizeof(want) - 1 && !strcmp(heard + n - (sizeof(want) - 1), want));
     megler_set_paused(true);
     megler_set_paused(false);
-    expect_line("I/DataTest: app-results answered request=77 result=-1 authAccount=someone@example.com n=7 skipped=false", at, 30);
+    expect_line("I/DataTest: app-results answered request=77 result=-1 authAccount=someone@example.com n=7 skipped=true", at, 30);
     /*
      * Then Android's Settings screens that Megler has (megler.SystemScreens), which the app opens: its own info (Force stop,
      * Clear storage), which Back closes; then the accounts of a type it names, none, which Back closes too.
@@ -3619,16 +3982,19 @@ static void app_results(int *at)
 
 static int run_data(void)
 {
-    static const char *const steps[] = { "open", "kept", "insert", "query", "types", "update", "delete", "rollback", "commit", "constraint", "statement", "text",
-                                         "bad-sql", "memory", "upgrade", "wal-restored", "left",
+    static const char *const steps[] = { "open", "kept", "insert", "query", "types", "update", "delete", "rollback", "commit", "deferred-transaction", "constraint",
+                                         "statement", "text", "bad-sql", "memory", "upgrade", "wal-restored", "left",
                                          /* And the storage as an app sees it. */
-                                         "environment", "own-folders", "cache-cleared", "volumes", "space",
+                                         "environment", "own-folders", "cache-cleared", "volumes", "volume-infos", "space",
                                          /* And the phone's media through MediaStore (megler.MediaProvider): saved to the gallery,
                                             seen as the storage permission lets it -- the first run only what it saved itself --,
                                             queried with the app's SQL, read, thumbnailed, watched, scanned and deleted. */
                                          "media-save", "media-gated", "media-query", "media-bundle", "media-read", "media-thumbnails",
                                          "media-observer", "media-scanner", "media-delete",
-                                         "permissions", "download", "list-root",
+                                         "permissions", "download",
+                                         /* And a folder moved out of a folder of the phone's own, as Files by Google moves one out of DCIM: the
+                                            rename refused, each file copied and checked by its AssetFileDescriptor's length. */
+                                         "link-move", "list-root",
                                          /* And the battery, the time zone, TLS (conscrypt's: a TLS server and client of the app's own on loopback,
                                             and an https URL through Android's HTTP client; or, where its library is not in the Android root, the
                                             stand-in that fails politely), the app's network security configuration (an authority of its own
@@ -3672,7 +4038,7 @@ static int run_data(void)
                                             makes one. And a proxy of an interface of 600 methods. And sound from Java: an
                                             AudioTrack written to, a MediaPlayer of a WAV and of an Ogg Vorbis asset, a SoundPool. */
                                          "xml", "asset-fd", "tasks", "wrapper-receiver", "viewgroup-flag", "text-drawables", "pfd-dup", "pfd-parcel",
-                                         "theme-selfref", "queue-next", "storage-stats", "broadcast-explicit", "service-stop-thread", "start-ids", "process-scope", "job-scheduler", "downloads", "rollback-service", "art-manager", "progress-subclass", "telephony", "microphone", "biometric", "ordered-broadcast", "hardware-accelerated", "descendant-invalidated", "invalidate-override", "image-matrix-before-layout", "delegate-last-scope", "asset-manager-manifest", "big-asset", "file-available", "path-iterator", "mutable-context", "exec", "crc32c", "nine-patch-constructors", "subscription-ids", "filter-categories", "intent-categories", "broadcast-identity", "arrays-ranges", "collection-factories", "unmodifiable-collectors", "objects-java9", "thread-stack", "icu-number", "audio-route", "expand-template", "list-fragment", "fragment-saved-state", "stub-said", "handler-thread", "managed-dialog", "input-format", "dialog-of-stopped", "zoom-buttons", "zip-path-validator", "list-row-click", "animation-listener", "animation-set", "wait-interrupt", "looper-interrupt", "circular-reveal", "animator-values", "detached-animator", "animator-listener", "animator-not-animation", "observer-merged", "typeface-descriptor", "device-provisioned", "users", "start-asked", "pending-intent-creator", "pending-intent-flags", "pending-intent-options", "alarm-replace-cancel", "alarm-listeners", "wake-lock", "cell-info-update", "messenger-forwarded", "insets-builder", "insets-consumed", "insets-siblings", "broadcast-handler", "broadcast-unregistered", "prefs-spaced-key", "prefs-null-key", "account-removed", "sync", "google-signed-out", "package-installer", "batch-operations", "wifi", "media-metadata", "playback-state", "remote-user-info", "media-key-controller", "container-state", "context-params", "theme-accent", "phone-apps", "phone-apps-activities", "phone-apps-signatures", "check-signatures", "install-intent", "install-session", "install-splits", "bitmap-bytes", "bitmap-reuse", "file-read-only", "file-times", "component-state", "adaptive-icon", "idle-handler", "uri-builder", "url-query-sanitizer", "html-tag-handler", "stats-manager", "credential-manager", "many-interfaces", "proxy-many-methods", "apk-path", "archive-meta-data", "maps-paths", "apk-optimization",
+                                         "theme-selfref", "queue-next", "storage-stats", "broadcast-explicit", "service-stop-thread", "start-ids", "process-scope", "job-scheduler", "job-content-trigger", "downloads", "rollback-service", "art-manager", "progress-subclass", "telephony", "microphone", "biometric", "ordered-broadcast", "hardware-accelerated", "descendant-invalidated", "invalidate-override", "invalidate-in-constructor", "image-matrix-before-layout", "delegate-last-scope", "asset-manager-manifest", "big-asset", "file-available", "path-iterator", "mutable-context", "exec", "crc32c", "nine-patch-constructors", "subscription-ids", "filter-categories", "intent-categories", "broadcast-identity", "arrays-ranges", "collection-factories", "unmodifiable-collectors", "objects-java9", "thread-stack", "icu-number", "icu-new-units", "audio-route", "expand-template", "list-fragment", "fragment-saved-state", "stub-said", "handler-thread", "managed-dialog", "input-format", "dialog-of-stopped", "zoom-buttons", "zip-path-validator", "list-row-click", "animation-listener", "animation-set", "wait-interrupt", "looper-interrupt", "circular-reveal", "animator-values", "detached-animator", "animator-listener", "animator-not-animation", "observer-merged", "popup-measured-attached", "observer-tree", "typeface-descriptor", "device-provisioned", "users", "start-asked", "pending-intent-creator", "pending-intent-flags", "pending-intent-options", "alarm-replace-cancel", "alarm-listeners", "wake-lock", "cell-info-update", "messenger-forwarded", "insets-builder", "insets-consumed", "insets-siblings", "broadcast-handler", "broadcast-unregistered", "prefs-spaced-key", "prefs-null-key", "account-removed", "sync", "google-signed-out", "package-installer", "batch-operations", "wifi", "media-metadata", "playback-state", "remote-user-info", "media-key-controller", "container-state", "context-params", "theme-accent", "phone-apps", "phone-apps-source", "phone-apps-activities", "phone-apps-signatures", "check-signatures", "install-intent", "install-session", "install-splits", "bitmap-bytes", "bitmap-reuse", "file-read-only", "file-times", "component-state", "adaptive-icon", "idle-handler", "uri-builder", "url-query-sanitizer", "html-tag-handler", "stats-manager", "credential-manager", "many-interfaces", "proxy-many-methods", "apk-path", "archive-meta-data", "maps-paths", "apk-optimization",
                                          /* And an <inset> whose insets are fractions of its bounds, WhatsApp's adaptive icon's 0.01% among them. */
                                          "inset-fraction",
                                          /* And a WorkSource through a Parcel and back, as a location request of Google Play services' carries one. */
@@ -3701,6 +4067,8 @@ static int run_data(void)
                                          /* And the process's Application through ActivityThread's hidden fields, on a thread of the Application's
                                             own while it is created, as Tuya Smart's library loader asks, and afterwards. */
                                          "activity-thread-application",
+                                         /* And its Instrumentation in the hidden mInstrumentation, which TikTok Lite's "mini" app replaces. */
+                                         "activity-thread-instrumentation",
                                          /* And the hidden ServiceManager, the platform's services each a binder that refuses every
                                             transaction and any other name a service that is not there, as Shizuku's SystemServiceHelper
                                             asks it (Morphe Manager ended at its start without the class); and its "window" cast to
@@ -3732,9 +4100,26 @@ static int run_data(void)
                                          /* And a grid whose cells leave them out inflates: what is left out is wrap_content (YouTube's
                                             res/lzI.xml). */
                                          "grid-cells",
+                                         /* And a SearchView's query field and close button have Android's ids, found by name
+                                            (YouTube ReVanced Extended's settings). */
+                                         "search-view-ids",
+                                         /* And the framework's numbers of the platform's internal resources (megler.IR) are the
+                                            table's that is read, as getIdentifier finds them by name. */
+                                         "platform-ids",
+                                         /* And the built-in screen, as YouTube measures it for its form factor: a display of
+                                            ALL_INCLUDING_DISABLED whose type is internal, its smallest width the configuration's. */
+                                         "display-form-factor",
                                          /* And a LayerDrawable has a constant state, whose copy is a drawable of its kind with the layers'
                                             copies: a ripple, a layer list with ids and insets, a transition (YouTube's watch page). */
                                          "layer-copy",
+                                         /* And the wrappers Android gives a constant state have one, as a nine-patch, a shape and a
+                                            list of colours have: an inset made in code is copied for each row of a menu (EhViewer's
+                                            drawer, Material's NavigationView). */
+                                         "wrapper-copy",
+                                         /* And a slider's thumb from XML, a shape and a vector icon in an inset layer list, copied
+                                            through its constant state and sized as Material's Slider does (WhatsApp's chat theme
+                                            preview). */
+                                         "thumb-copy",
                                          /* And a reference that comes to @null is no value in a styled attribute array: a tint that is a
                                             colour @null by day leaves the image without one (WhatsApp's settings on a PC). */
                                          "null-reference",
@@ -3747,6 +4132,9 @@ static int run_data(void)
                                          /* And Choreographer's vsync callbacks are called at the next frame with its data, and one removed
                                             is not (YouTube's watch page waited for one for ever). */
                                          "vsync-callback",
+                                         /* And a Looper's quitSafely handles what was due before it ends, the front of the queue first, and
+                                            quit nothing (Viber's main thread waited for good for WebRTC's EglRenderer.release). */
+                                         "looper-quit-safely",
                                          /* And PrecomputedText is the text it was made of -- characters, spans, paragraphs and the parameters
                                             it was made with -- so a SpannableString of one keeps the spans, and a TextView shows it (Ozon's
                                             chat). */
@@ -3797,6 +4185,10 @@ static int run_data(void)
                                          /* And Android's Geocoder with no geocode provider (no Google Play services): not present, no
                                             addresses and no error, the arguments checked; and an Address as Android's, through a Parcel. */
                                          "geocoder", "address",
+                                         /* And system APIs that Play services' own services are made with: a GeofenceProvider with no
+                                            geofencing hardware to be told of, and a hardware geofence's request as a value; and
+                                            Android 14's SharedConnectivityService, which nothing binds, with the values it is told. */
+                                         "geofence-provider", "shared-connectivity",
                                          /* And later APIs and attributes that apps and Play services met missing: a view named for a
                                             shared element transition in its layout (android:transitionName: itself, by a string, by a
                                             style); ListFormatter by a type and a width (Android 13) over ICU 60's list patterns;
@@ -3996,6 +4388,16 @@ static int run_data(void)
     CHECK(wait_line("I/DataTest: process-scope process=megler.test.data:elsewhere marker=0 loader=ServiceClassLoader application=true here=false", 0, 30) >= 0);
     /* Its scope has the APK's DEX files read for the app's own, not a copy (dvm/mg_dvm_apk.c). */
     CHECK(find_line("of its DEX files are the ones read before, shared", 0) >= 0);
+    /* Its loader is a PathClassLoader under the boot class path's, as Android's loader of a process is, read by reflection as
+       Facebook Lite's shell reads it (megler.ServiceClassLoader): one dexElement, the APK's DexFile, which defines the process's
+       own Twin for the loader; the app's library folder on its path; a parent the app put there asked for a class the process
+       has not; and a DEX file the process opened for no loader in the process's scope (its ModuleProbe not there before, the
+       loader's after, with the APK's Twin). */
+    CHECK(wait_line("I/DataTest: process-loader path=true parent=BootClassLoader elements=1 apk=true libraries=true defined=true above=true opened=false/true twin=app", 0, 30) >= 0);
+    CHECK(find_line("elsewhere.dex: opened by the code of scope", 0) >= 0);
+    /* A thread of that process ending with an uncaught exception ends alone, as one of Google Play services' does, and the log
+       names the process (megler.Processes.threadsOf): Facebook Lite's ":fbns" was "Google Play services' thread AppCreate". */
+    CHECK(wait_line("E/Megler: process megler.test.data:elsewhere's thread ElsewhereEnds ended with an uncaught exception; on Android its process would, and the app goes on", 0, 30) >= 0);
     /*
      * Its DEX file, which the APK deflates, inflated into the data folder on the first run and viewed from there, not read into
      * memory; the second run finds it there and makes none (dvm/mg_dvm_apk.c).
@@ -4042,6 +4444,16 @@ static int run_data(void)
     CHECK(wait_line("I/DataTest: job 42 work=one,two,", 0, 30) >= 0);
     /* And a service that is no JobService but gives its JobServiceEngine's binder, as AndroidX's JobIntentService: its work taken through the engine. */
     CHECK(wait_line("I/DataTest: job 43 work=three,four, through its engine", 0, 30) >= 0);
+    /* The jobs of the step "job-content-trigger", held until their content changed and told what did: the two descendants
+       told (once each, the other URI not); the one of a deadline, at it, with nothing its own changed; the one scheduled
+       again from its run, at once with the change told during it; the one that asked for another run, with its change again. */
+    CHECK(wait_line("I/DataTest: job 44 run=1 uris=[content://megler.test.data.jobs/watched/7, content://megler.test.data.jobs/watched/8] "
+                    "authorities=[megler.test.data.jobs] deadline=false", 0, 30) >= 0);
+    CHECK(wait_line("I/DataTest: job 45 run=1 uris=null authorities=null deadline=true", 0, 30) >= 0);
+    CHECK(wait_line("I/DataTest: job 46 run=1 uris=[content://megler.test.data.jobs/again/1] authorities=[megler.test.data.jobs] deadline=false", 0, 30) >= 0);
+    CHECK(wait_line("I/DataTest: job 46 run=2 uris=[content://megler.test.data.jobs/again/2] authorities=[megler.test.data.jobs] deadline=false", 0, 30) >= 0);
+    CHECK(wait_line("I/DataTest: job 47 run=1 uris=[content://megler.test.data.jobs/failed] authorities=[megler.test.data.jobs] deadline=false", 0, 30) >= 0);
+    CHECK(wait_line("I/DataTest: job 47 run=2 uris=[content://megler.test.data.jobs/failed] authorities=[megler.test.data.jobs] deadline=false", 0, 60) >= 0);
     /* The download of the step "downloads": done, its row and file with the server's five bytes, the cookie sent, its cursor's
        observer told. */
     CHECK(wait_line("I/DataTest: downloads ok status=200 bytes=5 body=hello cookie=true observed=true file=5", 0, 30) >= 0);
@@ -4072,6 +4484,8 @@ static int run_data(void)
     /* The one-shot listener of the step "observer-merged", on the observer a view had before it was in a window: run once, that
        observer dead by then, while a listener left in place heard several layouts. */
     CHECK(wait_line("I/DataTest: observer-merged runs=1 dead=true layouts=several", 0, 30) >= 0);
+    /* The drop-down popup of the step "popup-measured-attached", measured after showAsDropDown returned, in its window. */
+    CHECK(wait_line("I/DataTest: popup-measured-attached measured=true unattached=false showing=true", 0, 30) >= 0);
     /* The PendingIntent the step "pending-intent-flags" sent: the one it asked for first, with the extras FLAG_UPDATE_CURRENT gave. */
     CHECK(wait_line("I/DataTest: pending-intent-sent ok v=3", 0, 30) >= 0);
     /* The alarms of the step "alarm-replace-cancel": the one set twice went off once, the cancelled one never, the repeating one
@@ -4214,6 +4628,13 @@ static int run_data(void)
     expect_line("I/DataTest: stuck-holder ok", &at, 60);
     CHECK(find_line("and 1 holder of the monitors waited for:", 0) >= 0 && find_line("stuck: thread ", 0) >= 0
           && find_line("stuck:   megler/test/data/Main.stuckHolder line ", 0) >= 0);
+    /* An Instrumentation of the app's own put in ActivityThread.mInstrumentation (F10, Main.replacedInstrumentation): it is asked
+       for the next activity started, makes one of another class for a name of no class, and is called at each step of that
+       one's life before the activity is, as TikTok Lite's "mini" app has its own make the activities of a feature module it
+       does not have yet (the field was not there: NoSuchFieldException, 0.1.0.699). */
+    megler_key(140, true);
+    megler_key(140, false);
+    expect_line("I/DataTest: instrumentation-replaced ok", &at, 30);
     /* A translucent activity over the app's (F11, Main$Clear): the one below paused, not stopped, its window still there. TikTok
        Lite's consent dialog, translucent, left the screen black behind it (package 619). */
     megler_key(141, true);
@@ -4339,6 +4760,15 @@ static int run_crash(void)
     expect_line("I/CrashTest: away-top finishAffinity finishing=true", &at, 60);
     expect_line("I/CrashTest: trampoline back after the affinity went", &at, 60);
     CHECK(find_line("I/CrashTest: away onResume 2", 0) < 0 && find_line("I/CrashTest: away-top onDestroy", 0) >= 0);
+    /*
+     * An activity of launch mode singleTask started again by the one above it, with no flag: the one on the stack is
+     * brought back (onNewIntent; onRestart first when it had been stopped, which depends on how soon Over asks) and the one
+     * above goes, as on Android; the layer made a second one (Viber's RegistrationActivity, four in one session, 0.1.0.699).
+     */
+    expect_line("I/CrashTest: hub onCreate creations=1", &at, 60);
+    expect_line("I/CrashTest: over onCreate", &at, 60);
+    expect_line("I/CrashTest: hub onNewIntent again creations=1", &at, 60);
+    CHECK(find_line("I/CrashTest: over onDestroy finishing=true", 0) >= 0 && find_line("I/CrashTest: hub onCreate creations=2", 0) < 0);
     expect_line("I/CrashTest: second onCreate, about to throw", &at, 60);
     CHECK(find_line("I/CrashTest: main onStart", 0) < 0 && find_line("I/CrashTest: main onRestart", 0) < 0);
     /* (The second First stayed through SINGLE_TOP, and goes only when it finishes itself for Trampoline.) */
@@ -4374,12 +4804,29 @@ static int run_crash(void)
 
 /* --------------------------------------------------------------------- gl */
 
+/* The swaps of window surfaces so far. */
+static u64 gl_swaps(void)
+{
+    mg_java_gl_stats st;
+    mg_java_gl_get_stats(&st);
+    return (u64)st.swaps;
+}
+
+/* Whether the GL threads have swapped since there were `before` swaps: waited for, ten seconds at the most. */
+static bool gl_swapped_since(u64 before)
+{
+    int tries;
+    for (tries = 0; tries < 1000 && gl_swaps() == before && running(); tries++) mg_sleep_ns(10000000ull);
+    return gl_swaps() > before;
+}
+
 /*
  * `gl`: OpenGL ES from Java (core/tests/app/gl), with the stand-in that draws (mg_gl_standin.c) where ANGLE would be. A
  * GLSurfaceView's renderer on the layer's GL thread -- its calls in Android's order, sixty frames a second at most, none
  * when not asked for in RENDERMODE_WHEN_DIRTY and one when asked, an event queued to it, a fixed size, a pause and a
- * resume that bring a new context; EGL14 on a pbuffer; EGL10 and GL10 on a SurfaceView of the app's own thread. And the
- * picture: the frames under the views, where the views left holes, the label over the GL view.
+ * resume that bring a new context, a pause and a resume with the context kept, and a surface refused at a resume, which
+ * loses the context; EGL14 on a pbuffer; EGL10 and GL10 on a SurfaceView of the app's own thread. And the picture: the
+ * frames under the views, where the views left holes, the label over the GL view.
  */
 static int run_gl(void)
 {
@@ -4419,6 +4866,35 @@ static int run_gl(void)
     line = wait_line("I/GlTest: continuous 30 frames in ", 0, 120);
     CHECK(line >= 0 && sscanf(strstr(line_at(line), " in ") + 4, "%ld", &ms) == 1 && ms >= 480);
     say("  thirty frames drawn continuously took %ld ms", ms);
+    /*
+     * The pacing itself, on times made up. A surface's first swap waits for nothing, and one 5 ms after it waits its sixtieth
+     * of a second out. Frames of 60 ms wait for nothing at all: every second one of them waited a whole period more, being
+     * later than the tenth of a second a surface is owed (Asphalt Nitro at 15 frames a second on a Lumia 950 XL). And after
+     * one late frame the quick ones wait for nothing until what it was late by is made up: the fourth of them here.
+     */
+    {
+        const u64 period = 16666667ull, a_ms = 1000000ull;
+        u64 due = 0, now = 1000 * a_ms, waited = 0;
+        int k;
+        CHECK(mg_java_gl_pace(&due, now) == 0);
+        now += 5 * a_ms;
+        CHECK(mg_java_gl_pace(&due, now) == period - 5 * a_ms);
+        now = due;
+        for (k = 0; k < 20; k++) {
+            now += 60 * a_ms;
+            waited += mg_java_gl_pace(&due, now);
+        }
+        CHECK(waited == 0 && due == now);
+        now += 60 * a_ms;
+        waited += mg_java_gl_pace(&due, now);
+        for (k = 0; k < 3; k++) {
+            now += 5 * a_ms;
+            waited += mg_java_gl_pace(&due, now);
+        }
+        CHECK(waited == 0);
+        now += 5 * a_ms;
+        CHECK(mg_java_gl_pace(&due, now) == 5 * period - 80 * a_ms);
+    }
     /* RENDERMODE_WHEN_DIRTY: nothing drawn while nothing asks, one frame for one requestRender. An event on the GL thread. */
     expect_line("I/GlTest: when-dirty idle frames=0", &at, 60);
     expect_line("I/GlTest: request-render frames=1", &at, 60);
@@ -4486,6 +4962,64 @@ static int run_gl(void)
         mg_java_gl_get_stats(&st1);
     }
     CHECK(st1.swaps > st0.swaps);
+    /*
+     * From its second onResume on the app keeps its context over a pause, as a game does (libGDX): paused and resumed, it gets
+     * a new surface and the renderer is not told to make its things again. Then the surface refused as the app comes back
+     * (EGL_BAD_ALLOC, as Direct3D refused Age of History II's beside 1.2 GB of the game's): the context is lost -- let go of,
+     * a new one made, the surface asked for again at once -- so the renderer is told (created 3), and draws. And one refused
+     * twice running: the second time, beside a context with nothing in it, nothing more is lost; it is asked for again a
+     * second later, the renderer told then (created 4).
+     */
+    {
+        int sw = 0, sh = 0;
+        u64 before;
+        const char *size = strstr(line_at(at), "changed ");
+        mg_gl_standin_stats sb;
+        /* (The surface the thread makes is told from the other view's by its size.) */
+        CHECK(size && sscanf(size + 8, "%dx%d", &sw, &sh) == 2 && sw > 0 && sh > 0 && (sw != egl[2] || sh != egl[3]));
+        megler_set_paused(true);
+        expect_line("I/GlTest: onPause", &at, 30);
+        mg_sleep_ns(300000000ull);
+        before = gl_swaps();
+        megler_set_paused(false);
+        expect_line("I/GlTest: onResume 3 keeps-context=true", &at, 30);
+        expect_line("I/GlTest: changed ", &at, 30);
+        CHECK(gl_swapped_since(before));
+        CHECK(find_line("I/GlTest: created 3", 0) < 0 && find_line("has no surface to draw on", 0) < 0);
+        megler_set_paused(true);
+        expect_line("I/GlTest: onPause", &at, 30);
+        mg_sleep_ns(300000000ull);
+        before = gl_swaps();
+        mg_gl_standin_refuse_surfaces(1, sw, sh);
+        megler_set_paused(false);
+        expect_line("I/GlTest: onResume 4", &at, 30);
+        expect_line("egl: eglCreatePbufferSurface was refused (EGL error 0x3003)", &at, 30);
+        expect_line("egl: as it was refused, the Direct3D device is not known; memory: ", &at, 30);
+        expect_line("java: GLThread 1 has no surface to draw on beside what its context holds: the context is lost", &at, 30);
+        expect_line("I/GlTest: created 3 thread=GLThread ", &at, 60);
+        CHECK(strstr(line_at(at), "current=true version=2") != NULL);
+        expect_line("I/GlTest: changed ", &at, 30);
+        CHECK(gl_swapped_since(before));
+        mg_gl_standin_stats_get(&sb);
+        CHECK(sb.refused_surfaces == 1 && find_line("asks again every second", 0) < 0);
+        megler_set_paused(true);
+        expect_line("I/GlTest: onPause", &at, 30);
+        mg_sleep_ns(300000000ull);
+        before = gl_swaps();
+        mg_gl_standin_refuse_surfaces(2, sw, sh);
+        megler_set_paused(false);
+        expect_line("I/GlTest: onResume 5", &at, 30);
+        expect_line("java: GLThread 1 has no surface to draw on beside what its context holds: the context is lost", &at, 30);
+        expect_line("java: GLThread 1 has no surface to draw on; it goes on without one and asks again every second", &at, 30);
+        expect_line("java: GLThread 1 has a surface again", &at, 30);
+        expect_line("I/GlTest: created 4 thread=GLThread ", &at, 60);
+        expect_line("I/GlTest: changed ", &at, 30);
+        CHECK(gl_swapped_since(before));
+        mg_gl_standin_stats_get(&sb);
+        CHECK(sb.refused_surfaces == 3 && count_lines("the context is lost") == 2 && find_line("I/GlTest: created 5", 0) < 0);
+        mg_gl_standin_refuse_surfaces(0, 0, 0);
+        mg_java_gl_get_stats(&st1);
+    }
     say("  %u swaps of window surfaces, %u of them shown, on %u GL threads; %d pictures in all, %d of them as a part", (unsigned)st1.swaps, (unsigned)st1.shown,
         (unsigned)st1.threads, (int)W.pictures, (int)W.parts);
     /* Composed here, a new GL frame under unchanged views is handed over as the part it changed; the test's shell hands whole pictures. */
@@ -4775,6 +5309,149 @@ static int run_pickers(void)
     return g_failed;
 }
 
+/*
+ * Two apps that work together, as Total Commander and its plug-ins do; this is the one that asks (the test app crossapp; the
+ * phone has the test app plugin beside it, MG_JAVA_OTHER_APKS). It finds the other app installed. It resolves an intent to
+ * the other app's activity and asks for that activity twice: by an intent its filter takes, and by its class for a result,
+ * with an Intent of everything. The shell hears the package and the class each time; the request names the file the Intent
+ * was written into as well (megler.PhoneApps), and the last one stays in the data folder for the plugin app's run, which
+ * is started with it and says what it got (run_plugin). Then it finds the other app's
+ * service as Total Commander finds a plug-in's (by the action alone), binds it by the action and the class, and calls it:
+ * the service runs inside this app (megler.HostedApps), made by the other app's own classes in an Application of that app
+ * made once, with that app's package name, resources and a data folder of its own in the folder every app shares, and the
+ * Binder it gives takes a call and calls back a Binder handed to it. Bound again by the action within the package it is the
+ * same service; unbound it is destroyed, and bound again made again. The other app's service for itself alone, the one
+ * behind a permission this app does not ask for, and a service of an app the phone has not are not bound (false, and the
+ * log says why). Megler's own entry gives the same Binder, and a handler set for a package answers for it. And now that the
+ * other app's service runs here, so do its screens that are asked for here (megler.HostedApps.activity; Total Commander's
+ * LAN plug-in's "New server"): one this app opens for a result, which says it is the other app's, with its service's
+ * instance, tells the service by a broadcast within its package and answers; one for the plug-in alone, which the service
+ * opens itself and which opens the first again by an action with no package. Neither is asked of the shell. This app is
+ * not given the screen for the plug-in alone, nor the launcher's intent, here.
+ */
+static int run_crossapp(void)
+{
+    static const char *const steps[] = { "installed", "resolve", "send-implicit", "send", "services", "bind", "call", "callback", "bind-action", "unbind",
+                                         "refused", "entry", "handler", "activity", "activity-own", "activity-refused" };
+    static const char want[] = "launch=megler.test.plugin/megler.test.plugin.Shown;launch=megler.test.plugin/megler.test.plugin.Shown;";
+    static const char asked[] = "megler.test.plugin.Shown~";
+    char text[120], heard[sizeof(g_system_heard)], *path, *request;
+    size_t size = 0;
+    int at = -1, i;
+    expect_line("I/CrossAppTest: onCreate", &at, 120);
+    for (i = 0; i < (int)MG_COUNT(steps); i++) {
+        snprintf(text, sizeof(text), "I/CrossAppTest: %s ok", steps[i]);
+        expect_line(text, &at, 120);
+    }
+    snprintf(text, sizeof(text), "I/CrossAppTest: done ok=%d failed=0", (int)MG_COUNT(steps));
+    expect_line(text, &at, 60);
+    mg_lock_acquire(&g_system_lock);
+    mg_strlcpy(heard, g_system_heard, sizeof(heard));
+    mg_lock_release(&g_system_lock);
+    say("  the app asked of the phone: %s", heard);
+    CHECK(!strcmp(heard, want));
+    path = mg_sprintf("%s/launch-request.txt", megler_data_dir());
+    request = (char *)mg_file_read_all(path, &size);
+    CHECK(request && size > sizeof(asked) - 1 && !memcmp(request, asked, sizeof(asked) - 1));
+    free(request);
+    free(path);
+    /* The other app's service ran here: its package hosted once, its Application made once, the service made twice (bound,
+       unbound, bound again) and destroyed once, with the service of its own it binds; and each refusal has its reason. */
+    CHECK(find_line("hosted apps: megler.test.plugin 1.7 runs inside megler.test.crossapp for its services (3 in its manifest), its data in "
+                    "/data/megler-services/hosted/megler.test.plugin", 0) >= 0);
+    CHECK(find_line("I/PluginTest: application created 1 package=megler.test.plugin", 0) >= 0 && find_line("I/PluginTest: application created 2", 0) < 0);
+    CHECK(find_line("I/PluginTest: service created 1 package=megler.test.plugin", 0) >= 0 && find_line("I/PluginTest: service created 2 package=megler.test.plugin", 0) >= 0 &&
+          find_line("I/PluginTest: service created 3", 0) < 0);
+    CHECK(find_line("I/PluginTest: service bound action=megler.test.plugin.IPlugin", 0) >= 0);
+    CHECK(find_line("hosted apps: bound megler.test.plugin/megler.test.plugin.PluginService for megler.test.plugin.IPlugin: megler.test.plugin.PluginService$", 0) >= 0);
+    CHECK(find_line("I/PluginTest: its own service bound megler.test.plugin/.Private local=true", 0) >= 0);
+    CHECK(find_line("I/PluginTest: service destroyed", 0) >= 0 && find_line("I/PluginTest: its own service destroyed", 0) >= 0);
+    CHECK(find_line("hosted apps: megler.test.plugin has no service another app may bind for megler.test.plugin/.Private", 0) >= 0);
+    CHECK(find_line("hosted apps: megler.test.plugin/megler.test.plugin.Guarded is not bound here: this app does not ask for its permission megler.test.plugin.BIND", 0) >= 0);
+    /* Its screens ran here too once its service did: the one this app asked for, and the one the service opened itself,
+       which opened the first again. Each said whose it was, and the service heard both; none was asked of the phone (the
+       two launches above are all). The screen for the plug-in alone is not this app's to open here. */
+    CHECK(find_line("hosted apps: megler.test.plugin/megler.test.plugin.Panel opens inside megler.test.crossapp", 0) >= 0);
+    CHECK(find_line("hosted apps: megler.test.plugin/megler.test.plugin.Inner opens inside megler.test.crossapp", 0) >= 0);
+    CHECK(find_line("D/Megler: launch megler.test.plugin.Panel", 0) >= 0 && find_line("D/Megler: launch megler.test.plugin.Inner", 0) >= 0);
+    CHECK(find_line("I/PluginTest: panel created 1 package=megler.test.plugin title=Megler Plug-in note=Note(9, nine, null, [], null) mine=true application=1 "
+                    "service=true", 0) >= 0);
+    CHECK(find_line("I/PluginTest: inner created 1 megler.test.plugin|Inner|true", 0) >= 0);
+    CHECK(find_line("I/PluginTest: panel created 2 package=megler.test.plugin title=Megler Plug-in note=null mine=false application=1 service=true", 0) >= 0);
+    CHECK(find_line("I/PluginTest: service heard panel 1 in megler.test.plugin", 0) >= 0 && find_line("I/PluginTest: service heard panel 2 in megler.test.plugin", 0) >= 0);
+    CHECK(find_line("I/PluginTest: inner heard megler.test.plugin|Inner|true|5/-1/megler.test.plugin.PANEL_DONE/Note(10, ten, null, [], null)", 0) >= 0);
+    CHECK(find_line("I/CrossAppTest: result of 78: -1", 0) >= 0 && find_line("I/CrossAppTest: result of 77", 0) < 0 && find_line("I/CrossAppTest: result of 5", 0) < 0);
+    CHECK(find_line("hosted apps: megler.test.plugin/.Inner is not opened here: it is not for other apps", 0) >= 0);
+    CHECK(find_line("phone apps: starting megler.test.plugin/megler.test.plugin.Shown", 0) >= 0);
+    CHECK(find_line("phone apps: megler.test.crossapp.Main waits for the result of megler.test.plugin/megler.test.plugin.Shown (request 77)", 0) >= 0);
+    /* What cannot go to another app's process is said, by its key and class, and the rest goes. */
+    CHECK(find_line("an intent for another app: its extra binder (android.os.Binder) stays here: a Binder reaches no other app's process", 0) >= 0);
+    CHECK(find_line(" FAILED", 0) < 0 && find_line("FATAL EXCEPTION", 0) < 0);
+    back_and_end("I/CrossAppTest: onDestroy", &at);
+    if (g_failed) say_app_lines("/CrossAppTest: ");
+    return g_failed;
+}
+
+/*
+ * The app asked (the test app plugin), started as the shell starts it for the request the crossapp app's run left
+ * (MG_JAVA_START_ACTIVITY=@<its data folder>/launch-request.txt, in the same data folder): its first activity is the one
+ * asked for, Shown, not its launcher one and then it, and Shown's intent is the one the other app wrote, whole -- the
+ * action, the data and its type, both categories, the flags, and every extra a process can hand another: strings and
+ * numbers, arrays, a Bundle, a list of Uris, a Parcelable and a Serializable of classes both apps have (made by this app's
+ * own classes), an Intent. The Parcelable of a class this app has not is left out, with a line saying so. The file the
+ * intent came in is gone; the other request's, which no run was started with, is still there. Shown finishes with a
+ * result: it is written for the app that waits for it, that app is brought to the front, and this one ends with its last
+ * activity.
+ */
+static int run_plugin(void)
+{
+    static const char *const lines[] = {
+        "I/PluginTest: application created 1 package=megler.test.plugin",
+        "D/Megler: launch megler.test.plugin.Shown",
+        "I/PluginTest: shown action=megler.test.plugin.SHOW data=content://megler.test.crossapp/notes/7?x=1#part type=text/plain "
+            "component=megler.test.plugin/.Shown package=null",
+        "I/PluginTest: shown flags=0x10000001 categories=[android.intent.category.DEFAULT, megler.test.category.EXTRA]",
+        "I/PluginTest: shown keys=[android.intent.extra.STREAM, big, bytes, count, flag, inner, longs, nested, note, notes, ratio, strings, tag, text, uris, wide]",
+        "I/PluginTest: shown text=hello, plug-in wide=e9 4e2d 1f600 count=42 big=1234567890123 flag=true ratio=2.5 longs=[1, -2, 3000000000] "
+            "bytes=[1, -2, 127] strings=[a, null, c] nested=in/5/[x, y]",
+        "I/PluginTest: shown uris=[content://megler.test.crossapp/files/a.txt, content://megler.test.crossapp/files/b%20c.txt] uri=true "
+            "stream=content://megler.test.crossapp/files/a.txt",
+        "I/PluginTest: shown note=Note(7, seven, content://megler.test.crossapp/notes/7, [t1, t2], v, Note(8, eight, null, [], null)) mine=true "
+            "notes=[Note(1, one, null, [], null), Note(2, two, null, [], null)] tag=Tag(blue, 3) mine=true",
+        "I/PluginTest: shown only=null binder=null inner=megler.test.INNER/down",
+        "I/PluginTest: shown left=1 application=megler.test.plugin.App created=1",
+    };
+    static const char want[] = "launch=megler.test.crossapp/-;";
+    char heard[sizeof(g_system_heard)];
+    size_t n;
+    int at = -1, i, tries;
+    for (i = 0; i < (int)MG_COUNT(lines); i++) expect_line(lines[i], &at, 120);
+    /* What Megler said of the request -- what the intent is like, nothing of its data or extras -- and of what it left out. */
+    CHECK(find_line("I/Megler: another app asked for megler.test.plugin.Shown with its intent: action megler.test.plugin.SHOW, type text/plain, content: data, "
+                    "flags 0x10000001, 16 extra(s)", 0) >= 0);
+    CHECK(find_line("an intent from another app: its megler.test.crossapp.Only cannot be read here", 0) >= 0);
+    CHECK(wait_line("phone apps: megler.test.plugin.Shown finished with -1; back to megler.test.crossapp", 0, 60) >= 0);
+    expect_line("I/PluginTest: shown onDestroy", &at, 60);
+    for (tries = 0; tries < 3000 && running(); tries++) mg_sleep_ns(10000000ull);
+    CHECK(g_exited && g_status == 0);
+    if (g_exited) say("  the app ended with status %d%s%s", g_status, g_reason[0] ? ": " : "", g_reason);
+    else say("  the app did not end with its only activity");
+    mg_lock_acquire(&g_system_lock);
+    mg_strlcpy(heard, g_system_heard, sizeof(heard));
+    mg_lock_release(&g_system_lock);
+    say("  the app asked of the phone: %s", heard);
+    n = strlen(heard);
+    CHECK(n >= sizeof(want) - 1 && !strcmp(heard + n - (sizeof(want) - 1), want));
+    /* The launcher activity was not made, before the one asked for or after it. */
+    CHECK(find_line("D/Megler: launch megler.test.plugin.Main", 0) < 0 && find_line("I/PluginTest: main onCreate", 0) < 0);
+    CHECK(find_line(" FAILED", 0) < 0 && find_line("FATAL EXCEPTION", 0) < 0);
+    if (g_failed) {
+        say_app_lines("/PluginTest: ");
+        say_app_lines("/Megler: ");
+    }
+    return g_failed;
+}
+
 /* Regression: a client and GmsCore carry incompatible classes of identical names. */
 static int run_microg(void)
 {
@@ -4841,6 +5518,13 @@ static int run_gms_host(void)
     const bool deny = g_script_count && !strcmp(g_script[0], "deny");
     CHECK(wait_line("I/GmsOwnTest: main process true application=megler.test.gmshost current=megler.test.gmshost", 0, 600) >= 0);
     CHECK(find_line("I/GmsHostTest: package permissions true", 0) >= 0);
+    /* Android 14's Credential Manager, which answers "no credential" here, is kept from an app whose manifest has AndroidX's
+       credential provider for Google Play services (gms-host's) while they are hosted: X's Google button did nothing. (The
+       data app, with neither, is given it: its step credential-manager.) */
+    CHECK(wait_line("I/GmsHostTest: credential service null, of the application null", 0, 60) >= 0);
+    CHECK(find_line("I/MicroG: the app has a credential provider of its own for Google Play services "
+                    "(androidx.credentials.playservices.CredentialProviderPlayServicesImpl): Android 14's Credential Manager, which has "
+                    "no provider to ask here, is not given to it", 0) >= 0);
     CHECK(find_line("I/MicroG: Google Play services' application runs in this process, megler.test.gmshost, as its main one", 0) >= 0);
     CHECK(find_line("I/GmsHostTest: started ComponentInfo{com.google.android.gms/megler.test.gmsown.Probe}", 0) >= 0);
     CHECK(wait_line("I/GmsOwnTest: attribution tag plain=null asked=false first=null asked=true", 0, 120) >= 0);
@@ -4877,7 +5561,7 @@ static int run_gms_host(void)
      * thread, waiting for the thread's lock, could not: Citymapper stood so at every start, Google Maps initialized in its
      * Application.onCreate under DynamiteModule's lock while the thread that held it asked their Chimera provider (0.1.0.690).
      */
-    {
+    if (!getenv("MG_TEST_GMS_MAIN_STANDS")) {
         int at = wait_line("I/GmsHostTest: the main thread entered the asking thread's lock after ", 0, 300);
         const char *ms = at >= 0 ? strstr(line_at(at), " after ") : NULL;
         CHECK(at >= 0 && ms && atol(ms + 7) < 5000 && strstr(ms, " ms, their provider answered true"));
@@ -4885,6 +5569,23 @@ static int run_gms_host(void)
         CHECK(find_line("I/MicroG: Google Play services' provider is asked by a thread (gms-host-main-waits) holding a monitor that the main thread "
                         "waits to enter: it answers before their Application is attached", 0) >= 0);
         say("  %s", at >= 0 ? line_at(at) : "a provider asked while the main thread waits for the asking thread: nothing said");
+    } else {
+        /*
+         * Or, run with MG_TEST_GMS_MAIN_STANDS (the second of the two runs), by a thread that the main thread stands waiting
+         * for on a latch (Main.askWhileMainStands): the main thread runs nothing posted to it, so their Application is
+         * attached on the asking thread a quarter of a second into the wait, and the provider answers with it attached (the
+         * stand-in's takes two seconds to attach). The thread waited ten seconds for the main thread and was then given the
+         * provider with no Application attached: Google Drive, whose StartupActivity.onCreate awaits a latch so, stood black
+         * for 16 s at every start and then found no account on a phone that was signed in (0.1.0.699).
+         */
+        int at = wait_line("I/GmsHostTest: the main thread stood on the asking thread's latch for ", 0, 300);
+        const char *ms = at >= 0 ? strstr(line_at(at), " for ") : NULL;
+        int attached = find_line("I/GmsOwnTest: application attached", 0);
+        CHECK(at >= 0 && ms && atol(ms + 5) < 8000 && strstr(ms, " ms, their provider answered true"));
+        CHECK(at >= 0 && attached >= 0 && attached < at);
+        CHECK(find_line("I/MicroG: Google Play services' provider is asked by a thread (gms-host-main-stands) and the main thread stands in a wait "
+                        "outside its message queue: their Application is attached on the asking thread", 0) >= 0);
+        say("  %s", at >= 0 ? line_at(at) : "a provider asked while the main thread stands on the asking thread's latch: nothing said");
     }
     CHECK(wait_line("I/GmsOwnTest: settings network_location_opt_in=1", 0, 120) >= 0);
     CHECK(wait_line("I/MeglerLocation: Google Location Accuracy on: the user was asked, and said Allow -- Google Play services' network location may find "
@@ -4966,6 +5667,25 @@ static int run_gms_host(void)
     CHECK(find_line("I/Geocoder: Google Play services' geocode provider answers the app's geocoding", 0) >= 0);
     CHECK(find_line("geocoder FAILED", 0) < 0 && find_line("geocoder on the main thread FAILED", 0) < 0 && find_line("geocoder listener FAILED", 0) < 0 &&
           find_line("of an error FAILED", 0) < 0);
+    /*
+     * A provider of the app's own (WhoAsks) asked by their code, hosted here (the stand-in's Probe, on a thread of its own),
+     * is told that Google Play services ask it for the length of the call, as on Android, where the call comes from their
+     * process: getCallingPackage is their package and Binder.getCallingUid their uid (10014, the shared one), the app's with
+     * the identity cleared and theirs again restored; a provider of theirs that it asks from inside the call is told the
+     * app asks, and their code that is asked for the caller there is told the app's uid; and once the call is over the
+     * thread's caller is the app again. Asked by the app, it is told the app throughout. Every provider call was the app's
+     * own: Files by Google's provider of a folder for Quick Share (FolderSharingContentProvider), which answers Google Play
+     * services alone, threw UnsupportedOperationException on their thread, and no folder was shared (0.1.0.699).
+     */
+    CHECK(wait_line("I/GmsOwnTest: the app's provider asked by Google Play services: caller com.google.android.gms uid 10014 com.google.uid.shared:10014, "
+                    "uid cleared 10100 megler.test.gmshost restored 10014 com.google.uid.shared:10014, "
+                    "identity cleared megler.test.gmshost 10100 megler.test.gmshost restored com.google.android.gms 10014 com.google.uid.shared:10014, "
+                    "their provider asked from inside: caller megler.test.gmshost uid 10100, then com.google.android.gms 10014 com.google.uid.shared:10014; "
+                    "after the call uid 10100", 0, 120) >= 0);
+    CHECK(wait_line("I/GmsHostTest: the app's provider asked by the app: caller megler.test.gmshost uid 10100 megler.test.gmshost, "
+                    "uid cleared 10100 megler.test.gmshost restored 10100 megler.test.gmshost, "
+                    "identity cleared megler.test.gmshost 10100 megler.test.gmshost restored megler.test.gmshost 10100 megler.test.gmshost, "
+                    "their provider asked from inside: caller megler.test.gmshost uid 10100, then megler.test.gmshost 10100 megler.test.gmshost", 0, 60) >= 0);
     /*
      * And an activity of theirs whose onCreate throws, having asked to be finished after (their help screen, whose layout's
      * logo was missing, 0.1.0.686): the app goes on, the activity is taken off the stack and never destroyed -- their
@@ -5346,6 +6066,15 @@ int mg_tests_java_run(const char *which, const char *apk, const char *android_ro
         }
         apk = base;
     }
+    /*
+     * `playclient` and `playstore` are run in turn over one data folder (run_playclient): the client from its copy in the
+     * library, with the splits the Play Store's run has added beside it; its first run (the script's `no-store`) on a phone
+     * that has no Play Store.
+     */
+    g_play_client = !strcmp(which, "playclient");
+    g_play_store = !strcmp(which, "playstore");
+    g_play_no_store = g_play_client && g_script_count && !strcmp(g_script[0], "no-store");
+    if (g_play_client) apk = play_client_before(apk);
     /* `first`: the player's start on a PC (the script's `pc`) or an Xbox (`xbox`), what it tells the core before megler_run. */
     g_first_xbox = !strcmp(which, "first") && g_script_count && !strcmp(g_script[0], "xbox");
     if (!strcmp(which, "first")) first_before_run();
@@ -5362,11 +6091,15 @@ int mg_tests_java_run(const char *which, const char *apk, const char *android_ro
         else if (!strcmp(which, "webview")) run_webview();
         else if (!strcmp(which, "camera")) run_camera();
         else if (!strcmp(which, "splits")) run_splits();
+        else if (g_play_client) run_playclient();
+        else if (g_play_store) run_playstore();
         else if (!strcmp(which, "screen")) run_screen();
         else if (!strcmp(which, "scroll")) run_scroll();
         else if (!strcmp(which, "bluetooth")) run_bluetooth();
         else if (!strcmp(which, "wifi")) run_wifi();
         else if (!strcmp(which, "pickers")) run_pickers();
+        else if (!strcmp(which, "crossapp")) run_crossapp();
+        else if (!strcmp(which, "plugin")) run_plugin();
         else if (g_any_app) run_app();
         else run_hello();
         if (running()) {

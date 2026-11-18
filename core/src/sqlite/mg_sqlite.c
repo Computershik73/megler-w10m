@@ -134,15 +134,52 @@ typedef struct sq_file {
     sqlite3_file base;
     mg_file *f;
     sq_node *node;
-    int held;                          /* SQLITE_LOCK_NONE .. SQLITE_LOCK_EXCLUSIVE */
+    int held;                          /* SQLITE_LOCK_NONE .. SQLITE_LOCK_EXCLUSIVE; changed under g_nodes_lock */
     bool delete_on_close;
     char *path;
+    u32 owner;                         /* the thread that took SHARED, while SHARED or more is held */
+    u64 since;                         /* and when (mg_time_monotonic_ns) */
+    struct sq_file *held_next;         /* in g_held, while SHARED or more is held */
 } sq_file;
 
 static mg_lock g_nodes_lock = MG_LOCK_INIT;
 static sq_node *g_nodes;
 /* The connections of this process that hold a lock on their database (SHARED or more): what another process may wait on. */
 static volatile i32 g_locking;
+/* And which they are, for the log and for the gate below. Under g_nodes_lock. */
+static sq_file *g_held;
+
+/*
+ * The app suspended. Windows freezes a suspended app's process as it is, in the middle of whatever its threads do, and a
+ * lock it holds on a file then stays held for as long as it is frozen: YouTube was suspended 16 s after its start with a
+ * lock on one of Google Play services' databases, and for three hours every other app's connection to that database
+ * waited its 2.5 s and threw "database is locked (code 5)" (a user's Lumia 950, package 696). Waiting for the count of
+ * locks to come down to nothing was not enough: other threads took new ones meanwhile, and after. So from the moment the
+ * shell says the app is being suspended (mg_sqlite_settle) until it says the app is back (mg_sqlite_resume) the locks
+ * only come down. At each of SQLite's levels:
+ *
+ *   NONE to SHARED    A thread that holds no lock here waits in sq_lock, holding nothing, until the app is back: frozen
+ *                     there, it keeps nobody waiting. A thread that holds a lock through another connection (in a
+ *                     transaction of one database it reads a second) is let through: waiting, it would keep the lock
+ *                     it has.
+ *   SHARED to RESERVED, and either to EXCLUSIVE
+ *                     As ever. Who is in the middle of a read or of a transaction goes on to its end, which is where it
+ *                     lets go; turned away, it would keep its lock with nothing left to end it.
+ *   PENDING           Not kept. A writer that finds readers still there is answered SQLITE_BUSY, as ever, but PENDING's
+ *                     byte does not stay locked while it waits to ask again: frozen with that byte, it would keep every
+ *                     new reader of every process out (the other apps' "database is locked ... while compiling: PRAGMA
+ *                     journal_mode=WAL" was that: they could not so much as read). SQLite never sees PENDING, it asks
+ *                     for EXCLUSIVE and is told yes or busy, so the byte is this layer's to give up; RESERVED is not,
+ *                     SQLite counts on it once it has it. One held when the settling begins is given up there and then.
+ *   Down, to SHARED or to NONE
+ *                     As ever.
+ *
+ * What is still held when the shell's time is up is said in the log by file, level and thread: a transaction an app
+ * leaves open across its own code is the app's to end, and nothing here can end it.
+ */
+static bool g_settling;                /* under g_nodes_lock */
+static mg_cond g_gate = MG_COND_INIT;  /* told when the settling ends */
+static volatile i32 g_waiting;         /* the threads waiting for that now */
 
 static sq_node *node_get(const char *path)
 {
@@ -241,14 +278,55 @@ static int os_lock(sq_file *s, u64 at, u64 n, bool exclusive)
     return err == MG_E_BUSY ? SQLITE_BUSY : SQLITE_IOERR_LOCK;
 }
 
+/*
+ * A wait for the readers to leave, given up: PENDING's byte is let go, and the connection has what it had before it asked
+ * for EXCLUSIVE, RESERVED or SHARED. Asking again takes the byte again. Under g_nodes_lock.
+ */
+static void pending_drop(sq_file *s)
+{
+    sq_node *n = s->node;
+    if (s->held != SQLITE_LOCK_PENDING) return;
+    mg_file_unlock(s->f, SQ_PENDING_BYTE, 1);
+    if (n->pending == s) n->pending = NULL;
+    s->held = n->reserved == s ? SQLITE_LOCK_RESERVED : SQLITE_LOCK_SHARED;
+}
+
+/*
+ * A thread about to read waits here while the app is being suspended, unless it holds a lock already (see "The app
+ * suspended" above). Under g_nodes_lock, which the wait gives up. A frozen process counts nothing, so the waits that run
+ * out are time the process ran: after ten seconds of them it was not frozen, or was not told that it is back, and the
+ * gate opens by itself rather than keep the app's databases shut for good. True when it did, for the log.
+ */
+static bool gate_wait(void)
+{
+    u32 me = mg_thread_self_id();
+    sq_file *s;
+    int ran_out = 0;
+    bool opened = false;
+    if (!g_settling) return false;
+    for (s = g_held; s; s = s->held_next)
+        if (s->owner == me) return false;
+    g_waiting++;
+    while (g_settling) {
+        if (mg_cond_wait_ns(&g_gate, &g_nodes_lock, 50000000ull) || ++ran_out < 200) continue;
+        g_settling = false;
+        mg_cond_broadcast(&g_gate);
+        opened = true;
+    }
+    g_waiting--;
+    return opened;
+}
+
 static int sq_lock(sqlite3_file *file, int level)
 {
     sq_file *s = (sq_file *)file;
     sq_node *n = s->node;
     int rc = SQLITE_OK, held;
-    bool got_pending = false;
+    bool got_pending = false, opened = false;
     if (!n || level <= s->held) return SQLITE_OK;
     mg_lock_acquire(&g_nodes_lock);
+    /* (The app being suspended: who would begin to read waits until it is back, holding nothing.) */
+    if (s->held == SQLITE_LOCK_NONE) opened = gate_wait();
     held = s->held;
     /* A reader, or a writer on its way to EXCLUSIVE, takes PENDING's byte first: a writer waiting holds it, and keeps new
        readers out. A reader takes it shared, as SQLite's Unix layer does (a file open only to be read takes no other
@@ -263,6 +341,10 @@ static int sq_lock(sqlite3_file *file, int level)
             n->shared++;
             s->held = SQLITE_LOCK_SHARED;
             g_locking++;
+            s->owner = mg_thread_self_id();
+            s->since = mg_time_monotonic_ns();
+            s->held_next = g_held;
+            g_held = s;
         }
     }
     /* RESERVED: its byte, one writer's at a time. (Not on the way to EXCLUSIVE, which a connection rolling a hot journal
@@ -294,10 +376,15 @@ static int sq_lock(sqlite3_file *file, int level)
                 }
             }
         }
+        /* (The app being suspended: turned away, it does not keep PENDING while it waits to ask again.) */
+        if (rc != SQLITE_OK && g_settling) pending_drop(s);
     }
     /* (PENDING's byte, taken only to come in as a reader, or by a writer turned away before it waited.) */
     if (got_pending) mg_file_unlock(s->f, SQ_PENDING_BYTE, 1);
     mg_lock_release(&g_nodes_lock);
+    if (opened)
+        mg_warn("sqlite: the app was being suspended, and has run ten seconds since without being told that it is back: its threads read "
+                "and write databases again");
     return rc;
 }
 
@@ -305,24 +392,32 @@ static int sq_unlock(sqlite3_file *file, int level)
 {
     sq_file *s = (sq_file *)file;
     sq_node *n = s->node;
-    int rc = SQLITE_OK, held = s->held;
-    if (!n || held <= level) return SQLITE_OK;
+    sq_file **at;
+    int rc = SQLITE_OK, held;
+    if (!n || s->held <= level) return SQLITE_OK;
     mg_lock_acquire(&g_nodes_lock);
-    if (held >= SQLITE_LOCK_EXCLUSIVE) {
-        mg_file_unlock(s->f, SQ_SHARED_FIRST, SQ_SHARED_SIZE);
-        if (level == SQLITE_LOCK_SHARED && os_lock(s, SQ_SHARED_FIRST, SQ_SHARED_SIZE, false) != SQLITE_OK) rc = SQLITE_IOERR_UNLOCK;
+    /* (What is held is read under the lock: the settling may have taken a PENDING away from another thread meanwhile.) */
+    held = s->held;
+    if (held > level) {
+        if (held >= SQLITE_LOCK_EXCLUSIVE) {
+            mg_file_unlock(s->f, SQ_SHARED_FIRST, SQ_SHARED_SIZE);
+            if (level == SQLITE_LOCK_SHARED && os_lock(s, SQ_SHARED_FIRST, SQ_SHARED_SIZE, false) != SQLITE_OK) rc = SQLITE_IOERR_UNLOCK;
+        }
+        if (held >= SQLITE_LOCK_RESERVED) mg_file_unlock(s->f, SQ_RESERVED_BYTE, 1);
+        if (level == SQLITE_LOCK_NONE && held >= SQLITE_LOCK_SHARED) mg_file_unlock(s->f, SQ_SHARED_FIRST, SQ_SHARED_SIZE);
+        if (held >= SQLITE_LOCK_PENDING) mg_file_unlock(s->f, SQ_PENDING_BYTE, 1);
+        if (n->exclusive == s) n->exclusive = NULL;
+        if (n->pending == s) n->pending = NULL;
+        if (n->reserved == s) n->reserved = NULL;
+        if (level == SQLITE_LOCK_NONE && held >= SQLITE_LOCK_SHARED) {
+            n->shared--;
+            g_locking--;
+            for (at = &g_held; *at && *at != s; at = &(*at)->held_next) { }
+            if (*at) *at = s->held_next;
+            s->held_next = NULL;
+        }
+        s->held = level;
     }
-    if (held >= SQLITE_LOCK_RESERVED) mg_file_unlock(s->f, SQ_RESERVED_BYTE, 1);
-    if (level == SQLITE_LOCK_NONE && held >= SQLITE_LOCK_SHARED) mg_file_unlock(s->f, SQ_SHARED_FIRST, SQ_SHARED_SIZE);
-    if (held >= SQLITE_LOCK_PENDING) mg_file_unlock(s->f, SQ_PENDING_BYTE, 1);
-    if (n->exclusive == s) n->exclusive = NULL;
-    if (n->pending == s) n->pending = NULL;
-    if (n->reserved == s) n->reserved = NULL;
-    if (level == SQLITE_LOCK_NONE && held >= SQLITE_LOCK_SHARED) {
-        n->shared--;
-        g_locking--;
-    }
-    s->held = level;
     mg_lock_release(&g_nodes_lock);
     return rc;
 }
@@ -348,11 +443,39 @@ static int sq_characteristics(sqlite3_file *file) { (void)file; return 0; }
 static const sqlite3_io_methods k_io = { 1, sq_close, sq_read, sq_write, sq_truncate, sq_sync, sq_size, sq_lock, sq_unlock, sq_check_reserved, sq_control, sq_sector, sq_characteristics,
                                          NULL, NULL, NULL, NULL, NULL, NULL };
 
+static const char *path_tail(const char *path);
+
+/* The host's refusal for the log. */
+static const char *refusal_said(int err)
+{
+    switch (err) {
+    case MG_E_NOENT: return "no such file";
+    case MG_E_ACCESS: return "access denied";
+    case MG_E_BUSY: return "in use";
+    case MG_E_ISDIR: return "a directory";
+    case MG_E_NOSPC: return "no space";
+    case MG_E_EXIST: return "exists";
+    default: return "an I/O error";
+    }
+}
+
+/*
+ * How many times more a file is asked for once Windows has refused it for access or as in use, and how long the wait before
+ * try N is, in N of them: as SQLite's own Windows layer (winRetryIoerr: ten, 25 ms), 1.4 s in all. A file just deleted
+ * stays in its folder, refusing every open for access, until the last handle to it is closed -- a scanner's or an indexer's,
+ * another thread's, another app's -- and the next transaction's journal has the name of the last one's, deleted a moment
+ * ago. Asked once, Total Commander's media scan (0.1.0.699) had 88 of its MediaStore rows refused "unable to open database
+ * file (code 14)" in three minutes, each between rows that were taken.
+ */
+enum { SQ_OPEN_TRIES_MORE = 10, SQ_OPEN_WAIT_MS = 25 };
+/* (The log is told of the first of each: a scan can meet hundreds.) */
+static volatile i32 g_open_retried, g_open_refused;
+
 static int vfs_open(sqlite3_vfs *vfs, const char *name, sqlite3_file *file, int flags, int *out_flags)
 {
     sq_file *s = (sq_file *)file;
     char temp[700];
-    int how = MG_O_READ, err = 0;
+    int how = MG_O_READ, err = 0, first = 0, tries = 0;
     (void)vfs;
     memset(s, 0, sizeof(*s));
     if (!name) {
@@ -367,13 +490,28 @@ static int vfs_open(sqlite3_vfs *vfs, const char *name, sqlite3_file *file, int 
     if (flags & SQLITE_OPEN_READWRITE) how |= MG_O_WRITE;
     if (flags & SQLITE_OPEN_CREATE) how |= MG_O_CREATE;
     if (flags & SQLITE_OPEN_EXCLUSIVE) how |= MG_O_EXCL;
-    s->f = mg_file_open(name, how, &err);
-    if (!s->f && (flags & SQLITE_OPEN_READWRITE) && !(flags & SQLITE_OPEN_CREATE) && err == MG_E_ACCESS) {
-        /* It is there and may only be read: SQLite is given it so, and told. */
-        s->f = mg_file_open(name, MG_O_READ, &err);
-        flags = (flags & ~SQLITE_OPEN_READWRITE) | SQLITE_OPEN_READONLY;
+    for (;;) {
+        s->f = mg_file_open(name, how, &err);
+        if (!s->f && (flags & SQLITE_OPEN_READWRITE) && !(flags & SQLITE_OPEN_CREATE) && err == MG_E_ACCESS) {
+            /* It is there and may only be read: SQLite is given it so, and told. (Refused that too, it is asked for again
+               below as it was: to read and write.) */
+            s->f = mg_file_open(name, MG_O_READ, &err);
+            if (s->f) flags = (flags & ~SQLITE_OPEN_READWRITE) | SQLITE_OPEN_READONLY;
+        }
+        if (s->f || (err != MG_E_ACCESS && err != MG_E_BUSY) || tries == SQ_OPEN_TRIES_MORE) break;
+        if (!tries) first = err;
+        tries++;
+        mg_sleep_ns((u64)(SQ_OPEN_WAIT_MS * tries) * 1000000u);
     }
-    if (!s->f) return SQLITE_CANTOPEN;
+    if (s->f && tries && mg_atomic_add(&g_open_retried, 1) <= 20)
+        mg_info("sqlite: %s was refused (%s) and opened at try %d", path_tail(name), refusal_said(first), tries + 1);
+    if (!s->f) {
+        if (err != MG_E_NOENT && mg_atomic_add(&g_open_refused, 1) <= 20)
+            mg_warn("sqlite: %s could not be opened%s%s%s: %s, asked %d time(s)", path_tail(name), flags & SQLITE_OPEN_READWRITE ? " to write" : "",
+                    flags & SQLITE_OPEN_CREATE ? ", or made" : "", flags & SQLITE_OPEN_MAIN_DB ? "" : " (a journal or a scratch file)",
+                    refusal_said(err), tries + 1);
+        return SQLITE_CANTOPEN;
+    }
     s->path = mg_strdup(name);
     s->delete_on_close = (flags & SQLITE_OPEN_DELETEONCLOSE) != 0;
     /* Only a database itself is locked; its journal belongs to whoever holds the database. */
@@ -448,6 +586,83 @@ int sqlite3_os_end(void) { return SQLITE_OK; }
 bool mg_sqlite_available(void) { return true; }
 
 int mg_sqlite_locks_held(void) { return g_locking; }
+int mg_sqlite_waiting(void) { return g_waiting; }
+
+/* A database for the log: its name and the two folders it is in (the app's package and "databases"), not the host's whole path. */
+static const char *path_tail(const char *path)
+{
+    const char *p;
+    int folders = 0;
+    if (!path) return "(no name)";
+    for (p = path + strlen(path); p > path; p--)
+        if ((p[-1] == '/' || p[-1] == '\\') && ++folders == 3) break;
+    return p;
+}
+
+/* A lock's level for the log, and what the other apps cannot do while it is held. */
+static const char *level_said(int held)
+{
+    switch (held) {
+    case SQLITE_LOCK_SHARED: return "SHARED (a read: the other apps can read it, and cannot end a write)";
+    case SQLITE_LOCK_RESERVED: return "RESERVED (a write begun: the other apps can read it, and cannot write)";
+    case SQLITE_LOCK_PENDING: return "PENDING (a write waiting for readers: the other apps can neither read nor write)";
+    case SQLITE_LOCK_EXCLUSIVE: return "EXCLUSIVE (a write being put into the file: the other apps can neither read nor write)";
+    default: return "none";
+    }
+}
+
+/* A lock still held when the time to settle is up, as the log is to say it: copied under g_nodes_lock, said without it. */
+typedef struct sq_kept {
+    char file[200];
+    int held;
+    u32 thread, ms;
+} sq_kept;
+
+bool mg_sqlite_settle(int ms)
+{
+    u64 until = mg_time_monotonic_ns() + (u64)(ms > 0 ? ms : 0) * 1000000u, now;
+    sq_kept kept[8];
+    sq_file *s;
+    int n = 0, more = 0, i;
+    mg_lock_acquire(&g_nodes_lock);
+    g_settling = true;
+    /* (A writer waiting for readers now: it keeps what it writes, and lets the readers of the other apps in.) */
+    for (s = g_held; s; s = s->held_next) pending_drop(s);
+    mg_lock_release(&g_nodes_lock);
+    while (g_locking > 0 && mg_time_monotonic_ns() < until) mg_sleep_ns(5000000ull);
+    mg_lock_acquire(&g_nodes_lock);
+    now = mg_time_monotonic_ns();
+    for (s = g_held; s; s = s->held_next) {
+        if (n == (int)MG_COUNT(kept)) {
+            more++;
+            continue;
+        }
+        mg_strlcpy(kept[n].file, path_tail(s->path), sizeof(kept[n].file));
+        kept[n].held = s->held;
+        kept[n].thread = s->owner;
+        kept[n].ms = (u32)((now - s->since) / 1000000u);
+        n++;
+    }
+    mg_lock_release(&g_nodes_lock);
+    for (i = 0; i < n; i++)
+        mg_warn("sqlite: a lock is kept as the app is suspended: %s, %s, taken %u ms ago by thread %u", kept[i].file, level_said(kept[i].held),
+                (unsigned)kept[i].ms, (unsigned)kept[i].thread);
+    if (more) mg_warn("sqlite: and %d more locks are kept", more);
+    return n == 0;
+}
+
+void mg_sqlite_resume(void)
+{
+    bool was;
+    int waiting;
+    mg_lock_acquire(&g_nodes_lock);
+    was = g_settling;
+    waiting = g_waiting;
+    g_settling = false;
+    mg_cond_broadcast(&g_gate);
+    mg_lock_release(&g_nodes_lock);
+    if (was && waiting > 0) mg_info("sqlite: the app is back: %d of its threads waited to read a database, and go on", waiting);
+}
 
 bool mg_sqlite_start(void)
 {
@@ -470,6 +685,9 @@ bool mg_sqlite_start(void)
 
 bool mg_sqlite_available(void) { return false; }
 int mg_sqlite_locks_held(void) { return 0; }
+int mg_sqlite_waiting(void) { return 0; }
+bool mg_sqlite_settle(int ms) { (void)ms; return true; }
+void mg_sqlite_resume(void) { }
 bool mg_sqlite_start(void) { return false; }
 
 #endif

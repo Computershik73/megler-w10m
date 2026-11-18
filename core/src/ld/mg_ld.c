@@ -1648,6 +1648,7 @@ mg_lib *mg_ld_lib_of(const void *addr)
 void *mg_ld_lib_base(const mg_lib *lib) { return lib->base; }
 size_t mg_ld_lib_extent(const mg_lib *lib) { return lib->map_size + (lib->placed ? lib->island_size[0] : 0); }
 const char *mg_ld_lib_name(const mg_lib *lib) { return lib->name; }
+int mg_ld_lib_scope(const mg_lib *lib) { return lib->service_scope; }
 void mg_ld_get_stats(const mg_lib *lib, mg_ld_stats *out) { *out = lib->stats; }
 
 u64 mg_ld_reserved_bytes(void)

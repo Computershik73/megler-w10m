@@ -2922,6 +2922,11 @@ public class WebView extends AbsoluteLayout
     // functor failed to be drawn.
     private static WebView sMeglerDrawing;
     private boolean mMeglerFunctorFailed, mMeglerFunctorAsked;
+    // Megler: the functor's last picture (megler.WebFunctors.draw's answer) and the part of the view it is of, for a frame
+    // the render thread is too busy to draw (meglerDrawFunctor).
+    private int mMeglerPictureOf;
+    private long mMeglerPicture;
+    private final Rect mMeglerPictureAt = new Rect();
     private static int sMeglerTrace = -1;
     private int mMeglerTraced;
 
@@ -2953,12 +2958,26 @@ public class WebView extends AbsoluteLayout
         v.mMeglerFunctorAsked = true;
         Rect a = v.mMeglerVisible;
         long drawn = megler.WebFunctors.draw(functor, a.left, a.top, a.width(), a.height());
-        int id = (int) drawn;
-        megler.WebFunctors.drew(id != 0);
-        if (id == 0) {
-            v.mMeglerFunctorFailed = true;
-            return true;
+        if (drawn == megler.WebFunctors.BUSY) {
+            // The render thread is busy with something else of Chromium's and the functor was not drawn (the request
+            // withdrawn before it began): its picture as it last was, where it was, and the view drawn again shortly. Not a
+            // frame in software: that is for a functor that cannot be drawn, and a software frame of a page in a view
+            // transition is where Candy Crush Saga ended (drivers/mg_java_webview.c, wv_ask).
+            v.postInvalidateDelayed(100);
+            if (v.mMeglerPictureOf != functor) return true;
+            drawn = v.mMeglerPicture;
+            a = v.mMeglerPictureAt;
+        } else {
+            megler.WebFunctors.drew((int) drawn != 0);
+            if ((int) drawn == 0) {
+                v.mMeglerFunctorFailed = true;
+                return true;
+            }
+            v.mMeglerPictureOf = functor;
+            v.mMeglerPicture = drawn;
+            v.mMeglerPictureAt.set(a);
         }
+        int id = (int) drawn;
         int pw = (int) (drawn >>> 32) & 0xFFFF, ph = (int) (drawn >>> 48) & 0xFFFF;
         // The part is at the surface's top left: the whole surface drawn from the part's corner, clipped to the part.
         int save = canvas.save();

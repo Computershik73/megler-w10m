@@ -2,7 +2,9 @@
 // getOrientation: which way up the screen is drawn now, Surface.ROTATION_0 to _270, as the shell says it with the surface's
 // size (megler_set_surface; megler.Native.displayRotation), where the original said 0 always. A camera preview, a video
 // player or a game that turns its picture by the display's rotation turned it wrong once the phone was turned. Its sizes
-// were the surface's now already (megler.Native.screenWidth and screenHeight). Everything else is the original's, unchanged.
+// were the surface's now already (megler.Native.screenWidth and screenHeight). And in getType: TYPE_INTERNAL, the phone's own
+// screen, where the original said TYPE_UNKNOWN (YouTube counts the internal screens to tell a phone from a tablet). Everything
+// else is the original's, unchanged.
 package android.view;
 
 import android.util.DisplayMetrics;
@@ -184,7 +186,7 @@ public class Display {
     public android.graphics.ColorSpace[] getSupportedWideColorGamut() { return null; }
     public android.view.Display.Mode getSystemPreferredDisplayMode() { return null; }
     public android.view.Display.Mode[] getSystemSupportedModes() { return null; }
-    public int getType() { return 0; }
+    public int getType() { return TYPE_INTERNAL; }
     public java.lang.String getUniqueId() { return null; }
     public android.view.Display.Mode getUserPreferredDisplayMode() { return (android.view.Display.Mode) megler.Fill.get(meglerFill, "UserPreferredDisplayMode"); }
     public boolean hasAccess(int p0) { return false; }

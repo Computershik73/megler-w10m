@@ -8,6 +8,14 @@ public class RotateDrawable extends DrawableWrapper {
     public void setFromDegrees(float d) { mFrom = d; } public void setToDegrees(float d) { mTo = d; }
     public void setPivotX(float x) { mPx = x; } public void setPivotY(float y) { mPy = y; }
     public float getFromDegrees() { return mFrom; } public float getToDegrees() { return mTo; }
+    /** Megler: a rotation of this one's angles and pivot round that drawable, for a copy through the constant state (DrawableWrapper). */
+    @Override DrawableWrapper meglerNewAround(Drawable d) {
+        RotateDrawable r = new RotateDrawable();
+        r.mFrom = mFrom; r.mTo = mTo; r.mPx = mPx; r.mPy = mPy;
+        if (meglerFill != null) r.meglerFill = new java.util.HashMap<>(meglerFill);
+        r.setDrawable(d);
+        return r;
+    }
     @Override protected boolean onLevelChange(int l) { super.onLevelChange(l); invalidateSelf(); return true; }
     @Override public void draw(Canvas c) {
         Drawable d = getDrawable(); if (d == null) return;

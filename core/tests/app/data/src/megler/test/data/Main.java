@@ -222,6 +222,48 @@ public class Main extends Activity {
             }
             return count(db) == 3 && DatabaseUtils.longForQuery(db, "SELECT stars FROM notes WHERE title = 'delta'", null) == 2;
         });
+        step("deferred-transaction", () -> {
+            /* A deferred transaction, which takes no write lock until it writes, the way androidx.sqlite (Room's read
+               transactions) and Google Play services reach one before Android 15: SQLiteDatabase's hidden getThreadSession,
+               found among its declared methods, and the session's beginTransaction with the mode 0. While it has only read, a
+               second connection to the file takes the write lock at once (after beginTransaction, an exclusive one, it would
+               wait and say the database is locked); what it writes then is committed by the database's own endTransaction. */
+            java.lang.reflect.Method getThreadSession = SQLiteDatabase.class.getDeclaredMethod("getThreadSession");
+            getThreadSession.setAccessible(true);
+            java.lang.reflect.Method begin = getThreadSession.getReturnType().getDeclaredMethod("beginTransaction", int.class,
+                    android.database.sqlite.SQLiteTransactionListener.class, int.class, android.os.CancellationSignal.class);
+            Object session = getThreadSession.invoke(db);
+            boolean had = (Boolean) session.getClass().getMethod("hasTransaction").invoke(session);
+            begin.invoke(session, 0, null, 0, null);
+            boolean inside, has, nested, free = false;
+            long read;
+            String refused = null;
+            try {
+                inside = db.inTransaction();
+                has = (Boolean) session.getClass().getMethod("hasTransaction").invoke(session);
+                nested = (Boolean) session.getClass().getMethod("hasNestedTransaction").invoke(session);
+                read = count(db);
+                SQLiteDatabase second = SQLiteDatabase.openDatabase(db.getPath(), null, SQLiteDatabase.OPEN_READWRITE);
+                try {
+                    second.beginTransactionNonExclusive();
+                    second.endTransaction();
+                    free = true;
+                } catch (SQLiteException e) {
+                    refused = e.toString();
+                } finally {
+                    second.close();
+                }
+                db.insertOrThrow("notes", null, note("epsilon", "deferred", 3, 1.0, null));
+                db.setTransactionSuccessful();
+            } finally {
+                db.endTransaction();
+            }
+            long after = count(db);
+            int removed = db.delete("notes", "title = ?", new String[] { "epsilon" });
+            detail = "session=" + session.getClass().getName() + " had=" + had + " inside=" + inside + " has=" + has + " nested=" + nested + " read=" + read
+                    + " free=" + free + (refused != null ? " (" + refused + ")" : "") + " after=" + after + " removed=" + removed;
+            return !had && inside && has && !nested && read == 3 && free && !db.inTransaction() && after == 4 && removed == 1 && count(db) == 3;
+        });
         step("constraint", () -> {
             boolean thrown = false;
             try {
@@ -414,6 +456,19 @@ public class Main extends Activity {
                     data.recycle();
                     reply.recycle();
                     Log.i("DataTest", "process-scope " + said + " here=" + Main.class.getClassLoader().getClass().getSimpleName().equals("ServiceClassLoader"));
+                    // What that process reads of its loader by reflection, and a DEX file it opened for no loader (Elsewhere.loader).
+                    data = android.os.Parcel.obtain();
+                    reply = android.os.Parcel.obtain();
+                    try { b.transact(9, data, reply, 0); said = reply.readString(); } catch (android.os.RemoteException e) { said = String.valueOf(e); }
+                    data.recycle();
+                    reply.recycle();
+                    Log.i("DataTest", "process-loader " + said);
+                    // A thread of that process ending with an uncaught exception ends alone, and the log names the process.
+                    data = android.os.Parcel.obtain();
+                    reply = android.os.Parcel.obtain();
+                    try { b.transact(10, data, reply, 0); } catch (android.os.RemoteException e) { Log.i("DataTest", "process-thread " + e); }
+                    data.recycle();
+                    reply.recycle();
                     // Then a broadcast from that process, its extra an object of that process's class: this process's receiver
                     // has it as one of its own class (megler.Processes.forLoader).
                     registerReceiver(new android.content.BroadcastReceiver() {
@@ -469,6 +524,44 @@ public class Main extends Activity {
             detail = "result=" + r + " pending=" + pending + " latency=" + (pending != null ? pending.getMinLatencyMillis() : -1);
             return r == android.app.job.JobScheduler.RESULT_SUCCESS && pending != null && Work.class.getName().equals(pending.getService().getClassName())
                 && pending.getMinLatencyMillis() == 100;
+        });
+        // A job that waits for a change of content (JobInfo.Builder.addTriggerContentUri) is held until one is told, and its
+        // parameters say what changed, as Android's: Files by Google's WorkManager work of that kind ran at once, was enqueued
+        // again and ran, for ever. 44 waits for descendants of a URI and is told two (and one that is not its own); 45 has a
+        // deadline and nothing of its own changes (a descendant, of a trigger that does not ask for them); 46 is scheduled
+        // again from its run, after another change: told to the new job, which runs at once; 47 asks to be run again and
+        // is told its change again. The changes are told a while after the step, so a job run at once would have none.
+        step("job-content-trigger", () -> {
+            final android.app.job.JobScheduler js = (android.app.job.JobScheduler) getSystemService(JOB_SCHEDULER_SERVICE);
+            android.content.ComponentName work = new android.content.ComponentName(this, Work.class);
+            final android.net.Uri base = android.net.Uri.parse("content://megler.test.data.jobs");
+            android.app.job.JobInfo.TriggerContentUri watched = new android.app.job.JobInfo.TriggerContentUri(android.net.Uri.withAppendedPath(base, "watched"),
+                    android.app.job.JobInfo.TriggerContentUri.FLAG_NOTIFY_FOR_DESCENDANTS);
+            int r = js.schedule(new android.app.job.JobInfo.Builder(44, work).addTriggerContentUri(watched).setTriggerContentUpdateDelay(600).build());
+            r &= js.schedule(new android.app.job.JobInfo.Builder(45, work)
+                    .addTriggerContentUri(new android.app.job.JobInfo.TriggerContentUri(android.net.Uri.withAppendedPath(base, "exact"), 0)).setOverrideDeadline(3000).build());
+            r &= js.schedule(Work.again(this));
+            r &= js.schedule(new android.app.job.JobInfo.Builder(47, work)
+                    .addTriggerContentUri(new android.app.job.JobInfo.TriggerContentUri(android.net.Uri.withAppendedPath(base, "failed"), 0))
+                    .setTriggerContentUpdateDelay(500).setTriggerContentMaxDelay(1000).setBackoffCriteria(1000, android.app.job.JobInfo.BACKOFF_POLICY_LINEAR).build());
+            new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(() -> {
+                android.content.ContentResolver cr = getContentResolver();
+                cr.notifyChange(android.net.Uri.withAppendedPath(base, "watched/7"), null);
+                cr.notifyChange(android.net.Uri.withAppendedPath(base, "other/1"), null);
+                cr.notifyChange(android.net.Uri.withAppendedPath(base, "watched/8"), null);
+                cr.notifyChange(android.net.Uri.withAppendedPath(base, "watched/7"), null);
+                cr.notifyChange(android.net.Uri.withAppendedPath(base, "exact/1"), null);
+                cr.notifyChange(android.net.Uri.withAppendedPath(base, "again/1"), null);
+                cr.notifyChange(android.net.Uri.withAppendedPath(base, "failed"), null);
+            }, 1500);
+            android.app.job.JobInfo pending = js.getPendingJob(44), plain = js.getPendingJob(41);
+            android.app.job.JobInfo.TriggerContentUri[] kept = pending != null ? pending.getTriggerContentUris() : null;
+            detail = "result=" + r + " kept=" + (kept != null ? kept.length + " " + kept[0].getUri() + " flags=" + kept[0].getFlags() : "null")
+                     + " delays=" + (pending != null ? pending.getTriggerContentUpdateDelay() + "," + pending.getTriggerContentMaxDelay() : "")
+                     + " plain=" + (plain != null ? java.util.Arrays.toString(plain.getTriggerContentUris()) : "none");
+            return r == android.app.job.JobScheduler.RESULT_SUCCESS && kept != null && kept.length == 1 && kept[0].equals(watched)
+                && pending.getTriggerContentUpdateDelay() == 600 && pending.getTriggerContentMaxDelay() == -1
+                && (plain == null || plain.getTriggerContentUris() == null);
         });
         // A download enqueued in the system's download provider (content://downloads, as DownloadManager and Play Store's old
         // downloader do), from a server of this app's own on 127.0.0.1 that wants the row's cookie: its cursor's observer hears
@@ -778,6 +871,31 @@ public class Main extends Activity {
             int own = calls[0] - added - set - laid - removed - hidden;
             detail = "added " + added + " set " + set + " laid " + laid + " removed " + removed + " hidden " + hidden + " own " + own;
             return added == 0 && set == 0 && laid == 0 && removed == 0 && hidden == 0 && own == 2;
+        });
+        // The same as a view is made, where such a method finds the fields it reads not yet set. The text size row of Telegram's
+        // Chat Settings (ThemeActivity's TextSizeCell) invalidates its preview and its seek bar in its invalidate(), and its
+        // constructor -- setWillNotDraw(false), the seek bar added, then the preview made -- has no preview at its first
+        // addView. In 0.1.0.699 addView called the row's invalidate(): a NullPointerException inside the list's layout, which
+        // Telegram's own container catches and keeps to itself, so RecyclerView stayed "computing a layout" and the adapter's
+        // next notification ended the app (IllegalStateException under ThemeActivity). Nothing reaches it while it is made.
+        step("invalidate-in-constructor", () -> {
+            final int[] calls = new int[1];
+            android.widget.FrameLayout row = new android.widget.FrameLayout(this) {
+                final android.view.View bar, preview;
+                {
+                    setWillNotDraw(false);
+                    bar = new android.view.View(Main.this);
+                    bar.setImportantForAccessibility(android.view.View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+                    addView(bar, new android.widget.FrameLayout.LayoutParams(android.view.ViewGroup.LayoutParams.MATCH_PARENT, 38, android.view.Gravity.LEFT | android.view.Gravity.TOP));
+                    preview = new android.view.View(Main.this);
+                    addView(preview, new android.widget.FrameLayout.LayoutParams(android.view.ViewGroup.LayoutParams.MATCH_PARENT, android.view.ViewGroup.LayoutParams.WRAP_CONTENT, android.view.Gravity.LEFT | android.view.Gravity.TOP));
+                }
+                @Override public void invalidate() { calls[0]++; super.invalidate(); preview.invalidate(); bar.invalidate(); }
+            };
+            int made = calls[0];
+            row.invalidate();
+            detail = "children " + row.getChildCount() + " willNotDraw " + row.willNotDraw() + " calls as made " + made + " own " + (calls[0] - made);
+            return row.getChildCount() == 2 && !row.willNotDraw() && made == 0 && calls[0] == 1;
         });
         // An image matrix set before the view is laid out, then the scale type made MATRIX, as Material's FloatingActionButton
         // does as it is made: once laid out, the view draws by that matrix.
@@ -1168,6 +1286,41 @@ public class Main extends Activity {
             return "fahrenheit".equals(us) && "celsius".equals(ru) && "celsius".equals(mu) && "mile".equals(road) && "1.2M".equals(compact)
                    && "1.3 million".equals(compactLong) && "12.30".equals(fixed) && "$1,234.50".equals(money) && "5 kilometers".equals(km)
                    && "+12345".equals(sign) && "120".equals(digits) && even.intValue() == 2 && "1,234.5".equals(old) && "1.3M".equals(oldCompact) && !rounder;
+        });
+        // The units Android 11 and later have and Android 9's ICU has not (Breezy Weather reads MeasureUnit.PERCENT for a
+        // humidity): the constants are there for an app's code, NumberFormatter writes them, and ICU's own MeasureFormat has
+        // their words: a sign in any language, the name in English at full width, a percentage as the locale writes one, and
+        // a unit that is another under a new name in that unit's words. The units ICU always had are written as before.
+        step("icu-new-units", () -> {
+            android.icu.util.MeasureUnit percent = android.icu.util.MeasureUnit.PERCENT, atm = android.icu.util.MeasureUnit.ATMOSPHERE;
+            String number = android.icu.number.NumberFormatter.withLocale(java.util.Locale.US).unit(percent)
+                .precision(android.icu.number.Precision.integer()).format(50).toString();
+            String mille = android.icu.number.NumberFormatter.withLocale(java.util.Locale.US).unit(android.icu.util.MeasureUnit.PERMILLE)
+                .precision(android.icu.number.Precision.integer()).format(50).toString();
+            String pressure = android.icu.number.NumberFormatter.withLocale(java.util.Locale.US).unit(atm).format(3).toString();
+            String full = android.icu.number.NumberFormatter.withLocale(java.util.Locale.US).unit(android.icu.util.MeasureUnit.KILOPASCAL)
+                .unitWidth(android.icu.number.NumberFormatter.UnitWidth.FULL_NAME).format(101).toString();
+            android.icu.text.MeasureFormat narrow = android.icu.text.MeasureFormat.getInstance(java.util.Locale.US, android.icu.text.MeasureFormat.FormatWidth.SHORT);
+            android.icu.text.MeasureFormat wide = android.icu.text.MeasureFormat.getInstance(java.util.Locale.US, android.icu.text.MeasureFormat.FormatWidth.WIDE);
+            android.icu.text.MeasureFormat german = android.icu.text.MeasureFormat.getInstance(java.util.Locale.GERMANY, android.icu.text.MeasureFormat.FormatWidth.SHORT);
+            android.icu.text.MeasureFormat russian = android.icu.text.MeasureFormat.getInstance(new java.util.Locale("ru", "RU"), android.icu.text.MeasureFormat.FormatWidth.WIDE);
+            String name = narrow.getUnitDisplayName(percent), wideName = wide.getUnitDisplayName(atm);
+            String shown = narrow.format(new android.icu.util.Measure(3, atm));
+            String one = wide.format(new android.icu.util.Measure(1, atm)), several = wide.format(new android.icu.util.Measure(3, atm));
+            String de = german.format(new android.icu.util.Measure(50, percent));
+            String tonnes = wide.format(new android.icu.util.Measure(2, android.icu.util.MeasureUnit.TONNE));
+            String days = russian.getUnitDisplayName(android.icu.util.MeasureUnit.DAY_PERSON), day = russian.getUnitDisplayName(android.icu.util.MeasureUnit.forIdentifier("day"));
+            String km = narrow.format(new android.icu.util.Measure(5, android.icu.util.MeasureUnit.KILOMETER));
+            android.icu.util.MeasureUnit named = android.icu.util.MeasureUnit.forIdentifier("percent");
+            boolean same = named == percent && "percent".equals(percent.getIdentifier())
+                           && "concentr".equals(percent.getType()) && android.icu.util.MeasureUnit.getAvailable("pressure").contains(atm);
+            detail = "number=" + number + " mille=" + mille + " pressure=" + pressure + " full=" + full + " name=" + name + " wide-name=" + wideName + " shown=" + shown
+                     + " one=" + one + " several=" + several + " de=" + de + " tonnes=" + tonnes + " days=" + days + " day=" + day + " km=" + km + " named=" + named.getType() + "/" + named.getSubtype()
+                     + " id=" + percent.getIdentifier() + " listed=" + android.icu.util.MeasureUnit.getAvailable("pressure").contains(atm) + " same=" + same;
+            return "50%".equals(number) && "50‰".equals(mille) && "3 atm".equals(pressure) && "101 kilopascals".equals(full) && "%".equals(name)
+                   && "atmospheres".equals(wideName) && "3 atm".equals(shown) && "1 atmosphere".equals(one) && "3 atmospheres".equals(several)
+                   && de != null && de.length() == 4 && de.startsWith("50") && de.endsWith("%") && !Character.isDigit(de.charAt(2))
+                   && "2 metric tons".equals(tonnes) && days != null && days.equals(day) && "5 km".equals(km) && same;
         });
         // Where a call's sound goes, as the app's AudioManager has it (WhatsApp's calls): MODE_IN_COMMUNICATION is the
         // earpiece, setSpeakerphoneOn(true) the loudspeaker, and setCommunicationDevice either of the two communication
@@ -1605,6 +1758,71 @@ public class Main extends Activity {
                 ((android.view.ViewGroup) v.getParent()).removeView(v);
             }, 500);
             return true;
+        });
+        // A drop-down popup whose content cannot be measured before it is in a window, nor before the app has given the popup's
+        // root what it needs after showAsDropDown returns, as a ComposeView cannot (OneDrive's menu ended the app: "Cannot locate
+        // windowRecomposer ... not attached to a window", then "ViewTreeLifecycleOwner not found from ...PopupDecor"): nothing
+        // of it measured within showAsDropDown; measured attached afterwards (the line popup-measured-attached).
+        step("popup-measured-attached", () -> {
+            final boolean[] unattached = new boolean[1], within = new boolean[1];
+            final int[] measures = new int[1];
+            android.view.View content = new android.view.View(this) {
+                @Override protected void onMeasure(int w, int h) {
+                    measures[0]++;
+                    if (!isAttachedToWindow()) unattached[0] = true;
+                    if (within[0]) throw new IllegalStateException("measured within showAsDropDown");
+                    setMeasuredDimension(120, 80);
+                }
+            };
+            final android.widget.PopupWindow popup = new android.widget.PopupWindow(content, android.view.ViewGroup.LayoutParams.WRAP_CONTENT,
+                    android.view.ViewGroup.LayoutParams.WRAP_CONTENT);
+            within[0] = true;
+            popup.showAsDropDown(text);
+            within[0] = false;
+            boolean showing = popup.isShowing();
+            text.postDelayed(() -> {
+                Log.i("DataTest", "popup-measured-attached measured=" + (measures[0] > 0) + " unattached=" + unattached[0] + " showing=" + popup.isShowing());
+                popup.dismiss();
+            }, 500);
+            detail = "showing=" + showing + " measures=" + measures[0];
+            return showing && measures[0] == 0 && !unattached[0];
+        });
+        // A change told as Android's ContentService tells it (ContentResolver.notifyChange): an observer at the changed URI or
+        // below it hears it, one above it only if it takes descendants (and none that takes them when the change skips them),
+        // ".../a/b" is not ".../a/bc", the observer that tells hears it only if it asks for its own, and a collection of URIs
+        // is told (Android 11's notifyChange of a Collection, by reflection: a stub that told no one).
+        step("observer-tree", () -> {
+            final android.content.ContentResolver cr = getContentResolver();
+            final StringBuilder heard = new StringBuilder();
+            class Heard extends android.database.ContentObserver {
+                final String name; final boolean self;
+                Heard(String name, boolean self) { super(null); this.name = name; this.self = self; }
+                @Override public boolean deliverSelfNotifications() { return self; }
+                @Override public void onChange(boolean selfChange, android.net.Uri u) { heard.append(name).append(selfChange ? "*" : "").append(':').append(u.getLastPathSegment()).append(' '); }
+            }
+            android.net.Uri a = android.net.Uri.parse("content://megler.test.data.tree/a");
+            android.net.Uri b = android.net.Uri.withAppendedPath(a, "b"), bc = android.net.Uri.withAppendedPath(a, "bc");
+            Heard[] all = { new Heard("A", false), new Heard("AD", false), new Heard("B", false), new Heard("BC", false), new Heard("S", true), new Heard("N", false) };
+            cr.registerContentObserver(a, false, all[0]);
+            cr.registerContentObserver(a, true, all[1]);
+            cr.registerContentObserver(b, false, all[2]);
+            cr.registerContentObserver(bc, true, all[3]);
+            cr.registerContentObserver(b, false, all[4]);
+            cr.registerContentObserver(b, false, all[5]);
+            try {
+                cr.notifyChange(b, all[4]);
+                heard.append("| ");
+                cr.notifyChange(a, all[5]);
+                heard.append("| ");
+                cr.notifyChange(a, null, android.content.ContentResolver.NOTIFY_SKIP_NOTIFY_FOR_DESCENDANTS);
+                heard.append("| ");
+                android.content.ContentResolver.class.getMethod("notifyChange", java.util.Collection.class, android.database.ContentObserver.class, int.class)
+                    .invoke(cr, java.util.Collections.singletonList(android.net.Uri.withAppendedPath(bc, "x")), null, 0);
+            } finally {
+                for (Heard h : all) cr.unregisterContentObserver(h);
+            }
+            detail = heard.toString().trim();
+            return detail.equals("AD:b B:b S*:b N:b | A:a AD:a B:a BC:a S:a | A:a B:a S:a N:a | AD:x BC:x");
         });
         // A typeface built from a font file open on a descriptor (Typeface.Builder(FileDescriptor), as Google Play services
         // loads its downloaded fonts): made, and the descriptor still open after.
@@ -2216,6 +2434,7 @@ public class Main extends Activity {
         notificationChannel();
         notificationChannels(run);
         geocoding();
+        playServicesClasses();
         laterApis();
         remoteCallbacks();
         sessionControllers();
@@ -2674,6 +2893,51 @@ public class Main extends Activity {
                     && "41217664-9172-527a-b3d5-edabb50a7d69".equals(android.os.storage.StorageManager.UUID_DEFAULT.toString())
                     && android.os.storage.StorageManager.UUID_DEFAULT.equals(sm.getUuidForPath(getFilesDir()));
         });
+        step("volume-infos", () -> {
+            /* The storage daemon's volumes, all hidden, the way Files by Google looks for an SD card and a USB drive: getVolumes
+               found among StorageManager's declared methods, VolumeInfo and DiskInfo by name, a volume's path, fsUuid, disk and
+               state as fields and its user from getMountUserId, a disk's kind from isAdoptable, isSd and isUsb. A phone without
+               a removable medium has two, mounted and on no disk: the private one at /data and the emulated one, which is the
+               volume getStorageVolumes describes. */
+            android.os.storage.StorageManager sm = (android.os.storage.StorageManager) getSystemService(Context.STORAGE_SERVICE);
+            java.lang.reflect.Method getVolumes = android.os.storage.StorageManager.class.getDeclaredMethod("getVolumes");
+            getVolumes.setAccessible(true);
+            java.util.List<?> list = (java.util.List<?>) getVolumes.invoke(sm);
+            Class<?> disk = Class.forName("android.os.storage.DiskInfo"), volume = Class.forName("android.os.storage.VolumeInfo");
+            java.lang.reflect.Field path = volume.getDeclaredField("path"), fsUuid = volume.getDeclaredField("fsUuid"), onDisk = volume.getDeclaredField("disk"),
+                                    state = volume.getDeclaredField("state");
+            java.lang.reflect.Method mountUser = volume.getDeclaredMethod("getMountUserId"), type = volume.getDeclaredMethod("getType"),
+                                     forUser = volume.getDeclaredMethod("getPathForUser", int.class), id = volume.getDeclaredMethod("getId");
+            boolean kinds = disk.getDeclaredMethod("isAdoptable").getReturnType() == boolean.class && disk.getDeclaredMethod("isSd").getReturnType() == boolean.class
+                    && disk.getDeclaredMethod("isUsb").getReturnType() == boolean.class;
+            int user = (Integer) Context.class.getMethod("getUserId").invoke(this);
+            StringBuilder said = new StringBuilder();
+            boolean ok = kinds && list.size() == 2, sawPrivate = false, sawShared = false;
+            for (Object v : list) {
+                int owner = (Integer) mountUser.invoke(v), kind = (Integer) type.invoke(v);
+                said.append(id.invoke(v)).append(" type=").append(kind).append(" state=").append(state.getInt(v)).append(" user=").append(owner).append(" path=")
+                    .append(path.get(v)).append(" uuid=").append(fsUuid.get(v)).append(" disk=").append(onDisk.get(v)).append("; ");
+                /* (2 is VolumeInfo.STATE_MOUNTED) */
+                ok &= volume.isInstance(v) && state.getInt(v) == 2 && onDisk.get(v) == null && fsUuid.get(v) == null && (owner < 0 || owner == user);
+                if (kind == 1 /* TYPE_PRIVATE */) {
+                    sawPrivate = true;
+                    ok &= "private".equals(id.invoke(v)) && android.os.Environment.getDataDirectory().getPath().equals(path.get(v)) && forUser.invoke(v, user) == null;
+                } else if (kind == 2 /* TYPE_EMULATED */) {
+                    sawShared = true;
+                    ok &= sm.getPrimaryStorageVolume().getClass().getMethod("getId").invoke(sm.getPrimaryStorageVolume()).equals(id.invoke(v))
+                            && owner == user && root.equals(forUser.invoke(v, user)) && root.getParent().equals(path.get(v))
+                            && (Boolean) volume.getMethod("isPrimary").invoke(v) && (Boolean) volume.getMethod("isMountedWritable").invoke(v)
+                            && "Internal storage".equals(volume.getMethod("getDescription").invoke(v));
+                } else {
+                    ok = false;
+                }
+            }
+            java.util.List<?> disks = (java.util.List<?>) android.os.storage.StorageManager.class.getMethod("getDisks").invoke(sm);
+            Object found = android.os.storage.StorageManager.class.getMethod("findVolumeById", String.class).invoke(sm, "private");
+            detail = said + "disks=" + disks.size() + " found=" + (found != null);
+            return ok && sawPrivate && sawShared && disks.isEmpty() && volume.isInstance(found)
+                    && android.os.storage.StorageManager.class.getMethod("findVolumeById", String.class).invoke(sm, "public:179,1") == null;
+        });
         step("space", () -> {
             android.os.StatFs fs = new android.os.StatFs(root.getPath()), data = new android.os.StatFs(android.os.Environment.getDataDirectory().getPath());
             long total = fs.getTotalBytes(), free = fs.getAvailableBytes();
@@ -2750,6 +3014,71 @@ public class Main extends Activity {
             /* There, with what was written, listed in its folder; under the path's other name too; and the run before left its own. */
             return ("written by run " + run).equals(now) && file.length() == now.length() + 1 && names != null && Arrays.asList(names).contains("megler-data-test.txt")
                     && new File("/sdcard/Download/megler-data-test.txt").length() == file.length() && (run == 1 || ("written by run " + (run - 1)).equals(before));
+        });
+        /* A folder moved out of a folder of the phone's own (Movies here, the stand-in's link: mg_java_tests.c; a phone's DCIM is
+           one), as Files by Google moves it. The rename is refused (EXDEV: another file system, to an app), so each file is
+           copied and removed, and the copy is checked as that app checks it: the descriptor is the path's file (fstat against
+           lstat), and the bytes copied are the source's AssetFileDescriptor.getLength() -- which for a file:// URI declares no
+           length and so is the file's size (ParcelFileDescriptor.getStatSize, by fstat). It was -1, and every copy counted as
+           failed, an empty file's too. And what is not a file has no size (a socket), and a declared length stays (an asset). */
+        step("link-move", () -> {
+            File from = new File("/sdcard/Movies/megler-move"), to = new File("/sdcard/Download/megler-moved");
+            String[] names = { ".nomedia", "small.bin", "large.bin" };
+            int[] sizes = { 0, 5, 70000 };
+            for (File dir : new File[] { from, to }) {   /* what a run cut short left */
+                for (String n : names) new File(dir, n).delete();
+                dir.delete();
+            }
+            boolean made = from.mkdirs();
+            for (int i = 0; i < names.length; i++) {
+                byte[] b = new byte[sizes[i]];
+                for (int k = 0; k < b.length; k++) b[k] = (byte) (k * 7 + i);
+                try (java.io.FileOutputStream out = new java.io.FileOutputStream(new File(from, names[i]))) { out.write(b); }
+            }
+            int errno = 0;
+            try { android.system.Os.rename(from.getPath(), to.getPath()); } catch (android.system.ErrnoException e) { errno = e.errno; }
+            boolean refused = errno == android.system.OsConstants.EXDEV && !from.renameTo(to) && from.isDirectory() && !to.exists();
+            boolean ok = made && refused && to.mkdirs();
+            StringBuilder said = new StringBuilder();
+            android.content.ContentResolver cr = getContentResolver();
+            for (int i = 0; i < names.length; i++) {
+                File src = new File(from, names[i]).getCanonicalFile(), dst = new File(to, names[i]);
+                android.net.Uri uri = android.net.Uri.fromFile(src);
+                long copied = 0, length, declared, stat, dup;
+                android.os.ParcelFileDescriptor in = cr.openFileDescriptor(uri, "r");
+                android.system.StructStat a = android.system.Os.fstat(in.getFileDescriptor()), b = android.system.Os.lstat(src.getPath());
+                boolean same = a.st_dev == b.st_dev && a.st_ino == b.st_ino && !android.system.OsConstants.S_ISLNK(b.st_mode);
+                try (java.io.InputStream is = new android.os.ParcelFileDescriptor.AutoCloseInputStream(in); java.io.OutputStream os = new java.io.FileOutputStream(dst)) {
+                    byte[] buf = new byte[8192];
+                    for (int n; (n = is.read(buf)) > 0; copied += n) os.write(buf, 0, n);
+                }
+                try (android.content.res.AssetFileDescriptor afd = cr.openAssetFileDescriptor(uri, "r")) {
+                    length = afd.getLength();
+                    declared = afd.getDeclaredLength();
+                    stat = afd.getParcelFileDescriptor().getStatSize();
+                    try (android.os.ParcelFileDescriptor d = android.os.ParcelFileDescriptor.dup(afd.getFileDescriptor())) { dup = d.getStatSize(); }
+                }
+                said.append(names[i]).append(": same file ").append(same).append(", copied ").append(copied).append(", length ").append(length).append(" declared ").append(declared)
+                        .append(" stat ").append(stat).append('/').append(dup).append(", target ").append(dst.length()).append("; ");
+                ok &= same && copied == sizes[i] && length == copied && declared == android.content.res.AssetFileDescriptor.UNKNOWN_LENGTH && stat == copied && dup == copied
+                        && dst.length() == copied && src.delete();
+            }
+            boolean gone = from.delete() && !from.exists();
+            String[] moved = to.list();
+            if (moved != null) Arrays.sort(moved);
+            boolean there = Arrays.equals(moved, new String[] { ".nomedia", "large.bin", "small.bin" });
+            for (String n : names) new File(to, n).delete();
+            boolean cleaned = to.delete();
+            java.io.FileDescriptor s1 = new java.io.FileDescriptor(), s2 = new java.io.FileDescriptor();
+            android.system.Os.socketpair(android.system.OsConstants.AF_UNIX, android.system.OsConstants.SOCK_STREAM, 0, s1, s2);
+            long socket, asset, assetDeclared;
+            try (android.os.ParcelFileDescriptor d = android.os.ParcelFileDescriptor.dup(s1)) { socket = d.getStatSize(); }
+            android.system.Os.close(s1);
+            android.system.Os.close(s2);
+            try (android.content.res.AssetFileDescriptor afd = getAssets().openNonAssetFd("resources.arsc")) { asset = afd.getLength(); assetDeclared = afd.getDeclaredLength(); }
+            detail = "rename errno " + errno + " (EXDEV is " + android.system.OsConstants.EXDEV + "); " + said + "source folder gone " + gone + ", moved " + Arrays.toString(moved)
+                    + ", socket " + socket + ", asset " + asset + " declared " + assetDeclared;
+            return ok && gone && there && cleaned && socket == -1 && asset > 12 && asset == assetDeclared;
         });
         step("list-root", () -> {
             File[] list = root.listFiles();
@@ -4057,10 +4386,14 @@ public class Main extends Activity {
     }
 
     /** The harness's F12 (mg_java_tests.c, run_data): the main thread made to stand in Object.wait (stuckMain); F11: a translucent
-        activity over this one (Clear). */
+        activity over this one (Clear); F10: an activity started under an Instrumentation of the app's own (replacedInstrumentation). */
     @Override public boolean onKeyDown(int keyCode, android.view.KeyEvent event) {
         if (keyCode == android.view.KeyEvent.KEYCODE_F12) {
             stuckMain();
+            return true;
+        }
+        if (keyCode == android.view.KeyEvent.KEYCODE_F10) {
+            replacedInstrumentation();
             return true;
         }
         if (keyCode == android.view.KeyEvent.KEYCODE_F11) {
@@ -4095,6 +4428,85 @@ public class Main extends Activity {
                 sWatchStop = false;
                 finish();
             }, 500);
+        }
+    }
+
+    /*
+     * An Instrumentation of the app's own in ActivityThread's hidden mInstrumentation, which holds the platform's and passes on
+     * to it: as TikTok Lite's "mini" app puts one there (its ActivityDispatchService), to make an activity of its own for the
+     * name of one whose class is in a feature module it does not have yet. From then on it is the one asked: newActivity for
+     * the next activity started -- Main$Absent, in the manifest and of no class, for which it has the platform's make
+     * Main$Stand -- and each step of that one's life, before the activity hears of the step (the number after each step is
+     * how many the activity had heard of by then). The activity is the component it was started as. Megler had no such
+     * field (NoSuchFieldException: mInstrumentation), and asked no Instrumentation anything.
+     */
+    static volatile Seen sSeen;
+    static final class Seen extends android.app.Instrumentation {
+        final android.app.Instrumentation platform;
+        final java.lang.reflect.Field field;
+        final Object thread;
+        final StringBuilder said = new StringBuilder();
+        Seen(android.app.Instrumentation platform, java.lang.reflect.Field field, Object thread) {
+            this.platform = platform;
+            this.field = field;
+            this.thread = thread;
+        }
+        private void say(String step, Activity a) {
+            if (a instanceof Stand) said.append(' ').append(step).append(((Stand) a).heard);
+        }
+        @Override public Activity newActivity(ClassLoader cl, String className, android.content.Intent intent)
+                throws InstantiationException, IllegalAccessException, ClassNotFoundException {
+            boolean absent = className.endsWith(".Main$Absent");
+            if (absent) said.append("new:").append(className.substring(className.lastIndexOf('.') + 1));
+            return platform.newActivity(cl, absent ? Stand.class.getName() : className, intent);
+        }
+        @Override public void callActivityOnCreate(Activity a, Bundle state) { say("create", a); platform.callActivityOnCreate(a, state); }
+        @Override public void callActivityOnStart(Activity a) { say("start", a); platform.callActivityOnStart(a); }
+        @Override public void callActivityOnPostCreate(Activity a, Bundle state) { say("postCreate", a); platform.callActivityOnPostCreate(a, state); }
+        @Override public void callActivityOnResume(Activity a) { say("resume", a); platform.callActivityOnResume(a); }
+        @Override public void callActivityOnPause(Activity a) { say("pause", a); platform.callActivityOnPause(a); }
+        @Override public void callActivityOnStop(Activity a) { say("stop", a); platform.callActivityOnStop(a); }
+        @Override public void callActivityOnDestroy(Activity a) { say("destroy", a); platform.callActivityOnDestroy(a); }
+    }
+    private void replacedInstrumentation() {
+        try {
+            Class<?> at = Class.forName("android.app.ActivityThread");
+            Object thread = at.getMethod("currentActivityThread").invoke(null);
+            java.lang.reflect.Field field = at.getDeclaredField("mInstrumentation");
+            field.setAccessible(true);
+            Seen seen = new Seen((android.app.Instrumentation) field.get(thread), field, thread);
+            field.set(thread, seen);
+            sSeen = seen;
+            startActivity(new android.content.Intent().setClassName(this, getPackageName() + ".Main$Absent"));
+        } catch (Throwable t) {
+            Log.i("DataTest", "instrumentation-replaced FAILED: " + t);
+        }
+    }
+    public static class Stand extends Activity {
+        int heard;
+        @Override protected void onCreate(Bundle state) { super.onCreate(state); heard++; }
+        @Override protected void onStart() { super.onStart(); heard++; }
+        @Override protected void onPostCreate(Bundle state) { super.onPostCreate(state); heard++; }
+        @Override protected void onResume() {
+            super.onResume();
+            heard++;
+            new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(this::finish, 300);
+        }
+        @Override protected void onPause() { super.onPause(); heard++; }
+        @Override protected void onStop() { super.onStop(); heard++; }
+        @Override protected void onDestroy() {
+            super.onDestroy();
+            Seen seen = sSeen;
+            String said = seen == null ? "none" : seen.said.toString(), as = getComponentName().getClassName();
+            boolean back = false;
+            try {
+                seen.field.set(seen.thread, seen.platform);
+                back = seen.field.get(seen.thread) == seen.platform;
+            } catch (Throwable t) {
+                said += " " + t;
+            }
+            boolean held = "new:Main$Absent create0 start1 postCreate2 resume3 pause4 stop5 destroy6".equals(said) && as.endsWith(".Main$Absent") && back;
+            Log.i("DataTest", "instrumentation-replaced " + (held ? "ok" : "FAILED") + " said=[" + said + "] as=" + as + " back=" + back);
         }
     }
 
@@ -4993,9 +5405,70 @@ public class Main extends Activity {
                 return String.valueOf(e);
             }
         }
+        /**
+         * What an app reads of its process's class loader (code 9), as Facebook Lite's shell does in every one of its processes:
+         * the loader is a PathClassLoader whose pathList's dexElements hold the APK's DexFile and whose library folders are the
+         * app's; a class that DexFile defines for the loader is this process's own; a loader the app puts in its parent field
+         * is asked for what the process has not; and a DEX file this process opens for no loader (DexFile.loadDex, as Facebook
+         * Lite opens the ones it unpacks) has its classes in this process: its ModuleProbe is found here, and its Twin is the
+         * APK's, which comes first.
+         */
+        static String loader(android.content.Context c) {
+            try {
+                final ClassLoader l = Elsewhere.class.getClassLoader();
+                java.lang.reflect.Field f = dalvik.system.BaseDexClassLoader.class.getDeclaredField("pathList");
+                f.setAccessible(true);
+                Object list = f.get(l);
+                f = list.getClass().getDeclaredField("dexElements");
+                f.setAccessible(true);
+                Object[] elements = (Object[]) f.get(list);
+                f = elements[0].getClass().getDeclaredField("dexFile");
+                f.setAccessible(true);
+                dalvik.system.DexFile apk = (dalvik.system.DexFile) f.get(elements[0]);
+                f = list.getClass().getDeclaredField("nativeLibraryDirectories");
+                f.setAccessible(true);
+                boolean libraries = ((java.util.List<?>) f.get(list)).contains(new java.io.File(c.getApplicationInfo().nativeLibraryDir));
+                Class<?> defined = (Class<?>) dalvik.system.DexFile.class.getMethod("loadClassBinaryName", String.class, ClassLoader.class, java.util.List.class)
+                        .invoke(apk, "megler/test/data/Twin", l, null);
+                f = ClassLoader.class.getDeclaredField("parent");
+                f.setAccessible(true);
+                final ClassLoader made = l.getParent();
+                Class<?> above;
+                f.set(l, new ClassLoader(made) {
+                    @Override protected Class<?> findClass(String name) throws ClassNotFoundException {
+                        if (name.equals("megler.test.data.Nowhere")) return Elsewhere.class;
+                        throw new ClassNotFoundException(name);
+                    }
+                });
+                try { above = l.loadClass("megler.test.data.Nowhere"); } finally { f.set(l, made); }
+                java.io.File dex = new java.io.File(c.getCacheDir(), "elsewhere.dex");
+                try (java.io.InputStream in = c.getAssets().open("module.dex"); java.io.OutputStream out = new java.io.FileOutputStream(dex)) {
+                    byte[] b = new byte[8192];
+                    for (int n; (n = in.read(b)) > 0; ) out.write(b, 0, n);
+                }
+                boolean before;
+                try { l.loadClass("megler.test.data.ModuleProbe"); before = true; } catch (ClassNotFoundException e) { before = false; }
+                dalvik.system.DexFile.loadDex(dex.getPath(), null, 0);
+                Class<?> probe = l.loadClass("megler.test.data.ModuleProbe");
+                return "path=" + (l instanceof dalvik.system.PathClassLoader) + " parent=" + (made == null ? "null" : made.getClass().getSimpleName()) + " elements=" + elements.length
+                        + " apk=" + c.getApplicationInfo().sourceDir.equals(apk.getName()) + " libraries=" + libraries + " defined=" + (defined == Twin.class)
+                        + " above=" + (above == Elsewhere.class) + " opened=" + before + "/" + (probe.getClassLoader() == l) + " twin=" + probe.getMethod("twin").invoke(null);
+            } catch (Throwable e) {
+                return String.valueOf(e instanceof java.lang.reflect.InvocationTargetException ? e.getCause() : e);
+            }
+        }
         @Override public android.os.IBinder onBind(android.content.Intent intent) {
             return new android.os.Binder() {
                 @Override protected boolean onTransact(int code, android.os.Parcel data, android.os.Parcel reply, int flags) {
+                    if (code == 10) {
+                        // a thread of this process that ends with an uncaught exception (the log names whose it was)
+                        new Thread(() -> { throw new IllegalStateException("a thread of elsewhere's ends"); }, "ElsewhereEnds").start();
+                        return true;
+                    }
+                    if (code == 9) {
+                        reply.writeString(loader(Elsewhere.this));
+                        return true;
+                    }
                     if (code >= 4 && code <= 8) {
                         String path = data.readString();
                         reply.writeString(fileLock(code, path, data.readInt() != 0));
@@ -5026,13 +5499,38 @@ public class Main extends Activity {
         }
     }
 
-    /** The jobs of the step "job-scheduler": 41 says its extra and finishes later, from a thread; 42 takes its work. */
+    /**
+     * The jobs of the step "job-scheduler": 41 says its extra and finishes later, from a thread; 42 takes its work. And those of
+     * the step "job-content-trigger" (44 to 47), which say what they were told changed: 46 tells another change and schedules
+     * itself again in its first run, 47 asks for another run from its first.
+     */
     public static final class Work extends android.app.job.JobService {
+        private static int runs46, runs47;
+        static android.app.job.JobInfo again(Context c) {
+            return new android.app.job.JobInfo.Builder(46, new android.content.ComponentName(c, Work.class))
+                    .addTriggerContentUri(new android.app.job.JobInfo.TriggerContentUri(android.net.Uri.parse("content://megler.test.data.jobs/again"),
+                            android.app.job.JobInfo.TriggerContentUri.FLAG_NOTIFY_FOR_DESCENDANTS))
+                    .setTriggerContentUpdateDelay(500).build();
+        }
         @Override public boolean onStartJob(final android.app.job.JobParameters p) {
             if (p.getJobId() == 41) {
                 Log.i("DataTest", "job 41 said=" + p.getExtras().getString("said") + " network=" + (p.getNetwork() != null));
                 new Thread(() -> jobFinished(p, false)).start();
                 return true;
+            }
+            if (p.getJobId() >= 44 && p.getJobId() <= 47) {
+                int run = p.getJobId() == 46 ? ++runs46 : p.getJobId() == 47 ? ++runs47 : 1;
+                Log.i("DataTest", "job " + p.getJobId() + " run=" + run + " uris=" + java.util.Arrays.toString(p.getTriggeredContentUris())
+                                  + " authorities=" + java.util.Arrays.toString(p.getTriggeredContentAuthorities()) + " deadline=" + p.isOverrideDeadlineExpired());
+                if (p.getJobId() == 46 && run == 1) {
+                    getContentResolver().notifyChange(android.net.Uri.parse("content://megler.test.data.jobs/again/2"), null);
+                    ((android.app.job.JobScheduler) getSystemService(JOB_SCHEDULER_SERVICE)).schedule(again(this));
+                }
+                if (p.getJobId() == 47 && run == 1) {
+                    new Thread(() -> jobFinished(p, true)).start();
+                    return true;
+                }
+                return false;
             }
             StringBuilder got = new StringBuilder();
             for (android.app.job.JobWorkItem w; (w = p.dequeueWork()) != null; ) {
@@ -5869,6 +6367,32 @@ public class Main extends Activity {
             detail = "listed=" + listed + " open=" + open + " info=" + info + " launcherApps=" + launcherApps + " defaultIcon=" + fallback
                     + (fallback != null ? " " + fallback.getIntrinsicWidth() : "");
             return listed && open != null && "com.example.other.Main".equals(open.getComponent().getClassName()) && info && launcherApps && defaultIcon;
+        });
+        // Another app has the places Android gives an installed app (LibChecker lists only apps that have a sourceDir,
+        // issue #9), and its APK is there to be read, not written: the file the apps folder's source.txt names. An app
+        // that is not there has no folder.
+        step("phone-apps-source", () -> {
+            android.content.pm.PackageManager pm = getPackageManager();
+            android.content.pm.ApplicationInfo other = null;
+            for (android.content.pm.ApplicationInfo a : pm.getInstalledApplications(0)) if ("com.example.other".equals(a.packageName)) other = a;
+            if (other == null) { detail = "not among the installed applications"; return false; }
+            String apk = "/data/app/com.example.other-1/base.apk";
+            java.io.File file = new java.io.File(String.valueOf(other.sourceDir));
+            String head = null;
+            boolean written = false;
+            try (java.io.FileInputStream in = new java.io.FileInputStream(file)) {
+                byte[] b = new byte[64];
+                int n = in.read(b);
+                head = new String(b, 0, Math.max(n, 0), "ISO-8859-1");
+            } catch (java.io.IOException e) { head = String.valueOf(e); }
+            try (java.io.FileOutputStream out = new java.io.FileOutputStream(file, true)) { out.write(1); written = true; } catch (java.io.IOException e) {}
+            boolean none = new java.io.File("/data/app/com.example.none-1/base.apk").exists() || new java.io.File("/data/app/com.example.none-1").exists();
+            boolean folder = file.getParentFile().isDirectory();
+            detail = "sourceDir=" + other.sourceDir + " publicSourceDir=" + other.publicSourceDir + " nativeLibraryDir=" + other.nativeLibraryDir
+                    + " dataDir=" + other.dataDir + " length=" + file.length() + " head=" + head + " written=" + written + " folder=" + folder + " none=" + none;
+            return apk.equals(other.sourceDir) && apk.equals(other.publicSourceDir) && other.nativeLibraryDir != null
+                && other.nativeLibraryDir.startsWith("/data/app/com.example.other-1/lib/") && "/data/data/com.example.other".equals(other.dataDir)
+                && file.isFile() && file.length() == 24 && "PK the other app's APK".equals(head) && !written && folder && !none;
         });
         // Its activities, every one, as the shell described them (the apps folder's com.example.other/activities.json), as a
         // shortcut maker lists them: each with whether it is exported; both launcher entries, the alias's too; the one that
@@ -6747,6 +7271,18 @@ public class Main extends Activity {
             return app instanceof DataApplication && "field true current true".equals(DataApplication.seenInOnCreate) && current.get(null) == thread
                     && fromField == app && apps != null && apps.contains(app) && fromGetter == app && fromCurrent == app && fromGlobals == app;
         });
+        // ActivityThread's hidden mInstrumentation, which an app puts an Instrumentation of its own in (TikTok Lite's "mini" app):
+        // there, of that type, holding the Instrumentation getInstrumentation gives. (That one put there is the one asked from
+        // then on: replacedInstrumentation, the harness's F10.)
+        step("activity-thread-instrumentation", () -> {
+            Class<?> at = Class.forName("android.app.ActivityThread");
+            Object thread = at.getMethod("currentActivityThread").invoke(null);
+            java.lang.reflect.Field field = at.getDeclaredField("mInstrumentation");
+            field.setAccessible(true);
+            Object held = field.get(thread), given = at.getMethod("getInstrumentation").invoke(thread);
+            detail = "a field of " + field.getType().getName() + " holding " + held + ", getInstrumentation " + given;
+            return field.getType() == android.app.Instrumentation.class && held instanceof android.app.Instrumentation && given == held;
+        });
         // The hidden ServiceManager, which Shizuku's SystemServiceHelper reaches by reflection for the system's binders (Sui asks it
         // for "package"): there (Morphe Manager ended at its start without the class), the platform's own services each a binder
         // that stands for it -- the same one each time, its interface's descriptor, alive, no local interface, every transaction
@@ -7240,6 +7776,90 @@ public class Main extends Activity {
                 + " y " + y.getWidth() + "x" + y.getHeight() + " at " + y.getLeft() + "," + y.getTop();
             return cells && laid;
         });
+        // A SearchView's query field and close button have Android's ids, found by name as apps find them: the field
+        // (getIdentifier("android:id/search_src_text"), an AutoCompleteTextView) and its IME options. YouTube ReVanced Extended's
+        // settings stopped on the null found there. And the field takes text as an edit text does.
+        step("search-view-ids", () -> {
+            android.widget.SearchView sv = new android.widget.SearchView(this);
+            int src = getResources().getIdentifier("android:id/search_src_text", null, null);
+            int close = getResources().getIdentifier("android:id/search_close_btn", null, null);
+            android.view.View field = src != 0 ? sv.findViewById(src) : null;
+            android.view.View button = close != 0 ? sv.findViewById(close) : null;
+            boolean typed = false;
+            if (field instanceof android.widget.TextView) {
+                android.widget.TextView t = (android.widget.TextView) field;
+                t.setImeOptions(t.getImeOptions() | android.view.inputmethod.EditorInfo.IME_FLAG_NO_EXTRACT_UI);
+                sv.setQuery("cats", false);
+                typed = "cats".contentEquals(sv.getQuery()) && "cats".contentEquals(t.getText())
+                    && (t.getImeOptions() & android.view.inputmethod.EditorInfo.IME_FLAG_NO_EXTRACT_UI) != 0;
+            }
+            detail = "search_src_text 0x" + Integer.toHexString(src) + " " + (field == null ? "not found" : field.getClass().getName())
+                + ", search_close_btn 0x" + Integer.toHexString(close) + " " + (button == null ? "not found" : button.getClass().getName())
+                + ", typed " + typed;
+            // (SearchView.SearchAutoComplete is hidden from the SDK: the field is told by its public class.)
+            return field instanceof android.widget.AutoCompleteTextView && button instanceof android.widget.ImageView && typed;
+        });
+        // The framework's own numbers of the platform's internal resources (megler.IR, read here by reflection) are those of the
+        // platform's table that is read, as getIdentifier finds them by name: they were another release's, and DecorView's
+        // title frame, TabActivity's tab_content and Html's unknown_image named nothing in this table. And IR's tab_content
+        // inflates into the TabHost it is.
+        step("platform-ids", () -> {
+            String[][] names = { { "id", "search_src_text" }, { "id", "title_container" }, { "id", "action_bar" }, { "layout", "tab_content" },
+                { "drawable", "unknown_image" }, { "string", "preposition_for_date" }, { "style", "Theme.DeviceDefault.Light.DarkActionBar" } };
+            StringBuilder said = new StringBuilder();
+            boolean same = true;
+            int tabContent = 0;
+            for (String[] n : names) {
+                int byName = getResources().getIdentifier(n[1], n[0], "android"), ir;
+                try {
+                    ir = Class.forName("megler.IR$" + n[0]).getField(n[1].replace('.', '_')).getInt(null);
+                } catch (ReflectiveOperationException e) {
+                    ir = -1;
+                }
+                if (n[1].equals("tab_content")) tabContent = ir;
+                same &= byName != 0 && ir == byName;
+                said.append(n[0]).append('/').append(n[1]).append(" 0x").append(Integer.toHexString(ir)).append(ir == byName ? "" : " (table 0x" + Integer.toHexString(byName) + ")").append(", ");
+            }
+            android.view.View tabs = null;
+            try {
+                tabs = android.view.LayoutInflater.from(this).inflate(tabContent, null);
+            } catch (RuntimeException e) {
+                said.append("tab_content: ").append(e).append(", ");
+            }
+            boolean host = tabs != null && tabs.findViewById(android.R.id.tabhost) != null;
+            detail = said + "tab_content has its TabHost " + host;
+            return same && host;
+        });
+        // The built-in screens, as YouTube measures them to tell a phone from a tablet (Android 13 and on): the displays of
+        // ALL_INCLUDING_DISABLED, each one whose type (Display.getType, hidden: by reflection) is TYPE_INTERNAL, its smallest
+        // width in dp from getCurrentSizeRange and the density. That is the configuration's smallestScreenWidthDp. There were none
+        // (no display of that category, a type unknown), and YouTube told its server the form factor was unknown: a channel's
+        // page was refused. No presentation display.
+        step("display-form-factor", () -> {
+            android.hardware.display.DisplayManager dm = (android.hardware.display.DisplayManager) getSystemService(DISPLAY_SERVICE);
+            android.view.Display[] all = dm.getDisplays("android.hardware.display.category.ALL_INCLUDING_DISABLED");
+            int internal = 0, widest = 0;
+            for (android.view.Display d : all) {
+                int type;
+                try {
+                    type = (Integer) android.view.Display.class.getMethod("getType").invoke(d);
+                } catch (ReflectiveOperationException e) {
+                    type = -1;
+                }
+                if (type != 1) continue;
+                internal++;
+                android.graphics.Point small = new android.graphics.Point(), large = new android.graphics.Point();
+                d.getCurrentSizeRange(small, large);
+                android.util.DisplayMetrics m = new android.util.DisplayMetrics();
+                d.getMetrics(m);
+                widest = Math.max(widest, (int) (small.x / m.density + 0.5f));
+            }
+            int sw = getResources().getConfiguration().smallestScreenWidthDp;
+            int presentation = dm.getDisplays(android.hardware.display.DisplayManager.DISPLAY_CATEGORY_PRESENTATION).length;
+            detail = all.length + " displays of ALL_INCLUDING_DISABLED, " + internal + " internal, smallest width " + widest
+                + " dp, the configuration's " + sw + " dp, presentation displays " + presentation;
+            return internal == 1 && widest > 0 && Math.abs(widest - sw) <= 1 && presentation == 0;
+        });
         // A LayerDrawable has a constant state, and its copy is a drawable of its own kind with the layers' copies at their
         // ids and insets (LayerDrawable.meglerCopy): a ripple made in code is copied so for each view it is the background of
         // (getConstantState().newDrawable().mutate(): YouTube's watch page, which stopped on the null state). Checked: a
@@ -7306,6 +7926,197 @@ public class Main extends Activity {
                 + ") crossed=" + crossed + " shared=" + shared;
             Log.i("DataTest", "layer-copy " + detail);
             return rippled && shown && laid && crossed && shared;
+        });
+        // The wrappers that Android gives a constant state have one, and so have a nine-patch, a shape and a list of colours
+        // (DrawableWrapper.getConstantState): Material's NavigationView copies the InsetDrawable it made in code round its
+        // rows' shape for every row (itemBackground.getConstantState().newDrawable(): EhViewer, which stopped on the null
+        // state), and the rows' ripple has such an inset as its mask. Checked: an inset's copy is an inset of the same insets
+        // round the shape's own copy, and draws it inside them; a clip's, a scale's and a rotation's copies are of their
+        // kinds and settings; a wrapper that is none of these has no state, as Android's; a nine-patch's copy has its size
+        // and padding and an alpha of its own; a colour list's copy draws its colour; the ripple with an inset as its mask
+        // is copied; and an adaptive icon's copy has its layers' copies.
+        step("wrapper-copy", () -> {
+            android.graphics.drawable.ShapeDrawable shape = new android.graphics.drawable.ShapeDrawable(new android.graphics.drawable.shapes.OvalShape());
+            shape.getPaint().setColor(0xff00ff00);
+            shape.setIntrinsicWidth(20);
+            shape.setIntrinsicHeight(30);
+            android.graphics.drawable.InsetDrawable inset = new android.graphics.drawable.InsetDrawable(shape, 4, 2, 6, 8);
+            android.graphics.drawable.Drawable.ConstantState is = inset.getConstantState();
+            android.graphics.drawable.Drawable ic = is != null ? is.newDrawable() : null;
+            boolean inseted = false;
+            String at = "none";
+            int middle = 0, corner = 1;
+            if (ic != null && ic.getClass() == android.graphics.drawable.InsetDrawable.class && ic != inset) {
+                android.graphics.drawable.Drawable in = ((android.graphics.drawable.InsetDrawable) ic).getDrawable();
+                ic.setBounds(0, 0, 100, 50);
+                at = in != null ? in.getBounds().toShortString() : "no drawable";
+                android.graphics.Bitmap bm = android.graphics.Bitmap.createBitmap(100, 50, android.graphics.Bitmap.Config.ARGB_8888);
+                ic.draw(new android.graphics.Canvas(bm));
+                middle = bm.getPixel(49, 22);
+                corner = bm.getPixel(1, 1);
+                inseted = in instanceof android.graphics.drawable.ShapeDrawable && in != shape && in.getBounds().equals(new android.graphics.Rect(4, 2, 94, 42))
+                    && in.getCallback() == ic && shape.getCallback() == inset && inset.getDrawable() == shape && is == inset.getConstantState()
+                    && ((android.graphics.drawable.ShapeDrawable) in).getPaint().getColor() == 0xff00ff00
+                    && ((android.graphics.drawable.ShapeDrawable) in).getShape() instanceof android.graphics.drawable.shapes.OvalShape
+                    && ((android.graphics.drawable.ShapeDrawable) in).getShape() != shape.getShape()
+                    && ic.getIntrinsicWidth() == 30 && ic.getIntrinsicHeight() == 40 && middle == 0xff00ff00 && corner == 0;
+            }
+            android.graphics.drawable.ClipDrawable clip = new android.graphics.drawable.ClipDrawable(new android.graphics.drawable.ColorDrawable(0xffff0000),
+                android.view.Gravity.LEFT, android.graphics.drawable.ClipDrawable.HORIZONTAL);
+            android.graphics.drawable.Drawable cc = clip.getConstantState() != null ? clip.getConstantState().newDrawable(getResources()) : null;
+            boolean clipped = false;
+            if (cc != null && cc.getClass() == android.graphics.drawable.ClipDrawable.class && cc != clip) {
+                android.graphics.Bitmap bm = android.graphics.Bitmap.createBitmap(10, 4, android.graphics.Bitmap.Config.ARGB_8888);
+                cc.setBounds(0, 0, 10, 4);
+                cc.setLevel(5000);
+                cc.draw(new android.graphics.Canvas(bm));
+                clipped = bm.getPixel(2, 2) == 0xffff0000 && bm.getPixel(8, 2) == 0 && ((android.graphics.drawable.ClipDrawable) cc).getDrawable() != clip.getDrawable();
+            }
+            android.graphics.drawable.ScaleDrawable scale = new android.graphics.drawable.ScaleDrawable(new android.graphics.drawable.ColorDrawable(0xff0000ff),
+                android.view.Gravity.CENTER, 1f, 1f);
+            android.graphics.drawable.Drawable sc = scale.getConstantState() != null ? scale.getConstantState().newDrawable() : null;
+            boolean scaled = sc != null && sc.getClass() == android.graphics.drawable.ScaleDrawable.class && sc != scale
+                && ((android.graphics.drawable.ScaleDrawable) sc).getDrawable() instanceof android.graphics.drawable.ColorDrawable
+                && ((android.graphics.drawable.ScaleDrawable) sc).getDrawable() != scale.getDrawable();
+            android.graphics.drawable.RotateDrawable rotate = new android.graphics.drawable.RotateDrawable();
+            rotate.setDrawable(new android.graphics.drawable.ColorDrawable(0xff0000ff));
+            rotate.setFromDegrees(10);
+            rotate.setToDegrees(50);
+            android.graphics.drawable.Drawable rc = rotate.getConstantState() != null ? rotate.getConstantState().newDrawable() : null;
+            boolean rotated = rc != null && rc.getClass() == android.graphics.drawable.RotateDrawable.class && rc != rotate
+                && ((android.graphics.drawable.RotateDrawable) rc).getFromDegrees() == 10 && ((android.graphics.drawable.RotateDrawable) rc).getToDegrees() == 50
+                && ((android.graphics.drawable.RotateDrawable) rc).getDrawable() instanceof android.graphics.drawable.ColorDrawable
+                && ((android.graphics.drawable.RotateDrawable) rc).getDrawable() != rotate.getDrawable();
+            android.graphics.drawable.Drawable bare = new android.graphics.drawable.DrawableWrapper(new android.graphics.drawable.ColorDrawable(0xff000000)) {};
+            boolean none = bare.getConstantState() == null;
+            android.graphics.Bitmap b = android.graphics.Bitmap.createBitmap(9, 9, android.graphics.Bitmap.Config.ARGB_8888);
+            b.eraseColor(0xff00ff00);
+            java.nio.ByteBuffer c = java.nio.ByteBuffer.allocate(32 + 4 * 4 + 9 * 4).order(java.nio.ByteOrder.nativeOrder());
+            c.put((byte) 1).put((byte) 2).put((byte) 2).put((byte) 9).putInt(0).putInt(0);
+            c.putInt(1).putInt(2).putInt(3).putInt(4).putInt(0);
+            c.putInt(3).putInt(6).putInt(3).putInt(6);
+            for (int i = 0; i < 9; i++) c.putInt(1);
+            android.graphics.drawable.NinePatchDrawable nine = new android.graphics.drawable.NinePatchDrawable(getResources(), new android.graphics.NinePatch(b, c.array(), null));
+            android.graphics.drawable.Drawable nc = nine.getConstantState() != null ? nine.getConstantState().newDrawable(getResources()) : null;
+            android.graphics.Rect pad = new android.graphics.Rect(), padCopy = new android.graphics.Rect();
+            boolean patched = false;
+            if (nc instanceof android.graphics.drawable.NinePatchDrawable && nc != nine) {
+                nine.getPadding(pad);
+                nc.getPadding(padCopy);
+                nc.setAlpha(100);
+                patched = nc.getIntrinsicWidth() == 9 && nc.getIntrinsicHeight() == 9 && pad.equals(new android.graphics.Rect(1, 3, 2, 4)) && padCopy.equals(pad)
+                    && nc.getAlpha() == 100 && nine.getAlpha() == 255 && nine.getConstantState() == nine.getConstantState();
+            }
+            android.graphics.drawable.ColorStateListDrawable list = new android.graphics.drawable.ColorStateListDrawable(android.content.res.ColorStateList.valueOf(0xff0000ff));
+            android.graphics.drawable.Drawable lc = list.getConstantState() != null ? list.getConstantState().newDrawable() : null;
+            boolean listed = false;
+            if (lc instanceof android.graphics.drawable.ColorStateListDrawable && lc != list) {
+                android.graphics.Bitmap bm = android.graphics.Bitmap.createBitmap(4, 4, android.graphics.Bitmap.Config.ARGB_8888);
+                lc.setBounds(0, 0, 4, 4);
+                lc.draw(new android.graphics.Canvas(bm));
+                listed = bm.getPixel(2, 2) == 0xff0000ff;
+            }
+            android.graphics.drawable.RippleDrawable ripple = new android.graphics.drawable.RippleDrawable(android.content.res.ColorStateList.valueOf(0x40ffffff), null, inset);
+            android.graphics.drawable.Drawable pc = ripple.getConstantState() != null ? ripple.getConstantState().newDrawable() : null;
+            boolean rippled = pc instanceof android.graphics.drawable.RippleDrawable && pc != ripple;
+            android.graphics.drawable.ColorDrawable back = new android.graphics.drawable.ColorDrawable(0xff102030);
+            android.graphics.drawable.AdaptiveIconDrawable icon = new android.graphics.drawable.AdaptiveIconDrawable(back, new android.graphics.drawable.ColorDrawable(0xff405060));
+            android.graphics.drawable.Drawable ac = icon.getConstantState() != null ? icon.getConstantState().newDrawable() : null;
+            boolean iconed = ac instanceof android.graphics.drawable.AdaptiveIconDrawable && ac != icon
+                && ((android.graphics.drawable.AdaptiveIconDrawable) ac).getBackground() instanceof android.graphics.drawable.ColorDrawable
+                && ((android.graphics.drawable.AdaptiveIconDrawable) ac).getBackground() != back
+                && ((android.graphics.drawable.ColorDrawable) ((android.graphics.drawable.AdaptiveIconDrawable) ac).getBackground()).getColor() == 0xff102030
+                && ((android.graphics.drawable.AdaptiveIconDrawable) ac).getForeground() instanceof android.graphics.drawable.ColorDrawable && icon.getBackground() == back;
+            detail = "inseted=" + inseted + " (the shape at " + at + ", middle " + Integer.toHexString(middle) + ", corner " + Integer.toHexString(corner)
+                + ") clipped=" + clipped + " scaled=" + scaled + " rotated=" + rotated + " none=" + none + " patched=" + patched + " (padding "
+                + padCopy.toShortString() + ") listed=" + listed + " rippled=" + rippled + " iconed=" + iconed;
+            Log.i("DataTest", "wrapper-copy " + detail);
+            return inseted && clipped && scaled && rotated && none && patched && listed && rippled && iconed;
+        });
+        // A slider's thumb as WhatsApp's chat theme preview (Settings > Chats > Theme) gives Material's Slider one with
+        // setCustomThumbDrawable(id): the Slider takes getResources().getDrawable(id).mutate().getConstantState().newDrawable()
+        // without asking whether there is a state, and sizes the copy to its thumb by its intrinsic size. The drawable is a
+        // layer list from XML, a rounded shape under a vector icon, each layer inset (res/drawable/thumb_layers.xml): 0.1.0.699
+        // ended on the null state a LayerDrawable had then. Checked: the copy is a layer list of its own with its own copies
+        // of the shape and the icon, as large as the icon with its insets, and drawn at that size it shows the shape round the
+        // icon, as the original does.
+        step("thumb-copy", () -> {
+            android.graphics.drawable.Drawable d = getResources().getDrawable(R.drawable.thumb_layers, null);
+            android.graphics.drawable.Drawable.ConstantState s = d.mutate().getConstantState();
+            android.graphics.drawable.Drawable c = s != null ? s.newDrawable() : null;
+            boolean copied = false, drawn = false;
+            int w = -2, h = -2, shape = 1, icon = 1, corner = 1, same = 0;
+            if (c instanceof android.graphics.drawable.LayerDrawable && d instanceof android.graphics.drawable.LayerDrawable && c != d) {
+                android.graphics.drawable.LayerDrawable l = (android.graphics.drawable.LayerDrawable) c, o = (android.graphics.drawable.LayerDrawable) d;
+                copied = l.getNumberOfLayers() == 2 && l.getDrawable(0) instanceof android.graphics.drawable.GradientDrawable
+                    && l.getDrawable(1) instanceof android.graphics.drawable.VectorDrawable && l.getDrawable(0) != o.getDrawable(0)
+                    && l.getDrawable(1) != o.getDrawable(1) && l.getDrawable(0).getCallback() == l && o.getDrawable(0).getCallback() == o;
+                // Material's adjustCustomThumbDrawableBounds, for a thumb 112 pixels across: the copy scaled to fit it.
+                w = c.getIntrinsicWidth();
+                h = c.getIntrinsicHeight();
+                float scale = w > 0 && h > 0 ? 112f / Math.max(w, h) : 1f;
+                c.setBounds(0, 0, (int) (w * scale), (int) (h * scale));
+                d.setBounds(c.getBounds());
+                android.graphics.Bitmap bm = android.graphics.Bitmap.createBitmap(92, 112, android.graphics.Bitmap.Config.ARGB_8888);
+                android.graphics.Bitmap bo = android.graphics.Bitmap.createBitmap(92, 112, android.graphics.Bitmap.Config.ARGB_8888);
+                c.draw(new android.graphics.Canvas(bm));
+                d.draw(new android.graphics.Canvas(bo));
+                shape = bm.getPixel(10, 50);
+                icon = bm.getPixel(44, 56);
+                corner = bm.getPixel(1, 1);
+                for (int y = 0; y < 112; y += 4) for (int x = 0; x < 92; x += 4) if (bm.getPixel(x, y) == bo.getPixel(x, y)) same++;
+                drawn = shape == 0xff336699 && icon == 0xffff8000 && corner == 0 && same == 23 * 28;
+            }
+            // A layer of no size of its own adds nothing to the list's size, its insets neither (Android's getIntrinsicWidth): the
+            // shape inset by 30 each side is left out, the 20 x 10 one with its insets of 2 counts. They made it 59 x 59.
+            android.graphics.drawable.ShapeDrawable box = new android.graphics.drawable.ShapeDrawable();
+            box.setIntrinsicWidth(20);
+            box.setIntrinsicHeight(10);
+            android.graphics.drawable.LayerDrawable sizeless = new android.graphics.drawable.LayerDrawable(new android.graphics.drawable.Drawable[] {
+                new android.graphics.drawable.GradientDrawable(), box });
+            sizeless.setLayerInset(0, 30, 30, 30, 30);
+            sizeless.setLayerInset(1, 2, 2, 2, 2);
+            android.graphics.drawable.LayerDrawable none = new android.graphics.drawable.LayerDrawable(new android.graphics.drawable.Drawable[] {
+                new android.graphics.drawable.ColorDrawable(0xff000000) });
+            none.setLayerInset(0, 5, 5, 5, 5);
+            String sizes = sizeless.getIntrinsicWidth() + "x" + sizeless.getIntrinsicHeight() + ", " + none.getIntrinsicWidth() + "x" + none.getIntrinsicHeight();
+            // The middle thumb's icon is a tinted <bitmap> in a <rotate> (ic_brightness_6_with_bg): a bitmap's copy has the tint,
+            // gravity and alpha its state had when it was asked for (a white square drawn green in the middle of its bounds),
+            // and what is set on the drawable afterwards stays its own; a shape's copy has the shape's tint.
+            android.graphics.Bitmap white = android.graphics.Bitmap.createBitmap(8, 8, android.graphics.Bitmap.Config.ARGB_8888);
+            white.eraseColor(0xffffffff);
+            android.graphics.drawable.BitmapDrawable glyph = new android.graphics.drawable.BitmapDrawable(getResources(), white);
+            glyph.setGravity(android.view.Gravity.CENTER);
+            glyph.setTintList(android.content.res.ColorStateList.valueOf(0xff00aa00));
+            android.graphics.drawable.RotateDrawable turned = new android.graphics.drawable.RotateDrawable();
+            turned.setDrawable(glyph);
+            turned.setFromDegrees(90);
+            turned.setToDegrees(90);
+            android.graphics.drawable.LayerDrawable middle = new android.graphics.drawable.LayerDrawable(new android.graphics.drawable.Drawable[] { turned });
+            android.graphics.drawable.Drawable.ConstantState glyphState = glyph.getConstantState();
+            android.graphics.drawable.Drawable mc = middle.mutate().getConstantState().newDrawable(getResources());
+            glyph.setAlpha(10);
+            glyph.setTintList(android.content.res.ColorStateList.valueOf(0xffff0000));
+            android.graphics.drawable.Drawable before = glyphState.newDrawable(getResources()), after = glyph.getConstantState().newDrawable(getResources());
+            android.graphics.Bitmap mb = android.graphics.Bitmap.createBitmap(32, 32, android.graphics.Bitmap.Config.ARGB_8888);
+            mc.setBounds(0, 0, 32, 32);
+            mc.draw(new android.graphics.Canvas(mb));
+            android.graphics.drawable.GradientDrawable plainShape = new android.graphics.drawable.GradientDrawable();
+            plainShape.setTint(0xff0000ff);
+            android.graphics.drawable.Drawable sc = plainShape.getConstantState().newDrawable();
+            android.graphics.Bitmap sb = android.graphics.Bitmap.createBitmap(8, 8, android.graphics.Bitmap.Config.ARGB_8888);
+            sc.setBounds(0, 0, 8, 8);
+            sc.draw(new android.graphics.Canvas(sb));
+            int glyphMiddle = mb.getPixel(16, 16), glyphCorner = mb.getPixel(1, 1), shapeTint = sb.getPixel(4, 4);
+            boolean tinted = glyphMiddle == 0xff00aa00 && glyphCorner == 0 && before.getAlpha() == 255 && after.getAlpha() == 10
+                && after instanceof android.graphics.drawable.BitmapDrawable && ((android.graphics.drawable.BitmapDrawable) after).getGravity() == android.view.Gravity.CENTER
+                && shapeTint == 0xff0000ff;
+            detail = "copied=" + copied + " size " + w + "x" + h + " drawn=" + drawn + " (shape " + Integer.toHexString(shape) + ", icon "
+                + Integer.toHexString(icon) + ", corner " + Integer.toHexString(corner) + ", " + same + " of 644 points as the original's) sizeless "
+                + sizes + " tinted=" + tinted + " (glyph " + Integer.toHexString(glyphMiddle) + "/" + Integer.toHexString(glyphCorner) + ", alpha "
+                + before.getAlpha() + " then " + after.getAlpha() + ", shape " + Integer.toHexString(shapeTint) + ")";
+            Log.i("DataTest", "thumb-copy " + detail);
+            return copied && w == 92 && h == 112 && drawn && "24x14, -1x-1".equals(sizes) && tinted;
         });
         // A reference that comes to @null is no value in a styled attribute array: WhatsApp tints an image of its settings
         // with a colour that is @null by day and a colour by night (app:tint="@color/..."), and AppCompat asks hasValue and
@@ -7425,6 +8236,42 @@ public class Main extends Activity {
             Log.i("DataTest", "vsync-callback " + detail);
             return called && Boolean.TRUE.equals(got[0]) && got[1] == null && Boolean.TRUE.equals(got[2]) && Boolean.TRUE.equals(got[3])
                 && Boolean.TRUE.equals(got[4]) && Boolean.TRUE.equals(got[5]);
+        });
+        // A Looper told quitSafely() handles the messages that were due when it was told, those at the front first, and ends
+        // without those of a later time; quit() handles none of them; neither takes another. WebRTC's EglRenderer.release
+        // (Viber's registration screen, each time it opens) posts its clean-up at the front of its render thread's queue,
+        // quitSafely()s the thread and waits for the clean-up: quitting dropped everything here, and when the render thread
+        // had not yet taken the clean-up Viber's main thread waited for good. The threads are kept busy meanwhile, so that
+        // nothing is taken before the quit.
+        step("looper-quit-safely", () -> {
+            final StringBuilder ran = new StringBuilder();
+            String[] how = { "safely", "quit" };
+            StringBuilder told = new StringBuilder();
+            for (String way : how) {
+                android.os.HandlerThread ht = new android.os.HandlerThread("looper-" + way);
+                ht.start();
+                android.os.Handler h = new android.os.Handler(ht.getLooper());
+                final java.util.concurrent.CountDownLatch busy = new java.util.concurrent.CountDownLatch(1), go = new java.util.concurrent.CountDownLatch(1);
+                h.post(() -> {
+                    busy.countDown();
+                    try { go.await(5, java.util.concurrent.TimeUnit.SECONDS); } catch (InterruptedException e) { }
+                });
+                busy.await(5, java.util.concurrent.TimeUnit.SECONDS);
+                synchronized (ran) { ran.setLength(0); }
+                h.post(() -> { synchronized (ran) { ran.append(" posted"); } });
+                h.postAtFrontOfQueue(() -> { synchronized (ran) { ran.append(" front"); } });
+                h.postDelayed(() -> { synchronized (ran) { ran.append(" later"); } }, 60000);
+                if (way.equals("safely")) ht.quitSafely(); else ht.quit();
+                boolean taken = h.post(() -> { synchronized (ran) { ran.append(" after"); } });
+                go.countDown();
+                ht.join(5000);
+                synchronized (ran) {
+                    told.append(told.length() > 0 ? "; " : "").append(way).append(":").append(ran.length() > 0 ? ran : " nothing")
+                        .append(taken ? ", one more taken" : "").append(ht.isAlive() ? ", still running" : ", ended");
+                }
+            }
+            detail = told.toString();
+            return "safely: front posted, ended; quit: nothing, ended".equals(detail);
         });
         // PrecomputedText is the text it was made of: its characters and its spans, its paragraphs (each ends after its line
         // feed) and the parameters a Builder was told. It was signatures alone -- no characters, getSpans null -- so a
@@ -7984,6 +8831,163 @@ public class Main extends Activity {
             detail = "empty " + empty + " threw " + threw + " max " + max + "/" + stays + "/" + back.getMaxAddressLineIndex() + " negative " + negative + " same " + same + ": " + text;
             return empty && threw && max == 1 && stays == 1 && back.getMaxAddressLineIndex() == 1 && negative && same && "square".equals(a.getExtras().getString("kind")) &&
                    text.startsWith("Address[addressLines=[0:\"Красная площадь\",1:\"Москва, 109012\"],feature=Красная площадь,") && text.contains(",locality=Москва,");
+        });
+    }
+
+    /*
+     * System APIs that Google Play services' own services are made with and do not carry, on a phone where the system has
+     * nothing behind them (each of them missing was NoClassDefFoundError when the service was created).
+     * A GeofenceProvider of Android's location provider library, which GmsCore's location service makes: its binder is
+     * there and stays the same one, and with no geofencing hardware nobody tells the provider of any; and a
+     * GeofenceHardwareRequest is the value Android's is, with its defaults and its check of the source technologies.
+     * A SharedConnectivityService (Android 14), made and given its context as Play services' tethering service does in its
+     * onCreate: it takes the settings' state, the networks and their statuses, gives a binder of the settings' interface,
+     * and, as nothing binds it, is never asked to connect; the system shows no app's networks; and the values it is told --
+     * the settings' state, a hotspot and a known network with the device that offers them, their statuses -- are Android's:
+     * built, checked, equal by what they hold, and the same through a Parcel.
+     */
+    private void playServicesClasses() {
+        step("geofence-provider", () -> {
+            final int[] told = {0};
+            com.android.location.provider.GeofenceProvider provider = new com.android.location.provider.GeofenceProvider() {
+                @Override
+                public void onGeofenceHardwareChange(android.hardware.location.GeofenceHardware hardware) {
+                    told[0]++;
+                }
+            };
+            android.os.IBinder binder = provider.getBinder();
+            boolean same = binder != null && binder == provider.getBinder();
+            android.hardware.location.GeofenceHardwareRequest r = android.hardware.location.GeofenceHardwareRequest.createCircularGeofence(55.7539, 37.6208, 150);
+            // (GEOFENCE_UNCERTAIN; 30 s; entered, exited and uncertain; 5 s; SOURCE_TECHNOLOGY_GNSS)
+            boolean defaults = r.getLastTransition() == 4 && r.getUnknownTimer() == 30000 && r.getMonitorTransitions() == 7 &&
+                               r.getNotificationResponsiveness() == 5000 && r.getSourceTechnologies() == 1;
+            r.setLastTransition(1);
+            r.setUnknownTimer(60000);
+            r.setMonitorTransitions(3);
+            r.setNotificationResponsiveness(1000);
+            r.setSourceTechnologies(2 | 8 | 64);
+            boolean refused = false;
+            try { r.setSourceTechnologies(64); } catch (IllegalArgumentException e) { refused = true; }
+            boolean set = r.getLatitude() == 55.7539 && r.getLongitude() == 37.6208 && r.getRadius() == 150 && r.getLastTransition() == 1 &&
+                          r.getUnknownTimer() == 60000 && r.getMonitorTransitions() == 3 && r.getNotificationResponsiveness() == 1000 &&
+                          r.getSourceTechnologies() == 10;
+            detail = "binder " + binder + " same " + same + " told " + told[0] + " defaults " + defaults + " set " + set + " refused " + refused;
+            return same && told[0] == 0 && defaults && set && refused;
+        });
+        step("shared-connectivity", () -> {
+            final int[] asked = {0};
+            class Sharing extends android.net.wifi.sharedconnectivity.service.SharedConnectivityService {
+                Sharing(android.content.Context base) {
+                    attachBaseContext(base);
+                }
+
+                @Override
+                public void onConnectHotspotNetwork(android.net.wifi.sharedconnectivity.app.HotspotNetwork network) {
+                    asked[0]++;
+                }
+
+                @Override
+                public void onDisconnectHotspotNetwork(android.net.wifi.sharedconnectivity.app.HotspotNetwork network) {
+                    asked[0]++;
+                }
+
+                @Override
+                public void onConnectKnownNetwork(android.net.wifi.sharedconnectivity.app.KnownNetwork network) {
+                    asked[0]++;
+                }
+
+                @Override
+                public void onForgetKnownNetwork(android.net.wifi.sharedconnectivity.app.KnownNetwork network) {
+                    asked[0]++;
+                }
+            }
+            Sharing service = new Sharing(getBaseContext());
+            android.app.PendingIntent settings =
+                android.app.PendingIntent.getActivity(this, 0, new android.content.Intent(this, Main.class), android.app.PendingIntent.FLAG_IMMUTABLE);
+            android.net.wifi.sharedconnectivity.app.SharedConnectivitySettingsState state =
+                new android.net.wifi.sharedconnectivity.app.SharedConnectivitySettingsState.Builder().setInstantTetherEnabled(false)
+                    .setInstantTetherSettingsPendingIntent(settings).build();
+            service.setSettingsState(state);
+            android.os.IBinder binder = service.onBind(new android.content.Intent());
+            boolean bound = binder != null && "android.net.wifi.sharedconnectivity.service.ISharedConnectivityService".equals(binder.getInterfaceDescriptor());
+            // (DEVICE_TYPE_PHONE; NETWORK_TYPE_CELLULAR; WifiInfo.SECURITY_TYPE_PSK; NETWORK_SOURCE_NEARBY_SELF)
+            android.net.wifi.sharedconnectivity.app.NetworkProviderInfo phone =
+                new android.net.wifi.sharedconnectivity.app.NetworkProviderInfo.Builder("Pixel", "Pixel 8").setDeviceType(1).setBatteryPercentage(64)
+                    .setBatteryCharging(true).setConnectionStrength(3).build();
+            android.os.Bundle extras = new android.os.Bundle();
+            extras.putLong("original_device_id", 77);
+            android.net.wifi.sharedconnectivity.app.HotspotNetwork hotspot =
+                new android.net.wifi.sharedconnectivity.app.HotspotNetwork.Builder().setDeviceId(5).setNetworkProviderInfo(phone).setHostNetworkType(1)
+                    .setNetworkName("Carrier").setHotspotSsid("Pixel hotspot").setHotspotBssid("02:00:00:00:00:01").addHotspotSecurityType(2).setExtras(extras)
+                    .build();
+            android.net.wifi.sharedconnectivity.app.KnownNetwork known =
+                new android.net.wifi.sharedconnectivity.app.KnownNetwork.Builder().setNetworkSource(1).setSsid("Home").addSecurityType(2)
+                    .setNetworkProviderInfo(phone).build();
+            service.setHotspotNetworks(java.util.Arrays.asList(hotspot));
+            service.setKnownNetworks(java.util.Arrays.asList(known));
+            // (CONNECTION_STATUS_ENABLING_HOTSPOT; CONNECTION_STATUS_SAVED)
+            android.net.wifi.sharedconnectivity.app.HotspotNetworkConnectionStatus enabling =
+                new android.net.wifi.sharedconnectivity.app.HotspotNetworkConnectionStatus.Builder().setStatus(1).setHotspotNetwork(hotspot).build();
+            android.net.wifi.sharedconnectivity.app.KnownNetworkConnectionStatus saved =
+                new android.net.wifi.sharedconnectivity.app.KnownNetworkConnectionStatus.Builder().setStatus(1).setKnownNetwork(known).build();
+            service.updateHotspotNetworkConnectionStatus(enabling);
+            service.updateKnownNetworkConnectionStatus(saved);
+            boolean shown = android.net.wifi.sharedconnectivity.service.SharedConnectivityService.areHotspotNetworksEnabledForService(this) ||
+                            android.net.wifi.sharedconnectivity.service.SharedConnectivityService.areKnownNetworksEnabledForService(this);
+            android.os.Parcel p = android.os.Parcel.obtain();
+            state.writeToParcel(p, 0);
+            enabling.writeToParcel(p, 0);
+            saved.writeToParcel(p, 0);
+            p.setDataPosition(0);
+            android.net.wifi.sharedconnectivity.app.SharedConnectivitySettingsState state2 =
+                android.net.wifi.sharedconnectivity.app.SharedConnectivitySettingsState.CREATOR.createFromParcel(p);
+            android.net.wifi.sharedconnectivity.app.HotspotNetworkConnectionStatus enabling2 =
+                android.net.wifi.sharedconnectivity.app.HotspotNetworkConnectionStatus.CREATOR.createFromParcel(p);
+            android.net.wifi.sharedconnectivity.app.KnownNetworkConnectionStatus saved2 =
+                android.net.wifi.sharedconnectivity.app.KnownNetworkConnectionStatus.CREATOR.createFromParcel(p);
+            p.recycle();
+            android.net.wifi.sharedconnectivity.app.HotspotNetwork hotspot2 = enabling2.getHotspotNetwork();
+            android.net.wifi.sharedconnectivity.app.NetworkProviderInfo phone2 = hotspot2.getNetworkProviderInfo();
+            boolean same = state2.equals(state) && state2 != state && !state2.isInstantTetherEnabled() &&
+                           settings.equals(state2.getInstantTetherSettingsPendingIntent()) && state2.getExtras().isEmpty() && enabling2.equals(enabling) &&
+                           enabling2.getStatus() == 1 && hotspot2.getDeviceId() == 5 && hotspot2.getHostNetworkType() == 1 &&
+                           "Carrier".equals(hotspot2.getNetworkName()) && "Pixel hotspot".equals(hotspot2.getHotspotSsid()) &&
+                           "02:00:00:00:00:01".equals(hotspot2.getHotspotBssid()) && hotspot2.getHotspotSecurityTypes().size() == 1 &&
+                           hotspot2.getHotspotSecurityTypes().contains(2) && hotspot2.getExtras().getLong("original_device_id") == 77 &&
+                           phone2.getDeviceType() == 1 && "Pixel".equals(phone2.getDeviceName()) && "Pixel 8".equals(phone2.getModelName()) &&
+                           phone2.getBatteryPercentage() == 64 && phone2.isBatteryCharging() && phone2.getConnectionStrength() == 3 &&
+                           saved2.equals(saved) && saved2.getStatus() == 1 && saved2.getKnownNetwork().getNetworkSource() == 1 &&
+                           "Home".equals(saved2.getKnownNetwork().getSsid()) && saved2.getKnownNetwork().getSecurityTypes().contains(2) &&
+                           phone.equals(saved2.getKnownNetwork().getNetworkProviderInfo());
+            boolean device = false, security = false, nearby = false, battery = false, status = false;
+            try {
+                new android.net.wifi.sharedconnectivity.app.HotspotNetwork.Builder().setNetworkProviderInfo(phone).setNetworkName("Carrier").build();
+            } catch (IllegalArgumentException e) {
+                device = true;
+            }
+            try {
+                new android.net.wifi.sharedconnectivity.app.KnownNetwork.Builder().setNetworkSource(2).setSsid("Home").build();
+            } catch (IllegalArgumentException e) {
+                security = true;
+            }
+            try {
+                new android.net.wifi.sharedconnectivity.app.KnownNetwork.Builder().setNetworkSource(1).setSsid("Home").addSecurityType(2).build();
+            } catch (IllegalArgumentException e) {
+                nearby = true;
+            }
+            try {
+                new android.net.wifi.sharedconnectivity.app.NetworkProviderInfo.Builder("Pixel", "Pixel 8").setBatteryPercentage(101).build();
+            } catch (IllegalArgumentException e) {
+                battery = true;
+            }
+            try {
+                new android.net.wifi.sharedconnectivity.app.KnownNetworkConnectionStatus.Builder().setStatus(3).setKnownNetwork(known).build();
+            } catch (IllegalArgumentException e) {
+                status = true;
+            }
+            detail = "bound " + bound + " asked " + asked[0] + " shown " + shown + " same " + same + " refused " + device + " " + security + " " + nearby + " " +
+                     battery + " " + status + ": " + state2 + " " + saved2;
+            return bound && asked[0] == 0 && !shown && same && device && security && nearby && battery && status;
         });
     }
 

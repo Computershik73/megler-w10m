@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Main's step "thumb-copy": a slider's thumb as WhatsApp's chat theme preview gives Material's Slider one
+     (setCustomThumbDrawable): a rounded square under an icon, each layer inset, the square of no size of its own. In
+     pixels here, so that the step can find each part's colour where it should be. -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:left="4px" android:top="16px" android:right="4px" android:bottom="16px">
+        <shape android:shape="rectangle">
+            <corners android:radius="8px" />
+            <solid android:color="#FF336699" />
+        </shape>
+    </item>
+    <item android:drawable="@drawable/thumb_icon" android:left="20px" android:top="32px" android:right="24px" android:bottom="32px" />
+</layer-list>

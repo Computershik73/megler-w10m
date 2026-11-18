@@ -161,8 +161,15 @@
 # `pickers`, the intents of Android's documents UI, photo picker and camera app
 # answered by a stand-in for the shell's picker and camera (mg_java_tests.c,
 # system_pick): the results, the picked files' provider and the package
-# manager's answers. Their pictures are written to build/java-pictures as BMP
-# files. Each is then run
+# manager's answers. And `playclient` and `playstore`, Play Feature Delivery
+# (docs/PLAY-FEATURE-DELIVERY.md): an app that asks the Play Store for a
+# feature module as Play Core does, and a stand-in for the Play Store, run in
+# turn over one data folder as a phone's two processes have a folder in common
+# (six runs; mg_java_tests.c, run_playclient). And `crossapp` with `plugin`,
+# two apps that work together as Total Commander and its plug-ins do: the
+# first asks for an activity of the second with a whole Intent, the second is
+# started for it and reads it. Their pictures are written to
+# build/java-pictures as BMP files. Each is then run
 # once more with its calls of the shell's drawing recorded
 # (build/gfx-records/<app>.rec), for the Windows build to draw again.
 # --no-java leaves these out.
@@ -281,6 +288,20 @@ EOF
         echo "the Java test app $app (build/guest/java/$app.apk), through megler_run"
         MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL="*" wsl.exe -- bash -c "cp -u '$WROOT/build/guest/java/$app.apk' $WB/$app.apk && rm -rf $WB/java-data-$app && qemu-arm -L /usr/arm-linux-gnueabihf $WB/mg_tests --java $app $WB/$app.apk $WB/java-data-$app $WB/android-root '$WROOT/build/java-pictures' 2>&1" || STATUS=1
       done
+      # Two apps that work together, as Total Commander and its plug-ins do: `crossapp`, the app that asks, with `plugin` among
+      # the phone's apps (MG_JAVA_OTHER_APKS); then `plugin`, started as the shell starts an app for the activity another one
+      # asked for, with the request the first run left in the data folder the two runs share (mg_java_tests.c: run_crossapp,
+      # run_plugin).
+      if [ -f "$ROOT/build/guest/java/crossapp.apk" ] && [ -f "$ROOT/build/guest/java/plugin.apk" ]; then
+        echo "the Java test app crossapp (build/guest/java/crossapp.apk), through megler_run: the app plugin (build/guest/java/plugin.apk) is on the phone beside it"
+        MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL="*" wsl.exe -- bash -c "cp -u '$WROOT/build/guest/java/crossapp.apk' $WB/crossapp.apk && cp -u '$WROOT/build/guest/java/plugin.apk' $WB/plugin.apk && rm -rf $WB/java-data-crossapp && MG_JAVA_OTHER_APKS=$WB/plugin.apk qemu-arm -L /usr/arm-linux-gnueabihf $WB/mg_tests --java crossapp $WB/crossapp.apk $WB/java-data-crossapp $WB/android-root - 2>&1" || STATUS=1
+        echo "the Java test app plugin (build/guest/java/plugin.apk), through megler_run: started for the activity the app crossapp asked for"
+        # (The request's file through $(echo ...): a ~ after the @ would stay a ~, and a variable set in the command line
+        # is empty there -- wsl.exe has the line expanded by a shell of its own first.)
+        MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL="*" wsl.exe -- bash -c "MG_JAVA_START_ACTIVITY=@\$(echo $WB/java-data-crossapp/launch-request.txt) qemu-arm -L /usr/arm-linux-gnueabihf $WB/mg_tests --java plugin $WB/plugin.apk $WB/java-data-crossapp $WB/android-root - 2>&1" || STATUS=1
+      else
+        echo "(the Java test apps crossapp and plugin are not run: they were not built, see tools/build-test-app.sh)"
+      fi
       # Optional real microG integration, including a conflicting client GMS class.
       # Fetch the pinned upstream APK with tools/microg-fetch.sh first.
       if [ -f "$ROOT/build/microg/GmsCore.apk" ] && [ -f "$ROOT/build/guest/java/microg.apk" ]; then
@@ -292,8 +313,11 @@ EOF
       # user allows them it, and none where the user refuses it (`deny`), the user asked once (mg_java_tests.c, run_gms_host).
       if [ -f "$ROOT/build/guest/java/gms-own.apks" ] && [ -f "$ROOT/build/guest/java/gms-host.apk" ]; then
         for answer in allow deny; do
+          # (The second run asks their provider while the main thread stands on a latch, the first while it waits for a monitor:
+          # their Application is attached once a run, so one run cannot show both. Main.askWhileMainStands.)
+          stands=; [ "$answer" = deny ] && stands="MG_TEST_GMS_MAIN_STANDS=1 "
           echo "the Java test app gms-host (build/guest/java/gms-host.apk), hosting the stand-in for Google's own Play services (gms-own.apks): their own location, the user's answer $answer"
-          MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL="*" wsl.exe -- bash -c "cp -u '$WROOT/build/guest/java/gms-host.apk' $WB/gms-host.apk && cp -u '$WROOT/build/guest/java/gms-own.apks' $WB/gms-own.apks && rm -rf $WB/java-data-gms-host && MG_JAVA_GMS_APK=$WB/gms-own.apks qemu-arm -L /usr/arm-linux-gnueabihf $WB/mg_tests --java gms-host $WB/gms-host.apk $WB/java-data-gms-host $WB/android-root - 0 480x800@160 $answer 2>&1" || STATUS=1
+          MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL="*" wsl.exe -- bash -c "cp -u '$WROOT/build/guest/java/gms-host.apk' $WB/gms-host.apk && cp -u '$WROOT/build/guest/java/gms-own.apks' $WB/gms-own.apks && rm -rf $WB/java-data-gms-host && ${stands}MG_JAVA_GMS_APK=$WB/gms-own.apks qemu-arm -L /usr/arm-linux-gnueabihf $WB/mg_tests --java gms-host $WB/gms-host.apk $WB/java-data-gms-host $WB/android-root - 0 480x800@160 $answer 2>&1" || STATUS=1
         done
       fi
       # The app in several APKs, from each of its bundles: unpacked as the shell unpacks one, for a screen of 320 dpi, and run.
@@ -305,6 +329,19 @@ EOF
         echo "the Java test app splits (build/guest/java/splits.$bundle), unpacked and run through megler_run"
         MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL="*" wsl.exe -- bash -c "cp -u '$WROOT/build/guest/java/splits.$bundle' $WB/splits.$bundle && rm -rf $WB/java-data-splits && qemu-arm -L /usr/arm-linux-gnueabihf $WB/mg_tests --java splits $WB/splits.$bundle $WB/java-data-splits $WB/android-root '$WROOT/build/java-pictures' 0 720x1280@320 2>&1" || STATUS=1
       done
+      # Play Feature Delivery: the app that asks the Play Store for a feature module (playclient) and the stand-in for the Play
+      # Store (playstore), in turn over one data folder -- the client on a phone without the Play Store, then with one that
+      # takes no request up; the Play Store taking the request up and adding the module's split; the client with the module,
+      # asking for a second; the Play Store handing that one over as a file; the client taking it (run_playclient).
+      if [ -f "$ROOT/build/guest/java/playclient.apk" ] && [ -f "$ROOT/build/guest/java/playstore.apk" ]; then
+        MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL="*" wsl.exe -- bash -c "cp -u '$WROOT/build/guest/java/playclient.apk' $WB/playclient.apk && cp -u '$WROOT/build/guest/java/playstore.apk' $WB/playstore.apk && rm -rf $WB/java-data-play" || STATUS=1
+        for run in playclient:no-store playclient playstore playclient playstore playclient; do
+          app=${run%%:*}
+          script=; [ "$run" != "$app" ] && script=${run#*:}
+          echo "the Java test app $app (build/guest/java/$app.apk), through megler_run: Play Feature Delivery, ${script:-on what the runs before it left}"
+          MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL="*" wsl.exe -- bash -c "qemu-arm -L /usr/arm-linux-gnueabihf $WB/mg_tests --java $app $WB/$app.apk $WB/java-data-play $WB/android-root - 0 480x800@160 $script 2>&1" || STATUS=1
+        done
+      fi
       # The database app, twice: the second run on the data folder the first left, to find what it wrote. Only where the core has SQLite in it.
       if [ -n "$SQLITE_GCC" ] && [ -f "$ROOT/build/guest/java/data.apk" ]; then
         for run in 1 2; do

@@ -210,9 +210,24 @@ static unsigned e_KeyedMutex(void *mutex, int acquire)
     mg_lock_release(&g_lock);
     return ok;
 }
+/*
+ * What the one configuration says it renders, and conforms to: OpenGL ES 1, 2 and 3 -- and no 3 in the complete mode, a
+ * driver of OpenGL ES 2.0 alone (see there), as ANGLE's configurations have the bit of 3 only where its renderer makes 3.0
+ * (Direct3D feature level 10.1 and up). An app chooses by it: LocalSend's Flutter engine (Impeller) asks for a
+ * configuration of OpenGL ES 3 first and for one of 2 only when there is none, and, given one of 3 whose context was then
+ * refused, went on with no context and read a configuration it had not got.
+ */
+static int config_renderable(void) { return g_complete ? 0x05 : 0x45; }
 static MG_GLAPI unsigned e_ChooseConfig(void *d, const int *attribs, void **configs, int size, int *num)
 {
-    (void)d; (void)attribs;
+    int i;
+    (void)d;
+    /* Asked for a kind of rendering the configuration has not, EGL has no configuration: none is not an error. */
+    for (i = 0; attribs && attribs[i] != 0x3038; i += 2)
+        if ((attribs[i] == 0x3040 || attribs[i] == 0x3042) && attribs[i + 1] != -1 && (attribs[i + 1] & ~config_renderable())) {
+            if (num) *num = 0;
+            return 1;
+        }
     if (configs && size > 0) configs[0] = (void *)(mg_addr)0xC0F;
     if (num) *num = 1;
     return 1;
@@ -225,7 +240,7 @@ static MG_GLAPI unsigned e_GetConfigAttrib(void *d, void *c, int attrib, int *va
     case 0x3025: *value = 24; break;                                          /* depth */
     case 0x3026: *value = 8; break;                                           /* stencil */
     case 0x3033: *value = 5; break;                                           /* window and pbuffer */
-    case 0x3040: case 0x3042: *value = 0x45; break;                           /* renderable and conformant: OpenGL ES 1, 2, 3 */
+    case 0x3040: case 0x3042: *value = config_renderable(); break;            /* renderable and conformant: OpenGL ES 1, 2, 3 */
     case 0x302E: *value = 1; break;
     /* And the rest of what a config says, as a driver's one config of 8888 with depth and stencil would. */
     case 0x3020: *value = 32; break;                                          /* buffer size */
@@ -292,15 +307,31 @@ static MG_GLAPI unsigned e_DestroyContext(void *d, void *ctx)
     free(ctx);
     return 1;
 }
+/* Surfaces to refuse (mg_gl_standin_refuse_surfaces): how many more, and of what size. */
+static int g_refuse, g_refuse_w, g_refuse_h;
 static MG_GLAPI void *e_CreatePbuffer(void *d, void *c, const int *attribs)
 {
     sb_surface *s = (sb_surface *)calloc(1, sizeof(*s));
     int i;
+    bool refuse;
     (void)d; (void)c;
     s->w = s->h = 1;
     for (i = 0; attribs && attribs[i] != 0x3038; i += 2) {
         if (attribs[i] == 0x3057) s->w = attribs[i + 1];
         if (attribs[i] == 0x3056) s->h = attribs[i + 1];
+    }
+    /* As a Direct3D with no room for the surface's textures: EGL_BAD_ALLOC. */
+    mg_lock_acquire(&g_lock);
+    refuse = g_refuse > 0 && s->w == g_refuse_w && s->h == g_refuse_h;
+    if (refuse) {
+        g_refuse--;
+        S.stats.refused_surfaces++;
+    }
+    mg_lock_release(&g_lock);
+    if (refuse) {
+        free(s);
+        t_egl_error = 0x3003;
+        return NULL;
     }
     s->px = (u8 *)calloc((size_t)s->w * (size_t)s->h, 4);
     mg_lock_acquire(&g_lock);
@@ -789,10 +820,28 @@ static MG_GLAPI void g_BindTexture(u32 target, u32 name)
     (void)target;
     if (t_ctx) t_ctx->texture = name;
 }
-/* Rows of RGBA, RGB or RGB 5-6-5 pixels, as the unpack alignment lays them out, into a store's R, G, B, A. */
+/*
+ * The bytes a pixel of a format and type takes, as OpenGL ES 2.0 has them (and OpenGL ES 3's red, and red and green). Taking
+ * every format but RGBA for three bytes read past the end of a glyph atlas of one byte a pixel (GL_ALPHA, 4096x1024:
+ * LocalSend's Flutter engine, Impeller on OpenGL ES 2).
+ */
+static i32 pixel_bytes(u32 format, u32 type)
+{
+    if (type == 0x8363 || type == 0x8033 || type == 0x8034) return 2;      /* 5-6-5, 4-4-4-4, 5-5-5-1 */
+    switch (format) {
+    case 0x1906: case 0x1909: case 0x1903: return 1;                       /* GL_ALPHA, GL_LUMINANCE, GL_RED */
+    case 0x190A: case 0x8227: return 2;                                    /* GL_LUMINANCE_ALPHA, GL_RG */
+    case GL_RGBA: case GL_BGRA_EXT: return 4;
+    default: return 3;
+    }
+}
+/*
+ * Rows of pixels, as the unpack alignment lays them out, into a store's R, G, B, A: RGBA, RGB, RGB 5-6-5, and the formats of
+ * one and two bytes as OpenGL samples them (alpha alone over black, luminance as grey, red and green without blue).
+ */
 static void store_put(sb_store *s, i32 x, i32 y, i32 w, i32 h, u32 format, u32 type, const u8 *in)
 {
-    i32 bpp = type == 0x8363 ? 2 : format == GL_RGBA ? 4 : 3, align = t_ctx ? t_ctx->unpack_align : 4, r, c;
+    i32 bpp = pixel_bytes(format, type), align = t_ctx ? t_ctx->unpack_align : 4, r, c;
     size_t row = ((size_t)w * (size_t)bpp + (size_t)align - 1) / (size_t)align * (size_t)align;
     if (!in) return;
     for (r = 0; r < h; r++)
@@ -807,10 +856,33 @@ static void store_put(sb_store *s, i32 x, i32 y, i32 w, i32 h, u32 format, u32 t
                 o[1] = (u8)(((v >> 5) & 63) * 255 / 63);
                 o[2] = (u8)((v & 31) * 255 / 31);
                 o[3] = 255;
-            } else {
+            } else if (type == 0x8033) {
+                u16 v = (u16)(p[0] | p[1] << 8);
+                o[0] = (u8)((v >> 12) * 17);
+                o[1] = (u8)(((v >> 8) & 15) * 17);
+                o[2] = (u8)(((v >> 4) & 15) * 17);
+                o[3] = (u8)((v & 15) * 17);
+            } else if (type == 0x8034) {
+                u16 v = (u16)(p[0] | p[1] << 8);
+                o[0] = (u8)((v >> 11) * 255 / 31);
+                o[1] = (u8)(((v >> 6) & 31) * 255 / 31);
+                o[2] = (u8)(((v >> 1) & 31) * 255 / 31);
+                o[3] = v & 1 ? 255 : 0;
+            } else if (format == 0x1906) {
+                o[0] = o[1] = o[2] = 0;
+                o[3] = p[0];
+            } else if (format == 0x1909 || format == 0x190A) {
+                o[0] = o[1] = o[2] = p[0];
+                o[3] = bpp == 2 ? p[1] : 255;
+            } else if (format == 0x1903 || format == 0x8227) {
                 o[0] = p[0];
+                o[1] = bpp == 2 ? p[1] : 0;
+                o[2] = 0;
+                o[3] = 255;
+            } else {
+                o[0] = p[format == GL_BGRA_EXT ? 2 : 0];
                 o[1] = p[1];
-                o[2] = p[2];
+                o[2] = p[format == GL_BGRA_EXT ? 0 : 2];
                 o[3] = bpp == 4 ? p[3] : 255;
             }
         }
@@ -1414,6 +1486,15 @@ void mg_gl_standin_stats_get(mg_gl_standin_stats *out)
 
 void mg_gl_standin_set_dwell(u64 ns) { g_dwell_ns = ns; }
 
+void mg_gl_standin_refuse_surfaces(int count, int width, int height)
+{
+    mg_lock_acquire(&g_lock);
+    g_refuse = count;
+    g_refuse_w = width;
+    g_refuse_h = height;
+    mg_lock_release(&g_lock);
+}
+
 void mg_gl_standin_reset(bool bgra, bool es1)
 {
     mg_lock_acquire(&g_lock);
@@ -1422,6 +1503,7 @@ void mg_gl_standin_reset(bool bgra, bool es1)
     S.es1 = es1;
     g_level = g_displays = g_displays_warp = 0;
     g_last_warp = false;
+    g_refuse = 0;
     mg_lock_release(&g_lock);
 }
 

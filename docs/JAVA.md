@@ -800,7 +800,13 @@ ids from `AUTOINCREMENT`. `query` with a selection and arguments, ordered,
 read through a `Cursor`. `types`: `Cursor.getType` for each of the five, a
 blob byte for byte, an integer read as a string and a real as an int.
 `update` and `delete` with their counts. `rollback`: a transaction ended
-without `setTransactionSuccessful` leaves nothing. `commit`. `constraint`:
+without `setTransactionSuccessful` leaves nothing. `commit`.
+`deferred-transaction`: the hidden `getThreadSession` found among
+`SQLiteDatabase`'s declared methods and the session's `beginTransaction`
+with the mode 0, as androidx.sqlite and Google Play services reach a
+deferred transaction; while it has only read, a second connection to the
+file takes the write lock; what it then writes is committed by the
+database's `endTransaction`. `constraint`:
 `insertOrThrow` of a duplicate is `SQLiteConstraintException`, `insert`
 answers -1. `statement`: `compileStatement`, `simpleQueryForLong`,
 `executeUpdateDelete`. `text`: Cyrillic, a euro sign and an emoji go in and
@@ -862,6 +868,15 @@ Java's calls arrive there.
   hidden `getVolumeList`, `getVolumePaths` and `getVolumeState`, called by
   reflection as an old file manager calls them, give the same volume, its
   path, and `unknown` for a path that is none. `UUID_DEFAULT` is Android's.
+- `volume-infos`: the storage daemon's volumes, read the way Files by Google
+  looks for an SD card and a USB drive: the hidden `getVolumes` among
+  `StorageManager`'s declared methods, `android.os.storage.VolumeInfo` and
+  `DiskInfo` by name, a volume's `path`, `fsUuid`, `disk` and `state` as
+  fields. Two volumes, mounted and on no disk: the private one at
+  `Environment.getDataDirectory()` and the emulated one, with the primary
+  `StorageVolume`'s id, whose folder of the user (`getPathForUser`) is the
+  shared storage. `getDisks` is empty; `findVolumeById` finds "private" and
+  nothing for an id that is none.
 - `space`: `StatFs` on the shared storage and on `/data`: a total of at least
   a gigabyte, free space within it, and the same answer whichever way it is
   asked -- the long calls, the old int ones multiplied as longs,
@@ -3069,7 +3084,15 @@ name. Native code's `dlopen` of a path takes the same file
 app wrote into a folder no library had come from was "not found". A library
 is loaded once, by its name: a second request finds it and does not run
 `JNI_OnLoad` again, even for another file of that name, of which Android would
-load a second copy. What comes back when it fails is ART's sentence
+load a second copy. The `JNI_OnLoad` that is run is the one `dlsym` of the
+library's handle finds, which is how ART looks for it: the library's own, or
+else that of a library it needs, breadth-first over what each needs
+(`mg_ld_sym_deep`), and run then even when it has run before for another
+library. Microsoft OneDrive's `libcore.so` has none, and the `libQt.so` it
+needs has the one that keeps the JavaVM for both; up to 0.1.0.729 only a
+library's own was run, and OneDrive ended at every start with "JavaVM can't be
+null for XpJniEnv" (`libt_onload.so` and `libt_onload_dep.so`, `t_onload.c`).
+What comes back when it fails is ART's sentence
 (`dlopen failed: library "..." not found`, `JNI_ERR returned from JNI_OnLoad in
 "..."`, `Bad JNI version returned from JNI_OnLoad in "...": N`); a library the
 APK does not have at all never gets that far, and is libcore's own
@@ -3259,8 +3282,24 @@ for the display's frames through Java's `Choreographer`; `ASurfaceControl_*`
 answer none. Each lookup in the system's libraries that finds nothing now
 says so in the log, once (`dl: dlsym(NAME) found nothing`). The Dart VM
 reads `/proc/cpuinfo` for ARMv7 and its features (vfp, neon, idiva), which
-says so, as `getauxval(AT_HWCAP)` does. No Flutter app has been run here yet:
-the next step is a phone's log of one.
+says so, as `getauxval(AT_HWCAP)` does.
+
+The first Flutter app run here is LocalSend 1.18.2 (Dart 3.11), under qemu
+over the test host's stand-in for a driver of OpenGL ES 2.0. Two answers of
+the system ended it on the way. Dart's `Platform.resolvedExecutable` asks
+`lstat` of `/proc/self/exe` before it reads the link, and copies as many
+bytes as it was told: `lstat` said "no such file" of the link `readlink`
+read, and the engine ended in `memcpy` with a length of -1; `lstat` says a
+link of it now. Dart's `NetworkInterface.list` asks Linux's kernel on a
+socket of `AF_NETLINK`, which was refused ("SocketException: Failed listing
+interfaces", thrown at the app's start); it is answered now (see "The
+network" in ARCHITECTURE.md). With both the engine says "Using the Impeller
+rendering backend (OpenGLES)", takes a configuration of OpenGL ES 2 where
+EGL has none of 3, starts the app's isolates and draws about eight frames a
+second there; LocalSend lists the host's addresses, starts its HTTPS server
+on port 53317, joins its multicast group and hears its own announcement.
+The stand-in runs no shaders, so a picture taken there is the frame's clear
+colour alone: what a Flutter app draws is still a phone's to show.
 
 ### A SurfaceView drawn by native code
 
@@ -4234,6 +4273,97 @@ app as Android's media keys, which go to its active session's
 `Callback.onMediaButtonEvent` as Android 9 sends them, and to the window when
 there is no session. The test app `data` (`media-session`) checks both ways.
 
+To Windows a sound output is an app playing, whether it is given sound or
+silence, and such an app is not suspended: Twitter, Telegram and Facebook
+Lite, silent in the background, ran on there for hours, until the batteries of
+an Elite x3 and a Lumia 950 were at 4% (0.1.0.695, 0.1.0.696). It is also the
+one way a minimized app runs on at all on a phone: a messenger suspended gets
+no message, a download stops. So which it is to be is the user's choice,
+**In the Background** in Megler's Settings and in each app's own (the setting
+`megler.background`, `shell/Settings.h`; an app's own over Megler's, "As in
+Megler" at the top):
+
+- **Keeps Running** (`run`, and what an app goes by when nothing is chosen):
+  the app keeps its output, heard or not, until it ends, as in the releases up
+  to 0.1.0.699. Minimized, it runs on and uses the battery until it is closed;
+- **Rests** (`rest`): an app that plays nothing is not to pass for one that
+  plays, as below.
+
+The sound host asks the setting each time its thread comes round, so an app's
+own, changed in the app's own package from the player's menu, counts at once;
+changed in Megler, it counts at the app's next start. The log says which it is
+at the start and at each change: `audio: minimized, the app runs on: its sound
+output is kept, heard or not, until the app ends (Settings, In the Background:
+Keeps Running)`, or `audio: minimized and unheard, the app rests: ... (Settings,
+In the Background: Rests)`. A game with an engine of its own has no such
+output and is suspended with either.
+
+An output alone keeps only an app Windows takes for a player running: one whose
+media session has played, with the system media controls its own. Any other,
+Telegram among them, Windows suspends 0.3 s after it is minimized, its output
+XAudio2's or Windows.Media's player's alike (an HP Elite x3, 0.1.0.696, 731 and
+732). So under Keeps Running a Java app also holds an extended execution
+session (`player/Session.cpp`, keepRunning: `ExtendedExecutionReason::
+Unspecified`), asked for at its start and each time it is shown again: minimized,
+it runs on for as long as Windows lets it, some ten minutes on a phone, then is
+suspended until it is shown. The log says `background: an extended execution
+session is held ...`, Windows' denial, or its taking the session back.
+
+Of an app that rests, the shell's sound host
+(`player/AudioHost.h`) lets go of the output -- Windows.Media's
+player, or the XAudio2 engine -- once the application is in Windows'
+background (`EnteredBackground`, `session::setBackground`) with nothing of the
+app heard for ten seconds and its media session not saying it plays, and makes
+it again at the app's first sound (that block waits for it, two seconds at the
+most), when its session says it plays, for a call, and when the application
+leaves the background. The ten seconds are the sound host's own thread's, a
+second at the most for each time it comes round, so the time the app was
+suspended is none of them. An app that is heard, or whose session says it
+plays, keeps its output as before: music goes on with the screen off. An app
+whose session says it is paused (`STATE_PAUSED`) keeps it for five minutes
+rather than ten seconds: Play on the lock screen, or on a headset, is pressed
+a moment after a pause, and an app Windows has suspended hears nothing of it
+-- Spotify, paused with the screen off, would have played again only once it
+was opened. The log says each turn:
+
+- `audio: nothing audible for 10 s in the background: the output is paused so
+  that Windows can suspend the app` (`for 300 s` after a session's pause);
+- `audio: the output is resumed at the first sound` (or `as the app's media
+  session says it plays`, `for a call`, `as the app comes back from the
+  background`);
+- `audio: nothing audible for 10 s in the background, but the app's media
+  session says it plays: the output is kept`, or `... but the app's media
+  session is paused: the output is kept for five minutes, so that Play finds
+  the app running`.
+
+An app that has ended has no output from then on, whichever is chosen
+(`AudioHost::end`, from the run's `on_exit`: `audio: the app has ended: its
+sound output is closed`): YouTube, ended, had its player given silence for
+five hours. The flag `keep-sound-output` keeps the output of an app that
+rests, as Keeps Running does, to compare the two on a phone without changing
+the setting (`flag: keep-sound-output is on: ...`); an ended
+app's output is closed with it too. None of this has a test here: it is the
+shell's, and whether Windows suspends the app is seen on a phone alone.
+
+An app that is neither seen nor heard is left alone by the core too. The Java
+driver's sampler (`hot_main`, `drivers/mg_java.c`) woke every 5 ms and said
+its lines every ten seconds for hours under a Twitter, a Telegram and a
+Facebook Lite silent in the background, until the batteries of an Elite x3
+and a Lumia 950 were at 4% (0.1.0.695, 0.1.0.696). While the app is not on
+the screen (`megler_set_paused`) and nothing of it has been heard for ten
+seconds (`mg_audio_heard_within`, `ndk/mg_audio.c`: the mixer says of each
+chunk whether a sample of it is not zero in the output's 16 bits), the main
+thread is not sampled, the sampler looks once a second whether that still
+holds, and the memory's lines come once a minute: `hot: the app is not on the
+screen and nothing of it is heard: ...` from the next ten seconds' lines on,
+and `hot: the main thread is sampled again, after N s` within a second of the
+app's being shown or heard. An app that has ended (`mg_run_over`) has no
+sampler, and the mixer hands the shell's output nothing more of it: YouTube,
+ended, had a hundred blocks of silence a second played for five hours, to
+Windows an app playing, and an Elite x3's battery went from 90% to 1%
+(0.1.0.695). `mg_tests` checks the measure (a voice's silence, a tone, its
+end), and the hello app's test the sampler's rest and its return.
+
 ### A media session's controllers
 
 An app may drive its own player through its media session: its screens hold a
@@ -4419,6 +4549,111 @@ What a Java app asks of the phone beyond its window goes to the shell through
   install folders cannot be read by an app container on Windows 10 Mobile
   (Megler's own check fails after each install), which is why Megler, which
   has the APKs, writes this for them.
+- **Other apps: the whole Intent.** An activity of another app is started
+  with the Intent the app made, not with its class alone. `megler.PhoneApps`
+  writes the Intent (`megler.Flat`: the action, the data and its type, the
+  categories, the flags and the extras) into a file of the folder every app
+  shares, `/data/megler-services/intents/<the other package>/<token>`, and
+  asks the shell for `<class>~<token>`; the shell hands that name on as it is
+  (`megler_start_activity`), so its code is unchanged. The app asked reads
+  the file and deletes it (`megler.AppRunner`). Started for it, the app's
+  first activity is the one asked for (`Native.requestedActivity`), not its
+  launcher activity and then it. Before, Total Commander's Wi-Fi plug-in,
+  asked to send files (`WifiSendActivity`: an action, a type and the list of
+  the files in the extras), opened with nothing to send, behind its main
+  screen.
+  - An intent that names the package and an action, with no class, goes to
+    the first exported activity of that app whose filter takes it.
+  - Megler's `Parcel` keeps objects beside its bytes and is of one process,
+    so `megler.Flat` writes the values itself: strings, numbers, their
+    arrays and lists, `Bundle`, `Uri`, `Intent`, `ComponentName`, a
+    `Serializable`, and any other `Parcelable` by its class's name and what
+    it writes, read by the class of that name the other app has. A
+    `Parcelable` of a class the other app has not is left out, and the log
+    says so (Android fails the whole `Bundle` there). A Binder and a file
+    descriptor do not go, and the log of the asking app says which extra
+    stayed. `FLAG_GRANT_READ_URI_PERMISSION` goes as a flag; nothing is
+    granted by it.
+  - The result of `startActivityForResult` comes back the same way
+    (`megler.AppResults`, `/data/megler-services/results/`): its Intent is
+    whole too, a list of Uris among its extras included.
+  - An app on microG and an app on Google's own Play services have different
+    services' folders (`services\data-microg`, `services\data`), and neither
+    the Intent nor the result passes between such two: the activity is
+    started by its class alone, as before.
+  - The test apps `crossapp` and `plugin`, in two runs on one data folder
+    (`MG_JAVA_OTHER_APKS`, `MG_JAVA_START_ACTIVITY=@<file>`).
+- **Other apps: their services.** Each app is a Windows package and a
+  process of its own, and no Binder call passes from one to another:
+  `bindService` for another app's service answered false, and
+  `queryIntentServices` found none. Total Commander lists its plug-ins by
+  their service's action (`com.android.tcplugins.IPluginFunctions`, no
+  package) and binds `PluginService` in the plug-in's package, so every
+  plug-in was "not installed", and then "failed to connect".
+  `megler.HostedApps` runs the other app's service inside the app that asks,
+  as `megler.MicroG` runs Google Play services: the other app's APK
+  (`/data/app/<package>-1/base.apk`) in a class scope of its own
+  (`megler.ServiceClassLoader`), its Application made once, with a Context
+  that answers for that package (its name, resources, class loader,
+  `ApplicationInfo`, folders), the service made and bound, and its Binder
+  handed to the caller's `ServiceConnection` on the main thread. The caller's
+  proxy and the service's stub are classes of two scopes, so each call is a
+  transaction with a `Parcel`, as between processes.
+  - Which services: beside `activities.json` Megler writes `services.json`,
+    the app's exported services with their labels, icons, permissions and
+    intent filters (`Native.appServices`, `megler.PhoneApps.services`).
+    `queryIntentServices` and `resolveService` find those an intent reaches
+    by its component, by its action within a package, or by its action
+    alone; `getServiceInfo` and `getPackageInfo` with `GET_SERVICES` tell of
+    them. A service is bound by its component or by its action within the
+    package the intent names.
+  - What is refused, with a line of the log saying why (`hosted apps: ... is
+    not bound here: ...`), and not listed either: Google's packages (they
+    have their own ways); a service whose permission is
+    `android.permission.BIND_...` or one the asking app does not request; an
+    app whose base APK is over 16 MB (`MAX_APK_BYTES`: its code and heap are
+    the asking app's, on phones with 1 GB); a fifth package in one process
+    (`MAX_HOSTS`).
+  - The hosted package's data is `/data/megler-services/hosted/<package>`,
+    in the folder every app shares, not the folder of that app run on its
+    own, which another Windows package cannot open. What a plug-in saves when
+    its service runs inside another app is not what it has when started from
+    its own tile, and the other way round; two apps that host one package
+    share that folder. Its code runs with the asking app's permissions; its
+    content providers are not made; only its base APK is read.
+  - The hosted code's own `bindService`, `startService` and `stopService` for
+    its own services are resolved in its own manifest, exported or not, in
+    the same scope (Total Commander's LAN plug-in binds its
+    `ForegroundService` and casts the Binder to its class).
+  - Its activities, once its service runs here: a plug-in's service and its
+    screens are one app. Total Commander's LAN plug-in asks its host to start
+    its `ConnectActivity` ("New server"), which begins with the service's
+    own instance (a static field), saves the server in the plug-in's
+    preferences and tells the service by a broadcast within the package; in
+    the plug-in's own process there is no such service and the preferences
+    are another folder's. So an activity of a package that is hosted here
+    opens here (`megler.HostedApps.activity`, asked by
+    `AppRunner.startActivity` before the phone's apps): made by the
+    package's class loader with a Context of that package, its theme and
+    label the manifest's (the application's where it names none), on the
+    asking app's activity stack, its result handed back as within one app.
+    The asking app is given the exported ones (one with an intent filter is
+    exported unless it says not, as before Android 12) whose permission, if
+    any, it requests; the hosted code is given all of its own, by a class or
+    by an action with no package (the host app's own activities first).
+    `Context.startActivity` of a hosted service goes the same way. The
+    launcher's intent is not taken: it opens the app itself. No package is
+    hosted for an activity alone: without its service bound, the other app's
+    activity opens in that app's own process, as above. Launch modes are not
+    applied to hosted activities.
+  - `megler.HostedApps.binder(context, intent)` is the same for Megler's own
+    classes: the Binder of a package's service by an Intent, in this process,
+    or null. `megler.HostedApps.handle(package, handler)` sets Megler's own
+    answer for a package's services, asked before the phone's apps are looked
+    at.
+  - The test apps `crossapp` and `plugin` (`services`, `bind`, `call`,
+    `callback`, `bind-action`, `unbind`, `refused`, `entry`, `handler`,
+    `activity`, `activity-own`, `activity-refused`).
 - **Other apps: their signatures, uids, comings and goings.**
   - `activities.json` also has the certificates the APK is signed with
     (`"certificates"`, each DER in hex): the APK Signing Block's v3 signer's,
@@ -4441,6 +4676,26 @@ What a Java app asks of the phone beyond its window goes to the shell through
     com.google.android.gms"), and WhatsApp's search for its Google Drive backup
     failed until it said it took too long (package 485); Play Store warned of
     the same.
+  - Who called a provider (`megler/Callers.java`). Everything runs in the app's
+    process, so a provider is told the app calls it: `getCallingPackage` is
+    the app's package and `Binder.getCallingUid` its uid. Except a provider of
+    the app's own that Google Play services' hosted code calls
+    (`MicroG.calledByHosted`, asked in `ContentResolver`): for the length of
+    that call, on that thread, it is told their package and their uid (10014,
+    whose packages are theirs), as on Android, where the call comes from
+    their process; `Binder.clearCallingIdentity` makes the uid the app's and
+    `ContentProvider.clearCallingIdentity` the package too, until restored. A
+    provider that the app's asks from inside the call is told the app, and so
+    is their code asked for the uid there. Files by Google hands Quick Share a
+    folder as a `content://` URI of its `FolderSharingContentProvider`, which
+    answers no caller but `com.google.android.gms`: told its own package it
+    threw `UnsupportedOperationException` on their thread, and no folder was
+    shared (0.1.0.699). The gms-host app's provider `WhoAsks` says what it is
+    told when the stand-in's code asks it, and when the app does. Which code
+    is theirs is told by its class loader (GmsCore's, or one under it): code
+    of theirs that an app's client library runs in the app through that
+    loader -- on Android inside the app's process, the app's call -- counts
+    as theirs here too.
   - Once the app has asked for the list, it is read again every three seconds.
     What changes is told as Android tells it: `ACTION_PACKAGE_ADDED`; for a new
     version `ACTION_PACKAGE_REMOVED` and `ACTION_PACKAGE_ADDED` (both
@@ -4511,8 +4766,21 @@ rescheduled, after its interval when it repeats, at once when work was
 enqueued meanwhile. Scheduling it again or cancelling it stops it if it runs
 (`onStopJob`). `JobInfo` keeps what its Builder is told (its service,
 transient extras, network type, latency, period, backoff, ...), where it kept
-the id and extras only. Not done: jobs persisted across runs, constraints
-other than the time, content triggers.
+the id and extras only. A job with content triggers
+(`JobInfo.Builder.addTriggerContentUri`) waits for a change of one of its
+URIs told to `ContentResolver.notifyChange` (those below it too with
+`FLAG_NOTIFY_FOR_DESCENDANTS`), as Android's ContentObserverController holds
+it: it runs once no further change has come for its update delay (10 s unless
+it says), at the latest its maximum delay after the first (2 minutes), with
+`JobParameters.getTriggeredContentUris` and `getTriggeredContentAuthorities`
+filled (the first 50 URIs, null beyond); scheduled again from its own run,
+it takes over the changes told meanwhile and runs at once for them; one with
+an override deadline runs at it, changed or not. It is watched by observers
+registered while it waits, so an app without such jobs pays nothing. WorkManager's
+content-URI work is such a job: run at once, as it was, it was scheduled again by
+each of its runs (Files by Google: job ids 30 to 1246 in a session). Not done:
+jobs persisted across runs, constraints other than the time and the content
+triggers.
 
 `megler.Processes`: a component the manifest puts in another process
 (`android:process`) runs in a class scope of the app's own APK
@@ -4539,6 +4807,42 @@ which installs apps, could not load `libmappedcountercacheversionjni.so`, and
 every install from Play Store ended in "Can't install the app" (its error 1000,
 package 574). The test app `splits` has a service in a process of its own
 (`.Other`, `:other`) that loads the library of its split and calls it.
+
+The scope's loader is a `PathClassLoader`, as Android's loader of a process
+is: `megler.ServiceClassLoader` extends it, its path list holds the APK's
+`DexFile` (which, opening the APK for that loader, is what makes the scope:
+`DexFile_openDexFileNative`, `dvm/mg_dvm_art.c`) and the library folders
+`findLibrary` looks in, and its parent is the boot class path's loader, as
+the app's own loader's is (a hosted service's has none, as before). Facebook
+Lite's shell reads `BaseDexClassLoader.pathList`'s `dexElements` in every one
+of its processes and puts a loader of its own in the loader's `parent` field;
+in its push process `:fbns` that was "Expected receiver of type
+dalvik/system/BaseDexClassLoader, but got megler/ServiceClassLoader"
+(packages 696, 699). A class is looked for in the scope first (all of a
+scope's classes are there at once), and a parent the app has put there is
+asked for what the scope has not.
+
+A file the code of such a process opens for no loader (`DexFile.loadDex`), or
+one opened for the scope's loader, joins that scope, once, as one the app's
+own process opens joins the app's path; a loose DEX file whose bytes were
+read before (same size, checksum and SHA-1) shares them. Facebook Lite keeps
+all but its shell in DEX files it unpacks into its data folder and opens so
+in each process: `:fbns` found them on the app's path already, got none of
+their classes, and neither its Application's delegate
+(`com.facebook.lite.LeanClientApplication`) nor its service
+(`com.facebook.rti.push.service.FbnsService`) was found. A hosted service's
+code (Google Play services, the WebView) opening a file for no loader does
+what it did. The data test app's `:elsewhere` process reads its loader as
+Facebook Lite does and opens a DEX file of its own ("process-loader"). Not
+done: the scope is over the base APK alone (code in a split is not in it),
+and a class a DEX reference does not find never asks the loader (a loader of
+the app's that opens a file only when a class is missing is asked by
+`loadClass` and `Class.forName` alone).
+
+An uncaught exception of a thread of such a process ends that thread alone,
+as one of Google Play services' does, and the log says whose it was
+("process com.facebook.lite:fbns's thread ..."; `megler.Processes.threadsOf`):
+it said "Google Play services' thread" for every scope.
 
 ### Downloads
 
@@ -4824,6 +5128,29 @@ order) that Android registers on every connection, strings bound and read as
 the UTF-16 Java keeps them in. An app's path
 (`/data/data/<package>/databases/x.db`) is turned into the host's.
 
+**Transactions and the session.** `beginTransaction` is SQLite's `BEGIN
+EXCLUSIVE` and `beginTransactionNonExclusive` its `BEGIN IMMEDIATE`, as on
+Android. A deferred one -- plain `BEGIN`, which takes no write lock until
+something is written, so that a transaction that only reads keeps no other
+connection or process out -- is Android 15's `beginTransactionReadOnly`, and
+before it is reached only by reflection: the hidden
+`SQLiteDatabase.getThreadSession()` and the session's
+`beginTransaction(0, listener, 0, null)`. Google Play services' databases do
+that (26.41.31; where the method is not found, "Unable to reflect
+getThreadSession" in the log and an exclusive transaction for each read, which
+is what every app that hosts them had here), and androidx.sqlite looks the two
+up the same way for its `beginTransactionReadOnly` (Files by Google).
+`SQLiteDatabase.getThreadSession` (not public, as on Android) gives a
+`SQLiteSession` (`core/framework-overlay`) with Android's transaction calls --
+the three modes, `hasTransaction`, `hasNestedTransaction`, `hasConnection`,
+`beginTransaction`, `setTransactionSuccessful`, `endTransaction`,
+`yieldTransaction` -- and none of the statements Android's session runs as
+well. The database here is one connection, which a transaction keeps for its
+thread: there is one session, it answers for the thread that asks, and its
+transaction is the database's own, ended through either. A transaction keeps
+its mode, with which a yield begins it again, and the framework's own
+`beginTransactionReadOnly` is deferred too (it began an immediate one).
+
 **Which SQLite.** These natives, as written for the framework on iOS, take
 whatever SQLite the system has, and use 35 functions of its API, none of them new: `open_v2`,
 `close`, `close_v2`, `errmsg`, `errstr` (the newest: SQLite 3.7.15, of 2012),
@@ -4859,12 +5186,28 @@ options and `#include "sqlite3.c"`:
   instead of taking its journal for one left behind and rolling it back, or
   writing beside it. With the table alone it did, and Phenotype's database had
   no table Packages in several apps' logs (576). As Windows suspends the app,
-  the shell waits up to a second for its connections to let their locks go
-  (`megler_settle_databases`), since Windows freezes it as it is and a lock
-  it kept would hold the other apps up until it came back; the log says when
-  one was kept all the same. The core tests lock the file
+  the shell has its locks let go (`megler_settle_databases`), since Windows
+  freezes it as it is and a lock it kept would hold the other apps up until
+  it came back: YouTube, suspended 16 s after its start with one, had every
+  other app told "database is locked" for three hours (a user's Lumia 950,
+  696), a wait for the count of locks to come down being of no use while the
+  app's other threads took new ones. From that call until the app resumes
+  (`megler_resume_databases`) the locks only come down: a thread that would
+  begin to read waits, holding nothing (one that holds a lock on another
+  database is let through, since waiting it would keep that); a read or a
+  transaction under way goes on to its end; and a writer waiting for readers
+  to leave does not keep PENDING's byte while it waits, which would keep every
+  new reader of every app out, though it keeps RESERVED, which SQLite counts
+  on. The shell gives that what Windows leaves it (`SuspendingOperation`'s
+  deadline less three seconds for the files and the logs, between one second
+  and two), and the log says what Windows gave, and for a lock kept all the
+  same its file, its level and its thread. Should the app run ten seconds
+  without being told it is back, its threads go on by themselves. The core
+  tests lock the file
   through a handle of their own as another process would (its writer, its
-  writer waiting, its reader), and on the PC start a second process
+  writer waiting, its reader), suspend and resume (a reader of another thread
+  waits and then reads, a writer turned away gives PENDING up and commits
+  once the reader has left), and on the PC start a second process
   (`mg_tests --sqlite-hold`) that holds a write with its journal while the
   first reads beside it and cannot write; **its mutexes on
   the host layer's locks** (`SQLITE_THREADSAFE=1`, serialized, named to SQLite
@@ -5014,11 +5357,39 @@ released functor (`release_functor`) has `on_context_destroyed` (with the
 context current) and `on_destroyed` on the render thread; its pbuffer and
 picture go with it. The log says "webview: pages are drawn on the graphics
 processor" and "draw functor N drawn" with the time a draw takes. A draw that
-fails three times in a row, or one that takes more than four seconds (fifteen
-on a display of OpenGL ES 2, below), has the
-pages drawn in software from then on, as below. `mg_gl_tests.c`'s draw functor
-test checks the table, the threads, the order of the callbacks, the
-parameters, the picture handed over and the release with the tests' stand-in.
+fails three times in a row has the pages drawn in software from then on, as
+below. One that takes long does not. The UI thread's wait for a draw
+(`wv_ask`) is HWUI's for a frame, and once the render thread has taken the
+request it lasts until Chromium has drawn: after four seconds (fifteen on a
+display of OpenGL ES 2, below) the log says "draw functor N has been drawing
+for 4000 ms on the render thread: waited for to its end", and then "draw
+functor N's draw ended after M ms". Before, such a draw was left behind after
+four seconds and the pages were drawn in software from then on, on the UI
+thread, while the render thread was still in the functor: Candy Crush Saga,
+whose pages' first frames took Chromium 4.9 and 5.6 s on an Adreno 430 while
+the game's own thread drew on the same display, ended during those software
+frames, in Chromium's compositor (`libwebviewchromium.so+0x3879a08`: a page
+that starts a view transition while it is drawn in software ends there, in
+the software frame sink's manager, which has no shared images to save the
+transition in -- the webview test app's page did so under qemu when it was
+given `document.startViewTransition` and a `WebView.draw` into a bitmap;
+Chromium 128's own, and still so wherever a page is drawn in software). Only a
+request the render thread has not taken in that time -- it is in a released
+functor's last callbacks, say -- is withdrawn, under the lock the render
+thread takes it under, so that it is never begun ("the render thread did not
+take draw functor N's draw in 4000 ms: withdrawn"); none is made until the
+render thread is back at its wait ("the render thread answers again, M ms
+after a draw was withdrawn"), and meanwhile the WebView records the functor's
+last picture again where it was and asks to be drawn again a tenth of a second
+later (`WebFunctors.BUSY`, `WebView.meglerDrawFunctor`): no frame of it is
+drawn in software. `mg_gl_tests.c`'s draw functor tests check the table, the
+threads, the order of the callbacks, the parameters, the picture handed over
+and the release with the tests' stand-in, and the hand-over: a draw three
+times as long as the wait answered with its picture, a request made while the
+render thread is kept in another functor's last callback answered -1 and
+never drawn, the next answered -1 at once, and the functor drawn again once
+the render thread is back (`mg_tests --gl-only <scratch dir> <android root |
+->` runs those tests alone).
 
 **Drawing in software.** A canvas that is not hardware-accelerated -- a
 `Bitmap`'s, the window's with `no-view-lists`, or any canvas where the draw
@@ -5181,9 +5552,9 @@ each at that size) are let go, and Chromium made its tiles before too. A
 program of Skia's is compiled by D3DCompile on the phone's processor the first
 time it is needed, and a page's first frames wait for theirs; ANGLE keeps them
 for the next start (`EGL_ANDROID_blob_cache`, `angle-cache` in the app's
-data). So on a display of OpenGL ES 2 the UI thread waits up to 15 s for a
-functor's draw, not 4, before it gives pages up to software
-(`WV_WAIT_ES2_MS`); the log says each slow frame's time ("webview: slow
+data). The UI thread waits for such a draw to its end, as for any the render
+thread has begun; on a display of OpenGL ES 2 the log speaks of it after 15 s,
+not 4 (`WV_WAIT_ES2_MS`), and says each slow frame's time ("webview: slow
 frame").
 
 **The WebView's developer-mode flags, and HitTestOpaqueness.** The WebView in
@@ -5680,7 +6051,8 @@ keeps a local reference in a local, which is what local references are for.
   keeps its referent that time, a finalizable object with no room to be queued
   is kept for a later collection; and before the first growth there are small
   ones in the collector's own data. A collection is now given up only when a
-  thread cannot be stopped, and the log says which and why. Once it holds
+  thread cannot be stopped, and the log says which and why (or when a stop
+  stands still: "the stop's watch", below). Once it holds
   enough (2048 objects), the mark is shared with helper
   threads of the collector's own, one fewer than the processors and three at
   the most: the stack becomes a pool they take chunks of into stacks of their
@@ -5694,6 +6066,19 @@ keeps a local reference in a local, which is what local references are for.
   while it runs are born marked. The same helpers share it, a block at a
   time; and the threads are stopped and resumed by all of them at once, each
   taking the next thread of a list made first.
+- *A round is the helpers' to join.* Whatever is shared (`run_round`: the
+  stop, the roots, the mark, the written pages, the resume, the sweep) is
+  claimed piece by piece, the collecting thread does it itself, each helper
+  that has woken by then takes part, and the round ends when those that
+  joined have returned: no helper is waited for to begin. They all were, and
+  Messenger's first collection never ended (Lumia 950, 0.1.0.696): it made
+  its helpers and at once stopped the app's threads in a round, one of them
+  inside the shell's making of its Direct2D device; a thread Windows has just
+  made runs nothing of its own before it has had the loader's lock and the
+  process heap's, and a stopped thread held one. The collector's threads are
+  now also waited for where they are made, before anything is stopped, until
+  each runs its own code (`helpers_start`, 300 ms at the most; the log says
+  when one has not come). "marked by N threads" is how many took part.
 - No generations and no compaction. Fragmentation is limited by size classes.
 
 **The heap.** It is no longer the C heap.
@@ -5821,7 +6206,25 @@ keeps a local reference in a local, which is what local references are for.
 - Because the locks are taken first, no stopped thread holds one of them.
 - Between the stop and the resume the collector allocates nothing, frees
   nothing and logs nothing. A stopped thread may hold the C library's heap
-  lock or the log's.
+  lock or the log's. Nor does it format a number or read a thread's name
+  there (the line of the threads that made the most is put together after
+  the resume: the C library's first formatted print on a thread allocates),
+  make a thread, or touch a thread-local variable for the first time (the
+  desktop builds' are emulated and allocated at first use). The lock of the
+  list of objects with fields by name is one of the collection's own, taken
+  before the stop with the others.
+- *The stop's watch.* For a lock nobody knew of: a thread of the collector's
+  looks every 250 ms while threads are stopped whether the stop moves (a
+  thread stopped, a step begun, a reference looked at by any marking thread),
+  and after 5 s of nothing it lets the stopped threads go itself. The
+  collecting thread, when it comes back, reads nothing more of them, frees
+  nothing, clears no reference, and the log says "gc: ...: not collected:
+  nothing moved for N ms with the threads stopped (the step): they were let
+  go". The next collection that allocations ask for comes a second later at
+  the soonest (twice as long after each further one given up in a row, a
+  minute at the most); one the app asks for, or one before an
+  `OutOfMemoryError`, at once. From where the references are cleared the
+  stop is no longer given up.
 - A thread is registered by `mg_dvm_self` (it already is), with its `mg_thread`
   and its stack's top. It is unregistered when it ends: the end of a Java
   thread, `DetachCurrentThread`, and the bionic layer's thread exit for guest
@@ -6352,6 +6755,42 @@ on a looper thread of its own and takes it back with `next()`.
   Google Play services' (a place at a point and of a name in the request's
   locale, an error, the listener forms, the first request a synchronous one
   on the main thread).
+- `com/android/location/provider/GeofenceProvider.java` and
+  `android/hardware/location/GeofenceHardware.java` and
+  `GeofenceHardwareRequest.java`, which the framework did not have. Google
+  Play services' location service makes its hardware geofencer when it is
+  created (unless flags of its say otherwise), a subclass of
+  `GeofenceProvider`, a class of Android's location provider library that
+  the module does not carry: `NoClassDefFoundError`, "Binding
+  com.google.android.location.internal.GoogleLocationManagerService failed"
+  and a null binding, so no fused location from Play services, in the logs
+  of eight apps (0.1.0.695 and 0.1.0.696). The provider is Android's:
+  `getBinder` for its service's `onBind`, and `onGeofenceHardwareChange`,
+  which the system calls where the phone has geofencing hardware. Here
+  nothing binds it and it is never given any; `GeofenceHardware` has
+  Android's constants and methods and cannot be made, the request is
+  Android's value. Not there yet: the same library's `LocationProviderBase`,
+  `SignificantPlaceProvider` and `...Unbundled` classes, which Play services
+  name too. The data app's step "geofence-provider".
+- `android/net/wifi/sharedconnectivity/service/SharedConnectivityService.java`
+  and, in `android/net/wifi/sharedconnectivity/app`, `NetworkProviderInfo.java`,
+  `HotspotNetwork.java`, `KnownNetwork.java`,
+  `HotspotNetworkConnectionStatus.java`, `KnownNetworkConnectionStatus.java`
+  and `SharedConnectivitySettingsState.java`, Android 14's system API that the
+  framework did not have: the service through which Google Play services'
+  tethering module tells the Wi-Fi settings of the hotspots and known
+  networks of the user's other devices. Play services start their
+  `TetherService` in every process that hosts them, and from Android 14 on
+  its `onCreate` makes one, a class the module does not carry:
+  `NoClassDefFoundError`, "Starting
+  com.google.android.gms.magictether.service.TetherService failed" in the
+  logs of eighteen apps (0.1.0.673 to 0.1.0.699). The values are Android's,
+  with their builders' checks and their parcels. The service is what
+  Android's is where the system names no shared connectivity service:
+  nothing binds it, what it sets is told to nobody, its `on...` methods are
+  never called, and `areHotspotNetworksEnabledForService` and
+  `areKnownNetworksEnabledForService` say no. The data app's step
+  "shared-connectivity".
 - `android/content/res/AssetManager.java`, `Resources.java` and
   `ResourcesImpl.java`, another package's splits: an `AssetManager` made for
   another package (`meglerForPackage`) takes its splits too, whose tables are
@@ -6458,7 +6897,19 @@ on a looper thread of its own and takes it back with `next()`.
   `getStorageVolumes` did not exist before Android 7. There is one volume,
   the shared storage, which the framework's own `StorageVolume` describes; a path
   that is no volume is "unknown". And `UUID_DEFAULT` is Android's constant
-  (it was null), which is what `getUuidForPath` answers.
+  (it was null), which is what `getUuidForPath` answers. The storage
+  daemon's view, hidden as well: `getVolumes` was a generated empty list and
+  `VolumeInfo.java` and `DiskInfo.java` were not there, so that Files by
+  Google, which reads them by reflection for an SD card and a USB drive,
+  logged "Unable to obtain StorageManager volumes" at each look
+  (`ClassNotFoundException: android.os.storage.DiskInfo`). The two classes
+  are Android's values, and `getVolumes` answers what Android answers on a
+  phone without a removable medium: the private volume at `/data` and the
+  emulated one ("emulated;0", primary, the user's), neither on a disk;
+  `getDisks` is empty, `findVolumeById`, `findVolumeByUuid` and
+  `getBestVolumeDescription` look in that list, `getWritablePrivateVolumes`
+  is the private one. No SD card or USB drive is made up. The data app's
+  step "volume-infos".
 - `android/os/Environment.java`: `getDataDirectory()` is `/data`, as on
   Android; the framework's own file answered the app's own folder, so that the documented
   `new File(getDataDirectory(), "data/" + packageName + ...)` named that
@@ -7180,6 +7631,26 @@ on a looper thread of its own and takes it back with `next()`.
   `openNonAssetFd`, detaches the number from its `ParcelFileDescriptor`
   and reads the table's header where the entry starts.
 
+- `android/content/res/AssetFileDescriptor.java`, `getLength()`, and
+  `android/os/ParcelFileDescriptor.java`, `getStatSize()`. Where no length
+  was declared (-1: a whole file, as `ContentResolver.openAssetFileDescriptor`
+  gives a `file://` or a `content://` URI's) `getLength()` is the size of the
+  file the descriptor is of, as Android's -- `getStatSize()`, which now asks
+  the descriptor (`Os.fstat`: a regular file's or a link's size, -1 of a
+  socket or a pipe) and was the length of the file `open()` was given and -1
+  for every descriptor made another way. `getLength()` gave the declared -1.
+  `getDeclaredLength()` is still what was declared, and `MediaPlayer` and
+  `SoundPool`, which play "to the end" for -1, go by it. Files by Google
+  checks each file it has copied by `getLength()` of the source: moving a
+  folder out of `/sdcard/DCIM` -- one of the phone's own folders, which
+  nothing is renamed out of (`EXDEV`, "Failed to rename file"), so the app
+  copies -- every copy was called failed ("Failed to copy the file"), the
+  empty `.nomedia` too, and nothing was moved (0.1.0.699). The data app's step
+  "link-move" moves a folder of three files out of `/sdcard/Movies` so: the
+  rename refused, each file copied through the resolver and its length
+  compared, the sizes of a file's and a socket's descriptor, and an asset's
+  declared length.
+
 - `android/app/ActivityManager.java`, `RecentTaskInfo`, which
   `AppTask.getTaskInfo()` returns: the fields it has from `TaskInfo` on
   Android 10 and later (`taskId`, `isRunning`, `numActivities`, `baseIntent`,
@@ -7211,6 +7682,29 @@ on a looper thread of its own and takes it back with `next()`.
   null" (0.1.0.673). The data app's Application (`DataApplication`) asks so
   on a thread of its own in its `onCreate`, and the step
   "activity-thread-application" checks what it found and every other way.
+
+- `android/app/Instrumentation.java` (in place of the generated stub),
+  `android/app/ActivityThread.java`, `android/app/Activity.java` and
+  `megler/AppRunner.java`: the process's `Instrumentation` in
+  `ActivityThread`'s hidden field `mInstrumentation`, and asked as Android
+  asks it. The Application is made and attached by its `newApplication` and
+  started by its `callApplicationOnCreate`, the app's activities are made by
+  its `newActivity`, and each step of an activity's life goes through its
+  `callActivityOn...` (create, post-create, start, restart, resume, pause,
+  stop, destroy, new intent, save and restore state) -- through the one in
+  the field at that moment, so one an app puts there is the one asked from
+  then on. TikTok Lite's "mini" app puts its own there
+  (`ActivityDispatchService`) to make an activity of its own for the name
+  of one whose class is in a feature module it does not have yet: there
+  was no such field (`NoSuchFieldException: mInstrumentation`, 0.1.0.699).
+  The activities of the Google Play services hosted and Megler's own
+  system screens are other processes' on Android and keep to the
+  platform's `Instrumentation`. Not there: `Activity.mInstrumentation` and
+  `execStartActivity` (starts do not go through it), the Applications of
+  an app's other processes and its content providers. The data app's steps
+  "activity-thread-instrumentation" and, at the harness's F10,
+  "instrumentation-replaced" check the field and an `Instrumentation` put
+  in it.
 
 - `android/app/DialogFragment.java`, in place of the generated stub, whose
   `show()` did nothing: `onCreateDialog` was never called and `getDialog()`
@@ -7699,7 +8193,11 @@ its quanta, 32-bit float, is made 16-bit and pushed to the core
 `ByteBuffer`. A blocking read waits for what it asked for; after a second of
 nothing it is given silence, so that the app does not hang. `stop` and
 `release` let the microphone go (`micStop`). With no microphone, or after the
-user's no, a record is silence at the microphone's pace, as before.
+user's no, a record is silence at the microphone's pace, as before. The ring
+is the core's (`ndk/mg_mic.c`), shared with OpenSL ES's audio recorders
+(`ndk/mg_opensles.c`, ARCHITECTURE.md "Sound"), which native voice engines
+record through; one recording has the microphone at a time, and a later one
+takes it over.
 `hasSystemFeature` has `android.hardware.microphone`. `MediaRecorder`, which
 encodes as it records (AAC, AMR), is not done yet. The data app's step
 `microphone` records from the harness's microphone, which hears a ramp, and

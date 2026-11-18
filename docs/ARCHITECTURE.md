@@ -879,6 +879,19 @@ can share (`eglGetCurrentContext` as the share of a context made elsewhere).
 The configuration `onSurfaceCreated` is given is what the app's
 `EGLConfigChooser` chose, or one of the sizes it asked for.
 
+A surface that cannot be made does not end the thread. Refused beside a context
+that holds what the renderer made (a surface here is memory of the same Direct3D
+device as the app's textures, so a game that fills it leaves no room for one:
+Age of History II after a suspension), the context is lost, as Android's is when
+an app in the background loses its graphics memory: it is let go of with all it
+held, a new one is made, the surface is asked for again at once, and the
+renderer gets `onSurfaceCreated`. Refused beside a new context as well, it is
+asked for again every second. A frame the view asked for meanwhile
+(`RENDERMODE_WHEN_DIRTY` is asked once) is drawn on the surface made later. The
+log says each (`java: GLThread N has no surface to draw on ...`), and with an
+`EGL_BAD_ALLOC` whether the Direct3D device is there and what memory is left
+(`egl: as it was refused, ...`).
+
 **Composition, as built (the first way; `mg_java_gl.c`).** A window surface is a pbuffer on
 ANGLE's device. At each swap its frame is read back into memory (`glReadPixels`
 on the default framebuffer, whatever the app had bound; as B, G, R, A where
@@ -905,8 +918,12 @@ threads that swap (GL frames), one call at a time under the compositor's lock.
 **Pacing.** A swap of a window surface returns no sooner than a sixtieth of a
 second after the one before was due, as a swap interval of 1 would have it, so
 a renderer in `RENDERMODE_CONTINUOUSLY` draws about sixty frames a second and
-not as many as it can. The shell's own `Present(1)` paces the screen as well.
-A swap of a pbuffer does nothing and returns at once, as on Android.
+not as many as it can. Late frames are owed their time, a tenth of a second at
+the most, and the quick ones after them wait for nothing until it is made up; a
+swap later than that, and a surface's first, wait for nothing (`mg_java_gl_pace`,
+which paces a native window's posts too). The shell's own `Present(1)` paces the
+screen as well. A swap of a pbuffer does nothing and returns at once, as on
+Android.
 
 **What a swap costs.** The log says it every five seconds while GL frames
 are shown (`java: OpenGL frames ...`: reading back, composing, the shell's
@@ -1053,6 +1070,29 @@ keeps running.
 
 *Proven:* a guest playing three buffers at 22050 Hz mono through the callback chain
 arrives as the right number of frames at the right level on both channels.
+
+The engine also makes audio recorders (`CreateAudioRecorder`), which a call's native
+voice engine hears the microphone through: from the audio input into a buffer queue of
+16-bit (or float) PCM, mono or stereo. A recorder has a thread of its own, started the
+first time it is set recording. It asks the shell for the microphone as Java's
+`AudioRecord` does (`ndk/mg_mic.c`, the ring both read from; at the rate and in the
+channels of the recorder's format, so nothing is resampled in the core), copies what is
+heard, ten milliseconds at a time, into the buffers the app queued, and calls the
+queue's callback for each one filled, where the app queues it again. What is heard while
+no buffer is queued is dropped; stopping keeps the queue and `Clear` empties it;
+`Destroy` returns once no callback runs. `SLAndroidConfigurationItf` keeps the recording
+preset and the performance mode, before `Realize` as after it. With no microphone, or
+after the user's no, the app is given silence at the microphone's pace. One recording
+has the microphone at a time: a second one takes it over, and the first hears silence.
+The recorder's calls are logged (`opensl: recorder: ...`, the first 120). The echo
+canceller, gain control and noise suppressor interfaces are not there (the shell's
+capture is in the Communications category during a call, which takes the echo out).
+
+*Proven:* a guest that drives two recorders in the order WebRTC's
+`opensles_recorder.cc` makes its calls, while its player plays: the harness's
+microphone is asked for 16000 Hz mono and its ramp reaches the callback whole and in
+order in the queued buffers; a second, refused microphone gives silence; a third
+buffer in a queue of two is refused, and no callback comes after `Destroy`.
 
 AAudio's output streams (`ndk/mg_aaudio.c`, as `libaaudio.so`) are voices of the same
 mixer, each fed from a ring of sixteen buffers of its own, a burst long (10 ms, or the
@@ -1759,12 +1799,30 @@ entry (`AF_PACKET`) and its addresses, as Linux's `getifaddrs` lists them;
 `if_nametoindex` and `SIOCGIFFLAGS`. Interfaces that are down and the host's
 own tunnels are left out.
 
+Code with no `getifaddrs` to call -- Android's C library has it from API 24
+on only -- asks Linux's kernel for the same lists on a socket of
+`AF_NETLINK`, `NETLINK_ROUTE`: Dart's `NetworkInterface.list` in every
+Flutter app, Go's `net.Interfaces`, Chromium. That socket is one of the
+app's own (below) and what is sent on it is answered at once
+(`mg_net_rtnetlink` in `mg_netdb.c`): the dumps of `RTM_GETLINK` and
+`RTM_GETADDR` as `RTM_NEWLINK` and `RTM_NEWADDR` messages made of that same
+list, in datagrams of 2048 bytes at the most (Dart's buffer), ended by
+`NLMSG_DONE`. Routes, neighbours and one link asked for by its index are not
+answered (`EOPNOTSUPP`, noted in the log once), a request that would change
+anything is `EPERM`, nothing is announced to the groups a socket binds (an
+app waiting there for a change of address hears none), and a netlink
+protocol other than `NETLINK_ROUTE` is `EACCES`, as an app is told on
+Android.
+
 **The app's own sockets.** `AF_UNIX` is implemented in the process, in
 `mg_net.c`: `socketpair` of stream, datagram and seqpacket sockets, and names
 (paths or abstract) bound, listened on and connected to. Nothing outside the
 app could be reached on a phone anyway. Libraries make such a pair as a
 wake-up channel, and libcore makes one to stand in for a socket it closes
-under a blocked thread.
+under a blocked thread. The `AF_NETLINK` socket above is kept there too: its
+port is the process's id for the first one and a number of its own for each
+other, as Linux gives them, since code compares an answer's port with
+`getpid()` or with `getsockname`.
 
 ### Waiting on sockets with everything else
 

@@ -230,6 +230,17 @@ void mg_dvm_gc_set_address_probe(u64 (*free_bytes)(void));
  * millisecond, as a phone's busy cores leave it (0: not so). A collection that falls behind takes its markers off it.
  */
 void mg_dvm_gc_set_marker_pace(u32 pace);
+/*
+ * For the tests, the stops of a collection (mg_dvm_gc.c, "the stop's watch"): a call made by each helper thread woken for
+ * a round before it joins it, and one made by the collecting thread with the threads stopped (`stop`: 0 a collection that
+ * stops the app while it marks, 1 and 2 the stops of one alongside the app) -- where a test takes a lock that a stopped
+ * thread holds; after how many looks of the watch that find nothing moved a stop is given up (0: as built, 20 looks,
+ * 5 s); and how many stops have been given up so far.
+ */
+void mg_dvm_gc_set_helper_wakes(void (*fn)(void));
+void mg_dvm_gc_set_in_stop(void (*fn)(int stop));
+void mg_dvm_gc_set_stop_watch(u32 ticks);
+u32 mg_dvm_gc_stops_given_up(void);
 /* Native memory an object keeps alive (VMRuntime.registerNativeAllocation, a bitmap's pixels): it counts toward the next collection. */
 void mg_dvm_gc_native(i64 bytes);
 /* Collections made so far and the time they took, for the frame meter. */

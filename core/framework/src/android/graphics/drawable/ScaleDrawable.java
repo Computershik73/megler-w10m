@@ -5,6 +5,8 @@ import android.graphics.*;
 public class ScaleDrawable extends DrawableWrapper {
     private final int mGravity; private final float sw, sh;
     public ScaleDrawable(Drawable d, int gravity, float sw, float sh) { super(d); mGravity = gravity; this.sw = sw; this.sh = sh; }
+    /** Megler: a scale of this one's gravity and fractions round that drawable, for a copy through the constant state (DrawableWrapper). */
+    @Override DrawableWrapper meglerNewAround(Drawable d) { return new ScaleDrawable(d, mGravity, sw, sh); }
     @Override protected boolean onLevelChange(int l) { super.onLevelChange(l); onBoundsChange(getBounds()); invalidateSelf(); return true; }
     @Override protected void onBoundsChange(Rect b) {
         Drawable d = getDrawable(); if (d == null) return;

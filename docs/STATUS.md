@@ -403,7 +403,14 @@ with the code that asked for it and that freed it; Windows' own heap says only
 c0000374 later, at another block; `bionic/mg_libc_mem.c`); and `no-malloc-cache`
 (no thread keeps a cache of the small blocks it frees: malloc as it was before the
 caches, every block the host heap's at once, to tell what they do on a phone;
-`bionic/mg_libc_mem.c`). Without any flag, on Windows, a
+`bionic/mg_libc_mem.c`); and `keep-sound-output` (the shell's: a Java app whose
+setting In the Background is Rests, in
+Windows' background, unheard for ten seconds and its media session not playing
+(five minutes when the session is paused),
+keeps its sound output, which is otherwise let go of until its first sound so
+that Windows can suspend the app -- to compare the two on a phone; an app that
+Keeps Running, which is what an app does unless Rests is chosen, keeps it anyway;
+`player/AudioHost.cpp`, docs/JAVA.md, "Sound in the background"). Without any flag, on Windows, a
 watchdog looks every two seconds at who holds the log's lock, the guest
 threads' lock and the mappings' lock: one held by the same thread for ten seconds is an app that stands
 still, whose core lines have stopped while the shell's go on (urent did, on the

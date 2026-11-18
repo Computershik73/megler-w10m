@@ -513,6 +513,56 @@ int t_signals(int rounds)
     return 0;
 }
 
+/*
+ * pause: a thread waits in it, with the mask it has, until a handler has run on it, and is told -1 and EINTR (Microsoft
+ * OneDrive's libQt.so imports it). A signal the thread has blocked does not end the wait; the next one, which it has
+ * not, does. 0, or: 1 nothing was set up, 2 the thread did not reach pause, 3 the blocked signal ended it, 4 the other
+ * did not (the thread is left there), 5 its answer was not -1 and EINTR, 6 the handler did not run once, on that thread.
+ */
+int pause(void);
+int sigprocmask(int, const t_word *, t_word *);
+static volatile int g_pause_at, g_pause_said, g_pause_errno, g_pause_handled;
+static void on_pause_signal(int sig, void *info, void *context)
+{
+    (void)info; (void)context;
+    g_pause_handled += tls_index == 9 && sig == SIG_GO ? 1 : 100;
+}
+static void *pauser(void *arg)
+{
+    t_word stop = (t_word)1 << (SIG_STOP - 1);
+    tls_index = 9;
+    sigprocmask(0 /* SIG_BLOCK */, &stop, 0);
+    g_pause_at = 1;
+    g_pause_said = pause();
+    g_pause_errno = *__errno();
+    g_pause_at = 2;
+    return arg;
+}
+int t_pause(void)
+{
+    t_sigaction on = T_SIGACTION(on_pause_signal, 0, 4 | 0x10000000), was_stop, was_go;
+    pthread_t t;
+    long until;
+    int r = 0;
+    g_pause_at = g_pause_handled = g_pause_said = g_pause_errno = 0;
+    if (sigaction(SIG_STOP, &on, &was_stop) || sigaction(SIG_GO, &on, &was_go) || pthread_create(&t, 0, pauser, 0)) return 1;
+    for (until = now_ms() + 3000; !g_pause_at && now_ms() < until;) usleep(1000);
+    if (!g_pause_at) return 2;
+    usleep(20000);                                 /* it is in pause */
+    if (pthread_kill(t, SIG_STOP)) return 1;
+    usleep(50000);
+    if (g_pause_at != 1 || g_pause_handled) r = 3;
+    if (pthread_kill(t, SIG_GO)) return 1;
+    for (until = now_ms() + 3000; g_pause_at != 2 && now_ms() < until;) usleep(1000);
+    if (g_pause_at != 2) return r ? r : 4;
+    pthread_join(t, 0);
+    sigaction(SIG_STOP, &was_stop, 0);
+    sigaction(SIG_GO, &was_go, 0);
+    if (r) return r;
+    if (g_pause_said != -1 || g_pause_errno != 4 /* EINTR */) return 5;
+    return g_pause_handled == 1 ? 0 : 6;
+}
+
 int t_files(const char *dir)
 {
     char path[256], line[64];
@@ -667,6 +717,55 @@ int t_cpu_topology(void)
     snprintf(path, sizeof(path), "/sys/devices/system/cpu/cpu%d/cpu_capacity", last + 1);
     if (fopen(path, "r")) return -12;
     if (fopen("/sys/devices/system/cpu/cpu0/topology/no_such_file", "r")) return -13;
+    return 1;
+}
+
+/* The number a file's first line is, or -1 when the line is not one. */
+static long first_number(const char *path)
+{
+    char line[64];
+    int i;
+    long n = 0;
+    first_line(path, line, sizeof(line));
+    for (i = 0; line[i] >= '0' && line[i] <= '9'; i++) n = n * 10 + (line[i] - '0');
+    return i && line[i] == '\n' ? n : -1;
+}
+
+/* A processor's frequency files (/sys/devices/system/cpu/cpu<N>/cpufreq), as CPU-Z reads them: the lowest and the highest
+   frequency of the processor and of its policy, the frequency now within them, and the governor, a word that agrees with
+   them -- "performance" is the kernel's name for a frequency kept at the policy's highest -- the same for the first and
+   the last processor; the processor after the last has no such files, and no processor a leaf that is not one of these.
+   1 when so. */
+int t_cpu_freq(void)
+{
+    char all[128], line[64], path[96];
+    int i, last = 0, cpu;
+    first_line("/sys/devices/system/cpu/possible", all, sizeof(all));
+    for (i = 0; all[i] && all[i] != '-'; i++) {}
+    if (all[i] == '-') {
+        for (i++; all[i] >= '0' && all[i] <= '9'; i++) last = last * 10 + (all[i] - '0');
+    }
+    for (cpu = 0; cpu <= last; cpu += last ? last : 1) {
+        long lowest, highest, low, high, now;
+        snprintf(path, sizeof(path), "/sys/devices/system/cpu/cpu%d/cpufreq/cpuinfo_min_freq", cpu);
+        lowest = first_number(path);
+        snprintf(path, sizeof(path), "/sys/devices/system/cpu/cpu%d/cpufreq/cpuinfo_max_freq", cpu);
+        highest = first_number(path);
+        snprintf(path, sizeof(path), "/sys/devices/system/cpu/cpu%d/cpufreq/scaling_min_freq", cpu);
+        low = first_number(path);
+        snprintf(path, sizeof(path), "/sys/devices/system/cpu/cpu%d/cpufreq/scaling_max_freq", cpu);
+        high = first_number(path);
+        snprintf(path, sizeof(path), "/sys/devices/system/cpu/cpu%d/cpufreq/scaling_cur_freq", cpu);
+        now = first_number(path);
+        if (lowest <= 0 || lowest > low || low > now || now > high || high > highest) return -1;
+        snprintf(path, sizeof(path), "/sys/devices/system/cpu/cpu%d/cpufreq/scaling_governor", cpu);
+        first_line(path, line, sizeof(line));
+        if (strcmp(line, "performance\n")) return -2;
+        if (now != high) return -3;
+    }
+    snprintf(path, sizeof(path), "/sys/devices/system/cpu/cpu%d/cpufreq/scaling_governor", last + 1);
+    if (fopen(path, "r")) return -4;
+    if (fopen("/sys/devices/system/cpu/cpu0/cpufreq/no_such_file", "r")) return -5;
     return 1;
 }
 
