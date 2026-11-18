@@ -4484,6 +4484,8 @@ static int run_data(void)
     /* The one-shot listener of the step "observer-merged", on the observer a view had before it was in a window: run once, that
        observer dead by then, while a listener left in place heard several layouts. */
     CHECK(wait_line("I/DataTest: observer-merged runs=1 dead=true layouts=several", 0, 30) >= 0);
+    /* The drop-down popup of the step "popup-measured-attached", measured after showAsDropDown returned, in its window. */
+    CHECK(wait_line("I/DataTest: popup-measured-attached measured=true unattached=false showing=true", 0, 30) >= 0);
     /* The PendingIntent the step "pending-intent-flags" sent: the one it asked for first, with the extras FLAG_UPDATE_CURRENT gave. */
     CHECK(wait_line("I/DataTest: pending-intent-sent ok v=3", 0, 30) >= 0);
     /* The alarms of the step "alarm-replace-cancel": the one set twice went off once, the cancelled one never, the repeating one

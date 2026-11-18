@@ -156,16 +156,24 @@ public class PopupWindow {
         preparePopup();
         /*
          * Placed under the anchor and added first; then, of a size its content decides, measured in its window and placed
-         * where that size has it go (above the anchor when it does not fit under it). Its content is not measured before its
-         * window has it, as on Android, where nothing of a popup is: OneDrive's drop-down menu is a ComposeView, which cannot
-         * be measured before it is in a window ("Cannot locate windowRecomposer; View ... is not attached to a window"), and
-         * the app ended as the menu was opened.
+         * where that size has it go (above the anchor when it does not fit under it) -- once the main loop's turn that showed
+         * it is over. Its content is measured neither before its window has it nor within showAsDropDown, as on Android, where
+         * the first measure of a popup is its window's first traversal, after the call: OneDrive's drop-down menu is a
+         * ComposeView, which cannot be measured before it is in a window ("Cannot locate windowRecomposer; View ... is not
+         * attached to a window"), nor before the app has given the popup's root the ViewTreeLifecycleOwner Compose looks
+         * for there, which it does after showAsDropDown returns ("ViewTreeLifecycleOwner not found from
+         * android.widget.PopupWindow$PopupDecor"); the app ended as the menu was opened.
          */
         findDropDownPosition(anchor, p, xoff, yoff, gravity, false);
         mWindowManager.addView(mDecorView, p);
         if (mWidth < 0 || mHeight < 0) {
-            findDropDownPosition(anchor, p, xoff, yoff, gravity, true);
-            mWindowManager.updateViewLayout(mDecorView, p);
+            final View decor = mDecorView;
+            decor.post(() -> {
+                if (!isShowing() || mDecorView != decor || mAnchor != anchor) return;
+                WindowManager.LayoutParams lp = (WindowManager.LayoutParams) decor.getLayoutParams();
+                findDropDownPosition(anchor, lp, mAnchorXoff, mAnchorYoff, mAnchorGravity, true);
+                mWindowManager.updateViewLayout(decor, lp);
+            });
         }
     }
     private void findDropDownPosition(View anchor, WindowManager.LayoutParams p, int xoff, int yoff, int gravity) {
