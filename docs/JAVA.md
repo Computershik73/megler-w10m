@@ -4427,9 +4427,11 @@ controller, then the stream again); "rating".
 What a Java app asks of the phone beyond its window goes to the shell through
 `megler_system_host` (`megler.h`; `player/SystemHost.cpp`):
 
-- **Links and sharing.** A link that none of the app's activities takes opens
-  in Windows (`Launcher.LaunchUriAsync`). Shared text goes to Windows' share
-  sheet.
+- **Links and sharing.** A link, an address or a file of a type is resolved
+  as Android resolves it (next section): an activity of the app's own or of
+  another app's, the default browser, or "Open with". One that no app takes
+  opens in Windows (`Launcher.LaunchUriAsync`). Shared text goes to Windows'
+  share sheet.
 - **Installing.** An intent to install an APK goes to Megler's installer, as
   Android hands it to its package installer, before AppRunner looks for an
   activity of the app's own (`megler.Installs`). Such an intent is
@@ -4752,6 +4754,68 @@ harness takes it out of `apps.txt`, and the app hears
 app hears `STATUS_FAILURE_ABORTED`. The other app's
 signatures are the fixture's certificate, given only when asked for, and its
 uid names it (`phone-apps-signatures`).
+
+### Links, addresses and default apps
+
+An implicit intent with data and no package or class (`ACTION_VIEW` of a
+link, `geo:`, `market:`, `mailto:`, a file of a type) is resolved by
+`megler.Resolver`, for `startActivity` and for `PackageManager`'s
+`queryIntentActivities` and `resolveActivity`:
+
+- Who can take it: the app's own activities and the other apps' as the shell
+  described them (`activities.json`, description form 4), whose filters
+  match it as `IntentFilter.match` does (`megler.IntentMatch`): the action,
+  the scheme, a scheme-specific part, else the host with its port and then
+  the path (literal, prefix, suffix, `pathPattern`'s simple glob, whose `.*`
+  takes the least it can, and the advanced glob), the MIME type, and every
+  category the intent names. `startActivity` asks with `MATCH_DEFAULT_ONLY`:
+  the filter must have `CATEGORY_DEFAULT`. (Only the scheme and the host were
+  looked at before 735, and the other apps never: an app's filter for a site
+  took every link of it.)
+- A web link (`isDomainVerificationIntent`) goes, as on Android 12 and later,
+  to the apps approved for its domain, and else to the default browser. An
+  app is approved when a filter of its with `android:autoVerify` names the
+  host and the site's `https://<host>/.well-known/assetlinks.json`, read
+  without redirects, names its package and the SHA-256 of one of its
+  certificates (`megler.AssetLinks`; kept in `links-verified.ini`, a yes a
+  week, a no a day; asked off the main thread, the start decided after), or
+  when the user allowed it every link of its sites (`links.<package>=all`).
+  An app's filter alone is no approval: Komi Store's for
+  `github.com/<owner>/<repo>` took its own sign-in page,
+  `github.com/login/device`, which never opened (issue #12).
+- The default browser is Windows' own unless the user chose a browser app
+  (`browser=<package>/<activity>`).
+- Several left: the one the user said "Always" to for that kind of intent
+  (`always.<action>|<scheme>|<type>[|<host>]`), else "Open with"
+  (`megler.Chooser`: a tap picks, Just Once, Always; Back opens nothing). One:
+  it. None: Windows, as before.
+- Another app's activity is started by the shell with the intent
+  (`PhoneApps.startWith`), the app's own by `AppRunner.startOwn`, Windows'
+  browser by `Native.openUrl`. The log says each with the link's scheme and
+  host only (`links: https://github.com -> Windows' browser: ...`).
+- Not resolved so: `ACTION_SEND` and `ACTION_SEND_MULTIPLE` (Windows' share),
+  `ACTION_CHOOSER` (what it holds is), Android's Settings screens, an intent
+  without action, and the launcher's.
+
+The choices live in `defaults.ini` of the apps folder (`<shared>\phone-apps`),
+which every package reads (`Native.appsFile`, `Native.writeAppsFile`):
+`megler.Defaults` in the apps, `library/DefaultApps.cpp` in the shell.
+Megler's Settings have Default Browser and Opened with "Always" (each
+forgotten with a tap); an app's own settings have Opening Links (Verified
+Links, All Supported Links, Don't Open Links), its sites, and Clear Defaults.
+An app reaches the same through Android's screens:
+`APP_OPEN_BY_DEFAULT_SETTINGS` for its package ("Open by default", also a
+button of App info) and `MANAGE_DEFAULT_APPS_SETTINGS` ("Default apps"),
+`megler.SystemScreens`.
+
+The test app `data` checks it (`intent-filter-data`, `link-...`): its
+activity `Main$Linked` has a filter like Komi Store's (`https`,
+`github.example`, `/.*/.*`), a scheme of its own with a path prefix, `geo:`,
+a port and one without `CATEGORY_DEFAULT`; its apps folder has a browser and
+a maps app whose site filter asks to be verified. Its sign-in page goes to
+Windows' browser, and to itself once allowed; a link goes to the browser
+chosen; `geo:` to the app said "Always" to, else "Open with" with both; the
+maps app's place, its site asked and silent, to Windows' browser.
 
 ### Jobs, and an app's other processes
 

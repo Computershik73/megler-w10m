@@ -1,6 +1,8 @@
 // Settings: the size of the surface apps draw to, the language and region and
 // where apps are told the phone is, the phone's folders that are in Android's
-// storage, and what this build and this phone are.
+// storage, the default apps (the browser web links open in, the answers
+// "Always" of "Open with", and an app's own links), and what this build and
+// this phone are.
 //
 // Whose (shell/Settings.h): Megler's, on Megler's Settings tab, which every app
 // goes by unless it has its own; or one app's own, on its page in Megler (App
@@ -9,6 +11,7 @@
 // Megler" at the top of each choice.
 #include "pch.h"
 
+#include "library/DefaultApps.h"
 #include "library/Library.h"
 #include "player/PermissionHost.h"
 #include "player/PhoneState.h"
@@ -243,6 +246,67 @@ private:
                            "that is to run on keeps its sound output, silent. Music that plays goes on with either; a closed app runs on "
                            "with neither, and a game with an engine of its own is suspended with either." +
                                (scope_.own ? std::string(" It applies at once.") : applies()));
+    }
+
+    /// The browser web links open in (library/DefaultApps.h, megler.Resolver): Windows' own, or a browser app of the library.
+    /// A link goes to it unless an app is verified for its site, or allowed that site's links in its own settings.
+    UIElement browserSection() {
+        const auto values = defaultApps::read();
+        const auto it = values.find("browser");
+        const std::string chosen = it != values.end() ? it->second : std::string();
+        std::vector<UIElement> rows;
+        rows.push_back(choice("Windows' Browser", "The browser Windows opens web pages with", chosen.empty() || chosen == "windows",
+                              [] { defaultApps::set("browser", std::nullopt); }));
+        for (const defaultApps::Browser& b : defaultApps::browsers()) {
+            const std::string id = b.id;
+            rows.push_back(choice(b.label, id.substr(0, id.find('/')), chosen == id, [id] { defaultApps::set("browser", id); }));
+        }
+        return listSection("Default Browser", rows,
+                           "Where an app's web links open, unless an app is verified for the site or allowed its links in its own settings "
+                           "(App Settings, Opening Links). It applies at once.");
+    }
+
+    /// The answers "Always" of "Open with" (megler.Chooser), each forgotten with a tap, so that "Open with" asks again.
+    UIElement alwaysSection() {
+        std::vector<UIElement> rows;
+        for (const auto& [key, value] : defaultApps::read()) {
+            if (key.rfind("always.", 0) != 0) continue;
+            const std::string k = key;
+            rows.push_back(button(listItem(defaultApps::kindInWords(key.substr(7)), defaultApps::labelOf(value) + " · tap to forget"), [this, k] {
+                defaultApps::set(k, std::nullopt);
+                rebuild();
+            }));
+        }
+        if (rows.empty()) rows.push_back(listItem("None", "\"Open with\" asks each time several apps can open something"));
+        return listSection("Opened with \"Always\"", rows, "What \"Always\" in \"Open with\" was said to, for every app.");
+    }
+
+    /// Which web links the app opens (library/DefaultApps.h: links.<package>), as Android's "Open supported links": those its
+    /// sites verify it for, every one of its sites, or none; its sites; and its "Always" answers cleared.
+    UIElement linksSection() {
+        const auto values = defaultApps::read();
+        const std::string key = "links." + scope_.package;
+        const auto it = values.find(key);
+        const std::string mode = it != values.end() ? it->second : std::string();
+        std::vector<UIElement> rows;
+        rows.push_back(choice("Verified Links", "Links of the sites that say this app is theirs; the others open in the browser",
+                              mode != "all" && mode != "off", [key] { defaultApps::set(key, std::nullopt); }));
+        rows.push_back(choice("All Supported Links", "Every link of the sites the app names, verified or not", mode == "all",
+                              [key] { defaultApps::set(key, std::string("all")); }));
+        rows.push_back(choice("Don't Open Links", "Its links open in the browser", mode == "off", [key] { defaultApps::set(key, std::string("off")); }));
+        for (const auto& [host, verify] : defaultApps::linkDomains(scope_.package))
+            rows.push_back(listItem(host, verify ? "Asks to be verified by the site" : "Not verified: the app does not ask to be"));
+        int always = 0;
+        for (const auto& [k, value] : values)
+            if (k.rfind("always.", 0) == 0 && value.rfind(scope_.package + "/", 0) == 0) always++;
+        if (always > 0) {
+            const std::string package = scope_.package;
+            rows.push_back(button(listItem("Clear Defaults", format("Opens %d kind(s) of link or file without asking (\"Always\")", always)), [this, package] {
+                defaultApps::clearAlways(package);
+                rebuild();
+            }));
+        }
+        return listSection("Opening Links", rows, "Which web links the app opens itself. It applies at once.");
     }
 
     /// Megler's own updates from GitHub (ui/Ota.h): asked for at start or only when asked, and Check Now with where it stands.
@@ -866,6 +930,11 @@ private:
         add(column, renderSection());
         add(column, servicesSection());
         add(column, backgroundSection());
+        if (!forApp() && !appPackage::isSingleApp()) {
+            add(column, browserSection());
+            add(column, alwaysSection());
+        }
+        if (forApp()) add(column, linksSection());
         if (!forApp()) add(column, gmsLocationSection());
         add(column, localeSection());
         add(column, locationSection());
