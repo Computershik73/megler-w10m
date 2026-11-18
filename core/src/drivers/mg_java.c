@@ -1334,6 +1334,46 @@ N(Native_appActivities)
     c->ret.l = apps_package_ok(package) ? apps_file(mg_sprintf("%s/%s/activities.json", J.config->apps_dir, package)) : NULL;
 }
 
+/*
+ * appsFile(name), writeAppsFile(name, bytes): a file of the apps folder every package of Megler's shares, for what Megler's
+ * apps go by together -- defaults.ini, the user's default apps and their answers to "Open with" (megler.Defaults, which
+ * Megler's Settings change too), and links-verified.ini, which app each domain's links were verified for
+ * (megler.AssetLinks). A name of lower-case letters, digits and '-' with ".ini" after it, nothing else. Written whole beside
+ * itself and then put in its place, so that an app reading it meanwhile has the one before or the new one; true when it is
+ * there. Null and false without an apps folder.
+ */
+static bool apps_name_ok(const char *name)
+{
+    const char *p;
+    size_t n = strlen(name);
+    if (!J.config->apps_dir || n < 5 || n > 64 || strcmp(name + n - 4, ".ini")) return false;
+    for (p = name; p < name + n - 4; p++)
+        if (!((*p >= 'a' && *p <= 'z') || (*p >= '0' && *p <= '9') || *p == '-')) return false;
+    return true;
+}
+N(Native_appsFile)
+{
+    const char *name = text_of(c->args[0].l);
+    c->ret.l = apps_name_ok(name) ? apps_file(mg_sprintf("%s/%s", J.config->apps_dir, name)) : NULL;
+}
+N(Native_writeAppsFile)
+{
+    const char *name = text_of(c->args[0].l);
+    mg_jobj *a = c->args[1].l;
+    char *path, *tmp;
+    c->ret.z = false;
+    if (!apps_name_ok(name) || !a || a->kind != MG_J_PRIM_ARRAY || a->u.arr.etype != 'B') return;
+    path = mg_sprintf("%s/%s", J.config->apps_dir, name);
+    tmp = mg_sprintf("%s.%u.new", path, (unsigned)mg_time_monotonic_ns());
+    if (mg_file_write_all(tmp, a->u.arr.data, a->u.arr.len) && mg_path_rename(tmp, path, NULL)) c->ret.z = true;
+    else {
+        mg_path_remove(tmp, NULL);
+        mg_warn("java: %s could not be written in the apps folder", name);
+    }
+    free(tmp);
+    free(path);
+}
+
 /* appServices(package): that app's services another app may bind, the bytes of <package>/services.json in the same folder;
    null when it has none. */
 N(Native_appServices)
@@ -1633,6 +1673,8 @@ static const mg_jhle k_native[] = {
     { "megler/Native", "appIcon", NULL, Native_appIcon },
     { "megler/Native", "appActivities", NULL, Native_appActivities },
     { "megler/Native", "appServices", NULL, Native_appServices },
+    { "megler/Native", "appsFile", NULL, Native_appsFile },
+    { "megler/Native", "writeAppsFile", NULL, Native_writeAppsFile },
     { "megler/Native", "appResIcon", NULL, Native_appResIcon },
     { "megler/Native", "appInstall", NULL, Native_appInstall },
     { "megler/Native", "addSplit", NULL, Native_addSplit },
