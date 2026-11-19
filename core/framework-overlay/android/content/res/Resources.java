@@ -551,6 +551,11 @@ public class Resources {
         TypedValue v = new TypedValue();
         for (int i = 0; i < n; i++) {
             int name = t.bagItem(e, i, v);
+            // (An array's item is keyed by its place, 0x02000000 + its index, as aapt writes it; aapt2 as the platform's own
+            // build runs it writes 0 for every item, and the items, keyed alike, were one: Android's own Settings (AOSP 9) read
+            // its arrays a single item long -- the battery's bolt, a list preference's entries -- and ended on them. Android
+            // reads an array's items in their order, whatever their keys.)
+            if (name == 0) name = 0x02000000 | i;
             // (An app's style item that names one of Android 12's system colours is that colour, as in meglerValue.)
             if (t != sFramework && v.type == TypedValue.TYPE_REFERENCE && megler.SystemColors.has(v.data)) {
                 v.data = megler.SystemColors.color(v.data);
