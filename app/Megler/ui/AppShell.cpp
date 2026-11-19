@@ -14,6 +14,7 @@
 #include "shell/Platform.h"
 #include "shell/ShellLog.h"
 #include "shell/Strings.h"
+#include "ui/AndroidSettings.h"
 #include "ui/GooglePlay.h"
 #include "ui/Ota.h"
 #include "ui/SeparateApps.h"
@@ -488,6 +489,8 @@ void AppShell::poll() {
         refreshDialogLive();
         // Google Play or not, asked at the first start; once wanted, Megler's own installed (ui/GooglePlay.h).
         googlePlay::tick(*this);
+        // Android's own Settings, which Megler's package brings: put in the library and installed once (ui/AndroidSettings.h).
+        androidSettings::tick(*this);
         // A newer Megler on GitHub, for this Windows and processor: offered, downloaded and installed (ui/Ota.h).
         ota::tick(*this);
         // An app's own package opens its app as soon as the library has it read: straight into the player when it can

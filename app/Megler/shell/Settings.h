@@ -67,6 +67,10 @@ constexpr const char* googleServices = "megler.googleServices";
 /// services and Google Play Store, apps running with microG until then; "no", apps run with microG; empty: not asked.
 constexpr const char* googlePlay = "megler.googlePlay";
 
+/// Whether Megler has installed the Android Settings its package brings (ui/AndroidSettings.h): "installed" once it has, after
+/// which it is not installed again by itself (the user may have removed it); empty before.
+constexpr const char* androidSettings = "megler.androidSettings";
+
 /// The package volume Megler's apps' packages are kept on, one for them all (shell/AppPackage.h, appsStorage): its volume's
 /// name, "\\?\Volume{...}", as the user chose it before the first install where there is more than one -- a phone with a
 /// memory card, a PC with more than one drive for apps -- or in Megler's Settings since; empty: none chosen, Megler's own

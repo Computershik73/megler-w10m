@@ -704,6 +704,19 @@ if [ "$JAVA" = 1 ]; then
     [ -f "$STAGE/android/$need" ] || echo "    WARNING: no android/$need in the package: a Java app will not start, or will start bare" >&2
   done
 fi
+# Android's own Settings (AOSP 9's, as Google's emulator image has it: tools/android9-unpack.sh settings), which Megler
+# installs as an app of its own (app/Megler/ui/AndroidSettings.cpp): the phone's Android Settings, which apps open and the
+# user opens from the Library, with Megler's framework answering its system calls.
+if [ "$JAVA" = 1 ]; then
+  SETTINGS_APK="$ROOT/build/android9/apps/android-settings.apk"
+  if [ -f "$SETTINGS_APK" ]; then
+    mkdir -p "$STAGE/platform-apps"
+    cp "$SETTINGS_APK" "$STAGE/platform-apps/AndroidSettings.apk"
+    echo "    platform-apps: AndroidSettings.apk ($(stat -c %s "$SETTINGS_APK") bytes, sha256 $(sha256sum "$SETTINGS_APK" | cut -d' ' -f1))"
+  else
+    echo "    WARNING: no build/android9/apps/android-settings.apk (tools/android9-unpack.sh settings): no Android Settings in the package" >&2
+  fi
+fi
 if [ -n "$BITGAPPS" ]; then
   python "$(w "$ROOT/tools/bitgapps-extract.py")" "$(w "$BITGAPPS")" "$(w "$STAGE/bitgapps")"
   # The APKs given instead of the archive's, under the names the library offers them by.
