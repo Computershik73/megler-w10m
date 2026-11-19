@@ -4817,6 +4817,74 @@ Windows' browser, and to itself once allowed; a link goes to the browser
 chosen; `geo:` to the app said "Always" to, else "Open with" with both; the
 maps app's place, its site asked and silent, to Windows' browser.
 
+### Android's own Settings: an app of the platform's own
+
+The package brings Android's Settings app as Android 9 has it -- AOSP's, the APK of
+Google's emulator image unchanged (`tools/android9-unpack.sh settings`,
+`platform-apps/AndroidSettings.apk`, 45 MB) -- and Megler installs it once as an app of
+its own (`app/Megler/ui/AndroidSettings.cpp`; `megler.androidSettings` = "installed"
+after that, so a user who removes it is not given it again). Android 9's, not 14's:
+Megler's `framework-res.apk` and the platform's framework it falls back on are Android
+9's, so the private resources and hidden classes it was built against are there as it
+expects them.
+
+Its manifest's `sharedUserId` is `android.uid.system`, which makes it an app of the
+platform's own (`J.platform_app`, `megler.Native.platformApp()`):
+
+- **Android 9's framework after Megler's** (`add_platform_framework`:
+  `platform-framework*.dex`, `platform-telephony-common.dex`,
+  `platform-ims-common.dex`): a class Megler's has is Megler's, one it lacks is the
+  platform's. But an interface Megler's has only as a generated stand-in with no method
+  (`core/framework/gen-src`: `INotificationManager`, `IBackupManager`,
+  `IConnectivityManager`...) gives its place to the platform's
+  (`mg_dvm_fill_empty_interfaces`, 102 of them), or the platform's own Stub and Proxy
+  were called through the empty one.
+- **The system's services in its own process.** The service manager gives it a binder
+  for every name (`megler.PlatformInterfaces.binder`), whose local interface is made for
+  whatever interface the platform's code asks it for: a `java.lang.reflect.Proxy` whose
+  calls go to what answers for that interface here -- `IPackageManager` (Megler's
+  `PackageManager`, which knows the phone's apps), `IActivityManager` (the one user,
+  running), `INotificationManager` (allowed, one channel), `IBatteryStats` (a parcel of
+  Android 9's `BatteryStatsImpl` made now, its timers made and nothing counted) -- and
+  every other method answering as a service with nothing would: false, 0, null, an empty
+  list or array. `AppGlobals.getPackageManager()`, `ActivityThread.getPackageManager()`
+  and `ActivityManager.getService()` give those interfaces (declared to the framework's
+  compiler only, `core/framework/stubs`). `megler.ContextImpl` makes the platform's
+  managers Megler has none of (`NetworkPolicyManager`, `NetworkScoreManager`) on them.
+- **Android 9's hidden members.** A hidden method of Android 9's that Megler's class lacks
+  was a `NoSuchMethodError` where Settings called it.
+  `tools/compat/platform-members.py <apk> --write` finds each the APK names (as the
+  runtime looks a method up) and adds it, as Android 9 declares it, answering as a phone
+  without that thing would, between the markers `tools/list-stubs.py` knows, so the
+  runtime says its first call (`api: ... is a stub here`): 120 methods of 44 classes for
+  Settings 9. Those that matter are written by hand: the one user (`UserManager`,
+  `UserInfo.owner()`), the methods with a user (`...AsUser`: the methods without one),
+  `ApplicationInfo.isSystemApp` (the platform's app has `FLAG_SYSTEM`; Settings fills
+  in only a system app's tiles), `queryIntentActivities` listing every activity of the
+  app's own an intent reaches (its main screen is its own activities that take
+  `com.android.settings.action.SETTINGS`), `LogMaker`, `PersistableBundle`'s XML,
+  `NetworkStats`, `IntentFilter`'s hosts and paths, `Formatter.formatBytes`, Do Not
+  Disturb's policy, `UsbManager.getPorts` and `BluetoothAdapter.setScanMode` as
+  Android 9 declared them.
+- **What it changes is Megler's.** Its Default apps' browser
+  (`getDefaultBrowserPackageNameAsUser`, `setDefaultBrowserPackageNameAsUser`; Windows'
+  browser is `com.android.browser`), an app's Open by default
+  (`getIntentVerificationStatusAsUser`: ALWAYS all its links, NEVER none, anything
+  else those of its verified domains), its "Clear defaults"
+  (`clearPackagePreferredActivities`, the "Always" answers) are kept in `defaults.ini`
+  through `megler.Resolver`, where Megler's own resolution and its Settings read them
+  (see "Links, addresses and default apps").
+
+Checked under qemu-arm (`mg_tests --java app` on the APK, a tap a section): its main
+screen, each of its twelve sections, Apps & notifications, an app's App info, Default
+apps and its Browser app (choosing a browser writes `browser=` in the apps folder's
+`defaults.ini`). Many deeper screens are not tried yet; a section that ends the app is
+a hidden member answering what Settings does not expect, found the same way.
+
+One fix there was Megler's for every app: an array resource's items are read in their
+order whatever their keys. aapt2, as the platform's build runs it, keys each item of an
+array 0, and the items, kept by key, were one (`Resources.meglerBag`).
+
 ### Jobs, and an app's other processes
 
 `android.app.job` (overlaid): the app's jobs are run, once for the app whichever
