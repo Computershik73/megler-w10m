@@ -9,6 +9,8 @@
 // And an app of the platform's own (Android's Settings, which Megler's package carries) is a system app (FLAG_SYSTEM), and
 // isSystemApp, isPrivilegedApp, isInternal and hasRtlSupport read the flags, where they said false: Settings fills in only
 // a system app's tiles of its main screen (TileUtils.updateTileData) and ended on the tile with no icon.
+// And an app whose activities view web links (VIEW, http or https) has PRIVATE_FLAG_HAS_DOMAIN_URLS, as Android's package
+// parser marks it: Android's own Settings offers an app's "Open supported links" only for such an app.
 // Everything else is the original's, unchanged.
 package android.content.pm;
 public class ApplicationInfo extends PackageItemInfo implements android.os.Parcelable {
@@ -82,10 +84,12 @@ public class ApplicationInfo extends PackageItemInfo implements android.os.Parce
             a.theme = megler.Manifest.appTheme; a.labelRes = megler.Manifest.appLabel; a.icon = megler.Manifest.appIcon;
             a.targetSdkVersion = megler.Manifest.targetSdk; a.minSdkVersion = megler.Manifest.minSdk;
             a.flags = FLAG_HAS_CODE | FLAG_INSTALLED | FLAG_ALLOW_BACKUP | FLAG_SUPPORTS_RTL | FLAG_HARDWARE_ACCELERATED | (megler.Manifest.debuggable ? FLAG_DEBUGGABLE : 0) | (megler.Manifest.largeHeap ? FLAG_LARGE_HEAP : 0)
-                | (megler.Manifest.extractNativeLibs ? FLAG_EXTRACT_NATIVE_LIBS : 0)
-                | (megler.Native.platformApp() ? FLAG_SYSTEM : 0);   /* the platform's own app, Android's Settings, is a system app */   /* Qt looks for its plugins in nativeLibraryDir then */
+                | (megler.Manifest.extractNativeLibs ? FLAG_EXTRACT_NATIVE_LIBS : 0)   /* Qt looks for its plugins in nativeLibraryDir then */
+                | (megler.Native.platformApp() ? FLAG_SYSTEM : 0);   /* the platform's own app, Android's Settings, is a system app */
             a.metaData = megler.GooglePackages.ownMetaData(a.packageName, megler.Manifest.appMetaData);
             a.appComponentFactory = megler.Manifest.appComponentFactory;
+            /* an app with an activity that views web links, as Android's package parser marks it (Open by default) */
+            if (megler.Resolver.hasDomainUrls(a.packageName)) a.privateFlags |= PRIVATE_FLAG_HAS_DOMAIN_URLS;
             a.uid = android.os.Process.myUid();
             sSelf = a;
         }

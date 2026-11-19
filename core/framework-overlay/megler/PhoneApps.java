@@ -420,6 +420,8 @@ public final class PhoneApps {
         String abi = Abis.PRIMARY;
         i.nativeLibraryDir = dir + "/lib/" + (abi.equals("arm64-v8a") ? "arm64" : abi.equals("armeabi-v7a") ? "arm" : abi);
         i.dataDir = i.deviceProtectedDataDir = "/data/data/" + a.packageName;
+        // (An app whose activities view web links, as Android's package parser marks it: Android's Settings offers its links so.)
+        if (Resolver.hasDomainUrls(a.packageName)) i.privateFlags |= ApplicationInfo.PRIVATE_FLAG_HAS_DOMAIN_URLS;
         return i;
     }
 

@@ -225,7 +225,7 @@ public final class Manifest {
         }
     }
     /** A value of the manifest's, read where it names a string resource ("@<id>"). */
-    static String val(String v) {
+    public static String val(String v) {
         if (v == null || !v.startsWith("@")) return v;
         try { return megler.ContextImpl.app().getResources().getString(Integer.parseInt(v.substring(1))); } catch (Throwable t) { return v; }
     }

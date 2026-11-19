@@ -82,6 +82,7 @@ public final class Resolver {
                 r.activityInfo.packageName = "com.android.browser";
                 r.activityInfo.exported = r.activityInfo.enabled = true;
                 r.nonLocalizedLabel = "Browser";
+                r.handleAllWebDataURI = true;   // (Android's Settings lists as browsers those that take every web link)
             } else if (app != null) {
                 r.activityInfo = PhoneApps.activityInfo(app, act);
             } else {
@@ -405,6 +406,73 @@ public final class Resolver {
         seen.add(t);
         l.add(t.resolveInfo());
     }
+
+    // ---- Android 9's PackageManager members that Android's own Settings (AOSP 9, which Megler's package carries) asks
+
+    /** The package Android's PackageManager names Windows' browser by (Target.resolveInfo, getApplicationInfo). */
+    public static final String WINDOWS_PACKAGE = "com.android.browser";
+
+    /** The default browser's package, as getDefaultBrowserPackageNameAsUser says it: Windows' as WINDOWS_PACKAGE. */
+    public static String defaultBrowserPackage() {
+        Target t = defaultBrowser(browsers());
+        return t.windows() ? WINDOWS_PACKAGE : t.pkg;
+    }
+
+    /** setDefaultBrowserPackageNameAsUser: the browser of that package (its first browser activity) made the default. */
+    public static boolean setDefaultBrowserPackage(String pkg) {
+        if (pkg == null || WINDOWS_PACKAGE.equals(pkg)) return Defaults.set(Defaults.BROWSER, Defaults.WINDOWS);
+        for (Target t : browsers()) if (pkg.equals(t.pkg)) return Defaults.set(Defaults.BROWSER, t.id());
+        return false;
+    }
+
+    /** Android 9's intent verification status of an app's links (getIntentVerificationStatusAsUser): ALWAYS (2) where all its
+     *  links are allowed, NEVER (3) where none is, UNDEFINED (0) where those of the domains it is verified for are. */
+    public static int linksStatus(String pkg) {
+        String mode = Defaults.get(Defaults.LINKS + pkg);
+        return "all".equals(mode) ? 2 : "off".equals(mode) ? 3 : 0;
+    }
+
+    /** updateIntentVerificationStatusAsUser: ALWAYS all links, NEVER none, anything else (ASK, ALWAYS_ASK, UNDEFINED) those of
+     *  its verified domains, as Android 12 and later open an app's links. */
+    public static boolean setLinksStatus(String pkg, int status) {
+        return Defaults.set(Defaults.LINKS + pkg, status == 2 ? "all" : status == 3 ? "off" : null);
+    }
+
+    /** Every filter of that app's activities (another app's as the shell described it, or this app's own). */
+    public static List<Manifest.Filter> filtersOfPackage(String pkg) {
+        if (pkg == null) return new ArrayList<>();
+        if (pkg.equals(Native.packageName())) return ownFilters();
+        PhoneApps.App a = PhoneApps.find(pkg);
+        ArrayList<Manifest.Filter> l = new ArrayList<>();
+        List<PhoneApps.Activity> acts = a != null ? PhoneApps.activities(a) : null;
+        if (acts != null) for (PhoneApps.Activity x : acts) l.addAll(x.filters());
+        return l;
+    }
+
+    /** Whether the app has an activity that views web links (VIEW, http or https): Android's PRIVATE_FLAG_HAS_DOMAIN_URLS. */
+    public static boolean hasDomainUrls(String pkg) {
+        for (Manifest.Filter f : filtersOfPackage(pkg)) {
+            if (f.actions.contains(Intent.ACTION_VIEW) && (f.schemes.contains("http") || f.schemes.contains("https"))) return true;
+        }
+        return false;
+    }
+
+    /** The activities the user's "Always" answers name of that package (getPreferredActivities), each once. */
+    public static List<android.content.ComponentName> alwaysOf(String pkg) {
+        ArrayList<android.content.ComponentName> l = new ArrayList<>();
+        for (java.util.Map.Entry<String, String> e : Defaults.all().entrySet()) {
+            if (!e.getKey().startsWith(Defaults.ALWAYS)) continue;
+            String v = e.getValue();
+            int slash = v.indexOf('/');
+            if (slash <= 0 || (pkg != null && !pkg.equals(v.substring(0, slash)))) continue;
+            android.content.ComponentName c = new android.content.ComponentName(v.substring(0, slash), v.substring(slash + 1));
+            if (!l.contains(c)) l.add(c);
+        }
+        return l;
+    }
+
+    /** clearPackagePreferredActivities: the "Always" answers that name the package forgotten; how many. */
+    public static int clearAlways(String pkg) { return pkg == null ? 0 : Defaults.remove(Defaults.ALWAYS, pkg); }
 
     // ---- what Android's Settings and Megler's show of it (megler.SystemScreens, Megler's Settings)
 

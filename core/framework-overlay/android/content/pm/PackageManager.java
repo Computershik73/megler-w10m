@@ -59,6 +59,14 @@
 // Android's own Settings (AOSP 9, which Megler's package carries) asks for every app, intent and tile as the current user.
 // And queryIntentActivities lists every activity of the app's own whose filters take an implicit intent, where it listed the
 // first alone, each a system app's (ResolveInfo.system) where the app is one of the platform's own.
+// And the default apps and an app's links as Android 9's hidden members tell of them, kept where Megler's own resolution keeps
+// them (megler.Defaults' defaults.ini, through megler.Resolver): getDefaultBrowserPackageNameAsUser and
+// setDefaultBrowserPackageNameAsUser the default browser (Windows' as com.android.browser, whose ApplicationInfo an app of the
+// platform's own gets), getIntentVerificationStatusAsUser and updateIntentVerificationStatusAsUser whether an app opens all
+// its links (ALWAYS), none (NEVER) or those of its verified domains (anything else), getPreferredActivities and
+// clearPackagePreferredActivities the user's "Always" answers, getAllIntentFilters the app's filters. They said nothing and
+// did nothing: Android's own Settings (AOSP 9, which Megler's package carries) shows and changes these in its Default apps and
+// an app's Open by default.
 package android.content.pm;
 
 import android.content.ComponentName;
@@ -180,9 +188,41 @@ public class PackageManager {
         if (!mine(pkg)) {
             megler.PhoneApps.App other = megler.PhoneApps.find(pkg);
             if (other != null) return megler.PhoneApps.applicationInfo(other);
+            if (megler.Native.platformApp() && megler.Resolver.WINDOWS_PACKAGE.equals(pkg)) return windowsBrowser();
             throw new NameNotFoundException(pkg);
         }
         return ApplicationInfo.self();
+    }
+    /** Windows' browser as an app (megler.Resolver.WINDOWS_PACKAGE): Android's own Settings lists the browsers to choose the
+     *  default from by their ApplicationInfo. */
+    private static ApplicationInfo windowsBrowser() {
+        ApplicationInfo a = new ApplicationInfo();
+        a.packageName = a.processName = megler.Resolver.WINDOWS_PACKAGE;
+        a.nonLocalizedLabel = "Windows' browser";
+        a.flags = ApplicationInfo.FLAG_INSTALLED | ApplicationInfo.FLAG_SYSTEM;
+        a.enabled = true;
+        a.uid = 1000;
+        return a;
+    }
+    /** A filter of the manifest as Android's IntentFilter: its actions, categories, schemes, hosts and ports, paths, scheme-specific
+     *  parts, types and priority. */
+    static android.content.IntentFilter intentFilter(megler.Manifest.Filter f) {
+        android.content.IntentFilter i = new android.content.IntentFilter();
+        for (String a : f.actions) i.addAction(a);
+        for (String c : f.categories) i.addCategory(c);
+        for (String s : f.schemes) i.addDataScheme(megler.Manifest.val(s));
+        for (int k = 0; k < f.hosts.size(); k++) {
+            String h = megler.Manifest.val(f.hosts.get(k));
+            int port = k < f.ports.size() ? f.ports.get(k) : -1;
+            if (h != null) i.addDataAuthority(h, port >= 0 ? Integer.toString(port) : null);
+        }
+        for (megler.IntentMatch.Part x : f.paths) i.addDataPath(megler.Manifest.val(x.value), x.kind);
+        for (megler.IntentMatch.Part x : f.ssps) i.addDataSchemeSpecificPart(megler.Manifest.val(x.value), x.kind);
+        for (String t : f.mimeTypes) {
+            try { i.addDataType(megler.Manifest.val(t)); } catch (android.content.IntentFilter.MalformedMimeTypeException e) {}
+        }
+        i.setPriority(f.priority);
+        return i;
     }
     /* Android 13's calls with a flags object are the calls with an int, the flags passed on (each gave 0, or was a stub that
        found nothing: Facebook Lite's queryIntentServices and resolveContentProvider, Messenger's resolveContentProvider). */
@@ -1028,7 +1068,10 @@ public class PackageManager {
     public java.lang.String[] canonicalToCurrentPackageNames(java.lang.String[] p0) { return null; }
     public void clearCrossProfileIntentFilters(int p0) {}
     public void clearInstantAppCookie() {}
-    public void clearPackagePreferredActivities(java.lang.String p0) {}
+    public void clearPackagePreferredActivities(java.lang.String p0) {
+        // The user's "Always" answers that name the package (megler.Defaults' always.*)
+        megler.Resolver.clearAlways(p0);
+    }
     public java.lang.String[] currentToCanonicalPackageNames(java.lang.String[] p0) { return null; }
     public void deletePackage(java.lang.String p0, android.content.pm.IPackageDeleteObserver p1, int p2) { megler.Installs.deleteObserved(p0, p1); }
     public void deletePackageAsUser(java.lang.String p0, android.content.pm.IPackageDeleteObserver p1, int p2, int p3) { megler.Installs.deleteObserved(p0, p1); }
@@ -1051,7 +1094,12 @@ public class PackageManager {
     public android.graphics.drawable.Drawable getActivityIcon(android.content.Intent p0) { return null; }
     public android.graphics.drawable.Drawable getActivityLogo(android.content.ComponentName p0) { return null; }
     public android.graphics.drawable.Drawable getActivityLogo(android.content.Intent p0) { return null; }
-    public java.util.List getAllIntentFilters(java.lang.String p0) { return new java.util.ArrayList(); }
+    public java.util.List getAllIntentFilters(java.lang.String p0) {
+        // The package's activities' filters, as the shell described them (megler.Resolver.filtersOfPackage)
+        java.util.ArrayList<android.content.IntentFilter> l = new java.util.ArrayList<>();
+        for (megler.Manifest.Filter f : megler.Resolver.filtersOfPackage(p0)) l.add(intentFilter(f));
+        return l;
+    }
     public java.util.List getAllPermissionGroups(int p0) { return new java.util.ArrayList(); }
     public android.os.PersistableBundle getAppMetadata(java.lang.String p0) { return null; }
     public int getAppMetadataSource(java.lang.String p0) { return 0; }
@@ -1079,7 +1127,9 @@ public class PackageManager {
     public java.lang.String getContentCaptureServicePackageName() { return null; }
     public java.util.List getDeclaredSharedLibraries(java.lang.String p0, int p1) { return new java.util.ArrayList(); }
     public java.util.List getDeclaredSharedLibraries(java.lang.String p0, android.content.pm.PackageManager.PackageInfoFlags p1) { return new java.util.ArrayList(); }
-    public java.lang.String getDefaultBrowserPackageNameAsUser(int p0) { return null; }
+    public java.lang.String getDefaultBrowserPackageNameAsUser(int p0) {
+        return megler.Resolver.defaultBrowserPackage();
+    }
     public java.lang.String getDefaultTextClassifierPackageName() { return null; }
     public void getGroupOfPlatformPermission(java.lang.String p0, java.util.concurrent.Executor p1, java.util.function.Consumer p2) {}
     public java.lang.CharSequence getHarmfulAppWarning(java.lang.String p0) { return null; }
@@ -1110,7 +1160,9 @@ public class PackageManager {
     public java.util.List getInstantApps() { return new java.util.ArrayList(); }
     public android.content.pm.InstrumentationInfo getInstrumentationInfo(android.content.ComponentName p0, int p1) { return null; }
     public java.util.List getIntentFilterVerifications(java.lang.String p0) { return new java.util.ArrayList(); }
-    public int getIntentVerificationStatusAsUser(java.lang.String p0, int p1) { return 0; }
+    public int getIntentVerificationStatusAsUser(java.lang.String p0, int p1) {
+        return megler.Resolver.linksStatus(p0);
+    }
     public android.content.Intent getLaunchIntentForPackage(java.lang.String p0, boolean p1) { return null; }
     public android.content.IntentSender getLaunchIntentSenderForPackage(java.lang.String p0) { return null; }
     public java.util.Set getMimeGroup(java.lang.String p0) { return new java.util.HashSet(); }
@@ -1145,7 +1197,12 @@ public class PackageManager {
     public int getPermissionFlags(java.lang.String p0, java.lang.String p1, android.os.UserHandle p2) { return 0; }
     public android.content.pm.PermissionGroupInfo getPermissionGroupInfo(java.lang.String p0, int p1) { return null; }
     public void getPlatformPermissionsForGroup(java.lang.String p0, java.util.concurrent.Executor p1, java.util.function.Consumer p2) {}
-    public int getPreferredActivities(java.util.List p0, java.util.List p1, java.lang.String p2) { return 0; }
+    public int getPreferredActivities(java.util.List p0, java.util.List p1, java.lang.String p2) {
+        java.util.List<ComponentName> l = megler.Resolver.alwaysOf(p2);
+        if (p1 != null) p1.addAll(l);
+        if (p0 != null) for (int k = 0; k < l.size(); k++) p0.add(new android.content.IntentFilter());
+        return l.size();
+    }
     public java.util.List getPreferredPackages(int p0) { return new java.util.ArrayList(); }
     public java.util.List getPrimaryStorageCandidateVolumes() { return new java.util.ArrayList(); }
     public android.content.pm.PackageManager.Property getProperty(java.lang.String p0, android.content.ComponentName p1) { return null; }
@@ -1297,7 +1354,9 @@ public class PackageManager {
     public void setApplicationCategoryHint(java.lang.String p0, int p1) {}
     public boolean setApplicationHiddenSettingAsUser(java.lang.String p0, boolean p1, android.os.UserHandle p2) { return false; }
     public boolean setAutoRevokeWhitelisted(java.lang.String p0, boolean p1) { return false; }
-    public boolean setDefaultBrowserPackageNameAsUser(java.lang.String p0, int p1) { return false; }
+    public boolean setDefaultBrowserPackageNameAsUser(java.lang.String p0, int p1) {
+        return megler.Resolver.setDefaultBrowserPackage(p0);
+    }
     public java.lang.String[] setDistractingPackageRestrictions(java.lang.String[] p0, int p1) { return null; }
     public void setHarmfulAppWarning(java.lang.String p0, java.lang.CharSequence p1) {}
     public void setInstallerPackageName(java.lang.String p0, java.lang.String p1) {}
@@ -1314,7 +1373,9 @@ public class PackageManager {
     public void unregisterMoveCallback(android.content.pm.PackageManager.MoveCallback p0) {}
     public void unregisterPackageMonitorCallback(android.os.IRemoteCallback p0) {}
     public void updateInstantAppCookie(byte[] p0) {}
-    public boolean updateIntentVerificationStatusAsUser(java.lang.String p0, int p1, int p2) { return false; }
+    public boolean updateIntentVerificationStatusAsUser(java.lang.String p0, int p1, int p2) {
+        return megler.Resolver.setLinksStatus(p0, p1);
+    }
     public void updatePermissionFlags(java.lang.String p0, java.lang.String p1, int p2, int p3, android.os.UserHandle p4) {}
     public void verifyIntentFilter(int p0, int p1, java.util.List p2) {}
     public void verifyPendingInstall(int p0, int p1) {}
