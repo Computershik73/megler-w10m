@@ -15,6 +15,8 @@
 // on a phone without a removable medium: the private volume at /data and the emulated one, "emulated;0", whose folder of
 // the user is the same shared storage; no disks.
 // Everything else is the original's, unchanged.
+// It differs in from(Context), Android's hidden way to the storage manager: the context's, as Android's says, where it said null. Android's
+// own Settings (AOSP 9, which Megler's package carries) asks it so: Storage asks it for the volumes, and ended on the null.
 package android.os.storage;
 public class StorageManager {
     public static final String ACTION_MANAGE_STORAGE = "android.os.storage.action.MANAGE_STORAGE";
@@ -140,7 +142,9 @@ public class StorageManager {
     public static boolean checkPermissionAndCheckOp(android.content.Context p0, boolean p1, int p2, int p3, java.lang.String p4, java.lang.String p5, int p6) { return false; }
     public static java.lang.String convert(java.util.UUID p0) { return null; }
     public static java.util.UUID convert(java.lang.String p0) { return null; }
-    public static android.os.storage.StorageManager from(android.content.Context p0) { return null; }
+    public static android.os.storage.StorageManager from(android.content.Context p0) {
+        return (android.os.storage.StorageManager) p0.getSystemService(android.content.Context.STORAGE_SERVICE);
+    }
     public static android.util.Pair getPrimaryStoragePathAndSize() { return null; }
     public static android.os.storage.StorageVolume getPrimaryVolume(android.os.storage.StorageVolume[] p0) { return null; }
     public static android.os.storage.StorageVolume getStorageVolume(java.io.File p0, int p1) { return null; }
