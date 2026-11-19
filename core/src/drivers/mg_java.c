@@ -2748,18 +2748,23 @@ static void add_shared_libraries(void)
  * Megler's does not have (android.provider.SearchIndexablesProvider, android.util.KeyValueListParser,
  * com.android.internal.*), and ended at its start on the first of them. Such an app has Android 9's own framework on its
  * class path after Megler's (framework/platform-framework*.dex, tools/dvm-android-root.sh): a class Megler's framework has
- * is Megler's, and one it lacks is the platform's own. Any other app has Megler's alone, as before.
+ * is Megler's, and one it lacks is the platform's own -- but for the interfaces Megler's has only as generated, empty
+ * stand-ins (core/framework/gen-src), whose places the platform's take (mg_dvm_fill_empty_interfaces). Any other app has
+ * Megler's alone, as before.
  */
 static void add_platform_framework(void)
 {
     static const char *const parts[] = { "platform-framework.dex", "platform-framework-classes2.dex", "platform-framework-classes3.dex" };
     int i, added = 0;
     if (!J.platform_app) return;
+    /* (Its interfaces in place of Megler's generated ones that declare no method: mg_dvm_fill_empty_interfaces.) */
+    mg_dvm_fill_empty_interfaces(true);
     for (i = 0; i < (int)MG_COUNT(parts); i++) {
         char *path = mg_sprintf("%s/framework/%s", J.root, parts[i]);
         added += mg_dvm_add_dex_file(path) ? 1 : 0;
         free(path);
     }
+    mg_dvm_fill_empty_interfaces(false);
     if (added) mg_info("java: an app of the platform's own: Android 9's framework is on its class path after Megler's (%d files)", added);
     else mg_warn("java: an app of the platform's own, and Android 9's framework is not in the Android root (framework/platform-framework.dex)");
 }

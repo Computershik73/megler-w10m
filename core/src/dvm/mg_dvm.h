@@ -105,6 +105,10 @@ bool mg_dvm_running(void);
 bool mg_dvm_add_dex(const void *data, size_t size, const char *label);
 /* The same for a .dex file read whole. */
 bool mg_dvm_add_dex_file(const char *path);
+/* While on, a DEX file added gives its interfaces the place of earlier ones of their names that declare no method (Megler's
+   generated stand-ins), where those are not linked yet: for an app of the platform's own, whose Android 9 framework's
+   interfaces Megler's framework has empty (mg_dvm_class.c). */
+void mg_dvm_fill_empty_interfaces(bool on);
 /* Every classesN.dex of an APK or a jar (mg_dvm_apk.c; needs zip/mg_zip.c). Returns how many were added. */
 int mg_dvm_add_apk(const char *path);
 
