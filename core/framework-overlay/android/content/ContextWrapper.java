@@ -3,7 +3,11 @@
 // sendBroadcast with a permission and options, sendBroadcastAsUser): each is passed on to the context it wraps, as
 // Android's wrapper passes it, where the original's did nothing -- an Activity or an Application is a wrapper, and Play
 // Store's broadcast to its own receivers, with a result receiver, reached none (package 543). Everything else is the
-// original's, unchanged.
+// original's.
+// It differs too in the hidden members with a user (bindServiceAsUser, registerReceiverAsUser, startActivityAsUser,
+// startServiceAsUser, createPackageContextAsUser...): the phone has one user, so each is the member without one, where the
+// original's did nothing and said false or null. Android's own Settings (AOSP 9, which Megler's package carries) binds its
+// suggestions' service and opens its screens as the current user.
 package android.content;
 
 import android.content.pm.ApplicationInfo;
@@ -71,8 +75,12 @@ public class ContextWrapper extends Context {
     public boolean bindIsolatedService(android.content.Intent p0, int p1, java.lang.String p2, java.util.concurrent.Executor p3, android.content.ServiceConnection p4) { return false; }
     public boolean bindService(android.content.Intent p0, android.content.Context.BindServiceFlags p1, java.util.concurrent.Executor p2, android.content.ServiceConnection p3) { return false; }
     public boolean bindService(android.content.Intent p0, android.content.ServiceConnection p1, android.content.Context.BindServiceFlags p2) { return false; }
-    public boolean bindServiceAsUser(android.content.Intent p0, android.content.ServiceConnection p1, int p2, android.os.Handler p3, android.os.UserHandle p4) { return false; }
-    public boolean bindServiceAsUser(android.content.Intent p0, android.content.ServiceConnection p1, int p2, android.os.UserHandle p3) { return false; }
+    public boolean bindServiceAsUser(android.content.Intent p0, android.content.ServiceConnection p1, int p2, android.os.Handler p3, android.os.UserHandle p4) {
+        return bindService(p0, p1, p2);
+    }
+    public boolean bindServiceAsUser(android.content.Intent p0, android.content.ServiceConnection p1, int p2, android.os.UserHandle p3) {
+        return bindService(p0, p1, p2);
+    }
     public boolean bindServiceAsUser(android.content.Intent p0, android.content.ServiceConnection p1, android.content.Context.BindServiceFlags p2, android.os.Handler p3, android.os.UserHandle p4) { return false; }
     public boolean bindServiceAsUser(android.content.Intent p0, android.content.ServiceConnection p1, android.content.Context.BindServiceFlags p2, android.os.UserHandle p3) { return false; }
     public boolean canLoadUnsafeResources() { return false; }
@@ -88,10 +96,14 @@ public class ContextWrapper extends Context {
     public void clearWallpaper() {}
     public void closeSystemDialogs() {}
     public android.content.Context createApplicationContext(android.content.pm.ApplicationInfo p0, int p1) { return null; }
-    public android.content.Context createContextAsUser(android.os.UserHandle p0, int p1) { return null; }
+    public android.content.Context createContextAsUser(android.os.UserHandle p0, int p1) {
+        return this;
+    }
     public android.content.Context createContextForSdkInSandbox(android.content.pm.ApplicationInfo p0, int p1) { return null; }
     public android.content.Context createDeviceContext(int p0) { return null; }
-    public android.content.Context createPackageContextAsUser(java.lang.String p0, int p1, android.os.UserHandle p2) { return null; }
+    public android.content.Context createPackageContextAsUser(java.lang.String p0, int p1, android.os.UserHandle p2) {
+        try { return createPackageContext(p0, p1); } catch (android.content.pm.PackageManager.NameNotFoundException e) { return null; }
+    }
     public android.content.Context createTokenContext(android.os.IBinder p0, android.view.Display p1) { return null; }
     public void enforceCallingOrSelfUriPermission(android.net.Uri p0, int p1, java.lang.String p2) {}
     public void enforceCallingPermission(java.lang.String p0, java.lang.String p1) {}
@@ -125,8 +137,12 @@ public class ContextWrapper extends Context {
     public android.graphics.drawable.Drawable peekWallpaper() { return null; }
     public void rebindService(android.content.ServiceConnection p0, android.content.Context.BindServiceFlags p1) {}
     public void registerDeviceIdChangeListener(java.util.concurrent.Executor p0, java.util.function.IntConsumer p1) {}
-    public android.content.Intent registerReceiverAsUser(android.content.BroadcastReceiver p0, android.os.UserHandle p1, android.content.IntentFilter p2, java.lang.String p3, android.os.Handler p4) { return null; }
-    public android.content.Intent registerReceiverAsUser(android.content.BroadcastReceiver p0, android.os.UserHandle p1, android.content.IntentFilter p2, java.lang.String p3, android.os.Handler p4, int p5) { return null; }
+    public android.content.Intent registerReceiverAsUser(android.content.BroadcastReceiver p0, android.os.UserHandle p1, android.content.IntentFilter p2, java.lang.String p3, android.os.Handler p4) {
+        return registerReceiver(p0, p2, p3, p4);
+    }
+    public android.content.Intent registerReceiverAsUser(android.content.BroadcastReceiver p0, android.os.UserHandle p1, android.content.IntentFilter p2, java.lang.String p3, android.os.Handler p4, int p5) {
+        return registerReceiver(p0, p2, p3, p4, p5);
+    }
     public android.content.Intent registerReceiverForAllUsers(android.content.BroadcastReceiver p0, android.content.IntentFilter p1, java.lang.String p2, android.os.Handler p3) { return null; }
     public android.content.Intent registerReceiverForAllUsers(android.content.BroadcastReceiver p0, android.content.IntentFilter p1, java.lang.String p2, android.os.Handler p3, int p4) { return null; }
     public void reloadSharedPreferences() {}
@@ -165,16 +181,28 @@ public class ContextWrapper extends Context {
     public void setContentCaptureOptions(android.content.ContentCaptureOptions p0) { meglerFill = megler.Fill.put(meglerFill, "ContentCaptureOptions", p0); }
     public void setWallpaper(android.graphics.Bitmap p0) { meglerFill = megler.Fill.put(meglerFill, "Wallpaper", p0); }
     public void setWallpaper(java.io.InputStream p0) { meglerFill = megler.Fill.put(meglerFill, "Wallpaper", p0); }
-    public int startActivitiesAsUser(android.content.Intent[] p0, android.os.Bundle p1, android.os.UserHandle p2) { return 0; }
-    public void startActivityAsUser(android.content.Intent p0, android.os.Bundle p1, android.os.UserHandle p2) {}
-    public void startActivityAsUser(android.content.Intent p0, android.os.UserHandle p1) {}
+    public int startActivitiesAsUser(android.content.Intent[] p0, android.os.Bundle p1, android.os.UserHandle p2) {
+        startActivities(p0, p1); return 0;
+    }
+    public void startActivityAsUser(android.content.Intent p0, android.os.Bundle p1, android.os.UserHandle p2) {
+        startActivity(p0, p1);
+    }
+    public void startActivityAsUser(android.content.Intent p0, android.os.UserHandle p1) {
+        startActivity(p0);
+    }
     public void startActivityForResult(java.lang.String p0, android.content.Intent p1, int p2, android.os.Bundle p3) {}
-    public android.content.ComponentName startForegroundServiceAsUser(android.content.Intent p0, android.os.UserHandle p1) { return null; }
+    public android.content.ComponentName startForegroundServiceAsUser(android.content.Intent p0, android.os.UserHandle p1) {
+        return startForegroundService(p0);
+    }
     public boolean startInstrumentation(android.content.ComponentName p0, java.lang.String p1, android.os.Bundle p2) { return false; }
     public void startIntentSender(android.content.IntentSender p0, android.content.Intent p1, int p2, int p3, int p4) {}
     public void startIntentSender(android.content.IntentSender p0, android.content.Intent p1, int p2, int p3, int p4, android.os.Bundle p5) {}
-    public android.content.ComponentName startServiceAsUser(android.content.Intent p0, android.os.UserHandle p1) { return null; }
-    public boolean stopServiceAsUser(android.content.Intent p0, android.os.UserHandle p1) { return false; }
+    public android.content.ComponentName startServiceAsUser(android.content.Intent p0, android.os.UserHandle p1) {
+        return startService(p0);
+    }
+    public boolean stopServiceAsUser(android.content.Intent p0, android.os.UserHandle p1) {
+        return stopService(p0);
+    }
     public void unregisterDeviceIdChangeListener(java.util.function.IntConsumer p0) {}
     public void updateDeviceId(int p0) {}
     public void updateServiceBindings(java.util.List p0) {}
