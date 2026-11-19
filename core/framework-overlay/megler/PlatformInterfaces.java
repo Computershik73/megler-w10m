@@ -46,17 +46,35 @@ public final class PlatformInterfaces {
         }
     }
 
-    /** The binder given for a service of that descriptor, with its local interface where this answers for it. */
-    public static void attach(Binder binder, String descriptor) {
-        Object target = target(descriptor);
-        if (target == null) return;
-        try {
-            Class<?> iface = Class.forName(descriptor);
-            Object proxy = Proxy.newProxyInstance(iface.getClassLoader() != null ? iface.getClassLoader() : PlatformInterfaces.class.getClassLoader(),
-                    new Class<?>[] { iface }, new Handler(target, binder));
-            binder.attachInterface((IInterface) proxy, descriptor);
-        } catch (Throwable t) {
-            android.util.Log.w("Megler", "platform: no local " + descriptor + ": " + t);
+    /** The binder the service manager gives an app of the platform's own for a service of that descriptor (or name). */
+    public static Binder binder(String descriptor) { return new Local(descriptor); }
+
+    /**
+     * A service's binder whose local interface is made for whatever interface the platform's code asks it for
+     * (queryLocalInterface, which the interface's Stub.asInterface calls with its descriptor): the object that answers for it
+     * here, or none, every call then answering as the empty reply would -- but for a list, which the proxy of the platform's
+     * own would read as null (Display's overlays were null, and Settings ended there).
+     */
+    private static final class Local extends Binder {
+        private final HashMap<String, IInterface> made = new HashMap<>();
+        Local(String descriptor) { super(descriptor); }
+        @Override public IInterface queryLocalInterface(String descriptor) {
+            if (descriptor == null) return null;
+            synchronized (made) {
+                if (made.containsKey(descriptor)) return made.get(descriptor);
+                IInterface i = null;
+                try {
+                    Class<?> iface = Class.forName(descriptor);
+                    if (iface.isInterface() && IInterface.class.isAssignableFrom(iface)) {
+                        ClassLoader loader = iface.getClassLoader() != null ? iface.getClassLoader() : PlatformInterfaces.class.getClassLoader();
+                        i = (IInterface) Proxy.newProxyInstance(loader, new Class<?>[] { iface }, new Handler(target(descriptor), this));
+                    }
+                } catch (Throwable t) {
+                    android.util.Log.w("Megler", "platform: no local " + descriptor + ": " + t);
+                }
+                made.put(descriptor, i);
+                return i;
+            }
         }
     }
 
@@ -83,10 +101,12 @@ public final class PlatformInterfaces {
                 if (name.equals("hashCode")) return System.identityHashCode(proxy);
                 return "Megler's local " + binder.getInterfaceDescriptor();
             }
-            Method t;
-            synchronized (found) {
-                if (found.containsKey(m)) t = found.get(m);
-                else { t = answering(m); found.put(m, t); }
+            Method t = null;
+            if (target != null) {
+                synchronized (found) {
+                    if (found.containsKey(m)) t = found.get(m);
+                    else { t = answering(m); found.put(m, t); }
+                }
             }
             if (t == null) return zero(m.getReturnType());
             try {
@@ -123,7 +143,7 @@ public final class PlatformInterfaces {
         return r;
     }
 
-    /** What the binder's empty reply would have said: false, 0, null; an empty list for a list. */
+    /** What the binder's empty reply would have said: false, 0, null; an empty list or array for a list or an array. */
     private static Object zero(Class<?> type) {
         if (type == boolean.class) return Boolean.FALSE;
         if (type == int.class) return 0;
@@ -134,6 +154,8 @@ public final class PlatformInterfaces {
         if (type == short.class) return (short) 0;
         if (type == char.class) return (char) 0;
         if (type == List.class) return new ArrayList<>();
+        // (An array as the proxy reads one of no elements from the empty reply: a length of 0, not null.)
+        if (type.isArray()) return java.lang.reflect.Array.newInstance(type.getComponentType(), 0);
         if (type.getName().equals("android.content.pm.ParceledListSlice")) {
             try { return type.getConstructor(List.class).newInstance(new ArrayList<>()); } catch (Throwable t) { return null; }
         }

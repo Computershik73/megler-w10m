@@ -7,9 +7,11 @@
 // bandwidth control is on while its first screen loads, through INetworkManagementService.Stub.asInterface, and ended on
 // the null. With the binder, the interface's proxy (the platform's own class, which such an app has) sends the call, reads the
 // empty reply as no exception and a zero, and the answer is false, 0 or null, as a phone without that service would
-// leave it. And for such an app the binders of the package manager, the activity manager and the notification manager carry
-// a local interface, megler.PlatformInterfaces', which answers there what Megler knows: the phone's apps, its one user,
-// notifications allowed. Everything else is the original's.
+// leave it. For such an app every binder is megler.PlatformInterfaces': it carries a local interface of whatever interface it is
+// asked for, which answers what Megler knows (the package, activity, notification and battery services: the phone's apps, its
+// one user, notifications allowed, the battery's statistics) and as a service with nothing would answer otherwise -- an empty
+// list where the interface returns one, where the proxy reading the empty reply made it null. Everything else is the
+// original's.
 package android.os;
 
 /**
@@ -98,16 +100,15 @@ public final class ServiceManager {
             if (b != null) return b;
             for (String[] s : SERVICES) {
                 if (s[0].equals(name)) {
-                    Binder made = new Binder(s[1]);
-                    // (For an app of the platform's own, the interface answered in the process where Megler answers it.)
-                    if (megler.Native.platformApp()) megler.PlatformInterfaces.attach(made, s[1]);
-                    sGiven.put(name, made);
-                    return made;
+                    // (For an app of the platform's own, the interface answered in the process: megler.PlatformInterfaces.)
+                    b = megler.Native.platformApp() ? megler.PlatformInterfaces.binder(s[1]) : new Binder(s[1]);
+                    sGiven.put(name, b);
+                    return b;
                 }
             }
             // An app of the platform's own counts on every service of the platform's being there: any name is one.
             if (megler.Native.platformApp()) {
-                b = new Binder(name);
+                b = megler.PlatformInterfaces.binder(name);
                 sGiven.put(name, b);
                 return b;
             }
