@@ -196,3 +196,6 @@
     /** The name the Google Play services this app hosts go by (megler_run_config.gms_package): com.google.android.gms, or a
      *  microG of another name, ReVanced's MicroG RE's app.revanced.android.gms (megler.GooglePackages.GMS). */
     public static native String gmsPackage();
+    /** Whether this app is one of the platform's own: its manifest's sharedUserId is android.uid.system, as Android's
+     *  Settings' is (android.os.ServiceManager gives it a binder for every service it names). */
+    public static native boolean platformApp();

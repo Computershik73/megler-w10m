@@ -1,5 +1,9 @@
 // Overlay of core/framework/src/megler/ContextImpl.java (tools/build-framework.sh).
 // It differs in setTheme: the new style goes onto the theme already made, as on Android, not into a new theme.
+// And in a manager of the platform's own that Megler has no implementation of (NetworkPolicyManager), made for an app of the
+// platform's own (Android's Settings, which has Android 9's framework after Megler's) with its constructor's service
+// interface on the binder the service manager gives (platformInterface): a null there was a NullPointerException at the
+// manager's first call, the binder's answer is a zero.
 // Everything else is the original's.
 package megler;
 
@@ -234,6 +238,9 @@ public final class ContextImpl extends Context {
             { "android.os.storage.StorageManager", STORAGE_SERVICE }, { "android.net.wifi.aware.WifiAwareManager", WIFI_AWARE_SERVICE },
             { "android.net.wifi.rtt.WifiRttManager", WIFI_RTT_RANGING_SERVICE }, { "android.app.UiModeManager", UI_MODE_SERVICE },
             { "android.app.StatsManager", "stats" },
+            // The platform's own managers, which only an app of the platform's own has (Android 9's framework after Megler's):
+            // Android's Settings asks for them.
+            { "android.net.NetworkPolicyManager", "netpolicy" },
         };
         for (String[] e : m) { try { sNames.put(Class.forName(e[0]), e[1]); } catch (Throwable t) {} }
     }
@@ -253,6 +260,7 @@ public final class ContextImpl extends Context {
                 Class<?> t = pt[i];
                 Object v = null;                       /* if/else: a ?: chain of boxes would unbox them all */
                 if (Context.class.isAssignableFrom(t)) v = this;
+                else if (t.isInterface() && android.os.IInterface.class.isAssignableFrom(t)) v = platformInterface(t, name);
                 else if (t == boolean.class) v = Boolean.FALSE;
                 else if (t == int.class) v = Integer.valueOf(0);
                 else if (t == long.class) v = Long.valueOf(0);
@@ -265,5 +273,16 @@ public final class ContextImpl extends Context {
             try { k.setAccessible(true); return k.newInstance(av); } catch (Throwable t) {}
         }
         return null;
+    }
+    /** An interface of the platform's services (INetworkPolicyManager...) on the binder the service manager gives for `name`:
+     *  its Stub's asInterface, as Android's SystemServiceRegistry hands a manager its service. Only an app of the platform's own
+     *  gets a binder for a service Megler has no implementation of (android.os.ServiceManager); for any other, null. */
+    private static Object platformInterface(Class<?> iface, String name) {
+        try {
+            Class<?> stub = Class.forName(iface.getName() + "$Stub", false, iface.getClassLoader());
+            return stub.getMethod("asInterface", android.os.IBinder.class).invoke(null, android.os.ServiceManager.getService(name));
+        } catch (Throwable t) {
+            return null;
+        }
     }
 }

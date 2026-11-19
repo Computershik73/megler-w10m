@@ -593,6 +593,9 @@ N(Native_nothing) { (void)c; }
 N(Native_dataDir) { c->ret.l = mg_dvm_new_string(mg_fs_internal_dir()); }
 N(Native_externalDir) { c->ret.l = mg_dvm_new_string(mg_fs_external_dir()); }
 N(Native_packageName) { c->ret.l = mg_dvm_new_string(J.package); }
+/* Whether the app is one of the platform's own (its manifest's sharedUserId is android.uid.system: Android's Settings), which
+   counts on the platform's services being there (android.os.ServiceManager). */
+N(Native_platformApp) { c->ret.z = J.platform_app; }
 /* The package name the hosted Google Play services go by (megler_run_config.gms_package): a microG of another name, MicroG RE's. */
 static const char *gms_package(void) { return J.config->gms_package ? J.config->gms_package : "com.google.android.gms"; }
 N(Native_gmsPackage) { c->ret.l = mg_dvm_new_string(gms_package()); }
@@ -1649,6 +1652,7 @@ static const mg_jhle k_native[] = {
     { "megler/Native", "biometricCancel", NULL, Native_biometricCancel },
     { "megler/Native", "audioRoute", NULL, Native_audioRoute },
     { "megler/Native", "packageName", NULL, Native_packageName },
+    { "megler/Native", "platformApp", NULL, Native_platformApp },
     { "megler/Native", "gmsPackage", NULL, Native_gmsPackage },
     { "megler/Native", "screenWidth", NULL, Native_screenWidth },
     { "megler/Native", "screenHeight", NULL, Native_screenHeight },
