@@ -2746,7 +2746,8 @@ static void add_shared_libraries(void)
  * An app of the platform's own -- its manifest's sharedUserId is android.uid.system, as Android's Settings' is -- uses the
  * platform's hidden classes as freely as its public ones: Settings 9 names 225 classes of Android 9's framework that
  * Megler's does not have (android.provider.SearchIndexablesProvider, android.util.KeyValueListParser,
- * com.android.internal.*), and ended at its start on the first of them. Such an app has Android 9's own framework on its
+ * com.android.internal.*), and ended at its start on the first of them; and of its telephony classes (telephony-common,
+ * ims-common: com.android.internal.telephony.PhoneStateIntentReceiver, which its airplane mode switch makes). Such an app has Android 9's own framework on its
  * class path after Megler's (framework/platform-framework*.dex, tools/dvm-android-root.sh): a class Megler's framework has
  * is Megler's, and one it lacks is the platform's own -- but for the interfaces Megler's has only as generated, empty
  * stand-ins (core/framework/gen-src), whose places the platform's take (mg_dvm_fill_empty_interfaces). Any other app has
@@ -2754,7 +2755,8 @@ static void add_shared_libraries(void)
  */
 static void add_platform_framework(void)
 {
-    static const char *const parts[] = { "platform-framework.dex", "platform-framework-classes2.dex", "platform-framework-classes3.dex" };
+    static const char *const parts[] = { "platform-framework.dex", "platform-framework-classes2.dex", "platform-framework-classes3.dex",
+                                         "platform-telephony-common.dex", "platform-ims-common.dex" };
     int i, added = 0;
     if (!J.platform_app) return;
     /* (Its interfaces in place of Megler's generated ones that declare no method: mg_dvm_fill_empty_interfaces.) */
