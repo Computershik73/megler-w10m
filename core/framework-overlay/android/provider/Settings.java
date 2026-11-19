@@ -2059,8 +2059,12 @@ public final class Settings {
         public static final java.lang.String VOLUME_MUSIC = "volume_music";
         public static final java.lang.String VOLUME_NOTIFICATION = "volume_notification";
         public static final java.lang.String VOLUME_RING = "volume_ring";
-        public static java.lang.String[] VOLUME_SETTINGS;
-        public static java.lang.String[] VOLUME_SETTINGS_INT;
+        // (The settings of the streams' volumes, by stream: Android's own Settings (AOSP 9) watches them for its volume bars.)
+        public static java.lang.String[] VOLUME_SETTINGS = { "volume_voice", "volume_system", "volume_ring", "volume_music",
+            "volume_alarm", "volume_notification", "volume_bluetooth_sco" };
+        public static java.lang.String[] VOLUME_SETTINGS_INT = { "volume_voice", "volume_system", "volume_ring", "volume_music",
+            "volume_alarm", "volume_notification", "volume_bluetooth_sco", "volume_system_enforced", "volume_dtmf", "volume_tts",
+            "volume_accessibility" };
         public static final java.lang.String VOLUME_SYSTEM = "volume_system";
         public static final java.lang.String VOLUME_VOICE = "volume_voice";
         public static final java.lang.String WAIT_FOR_DEBUGGER = "wait_for_debugger";

@@ -2,6 +2,9 @@
 // It differs in from(Context), Android's hidden way to the notification manager: the context's, as Android's says, where it said null. Android's
 // own Settings (AOSP 9, which Megler's package carries) asks it so: Sound and Notifications ask it what suppresses the phone's sounds, and ended on the null.
 // Everything else is the original's.
+// And getNotificationPolicy, Do Not Disturb's policy, which said null: as set, else Android's default (Policy's constructors
+// keep what they are given, where they kept nothing). Android's own Settings (AOSP 9, which Megler's package carries) shows it
+// in Sound, which ended on the null.
 package android.app;
 
 import java.util.ArrayList;
@@ -400,7 +403,12 @@ public class NotificationManager {
     public java.util.List getEnabledNotificationListeners() { return new java.util.ArrayList(); }
     public java.util.List getEnabledNotificationListeners(int p0) { return new java.util.ArrayList(); }
     public java.lang.String getNotificationDelegate() { return (java.lang.String) megler.Fill.get(meglerFill, "NotificationDelegate"); }
-    public android.app.NotificationManager.Policy getNotificationPolicy() { return (android.app.NotificationManager.Policy) megler.Fill.get(meglerFill, "NotificationPolicy"); }
+    public android.app.NotificationManager.Policy getNotificationPolicy() {
+        // (Do Not Disturb's policy, as set, else Android's default: alarms, media and system sounds through, repeat callers too.)
+        Object set = megler.Fill.get(meglerFill, "NotificationPolicy");
+        return set instanceof Policy ? (Policy) set : new Policy(Policy.PRIORITY_CATEGORY_ALARMS | Policy.PRIORITY_CATEGORY_MEDIA | Policy.PRIORITY_CATEGORY_SYSTEM
+                | Policy.PRIORITY_CATEGORY_REPEAT_CALLERS, Policy.PRIORITY_SENDERS_STARRED, Policy.PRIORITY_SENDERS_STARRED, 0);
+    }
     public int getRuleInstanceCount(android.content.ComponentName p0) { return 0; }
     public java.util.Set getUnsupportedAdjustmentTypes() { return new java.util.HashSet(); }
     public int getZenMode() { return (megler.Fill.get(meglerFill, "ZenMode") instanceof Integer ? (Integer) megler.Fill.get(meglerFill, "ZenMode") : 0); }
@@ -489,10 +497,13 @@ public class NotificationManager {
         public int priorityMessageSenders;
         public int state;
         public int suppressedVisualEffects;
-        public Policy(int p0, int p1, int p2) {}
-        public Policy(int p0, int p1, int p2, int p3) {}
-        public Policy(int p0, int p1, int p2, int p3, int p4) {}
-        public Policy(int p0, int p1, int p2, int p3, int p4, int p5) {}
+        public Policy(int p0, int p1, int p2) { this(p0, p1, p2, SUPPRESSED_EFFECTS_UNSET); }
+        public Policy(int p0, int p1, int p2, int p3) {
+            priorityCategories = p0; priorityCallSenders = p1; priorityMessageSenders = p2; suppressedVisualEffects = p3;
+            priorityConversationSenders = CONVERSATION_SENDERS_UNSET; state = STATE_UNSET;
+        }
+        public Policy(int p0, int p1, int p2, int p3, int p4) { this(p0, p1, p2, p3); state = p4; }
+        public Policy(int p0, int p1, int p2, int p3, int p4, int p5) { this(p0, p1, p2, p3); state = p4; priorityConversationSenders = p5; }
         public Policy(android.os.Parcel p0) {}
         public static boolean areAllVisualEffectsSuppressed(int p0) { return false; }
         public static java.lang.String conversationSendersToString(int p0) { return null; }
