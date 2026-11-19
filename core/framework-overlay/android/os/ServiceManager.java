@@ -7,7 +7,9 @@
 // bandwidth control is on while its first screen loads, through INetworkManagementService.Stub.asInterface, and ended on
 // the null. With the binder, the interface's proxy (the platform's own class, which such an app has) sends the call, reads the
 // empty reply as no exception and a zero, and the answer is false, 0 or null, as a phone without that service would
-// leave it. Everything else is the original's.
+// leave it. And for such an app the binders of the package manager, the activity manager and the notification manager carry
+// a local interface, megler.PlatformInterfaces', which answers there what Megler knows: the phone's apps, its one user,
+// notifications allowed. Everything else is the original's.
 package android.os;
 
 /**
@@ -96,9 +98,11 @@ public final class ServiceManager {
             if (b != null) return b;
             for (String[] s : SERVICES) {
                 if (s[0].equals(name)) {
-                    b = new Binder(s[1]);
-                    sGiven.put(name, b);
-                    return b;
+                    Binder made = new Binder(s[1]);
+                    // (For an app of the platform's own, the interface answered in the process where Megler answers it.)
+                    if (megler.Native.platformApp()) megler.PlatformInterfaces.attach(made, s[1]);
+                    sGiven.put(name, made);
+                    return made;
                 }
             }
             // An app of the platform's own counts on every service of the platform's being there: any name is one.
