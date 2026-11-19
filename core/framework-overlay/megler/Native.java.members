@@ -199,3 +199,7 @@
     /** Whether this app is one of the platform's own: its manifest's sharedUserId is android.uid.system, as Android's
      *  Settings' is (android.os.ServiceManager gives it a binder for every service it names). */
     public static native boolean platformApp();
+    /** Another app's data, or its cache, cleared when that app next starts; an app of the platform's own alone may ask (Android's
+     *  Settings, an app's App info). False when it could not be asked. */
+    public static native boolean askClearDataOf(String packageName);
+    public static native boolean askClearCacheOf(String packageName);

@@ -1354,6 +1354,22 @@ static bool apps_name_ok(const char *name)
         if (!((*p >= 'a' && *p <= 'z') || (*p >= '0' && *p <= '9') || *p == '-')) return false;
     return true;
 }
+/*
+ * askClearDataOf(package), askClearCacheOf(package): that app's data, or its cache, cleared when it next starts
+ * (megler_ask_clear_data, megler_ask_clear_cache), for an app of the platform's own: Android's own Settings clears another
+ * app's storage from its App info. A package name of letters, digits, '.' and '_'; false for any other or without an apps
+ * folder.
+ */
+N(Native_askClearDataOf)
+{
+    const char *package = text_of(c->args[0].l);
+    c->ret.z = J.platform_app && apps_package_ok(package) && megler_ask_clear_data(package);
+}
+N(Native_askClearCacheOf)
+{
+    const char *package = text_of(c->args[0].l);
+    c->ret.z = J.platform_app && apps_package_ok(package) && megler_ask_clear_cache(package);
+}
 N(Native_appsFile)
 {
     const char *name = text_of(c->args[0].l);
@@ -1677,6 +1693,8 @@ static const mg_jhle k_native[] = {
     { "megler/Native", "appIcon", NULL, Native_appIcon },
     { "megler/Native", "appActivities", NULL, Native_appActivities },
     { "megler/Native", "appServices", NULL, Native_appServices },
+    { "megler/Native", "askClearDataOf", NULL, Native_askClearDataOf },
+    { "megler/Native", "askClearCacheOf", NULL, Native_askClearCacheOf },
     { "megler/Native", "appsFile", NULL, Native_appsFile },
     { "megler/Native", "writeAppsFile", NULL, Native_writeAppsFile },
     { "megler/Native", "appResIcon", NULL, Native_appResIcon },

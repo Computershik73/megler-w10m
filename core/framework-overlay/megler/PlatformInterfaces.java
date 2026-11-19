@@ -164,6 +164,17 @@ public final class PlatformInterfaces {
 
     private static PackageManager pm() { return ContextImpl.app().getPackageManager(); }
 
+    /** An IPackageDataObserver told that the package's data or cache is gone (onRemoveCompleted), as Android tells it; the
+     *  interface is the platform's own, which Megler's framework names only as a type. */
+    public static void tellRemoved(Object observer, String pkg, boolean succeeded) {
+        if (observer == null) return;
+        try {
+            observer.getClass().getMethod("onRemoveCompleted", String.class, boolean.class).invoke(observer, pkg, succeeded);
+        } catch (Throwable t) {
+            android.util.Log.w("Megler", "platform: the observer of " + pkg + "'s storage could not be told: " + t);
+        }
+    }
+
     /** IPackageManager: the package manager's own answers (android.content.pm.PackageManager, which knows the phone's apps). */
     public static final class Packages {
         public void checkPackageStartable(String pkg, int user) {}
