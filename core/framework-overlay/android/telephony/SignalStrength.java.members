@@ -1,0 +1,4 @@
+    // Megler: members added to the generated android.telephony.SignalStrength (tools/build-framework.sh, "X.java.members").
+    // Android 9's hidden names of the levels, which its BatteryStats reads when it is first used: Android's own Settings (AOSP 9,
+    // which Megler's package carries) shows the battery's summary through it, and the class could not be initialised.
+    public static final String[] SIGNAL_STRENGTH_NAMES = { "none", "poor", "moderate", "good", "great" };
