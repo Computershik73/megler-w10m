@@ -57,6 +57,8 @@
 // And the hidden members with a user (getApplicationInfoAsUser, getInstalledApplicationsAsUser, queryIntentActivitiesAsUser,
 // resolveActivityAsUser...) are the members without one, as the phone has one user, where they said null or nothing:
 // Android's own Settings (AOSP 9, which Megler's package carries) asks for every app, intent and tile as the current user.
+// And queryIntentActivities lists every activity of the app's own whose filters take an implicit intent, where it listed the
+// first alone, each a system app's (ResolveInfo.system) where the app is one of the platform's own.
 package android.content.pm;
 
 import android.content.ComponentName;
@@ -362,7 +364,19 @@ public class PackageManager {
         // A link, an address, a file of a type, for no package: the app's activities and the other apps' whose filters take
         // it, a web link's as Android 12 resolves it (megler.Resolver), with Windows' browser.
         if (hosted == null && megler.Resolver.applies(i)) return megler.Resolver.query(i, flags);
-        if (c != null) { ResolveInfo r = new ResolveInfo(); r.activityInfo = activity(c); l.add(r); }
+        if (c != null) {
+            // Every activity of the app's own whose filters take an implicit intent, as Android lists them, not the first
+            // alone (Android's Settings finds its own screens for its main list so: com.android.settings.action.SETTINGS);
+            // one that the intent names, alone. Each is a system app's where the app is one of the platform's own.
+            java.util.List<megler.Manifest.Component> own = i.getComponent() == null ? megler.Manifest.match(megler.Manifest.activities, i) : null;
+            if (own == null || own.isEmpty()) own = java.util.Collections.singletonList(c);
+            for (megler.Manifest.Component m : own) {
+                ResolveInfo r = new ResolveInfo();
+                r.activityInfo = activity(m);
+                r.system = megler.Native.platformApp();
+                l.add(r);
+            }
+        }
         else if (hosted != null) { ResolveInfo r = new ResolveInfo(); r.activityInfo = hosted(hosted); l.add(r); return l; }
         else if (!other && i.getData() != null && ("http".equals(i.getData().getScheme()) || "https".equals(i.getData().getScheme()) || "mailto".equals(i.getData().getScheme()))) {
             ResolveInfo r = new ResolveInfo(); r.activityInfo = new ActivityInfo(); r.activityInfo.name = "com.android.browser.Browser"; r.activityInfo.packageName = "com.android.browser"; r.nonLocalizedLabel = "Browser"; l.add(r);
