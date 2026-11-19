@@ -2,6 +2,9 @@
 // It differs in from(Context), Android's hidden way to the connectivity manager: the context's, as Android's says, where it said null. Android's
 // own Settings (AOSP 9, which Megler's package carries) asks it so: Network & internet ask it for the networks, and ended on the null.
 // Everything else is the original's.
+// And the tethering's interfaces and their patterns (getTetherableUsbRegexs, getTetheredIfaces...): none, where they said
+// null. Android's own Settings (AOSP 9) names its hotspot and tethering item by which of them there are, and its Network &
+// internet ended on the null.
 package android.net;
 /** The network as the app sees it: always connected, over Wi-Fi (the phone's network is not watched). */
 public class ConnectivityManager {
@@ -244,13 +247,27 @@ public class ConnectivityManager {
     public android.net.NetworkCapabilities getRedactedNetworkCapabilitiesForPackage(android.net.NetworkCapabilities p0, int p1, java.lang.String p2) { return null; }
     public android.os.IBinder getRoutingCoordinatorService() { return null; }
     public int[] getSupportedKeepalives() { return null; }
-    public java.lang.String[] getTetherableBluetoothRegexs() { return null; }
-    public java.lang.String[] getTetherableIfaces() { return null; }
-    public java.lang.String[] getTetherableUsbRegexs() { return null; }
-    public java.lang.String[] getTetherableWifiRegexs() { return null; }
-    public java.lang.String[] getTetheredDhcpRanges() { return null; }
-    public java.lang.String[] getTetheredIfaces() { return null; }
-    public java.lang.String[] getTetheringErroredIfaces() { return null; }
+    public java.lang.String[] getTetherableBluetoothRegexs() {
+        return new java.lang.String[0];   // (none: Megler shares no connection)
+    }
+    public java.lang.String[] getTetherableIfaces() {
+        return new java.lang.String[0];   // (none: Megler shares no connection)
+    }
+    public java.lang.String[] getTetherableUsbRegexs() {
+        return new java.lang.String[0];   // (none: Megler shares no connection)
+    }
+    public java.lang.String[] getTetherableWifiRegexs() {
+        return new java.lang.String[0];   // (none: Megler shares no connection)
+    }
+    public java.lang.String[] getTetheredDhcpRanges() {
+        return new java.lang.String[0];   // (none: Megler shares no connection)
+    }
+    public java.lang.String[] getTetheredIfaces() {
+        return new java.lang.String[0];   // (none: Megler shares no connection)
+    }
+    public java.lang.String[] getTetheringErroredIfaces() {
+        return new java.lang.String[0];   // (none: Megler shares no connection)
+    }
     public int getUidFirewallRule(int p0, int p1) { return 0; }
     public boolean isConnectivityServiceFeatureEnabledForTesting(java.lang.String p0) { return false; }
     public boolean isFeatureEnabled(long p0) { return false; }

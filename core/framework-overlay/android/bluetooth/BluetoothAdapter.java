@@ -355,7 +355,11 @@ public final class BluetoothAdapter {
     public int setBluetoothHciSnoopLoggingMode(int p0) { return 0; }
     public int setDiscoverableTimeout(java.time.Duration p0) { return 0; }
     public int setPreferredAudioProfiles(android.bluetooth.BluetoothDevice p0, android.os.Bundle p1) { return 0; }
-    public int setScanMode(int p0) { return 0; }
+    /** Declared as Android 9 declared it, a boolean (Android 13 made it an int: a system API no app outside the system calls;
+     *  Java cannot declare both). Android's own Settings (AOSP 9) sets the scan mode in Connected devices. None is set here. */
+    public boolean setScanMode(int p0) {
+        return false;
+    }
     public int startRfcommServer(java.lang.String p0, java.util.UUID p1, android.app.PendingIntent p2) { return 0; }
     public int stopRfcommServer(java.util.UUID p0) { return 0; }
     public boolean unregisterBluetoothConnectionCallback(android.bluetooth.BluetoothAdapter.BluetoothConnectionCallback p0) { return false; }

@@ -241,6 +241,7 @@ public final class ContextImpl extends Context {
             // The platform's own managers, which only an app of the platform's own has (Android 9's framework after Megler's):
             // Android's Settings asks for them.
             { "android.net.NetworkPolicyManager", "netpolicy" },
+            { "android.net.NetworkScoreManager", "network_score" },
         };
         for (String[] e : m) { try { sNames.put(Class.forName(e[0]), e[1]); } catch (Throwable t) {} }
     }
