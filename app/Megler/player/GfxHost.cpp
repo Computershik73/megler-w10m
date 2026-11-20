@@ -3823,6 +3823,7 @@ void releaseBack() {
 struct KeptTextures {
     struct Texture {
         void* handle = nullptr;      // the shared handle ANGLE's texture was opened by
+        int width = 0, height = 0;   // the frames' size as the core said it then (sameTexture)
         Ref<ID3D11Texture2D> shared; // ANGLE's texture, opened on this device
         Ref<IDXGIKeyedMutex> mutex;  // its keyed mutex, where ANGLE shares it with one
         Ref<ID3D11Texture2D> copy;   // its last frame, copied out of it
@@ -3846,6 +3847,7 @@ struct Composition {
         Box rect;                    // where its frames go, in the window's (the views') pixels; empty: nowhere
         int flags = 0;               // gl_place's MEGLER_GL_*: over the views, translucent, a media overlay
         void* handle = nullptr;      // the shared handle its surface's texture was opened by
+        int width = 0, height = 0;   // the frames' size as the core said it then (sameTexture)
         Ref<ID3D11Texture2D> shared; // ANGLE's texture of the surface, opened on this device
         Ref<IDXGIKeyedMutex> mutex;  // its keyed mutex, where ANGLE shares it with one (gecko-w10m's does)
         Ref<ID3D11Texture2D> copy;   // its last frame, copied out of it
@@ -4059,6 +4061,30 @@ bool showComposed(Box part, bool fresh) {
     return true;
 }
 
+/// Whether a frame handed over by `handle` at width x height is in the texture
+/// opened for the last one, so that the copy made for that one takes it: the
+/// same handle, and the same size. A texture's size never changes, so a frame
+/// of another size under a handle opened before is in another texture, which
+/// the handle names now; and CopyResource between textures that differ in size
+/// or format does nothing at all, so a copy of the old size would keep the
+/// frame before for good (issue #26 suspected it of a libGDX game whose
+/// surface grew after its first frames). Opened again, its copy is made after
+/// its own size and format. The handles Megler is given are ANGLE's
+/// pbuffers', and a pbuffer has one size, so a surface of another size comes
+/// with another handle (mg_java_gl.c makes a new pbuffer); this is the guard
+/// for a handle given again.
+bool sameTexture(void* had, int hadWidth, int hadHeight, void* handle, int width, int height) {
+    return had == handle && hadWidth == width && hadHeight == height;
+}
+
+/// A texture opened by its shared handle for frames said to be width x height: said once in the log when it is of another
+/// size, which the copy then follows (the frame is scaled to its place in any case).
+void noteOtherSize(const char* what, const D3D11_TEXTURE2D_DESC& desc, int width, int height) {
+    if (int(desc.Width) != width || int(desc.Height) != height)
+        note("gl-size", "%s's frames said to be %dx%d come in a texture of %ux%u: the copies are of the texture's size (said once)", what, width, height,
+             unsigned(desc.Width), unsigned(desc.Height));
+}
+
 /// megler_gfx_host.gl_frame: a GL view's new frame, in ANGLE's texture of its
 /// surface, opened here by its shared handle and copied into a texture of
 /// the layer's own. The copy is waited for (an event query: this is the GL
@@ -4084,7 +4110,7 @@ bool glFrame(void*, int layer, void* handle, int width, int height) {
         std::lock_guard<std::mutex> lock(c.mutex);
         c.layered = true;
         Composition::Layer& l = c.layers[layer];
-        if (l.handle != handle || !l.shared || !l.frame) {
+        if (!sameTexture(l.handle, l.width, l.height, handle, width, height) || !l.shared || !l.frame) {
             Composition::reset(l);
             HRESULT hr = s.d3d->OpenSharedResource(handle, __uuidof(ID3D11Texture2D), reinterpret_cast<void**>(l.shared.put()));
             if (FAILED(hr)) {
@@ -4095,6 +4121,7 @@ bool glFrame(void*, int layer, void* handle, int width, int height) {
             }
             D3D11_TEXTURE2D_DESC desc = {};
             l.shared->GetDesc(&desc);
+            noteOtherSize("an OpenGL ES surface", desc, width, height);
             if (desc.MiscFlags & D3D11_RESOURCE_MISC_SHARED_KEYEDMUTEX)
                 l.shared->QueryInterface(__uuidof(IDXGIKeyedMutex), reinterpret_cast<void**>(l.mutex.put()));
             // (A texture made typeless, to be seen in more than one format, is copied into one of the format it is drawn in.)
@@ -4120,6 +4147,8 @@ bool glFrame(void*, int layer, void* handle, int width, int height) {
                 return;
             }
             l.handle = handle;
+            l.width = width;
+            l.height = height;
         }
         if (!c.copied) {
             D3D11_QUERY_DESC query = {D3D11_QUERY_EVENT, 0};
@@ -4190,7 +4219,7 @@ bool textureFrame(void*, int id, void* handle, int width, int height) {
     guarded("texture_frame", [&] {
         std::lock_guard<std::mutex> lock(k.mutex);
         KeptTextures::Texture& t = k.byId[id];
-        if (t.handle != handle || !t.shared || !t.frame || t.topFirst) {
+        if (!sameTexture(t.handle, t.width, t.height, handle, width, height) || !t.shared || !t.frame || t.topFirst) {
             t = KeptTextures::Texture{};
             HRESULT hr = s.d3d->OpenSharedResource(handle, __uuidof(ID3D11Texture2D), reinterpret_cast<void**>(t.shared.put()));
             if (FAILED(hr)) {
@@ -4201,6 +4230,7 @@ bool textureFrame(void*, int id, void* handle, int width, int height) {
             }
             D3D11_TEXTURE2D_DESC desc = {};
             t.shared->GetDesc(&desc);
+            noteOtherSize("a TextureView", desc, width, height);
             if (desc.MiscFlags & D3D11_RESOURCE_MISC_SHARED_KEYEDMUTEX)
                 t.shared->QueryInterface(__uuidof(IDXGIKeyedMutex), reinterpret_cast<void**>(t.mutex.put()));
             if (desc.Format == DXGI_FORMAT_R8G8B8A8_TYPELESS) desc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
@@ -4225,6 +4255,8 @@ bool textureFrame(void*, int id, void* handle, int width, int height) {
                 return;
             }
             t.handle = handle;
+            t.width = width;
+            t.height = height;
         }
         if (!t.mutex && !k.copied) {
             D3D11_QUERY_DESC query = {D3D11_QUERY_EVENT, 0};

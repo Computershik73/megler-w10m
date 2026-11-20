@@ -151,7 +151,9 @@ void mg_gfx_windows_lose_device(void) { megler::app::GfxHost::shared().loseDevic
 /// ANGLE's, a texture of it shared by handle for a GL surface, its rows
 /// bottom first as OpenGL's are. The frame shows where the views leave a
 /// hole, the right way up, under what the views have there; a new frame is
-/// shown without the views being shown again; a layer taken away leaves the
+/// shown without the views being shown again, and so is one of the surface
+/// made again at another size (another texture, another handle) and the
+/// first surface's after it; a layer taken away leaves the
 /// views alone; a layer over the views is over them, its premultiplied alpha
 /// kept where it is translucent; nothing is read back. Twice: the texture shared plainly, and
 /// shared with a keyed mutex, as gecko-w10m's ANGLE shares every pbuffer --
@@ -279,6 +281,50 @@ int mg_gfx_windows_check_gl(const megler_gfx_host* h, void (*line)(const char* t
             // Handed over, the mutex is there to be taken back at once: the shell gave it back after its copy.
             check(mutex->AcquireSync(0, 0) == S_OK, "the shell kept the surface's keyed mutex");
             mutex->ReleaseSync(0);
+        }
+        // The surface made again at another size, as a GLSurfaceView's is when its view grows (another pbuffer, another
+        // handle; a libGDX game's surface grew after its first frames, issue #26): its frames, magenta, are shown in the
+        // layer's place, scaled to it; and then the first surface's again, as they come.
+        {
+            const int sw = 16, sh = 12;
+            std::vector<uint32_t> magenta(size_t(sw) * sh, 0xFFFF00FFu);
+            D3D11_TEXTURE2D_DESC sd = td;
+            sd.Width = UINT(sw);
+            sd.Height = UINT(sh);
+            ID3D11Texture2D* other = nullptr;
+            IDXGIResource* otherResource = nullptr;
+            IDXGIKeyedMutex* otherMutex = nullptr;
+            HANDLE otherHandle = nullptr;
+            const bool made = SUCCEEDED(angle->CreateTexture2D(&sd, nullptr, &other)) &&
+                              SUCCEEDED(other->QueryInterface(__uuidof(IDXGIResource), reinterpret_cast<void**>(&otherResource))) &&
+                              SUCCEEDED(otherResource->GetSharedHandle(&otherHandle)) &&
+                              (!keyed || SUCCEEDED(other->QueryInterface(__uuidof(IDXGIKeyedMutex), reinterpret_cast<void**>(&otherMutex))));
+            check(made, "no second shared texture of another size");
+            if (made) {
+                // (As draw() does: the picture finished on "ANGLE's" device before it is handed over.)
+                if (otherMutex) otherMutex->AcquireSync(0, INFINITE);
+                angleContext->UpdateSubresource(other, 0, nullptr, magenta.data(), UINT(sw * 4), 0);
+                D3D11_QUERY_DESC qd = {D3D11_QUERY_EVENT, 0};
+                ID3D11Query* done = nullptr;
+                if (SUCCEEDED(angle->CreateQuery(&qd, &done))) {
+                    angleContext->End(done);
+                    angleContext->Flush();
+                    while (angleContext->GetData(done, nullptr, 0, 0) == S_FALSE) SwitchToThread();
+                    done->Release();
+                }
+                if (otherMutex) otherMutex->ReleaseSync(0);
+                check(h->gl_frame(h->user, 0, otherHandle, sw, sh) && readWindow(shown) && shown.size() == memory.size() &&
+                          (shown[10 * w + 20] & 0x00FFFFFFu) == 0x00FF00FFu && (shown[30 * w + 20] & 0x00FFFFFFu) == 0x00FF00FFu &&
+                          (shown[2 * w + 2] | 0xFF000000u) == 0xFFFFFFFFu,
+                      "a frame of a surface made again at another size is not shown in the layer's place");
+                draw();
+                check(h->gl_frame(h->user, 0, handle, fw, fh) && readWindow(shown) && shown.size() == memory.size() &&
+                          (shown[10 * w + 20] & 0x00FFFFFFu) == 0x0000FF00u,
+                      "the first surface's frame is not shown again after one of another size");
+            }
+            if (otherMutex) otherMutex->Release();
+            if (otherResource) otherResource->Release();
+            if (other) other->Release();
         }
         // The layer taken away: the views alone there again, at the next showing.
         h->gl_place(h->user, 0, 0, 0, 0, 0, 0);
