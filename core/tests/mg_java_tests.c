@@ -4328,7 +4328,10 @@ static int run_data(void)
                                             (Komi Store's sign-in, issue #12), unless the user allowed them; the browser the user chose;
                                             "Always"; "Open with"; and a site asked whether it is an app's (links_requests). */
                                          "intent-filter-data", "link-unverified", "link-default-browser", "link-always", "link-chooser",
-                                         "link-verified-unknown" };
+                                         "link-verified-unknown",
+                                         /* And the platform's preference row (preference_material), its icon Android's hidden
+                                            PreferenceImageView held to its 48 dp (issue #15). */
+                                         "preference-image-view" };
     int at = -1, want = 0, run = 0, line, i;
     char text[120];
     if (g_script_count) sscanf(g_script[0], "run:%d", &want);

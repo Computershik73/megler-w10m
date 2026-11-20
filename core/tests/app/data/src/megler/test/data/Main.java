@@ -2445,6 +2445,7 @@ public class Main extends Activity {
         httpEngine();
         renderNodes();
         links();
+        preferenceImageView();
         Log.i("DataTest", "done ok=" + ok + " failed=" + failed);
         doneLogged = true;
         mediaSession();
@@ -11466,6 +11467,35 @@ public class Main extends Activity {
      * https://maps.example.org/place/ asks to be verified. Where a link goes when started is the log's and the phone's to say
      * (the test's C side, links_requests).
      */
+    /**
+     * A preference's row as the platform's own layout makes it (preference_material, which apps inflate through AndroidX's
+     * preferences: EhViewer ended at every sub-screen of its settings, issue #15): its icon is Android's hidden
+     * com.android.internal.widget.PreferenceImageView, found by its full name, and held to its 48 dp even where its parent
+     * leaves it free (measured UNSPECIFIED with a picture of 200 x 200), as Android's is.
+     */
+    private void preferenceImageView() {
+        step("preference-image-view", () -> {
+            int layout = getResources().getIdentifier("preference_material", "layout", "android");
+            android.view.View row = getLayoutInflater().inflate(layout, new android.widget.FrameLayout(this), false);
+            android.view.View icon = row.findViewById(android.R.id.icon);
+            if (!(icon instanceof android.widget.ImageView)) {
+                detail = "layout " + Integer.toHexString(layout) + ", the icon " + icon;
+                return false;
+            }
+            android.widget.ImageView image = (android.widget.ImageView) icon;
+            image.setImageDrawable(new android.graphics.drawable.BitmapDrawable(getResources(),
+                    android.graphics.Bitmap.createBitmap(200, 200, android.graphics.Bitmap.Config.ARGB_8888)));
+            int free = android.view.View.MeasureSpec.makeMeasureSpec(0, android.view.View.MeasureSpec.UNSPECIFIED);
+            image.measure(free, free);
+            int max = Math.round(48 * getResources().getDisplayMetrics().density);
+            detail = icon.getClass().getName() + " max " + image.getMaxWidth() + "x" + image.getMaxHeight() + ", measured "
+                     + image.getMeasuredWidth() + "x" + image.getMeasuredHeight() + ", 48 dp " + max;
+            return "com.android.internal.widget.PreferenceImageView".equals(icon.getClass().getName())
+                   && image.getMaxWidth() == max && image.getMaxHeight() == max
+                   && image.getMeasuredWidth() == max && image.getMeasuredHeight() == max;
+        });
+    }
+
     private void links() {
         final android.content.pm.PackageManager pm = getPackageManager();
         final int DEFAULT_ONLY = android.content.pm.PackageManager.MATCH_DEFAULT_ONLY, ALL = 0x00020000;
