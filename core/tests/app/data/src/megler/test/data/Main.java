@@ -8479,6 +8479,26 @@ public class Main extends Activity {
                     argb, android.graphics.Color.alpha(washLong), both, once, redOver, listedWash, listedWhite, listedCleared, flags);
             return longs && direct && recorded && flags;
         });
+        /* Canvas.drawColor(long, BlendMode) draws the colour, of any space, by the mode: into a bitmap and into a RenderNode's list.
+           It was a signature that drew nothing in both. */
+        step("draw-color-long-blend", () -> {
+            android.graphics.ColorSpace p3 = android.graphics.ColorSpace.get(android.graphics.ColorSpace.Named.DISPLAY_P3);
+            android.graphics.Bitmap over = bitmap(4, 4), replaced = bitmap(4, 4);
+            android.graphics.Canvas c = new android.graphics.Canvas(over);
+            c.drawColor(0xFFFFFFFF);
+            c.drawColor(android.graphics.Color.pack(0f, 0f, 0f, 0.5f, p3), android.graphics.BlendMode.SRC_OVER);
+            c = new android.graphics.Canvas(replaced);
+            c.drawColor(0xFFFFFFFF);
+            c.drawColor(android.graphics.Color.pack(0x400000FF), android.graphics.BlendMode.SRC);
+            android.graphics.RenderNode node = new android.graphics.RenderNode("color");
+            node.setPosition(0, 0, 4, 4);
+            android.graphics.RecordingCanvas rc = node.beginRecording(4, 4);
+            rc.drawColor(android.graphics.Color.pack(0xFF00FF00), android.graphics.BlendMode.SRC_OVER);
+            node.endRecording();
+            int half = over.getPixel(1, 1), src = replaced.getPixel(1, 1), listed = drawn(node, 4, 4).getPixel(1, 1);
+            detail = String.format("half black over white %08x, SRC %08x, listed %08x", half, src, listed);
+            return pixelNear(half, 0xFF7F7F7F, 1) && pixelNear(src, 0x400000FF, 1) && listed == 0xFF00FF00;
+        });
     }
 
     /** Whether the first three numbers are these, each to within eps. */

@@ -4230,6 +4230,8 @@ static int run_data(void)
                                          /* And a paint with a RuntimeShader, whose AGSL is not run here, fills nothing, not its own
                                             colour: YouTube's buttons under a video were black pills under its light (issue #24). */
                                          "runtime-shader",
+                                         /* And Canvas.drawColor(long, BlendMode) draws, into a bitmap and a node's list. */
+                                         "draw-color-long-blend",
                                          /* And ViewGroup.cleanupLayoutState takes a group's layout request back: a group whose requestLayout
                                             calls it on itself (Compose's AndroidViewsHandler) hears each requestLayout of a child. */
                                          "cleanup-layout-state",
