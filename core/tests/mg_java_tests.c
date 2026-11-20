@@ -4232,6 +4232,8 @@ static int run_data(void)
                                          "runtime-shader",
                                          /* And Canvas.drawColor(long, BlendMode) draws, into a bitmap and a node's list. */
                                          "draw-color-long-blend",
+                                         /* And BlendMode.MULTIPLY is its own blend, not PorterDuff's MULTIPLY (MODULATE). */
+                                         "blend-multiply",
                                          /* And ViewGroup.cleanupLayoutState takes a group's layout request back: a group whose requestLayout
                                             calls it on itself (Compose's AndroidViewsHandler) hears each requestLayout of a child. */
                                          "cleanup-layout-state",

@@ -3573,6 +3573,14 @@ where the framework's code, written for iOS, leaned on CoreGraphics without sayi
   no text with it, directly or into a list; a bitmap drawn with it is drawn,
   as the shader does not come into that on Android either. The log says it
   once (`Paint: a android.graphics.RuntimeShader is not drawn here`).
+- **Two MULTIPLYs.** `PorterDuff.Mode.MULTIPLY` is S*D, its alpha Sa*Da
+  (megler.h's MODULATE, 13); `BlendMode.MULTIPLY` (and Compose's
+  `BlendMode.Multiply`) is S*(1-Da) + D*(1-Sa) + S*D, which keeps what is
+  under a translucent colour (megler.h's MULTIPLY, 18, Direct2D's Blend
+  effect's). Up to 0.1.0.734 the second was given the first's number: a 5%
+  black drawn with it over white left a 5% black, which an opaque window
+  shows black. The other blend modes Android 10 added (COLOR_DODGE to
+  LUMINOSITY) are still drawn as SRC_OVER.
 - **The stand-in** (`core/tests/mg_gfx_standin.c`) is for tests and is not a
   renderer to look at: a pixel is in when its centre is, curves are straight
   pieces, strokes have no joins, a gradient is its first colour, text is a box

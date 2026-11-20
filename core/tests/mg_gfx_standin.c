@@ -142,6 +142,7 @@ static u32 blend_channel(int mode, u32 s, u32 d, u32 sa, u32 da)
     case MEGLER_GFX_BLEND_SCREEN: v = s + d - mul255(s, d); break;
     case MEGLER_GFX_BLEND_DARKEN: v = both + (x < y ? x : y); break;
     case MEGLER_GFX_BLEND_LIGHTEN: v = both + (x > y ? x : y); break;
+    case MEGLER_GFX_BLEND_MULTIPLY: v = both + mul255(s, d); break;
     default: v = s + mul255(d, 255 - sa); break;
     }
     return v > 255 ? 255 : v;

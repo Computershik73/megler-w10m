@@ -8499,6 +8499,34 @@ public class Main extends Activity {
             detail = String.format("half black over white %08x, SRC %08x, listed %08x", half, src, listed);
             return pixelNear(half, 0xFF7F7F7F, 1) && pixelNear(src, 0x400000FF, 1) && listed == 0xFF00FF00;
         });
+        /* BlendMode.MULTIPLY is S*(1-Da) + D*(1-Sa) + S*D, which keeps what is under a translucent colour: half red on white is
+           pink, a 5% black wash on white is a light grey. It was PorterDuff.Mode.MULTIPLY's S*D, whose alpha is Sa*Da: the
+           wash punched the white through to a 5% black, which an opaque window shows black. By a paint, drawColor and a node. */
+        step("blend-multiply", () -> {
+            android.graphics.Bitmap bm = bitmap(8, 4);
+            android.graphics.Canvas c = new android.graphics.Canvas(bm);
+            c.drawColor(0xFFFFFFFF);
+            android.graphics.Paint red = new android.graphics.Paint(), wash = new android.graphics.Paint();
+            red.setColor(0x80FF0000);
+            red.setBlendMode(android.graphics.BlendMode.MULTIPLY);
+            wash.setColor(0x0D000000);
+            wash.setBlendMode(android.graphics.BlendMode.MULTIPLY);
+            c.drawRect(0, 0, 4, 4, red);
+            c.drawRect(4, 0, 8, 4, wash);
+            android.graphics.Bitmap colored = bitmap(4, 4);
+            c = new android.graphics.Canvas(colored);
+            c.drawColor(0xFFFFFFFF);
+            c.drawColor(0x80FF0000, android.graphics.BlendMode.MULTIPLY);
+            android.graphics.RenderNode node = new android.graphics.RenderNode("multiply");
+            node.setPosition(0, 0, 4, 4);
+            android.graphics.RecordingCanvas rc = node.beginRecording(4, 4);
+            rc.drawColor(0xFFFFFFFF);
+            rc.drawRect(0, 0, 4, 4, wash);
+            node.endRecording();
+            int pink = bm.getPixel(1, 1), grey = bm.getPixel(5, 1), byColor = colored.getPixel(1, 1), listed = drawn(node, 4, 4).getPixel(1, 1);
+            detail = String.format("half red %08x, wash %08x, drawColor %08x, listed %08x", pink, grey, byColor, listed);
+            return pixelNear(pink, 0xFFFF8080, 1) && pixelNear(grey, 0xFFF2F2F2, 1) && pixelNear(byColor, 0xFFFF8080, 1) && pixelNear(listed, 0xFFF2F2F2, 1);
+        });
     }
 
     /** Whether the first three numbers are these, each to within eps. */

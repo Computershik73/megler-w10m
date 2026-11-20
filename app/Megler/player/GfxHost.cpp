@@ -17,7 +17,7 @@
 //     Windows 10): as wide as a pixel is under the matrix's mean scale,
 //     which is not one pixel under a matrix that stretches one way.
 //   - A transfer mode or a colour filter's mode whose number is not one of
-//     the eighteen: drawn as SRC_OVER, the filter left out. A coordinate
+//     the nineteen: drawn as SRC_OVER, the filter left out. A coordinate
 //     that is no number, or beyond a thousand million: the call draws
 //     nothing.
 //
@@ -122,7 +122,7 @@
 //     picture itself has a sharp edge.
 //   - Blending and effects work in floating point and round to whole 255ths
 //     at the end of each step, where this file's arithmetic rounds every
-//     product: the eighteen modes, as drawing calls, layers, drawColor and
+//     product: the nineteen modes, as drawing calls, layers, drawColor and
 //     colour filters, are within a step of megler.h's table (the scenes' check
 //     allows two). OVERLAY's choice between its two formulas can fall the
 //     other way on a pixel where 2*D is Da to within rounding.
@@ -425,7 +425,7 @@ struct State {
     enum EffectsWhy { whyInkMode, whyInkShaderFilter, whyInkSweep, whyInkFillStroke, whyBitmapMode, whyColour, whyShadowPath,
                       whyShadowText, whyShadowShape, whyShadowLarge, whyShadowMode, whyRestore, whyBlurRestore, whyCanvas, whyOther,
                       effectsWhys };
-    enum { blendModes = 18 };
+    enum { blendModes = 19 };
     std::atomic<uint64_t> effectsBy[effectsWhys] = {}, effectsMode[blendModes] = {};
     std::mutex statsMutex;
     uint64_t statsAt = 0; // when the last line was written (ticks); 0: never
@@ -608,12 +608,13 @@ inline uint32_t blendChannel(int mode, uint32_t s, uint32_t d, uint32_t sa, uint
     }
     case MEGLER_GFX_BLEND_DARKEN: v = mul255(s, 255 - da) + mul255(d, 255 - sa) + std::min(mul255(s, da), mul255(d, sa)); break;
     case MEGLER_GFX_BLEND_LIGHTEN: v = mul255(s, 255 - da) + mul255(d, 255 - sa) + std::max(mul255(s, da), mul255(d, sa)); break;
+    case MEGLER_GFX_BLEND_MULTIPLY: v = mul255(s, 255 - da) + mul255(d, 255 - sa) + mul255(s, d); break;
     default: v = s + mul255(d, 255 - sa); break;
     }
     return v > 255 ? 255 : v;
 }
 
-/// S put on D by one of megler.h's eighteen numbers; both premultiplied.
+/// S put on D by one of megler.h's nineteen numbers; both premultiplied.
 inline uint32_t blended(int mode, uint32_t s, uint32_t d) {
     const uint32_t sa = s >> 24, da = d >> 24;
     if (mode == MEGLER_GFX_BLEND_SRC_OVER) {
@@ -2466,16 +2467,17 @@ bool compositeOf(int blend, D2D1_COMPOSITE_MODE* mode, bool* bounded) {
     }
 }
 
-/// Direct2D's Blend effect's mode for the four of megler.h's that are blends
-/// (its formula, W3C's, is megler.h's for these four: S*(1-Da) + D*(1-Sa) +
-/// Sa*Da*B(S/Sa, D/Da)); false for the others. Its MULTIPLY is not
-/// MODULATE, whose alpha is Sa*Da.
+/// Direct2D's Blend effect's mode for the five of megler.h's that are blends
+/// (its formula, W3C's, is megler.h's for these five: S*(1-Da) + D*(1-Sa) +
+/// Sa*Da*B(S/Sa, D/Da)); false for the others. Its MULTIPLY is megler.h's
+/// MULTIPLY (Android's BlendMode.MULTIPLY), not MODULATE, whose alpha is Sa*Da.
 bool blendOf(int blend, D2D1_BLEND_MODE* mode) {
     switch (blend) {
     case MEGLER_GFX_BLEND_SCREEN: *mode = D2D1_BLEND_MODE_SCREEN; return true;
     case MEGLER_GFX_BLEND_OVERLAY: *mode = D2D1_BLEND_MODE_OVERLAY; return true;
     case MEGLER_GFX_BLEND_DARKEN: *mode = D2D1_BLEND_MODE_DARKEN; return true;
     case MEGLER_GFX_BLEND_LIGHTEN: *mode = D2D1_BLEND_MODE_LIGHTEN; return true;
+    case MEGLER_GFX_BLEND_MULTIPLY: *mode = D2D1_BLEND_MODE_MULTIPLY; return true;
     default: return false;
     }
 }
@@ -2493,9 +2495,9 @@ inline D2D1_VECTOR_4F vectorOf(uint32_t premultipliedColour) {
 
 /// A colour filter (megler.h, THE PAINT) over `colours`: each colour C becomes
 /// the blend of S = the filter's colour and D = C. With S fixed, fifteen of
-/// the eighteen are a sum of C, C's alpha and S, which the ColorMatrix effect
-/// works out as it stands (premultiplied, clamped to 0..1); OVERLAY, DARKEN
-/// and LIGHTEN are the Blend effect with the colour as a Flood.
+/// the nineteen are a sum of C, C's alpha and S, which the ColorMatrix effect
+/// works out as it stands (premultiplied, clamped to 0..1); OVERLAY, DARKEN,
+/// LIGHTEN and MULTIPLY are the Blend effect with the colour as a Flood.
 Ref<ID2D1Image> filtered(GpuContext& g, ID2D1Image* colours, int mode, uint32_t filterColour) {
     Ref<ID2D1Image> out;
     const uint32_t f = premultiplied(filterColour);
@@ -2562,7 +2564,7 @@ Ref<ID2D1Image> filtered(GpuContext& g, ID2D1Image* colours, int mode, uint32_t 
 /// that take colour away where a pixel is partly covered. As GfxHost.cpp's
 /// top says: a bounded composite mode by DrawImage; the rest worked out over
 /// a copy of the box, D, and copied into it:
-///     the four blends               Blend(D, A)
+///     the five blends               Blend(D, A)
 ///     the seven that take colour    D * (1 - C) + mode(A, D), the mode a
 ///     away                          Composite (SRC_IN, DST_IN, SRC_OUT,
 ///                                   DST_ATOP), A itself (SRC), an
@@ -3433,8 +3435,8 @@ inline bool sane(float a, float b, float c, float d) { return sane(a) && sane(b)
 
 /// A transfer mode's number as megler.h has it; any other is drawn as SRC_OVER, and the log says so once.
 int knownBlend(int blend) {
-    if (blend >= MEGLER_GFX_BLEND_CLEAR && blend <= MEGLER_GFX_BLEND_LIGHTEN) return blend;
-    note("blend-number", "a transfer mode numbered %d is not one of megler.h's eighteen: it is drawn as SRC_OVER (said once)", blend);
+    if (blend >= MEGLER_GFX_BLEND_CLEAR && blend <= MEGLER_GFX_BLEND_MULTIPLY) return blend;
+    note("blend-number", "a transfer mode numbered %d is not one of megler.h's nineteen: it is drawn as SRC_OVER (said once)", blend);
     return MEGLER_GFX_BLEND_SRC_OVER;
 }
 
@@ -3455,8 +3457,8 @@ megler_gfx_paint checked(const megler_gfx_paint& given) {
     if (!std::isfinite(p.text_skew_x)) p.text_skew_x = 0;
     if (!std::isfinite(p.letter_spacing)) p.letter_spacing = 0;
     if (p.text_align < MEGLER_GFX_ALIGN_LEFT || p.text_align > MEGLER_GFX_ALIGN_RIGHT) p.text_align = MEGLER_GFX_ALIGN_LEFT;
-    if (p.filter_mode > MEGLER_GFX_BLEND_LIGHTEN) {
-        note("filter-number", "a colour filter by a mode numbered %d, which is not one of megler.h's eighteen, is left out (said once)", p.filter_mode);
+    if (p.filter_mode > MEGLER_GFX_BLEND_MULTIPLY) {
+        note("filter-number", "a colour filter by a mode numbered %d, which is not one of megler.h's nineteen, is left out (said once)", p.filter_mode);
         p.filter_mode = -1;
     }
     if (p.filter_mode < 0) p.filter_mode = -1;
@@ -3679,7 +3681,7 @@ void noteDrawing() {
                                                                    "a blurred layer", "a canvas in another mode", "other"};
         static const char* const modes[State::blendModes] = {"CLEAR", "SRC", "DST", "SRC_OVER", "DST_OVER", "SRC_IN", "DST_IN",
                                                             "SRC_OUT", "DST_OUT", "SRC_ATOP", "DST_ATOP", "XOR", "PLUS", "MODULATE",
-                                                            "SCREEN", "OVERLAY", "DARKEN", "LIGHTEN"};
+                                                            "SCREEN", "OVERLAY", "DARKEN", "LIGHTEN", "MULTIPLY"};
         char why[700];
         used = 0;
         for (int k = 0; k < State::effectsWhys && used + 100 < sizeof(why); k++) {

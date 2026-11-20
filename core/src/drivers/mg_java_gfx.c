@@ -355,6 +355,7 @@ static float blend_channel(int mode, float s, float d, float sa, float da)
     case MEGLER_GFX_BLEND_OVERLAY: return both + (2 * d <= da ? 2 * s * d : sa * da - 2 * (da - d) * (sa - s));
     case MEGLER_GFX_BLEND_DARKEN: return both + (s * da < d * sa ? s * da : d * sa);
     case MEGLER_GFX_BLEND_LIGHTEN: return both + (s * da > d * sa ? s * da : d * sa);
+    case MEGLER_GFX_BLEND_MULTIPLY: return both + s * d;
     default: return s + d * (1 - sa);
     }
 }
@@ -665,7 +666,7 @@ typedef struct gpaint {
 } gpaint;
 
 /* A PorterDuff number the shell can be given: what the framework has no number for is SRC_OVER there already. */
-static int blend_number(i32 mode) { return mode >= 0 && mode <= MEGLER_GFX_BLEND_LIGHTEN ? (int)mode : MEGLER_GFX_BLEND_SRC_OVER; }
+static int blend_number(i32 mode) { return mode >= 0 && mode <= MEGLER_GFX_BLEND_MULTIPLY ? (int)mode : MEGLER_GFX_BLEND_SRC_OVER; }
 
 /*
  * The paint of a drawing call, unpacked and made safe to hand on. No array
