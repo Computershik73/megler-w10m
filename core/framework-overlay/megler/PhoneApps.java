@@ -574,6 +574,13 @@ public final class PhoneApps {
     /** For an intent for an activity of another app the phone has: that app's package and the activity (null when the intent
      *  names none); for any other intent, null. */
     public static String[] target(Intent i) {
+        String[] t = reached(i);
+        return t == null ? null : new String[] { t[0], t[1] };
+    }
+
+    /* target's package and activity, and the component the intent reaches there: the activity, or the <activity-alias> of it
+       that names it or whose filter takes it (null where the intent names no activity). */
+    private static String[] reached(Intent i) {
         ComponentName c = i.getComponent();
         String target = c != null ? c.getPackageName() : i.getPackage();
         if (target == null || target.equals(Native.packageName())) return null;
@@ -581,6 +588,7 @@ public final class PhoneApps {
         if (a == null) return null;
         String activity = c != null ? c.getClassName() : null;
         if (activity != null && activity.startsWith(".")) activity = target + activity;
+        String component = activity;
         // An alias has no class: what is started is the activity it stands for, as Android starts it.
         Activity x = activity(a, activity);
         if (x != null && x.target != null) activity = x.target;
@@ -590,8 +598,8 @@ public final class PhoneApps {
         java.util.List<Activity> acts = activities(a);
         if (activity == null && acts != null && i.getAction() != null && !Intent.ACTION_MAIN.equals(i.getAction()))
             for (Activity y : acts)
-                if (y.enabled && y.exported && y.takes(i)) { activity = y.target != null ? y.target : y.name; break; }
-        return new String[] { target, activity };
+                if (y.enabled && y.exported && y.takes(i)) { activity = y.target != null ? y.target : y.name; component = y.name; break; }
+        return new String[] { target, activity, component };
     }
 
     /*
@@ -636,7 +644,8 @@ public final class PhoneApps {
     /**
      * What another app asked this one for (megler.AppRunner.startRequested): the activity's class and, when the request names
      * an Intent's file ("<class>~<token>", withIntent), that Intent, read and deleted, made by `l`'s classes; the plain intent
-     * for the class otherwise. Its component is this app's activity either way. Never null: { class, Intent }.
+     * for the class otherwise. Its component is this app's activity either way, or the <activity-alias> of it the written
+     * intent reached. Never null: { class, Intent }.
      */
     public static Object[] asked(String request, ClassLoader l) {
         int at = request.indexOf('~');
@@ -657,7 +666,11 @@ public final class PhoneApps {
             file.delete();
         }
         if (i == null) i = new Intent();
-        i.setComponent(new ComponentName(Native.packageName(), cls));
+        // (An <activity-alias> of the activity's that the intent reached stays its component, as on Android: start writes it.)
+        ComponentName reached = i.getComponent();
+        Manifest.Component alias = reached != null && Native.packageName().equals(reached.getPackageName()) ? Manifest.activity(reached.getClassName()) : null;
+        boolean viaAlias = alias != null && "activity-alias".equals(alias.kind) && cls.equals(alias.parentActivity);
+        i.setComponent(viaAlias ? new ComponentName(Native.packageName(), alias.name) : new ComponentName(Native.packageName(), cls));
         i.setPackage(null);
         return new Object[] { cls, i };
     }
@@ -673,10 +686,15 @@ public final class PhoneApps {
 
     /** An intent for an activity of another app the phone has: started by the shell, true; any other intent, false. */
     public static boolean start(Intent i) {
-        String[] t = target(i);
+        String[] t = reached(i);
         if (t == null) return false;
         android.util.Log.i("Megler", "phone apps: starting " + t[0] + (t[1] != null ? "/" + t[1] : ""));
-        if (!Native.launchApp(t[0], t[1] == null ? null : withIntent(t[0], t[1], i))) android.util.Log.w("Megler", "phone apps: " + t[0] + " was not started");
+        // The request names the activity; the intent written for it names the component it reached, as Android's resolution
+        // gives it the started activity -- an <activity-alias> of it, which that app's code may go by (asked keeps it).
+        // Gemini's link to the Google app reaches its MainAssistantDeeplink, an alias of its GatewayActivity, which looks up
+        // its handler by the alias's name, and with GatewayActivity's own found none and finished.
+        Intent sent = t[2] != null && !t[2].equals(t[1]) ? new Intent(i).setComponent(new ComponentName(t[0], t[2])) : i;
+        if (!Native.launchApp(t[0], t[1] == null ? null : withIntent(t[0], t[1], sent))) android.util.Log.w("Megler", "phone apps: " + t[0] + " was not started");
         return true;
     }
 }

@@ -5724,7 +5724,8 @@ static void procs_line(char *out, size_t size, const char *who, const char *proc
  * package's own process, Far in ":far", a service and a receiver in each. Run from the launcher, the app runs as its
  * package's process and ":far" is a class scope of its own (megler.Processes); run for another app's request for Far whose
  * intent reached FarAlias (the script's `alias`: procs_request), an alias of Far's that names no process, it runs as ":far"
- * -- its Application made for that process, /proc/self/cmdline saying it -- and the package's own process is the scope. Either way each component is told its own process by Application.getProcessName,
+ * -- its Application made for that process, /proc/self/cmdline saying it -- Far's intent names the alias, and the package's
+ * own process is the scope. Either way each component is told its own process by Application.getProcessName,
  * ActivityThread.currentProcessName, Process.myProcessName, its ActivityManager and (for the own scope's)
  * /proc/self/cmdline, and has its process's Application, one made there; the other activity, of the other process,
  * answers the first with its process's name. The receiver of the own process hears the broadcast, the other's is not run.
@@ -5745,7 +5746,7 @@ static int run_procs(void)
     expect_line(made, &at, 120);
     if (far) {
         expect_line("I/Megler: another app asked for megler.test.procs.Far with its intent: action null, type null, no data, flags 0x10000000, 1 extra(s)", &at, 120);
-        expect_line("I/ProcsTest: far intent megler.test.procs.Far via=alias", &at, 120);
+        expect_line("I/ProcsTest: far intent megler.test.procs.FarAlias via=alias", &at, 120);
     } else {
         expect_line("I/ProcsTest: main intent megler.test.procs.Main via=null", &at, 120);
     }

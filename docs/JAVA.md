@@ -4597,7 +4597,14 @@ What a Java app asks of the phone beyond its window goes to the shell through
   launcher activity and then it. Before, Total Commander's Wi-Fi plug-in,
   asked to send files (`WifiSendActivity`: an action, a type and the list of
   the files in the extras), opened with nothing to send, behind its main
-  screen.
+  screen. The request names the activity; the Intent names the component
+  it reached, an `<activity-alias>` of that activity where it went through
+  one, and that alias stays its component in the app asked, as Android's
+  resolution leaves it (`PhoneApps.asked`; the alias's `android:exported` is
+  the one looked at). Gemini's link reaches the Google app's
+  `MainAssistantDeeplink`, an alias of its `GatewayActivity`, which finds the
+  handler for the link by the name of the alias: named as the activity, it
+  found none and finished.
   - An intent that names the package and an action, with no class, goes to
     the first exported activity of that app whose filter takes it.
   - Megler's `Parcel` keeps objects beside its bytes and is of one process,

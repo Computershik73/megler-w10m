@@ -591,7 +591,9 @@ public final class AppRunner {
     private static Intent requested(String request) {
         Object[] asked = PhoneApps.asked(request, classLoader());
         String cls = (String) asked[0];
-        Manifest.Component c = Manifest.activity(cls);
+        // (the component the intent reached: the activity, or an <activity-alias> of it, whose android:exported is the one
+        // Android looks at)
+        Manifest.Component c = Manifest.activity(((Intent) asked[1]).getComponent().getClassName());
         if (c == null || !c.exported) {
             android.util.Log.w("Megler", "another app asked for " + cls + ", which this app " + (c == null ? "does not have" : "does not export"));
             return null;

@@ -99,8 +99,10 @@ public final class AppResults {
 
     // ---- the side of the app the activity is in
 
-    /** Another app asked for this app's activity `cls`. */
+    /** Another app asked for this app's activity `cls` (or an <activity-alias> of it, the activity it stands for: what finishes). */
     static void requested(String cls) {
+        Manifest.Component c = Manifest.activity(cls);
+        if (c != null && "activity-alias".equals(c.kind) && c.parentActivity != null) cls = c.parentActivity;
         synchronized (sRequested) { sRequested.add(cls); }
     }
 
