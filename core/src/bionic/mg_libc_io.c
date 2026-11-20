@@ -62,6 +62,8 @@ static mg_lock g_mount_lock = MG_LOCK_INIT;        /* held by whoever changes th
 #define MOUNT_AT(i) (&g_mount_blocks[(i) / MOUNT_BLOCK][(i) % MOUNT_BLOCK])
 enum { MOUNT_LINK = 1, MOUNT_READ_ONLY = 2, MOUNT_OTHER = 4, MOUNT_HOST_FILE = 8 };
 static char g_package[160] = "com.example.app";
+/* The Android process the app runs as (mg_fs_set_process), where it is not the package's own: what /proc/self says. */
+static char g_process[200];
 static char g_internal[256] = "/data/data/com.example.app";
 static char g_external[64] = EXTERNAL;
 static char g_cwd[512] = "/";
@@ -522,6 +524,20 @@ static bool other_apk_mount(const char *g)
 const char *mg_fs_internal_dir(void) { return g_internal; }
 const char *mg_fs_external_dir(void) { return g_external; }
 const char *mg_fs_package(void) { return g_package; }
+
+/*
+ * The Android process the app runs as, named as its manifest names it ("<package>:googleapp"): the process of the activity it
+ * was started for, where that is not the package's own (megler.Processes.own, before any code of the app's runs). Android
+ * names the process so in /proc/self/cmdline and the main thread so in /proc/self/status, and the app's code that reads
+ * them is told the name Application.getProcessName tells: the Google app chooses the object graph of the process it runs
+ * in by it. Said once, on the app's main thread.
+ */
+void mg_fs_set_process(const char *process)
+{
+    mg_strlcpy(g_process, process && strcmp(process, g_package) ? process : "", sizeof(g_process));
+}
+
+static const char *process_name(void) { return g_process[0] ? g_process : g_package; }
 
 /* A path that begins with one of the shared storage's other names, said with its own; else the path as it is. Takes `g`. */
 static char *without_alias(char *g)
@@ -1050,7 +1066,7 @@ static char *synthetic(const char *g, size_t *size)
         memcpy(t.s, words, n * sizeof(gulong));
         t.n = n * sizeof(gulong);
     } else if (!strcmp(g, "/proc/self/cmdline")) {
-        tb_add(&t, "%s", g_package);
+        tb_add(&t, "%s", process_name());
         t.n++;                 /* the terminating NUL is part of the file */
     } else if (!strcmp(g, "/proc/self/status")) {
         /* The memory lines as the kernel writes them: what the process uses (Windows' count of it) is its resident and
@@ -1061,7 +1077,7 @@ static char *synthetic(const char *g, size_t *size)
         if (rss > hwm_kb) hwm_kb = rss;
         hwm = hwm_kb > rss ? hwm_kb : rss;
         tb_add(&t, "Name:\t%.15s\nState:\tR (running)\nTgid:\t4242\nPid:\t4242\nPPid:\t1\nTracerPid:\t0\nUid:\t10100\t10100\t10100\t10100\n"
-                   "Gid:\t10100\t10100\t10100\t10100\n", g_package);
+                   "Gid:\t10100\t10100\t10100\t10100\n", process_name());
         tb_add(&t, "VmPeak:\t%8u kB\nVmSize:\t%8u kB\nVmLck:\t%8u kB\nVmPin:\t%8u kB\nVmHWM:\t%8u kB\nVmRSS:\t%8u kB\n"
                    "RssAnon:\t%8u kB\nRssFile:\t%8u kB\nRssShmem:\t%8u kB\nVmData:\t%8u kB\nVmStk:\t%8u kB\nVmExe:\t%8u kB\n"
                    "VmLib:\t%8u kB\nVmPTE:\t%8u kB\nVmPMD:\t%8u kB\nVmSwap:\t%8u kB\nThreads:\t1\n",

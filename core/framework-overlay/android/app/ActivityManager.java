@@ -19,6 +19,9 @@
 // 256 MB, what Runtime.maxMemory says (core/src/dvm/mg_dvm_jvm.c). Everything else is the original's, unchanged.
 // And getService, the activity manager's hidden interface (megler.PlatformInterfaces'), which an app of the platform's own
 // (Android's Settings) asks for the current user; it was not there (NoSuchMethodError).
+// And the process running with this pid (getRunningAppProcesses, getMyMemoryState) is named as Application.getProcessName
+// names it to the code that asks (megler.Processes.current): the app's own scope is the process of the activity it was
+// started for, the Google app's ":googleapp", where it was the package's always.
 package android.app;
 public class ActivityManager {
     /** The activity manager's hidden interface: for an app of the platform's own, megler.PlatformInterfaces' (the phone's one
@@ -218,10 +221,10 @@ public class ActivityManager {
     public boolean isLowRamDevice() { return false; }
     public static boolean isRunningInTestHarness() { return false; }
     public static boolean isUserAMonkey() { return false; }
-    public static void getMyMemoryState(RunningAppProcessInfo out) { out.importance = RunningAppProcessInfo.IMPORTANCE_FOREGROUND; out.processName = megler.Native.packageName(); out.pid = android.os.Process.myPid(); }
+    public static void getMyMemoryState(RunningAppProcessInfo out) { out.importance = RunningAppProcessInfo.IMPORTANCE_FOREGROUND; out.processName = megler.Processes.current(); out.pid = android.os.Process.myPid(); }
     public java.util.List<RunningAppProcessInfo> getRunningAppProcesses() {
         java.util.ArrayList<RunningAppProcessInfo> l = new java.util.ArrayList<>();
-        l.add(new RunningAppProcessInfo(megler.Native.packageName(), android.os.Process.myPid(), new String[] { megler.Native.packageName() }));
+        l.add(new RunningAppProcessInfo(megler.Processes.current(), android.os.Process.myPid(), new String[] { megler.Native.packageName() }));
         // The apps whose requests for feature modules the Play Store is working on (megler.PlaySplits): they asked from the
         // front, where its service looks for them, and are behind only because the phone shows one app. (Their processes
         // are other ones of Windows: no pid of this one's kind.)

@@ -50,11 +50,9 @@ public final class ActivityThread {
     public static android.content.pm.IPackageManager getPackageManager() { return android.app.AppGlobals.getPackageManager(); }
     public static String currentPackageName() { Application a = currentApplication(); return a != null ? a.getPackageName() : null; }
     public static String currentOpPackageName() { return currentPackageName(); }
-    /* As Application.getProcessName (overlaid): the process of the code that asks, a class scope's for code of one. */
-    public static String currentProcessName() {
-        String scoped = megler.Processes.nameOf(dalvik.system.VMStack.getClosestUserClassLoader());
-        return scoped != null ? scoped : currentPackageName();
-    }
+    /* As Application.getProcessName (overlaid): the process of the code that asks, a class scope's for code of one, the own
+       scope's (megler.Processes.own) for the app's. */
+    public static String currentProcessName() { return megler.Processes.current(); }
     public static boolean isSystem() { return false; }
 
     public Application getApplication() { return mInitialApplication; }

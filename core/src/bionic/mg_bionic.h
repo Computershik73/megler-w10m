@@ -365,6 +365,8 @@ char *mg_fs_host_path(const char *guest_path);
 const char *mg_fs_internal_dir(void);  /* guest paths */
 const char *mg_fs_external_dir(void);
 const char *mg_fs_package(void);
+/* The Android process the app runs as where it is another than its package's (megler.Processes.own): /proc/self says it. */
+void mg_fs_set_process(const char *process);
 
 /* Writes what an app wrote into shared file mappings back to their files (mg_libc_mem.c); at the app's end. */
 void mg_mem_write_back(void);

@@ -80,6 +80,11 @@
 // asked once the app is in front again (hostPause), to the one made again in its place where it was (relaunch); and the
 // provider of what was picked is the app's from its start (run).
 //
+// And the app runs as the Android process its manifest names for the activity it is started for (run, megler.Processes.own):
+// the Google app's launcher activity is in ":googleapp", whose Application builds that process's object graph; told the
+// package's own process, it built that one and GoogleAppActivity ended its start with "Cannot cast tdd to bkxw". An activity
+// of another of the app's processes is made in that process's class scope, with its Application (make), as its services are.
+//
 // Everything else is the original's, unchanged.
 package megler;
 
@@ -168,6 +173,13 @@ public final class AppRunner {
         if (Thread.getDefaultUncaughtExceptionHandler() == null) Thread.setDefaultUncaughtExceptionHandler(uncaught);
         Manifest.read();
         Screen.started();
+        // The process the app runs as, named before any of its code runs (megler.Processes.started): the one the manifest names
+        // for the activity it is started for -- the one another app asked for, else its launcher activity -- as Android starts
+        // that process for it. The Google app's launcher activity is in ":googleapp", and its Application builds the object
+        // graph of the process it is told it runs in.
+        String request = Native.requestedActivity();
+        Manifest.Component first = request != null && !request.startsWith(PlaySplits.MARKER) ? askedFor(request) : null;
+        Processes.started(first != null ? first : Manifest.activity(activityClass));
         installClassLoader();
         // (the flag cronet-netlog: Cronet's own network log of an app that carries Cronet, hooked before any of its code runs)
         CronetNetLog.install(classLoader());
@@ -214,8 +226,10 @@ public final class AppRunner {
         // is the app's first, with the intent the other app wrote, as Android starts the process for it -- not the launcher
         // activity and then it. Total Commander wakes its plug-ins by their LoadingActivity, and each opened with its main screen
         // as well. A request for nothing this app exports, or for an activity that was not made, leaves the start the launcher's:
-        // startActivity makes the activity from the main loop, so the launcher's turn comes there too, after it.
-        String request = Native.requestedActivity();
+        // startActivity makes the activity from the main loop, so the launcher's turn comes there too, after it. (The request
+        // was taken before the Application was made, which runs in that activity's process; one that came while it was made
+        // is taken now, as before, and its activity runs in its own process's scope where that is another.)
+        if (request == null) request = Native.requestedActivity();
         // (An app's requests for its feature modules, which the Play Store is started for, are no activity: taken up from
         // the main loop after the launcher's activity, as they were before, megler.PlaySplits.)
         if (request != null && request.startsWith(PlaySplits.MARKER)) {
@@ -272,7 +286,7 @@ public final class AppRunner {
                 return;
             }
             logged = e;
-            android.util.Log.e("AndroidRuntime", "FATAL EXCEPTION: " + t.getName() + "\nProcess: " + Native.packageName() + ", PID: " + android.os.Process.myPid(), e);
+            android.util.Log.e("AndroidRuntime", "FATAL EXCEPTION: " + t.getName() + "\nProcess: " + Processes.own() + ", PID: " + android.os.Process.myPid(), e);
         }
     }
     static final Thread.UncaughtExceptionHandler SERVICE_THREAD_ENDS = (t, e) ->
@@ -406,6 +420,18 @@ public final class AppRunner {
         // does). The other two are other processes' on Android: the app's Instrumentation neither makes them nor is called
         // at the steps of their life (Activity.meglerOtherProcess).
         boolean gms = MicroG.hosts(info), screen = SystemScreens.isScreen(cls);
+        // An activity the manifest puts in another process than the one the app runs as (megler.Processes.own) is made in that
+        // process's class scope, on a context of that process and with its Application (megler.Processes), as its services
+        // are; the app's Instrumentation, the own process's, is not asked for it or called at the steps of its life. The
+        // Google app's ":googleapp" opens Gemini's screens in ":search", whose Application builds that process's object graph.
+        // Its intent's objects are made again by that scope's classes, as a Parcel between two processes makes them.
+        Processes.Scope process = gms || screen || info == null ? null : Processes.ofActivity(info);
+        if (process != null) {
+            Activity a = (Activity) process.classLoader().loadClass(cls).getDeclaredConstructor().newInstance();
+            a.meglerOtherProcess();
+            a.meglerAttach(process.activityBase(), process.application(), Processes.forLoader(intent, process.classLoader()), info, caller, request);
+            return a;
+        }
         Activity a = screen ? (Activity) Class.forName(cls).newInstance()
                 : gms ? MicroG.newActivity(cls) : android.app.ActivityThread.meglerInstrumentation().newActivity(classLoader(), cls, intent);
         if (gms || screen) a.meglerOtherProcess();
@@ -555,6 +581,13 @@ public final class AppRunner {
      * has the files to send in), else the plain one for the class; null, with a line in the log, for an activity the manifest
      * does not have or does not export.
      */
+    /* The activity of the manifest another app's request names ("<class>" or "<class>~<its intent's file>"), where the app
+       exports it (as requested below starts it); null otherwise. Read before the request's intent is. */
+    private static Manifest.Component askedFor(String request) {
+        int at = request.indexOf('~');
+        Manifest.Component c = Manifest.activity(at < 0 ? request : request.substring(0, at));
+        return c != null && c.exported ? c : null;
+    }
     private static Intent requested(String request) {
         Object[] asked = PhoneApps.asked(request, classLoader());
         String cls = (String) asked[0];
@@ -1038,6 +1071,8 @@ public final class AppRunner {
         ArrayList<ComponentCallbacks2> to = new ArrayList<>(sStack);
         to.addAll(Services.running());
         if (sApp != null) to.add(sApp);
+        // (and the Applications of the app's other processes, megler.Processes: theirs are hidden too)
+        to.addAll(Processes.applications());
         android.util.Log.i("Megler", "the window is hidden: onTrimMemory(" + level + ") to " + to.size() + " component(s)");
         for (ComponentCallbacks2 c : to) {
             try {

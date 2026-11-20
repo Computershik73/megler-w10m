@@ -115,6 +115,9 @@
      * megler.AppRunner.startRequested would get next; null when there is none. megler.AppRunner.run asks as the app starts.
      */
     public static native String requestedActivity();
+    /** The Android process the app runs as (megler.Processes.own: its first activity's), for /proc/self's cmdline and status to
+     *  say it (core/src/drivers/mg_java.c). */
+    public static native void setProcessName(String process);
     /**
      * The apps the phone has (megler_run_config.apps_dir), a line for each: package, launcher activity, label, version name,
      * version code, separated by tabs; null when the shell told none. megler.PhoneApps reads it.
