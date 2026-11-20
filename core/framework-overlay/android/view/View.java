@@ -90,7 +90,12 @@
 // fragments and react-native-screens end a leaving view's so, ViewGroup.endViewTransition -- has taken the view from its
 // parent and from the window: it is not drawn into that parent's list any more, and no list of its own is recorded for it.
 // (An animation such a listener starts on the view at the set's end is cleared with the set, as Android's
-// finishAnimatingView clears whatever the view has then.) Everything else is the original's, unchanged.
+// finishAnimatingView clears whatever the view has then.)
+//
+// And dispatchAttachedToWindow does nothing for a view attached to that window already, and detaches one attached to another
+// first: each onAttachedToWindow is followed by an onDetachedFromWindow before the next, as views that set something up there
+// and tear it down at their detach expect (react-native-screens' TabsContainer throws at a second setup; see the overlay's
+// ViewGroup, issue #22). Everything else is the original's, unchanged.
 package android.view;
 
 import android.animation.StateListAnimator;
@@ -482,6 +487,11 @@ public class View implements Drawable.Callback, KeyEvent.Callback {
     public final void meglerAttach(megler.ViewRoot root) { dispatchAttachedToWindow(root, VISIBLE); }
     public final void meglerDetach() { dispatchDetachedFromWindow(); }
     void dispatchAttachedToWindow(megler.ViewRoot root, int visibility) {
+        /* Attached already: not again (its onAttachedToWindow and listeners would hear a second attach without a detach between);
+           attached to another window: detached from that one first. (ViewGroup goes on to its children, each of which says so
+           for itself.) */
+        if (mRoot == root) return;
+        if (mRoot != null) dispatchDetachedFromWindow();
         mRoot = root;
         if (mLayoutParams != null) mLayoutParams.resolveLayoutDirection(getLayoutDirection());
         mWindowAttachCount++;

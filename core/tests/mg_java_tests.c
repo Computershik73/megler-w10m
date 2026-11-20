@@ -4334,7 +4334,10 @@ static int run_data(void)
                                          "preference-image-view",
                                          /* And the Bluetooth adapter's listen methods, each throwing IOException as Android's does with
                                             no Bluetooth service, none saying null (issue #19). */
-                                         "bluetooth-listen" };
+                                         "bluetooth-listen",
+                                         /* And views attached and detached in pairs, whatever adds or removes them (issue #22): the
+                                            line attach-pairs below. */
+                                         "attach-pairs" };
     int at = -1, want = 0, run = 0, line, i;
     char text[120];
     if (g_script_count) sscanf(g_script[0], "run:%d", &want);
@@ -4564,6 +4567,14 @@ static int run_data(void)
        was shown again hears it once back; a row's own visibility changed while it is out says nothing. */
     CHECK(wait_line("I/DataTest: visibility-scrap attached=[a+ b+] out-shown=false put-back=[a+ a+ b+] dropped=[bx] b-background=true "
                     "missed=[a- a+] a-background=true own-while-out=[a+] removed=[a- ax]", 0, 30) >= 0);
+    /* The step "attach-pairs": each view's onAttachedToWindow and onDetachedFromWindow in pairs, as on Android. A child added in its
+       group's own onAttachedToWindow, as react-native-screens' ScreenStack adds its screens, attached once and after it (it was
+       attached twice, issue #22); a sibling added in a child's, once; a sibling taken out in a child's onDetachedFromWindow, and the
+       children after it detached all the same; a row taken out and put back hearing nothing, removed so its detach; a child in a
+       transition attached until it ends; removeAllViews, a child moved between groups, and the whole taken out of the window. */
+    CHECK(wait_line("I/DataTest: attach-pairs stack=[s+ c+] removed=[cx sx] again=[s+ c+] removed=[cx sx] sibling=[g+ a+ b+] "
+                    "removes=[px qx rx ox] r-attached=false back=[o+ q+ r+] scrap=[] dropped=[wx] transition=[]true ended=[tx] "
+                    "all=[2x 1x] moved=[mx m+] gone=[lx fx mx nx]", 0, 30) >= 0);
     /* The view animation of the step "animation-listener": its listener told through the view's handler, after the frames that
        started and ended it, not inside its parent's dispatchDraw (Animation.fireStart; Telegram's settings ended the app). */
     CHECK(wait_line("I/DataTest: animation-listener heard=start end", 0, 30) >= 0);

@@ -2447,6 +2447,7 @@ public class Main extends Activity {
         links();
         preferenceImageView();
         bluetoothListen();
+        attachPairs();
         Log.i("DataTest", "done ok=" + ok + " failed=" + failed);
         doneLogged = true;
         mediaSession();
@@ -11531,6 +11532,141 @@ public class Main extends Activity {
             }
             detail = said.toString().trim();
             return all;
+        });
+    }
+
+    /**
+     * A group that writes down its attach (+) and detach (x) as HeardRow does, and runs what it is given in its own
+     * onAttachedToWindow and onDetachedFromWindow; a child of one sees whether its parent's onAttachedToWindow has returned
+     * ("early" if not). react-native-screens' ScreenStack commits its fragments in its onAttachedToWindow, adding its screens
+     * to itself there.
+     */
+    static class PairRow extends android.widget.FrameLayout {
+        final String name;
+        final StringBuilder heard;
+        Runnable onAttach, onDetach;
+        boolean attachReturned;
+        PairRow(Context c, String name, StringBuilder heard) { super(c); this.name = name; this.heard = heard; }
+        @Override protected void onAttachedToWindow() {
+            super.onAttachedToWindow();
+            boolean early = getParent() instanceof PairRow && !((PairRow) getParent()).attachReturned;
+            heard.append(name).append('+').append(early ? "early" : "").append(' ');
+            if (onAttach != null) onAttach.run();
+            attachReturned = true;
+        }
+        @Override protected void onDetachedFromWindow() {
+            super.onDetachedFromWindow();
+            attachReturned = false;
+            if (onDetach != null) onDetach.run();
+            heard.append(name).append('x').append(' ');
+        }
+        void out(android.view.View row) { detachViewFromParent(row); }
+        void back(android.view.View row, int index) { attachViewToParent(row, index, row.getLayoutParams()); }
+        void drop(android.view.View row) { removeDetachedView(row, false); }
+    }
+
+    /**
+     * Attach and detach in pairs, as Android's views hear them: each view's onAttachedToWindow once as it joins the window and its
+     * onDetachedFromWindow once as it leaves, never two attaches without a detach between, whatever adds or removes it. Said
+     * once the window is there (the line attach-pairs):
+     *  - stack: a group that adds a child in its own onAttachedToWindow, as ScreenStack adds its screens: the child attached
+     *    once, after the group's onAttachedToWindow returned, as Android's FLAG_PREVENT_DISPATCH_ATTACHED_TO_WINDOW has it (it
+     *    was attached twice, and BBPlayer's tabs threw at the second setup, issue #22); taken out and put in again, the same;
+     *  - sibling: a child that adds a sibling in its onAttachedToWindow: the sibling attached once;
+     *  - removes: a child that takes an earlier sibling out in its onDetachedFromWindow: the children after it detached all
+     *    the same (one was left attached), and attached once when the group is put back;
+     *  - scrap: a child taken out of its group for a layout and put back hears nothing; removed so, its detach;
+     *  - transition: a child removed while it is in a transition stays attached until the transition ends;
+     *  - all: removeAllViews detaches each child once; moved: a child taken from one group and added to another, its detach,
+     *    then its attach; gone: the whole taken out of the window, each view still in it detached once.
+     */
+    private void attachPairs() {
+        step("attach-pairs", () -> {
+            final StringBuilder heard = new StringBuilder();
+            final android.widget.FrameLayout host = new android.widget.FrameLayout(this);
+            host.addOnAttachStateChangeListener(new android.view.View.OnAttachStateChangeListener() {
+                @Override public void onViewAttachedToWindow(android.view.View v) {
+                    host.removeOnAttachStateChangeListener(this);
+                    host.post(() -> {
+                        StringBuilder said = new StringBuilder();
+                        // stack
+                        final PairRow stack = new PairRow(Main.this, "s", heard), screen = new PairRow(Main.this, "c", heard);
+                        stack.onAttach = () -> { if (screen.getParent() == null) stack.addView(screen); };
+                        host.addView(stack);
+                        said.append("stack=").append(taken(heard));
+                        host.removeView(stack);
+                        said.append(" removed=").append(taken(heard));
+                        host.addView(stack);
+                        said.append(" again=").append(taken(heard));
+                        host.removeView(stack);
+                        said.append(" removed=").append(taken(heard));
+                        // sibling
+                        final PairRow group = new PairRow(Main.this, "g", heard), a = new PairRow(Main.this, "a", heard), b = new PairRow(Main.this, "b", heard);
+                        a.onAttach = () -> { if (b.getParent() == null) group.addView(b); };
+                        group.addView(a);
+                        host.addView(group);
+                        said.append(" sibling=").append(taken(heard));
+                        host.removeView(group);
+                        taken(heard);
+                        // removes
+                        final PairRow outer = new PairRow(Main.this, "o", heard), p = new PairRow(Main.this, "p", heard), q = new PairRow(Main.this, "q", heard),
+                                      r = new PairRow(Main.this, "r", heard);
+                        q.onDetach = () -> { if (p.getParent() == outer) outer.removeView(p); };
+                        outer.addView(p);
+                        outer.addView(q);
+                        outer.addView(r);
+                        host.addView(outer);
+                        taken(heard);
+                        host.removeView(outer);
+                        said.append(" removes=").append(taken(heard)).append(" r-attached=").append(r.isAttachedToWindow());
+                        host.addView(outer);
+                        said.append(" back=").append(taken(heard));
+                        host.removeView(outer);
+                        taken(heard);
+                        // scrap
+                        final PairRow list = new PairRow(Main.this, "l", heard), row = new PairRow(Main.this, "w", heard);
+                        list.addView(row);
+                        host.addView(list);
+                        taken(heard);
+                        list.out(row);
+                        list.back(row, 0);
+                        said.append(" scrap=").append(taken(heard));
+                        list.out(row);
+                        list.drop(row);
+                        said.append(" dropped=").append(taken(heard));
+                        // transition
+                        final PairRow leaving = new PairRow(Main.this, "t", heard);
+                        list.addView(leaving);
+                        taken(heard);
+                        list.startViewTransition(leaving);
+                        list.removeView(leaving);
+                        said.append(" transition=").append(taken(heard)).append(leaving.isAttachedToWindow());
+                        list.endViewTransition(leaving);
+                        said.append(" ended=").append(taken(heard));
+                        // all
+                        list.addView(new PairRow(Main.this, "1", heard));
+                        list.addView(new PairRow(Main.this, "2", heard));
+                        taken(heard);
+                        list.removeAllViews();
+                        said.append(" all=").append(taken(heard));
+                        // moved
+                        final PairRow from = new PairRow(Main.this, "f", heard), to = new PairRow(Main.this, "n", heard), moved = new PairRow(Main.this, "m", heard);
+                        from.addView(moved);
+                        host.addView(from);
+                        host.addView(to);
+                        taken(heard);
+                        from.removeView(moved);
+                        to.addView(moved);
+                        said.append(" moved=").append(taken(heard));
+                        ((android.view.ViewGroup) host.getParent()).removeView(host);
+                        said.append(" gone=").append(taken(heard));
+                        Log.i("DataTest", "attach-pairs " + said);
+                    });
+                }
+                @Override public void onViewDetachedFromWindow(android.view.View v) {}
+            });
+            ((android.view.ViewGroup) text.getParent()).addView(host, new android.view.ViewGroup.LayoutParams(10, 10));
+            return true;
         });
     }
 
