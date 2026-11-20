@@ -4810,6 +4810,105 @@ public class Main extends Activity {
     }
 
     /**
+     * Android's hidden PackageParser as LibChecker's library index uses it, where its own manifest reader fails (issue #18: the
+     * class was not there, NoClassDefFoundError): SDK_VERSION set by reflection, as LibChecker does at its start; this app's
+     * own APK parsed with flags 7 into its package -- the application and its SDKs, the activities with their filters
+     * (actions, categories, schemes, the default category) exported as Android decides it, the receivers, the services with
+     * their processes and permissions, the provider -- read through the fields and IntentFilter's methods LibChecker reads;
+     * and Android's errors for another app's APK that is no zip and for a file that is not there.
+     */
+    private void packageParser() {
+        step("package-parser", () -> {
+            Class<?> parserClass = Class.forName("android.content.pm.PackageParser");
+            java.lang.reflect.Field sdk = parserClass.getDeclaredField("SDK_VERSION");
+            sdk.setAccessible(true);
+            int sdkWas = sdk.getInt(null);
+            sdk.set(null, Integer.MAX_VALUE);
+            boolean bypassed = sdk.getInt(null) == Integer.MAX_VALUE;
+            sdk.set(null, sdkWas);
+            Object parser = parserClass.getConstructor().newInstance();
+            java.lang.reflect.Method parse = parserClass.getMethod("parsePackage", File.class, int.class);
+            Object pkg = parse.invoke(parser, new File(getPackageCodePath()), 7);
+            Class<?> pkgClass = pkg.getClass();
+            android.content.pm.ApplicationInfo app = (android.content.pm.ApplicationInfo) pkgClass.getField("applicationInfo").get(pkg);
+            boolean application = "megler.test.data".equals(pkgClass.getField("packageName").get(pkg)) && "megler.test.data.DataApplication".equals(app.className)
+                    && app.minSdkVersion == 21 && app.targetSdkVersion == 28 && getPackageCodePath().equals(app.sourceDir)
+                    && Integer.valueOf(1).equals(pkgClass.getField("mVersionCode").get(pkg)) && "1.0".equals(pkgClass.getField("mVersionName").get(pkg));
+            Object main = parsedComponent(pkg, "activities", "megler.test.data.Main"), linked = parsedComponent(pkg, "activities", "megler.test.data.Main$Linked");
+            Object answer = parsedComponent(pkg, "activities", "megler.test.data.Main$Answer"), clear = parsedComponent(pkg, "activities", "megler.test.data.Main$Clear");
+            Object relay = parsedComponent(pkg, "receivers", "megler.test.data.Main$Relay"), off = parsedComponent(pkg, "receivers", "megler.test.data.Main$Off");
+            Object elsewhere = parsedComponent(pkg, "services", "megler.test.data.Main$Elsewhere"), work = parsedComponent(pkg, "services", "megler.test.data.Main$Work");
+            Object sync = parsedComponent(pkg, "services", "megler.test.data.Main$SyncService"), synced = parsedComponent(pkg, "providers", "megler.test.data.Main$Synced");
+            if (main == null || linked == null || answer == null || clear == null || relay == null || off == null || elsewhere == null || work == null || sync == null
+                    || synced == null) {
+                detail = "a component not found: main=" + main + " linked=" + linked + " answer=" + answer + " clear=" + clear + " relay=" + relay + " off=" + off
+                        + " elsewhere=" + elsewhere + " work=" + work + " sync=" + sync + " synced=" + synced;
+                return false;
+            }
+            // The launcher's filter as LibChecker reads one: its actions, its categories, its schemes.
+            android.content.IntentFilter launcher = parsedIntents(main).get(0);
+            java.util.ArrayList<String> actions = new java.util.ArrayList<>(), categories = new java.util.ArrayList<>();
+            for (java.util.Iterator<String> i = launcher.actionsIterator(); i.hasNext();) actions.add(i.next());
+            for (java.util.Iterator<String> i = launcher.categoriesIterator(); i != null && i.hasNext();) categories.add(i.next());
+            boolean filters = parsedIntents(main).size() == 1 && actions.equals(Arrays.asList("android.intent.action.MAIN"))
+                    && categories.equals(Arrays.asList("android.intent.category.LAUNCHER")) && launcher.countDataSchemes() == 0
+                    && !launcher.getClass().getField("hasDefault").getBoolean(launcher);
+            android.content.IntentFilter web = parsedIntents(linked).get(0);
+            boolean data = parsedIntents(linked).size() == 5 && web.countDataSchemes() == 1 && "https".equals(web.getDataScheme(0))
+                    && web.hasCategory("android.intent.category.BROWSABLE") && web.getClass().getField("hasDefault").getBoolean(web)
+                    && "megler-port".equals(parsedIntents(linked).get(3).getDataScheme(0));
+            boolean exported = parsedInfo(main).exported && parsedInfo(answer).exported && !parsedInfo(clear).exported && !parsedInfo(relay).exported;
+            // (Flags 7 have PARSE_IGNORE_PROCESSES: every component in the package's process, as Android's buildProcessName gives it;
+            // without them the service's own.)
+            Object apart = parsedComponent(parse.invoke(parser, new File(getPackageCodePath()), 0), "services", "megler.test.data.Main$Elsewhere");
+            String processes = parsedInfo(elsewhere).processName + "," + (apart == null ? null : parsedInfo(apart).processName) + "," + parsedInfo(main).processName;
+            Object component = main.getClass().getMethod("getComponentName").invoke(main);
+            boolean others = !parsedInfo(off).enabled && "megler.test.data,megler.test.data:elsewhere,megler.test.data".equals(processes)
+                    && "android.permission.BIND_JOB_SERVICE".equals(((android.content.pm.ServiceInfo) parsedInfo(work)).permission)
+                    && parsedIntents(sync).size() == 1 && "android.content.SyncAdapter".equals(parsedIntents(sync).get(0).getAction(0))
+                    && "megler.test.sync".equals(((android.content.pm.ProviderInfo) parsedInfo(synced)).authority)
+                    && new android.content.ComponentName("megler.test.data", "megler.test.data.Main").equals(component);
+            // Android's errors: an APK that is no zip (the other app's, as the suite writes it) and one that is not there.
+            int notZip = parsedError(parser, parse, new File("/data/app/com.example.other-1/base.apk")), missing = parsedError(parser, parse, new File(getFilesDir(), "none.apk"));
+            detail = "bypassed=" + bypassed + " application=" + application + " (" + app.className + " " + app.minSdkVersion + "/" + app.targetSdkVersion + ") filters=" + filters
+                    + " (" + actions + " " + categories + ") data=" + data + " exported=" + exported + " others=" + others + " (off " + parsedInfo(off).enabled + ", processes " + processes + ", "
+                    + ((android.content.pm.ServiceInfo) parsedInfo(work)).permission + ", " + parsedIntents(sync).size() + ", "
+                    + ((android.content.pm.ProviderInfo) parsedInfo(synced)).authority + ", " + component + ") errors=" + notZip + "," + missing
+                    + " components=" + ((java.util.List<?>) pkgClass.getField("activities").get(pkg)).size() + "/" + ((java.util.List<?>) pkgClass.getField("receivers").get(pkg)).size()
+                    + "/" + ((java.util.List<?>) pkgClass.getField("services").get(pkg)).size() + "/" + ((java.util.List<?>) pkgClass.getField("providers").get(pkg)).size();
+            return bypassed && application && filters && data && exported && others
+                    && notZip == -100 && missing == -100;  // INSTALL_PARSE_FAILED_NOT_APK, hidden API
+        });
+    }
+
+    /* The component of a parsed package's list (activities, receivers, services, providers) of that class, or null. */
+    private static Object parsedComponent(Object pkg, String list, String className) throws Exception {
+        for (Object c : (java.util.List<?>) pkg.getClass().getField(list).get(pkg))
+            if (className.equals(c.getClass().getField("className").get(c))) return c;
+        return null;
+    }
+
+    @SuppressWarnings("unchecked")
+    private static java.util.List<android.content.IntentFilter> parsedIntents(Object component) throws Exception {
+        return (java.util.List<android.content.IntentFilter>) component.getClass().getField("intents").get(component);
+    }
+
+    private static android.content.pm.ComponentInfo parsedInfo(Object component) throws Exception {
+        return (android.content.pm.ComponentInfo) component.getClass().getField("info").get(component);
+    }
+
+    /* The error of PackageParserException that parsing the file ends in; 0 when it is parsed. */
+    private static int parsedError(Object parser, java.lang.reflect.Method parse, File file) throws Exception {
+        try {
+            parse.invoke(parser, file, 7);
+            return 0;
+        } catch (java.lang.reflect.InvocationTargetException e) {
+            Throwable t = e.getCause();
+            return t != null && t.getClass().getName().equals("android.content.pm.PackageParser$PackageParserException") ? t.getClass().getField("error").getInt(t) : 1;
+        }
+    }
+
+    /**
      * The certificates of Android's key store's key pairs, as Google Play services' device registration and many apps read them: an
      * X509Certificate (which they cast to), self-signed with the pair's key, with the spec's subject, serial number and dates (one
      * after 2049, a GeneralizedTime) or Android's own (CN=fake, 1, 1970 to 2048), kept for the next run as it was made; a key set with
@@ -6410,6 +6509,7 @@ public class Main extends Activity {
                 && other.nativeLibraryDir.startsWith("/data/app/com.example.other-1/lib/") && "/data/data/com.example.other".equals(other.dataDir)
                 && file.isFile() && file.length() == 24 && "PK the other app's APK".equals(head) && !written && folder && !none;
         });
+        packageParser();
         // Its activities, every one, as the shell described them (the apps folder's com.example.other/activities.json), as a
         // shortcut maker lists them: each with whether it is exported; both launcher entries, the alias's too; the one that
         // makes shortcuts, with its own label and icon (3 x 3, the app's is 2 x 2); not for a link. Then two are started by
