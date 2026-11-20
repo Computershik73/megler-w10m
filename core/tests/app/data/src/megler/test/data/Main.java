@@ -2446,6 +2446,7 @@ public class Main extends Activity {
         renderNodes();
         links();
         preferenceImageView();
+        bluetoothListen();
         Log.i("DataTest", "done ok=" + ok + " failed=" + failed);
         doneLogged = true;
         mediaSession();
@@ -11493,6 +11494,43 @@ public class Main extends Activity {
             return "com.android.internal.widget.PreferenceImageView".equals(icon.getClass().getName())
                    && image.getMaxWidth() == max && image.getMaxHeight() == max
                    && image.getMeasuredWidth() == max && image.getMeasuredHeight() == max;
+        });
+    }
+
+    /**
+     * Listening for Bluetooth connections, which Megler has not (classic Bluetooth): each of the adapter's listen methods throws
+     * the IOException Android's does when its Bluetooth service is not there, as the SDK declares, and none says null. Google
+     * Play services' Nearby sync called accept() on the null at each tick, and a thread of theirs ended each time (issue #19).
+     * The hidden ones too, by reflection: an encrypted RFCOMM service record and Android 9's channel form.
+     */
+    private void bluetoothListen() {
+        step("bluetooth-listen", () -> {
+            final android.bluetooth.BluetoothAdapter adapter = android.bluetooth.BluetoothAdapter.getDefaultAdapter();
+            final java.util.UUID uuid = java.util.UUID.fromString("a2b0c0de-0000-1000-8000-00805f9b34fb");
+            StringBuilder said = new StringBuilder();
+            Step[] calls = {
+                () -> adapter.listenUsingRfcommWithServiceRecord("megler", uuid) == null,
+                () -> adapter.listenUsingInsecureRfcommWithServiceRecord("megler", uuid) == null,
+                () -> adapter.listenUsingL2capChannel() == null,
+                () -> adapter.listenUsingInsecureL2capChannel() == null,
+                () -> adapter.getClass().getMethod("listenUsingEncryptedRfcommWithServiceRecord", String.class, java.util.UUID.class)
+                             .invoke(adapter, "megler", uuid) == null,
+                () -> adapter.getClass().getMethod("listenUsingRfcommOn", int.class).invoke(adapter, 3) == null,
+            };
+            boolean all = true;
+            for (Step call : calls) {
+                Throwable thrown = null;
+                boolean isNull = false;
+                try {
+                    isNull = call.run();
+                } catch (Throwable t) {
+                    thrown = t instanceof java.lang.reflect.InvocationTargetException && t.getCause() != null ? t.getCause() : t;
+                }
+                said.append(thrown != null ? thrown.getClass().getSimpleName() + "(" + thrown.getMessage() + ")" : isNull ? "null" : "a socket").append(' ');
+                all &= thrown instanceof java.io.IOException;
+            }
+            detail = said.toString().trim();
+            return all;
         });
     }
 

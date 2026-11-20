@@ -6,7 +6,8 @@
 // Android 6, 02:00:00:00:00:00. It cannot turn the radio on: an app's enable() (one that targets Android 12 or older) and
 // its ACTION_REQUEST_ENABLE (megler.AppRunner) show the phone's Bluetooth settings, where the user turns it on; disable()
 // is refused, as for an app on Android 13. What there is not: classic Bluetooth (inquiry, RFCOMM and L2CAP sockets, the
-// audio profiles), advertising (no peripheral role: getBluetoothLeAdvertiser is null, as on a device without it).
+// audio profiles), advertising (no peripheral role: getBluetoothLeAdvertiser is null, as on a device without it). Asked to
+// listen for RFCOMM or L2CAP, it throws the IOException Android's throws when its Bluetooth service is not there.
 //
 // Why. The stub's adapter said off and null to everything: MeshCore's app (flutter_blue_plus) told its user to turn
 // Bluetooth on, on a phone where it was on, and never found its radio.
@@ -328,18 +329,39 @@ public final class BluetoothAdapter {
     public int isLeAudioSupported() { return (meglerProps.get("LeAudioSupported") instanceof Integer ? (Integer) meglerProps.get("LeAudioSupported") : 0); }
     public boolean isLeCocSocketOffloadSupported() { return (meglerProps.get("LeCocSocketOffloadSupported") instanceof Boolean ? (Boolean) meglerProps.get("LeCocSocketOffloadSupported") : false); }
     public boolean isRfcommSocketOffloadSupported() { return (meglerProps.get("RfcommSocketOffloadSupported") instanceof Boolean ? (Boolean) meglerProps.get("RfcommSocketOffloadSupported") : false); }
-    public android.bluetooth.BluetoothServerSocket listenUsingEncryptedRfcommWithServiceRecord(java.lang.String p0, java.util.UUID p1) { return null; }
-    public android.bluetooth.BluetoothServerSocket listenUsingInsecureL2capChannel() { return null; }
-    public android.bluetooth.BluetoothServerSocket listenUsingInsecureL2capOn(int p0) { return null; }
-    public android.bluetooth.BluetoothServerSocket listenUsingInsecureRfcommOn() { return null; }
-    public android.bluetooth.BluetoothServerSocket listenUsingInsecureRfcommWithServiceRecord(java.lang.String p0, java.util.UUID p1) { return null; }
-    public android.bluetooth.BluetoothServerSocket listenUsingL2capChannel() { return null; }
-    public android.bluetooth.BluetoothServerSocket listenUsingL2capOn(int p0) { return null; }
-    public android.bluetooth.BluetoothServerSocket listenUsingL2capOn(int p0, boolean p1, boolean p2) { return null; }
-    public android.bluetooth.BluetoothServerSocket listenUsingRfcommOn() { return null; }
-    public android.bluetooth.BluetoothServerSocket listenUsingRfcommOn(boolean p0, boolean p1) { return null; }
-    public android.bluetooth.BluetoothServerSocket listenUsingRfcommWithServiceRecord(java.lang.String p0, java.util.UUID p1) { return null; }
-    public android.bluetooth.BluetoothServerSocket listenUsingSocketSettings(android.bluetooth.BluetoothSocketSettings p0) { return null; }
+    /*
+     * Listening for a connection: never, as Android's adapter cannot when its Bluetooth service is not there (bindListen
+     * says -1, "bluetooth is off"), and so it says here: IOException("Error: -1"), the exception the SDK declares for every
+     * one of these, which a caller catches. They said null, and Google Play services' Nearby sync took the null for a
+     * socket and called accept() on it at each of its ticks: a NullPointerException that ended one of its threads each time
+     * (issue #19, in the Play Store's process). Android 9's hidden forms with a channel are here too, beside the generated
+     * ones.
+     */
+    private static boolean sListenSaid;
+    private static BluetoothServerSocket meglerCannotListen() throws java.io.IOException {
+        // (Said once a process: Play services ask again at every tick of their sync.)
+        if (!sListenSaid) {
+            sListenSaid = true;
+            android.util.Log.i("Megler", "Bluetooth: the app asked to listen for a connection, which needs classic Bluetooth that Megler does not have: "
+                               + "IOException, as Android's adapter with its Bluetooth service not there", new Throwable("asked from"));
+        }
+        throw new java.io.IOException("Error: -1");
+    }
+    public android.bluetooth.BluetoothServerSocket listenUsingEncryptedRfcommWithServiceRecord(java.lang.String p0, java.util.UUID p1) throws java.io.IOException { return meglerCannotListen(); }
+    public android.bluetooth.BluetoothServerSocket listenUsingInsecureL2capChannel() throws java.io.IOException { return meglerCannotListen(); }
+    public android.bluetooth.BluetoothServerSocket listenUsingInsecureL2capOn(int p0) throws java.io.IOException { return meglerCannotListen(); }
+    public android.bluetooth.BluetoothServerSocket listenUsingInsecureRfcommOn() throws java.io.IOException { return meglerCannotListen(); }
+    public android.bluetooth.BluetoothServerSocket listenUsingInsecureRfcommOn(int p0) throws java.io.IOException { return meglerCannotListen(); }
+    public android.bluetooth.BluetoothServerSocket listenUsingInsecureRfcommWithServiceRecord(java.lang.String p0, java.util.UUID p1) throws java.io.IOException { return meglerCannotListen(); }
+    public android.bluetooth.BluetoothServerSocket listenUsingL2capChannel() throws java.io.IOException { return meglerCannotListen(); }
+    public android.bluetooth.BluetoothServerSocket listenUsingL2capOn(int p0) throws java.io.IOException { return meglerCannotListen(); }
+    public android.bluetooth.BluetoothServerSocket listenUsingL2capOn(int p0, boolean p1, boolean p2) throws java.io.IOException { return meglerCannotListen(); }
+    public android.bluetooth.BluetoothServerSocket listenUsingRfcommOn() throws java.io.IOException { return meglerCannotListen(); }
+    public android.bluetooth.BluetoothServerSocket listenUsingRfcommOn(int p0) throws java.io.IOException { return meglerCannotListen(); }
+    public android.bluetooth.BluetoothServerSocket listenUsingRfcommOn(boolean p0, boolean p1) throws java.io.IOException { return meglerCannotListen(); }
+    public android.bluetooth.BluetoothServerSocket listenUsingRfcommOn(int p0, boolean p1, boolean p2) throws java.io.IOException { return meglerCannotListen(); }
+    public android.bluetooth.BluetoothServerSocket listenUsingRfcommWithServiceRecord(java.lang.String p0, java.util.UUID p1) throws java.io.IOException { return meglerCannotListen(); }
+    public android.bluetooth.BluetoothServerSocket listenUsingSocketSettings(android.bluetooth.BluetoothSocketSettings p0) throws java.io.IOException { return meglerCannotListen(); }
     public int notifyActiveDeviceChangeApplied(android.bluetooth.BluetoothDevice p0) { return 0; }
     public boolean registerBluetoothConnectionCallback(java.util.concurrent.Executor p0, android.bluetooth.BluetoothAdapter.BluetoothConnectionCallback p1) { return false; }
     public void registerBluetoothHciVendorSpecificCallback(java.util.Set p0, java.util.concurrent.Executor p1, android.bluetooth.BluetoothAdapter.BluetoothHciVendorSpecificCallback p2) {}

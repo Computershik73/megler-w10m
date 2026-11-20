@@ -4331,7 +4331,10 @@ static int run_data(void)
                                          "link-verified-unknown",
                                          /* And the platform's preference row (preference_material), its icon Android's hidden
                                             PreferenceImageView held to its 48 dp (issue #15). */
-                                         "preference-image-view" };
+                                         "preference-image-view",
+                                         /* And the Bluetooth adapter's listen methods, each throwing IOException as Android's does with
+                                            no Bluetooth service, none saying null (issue #19). */
+                                         "bluetooth-listen" };
     int at = -1, want = 0, run = 0, line, i;
     char text[120];
     if (g_script_count) sscanf(g_script[0], "run:%d", &want);
