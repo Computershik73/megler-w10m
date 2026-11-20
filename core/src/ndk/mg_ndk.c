@@ -84,6 +84,7 @@ typedef struct looper_fd {
 typedef struct mg_looper {
     volatile i32 refs;
     int wake_fd;
+    volatile i32 woken;                /* ALooper_wake asked for since the poll last looked (the descriptor is a kick as well) */
     mg_lock lock;
     looper_fd *fds;
     int nfds, cap;
@@ -115,10 +116,26 @@ void mg_looper_java_thread(void) { t_java_looper = true; }
 static void g_looper_acquire(mg_looper *l) { if (l) mg_atomic_add(&l->refs, 1); }
 static void g_looper_release(mg_looper *l) { if (l) mg_atomic_add(&l->refs, -1); }
 
-static void g_looper_wake(mg_looper *l)
+/*
+ * The looper's thread made to look at its descriptors again: one was added or removed, from whichever thread. Android's
+ * looper changes its epoll set for that and wakes nobody; here the descriptors are polled as a list the thread took before it
+ * waited, and it is kicked to take the new one -- which it takes, and waits on, without returning: only ALooper_wake is a
+ * POLL_WAKE. It returned POLL_WAKE for a kick, and the first ALooper_pollAll of android_native_app_glue's thread, whose own
+ * ALooper_addFd of its command pipe had kicked it, answered -1 at once: KOReader's launcher waits there for its activity's
+ * window and focus, took the answer for its signal to go, and started its Lua while its MainActivity was still in onCreate
+ * (issue #23: under the Java driver its first question to the activity found what onCreate had not made yet, and ended it).
+ */
+static void looper_kick(mg_looper *l)
 {
     u64 one = 1;
     if (l) mg_fd_write(l->wake_fd, &one, 8);
+}
+
+static void g_looper_wake(mg_looper *l)
+{
+    if (!l) return;
+    mg_atomic_xchg(&l->woken, 1);
+    looper_kick(l);
 }
 
 static int g_looper_remove_fd(mg_looper *l, int fd)
@@ -134,7 +151,7 @@ static int g_looper_remove_fd(mg_looper *l, int fd)
         }
     }
     mg_lock_release(&l->lock);
-    g_looper_wake(l);
+    looper_kick(l);
     return removed;
 }
 
@@ -159,7 +176,7 @@ static int g_looper_add_fd(mg_looper *l, int fd, int ident, int events, mg_addr 
     l->fds[i].callback = callback;
     l->fds[i].data = data;
     mg_lock_release(&l->lock);
-    g_looper_wake(l);
+    looper_kick(l);
     return 1;
 }
 
@@ -195,7 +212,7 @@ static int looper_poll_once(mg_looper *l, int timeout_ms, int *out_fd, int *out_
         if (pfds[0].revents) {
             u64 drain;
             mg_fd_read(l->wake_fd, &drain, 8);
-            woke = true;
+            woke = mg_atomic_xchg(&l->woken, 0) != 0;
         }
         for (i = 0; i < n; i++) {
             int re = pfds[i + 1].revents, events;

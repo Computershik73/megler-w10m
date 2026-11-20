@@ -5374,6 +5374,81 @@ static void test_input(void)
     say("  wakes with nothing to take: %d", (int)G_INPUT.idle_wakes);
 }
 
+/*
+ * ALooper_addFd and ALooper_removeFd wake nobody's poll, as on Android: only ALooper_wake makes one answer ALOOPER_POLL_WAKE
+ * (-1). A descriptor added on the looper's own thread, then a poll that waits for ever: it waits until the descriptor is
+ * readable (written 200 ms later by another thread) and answers its ident, where it answered -1 at once, kicked by the
+ * add -- android_native_app_glue's thread of KOReader's launcher took that -1 for "the activity is ready" and started its
+ * Lua while the activity was still in onCreate (issue #23).
+ */
+static struct {
+    int write_fd;
+    int added_poll, waited, waited_fd, removed_poll, woken_poll;
+} G_LOOPER;
+
+static MG_HOSTCB void looper_writer(void *arg)
+{
+    gssize (*write_)(int, const void *, size_t) = (gssize (*)(int, const void *, size_t))mg_bionic_find("write");
+    (void)arg;
+    mg_sleep_ns(200000000ull);
+    write_(G_LOOPER.write_fd, "x", 1);
+}
+
+static MG_HOSTCB void looper_waiter(void *arg)
+{
+    void *(*prepare)(int) = (void *(*)(int))mg_bionic_find("ALooper_prepare");
+    int (*add_fd)(void *, int, int, int, void *, void *) = (int (*)(void *, int, int, int, void *, void *))mg_bionic_find("ALooper_addFd");
+    int (*remove_fd)(void *, int) = (int (*)(void *, int))mg_bionic_find("ALooper_removeFd");
+    void (*wake)(void *) = (void (*)(void *))mg_bionic_find("ALooper_wake");
+    int (*poll_all)(int, int *, int *, void **) = (int (*)(int, int *, int *, void **))mg_bionic_find("ALooper_pollAll");
+    int (*pipe_)(int *) = (int (*)(int *))mg_bionic_find("pipe");
+    int (*close_)(int) = (int (*)(int))mg_bionic_find("close");
+    int a[2] = { -1, -1 }, b[2] = { -1, -1 }, fd = -1;
+    void *looper = prepare(0);
+    mg_thread *writer;
+    (void)arg;
+    if (pipe_(a) || pipe_(b)) return;
+    add_fd(looper, a[0], 1, 1 /* ALOOPER_EVENT_INPUT */, NULL, NULL);
+    G_LOOPER.added_poll = poll_all(0, NULL, NULL, NULL);
+    /* Another added just before a wait for ever, as the glue adds its command pipe and then waits: the wait is the descriptor's. */
+    add_fd(looper, b[0], 2, 1, NULL, NULL);
+    G_LOOPER.write_fd = a[1];
+    writer = mg_thread_start(looper_writer, NULL, 64 * 1024, "test-looper-writer");
+    G_LOOPER.waited = poll_all(-1, &fd, NULL, NULL);
+    G_LOOPER.waited_fd = fd == a[0];
+    if (writer) mg_thread_join(writer);
+    remove_fd(looper, a[0]);
+    G_LOOPER.removed_poll = poll_all(0, NULL, NULL, NULL);
+    wake(looper);
+    G_LOOPER.woken_poll = poll_all(0, NULL, NULL, NULL);
+    remove_fd(looper, b[0]);
+    close_(a[0]);
+    close_(a[1]);
+    close_(b[0]);
+    close_(b[1]);
+}
+
+static void test_looper_wake(void)
+{
+    mg_thread *t;
+    say("ALooper: a descriptor added or removed wakes no poll; ALooper_wake does");
+    if (!mg_bionic_find("ALooper_wake") || !mg_bionic_find("pipe")) {
+        CHECK(!"the NDK's functions are registered");
+        return;
+    }
+    memset(&G_LOOPER, 0, sizeof(G_LOOPER));
+    t = mg_thread_start(looper_waiter, NULL, 256 * 1024, "test-looper");
+    CHECK(t != NULL);
+    if (t) mg_thread_join(t);
+    say("  after an add %d, the wait for ever %d (its descriptor %d), after a remove %d, after ALooper_wake %d", G_LOOPER.added_poll, G_LOOPER.waited,
+        G_LOOPER.waited_fd, G_LOOPER.removed_poll, G_LOOPER.woken_poll);
+    CHECK_INT(G_LOOPER.added_poll, -3);       /* ALOOPER_POLL_TIMEOUT */
+    CHECK_INT(G_LOOPER.waited, 1);
+    CHECK_INT(G_LOOPER.waited_fd, 1);
+    CHECK_INT(G_LOOPER.removed_poll, -3);
+    CHECK_INT(G_LOOPER.woken_poll, -1);       /* ALOOPER_POLL_WAKE */
+}
+
 #if MG_GUEST_CODE
 
 /*
@@ -8035,6 +8110,7 @@ int mg_tests_run(const char *libdir, const char *scratch, mg_test_sink sink, voi
     test_shm_views();
     test_free_stretches();
     test_input();
+    test_looper_wake();
     test_audio_callback_stack();
     test_audio_heard();
     {
