@@ -1,8 +1,9 @@
 // Overlay of core/framework/src/megler/KeyStoreProvider.java (tools/build-framework.sh).
 // It differs in how the keys are kept (each by its algorithm and encoding, not serialized objects: see "the keys" below), in
-// whose they are (Google Play services' are one store in their shared data, whichever process asks: see "Whose keys"), and
-// in PairGen.generateKeyPair, which takes the generator of another provider from that provider's service
-// instead of KeyPairGenerator.getInstance(algorithm, provider), and initialises it with a SecureRandom of its own.
+// whose they are (Google Play services' are one store in their shared data, whichever process asks: see "Whose keys"; and
+// their key set whose key is in no store is removed: see lost), and in PairGen.generateKeyPair, which takes the generator of
+// another provider from that provider's service instead of KeyPairGenerator.getInstance(algorithm, provider), and initialises
+// it with a SecureRandom of its own.
 //
 // Why. KeyPairGenerator.getInstance(algorithm, provider) refuses the system's BouncyCastle for RSA and EC
 // (sun.security.jca.Providers.checkBouncyCastleDeprecation: Android 9 turns away apps that name "BC" themselves, and
@@ -478,7 +479,37 @@ public final class KeyStoreProvider extends Provider {
         });
     }
 
-    static synchronized Entry entry(String alias, boolean taken) { return find(view(), alias, taken); }
+    static synchronized Entry entry(String alias, boolean taken) {
+        View v = view();
+        Entry e = find(v, alias, taken);
+        if (e == null && taken && v.main.shared) lost(v.main, alias);
+        return e;
+    }
+
+    /*
+     * A key Google Play services take (getKey) that is in no store they read, and the Tink key set it encrypted, kept in their
+     * preferences under the key's alias as their mobstore keeps it (shared_prefs/mobstore_encrypt.xml): the key set is
+     * removed, so that they make the key and the key set again, as they do on a phone where neither is there yet.
+     *
+     * Android has no such state: an app's keys go only with its data. Megler before 0.1.0.734 kept their keys in the store of
+     * whichever app's process made them; the key set they made so in their shared data is unreadable everywhere else, and
+     * for good where that app is gone, was cleared, or never runs a Megler that copies its key to the imports (an app's
+     * package of an older Megler). Every app hosting them then failed at each use of their storage: "Keystore cannot load the
+     * key with ID: mobstore_encrypt", then "Failed to initialize encryption" (issue #21: the GitHub app and Via on a PC; seven
+     * times a run in each of five apps on a Lumia 650 with 734). Tink reads the key set first and asks for the key after, so
+     * that use still fails; the next one starts afresh. What the old key set encrypted cannot be read with or without it.
+     * Once a process for an alias; nothing is removed where there is no such file, and an alias that is no file name is left.
+     */
+    private static final HashSet<String> sLost = new HashSet<>();
+    private static void lost(Box main, String alias) {
+        if (!alias.matches("[A-Za-z0-9_][A-Za-z0-9_.-]*") || !sLost.add(alias)) return;
+        File keySet = new File(new File(main.file.getParentFile(), "shared_prefs"), alias + ".xml");
+        if (!keySet.isFile()) return;
+        if (keySet.delete())
+            android.util.Log.w("Megler", "AndroidKeyStore: Google Play services' key " + alias + " is in no store they read (made in another app's process"
+                    + " by a Megler before 0.1.0.734): its key set " + keySet + " is removed, and they make both again");
+        else android.util.Log.w("Megler", "AndroidKeyStore: Google Play services' key " + alias + " is in no store they read, and its key set " + keySet + " could not be removed");
+    }
 
     private static ArrayList<String> aliases(View v) {
         LinkedHashSet<String> all = new LinkedHashSet<>(keys(v.main).keySet());

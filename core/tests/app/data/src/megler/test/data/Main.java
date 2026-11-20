@@ -410,6 +410,7 @@ public class Main extends Activity {
         step("keybox-attestation", () -> { detail = AttestationChecks.run(this, run); return true; });
         keystoreForeignKey();
         keystoreHosted();
+        keystoreTink(run);
         pathOps();
         textPath();
         base64Streams();
@@ -4794,6 +4795,141 @@ public class Main extends Activity {
         });
     }
 
+    /**
+     * Android's key store as Tink's AndroidKeystoreKmsClient and AndroidKeysetManager use it for an app's encrypted storage
+     * (androidx's EncryptedSharedPreferences, and Google Play services' mobstore, whose "Keystore cannot load the key with ID:
+     * mobstore_encrypt" and "Failed to initialize encryption" are issue #21), in its order: a KeyStore loaded, containsAlias
+     * (hasKey), an AES key of 256 bits for GCM made under the alias where there is none, a KeyStore loaded again and getKey,
+     * where Tink says that message when it answers null; the key checked by sealing ten bytes and opening them again as
+     * Tink's AndroidKeystoreAesGcm does (the IV the provider chose, before the ciphertext); getEntry. The key set it encrypts
+     * is kept in the app's preferences by the first run and opened by the second with the key found again.
+     *
+     * keystore-tink-hosted: the same as Google Play services' in an app's process (megler.KeyStoreProvider.hostedForTests:
+     * their data folder in this app's files, begun with the shared store), their key set in their folder, made by the first
+     * run and opened by the second. And data of before the shared store, with a key set in their preferences under an alias
+     * whose key is in no store (made by an app's process before 734): getKey answers null and the key set is removed, so
+     * that the next start makes the key again, and the key set; a key set of another name stays.
+     */
+    private void keystoreTink(final long run) {
+        final String text = "megler key set: one key of the keyset, as Tink keeps it encrypted";
+        step("keystore-tink", () -> {
+            android.content.SharedPreferences prefs = getSharedPreferences("megler_tink_keyset", MODE_PRIVATE);
+            String kept = prefs.getString("keyset", null);
+            boolean[] had = new boolean[1];
+            javax.crypto.SecretKey key = tinkMasterKey("megler-tink-master", had);
+            java.security.KeyStore store = java.security.KeyStore.getInstance("AndroidKeyStore");
+            store.load(null);
+            java.security.KeyStore.Entry entry = store.getEntry("megler-tink-master", null);
+            boolean entryOk = entry instanceof java.security.KeyStore.SecretKeyEntry
+                    && Arrays.equals(key.getEncoded(), ((java.security.KeyStore.SecretKeyEntry) entry).getSecretKey().getEncoded());
+            String opened = null;
+            if (kept == null) prefs.edit().putString("keyset", hex(tinkSeal(key, text.getBytes("UTF-8")))).commit();
+            else opened = new String(tinkOpen(key, unhex(kept)), "UTF-8");
+            detail = "had=" + had[0] + " kept=" + (kept != null) + " opened=" + opened + " entry=" + entryOk + " run=" + run;
+            return entryOk && had[0] == (run > 1) && (run > 1 ? text.equals(opened) : kept == null && prefs.getString("keyset", null) != null);
+        });
+        step("keystore-tink-hosted", () -> {
+            final java.lang.reflect.Method hosted = Class.forName("megler.KeyStoreProvider").getMethod("hostedForTests", String.class);
+            final File root = new File(getFilesDir(), "keystore-tink-hosted"), data = new File(root, "com.google.android.gms");
+            final File keySet = new File(data, "shared_prefs/megler-tink-mobstore.xml");
+            final File old = new File(getFilesDir(), "keystore-tink-old"), oldData = new File(old, "com.google.android.gms");
+            final File oldSet = new File(oldData, "shared_prefs/megler-tink-lost.xml"), otherSet = new File(oldData, "shared_prefs/megler-tink-other.xml");
+            if (run == 1) {
+                deleteAll(root);
+                data.mkdirs();
+                new File(root, ".megler-keystore-shared").createNewFile();
+            }
+            deleteAll(old);
+            oldSet.getParentFile().mkdirs();
+            try (java.io.FileOutputStream out = new java.io.FileOutputStream(oldSet)) { out.write("a key set of a key in no store".getBytes("UTF-8")); }
+            try (java.io.FileOutputStream out = new java.io.FileOutputStream(otherSet)) { out.write("another key set".getBytes("UTF-8")); }
+            java.security.KeyStore store = java.security.KeyStore.getInstance("AndroidKeyStore");
+            store.load(null);
+            try {
+                hosted.invoke(null, root.getPath());
+                boolean[] had = new boolean[1];
+                javax.crypto.SecretKey key = tinkMasterKey("megler-tink-mobstore", had);
+                String opened = null;
+                if (run == 1) {
+                    keySet.getParentFile().mkdirs();
+                    try (java.io.FileOutputStream out = new java.io.FileOutputStream(keySet)) { out.write(hex(tinkSeal(key, text.getBytes("UTF-8"))).getBytes("UTF-8")); }
+                } else {
+                    byte[] b = new byte[(int) keySet.length()];
+                    try (java.io.RandomAccessFile in = new java.io.RandomAccessFile(keySet, "r")) { in.readFully(b); }
+                    opened = new String(tinkOpen(key, unhex(new String(b, "UTF-8"))), "UTF-8");
+                }
+                boolean theirs = new File(data, ".megler_keystore2").isFile();
+                hosted.invoke(null, (Object) null);
+                boolean notApps = !store.containsAlias("megler-tink-mobstore");
+                // Their data of before the shared store, a key set whose key is in no store.
+                hosted.invoke(null, old.getPath());
+                boolean missing = !store.containsAlias("megler-tink-lost") && store.getKey("megler-tink-lost", null) == null;
+                boolean removed = !oldSet.exists() && otherSet.isFile();
+                boolean[] again = new boolean[1];
+                javax.crypto.SecretKey fresh = tinkMasterKey("megler-tink-lost", again);
+                boolean remade = !again[0] && fresh != null && new File(oldData, ".megler_keystore2").isFile() && store.getKey("megler-tink-lost", null) != null;
+                detail = "had=" + had[0] + " opened=" + opened + " theirs=" + theirs + " not-the-app's=" + notApps + " missing=" + missing + " removed=" + removed
+                        + " remade=" + remade + " run=" + run;
+                return had[0] == (run > 1) && (run == 1 || text.equals(opened)) && theirs && notApps && missing && removed && remade;
+            } finally {
+                hosted.invoke(null, (Object) null);
+                deleteAll(old);
+            }
+        });
+    }
+
+    /*
+     * Tink's master key in Android's key store (AndroidKeystoreKmsClient): hasKey, generateNewAeadKey where there is none,
+     * getAead -- a KeyStore of its own, getKey, null being "Keystore cannot load the key with ID" -- and validateAead.
+     */
+    private static javax.crypto.SecretKey tinkMasterKey(String alias, boolean[] had) throws Exception {
+        java.security.KeyStore store = java.security.KeyStore.getInstance("AndroidKeyStore");
+        store.load(null);
+        had[0] = store.containsAlias(alias);
+        if (!had[0]) keystoreAes(alias);
+        java.security.KeyStore again = java.security.KeyStore.getInstance("AndroidKeyStore");
+        again.load(null);
+        javax.crypto.SecretKey key = (javax.crypto.SecretKey) again.getKey(alias, null);
+        if (key == null) throw new java.security.InvalidKeyException("Keystore cannot load the key with ID: " + alias);
+        byte[] message = new byte[10];
+        new java.security.SecureRandom().nextBytes(message);
+        if (!Arrays.equals(message, tinkOpen(key, tinkSeal(key, message)))) throw new java.security.KeyStoreException("cannot use Android Keystore");
+        return key;
+    }
+
+    /* AndroidKeystoreAesGcm's encrypt: the IV the cipher chose, then the ciphertext and its tag; no associated data. */
+    private static byte[] tinkSeal(javax.crypto.SecretKey key, byte[] plain) throws Exception {
+        javax.crypto.Cipher c = javax.crypto.Cipher.getInstance("AES/GCM/NoPadding");
+        c.init(javax.crypto.Cipher.ENCRYPT_MODE, key);
+        c.updateAAD(new byte[0]);
+        byte[] out = new byte[12 + plain.length + 16];
+        int n = c.doFinal(plain, 0, plain.length, out, 12);
+        byte[] iv = c.getIV();
+        if (n != plain.length + 16 || iv == null || iv.length != 12) throw new java.security.GeneralSecurityException("encryption failed: " + n + " bytes, IV " + (iv == null ? null : iv.length));
+        System.arraycopy(iv, 0, out, 0, 12);
+        return out;
+    }
+
+    /* AndroidKeystoreAesGcm's decrypt. */
+    private static byte[] tinkOpen(javax.crypto.SecretKey key, byte[] sealed) throws Exception {
+        javax.crypto.Cipher c = javax.crypto.Cipher.getInstance("AES/GCM/NoPadding");
+        c.init(javax.crypto.Cipher.DECRYPT_MODE, key, new javax.crypto.spec.GCMParameterSpec(128, sealed, 0, 12));
+        c.updateAAD(new byte[0]);
+        return c.doFinal(sealed, 12, sealed.length - 12);
+    }
+
+    private static String hex(byte[] b) {
+        StringBuilder s = new StringBuilder();
+        for (byte x : b) s.append(String.format("%02x", x & 255));
+        return s.toString();
+    }
+
+    private static byte[] unhex(String s) {
+        byte[] b = new byte[s.length() / 2];
+        for (int i = 0; i < b.length; i++) b[i] = (byte) Integer.parseInt(s.substring(2 * i, 2 * i + 2), 16);
+        return b;
+    }
+
     private static void keystoreAes(String alias) throws Exception {
         javax.crypto.KeyGenerator aes = javax.crypto.KeyGenerator.getInstance("AES", "AndroidKeyStore");
         aes.init(new android.security.keystore.KeyGenParameterSpec.Builder(alias, android.security.keystore.KeyProperties.PURPOSE_ENCRYPT
@@ -4807,6 +4943,105 @@ public class Main extends Activity {
         File[] in = f.listFiles();
         if (in != null) for (File c : in) deleteAll(c);
         f.delete();
+    }
+
+    /**
+     * Android's hidden PackageParser as LibChecker's library index uses it, where its own manifest reader fails (issue #18: the
+     * class was not there, NoClassDefFoundError): SDK_VERSION set by reflection, as LibChecker does at its start; this app's
+     * own APK parsed with flags 7 into its package -- the application and its SDKs, the activities with their filters
+     * (actions, categories, schemes, the default category) exported as Android decides it, the receivers, the services with
+     * their processes and permissions, the provider -- read through the fields and IntentFilter's methods LibChecker reads;
+     * and Android's errors for another app's APK that is no zip and for a file that is not there.
+     */
+    private void packageParser() {
+        step("package-parser", () -> {
+            Class<?> parserClass = Class.forName("android.content.pm.PackageParser");
+            java.lang.reflect.Field sdk = parserClass.getDeclaredField("SDK_VERSION");
+            sdk.setAccessible(true);
+            int sdkWas = sdk.getInt(null);
+            sdk.set(null, Integer.MAX_VALUE);
+            boolean bypassed = sdk.getInt(null) == Integer.MAX_VALUE;
+            sdk.set(null, sdkWas);
+            Object parser = parserClass.getConstructor().newInstance();
+            java.lang.reflect.Method parse = parserClass.getMethod("parsePackage", File.class, int.class);
+            Object pkg = parse.invoke(parser, new File(getPackageCodePath()), 7);
+            Class<?> pkgClass = pkg.getClass();
+            android.content.pm.ApplicationInfo app = (android.content.pm.ApplicationInfo) pkgClass.getField("applicationInfo").get(pkg);
+            boolean application = "megler.test.data".equals(pkgClass.getField("packageName").get(pkg)) && "megler.test.data.DataApplication".equals(app.className)
+                    && app.minSdkVersion == 21 && app.targetSdkVersion == 28 && getPackageCodePath().equals(app.sourceDir)
+                    && Integer.valueOf(1).equals(pkgClass.getField("mVersionCode").get(pkg)) && "1.0".equals(pkgClass.getField("mVersionName").get(pkg));
+            Object main = parsedComponent(pkg, "activities", "megler.test.data.Main"), linked = parsedComponent(pkg, "activities", "megler.test.data.Main$Linked");
+            Object answer = parsedComponent(pkg, "activities", "megler.test.data.Main$Answer"), clear = parsedComponent(pkg, "activities", "megler.test.data.Main$Clear");
+            Object relay = parsedComponent(pkg, "receivers", "megler.test.data.Main$Relay"), off = parsedComponent(pkg, "receivers", "megler.test.data.Main$Off");
+            Object elsewhere = parsedComponent(pkg, "services", "megler.test.data.Main$Elsewhere"), work = parsedComponent(pkg, "services", "megler.test.data.Main$Work");
+            Object sync = parsedComponent(pkg, "services", "megler.test.data.Main$SyncService"), synced = parsedComponent(pkg, "providers", "megler.test.data.Main$Synced");
+            if (main == null || linked == null || answer == null || clear == null || relay == null || off == null || elsewhere == null || work == null || sync == null
+                    || synced == null) {
+                detail = "a component not found: main=" + main + " linked=" + linked + " answer=" + answer + " clear=" + clear + " relay=" + relay + " off=" + off
+                        + " elsewhere=" + elsewhere + " work=" + work + " sync=" + sync + " synced=" + synced;
+                return false;
+            }
+            // The launcher's filter as LibChecker reads one: its actions, its categories, its schemes.
+            android.content.IntentFilter launcher = parsedIntents(main).get(0);
+            java.util.ArrayList<String> actions = new java.util.ArrayList<>(), categories = new java.util.ArrayList<>();
+            for (java.util.Iterator<String> i = launcher.actionsIterator(); i.hasNext();) actions.add(i.next());
+            for (java.util.Iterator<String> i = launcher.categoriesIterator(); i != null && i.hasNext();) categories.add(i.next());
+            boolean filters = parsedIntents(main).size() == 1 && actions.equals(Arrays.asList("android.intent.action.MAIN"))
+                    && categories.equals(Arrays.asList("android.intent.category.LAUNCHER")) && launcher.countDataSchemes() == 0
+                    && !launcher.getClass().getField("hasDefault").getBoolean(launcher);
+            android.content.IntentFilter web = parsedIntents(linked).get(0);
+            boolean data = parsedIntents(linked).size() == 5 && web.countDataSchemes() == 1 && "https".equals(web.getDataScheme(0))
+                    && web.hasCategory("android.intent.category.BROWSABLE") && web.getClass().getField("hasDefault").getBoolean(web)
+                    && "megler-port".equals(parsedIntents(linked).get(3).getDataScheme(0));
+            boolean exported = parsedInfo(main).exported && parsedInfo(answer).exported && !parsedInfo(clear).exported && !parsedInfo(relay).exported;
+            // (Flags 7 have PARSE_IGNORE_PROCESSES: every component in the package's process, as Android's buildProcessName gives it;
+            // without them the service's own.)
+            Object apart = parsedComponent(parse.invoke(parser, new File(getPackageCodePath()), 0), "services", "megler.test.data.Main$Elsewhere");
+            String processes = parsedInfo(elsewhere).processName + "," + (apart == null ? null : parsedInfo(apart).processName) + "," + parsedInfo(main).processName;
+            Object component = main.getClass().getMethod("getComponentName").invoke(main);
+            boolean others = !parsedInfo(off).enabled && "megler.test.data,megler.test.data:elsewhere,megler.test.data".equals(processes)
+                    && "android.permission.BIND_JOB_SERVICE".equals(((android.content.pm.ServiceInfo) parsedInfo(work)).permission)
+                    && parsedIntents(sync).size() == 1 && "android.content.SyncAdapter".equals(parsedIntents(sync).get(0).getAction(0))
+                    && "megler.test.sync".equals(((android.content.pm.ProviderInfo) parsedInfo(synced)).authority)
+                    && new android.content.ComponentName("megler.test.data", "megler.test.data.Main").equals(component);
+            // Android's errors: an APK that is no zip (the other app's, as the suite writes it) and one that is not there.
+            int notZip = parsedError(parser, parse, new File("/data/app/com.example.other-1/base.apk")), missing = parsedError(parser, parse, new File(getFilesDir(), "none.apk"));
+            detail = "bypassed=" + bypassed + " application=" + application + " (" + app.className + " " + app.minSdkVersion + "/" + app.targetSdkVersion + ") filters=" + filters
+                    + " (" + actions + " " + categories + ") data=" + data + " exported=" + exported + " others=" + others + " (off " + parsedInfo(off).enabled + ", processes " + processes + ", "
+                    + ((android.content.pm.ServiceInfo) parsedInfo(work)).permission + ", " + parsedIntents(sync).size() + ", "
+                    + ((android.content.pm.ProviderInfo) parsedInfo(synced)).authority + ", " + component + ") errors=" + notZip + "," + missing
+                    + " components=" + ((java.util.List<?>) pkgClass.getField("activities").get(pkg)).size() + "/" + ((java.util.List<?>) pkgClass.getField("receivers").get(pkg)).size()
+                    + "/" + ((java.util.List<?>) pkgClass.getField("services").get(pkg)).size() + "/" + ((java.util.List<?>) pkgClass.getField("providers").get(pkg)).size();
+            return bypassed && application && filters && data && exported && others
+                    && notZip == -100 && missing == -100;  // INSTALL_PARSE_FAILED_NOT_APK, hidden API
+        });
+    }
+
+    /* The component of a parsed package's list (activities, receivers, services, providers) of that class, or null. */
+    private static Object parsedComponent(Object pkg, String list, String className) throws Exception {
+        for (Object c : (java.util.List<?>) pkg.getClass().getField(list).get(pkg))
+            if (className.equals(c.getClass().getField("className").get(c))) return c;
+        return null;
+    }
+
+    @SuppressWarnings("unchecked")
+    private static java.util.List<android.content.IntentFilter> parsedIntents(Object component) throws Exception {
+        return (java.util.List<android.content.IntentFilter>) component.getClass().getField("intents").get(component);
+    }
+
+    private static android.content.pm.ComponentInfo parsedInfo(Object component) throws Exception {
+        return (android.content.pm.ComponentInfo) component.getClass().getField("info").get(component);
+    }
+
+    /* The error of PackageParserException that parsing the file ends in; 0 when it is parsed. */
+    private static int parsedError(Object parser, java.lang.reflect.Method parse, File file) throws Exception {
+        try {
+            parse.invoke(parser, file, 7);
+            return 0;
+        } catch (java.lang.reflect.InvocationTargetException e) {
+            Throwable t = e.getCause();
+            return t != null && t.getClass().getName().equals("android.content.pm.PackageParser$PackageParserException") ? t.getClass().getField("error").getInt(t) : 1;
+        }
     }
 
     /**
@@ -6379,6 +6614,19 @@ public class Main extends Activity {
             if (other == null) { detail = "not among the installed applications"; return false; }
             String apk = "/data/app/com.example.other-1/base.apk";
             java.io.File file = new java.io.File(String.valueOf(other.sourceDir));
+            // Found before anything opens it: by stat, by access and in its folder's list, as LibChecker's NativeLibraryAnalyzer
+            // asks File.exists before it reads another app's APK ("File not exists", issue #18), and readable, not writable.
+            boolean exists = file.exists() && file.isFile() && file.canRead() && !file.canWrite();
+            String[] names = file.getParentFile().list();
+            boolean listed = names != null && Arrays.asList(names).contains("base.apk");
+            boolean statted, accessible;
+            try {
+                android.system.StructStat st = android.system.Os.stat(apk);
+                statted = android.system.OsConstants.S_ISREG(st.st_mode) && st.st_size == 24;
+                accessible = android.system.Os.access(apk, android.system.OsConstants.R_OK);
+            } catch (android.system.ErrnoException e) {
+                statted = accessible = false;
+            }
             String head = null;
             boolean written = false;
             try (java.io.FileInputStream in = new java.io.FileInputStream(file)) {
@@ -6390,11 +6638,14 @@ public class Main extends Activity {
             boolean none = new java.io.File("/data/app/com.example.none-1/base.apk").exists() || new java.io.File("/data/app/com.example.none-1").exists();
             boolean folder = file.getParentFile().isDirectory();
             detail = "sourceDir=" + other.sourceDir + " publicSourceDir=" + other.publicSourceDir + " nativeLibraryDir=" + other.nativeLibraryDir
-                    + " dataDir=" + other.dataDir + " length=" + file.length() + " head=" + head + " written=" + written + " folder=" + folder + " none=" + none;
-            return apk.equals(other.sourceDir) && apk.equals(other.publicSourceDir) && other.nativeLibraryDir != null
+                    + " dataDir=" + other.dataDir + " length=" + file.length() + " head=" + head + " written=" + written + " folder=" + folder + " none=" + none
+                    + " before-open: exists=" + exists + " listed=" + listed + " (" + (names == null ? null : Arrays.toString(names)) + ") stat=" + statted + " access=" + accessible;
+            return exists && listed && statted && accessible
+                && apk.equals(other.sourceDir) && apk.equals(other.publicSourceDir) && other.nativeLibraryDir != null
                 && other.nativeLibraryDir.startsWith("/data/app/com.example.other-1/lib/") && "/data/data/com.example.other".equals(other.dataDir)
                 && file.isFile() && file.length() == 24 && "PK the other app's APK".equals(head) && !written && folder && !none;
         });
+        packageParser();
         // Its activities, every one, as the shell described them (the apps folder's com.example.other/activities.json), as a
         // shortcut maker lists them: each with whether it is exported; both launcher entries, the alias's too; the one that
         // makes shortcuts, with its own label and icon (3 x 3, the app's is 2 x 2); not for a link. Then two are started by
@@ -7366,6 +7617,27 @@ public class Main extends Activity {
             detail = "range=" + range + " plain=" + plain + " duration=" + duration;
             return back == f && range != null && range.startsWith("at ") && range.contains("14:53") && range.contains("15:38")
                     && plain != null && !plain.isEmpty() && duration != null && duration.toString().length() > 0;
+        });
+        // A size as Android 9's Formatter words it, as LibChecker's app details lay it out: formatFileSize with SI or IEC units
+        // (with flags it said null, and the details ended on SpannableStringBuilder.append of it, issue #17), its rounding (two
+        // decimals up to 100, one with FLAG_SHORTER below 10, 900 still of the unit below), "" without a context; and a time
+        // rounded up to minutes (null too). The decimal separator is the run's locale's, as String.format's on Android.
+        step("format-file-size", () -> {
+            char point = java.text.DecimalFormatSymbols.getInstance().getDecimalSeparator();
+            // (The flags and the forms that take them are hidden API, which LibChecker compiles against: reached by reflection.)
+            Class<?> f = android.text.format.Formatter.class;
+            java.lang.reflect.Method flagged = f.getMethod("formatFileSize", Context.class, long.class, int.class);
+            int iecUnits = f.getField("FLAG_IEC_UNITS").getInt(null);
+            String si = android.text.format.Formatter.formatFileSize(this, 1234567L), two = android.text.format.Formatter.formatFileSize(this, 12345678L),
+                    iec = (String) flagged.invoke(null, this, 1536L, iecUnits), zero = (String) flagged.invoke(null, this, 0L, iecUnits),
+                    bytes = android.text.format.Formatter.formatFileSize(this, 900L),
+                    shorter = android.text.format.Formatter.formatShortFileSize(this, 12345678L),
+                    none = android.text.format.Formatter.formatFileSize(null, 5L),
+                    minutes = (String) f.getMethod("formatShortElapsedTimeRoundingUpToMinutes", Context.class, long.class).invoke(null, this, 30000L);
+            CharSequence shown = new android.text.SpannableStringBuilder("Size: ").append(two);
+            detail = "si=" + si + " two=" + two + " iec=" + iec + " zero=" + zero + " bytes=" + bytes + " shorter=" + shorter + " none=[" + none + "] minutes=" + minutes + " shown=" + shown;
+            return ("1" + point + "23 MB").equals(si) && ("12" + point + "35 MB").equals(two) && ("1" + point + "50 kB").equals(iec) && "0 B".equals(zero)
+                    && "900 B".equals(bytes) && "12 MB".equals(shorter) && "".equals(none) && "1 min".equals(minutes) && shown.toString().equals("Size: " + two);
         });
     }
 
