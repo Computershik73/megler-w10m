@@ -2449,6 +2449,10 @@ public class Main extends Activity {
         httpEngine();
         renderNodes();
         links();
+        preferenceImageView();
+        bluetoothListen();
+        attachPairs();
+        lineHeight();
         Log.i("DataTest", "done ok=" + ok + " failed=" + failed);
         doneLogged = true;
         mediaSession();
@@ -11781,6 +11785,252 @@ public class Main extends Activity {
      * https://maps.example.org/place/ asks to be verified. Where a link goes when started is the log's and the phone's to say
      * (the test's C side, links_requests).
      */
+    /**
+     * A preference's row as the platform's own layout makes it (preference_material, which apps inflate through AndroidX's
+     * preferences: EhViewer ended at every sub-screen of its settings, issue #15): its icon is Android's hidden
+     * com.android.internal.widget.PreferenceImageView, found by its full name, and held to its 48 dp even where its parent
+     * leaves it free (measured UNSPECIFIED with a picture of 200 x 200), as Android's is.
+     */
+    private void preferenceImageView() {
+        step("preference-image-view", () -> {
+            int layout = getResources().getIdentifier("preference_material", "layout", "android");
+            android.view.View row = getLayoutInflater().inflate(layout, new android.widget.FrameLayout(this), false);
+            android.view.View icon = row.findViewById(android.R.id.icon);
+            if (!(icon instanceof android.widget.ImageView)) {
+                detail = "layout " + Integer.toHexString(layout) + ", the icon " + icon;
+                return false;
+            }
+            android.widget.ImageView image = (android.widget.ImageView) icon;
+            image.setImageDrawable(new android.graphics.drawable.BitmapDrawable(getResources(),
+                    android.graphics.Bitmap.createBitmap(200, 200, android.graphics.Bitmap.Config.ARGB_8888)));
+            int free = android.view.View.MeasureSpec.makeMeasureSpec(0, android.view.View.MeasureSpec.UNSPECIFIED);
+            image.measure(free, free);
+            int max = Math.round(48 * getResources().getDisplayMetrics().density);
+            detail = icon.getClass().getName() + " max " + image.getMaxWidth() + "x" + image.getMaxHeight() + ", measured "
+                     + image.getMeasuredWidth() + "x" + image.getMeasuredHeight() + ", 48 dp " + max;
+            return "com.android.internal.widget.PreferenceImageView".equals(icon.getClass().getName())
+                   && image.getMaxWidth() == max && image.getMaxHeight() == max
+                   && image.getMeasuredWidth() == max && image.getMeasuredHeight() == max;
+        });
+    }
+
+    /**
+     * Listening for Bluetooth connections, which Megler has not (classic Bluetooth): each of the adapter's listen methods throws
+     * the IOException Android's does when its Bluetooth service is not there, as the SDK declares, and none says null. Google
+     * Play services' Nearby sync called accept() on the null at each tick, and a thread of theirs ended each time (issue #19).
+     * The hidden ones too, by reflection: an encrypted RFCOMM service record and Android 9's channel form.
+     */
+    private void bluetoothListen() {
+        step("bluetooth-listen", () -> {
+            final android.bluetooth.BluetoothAdapter adapter = android.bluetooth.BluetoothAdapter.getDefaultAdapter();
+            final java.util.UUID uuid = java.util.UUID.fromString("a2b0c0de-0000-1000-8000-00805f9b34fb");
+            StringBuilder said = new StringBuilder();
+            Step[] calls = {
+                () -> adapter.listenUsingRfcommWithServiceRecord("megler", uuid) == null,
+                () -> adapter.listenUsingInsecureRfcommWithServiceRecord("megler", uuid) == null,
+                () -> adapter.listenUsingL2capChannel() == null,
+                () -> adapter.listenUsingInsecureL2capChannel() == null,
+                () -> adapter.getClass().getMethod("listenUsingEncryptedRfcommWithServiceRecord", String.class, java.util.UUID.class)
+                             .invoke(adapter, "megler", uuid) == null,
+                () -> adapter.getClass().getMethod("listenUsingRfcommOn", int.class).invoke(adapter, 3) == null,
+            };
+            boolean all = true;
+            for (Step call : calls) {
+                Throwable thrown = null;
+                boolean isNull = false;
+                try {
+                    isNull = call.run();
+                } catch (Throwable t) {
+                    thrown = t instanceof java.lang.reflect.InvocationTargetException && t.getCause() != null ? t.getCause() : t;
+                }
+                said.append(thrown != null ? thrown.getClass().getSimpleName() + "(" + thrown.getMessage() + ")" : isNull ? "null" : "a socket").append(' ');
+                all &= thrown instanceof java.io.IOException;
+            }
+            detail = said.toString().trim();
+            return all;
+        });
+    }
+
+    /**
+     * A group that writes down its attach (+) and detach (x) as HeardRow does, and runs what it is given in its own
+     * onAttachedToWindow and onDetachedFromWindow; a child of one sees whether its parent's onAttachedToWindow has returned
+     * ("early" if not). react-native-screens' ScreenStack commits its fragments in its onAttachedToWindow, adding its screens
+     * to itself there.
+     */
+    static class PairRow extends android.widget.FrameLayout {
+        final String name;
+        final StringBuilder heard;
+        Runnable onAttach, onDetach;
+        boolean attachReturned;
+        PairRow(Context c, String name, StringBuilder heard) { super(c); this.name = name; this.heard = heard; }
+        @Override protected void onAttachedToWindow() {
+            super.onAttachedToWindow();
+            boolean early = getParent() instanceof PairRow && !((PairRow) getParent()).attachReturned;
+            heard.append(name).append('+').append(early ? "early" : "").append(' ');
+            if (onAttach != null) onAttach.run();
+            attachReturned = true;
+        }
+        @Override protected void onDetachedFromWindow() {
+            super.onDetachedFromWindow();
+            attachReturned = false;
+            if (onDetach != null) onDetach.run();
+            heard.append(name).append('x').append(' ');
+        }
+        void out(android.view.View row) { detachViewFromParent(row); }
+        void back(android.view.View row, int index) { attachViewToParent(row, index, row.getLayoutParams()); }
+        void drop(android.view.View row) { removeDetachedView(row, false); }
+    }
+
+    /**
+     * Attach and detach in pairs, as Android's views hear them: each view's onAttachedToWindow once as it joins the window and its
+     * onDetachedFromWindow once as it leaves, never two attaches without a detach between, whatever adds or removes it. Said
+     * once the window is there (the line attach-pairs):
+     *  - stack: a group that adds a child in its own onAttachedToWindow, as ScreenStack adds its screens: the child attached
+     *    once, after the group's onAttachedToWindow returned, as Android's FLAG_PREVENT_DISPATCH_ATTACHED_TO_WINDOW has it (it
+     *    was attached twice, and BBPlayer's tabs threw at the second setup, issue #22); taken out and put in again, the same;
+     *  - sibling: a child that adds a sibling in its onAttachedToWindow: the sibling attached once;
+     *  - removes: a child that takes an earlier sibling out in its onDetachedFromWindow: the children after it detached all
+     *    the same (one was left attached), and attached once when the group is put back;
+     *  - scrap: a child taken out of its group for a layout and put back hears nothing; removed so, its detach;
+     *  - transition: a child removed while it is in a transition stays attached until the transition ends;
+     *  - all: removeAllViews detaches each child once; moved: a child taken from one group and added to another, its detach,
+     *    then its attach; gone: the whole taken out of the window, each view still in it detached once.
+     */
+    private void attachPairs() {
+        step("attach-pairs", () -> {
+            final StringBuilder heard = new StringBuilder();
+            final android.widget.FrameLayout host = new android.widget.FrameLayout(this);
+            host.addOnAttachStateChangeListener(new android.view.View.OnAttachStateChangeListener() {
+                @Override public void onViewAttachedToWindow(android.view.View v) {
+                    host.removeOnAttachStateChangeListener(this);
+                    host.post(() -> {
+                        StringBuilder said = new StringBuilder();
+                        // stack
+                        final PairRow stack = new PairRow(Main.this, "s", heard), screen = new PairRow(Main.this, "c", heard);
+                        stack.onAttach = () -> { if (screen.getParent() == null) stack.addView(screen); };
+                        host.addView(stack);
+                        said.append("stack=").append(taken(heard));
+                        host.removeView(stack);
+                        said.append(" removed=").append(taken(heard));
+                        host.addView(stack);
+                        said.append(" again=").append(taken(heard));
+                        host.removeView(stack);
+                        said.append(" removed=").append(taken(heard));
+                        // sibling
+                        final PairRow group = new PairRow(Main.this, "g", heard), a = new PairRow(Main.this, "a", heard), b = new PairRow(Main.this, "b", heard);
+                        a.onAttach = () -> { if (b.getParent() == null) group.addView(b); };
+                        group.addView(a);
+                        host.addView(group);
+                        said.append(" sibling=").append(taken(heard));
+                        host.removeView(group);
+                        taken(heard);
+                        // removes
+                        final PairRow outer = new PairRow(Main.this, "o", heard), p = new PairRow(Main.this, "p", heard), q = new PairRow(Main.this, "q", heard),
+                                      r = new PairRow(Main.this, "r", heard);
+                        q.onDetach = () -> { if (p.getParent() == outer) outer.removeView(p); };
+                        outer.addView(p);
+                        outer.addView(q);
+                        outer.addView(r);
+                        host.addView(outer);
+                        taken(heard);
+                        host.removeView(outer);
+                        said.append(" removes=").append(taken(heard)).append(" r-attached=").append(r.isAttachedToWindow());
+                        host.addView(outer);
+                        said.append(" back=").append(taken(heard));
+                        host.removeView(outer);
+                        taken(heard);
+                        // scrap
+                        final PairRow list = new PairRow(Main.this, "l", heard), row = new PairRow(Main.this, "w", heard);
+                        list.addView(row);
+                        host.addView(list);
+                        taken(heard);
+                        list.out(row);
+                        list.back(row, 0);
+                        said.append(" scrap=").append(taken(heard));
+                        list.out(row);
+                        list.drop(row);
+                        said.append(" dropped=").append(taken(heard));
+                        // transition
+                        final PairRow leaving = new PairRow(Main.this, "t", heard);
+                        list.addView(leaving);
+                        taken(heard);
+                        list.startViewTransition(leaving);
+                        list.removeView(leaving);
+                        said.append(" transition=").append(taken(heard)).append(leaving.isAttachedToWindow());
+                        list.endViewTransition(leaving);
+                        said.append(" ended=").append(taken(heard));
+                        // all
+                        list.addView(new PairRow(Main.this, "1", heard));
+                        list.addView(new PairRow(Main.this, "2", heard));
+                        taken(heard);
+                        list.removeAllViews();
+                        said.append(" all=").append(taken(heard));
+                        // moved
+                        final PairRow from = new PairRow(Main.this, "f", heard), to = new PairRow(Main.this, "n", heard), moved = new PairRow(Main.this, "m", heard);
+                        from.addView(moved);
+                        host.addView(from);
+                        host.addView(to);
+                        taken(heard);
+                        from.removeView(moved);
+                        to.addView(moved);
+                        said.append(" moved=").append(taken(heard));
+                        ((android.view.ViewGroup) host.getParent()).removeView(host);
+                        said.append(" gone=").append(taken(heard));
+                        Log.i("DataTest", "attach-pairs " + said);
+                    });
+                }
+                @Override public void onViewDetachedFromWindow(android.view.View v) {}
+            });
+            ((android.view.ViewGroup) text.getParent()).addView(host, new android.view.ViewGroup.LayoutParams(10, 10));
+            return true;
+        });
+    }
+
+    /**
+     * A text view's lineHeight as Android's StaticLayout spaces lines: between them, not after the last. One line is as high as
+     * its font whatever the lineHeight, its baseline where the font puts it -- Breezy Weather's temperature, 140sp in a style
+     * whose text appearance says lineHeight 28sp, was 28 pixels high with its baseline above its top, and nothing of it was
+     * seen (issue #14); two lines are lineHeight apart, one font's height after the second's top, whether the lineHeight is
+     * more than the font's height or less.
+     */
+    private void lineHeight() {
+        step("line-height", () -> {
+            int free = android.view.View.MeasureSpec.makeMeasureSpec(0, android.view.View.MeasureSpec.UNSPECIFIED);
+            android.widget.TextView big = new android.widget.TextView(this);
+            big.setIncludeFontPadding(false);
+            big.setSingleLine(true);
+            big.setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX, 140);
+            big.setLineHeight(28);
+            big.setText("40");
+            big.measure(free, free);
+            big.layout(0, 0, big.getMeasuredWidth(), big.getMeasuredHeight());
+            android.graphics.Paint.FontMetricsInt fm = big.getPaint().getFontMetricsInt();
+            int bigFont = fm.descent - fm.ascent;
+            StringBuilder said = new StringBuilder("one line: ").append(big.getMeasuredHeight()).append(" high, its baseline at ")
+                .append(big.getBaseline()).append(", the font ").append(bigFont).append(" from ").append(fm.ascent);
+            boolean held = big.getMeasuredHeight() == bigFont && big.getBaseline() == -fm.ascent;
+            for (int lh : new int[] { 40, 10 }) {
+                android.widget.TextView two = new android.widget.TextView(this);
+                two.setIncludeFontPadding(false);
+                two.setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX, 20);
+                two.setLineHeight(lh);
+                two.setText("a\nb");
+                two.measure(free, free);
+                android.text.Layout l = two.getLayout();
+                android.graphics.Paint.FontMetricsInt f = two.getPaint().getFontMetricsInt();
+                // (lineHeight is the font's interline spacing, getFontMetricsInt, and the spacing's extra; a font with a leading
+                // has the lines that much closer, as on Android.)
+                int font = f.descent - f.ascent, spacing = two.getPaint().getFontMetricsInt(null), apart = l.getLineBaseline(1) - l.getLineBaseline(0);
+                said.append("; lineHeight ").append(lh).append(": lines ").append(apart).append(" apart, ").append(two.getMeasuredHeight())
+                    .append(" high, the first's baseline at ").append(l.getLineBaseline(0)).append(", the font ").append(font).append(" spaced ").append(spacing);
+                int want = lh - spacing + font;
+                held &= apart == want && two.getMeasuredHeight() == want + font && l.getLineBaseline(0) == -f.ascent;
+            }
+            detail = said.toString();
+            return held;
+        });
+    }
+
     private void links() {
         final android.content.pm.PackageManager pm = getPackageManager();
         final int DEFAULT_ONLY = android.content.pm.PackageManager.MATCH_DEFAULT_ONLY, ALL = 0x00020000;
