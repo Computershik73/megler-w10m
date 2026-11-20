@@ -675,6 +675,8 @@ public final class PlaySplits {
     }
     /** The open requests, by the app's package: one of an app at a time, its latest. */
     private static final HashMap<String, Served> sServed = new HashMap<>();
+    /** The apps whose request taken up before this process began was looked for (resumed). */
+    private static final java.util.HashSet<String> sLooked = new java.util.HashSet<>();
     private static IBinder sService;
     private static boolean sBinding;
     /** What the Play Store's service says is written in the order it was said, off its threads. */
@@ -834,7 +836,7 @@ public final class PlaySplits {
     static boolean broadcast(Intent i) {
         if (i == null || !UPDATE.equals(i.getAction()) || i.getPackage() == null || !GooglePackages.VENDING.equals(Native.packageName())) return false;
         final Served s;
-        synchronized (PlaySplits.class) { s = sServed.get(i.getPackage()); }
+        synchronized (PlaySplits.class) { s = sServed.containsKey(i.getPackage()) ? sServed.get(i.getPackage()) : resumed(i.getPackage()); }
         final Bundle state = i.getBundleExtra("session_state");
         if (s == null || state == null) {
             Log.i(TAG, "a session state for " + i.getPackage() + ", which has no open request here: not passed on");
@@ -870,6 +872,39 @@ public final class PlaySplits {
             }
         });
         return true;
+    }
+
+    /**
+     * The app's latest request, taken up by an earlier process of the Play Store and not ended, as open here again: Windows
+     * ends the Play Store while it is out of sight, and the Play Store, started anew, goes on with the download it was making
+     * for the app and tells its states (TikTok Lite's, issue #6). They are the request's still, and its end shows the app again.
+     * Null when there is none such. Called with the class's lock held.
+     */
+    private static Served resumed(String app) {
+        // (looked for once a process: the Play Store tells a download's progress many times a second)
+        if (!sLooked.add(app)) return null;
+        File dir = folder(app);
+        PhoneApps.App asking = named(app) ? PhoneApps.find(app) : null;
+        int n = dir != null && dir.isDirectory() ? latest(dir) : 0;
+        if (asking == null || n == 0) return null;
+        JSONObject request;
+        try {
+            request = new JSONObject(String.valueOf(read(new File(dir, n + ".request"))));
+        } catch (JSONException e) {
+            return null;
+        }
+        boolean taken = false;
+        for (JSONObject e : events(new File(dir, n + ".events"))) {
+            if (ends(e)) return null;
+            taken |= e.has("taken");
+        }
+        if (!taken || request.optInt("code") != START_INSTALL) return null;
+        Served s = new Served(app, asking.uid, dir, n, request);
+        s.answered = true;
+        sServed.put(app, s);
+        if (sWriter == null) sWriter = java.util.concurrent.Executors.newSingleThreadExecutor();
+        Log.i(TAG, "request " + n + " of " + app + ", taken up by the Play Store before it was started anew, is open again: its states are passed on");
+        return s;
     }
 
     private static boolean copy(Uri from, File to) {
