@@ -165,7 +165,7 @@
 # (docs/PLAY-FEATURE-DELIVERY.md): an app that asks the Play Store for a
 # feature module as Play Core does, and a stand-in for the Play Store, run in
 # turn over one data folder as a phone's two processes have a folder in common
-# (six runs; mg_java_tests.c, run_playclient). And `crossapp` with `plugin`,
+# (eight runs; mg_java_tests.c, run_playclient). And `crossapp` with `plugin`,
 # two apps that work together as Total Commander and its plug-ins do: the
 # first asks for an activity of the second with a whole Intent, the second is
 # started for it and reads it. Their pictures are written to
@@ -331,11 +331,12 @@ EOF
       done
       # Play Feature Delivery: the app that asks the Play Store for a feature module (playclient) and the stand-in for the Play
       # Store (playstore), in turn over one data folder -- the client on a phone without the Play Store, then with one that
-      # takes no request up; the Play Store taking the request up and adding the module's split; the client with the module,
+      # takes no request up; the Play Store taking the request up and adding the module's split; the client that lost the
+      # split again (`lost`: an update without it) asking anew; the Play Store adding it again; the client with the module,
       # asking for a second; the Play Store handing that one over as a file; the client taking it (run_playclient).
       if [ -f "$ROOT/build/guest/java/playclient.apk" ] && [ -f "$ROOT/build/guest/java/playstore.apk" ]; then
         MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL="*" wsl.exe -- bash -c "cp -u '$WROOT/build/guest/java/playclient.apk' $WB/playclient.apk && cp -u '$WROOT/build/guest/java/playstore.apk' $WB/playstore.apk && rm -rf $WB/java-data-play" || STATUS=1
-        for run in playclient:no-store playclient playstore playclient playstore playclient; do
+        for run in playclient:no-store playclient playstore playclient:lost playstore playclient playstore playclient; do
           app=${run%%:*}
           script=; [ "$run" != "$app" ] && script=${run#*:}
           echo "the Java test app $app (build/guest/java/$app.apk), through megler_run: Play Feature Delivery, ${script:-on what the runs before it left}"

@@ -53,8 +53,9 @@
  * Play Store's. They are two processes on a phone, with a folder in common; here they are run in turn over one data folder
  * (run_playclient): the client told promptly that there is no Play Store, or that it did not take the request up; the
  * Play Store's run taking the request up as the client's call, and its installer session adding the split to the client's
- * APKs; the client started with the module, and answered from what the Play Store said; and a module handed over as a
- * file, which the client copies and loads as SplitCompat does.
+ * APKs; the client that lost the split again (an update without it) asking anew, not told INSTALLED from what the Play Store
+ * said before; the client started with the module, and answered from what the Play Store said; and a module handed over
+ * as a file, which the client copies and loads as SplitCompat does.
  *
  * `screen` has its surface resized and turned from the host's side, as the shell does for a PC's window and a phone turned
  * (megler_set_surface): an activity that takes no configuration change is made again with its saved state, its views' and
@@ -882,11 +883,12 @@ static char *g_splits_dir;
 static bool g_xapk;
 /*
  * `playclient` and `playstore` (run_playclient): which of the two the run is of; for the client's, whether the phone has
- * no Play Store, and how far the earlier runs came -- 0 no Play Store, 1 one that does not answer, 2 the module added, 3
- * the second module's file there to take.
+ * no Play Store, whether the module the Play Store added is taken away before it starts (the script's `lost`), and how far
+ * the earlier runs came -- 0 no Play Store, 1 one that does not answer, 2 the module added, 3 the second module's file
+ * there to take, 4 the module added and lost.
  */
 #define PLAY_CLIENT "megler.test.playclient"
-static bool g_play_client, g_play_store, g_play_no_store;
+static bool g_play_client, g_play_store, g_play_no_store, g_play_lost;
 static int g_play_phase;
 
 /* Whether the app is still there to wait for. */
@@ -3635,6 +3637,10 @@ static int run_splits(void)
  *   playstore             started as the shell starts the Play Store for the request: Megler takes it up and passes it to
  *                         the app's own service as the client's call; the service installs the module `extra`, and the
  *                         split is added to the client's APKs
+ *   playclient lost       the split taken away before the client starts, as Google Play's update of an app it did not know
+ *                         to have the module leaves it out: the module asked again is not answered INSTALLED from what the
+ *                         Play Store said, but asked of the Play Store anew (TikTok Lite waited so, issue #6)
+ *   playstore             installs `extra` again for that request
  *   playclient            the client has the module: its class loads, the request asked again is answered from what the
  *                         Play Store said, the service's other calls are answered, and the module `files` is asked for
  *   playstore             hands `files` over as a file of its provider, which is copied to where the client can read it
@@ -3680,11 +3686,18 @@ static const char *play_client_before(const char *apk)
     CHECK(bytes && mg_file_write_all(copy, bytes, size));
     free(bytes);
     free(dir);
+    if (g_play_lost) {
+        /* The app installed again without the module the Play Store added: Google Play's update of it, when it did not know. */
+        char *split = mg_sprintf("%s/library/playclient.apk.splits/split_extra.apk", megler_data_dir());
+        CHECK(play_file("library/playclient.apk.splits/split_extra.apk") && mg_path_remove(split, NULL));
+        free(split);
+    }
     if (play_file("library/playclient.apk.splits/split_extra.apk")) g_splits_dir = mg_sprintf("%s.splits", copy);
-    g_play_phase = g_play_no_store ? 0 : !g_splits_dir ? 1 : !play_file(PLAY_FOLDER "/2.request") ? 2 : 3;
+    g_play_phase = g_play_no_store ? 0 : g_play_lost ? 4 : !g_splits_dir ? 1 : !play_file(PLAY_FOLDER "/3.request") ? 2 : 3;
     say("the Play client's run %d: %s", g_play_phase,
         g_play_phase == 0 ? "a phone without the Play Store" : g_play_phase == 1 ? "a Play Store that does not take the request up"
-        : g_play_phase == 2 ? "the module extra added by the Play Store" : "the module files there to take");
+        : g_play_phase == 2 ? "the module extra added by the Play Store" : g_play_phase == 3 ? "the module files there to take"
+        : "the module extra installed, and the app installed again without it");
     return copy;
 }
 
@@ -3693,14 +3706,15 @@ static int run_playclient(void)
     static const char *const steps0[] = { "bound", "no-store" }, *const steps1[] = { "bound", "unanswered" };
     static const char *const steps2[] = { "split-listed", "split-loaded", "bound", "replayed", "session-states", "deferred", "cancel-unknown", "files-asked" };
     static const char *const steps3[] = { "split-listed", "split-loaded", "bound", "files-given", "files-loaded" };
-    const char *const *steps = g_play_phase == 0 ? steps0 : g_play_phase == 1 ? steps1 : g_play_phase == 2 ? steps2 : steps3;
-    const int count = g_play_phase == 0 ? (int)MG_COUNT(steps0) : g_play_phase == 1 ? (int)MG_COUNT(steps1) : g_play_phase == 2 ? (int)MG_COUNT(steps2)
-                    : (int)MG_COUNT(steps3);
+    /* (Run 4, the module lost, is the client's first run again: it has no module and asks for it.) */
+    const char *const *steps = g_play_phase == 0 ? steps0 : g_play_phase == 1 || g_play_phase == 4 ? steps1 : g_play_phase == 2 ? steps2 : steps3;
+    const int count = g_play_phase == 0 ? (int)MG_COUNT(steps0) : g_play_phase == 1 || g_play_phase == 4 ? (int)MG_COUNT(steps1)
+                    : g_play_phase == 2 ? (int)MG_COUNT(steps2) : (int)MG_COUNT(steps3);
     static const char launch[] = "launch=com.android.vending/megler.PlaySplits." PLAY_CLIENT ";";
     char text[160];
     int at = -1, i;
     expect_line("I/PlayClientTest: onCreate", &at, 120);
-    expect_line(g_play_phase < 2 ? "I/PlayClientTest: splits null files-asked=false"
+    expect_line(g_play_phase < 2 || g_play_phase == 4 ? "I/PlayClientTest: splits null files-asked=false"
                 : g_play_phase == 2 ? "I/PlayClientTest: splits [extra] files-asked=false" : "I/PlayClientTest: splits [extra] files-asked=true", &at, 60);
     for (i = 0; i < count; i++) {
         snprintf(text, sizeof(text), "I/PlayClientTest: %s ok", steps[i]);
@@ -3727,22 +3741,33 @@ static int run_playclient(void)
         CHECK(play_file(PLAY_FOLDER "/1.request") && !play_file(PLAY_FOLDER "/1.events"));
         play_asked(launch);
         break;
+    case 4:
+        /* What the Play Store said of request 1, INSTALLED, is so no longer: the app has no such split now. Not said to the
+           app again, but asked of the Play Store anew (which the test's shell does not start: SERVICE_DIED). */
+        CHECK(find_line("I/MeglerPlaySplits: request 1 ([module extra]) asked again: what the Play Store said of it is so no longer"
+                        " (the app has no module extra among its splits); asked anew", 0) >= 0);
+        CHECK(find_line("I/MeglerPlaySplits: request 2 ([module extra]): the Play Store is started for it", 0) >= 0);
+        CHECK(find_line("I/MeglerPlaySplits: the app is told error -9: the Play Store did not take request 2", 0) >= 0);
+        CHECK(find_line("answered from what the Play Store said of it", 0) < 0 && find_line("is in state 5", 0) < 0);
+        CHECK(play_file(PLAY_FOLDER "/2.request") && !play_file(PLAY_FOLDER "/2.events"));
+        play_asked(launch);
+        break;
     case 2:
         /* The request of the run before, which the Play Store has answered since: said again from its events, and the Play
            Store not started for it. The module `files` is a new request, and the Play Store is started for that. */
-        CHECK(find_line("I/MeglerPlaySplits: request 1 ([module extra]) asked again: answered from what the Play Store said of it", 0) >= 0);
-        CHECK(find_line("I/MeglerPlaySplits: request 1: session 41 is in state 5", 0) >= 0);
+        CHECK(find_line("I/MeglerPlaySplits: request 2 ([module extra]) asked again: answered from what the Play Store said of it", 0) >= 0);
+        CHECK(find_line("I/MeglerPlaySplits: request 2: session 41 is in state 5", 0) >= 0);
         CHECK(find_line("I/MeglerPlaySplits: the app asks for its sessions: 0", 0) >= 0);
         CHECK(find_line("I/MeglerPlaySplits: the app is told error -5: a deferred install or uninstall (transaction 8) asked for [module extra]", 0) >= 0);
         CHECK(find_line("I/MeglerPlaySplits: the app is told error -4: session 77 to cancel is none the Play Store is working on for this app", 0) >= 0);
-        CHECK(wait_line("I/MeglerPlaySplits: request 2 ([module files]): the Play Store is started for it", 0, 30) >= 0);
-        CHECK(play_file(PLAY_FOLDER "/2.request"));
+        CHECK(wait_line("I/MeglerPlaySplits: request 3 ([module files]): the Play Store is started for it", 0, 30) >= 0);
+        CHECK(play_file(PLAY_FOLDER "/3.request"));
         play_asked(launch);
         break;
     default:
         /* The file the Play Store handed over, where this app reads it; nothing more is asked of the Play Store. */
-        CHECK(find_line("I/MeglerPlaySplits: request 2 ([module files]) asked again: answered from what the Play Store said of it", 0) >= 0);
-        CHECK(find_line("I/MeglerPlaySplits: request 2: session 42 is in state 3, with 1 split files to take", 0) >= 0);
+        CHECK(find_line("I/MeglerPlaySplits: request 3 ([module files]) asked again: answered from what the Play Store said of it", 0) >= 0);
+        CHECK(find_line("I/MeglerPlaySplits: request 3: session 42 is in state 3, with 1 split files to take", 0) >= 0);
         CHECK(play_file(PLAY_FOLDER "/files/42/files.apk"));
         play_asked("");
         break;
@@ -3758,9 +3783,11 @@ static int run_playclient(void)
 
 static int run_playstore(void)
 {
-    /* The client's latest request: for the module the stand-in installs with a session, or for the one it hands over as a file. */
-    const bool files = play_file(PLAY_FOLDER "/2.request");
-    const int request = files ? 2 : 1, session = files ? 42 : 41, last = files ? 3 : 5;
+    /* The client's latest request: for the module the stand-in installs with a session (1, and 2 once the client lost it), or
+       for the one it hands over as a file (3). */
+    const int request = play_file(PLAY_FOLDER "/3.request") ? 3 : play_file(PLAY_FOLDER "/2.request") ? 2 : 1;
+    const bool files = request == 3;
+    const int session = files ? 42 : 41, last = files ? 3 : 5;
     char text[200];
     int at = -1, said = -1, i;
     expect_line("I/PlayStoreTest: onCreate", &at, 120);
@@ -3786,7 +3813,7 @@ static int run_playstore(void)
     if (files) {
         /* The split read out of the Play Store's provider here, where it can be, into the folder the client reads. */
         CHECK(find_line("I/PlayStoreTest: the provider's file files.apk is opened", 0) >= 0);
-        CHECK(find_line("I/MeglerPlaySplits: request 2 of " PLAY_CLIENT ": 1 split files copied for the app to take", 0) >= 0);
+        CHECK(find_line("I/MeglerPlaySplits: request 3 of " PLAY_CLIENT ": 1 split files copied for the app to take", 0) >= 0);
         CHECK(play_file(PLAY_FOLDER "/files/42/files.apk"));
     } else {
         /* The session that inherits the client's APKs: its split added beside the client's APK in the library. */
@@ -3795,7 +3822,8 @@ static int run_playstore(void)
         CHECK(find_line("I/PlayStoreTest: install session 1 status=0 package=" PLAY_CLIENT, 0) >= 0);
         CHECK(play_file("library/playclient.apk.splits/split_extra.apk"));
     }
-    CHECK(play_file(files ? PLAY_FOLDER "/2.events" : PLAY_FOLDER "/1.events"));
+    snprintf(text, sizeof(text), PLAY_FOLDER "/%d.events", request);
+    CHECK(play_file(text));
     /* And the client is asked for again, as it was before the Play Store came in front of it. */
     play_asked("launch=" PLAY_CLIENT "/-;");
     CHECK(find_line(" FAILED", 0) < 0 && find_line("FATAL EXCEPTION", 0) < 0 && find_line("I/PlayStoreTest: refused", 0) < 0);
@@ -6161,11 +6189,12 @@ int mg_tests_java_run(const char *which, const char *apk, const char *android_ro
     /*
      * `playclient` and `playstore` are run in turn over one data folder (run_playclient): the client from its copy in the
      * library, with the splits the Play Store's run has added beside it; its first run (the script's `no-store`) on a phone
-     * that has no Play Store.
+     * that has no Play Store, and one (`lost`) with the split the Play Store added taken away.
      */
     g_play_client = !strcmp(which, "playclient");
     g_play_store = !strcmp(which, "playstore");
     g_play_no_store = g_play_client && g_script_count && !strcmp(g_script[0], "no-store");
+    g_play_lost = g_play_client && g_script_count && !strcmp(g_script[0], "lost");
     if (g_play_client) apk = play_client_before(apk);
     /* `first`: the player's start on a PC (the script's `pc`) or an Xbox (`xbox`), what it tells the core before megler_run. */
     g_first_xbox = !strcmp(which, "first") && g_script_count && !strcmp(g_script[0], "xbox");
