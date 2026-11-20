@@ -3799,6 +3799,10 @@ static int run_playstore(void)
     /* The service is called as the client: the call's package is one of the calling uid's, and that app is in front. */
     snprintf(text, sizeof(text), "I/PlayStoreTest: startInstall package=" PLAY_CLIENT " modules=[%s] playcore=11004 caller-owns=true", files ? "files" : "extra");
     expect_line(text, &at, 60);
+    /* The client's splits as Android names them: none before the module is added, and none once it was lost; the module, its
+       file there to be read, when the client asks for the second module. */
+    expect_line(files ? "I/PlayStoreTest: the app's splits as the Play Store sees them: [extra] same=true readable=true"
+                      : "I/PlayStoreTest: the app's splits as the Play Store sees them: none", &at, 60);
     snprintf(text, sizeof(text), "I/PlayStoreTest: Start install for package: " PLAY_CLIENT " session %d", session);
     expect_line(text, &at, 60);
     /* What the service says, kept in its order for the client: the callback's call, then each state. */

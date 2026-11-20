@@ -408,15 +408,16 @@ static void others_mount(void)
 
 /*
  * Another app's APK, /data/app/<package>-1/base.apk, is in no mount until a path asks for something of that folder:
- * `g_apk_find` then says where that app's APK is on the host (mg_fs_other_apks), and it is mounted there to be read.
+ * `g_apk_find` then says where that app's APK is on the host (mg_fs_other_apks), and it is mounted there to be read. A
+ * split of it, split_<name>.apk beside it, likewise once a path names it.
  */
 #define APPS_DIR "/data/app/"
 #define APPS_DIR_LEN 10
-static char *(*g_apk_find)(const char *package, void *user);
+static char *(*g_apk_find)(const char *package, const char *file, void *user);
 static void *g_apk_user;
 static mg_lock g_apk_lock = MG_LOCK_INIT;
 
-void mg_fs_other_apks(char *(*find)(const char *package, void *user), void *user)
+void mg_fs_other_apks(char *(*find)(const char *package, const char *file, void *user), void *user)
 {
     mg_lock_acquire(&g_apk_lock);
     g_apk_find = find;
@@ -424,11 +425,11 @@ void mg_fs_other_apks(char *(*find)(const char *package, void *user), void *user
     mg_lock_release(&g_apk_lock);
 }
 
-/* The APK of the app whose folder a normalized path in /data/app names, mounted if it is another app's that has one and
-   was not mounted yet: true when it was mounted now. */
+/* The APK of the app whose folder a normalized path in /data/app names -- or the split the path names in it --, mounted if
+   it is another app's that has one and was not mounted yet: true when it was mounted now. */
 static bool other_apk_mount(const char *g)
 {
-    const char *name = g + APPS_DIR_LEN, *end = strchr(name, '/');
+    const char *name = g + APPS_DIR_LEN, *end = strchr(name, '/'), *file = "base.apk";
     size_t n = end ? (size_t)(end - name) : strlen(name);
     char package[160], *guest, *host;
     bool mounted = false;
@@ -436,9 +437,10 @@ static bool other_apk_mount(const char *g)
     memcpy(package, name, n - 2);
     package[n - 2] = 0;
     if (!strcmp(package, g_package)) return false;
-    guest = mg_sprintf(APPS_DIR "%s-1/base.apk", package);
+    if (end && !strncmp(end + 1, "split_", 6) && !strchr(end + 1, '/')) file = end + 1;
+    guest = mg_sprintf(APPS_DIR "%s-1/%s", package, file);
     mg_lock_acquire(&g_apk_lock);
-    if (g_apk_find && !mount_find(guest) && (host = g_apk_find(package, g_apk_user)) != NULL) {
+    if (g_apk_find && !mount_find(guest) && (host = g_apk_find(package, file, g_apk_user)) != NULL) {
         mount_put(guest, host, MOUNT_READ_ONLY);
         free(host);
         mounted = true;

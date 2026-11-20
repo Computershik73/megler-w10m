@@ -1417,7 +1417,7 @@ N(Native_appInstall)
     c->ret.l = apps_package_ok(name) ? apps_file(mg_sprintf("%s/installs/%s.txt", J.config->apps_dir, name)) : NULL;
 }
 
-static char *other_apk_find(const char *package, void *user);
+static char *other_apk_base(const char *package, bool say);
 
 /* A split's name as a part of a file's name: letters, digits, '_' and '.', and no "..". */
 static bool split_name_ok(const char *name)
@@ -1447,7 +1447,7 @@ static bool copy_file(const char *from, const char *to)
 
 /*
  * addSplit(package, path, add): a split APK for an app the phone has -- this one, or another whose APK the shell told of
- * (other_apk_find) -- put among that app's splits, as Android's installer does with a session that inherits the installed
+ * (other_apk_base) -- put among that app's splits, as Android's installer does with a session that inherits the installed
  * APKs (megler.Installs; Play Store adds an app's on-demand feature modules so: docs/PLAY-FEATURE-DELIVERY.md). The file,
  * by its path among this app's files, has to be a split of that package at the installed base's version. It is copied into
  * the folder the app's splits are read from at its start (megler_run_config.splits_dir, which the shell keeps beside the
@@ -1461,7 +1461,7 @@ N(Native_addSplit)
 {
     const char *package = text_of(c->args[0].l), *guest = text_of(c->args[1].l), *why = NULL;
     bool own = !strcmp(package, J.package), add = c->args[2].z != 0;
-    char *host = mg_fs_host_path(guest), *base = own ? mg_strdup(J.config->apk_path) : other_apk_find(package, NULL), *dir = NULL, *to = NULL, *tmp = NULL;
+    char *host = mg_fs_host_path(guest), *base = own ? mg_strdup(J.config->apk_path) : other_apk_base(package, true), *dir = NULL, *to = NULL, *tmp = NULL;
     mg_apk_info *part = (mg_apk_info *)mg_alloc(sizeof(*part)), *whole = (mg_apk_info *)mg_alloc(sizeof(*whole));
     bool split = false;
     c->ret.l = NULL;
@@ -1499,6 +1499,48 @@ N(Native_addSplit)
     free(part);
     free(base);
     free(host);
+}
+
+/*
+ * appSplits(package): the splits of another app the phone has, by their names, sorted -- the files split_<name>.apk in the
+ * folder beside its APK where the shell and the installer keep them (<base>.splits, addSplit) -- which megler.PhoneApps
+ * names in that app's PackageInfo and ApplicationInfo, at /data/app/<package>-1/split_<name>.apk (other_apk_find); none for
+ * an app in one APK, null when where its APK is, is not known here. Google Play reads them to know which of an app's
+ * feature modules it has, and updates it with those (TikTok Lite lost its module df_edit_filter at the first update, issue #6).
+ */
+N(Native_appSplits)
+{
+    const char *package = text_of(c->args[0].l);
+    char *base = apps_package_ok(package) && strcmp(package, J.package) ? other_apk_base(package, false) : NULL, *dir, **paths = NULL;
+    int n, i, k = 0;
+    mg_jobj *a;
+    c->ret.l = NULL;
+    if (!base) return;
+    dir = mg_sprintf("%s.splits", base);
+    n = mg_apk_list_splits(dir, &paths);
+    /* Each path made its split's name in place (split_<name>.apk), or freed when it is no such file; then the names kept. */
+    for (i = 0; i < n; i++) {
+        const char *slash = strrchr(paths[i], '/');
+        char *name = mg_strdup(slash ? slash + 1 : paths[i]);
+        size_t len = strlen(name);
+        free(paths[i]);
+        paths[i] = NULL;
+        if (!strncmp(name, "split_", 6) && len > 10 && !strcmp(name + len - 4, ".apk")) {
+            memmove(name, name + 6, len - 10);
+            name[len - 10] = 0;
+            if (split_name_ok(name)) {
+                paths[k++] = name;
+                continue;
+            }
+        }
+        free(name);
+    }
+    a = mg_dvm_new_array("[Ljava/lang/String;", k);
+    for (i = 0; a && i < k; i++) a->u.oarr.v[i] = mg_dvm_new_string(paths[i]);
+    mg_apk_free_list(paths, k);
+    c->ret.l = a;
+    free(dir);
+    free(base);
 }
 /*
  * setOrientation(requested): how the activity in front wants the screen held, Android's SCREEN_ORIENTATION_* (megler.AppRunner
@@ -1700,6 +1742,7 @@ static const mg_jhle k_native[] = {
     { "megler/Native", "appResIcon", NULL, Native_appResIcon },
     { "megler/Native", "appInstall", NULL, Native_appInstall },
     { "megler/Native", "addSplit", NULL, Native_addSplit },
+    { "megler/Native", "appSplits", NULL, Native_appSplits },
     { "megler/Native", "mediaSessionMetadata", NULL, Native_mediaSessionMetadata },
     { "megler/Native", "setClipboard", NULL, Native_setClipboard },
     { "megler/Native", "getClipboard", NULL, Native_getClipboard },
@@ -2508,16 +2551,15 @@ static void mount_gms_splits(void)
 }
 
 /*
- * mg_fs_other_apks' `find`: where another app's APK is on the host, as the shell said when it described that app
- * (megler_run_config.apps_dir: the second line of <package>/source.txt, after the description's form). NULL when the app
- * is not described, or its APK is not a file this package can see.
+ * Where another app's APK is on the host, as the shell said when it described that app (megler_run_config.apps_dir: the
+ * second line of <package>/source.txt, after the description's form); with `say`, said in the log, for the APK is now
+ * where the app sees it. NULL when the app is not described, or its APK is not a file this package can see.
  */
-static char *other_apk_find(const char *package, void *user)
+static char *other_apk_base(const char *package, bool say)
 {
     char *path, *text, *line, *end, *apk = NULL;
     size_t size = 0;
     mg_stat st;
-    (void)user;
     if (!apps_package_ok(package)) return NULL;
     path = mg_sprintf("%s/%s/source.txt", J.config->apps_dir, package);
     text = (char *)mg_file_read_all(path, &size);
@@ -2530,8 +2572,30 @@ static char *other_apk_find(const char *package, void *user)
         if (mg_path_stat(line + 1, &st, NULL) && !st.is_dir) apk = mg_strdup(line + 1);
     }
     free(text);
-    if (apk) mg_info("java: the APK of %s is /data/app/%s-1/base.apk, to be read (a path asked for it)", package, package);
+    if (apk && say) mg_info("java: the APK of %s is /data/app/%s-1/base.apk, to be read (a path asked for it)", package, package);
     return apk;
+}
+
+/*
+ * mg_fs_other_apks' `find`: a file of another app's /data/app/<package>-1 on the host -- base.apk its APK (other_apk_base),
+ * split_<name>.apk one of its splits, in the folder beside the APK where the shell and the installer keep them (addSplit).
+ * NULL when it has none such.
+ */
+static char *other_apk_find(const char *package, const char *file, void *user)
+{
+    char *base, *path;
+    mg_stat st;
+    (void)user;
+    if (!strcmp(file, "base.apk")) return other_apk_base(package, true);
+    if (strncmp(file, "split_", 6) || !split_name_ok(file + 6) || (base = other_apk_base(package, false)) == NULL) return NULL;
+    path = mg_sprintf("%s.splits/%s", base, file);
+    free(base);
+    if (mg_path_stat(path, &st, NULL) && !st.is_dir) {
+        mg_info("java: a split of %s is /data/app/%s-1/%s, to be read (a path asked for it)", package, package, file);
+        return path;
+    }
+    free(path);
+    return NULL;
 }
 
 /*
