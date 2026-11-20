@@ -2448,6 +2448,7 @@ public class Main extends Activity {
         preferenceImageView();
         bluetoothListen();
         attachPairs();
+        lineHeight();
         Log.i("DataTest", "done ok=" + ok + " failed=" + failed);
         doneLogged = true;
         mediaSession();
@@ -11667,6 +11668,51 @@ public class Main extends Activity {
             });
             ((android.view.ViewGroup) text.getParent()).addView(host, new android.view.ViewGroup.LayoutParams(10, 10));
             return true;
+        });
+    }
+
+    /**
+     * A text view's lineHeight as Android's StaticLayout spaces lines: between them, not after the last. One line is as high as
+     * its font whatever the lineHeight, its baseline where the font puts it -- Breezy Weather's temperature, 140sp in a style
+     * whose text appearance says lineHeight 28sp, was 28 pixels high with its baseline above its top, and nothing of it was
+     * seen (issue #14); two lines are lineHeight apart, one font's height after the second's top, whether the lineHeight is
+     * more than the font's height or less.
+     */
+    private void lineHeight() {
+        step("line-height", () -> {
+            int free = android.view.View.MeasureSpec.makeMeasureSpec(0, android.view.View.MeasureSpec.UNSPECIFIED);
+            android.widget.TextView big = new android.widget.TextView(this);
+            big.setIncludeFontPadding(false);
+            big.setSingleLine(true);
+            big.setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX, 140);
+            big.setLineHeight(28);
+            big.setText("40");
+            big.measure(free, free);
+            big.layout(0, 0, big.getMeasuredWidth(), big.getMeasuredHeight());
+            android.graphics.Paint.FontMetricsInt fm = big.getPaint().getFontMetricsInt();
+            int bigFont = fm.descent - fm.ascent;
+            StringBuilder said = new StringBuilder("one line: ").append(big.getMeasuredHeight()).append(" high, its baseline at ")
+                .append(big.getBaseline()).append(", the font ").append(bigFont).append(" from ").append(fm.ascent);
+            boolean held = big.getMeasuredHeight() == bigFont && big.getBaseline() == -fm.ascent;
+            for (int lh : new int[] { 40, 10 }) {
+                android.widget.TextView two = new android.widget.TextView(this);
+                two.setIncludeFontPadding(false);
+                two.setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX, 20);
+                two.setLineHeight(lh);
+                two.setText("a\nb");
+                two.measure(free, free);
+                android.text.Layout l = two.getLayout();
+                android.graphics.Paint.FontMetricsInt f = two.getPaint().getFontMetricsInt();
+                // (lineHeight is the font's interline spacing, getFontMetricsInt, and the spacing's extra; a font with a leading
+                // has the lines that much closer, as on Android.)
+                int font = f.descent - f.ascent, spacing = two.getPaint().getFontMetricsInt(null), apart = l.getLineBaseline(1) - l.getLineBaseline(0);
+                said.append("; lineHeight ").append(lh).append(": lines ").append(apart).append(" apart, ").append(two.getMeasuredHeight())
+                    .append(" high, the first's baseline at ").append(l.getLineBaseline(0)).append(", the font ").append(font).append(" spaced ").append(spacing);
+                int want = lh - spacing + font;
+                held &= apart == want && two.getMeasuredHeight() == want + font && l.getLineBaseline(0) == -f.ascent;
+            }
+            detail = said.toString();
+            return held;
         });
     }
 

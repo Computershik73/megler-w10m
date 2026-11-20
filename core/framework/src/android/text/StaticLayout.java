@@ -112,8 +112,6 @@ public class StaticLayout extends Layout {
                 metrics(text, lineStart, Math.max(lineStart + 1, Math.min(next, contentEnd)), paint, fm);
                 int above = mIncludePad ? fm.top : fm.ascent, below = mIncludePad ? fm.bottom : fm.descent;
                 int h = below - above;
-                int extra = 0;
-                if (mult != 1 || add != 0) extra = (int) (h * (mult - 1) + add + 0.5f);
                 if (spanned) {
                     LineHeightSpan[] lh = ((Spanned) text).getSpans(lineStart, next, LineHeightSpan.class);
                     if (lh.length > 0) {
@@ -123,7 +121,22 @@ public class StaticLayout extends Layout {
                     }
                 }
                 boolean lastLineAllowed = mLineCount + 1 >= mMaxLines;
-                addLine(lineStart, y, below + Math.max(0, extra));
+                /*
+                 * The line spacing goes between lines, as Android's StaticLayout.out has it: not after the last line (nor after
+                 * one ellipsized at the last allowed), so that one line is as high as its font whatever the spacing, as a
+                 * BoringLayout is. The spacing's extra is rounded away from zero, and a line's descent takes it, so that a
+                 * negative extra (a lineHeight under the font's height) brings the next line closer without moving this one's
+                 * baseline. Megler's added it after the last line too and kept the descent: Breezy Weather's temperature, 140sp
+                 * in a style whose text appearance says lineHeight 28sp, was a line 28 pixels high with its baseline above its
+                 * top, and nothing of it was seen (issue #14).
+                 */
+                boolean lastLine = next >= mEnd || (lastLineAllowed && mEllipsize != null && mEllipsize != TextUtils.TruncateAt.MARQUEE);
+                int extra = 0;
+                if ((mult != 1 || add != 0) && !lastLine) {
+                    double ex = h * (mult - 1) + add;
+                    extra = ex >= 0 ? (int) (ex + 0.5) : -(int) (-ex + 0.5);
+                }
+                addLine(lineStart, y, below + extra);
                 y += h + extra;
                 if (lastLineAllowed && (next < mEnd || (!lastOfPara))) {
                     // more text than lines: the last one ellipsized (or cut)

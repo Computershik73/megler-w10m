@@ -4337,7 +4337,10 @@ static int run_data(void)
                                          "bluetooth-listen",
                                          /* And views attached and detached in pairs, whatever adds or removes them (issue #22): the
                                             line attach-pairs below. */
-                                         "attach-pairs" };
+                                         "attach-pairs",
+                                         /* And lineHeight as Android spaces lines, between them and not after the last: one line as
+                                            high as its font whatever the lineHeight (issue #14). */
+                                         "line-height" };
     int at = -1, want = 0, run = 0, line, i;
     char text[120];
     if (g_script_count) sscanf(g_script[0], "run:%d", &want);
