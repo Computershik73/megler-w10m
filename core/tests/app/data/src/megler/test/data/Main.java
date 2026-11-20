@@ -410,6 +410,7 @@ public class Main extends Activity {
         step("keybox-attestation", () -> { detail = AttestationChecks.run(this, run); return true; });
         keystoreForeignKey();
         keystoreHosted();
+        keystoreTink(run);
         pathOps();
         textPath();
         base64Streams();
@@ -4792,6 +4793,141 @@ public class Main extends Activity {
                 deleteAll(root);
             }
         });
+    }
+
+    /**
+     * Android's key store as Tink's AndroidKeystoreKmsClient and AndroidKeysetManager use it for an app's encrypted storage
+     * (androidx's EncryptedSharedPreferences, and Google Play services' mobstore, whose "Keystore cannot load the key with ID:
+     * mobstore_encrypt" and "Failed to initialize encryption" are issue #21), in its order: a KeyStore loaded, containsAlias
+     * (hasKey), an AES key of 256 bits for GCM made under the alias where there is none, a KeyStore loaded again and getKey,
+     * where Tink says that message when it answers null; the key checked by sealing ten bytes and opening them again as
+     * Tink's AndroidKeystoreAesGcm does (the IV the provider chose, before the ciphertext); getEntry. The key set it encrypts
+     * is kept in the app's preferences by the first run and opened by the second with the key found again.
+     *
+     * keystore-tink-hosted: the same as Google Play services' in an app's process (megler.KeyStoreProvider.hostedForTests:
+     * their data folder in this app's files, begun with the shared store), their key set in their folder, made by the first
+     * run and opened by the second. And data of before the shared store, with a key set in their preferences under an alias
+     * whose key is in no store (made by an app's process before 734): getKey answers null and the key set is removed, so
+     * that the next start makes the key again, and the key set; a key set of another name stays.
+     */
+    private void keystoreTink(final long run) {
+        final String text = "megler key set: one key of the keyset, as Tink keeps it encrypted";
+        step("keystore-tink", () -> {
+            android.content.SharedPreferences prefs = getSharedPreferences("megler_tink_keyset", MODE_PRIVATE);
+            String kept = prefs.getString("keyset", null);
+            boolean[] had = new boolean[1];
+            javax.crypto.SecretKey key = tinkMasterKey("megler-tink-master", had);
+            java.security.KeyStore store = java.security.KeyStore.getInstance("AndroidKeyStore");
+            store.load(null);
+            java.security.KeyStore.Entry entry = store.getEntry("megler-tink-master", null);
+            boolean entryOk = entry instanceof java.security.KeyStore.SecretKeyEntry
+                    && Arrays.equals(key.getEncoded(), ((java.security.KeyStore.SecretKeyEntry) entry).getSecretKey().getEncoded());
+            String opened = null;
+            if (kept == null) prefs.edit().putString("keyset", hex(tinkSeal(key, text.getBytes("UTF-8")))).commit();
+            else opened = new String(tinkOpen(key, unhex(kept)), "UTF-8");
+            detail = "had=" + had[0] + " kept=" + (kept != null) + " opened=" + opened + " entry=" + entryOk + " run=" + run;
+            return entryOk && had[0] == (run > 1) && (run > 1 ? text.equals(opened) : kept == null && prefs.getString("keyset", null) != null);
+        });
+        step("keystore-tink-hosted", () -> {
+            final java.lang.reflect.Method hosted = Class.forName("megler.KeyStoreProvider").getMethod("hostedForTests", String.class);
+            final File root = new File(getFilesDir(), "keystore-tink-hosted"), data = new File(root, "com.google.android.gms");
+            final File keySet = new File(data, "shared_prefs/megler-tink-mobstore.xml");
+            final File old = new File(getFilesDir(), "keystore-tink-old"), oldData = new File(old, "com.google.android.gms");
+            final File oldSet = new File(oldData, "shared_prefs/megler-tink-lost.xml"), otherSet = new File(oldData, "shared_prefs/megler-tink-other.xml");
+            if (run == 1) {
+                deleteAll(root);
+                data.mkdirs();
+                new File(root, ".megler-keystore-shared").createNewFile();
+            }
+            deleteAll(old);
+            oldSet.getParentFile().mkdirs();
+            try (java.io.FileOutputStream out = new java.io.FileOutputStream(oldSet)) { out.write("a key set of a key in no store".getBytes("UTF-8")); }
+            try (java.io.FileOutputStream out = new java.io.FileOutputStream(otherSet)) { out.write("another key set".getBytes("UTF-8")); }
+            java.security.KeyStore store = java.security.KeyStore.getInstance("AndroidKeyStore");
+            store.load(null);
+            try {
+                hosted.invoke(null, root.getPath());
+                boolean[] had = new boolean[1];
+                javax.crypto.SecretKey key = tinkMasterKey("megler-tink-mobstore", had);
+                String opened = null;
+                if (run == 1) {
+                    keySet.getParentFile().mkdirs();
+                    try (java.io.FileOutputStream out = new java.io.FileOutputStream(keySet)) { out.write(hex(tinkSeal(key, text.getBytes("UTF-8"))).getBytes("UTF-8")); }
+                } else {
+                    byte[] b = new byte[(int) keySet.length()];
+                    try (java.io.RandomAccessFile in = new java.io.RandomAccessFile(keySet, "r")) { in.readFully(b); }
+                    opened = new String(tinkOpen(key, unhex(new String(b, "UTF-8"))), "UTF-8");
+                }
+                boolean theirs = new File(data, ".megler_keystore2").isFile();
+                hosted.invoke(null, (Object) null);
+                boolean notApps = !store.containsAlias("megler-tink-mobstore");
+                // Their data of before the shared store, a key set whose key is in no store.
+                hosted.invoke(null, old.getPath());
+                boolean missing = !store.containsAlias("megler-tink-lost") && store.getKey("megler-tink-lost", null) == null;
+                boolean removed = !oldSet.exists() && otherSet.isFile();
+                boolean[] again = new boolean[1];
+                javax.crypto.SecretKey fresh = tinkMasterKey("megler-tink-lost", again);
+                boolean remade = !again[0] && fresh != null && new File(oldData, ".megler_keystore2").isFile() && store.getKey("megler-tink-lost", null) != null;
+                detail = "had=" + had[0] + " opened=" + opened + " theirs=" + theirs + " not-the-app's=" + notApps + " missing=" + missing + " removed=" + removed
+                        + " remade=" + remade + " run=" + run;
+                return had[0] == (run > 1) && (run == 1 || text.equals(opened)) && theirs && notApps && missing && removed && remade;
+            } finally {
+                hosted.invoke(null, (Object) null);
+                deleteAll(old);
+            }
+        });
+    }
+
+    /*
+     * Tink's master key in Android's key store (AndroidKeystoreKmsClient): hasKey, generateNewAeadKey where there is none,
+     * getAead -- a KeyStore of its own, getKey, null being "Keystore cannot load the key with ID" -- and validateAead.
+     */
+    private static javax.crypto.SecretKey tinkMasterKey(String alias, boolean[] had) throws Exception {
+        java.security.KeyStore store = java.security.KeyStore.getInstance("AndroidKeyStore");
+        store.load(null);
+        had[0] = store.containsAlias(alias);
+        if (!had[0]) keystoreAes(alias);
+        java.security.KeyStore again = java.security.KeyStore.getInstance("AndroidKeyStore");
+        again.load(null);
+        javax.crypto.SecretKey key = (javax.crypto.SecretKey) again.getKey(alias, null);
+        if (key == null) throw new java.security.InvalidKeyException("Keystore cannot load the key with ID: " + alias);
+        byte[] message = new byte[10];
+        new java.security.SecureRandom().nextBytes(message);
+        if (!Arrays.equals(message, tinkOpen(key, tinkSeal(key, message)))) throw new java.security.KeyStoreException("cannot use Android Keystore");
+        return key;
+    }
+
+    /* AndroidKeystoreAesGcm's encrypt: the IV the cipher chose, then the ciphertext and its tag; no associated data. */
+    private static byte[] tinkSeal(javax.crypto.SecretKey key, byte[] plain) throws Exception {
+        javax.crypto.Cipher c = javax.crypto.Cipher.getInstance("AES/GCM/NoPadding");
+        c.init(javax.crypto.Cipher.ENCRYPT_MODE, key);
+        c.updateAAD(new byte[0]);
+        byte[] out = new byte[12 + plain.length + 16];
+        int n = c.doFinal(plain, 0, plain.length, out, 12);
+        byte[] iv = c.getIV();
+        if (n != plain.length + 16 || iv == null || iv.length != 12) throw new java.security.GeneralSecurityException("encryption failed: " + n + " bytes, IV " + (iv == null ? null : iv.length));
+        System.arraycopy(iv, 0, out, 0, 12);
+        return out;
+    }
+
+    /* AndroidKeystoreAesGcm's decrypt. */
+    private static byte[] tinkOpen(javax.crypto.SecretKey key, byte[] sealed) throws Exception {
+        javax.crypto.Cipher c = javax.crypto.Cipher.getInstance("AES/GCM/NoPadding");
+        c.init(javax.crypto.Cipher.DECRYPT_MODE, key, new javax.crypto.spec.GCMParameterSpec(128, sealed, 0, 12));
+        c.updateAAD(new byte[0]);
+        return c.doFinal(sealed, 12, sealed.length - 12);
+    }
+
+    private static String hex(byte[] b) {
+        StringBuilder s = new StringBuilder();
+        for (byte x : b) s.append(String.format("%02x", x & 255));
+        return s.toString();
+    }
+
+    private static byte[] unhex(String s) {
+        byte[] b = new byte[s.length() / 2];
+        for (int i = 0; i < b.length; i++) b[i] = (byte) Integer.parseInt(s.substring(2 * i, 2 * i + 2), 16);
+        return b;
     }
 
     private static void keystoreAes(String alias) throws Exception {

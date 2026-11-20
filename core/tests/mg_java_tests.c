@@ -4085,14 +4085,16 @@ static int run_data(void)
                                             stand-in that fails politely), the app's network security configuration (an authority of its own
                                             trusted for the names it gives it, the rest refused, pins), Android's key store's key pairs and their
                                             X.509 certificates (and an attestation challenge refused, and a key no provider takes refused at once;
-                                            and Google Play services' keys in an app's process, one store in their shared data and not the app's),
+                                            and Google Play services' keys in an app's process, one store in their shared data and not the app's;
+                                            and Tink's master key and the key set it encrypts, in the app's store and in theirs, found again by
+                                            the second run, and their key set whose key is in no store removed, issue #21),
                                             and the list of decoders: the stand-in's H.264, AAC and MP3 (mg_codec_standin.c), and no H.265. And
                                             the phone's sensors, the stand-in's (mg_sensor_standin.c), listed and listened to. And
                                             android.test.base, which an app made for Android 10 or before has: junit.framework.Assert
                                             as Facebook's SDK asserts the main thread, its failures worded as Android's, a TestSuite
                                             of a TestCase's class run. */
                                          "battery", "connectivity", "dns-servers", "system-libs", "apache-http-legacy", "apache-http-client", "junit-assert", "junit-messages", "junit-test-case", "preloaded-drawables", "location", "sensors", "timezone", "locale", "phone-number", "tls", "tls-loopback", "tls-https",
-                                         "network-trust", "network-trust-domains", "network-trust-pins", "keystore", "keystore-strongbox-spec", "keystore-certificates", "integrity-profile", "integrity-callbacks", "keybox-attestation", "keystore-foreign-key", "keystore-hosted", "path-op", "text-path", "base64-streams", "piped-streams", "trace-bytes", "codecs",
+                                         "network-trust", "network-trust-domains", "network-trust-pins", "keystore", "keystore-strongbox-spec", "keystore-certificates", "integrity-profile", "integrity-callbacks", "keybox-attestation", "keystore-foreign-key", "keystore-hosted", "keystore-tink", "keystore-tink-hosted", "path-op", "text-path", "base64-streams", "piped-streams", "trace-bytes", "codecs",
                                          /* And what Android's WebView asks of the platform before it shows a page, each answered as Android
                                             answers it: the app's id within its user (UserHandle.getAppId), whether cleartext HTTP is
                                             permitted (NetworkSecurityPolicy), a compatibility change's state for the app's target
@@ -4386,6 +4388,8 @@ static int run_data(void)
        another, taking cleartext and the anchors from it. */
     CHECK(find_line("I/NetworkSecurityConfig: the app's network security configuration xml/network_security_config: base-config: cleartext refused, anchors system;", 0) >= 0);
     CHECK(find_line("; domain-config of nested.sub.megler.test: cleartext permitted, anchors @raw/trust_test_ca;", 0) >= 0);
+    /* Google Play services' key set of a key in no store (keystore-tink-hosted), removed once and said so, with why. */
+    CHECK(count_lines("W/Megler: AndroidKeyStore: Google Play services' key megler-tink-lost is in no store they read (made in another app's process by a Megler before 0.1.0.734): its key set ") == 1);
     /* The state of a component of a package the phone does not have (component-state) is Android's IllegalArgumentException, said once. */
     CHECK(find_line("I/Megler: the enabled state of a component of com.facebook.appmanager, which the phone does not have: IllegalArgumentException, as Android answers", 0) >= 0);
     /* The app's notification channels and groups, kept in its data folder by NotificationManager: none at the first run's start,

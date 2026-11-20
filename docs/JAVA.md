@@ -2644,6 +2644,20 @@ of the app's is hidden from it while the process runs. The data app's
 delete, a file another process wrote read again, a lock left behind, and the
 mark; `mg_storage_tests.c` checks when the mark is written.
 
+A key set whose key is in none of those stores stays unreadable for as long
+as the app whose store has the key does not run (it is gone, its data was
+cleared, or its package is of a Megler before 734, which copies nothing): every
+app failed at each use of the services' storage (issue #21, and a Lumia 650
+with 734 where none of five apps had the key). So when their code takes a key
+(`getKey`) that no store they read has, and their preferences keep a key set
+under that alias as mobstore keeps its (`shared_prefs/<alias>.xml`), that file
+is removed (`KeyStoreProvider.lost`, once a process, said in the log): that use
+fails still, Tink having read the key set before it asked for the key, and the
+next one makes the key and the key set again. The data app's
+`keystore-tink-hosted` step checks it beside Tink's own sequence over the
+services' store across two runs; `keystore-tink` runs that sequence over the
+app's own store.
+
 `android.util.Base64OutputStream` and `Base64InputStream` encode and decode
 as they go, with `Base64`'s flags as `Base64.encode` and `decode` take them
 (`MeglerBase64Coder`, in the overlay): lines of 76 and a line end, the last
