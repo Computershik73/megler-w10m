@@ -509,7 +509,18 @@ bool Library::isBundle(const std::string& pickedName) {
  * 2026-11-16, and the library said "The file cannot be opened" of each file so written. Plain APKs alone (a bundle is unpacked
  * where it is picked in Megler). Once a start, after the window is shown.
  */
+void Library::takeUsbApksNow() {
+    if (appPackage::isSingleApp()) return;
+    std::thread([this] { takeUsbApks(); }).detach();
+}
+
 void Library::takeUsbApks() {
+    // (One at a time: the start's and a rescan's would take the same files.)
+    static std::atomic<bool> taking{false};
+    if (taking.exchange(true)) return;
+    struct Done {
+        ~Done() { taking = false; }
+    } done;
     try {
         winrt::init_apartment(winrt::apartment_type::multi_threaded);
     } catch (...) {

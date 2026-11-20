@@ -13,6 +13,7 @@
 //   ui-dialog-<name>-<n>    the dialog up now answered with its button n, from the left (Google Play's question: 0 microG, 1 Google Play)
 //   ui-update-all           Update All (ui/SeparateApps.h): each app package made by another Megler made and installed again
 //   ui-update-<package>     the same for the one app of that Android package (ui-update-com.here.app.maps), outdated or not
+//   ui-rescan-library       the library rescanned (Settings › Apps' Storage › Rescan the Library): the installed apps it lacks added
 //   ui-uninstall-<package>  that app's package uninstalled, as its page's Uninstall does once asked (its APK into the library first)
 //   ui-probe-breakpoints    whether the system stops a thread at a hardware breakpoint (megler_probe_breakpoints), in the log
 //   ui-type-<text>          the text typed into the running app's field being edited, each '_' a space (a flag's name has

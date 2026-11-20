@@ -297,6 +297,15 @@ private:
                 java.Margin(ThicknessHelper::FromLengths(0, 4, 0, 0));
                 empty.Children().Append(java);
             }
+            // Apps of Megler's installed on the phone that its library lacks: moved from another phone (WP Migrate), or
+            // installed while Megler had another library (separateApps::strayCount).
+            if (const unsigned stray = separateApps::strayCount()) {
+                auto rescan = textButton(format(stray == 1 ? "Add the App Installed on This Phone" : "Add the %u Apps Installed on This Phone", stray),
+                                         [this] { separateApps::rescanLibrary(shell_); });
+                rescan.HorizontalAlignment(HorizontalAlignment::Center);
+                rescan.Margin(ThicknessHelper::FromLengths(0, 4, 0, 0));
+                empty.Children().Append(rescan);
+            }
             listHost_.Content(empty);
             return;
         }
@@ -347,6 +356,26 @@ private:
             auto update = primaryButton("Update All", glyphs::refresh, [this] { separateApps::updateAll(shell_); });
             update.HorizontalAlignment(HorizontalAlignment::Right);
             add(column, update);
+            auto box = card(column, 12, 16);
+            box.Margin(ThicknessHelper::FromLengths(0, 8, 0, 8));
+            add(top, box);
+        }
+        // Apps of Megler's installed on the phone that the library has no entry of: moved from another phone with Megler's shared
+        // folder (WP Migrate installs their packages, and Megler's library stays behind), or installed while Megler had another
+        // library. They ran, but had no page here, and Update All left them out.
+        if (const unsigned stray = separateApps::strayCount(); stray && separateApps::working().empty()) {
+            auto column = vstack(16);
+            auto line = text(format(stray == 1 ? "An app of Megler's is installed on this phone and not in the library: moved from another "
+                                                 "phone, or installed while Megler had another library."
+                                               : "%u apps of Megler's are installed on this phone and not in the library: moved from another "
+                                                 "phone, or installed while Megler had another library.",
+                                    stray),
+                             font::bodyMedium, weightNormal(), palette().onSurfaceVariant);
+            line.TextWrapping(TextWrapping::Wrap);
+            add(column, line);
+            auto rescan = primaryButton("Add to Library", glyphs::add, [this] { separateApps::rescanLibrary(shell_); });
+            rescan.HorizontalAlignment(HorizontalAlignment::Right);
+            add(column, rescan);
             auto box = card(column, 12, 16);
             box.Margin(ThicknessHelper::FromLengths(0, 8, 0, 8));
             add(top, box);

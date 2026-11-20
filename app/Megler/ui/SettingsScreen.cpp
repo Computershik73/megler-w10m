@@ -416,6 +416,13 @@ private:
                                       },
                                       ButtonKind::plain, "Move the Apps Here"));
         }
+        // The library made whole again with what is installed: apps moved from another phone with Megler's shared folder (WP
+        // Migrate), or installed while Megler had another library, and the APKs put in Pictures\Megler\apks.
+        rows.push_back(button(listItem("Rescan the Library",
+                                       "Adds the apps of Megler's installed on this phone that the library lacks (moved from another phone, "
+                                       "or installed by Megler before it was installed again), and the APKs put in Pictures\\Megler\\apks",
+                                       glyphs::refresh),
+                              [this] { separateApps::rescanLibrary(shell_); }, ButtonKind::plain, "Rescan the Library"));
         // What is being moved or installed now (refresh keeps it).
         const std::string now = separateApps::working();
         storageNow_ = text(now, font::bodyMedium, weightNormal(), p.primary);

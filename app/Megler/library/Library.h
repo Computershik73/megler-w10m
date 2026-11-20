@@ -181,6 +181,9 @@ public:
     /// The other way: the installed app's APK and splits copied back here
     /// (before the package is uninstalled). Empty, or why not.
     std::string restore(const std::string& id);
+    /// The APKs a PC put in Pictures\Megler\apks taken into the library now, on a
+    /// thread of their own, as at each start (takeUsbApks): the library rescanned.
+    void takeUsbApksNow();
 
 private:
     void queue(const std::string& id);

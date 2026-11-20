@@ -195,6 +195,8 @@ void poll(AppShell& shell) {
             if (n >= 0) shell.pressDialog(n);
         } else if (flag == L"ui-update-all") {
             separateApps::updateAll(shell);
+        } else if (flag == L"ui-rescan-library") {
+            separateApps::rescanLibrary(shell, false);
         } else if (flag.rfind(L"ui-uninstall-", 0) == 0) {
             separateApps::uninstall(shell, narrow(flag.substr(13)));
         } else if (flag.rfind(L"ui-update-", 0) == 0) {

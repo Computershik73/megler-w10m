@@ -66,6 +66,14 @@ std::string working();
 /// Whether Windows refused an install or an uninstall for access since Megler started, and has done none since: Megler has
 /// not got packageManagement (appPackage::accessDeniedText), and the Library says so once for all its apps.
 bool installsRefused();
+/// The apps of Megler's installed on the phone that the library has no entry of, whose APK in the shared folder is known for
+/// sure, as the last listing found them: moved from another phone with the shared folder (WP Migrate), or installed while
+/// Megler had another library (Megler installed afresh). The Library offers to add them.
+unsigned strayCount();
+/// The library rescanned: the APKs a PC put in Pictures\Megler\apks taken, and each installed app the library has no entry
+/// of added to it, its entry reading the APK its package reads, as Megler's own install leaves one -- so that its page,
+/// Update All and Uninstall have it again. The list is asked for first. `tell`: an alert says what came of it. UI thread.
+void rescanLibrary(AppShell& shell, bool tell = true);
 
 /// The list of the apps' packages, which Windows's package manager gives (on an Xbox, the console's Device Portal:
 /// appPackage::installedApps): ready once it came (or once its lister has answered at all), unavailable when it could not be
