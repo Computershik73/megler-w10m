@@ -7367,6 +7367,27 @@ public class Main extends Activity {
             return back == f && range != null && range.startsWith("at ") && range.contains("14:53") && range.contains("15:38")
                     && plain != null && !plain.isEmpty() && duration != null && duration.toString().length() > 0;
         });
+        // A size as Android 9's Formatter words it, as LibChecker's app details lay it out: formatFileSize with SI or IEC units
+        // (with flags it said null, and the details ended on SpannableStringBuilder.append of it, issue #17), its rounding (two
+        // decimals up to 100, one with FLAG_SHORTER below 10, 900 still of the unit below), "" without a context; and a time
+        // rounded up to minutes (null too). The decimal separator is the run's locale's, as String.format's on Android.
+        step("format-file-size", () -> {
+            char point = java.text.DecimalFormatSymbols.getInstance().getDecimalSeparator();
+            // (The flags and the forms that take them are hidden API, which LibChecker compiles against: reached by reflection.)
+            Class<?> f = android.text.format.Formatter.class;
+            java.lang.reflect.Method flagged = f.getMethod("formatFileSize", Context.class, long.class, int.class);
+            int iecUnits = f.getField("FLAG_IEC_UNITS").getInt(null);
+            String si = android.text.format.Formatter.formatFileSize(this, 1234567L), two = android.text.format.Formatter.formatFileSize(this, 12345678L),
+                    iec = (String) flagged.invoke(null, this, 1536L, iecUnits), zero = (String) flagged.invoke(null, this, 0L, iecUnits),
+                    bytes = android.text.format.Formatter.formatFileSize(this, 900L),
+                    shorter = android.text.format.Formatter.formatShortFileSize(this, 12345678L),
+                    none = android.text.format.Formatter.formatFileSize(null, 5L),
+                    minutes = (String) f.getMethod("formatShortElapsedTimeRoundingUpToMinutes", Context.class, long.class).invoke(null, this, 30000L);
+            CharSequence shown = new android.text.SpannableStringBuilder("Size: ").append(two);
+            detail = "si=" + si + " two=" + two + " iec=" + iec + " zero=" + zero + " bytes=" + bytes + " shorter=" + shorter + " none=[" + none + "] minutes=" + minutes + " shown=" + shown;
+            return ("1" + point + "23 MB").equals(si) && ("12" + point + "35 MB").equals(two) && ("1" + point + "50 kB").equals(iec) && "0 B".equals(zero)
+                    && "900 B".equals(bytes) && "12 MB".equals(shorter) && "".equals(none) && "1 min".equals(minutes) && shown.toString().equals("Size: " + two);
+        });
     }
 
     /**

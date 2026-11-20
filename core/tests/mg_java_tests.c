@@ -4160,8 +4160,9 @@ static int run_data(void)
                                             IBinder, as Instagram asks whether there is a navigation bar (it ended on a null). */
                                          "service-manager",
                                          "service-manager-window",
-                                         /* And DateUtils' ranges into a Formatter, and a duration in words (both answered null). */
-                                         "date-range",
+                                         /* And DateUtils' ranges into a Formatter, and a duration in words (both answered null). And
+                                            a size as Android 9's Formatter words and rounds it, with flags and without (issue #17). */
+                                         "date-range", "format-file-size",
                                          /* And dates as Android words them: DateFormat's patterns for a skeleton, ICU's for en-US and
                                             ru-RU (Messenger's chat list's "MMMd, yyyy" through a medium format's clone), the locale's
                                             clock; DateFormat.format's letters and the names, the 12/24 hours of the settings; DateUtils'
