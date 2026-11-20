@@ -16,7 +16,8 @@ public class Paint {
 
     static final int P_COLOR = 0, P_STYLE = 1, P_STROKE = 2, P_FLAGS = 3, P_CAP = 4, P_JOIN = 5, P_TEXTSIZE = 6, P_ALIGN = 7, P_MITER = 8, P_SHRAD = 9,
         P_SHDX = 10, P_SHDY = 11, P_SHCOL = 12, P_SCALEX = 13, P_SKEWX = 14, P_LSPACE = 15, P_XFER = 16, P_CFCOLOR = 17, P_CFMODE = 18, P_ALPHA = 19, P_COUNT = 20;
-    static final int PF_AA = 1, PF_FILTER = 2, PF_FAKEBOLD = 4, PF_UNDERLINE = 8, PF_STRIKE = 16;
+    /* PF_UNDRAWABLE: the shader is one nothing here can draw (Shader.meglerUndrawable): what the paint fills is left out. */
+    static final int PF_AA = 1, PF_FILTER = 2, PF_FAKEBOLD = 4, PF_UNDERLINE = 8, PF_STRIKE = 16, PF_UNDRAWABLE = 32;
 
     /** The packet. */
     public final int[] mP = new int[P_COUNT];
@@ -79,6 +80,7 @@ public class Paint {
         if ((flags & FAKE_BOLD_TEXT_FLAG) != 0) pfl |= PF_FAKEBOLD;
         if ((flags & UNDERLINE_TEXT_FLAG) != 0) pfl |= PF_UNDERLINE;
         if ((flags & STRIKE_THRU_TEXT_FLAG) != 0) pfl |= PF_STRIKE;
+        if (mShader != null && mShader.meglerUndrawable()) pfl |= PF_UNDRAWABLE;
         mP[P_FLAGS] = pfl;
     }
     private void flag(int f, boolean on) { setFlags(on ? mFlags | f : mFlags & ~f); }
@@ -123,7 +125,17 @@ public class Paint {
     public boolean getFillPath(Path src, Path dst) { dst.set(src); return true; }
 
     public Shader getShader() { return mShader; }
-    public Shader setShader(Shader s) { mShader = s; return s; }
+    public Shader setShader(Shader s) {
+        mShader = s;
+        setFlags(mFlags);
+        if ((mP[P_FLAGS] & PF_UNDRAWABLE) != 0 && !sUndrawableSaid) {
+            sUndrawableSaid = true;
+            android.util.Log.w("Paint", "a " + s.getClass().getName() + " is not drawn here (its AGSL program is not run): what a paint with it fills "
+                + "is left out (said once)");
+        }
+        return s;
+    }
+    private static volatile boolean sUndrawableSaid;
     public ColorFilter getColorFilter() { return mColorFilter; }
     public ColorFilter setColorFilter(ColorFilter f) {
         mColorFilter = f;

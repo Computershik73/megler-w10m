@@ -17,7 +17,7 @@
 //     Windows 10): as wide as a pixel is under the matrix's mean scale,
 //     which is not one pixel under a matrix that stretches one way.
 //   - A transfer mode or a colour filter's mode whose number is not one of
-//     the eighteen: drawn as SRC_OVER, the filter left out. A coordinate
+//     the nineteen: drawn as SRC_OVER, the filter left out. A coordinate
 //     that is no number, or beyond a thousand million: the call draws
 //     nothing.
 //
@@ -122,7 +122,7 @@
 //     picture itself has a sharp edge.
 //   - Blending and effects work in floating point and round to whole 255ths
 //     at the end of each step, where this file's arithmetic rounds every
-//     product: the eighteen modes, as drawing calls, layers, drawColor and
+//     product: the nineteen modes, as drawing calls, layers, drawColor and
 //     colour filters, are within a step of megler.h's table (the scenes' check
 //     allows two). OVERLAY's choice between its two formulas can fall the
 //     other way on a pixel where 2*D is Da to within rounding.
@@ -425,7 +425,7 @@ struct State {
     enum EffectsWhy { whyInkMode, whyInkShaderFilter, whyInkSweep, whyInkFillStroke, whyBitmapMode, whyColour, whyShadowPath,
                       whyShadowText, whyShadowShape, whyShadowLarge, whyShadowMode, whyRestore, whyBlurRestore, whyCanvas, whyOther,
                       effectsWhys };
-    enum { blendModes = 18 };
+    enum { blendModes = 19 };
     std::atomic<uint64_t> effectsBy[effectsWhys] = {}, effectsMode[blendModes] = {};
     std::mutex statsMutex;
     uint64_t statsAt = 0; // when the last line was written (ticks); 0: never
@@ -608,12 +608,13 @@ inline uint32_t blendChannel(int mode, uint32_t s, uint32_t d, uint32_t sa, uint
     }
     case MEGLER_GFX_BLEND_DARKEN: v = mul255(s, 255 - da) + mul255(d, 255 - sa) + std::min(mul255(s, da), mul255(d, sa)); break;
     case MEGLER_GFX_BLEND_LIGHTEN: v = mul255(s, 255 - da) + mul255(d, 255 - sa) + std::max(mul255(s, da), mul255(d, sa)); break;
+    case MEGLER_GFX_BLEND_MULTIPLY: v = mul255(s, 255 - da) + mul255(d, 255 - sa) + mul255(s, d); break;
     default: v = s + mul255(d, 255 - sa); break;
     }
     return v > 255 ? 255 : v;
 }
 
-/// S put on D by one of megler.h's eighteen numbers; both premultiplied.
+/// S put on D by one of megler.h's nineteen numbers; both premultiplied.
 inline uint32_t blended(int mode, uint32_t s, uint32_t d) {
     const uint32_t sa = s >> 24, da = d >> 24;
     if (mode == MEGLER_GFX_BLEND_SRC_OVER) {
@@ -2466,16 +2467,17 @@ bool compositeOf(int blend, D2D1_COMPOSITE_MODE* mode, bool* bounded) {
     }
 }
 
-/// Direct2D's Blend effect's mode for the four of megler.h's that are blends
-/// (its formula, W3C's, is megler.h's for these four: S*(1-Da) + D*(1-Sa) +
-/// Sa*Da*B(S/Sa, D/Da)); false for the others. Its MULTIPLY is not
-/// MODULATE, whose alpha is Sa*Da.
+/// Direct2D's Blend effect's mode for the five of megler.h's that are blends
+/// (its formula, W3C's, is megler.h's for these five: S*(1-Da) + D*(1-Sa) +
+/// Sa*Da*B(S/Sa, D/Da)); false for the others. Its MULTIPLY is megler.h's
+/// MULTIPLY (Android's BlendMode.MULTIPLY), not MODULATE, whose alpha is Sa*Da.
 bool blendOf(int blend, D2D1_BLEND_MODE* mode) {
     switch (blend) {
     case MEGLER_GFX_BLEND_SCREEN: *mode = D2D1_BLEND_MODE_SCREEN; return true;
     case MEGLER_GFX_BLEND_OVERLAY: *mode = D2D1_BLEND_MODE_OVERLAY; return true;
     case MEGLER_GFX_BLEND_DARKEN: *mode = D2D1_BLEND_MODE_DARKEN; return true;
     case MEGLER_GFX_BLEND_LIGHTEN: *mode = D2D1_BLEND_MODE_LIGHTEN; return true;
+    case MEGLER_GFX_BLEND_MULTIPLY: *mode = D2D1_BLEND_MODE_MULTIPLY; return true;
     default: return false;
     }
 }
@@ -2493,9 +2495,9 @@ inline D2D1_VECTOR_4F vectorOf(uint32_t premultipliedColour) {
 
 /// A colour filter (megler.h, THE PAINT) over `colours`: each colour C becomes
 /// the blend of S = the filter's colour and D = C. With S fixed, fifteen of
-/// the eighteen are a sum of C, C's alpha and S, which the ColorMatrix effect
-/// works out as it stands (premultiplied, clamped to 0..1); OVERLAY, DARKEN
-/// and LIGHTEN are the Blend effect with the colour as a Flood.
+/// the nineteen are a sum of C, C's alpha and S, which the ColorMatrix effect
+/// works out as it stands (premultiplied, clamped to 0..1); OVERLAY, DARKEN,
+/// LIGHTEN and MULTIPLY are the Blend effect with the colour as a Flood.
 Ref<ID2D1Image> filtered(GpuContext& g, ID2D1Image* colours, int mode, uint32_t filterColour) {
     Ref<ID2D1Image> out;
     const uint32_t f = premultiplied(filterColour);
@@ -2562,7 +2564,7 @@ Ref<ID2D1Image> filtered(GpuContext& g, ID2D1Image* colours, int mode, uint32_t 
 /// that take colour away where a pixel is partly covered. As GfxHost.cpp's
 /// top says: a bounded composite mode by DrawImage; the rest worked out over
 /// a copy of the box, D, and copied into it:
-///     the four blends               Blend(D, A)
+///     the five blends               Blend(D, A)
 ///     the seven that take colour    D * (1 - C) + mode(A, D), the mode a
 ///     away                          Composite (SRC_IN, DST_IN, SRC_OUT,
 ///                                   DST_ATOP), A itself (SRC), an
@@ -3433,8 +3435,8 @@ inline bool sane(float a, float b, float c, float d) { return sane(a) && sane(b)
 
 /// A transfer mode's number as megler.h has it; any other is drawn as SRC_OVER, and the log says so once.
 int knownBlend(int blend) {
-    if (blend >= MEGLER_GFX_BLEND_CLEAR && blend <= MEGLER_GFX_BLEND_LIGHTEN) return blend;
-    note("blend-number", "a transfer mode numbered %d is not one of megler.h's eighteen: it is drawn as SRC_OVER (said once)", blend);
+    if (blend >= MEGLER_GFX_BLEND_CLEAR && blend <= MEGLER_GFX_BLEND_MULTIPLY) return blend;
+    note("blend-number", "a transfer mode numbered %d is not one of megler.h's nineteen: it is drawn as SRC_OVER (said once)", blend);
     return MEGLER_GFX_BLEND_SRC_OVER;
 }
 
@@ -3455,8 +3457,8 @@ megler_gfx_paint checked(const megler_gfx_paint& given) {
     if (!std::isfinite(p.text_skew_x)) p.text_skew_x = 0;
     if (!std::isfinite(p.letter_spacing)) p.letter_spacing = 0;
     if (p.text_align < MEGLER_GFX_ALIGN_LEFT || p.text_align > MEGLER_GFX_ALIGN_RIGHT) p.text_align = MEGLER_GFX_ALIGN_LEFT;
-    if (p.filter_mode > MEGLER_GFX_BLEND_LIGHTEN) {
-        note("filter-number", "a colour filter by a mode numbered %d, which is not one of megler.h's eighteen, is left out (said once)", p.filter_mode);
+    if (p.filter_mode > MEGLER_GFX_BLEND_MULTIPLY) {
+        note("filter-number", "a colour filter by a mode numbered %d, which is not one of megler.h's nineteen, is left out (said once)", p.filter_mode);
         p.filter_mode = -1;
     }
     if (p.filter_mode < 0) p.filter_mode = -1;
@@ -3679,7 +3681,7 @@ void noteDrawing() {
                                                                    "a blurred layer", "a canvas in another mode", "other"};
         static const char* const modes[State::blendModes] = {"CLEAR", "SRC", "DST", "SRC_OVER", "DST_OVER", "SRC_IN", "DST_IN",
                                                             "SRC_OUT", "DST_OUT", "SRC_ATOP", "DST_ATOP", "XOR", "PLUS", "MODULATE",
-                                                            "SCREEN", "OVERLAY", "DARKEN", "LIGHTEN"};
+                                                            "SCREEN", "OVERLAY", "DARKEN", "LIGHTEN", "MULTIPLY"};
         char why[700];
         used = 0;
         for (int k = 0; k < State::effectsWhys && used + 100 < sizeof(why); k++) {
@@ -3821,6 +3823,7 @@ void releaseBack() {
 struct KeptTextures {
     struct Texture {
         void* handle = nullptr;      // the shared handle ANGLE's texture was opened by
+        int width = 0, height = 0;   // the frames' size as the core said it then (sameTexture)
         Ref<ID3D11Texture2D> shared; // ANGLE's texture, opened on this device
         Ref<IDXGIKeyedMutex> mutex;  // its keyed mutex, where ANGLE shares it with one
         Ref<ID3D11Texture2D> copy;   // its last frame, copied out of it
@@ -3844,6 +3847,7 @@ struct Composition {
         Box rect;                    // where its frames go, in the window's (the views') pixels; empty: nowhere
         int flags = 0;               // gl_place's MEGLER_GL_*: over the views, translucent, a media overlay
         void* handle = nullptr;      // the shared handle its surface's texture was opened by
+        int width = 0, height = 0;   // the frames' size as the core said it then (sameTexture)
         Ref<ID3D11Texture2D> shared; // ANGLE's texture of the surface, opened on this device
         Ref<IDXGIKeyedMutex> mutex;  // its keyed mutex, where ANGLE shares it with one (gecko-w10m's does)
         Ref<ID3D11Texture2D> copy;   // its last frame, copied out of it
@@ -4057,6 +4061,30 @@ bool showComposed(Box part, bool fresh) {
     return true;
 }
 
+/// Whether a frame handed over by `handle` at width x height is in the texture
+/// opened for the last one, so that the copy made for that one takes it: the
+/// same handle, and the same size. A texture's size never changes, so a frame
+/// of another size under a handle opened before is in another texture, which
+/// the handle names now; and CopyResource between textures that differ in size
+/// or format does nothing at all, so a copy of the old size would keep the
+/// frame before for good (issue #26 suspected it of a libGDX game whose
+/// surface grew after its first frames). Opened again, its copy is made after
+/// its own size and format. The handles Megler is given are ANGLE's
+/// pbuffers', and a pbuffer has one size, so a surface of another size comes
+/// with another handle (mg_java_gl.c makes a new pbuffer); this is the guard
+/// for a handle given again.
+bool sameTexture(void* had, int hadWidth, int hadHeight, void* handle, int width, int height) {
+    return had == handle && hadWidth == width && hadHeight == height;
+}
+
+/// A texture opened by its shared handle for frames said to be width x height: said once in the log when it is of another
+/// size, which the copy then follows (the frame is scaled to its place in any case).
+void noteOtherSize(const char* what, const D3D11_TEXTURE2D_DESC& desc, int width, int height) {
+    if (int(desc.Width) != width || int(desc.Height) != height)
+        note("gl-size", "%s's frames said to be %dx%d come in a texture of %ux%u: the copies are of the texture's size (said once)", what, width, height,
+             unsigned(desc.Width), unsigned(desc.Height));
+}
+
 /// megler_gfx_host.gl_frame: a GL view's new frame, in ANGLE's texture of its
 /// surface, opened here by its shared handle and copied into a texture of
 /// the layer's own. The copy is waited for (an event query: this is the GL
@@ -4082,7 +4110,7 @@ bool glFrame(void*, int layer, void* handle, int width, int height) {
         std::lock_guard<std::mutex> lock(c.mutex);
         c.layered = true;
         Composition::Layer& l = c.layers[layer];
-        if (l.handle != handle || !l.shared || !l.frame) {
+        if (!sameTexture(l.handle, l.width, l.height, handle, width, height) || !l.shared || !l.frame) {
             Composition::reset(l);
             HRESULT hr = s.d3d->OpenSharedResource(handle, __uuidof(ID3D11Texture2D), reinterpret_cast<void**>(l.shared.put()));
             if (FAILED(hr)) {
@@ -4093,6 +4121,7 @@ bool glFrame(void*, int layer, void* handle, int width, int height) {
             }
             D3D11_TEXTURE2D_DESC desc = {};
             l.shared->GetDesc(&desc);
+            noteOtherSize("an OpenGL ES surface", desc, width, height);
             if (desc.MiscFlags & D3D11_RESOURCE_MISC_SHARED_KEYEDMUTEX)
                 l.shared->QueryInterface(__uuidof(IDXGIKeyedMutex), reinterpret_cast<void**>(l.mutex.put()));
             // (A texture made typeless, to be seen in more than one format, is copied into one of the format it is drawn in.)
@@ -4118,6 +4147,8 @@ bool glFrame(void*, int layer, void* handle, int width, int height) {
                 return;
             }
             l.handle = handle;
+            l.width = width;
+            l.height = height;
         }
         if (!c.copied) {
             D3D11_QUERY_DESC query = {D3D11_QUERY_EVENT, 0};
@@ -4188,7 +4219,7 @@ bool textureFrame(void*, int id, void* handle, int width, int height) {
     guarded("texture_frame", [&] {
         std::lock_guard<std::mutex> lock(k.mutex);
         KeptTextures::Texture& t = k.byId[id];
-        if (t.handle != handle || !t.shared || !t.frame || t.topFirst) {
+        if (!sameTexture(t.handle, t.width, t.height, handle, width, height) || !t.shared || !t.frame || t.topFirst) {
             t = KeptTextures::Texture{};
             HRESULT hr = s.d3d->OpenSharedResource(handle, __uuidof(ID3D11Texture2D), reinterpret_cast<void**>(t.shared.put()));
             if (FAILED(hr)) {
@@ -4199,6 +4230,7 @@ bool textureFrame(void*, int id, void* handle, int width, int height) {
             }
             D3D11_TEXTURE2D_DESC desc = {};
             t.shared->GetDesc(&desc);
+            noteOtherSize("a TextureView", desc, width, height);
             if (desc.MiscFlags & D3D11_RESOURCE_MISC_SHARED_KEYEDMUTEX)
                 t.shared->QueryInterface(__uuidof(IDXGIKeyedMutex), reinterpret_cast<void**>(t.mutex.put()));
             if (desc.Format == DXGI_FORMAT_R8G8B8A8_TYPELESS) desc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
@@ -4223,6 +4255,8 @@ bool textureFrame(void*, int id, void* handle, int width, int height) {
                 return;
             }
             t.handle = handle;
+            t.width = width;
+            t.height = height;
         }
         if (!t.mutex && !k.copied) {
             D3D11_QUERY_DESC query = {D3D11_QUERY_EVENT, 0};

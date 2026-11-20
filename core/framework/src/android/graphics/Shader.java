@@ -7,6 +7,11 @@ public class Shader {
     protected Shader() {}
     /** The native shader, its local matrix applied. */
     public long meglerNative() { return mNative; }
+    /**
+     * Megler: a shader whose colours nothing here can work out (a RuntimeShader, whose AGSL program is not run): what a
+     * paint with it fills is left out (Paint's PF_UNDRAWABLE), rather than filled with the paint's own colour.
+     */
+    boolean meglerUndrawable() { return false; }
     public boolean getLocalMatrix(Matrix m) { if (mLocal == null) { m.reset(); return false; } m.set(mLocal); return !mLocal.isIdentity(); }
     public void setLocalMatrix(Matrix m) {
         mLocal = m == null ? null : new Matrix(m);

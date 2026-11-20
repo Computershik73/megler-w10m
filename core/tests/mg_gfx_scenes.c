@@ -1683,7 +1683,8 @@ static double table_channel(int mode, double s, double d, double sa, double da)
     case 14: return s + d - s * d;
     case 15: return both + (2 * d <= da ? 2 * s * d : sa * da - 2 * (da - d) * (sa - s));
     case 16: return both + (s * da < d * sa ? s * da : d * sa);
-    default: return both + (s * da > d * sa ? s * da : d * sa);
+    case 17: return both + (s * da > d * sa ? s * da : d * sa);
+    default: return both + s * d;
     }
 }
 
@@ -1701,17 +1702,17 @@ static u32 table_pixel(int mode, u32 s, u32 d)
     return out;
 }
 
-/* The eighteen modes on known colours, against megler.h's table: a shape in a colour, a bitmap, a shader, a layer, drawColor. */
+/* The nineteen modes on known colours, against megler.h's table: a shape in a colour, a bitmap, a shader, a layer, drawColor. */
 static void check_blend_table(void)
 {
     static const u32 pairs[4][2] = { { 0xA0F08020u, 0xC02060E0u }, { 0xFF3090F0u, 0x80C04010u }, { 0x40FFFFFFu, 0xFF102030u }, { 0xC0406080u, 0x00000000u } };
     static const float ends[2] = { 0, 1 };
     pic p, s;
     int mode, k, how, worst = 0, wrong = 0;
-    say("  the eighteen transfer modes against megler.h's table, drawn seven ways each on four pairs of colours, and as colour filters");
+    say("  the nineteen transfer modes against megler.h's table, drawn seven ways each on four pairs of colours, and as colour filters");
     pic_make(&p, H, 8, 8);
     pic_make(&s, H, 2, 2);
-    for (mode = 0; mode < 18; mode++)
+    for (mode = 0; mode <= MEGLER_GFX_BLEND_MULTIPLY; mode++)
         for (k = 0; k < 4; k++)
             for (how = 0; how < 8; how++) {
                 u32 src = pairs[k][0], dst = pairs[k][1], want = table_pixel(mode, premultiplied(src), premultiplied(dst)), got;

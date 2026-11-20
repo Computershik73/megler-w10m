@@ -3575,6 +3575,26 @@ where the framework's code, written for iOS, leaned on CoreGraphics without sayi
   0.1.0.684 the framework added the run's box to the path at each call,
   which no graphics processor draws as letters: the names on Transit's map
   were grey boxes (a Lumia 650).
+- **A shader nothing here can draw.** A `RuntimeShader` is an AGSL program,
+  which nothing here compiles or runs: it has no native shader, and a paint
+  with it drew as a paint without one, its own colour -- opaque black, as
+  most such paints are new. YouTube lights the buttons under a video (like,
+  share, save) with one, `drawPaint` clipped to each button by a view of its
+  "Neon" component, and they were black pills over their 5% black wash
+  (issue #24, 0.1.0.734). Such a paint, or one with a `ComposeShader` whose
+  first shader is one, now fills nothing: `Paint` marks its packet
+  (`PF_UNDRAWABLE`, `Shader.meglerUndrawable`) and the core draws no shape and
+  no text with it, directly or into a list; a bitmap drawn with it is drawn,
+  as the shader does not come into that on Android either. The log says it
+  once (`Paint: a android.graphics.RuntimeShader is not drawn here`).
+- **Two MULTIPLYs.** `PorterDuff.Mode.MULTIPLY` is S*D, its alpha Sa*Da
+  (megler.h's MODULATE, 13); `BlendMode.MULTIPLY` (and Compose's
+  `BlendMode.Multiply`) is S*(1-Da) + D*(1-Sa) + S*D, which keeps what is
+  under a translucent colour (megler.h's MULTIPLY, 18, Direct2D's Blend
+  effect's). Up to 0.1.0.734 the second was given the first's number: a 5%
+  black drawn with it over white left a 5% black, which an opaque window
+  shows black. The other blend modes Android 10 added (COLOR_DODGE to
+  LUMINOSITY) are still drawn as SRC_OVER.
 - **The stand-in** (`core/tests/mg_gfx_standin.c`) is for tests and is not a
   renderer to look at: a pixel is in when its centre is, curves are straight
   pieces, strokes have no joins, a gradient is its first colour, text is a box

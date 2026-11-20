@@ -1045,9 +1045,12 @@ typedef struct megler_storage_host {
  *      15 OVERLAY   S*(1-Da) + D*(1-Sa) + (2*D <= Da ? 2*S*D : Sa*Da - 2*(Da-D)*(Sa-S))
  *      16 DARKEN    S*(1-Da) + D*(1-Sa) + min(S*Da, D*Sa)
  *      17 LIGHTEN   S*(1-Da) + D*(1-Sa) + max(S*Da, D*Sa)
+ *      18 MULTIPLY  S*(1-Da) + D*(1-Sa) + S*D
  *
  *   Each is for every channel, the alpha too (with Sa for S and Da for D;
- *   the last three then all come to Sa + Da - Sa*Da). 3 is the ordinary case
+ *   the last four then all come to Sa + Da - Sa*Da). 18 is Android's
+ *   BlendMode.MULTIPLY, which is not PorterDuff.Mode.MULTIPLY: that one is
+ *   13, MODULATE, whose alpha is Sa*Da. 3 is the ordinary case
  *   and by far the commonest. A paint's blend is never DST, which draws
  *   nothing; a layer's can be, and such a layer is thrown away at its
  *   restore. Whatever the mode, only pixels inside the shape drawn (and the
@@ -1344,7 +1347,7 @@ enum {
     MEGLER_GFX_BLEND_CLEAR = 0, MEGLER_GFX_BLEND_SRC = 1, MEGLER_GFX_BLEND_DST = 2, MEGLER_GFX_BLEND_SRC_OVER = 3, MEGLER_GFX_BLEND_DST_OVER = 4,
     MEGLER_GFX_BLEND_SRC_IN = 5, MEGLER_GFX_BLEND_DST_IN = 6, MEGLER_GFX_BLEND_SRC_OUT = 7, MEGLER_GFX_BLEND_DST_OUT = 8, MEGLER_GFX_BLEND_SRC_ATOP = 9,
     MEGLER_GFX_BLEND_DST_ATOP = 10, MEGLER_GFX_BLEND_XOR = 11, MEGLER_GFX_BLEND_PLUS = 12, MEGLER_GFX_BLEND_MODULATE = 13, MEGLER_GFX_BLEND_SCREEN = 14,
-    MEGLER_GFX_BLEND_OVERLAY = 15, MEGLER_GFX_BLEND_DARKEN = 16, MEGLER_GFX_BLEND_LIGHTEN = 17
+    MEGLER_GFX_BLEND_OVERLAY = 15, MEGLER_GFX_BLEND_DARKEN = 16, MEGLER_GFX_BLEND_LIGHTEN = 17, MEGLER_GFX_BLEND_MULTIPLY = 18
 };
 enum { MEGLER_GFX_PATH_MOVE = 0, MEGLER_GFX_PATH_LINE = 1, MEGLER_GFX_PATH_QUAD = 2, MEGLER_GFX_PATH_CUBIC = 3, MEGLER_GFX_PATH_CLOSE = 4 };
 enum { MEGLER_GFX_WINDING = 0, MEGLER_GFX_EVEN_ODD = 1 };
