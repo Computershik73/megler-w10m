@@ -30,8 +30,16 @@
 // through PackageManager.deletePackage, with an IPackageDeleteObserver of its own (deleteObserved), which is told
 // packageDeleted as Android tells it: DELETE_SUCCEEDED, DELETE_FAILED_ABORTED for the user's no.
 //
-// What a run leaves when its process ends before a session's outcome -- the session's files, a handed APK's copy -- the next
-// run removes at its start (sweep).
+// A session not yet committed outlives the process that made it, as Android's do (they are the system's, not the app's): its
+// folder keeps what it is (RECORD), and the next run of the app has it again (restore) -- getMySessions lists it,
+// getSessionInfo and openSession find it, its files written are there -- until it is committed or abandoned, or three days
+// pass, as Android keeps one. The folders are in the app's data folder (.megler-sessions), not its cache, which "Clear
+// cache" empties: Android keeps an app's sessions apart from it. Google Play makes a session at the start of a download and goes on with it when it starts
+// anew; Windows ended it while it was out of sight, and it found its session "closed", failed the install (status 5426, "No
+// open Session ... was found") and with it TikTok Lite's feature module (issue #6).
+//
+// What a run leaves when its process ends before a session's outcome -- a committed session's files, a handed APK's copy, and
+// the sessions earlier versions kept in the cache -- the next run removes at its start (sweep).
 package megler;
 
 import android.content.Context;
@@ -116,6 +124,8 @@ public final class Installs {
          * (status 6573) while the folder's names, an .apk added, were given (package 554).
          */
         final java.util.LinkedHashMap<String, String> written = new java.util.LinkedHashMap<>();
+        /** When it was made (System.currentTimeMillis), which a later run keeps it by. */
+        long made;
         Session(int id, File dir, String packageName, boolean inherit) { this.id = id; this.dir = dir; this.packageName = packageName; this.inherit = inherit; }
         public int id() { return id; }
         public boolean inherit() { return inherit; }
@@ -125,22 +135,93 @@ public final class Installs {
 
     private static final java.util.HashMap<Integer, Session> sSessions = new java.util.HashMap<>();
     private static int sNext = 1;
+    /** What a session is, kept in its folder while it is open: { package, inherit, made, written: [[name, file], ...] }. */
+    private static final String RECORD = ".megler-session";
+    /** How long an open session is kept with nobody committing or abandoning it: Android's three days (MAX_AGE_MILLIS). */
+    private static final long MAX_AGE_MS = 3L * 24 * 60 * 60 * 1000;
+    private static boolean sRestored;
 
     public static int create(String packageName) { return create(packageName, false); }
     public static synchronized int create(String packageName, boolean inherit) {
+        restore();
         Context app = AppRunner.application();
         int id = sNext++;
-        File dir = new File(app != null ? app.getCacheDir() : new File("/data/local/tmp"), "megler-session-" + id);
+        File dir = new File(app != null ? sessions(app) : new File("/data/local/tmp"), "megler-session-" + id);
         deleteTree(dir);
         dir.mkdirs();
-        sSessions.put(id, new Session(id, dir, packageName, inherit));
+        Session s = new Session(id, dir, packageName, inherit);
+        s.made = System.currentTimeMillis();
+        sSessions.put(id, s);
+        keep(s);
         android.util.Log.i("Megler", "install: session " + id + " made" + (packageName != null ? " for " + packageName : "") + (inherit ? ", to add to the APKs it is installed with" : ""));
         return id;
     }
 
-    public static synchronized Session session(int id) { return sSessions.get(id); }
+    public static synchronized Session session(int id) { restore(); return sSessions.get(id); }
 
-    public static synchronized java.util.List<Integer> ids() { return new java.util.ArrayList<>(sSessions.keySet()); }
+    public static synchronized java.util.List<Integer> ids() { restore(); return new java.util.ArrayList<>(sSessions.keySet()); }
+
+    /** The session's record written whole, as it is now (RECORD); a committed one has none. */
+    private static void keep(Session s) {
+        try {
+            org.json.JSONObject o = new org.json.JSONObject().put("inherit", s.inherit).put("made", s.made);
+            if (s.packageName != null) o.put("package", s.packageName);
+            org.json.JSONArray w = new org.json.JSONArray();
+            synchronized (s.written) {
+                for (java.util.Map.Entry<String, String> e : s.written.entrySet()) w.put(new org.json.JSONArray().put(e.getKey()).put(e.getValue()));
+            }
+            o.put("written", w);
+            File tmp = new File(s.dir, RECORD + ".new");
+            try (FileOutputStream out = new FileOutputStream(tmp)) { out.write(o.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8)); }
+            new File(s.dir, RECORD).delete();
+            if (!tmp.renameTo(new File(s.dir, RECORD))) tmp.delete();
+        } catch (org.json.JSONException | java.io.IOException e) {
+            android.util.Log.w("Megler", "install: session " + s.id + " could not be kept for a later run: " + e);
+        }
+    }
+
+    /** The folder of the app's sessions, and of the bundles of their files (megler-session-<id>, .apks). */
+    private static File sessions(Context app) {
+        File dir = new File(app.getDataDir(), ".megler-sessions");
+        dir.mkdirs();
+        return dir;
+    }
+
+    /**
+     * The open sessions earlier runs of the app made, found again once (RECORD), as Android has an app's sessions after its
+     * process ended; the next session's id after every folder there. Called with the class's lock held.
+     */
+    private static void restore() {
+        if (sRestored) return;
+        Context app = AppRunner.application();
+        if (app == null) return;
+        sRestored = true;
+        File[] dirs = sessions(app).listFiles((d, n) -> n.startsWith("megler-session-") && !n.endsWith(".apks"));
+        if (dirs == null) return;
+        StringBuilder found = new StringBuilder();
+        for (File dir : dirs) {
+            int id;
+            try { id = Integer.parseInt(dir.getName().substring("megler-session-".length())); } catch (NumberFormatException e) { continue; }
+            sNext = Math.max(sNext, id + 1);
+            File record = new File(dir, RECORD);
+            if (sSessions.containsKey(id) || !record.isFile()) continue;
+            try {
+                byte[] bytes = java.nio.file.Files.readAllBytes(record.toPath());
+                org.json.JSONObject o = new org.json.JSONObject(new String(bytes, java.nio.charset.StandardCharsets.UTF_8));
+                long made = o.optLong("made");
+                if (System.currentTimeMillis() - made > MAX_AGE_MS) continue;
+                Session s = new Session(id, dir, o.has("package") ? o.getString("package") : null, o.optBoolean("inherit"));
+                s.made = made;
+                org.json.JSONArray w = o.optJSONArray("written");
+                if (w != null) for (int i = 0; i < w.length(); i++) s.written.put(w.getJSONArray(i).getString(0), w.getJSONArray(i).getString(1));
+                sSessions.put(id, s);
+                found.append(found.length() > 0 ? ", " : "").append(id).append(s.packageName != null ? " for " + s.packageName : "");
+            } catch (org.json.JSONException | java.io.IOException e) {
+                android.util.Log.w("Megler", "install: session " + id + " of an earlier run could not be read: " + e);
+            }
+        }
+        if (found.length() > 0) android.util.Log.i("Megler", "install: open sessions of an earlier run found again, as Android keeps them: " + found);
+    }
 
     public static OutputStream openWrite(int id, String name) throws java.io.IOException {
         Session s = session(id);
@@ -148,7 +229,9 @@ public final class Installs {
         String file = name.replace('/', '_').replace('\\', '_');
         String lower = file.toLowerCase(java.util.Locale.ROOT);
         if (!lower.endsWith(".apk") && !lower.endsWith(".dm")) file += ".apk";
-        synchronized (s.written) { s.written.put(name, file); }
+        String was;
+        synchronized (s.written) { was = s.written.put(name, file); }
+        if (!file.equals(was)) keep(s);
         return new FileOutputStream(new File(s.dir, file));
     }
 
@@ -177,6 +260,8 @@ public final class Installs {
         Session s = session(id);
         if (s == null || s.committed) return;
         s.committed = true;
+        // (no longer one to find again: what comes of it is this run's, and what it leaves the sweep's)
+        new File(s.dir, RECORD).delete();
         File[] files = s.dir.listFiles((d, n) -> n.toLowerCase(java.util.Locale.ROOT).endsWith(".apk"));
         if (files == null) files = new File[0];
         File base = files.length > 0 ? files[0] : null;
@@ -413,26 +498,35 @@ public final class Installs {
     }
 
     /*
-     * What earlier runs of the app left in its cache, removed once at its start, off the main thread: a session's folder and
-     * its bundle (megler-session-<id>, .apks), which stay when the process ends before the session has its outcome -- Update
-     * All closes the app, the user leaves it -- and the copies of APKs install intents handed over (megler-install). Play
-     * Store kept a Gmail update's session so, 228 MB of a Lumia 650's last 600 (package 663). What this run has made since
-     * its start is newer than that, and stays.
+     * What earlier runs of the app left, removed once at its start, off the main thread: a committed session's folder and its
+     * bundle (megler-session-<id>, .apks), which stay when the process ends before the session has its outcome -- Update All
+     * closes the app, the user leaves it --, a session kept longer than Android keeps one, the sessions earlier versions kept
+     * in the cache, and the copies of APKs install intents handed over (megler-install). Play Store kept a Gmail update's
+     * session so, 228 MB of a Lumia 650's last 600 (package 663). An open session is not left over (restore), and what this
+     * run has made since its start is newer than that, and stays.
      */
     public static void sweep(final Context app) {
         final long started = System.currentTimeMillis();
         Thread t = new Thread(() -> {
             File cache = app.getCacheDir();
             if (cache == null) return;
+            // (the open sessions found again first: they are not left over)
+            synchronized (Installs.class) { restore(); }
             long freed = 0;
             int count = 0;
-            File[] old = cache.listFiles((d, n) -> n.startsWith("megler-session-"));
-            if (old != null) for (File f : old) {
+            File[] here = sessions(app).listFiles((d, n) -> n.startsWith("megler-session-")), before = cache.listFiles((d, n) -> n.startsWith("megler-session-"));
+            java.util.ArrayList<File> old = new java.util.ArrayList<>();
+            if (here != null) old.addAll(java.util.Arrays.asList(here));
+            if (before != null) old.addAll(java.util.Arrays.asList(before));
+            for (File f : old) {
                 if (f.lastModified() >= started) continue;
                 String id = f.getName().substring("megler-session-".length());
                 if (id.endsWith(".apks")) id = id.substring(0, id.length() - 5);
                 try {
-                    synchronized (Installs.class) { if (sSessions.containsKey(Integer.parseInt(id))) continue; }
+                    synchronized (Installs.class) {
+                        Session s = sSessions.get(Integer.parseInt(id));
+                        if (s != null && s.dir.equals(f)) continue;
+                    }
                 } catch (NumberFormatException e) {
                     continue;
                 }
@@ -448,7 +542,7 @@ public final class Installs {
                 count++;
             }
             if (count > 0)
-                android.util.Log.i("Megler", "install: what " + count + " installs of earlier runs left in the cache removed, " + (freed >> 20) + " MB");
+                android.util.Log.i("Megler", "install: what " + count + " installs of earlier runs left removed, " + (freed >> 20) + " MB");
         }, "Megler install sweep");
         t.setPriority(Thread.MIN_PRIORITY);
         t.start();
