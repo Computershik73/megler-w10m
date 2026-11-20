@@ -143,9 +143,16 @@ public final class Screen {
             try { app.onConfigurationChanged(new Configuration(now)); }
             catch (RuntimeException e) { android.util.Log.e("Megler", "the application's onConfigurationChanged threw", e); throw e; }
         }
+        // (and those of the app's other processes, megler.Processes, as each process's ActivityThread tells its own)
+        for (android.app.Application other : Processes.applications()) {
+            try { other.onConfigurationChanged(new Configuration(now)); }
+            catch (RuntimeException e) { android.util.Log.e("Megler", "the onConfigurationChanged of " + other.getClass().getName() + " of another process threw", e); }
+        }
         ContextImpl.app().meglerConfigurationChanged(new Configuration(now));
         for (int i = 0; i < AppRunner.stackSize(); i++) {
             android.content.Context base = AppRunner.activityAt(i).getBaseContext();
+            // (an activity of another of the app's processes has its own base under that process's context, Processes.activityBase)
+            base = Processes.ownBase(base);
             if (base instanceof ContextImpl && base != ContextImpl.app()) ((ContextImpl) base).meglerConfigurationChanged(new Configuration(now));
         }
         for (android.app.Service s : Services.running()) s.onConfigurationChanged(new Configuration(now));

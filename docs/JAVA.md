@@ -4597,7 +4597,14 @@ What a Java app asks of the phone beyond its window goes to the shell through
   launcher activity and then it. Before, Total Commander's Wi-Fi plug-in,
   asked to send files (`WifiSendActivity`: an action, a type and the list of
   the files in the extras), opened with nothing to send, behind its main
-  screen.
+  screen. The request names the activity; the Intent names the component
+  it reached, an `<activity-alias>` of that activity where it went through
+  one, and that alias stays its component in the app asked, as Android's
+  resolution leaves it (`PhoneApps.asked`; the alias's `android:exported` is
+  the one looked at). Gemini's link reaches the Google app's
+  `MainAssistantDeeplink`, an alias of its `GatewayActivity`, which finds the
+  handler for the link by the name of the alias: named as the activity, it
+  found none and finished.
   - An intent that names the package and an action, with no class, goes to
     the first exported activity of that app whose filter takes it.
   - Megler's `Parcel` keeps objects beside its bytes and is of one process,
@@ -4960,8 +4967,44 @@ in, and its download service (`:download_service`) asked for its own part of
 it and had the main process's; the services of such a process are made
 there now (`megler.Services`). Their binders reach the rest of the app
 through `transact`, as AIDL's `asInterface` takes another scope's object for
-a remote one. The process's receivers, providers and activities still run in
-the app's own scope.
+a remote one.
+
+The app's own scope is the process of the activity it is started for
+(`Processes.own`, named by `megler.AppRunner.run` before any of the app's code
+runs): its launcher activity's, or the one another app asked for
+(`Native.requestedActivity`), as Android starts the process an activity's
+manifest names for it; an `<activity-alias>` is its target's
+(`Manifest.processOf`). For most apps that is the package's own. The Google
+app (17.6) has its launcher's `GoogleAppActivity` in `:googleapp`, Gemini's
+link opens its `GatewayActivity` in `:search`, and only three services are in
+the package's own process; its Application builds the object graph (Hilt's
+component) of the process it is told it runs in, and told the package's
+own, `GoogleAppActivity` ended its start with "Missing entry point ... Cannot
+cast tdd to bkxw". Every
+place that names the process says the own scope's: `Application.getProcessName`,
+`ActivityThread.currentProcessName`, `Process.myProcessName`,
+`ActivityManager.getRunningAppProcesses` and `getMyMemoryState`
+(`Processes.current`: a scope's code is told its scope's), and the core's
+`/proc/self/cmdline` and the `Name` of `/proc/self/status`
+(`Native.setProcessName`, `mg_fs_set_process`); and hosted Google Play
+services' application, which takes the process its code is told for its main
+one (`megler.MicroG`). The package's own process is then a scope like any
+other, for its services and activities. An activity of another process than
+the own scope's is made in that process's scope, with its Application and on a
+base context of its own with that process's class loader, Application and
+`ActivityManager` (`AppRunner.make`, `Processes.Scope.activityBase`), its
+intent's objects made again by that scope's classes; the app's Instrumentation
+is not asked for it. The test app `procs` runs both ways (its launcher in the
+package's process; started for its activity in `:far`), each component saying
+the process it is told and the Application it has. Not done:
+the providers of every process are made in the own scope as the app starts (on
+Android a process installs its own, and another's starts that process when
+asked), and a receiver of the manifest in another process than the own
+scope's is not run (`megler.Broadcasts`); `/proc/self` says the own scope's
+process to a scope's code too, there being one native process, and
+`ActivityThread.currentApplication` is the own scope's Application. Google
+Play services' own package run as an app keeps its processes one, as in every
+app that hosts them.
 
 The scope is over the app's base APK, and its native libraries are the app's
 library folder's (`ApplicationInfo.nativeLibraryDir`, where the Java driver

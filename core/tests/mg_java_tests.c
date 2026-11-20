@@ -77,6 +77,10 @@
  * as the shell starts an app another one asked for (MG_JAVA_START_ACTIVITY=@<the first's data folder>/launch-request.txt):
  * with that activity and no other, and the Intent whole.
  *
+ * `procs` has activities, services and receivers in two processes, as the Google app has: run from its launcher (the
+ * script's `launcher`), and started for another app's request for its activity in the other process (`alias`, its intent
+ * reaching an alias of it), which the app then runs as (run_procs).
+ *
  * `first` is hello started as the player starts an app on a PC's window or on an Xbox's television (`pc`, `xbox`): the
  * player's busy overlay must go at the app's first picture, whichever way it came and at whatever size, the surface changed
  * and the bars' insets told as the app starts (an Xbox's), and the pictures after the change come at the new size.
@@ -1779,6 +1783,54 @@ static const char *gms_apk(const char **splits_dir)
     return base;
 }
 
+/* `procs` started for another app's request (its script's `alias`: run_procs). */
+static bool g_procs_alias;
+
+/* A string as megler.Flat writes it: its length and its UTF-8 bytes, -1 for none. */
+static size_t flat_str(u8 *out, const char *s)
+{
+    u32 n = s ? (u32)strlen(s) : 0xFFFFFFFFu;
+    out[0] = (u8)(n >> 24); out[1] = (u8)(n >> 16); out[2] = (u8)(n >> 8); out[3] = (u8)n;
+    if (s) memcpy(out + 4, s, strlen(s));
+    return 4 + (s ? strlen(s) : 0);
+}
+
+/*
+ * Another app's request for an activity of procs, as the shell hands it over (megler.PhoneApps.start): the request names the
+ * activity, Far, and the intent written for it into the services' folder (megler.Flat) names the component it reached,
+ * FarAlias, an alias of Far's that names no process, with an extra -- as Gemini's link reaches the Google app's
+ * MainAssistantDeeplink, an alias of its GatewayActivity.
+ */
+static void procs_request(void)
+{
+    static const u8 head[] = { 0x4D, 0x67, 0x49, 0x46, 0, 0, 0, 1 };
+    u8 b[256];
+    size_t n = 0;
+    char *dir = mg_sprintf("%s/services/data/intents/megler.test.procs", megler_storage_dir()), *path = mg_sprintf("%s/70-1-1", dir);
+    memcpy(b, head, sizeof(head));
+    n = sizeof(head);
+    n += flat_str(b + n, NULL);        /* action, data, type, package */
+    n += flat_str(b + n, NULL);
+    n += flat_str(b + n, NULL);
+    n += flat_str(b + n, NULL);
+    n += flat_str(b + n, "megler.test.procs/megler.test.procs.FarAlias");
+    b[n++] = 0x10; b[n++] = 0; b[n++] = 0; b[n++] = 0;      /* FLAG_ACTIVITY_NEW_TASK */
+    b[n++] = 0; b[n++] = 0; b[n++] = 0; b[n++] = 0;         /* no categories */
+    n += flat_str(b + n, NULL);        /* identifier */
+    b[n++] = 0;                        /* no selector */
+    b[n++] = 0;                        /* no clip data */
+    b[n++] = 1;                        /* extras: one string */
+    b[n++] = 0; b[n++] = 0; b[n++] = 0; b[n++] = 1;
+    n += flat_str(b + n, "via");
+    b[n++] = 1;
+    n += flat_str(b + n, "alias");
+    mg_path_mkdirs(dir);
+    CHECK(mg_file_write_all(path, b, n));
+    megler_start_activity("megler.test.procs.Far~70-1-1");
+    free(path);
+    free(dir);
+}
+
 static bool start(const char *apk, const char *android_root)
 {
     static megler_run_config cfg;
@@ -1969,6 +2021,7 @@ static bool start(const char *apk, const char *android_root)
     /* The stand-in Play Store is started as the shell starts the Play Store for an app's request for a feature module: with
        the word that the app has one, where an activity's name is (megler.PlaySplits.MARKER). */
     if (g_play_store) megler_start_activity("megler.PlaySplits." PLAY_CLIENT);
+    if (g_procs_alias) procs_request();
     if (megler_run(&cfg)) return true;
 #if !MG_HOST_ARM32
     {
@@ -5657,6 +5710,83 @@ static int run_plugin(void)
     return g_failed;
 }
 
+/* What a component of the test app procs says of its process (App.report): told `process` every way an app asks, the
+   process's cmdline `cmdline` (the own scope's: one native process), the Application made in `process` and the first there,
+   its classes from `loader`. */
+static void procs_line(char *out, size_t size, const char *who, const char *process, const char *cmdline, const char *loader)
+{
+    snprintf(out, size, "I/ProcsTest: %s process=%s thread=%s my=%s am=%s cmdline=%s app=%s#1 context=%s#1 loader=%s", who, process, process,
+             process, process, cmdline, process, process, loader);
+}
+
+/*
+ * `procs` (core/tests/app/procs): an app's processes, as the Google app has them -- its launcher activity Main in the
+ * package's own process, Far in ":far", a service and a receiver in each. Run from the launcher, the app runs as its
+ * package's process and ":far" is a class scope of its own (megler.Processes); run for another app's request for Far whose
+ * intent reached FarAlias (the script's `alias`: procs_request), an alias of Far's that names no process, it runs as ":far"
+ * -- its Application made for that process, /proc/self/cmdline saying it -- Far's intent names the alias, and the package's
+ * own process is the scope. Either way each component is told its own process by Application.getProcessName,
+ * ActivityThread.currentProcessName, Process.myProcessName, its ActivityManager and (for the own scope's)
+ * /proc/self/cmdline, and has its process's Application, one made there; the other activity, of the other process,
+ * answers the first with its process's name. The receiver of the own process hears the broadcast, the other's is not run.
+ * The app ends with its first activity.
+ */
+static int run_procs(void)
+{
+    const bool far = g_procs_alias;
+    const char *own = far ? "megler.test.procs:far" : "megler.test.procs", *other = far ? "megler.test.procs" : "megler.test.procs:far";
+    char line[400], made[120];
+    int at = -1, tries;
+    say("  the app is started %s", far ? "for another app's request for Far, its intent reaching FarAlias (Far's alias, in :far)" : "from its launcher (Main)");
+    if (far) {
+        expect_line("java: the app runs as the process megler.test.procs:far", &at, 120);
+        expect_line("I/Megler: the app runs as the process megler.test.procs:far, its first activity's (megler.test.procs.Far);", &at, 120);
+    }
+    snprintf(made, sizeof(made), "I/ProcsTest: application made in %s #1", own);
+    expect_line(made, &at, 120);
+    if (far) {
+        expect_line("I/Megler: another app asked for megler.test.procs.Far with its intent: action null, type null, no data, flags 0x10000000, 1 extra(s)", &at, 120);
+        expect_line("I/ProcsTest: far intent megler.test.procs.FarAlias via=alias", &at, 120);
+    } else {
+        expect_line("I/ProcsTest: main intent megler.test.procs.Main via=null", &at, 120);
+    }
+    procs_line(line, sizeof(line), far ? "far" : "main", own, own, "PathClassLoader");
+    expect_line(line, &at, 120);
+    /* The services: the own process's in the app's scope, the other's in that process's, whose Application is made once. */
+    procs_line(line, sizeof(line), far ? "far-service" : "near-service", own, own, "PathClassLoader");
+    CHECK(wait_line(line, 0, 120) >= 0);
+    snprintf(made, sizeof(made), "I/ProcsTest: application made in %s #1", other);
+    CHECK(wait_line(made, 0, 120) >= 0);
+    procs_line(line, sizeof(line), far ? "near-service" : "far-service", other, own, "ServiceClassLoader");
+    CHECK(wait_line(line, 0, 120) >= 0);
+    /* The other activity: in the other process's scope, with that scope's Application, the services' one. */
+    procs_line(line, sizeof(line), far ? "main" : "far", other, own, "ServiceClassLoader");
+    CHECK(wait_line(line, 0, 120) >= 0);
+    snprintf(line, sizeof(line), "I/ProcsTest: %s heard %s: -1 from %s", far ? "far" : "main", far ? "Main" : "Far", other);
+    CHECK(wait_line(line, 0, 120) >= 0);
+    CHECK(wait_line(far ? "I/ProcsTest: far bound .Near" : "I/ProcsTest: main bound .Near", 0, 60) >= 0);
+    CHECK(wait_line(far ? "I/ProcsTest: far bound .FarService" : "I/ProcsTest: main bound .FarService", 0, 60) >= 0);
+    /* The own process's receiver hears the broadcast; the other process's is not run. */
+    snprintf(line, sizeof(line), "I/ProcsTest: %s process=%s", far ? "far-receiver" : "near-receiver", own);
+    CHECK(wait_line(line, 0, 60) >= 0);
+    CHECK(find_line(far ? "I/ProcsTest: near-receiver" : "I/ProcsTest: far-receiver", 0) < 0);
+    CHECK(wait_line(far ? "I/ProcsTest: far onDestroy" : "I/ProcsTest: main onDestroy", 0, 60) >= 0);
+    for (tries = 0; tries < 3000 && running(); tries++) mg_sleep_ns(10000000ull);
+    CHECK(g_exited && g_status == 0);
+    if (g_exited) say("  the app ended with status %d%s%s", g_status, g_reason[0] ? ": " : "", g_reason);
+    else say("  the app did not end with its first activity");
+    /* One Application in each process, and no other process named; started for Far, its launcher activity came second. */
+    CHECK(count_lines("I/ProcsTest: application made in ") == 2);
+    if (far) CHECK(find_line("D/Megler: launch megler.test.procs.Far", 0) >= 0 && find_line("D/Megler: launch megler.test.procs.Far", 0) < find_line("D/Megler: launch megler.test.procs.Main", 0));
+    else CHECK(find_line("the app runs as the process", 0) < 0);
+    CHECK(find_line(" FAILED", 0) < 0 && find_line("FATAL EXCEPTION", 0) < 0);
+    if (g_failed) {
+        say_app_lines("/ProcsTest: ");
+        say_app_lines("/Megler: ");
+    }
+    return g_failed;
+}
+
 /* Regression: a client and GmsCore carry incompatible classes of identical names. */
 static int run_microg(void)
 {
@@ -6272,6 +6402,7 @@ int mg_tests_java_run(const char *which, const char *apk, const char *android_ro
     g_play_store = !strcmp(which, "playstore");
     g_play_no_store = g_play_client && g_script_count && !strcmp(g_script[0], "no-store");
     g_play_lost = g_play_client && g_script_count && !strcmp(g_script[0], "lost");
+    g_procs_alias = !strcmp(which, "procs") && g_script_count && !strcmp(g_script[0], "alias");
     if (g_play_client) apk = play_client_before(apk);
     /* `first`: the player's start on a PC (the script's `pc`) or an Xbox (`xbox`), what it tells the core before megler_run. */
     g_first_xbox = !strcmp(which, "first") && g_script_count && !strcmp(g_script[0], "xbox");
@@ -6298,6 +6429,7 @@ int mg_tests_java_run(const char *which, const char *apk, const char *android_ro
         else if (!strcmp(which, "pickers")) run_pickers();
         else if (!strcmp(which, "crossapp")) run_crossapp();
         else if (!strcmp(which, "plugin")) run_plugin();
+        else if (!strcmp(which, "procs")) run_procs();
         else if (g_any_app) run_app();
         else run_hello();
         if (running()) {

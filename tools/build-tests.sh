@@ -168,7 +168,10 @@
 # (eight runs; mg_java_tests.c, run_playclient). And `crossapp` with `plugin`,
 # two apps that work together as Total Commander and its plug-ins do: the
 # first asks for an activity of the second with a whole Intent, the second is
-# started for it and reads it. Their pictures are written to
+# started for it and reads it. And `procs`, an app's activities, services and
+# receivers in two processes, twice: from its launcher, and started for another
+# app's request for its activity in the other process, which it then runs as
+# (megler.Processes). Their pictures are written to
 # build/java-pictures as BMP files. Each is then run
 # once more with its calls of the shell's drawing recorded
 # (build/gfx-records/<app>.rec), for the Windows build to draw again.
@@ -301,6 +304,14 @@ EOF
         MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL="*" wsl.exe -- bash -c "MG_JAVA_START_ACTIVITY=@\$(echo $WB/java-data-crossapp/launch-request.txt) qemu-arm -L /usr/arm-linux-gnueabihf $WB/mg_tests --java plugin $WB/plugin.apk $WB/java-data-crossapp $WB/android-root - 2>&1" || STATUS=1
       else
         echo "(the Java test apps crossapp and plugin are not run: they were not built, see tools/build-test-app.sh)"
+      fi
+      # An app's processes (`procs`), twice: from its launcher, in the package's own process, and started for another app's
+      # request for an activity of its other process, which the app then runs as (mg_java_tests.c: run_procs).
+      if [ -f "$ROOT/build/guest/java/procs.apk" ]; then
+        for how in launcher alias; do
+          echo "the Java test app procs (build/guest/java/procs.apk), through megler_run: started $([ "$how" = alias ] && echo "for another app's request, its intent reaching FarAlias" || echo "from its launcher")"
+          MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL="*" wsl.exe -- bash -c "cp -u '$WROOT/build/guest/java/procs.apk' $WB/procs.apk && rm -rf $WB/java-data-procs && qemu-arm -L /usr/arm-linux-gnueabihf $WB/mg_tests --java procs $WB/procs.apk $WB/java-data-procs $WB/android-root - 0 480x800@160 $how 2>&1" || STATUS=1
+        done
       fi
       # Optional real microG integration, including a conflicting client GMS class.
       # Fetch the pinned upstream APK with tools/microg-fetch.sh first.

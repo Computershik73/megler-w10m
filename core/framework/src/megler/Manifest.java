@@ -230,8 +230,14 @@ public final class Manifest {
         try { return megler.ContextImpl.app().getResources().getString(Integer.parseInt(v.substring(1))); } catch (Throwable t) { return v; }
     }
     /** The process a component runs in, as Android names it: the app's own when none is named (or ""), "<package>:x" for
-     *  ":x", and a string resource's text when the manifest names one (GmsCore's "@string/common_persistent_process"). */
+     *  ":x", and a string resource's text when the manifest names one (GmsCore's "@string/common_persistent_process"). An
+     *  <activity-alias> runs in its target's, as Android's PackageParser gives it the target's process: the Google app's
+     *  RobinShellAppEntryPointActivity, which names none, is its RobinEntryPointActivity's, in ":search". */
     public static String processOf(Component c) {
+        if ("activity-alias".equals(c.kind) && c.parentActivity != null) {
+            Component target = activity(c.parentActivity);
+            if (target != null && !"activity-alias".equals(target.kind)) c = target;
+        }
         String pkg = megler.Native.packageName(), p = val(c.process);
         return p == null || p.isEmpty() ? pkg : p.startsWith(":") ? pkg + p : p;
     }

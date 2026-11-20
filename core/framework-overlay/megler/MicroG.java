@@ -435,10 +435,11 @@ public final class MicroG {
          * no scan was ever the main process's: each asked for the next, five scans a second without end, and every app that
          * hosts them made 10 MB of garbage a second on that thread (Aliucord, Facebook, VTB, Ozon, Play Store: a collection
          * every three seconds, "Beginning GMS chimera module scan (logged 1000 times)"). Their components keep the process
-         * name of their manifest. microG's are left as they were.
+         * name of their manifest. microG's are left as they were. This process is the app's own scope's (megler.Processes.own):
+         * the package's, or the Google app's ":googleapp" when it was started at its launcher's activity there.
          */
         if (!microg()) {
-            a.processName = Native.packageName();
+            a.processName = Processes.own();
             android.util.Log.i("MicroG", "Google Play services' application runs in this process, " + a.processName + ", as its main one");
         }
         context = new PackageContext(resources);

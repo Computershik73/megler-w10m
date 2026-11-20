@@ -598,6 +598,13 @@ N(Native_nothing) { (void)c; }
 N(Native_dataDir) { c->ret.l = mg_dvm_new_string(mg_fs_internal_dir()); }
 N(Native_externalDir) { c->ret.l = mg_dvm_new_string(mg_fs_external_dir()); }
 N(Native_packageName) { c->ret.l = mg_dvm_new_string(J.package); }
+/* setProcessName(name): the Android process the app runs as, megler.Processes.own -- its first activity's -- which /proc/self's
+   cmdline and status then say (mg_fs_set_process). */
+N(Native_setProcessName)
+{
+    mg_fs_set_process(text_of(c->args[0].l));
+    mg_info("java: the app runs as the process %s", text_of(c->args[0].l));
+}
 /* Whether the app is one of the platform's own (its manifest's sharedUserId is android.uid.system: Android's Settings), which
    counts on the platform's services being there (android.os.ServiceManager). */
 N(Native_platformApp) { c->ret.z = J.platform_app; }
@@ -1715,6 +1722,7 @@ static const mg_jhle k_native[] = {
     { "megler/Native", "biometricCancel", NULL, Native_biometricCancel },
     { "megler/Native", "audioRoute", NULL, Native_audioRoute },
     { "megler/Native", "packageName", NULL, Native_packageName },
+    { "megler/Native", "setProcessName", NULL, Native_setProcessName },
     { "megler/Native", "platformApp", NULL, Native_platformApp },
     { "megler/Native", "gmsPackage", NULL, Native_gmsPackage },
     { "megler/Native", "screenWidth", NULL, Native_screenWidth },

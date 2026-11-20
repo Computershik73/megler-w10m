@@ -249,9 +249,10 @@ public final class Broadcasts {
             // empty name is the app's own (Play Store's AccountRemovedBroadcastReceiver says
             // ""). GmsCore's components of its other processes (persistent, ui: nearly all
             // of them) run in its one process here, as in every client that hosts it
-            // (megler.MicroG).
+            // (megler.MicroG). The app's own process is the one of the activity it was started for (megler.Processes.own): the
+            // Google app's ":googleapp", whose receivers are dispatched there, and those of the package's own are not.
             String process = Manifest.processOf(c);
-            if (!process.equals(ctx.getPackageName()) && !GooglePackages.GMS.equals(ctx.getPackageName())) {
+            if (!process.equals(Processes.own()) && !GooglePackages.GMS.equals(ctx.getPackageName())) {
                 android.util.Log.i("Megler", "receiver " + c.name + " belongs to process " + c.process + "; not dispatched in the main process");
                 continue;
             }

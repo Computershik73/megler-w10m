@@ -11,8 +11,23 @@
 // scope for a remote one, its interface being another class there, as Google Play services' binders do (docs/MICROG.md).
 //
 // The scope's Application is made, attached and created once, on the main thread, the first time a component of that process
-// is; its context is the app's, but for its class loader, its Application and its ActivityManager. The process's providers,
-// receivers and activities still run in the app's own scope.
+// is; its context is the app's, but for its class loader, its Application and its ActivityManager.
+//
+// Which process the app's own scope is. Android starts the process an activity's manifest names for it, and the app runs as
+// the process of the activity it is started for (own, started): its launcher activity's, or the one's another app asked for.
+// That is the package's own for most apps; the Google app has its launcher's GoogleAppActivity in ":googleapp", Gemini's link
+// opens its GatewayActivity in ":search", and only three services are in the package's own process. Its Application
+// builds the object graph (Hilt's component) of the process it is told it runs in; told the package's own, it built that
+// one, without the entry points of ":googleapp", and GoogleAppActivity ended its start with "Cannot cast tdd to bkxw". Every
+// place that names the process says the own scope's then: Application.getProcessName, ActivityThread.currentProcessName,
+// Process.myProcessName, ActivityManager, and /proc/self's cmdline and status (Native.setProcessName). The package's own
+// process is then a scope like any other, for its components.
+//
+// An activity of another process than the own scope's runs in that process's scope, with its Application, as its services
+// do (megler.AppRunner.make; activityBase): the Google app's ":googleapp" opens activities of ":search". The providers of
+// every process are made in the app's own scope as it starts, as before, and a receiver of the manifest's in another process
+// is not run (megler.Broadcasts). Google Play services' own package, run as an app, keeps its processes one (apart), as in
+// every app that hosts them (megler.MicroG).
 //
 // An intent that goes from one scope to another -- a broadcast, a service's start or binding -- has the objects among its
 // extras made again by the receiving scope's classes (forLoader), as Android's parcelling of it between processes makes
@@ -39,10 +54,62 @@ public final class Processes {
         Scope(String name, ClassLoader loader) {
             this.name = name;
             this.loader = loader;
-            this.context = new ProcessContext(this);
+            this.context = new ProcessContext(this, ContextImpl.app());
         }
         public ClassLoader classLoader() { return loader; }
         public Application application() { return app; }
+        /** The base context of an activity of this process (megler.AppRunner.make): one of its own, as an activity's is, with its
+         *  own theme, and this process's class loader, Application and ActivityManager. */
+        public Context activityBase() { return new ProcessContext(this, ContextImpl.forActivity()); }
+    }
+
+    /* The process the app's own scope runs as (own); null until megler.AppRunner names it (started). */
+    private static volatile String sOwn;
+
+    /** The Android process the app's own scope is (its class loader, its Application, the core's /proc/self): the process of the
+     *  activity it was started for (started); the package's own before that, and for an app whose activities name none. */
+    public static String own() {
+        String o = sOwn;
+        return o != null ? o : Native.packageName();
+    }
+
+    /**
+     * The app runs as the process of `first`, the activity it is started for (its launcher activity, or the one another app asked
+     * for): megler.AppRunner.run, before any of the app's code runs or its Application is made. Null: the package's own.
+     */
+    static void started(Manifest.Component first) {
+        String process = first != null && apart() ? Manifest.processOf(first) : Native.packageName();
+        sOwn = process;
+        if (process.equals(Native.packageName())) return;
+        Native.setProcessName(process);
+        android.util.Log.i("Megler", "the app runs as the process " + process + ", its first activity's (" + first.name
+            + "); its package's own process and its others are class scopes of their own");
+    }
+
+    /* Whether the app's processes run apart: not those of Google Play services' own package run as an app, whose processes
+       are one here, as in every app that hosts them (megler.MicroG; megler.Broadcasts runs their receivers of every process). */
+    private static boolean apart() { return !GooglePackages.GMS.equals(Native.packageName()); }
+
+    /** The process of the code that asks, as Application.getProcessName tells it: the scope's of the closest of the app's classes
+     *  up the stack (nameOf), else the own scope's. */
+    public static String current() {
+        String scoped = nameOf(dalvik.system.VMStack.getClosestUserClassLoader());
+        return scoped != null ? scoped : own();
+    }
+
+    /** The scope of the process an activity of the app's runs in (megler.AppRunner.make): null for the own scope's, and for
+     *  Google Play services' own package. */
+    public static Scope ofActivity(Manifest.Component c) { return apart() ? of(c) : null; }
+
+    /** The context a process's context is over (Scope.activityBase: an activity's own); any other context itself. */
+    public static Context ownBase(Context c) { return c instanceof ProcessContext ? ((ProcessContext) c).getBaseContext() : c; }
+
+    /** The Applications of the app's other processes made so far, for what the platform tells every one (megler.Screen's
+     *  configuration, megler.AppRunner's trimMemory). */
+    public static java.util.List<Application> applications() {
+        java.util.ArrayList<Application> l = new java.util.ArrayList<>();
+        for (Scope s : sNamed) if (s.app != null) l.add(s.app);
+        return l;
     }
 
     /* Each process's scope once made; null for one that could not be. */
@@ -93,11 +160,12 @@ public final class Processes {
         }
     }
 
-    /** The scope of the process a component runs in, made the first time (on the main thread); null for the app's own process,
-     *  and for one whose scope could not be made (the component then runs in the app's, as before). */
+    /** The scope of the process a component runs in, made the first time (on the main thread); null for the own scope's process
+     *  (own: the package's, unless the app was started for an activity of another), and for one whose scope could not be made
+     *  (the component then runs in the app's, as before). */
     public static Scope of(Manifest.Component c) {
         String process = Manifest.processOf(c);
-        if (process == null || process.equals(Native.packageName())) return null;
+        if (process == null || process.equals(own())) return null;
         Scope s;
         synchronized (sScopes) {
             if (sScopes.containsKey(process)) return sScopes.get(process);
@@ -225,11 +293,12 @@ public final class Processes {
         else if (v instanceof java.util.ArrayList) b.putParcelableArrayList(key, (java.util.ArrayList<android.os.Parcelable>) v);
     }
 
-    /** The context of a process's scope: the app's, but for the class loader, the Application and the ActivityManager. */
+    /** The context of a process's scope: the app's (or an activity's base, Scope.activityBase), but for the class loader, the
+     *  Application and the ActivityManager. */
     private static final class ProcessContext extends ContextWrapper {
         private final Scope scope;
         private ActivityManager activities;
-        ProcessContext(Scope scope) { super(ContextImpl.app()); this.scope = scope; }
+        ProcessContext(Scope scope, Context base) { super(base); this.scope = scope; }
         @Override public ClassLoader getClassLoader() { return scope.loader; }
         @Override public Context getApplicationContext() { return scope.app != null ? scope.app : this; }
         @Override public Object getSystemService(String name) {
