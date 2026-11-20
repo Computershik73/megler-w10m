@@ -5890,6 +5890,19 @@ in Japanese, as the issue has it).
   (`bionic/mg_libc_mem.c`), so a font of 20 MB costs the pages that are read.
   The log: `java: Android's font list (/system/etc/fonts.xml) has 14 of the
   host's 14 fonts after its own, for ...`.
+- And the first font of Chinese, Japanese and Korean each is there under
+  Android's own file names of its font for that language as well, for apps
+  that open them by path to draw with FreeType (issue #25: Shattered Pixel
+  Dungeon drew no Chinese): `NotoSansSC-Regular.otf` and
+  `NotoSansHans-Regular.otf` (zh-Hans), `NotoSansTC-Regular.otf` and
+  `NotoSansHant-Regular.otf` (zh-Hant), `NotoSansJP-Regular.otf`,
+  `NotoSansKR-Regular.otf`, and `DroidSansFallback.ttf` and
+  `DroidSansFallbackFull.ttf` (the first of the four); opened at their first
+  face, which in a collection of Windows' is its family's (Microsoft YaHei for
+  Microsoft YaHei UI). Not `NotoSansCJK-Regular.ttc`: apps open Android 7's
+  collection at the face of their language by its number (2 for Simplified
+  Chinese), which no file of Windows' has, and FreeType refuses a face that is
+  not there. Roboto and the root's other fonts are the root's own files.
 - A native-engine app has no `/system` of the root's and none of this.
 
 The WebView test app checks it (`writings` in its `Main.java`): two

@@ -1919,30 +1919,35 @@ package name, the data directories, the display, `Build`.
 
 A **driver** (`drivers/`) plays the part of one kind of app's Java shell. There is
 one so far: `NativeActivity`, which is what Android itself provides for apps with no
-Java (`android:hasCode="false"`, or `android.app.lib_name` in the manifest). An
-activity of the app's own that names its library with `android.app.lib_name` is
-taken for NativeActivity's subclass only when the library exports its entry
-(`ANativeActivity_onCreate`, or `android.app.func_name`), looked for among its
-dynamic symbols (`native_entry`, `apk/mg_apk.c`): Qt's QtActivity names its
-library so and starts it through JNI itself, and 2GIS (`libv4android.so`, 277 MB)
-ended in "has no ANativeActivity_onCreate" until it was taken for the Java app
-it is (package 576). The look reads the library where it lies in whichever APK
-has it (`mg_zip_cursor`, `zip/mg_zip.c`): its headers, its dynamic section, and
-through its GNU or SysV hash table the bucket, chain, symbol and name the
-dynamic linker would read -- a stored library a few small reads, a deflated one
-inflated as far as its dynamic section, its first 32 MB kept for the tables
-before it. Up to package 681 it read the library's first 32 MB whole, and 2GIS's
-dynamic section, past its code, was not in them: it was a NativeActivity again.
-The bundle tests make the natives app with a library of 40 MB whose dynamic
-section is at 40 MB, stored (a hole in the file) and deflated. Where the look
-cannot tell (the library damaged, or the flag `native-entry-at-start`), the start
-asks the library itself (`run/mg_run.c`): it is loaded -- not started, its
-constructors run when Java loads it -- and, without the entry, the app is started
-by the Java driver instead, where the NativeActivity driver would end at once; the
-natives app's second run under qemu goes that way. The NativeActivity driver
-loads the library, calls `ANativeActivity_onCreate`, and makes the activity's
-callbacks in the framework's order on a thread that stands for Android's main
-thread. Apps built on `android_native_app_glue` run on top of that.
+Java (`android:hasCode="false"`, or Android's own `android.app.NativeActivity` as
+the activity). Its activity object is a stand-in with a name, and no Java runs. An
+activity of the app's own that names its library with `android.app.lib_name` is the
+app's Java code, and the Java driver runs it whether it is NativeActivity's subclass
+or not (issue #23): KOReader's launcher, a NativeActivity of its own, asks its
+activity for `extractAssets()` and some eighty more through JNI on
+`ANativeActivity.clazz`, and under the NativeActivity driver every answer was zero
+and it ended at its start. Under the Java driver the framework's
+`android.app.NativeActivity` (the overlay's, Android 9's) loads the library through
+the app's class loader and calls its entry with an ANativeActivity whose clazz is the
+app's activity (`drivers/mg_java_ndk.c`, "NativeActivity"); the window's surface is
+taken (`Window.takeSurface`: a SurfaceView under the content, the whole of the
+decor) and so is its input (`Window.takeInputQueue`: the decor's touches and keys go
+into the core's AInputQueue, and a key native code leaves unhandled goes on to the
+activity, as on Android). An activity that starts its library through JNI itself, as
+Qt's QtActivity does (2GIS, `libv4android.so`, 277 MB, taken for a NativeActivity
+until package 576), is a Java app likewise. Whether the library exports
+NativeActivity's entry (`ANativeActivity_onCreate`, or `android.app.func_name`) is
+still looked for among its dynamic symbols (`native_entry`, `apk/mg_apk.c`), for the
+report's note: the look reads the library where it lies in whichever APK has it
+(`mg_zip_cursor`, `zip/mg_zip.c`): its headers, its dynamic section, and through
+its GNU or SysV hash table the bucket, chain, symbol and name the dynamic linker
+would read -- a stored library a few small reads, a deflated one inflated as far as
+its dynamic section, its first 32 MB kept for the tables before it. The bundle tests
+make the natives app with a library of 40 MB whose dynamic section is at 40 MB,
+stored (a hole in the file) and deflated. The NativeActivity driver loads the
+library, calls `ANativeActivity_onCreate`, and makes the activity's callbacks in the
+framework's order on a thread that stands for Android's main thread. Apps built on
+`android_native_app_glue` run on top of either.
 
 Engines whose Java shell does more (Unity, Unreal, Godot) each need
 their own driver; cocos2d-x's Cocos2dxActivity, like libGDX's activity, is an

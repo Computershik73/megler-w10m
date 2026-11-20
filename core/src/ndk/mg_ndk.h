@@ -67,6 +67,13 @@ mg_input_queue *mg_input_queue_create(void);
 /* A touch in surface pixels; phase: 0 down, 1 move, 2 up, 3 cancel. Builds the Android motion event, multi-touch included. */
 void mg_input_queue_touch(mg_input_queue *q, int phase, int pointer_id, float x, float y);
 void mg_input_queue_key(mg_input_queue *q, int keycode, bool down);
+/*
+ * A key native code finishes without handling it (AInputQueue_finishEvent with handled 0) is given to `fn`, on the thread that
+ * finished it: the Java driver's queue of a window's input passes it on to the window's activity, as Android does.
+ */
+void mg_input_queue_on_unhandled_key(mg_input_queue *q, void (*fn)(void *ctx, int keycode, bool down), void *ctx);
+/* The queue and the events still in it freed, its descriptor closed: once native code has let go of it (onInputQueueDestroyed). */
+void mg_input_queue_destroy(mg_input_queue *q);
 
 /* ----------------------------------------------------------------- ALooper */
 

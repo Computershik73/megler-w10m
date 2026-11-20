@@ -652,26 +652,26 @@ static void big_library(u8 *head, u8 *tail, bool entry, bool gnu, bool sysv)
 }
 
 /*
- * Whether an app whose activity names its library with android.app.lib_name is a NativeActivity: its library is looked at
- * for ANativeActivity_onCreate (core/src/apk/mg_apk.c, native_entry). 2GIS (Qt: its QtActivity, libv4android.so of 277 MB in
- * the split config.armeabi_v7a) was taken for a NativeActivity, and its start ended in "has no ANativeActivity_onCreate"
- * (package 681): the look read the library's first 32 MB, and its dynamic section was past them. Here the natives test app
- * (lib_name "natives", an activity of its own) with its libnatives.so replaced by a library of 40 MB whose dynamic section is
- * at 40 MB, stored (the file has a hole where the filesystem allows) or deflated (a few kilobytes), its symbols hashed by a
- * GNU table, a SysV one or both: a Java app where the entry is an import, a NativeActivity where it is defined. And the
- * cursor a deflated library is read through: inflated once as far as the dynamic section, its tables then read from what it
- * kept of its head, and inflated again from the start for a read past what is kept.
+ * Whether the library an app's own activity names with android.app.lib_name is a NativeActivity's: it is looked at for
+ * ANativeActivity_onCreate (core/src/apk/mg_apk.c, native_entry), for the report's note. (It decided the driver up to issue
+ * #23: such an app is a Java one now either way.) 2GIS (Qt: its QtActivity, libv4android.so of 277 MB in the split
+ * config.armeabi_v7a) was taken for a NativeActivity, and its start ended in "has no ANativeActivity_onCreate" (package 681):
+ * the look read the library's first 32 MB, and its dynamic section was past them. Here the natives test app (lib_name
+ * "natives", an activity of its own) with its libnatives.so replaced by a library of 40 MB whose dynamic section is at 40 MB,
+ * stored (the file has a hole where the filesystem allows) or deflated (a few kilobytes), its symbols hashed by a GNU table, a
+ * SysV one or both: no entry where it is an import, the entry where it is defined. And the cursor a deflated library is read
+ * through: inflated once as far as the dynamic section, its tables then read from what it kept of its head, and inflated
+ * again from the start for a read past what is kept.
  */
 static void test_big_library(const char *java_dir, const char *scratch)
 {
     static const struct {
         bool deflated, entry, gnu, sysv;
-        const char *engine;
     } variants[] = {
-        { false, false, true, true, "java" },
-        { true, true, true, false, "native-activity" },
-        { true, false, false, true, "java" },
-        { false, true, false, true, "native-activity" },
+        { false, false, true, true },
+        { true, true, true, false },
+        { true, false, false, true },
+        { false, true, false, true },
     };
     char *from = mg_sprintf("%s/natives.apk", java_dir), *dir = mg_sprintf("%s/big-library", scratch);
     static entry_names names;
@@ -721,10 +721,11 @@ static void test_big_library(const char *java_dir, const char *scratch)
         size = size_of(apk);
         memset(&info, 0, sizeof(info));
         read = mg_apk_read_info(apk, &info);
-        say("  %s, its symbols hashed by %s, ANativeActivity_onCreate %s (the APK %.1f MB): %s, %s", variants[v].deflated ? "deflated" : "stored",
+        say("  %s, its symbols hashed by %s, ANativeActivity_onCreate %s (the APK %.1f MB): %s, entry %d, %s", variants[v].deflated ? "deflated" : "stored",
             variants[v].gnu && variants[v].sysv ? "GNU's table and SysV's" : variants[v].gnu ? "GNU's table" : "SysV's table",
-            variants[v].entry ? "defined" : "an import", (double)size / 1048576.0, read ? info.engine : "not read", read ? (info.runnable ? "runnable" : info.reason) : info.error);
-        CHECK(read && !strcmp(info.engine, variants[v].engine) && info.runnable);
+            variants[v].entry ? "defined" : "an import", (double)size / 1048576.0, read ? info.engine : "not read", read ? info.native_entry : -3,
+            read ? (info.runnable ? "runnable" : info.reason) : info.error);
+        CHECK(read && !strcmp(info.engine, "java") && info.native_entry == (variants[v].entry ? 1 : 0) && info.runnable);
         if (read) mg_apk_info_free(&info);
         /* The deflated library read through its cursor, as the look reads it. */
         if (v == 1 && made) {

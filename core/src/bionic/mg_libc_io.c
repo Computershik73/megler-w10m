@@ -196,6 +196,70 @@ static const char *font_ext(const char *path)
     return ".ttf";
 }
 
+/* Whether a font's langs (tags with spaces between) have this tag. */
+static bool font_langs_have(const char *langs, const char *tag)
+{
+    size_t n = strlen(tag);
+    const char *p = langs;
+    while (p && *p) {
+        if (!strncmp(p, tag, n) && (p[n] == ' ' || !p[n])) return true;
+        p = strchr(p, ' ');
+        if (p) p++;
+    }
+    return false;
+}
+
+/*
+ * Android's own file names for the fonts of Chinese, Japanese and Korean, which apps open by path to draw such text
+ * themselves (FreeType), each the host's font of that language. Shattered Pixel Dungeon (libGDX's FreeType) looks for
+ * NotoSansCJK-Regular.ttc, then NotoSansSC-Regular.otf or NotoSansHans-Regular.otf, NotoSansJP-Regular.otf,
+ * NotoSansKR-Regular.otf and the fallback DroidSansFallback.ttf (Android 6's names), found none, and drew no Chinese at
+ * all (issue #25). A name of a single font is opened at its first face: the host's file is given as it is -- a collection
+ * too, whose first face is its family's (Microsoft YaHei for Microsoft YaHei UI, its second). NotoSansCJK-Regular.ttc is
+ * not given: it is one collection of the four, and apps open it at the face of their language by its number there (0
+ * Japanese, 1 Korean, 2 Simplified Chinese, 3 Traditional), which no file of the host's has -- Shattered Pixel Dungeon
+ * opens its face 2, which Microsoft YaHei's collection of two has not, and FreeType's refusal would end the game where
+ * the names below give it its fonts.
+ */
+static const struct {
+    const char *lang, *name;
+} k_android_font_names[] = {
+    { "zh-Hans", "NotoSansSC-Regular.otf" }, { "zh-Hans", "NotoSansHans-Regular.otf" },
+    { "zh-Hant", "NotoSansTC-Regular.otf" }, { "zh-Hant", "NotoSansHant-Regular.otf" },
+    { "ja", "NotoSansJP-Regular.otf" }, { "ko", "NotoSansKR-Regular.otf" },
+    /* Android's fallback for these before 7, the first of the four the host has. */
+    { "", "DroidSansFallback.ttf" }, { "", "DroidSansFallbackFull.ttf" },
+};
+static const char *const k_fallback_langs[] = { "zh-Hans", "zh-Hant", "ja", "ko" };
+static const mount *mount_of(const char *g);
+static char *host_of_normal(const char *g);
+
+/* Each of those names under <guest_root>/fonts, unless the root has a file of its own by that name. */
+static void mount_android_font_names(const char *guest_root, const mg_fs_font *fonts, int count)
+{
+    size_t i, k;
+    int j;
+    for (i = 0; i < MG_COUNT(k_android_font_names); i++) {
+        const char *path = NULL;
+        char *guest, *host;
+        const mount *m;
+        mg_stat st;
+        for (k = 0; k < MG_COUNT(k_fallback_langs) && !path; k++) {
+            const char *lang = k_android_font_names[i].lang[0] ? k_android_font_names[i].lang : k_fallback_langs[k];
+            for (j = 0; j < count && !path; j++)
+                if (fonts[j].path && font_langs_have(fonts[j].langs, lang)) path = fonts[j].path;
+            if (k_android_font_names[i].lang[0]) break;
+        }
+        if (!path) continue;
+        guest = mg_sprintf("%s/fonts/%s", guest_root, k_android_font_names[i].name);
+        m = mount_of(guest);
+        host = m && !strcmp(m->guest, guest) ? NULL : host_of_normal(guest);
+        if (!host || !mg_path_stat(host, &st, NULL)) mount_put(guest, path, MOUNT_READ_ONLY | MOUNT_HOST_FILE);
+        free(host);
+        free(guest);
+    }
+}
+
 int mg_fs_host_fonts(const char *guest_root, const char *list, const char *made, const mg_fs_font *fonts, int count, char *said, size_t said_size)
 {
     static const char end[] = "</familyset>";
@@ -205,6 +269,7 @@ int mg_fs_host_fonts(const char *guest_root, const char *list, const char *made,
     char *out, *guest;
     bool found = false;
     int i, used = 0;
+    mg_fs_font *usable;
     if (said && said_size) said[0] = 0;
     if (!guest_root || !list || !made || !fonts || count <= 0) return 0;
     xml = mg_file_read_all(list, &size);
@@ -222,6 +287,7 @@ int mg_fs_host_fonts(const char *guest_root, const char *list, const char *made,
     }
     cap = size + (size_t)count * 320 + 160;
     out = (char *)mg_alloc(cap);
+    usable = (mg_fs_font *)mg_alloc((size_t)count * sizeof(*usable));
     memcpy(out, xml, head);
     n = head;
     n += (size_t)snprintf(out + n, cap - n, "    <!-- The host's own fonts (megler_run_config.host_fonts). -->\n");
@@ -240,9 +306,10 @@ int mg_fs_host_fonts(const char *guest_root, const char *list, const char *made,
         if (said && said_n + 2 < said_size)
             said_n += (size_t)snprintf(said + said_n, said_size - said_n, "%s%s", used ? ", " : "", f->langs);
         if (said && said_n >= said_size) said_n = said_size - 1;
-        used++;
+        usable[used++] = *f;
     }
     if (!used) {
+        free(usable);
         free(out);
         free(xml);
         return 0;
@@ -268,7 +335,9 @@ int mg_fs_host_fonts(const char *guest_root, const char *list, const char *made,
         guest = mg_sprintf("%s/etc/fonts.xml", guest_root);
         mount_put(guest, made, MOUNT_READ_ONLY);
         free(guest);
+        mount_android_font_names(guest_root, usable, used);
     }
+    free(usable);
     return used;
 }
 
