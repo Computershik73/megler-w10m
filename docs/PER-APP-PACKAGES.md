@@ -868,6 +868,29 @@ and more later `apks\MeglerApp.<...>\<token> kept: the installed ... was made
 with it`; the app's own package starts into its app, its log saying `library: 1
 APKs`, at every start after.
 
+### Installed apps the library lacks: Rescan the Library
+
+An installed package whose folder is known for sure but whose app has no entry in
+the library is taken for one the user took out of the library, and no entry is
+made for it by itself. Two other ways lead there: the apps moved from another
+phone with Megler's shared folder (the owner's WP Migrate installs Megler and
+its apps' packages there, made again and signed on the new phone, with the
+shared folder's `apks` and their `made.txt`, while Megler's own `LocalState`,
+where the library is, stays behind), and Megler installed afresh while its
+apps' packages stayed. Their apps were in the phone's Start and ran, and Megler
+had no page of them, Update All and Uninstall none either.
+
+Since 0.1.0.738 the listing keeps those apps (`separateApps::strayCount`): the
+Library says how many there are, with **Add to Library**, and Settings › Apps'
+Storage has **Rescan the Library**, the flag `ui-rescan-library` the same. A
+rescan takes the APKs in `Pictures\Megler\apks`, lists the packages again, and
+gives each such app an entry that reads the APK its package reads, with the
+report and icon the package was made with (`addToLibrary`, `Library::adopt`), as
+Megler's own install leaves one; its id is its Android package's. The next
+listing then takes it as Megler's own install. The log says each one
+(`separate apps: the installed ..., which the library had no entry of, added to
+it as ...`) and how many of how many were added.
+
 ## A memory card
 
 A user reported (2026-11-08, no log with it) that Megler crashes once it, or its
