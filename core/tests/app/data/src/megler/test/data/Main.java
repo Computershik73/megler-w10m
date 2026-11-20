@@ -6379,6 +6379,19 @@ public class Main extends Activity {
             if (other == null) { detail = "not among the installed applications"; return false; }
             String apk = "/data/app/com.example.other-1/base.apk";
             java.io.File file = new java.io.File(String.valueOf(other.sourceDir));
+            // Found before anything opens it: by stat, by access and in its folder's list, as LibChecker's NativeLibraryAnalyzer
+            // asks File.exists before it reads another app's APK ("File not exists", issue #18), and readable, not writable.
+            boolean exists = file.exists() && file.isFile() && file.canRead() && !file.canWrite();
+            String[] names = file.getParentFile().list();
+            boolean listed = names != null && Arrays.asList(names).contains("base.apk");
+            boolean statted, accessible;
+            try {
+                android.system.StructStat st = android.system.Os.stat(apk);
+                statted = android.system.OsConstants.S_ISREG(st.st_mode) && st.st_size == 24;
+                accessible = android.system.Os.access(apk, android.system.OsConstants.R_OK);
+            } catch (android.system.ErrnoException e) {
+                statted = accessible = false;
+            }
             String head = null;
             boolean written = false;
             try (java.io.FileInputStream in = new java.io.FileInputStream(file)) {
@@ -6390,8 +6403,10 @@ public class Main extends Activity {
             boolean none = new java.io.File("/data/app/com.example.none-1/base.apk").exists() || new java.io.File("/data/app/com.example.none-1").exists();
             boolean folder = file.getParentFile().isDirectory();
             detail = "sourceDir=" + other.sourceDir + " publicSourceDir=" + other.publicSourceDir + " nativeLibraryDir=" + other.nativeLibraryDir
-                    + " dataDir=" + other.dataDir + " length=" + file.length() + " head=" + head + " written=" + written + " folder=" + folder + " none=" + none;
-            return apk.equals(other.sourceDir) && apk.equals(other.publicSourceDir) && other.nativeLibraryDir != null
+                    + " dataDir=" + other.dataDir + " length=" + file.length() + " head=" + head + " written=" + written + " folder=" + folder + " none=" + none
+                    + " before-open: exists=" + exists + " listed=" + listed + " (" + (names == null ? null : Arrays.toString(names)) + ") stat=" + statted + " access=" + accessible;
+            return exists && listed && statted && accessible
+                && apk.equals(other.sourceDir) && apk.equals(other.publicSourceDir) && other.nativeLibraryDir != null
                 && other.nativeLibraryDir.startsWith("/data/app/com.example.other-1/lib/") && "/data/data/com.example.other".equals(other.dataDir)
                 && file.isFile() && file.length() == 24 && "PK the other app's APK".equals(head) && !written && folder && !none;
         });
