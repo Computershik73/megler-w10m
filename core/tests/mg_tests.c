@@ -1947,6 +1947,118 @@ static void test_host_fonts(const char *scratch)
 }
 
 /*
+ * Android's own names of its fonts for Chinese, Japanese and Korean under the root's fonts (bionic/mg_libc_io.c,
+ * k_android_font_names; issue #25: Shattered Pixel Dungeon opens /system/fonts/NotoSansSC-Regular.otf and the rest by path and
+ * drew no Chinese): each the first of the host's fonts for that language, opened, stat'ed and listed as any file of the root;
+ * DroidSansFallback.ttf the Simplified Chinese one; a name the root has a file of its own by kept as the root's; none for a
+ * language the host has no font of, and no NotoSansCJK-Regular.ttc, whose faces by number no file of the host's has.
+ */
+static void test_host_font_names(const char *scratch)
+{
+    typedef int (*open_fn)(const char *, int, int);
+    typedef gssize (*read_fn)(int, void *, size_t);
+    typedef int (*close_fn)(int);
+    typedef int (*stat_fn)(const char *, void *);
+    typedef void *(*opendir_fn)(const char *);
+    typedef int (*closedir_fn)(void *);
+    typedef struct t_dirent {
+        u64 d_ino;
+        i64 d_off;
+        u16 d_reclen;
+        u8 d_type;
+        char d_name[256];
+    } t_dirent;
+    typedef t_dirent *(*readdir_fn)(void *);
+    static const struct {
+        const char *name;
+        char first;                        /* the first byte of the file it is: 'S' Simplified, 'T' Traditional, 'K' Korean, 'R' the root's; 0 none */
+    } want[] = {
+        { "NotoSansSC-Regular.otf", 'S' }, { "NotoSansHans-Regular.otf", 'R' }, { "NotoSansTC-Regular.otf", 'T' }, { "NotoSansHant-Regular.otf", 'T' },
+        { "NotoSansJP-Regular.otf", 0 }, { "NotoSansKR-Regular.otf", 'K' }, { "DroidSansFallback.ttf", 'S' }, { "DroidSansFallbackFull.ttf", 'S' },
+        { "NotoSansCJK-Regular.ttc", 0 }, { "Roboto-Regular.ttf", 'R' },
+    };
+    open_fn open_ = (open_fn)mg_bionic_find("open");
+    read_fn read_ = (read_fn)mg_bionic_find("read");
+    close_fn close_ = (close_fn)mg_bionic_find("close");
+    stat_fn stat_ = (stat_fn)mg_bionic_find("stat");
+    opendir_fn opendir_ = (opendir_fn)mg_bionic_find("opendir");
+    readdir_fn readdir_ = (readdir_fn)mg_bionic_find("readdir");
+    closedir_fn closedir_ = (closedir_fn)mg_bionic_find("closedir");
+    char *root = mg_sprintf("%s/names-root", scratch), *etc = mg_sprintf("%s/names-root/etc", scratch), *fonts_dir = mg_sprintf("%s/names-root/fonts", scratch);
+    char *list = mg_sprintf("%s/names-root/etc/fonts.xml", scratch), *made = mg_sprintf("%s/fonts-made/names.xml", scratch);
+    char *sc = mg_sprintf("%s/host fonts/msyh.ttc", scratch), *tc = mg_sprintf("%s/host fonts/msjh.ttc", scratch), *ko = mg_sprintf("%s/host fonts/malgun.ttf", scratch);
+    char *hans = mg_sprintf("%s/names-root/fonts/NotoSansHans-Regular.otf", scratch), *roboto = mg_sprintf("%s/names-root/fonts/Roboto-Regular.ttf", scratch);
+    char *host_dir = mg_sprintf("%s/host fonts", scratch), said[200], guest[200];
+    static const char root_list[] = "<familyset version=\"23\">\n</familyset>\n";
+    mg_fs_font fonts[4];
+    u8 st[256];
+    int i, n, listed = 0, wanted = 0;
+    say("fonts: Android's names of its fonts for Chinese, Japanese and Korean are the host's fonts of those languages");
+    CHECK(open_ && read_ && close_ && stat_ && opendir_ && readdir_ && closedir_);
+    if (!open_ || !read_ || !close_ || !stat_ || !opendir_ || !readdir_ || !closedir_) return;
+    CHECK(mg_path_mkdirs(etc) && mg_path_mkdirs(fonts_dir) && mg_path_mkdirs(host_dir));
+    CHECK(mg_file_write_all(list, root_list, sizeof(root_list) - 1));
+    CHECK(mg_file_write_all(sc, "S-font", 6) && mg_file_write_all(tc, "T-font", 6) && mg_file_write_all(ko, "K-font", 6));
+    CHECK(mg_file_write_all(hans, "R-font", 6) && mg_file_write_all(roboto, "R-font", 6));
+    /* The root as /system is: its folder mounted, and the host's fonts given as the shell gives them (Microsoft YaHei UI is face 1). */
+    mg_fs_mount("/names-test", root);
+    fonts[0].path = sc, fonts[0].index = 1, fonts[0].langs = "zh-Hans";
+    fonts[1].path = tc, fonts[1].index = 1, fonts[1].langs = "zh-Hant zh-Bopo";
+    fonts[2].path = ko, fonts[2].index = 0, fonts[2].langs = "ko";
+    fonts[3].path = tc, fonts[3].index = 0, fonts[3].langs = "und-Hani zh-Hans";
+    n = mg_fs_host_fonts("/names-test", list, made, fonts, 4, said, sizeof(said));
+    CHECK_INT(n, 4);
+    for (i = 0; i < (int)MG_COUNT(want); i++) {
+        char got[8];
+        gssize r = -1;
+        int fd;
+        snprintf(guest, sizeof(guest), "/names-test/fonts/%s", want[i].name);
+        fd = open_(guest, 0, 0);
+        memset(got, 0, sizeof(got));
+        if (fd >= 0) {
+            r = read_(fd, got, 6);
+            close_(fd);
+        }
+        if (want[i].first) CHECK(fd >= 0 && r == 6 && got[0] == want[i].first && stat_(guest, st) == 0);
+        else CHECK(fd < 0 && stat_(guest, st) != 0);
+        say("  %s: %s", want[i].name, fd >= 0 ? got : "none");
+    }
+    /* The listing of the root's fonts has each name that is there, once. */
+    {
+        void *d = opendir_("/names-test/fonts");
+        t_dirent *e;
+        CHECK(d != NULL);
+        while (d && (e = readdir_(d)) != NULL) {
+            for (i = 0; i < (int)MG_COUNT(want); i++)
+                if (!strcmp(e->d_name, want[i].name)) {
+                    listed++;
+                    CHECK(want[i].first != 0);
+                }
+        }
+        if (d) closedir_(d);
+        for (i = 0; i < (int)MG_COUNT(want); i++)
+            if (want[i].first) wanted++;
+        CHECK_INT(listed, wanted);
+    }
+    /* The fonts are the host's own files, and are not written. */
+    *mg_errno_ptr() = 0;
+    i = open_("/names-test/fonts/NotoSansSC-Regular.otf", 02, 0);
+    CHECK(i < 0 && *mg_errno_ptr() == GE_ROFS);
+    if (i >= 0) close_(i);
+    free(root);
+    free(etc);
+    free(fonts_dir);
+    free(list);
+    free(made);
+    free(sc);
+    free(tc);
+    free(ko);
+    free(hans);
+    free(roboto);
+    free(host_dir);
+}
+
+/*
  * A file mapped shared shows what is written to it through a descriptor afterwards (bionic/mg_libc_mem.c,
  * mg_mem_file_written), as a kernel's mapping of a file does. Bolt (Psiphon's database, in WhatsApp's libgojni.so) maps
  * its file read-only and shared, from a descriptor open for writing, past the file's end; writes it with pwrite, and
@@ -7908,6 +8020,7 @@ int mg_tests_run(const char *libdir, const char *scratch, mg_test_sink sink, voi
     test_mmap_commit();
     test_mmap_file(scratch);
     test_host_fonts(scratch);
+    test_host_font_names(scratch);
     test_mmap_file_written(scratch);
     test_mmap_write_back_unlocked(scratch);
     test_mmap_lock_order(scratch);

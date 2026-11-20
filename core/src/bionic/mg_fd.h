@@ -139,7 +139,9 @@ void mg_fs_mount_host_file(const char *guest_path, const char *host_file);
  * root's, with a family for each of `fonts` whose file is there before its end, in their order, as
  *     <family lang="zh-Hans"><font weight="400" style="normal" index="1">host/0.ttc</font></family>
  * It is mounted as <guest_root>/etc/fonts.xml and each font's file as <guest_root>/fonts/host/<n>.<ttf|ttc|otf|otc>
- * (mg_fs_mount_host_file), where n counts the fonts used. Returns how many were used -- 0 with nothing mounted as the
+ * (mg_fs_mount_host_file), where n counts the fonts used; and the first font of Chinese, Japanese and Korean each under
+ * Android's own name of its font for that language as well (<guest_root>/fonts/NotoSansSC-Regular.otf, DroidSansFallback.ttf
+ * and the rest: mg_libc_io.c, k_android_font_names), unless the root has that file. Returns how many were used -- 0 with nothing mounted as the
  * list where there is no list to add to, no font's file is there, or `made` cannot be written -- and, in `said`, their
  * langs for the log. `made` is written only when it does not hold that list already.
  */
