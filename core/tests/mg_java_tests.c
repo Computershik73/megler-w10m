@@ -4227,6 +4227,9 @@ static int run_data(void)
                                          /* And ColorSpace has the named spaces, the RGB ones as ColorSpace.Rgb (YouTube casts sRGB to it in
                                             its settings), connectors between them, and Color the colours of a space. */
                                          "color-space",
+                                         /* And a paint with a RuntimeShader, whose AGSL is not run here, fills nothing, not its own
+                                            colour: YouTube's buttons under a video were black pills under its light (issue #24). */
+                                         "runtime-shader",
                                          /* And ViewGroup.cleanupLayoutState takes a group's layout request back: a group whose requestLayout
                                             calls it on itself (Compose's AndroidViewsHandler) hears each requestLayout of a child. */
                                          "cleanup-layout-state",

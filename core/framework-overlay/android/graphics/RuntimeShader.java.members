@@ -1,0 +1,6 @@
+    // Megler: a member added to the generated android.graphics.RuntimeShader (tools/build-framework.sh, "X.java.members").
+    // Nothing here runs its AGSL program, so it has no native shader, and a paint with it drew as a paint without one: its
+    // own colour, opaque black unless the app set another. YouTube lights the buttons under a video (like, share, save) with
+    // one, drawPaint clipped to each button by a view of its "Neon" component: they were black pills (issue #24). What such a
+    // paint fills is left out instead (Paint's PF_UNDRAWABLE).
+    @Override boolean meglerUndrawable() { return true; }

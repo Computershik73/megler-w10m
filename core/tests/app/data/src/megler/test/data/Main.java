@@ -8418,11 +8418,79 @@ public class Main extends Activity {
                 + ", Color objects " + objects + ", Android 14's " + later;
             return named && curved && xyz && wide && connected && adapted && other && packed && objects && later;
         });
+        /*
+         * A paint with a RuntimeShader fills nothing: its AGSL program is not run here, and the paint's own colour (opaque black, as
+         * the paint is new) is not what it draws. YouTube lights the buttons under a video so, drawPaint clipped to each button by a
+         * view of its own: they were black pills over their 5% black wash (issue #24). Into a bitmap and into a RenderNode's list,
+         * shapes and text alike; a bitmap drawn with such a paint is drawn, as on Android. And the wash itself, a translucent black
+         * of Display P3 as a long colour, keeps its alpha through Paint.setColor(long) and Canvas.drawColor(long).
+         */
+        step("runtime-shader", () -> {
+            android.graphics.ColorSpace p3 = android.graphics.ColorSpace.get(android.graphics.ColorSpace.Named.DISPLAY_P3);
+            long washLong = android.graphics.Color.pack(0f, 0f, 0f, 0.05f, p3);
+            android.graphics.Paint wash = new android.graphics.Paint();
+            wash.setColor(washLong);
+            android.graphics.Shader agsl = (android.graphics.Shader) Class.forName("android.graphics.RuntimeShader").getConstructor(String.class)
+                .newInstance("half4 main(float2 p) { return half4(1.0, 0.0, 0.0, 1.0); }");
+            android.graphics.Paint light = new android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG);
+            light.setShader(agsl);
+            light.setTextSize(16);
+            android.graphics.Paint copied = new android.graphics.Paint(light), cleared = new android.graphics.Paint(light);
+            cleared.setShader(null);
+            android.graphics.Bitmap red = bitmap(4, 4);
+            red.eraseColor(0xFFFF0000);
+            // Straight into a bitmap: the wash on the left, then the light over all of it, a round rectangle, a path and text.
+            android.graphics.Bitmap bm = bitmap(60, 20);
+            android.graphics.Canvas c = new android.graphics.Canvas(bm);
+            c.drawColor(0xFFFFFFFF);
+            c.drawRect(0, 0, 20, 20, wash);
+            c.drawColor(android.graphics.Color.pack(0f, 0f, 0f, 0.05f, p3));
+            c.save();
+            android.graphics.Path pill = new android.graphics.Path();
+            pill.addRoundRect(new android.graphics.RectF(0, 0, 40, 20), 8, 8, android.graphics.Path.Direction.CW);
+            c.clipPath(pill);
+            c.drawPaint(light);
+            c.restore();
+            c.drawRoundRect(new android.graphics.RectF(0, 0, 60, 20), 8, 8, copied);
+            c.drawPath(pill, light);
+            c.drawText("Like", 2, 16, light);
+            c.drawBitmap(red, 50, 0, light);
+            // And through a RenderNode's list, as a view's onDraw is recorded.
+            android.graphics.RenderNode node = new android.graphics.RenderNode("neon");
+            node.setPosition(0, 0, 60, 20);
+            android.graphics.RecordingCanvas rc = node.beginRecording(60, 20);
+            rc.drawColor(0xFFFFFFFF);
+            rc.drawRect(0, 0, 20, 20, wash);
+            rc.drawPaint(light);
+            rc.drawText("Like", 2, 16, light);
+            rc.drawRect(40, 0, 60, 20, cleared);
+            node.endRecording();
+            android.graphics.Bitmap listed = drawn(node, 60, 20);
+            int both = bm.getPixel(10, 10), once = bm.getPixel(30, 10), redOver = bm.getPixel(51, 1);
+            int listedWash = listed.getPixel(10, 10), listedWhite = listed.getPixel(30, 10), listedCleared = listed.getPixel(50, 10);
+            int argb = wash.getColor();
+            // 5% of 1023, rounded, is 51: alpha 0x0d once more as an int; white under it once is 0xf2, twice 0xe6.
+            boolean longs = argb == 0x0d000000 && Math.abs(android.graphics.Color.alpha(washLong) - 51 / 1023f) < 1e-6f
+                && android.graphics.Color.toArgb(washLong) == 0x0d000000;
+            boolean direct = pixelNear(both, 0xFFE6E6E6, 1) && pixelNear(once, 0xFFF2F2F2, 1) && redOver == 0xFFFF0000;
+            boolean recorded = pixelNear(listedWash, 0xFFF2F2F2, 1) && listedWhite == 0xFFFFFFFF && listedCleared == 0xFF000000;
+            boolean flags = light.getShader() == agsl && copied.getShader() == agsl && cleared.getShader() == null;
+            detail = String.format("wash %08x (long alpha %.4f), direct %08x %08x red %08x, listed %08x %08x %08x, shaders kept %b",
+                    argb, android.graphics.Color.alpha(washLong), both, once, redOver, listedWash, listedWhite, listedCleared, flags);
+            return longs && direct && recorded && flags;
+        });
     }
 
     /** Whether the first three numbers are these, each to within eps. */
     private static boolean colorNear(float[] v, float a, float b, float c, float eps) {
         return Math.abs(v[0] - a) <= eps && Math.abs(v[1] - b) <= eps && Math.abs(v[2] - c) <= eps;
+    }
+
+    /** Whether two pixels are the same but for at most eps in each of the four channels. */
+    private static boolean pixelNear(int got, int want, int eps) {
+        for (int shift = 0; shift < 32; shift += 8)
+            if (Math.abs(((got >>> shift) & 0xff) - ((want >>> shift) & 0xff)) > eps) return false;
+        return true;
     }
 
     /** A group as Compose's AndroidViewsHandler is one: its requestLayout does not go on to View's -- it counts the request

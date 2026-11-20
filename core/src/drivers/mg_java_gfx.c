@@ -656,11 +656,12 @@ enum {
     P_COLOR, P_STYLE, P_STROKE, P_FLAGS, P_CAP, P_JOIN, P_TEXTSIZE, P_ALIGN, P_MITER, P_SHRAD, P_SHDX, P_SHDY, P_SHCOL,
     P_SCALEX, P_SKEWX, P_LSPACE, P_XFER, P_CFCOLOR, P_CFMODE, P_ALPHA, P_COUNT
 };
-enum { PF_AA = 1, PF_FILTER = 2, PF_FAKEBOLD = 4, PF_UNDERLINE = 8, PF_STRIKE = 16 };
+enum { PF_AA = 1, PF_FILTER = 2, PF_FAKEBOLD = 4, PF_UNDERLINE = 8, PF_STRIKE = 16, PF_UNDRAWABLE = 32 };
 
 typedef struct gpaint {
     megler_gfx_paint p;
     bool underline, strike;            /* drawn here, as rectangles */
+    bool undrawable;                   /* its shader is one the framework cannot draw (Paint's PF_UNDRAWABLE) */
 } gpaint;
 
 /* A PorterDuff number the shell can be given: what the framework has no number for is SRC_OVER there already. */
@@ -690,6 +691,7 @@ static void paint_unpack(const i32 *a, gpaint *out)
                (a[P_FLAGS] & PF_FAKEBOLD ? MEGLER_GFX_FAKE_BOLD : 0);
     out->underline = (a[P_FLAGS] & PF_UNDERLINE) != 0;
     out->strike = (a[P_FLAGS] & PF_STRIKE) != 0;
+    out->undrawable = (a[P_FLAGS] & PF_UNDRAWABLE) != 0;
     p->cap = a[P_CAP] == 1 || a[P_CAP] == 2 ? (int)a[P_CAP] : MEGLER_GFX_CAP_BUTT;
     p->join = a[P_JOIN] == 1 || a[P_JOIN] == 2 ? (int)a[P_JOIN] : MEGLER_GFX_JOIN_MITER;
     p->miter_limit = number(mg_f((u32)a[P_MITER]), 4);
@@ -715,13 +717,19 @@ static void paint_of(mg_jobj *array, gpaint *out) { paint_unpack((const i32 *)el
 
 /*
  * The paint for one drawing call. False when the call draws nothing: DST
- * leaves the picture as it is. `plain` says the paint's own colour is what
- * is drawn (no shader, no bitmap), and then a colour filter is done here.
+ * leaves the picture as it is, and so does a shape or text whose paint has a
+ * shader the framework cannot draw (a RuntimeShader's AGSL): its colours are
+ * not known, and the paint's own colour -- opaque black unless set -- is not
+ * what it would draw (YouTube's light over its buttons made them black pills,
+ * issue #24). A bitmap is drawn all the same, as the shader does not come into
+ * it on Android either. `plain` says the paint's own colour is what is drawn
+ * (no shader, no bitmap), and then a colour filter is done here.
  */
 static bool paint_for(mg_jobj *array, bool plain, gpaint *out)
 {
     paint_of(array, out);
     if (out->p.blend == MEGLER_GFX_BLEND_DST) return false;
+    if (plain && out->undrawable) return false;
     if (plain && out->p.filter_mode >= 0) {
         out->p.color = filtered(out->p.filter_mode, out->p.filter_color, out->p.color);
         out->p.filter_mode = -1;
