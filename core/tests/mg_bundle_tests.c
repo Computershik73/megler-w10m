@@ -339,7 +339,8 @@ static bool make_bundle(const char *from, const char *to, const char *const *nam
 /* ------------------------------------------------------- the test app */
 
 /* The splits the test app's bundles keep at 320 dpi with English and Russian, by the names their manifests give. */
-static const char *const k_kept[] = { "config.armeabi_v7a", "config.en", "config.mdpi", "config.ru", "config.xxhdpi", "extra", "pack" };
+static const char *const k_kept[] = { "config.armeabi_v7a", "config.en", "config.mdpi", "config.ru", "config.xxhdpi", "extra", "pack", "pack1", "pack2",
+                                      "pack3", "pack4", "pack5" };
 
 static char *unpack(const char *bundle, const char *apk, const char *splits, int dpi, const char *languages, seen_progress *p)
 {

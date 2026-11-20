@@ -146,6 +146,9 @@
      * split from its next start.
      */
     public static native String addSplit(String packageName, String path, boolean add);
+    /** The splits of another app the phone has, by their names, sorted (split_<name>.apk beside its APK, which addSplit adds
+     *  to): none for an app in one APK; null when where its APK is, is not known here. megler.PhoneApps names them. */
+    public static native String[] appSplits(String packageName);
     /** Another app the phone has, to uninstall (megler_system_host.uninstall_app): true when the shell asks the user. */
     public static native boolean uninstallApp(String packageName);
     /** Whether the app may have what a dangerous permission group guards (megler_system_host.permission, megler.Permissions):

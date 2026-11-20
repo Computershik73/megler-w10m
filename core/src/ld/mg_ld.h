@@ -38,8 +38,9 @@ extern "C" {
 typedef struct mg_lib mg_lib;
 struct mg_zip;
 
-/* Where libraries come from: the APKs' lib/armeabi-v7a/ (or lib/armeabi/) directories, in the order added. */
-#define MG_LD_MAX_APKS 16
+/* Where libraries come from: the APKs' lib/armeabi-v7a/ (or lib/armeabi/) directories, in the order added -- the app's and
+   its splits (MG_APK_MAX_SPLITS), and the WebView's. */
+#define MG_LD_MAX_APKS 40
 bool mg_ld_add_apk(const char *path);
 /*
  * Service APK libraries and their dependencies are isolated from the client's; so are a module's, whose class loader has a

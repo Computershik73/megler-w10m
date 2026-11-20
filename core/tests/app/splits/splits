@@ -20,4 +20,11 @@ abi arm64_v8a
 abi x86
 feature extra
 assets pack
+# Five asset packs more, the last of them the twelfth split this phone keeps: an app is run with more than ten (TikTok Lite
+# from Google Play has ten before Play Store adds its feature module).
+assets pack1
+assets pack2
+assets pack3
+assets pack4
+assets pack5
 obb main.7.megler.test.splits.obb

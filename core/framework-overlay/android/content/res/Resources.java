@@ -259,6 +259,15 @@ public class Resources {
     }
     /** The API level of the framework-res.apk in the Android root: Android 9's. It must follow that file (see the head of this file). */
     static final int PLATFORM_RESOURCES_SDK = 28;
+    /** After the core's number of the app's last split: its splits are APKs 2 on, as many as it is run with (Native.splitPaths). */
+    private static int sSplitsEnd = -1;
+    private static int splitsEnd() {
+        if (sSplitsEnd < 0) {
+            String[] splits = megler.Native.splitPaths();
+            sSplitsEnd = 2 + (splits != null ? splits.length : 0);
+        }
+        return sSplitsEnd;
+    }
     /** The app's tables and the platform's, read once (ResourcesImpl). */
     static void meglerLoadTables() { loadTables(); }
     private static void loadTables() {
@@ -267,7 +276,7 @@ public class Resources {
                 ResTable t = tableOf(0, 0);
                 sApp = t != null ? t : new ResTable(emptyTable());
                 // a Play install's split APKs (config.xxhdpi, config.en, feature splits) carry their own tables for the same package
-                for (int k = 2; k < 12; k++) {
+                for (int k = 2; k < splitsEnd(); k++) {
                     try {
                         ResTable st = tableOf(k, 0);
                         if (st != null) sApp.merge(st);
@@ -806,7 +815,7 @@ public class Resources {
         byte[] d = megler.Native.readApkFile(apk, path);
         if (d == null && apk == 0) {
             // a split APK may hold it
-            for (int k = 2; k < 12 && d == null; k++) d = megler.Native.readApkFile(k, path);
+            for (int k = 2; k < splitsEnd() && d == null; k++) d = megler.Native.readApkFile(k, path);
         }
         // and another package's split (Google Play services': a density's pictures are in its split alone), as the app's own
         if (d == null && apk != 0 && apk == mResourcesImpl.mAssets.meglerPackageApk())

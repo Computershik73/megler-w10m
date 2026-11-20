@@ -16,7 +16,8 @@
 //    once; with one that takes no request, or says nothing more, SERVICE_DIED -- after so much of the app's own running time,
 //    for the app is not run while the Play Store is in front. A request asked again (the app started anew: the phone may end
 //    it while the Play Store works) is answered from the events kept, as the Play Store tells an app again of a session it
-//    asks for twice;
+//    asks for twice -- while what they say is still so: the app of the same version, with the modules installed among its
+//    splits;
 //  - the Play Store's side. In the Play Store's own process its real service is bound and given the request as Play Core's
 //    proxy writes it, as a call of the app that asked: for that one call Binder.getCallingUid() is the app's uid, and while
 //    the request is open the app is among the running processes, in front -- what Android would say of the app that asked
@@ -194,6 +195,31 @@ public final class PlaySplits {
         } catch (JSONException x) {
             return false;
         }
+    }
+
+    /**
+     * Why what a request that went well gave the app is the app's no longer, or null while it still is. The app is of another
+     * version now: Google Play updated it, and with an update it installs the modules it knows the app has, and SplitCompat's
+     * files of the version before are not this one's. Or a module the Play Store installed into the app (INSTALLED) is not
+     * among the splits it runs with: it was installed again without it. TikTok Lite from Google Play was told INSTALLED of
+     * df_edit_filter so at every start after Google Play had updated it without that module, and waited for it for ever
+     * (issue #6, 0.1.0.734).
+     */
+    private static String gone(JSONObject request, JSONObject e) {
+        Manifest.read();
+        long then = request.optLong("version", -1);
+        if (then >= 0 && then != Manifest.versionCode) return "the app was of version " + then + " then, and is of " + Manifest.versionCode + " now";
+        JSONObject state = e.optJSONObject("state");
+        if (state == null || number(state, "status") != INSTALLED) return null;
+        String[] have = android.content.pm.ApplicationInfo.self().splitNames;
+        java.util.List<String> splits = have != null ? java.util.Arrays.asList(have) : new ArrayList<String>();
+        JSONArray list = request.optJSONArray("list");
+        if (list != null) for (int i = 0; i < list.length(); i++) {
+            JSONObject b = list.optJSONObject(i);
+            JSONArray module = b != null ? b.optJSONArray("module_name") : null;
+            if (module != null && !splits.contains(module.optString(1))) return "the app has no module " + module.optString(1) + " among its splits";
+        }
+        return null;
     }
 
     /** An int of a bundle as json() wrote it, or 0. */
@@ -450,22 +476,25 @@ public final class PlaySplits {
             return;
         }
         int n = latest(dir);
-        // The same asked again: answered from what the Play Store said of it, if that went well; passed again, if it has not
-        // ended. One that failed is asked anew.
+        // The same asked again: answered from what the Play Store said of it, if that went well and is still so; passed again,
+        // if it has not ended. One that failed, or whose module the app no longer has, is asked anew.
         boolean again = false, ended = false;
+        String gone = null;
         if (n > 0) try {
             JSONObject last = new JSONObject(String.valueOf(read(new File(dir, n + ".request"))));
             if (last.optInt("code") == START_INSTALL && asked.equals(last.optString("asked"))) {
                 again = true;
-                for (JSONObject e : events(new File(dir, n + ".events"))) {
-                    if (!ends(e)) continue;
+                JSONObject end = null;
+                for (JSONObject e : events(new File(dir, n + ".events"))) if (ends(e)) end = e;
+                if (end != null) {
                     ended = true;
-                    again = wentWell(e);
+                    again = wentWell(end) && (gone = gone(last, end)) == null;
                 }
             }
         } catch (JSONException e) {
             again = false;
         }
+        if (gone != null) Log.i(TAG, "request " + n + " (" + asked + ") asked again: what the Play Store said of it is so no longer (" + gone + "); asked anew");
         Follow f = again ? sFollowed.get(n) : null;
         if (f != null) {
             // twice in one run: the second callback hears what the first did, and what comes
@@ -475,7 +504,9 @@ public final class PlaySplits {
         if (!again) {
             n++;
             try {
-                JSONObject r = new JSONObject().put("code", START_INSTALL).put("package", pkg).put("asked", asked).put("list", json(list));
+                // (with the app's version, which what comes of it is for: gone)
+                Manifest.read();
+                JSONObject r = new JSONObject().put("code", START_INSTALL).put("package", pkg).put("asked", asked).put("version", Manifest.versionCode).put("list", json(list));
                 if (options != null) r.put("options", json(options));
                 new File(dir, n + ".events").delete();
                 if (!write(new File(dir, n + ".request"), r.toString())) throw new JSONException("not written");
@@ -644,6 +675,8 @@ public final class PlaySplits {
     }
     /** The open requests, by the app's package: one of an app at a time, its latest. */
     private static final HashMap<String, Served> sServed = new HashMap<>();
+    /** The apps whose request taken up before this process began was looked for (resumed). */
+    private static final java.util.HashSet<String> sLooked = new java.util.HashSet<>();
     private static IBinder sService;
     private static boolean sBinding;
     /** What the Play Store's service says is written in the order it was said, off its threads. */
@@ -803,7 +836,7 @@ public final class PlaySplits {
     static boolean broadcast(Intent i) {
         if (i == null || !UPDATE.equals(i.getAction()) || i.getPackage() == null || !GooglePackages.VENDING.equals(Native.packageName())) return false;
         final Served s;
-        synchronized (PlaySplits.class) { s = sServed.get(i.getPackage()); }
+        synchronized (PlaySplits.class) { s = sServed.containsKey(i.getPackage()) ? sServed.get(i.getPackage()) : resumed(i.getPackage()); }
         final Bundle state = i.getBundleExtra("session_state");
         if (s == null || state == null) {
             Log.i(TAG, "a session state for " + i.getPackage() + ", which has no open request here: not passed on");
@@ -839,6 +872,39 @@ public final class PlaySplits {
             }
         });
         return true;
+    }
+
+    /**
+     * The app's latest request, taken up by an earlier process of the Play Store and not ended, as open here again: Windows
+     * ends the Play Store while it is out of sight, and the Play Store, started anew, goes on with the download it was making
+     * for the app and tells its states (TikTok Lite's, issue #6). They are the request's still, and its end shows the app again.
+     * Null when there is none such. Called with the class's lock held.
+     */
+    private static Served resumed(String app) {
+        // (looked for once a process: the Play Store tells a download's progress many times a second)
+        if (!sLooked.add(app)) return null;
+        File dir = folder(app);
+        PhoneApps.App asking = named(app) ? PhoneApps.find(app) : null;
+        int n = dir != null && dir.isDirectory() ? latest(dir) : 0;
+        if (asking == null || n == 0) return null;
+        JSONObject request;
+        try {
+            request = new JSONObject(String.valueOf(read(new File(dir, n + ".request"))));
+        } catch (JSONException e) {
+            return null;
+        }
+        boolean taken = false;
+        for (JSONObject e : events(new File(dir, n + ".events"))) {
+            if (ends(e)) return null;
+            taken |= e.has("taken");
+        }
+        if (!taken || request.optInt("code") != START_INSTALL) return null;
+        Served s = new Served(app, asking.uid, dir, n, request);
+        s.answered = true;
+        sServed.put(app, s);
+        if (sWriter == null) sWriter = java.util.concurrent.Executors.newSingleThreadExecutor();
+        Log.i(TAG, "request " + n + " of " + app + ", taken up by the Play Store before it was started anew, is open again: its states are passed on");
+        return s;
     }
 
     private static boolean copy(Uri from, File to) {

@@ -10,14 +10,14 @@ The app that showed the need is **TikTok Lite from Google Play** (issue #6,
 Megler 0.1.0.699): it does not get past its first screen.
 
 Status in one paragraph: the app's side and the Play Store's side of the relay
-are written, and **proven under the tests** (the ARM build under qemu, six
-runs, none failing) against a stand-in Play Store (`core/tests/app/playstore`)
-and an app that speaks Play Core's interface by hand
-(`core/tests/app/playclient`); **nothing of it has run on a phone**, and
-nothing has run against the real Play Store or the real Play Core. Whether the
-real Play Store answers a passed-on request the way its code reads is the open
-question; the section [What is not known](#what-is-not-known) lists what a
-phone has to show.
+are written and proven under the tests (the ARM build under qemu, eight runs)
+against a stand-in Play Store (`core/tests/app/playstore`) and an app that
+speaks Play Core's interface by hand (`core/tests/app/playclient`). **On a
+phone** (the reporter's Lumia 950, 0.1.0.734, the logs of issue #6) the real
+Play Store took TikTok Lite's request, downloaded the module and installed it
+into the app by a `PackageInstaller` session, and TikTok Lite started its full
+app from it; then faults of Megler's undid it, fixed since:
+[What the phone showed](#what-the-phone-showed-01734).
 
 ## The app: a small base and the rest on demand
 
@@ -114,10 +114,10 @@ resources, and reports INSTALLED to the app's listeners itself.
 
 The Play Store 53.7 chooses SplitCompat on Android 7 to 9 for an app whose
 Play Core is 10300 or later (its flag `DynamicSplits.
-min_playcore_client_version_for_splitcompat_on_nop`). Megler is Android 9 and
-this app's Play Core is 11004, so **SplitCompat is the way this app's module
-is expected to come**; and this app's Play Core sets its SplitCompat receiver
-up on every Android version.
+min_playcore_client_version_for_splitcompat_on_nop`), by its code. On the
+phone the Play Store (version code 85411140) **installed the module by a
+session** instead -- the states 1, 2, 4, 5 -- so the flag's value from
+Google is another than its default; Megler takes either way.
 
 ## What the Play Store checks
 
@@ -248,11 +248,16 @@ and the bind finds the Play Store's own service.)
   that will not start without it), so Play Core's own check does not see
   this, and the stand-in says it;
 - the latest request asked for the same and ended well (INSTALLED, or
-  DOWNLOADED with files that are still there): it is **answered again from
-  its events**, with no word to the Play Store. This is what makes the relay
-  work when Windows ends the app while the Play Store is in front: the app
-  starts anew, asks again as it did, and gets the answer that was waiting.
-  The Play Store itself tells an app again of a session it asks for twice;
+  DOWNLOADED with files that are still there), and that is still so -- the
+  app is of the version it asked at (the request keeps it), and each module
+  an INSTALLED request asked for is among the splits it runs with: it is
+  **answered again from its events**, with no word to the Play Store. This is
+  what makes the relay work when Windows ends the app while the Play Store is
+  in front: the app starts anew, asks again as it did, and gets the answer
+  that was waiting. The Play Store itself tells an app again of a session it
+  asks for twice. An answer that is so no longer is not given: TikTok Lite,
+  updated by Google Play without its module, was told INSTALLED of it at
+  every start and waited for ever; now it is asked of the Play Store anew;
 - else request `n+1` is written and the Play Store is started. If the shell
   cannot start it: **-9**.
 
@@ -317,6 +322,13 @@ If the service says nothing to a call for 40 s the request is lost with -9:
 the Play Store's stub drops a call it refuses without a word (the first two
 rows of the table above), and the app must not wait for ever.
 
+Windows ends the Play Store while it is out of sight, and the Play Store,
+started anew (by the user, or for the next request), goes on with the download
+it was making. A session state it then sends for an app with no request open in
+this process is matched with the files once: the app's latest request, taken
+up by the process before and not ended, is open again here (`resumed`), and
+its states and its end are passed on as before.
+
 Nothing the Play Store verifies with Google is made up. It sees the app's
 package, uid, version and signing certificates as Megler reports every app
 of the phone to it -- the same answers it gets when it updates that app --
@@ -337,9 +349,30 @@ shell hands the splits folder to the core at each start, and
 Before this such a session was given to Megler's installer as if it were a
 whole app named `<package>.apk`.
 
+A session not committed **outlives the process** that made it, as Android's
+(the system's) do: its folder, in the installer's data folder
+(`.megler-sessions`, not its cache, which "Clear cache" empties), keeps a
+record of it (`.megler-session`: the package, the mode, the files written by
+the names they were written under), and the next run of the installer has it
+again --
+`getMySessions`, `getSessionInfo` and `openSession` find it -- until it is
+committed or abandoned, or three days pass. The Play Store makes its session
+when a download starts, and goes on with it after a restart; on the phone
+Windows ended it during TikTok Lite's first request, it found its session
+"closed", and the install failed with its status 5426 ("No open Session with
+Context ... was found"), the app told -100.
+
+And the phone's other apps are told of **with their splits**
+(`megler.PhoneApps`: `PackageInfo.splitNames`, `ApplicationInfo.splitNames`
+and `splitSourceDirs`, `/data/app/<package>-1/split_<name>.apk`, readable;
+`Native.appSplits` lists the folder beside the app's APK). The Play Store
+reads them to know which modules an app has: told of none, it sent the whole
+of TikTok Lite's install-time modules again with the one asked for (15
+splits), and its next update of the app installed it without the module.
+
 ## The tests
 
-Two test apps and six runs (`tools/build-tests.sh`; `core/tests/
+Two test apps and eight runs (`tools/build-tests.sh`; `core/tests/
 mg_java_tests.c`, `run_playclient` and `run_playstore`):
 
 - `core/tests/app/playclient`, package `megler.test.playclient`: asks for
@@ -354,16 +387,22 @@ mg_java_tests.c`, `run_playclient` and `run_playstore`):
   is built from `carries/` in its folder (`tools/build-test-app.sh`).
 
 The tests host runs one app in a process, as the phone does, so the runs
-follow one another over one data folder. Each passes (26 to 36 checks a run):
+follow one another over one data folder:
 
 | Run | What is checked |
 |---|---|
 | 1. client, no Play Store among the phone's apps | error -14 in under 10 s, no request written, nothing asked of the shell |
 | 2. client, a Play Store that is not run | request 1 written, the shell asked to start the Play Store with `megler.PlaySplits.megler.test.playclient`, error -9 after 20 s |
-| 3. the store, started with that | request 1 taken; the service sees the app's package owned by the caller and the app in front; the callback's onStartInstall, states 1 to 5 in order in the events; the split added to the app's APKs by the session; the shell asked to show the app |
-| 4. client | the split in `splitNames` and `splitSourceDirs`, its class loaded; `extra` asked again is answered from the events (onStartInstall, then INSTALLED) with no new request; `getSessionStates` empty; a deferred call -5; a cancel of an unknown session -4; `files` asked: request 2, the shell asked |
-| 5. the store | request 2 taken; states 1, 2, then 3 with the file; the provider opened in the store's process, the file copied to `files/42/files.apk`; the shell asked to show the app |
-| 6. client | `files` asked again is answered from the events with a `file:` URI; the app copies it through `openAssetFileDescriptor` as Play Core does and loads its class |
+| 3. the store, started with that | request 1 taken; the service sees the app's package owned by the caller, the app in front and no splits of it; the callback's onStartInstall, states 1 to 5 in order in the events; the split added to the app's APKs by the session; the shell asked to show the app |
+| 4. client, the split taken away first (`lost`: an update without the module) | `extra` asked again is not answered INSTALLED from request 1's events: request 2 written, the Play Store asked for, error -9 |
+| 5. the store | request 2 taken, `extra` installed again as in run 3 |
+| 6. client | the split in `splitNames` and `splitSourceDirs`, its class loaded; `extra` asked again is answered from the events (onStartInstall, then INSTALLED) with no new request; `getSessionStates` empty; a deferred call -5; a cancel of an unknown session -4; `files` asked: request 3, the shell asked |
+| 7. the store | the service sees the client's split `extra` (`splitNames`, its file readable); request 3 taken; states 1, 2, then 3 with the file; the provider opened in the store's process, the file copied to `files/42/files.apk`; the shell asked to show the app |
+| 8. client | `files` asked again is answered from the events with a `file:` URI; the app copies it through `openAssetFileDescriptor` as Play Core does and loads its class |
+
+A session kept across runs is the data app's step `install-kept` (its two
+runs); an app run with more than ten splits the `splits` app's `many-splits`
+(twelve).
 
 What the runs do not cover: two processes alive at once (the app reading
 events while the Play Store writes them; the files are written whole and the
@@ -371,10 +410,42 @@ lines appended whole, by reading); the shell's `launchApp` and `megler:run`
 (the host records what was asked and starts nothing); Windows suspending and
 ending the app; and the real Play Store and Play Core.
 
+## What the phone showed (0.1.0.734)
+
+TikTok Lite 47.7.4 from Google Play on a Lumia 950, two Save All Logs of
+2026-11-18 (issue #6):
+
+1. The app asked for `df_edit_filter`; the Play Store was started with the
+   request, took it as the app's call ("Start install for package:
+   com.zhiliaoapp.musically.go": the caller, the flags, the foreground, the
+   account all passed) and began the download. Windows suspended and then
+   ended the Play Store while it was out of sight; started again, it went on
+   with the download, but its installer session was gone (Megler's sessions
+   lived in the process) and the install failed with status 5426, the app
+   told -100 when it asked again. Its states meanwhile were not passed on
+   ("which has no open request here").
+2. The app's next request was installed: the Play Store, told of no splits
+   of the app, downloaded all its install-time modules again with
+   `df_edit_filter` and its three config splits, 22.6 MB, and committed an
+   inherit-existing session of 15 splits; Megler added them beside the app's
+   APKs. TikTok Lite started with the module and loaded the full app
+   (`LiteApplicationProxy`), but with ten of its fifteen splits (the core's
+   limit): the module's density split among those left out.
+3. Four minutes later Google Play updated TikTok Lite (47.8.2) with the
+   modules it knew the app had -- none on demand -- and Megler installed the
+   update: no `df_edit_filter`. At every start after, the app asked for it
+   again and Megler answered INSTALLED from request 2's events, without asking
+   the Play Store; the app waited on its "keep the app open" screen for ever.
+
+Each fault is Megler's, and fixed: the stale answer (`PlaySplits.gone`), the
+splits of other apps (`PhoneApps.splits`), sessions kept across runs
+(`Installs.restore`), states after the Play Store's restart
+(`PlaySplits.resumed`), and 32 splits a Java app (`MAX_SPLITS`). Nothing the
+Play Store or Google decides was in the way.
+
 ## What is not known
 
-All of this needs a phone with Megler, the Play Store signed in, and an app
-with on-demand modules installed from it. In the order they would show:
+What the phone has not shown yet, in the order it would show:
 
 1. **Whether the Play Store's checks pass.** By reading they do. The log
    lines to look for in the Play Store's log are the ones in the table above:
@@ -416,11 +487,11 @@ with on-demand modules installed from it. In the order they would show:
 
 ### Known gaps
 
-- **Ten splits.** The core takes ten split APKs of a Java app (`MAX_SPLITS`
-  in `mg_java.c`), and TikTok Lite from Google Play has ten already. A module
-  that comes SplitCompat's way is not counted (the app loads it from its own
-  files); one that the Play Store installs by a session would be the
-  eleventh and left out at the app's next start, with a line in the log.
+- **32 splits.** The core takes 32 split APKs of a Java app (`MAX_SPLITS` in
+  `mg_java.c`; ten until 0.1.0.734). TikTok Lite from Google Play has ten
+  before its first module, and each module comes with up to three config
+  splits; one past the 32nd is left out at the app's next start, with a line
+  in the log.
 - **A module installed by a session reaches the app at its next start**, not
   while it runs, where Android adds it to the running app. The INSTALLED
   state is passed on as the Play Store sends it; an app that uses the module

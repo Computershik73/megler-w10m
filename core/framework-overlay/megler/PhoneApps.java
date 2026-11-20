@@ -27,6 +27,11 @@
 // component, by its action within the package it names, or by its action alone -- which megler.HostedApps would bind here.
 // Total Commander lists its plug-ins so (the action com.android.tcplugins.IPluginFunctions, no package), and took every
 // plug-in for not installed.
+//
+// Their splits, as Android names an installed app's (splits): splitNames and splitSourceDirs, /data/app/<package>-1/
+// split_<name>.apk, where they can be read. Google Play knows from them which feature modules an app has, adds only those
+// it lacks (megler.PlaySplits), and updates it with them; with none told, it updated TikTok Lite without the module it had
+// added, and the app was its small start screen again (issue #6).
 package megler;
 
 import android.content.ComponentName;
@@ -422,7 +427,36 @@ public final class PhoneApps {
         i.dataDir = i.deviceProtectedDataDir = "/data/data/" + a.packageName;
         // (An app whose activities view web links, as Android's package parser marks it: Android's Settings offers its links so.)
         if (Resolver.hasDomainUrls(a.packageName)) i.privateFlags |= ApplicationInfo.PRIVATE_FLAG_HAS_DOMAIN_URLS;
+        // Its splits beside it, as Android names an installed app's (sorted): there to be read too.
+        String[] splits = splits(a);
+        if (splits.length > 0) {
+            i.splitNames = splits;
+            i.splitSourceDirs = new String[splits.length];
+            for (int k = 0; k < splits.length; k++) i.splitSourceDirs[k] = dir + "/split_" + splits[k] + ".apk";
+            i.splitPublicSourceDirs = i.splitSourceDirs.clone();
+        }
         return i;
+    }
+
+    /* The splits of each app as last read, { when, names }: Google Play asks for the PackageInfo of every app, and often. */
+    private static final java.util.HashMap<String, Object[]> sSplits = new java.util.HashMap<>();
+
+    /**
+     * The app's splits by their names, sorted (Native.appSplits): the ones it was installed with and the feature modules
+     * Google Play has added since (megler.PlaySplits), read again when two seconds have passed. Google Play reads them from
+     * the PackageInfo to know which modules an app has, and updates it with those; it was told of none, and its update of
+     * TikTok Lite installed it without the module that is the whole app (issue #6).
+     */
+    public static String[] splits(App a) {
+        long now = android.os.SystemClock.uptimeMillis();
+        synchronized (sSplits) {
+            Object[] had = sSplits.get(a.packageName);
+            if (had != null && now - (Long) had[0] < 2000) return ((String[]) had[1]).clone();
+        }
+        String[] names = Native.appSplits(a.packageName);
+        if (names == null) names = new String[0];
+        synchronized (sSplits) { sSplits.put(a.packageName, new Object[] { now, names }); }
+        return names.clone();
     }
 
     public static ActivityInfo activityInfo(App a, String activity) {
@@ -499,6 +533,10 @@ public final class PhoneApps {
         p.versionName = a.versionName;
         p.versionCode = (int) a.versionCode;
         p.applicationInfo = applicationInfo(a);
+        if (p.applicationInfo.splitNames != null) {
+            p.splitNames = p.applicationInfo.splitNames.clone();
+            p.splitRevisionCodes = new int[p.splitNames.length];
+        }
         // Its own signatures, not the running app's (a PackageInfo's), and those only when asked for, as on Android; an app
         // the shell has not described has an empty one.
         p.signatures = null;

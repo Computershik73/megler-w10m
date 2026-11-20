@@ -2317,8 +2317,11 @@ public class Main extends Activity {
         });
         step("package-installer", () -> {
             android.content.pm.PackageInstaller installer = getPackageManager().getPackageInstaller();
-            return installer != null && installer == getPackageManager().getPackageInstaller()
-                    && installer.getMySessions() != null && installer.getMySessions().isEmpty();
+            if (installer == null || installer != getPackageManager().getPackageInstaller() || installer.getMySessions() == null) return false;
+            // none but the one the step install-kept leaves open for the next run, which finds it again
+            for (Object o : installer.getMySessions())
+                if (!"com.example.kept".equals(((android.content.pm.PackageInstaller.SessionInfo) o).getAppPackageName())) return false;
+            return true;
         });
         batchOperations();
         wifi();
@@ -10054,6 +10057,46 @@ public class Main extends Activity {
             s.commit(android.app.PendingIntent.getBroadcast(this, 1, new android.content.Intent("megler.test.INSTALL_STATUS"), 0).getIntentSender());
             detail = "id=" + id + " names=" + java.util.Arrays.toString(names);
             return id > 0 && names.length == 3;
+        });
+        // A session left open when the process ends is the app's again at its next run, as Android keeps one: Google Play goes
+        // on with its session when it starts anew (TikTok Lite's feature module failed when it found none, issue #6). The first
+        // run makes one and writes into it; the second finds it -- listed, told of, its file there -- and abandons it. (The test
+        // has the app's cache cleared between the two, as Megler's Clear cache does: Android keeps sessions apart from it.)
+        step("install-kept", () -> {
+            android.content.pm.PackageInstaller pi = getPackageManager().getPackageInstaller();
+            java.io.File marker = new java.io.File(getFilesDir(), "install-kept");
+            if (!marker.exists()) {
+                android.content.pm.PackageInstaller.SessionParams params =
+                        new android.content.pm.PackageInstaller.SessionParams(android.content.pm.PackageInstaller.SessionParams.MODE_INHERIT_EXISTING);
+                params.setAppPackageName("com.example.kept");
+                int id = pi.createSession(params);
+                try (android.content.pm.PackageInstaller.Session s = pi.openSession(id)) {
+                    try (java.io.OutputStream o = s.openWrite("config.xxhdpi", 0, 4)) { o.write(new byte[] { 'P', 'K', 3, 4 }); }
+                }
+                try (java.io.FileOutputStream o = new java.io.FileOutputStream(marker)) { o.write(Integer.toString(id).getBytes()); }
+                Log.i("DataTest", "install-kept made session " + id);
+                detail = "made " + id;
+                return id > 0;
+            }
+            int id = Integer.parseInt(new String(java.nio.file.Files.readAllBytes(marker.toPath())).trim());
+            boolean listed = false;
+            for (android.content.pm.PackageInstaller.SessionInfo i : pi.getMySessions()) listed |= i.getSessionId() == id;
+            android.content.pm.PackageInstaller.SessionInfo info = pi.getSessionInfo(id);
+            String[] names;
+            byte[] back = new byte[4];
+            int read = -1;
+            try (android.content.pm.PackageInstaller.Session s = pi.openSession(id)) {
+                names = s.getNames();
+                try (java.io.InputStream in = s.openRead("config.xxhdpi")) { if (in != null) read = in.read(back); }
+                s.abandon();
+            }
+            boolean gone = pi.getSessionInfo(id) == null;
+            marker.delete();
+            Log.i("DataTest", "install-kept found session " + id + " again");
+            detail = "id=" + id + " listed=" + listed + " info=" + (info == null ? null : info.getAppPackageName() + " mode " + info.getMode() + " active " + info.isActive())
+                     + " names=" + java.util.Arrays.toString(names) + " read=" + read + " gone=" + gone;
+            return listed && info != null && "com.example.kept".equals(info.getAppPackageName()) && info.getMode() == 2 && info.isActive()
+                   && names.length == 1 && "config.xxhdpi".equals(names[0]) && read == 4 && back[0] == 'P' && back[3] == 4 && gone;
         });
     }
 
