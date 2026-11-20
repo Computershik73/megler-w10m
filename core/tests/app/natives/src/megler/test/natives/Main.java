@@ -74,6 +74,7 @@ public class Main extends Activity {
     private Picture picture;
     private WindowTest windows;
     private StackTest stack;
+    private boolean glueStarted;
 
     @Override
     protected void onCreate(Bundle state) {
@@ -86,8 +87,15 @@ public class Main extends Activity {
         /* Native code on SurfaceViews, under the picture; its steps go on after the others, one for each tap of the test's. */
         windows = new WindowTest(this);
         root.addView(windows.view(), new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 120));
+        /* (The tap after the stack's starts a NativeActivity of the app's own, Glue.) */
         root.setOnTouchListener((v, e) -> {
-            if (e.getAction() == android.view.MotionEvent.ACTION_UP) windows.tapped();
+            if (e.getAction() != android.view.MotionEvent.ACTION_UP) return true;
+            if (stack != null && !glueStarted) {
+                glueStarted = true;
+                startActivity(new android.content.Intent(this, Glue.class));
+            } else {
+                windows.tapped();
+            }
             return true;
         });
         /* And, at the tap after the window test's last step, two SurfaceViews one over the other, the one over the window translucent, under the row (StackTest). */

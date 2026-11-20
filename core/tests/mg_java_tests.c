@@ -870,8 +870,6 @@ static void find_host_fonts(void)
 }
 /* The Bluetooth app: it alone has a radio (the stand-in), so that the others still see a phone without one. */
 static bool g_bluetooth_app;
-/* natives' second run: the flag native-entry-at-start, its start asking its library for NativeActivity's entry (run_natives). */
-static bool g_entry_at_start;
 static volatile i32 g_exited;
 static int g_status;
 static char g_reason[1600];
@@ -1882,13 +1880,9 @@ static bool start(const char *apk, const char *android_root)
         ((int (*)(const char *, const char *, int))mg_bionic_find("setenv"))("MG_MICROG_POTOKEN_VM_TEST", "1", 1);
     say("a Java app through megler_run (%s on the Android root %s)", apk, android_root);
     {
-        /*
-         * What the shell reads before it starts an app: this is a Java app it can run, and how it asks to be held. (With the
-         * flag native-entry-at-start the reading does not look into natives' library, and the app is a NativeActivity until
-         * its start asks the library: run_natives.)
-         */
+        /* What the shell reads before it starts an app: this is a Java app it can run, and how it asks to be held. */
         char *report = g_splits_dir ? megler_apk_report_splits(apk, g_splits_dir) : megler_apk_report(apk);
-        CHECK(report && strstr(report, g_entry_at_start ? "\"engine\":\"native-activity\"" : "\"engine\":\"java\"") && strstr(report, "\"runnable\":true"));
+        CHECK(report && strstr(report, "\"engine\":\"java\"") && strstr(report, "\"runnable\":true"));
         /* The app whose launcher entries are aliases, the first one disabled: what is started is what the enabled one stands for. */
         if (g_crash_app) CHECK(report && strstr(report, "\"activity\":\"megler.test.crash.First\""));
         if (!g_any_app) CHECK(report && strstr(report, g_portrait ? "\"orientation\":\"portrait\"" : "\"orientation\":\"unspecified\""));
@@ -3450,6 +3444,58 @@ static void natives_stack(const int tap_at[2])
 }
 
 /*
+ * A NativeActivity of the app's own (core/tests/app/natives: Glue, jni/natives_activity.c), as KOReader's MainActivity is, started
+ * at the tap after the stack's: the Java driver runs it, the framework's NativeActivity loads its library and calls its entry
+ * with an ANativeActivity whose clazz is Glue, and the library's JNI calls on clazz -- on the main thread and from a thread of
+ * its own that attaches -- are Glue's own methods (under the NativeActivity driver, a stand-in's that answered zero: KOReader
+ * ended at its start, issue #23). The callbacks in the framework's order; the window, the whole of the activity's, in RGB 565 as
+ * NativeActivity's is, painted green by the library and all of the window that is seen; a tap in it read from the input queue
+ * on the library's thread, in the window's coordinates; and Back, which the library leaves unhandled, gone on to the activity,
+ * which finishes.
+ */
+static void natives_activity(const int tap_at[2])
+{
+    static const char *const order[] = { "I/NativesActivity: Java onCreate", "I/NativesActivity: onCreate sdk=", "I/NativesActivity: onStart",
+                                         "I/NativesActivity: onResume" };
+    int line, at = 0, i, w = 0, h = 0, x, y;
+    char text[200];
+    tap(tap_at[0], tap_at[1]);
+    for (i = 0; i < (int)MG_COUNT(order); i++) expect_line(order[i], &at, 60);
+    /* Then, as the window is added and laid out: its input queue, its surface's window, its focus. */
+    CHECK(wait_line("I/NativesActivity: input queue", at, 30) >= 0 && wait_line("I/NativesActivity: window ", at, 30) >= 0
+          && wait_line("I/NativesActivity: focus 1", at, 30) >= 0);
+    CHECK(find_line("java: NativeActivity megler/test/natives/Glue: libnatives_activity.so, ANativeActivity_onCreate", 0) >= 0);
+    /* The activity's SDK version is Build.VERSION.SDK_INT; no state saved before; its data folder. */
+    CHECK(find_line("I/NativesActivity: onCreate sdk=", 0) >= 0 && strstr(line_at(find_line("I/NativesActivity: onCreate sdk=", 0)), " saved=0 internal=yes"));
+    CHECK(find_line("I/NativesActivity: main: clazz is megler.test.natives.Glue, answer(20)=41, greeting=hello from Glue", 0) >= 0);
+    CHECK(wait_line("I/NativesActivity: thread: clazz is megler.test.natives.Glue, answer(20)=41, greeting=hello from Glue", 0, 30) >= 0);
+    CHECK(find_line("I/NativesActivity: content ", 0) >= 0);
+    line = find_line("I/NativesActivity: window ", 0);
+    CHECK(line >= 0 && sscanf(strstr(line_at(line), "window ") + 7, "%dx%d", &w, &h) == 2 && strstr(line_at(line), " format=4 lock=0"));
+    say("  Glue's window %dx%d (the screen %dx%d)", w, h, g_screen_w, g_screen_h);
+    CHECK(w > g_screen_w / 2 && h > g_screen_h / 2);
+    x = g_screen_w / 2;
+    y = g_screen_h / 2;
+    CHECK(pixel_shown(x, y, 0x00FF00, 30));
+    /* The surface is all of the window that is seen: the title bar its theme has, which says where the content is (content
+       0,56), is not drawn over it, as Android draws none of a window's views when the app has taken its surface. */
+    CHECK(pixel_shown(x, 10, 0x00FF00, 30));
+    write_picture("natives-7");
+    tap(x, y);
+    snprintf(text, sizeof(text), "I/NativesActivity: touch down at %d,%d", x, y);
+    CHECK(wait_line(text, 0, 30) >= 0);
+    snprintf(text, sizeof(text), "I/NativesActivity: touch up at %d,%d", x, y);
+    CHECK(wait_line(text, 0, 30) >= 0);
+    megler_back(400, 10000);
+    at = find_line("I/NativesActivity: touch up at ", 0);
+    expect_line("I/NativesActivity: key 4 down, not handled", &at, 30);
+    expect_line("I/NativesActivity: Java onBackPressed", &at, 30);
+    CHECK(wait_line("I/NativesActivity: Java onDestroy", at, 30) >= 0);
+    CHECK(find_line("I/NativesActivity: input queue destroyed", at) >= 0 && find_line("I/NativesActivity: window destroyed", at) >= 0
+          && find_line("I/NativesActivity: onDestroy", at) >= 0);
+}
+
+/*
  * An older version's libraries in the app's library folder before its start, as an update leaves the folder on a phone that
  * Megler up to 0.1.0.685 placed it on (ld/mg_ld_place.c): a library this version has not, under the name the step own-file
  * unpacks one of its own as and loads by its path (TikTok Lite 47.7.4's libnpth.so, which the older version's in the folder
@@ -3497,15 +3543,8 @@ static int run_natives(void)
        libnatives_dep.so, of the entry's size, summed against the APK's and written again. */
     CHECK(find_line(" of an older version's, which this one has not, removed: libunpacked.so", 0) >= 0);
     CHECK(find_line(" summed against the APK's", 0) >= 0);
-    /* Its activity names its library with android.app.lib_name, as Qt's does, and the library has no NativeActivity entry:
-       the Java driver runs it, not the NativeActivity one. Found so when the APK is read, or -- in the run with the flag
-       native-entry-at-start, where the library is not looked into then -- by the start, which loads it and asks it. */
+    /* Its activity names its library with android.app.lib_name, as Qt's does: an activity of its own, which the Java driver runs. */
     CHECK(find_line("run: megler.test.natives (", 0) >= 0 && find_line(") with the java driver", 0) >= 0);
-    if (GL.refuse)
-        CHECK(find_line("run: libnatives.so has no ANativeActivity_onCreate: its activity (megler.test.natives.Main) loads it through JNI itself, "
-                        "and the app is started as a Java one", 0) >= 0);
-    else
-        CHECK(find_line("run: libnatives.so has no ANativeActivity_onCreate", 0) < 0);
     /* The library's own line (__android_log_print), from its JNI_OnLoad: run when the class that loads it is first used. */
     expect_line("I/NativesLib: JNI_OnLoad call 1", &at, 60);
     for (i = 0; i < (int)MG_COUNT(steps); i++) {
@@ -3538,6 +3577,7 @@ static int run_natives(void)
         tap_at[1] = pic[1] + pic[3] / 2;
         natives_windows(tap_at);
         natives_stack(tap_at);
+        natives_activity(tap_at);
     }
     back_and_end("I/NativesTest: onDestroy", &at);
     /* The renderer, swapping when the activity went, ended with it (the view's surface gone, its swaps refused), and nothing threw. */
@@ -3549,6 +3589,7 @@ static int run_natives(void)
     say_app_lines("/NativesTest: ");
     say_app_lines("/NativesWindow: ");
     say_app_lines("/NativesStack: ");
+    say_app_lines("/NativesActivity: ");
     return g_failed;
 }
 
@@ -6067,23 +6108,15 @@ int mg_tests_java_run(const char *which, const char *apk, const char *android_ro
     mg_camera_standin_refuse(g_camera_app && g_script_count && !strcmp(g_script[0], "denied"));
     /* The shell does not compose the window ("readback"): the core reads the GL frames back and composes it, as before. */
     GL.refuse = g_script_count && !strcmp(g_script[0], "readback");
-    /*
-     * natives runs with the flag trace-surfaces on (a file in the data folder's flags, as on the phone): natives_windows checks
-     * what it says. And its second run ("readback") with native-entry-at-start: its library is not looked into for
-     * NativeActivity's entry when the APK is read, and the start asks the library itself (run_natives).
-     */
+    /* natives runs with the flag trace-surfaces on (a file in the data folder's flags, as on the phone): natives_windows checks what it says. */
     if (!strcmp(which, "natives")) {
         char *flags = mg_sprintf("%s/flags", megler_data_dir()), *flag = mg_sprintf("%s/flags/trace-surfaces", megler_data_dir());
-        char *at_start = mg_sprintf("%s/flags/native-entry-at-start", megler_data_dir());
         FILE *f;
         mg_path_mkdirs(flags);
         f = fopen(flag, "w");
         if (f) fclose(f);
-        g_entry_at_start = GL.refuse;
-        if (g_entry_at_start && (f = fopen(at_start, "w")) != NULL) fclose(f);
         free(flags);
         free(flag);
-        free(at_start);
         natives_older_libraries(apk);
     }
     /* scroll's second run: with the flag no-node-damage, its frames drawn by the views' rectangles alone (run_scroll). */

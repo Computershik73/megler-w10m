@@ -13,5 +13,9 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+        <!-- A NativeActivity of the app's own (Glue, jni/natives_activity.c), as KOReader's MainActivity is: started by Main after the stack's views. -->
+        <activity android:name=".Glue" android:label="@string/app_name">
+            <meta-data android:name="android.app.lib_name" android:value="natives_activity" />
+        </activity>
     </application>
 </manifest>

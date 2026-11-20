@@ -2911,6 +2911,7 @@ static MG_HOSTCB void main_thread(void *arg)
         /* What C keeps of the app's objects across calls: the collector keeps it too. */
         mg_dvm_add_root(&J.clipboard);
         mg_dvm_register(mg_java_gfx_natives());
+        mg_dvm_register(mg_java_ndk_natives());
         /* OpenGL ES and EGL from Java, and the window they are shown in: composed by the shell where it can. (At the surface's
            size as the app starts; the composing follows the views' picture when the surface changes, mg_java_gl_views.) */
         {

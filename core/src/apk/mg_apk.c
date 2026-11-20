@@ -896,15 +896,13 @@ done:
  * Whether the library android.app.lib_name names exports NativeActivity's entry -- android.app.func_name, else
  * ANativeActivity_onCreate --, in whichever of the app's APKs has it, stored or deflated: 1 yes, 0 no, -1 not known (no
  * such library, not this processor's ELF, damaged). (A deflated library is inflated as far as its dynamic section, past its
- * code; the first 32 MB of it are kept for the tables, which come before.) The flag native-entry-at-start leaves the
- * library unread, not known: the start then loads it and asks it (core/src/run/mg_run.c).
+ * code; the first 32 MB of it are kept for the tables, which come before.)
  */
 static int native_entry(mg_zip *const *zips, int nzips, const mg_apk_info *info)
 {
     char path[160];
     const char *want = info->func_name[0] ? info->func_name : "ANativeActivity_onCreate";
     int k, found = -1;
-    if (mg_flag("native-entry-at-start")) return -1;
     snprintf(path, sizeof(path), "lib/%s/lib%s.so", info->abi, info->native_library);
     for (k = 0; k < nzips && found < 0; k++) {
         const mg_zip_entry *e = mg_zip_find(zips[k], path);
@@ -983,16 +981,18 @@ static void classify(mg_apk_info *info, mg_zip *const *zips, int nzips, char (*b
     else if (w.has[L_FLUTTER] && info->activity[0] && mg_zip_find(zips[0], "classes.dex")) strcpy(info->engine, "java");
     else if (w.has[L_FLUTTER]) strcpy(info->engine, "flutter");
     /*
-     * android.app.lib_name on an activity of the app's own is a subclass of NativeActivity's -- unless the library has no
-     * NativeActivity entry: then the activity is one that loads the library and starts it through JNI itself, and the app
-     * is a Java one. Qt's QtActivity names its library so: 2GIS (libv4android.so, 277 MB) was taken for a NativeActivity,
-     * and its start ended in "has no ANativeActivity_onCreate: it is not a NativeActivity library" (package 576; and again
-     * in 681, its dynamic section being past the part of the library that was read). Where the library cannot be looked
-     * into (native_entry -1), it is a NativeActivity here and the start asks the library itself (core/src/run/mg_run.c).
+     * The NativeActivity driver runs an app whose activity is Android's own NativeActivity, or that has no code of its own:
+     * its activity is a stand-in with a name, and no Java runs. An activity of the app's own that names its library with
+     * android.app.lib_name is the app's Java code, on top of NativeActivity or not, and the Java driver runs it, as Android
+     * does: a subclass of NativeActivity loads the library and calls its entry through the framework's NativeActivity, and
+     * the library's JNI calls on the activity are the app's own Java. Under the NativeActivity driver every such call
+     * returned zero: KOReader's launcher (org.koreader.launcher.MainActivity) asks its activity to extractAssets() and ended
+     * at its start, the answer false (issue #23). An activity that loads its library and starts it through JNI itself, as
+     * Qt's QtActivity does (2GIS, libv4android.so, 277 MB, taken for a NativeActivity until package 576), is a Java app
+     * all the more. Whether the library has NativeActivity's entry is still looked at, for the report's note (native_entry).
      */
     else if (!strcmp(info->activity, "android.app.NativeActivity") || (!info->has_code && w.count) ||
-             (info->native_library[0] &&
-              !(info->has_code && info->activity[0] && mg_zip_find(zips[0], "classes.dex") && (info->native_entry = native_entry(zips, nzips, info)) == 0)))
+             (info->native_library[0] && !(info->has_code && info->activity[0] && mg_zip_find(zips[0], "classes.dex"))))
         strcpy(info->engine, "native-activity");
     /*
      * And an SDL app: SDLActivity (or the app's own on top of it) is an activity that loads libSDL2.so and the app's
@@ -1016,6 +1016,9 @@ static void classify(mg_apk_info *info, mg_zip *const *zips, int nzips, char (*b
     else if (info->activity[0] && mg_zip_find(zips[0], "classes.dex")) strcpy(info->engine, "java");
     else strcpy(info->engine, "unknown");
     info->supported = mg_driver_supported(info->engine);
+    /* For the note below: whether the library of an activity of the app's own is a NativeActivity's. */
+    if (!strcmp(info->engine, "java") && info->native_library[0] && info->has_code && info->activity[0] && mg_zip_find(zips[0], "classes.dex"))
+        info->native_entry = native_entry(zips, nzips, info);
 
     /* A NativeActivity with no android.app.lib_name loads "main". */
     if (!strcmp(info->engine, "native-activity") && !info->native_library[0]) strcpy(info->native_library, "main");
@@ -1111,6 +1114,9 @@ static void classify(mg_apk_info *info, mg_zip *const *zips, int nzips, char (*b
     if (!strcmp(info->engine, "native-activity") && info->has_code && strcmp(info->activity, "android.app.NativeActivity"))
         note(info, "Its activity (%s) is the app's own Java class on top of NativeActivity. That Java code is not run here: the app starts, and gets as far as it can without it.",
              info->activity);
+    if (!strcmp(info->engine, "java") && info->native_entry == 1)
+        note(info, "Its activity (%s) is the app's own Java class on top of NativeActivity: it runs as a Java app, its native code (lib%s.so) started by Android's NativeActivity.",
+             info->activity, info->native_library);
     /* A base alone that says it needs its splits, and runs all the same as far as anyone can tell from here. */
     if (!info->split[0] && !abi_split_missing && info->split_required && !in_parts)
         note(info, "This APK is only the base of an app that comes in several APKs (its manifest says it needs them): pictures for some screen densities, some languages or other parts of it may be missing. If it came in a bundle (.apks or .xapk), add the bundle instead.");

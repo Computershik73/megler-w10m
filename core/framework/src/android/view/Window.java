@@ -111,7 +111,7 @@ public class Window {
     public void setLayout(int w, int h) { mLayoutSet = true; mAttrs.width = w; mAttrs.height = h; dispatchAttrs(); }
     public void setGravity(int g) { mGravitySet = true; mAttrs.gravity = g; dispatchAttrs(); }
     public void setType(int t) { mAttrs.type = t; }
-    public void setFormat(int f) { mAttrs.format = f; }
+    public void setFormat(int f) { mAttrs.format = f; if (mTakenView != null) mTakenView.getHolder().setFormat(f); }
     public void setWindowAnimations(int a) { mAttrs.windowAnimations = a; }
     public void setSoftInputMode(int m) { mSoftInputSet = true; mAttrs.softInputMode = m; }
     public void setDimAmount(float a) { mAttrs.dimAmount = a; dispatchAttrs(); }
@@ -170,6 +170,7 @@ public class Window {
         boolean titleBar = !child && !mFloating && !hasFeature(FEATURE_NO_TITLE) && !hasFeature(FEATURE_ACTION_BAR);
         mContentParent = mDecor.makeContent(!child && hasFeature(FEATURE_ACTION_BAR) && !mFloating, titleBar, titleBar && hasFeature(FEATURE_CUSTOM_TITLE),
             mTitle != null ? mTitle : mContext instanceof android.app.Activity ? ((android.app.Activity) mContext).getTitle() : null);
+        meglerPlaceTakenSurface();
     }
     public <T extends View> T findViewById(int id) { return getDecorView().findViewById(id); }
     public final <T extends View> T requireViewById(int id) { T v = getDecorView().findViewById(id); if (v == null) throw new IllegalArgumentException("ID does not reference a View inside this Window"); return v; }
@@ -234,8 +235,59 @@ public class Window {
     public void setLocalFocus(boolean f, boolean inTouch) {}
     public void injectInputEvent(InputEvent e) {}
     public void takeKeyEvents(boolean b) {}
-    public void takeSurface(SurfaceHolder.Callback2 cb) {}
-    public void takeInputQueue(InputQueue.Callback cb) {}
+    /*
+     * The window's surface and its input taken by the app, as NativeActivity takes them for its native code. Android then
+     * draws none of the window's views: the window's surface is the callback's, made, changed and destroyed with the window,
+     * and every touch and key of the window goes into an InputQueue made for it when the window is added (ViewRootImpl.setView)
+     * and disposed of when it goes. Here the surface is a SurfaceView under the content, the whole of the decor (the views
+     * above it draw nothing where they have no background, as NativeActivity's content has none), its holder's callbacks the
+     * taker's; and the input is taken by the decor (megler.DecorView.dispatchTouchEvent, dispatchKeyEvent) while the queue is
+     * there. Taken back (null) before the window is shown, as an app on top of NativeActivity may to draw on a SurfaceView of
+     * its own (KOReader on an e-ink reader), the window is an ordinary one again.
+     */
+    private SurfaceHolder.Callback2 mTakeSurface;
+    private SurfaceView mTakenView;
+    private InputQueue.Callback mTakeInputQueue;
+    private InputQueue mInputQueue;
+    public void takeSurface(SurfaceHolder.Callback2 cb) { mTakeSurface = cb; meglerPlaceTakenSurface(); }
+    public void takeInputQueue(InputQueue.Callback cb) { mTakeInputQueue = cb; }
+    private void meglerPlaceTakenSurface() {
+        if (mDecor == null) return;
+        if (mTakeSurface == null) {
+            if (mTakenView != null && mTakenView.getParent() == mDecor) mDecor.removeView(mTakenView);
+            mTakenView = null;
+            return;
+        }
+        if (mTakenView != null) return;
+        mTakenView = new SurfaceView(mContext);
+        mTakenView.getHolder().setFormat(mAttrs.format);
+        mTakenView.getHolder().addCallback(new SurfaceHolder.Callback2() {
+            public void surfaceCreated(SurfaceHolder h) { if (mTakeSurface != null) mTakeSurface.surfaceCreated(h); }
+            public void surfaceChanged(SurfaceHolder h, int format, int w, int ht) { if (mTakeSurface != null) mTakeSurface.surfaceChanged(h, format, w, ht); }
+            public void surfaceDestroyed(SurfaceHolder h) { if (mTakeSurface != null) mTakeSurface.surfaceDestroyed(h); }
+            public void surfaceRedrawNeeded(SurfaceHolder h) { if (mTakeSurface != null) mTakeSurface.surfaceRedrawNeeded(h); }
+        });
+        mDecor.addView(mTakenView, 0, new android.widget.FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+    }
+    /** Megler: the window was added (megler.DecorView.onAttachedToWindow): the queue of its input is made for the one who took it. */
+    public void meglerAttached() {
+        if (mTakeInputQueue != null && mInputQueue == null) {
+            mInputQueue = new InputQueue(this);
+            mTakeInputQueue.onInputQueueCreated(mInputQueue);
+        }
+    }
+    /** Megler: the window was removed: its input's queue goes. */
+    public void meglerDetached() {
+        InputQueue q = mInputQueue;
+        if (q == null) return;
+        mInputQueue = null;
+        if (mTakeInputQueue != null) mTakeInputQueue.onInputQueueDestroyed(q);
+        q.dispose();
+    }
+    /** Megler: the view that stands for the window's surface while the app has taken it (megler.DecorView draws nothing else), or null. */
+    public View meglerTakenSurfaceView() { return mTakeSurface != null ? mTakenView : null; }
+    /** Megler: an event of the window's for the queue of its input, while one takes it: true when it went there. */
+    public boolean meglerTakenInput(InputEvent e) { InputQueue q = mInputQueue; return q != null && q.meglerSend(e); }
     public void openPanel(int f, KeyEvent e) {}
     public void closePanel(int f) {}
     public void togglePanel(int f, KeyEvent e) {}

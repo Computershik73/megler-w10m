@@ -276,7 +276,28 @@ struct mg_input_queue {
     int ids[MAX_POINTERS];
     float xs[MAX_POINTERS], ys[MAX_POINTERS];
     i64 down_time;
+    void (*unhandled)(void *ctx, int keycode, bool down);
+    void *unhandled_ctx;
 };
+
+void mg_input_queue_on_unhandled_key(mg_input_queue *q, void (*fn)(void *ctx, int keycode, bool down), void *ctx)
+{
+    if (!q) return;
+    q->unhandled = fn;
+    q->unhandled_ctx = ctx;
+}
+
+void mg_input_queue_destroy(mg_input_queue *q)
+{
+    if (!q) return;
+    while (q->count) {
+        free(q->events[q->head]);
+        q->head = (q->head + 1) % (int)MG_COUNT(q->events);
+        q->count--;
+    }
+    if (q->event_fd >= 0) mg_fd_close(q->event_fd);
+    free(q);
+}
 
 mg_input_queue *mg_input_queue_create(void)
 {
@@ -422,7 +443,7 @@ static int g_iq_get_event(mg_input_queue *q, g_input_event **out)
 static int g_iq_pre_dispatch(mg_input_queue *q, g_input_event *e) { (void)q; (void)e; return 0; }
 static void g_iq_finish(mg_input_queue *q, g_input_event *e, int handled)
 {
-    (void)q; (void)handled;
+    if (q && e && !handled && e->type == EV_KEY && q->unhandled) q->unhandled(q->unhandled_ctx, e->keycode, e->action == 0);
     free(e);
 }
 
