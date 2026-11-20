@@ -30,8 +30,8 @@
 enum { K_BASE, K_ABI, K_DENSITY, K_LANGUAGE, K_CONFIG, K_PART, K_STANDALONE };
 
 #define MAX_ITEMS 256
-/* As many splits as are kept: the Java driver reads ten (core/src/drivers/mg_java.c, "2 to 11 the app's splits"). */
-#define MAX_KEPT 10
+/* As many splits as are kept: as many as the Java driver reads (core/src/drivers/mg_java.c, MAX_SPLITS). */
+#define MAX_KEPT 32
 
 typedef struct item {
     const mg_zip_entry *e;

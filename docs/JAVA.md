@@ -2957,7 +2957,7 @@ no native code or has it for 32-bit ARM.
   in between are left out; the whole of it, with the stack, is in the log.
 - **The APK's files**: `Native.readApkFile` and the asset calls read the
   app's APK (0), the platform's resources (1: `framework/framework-res.apk` of
-  the root, when it is there) and the app's split APKs (2 to 11:
+  the root, when it is there) and the app's split APKs (2 to 33:
   `megler_run_config.splits_dir` and `split_apks`; "Split APKs and bundles"
   below) through `zip/mg_zip.c`; a stored file can also be had as a
   descriptor and an offset. An asset is looked for in the base and then in
@@ -3481,7 +3481,7 @@ apart by their manifests (the base names no split; a split names itself),
 and the unwanted are left out by their file names, which keep bundletool's
 `config.<qualifier>` in all three layouts, so they are never unpacked. The
 splits are written as `split_<name>.apk`, Android's names for installed
-splits; at most ten, which is what the framework reads. An .xapk's expansion
+splits; at most 32, which is what the framework reads. An .xapk's expansion
 files are written into the app's own `Android/obb/<package>/` (or
 `Android/data`), where the app finds them when it first runs; anything that
 would go elsewhere is left out. The folder's `bundle.json` records what was
@@ -3502,7 +3502,7 @@ split added alone is refused as no app.
 one list in `run/mg_run.c`; a split of another app is dropped). The linker
 takes native libraries out of whichever APK has them, so `place_libraries`
 writes the split's into `nativeLibraryDir` as it does the base's. The Java
-driver opens the splits as APKs 2 to 11, mounts each file beside the base as
+driver opens the splits as APKs 2 to 33, mounts each file beside the base as
 `/data/app/<package>-1/split_<name>.apk` and answers those paths to
 `Native.splitPaths`; the framework makes `ApplicationInfo.splitNames` (sorted)
 and `splitSourceDirs` of them, and the app's `PathClassLoader` path. A
@@ -5744,7 +5744,7 @@ minutes: `mg_tests.exe --java webview ... root-x86_64 ...`).
 **Resources.** The WebView APK's `resources.arsc` is a shared library's:
 package id 0, its own references through that id. `AssetManager.
 addAssetPathAsSharedLibrary` (the overlay's) has the core open the APK as one
-more of the APKs it reads (`megler.Native.addApk`, numbers from 12 on), and
+more of the APKs it reads (`megler.Native.addApk`, numbers from 34 on), and
 `Resources` reads its table with the package given the next free id from
 0x02, as Android's `AssetManager2` gives a dynamic package; ids that name
 package 0 in that table are given 0x02 as they are read (`ResTable`).
@@ -6656,7 +6656,9 @@ native code is.
   conscrypt's `SSLEngine` (what Netty and gRPC use) has not been tried.
 - An app in several APKs runs as one ("Split APKs and bundles"), but the
   components declared only in a feature split's manifest are not known, every
-  split is on one class path, and an app is given ten splits at most. Not yet
+  split is on one class path, and an app is given 32 splits at most (ten until
+  0.1.0.734: TikTok Lite from Google Play has ten before its feature module is
+  added, issue #6). Not yet
   tried on a phone.
 - Bytecode cannot call a method of a class only C implements.
 - Thread interruption does not wake a waiting thread. A thread's state is not

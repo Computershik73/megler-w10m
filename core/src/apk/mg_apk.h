@@ -15,8 +15,8 @@ typedef struct mg_apk_meta {
 /* android:screenOrientation of the launcher activity, reduced to what a shell can act on before the app runs. */
 enum { MG_APK_UNSPECIFIED = 0, MG_APK_LANDSCAPE, MG_APK_PORTRAIT };
 
-/* As many split APKs as an app is read with (the Java driver opens ten of them: drivers/mg_java.c). */
-#define MG_APK_MAX_SPLITS 16
+/* As many split APKs as an app is read with (the Java driver opens as many: drivers/mg_java.c, MAX_SPLITS). */
+#define MG_APK_MAX_SPLITS 32
 /* As many of the permissions a manifest asks for as are kept: Google Play services asks for some two hundred, an app for fifty. */
 #define MG_APK_MAX_PERMISSIONS 256
 

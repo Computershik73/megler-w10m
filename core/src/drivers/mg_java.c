@@ -46,18 +46,23 @@
 
 #define MAX_EVENTS 256
 /*
- * APKs 12 on are those the framework adds (addApk): Google Play services' and its framework's for an app that hosts them, the
- * resource archives each keeps for the language (locale-filtered-resources), and the WebView's. Play Store with Google Play
- * services hosted took the four of 16 there were before the WebView's, and its sign-in page had no WebView. And Google Play
- * services' splits (mount_gms_splits) and the modules it loads (Cronet, the ads, the maps, Vision's): Play Store took 17 of
- * the 20 there were on a Lumia 650 (0.1.0.684) before Google Play services' splits were added too.
+ * The app's splits are APKs 2 to 33 (Native.splitPaths names them, and the framework's Resources looks in them). There were
+ * ten: TikTok Lite from Google Play is installed with ten, and the feature module Play Store adds to it (with the module's
+ * own splits for the processor, the language and the density) was left out, or the density's pictures of it (issue #6).
  */
-#define MAX_APKS 48
+#define FIRST_SPLIT_APK 2
+#define MAX_SPLITS 32
+/*
+ * APKs 34 on (FIRST_LIBRARY_APK) are those the framework adds (addApk): Google Play services' and its framework's for an app
+ * that hosts them, the resource archives each keeps for the language (locale-filtered-resources), and the WebView's. Play
+ * Store with Google Play services hosted took the four of 16 there were before the WebView's, and its sign-in page had no
+ * WebView. And Google Play services' splits (mount_gms_splits) and the modules it loads (Cronet, the ads, the maps,
+ * Vision's): Play Store took 17 of the 20 there were on a Lumia 650 (0.1.0.684) before Google Play services' splits were
+ * added too. Thirty-six places for them.
+ */
+#define MAX_APKS (FIRST_SPLIT_APK + MAX_SPLITS + 36)
 /* Google Play services' splits an app that hosts them reads (mount_gms_splits): a bundle from Play Store has a few. */
 #define MAX_GMS_SPLITS 12
-/* The app's splits are APKs 2 to 11: ten, which is all the framework reads (its Resources looks in 2 to 11). */
-#define FIRST_SPLIT_APK 2
-#define MAX_SPLITS 10
 
 /* The phases of an event as megler.AppRunner.deliver reads them. */
 enum { EV_DOWN = 0, EV_MOVE = 1, EV_UP = 2, EV_CANCEL = 3, EV_KEY = 4, EV_BACK = 5, EV_HOST_PAUSE = 6, EV_TEXT = 7, EV_INSETS = 8, EV_PHONE = 10, EV_SURFACE = 11,
@@ -91,9 +96,9 @@ static struct {
     char *gms_guest_splits[MAX_GMS_SPLITS];
     mg_thread *main;
     /*
-     * The APKs by the framework's numbers: 0 the app's, 1 the platform's resources, 2 to 11 the app's splits, 12 on the shared
+     * The APKs by the framework's numbers: 0 the app's, 1 the platform's resources, 2 to 33 the app's splits, 34 on the shared
      * libraries the framework adds while the app runs (Native.addApk: Android's WebView). The framework looks for a split's
-     * files in 2 to 11 alone.
+     * files in the app's splits alone.
      */
     mg_zip apk[MAX_APKS];
     bool apk_open[MAX_APKS];
@@ -486,14 +491,14 @@ N(Native_readApkResourceTable)
     free(kept);
 }
 
-#define FIRST_LIBRARY_APK 12
+#define FIRST_LIBRARY_APK (FIRST_SPLIT_APK + MAX_SPLITS)
 
 static void open_apk(int index, const char *host_path);
 
 /*
  * addApk(String path): a shared library's APK, which the framework's AssetManager adds to the app's resources and files
  * (addAssetPathAsSharedLibrary; the WebView's, /system/app/webview/webview.apk). The path is the app's, as Android names it;
- * the APK is opened as one more of the numbered APKs above, from 12 on, and its number is the answer: the same number for a
+ * the APK is opened as one more of the numbered APKs above, from FIRST_LIBRARY_APK on, and its number is the answer: the same number for a
  * path already open, -1 when it cannot be opened or there is no room.
  */
 N(Native_addApk)

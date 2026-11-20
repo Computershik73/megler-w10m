@@ -3557,7 +3557,7 @@ static int run_natives(void)
 /* ----------------------------------------------------------------- splits */
 
 /* What the app is told its splits are: those the unpacking keeps at this density, in English and Russian, sorted. */
-static const char k_split_names[] = "I/SplitsTest: split-names config.armeabi_v7a,config.en,config.mdpi,config.ru,config.xxhdpi,extra,pack";
+static const char k_split_names[] = "I/SplitsTest: split-names config.armeabi_v7a,config.en,config.mdpi,config.ru,config.xxhdpi,extra,pack,pack1,pack2,pack3,pack4,pack5";
 
 /*
  * The bundle unpacked as the shell unpacks one, into <data dir>/library: splits.apk and splits.apk.splits. False, with a
@@ -3587,7 +3587,7 @@ static bool unpack_bundle(const char *bundle, char **apk)
 static int run_splits(void)
 {
     static const char *const steps[] = { "split-dirs", "package-info", "code-path", "native", "drawable", "drawable-mdpi", "string", "string-ru", "string-de",
-                                         "asset-base", "asset-pack", "feature", "obb" };
+                                         "asset-base", "asset-pack", "many-splits", "feature", "obb" };
     int at = -1, layout, pic[4], i;
     char want[160];
     memset(pic, 0, sizeof(pic));
@@ -3602,7 +3602,8 @@ static int run_splits(void)
     /* The expansion file is there after the .xapk, and not after the .apks, which has none. */
     CHECK(find_line(g_xapk ? "I/SplitsTest: obb present in /storage/emulated/0/Android/obb/megler.test.splits" : "I/SplitsTest: obb absent", 0) >= 0);
     /* The library came out of the split, which the core says when it places it for the class loader; the split is mounted beside the base. */
-    CHECK(find_line("run: the app is in 8 APKs, its base and the splits config.armeabi_v7a, config.en, config.mdpi, config.ru, config.xxhdpi, extra, pack", 0) >= 0);
+    CHECK(find_line("run: the app is in 13 APKs, its base and the splits config.armeabi_v7a, config.en, config.mdpi, config.ru, config.xxhdpi, extra, pack, "
+                    "pack1, pack2, pack3, pack4, pack5", 0) >= 0);
     CHECK(find_line("java: the app's 1 native library (armeabi-v7a) is in /data/data/megler.test.splits/lib", 0) >= 0);
     CHECK(find_line("I/SplitsLib: answer from the split's library", 0) >= 0);
     CHECK(find_line("/data/app/megler.test.splits-1/split_config.armeabi_v7a.apk", 0) >= 0);

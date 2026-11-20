@@ -231,7 +231,7 @@ MEGLER_API bool megler_apk_describe_activities(const char *apk_path, const char 
  *   progress      called now and then with the bytes written so far and how many there will be; may be NULL
  *
  * Kept: the base; the split for 32-bit ARM (armeabi-v7a, else armeabi), never one for another processor; the density
- * and language splits above; every other split (feature splits, asset packs). At most ten splits. Which APK is which is
+ * and language splits above; every other split (feature splits, asset packs). At most 32 splits. Which APK is which is
  * read from their manifests (the base names no split); the splits not wanted are left out by their file names, which
  * keep bundletool's (config.arm64_v8a.apk, split_config.arm64_v8a.apk, splits/base-arm64_v8a.apk), without unpacking
  * them first. The expansion files are written where the app finds them when it runs, its own part of the shared
@@ -2077,7 +2077,7 @@ typedef struct megler_run_config {
      * An app in several APKs (megler_apk_report_splits): its splits, as a folder whose .apk files they are (the folder
      * megler_bundle_unpack makes), and as a list of paths; either may be left NULL. The app runs as one, as Android runs
      * an installed app with its splits: native libraries out of the split that has them, its resources and assets out of
-     * all of them, the code of feature splits on its class path. At most ten splits are opened for a Java app.
+     * all of them, the code of feature splits on its class path. At most 32 splits are opened for a Java app.
      */
     const char *splits_dir;
     const char *const *split_apks;
