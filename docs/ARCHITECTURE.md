@@ -646,7 +646,8 @@ There is no Vulkan on Windows 10 Mobile, so apps that need it cannot run.
 ### Mesa's freedreno, chosen per app
 
 Windows 10 Mobile's package (`tools/build-appx.sh arm`; not Windows RT's, the desktop's or the Xbox's) carries a second
-OpenGL ES beside ANGLE: Mesa's freedreno over D3DKMT (`drivers/mesa-arm32`, from OpenGLES-For-Windows-Phone), which draws
+OpenGL ES beside ANGLE: Mesa's freedreno over D3DKMT (`drivers/mesa-arm32`, built by `tools/build-mesa-arm32.cmd` from
+OpenGLES-For-Windows-Phone's source beside it, `drivers/mesa-arm32/src`, and Mesa 26.2.7), which draws
 on the phone's Adreno itself through Windows 10 Mobile's kernel-mode graphics driver instead of turning OpenGL ES into
 Direct3D 11. Which of the two an app draws with is a setting, **Graphics** (`megler.gles`, `app/Megler/shell/Graphics.h`,
 `ui/SettingsScreen.cpp`): Megler's for every app, and each app's own over it ("As in Megler" at its top), shown only where
