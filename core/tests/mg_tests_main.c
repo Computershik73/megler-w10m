@@ -101,6 +101,10 @@
  *       bundles of split APKs (.apks, .xapk, .apkm) unpacked as the shell unpacks them, and the APK report of what comes out
  *       (mg_bundle_tests.c): the test app `splits` in the folder of the test apps (build/guest/java), and the real bundles
  *       in the third folder where one is named
+ *   mg_tests --data-zip <zip> <data dir> <package>
+ *       a ZIP of an app's data installed as the app page's Install Data from ZIP installs it (megler_data_zip_install),
+ *       into the app's own storage under the data folder, where an app run with that data folder (--java app) finds it;
+ *       what it said (the log has the folder it left out, if any)
  *   mg_tests --icon <apk> <out file> [drawable]
  *       the APK's icon as megler_apk_icon gives it, written to the file: a picture of the APK's, or one drawn from its
  *       drawables (core/src/apk/mg_icon.c: an adaptive icon, a vector), to look at; with a drawable's path in the APK
@@ -1822,6 +1826,20 @@ int main(int argc, char **argv)
         config.package_dir = argv[3];
         megler_init(&config);
         return mg_bundle_tests_run(argv[2], argv[3], argc >= 5 ? argv[4] : NULL) ? 1 : 0;
+    }
+    if (argc >= 5 && !strcmp(argv[1], "--data-zip")) {
+        megler_config config;
+        char *json;
+        bool ok;
+        memset(&config, 0, sizeof(config));
+        config.data_dir = argv[3];
+        config.package_dir = argv[3];
+        megler_init(&config);
+        json = megler_data_zip_install(argv[2], argv[3], argv[4], NULL, NULL);
+        ok = json && strstr(json, "\"ok\":true");
+        printf("%s\n", json ? json : "(nothing)");
+        megler_free(json);
+        return ok ? 0 : 1;
     }
     if (argc >= 4 && !strcmp(argv[1], "--sqlite-hold")) return mg_tests_sqlite_hold(argv[2], argv[3]);
 #if MG_GUEST_CODE
