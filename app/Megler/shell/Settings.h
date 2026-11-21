@@ -55,6 +55,12 @@ constexpr const char* locationPlaceDefault = "55.751244,37.618423";
 /// as ru-RU or en-US; empty: the phone's, from Windows' settings.
 constexpr const char* localeTag = "megler.locale";
 
+/// Graphics: which OpenGL ES an app draws with (shell/Graphics.h) -- "angle", ANGLE, OpenGL ES over Direct3D 11; "mesa",
+/// Mesa's freedreno, OpenGL ES on the phone's Adreno itself, experimental, which an app's own package carries only while the
+/// app goes by it (its package is made again when that changes). Empty: the package's default, ANGLE. Shown only where
+/// Megler's package carries Mesa (Windows 10 Mobile's).
+constexpr const char* gles = "megler.gles";
+
 /// Whether apps are told the phone is dark (Configuration.uiMode's night, player/PhoneState.h): "light", "dark", or
 /// empty: as Windows' theme is.
 constexpr const char* appTheme = "megler.appTheme";

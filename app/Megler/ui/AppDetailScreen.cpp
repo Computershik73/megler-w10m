@@ -297,8 +297,15 @@ private:
 
         std::string state;
         if (s.installed == separateApps::Installed::yes)
-            state = s.outdated ? "Installed, made by Megler " + s.version + ". This is Megler " + appPackage::meglerVersion() + ": Update makes it again with this one."
-                               : "Installed on this phone, made by this Megler (" + s.version + ").";
+            state = !s.outdated ? "Installed on this phone, made by this Megler (" + s.version + ")."
+                    // Its Graphics changed since its package was made (shell/Graphics.h): Mesa's DLLs go in, or out, with Update.
+                    : s.graphics == separateApps::Graphics::addMesa
+                        ? std::string("Installed. Its Graphics are Mesa's freedreno, and its package was made without Mesa's DLLs: Update makes "
+                                      "it again with them (some 20 MB more). Until then it draws with ANGLE.")
+                    : s.graphics == separateApps::Graphics::dropMesa
+                        ? std::string("Installed. Its Graphics are ANGLE's, and its package still carries Mesa's freedreno: Update makes it "
+                                      "again without it, some 20 MB smaller. It draws with ANGLE meanwhile.")
+                        : "Installed, made by Megler " + s.version + ". This is Megler " + appPackage::meglerVersion() + ": Update makes it again with this one.";
         else if (s.installed == separateApps::Installed::no)
             state = "Not installed on this phone.";
         else

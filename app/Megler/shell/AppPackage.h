@@ -35,9 +35,18 @@ struct SingleApp {
     std::wstring apkFolder;    // the folder with app.apk and its report (in the shared folder; in the install folder before 645)
     std::wstring androidRoot;  // Android's libcore and framework, in the shared folder
     std::wstring megler;       // the package family name of the Megler that made it; empty in a package made before Megler wrote it
+    std::string gles;          // what its Graphics were when it was made (shell/Graphics.h): "mesa", Mesa's DLLs in it; "angle",
+                               // left out; empty: made by a Megler without Mesa (or before it was written)
 };
 const SingleApp& single();
 inline bool isSingleApp() { return !single().package.empty(); }
+
+/// Whether an app's Graphics can be Mesa's freedreno here (shell/Graphics.h), and the setting is shown: Megler's own package
+/// carries Mesa (Windows 10 Mobile's); an app's own package was made by a Megler that does (MeglerApp.ini's gles=).
+bool mesaChoosable();
+/// The Graphics `package` goes by now: "mesa" or "angle" -- its own setting, else Megler's, else the package's default
+/// (graphics::resolve); "angle" wherever Mesa cannot be chosen.
+std::string glesFor(const std::string& package);
 /// An app's own package: why its app cannot start from what Megler put in the shared folder for it -- Windows gave the package
 /// no shared folder, or its APK or Android's files are not there (or cannot be read); not for where the package and Megler
 /// are, the shared folder being one for a memory card and the phone's memory (shell/Placement.h) -- in words
@@ -120,6 +129,7 @@ struct Made {
     std::wstring apkFolder;    // the folder of the shared folder its app's APK is in, relative to it: apks\<identity>\<token>
     std::string version;       // the package's own version, "0.1.682.0" (appPackageVersion)
     std::string error;         // set when it was not made
+    bool mesa = false;         // Mesa's freedreno is in it: its app went by it when it was made (shell/Graphics.h)
 };
 /// Makes the package of `entry` (`picked`: the APK picked where it is, which entry's path names for the core). Its APK, splits,
 /// report and icon are put in the shared folder, where the package's app reads them: a folder of their own the first time,
@@ -129,7 +139,8 @@ struct Made {
 /// storage to the shared one, its private files to the shared folder's handover\<package>, for takeHandover. `progress` is
 /// told each step. `installedVersion` is the package version of the app's package installed now, if any: a package made
 /// again by the same Megler (the app updated in it, through Aurora Store or Google Play) gets the next version of that
-/// build (appPackageVersion), as Windows refuses a package of an installed package's version with other contents.
+/// build (appPackageVersion), as Windows refuses a package of an installed package's version with other contents. Mesa's
+/// freedreno goes in only where the app goes by it now (glesFor), which is written down for the Library (shell/Graphics.h).
 Made make(const ApkEntry& entry, const std::function<void(const std::string&)>& progress, const PickedFile* picked = nullptr,
           const std::string& installedVersion = {});
 /// The version of an app's own package this Megler makes: "<major>.<minor>.<its build>.<n>", n one more than that of

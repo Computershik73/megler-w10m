@@ -643,6 +643,60 @@ works, the app's own first.
 
 There is no Vulkan on Windows 10 Mobile, so apps that need it cannot run.
 
+### Mesa's freedreno, chosen per app
+
+Windows 10 Mobile's package (`tools/build-appx.sh arm`; not Windows RT's, the desktop's or the Xbox's) carries a second
+OpenGL ES beside ANGLE: Mesa's freedreno over D3DKMT (`drivers/mesa-arm32`, from OpenGLES-For-Windows-Phone), which draws
+on the phone's Adreno itself through Windows 10 Mobile's kernel-mode graphics driver instead of turning OpenGL ES into
+Direct3D 11. Which of the two an app draws with is a setting, **Graphics** (`megler.gles`, `app/Megler/shell/Graphics.h`,
+`ui/SettingsScreen.cpp`): Megler's for every app, and each app's own over it ("As in Megler" at its top), shown only where
+Megler's package has Mesa. ANGLE is the default; a package built with `MEGLER_GLES=mesa` makes Mesa the default
+(`gles-default.txt` in it), one built with `MEGLER_GLES=angle` has no Mesa and no setting.
+
+- **Side by side.** ANGLE's DLLs keep their names at the package's root; Mesa's are `libEGL_mesa.dll`,
+  `libGLESv2_mesa.dll` and their driver `libgallium_wgl.dll`, which the other two import and Windows finds beside them.
+  Not a folder of their own with the same names: Windows takes a DLL asked for by name for any module of that name loaded
+  already, and ANGLE's `libEGL.dll` imports `libGLESv2.dll` by name, so a Mesa loaded first would have stood in for
+  ANGLE's. With names of their own a Mesa that loaded and then failed can stay loaded (a driver that has begun is not
+  let go of safely) while ANGLE loads as ever.
+- **One per process, chosen at the start.** The shell reads the app's choice as it starts it
+  (`player/Session.cpp`) and gives it to the core (`megler_run_config.gles`); the core loads that library at the first use
+  of EGL (`ndk/mg_egl.c`, `mesa_load`). A process cannot have both: an app's libraries bind their OpenGL ES functions to
+  the host's as they are loaded, before they ask for a display. So Mesa is taken only once it has passed everything that
+  can fail -- its three DLLs in the package, a graphics processor that is an Adreno (Qualcomm's vendor id 0x5143 or
+  "Adreno" in the name DXGI gives; the flag `mesa-any-gpu` leaves that out), both DLLs loaded, its default display made
+  and initialized -- before any function of it is handed out; anything short of that, and the app draws with ANGLE, the
+  log saying why in one line: `egl: Mesa's freedreno was asked for, ANGLE instead: <why>`. Taken, it says
+  `egl: OpenGL ES is Mesa's freedreno, as the app's setting asks: EGL x.y, on <the GPU>`. `megler_gles` tells the shell
+  which it came to.
+- **The shell's composition follows the choice.** Mesa renders a pbuffer's shared Direct3D texture with its rows top
+  first, as Direct3D lays a texture out, where ANGLE's keep OpenGL's bottom row first: the shell turns a frame
+  (`gl_frame`) and a picture (`texture_frame`: a TextureView's, the WebView's pages) the other way up where `megler_gles`
+  says `mesa` (`player/GfxHost.cpp`, `glFramesTopFirst`), not by what files the package has -- the phone's has both. A
+  NativeActivity's window on Mesa is read back and handed over as pixels (`mesa_present`), which knows no such difference.
+- **The WebView follows the app.** Chromium's GPU code runs in the app's process, and its EGL and OpenGL ES calls go to
+  the one library the process has; it cannot be given ANGLE while the app has Mesa. What it needs is asked of whichever
+  it is at run time: a pbuffer whose texture is shared (`mg_java_webview.c`, `wv_pick`; else its pages are drawn in
+  software, and the log says so), fences and images of textures (`EGL_KHR_fence_sync`, `EGL_KHR_gl_texture_2D_image`,
+  both Mesa's). The log's `webview:` line says when Chromium draws on Mesa.
+- **An app's own package carries Mesa only while the app goes by it.** Its package is made of Megler's installed files
+  (docs/PER-APP-PACKAGES.md), and Mesa's are some 20 MB: on the owner's phone's 58 apps that would have been 1.2 GB. So
+  `appPackage::make` leaves them out unless the app's Graphics are Mesa's then, says so in `MeglerApp.ini` (`gles=mesa`
+  or `gles=angle`), and writes down which packages have them (`<shared>\apks\<identity>\graphics.txt`, a line
+  `<full name> mesa|angle` each), since Megler cannot read another package's install folder. An installed app whose
+  package has Mesa where its Graphics no longer ask for it, or lacks it where they do, is "to update" in the Library
+  (`ui/SeparateApps.cpp`; its row says "its Graphics changed", its page says which way): its **Update**, or **Update All**,
+  makes its package again. The setting says so where it is changed. Until then an app set to Mesa whose package lacks it
+  draws with ANGLE, and its log says that its package is to be made again (`session: graphics: ANGLE -- ...`). Megler's
+  own package always has both, and so does an app run in Megler itself (an auto run).
+
+*Proven* on a PC (`tools/build-tests.sh win`): the choice from an app's own setting, Megler's and the default, what an
+app's process starts with where its package lacks Mesa, the record of the packages made with it
+(`core/tests/mg_shell_windows.cpp`, Graphics); and Mesa asked for where it cannot be had -- its DLLs missing, a
+graphics processor that is no Adreno, DLLs that do not load -- each falling back to ANGLE with its one line, ANGLE then
+drawing OpenGL ES 1's scenes as ever (`mg_tests --angle-windows ... mesa-missing|mesa|mesa-any-gpu`). *Not proven here*:
+anything of Mesa itself, which drives an Adreno alone -- the phone.
+
 ### A Java app's views, on the graphics processor
 
 An app whose user interface is Java draws its views through `megler_gfx_host`

@@ -5574,6 +5574,30 @@ bool mg_host_gpu_memory(void *device, u32 *budget_mb, u32 *used_mb)
     return ok;
 }
 
+bool mg_host_gpu_adapter(char *name, size_t size, u32 *vendor)
+{
+    ID3D11Device *device = NULL;
+    IDXGIDevice *dxgi = NULL;
+    IDXGIAdapter *adapter = NULL;
+    DXGI_ADAPTER_DESC desc;
+    bool ok = false;
+    if (size) name[0] = 0;
+    *vendor = 0;
+    memset(&desc, 0, sizeof(desc));
+    if (SUCCEEDED(D3D11CreateDevice(NULL, D3D_DRIVER_TYPE_HARDWARE, NULL, 0, NULL, 0, D3D11_SDK_VERSION, &device, NULL, NULL)) && device &&
+        SUCCEEDED(ID3D11Device_QueryInterface(device, &g_iid_dxgi_device, (void **)&dxgi)) && dxgi && SUCCEEDED(IDXGIDevice_GetAdapter(dxgi, &adapter)) &&
+        adapter && SUCCEEDED(IDXGIAdapter_GetDesc(adapter, &desc))) {
+        if (size) WideCharToMultiByte(CP_UTF8, 0, desc.Description, -1, name, (int)size, NULL, NULL);
+        if (size) name[size - 1] = 0;
+        *vendor = (u32)desc.VendorId;
+        ok = true;
+    }
+    if (adapter) IDXGIAdapter_Release(adapter);
+    if (dxgi) IDXGIDevice_Release(dxgi);
+    if (device) ID3D11Device_Release(device);
+    return ok;
+}
+
 /* ID3D11Multithread (d3d11_4.h, Windows 10 1703; the same id as ID3D10Multithread), declared here: only its lock is needed. */
 static const GUID g_iid_d3d11_device = { 0xdb6f6ddb, 0xac77, 0x4e88, { 0x82, 0x53, 0x81, 0x9d, 0xf9, 0xbb, 0xf1, 0x40 } };
 static const GUID g_iid_multithread = { 0x9b7e4e00, 0x342c, 0x4106, { 0xa1, 0x9f, 0x4f, 0x27, 0x04, 0xf6, 0x89, 0xf0 } };

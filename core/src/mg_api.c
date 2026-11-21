@@ -7,6 +7,7 @@
 #include "mg_core.h"
 #include "host/mg_host.h"
 #include "drivers/mg_java.h"
+#include "ndk/mg_egl.h"
 #include "run/mg_run.h"
 #include "sqlite/mg_sqlite.h"
 #include "webp/mg_webp.h"
@@ -121,6 +122,7 @@ void megler_free(void *p) { free(p); }
 bool megler_run(const megler_run_config *config) { return mg_run_start(config); }
 bool megler_running(void) { return mg_run_active(); }
 const char *megler_last_error(void) { return mg_run_last_error(); }
+const char *megler_gles(void) { return mg_egl_gles(); }
 void megler_touch(int phase, int pointer_id, float x, float y) { mg_run_touch(phase, pointer_id, x, y); }
 void megler_key(int android_keycode, bool down) { mg_run_key(android_keycode, down); }
 int megler_back(unsigned quiet_ms, unsigned max_ms) { return mg_run_back(quiet_ms, max_ms); }

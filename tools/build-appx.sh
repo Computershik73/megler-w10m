@@ -131,7 +131,12 @@
 #                          taken from (build/angle/dist, Megler's own ANGLE, where
 #                          tools/build-angle.py has made it; else C:/rw-obj/dist/bin,
 #                          gecko-w10m's build)
-#   MEGLER_GLES         "mesa": Mesa's freedreno instead of ANGLE (ARM only)
+#   MEGLER_GLES         Windows 10 Mobile's package (arm, not --rt) carries ANGLE and
+#                          Mesa's freedreno side by side, each app choosing at its start
+#                          (Settings, Graphics; app/Megler/shell/Graphics.h), ANGLE where
+#                          nothing is chosen. "mesa": Mesa where nothing is chosen
+#                          (gles-default.txt), and no package without it; "angle":
+#                          ANGLE alone, no Mesa (some 20 MB less, no Graphics setting)
 #   MEGLER_MESA         where Mesa's DLLs are (drivers/mesa-arm32, the repository's; or a Mesa build folder)
 #   MEGLER_ANGLE_MAPS   ANGLE's linker maps (build/angle/maps for Megler's own;
 #                          else <ANGLE>/../../third_party/angle)
@@ -919,44 +924,9 @@ PY
   echo "    ANGLE from $angle: libEGL.dll, libGLESv2.dll, mozglue.dll, the C runtime and $(ls "$STAGE" | grep -c -i -E '^(api|ext)-ms-win-') api-set forwarders"
   angle_patches_said "$angle" "python tools/build-angle.py makes Megler's own (MEGLER_GECKO set; build/angle/dist, which this script takes first)"
 }
-# MEGLER_GLES=mesa: OpenGL ES from Mesa's freedreno over D3DKMT (OpenGLES-For-Windows-Phone) instead of ANGLE. Its three DLLs
-# link their C runtime in and import KERNEL32.dll, api-sets and d3d11.dll alone. Its pbuffers have ANGLE's Direct3D share
-# handles: an app's Java surfaces go to the shell as shared textures (mg_java_gl.c); a NativeActivity's window is still
-# read back and handed over as pixels (mg_egl.c, "Mesa"). drivers/mesa-arm32/README.md says where they came from.
-stage_mesa() {
-  local mesa="${MEGLER_MESA:-$ROOT/drivers/mesa-arm32}" src dll need missing=""
-  local -A from=([libEGL.dll]="src/egl" [libGLESv2.dll]="src/mesa/glapi/es2api" [libgallium_wgl.dll]="src/gallium/targets/wgl")
-  for dll in libEGL.dll libGLESv2.dll libgallium_wgl.dll; do
-    src="$mesa/${from[$dll]}/$dll"
-    [ -f "$src" ] || src="$mesa/$dll"
-    [ -f "$src" ] || { ANGLE_WHY="no $dll in $mesa (MEGLER_MESA)"; return 1; }
-    cp "$src" "$STAGE/"
-  done
-  for dll in libEGL.dll libGLESv2.dll libgallium_wgl.dll; do
-    while IFS= read -r need; do
-      [ -n "$need" ] || continue
-      case "${need,,}" in
-        kernel32.dll|libgallium_wgl.dll|d3d11.dll|dxgi.dll|api-ms-win-*|ext-ms-win-*) ;;
-        *) missing="$missing $dll->$need" ;;
-      esac
-    done < <(dependents "$STAGE/$dll")
-  done
-  [ -z "$missing" ] || { ANGLE_WHY="imports with nothing to satisfy them:$missing"; return 1; }
-  echo "    Mesa (freedreno, D3DKMT) from $mesa: libEGL.dll, libGLESv2.dll, libgallium_wgl.dll ($(stat -c %s "$STAGE/libgallium_wgl.dll") bytes)"
-}
-if [ "$ARCH" = arm ] && [ "${MEGLER_GLES:-angle}" = mesa ]; then
-  echo "=== Mesa (instead of ANGLE) ==="
-  ANGLE_WHY=""
-  rm -f "$STAGE"/mozglue.dll "$STAGE"/msvcp140.dll "$STAGE"/vcruntime140.dll "$STAGE"/api-ms-win-*.dll "$STAGE"/ext-ms-win-*.dll
-  if ! stage_mesa; then
-    rm -f "$STAGE"/libEGL.dll "$STAGE"/libGLESv2.dll "$STAGE"/libgallium_wgl.dll
-    echo "    WARNING: Mesa is NOT in this package: $ANGLE_WHY" >&2
-    if [ "$PACK" = 1 ]; then echo "MEGLER_GLES=mesa: refusing to pack without it" >&2; exit 1; fi
-  fi
-elif [ "$ARCH" = arm ]; then
+if [ "$ARCH" = arm ]; then
   echo "=== ANGLE ==="
   ANGLE_WHY=""
-  rm -f "$STAGE"/libgallium_wgl.dll
   if ! stage_angle; then
     # Nothing half-staged: an ANGLE that loads and then misbehaves is worse
     # than none.
@@ -969,6 +939,61 @@ elif [ "$ARCH" = arm ]; then
       exit 1
     fi
   fi
+fi
+
+# Windows 10 Mobile's package: Mesa's freedreno over D3DKMT (OpenGLES-For-Windows-Phone, drivers/mesa-arm32/README.md) beside
+# ANGLE, which an app set to it in Settings' Graphics draws with (app/Megler/shell/Graphics.h; the core's mg_egl.c, mesa_load,
+# falls back to ANGLE where it cannot have it). Staged after ANGLE, whose api-set forwarders are made for ANGLE's DLLs alone.
+# Its three DLLs link their C runtime in and import KERNEL32.dll, api-sets, d3d11.dll and each other alone. libEGL.dll and
+# libGLESv2.dll are staged as libEGL_mesa.dll and libGLESv2_mesa.dll: ANGLE's have their names at the package's root, and a
+# module loaded by a name stands for every DLL of that name in the process (ANGLE's libEGL.dll imports libGLESv2.dll); the two
+# import libgallium_wgl.dll, which Windows finds beside them. Not in Windows RT's package (--rt), the desktop's or the Xbox's:
+# freedreno drives a phone's Adreno through Windows 10 Mobile's kernel-mode graphics driver.
+stage_mesa() {
+  local mesa="${MEGLER_MESA:-$ROOT/drivers/mesa-arm32}" src dll need missing="" staged
+  local -A from=([libEGL.dll]="src/egl" [libGLESv2.dll]="src/mesa/glapi/es2api" [libgallium_wgl.dll]="src/gallium/targets/wgl")
+  local -A as=([libEGL.dll]="libEGL_mesa.dll" [libGLESv2.dll]="libGLESv2_mesa.dll" [libgallium_wgl.dll]="libgallium_wgl.dll")
+  for dll in libEGL.dll libGLESv2.dll libgallium_wgl.dll; do
+    src="$mesa/${from[$dll]}/$dll"
+    [ -f "$src" ] || src="$mesa/$dll"
+    [ -f "$src" ] || { MESA_WHY="no $dll in $mesa (MEGLER_MESA)"; return 1; }
+    cp "$src" "$STAGE/${as[$dll]}"
+  done
+  for dll in libEGL.dll libGLESv2.dll libgallium_wgl.dll; do
+    staged="${as[$dll]}"
+    while IFS= read -r need; do
+      [ -n "$need" ] || continue
+      case "${need,,}" in
+        kernel32.dll|libgallium_wgl.dll|d3d11.dll|dxgi.dll|api-ms-win-*|ext-ms-win-*) ;;
+        *) missing="$missing $staged->$need" ;;
+      esac
+    done < <(dependents "$STAGE/$staged")
+  done
+  [ -z "$missing" ] || { MESA_WHY="imports with nothing to satisfy them:$missing"; return 1; }
+  echo "    Mesa (freedreno, D3DKMT) from $mesa: libEGL_mesa.dll, libGLESv2_mesa.dll, libgallium_wgl.dll ($(stat -c %s "$STAGE/libgallium_wgl.dll") bytes), beside ANGLE"
+}
+# (Nothing of a stage of before: each build stages them anew, or not at all.)
+rm -f "$STAGE"/libEGL_mesa.dll "$STAGE"/libGLESv2_mesa.dll "$STAGE"/libgallium_wgl.dll "$STAGE"/gles-default.txt
+if [ "$ARCH" = arm ] && [ "$RT" = 0 ]; then
+  case "${MEGLER_GLES:-}" in
+    ""|mesa)
+      echo "=== Mesa (beside ANGLE; each app chooses: Settings, Graphics) ==="
+      MESA_WHY=""
+      if ! stage_mesa; then
+        rm -f "$STAGE"/libEGL_mesa.dll "$STAGE"/libGLESv2_mesa.dll "$STAGE"/libgallium_wgl.dll
+        echo "    WARNING: Mesa is NOT in this package: $MESA_WHY (apps draw with ANGLE, and Settings have no Graphics)" >&2
+        if [ "${MEGLER_GLES:-}" = mesa ] && [ "$PACK" = 1 ]; then echo "MEGLER_GLES=mesa: refusing to pack without Mesa" >&2; exit 1; fi
+      elif [ "${MEGLER_GLES:-}" = mesa ]; then
+        # The choice where an app and Megler have none: Mesa (app/Megler/shell/Graphics.h, packageDefault).
+        printf 'mesa\r\n' > "$STAGE/gles-default.txt"
+        echo "    Mesa where nothing is chosen (MEGLER_GLES=mesa: gles-default.txt)"
+      fi
+      ;;
+    angle) echo "=== Mesa: left out (MEGLER_GLES=angle): ANGLE alone ===" ;;
+    *) echo "MEGLER_GLES: \"$MEGLER_GLES\" is neither mesa nor angle" >&2; exit 2 ;;
+  esac
+elif [ -n "${MEGLER_GLES:-}" ]; then
+  echo "    (MEGLER_GLES is for Windows 10 Mobile's package: this one has ANGLE alone)"
 fi
 
 # On desktop Windows: Megler's own build of the same ANGLE for the processor (python tools/build-angle.py --arch <arch>), its

@@ -254,6 +254,26 @@ static void test_bound(void)
 }
 
 /*
+ * Which graphics processors Mesa's freedreno is tried on, where an app is set to it (megler_run_config.gles, mg_egl.c's
+ * mesa_load): an Adreno, by Qualcomm's vendor id or by its name as Windows gives it, and nothing else -- on any other, the app
+ * draws with ANGLE. And under a stand-in, which is no Mesa, megler_gles says ANGLE. (The fallbacks themselves, with ANGLE
+ * loaded after them: tools/build-tests.sh win, mg_angle_windows.c's Mesa modes.)
+ */
+static void test_gles_choice(void)
+{
+    const char *gles;
+    say("Mesa's freedreno is tried on an Adreno alone; a stand-in is ANGLE");
+    CHECK(mg_egl_gpu_is_adreno("Qualcomm(R) Adreno(TM) 530 GPU", 0x5143));
+    CHECK(mg_egl_gpu_is_adreno("Qualcomm(R) Adreno(TM) 304 GPU", 0));
+    CHECK(mg_egl_gpu_is_adreno("", 0x5143));
+    CHECK(!mg_egl_gpu_is_adreno("NVIDIA GeForce RTX 3060", 0x10de));
+    CHECK(!mg_egl_gpu_is_adreno("Microsoft Basic Render Driver", 0x1414));
+    CHECK(!mg_egl_gpu_is_adreno(NULL, 0));
+    gles = megler_gles();
+    CHECK(gles && !strcmp(gles, "angle"));
+}
+
+/*
  * Which attempt makes the app's display (mg_egl.c, make_display) on a graphics processor below the 9_3 ANGLE needs -- a
  * Surface RT's or a Surface 2's 9_1, which the stand-in plays by making a display only on WARP: none where this machine's
  * own processor is 9_3 or more, as every phone's (nothing is tried in software there), and WARP's, the third, with the flag
@@ -1958,6 +1978,7 @@ int mg_gl_natives_tests_run(mg_test_sink sink, void *user, int *checks)
     }
     test_bound();
     mg_egl_set_provider(mg_gl_standin);
+    test_gles_choice();
     test_display_choice();
     mg_gl_standin_reset(true, false);
     mg_java_gl_reset();

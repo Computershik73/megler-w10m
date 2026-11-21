@@ -954,7 +954,8 @@ typedef struct megler_storage_host {
  *                 `share_handle` is the DXGI shared handle of ANGLE's
  *                 Direct3D 11 texture of the surface (an OpenGL ES pbuffer;
  *                 EGL_ANGLE_surface_d3d_texture_2d_share_handle), width x
- *                 height, its rows bottom first as OpenGL has them. The
+ *                 height, its rows bottom first as OpenGL has them (top
+ *                 first where megler_gles says "mesa": Mesa's). The
  *                 frame is finished in it (the layer has called glFinish),
  *                 and the texture may be drawn into again as soon as this
  *                 returns: the shell takes what it keeps first. The window
@@ -2184,6 +2185,16 @@ typedef struct megler_run_config {
      */
     const megler_host_font *host_fonts;
     int host_font_count;
+    /*
+     * Which OpenGL ES the app draws with, where the package carries two (Windows 10 Mobile's, tools/build-appx.sh): NULL or
+     * "angle", ANGLE -- OpenGL ES over Direct3D 11, libEGL.dll and libGLESv2.dll in megler_config.package_dir; "mesa", Mesa's
+     * freedreno -- OpenGL ES on the phone's Adreno itself, libEGL_mesa.dll and libGLESv2_mesa.dll there with its driver,
+     * libgallium_wgl.dll. Where Mesa cannot be had -- its DLLs not there or not loaded, a graphics processor that is not an
+     * Adreno, its display not made or not initialized -- the app draws with ANGLE, and the log says why in one line ("egl:
+     * Mesa's freedreno was asked for, ANGLE instead: ..."). Taken at megler_run, before anything of OpenGL ES is loaded: a
+     * process has one of them. megler_gles says which it came to.
+     */
+    const char *gles;
     /* The app has ended: by its own exit (status), by a crash (reason names it), or by megler_stop. Called once, from any thread. */
     void (MEGLER_CB *on_exit)(void *user, int status, const char *reason);
     void *user;
@@ -2205,6 +2216,12 @@ MEGLER_API bool megler_run(const megler_run_config *config);
  */
 MEGLER_API bool megler_running(void);
 MEGLER_API const char *megler_last_error(void);
+/*
+ * Which OpenGL ES the app draws with (megler_run_config.gles): "mesa", Mesa's freedreno, whose shared textures
+ * (megler_gfx_host.gl_frame, texture_frame) hold their rows top first, as Direct3D lays a texture out; or "angle", ANGLE,
+ * whose hold them bottom first, as OpenGL has them. NULL until the app first uses EGL. Any thread.
+ */
+MEGLER_API const char *megler_gles(void);
 /*
  * Where another thread of the process stands, in one line: its pc and lr, and the ways back into a module or into Android
  * code its stack holds, as a fault's report says them (not an unwinding: there are no tables for most of it). The thread

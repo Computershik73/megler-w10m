@@ -26,6 +26,7 @@
 #include "shell/AppPackage.h"
 #include "shell/Checks.h"
 #include "shell/Files.h"
+#include "shell/Graphics.h"
 #include "shell/LogMirror.h"
 #include "shell/PicturesDiag.h"
 #include "shell/Platform.h"
@@ -349,7 +350,21 @@ bool start(const ApkEntry& apk, winrt::Windows::UI::Xaml::Controls::SwapChainPan
     const std::string ownVariant = apk.report.microg && appPackage::gmsName(apk.report.package) && apk.report.package != "com.google.android.gms"
                                        ? apk.report.package
                                        : std::string();
-    std::thread([window, audio, width, height, densityDpi, rotation, playStore, java, messages, calls, permissions, ownVariant] {
+    /*
+     * Its Graphics (shell/Graphics.h): ANGLE, or Mesa's freedreno where the app goes by it -- its own setting, else Megler's --
+     * and this package has Mesa's DLLs; an app's own package made while it went by ANGLE has none, and draws with ANGLE until
+     * the Library makes it again. The core takes ANGLE too where Mesa, asked for, cannot be had, and says why.
+     */
+    std::string gles = "angle";
+    if (appPackage::mesaChoosable()) {
+        std::string missing;
+        const bool here = graphics::hasMesaFiles(platform::installDirectory(), &missing);
+        const graphics::Start start = graphics::atStart(appPackage::glesFor(apk.report.package), here, missing, appPackage::isSingleApp());
+        gles = start.gles;
+        shellLog::write(std::string("session: graphics: ") + (gles == "mesa" ? "Mesa's freedreno, as the app's setting Graphics asks" : "ANGLE") +
+                        (start.why.empty() ? std::string() : " -- " + start.why));
+    }
+    std::thread([window, audio, width, height, densityDpi, rotation, playStore, java, messages, calls, permissions, ownVariant, gles] {
         // The flags a diagnosis over USB asked for, in place before the run reads them (shell/PicturesDiag.h).
         picturesDiag::waitForFlags();
         megler_run_config config = {};
@@ -472,6 +487,7 @@ bool start(const ApkEntry& apk, winrt::Windows::UI::Xaml::Controls::SwapChainPan
             config.host_fonts = fontsGiven.empty() ? nullptr : fontsGiven.data();
             config.host_font_count = int(fontsGiven.size());
         }
+        config.gles = gles.c_str();
         config.on_exit = &onExit;
         config.user = nullptr;
         const bool started = megler_run(&config);

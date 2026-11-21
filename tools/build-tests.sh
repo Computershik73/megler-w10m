@@ -652,13 +652,14 @@ elif [ "$MODE" = win ]; then
   SHELL_SRC=("$(w "$ROOT/app/Megler/shell/Files.cpp")" "$(w "$ROOT/app/Megler/shell/Strings.cpp")" "$(w "$ROOT/app/Megler/shell/ShellLog.cpp")"
              "$(w "$ROOT/app/Megler/shell/Startup.cpp")" "$(w "$ROOT/app/Megler/shell/BundledApks.cpp")" "$(w "$ROOT/app/Megler/shell/Placement.cpp")"
              "$(w "$ROOT/app/Megler/shell/SharedApks.cpp")" "$(w "$ROOT/app/Megler/shell/Settings.cpp")" "$(w "$ROOT/app/Megler/player/PermissionRules.cpp")"
+             "$(w "$ROOT/app/Megler/shell/Graphics.cpp")"
              "$(w "$ROOT/app/Megler/player/PickerHost.cpp")" "$(w "$ROOT/core/tests/mg_shell_windows.cpp")")
   mkdir -p "$OUT/shellobj"
   rm -f "$OUT/shellobj/"*.obj
   INCLUDE="$INCLUDE;$(w "$SDK/Include/$SDKV/winrt");$(w "$SDK/Include/$SDKV/cppwinrt")" \
     "$VC/bin/Hostx64/x64/cl.exe" "${GFX_FLAGS[@]}" /Zc:__cplusplus /bigobj /DWINAPI_FAMILY=WINAPI_FAMILY_APP /O1 "$MP" "/Fo$(w "$OUT/shellobj")\\" "${SHELL_SRC[@]}" \
     | grep -v -E '^[A-Za-z0-9_]+\.cpp$' || true
-  for obj in Files Strings ShellLog Startup BundledApks Placement SharedApks Settings PermissionRules PickerHost mg_shell_windows; do
+  for obj in Files Strings ShellLog Startup BundledApks Placement SharedApks Settings PermissionRules PickerHost Graphics mg_shell_windows; do
     [ -f "$OUT/shellobj/$obj.obj" ] || { echo "compile failed: $obj.cpp" >&2; exit 1; }
   done
   "$VC/bin/Hostx64/x64/link.exe" /nologo "/OUT:$(w "$OUT/mg_shell_tests.exe")" "$(w "$OUT/shellobj")\\*.obj" bcrypt.lib ole32.lib oleaut32.lib onecore.lib
@@ -726,6 +727,13 @@ PY
       rm -rf "$OUT/scratch-angle"
       "$OUT/mg_tests.exe" --angle-windows "$(w "$ANGLE_X64")" "$(w "$OUT/scratch-angle")" || STATUS=1
       "$OUT/mg_tests.exe" --angle-windows "$(w "$ANGLE_X64")" "$(w "$OUT/scratch-angle")" 9_3 || STATUS=1
+      # And an app set to Mesa's freedreno (Settings, Graphics) where Mesa cannot be had, a process each: its DLLs not in the
+      # package, this PC's graphics processor no Adreno, its DLLs not loaded -- ANGLE instead, why said in one line, and the
+      # scenes drawn on it as ever.
+      for mesa in mesa-missing mesa mesa-any-gpu; do
+        rm -rf "$OUT/scratch-angle-$mesa"
+        "$OUT/mg_tests.exe" --angle-windows "$(w "$ANGLE_X64")" "$(w "$OUT/scratch-angle-$mesa")" "$mesa" || STATUS=1
+      done
     fi
     # The shell's storage host: the storage's tests once more, with Windows.Storage's own objects handing the handles over
     # instead of the stand-in, on folders under a scratch folder of its own. And Windows' pictures of files there: of a PNG,

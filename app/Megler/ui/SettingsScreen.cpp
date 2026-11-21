@@ -1,4 +1,4 @@
-// Settings: the size of the surface apps draw to, the language and region and
+// Settings: the size of the surface apps draw to, which OpenGL ES they draw with (Windows 10 Mobile), the language and region and
 // where apps are told the phone is, the phone's folders that are in Android's
 // storage, the default apps (the browser web links open in, the answers
 // "Always" of "Open with", and an app's own links), and what this build and
@@ -19,6 +19,7 @@
 #include "player/StorageHost.h"
 #include "shell/AppPackage.h"
 #include "shell/Files.h"
+#include "shell/Graphics.h"
 #include "shell/Platform.h"
 #include "shell/Settings.h"
 #include "shell/ShellLog.h"
@@ -223,6 +224,86 @@ private:
                               set && (chosen == "microg" || !google), [this] { put(settings::googleServices, std::string("microg")); }));
         return listSection("Google Services", rows,
                            "The Google Play services a heavy app runs with. microG takes far less memory where an app needs little of Google's." + applies());
+    }
+
+    /// Graphics (shell/Graphics.h): ANGLE, or Mesa's freedreno, where Megler's package carries it (Windows 10 Mobile's). Mesa's
+    /// DLLs are in an app's own package only while the app goes by it: a change has the package made again, which the
+    /// Library marks (Update, Update All) and this says.
+    UIElement graphicsSection() {
+        const std::string fallback = graphics::packageDefault(platform::installDirectory());
+        const auto mine = own(settings::gles);
+        const bool set = !forApp() || (mine && !mine->empty());
+        const std::string meglers = graphics::resolve(std::nullopt, settings::megler(settings::gles), fallback, true);
+        const std::string chosen = forApp() ? (set ? graphics::resolve(mine, std::nullopt, fallback, true) : meglers) : meglers;
+        auto name = [](const std::string& gles) { return gles == "mesa" ? std::string("Mesa freedreno") : std::string("ANGLE (Direct3D 11)"); };
+        std::vector<UIElement> rows;
+        if (forApp())
+            rows.push_back(choice("As in Megler", name(meglers), !set, [this] { putGraphics(std::nullopt); }));
+        rows.push_back(choice("ANGLE (Direct3D 11)", "The default: OpenGL ES turned into Direct3D 11, on every phone", set && chosen != "mesa",
+                              [this] { putGraphics(std::string("angle")); }));
+        rows.push_back(choice("Mesa freedreno (experimental, Adreno GPUs)",
+                              "OpenGL ES on the phone's Adreno itself, through Mesa's driver. Where it cannot start, the app draws with ANGLE "
+                              "and its log says why",
+                              set && chosen == "mesa", [this] { putGraphics(std::string("mesa")); }));
+        std::string footer = "How an app's OpenGL ES is drawn: games, maps, the WebView. Mesa's driver is some 20 MB in an app's own package, "
+                             "which has it only while the app draws with it: ";
+        if (!forApp()) {
+            footer += "an app that goes by this has its package made again when it changes, by Update All in the Library. It applies "
+                      "to every app that has no setting of its own, at its next start after that.";
+        } else if (!scope_.own) {
+            footer += "a change has its package made again, by Update on its page (or Update All). It applies at the app's next start "
+                      "after that.";
+        } else {
+            // (This package's own: whether it was made with Mesa's DLLs.)
+            const bool here = graphics::hasMesaFiles(platform::installDirectory());
+            footer += std::string("this package was made ") + (here ? "with them" : "without them") + ".";
+            if (chosen == "mesa" && !here)
+                footer += " Until Megler's Library makes it again with them (Update on the app's page in Megler), the app draws with ANGLE.";
+            else if (chosen != "mesa" && here)
+                footer += " Megler's Library makes it again without them, some 20 MB smaller (Update on the app's page in Megler).";
+            else
+                footer += " It applies at the app's next start.";
+        }
+        return listSection("Graphics", rows, footer);
+    }
+
+    /// Graphics changed: kept, the Library told (in Megler: it lists the packages again, and marks those to update), and,
+    /// where this changes what a package must carry, said.
+    void putGraphics(const std::optional<std::string>& value) {
+        const std::string fallback = graphics::packageDefault(platform::installDirectory());
+        const std::string before = forApp() ? appPackage::glesFor(scope_.package) : graphics::resolve(std::nullopt, settings::megler(settings::gles), fallback, true);
+        put(settings::gles, value);
+        const std::string after = forApp() ? appPackage::glesFor(scope_.package) : graphics::resolve(std::nullopt, settings::megler(settings::gles), fallback, true);
+        if (before == after) return;
+        const bool mesa = after == "mesa";
+        if (scope_.own) {
+            // The app's own package: Megler makes it again (it lists the packages, and finds the app's Graphics changed).
+            if (mesa != graphics::hasMesaFiles(platform::installDirectory()))
+                shell_.alert("Its Package Is to Be Made Again",
+                             mesa ? "This app's package was made without Mesa's driver. Open Megler: Update on the app's page makes the package "
+                                    "again with it. Until then the app draws with ANGLE."
+                                  : "This app's package carries Mesa's driver, some 20 MB it no longer needs: Update on the app's page in Megler "
+                                    "makes it again without it.");
+            return;
+        }
+        separateApps::refresh(shell_);
+        if (forApp()) {
+            const std::optional<bool> has = separateApps::packageHasMesa(scope_.package);
+            if (has && *has != mesa)
+                shell_.alert("Update the App",
+                             mesa ? (scope_.label.empty() ? scope_.package : scope_.label) +
+                                        "'s package was made without Mesa's driver: Update on its page makes it again with it (some 20 MB "
+                                        "more). Until then it draws with ANGLE."
+                                  : (scope_.label.empty() ? scope_.package : scope_.label) +
+                                        "'s package carries Mesa's driver, which it no longer uses: Update on its page makes it again "
+                                        "without it, some 20 MB smaller.");
+        } else {
+            shell_.alert("Update the Apps",
+                         std::string("The apps that go by Megler's Graphics draw with ") + (mesa ? "Mesa's freedreno" : "ANGLE") +
+                             " from their next start once their packages are made again " +
+                             (mesa ? "with Mesa's driver, some 20 MB each" : "without Mesa's driver") +
+                             ": the Library marks them to update, and Update All makes them.");
+        }
     }
 
     /// What an app does while it is minimized, not closed (player/AudioHost.h): it runs on, its sound output kept, which is
@@ -935,6 +1016,8 @@ private:
         if (forApp()) add(column, permissionsSection());
         if (scope_.own) add(column, storageSizesSection());
         add(column, renderSection());
+        // (Where Megler's package carries Mesa's freedreno: Windows 10 Mobile's.)
+        if (appPackage::mesaChoosable()) add(column, graphicsSection());
         add(column, servicesSection());
         add(column, backgroundSection());
         if (!forApp() && !appPackage::isSingleApp()) {
@@ -955,15 +1038,18 @@ private:
 
             memory_ = labeledContent("Memory", platform::memorySummary());
             const auto& angle = platform::angle();
-            add(column, listSection("About",
-                                    {labeledContent("Megler", platform::packageVersion()),
-                                     labeledContent("Core", megler_version()),
-                                     labeledContent("Build", platform::architecture()),
-                                     labeledContent("Device", platform::deviceFamily()),
-                                     labeledContent("Windows", platform::osVersion()),
-                                     memory_,
-                                     labeledContent("Android Code", platform::canRunAndroidCode() ? "Can run" : "Cannot run"),
-                                     labeledContent("ANGLE", angle.present ? "In the package" : "Missing")},
+            std::vector<UIElement> about = {labeledContent("Megler", platform::packageVersion()),
+                                            labeledContent("Core", megler_version()),
+                                            labeledContent("Build", platform::architecture()),
+                                            labeledContent("Device", platform::deviceFamily()),
+                                            labeledContent("Windows", platform::osVersion()),
+                                            memory_,
+                                            labeledContent("Android Code", platform::canRunAndroidCode() ? "Can run" : "Cannot run"),
+                                            labeledContent("ANGLE", angle.present ? "In the package" : "Missing")};
+            // (Mesa's freedreno where it can be chosen: in Megler's package; in an app's own while the app goes by it.)
+            if (appPackage::mesaChoosable())
+                about.push_back(labeledContent("Mesa", graphics::hasMesaFiles(platform::installDirectory()) ? "In the package" : "Not in this package"));
+            add(column, listSection("About", about,
                                     "Android code needs the codeGeneration capability, which an interop-unlocked phone grants; "
                                     "ANGLE is what turns an app's OpenGL ES into Direct3D 11."));
             add(column, developerSection());

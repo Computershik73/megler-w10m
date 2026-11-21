@@ -841,6 +841,12 @@ MG_HOSTAPI bool mg_host_d3d11_options(void *device, bool *constant_buffer_offset
 /* How much graphics memory the process may use and does (megabytes), as the adapter of a Direct3D 11 device says; false where it cannot be asked. */
 MG_HOSTAPI bool mg_host_gpu_memory(void *device, u32 *budget_mb, u32 *used_mb);
 /*
+ * What the graphics processor is: its name as Windows gives it (DXGI's description, "Qualcomm(R) Adreno(TM) 530 GPU") and its
+ * PCI vendor id, of the adapter a Direct3D 11 device of the hardware is made on (made for the question and let go). False
+ * where it cannot be asked (posix, no Direct3D).
+ */
+MG_HOSTAPI bool mg_host_gpu_adapter(char *name, size_t size, u32 *vendor);
+/*
  * A DXGI keyed mutex (an IDXGIKeyedMutex *: what ANGLE shares its pbuffers' textures with) acquired, waiting up to `ms`, or
  * released, with key 0. Its device is made safe for use from several threads first (from then on its Direct3D calls take a
  * lock, which these take too: the app's other threads may be drawing on that device). False when it could not be acquired in
