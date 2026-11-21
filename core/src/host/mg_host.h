@@ -809,6 +809,12 @@ MG_HOSTAPI int mg_net_dns_servers(char (*out)[48], int max);
 MG_HOSTAPI void *mg_dl_open(const char *name);
 MG_HOSTAPI void *mg_dl_sym(void *lib, const char *name);
 /*
+ * A DLL by its whole path, wherever it is: a build of Mesa's freedreno put in an app's data folder for a diagnosis (the
+ * flag mesa-local, ndk/mg_egl.c), where mg_dl_open takes the package's files alone. NULL, said in the log, where it does
+ * not load.
+ */
+MG_HOSTAPI void *mg_dl_open_file(const char *path);
+/*
  * The host process's environment variable `name` set to `value` (Windows: SetEnvironmentVariable), for a library of the
  * host's own that the core loads after: a DLL's C runtime reads the process's environment as it starts. Mesa's diagnosis,
  * asked for by the flag mesa-diag (ndk/mg_egl.c). Not the guest's environment (bionic's getenv).
@@ -826,6 +832,13 @@ MG_HOSTAPI bool mg_host_stderr_to_log_begin(const char *prefix);
 MG_HOSTAPI void mg_host_stderr_to_log_end(void);
 /* Which of the host's own modules (the app, a DLL of the package or of the system) an address is in: its file name and where it is loaded. For a crash report. */
 MG_HOSTAPI bool mg_host_module_at(mg_addr address, char *name, size_t size, mg_addr *base);
+/*
+ * The flag kmt-trace (ndk/mg_egl.c): every call of the graphics kernel's functions (D3DKMT) the process makes from now on,
+ * by any module -- Qualcomm's Direct3D driver, Mesa's core -- written with its private data and the command buffers it
+ * submits into the file `path` (host/mg_kmt_trace.c; tools/kmt-trace.py reads it). How many functions are traced, and in
+ * `why` what was done or why nothing was. Windows 10 Mobile's ARM32 alone; once a process.
+ */
+MG_HOSTAPI int mg_host_kmt_trace_start(const char *path, char *why, size_t size);
 /*
  * The linker's time stamp of the module an address is in (a PE file's TimeDateStamp), which its build's map says at its top
  * ("Timestamp is ..."): which build a report's module+offset addresses are of. False where there is none (an ELF, POSIX).

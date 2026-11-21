@@ -680,18 +680,43 @@ Megler's package has Mesa. ANGLE is the default; a package built with `MEGLER_GL
   `megler.log`, and the package's log copies take them along (`shell/LogMirror.h`: Save All Logs; `shell/PicturesDiag.h`).
 - **GMEM tiles, by the flag `mesa-gmem`.** The project's patch 0017 makes Mesa render every batch in system memory
   (bypass) on D3DKMT: in GMEM, the tiled rendering an Adreno is made for, the GPU hung in some 25-35 % of dEQP's
-  `color_clear` runs, the KMD ending the packet after 2.5 s (a TDR; drivers/mesa-arm32/src/ISSUES.md, 1, cause not
-  found). The flag sets `FD_D3DKMT_GMEM=1` before Mesa loads, the log saying `egl: the flag mesa-gmem: Mesa renders in
-  GMEM tiles ...`: for trying it on a game the GPU keeps waiting on at a high resolution, which bypass costs memory
-  bandwidth (GTA: Vice City at 2560x1440, 22-35 frames a second on Mesa against ANGLE's 30-44). With it, depth and
-  stencil textures are linear again (patch 0020 tiles them in sysmem rendering alone), so one a batch rendered in bypass
-  wrote, then sampled or blitted, may come out scrambled as before 0020.
+  `color_clear` runs, the KMD ending the packet after 2.5 s (a TDR), and GTA: Vice City within half a minute. The cause
+  was the D3DKMT core's: it gave each piece of a pass's growable command stream its own DMA packet, between which the
+  compositor's work ran; it submits them as one now, and GMEM no longer hangs (drivers/mesa-arm32/src/ISSUES.md, 1). It
+  stays off by default: at 2560x1440 it is still slower than bypass for GTA (ISSUES.md, 2). The flag sets
+  `FD_D3DKMT_GMEM=1` before Mesa loads, the log saying `egl: the flag mesa-gmem: Mesa renders in GMEM tiles ...`: for
+  trying it on a game the GPU keeps waiting on at a high resolution, which bypass costs memory bandwidth (GTA: Vice City
+  at 2560x1440, 22-35 frames a second on Mesa against ANGLE's 30-44). With it, depth and stencil textures are linear
+  again (patch 0020 tiles them in sysmem rendering alone), so one a batch rendered in bypass wrote, then sampled or
+  blitted, may come out scrambled as before 0020.
 - **Mesa's errors in the log, always.** What Mesa says of its errors goes to its C runtime's stderr (`mesa_log`, its
   D3DKMT core's failures with their NTSTATUS, EGL's warnings), which an app's process has nowhere to go. Its DLLs, which
   take the standard handles as they load, are given a pipe of the host's as their stderr while `mesa_load` loads them
   (`mg_host_stderr_to_log_begin`, `_end`), whose lines the log takes as `mesa: <line>` (2000 a process at most, then
   counted); warnings and errors (`MESA_LOG_LEVEL=warning`; Mesa's default, information too, under `mesa-diag`). A
   texture GTA: Vice City's map could not be given memory for ended the game, its reason lost (package 745).
+- **Mesa's own switches, by flags `mesa-env-<NAME>=<value>`.** Each sets that variable in the process's environment
+  before Mesa's DLLs load (`FD_MESA_DEBUG=gmem`, `FDKMT_DEBUG=1`, `FD_MAX_BATCH_DRAWS=...`: the switches the project's
+  patches and Mesa read, drivers/mesa-arm32/README.md), the log saying `egl: Mesa's environment: NAME=value`. Set through
+  the Device Portal (`tools/phone-flags.py --app <package> set mesa-env-FD_MESA_DEBUG=gmem`): `=` is not among the
+  characters a flag in `Pictures\Megler\diag` may have.
+- **A build of Mesa tried without a package, by the flag `mesa-local`.** `mesa_load` takes Mesa's three DLLs from the
+  data folder's `mesa\` (`LocalState\mesa`) instead of the package's, by their paths (`mg_dl_open_file`, `LoadLibraryExW`;
+  the driver first, which the other two import by name), where all three are there; the log says which. They get there
+  from the phone's Pictures over USB: the shell copies the files of the newest `Pictures\Megler\diag\<package>\mesa-<n>`
+  (the largest n; a new folder a build, MTP writing no file over another) into `LocalState\mesa` as the app starts, once
+  a folder (`shell/PicturesDiag.cpp`, `placeMesa`; `LocalState\mesa\from.txt` names it).
+- **What goes to the kernel's driver, by the flag `kmt-trace`.** Every call of the graphics kernel's functions the
+  app's process makes from the first use of EGL on -- ANGLE's Direct3D 11 device through Qualcomm's own driver, the
+  shell's, Mesa's D3DKMT core -- with its arguments, its private driver data and the command buffers it submits (and the
+  buffers they call), into `LocalState\kmt-trace.bin` (96 MB at most), and the context creations, escapes, adapter
+  queries and first submits in the log as `kmt: ...` (`host/mg_kmt_trace.c`). Windows 10 Mobile's win32u.dll has one
+  stub a function, `movw r12, #<call>; svc #1; bx lr`, which every caller comes to (gdi32's D3DKMT functions jump to them,
+  dxgi.dll looks gdi32's up by name): each is copied to a page of the trace's and made a jump to the trace's function,
+  which calls the copy. A buffer is read where its allocation was seen mapped for the CPU (`Lock2`, `Lock`) and the GPU
+  (`MapGpuVirtualAddress`, `UpdateGpuVirtualAddress`). `tools/kmt-trace.py` prints the calls and decodes the buffers as
+  PM4 packets with a5xx's register names (Mesa's freedreno XML). For comparing Mesa with Qualcomm's driver, which renders
+  in GMEM tiles without hanging the GPU (drivers/mesa-arm32/src/ISSUES.md, 1).
 - **The shell's composition follows the choice.** Mesa renders a pbuffer's shared Direct3D texture with its rows top
   first, as Direct3D lays a texture out, where ANGLE's keep OpenGL's bottom row first: the shell turns a frame
   (`gl_frame`) and a picture (`texture_frame`: a TextureView's, the WebView's pages) the other way up where `megler_gles`

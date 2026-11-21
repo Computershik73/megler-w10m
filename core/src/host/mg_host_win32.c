@@ -5028,6 +5028,20 @@ void *mg_dl_open(const char *name)
 
 void *mg_dl_sym(void *lib, const char *name) { return (void *)GetProcAddress((HMODULE)lib, name); }
 
+void *mg_dl_open_file(const char *path)
+{
+    wchar_t *w = wide_path(path);
+    HMODULE h;
+    DWORD e;
+    SetLastError(0);
+    /* (Its own folder searched first for what it imports, as for a program's DLLs: Mesa's two DLLs import its driver.) */
+    h = LoadLibraryExW(w, NULL, LOAD_WITH_ALTERED_SEARCH_PATH);
+    e = GetLastError();
+    if (!h) mg_err("host: %s did not load: Windows error %lu (%s)", path, (unsigned long)e, dl_error_meaning(e));
+    free(w);
+    return (void *)h;
+}
+
 bool mg_host_setenv(const char *name, const char *value)
 {
     wchar_t *n = wide_of(name), *v = wide_of(value);

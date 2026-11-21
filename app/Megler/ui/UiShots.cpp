@@ -7,6 +7,7 @@
 #include "player/Session.h"
 #include "player/WindowHost.h"
 #include "shell/Platform.h"
+#include "shell/Settings.h"
 #include "shell/ShellLog.h"
 #include "shell/Strings.h"
 #include "ui/AppShell.h"
@@ -199,6 +200,19 @@ void poll(AppShell& shell) {
             separateApps::rescanLibrary(shell, false);
         } else if (flag.rfind(L"ui-uninstall-", 0) == 0) {
             separateApps::uninstall(shell, narrow(flag.substr(13)));
+        } else if (flag.rfind(L"ui-gles-", 0) == 0) {
+            // The app's own Graphics, as its page's Settings set it: ui-gles-<package>-<mesa|angle|default>; its package is
+            // made again by its Update (ui-update-<package>).
+            const std::wstring rest = flag.substr(8);
+            const size_t dash = rest.rfind(L'-');
+            const std::string package = dash == std::wstring::npos ? std::string() : narrow(rest.substr(0, dash));
+            const std::string value = dash == std::wstring::npos ? std::string() : narrow(rest.substr(dash + 1));
+            if (package.empty() || (value != "mesa" && value != "angle" && value != "default")) {
+                shellLog::write("ui: ui-gles-<package>-<mesa|angle|default> was meant: " + narrow(flag));
+            } else {
+                settings::setApp(package, settings::gles, value == "default" ? std::nullopt : std::optional<std::string>(value));
+                shellLog::write("ui: the Graphics of " + package + " is " + value + " now; its package is made again by its Update");
+            }
         } else if (flag.rfind(L"ui-update-", 0) == 0) {
             const std::string package = narrow(flag.substr(10));
             bool found = false;

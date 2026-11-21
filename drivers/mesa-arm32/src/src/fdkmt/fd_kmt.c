@@ -20,6 +20,8 @@
  *   FDKMT_DEBUG=1           in log ra stderr
  *   FDKMT_PRIV_SIZE=N       kich thuoc private data submit (mac dinh 0; 0x20 va 948 bi tu choi)
  *   FDKMT_NODE=N            node cua context (mac dinh 0 = 3D)
+ *   FDKMT_SPLIT_SUBMITS=1   (Megler) each piece of a submit its own SubmitCommand,
+ *                           as before kmt_one_buffer (which hung GMEM passes)
  */
 
 #include <windows.h>
@@ -68,7 +70,8 @@
    X(D3DKMTQueryResourceInfo)                         \
    X(D3DKMTOpenResource)                              \
    X(D3DKMTQueryResourceInfoFromNtHandle)             \
-   X(D3DKMTOpenResourceFromNtHandle)
+   X(D3DKMTOpenResourceFromNtHandle)                  \
+   X(D3DKMTGetDeviceState)
 
 #define KMT_DECL(name) static NTSTATUS(APIENTRY *p##name)(void *);
 KMT_FUNCS(KMT_DECL)
@@ -93,14 +96,32 @@ dbg(const char *fmt, ...)
 }
 
 /* Megler: what fails is said always, on stderr, which Megler's log takes
- * ("mesa: fdkmt: ..."; core/src/ndk/mg_egl.c, mesa_load). Rare, unlike dbg.
+ * ("mesa: fdkmt: ..."; core/src/ndk/mg_egl.c, mesa_load). Rare, unlike dbg --
+ * and kept so: the first 20 of each kind (its format), then one in 1000 with
+ * its count. A failure at every frame (a Lock2 the kernel refuses each read
+ * back) wrote thousands of lines a minute and crowded out everything else.
  */
 static void
 err(const char *fmt, ...)
 {
+   static const char *volatile kinds[32];
+   static volatile LONG counts[32];
+   LONG n = 0;
+   for (unsigned i = 0; i < 32; i++) {
+      if (!kinds[i])
+         InterlockedCompareExchangePointer((PVOID volatile *)&kinds[i], (PVOID)fmt, NULL);
+      if (kinds[i] == fmt) {
+         n = InterlockedIncrement(&counts[i]);
+         break;
+      }
+   }
+   if (n > 20 && n % 1000)
+      return;
    va_list ap;
    va_start(ap, fmt);
    fputs("fdkmt: ", stderr);
+   if (n > 20)
+      fprintf(stderr, "(the %ldth time) ", (long)n);
    vfprintf(stderr, fmt, ap);
    va_end(ap);
    fflush(stderr);
@@ -244,9 +265,15 @@ struct fd_kmt {
    unsigned priv_size;
 
    /* Lich su submit (de dump khi GPU treo). */
-   struct { uint32_t seq; struct fd_kmt_cmd cmd; } hist[16];
+   struct { uint32_t seq; struct fd_kmt_cmd cmd; LONG64 t; } hist[16];
    unsigned hist_pos;
    uint8_t *priv;
+
+   /* Megler: the command buffers of one submit made one, in a buffer of
+    * these, each reused once the GPU is done with it (kmt_one_buffer).
+    */
+   struct { uint32_t handle; uint64_t iova, size; uint8_t *map; uint32_t fence; } one[4];
+   unsigned one_next;
 };
 
 static struct kmt_bo *
@@ -1127,6 +1154,124 @@ dump_failed_ib(struct fd_kmt *k, const struct fd_kmt_cmd *c, NTSTATUS st)
    fclose(f);
 }
 
+static void dump_hang(struct fd_kmt *k, uint32_t waiting);
+static int kmt_fence_wait_i(struct fd_kmt *k, uint32_t fence, uint64_t timeout_ns);
+
+/* Megler: a submit's command buffers copied one after another into one
+ * buffer, submitted as one command: Mesa's primary ring grows in pieces (a
+ * GMEM pass of GTA: Vice City at 2560x1440 was three, of 3, 32 and 11 KB),
+ * and the kernel makes each SubmitCommand a DMA packet of its own, which the
+ * scheduler may run another context's between -- the compositor's, every
+ * frame. A pass cut there went on after the compositor's had used GMEM, the
+ * CCU and the registers its first piece had set up, and hung the GPU
+ * (drivers/mesa-arm32/src/ISSUES.md, 1). On Linux the kernel runs a submit's
+ * pieces back to back in its ring. The buffer is the slot's (*slot); false
+ * where a piece has no CPU view to copy from, or no buffer could be had: then
+ * the pieces go one by one, as before.
+ */
+static bool
+kmt_one_buffer(struct fd_kmt *k, const struct fd_kmt_cmd *cmds, uint32_t nr,
+               struct fd_kmt_cmd *out, unsigned *slot)
+{
+   uint64_t total = 0;
+   for (uint32_t i = 0; i < nr; i++)
+      total += cmds[i].size_dw * 4ull;
+   unsigned s = (unsigned)InterlockedIncrement((volatile LONG *)&k->one_next) % 4;
+   if (k->one[s].fence && *k->fence_cpu < k->one[s].fence &&
+       kmt_fence_wait_i(k, k->one[s].fence, 5000000000ull))
+      return false;
+   if (k->one[s].size < total || !k->one[s].map) {
+      if (k->one[s].handle) {
+         EnterCriticalSection(&k->lock);
+         struct kmt_bo *bo = find_bo(k, k->one[s].handle);
+         struct kmt_bo b = bo ? *bo : (struct kmt_bo){ 0 };
+         if (bo)
+            *bo = k->bos[--k->nr_bos];
+         LeaveCriticalSection(&k->lock);
+         if (b.handle)
+            kmt_bo_destroy(k, &b);
+         memset(&k->one[s], 0, sizeof(k->one[s]));
+      }
+      uint64_t want = total < 0x40000 ? 0x40000 : (total + 0xFFFF) & ~0xFFFFull;
+      /* (Write-combined, as Mesa's own command buffers: written once, in order,
+       * and read by the GPU alone.)
+       */
+      uint32_t kflags = 0;
+      uint32_t h = 0;
+      uint64_t iova = 0;
+      void *map = NULL;
+      if (kmt_bo_create(k, want, kflags, &h, &iova))
+         return false;
+      k->one[s].handle = h;
+      k->one[s].iova = iova;
+      k->one[s].size = want;
+      if (kmt_bo_map_i(k, h, &map) || !map)
+         return false;
+      k->one[s].map = map;
+   }
+   uint8_t *dst = k->one[s].map;
+   for (uint32_t i = 0; i < nr; i++) {
+      size_t n = cmds[i].size_dw * 4u;
+      EnterCriticalSection(&k->lock);
+      struct kmt_bo *bo = find_bo(k, cmds[i].handle);
+      const uint8_t *src = bo && bo->map && cmds[i].iova >= bo->iova
+                              ? (const uint8_t *)bo->map + (size_t)(cmds[i].iova - bo->iova) : NULL;
+      LeaveCriticalSection(&k->lock);
+      if (!src)
+         return false;
+      memcpy(dst, src, n);
+      dst += n;
+   }
+   out->iova = k->one[s].iova;
+   out->size_dw = (uint32_t)(total / 4);
+   out->handle = k->one[s].handle;
+   *slot = s;
+   return true;
+}
+
+/* Megler: what the kernel says of the device the first time a submit is
+ * refused -- its execution state (3: hung, 6 and 7: a DMA or page fault) and,
+ * for a page fault, where -- and the last submits before it, with how long
+ * ago each was made: a hung GPU otherwise showed only as submits refused with
+ * 0xc01e0200 from then on. FDKMT_DUMP_HANG=1 also writes them to %TEMP%.
+ */
+static void
+device_lost_report(struct fd_kmt *k, NTSTATUS why)
+{
+   static LONG said;
+   if (InterlockedExchange(&said, 1))
+      return;
+   D3DKMT_GETDEVICESTATE ds = { 0 };
+   ds.hDevice = k->device;
+   ds.StateType = D3DKMT_DEVICESTATE_EXECUTION;
+   NTSTATUS st = pD3DKMTGetDeviceState(&ds);
+   err("device lost (0x%08lx): execution state %d (GetDeviceState 0x%08lx)\n", (unsigned long)why,
+       (int)ds.ExecutionState, (unsigned long)st);
+   memset(&ds, 0, sizeof(ds));
+   ds.hDevice = k->device;
+   ds.StateType = D3DKMT_DEVICESTATE_PAGE_FAULT;
+   st = pD3DKMTGetDeviceState(&ds);
+   err("page fault state (0x%08lx): address 0x%llx, stage %d, bind entry %u, flags 0x%x, error 0x%x, primitive %llu\n",
+       (unsigned long)st, (unsigned long long)ds.PageFaultState.FaultedVirtualAddress,
+       (int)ds.PageFaultState.FaultedPipelineStage, ds.PageFaultState.FaultedBindTableEntry,
+       *(const UINT *)&ds.PageFaultState.PageFaultFlags, *(const UINT *)&ds.PageFaultState.FaultErrorCode,
+       (unsigned long long)ds.PageFaultState.FaultedPrimitiveAPISequenceNumber);
+   LARGE_INTEGER now, f;
+   QueryPerformanceCounter(&now);
+   QueryPerformanceFrequency(&f);
+   err("fence done %llu of %u submitted\n", (unsigned long long)*k->fence_cpu, k->seqno);
+   for (unsigned h = 0; h < 16; h++) {
+      unsigned i = (k->hist_pos + h) % 16;
+      if (!k->hist[i].seq)
+         continue;
+      err("  submit %u: iova 0x%llx, %u dwords, %.1f ms ago%s\n", k->hist[i].seq,
+          (unsigned long long)k->hist[i].cmd.iova, k->hist[i].cmd.size_dw,
+          (now.QuadPart - k->hist[i].t) * 1000.0 / f.QuadPart,
+          k->hist[i].seq <= *k->fence_cpu ? " (done)" : "");
+   }
+   dump_hang(k, k->seqno);
+}
+
 static int
 kmt_submit_i(struct fd_kmt *k, const struct fd_kmt_cmd *cmds,
               uint32_t nr_cmds, const struct fd_kmt_bo_ref *bos,
@@ -1134,6 +1279,23 @@ kmt_submit_i(struct fd_kmt *k, const struct fd_kmt_cmd *cmds,
 {
    NTSTATUS st;
    *out_fence = 0;
+
+   /* Megler: one command for the submit, its pieces in one buffer
+    * (kmt_one_buffer); FDKMT_SPLIT_SUBMITS=1 submits them one by one, as before.
+    */
+   static int split = -1;
+   if (split < 0) {
+      const char *e = getenv("FDKMT_SPLIT_SUBMITS");
+      split = e && *e == '1';
+   }
+   const struct fd_kmt_cmd *all = cmds;
+   uint32_t nr_all = nr_cmds;
+   struct fd_kmt_cmd one;
+   unsigned one_slot = ~0u;
+   if (nr_cmds > 1 && !split && kmt_one_buffer(k, cmds, nr_cmds, &one, &one_slot)) {
+      cmds = &one;
+      nr_cmds = 1;
+   }
 
    EnterCriticalSection(&k->lock);
 
@@ -1147,6 +1309,7 @@ kmt_submit_i(struct fd_kmt *k, const struct fd_kmt_cmd *cmds,
       sc.PrivateDriverDataSize = k->priv_size;
       st = pD3DKMTSubmitCommand(&sc);
       if (st) {
+         device_lost_report(k, st);
          LeaveCriticalSection(&k->lock);
          err("SubmitCommand(iova=0x%llx len=%u priv=%u) failed: 0x%08lx\n",
              (unsigned long long)cmds[i].iova, cmds[i].size_dw * 4,
@@ -1160,6 +1323,11 @@ kmt_submit_i(struct fd_kmt *k, const struct fd_kmt_cmd *cmds,
    for (uint32_t i = 0; i < nr_cmds; i++) {
       k->hist[k->hist_pos % 16].seq = seq;
       k->hist[k->hist_pos % 16].cmd = cmds[i];
+      {
+         LARGE_INTEGER now;
+         QueryPerformanceCounter(&now);
+         k->hist[k->hist_pos % 16].t = now.QuadPart;
+      }
       k->hist_pos++;
    }
    UINT64 value = seq;
@@ -1181,11 +1349,13 @@ kmt_submit_i(struct fd_kmt *k, const struct fd_kmt_cmd *cmds,
       if (bo)
          bo->last_fence = seq;
    }
-   for (uint32_t i = 0; i < nr_cmds; i++) {
-      struct kmt_bo *bo = find_bo(k, cmds[i].handle);
+   for (uint32_t i = 0; i < nr_all; i++) {
+      struct kmt_bo *bo = find_bo(k, all[i].handle);
       if (bo)
          bo->last_fence = seq;
    }
+   if (one_slot != ~0u)
+      k->one[one_slot].fence = seq;
    LeaveCriticalSection(&k->lock);
 
    dbg("submit %u IB -> fence %u\n", nr_cmds, seq);

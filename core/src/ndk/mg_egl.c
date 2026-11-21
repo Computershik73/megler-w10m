@@ -70,6 +70,23 @@ bool mg_egl_gpu_is_adreno(const char *name, u32 vendor)
     return vendor == 0x5143 || (name && strstr(name, "Adreno") != NULL);
 }
 
+/* A flag mesa-env-<NAME>=<value>: the variable set in the process's environment, for Mesa's DLLs about to load. */
+static void mesa_env(const char *rest, void *user)
+{
+    char name[96];
+    const char *eq = strchr(rest, '=');
+    size_t n = eq ? (size_t)(eq - rest) : 0;
+    (void)user;
+    if (!n || n >= sizeof(name)) {
+        mg_warn("egl: the flag mesa-env-%s says no variable: its name is mesa-env-<NAME>=<value>", rest);
+        return;
+    }
+    memcpy(name, rest, n);
+    name[n] = 0;
+    if (mg_host_setenv(name, eq + 1)) mg_info("egl: Mesa's environment: %s=%s (a flag mesa-env-)", name, eq + 1);
+    else mg_warn("egl: Mesa's environment: %s could not be set (the process's environment refused it)", name);
+}
+
 /*
  * Mesa's freedreno (tools/build-appx.sh, drivers/mesa-arm32): its libEGL_mesa.dll and libGLESv2_mesa.dll import its driver,
  * libgallium_wgl.dll, which Windows finds beside them at the package's root. They are named apart from ANGLE's on purpose:
@@ -95,8 +112,26 @@ static bool mesa_load(char *why, size_t size)
     fn_initialize_ init;
     fn_get_error_ error;
     int major = 0, minor = 0;
-    bool diag, caught;
-    for (i = 0; i < MG_COUNT(files); i++) {
+    bool diag, caught, local = false;
+    char *folder = NULL;
+    /*
+     * The flag mesa-local: Mesa's three DLLs from the data folder's mesa\ (the shell puts there what the newest
+     * Pictures\Megler\diag\<package>\mesa-<n> holds: shell/PicturesDiag.h), not the package's -- a build of Mesa tried on
+     * the phone without a package of Megler's made for it. Where they are not all there, the package's.
+     */
+    if (mg_flag("mesa-local")) {
+        folder = mg_sprintf("%s/mesa", megler_data_dir());
+        local = true;
+        for (i = 0; i < MG_COUNT(files) && local; i++) {
+            char *path = mg_sprintf("%s/%s", folder, files[i]);
+            mg_stat st;
+            local = mg_path_stat(path, &st, NULL);
+            free(path);
+        }
+        if (local) mg_info("egl: the flag mesa-local: Mesa's DLLs from %s", folder);
+        else mg_warn("egl: the flag mesa-local: %s has not all of Mesa's DLLs; the package's are taken", folder);
+    }
+    for (i = 0; i < MG_COUNT(files) && !local; i++) {
         char *path = mg_sprintf("%s/%s", megler_package_dir(), files[i]);
         mg_stat st;
         n = strlen(missing);
@@ -157,9 +192,31 @@ static bool mesa_load(char *why, size_t size)
      * memory for ended it at once, and the reason was lost (package 745).
      */
     if (!diag) mg_host_setenv("MESA_LOG_LEVEL", "warning");
+    /*
+     * The flags mesa-env-<NAME>=<value>: that variable of Mesa's set before its DLLs load, for trying its own switches on
+     * the phone (FD_MESA_DEBUG, FD_D3DKMT_GMEM, FDKMT_DEBUG, FD_MAX_BATCH_DRAWS...; drivers/mesa-arm32/README.md).
+     */
+    mg_flags_each("mesa-env-", mesa_env, NULL);
     caught = mg_host_stderr_to_log_begin("mesa: ");
-    gles = mg_dl_open("libGLESv2_mesa.dll");
-    egl = gles ? mg_dl_open("libEGL_mesa.dll") : NULL;
+    if (local) {
+        /* (The driver first, by its path: the other two import it by name, which is then the one loaded.) */
+        char *path = mg_sprintf("%s/libgallium_wgl.dll", folder);
+        void *driver = mg_dl_open_file(path);
+        free(path);
+        gles = egl = NULL;
+        if (driver) {
+            path = mg_sprintf("%s/libGLESv2_mesa.dll", folder);
+            gles = mg_dl_open_file(path);
+            free(path);
+            path = mg_sprintf("%s/libEGL_mesa.dll", folder);
+            egl = gles ? mg_dl_open_file(path) : NULL;
+            free(path);
+        }
+    } else {
+        gles = mg_dl_open("libGLESv2_mesa.dll");
+        egl = gles ? mg_dl_open("libEGL_mesa.dll") : NULL;
+    }
+    free(folder);
     if (caught) mg_host_stderr_to_log_end();
     else mg_warn("egl: what Mesa says of its errors cannot be taken into the log (the host's line before says why)");
     if (!gles || !egl) {
@@ -199,6 +256,19 @@ static void *angle(const char *name)
         mg_lock_acquire(&g_angle_lock);
         if (!g_angle_tried) {
             char why[400];
+            /*
+             * The flag kmt-trace: what this process asks of the graphics kernel from now on -- ANGLE's Direct3D 11 device
+             * through Qualcomm's own driver, or Mesa's D3DKMT core -- with the command buffers it submits, into
+             * kmt-trace.bin beside the log (host/mg_kmt_trace.c, tools/kmt-trace.py). Before either loads: a device's
+             * context and its first buffers are made as it starts.
+             */
+            if (mg_flag("kmt-trace")) {
+                char *path = mg_sprintf("%s/kmt-trace.bin", megler_data_dir()), said[700];
+                int traced = mg_host_kmt_trace_start(path, said, sizeof(said));
+                if (traced) mg_info("egl: the flag kmt-trace: %s, into %s", said, path);
+                else mg_warn("egl: the flag kmt-trace: no trace: %s", said);
+                free(path);
+            }
             if (g_mesa_asked) {
                 g_mesa_loaded = mesa_load(why, sizeof(why));
                 if (!g_mesa_loaded) mg_warn("egl: Mesa's freedreno was asked for, ANGLE instead: %s", why);

@@ -1,0 +1,63 @@
+From b4a00456669c6b5c0a778cf7989d41b84dab17c2 Mon Sep 17 00:00:00 2001
+From: Ilya Vysotsky <il.mohoff2016@yandex.ru>
+Date: Sat, 21 Nov 2026 20:40:54 +0400
+Subject: [PATCH] freedreno/d3dkmt: a texture shared from another device is
+ read through a staging copy
+
+Megler's patch on top of OpenGLES-For-Windows-Phone's 24 and megler-0025, 0026.
+An allocation opened by its share handle (d3dkmt_bo_from_dmabuf: the
+Direct3D 11 texture of a window surface's pbuffer, which the shell
+composes) is one the kernel gives the CPU no view of: D3DKMTLock2 answers
+0xc000000d. glReadPixels of a window surface asked for that view at every
+read back -- a failed kernel call and three error lines each, thousands a
+minute in a test app that reads one pixel per pass -- before falling back
+to the staging copy resource_transfer_map_unsync has for a BO that cannot
+be mapped.
+
+- The imported BO is FD_BO_NOMAP: fd_bo_map asks the kernel for nothing.
+- resource_transfer_map takes the staging path for a FD_BO_NOMAP resource
+  at once, as for a tiled one, instead of waiting for the resource itself
+  first: the GPU's copy is what is waited for.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/freedreno/drm/d3dkmt/d3dkmt_device.c           | 6 ++++++
+ src/gallium/drivers/freedreno/freedreno_resource.c | 5 ++++-
+ 2 files changed, 10 insertions(+), 1 deletion(-)
+
+diff --git a/src/freedreno/drm/d3dkmt/d3dkmt_device.c b/src/freedreno/drm/d3dkmt/d3dkmt_device.c
+index 10e5abe..ef26b84 100644
+--- a/src/freedreno/drm/d3dkmt/d3dkmt_device.c
++++ b/src/freedreno/drm/d3dkmt/d3dkmt_device.c
+@@ -48,6 +48,12 @@ d3dkmt_bo_from_dmabuf(struct fd_device *dev, int fd)
+    bo->handle = handle;
+    bo->funcs = d3dkmt_bo_funcs();
+    fd_bo_init_common(bo, dev);
++   /* An allocation of another device's, opened by its share handle -- a
++    * Direct3D 11 texture made shared, a window surface's -- is the GPU's
++    * alone: the kernel refuses the CPU a view of it (Lock2: 0xc000000d).
++    * Mesa reads and writes it through a staging copy instead.
++    */
++   bo->alloc_flags |= FD_BO_NOMAP;
+ 
+    simple_mtx_lock(&table_lock);
+    _mesa_hash_table_insert(dev->handle_table, &bo->handle, bo);
+diff --git a/src/gallium/drivers/freedreno/freedreno_resource.c b/src/gallium/drivers/freedreno/freedreno_resource.c
+index deebb56..742d8d2 100644
+--- a/src/gallium/drivers/freedreno/freedreno_resource.c
++++ b/src/gallium/drivers/freedreno/freedreno_resource.c
+@@ -873,7 +873,10 @@ resource_transfer_map(struct pipe_context *pctx, struct pipe_resource *prsc,
+     * splitting a batch.. for ex, mid-frame texture uploads to a tiled
+     * texture.
+     */
+-   if (rsc->layout.tile_mode) {
++   /* and for one the CPU cannot see at all (on D3DKMT: a texture of another
++    * device's, shared with us), which is read and written by the GPU's copy:
++    */
++   if (rsc->layout.tile_mode || (rsc->bo->alloc_flags & FD_BO_NOMAP)) {
+       return resource_transfer_map_staging(pctx, prsc, level, usage, box, trans);
+    } else if ((usage & PIPE_MAP_READ) && !fd_bo_is_cached(rsc->bo)) {
+       perf_debug_ctx(ctx, "wc readback: prsc=%p, level=%u, usage=%x, box=%dx%d+%d,%d",
+-- 
+2.53.0.windows.2
+

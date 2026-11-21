@@ -172,6 +172,40 @@ void copyMesa(StorageFolder const& folder, std::map<std::wstring, uint64_t>& cop
     copyChanged(folder, {L"fdkmt.log", L"fd_egl_share.log"}, copied);
 }
 
+/// The newest folder mesa-<n> of the diagnosis's folder (the largest n), copied into LocalState\mesa: Mesa's DLLs for the flag
+/// mesa-local (core/src/ndk/mg_egl.c, mesa_load), a build of its driver tried on the phone without a package of Megler's made
+/// for it. A new folder for each build, as MTP writes no file over another; copied again only when another is the newest
+/// (LocalState\mesa\from.txt names the one there).
+void placeMesa(StorageFolder const& folder) {
+    if (!folder) return;
+    StorageFolder newest{nullptr};
+    long best = -1;
+    for (auto const& f : folder.GetFoldersAsync().get()) {
+        const std::wstring name(f.Name());
+        if (name.rfind(L"mesa-", 0) != 0) continue;
+        const long n = wcstol(name.c_str() + 5, nullptr, 10);
+        if (n > best) {
+            best = n;
+            newest = f;
+        }
+    }
+    if (!newest) return;
+    const std::wstring dir = platform::localStateDirectory() + L"\\mesa", record = dir + L"\\from.txt";
+    const std::string from = narrow(std::wstring(newest.Name()));
+    std::string had;
+    if (files::read(record, had) && had == from) return;
+    files::makeDirectories(dir);
+    auto target = StorageFolder::GetFolderFromPathAsync(dir).get();
+    std::string said;
+    for (auto const& file : newest.GetFilesAsync().get()) {
+        file.CopyAsync(target, file.Name(), NameCollisionOption::ReplaceExisting).get();
+        const std::wstring name(file.Name());
+        said += (said.empty() ? "" : ", ") + narrow(name) + format(" (%llu bytes)", (unsigned long long)files::size(dir + L"\\" + name));
+    }
+    files::write(record, from);
+    shellLog::write("diag: Mesa's DLLs of Pictures\\Megler\\diag's " + from + " are in LocalState\\mesa now: " + said);
+}
+
 /// The folder looked for and the flags put in place. Whatever goes wrong only costs the diagnosis: this runs at every start of
 /// every package of Megler's, and a throw out of a thread would end the app.
 StorageFolder lookAndPlace(const std::string& name) {
@@ -189,6 +223,13 @@ StorageFolder lookAndPlace(const std::string& name) {
         shellLog::write("diag: the flags in Pictures\\Megler\\diag could not be read: " + narrow(e.message()));
     } catch (...) {
         shellLog::write("diag: the flags in Pictures\\Megler\\diag could not be read");
+    }
+    try {
+        placeMesa(folder);
+    } catch (hresult_error const& e) {
+        shellLog::write("diag: Mesa's DLLs in Pictures\\Megler\\diag could not be copied: " + narrow(e.message()));
+    } catch (...) {
+        shellLog::write("diag: Mesa's DLLs in Pictures\\Megler\\diag could not be copied");
     }
     return folder;
 }
