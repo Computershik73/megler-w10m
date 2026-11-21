@@ -133,6 +133,11 @@ public final class ScanResult implements android.os.Parcelable {
     public boolean untrusted;
     public java.lang.CharSequence venueName;
     public android.net.wifi.WifiSsid wifiSsid;
+    /* Android 9's hidden fields of a carrier's Wi-Fi network, which Android's own Settings (AOSP 9) reads of each network it
+       lists (settingslib's AccessPoint): none here is a carrier's. Without them its Wi-Fi list ended on NoSuchFieldError. */
+    public boolean isCarrierAp;
+    public int carrierApEapType;
+    public java.lang.String carrierName;
     private int mWifiStandard = WIFI_STANDARD_UNKNOWN;
     private java.util.List mAffiliatedMloLinks = new java.util.ArrayList();
     private android.net.MacAddress mApMldMacAddress;
