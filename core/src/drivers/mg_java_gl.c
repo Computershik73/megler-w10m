@@ -1832,7 +1832,12 @@ N(EN_resizeSurface)
     s->share = NULL;
     s->mutex = NULL;
     s->share_asked = false;
-    s->pbo_ctx = NULL;                 /* (the old size's pack buffers are made again at the next read back) */
+    if (s->pbo[0] && s->pbo_ctx == (void *)x) {
+        /* (The old size's pack buffers, of this context, which is current: made again at the next read back.) */
+        fn_gen_buffers del = FN(fn_gen_buffers, F_DELETE_BUFFERS, "glDeleteBuffers");
+        if (del) del(2, s->pbo);
+    }
+    s->pbo_ctx = NULL;
     s->pbo[0] = s->pbo[1] = 0;
     c->ret.z = true;
 }
