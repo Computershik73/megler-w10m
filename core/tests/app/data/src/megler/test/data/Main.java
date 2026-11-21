@@ -2471,6 +2471,7 @@ public class Main extends Activity {
         bluetoothListen();
         attachPairs();
         lineHeight();
+        contextClassLoader();
         Log.i("DataTest", "done ok=" + ok + " failed=" + failed);
         doneLogged = true;
         mediaSession();
@@ -12162,6 +12163,31 @@ public class Main extends Activity {
             }
             detail = said.toString();
             return held;
+        });
+    }
+
+    /*
+     * The base context's class loader in Android's field, mClassLoader, which Chromium's BundleUtils sets by reflection on the
+     * context under the wrappers (Chrome 101 ended at its start without it): set, it is the context's class loader and that of
+     * a context made from it; the app's classes come through it; null again, the app's own.
+     */
+    private void contextClassLoader() {
+        step("context-class-loader", () -> {
+            android.content.Context base = getBaseContext();
+            while (base instanceof android.content.ContextWrapper) base = ((android.content.ContextWrapper) base).getBaseContext();
+            ClassLoader app = Main.class.getClassLoader(), split = new dalvik.system.PathClassLoader(getApplicationInfo().sourceDir, app);
+            java.lang.reflect.Field f = base.getClass().getDeclaredField("mClassLoader");
+            f.setAccessible(true);
+            Object before = f.get(base);
+            boolean was = base.getClassLoader() == app && getClassLoader() == app;
+            f.set(base, split);
+            boolean set = base.getClassLoader() == split && getClassLoader() == split;
+            boolean kept = base.createConfigurationContext(new android.content.res.Configuration()).getClassLoader() == split;
+            boolean loads = split.loadClass(Main.class.getName()) == Main.class;
+            f.set(base, before);
+            boolean back = base.getClassLoader() == app;
+            detail = base.getClass().getName() + " before=" + before + " was=" + was + " set=" + set + " kept=" + kept + " loads=" + loads + " back=" + back;
+            return before == null && was && set && kept && loads && back;
         });
     }
 

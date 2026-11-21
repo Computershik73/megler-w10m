@@ -4477,7 +4477,10 @@ static int run_data(void)
                                          "attach-pairs",
                                          /* And lineHeight as Android spaces lines, between them and not after the last: one line as
                                             high as its font whatever the lineHeight (issue #14). */
-                                         "line-height" };
+                                         "line-height",
+                                         /* And the base context's class loader in Android's field, mClassLoader, which Chromium's
+                                            BundleUtils sets by reflection (Chrome 101's start). */
+                                         "context-class-loader" };
     int at = -1, want = 0, run = 0, line, i;
     char text[120];
     if (g_script_count) sscanf(g_script[0], "run:%d", &want);

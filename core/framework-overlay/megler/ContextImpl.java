@@ -4,6 +4,7 @@
 // platform's own (Android's Settings, which has Android 9's framework after Megler's) with its constructor's service
 // interface on the binder the service manager gives (platformInterface): a null there was a NullPointerException at the
 // manager's first call, the binder's answer is a zero.
+// And in the class loader, kept in a field of Android's name (mClassLoader) that an app may set by reflection.
 // Everything else is the original's.
 package megler;
 
@@ -79,7 +80,12 @@ public final class ContextImpl extends Context {
         }
         return mTheme;
     }
-    @Override public ClassLoader getClassLoader() { return AppRunner.classLoader(); }
+    /* The class loader of this context, as Android's ContextImpl keeps it in mClassLoader: null is the app's own. Apps set it
+       by reflection: Chromium's BundleUtils.replaceClassLoader gives a split's context, and then the application's, the
+       loader it made for the split, and Chrome 101 ended at its start with "Error setting ClassLoader." (NoSuchFieldException:
+       mClassLoader) where the field was not there. A context made from this one keeps it, as on Android. */
+    private ClassLoader mClassLoader;
+    @Override public ClassLoader getClassLoader() { return mClassLoader != null ? mClassLoader : AppRunner.classLoader(); }
     @Override public String getPackageName() { return Native.packageName(); }
     @Override public ApplicationInfo getApplicationInfo() { return ApplicationInfo.self(); }
     @Override public String getPackageResourcePath() { return getApplicationInfo().sourceDir; }
@@ -95,11 +101,12 @@ public final class ContextImpl extends Context {
     @Override public boolean isDeviceProtectedStorage() { return mDeviceProtected; }
     @Override public boolean isCredentialProtectedStorage() { return !mDeviceProtected; }
     @Override public Context createDeviceProtectedStorageContext() {
-        return mDeviceProtected ? this : new ContextImpl(mResources, true);
+        return mDeviceProtected ? this : withLoader(new ContextImpl(mResources, true));
     }
     @Override public Context createCredentialProtectedStorageContext() {
-        return mDeviceProtected ? new ContextImpl(mResources, false) : this;
+        return mDeviceProtected ? withLoader(new ContextImpl(mResources, false)) : this;
     }
+    private ContextImpl withLoader(ContextImpl c) { c.mClassLoader = mClassLoader; return c; }
     @Override public File getDir(String name, int mode) { return dir("app_" + name); }
     @Override public File getExternalFilesDir(String type) {
         File f = new File(Native.externalDir(), "Android/data/" + getPackageName() + "/files" + (type == null ? "" : "/" + type));
@@ -137,7 +144,7 @@ public final class ContextImpl extends Context {
         Configuration base = new Configuration(getResources().getConfiguration());
         if (c != null) base.updateFrom(c);
         Resources r = new Resources(getAssets(), getResources().getDisplayMetrics(), base);
-        return new ContextImpl(r, mDeviceProtected);
+        return withLoader(new ContextImpl(r, mDeviceProtected));
     }
     private final java.util.ArrayList<ComponentCallbacks> mCallbacks = new java.util.ArrayList<>();
     @Override public void registerComponentCallbacks(ComponentCallbacks c) { mCallbacks.add(c); }
