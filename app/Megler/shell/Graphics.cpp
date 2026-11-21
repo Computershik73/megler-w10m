@@ -15,6 +15,10 @@ bool isMesaFile(const std::wstring& name) {
     return false;
 }
 
+const wchar_t* const mesaLicenses = L"mesa-licenses";
+
+bool isMesaFolder(const std::wstring& name) { return _wcsicmp(name.c_str(), mesaLicenses) == 0; }
+
 bool hasMesaFiles(const std::wstring& folder, std::string* missing) {
     std::string lacking;
     for (const wchar_t* file : mesaFiles)

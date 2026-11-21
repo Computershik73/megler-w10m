@@ -29,6 +29,11 @@ namespace megler::app::graphics {
 extern const wchar_t* const mesaFiles[3];
 /// Whether a file of the package's root, by name, is one of Mesa's (case-blind).
 bool isMesaFile(const std::wstring& name);
+/// The folder of the package's root with Mesa's licence texts (tools/build-appx.sh, stage_mesa: drivers/mesa-arm32/
+/// LICENSES), which goes wherever its DLLs go: into an app's own package only with them.
+extern const wchar_t* const mesaLicenses;
+/// Whether a folder of the package's root, by name, is Mesa's (case-blind).
+bool isMesaFolder(const std::wstring& name);
 /// Whether the folder (a package's install folder) has all of Mesa's DLLs; `missing` gets those it lacks, ", " between.
 bool hasMesaFiles(const std::wstring& folder, std::string* missing = nullptr);
 

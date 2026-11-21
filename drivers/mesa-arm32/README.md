@@ -100,7 +100,8 @@ f51646a87a3dcead4c769ab8dc9f15d4a51fe111eb3529e25f767a0e5b196a5e  libGLESv2.dll
 c9560a9a1c45cb69c3b1c98f4518553ace8216922b7c1e0dc663464e0577c9ae  libgallium_wgl.dll
 ```
 
-Licences: `LICENSES/`, whose `README.md` says which code in the DLLs is under which. Mesa is MIT for nearly all of it
+Licences: `LICENSES/`, whose `README.md` says which code in the DLLs is under which; the package carries it beside them,
+as `mesa-licenses\` (`tools/build-appx.sh`, `stage_mesa`), and so does an app's own package while it carries Mesa. Mesa is MIT for nearly all of it
 (Mesa's own word: `LICENSES/license.rst`, its `docs/license.rst`); Khronos' headers are Apache-2.0, C11 threads for
 Win32 BSL-1.0, xxHash and SoftFloat BSD, and the texts are those of Mesa's `licenses/` folder or of the files themselves.
 The patches' new files are MIT by their SPDX tags; the D3DKMT core (`src/src/fdkmt`) carries no licence notice.

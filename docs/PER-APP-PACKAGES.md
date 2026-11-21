@@ -416,7 +416,8 @@ Two things are asked for before anything else (the owner's wish, 2026-11-02):
      `<shared>\services`; the packages up to 0.1.0.458 carried them, some
      110 MB of Megler's in each instead of some 12 MB), its `resources.pri`
      and what the packaging makes itself, and Mesa's freedreno (`libEGL_mesa.dll`,
-     `libGLESv2_mesa.dll`, `libgallium_wgl.dll`, some 20 MB) unless the app goes
+     `libGLESv2_mesa.dll`, `libgallium_wgl.dll`, some 20 MB, and the folder of
+     their licences, `mesa-licenses`) unless the app goes
      by it when the package is made (its Graphics, `appPackage::glesFor`); that
      manifest and `resources.pri`; and `MeglerApp.ini`, which says `gles=mesa` or
      `gles=angle` where Megler has Mesa. Which packages have it is written down

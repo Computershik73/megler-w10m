@@ -970,10 +970,17 @@ stage_mesa() {
     done < <(dependents "$STAGE/$staged")
   done
   [ -z "$missing" ] || { MESA_WHY="imports with nothing to satisfy them:$missing"; return 1; }
-  echo "    Mesa (freedreno, D3DKMT) from $mesa: libEGL_mesa.dll, libGLESv2_mesa.dll, libgallium_wgl.dll ($(stat -c %s "$STAGE/libgallium_wgl.dll") bytes), beside ANGLE"
+  # Their licences go with them (MIT, BSD and the others ask that their notices go with every copy): drivers/mesa-arm32/
+  # LICENSES, whatever folder the DLLs came from, as mesa-licenses\ at the package's root -- into an app's own package too
+  # while it carries Mesa (app/Megler/shell/Graphics.h, mesaLicenses).
+  [ -f "$ROOT/drivers/mesa-arm32/LICENSES/README.md" ] || { MESA_WHY="no drivers/mesa-arm32/LICENSES"; return 1; }
+  mkdir -p "$STAGE/mesa-licenses"
+  cp "$ROOT/drivers/mesa-arm32/LICENSES/"* "$STAGE/mesa-licenses/"
+  echo "    Mesa (freedreno, D3DKMT) from $mesa: libEGL_mesa.dll, libGLESv2_mesa.dll, libgallium_wgl.dll ($(stat -c %s "$STAGE/libgallium_wgl.dll") bytes), beside ANGLE; its licences in mesa-licenses\\ ($(ls "$STAGE/mesa-licenses" | tr '\n' ' '))"
 }
 # (Nothing of a stage of before: each build stages them anew, or not at all.)
 rm -f "$STAGE"/libEGL_mesa.dll "$STAGE"/libGLESv2_mesa.dll "$STAGE"/libgallium_wgl.dll "$STAGE"/gles-default.txt
+rm -rf "$STAGE/mesa-licenses"
 if [ "$ARCH" = arm ] && [ "$RT" = 0 ]; then
   case "${MEGLER_GLES:-}" in
     ""|mesa)
@@ -981,6 +988,7 @@ if [ "$ARCH" = arm ] && [ "$RT" = 0 ]; then
       MESA_WHY=""
       if ! stage_mesa; then
         rm -f "$STAGE"/libEGL_mesa.dll "$STAGE"/libGLESv2_mesa.dll "$STAGE"/libgallium_wgl.dll
+        rm -rf "$STAGE/mesa-licenses"
         echo "    WARNING: Mesa is NOT in this package: $MESA_WHY (apps draw with ANGLE, and Settings have no Graphics)" >&2
         if [ "${MEGLER_GLES:-}" = mesa ] && [ "$PACK" = 1 ]; then echo "MEGLER_GLES=mesa: refusing to pack without Mesa" >&2; exit 1; fi
       elif [ "${MEGLER_GLES:-}" = mesa ]; then
