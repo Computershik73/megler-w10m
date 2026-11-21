@@ -25,9 +25,9 @@ D3D11 share handle"), ARM32, MSVC 14.16. The C runtime is linked in: they import
 SHA-256:
 
 ```
-4a8f85312b28d3b289644fa97214d95e0cc2b1ae7a45a4c9530b35978d0ace23  libEGL.dll
-457510c2b7a878764dbd85ece5b18485f31ef756a1942d9ce9471878380f647d  libGLESv2.dll
-6a2248fa9faafe92cbf930a9deaa8741cab23c918ae269143c793a268936d725  libgallium_wgl.dll
+2bb34bf884076c8e235ee4d2be331c07899d7b18bceedfd60ce55376fee6c4be  libEGL.dll
+cf18646ec1714dd2da5e0b1bf87f3dddd31cad567314d5427ef186e9fc75fd53  libGLESv2.dll
+006d353ce743393a8ec1cd6edbd2215921d01e19062643752d8c2b2daf32c0a2  libgallium_wgl.dll
 ```
 
 Mesa's licences are in `MESA-LICENSE.rst` (MIT for the most part; see that file for the others).
