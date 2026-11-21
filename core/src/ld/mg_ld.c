@@ -1092,11 +1092,11 @@ static mg_lib *map_library(const char *name, const lib_source *src)
     }
     /*
      * Protected or modded libraries (a mod menu's libRMS.so) are written with program headers that do not add up: an
-     * entry size larger than the standard one, or more of them than the file holds. What can be read is read, entry by
-     * entry at the stated stride, and the count cut to what fits; only no header at all stops the load.
+     * entry size that is not the standard one, or more of them than the file holds. Android's linker reads e_phnum
+     * entries of the standard size whatever e_phentsize says (bionic's ElfReader::ReadProgramHeaders), and so does this
+     * one; the count is cut to what the file holds, and only no header at all stops the load.
      */
-    size_t phent = eh->e_phentsize, phnum = eh->e_phnum;
-    if (phent < sizeof(ElfW(Phdr))) phent = sizeof(ElfW(Phdr));
+    size_t phent = sizeof(ElfW(Phdr)), phnum = eh->e_phnum;
     if (eh->e_phoff >= size || size - eh->e_phoff < sizeof(ElfW(Phdr)) || !phnum) phnum = 0;
     else if (phnum > (size - eh->e_phoff - sizeof(ElfW(Phdr))) / phent + 1) phnum = (size - eh->e_phoff - sizeof(ElfW(Phdr))) / phent + 1;
     if (!phnum) {
