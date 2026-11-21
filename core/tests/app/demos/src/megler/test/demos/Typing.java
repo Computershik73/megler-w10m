@@ -19,7 +19,8 @@ import android.widget.TextView;
  * every editor action is a line of the log, with line ends written as "|" so that a line of the log stays one.
  */
 public class Typing extends Activity {
-    private EditText name, number, secret, note, code;
+    private EditText name, number, secret, note, code, echo;
+    private String echoed = "";
 
     /*
      * A field that keeps its cursor out of a word, as WhatsApp's MentionableEntry keeps it out of a mention: its
@@ -153,6 +154,35 @@ public class Typing extends Activity {
         code.setGravity(android.view.Gravity.CENTER);
         code.setCursorVisible(false);
         code.setTextIsSelectable(false);
+        // A field whose app sets its text back after each change, a turn of the message loop later, the cursor at its end, as
+        // the Google app's Gemini field has its input controller do (RobinTextInputEditText: setText of the very text, then
+        // setSelection). The keyboard is to be asked for it once more, not afresh, after each character (megler.InputMethods).
+        echo = field(root, "echo", InputType.TYPE_CLASS_TEXT, 0, 60);
+        final android.os.Handler later = new android.os.Handler();
+        echo.addTextChangedListener(new TextWatcher() {
+            @Override
+            public void beforeTextChanged(CharSequence s, int start, int count, int after) {
+            }
+
+            @Override
+            public void onTextChanged(CharSequence s, int start, int before, int count) {
+            }
+
+            @Override
+            public void afterTextChanged(Editable s) {
+                final String now = s.toString();
+                if (now.equals(echoed)) return;
+                echoed = now;
+                later.post(new Runnable() {
+                    @Override
+                    public void run() {
+                        echo.setText(now);
+                        echo.setSelection(now.length());
+                        Log.i("DemoTest", "typing: echo set back \"" + now + "\" cursor=" + echo.getSelectionStart());
+                    }
+                });
+            }
+        });
         setContentView(root);
         // (Android 11's View.setWindowInsetsAnimationCallback, by reflection: the app is built against Android 10.)
         try {
@@ -167,7 +197,7 @@ public class Typing extends Activity {
     @Override
     public void onWindowFocusChanged(boolean focus) {
         super.onWindowFocusChanged(focus);
-        if (focus) Log.i("DemoTest", "typing: layout name=" + place(name) + " number=" + place(number) + " secret=" + place(secret) + " note=" + place(note) + " code=" + place(code));
+        if (focus) Log.i("DemoTest", "typing: layout name=" + place(name) + " number=" + place(number) + " secret=" + place(secret) + " note=" + place(note) + " code=" + place(code) + " echo=" + place(echo));
     }
 
     @Override

@@ -2691,10 +2691,11 @@ static bool again_times(i32 count)
  */
 static void type_into_fields(const int row[4], int *at)
 {
-    int name[4], number[4], secret[4], note[4], code[4], layout, typed, fewer;
+    int name[4], number[4], secret[4], note[4], code[4], echo[4], layout, typed, fewer;
     i32 shown, hidden, again;
     memset(name, 0, sizeof(name));
     memset(code, 0, sizeof(code));
+    memset(echo, 0, sizeof(echo));
     say("the keyboard: text typed into the demos app's fields");
     /* Typed while no field has the focus: it goes nowhere, and the framework's log says so (megler.InputMethods in the overlay). */
     megler_text_commit("x");
@@ -2709,7 +2710,7 @@ static void type_into_fields(const int row[4], int *at)
     expect_line("I/DemoTest: typing: created", at, 30);
     layout = wait_line("I/DemoTest: typing: layout name=", *at, 30);
     CHECK(layout >= 0 && rect_in(line_at(layout), "name", name) && rect_in(line_at(layout), "number", number) && rect_in(line_at(layout), "secret", secret)
-          && rect_in(line_at(layout), "note", note) && rect_in(line_at(layout), "code", code));
+          && rect_in(line_at(layout), "note", note) && rect_in(line_at(layout), "code", code) && rect_in(line_at(layout), "echo", echo));
     settle();
     if (layout < 0) return;
 
@@ -2808,6 +2809,30 @@ static void type_into_fields(const int row[4], int *at)
     CHECK(shown_times(shown + 1) && K.kind == MEGLER_KEYBOARD_NUMBER && K.flags == 0);
     megler_text_commit("7");
     expect_line("I/DemoTest: typing: code=\"7\" cursor=1", at, 30);
+    /*
+     * A field whose app sets its text back after each change, a turn later, with the cursor at its end -- the Google app's
+     * Gemini field does, and setText restarts the input each time. The text comes in order, and after each character the
+     * keyboard is asked for the field once more, not afresh: the field is as the keyboard left it, and a shell that began its
+     * text afresh would tell the phone's keyboard after every letter that what it typed was gone (Gemini's text came out
+     * reversed on an HP Elite x3, 0.1.0.739).
+     */
+    shown = K.shown;
+    tap(echo[0] + 60, echo[1] + echo[3] / 2);
+    CHECK(shown_times(shown + 1) && K.kind == MEGLER_KEYBOARD_TEXT && K.flags == 0);
+    settle();
+    shown = K.shown;
+    again = K.again;
+    megler_text_commit("a");
+    expect_line("I/DemoTest: typing: echo set back \"a\" cursor=1", at, 30);
+    megler_text_commit("b");
+    expect_line("I/DemoTest: typing: echo set back \"ab\" cursor=2", at, 30);
+    megler_text_commit("c");
+    expect_line("I/DemoTest: typing: echo set back \"abc\" cursor=3", at, 30);
+    CHECK(again_times(again + 3));
+    mg_sleep_ns(300000000ull);
+    settle();
+    say("  a field set back after each character: asked for %d times afresh and %d times once more meanwhile", (int)(K.shown - shown), (int)(K.again - again));
+    CHECK(K.shown == shown && K.again_wrong == 0);
 
     /* The keyboard says how much of the surface it covers, then that the user put it away: the app goes on, and the next touch of a field asks again. */
     hidden = K.hidden;

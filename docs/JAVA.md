@@ -4053,6 +4053,40 @@ that asked, and the log says so once ("player: the keyboard went as the app
 moved from one field to another, and comes back for the field that asked for
 it"). Not tried on a phone yet.
 
+**A field the app sets back, and the cursor it is told of (Gemini, 0.1.0.739).**
+On an HP Elite x3 the letters typed into the Google app's Gemini field came out
+in reverse, each before the ones typed. That field is a view, not Compose: the
+Google app's `RobinTextInputEditText` (17.6.63), a Material `TextInputEditText`
+whose `onSelectionChanged` keeps the cursor for its input controller, and whose
+controller applies its state to the field after every character: `setText` of
+the very text and `setSelection` (its `aucl.a`), and `setText` restarts the
+input. Two things here were not as on Android:
+
+- An edit told the span watchers nothing of the spans it moved
+  (`SpannableStringBuilder.replace`), so a TextView's `onSelectionChanged` did
+  not follow the cursor as text was typed: an app that keeps the cursor as
+  `onSelectionChanged` says (Gemini's field does) kept it where the field had
+  been touched. Now they are told, after the text watchers, as Android's
+  `sendToSpanWatchers` tells them. Data step `selection-follows-typing`: three
+  characters through an EditText's input connection are told as 1,1 2,2 3,3,
+  and a field set back after each with the cursor it was told gets "abc"
+  (it got "cba").
+- Each restart asked the shell for the keyboard afresh, and the shell began
+  its text anew (`startKeyboardText`): after every letter the phone's keyboard
+  was told that what it had typed was gone. A restart of the field the keyboard
+  is up for is now asked a turn of the message loop later (once the app has
+  put its cursor back), and once more as it is (`MEGLER_KEYBOARD_F_AGAIN`) when
+  the field's text and cursor are as the keyboard left them, the text compared
+  whole (`megler.InputMethods`). The demos test types "a", "b", "c" into a
+  field that is set back so a turn later: the text comes in order and the
+  keyboard is asked for it once more three times and never afresh.
+
+Which of the two reversed Gemini's text on the phone is not known: Gemini needs
+a signed-in account, which no test here has, and no Windows 10 Mobile keyboard
+can be tried at this PC. Neither was seen on a phone yet. The shell's flag
+`trace-keyboard` says, in numbers only, every change the keyboard makes and
+every asking of the app's.
+
 **The keyboard's coming and going is an inset animation** of
 `WindowInsets.Type.ime()`, run through the views' callbacks
 (`View.setWindowInsetsAnimationCallback`) as Android 11's `InsetsController`
