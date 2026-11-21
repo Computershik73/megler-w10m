@@ -76,7 +76,10 @@ cf18646ec1714dd2da5e0b1bf87f3dddd31cad567314d5427ef186e9fc75fd53  libGLESv2.dll
 006d353ce743393a8ec1cd6edbd2215921d01e19062643752d8c2b2daf32c0a2  libgallium_wgl.dll
 ```
 
-Mesa's licences are in `MESA-LICENSE.rst` (MIT for the most part; see that file for the others).
+Licences: `LICENSES/`, whose `README.md` says which code in the DLLs is under which. Mesa is MIT for nearly all of it
+(Mesa's own word: `LICENSES/license.rst`, its `docs/license.rst`); Khronos' headers are Apache-2.0, C11 threads for
+Win32 BSL-1.0, xxHash and SoftFloat BSD, and the texts are those of Mesa's `licenses/` folder or of the files themselves.
+The patches' new files are MIT by their SPDX tags; the D3DKMT core (`src/src/fdkmt`) carries no licence notice.
 
 How Megler uses it: `core/src/ndk/mg_egl.c` (`mesa_load`: Mesa taken where the app asks for it and its display
 initializes, else ANGLE; the display, and Mesa's extension functions through its `eglGetProcAddress`),
