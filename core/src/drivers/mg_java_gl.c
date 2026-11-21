@@ -31,7 +31,7 @@ enum {
     GL_BUFFER_MAP_LENGTH = 0x9120, GL_NAME_LENGTH = 0x92F9,
     GL_FRAMEBUFFER = 0x8D40, GL_FRAMEBUFFER_BINDING = 0x8CA6, GL_READ_FRAMEBUFFER = 0x8CA8, GL_READ_FRAMEBUFFER_BINDING = 0x8CAA,
     GL_PIXEL_PACK_BUFFER = 0x88EB, GL_PIXEL_PACK_BUFFER_BINDING = 0x88ED, GL_PACK_ROW_LENGTH = 0x0D02, GL_PACK_SKIP_ROWS = 0x0D03,
-    GL_PACK_SKIP_PIXELS = 0x0D04, GL_PACK_ALIGNMENT = 0x0D05,
+    GL_PACK_SKIP_PIXELS = 0x0D04, GL_PACK_ALIGNMENT = 0x0D05, GL_STREAM_READ = 0x88E1, GL_MAP_READ_BIT = 0x0001,
 };
 
 enum {
@@ -144,6 +144,7 @@ enum {
     F_ACTIVE_ATTRIB, F_ACTIVE_UNIFORM, F_TF_VARYING, F_BLOCKIV, F_BLOCK_NAME, F_PIPELINEIV, F_PIPELINE_LOG, F_RESOURCEIV, F_RESOURCE_NAME,
     F_UNIFORM_INDICES, F_TF_VARYINGS, F_SHADER_PROGRAMV, F_MAP_RANGE, F_BUFFER_I64V, F_BUFFER_POINTERV, F_DEBUG_LOG,
     F_GET_INTEGERV, F_BIND_FRAMEBUFFER, F_BIND_BUFFER, F_PIXEL_STOREI, F_READ_PIXELS, F_FINISH, F_FLUSH,
+    F_GEN_BUFFERS, F_DELETE_BUFFERS, F_BUFFER_DATA, F_UNMAP_BUFFER,
     F_COUNT
 };
 static void *g_fn[F_COUNT];
@@ -170,6 +171,9 @@ typedef void (*fn_get_integerv)(u32, i32 *);
 typedef void (*fn_bind)(u32, u32);
 typedef void (*fn_pixel_storei)(u32, i32);
 typedef void (*fn_read_pixels)(i32, i32, i32, i32, u32, u32, void *);
+typedef void (*fn_gen_buffers)(i32, u32 *);
+typedef void (*fn_buffer_data)(u32, intptr_t, const void *, u32);
+typedef u8 (*fn_unmap_buffer)(u32);
 
 N(gl_nothing) { (void)c; }
 
@@ -425,7 +429,12 @@ static struct {
     /* The context current on a thread and its version: for a swap of a window surface of native code's, in whatever context it made. */
     EGLContext (*current_context)(void);
     u32 (*query_context)(EGLDisplay, EGLContext, EGLint, EGLint *);
-} E = { MG_LOCK_INIT, 0, NULL, NULL, false, false, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, false, NULL, NULL };
+    /* EGL_KHR_fence_sync: a window surface's frames handed to the shell once their fence has passed, nothing waited for at the swap. */
+    void *(*create_sync)(EGLDisplay, EGLint, const EGLint *);
+    EGLint (*client_wait)(EGLDisplay, void *, EGLint, u64);
+    u32 (*destroy_sync)(EGLDisplay, void *);
+    bool fences;
+} E = { MG_LOCK_INIT, 0, NULL, NULL, false, false, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, false, NULL, NULL, NULL, NULL, NULL, false };
 
 enum { EGL_D3D_TEXTURE_2D_SHARE_HANDLE_ANGLE = 0x3200 };
 
@@ -475,6 +484,12 @@ static bool egl_ready(void)
             E.share = E.query_pointer && ext && strstr(ext, "EGL_ANGLE_surface_d3d_texture_2d_share_handle");
             E.current_context = (EGLContext(*)(void))mg_egl_host("eglGetCurrentContext");
             E.query_context = (u32(*)(EGLDisplay, EGLContext, EGLint, EGLint *))mg_egl_host("eglQueryContext");
+            if (ext && strstr(ext, "EGL_KHR_fence_sync")) {
+                E.create_sync = (void *(*)(EGLDisplay, EGLint, const EGLint *))mg_egl_host("eglCreateSyncKHR");
+                E.client_wait = (EGLint(*)(EGLDisplay, void *, EGLint, u64))mg_egl_host("eglClientWaitSyncKHR");
+                E.destroy_sync = (u32(*)(EGLDisplay, void *))mg_egl_host("eglDestroySyncKHR");
+                E.fences = E.create_sync && E.client_wait && E.destroy_sync;
+            }
             mg_info("java: EGL for the app's Java: EGL %d.%d, OpenGL ES %s, every surface 8 bits a channel%s", (int)major, (int)minor, E.es3 ? "3 and 2" : "2",
                     E.surfaceless ? ", contexts without a surface" : "");
         } else {
@@ -543,6 +558,22 @@ typedef struct gl_surf {
     bool share_asked;
     u32 swaps;
     u64 traced_at;                     /* trace-surfaces: when its frame was last looked at */
+    u32 pbo[2];                        /* read_back's two pixel pack buffers, of pbo_ctx's (OpenGL ES 3): one frame read into one */
+    bool pbo_full[2];                  /*   while the frame before is taken out of the other */
+    int pbo_next;
+    size_t pbo_size;
+    void *pbo_ctx;
+    /*
+     * Where the shell composes and EGL shares textures without a keyed mutex (Mesa's): RING pbuffers the app draws into in
+     * turn, so that a swap waits for nothing. The one just drawn gets a fence; the one before it, whose fence has passed by
+     * then, goes to the shell; the app draws on into the next, which the shell let go of two frames ago. ring_n 0: none
+     * (handle alone, and a swap that finishes the frame before handing it over).
+     */
+    int ring_n, ring_cur, ring_prev;
+    bool ring_tried;
+    EGLSurface ring[3];
+    void *ring_share[3];
+    void *ring_fence[3];
 } gl_surf;
 
 static void layer_attach(struct layer *l);
@@ -578,10 +609,13 @@ static gl_surf *surf_new_with(int width, int height, struct layer *l, void *cons
 
 static gl_surf *surf_new(int width, int height, struct layer *l) { return surf_new_with(width, height, l, &E.config, 1); }
 
+static void ring_drop(gl_surf *s);
+
 static void surf_free(gl_surf *s)
 {
     if (!s) return;
     if (s->layer) layer_detach(s->layer);
+    ring_drop(s);
     E.destroy_surface(E.display, s->handle);
     free(s->pixels);
     free(s);
@@ -722,7 +756,13 @@ static void stop_shell(void)
     if (C.shell <= 0) return;
     C.shell = -1;
     compose_here();
-    C.have_views = C.shown_whole = false;
+    /*
+     * The views' picture is here only once they draw again, and an app that only draws with OpenGL does not redraw them
+     * (GTA: Vice City on Mesa, whose second surface had no shared texture: every frame after was read back and none
+     * shown, a black screen). Until they do, they are taken as nothing over the frames: compose_here's picture is empty.
+     */
+    C.have_views = true;
+    C.shown_whole = false;
     for (i = 0; i < MAX_LAYERS; i++)
         if (C.layers[i].view) g_shell->gl_place(g_shell->user, i, 0, 0, 0, 0, 0);
     mg_warn("java: the shell did not take an OpenGL ES frame: from now on the window is composed here, the frames read back");
@@ -1323,6 +1363,55 @@ static void trace_frame(gl_surf *s, gl_ctx *x, layer *l)
 }
 
 /*
+ * Read back without waiting for the GPU (OpenGL ES 3's pixel pack buffers, where EGL shares no textures, as Mesa's): this
+ * frame is read into one of the surface's two buffers, which the GPU fills when it has drawn it, and s->pixels is given
+ * the frame before, out of the other, which is long done. So a swap no longer stalls on glReadPixels (9.7 ms of a frame
+ * of iFighter2 on an HP Elite x3), and what is shown is a frame behind. A surface's first frame, or one after its size
+ * changed, is taken out of the buffer it was just read into. False, with nothing done: no such buffers here (OpenGL ES
+ * 2, or a function missing), and glReadPixels reads into s->pixels as before. Called with the pack buffer unbound.
+ */
+static bool read_back_async(gl_surf *s, gl_ctx *x, fn_read_pixels read, fn_bind bind_buffer, size_t need)
+{
+    fn_gen_buffers gen = FN(fn_gen_buffers, F_GEN_BUFFERS, "glGenBuffers");
+    fn_gen_buffers del = FN(fn_gen_buffers, F_DELETE_BUFFERS, "glDeleteBuffers");
+    fn_buffer_data data = FN(fn_buffer_data, F_BUFFER_DATA, "glBufferData");
+    fn_map_range map = FN(fn_map_range, F_MAP_RANGE, "glMapBufferRange");
+    fn_unmap_buffer unmap = FN(fn_unmap_buffer, F_UNMAP_BUFFER, "glUnmapBuffer");
+    int now, from;
+    const void *p;
+    if (x->version < 3 || E.share || !bind_buffer || !gen || !del || !data || !map || !unmap) return false;
+    if (s->pbo_ctx != (void *)x || s->pbo_size != need || !s->pbo[0]) {
+        /* (Buffers of another context, which the surface was drawn with before, are that context's: left to it.) */
+        if (s->pbo[0] && s->pbo_ctx == (void *)x) del(2, s->pbo);
+        s->pbo[0] = s->pbo[1] = 0;
+        gen(2, s->pbo);
+        if (!s->pbo[0] || !s->pbo[1]) return false;
+        for (now = 0; now < 2; now++) {
+            bind_buffer(GL_PIXEL_PACK_BUFFER, s->pbo[now]);
+            data(GL_PIXEL_PACK_BUFFER, (intptr_t)need, NULL, GL_STREAM_READ);
+        }
+        s->pbo_full[0] = s->pbo_full[1] = false;
+        s->pbo_next = 0;
+        s->pbo_size = need;
+        s->pbo_ctx = (void *)x;
+    }
+    now = s->pbo_next;
+    s->pbo_next ^= 1;
+    bind_buffer(GL_PIXEL_PACK_BUFFER, s->pbo[now]);
+    read(0, 0, s->width, s->height, x->bgra ? GL_BGRA_EXT : GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+    s->pbo_full[now] = true;
+    from = s->pbo_full[now ^ 1] ? now ^ 1 : now;
+    bind_buffer(GL_PIXEL_PACK_BUFFER, s->pbo[from]);
+    p = map(GL_PIXEL_PACK_BUFFER, 0, (intptr_t)need, GL_MAP_READ_BIT);
+    if (p) {
+        memcpy(s->pixels, p, need);
+        unmap(GL_PIXEL_PACK_BUFFER);
+    }
+    bind_buffer(GL_PIXEL_PACK_BUFFER, 0);
+    return p != NULL;
+}
+
+/*
  * The frame of a window surface, read back on the thread that drew it with its context current: rows bottom first, as
  * B, G, R, A where this OpenGL ES offers that (GL_EXT_read_format_bgra), else R, G, B, A. From the surface whatever
  * framebuffer the app has bound, into memory whatever pack buffer and pack state it has; all of that as it was after.
@@ -1363,10 +1452,11 @@ static bool read_back(gl_surf *s, gl_ctx *x)
     }
     get(GL_PACK_ALIGNMENT, &pack);
     if (pack != 4) store(GL_PACK_ALIGNMENT, 4);
-    read(0, 0, s->width, s->height, x->bgra ? GL_BGRA_EXT : GL_RGBA, GL_UNSIGNED_BYTE, s->pixels);
+    if (!read_back_async(s, x, read, bind_buffer, need))
+        read(0, 0, s->width, s->height, x->bgra ? GL_BGRA_EXT : GL_RGBA, GL_UNSIGNED_BYTE, s->pixels);
     if (pack != 4) store(GL_PACK_ALIGNMENT, pack);
     if (x->version >= 3) {
-        if (pack_buffer && bind_buffer) bind_buffer(GL_PIXEL_PACK_BUFFER, (u32)pack_buffer);
+        if (bind_buffer) bind_buffer(GL_PIXEL_PACK_BUFFER, (u32)pack_buffer);
         if (row_length) store(GL_PACK_ROW_LENGTH, row_length);
         if (skip_rows) store(GL_PACK_SKIP_ROWS, skip_rows);
         if (skip_pixels) store(GL_PACK_SKIP_PIXELS, skip_pixels);
@@ -1417,6 +1507,102 @@ static void pace(gl_surf *s)
  * UI thread never do), and the shell waits for its copy. False: the shell cannot take frames, and the window is composed
  * here from now on.
  */
+/* The ring's other pbuffers and its fences gone, the current one kept as the surface's handle. */
+static void ring_drop(gl_surf *s)
+{
+    int i;
+    if (!s || !s->ring_n) return;
+    for (i = 0; i < s->ring_n; i++) {
+        if (s->ring_fence[i]) E.destroy_sync(E.display, s->ring_fence[i]);
+        if (s->ring[i] && s->ring[i] != s->handle) E.destroy_surface(E.display, s->ring[i]);
+        s->ring[i] = NULL;
+        s->ring_share[i] = s->ring_fence[i] = NULL;
+    }
+    s->ring_n = 0;
+    s->ring_tried = false;
+}
+
+/* The ring made, once, for a surface whose first texture is shared without a mutex: false where it cannot be (it is not tried again). */
+static bool ring_make(gl_surf *s)
+{
+    EGLint attribs[] = { EGL_WIDTH, 1, EGL_HEIGHT, 1, EGL_NONE };
+    int i;
+    if (s->ring_tried) return s->ring_n > 0;
+    s->ring_tried = true;
+    if (!E.fences || !s->share || s->mutex) {
+        mg_info("java: a %dx%d window surface's frames are finished at each swap (%s)", s->width, s->height,
+                !E.fences ? "no EGL_KHR_fence_sync" : !s->share ? "no shared texture" : "a keyed mutex");
+        return false;
+    }
+    attribs[1] = s->width;
+    attribs[3] = s->height;
+    s->ring[0] = s->handle;
+    s->ring_share[0] = s->share;
+    for (i = 1; i < (int)MG_COUNT(s->ring); i++) {
+        void *handle = NULL;
+        s->ring[i] = E.create_pbuffer(E.display, s->config, attribs);
+        if (!s->ring[i] || !E.query_pointer(E.display, s->ring[i], EGL_D3D_TEXTURE_2D_SHARE_HANDLE_ANGLE, &handle) || !handle) {
+            if (s->ring[i]) E.destroy_surface(E.display, s->ring[i]);
+            s->ring[i] = NULL;
+            s->ring_n = i;
+            ring_drop(s);
+            s->ring_tried = true;
+            mg_warn("java: no second shared texture for a %dx%d window surface (EGL error 0x%x): its swaps finish each frame before the shell has it",
+                    (int)attribs[1], (int)attribs[3], (unsigned)E.get_error());
+            return false;
+        }
+        s->ring_share[i] = handle;
+    }
+    s->ring_n = (int)MG_COUNT(s->ring);
+    s->ring_cur = 0;
+    s->ring_prev = -1;
+    mg_info("java: a %dx%d window surface's frames go to the shell in turn from %d shared textures, each once its fence has passed: no swap waits for the GPU",
+            s->width, s->height, s->ring_n);
+    return true;
+}
+
+/*
+ * A swap of a ring's surface: the frame just drawn fenced; the one before handed to the shell once its fence has passed (it
+ * has, as a rule: a frame's time ago); the app's context made current on the next pbuffer. One frame later on the screen
+ * than a swap that finishes, and none of the waiting.
+ */
+static bool ring_frame(gl_surf *s, gl_ctx *x, layer *l, bool *shown, u64 *finished)
+{
+    typedef void (*fn_flush)(void);
+    fn_flush flush = FN(fn_flush, F_FLUSH, "glFlush");
+    int cur = s->ring_cur, prev = s->ring_prev, next = (cur + 1) % s->ring_n;
+    bool active, taken = false;
+    void *paused;
+    if (flush) flush();
+    s->ring_fence[cur] = E.create_sync(E.display, 0x30F9 /* EGL_SYNC_FENCE_KHR */, NULL);
+    *finished = mg_time_monotonic_ns();
+    if (prev >= 0) {
+        if (s->ring_fence[prev]) {
+            /* (A second at the most; EGL_SYNC_FLUSH_COMMANDS_BIT_KHR.) */
+            E.client_wait(E.display, s->ring_fence[prev], 1, 1000000000ull);
+            E.destroy_sync(E.display, s->ring_fence[prev]);
+            s->ring_fence[prev] = NULL;
+        }
+        mg_lock_acquire(&g_window_lock);
+        active = l->active;
+        mg_lock_release(&g_window_lock);
+        if (active) {
+            paused = mg_egl_turn_pause();
+            taken = g_shell->gl_frame(g_shell->user, layer_index(l), s->ring_share[prev], s->width, s->height);
+            mg_egl_turn_resume(paused);
+        }
+    }
+    *shown = taken;
+    s->ring_prev = cur;
+    s->ring_cur = next;
+    s->handle = s->ring[next];
+    s->share = s->ring_share[next];
+    if (!E.make_current(E.display, s->handle, s->handle, x->handle))
+        mg_note_once("java: the next of a window surface's pbuffers could not be made current (EGL error 0x%x)", (unsigned)E.get_error());
+    /* (The first swap shows nothing yet: still a success, the frame is on its way.) */
+    return taken || prev < 0;
+}
+
 static bool shell_frame(gl_surf *s, layer *l, bool *shown, u64 *finished)
 {
     typedef void (*fn_finish)(void);
@@ -1474,7 +1660,9 @@ static bool swap(gl_surf *s, gl_ctx *x)
     }
     if (C.shell > 0) {
         u64 finished;
-        if (shell_frame(s, l, &shown, &finished)) {
+        /* (The first swap asks for the shared texture, the way the ring is made: from the second on, the ring where there is one.) */
+        bool done = s->ring_n || (s->share_asked && ring_make(s)) ? ring_frame(s, x, l, &shown, &finished) : shell_frame(s, l, &shown, &finished);
+        if (done) {
             t1 = mg_time_monotonic_ns();
             mg_lock_acquire(&g_window_lock);
             C.stats.swaps++;
@@ -1600,6 +1788,46 @@ N(EN_swap)
         mg_lock_release(&g_window_lock);
     }
     c->ret.z = swap(s, ctx_arg(c, 1));
+}
+
+/*
+ * resizeSurface(long surface, long context, int width, int height): a window surface made again at its view's new size, as
+ * Android's buffers follow a SurfaceView's; current with the context again, on the thread that draws. Its frames' shared
+ * texture, read-back buffers and pixels are of the old one: they go, and its next swap asks again. False: it stays as it was.
+ */
+N(EN_resizeSurface)
+{
+    gl_surf *s = surf_arg(c, 0);
+    gl_ctx *x = ctx_arg(c, 1);
+    EGLint attribs[] = { EGL_WIDTH, 1, EGL_HEIGHT, 1, EGL_NONE };
+    EGLSurface fresh;
+    c->ret.z = false;
+    if (!s || !x || !egl_ready() || c->args[2].i <= 0 || c->args[3].i <= 0) return;
+    attribs[1] = c->args[2].i;
+    attribs[3] = c->args[3].i;
+    fresh = E.create_pbuffer(E.display, s->config, attribs);
+    if (!fresh) {
+        mg_warn("java: a window surface could not be made %dx%d (EGL error 0x%x): it stays %dx%d", (int)attribs[1], (int)attribs[3],
+                (unsigned)E.get_error(), s->width, s->height);
+        return;
+    }
+    if (!E.make_current(E.display, fresh, fresh, x->handle)) {
+        E.destroy_surface(E.display, fresh);
+        return;
+    }
+    mg_info("java: a window surface is %dx%d from now on, as its view (it was %dx%d)", (int)attribs[1], (int)attribs[3], s->width, s->height);
+    if (s->mutex) mg_egl_keyed_mutex(s->mutex, false);
+    ring_drop(s);
+    E.destroy_surface(E.display, s->handle);
+    s->handle = fresh;
+    s->width = attribs[1];
+    s->height = attribs[3];
+    s->share = NULL;
+    s->mutex = NULL;
+    s->share_asked = false;
+    s->pbo_ctx = NULL;                 /* (the old size's pack buffers are made again at the next read back) */
+    s->pbo[0] = s->pbo[1] = 0;
+    c->ret.z = true;
 }
 
 N(EN_isRenderThread) { c->ret.z = t_render; }
@@ -2145,6 +2373,7 @@ static const mg_jhle k_natives[] = {
     { "megler/EGLNative", "destroySurface", "(J)V", EN_destroySurface },
     { "megler/EGLNative", "makeCurrent", "(JJ)Z", EN_makeCurrent },
     { "megler/EGLNative", "swap", "(JJIIII)Z", EN_swap },
+    { "megler/EGLNative", "resizeSurface", "(JJII)Z", EN_resizeSurface },
     { "megler/EGLNative", "isRenderThread", "()Z", EN_isRenderThread },
     { "megler/EGLNative", "hide", "()V", EN_hide },
     { "megler/EGLNative", "place", "(Ljava/lang/Object;IIIII)V", EN_place },

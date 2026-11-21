@@ -5,9 +5,9 @@
  * That is the part of OpenSL ES games use: an engine, an output mix, and audio
  * players fed from the app's own buffers through a buffer queue, each with a
  * callback that asks for the next buffer. FMOD, OpenAL Soft, SDL and the
- * engines' own mixers all sit on exactly this. Players that take a file or a
- * URL -- which would need this layer to decode MP3 or Ogg itself -- are
- * refused, and the app carries on without that sound.
+ * engines' own mixers all sit on exactly this. Players of a file (an Android
+ * file descriptor or a file:// URI: cocos2d-x's music) are decoded here and
+ * fed to a voice the same way; a URL's are refused.
  *
  * And the part a call uses: an audio recorder that fills the app's buffers
  * with what the microphone hears and hands each back through its queue's
@@ -81,7 +81,29 @@ typedef struct sl_object {
     i32 volume_mb;
     bool mute;
     struct sl_recorder *rec;           /* a recorder's own (OBJ_RECORDER) */
+    /*
+     * A player of a file (an Android file descriptor or a URI, of MP3, Ogg, WAV...): decoded here (mg_audio_dec_*) into
+     * FILE_BUFS buffers of PCM that go round the voice's queue, each filled again as it is played out -- by a thread of the
+     * player's own, ahead of the mixer: an MP3 decoded on the mixer's thread (the shell's decoder) made it late, and Kingdom
+     * Rush Vengeance's music crackled. Under `file_lock`: the decoder, which that thread reads and Destroy closes.
+     */
+    sl_itf seek, prefetch;
+    void *dec;
+    mg_lock file_lock;
+    mg_cond file_cond;                 /* a buffer has been played out, the state changed, or the player has gone */
+    bool file_dead;
+    i16 *file_buf[8];
+    int file_channels, file_next;
+    u32 file_ms;
+    bool file_loop, file_ended, file_primed;
+    mg_addr play_cb, prefetch_cb;
+    void *play_ctx, *prefetch_ctx;
+    u32 play_mask;
+    bool prefetch_told;
 } sl_object;
+
+#define FILE_BUFS 8
+#define FILE_FRAMES 4096
 
 /* Defined after the tables it fills in. */
 static sl_object *new_object(int kind);
@@ -133,6 +155,8 @@ static u32 obj_GetInterface(sl_itf *self, const sl_iid *iid, void **out)
         else if (iid == g_iid_ptrs[IID_BUFFERQUEUE] || iid == g_iid_ptrs[IID_ANDROIDSIMPLEBUFFERQUEUE]) itf = &o->queue;
         else if (iid == g_iid_ptrs[IID_VOLUME]) itf = &o->volume;
         else if (iid == g_iid_ptrs[IID_ANDROIDCONFIGURATION]) itf = &o->config;
+        else if (o->dec && iid == g_iid_ptrs[IID_SEEK]) itf = &o->seek;
+        else if (o->dec && iid == g_iid_ptrs[IID_PREFETCHSTATUS]) itf = &o->prefetch;
     } else if (o->kind == OBJ_RECORDER) {
         /* Before Realize as after it: WebRTC sets the recording preset between CreateAudioRecorder and Realize. */
         if (iid == g_iid_ptrs[IID_RECORD]) itf = &o->record;
@@ -159,6 +183,14 @@ static void obj_Destroy(sl_itf *self)
 {
     sl_object *o = self->obj;
     if (o->kind == OBJ_RECORDER) rec_destroy(o);
+    if (o->dec) {
+        mg_lock_acquire(&o->file_lock);
+        o->file_dead = true;
+        mg_audio_dec_close(o->dec);
+        o->dec = NULL;
+        mg_cond_broadcast(&o->file_cond);
+        mg_lock_release(&o->file_lock);
+    }
     if (o->voice) mg_voice_destroy(o->voice);
     /* The object itself stays: the mixer may be inside this player's callback, which holds its queue interface. */
     o->voice = NULL;
@@ -184,11 +216,107 @@ typedef struct g_data_source {
     const void *locator, *format;
 } g_data_source;
 
+/* With file_lock held: the next of a file player's buffers decoded and queued; false at the end (with no loop). */
+static bool file_fill(sl_object *o)
+{
+    i16 *b = o->file_buf[o->file_next];
+    int got = 0, n;
+    if (!o->dec || !o->voice || o->file_ended) return false;
+    while (got < FILE_FRAMES) {
+        n = mg_audio_dec_read(o->dec, b + (size_t)got * (size_t)o->file_channels, FILE_FRAMES - got);
+        if (n > 0) {
+            got += n;
+            continue;
+        }
+        if (!o->file_loop) break;
+        mg_audio_dec_seek(o->dec, 0);
+        n = mg_audio_dec_read(o->dec, b + (size_t)got * (size_t)o->file_channels, FILE_FRAMES - got);
+        if (n <= 0) break;
+        got += n;
+    }
+    if (got <= 0) {
+        o->file_ended = true;
+        return false;
+    }
+    if (!mg_voice_enqueue(o->voice, b, (u32)got * (u32)o->file_channels * 2u)) return false;
+    o->file_next = (o->file_next + 1) % FILE_BUFS;
+    return true;
+}
+
+/* A file player started (again): its buffers filled, from where its decoder is. */
+static void file_prime(sl_object *o)
+{
+    int i;
+    mg_lock_acquire(&o->file_lock);
+    if (!o->file_primed && o->voice && mg_voice_queued(o->voice) == 0) {
+        /* (Two here, at once; the decoding thread the rest.) */
+        for (i = 0; i < 2; i++)
+            if (!file_fill(o)) break;
+        o->file_primed = true;
+    }
+    mg_cond_broadcast(&o->file_cond);
+    mg_lock_release(&o->file_lock);
+}
+
+/* A file player's decoding thread: its queue kept full while it is not stopped, until it is destroyed. */
+static MG_HOSTCB void file_thread(void *arg)
+{
+    sl_object *o = (sl_object *)arg;
+    mg_lock_acquire(&o->file_lock);
+    while (!o->file_dead && o->dec) {
+        if (o->voice && o->play_state != 1 && o->file_primed && !o->file_ended && mg_voice_queued(o->voice) < FILE_BUFS) {
+            file_fill(o);
+            continue;
+        }
+        mg_cond_wait_ns(&o->file_cond, &o->file_lock, 100000000ull);
+    }
+    mg_lock_release(&o->file_lock);
+}
+
 static void voice_done(mg_voice *v, void *user)
 {
     sl_object *o = (sl_object *)user;
-    (void)v;
+    if (o->dec) {
+        bool at_end;
+        mg_lock_acquire(&o->file_lock);
+        at_end = o->file_ended && mg_voice_queued(v) == 0;
+        mg_cond_broadcast(&o->file_cond);
+        mg_lock_release(&o->file_lock);
+        /* SL_PLAYEVENT_HEADATEND, when the app asked for it: cocos2d-x's UrlAudioPlayer ends the sound there. */
+        if (at_end && o->play_cb && (o->play_mask & 1u)) MG_GFN(void (*)(sl_itf *, void *, u32), o->play_cb)(&o->play, o->play_ctx, 1u);
+        return;
+    }
     if (o->queue_cb) MG_GFN(void (*)(sl_itf *, void *), o->queue_cb)(&o->queue, o->queue_ctx);
+}
+
+/* A file player's prefetch is done at once (the file is read whole): its callback told so, once, when it has one. */
+static void prefetch_tell(sl_object *o)
+{
+    if (o->prefetch_told || !o->prefetch_cb) return;
+    o->prefetch_told = true;
+    /* SL_PREFETCHEVENT_STATUSCHANGE | SL_PREFETCHEVENT_FILLLEVELCHANGE */
+    MG_GFN(void (*)(sl_itf *, void *, u32), o->prefetch_cb)(&o->prefetch, o->prefetch_ctx, 3u);
+}
+
+/* The file a player's data locator names: SL_DATALOCATOR_ANDROIDFD (fd, offset, length) or SL_DATALOCATOR_URI. */
+static void *file_decoder(const u32 *locator)
+{
+    if (locator[0] == 0x800007BCu) {
+        /* SLDataLocator_AndroidFD: SLuint32 locatorType; SLint32 fd; SLAint64 offset; SLAint64 length (all ones: the file's size). */
+        const u8 *p = (const u8 *)locator;
+        i32 fd = *(const i32 *)(p + 4);
+        i64 offset = *(const i64 *)(p + 8), length = *(const i64 *)(p + 16);
+        return mg_audio_dec_open_fd(fd, offset, length < 0 ? -1 : length);
+    }
+    if (locator[0] == 1u) {
+        /* SLDataLocator_URI: SLuint32 locatorType; SLchar *URI. A file's, as a path or a file:// URI. */
+        const char *uri = *(const char *const *)((const u8 *)locator + 4);
+        if (!uri) return NULL;
+        if (!strncmp(uri, "file://", 7)) uri += 7;
+        if (uri[0] != '/') return NULL;
+        return mg_audio_dec_open_path(uri);
+    }
+    return NULL;
 }
 
 static u32 eng_CreateAudioPlayer(sl_itf *self, sl_itf **out, const g_data_source *src, const void *sink, u32 n, const void *ids, const void *req)
@@ -210,8 +338,38 @@ static u32 eng_CreateAudioPlayer(sl_itf *self, sl_itf **out, const g_data_source
         for (i = 0; wanted && i < n && i < 8; i++) SL_SAY("  interface %u: %s%s", (unsigned)i, iid_name(wanted[i]), req && ((const u32 *)req)[i] ? " (required)" : "");
     }
     /* SL_DATALOCATOR_BUFFERQUEUE, SL_DATALOCATOR_ANDROIDSIMPLEBUFFERQUEUE; SL_DATAFORMAT_PCM, SL_ANDROID_DATAFORMAT_PCM_EX */
+    if ((locator[0] == 0x800007BCu || locator[0] == 1u) && format[0] == 1u) {
+        /* SL_DATAFORMAT_MIME: the file says what it is. */
+        void *dec = file_decoder(locator);
+        int rate = 0, channels = 0, i;
+        if (!dec) {
+            mg_note_once("audio: a player of a file was asked for whose sound cannot be read or decoded here");
+            return SL_CONTENT_UNSUPPORTED;
+        }
+        o = new_object(OBJ_PLAYER);
+        o->dec = dec;
+        mg_audio_dec_info(dec, &rate, &channels, &o->file_ms);
+        o->rate = rate;
+        o->file_channels = channels > 1 ? 2 : 1;
+        o->voice = rate > 0 ? mg_voice_create(rate, o->file_channels, 16, false) : NULL;
+        if (!o->voice) {
+            mg_audio_dec_close(dec);
+            free(o);
+            return SL_CONTENT_UNSUPPORTED;
+        }
+        for (i = 0; i < FILE_BUFS; i++) o->file_buf[i] = (i16 *)mg_alloc((size_t)FILE_FRAMES * (size_t)o->file_channels * 2);
+        mg_voice_set_done(o->voice, voice_done, o);
+        {
+            mg_thread *t = mg_thread_start(file_thread, o, ((size_t)256 << 10) + MG_STACK_FAULT_ROOM, "audio-file");
+            if (t) mg_thread_detach(t);
+            else mg_warn("audio: no thread to decode a file player's sound: it is decoded as it is played");
+        }
+        mg_info("audio: a player of a file, decoded here: %d Hz, %d channels, %u ms", rate, o->file_channels, (unsigned)o->file_ms);
+        *out = &o->object;
+        return SL_OK;
+    }
     if ((locator[0] != 6 && locator[0] != 0x800007BDu) || (format[0] != 2 && format[0] != 4)) {
-        mg_note_once("audio: a player that reads a file or a URL was asked for; only PCM buffer queues are played");
+        mg_note_once("audio: a player of a URL or a format other than PCM was asked for; only PCM buffer queues and files are played");
         return SL_CONTENT_UNSUPPORTED;
     }
     /* SLDataFormat_PCM: formatType, numChannels, samplesPerSec (in millihertz), bitsPerSample, containerSize, channelMask, endianness[, representation] */
@@ -284,6 +442,22 @@ static u32 play_SetPlayState(sl_itf *self, u32 state)
     if (state < 1 || state > 3) return SL_PARAMETER_INVALID;
     SL_SAY("SetPlayState(%s)", state == 3 ? "playing" : state == 2 ? "paused" : "stopped");
     o->play_state = state;
+    if (o->dec && o->voice) {
+        /* A file: stopping goes back to its start; paused or playing, its buffers are filled (a prefetch, at once). */
+        if (state == 1) {
+            mg_voice_set_playing(o->voice, false);
+            mg_voice_clear(o->voice);
+            mg_lock_acquire(&o->file_lock);
+            if (o->dec) mg_audio_dec_seek(o->dec, 0);
+            o->file_ended = o->file_primed = false;
+            mg_lock_release(&o->file_lock);
+            return SL_OK;
+        }
+        file_prime(o);
+        prefetch_tell(o);
+        mg_voice_set_playing(o->voice, state == 3);
+        return SL_OK;
+    }
     if (o->voice) {
         mg_voice_set_playing(o->voice, state == 3);       /* SL_PLAYSTATE_PLAYING */
         if (state == 1) mg_voice_clear(o->voice);         /* stopping empties the queue, as Android's does */
@@ -299,8 +473,27 @@ static u32 play_GetPlayState(sl_itf *self, u32 *state)
 
 static u32 play_GetDuration(sl_itf *self, u32 *ms)
 {
-    (void)self;
-    if (ms) *ms = 0xFFFFFFFFu;         /* SL_TIME_UNKNOWN */
+    sl_object *o = self->obj;
+    if (ms) *ms = o->dec && o->file_ms ? o->file_ms : 0xFFFFFFFFu;         /* else SL_TIME_UNKNOWN */
+    return SL_OK;
+}
+
+static u32 play_RegisterCallback(sl_itf *self, mg_addr callback, void *context)
+{
+    self->obj->play_cb = callback;
+    self->obj->play_ctx = context;
+    return SL_OK;
+}
+
+static u32 play_SetEventsMask(sl_itf *self, u32 mask)
+{
+    self->obj->play_mask = mask;
+    return SL_OK;
+}
+
+static u32 play_GetEventsMask(sl_itf *self, u32 *mask)
+{
+    if (mask) *mask = self->obj->play_mask;
     return SL_OK;
 }
 
@@ -323,9 +516,9 @@ static const void *const g_play_table[] = {
     (void *)play_GetPlayState,
     (void *)play_GetDuration,
     (void *)play_GetPosition,
-    (void *)ok0,                /* RegisterCallback */
-    (void *)ok0,                /* SetCallbackEventsMask */
-    (void *)play_GetU32,        /* GetCallbackEventsMask */
+    (void *)play_RegisterCallback,
+    (void *)play_SetEventsMask,
+    (void *)play_GetEventsMask,
     (void *)ok0,                /* SetMarkerPosition */
     (void *)ok0,                /* ClearMarkerPosition */
     (void *)play_GetU32,        /* GetMarkerPosition */
@@ -374,6 +567,82 @@ static const void *const g_queue_table[] = {
     (void *)queue_Clear,
     (void *)queue_GetState,
     (void *)queue_RegisterCallback,
+};
+
+/* ------------------------------------------------- seek and prefetch, of a file player */
+
+/* SetPosition(SLmillisecond pos, SLuint32 seekMode) */
+static u32 seek_SetPosition(sl_itf *self, u32 ms, u32 mode)
+{
+    sl_object *o = self->obj;
+    bool playing = o->play_state == 3;
+    (void)mode;
+    if (!o->dec || !o->voice) return SL_OK;
+    mg_voice_set_playing(o->voice, false);
+    mg_voice_clear(o->voice);
+    mg_lock_acquire(&o->file_lock);
+    if (o->dec) mg_audio_dec_seek(o->dec, (i64)ms * o->rate / 1000);
+    o->file_ended = o->file_primed = false;
+    mg_lock_release(&o->file_lock);
+    if (o->play_state != 1) file_prime(o);
+    mg_voice_set_playing(o->voice, playing);
+    return SL_OK;
+}
+
+/* SetLoop(SLboolean loopEnable, SLmillisecond startPos, SLmillisecond endPos): the whole file, whatever is asked. */
+static u32 seek_SetLoop(sl_itf *self, u32 loop, u32 start, u32 end)
+{
+    (void)start; (void)end;
+    mg_lock_acquire(&self->obj->file_lock);
+    self->obj->file_loop = loop != 0;
+    mg_lock_release(&self->obj->file_lock);
+    return SL_OK;
+}
+
+static u32 seek_GetLoop(sl_itf *self, u32 *loop, u32 *start, u32 *end)
+{
+    if (loop) *loop = self->obj->file_loop;
+    if (start) *start = 0;
+    if (end) *end = 0xFFFFFFFFu;
+    return SL_OK;
+}
+
+static const void *const g_seek_table[] = {
+    (void *)seek_SetPosition,
+    (void *)seek_SetLoop,
+    (void *)seek_GetLoop,
+};
+
+static u32 pre_GetStatus(sl_itf *self, u32 *status)
+{
+    (void)self;
+    if (status) *status = 4;           /* SL_PREFETCHSTATUS_SUFFICIENTDATA */
+    return SL_OK;
+}
+
+static u32 pre_GetFillLevel(sl_itf *self, u16 *permille)
+{
+    (void)self;
+    if (permille) *permille = 1000;
+    return SL_OK;
+}
+
+static u32 pre_RegisterCallback(sl_itf *self, mg_addr callback, void *context)
+{
+    self->obj->prefetch_cb = callback;
+    self->obj->prefetch_ctx = context;
+    self->obj->prefetch_told = false;
+    return SL_OK;
+}
+
+static const void *const g_prefetch_table[] = {
+    (void *)pre_GetStatus,
+    (void *)pre_GetFillLevel,
+    (void *)pre_RegisterCallback,
+    (void *)ok0,                /* SetCallbackEventsMask */
+    (void *)play_GetU32,        /* GetCallbackEventsMask */
+    (void *)ok0,                /* SetFillUpdatePeriod */
+    (void *)play_GetU32,        /* GetFillUpdatePeriod */
 };
 
 /* ----------------------------------------------------------------- volume */
@@ -854,7 +1123,12 @@ static sl_object *new_object(int kind)
     o->volume.table = g_volume_table;
     o->config.table = g_config_table;
     o->record.table = g_record_table;
+    o->seek.table = g_seek_table;
+    o->prefetch.table = g_prefetch_table;
     o->object.obj = o->engine.obj = o->play.obj = o->queue.obj = o->volume.obj = o->config.obj = o->record.obj = o;
+    o->seek.obj = o->prefetch.obj = o;
+    mg_lock_init(&o->file_lock);
+    mg_cond_init(&o->file_cond);
     if (kind == OBJ_RECORDER) {
         o->queue.table = g_rec_queue_table;
         o->config.table = g_rec_config_table;
