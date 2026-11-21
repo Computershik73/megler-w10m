@@ -186,7 +186,7 @@ static const char *thrown(void)
 /* android.graphics.Paint.mP as `new Paint()` leaves it: the slots are in mg_java_gfx.c's first comment. */
 enum {
     P_COLOR, P_STYLE, P_STROKE, P_FLAGS, P_CAP, P_JOIN, P_TEXTSIZE, P_ALIGN, P_MITER, P_SHRAD, P_SHDX, P_SHDY, P_SHCOL,
-    P_SCALEX, P_SKEWX, P_LSPACE, P_XFER, P_CFCOLOR, P_CFMODE, P_ALPHA, P_COUNT
+    P_SCALEX, P_SKEWX, P_LSPACE, P_XFER, P_CFCOLOR, P_CFMODE, P_ALPHA, P_BLUR, P_BLURSTYLE, P_COUNT
 };
 
 static mg_jobj *paint(u32 color)
@@ -774,6 +774,14 @@ static void test_drawing(void)
     ints_of(p)[P_XFER] = 99;
     call("cvDrawRect", 7, J(cv), F(4), F(4), F(6), F(6), L(p), J(0));
     CHECK_HEX(word(bm, 5, 5), 0xFF80007Fu);
+    /* Slot 20 is a BlurMaskFilter's radius (and 21 its style): a red square blurred by 2 (a deviation of 1.65 pixels) is
+       nearly whole in its middle, partly there half a pixel outside its edge, and not there six pixels away. */
+    erase(bm);
+    p = paint(0xFFFF0000u);
+    ints_of(p)[P_BLUR] = (i32)mg_fb(2);
+    call("cvDrawRect", 7, J(cv), F(6), F(6), F(14), F(14), L(p), J(0));
+    CHECK(word(bm, 10, 10) >> 24 >= 0xE0 && word(bm, 5, 10) >> 24 >= 0x40 && word(bm, 5, 10) >> 24 <= 0xC0 && word(bm, 0, 10) >> 24 <= 2);
+    erase(bm);
     /* drawColor's modes. */
     call("cvDrawColor", 3, J(cv), I((i32)0x40FF0000u), I(1));
     CHECK_HEX(word(bm, 9, 9), 0x40400000u);

@@ -37,11 +37,22 @@ public class SpannableStringBuilder extends SpannableStringInternal implements C
         System.arraycopy(mText, end, mText, end + delta, mLen - end);
         for (int i = 0; i < newLen; i++) mText[start + i] = tb.charAt(tbstart + i);
         mLen += delta;
-        // the spans: those after move, those inside shrink, points and marks at the edges follow their flags
+        // the spans: those after move, those inside shrink, points and marks at the edges follow their flags; those that moved
+        // are noted, with where they were, for the span watchers (below)
+        boolean watched = false;
+        for (int i = 0; i < mSpanCount && !watched; i++) watched = mSpans[i] instanceof SpanWatcher;
+        Object[] moved = null;
+        int[] was = null;
+        int movedCount = 0;
         for (int i = 0; i < mSpanCount; i++) {
+            int os = mStarts[i], oe = mEnds[i];
             mStarts[i] = adjust(mStarts[i], start, end, delta, (mFlags[i] & 0xf0) >> 4, true, origLen);
             mEnds[i] = adjust(mEnds[i], start, end, delta, mFlags[i] & 0x0f, false, origLen);
             if (mEnds[i] < mStarts[i]) mEnds[i] = mStarts[i];
+            if (watched && (mStarts[i] != os || mEnds[i] != oe)) {
+                if (moved == null) { moved = new Object[mSpanCount]; was = new int[3 * mSpanCount]; }
+                moved[movedCount] = mSpans[i]; was[3 * movedCount] = os; was[3 * movedCount + 1] = oe; was[3 * movedCount + 2] = i; movedCount++;
+            }
         }
         // spans of a deleted range that are now empty and exclusive go away
         for (int i = mSpanCount - 1; i >= 0; i--) {
@@ -61,7 +72,38 @@ public class SpannableStringBuilder extends SpannableStringInternal implements C
         watchers = getSpans(start, start + newLen, TextWatcher.class);
         for (TextWatcher w : watchers) w.onTextChanged(this, start, origLen, newLen);
         for (TextWatcher w : watchers) w.afterTextChanged(this);
+        sendMoved(moved, was, movedCount);
         return this;
+    }
+    /*
+     * The span watchers are told of each span the edit moved, after the text watchers, as Android's sendToSpanWatchers tells them:
+     * where it was and where it is now, if it is still there. A selection is two such spans, and a TextView learns from this that
+     * its cursor moved with the text typed (onSelectionChanged). Nothing was told: the Google app's Gemini field
+     * (RobinTextInputEditText, 17.6.63), which keeps its cursor as onSelectionChanged says, kept it where the field was
+     * touched while the user typed.
+     */
+    private void sendMoved(Object[] moved, int[] was, int count) {
+        if (count == 0) return;
+        // (The watchers once, in getSpans's order; each told of the spans whose range, old or new, meets its own, as
+        // getSpans(min, max) would find it. A long text with many spans moves them all, and asking getSpans for each was
+        // the square of their number.)
+        SpanWatcher[] all = getSpans(0, mLen, SpanWatcher.class);
+        int[] ws = new int[all.length], we = new int[all.length];
+        for (int j = 0; j < all.length; j++) { ws[j] = getSpanStart(all[j]); we[j] = getSpanEnd(all[j]); }
+        for (int k = 0; k < count; k++) {
+            Object what = moved[k];
+            int i = was[3 * k + 2];
+            if (i >= mSpanCount || mSpans[i] != what) i = indexOfSpan(what);
+            if (i < 0) continue;
+            int os = was[3 * k], oe = was[3 * k + 1], ns = mStarts[i], ne = mEnds[i];
+            if (os == ns && oe == ne) continue;
+            int qs = Math.min(os, ns), qe = Math.min(Math.max(oe, ne), mLen);
+            for (int j = 0; j < all.length; j++) {
+                int s = ws[j], e = we[j];
+                if (s > qe || e < qs || (s != e && qs != qe && (s == qe || e == qs))) continue;
+                all[j].onSpanChanged(this, what, os, oe, ns, ne);
+            }
+        }
     }
     /** A span edge after replacing [start, end) with delta more characters: 1 mark (stays left), 2 point (moves right). */
     private static int adjust(int pos, int start, int end, int delta, int kind, boolean isStart, int origLen) {

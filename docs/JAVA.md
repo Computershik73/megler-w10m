@@ -3605,12 +3605,35 @@ where the framework's code, written for iOS, leaned on CoreGraphics without sayi
   black drawn with it over white left a 5% black, which an opaque window
   shows black. The other blend modes Android 10 added (COLOR_DODGE to
   LUMINOSITY) are still drawn as SRC_OVER.
+- **A paint's blur.** A `BlurMaskFilter` blurs what its paint fills, as
+  Skia's mask filter: by a standard deviation of 0.57735 * radius + 0.5 in
+  the drawing's coordinates, the shape in its own colours. The paint's packet
+  carries the radius and the style (`P_BLUR`, `P_BLURSTYLE`), and the core
+  draws each shape and run of text of such a paint sharp into a layer that
+  the shell blurs as it puts it onto the picture (`save_layer_blur`, the
+  RenderEffect's layer), as large as the shape and three deviations round it
+  (`shape_call` in `mg_java_gfx.c`): directly and into a list alike, the list
+  holding the layer and the sharp shape. `OUTER` and `SOLID` cut the blur
+  with the shape (`DST_OUT`, and for `SOLID` the shape added by `PLUS`) and
+  `INNER` puts it on the shape by a layer of `SRC_IN`, each in a layer of
+  its own. The filter kept nothing up to 0.1.0.739 and its shapes were drawn
+  sharp. The Google app (17.6.63) draws its Gemini glows with it: the Gemini
+  screen's glowing rings and borders (drawables of a `SweepGradient` blurred),
+  the waves of its voice search, AI Mode and Lens (one shape filled three
+  times, blurred by eight, four and one times a radius), Lottie's blur
+  effect; and Gemini's first screen on an HP Elite x3 had solid purple ovals
+  beside its first suggestions and a solid pill after its headline. Which
+  drawing those are was not found (that screen needs a signed-in account,
+  which no test here has), nor seen fixed on a phone. Data step
+  `blur-mask-filter`. Bitmaps are drawn without the filter, as before;
+  `EmbossMaskFilter` and `ShaderMaskFilter` draw as no filter.
 - **The stand-in** (`core/tests/mg_gfx_standin.c`) is for tests and is not a
   renderer to look at: a pixel is in when its centre is, curves are straight
   pieces, strokes have no joins, a gradient is its first colour, text is a box
   for each letter with fixed metrics (advance 0.6 of the size, ascent 0.8,
-  descent 0.2), images are PNG only. It is deterministic on every machine,
-  which is what the tests want of it.
+  descent 0.2), images are PNG only, a layer is a save with an alpha but a
+  blurred layer is memory of its own, blurred in two passes at its restore.
+  It is deterministic on every machine, which is what the tests want of it.
 - **Display lists.** A `RenderNode`'s canvas and a `Picture`'s record what
   they are given instead of drawing it, as Android's do, and the list is
   drawn again on whatever canvas draws the node or the picture. The core
@@ -4039,6 +4062,40 @@ the keyboard, is now taken for that: the keyboard is shown again for the field
 that asked, and the log says so once ("player: the keyboard went as the app
 moved from one field to another, and comes back for the field that asked for
 it"). Not tried on a phone yet.
+
+**A field the app sets back, and the cursor it is told of (Gemini, 0.1.0.739).**
+On an HP Elite x3 the letters typed into the Google app's Gemini field came out
+in reverse, each before the ones typed. That field is a view, not Compose: the
+Google app's `RobinTextInputEditText` (17.6.63), a Material `TextInputEditText`
+whose `onSelectionChanged` keeps the cursor for its input controller, and whose
+controller applies its state to the field after every character: `setText` of
+the very text and `setSelection` (its `aucl.a`), and `setText` restarts the
+input. Two things here were not as on Android:
+
+- An edit told the span watchers nothing of the spans it moved
+  (`SpannableStringBuilder.replace`), so a TextView's `onSelectionChanged` did
+  not follow the cursor as text was typed: an app that keeps the cursor as
+  `onSelectionChanged` says (Gemini's field does) kept it where the field had
+  been touched. Now they are told, after the text watchers, as Android's
+  `sendToSpanWatchers` tells them. Data step `selection-follows-typing`: three
+  characters through an EditText's input connection are told as 1,1 2,2 3,3,
+  and a field set back after each with the cursor it was told gets "abc"
+  (it got "cba").
+- Each restart asked the shell for the keyboard afresh, and the shell began
+  its text anew (`startKeyboardText`): after every letter the phone's keyboard
+  was told that what it had typed was gone. A restart of the field the keyboard
+  is up for is now asked a turn of the message loop later (once the app has
+  put its cursor back), and once more as it is (`MEGLER_KEYBOARD_F_AGAIN`) when
+  the field's text and cursor are as the keyboard left them, the text compared
+  whole (`megler.InputMethods`). The demos test types "a", "b", "c" into a
+  field that is set back so a turn later: the text comes in order and the
+  keyboard is asked for it once more three times and never afresh.
+
+Which of the two reversed Gemini's text on the phone is not known: Gemini needs
+a signed-in account, which no test here has, and no Windows 10 Mobile keyboard
+can be tried at this PC. Neither was seen on a phone yet. The shell's flag
+`trace-keyboard` says, in numbers only, every change the keyboard makes and
+every asking of the app's.
 
 **The keyboard's coming and going is an inset animation** of
 `WindowInsets.Type.ime()`, run through the views' callbacks

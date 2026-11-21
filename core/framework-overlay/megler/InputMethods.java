@@ -25,6 +25,15 @@
 // its keyboard by updateSelection, which ends a composition too; here the keyboard's next replacement would count its
 // Backspaces from the wrong place); a view that is no TextView, whose selection is not known here; the keyboard closed or
 // sent away since.
+//
+// And a restart of the field the keyboard is up for, whose text and cursor are as the keyboard left them once the app is
+// done (asked a turn of the message loop later, when the app has put its cursor back), is Native.showKeyboardAgain too:
+// the app set its own text back. The Google app's Gemini field (RobinTextInputEditText, 17.6.63) does after every
+// character typed: its input controller applies its state to the field, setText of the very text and setSelection, and
+// setText restarts the input. Each character began the host's text afresh, so the phone's keyboard was told after every
+// letter that the text it typed was gone, and Gemini's typed text came out in reverse on an HP Elite x3 (0.1.0.739) --
+// whether this is what reversed it there is not known: no Windows 10 Mobile keyboard can be tried here. The text and the
+// cursor are compared whole (the text itself, not only its length), so a restart for text the app changed is afresh.
 package megler;
 
 import android.view.KeyEvent;
@@ -52,6 +61,12 @@ public final class InputMethods {
        them (a length of -1: no TextView, not known). */
     private static InputConnection sAsked;
     private static int sAskedType, sAskedIme, sLeftStart = -1, sLeftEnd = -1, sLeftLength = -1;
+    /* ... the view that connection is of, and the field's text as the keyboard left it (null: not known); and whether a
+       restart's asking is waiting for the app's turn to end. */
+    private static View sAskedView;
+    private static String sLeftText;
+    private static boolean sRestartAsk;
+    private static android.os.Handler sHandler;
     private InputMethods() {}
     public static View focused() { return sFocused; }
     public static boolean shown() { return sShown; }
@@ -70,7 +85,17 @@ public final class InputMethods {
         sTypedInto = false;
     }
     private static void finish() { if (sConn != null) sConn.finishComposingText(); checkTyped(); sConn = null; sFocused = null; }
-    public static void restart(View v) { if (v == sFocused) { sConn = null; start(v); if (sShown) ask(true); } }
+    public static void restart(View v) {
+        if (v != sFocused) return;
+        sConn = null;
+        start(v);
+        if (!sShown || sRestartAsk) return;
+        /* The host is asked once the app's turn is over: a setText restarts with the cursor at the start, and the app puts it
+           back after (the header says why). */
+        sRestartAsk = true;
+        if (sHandler == null) sHandler = new android.os.Handler(android.os.Looper.getMainLooper());
+        sHandler.post(new Runnable() { public void run() { sRestartAsk = false; if (sShown && sConn != null) ask(true, true); } });
+    }
     public static boolean show(View v) {
         if (v == null) return false;
         if (v != sFocused) start(v);
@@ -80,32 +105,37 @@ public final class InputMethods {
         ask(up);
         return true;
     }
-    public static boolean hide() { boolean was = sShown; sShown = false; sAsked = null; Native.showKeyboard(false, 0, 0); return was; }
+    public static boolean hide() { boolean was = sShown; sShown = false; sAsked = null; sAskedView = null; Native.showKeyboard(false, 0, 0); return was; }
     /**
      * The host is asked for its keyboard, for the field being edited (`up`: it was up already, as far as is known here). Once
      * more as it is, when it is up for this very connection and kind and the field's selection and length are as the
-     * keyboard left them: what the keyboard is composing is still good. Afresh otherwise (the header says which and why).
+     * keyboard left them: what the keyboard is composing is still good. A restart (`restarted`) makes a new connection of the
+     * same view: the same so far as the view and its text and cursor are. Afresh otherwise (the header says which and why).
      */
-    private static void ask(boolean up) {
+    private static void ask(boolean up) { ask(up, false); }
+    private static void ask(boolean up, boolean restarted) {
         int type = sInfo != null ? sInfo.inputType : 1, ime = sInfo != null ? sInfo.imeOptions : 0;
-        boolean again = up && sConn != null && sAsked == sConn && sAskedType == type && sAskedIme == ime && asLeft();
-        sAsked = sConn; sAskedType = type; sAskedIme = ime;
+        boolean same = sAsked == sConn || (restarted && sAskedView != null && sAskedView == sFocused);
+        boolean again = up && sConn != null && same && sAskedType == type && sAskedIme == ime && asLeft();
+        sAsked = sConn; sAskedView = sFocused; sAskedType = type; sAskedIme = ime;
         if (again) { Native.showKeyboardAgain(type, ime); return; }
         left();
         Native.showKeyboard(true, type, ime);
     }
-    /** The edited field's selection and length, noted: what the host's keyboard knows of the field from now on. */
+    /** The edited field's selection, length and text, noted: what the host's keyboard knows of the field from now on. */
     private static void left() {
         if (sFocused instanceof android.widget.TextView) {
             android.widget.TextView t = (android.widget.TextView) sFocused;
             sLeftStart = t.getSelectionStart(); sLeftEnd = t.getSelectionEnd(); sLeftLength = t.length();
-        } else sLeftLength = -1;
+            sLeftText = String.valueOf(t.getText());
+        } else { sLeftLength = -1; sLeftText = null; }
     }
     /** Whether they are still that. */
     private static boolean asLeft() {
         if (sLeftLength < 0 || !(sFocused instanceof android.widget.TextView)) return false;
         android.widget.TextView t = (android.widget.TextView) sFocused;
-        return sLeftStart == t.getSelectionStart() && sLeftEnd == t.getSelectionEnd() && sLeftLength == t.length();
+        return sLeftStart == t.getSelectionStart() && sLeftEnd == t.getSelectionEnd() && sLeftLength == t.length()
+            && sLeftText != null && sLeftText.contentEquals(t.getText());
     }
     /** The host has text for us (an event in the input queue said so). */
     public static void deliverPending() {
@@ -114,7 +144,7 @@ public final class InputMethods {
         for (String it : items) {
             if (it.isEmpty()) continue;
             char k = it.charAt(0);
-            if (k == 'h') { sShown = false; sAsked = null; continue; }   /* the host closed the keyboard */
+            if (k == 'h') { sShown = false; sAsked = null; sAskedView = null; continue; }   /* the host closed the keyboard */
             int state = sConn != null ? 1 : sFocused == null ? 2 : 3;
             View target = sFocused;
             int before = state == 1 && state != sSaid ? length(target) : -1;
@@ -122,8 +152,9 @@ public final class InputMethods {
             if (state == 1) typed(k, it);
             if (state != sSaid) tell(state, k, it, target, before, took);
         }
-        /* The field is as the keyboard left it now (and as the field's own watchers made that), while it is still the one the keyboard is up for. */
-        if (sAsked != null && sAsked == sConn) left();
+        /* The field is as the keyboard left it now (and as the field's own watchers made that), while it is still the one the
+           keyboard is up for -- through a new connection too, when the watchers set the text and so restarted it. */
+        if (sAsked != null && (sAsked == sConn || (sAskedView != null && sAskedView == sFocused))) left();
     }
     /** One thing the keyboard sent, as the original's deliverPending handles it; false when a commit was refused. */
     private static boolean apply(char k, String it) {
