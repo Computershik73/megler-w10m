@@ -5101,6 +5101,25 @@ the processes, the last to set it winning; and Google Play services' code
 called from such a process (`ProviderInstaller`) changes the system-wide list,
 its code being its own scope's, as before.
 
+A process whose Application throws as it is made ends, as on Android, where
+`handleBindApplication` throws "Unable to create application" and the process
+crashes before the component it was started for is made, the app's other
+processes going on. The log says so as Android's does (`FATAL EXCEPTION`, the
+process's name, "Unable to create application ...") and in a line of
+Megler's, and from then on its components are not made (`Processes.of` throws
+`Processes.Ended`): an activity's start fails with a line in the log and the
+caller that asked for a result hears `RESULT_CANCELED`, a service is neither
+started nor bound, a job whose service it is is not run (and is forgotten,
+as a job that cannot start is), and the app goes on. Such a process's activities were
+made in its scope with the Application it had half made (or, where none was
+made, in the app's own scope with the own process's): the Google app's Gemini
+screen was made so in `:search`, whose Application had not put its SslGuard in,
+and its failure ended the whole app (0.1.0.739). The test app `procs` starts
+`Broken` in `:broken`, whose Application throws. Not
+done: Android's dialog that the app has stopped, a later start making the
+process again (here it stays ended until the app is started again), and the
+threads its Application started, which run on.
+
 ### Downloads
 
 `megler.Downloads` is the system's download provider

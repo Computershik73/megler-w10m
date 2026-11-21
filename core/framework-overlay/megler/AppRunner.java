@@ -803,6 +803,11 @@ public final class AppRunner {
                 }
                 // an <activity-alias> starts the activity it names; the intent keeps the alias as its component, as on Android
                 launch("activity-alias".equals(c.kind) && c.parentActivity != null ? c.parentActivity : c.name, intent, caller, request, c);
+            } catch (Processes.Ended e) {
+                // Its process ended as its Application was made (megler.Processes): on Android that process crashed, the
+                // activity was never made, and the one that asked for a result hears RESULT_CANCELED; the app goes on.
+                android.util.Log.e("Megler", "starting " + c.name + " failed: " + e.getMessage());
+                if (request >= 0 && caller != null) sHandler.post(() -> caller.meglerActivityResult(request, Activity.RESULT_CANCELED, null));
             } catch (Throwable t) {
                 android.util.Log.e("Megler", "starting " + c.name + " failed", t);
                 if (t instanceof RuntimeException) throw (RuntimeException) t;

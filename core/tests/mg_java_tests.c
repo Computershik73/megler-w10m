@@ -5806,15 +5806,27 @@ static int run_procs(void)
     CHECK(wait_line(line, 0, 60) >= 0);
     CHECK(find_line(far ? "I/ProcsTest: near-receiver" : "I/ProcsTest: far-receiver", 0) < 0);
     CHECK(wait_line(far ? "I/ProcsTest: far onDestroy" : "I/ProcsTest: main onDestroy", 0, 60) >= 0);
+    /*
+     * Then Broken, in ":broken", whose Application throws: that process ends as it crashes on Android -- its FATAL EXCEPTION
+     * -- Broken is not made, the first activity hears RESULT_CANCELED (0) and finishes, and the app goes on to its end.
+     */
+    second = wait_line("I/ProcsTest: application made in megler.test.procs:broken #1", 0, 120);
+    CHECK(second >= 0);
+    CHECK(wait_line("E/AndroidRuntime: FATAL EXCEPTION: main", second, 60) > second && find_line("Process: megler.test.procs:broken, PID: ", second) > second
+          && find_line("Unable to create application megler.test.procs.App: java.lang.IllegalStateException: procs: the Application of :broken fails on purpose", second) > second);
+    CHECK(wait_line("E/Megler: starting megler.test.procs.Broken failed: process megler.test.procs:broken ended as its Application was made", second, 60) > second);
+    snprintf(line, sizeof(line), "I/ProcsTest: %s heard Broken: 0 null", far ? "far" : "main");
+    CHECK(wait_line(line, second, 60) > second);
     for (tries = 0; tries < 3000 && running(); tries++) mg_sleep_ns(10000000ull);
     CHECK(g_exited && g_status == 0);
     if (g_exited) say("  the app ended with status %d%s%s", g_status, g_reason[0] ? ": " : "", g_reason);
     else say("  the app did not end with its first activity");
+    CHECK(find_line("I/ProcsTest: broken made", 0) < 0 && count_lines("FATAL EXCEPTION") == 1);
     /* One Application in each process, and no other process named; started for Far, its launcher activity came second. */
-    CHECK(count_lines("I/ProcsTest: application made in ") == 2);
+    CHECK(count_lines("I/ProcsTest: application made in ") == 3);
     if (far) CHECK(find_line("D/Megler: launch megler.test.procs.Far", 0) >= 0 && find_line("D/Megler: launch megler.test.procs.Far", 0) < find_line("D/Megler: launch megler.test.procs.Main", 0));
     else CHECK(find_line("the app runs as the process", 0) < 0);
-    CHECK(find_line(" FAILED", 0) < 0 && find_line("FATAL EXCEPTION", 0) < 0);
+    CHECK(find_line(" FAILED", 0) < 0);
     if (g_failed) {
         say_app_lines("/ProcsTest: ");
         say_app_lines("/Megler: ");

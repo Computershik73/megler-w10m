@@ -55,9 +55,14 @@ abstract class Shown extends Activity {
 
     @Override
     protected void onActivityResult(int request, int result, Intent data) {
+        if (request == 2) {
+            Log.i("ProcsTest", who() + " heard Broken: " + result + " " + data);
+            finish();
+            return;
+        }
         Log.i("ProcsTest", who() + " heard " + other().getSimpleName() + ": " + result + " from " + (data == null ? null : data.getStringExtra("process")));
         Log.i("ProcsTest", who() + " providers after " + other().getSimpleName() + " removed its: " + App.providers());
-        finish();
+        startActivityForResult(new Intent(this, Broken.class), 2);
     }
 
     @Override

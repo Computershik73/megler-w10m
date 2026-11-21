@@ -62,7 +62,9 @@ public final class Services {
         Manifest.Component c = find(i);
         if (c == null) return HostedApps.start(from, i);
         postStart(sLastStart, c.name, id -> {
-            try { Service s = create(c); s.onStartCommand(Processes.forLoader(i, s.getClass().getClassLoader()), 0, id); } catch (Throwable t) { android.util.Log.e("Megler", "service " + c.name + " failed", t); }
+            try { Service s = create(c); s.onStartCommand(Processes.forLoader(i, s.getClass().getClassLoader()), 0, id); }
+            catch (Processes.Ended e) { android.util.Log.w("Megler", "service " + c.name + " not started: " + e.getMessage()); }
+            catch (Throwable t) { android.util.Log.e("Megler", "service " + c.name + " failed", t); }
         });
         return new ComponentName(Native.packageName(), c.name);
     }
@@ -134,7 +136,10 @@ public final class Services {
                 sBound.put(conn, c.name);
                 ComponentName cn = new ComponentName(Native.packageName(), c.name);
                 if (b != null) conn.onServiceConnected(cn, b); else conn.onNullBinding(cn);
-            } catch (Throwable t) { android.util.Log.e("Megler", "binding " + c.name + " failed", t); }
+            }
+            // (its process ended as its Application was made, megler.Processes: on Android the binding never connects)
+            catch (Processes.Ended e) { android.util.Log.w("Megler", "binding " + c.name + " failed: " + e.getMessage()); }
+            catch (Throwable t) { android.util.Log.e("Megler", "binding " + c.name + " failed", t); }
         });
         return true;
     }

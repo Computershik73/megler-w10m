@@ -241,6 +241,10 @@ public abstract class JobScheduler {
                 android.util.Log.i("Megler", "job " + run.info.getId() + " (" + run.info.getService().getShortClassName() + ") runs" + (engine != null ? " through its engine" : "")
                                    + (!content ? "" : (deadline ? " at its deadline," : "") + " for " + (uris != null ? uris.length : 0) + " change(s) of its content"));
                 if (!(engine != null ? engine.onStartJob(run.params) : run.service.onStartJob(run.params))) finished(run.params, false);
+            } catch (megler.Processes.Ended e) {
+                // (its service's process ended as its Application was made, megler.Processes: the service is not made)
+                android.util.Log.w("Megler", "job " + run.info.getId() + " not run: " + e.getMessage());
+                forget(run);
             } catch (Throwable t) {
                 android.util.Log.e("Megler", "job " + run.info.getId() + " failed", t);
                 if (run.params != null) finished(run.params, false);

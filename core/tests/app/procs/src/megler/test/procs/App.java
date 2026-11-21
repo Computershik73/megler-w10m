@@ -34,6 +34,8 @@ public class App extends Application {
         String before = names();
         int at = Security.insertProviderAt(new Mark(madeIn), 1);
         Log.i("ProcsTest", "provider in " + madeIn + " at=" + at + " before=" + before);
+        // (the Application of ":broken" fails: on Android that process crashes as it starts, Broken)
+        if (madeIn != null && madeIn.endsWith(":broken")) throw new IllegalStateException("procs: the Application of :broken fails on purpose");
     }
 
     /** The provider each process's Application puts first, of one name in all, which says its process; it has a digest. */

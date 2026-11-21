@@ -27,7 +27,8 @@
 // do (megler.AppRunner.make; activityBase): the Google app's ":googleapp" opens activities of ":search". The providers of
 // every process are made in the app's own scope as it starts, as before, and a receiver of the manifest's in another process
 // is not run (megler.Broadcasts). Google Play services' own package, run as an app, keeps its processes one (apart), as in
-// every app that hosts them (megler.MicroG).
+// every app that hosts them (megler.MicroG). A process whose Application throws as it is made ends, as it crashes on
+// Android: its components are not made from then on (Ended), and the app's other processes go on.
 //
 // An intent that goes from one scope to another -- a broadcast, a service's start or binding -- has the objects among its
 // extras made again by the receiving scope's classes (forLoader), as Android's parcelling of it between processes makes
@@ -55,6 +56,8 @@ public final class Processes {
         public final String name;
         final ClassLoader loader;
         Application app;
+        /* What its Application threw as it was made: the process ended there, as it would on Android (make). */
+        Throwable ended;
         final Context context;
         Scope(String name, ClassLoader loader) {
             this.name = name;
@@ -113,8 +116,19 @@ public final class Processes {
      *  configuration, megler.AppRunner's trimMemory). */
     public static java.util.List<Application> applications() {
         java.util.ArrayList<Application> l = new java.util.ArrayList<>();
-        for (Scope s : sNamed) if (s.app != null) l.add(s.app);
+        for (Scope s : sNamed) if (s.app != null && s.ended == null) l.add(s.app);
         return l;
+    }
+
+    /**
+     * What a component of a process that ended as its Application was made gets (of): on Android that process crashed as it
+     * started, the component was never made, and the app's other processes go on.
+     */
+    public static final class Ended extends RuntimeException {
+        Ended(Scope s, String component) {
+            super("process " + s.name + " ended as its Application was made (" + s.ended + "), as it crashes on Android: " + component
+                + " is not made", s.ended);
+        }
     }
 
     /**
@@ -196,16 +210,20 @@ public final class Processes {
 
     /** The scope of the process a component runs in, made the first time (on the main thread); null for the own scope's process
      *  (own: the package's, unless the app was started for an activity of another), and for one whose scope could not be made
-     *  (the component then runs in the app's, as before). */
+     *  (the component then runs in the app's, as before). Ended, for a process that ended as its Application was made. */
     public static Scope of(Manifest.Component c) {
         String process = Manifest.processOf(c);
         if (process == null || process.equals(own())) return null;
         Scope s;
         synchronized (sScopes) {
-            if (sScopes.containsKey(process)) return sScopes.get(process);
-            s = make(process);
-            sScopes.put(process, s);
+            if (sScopes.containsKey(process)) {
+                s = sScopes.get(process);
+            } else {
+                s = make(process);
+                sScopes.put(process, s);
+            }
         }
+        if (s != null && s.ended != null) throw new Ended(s, c.name);
         return s;
     }
 
@@ -230,8 +248,20 @@ public final class Processes {
             android.util.Log.i("Megler", "process " + process + ": a class scope of its own, and its Application, " + cls);
             a.onCreate();
         } catch (Throwable t) {
-            android.util.Log.e("Megler", "process " + process + ": its Application failed", t);
-            if (s.app == null) { named(s, false); return null; }
+            /*
+             * On Android the process ends here: ActivityThread.handleBindApplication throws "Unable to create application"
+             * (or "Unable to instantiate"), the process crashes before the activity, service or receiver it was started for
+             * is made, and the app's other processes go on. So it ends here too: its components are not made from now on
+             * (of: Ended), where they were made in it with its Application half made, or, when that was not made at all, in
+             * the app's own scope with another process's: the Google app's ":search", whose Application could not put its
+             * SslGuard first (0.1.0.739), had its Gemini screen made so, and the screen's failure ended the whole app.
+             * Threads its Application started run on, there being one native process; the scope keeps its name for them.
+             */
+            s.ended = t;
+            android.util.Log.e("AndroidRuntime", "FATAL EXCEPTION: main\nProcess: " + process + ", PID: " + android.os.Process.myPid(),
+                new RuntimeException("Unable to " + (s.app == null ? "instantiate" : "create") + " application " + cls + ": " + t, t));
+            android.util.Log.e("Megler", "process " + process + " ended as its Application was made, as it crashes on Android: its"
+                + " activities and services are not made from now on, and the app's other processes go on");
         }
         return s;
     }
