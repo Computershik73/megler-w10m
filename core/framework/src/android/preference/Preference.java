@@ -244,7 +244,7 @@ public class Preference implements Comparable<Preference> {
         TypedValue v = new TypedValue();
         if (!mContext.getTheme().resolveAttribute(attr, v, true)) return fallback;
         if (v.type >= TypedValue.TYPE_FIRST_COLOR_INT && v.type <= TypedValue.TYPE_LAST_COLOR_INT) return v.data;
-        if (v.resourceId != 0) try { return mContext.getColorStateList(v.resourceId).getDefaultColor(); } catch (RuntimeException e) { }
+        if (v.resourceId != 0) try { return mContext.getResources().loadColorStateList(v, v.resourceId, mContext.getTheme()).getDefaultColor(); } catch (RuntimeException e) { }
         return fallback;
     }
     protected void onBindView(View view) {

@@ -42,7 +42,7 @@ public class AlertDialog extends Dialog implements DialogInterface {
         TypedValue v = new TypedValue();
         if (!getContext().getTheme().resolveAttribute(attr, v, true)) return def;
         if (v.type >= TypedValue.TYPE_FIRST_COLOR_INT && v.type <= TypedValue.TYPE_LAST_COLOR_INT) return v.data;
-        if (v.resourceId != 0) { try { android.content.res.ColorStateList l = getContext().getColorStateList(v.resourceId); return l.getDefaultColor(); } catch (Exception e) {} }
+        if (v.resourceId != 0) { try { android.content.res.ColorStateList l = getContext().getResources().loadColorStateList(v, v.resourceId, getContext().getTheme()); return l.getDefaultColor(); } catch (Exception e) {} }
         return def;
     }
     @Override protected void onCreate(Bundle s) { super.onCreate(s); build(); }
@@ -266,7 +266,7 @@ public class AlertDialog extends Dialog implements DialogInterface {
                 t.setGravity(Gravity.CENTER_VERTICAL);
                 t.setPadding((int) (24 * d), 0, (int) (24 * d), 0);
                 TypedValue v = new TypedValue();
-                if (c.getTheme().resolveAttribute(android.R.attr.textColorPrimary, v, true) && v.resourceId != 0) { try { t.setTextColor(c.getColorStateList(v.resourceId)); } catch (Exception e) {} } else if (v.type >= TypedValue.TYPE_FIRST_COLOR_INT && v.type <= TypedValue.TYPE_LAST_COLOR_INT) t.setTextColor(v.data);
+                if (c.getTheme().resolveAttribute(android.R.attr.textColorPrimary, v, true) && v.resourceId != 0) { try { t.setTextColor(c.getResources().loadColorStateList(v, v.resourceId, c.getTheme())); } catch (Exception e) {} } else if (v.type >= TypedValue.TYPE_FIRST_COLOR_INT && v.type <= TypedValue.TYPE_LAST_COLOR_INT) t.setTextColor(v.data);
                 return t;
             }
             CheckedRow row = cv instanceof CheckedRow ? (CheckedRow) cv : new CheckedRow(c, mode);

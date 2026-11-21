@@ -10,6 +10,8 @@
 // Material's progress indicators override it to cast what it gives to their own drawable, and Organic Maps'
 // LinearProgressIndicator ended on "ClassCastException: ProgressBar$Spinner" as it was made. And a drawable the app gives
 // that animates itself (Animatable: Material's) is drawn as it is, not turned as the original turns one that does not.
+// And the theme's accent, when it is a colour file, is read from the value the theme gives (Resources.loadColorStateList),
+// not asked for by its number, for which a platform colour of Android 12's would be given in its stead.
 // Everything else is the original's, unchanged.
 package android.widget;
 
@@ -180,7 +182,7 @@ public class ProgressBar extends View {
     private int accent() {
         android.util.TypedValue v = new android.util.TypedValue();
         if (getContext().getTheme().resolveAttribute(android.R.attr.colorAccent, v, true) && v.type >= android.util.TypedValue.TYPE_FIRST_COLOR_INT && v.type <= android.util.TypedValue.TYPE_LAST_COLOR_INT) return v.data;
-        if (getContext().getTheme().resolveAttribute(android.R.attr.colorAccent, v, true) && v.resourceId != 0) { try { return getContext().getColor(v.resourceId); } catch (Exception e) {} }
+        if (getContext().getTheme().resolveAttribute(android.R.attr.colorAccent, v, true) && v.resourceId != 0) { try { return getResources().loadColorStateList(v, v.resourceId, getContext().getTheme()).getDefaultColor(); } catch (Exception e) {} }
         return 0xFF6750A4;
     }
     private int tint(ColorStateList t, int def) { return t != null ? t.getColorForState(getDrawableState(), def) : def; }
