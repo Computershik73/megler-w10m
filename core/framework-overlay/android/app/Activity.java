@@ -505,13 +505,17 @@ public class Activity extends ContextThemeWrapper implements Window.Callback, Ke
     public LayoutInflater getLayoutInflater() { return getWindow().getLayoutInflater(); }
     public MenuInflater getMenuInflater() { return new MenuInflater(this); }
     public ActionBar getActionBar() { initWindowDecorActionBar(); return mActionBar; }
-    public void setActionBar(android.widget.Toolbar t) { if (t != null) t.setTitle(getTitle()); }
+    /* A toolbar of the app's own as the activity's action bar, as Android's ToolbarActionBar (megler.SimpleActionBar): the title,
+       the up button, the options menu on it. (It only had the title it had then.) */
+    public void setActionBar(android.widget.Toolbar t) {
+        mActionBar = t != null ? new megler.SimpleActionBar(this, t) : null;   /* (which makes the options menu on it, posted) */
+    }
     public void setTitle(CharSequence t) { mTitle = t; onTitleChanged(t, mTitleColor); if (mParent != null) mParent.onChildTitleChanged(this, t); }
     public void setTitle(int id) { setTitle(getText(id)); }
     public void setTitleColor(int c) { mTitleColor = c; }
     public final CharSequence getTitle() { return mTitle; }
     public final int getTitleColor() { return mTitleColor; }
-    protected void onTitleChanged(CharSequence t, int color) { if (mWindow != null) mWindow.setTitle(t); }
+    protected void onTitleChanged(CharSequence t, int color) { if (mWindow != null) mWindow.setTitle(t); if (mActionBar != null) mActionBar.setWindowTitle(t); }
     protected void onChildTitleChanged(Activity child, CharSequence t) {}
     public void onContentChanged() {}
     public void onWindowFocusChanged(boolean f) {}

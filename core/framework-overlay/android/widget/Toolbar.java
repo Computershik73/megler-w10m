@@ -3,7 +3,12 @@
 //
 // Why. Android's own Settings (AOSP 9, which Megler's package carries) makes its search bar's navigation button
 // unclickable and without a ripple, so that the whole bar is the one thing to tap (SettingsActivity.onCreate:
-// "toolbar.getNavigationView().setClickable(false)"); with null it ended at its start. Everything else is the original's.
+// "toolbar.getNavigationView().setClickable(false)"); with null it ended at its start. And in the navigation button, which is
+// there only once it has an icon, as Android's (its toolbars name a description for it in XML, and showed an empty button
+// before the title). And in the title's colour, the theme's textColorPrimary: a colour file is read from the value the theme
+// gives (Resources.loadColorStateList), not asked for by its number -- Android 9's btn_colored_borderless_text_material,
+// which Android's Settings' bars name, has the number of one of Android 12's system colours, which Resources gives when an
+// app's code asks by number, and their titles were white on light bars. Everything else is the original's.
 package android.widget;
 
 import android.content.Context;
@@ -87,7 +92,9 @@ public class Toolbar extends ViewGroup {
         TypedValue v = new TypedValue();
         if (getContext().getTheme().resolveAttribute(android.R.attr.textColorPrimary, v, true)) {
             if (v.type >= TypedValue.TYPE_FIRST_COLOR_INT && v.type <= TypedValue.TYPE_LAST_COLOR_INT) return v.data;
-            if (v.resourceId != 0) { try { return getContext().getColorStateList(v.resourceId).getDefaultColor(); } catch (Exception e) {} }
+            // (the colour state list of the theme's value itself: by its number alone a platform colour of Android 12's would be
+            // given in its stead, android.content.res.Resources, and Android's Settings' titles were white on their light bars)
+            if (v.resourceId != 0) { try { return getResources().loadColorStateList(v, v.resourceId, getContext().getTheme()).getDefaultColor(); } catch (Exception e) {} }
         }
         Drawable bg = getBackground();
         if (bg instanceof android.graphics.drawable.ColorDrawable) return android.graphics.Color.luminance(((android.graphics.drawable.ColorDrawable) bg).getColor()) > 0.5f ? 0xDE000000 : 0xFFFFFFFF;
@@ -170,7 +177,9 @@ public class Toolbar extends ViewGroup {
         b.setColorFilter(foreground(), android.graphics.PorterDuff.Mode.SRC_IN);
         return b;
     }
-    private void ensureNavButton() { if (mNavButton == null) { mNavButton = iconButton(); mNavButton.clearColorFilter(); addSystemView(mNavButton); } }
+    /* (Shown once it has an icon, as Android's Toolbar puts its navigation button in only then: a content description or a click
+       listener alone left an empty button before the title -- Android's Settings' toolbars name their description in XML.) */
+    private void ensureNavButton() { if (mNavButton == null) { mNavButton = iconButton(); mNavButton.clearColorFilter(); mNavButton.setVisibility(GONE); addSystemView(mNavButton); } }
     public Menu getMenu() { if (mMenu == null) mMenu = new megler.MenuImpl(getContext()); return mMenu; }
     public void setOverflowIcon(Drawable d) { mOverflowIcon = d; if (mOverflow != null) mOverflow.setImageDrawable(d); }
     public Drawable getOverflowIcon() { return mOverflowIcon; }
