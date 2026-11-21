@@ -4134,18 +4134,27 @@ bool glFrame(void*, int layer, void* handle, int width, int height) {
         std::lock_guard<std::mutex> lock(c.mutex);
         c.layered = true;
         Composition::Layer& l = c.layers[layer];
+        // Whether this frame's texture is one of the surface's that came before and comes again, in turn (the core's ring):
+        // only then is its copy not waited for. A texture new to the layer is waited for as ever -- ANGLE's of a surface made
+        // again at the same size among them, which ANGLE's device draws into again as soon as this returns.
+        bool inTurn = false;
         if (l.handle != handle && l.shared && l.frame && l.copy && l.width == width && l.height == height) {
             // Another of the same surface's textures, in turn: the one opened before, or opened now if it is of the same size.
             Ref<ID3D11Texture2D> other;
             for (auto& o : l.opened)
                 if (o.first == handle) other = o.second;
+            inTurn = bool(other);
             if (!other) {
                 D3D11_TEXTURE2D_DESC have = {}, desc = {};
                 l.copy->GetDesc(&have);
                 if (SUCCEEDED(s.d3d->OpenSharedResource(handle, __uuidof(ID3D11Texture2D), reinterpret_cast<void**>(other.put())))) {
                     other->GetDesc(&desc);
-                    if (desc.Width != have.Width || desc.Height != have.Height || (desc.MiscFlags & D3D11_RESOURCE_MISC_SHARED_KEYEDMUTEX) || l.mutex ||
-                        l.opened.size() >= 4)
+                    // (Of the copy's format too, a typeless one taken as the copy was made of it: CopyResource between formats
+                    // does nothing.)
+                    if (desc.Format == DXGI_FORMAT_R8G8B8A8_TYPELESS) desc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+                    if (desc.Format == DXGI_FORMAT_B8G8R8A8_TYPELESS) desc.Format = DXGI_FORMAT_B8G8R8A8_UNORM;
+                    if (desc.Width != have.Width || desc.Height != have.Height || desc.Format != have.Format ||
+                        (desc.MiscFlags & D3D11_RESOURCE_MISC_SHARED_KEYEDMUTEX) || l.mutex || l.opened.size() >= 4)
                         other.reset();
                     else
                         l.opened.emplace_back(handle, other);
@@ -4221,8 +4230,8 @@ bool glFrame(void*, int layer, void* handle, int width, int height) {
         context->Flush();
         host.unlockDevice();
         // Without a mutex, the copy waited for, half a second at the most: ANGLE's device may draw into its texture as soon as
-        // this returns.
-        while (c.copied && !l.mutex && l.opened.size() < 2) {
+        // this returns. Not for a texture of the core's ring that came again (inTurn), drawn into only two frames from now.
+        while (c.copied && !l.mutex && !inTurn) {
             host.lockDevice();
             const HRESULT hr = context->GetData(c.copied.get(), nullptr, 0, 0);
             host.unlockDevice();
