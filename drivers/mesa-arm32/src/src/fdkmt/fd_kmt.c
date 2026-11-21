@@ -556,6 +556,7 @@ cache_max(void)
 }
 
 static int kmt_bo_map_i(struct fd_kmt *k, uint32_t handle, void **out_ptr);
+static void kmt_bo_unmap_i(struct fd_kmt *k, uint32_t handle);
 
 /* Lay BO cung kich thuoc/co tu cache; xoa 0 noi dung (Mesa co the gia dinh
  * BO moi = 0 nhu GEM). Tra true neu dung lai duoc.
@@ -585,8 +586,11 @@ kmt_bo_reuse(struct fd_kmt *k, uint64_t bytes, uint32_t kflags,
       LeaveCriticalSection(&k->lock);
 
       void *ptr = NULL;
-      if (kmt_bo_map_i(k, bo.handle, &ptr) == 0 && ptr)
+      if (kmt_bo_map_i(k, bo.handle, &ptr) == 0 && ptr) {
          memset(ptr, 0, (size_t)bo.size);
+         /* Megler: no view kept for it: Mesa maps it again if it needs to. */
+         kmt_bo_unmap_i(k, bo.handle);
+      }
       *out_handle = bo.handle;
       *out_iova = bo.iova;
       return true;
@@ -596,20 +600,11 @@ kmt_bo_reuse(struct fd_kmt *k, uint64_t bytes, uint32_t kflags,
 }
 
 static int
-kmt_bo_alloc_i(struct fd_kmt *k, uint64_t size, uint32_t flags,
-                uint32_t *out_handle, uint64_t *out_iova)
+kmt_bo_create(struct fd_kmt *k, uint64_t bytes, uint32_t kflags,
+              uint32_t *out_handle, uint64_t *out_iova)
 {
    NTSTATUS st;
-   *out_handle = 0;
-   *out_iova = 0;
-
    const struct fdkmt_kmd_ops *kmd = k->gpu->kmd;
-   uint64_t bytes = (size + kmd->bo_align - 1) & ~(kmd->bo_align - 1);
-   uint32_t kflags = kmd->has_cpu_cached ? (flags & FD_KMT_BO_CACHED) : 0;
-
-   if (kmt_bo_reuse(k, bytes, kflags, out_handle, out_iova))
-      return 0;
-
    uint32_t priv[256];
    if (kmd->alloc_privdata_max > sizeof(priv))
       return -EINVAL;
@@ -692,6 +687,71 @@ fail_alloc: {
    return st ? st_to_errno(st) : -ENOMEM;
 }
 
+/* Megler: the cache's BOs given back to the kernel, their memory and their
+ * GPU addresses with them: when an allocation fails. How many and their bytes.
+ */
+static unsigned
+kmt_cache_trim(struct fd_kmt *k, uint64_t *bytes)
+{
+   EnterCriticalSection(&k->lock);
+   struct kmt_bo *list = k->free_bos;
+   unsigned n = k->nr_free;
+   *bytes = k->free_bytes;
+   k->free_bos = NULL;
+   k->nr_free = k->max_free = 0;
+   k->free_bytes = 0;
+   LeaveCriticalSection(&k->lock);
+   for (unsigned i = 0; i < n; i++)
+      kmt_bo_destroy(k, &list[i]);
+   free(list);
+   return n;
+}
+
+static int
+kmt_bo_alloc_i(struct fd_kmt *k, uint64_t size, uint32_t flags,
+                uint32_t *out_handle, uint64_t *out_iova)
+{
+   *out_handle = 0;
+   *out_iova = 0;
+
+   const struct fdkmt_kmd_ops *kmd = k->gpu->kmd;
+   uint64_t bytes = (size + kmd->bo_align - 1) & ~(kmd->bo_align - 1);
+   uint32_t kflags = kmd->has_cpu_cached ? (flags & FD_KMT_BO_CACHED) : 0;
+
+   if (kmt_bo_reuse(k, bytes, kflags, out_handle, out_iova))
+      return 0;
+
+   int ret = kmt_bo_create(k, bytes, kflags, out_handle, out_iova);
+   if (ret) {
+      /* Megler: what the cache holds goes back, and once more. */
+      uint64_t freed = 0;
+      unsigned n = kmt_cache_trim(k, &freed);
+      if (n) {
+         err("%u cached BOs (%llu KB) given back to the kernel; asking once more\n", n,
+             (unsigned long long)(freed >> 10));
+         ret = kmt_bo_create(k, bytes, kflags, out_handle, out_iova);
+      }
+   }
+   if (ret) {
+      /* What the device holds, for the reason: its memory, and the part of
+       * it the CPU has a view of (each view takes its size in addresses).
+       */
+      uint64_t held = 0, viewed = 0;
+      EnterCriticalSection(&k->lock);
+      unsigned live = k->nr_bos;
+      for (unsigned i = 0; i < live; i++) {
+         held += k->bos[i].size;
+         if (k->bos[i].map)
+            viewed += k->bos[i].size;
+      }
+      LeaveCriticalSection(&k->lock);
+      err("no BO of %llu bytes (%d): the device holds %u BOs of %llu MB, %llu MB of "
+          "them viewed by the CPU\n", (unsigned long long)bytes, ret, live,
+          (unsigned long long)(held >> 20), (unsigned long long)(viewed >> 20));
+   }
+   return ret;
+}
+
 static void
 kmt_bo_free_i(struct fd_kmt *k, uint32_t handle)
 {
@@ -725,6 +785,17 @@ kmt_bo_free_i(struct fd_kmt *k, uint32_t handle)
          }
       }
       if (k->nr_free < k->max_free) {
+         /* Megler: a BO waiting in the cache keeps no CPU view: on a 32-bit
+          * process each view takes its size in addresses, and the cache's
+          * BOs are of no one's until one is given out again.
+          */
+         if (b.map) {
+            D3DKMT_UNLOCK2 ul = { 0 };
+            ul.hDevice = k->device;
+            ul.hAllocation = b.handle;
+            pD3DKMTUnlock2(&ul);
+            b.map = NULL;
+         }
          k->free_bos[k->nr_free++] = b;
          k->free_bytes += b.size;
          LeaveCriticalSection(&k->lock);
@@ -957,6 +1028,24 @@ kmt_bo_map_i(struct fd_kmt *k, uint32_t handle, void **out_ptr)
    *out_ptr = bo->map;
    LeaveCriticalSection(&k->lock);
    return 0;
+}
+
+/* Megler: the CPU's view of a BO given up (Unlock2), for a BO no one maps
+ * now: on a 32-bit process each view takes its size in addresses.
+ */
+static void
+kmt_bo_unmap_i(struct fd_kmt *k, uint32_t handle)
+{
+   EnterCriticalSection(&k->lock);
+   struct kmt_bo *bo = find_bo(k, handle);
+   if (bo && bo->map) {
+      D3DKMT_UNLOCK2 ul = { 0 };
+      ul.hDevice = k->device;
+      ul.hAllocation = handle;
+      pD3DKMTUnlock2(&ul);
+      bo->map = NULL;
+   }
+   LeaveCriticalSection(&k->lock);
 }
 
 /* Thu nghiem: Unlock2 + Lock2 lai (xem KMD co don cache CPU khong).
