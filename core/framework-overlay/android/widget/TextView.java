@@ -29,6 +29,11 @@
 // own, getTextDirectionHeuristic names a direction (it was null), and setPrecomputedText sets the text it is given with
 // its spans. The first did nothing, the second gave the view's own paint with a Builder's defaults, the last set a plain
 // string (android/text/PrecomputedText.java here has why they matter).
+//
+// And setAllCaps sets the text again only when the transformation changes, and a text appearance's textAllCaps="false"
+// changes nothing, as on Android (the comment at setAllCaps has why).
+//
+// And the selection's spans put on the text are told to onSelectionChanged, as Android's spanChange tells them.
 // Everything else is the original's, unchanged.
 package android.widget;
 
@@ -272,7 +277,8 @@ public class TextView extends View implements ViewTreeObserver.OnPreDrawListener
         int tfi = a.getInt(megler.S.TextAppearance_typeface, -1), st = a.getInt(megler.S.TextAppearance_textStyle, -1), w = a.getInt(megler.S.TextAppearance_textFontWeight, -1);
         if (font != null) mTextPaint.setTypeface(font);
         else if (family != null || tfi >= 0 || st >= 0 || w >= 0) setTypefaceFromAttrs(font == null ? family : null, tfi, st >= 0 ? st : 0, w);
-        if (a.hasValue(megler.S.TextAppearance_textAllCaps)) setAllCaps(a.getBoolean(megler.S.TextAppearance_textAllCaps, false));
+        // As Android's applyTextAppearance: an appearance turns all caps on, and its textAllCaps="false" changes nothing.
+        if (a.getBoolean(megler.S.TextAppearance_textAllCaps, false)) setAllCaps(true);
         if (a.hasValue(megler.S.TextAppearance_letterSpacing)) setLetterSpacing(a.getFloat(megler.S.TextAppearance_letterSpacing, 0));
         if (a.hasValue(megler.S.TextAppearance_shadowColor)) { mShadowColor = a.getInt(megler.S.TextAppearance_shadowColor, 0); mShadowRadius = a.getFloat(megler.S.TextAppearance_shadowRadius, 0); mShadowDx = a.getFloat(megler.S.TextAppearance_shadowDx, 0); mShadowDy = a.getFloat(megler.S.TextAppearance_shadowDy, 0); if (mShadowRadius > 0) mTextPaint.setShadowLayer(mShadowRadius, mShadowDx, mShadowDy, mShadowColor); }
         int hl = a.getColor(megler.S.TextAppearance_textColorHighlight, 0);
@@ -346,7 +352,19 @@ public class TextView extends View implements ViewTreeObserver.OnPreDrawListener
     public TextPaint getPaint() { return mTextPaint; }
     public void setPaintFlags(int f) { if (mTextPaint.getFlags() != f) { mTextPaint.setFlags(f); relayout(); } }
     public int getPaintFlags() { return mTextPaint.getFlags(); }
-    public void setAllCaps(boolean caps) { mAllCaps = caps; if (caps && mTransformation == null) { mTransformation = new AllCapsTransformation(); } else if (!caps && mTransformation instanceof AllCapsTransformation) mTransformation = null; setText(mText, mBufferType); }
+    /*
+     * Through setTransformationMethod, as Android's: the text is set again only when the transformation changes. It was set
+     * again every time, with the cursor put back at the start: setTextAppearance called setAllCaps(false) for an appearance
+     * with textAllCaps="false" (AppCompat's calls it for its own textAllCaps too), and the Google app's Gemini field
+     * (17.6.63) sets its text appearance after every character typed, so the next character went in before the others.
+     */
+    public void setAllCaps(boolean caps) {
+        mAllCaps = caps;
+        TransformationMethod m = mTransformation;
+        if (caps && m == null) m = new AllCapsTransformation();
+        else if (!caps && m instanceof AllCapsTransformation) m = null;
+        setTransformationMethod(m);
+    }
     public boolean isAllCaps() { return mAllCaps; }
     private static final class AllCapsTransformation implements TransformationMethod {
         public CharSequence getTransformation(CharSequence s, View v) { if (s == null) return null; String up = s.toString().toUpperCase(Locale.getDefault()); if (s instanceof Spanned && up.length() == s.length()) { SpannableString ss = new SpannableString(up); TextUtils.copySpansFrom((Spanned) s, 0, s.length(), null, ss, 0); return ss; } return up; }
@@ -427,7 +445,17 @@ public class TextView extends View implements ViewTreeObserver.OnPreDrawListener
             mBlinkStart = android.os.SystemClock.uptimeMillis();
         }
         public void afterTextChanged(Editable s) {}
-        public void onSpanAdded(Spannable t, Object w, int s, int e) { if (w == Selection.SELECTION_END || w == Selection.SELECTION_START) { mBlinkStart = android.os.SystemClock.uptimeMillis(); invalidate(); } else if (w instanceof android.text.style.UpdateAppearance) relayout(); }
+        // A selection's end put on a text is told too, as Android's spanChange tells it (from -1): a text set or set again
+        // has its cursor put at the start by the movement method, and a view that keeps its cursor as onSelectionChanged
+        // says (the Google app's Gemini field) heard nothing of it.
+        public void onSpanAdded(Spannable t, Object w, int s, int e) {
+            if (w == Selection.SELECTION_END || w == Selection.SELECTION_START) {
+                mBlinkStart = android.os.SystemClock.uptimeMillis(); invalidate();
+                if (t == mText && (t.getSpanFlags(w) & Spanned.SPAN_INTERMEDIATE) == 0)
+                    onSelectionChanged(w == Selection.SELECTION_START ? s : Selection.getSelectionStart(t), w == Selection.SELECTION_END ? s : Selection.getSelectionEnd(t));
+            }
+            else if (w instanceof android.text.style.UpdateAppearance) relayout();
+        }
         public void onSpanRemoved(Spannable t, Object w, int s, int e) { if (w instanceof android.text.style.UpdateAppearance) relayout(); }
         public void onSpanChanged(Spannable t, Object w, int os, int oe, int ns, int ne) {
             if (w == Selection.SELECTION_END || w == Selection.SELECTION_START) {
