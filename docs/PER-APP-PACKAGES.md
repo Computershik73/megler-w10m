@@ -312,6 +312,17 @@ app of whether Google Play services' own features may use the location
 (`megler.gmsLocation`), which the package that asked writes and every package
 reads as the file has it then (`settings::meglerNow`).
 
+**Graphics** (`megler.gles`, `shell/Graphics.h`), on Windows 10 Mobile alone,
+where Megler's package carries Mesa's freedreno beside ANGLE: which OpenGL ES an
+app draws with, ANGLE (Direct3D 11) or Mesa freedreno (experimental, Adreno GPUs);
+docs/ARCHITECTURE.md, "Mesa's freedreno, chosen per app". Unlike the others it
+changes what an app's package has to carry: Mesa's DLLs, some 20 MB, are in it
+only while the app goes by Mesa (below, step 5). Changed for an app, or in
+Megler's for the apps that go by Megler's, it makes the app "to update" in the
+Library -- its Update, or Update All, makes its package again with Mesa's DLLs or
+without -- and the setting says so where it is changed. An app set to Mesa whose
+package was made without it draws with ANGLE meanwhile, its log saying why.
+
 **Clear Data** and **Clear Cache** on an app's page ask the app's own package to
 clear its data or its cache at its next start, before anything of it is open: a
 file named after the package in `<shared>\clear-data` or `<shared>\clear-cache`
@@ -404,7 +415,14 @@ Two things are asked for before anything else (the owner's wish, 2026-11-02):
      Megler's library offers; the services an app hosts come from
      `<shared>\services`; the packages up to 0.1.0.458 carried them, some
      110 MB of Megler's in each instead of some 12 MB), its `resources.pri`
-     and what the packaging makes itself; that manifest and `resources.pri`; and `MeglerApp.ini`.
+     and what the packaging makes itself, and Mesa's freedreno (`libEGL_mesa.dll`,
+     `libGLESv2_mesa.dll`, `libgallium_wgl.dll`, some 20 MB) unless the app goes
+     by it when the package is made (its Graphics, `appPackage::glesFor`); that
+     manifest and `resources.pri`; and `MeglerApp.ini`, which says `gles=mesa` or
+     `gles=angle` where Megler has Mesa. Which packages have it is written down
+     by full name in `<shared>\apks\<identity name>\graphics.txt`, for the
+     Library: an installed app whose package does not have what its Graphics ask
+     for now is to update (`ui/SeparateApps.cpp`).
      The app's APK is not in it since 0.1.0.645: it is in the shared folder,
      `<shared>\apks\<identity name>\<token>\app.apk`, with the library's report
      and icon of it (`app.apk.json`, `app.apk.icon`, `reports.version`), so
@@ -1152,7 +1170,8 @@ Megler's log the volumes, the choice, and where each install and move went.
 ## What follows (not done yet)
 
 - What is left of Megler in each package, some 12 MB (`Megler.exe`, ANGLE, the
-  C++ runtime's DLLs, the shell's fonts), is each package's own: a process
+  C++ runtime's DLLs, the shell's fonts; and Mesa's freedreno, 20 MB more, in the
+  package of an app that draws with it), is each package's own: a process
   loads code from its own package alone, another package's install folder
   cannot be read, and a framework package of one's own is not to be had.
 - How apps reach one another (Android's intents to another app, "share", "open
