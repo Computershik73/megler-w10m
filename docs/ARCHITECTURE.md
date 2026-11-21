@@ -692,6 +692,11 @@ Megler's package has Mesa. ANGLE is the default; a package built with `MEGLER_GL
   (`mg_host_stderr_to_log_begin`, `_end`), whose lines the log takes as `mesa: <line>` (2000 a process at most, then
   counted); warnings and errors (`MESA_LOG_LEVEL=warning`; Mesa's default, information too, under `mesa-diag`). A
   texture GTA: Vice City's map could not be given memory for ended the game, its reason lost (package 745).
+- **Mesa's own switches, by flags `mesa-env-<NAME>=<value>`.** Each sets that variable in the process's environment
+  before Mesa's DLLs load (`FD_MESA_DEBUG=gmem`, `FDKMT_DEBUG=1`, `FD_MAX_BATCH_DRAWS=...`: the switches the project's
+  patches and Mesa read, drivers/mesa-arm32/README.md), the log saying `egl: Mesa's environment: NAME=value`. Set through
+  the Device Portal (`tools/phone-flags.py --app <package> set mesa-env-FD_MESA_DEBUG=gmem`): `=` is not among the
+  characters a flag in `Pictures\Megler\diag` may have.
 - **What goes to the kernel's driver, by the flag `kmt-trace`.** Every call of the graphics kernel's functions the
   app's process makes from the first use of EGL on -- ANGLE's Direct3D 11 device through Qualcomm's own driver, the
   shell's, Mesa's D3DKMT core -- with its arguments, its private driver data and the command buffers it submits (and the

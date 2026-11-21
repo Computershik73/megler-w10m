@@ -70,6 +70,23 @@ bool mg_egl_gpu_is_adreno(const char *name, u32 vendor)
     return vendor == 0x5143 || (name && strstr(name, "Adreno") != NULL);
 }
 
+/* A flag mesa-env-<NAME>=<value>: the variable set in the process's environment, for Mesa's DLLs about to load. */
+static void mesa_env(const char *rest, void *user)
+{
+    char name[96];
+    const char *eq = strchr(rest, '=');
+    size_t n = eq ? (size_t)(eq - rest) : 0;
+    (void)user;
+    if (!n || n >= sizeof(name)) {
+        mg_warn("egl: the flag mesa-env-%s says no variable: its name is mesa-env-<NAME>=<value>", rest);
+        return;
+    }
+    memcpy(name, rest, n);
+    name[n] = 0;
+    if (mg_host_setenv(name, eq + 1)) mg_info("egl: Mesa's environment: %s=%s (a flag mesa-env-)", name, eq + 1);
+    else mg_warn("egl: Mesa's environment: %s could not be set (the process's environment refused it)", name);
+}
+
 /*
  * Mesa's freedreno (tools/build-appx.sh, drivers/mesa-arm32): its libEGL_mesa.dll and libGLESv2_mesa.dll import its driver,
  * libgallium_wgl.dll, which Windows finds beside them at the package's root. They are named apart from ANGLE's on purpose:
@@ -157,6 +174,11 @@ static bool mesa_load(char *why, size_t size)
      * memory for ended it at once, and the reason was lost (package 745).
      */
     if (!diag) mg_host_setenv("MESA_LOG_LEVEL", "warning");
+    /*
+     * The flags mesa-env-<NAME>=<value>: that variable of Mesa's set before its DLLs load, for trying its own switches on
+     * the phone (FD_MESA_DEBUG, FD_D3DKMT_GMEM, FDKMT_DEBUG, FD_MAX_BATCH_DRAWS...; drivers/mesa-arm32/README.md).
+     */
+    mg_flags_each("mesa-env-", mesa_env, NULL);
     caught = mg_host_stderr_to_log_begin("mesa: ");
     gles = mg_dl_open("libGLESv2_mesa.dll");
     egl = gles ? mg_dl_open("libEGL_mesa.dll") : NULL;
