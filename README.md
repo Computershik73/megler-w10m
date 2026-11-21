@@ -245,7 +245,7 @@ another project (GPL-2.0-or-later) and is licensed here under the GPL-3.0, as
   the build with Visual Studio 2017, sound fixes, Install Data from ZIP and app fixes found with Mesa.
 - **mayconus**: video and streaming apps on a Lumia 950 XL
   ([docs/LUMIA-950XL.md](docs/LUMIA-950XL.md)).
-- **WinArchive's developer**: installing apps the Store's way, so Windows 10 Mobile's limit of 20
+- **zemonkamin**, WinArchive's developer: installing apps the Store's way, so Windows 10 Mobile's limit of 20
   developer packages doesn't stop them.
 - Everyone who reports what goes wrong on GitHub (wukenadela, DimaSWE, JOHN-decm, Jevil7452,
   Xaker-USSR, dascaluvlad01-ux, msydh, sur-f0x) and everyone who sends logs from their phones.
