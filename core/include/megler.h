@@ -261,10 +261,17 @@ MEGLER_API char *megler_bundle_unpack(const char *bundle_path, const char *apk_p
  *
  *     Android/obb/<package>/..., Android/data/<package>/...  as it is (also after "sdcard/" or "storage/emulated/0/")
  *     obb/<package>/..., data/<package>/...                   into Android/obb/<package>, Android/data/<package>
- *     <package>/... or a file with no folder                  an .obb into Android/obb/<package>, anything else into
+ *     <package>/...                                           an .obb into Android/obb/<package>, anything else into
  *                                                             Android/data/<package> as it is in the ZIP
+ *     anything else                                           an .obb into Android/obb/<package>, the rest into
+ *                                                             Android/data/<package>/files (getExternalFilesDir), or
+ *                                                             into Android/data/<package> where it starts with files/
+ *                                                             or cache/
  *
- * Another package's folders, and paths that would leave the app's, are left out. Files there already are written over.
+ * A folder every file of the ZIP is in, as a ZIP made of a folder has one ("Grand Theft Auto Vice City/" over a game's
+ * files), is left out first, unless it is one of those above (Android, sdcard, storage, obb, data, the package), files or
+ * cache. Another package's folders, and paths that would leave the app's, are left out. Files there already are written
+ * over.
  * { "ok": true, "files": 3, "obbs": 1, "bytes": 123, "to": "<the app's storage>" } or { "ok": false, "error": "..." }.
  * Takes as long as the files take to write: not on the UI thread. Freed with megler_free.
  */

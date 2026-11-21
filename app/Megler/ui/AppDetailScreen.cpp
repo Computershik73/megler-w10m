@@ -368,8 +368,9 @@ private:
             add(data, textButton("Install Data from ZIP", [this, package, title] {
                 shell_.confirm("Install data for " + title + "?",
                                "Pick a ZIP file of the app's data. Its .obb files go to Android/obb/" + package +
-                                   ", the rest to Android/data/" + package + " (a ZIP that has the Android/obb or Android/data folders "
-                                   "in it keeps them). Files already there are written over. If the app is open now, close it first.",
+                                   ", the rest to Android/data/" + package + "/files (a ZIP that has the Android/obb or Android/data "
+                                   "folders, or the app's own folder, in it keeps them). Files already there are written over. If "
+                                   "the app is open now, close it first.",
                                "Pick ZIP", false, [this, package, title] { installDataZip(&shell_, package, title); });
             }));
             add(column, data);

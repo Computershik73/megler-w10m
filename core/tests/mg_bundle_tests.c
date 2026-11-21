@@ -899,6 +899,109 @@ done:
     free(splits);
 }
 
+/* ------------------------------------------------- an app's data from a ZIP file */
+
+/* A ZIP of small files by these names, each its own name as its bytes; true when it was written. */
+static bool data_zip_make(const char *path, const char *const *names, int n)
+{
+    zip_out z;
+    int i, ferr = 0;
+    memset(&z, 0, sizeof(z));
+    z.f = mg_file_open(path, MG_O_WRITE | MG_O_CREATE | MG_O_TRUNC, &ferr);
+    if (!z.f) return false;
+    for (i = 0; i < n; i++) zip_add(&z, names[i], (const u8 *)names[i], (u32)strlen(names[i]));
+    zip_end(&z);
+    return true;
+}
+
+/* Whether the app's storage under `storage` has the file `rel` (below its sdcard), with `name` as its bytes. */
+static bool data_zip_has(const char *storage, const char *rel, const char *name)
+{
+    char *path = mg_sprintf("%s/apps/com.example.data/sdcard/%s", storage, rel);
+    size_t size = 0;
+    u8 *bytes = mg_file_read_all(path, &size);
+    bool same = bytes && size == strlen(name) && !memcmp(bytes, name, size);
+    if (!same) say("  not as written: %s", path);
+    free(bytes);
+    free(path);
+    return same;
+}
+
+/*
+ * megler_data_zip_install, the app page's Install Data from ZIP: where each file of a ZIP goes in the app's own storage, a
+ * ZIP of one folder (a game's files, as GTA: Vice City's come: "Grand Theft Auto Vice City/Audio/sfx.RAW") without that
+ * folder, and nothing written outside the app's storage whatever the names say.
+ */
+static void test_data_zip(const char *scratch)
+{
+    static const char *const folder[] = { "Game Folder/", "Game Folder/Audio/sfx.raw", "Game Folder/data/maps/a.ipl",
+                                           "Game Folder/main.3.com.example.data.obb", "Game Folder/../evil.txt",
+                                           "Game Folder/Android/data/com.other/x.txt" };
+    static const char *const whole[] = { "Android/obb/com.example.data/patch.3.com.example.data.obb", "com.example.data/files/save.dat",
+                                         "sdcard/Android/data/com.example.data/files/x.bin", "files/y.bin", "loose.txt",
+                                         "obb/com.example.data/main.1.obb", "/abs.txt", "a\\..\\..\\b.txt", "Android/data/com.other/z.txt",
+                                         "c:/d.txt" };
+    char *dir = mg_sprintf("%s/datazip", scratch), *storage = mg_sprintf("%s/storage", dir), *zip = mg_sprintf("%s/game.zip", dir), *json, *outside;
+    seen_progress p;
+    say("an app's data from a ZIP file");
+    mg_path_mkdirs(storage);
+
+    CHECK(data_zip_make(zip, folder, (int)MG_COUNT(folder)));
+    memset(&p, 0, sizeof(p));
+    json = megler_data_zip_install(zip, storage, "com.example.data", progress, &p);
+    say("  a ZIP of one folder: %s", json ? json : "(nothing)");
+    CHECK(json && strstr(json, "\"ok\":true") && strstr(json, "\"files\":3") && strstr(json, "\"obbs\":1"));
+    CHECK(data_zip_has(storage, "Android/data/com.example.data/files/Audio/sfx.raw", folder[1]));
+    CHECK(data_zip_has(storage, "Android/data/com.example.data/files/data/maps/a.ipl", folder[2]));
+    CHECK(data_zip_has(storage, "Android/obb/com.example.data/main.3.com.example.data.obb", folder[3]));
+    CHECK(p.calls > 0 && !p.backwards && p.last_total == (u64)(strlen(folder[1]) + strlen(folder[2]) + strlen(folder[3])));
+    outside = mg_sprintf("%s/apps/com.example.data/sdcard/Android/data/com.example.data/evil.txt", storage);
+    CHECK(!exists(outside));
+    free(outside);
+    outside = mg_sprintf("%s/apps/com.other", storage);
+    CHECK(!exists(outside));
+    free(outside);
+    megler_free(json);
+
+    CHECK(data_zip_make(zip, whole, (int)MG_COUNT(whole)));
+    json = megler_data_zip_install(zip, storage, "com.example.data", NULL, NULL);
+    say("  a ZIP of the storage's own folders: %s", json ? json : "(nothing)");
+    CHECK(json && strstr(json, "\"ok\":true") && strstr(json, "\"files\":6") && strstr(json, "\"obbs\":2"));
+    CHECK(data_zip_has(storage, "Android/obb/com.example.data/patch.3.com.example.data.obb", whole[0]));
+    CHECK(data_zip_has(storage, "Android/data/com.example.data/files/save.dat", whole[1]));
+    CHECK(data_zip_has(storage, "Android/data/com.example.data/files/x.bin", whole[2]));
+    CHECK(data_zip_has(storage, "Android/data/com.example.data/files/y.bin", whole[3]));
+    CHECK(data_zip_has(storage, "Android/data/com.example.data/files/loose.txt", whole[4]));
+    CHECK(data_zip_has(storage, "Android/obb/com.example.data/main.1.obb", whole[5]));
+    outside = mg_sprintf("%s/abs.txt", storage);
+    CHECK(!exists(outside));
+    free(outside);
+    outside = mg_sprintf("%s/b.txt", dir);
+    CHECK(!exists(outside));
+    free(outside);
+    outside = mg_sprintf("%s/apps/com.other", storage);
+    CHECK(!exists(outside));
+    free(outside);
+    megler_free(json);
+
+    /* Nothing for this app: refused, nothing written. */
+    {
+        static const char *const others[] = { "Android/obb/com.other/main.1.com.other.obb", "../up.txt" };
+        CHECK(data_zip_make(zip, others, (int)MG_COUNT(others)));
+        json = megler_data_zip_install(zip, storage, "com.example.data", NULL, NULL);
+        say("  a ZIP with nothing for the app: %s", json ? json : "(nothing)");
+        CHECK(json && strstr(json, "\"ok\":false"));
+        outside = mg_sprintf("%s/up.txt", dir);
+        CHECK(!exists(outside));
+        free(outside);
+        megler_free(json);
+    }
+    remove_tree(dir);
+    free(zip);
+    free(storage);
+    free(dir);
+}
+
 int mg_bundle_tests_run(const char *java_dir, const char *scratch, const char *real_dir)
 {
     static const char *const bip_kept[] = { "config.armeabi_v7a", "config.xxhdpi", "config.xxxhdpi" };
@@ -936,6 +1039,7 @@ int mg_bundle_tests_run(const char *java_dir, const char *scratch, const char *r
         }
     }
     test_big_library(java_dir, scratch);
+    test_data_zip(scratch);
     if (real_dir)
         for (i = 0; i < (int)MG_COUNT(real); i++) test_real(real_dir, scratch, &real[i]);
     else
