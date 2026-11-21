@@ -934,18 +934,43 @@ public class View implements Drawable.Callback, KeyEvent.Callback {
         }
         return mRoot == null || r.intersect(0, 0, mRoot.width(), mRoot.height());
     }
+    /*
+     * Through a transformed view, one walk too, as Android's ViewGroup.getChildVisibleRect makes it: the rectangle in each
+     * parent's coordinates -- through the view's transformation, its place in the parent -- cut to the parent. Before, every
+     * ancestor's place in the window was walked for again (getLocationInWindow), two arrays made at each, and the
+     * rectangle kept the view's own size through a scale. ReVanced Extended asks for every view of YouTube's watch page,
+     * whose panel is moved, before every frame (its dislike counts): up to a third of the main thread's samples were these
+     * walks on a user's Lumia (0.1.0.734).
+     */
     private boolean meglerGlobalVisibleRectWalks(Rect r, Point globalOffset) {
-        int w = getWidth(), h = getHeight();
-        int[] loc = new int[2];
-        getLocationInWindow(loc);
-        r.set(loc[0], loc[1], loc[0] + w, loc[1] + h);
-        if (globalOffset != null) globalOffset.set(loc[0] - mScrollX, loc[1] - mScrollY);
-        View p = mParent;
-        while (p != null) {
-            int[] pl = new int[2]; p.getLocationInWindow(pl);
-            if (!r.intersect(pl[0], pl[1], pl[0] + p.getWidth(), pl[1] + p.getHeight())) return false;
-            p = p.mParent;
+        RectF f = new RectF(0, 0, getWidth(), getHeight());
+        float ox = -mScrollX, oy = -mScrollY;
+        float[] at = null;
+        View v = this;
+        for (; v.mParent != null; v = v.mParent) {
+            View p = v.mParent;
+            if (!v.hasIdentityMatrix()) {
+                Matrix m = v.getMatrix();
+                m.mapRect(f);
+                if (globalOffset != null) {
+                    if (at == null) at = new float[2];
+                    at[0] = ox;
+                    at[1] = oy;
+                    m.mapPoints(at);
+                    ox = at[0];
+                    oy = at[1];
+                }
+            }
+            float dx = v.mLeft - p.mScrollX, dy = v.mTop - p.mScrollY;
+            f.offset(dx, dy);
+            ox += dx;
+            oy += dy;
+            if (!f.intersect(0, 0, p.getWidth(), p.getHeight())) return false;
         }
+        // (the window's own view at its place, as the walk without transformations takes it)
+        f.offset(v.mLeft, v.mTop);
+        r.set((int) Math.floor(f.left), (int) Math.floor(f.top), (int) Math.ceil(f.right), (int) Math.ceil(f.bottom));
+        if (globalOffset != null) globalOffset.set(Math.round(ox + v.mLeft), Math.round(oy + v.mTop));
         return mRoot == null || r.intersect(0, 0, mRoot.width(), mRoot.height());
     }
     public void getLocationOnScreen(int[] out) { getLocationInWindow(out); if (mRoot != null) { out[0] += mRoot.windowX(); out[1] += mRoot.windowY(); } }

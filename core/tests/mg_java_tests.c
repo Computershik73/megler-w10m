@@ -4485,7 +4485,10 @@ static int run_data(void)
                                             view's insets listener: nothing changes (the line system-ui-same below). */
                                          "system-ui-same",
                                          /* And a second layout pass that asks nothing more after it (the line second-pass below). */
-                                         "second-pass" };
+                                         "second-pass",
+                                         /* And a view's visible rectangle under a transformed parent (the line visible-rect-transformed
+                                            below). */
+                                         "visible-rect-transformed" };
     int at = -1, want = 0, run = 0, line, i;
     char text[120];
     if (g_script_count) sscanf(g_script[0], "run:%d", &want);
@@ -4740,6 +4743,10 @@ static int run_data(void)
        the window asks for no layout after it, as Android's leaves the requests made for that pass (it was laid out once more
        at the next frame). */
     CHECK(wait_line("I/DataTest: second-pass layouts=2 pending=false", 0, 30) >= 0);
+    /* The step "visible-rect-transformed": a leaf of 40 x 40 at 10,10 of a group at 20,30 scaled by a half and moved down 5 is
+       seen at 25,40 to 45,60 of the outer group, through the group's transformation, as Android's getChildVisibleRect has it;
+       its offset there, its local rectangle (its own size scaled), and a leaf outside the group not seen. */
+    CHECK(wait_line("I/DataTest: visible-rect-transformed seen=true [25,40][45,60] offset=25,40 local=[0,0][20,20] away=false", 0, 30) >= 0);
     /* The view animation of the step "animation-listener": its listener told through the view's handler, after the frames that
        started and ended it, not inside its parent's dispatchDraw (Animation.fireStart; Telegram's settings ended the app). */
     CHECK(wait_line("I/DataTest: animation-listener heard=start end", 0, 30) >= 0);

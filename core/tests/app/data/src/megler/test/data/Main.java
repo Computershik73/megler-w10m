@@ -2474,6 +2474,7 @@ public class Main extends Activity {
         contextClassLoader();
         systemUiSame();
         secondPass();
+        visibleRectTransformed();
         Log.i("DataTest", "done ok=" + ok + " failed=" + failed);
         doneLogged = true;
         mediaSession();
@@ -12190,6 +12191,60 @@ public class Main extends Activity {
             boolean back = base.getClassLoader() == app;
             detail = base.getClass().getName() + " before=" + before + " was=" + was + " set=" + set + " kept=" + kept + " loads=" + loads + " back=" + back;
             return before == null && was && set && kept && loads && back;
+        });
+    }
+
+    /*
+     * A view's visible rectangle in the window under a transformed parent, as Android's ViewGroup.getChildVisibleRect makes it:
+     * a leaf of 40 x 40 at 10,10 in a group at 20,30 scaled by a half about its corner and moved down 5 is at 25,40 to 45,60 of
+     * its outer group, and so is its offset; local, it is its own 0,0 to 20,20; a leaf moved out of the group is not visible.
+     * The line "visible-rect-transformed".
+     */
+    private void visibleRectTransformed() {
+        step("visible-rect-transformed", () -> {
+            final android.widget.FrameLayout outer = new android.widget.FrameLayout(this), inner = new android.widget.FrameLayout(this);
+            final android.view.View leaf = new android.view.View(this), away = new android.view.View(this);
+            android.widget.FrameLayout.LayoutParams at = new android.widget.FrameLayout.LayoutParams(100, 100);
+            at.leftMargin = 20;
+            at.topMargin = 30;
+            outer.addView(inner, at);
+            android.widget.FrameLayout.LayoutParams leafAt = new android.widget.FrameLayout.LayoutParams(40, 40);
+            leafAt.leftMargin = 10;
+            leafAt.topMargin = 10;
+            inner.addView(leaf, leafAt);
+            android.widget.FrameLayout.LayoutParams awayAt = new android.widget.FrameLayout.LayoutParams(10, 10);
+            awayAt.leftMargin = 300;
+            inner.addView(away, awayAt);
+            inner.setPivotX(0);
+            inner.setPivotY(0);
+            inner.setScaleX(0.5f);
+            inner.setScaleY(0.5f);
+            inner.setTranslationY(5);
+            final android.view.ViewTreeObserver.OnGlobalLayoutListener[] heard = new android.view.ViewTreeObserver.OnGlobalLayoutListener[1];
+            heard[0] = () -> {
+                if (leaf.getWidth() == 0) return;
+                outer.getViewTreeObserver().removeOnGlobalLayoutListener(heard[0]);
+                android.graphics.Rect o = new android.graphics.Rect(), r = new android.graphics.Rect(), local = new android.graphics.Rect();
+                android.graphics.Point off = new android.graphics.Point();
+                outer.getGlobalVisibleRect(o);
+                boolean seen = leaf.getGlobalVisibleRect(r, off);
+                leaf.getLocalVisibleRect(local);
+                boolean awaySeen = away.getGlobalVisibleRect(new android.graphics.Rect());
+                r.offset(-o.left, -o.top);
+                off.offset(-o.left, -o.top);
+                ((android.view.ViewGroup) outer.getParent()).removeView(outer);
+                Log.i("DataTest", "visible-rect-transformed seen=" + seen + " " + r.toShortString() + " offset=" + off.x + "," + off.y + " local=" + local.toShortString()
+                      + " away=" + awaySeen);
+            };
+            outer.addOnAttachStateChangeListener(new android.view.View.OnAttachStateChangeListener() {
+                @Override public void onViewAttachedToWindow(android.view.View v) {
+                    outer.removeOnAttachStateChangeListener(this);
+                    outer.getViewTreeObserver().addOnGlobalLayoutListener(heard[0]);
+                }
+                @Override public void onViewDetachedFromWindow(android.view.View v) {}
+            });
+            ((android.view.ViewGroup) findViewById(android.R.id.content)).addView(outer, new android.view.ViewGroup.LayoutParams(200, 200));
+            return true;
         });
     }
 
