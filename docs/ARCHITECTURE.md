@@ -680,12 +680,15 @@ Megler's package has Mesa. ANGLE is the default; a package built with `MEGLER_GL
   `megler.log`, and the package's log copies take them along (`shell/LogMirror.h`: Save All Logs; `shell/PicturesDiag.h`).
 - **GMEM tiles, by the flag `mesa-gmem`.** The project's patch 0017 makes Mesa render every batch in system memory
   (bypass) on D3DKMT: in GMEM, the tiled rendering an Adreno is made for, the GPU hung in some 25-35 % of dEQP's
-  `color_clear` runs, the KMD ending the packet after 2.5 s (a TDR; drivers/mesa-arm32/src/ISSUES.md, 1, cause not
-  found). The flag sets `FD_D3DKMT_GMEM=1` before Mesa loads, the log saying `egl: the flag mesa-gmem: Mesa renders in
-  GMEM tiles ...`: for trying it on a game the GPU keeps waiting on at a high resolution, which bypass costs memory
-  bandwidth (GTA: Vice City at 2560x1440, 22-35 frames a second on Mesa against ANGLE's 30-44). With it, depth and
-  stencil textures are linear again (patch 0020 tiles them in sysmem rendering alone), so one a batch rendered in bypass
-  wrote, then sampled or blitted, may come out scrambled as before 0020.
+  `color_clear` runs, the KMD ending the packet after 2.5 s (a TDR), and GTA: Vice City within half a minute. The cause
+  was the D3DKMT core's: it gave each piece of a pass's growable command stream its own DMA packet, between which the
+  compositor's work ran; it submits them as one now, and GMEM no longer hangs (drivers/mesa-arm32/src/ISSUES.md, 1). It
+  stays off by default: at 2560x1440 it is still slower than bypass for GTA (ISSUES.md, 2). The flag sets
+  `FD_D3DKMT_GMEM=1` before Mesa loads, the log saying `egl: the flag mesa-gmem: Mesa renders in GMEM tiles ...`: for
+  trying it on a game the GPU keeps waiting on at a high resolution, which bypass costs memory bandwidth (GTA: Vice City
+  at 2560x1440, 22-35 frames a second on Mesa against ANGLE's 30-44). With it, depth and stencil textures are linear
+  again (patch 0020 tiles them in sysmem rendering alone), so one a batch rendered in bypass wrote, then sampled or
+  blitted, may come out scrambled as before 0020.
 - **Mesa's errors in the log, always.** What Mesa says of its errors goes to its C runtime's stderr (`mesa_log`, its
   D3DKMT core's failures with their NTSTATUS, EGL's warnings), which an app's process has nowhere to go. Its DLLs, which
   take the standard handles as they load, are given a pipe of the host's as their stderr while `mesa_load` loads them

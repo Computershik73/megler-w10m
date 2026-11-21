@@ -49,7 +49,11 @@ thaihoangduylinh, who sent the first build of these DLLs (pull request #34), as 
   `megler-0027`: a texture opened from another device by its share handle -- a window surface's Direct3D 11 texture --
   is one the kernel gives the CPU no view of (`Lock2`: 0xc000000d), so it is never asked for one: Mesa reads and writes
   it through a staging copy at once (`glReadPixels` of a window surface asked the kernel at every read back, and failed).
-  The core says each kind of failure 20 times, then every 1000th with its count.
+  The core says each kind of failure 20 times, then every 1000th with its count. And the core submits each submit's
+  command buffers as one: freedreno's growable primary ring comes in pieces, which the core gave the kernel one
+  `D3DKMTSubmitCommand` each, and the kernel's scheduler ran the compositor's work between them, in the middle of a GMEM
+  pass, which hung the GPU (`src/ISSUES.md`, 1); they are copied into one buffer of the core's and submitted together
+  (`FDKMT_SPLIT_SUBMITS=1`: apart, as before). A refused submit says once what the kernel says of the device.
 - Mesa is not here: its tag `mesa-26.2.7` (commit `b69adc2a`), cloned by the script. The project's patches applied as
   their author committed them make exactly its Mesa commit `e963b78bede1a54e3abed2c30c618b8113b5b80c` (tree `d31fe7a7`),
   and Megler's on it the tree `e57a3ee3`, both of which the script checks; the DLLs name that last commit
@@ -106,23 +110,24 @@ In Megler both are asked for by an app's flag `mesa-diag` (a file of that name i
 `Pictures\Megler\diag\<package>\flags` over USB): the log files then go into the app's package's `LocalState`, beside
 `megler.log`, and its log copies take them (Save All Logs, `Pictures\Megler\diag`); `docs/ARCHITECTURE.md`, "Mesa's
 freedreno, chosen per app". An app's flag `mesa-gmem` sets `FD_D3DKMT_GMEM=1`: GMEM (tiled) rendering, which the
-project's patch 0017 leaves off because it hung the GPU in some runs (`src/ISSUES.md`, 1).
+project's patch 0017 leaves off because it hung the GPU in some runs -- the core's split submits, fixed (`src/ISSUES.md`,
+1) -- and which is still slower than sysmem for a game at 2560x1440 (`src/ISSUES.md`, 2).
 
 What they say of their errors on stderr -- Mesa's log (`MESA_LOG_LEVEL`: Megler asks for warnings and errors), the
 D3DKMT core's failures with their NTSTATUS (said always since Megler's change to `fd_kmt.c`), EGL's warnings -- is in
 Megler's log in any case, each line as `mesa: <line>`: Megler gives the DLLs a pipe as their stderr as they load.
 
 Other environment variables (`src/BUILD.md`, `src/src/fdkmt/README.md`, the patches) switch on more: `FDKMT_DEBUG`,
-`FDKMT_DUMP_HANG` and `FDKMT_DUMP_FAIL` (command buffers into `%TEMP%`), `FD_D3DKMT_GMEM`, `FD_D3DKMT_CACHED`,
-`FD_MAX_BATCH_DRAWS`, Mesa's own `FD_MESA_DEBUG`, `IR3_SHADER_DEBUG`, ... (printing a shader as text makes a temporary
-file in `%TEMP%`, Mesa's way on Windows, and removes it).
+`FDKMT_DUMP_HANG` and `FDKMT_DUMP_FAIL` (command buffers into `%TEMP%`), `FDKMT_SPLIT_SUBMITS`, `FD_D3DKMT_GMEM`,
+`FD_D3DKMT_CACHED`, `FD_MAX_BATCH_DRAWS`, Mesa's own `FD_MESA_DEBUG`, `IR3_SHADER_DEBUG`, ... (printing a shader as text
+makes a temporary file in `%TEMP%`, Mesa's way on Windows, and removes it).
 
 SHA-256:
 
 ```
-41ef5215f824ae359a03fea5907c5aec1cc9a883c641a7ebbb4984d145b622f6  libEGL.dll
+065cf77b61124d27ae0ea0c93bfb3a0671b59ccd9d01ac91646e1541fd5f8c4a  libEGL.dll
 25e8dc1beb52457bef8cf3d7902bb0569f3d28632ab4368a8566e8eae5e64001  libGLESv2.dll
-dcae6ae95ea556a1ea1d6060ffb4fe2291b550a6dd6d5d4721a26065c1a9df34  libgallium_wgl.dll
+f17bf33948207e0d59c7c1ebb6ad26e3e13ccff7daa7c985b06026762b82fa4f  libgallium_wgl.dll
 ```
 
 Licences: `LICENSES/`, whose `README.md` says which code in the DLLs is under which; the package carries it beside them,
