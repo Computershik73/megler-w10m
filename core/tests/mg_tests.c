@@ -4088,6 +4088,20 @@ static void test_libc_odds(void)
         CHECK(storage && !strcmp(storage, "/storage") && assets && !strcmp(assets, "/system/app") && data && !strcmp(data, "/data"));
         CHECK(env && env("ASEC_MOUNTPOINT") && env("ANDROID_BOOTLOGO") && env("ANDROID_ROOT") && env("EXTERNAL_STORAGE") && !env("BOOTCLASSPATH"));
     }
+    /* bionic's exec family, all of it there and failing with ENOSYS, no program being started here: WhatsApp's libessential.so
+       imports execle, which was not provided (0.1.0.734). */
+    {
+        static const char *const execs[] = { "execl", "execle", "execlp", "execv", "execve", "execvp", "execvpe", "fexecve" };
+        size_t k;
+        for (k = 0; k < MG_COUNT(execs); k++) {
+            typedef int (*exec_fn)(void);
+            exec_fn f = (exec_fn)mg_bionic_find(execs[k]);
+            CHECK(f != NULL);
+            if (!f) continue;
+            *mg_errno_ptr() = 0;
+            CHECK(f() == -1 && *mg_errno_ptr() == GE_NOSYS);
+        }
+    }
     /*
      * malloc's blocks at bionic's alignment, 16 bytes but on 32-bit ARM 8 (x86-64's SSE stores fault on less: exteraGram's
      * libtmessages), through calloc and realloc too, the contents kept; memalign's at theirs. And of jemalloc's sizes, a

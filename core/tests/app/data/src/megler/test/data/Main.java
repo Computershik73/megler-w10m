@@ -2471,6 +2471,7 @@ public class Main extends Activity {
         bluetoothListen();
         attachPairs();
         lineHeight();
+        ringtonePicker();
         Log.i("DataTest", "done ok=" + ok + " failed=" + failed);
         doneLogged = true;
         mediaSession();
@@ -6590,6 +6591,13 @@ public class Main extends Activity {
 
     @Override
     protected void onActivityResult(int request, int result, android.content.Intent data) {
+        // (the sound picker's answers, which the step "ringtone-picker" reads)
+        if (request == 91) {
+            sPickedResult = result;
+            sPickedHad = data != null && data.hasExtra(android.media.RingtoneManager.EXTRA_RINGTONE_PICKED_URI);
+            sPicked = data == null ? null : data.getParcelableExtra(android.media.RingtoneManager.EXTRA_RINGTONE_PICKED_URI);
+            return;
+        }
         Log.i("DataTest", "app-results answered request=" + request + " result=" + result + " authAccount=" + (data == null ? null : data.getStringExtra("authAccount"))
                 + " n=" + (data == null ? -1 : data.getIntExtra("n", -1)) + " skipped=" + (data != null && data.hasExtra("skipped")));
         // Then Android's Settings screens that Megler has (megler.SystemScreens), as this activity is in front again: this app's
@@ -12164,6 +12172,54 @@ public class Main extends Activity {
             return held;
         });
     }
+
+    /*
+     * Android's sound picker (RingtoneManager.ACTION_RINGTONE_PICKER), which WhatsApp's "Notification tone" starts through
+     * Intent.createChooser: Megler's (megler.RingtonePicker), a dialog over this activity, where startActivity threw
+     * ActivityNotFoundException and the app ended. A notification picker whose sound is the default: "Default notification
+     * sound" and "None", the default checked, OK giving the default's address; one with no sound, "None" checked, OK giving
+     * null; one closed, RESULT_CANCELED.
+     */
+    private void ringtonePicker() {
+        step("ringtone-picker", () -> {
+            android.content.Intent pick = new android.content.Intent(android.media.RingtoneManager.ACTION_RINGTONE_PICKER)
+                .putExtra(android.media.RingtoneManager.EXTRA_RINGTONE_TYPE, android.media.RingtoneManager.TYPE_NOTIFICATION)
+                .putExtra(android.media.RingtoneManager.EXTRA_RINGTONE_SHOW_DEFAULT, true)
+                .putExtra(android.media.RingtoneManager.EXTRA_RINGTONE_SHOW_SILENT, true);
+            java.lang.reflect.Field f = Class.forName("megler.RingtonePicker").getDeclaredField("sShown");
+            f.setAccessible(true);
+            StringBuilder said = new StringBuilder();
+            boolean held = true;
+            for (int k = 0; k < 3; k++) {
+                android.content.Intent i = new android.content.Intent(pick);
+                if (k == 0) i.putExtra(android.media.RingtoneManager.EXTRA_RINGTONE_EXISTING_URI, android.provider.Settings.System.DEFAULT_NOTIFICATION_URI);
+                sPickedResult = 99;
+                sPicked = null;
+                startActivityForResult(k == 0 ? android.content.Intent.createChooser(i, "Notification tone") : i, 91);
+                android.app.AlertDialog d = (android.app.AlertDialog) f.get(null);
+                if (d == null || !d.isShowing()) {
+                    detail = said.append(" picker ").append(k).append(": none shown").toString();
+                    return false;
+                }
+                android.widget.ListView list = d.getListView();
+                int checked = list.getCheckedItemPosition(), n = list.getAdapter().getCount();
+                String first = String.valueOf(list.getAdapter().getItem(0)), second = String.valueOf(list.getAdapter().getItem(1));
+                if (k < 2) d.getButton(android.content.DialogInterface.BUTTON_POSITIVE).performClick();
+                else d.cancel();
+                said.append(" picker ").append(k).append(": ").append(n).append(" choices, ").append(first).append(" / ").append(second).append(", checked ").append(checked)
+                    .append(" -> result ").append(sPickedResult).append(" ").append(sPicked);
+                held &= n >= 2 && "Default notification sound".equals(first) && "None".equals(second) && f.get(null) == null;
+                if (k == 0) held &= checked == 0 && sPickedResult == RESULT_OK && android.provider.Settings.System.DEFAULT_NOTIFICATION_URI.equals(sPicked);
+                if (k == 1) held &= checked == 1 && sPickedResult == RESULT_OK && sPicked == null && sPickedHad;
+                if (k == 2) held &= sPickedResult == RESULT_CANCELED;
+            }
+            detail = said.toString();
+            return held;
+        });
+    }
+    private static int sPickedResult;
+    private static android.net.Uri sPicked;
+    private static boolean sPickedHad;
 
     private void links() {
         final android.content.pm.PackageManager pm = getPackageManager();

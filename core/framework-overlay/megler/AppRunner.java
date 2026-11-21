@@ -85,6 +85,9 @@
 // package's own process, it built that one and GoogleAppActivity ended its start with "Cannot cast tdd to bkxw". An activity
 // of another of the app's processes is made in that process's class scope, with its Application (make), as its services are.
 //
+// And Android's sound picker (RingtoneManager.ACTION_RINGTONE_PICKER) is Megler's (megler.RingtonePicker), over the app,
+// its answer the caller's result: it threw ActivityNotFoundException, and WhatsApp ended at its "Notification tone".
+//
 // Everything else is the original's, unchanged.
 package megler;
 
@@ -719,6 +722,9 @@ public final class AppRunner {
             return;
         }
         if ("android.intent.action.CHOOSER".equals(action)) { Intent inner = i.getParcelableExtra("android.intent.extra.INTENT"); if (inner != null) startActivity(from, inner, request, opts); return; }
+        // Android's sound picker (RingtoneManager.ACTION_RINGTONE_PICKER, the system's SoundPicker): Megler's, over the app
+        // (megler.RingtonePicker). WhatsApp's "Notification tone" ended the app on the ActivityNotFoundException below.
+        if (RingtonePicker.start(from, i, request)) return;
         // A screen of Android's Settings that Megler has (megler.SystemScreens): shown on top of the app.
         final String screen = SystemScreens.screenFor(i);
         if (screen != null) {

@@ -2184,8 +2184,12 @@ const mg_sym mg_tab_misc[] = {
     M("__cxa_guard_abort", g_cxa_guard_abort),
     M("getpid", g_getpid), M("getppid", g_getppid), M("getuid", g_getuid), M("geteuid", g_getuid), M("getgid", g_getuid),
     M("getegid", g_getuid), M("setuid", g_zero), M("setgid", g_zero), M("setresuid", g_zero), M("setresgid", g_zero), M("setgroups", g_zero), M("getpgrp", g_getpid), M("setsid", g_getpid),
+    /* The exec family, all of bionic's, ENOSYS: no program is started here. WhatsApp's libessential.so imports execle, which
+       was not provided ("1 imports are not provided: execle", 0.1.0.734): a call of it had the loader's stub, which answers 0,
+       and an exec that returns at all says -1 and why. */
     M("fork", g_fork), M("vfork", g_fork), M("execv", g_fail_nosys), M("execve", g_fail_nosys), M("execvp", g_fail_nosys),
-    M("execl", g_fail_nosys), M("execlp", g_fail_nosys), M("wait", g_fail_nosys), M("waitpid", g_fail_nosys), M("system", g_system),
+    M("execl", g_fail_nosys), M("execlp", g_fail_nosys), M("execle", g_fail_nosys), M("execvpe", g_fail_nosys), M("fexecve", g_fail_nosys),
+    M("wait", g_fail_nosys), M("waitpid", g_fail_nosys), M("system", g_system),
     M("getenv", g_getenv), M("setenv", g_setenv), M("unsetenv", g_unsetenv), M("putenv", g_putenv), M("clearenv", g_clearenv),
     M("secure_getenv", g_getenv), MG_DATA("environ", &g_environ),
     M("sysconf", g_sysconf), M("getpagesize", g_getpagesize), M("__getpagesize", g_getpagesize), M("uname", g_uname),
