@@ -1,0 +1,839 @@
+From bf917323edefb0fee246bd2fafe195864511c9d7 Mon Sep 17 00:00:00 2001
+From: anon <>
+Date: Sat, 21 Nov 2026 08:04:48 +0700
+Subject: [PATCH] egl/wgl: ANGLE D3D11 share-handle pbuffers (freedreno d3dkmt)
+
+Implement EGL_ANGLE_surface_d3d_texture_2d_share_handle,
+EGL_ANGLE_d3d_share_handle_client_buffer and
+EGL_ANGLE_query_surface_pointer for the WGL/CoreWindow EGL driver.
+
+- egl: eglQuerySurfacePointerANGLE entrypoint, driver hooks
+  CreatePbufferFromClientBuffer / QuerySurfacePointerANGLE;
+  eglSwapBuffers on a pbuffer reaches the driver when the share-handle
+  extension is enabled (flush + wait so D3D11 can read it).
+- stw: stw_winsys::create_shared_pbuffer / query_shared_texture,
+  stw_winsys_framebuffer::get_share_handle; stw_pbuffer_create_shared.
+- freedreno d3dkmt winsys: pbuffer backed by one D3D11 MISC_SHARED
+  texture (created, or opened from a handle), imported with
+  resource_from_handle (LINEAR, pitch align(w*4, 64)).
+- Plain pbuffers are shared by default (FD_EGL_PBUFFER_SHARED=0 off).
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/egl/drivers/wgl/egl_wgl.c                 | 120 +++++++++
+ src/egl/drivers/wgl/egl_wgl.h                 |   1 +
+ src/egl/generate/eglFunctionList.py           |   3 +
+ src/egl/main/eglapi.c                         |  61 ++++-
+ src/egl/main/egldisplay.h                     |   3 +
+ src/egl/main/egldriver.h                      |  12 +
+ src/egl/main/eglentrypoint.h                  |   1 +
+ src/gallium/frontends/wgl/stw_ext_pbuffer.c   |  75 ++++++
+ src/gallium/frontends/wgl/stw_gdishim.h       |  16 ++
+ src/gallium/frontends/wgl/stw_winsys.h        |  25 ++
+ .../targets/wgl/gallium_wgl_corewindow.def.in |   4 +
+ src/gallium/targets/wgl/wgl.c                 |   4 +
+ .../freedreno/d3dkmt/fd_d3dkmt_public.h       |  11 +
+ .../freedreno/d3dkmt/fd_wgl_framebuffer.cpp   | 234 ++++++++++++++++++
+ 14 files changed, 569 insertions(+), 1 deletion(-)
+
+diff --git a/src/egl/drivers/wgl/egl_wgl.c b/src/egl/drivers/wgl/egl_wgl.c
+index 812c817..a688c43 100644
+--- a/src/egl/drivers/wgl/egl_wgl.c
++++ b/src/egl/drivers/wgl/egl_wgl.c
+@@ -46,6 +46,7 @@
+ #include <pipe/p_state.h>
+ 
+ #include "util/u_call_once.h"
++#include "util/u_debug.h"
+ #include "mesa/glapi/glapi/glapi.h"
+ #include "dispatch.h"
+ 
+@@ -298,6 +299,14 @@ wgl_initialize_impl(_EGLDisplay *disp, HDC hdc)
+    disp->Extensions.KHR_reusable_sync = EGL_TRUE;
+    disp->Extensions.KHR_wait_sync = EGL_TRUE;
+ 
++#ifdef STW_COREWINDOW
++   if (stw_shared_pbuffer_supported()) {
++      disp->Extensions.ANGLE_d3d_share_handle_client_buffer = EGL_TRUE;
++      disp->Extensions.ANGLE_query_surface_pointer = EGL_TRUE;
++      disp->Extensions.ANGLE_surface_d3d_texture_2d_share_handle = EGL_TRUE;
++   }
++#endif
++
+    if (!wgl_add_configs(disp)) {
+       err = "wgl: failed to add configs";
+       goto cleanup;
+@@ -682,6 +691,20 @@ wgl_create_pbuffer_surface(_EGLDisplay *disp, _EGLConfig *conf,
+    const struct stw_pixelformat_info *stw_conf = wgl_conf->stw_config[1]
+                                                     ? wgl_conf->stw_config[1]
+                                                     : wgl_conf->stw_config[0];
++#ifdef STW_COREWINDOW
++   /* Pbuffer thuong cung ve vao texture D3D11 dung chung de app lay handle
++    * qua eglQuerySurfacePointerANGLE (FD_EGL_PBUFFER_SHARED=0 de tat).
++    */
++   if (disp->Extensions.ANGLE_surface_d3d_texture_2d_share_handle &&
++       debug_get_bool_option("FD_EGL_PBUFFER_SHARED", true)) {
++      wgl_surf->fb = stw_pbuffer_create_shared(stw_conf, NULL,
++                                               wgl_surf->base.Width,
++                                               wgl_surf->base.Height,
++                                               &wgl_dpy->base);
++      wgl_surf->d3d_shared = wgl_surf->fb != NULL;
++   }
++   if (!wgl_surf->fb)
++#endif
+    wgl_surf->fb = stw_pbuffer_create(stw_conf, wgl_surf->base.Width,
+                                      wgl_surf->base.Height, &wgl_dpy->base);
+    if (!wgl_surf->fb) {
+@@ -695,6 +718,87 @@ wgl_create_pbuffer_surface(_EGLDisplay *disp, _EGLConfig *conf,
+    return &wgl_surf->base;
+ }
+ 
++#ifdef STW_COREWINDOW
++/* EGL_ANGLE_d3d_share_handle_client_buffer */
++static _EGLSurface *
++wgl_create_pbuffer_from_client_buffer(_EGLDisplay *disp, EGLenum buftype,
++                                      EGLClientBuffer buffer, _EGLConfig *conf,
++                                      const EGLint *attrib_list)
++{
++   struct wgl_egl_display *wgl_dpy = wgl_egl_display(disp);
++   struct wgl_egl_config *wgl_conf = wgl_egl_config(conf);
++   HANDLE share = (HANDLE)buffer;
++   unsigned tw, th;
++   int tf;
++
++   if (buftype != EGL_D3D_TEXTURE_2D_SHARE_HANDLE_ANGLE) {
++      _eglError(EGL_BAD_PARAMETER, "eglCreatePbufferFromClientBuffer");
++      return NULL;
++   }
++   if (!stw_query_shared_texture(share, &tw, &th, &tf)) {
++      _eglError(EGL_BAD_PARAMETER, "eglCreatePbufferFromClientBuffer");
++      return NULL;
++   }
++   if (!tf) {
++      _eglError(EGL_BAD_MATCH, "eglCreatePbufferFromClientBuffer");
++      return NULL;
++   }
++
++   struct wgl_egl_surface *wgl_surf = calloc(1, sizeof(*wgl_surf));
++   if (!wgl_surf) {
++      _eglError(EGL_BAD_ALLOC, "eglCreatePbufferFromClientBuffer");
++      return NULL;
++   }
++   if (!_eglInitSurface(&wgl_surf->base, disp, EGL_PBUFFER_BIT, conf,
++                        attrib_list, NULL)) {
++      free(wgl_surf);
++      return NULL;
++   }
++
++   /* EGL_WIDTH/EGL_HEIGHT neu co phai khop texture (mac dinh 0 = lay theo
++    * texture).
++    */
++   if ((wgl_surf->base.Width && (unsigned)wgl_surf->base.Width != tw) ||
++       (wgl_surf->base.Height && (unsigned)wgl_surf->base.Height != th)) {
++      free(wgl_surf);
++      _eglError(EGL_BAD_PARAMETER, "eglCreatePbufferFromClientBuffer");
++      return NULL;
++   }
++   wgl_surf->base.Width = tw;
++   wgl_surf->base.Height = th;
++
++   const struct stw_pixelformat_info *stw_conf = wgl_conf->stw_config[1]
++                                                    ? wgl_conf->stw_config[1]
++                                                    : wgl_conf->stw_config[0];
++   wgl_surf->fb = stw_pbuffer_create_shared(stw_conf, share, tw, th,
++                                            &wgl_dpy->base);
++   if (!wgl_surf->fb) {
++      free(wgl_surf);
++      _eglError(EGL_BAD_ALLOC, "eglCreatePbufferFromClientBuffer");
++      return NULL;
++   }
++   wgl_surf->d3d_shared = true;
++   wgl_surf->fb->swap_interval = 1;
++   stw_framebuffer_unlock(wgl_surf->fb);
++
++   return &wgl_surf->base;
++}
++
++/* EGL_ANGLE_query_surface_pointer */
++static EGLBoolean
++wgl_query_surface_pointer_angle(_EGLDisplay *disp, _EGLSurface *surf,
++                                EGLint attribute, void **value)
++{
++   struct wgl_egl_surface *wgl_surf = wgl_egl_surface(surf);
++   if (attribute != EGL_D3D_TEXTURE_2D_SHARE_HANDLE_ANGLE)
++      return _eglError(EGL_BAD_ATTRIBUTE, "eglQuerySurfacePointerANGLE");
++   *value = wgl_surf->d3d_shared
++               ? (void *)stw_framebuffer_get_share_handle(wgl_surf->fb)
++               : NULL;
++   return EGL_TRUE;
++}
++#endif
++
+ static EGLBoolean
+ wgl_query_surface(_EGLDisplay *disp, _EGLSurface *surf, EGLint attribute,
+                   EGLint *value)
+@@ -784,6 +888,18 @@ wgl_swap_buffers(_EGLDisplay *disp, _EGLSurface *draw)
+ {
+    struct wgl_egl_surface *wgl_surf = wgl_egl_surface(draw);
+ 
++   if (draw->Type != EGL_WINDOW_BIT) {
++      /* Pbuffer D3D11 dung chung: swap = ve xong (D3D11 doc duoc). */
++      _EGLContext *ctx = _eglGetCurrentContext();
++      if (wgl_surf->d3d_shared && ctx) {
++         struct pipe_fence_handle *fence = NULL;
++         st_context_flush(wgl_egl_context(ctx)->ctx->st,
++                          ST_FLUSH_END_OF_FRAME | ST_FLUSH_WAIT, &fence, NULL,
++                          NULL);
++      }
++      return EGL_TRUE;
++   }
++
+    stw_framebuffer_lock(wgl_surf->fb);
+    HDC hdc = GetDC(wgl_surf->fb->hWnd);
+    BOOL ret = stw_framebuffer_swap_locked(hdc, wgl_surf->fb);
+@@ -1180,6 +1296,10 @@ struct _egl_driver _eglDriver = {
+    .ReleaseTexImage = _eglReleaseTexImage,
+    .SwapInterval = wgl_swap_interval,
+    .SwapBuffers = wgl_swap_buffers,
++#ifdef STW_COREWINDOW
++   .CreatePbufferFromClientBuffer = wgl_create_pbuffer_from_client_buffer,
++   .QuerySurfacePointerANGLE = wgl_query_surface_pointer_angle,
++#endif
+    .WaitClient = wgl_wait_client,
+    .WaitNative = wgl_wait_native,
+    .CreateImageKHR = wgl_create_image_khr,
+diff --git a/src/egl/drivers/wgl/egl_wgl.h b/src/egl/drivers/wgl/egl_wgl.h
+index d77304a..4bba797 100644
+--- a/src/egl/drivers/wgl/egl_wgl.h
++++ b/src/egl/drivers/wgl/egl_wgl.h
+@@ -52,6 +52,7 @@ struct wgl_egl_context {
+ struct wgl_egl_surface {
+    _EGLSurface base;
+    struct stw_framebuffer *fb;
++   bool d3d_shared; /* pbuffer ve vao texture D3D11 dung chung (ANGLE) */
+ };
+ 
+ struct wgl_egl_image {
+diff --git a/src/egl/generate/eglFunctionList.py b/src/egl/generate/eglFunctionList.py
+index ad71eaf..7bbf15c 100644
+--- a/src/egl/generate/eglFunctionList.py
++++ b/src/egl/generate/eglFunctionList.py
+@@ -208,6 +208,9 @@ EGL_FUNCTIONS = (
+     # EGL_CHROMIUM_get_sync_values
+     _eglFunc("eglGetSyncValuesCHROMIUM",             "display"),
+ 
++    # EGL_ANGLE_query_surface_pointer
++    _eglFunc("eglQuerySurfacePointerANGLE",          "display"),
++
+     # EGL_ANGLE_sync_control_rate
+     _eglFunc("eglGetMscRateANGLE",                   "display"),
+ 
+diff --git a/src/egl/main/eglapi.c b/src/egl/main/eglapi.c
+index a6c6f95..953a675 100644
+--- a/src/egl/main/eglapi.c
++++ b/src/egl/main/eglapi.c
+@@ -544,6 +544,9 @@ _eglCreateExtensionsString(_EGLDisplay *disp)
+    _EGL_CHECK_EXTENSION(ANDROID_recordable);
+ 
+    _EGL_CHECK_EXTENSION(CHROMIUM_sync_control);
++   _EGL_CHECK_EXTENSION(ANGLE_d3d_share_handle_client_buffer);
++   _EGL_CHECK_EXTENSION(ANGLE_query_surface_pointer);
++   _EGL_CHECK_EXTENSION(ANGLE_surface_d3d_texture_2d_share_handle);
+    _EGL_CHECK_EXTENSION(ANGLE_sync_control_rate);
+ 
+    _EGL_CHECK_EXTENSION(EXT_buffer_age);
+@@ -1432,8 +1435,17 @@ eglSwapBuffers(EGLDisplay dpy, EGLSurface surface)
+       RETURN_EGL_ERROR(disp, EGL_BAD_SURFACE, EGL_FALSE);
+ #endif
+ 
+-   if (surf->Type != EGL_WINDOW_BIT)
++   if (surf->Type != EGL_WINDOW_BIT) {
++      /* ANGLE share handle: swap pbuffer = flush + cho de D3D doc. */
++      if (surf->Type == EGL_PBUFFER_BIT &&
++          disp->Extensions.ANGLE_surface_d3d_texture_2d_share_handle) {
++         egl_relax (disp, &surf->Resource) {
++            ret = disp->Driver->SwapBuffers(disp, surf);
++         }
++         RETURN_EGL_EVAL(disp, ret);
++      }
+       RETURN_EGL_EVAL(disp, EGL_TRUE);
++   }
+ 
+    /* From the EGL 1.5 spec:
+     *
+@@ -1790,6 +1802,26 @@ eglCreatePbufferFromClientBuffer(EGLDisplay dpy, EGLenum buftype,
+ 
+    _EGL_CHECK_CONFIG(disp, conf, EGL_NO_SURFACE);
+ 
++   if (buftype == EGL_D3D_TEXTURE_2D_SHARE_HANDLE_ANGLE &&
++       disp->Extensions.ANGLE_d3d_share_handle_client_buffer &&
++       disp->Driver->CreatePbufferFromClientBuffer) {
++      _EGLSurface *surf = NULL;
++      EGLSurface ret;
++
++      if ((conf->SurfaceType & EGL_PBUFFER_BIT) == 0)
++         RETURN_EGL_ERROR(disp, EGL_BAD_MATCH, EGL_NO_SURFACE);
++      if (!buffer)
++         RETURN_EGL_ERROR(disp, EGL_BAD_PARAMETER, EGL_NO_SURFACE);
++
++      egl_relax (disp) {
++         surf = disp->Driver->CreatePbufferFromClientBuffer(
++            disp, buftype, buffer, conf, attrib_list);
++      }
++      ret = (surf) ? _eglLinkSurface(surf) : EGL_NO_SURFACE;
++
++      RETURN_EGL_EVAL(disp, ret);
++   }
++
+    /* OpenVG is not supported */
+    RETURN_EGL_ERROR(disp, EGL_BAD_ALLOC, EGL_NO_SURFACE);
+ }
+@@ -2377,6 +2409,33 @@ eglGetMscRateANGLE(EGLDisplay dpy, EGLSurface surface, EGLint *numerator,
+    RETURN_EGL_EVAL(disp, ret);
+ }
+ 
++static EGLBoolean EGLAPIENTRY
++eglQuerySurfacePointerANGLE(EGLDisplay dpy, EGLSurface surface,
++                            EGLint attribute, void **value)
++{
++   _EGLDisplay *disp = _eglLockDisplay(dpy);
++   _EGLSurface *surf = _eglLookupSurface(surface, disp);
++   EGLBoolean ret;
++
++   _EGL_FUNC_START(disp, EGL_OBJECT_SURFACE_KHR, surf);
++
++   _EGL_CHECK_SURFACE(disp, surf, EGL_FALSE);
++   if (!disp->Extensions.ANGLE_query_surface_pointer ||
++       !disp->Driver->QuerySurfacePointerANGLE)
++      RETURN_EGL_ERROR(disp, EGL_BAD_ACCESS, EGL_FALSE);
++
++   if (!value)
++      RETURN_EGL_ERROR(disp, EGL_BAD_PARAMETER, EGL_FALSE);
++
++   if (attribute != EGL_D3D_TEXTURE_2D_SHARE_HANDLE_ANGLE ||
++       !disp->Extensions.ANGLE_surface_d3d_texture_2d_share_handle)
++      RETURN_EGL_ERROR(disp, EGL_BAD_ATTRIBUTE, EGL_FALSE);
++
++   ret = disp->Driver->QuerySurfacePointerANGLE(disp, surf, attribute, value);
++
++   RETURN_EGL_EVAL(disp, ret);
++}
++
+ static EGLBoolean EGLAPIENTRY
+ eglExportDMABUFImageQueryMESA(EGLDisplay dpy, EGLImage image, EGLint *fourcc,
+                               EGLint *nplanes, EGLuint64KHR *modifiers)
+diff --git a/src/egl/main/egldisplay.h b/src/egl/main/egldisplay.h
+index 6178140..d51d089 100644
+--- a/src/egl/main/egldisplay.h
++++ b/src/egl/main/egldisplay.h
+@@ -98,6 +98,9 @@ struct _egl_extensions {
+    EGLBoolean ANDROID_native_fence_sync;
+    EGLBoolean ANDROID_recordable;
+ 
++   EGLBoolean ANGLE_d3d_share_handle_client_buffer;
++   EGLBoolean ANGLE_query_surface_pointer;
++   EGLBoolean ANGLE_surface_d3d_texture_2d_share_handle;
+    EGLBoolean ANGLE_sync_control_rate;
+    EGLBoolean CHROMIUM_sync_control;
+ 
+diff --git a/src/egl/main/egldriver.h b/src/egl/main/egldriver.h
+index 0cdeb90..b97b84b 100644
+--- a/src/egl/main/egldriver.h
++++ b/src/egl/main/egldriver.h
+@@ -189,6 +189,18 @@ struct _egl_driver {
+    EGLBoolean (*GetMscRateANGLE)(_EGLDisplay *disp, _EGLSurface *surface,
+                                  EGLint *numerator, EGLint *denominator);
+ 
++   /* for EGL_ANGLE_d3d_share_handle_client_buffer */
++   _EGLSurface *(*CreatePbufferFromClientBuffer)(_EGLDisplay *disp,
++                                                 EGLenum buftype,
++                                                 EGLClientBuffer buffer,
++                                                 _EGLConfig *config,
++                                                 const EGLint *attrib_list);
++
++   /* for EGL_ANGLE_query_surface_pointer */
++   EGLBoolean (*QuerySurfacePointerANGLE)(_EGLDisplay *disp,
++                                          _EGLSurface *surface,
++                                          EGLint attribute, void **value);
++
+    /* for EGL_MESA_image_dma_buf_export */
+    EGLBoolean (*ExportDMABUFImageQueryMESA)(_EGLDisplay *disp, _EGLImage *img,
+                                             EGLint *fourcc, EGLint *nplanes,
+diff --git a/src/egl/main/eglentrypoint.h b/src/egl/main/eglentrypoint.h
+index a6def87..a7018e6 100644
+--- a/src/egl/main/eglentrypoint.h
++++ b/src/egl/main/eglentrypoint.h
+@@ -74,6 +74,7 @@ EGL_ENTRYPOINT(eglQueryDmaBufModifiersEXT)
+ EGL_ENTRYPOINT(eglQueryString)
+ EGL_ENTRYPOINT(eglQuerySupportedCompressionRatesEXT)
+ EGL_ENTRYPOINT(eglQuerySurface)
++EGL_ENTRYPOINT(eglQuerySurfacePointerANGLE)
+ #ifdef HAVE_BIND_WL_DISPLAY
+ EGL_ENTRYPOINT(eglQueryWaylandBufferWL)
+ #endif
+diff --git a/src/gallium/frontends/wgl/stw_ext_pbuffer.c b/src/gallium/frontends/wgl/stw_ext_pbuffer.c
+index 788352b..9565129 100644
+--- a/src/gallium/frontends/wgl/stw_ext_pbuffer.c
++++ b/src/gallium/frontends/wgl/stw_ext_pbuffer.c
+@@ -40,6 +40,11 @@
+ #include "stw_device.h"
+ #include "stw_pixelformat.h"
+ #include "stw_framebuffer.h"
++#include "stw_winsys.h"
++#include "util/format/u_format.h"
++#ifdef STW_COREWINDOW
++#include "stw_gdishim.h"
++#endif
+ 
+ 
+ #define LARGE_WINDOW_SIZE 60000
+@@ -168,6 +173,76 @@ stw_pbuffer_create(const struct stw_pixelformat_info *pfi, int iWidth, int iHeig
+ }
+ 
+ 
++#ifdef STW_COREWINDOW
++bool
++stw_shared_pbuffer_supported(void)
++{
++   return stw_dev && stw_dev->stw_winsys->create_shared_pbuffer &&
++          stw_dev->stw_winsys->query_shared_texture;
++}
++
++bool
++stw_query_shared_texture(HANDLE share_handle, unsigned *width,
++                         unsigned *height, int *format)
++{
++   enum pipe_format pf = PIPE_FORMAT_NONE;
++   if (!stw_shared_pbuffer_supported() ||
++       !stw_dev->stw_winsys->query_shared_texture(share_handle, width, height,
++                                                  &pf))
++      return false;
++   *format = pf == PIPE_FORMAT_B8G8R8A8_UNORM ? 1 :
++             pf == PIPE_FORMAT_R8G8B8A8_UNORM ? 2 : 0;
++   return true;
++}
++
++struct stw_framebuffer *
++stw_pbuffer_create_shared(const struct stw_pixelformat_info *pfi,
++                          HANDLE share_handle, int width, int height,
++                          struct pipe_frontend_screen *fscreen)
++{
++   if (!stw_shared_pbuffer_supported() || width <= 0 || height <= 0)
++      return NULL;
++
++   /* Format resource = thu tu kenh cua texture x alpha cua config. */
++   bool alpha = util_format_has_alpha(pfi->stvis.color_format);
++   enum pipe_format format =
++      alpha ? PIPE_FORMAT_B8G8R8A8_UNORM : PIPE_FORMAT_B8G8R8X8_UNORM;
++   if (share_handle) {
++      unsigned w, h;
++      int tf;
++      if (!stw_query_shared_texture(share_handle, &w, &h, &tf) || !tf ||
++          w != (unsigned)width || h != (unsigned)height)
++         return NULL;
++      if (tf == 2)
++         format = alpha ? PIPE_FORMAT_R8G8B8A8_UNORM
++                        : PIPE_FORMAT_R8G8B8X8_UNORM;
++   }
++
++   struct stw_winsys_framebuffer *wsfb =
++      stw_dev->stw_winsys->create_shared_pbuffer(stw_dev->screen, share_handle,
++                                                 width, height, format);
++   if (!wsfb)
++      return NULL;
++
++   struct stw_framebuffer *fb = stw_pbuffer_create(pfi, width, height, fscreen);
++   if (!fb) {
++      wsfb->destroy(wsfb, NULL);
++      return NULL;
++   }
++   assert(!fb->winsys_framebuffer);
++   fb->winsys_framebuffer = wsfb;
++   return fb;
++}
++
++HANDLE
++stw_framebuffer_get_share_handle(struct stw_framebuffer *fb)
++{
++   struct stw_winsys_framebuffer *ws = fb ? fb->winsys_framebuffer : NULL;
++   return ws && ws->get_share_handle ? ws->get_share_handle(ws) : NULL;
++}
++#endif /* STW_COREWINDOW */
++
++
+ HPBUFFERARB WINAPI
+ wglCreatePbufferARB(HDC hCurrentDC,
+                     int iPixelFormat,
+diff --git a/src/gallium/frontends/wgl/stw_gdishim.h b/src/gallium/frontends/wgl/stw_gdishim.h
+index aeb62d5..ec12e64 100644
+--- a/src/gallium/frontends/wgl/stw_gdishim.h
++++ b/src/gallium/frontends/wgl/stw_gdishim.h
+@@ -59,6 +59,22 @@ bool stw_shim_is_pbuffer_window(HWND hwnd);
+ void stw_shim_pbuffer_window_destroy(HWND hwnd);
+ void stw_pbuffer_destroy_corewindow(struct stw_framebuffer *fb,
+                                     struct st_context *st);
++
++/* Pbuffer ve vao texture D3D11 dung chung (EGL ANGLE share handle).
++ * share_handle NULL -> tao texture moi; khac NULL -> nhap texture (kich thuoc
++ * phai khop). Tra fb da khoa (nhu stw_pbuffer_create) hoac NULL.
++ */
++struct stw_pixelformat_info;
++struct pipe_frontend_screen;
++bool stw_shared_pbuffer_supported(void);
++struct stw_framebuffer *
++stw_pbuffer_create_shared(const struct stw_pixelformat_info *pfi,
++                          HANDLE share_handle, int width, int height,
++                          struct pipe_frontend_screen *fscreen);
++HANDLE stw_framebuffer_get_share_handle(struct stw_framebuffer *fb);
++/* format: 1 = BGRA8, 2 = RGBA8, 0 = khong ho tro. false neu khong mo duoc. */
++bool stw_query_shared_texture(HANDLE share_handle, unsigned *width,
++                              unsigned *height, int *format);
+ #endif /* STW_COREWINDOW */
+ 
+ #ifdef _GAMING_XBOX
+diff --git a/src/gallium/frontends/wgl/stw_winsys.h b/src/gallium/frontends/wgl/stw_winsys.h
+index 5ad8050..179e06c 100644
+--- a/src/gallium/frontends/wgl/stw_winsys.h
++++ b/src/gallium/frontends/wgl/stw_winsys.h
+@@ -74,6 +74,12 @@ struct stw_winsys_framebuffer
+    (*present_resource)(struct stw_winsys_framebuffer *fb,
+                        struct pipe_resource *res,
+                        int interval);
++
++   /* Optional (pbuffer dung chung D3D11): handle share (KMT) cua texture
++    * ma framebuffer ve vao, NULL neu khong co.
++    */
++   HANDLE
++   (*get_share_handle)(struct stw_winsys_framebuffer *fb);
+ };
+ 
+ struct stw_winsys
+@@ -151,6 +157,25 @@ struct stw_winsys
+     */
+    bool
+    (*get_window_size)(HWND hWnd, unsigned *width, unsigned *height);
++
++   /**
++    * Pbuffer ve vao texture D3D11 dung chung (tuy chon, cho
++    * EGL_ANGLE_surface_d3d_texture_2d_share_handle /
++    * EGL_ANGLE_d3d_share_handle_client_buffer). share_handle NULL -> tao
++    * texture moi (w x h, format), khac NULL -> nhap texture san co.
++    */
++   struct stw_winsys_framebuffer *
++   (*create_shared_pbuffer)(struct pipe_screen *screen, HANDLE share_handle,
++                            unsigned width, unsigned height,
++                            enum pipe_format format);
++
++   /**
++    * Kich thuoc + format (BGRA8/RGBA8 -> pipe format co alpha, khac ->
++    * PIPE_FORMAT_NONE) cua texture D3D11 dung chung. false neu khong mo duoc.
++    */
++   bool
++   (*query_shared_texture)(HANDLE share_handle, unsigned *width,
++                           unsigned *height, enum pipe_format *format);
+ };
+ 
+ bool
+diff --git a/src/gallium/targets/wgl/gallium_wgl_corewindow.def.in b/src/gallium/targets/wgl/gallium_wgl_corewindow.def.in
+index ba4510b..0d368d0 100644
+--- a/src/gallium/targets/wgl/gallium_wgl_corewindow.def.in
++++ b/src/gallium/targets/wgl/gallium_wgl_corewindow.def.in
+@@ -59,3 +59,7 @@ _mesa_glapi_get_dispatch
+ 	stw_shim_DescribePixelFormat
+ 	stw_pbuffer_destroy_corewindow
+ 	stw_shim_is_pbuffer_window
++	stw_shared_pbuffer_supported
++	stw_pbuffer_create_shared
++	stw_framebuffer_get_share_handle
++	stw_query_shared_texture
+diff --git a/src/gallium/targets/wgl/wgl.c b/src/gallium/targets/wgl/wgl.c
+index dc15ec3..cb3b6fb 100644
+--- a/src/gallium/targets/wgl/wgl.c
++++ b/src/gallium/targets/wgl/wgl.c
+@@ -391,8 +391,12 @@ static const struct stw_winsys stw_winsys = {
+    &wgl_get_name,
+ #if defined(GALLIUM_FREEDRENO) && defined(STW_COREWINDOW)
+    &fd_wgl_get_window_size,
++   &fd_wgl_create_shared_pbuffer,
++   &fd_wgl_query_shared_texture,
+ #else
+    NULL, /* get_window_size */
++   NULL, /* create_shared_pbuffer */
++   NULL, /* query_shared_texture */
+ #endif
+ };
+ 
+diff --git a/src/gallium/winsys/freedreno/d3dkmt/fd_d3dkmt_public.h b/src/gallium/winsys/freedreno/d3dkmt/fd_d3dkmt_public.h
+index 60632e3..95d53b1 100644
+--- a/src/gallium/winsys/freedreno/d3dkmt/fd_d3dkmt_public.h
++++ b/src/gallium/winsys/freedreno/d3dkmt/fd_d3dkmt_public.h
+@@ -13,6 +13,8 @@
+ 
+ #include <windows.h>
+ 
++#include "util/format/u_formats.h"
++
+ #ifdef __cplusplus
+ extern "C" {
+ #endif
+@@ -35,6 +37,15 @@ fd_wgl_create_framebuffer(struct pipe_screen *screen, HWND hwnd,
+ bool
+ fd_wgl_get_window_size(HWND hwnd, unsigned *width, unsigned *height);
+ 
++struct stw_winsys_framebuffer *
++fd_wgl_create_shared_pbuffer(struct pipe_screen *screen, HANDLE share_handle,
++                             unsigned width, unsigned height,
++                             enum pipe_format format);
++
++bool
++fd_wgl_query_shared_texture(HANDLE share_handle, unsigned *width,
++                            unsigned *height, enum pipe_format *format);
++
+ #ifdef __cplusplus
+ }
+ #endif
+diff --git a/src/gallium/winsys/freedreno/d3dkmt/fd_wgl_framebuffer.cpp b/src/gallium/winsys/freedreno/d3dkmt/fd_wgl_framebuffer.cpp
+index c6846c7..6a9b6cd 100644
+--- a/src/gallium/winsys/freedreno/d3dkmt/fd_wgl_framebuffer.cpp
++++ b/src/gallium/winsys/freedreno/d3dkmt/fd_wgl_framebuffer.cpp
+@@ -528,3 +528,237 @@ fd_wgl_create_framebuffer(struct pipe_screen *screen, HWND hwnd,
+ 
+    return &fb->base;
+ }
++
++/*
++ * Pbuffer dung chung voi D3D11 (EGL_ANGLE_surface_d3d_texture_2d_share_handle
++ * va EGL_ANGLE_d3d_share_handle_client_buffer). Mot texture (front = back),
++ * khong swapchain. Dong bo: cho fence Mesa o eglSwapBuffers/glFinish.
++ */
++struct fd_wgl_pbuffer {
++   struct stw_winsys_framebuffer base;
++   struct pipe_screen *screen;
++   struct pipe_context *ctx;
++   struct pipe_resource *res;
++   ComPtr<ID3D11Texture2D> tex;
++   HANDLE share;
++};
++
++static SRWLOCK pbuffer_dev_lock = SRWLOCK_INIT;
++static ID3D11Device *pbuffer_dev; /* dung chung moi pbuffer, khong giai phong */
++
++static ID3D11Device *
++get_pbuffer_device(void)
++{
++   AcquireSRWLockExclusive(&pbuffer_dev_lock);
++   if (!pbuffer_dev) {
++      static const D3D_FEATURE_LEVEL levels[] = {
++         D3D_FEATURE_LEVEL_11_1, D3D_FEATURE_LEVEL_11_0,
++         D3D_FEATURE_LEVEL_10_1, D3D_FEATURE_LEVEL_10_0,
++         D3D_FEATURE_LEVEL_9_3,  D3D_FEATURE_LEVEL_9_1,
++      };
++      HRESULT hr = D3D11CreateDevice(
++         nullptr, D3D_DRIVER_TYPE_HARDWARE, nullptr,
++         D3D11_CREATE_DEVICE_BGRA_SUPPORT, levels, ARRAYSIZE(levels),
++         D3D11_SDK_VERSION, &pbuffer_dev, nullptr, nullptr);
++      if (FAILED(hr)) {
++         debug_printf("fd_wgl: pbuffer D3D11CreateDevice 0x%08lx\n",
++                      (unsigned long)hr);
++         pbuffer_dev = nullptr;
++      }
++   }
++   ID3D11Device *dev = pbuffer_dev;
++   ReleaseSRWLockExclusive(&pbuffer_dev_lock);
++   return dev;
++}
++
++static fd_wgl_pbuffer *
++fd_wgl_pb(struct stw_winsys_framebuffer *fb)
++{
++   return (fd_wgl_pbuffer *)fb;
++}
++
++static void
++fd_wgl_pbuffer_destroy(struct stw_winsys_framebuffer *pfb,
++                       struct pipe_context *ctx)
++{
++   fd_wgl_pbuffer *pb = fd_wgl_pb(pfb);
++   (void)ctx;
++   pipe_resource_reference(&pb->res, NULL);
++   pb->tex.Reset();
++   delete pb;
++}
++
++static void
++fd_wgl_pbuffer_resize(struct stw_winsys_framebuffer *pfb,
++                      struct pipe_context *ctx, struct pipe_resource *templ)
++{
++   /* Kich thuoc co dinh theo texture D3D11. */
++   (void)templ;
++   fd_wgl_pb(pfb)->ctx = ctx;
++}
++
++static struct pipe_resource *
++fd_wgl_pbuffer_get_resource(struct stw_winsys_framebuffer *pfb,
++                            enum st_attachment_type statt)
++{
++   (void)statt;
++   struct pipe_resource *res = NULL;
++   pipe_resource_reference(&res, fd_wgl_pb(pfb)->res);
++   return res;
++}
++
++/* "present" cua pbuffer = cho Mesa ve xong (D3D11 doc duoc). */
++static void
++fd_wgl_pbuffer_finish(fd_wgl_pbuffer *pb, struct pipe_context *ctx)
++{
++   if (!ctx)
++      return;
++   struct pipe_fence_handle *fence = NULL;
++   ctx->flush(ctx, &fence, 0);
++   if (fence) {
++      pb->screen->fence_finish(pb->screen, NULL, fence, OS_TIMEOUT_INFINITE);
++      pb->screen->fence_reference(pb->screen, &fence, NULL);
++   }
++}
++
++static bool
++fd_wgl_pbuffer_present(struct stw_winsys_framebuffer *pfb, int interval)
++{
++   (void)interval;
++   fd_wgl_pbuffer *pb = fd_wgl_pb(pfb);
++   fd_wgl_pbuffer_finish(pb, pb->ctx);
++   return true;
++}
++
++static void
++fd_wgl_pbuffer_flush_frontbuffer(struct stw_winsys_framebuffer *pfb,
++                                 struct pipe_context *ctx)
++{
++   fd_wgl_pbuffer *pb = fd_wgl_pb(pfb);
++   pb->ctx = ctx;
++   fd_wgl_pbuffer_finish(pb, ctx);
++}
++
++static HANDLE
++fd_wgl_pbuffer_get_share_handle(struct stw_winsys_framebuffer *pfb)
++{
++   return fd_wgl_pb(pfb)->share;
++}
++
++static bool
++open_shared(HANDLE share, ComPtr<ID3D11Texture2D> &tex,
++            D3D11_TEXTURE2D_DESC *desc)
++{
++   ID3D11Device *dev = get_pbuffer_device();
++   if (!dev || !share)
++      return false;
++   HRESULT hr = dev->OpenSharedResource(share, IID_PPV_ARGS(&tex));
++   if (FAILED(hr)) {
++      debug_printf("fd_wgl: OpenSharedResource 0x%08lx\n", (unsigned long)hr);
++      return false;
++   }
++   tex->GetDesc(desc);
++   return true;
++}
++
++extern "C" bool
++fd_wgl_query_shared_texture(HANDLE share, unsigned *width, unsigned *height,
++                            enum pipe_format *format)
++{
++   ComPtr<ID3D11Texture2D> tex;
++   D3D11_TEXTURE2D_DESC desc;
++   if (!open_shared(share, tex, &desc))
++      return false;
++   *width = desc.Width;
++   *height = desc.Height;
++   *format = PIPE_FORMAT_NONE;
++   if (desc.MipLevels == 1 && desc.ArraySize == 1 &&
++       desc.SampleDesc.Count == 1) {
++      if (desc.Format == DXGI_FORMAT_B8G8R8A8_UNORM)
++         *format = PIPE_FORMAT_B8G8R8A8_UNORM;
++      else if (desc.Format == DXGI_FORMAT_R8G8B8A8_UNORM)
++         *format = PIPE_FORMAT_R8G8B8A8_UNORM;
++   }
++   return true;
++}
++
++extern "C" struct stw_winsys_framebuffer *
++fd_wgl_create_shared_pbuffer(struct pipe_screen *screen, HANDLE import,
++                             unsigned width, unsigned height,
++                             enum pipe_format format)
++{
++   ID3D11Device *dev = get_pbuffer_device();
++   if (!dev || !width || !height || util_format_get_blocksize(format) != 4)
++      return NULL;
++
++   fd_wgl_pbuffer *pb = new (std::nothrow) fd_wgl_pbuffer();
++   if (!pb)
++      return NULL;
++   pb->screen = screen;
++
++   if (import) {
++      D3D11_TEXTURE2D_DESC desc;
++      if (!open_shared(import, pb->tex, &desc) || desc.Width != width ||
++          desc.Height != height) {
++         delete pb;
++         return NULL;
++      }
++      pb->share = import;
++   } else {
++      D3D11_TEXTURE2D_DESC td = {};
++      td.Width = width;
++      td.Height = height;
++      td.MipLevels = 1;
++      td.ArraySize = 1;
++      td.Format = (format == PIPE_FORMAT_R8G8B8A8_UNORM ||
++                   format == PIPE_FORMAT_R8G8B8X8_UNORM)
++                     ? DXGI_FORMAT_R8G8B8A8_UNORM
++                     : DXGI_FORMAT_B8G8R8A8_UNORM;
++      td.SampleDesc.Count = 1;
++      td.Usage = D3D11_USAGE_DEFAULT;
++      td.BindFlags = D3D11_BIND_RENDER_TARGET | D3D11_BIND_SHADER_RESOURCE;
++      td.MiscFlags = D3D11_RESOURCE_MISC_SHARED;
++      HRESULT hr = dev->CreateTexture2D(&td, nullptr, &pb->tex);
++      ComPtr<IDXGIResource> dres;
++      if (FAILED(hr) || FAILED(pb->tex.As(&dres)) ||
++          FAILED(dres->GetSharedHandle(&pb->share)) || !pb->share) {
++         debug_printf("fd_wgl: pbuffer shared texture that bai 0x%08lx\n",
++                      (unsigned long)hr);
++         delete pb;
++         return NULL;
++      }
++   }
++
++   struct pipe_resource t = {};
++   t.target = PIPE_TEXTURE_2D;
++   t.format = format;
++   t.width0 = width;
++   t.height0 = height;
++   t.depth0 = t.array_size = 1;
++   t.bind = PIPE_BIND_RENDER_TARGET | PIPE_BIND_SAMPLER_VIEW |
++            PIPE_BIND_LINEAR | PIPE_BIND_SHARED;
++   t.usage = PIPE_USAGE_DEFAULT;
++
++   /* KMD Qualcomm: texture shared LINEAR, pitch = width*4 lam tron 64. */
++   struct winsys_handle wh = {};
++   wh.type = WINSYS_HANDLE_TYPE_FD;
++   wh.handle = pb->share;
++   wh.stride = align(width * 4, 64);
++   wh.modifier = DRM_FORMAT_MOD_LINEAR;
++   pb->res = screen->resource_from_handle(screen, &t, &wh,
++                                          PIPE_HANDLE_USAGE_FRAMEBUFFER_WRITE);
++   if (!pb->res) {
++      debug_printf("fd_wgl: pbuffer resource_from_handle %ux%u that bai\n",
++                   width, height);
++      delete pb;
++      return NULL;
++   }
++
++   pb->base.destroy = fd_wgl_pbuffer_destroy;
++   pb->base.resize = fd_wgl_pbuffer_resize;
++   pb->base.present = fd_wgl_pbuffer_present;
++   pb->base.get_resource = fd_wgl_pbuffer_get_resource;
++   pb->base.flush_frontbuffer = fd_wgl_pbuffer_flush_frontbuffer;
++   pb->base.get_share_handle = fd_wgl_pbuffer_get_share_handle;
++   return &pb->base;
++}
+-- 
+2.35.1.windows.2
+

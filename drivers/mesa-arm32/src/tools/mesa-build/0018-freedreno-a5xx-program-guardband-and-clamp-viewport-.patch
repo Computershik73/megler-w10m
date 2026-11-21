@@ -1,0 +1,82 @@
+From ca20e6f661715c2178dcec7062eba3301fe6f8e1 Mon Sep 17 00:00:00 2001
+From: anon <>
+Date: Thu, 19 Nov 2026 00:49:33 +0700
+Subject: [PATCH] freedreno/a5xx: program guardband and clamp viewport scissor
+ to viewport
+
+---
+ src/gallium/drivers/freedreno/a5xx/fd5_emit.c | 26 +++++++++++++++----
+ .../drivers/freedreno/freedreno_state.c       |  4 +--
+ 2 files changed, 23 insertions(+), 7 deletions(-)
+
+diff --git a/src/gallium/drivers/freedreno/a5xx/fd5_emit.c b/src/gallium/drivers/freedreno/a5xx/fd5_emit.c
+index 1461824..103ba4d 100644
+--- a/src/gallium/drivers/freedreno/a5xx/fd5_emit.c
++++ b/src/gallium/drivers/freedreno/a5xx/fd5_emit.c
+@@ -588,8 +588,20 @@ fd5_emit_state(struct fd_context *ctx, struct fd_ringbuffer *ring,
+    }
+ 
+    /* NOTE: scissor enabled bit is part of rasterizer state: */
+-   if (dirty & (FD_DIRTY_SCISSOR | FD_DIRTY_RASTERIZER)) {
++   if (dirty & (FD_DIRTY_SCISSOR | FD_DIRTY_RASTERIZER | FD_DIRTY_VIEWPORT)) {
+       struct pipe_scissor_state *scissor = fd_context_get_scissor(ctx);
++      /* Viewport scissor = scissor intersected with the viewport rect, so
++       * geometry inside the guardband but outside the viewport is dropped
++       * (as on a6xx). Relying on the reset value of the guardband reg is not
++       * safe on Windows where other (D3D) contexts program it.
++       */
++      const struct pipe_scissor_state *vps = &ctx->viewport_scissor[0];
++      struct pipe_scissor_state vs = {
++         .minx = MAX2(scissor->minx, vps->minx),
++         .miny = MAX2(scissor->miny, vps->miny),
++         .maxx = MIN2(scissor->maxx, vps->maxx),
++         .maxy = MIN2(scissor->maxy, vps->maxy),
++      };
+ 
+       OUT_PKT4(ring, REG_A5XX_GRAS_SC_SCREEN_SCISSOR_TL_0, 2);
+       OUT_RING(ring, A5XX_GRAS_SC_SCREEN_SCISSOR_TL_0_X(scissor->minx) |
+@@ -598,11 +610,11 @@ fd5_emit_state(struct fd_context *ctx, struct fd_ringbuffer *ring,
+                         A5XX_GRAS_SC_SCREEN_SCISSOR_TL_0_Y(scissor->maxy));
+ 
+       OUT_PKT4(ring, REG_A5XX_GRAS_SC_VIEWPORT_SCISSOR_TL_0, 2);
+-      OUT_RING(ring, A5XX_GRAS_SC_VIEWPORT_SCISSOR_TL_0_X(scissor->minx) |
+-                        A5XX_GRAS_SC_VIEWPORT_SCISSOR_TL_0_Y(scissor->miny));
++      OUT_RING(ring, A5XX_GRAS_SC_VIEWPORT_SCISSOR_TL_0_X(vs.minx) |
++                        A5XX_GRAS_SC_VIEWPORT_SCISSOR_TL_0_Y(vs.miny));
+       OUT_RING(ring,
+-               A5XX_GRAS_SC_VIEWPORT_SCISSOR_TL_0_X(scissor->maxx) |
+-                  A5XX_GRAS_SC_VIEWPORT_SCISSOR_TL_0_Y(scissor->maxy));
++               A5XX_GRAS_SC_VIEWPORT_SCISSOR_TL_0_X(vs.maxx) |
++                  A5XX_GRAS_SC_VIEWPORT_SCISSOR_TL_0_Y(vs.maxy));
+ 
+       ctx->batch->max_scissor.minx =
+          MIN2(ctx->batch->max_scissor.minx, scissor->minx);
+@@ -615,6 +627,10 @@ fd5_emit_state(struct fd_context *ctx, struct fd_ringbuffer *ring,
+    }
+ 
+    if (dirty & FD_DIRTY_VIEWPORT) {
++      OUT_PKT4(ring, REG_A5XX_GRAS_CL_GUARDBAND_CLIP_ADJ, 1);
++      OUT_RING(ring, A5XX_GRAS_CL_GUARDBAND_CLIP_ADJ_HORZ(ctx->guardband.x) |
++                        A5XX_GRAS_CL_GUARDBAND_CLIP_ADJ_VERT(ctx->guardband.y));
++
+       struct pipe_viewport_state *vp = & ctx->viewport[0];
+ 
+       fd_wfi(ctx->batch, ring);
+diff --git a/src/gallium/drivers/freedreno/freedreno_state.c b/src/gallium/drivers/freedreno/freedreno_state.c
+index 23f982c..87de67b 100644
+--- a/src/gallium/drivers/freedreno/freedreno_state.c
++++ b/src/gallium/drivers/freedreno/freedreno_state.c
+@@ -429,8 +429,8 @@ fd_set_viewport_states(struct pipe_context *pctx, unsigned start_slot,
+ 
+    fd_context_dirty(ctx, FD_DIRTY_VIEWPORT);
+ 
+-   /* Guardband is only used on a6xx so far: */
+-   if (!is_a6xx(ctx->screen))
++   /* Guardband is used on a5xx and a6xx: */
++   if (!is_a6xx(ctx->screen) && !is_a5xx(ctx->screen))
+       return;
+ 
+    ctx->guardband.x = ~0;
+-- 
+2.35.1.windows.2
+

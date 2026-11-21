@@ -1,0 +1,339 @@
+From 76518bbbf9c2c023bd82ad6f0cc32793d91f9b3b Mon Sep 17 00:00:00 2001
+From: anon <>
+Date: Fri, 20 Nov 2026 07:39:34 +0700
+Subject: [PATCH] freedreno/d3dkmt, wgl: alternate two shared textures for
+ CoreWindow present
+
+Add an optional stw_winsys_framebuffer::present_resource hook so the winsys
+knows which resource stw presents. The d3dkmt winsys now hands out two
+D3D11 shared textures as front/back and, after presenting one, only waits
+for the previous copy of the other before Mesa draws into it.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/gallium/frontends/wgl/stw_framebuffer.c   |   4 +-
+ src/gallium/frontends/wgl/stw_winsys.h        |   9 ++
+ .../freedreno/d3dkmt/fd_wgl_framebuffer.cpp   | 138 +++++++++++++-----
+ 3 files changed, 111 insertions(+), 40 deletions(-)
+
+diff --git a/src/gallium/frontends/wgl/stw_framebuffer.c b/src/gallium/frontends/wgl/stw_framebuffer.c
+index dc5bc2a..1dc998c 100644
+--- a/src/gallium/frontends/wgl/stw_framebuffer.c
++++ b/src/gallium/frontends/wgl/stw_framebuffer.c
+@@ -656,7 +656,9 @@ stw_framebuffer_present_locked(HDC hdc,
+ {
+    if (fb->winsys_framebuffer) {
+       int interval = fb->swap_interval == -1 ? stw_dev->swap_interval : fb->swap_interval;
+-      BOOL result = fb->winsys_framebuffer->present(fb->winsys_framebuffer, interval);
++      BOOL result = fb->winsys_framebuffer->present_resource ?
++         fb->winsys_framebuffer->present_resource(fb->winsys_framebuffer, res, interval) :
++         fb->winsys_framebuffer->present(fb->winsys_framebuffer, interval);
+ 
+       stw_framebuffer_update(fb);
+       stw_notify_current_locked(fb);
+diff --git a/src/gallium/frontends/wgl/stw_winsys.h b/src/gallium/frontends/wgl/stw_winsys.h
+index 4ed4ba0..5ad8050 100644
+--- a/src/gallium/frontends/wgl/stw_winsys.h
++++ b/src/gallium/frontends/wgl/stw_winsys.h
+@@ -65,6 +65,15 @@ struct stw_winsys_framebuffer
+    void
+    (*set_latency)(struct stw_winsys_framebuffer *fb,
+                   int latency);
++
++   /* Optional: like present, but told which resource (from get_resource)
++    * is being presented, for winsys that hand out distinct front/back
++    * resources.  Used instead of present when non-NULL.
++    */
++   bool
++   (*present_resource)(struct stw_winsys_framebuffer *fb,
++                       struct pipe_resource *res,
++                       int interval);
+ };
+ 
+ struct stw_winsys
+diff --git a/src/gallium/winsys/freedreno/d3dkmt/fd_wgl_framebuffer.cpp b/src/gallium/winsys/freedreno/d3dkmt/fd_wgl_framebuffer.cpp
+index 4cba144..c6846c7 100644
+--- a/src/gallium/winsys/freedreno/d3dkmt/fd_wgl_framebuffer.cpp
++++ b/src/gallium/winsys/freedreno/d3dkmt/fd_wgl_framebuffer.cpp
+@@ -13,6 +13,10 @@
+  * (resource_from_handle, type FD) - Mesa ve thang vao do; present =
+  * CopyResource tren GPU vao back buffer. Khong co dong bo ngam giua hai API
+  * nen cho fence Mesa truoc khi copy va cho query D3D11 sau khi copy.
++ *
++ * Hai texture dung chung luan phien (front/back cua stw): sau khi present
++ * texture A chi can cho copy cua texture B (gui tu khung truoc, thuong da
++ * xong) truoc khi Mesa ve vao B -> khong con cho vsync ngay sau copy.
+  */
+ 
+ #include "fd_d3dkmt_public.h"
+@@ -65,11 +69,16 @@ struct fd_wgl_framebuffer {
+    DXGI_FORMAT dxgi_format;
+ 
+    struct pipe_context *ctx;            /* context GL dang ve (tu resize) */
+-   struct pipe_resource *color;         /* render target cua freedreno */
++   /* Render target cua freedreno. Duong khong copy: 2 cai luan phien
++    * (color[1] != NULL); duong copy CPU: chi color[0].
++    */
++   struct pipe_resource *color[2];
++   unsigned last;                       /* chi so vua present gan nhat */
+ 
+-   /* Duong khong copy: texture D3D11 dung chung ma `color` tro toi. */
+-   ComPtr<ID3D11Texture2D> shared;
+-   ComPtr<ID3D11Query> copy_done;
++   /* Duong khong copy: texture D3D11 dung chung ma color[i] tro toi. */
++   ComPtr<ID3D11Texture2D> shared[2];
++   ComPtr<ID3D11Query> copy_done[2];
++   bool copy_pending[2];
+ };
+ 
+ static bool
+@@ -85,10 +94,12 @@ use_shared_path(void)
+  * copy CPU cu.
+  */
+ static bool
+-create_shared_color(fd_wgl_framebuffer *fb, const struct pipe_resource *t)
++create_shared_color(fd_wgl_framebuffer *fb, const struct pipe_resource *t,
++                    unsigned i)
+ {
+-   fb->shared.Reset();
+-   fb->copy_done.Reset();
++   fb->shared[i].Reset();
++   fb->copy_done[i].Reset();
++   fb->copy_pending[i] = false;
+ 
+    unsigned cpp = util_format_get_blocksize(t->format);
+    if (cpp != 4 || (fb->dxgi_format != DXGI_FORMAT_R8G8B8A8_UNORM &&
+@@ -105,7 +116,7 @@ create_shared_color(fd_wgl_framebuffer *fb, const struct pipe_resource *t)
+    td.Usage = D3D11_USAGE_DEFAULT;
+    td.BindFlags = D3D11_BIND_RENDER_TARGET | D3D11_BIND_SHADER_RESOURCE;
+    td.MiscFlags = D3D11_RESOURCE_MISC_SHARED;
+-   HRESULT hr = fb->d3d->CreateTexture2D(&td, nullptr, &fb->shared);
++   HRESULT hr = fb->d3d->CreateTexture2D(&td, nullptr, &fb->shared[i]);
+    if (FAILED(hr)) {
+       debug_printf("fd_wgl: CreateTexture2D shared 0x%08lx\n",
+                    (unsigned long)hr);
+@@ -114,15 +125,15 @@ create_shared_color(fd_wgl_framebuffer *fb, const struct pipe_resource *t)
+ 
+    ComPtr<IDXGIResource> dres;
+    HANDLE share = nullptr;
+-   if (FAILED(fb->shared.As(&dres)) ||
++   if (FAILED(fb->shared[i].As(&dres)) ||
+        FAILED(dres->GetSharedHandle(&share)) || !share) {
+       debug_printf("fd_wgl: GetSharedHandle that bai\n");
+-      fb->shared.Reset();
++      fb->shared[i].Reset();
+       return false;
+    }
+ 
+    D3D11_QUERY_DESC qd = { D3D11_QUERY_EVENT, 0 };
+-   fb->d3d->CreateQuery(&qd, &fb->copy_done);
++   fb->d3d->CreateQuery(&qd, &fb->copy_done[i]);
+ 
+    /* KMD Qualcomm: texture shared la LINEAR, pitch = width*cpp lam tron 64
+     * (kiem chung bang fdkmt_share: 1080 RGBA8 -> 4352).
+@@ -135,13 +146,13 @@ create_shared_color(fd_wgl_framebuffer *fb, const struct pipe_resource *t)
+    wh.modifier = DRM_FORMAT_MOD_LINEAR;
+ 
+    struct pipe_resource rt = *t;
+-   fb->color = fb->screen->resource_from_handle(
++   fb->color[i] = fb->screen->resource_from_handle(
+       fb->screen, &rt, &wh, PIPE_HANDLE_USAGE_FRAMEBUFFER_WRITE);
+-   if (!fb->color) {
++   if (!fb->color[i]) {
+       debug_printf("fd_wgl: resource_from_handle %ux%u stride %u that bai\n",
+                    t->width0, t->height0, wh.stride);
+-      fb->shared.Reset();
+-      fb->copy_done.Reset();
++      fb->shared[i].Reset();
++      fb->copy_done[i].Reset();
+       return false;
+    }
+    debug_printf("fd_wgl: present khong copy %ux%u stride %u\n", t->width0,
+@@ -224,8 +235,10 @@ fd_wgl_framebuffer_destroy(struct stw_winsys_framebuffer *pfb,
+ {
+    fd_wgl_framebuffer *fb = fd_wgl_fb(pfb);
+    (void)ctx;
+-   pipe_resource_reference(&fb->color, NULL);
+-   fb->shared.Reset();
++   for (unsigned i = 0; i < 2; i++) {
++      pipe_resource_reference(&fb->color[i], NULL);
++      fb->shared[i].Reset();
++   }
+    delete fb;
+ }
+ 
+@@ -237,7 +250,13 @@ fd_wgl_framebuffer_resize(struct stw_winsys_framebuffer *pfb,
+    fd_wgl_framebuffer *fb = fd_wgl_fb(pfb);
+ 
+    fb->ctx = ctx;
+-   pipe_resource_reference(&fb->color, NULL);
++   for (unsigned i = 0; i < 2; i++) {
++      pipe_resource_reference(&fb->color[i], NULL);
++      fb->shared[i].Reset();
++      fb->copy_done[i].Reset();
++      fb->copy_pending[i] = false;
++   }
++   fb->last = 1; /* -> BACK = color[0] */
+ 
+    struct pipe_resource t = *templ;
+    t.target = PIPE_TEXTURE_2D;
+@@ -252,9 +271,16 @@ fd_wgl_framebuffer_resize(struct stw_winsys_framebuffer *pfb,
+ 
+    fb->dxgi_format = to_dxgi_format(templ->format);
+ 
+-   if (!use_shared_path() || !create_shared_color(fb, &t)) {
+-      fb->color = fb->screen->resource_create(fb->screen, &t);
+-      if (!fb->color) {
++   bool shared_ok = use_shared_path() && create_shared_color(fb, &t, 0) &&
++                    create_shared_color(fb, &t, 1);
++   if (!shared_ok) {
++      for (unsigned i = 0; i < 2; i++) {
++         pipe_resource_reference(&fb->color[i], NULL);
++         fb->shared[i].Reset();
++         fb->copy_done[i].Reset();
++      }
++      fb->color[0] = fb->screen->resource_create(fb->screen, &t);
++      if (!fb->color[0]) {
+          debug_printf("fd_wgl: resource_create %ux%u failed\n", t.width0,
+                       t.height0);
+          return;
+@@ -303,11 +329,20 @@ fd_wgl_framebuffer_get_resource(struct stw_winsys_framebuffer *pfb,
+                                 enum st_attachment_type statt)
+ {
+    fd_wgl_framebuffer *fb = fd_wgl_fb(pfb);
+-   (void)statt; /* back/front dung chung mot buffer: present la copy */
+-   if (!fb->color)
++   struct pipe_resource *res;
++   if (fb->color[1]) {
++      /* FRONT = vua present; BACK = cai con lai (stw tu trao sau moi present;
++       * neu FRONT chua tung duoc lay thi stw hoi lai BACK -> van luan phien).
++       */
++      res = fb->color[statt == ST_ATTACHMENT_FRONT_LEFT ? fb->last
++                                                         : fb->last ^ 1];
++   } else {
++      res = fb->color[0]; /* duong copy: front/back dung chung */
++   }
++   if (!res)
+       return NULL;
+-   pipe_reference(NULL, &fb->color->reference);
+-   return fb->color;
++   pipe_reference(NULL, &res->reference);
++   return res;
+ }
+ 
+ /* Do thoi gian tung buoc present; moi 60 khung ghi trung binh (ms) ra
+@@ -340,9 +375,9 @@ fd_wgl_timing(fd_wgl_framebuffer *fb, LARGE_INTEGER t0, LARGE_INTEGER t1,
+    }
+    if (log) {
+       fprintf(log, "%ux%u %s dxgi=%d %s  %.1f  %.1f  %.1f  %.1f ms\n",
+-              fb->color->width0, fb->color->height0,
+-              util_format_short_name(fb->color->format), (int)fb->dxgi_format,
+-              fb->shared ? "shared fence/copy/present/wait" : "map/update/unmap/present",
++              fb->color[0]->width0, fb->color[0]->height0,
++              util_format_short_name(fb->color[0]->format), (int)fb->dxgi_format,
++              fb->color[1] ? "shared2 fence/copy/present/wait" : "map/update/unmap/present",
+               acc[0] / n, acc[1] / n,
+               acc[2] / n, acc[3] / n);
+       fflush(log);
+@@ -351,22 +386,35 @@ fd_wgl_timing(fd_wgl_framebuffer *fb, LARGE_INTEGER t0, LARGE_INTEGER t1,
+    n = 0;
+ }
+ 
++static void
++wait_copy(fd_wgl_framebuffer *fb, unsigned i)
++{
++   if (!fb->copy_pending[i] || !fb->copy_done[i])
++      return;
++   while (fb->d3dctx->GetData(fb->copy_done[i].Get(), nullptr, 0, 0) ==
++          S_FALSE)
++      SwitchToThread();
++   fb->copy_pending[i] = false;
++}
++
+ static bool
+-fd_wgl_framebuffer_present(struct stw_winsys_framebuffer *pfb, int interval)
++fd_wgl_framebuffer_present_resource(struct stw_winsys_framebuffer *pfb,
++                                    struct pipe_resource *res, int interval)
+ {
+    fd_wgl_framebuffer *fb = fd_wgl_fb(pfb);
+-   if (!fb->swapchain || !fb->color || !fb->ctx)
++   if (!fb->swapchain || !fb->color[0] || !fb->ctx)
+       return false;
+ 
+    struct pipe_context *ctx = fb->ctx;
+-   struct pipe_resource *res = fb->color;
++   unsigned idx = (fb->color[1] && res == fb->color[1]) ? 1 : 0;
++   res = fb->color[idx];
+    struct pipe_box box;
+    u_box_2d(0, 0, res->width0, res->height0, &box);
+ 
+    LARGE_INTEGER t0, t1, t2, t3, t4;
+    QueryPerformanceCounter(&t0);
+ 
+-   if (fb->shared) {
++   if (fb->color[1]) {
+       /* 1) Mesa xong khung: flush + cho fence (CPU). */
+       struct pipe_screen *screen = fb->screen;
+       struct pipe_fence_handle *fence = NULL;
+@@ -380,18 +428,19 @@ fd_wgl_framebuffer_present(struct stw_winsys_framebuffer *pfb, int interval)
+       /* 2) Copy GPU sang back buffer; cho xong truoc khi Mesa ve khung sau. */
+       ComPtr<ID3D11Texture2D> back;
+       if (SUCCEEDED(fb->swapchain->GetBuffer(0, IID_PPV_ARGS(&back))))
+-         fb->d3dctx->CopyResource(back.Get(), fb->shared.Get());
++         fb->d3dctx->CopyResource(back.Get(), fb->shared[idx].Get());
+       QueryPerformanceCounter(&t2);
+ 
+       HRESULT hr = fb->swapchain->Present(interval > 0 ? 1 : 0, 0);
+       QueryPerformanceCounter(&t3);
+ 
+-      if (fb->copy_done) {
+-         fb->d3dctx->End(fb->copy_done.Get());
+-         while (fb->d3dctx->GetData(fb->copy_done.Get(), nullptr, 0, 0) ==
+-                S_FALSE)
+-            SwitchToThread();
++      if (fb->copy_done[idx]) {
++         fb->d3dctx->End(fb->copy_done[idx].Get());
++         fb->copy_pending[idx] = true;
+       }
++      fb->last = idx;
++      /* Mesa sap ve vao texture con lai: copy cua no (khung truoc) phai xong. */
++      wait_copy(fb, idx ^ 1);
+       QueryPerformanceCounter(&t4);
+ 
+       fd_wgl_timing(fb, t0, t1, t2, t3, t4);
+@@ -421,13 +470,23 @@ fd_wgl_framebuffer_present(struct stw_winsys_framebuffer *pfb, int interval)
+    return SUCCEEDED(hr);
+ }
+ 
++static bool
++fd_wgl_framebuffer_present(struct stw_winsys_framebuffer *pfb, int interval)
++{
++   fd_wgl_framebuffer *fb = fd_wgl_fb(pfb);
++   return fd_wgl_framebuffer_present_resource(
++      pfb, fb->color[1] ? fb->color[fb->last ^ 1] : fb->color[0], interval);
++}
++
+ static void
+ fd_wgl_framebuffer_flush_frontbuffer(struct stw_winsys_framebuffer *pfb,
+                                      struct pipe_context *ctx)
+ {
+    fd_wgl_framebuffer *fb = fd_wgl_fb(pfb);
+    fb->ctx = ctx;
+-   fd_wgl_framebuffer_present(pfb, 0);
++   /* Ve front buffer: present cai FRONT hien tai. */
++   fd_wgl_framebuffer_present_resource(
++      pfb, fb->color[1] ? fb->color[fb->last] : fb->color[0], 0);
+ }
+ 
+ extern "C" struct stw_winsys_framebuffer *
+@@ -463,6 +522,7 @@ fd_wgl_create_framebuffer(struct pipe_screen *screen, HWND hwnd,
+    fb->base.destroy = fd_wgl_framebuffer_destroy;
+    fb->base.resize = fd_wgl_framebuffer_resize;
+    fb->base.present = fd_wgl_framebuffer_present;
++   fb->base.present_resource = fd_wgl_framebuffer_present_resource;
+    fb->base.get_resource = fd_wgl_framebuffer_get_resource;
+    fb->base.flush_frontbuffer = fd_wgl_framebuffer_flush_frontbuffer;
+ 
+-- 
+2.35.1.windows.2
+

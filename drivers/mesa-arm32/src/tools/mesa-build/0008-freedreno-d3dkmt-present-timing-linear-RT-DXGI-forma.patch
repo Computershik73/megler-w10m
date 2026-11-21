@@ -1,0 +1,148 @@
+From a7ad8b3173cdeaa2c54311105f166069071fffdc Mon Sep 17 00:00:00 2001
+From: anon <>
+Date: Thu, 19 Nov 2026 00:23:21 +0700
+Subject: [PATCH 08/15] freedreno/d3dkmt: present timing, linear RT, DXGI
+ format mapping, optional cached BOs
+
+---
+ src/freedreno/drm/d3dkmt/d3dkmt_device.c      |  7 ++-
+ .../freedreno/d3dkmt/fd_wgl_framebuffer.cpp   | 63 ++++++++++++++++++-
+ 2 files changed, 68 insertions(+), 2 deletions(-)
+
+diff --git a/src/freedreno/drm/d3dkmt/d3dkmt_device.c b/src/freedreno/drm/d3dkmt/d3dkmt_device.c
+index 5eb9117..6987fa3 100644
+--- a/src/freedreno/drm/d3dkmt/d3dkmt_device.c
++++ b/src/freedreno/drm/d3dkmt/d3dkmt_device.c
+@@ -66,7 +66,12 @@ d3dkmt_device_new(struct fd_kmt *kmt)
+    d->base.funcs = &funcs;
+    /* Hanh xu nhu drm/msm softpin hien dai: userspace fence, submit_sp. */
+    d->base.version = FD_VERSION_CACHED_COHERENT;
+-   d->base.has_cached_coherent = false;
++   /* KMD Qualcomm cap duoc bo nho CPU co cache (AllocFlags 0x80) nhung KHONG
++    * coherent voi GPU: CPU doc lai du lieu cu (egltest 2026-11-18). Tat mac
++    * dinh; FD_D3DKMT_CACHED=1 de thu nghiem.
++    */
++   d->base.has_cached_coherent =
++      debug_get_bool_option("FD_D3DKMT_CACHED", false);
+    d->base.bo_size = sizeof(struct d3dkmt_bo);
+ 
+    return &d->base;
+diff --git a/src/gallium/winsys/freedreno/d3dkmt/fd_wgl_framebuffer.cpp b/src/gallium/winsys/freedreno/d3dkmt/fd_wgl_framebuffer.cpp
+index 7879031..fdaedb2 100644
+--- a/src/gallium/winsys/freedreno/d3dkmt/fd_wgl_framebuffer.cpp
++++ b/src/gallium/winsys/freedreno/d3dkmt/fd_wgl_framebuffer.cpp
+@@ -13,6 +13,8 @@
+ #include "fd_d3dkmt_public.h"
+ 
+ #include <new>
++#include <share.h>
++#include <stdio.h>
+ 
+ #include <windows.h>
+ #include <d3d11.h>
+@@ -113,6 +115,12 @@ to_dxgi_format(enum pipe_format format)
+    case PIPE_FORMAT_R8G8B8A8_UNORM:
+    case PIPE_FORMAT_R8G8B8X8_UNORM:
+       return DXGI_FORMAT_R8G8B8A8_UNORM;
++   case PIPE_FORMAT_R16G16B16A16_FLOAT:
++   case PIPE_FORMAT_R16G16B16X16_FLOAT:
++      return DXGI_FORMAT_R16G16B16A16_FLOAT;
++   case PIPE_FORMAT_R10G10B10A2_UNORM:
++   case PIPE_FORMAT_R10G10B10X2_UNORM:
++      return DXGI_FORMAT_R10G10B10A2_UNORM;
+    case PIPE_FORMAT_B5G6R5_UNORM:
+       return DXGI_FORMAT_B5G6R5_UNORM;
+    default:
+@@ -142,7 +150,11 @@ fd_wgl_framebuffer_resize(struct stw_winsys_framebuffer *pfb,
+ 
+    struct pipe_resource t = *templ;
+    t.target = PIPE_TEXTURE_2D;
+-   t.bind |= PIPE_BIND_RENDER_TARGET | PIPE_BIND_SAMPLER_VIEW;
++   /* LINEAR: present doc tung hang (UpdateSubresource). Neu de freedreno chon
++    * layout tile, anh tren man hinh bi soc/moire (video 2026-11-18).
++    */
++   t.bind |= PIPE_BIND_RENDER_TARGET | PIPE_BIND_SAMPLER_VIEW |
++             PIPE_BIND_LINEAR | PIPE_BIND_SCANOUT;
+    t.usage = PIPE_USAGE_DEFAULT;
+    t.depth0 = t.array_size = 1;
+    t.last_level = 0;
+@@ -204,6 +216,46 @@ fd_wgl_framebuffer_get_resource(struct stw_winsys_framebuffer *pfb,
+    return fb->color;
+ }
+ 
++/* Do thoi gian tung buoc present; moi 60 khung ghi trung binh (ms) ra
++ * %TEMP%\fd_wgl.log (mo che do chia se, doc duoc khi app dang chay).
++ */
++static void
++fd_wgl_timing(fd_wgl_framebuffer *fb, LARGE_INTEGER t0, LARGE_INTEGER t1,
++              LARGE_INTEGER t2, LARGE_INTEGER t3, LARGE_INTEGER t4)
++{
++   static LARGE_INTEGER freq;
++   static double acc[4];
++   static unsigned n;
++   static FILE *log;
++   if (!freq.QuadPart)
++      QueryPerformanceFrequency(&freq);
++   double k = 1000.0 / (double)freq.QuadPart;
++   acc[0] += (t1.QuadPart - t0.QuadPart) * k;
++   acc[1] += (t2.QuadPart - t1.QuadPart) * k;
++   acc[2] += (t3.QuadPart - t2.QuadPart) * k;
++   acc[3] += (t4.QuadPart - t3.QuadPart) * k;
++   if (++n < 60)
++      return;
++   if (!log) {
++      char path[MAX_PATH];
++      DWORD len = GetTempPathA(MAX_PATH, path);
++      if (len && len < MAX_PATH - 16) {
++         strcat_s(path, "fd_wgl.log");
++         log = _fsopen(path, "w", _SH_DENYNO);
++      }
++   }
++   if (log) {
++      fprintf(log, "%ux%u %s dxgi=%d  map %.1f  update %.1f  unmap %.1f  present %.1f ms\n",
++              fb->color->width0, fb->color->height0,
++              util_format_short_name(fb->color->format), (int)fb->dxgi_format,
++              acc[0] / n, acc[1] / n,
++              acc[2] / n, acc[3] / n);
++      fflush(log);
++   }
++   acc[0] = acc[1] = acc[2] = acc[3] = 0;
++   n = 0;
++}
++
+ static bool
+ fd_wgl_framebuffer_present(struct stw_winsys_framebuffer *pfb, int interval)
+ {
+@@ -216,20 +268,29 @@ fd_wgl_framebuffer_present(struct stw_winsys_framebuffer *pfb, int interval)
+    struct pipe_box box;
+    u_box_2d(0, 0, res->width0, res->height0, &box);
+ 
++   LARGE_INTEGER t0, t1, t2, t3, t4;
++   QueryPerformanceCounter(&t0);
++
+    struct pipe_transfer *xfer = NULL;
+    /* texture_map READ tu flush + cho GPU va detile neu can. */
+    void *ptr = ctx->texture_map(ctx, res, 0, PIPE_MAP_READ, &box, &xfer);
+    if (!ptr)
+       return false;
++   QueryPerformanceCounter(&t1);
+ 
+    ComPtr<ID3D11Texture2D> back;
+    if (SUCCEEDED(fb->swapchain->GetBuffer(0, IID_PPV_ARGS(&back))))
+       fb->d3dctx->UpdateSubresource(back.Get(), 0, nullptr, ptr,
+                                     xfer->stride, 0);
++   QueryPerformanceCounter(&t2);
+ 
+    ctx->texture_unmap(ctx, xfer);
++   QueryPerformanceCounter(&t3);
+ 
+    HRESULT hr = fb->swapchain->Present(interval > 0 ? 1 : 0, 0);
++   QueryPerformanceCounter(&t4);
++
++   fd_wgl_timing(fb, t0, t1, t2, t3, t4);
+    return SUCCEEDED(hr);
+ }
+ 
+-- 
+2.35.1.windows.2
+

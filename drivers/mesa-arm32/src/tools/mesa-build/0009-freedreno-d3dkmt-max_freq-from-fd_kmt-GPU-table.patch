@@ -1,0 +1,42 @@
+From e0b7e0f5a833b0550acf4d2e745c7f8b2017ee6f Mon Sep 17 00:00:00 2001
+From: anon <>
+Date: Thu, 19 Nov 2026 00:23:22 +0700
+Subject: [PATCH 09/15] freedreno/d3dkmt: max_freq from fd_kmt GPU table
+
+---
+ src/freedreno/drm/d3dkmt/d3dkmt_pipe.c | 6 +++---
+ src/freedreno/drm/d3dkmt/fd_kmt.h      | 1 +
+ 2 files changed, 4 insertions(+), 3 deletions(-)
+
+diff --git a/src/freedreno/drm/d3dkmt/d3dkmt_pipe.c b/src/freedreno/drm/d3dkmt/d3dkmt_pipe.c
+index 2b4bc54..bcec3ea 100644
+--- a/src/freedreno/drm/d3dkmt/d3dkmt_pipe.c
++++ b/src/freedreno/drm/d3dkmt/d3dkmt_pipe.c
+@@ -35,9 +35,9 @@ d3dkmt_pipe_get_param(struct fd_pipe *pipe, enum fd_param_id param,
+       *value = d->info.va_size;
+       return 0;
+    case FD_MAX_FREQ:
+-      /* TODO: lay tu KMD; Adreno 530 toi da ~624 MHz. */
+-      *value = 624000000;
+-      return 0;
++      /* Tu bang GPU cua loi fd_kmt (src/fdkmt/gpu_table.c). */
++      *value = d->info.max_freq;
++      return d->info.max_freq ? 0 : -1;
+    case FD_TIMESTAMP:
+       return fd_kmt_get_timestamp(d->kmt, value);
+    case FD_UCHE_TRAP_BASE:
+diff --git a/src/freedreno/drm/d3dkmt/fd_kmt.h b/src/freedreno/drm/d3dkmt/fd_kmt.h
+index db9e670..fcc162c 100644
+--- a/src/freedreno/drm/d3dkmt/fd_kmt.h
++++ b/src/freedreno/drm/d3dkmt/fd_kmt.h
+@@ -44,6 +44,7 @@ struct fd_kmt_info {
+    uint32_t gmem_size;  /* byte; Adreno 530 = 1 MiB */
+    uint64_t va_size;    /* kich thuoc khong gian GPU VA cua process */
+    uint32_t nr_priorities;
++   uint64_t max_freq;   /* Hz, 0 = khong biet */
+ };
+ 
+ /* Mo adapter Adreno, tao device + context 3D + paging queue. */
+-- 
+2.35.1.windows.2
+

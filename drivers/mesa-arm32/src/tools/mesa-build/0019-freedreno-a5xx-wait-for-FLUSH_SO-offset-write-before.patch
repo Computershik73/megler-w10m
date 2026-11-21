@@ -1,0 +1,34 @@
+From 59322a2860d694cd8adb575458f4ae2fcd0d2f72 Mon Sep 17 00:00:00 2001
+From: anon <>
+Date: Thu, 19 Nov 2026 08:13:16 +0700
+Subject: [PATCH] freedreno/a5xx: wait for FLUSH_SO offset write before
+ reloading SO offset
+
+Consecutive transform feedback draws reload VPC_SO_BUFFER_OFFSET from the
+offset BO written asynchronously by FLUSH_SO of the previous draw. Without a
+WFI the CP could read the stale offset and overwrite earlier output.
+dEQP-GLES3 transform_feedback: 582 -> 1198/1212 pass.
+---
+ src/gallium/drivers/freedreno/a5xx/fd5_emit.c | 6 ++++++
+ 1 file changed, 6 insertions(+)
+
+diff --git a/src/gallium/drivers/freedreno/a5xx/fd5_emit.c b/src/gallium/drivers/freedreno/a5xx/fd5_emit.c
+index 103ba4d..083515a 100644
+--- a/src/gallium/drivers/freedreno/a5xx/fd5_emit.c
++++ b/src/gallium/drivers/freedreno/a5xx/fd5_emit.c
+@@ -745,6 +745,12 @@ fd5_emit_state(struct fd_context *ctx, struct fd_ringbuffer *ring,
+             OUT_PKT4(ring, REG_A5XX_VPC_SO_BUFFER_OFFSET(i), 1);
+             OUT_RING(ring, target->base.buffer_offset);
+          } else {
++            /* Offset cua draw truoc duoc ghi bang FLUSH_SO (bat dong bo):
++             * cho ghi bo nho xong truoc khi CP doc lai.
++             */
++            OUT_WFI5(ring);
++            OUT_PKT7(ring, CP_WAIT_MEM_WRITES, 0);
++            OUT_PKT7(ring, CP_WAIT_FOR_ME, 0);
+             OUT_PKT7(ring, CP_MEM_TO_REG, 3);
+             OUT_RING(ring,
+                      CP_MEM_TO_REG_0_REG(REG_A5XX_VPC_SO_BUFFER_OFFSET(i)) |
+-- 
+2.35.1.windows.2
+

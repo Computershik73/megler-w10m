@@ -1,0 +1,28 @@
+From c22ef644da58d92900733e50c40018cdf8d1d96f Mon Sep 17 00:00:00 2001
+From: anon <>
+Date: Thu, 19 Nov 2026 00:23:20 +0700
+Subject: [PATCH 05/15] egl/wgl: clear DriverData after display destroy
+ (use-after-free on init retry)
+
+---
+ src/egl/drivers/wgl/egl_wgl.c | 4 ++++
+ 1 file changed, 4 insertions(+)
+
+diff --git a/src/egl/drivers/wgl/egl_wgl.c b/src/egl/drivers/wgl/egl_wgl.c
+index 8f127a4..53e3c24 100644
+--- a/src/egl/drivers/wgl/egl_wgl.c
++++ b/src/egl/drivers/wgl/egl_wgl.c
+@@ -197,6 +197,10 @@ wgl_display_destroy(_EGLDisplay *disp)
+ 
+    st_screen_destroy(&wgl_dpy->base);
+    free(wgl_dpy);
++   /* Khong de con tro treo: eglInitialize thu lai (ForceSoftware) se thay
++    * DriverData != NULL va tra EGL_TRUE tren vung nho da free.
++    */
++   disp->DriverData = NULL;
+ }
+ 
+ static int
+-- 
+2.35.1.windows.2
+

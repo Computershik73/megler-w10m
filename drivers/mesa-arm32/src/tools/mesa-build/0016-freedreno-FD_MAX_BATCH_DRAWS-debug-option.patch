@@ -1,0 +1,32 @@
+From d97e9d873e2a3f916d7661ed1a5e71e04a5866e1 Mon Sep 17 00:00:00 2001
+From: anon <>
+Date: Thu, 19 Nov 2026 00:33:59 +0700
+Subject: [PATCH 16/17] freedreno: FD_MAX_BATCH_DRAWS debug option
+
+---
+ src/gallium/drivers/freedreno/freedreno_batch.c | 9 ++++++++-
+ 1 file changed, 8 insertions(+), 1 deletion(-)
+
+diff --git a/src/gallium/drivers/freedreno/freedreno_batch.c b/src/gallium/drivers/freedreno/freedreno_batch.c
+index 22172e5..d1a179d 100644
+--- a/src/gallium/drivers/freedreno/freedreno_batch.c
++++ b/src/gallium/drivers/freedreno/freedreno_batch.c
+@@ -610,7 +610,14 @@ fd_batch_resource_read_slowpath(struct fd_batch *batch, struct fd_resource *rsc)
+ void
+ fd_batch_check_size(struct fd_batch *batch)
+ {
+-   if (batch->num_draws > 100000) {
++   /* FD_MAX_BATCH_DRAWS=N: flush after N draws (keep submits short, e.g.
++    * for KMDs that preempt long GMEM passes).
++    */
++   static int max_draws = -1;
++   if (max_draws < 0)
++      max_draws = debug_get_num_option("FD_MAX_BATCH_DRAWS", 100000);
++
++   if (batch->num_draws > (unsigned)max_draws) {
+       fd_batch_flush(batch);
+       return;
+    }
+-- 
+2.35.1.windows.2
+
