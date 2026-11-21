@@ -298,19 +298,30 @@ static void prefetch_tell(sl_object *o)
     MG_GFN(void (*)(sl_itf *, void *, u32), o->prefetch_cb)(&o->prefetch, o->prefetch_ctx, 3u);
 }
 
+/*
+ * The data locators of a file, as the app's code lays them out (OpenSLES.h, OpenSLES_Android.h): the URI's pointer where its
+ * ABI puts a pointer after a 32-bit field -- at 8 on a 64-bit one, not at 4 -- and the descriptor's 64-bit fields at 8 and 16.
+ */
+typedef struct sl_locator_fd {
+    u32 type;                          /* SL_DATALOCATOR_ANDROIDFD */
+    i32 fd;
+    i64 offset, length;                /* length all ones: the file's size */
+} sl_locator_fd;
+typedef struct sl_locator_uri {
+    u32 type;                          /* SL_DATALOCATOR_URI */
+    const char *uri;
+} sl_locator_uri;
+
 /* The file a player's data locator names: SL_DATALOCATOR_ANDROIDFD (fd, offset, length) or SL_DATALOCATOR_URI. */
 static void *file_decoder(const u32 *locator)
 {
     if (locator[0] == 0x800007BCu) {
-        /* SLDataLocator_AndroidFD: SLuint32 locatorType; SLint32 fd; SLAint64 offset; SLAint64 length (all ones: the file's size). */
-        const u8 *p = (const u8 *)locator;
-        i32 fd = *(const i32 *)(p + 4);
-        i64 offset = *(const i64 *)(p + 8), length = *(const i64 *)(p + 16);
-        return mg_audio_dec_open_fd(fd, offset, length < 0 ? -1 : length);
+        const sl_locator_fd *l = (const sl_locator_fd *)locator;
+        return mg_audio_dec_open_fd(l->fd, l->offset, l->length < 0 ? -1 : l->length);
     }
     if (locator[0] == 1u) {
-        /* SLDataLocator_URI: SLuint32 locatorType; SLchar *URI. A file's, as a path or a file:// URI. */
-        const char *uri = *(const char *const *)((const u8 *)locator + 4);
+        /* A file's, as a path or a file:// URI. */
+        const char *uri = ((const sl_locator_uri *)locator)->uri;
         if (!uri) return NULL;
         if (!strncmp(uri, "file://", 7)) uri += 7;
         if (uri[0] != '/') return NULL;
