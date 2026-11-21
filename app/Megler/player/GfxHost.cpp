@@ -3905,23 +3905,14 @@ void forgetVideo(int id) {
     }
 }
 
-/// Whether the OpenGL ES frames' shared textures hold their rows top first: Mesa's (freedreno over D3DKMT, in the package
-/// as libgallium_wgl.dll), which renders into the D3D11 texture as Direct3D lays it out, where ANGLE's keep OpenGL's order,
-/// the bottom row first, which the composing here is made for. GTA: Vice City's frames came out upside down on Mesa.
-/// (Looked for beside the program with Win32 alone: this file leans on nothing of the shell's, and it is built into the
-/// core's tests too, where there is nothing of the kind beside mg_tests.exe.)
+/// Whether the OpenGL ES frames' shared textures hold their rows top first: Mesa's (freedreno over D3DKMT), which renders into
+/// the D3D11 texture as Direct3D lays it out, where ANGLE's keep OpenGL's order, the bottom row first, which the composing
+/// here is made for. GTA: Vice City's frames came out upside down on Mesa. Which of the two the app draws with is its setting
+/// Graphics, or ANGLE where Mesa could not be had: the core says which it came to (megler_gles) once the app has used EGL,
+/// before any frame comes. (Not whether Mesa's DLLs are in the package: a phone's package carries both.)
 bool glFramesTopFirst() {
-    static const bool topFirst = [] {
-        wchar_t path[MAX_PATH + 32] = {};
-        const DWORD n = GetModuleFileNameW(nullptr, path, MAX_PATH);
-        if (!n || n >= MAX_PATH) return false;
-        wchar_t* slash = wcsrchr(path, L'\\');
-        if (!slash) return false;
-        wcscpy(slash + 1, L"libgallium_wgl.dll");
-        WIN32_FILE_ATTRIBUTE_DATA data = {};
-        return GetFileAttributesExW(path, GetFileExInfoStandard, &data) && !(data.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY);
-    }();
-    return topFirst;
+    const char* gles = megler_gles();
+    return gles && strcmp(gles, "mesa") == 0;
 }
 
 /// The premultiplied picture of a translucent layer's last frame (the same
@@ -4352,7 +4343,8 @@ bool textureFrame(void*, int id, void* handle, int width, int height) {
 }
 
 /// megler_gfx_host.draw_texture: the id's last frame drawn into the canvas, into (l, t, r, b) under its matrix and clip, the
-/// right way up (its rows are bottom first), smoothly, at `alpha`. On a canvas drawn in memory nothing is drawn (said once).
+/// right way up (its rows are bottom first; top first for a video's and for Mesa's), smoothly, at `alpha`. On a canvas drawn
+/// in memory nothing is drawn (said once).
 void drawTexture(void*, void* canvas, int id, float l, float t, float r, float b, int alpha) {
     Canvas* cv = canvasOf(canvas);
     if (!cv || id <= 0 || !sane(l, t, r, b) || !(r > l) || !(b > t)) return;
@@ -4436,7 +4428,10 @@ void drawTexture(void*, void* canvas, int id, float l, float t, float r, float b
         // (Drawn among the views: no longer under them, if it was.)
         if (topFirst) forgetVideo(id);
         target->useClip(cv->clip());
-        const Matrix3x2F turned = topFirst ? cv->matrix : Matrix3x2F::Scale(1.0f, -1.0f, D2D1::Point2F(0.0f, (t + b) / 2.0f)) * cv->matrix;
+        // An OpenGL ES picture is turned over, its rows bottom first -- but Mesa's, whose rows come top first as a video's do
+        // (glFramesTopFirst): a TextureView's frames and the WebView's pages of an app set to Mesa.
+        const bool upright = topFirst || glFramesTopFirst();
+        const Matrix3x2F turned = upright ? cv->matrix : Matrix3x2F::Scale(1.0f, -1.0f, D2D1::Point2F(0.0f, (t + b) / 2.0f)) * cv->matrix;
         target->setMatrix(turned);
         target->rt->SetAntialiasMode(D2D1_ANTIALIAS_MODE_PER_PRIMITIVE);
         const D2D1_RECT_F onto = D2D1::RectF(l, t, r, b);
