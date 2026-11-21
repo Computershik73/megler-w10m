@@ -10,6 +10,7 @@
 #include "shell/DevicePortal.h"
 #endif
 #include "shell/Files.h"
+#include "shell/Graphics.h"
 #include "shell/OwnUpdate.h"
 #include "shell/PackageVersions.h"
 #include "shell/PickedFile.h"
@@ -320,12 +321,24 @@ const SingleApp& single() {
             s.apkFolder = install + L"\\" + widen(apk);
         if (!shared.empty() && !root.empty()) s.androidRoot = shared + L"\\" + widen(root);
         s.megler = widen(iniValue(text, "megler"));
+        s.gles = iniValue(text, "gles");
         shellLog::write("app package: this is " + s.package + "'s own package; " +
                         (shared.empty() ? std::string("Windows gave it no shared folder, where its APK and Android's files are")
                                         : "Android's files in " + narrow(s.androidRoot) + ", its APK in " + narrow(s.apkFolder)));
         return s;
     }();
     return app;
+}
+
+bool mesaChoosable() {
+    static const bool choosable = isSingleApp() ? !single().gles.empty() : graphics::hasMesaFiles(platform::installDirectory());
+    return choosable;
+}
+
+std::string glesFor(const std::string& package) {
+    if (!mesaChoosable()) return "angle";
+    return graphics::resolve(package.empty() ? std::nullopt : settings::app(package, settings::gles), settings::megler(settings::gles),
+                             graphics::packageDefault(platform::installDirectory()), true);
 }
 
 const std::string& singleAppProblem() {

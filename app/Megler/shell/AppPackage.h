@@ -35,9 +35,18 @@ struct SingleApp {
     std::wstring apkFolder;    // the folder with app.apk and its report (in the shared folder; in the install folder before 645)
     std::wstring androidRoot;  // Android's libcore and framework, in the shared folder
     std::wstring megler;       // the package family name of the Megler that made it; empty in a package made before Megler wrote it
+    std::string gles;          // what its Graphics were when it was made (shell/Graphics.h): "mesa", Mesa's DLLs in it; "angle",
+                               // left out; empty: made by a Megler without Mesa (or before it was written)
 };
 const SingleApp& single();
 inline bool isSingleApp() { return !single().package.empty(); }
+
+/// Whether an app's Graphics can be Mesa's freedreno here (shell/Graphics.h), and the setting is shown: Megler's own package
+/// carries Mesa (Windows 10 Mobile's); an app's own package was made by a Megler that does (MeglerApp.ini's gles=).
+bool mesaChoosable();
+/// The Graphics `package` goes by now: "mesa" or "angle" -- its own setting, else Megler's, else the package's default
+/// (graphics::resolve); "angle" wherever Mesa cannot be chosen.
+std::string glesFor(const std::string& package);
 /// An app's own package: why its app cannot start from what Megler put in the shared folder for it -- Windows gave the package
 /// no shared folder, or its APK or Android's files are not there (or cannot be read); not for where the package and Megler
 /// are, the shared folder being one for a memory card and the phone's memory (shell/Placement.h) -- in words
