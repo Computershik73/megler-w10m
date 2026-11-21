@@ -41,6 +41,12 @@
 // only. YouTube's comment field (alox, 21.13.164) works out what its first line shows in its watcher's onTextChanged,
 // text.substring(0, getLayout().getLineVisibleEnd(0)), and the layout was still the one of the text before the edit: a
 // Backspace at the end of a comment of one line ended YouTube with "length=1; index=2" (an HP Elite x3, 0.1.0.734).
+//
+// And the text's watchers added by addTextChangedListener are the view's, told by its ChangeWatcher, as Android's
+// TextView tells them (sendBeforeTextChanged, sendOnTextChanged, sendAfterTextChanged): before the view's own
+// onTextChanged, which a subclass hears after them, and no spans of the text. And a text set from another view's has that
+// view's ChangeWatcher taken off, as Android's setText takes it, or that view's watchers would hear of this one's edits.
+// They were spans of the text, which getSpans found, told after the view's own onTextChanged.
 // Everything else is the original's, unchanged.
 package android.widget;
 
@@ -433,9 +439,11 @@ public class TextView extends View implements ViewTreeObserver.OnPreDrawListener
         mText = text;
         if (text instanceof Spannable) {
             Spannable sp = (Spannable) text;
+            // As Android's: the ChangeWatchers a text copied from another view's brought along are taken off, or that view
+            // and its watchers would hear of this one's edits.
+            for (ChangeWatcher w : sp.getSpans(0, sp.length(), ChangeWatcher.class)) sp.removeSpan(w);
             if (mChangeWatcher == null) mChangeWatcher = new ChangeWatcher();
             sp.setSpan(mChangeWatcher, 0, text.length(), Spanned.SPAN_INCLUSIVE_INCLUSIVE | (100 << Spanned.SPAN_PRIORITY_SHIFT));
-            if (mListeners != null) for (TextWatcher w : mListeners) sp.setSpan(w, 0, text.length(), Spanned.SPAN_INCLUSIVE_INCLUSIVE);
             if (mMovement != null) { mMovement.initialize(this, sp); if (mText instanceof Editable && Selection.getSelectionStart(sp) < 0) Selection.setSelection(sp, text.length()); }
         }
         mTransformed = mTransformation == null ? text : mTransformation.getTransformation(text, this);
@@ -446,17 +454,23 @@ public class TextView extends View implements ViewTreeObserver.OnPreDrawListener
         sendAfterTextChanged(text instanceof Editable ? (Editable) text : null);
         if (megler.InputMethods.focused() == this) megler.InputMethods.restart(this);
     }
-    /** Edits to an Editable buffer, as they happen: relayout and the watchers' callbacks. */
+    /**
+     * Edits to an Editable buffer, as they happen: relayout and the watchers' callbacks. As Android's: the view's watchers
+     * (addTextChangedListener) told of each, then the view's own onTextChanged; of an edit of a copy of the text too (the
+     * copy has this watcher, as on Android), whose layout is not the view's.
+     */
     private final class ChangeWatcher implements TextWatcher, SpanWatcher {
-        public void beforeTextChanged(CharSequence s, int st, int c, int a) {}
+        public void beforeTextChanged(CharSequence s, int st, int c, int a) { sendBeforeTextChanged(s, st, c, a); }
         public void onTextChanged(CharSequence s, int st, int b, int c) {
-            if (s != mText) return;
-            mTransformed = mTransformation == null ? mText : mTransformation.getTransformation(mText, TextView.this);
-            relayoutText();
+            if (s == mText) {
+                mTransformed = mTransformation == null ? mText : mTransformation.getTransformation(mText, TextView.this);
+                relayoutText();
+                mBlinkStart = android.os.SystemClock.uptimeMillis();
+            }
+            sendOnTextChanged(s, st, b, c);
             TextView.this.onTextChanged(s, st, b, c);
-            mBlinkStart = android.os.SystemClock.uptimeMillis();
         }
-        public void afterTextChanged(Editable s) {}
+        public void afterTextChanged(Editable s) { sendAfterTextChanged(s); }
         // A selection's end put on a text is told too, as Android's spanChange tells it (from -1): a text set or set again
         // has its cursor put at the start by the movement method, and a view that keeps its cursor as onSelectionChanged
         // says (the Google app's Gemini field) heard nothing of it.
@@ -485,10 +499,9 @@ public class TextView extends View implements ViewTreeObserver.OnPreDrawListener
     public void addTextChangedListener(TextWatcher w) {
         if (mListeners == null) mListeners = new ArrayList<>();
         mListeners.add(w);
-        if (mText instanceof Spannable) ((Spannable) mText).setSpan(w, 0, mText.length(), Spanned.SPAN_INCLUSIVE_INCLUSIVE);
     }
-    public void removeTextChangedListener(TextWatcher w) { if (mListeners != null) mListeners.remove(w); if (mText instanceof Spannable) ((Spannable) mText).removeSpan(w); }
-    private void sendBeforeTextChanged(CharSequence t, int s, int b, int a) { if (mListeners != null && !(mText instanceof Spannable)) for (TextWatcher w : new ArrayList<>(mListeners)) w.beforeTextChanged(t, s, b, a); else if (mListeners != null) for (TextWatcher w : new ArrayList<>(mListeners)) w.beforeTextChanged(t, s, b, a); }
+    public void removeTextChangedListener(TextWatcher w) { if (mListeners != null) mListeners.remove(w); }
+    private void sendBeforeTextChanged(CharSequence t, int s, int b, int a) { if (mListeners != null) for (TextWatcher w : new ArrayList<>(mListeners)) w.beforeTextChanged(t, s, b, a); }
     private void sendOnTextChanged(CharSequence t, int s, int b, int a) { if (mListeners != null) for (TextWatcher w : new ArrayList<>(mListeners)) w.onTextChanged(t, s, b, a); }
     private void sendAfterTextChanged(Editable e) { if (mListeners != null) for (TextWatcher w : new ArrayList<>(mListeners)) w.afterTextChanged(e != null ? e : new SpannableStringBuilder(mText)); }
     public void append(CharSequence text) { append(text, 0, text.length()); }

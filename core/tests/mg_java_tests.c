@@ -4405,6 +4405,12 @@ static int run_data(void)
                                             only for another transformation, textAllCaps="false" changes nothing), and a text set tells
                                             onSelectionChanged its cursor: the Google app's Gemini field typed "cba" for "abc". */
                                          "text-appearance-keeps-cursor",
+                                         /* And what a field's watchers see of what the keyboard types, as on Android: its listeners
+                                            before its own onTextChanged, the text, the cursor and the layout already the new ones
+                                            (YouTube's comment field ended at a Backspace, the layout still the old text's); and the
+                                            other edits of an input connection as Android's BaseInputConnection makes them, the
+                                            composing text a span that follows the field's own edits. */
+                                         "watchers-see-the-edit",
                                          /* And ViewGroup.cleanupLayoutState takes a group's layout request back: a group whose requestLayout
                                             calls it on itself (Compose's AndroidViewsHandler) hears each requestLayout of a child. */
                                          "cleanup-layout-state",

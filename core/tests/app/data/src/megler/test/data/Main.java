@@ -9082,6 +9082,48 @@ public class Main extends Activity {
                 + "; typed: " + typed + "; setAllCaps(false) kept the text " + same + "; caps on " + on + ", kept " + stays + ", off " + off;
             return !below && onScreen && seen.equals(new android.graphics.Rect(0, 0, 300, 100)) && !noSize && toldSet && typedInOrder && same && on && stays && off;
         });
+        /*
+         * What a field's watchers see of what the keyboard types, as on Android: its listener (addTextChangedListener) told by
+         * the field, before the field's own onTextChanged, with the text already changed, the cursor already moved, and the
+         * layout already the new text's (Android's DynamicLayout reflows within the edit). Typed as megler.InputMethods types
+         * the keyboard's text and Backspaces (commitText, deleteSurroundingText, a Delete key, a selection committed empty),
+         * a frame between each two. YouTube's comment field (21.13.164) works out what its first line shows in its listener's
+         * onTextChanged, text.substring(0, getLayout().getLineVisibleEnd(0)): the layout was the text's before the edit until
+         * the next measure, and a Backspace at the end of a one-line comment ended YouTube ("length=1; index=2", an HP Elite
+         * x3 on 0.1.0.734). And the listener is no span of the text, and a text set from this field's into another brings the
+         * edits of the other to it not; and a text set is laid out when asked, before a measure.
+         */
+        step("watchers-see-the-edit", () -> {
+            final TypedField f = new TypedField(this);
+            f.setText("");
+            f.frame();
+            String typed = f.did(() -> f.ic.commitText("ab", 1));
+            String back = f.did(() -> f.ic.deleteSurroundingText(1, 0));
+            String more = f.did(() -> f.ic.commitText("bc", 1));
+            String key = f.did(() -> {
+                long t = android.os.SystemClock.uptimeMillis();
+                f.ic.sendKeyEvent(new android.view.KeyEvent(t, t, android.view.KeyEvent.ACTION_DOWN, android.view.KeyEvent.KEYCODE_DEL, 0));
+                f.ic.sendKeyEvent(new android.view.KeyEvent(t, t, android.view.KeyEvent.ACTION_UP, android.view.KeyEvent.KEYCODE_DEL, 0));
+            });
+            f.ic.setSelection(0, 2);
+            String selection = f.did(() -> f.ic.commitText("", 1));
+            boolean told = typed.equals("before(0,0,2) on(0,0,2)=ab@2 view after") && back.equals("before(1,1,0) on(1,1,0)=a@1 view after")
+                && more.equals("before(1,0,2) on(1,0,2)=abc@3 view after") && key.equals("before(2,1,0) on(2,1,0)=ab@2 view after")
+                && selection.equals("before(0,2,0) on(0,2,0)=@0 view after");
+            boolean noSpan = !java.util.Arrays.asList(f.getText().getSpans(0, f.length(), android.text.TextWatcher.class)).contains(f.listener);
+            // Another field given this one's text: its edits are its own.
+            f.setText("shared");
+            TypedField other = new TypedField(this);
+            other.setText(f.getText());
+            String crossed = f.did(() -> other.getText().append("!"));
+            // A text set, asked for its lines before any measure: three lines of it.
+            f.setText("one\ntwo\nthree");
+            int lines = f.getLineCount();
+            detail = "commitText: " + typed + "; Backspace: " + back + "; again: " + more + "; Delete key: " + key + "; a selection: " + selection
+                + "; wrong: " + (f.wrong.length() == 0 ? "nothing" : f.wrong) + "; a span " + !noSpan + "; the other field's edit: \"" + crossed
+                + "\"; lines of a text set " + lines;
+            return told && f.wrong.length() == 0 && noSpan && crossed.isEmpty() && lines == 3;
+        });
     }
 
     /** Whether the first three numbers are these, each to within eps. */
@@ -9094,6 +9136,67 @@ public class Main extends Activity {
         for (int shift = 0; shift < 32; shift += 8)
             if (Math.abs(((got >>> shift) & 0xff) - ((want >>> shift) & 0xff)) > eps) return false;
         return true;
+    }
+
+    /**
+     * A text field as an input method types into it (its input connection), and what its watchers see of each edit: its
+     * listener's beforeTextChanged, onTextChanged (with the text and the cursor) and afterTextChanged, and the field's own
+     * onTextChanged ("view"), in the order told. And what was wrong in the listener's onTextChanged: another text than the
+     * field's, a layout of another text, or what YouTube's comment field does there failing,
+     * text.substring(0, getLayout().getLineVisibleEnd(0)).
+     */
+    static class TypedField extends android.widget.EditText {
+        final StringBuilder seen = new StringBuilder(), wrong = new StringBuilder();
+        final android.text.TextWatcher listener;
+        final android.view.inputmethod.InputConnection ic;
+        TypedField(Context c) {
+            super(c);
+            setLayoutParams(new android.view.ViewGroup.LayoutParams(480, android.view.ViewGroup.LayoutParams.WRAP_CONTENT));
+            listener = new android.text.TextWatcher() {
+                @Override public void beforeTextChanged(CharSequence s, int start, int count, int after) {
+                    seen.append(" before(").append(start).append(',').append(count).append(',').append(after).append(')');
+                }
+                @Override public void onTextChanged(CharSequence s, int start, int before, int count) {
+                    seen.append(" on(").append(start).append(',').append(before).append(',').append(count).append(")=").append(s).append('@').append(getSelectionStart());
+                    if (s != getText()) wrong.append(" not the field's text;");
+                    android.text.Layout l = getLayout();
+                    int laid = l == null ? -1 : l.getLineEnd(l.getLineCount() - 1);
+                    if (laid != s.length()) wrong.append(" a layout of ").append(laid).append(" characters for ").append(s.length()).append(';');
+                    try {
+                        s.toString().substring(0, l.getLineVisibleEnd(0));
+                    } catch (RuntimeException e) {
+                        wrong.append(' ').append(e).append(';');
+                    }
+                }
+                @Override public void afterTextChanged(android.text.Editable s) { seen.append(" after"); }
+            };
+            setSingleLine(false);   // a comment box's lines
+            ic = onCreateInputConnection(new android.view.inputmethod.EditorInfo());
+            frame();
+            addTextChangedListener(listener);
+        }
+        @Override protected void onTextChanged(CharSequence s, int start, int before, int count) {
+            super.onTextChanged(s, start, before, count);
+            if (seen != null) seen.append(" view");   // (null while EditText's constructor sets its text)
+        }
+        /** Measured and laid out 480 wide, as a frame between two keys does it. */
+        void frame() {
+            measure(MeasureSpec.makeMeasureSpec(480, MeasureSpec.EXACTLY), MeasureSpec.makeMeasureSpec(0, MeasureSpec.UNSPECIFIED));
+            layout(0, 0, 480, getMeasuredHeight());
+        }
+        /** What the watchers saw of an edit, the field framed after it. */
+        String did(Runnable edit) {
+            seen.setLength(0);
+            edit.run();
+            String s = seen.toString().trim();
+            frame();
+            return s;
+        }
+        /** Where the composing text is, as Android's BaseInputConnection marks it, or "none". */
+        String composing() {
+            int s = android.view.inputmethod.BaseInputConnection.getComposingSpanStart(getText()), e = android.view.inputmethod.BaseInputConnection.getComposingSpanEnd(getText());
+            return s < 0 ? "none" : s + "-" + e;
+        }
     }
 
     /** A group as Compose's AndroidViewsHandler is one: its requestLayout does not go on to View's -- it counts the request
