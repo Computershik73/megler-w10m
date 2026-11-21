@@ -1,0 +1,162 @@
+From a5b5044c875b262395be7124fdb2a1410526155f Mon Sep 17 00:00:00 2001
+From: Ilya Vysotsky <il.mohoff2016@yandex.ru>
+Date: Sat, 21 Nov 2026 18:49:20 +0400
+Subject: [PATCH] freedreno: a failed BO allocation is out of memory, not a
+ crash
+
+Megler's patch on top of OpenGLES-For-Windows-Phone's 24 and megler-0025.
+GTA: Vice City on an HP Elite x3 (Adreno 530, the d3dkmt backend) ended
+in an access violation when its map was opened: the allocation of a
+texture's BO failed, and fd_bo_new, built with assertions as this build
+is, named the NULL BO (_fd_bo_set_name), where the code after it handles
+the failure as GL_OUT_OF_MEMORY.
+
+- fd_bo_new names the BO only where there is one.
+- bo_new: when the backend has no BO for it, the BO caches are emptied
+  (fd_device_purge) and it is asked once more; a failure for good is said
+  (ERROR_MSG) with the size.
+- realloc_bo returns whether it had a new BO, and leaves the resource's
+  BO as it was where not: resource creation fails cleanly, and a
+  DISCARD_WHOLE_RESOURCE map of a busy resource that cannot be given a
+  fresh BO flushes and waits for the old one instead of mapping none.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/freedreno/drm/freedreno_bo.c              | 12 ++++++-
+ src/freedreno/drm/freedreno_drmif.h           |  3 +-
+ .../drivers/freedreno/freedreno_resource.c    | 33 ++++++++++++++-----
+ 3 files changed, 37 insertions(+), 11 deletions(-)
+
+diff --git a/src/freedreno/drm/freedreno_bo.c b/src/freedreno/drm/freedreno_bo.c
+index 3e67472..4b8e9c1 100644
+--- a/src/freedreno/drm/freedreno_bo.c
++++ b/src/freedreno/drm/freedreno_bo.c
+@@ -144,8 +144,18 @@ bo_new(struct fd_device *dev, uint32_t size, uint32_t flags,
+       return bo;
+ 
+    bo = dev->funcs->bo_new(dev, size, flags);
+-   if (!bo)
++   if (!bo) {
++      /* Out of memory, or of address space: give back what the caches
++       * hold and try once more before failing.
++       */
++      fd_device_purge(dev);
++      bo = dev->funcs->bo_new(dev, size, flags);
++   }
++   if (!bo) {
++      ERROR_MSG("no BO of %u bytes (flags 0x%x), even with the BO caches emptied",
++                size, flags);
+       return NULL;
++   }
+ 
+    simple_mtx_lock(&table_lock);
+    /* add ourself into the handle table: */
+diff --git a/src/freedreno/drm/freedreno_drmif.h b/src/freedreno/drm/freedreno_drmif.h
+index b56a71a..f2144cc 100644
+--- a/src/freedreno/drm/freedreno_drmif.h
++++ b/src/freedreno/drm/freedreno_drmif.h
+@@ -274,7 +274,8 @@ fd_bo_new(struct fd_device *dev, uint32_t size, uint32_t flags, const char *fmt,
+ {
+    struct fd_bo *bo = _fd_bo_new(dev, size, flags);
+ #ifndef NDEBUG
+-   if (fmt) {
++   /* A failed allocation is the caller's to handle, not a crash here. */
++   if (fmt && bo) {
+       va_list ap;
+       va_start(ap, fmt);
+       _fd_bo_set_name(bo, fmt, ap);
+diff --git a/src/gallium/drivers/freedreno/freedreno_resource.c b/src/gallium/drivers/freedreno/freedreno_resource.c
+index 33514b7..deebb56 100644
+--- a/src/gallium/drivers/freedreno/freedreno_resource.c
++++ b/src/gallium/drivers/freedreno/freedreno_resource.c
+@@ -186,7 +186,8 @@ __fd_resource_wait(struct fd_context *ctx, struct fd_resource *rsc, unsigned op,
+    return ret;
+ }
+ 
+-static void
++/* False, the resource's BO left as it was, where no new one could be had. */
++static bool
+ realloc_bo(struct fd_resource *rsc, uint32_t size)
+ {
+    struct pipe_resource *prsc = &rsc->b.b;
+@@ -200,12 +201,14 @@ realloc_bo(struct fd_resource *rsc, uint32_t size)
+       COND(prsc->bind & PIPE_BIND_SHARED, FD_BO_SHARED) |
+       COND(prsc->bind & PIPE_BIND_SCANOUT, FD_BO_SCANOUT);
+ 
+-   if (rsc->bo)
+-      fd_bo_del(rsc->bo);
+-
+    struct fd_bo *bo =
+       fd_bo_new(screen->dev, size, flags, "%ux%ux%u@%u:%x", prsc->width0,
+                 prsc->height0, prsc->depth0, rsc->layout.cpp, prsc->bind);
++   if (!bo)
++      return false;
++
++   if (rsc->bo)
++      fd_bo_del(rsc->bo);
+    fd_resource_set_bo(rsc, bo);
+ 
+    /* Zero out the UBWC area on allocation.  This fixes intermittent failures
+@@ -221,6 +224,7 @@ realloc_bo(struct fd_resource *rsc, uint32_t size)
+ 
+    util_range_set_empty(&rsc->valid_buffer_range);
+    fd_bc_invalidate_resource(rsc, true);
++   return true;
+ }
+ 
+ static void
+@@ -736,18 +740,23 @@ fd_resource_transfer_unmap(struct pipe_context *pctx,
+    slab_free(&ctx->transfer_pool, ptrans);
+ }
+ 
+-static void
++/* False where the resource is still busy on its old BO: no new one could be
++ * had, and the caller has to flush and wait instead.
++ */
++static bool
+ invalidate_resource(struct fd_resource *rsc, unsigned usage) assert_dt
+ {
+    bool needs_flush = pending(rsc, !!(usage & PIPE_MAP_WRITE));
+    unsigned op = translate_usage(usage);
+ 
+    if (needs_flush || resource_busy(rsc, op)) {
+-      realloc_bo(rsc, fd_bo_size(rsc->bo));
++      if (!realloc_bo(rsc, fd_bo_size(rsc->bo)))
++         return false;
+       rebind_resource(rsc);
+    } else {
+       util_range_set_empty(&rsc->valid_buffer_range);
+    }
++   return true;
+ }
+ 
+ static bool
+@@ -872,7 +881,14 @@ resource_transfer_map(struct pipe_context *pctx, struct pipe_resource *prsc,
+    }
+ 
+    if (usage & PIPE_MAP_DISCARD_WHOLE_RESOURCE) {
+-      invalidate_resource(rsc, usage);
++      if (!invalidate_resource(rsc, usage)) {
++         /* No memory for a fresh BO: the old one, once the GPU is done. */
++         unsigned op = translate_usage(usage);
++         if (pending(rsc, !!(usage & PIPE_MAP_WRITE)))
++            flush_resource(ctx, rsc, usage);
++         if (resource_busy(rsc, op) && fd_resource_wait(ctx, rsc, op))
++            return NULL;
++      }
+    } else {
+       unsigned op = translate_usage(usage);
+       bool needs_flush = pending(rsc, !!(usage & PIPE_MAP_WRITE));
+@@ -1490,8 +1506,7 @@ fd_resource_create_with_modifiers(struct pipe_screen *pscreen,
+       return NULL;
+    rsc = fd_resource(prsc);
+ 
+-   realloc_bo(rsc, size);
+-   if (!rsc->bo)
++   if (!realloc_bo(rsc, size))
+       goto fail;
+ 
+    return prsc;
+-- 
+2.53.0.windows.2
+
