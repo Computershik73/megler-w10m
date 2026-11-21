@@ -53,8 +53,9 @@ Pull request #34's DLLs, the project's own build, export and import the same. Ev
 `FD_NBINS`, `<x>x<y>`, to raise the number of GMEM bins; GMEM rendering is off by default) and so an assertion's line
 number 10 lines later in `fd_gmem_render_tiles`. It was linked while its tree's commit was still the 23rd patch's, which
 its version string named (`git-bf917323ed`). The rest differs only in what names the build: the PDB's path, the link
-time, and the separator in two headers' paths in messages (`spirv\vtn_private.h` in theirs, made by LLVM's own Windows
-build; `spirv/vtn_private.h` in these), which changes which equal strings the linker merges.
+time, and the separator before the name of a header in the paths assertion messages carry (`src/compiler/nir\nir.h` in
+theirs, made by LLVM's own Windows build; `src/compiler/nir/nir.h` in these), which also changes which equal strings the
+linker merges.
 
 ## When they run
 
