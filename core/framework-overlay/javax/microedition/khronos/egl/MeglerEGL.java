@@ -204,19 +204,22 @@ final class MeglerEGL implements EGL11 {
         long ch = cur != null && cur[0] instanceof Context ? ((Context) cur[0]).handle : 0;
         int x = 0, y = 0, w = 0, h = 0;
         if (su.view != null) {
-            /* A window surface's buffers follow its SurfaceView's size on Android (GTA: Vice City's, 1200 wide with the
-               navigation bar and 1280 without: its frames were drawn 1280 wide into 1200 and their right edge lost). */
-            int[] size = su.view.meglerSurfaceSize();
-            if (size != null && size[0] > 0 && size[1] > 0 && (size[0] != su.w || size[1] != su.h)
-                    && megler.EGLNative.resizeSurface(su.handle, ch, size[0], size[1])) { su.w = size[0]; su.h = size[1]; }
-        }
-        if (su.view != null) {
             int[] loc = new int[2];
             try { su.view.getLocationOnScreen(loc); } catch (RuntimeException e) {}
             x = loc[0]; y = loc[1]; w = su.view.getWidth(); h = su.view.getHeight();
             if (w <= 0 || h <= 0) { w = su.w; h = su.h; }
         }
-        return megler.EGLNative.swap(su.handle, ch, x, y, w, h);
+        boolean shown = megler.EGLNative.swap(su.handle, ch, x, y, w, h);
+        if (su.view != null) {
+            /* A window surface's buffers follow its SurfaceView's size on Android (GTA: Vice City's, 1200 wide with the
+               navigation bar and 1280 without: its frames were drawn 1280 wide into 1200 and their right edge lost). As
+               there, the frame just drawn is shown at the size it was drawn at, and the next is drawn at the new one:
+               made again before the swap, the surface took the drawn frame with it and an empty one was shown. */
+            int[] size = su.view.meglerSurfaceSize();
+            if (size != null && size[0] > 0 && size[1] > 0 && (size[0] != su.w || size[1] != su.h)
+                    && megler.EGLNative.resizeSurface(su.handle, ch, size[0], size[1])) { su.w = size[0]; su.h = size[1]; }
+        }
+        return shown;
     }
     public int eglGetError() { Integer e = sError.get(); sError.set(EGL_SUCCESS); return e == null ? EGL_SUCCESS : e; }
     public String eglQueryString(EGLDisplay d, int name) { return name == EGL_VENDOR ? "Megler" : name == EGL_VERSION ? "1.4 Megler" : name == EGL_EXTENSIONS ? "EGL_KHR_surfaceless_context EGL_KHR_create_context" : name == 0x308D /* CLIENT_APIS */ ? "OpenGL_ES" : ""; }
