@@ -1052,6 +1052,15 @@ private:
             add(column, listSection("About", about,
                                     "Android code needs the codeGeneration capability, which an interop-unlocked phone grants; "
                                     "ANGLE is what turns an app's OpenGL ES into Direct3D 11."));
+            // Who helped make Megler, as README.md's "Thanks" names them.
+            add(column, listSection("Thanks",
+                                    {listItem("Linh (thaihoangduylinh)",
+                                              "Mesa's freedreno on the phone's Adreno through D3DKMT, and the fixes of pull request #34"),
+                                     listItem("mayconus", "Video and streaming apps on a Lumia 950 XL"),
+                                     listItem("WinArchive's developer",
+                                              "Installing apps the Store's way, past Windows's limit of 20 developer packages"),
+                                     listItem("Testers", "wukenadela, DimaSWE, JOHN-decm, Jevil7452, Xaker-USSR, dascaluvlad01-ux, "
+                                                         "msydh, sur-f0x, and everyone who sends logs")}));
             add(column, developerSection());
 
             auto paths = vstack(4);
