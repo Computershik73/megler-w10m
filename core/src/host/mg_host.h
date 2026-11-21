@@ -814,6 +814,16 @@ MG_HOSTAPI void *mg_dl_sym(void *lib, const char *name);
  * asked for by the flag mesa-diag (ndk/mg_egl.c). Not the guest's environment (bionic's getenv).
  */
 MG_HOSTAPI bool mg_host_setenv(const char *name, const char *value);
+/*
+ * The host's standard error, for the DLLs loaded between _begin and _end, made a pipe whose lines go into the log, each
+ * as "<prefix><line>" (at most 2000 of them a process; those after, counted). A DLL whose C runtime is linked into it
+ * takes the standard handles as it loads, and an app's process has none: what Mesa's freedreno says of its errors was
+ * lost (ndk/mg_egl.c, mesa_load). _end puts back the standard error that was; the pipe and its reader stay, for the
+ * DLLs that took it. False where it cannot be (no pipe or thread, or the handle not to be set): the DLLs then write
+ * where they always did.
+ */
+MG_HOSTAPI bool mg_host_stderr_to_log_begin(const char *prefix);
+MG_HOSTAPI void mg_host_stderr_to_log_end(void);
 /* Which of the host's own modules (the app, a DLL of the package or of the system) an address is in: its file name and where it is loaded. For a crash report. */
 MG_HOSTAPI bool mg_host_module_at(mg_addr address, char *name, size_t size, mg_addr *base);
 /*

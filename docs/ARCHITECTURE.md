@@ -678,6 +678,12 @@ Megler's package has Mesa. ANGLE is the default; a package built with `MEGLER_GL
   `MESA_LOG_DIR` the data folder: `mg_host_setenv`), the log saying so; the driver's `fdkmt.log` (its allocations,
   submits and waits, a line every 2 s) and `fd_egl_share.log` (the shared pbuffers it could not make) then sit beside
   `megler.log`, and the package's log copies take them along (`shell/LogMirror.h`: Save All Logs; `shell/PicturesDiag.h`).
+- **Mesa's errors in the log, always.** What Mesa says of its errors goes to its C runtime's stderr (`mesa_log`, its
+  D3DKMT core's failures with their NTSTATUS, EGL's warnings), which an app's process has nowhere to go. Its DLLs, which
+  take the standard handles as they load, are given a pipe of the host's as their stderr while `mesa_load` loads them
+  (`mg_host_stderr_to_log_begin`, `_end`), whose lines the log takes as `mesa: <line>` (2000 a process at most, then
+  counted); warnings and errors (`MESA_LOG_LEVEL=warning`; Mesa's default, information too, under `mesa-diag`). A
+  texture GTA: Vice City's map could not be given memory for ended the game, its reason lost (package 745).
 - **The shell's composition follows the choice.** Mesa renders a pbuffer's shared Direct3D texture with its rows top
   first, as Direct3D lays a texture out, where ANGLE's keep OpenGL's bottom row first: the shell turns a frame
   (`gl_frame`) and a picture (`texture_frame`: a TextureView's, the WebView's pages) the other way up where `megler_gles`
@@ -705,7 +711,9 @@ app's process starts with where its package lacks Mesa, the record of the packag
 graphics processor that is no Adreno, DLLs that do not load -- each falling back to ANGLE with its one line, ANGLE then
 drawing OpenGL ES 1's scenes as ever (`mg_tests --angle-windows ... mesa-missing|mesa|mesa-any-gpu`); and the flag
 `mesa-diag` setting Mesa's two variables in the process's environment before its DLLs are loaded, and nothing setting
-them without it. *Not proven here*: anything of Mesa itself, which drives an Adreno alone -- the phone.
+them without it; and the standard error the DLLs take as they load, a pipe whose lines the log has as `mesa: <line>`,
+put back after. *Not proven here*: anything of Mesa itself, which drives an Adreno alone -- the phone (nor whether its
+DLLs' C runtime takes the pipe as it loads, which a test DLL with a C runtime of its own would show).
 
 ### A Java app's views, on the graphics processor
 

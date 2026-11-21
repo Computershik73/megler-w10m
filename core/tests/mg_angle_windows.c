@@ -22,7 +22,8 @@
  * folder, megler_config.package_dir); "mesa", stand-ins of them there and this PC's graphics processor, which is no Adreno;
  * "mesa-any-gpu", the same with the flag mesa-any-gpu, the stand-ins then not loaded, and the flag mesa-diag, which sets
  * Mesa's diagnosis in the process's environment before that (MESA_CRASH_HANDLERS=1, MESA_LOG_DIR the data folder): there
- * alone, the other modes stopping before. Each time the process falls back to ANGLE, the log says why in one line,
+ * alone, the other modes stopping before; and there the standard error its DLLs take as they load, a pipe whose lines
+ * reach the log as "mesa: <line>", put back after. Each time the process falls back to ANGLE, the log says why in one line,
  * megler_gles says "angle", and the scenes are drawn on ANGLE as ever.
  *
  * Only in the build tools/build-tests.sh win makes (MG_ANGLE_WINDOWS); elsewhere it says so and does nothing.
@@ -1346,10 +1347,14 @@ static char g_mesa_line[600];
 static mg_log_sink g_mesa_was;
 static void *g_mesa_was_user;
 
+/* The lines of the DLLs' stderr pipe the log has had (mg_host_stderr_to_log_begin), from its reader's thread. */
+static volatile LONG g_mesa_piped;
+
 static void mesa_listen(int level, const char *line, void *user)
 {
     (void)user;
     if (strstr(line, "egl: Mesa's freedreno was asked for, ANGLE instead: ")) mg_strlcpy(g_mesa_line, line, sizeof(g_mesa_line));
+    if (strstr(line, "mesa: a line on the DLLs' stderr") || strstr(line, "mesa: and a second")) InterlockedIncrement(&g_mesa_piped);
     if (g_mesa_was) g_mesa_was(level, line, g_mesa_was_user);
 }
 
@@ -1397,6 +1402,25 @@ static void gl1_mesa_said(gl1_run *r, const char *mesa, const char *scratch)
     const char *gles = megler_gles();
     char handlers[16] = "", logs[700] = "";
     const bool diag = !strcmp(mesa, "mesa-any-gpu");
+    if (diag) {
+        /* Where Mesa's DLLs were loaded (the stand-ins, which do not load): the standard error they would have taken, the
+           log's lines from it, and the standard error put back after. */
+        static const char text[] = "a line on the DLLs' stderr\r\nand a second\n";
+        HANDLE was = GetStdHandle(STD_ERROR_HANDLE), during;
+        DWORD put = 0;
+        int waited;
+        bool began = mg_host_stderr_to_log_begin("mesa: ");
+        during = GetStdHandle(STD_ERROR_HANDLE);
+        if (began) WriteFile(during, text, (DWORD)sizeof(text) - 1, &put, NULL);
+        mg_host_stderr_to_log_end();
+        for (waited = 0; waited < 200 && g_mesa_piped < 2; waited++) Sleep(10);
+        gl1_say(r, "  the DLLs' stderr: %s, %ld of 2 lines written to it in the log within %d ms, the standard error %s after",
+                began && during != was ? "a pipe" : "not set", (long)g_mesa_piped, waited * 10,
+                GetStdHandle(STD_ERROR_HANDLE) == was ? "put back" : "NOT put back");
+        gl1_check(r, began && during != was && put == sizeof(text) - 1, "the DLLs about to load were given no stderr of the host's");
+        gl1_check(r, g_mesa_piped == 2, "the lines written to the DLLs' stderr did not reach the log as \"mesa: <line>\"");
+        gl1_check(r, GetStdHandle(STD_ERROR_HANDLE) == was, "the standard error was not put back after the DLLs loaded");
+    }
     mg_log_set_sink(g_mesa_was, g_mesa_was_user);
     snprintf(path, sizeof(path), "%s/flags/mesa-any-gpu", scratch);
     mg_path_remove(path, NULL);
