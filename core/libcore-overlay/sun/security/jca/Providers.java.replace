@@ -1,0 +1,53 @@
+<<<
+import dalvik.system.VMRuntime;
+===
+// Megler: VMRuntime and System.logE, which the SDK's android.jar does not have, are reached by reflection (Providers.java.members)
+>>>
+<<<
+    private static ProviderList getSystemProviderList() {
+        return providerList;
+    }
+
+    private static void setSystemProviderList(ProviderList list) {
+        providerList = list;
+    }
+===
+    // Megler: the system-wide list is the list of the process of the code that asks, each of the app's other processes having
+    // its own (Providers.java.members)
+    private static ProviderList getSystemProviderList() {
+        ProviderList own = meglerList();
+        return own != null ? own : providerList;
+    }
+
+    private static void setSystemProviderList(ProviderList list) {
+        if (!meglerSetList(list)) providerList = list;
+    }
+>>>
+<<<
+                && providerList.getProvider(provider) == SYSTEM_BOUNCY_CASTLE_PROVIDER) {
+===
+                // Megler: the BC provider of the list of the code that asks
+                && getSystemProviderList().getProvider(provider) == SYSTEM_BOUNCY_CASTLE_PROVIDER) {
+>>>
+<<<
+            if (VMRuntime.getRuntime().getTargetSdkVersion()
+===
+            if (meglerTargetSdkVersion()
+>>>
+<<<
+                System.logE(" ******** DEPRECATED FUNCTIONALITY ********");
+                System.logE(" * The implementation of the " + key + " algorithm from");
+                System.logE(" * the BC provider is deprecated in this version of Android.");
+                System.logE(" * It will be removed in a future version of Android and your");
+                System.logE(" * application will no longer be able to request it.  Please see");
+                System.logE(" * https://android-developers.googleblog.com/2018/03/cryptography-changes-in-android-p.html");
+                System.logE(" * for more details.");
+===
+                meglerLogE(" ******** DEPRECATED FUNCTIONALITY ********");
+                meglerLogE(" * The implementation of the " + key + " algorithm from");
+                meglerLogE(" * the BC provider is deprecated in this version of Android.");
+                meglerLogE(" * It will be removed in a future version of Android and your");
+                meglerLogE(" * application will no longer be able to request it.  Please see");
+                meglerLogE(" * https://android-developers.googleblog.com/2018/03/cryptography-changes-in-android-p.html");
+                meglerLogE(" * for more details.");
+>>>

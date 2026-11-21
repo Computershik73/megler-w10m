@@ -27,13 +27,19 @@
 // do (megler.AppRunner.make; activityBase): the Google app's ":googleapp" opens activities of ":search". The providers of
 // every process are made in the app's own scope as it starts, as before, and a receiver of the manifest's in another process
 // is not run (megler.Broadcasts). Google Play services' own package, run as an app, keeps its processes one (apart), as in
-// every app that hosts them (megler.MicroG).
+// every app that hosts them (megler.MicroG). A process whose Application throws as it is made ends, as it crashes on
+// Android: its components are not made from then on (Ended), and the app's other processes go on.
 //
 // An intent that goes from one scope to another -- a broadcast, a service's start or binding -- has the objects among its
 // extras made again by the receiving scope's classes (forLoader), as Android's parcelling of it between processes makes
 // them: Play Store's download service broadcasts its progress with a parcelled proto of its own scope's class, and the main
 // process's receiver ended casting it to its own ("ProtoParsers$InternalDontUse cannot be cast to
 // ProtoParsers$InternalDontUse").
+//
+// Each process has a list of security providers of its own (java.security.Security), as on Android: libcore keeps one for
+// each of these scopes, a fresh process's at first (ownProviders; core/libcore-overlay/sun/security/jca/Providers.java.members).
+// The Google app's Application puts Google's SslGuard first in the list of every process it runs in and ends when it cannot;
+// with one list for all, its ":search" ended so whenever ":googleapp" had put SslGuard there before it.
 package megler;
 
 import android.app.ActivityManager;
@@ -50,6 +56,8 @@ public final class Processes {
         public final String name;
         final ClassLoader loader;
         Application app;
+        /* What its Application threw as it was made: the process ended there, as it would on Android (make). */
+        Throwable ended;
         final Context context;
         Scope(String name, ClassLoader loader) {
             this.name = name;
@@ -108,8 +116,48 @@ public final class Processes {
      *  configuration, megler.AppRunner's trimMemory). */
     public static java.util.List<Application> applications() {
         java.util.ArrayList<Application> l = new java.util.ArrayList<>();
-        for (Scope s : sNamed) if (s.app != null) l.add(s.app);
+        for (Scope s : sNamed) if (s.app != null && s.ended == null) l.add(s.app);
         return l;
+    }
+
+    /**
+     * What a component of a process that ended as its Application was made gets (of): on Android that process crashed as it
+     * started, the component was never made, and the app's other processes go on.
+     */
+    public static final class Ended extends RuntimeException {
+        Ended(Scope s, String component) {
+            super("process " + s.name + " ended as its Application was made (" + s.ended + "), as it crashes on Android: " + component
+                + " is not made", s.ended);
+        }
+    }
+
+    /**
+     * The platform has put its security providers in (AndroidKeyStore, the app's network security configuration's) and the
+     * app's code is about to run (megler.AppRunner.run): another of the app's processes, made later, begins with the list of
+     * providers as it is now, as a fresh process of Android's would. Each of them has a list of its own
+     * (java.security.Security: core/libcore-overlay/sun/security/jca/Providers.java.members), which libcore keeps.
+     */
+    static void providersReady() {
+        try {
+            Class.forName("sun.security.jca.Providers").getMethod("meglerProcessStarted").invoke(null);
+        } catch (ReflectiveOperationException | RuntimeException e) {
+            android.util.Log.w("Megler", "the app's processes have one list of security providers between them: " + e);
+        }
+    }
+
+    /*
+     * The list of security providers of class scope `s` its own from now on, a fresh process's (providersReady), before any of
+     * its code runs. The Google app's Application puts Google's SslGuard first in the list of every process it runs in, and
+     * ends when a provider of that name is there: with one list for the whole app, its ":search" (Gemini's screens) ended so
+     * whenever ":googleapp", its launcher's, was the app's own process, which had put SslGuard there first.
+     */
+    private static void ownProviders(Scope s) {
+        int scope = s.loader instanceof ServiceClassLoader ? ((ServiceClassLoader) s.loader).scope() : 0;
+        try {
+            Class.forName("sun.security.jca.Providers").getMethod("meglerProcess", int.class).invoke(null, scope);
+        } catch (ReflectiveOperationException | RuntimeException e) {
+            android.util.Log.w("Megler", "process " + s.name + ": no list of security providers of its own (" + e + "); it has the app's");
+        }
     }
 
     /* Each process's scope once made; null for one that could not be. */
@@ -162,16 +210,20 @@ public final class Processes {
 
     /** The scope of the process a component runs in, made the first time (on the main thread); null for the own scope's process
      *  (own: the package's, unless the app was started for an activity of another), and for one whose scope could not be made
-     *  (the component then runs in the app's, as before). */
+     *  (the component then runs in the app's, as before). Ended, for a process that ended as its Application was made. */
     public static Scope of(Manifest.Component c) {
         String process = Manifest.processOf(c);
         if (process == null || process.equals(own())) return null;
         Scope s;
         synchronized (sScopes) {
-            if (sScopes.containsKey(process)) return sScopes.get(process);
-            s = make(process);
-            sScopes.put(process, s);
+            if (sScopes.containsKey(process)) {
+                s = sScopes.get(process);
+            } else {
+                s = make(process);
+                sScopes.put(process, s);
+            }
         }
+        if (s != null && s.ended != null) throw new Ended(s, c.name);
         return s;
     }
 
@@ -187,6 +239,7 @@ public final class Processes {
         }
         String cls = Manifest.applicationClass != null ? Manifest.applicationClass : Application.class.getName();
         named(s, true);
+        ownProviders(s);
         try {
             Application a = Application.class.getName().equals(cls) ? new Application()
                 : (Application) s.loader.loadClass(cls).getDeclaredConstructor().newInstance();
@@ -195,8 +248,20 @@ public final class Processes {
             android.util.Log.i("Megler", "process " + process + ": a class scope of its own, and its Application, " + cls);
             a.onCreate();
         } catch (Throwable t) {
-            android.util.Log.e("Megler", "process " + process + ": its Application failed", t);
-            if (s.app == null) { named(s, false); return null; }
+            /*
+             * On Android the process ends here: ActivityThread.handleBindApplication throws "Unable to create application"
+             * (or "Unable to instantiate"), the process crashes before the activity, service or receiver it was started for
+             * is made, and the app's other processes go on. So it ends here too: its components are not made from now on
+             * (of: Ended), where they were made in it with its Application half made, or, when that was not made at all, in
+             * the app's own scope with another process's: the Google app's ":search", whose Application could not put its
+             * SslGuard first (0.1.0.739), had its Gemini screen made so, and the screen's failure ended the whole app.
+             * Threads its Application started run on, there being one native process; the scope keeps its name for them.
+             */
+            s.ended = t;
+            android.util.Log.e("AndroidRuntime", "FATAL EXCEPTION: main\nProcess: " + process + ", PID: " + android.os.Process.myPid(),
+                new RuntimeException("Unable to " + (s.app == null ? "instantiate" : "create") + " application " + cls + ": " + t, t));
+            android.util.Log.e("Megler", "process " + process + " ended as its Application was made, as it crashes on Android: its"
+                + " activities and services are not made from now on, and the app's other processes go on");
         }
         return s;
     }
@@ -308,6 +373,29 @@ public final class Processes {
                 return activities;
             }
         }
+        /*
+         * A context made from this one -- of another configuration, storage, attribution, split, or the package's own again --
+         * is this process's too, as each is on Android: the base's would be a context of the app's own scope, whose
+         * Application and class loader are the own process's. The Google app's Gemini screen (robin.main.MainActivity, in
+         * ":search") asks the Application of such a context for its object graph, and had the own ":googleapp"'s, of
+         * another class scope: "Given component holder class VelvetMultiprocessRoot_Application does not implement
+         * interface fhmq or interface fhmr", and the whole app ended with it (0.1.0.739). Another package's context is that
+         * package's, as it was.
+         */
+        private Context ours(Context made) {
+            if (made == null || made == this) return made;
+            if (made == getBaseContext()) return this;
+            return made instanceof ContextImpl ? new ProcessContext(scope, made) : made;
+        }
+        @Override public Context createConfigurationContext(android.content.res.Configuration c) { return ours(super.createConfigurationContext(c)); }
+        @Override public Context createDeviceProtectedStorageContext() { return ours(super.createDeviceProtectedStorageContext()); }
+        @Override public Context createCredentialProtectedStorageContext() { return ours(super.createCredentialProtectedStorageContext()); }
+        @Override public Context createPackageContext(String pkg, int flags) throws android.content.pm.PackageManager.NameNotFoundException {
+            return ours(super.createPackageContext(pkg, flags));
+        }
+        @Override public Context createAttributionContext(String tag) { return ours(super.createAttributionContext(tag)); }
+        @Override public Context createContext(android.content.ContextParams params) { return ours(super.createContext(params)); }
+        @Override public Context createContextForSplit(String split) { return ours(super.createContextForSplit(split)); }
     }
 
     /** An ActivityManager that has the process running with this pid named as the scope's. */

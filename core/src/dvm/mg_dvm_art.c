@@ -1008,9 +1008,10 @@ N(VMStack_getClosestUserClassLoader)
  * app's processes (megler.Processes), 0 for the app's own. It is that of the innermost frame of an app's code or a service's
  * (the code of a loader a service made is the service's: mg_dvm_dex_process_scope); with none on the stack, the thread's
  * owner. The table of file locks asks (core/libcore-overlay/sun/nio/ch/FileLockTable.java): a file's lock is held against
- * the other processes, which here are in this one.
+ * the other processes, which here are in this one. And the list of security providers (sun.security.jca.Providers,
+ * core/libcore-overlay/sun/security/jca/Providers.java.members): each of the app's processes has its own.
  */
-N(SharedFileLockTable_scope)
+N(code_scope)
 {
     mg_dvm_thread *self = mg_dvm_self();
     mg_dvm_frame *f;
@@ -2084,7 +2085,8 @@ static const mg_jhle k_art[] = {
     { "java/lang/Package", "getSystemPackage0", NULL, Class_null },
     { "java/lang/Package", "getSystemPackages0", NULL, Package_getSystemPackages0 },
     { "dalvik/system/VMStack", "getClosestUserClassLoader", NULL, VMStack_getClosestUserClassLoader },
-    { "sun/nio/ch/SharedFileLockTable", "scope", NULL, SharedFileLockTable_scope },
+    { "sun/nio/ch/SharedFileLockTable", "scope", NULL, code_scope },
+    { "sun/security/jca/Providers", "meglerScope", NULL, code_scope },
     { "dalvik/system/VMStack", "fillStackTraceElements", NULL, nothing },
     { "dalvik/system/VMStack", "getAnnotatedThreadStackTrace", NULL, Class_null },
 

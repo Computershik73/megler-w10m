@@ -190,6 +190,9 @@ public final class AppRunner {
         ContextImpl base = ContextImpl.app();
         // As Android's handleBindApplication, before the app's code can make anything of TLS: its network security configuration.
         android.security.net.config.NetworkSecurityConfigProvider.install(base);
+        // The security providers are as a fresh process of the app's has them: its other processes, each with a list of its
+        // own here, begin with them so (megler.Processes.providersReady).
+        Processes.providersReady();
         String appCls = applicationClass != null ? applicationClass : Manifest.applicationClass;
         // The Application is made and attached by the process's Instrumentation, as Android's LoadedApk.makeApplication has
         // it made (android.app.Instrumentation.newApplication, overlaid: the component factory makes it, applicationMade
@@ -806,6 +809,11 @@ public final class AppRunner {
                 }
                 // an <activity-alias> starts the activity it names; the intent keeps the alias as its component, as on Android
                 launch("activity-alias".equals(c.kind) && c.parentActivity != null ? c.parentActivity : c.name, intent, caller, request, c);
+            } catch (Processes.Ended e) {
+                // Its process ended as its Application was made (megler.Processes): on Android that process crashed, the
+                // activity was never made, and the one that asked for a result hears RESULT_CANCELED; the app goes on.
+                android.util.Log.e("Megler", "starting " + c.name + " failed: " + e.getMessage());
+                if (request >= 0 && caller != null) sHandler.post(() -> caller.meglerActivityResult(request, Activity.RESULT_CANCELED, null));
             } catch (Throwable t) {
                 android.util.Log.e("Megler", "starting " + c.name + " failed", t);
                 if (t instanceof RuntimeException) throw (RuntimeException) t;
