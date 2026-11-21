@@ -198,8 +198,29 @@ static MG_HOSTCB void mixer_thread(void *arg)
          * pace, as with no output.
          */
         if (g_host_open && run->audio.write && !mg_run_over()) {
+            /*
+             * A limiter, not a hard clip: voices summed past full scale were cut flat at 32767 and crackled (Kingdom Rush
+             * Vengeance's effects, many at once: peak 32766). The chunk's gain comes down at once to what keeps its peak
+             * under 0.95, and goes back up over about a quarter of a second; past 0.9 what is left is bent softly towards 1.
+             */
+            static float gain = 1.0f;
+            float peak = 0.0f, want;
             for (i = 0; i < MG_AUDIO_CHUNK * 2; i++) {
-                float s = mix[i] * 32767.0f;
+                float a = mix[i] < 0 ? -mix[i] : mix[i];
+                if (a > peak) peak = a;
+            }
+            want = peak * gain > 0.95f ? 0.95f / peak : 1.0f;
+            if (want < gain) gain = want;
+            else gain += (want - gain) * 0.04f;
+            for (i = 0; i < MG_AUDIO_CHUNK * 2; i++) {
+                float x = mix[i] * gain, a = x < 0 ? -x : x, s;
+                if (a > 0.9f) {
+                    /* (0.9 to 1 and beyond into 0.9 to 1: a + k / (1 + k) with k the excess over 0.9, scaled.) */
+                    float k = (a - 0.9f) * 10.0f;
+                    a = 0.9f + 0.1f * k / (1.0f + k);
+                    x = x < 0 ? -a : a;
+                }
+                s = x * 32767.0f;
                 out[i] = (i16)(s > 32767.0f ? 32767 : s < -32768.0f ? -32768 : (i32)s);
             }
             record(out, MG_AUDIO_CHUNK);

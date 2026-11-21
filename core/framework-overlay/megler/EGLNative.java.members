@@ -16,3 +16,5 @@
     public static native void forget(Object view);
     /** The newest OpenGL ES a context can be made of here, as ConfigurationInfo.reqGlEsVersion says it: 0x30000 is 3.0. */
     public static native int glesVersion();
+    /** A window surface made again at its SurfaceView's new size (its buffers follow the view on Android), current with ctx again. */
+    public static native boolean resizeSurface(long surf, long ctx, int width, int height);

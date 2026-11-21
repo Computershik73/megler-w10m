@@ -204,6 +204,13 @@ final class MeglerEGL implements EGL11 {
         long ch = cur != null && cur[0] instanceof Context ? ((Context) cur[0]).handle : 0;
         int x = 0, y = 0, w = 0, h = 0;
         if (su.view != null) {
+            /* A window surface's buffers follow its SurfaceView's size on Android (GTA: Vice City's, 1200 wide with the
+               navigation bar and 1280 without: its frames were drawn 1280 wide into 1200 and their right edge lost). */
+            int[] size = su.view.meglerSurfaceSize();
+            if (size != null && size[0] > 0 && size[1] > 0 && (size[0] != su.w || size[1] != su.h)
+                    && megler.EGLNative.resizeSurface(su.handle, ch, size[0], size[1])) { su.w = size[0]; su.h = size[1]; }
+        }
+        if (su.view != null) {
             int[] loc = new int[2];
             try { su.view.getLocationOnScreen(loc); } catch (RuntimeException e) {}
             x = loc[0]; y = loc[1]; w = su.view.getWidth(); h = su.view.getHeight();

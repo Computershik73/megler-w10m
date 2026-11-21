@@ -2528,8 +2528,8 @@ void shareMeglersStorage() {
         shellLog::write("storage: Megler's storage was not all copied; tried again at the next start");
 }
 
-void openWithSystem(const std::wstring& path, std::function<void(bool)> done) {
-    [](std::wstring path, std::function<void(bool)> done) -> winrt::fire_and_forget {
+// (Coroutines of their own rather than lambdas called where they are made: VS 2017's MSVC refuses those, C2264.)
+static winrt::fire_and_forget openWithSystemAsync(std::wstring path, std::function<void(bool)> done) {
         bool ok = false;
         try {
             auto file = co_await StorageFile::GetFileFromPathAsync(path);
@@ -2539,8 +2539,9 @@ void openWithSystem(const std::wstring& path, std::function<void(bool)> done) {
         }
         shellLog::write("app package: " + narrow(path) + (ok ? " handed to Windows" : " not taken by Windows"));
         if (done) done(ok);
-    }(path, std::move(done));
 }
+
+void openWithSystem(const std::wstring& path, std::function<void(bool)> done) { openWithSystemAsync(path, std::move(done)); }
 
 std::wstring signingCertificate() { return platform::localStateDirectory() + L"\\signing\\MeglerApps.cer"; }
 
@@ -2548,8 +2549,7 @@ std::string trustCommand() {
     return "Import-Certificate -FilePath \"" + narrow(signingCertificate()) + "\" -CertStoreLocation Cert:\\LocalMachine\\TrustedPeople";
 }
 
-void showSigningCertificate(std::function<void(bool)> done) {
-    [](std::function<void(bool)> done) -> winrt::fire_and_forget {
+static winrt::fire_and_forget showSigningCertificateAsync(std::function<void(bool)> done) {
         bool ok = false;
         const std::wstring certificate = signingCertificate();
         try {
@@ -2562,8 +2562,9 @@ void showSigningCertificate(std::function<void(bool)> done) {
         }
         shellLog::write("app package: the folder of " + narrow(certificate) + (ok ? " shown in File Explorer" : " not shown by Windows"));
         if (done) done(ok);
-    }(std::move(done));
 }
+
+void showSigningCertificate(std::function<void(bool)> done) { showSigningCertificateAsync(std::move(done)); }
 
 static std::atomic<bool> gSelfUpdating{false};
 static std::mutex gSelfUpdateMutex;

@@ -262,7 +262,9 @@ DiskFile::DiskFile(const std::wstring& path) : handle_(INVALID_HANDLE_VALUE), pa
     LARGE_INTEGER size = {};
     if (handle_ != INVALID_HANDLE_VALUE && GetFileSizeEx(handle_, &size)) size_ = uint64_t(size.QuadPart);
     // (A page is a whole number of any sector a phone's or a PC's disk has.)
-    buffer_ = static_cast<char*>(VirtualAlloc(nullptr, chunk, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE));
+    // (VirtualAllocFromApp, an app's own: the SDK's VirtualAlloc for an app is an inline function over it, which VS 2017's
+    // compiler emits as a definition of its own that the linker then finds twice.)
+    buffer_ = static_cast<char*>(VirtualAllocFromApp(nullptr, chunk, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE));
 }
 
 DiskFile::~DiskFile() {

@@ -1090,17 +1090,32 @@ static mg_lib *map_library(const char *name, const lib_source *src)
         mg_err("ld: %s: not a shared object of %s (class %u, machine %u, type %u)", name, MG_GUEST_ABI, eh->e_ident[4], eh->e_machine, eh->e_type);
         return NULL;
     }
-    if (eh->e_phentsize != sizeof(ElfW(Phdr)) || !eh->e_phnum || eh->e_phoff > size || (size_t)eh->e_phnum * sizeof(ElfW(Phdr)) > size - eh->e_phoff) {
-        mg_err("ld: %s: program headers outside the file", name);
+    /*
+     * Protected or modded libraries (a mod menu's libRMS.so) are written with program headers that do not add up: an
+     * entry size larger than the standard one, or more of them than the file holds. What can be read is read, entry by
+     * entry at the stated stride, and the count cut to what fits; only no header at all stops the load.
+     */
+    size_t phent = eh->e_phentsize, phnum = eh->e_phnum;
+    if (phent < sizeof(ElfW(Phdr))) phent = sizeof(ElfW(Phdr));
+    if (eh->e_phoff >= size || size - eh->e_phoff < sizeof(ElfW(Phdr)) || !phnum) phnum = 0;
+    else if (phnum > (size - eh->e_phoff - sizeof(ElfW(Phdr))) / phent + 1) phnum = (size - eh->e_phoff - sizeof(ElfW(Phdr))) / phent + 1;
+    if (!phnum) {
+        mg_err("ld: %s: program headers outside the file (phoff %u, phentsize %u, phnum %u, file %u bytes)", name, (unsigned)eh->e_phoff,
+               (unsigned)eh->e_phentsize, (unsigned)eh->e_phnum, (unsigned)size);
         return NULL;
     }
-    ph = (ElfW(Phdr) *)mg_alloc(sizeof(ElfW(Phdr)) * eh->e_phnum);
-    if (!src_read(src, eh->e_phoff, ph, sizeof(ElfW(Phdr)) * eh->e_phnum)) {
-        mg_err("ld: %s: its program headers cannot be read", name);
-        free(ph);
-        return NULL;
+    if (phent != eh->e_phentsize || phnum != eh->e_phnum)
+        mg_warn("ld: %s: odd program headers (phoff %u, phentsize %u, phnum %u, file %u bytes): %u of %u bytes each read", name,
+                (unsigned)eh->e_phoff, (unsigned)eh->e_phentsize, (unsigned)eh->e_phnum, (unsigned)size, (unsigned)phnum, (unsigned)phent);
+    ph = (ElfW(Phdr) *)mg_alloc(sizeof(ElfW(Phdr)) * phnum);
+    for (i = 0; i < (int)phnum; i++) {
+        if (!src_read(src, eh->e_phoff + (size_t)i * phent, &ph[i], sizeof(ElfW(Phdr)))) {
+            mg_err("ld: %s: its program headers cannot be read", name);
+            free(ph);
+            return NULL;
+        }
     }
-    for (i = 0; i < eh->e_phnum; i++) {
+    for (i = 0; i < (int)phnum; i++) {
         mg_addr lo, hi;
         /* (An image's addresses within 2 GB of its start: a 32-bit process has no more, and no library is larger.) */
         if (ph[i].p_type != PT_LOAD) continue;
@@ -1125,7 +1140,7 @@ static mg_lib *map_library(const char *name, const lib_source *src)
     lib->name = mg_strdup(name);
     lib->vmin = vmin;
     lib->vmax = vmax;
-    lib->phnum = eh->e_phnum;
+    lib->phnum = (int)phnum;
     lib->phdr = ph;
     read_code_sections(lib, src, eh);
 
@@ -1134,7 +1149,7 @@ static mg_lib *map_library(const char *name, const lib_source *src)
      * so a library whose image is larger than that gets an island on both
      * sides, and each patched instruction uses the nearer one.
      */
-    isl = island_estimate(src, ph, eh->e_phnum);
+    isl = island_estimate(src, ph, (int)phnum);
     image = MG_ALIGN_UP((size_t)(vmax - vmin), 65536);
     below = image > 14u * 1024 * 1024 ? isl : 0;
     if (g_place.active && (g_place.first || g_place.recursive)) {

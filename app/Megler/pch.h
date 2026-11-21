@@ -54,6 +54,7 @@
 #include <winrt/Windows.Web.Http.Headers.h>
 
 #include <atomic>
+#include <cctype>
 #include <functional>
 #include <memory>
 #include <mutex>
