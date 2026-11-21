@@ -15,7 +15,8 @@ public class Paint {
     public enum Align { LEFT, CENTER, RIGHT }
 
     static final int P_COLOR = 0, P_STYLE = 1, P_STROKE = 2, P_FLAGS = 3, P_CAP = 4, P_JOIN = 5, P_TEXTSIZE = 6, P_ALIGN = 7, P_MITER = 8, P_SHRAD = 9,
-        P_SHDX = 10, P_SHDY = 11, P_SHCOL = 12, P_SCALEX = 13, P_SKEWX = 14, P_LSPACE = 15, P_XFER = 16, P_CFCOLOR = 17, P_CFMODE = 18, P_ALPHA = 19, P_COUNT = 20;
+        P_SHDX = 10, P_SHDY = 11, P_SHCOL = 12, P_SCALEX = 13, P_SKEWX = 14, P_LSPACE = 15, P_XFER = 16, P_CFCOLOR = 17, P_CFMODE = 18, P_ALPHA = 19,
+        P_BLUR = 20, P_BLURSTYLE = 21, P_COUNT = 22;
     /* PF_UNDRAWABLE: the shader is one nothing here can draw (Shader.meglerUndrawable): what the paint fills is left out. */
     static final int PF_AA = 1, PF_FILTER = 2, PF_FAKEBOLD = 4, PF_UNDERLINE = 8, PF_STRIKE = 16, PF_UNDRAWABLE = 32;
 
@@ -151,7 +152,14 @@ public class Paint {
     public PathEffect getPathEffect() { return mPathEffect; }
     public PathEffect setPathEffect(PathEffect e) { mPathEffect = e; return e; }
     public MaskFilter getMaskFilter() { return mMaskFilter; }
-    public MaskFilter setMaskFilter(MaskFilter m) { mMaskFilter = m; return m; }
+    /** A BlurMaskFilter's radius and style go into the packet: the core draws what such a paint fills blurred. Other filters are not drawn. */
+    public MaskFilter setMaskFilter(MaskFilter m) {
+        mMaskFilter = m;
+        BlurMaskFilter b = m instanceof BlurMaskFilter ? (BlurMaskFilter) m : null;
+        pf(P_BLUR, b != null && b.mRadius > 0 ? b.mRadius : 0);
+        mP[P_BLURSTYLE] = b != null ? b.mStyle.ordinal() : 0;
+        return m;
+    }
     public void setShadowLayer(float radius, float dx, float dy, int color) { pf(P_SHRAD, radius); pf(P_SHDX, dx); pf(P_SHDY, dy); mP[P_SHCOL] = color; }
     public void setShadowLayer(float radius, float dx, float dy, long color) { setShadowLayer(radius, dx, dy, Color.toArgb(color)); }
     public void clearShadowLayer() { pf(P_SHRAD, 0); }

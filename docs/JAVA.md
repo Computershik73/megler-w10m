@@ -3595,12 +3595,35 @@ where the framework's code, written for iOS, leaned on CoreGraphics without sayi
   black drawn with it over white left a 5% black, which an opaque window
   shows black. The other blend modes Android 10 added (COLOR_DODGE to
   LUMINOSITY) are still drawn as SRC_OVER.
+- **A paint's blur.** A `BlurMaskFilter` blurs what its paint fills, as
+  Skia's mask filter: by a standard deviation of 0.57735 * radius + 0.5 in
+  the drawing's coordinates, the shape in its own colours. The paint's packet
+  carries the radius and the style (`P_BLUR`, `P_BLURSTYLE`), and the core
+  draws each shape and run of text of such a paint sharp into a layer that
+  the shell blurs as it puts it onto the picture (`save_layer_blur`, the
+  RenderEffect's layer), as large as the shape and three deviations round it
+  (`shape_call` in `mg_java_gfx.c`): directly and into a list alike, the list
+  holding the layer and the sharp shape. `OUTER` and `SOLID` cut the blur
+  with the shape (`DST_OUT`, and for `SOLID` the shape added by `PLUS`) and
+  `INNER` puts it on the shape by a layer of `SRC_IN`, each in a layer of
+  its own. The filter kept nothing up to 0.1.0.739 and its shapes were drawn
+  sharp. The Google app (17.6.63) draws its Gemini glows with it: the Gemini
+  screen's glowing rings and borders (drawables of a `SweepGradient` blurred),
+  the waves of its voice search, AI Mode and Lens (one shape filled three
+  times, blurred by eight, four and one times a radius), Lottie's blur
+  effect; and Gemini's first screen on an HP Elite x3 had solid purple ovals
+  beside its first suggestions and a solid pill after its headline. Which
+  drawing those are was not found (that screen needs a signed-in account,
+  which no test here has), nor seen fixed on a phone. Data step
+  `blur-mask-filter`. Bitmaps are drawn without the filter, as before;
+  `EmbossMaskFilter` and `ShaderMaskFilter` draw as no filter.
 - **The stand-in** (`core/tests/mg_gfx_standin.c`) is for tests and is not a
   renderer to look at: a pixel is in when its centre is, curves are straight
   pieces, strokes have no joins, a gradient is its first colour, text is a box
   for each letter with fixed metrics (advance 0.6 of the size, ascent 0.8,
-  descent 0.2), images are PNG only. It is deterministic on every machine,
-  which is what the tests want of it.
+  descent 0.2), images are PNG only, a layer is a save with an alpha but a
+  blurred layer is memory of its own, blurred in two passes at its restore.
+  It is deterministic on every machine, which is what the tests want of it.
 - **Display lists.** A `RenderNode`'s canvas and a `Picture`'s record what
   they are given instead of drawing it, as Android's do, and the list is
   drawn again on whatever canvas draws the node or the picture. The core

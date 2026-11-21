@@ -655,7 +655,7 @@ static bool bm_scale(const gbitmap *s, i32 x, i32 y, i32 w, i32 h, gbitmap *d, b
 
 enum {
     P_COLOR, P_STYLE, P_STROKE, P_FLAGS, P_CAP, P_JOIN, P_TEXTSIZE, P_ALIGN, P_MITER, P_SHRAD, P_SHDX, P_SHDY, P_SHCOL,
-    P_SCALEX, P_SKEWX, P_LSPACE, P_XFER, P_CFCOLOR, P_CFMODE, P_ALPHA, P_COUNT
+    P_SCALEX, P_SKEWX, P_LSPACE, P_XFER, P_CFCOLOR, P_CFMODE, P_ALPHA, P_BLUR, P_BLURSTYLE, P_COUNT
 };
 enum { PF_AA = 1, PF_FILTER = 2, PF_FAKEBOLD = 4, PF_UNDERLINE = 8, PF_STRIKE = 16, PF_UNDRAWABLE = 32 };
 
@@ -663,6 +663,8 @@ typedef struct gpaint {
     megler_gfx_paint p;
     bool underline, strike;            /* drawn here, as rectangles */
     bool undrawable;                   /* its shader is one the framework cannot draw (Paint's PF_UNDRAWABLE) */
+    float blur;                        /* a BlurMaskFilter's radius (P_BLUR), 0 for none: what the paint fills is drawn blurred (shape_call) */
+    int blur_style;                    /* ... and its style, BLUR_NORMAL to BLUR_INNER (BlurMaskFilter.Blur's order) */
 } gpaint;
 
 /* A PorterDuff number the shell can be given: what the framework has no number for is SRC_OVER there already. */
@@ -712,6 +714,9 @@ static void paint_unpack(const i32 *a, gpaint *out)
     p->shadow_dx = number(mg_f((u32)a[P_SHDX]), 0);
     p->shadow_dy = number(mg_f((u32)a[P_SHDY]), 0);
     p->shadow_color = (u32)a[P_SHCOL];
+    out->blur = number(mg_f((u32)a[P_BLUR]), 0);
+    if (!(out->blur > 0)) out->blur = 0;
+    out->blur_style = a[P_BLURSTYLE] >= 0 && a[P_BLURSTYLE] <= 3 ? (int)a[P_BLURSTYLE] : 0;
 }
 
 static void paint_of(mg_jobj *array, gpaint *out) { paint_unpack((const i32 *)elements(array, 'I', P_COUNT), out); }
@@ -2529,6 +2534,26 @@ static void rec_path(gdlist *l, int kind, const float *f, i32 n, int fill, bool 
     if (n) memcpy(o + 1, f, sizeof(float) * (size_t)n);
 }
 
+/*
+ * What one drawing call fills, as the call records or draws it (shape_put): DL_RECT, DL_RRECT or DL_OVAL with its numbers
+ * in r (four, or six with the radii), DL_PATH with a built path's floats (f, n) and its fill, DL_LINES with the points of
+ * drawLines or drawPoints, DL_TEXT with a run of text. shape_call draws it as the paint says, its blur too.
+ */
+typedef struct gshape {
+    int kind;
+    const float *r;
+    const float *f;
+    i32 n;
+    int fill;
+    bool points;
+    const u16 *text;
+    i32 count;
+    float x, y;
+    void *face;
+} gshape;
+
+static void shape_call(gcanvas *v, const gshape *s, const gpaint *p, gshader *sh);
+
 /* (long, l, t, r, b, int[] paint, long shader) */
 N(G_cvDrawRect)
 {
@@ -2536,11 +2561,14 @@ N(G_cvDrawRect)
     gshader *sh = sh_of(c->args[6].j);
     float r[4];
     gpaint p;
+    gshape s;
     int i;
     if (!paint_for(c->args[5].l, !sh, &p)) return;
     for (i = 0; i < 4; i++) r[i] = c->args[1 + i].f;
-    if (v && v->rec) rec_rect(v->rec, DL_RECT, r, 4, &p, sh);
-    else draw_rect(v, r[0], r[1], r[2], r[3], &p, sh_host(sh));
+    memset(&s, 0, sizeof(s));
+    s.kind = DL_RECT;
+    s.r = r;
+    shape_call(v, &s, &p, sh);
 }
 
 static void draw_round_rect(gcanvas *v, float l, float t, float r, float b, float rx, float ry, const gpaint *p, void *shader)
@@ -2574,11 +2602,14 @@ N(G_cvDrawRRect)
     gshader *sh = sh_of(c->args[8].j);
     float r[6];
     gpaint p;
+    gshape s;
     int i;
     if (!paint_for(c->args[7].l, !sh, &p)) return;
     for (i = 0; i < 6; i++) r[i] = c->args[1 + i].f;
-    if (v && v->rec) rec_rect(v->rec, DL_RRECT, r, 6, &p, sh);
-    else draw_round_rect(v, r[0], r[1], r[2], r[3], r[4], r[5], &p, sh_host(sh));
+    memset(&s, 0, sizeof(s));
+    s.kind = DL_RRECT;
+    s.r = r;
+    shape_call(v, &s, &p, sh);
 }
 
 static void draw_oval(gcanvas *v, float l, float t, float r, float b, const gpaint *p, void *shader)
@@ -2605,11 +2636,14 @@ N(G_cvDrawOval)
     gshader *sh = sh_of(c->args[6].j);
     float r[4];
     gpaint p;
+    gshape s;
     int i;
     if (!paint_for(c->args[5].l, !sh, &p)) return;
     for (i = 0; i < 4; i++) r[i] = c->args[1 + i].f;
-    if (v && v->rec) rec_rect(v->rec, DL_OVAL, r, 4, &p, sh);
-    else draw_oval(v, r[0], r[1], r[2], r[3], &p, sh_host(sh));
+    memset(&s, 0, sizeof(s));
+    s.kind = DL_OVAL;
+    s.r = r;
+    shape_call(v, &s, &p, sh);
 }
 
 /* (long, l, t, r, b, float start, float sweep, boolean useCenter, int[] paint, long shader): the arc alone, or the wedge to the oval's centre. */
@@ -2620,6 +2654,7 @@ N(G_cvDrawArc)
     gshader *sh = sh_of(c->args[9].j);
     gpaint p;
     gpath path;
+    gshape s;
     if (!paint_for(c->args[8].l, !sh, &p)) return;
     path_init(&path);
     if (c->args[7].z) {
@@ -2629,8 +2664,12 @@ N(G_cvDrawArc)
     } else {
         path_arc(&path, l, t, r, b, c->args[5].f, c->args[6].f, true);
     }
-    if (v && v->rec) rec_path(v->rec, DL_PATH, path.v, path.n, MEGLER_GFX_WINDING, false, &p, sh);
-    else draw_path(v, &path, MEGLER_GFX_WINDING, &p, sh_host(sh));
+    memset(&s, 0, sizeof(s));
+    s.kind = DL_PATH;
+    s.f = path.v;
+    s.n = path.n;
+    s.fill = MEGLER_GFX_WINDING;
+    shape_call(v, &s, &p, sh);
     path_free(&path);
 }
 
@@ -2642,9 +2681,14 @@ N(G_cvDrawPath)
     int fill = c->args[3].i & (MEGLER_GFX_EVEN_ODD | FILL_INVERSE);
     gpaint p;
     gpath path;
+    gshape s;
     if (!paint_for(c->args[4].l, !sh, &p) || !path_of(c->args[1].l, c->args[2].i, &path)) return;
-    if (v && v->rec) rec_path(v->rec, DL_PATH, path.v, path.n, fill, false, &p, sh);
-    else draw_path(v, &path, fill, &p, sh_host(sh));
+    memset(&s, 0, sizeof(s));
+    s.kind = DL_PATH;
+    s.f = path.v;
+    s.n = path.n;
+    s.fill = fill;
+    shape_call(v, &s, &p, sh);
     path_free(&path);
 }
 
@@ -2690,9 +2734,15 @@ N(G_cvDrawLines)
     i64 off = c->args[2].i, n = c->args[3].i;
     gshader *sh = sh_of(c->args[5].j);
     gpaint p;
+    gshape s;
     if (!v || !f || off < 0 || n < 0 || off + n > length_of(c->args[1].l) || !paint_for(c->args[4].l, !sh, &p)) return;
-    if (v->rec) rec_path(v->rec, DL_LINES, f + off, (i32)n, MEGLER_GFX_WINDING, c->args[6].z != 0, &p, sh);
-    else draw_lines(v, f + off, (i32)n, c->args[6].z != 0, &p, sh_host(sh));
+    memset(&s, 0, sizeof(s));
+    s.kind = DL_LINES;
+    s.f = f + off;
+    s.n = (i32)n;
+    s.fill = MEGLER_GFX_WINDING;
+    s.points = c->args[6].z != 0;
+    shape_call(v, &s, &p, sh);
 }
 
 /*
@@ -2935,6 +2985,167 @@ static void draw_text(gcanvas *v, const u16 *text, i32 count, float x, float y, 
     if (p.strike) draw_rect(v, x, y - size * 0.3f, x + width, y - size * 0.3f + thick, &p, shader);
 }
 
+/* ------------------------------------------------------- a paint's blur */
+
+static bool path_hull(const float *v, i32 n, float *out);
+static void paint_reach(const gpaint *p, bool stroked, float *r);
+static void rect_sorted(const float *r, float *out);
+static void path_view(gpath *p, const float *f, i32 n);
+
+/* BlurMaskFilter.Blur's order (Paint's P_BLURSTYLE). */
+enum { BLUR_NORMAL, BLUR_SOLID, BLUR_OUTER, BLUR_INNER };
+
+/* One shape of a call put as the call itself puts it: into the recording canvas's list, or drawn. */
+static void shape_put(gcanvas *v, const gshape *s, const gpaint *p, gshader *sh)
+{
+    if (v->rec) {
+        if (s->kind == DL_TEXT) {
+            dl_text *o = (dl_text *)dl_put(v->rec, DL_TEXT, sizeof(*o), sizeof(u16) * (size_t)s->count);
+            o->x = s->x;
+            o->y = s->y;
+            o->face = s->face;
+            o->count = s->count;
+            o->p = *p;
+            shot_of(sh, &o->s);
+            memcpy(o + 1, s->text, sizeof(u16) * (size_t)s->count);
+        } else if (s->kind == DL_PATH || s->kind == DL_LINES) {
+            rec_path(v->rec, s->kind, s->f, s->n, s->fill, s->points, p, sh);
+        } else {
+            rec_rect(v->rec, s->kind, s->r, s->kind == DL_RRECT ? 6 : 4, p, sh);
+        }
+        return;
+    }
+    switch (s->kind) {
+    case DL_RECT: draw_rect(v, s->r[0], s->r[1], s->r[2], s->r[3], p, sh_host(sh)); break;
+    case DL_RRECT: draw_round_rect(v, s->r[0], s->r[1], s->r[2], s->r[3], s->r[4], s->r[5], p, sh_host(sh)); break;
+    case DL_OVAL: draw_oval(v, s->r[0], s->r[1], s->r[2], s->r[3], p, sh_host(sh)); break;
+    case DL_PATH: {
+        gpath path;
+        path_view(&path, s->f, s->n);
+        draw_path(v, &path, s->fill, p, sh_host(sh));
+        break;
+    }
+    case DL_LINES: draw_lines(v, s->f, s->n, s->points, p, sh_host(sh)); break;
+    case DL_TEXT: draw_text(v, s->text, s->count, s->x, s->y, p, s->face, sh_host(sh)); break;
+    default: break;
+    }
+}
+
+/*
+ * The box a shape's ink lies in, in the coordinates it is drawn in, its stroke and shadow included: false when it has none
+ * (a path filled by an inverse rule, which is everything round it). A run of text's box is its advance, a size to each side
+ * and above, half a size below: room for any face's ink.
+ */
+static bool shape_box(const gshape *s, const gpaint *p, float *out)
+{
+    switch (s->kind) {
+    case DL_RECT:
+    case DL_RRECT:
+    case DL_OVAL:
+        rect_sorted(s->r, out);
+        paint_reach(p, p->p.style != MEGLER_GFX_FILL, out);
+        return true;
+    case DL_PATH:
+        if ((s->fill & FILL_INVERSE) && p->p.style != MEGLER_GFX_STROKE) return false;
+        if (!path_hull(s->f, s->n, out)) out[0] = out[1] = out[2] = out[3] = 0;
+        paint_reach(p, p->p.style != MEGLER_GFX_FILL, out);
+        return true;
+    case DL_LINES: {
+        gbox b;
+        i32 i;
+        memset(&b, 0, sizeof(b));
+        for (i = 0; i + 1 < s->n; i += 2) box_point(&b, s->f[i], s->f[i + 1]);
+        out[0] = b.l;
+        out[1] = b.t;
+        out[2] = b.r;
+        out[3] = b.b;
+        paint_reach(p, true, out);
+        return true;
+    }
+    case DL_TEXT: {
+        float size = p->p.text_size, width = text_width(s->text, s->count, p, s->face), x = s->x;
+        if (p->p.text_align == MEGLER_GFX_ALIGN_CENTER) x -= width / 2;
+        else if (p->p.text_align == MEGLER_GFX_ALIGN_RIGHT) x -= width;
+        out[0] = x - size;
+        out[1] = s->y - 2 * size;
+        out[2] = x + width + size;
+        out[3] = s->y + size / 2 + 1;
+        paint_reach(p, false, out);
+        return true;
+    }
+    default:
+        return false;
+    }
+}
+
+/*
+ * A drawing call's shape with its paint, recorded or drawn; blurred when the paint has a BlurMaskFilter, as Skia's mask filter
+ * blurs: what the call covers, by a standard deviation of 0.57735 * radius + 0.5 in the drawing's coordinates, in the paint's
+ * colours. The shape is drawn sharp into a layer that the shell blurs as it puts it onto the picture (save_layer_blur, megler.h),
+ * as large as the shape and three standard deviations round it. The other styles cut the blur with the shape once more, in a
+ * layer of their own round that: OUTER keeps it outside the shape (the shape drawn DST_OUT over it), SOLID the shape whole and
+ * the blur round it (taken out where the shape is, and the shape added: S + B * (1 - S)), INNER inside the shape (the shape
+ * drawn first, and the blur put onto it by a layer of SRC_IN: a shape drawn DST_IN would change nothing outside itself). A
+ * list records the layers and the sharp shapes, and is drawn again so. A shell without the blur has a plain layer: the shape
+ * is drawn sharp, as before.
+ *
+ * Why. The filter was dropped and its shapes drawn sharp. The Google app (17.6.63) draws its Gemini glows with it: the Gemini
+ * screen's glowing rings and borders (drawables of a SweepGradient blurred, its azuz and azvm), and the waves of its voice
+ * search, AI Mode and Lens (a shape filled three times, blurred by eight, four and one times a radius: dvld.e, dvkz.a). Gemini's
+ * first screen on an HP Elite x3 (0.1.0.739) had solid purple ovals beside its first suggestions and a solid pill after its
+ * headline.
+ */
+static void shape_call(gcanvas *v, const gshape *s, const gpaint *p, gshader *sh)
+{
+    gpaint sharp, cut;
+    float box[4], blur[3], grow, sigma, radius;
+    bool boxed, around;
+    if (!v) return;
+    if (!(p->blur > 0)) {
+        shape_put(v, s, p, sh);
+        return;
+    }
+    radius = p->blur < 1000 ? p->blur : 1000;
+    sigma = 0.57735f * radius + 0.5f;
+    grow = 3 * sigma + 1;
+    boxed = shape_box(s, p, box);
+    if (boxed) {
+        box[0] -= grow;
+        box[1] -= grow;
+        box[2] += grow;
+        box[3] += grow;
+    }
+    sharp = *p;
+    sharp.blur = 0;
+    blur[0] = blur[1] = radius;
+    blur[2] = 0;
+    /* The shape once more, opaque and of no colour of its own: what the other styles cut the blur with. */
+    cut = sharp;
+    cut.p.color = 0xFF000000u;
+    cut.p.filter_mode = -1;
+    cut.p.shadow_radius = 0;
+    cut.p.blend = MEGLER_GFX_BLEND_SRC_OVER;
+    around = p->blur_style != BLUR_NORMAL;
+    if (around) cv_save(v, boxed ? box : NULL, true, 255, MEGLER_GFX_BLEND_SRC_OVER, NULL);
+    if (p->blur_style == BLUR_INNER) {
+        shape_put(v, s, &cut, NULL);
+        cv_save(v, boxed ? box : NULL, true, 255, MEGLER_GFX_BLEND_SRC_IN, NULL);
+    }
+    cv_save(v, boxed ? box : NULL, true, 255, MEGLER_GFX_BLEND_SRC_OVER, blur);
+    shape_put(v, s, &sharp, sh);
+    cv_restore(v);
+    if (p->blur_style == BLUR_OUTER || p->blur_style == BLUR_SOLID) {
+        cut.p.blend = MEGLER_GFX_BLEND_DST_OUT;
+        shape_put(v, s, &cut, NULL);
+    }
+    if (p->blur_style == BLUR_SOLID) {
+        sharp.p.blend = MEGLER_GFX_BLEND_PLUS;
+        shape_put(v, s, &sharp, sh);
+    }
+    if (p->blur_style == BLUR_INNER) cv_restore(v);
+    if (around) cv_restore(v);
+}
+
 /* (long cv, String, int start, int end, float x, float y, int[] paint, long typeface, long shader): Canvas.drawText, the part of the string as one run. */
 N(G_cvDrawText)
 {
@@ -2944,20 +3155,17 @@ N(G_cvDrawText)
     const u16 *text;
     i32 count;
     gpaint p;
+    gshape s;
     text = text_of(c->args[1].l, c->args[2].i, c->args[3].i, &count);
     if (!v || !text || count <= 0 || !paint_for(c->args[6].l, !sh, &p)) return;
-    if (v->rec) {
-        dl_text *o = (dl_text *)dl_put(v->rec, DL_TEXT, sizeof(*o), sizeof(u16) * (size_t)count);
-        o->x = c->args[4].f;
-        o->y = c->args[5].f;
-        o->face = face;
-        o->count = count;
-        o->p = p;
-        shot_of(sh, &o->s);
-        memcpy(o + 1, text, sizeof(u16) * (size_t)count);
-        return;
-    }
-    draw_text(v, text, count, c->args[4].f, c->args[5].f, &p, face, sh_host(sh));
+    memset(&s, 0, sizeof(s));
+    s.kind = DL_TEXT;
+    s.text = text;
+    s.count = count;
+    s.x = c->args[4].f;
+    s.y = c->args[5].f;
+    s.face = face;
+    shape_call(v, &s, &p, sh);
 }
 
 /* ------------------------------------------------- Gfx: display lists drawn */

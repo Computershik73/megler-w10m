@@ -8824,6 +8824,47 @@ public class Main extends Activity {
             detail = String.format("half red %08x, wash %08x, drawColor %08x, listed %08x", pink, grey, byColor, listed);
             return pixelNear(pink, 0xFFFF8080, 1) && pixelNear(grey, 0xFFF2F2F2, 1) && pixelNear(byColor, 0xFFFF8080, 1) && pixelNear(listed, 0xFFF2F2F2, 1);
         });
+        /*
+         * A paint with a BlurMaskFilter fills blurred: a red bar 20 x 10 on white, blurred by a radius of 4 (a standard deviation
+         * of 2.8 pixels), is red in its middle, pink just outside its edge, its colour fading on to white three deviations away;
+         * through a RenderNode's list the same. The same paint without the filter leaves the white outside the bar white. The
+         * filter was a constructor that kept nothing, and the Google app draws its Gemini glows with it: Gemini's first screen
+         * had solid purple ovals and a solid pill on the phone.
+         */
+        step("blur-mask-filter", () -> {
+            android.graphics.BlurMaskFilter filter = new android.graphics.BlurMaskFilter(4, android.graphics.BlurMaskFilter.Blur.NORMAL);
+            android.graphics.Paint glow = new android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG), plain = new android.graphics.Paint();
+            glow.setColor(0xFFFF0000);
+            plain.setColor(0xFFFF0000);
+            glow.setMaskFilter(filter);
+            android.graphics.Paint copied = new android.graphics.Paint(glow);
+            android.graphics.Bitmap bm = bitmap(60, 30), sharp = bitmap(60, 30);
+            android.graphics.Canvas c = new android.graphics.Canvas(bm);
+            c.drawColor(0xFFFFFFFF);
+            c.drawRect(20, 10, 40, 20, copied);
+            c = new android.graphics.Canvas(sharp);
+            c.drawColor(0xFFFFFFFF);
+            c.drawRect(20, 10, 40, 20, plain);
+            android.graphics.RenderNode node = new android.graphics.RenderNode("glow");
+            node.setPosition(0, 0, 60, 30);
+            android.graphics.RecordingCanvas rc = node.beginRecording(60, 30);
+            rc.drawColor(0xFFFFFFFF);
+            android.graphics.Path bar = new android.graphics.Path();
+            bar.addRect(20, 10, 40, 20, android.graphics.Path.Direction.CW);
+            rc.drawPath(bar, glow);
+            node.endRecording();
+            android.graphics.Bitmap listed = drawn(node, 60, 30);
+            int middle = bm.getPixel(30, 15), edge = bm.getPixel(30, 8), far = bm.getPixel(30, 1), side = bm.getPixel(16, 15);
+            int sharpEdge = sharp.getPixel(30, 8), listedMiddle = listed.getPixel(30, 15), listedEdge = listed.getPixel(30, 8), listedFar = listed.getPixel(3, 3);
+            // Red with little of the white mixed in, in the middle; just outside the edge a pink: neither white nor red.
+            boolean blurred = (middle >>> 16 & 0xff) >= 0xf0 && (middle >>> 8 & 0xff) <= 0x50 && (edge >>> 16 & 0xff) >= 0xf0
+                && (edge >>> 8 & 0xff) >= 0x60 && (edge >>> 8 & 0xff) <= 0xe8 && (side >>> 8 & 0xff) < 0xf8 && pixelNear(far, 0xFFFFFFFF, 2);
+            boolean recorded = pixelNear(listedMiddle, middle, 3) && pixelNear(listedEdge, edge, 3) && pixelNear(listedFar, 0xFFFFFFFF, 2);
+            boolean kept = copied.getMaskFilter() == filter && glow.getMaskFilter() == filter && plain.getMaskFilter() == null;
+            detail = String.format("middle %08x, just outside %08x (sharp %08x), beside %08x, far %08x; listed %08x %08x %08x; filter kept %b",
+                    middle, edge, sharpEdge, side, far, listedMiddle, listedEdge, listedFar, kept);
+            return blurred && recorded && kept && sharpEdge == 0xFFFFFFFF;
+        });
     }
 
     /** Whether the first three numbers are these, each to within eps. */

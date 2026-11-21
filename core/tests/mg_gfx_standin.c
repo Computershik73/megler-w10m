@@ -31,7 +31,10 @@
  *   - A layer is not a picture of its own: save_layer is a save, and its
  *     alpha multiplies what is drawn until the restore. That is the same
  *     only while what is drawn in the layer does not overlap itself, and the
- *     layer's blend mode is not done.
+ *     layer's blend mode is not done. A blurred layer (save_layer_blur) is
+ *     one: drawn into memory of its own, blurred at the restore by a
+ *     Gaussian of the standard deviation megler.h gives (to three of them,
+ *     in two passes) and laid over the picture by its alpha.
  *   - OVERLAY is drawn as SRC_OVER. Shadows are not drawn.
  *   - Bitmaps are sampled at the nearest pixel, with or without the filter
  *     flag.
@@ -68,6 +71,10 @@ typedef struct sstate {
     i32 cut[MAX_CUTS][4];              /* rectangles taken out of it */
     i32 cuts;
     u32 alpha;                         /* the layers' alphas multiplied, 0..255 */
+    u8 *under;                         /* a blurred layer's: the pixels it is laid over at its restore (NULL: none) */
+    double sigma;                      /* ... its blur's standard deviation in pixels, */
+    bool clamp;                        /* ... whether its edge is carried on beyond it, */
+    u32 layer_alpha;                   /* ... and its own alpha */
 } sstate;
 
 typedef struct scanvas {
@@ -240,6 +247,12 @@ static MEGLER_CB void s_canvas_free(void *user, void *canvas)
     scanvas *v = (scanvas *)canvas;
     (void)user;
     if (!v) return;
+    /* (A blurred layer left open: its own pixels go.) */
+    for (; v->depth > 0; v->depth--)
+        if (state(v)->under) {
+            free(v->px);
+            v->px = state(v)->under;
+        }
     free(v->mask);
     free(v->st);
     free(v);
@@ -261,6 +274,7 @@ static MEGLER_CB void s_save(void *user, void *canvas)
     }
     v->st[v->depth + 1] = v->st[v->depth];
     v->depth++;
+    v->st[v->depth].under = NULL;
 }
 
 static MEGLER_CB void s_save_layer(void *user, void *canvas, const float *bounds, int alpha, int blend)
@@ -276,12 +290,122 @@ static MEGLER_CB void s_save_layer(void *user, void *canvas, const float *bounds
     state(v)->alpha = mul255(state(v)->alpha, (u32)(alpha < 0 ? 0 : alpha > 255 ? 255 : alpha));
 }
 
+/*
+ * A layer blurred as it is put on: its own pixels, transparent to begin with, the size of the canvas's, in which what follows
+ * is drawn until the restore (s_restore, blur_put). Without memory for it, a plain layer.
+ */
+static MEGLER_CB void s_save_layer_blur(void *user, void *canvas, const float *bounds, int alpha, float radius_x, float radius_y, bool clamp)
+{
+    scanvas *v = (scanvas *)canvas;
+    sstate *s;
+    u8 *own;
+    double det, radius = ((radius_x > 0 ? radius_x : 0) + (radius_y > 0 ? radius_y : 0)) / 2;
+    i32 box[4];
+    s_save(user, canvas);
+    s = state(v);
+    if (bounds) {
+        pixel_box(s->m, bounds[0], bounds[1], bounds[2], bounds[3], box);
+        clip_to(s, box);
+    }
+    if (alpha < 0) alpha = 0;
+    if (alpha > 255) alpha = 255;
+    own = (u8 *)calloc((size_t)v->stride, (size_t)v->h);
+    if (!own) {
+        s->alpha = mul255(s->alpha, (u32)alpha);
+        return;
+    }
+    det = fabs((double)s->m[0] * s->m[4] - (double)s->m[1] * s->m[3]);
+    s->sigma = radius > 0 && radius < 1e6 ? (0.57735 * radius + 0.5) * (det > 0 ? sqrt(det) : 1) : 0;
+    if (s->sigma > 250) s->sigma = 250;
+    s->clamp = clamp;
+    s->layer_alpha = (u32)alpha;
+    s->under = v->px;
+    v->px = own;
+}
+
+/* One row or column of premultiplied pixels (n of them, `step` u32s apart) blurred by the kernel k[-reach..reach], into out. */
+static void blur_line(const u32 *in, size_t step, i32 n, const double *k, i32 reach, bool clamp, double *out)
+{
+    i32 i, j, ch, at;
+    for (i = 0; i < n; i++) {
+        double sum[4] = { 0, 0, 0, 0 };
+        for (j = -reach; j <= reach; j++) {
+            u32 px;
+            at = i + j;
+            if (at < 0 || at >= n) {
+                if (!clamp) continue;
+                at = at < 0 ? 0 : n - 1;
+            }
+            px = in[(size_t)at * step];
+            for (ch = 0; ch < 4; ch++) sum[ch] += k[j] * (double)((px >> (8 * ch)) & 255);
+        }
+        for (ch = 0; ch < 4; ch++) out[4 * (size_t)i + (size_t)ch] = sum[ch];
+    }
+}
+
+static u32 blur_pixel(const double *c)
+{
+    u32 p = 0;
+    int ch;
+    for (ch = 0; ch < 4; ch++) {
+        double x = c[ch] + 0.5;
+        p |= (u32)(x >= 255 ? 255 : x <= 0 ? 0 : (i32)x) << (8 * ch);
+    }
+    return p;
+}
+
+/*
+ * A blurred layer's restore: its pixels within its box (the clip at its save) blurred, across and then down, what lies beyond
+ * the box transparent or, with `clamp`, the box's edge; then laid over the pixels under it by its alpha, as far as the clip
+ * outside it lets them be drawn.
+ */
+static void blur_put(scanvas *v, sstate *s)
+{
+    const sstate *outer = &v->st[v->depth - 1];
+    i32 x0 = s->clip[0], y0 = s->clip[1], x1 = s->clip[2], y1 = s->clip[3], w = x1 - x0, h = y1 - y0, x, y, i, reach;
+    u8 *own = v->px;
+    v->px = s->under;
+    s->under = NULL;
+    if (w > 0 && h > 0) {
+        u32 *box = (u32 *)mg_alloc(sizeof(u32) * (size_t)w * (size_t)h);
+        double *line = (double *)mg_alloc(sizeof(double) * 4 * (size_t)(w > h ? w : h)), *k, total = 0;
+        reach = (i32)ceil(3 * s->sigma);
+        k = (double *)mg_alloc(sizeof(double) * (size_t)(2 * reach + 1)) + reach;
+        for (i = -reach; i <= reach; i++) total += k[i] = s->sigma > 0 ? exp(-(double)i * i / (2 * s->sigma * s->sigma)) : (i == 0);
+        for (i = -reach; i <= reach; i++) k[i] /= total;
+        for (y = 0; y < h; y++)
+            for (x = 0; x < w; x++) box[(size_t)y * (size_t)w + (size_t)x] = mg_rd32(own + (size_t)(y0 + y) * (size_t)v->stride + 4 * (size_t)(x0 + x));
+        for (y = 0; y < h; y++) {
+            blur_line(box + (size_t)y * (size_t)w, 1, w, k, reach, s->clamp, line);
+            for (x = 0; x < w; x++) box[(size_t)y * (size_t)w + (size_t)x] = blur_pixel(line + 4 * (size_t)x);
+        }
+        for (x = 0; x < w; x++) {
+            blur_line(box + x, (size_t)w, h, k, reach, s->clamp, line);
+            for (y = 0; y < h; y++) box[(size_t)y * (size_t)w + (size_t)x] = blur_pixel(line + 4 * (size_t)y);
+        }
+        for (y = y0; y < y1; y++) {
+            u8 *row = v->px + (size_t)y * (size_t)v->stride;
+            if (y < outer->clip[1] || y >= outer->clip[3]) continue;
+            for (x = x0; x < x1; x++) {
+                u32 p = faded(box[(size_t)(y - y0) * (size_t)w + (size_t)(x - x0)], s->layer_alpha);
+                if (x < outer->clip[0] || x >= outer->clip[2] || !p || (outer->cuts && cut_out(outer, x, y))) continue;
+                mg_wr32(row + 4 * (size_t)x, blended(MEGLER_GFX_BLEND_SRC_OVER, p, mg_rd32(row + 4 * (size_t)x)));
+            }
+        }
+        free(k - reach);
+        free(line);
+        free(box);
+    }
+    free(own);
+}
+
 static MEGLER_CB void s_restore(void *user, void *canvas)
 {
     scanvas *v = (scanvas *)canvas;
     float m[6];
     (void)user;
     if (v->depth <= 0) return;
+    if (state(v)->under) blur_put(v, state(v));
     /* The matrix is not the save's to keep (megler.h): the one in force stays. */
     memcpy(m, state(v)->m, sizeof(m));
     v->depth--;
@@ -1271,6 +1395,7 @@ const megler_gfx_host *mg_gfx_standin(void)
         .touched = s_nothing,
         .save = s_save,
         .save_layer = s_save_layer,
+        .save_layer_blur = s_save_layer_blur,
         .restore = s_restore,
         .set_matrix = s_set_matrix,
         .clip_rect = s_clip_rect,
