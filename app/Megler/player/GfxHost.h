@@ -298,6 +298,7 @@ public:
         uint64_t throughMemory = 0; // ... and by this file's arithmetic, read back and uploaded again
         uint64_t keptMade = 0;     // bitmaps of the core's uploaded to be kept
         uint64_t keptReused = 0;   // ... and drawn again from there
+        uint64_t glTurnWaited = 0; // OpenGL ES frames in turn from a surface's textures (Mesa's ring), the copy of the frame before waited for
         char device[128] = {};     // the graphics processor's name, and Direct3D's feature level
     };
     Counts counts();

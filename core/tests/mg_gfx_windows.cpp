@@ -326,6 +326,42 @@ int mg_gfx_windows_check_gl(const megler_gfx_host* h, void (*line)(const char* t
             if (otherResource) otherResource->Release();
             if (other) other->Release();
         }
+        // Frames of one surface from three textures in turn, shared plainly, as the core's ring hands Mesa's (mg_java_gl.c,
+        // ring_frame): each shown as it comes; and the copy out of a texture that came again before (in turn), not waited for
+        // as it was made, is waited for at the next frame -- the core gives the GL thread the texture it came out of to draw
+        // into as gl_frame returns. Not with a keyed mutex, which no ring has.
+        if (!keyed) {
+            const uint32_t colours[2] = {0xFFFF0000u, 0xFF0000FFu};
+            ID3D11Texture2D* turn[2] = {};
+            HANDLE turnHandle[2] = {};
+            bool made = true;
+            for (int i = 0; i < 2 && made; i++) {
+                IDXGIResource* r = nullptr;
+                std::vector<uint32_t> fill(size_t(fw) * fh, colours[i]);
+                D3D11_SUBRESOURCE_DATA data = {fill.data(), UINT(fw * 4), 0};
+                made = SUCCEEDED(angle->CreateTexture2D(&td, &data, &turn[i])) && SUCCEEDED(turn[i]->QueryInterface(__uuidof(IDXGIResource), reinterpret_cast<void**>(&r))) &&
+                       SUCCEEDED(r->GetSharedHandle(&turnHandle[i]));
+                if (r) r->Release();
+            }
+            check(made, "no textures for frames in turn");
+            if (made) {
+                angleContext->Flush();
+                // The surface's own texture (green now), then the two others: each new to the layer, its copy waited for as made.
+                const HANDLE order[5] = {turnHandle[0], turnHandle[1], handle, turnHandle[0], turnHandle[1]};
+                const uint32_t seen[5] = {0x00FF0000u, 0x000000FFu, 0x0000FF00u, 0x00FF0000u, 0x000000FFu};
+                const uint64_t waitedBefore = gfx.counts().glTurnWaited;
+                bool all = true;
+                for (int i = 0; i < 5; i++)
+                    all = all && h->gl_frame(h->user, 0, order[i], fw, fh) && readWindow(shown) && shown.size() == memory.size() &&
+                          (shown[10 * w + 20] & 0x00FFFFFFu) == seen[i];
+                check(all, "frames from three textures in turn are not each shown as they come (red, blue, green, red, blue)");
+                // Waited for at the frames after the first two that came again: the copies out of the surface's own texture and
+                // the red one, each a frame after it was made.
+                check(gfx.counts().glTurnWaited == waitedBefore + 2, "the copies out of textures in turn were not waited for at the next frame");
+            }
+            for (ID3D11Texture2D* t : turn)
+                if (t) t->Release();
+        }
         // The layer taken away: the views alone there again, at the next showing.
         h->gl_place(h->user, 0, 0, 0, 0, 0, 0);
         check(h->present(h->user, cv, 16, 8, 32, 24) && readWindow(shown) && shown[10 * w + 20] == 0u, "the views' hole does not show nothing once the layer is gone");

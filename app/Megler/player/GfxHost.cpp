@@ -375,6 +375,9 @@ struct State {
     std::atomic<uint64_t> roundClips{0}, roundUses[3] = {};
     std::atomic<uint64_t> canvasSerial{1};
     std::atomic<uint64_t> glFrames{0}, glWaitTicks{0}; // OpenGL ES frames taken (gl_frame), and the waits for their copies
+    // ... of them, frames in turn from a surface's textures (Mesa's ring) whose copy of the frame before was waited for, and of
+    // those, the copies not done by then: the texture would have been drawn into while it was being copied.
+    std::atomic<uint64_t> glTurnWaited{0}, glTurnLate{0};
     Ref<ID2D1Factory> d2d;
     Ref<ID2D1Factory1> d2d1;
     Ref<IDWriteFactory> dwrite;
@@ -452,7 +455,7 @@ struct State {
         uint64_t sessions = 0, direct = 0, composed = 0, layers = 0, layerBlurs = 0, layerPixels = 0, partTargets = 0, targetsMade = 0, makeTicks = 0, endTicks = 0, composeTicks = 0,
                  composedPixels = 0, sessionPixels = 0, uploads = 0, uploadPixels = 0, uploadTicks = 0, readBacks = 0, readBackPixels = 0,
                  readBackTicks = 0, byEffects = 0, throughMemory = 0, keptMade = 0, keptReused = 0, shown = 0, showTicks = 0, windowReadBacks = 0,
-                 windowReadBackPixels = 0, windowReadBackTicks = 0, glFrames = 0, glWaitTicks = 0;
+                 windowReadBackPixels = 0, windowReadBackTicks = 0, glFrames = 0, glWaitTicks = 0, glTurnWaited = 0, glTurnLate = 0;
         uint64_t endsBy[endWhys] = {}, endTicksBy[endWhys] = {};
         uint64_t effectsBy[effectsWhys] = {}, effectsMode[blendModes] = {};
     } statsLast;
@@ -3637,6 +3640,8 @@ void noteDrawing() {
     t.windowReadBackTicks = s.windowReadBackTicks;
     t.glFrames = s.glFrames;
     t.glWaitTicks = s.glWaitTicks;
+    t.glTurnWaited = s.glTurnWaited;
+    t.glTurnLate = s.glTurnLate;
     for (int k = 0; k < State::endWhys; k++) {
         t.endsBy[k] = s.endsBy[k];
         t.endTicksBy[k] = s.endTicksBy[k];
@@ -3665,13 +3670,14 @@ void noteDrawing() {
         const uint64_t windowBacks = t.windowReadBacks - l.windowReadBacks;
         say("%.1f s (graphics processor): %llu drawings begun and ended (%.1f ms ending them), %llu calls drawn by Direct2D, %llu by its effects, %llu "
             "through memory (%.1f ms), %llu layers of %.1f Mpx (%llu of them blurred); %llu pictures shown without the memory (%.1f ms), %llu OpenGL ES frames composed under them (%.1f "
-            "ms waiting for their copies); %llu uploads of %.2f Mpx (%.1f ms); read-backs "
+            "ms waiting for their copies; %llu in turn from Mesa's textures, the copy of the frame before waited for, %llu of those not done by then); %llu uploads of %.2f Mpx (%.1f ms); read-backs "
             "(the wait for the processor in them): %llu of other canvases, %.2f Mpx (%.1f ms), %llu of the shown window's, %.2f Mpx (%.1f ms); bitmaps: "
             "%llu uploaded, %llu drawn from those kept, %zu kept in %.1f MB; canvases' bitmaps there now: %lld in %.1f MB (%.1f MB of them spare)",
             seconds, ull(t.sessions - l.sessions), ticksToMs(t.endTicks - l.endTicks), ull(t.direct - l.direct), ull(t.byEffects - l.byEffects),
             ull(t.throughMemory - l.throughMemory), ticksToMs(t.composeTicks - l.composeTicks), ull(t.layers - l.layers),
             double(t.layerPixels - l.layerPixels) / 1e6, ull(t.layerBlurs - l.layerBlurs), ull(t.shown - l.shown),
-            ticksToMs(t.showTicks - l.showTicks), ull(t.glFrames - l.glFrames), ticksToMs(t.glWaitTicks - l.glWaitTicks), ull(t.uploads - l.uploads),
+            ticksToMs(t.showTicks - l.showTicks), ull(t.glFrames - l.glFrames), ticksToMs(t.glWaitTicks - l.glWaitTicks),
+            ull(t.glTurnWaited - l.glTurnWaited), ull(t.glTurnLate - l.glTurnLate), ull(t.uploads - l.uploads),
             double(t.uploadPixels - l.uploadPixels) / 1e6,
             ticksToMs(t.uploadTicks - l.uploadTicks), ull(t.readBacks - l.readBacks - windowBacks),
             double((t.readBackPixels - l.readBackPixels) - (t.windowReadBackPixels - l.windowReadBackPixels)) / 1e6,
@@ -3887,8 +3893,15 @@ struct Composition {
         Ref<ID2D1Bitmap1> frame;     // the copy as Direct2D draws it: rows bottom first, alpha ignored (a frame is opaque)
         Ref<ID2D1Bitmap1> translucent; // the same copy with its alpha, premultiplied, for a layer over the views that keeps it
         /// The textures of a surface whose frames come in turn from several (the core's ring, on Mesa): each opened once, by its
-        /// handle. Such a surface's texture is drawn into again only two frames after it came, so its copy is not waited for.
+        /// handle. Such a texture is drawn into again one frame after it came: mg_java_gl.c's ring of three hands the frame in
+        /// texture k over at swap k+1 and has the app draw into texture k again right after swap k+2. So its copy is not waited
+        /// for as it is made but at the layer's next frame (turnCopied), before the core gives the texture back to the app.
         std::vector<std::pair<void*, Ref<ID3D11Texture2D>>> opened;
+        /// The queries that end the copies out of the ring's textures in turn, taken in turn; turnPending: the other one
+        /// (turnCopied[turnNext ^ 1]) ends a copy not waited for yet.
+        Ref<ID3D11Query> turnCopied[2];
+        int turnNext = 0;
+        bool turnPending = false;
     };
     /// A layer started again for another texture: its place and flags kept, all else let go.
     static void reset(Layer& l) {
@@ -4196,6 +4209,9 @@ void noteOtherSize(const char* what, const D3D11_TEXTURE2D_DESC& desc, int width
 /// back before it draws the next frame, which therefore lands after this
 /// copy on the graphics processor; so the copy is not waited for then (nor
 /// has the core finished the frame: it only flushed it).
+/// A frame of a texture that comes again in turn (the core's ring of Mesa's
+/// textures, which have no mutex) has its copy waited for at the layer's next
+/// frame instead, before the core lets the app draw into that texture again.
 /// The first frame may come before any view has been drawn: Direct2D and the
 /// graphics processor are started for it then, as for a canvas (refused, the
 /// core composes the window for good, the frames read back).
@@ -4284,6 +4300,18 @@ bool glFrame(void*, int layer, void* handle, int width, int height) {
             D3D11_QUERY_DESC query = {D3D11_QUERY_EVENT, 0};
             if (FAILED(s.d3d->CreateQuery(&query, c.copied.put()))) c.copied.reset();
         }
+        // The query that ends this copy: the composition's, waited for below; for a texture of the ring in turn, the layer's
+        // own of the two in turn, waited for at its next frame. (Without one to be had, waited for at once as any other.)
+        ID3D11Query* copied = c.copied.get();
+        if (inTurn) {
+            Ref<ID3D11Query>& q = l.turnCopied[l.turnNext];
+            if (!q) {
+                D3D11_QUERY_DESC query = {D3D11_QUERY_EVENT, 0};
+                if (FAILED(s.d3d->CreateQuery(&query, q.put()))) q.reset();
+            }
+            if (q) copied = q.get();
+            else inTurn = false;
+        }
         Ref<ID3D11DeviceContext> context;
         s.d3d->GetImmediateContext(context.put());
         const uint64_t from = ticksNow();
@@ -4299,22 +4327,49 @@ bool glFrame(void*, int layer, void* handle, int width, int height) {
             }
         }
         context->CopyResource(l.copy.get(), l.shared.get());
-        if (c.copied) context->End(c.copied.get());
+        if (copied) context->End(copied);
         if (l.mutex) l.mutex->ReleaseSync(0);
         context->Flush();
         host.unlockDevice();
-        // Without a mutex, the copy waited for, half a second at the most: ANGLE's device may draw into its texture as soon as
-        // this returns. Not for a texture of the core's ring that came again (inTurn), drawn into only two frames from now.
-        while (c.copied && !l.mutex && !inTurn) {
-            host.lockDevice();
-            const HRESULT hr = context->GetData(c.copied.get(), nullptr, 0, 0);
-            host.unlockDevice();
-            if (hr != S_FALSE) break;
-            if (ticksToMs(ticksNow() - from) > 500.0) {
-                note("gl-wait", "a copy of an OpenGL ES frame was not done after half a second: not waited for any longer (said once)");
-                break;
+        // A query waited for, half a second at the most; whether it was done when first asked.
+        const auto wait = [&](ID3D11Query* query) {
+            bool first = true, done = false;
+            while (query) {
+                host.lockDevice();
+                const HRESULT hr = context->GetData(query, nullptr, 0, 0);
+                host.unlockDevice();
+                if (hr != S_FALSE) {
+                    done = first;
+                    break;
+                }
+                first = false;
+                if (ticksToMs(ticksNow() - from) > 500.0) {
+                    note("gl-wait", "a copy of an OpenGL ES frame was not done after half a second: not waited for any longer (said once)");
+                    break;
+                }
+                SwitchToThread();
             }
-            SwitchToThread();
+            return done;
+        };
+        // Without a mutex, the copy waited for: ANGLE's device may draw into its texture as soon as this returns. Not for a
+        // texture of the core's ring that came again (inTurn), drawn into again only one frame from now; but the copy out of
+        // the ring's texture of the frame before, which the core makes the one its GL thread draws into next as this returns
+        // (ring_frame). Mesa's device and this one share no keyed mutex nor fence, and a copy queued behind this device's busy
+        // context -- the graphics processor not done with the picture before at most of the HP Elite x3's showings -- could
+        // read a texture Mesa was already drawing the next frame into. Done by then as a rule, when the wait costs nothing; how
+        // often it was not, the gfx line says (glTurnLate).
+        if (!l.mutex && !inTurn) wait(copied);
+        if (l.turnPending) {
+            // (After a copy waited for at once, the one before it on the same context is done too.)
+            if (inTurn) {
+                ++s.glTurnWaited;
+                if (!wait(l.turnCopied[l.turnNext ^ 1].get())) ++s.glTurnLate;
+            }
+            l.turnPending = false;
+        }
+        if (inTurn) {
+            l.turnPending = true;
+            l.turnNext ^= 1;
         }
         s.glWaitTicks += ticksNow() - from;
         ++s.glFrames;
@@ -8052,6 +8107,7 @@ GfxHost::Counts GfxHost::counts() {
     c.throughMemory = s.throughMemory;
     c.keptMade = s.keptMade;
     c.keptReused = s.keptReused;
+    c.glTurnWaited = s.glTurnWaited;
     if (c.started && s.gpu) snprintf(c.device, sizeof(c.device), "%s", s.gpuName.c_str());
     return c;
 }
