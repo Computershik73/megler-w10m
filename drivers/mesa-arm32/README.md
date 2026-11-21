@@ -22,7 +22,7 @@ them; nothing in them looks for their own names. An app's own package carries th
 Built here, from the source beside them in `src/`, by `tools\build-mesa-arm32.cmd` (`... install` puts them in this
 folder; its head lists the tools and the variables that name them). `src/` is the OpenGLES-For-Windows-Phone project of
 thaihoangduylinh, who sent the first build of these DLLs (pull request #34), as its author published it
-(`OpenGLES_Snap820-WP.zip`), in its own layout:
+(`OpenGLES_Snap820-WP.zip`), in its own layout, with one change of Megler's (`megler-0025`, below):
 
 - `src/src/fdkmt`: the D3DKMT core, through which Mesa's freedreno does everything it would ask a Linux kernel driver
   for. It finds the first hardware adapter, takes the SoC from the name of its user-mode driver (`qcdx11um8996.dll`:
@@ -36,9 +36,12 @@ thaihoangduylinh, who sent the first build of these DLLs (pull request #34), as 
   with ANGLE's share-handle EGL extensions (what Megler draws through), fixes for the a5xx (guardband, stream-out,
   depth/stencil tiled in sysmem rendering, sysmem rendering by default), for `util_queue` and for EGL's display, and a
   backtrace on a crash -- with the meson cross file and the project's own build script.
-- Mesa is not here: its tag `mesa-26.2.7` (commit `b69adc2a`), cloned by the script. The patches applied as their
-  author committed them make exactly the project's Mesa commit `e963b78bede1a54e3abed2c30c618b8113b5b80c` (tree
-  `d31fe7a7`), which the script checks; the DLLs name it ("Mesa 26.2.7 (git-e963b78bed)").
+- `src/tools/mesa-build/megler-0025-*.patch`, Megler's own on top of them, and the same change in the core's `fd_kmt.c`:
+  the crash handlers and the driver's log files only when asked for ("When they run", below).
+- Mesa is not here: its tag `mesa-26.2.7` (commit `b69adc2a`), cloned by the script. The project's patches applied as
+  their author committed them make exactly its Mesa commit `e963b78bede1a54e3abed2c30c618b8113b5b80c` (tree `d31fe7a7`),
+  and `megler-0025` on it the tree `224cbc64`, both of which the script checks; the DLLs name that last commit
+  ("Mesa 26.2.7 (git-cf2899471c)": committed by the script at the patch's own time, the same on every build).
 
 These were built with VS 2017 15.9's MSVC 14.16.27023 headers and C runtime, linked in (they import `KERNEL32.dll`,
 API sets and `d3d11.dll` alone), SDK 10.0.16299 (and `d3dkmthk.h`, `d3dkmdt.h`, `d3dukmdt.h` of 10.0.19041), LLVM
@@ -57,24 +60,39 @@ time, and the separator before the name of a header in the paths assertion messa
 theirs, made by LLVM's own Windows build; `src/compiler/nir/nir.h` in these), which also changes which equal strings the
 linker merges.
 
+`megler-0025` changes no more than it says. Against the same build without it, functions paired by name through both
+builds' PDBs: `libGLESv2.dll` is the same but for the link time; `libEGL.dll`'s functions are all the same, and one
+message names `MESA_LOG_DIR` for `%TEMP%`; of `libgallium_wgl.dll`'s 29110, `wgl_screen_create`, `share_log`,
+`fd_wgl_timing` and the core's functions that kept statistics differ, `wgl_create_framebuffer` reads its static
+`use_freedreno` one byte further on (beside the new `crash_handlers`), and the rest only moved.
+
 ## When they run
 
-- The driver writes `%TEMP%\fdkmt.log` while it works: counts and times of its allocations, submits and waits, a line
-  every 2 seconds. A pbuffer whose shared texture cannot be made is told to `%TEMP%\fd_egl_share.log`,
-  `OutputDebugString` and stderr; the CoreWindow swap chain, which Megler does not use, times its presents into
-  `%TEMP%\fd_wgl.log`. Environment variables (`src/BUILD.md`, `src/src/fdkmt/README.md`, the patches) switch on more:
-  `FDKMT_DEBUG`, `FDKMT_DUMP_HANG`, `FDKMT_DUMP_FAIL`, `FD_D3DKMT_GMEM`, `FD_D3DKMT_CACHED`, `FD_MAX_BATCH_DRAWS`, ...
-- Its first screen (EGL's first `eglInitialize` on it) installs, for the whole process and first in line, a vectored
-  exception handler that writes a backtrace to its own stderr for every exception but a C++ throw, a debug print and a
-  thread name, and passes it on (`wgl_screen_create`, patches 6 and 15); also its C runtime's handlers for an invalid
-  parameter and SIGABRT. Megler's own handler, installed first in line earlier, runs after it from then on.
+Unasked, they touch nothing of the process's but what drawing needs and write no file of their own: the project's
+diagnosis, which it had always on, is something to ask for (`megler-0025`), by the process's environment before the
+DLLs load -- their C runtime, linked into each, reads it as it starts:
+
+- `MESA_CRASH_HANDLERS=1`: the first screen (EGL's first `eglInitialize` on it) installs, once a process, a vectored
+  exception handler for the whole process and first in line, which writes a backtrace to its own stderr for every
+  exception but a C++ throw, a debug print and a thread name, and passes it on (`wgl_screen_create`, patches 6 and 15);
+  and its C runtime's handlers for an invalid parameter and SIGABRT, and assertions told on stderr. Megler's own
+  exception handler then runs after it, for every guest fault, hardware breakpoint and thread stop Megler takes so.
+- `MESA_LOG_DIR=<folder>`: the driver's own log files go there -- `fdkmt.log`, the core's counts and times of its
+  allocations, submits and waits, a line every 2 seconds; `fd_egl_share.log`, the shared pbuffers it could not make
+  (told to `OutputDebugString` and stderr in any case); `fd_wgl.log`, the presents of the CoreWindow swap chain, which
+  Megler does not use.
+
+Other environment variables (`src/BUILD.md`, `src/src/fdkmt/README.md`, the patches) switch on more: `FDKMT_DEBUG`,
+`FDKMT_DUMP_HANG` and `FDKMT_DUMP_FAIL` (command buffers into `%TEMP%`), `FD_D3DKMT_GMEM`, `FD_D3DKMT_CACHED`,
+`FD_MAX_BATCH_DRAWS`, Mesa's own `FD_MESA_DEBUG`, `IR3_SHADER_DEBUG`, ... (printing a shader as text makes a temporary
+file in `%TEMP%`, Mesa's way on Windows, and removes it).
 
 SHA-256:
 
 ```
-2bb34bf884076c8e235ee4d2be331c07899d7b18bceedfd60ce55376fee6c4be  libEGL.dll
-cf18646ec1714dd2da5e0b1bf87f3dddd31cad567314d5427ef186e9fc75fd53  libGLESv2.dll
-006d353ce743393a8ec1cd6edbd2215921d01e19062643752d8c2b2daf32c0a2  libgallium_wgl.dll
+b929431be081d2531cd848b3259ba094214a821fefe66923271caff625344874  libEGL.dll
+f51646a87a3dcead4c769ab8dc9f15d4a51fe111eb3529e25f767a0e5b196a5e  libGLESv2.dll
+c9560a9a1c45cb69c3b1c98f4518553ace8216922b7c1e0dc663464e0577c9ae  libgallium_wgl.dll
 ```
 
 Licences: `LICENSES/`, whose `README.md` says which code in the DLLs is under which. Mesa is MIT for nearly all of it
