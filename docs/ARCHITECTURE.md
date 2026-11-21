@@ -1718,13 +1718,23 @@ as POSIX's unlink and rename look at the folder, not at the file), and the
 shell removes an app's folders with such files in them (`files::remove`). Facebook makes each module it downloads
 read-only (`File.setReadOnly`) and loads only one that is: "Downloaded module
 file must be read only ... read only:false" (0.1.0.671), and none of its
-language packs loaded. A directory's mode, a file's other bits and the files
-of a link to one of the phone's folders are as they were. A file's times are
+language packs loaded. It asks `File.canExecute` too (a module must be
+`!canWrite && !canExecute && canRead`), and `access` with `X_OK` said yes of
+every file until 0.1.0.748, though `stat` gave none an execute bit: Messenger
+586 still refused its language pack on 0.1.0.734. A file's owner execute bit
+is now kept by the core for as long as the process runs (`exec_bit` in
+`mg_libc_io.c`: by the host path, taken along by a rename, dropped by an
+unlink and by a file made anew), and `stat` (0110 more) and `access` with
+`X_OK` go by it: a file the app makes has none, as Android's have none; a
+directory may always be searched, and the files of the app's library folder
+are executable, as Android's package manager gives its libraries 0755. A new
+start finds a file without it. A directory's mode, a file's other bits and the
+files of a link to one of the phone's folders are as they were. A file's times are
 set as `utimensat` sets them (`mg_path_set_times`: `SetFileTime`, or for a
 file in a link through the handle its owner hands out to write it; a folder
 there is left as it is), so `File.setLastModified` changes the time. `test_file_modes`
-(`mg_storage_tests.c`), and the data app's step `file-read-only` through
-`java.io.File`.
+and `test_file_exec_bits` (`mg_storage_tests.c`), and the data app's steps
+`file-read-only` and `file-execute` through `java.io.File`.
 
 A rename is Linux's where Windows' would refuse it (`mg_host_win32.c`). Over a
 file that is open or mapped, the file in the way is put aside and removed
