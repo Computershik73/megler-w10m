@@ -88,7 +88,8 @@ DLLs load -- their C runtime, linked into each, reads it as it starts:
 In Megler both are asked for by an app's flag `mesa-diag` (a file of that name in `LocalState\flags`, or in
 `Pictures\Megler\diag\<package>\flags` over USB): the log files then go into the app's package's `LocalState`, beside
 `megler.log`, and its log copies take them (Save All Logs, `Pictures\Megler\diag`); `docs/ARCHITECTURE.md`, "Mesa's
-freedreno, chosen per app".
+freedreno, chosen per app". An app's flag `mesa-gmem` sets `FD_D3DKMT_GMEM=1`: GMEM (tiled) rendering, which the
+project's patch 0017 leaves off because it hung the GPU in some runs (`src/ISSUES.md`, 1).
 
 What they say of their errors on stderr -- Mesa's log (`MESA_LOG_LEVEL`: Megler asks for warnings and errors), the
 D3DKMT core's failures with their NTSTATUS (said always since Megler's change to `fd_kmt.c`), EGL's warnings -- is in
