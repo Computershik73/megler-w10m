@@ -8932,6 +8932,74 @@ public class Main extends Activity {
             detail = "typed: " + plain + "; set back after each: \"" + setBack + "\"; span watchers: " + spans;
             return followed && setBack.equals("abc") && watchers;
         });
+        /*
+         * A text appearance set on a field keeps its text and cursor, as on Android: setAllCaps sets the text again only when
+         * the transformation changes, and an appearance's textAllCaps="false" changes nothing. The Google app's Gemini field
+         * (RobinTextInputEditText, 17.6.63) has its input controller apply its state after every character typed (arlw.u):
+         * the text set back with the cursor it was told only where the field is not on screen (getGlobalVisibleRect) or its
+         * text is not the controller's, and its text appearance always. The appearance set the text again with the cursor at
+         * its start, and the next character went in before the others: "cba" on an HP Elite x3 (0.1.0.741).
+         */
+        step("text-appearance-keeps-cursor", () -> {
+            final java.util.List<String> told = new java.util.ArrayList<>();
+            final int[] kept = new int[2];
+            final android.widget.EditText field = new android.widget.EditText(this) {
+                @Override protected void onSelectionChanged(int start, int end) {
+                    super.onSelectionChanged(start, end);
+                    if (told == null) return;
+                    told.add(start + "," + end);
+                    kept[0] = start;
+                    kept[1] = end;
+                }
+            };
+            // The field 200 down a scrolled group 100 high, as Gemini's is in its NestedScrollView: on screen once scrolled.
+            android.widget.FrameLayout group = new android.widget.FrameLayout(this), scrolled = new android.widget.FrameLayout(this);
+            group.addView(scrolled, new android.widget.FrameLayout.LayoutParams(300, 100));
+            android.widget.FrameLayout.LayoutParams at = new android.widget.FrameLayout.LayoutParams(300, 100);
+            at.topMargin = 200;
+            scrolled.addView(field, at);
+            android.view.View none = new android.view.View(this);
+            group.addView(none, new android.widget.FrameLayout.LayoutParams(0, 0));
+            int exactly300 = android.view.View.MeasureSpec.makeMeasureSpec(300, android.view.View.MeasureSpec.EXACTLY);
+            group.measure(exactly300, exactly300);
+            group.layout(0, 0, 300, 300);
+            android.graphics.Rect seen = new android.graphics.Rect();
+            boolean below = field.getGlobalVisibleRect(new android.graphics.Rect());
+            scrolled.scrollTo(0, 200);
+            boolean onScreen = field.getGlobalVisibleRect(seen);
+            boolean noSize = none.getGlobalVisibleRect(new android.graphics.Rect());
+            field.setText("");
+            told.clear();
+            for (String typed : new String[] { "a", "b", "c" }) {
+                android.view.inputmethod.InputConnection ic = field.onCreateInputConnection(new android.view.inputmethod.EditorInfo());
+                ic.commitText(typed, 1);
+                String controllers = field.getText().toString();   // as the controller's text watcher has it
+                if (!field.getGlobalVisibleRect(new android.graphics.Rect()) || !controllers.equals(field.getText().toString())) {
+                    field.setText(controllers);
+                    field.setSelection(kept[0], kept[1]);
+                }
+                field.setTextAppearance(R.style.InputTextAppearance);
+            }
+            String typed = field.getText().toString() + " cursor " + field.getSelectionStart() + ", told " + told;
+            boolean typedInOrder = field.getText().toString().equals("abc") && field.getSelectionStart() == 3 && told.size() > 0
+                && told.get(told.size() - 1).equals("3,3");
+            // setAllCaps(false), as AppCompat's setTextAppearance calls it: the same text, the cursor where it was.
+            android.text.Editable before = field.getText();
+            field.setAllCaps(false);
+            boolean same = field.getText() == before && field.getSelectionStart() == 3;
+            // An appearance turns all caps on, one with textAllCaps="false" leaves them on, setAllCaps(false) turns them off.
+            android.widget.TextView caps = new android.widget.TextView(this);
+            caps.setText("caps");
+            caps.setTextAppearance(R.style.CapsTextAppearance);
+            boolean on = caps.isAllCaps() && caps.getTransformationMethod() != null;
+            caps.setTextAppearance(R.style.InputTextAppearance);
+            boolean stays = caps.getTransformationMethod() != null;
+            caps.setAllCaps(false);
+            boolean off = caps.getTransformationMethod() == null && !caps.isAllCaps() && caps.getText().toString().equals("caps");
+            detail = "below " + below + ", scrolled to " + onScreen + " " + seen.toShortString() + ", no size " + noSize
+                + "; typed: " + typed + "; setAllCaps(false) kept the text " + same + "; caps on " + on + ", kept " + stays + ", off " + off;
+            return !below && onScreen && seen.equals(new android.graphics.Rect(0, 0, 300, 100)) && !noSize && typedInOrder && same && on && stays && off;
+        });
     }
 
     /** Whether the first three numbers are these, each to within eps. */

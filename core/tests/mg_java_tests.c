@@ -4395,6 +4395,10 @@ static int run_data(void)
                                          /* And an edit tells the span watchers of the spans it moved: an EditText's onSelectionChanged
                                             follows the cursor as text is typed through its input connection. */
                                          "selection-follows-typing",
+                                         /* And a text appearance set on a field keeps its text and cursor (setAllCaps sets the text again
+                                            only for another transformation, textAllCaps="false" changes nothing): the Google app's
+                                            Gemini field typed "cba" for "abc". */
+                                         "text-appearance-keeps-cursor",
                                          /* And ViewGroup.cleanupLayoutState takes a group's layout request back: a group whose requestLayout
                                             calls it on itself (Compose's AndroidViewsHandler) hears each requestLayout of a child. */
                                          "cleanup-layout-state",
