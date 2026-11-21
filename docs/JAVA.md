@@ -5120,6 +5120,19 @@ done: Android's dialog that the app has stopped, a later start making the
 process again (here it stays ended until the app is started again), and the
 threads its Application started, which run on.
 
+A context made from one of such a process's -- `createConfigurationContext`,
+`createPackageContext` of the package itself, `createAttributionContext`,
+`createContext`, `createContextForSplit`, the storage contexts -- is that
+process's too (`Processes.ProcessContext.ours`): its Application, class loader
+and `ActivityManager` are the process's, where the base's made one of the app's
+own scope. The Google app's Gemini screen (`robin.main.MainActivity`, in
+`:search`) asks the Application of such a context for its object graph and
+had `:googleapp`'s, of another class scope: "Given component holder class
+VelvetMultiprocessRoot_Application does not implement interface fhmq or
+interface fhmr", which ended the app (0.1.0.739; under qemu still once
+`:search` had its SslGuard). The test app `procs` checks a configuration
+context and the package's own of each activity.
+
 ### Downloads
 
 `megler.Downloads` is the system's download provider

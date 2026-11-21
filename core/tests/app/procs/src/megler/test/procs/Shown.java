@@ -30,6 +30,13 @@ abstract class Shown extends Activity {
         Log.i("ProcsTest", who() + " intent " + getIntent().getComponent().getClassName() + " via=" + getIntent().getStringExtra("via"));
         Log.i("ProcsTest", who() + " " + App.report(this));
         Log.i("ProcsTest", who() + " providers " + App.providers());
+        // Contexts made from the activity's are its process's: their Application and class loader (the Google app's Gemini
+        // screen asks the Application of a configuration context for its object graph).
+        android.content.Context config = createConfigurationContext(new android.content.res.Configuration(getResources().getConfiguration()));
+        android.content.Context own;
+        try { own = createPackageContext(getPackageName(), 0); } catch (Exception e) { own = null; }
+        Log.i("ProcsTest", who() + " derived config=" + App.which(config.getApplicationContext()) + " loader=" + (config.getClassLoader() == App.class.getClassLoader())
+            + " package=" + (own == null ? "none" : App.which(own.getApplicationContext()) + " loader=" + (own.getClassLoader() == App.class.getClassLoader())));
         if (getCallingActivity() != null) {
             // (its process's provider taken out of its list: the first process's list keeps its own, onActivityResult)
             java.security.Security.removeProvider("ProcsTest");

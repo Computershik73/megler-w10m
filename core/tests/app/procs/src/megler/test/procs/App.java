@@ -94,7 +94,7 @@ public class App extends Application {
     }
 
     /* An Application as this process's classes see it: the process it was made in and its number; another's by its class. */
-    private static String which(Object o) {
+    static String which(Object o) {
         if (o instanceof App) return ((App) o).madeIn + "#" + ((App) o).serial;
         return o == null ? "null" : "a " + o.getClass().getName() + " of another loader";
     }

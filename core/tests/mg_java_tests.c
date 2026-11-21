@@ -5798,6 +5798,11 @@ static int run_procs(void)
     second = wait_line(line, 0, 60);
     CHECK(second >= 0 && !strstr(line_at(second), "first=ProcsTest")
           && strstr(line_at(second), " named=none digest=none(NoSuchAlgorithmException) digestNamed=none(NoSuchProviderException)"));
+    /* A context made from an activity's (of another configuration, the package's own again) is its process's. */
+    snprintf(line, sizeof(line), "I/ProcsTest: main derived config=megler.test.procs#1 loader=true package=megler.test.procs#1 loader=true");
+    CHECK(wait_line(line, 0, 60) >= 0);
+    snprintf(line, sizeof(line), "I/ProcsTest: far derived config=megler.test.procs:far#1 loader=true package=megler.test.procs:far#1 loader=true");
+    CHECK(wait_line(line, 0, 60) >= 0);
     snprintf(made, sizeof(made), "providers after %s removed its:", far ? "Main" : "Far");
     providers_line(line, sizeof(line), far ? "far" : "main", made, own);
     CHECK(wait_line(line, 0, 60) >= 0);

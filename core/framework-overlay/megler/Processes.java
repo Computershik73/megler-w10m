@@ -373,6 +373,29 @@ public final class Processes {
                 return activities;
             }
         }
+        /*
+         * A context made from this one -- of another configuration, storage, attribution, split, or the package's own again --
+         * is this process's too, as each is on Android: the base's would be a context of the app's own scope, whose
+         * Application and class loader are the own process's. The Google app's Gemini screen (robin.main.MainActivity, in
+         * ":search") asks the Application of such a context for its object graph, and had the own ":googleapp"'s, of
+         * another class scope: "Given component holder class VelvetMultiprocessRoot_Application does not implement
+         * interface fhmq or interface fhmr", and the whole app ended with it (0.1.0.739). Another package's context is that
+         * package's, as it was.
+         */
+        private Context ours(Context made) {
+            if (made == null || made == this) return made;
+            if (made == getBaseContext()) return this;
+            return made instanceof ContextImpl ? new ProcessContext(scope, made) : made;
+        }
+        @Override public Context createConfigurationContext(android.content.res.Configuration c) { return ours(super.createConfigurationContext(c)); }
+        @Override public Context createDeviceProtectedStorageContext() { return ours(super.createDeviceProtectedStorageContext()); }
+        @Override public Context createCredentialProtectedStorageContext() { return ours(super.createCredentialProtectedStorageContext()); }
+        @Override public Context createPackageContext(String pkg, int flags) throws android.content.pm.PackageManager.NameNotFoundException {
+            return ours(super.createPackageContext(pkg, flags));
+        }
+        @Override public Context createAttributionContext(String tag) { return ours(super.createAttributionContext(tag)); }
+        @Override public Context createContext(android.content.ContextParams params) { return ours(super.createContext(params)); }
+        @Override public Context createContextForSplit(String split) { return ours(super.createContextForSplit(split)); }
     }
 
     /** An ActivityManager that has the process running with this pid named as the scope's. */
