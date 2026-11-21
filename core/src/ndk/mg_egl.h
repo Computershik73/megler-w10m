@@ -73,6 +73,8 @@ void mg_egl_set_provider(void *(*resolve)(const char *name));
  * below 9_3 among them), apart from the app's own and anew at each call; which attempt made it, in `how`. False when none.
  */
 bool mg_egl_display_try(char *how, size_t size);
+/* Whether the package's OpenGL ES is Mesa's freedreno (MEGLER_GLES=mesa) rather than ANGLE: frames are read back, not shared. */
+bool mg_egl_is_mesa(void);
 
 /*
  * A pbuffer's DXGI keyed mutex, which ANGLE shares its pbuffers' textures with (NULL when it has none), and that mutex acquired

@@ -27,6 +27,7 @@ struct mg_voice {
     u64 position;
     mg_voice_done_fn done;
     void *done_user;
+    u32 mixed_to;                      /* frames of the chunk being mixed it has given; less than a chunk: it ran dry there */
     struct mg_voice *next;
 };
 
@@ -51,15 +52,31 @@ static float sample_at(const mg_voice *v, const u8 *frame, int channel)
     return (float)(i32)mg_rd32(p) / 2147483648.0f;
 }
 
-/* Adds one chunk of a voice to the mix. Returns how many of its buffers ended. Called with the lock held. */
-static u32 mix_voice(mg_voice *v, float *mix, int frames)
+/*
+ * Adds a voice to the mix from frame `from` of the chunk to `frames`, or to where its queue runs dry (v->mixed_to). Returns
+ * how many of its buffers ended. Called with the lock held.
+ */
+static u32 mix_voice(mg_voice *v, float *mix, int from, int frames)
 {
     u32 ended = 0;
     int i;
-    for (i = 0; i < frames && v->count; i++) {
+    for (i = from; i < frames && v->count; i++) {
         const queued *q = &v->queue[v->head];
         const u8 *frame = q->data + (size_t)v->pos * v->frame_bytes;
         float l = sample_at(v, frame, 0), r = v->channels > 1 ? sample_at(v, frame, 1) : l;
+        if (v->frac) {
+            /*
+             * Between two frames of a voice of another rate: the line from this one to the next (in the next buffer, at
+             * the end of this one), where the nearest frame alone dropped or doubled one in every dozen of a 48 kHz
+             * voice's at 44.1 and Kingdom Rush Vengeance's music crackled.
+             */
+            const u8 *next = v->pos + 1 < q->frames ? frame + v->frame_bytes
+                             : v->count > 1           ? v->queue[(v->head + 1) % MAX_QUEUE].data
+                                                      : frame;
+            const float t = (float)v->frac / 65536.0f, nl = sample_at(v, next, 0), nr = v->channels > 1 ? sample_at(v, next, 1) : nl;
+            l += (nl - l) * t;
+            r += (nr - r) * t;
+        }
         mix[i * 2] += l * v->gain * v->gain_l;
         mix[i * 2 + 1] += r * v->gain * v->gain_r;
         v->frac += v->step;
@@ -75,6 +92,7 @@ static u32 mix_voice(mg_voice *v, float *mix, int frames)
         }
         if (!v->count) v->pos = v->frac = 0;
     }
+    v->mixed_to = (u32)i;
     return ended;
 }
 
@@ -158,31 +176,50 @@ static MG_HOSTCB void mixer_thread(void *arg)
         bool mixed = false, heard = false;
         mg_voice *v, **link;
         memset(mix, 0, sizeof(mix));
-        mg_lock_acquire(&g_lock);
-        for (link = &g_voices; (v = *link) != NULL;) {
-            if (v->dead) {
-                *link = v->next;
-                free(v);
-                continue;
-            }
-            if (v->playing && v->count) {
-                u32 ended = mix_voice(v, mix, MG_AUDIO_CHUNK);
-                mixed = true;
-                if (ended && v->done && ndone < (int)MG_COUNT(done)) {
-                    done[ndone].v = v;
-                    done[ndone].ended = ended;
-                    done[ndone].fn = v->done;
-                    done[ndone].user = v->done_user;
-                    ndone++;
+        /*
+         * A voice whose queue runs dry within the chunk has its callbacks called, and what they queued is mixed into the rest of
+         * the same chunk -- a few rounds at the most. An app that keeps one buffer queued and gives the next from its callback
+         * (cocos2d-x's mixer: 512 frames at a time) was heard for 512 frames of every 882, the rest of the second chunk silent
+         * until the next one began: Kingdom Rush Vengeance's crackle, 50 gaps a second. Android's audio thread asks for the next
+         * buffer as the last one runs out, and plays on.
+         */
+        {
+            int round;
+            for (round = 0; round < 4; round++) {
+                bool again = false;
+                ndone = 0;
+                mg_lock_acquire(&g_lock);
+                for (link = &g_voices; (v = *link) != NULL;) {
+                    if (v->dead) {
+                        *link = v->next;
+                        free(v);
+                        continue;
+                    }
+                    if (round == 0) v->mixed_to = 0;
+                    if (v->playing && v->count && v->mixed_to < MG_AUDIO_CHUNK && (round == 0 || v->mixed_to > 0)) {
+                        u32 ended = mix_voice(v, mix, (int)v->mixed_to, MG_AUDIO_CHUNK);
+                        mixed = true;
+                        if (ended && v->done && ndone < (int)MG_COUNT(done)) {
+                            done[ndone].v = v;
+                            done[ndone].ended = ended;
+                            done[ndone].fn = v->done;
+                            done[ndone].user = v->done_user;
+                            ndone++;
+                            if (v->mixed_to < MG_AUDIO_CHUNK) again = true;
+                        }
+                    } else if (round > 0) {
+                        v->mixed_to = MG_AUDIO_CHUNK;   /* (nothing more of it in this chunk) */
+                    }
+                    link = &v->next;
                 }
+                mg_lock_release(&g_lock);
+                /* The app refills its queue from here, as it does from Android's audio thread. */
+                for (i = 0; i < ndone; i++) {
+                    u32 k;
+                    for (k = 0; k < done[i].ended; k++) done[i].fn(done[i].v, done[i].user);
+                }
+                if (!again) break;
             }
-            link = &v->next;
-        }
-        mg_lock_release(&g_lock);
-        /* The app refills its queue from here, as it does from Android's audio thread. */
-        for (i = 0; i < ndone; i++) {
-            u32 k;
-            for (k = 0; k < done[i].ended; k++) done[i].fn(done[i].v, done[i].user);
         }
         /*
          * Whether anything of this chunk is heard: a voice playing zeroes, or too low for 16 bits (a sample is cut towards
@@ -198,8 +235,29 @@ static MG_HOSTCB void mixer_thread(void *arg)
          * pace, as with no output.
          */
         if (g_host_open && run->audio.write && !mg_run_over()) {
+            /*
+             * A limiter, not a hard clip: voices summed past full scale were cut flat at 32767 and crackled (Kingdom Rush
+             * Vengeance's effects, many at once: peak 32766). The chunk's gain comes down at once to what keeps its peak
+             * under 0.95, and goes back up over about a quarter of a second; past 0.9 what is left is bent softly towards 1.
+             */
+            static float gain = 1.0f;
+            float peak = 0.0f, want;
             for (i = 0; i < MG_AUDIO_CHUNK * 2; i++) {
-                float s = mix[i] * 32767.0f;
+                float a = mix[i] < 0 ? -mix[i] : mix[i];
+                if (a > peak) peak = a;
+            }
+            want = peak * gain > 0.95f ? 0.95f / peak : 1.0f;
+            if (want < gain) gain = want;
+            else gain += (want - gain) * 0.04f;
+            for (i = 0; i < MG_AUDIO_CHUNK * 2; i++) {
+                float x = mix[i] * gain, a = x < 0 ? -x : x, s;
+                if (a > 0.9f) {
+                    /* (0.9 to 1 and beyond into 0.9 to 1: a + k / (1 + k) with k the excess over 0.9, scaled.) */
+                    float k = (a - 0.9f) * 10.0f;
+                    a = 0.9f + 0.1f * k / (1.0f + k);
+                    x = x < 0 ? -a : a;
+                }
+                s = x * 32767.0f;
                 out[i] = (i16)(s > 32767.0f ? 32767 : s < -32768.0f ? -32768 : (i32)s);
             }
             record(out, MG_AUDIO_CHUNK);

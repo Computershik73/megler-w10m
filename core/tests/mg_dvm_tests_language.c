@@ -480,8 +480,8 @@ static void test_init(void)
     CHECK(mg_dvm_get_static("java/lang/Integer", "MAX_VALUE", &v) && v.i == INT32_MAX);
     CHECK(mg_dvm_get_static("java/lang/Long", "MIN_VALUE", &v) && v.j == INT64_MIN);
     CHECK(mg_dvm_get_static("java/lang/Math", "PI", &v) && v.d == 3.141592653589793);
-    CHECK(mg_dvm_get_static("java/lang/Float", "MAX_VALUE", &v) && v.f == 3.4028235e38f);
-    CHECK(mg_dvm_get_static("java/lang/Double", "MIN_VALUE", &v) && v.d == 4.9e-324);
+    CHECK(mg_dvm_get_static("java/lang/Float", "MAX_VALUE", &v) && v.i == 0x7f7fffff); /* 3.4028235e38f by its bits: a literal MSVC 14.16 calls too big */
+    CHECK(mg_dvm_get_static("java/lang/Double", "MIN_VALUE", &v) && v.j == 1); /* 4.9e-324, whose bits are 1: a literal MSVC 14.16 calls too big */
     CHECK(mg_dvm_get_static("java/lang/Character", "MAX_VALUE", &v) && v.c == 0xFFFF);
     CHECK_STR(thrown(), "");
 }

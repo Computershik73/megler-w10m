@@ -64,7 +64,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 JDK="${MEGLER_JDK:-/c/Program Files/Java/jdk1.8.0_202}"
 SDK="${MEGLER_ANDROID_SDK:-$USERPROFILE/Documents}"
-BT="$SDK/build-tools/29.0.3"
+BT="$SDK/build-tools/${MEGLER_BUILD_TOOLS_VERSION:-29.0.3}"
 NDK="${MEGLER_NDK:-$USERPROFILE/Documents/android-ndk-r21e}"
 NDKCC="$NDK/toolchains/llvm/prebuilt/windows-x86_64/bin/clang.exe"
 JAR="$SDK/platforms/android-29/android.jar"

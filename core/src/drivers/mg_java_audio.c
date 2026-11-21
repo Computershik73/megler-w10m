@@ -472,6 +472,37 @@ static u8 *bytes_at(i32 fd, i64 off, i64 len, size_t *out)
     return d;
 }
 
+/* ------------------------------------------------- the decoder, for native code's players (ndk/mg_audio.h) */
+
+void *mg_audio_dec_open_fd(int fd, i64 offset, i64 length)
+{
+    size_t len = 0;
+    u8 *d = bytes_at(fd, offset, length, &len);
+    return d ? dec_open(d, len) : NULL;
+}
+
+void *mg_audio_dec_open_path(const char *guest_path)
+{
+    char *host = mg_fs_host_path(guest_path);
+    int fd = host ? mg_fd_open_host(host, 0) : -1;
+    void *d = fd >= 0 ? mg_audio_dec_open_fd(fd, 0, -1) : NULL;
+    if (fd >= 0) mg_fd_close(fd);
+    free(host);
+    return d;
+}
+
+void mg_audio_dec_info(void *dec, int *rate, int *channels, u32 *ms)
+{
+    decoder *d = (decoder *)dec;
+    *rate = d->rate;
+    *channels = d->channels;
+    *ms = d->media ? (u32)(d->duration_us / 1000) : d->rate ? (u32)(d->frames * 1000 / d->rate) : 0;
+}
+
+int mg_audio_dec_read(void *dec, i16 *out, int frames) { return dec ? (int)dec_read((decoder *)dec, out, frames) : 0; }
+void mg_audio_dec_seek(void *dec, i64 frame) { if (dec) dec_seek((decoder *)dec, frame); }
+void mg_audio_dec_close(void *dec) { if (dec) dec_close((decoder *)dec); }
+
 N(Audio_decOpen)
 {
     size_t len = 0;

@@ -46,7 +46,9 @@ uint64_t memoryUsage() { return gMemoryUsage.load(std::memory_order_relaxed); }
 #if defined(MG_ELF_HOST)
 const wchar_t* const angleFiles[] = {L"libGLESv2.dll", L"libEGL.dll"};
 #else
-const wchar_t* const angleFiles[] = {L"vcruntime140.dll", L"msvcp140.dll", L"mozglue.dll", L"libGLESv2.dll", L"libEGL.dll"};
+const wchar_t* const angleOwnFiles[] = {L"vcruntime140.dll", L"msvcp140.dll", L"mozglue.dll", L"libGLESv2.dll", L"libEGL.dll"};
+// MEGLER_GLES=mesa (tools/build-appx.sh): Mesa's freedreno in ANGLE's place, its C runtime linked in.
+const wchar_t* const mesaFiles[] = {L"libgallium_wgl.dll", L"libGLESv2.dll", L"libEGL.dll"};
 #endif
 
 DWORD WINAPI threadEntry(void* parameter) {
@@ -257,6 +259,23 @@ void initializeCore() {
 }
 
 bool canRunAndroidCode() { return gCanRun; }
+
+#if !defined(MG_ELF_HOST)
+// Which of the two the package has: Mesa's where its gallium DLL is there.
+struct GlesFiles {
+    const wchar_t* const* list;
+    size_t count;
+    const wchar_t* const* begin() const { return list; }
+    const wchar_t* const* end() const { return list + count; }
+    size_t size() const { return count; }
+};
+const GlesFiles& glesFiles() {
+    static const GlesFiles files_ = files::exists(installDirectory() + L"\\libgallium_wgl.dll") ? GlesFiles{mesaFiles, std::size(mesaFiles)}
+                                                                                              : GlesFiles{angleOwnFiles, std::size(angleOwnFiles)};
+    return files_;
+}
+#define angleFiles glesFiles()
+#endif
 
 const AngleStatus& angle() {
     static const AngleStatus status = [] {

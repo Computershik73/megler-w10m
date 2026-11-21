@@ -145,6 +145,8 @@
 #include <wincodec.h>
 
 #include "player/GfxHost.h"
+#include "shell/Files.h"
+#include "shell/Platform.h"
 
 #include <algorithm>
 #include <atomic>
@@ -3853,6 +3855,9 @@ struct Composition {
         Ref<ID3D11Texture2D> copy;   // its last frame, copied out of it
         Ref<ID2D1Bitmap1> frame;     // the copy as Direct2D draws it: rows bottom first, alpha ignored (a frame is opaque)
         Ref<ID2D1Bitmap1> translucent; // the same copy with its alpha, premultiplied, for a layer over the views that keeps it
+        /// The textures of a surface whose frames come in turn from several (the core's ring, on Mesa): each opened once, by its
+        /// handle. Such a surface's texture is drawn into again only two frames after it came, so its copy is not waited for.
+        std::vector<std::pair<void*, Ref<ID3D11Texture2D>>> opened;
     };
     /// A layer started again for another texture: its place and flags kept, all else let go.
     static void reset(Layer& l) {
@@ -3900,6 +3905,14 @@ void forgetVideo(int id) {
         c.pending.include(c.videos[i].clip);
         c.videos.erase(c.videos.begin() + std::ptrdiff_t(i));
     }
+}
+
+/// Whether the OpenGL ES frames' shared textures hold their rows top first: Mesa's (freedreno over D3DKMT, in the package
+/// as libgallium_wgl.dll), which renders into the D3D11 texture as Direct3D lays it out, where ANGLE's keep OpenGL's order,
+/// the bottom row first, which the composing here is made for. GTA: Vice City's frames came out upside down on Mesa.
+bool glFramesTopFirst() {
+    static const bool topFirst = files::exists(platform::installDirectory() + L"\\libgallium_wgl.dll");
+    return topFirst;
 }
 
 /// The premultiplied picture of a translucent layer's last frame (the same
@@ -3969,6 +3982,7 @@ bool composeWindow(ID2D1Bitmap1* onto, Box part) {
             dc->SetTransform(Matrix3x2F::Identity());
             dc->PushAxisAlignedClip(D2D1::RectF(float(b.l), h - float(b.b), float(b.r), h - float(b.t)), D2D1_ANTIALIAS_MODE_ALIASED);
             const D2D1_RECT_F at = D2D1::RectF(float(layer.rect.l), h - float(layer.rect.b), float(layer.rect.r), h - float(layer.rect.t));
+            if (glFramesTopFirst()) dc->SetTransform(Matrix3x2F(1, 0, 0, -1, 0, at.top + at.bottom));
             dc->DrawBitmap(layer.frame.get(), &at, 1.0f, D2D1_INTERPOLATION_MODE_NEAREST_NEIGHBOR, nullptr, nullptr);
             dc->PopAxisAlignedClip();
             dc->SetTransform(turned);
@@ -4018,6 +4032,7 @@ bool composeWindow(ID2D1Bitmap1* onto, Box part) {
         dc->SetPrimitiveBlend(frame ? D2D1_PRIMITIVE_BLEND_SOURCE_OVER : D2D1_PRIMITIVE_BLEND_COPY);
         dc->PushAxisAlignedClip(D2D1::RectF(float(b.l), h - float(b.b), float(b.r), h - float(b.t)), D2D1_ANTIALIAS_MODE_ALIASED);
         const D2D1_RECT_F at = D2D1::RectF(float(layer.rect.l), h - float(layer.rect.b), float(layer.rect.r), h - float(layer.rect.t));
+        if (glFramesTopFirst()) dc->SetTransform(Matrix3x2F(1, 0, 0, -1, 0, at.top + at.bottom));
         dc->DrawBitmap(frame ? frame : layer.frame.get(), &at, 1.0f, D2D1_INTERPOLATION_MODE_NEAREST_NEIGHBOR, nullptr, nullptr);
         dc->PopAxisAlignedClip();
         dc->SetPrimitiveBlend(D2D1_PRIMITIVE_BLEND_COPY);
@@ -4110,6 +4125,28 @@ bool glFrame(void*, int layer, void* handle, int width, int height) {
         std::lock_guard<std::mutex> lock(c.mutex);
         c.layered = true;
         Composition::Layer& l = c.layers[layer];
+        if (l.handle != handle && l.shared && l.frame && l.copy && l.width == width && l.height == height) {
+            // Another of the same surface's textures, in turn: the one opened before, or opened now if it is of the same size.
+            Ref<ID3D11Texture2D> other;
+            for (auto& o : l.opened)
+                if (o.first == handle) other = o.second;
+            if (!other) {
+                D3D11_TEXTURE2D_DESC have = {}, desc = {};
+                l.copy->GetDesc(&have);
+                if (SUCCEEDED(s.d3d->OpenSharedResource(handle, __uuidof(ID3D11Texture2D), reinterpret_cast<void**>(other.put())))) {
+                    other->GetDesc(&desc);
+                    if (desc.Width != have.Width || desc.Height != have.Height || (desc.MiscFlags & D3D11_RESOURCE_MISC_SHARED_KEYEDMUTEX) || l.mutex ||
+                        l.opened.size() >= 4)
+                        other.reset();
+                    else
+                        l.opened.emplace_back(handle, other);
+                }
+            }
+            if (other) {
+                l.shared = other;
+                l.handle = handle;
+            }
+        }
         if (!sameTexture(l.handle, l.width, l.height, handle, width, height) || !l.shared || !l.frame) {
             Composition::reset(l);
             HRESULT hr = s.d3d->OpenSharedResource(handle, __uuidof(ID3D11Texture2D), reinterpret_cast<void**>(l.shared.put()));
@@ -4149,6 +4186,7 @@ bool glFrame(void*, int layer, void* handle, int width, int height) {
             l.handle = handle;
             l.width = width;
             l.height = height;
+            l.opened.emplace_back(handle, l.shared);
         }
         if (!c.copied) {
             D3D11_QUERY_DESC query = {D3D11_QUERY_EVENT, 0};
@@ -4175,7 +4213,7 @@ bool glFrame(void*, int layer, void* handle, int width, int height) {
         host.unlockDevice();
         // Without a mutex, the copy waited for, half a second at the most: ANGLE's device may draw into its texture as soon as
         // this returns.
-        while (c.copied && !l.mutex) {
+        while (c.copied && !l.mutex && l.opened.size() < 2) {
             host.lockDevice();
             const HRESULT hr = context->GetData(c.copied.get(), nullptr, 0, 0);
             host.unlockDevice();
