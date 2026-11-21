@@ -18,7 +18,7 @@
   the hang rate no more than they changed where the IB1 was cut.
 - **Proof.** GTA at 2560x1440 (2392 while the phone's bars show), the same DLLs: with the pieces submitted apart
   (`FDKMT_SPLIT_SUBMITS=1`) hung at 21.7 s; with one buffer, 0 hangs in 4 runs of 222, 490, 378 and 314 s (some 36000
-  frames). The test app `megler.test.gmem` (scissored/masked clears read back, full-screen 1440x2112) never hung even
+  frames), in 3 more with Mesa's measurement switches (below), and in 493 s (8682 frames) with the DLLs as committed. The test app `megler.test.gmem` (scissored/masked clears read back, full-screen 1440x2112) never hung even
   before: its IB1 never outgrew one buffer.
 - **Fix** (`fd_kmt.c`, `kmt_one_buffer`): a submit's pieces copied, in order, into one write-combined buffer (four in
   turn, each reused once its fence has passed; 256 KB, more if needed), submitted as one command. `FDKMT_SPLIT_SUBMITS=1`
@@ -41,6 +41,15 @@
   hardware binning on, and every batch with `restore` color+depth+stencil and `resolve` color+depth -- GTA never clears,
   and Megler's window surfaces are pbuffers (shared Direct3D textures), whose contents Mesa keeps -- some 55 MB of memory
   traffic a batch that sysmem does not have, for batches of 5 to 54 draws.
+- GTA draws its 3D scene into a 764x460 FBO (3 bins, 450-700 draws, cleared: GMEM's case) and composites it with its HUD
+  into the 2560x1440 pbuffer in batches of 5-38 draws, which pay the restore and resolve above. Measured, each a run of
+  ~6 minutes in the same scene, Mesa's experiments, not in the DLLs: restores and the depth resolve left out (what
+  invalidating the window surface at a frame's start and the depth before the swap would allow) 25.5 fps, waiting ~9
+  ms; bypass for uncleared batches of fewer than 20 draws 19 fps (the composite has 36-38); fewer than 64 -- the scene
+  in GMEM, the composite in bypass -- 26.9 fps, waiting 5.7 ms. So for GTA GMEM wins nothing yet: in sysmem it is mostly
+  CPU-bound already (ANGLE in the owner's run: 29.7). Where GMEM can pay: invalidating window surfaces as Android's
+  are (`EGL_BUFFER_DESTROYED`: Megler's `mg_java_gl.c`), and a better bypass/GMEM choice than freedreno's a5xx
+  fallback (`fallback_use_bypass`: any depth test or more than 5 draws means GMEM), for apps that are GPU-bound.
 - Present: copying into the FLIP swapchain is held until vsync (~8–11 ms wait at 60 Hz) — that is vsync waiting, not real cost.
 
 ## 3. Not done / limitations
