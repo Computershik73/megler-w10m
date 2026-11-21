@@ -8865,6 +8865,61 @@ public class Main extends Activity {
                     middle, edge, sharpEdge, side, far, listedMiddle, listedEdge, listedFar, kept);
             return blurred && recorded && kept && sharpEdge == 0xFFFFFFFF;
         });
+        /*
+         * An edit tells the span watchers of the spans it moved, as Android's SpannableStringBuilder does: text typed into an
+         * EditText through its input connection (as megler.InputMethods types the keyboard's text) moves the cursor, and the
+         * field's onSelectionChanged hears where to, after each character; a style after the edit is told its new place. Nothing
+         * was told. A field that keeps its cursor as onSelectionChanged says and sets its text back with that cursor after each
+         * change -- as the Google app's Gemini field keeps it (RobinTextInputEditText) -- had the cursor put back at the start
+         * every time, and the next character typed went in before the others: "cba".
+         */
+        step("selection-follows-typing", () -> {
+            final java.util.List<String> told = new java.util.ArrayList<>();
+            final int[] kept = new int[2];
+            android.widget.EditText field = new android.widget.EditText(this) {
+                @Override protected void onSelectionChanged(int start, int end) {
+                    super.onSelectionChanged(start, end);
+                    if (told == null) return;
+                    told.add(start + "," + end);
+                    kept[0] = start;
+                    kept[1] = end;
+                }
+            };
+            field.setText("");
+            told.clear();
+            android.view.inputmethod.InputConnection ic = field.onCreateInputConnection(new android.view.inputmethod.EditorInfo());
+            for (String typed : new String[] { "a", "b", "c" }) ic.commitText(typed, 1);
+            String plain = field.getText().toString() + " cursor " + field.getSelectionStart() + ", told " + told;
+            boolean followed = field.getText().toString().equals("abc") && field.getSelectionStart() == 3 && told.contains("1,1") && told.contains("2,2")
+                && told.size() > 0 && told.get(told.size() - 1).equals("3,3");
+            // The field whose text is set back after each character, with the cursor it was told.
+            field.setText("");
+            for (String typed : new String[] { "a", "b", "c" }) {
+                ic = field.onCreateInputConnection(new android.view.inputmethod.EditorInfo());
+                ic.commitText(typed, 1);
+                int start = kept[0], end = kept[1];
+                field.setText(field.getText().toString());
+                field.setSelection(start, end);
+            }
+            String setBack = field.getText().toString();
+            // A style after the place typed into, told its new place; and one before it, told nothing.
+            android.text.SpannableStringBuilder t = new android.text.SpannableStringBuilder("hello world");
+            final java.util.List<String> spans = new java.util.ArrayList<>();
+            Object bold = new android.text.style.StyleSpan(android.graphics.Typeface.BOLD), first = new android.text.style.UnderlineSpan();
+            t.setSpan(bold, 6, 11, android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+            t.setSpan(first, 0, 2, android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+            t.setSpan(new android.text.SpanWatcher() {
+                public void onSpanAdded(android.text.Spannable s, Object what, int st, int en) {}
+                public void onSpanRemoved(android.text.Spannable s, Object what, int st, int en) {}
+                public void onSpanChanged(android.text.Spannable s, Object what, int os, int oe, int ns, int ne) {
+                    if (what == bold || what == first) spans.add((what == bold ? "bold " : "first ") + os + "-" + oe + " to " + ns + "-" + ne);
+                }
+            }, 0, t.length(), android.text.Spanned.SPAN_INCLUSIVE_INCLUSIVE);
+            t.insert(5, ",");
+            boolean watchers = spans.equals(java.util.Collections.singletonList("bold 6-11 to 7-12"));
+            detail = "typed: " + plain + "; set back after each: \"" + setBack + "\"; span watchers: " + spans;
+            return followed && setBack.equals("abc") && watchers;
+        });
     }
 
     /** Whether the first three numbers are these, each to within eps. */

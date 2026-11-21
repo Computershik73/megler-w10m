@@ -4367,6 +4367,9 @@ static int run_data(void)
                                          /* And a paint's BlurMaskFilter blurs what it fills, into a bitmap and through a node's list:
                                             the glows of the Google app's Gemini screen were solid ovals. */
                                          "blur-mask-filter",
+                                         /* And an edit tells the span watchers of the spans it moved: an EditText's onSelectionChanged
+                                            follows the cursor as text is typed through its input connection. */
+                                         "selection-follows-typing",
                                          /* And ViewGroup.cleanupLayoutState takes a group's layout request back: a group whose requestLayout
                                             calls it on itself (Compose's AndroidViewsHandler) hears each requestLayout of a child. */
                                          "cleanup-layout-state",
