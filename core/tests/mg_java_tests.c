@@ -120,6 +120,7 @@
 #include "mg_bluetooth_standin.h"
 #include "mg_codec_standin.h"
 #include "mg_gfx_standin.h"
+#include "mg_gfx_record.h"
 #include "mg_gl_standin.h"
 #include "mg_tests.h"
 
@@ -662,11 +663,17 @@ static MEGLER_CB void angle_draw_texture(void *user, void *canvas, int id, float
     mg_lock_release(&AT.lock);
 }
 
+/* With MG_GFX_RECORD: the app's drawing written to that file (mg_gfx_record.c), the window's canvas last shown, which each
+   picture written puts into the record, for `tools/build-tests.sh win`'s --gfx-replay to draw again with Direct2D. */
+static bool g_recording;
+static void *volatile g_shown_canvas;
+
 static MEGLER_CB bool present_canvas(void *user, void *canvas, int x, int y, int width, int height)
 {
     const void *pixels;
     int w, h, stride, r;
     if (!mg_gfx_standin_pixels(canvas, &pixels, &w, &h, &stride)) return false;
+    g_shown_canvas = canvas;
     mg_atomic_xchg(&g_canvas_showing, 1);
     mg_lock_acquire(&GL.lock);
     if (GL.used) {
@@ -717,6 +724,7 @@ static int count_colour(const int r[4], u32 rgb)
 static void write_picture(const char *name)
 {
     char *path;
+    if (g_recording && g_shown_canvas) mg_gfx_record_shown(g_shown_canvas);
     if (!W.dir || !W.pixels) return;
     path = mg_sprintf("%s/%s.bmp", W.dir, name);
     mg_lock_acquire(&W.lock);
@@ -1862,6 +1870,7 @@ static bool start(const char *apk, const char *android_root)
         cfg.gfx.texture_frame = angle_texture_frame;
         cfg.gfx.draw_texture = angle_draw_texture;
     }
+    if (getenv("MG_GFX_RECORD") && *getenv("MG_GFX_RECORD")) g_recording = mg_gfx_record_wrap(&cfg.gfx, getenv("MG_GFX_RECORD"));
     cfg.keyboard.show = keyboard_show;
     cfg.keyboard.hide = keyboard_hide;
     cfg.bars.wanted = bars_wanted;
@@ -6235,6 +6244,7 @@ static int run_app(void)
         write_picture(name);
     }
     if (!running()) say("  the app ended with status %d%s%s", g_status, g_reason[0] ? ": " : "", g_reason);
+    if (g_recording) mg_gfx_record_end();
     /* With MG_JAVA_PROFILE=start: what ran from the app's start to the end of the script. */
     profile_end("start");
     if (after >= 0 && after < g_script_count) {

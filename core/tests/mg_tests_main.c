@@ -38,7 +38,9 @@
  *       start one of the Java test apps (core/tests/app) through megler_run on that Android root, with a stand-in
  *       for the shell's drawing; check what it logs and draws, touch it, press Back; write each picture as a BMP
  *   mg_tests --java app <apk> <data dir> <android root> <picture dir | -> <verbose> <WIDTHxHEIGHT@DPI> [tap:X,Y | drag:X,Y,X2,Y2 | wait:MS | back | key:CODE]...
- *       the same for any APK: started, its pictures written (app-1, and one more after each step of the script), nothing checked
+ *       the same for any APK: started, its pictures written (app-1, and one more after each step of the script), nothing checked;
+ *       with MG_GFX_RECORD=<record file> its drawing is recorded as --gfx-record's is, each of those pictures in it, for
+ *       --gfx-replay to draw again with the shell's Direct2D (its pictures <name>-N are the app-N of the run)
  *   mg_tests --gfx-windows <picture dir | -> [gpu | warp | memory | copy]
  *       the shell's drawing (app/Megler/player/GfxHost.cpp: Direct2D, DirectWrite, WIC) through megler_gfx_host: scenes drawn,
  *       written as PNG files, compared with the stand-in's and checked (mg_gfx_scenes.c). On this machine's graphics processor
