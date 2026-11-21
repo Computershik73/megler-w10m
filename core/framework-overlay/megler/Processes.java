@@ -34,6 +34,11 @@
 // them: Play Store's download service broadcasts its progress with a parcelled proto of its own scope's class, and the main
 // process's receiver ended casting it to its own ("ProtoParsers$InternalDontUse cannot be cast to
 // ProtoParsers$InternalDontUse").
+//
+// Each process has a list of security providers of its own (java.security.Security), as on Android: libcore keeps one for
+// each of these scopes, a fresh process's at first (ownProviders; core/libcore-overlay/sun/security/jca/Providers.java.members).
+// The Google app's Application puts Google's SslGuard first in the list of every process it runs in and ends when it cannot;
+// with one list for all, its ":search" ended so whenever ":googleapp" had put SslGuard there before it.
 package megler;
 
 import android.app.ActivityManager;
@@ -112,6 +117,35 @@ public final class Processes {
         return l;
     }
 
+    /**
+     * The platform has put its security providers in (AndroidKeyStore, the app's network security configuration's) and the
+     * app's code is about to run (megler.AppRunner.run): another of the app's processes, made later, begins with the list of
+     * providers as it is now, as a fresh process of Android's would. Each of them has a list of its own
+     * (java.security.Security: core/libcore-overlay/sun/security/jca/Providers.java.members), which libcore keeps.
+     */
+    static void providersReady() {
+        try {
+            Class.forName("sun.security.jca.Providers").getMethod("meglerProcessStarted").invoke(null);
+        } catch (ReflectiveOperationException | RuntimeException e) {
+            android.util.Log.w("Megler", "the app's processes have one list of security providers between them: " + e);
+        }
+    }
+
+    /*
+     * The list of security providers of class scope `s` its own from now on, a fresh process's (providersReady), before any of
+     * its code runs. The Google app's Application puts Google's SslGuard first in the list of every process it runs in, and
+     * ends when a provider of that name is there: with one list for the whole app, its ":search" (Gemini's screens) ended so
+     * whenever ":googleapp", its launcher's, was the app's own process, which had put SslGuard there first.
+     */
+    private static void ownProviders(Scope s) {
+        int scope = s.loader instanceof ServiceClassLoader ? ((ServiceClassLoader) s.loader).scope() : 0;
+        try {
+            Class.forName("sun.security.jca.Providers").getMethod("meglerProcess", int.class).invoke(null, scope);
+        } catch (ReflectiveOperationException | RuntimeException e) {
+            android.util.Log.w("Megler", "process " + s.name + ": no list of security providers of its own (" + e + "); it has the app's");
+        }
+    }
+
     /* Each process's scope once made; null for one that could not be. */
     private static final HashMap<String, Scope> sScopes = new HashMap<>();
     /*
@@ -187,6 +221,7 @@ public final class Processes {
         }
         String cls = Manifest.applicationClass != null ? Manifest.applicationClass : Application.class.getName();
         named(s, true);
+        ownProviders(s);
         try {
             Application a = Application.class.getName().equals(cls) ? new Application()
                 : (Application) s.loader.loadClass(cls).getDeclaredConstructor().newInstance();

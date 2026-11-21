@@ -187,6 +187,9 @@ public final class AppRunner {
         ContextImpl base = ContextImpl.app();
         // As Android's handleBindApplication, before the app's code can make anything of TLS: its network security configuration.
         android.security.net.config.NetworkSecurityConfigProvider.install(base);
+        // The security providers are as a fresh process of the app's has them: its other processes, each with a list of its
+        // own here, begin with them so (megler.Processes.providersReady).
+        Processes.providersReady();
         String appCls = applicationClass != null ? applicationClass : Manifest.applicationClass;
         // The Application is made and attached by the process's Instrumentation, as Android's LoadedApk.makeApplication has
         // it made (android.app.Instrumentation.newApplication, overlaid: the component factory makes it, applicationMade

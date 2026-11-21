@@ -5,7 +5,10 @@
      runs as ":far" and its package's own process is the other one. The first activity binds both services, sends a broadcast both
      receivers take, and starts the other activity for a result; each component says the process it is told by every way an
      app asks (Application.getProcessName, ActivityThread.currentProcessName, Process.myProcessName, ActivityManager,
-     /proc/self/cmdline) and which Application it has: the name its Application was made for, and how many were made there. -->
+     /proc/self/cmdline) and which Application it has: the name its Application was made for, and how many were made there.
+     Each process's Application puts a security provider of one name first in its process's list, which is the process's own,
+     as the Google app's puts SslGuard there; each activity finds its own process's, and the other's taking it out of its
+     list leaves the first's. -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android" package="megler.test.procs" android:versionCode="1" android:versionName="1.0">
     <uses-sdk android:minSdkVersion="21" android:targetSdkVersion="28" />
     <application android:name=".App" android:label="@string/app_name">

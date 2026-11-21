@@ -5719,6 +5719,13 @@ static void procs_line(char *out, size_t size, const char *who, const char *proc
              process, process, cmdline, process, process, loader);
 }
 
+/* The line activity `who` of `process` says of the security provider ProcsTest (`what`: "providers" and the like): its own
+   process's, first in the list, by its name and through MessageDigest's lookups (megler.test.procs.App.providers). */
+static void providers_line(char *out, size_t size, const char *who, const char *what, const char *process)
+{
+    snprintf(out, size, "I/ProcsTest: %s %s first=ProcsTest:%s named=%s digest=%s digestNamed=%s", who, what, process, process, process, process);
+}
+
 /*
  * `procs` (core/tests/app/procs): an app's processes, as the Google app has them -- its launcher activity Main in the
  * package's own process, Far in ":far", a service and a receiver in each. Run from the launcher, the app runs as its
@@ -5729,14 +5736,15 @@ static void procs_line(char *out, size_t size, const char *who, const char *proc
  * ActivityThread.currentProcessName, Process.myProcessName, its ActivityManager and (for the own scope's)
  * /proc/self/cmdline, and has its process's Application, one made there; the other activity, of the other process,
  * answers the first with its process's name. The receiver of the own process hears the broadcast, the other's is not run.
- * The app ends with its first activity.
+ * Each process has its own list of security providers, which its Application puts a provider of one name first in, as the
+ * Google app's puts SslGuard. The app ends with its first activity.
  */
 static int run_procs(void)
 {
     const bool far = g_procs_alias;
     const char *own = far ? "megler.test.procs:far" : "megler.test.procs", *other = far ? "megler.test.procs" : "megler.test.procs:far";
     char line[400], made[120];
-    int at = -1, tries;
+    int at = -1, tries, first, second;
     say("  the app is started %s", far ? "for another app's request for Far, its intent reaching FarAlias (Far's alias, in :far)" : "from its launcher (Main)");
     if (far) {
         expect_line("java: the app runs as the process megler.test.procs:far", &at, 120);
@@ -5766,6 +5774,33 @@ static int run_procs(void)
     CHECK(wait_line(line, 0, 120) >= 0);
     CHECK(wait_line(far ? "I/ProcsTest: far bound .Near" : "I/ProcsTest: main bound .Near", 0, 60) >= 0);
     CHECK(wait_line(far ? "I/ProcsTest: far bound .FarService" : "I/ProcsTest: main bound .FarService", 0, 60) >= 0);
+    /*
+     * Each process's list of security providers is its own, a fresh process's at first (java.security.Security): both
+     * Applications put the provider ProcsTest first, at 1, the other's into a list without the first's; each activity finds
+     * its own process's, as the first in the list, by its name and through MessageDigest's lookups; and the other taking its
+     * own out of its list leaves the first's.
+     */
+    snprintf(line, sizeof(line), "I/ProcsTest: provider in %s at=1 before=", own);
+    first = wait_line(line, 0, 60);
+    snprintf(line, sizeof(line), "I/ProcsTest: provider in %s at=1 before=", other);
+    second = wait_line(line, 0, 60);
+    CHECK(first >= 0 && second >= 0);
+    if (first >= 0 && second >= 0) {
+        const char *a = strstr(line_at(first), "before="), *b = strstr(line_at(second), "before=");
+        CHECK(a && b && !strcmp(a, b) && !strstr(a, "ProcsTest"));
+        if (a && b && strcmp(a, b)) say("  the lists differ: %s, %s", a, b);
+    }
+    providers_line(line, sizeof(line), far ? "far" : "main", "providers", own);
+    CHECK(wait_line(line, 0, 60) >= 0);
+    providers_line(line, sizeof(line), far ? "main" : "far", "providers", other);
+    CHECK(wait_line(line, 0, 60) >= 0);
+    snprintf(line, sizeof(line), "I/ProcsTest: %s removed its provider: first=", far ? "main" : "far");
+    second = wait_line(line, 0, 60);
+    CHECK(second >= 0 && !strstr(line_at(second), "first=ProcsTest")
+          && strstr(line_at(second), " named=none digest=none(NoSuchAlgorithmException) digestNamed=none(NoSuchProviderException)"));
+    snprintf(made, sizeof(made), "providers after %s removed its:", far ? "Main" : "Far");
+    providers_line(line, sizeof(line), far ? "far" : "main", made, own);
+    CHECK(wait_line(line, 0, 60) >= 0);
     /* The own process's receiver hears the broadcast; the other process's is not run. */
     snprintf(line, sizeof(line), "I/ProcsTest: %s process=%s", far ? "far-receiver" : "near-receiver", own);
     CHECK(wait_line(line, 0, 60) >= 0);
@@ -6043,7 +6078,8 @@ static int run_gms_host(void)
 /* -------------------------------------------------------------- any app */
 
 /*
- * The script: "tap:X,Y", "drag:X,Y,X2,Y2", "wait:MILLISECONDS", "back", "key:CODE", in the order given. After each the app is waited for
+ * The script: "tap:X,Y", "drag:X,Y,X2,Y2", "wait:MILLISECONDS", "back", "key:CODE", "start:REQUEST" (another app asks for an
+ * activity of the app's, MG_JAVA_START_ACTIVITY's way but while the app runs), in the order given. After each the app is waited for
  * until it is still (a minute at most) and its picture written as app-N. And the keyboard's part, as a phone's shell plays it:
  * "type:TEXT" (megler_text_commit), "textkey:N" (megler_text_key, MEGLER_TEXT_*), "kbd:PIXELS" (megler_keyboard_height).
  */
@@ -6093,6 +6129,11 @@ static int run_app(void)
             mg_sleep_ns(300000000ull);
         } else if (sscanf(s, "kbd:%d", &code) == 1) {
             megler_keyboard_height(code);
+            mg_sleep_ns(300000000ull);
+        } else if (!strncmp(s, "start:", 6)) {
+            /* Another app's request for one of the app's activities while it runs, as the shell hands it over
+               (megler_start_activity): "<class>" or "<class>~<its intent's file in the services' folder>". */
+            megler_start_activity(s + 6);
             mg_sleep_ns(300000000ull);
         } else {
             say("  (the script's \"%s\" is not understood)", s);

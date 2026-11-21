@@ -2719,6 +2719,16 @@ uses `dalvik.system.BlockGuard`, which the SDK's `android.jar` lacks: a
 path only and are not put in the overlay. The data app says the checks in one
 line, "file-locks-across-scopes", after its "process-scope" step.
 
+**The list of security providers of each of an app's processes** is the
+overlay's as well (`sun/security/jca/Providers.java.members` and `.replace`;
+why and how in "Jobs", at `megler.Processes`): Android 9's `Providers` with its
+system-wide list answered by the process of the code that asks, which the same
+native as the file locks' says (`Providers.meglerScope`). The source compiles
+against javac's own `sun.security.jca.ProviderList` (JDK 8's, of the same
+members as Android 9's); what it uses that `android.jar` lacks,
+`VMRuntime.getTargetSdkVersion()` and `System.logE` (the warning for Bouncy
+Castle's deprecated algorithms), it reaches by reflection.
+
 **Java 9 and 10's collection factories** are added that way to Android 9's
 `List`, `Set` and `Map` (Android's `Map.java` says it took them out):
 `List.of` and `Set.of` of 0 to 10 elements and of an array, `Map.of` of 0 to 10
@@ -5052,6 +5062,44 @@ An uncaught exception of a thread of such a process ends that thread alone,
 as one of Google Play services' does, and the log says whose it was
 ("process com.facebook.lite:fbns's thread ..."; `megler.Processes.threadsOf`):
 it said "Google Play services' thread" for every scope.
+
+Each such process has a list of security providers of its own, as on Android,
+where `java.security.Security`'s list is the process's: what `insertProviderAt`,
+`addProvider` and `removeProvider` change, and what `getProviders`,
+`getProvider` and every JCA lookup (`Cipher`, `MessageDigest`, `SSLContext`...
+`getInstance`, with a provider's name or without) read. The Google app's
+Application puts Google's SslGuard first in the list of every process it runs
+in and throws "Failed to install SslGuard with top priority." when
+`insertProviderAt` answers other than 1; with the one list of the virtual
+machine, its `:search` (Gemini's screens) ended so whenever `:googleapp`, its
+launcher's, was the app's own process and had put SslGuard there before
+(0.1.0.739, the Elite x3), and the same in `:interactor`. Libcore's
+`sun.security.jca.Providers` (the libcore overlay: `Providers.java.members`
+and `.replace`) answers its system-wide list (`getSystemProviderList`,
+`setSystemProviderList`, which `Security` and `GetInstance` go through) with
+the list of the process of the code that asks, where that is one of these
+scopes: the class scope the runtime names for the code, as for the locks of
+files (`meglerScope`, `code_scope` in `dvm/mg_dvm_art.c`: the innermost frame
+of an app's code or of a scope's, else the scope whose code started the
+thread -- so the platform's code calling on such a process's behalf, and a pool
+thread it started, count as its). A scope's list is made before its
+Application (`Processes.ownProviders`) as a fresh process's: the platform's
+providers as `megler.AppRunner.run` had put them in just before the app's code
+ran (`Processes.providersReady`: AndroidKeyStore, the network security
+configuration's). The app's own process, Google Play services and the other
+packages hosted here, and the platform's threads have the system-wide list as
+before, and an app with one process never has another list. The test app
+`procs` has the Application of each process put a provider of one name first
+(both at 1), each activity find its own process's by `getProviders`,
+`getProvider` and `MessageDigest.getInstance` with and without the provider's
+name, and the other process's removing its own leave the first's. Not done:
+what libcore keeps once for the virtual machine beside the list -- the
+security properties (`Security.setProperty`: SslGuard names its socket
+factories there), `SSLContext.setDefault`/`getDefault`, the defaults of
+`HttpsURLConnection` and `SSLSocketFactory.getDefault` -- stays one for all
+the processes, the last to set it winning; and Google Play services' code
+called from such a process (`ProviderInstaller`) changes the system-wide list,
+its code being its own scope's, as before.
 
 ### Downloads
 

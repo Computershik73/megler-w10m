@@ -10,9 +10,11 @@ import android.util.Log;
 import android.widget.TextView;
 
 /**
- * Main and Far: each says its process (App.report). The first of them -- started from the launcher, or for another app's
- * request -- binds both services, sends the broadcast both receivers take, and starts the other for a result; the other
- * answers with the name of its process and finishes, and then the first does, and the app ends.
+ * Main and Far: each says its process (App.report) and what its code finds of the security provider its process's Application
+ * put first (App.providers). The first of them -- started from the launcher, or for another app's request -- binds both
+ * services, sends the broadcast both receivers take, and starts the other for a result; the other takes its provider out of
+ * its process's list, answers with the name of its process and finishes, and then the first, its own provider still there,
+ * does, and the app ends.
  */
 abstract class Shown extends Activity {
     abstract String who();
@@ -27,7 +29,11 @@ abstract class Shown extends Activity {
         // (the component it was started as: an alias of it that another app's intent reached, as on Android)
         Log.i("ProcsTest", who() + " intent " + getIntent().getComponent().getClassName() + " via=" + getIntent().getStringExtra("via"));
         Log.i("ProcsTest", who() + " " + App.report(this));
+        Log.i("ProcsTest", who() + " providers " + App.providers());
         if (getCallingActivity() != null) {
+            // (its process's provider taken out of its list: the first process's list keeps its own, onActivityResult)
+            java.security.Security.removeProvider("ProcsTest");
+            Log.i("ProcsTest", who() + " removed its provider: " + App.providers());
             setResult(RESULT_OK, new Intent().putExtra("process", android.app.Application.getProcessName()));
             finish();
             return;
@@ -50,6 +56,7 @@ abstract class Shown extends Activity {
     @Override
     protected void onActivityResult(int request, int result, Intent data) {
         Log.i("ProcsTest", who() + " heard " + other().getSimpleName() + ": " + result + " from " + (data == null ? null : data.getStringExtra("process")));
+        Log.i("ProcsTest", who() + " providers after " + other().getSimpleName() + " removed its: " + App.providers());
         finish();
     }
 

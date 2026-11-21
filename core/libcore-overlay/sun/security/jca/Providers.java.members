@@ -1,0 +1,96 @@
+
+    // ------------------------------------------------------------------------------------------------------------- Megler
+    /*
+     * Megler: a list of security providers for each of the app's processes.
+     *
+     * On Android every process has a list of its own: java.security.Security's, which insertProviderAt, addProvider and
+     * removeProvider change and every JCA lookup goes through -- Cipher, MessageDigest, SSLContext... getInstance, with a
+     * provider's name or without. It is this class's system-wide list, one for the virtual machine. Megler runs an app's
+     * other processes as class scopes of their own inside one virtual machine (megler.Processes), and they had that one list
+     * between them. The Google app's Application puts Google's SslGuard first in the list of every process it runs in, and
+     * ends when it cannot: its ":googleapp", the app's own process here, had put it there, and when Gemini asked the app for
+     * its ":search" activity, the Application of that process found a provider of the name there already (insertProviderAt
+     * answers -1 then), threw "Failed to install SslGuard with top priority.", and Gemini's screen never came (0.1.0.739,
+     * an HP Elite x3).
+     *
+     * So the system-wide list (getSystemProviderList, setSystemProviderList: Providers.java.replace) is, for the code of
+     * another of the app's processes, that process's own. Whose the code is, the runtime says, as it does for the locks of
+     * files (sun.nio.ch.FileLockTable): the class scope of the innermost frame of an app's code or of a scope's; with none
+     * on the stack, the scope whose code started the thread (meglerScope, dvm/mg_dvm_art.c). A call the platform's code
+     * makes on such a process's behalf, and a thread it started, are that process's so. A process's list begins as a fresh
+     * process's does (meglerProcess): with the platform's providers, as megler.AppRunner had put them in when the app's
+     * code was about to run (meglerProcessStarted). The rest -- the app's own process; Google Play services and the other
+     * packages hosted here, whose code changed this one list before as well; the platform's own threads -- have the
+     * system-wide list as before, and an app with one process, nearly every one, has no other (meglerLists stays null).
+     */
+
+    /* The lists of the class scopes that are the app's other processes, by the scope's number; null while there is none. */
+    private static volatile java.util.concurrent.atomic.AtomicReferenceArray<ProviderList> meglerLists;
+    /* The list a process of the app's begins with: the system-wide one as it was when the app's code was about to run. */
+    private static volatile ProviderList meglerFresh;
+
+    /* The class scope of the code that asks, as the runtime numbers them: 0 for the app's own code and the platform's. */
+    private static native int meglerScope();
+
+    /* The list of the process of the code that asks, where that is another of the app's; null otherwise. */
+    private static ProviderList meglerList() {
+        java.util.concurrent.atomic.AtomicReferenceArray<ProviderList> lists = meglerLists;
+        if (lists == null) return null;
+        int scope = meglerScope();
+        return scope > 0 && scope < lists.length() ? lists.get(scope) : null;
+    }
+
+    /* `list` made the list of the process of the code that asks, where that is another of the app's; false otherwise. */
+    private static boolean meglerSetList(ProviderList list) {
+        java.util.concurrent.atomic.AtomicReferenceArray<ProviderList> lists = meglerLists;
+        if (lists == null) return false;
+        int scope = meglerScope();
+        if (scope <= 0 || scope >= lists.length() || lists.get(scope) == null) return false;
+        lists.set(scope, list);
+        return true;
+    }
+
+    /**
+     * Megler (megler.AppRunner, by reflection): the platform has put in its providers and the app's code is about to run.
+     * Another of the app's processes, made later, begins with the list as it is now.
+     */
+    public static void meglerProcessStarted() {
+        meglerFresh = providerList;
+    }
+
+    /**
+     * Megler (megler.Processes, by reflection, before the process's Application is made): class scope `scope` is another of
+     * the app's processes, with a list of its own from now on, a fresh process's. Without meglerProcessStarted before it,
+     * that is the system-wide list as it is.
+     */
+    public static synchronized void meglerProcess(int scope) {
+        if (scope <= 0) return;
+        java.util.concurrent.atomic.AtomicReferenceArray<ProviderList> lists = meglerLists;
+        if (lists == null || scope >= lists.length()) {
+            java.util.concurrent.atomic.AtomicReferenceArray<ProviderList> more =
+                    new java.util.concurrent.atomic.AtomicReferenceArray<>(Math.max(16, scope + 1));
+            for (int i = 0; lists != null && i < lists.length(); i++) more.set(i, lists.get(i));
+            meglerLists = lists = more;
+        }
+        ProviderList fresh = meglerFresh;
+        lists.set(scope, fresh != null ? fresh : providerList);
+    }
+
+    /* VMRuntime.getRuntime().getTargetSdkVersion(), which the SDK's android.jar does not have. */
+    private static int meglerTargetSdkVersion() {
+        try {
+            Class<?> runtime = Class.forName("dalvik.system.VMRuntime");
+            return (Integer) runtime.getMethod("getTargetSdkVersion").invoke(runtime.getMethod("getRuntime").invoke(null));
+        } catch (ReflectiveOperationException e) {
+            throw new AssertionError(e);
+        }
+    }
+
+    /* System.logE, which the SDK's android.jar does not have. */
+    private static void meglerLogE(String message) {
+        try {
+            System.class.getMethod("logE", String.class).invoke(null, message);
+        } catch (ReflectiveOperationException e) {
+            throw new AssertionError(e);
+        }
+    }
