@@ -4097,6 +4097,26 @@ can be tried at this PC. Neither was seen on a phone yet. The shell's flag
 `trace-keyboard` says, in numbers only, every change the keyboard makes and
 every asking of the app's.
 
+Neither was it: with both, 0.1.0.741 still typed "cba". The phone's
+`trace-calls` of `android.text.Selection`, `ArrowKeyMovementMethod` and the
+field's class showed the text set again some 0.6 s after each letter, a new
+text without a cursor that `ArrowKeyMovementMethod.initialize` put at 0, and no
+`setSelection` after it. The controller (`arlw.u`) sets the field's text back
+(`aucl.a`, `setText` and `setSelection`) only when the field is off screen
+(`getGlobalVisibleRect`) or its text is not the controller's, which on the
+phone it never was; but it sets the field's text appearance after every change
+(`aroe.d`), and `setTextAppearance` with a `textAllCaps="false"` (the app's
+`TextAppearance.Assistant_Gem...BodyL`; AppCompat's text helper calls
+`setAllCaps(false)` for its own `textAllCaps` as well) called `setAllCaps`,
+which set the text again whatever it was. Android's `setAllCaps` goes through
+`setTransformationMethod`, which sets the text again only for another
+transformation, and its `applyTextAppearance` turns all caps on, never off:
+now Megler's too. And a text set or set again tells `onSelectionChanged` where
+its cursor was put, as Android's `spanChange` tells of the selection's spans
+put on a text (Gemini's field keeps the cursor it is told). Data step
+`text-appearance-keeps-cursor`: "a", "b", "c" typed with the appearance set
+after each give "abc" with the cursor at 3 (they gave "cba").
+
 **The keyboard's coming and going is an inset animation** of
 `WindowInsets.Type.ime()`, run through the views' callbacks
 (`View.setWindowInsetsAnimationCallback`) as Android 11's `InsetsController`

@@ -8938,7 +8938,9 @@ public class Main extends Activity {
          * (RobinTextInputEditText, 17.6.63) has its input controller apply its state after every character typed (arlw.u):
          * the text set back with the cursor it was told only where the field is not on screen (getGlobalVisibleRect) or its
          * text is not the controller's, and its text appearance always. The appearance set the text again with the cursor at
-         * its start, and the next character went in before the others: "cba" on an HP Elite x3 (0.1.0.741).
+         * its start, and the next character went in before the others: "cba" on an HP Elite x3 (0.1.0.741). And a text set
+         * on a field tells onSelectionChanged where its movement method put the cursor, as Android's spanChange tells of the
+         * selection's spans put on a text (it told nothing).
          */
         step("text-appearance-keeps-cursor", () -> {
             final java.util.List<String> told = new java.util.ArrayList<>();
@@ -8968,6 +8970,9 @@ public class Main extends Activity {
             scrolled.scrollTo(0, 200);
             boolean onScreen = field.getGlobalVisibleRect(seen);
             boolean noSize = none.getGlobalVisibleRect(new android.graphics.Rect());
+            told.clear();
+            field.setText("xy");
+            boolean toldSet = told.contains("0,0") && field.getSelectionStart() == 0;
             field.setText("");
             told.clear();
             for (String typed : new String[] { "a", "b", "c" }) {
@@ -8996,9 +9001,9 @@ public class Main extends Activity {
             boolean stays = caps.getTransformationMethod() != null;
             caps.setAllCaps(false);
             boolean off = caps.getTransformationMethod() == null && !caps.isAllCaps() && caps.getText().toString().equals("caps");
-            detail = "below " + below + ", scrolled to " + onScreen + " " + seen.toShortString() + ", no size " + noSize
+            detail = "below " + below + ", scrolled to " + onScreen + " " + seen.toShortString() + ", no size " + noSize + "; told on setText " + toldSet
                 + "; typed: " + typed + "; setAllCaps(false) kept the text " + same + "; caps on " + on + ", kept " + stays + ", off " + off;
-            return !below && onScreen && seen.equals(new android.graphics.Rect(0, 0, 300, 100)) && !noSize && typedInOrder && same && on && stays && off;
+            return !below && onScreen && seen.equals(new android.graphics.Rect(0, 0, 300, 100)) && !noSize && toldSet && typedInOrder && same && on && stays && off;
         });
     }
 

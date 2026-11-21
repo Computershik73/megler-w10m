@@ -32,6 +32,8 @@
 //
 // And setAllCaps sets the text again only when the transformation changes, and a text appearance's textAllCaps="false"
 // changes nothing, as on Android (the comment at setAllCaps has why).
+//
+// And the selection's spans put on the text are told to onSelectionChanged, as Android's spanChange tells them.
 // Everything else is the original's, unchanged.
 package android.widget;
 
@@ -443,7 +445,17 @@ public class TextView extends View implements ViewTreeObserver.OnPreDrawListener
             mBlinkStart = android.os.SystemClock.uptimeMillis();
         }
         public void afterTextChanged(Editable s) {}
-        public void onSpanAdded(Spannable t, Object w, int s, int e) { if (w == Selection.SELECTION_END || w == Selection.SELECTION_START) { mBlinkStart = android.os.SystemClock.uptimeMillis(); invalidate(); } else if (w instanceof android.text.style.UpdateAppearance) relayout(); }
+        // A selection's end put on a text is told too, as Android's spanChange tells it (from -1): a text set or set again
+        // has its cursor put at the start by the movement method, and a view that keeps its cursor as onSelectionChanged
+        // says (the Google app's Gemini field) heard nothing of it.
+        public void onSpanAdded(Spannable t, Object w, int s, int e) {
+            if (w == Selection.SELECTION_END || w == Selection.SELECTION_START) {
+                mBlinkStart = android.os.SystemClock.uptimeMillis(); invalidate();
+                if (t == mText && (t.getSpanFlags(w) & Spanned.SPAN_INTERMEDIATE) == 0)
+                    onSelectionChanged(w == Selection.SELECTION_START ? s : Selection.getSelectionStart(t), w == Selection.SELECTION_END ? s : Selection.getSelectionEnd(t));
+            }
+            else if (w instanceof android.text.style.UpdateAppearance) relayout();
+        }
         public void onSpanRemoved(Spannable t, Object w, int s, int e) { if (w instanceof android.text.style.UpdateAppearance) relayout(); }
         public void onSpanChanged(Spannable t, Object w, int os, int oe, int ns, int ne) {
             if (w == Selection.SELECTION_END || w == Selection.SELECTION_START) {
