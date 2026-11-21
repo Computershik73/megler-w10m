@@ -1571,7 +1571,7 @@ static bool ring_frame(gl_surf *s, gl_ctx *x, layer *l, bool *shown, u64 *finish
     typedef void (*fn_flush)(void);
     fn_flush flush = FN(fn_flush, F_FLUSH, "glFlush");
     int cur = s->ring_cur, prev = s->ring_prev, next = (cur + 1) % s->ring_n;
-    bool active, taken = false;
+    bool active = true, taken = false;
     void *paused;
     if (flush) flush();
     s->ring_fence[cur] = E.create_sync(E.display, 0x30F9 /* EGL_SYNC_FENCE_KHR */, NULL);
@@ -1599,8 +1599,11 @@ static bool ring_frame(gl_surf *s, gl_ctx *x, layer *l, bool *shown, u64 *finish
     s->share = s->ring_share[next];
     if (!E.make_current(E.display, s->handle, s->handle, x->handle))
         mg_note_once("java: the next of a window surface's pbuffers could not be made current (EGL error 0x%x)", (unsigned)E.get_error());
-    /* (The first swap shows nothing yet: still a success, the frame is on its way.) */
-    return taken || prev < 0;
+    /*
+     * (The first swap shows nothing yet: still a success, the frame is on its way. So is a swap while the layer shows
+     * nothing, as shell_frame has it: only a frame the shell refused ends its composing.)
+     */
+    return taken || prev < 0 || !active;
 }
 
 static bool shell_frame(gl_surf *s, layer *l, bool *shown, u64 *finished)
