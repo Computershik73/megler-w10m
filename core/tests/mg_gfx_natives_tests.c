@@ -831,6 +831,29 @@ static void test_drawing(void)
         call("cvDrawArc", 10, J(cv), F(0), F(0), F(20), F(20), F(0), F(360), Z(false), L(red), J(0));
         CHECK(abs(covered(bm) - round_rect) <= 4);
     }
+    /* Radii too large for a tall rectangle are scaled down together, as Skia's: 10 x 20 with radii of 50 is a capsule, round
+       ends of radius 5 (178 pixels), not the ellipse of each radius cut to half its side (157) -- the Google app's Gemini
+       suggestions. (1, 2) is in the capsule's round end and outside the ellipse. */
+    erase(bm);
+    call("cvDrawRRect", 9, J(cv), F(0), F(0), F(10), F(20), F(50), F(50), L(red), J(0));
+    CHECK(covered(bm) >= 172 && covered(bm) <= 186);
+    CHECK_HEX(word(bm, 1, 2), 0xFFFF0000u);
+    CHECK_HEX(word(bm, 0, 0), 0u);
+    /* So is a path's round rectangle of eight radii: the top corners 50, the bottom ones none -- a round top, square bottom
+       corners. A radius that is not finite makes the corners square, as Skia's. */
+    {
+        static const float tomb[] = { 14, 0, 0, 10, 20, 50, 50, 50, 50, 0, 0, 0, 0, 0 };
+        erase(bm);
+        call("cvDrawPath", 6, J(cv), L(floats(tomb, 14)), I(14), I(0), L(red), J(0));
+        CHECK_HEX(word(bm, 1, 2), 0xFFFF0000u);
+        CHECK_HEX(word(bm, 0, 19), 0xFFFF0000u);
+        CHECK_HEX(word(bm, 9, 19), 0xFFFF0000u);
+        CHECK_HEX(word(bm, 0, 0), 0u);
+        CHECK_HEX(word(bm, 1, 12), 0xFFFF0000u);
+    }
+    erase(bm);
+    call("cvDrawRRect", 9, J(cv), F(0), F(0), F(10), F(10), F(INFINITY), F(5), L(red), J(0));
+    CHECK_INT(covered(bm), 100);
     /* a quarter from three o'clock on, to the centre, is the wedge below and to the right: angles grow clockwise, y being down. */
     erase(bm);
     call("cvDrawArc", 10, J(cv), F(0), F(0), F(20), F(20), F(0), F(90), Z(true), L(red), J(0));

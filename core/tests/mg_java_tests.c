@@ -4392,6 +4392,10 @@ static int run_data(void)
                                          /* And a paint's BlurMaskFilter blurs what it fills, into a bitmap and through a node's list:
                                             the glows of the Google app's Gemini screen were solid ovals. */
                                          "blur-mask-filter",
+                                         /* And radii too large for a rounded rectangle are scaled down together, as Skia's: a tall one
+                                            with large radii is a capsule (drawRoundRect, addRoundRect, GradientDrawable, a node's list),
+                                            not an ellipse -- the Google app's Gemini suggestions had ellipses beside them. */
+                                         "round-rect-radii",
                                          /* And an edit tells the span watchers of the spans it moved: an EditText's onSelectionChanged
                                             follows the cursor as text is typed through its input connection. */
                                          "selection-follows-typing",

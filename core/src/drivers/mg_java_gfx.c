@@ -890,6 +890,37 @@ static void path_oval(gpath *p, float l, float t, float r, float b)
     path_close(p);
 }
 
+/*
+ * A rounded rectangle's radii as Android's Skia takes them (SkRRect::setRectXY, setRectRadii): where the radii along a side
+ * add up to more than its length, every radius is scaled down by the one factor that makes the tightest side fit (the CSS
+ * rule for overlapping curves), so that a radius larger than a tall, narrow rectangle allows gives it round ends -- a
+ * capsule -- and not the ellipse of each radius cut to half its own side, as they were cut here. The Google app's Gemini
+ * screen (17.6.63) has capsules of its emphasis colour beside its suggestions, with a corner radius larger than their
+ * width: they were drawn as ellipses (an "arch" where the row cuts one). rx, ry: the top left, top right, bottom right and
+ * bottom left corners'; a corner without both radii is square, and all are where one is not finite, as Skia's.
+ */
+static void rrect_fit(float w, float h, float *rx, float *ry)
+{
+    double scale = 1, s;
+    int i;
+    for (i = 0; i < 4; i++)
+        if (!isfinite(rx[i]) || !isfinite(ry[i])) {
+            for (i = 0; i < 4; i++) rx[i] = ry[i] = 0;
+            return;
+        }
+    for (i = 0; i < 4; i++)
+        if (!(rx[i] > 0) || !(ry[i] > 0)) rx[i] = ry[i] = 0;
+    if ((s = (double)rx[0] + rx[1]) > w) scale = fmin(scale, w / s);
+    if ((s = (double)ry[1] + ry[2]) > h) scale = fmin(scale, h / s);
+    if ((s = (double)rx[2] + rx[3]) > w) scale = fmin(scale, w / s);
+    if ((s = (double)ry[3] + ry[0]) > h) scale = fmin(scale, h / s);
+    if (scale < 1)
+        for (i = 0; i < 4; i++) {
+            rx[i] = (float)(rx[i] * scale);
+            ry[i] = (float)(ry[i] * scale);
+        }
+}
+
 /* A rectangle with a quarter ellipse at each corner: (rx, ry) for the top left, top right, bottom right, bottom left, as Android's addRoundRect(float[8]). */
 static void path_round_rect(gpath *p, float l, float t, float r, float b, const float *rad)
 {
@@ -908,11 +939,10 @@ static void path_round_rect(gpath *p, float l, float t, float r, float b, const 
     w = r - l;
     h = b - t;
     for (i = 0; i < 4; i++) {
-        rx[i] = rad[2 * i] > 0 ? rad[2 * i] : 0;
-        ry[i] = rad[2 * i + 1] > 0 ? rad[2 * i + 1] : 0;
-        if (rx[i] > w / 2) rx[i] = w / 2;
-        if (ry[i] > h / 2) ry[i] = h / 2;
+        rx[i] = rad[2 * i];
+        ry[i] = rad[2 * i + 1];
     }
+    rrect_fit(w, h, rx, ry);
     path_move(p, l + rx[0], t);
     path_line(p, r - rx[1], t);
     path_cubic(p, r - rx[1] + rx[1] * QUARTER, t, r, t + ry[1] - ry[1] * QUARTER, r, t + ry[1]);
@@ -2584,10 +2614,14 @@ static void draw_round_rect(gcanvas *v, float l, float t, float r, float b, floa
         t = b;
         b = swap;
     }
-    if (rx > (r - l) / 2) rx = (r - l) / 2;
-    if (ry > (b - t) / 2) ry = (b - t) / 2;
+    /* Radii too large for the rectangle are scaled down together, as Skia's setRectXY does (rrect_fit). */
+    if (isfinite(rx) && isfinite(ry) && rx > 0 && ry > 0 && (r - l < 2 * rx || b - t < 2 * ry)) {
+        double scale = fmin((r - l) / (2.0 * rx), (b - t) / (2.0 * ry));
+        rx = (float)(rx * scale);
+        ry = (float)(ry * scale);
+    }
     /* Without both radii the corners are square. */
-    if (!(rx > 0) || !(ry > 0)) {
+    if (!(rx > 0) || !(ry > 0) || !isfinite(rx) || !isfinite(ry)) {
         draw_rect(v, l, t, r, b, p, shader);
         return;
     }

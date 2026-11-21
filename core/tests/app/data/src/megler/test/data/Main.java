@@ -8878,6 +8878,54 @@ public class Main extends Activity {
             return blurred && recorded && kept && sharpEdge == 0xFFFFFFFF;
         });
         /*
+         * Radii too large for a rounded rectangle are scaled down together, as Android's Skia does (SkRRect): a rectangle
+         * 40 wide and 120 high with radii of 1000 is a capsule, round ends of radius 20, and not an ellipse -- each radius was
+         * cut to half its own side. So drawRoundRect, a path's addRoundRect of eight radii (here the top corners round, the
+         * bottom ones square), a GradientDrawable's corner radii and a node's list draw it. The Google app's Gemini screen
+         * (17.6.63) has capsules of its emphasis colour beside its suggestions, and an HP Elite x3 showed ellipses there.
+         * (5, 10) is inside the capsule's round end and outside the ellipse; (1, 1) is outside both; (1, 118) is inside the
+         * path's square bottom corner alone.
+         */
+        step("round-rect-radii", () -> {
+            android.graphics.Paint red = new android.graphics.Paint();
+            red.setColor(0xFFFF0000);
+            android.graphics.RectF box = new android.graphics.RectF(0, 0, 40, 120);
+            android.graphics.Bitmap round = bitmap(40, 120), path = bitmap(40, 120), radii = bitmap(40, 120);
+            android.graphics.Canvas c = new android.graphics.Canvas(round);
+            c.drawColor(0xFFFFFFFF);
+            c.drawRoundRect(box, 1000, 1000, red);
+            c = new android.graphics.Canvas(path);
+            c.drawColor(0xFFFFFFFF);
+            android.graphics.Path top = new android.graphics.Path();
+            top.addRoundRect(box, new float[] { 1000, 1000, 1000, 1000, 0, 0, 0, 0 }, android.graphics.Path.Direction.CW);
+            c.drawPath(top, red);
+            c = new android.graphics.Canvas(radii);
+            c.drawColor(0xFFFFFFFF);
+            android.graphics.drawable.GradientDrawable g = new android.graphics.drawable.GradientDrawable();
+            g.setColor(0xFFFF0000);
+            g.setCornerRadii(new float[] { 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000 });
+            g.setBounds(0, 0, 40, 120);
+            g.draw(c);
+            android.graphics.RenderNode node = new android.graphics.RenderNode("capsule");
+            node.setPosition(0, 0, 40, 120);
+            android.graphics.RecordingCanvas rc = node.beginRecording(40, 120);
+            rc.drawColor(0xFFFFFFFF);
+            rc.drawRoundRect(box, 1000, 1000, red);
+            node.endRecording();
+            android.graphics.Bitmap listed = drawn(node, 40, 120);
+            android.graphics.Bitmap[] all = { round, path, radii, listed };
+            String[] names = { "drawRoundRect", "addRoundRect", "GradientDrawable", "node" };
+            boolean ok = true;
+            StringBuilder d = new StringBuilder();
+            for (int i = 0; i < all.length; i++) {
+                int end = all[i].getPixel(5, 10), corner = all[i].getPixel(1, 1), middle = all[i].getPixel(20, 60), low = all[i].getPixel(1, 118);
+                d.append(i > 0 ? "; " : "").append(names[i]).append(String.format(" end %08x corner %08x middle %08x low %08x", end, corner, middle, low));
+                ok &= end == 0xFFFF0000 && corner == 0xFFFFFFFF && middle == 0xFFFF0000 && low == (i == 1 ? 0xFFFF0000 : 0xFFFFFFFF);
+            }
+            detail = d.toString();
+            return ok;
+        });
+        /*
          * An edit tells the span watchers of the spans it moved, as Android's SpannableStringBuilder does: text typed into an
          * EditText through its input connection (as megler.InputMethods types the keyboard's text) moves the cursor, and the
          * field's onSelectionChanged hears where to, after each character; a style after the edit is told its new place. Nothing

@@ -3621,12 +3621,29 @@ where the framework's code, written for iOS, leaned on CoreGraphics without sayi
   screen's glowing rings and borders (drawables of a `SweepGradient` blurred),
   the waves of its voice search, AI Mode and Lens (one shape filled three
   times, blurred by eight, four and one times a radius), Lottie's blur
-  effect; and Gemini's first screen on an HP Elite x3 had solid purple ovals
-  beside its first suggestions and a solid pill after its headline. Which
-  drawing those are was not found (that screen needs a signed-in account,
-  which no test here has), nor seen fixed on a phone. Data step
-  `blur-mask-filter`. Bitmaps are drawn without the filter, as before;
-  `EmbossMaskFilter` and `ShaderMaskFilter` draw as no filter.
+  effect. Data step `blur-mask-filter`. Bitmaps are drawn without the
+  filter, as before; `EmbossMaskFilter` and `ShaderMaskFilter` draw as no
+  filter. (Gemini's first screen on an HP Elite x3 had solid purple ovals
+  beside its first suggestions and a solid pill after its headline; the
+  filter did not change them. Both are the app's own colour
+  `assistant_gem_sys_color_primary_container_emphasis_1`, #4d34cf at night,
+  the pill's arrow its `on_primary_container_emphasis_1`: the pill is as the
+  app's tokens make it, and the ovals look like capsules drawn as ellipses,
+  under "Rounded rectangles" below.)
+- **Rounded rectangles' radii** are scaled as Android's Skia scales them
+  (`SkRRect::setRectXY`, `setRectRadii`): where the radii along a side add up
+  to more than its length, all of them are scaled down by the one factor that
+  makes the tightest side fit, so a tall, narrow rectangle with a radius larger
+  than its width is a capsule (`rrect_fit` in `mg_java_gfx.c`, for
+  `drawRoundRect`, a path's round rectangles -- `GradientDrawable`'s and
+  `RoundRectShape`'s radii, `PaintDrawable` -- and a node's outline). Each
+  radius was cut to half its own side, which makes an ellipse of it. The
+  ovals beside the Gemini screen's suggestions (63 x some 180 pixels, an
+  "arch" where its row cuts one) have elliptical ends of a vertical radius
+  near 90, as such a cut radius gives; that they are rounded rectangles, and
+  capsules on Android, is read from their shape and not seen: an oval drawn
+  as one looks the same, and no picture of that screen from an Android phone
+  was at hand. Data step `round-rect-radii`.
 - **The stand-in** (`core/tests/mg_gfx_standin.c`) is for tests and is not a
   renderer to look at: a pixel is in when its centre is, curves are straight
   pieces, strokes have no joins, a gradient is its first colour, text is a box
