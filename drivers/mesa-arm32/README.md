@@ -1,8 +1,8 @@
 # Mesa (freedreno over D3DKMT) for Windows 10 Mobile, ARM32
 
 Mesa's freedreno on Windows 10 Mobile is the work of Linh (thaihoangduylinh, https://github.com/thaihoangduylinh): the
-D3DKMT core and the patches in `src/` are theirs; Megler builds them, with its own patches `megler-0025` and
-`megler-0026` on top.
+D3DKMT core and the patches in `src/` are theirs; Megler builds them, with its own patches `megler-0025` to
+`megler-0027` on top.
 
 OpenGL ES and EGL for the phone's Adreno GPU (tested on the HP Elite x3, Adreno 530), beside ANGLE: Windows 10 Mobile's
 package (`tools/build-appx.sh arm`, not `--rt`) carries both, and each app chooses at its start (Settings, **Graphics**;
@@ -26,7 +26,7 @@ them; nothing in them looks for their own names. An app's own package carries th
 Built here, from the source beside them in `src/`, by `tools\build-mesa-arm32.cmd` (`... install` puts them in this
 folder; its head lists the tools and the variables that name them). `src/` is the OpenGLES-For-Windows-Phone project of
 thaihoangduylinh, who sent the first build of these DLLs (pull request #34), as its author published it
-(`OpenGLES_Snap820-WP.zip`), in its own layout, with Megler's changes (`megler-0025`, `megler-0026`, below):
+(`OpenGLES_Snap820-WP.zip`), in its own layout, with Megler's changes (`megler-0025` to `megler-0027`, below):
 
 - `src/src/fdkmt`: the D3DKMT core, through which Mesa's freedreno does everything it would ask a Linux kernel driver
   for. It finds the first hardware adapter, takes the SoC from the name of its user-mode driver (`qcdx11um8996.dll`:
@@ -46,10 +46,14 @@ thaihoangduylinh, who sent the first build of these DLLs (pull request #34), as 
   to be made, `GL_OUT_OF_MEMORY` to the app -- where `fd_bo_new` named it and crashed on its null; before it fails, Mesa
   empties its buffer caches and asks once more. The core: its cached buffers keep no CPU view, a failed allocation gives
   them back to the kernel and asks once more, and what of the kernel's fails is said on stderr always, with its status.
+  `megler-0027`: a texture opened from another device by its share handle -- a window surface's Direct3D 11 texture --
+  is one the kernel gives the CPU no view of (`Lock2`: 0xc000000d), so it is never asked for one: Mesa reads and writes
+  it through a staging copy at once (`glReadPixels` of a window surface asked the kernel at every read back, and failed).
+  The core says each kind of failure 20 times, then every 1000th with its count.
 - Mesa is not here: its tag `mesa-26.2.7` (commit `b69adc2a`), cloned by the script. The project's patches applied as
   their author committed them make exactly its Mesa commit `e963b78bede1a54e3abed2c30c618b8113b5b80c` (tree `d31fe7a7`),
-  and Megler's on it the tree `22e2a32f`, both of which the script checks; the DLLs name that last commit
-  ("Mesa 26.2.7 (git-05a20c35ae)": committed by the script at the patches' own times, the same on every build).
+  and Megler's on it the tree `e57a3ee3`, both of which the script checks; the DLLs name that last commit
+  ("Mesa 26.2.7 (git-b4a0045666)": committed by the script at the patches' own times, the same on every build).
 
 These were built with VS 2017 15.9's MSVC 14.16.27023 headers and C runtime, linked in (they import `KERNEL32.dll`,
 API sets and `d3d11.dll` alone), SDK 10.0.16299 (and `d3dkmthk.h`, `d3dkmdt.h`, `d3dukmdt.h` of 10.0.19041), LLVM
@@ -116,9 +120,9 @@ file in `%TEMP%`, Mesa's way on Windows, and removes it).
 SHA-256:
 
 ```
-dda9a01ac5a94593e7777289dce2e987ee71f44fdd5e9145de250d152c297861  libEGL.dll
-7a22d332be4971ccb0640232d6049d316ce6a2129e54692caea8e3f6ee123809  libGLESv2.dll
-9602fcd73b87c0fe7e5e79d9186fed5e0347f8326bdfe5cbb8d3834f4920b429  libgallium_wgl.dll
+41ef5215f824ae359a03fea5907c5aec1cc9a883c641a7ebbb4984d145b622f6  libEGL.dll
+25e8dc1beb52457bef8cf3d7902bb0569f3d28632ab4368a8566e8eae5e64001  libGLESv2.dll
+dcae6ae95ea556a1ea1d6060ffb4fe2291b550a6dd6d5d4721a26065c1a9df34  libgallium_wgl.dll
 ```
 
 Licences: `LICENSES/`, whose `README.md` says which code in the DLLs is under which; the package carries it beside them,

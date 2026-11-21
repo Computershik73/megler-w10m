@@ -54,7 +54,7 @@ set MESA_TAG=mesa-26.2.7
 set MESA_BASE=b69adc2adfbfe3eb985bd66cd06c61ca719ae9ae
 set MESA_HEAD=e963b78bede1a54e3abed2c30c618b8113b5b80c
 set MESA_TREE=d31fe7a7cf4999b33097389b0b343cac20d48ac1
-set MEGLER_TREE=22e2a32fc78e11f68920a2394e8c324d6fa7721b
+set MEGLER_TREE=e57a3ee32392961c07527852507d130a26055849
 set FLEXBISON_URL=https://github.com/lexxmark/winflexbison/releases/download/v2.5.25/win_flex_bison-2.5.25.zip
 set FLEXBISON_SHA256=8d324b62be33604b2c45ad1dd34ab93d722534448f55a16ca7292de32b6ac135
 set PYTHON_MODULES=meson==1.12.1 ninja==1.13.2 mako==1.4.3 pyyaml==6.0.3 packaging==26.1

@@ -93,14 +93,32 @@ dbg(const char *fmt, ...)
 }
 
 /* Megler: what fails is said always, on stderr, which Megler's log takes
- * ("mesa: fdkmt: ..."; core/src/ndk/mg_egl.c, mesa_load). Rare, unlike dbg.
+ * ("mesa: fdkmt: ..."; core/src/ndk/mg_egl.c, mesa_load). Rare, unlike dbg --
+ * and kept so: the first 20 of each kind (its format), then one in 1000 with
+ * its count. A failure at every frame (a Lock2 the kernel refuses each read
+ * back) wrote thousands of lines a minute and crowded out everything else.
  */
 static void
 err(const char *fmt, ...)
 {
+   static const char *volatile kinds[32];
+   static volatile LONG counts[32];
+   LONG n = 0;
+   for (unsigned i = 0; i < 32; i++) {
+      if (!kinds[i])
+         InterlockedCompareExchangePointer((PVOID volatile *)&kinds[i], (PVOID)fmt, NULL);
+      if (kinds[i] == fmt) {
+         n = InterlockedIncrement(&counts[i]);
+         break;
+      }
+   }
+   if (n > 20 && n % 1000)
+      return;
    va_list ap;
    va_start(ap, fmt);
    fputs("fdkmt: ", stderr);
+   if (n > 20)
+      fprintf(stderr, "(the %ldth time) ", (long)n);
    vfprintf(stderr, fmt, ap);
    va_end(ap);
    fflush(stderr);

@@ -27,6 +27,8 @@
 ## 4. Lessons / pitfalls
 - **Do not statically link `gdi32.lib` for `D3DKMT*`** on W10M: calls return success but do nothing → use `GetProcAddress(gdi32)`.
 - `D3DKMTOpenResource`: `PrivateRuntimeDataSize` must equal the value returned by Query.
+- An allocation opened by its share handle (a D3D11 texture: a window surface's) cannot be `Lock2`ed: 0xc000000d. Megler's
+  `megler-0027` marks such a BO `FD_BO_NOMAP`, so reads and writes of it go through a staging copy without asking.
 - A silent crash with exit code 255 is usually a CRT invalid-parameter; `libgallium_wgl.dll` prints a `module+offset`
   backtrace, map it with `llvm-symbolizer --obj=X.dll`.
 - MTP `CopyHere` does not overwrite and caches listings → use FTP (`tools/phone/push.py`).
