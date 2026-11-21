@@ -678,6 +678,20 @@ Megler's package has Mesa. ANGLE is the default; a package built with `MEGLER_GL
   `MESA_LOG_DIR` the data folder: `mg_host_setenv`), the log saying so; the driver's `fdkmt.log` (its allocations,
   submits and waits, a line every 2 s) and `fd_egl_share.log` (the shared pbuffers it could not make) then sit beside
   `megler.log`, and the package's log copies take them along (`shell/LogMirror.h`: Save All Logs; `shell/PicturesDiag.h`).
+- **GMEM tiles, by the flag `mesa-gmem`.** The project's patch 0017 makes Mesa render every batch in system memory
+  (bypass) on D3DKMT: in GMEM, the tiled rendering an Adreno is made for, the GPU hung in some 25-35 % of dEQP's
+  `color_clear` runs, the KMD ending the packet after 2.5 s (a TDR; drivers/mesa-arm32/src/ISSUES.md, 1, cause not
+  found). The flag sets `FD_D3DKMT_GMEM=1` before Mesa loads, the log saying `egl: the flag mesa-gmem: Mesa renders in
+  GMEM tiles ...`: for trying it on a game the GPU keeps waiting on at a high resolution, which bypass costs memory
+  bandwidth (GTA: Vice City at 2560x1440, 22-35 frames a second on Mesa against ANGLE's 30-44). With it, depth and
+  stencil textures are linear again (patch 0020 tiles them in sysmem rendering alone), so one a batch rendered in bypass
+  wrote, then sampled or blitted, may come out scrambled as before 0020.
+- **Mesa's errors in the log, always.** What Mesa says of its errors goes to its C runtime's stderr (`mesa_log`, its
+  D3DKMT core's failures with their NTSTATUS, EGL's warnings), which an app's process has nowhere to go. Its DLLs, which
+  take the standard handles as they load, are given a pipe of the host's as their stderr while `mesa_load` loads them
+  (`mg_host_stderr_to_log_begin`, `_end`), whose lines the log takes as `mesa: <line>` (2000 a process at most, then
+  counted); warnings and errors (`MESA_LOG_LEVEL=warning`; Mesa's default, information too, under `mesa-diag`). A
+  texture GTA: Vice City's map could not be given memory for ended the game, its reason lost (package 745).
 - **The shell's composition follows the choice.** Mesa renders a pbuffer's shared Direct3D texture with its rows top
   first, as Direct3D lays a texture out, where ANGLE's keep OpenGL's bottom row first: the shell turns a frame
   (`gl_frame`) and a picture (`texture_frame`: a TextureView's, the WebView's pages) the other way up where `megler_gles`
@@ -703,9 +717,11 @@ Megler's package has Mesa. ANGLE is the default; a package built with `MEGLER_GL
 app's process starts with where its package lacks Mesa, the record of the packages made with it
 (`core/tests/mg_shell_windows.cpp`, Graphics); and Mesa asked for where it cannot be had -- its DLLs missing, a
 graphics processor that is no Adreno, DLLs that do not load -- each falling back to ANGLE with its one line, ANGLE then
-drawing OpenGL ES 1's scenes as ever (`mg_tests --angle-windows ... mesa-missing|mesa|mesa-any-gpu`); and the flag
-`mesa-diag` setting Mesa's two variables in the process's environment before its DLLs are loaded, and nothing setting
-them without it. *Not proven here*: anything of Mesa itself, which drives an Adreno alone -- the phone.
+drawing OpenGL ES 1's scenes as ever (`mg_tests --angle-windows ... mesa-missing|mesa|mesa-any-gpu`); and the flags
+`mesa-diag` and `mesa-gmem` setting Mesa's variables in the process's environment before its DLLs are loaded, and
+nothing setting them without them; and the standard error the DLLs take as they load, a pipe whose lines the log has as `mesa: <line>`,
+put back after. *Not proven here*: anything of Mesa itself, which drives an Adreno alone -- the phone (nor whether its
+DLLs' C runtime takes the pipe as it loads, which a test DLL with a C runtime of its own would show).
 
 ### A Java app's views, on the graphics processor
 

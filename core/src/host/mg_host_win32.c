@@ -5037,6 +5037,90 @@ bool mg_host_setenv(const char *name, const char *value)
     return ok != 0;
 }
 
+/* -------------------------------------------- the host DLLs' standard error */
+
+/* The pipe the DLLs loaded meanwhile take as their standard error, its reading end, and what it was before. */
+static HANDLE g_stderr_read = INVALID_HANDLE_VALUE, g_stderr_write = INVALID_HANDLE_VALUE, g_stderr_was;
+static char g_stderr_prefix[32];
+
+/* One line of theirs into the log: the first 2000 of a process, then a count every 1000 more (a DLL that says the same
+   every frame does not fill the log). */
+static void stderr_line(const char *line, unsigned *said, unsigned *left_out)
+{
+    if (!line[0]) return;
+    if (*said < 2000) {
+        (*said)++;
+        mg_warn("%s%s", g_stderr_prefix, line);
+    } else if (++*left_out % 1000 == 1) {
+        mg_warn("%s(more lines than the log takes of them: %u left out so far)", g_stderr_prefix, *left_out);
+    }
+}
+
+static DWORD WINAPI stderr_reader(LPVOID unused)
+{
+    char buf[512], line[512];
+    size_t n = 0;
+    unsigned said = 0, left_out = 0;
+    DWORD got = 0, i;
+    (void)unused;
+    while (ReadFile(g_stderr_read, buf, sizeof(buf), &got, NULL) && got) {
+        for (i = 0; i < got; i++) {
+            if (buf[i] == '\r') continue;
+            if (buf[i] == '\n' || n == sizeof(line) - 1) {
+                line[n] = 0;
+                stderr_line(line, &said, &left_out);
+                n = 0;
+                if (buf[i] == '\n') continue;
+            }
+            line[n++] = buf[i];
+        }
+    }
+    return 0;
+}
+
+bool mg_host_stderr_to_log_begin(const char *prefix)
+{
+    if (g_stderr_write == INVALID_HANDLE_VALUE) {
+        /* (CreatePipe found where SetStdHandle is, the system's kernelbase, rather than imported: an import a phone's
+           API sets lacked would keep Megler from starting at all, where this only goes without.) */
+        typedef BOOL(WINAPI * create_pipe_fn)(PHANDLE, PHANDLE, LPSECURITY_ATTRIBUTES, DWORD);
+        HMODULE base = NULL;
+        create_pipe_fn create_pipe = NULL;
+        HANDLE r, w, t;
+        if (GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+                               (LPCWSTR)(void *)&SetStdHandle, &base))
+            create_pipe = (create_pipe_fn)(void *)GetProcAddress(base, "CreatePipe");
+        if (!create_pipe) {
+            mg_warn("host: no CreatePipe for the standard error of the DLLs about to load");
+            return false;
+        }
+        if (!create_pipe(&r, &w, NULL, 0)) {
+            mg_warn("host: no pipe for the standard error of the DLLs about to load (Windows error %lu)", (unsigned long)GetLastError());
+            return false;
+        }
+        mg_strlcpy(g_stderr_prefix, prefix, sizeof(g_stderr_prefix));
+        g_stderr_read = r;
+        t = CreateThread(NULL, 0, stderr_reader, NULL, 0, NULL);
+        if (!t) {
+            mg_warn("host: no thread to read the standard error of the DLLs about to load (Windows error %lu)", (unsigned long)GetLastError());
+            CloseHandle(r);
+            CloseHandle(w);
+            g_stderr_read = INVALID_HANDLE_VALUE;
+            return false;
+        }
+        CloseHandle(t);
+        g_stderr_write = w;
+    }
+    g_stderr_was = GetStdHandle(STD_ERROR_HANDLE);
+    if (!SetStdHandle(STD_ERROR_HANDLE, g_stderr_write)) {
+        mg_warn("host: the standard error could not be set for the DLLs about to load (Windows error %lu)", (unsigned long)GetLastError());
+        return false;
+    }
+    return true;
+}
+
+void mg_host_stderr_to_log_end(void) { SetStdHandle(STD_ERROR_HANDLE, g_stderr_was); }
+
 #if defined(MG_ELF_HOST)
 bool mg_core_image(mg_addr *base, size_t *size);
 #endif

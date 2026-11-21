@@ -1,7 +1,8 @@
 # Mesa (freedreno over D3DKMT) for Windows 10 Mobile, ARM32
 
 Mesa's freedreno on Windows 10 Mobile is the work of Linh (thaihoangduylinh, https://github.com/thaihoangduylinh): the
-D3DKMT core and the patches in `src/` are theirs; Megler builds them, with its own patch `megler-0025` on top.
+D3DKMT core and the patches in `src/` are theirs; Megler builds them, with its own patches `megler-0025` and
+`megler-0026` on top.
 
 OpenGL ES and EGL for the phone's Adreno GPU (tested on the HP Elite x3, Adreno 530), beside ANGLE: Windows 10 Mobile's
 package (`tools/build-appx.sh arm`, not `--rt`) carries both, and each app chooses at its start (Settings, **Graphics**;
@@ -25,7 +26,7 @@ them; nothing in them looks for their own names. An app's own package carries th
 Built here, from the source beside them in `src/`, by `tools\build-mesa-arm32.cmd` (`... install` puts them in this
 folder; its head lists the tools and the variables that name them). `src/` is the OpenGLES-For-Windows-Phone project of
 thaihoangduylinh, who sent the first build of these DLLs (pull request #34), as its author published it
-(`OpenGLES_Snap820-WP.zip`), in its own layout, with one change of Megler's (`megler-0025`, below):
+(`OpenGLES_Snap820-WP.zip`), in its own layout, with Megler's changes (`megler-0025`, `megler-0026`, below):
 
 - `src/src/fdkmt`: the D3DKMT core, through which Mesa's freedreno does everything it would ask a Linux kernel driver
   for. It finds the first hardware adapter, takes the SoC from the name of its user-mode driver (`qcdx11um8996.dll`:
@@ -39,12 +40,16 @@ thaihoangduylinh, who sent the first build of these DLLs (pull request #34), as 
   with ANGLE's share-handle EGL extensions (what Megler draws through), fixes for the a5xx (guardband, stream-out,
   depth/stencil tiled in sysmem rendering, sysmem rendering by default), for `util_queue` and for EGL's display, and a
   backtrace on a crash -- with the meson cross file and the project's own build script.
-- `src/tools/mesa-build/megler-0025-*.patch`, Megler's own on top of them, and the same change in the core's `fd_kmt.c`:
-  the crash handlers and the driver's log files only when asked for ("When they run", below).
+- `src/tools/mesa-build/megler-*.patch`, Megler's own on top of them, and changes of Megler's to the core's `fd_kmt.c`:
+  `megler-0025` and the core: the crash handlers and the driver's log files only when asked for ("When they run",
+  below). `megler-0026`: a buffer freedreno cannot allocate is the caller's to handle -- a texture or buffer then fails
+  to be made, `GL_OUT_OF_MEMORY` to the app -- where `fd_bo_new` named it and crashed on its null; before it fails, Mesa
+  empties its buffer caches and asks once more. The core: its cached buffers keep no CPU view, a failed allocation gives
+  them back to the kernel and asks once more, and what of the kernel's fails is said on stderr always, with its status.
 - Mesa is not here: its tag `mesa-26.2.7` (commit `b69adc2a`), cloned by the script. The project's patches applied as
   their author committed them make exactly its Mesa commit `e963b78bede1a54e3abed2c30c618b8113b5b80c` (tree `d31fe7a7`),
-  and `megler-0025` on it the tree `224cbc64`, both of which the script checks; the DLLs name that last commit
-  ("Mesa 26.2.7 (git-cf2899471c)": committed by the script at the patch's own time, the same on every build).
+  and Megler's on it the tree `22e2a32f`, both of which the script checks; the DLLs name that last commit
+  ("Mesa 26.2.7 (git-05a20c35ae)": committed by the script at the patches' own times, the same on every build).
 
 These were built with VS 2017 15.9's MSVC 14.16.27023 headers and C runtime, linked in (they import `KERNEL32.dll`,
 API sets and `d3d11.dll` alone), SDK 10.0.16299 (and `d3dkmthk.h`, `d3dkmdt.h`, `d3dukmdt.h` of 10.0.19041), LLVM
@@ -69,6 +74,14 @@ message names `MESA_LOG_DIR` for `%TEMP%`; of `libgallium_wgl.dll`'s 29110, `wgl
 `fd_wgl_timing` and the core's functions that kept statistics differ, `wgl_create_framebuffer` reads its static
 `use_freedreno` one byte further on (beside the new `crash_handlers`), and the rest only moved.
 
+`megler-0026` and the core's change with it, against the build with `megler-0025` alone: `libEGL.dll`'s and
+`libGLESv2.dll`'s functions are all the same; of `libgallium_wgl.dll`'s, `bo_new`, the `fd_bo_new` that every file
+including `freedreno_drmif.h` carries, `realloc_bo`, `fd_invalidate_resource`, `fd_resource_transfer_map`,
+`fd_resource_create_with_modifiers` and the core's allocation, freeing, import and map differ, two functions of the
+core's are new; 170 others pass another line number to an assertion's message (`fd_bo_get_iova`'s, inlined nearly
+everywhere, one line further on in `freedreno_drmif.h`, and those of `freedreno_bo.c` and `freedreno_resource.c`); the
+rest only moved.
+
 ## When they run
 
 Unasked, they touch nothing of the process's but what drawing needs and write no file of their own: the project's
@@ -88,7 +101,12 @@ DLLs load -- their C runtime, linked into each, reads it as it starts:
 In Megler both are asked for by an app's flag `mesa-diag` (a file of that name in `LocalState\flags`, or in
 `Pictures\Megler\diag\<package>\flags` over USB): the log files then go into the app's package's `LocalState`, beside
 `megler.log`, and its log copies take them (Save All Logs, `Pictures\Megler\diag`); `docs/ARCHITECTURE.md`, "Mesa's
-freedreno, chosen per app".
+freedreno, chosen per app". An app's flag `mesa-gmem` sets `FD_D3DKMT_GMEM=1`: GMEM (tiled) rendering, which the
+project's patch 0017 leaves off because it hung the GPU in some runs (`src/ISSUES.md`, 1).
+
+What they say of their errors on stderr -- Mesa's log (`MESA_LOG_LEVEL`: Megler asks for warnings and errors), the
+D3DKMT core's failures with their NTSTATUS (said always since Megler's change to `fd_kmt.c`), EGL's warnings -- is in
+Megler's log in any case, each line as `mesa: <line>`: Megler gives the DLLs a pipe as their stderr as they load.
 
 Other environment variables (`src/BUILD.md`, `src/src/fdkmt/README.md`, the patches) switch on more: `FDKMT_DEBUG`,
 `FDKMT_DUMP_HANG` and `FDKMT_DUMP_FAIL` (command buffers into `%TEMP%`), `FD_D3DKMT_GMEM`, `FD_D3DKMT_CACHED`,
@@ -98,9 +116,9 @@ file in `%TEMP%`, Mesa's way on Windows, and removes it).
 SHA-256:
 
 ```
-b929431be081d2531cd848b3259ba094214a821fefe66923271caff625344874  libEGL.dll
-f51646a87a3dcead4c769ab8dc9f15d4a51fe111eb3529e25f767a0e5b196a5e  libGLESv2.dll
-c9560a9a1c45cb69c3b1c98f4518553ace8216922b7c1e0dc663464e0577c9ae  libgallium_wgl.dll
+dda9a01ac5a94593e7777289dce2e987ee71f44fdd5e9145de250d152c297861  libEGL.dll
+7a22d332be4971ccb0640232d6049d316ce6a2129e54692caea8e3f6ee123809  libGLESv2.dll
+9602fcd73b87c0fe7e5e79d9186fed5e0347f8326bdfe5cbb8d3834f4920b429  libgallium_wgl.dll
 ```
 
 Licences: `LICENSES/`, whose `README.md` says which code in the DLLs is under which; the package carries it beside them,

@@ -10,7 +10,8 @@ rem
 rem 1. Mesa: its tag mesa-26.2.7 cloned into <work>\third_party\mesa once, and the patches applied with git am as their
 rem    author committed them: the result is that project's own commit e963b78b, checked by its tree (else no build) and
 rem    by its hash. Then Megler's own patches, megler-*.patch beside them (megler-0025: Mesa's crash handlers and its log
-rem    files only when asked for), and the tree they make checked. Mesa names the commit it is built from in its version
+rem    files only when asked for; megler-0026: a failed BO allocation is out of memory, not a crash), and the tree they
+rem    make checked. Mesa names the commit it is built from in its version
 rem    string: "Mesa 26.2.7 (git-<the last patch's commit>)".
 rem 2. The core: fd_kmt.c, gpu_table.c and kmd_qcom.c into <work>\build\fdkmt\fd_kmt.lib with clang-cl. Its D3DKMT
 rem    declarations are SDK 10.0.19041's d3dkmthk.h and the two headers that includes, copied out alone (SDK 10.0.16299,
@@ -53,7 +54,7 @@ set MESA_TAG=mesa-26.2.7
 set MESA_BASE=b69adc2adfbfe3eb985bd66cd06c61ca719ae9ae
 set MESA_HEAD=e963b78bede1a54e3abed2c30c618b8113b5b80c
 set MESA_TREE=d31fe7a7cf4999b33097389b0b343cac20d48ac1
-set MEGLER_TREE=224cbc6449dfb82fc482ee8992f32f06bafc53ab
+set MEGLER_TREE=22e2a32fc78e11f68920a2394e8c324d6fa7721b
 set FLEXBISON_URL=https://github.com/lexxmark/winflexbison/releases/download/v2.5.25/win_flex_bison-2.5.25.zip
 set FLEXBISON_SHA256=8d324b62be33604b2c45ad1dd34ab93d722534448f55a16ca7292de32b6ac135
 set PYTHON_MODULES=meson==1.12.1 ninja==1.13.2 mako==1.4.3 pyyaml==6.0.3 packaging==26.1

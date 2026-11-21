@@ -95,6 +95,7 @@ static bool mesa_load(char *why, size_t size)
     fn_initialize_ init;
     fn_get_error_ error;
     int major = 0, minor = 0;
+    bool diag, caught;
     for (i = 0; i < MG_COUNT(files); i++) {
         char *path = mg_sprintf("%s/%s", megler_package_dir(), files[i]);
         mg_stat st;
@@ -127,13 +128,40 @@ static bool mesa_load(char *why, size_t size)
      * beside megler.log, where the package's log copies take them (the shell's LogMirror and PicturesDiag). Set before its
      * DLLs load: their C runtime reads the process's environment as it starts.
      */
-    if (mg_flag("mesa-diag")) {
+    diag = mg_flag("mesa-diag");
+    if (diag) {
         bool set = mg_host_setenv("MESA_CRASH_HANDLERS", "1") && mg_host_setenv("MESA_LOG_DIR", megler_data_dir());
         if (set) mg_info("egl: the flag mesa-diag: Mesa's crash handlers on, and its log files (fdkmt.log, fd_egl_share.log) in %s", megler_data_dir());
         else mg_warn("egl: the flag mesa-diag: Mesa's diagnosis could not be asked for (the process's environment refused it)");
     }
+    /*
+     * The flag mesa-gmem: Mesa renders in GMEM tiles where its autotune finds it worth it, as freedreno does on Linux,
+     * instead of every batch in system memory (bypass), which the project's patch 0017 makes its default on D3DKMT:
+     * GMEM hung the GPU in some 25-35 % of dEQP's color_clear runs there, the KMD ending the packet after 2.5 s
+     * (drivers/mesa-arm32/src/ISSUES.md, 1). For trying it on a game the GPU keeps waiting on at a high resolution --
+     * GTA: Vice City at 2560x1440, 22-35 frames a second on Mesa where ANGLE has 30-44 -- whose bypass costs memory
+     * bandwidth. Read when Mesa's screen is made, from the environment its DLLs take as they load.
+     */
+    if (mg_flag("mesa-gmem")) {
+        if (mg_host_setenv("FD_D3DKMT_GMEM", "1"))
+            mg_info("egl: the flag mesa-gmem: Mesa renders in GMEM tiles (FD_D3DKMT_GMEM=1; may hang the GPU, see "
+                    "drivers/mesa-arm32/src/ISSUES.md)");
+        else
+            mg_warn("egl: the flag mesa-gmem: GMEM could not be asked for (the process's environment refused it)");
+    }
+    /*
+     * What Mesa says of its errors -- on its C runtime's stderr (mesa_log, fd_kmt's failures with their NTSTATUS, EGL's
+     * warnings), which an app's process has nowhere to go -- into the log as "mesa: ...": its DLLs take a pipe of the
+     * host's as their stderr as they load (mg_host_stderr_to_log_begin). Warnings and errors (MESA_LOG_LEVEL=warning), and
+     * Mesa's own default, information too, under the flag mesa-diag. A texture GTA: Vice City's map could not be given
+     * memory for ended it at once, and the reason was lost (package 745).
+     */
+    if (!diag) mg_host_setenv("MESA_LOG_LEVEL", "warning");
+    caught = mg_host_stderr_to_log_begin("mesa: ");
     gles = mg_dl_open("libGLESv2_mesa.dll");
     egl = gles ? mg_dl_open("libEGL_mesa.dll") : NULL;
+    if (caught) mg_host_stderr_to_log_end();
+    else mg_warn("egl: what Mesa says of its errors cannot be taken into the log (the host's line before says why)");
     if (!gles || !egl) {
         snprintf(why, size, "%s did not load (the host's line before says why)", gles ? "libEGL_mesa.dll" : "libGLESv2_mesa.dll");
         return false;

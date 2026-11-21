@@ -92,6 +92,20 @@ dbg(const char *fmt, ...)
    va_end(ap);
 }
 
+/* Megler: what fails is said always, on stderr, which Megler's log takes
+ * ("mesa: fdkmt: ..."; core/src/ndk/mg_egl.c, mesa_load). Rare, unlike dbg.
+ */
+static void
+err(const char *fmt, ...)
+{
+   va_list ap;
+   va_start(ap, fmt);
+   fputs("fdkmt: ", stderr);
+   vfprintf(stderr, fmt, ap);
+   va_end(ap);
+   fflush(stderr);
+}
+
 static int
 load_kmt(void)
 {
@@ -106,7 +120,7 @@ load_kmt(void)
 #define KMT_LOAD(name)                                                    \
    p##name = (NTSTATUS(APIENTRY *)(void *))GetProcAddress(gdi, #name);    \
    if (!p##name) {                                                        \
-      dbg("thieu export %s\n", #name);                                    \
+      err("gdi32.dll has no %s\n", #name);                                \
       loaded = -1;                                                        \
       return -ENOSYS;                                                     \
    }
@@ -300,7 +314,7 @@ detect_gpu(struct fd_kmt *k)
       q.PrivateDriverDataSize = sizeof(um);
       NTSTATUS st = pD3DKMTQueryAdapterInfo(&q);
       if (st) {
-         dbg("QueryAdapterInfo(UMDRIVERNAME) 0x%08lx\n", (unsigned long)st);
+         err("QueryAdapterInfo(UMDRIVERNAME) failed: 0x%08lx\n", (unsigned long)st);
          return false;
       }
       /* lay day chu so cuoi cung trong ten file */
@@ -322,7 +336,7 @@ detect_gpu(struct fd_kmt *k)
    }
    k->gpu = fdkmt_gpu_lookup(k->soc);
    if (!k->gpu) {
-      dbg("SoC '%s' chua co trong gpu_table.c (xem src/fdkmt/README.md)\n", k->soc);
+      err("SoC '%s' is not in gpu_table.c: no driver for it\n", k->soc);
       return false;
    }
    if (!k->gpu->verified)
@@ -354,7 +368,7 @@ fd_kmt_open(struct fd_kmt **out_kmt)
    ea.pAdapters = infos;
    st = pD3DKMTEnumAdapters2(&ea);
    if (st) {
-      dbg("EnumAdapters2 0x%08lx\n", (unsigned long)st);
+      err("EnumAdapters2 failed: 0x%08lx\n", (unsigned long)st);
       goto fail;
    }
    for (ULONG i = 0; i < ea.NumAdapters; i++) {
@@ -377,7 +391,7 @@ fd_kmt_open(struct fd_kmt **out_kmt)
       goto fail;
    }
    if (!k->adapter) {
-      dbg("khong co adapter phan cung\n");
+      err("no hardware adapter\n");
       goto fail;
    }
 
@@ -385,7 +399,7 @@ fd_kmt_open(struct fd_kmt **out_kmt)
    cd.hAdapter = k->adapter;
    st = pD3DKMTCreateDevice(&cd);
    if (st) {
-      dbg("CreateDevice 0x%08lx\n", (unsigned long)st);
+      err("CreateDevice failed: 0x%08lx\n", (unsigned long)st);
       goto fail;
    }
    k->device = cd.hDevice;
@@ -403,7 +417,7 @@ fd_kmt_open(struct fd_kmt **out_kmt)
       st = pD3DKMTCreateContextVirtual(&cv);
    }
    if (st) {
-      dbg("CreateContextVirtual 0x%08lx\n", (unsigned long)st);
+      err("CreateContextVirtual failed: 0x%08lx\n", (unsigned long)st);
       goto fail;
    }
    k->context = cv.hContext;
@@ -425,7 +439,7 @@ fd_kmt_open(struct fd_kmt **out_kmt)
    pq.Priority = D3DDDI_PAGINGQUEUE_PRIORITY_NORMAL;
    st = pD3DKMTCreatePagingQueue(&pq);
    if (st) {
-      dbg("CreatePagingQueue 0x%08lx\n", (unsigned long)st);
+      err("CreatePagingQueue failed: 0x%08lx\n", (unsigned long)st);
       goto fail;
    }
    k->paging_queue = pq.hPagingQueue;
@@ -438,7 +452,7 @@ fd_kmt_open(struct fd_kmt **out_kmt)
    so.Info.MonitoredFence.InitialFenceValue = 0;
    st = pD3DKMTCreateSynchronizationObject2(&so);
    if (st) {
-      dbg("CreateSynchronizationObject2(monitored fence) 0x%08lx\n",
+      err("CreateSynchronizationObject2(monitored fence) failed: 0x%08lx\n",
           (unsigned long)st);
       goto fail;
    }
@@ -542,6 +556,7 @@ cache_max(void)
 }
 
 static int kmt_bo_map_i(struct fd_kmt *k, uint32_t handle, void **out_ptr);
+static void kmt_bo_unmap_i(struct fd_kmt *k, uint32_t handle);
 
 /* Lay BO cung kich thuoc/co tu cache; xoa 0 noi dung (Mesa co the gia dinh
  * BO moi = 0 nhu GEM). Tra true neu dung lai duoc.
@@ -571,8 +586,11 @@ kmt_bo_reuse(struct fd_kmt *k, uint64_t bytes, uint32_t kflags,
       LeaveCriticalSection(&k->lock);
 
       void *ptr = NULL;
-      if (kmt_bo_map_i(k, bo.handle, &ptr) == 0 && ptr)
+      if (kmt_bo_map_i(k, bo.handle, &ptr) == 0 && ptr) {
          memset(ptr, 0, (size_t)bo.size);
+         /* Megler: no view kept for it: Mesa maps it again if it needs to. */
+         kmt_bo_unmap_i(k, bo.handle);
+      }
       *out_handle = bo.handle;
       *out_iova = bo.iova;
       return true;
@@ -582,20 +600,11 @@ kmt_bo_reuse(struct fd_kmt *k, uint64_t bytes, uint32_t kflags,
 }
 
 static int
-kmt_bo_alloc_i(struct fd_kmt *k, uint64_t size, uint32_t flags,
-                uint32_t *out_handle, uint64_t *out_iova)
+kmt_bo_create(struct fd_kmt *k, uint64_t bytes, uint32_t kflags,
+              uint32_t *out_handle, uint64_t *out_iova)
 {
    NTSTATUS st;
-   *out_handle = 0;
-   *out_iova = 0;
-
    const struct fdkmt_kmd_ops *kmd = k->gpu->kmd;
-   uint64_t bytes = (size + kmd->bo_align - 1) & ~(kmd->bo_align - 1);
-   uint32_t kflags = kmd->has_cpu_cached ? (flags & FD_KMT_BO_CACHED) : 0;
-
-   if (kmt_bo_reuse(k, bytes, kflags, out_handle, out_iova))
-      return 0;
-
    uint32_t priv[256];
    if (kmd->alloc_privdata_max > sizeof(priv))
       return -EINVAL;
@@ -611,7 +620,7 @@ kmt_bo_alloc_i(struct fd_kmt *k, uint64_t size, uint32_t flags,
    ca.pAllocationInfo2 = &ai;
    st = pD3DKMTCreateAllocation2(&ca);
    if (st) {
-      dbg("CreateAllocation2(%llu) 0x%08lx\n", (unsigned long long)bytes,
+      err("CreateAllocation2 of %llu bytes failed: 0x%08lx\n", (unsigned long long)bytes,
           (unsigned long)st);
       return st_to_errno(st);
    }
@@ -624,7 +633,8 @@ kmt_bo_alloc_i(struct fd_kmt *k, uint64_t size, uint32_t flags,
    if (st == STATUS_PENDING)
       st = wait_paging(k, mr.PagingFenceValue) ? (NTSTATUS)0xC0000102 : 0;
    if (st) {
-      dbg("MakeResident 0x%08lx\n", (unsigned long)st);
+      err("MakeResident of %llu bytes failed: 0x%08lx\n", (unsigned long long)bytes,
+          (unsigned long)st);
       goto fail_alloc;
    }
 
@@ -637,7 +647,8 @@ kmt_bo_alloc_i(struct fd_kmt *k, uint64_t size, uint32_t flags,
    if (st == STATUS_PENDING)
       st = wait_paging(k, map.PagingFenceValue) ? (NTSTATUS)0xC0000102 : 0;
    if (st) {
-      dbg("MapGpuVirtualAddress 0x%08lx\n", (unsigned long)st);
+      err("MapGpuVirtualAddress of %llu bytes failed: 0x%08lx\n", (unsigned long long)bytes,
+          (unsigned long)st);
       goto fail_alloc;
    }
 
@@ -676,6 +687,71 @@ fail_alloc: {
    return st ? st_to_errno(st) : -ENOMEM;
 }
 
+/* Megler: the cache's BOs given back to the kernel, their memory and their
+ * GPU addresses with them: when an allocation fails. How many and their bytes.
+ */
+static unsigned
+kmt_cache_trim(struct fd_kmt *k, uint64_t *bytes)
+{
+   EnterCriticalSection(&k->lock);
+   struct kmt_bo *list = k->free_bos;
+   unsigned n = k->nr_free;
+   *bytes = k->free_bytes;
+   k->free_bos = NULL;
+   k->nr_free = k->max_free = 0;
+   k->free_bytes = 0;
+   LeaveCriticalSection(&k->lock);
+   for (unsigned i = 0; i < n; i++)
+      kmt_bo_destroy(k, &list[i]);
+   free(list);
+   return n;
+}
+
+static int
+kmt_bo_alloc_i(struct fd_kmt *k, uint64_t size, uint32_t flags,
+                uint32_t *out_handle, uint64_t *out_iova)
+{
+   *out_handle = 0;
+   *out_iova = 0;
+
+   const struct fdkmt_kmd_ops *kmd = k->gpu->kmd;
+   uint64_t bytes = (size + kmd->bo_align - 1) & ~(kmd->bo_align - 1);
+   uint32_t kflags = kmd->has_cpu_cached ? (flags & FD_KMT_BO_CACHED) : 0;
+
+   if (kmt_bo_reuse(k, bytes, kflags, out_handle, out_iova))
+      return 0;
+
+   int ret = kmt_bo_create(k, bytes, kflags, out_handle, out_iova);
+   if (ret) {
+      /* Megler: what the cache holds goes back, and once more. */
+      uint64_t freed = 0;
+      unsigned n = kmt_cache_trim(k, &freed);
+      if (n) {
+         err("%u cached BOs (%llu KB) given back to the kernel; asking once more\n", n,
+             (unsigned long long)(freed >> 10));
+         ret = kmt_bo_create(k, bytes, kflags, out_handle, out_iova);
+      }
+   }
+   if (ret) {
+      /* What the device holds, for the reason: its memory, and the part of
+       * it the CPU has a view of (each view takes its size in addresses).
+       */
+      uint64_t held = 0, viewed = 0;
+      EnterCriticalSection(&k->lock);
+      unsigned live = k->nr_bos;
+      for (unsigned i = 0; i < live; i++) {
+         held += k->bos[i].size;
+         if (k->bos[i].map)
+            viewed += k->bos[i].size;
+      }
+      LeaveCriticalSection(&k->lock);
+      err("no BO of %llu bytes (%d): the device holds %u BOs of %llu MB, %llu MB of "
+          "them viewed by the CPU\n", (unsigned long long)bytes, ret, live,
+          (unsigned long long)(held >> 20), (unsigned long long)(viewed >> 20));
+   }
+   return ret;
+}
+
 static void
 kmt_bo_free_i(struct fd_kmt *k, uint32_t handle)
 {
@@ -709,6 +785,17 @@ kmt_bo_free_i(struct fd_kmt *k, uint32_t handle)
          }
       }
       if (k->nr_free < k->max_free) {
+         /* Megler: a BO waiting in the cache keeps no CPU view: on a 32-bit
+          * process each view takes its size in addresses, and the cache's
+          * BOs are of no one's until one is given out again.
+          */
+         if (b.map) {
+            D3DKMT_UNLOCK2 ul = { 0 };
+            ul.hDevice = k->device;
+            ul.hAllocation = b.handle;
+            pD3DKMTUnlock2(&ul);
+            b.map = NULL;
+         }
          k->free_bos[k->nr_free++] = b;
          k->free_bytes += b.size;
          LeaveCriticalSection(&k->lock);
@@ -783,7 +870,7 @@ fd_kmt_bo_import(struct fd_kmt *k, void *share, int is_nt, uint32_t *out_handle,
       nalloc = q.NumAllocations;
    }
    if (st || nalloc < 1) {
-      dbg("QueryResourceInfo 0x%08lx allocs %u\n", (unsigned long)st, nalloc);
+      err("import: QueryResourceInfo failed: 0x%08lx, %u allocations\n", (unsigned long)st, nalloc);
       return st ? st_to_errno(st) : -EINVAL;
    }
 
@@ -825,7 +912,7 @@ fd_kmt_bo_import(struct fd_kmt *k, void *share, int is_nt, uint32_t *out_handle,
       hres = o.hResource;
    }
    if (st) {
-      dbg("OpenResource 0x%08lx\n", (unsigned long)st);
+      err("import: OpenResource failed: 0x%08lx\n", (unsigned long)st);
       goto out;
    }
 
@@ -857,7 +944,7 @@ fd_kmt_bo_import(struct fd_kmt *k, void *share, int is_nt, uint32_t *out_handle,
    if (st == STATUS_PENDING)
       st = wait_paging(k, mr.PagingFenceValue) ? (NTSTATUS)0xC0000102 : 0;
    if (st) {
-      dbg("import MakeResident 0x%08lx\n", (unsigned long)st);
+      err("import: MakeResident of %llu bytes failed: 0x%08lx\n", (unsigned long long)bytes, (unsigned long)st);
       goto fail_res;
    }
 
@@ -870,7 +957,7 @@ fd_kmt_bo_import(struct fd_kmt *k, void *share, int is_nt, uint32_t *out_handle,
    if (st == STATUS_PENDING)
       st = wait_paging(k, map.PagingFenceValue) ? (NTSTATUS)0xC0000102 : 0;
    if (st) {
-      dbg("import MapGpuVirtualAddress 0x%08lx\n", (unsigned long)st);
+      err("import: MapGpuVirtualAddress of %llu bytes failed: 0x%08lx\n", (unsigned long long)bytes, (unsigned long)st);
       goto fail_res;
    }
 
@@ -930,8 +1017,10 @@ kmt_bo_map_i(struct fd_kmt *k, uint32_t handle, void **out_ptr)
       lk.hAllocation = handle;
       NTSTATUS st = pD3DKMTLock2(&lk);
       if (st) {
+         uint64_t size = bo->size;
          LeaveCriticalSection(&k->lock);
-         dbg("Lock2 0x%08lx\n", (unsigned long)st);
+         err("Lock2 of a BO of %llu bytes (the CPU's view of it) failed: 0x%08lx\n",
+             (unsigned long long)size, (unsigned long)st);
          return st_to_errno(st);
       }
       bo->map = lk.pData;
@@ -939,6 +1028,24 @@ kmt_bo_map_i(struct fd_kmt *k, uint32_t handle, void **out_ptr)
    *out_ptr = bo->map;
    LeaveCriticalSection(&k->lock);
    return 0;
+}
+
+/* Megler: the CPU's view of a BO given up (Unlock2), for a BO no one maps
+ * now: on a 32-bit process each view takes its size in addresses.
+ */
+static void
+kmt_bo_unmap_i(struct fd_kmt *k, uint32_t handle)
+{
+   EnterCriticalSection(&k->lock);
+   struct kmt_bo *bo = find_bo(k, handle);
+   if (bo && bo->map) {
+      D3DKMT_UNLOCK2 ul = { 0 };
+      ul.hDevice = k->device;
+      ul.hAllocation = handle;
+      pD3DKMTUnlock2(&ul);
+      bo->map = NULL;
+   }
+   LeaveCriticalSection(&k->lock);
 }
 
 /* Thu nghiem: Unlock2 + Lock2 lai (xem KMD co don cache CPU khong).
@@ -1041,7 +1148,7 @@ kmt_submit_i(struct fd_kmt *k, const struct fd_kmt_cmd *cmds,
       st = pD3DKMTSubmitCommand(&sc);
       if (st) {
          LeaveCriticalSection(&k->lock);
-         dbg("SubmitCommand(iova=0x%llx len=%u priv=%u) 0x%08lx\n",
+         err("SubmitCommand(iova=0x%llx len=%u priv=%u) failed: 0x%08lx\n",
              (unsigned long long)cmds[i].iova, cmds[i].size_dw * 4,
              k->priv_size, (unsigned long)st);
          dump_failed_ib(k, &cmds[i], st);
@@ -1065,7 +1172,7 @@ kmt_submit_i(struct fd_kmt *k, const struct fd_kmt_cmd *cmds,
    st = pD3DKMTSignalSynchronizationObjectFromGpu2(&sg);
    if (st) {
       LeaveCriticalSection(&k->lock);
-      dbg("SignalSynchronizationObjectFromGpu2 0x%08lx\n", (unsigned long)st);
+      err("SignalSynchronizationObjectFromGpu2 failed: 0x%08lx\n", (unsigned long)st);
       return st_to_errno(st);
    }
 
