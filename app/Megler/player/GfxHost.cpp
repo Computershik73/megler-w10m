@@ -300,8 +300,27 @@ struct State {
     std::string gpuName;                 // the adapter's, for the log
     bool videoSupport = false;           // made with D3D11_CREATE_DEVICE_VIDEO_SUPPORT (decoders and the video processor on it)
     bool videoUnder = true;              // a TextureView's video drawn on the window's canvas goes under the views (setVideoUnder)
-    std::atomic<uint64_t> videosPlaced{0}, videosComposed{0}; // places taken (drawTexture), pictures composed with no views drawn
-    uint64_t videosPlacedSaid = 0, videosComposedSaid = 0;    // as the last line about them had them (statsMutex)
+    // The videos under the views, for the line about them every 5 s (sayStats), each counted as it happens and said as the
+    // last line had it (videoSaid, statsMutex): what a flicker of a video comes from shows there, without a line a picture.
+    enum VideoCount {
+        videoPlaced,      // places taken as the views were drawn (drawTexture)
+        videoComposed,    // pictures composed with the views as last shown, nothing of them drawn (showVideoFrame)
+        videoAhead,       // ... of them while a drawing of the views under way had the video elsewhere (composed where the views shown have it)
+        videoMoved,       // places moved or grown when the drawing that took them was shown (takePlaces)
+        videoGone,        // videos given up when a drawing was shown: the views drawn where they were, without them
+        videoForgotten,   // videos let go with their textures (texture_frame's NULL: the view's surface gone)
+        videoLeft,        // pictures of a video not under the views: left to its view to draw (showVideoFrame's 1)
+        videoEmpty,       // holes composed with no picture of the video in them (composeWindow): shown empty
+        videoAmongOther,  // a decoder's pictures drawn among the views (drawTexture): on another canvas than the window's,
+        videoAmongLayer,  // ... into a layer of the window's,
+        videoAmongAlpha,  // ... translucent,
+        videoAmongShape,  // ... through a clip of a shape,
+        videoAmongTurned, // ... turned or mirrored,
+        videoAmongFlag,   // ... as the flag that keeps videos among the views asks (setVideoUnder)
+        videoCounts
+    };
+    std::atomic<uint64_t> videoCount[videoCounts] = {};
+    uint64_t videoSaid[videoCounts] = {};
     // Contexts and target bitmaps of canvases that are gone, for the next ones (gpuMutex).
     std::mutex gpuMutex;
     std::vector<GpuContext*> freeContexts;
@@ -3712,14 +3731,28 @@ void noteDrawing() {
             ull(t.composed - l.composed), double(t.composedPixels - l.composedPixels) / 1e6, ticksToMs(t.composeTicks - l.composeTicks), ull(t.layers - l.layers),
             ull(t.targetsMade - l.targetsMade), ticksToMs(t.makeTicks - l.makeTicks), ull(t.partTargets - l.partTargets));
     }
-    // And the videos laid under the views (drawTexture, GfxHost::showVideoFrame): a picture composed so cost no drawing.
-    const uint64_t placed = s.videosPlaced.load(), videos = s.videosComposed.load();
-    if (s.statsAt && (placed != s.videosPlacedSaid || videos != s.videosComposedSaid))
+    // And the videos laid under the views (drawTexture, GfxHost::showVideoFrame): a picture composed so cost no drawing. And
+    // what else became of them, which is where a picture of a video shown wrong would come from: composed while a drawing of
+    // the views had the video elsewhere, moved, given up, shown with no picture, or drawn among the views, and why.
+    uint64_t v[State::videoCounts];
+    bool changed = false;
+    for (int k = 0; k < State::videoCounts; k++) {
+        const uint64_t count = s.videoCount[k].load();
+        v[k] = count - s.videoSaid[k];
+        s.videoSaid[k] = count;
+        changed = changed || v[k];
+    }
+    if (s.statsAt && changed)
         say("%.1f s: videos under the views: %llu places taken as the views were drawn, %llu pictures composed with the views as they were last shown and "
-            "shown, nothing of the views drawn for them",
-            ticksToMs(now - s.statsAt) / 1000.0, ull(placed - s.videosPlacedSaid), ull(videos - s.videosComposedSaid));
-    s.videosPlacedSaid = placed;
-    s.videosComposedSaid = videos;
+            "shown, nothing of the views drawn for them (%llu of them while a drawing of the views had the video elsewhere, composed where the views "
+            "shown had it); as drawings were shown %llu places moved or grew and %llu videos were given up, the views drawn where they were without "
+            "them; %llu let go with their textures; %llu pictures of videos not under the views, left to their views; %llu holes composed with no "
+            "picture in them; a decoder's pictures drawn among the views: %llu on another canvas, %llu in a layer, %llu translucent, %llu through a "
+            "shaped clip, %llu turned, %llu by the flag",
+            ticksToMs(now - s.statsAt) / 1000.0, ull(v[State::videoPlaced]), ull(v[State::videoComposed]), ull(v[State::videoAhead]),
+            ull(v[State::videoMoved]), ull(v[State::videoGone]), ull(v[State::videoForgotten]), ull(v[State::videoLeft]), ull(v[State::videoEmpty]),
+            ull(v[State::videoAmongOther]), ull(v[State::videoAmongLayer]), ull(v[State::videoAmongAlpha]), ull(v[State::videoAmongShape]),
+            ull(v[State::videoAmongTurned]), ull(v[State::videoAmongFlag]));
     s.statsLast = t;
     s.statsAt = now;
 }
@@ -3904,6 +3937,7 @@ void forgetVideo(int id) {
         if (c.videos[i].id != id) continue;
         c.pending.include(c.videos[i].clip);
         c.videos.erase(c.videos.begin() + std::ptrdiff_t(i));
+        ++G().videoCount[State::videoForgotten];
     }
     for (size_t i = c.placing.size(); i-- > 0;)
         if (c.placing[i].id == id) c.placing.erase(c.placing.begin() + std::ptrdiff_t(i));
@@ -3930,13 +3964,18 @@ void takePlaces(Composition& c, const Box& part) {
         if (placed || both.empty()) continue;
         c.pending.include(v.clip);
         c.videos.erase(c.videos.begin() + std::ptrdiff_t(i));
+        ++G().videoCount[State::videoGone];
     }
     for (Composition::Video& p : c.placing) {
         bool known = false;
         for (Composition::Video& w : c.videos) {
             if (w.id != p.id) continue;
-            if (w.rect.l == p.rect.l && w.rect.t == p.rect.t && w.rect.r == p.rect.r && w.rect.b == p.rect.b) p.clip.include(w.clip);
-            else c.pending.include(w.clip);
+            if (w.rect.l == p.rect.l && w.rect.t == p.rect.t && w.rect.r == p.rect.r && w.rect.b == p.rect.b) {
+                p.clip.include(w.clip);
+            } else {
+                c.pending.include(w.clip);
+                ++G().videoCount[State::videoMoved];
+            }
             w = p;
             known = true;
         }
@@ -4050,7 +4089,10 @@ bool composeWindow(ID2D1Bitmap1* onto, Box part) {
                 const auto found = k.byId.find(v.id);
                 if (found != k.byId.end() && found->second.have && found->second.topFirst) frame = found->second.frame;
             }
-            if (!frame) continue;
+            if (!frame) {
+                ++s.videoCount[State::videoEmpty];
+                continue;
+            }
             dc->SetTransform(turned);
             const D2D1_RECT_F open = D2D1::RectF(float(b.l), float(b.t), float(b.r), float(b.b));
             dc->PushAxisAlignedClip(open, D2D1_ANTIALIAS_MODE_ALIASED);
@@ -4457,7 +4499,7 @@ void drawTexture(void*, void* canvas, int id, float l, float t, float r, float b
                 known = true;
             }
             if (!known) c.placing.push_back(v);
-            ++s.videosPlaced;
+            ++s.videoCount[State::videoPlaced];
             return;
         }
         // Drawn among the views. On the window's canvas the video is no longer under them once this drawing is shown: present
@@ -4465,6 +4507,9 @@ void drawTexture(void*, void* canvas, int id, float l, float t, float r, float b
         // On another canvas nothing of the window changes: a bitmap an app draws a view into (a snapshot for an animation,
         // TextureView.getBitmap's) while the view itself draws the video under the window's views. That drawing once took
         // the video from under them at once, and the window composed before its view drew it again showed the hole empty.
+        if (topFirst)
+            ++s.videoCount[!s.videoUnder ? State::videoAmongFlag : !windowCanvas ? State::videoAmongOther : target != &cv->base ? State::videoAmongLayer
+                           : alpha < 255 ? State::videoAmongAlpha : cv->clip().g ? State::videoAmongShape : State::videoAmongTurned];
         target->useClip(cv->clip());
         // An OpenGL ES picture is turned over, its rows bottom first -- but Mesa's, whose rows come top first as a video's do
         // (glFramesTopFirst): a TextureView's frames and the WebView's pages of an app set to Mesa.
@@ -7835,10 +7880,14 @@ int GfxHost::showVideoFrame(int id, ID3D11Texture2D* picture, int width, int hei
             if (v.id != id) continue;
             if (c.haveViews && showComposed(v.clip, false)) {
                 shown = 2;
-                ++s.videosComposed;
+                ++s.videoCount[State::videoComposed];
+                for (const Composition::Video& p : c.placing)
+                    if (p.id == id && (p.rect.l != v.rect.l || p.rect.t != v.rect.t || p.rect.r != v.rect.r || p.rect.b != v.rect.b))
+                        ++s.videoCount[State::videoAhead];
             }
             break;
         }
+        if (shown == 1) ++s.videoCount[State::videoLeft];
     });
     if (shown == 2) noteDrawing();
     return shown;
