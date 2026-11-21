@@ -4477,7 +4477,11 @@ static int run_data(void)
                                          "attach-pairs",
                                          /* And lineHeight as Android spaces lines, between them and not after the last: one line as
                                             high as its font whatever the lineHeight (issue #14). */
-                                         "line-height" };
+                                         "line-height",
+                                         /* And Android's sound picker, Megler's (megler.RingtonePicker): "Default notification sound"
+                                            and "None", the one checked as the app's sound is, OK's and Cancel's results, where
+                                            startActivity threw and WhatsApp's "Notification tone" ended it (0.1.0.734). */
+                                         "ringtone-picker" };
     int at = -1, want = 0, run = 0, line, i;
     char text[120];
     if (g_script_count) sscanf(g_script[0], "run:%d", &want);
