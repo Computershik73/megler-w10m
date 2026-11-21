@@ -9,7 +9,9 @@ rem   tools\build-mesa-arm32.cmd install    and into drivers\mesa-arm32, in plac
 rem
 rem 1. Mesa: its tag mesa-26.2.7 cloned into <work>\third_party\mesa once, and the patches applied with git am as their
 rem    author committed them: the result is that project's own commit e963b78b, checked by its tree (else no build) and
-rem    by its hash (Mesa names the commit it is built from in its version string: "Mesa 26.2.7 (git-e963b78bed)").
+rem    by its hash. Then Megler's own patches, megler-*.patch beside them (megler-0025: Mesa's crash handlers and its log
+rem    files only when asked for), and the tree they make checked. Mesa names the commit it is built from in its version
+rem    string: "Mesa 26.2.7 (git-<the last patch's commit>)".
 rem 2. The core: fd_kmt.c, gpu_table.c and kmd_qcom.c into <work>\build\fdkmt\fd_kmt.lib with clang-cl. Its D3DKMT
 rem    declarations are SDK 10.0.19041's d3dkmthk.h and the two headers that includes, copied out alone (SDK 10.0.16299,
 rem    which the rest is built with, has none for an app).
@@ -51,6 +53,7 @@ set MESA_TAG=mesa-26.2.7
 set MESA_BASE=b69adc2adfbfe3eb985bd66cd06c61ca719ae9ae
 set MESA_HEAD=e963b78bede1a54e3abed2c30c618b8113b5b80c
 set MESA_TREE=d31fe7a7cf4999b33097389b0b343cac20d48ac1
+set MEGLER_TREE=224cbc6449dfb82fc482ee8992f32f06bafc53ab
 set FLEXBISON_URL=https://github.com/lexxmark/winflexbison/releases/download/v2.5.25/win_flex_bison-2.5.25.zip
 set FLEXBISON_SHA256=8d324b62be33604b2c45ad1dd34ab93d722534448f55a16ca7292de32b6ac135
 set PYTHON_MODULES=meson==1.12.1 ninja==1.13.2 mako==1.4.3 pyyaml==6.0.3 packaging==26.1
@@ -113,14 +116,16 @@ for %%f in (llvm-lib.exe llvm-rc.exe libLLVM-23.dll libclang-cpp.dll libc++.dll 
 if not exist "%MEGLER_LLVM%\clang-cl.exe" echo build-mesa-arm32: no clang-cl.exe in %MEGLER_LLVM% [MEGLER_LLVM] & exit /b 1
 
 rem Mesa, and the patches as their author committed them: the committer is the author, at the author's time, but for
-rem the last patch, which its author committed again 20 seconds after (its commit's date in e963b78b).
+rem the last patch, which its author committed again 20 seconds after (its commit's date in e963b78b). Then Megler's own
+rem patches (megler-*.patch), each committed at its author's time by the same committer, so that the commit the DLLs'
+rem version string names is the same on every build.
 if exist "%MESA%\.git" goto have_mesa
 echo === Mesa %MESA_TAG% into %MESA%
 git clone -c core.autocrlf=false --depth 1 -b %MESA_TAG% https://gitlab.freedesktop.org/mesa/mesa.git "%MESA%" || exit /b 1
 :have_mesa
-set HEAD=
-for /f %%h in ('git -C "%MESA%" rev-parse HEAD') do set "HEAD=%%h"
-if "%HEAD%"=="%MESA_HEAD%" goto patched
+set TREE=
+for /f %%h in ('git -C "%MESA%" rev-parse HEAD:') do set "TREE=%%h"
+if "%TREE%"=="%MEGLER_TREE%" goto patched
 echo === The patches, onto %MESA_BASE%
 git -C "%MESA%" am --abort >nul 2>&1
 git -C "%MESA%" checkout -q -f -B wp-arm32 %MESA_BASE% || exit /b 1
@@ -129,12 +134,18 @@ git -C "%MESA%" -c user.name=anon -c user.email= am -q --committer-date-is-autho
 set "GIT_COMMITTER_DATE=1795225589 +0700"
 git -C "%MESA%" -c user.name=anon -c user.email= commit -q --amend --no-edit --no-verify || exit /b 1
 set GIT_COMMITTER_DATE=
-:patched
-set TREE=
 for /f %%h in ('git -C "%MESA%" rev-parse HEAD:') do set "TREE=%%h"
-if not "%TREE%"=="%MESA_TREE%" echo build-mesa-arm32: Mesa's tree is %TREE% with the patches, not %MESA_TREE% & exit /b 1
+if not "%TREE%"=="%MESA_TREE%" echo build-mesa-arm32: Mesa's tree is %TREE% with the project's patches, not %MESA_TREE% & exit /b 1
 for /f %%h in ('git -C "%MESA%" rev-parse HEAD') do set "HEAD=%%h"
-if not "%HEAD%"=="%MESA_HEAD%" echo build-mesa-arm32: WARNING: the tree is right, but the commit is %HEAD%, not %MESA_HEAD%: the DLLs name that one
+if not "%HEAD%"=="%MESA_HEAD%" echo build-mesa-arm32: WARNING: the tree is right, but the project's commit came out as %HEAD%, not %MESA_HEAD%
+echo === Megler's patches
+copy /b "%PATCHES%\megler-*.patch" "%WORK%\dl\megler.mbox" >nul || exit /b 1
+git -C "%MESA%" -c user.name=anon -c user.email= am -q --committer-date-is-author-date "%WORK%\dl\megler.mbox" || exit /b 1
+:patched
+for /f %%h in ('git -C "%MESA%" rev-parse HEAD:') do set "TREE=%%h"
+if not "%TREE%"=="%MEGLER_TREE%" echo build-mesa-arm32: Mesa's tree is %TREE% with Megler's patches, not %MEGLER_TREE% & exit /b 1
+for /f %%h in ('git -C "%MESA%" rev-parse HEAD') do set "HEAD=%%h"
+echo === Mesa at %HEAD%: the project's %MESA_HEAD% and Megler's patches
 
 rem VS 2017's ARM tools (MSVC 14.16) and SDK 10.0.16299: INCLUDE and LIB for clang-cl and lld-link.
 call "%MEGLER_VS2017%\VC\Auxiliary\Build\vcvarsall.bat" x64_arm 10.0.16299.0 -vcvars_ver=14.16 >nul || exit /b 1

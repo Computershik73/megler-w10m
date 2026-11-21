@@ -133,7 +133,7 @@ st_to_errno(NTSTATUS st)
 /* ------------------------------------------------------------------ */
 
 
-/* Thong ke (moi 2 s ghi %TEMP%\fdkmt.log): so lan goi + tong thoi gian. */
+/* Thong ke (moi 2 s ghi MESA_LOG_DIR\fdkmt.log): so lan goi + tong thoi gian. */
 enum { ST_ALLOC, ST_FREE, ST_MAP, ST_SUBMIT, ST_WAIT, ST_N };
 static const char *st_name[ST_N] = { "alloc", "free", "map", "submit", "wait" };
 static volatile LONG st_cnt[ST_N];
@@ -141,10 +141,30 @@ static volatile LONG64 st_ticks[ST_N];
 static LONG64 st_last;
 static FILE *st_log;
 
+/* Megler: the statistics are kept and written only where MESA_LOG_DIR names
+ * a folder for them, as the driver's other log files are (Megler's patch
+ * megler-0025 to Mesa); else the core writes no file at all.
+ */
+static const char *
+st_dir(void)
+{
+   static int known;
+   static const char *dir;
+   if (!known) {
+      const char *e = getenv("MESA_LOG_DIR");
+      dir = e && *e ? e : NULL;
+      known = 1;
+   }
+   return dir;
+}
+
 static void
 st_add(int i, LARGE_INTEGER t0)
 {
    LARGE_INTEGER t1, f;
+   const char *dir = st_dir();
+   if (!dir)
+      return;
    QueryPerformanceCounter(&t1);
    QueryPerformanceFrequency(&f);
    InterlockedIncrement(&st_cnt[i]);
@@ -156,11 +176,9 @@ st_add(int i, LARGE_INTEGER t0)
    st_last = t1.QuadPart;
    if (!st_log) {
       char path[MAX_PATH];
-      DWORD n = GetTempPathA(MAX_PATH, path);
-      if (n && n < MAX_PATH - 16) {
-         strcat_s(path, MAX_PATH, "fdkmt.log");
+      int n = snprintf(path, sizeof(path), "%s\\fdkmt.log", dir);
+      if (n > 0 && n < (int)sizeof(path))
          st_log = _fsopen(path, "w", _SH_DENYNO);
-      }
    }
    if (!st_log)
       return;

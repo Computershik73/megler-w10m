@@ -6,7 +6,7 @@ Implements the interface `third_party/mesa/src/freedreno/drm/d3dkmt/fd_kmt.h` us
 
 ```
 fd_kmt.c          generic WDDM part (GPU-independent): adapter, device, context, BO + cache,
-                  submit, fence, statistics (%TEMP%\fdkmt.log)
+                  submit, fence, statistics (MESA_LOG_DIR\fdkmt.log, only where MESA_LOG_DIR is set: Megler's change)
 fd_kmt_priv.h     interface: struct fdkmt_gpu (GPU table) + struct fdkmt_kmd_ops (KMD ABI)
 gpu_table.c       SoC -> GPU table (gpu_id for Mesa, GMEM, frequency, KMD ops, verified)
 kmd_qcom.c        Qualcomm KMD ABI v1 (allocation private data 0x130 + CRC, cache flag 0x80)
