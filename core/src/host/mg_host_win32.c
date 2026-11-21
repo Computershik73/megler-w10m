@@ -5028,6 +5028,15 @@ void *mg_dl_open(const char *name)
 
 void *mg_dl_sym(void *lib, const char *name) { return (void *)GetProcAddress((HMODULE)lib, name); }
 
+bool mg_host_setenv(const char *name, const char *value)
+{
+    wchar_t *n = wide_of(name), *v = wide_of(value);
+    BOOL ok = SetEnvironmentVariableW(n, v);
+    free(n);
+    free(v);
+    return ok != 0;
+}
+
 #if defined(MG_ELF_HOST)
 bool mg_core_image(mg_addr *base, size_t *size);
 #endif

@@ -119,6 +119,19 @@ static bool mesa_load(char *why, size_t size)
             return false;
         }
     }
+    /*
+     * The flag mesa-diag: Mesa's own diagnosis, which Megler's patch to it leaves off (drivers/mesa-arm32, megler-0025):
+     * its crash handlers -- a vectored one, for the whole process and in front of Megler's own, that prints a backtrace on
+     * stderr for every exception, and its C runtime's for an invalid parameter and abort() -- and its log files, fd_kmt's
+     * statistics every 2 s (fdkmt.log) and the shared pbuffers it could not make (fd_egl_share.log), in the data folder
+     * beside megler.log, where the package's log copies take them (the shell's LogMirror and PicturesDiag). Set before its
+     * DLLs load: their C runtime reads the process's environment as it starts.
+     */
+    if (mg_flag("mesa-diag")) {
+        bool set = mg_host_setenv("MESA_CRASH_HANDLERS", "1") && mg_host_setenv("MESA_LOG_DIR", megler_data_dir());
+        if (set) mg_info("egl: the flag mesa-diag: Mesa's crash handlers on, and its log files (fdkmt.log, fd_egl_share.log) in %s", megler_data_dir());
+        else mg_warn("egl: the flag mesa-diag: Mesa's diagnosis could not be asked for (the process's environment refused it)");
+    }
     gles = mg_dl_open("libGLESv2_mesa.dll");
     egl = gles ? mg_dl_open("libEGL_mesa.dll") : NULL;
     if (!gles || !egl) {

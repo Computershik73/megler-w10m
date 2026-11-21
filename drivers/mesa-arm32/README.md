@@ -82,6 +82,11 @@ DLLs load -- their C runtime, linked into each, reads it as it starts:
   (told to `OutputDebugString` and stderr in any case); `fd_wgl.log`, the presents of the CoreWindow swap chain, which
   Megler does not use.
 
+In Megler both are asked for by an app's flag `mesa-diag` (a file of that name in `LocalState\flags`, or in
+`Pictures\Megler\diag\<package>\flags` over USB): the log files then go into the app's package's `LocalState`, beside
+`megler.log`, and its log copies take them (Save All Logs, `Pictures\Megler\diag`); `docs/ARCHITECTURE.md`, "Mesa's
+freedreno, chosen per app".
+
 Other environment variables (`src/BUILD.md`, `src/src/fdkmt/README.md`, the patches) switch on more: `FDKMT_DEBUG`,
 `FDKMT_DUMP_HANG` and `FDKMT_DUMP_FAIL` (command buffers into `%TEMP%`), `FD_D3DKMT_GMEM`, `FD_D3DKMT_CACHED`,
 `FD_MAX_BATCH_DRAWS`, Mesa's own `FD_MESA_DEBUG`, `IR3_SHADER_DEBUG`, ... (printing a shader as text makes a temporary

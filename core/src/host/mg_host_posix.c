@@ -1969,6 +1969,7 @@ int mg_net_interfaces(mg_netif *out, int max)
 
 void *mg_dl_open(const char *name) { return dlopen(name, RTLD_NOW | RTLD_LOCAL); }
 void *mg_dl_sym(void *lib, const char *name) { return dlsym(lib, name); }
+bool mg_host_setenv(const char *name, const char *value) { return setenv(name, value, 1) == 0; }
 
 bool mg_host_module_at(mg_addr address, char *name, size_t size, mg_addr *base)
 {
