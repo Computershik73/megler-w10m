@@ -411,6 +411,11 @@ public class PackageManager {
             java.util.List<megler.Manifest.Component> own = i.getComponent() == null ? megler.Manifest.match(megler.Manifest.activities, i) : null;
             if (own == null || own.isEmpty()) own = java.util.Collections.singletonList(c);
             for (megler.Manifest.Component m : own) {
+                // (An implicit intent does not reach an activity that is disabled, as on Android, unless the flags ask for those
+                // too: Android's Settings lists the screens of its own that are on as its tiles, and the ones its manifest has
+                // off -- the second About, Developer options before they are turned on, Tips & support where its configuration
+                // says none -- were there.)
+                if (i.getComponent() == null && (flags & MATCH_DISABLED_COMPONENTS) == 0 && !enabledNow(m)) continue;
                 ResolveInfo r = new ResolveInfo();
                 r.activityInfo = activity(m);
                 r.system = megler.Native.platformApp();
@@ -599,6 +604,21 @@ public class PackageManager {
         if (webView >= 0) return webView;
         if (!has(c.getPackageName())) throw unknown("component", c.getPackageName(), c.toString());
         synchronized (PackageManager.class) { String v = states().getProperty(c.flattenToString()); return v == null ? COMPONENT_ENABLED_STATE_DEFAULT : Integer.parseInt(v); }
+    }
+    /*
+     * Whether a component of the app's own is enabled now: as the app set it (setComponentEnabledSetting), else as its manifest
+     * says -- android:enabled, a literal or a boolean resource of the app's (Android's Settings has its Tips & support on
+     * config_support_enabled).
+     */
+    private static boolean enabledNow(megler.Manifest.Component m) {
+        String v;
+        synchronized (PackageManager.class) { v = states().getProperty(new ComponentName(megler.Native.packageName(), m.name).flattenToString()); }
+        int state = v == null ? COMPONENT_ENABLED_STATE_DEFAULT : Integer.parseInt(v);
+        if (state != COMPONENT_ENABLED_STATE_DEFAULT) return state == COMPONENT_ENABLED_STATE_ENABLED;
+        if (m.enabledResource != 0) {
+            try { return megler.ContextImpl.app().getResources().getBoolean(m.enabledResource); } catch (RuntimeException e) {}
+        }
+        return m.enabled;
     }
     public void setApplicationEnabledSetting(String pkg, int state, int flags) {}
     public int getApplicationEnabledSetting(String pkg) {

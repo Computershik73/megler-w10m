@@ -87,6 +87,23 @@
         <!-- An activity of no class, as those of a feature module that is not installed are: an Instrumentation of the app's own
              makes Main$Stand for its name (Main's "instrumentation-replaced", F10), as TikTok Lite's "mini" app does. -->
         <activity android:name=".Main$Absent" android:theme="@android:style/Theme.Translucent.NoTitleBar" android:exported="false" />
+        <!-- Screens an implicit intent reaches only while they are on, as Android's Settings finds its own tiles (Main's
+             "disabled-activities"): off in the manifest, on, and off by a boolean resource. No classes: none is started. -->
+        <activity android:name=".Main$TileOff" android:enabled="false" android:exported="false">
+            <intent-filter>
+                <action android:name="megler.test.TILE" />
+            </intent-filter>
+        </activity>
+        <activity android:name=".Main$TileOn" android:exported="false">
+            <intent-filter>
+                <action android:name="megler.test.TILE" />
+            </intent-filter>
+        </activity>
+        <activity android:name=".Main$TileConfigured" android:enabled="@bool/tile_configured" android:exported="false">
+            <intent-filter>
+                <action android:name="megler.test.TILE" />
+            </intent-filter>
+        </activity>
         <!-- (Off also names Google Play services' SMS Retriever's action, as an app that hears its code so has a receiver for it:
              the report says so, and the app's own package declares the text messages for it: the test's C side, start().) -->
         <receiver android:name=".Main$Off" android:enabled="false" android:exported="false">

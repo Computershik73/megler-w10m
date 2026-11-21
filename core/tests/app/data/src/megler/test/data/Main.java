@@ -6927,6 +6927,32 @@ public class Main extends Activity {
                     && "Unknown component: ComponentInfo{com.facebook.appmanager/com.facebook.oxygen.appmanager.firstparty.tos.ShouldAcceptTos}".equals(component)
                     && "Unknown package: com.facebook.appmanager".equals(application);
         });
+        // An implicit intent reaches the app's activities that are on, as on Android: not one its manifest has off, literally or by
+        // a boolean resource, until the app turns it on; not one the app turned off; all of them with MATCH_DISABLED_COMPONENTS.
+        // Android's Settings lists its own screens so, and showed those its manifest has off (a second About, Developer options).
+        step("disabled-activities", () -> {
+            android.content.pm.PackageManager pm = getPackageManager();
+            android.content.Intent tile = new android.content.Intent("megler.test.TILE").setPackage(getPackageName());
+            android.content.ComponentName off = new android.content.ComponentName(this, "megler.test.data.Main$TileOff");
+            android.content.ComponentName on = new android.content.ComponentName(this, "megler.test.data.Main$TileOn");
+            String first = tiles(pm.queryIntentActivities(tile, 0));
+            pm.setComponentEnabledSetting(off, android.content.pm.PackageManager.COMPONENT_ENABLED_STATE_ENABLED, android.content.pm.PackageManager.DONT_KILL_APP);
+            pm.setComponentEnabledSetting(on, android.content.pm.PackageManager.COMPONENT_ENABLED_STATE_DISABLED, android.content.pm.PackageManager.DONT_KILL_APP);
+            String turned = tiles(pm.queryIntentActivities(tile, 0));
+            String all = tiles(pm.queryIntentActivities(tile, android.content.pm.PackageManager.MATCH_DISABLED_COMPONENTS));
+            pm.setComponentEnabledSetting(off, android.content.pm.PackageManager.COMPONENT_ENABLED_STATE_DEFAULT, 0);
+            pm.setComponentEnabledSetting(on, android.content.pm.PackageManager.COMPONENT_ENABLED_STATE_DEFAULT, 0);
+            String back = tiles(pm.queryIntentActivities(tile, 0));
+            detail = "first=" + first + " turned=" + turned + " all=" + all + " back=" + back;
+            return "TileOn".equals(first) && "TileOff".equals(turned) && "TileConfigured TileOff TileOn".equals(all) && "TileOn".equals(back);
+        });
+    }
+
+    /** The simple names of the activities of those answers, sorted. */
+    private static String tiles(java.util.List<android.content.pm.ResolveInfo> l) {
+        java.util.TreeSet<String> names = new java.util.TreeSet<>();
+        for (android.content.pm.ResolveInfo r : l) names.add(r.activityInfo.name.substring(r.activityInfo.name.indexOf('$') + 1));
+        return String.join(" ", names);
     }
 
     /**
