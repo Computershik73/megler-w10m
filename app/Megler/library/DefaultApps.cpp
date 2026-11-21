@@ -107,6 +107,26 @@ bool webLinks(JsonObject const& filter) {
            (has(schemes, "http") || has(schemes, "https"));
 }
 
+/// Whether the filter makes its activity a browser, as megler.Resolver.browsers() has it for the apps' own lists (and
+/// Android's Settings for its own): it takes the probe that asks -- VIEW of https://example.com/, BROWSABLE, CATEGORY_DEFAULT
+/// as startActivity asks, no type -- and takes it as a browser does (IntentFilter.handleAllWebDataURI: no host at all, or
+/// CATEGORY_APP_BROWSER where a host "*" takes every one). Not a filter of web links of some MIME type (a player's streams, a
+/// downloader's files), one without DEFAULT, or APP_BROWSER on a filter that takes no web links: the looser test before this
+/// made the Settings' list of browsers long with apps that are none.
+bool browserFilter(JsonObject const& filter) {
+    const auto categories = strings(filter, L"categories");
+    if (!has(strings(filter, L"actions"), "android.intent.action.VIEW") || !has(categories, "android.intent.category.BROWSABLE") ||
+        !has(categories, "android.intent.category.DEFAULT") || !has(strings(filter, L"schemes"), "https"))
+        return false;
+    // (A type, even "*/*", is not matched by an intent without one; nor is a scheme-specific part without hosts.)
+    if (!strings(filter, L"types").empty()) return false;
+    const auto hosts = strings(filter, L"hosts");
+    if (hosts.empty())
+        return !(filter.HasKey(L"ssps") && filter.GetNamedValue(L"ssps").ValueType() == JsonValueType::Array &&
+                 filter.GetNamedArray(L"ssps").Size() > 0);
+    return has(categories, "android.intent.category.APP_BROWSER") && has(hosts, "*");
+}
+
 bool autoVerify(JsonObject const& filter) {
     return filter.HasKey(L"autoVerify") && filter.GetNamedValue(L"autoVerify").ValueType() == JsonValueType::Boolean && filter.GetNamedBoolean(L"autoVerify");
 }
@@ -162,8 +182,7 @@ std::vector<Browser> browsers() {
     std::vector<Browser> out;
     for (const auto& [package, appLabel] : apps()) {
         eachFilter(package, [&, package = package, appLabel = appLabel](const std::string& name, const std::string& label, JsonObject const& filter) {
-            const bool appBrowser = has(strings(filter, L"categories"), "android.intent.category.APP_BROWSER");
-            if (!appBrowser && (!webLinks(filter) || !strings(filter, L"hosts").empty())) return;
+            if (!browserFilter(filter)) return;
             const std::string id = package + "/" + name;
             for (const Browser& b : out)
                 if (b.id == id) return;
