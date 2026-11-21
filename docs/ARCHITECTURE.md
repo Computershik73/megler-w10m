@@ -697,6 +697,12 @@ Megler's package has Mesa. ANGLE is the default; a package built with `MEGLER_GL
   patches and Mesa read, drivers/mesa-arm32/README.md), the log saying `egl: Mesa's environment: NAME=value`. Set through
   the Device Portal (`tools/phone-flags.py --app <package> set mesa-env-FD_MESA_DEBUG=gmem`): `=` is not among the
   characters a flag in `Pictures\Megler\diag` may have.
+- **A build of Mesa tried without a package, by the flag `mesa-local`.** `mesa_load` takes Mesa's three DLLs from the
+  data folder's `mesa\` (`LocalState\mesa`) instead of the package's, by their paths (`mg_dl_open_file`, `LoadLibraryExW`;
+  the driver first, which the other two import by name), where all three are there; the log says which. They get there
+  from the phone's Pictures over USB: the shell copies the files of the newest `Pictures\Megler\diag\<package>\mesa-<n>`
+  (the largest n; a new folder a build, MTP writing no file over another) into `LocalState\mesa` as the app starts, once
+  a folder (`shell/PicturesDiag.cpp`, `placeMesa`; `LocalState\mesa\from.txt` names it).
 - **What goes to the kernel's driver, by the flag `kmt-trace`.** Every call of the graphics kernel's functions the
   app's process makes from the first use of EGL on -- ANGLE's Direct3D 11 device through Qualcomm's own driver, the
   shell's, Mesa's D3DKMT core -- with its arguments, its private driver data and the command buffers it submits (and the

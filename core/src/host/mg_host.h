@@ -809,6 +809,12 @@ MG_HOSTAPI int mg_net_dns_servers(char (*out)[48], int max);
 MG_HOSTAPI void *mg_dl_open(const char *name);
 MG_HOSTAPI void *mg_dl_sym(void *lib, const char *name);
 /*
+ * A DLL by its whole path, wherever it is: a build of Mesa's freedreno put in an app's data folder for a diagnosis (the
+ * flag mesa-local, ndk/mg_egl.c), where mg_dl_open takes the package's files alone. NULL, said in the log, where it does
+ * not load.
+ */
+MG_HOSTAPI void *mg_dl_open_file(const char *path);
+/*
  * The host process's environment variable `name` set to `value` (Windows: SetEnvironmentVariable), for a library of the
  * host's own that the core loads after: a DLL's C runtime reads the process's environment as it starts. Mesa's diagnosis,
  * asked for by the flag mesa-diag (ndk/mg_egl.c). Not the guest's environment (bionic's getenv).

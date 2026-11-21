@@ -112,8 +112,26 @@ static bool mesa_load(char *why, size_t size)
     fn_initialize_ init;
     fn_get_error_ error;
     int major = 0, minor = 0;
-    bool diag, caught;
-    for (i = 0; i < MG_COUNT(files); i++) {
+    bool diag, caught, local = false;
+    char *folder = NULL;
+    /*
+     * The flag mesa-local: Mesa's three DLLs from the data folder's mesa\ (the shell puts there what the newest
+     * Pictures\Megler\diag\<package>\mesa-<n> holds: shell/PicturesDiag.h), not the package's -- a build of Mesa tried on
+     * the phone without a package of Megler's made for it. Where they are not all there, the package's.
+     */
+    if (mg_flag("mesa-local")) {
+        folder = mg_sprintf("%s/mesa", megler_data_dir());
+        local = true;
+        for (i = 0; i < MG_COUNT(files) && local; i++) {
+            char *path = mg_sprintf("%s/%s", folder, files[i]);
+            mg_stat st;
+            local = mg_path_stat(path, &st, NULL);
+            free(path);
+        }
+        if (local) mg_info("egl: the flag mesa-local: Mesa's DLLs from %s", folder);
+        else mg_warn("egl: the flag mesa-local: %s has not all of Mesa's DLLs; the package's are taken", folder);
+    }
+    for (i = 0; i < MG_COUNT(files) && !local; i++) {
         char *path = mg_sprintf("%s/%s", megler_package_dir(), files[i]);
         mg_stat st;
         n = strlen(missing);
@@ -180,8 +198,25 @@ static bool mesa_load(char *why, size_t size)
      */
     mg_flags_each("mesa-env-", mesa_env, NULL);
     caught = mg_host_stderr_to_log_begin("mesa: ");
-    gles = mg_dl_open("libGLESv2_mesa.dll");
-    egl = gles ? mg_dl_open("libEGL_mesa.dll") : NULL;
+    if (local) {
+        /* (The driver first, by its path: the other two import it by name, which is then the one loaded.) */
+        char *path = mg_sprintf("%s/libgallium_wgl.dll", folder);
+        void *driver = mg_dl_open_file(path);
+        free(path);
+        gles = egl = NULL;
+        if (driver) {
+            path = mg_sprintf("%s/libGLESv2_mesa.dll", folder);
+            gles = mg_dl_open_file(path);
+            free(path);
+            path = mg_sprintf("%s/libEGL_mesa.dll", folder);
+            egl = gles ? mg_dl_open_file(path) : NULL;
+            free(path);
+        }
+    } else {
+        gles = mg_dl_open("libGLESv2_mesa.dll");
+        egl = gles ? mg_dl_open("libEGL_mesa.dll") : NULL;
+    }
+    free(folder);
     if (caught) mg_host_stderr_to_log_end();
     else mg_warn("egl: what Mesa says of its errors cannot be taken into the log (the host's line before says why)");
     if (!gles || !egl) {
