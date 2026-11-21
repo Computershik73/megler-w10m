@@ -9,20 +9,66 @@ import android.widget.LinearLayout;
 import android.widget.TextView;
 import java.util.ArrayList;
 
-/** The platform action bar a plain Activity gets from its theme: a title bar (megler.DecorView's), its menu shown as actions when there is room. */
+/**
+ * The platform action bar a plain Activity gets from its theme: a title bar (megler.DecorView's), its menu shown as actions when
+ * there is room. Or the action bar of a Toolbar of the app's own, which Activity.setActionBar makes it (Android's
+ * ToolbarActionBar): the activity's title on the toolbar as its display options say, its navigation button the up indicator.
+ */
 public final class SimpleActionBar extends ActionBar {
     private final Activity mActivity;
     private final DecorView mDecor;
+    /* the app's own toolbar (Activity.setActionBar), or null: the decor's bar */
+    private final android.widget.Toolbar mToolbar;
     private CharSequence mTitle, mSubtitle;
     private int mOptions = DISPLAY_SHOW_TITLE | DISPLAY_SHOW_HOME;
     private View mCustom;
     private boolean mShowing = true;
+    /* a toolbar's own navigation icon, and the up indicator its action bar style names (ToolbarWidgetWrapper's mNavIcon and
+       mDefaultNavigationIcon); whether the app set the title itself, which the activity's title does not replace then */
+    private Drawable mNavIcon, mDefaultNavIcon;
+    private boolean mTitleSet;
     public SimpleActionBar(Activity a, DecorView d) {
-        mActivity = a; mDecor = d; mTitle = a.getTitle();
+        mActivity = a; mDecor = d; mToolbar = null; mTitle = a.getTitle();
         // the options menu, made once the activity's onCreate is done (as the platform makes its panel menu)
         d.post(this::invalidateOptionsMenu);
     }
-    private android.widget.Toolbar bar() { View v = mDecor.actionBarView(); return v instanceof android.widget.Toolbar ? (android.widget.Toolbar) v : null; }
+    /*
+     * As Android's ToolbarActionBar and ToolbarWidgetWrapper: the toolbar's title, or else the activity's, shown while
+     * DISPLAY_SHOW_TITLE is on; DISPLAY_HOME_AS_UP on where the toolbar has a navigation icon, which stays its icon, and
+     * otherwise the up indicator of the action bar style as the toolbar's own theme has it; the navigation button sends
+     * android.R.id.home to the activity. Android's own Settings (AOSP 9) makes the toolbar of its layout the action bar of
+     * each screen: every screen was titled "Settings" with no way back on its bar, and the search bar of its main screen
+     * showed "Settings" before its hint, a title it hides.
+     */
+    public SimpleActionBar(Activity a, android.widget.Toolbar t) {
+        mActivity = a; mDecor = null; mToolbar = t;
+        mTitle = t.getTitle();
+        mTitleSet = mTitle != null;
+        mNavIcon = t.getNavigationIcon();
+        int[] attrs = { android.R.attr.homeAsUpIndicator };
+        android.content.res.TypedArray s = t.getContext().obtainStyledAttributes(null, attrs, android.R.attr.actionBarStyle, 0);
+        try { mDefaultNavIcon = s.getDrawable(0); } catch (RuntimeException e) { mDefaultNavIcon = null; }
+        s.recycle();
+        if (mNavIcon != null) mOptions |= DISPLAY_HOME_AS_UP;
+        t.setNavigationOnClickListener(v -> mActivity.onMenuItemSelected(android.view.Window.FEATURE_OPTIONS_PANEL, new megler.MenuImpl(mActivity).add(0, android.R.id.home, 0, "")));
+        if (!mTitleSet) setWindowTitle(a.getTitle());
+        t.post(this::invalidateOptionsMenu);
+    }
+    private android.widget.Toolbar bar() {
+        if (mToolbar != null) return mToolbar;
+        View v = mDecor.actionBarView(); return v instanceof android.widget.Toolbar ? (android.widget.Toolbar) v : null;
+    }
+    /** The activity's title (Activity.onTitleChanged): the toolbar's, unless the app gave it one of its own. */
+    @Override public void setWindowTitle(CharSequence t) {
+        if (mToolbar == null || mTitleSet) return;
+        mTitle = t;
+        updateTitle();
+    }
+    private void updateTitle() {
+        boolean show = (mOptions & DISPLAY_SHOW_TITLE) != 0;
+        mToolbar.setTitle(show ? mTitle : null);
+        mToolbar.setSubtitle(show ? mSubtitle : null);
+    }
     /** The activity's options menu on the bar: actions where there is room, the rest in the overflow; picks go to onMenuItemSelected. */
     @Override public boolean invalidateOptionsMenu() {
         android.widget.Toolbar tb = bar();
@@ -39,6 +85,11 @@ public final class SimpleActionBar extends ActionBar {
     private void updateHome() {
         android.widget.Toolbar tb = bar();
         if (tb == null) return;
+        if (mToolbar != null) {
+            Drawable up = mUpIndicator != null ? mUpIndicator : mNavIcon != null ? mNavIcon : mDefaultNavIcon;
+            tb.setNavigationIcon((mOptions & DISPLAY_HOME_AS_UP) == 0 ? null : up != null ? up : new UpArrow(tb.getTitleTextColorMegler()));
+            return;
+        }
         if ((mOptions & DISPLAY_HOME_AS_UP) != 0) {
             tb.setNavigationIcon(mUpIndicator != null ? mUpIndicator : new UpArrow(tb.getTitleTextColorMegler()));
             tb.setNavigationOnClickListener(v -> mActivity.onMenuItemSelected(android.view.Window.FEATURE_OPTIONS_PANEL, new megler.MenuImpl(mActivity).add(0, android.R.id.home, 0, "")));
@@ -62,20 +113,40 @@ public final class SimpleActionBar extends ActionBar {
     }
     public void setCustomView(View v) { mCustom = v; } public void setCustomView(View v, LayoutParams p) { mCustom = v; } public void setCustomView(int r) { mCustom = android.view.LayoutInflater.from(mActivity).inflate(r, null); }
     public void setIcon(int r) {} public void setIcon(Drawable d) {} public void setLogo(int r) {} public void setLogo(Drawable d) {}
-    public void setDisplayOptions(int o) { mOptions = o; updateHome(); } public void setDisplayOptions(int o, int mask) { mOptions = (mOptions & ~mask) | (o & mask); updateHome(); }
+    public void setDisplayOptions(int o) { setDisplayOptions(o, -1); }
+    public void setDisplayOptions(int o, int mask) {
+        int was = mOptions;
+        mOptions = (mOptions & ~mask) | (o & mask);
+        updateHome();
+        if (mToolbar != null && ((was ^ mOptions) & DISPLAY_SHOW_TITLE) != 0) updateTitle();
+    }
     public void setDisplayUseLogoEnabled(boolean e) {} public void setDisplayShowHomeEnabled(boolean e) {} public void setDisplayHomeAsUpEnabled(boolean e) { setDisplayOptions(e ? DISPLAY_HOME_AS_UP : 0, DISPLAY_HOME_AS_UP); }
-    public void setDisplayShowTitleEnabled(boolean e) { mDecor.setTitle(e ? mTitle : ""); } public void setDisplayShowCustomEnabled(boolean e) {}
-    public void setBackgroundDrawable(Drawable d) { View v = mDecor.actionBarView(); if (v != null) v.setBackground(d); }
+    public void setDisplayShowTitleEnabled(boolean e) {
+        if (mToolbar != null) { setDisplayOptions(e ? DISPLAY_SHOW_TITLE : 0, DISPLAY_SHOW_TITLE); return; }
+        mDecor.setTitle(e ? mTitle : "");
+    }
+    public void setDisplayShowCustomEnabled(boolean e) {}
+    public void setBackgroundDrawable(Drawable d) { View v = bar(); if (v != null) v.setBackground(d); }
     public View getCustomView() { return mCustom; }
     public CharSequence getTitle() { return mTitle; } public CharSequence getSubtitle() { return mSubtitle; }
-    public void setTitle(CharSequence t) { mTitle = t; mDecor.setTitle(t); } public void setTitle(int r) { setTitle(mActivity.getText(r)); }
-    public void setSubtitle(CharSequence s) { mSubtitle = s; android.widget.Toolbar tb = bar(); if (tb != null) tb.setSubtitle(s); } public void setSubtitle(int r) { setSubtitle(mActivity.getText(r)); }
+    public void setTitle(CharSequence t) {
+        mTitle = t;
+        if (mToolbar != null) { mTitleSet = true; updateTitle(); } else mDecor.setTitle(t);
+    }
+    public void setTitle(int r) { setTitle(mActivity.getText(r)); }
+    public void setSubtitle(CharSequence s) {
+        mSubtitle = s;
+        android.widget.Toolbar tb = bar();
+        if (tb != null && (mToolbar == null || (mOptions & DISPLAY_SHOW_TITLE) != 0)) tb.setSubtitle(s);
+    }
+    public void setSubtitle(int r) { setSubtitle(mActivity.getText(r)); }
     public int getDisplayOptions() { return mOptions; }
-    public int getHeight() { View v = mDecor.actionBarView(); return v == null ? 0 : v.getHeight(); }
-    public void show() { mShowing = true; mDecor.showActionBar(true); } public void hide() { mShowing = false; mDecor.showActionBar(false); }
+    public int getHeight() { View v = bar(); return v == null ? 0 : v.getHeight(); }
+    public void show() { mShowing = true; if (mToolbar != null) mToolbar.setVisibility(View.VISIBLE); else mDecor.showActionBar(true); }
+    public void hide() { mShowing = false; if (mToolbar != null) mToolbar.setVisibility(View.GONE); else mDecor.showActionBar(false); }
     public boolean isShowing() { return mShowing; }
     public void addOnMenuVisibilityListener(OnMenuVisibilityListener l) {} public void removeOnMenuVisibilityListener(OnMenuVisibilityListener l) {}
-    public android.content.Context getThemedContext() { return mActivity; }
+    public android.content.Context getThemedContext() { return mToolbar != null ? mToolbar.getContext() : mActivity; }
 
     /* ---- navigation tabs (NAVIGATION_MODE_TABS): a row under the bar; selecting one runs the app's TabListener with a transaction
        on the activity's fragments, committed after, as the platform's does */
@@ -117,6 +188,7 @@ public final class SimpleActionBar extends ActionBar {
         updateStrip();
     }
     private void updateStrip() {
+        if (mDecor == null) return;                            /* (a toolbar of the app's own has no tabs, as on Android) */
         if (mNavMode != NAVIGATION_MODE_TABS || mTabs.isEmpty()) { mDecor.setTabStrip(null); return; }
         if (mStrip == null) {
             mStrip = new LinearLayout(mActivity);

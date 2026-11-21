@@ -1387,7 +1387,10 @@ public class Main extends Activity {
             return builder && "Ann has 10 ^ points".equals(out.toString()) && kept && refused;
         });
         // A ListFragment as Android's: a list of its own when it makes no view of its own (getListView, an adapter set on it, a
-        // row's click to onListItemClick), and the android.R.id.list of a view it makes itself (Gmail's folder list).
+        // row's click to onListItemClick), and the android.R.id.list of a view it makes itself (Gmail's folder list). Added in the
+        // activity's onCreate, where the steps run, they are created at once but have their views only after that onCreate, as
+        // on Android (Android's Settings finds its switch bar after adding its fragment, which reads it in onViewCreated): the
+        // lists are looked at then (the line list-fragment-views).
         step("list-fragment", () -> {
             final int[] clicked = { -1 };
             final android.widget.BaseAdapter rows = new android.widget.BaseAdapter() {
@@ -1415,20 +1418,33 @@ public class Main extends Activity {
             android.app.FragmentManager fm = getFragmentManager();
             fm.beginTransaction().add(own, "own-list").add(made, "made-list").commit();
             fm.executePendingTransactions();
-            android.widget.ListView a = own.getListView(), b = made.getListView();
-            own.setListAdapter(rows);
-            boolean adapter = a != null && a.getAdapter() == rows && own.getListAdapter() == rows;
-            if (a != null) a.performItemClick(null, 1, 1);
-            boolean found = b != null && b.getId() == android.R.id.list && b.getParent() instanceof android.widget.LinearLayout;
-            fm.beginTransaction().remove(own).remove(made).commit();
-            fm.executePendingTransactions();
-            detail = "own=" + (a != null) + " adapter=" + adapter + " clicked=" + clicked[0] + " made=" + found;
-            return a != null && adapter && clicked[0] == 1 && found;
+            boolean waiting = own.isAdded() && made.isAdded() && own.getView() == null && made.getView() == null;
+            new android.os.Handler().post(() -> {
+                android.widget.ListView a = null, b = null;
+                String failure = null;
+                try {
+                    a = own.getListView();
+                    b = made.getListView();
+                } catch (RuntimeException e) {
+                    failure = e.toString();
+                }
+                own.setListAdapter(rows);
+                boolean adapter = a != null && a.getAdapter() == rows && own.getListAdapter() == rows;
+                if (a != null) a.performItemClick(null, 1, 1);
+                boolean found = b != null && b.getId() == android.R.id.list && b.getParent() instanceof android.widget.LinearLayout;
+                fm.beginTransaction().remove(own).remove(made).commit();
+                fm.executePendingTransactions();
+                Log.i("DataTest", "list-fragment-views " + (a != null && adapter && clicked[0] == 1 && found ? "ok" : "FAILED") + " own=" + (a != null) + " adapter="
+                        + adapter + " clicked=" + clicked[0] + " made=" + found + (failure == null ? "" : " " + failure));
+            });
+            detail = "added=" + own.isAdded() + "," + made.isAdded() + " views=" + own.getView() + "," + made.getView();
+            return waiting;
         });
         // A platform fragment's saved state as Android has it: none (null) for a new fragment, whatever its arguments, and what
-        // saveFragmentInstanceState kept of one, through a parcel, for another made with setInitialSavedState (onCreate and
-        // onCreateView; onActivityCreated comes after the activity's onCreate, where the steps run). Gmail's conversation view was
-        // given its arguments as its saved state and found no view state there.
+        // saveFragmentInstanceState kept of one, through a parcel, for another made with setInitialSavedState (onCreate here;
+        // onCreateView and onActivityCreated come after the activity's onCreate, where the steps run: the line
+        // fragment-saved-state-view). Gmail's conversation view was given its arguments as its saved state and found no view
+        // state there.
         step("fragment-saved-state", () -> {
             final Bundle[] seen = new Bundle[3];
             final boolean[] firstCreated = new boolean[1];
@@ -1460,12 +1476,16 @@ public class Main extends Activity {
             second.setInitialSavedState(back);
             fm.beginTransaction().add(second, "saved-second").commit();
             fm.executePendingTransactions();
-            fm.beginTransaction().remove(second).commit();
-            fm.executePendingTransactions();
             boolean fresh = firstCreated[0] && seen[0] == null && first.getArguments() == args;
-            boolean restored = back != null && seen[1] != null && "by the first".equals(seen[1].getString("kept")) && seen[2] == seen[1];
+            boolean restored = back != null && seen[1] != null && "by the first".equals(seen[1].getString("kept")) && seen[2] == null;
+            new android.os.Handler().post(() -> {
+                boolean view = seen[2] != null && seen[2] == seen[1];
+                fm.beginTransaction().remove(second).commit();
+                fm.executePendingTransactions();
+                Log.i("DataTest", "fragment-saved-state-view " + (view ? "ok" : "FAILED") + " view=" + (seen[2] == null ? "null" : seen[2].getString("kept")));
+            });
             detail = "fresh=" + fresh + " first=" + seen[0] + " kept=" + (kept != null) + " parcelled=" + (back != null) + " second="
-                     + (seen[1] == null ? "null" : seen[1].getString("kept")) + " view=" + (seen[2] == seen[1]);
+                     + (seen[1] == null ? "null" : seen[1].getString("kept")) + " view yet=" + (seen[2] != null);
             return fresh && restored;
         });
         // A framework method that is its signature alone, called on purpose: the runtime says its first call, with this caller
@@ -6931,6 +6951,32 @@ public class Main extends Activity {
                     && "Unknown component: ComponentInfo{com.facebook.appmanager/com.facebook.oxygen.appmanager.firstparty.tos.ShouldAcceptTos}".equals(component)
                     && "Unknown package: com.facebook.appmanager".equals(application);
         });
+        // An implicit intent reaches the app's activities that are on, as on Android: not one its manifest has off, literally or by
+        // a boolean resource, until the app turns it on; not one the app turned off; all of them with MATCH_DISABLED_COMPONENTS.
+        // Android's Settings lists its own screens so, and showed those its manifest has off (a second About, Developer options).
+        step("disabled-activities", () -> {
+            android.content.pm.PackageManager pm = getPackageManager();
+            android.content.Intent tile = new android.content.Intent("megler.test.TILE").setPackage(getPackageName());
+            android.content.ComponentName off = new android.content.ComponentName(this, "megler.test.data.Main$TileOff");
+            android.content.ComponentName on = new android.content.ComponentName(this, "megler.test.data.Main$TileOn");
+            String first = tiles(pm.queryIntentActivities(tile, 0));
+            pm.setComponentEnabledSetting(off, android.content.pm.PackageManager.COMPONENT_ENABLED_STATE_ENABLED, android.content.pm.PackageManager.DONT_KILL_APP);
+            pm.setComponentEnabledSetting(on, android.content.pm.PackageManager.COMPONENT_ENABLED_STATE_DISABLED, android.content.pm.PackageManager.DONT_KILL_APP);
+            String turned = tiles(pm.queryIntentActivities(tile, 0));
+            String all = tiles(pm.queryIntentActivities(tile, android.content.pm.PackageManager.MATCH_DISABLED_COMPONENTS));
+            pm.setComponentEnabledSetting(off, android.content.pm.PackageManager.COMPONENT_ENABLED_STATE_DEFAULT, 0);
+            pm.setComponentEnabledSetting(on, android.content.pm.PackageManager.COMPONENT_ENABLED_STATE_DEFAULT, 0);
+            String back = tiles(pm.queryIntentActivities(tile, 0));
+            detail = "first=" + first + " turned=" + turned + " all=" + all + " back=" + back;
+            return "TileOn".equals(first) && "TileOff".equals(turned) && "TileConfigured TileOff TileOn".equals(all) && "TileOn".equals(back);
+        });
+    }
+
+    /** The simple names of the activities of those answers, sorted. */
+    private static String tiles(java.util.List<android.content.pm.ResolveInfo> l) {
+        java.util.TreeSet<String> names = new java.util.TreeSet<>();
+        for (android.content.pm.ResolveInfo r : l) names.add(r.activityInfo.name.substring(r.activityInfo.name.indexOf('$') + 1));
+        return String.join(" ", names);
     }
 
     /**

@@ -33,7 +33,7 @@ public class NumberPicker extends LinearLayout {
         mPaint.setTextAlign(Paint.Align.CENTER);
         mPaint.setTextSize(18 * c.getResources().getDisplayMetrics().scaledDensity);
         android.util.TypedValue v = new android.util.TypedValue();
-        if (c.getTheme().resolveAttribute(android.R.attr.textColorPrimary, v, true)) { if (v.type >= android.util.TypedValue.TYPE_FIRST_COLOR_INT && v.type <= android.util.TypedValue.TYPE_LAST_COLOR_INT) mTextColor = v.data; else if (v.resourceId != 0) try { mTextColor = c.getColorStateList(v.resourceId).getDefaultColor(); } catch (Exception e) {} }
+        if (c.getTheme().resolveAttribute(android.R.attr.textColorPrimary, v, true)) { if (v.type >= android.util.TypedValue.TYPE_FIRST_COLOR_INT && v.type <= android.util.TypedValue.TYPE_LAST_COLOR_INT) mTextColor = v.data; else if (v.resourceId != 0) try { mTextColor = c.getResources().loadColorStateList(v, v.resourceId, c.getTheme()).getDefaultColor(); } catch (Exception e) {} }
         int accent = 0xFF6750A4;
         if (c.getTheme().resolveAttribute(android.R.attr.colorAccent, v, true) && v.type >= android.util.TypedValue.TYPE_FIRST_COLOR_INT && v.type <= android.util.TypedValue.TYPE_LAST_COLOR_INT) accent = v.data;
         mDivider.setColor(accent);

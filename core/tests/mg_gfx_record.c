@@ -524,19 +524,90 @@ static void quiet(void)
     }
 }
 
+/* The host's calls that draw, made to pass through the record on their way to what it had (kept as R.inner). */
+static bool record_wrap(megler_gfx_host *gfx, const char *record_file)
+{
+    static megler_gfx_host inner;
+    memset(&R, 0, sizeof(R));
+    inner = *gfx;
+    R.inner = &inner;
+    R.file = fopen(record_file, "wb");
+    if (!R.file) {
+        printf("the record %s cannot be written\n", record_file);
+        return false;
+    }
+    fwrite(k_magic, 1, sizeof(k_magic), R.file);
+    gfx->canvas_new = r_canvas_new;
+    gfx->canvas_free = r_canvas_free;
+    gfx->flush = r_flush;
+    gfx->touched = r_touched;
+    gfx->save = r_save;
+    gfx->save_layer = r_save_layer;
+    gfx->restore = r_restore;
+    gfx->set_matrix = r_set_matrix;
+    gfx->clip_rect = r_clip_rect;
+    gfx->clip_path = r_clip_path;
+    gfx->draw_color = r_draw_color;
+    gfx->draw_rect = r_draw_rect;
+    gfx->draw_round_rect = r_draw_round_rect;
+    gfx->draw_oval = r_draw_oval;
+    gfx->draw_path = r_draw_path;
+    gfx->draw_bitmap = r_draw_bitmap;
+    gfx->draw_text = r_draw_text;
+    gfx->typeface_create = r_typeface_create;
+    gfx->typeface_derive = r_typeface_derive;
+    gfx->typeface_from_data = r_typeface_from_data;
+    gfx->shader_linear = r_shader_linear;
+    gfx->shader_radial = r_shader_radial;
+    gfx->shader_sweep = r_shader_sweep;
+    gfx->shader_bitmap = r_shader_bitmap;
+    gfx->shader_matrix = r_shader_matrix;
+    gfx->shader_free = r_shader_free;
+    gfx->image_decode = r_image_decode;
+    return true;
+}
+
+bool mg_gfx_record_wrap(megler_gfx_host *gfx, const char *record_file) { return record_wrap(gfx, record_file); }
+
+void mg_gfx_record_shown(void *cv)
+{
+    int i;
+    record_open();
+    for (i = 0; i < R.ncanvases; i++)
+        if (R.canvases[i].cv == cv) break;
+    if (i == R.ncanvases || !R.canvases[i].px) {
+        mg_lock_release(&r_lock);
+        return;
+    }
+    /* What the host drew on the canvas is in its memory now (a flush), and that memory is the picture shown. */
+    put_id(cv);
+    record_close(R_FLUSH);
+    record_open();
+    put_id(R.canvases[i].px);
+    puti(R.canvases[i].w);
+    puti(R.canvases[i].h);
+    put_pixels(R.canvases[i].px, R.canvases[i].w, R.canvases[i].h, R.canvases[i].stride);
+    record_close(R_PRESENT);
+}
+
+void mg_gfx_record_end(void)
+{
+    mg_lock_acquire(&r_lock);
+    if (R.file) {
+        fclose(R.file);
+        R.file = NULL;
+        printf("  the record: %u calls in %u KB (%u canvases made, %u drawings of text, %u of bitmaps, %u image files decoded, %u pictures)\n", (unsigned)R.records,
+               (unsigned)(R.bytes >> 10), (unsigned)R.by_kind[R_CANVAS_NEW], (unsigned)R.by_kind[R_TEXT], (unsigned)R.by_kind[R_BITMAP], (unsigned)R.by_kind[R_DECODE],
+               (unsigned)R.by_kind[R_PRESENT]);
+    }
+    mg_lock_release(&r_lock);
+}
+
 int mg_gfx_record_run(const char *which, const char *apk, const char *android_root, const char *record_file)
 {
     static megler_run_config cfg;
     int tries;
     i32 before;
-    memset(&R, 0, sizeof(R));
-    R.inner = mg_gfx_standin();
-    R.file = fopen(record_file, "wb");
-    if (!R.file) {
-        printf("the record %s cannot be written\n", record_file);
-        return 1;
-    }
-    fwrite(k_magic, 1, sizeof(k_magic), R.file);
     memset(&cfg, 0, sizeof(cfg));
     cfg.apk_path = apk;
     cfg.android_root = android_root;
@@ -547,34 +618,8 @@ int mg_gfx_record_run(const char *which, const char *apk, const char *android_ro
     cfg.on_exit = rec_exit;
     cfg.window.present_pixels = rec_present;
     /* The stand-in draws and measures; every call that draws passes through here on its way. */
-    cfg.gfx = *R.inner;
-    cfg.gfx.canvas_new = r_canvas_new;
-    cfg.gfx.canvas_free = r_canvas_free;
-    cfg.gfx.flush = r_flush;
-    cfg.gfx.touched = r_touched;
-    cfg.gfx.save = r_save;
-    cfg.gfx.save_layer = r_save_layer;
-    cfg.gfx.restore = r_restore;
-    cfg.gfx.set_matrix = r_set_matrix;
-    cfg.gfx.clip_rect = r_clip_rect;
-    cfg.gfx.clip_path = r_clip_path;
-    cfg.gfx.draw_color = r_draw_color;
-    cfg.gfx.draw_rect = r_draw_rect;
-    cfg.gfx.draw_round_rect = r_draw_round_rect;
-    cfg.gfx.draw_oval = r_draw_oval;
-    cfg.gfx.draw_path = r_draw_path;
-    cfg.gfx.draw_bitmap = r_draw_bitmap;
-    cfg.gfx.draw_text = r_draw_text;
-    cfg.gfx.typeface_create = r_typeface_create;
-    cfg.gfx.typeface_derive = r_typeface_derive;
-    cfg.gfx.typeface_from_data = r_typeface_from_data;
-    cfg.gfx.shader_linear = r_shader_linear;
-    cfg.gfx.shader_radial = r_shader_radial;
-    cfg.gfx.shader_sweep = r_shader_sweep;
-    cfg.gfx.shader_bitmap = r_shader_bitmap;
-    cfg.gfx.shader_matrix = r_shader_matrix;
-    cfg.gfx.shader_free = r_shader_free;
-    cfg.gfx.image_decode = r_image_decode;
+    cfg.gfx = *mg_gfx_standin();
+    if (!record_wrap(&cfg.gfx, record_file)) return 1;
     printf("recording what the Java test app %s asks of the shell's drawing (%s on the Android root %s)\n", which, apk, android_root);
     if (!megler_run(&cfg)) {
         printf("  the app did not start: %s\n", megler_last_error());

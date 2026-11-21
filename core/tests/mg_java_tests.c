@@ -120,6 +120,7 @@
 #include "mg_bluetooth_standin.h"
 #include "mg_codec_standin.h"
 #include "mg_gfx_standin.h"
+#include "mg_gfx_record.h"
 #include "mg_gl_standin.h"
 #include "mg_tests.h"
 
@@ -662,11 +663,17 @@ static MEGLER_CB void angle_draw_texture(void *user, void *canvas, int id, float
     mg_lock_release(&AT.lock);
 }
 
+/* With MG_GFX_RECORD: the app's drawing written to that file (mg_gfx_record.c), the window's canvas last shown, which each
+   picture written puts into the record, for `tools/build-tests.sh win`'s --gfx-replay to draw again with Direct2D. */
+static bool g_recording;
+static void *volatile g_shown_canvas;
+
 static MEGLER_CB bool present_canvas(void *user, void *canvas, int x, int y, int width, int height)
 {
     const void *pixels;
     int w, h, stride, r;
     if (!mg_gfx_standin_pixels(canvas, &pixels, &w, &h, &stride)) return false;
+    g_shown_canvas = canvas;
     mg_atomic_xchg(&g_canvas_showing, 1);
     mg_lock_acquire(&GL.lock);
     if (GL.used) {
@@ -717,6 +724,7 @@ static int count_colour(const int r[4], u32 rgb)
 static void write_picture(const char *name)
 {
     char *path;
+    if (g_recording && g_shown_canvas) mg_gfx_record_shown(g_shown_canvas);
     if (!W.dir || !W.pixels) return;
     path = mg_sprintf("%s/%s.bmp", W.dir, name);
     mg_lock_acquire(&W.lock);
@@ -1862,6 +1870,7 @@ static bool start(const char *apk, const char *android_root)
         cfg.gfx.texture_frame = angle_texture_frame;
         cfg.gfx.draw_texture = angle_draw_texture;
     }
+    if (getenv("MG_GFX_RECORD") && *getenv("MG_GFX_RECORD")) g_recording = mg_gfx_record_wrap(&cfg.gfx, getenv("MG_GFX_RECORD"));
     cfg.keyboard.show = keyboard_show;
     cfg.keyboard.hide = keyboard_hide;
     cfg.bars.wanted = bars_wanted;
@@ -4277,7 +4286,7 @@ static int run_data(void)
                                             makes one. And a proxy of an interface of 600 methods. And sound from Java: an
                                             AudioTrack written to, a MediaPlayer of a WAV and of an Ogg Vorbis asset, a SoundPool. */
                                          "xml", "asset-fd", "tasks", "wrapper-receiver", "viewgroup-flag", "text-drawables", "pfd-dup", "pfd-parcel",
-                                         "theme-selfref", "queue-next", "storage-stats", "broadcast-explicit", "service-stop-thread", "start-ids", "process-scope", "job-scheduler", "job-content-trigger", "downloads", "rollback-service", "art-manager", "progress-subclass", "telephony", "microphone", "biometric", "ordered-broadcast", "hardware-accelerated", "descendant-invalidated", "invalidate-override", "invalidate-in-constructor", "image-matrix-before-layout", "delegate-last-scope", "asset-manager-manifest", "big-asset", "file-available", "path-iterator", "mutable-context", "exec", "crc32c", "nine-patch-constructors", "subscription-ids", "filter-categories", "intent-categories", "resolved-filter", "broadcast-identity", "arrays-ranges", "collection-factories", "unmodifiable-collectors", "objects-java9", "thread-stack", "icu-number", "icu-new-units", "audio-route", "expand-template", "list-fragment", "fragment-saved-state", "stub-said", "handler-thread", "managed-dialog", "input-format", "dialog-of-stopped", "zoom-buttons", "zip-path-validator", "list-row-click", "animation-listener", "animation-set", "wait-interrupt", "looper-interrupt", "circular-reveal", "animator-values", "detached-animator", "animator-listener", "animator-not-animation", "observer-merged", "popup-measured-attached", "observer-tree", "typeface-descriptor", "device-provisioned", "users", "start-asked", "pending-intent-creator", "pending-intent-flags", "pending-intent-options", "alarm-replace-cancel", "alarm-listeners", "wake-lock", "cell-info-update", "messenger-forwarded", "insets-builder", "insets-consumed", "insets-siblings", "broadcast-handler", "broadcast-unregistered", "prefs-spaced-key", "prefs-null-key", "account-removed", "sync", "google-signed-out", "package-installer", "batch-operations", "wifi", "media-metadata", "playback-state", "remote-user-info", "media-key-controller", "container-state", "context-params", "theme-accent", "phone-apps", "phone-apps-source", "package-parser", "phone-apps-activities", "phone-apps-signatures", "check-signatures", "install-intent", "install-session", "install-splits", "install-kept", "bitmap-bytes", "bitmap-reuse", "file-read-only", "file-execute", "file-times", "component-state", "adaptive-icon", "idle-handler", "uri-builder", "url-query-sanitizer", "html-tag-handler", "stats-manager", "credential-manager", "many-interfaces", "proxy-many-methods", "apk-path", "archive-meta-data", "maps-paths", "apk-optimization",
+                                         "theme-selfref", "queue-next", "storage-stats", "broadcast-explicit", "service-stop-thread", "start-ids", "process-scope", "job-scheduler", "job-content-trigger", "downloads", "rollback-service", "art-manager", "progress-subclass", "telephony", "microphone", "biometric", "ordered-broadcast", "hardware-accelerated", "descendant-invalidated", "invalidate-override", "invalidate-in-constructor", "image-matrix-before-layout", "delegate-last-scope", "asset-manager-manifest", "big-asset", "file-available", "path-iterator", "mutable-context", "exec", "crc32c", "nine-patch-constructors", "subscription-ids", "filter-categories", "intent-categories", "resolved-filter", "broadcast-identity", "arrays-ranges", "collection-factories", "unmodifiable-collectors", "objects-java9", "thread-stack", "icu-number", "icu-new-units", "audio-route", "expand-template", "list-fragment", "fragment-saved-state", "stub-said", "handler-thread", "managed-dialog", "input-format", "dialog-of-stopped", "zoom-buttons", "zip-path-validator", "list-row-click", "animation-listener", "animation-set", "wait-interrupt", "looper-interrupt", "circular-reveal", "animator-values", "detached-animator", "animator-listener", "animator-not-animation", "observer-merged", "popup-measured-attached", "observer-tree", "typeface-descriptor", "device-provisioned", "users", "start-asked", "pending-intent-creator", "pending-intent-flags", "pending-intent-options", "alarm-replace-cancel", "alarm-listeners", "wake-lock", "cell-info-update", "messenger-forwarded", "insets-builder", "insets-consumed", "insets-siblings", "broadcast-handler", "broadcast-unregistered", "prefs-spaced-key", "prefs-null-key", "account-removed", "sync", "google-signed-out", "package-installer", "batch-operations", "wifi", "media-metadata", "playback-state", "remote-user-info", "media-key-controller", "container-state", "context-params", "theme-accent", "phone-apps", "phone-apps-source", "package-parser", "phone-apps-activities", "phone-apps-signatures", "check-signatures", "install-intent", "install-session", "install-splits", "install-kept", "bitmap-bytes", "bitmap-reuse", "file-read-only", "file-execute", "file-times", "component-state", "disabled-activities", "adaptive-icon", "idle-handler", "uri-builder", "url-query-sanitizer", "html-tag-handler", "stats-manager", "credential-manager", "many-interfaces", "proxy-many-methods", "apk-path", "archive-meta-data", "maps-paths", "apk-optimization",
                                          /* And an <inset> whose insets are fractions of its bounds, WhatsApp's adaptive icon's 0.01% among them. */
                                          "inset-fraction",
                                          /* And a WorkSource through a Parcel and back, as a location request of Google Play services' carries one. */
@@ -4770,6 +4779,11 @@ static int run_data(void)
     CHECK(wait_line("I/DataTest: downloads ok status=200 bytes=5 body=hello cookie=true observed=true file=5", 0, 30) >= 0);
     /* The list of the step "list-row-click": its row, clickable itself, clicked by a tap. */
     CHECK(wait_line("I/DataTest: list-row-click rows=3 clicked=true", 0, 30) >= 0);
+    /* The fragments the steps "list-fragment" and "fragment-saved-state" added in the activity's onCreate have their views
+       once that onCreate has returned, as on Android, and not before: the lists of the ListFragments, and the saved state
+       given to onCreateView. */
+    CHECK(wait_line("I/DataTest: list-fragment-views ok", 0, 30) >= 0);
+    CHECK(wait_line("I/DataTest: fragment-saved-state-view ok", 0, 30) >= 0);
     /* The step "visibility-aggregated": an ImageView's picture and a view's background hidden with their parent made GONE and
        taken out of the window, shown with it again, as Android's onVisibilityAggregated tells them. */
     CHECK(wait_line("I/DataTest: visibility-aggregated attached true true, gone false false, visible true true, removed false false", 0, 30) >= 0);
@@ -6236,6 +6250,7 @@ static int run_app(void)
         write_picture(name);
     }
     if (!running()) say("  the app ended with status %d%s%s", g_status, g_reason[0] ? ": " : "", g_reason);
+    if (g_recording) mg_gfx_record_end();
     /* With MG_JAVA_PROFILE=start: what ran from the app's start to the end of the script. */
     profile_end("start");
     if (after >= 0 && after < g_script_count) {

@@ -53,6 +53,10 @@ public class AudioManager {
     public int abandonAudioFocusRequest(AudioFocusRequest r) { return AUDIOFOCUS_REQUEST_GRANTED; }
     public int getRingerMode() { return RINGER_MODE_NORMAL; }
     public void setRingerMode(int m) {}
+    /* Android's hidden ringer mode as the system's own screens read it: the phone's, normal, as getRingerMode says. It said
+       silent (0), and Android's own Settings (AOSP 9) showed "Phone muted" on its main screen (RingerMutedCondition). */
+    public int getRingerModeInternal() { return getRingerMode(); }
+    public void setRingerModeInternal(int m) { setRingerMode(m); }
     public int getMode() { return sMode; }
     public void setMode(int m) { sMode = m; meglerRoute(); }
     public boolean isMusicActive() { return false; }
@@ -383,7 +387,6 @@ public class AudioManager {
     public android.media.AudioMixerAttributes getPreferredMixerAttributes(android.media.AudioAttributes p0, android.media.AudioDeviceInfo p1) { return null; }
     public java.util.List getRegisteredPolicyMixes() { return new java.util.ArrayList(); }
     public java.util.List getReportedSurroundFormats() { return new java.util.ArrayList(); }
-    public int getRingerModeInternal() { return (megler.Fill.get(meglerFill, "RingerModeInternal") instanceof Integer ? (Integer) megler.Fill.get(meglerFill, "RingerModeInternal") : 0); }
     public int getRouting(int p0) { return 0; }
     public float getRs2Value() { return (megler.Fill.get(meglerFill, "Rs2Value") instanceof Float ? (Float) megler.Fill.get(meglerFill, "Rs2Value") : 0f); }
     private android.media.Spatializer mSpatializer;
@@ -504,7 +507,6 @@ public class AudioManager {
     public boolean setPreferredDevicesForStrategy(android.media.audiopolicy.AudioProductStrategy p0, java.util.List p1) { return false; }
     public boolean setPreferredMixerAttributes(android.media.AudioAttributes p0, android.media.AudioDeviceInfo p1, android.media.AudioMixerAttributes p2) { return false; }
     public void setRampingRingerEnabled(boolean p0) { meglerFill = megler.Fill.put(meglerFill, "RampingRingerEnabled", Boolean.valueOf(p0)); }
-    public void setRingerModeInternal(int p0) { meglerFill = megler.Fill.put(meglerFill, "RingerModeInternal", Integer.valueOf(p0)); }
     public void setRouting(int p0, int p1, int p2) {}
     public void setRs2Value(float p0) { meglerFill = megler.Fill.put(meglerFill, "Rs2Value", Float.valueOf(p0)); }
     public void setStreamVolumeForUid(int p0, int p1, int p2, java.lang.String p3, int p4, int p5, int p6) {}

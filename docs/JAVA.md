@@ -4990,7 +4990,9 @@ platform's own (`J.platform_app`, `megler.Native.platformApp()`):
   calls go to what answers for that interface here -- `IPackageManager` (Megler's
   `PackageManager`, which knows the phone's apps), `IActivityManager` (the one user,
   running), `INotificationManager` (allowed, one channel), `IBatteryStats` (a parcel of
-  Android 9's `BatteryStatsImpl` made now, its timers made and nothing counted) -- and
+  Android 9's `BatteryStatsImpl` made now, its timers made and nothing counted),
+  `IProcessStats` (a parcel of Android 9's `ProcessStats` made now, nothing counted, as a
+  descriptor: Developer options' Memory reads it without looking for null) -- and
   every other method answering as a service with nothing would: false, 0, null, an empty
   list or array. `AppGlobals.getPackageManager()`, `ActivityThread.getPackageManager()`
   and `ActivityManager.getService()` give those interfaces (declared to the framework's
@@ -5025,6 +5027,21 @@ screen, each of its twelve sections, Apps & notifications, an app's App info, De
 apps and its Browser app (choosing a browser writes `browser=` in the apps folder's
 `defaults.ini`). Many deeper screens are not tried yet; a section that ends the app is
 a hidden member answering what Settings does not expect, found the same way.
+
+What 737 to 748 showed on the HP Elite x3, and the walk after it (each section and back,
+Wi-Fi, Storage, System, About, Build number seven times, Developer options), was the
+framework's, not Settings': a fragment added in `onCreate` had its view at once, before
+`SettingsActivity` had found its switch bar (Wi-Fi ended; Android makes the view after
+`onCreate`); `Activity.setActionBar` did not make the toolbar the action bar (every screen
+titled "Settings", no back arrow; `megler.SimpleActionBar`'s toolbar mode); a colour of
+Android 9's asked for by its number came out as one of Android 12's system colours
+(the bars' titles white: `Toolbar` reads the theme's value); disabled activities were
+tiles (two About, Developer options before they were on, Tips & support); and services and
+hidden members answering null where Android answers something (`IProcessStats`,
+`IWebViewUpdateService`, `queryExternalStatsForUser`, `loadItemIcon`, the ringer mode,
+the Wi-Fi state's sticky broadcast, `ScanResult`'s and `WifiInfo`'s hidden fields).
+`mg_tests --java app` with `MG_GFX_RECORD` records what an app draws, for
+`--gfx-replay` to draw it again with the shell's Direct2D at the phone's density.
 
 One fix there was Megler's for every app: an array resource's items are read in their
 order whatever their keys. aapt2, as the platform's build runs it, keys each item of an

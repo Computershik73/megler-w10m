@@ -42,6 +42,8 @@ public final class PlatformInterfaces {
             case "android.app.IActivityManager": return new Activities();
             case "android.app.INotificationManager": return new Notifications();
             case "com.android.internal.app.IBatteryStats": return new Battery();
+            case "com.android.internal.app.procstats.IProcessStats": return new Processes();
+            case "android.webkit.IWebViewUpdateService": return new WebViews();
             default: return null;
         }
     }
@@ -258,20 +260,7 @@ public final class PlatformInterfaces {
      * or by a parcel, and Android's Settings ended on its null phone timer at an app's battery use.
      */
     public static final class Battery {
-        public android.os.ParcelFileDescriptor getStatisticsStream() {
-            byte[] bytes = getStatistics();
-            if (bytes == null) return null;
-            try {
-                java.io.File f = java.io.File.createTempFile("batterystats", ".parcel", ContextImpl.app().getCacheDir());
-                try (java.io.FileOutputStream out = new java.io.FileOutputStream(f)) { out.write(bytes); }
-                android.os.ParcelFileDescriptor pfd = android.os.ParcelFileDescriptor.open(f, android.os.ParcelFileDescriptor.MODE_READ_ONLY);
-                f.delete();
-                return pfd;
-            } catch (java.io.IOException e) {
-                android.util.Log.w("Megler", "platform: the battery's statistics could not be handed over: " + e);
-                return null;
-            }
-        }
+        public android.os.ParcelFileDescriptor getStatisticsStream() { return handedOver("batterystats", "the battery's statistics", getStatistics()); }
         public byte[] getStatistics() {
             try {
                 Class<?> impl = Class.forName("com.android.internal.os.BatteryStatsImpl");
@@ -291,6 +280,81 @@ public final class PlatformInterfaces {
         }
         public long computeBatteryTimeRemaining() { return -1; }
         public long computeChargeTimeRemaining() { return -1; }
+    }
+
+    /**
+     * IProcessStats ("procstats"): the processes' use of memory over time as the service hands it over, a parcel of Android 9's
+     * ProcessStats -- one made now, as the service's own is at the start of a period, with nothing counted yet (Megler keeps
+     * no such statistics). The service always gives one: Android's Settings reads the descriptor of getStatsOverTime without
+     * looking for null, and Developer options ended there (ProcStatsData.load, for its Memory item).
+     */
+    public static final class Processes {
+        public android.os.ParcelFileDescriptor getStatsOverTime(long minTime) { return handedOver("procstats", "the processes' statistics", getCurrentStats(null)); }
+        /** (The periods before this one, which the service adds to the list as files: none.) */
+        public byte[] getCurrentStats(List<?> historic) {
+            try {
+                // (not running: the constructor that is the running service's asks Debug.MemoryInfo for what it does not have here)
+                Object stats = Class.forName("com.android.internal.app.procstats.ProcessStats").getConstructor(boolean.class).newInstance(false);
+                Class<?> c = stats.getClass();
+                long now = android.os.SystemClock.uptimeMillis();
+                // As ProcessStatsService.getStatsOverTime: the period ends now.
+                c.getField("mTimePeriodEndRealtime").setLong(stats, android.os.SystemClock.elapsedRealtime());
+                c.getField("mTimePeriodEndUptime").setLong(stats, now);
+                android.os.Parcel p = android.os.Parcel.obtain();
+                c.getMethod("writeToParcel", android.os.Parcel.class, long.class, int.class).invoke(stats, p, now, 0);
+                byte[] bytes = p.marshall();
+                p.recycle();
+                return bytes;
+            } catch (Throwable t) {
+                android.util.Log.w("Megler", "platform: no statistics of the processes: " + (t instanceof InvocationTargetException ? t.getCause() : t));
+                return null;
+            }
+        }
+        /** ProcessStats.ADJ_MEM_FACTOR_NORMAL: memory is not short. */
+        public int getCurrentMemoryState() { return 0; }
+    }
+
+    /**
+     * IWebViewUpdateService ("webviewupdate", android.webkit.WebViewFactory.getUpdateService): the WebView of the Android
+     * root, the one there is (WebView.getCurrentWebViewPackage), as the current package and the only valid one. Android's
+     * Settings' Developer options show it as the WebView implementation.
+     */
+    public static final class WebViews {
+        public PackageInfo getCurrentWebViewPackage() { return android.webkit.WebView.getCurrentWebViewPackage(); }
+        public String getCurrentWebViewPackageName() { PackageInfo p = getCurrentWebViewPackage(); return p == null ? null : p.packageName; }
+        public Object getValidWebViewPackages() { return providers(); }
+        public Object getAllWebViewPackages() { return providers(); }
+        /** Android 9's WebViewProviderInfo[] of that one package (the platform's class: Megler's framework has none). */
+        private Object providers() {
+            PackageInfo p = getCurrentWebViewPackage();
+            try {
+                Class<?> c = Class.forName("android.webkit.WebViewProviderInfo");
+                Object a = java.lang.reflect.Array.newInstance(c, p == null ? 0 : 1);
+                if (p != null) {
+                    Object info = c.getConstructor(String.class, String.class, boolean.class, boolean.class, String[].class)
+                            .newInstance(p.packageName, "Android System WebView", true, false, null);
+                    java.lang.reflect.Array.set(a, 0, info);
+                }
+                return a;
+            } catch (Throwable t) {
+                return null;
+            }
+        }
+    }
+
+    /** Those bytes as a service hands them over to be read: a descriptor of a file that has them (null where there are none). */
+    private static android.os.ParcelFileDescriptor handedOver(String name, String what, byte[] bytes) {
+        if (bytes == null) return null;
+        try {
+            java.io.File f = java.io.File.createTempFile(name, ".parcel", ContextImpl.app().getCacheDir());
+            try (java.io.FileOutputStream out = new java.io.FileOutputStream(f)) { out.write(bytes); }
+            android.os.ParcelFileDescriptor pfd = android.os.ParcelFileDescriptor.open(f, android.os.ParcelFileDescriptor.MODE_READ_ONLY);
+            f.delete();
+            return pfd;
+        } catch (java.io.IOException e) {
+            android.util.Log.w("Megler", "platform: " + what + " could not be handed over: " + e);
+            return null;
+        }
     }
 
     /** INotificationManager: every app may post notifications, in its one default channel. */

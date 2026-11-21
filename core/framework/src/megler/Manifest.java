@@ -14,6 +14,8 @@ public final class Manifest {
         public String taskAffinity;
         public int theme, label, icon, screenOrientation = -1, configChanges, launchMode, windowSoftInputMode, uiOptions, initOrder;
         public boolean exported, enabled = true, grantUriPermissions;
+        /** android:enabled when it is a boolean resource of the app's (read by PackageManager once there are resources); 0 for a literal. */
+        public int enabledResource;
         public Bundle metaData;
         public final ArrayList<Filter> filters = new ArrayList<>();
     }
@@ -124,6 +126,7 @@ public final class Manifest {
                     cur.windowSoftInputMode = p.getAttributeIntValue(NS, "windowSoftInputMode", 0);
                     cur.exported = p.getAttributeBooleanValue(NS, "exported", false);
                     cur.enabled = p.getAttributeBooleanValue(NS, "enabled", true);
+                    cur.enabledResource = p.getAttributeResourceValue(NS, "enabled", 0);
                     cur.authorities = p.getAttributeValue(NS, "authorities");
                     cur.grantUriPermissions = p.getAttributeBooleanValue(NS, "grantUriPermissions", false);
                     cur.process = p.getAttributeValue(NS, "process");

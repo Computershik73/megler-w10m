@@ -359,6 +359,18 @@ public class PackageManager {
     public android.graphics.drawable.Drawable getApplicationIcon(ApplicationInfo a) { return a.loadIcon(this); }
     public android.graphics.drawable.Drawable getApplicationIcon(String pkg) throws NameNotFoundException { return getApplicationIcon(getApplicationInfo(pkg, 0)); }
     public android.graphics.drawable.Drawable getApplicationLogo(ApplicationInfo a) { return null; }
+    /*
+     * Android's hidden loadItemIcon and loadUnbadgedItemIcon (ApplicationPackageManager): an item's icon, else its
+     * application's, else the platform's default -- PackageItemInfo.loadIcon's (with no work profile, nothing to badge). They
+     * were generated stubs answering null, and Android's own Settings (AOSP 9), which gets every app's icon through them
+     * (IconDrawableFactory.getBadgedIcon), listed the apps in App info without icons.
+     */
+    public android.graphics.drawable.Drawable loadItemIcon(PackageItemInfo item, ApplicationInfo app) { return loadUnbadgedItemIcon(item, app); }
+    public android.graphics.drawable.Drawable loadUnbadgedItemIcon(PackageItemInfo item, ApplicationInfo app) {
+        android.graphics.drawable.Drawable d = item != null ? item.loadIcon(this) : null;
+        if (d == null && app != null && app != item) d = app.loadIcon(this);
+        return d != null ? d : getDefaultActivityIcon();
+    }
     public android.graphics.drawable.Drawable getActivityIcon(ComponentName c) throws NameNotFoundException { return getActivityInfo(c, 0).loadIcon(this); }
     // The platform's icon of an app that has none (sym_def_app_icon), as Android's; a transparent one if it cannot be read.
     public android.graphics.drawable.Drawable getDefaultActivityIcon() {
@@ -411,6 +423,11 @@ public class PackageManager {
             java.util.List<megler.Manifest.Component> own = i.getComponent() == null ? megler.Manifest.match(megler.Manifest.activities, i) : null;
             if (own == null || own.isEmpty()) own = java.util.Collections.singletonList(c);
             for (megler.Manifest.Component m : own) {
+                // (An implicit intent does not reach an activity that is disabled, as on Android, unless the flags ask for those
+                // too: Android's Settings lists the screens of its own that are on as its tiles, and the ones its manifest has
+                // off -- the second About, Developer options before they are turned on, Tips & support where its configuration
+                // says none -- were there.)
+                if (i.getComponent() == null && (flags & MATCH_DISABLED_COMPONENTS) == 0 && !enabledNow(m)) continue;
                 ResolveInfo r = new ResolveInfo();
                 r.activityInfo = activity(m);
                 r.system = megler.Native.platformApp();
@@ -599,6 +616,21 @@ public class PackageManager {
         if (webView >= 0) return webView;
         if (!has(c.getPackageName())) throw unknown("component", c.getPackageName(), c.toString());
         synchronized (PackageManager.class) { String v = states().getProperty(c.flattenToString()); return v == null ? COMPONENT_ENABLED_STATE_DEFAULT : Integer.parseInt(v); }
+    }
+    /*
+     * Whether a component of the app's own is enabled now: as the app set it (setComponentEnabledSetting), else as its manifest
+     * says -- android:enabled, a literal or a boolean resource of the app's (Android's Settings has its Tips & support on
+     * config_support_enabled).
+     */
+    private static boolean enabledNow(megler.Manifest.Component m) {
+        String v;
+        synchronized (PackageManager.class) { v = states().getProperty(new ComponentName(megler.Native.packageName(), m.name).flattenToString()); }
+        int state = v == null ? COMPONENT_ENABLED_STATE_DEFAULT : Integer.parseInt(v);
+        if (state != COMPONENT_ENABLED_STATE_DEFAULT) return state == COMPONENT_ENABLED_STATE_ENABLED;
+        if (m.enabledResource != 0) {
+            try { return megler.ContextImpl.app().getResources().getBoolean(m.enabledResource); } catch (RuntimeException e) {}
+        }
+        return m.enabled;
     }
     public void setApplicationEnabledSetting(String pkg, int state, int flags) {}
     public int getApplicationEnabledSetting(String pkg) {
@@ -1274,8 +1306,6 @@ public class PackageManager {
     public boolean isPageSizeCompatEnabled(java.lang.String p0) { return false; }
     public boolean isUpgrade() { return false; }
     public boolean isWirelessConsentModeEnabled() { return false; }
-    public android.graphics.drawable.Drawable loadItemIcon(android.content.pm.PackageItemInfo p0, android.content.pm.ApplicationInfo p1) { return null; }
-    public android.graphics.drawable.Drawable loadUnbadgedItemIcon(android.content.pm.PackageItemInfo p0, android.content.pm.ApplicationInfo p1) { return null; }
     public void makeProviderVisible(int p0, java.lang.String p1) {}
     public void makeUidVisible(int p0, int p1) {}
     public java.lang.Object parseAndroidManifest(android.os.ParcelFileDescriptor p0, java.util.function.Function p1) { return null; }

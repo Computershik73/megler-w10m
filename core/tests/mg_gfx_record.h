@@ -33,6 +33,16 @@ int mg_gfx_record_run(const char *which, const char *apk, const char *android_ro
 MEGLER_CB void mg_gfx_record_log(int level, const char *line, void *user);
 
 /*
+ * The same for any app the Java driver runs (mg_java_tests.c, with MG_GFX_RECORD naming the file): the calls of `gfx` that
+ * draw are made to pass through the record on their way to what it had. False: the file cannot be written, and nothing was
+ * changed. mg_gfx_record_shown puts the picture of the canvas `cv` into the record as one the window showed (the driver's
+ * pictures, app-N, that the replay writes again as <name>-N); mg_gfx_record_end closes the file and says what it holds.
+ */
+bool mg_gfx_record_wrap(megler_gfx_host *gfx, const char *record_file);
+void mg_gfx_record_shown(void *cv);
+void mg_gfx_record_end(void);
+
+/*
  * Plays a record back through `host` and writes each picture the app
  * showed as <out_dir>/<name>-N.png (out_dir NULL: no files). `same`: the
  * host is the one the record was made with (the stand-in), so every picture

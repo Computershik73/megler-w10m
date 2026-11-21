@@ -64,6 +64,7 @@ public class FragmentManager {
             f.mMeglerActivityCreated = true;
             Bundle saved = f.mMeglerRestored;
             f.mMeglerRestored = null;
+            if (f.mView == null) createView(f, saved);
             f.onActivityCreated(saved);
             if (saved != null && f.mView != null) {
                 android.util.SparseArray<android.os.Parcelable> views = saved.getSparseParcelableArray(VIEW_STATE);
@@ -145,6 +146,18 @@ public class FragmentManager {
         f.mSavedFragmentState = null;
         f.mMeglerRestored = saved;
         f.onCreate(saved);
+        /*
+         * Its view is made as the host's activity is created (raise), as Android's FragmentManager makes it on the way to
+         * ACTIVITY_CREATED: a fragment added in the activity's onCreate, even with executePendingTransactions, has its
+         * onCreateView and onViewCreated after that onCreate returns. Android's Settings (AOSP 9) adds its fragment so and
+         * finds its switch bar only afterwards, which Wi-Fi's onViewCreated reads: made at once, it found none and the app
+         * ended as Wi-Fi opened.
+         */
+        raise(f);
+    }
+    /** The fragment's view, made and put in its container (onCreateView, onViewCreated). */
+    private void createView(Fragment f, Bundle saved) {
+        int containerId = f.mContainerId;
         ViewGroup container = containerId != 0 ? (ViewGroup) mActivity.findViewById(containerId) : null;
         f.mContainer = container;
         View v = f.onCreateView(mActivity.getLayoutInflater(), container, saved);
@@ -154,7 +167,6 @@ public class FragmentManager {
             f.onViewCreated(v, saved);
             if (f.mHidden) v.setVisibility(View.GONE);
         }
-        raise(f);
     }
     void removeFragment(Fragment f) {
         if (!mAdded.remove(f)) return;
