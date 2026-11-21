@@ -68,6 +68,7 @@ static char g_internal[256] = "/data/data/com.example.app";
 static char g_external[64] = EXTERNAL;
 static char g_cwd[512] = "/";
 static char *g_space_dir;              /* a host folder on the volume everything is kept on: what statfs asks about */
+static char *g_lib_dir;                /* the app's library folder on the host, "<data folder>/lib/": its files are executable (exec_bit) */
 
 static const struct {
     const char *path;
@@ -374,6 +375,8 @@ void mg_fs_configure(const char *package, const char *internal_dir, const char *
     free(p);
     mg_strlcpy(g_cwd, g_internal, sizeof(g_cwd));
     if (!g_space_dir) g_space_dir = mg_strdup(internal_dir);
+    /* (The one before is not freed: a thread may be reading it in exec_bit.) */
+    g_lib_dir = mg_sprintf("%s/lib/", internal_dir);
 }
 
 void mg_fs_shared_storage(const char *shared_dir, const mg_fs_link *links, int count)
@@ -1242,6 +1245,104 @@ static bool g_io_inited;
 static u32 file_ino(const char *host_path);
 
 /*
+ * A file's execute bit, which Windows has nowhere to keep. Android makes an app's files without one (FileOutputStream's
+ * 0666 under the app's umask, 077), and access(X_OK) -- File.canExecute -- says no of such a file; here it said yes of
+ * every file there was, though stat never gave one an execute bit. Facebook's apps load a module they downloaded only
+ * when File.canWrite and File.canExecute say no of it and File.canRead yes: Messenger 586 on 0.1.0.734 made its language
+ * pack read-only (which works since 0.1.0.672) and still said "Downloaded module file must be read only: ... download.zip
+ * exists: true, read only:false / NoSplitFile" at every start, and the pack never loaded.
+ *
+ * What chmod gives a file -- its owner's execute bit, which is what access goes by for the app that owns it -- is kept
+ * here, by the file's path on the host, for as long as the process runs: a rename takes it along (a directory's renamed
+ * takes those of its files), an unlink drops it, and so does a file made anew at the path. A new start finds such a file
+ * as Android makes one, without. The files of the app's own library folder have one, as Android's package manager gives
+ * the libraries it puts there 0755. A directory has its own (0771): it may be searched.
+ */
+static mg_lock g_exec_lock = MG_LOCK_INIT;
+static char **g_exec;
+static volatile i32 g_nexec;
+static i32 g_exec_cap;
+
+static i32 exec_find(const char *h)
+{
+    i32 i;
+    for (i = 0; i < g_nexec; i++) {
+        if (!strcmp(g_exec[i], h)) return i;
+    }
+    return -1;
+}
+
+static void exec_drop(i32 i)
+{
+    free(g_exec[i]);
+    g_exec[i] = g_exec[g_nexec - 1];
+    g_nexec = g_nexec - 1;
+}
+
+/* Whether the file at the host path `h` (not a directory's) has an execute bit. */
+static bool exec_bit(const char *h)
+{
+    bool yes;
+    if (g_lib_dir && !strncmp(h, g_lib_dir, strlen(g_lib_dir))) return true;
+    if (!g_nexec) return false;
+    mg_lock_acquire(&g_exec_lock);
+    yes = exec_find(h) >= 0;
+    mg_lock_release(&g_exec_lock);
+    return yes;
+}
+
+/* The file at the host path `h` given an execute bit, or its bit taken away (chmod; an unlink; a file made anew). */
+static void exec_set(const char *h, bool on)
+{
+    i32 i;
+    if (!on && !g_nexec) return;
+    mg_lock_acquire(&g_exec_lock);
+    i = exec_find(h);
+    if (on && i < 0) {
+        if (g_nexec == g_exec_cap) {
+            g_exec_cap = g_exec_cap ? g_exec_cap * 2 : 8;
+            g_exec = (char **)mg_realloc(g_exec, (size_t)g_exec_cap * sizeof(*g_exec));
+        }
+        g_exec[g_nexec] = mg_strdup(h);
+        g_nexec = g_nexec + 1;
+    } else if (!on && i >= 0) {
+        exec_drop(i);
+    }
+    mg_lock_release(&g_exec_lock);
+}
+
+/* The host path `a` renamed to `b`: what was at `b` is gone, and `a`'s bit goes along, and those of the files under `a`. */
+static void exec_renamed(const char *a, const char *b)
+{
+    size_t n = strlen(a);
+    i32 i;
+    if (!g_nexec || !strcmp(a, b)) return;
+    mg_lock_acquire(&g_exec_lock);
+    i = exec_find(b);
+    if (i >= 0) exec_drop(i);
+    for (i = 0; i < g_nexec; i++) {
+        if (!strncmp(g_exec[i], a, n) && (g_exec[i][n] == 0 || g_exec[i][n] == '/')) {
+            char *moved = mg_sprintf("%s%s", b, g_exec[i] + n);
+            free(g_exec[i]);
+            g_exec[i] = moved;
+        }
+    }
+    mg_lock_release(&g_exec_lock);
+}
+
+/* exec_bit of a file by its guest path (normalized), the host's asked for only where a bit may be. */
+static bool exec_bit_of(const char *g)
+{
+    char *h;
+    bool yes;
+    if (!g_nexec && !strstr(g, "/lib/")) return false;
+    h = host_of_normal(g);
+    yes = h && exec_bit(h);
+    free(h);
+    return yes;
+}
+
+/*
  * The descriptors' lock is never taken by a thread that holds the mappings' lock (mg_libc_mem.c). A thread that holds this
  * one and meets a page the app gave back with madvise -- a pipe's bytes copied into the app's buffer, epoll_wait's events
  * written into it, a select's sets or an epoll_ctl's event read from it -- is mended by the fault handler, which takes the
@@ -1695,6 +1796,8 @@ static int g_open(const char *path, int flags, int mode)
             if (acc) why = GE_ISDIR;
             else o->type = OBJ_DIRFD;
         }
+        /* (A file made where there was none has no execute bit, whatever one that was there once had.) */
+        if (!why && o->type == OBJ_FILE && (flags & G_O_CREAT) && !existed) exec_set(h, false);
         free(h);
         if (why) {
             obj_destroy(o);
@@ -2628,6 +2731,7 @@ static void file_unlinked(const char *h, const char *g)
 {
     u32 key = path_hash(h);
     int open;
+    exec_set(h, false);
     mg_lock_acquire(&g_io_lock);
     open = ino_open(ino_of_key(key));
     if (open) inos_set(key, ino_fresh(key));
@@ -2660,7 +2764,7 @@ static void file_renamed(const char *a, const char *b, const char *ga, const cha
         mg_warn("files: the database %s was replaced by a rename of %s while %d descriptor(s) of it are open", gb, ga, replaced);
 }
 
-static void fill_stat(g_stat *out, const mg_stat *st, u32 ino)
+static void fill_stat(g_stat *out, const mg_stat *st, u32 ino, bool exec)
 {
     memset(out, 0, sizeof(*out));
     out->st_dev = 0x801;
@@ -2668,8 +2772,8 @@ static void fill_stat(g_stat *out, const mg_stat *st, u32 ino)
 #if !MG_GUEST_LP64
     out->st_ino32 = (u32)out->st_ino;              /* (the kernel's stat64 has it twice) */
 #endif
-    /* (A file made read-only by chmod -- its write bits taken away, mg_path_set_writable -- says so.) */
-    out->st_mode = st->is_dir ? (G_S_IFDIR | 0771) : (G_S_IFREG | (st->read_only ? 0440 : 0660));
+    /* (A file made read-only by chmod -- its write bits taken away, mg_path_set_writable -- says so; one given an execute bit too, exec_bit.) */
+    out->st_mode = st->is_dir ? (G_S_IFDIR | 0771) : (G_S_IFREG | (st->read_only ? 0440 : 0660) | (exec ? 0110 : 0));
     out->st_nlink = 1;
     out->st_uid = out->st_gid = 10100;
     out->st_size = (i64)st->size;
@@ -2689,7 +2793,7 @@ static void fill_special(g_stat *out, u32 mode, u64 size, const char *gpath)
     memset(&st, 0, sizeof(st));
     st.size = size;
     st.mtime_ns = st.atime_ns = st.ctime_ns = (i64)mg_time_realtime_ns();
-    fill_stat(out, &st, path_hash(gpath));
+    fill_stat(out, &st, path_hash(gpath), false);
     out->st_mode = mode;
 }
 
@@ -2749,7 +2853,7 @@ static int g_stat_path(const char *path, g_stat *out)
         return -1;
     }
     /* (A directory's is its guest path's, as fstat of one opened has it.) */
-    fill_stat(out, &st, st.is_dir ? path_hash(g) : file_ino(h));
+    fill_stat(out, &st, st.is_dir ? path_hash(g) : file_ino(h), !st.is_dir && exec_bit(h));
     free(h);
     free(g);
     return 0;
@@ -2794,7 +2898,7 @@ static int g_fstat(int fd, g_stat *out)
             mg_set_errno(GE_IO);
             r = -1;
         } else {
-            fill_stat(out, &st, o->ino ? o->ino : path_hash(o->path));
+            fill_stat(out, &st, o->ino ? o->ino : path_hash(o->path), !st.is_dir && exec_bit_of(o->path));
         }
         break;
     case OBJ_MEM:
@@ -2840,10 +2944,15 @@ static int g_fstatat(int dirfd, const char *path, g_stat *out, int flags)
  * Everything that is there can be read. What cannot be written is what lies in a link the shell marked so, and a file whose
  * mode has no write bit: one made read-only by chmod (File.setReadOnly), or one of the system's (/proc's, 0444). Facebook
  * makes each module it downloads read-only and checks File.canWrite before it loads one: "Downloaded module file must be read
- * only", and no language pack of its own ever loaded.
+ * only", and no language pack of its own ever loaded. What can be executed is a directory (searched), and a file whose mode has
+ * an execute bit (exec_bit): Facebook asks File.canExecute of the module too.
  */
 static int access_of(const char *path, int mode, int r, const g_stat *st)
 {
+    if (r == 0 && (mode & 1) && st && (st->st_mode & 0170000u) != G_S_IFDIR && !(st->st_mode & 0111u)) {
+        mg_set_errno(GE_ACCES);
+        return -1;
+    }
     if (r == 0 && (mode & 2)) {
         char *g = normalize(path);
         bool no = in_read_only(g) || (st && (st->st_mode & 0170000u) != G_S_IFDIR && !(st->st_mode & 0222u));
@@ -2867,9 +2976,9 @@ static int g_faccessat(int dirfd, const char *path, int mode, int flags)
     g_stat st;
     int r = g_fstatat(dirfd, path, &st, flags);
     /* (A path relative to a directory other than the current one is not looked up again: such a one is only said to be there --
-       but a file of it with no write bit is not writable.) */
+       but a file of it with no write bit is not writable, nor one with no execute bit executable.) */
     if (dirfd == -100 || (path && path[0] == '/')) return access_of(path, mode, r, &st);
-    if (r == 0 && (mode & 2) && (st.st_mode & 0170000u) != G_S_IFDIR && !(st.st_mode & 0222u)) {
+    if (r == 0 && (st.st_mode & 0170000u) != G_S_IFDIR && (((mode & 2) && !(st.st_mode & 0222u)) || ((mode & 1) && !(st.st_mode & 0111u)))) {
         mg_set_errno(GE_ACCES);
         return -1;
     }
@@ -3046,7 +3155,10 @@ static int g_rename(const char *from, const char *to)
     if (g_ino_watches && a && b && strcmp(ga, gb)) replaced = mg_path_stat(b, &st, NULL);
     /* (Between a link and anything else the host layer says EXDEV, as between two file systems: the app copies and removes.) */
     ok = a && b && mg_path_rename(a, b, &err);
-    if (ok) file_renamed(a, b, ga, gb);
+    if (ok) {
+        file_renamed(a, b, ga, gb);
+        exec_renamed(a, b);
+    }
     if (!ok) mg_set_errno(why ? why : a && b ? mg_errno_of(err) : GE_ACCES);
     if (ok && g_ino_watches && strcmp(ga, gb)) ino_renamed(ga, gb, mg_path_stat(b, &st, NULL) && st.is_dir, replaced);
     free(ga);
@@ -4906,8 +5018,9 @@ static int g_eventfd_read(int fd, u64 *value) { return g_read(fd, value, 8) == 8
 static int g_eventfd_write(int fd, u64 value) { return g_write(fd, &value, 8) == 8 ? 0 : -1; }
 /*
  * chmod, fchmodat and fchmod: of a file's mode its owner's write bit is kept (mg_path_set_writable: Windows' read-only
- * attribute, the owner's write bit on a POSIX host), which stat, access and open then go by; the rest of the mode is not
- * kept, and a directory's not at all. File.setReadOnly and setWritable come here: Facebook makes each module it downloads read-only and
+ * attribute, the owner's write bit on a POSIX host), which stat, access and open then go by, and its owner's execute bit
+ * (exec_bit: for the process's life), which stat and access go by; the rest of the mode is not kept, and a directory's not at
+ * all. File.setReadOnly, setWritable and setExecutable come here: Facebook makes each module it downloads read-only and
  * loads only one that is ("Downloaded module file must be read only"), and Android 14 loads code only from a file so. A file
  * that is not there is ENOENT; one of the system's (made up here) and a link the shell marked read-only are left as they
  * are. libc++'s std::filesystem::permissions calls fchmodat (Zalo's libc++_shared.so and libzinstant.so).
@@ -4926,6 +5039,12 @@ static int chmod_normal(const char *g, unsigned mode)
     }
     /* (The owner's write bit: the app owns its files, and Linux gives an owner without it no writing, whatever the group's.) */
     ok = in_read_only(g) || mg_path_set_writable(h, (mode & 0200u) != 0, &err);
+    /* And its execute bit, the owner's too (exec_bit): a directory's is its own. */
+    if (ok && !in_read_only(g)) {
+        mg_stat st;
+        if (!(mode & 0100u)) exec_set(h, false);
+        else if (mg_path_stat(h, &st, NULL) && !st.is_dir) exec_set(h, true);
+    }
     if (ok && g_ino_watches) {
         mg_stat st;
         ino_path(g, G_IN_ATTRIB, 0, mg_path_stat(h, &st, NULL) && st.is_dir);

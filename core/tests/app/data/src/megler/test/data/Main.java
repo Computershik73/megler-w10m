@@ -6855,6 +6855,30 @@ public class Main extends Activity {
                     + " again=" + again + " deleted=" + deleted;
             return wasWritable && made && readOnly && refused && writable && again && deleted;
         });
+        /*
+         * And its execute bit, which Facebook asks about too: a module it loads must be !canWrite && !canExecute && canRead
+         * (Messenger 586 said "Downloaded module file must be read only: ... read only:false" though setReadOnly had worked:
+         * canExecute said yes of every file). None for a file the app made, nor for one made read-only, stat's mode says the
+         * same; setExecutable gives it and takes it away, a rename keeps it, a folder may be searched, and a library of the
+         * app's own library folder is executable, as Android's package manager makes them (0755).
+         */
+        step("file-execute", () -> {
+            File f = new File(getFilesDir(), "module-x.zip"), moved = new File(getFilesDir(), "module-y.zip");
+            moved.delete();
+            try (java.io.FileOutputStream out = new java.io.FileOutputStream(f)) { out.write(new byte[] { 'P', 'K' }); }
+            boolean plain = !f.canExecute() && (android.system.Os.stat(f.getPath()).st_mode & 0111) == 0;
+            boolean made = f.setReadOnly(), facebook = !f.canWrite() && !f.canExecute() && f.canRead();
+            boolean exec = f.setExecutable(true) && f.canExecute() && !f.canWrite() && (android.system.Os.stat(f.getPath()).st_mode & 0100) != 0;
+            boolean renamed = f.renameTo(moved) && moved.canExecute() && !f.exists();
+            boolean off = moved.setExecutable(false) && !moved.canExecute();
+            boolean folder = getFilesDir().canExecute();
+            boolean deleted = moved.delete() && !moved.exists();
+            File[] libs = new File(getApplicationInfo().nativeLibraryDir).listFiles();
+            boolean library = libs == null || libs.length == 0 || libs[0].canExecute();
+            detail = "plain=" + plain + " made=" + made + " facebook=" + facebook + " exec=" + exec + " renamed=" + renamed + " off=" + off
+                    + " folder=" + folder + " deleted=" + deleted + " library=" + library + " (" + (libs == null ? "no folder" : libs.length + " libraries") + ")";
+            return plain && made && facebook && exec && renamed && off && folder && deleted && library;
+        });
     }
 
     /**
