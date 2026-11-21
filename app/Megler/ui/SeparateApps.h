@@ -4,7 +4,8 @@
 // managed; it runs an app itself only in an auto run (auto/AutoRun.h).
 //
 // A package carries the Megler that made it: an update of Megler updates none of them, so those made by another Megler are
-// "outdated", and Update All makes and installs each of them again.
+// "outdated", and Update All makes and installs each of them again. So is one whose Graphics changed since it was made
+// (shell/Graphics.h): Mesa's freedreno is in an app's package only while the app goes by it.
 //
 // After an install Megler keeps no copy of the APK when it can read the installed package's (Library::adopt): the update
 // is made from that one. An APK picked to be installed is read where it is (shell/PickedFile.h) and copied only when
@@ -15,6 +16,7 @@
 
 #include <functional>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -29,11 +31,15 @@ class AppShell;
 namespace megler::app::ui::separateApps {
 
 enum class Installed { unknown, no, yes };
+/// Whether an installed app's package has what its Graphics ask for (shell/Graphics.h): Mesa's freedreno in it or not.
+enum class Graphics { asMade, addMesa, dropMesa };
 
 struct Status {
     Installed installed = Installed::unknown; // unknown until the list of the apps' packages has come, or when it could not be had
     std::string version;                      // the installed package's: the Megler that made it
-    bool outdated = false;                    // made by another Megler than this one
+    bool outdated = false;                    // to update: made by another Megler than this one, or `graphics` is not asMade
+    Graphics graphics = Graphics::asMade;     // its package lacks Mesa's DLLs its Graphics ask for now (addMesa), or has them
+                                              // where they no longer do (dropMesa): Update makes it again
     bool queued = false;                      // an action of it is waiting or going on
     std::string step;                         // what is being done, or how the last action ended
     appPackage::Made made;                    // the last package made of it here
@@ -58,8 +64,11 @@ void install(AppShell& shell, const std::string& apkId, bool whenRead = false);
 /// An APK the user picked, installed straight from where it is, as the library's `apkId`. UI thread.
 void installPicked(AppShell& shell, std::shared_ptr<PickedFile> picked, const std::string& apkId);
 void uninstall(AppShell& shell, const std::string& androidPackage);
-/// The library's apps installed from another Megler's packages: each installed again.
+/// The library's apps to update (Status::outdated): each installed again.
 std::vector<std::string> outdatedIds();
+/// Whether the installed package of `androidPackage` has Mesa's freedreno (shell/Graphics.h), as the last list found it
+/// (or the install since); nothing where it is not installed, the list has not come, or Mesa cannot be chosen here.
+std::optional<bool> packageHasMesa(const std::string& androidPackage);
 void updateAll(AppShell& shell);
 /// What is going on, "Updating Instagram (2 of 3): Packing…"; empty when nothing is.
 std::string working();

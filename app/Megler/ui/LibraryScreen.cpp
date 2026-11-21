@@ -59,7 +59,10 @@ UIElement apkRow(const ApkEntry& entry) {
         onPhone = phone.step;
         color = p.primary;
     } else if (phone.installed == separateApps::Installed::yes) {
-        onPhone = phone.outdated ? "Installed, made by Megler " + phone.version + ": to update" : std::string("Installed");
+        // (To update: made by another Megler, or its Graphics no longer what its package was made with -- shell/Graphics.h.)
+        onPhone = !phone.outdated                                         ? std::string("Installed")
+                  : phone.graphics == separateApps::Graphics::asMade ? "Installed, made by Megler " + phone.version + ": to update"
+                                                                          : std::string("Installed, its Graphics changed: to update");
         color = phone.outdated ? p.orange : p.green;
     } else if (phone.installed == separateApps::Installed::no && entry.report.ready()) {
         onPhone = "Not installed";
@@ -347,9 +350,16 @@ private:
         const auto outdated = separateApps::outdatedIds();
         if (separateApps::working().empty() && !outdated.empty()) {
             auto column = vstack(16);
-            auto line = text(format("%u of the apps on the phone were made by another Megler. A package carries the Megler that made it: "
-                                    "Update All makes and installs each again with this one.",
-                                    unsigned(outdated.size())),
+            // (Or their Graphics changed, where Mesa's freedreno can be chosen: it goes into an app's package only while the app
+            // draws with it, shell/Graphics.h.)
+            auto line = text(appPackage::mesaChoosable()
+                                 ? format("%u of the apps on the phone are to be updated: made by another Megler (a package carries the Megler "
+                                          "that made it), or with other Graphics than they are set to now (Mesa's freedreno is in an app's "
+                                          "package only while the app draws with it). Update All makes and installs each again with this one.",
+                                          unsigned(outdated.size()))
+                                 : format("%u of the apps on the phone were made by another Megler. A package carries the Megler that made it: "
+                                          "Update All makes and installs each again with this one.",
+                                          unsigned(outdated.size())),
                              font::bodyMedium, weightNormal(), palette().onSurfaceVariant);
             line.TextWrapping(TextWrapping::Wrap);
             add(column, line);

@@ -9,6 +9,7 @@
 #endif
 #include "shell/BundledApks.h"
 #include "shell/Files.h"
+#include "shell/Graphics.h"
 #include "shell/LogMirror.h"
 #include "shell/PickedFile.h"
 #include "shell/Platform.h"
@@ -44,6 +45,15 @@ bool gListed = false;                // it came at least once
 bool gReachable = false;             // its lister answered, whether or not its list came
 std::string gProblem;                // why it could not be had last
 std::vector<appPackage::InstalledApp> gInstalled;
+/*
+ * Of each installed package of a library's app, where Mesa's freedreno can be chosen (shell/Graphics.h), as the last listing
+ * found it: whether it has Mesa's DLLs (its record) and whether its app's Graphics ask for them now. Where the two differ the
+ * app is to be updated: its package made again with them, or without. By identity name.
+ */
+struct GraphicsState {
+    bool has = false, wants = false;
+};
+std::map<std::string, GraphicsState> gGraphics;
 std::map<std::string, Status> gStatus; // the actions' part (queued, step, made), by Android package
 std::deque<Job> gJobs;
 bool gWorking = false;
@@ -116,6 +126,11 @@ Status statusLocked(const std::string& package) {
         s.installed = Installed::yes;
         s.version = app.version;
         s.outdated = older(app.version, appPackage::meglerVersion());
+        const auto g = gGraphics.find(identity);
+        if (g != gGraphics.end() && g->second.has != g->second.wants) {
+            s.graphics = g->second.wants ? Graphics::addMesa : Graphics::dropMesa;
+            s.outdated = true;
+        }
     }
     return s;
 }
@@ -359,10 +374,29 @@ void listInstalled() {
     // Where they are kept, and which volume each is on (Windows's package manager again, each volume's packages).
     appPackage::AppsStorage storage;
     if (ok) storage = appPackage::appsStorage(apps);
+    // Whether each library's app's package has Mesa's freedreno, and whether its Graphics ask for it now.
+    std::map<std::string, GraphicsState> graphicsOf;
+    if (ok && appPackage::mesaChoosable()) {
+        const std::wstring shared = appPackage::sharedFolder();
+        for (const ApkEntry& e : Library::instance().entries()) {
+            if (e.report.package.empty()) continue;
+            const std::string identity = identityOf(e.report.package);
+            for (const auto& a : apps) {
+                if (a.identity != identity) continue;
+                GraphicsState& g = graphicsOf[identity];
+                g.has = graphics::recordedMesa(shared, identity, a.fullName);
+                g.wants = appPackage::glesFor(e.report.package) == "mesa";
+                if (g.has != g.wants)
+                    sayOnce("separate apps: " + e.report.package + "'s package " + (g.has ? "has" : "lacks") + " Mesa's freedreno, which its Graphics " +
+                            (g.wants ? "ask for" : "no longer ask for") + ": to update");
+            }
+        }
+    }
     {
         std::lock_guard<std::mutex> lock(gMutex);
         if (ok) {
             gInstalled = apps;
+            gGraphics = graphicsOf;
             gListed = true;
             gProblem.clear();
             gStorage = storage;
@@ -551,6 +585,8 @@ void run(Job& job, int number, int total) {
             // (On the volume the apps are kept on, unless the install says it could not be moved there: the next list says where.)
             gInstalled.push_back({made.identity, appPackage::meglerVersion(), made.fullName, made.version,
                                   result.note.empty() ? keptVolumeLocked() : -1});
+            // (Its Graphics as it was made with them, until the next list.)
+            if (appPackage::mesaChoosable()) gGraphics[made.identity] = GraphicsState{made.mesa, made.mesa};
             gGeneration++;
         }
         // The library's entry is that APK now, and Megler's own copy, if it had one, goes: one copy of it on the phone. (In the
@@ -1028,6 +1064,16 @@ std::vector<std::string> outdatedIds() {
         if (s.installed == Installed::yes && s.outdated && !s.queued) ids.push_back(e.id);
     }
     return ids;
+}
+
+std::optional<bool> packageHasMesa(const std::string& androidPackage) {
+    const std::string identity = identityOf(androidPackage);
+    std::lock_guard<std::mutex> lock(gMutex);
+    const auto g = gGraphics.find(identity);
+    if (g == gGraphics.end() ||
+        std::none_of(gInstalled.begin(), gInstalled.end(), [&](const appPackage::InstalledApp& a) { return a.identity == identity; }))
+        return std::nullopt;
+    return g->second.has;
 }
 
 void updateAll(AppShell& shell) {
