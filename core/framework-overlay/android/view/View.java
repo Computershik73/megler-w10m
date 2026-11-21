@@ -1128,6 +1128,8 @@ public class View implements Drawable.Callback, KeyEvent.Callback {
      * watch page kept its panel's views at 0x0 under the player (0.1.0.708).
      */
     private static View sRequestingLayout;
+    /** The view whose requestLayout is going up now, for megler.ViewRoot to name what keeps a window laid out. */
+    public static View meglerRequestingLayout() { return sRequestingLayout; }
     public void requestLayout() {
         boolean first = sRequestingLayout == null;
         if (first) {
