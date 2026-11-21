@@ -92,6 +92,20 @@ dbg(const char *fmt, ...)
    va_end(ap);
 }
 
+/* Megler: what fails is said always, on stderr, which Megler's log takes
+ * ("mesa: fdkmt: ..."; core/src/ndk/mg_egl.c, mesa_load). Rare, unlike dbg.
+ */
+static void
+err(const char *fmt, ...)
+{
+   va_list ap;
+   va_start(ap, fmt);
+   fputs("fdkmt: ", stderr);
+   vfprintf(stderr, fmt, ap);
+   va_end(ap);
+   fflush(stderr);
+}
+
 static int
 load_kmt(void)
 {
@@ -106,7 +120,7 @@ load_kmt(void)
 #define KMT_LOAD(name)                                                    \
    p##name = (NTSTATUS(APIENTRY *)(void *))GetProcAddress(gdi, #name);    \
    if (!p##name) {                                                        \
-      dbg("thieu export %s\n", #name);                                    \
+      err("gdi32.dll has no %s\n", #name);                                \
       loaded = -1;                                                        \
       return -ENOSYS;                                                     \
    }
@@ -300,7 +314,7 @@ detect_gpu(struct fd_kmt *k)
       q.PrivateDriverDataSize = sizeof(um);
       NTSTATUS st = pD3DKMTQueryAdapterInfo(&q);
       if (st) {
-         dbg("QueryAdapterInfo(UMDRIVERNAME) 0x%08lx\n", (unsigned long)st);
+         err("QueryAdapterInfo(UMDRIVERNAME) failed: 0x%08lx\n", (unsigned long)st);
          return false;
       }
       /* lay day chu so cuoi cung trong ten file */
@@ -322,7 +336,7 @@ detect_gpu(struct fd_kmt *k)
    }
    k->gpu = fdkmt_gpu_lookup(k->soc);
    if (!k->gpu) {
-      dbg("SoC '%s' chua co trong gpu_table.c (xem src/fdkmt/README.md)\n", k->soc);
+      err("SoC '%s' is not in gpu_table.c: no driver for it\n", k->soc);
       return false;
    }
    if (!k->gpu->verified)
@@ -354,7 +368,7 @@ fd_kmt_open(struct fd_kmt **out_kmt)
    ea.pAdapters = infos;
    st = pD3DKMTEnumAdapters2(&ea);
    if (st) {
-      dbg("EnumAdapters2 0x%08lx\n", (unsigned long)st);
+      err("EnumAdapters2 failed: 0x%08lx\n", (unsigned long)st);
       goto fail;
    }
    for (ULONG i = 0; i < ea.NumAdapters; i++) {
@@ -377,7 +391,7 @@ fd_kmt_open(struct fd_kmt **out_kmt)
       goto fail;
    }
    if (!k->adapter) {
-      dbg("khong co adapter phan cung\n");
+      err("no hardware adapter\n");
       goto fail;
    }
 
@@ -385,7 +399,7 @@ fd_kmt_open(struct fd_kmt **out_kmt)
    cd.hAdapter = k->adapter;
    st = pD3DKMTCreateDevice(&cd);
    if (st) {
-      dbg("CreateDevice 0x%08lx\n", (unsigned long)st);
+      err("CreateDevice failed: 0x%08lx\n", (unsigned long)st);
       goto fail;
    }
    k->device = cd.hDevice;
@@ -403,7 +417,7 @@ fd_kmt_open(struct fd_kmt **out_kmt)
       st = pD3DKMTCreateContextVirtual(&cv);
    }
    if (st) {
-      dbg("CreateContextVirtual 0x%08lx\n", (unsigned long)st);
+      err("CreateContextVirtual failed: 0x%08lx\n", (unsigned long)st);
       goto fail;
    }
    k->context = cv.hContext;
@@ -425,7 +439,7 @@ fd_kmt_open(struct fd_kmt **out_kmt)
    pq.Priority = D3DDDI_PAGINGQUEUE_PRIORITY_NORMAL;
    st = pD3DKMTCreatePagingQueue(&pq);
    if (st) {
-      dbg("CreatePagingQueue 0x%08lx\n", (unsigned long)st);
+      err("CreatePagingQueue failed: 0x%08lx\n", (unsigned long)st);
       goto fail;
    }
    k->paging_queue = pq.hPagingQueue;
@@ -438,7 +452,7 @@ fd_kmt_open(struct fd_kmt **out_kmt)
    so.Info.MonitoredFence.InitialFenceValue = 0;
    st = pD3DKMTCreateSynchronizationObject2(&so);
    if (st) {
-      dbg("CreateSynchronizationObject2(monitored fence) 0x%08lx\n",
+      err("CreateSynchronizationObject2(monitored fence) failed: 0x%08lx\n",
           (unsigned long)st);
       goto fail;
    }
@@ -611,7 +625,7 @@ kmt_bo_alloc_i(struct fd_kmt *k, uint64_t size, uint32_t flags,
    ca.pAllocationInfo2 = &ai;
    st = pD3DKMTCreateAllocation2(&ca);
    if (st) {
-      dbg("CreateAllocation2(%llu) 0x%08lx\n", (unsigned long long)bytes,
+      err("CreateAllocation2 of %llu bytes failed: 0x%08lx\n", (unsigned long long)bytes,
           (unsigned long)st);
       return st_to_errno(st);
    }
@@ -624,7 +638,8 @@ kmt_bo_alloc_i(struct fd_kmt *k, uint64_t size, uint32_t flags,
    if (st == STATUS_PENDING)
       st = wait_paging(k, mr.PagingFenceValue) ? (NTSTATUS)0xC0000102 : 0;
    if (st) {
-      dbg("MakeResident 0x%08lx\n", (unsigned long)st);
+      err("MakeResident of %llu bytes failed: 0x%08lx\n", (unsigned long long)bytes,
+          (unsigned long)st);
       goto fail_alloc;
    }
 
@@ -637,7 +652,8 @@ kmt_bo_alloc_i(struct fd_kmt *k, uint64_t size, uint32_t flags,
    if (st == STATUS_PENDING)
       st = wait_paging(k, map.PagingFenceValue) ? (NTSTATUS)0xC0000102 : 0;
    if (st) {
-      dbg("MapGpuVirtualAddress 0x%08lx\n", (unsigned long)st);
+      err("MapGpuVirtualAddress of %llu bytes failed: 0x%08lx\n", (unsigned long long)bytes,
+          (unsigned long)st);
       goto fail_alloc;
    }
 
@@ -783,7 +799,7 @@ fd_kmt_bo_import(struct fd_kmt *k, void *share, int is_nt, uint32_t *out_handle,
       nalloc = q.NumAllocations;
    }
    if (st || nalloc < 1) {
-      dbg("QueryResourceInfo 0x%08lx allocs %u\n", (unsigned long)st, nalloc);
+      err("import: QueryResourceInfo failed: 0x%08lx, %u allocations\n", (unsigned long)st, nalloc);
       return st ? st_to_errno(st) : -EINVAL;
    }
 
@@ -825,7 +841,7 @@ fd_kmt_bo_import(struct fd_kmt *k, void *share, int is_nt, uint32_t *out_handle,
       hres = o.hResource;
    }
    if (st) {
-      dbg("OpenResource 0x%08lx\n", (unsigned long)st);
+      err("import: OpenResource failed: 0x%08lx\n", (unsigned long)st);
       goto out;
    }
 
@@ -857,7 +873,7 @@ fd_kmt_bo_import(struct fd_kmt *k, void *share, int is_nt, uint32_t *out_handle,
    if (st == STATUS_PENDING)
       st = wait_paging(k, mr.PagingFenceValue) ? (NTSTATUS)0xC0000102 : 0;
    if (st) {
-      dbg("import MakeResident 0x%08lx\n", (unsigned long)st);
+      err("import: MakeResident of %llu bytes failed: 0x%08lx\n", (unsigned long long)bytes, (unsigned long)st);
       goto fail_res;
    }
 
@@ -870,7 +886,7 @@ fd_kmt_bo_import(struct fd_kmt *k, void *share, int is_nt, uint32_t *out_handle,
    if (st == STATUS_PENDING)
       st = wait_paging(k, map.PagingFenceValue) ? (NTSTATUS)0xC0000102 : 0;
    if (st) {
-      dbg("import MapGpuVirtualAddress 0x%08lx\n", (unsigned long)st);
+      err("import: MapGpuVirtualAddress of %llu bytes failed: 0x%08lx\n", (unsigned long long)bytes, (unsigned long)st);
       goto fail_res;
    }
 
@@ -930,8 +946,10 @@ kmt_bo_map_i(struct fd_kmt *k, uint32_t handle, void **out_ptr)
       lk.hAllocation = handle;
       NTSTATUS st = pD3DKMTLock2(&lk);
       if (st) {
+         uint64_t size = bo->size;
          LeaveCriticalSection(&k->lock);
-         dbg("Lock2 0x%08lx\n", (unsigned long)st);
+         err("Lock2 of a BO of %llu bytes (the CPU's view of it) failed: 0x%08lx\n",
+             (unsigned long long)size, (unsigned long)st);
          return st_to_errno(st);
       }
       bo->map = lk.pData;
@@ -1041,7 +1059,7 @@ kmt_submit_i(struct fd_kmt *k, const struct fd_kmt_cmd *cmds,
       st = pD3DKMTSubmitCommand(&sc);
       if (st) {
          LeaveCriticalSection(&k->lock);
-         dbg("SubmitCommand(iova=0x%llx len=%u priv=%u) 0x%08lx\n",
+         err("SubmitCommand(iova=0x%llx len=%u priv=%u) failed: 0x%08lx\n",
              (unsigned long long)cmds[i].iova, cmds[i].size_dw * 4,
              k->priv_size, (unsigned long)st);
          dump_failed_ib(k, &cmds[i], st);
@@ -1065,7 +1083,7 @@ kmt_submit_i(struct fd_kmt *k, const struct fd_kmt_cmd *cmds,
    st = pD3DKMTSignalSynchronizationObjectFromGpu2(&sg);
    if (st) {
       LeaveCriticalSection(&k->lock);
-      dbg("SignalSynchronizationObjectFromGpu2 0x%08lx\n", (unsigned long)st);
+      err("SignalSynchronizationObjectFromGpu2 failed: 0x%08lx\n", (unsigned long)st);
       return st_to_errno(st);
    }
 
