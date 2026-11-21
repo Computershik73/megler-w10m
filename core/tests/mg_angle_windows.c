@@ -20,8 +20,10 @@
  * And, given a Mesa mode, the app's setting Graphics set to Mesa's freedreno where it cannot be had (megler_run_config.gles,
  * mg_egl.c's mesa_load), before anything of OpenGL ES is loaded: "mesa-missing", its DLLs not in the package (the scratch
  * folder, megler_config.package_dir); "mesa", stand-ins of them there and this PC's graphics processor, which is no Adreno;
- * "mesa-any-gpu", the same with the flag mesa-any-gpu, the stand-ins then not loaded. Each time the process falls back to
- * ANGLE, the log says why in one line, megler_gles says "angle", and the scenes are drawn on ANGLE as ever.
+ * "mesa-any-gpu", the same with the flag mesa-any-gpu, the stand-ins then not loaded, and the flag mesa-diag, which sets
+ * Mesa's diagnosis in the process's environment before that (MESA_CRASH_HANDLERS=1, MESA_LOG_DIR the data folder): there
+ * alone, the other modes stopping before. Each time the process falls back to ANGLE, the log says why in one line,
+ * megler_gles says "angle", and the scenes are drawn on ANGLE as ever.
  *
  * Only in the build tools/build-tests.sh win makes (MG_ANGLE_WINDOWS); elsewhere it says so and does nothing.
  */
@@ -34,6 +36,7 @@
 #include "../src/host/mg_host.h"
 #include "../src/mg_core.h"
 #include "../src/ndk/mg_egl.h"
+#include "../src/run/mg_run.h"
 #include "mg_tests.h"
 
 #ifdef MG_ANGLE_WINDOWS
@@ -1369,10 +1372,13 @@ static void gl1_mesa_ask(gl1_run *r, const char *mesa, const char *scratch)
     snprintf(path, sizeof(path), "%s/flags/mesa-any-gpu", scratch);
     if (!strcmp(mesa, "mesa-any-gpu")) mg_file_write_all(path, "", 0);
     else mg_path_remove(path, NULL);
+    snprintf(path, sizeof(path), "%s/flags/mesa-diag", scratch);
+    if (!strcmp(mesa, "mesa-any-gpu")) mg_file_write_all(path, "", 0);
+    else mg_path_remove(path, NULL);
     gl1_say(r, "Mesa's freedreno asked for (%s), where it cannot be had: ANGLE instead, and why in one line",
             !strcmp(mesa, "mesa-missing") ? "its DLLs not in the package"
             : !strcmp(mesa, "mesa") ? "stand-ins of its DLLs in the package, on this PC's graphics processor"
-                                    : "stand-ins of its DLLs in the package, the flag mesa-any-gpu");
+                                    : "stand-ins of its DLLs in the package, the flags mesa-any-gpu and mesa-diag");
     g_mesa_line[0] = 0;
     mg_log_get_sink(&g_mesa_was, &g_mesa_was_user);
     mg_log_set_sink(mesa_listen, NULL);
@@ -1389,12 +1395,23 @@ static void gl1_mesa_said(gl1_run *r, const char *mesa, const char *scratch)
                       : !strcmp(mesa, "mesa") && !adreno ? "not an Adreno"
                                                          : "libGLESv2_mesa.dll did not load";
     const char *gles = megler_gles();
+    char handlers[16] = "", logs[700] = "";
+    const bool diag = !strcmp(mesa, "mesa-any-gpu");
     mg_log_set_sink(g_mesa_was, g_mesa_was_user);
     snprintf(path, sizeof(path), "%s/flags/mesa-any-gpu", scratch);
     mg_path_remove(path, NULL);
+    snprintf(path, sizeof(path), "%s/flags/mesa-diag", scratch);
+    mg_path_remove(path, NULL);
+    /* (The process's own environment, which Mesa's C runtime reads as it starts, not this program's C runtime's copy.) */
+    GetEnvironmentVariableA("MESA_CRASH_HANDLERS", handlers, sizeof(handlers));
+    GetEnvironmentVariableA("MESA_LOG_DIR", logs, sizeof(logs));
     gl1_say(r, "  %s", g_mesa_line[0] ? g_mesa_line : "(the core said nothing of Mesa)");
     gl1_say(r, "  megler_gles: %s", gles ? gles : "(none)");
+    gl1_say(r, "  the process's environment: MESA_CRASH_HANDLERS=%s MESA_LOG_DIR=%s", handlers, logs);
     gl1_check(r, strstr(g_mesa_line, why) != NULL, "the fallback from Mesa was not said, or not for its reason");
+    gl1_check(r, diag ? !strcmp(handlers, "1") && !strcmp(logs, megler_data_dir()) : !handlers[0] && !logs[0],
+              diag ? "the flag mesa-diag did not ask for Mesa's crash handlers and its log files in the data folder"
+                   : "Mesa's diagnosis was asked for without the flag mesa-diag");
     gl1_check(r, gles && !strcmp(gles, "angle"), "megler_gles does not say angle after the fallback");
     gl1_check(r, !mg_egl_is_mesa(), "the core takes its OpenGL ES for Mesa's");
 }

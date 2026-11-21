@@ -808,6 +808,12 @@ MG_HOSTAPI int mg_net_dns_servers(char (*out)[48], int max);
 /* A DLL of the app package / a shared object, by file name. NULL when it does not load. */
 MG_HOSTAPI void *mg_dl_open(const char *name);
 MG_HOSTAPI void *mg_dl_sym(void *lib, const char *name);
+/*
+ * The host process's environment variable `name` set to `value` (Windows: SetEnvironmentVariable), for a library of the
+ * host's own that the core loads after: a DLL's C runtime reads the process's environment as it starts. Mesa's diagnosis,
+ * asked for by the flag mesa-diag (ndk/mg_egl.c). Not the guest's environment (bionic's getenv).
+ */
+MG_HOSTAPI bool mg_host_setenv(const char *name, const char *value);
 /* Which of the host's own modules (the app, a DLL of the package or of the system) an address is in: its file name and where it is loaded. For a crash report. */
 MG_HOSTAPI bool mg_host_module_at(mg_addr address, char *name, size_t size, mg_addr *base);
 /*

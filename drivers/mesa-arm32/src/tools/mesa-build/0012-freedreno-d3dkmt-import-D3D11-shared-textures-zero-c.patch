@@ -1,0 +1,313 @@
+From 80f52e1649ee345029c193eba27d16d9727c316a Mon Sep 17 00:00:00 2001
+From: anon <>
+Date: Thu, 19 Nov 2026 00:23:23 +0700
+Subject: [PATCH 12/15] freedreno/d3dkmt: import D3D11 shared textures;
+ zero-copy CoreWindow present
+
+---
+ src/freedreno/drm/d3dkmt/d3dkmt_bo.c          |   6 +
+ src/freedreno/drm/d3dkmt/d3dkmt_device.c      |  33 +++-
+ src/freedreno/drm/d3dkmt/d3dkmt_priv.h        |   1 +
+ src/freedreno/drm/d3dkmt/fd_kmt.h             |   7 +
+ .../freedreno/d3dkmt/fd_wgl_framebuffer.cpp   | 143 +++++++++++++++++-
+ 5 files changed, 180 insertions(+), 10 deletions(-)
+
+diff --git a/src/freedreno/drm/d3dkmt/d3dkmt_bo.c b/src/freedreno/drm/d3dkmt/d3dkmt_bo.c
+index c4fa77d..d55ef7d 100644
+--- a/src/freedreno/drm/d3dkmt/d3dkmt_bo.c
++++ b/src/freedreno/drm/d3dkmt/d3dkmt_bo.c
+@@ -77,6 +77,12 @@ static const struct fd_bo_funcs funcs = {
+    .destroy = fd_bo_fini_common,
+ };
+ 
++const struct fd_bo_funcs *
++d3dkmt_bo_funcs(void)
++{
++   return &funcs;
++}
++
+ static uint32_t
+ to_kmt_flags(uint32_t flags)
+ {
+diff --git a/src/freedreno/drm/d3dkmt/d3dkmt_device.c b/src/freedreno/drm/d3dkmt/d3dkmt_device.c
+index 6987fa3..10e5abe 100644
+--- a/src/freedreno/drm/d3dkmt/d3dkmt_device.c
++++ b/src/freedreno/drm/d3dkmt/d3dkmt_device.c
+@@ -20,11 +20,40 @@ d3dkmt_handle_from_dmabuf(struct fd_device *dev, int fd)
+    return 0;
+ }
+ 
++/* Tren Windows "dmabuf fd" = handle chia se KMT toan cuc (32-bit) cua mot
++ * resource D3D11 MISC_SHARED (IDXGIResource::GetSharedHandle). Moi lan
++ * OpenResource cho mot allocation handle moi nen khong can tra bang truoc.
++ */
+ static struct fd_bo *
+ d3dkmt_bo_from_dmabuf(struct fd_device *dev, int fd)
+ {
+-   (void)dev; (void)fd;
+-   return NULL;
++   uint32_t handle = 0;
++   uint64_t iova = 0, size = 0;
++   int ret = fd_kmt_bo_import(to_kmt(dev), (void *)(uintptr_t)(uint32_t)fd, 0,
++                              &handle, &iova, &size);
++   if (ret) {
++      ERROR_MSG("fd_kmt_bo_import(0x%x) failed: %d", fd, ret);
++      return NULL;
++   }
++
++   struct d3dkmt_bo *kbo = calloc(1, sizeof(*kbo));
++   if (!kbo) {
++      fd_kmt_bo_free(to_kmt(dev), handle);
++      return NULL;
++   }
++
++   struct fd_bo *bo = &kbo->base;
++   kbo->gpu_va = iova;
++   bo->size = (uint32_t)size;
++   bo->handle = handle;
++   bo->funcs = d3dkmt_bo_funcs();
++   fd_bo_init_common(bo, dev);
++
++   simple_mtx_lock(&table_lock);
++   _mesa_hash_table_insert(dev->handle_table, &bo->handle, bo);
++   simple_mtx_unlock(&table_lock);
++
++   return bo;
+ }
+ 
+ static void
+diff --git a/src/freedreno/drm/d3dkmt/d3dkmt_priv.h b/src/freedreno/drm/d3dkmt/d3dkmt_priv.h
+index 25c6160..7c53848 100644
+--- a/src/freedreno/drm/d3dkmt/d3dkmt_priv.h
++++ b/src/freedreno/drm/d3dkmt/d3dkmt_priv.h
+@@ -47,5 +47,6 @@ FD_DEFINE_CAST(fd_bo, d3dkmt_bo);
+ struct fd_bo *d3dkmt_bo_new(struct fd_device *dev, uint32_t size,
+                             uint32_t flags);
+ void d3dkmt_bo_close_handle(struct fd_bo *bo);
++const struct fd_bo_funcs *d3dkmt_bo_funcs(void);
+ 
+ #endif /* D3DKMT_PRIV_H_ */
+diff --git a/src/freedreno/drm/d3dkmt/fd_kmt.h b/src/freedreno/drm/d3dkmt/fd_kmt.h
+index fcc162c..27ece47 100644
+--- a/src/freedreno/drm/d3dkmt/fd_kmt.h
++++ b/src/freedreno/drm/d3dkmt/fd_kmt.h
+@@ -72,6 +72,13 @@ int fd_kmt_bo_alloc(struct fd_kmt *kmt, uint64_t size, uint32_t flags,
+                     uint32_t *out_handle, uint64_t *out_iova);
+ void fd_kmt_bo_free(struct fd_kmt *kmt, uint32_t handle);
+ 
++/* Nhap allocation dung chung (D3D11 MISC_SHARED): share = handle NT (is_nt)
++ * hoac handle KMT toan cuc. Giai phong bang fd_kmt_bo_free().
++ */
++int fd_kmt_bo_import(struct fd_kmt *kmt, void *share, int is_nt,
++                     uint32_t *out_handle, uint64_t *out_iova,
++                     uint64_t *out_size);
++
+ /* Map CPU (Lock2). Con tro on dinh toi fd_kmt_bo_free(). */
+ int fd_kmt_bo_map(struct fd_kmt *kmt, uint32_t handle, void **out_ptr);
+ 
+diff --git a/src/gallium/winsys/freedreno/d3dkmt/fd_wgl_framebuffer.cpp b/src/gallium/winsys/freedreno/d3dkmt/fd_wgl_framebuffer.cpp
+index fdaedb2..4cba144 100644
+--- a/src/gallium/winsys/freedreno/d3dkmt/fd_wgl_framebuffer.cpp
++++ b/src/gallium/winsys/freedreno/d3dkmt/fd_wgl_framebuffer.cpp
+@@ -7,7 +7,12 @@
+  * Phien ban 1 (don gian, cham): freedreno render vao pipe_resource rieng;
+  * khi present doc ra bang texture_map roi UpdateSubresource vao back buffer
+  * cua swapchain D3D11 (CreateSwapChainForCoreWindow) va Present.
+- * Toi uu sau: allocation dung chung giua freedreno va DXGI (khong copy CPU).
++ *
++ * Phien ban 2 (mac dinh, FD_WGL_SHARED=0 de tat): texture D3D11 MISC_SHARED
++ * (LINEAR, pitch can 64 byte) duoc nhap vao freedreno qua handle KMT
++ * (resource_from_handle, type FD) - Mesa ve thang vao do; present =
++ * CopyResource tren GPU vao back buffer. Khong co dong bo ngam giua hai API
++ * nen cho fence Mesa truoc khi copy va cho query D3D11 sau khi copy.
+  */
+ 
+ #include "fd_d3dkmt_public.h"
+@@ -37,6 +42,10 @@
+ #include "util/box.h"
+ #include "util/u_inlines.h"
+ #include "frontend/api.h"
++#include "frontend/winsys_handle.h"
++#include "drm-uapi/drm_fourcc.h"
++#include "util/os_time.h"
++#include "util/u_math.h"
+ 
+ #include "stw_winsys.h"
+ 
+@@ -57,8 +66,89 @@ struct fd_wgl_framebuffer {
+ 
+    struct pipe_context *ctx;            /* context GL dang ve (tu resize) */
+    struct pipe_resource *color;         /* render target cua freedreno */
++
++   /* Duong khong copy: texture D3D11 dung chung ma `color` tro toi. */
++   ComPtr<ID3D11Texture2D> shared;
++   ComPtr<ID3D11Query> copy_done;
+ };
+ 
++static bool
++use_shared_path(void)
++{
++   static int v = -1;
++   if (v < 0)
++      v = debug_get_bool_option("FD_WGL_SHARED", true) ? 1 : 0;
++   return v;
++}
++
++/* Tao texture D3D11 dung chung va nhap vao freedreno. false -> dung duong
++ * copy CPU cu.
++ */
++static bool
++create_shared_color(fd_wgl_framebuffer *fb, const struct pipe_resource *t)
++{
++   fb->shared.Reset();
++   fb->copy_done.Reset();
++
++   unsigned cpp = util_format_get_blocksize(t->format);
++   if (cpp != 4 || (fb->dxgi_format != DXGI_FORMAT_R8G8B8A8_UNORM &&
++                    fb->dxgi_format != DXGI_FORMAT_B8G8R8A8_UNORM))
++      return false;
++
++   D3D11_TEXTURE2D_DESC td = {};
++   td.Width = t->width0;
++   td.Height = t->height0;
++   td.MipLevels = 1;
++   td.ArraySize = 1;
++   td.Format = fb->dxgi_format;
++   td.SampleDesc.Count = 1;
++   td.Usage = D3D11_USAGE_DEFAULT;
++   td.BindFlags = D3D11_BIND_RENDER_TARGET | D3D11_BIND_SHADER_RESOURCE;
++   td.MiscFlags = D3D11_RESOURCE_MISC_SHARED;
++   HRESULT hr = fb->d3d->CreateTexture2D(&td, nullptr, &fb->shared);
++   if (FAILED(hr)) {
++      debug_printf("fd_wgl: CreateTexture2D shared 0x%08lx\n",
++                   (unsigned long)hr);
++      return false;
++   }
++
++   ComPtr<IDXGIResource> dres;
++   HANDLE share = nullptr;
++   if (FAILED(fb->shared.As(&dres)) ||
++       FAILED(dres->GetSharedHandle(&share)) || !share) {
++      debug_printf("fd_wgl: GetSharedHandle that bai\n");
++      fb->shared.Reset();
++      return false;
++   }
++
++   D3D11_QUERY_DESC qd = { D3D11_QUERY_EVENT, 0 };
++   fb->d3d->CreateQuery(&qd, &fb->copy_done);
++
++   /* KMD Qualcomm: texture shared la LINEAR, pitch = width*cpp lam tron 64
++    * (kiem chung bang fdkmt_share: 1080 RGBA8 -> 4352).
++    */
++   struct winsys_handle wh = {};
++   wh.type = WINSYS_HANDLE_TYPE_FD;
++   wh.handle = share;
++   wh.stride = align(t->width0 * cpp, 64);
++   wh.offset = 0;
++   wh.modifier = DRM_FORMAT_MOD_LINEAR;
++
++   struct pipe_resource rt = *t;
++   fb->color = fb->screen->resource_from_handle(
++      fb->screen, &rt, &wh, PIPE_HANDLE_USAGE_FRAMEBUFFER_WRITE);
++   if (!fb->color) {
++      debug_printf("fd_wgl: resource_from_handle %ux%u stride %u that bai\n",
++                   t->width0, t->height0, wh.stride);
++      fb->shared.Reset();
++      fb->copy_done.Reset();
++      return false;
++   }
++   debug_printf("fd_wgl: present khong copy %ux%u stride %u\n", t->width0,
++                t->height0, wh.stride);
++   return true;
++}
++
+ static fd_wgl_framebuffer *
+ fd_wgl_fb(struct stw_winsys_framebuffer *fb)
+ {
+@@ -135,6 +225,7 @@ fd_wgl_framebuffer_destroy(struct stw_winsys_framebuffer *pfb,
+    fd_wgl_framebuffer *fb = fd_wgl_fb(pfb);
+    (void)ctx;
+    pipe_resource_reference(&fb->color, NULL);
++   fb->shared.Reset();
+    delete fb;
+ }
+ 
+@@ -158,15 +249,18 @@ fd_wgl_framebuffer_resize(struct stw_winsys_framebuffer *pfb,
+    t.usage = PIPE_USAGE_DEFAULT;
+    t.depth0 = t.array_size = 1;
+    t.last_level = 0;
+-   fb->color = fb->screen->resource_create(fb->screen, &t);
+-   if (!fb->color) {
+-      debug_printf("fd_wgl: resource_create %ux%u failed\n", t.width0,
+-                   t.height0);
+-      return;
+-   }
+ 
+    fb->dxgi_format = to_dxgi_format(templ->format);
+ 
++   if (!use_shared_path() || !create_shared_color(fb, &t)) {
++      fb->color = fb->screen->resource_create(fb->screen, &t);
++      if (!fb->color) {
++         debug_printf("fd_wgl: resource_create %ux%u failed\n", t.width0,
++                      t.height0);
++         return;
++      }
++   }
++
+    if (!fb->swapchain) {
+       ComPtr<IDXGIDevice> dxgi_dev;
+       ComPtr<IDXGIAdapter> adapter;
+@@ -245,9 +339,10 @@ fd_wgl_timing(fd_wgl_framebuffer *fb, LARGE_INTEGER t0, LARGE_INTEGER t1,
+       }
+    }
+    if (log) {
+-      fprintf(log, "%ux%u %s dxgi=%d  map %.1f  update %.1f  unmap %.1f  present %.1f ms\n",
++      fprintf(log, "%ux%u %s dxgi=%d %s  %.1f  %.1f  %.1f  %.1f ms\n",
+               fb->color->width0, fb->color->height0,
+               util_format_short_name(fb->color->format), (int)fb->dxgi_format,
++              fb->shared ? "shared fence/copy/present/wait" : "map/update/unmap/present",
+               acc[0] / n, acc[1] / n,
+               acc[2] / n, acc[3] / n);
+       fflush(log);
+@@ -271,6 +366,38 @@ fd_wgl_framebuffer_present(struct stw_winsys_framebuffer *pfb, int interval)
+    LARGE_INTEGER t0, t1, t2, t3, t4;
+    QueryPerformanceCounter(&t0);
+ 
++   if (fb->shared) {
++      /* 1) Mesa xong khung: flush + cho fence (CPU). */
++      struct pipe_screen *screen = fb->screen;
++      struct pipe_fence_handle *fence = NULL;
++      ctx->flush(ctx, &fence, 0);
++      if (fence) {
++         screen->fence_finish(screen, NULL, fence, OS_TIMEOUT_INFINITE);
++         screen->fence_reference(screen, &fence, NULL);
++      }
++      QueryPerformanceCounter(&t1);
++
++      /* 2) Copy GPU sang back buffer; cho xong truoc khi Mesa ve khung sau. */
++      ComPtr<ID3D11Texture2D> back;
++      if (SUCCEEDED(fb->swapchain->GetBuffer(0, IID_PPV_ARGS(&back))))
++         fb->d3dctx->CopyResource(back.Get(), fb->shared.Get());
++      QueryPerformanceCounter(&t2);
++
++      HRESULT hr = fb->swapchain->Present(interval > 0 ? 1 : 0, 0);
++      QueryPerformanceCounter(&t3);
++
++      if (fb->copy_done) {
++         fb->d3dctx->End(fb->copy_done.Get());
++         while (fb->d3dctx->GetData(fb->copy_done.Get(), nullptr, 0, 0) ==
++                S_FALSE)
++            SwitchToThread();
++      }
++      QueryPerformanceCounter(&t4);
++
++      fd_wgl_timing(fb, t0, t1, t2, t3, t4);
++      return SUCCEEDED(hr);
++   }
++
+    struct pipe_transfer *xfer = NULL;
+    /* texture_map READ tu flush + cho GPU va detile neu can. */
+    void *ptr = ctx->texture_map(ctx, res, 0, PIPE_MAP_READ, &box, &xfer);
+-- 
+2.35.1.windows.2
+

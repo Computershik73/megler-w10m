@@ -1,0 +1,31 @@
+From a443646346655f9d7fb1d7c525eeaf3bce67257a Mon Sep 17 00:00:00 2001
+From: anon <>
+Date: Thu, 19 Nov 2026 00:23:23 +0700
+Subject: [PATCH 13/15] freedreno/a5xx: no RB_BLIT fast clear when
+ FD_MESA_DEBUG=sysmem
+
+---
+ src/gallium/drivers/freedreno/a5xx/fd5_draw.c | 7 +++++++
+ 1 file changed, 7 insertions(+)
+
+diff --git a/src/gallium/drivers/freedreno/a5xx/fd5_draw.c b/src/gallium/drivers/freedreno/a5xx/fd5_draw.c
+index f0dff4e..c60cb2c 100644
+--- a/src/gallium/drivers/freedreno/a5xx/fd5_draw.c
++++ b/src/gallium/drivers/freedreno/a5xx/fd5_draw.c
+@@ -229,6 +229,13 @@ fd5_clear(struct fd_context *ctx, enum fd_buffer_mask buffers,
+        is_z32(pfb->zsbuf.format))
+       return false;
+ 
++   /* Fast clear (RB_BLIT) only writes GMEM; a batch forced to bypass by
++    * FD_MESA_DEBUG=sysmem would lose/misplace it. Use the blitter instead.
++    * (Normally cleared batches never go bypass, see fd_autotune_use_bypass.)
++    */
++   if (FD_DBG(SYSMEM))
++      return false;
++
+    fd5_emit_render_cntl(ctx, true, false);
+ 
+    if (buffers & FD_BUFFER_COLOR) {
+-- 
+2.35.1.windows.2
+

@@ -1,0 +1,306 @@
+From e963b78bede1a54e3abed2c30c618b8113b5b80c Mon Sep 17 00:00:00 2001
+From: anon <>
+Date: Sat, 21 Nov 2026 08:46:09 +0700
+Subject: [PATCH] egl/wgl, freedreno: every RGBA8 pbuffer gets a D3D11 share
+ handle
+
+Fixes eglQuerySurfacePointerANGLE returning EGL_TRUE with a NULL handle
+for a recreated 1200x720 pbuffer (GTA: Vice City).
+
+- freedreno/a5xx: accept 64-byte pitch alignment for imported linear
+  resources. All a5xx pitch registers are in 64-byte units and the
+  Qualcomm KMD aligns shared D3D11 textures to 64 bytes (1200 px ->
+  4800 B), while Mesa required 64 pixels (4864 B), so
+  resource_from_handle failed for widths not a multiple of 64 px.
+- egl/wgl: no silent fallback to a non-shared pbuffer: if the shared
+  texture cannot be created, eglCreatePbufferSurface fails with
+  EGL_BAD_ALLOC; eglQuerySurfacePointerANGLE on a surface without one
+  returns EGL_FALSE/EGL_BAD_SURFACE.
+- egl/wgl: mark float configs EGL_COLOR_COMPONENT_TYPE_FLOAT_EXT so
+  eglChooseConfig(RGBA8) no longer returns (and sorts first) RGBA16F/32F.
+- d3dkmt winsys: log every failure reason (format, size, pitch,
+  CreateTexture2D/OpenSharedResource HRESULT, resource_from_handle) to
+  OutputDebugString, stderr and %TEMP%\fd_egl_share.log.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/egl/drivers/wgl/egl_wgl.c                 | 53 ++++++++++--
+ .../drivers/freedreno/freedreno_resource.c    |  8 ++
+ .../freedreno/d3dkmt/fd_wgl_framebuffer.cpp   | 85 ++++++++++++++++---
+ 3 files changed, 129 insertions(+), 17 deletions(-)
+
+diff --git a/src/egl/drivers/wgl/egl_wgl.c b/src/egl/drivers/wgl/egl_wgl.c
+index a688c43..d021ff5 100644
+--- a/src/egl/drivers/wgl/egl_wgl.c
++++ b/src/egl/drivers/wgl/egl_wgl.c
+@@ -47,6 +47,7 @@
+ 
+ #include "util/u_call_once.h"
+ #include "util/u_debug.h"
++#include "util/format/u_format.h"
+ #include "mesa/glapi/glapi/glapi.h"
+ #include "dispatch.h"
+ 
+@@ -88,6 +89,13 @@ wgl_add_config(_EGLDisplay *disp, const struct stw_pixelformat_info *stw_config,
+    base.AlphaSize = stw_config->pfd.cAlphaBits;
+    base.BufferSize = stw_config->pfd.cColorBits;
+ 
++   /* EGL_EXT_pixel_format_float: float configs must not match the default
++    * EGL_COLOR_COMPONENT_TYPE_FIXED_EXT, otherwise eglChooseConfig(RGBA8)
++    * returns (and sorts first) RGBA16F/32F configs.
++    */
++   if (util_format_is_float(stw_config->stvis.color_format))
++      base.ComponentType = EGL_COLOR_COMPONENT_TYPE_FLOAT_EXT;
++
+    if (stw_config->pfd.cAccumBits) {
+       /* Don't expose visuals with the accumulation buffer. */
+       return NULL;
+@@ -695,13 +703,38 @@ wgl_create_pbuffer_surface(_EGLDisplay *disp, _EGLConfig *conf,
+    /* Pbuffer thuong cung ve vao texture D3D11 dung chung de app lay handle
+     * qua eglQuerySurfacePointerANGLE (FD_EGL_PBUFFER_SHARED=0 de tat).
+     */
+-   if (disp->Extensions.ANGLE_surface_d3d_texture_2d_share_handle &&
++   /* Moi pbuffer 8888 deu phai co texture dung chung; khong cap duoc thi
++    * loi (khong lui ve pbuffer thuong: app se nhan handle NULL).
++    */
++   enum pipe_format cf = util_format_linear(stw_conf->stvis.color_format);
++   bool rgba8 = cf == PIPE_FORMAT_B8G8R8A8_UNORM ||
++                cf == PIPE_FORMAT_B8G8R8X8_UNORM ||
++                cf == PIPE_FORMAT_R8G8B8A8_UNORM ||
++                cf == PIPE_FORMAT_R8G8B8X8_UNORM;
++   if (disp->Extensions.ANGLE_surface_d3d_texture_2d_share_handle && rgba8 &&
+        debug_get_bool_option("FD_EGL_PBUFFER_SHARED", true)) {
+       wgl_surf->fb = stw_pbuffer_create_shared(stw_conf, NULL,
+                                                wgl_surf->base.Width,
+                                                wgl_surf->base.Height,
+                                                &wgl_dpy->base);
+-      wgl_surf->d3d_shared = wgl_surf->fb != NULL;
++      if (!wgl_surf->fb) {
++         _eglLog(_EGL_WARNING,
++                 "eglCreatePbufferSurface: khong cap duoc texture D3D11 dung "
++                 "chung %dx%d %s (xem %%TEMP%%\\fd_egl_share.log)",
++                 wgl_surf->base.Width, wgl_surf->base.Height,
++                 util_format_short_name(cf));
++         free(wgl_surf);
++         _eglError(EGL_BAD_ALLOC, "eglCreatePbufferSurface");
++         return NULL;
++      }
++      wgl_surf->d3d_shared = true;
++   } else if (disp->Extensions.ANGLE_surface_d3d_texture_2d_share_handle) {
++      _eglLog(_EGL_WARNING,
++              "eglCreatePbufferSurface: pbuffer %dx%d khong dung chung "
++              "(format %s, FD_EGL_PBUFFER_SHARED=%d)",
++              wgl_surf->base.Width, wgl_surf->base.Height,
++              util_format_name(stw_conf->stvis.color_format),
++              debug_get_bool_option("FD_EGL_PBUFFER_SHARED", true));
+    }
+    if (!wgl_surf->fb)
+ #endif
+@@ -760,6 +793,10 @@ wgl_create_pbuffer_from_client_buffer(_EGLDisplay *disp, EGLenum buftype,
+     */
+    if ((wgl_surf->base.Width && (unsigned)wgl_surf->base.Width != tw) ||
+        (wgl_surf->base.Height && (unsigned)wgl_surf->base.Height != th)) {
++      _eglLog(_EGL_WARNING,
++              "eglCreatePbufferFromClientBuffer: EGL_WIDTH/HEIGHT %dx%d khac "
++              "texture %ux%u", wgl_surf->base.Width, wgl_surf->base.Height,
++              tw, th);
+       free(wgl_surf);
+       _eglError(EGL_BAD_PARAMETER, "eglCreatePbufferFromClientBuffer");
+       return NULL;
+@@ -792,9 +829,15 @@ wgl_query_surface_pointer_angle(_EGLDisplay *disp, _EGLSurface *surf,
+    struct wgl_egl_surface *wgl_surf = wgl_egl_surface(surf);
+    if (attribute != EGL_D3D_TEXTURE_2D_SHARE_HANDLE_ANGLE)
+       return _eglError(EGL_BAD_ATTRIBUTE, "eglQuerySurfacePointerANGLE");
+-   *value = wgl_surf->d3d_shared
+-               ? (void *)stw_framebuffer_get_share_handle(wgl_surf->fb)
+-               : NULL;
++   void *h = wgl_surf->d3d_shared
++                ? (void *)stw_framebuffer_get_share_handle(wgl_surf->fb)
++                : NULL;
++   if (!h) {
++      _eglLog(_EGL_WARNING, "eglQuerySurfacePointerANGLE: surface khong co "
++              "texture D3D11 dung chung");
++      return _eglError(EGL_BAD_SURFACE, "eglQuerySurfacePointerANGLE");
++   }
++   *value = h;
+    return EGL_TRUE;
+ }
+ #endif
+diff --git a/src/gallium/drivers/freedreno/freedreno_resource.c b/src/gallium/drivers/freedreno/freedreno_resource.c
+index 2326b93..33514b7 100644
+--- a/src/gallium/drivers/freedreno/freedreno_resource.c
++++ b/src/gallium/drivers/freedreno/freedreno_resource.c
+@@ -1688,6 +1688,14 @@ fd_layout_resource_for_handle(struct fd_resource *rsc, struct winsys_handle *han
+    rsc->layout.pitchalign =
+       fdl_cpp_shift(&rsc->layout) + util_logbase2(screen->info->gmem_align_w);
+ 
++   /* a5xx: every pitch register (RB_MRT, RB_BLIT_DST, RB_2D, TEX_CONST) is in
++    * 64-byte units, and foreign allocators (e.g. the Qualcomm WDDM KMD for
++    * D3D11 shared textures) only align linear pitch to 64 bytes. Accept
++    * that for linear imports.
++    */
++   if (is_a5xx(screen) && handle->modifier == DRM_FORMAT_MOD_LINEAR)
++      rsc->layout.pitchalign = 6;
++
+    /* apply the minimum pitchalign (note: actually 4 for a3xx but doesn't
+     * matter)
+     */
+diff --git a/src/gallium/winsys/freedreno/d3dkmt/fd_wgl_framebuffer.cpp b/src/gallium/winsys/freedreno/d3dkmt/fd_wgl_framebuffer.cpp
+index 6a9b6cd..38dd689 100644
+--- a/src/gallium/winsys/freedreno/d3dkmt/fd_wgl_framebuffer.cpp
++++ b/src/gallium/winsys/freedreno/d3dkmt/fd_wgl_framebuffer.cpp
+@@ -23,6 +23,7 @@
+ 
+ #include <new>
+ #include <share.h>
++#include <stdarg.h>
+ #include <stdio.h>
+ 
+ #include <windows.h>
+@@ -645,16 +646,48 @@ fd_wgl_pbuffer_get_share_handle(struct stw_winsys_framebuffer *pfb)
+    return fd_wgl_pb(pfb)->share;
+ }
+ 
++/* Loi pbuffer dung chung: luon ghi (hiem khi xay ra) ra OutputDebugString,
++ * stderr va %TEMP%\fd_egl_share.log de app/nguoi dung thay ly do.
++ */
++static void
++share_log(const char *fmt, ...)
++{
++   char msg[512];
++   va_list ap;
++   va_start(ap, fmt);
++   vsnprintf(msg, sizeof(msg), fmt, ap);
++   va_end(ap);
++   OutputDebugStringA(msg);
++   fputs(msg, stderr);
++   char path[MAX_PATH];
++   DWORD len = GetTempPathA(MAX_PATH, path);
++   if (len && len < MAX_PATH - 20) {
++      strcat_s(path, "fd_egl_share.log");
++      FILE *f = _fsopen(path, "a", _SH_DENYNO);
++      if (f) {
++         fputs(msg, f);
++         fclose(f);
++      }
++   }
++}
++
+ static bool
+ open_shared(HANDLE share, ComPtr<ID3D11Texture2D> &tex,
+             D3D11_TEXTURE2D_DESC *desc)
+ {
+    ID3D11Device *dev = get_pbuffer_device();
+-   if (!dev || !share)
++   if (!dev) {
++      share_log("fd_egl_share: khong co device D3D11\n");
++      return false;
++   }
++   if (!share) {
++      share_log("fd_egl_share: share handle NULL\n");
+       return false;
++   }
+    HRESULT hr = dev->OpenSharedResource(share, IID_PPV_ARGS(&tex));
+    if (FAILED(hr)) {
+-      debug_printf("fd_wgl: OpenSharedResource 0x%08lx\n", (unsigned long)hr);
++      share_log("fd_egl_share: OpenSharedResource(%p) loi 0x%08lx\n", share,
++                (unsigned long)hr);
+       return false;
+    }
+    tex->GetDesc(desc);
+@@ -679,6 +712,11 @@ fd_wgl_query_shared_texture(HANDLE share, unsigned *width, unsigned *height,
+       else if (desc.Format == DXGI_FORMAT_R8G8B8A8_UNORM)
+          *format = PIPE_FORMAT_R8G8B8A8_UNORM;
+    }
++   if (*format == PIPE_FORMAT_NONE)
++      share_log("fd_egl_share: texture %ux%u khong ho tro: DXGI format %d, "
++                "mip %u, array %u, samples %u (can BGRA8/RGBA8 UNORM, 1/1/1)\n",
++                desc.Width, desc.Height, (int)desc.Format, desc.MipLevels,
++                desc.ArraySize, desc.SampleDesc.Count);
+    return true;
+ }
+ 
+@@ -687,9 +725,16 @@ fd_wgl_create_shared_pbuffer(struct pipe_screen *screen, HANDLE import,
+                              unsigned width, unsigned height,
+                              enum pipe_format format)
+ {
++   if (!width || !height || util_format_get_blocksize(format) != 4) {
++      share_log("fd_egl_share: tham so sai %ux%u format %s\n", width, height,
++                util_format_short_name(format));
++      return NULL;
++   }
+    ID3D11Device *dev = get_pbuffer_device();
+-   if (!dev || !width || !height || util_format_get_blocksize(format) != 4)
++   if (!dev) {
++      share_log("fd_egl_share: khong co device D3D11\n");
+       return NULL;
++   }
+ 
+    fd_wgl_pbuffer *pb = new (std::nothrow) fd_wgl_pbuffer();
+    if (!pb)
+@@ -698,8 +743,13 @@ fd_wgl_create_shared_pbuffer(struct pipe_screen *screen, HANDLE import,
+ 
+    if (import) {
+       D3D11_TEXTURE2D_DESC desc;
+-      if (!open_shared(import, pb->tex, &desc) || desc.Width != width ||
+-          desc.Height != height) {
++      if (!open_shared(import, pb->tex, &desc)) {
++         delete pb;
++         return NULL;
++      }
++      if (desc.Width != width || desc.Height != height) {
++         share_log("fd_egl_share: kich thuoc texture %ux%u khac pbuffer %ux%u\n",
++                   desc.Width, desc.Height, width, height);
+          delete pb;
+          return NULL;
+       }
+@@ -719,11 +769,19 @@ fd_wgl_create_shared_pbuffer(struct pipe_screen *screen, HANDLE import,
+       td.BindFlags = D3D11_BIND_RENDER_TARGET | D3D11_BIND_SHADER_RESOURCE;
+       td.MiscFlags = D3D11_RESOURCE_MISC_SHARED;
+       HRESULT hr = dev->CreateTexture2D(&td, nullptr, &pb->tex);
++      if (FAILED(hr)) {
++         share_log("fd_egl_share: CreateTexture2D %ux%u DXGI %d loi 0x%08lx\n",
++                   width, height, (int)td.Format, (unsigned long)hr);
++         delete pb;
++         return NULL;
++      }
+       ComPtr<IDXGIResource> dres;
+-      if (FAILED(hr) || FAILED(pb->tex.As(&dres)) ||
+-          FAILED(dres->GetSharedHandle(&pb->share)) || !pb->share) {
+-         debug_printf("fd_wgl: pbuffer shared texture that bai 0x%08lx\n",
+-                      (unsigned long)hr);
++      hr = pb->tex.As(&dres);
++      if (SUCCEEDED(hr))
++         hr = dres->GetSharedHandle(&pb->share);
++      if (FAILED(hr) || !pb->share) {
++         share_log("fd_egl_share: GetSharedHandle %ux%u loi 0x%08lx\n", width,
++                   height, (unsigned long)hr);
+          delete pb;
+          return NULL;
+       }
+@@ -739,7 +797,9 @@ fd_wgl_create_shared_pbuffer(struct pipe_screen *screen, HANDLE import,
+             PIPE_BIND_LINEAR | PIPE_BIND_SHARED;
+    t.usage = PIPE_USAGE_DEFAULT;
+ 
+-   /* KMD Qualcomm: texture shared LINEAR, pitch = width*4 lam tron 64. */
++   /* KMD Qualcomm: texture shared LINEAR, pitch = width*4 lam tron 64 byte
++    * (kiem chung: 1080 -> 4352, 1200 -> 4800 = ([4] privdata - 0x40) / h).
++    */
+    struct winsys_handle wh = {};
+    wh.type = WINSYS_HANDLE_TYPE_FD;
+    wh.handle = pb->share;
+@@ -748,8 +808,9 @@ fd_wgl_create_shared_pbuffer(struct pipe_screen *screen, HANDLE import,
+    pb->res = screen->resource_from_handle(screen, &t, &wh,
+                                           PIPE_HANDLE_USAGE_FRAMEBUFFER_WRITE);
+    if (!pb->res) {
+-      debug_printf("fd_wgl: pbuffer resource_from_handle %ux%u that bai\n",
+-                   width, height);
++      share_log("fd_egl_share: resource_from_handle %ux%u %s pitch %u loi "
++                "(FD_MESA_DEBUG=layout de xem chi tiet)\n",
++                width, height, util_format_short_name(format), wh.stride);
+       delete pb;
+       return NULL;
+    }
+-- 
+2.35.1.windows.2
+

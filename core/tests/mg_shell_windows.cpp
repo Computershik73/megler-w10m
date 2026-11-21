@@ -1419,6 +1419,10 @@ void testGraphics() {
     check(!graphics::isMesaFile(L"libEGL.dll") && !graphics::isMesaFile(L"libGLESv2.dll") && !graphics::isMesaFile(L"mozglue.dll") &&
               !graphics::isMesaFile(L"gles-default.txt"),
           "ANGLE's DLLs and the default's file are not");
+    // Their licences' folder, which an app's package carries with them alone (AppPackage.cpp, collect), and no other.
+    check(graphics::isMesaFolder(L"mesa-licenses") && graphics::isMesaFolder(L"Mesa-Licenses"), "mesa-licenses is Mesa's folder, whatever its case");
+    check(!graphics::isMesaFolder(L"android") && !graphics::isMesaFolder(L"licenses") && !graphics::isMesaFolder(L"mesa"),
+          "no other folder is");
     // In a package: none, two of three, all.
     for (const wchar_t* file : graphics::mesaFiles) files::remove(gInstall + L"\\" + file);
     bool has = graphics::hasMesaFiles(gInstall, &missing);

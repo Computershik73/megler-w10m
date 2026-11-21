@@ -1,0 +1,33 @@
+From 2ce3e07803410ac06ef671184e0da6615d50dbb3 Mon Sep 17 00:00:00 2001
+From: anon <>
+Date: Thu, 19 Nov 2026 00:23:21 +0700
+Subject: [PATCH 07/15] egl: default to windows platform for STW_COREWINDOW
+
+---
+ src/egl/main/egldisplay.c | 10 ++++++++++
+ 1 file changed, 10 insertions(+)
+
+diff --git a/src/egl/main/egldisplay.c b/src/egl/main/egldisplay.c
+index a274d06..4b5c8ea 100644
+--- a/src/egl/main/egldisplay.c
++++ b/src/egl/main/egldisplay.c
+@@ -172,6 +172,16 @@ _eglGetNativePlatform(void *nativeDisplay)
+       detection_method = "autodetected";
+    }
+ 
++#if defined(HAVE_WINDOWS_PLATFORM) && defined(STW_COREWINDOW)
++   /* Windows 10 Mobile: EGL_DEFAULT_DISPLAY -> windows (CoreWindow), khong
++    * phai surfaceless (surfaceless tu choi moi native window).
++    */
++   if (detected_platform == _EGL_INVALID_PLATFORM) {
++      detected_platform = _EGL_PLATFORM_WINDOWS;
++      detection_method = "STW_COREWINDOW";
++   }
++#endif
++
+ #if defined(_EGL_NATIVE_PLATFORM)
+    if (detected_platform == _EGL_INVALID_PLATFORM) {
+       detected_platform = _EGL_NATIVE_PLATFORM;
+-- 
+2.35.1.windows.2
+

@@ -34,7 +34,8 @@ namespace megler::app::logMirror {
 constexpr uint64_t capBytes = 16ull << 20;
 
 /// The files of a package's LocalState its logs are: megler.log and the two runs before it, megler-boot.txt, the checks'
-/// logs, the old settings.ini, flags-from-pictures.txt, storage-in-shared.txt, install-refusal.txt.
+/// logs, the old settings.ini, flags-from-pictures.txt, storage-in-shared.txt, install-refusal.txt, and Mesa's own logs
+/// under the flag mesa-diag (fdkmt.log, fd_egl_share.log: core/src/ndk/mg_egl.c, mesa_load).
 const std::vector<std::wstring>& names();
 /// <shared>\logs, which has a folder for each package; empty where Windows gives no shared folder.
 std::wstring root();

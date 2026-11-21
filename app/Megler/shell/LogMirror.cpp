@@ -219,7 +219,8 @@ const std::vector<std::wstring>& names() {
     static const std::vector<std::wstring> list = {L"megler.log",          L"megler.prev.log",           L"megler.prev2.log",
                                                    L"megler-boot.txt",     L"megler-selftest.log",       L"megler-selftest-steps.log",
                                                    L"megler-probe.log",    L"settings.ini",              L"flags-from-pictures.txt",
-                                                   L"storage-in-shared.txt", L"install-refusal.txt"};
+                                                   L"storage-in-shared.txt", L"install-refusal.txt", L"fdkmt.log",
+                                                   L"fd_egl_share.log"};
     return list;
 }
 

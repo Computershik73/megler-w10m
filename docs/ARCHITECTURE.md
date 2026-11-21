@@ -646,7 +646,8 @@ There is no Vulkan on Windows 10 Mobile, so apps that need it cannot run.
 ### Mesa's freedreno, chosen per app
 
 Windows 10 Mobile's package (`tools/build-appx.sh arm`; not Windows RT's, the desktop's or the Xbox's) carries a second
-OpenGL ES beside ANGLE: Mesa's freedreno over D3DKMT (`drivers/mesa-arm32`, from OpenGLES-For-Windows-Phone), which draws
+OpenGL ES beside ANGLE: Mesa's freedreno over D3DKMT (`drivers/mesa-arm32`, built by `tools/build-mesa-arm32.cmd` from
+OpenGLES-For-Windows-Phone's source beside it, `drivers/mesa-arm32/src`, and Mesa 26.2.7), which draws
 on the phone's Adreno itself through Windows 10 Mobile's kernel-mode graphics driver instead of turning OpenGL ES into
 Direct3D 11. Which of the two an app draws with is a setting, **Graphics** (`megler.gles`, `app/Megler/shell/Graphics.h`,
 `ui/SettingsScreen.cpp`): Megler's for every app, and each app's own over it ("As in Megler" at its top), shown only where
@@ -669,6 +670,14 @@ Megler's package has Mesa. ANGLE is the default; a package built with `MEGLER_GL
   log saying why in one line: `egl: Mesa's freedreno was asked for, ANGLE instead: <why>`. Taken, it says
   `egl: OpenGL ES is Mesa's freedreno, as the app's setting asks: EGL x.y, on <the GPU>`. `megler_gles` tells the shell
   which it came to.
+- **Mesa's own diagnosis, by the flag `mesa-diag`.** Megler's patch to it (`megler-0025`, drivers/mesa-arm32/README.md)
+  leaves off what the project had always on: a vectored exception handler for the whole process, put in front of
+  Megler's own, which unwound and printed on every guest fault, hardware breakpoint and thread stop Megler takes through
+  exceptions, and log files in `%TEMP%`. The flag (in `LocalState\flags`, or `Pictures\Megler\diag\<package>\flags`)
+  asks for both as `mesa_load` loads Mesa, in the process's environment before its DLLs load (`MESA_CRASH_HANDLERS=1`,
+  `MESA_LOG_DIR` the data folder: `mg_host_setenv`), the log saying so; the driver's `fdkmt.log` (its allocations,
+  submits and waits, a line every 2 s) and `fd_egl_share.log` (the shared pbuffers it could not make) then sit beside
+  `megler.log`, and the package's log copies take them along (`shell/LogMirror.h`: Save All Logs; `shell/PicturesDiag.h`).
 - **The shell's composition follows the choice.** Mesa renders a pbuffer's shared Direct3D texture with its rows top
   first, as Direct3D lays a texture out, where ANGLE's keep OpenGL's bottom row first: the shell turns a frame
   (`gl_frame`) and a picture (`texture_frame`: a TextureView's, the WebView's pages) the other way up where `megler_gles`
@@ -694,8 +703,9 @@ Megler's package has Mesa. ANGLE is the default; a package built with `MEGLER_GL
 app's process starts with where its package lacks Mesa, the record of the packages made with it
 (`core/tests/mg_shell_windows.cpp`, Graphics); and Mesa asked for where it cannot be had -- its DLLs missing, a
 graphics processor that is no Adreno, DLLs that do not load -- each falling back to ANGLE with its one line, ANGLE then
-drawing OpenGL ES 1's scenes as ever (`mg_tests --angle-windows ... mesa-missing|mesa|mesa-any-gpu`). *Not proven here*:
-anything of Mesa itself, which drives an Adreno alone -- the phone.
+drawing OpenGL ES 1's scenes as ever (`mg_tests --angle-windows ... mesa-missing|mesa|mesa-any-gpu`); and the flag
+`mesa-diag` setting Mesa's two variables in the process's environment before its DLLs are loaded, and nothing setting
+them without it. *Not proven here*: anything of Mesa itself, which drives an Adreno alone -- the phone.
 
 ### A Java app's views, on the graphics processor
 

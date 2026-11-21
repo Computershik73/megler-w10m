@@ -1,0 +1,104 @@
+From 19187cd8935244d54a02ccec61c70b9e892ad6a9 Mon Sep 17 00:00:00 2001
+From: anon <>
+Date: Fri, 20 Nov 2026 00:07:17 +0700
+Subject: [PATCH] freedreno/a5xx: give stream-out its own linkage slot when
+ widening overlaps
+
+ir3_link_stream_out() widens the compmask of a varying the FS reads only
+partially; the FS-packed locations then overlap the next varying and both
+claim the same VPC_SO_PROG slot. Restore the FS entry and append a
+stream-out-only copy at a fresh location instead.
+
+Fixes dEQP-GLES3.functional.transform_feedback.random*.separate.*
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ .../drivers/freedreno/a5xx/fd5_program.c      | 57 +++++++++++++++++--
+ 1 file changed, 52 insertions(+), 5 deletions(-)
+
+diff --git a/src/gallium/drivers/freedreno/a5xx/fd5_program.c b/src/gallium/drivers/freedreno/a5xx/fd5_program.c
+index 330c5f7..0c96880 100644
+--- a/src/gallium/drivers/freedreno/a5xx/fd5_program.c
++++ b/src/gallium/drivers/freedreno/a5xx/fd5_program.c
+@@ -92,6 +92,50 @@ fd5_emit_shader_obj(struct fd_context *ctx, struct fd_ringbuffer *ring,
+    fd_screen_unlock(screen);
+ }
+ 
++/* ir3_link_stream_out() widens the compmask of a varying the frag shader
++ * reads only partially (e.g. FS reads .xyz of a vec4 that is captured in
++ * full).  The FS-driven linkage packs locations tightly, so the widened
++ * range can run into the next varying's location, and both then claim the
++ * same VPC_SO_PROG slot -> wrong data captured (dEQP transform_feedback
++ * random*.separate.*).  Keep the FS entry as it was and give stream-out its
++ * own copy of the output at a fresh location instead.
++ */
++static void
++fd5_link_stream_out(struct ir3_shader_linkage *l,
++                    const struct ir3_shader_variant *v)
++{
++   unsigned pre_cnt = l->cnt;
++   uint8_t pre_mask[ARRAY_SIZE(l->var)];
++
++   for (unsigned i = 0; i < pre_cnt; i++)
++      pre_mask[i] = l->var[i].compmask;
++
++   ir3_link_stream_out(l, v);
++
++   unsigned cnt = l->cnt;
++   for (unsigned i = 0; i < pre_cnt; i++) {
++      uint8_t mask = l->var[i].compmask;
++      if (mask == pre_mask[i])
++         continue;
++
++      unsigned lo = l->var[i].loc, hi = lo + util_last_bit(mask);
++      bool overlap = false;
++      for (unsigned j = 0; j < cnt; j++) {
++         if (j == i)
++            continue;
++         unsigned lo2 = l->var[j].loc;
++         unsigned hi2 = lo2 + util_last_bit(l->var[j].compmask);
++         if (lo < hi2 && lo2 < hi)
++            overlap = true;
++      }
++      if (!overlap)
++         continue;
++
++      l->var[i].compmask = pre_mask[i];
++      ir3_link_add(l, l->var[i].slot, l->var[i].regid, mask, l->max_loc);
++   }
++}
++
+ /* TODO maybe some of this we could pre-compute once rather than having
+  * so much draw-time logic?
+  */
+@@ -110,11 +154,14 @@ emit_stream_out(struct fd_ringbuffer *ring, const struct ir3_shader_variant *v,
+       unsigned idx;
+ 
+       /* linkage map sorted by order frag shader wants things, so
+-       * a bit less ideal here..
++       * a bit less ideal here..  Take the *last* entry for the slot: a
++       * stream-out-only copy appended by fd5_link_stream_out() wins over
++       * the (narrower) entry the frag shader consumes.
+        */
+-      for (idx = 0; idx < l->cnt; idx++)
+-         if (l->var[idx].slot == slot)
+-            break;
++      idx = l->cnt;
++      for (unsigned k = 0; k < l->cnt; k++)
++         if (l->var[k].slot == slot)
++            idx = k;
+ 
+       assert(idx < l->cnt);
+ 
+@@ -428,7 +475,7 @@ fd5_program_emit(struct fd_context *ctx, struct fd_ringbuffer *ring,
+    OUT_RING(ring, ~l.varmask[3]); /* VPC_VAR[3].DISABLE */
+ 
+    /* Add stream out outputs after computing the VPC_VAR_DISABLE bitmask. */
+-   ir3_link_stream_out(&l, s[VS].v);
++   fd5_link_stream_out(&l, s[VS].v);
+ 
+    /* a5xx appends pos/psize to end of the linkage map: */
+    pos_loc = l.max_loc;
+-- 
+2.35.1.windows.2
+

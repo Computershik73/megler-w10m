@@ -1,0 +1,144 @@
+From 180144262d2b2c9433de70c3ebb975a0bdd2b648 Mon Sep 17 00:00:00 2001
+From: Ilya Vysotsky <il.mohoff2016@yandex.ru>
+Date: Sat, 21 Nov 2026 17:32:21 +0400
+Subject: [PATCH] wgl, freedreno/d3dkmt: crash handlers and log files only when
+ asked
+
+Megler's patch on top of OpenGLES-For-Windows-Phone's 24. With neither
+variable below set, the DLLs touch no process-wide state and write no file
+of their own:
+
+- MESA_CRASH_HANDLERS=1: wgl_screen_create installs its handlers, once a
+  process. The vectored exception handler is the whole process's and goes
+  in front of every handler there, the host's own among them (Megler takes
+  guest faults and stops its threads through exceptions), and unwinds and
+  prints on every exception it sees; the invalid-parameter and SIGABRT
+  handlers and the error mode are this module's C runtime's.
+- MESA_LOG_DIR=<folder>: the driver's own log files go into that folder
+  (fd_egl_share.log, fd_wgl.log; fd_kmt's fdkmt.log, changed in the core
+  beside these patches), never into %TEMP% by default. A failed shared
+  pbuffer is still told to OutputDebugString and stderr.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/egl/drivers/wgl/egl_wgl.c                 |  2 +-
+ src/gallium/targets/wgl/wgl.c                 | 20 +++++++++----
+ .../freedreno/d3dkmt/fd_wgl_framebuffer.cpp   | 28 +++++++++++++------
+ 3 files changed, 35 insertions(+), 15 deletions(-)
+
+diff --git a/src/egl/drivers/wgl/egl_wgl.c b/src/egl/drivers/wgl/egl_wgl.c
+index d021ff5..9aec57a 100644
+--- a/src/egl/drivers/wgl/egl_wgl.c
++++ b/src/egl/drivers/wgl/egl_wgl.c
+@@ -720,7 +720,7 @@ wgl_create_pbuffer_surface(_EGLDisplay *disp, _EGLConfig *conf,
+       if (!wgl_surf->fb) {
+          _eglLog(_EGL_WARNING,
+                  "eglCreatePbufferSurface: khong cap duoc texture D3D11 dung "
+-                 "chung %dx%d %s (xem %%TEMP%%\\fd_egl_share.log)",
++                 "chung %dx%d %s (xem MESA_LOG_DIR\\fd_egl_share.log)",
+                  wgl_surf->base.Width, wgl_surf->base.Height,
+                  util_format_short_name(cf));
+          free(wgl_surf);
+diff --git a/src/gallium/targets/wgl/wgl.c b/src/gallium/targets/wgl/wgl.c
+index cb3b6fb..16805bb 100644
+--- a/src/gallium/targets/wgl/wgl.c
++++ b/src/gallium/targets/wgl/wgl.c
+@@ -219,11 +219,21 @@ static struct pipe_screen *
+ wgl_screen_create(HDC hDC)
+ {
+ #ifdef STW_COREWINDOW
+-   _set_invalid_parameter_handler(wgl_invalid_parameter);
+-   /* assert() in ra stderr thay vi message box (khong thay duoc tren W10M). */
+-   _set_error_mode(_OUT_TO_STDERR);
+-   signal(SIGABRT, wgl_on_abort);
+-   AddVectoredExceptionHandler(1, wgl_veh);
++   /* Only where MESA_CRASH_HANDLERS asks for them, once a process: the
++    * vectored handler is the whole process's and goes in front of every
++    * handler there, the host's own among them (Megler takes guest faults and
++    * stops its threads through exceptions), and unwinds and prints on every
++    * exception it sees.
++    */
++   static bool crash_handlers;
++   if (!crash_handlers && debug_get_bool_option("MESA_CRASH_HANDLERS", false)) {
++      crash_handlers = true;
++      _set_invalid_parameter_handler(wgl_invalid_parameter);
++      /* assert() in ra stderr thay vi message box (khong thay duoc tren W10M). */
++      _set_error_mode(_OUT_TO_STDERR);
++      signal(SIGABRT, wgl_on_abort);
++      AddVectoredExceptionHandler(1, wgl_veh);
++   }
+ #endif
+ #ifdef GALLIUM_FREEDRENO
+    /* Windows 10 Mobile: Adreno qua D3DKMT. Khong co GDI nen khong tao
+diff --git a/src/gallium/winsys/freedreno/d3dkmt/fd_wgl_framebuffer.cpp b/src/gallium/winsys/freedreno/d3dkmt/fd_wgl_framebuffer.cpp
+index 38dd689..e6f9ae0 100644
+--- a/src/gallium/winsys/freedreno/d3dkmt/fd_wgl_framebuffer.cpp
++++ b/src/gallium/winsys/freedreno/d3dkmt/fd_wgl_framebuffer.cpp
+@@ -25,6 +25,7 @@
+ #include <share.h>
+ #include <stdarg.h>
+ #include <stdio.h>
++#include <stdlib.h>
+ 
+ #include <windows.h>
+ #include <d3d11.h>
+@@ -346,8 +347,22 @@ fd_wgl_framebuffer_get_resource(struct stw_winsys_framebuffer *pfb,
+    return res;
+ }
+ 
++/* The path of one of the driver's own log files: in the folder
++ * MESA_LOG_DIR names, and none where it names none (the driver then writes
++ * no file of its own). fd_kmt's statistics go there too.
++ */
++static bool
++log_path(char *path, size_t size, const char *name)
++{
++   const char *dir = getenv("MESA_LOG_DIR");
++   if (!dir || !*dir)
++      return false;
++   int n = snprintf(path, size, "%s\\%s", dir, name);
++   return n > 0 && (size_t)n < size;
++}
++
+ /* Do thoi gian tung buoc present; moi 60 khung ghi trung binh (ms) ra
+- * %TEMP%\fd_wgl.log (mo che do chia se, doc duoc khi app dang chay).
++ * MESA_LOG_DIR\fd_wgl.log (mo che do chia se, doc duoc khi app dang chay).
+  */
+ static void
+ fd_wgl_timing(fd_wgl_framebuffer *fb, LARGE_INTEGER t0, LARGE_INTEGER t1,
+@@ -368,11 +383,8 @@ fd_wgl_timing(fd_wgl_framebuffer *fb, LARGE_INTEGER t0, LARGE_INTEGER t1,
+       return;
+    if (!log) {
+       char path[MAX_PATH];
+-      DWORD len = GetTempPathA(MAX_PATH, path);
+-      if (len && len < MAX_PATH - 16) {
+-         strcat_s(path, "fd_wgl.log");
++      if (log_path(path, sizeof(path), "fd_wgl.log"))
+          log = _fsopen(path, "w", _SH_DENYNO);
+-      }
+    }
+    if (log) {
+       fprintf(log, "%ux%u %s dxgi=%d %s  %.1f  %.1f  %.1f  %.1f ms\n",
+@@ -647,7 +659,7 @@ fd_wgl_pbuffer_get_share_handle(struct stw_winsys_framebuffer *pfb)
+ }
+ 
+ /* Loi pbuffer dung chung: luon ghi (hiem khi xay ra) ra OutputDebugString,
+- * stderr va %TEMP%\fd_egl_share.log de app/nguoi dung thay ly do.
++ * stderr va MESA_LOG_DIR\fd_egl_share.log de app/nguoi dung thay ly do.
+  */
+ static void
+ share_log(const char *fmt, ...)
+@@ -660,9 +672,7 @@ share_log(const char *fmt, ...)
+    OutputDebugStringA(msg);
+    fputs(msg, stderr);
+    char path[MAX_PATH];
+-   DWORD len = GetTempPathA(MAX_PATH, path);
+-   if (len && len < MAX_PATH - 20) {
+-      strcat_s(path, "fd_egl_share.log");
++   if (log_path(path, sizeof(path), "fd_egl_share.log")) {
+       FILE *f = _fsopen(path, "a", _SH_DENYNO);
+       if (f) {
+          fputs(msg, f);
+-- 
+2.53.0.windows.2
+

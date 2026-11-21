@@ -1,0 +1,63 @@
+From b50ca1c59979dbca02c0f256327fbfe8467c1b6f Mon Sep 17 00:00:00 2001
+From: anon <>
+Date: Thu, 19 Nov 2026 00:23:24 +0700
+Subject: [PATCH 15/15] wgl: full ARM32 unwind in crash handler
+ (RtlVirtualUnwind), print tid/fault addr
+
+---
+ src/gallium/targets/wgl/wgl.c | 38 +++++++++++++++++++++++++++++++----
+ 1 file changed, 34 insertions(+), 4 deletions(-)
+
+diff --git a/src/gallium/targets/wgl/wgl.c b/src/gallium/targets/wgl/wgl.c
+index 76153d9..dc15ec3 100644
+--- a/src/gallium/targets/wgl/wgl.c
++++ b/src/gallium/targets/wgl/wgl.c
+@@ -157,11 +157,41 @@ wgl_veh(EXCEPTION_POINTERS *ep)
+    if (code == 0x40010006 || code == 0x4001000A || code == 0xE06D7363 ||
+        code == 0x406D1388)
+       return EXCEPTION_CONTINUE_SEARCH;
+-   void *frames[24];
++   void *frames[32];
++   USHORT n = 0;
++#if defined(_M_ARM)
++   /* Unwind tu CONTEXT cua exception (RtlCaptureStackBackTrace dung som
++    * tren ARM32). */
++   CONTEXT c = *ep->ContextRecord;
++   while (n < 32 && c.Pc) {
++      frames[n++] = (void *)(uintptr_t)c.Pc;
++      DWORD base = 0;
++      PRUNTIME_FUNCTION fn = RtlLookupFunctionEntry(c.Pc, &base, NULL);
++      if (!fn) {
++         if (!c.Lr || c.Lr == c.Pc)
++            break;
++         c.Pc = c.Lr; /* ham la */
++         c.Lr = 0;
++         continue;
++      }
++      PVOID hd = NULL;
++      DWORD est = 0;
++      DWORD oldpc = c.Pc, oldsp = c.Sp;
++      RtlVirtualUnwind(UNW_FLAG_NHANDLER, base, c.Pc, fn, &c, &hd, &est, NULL);
++      if (c.Pc == oldpc && c.Sp == oldsp)
++         break;
++      if (c.Pc)
++         c.Pc -= 1; /* tro vao lenh goi */
++   }
++#else
+    frames[0] = ep->ExceptionRecord->ExceptionAddress;
+-   USHORT n = 1 + RtlCaptureStackBackTrace(0, 23, frames + 1, NULL);
+-   char why[64];
+-   snprintf(why, sizeof(why), "exception 0x%08lx", (unsigned long)code);
++   n = 1 + RtlCaptureStackBackTrace(0, 23, frames + 1, NULL);
++#endif
++   char why[96];
++   snprintf(why, sizeof(why), "exception 0x%08lx tid %lu addr %p",
++            (unsigned long)code, GetCurrentThreadId(),
++            ep->ExceptionRecord->NumberParameters > 1 ?
++               (void *)ep->ExceptionRecord->ExceptionInformation[1] : NULL);
+    wgl_dump_backtrace(why, frames, n);
+    return EXCEPTION_CONTINUE_SEARCH;
+ }
+-- 
+2.35.1.windows.2
+

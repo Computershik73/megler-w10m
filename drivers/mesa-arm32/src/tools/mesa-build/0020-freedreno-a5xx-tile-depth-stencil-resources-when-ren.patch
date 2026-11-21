@@ -1,0 +1,63 @@
+From 22d5ea4788c176748488639a744bb2b37a29d46f Mon Sep 17 00:00:00 2001
+From: anon <>
+Date: Thu, 19 Nov 2026 21:53:38 +0700
+Subject: [PATCH] freedreno/a5xx: tile depth/stencil resources when rendering
+ sysmem
+
+RB_DEPTH_BUFFER_INFO has no tile mode field.  In bypass (sysmem) rendering
+the RB on Adreno 530 writes depth/stencil in a tiled layout (2x2 blocks seen
+in a CPU dump of the BO), while blits and texture sampling read the resource
+as linear, so any depth blit/copy produced row-scrambled data.
+
+With FD_DBG(SYSMEM) (the d3dkmt default) give z/s resources TILE5_3 layout so
+everything agrees with the RB.  GMEM mode keeps upstream's linear z/s.
+
+dEQP-GLES3 fbo (sysmem): 66 -> 28 failures; fbo.blit.depth_stencil 4 -> 16/16.
+---
+ src/gallium/drivers/freedreno/a5xx/fd5_blitter.c | 12 +++++++++++-
+ src/gallium/drivers/freedreno/a5xx/fd5_screen.c  |  6 ++++--
+ 2 files changed, 15 insertions(+), 3 deletions(-)
+
+diff --git a/src/gallium/drivers/freedreno/a5xx/fd5_blitter.c b/src/gallium/drivers/freedreno/a5xx/fd5_blitter.c
+index 4539760..7eb89b4 100644
+--- a/src/gallium/drivers/freedreno/a5xx/fd5_blitter.c
++++ b/src/gallium/drivers/freedreno/a5xx/fd5_blitter.c
+@@ -529,7 +529,17 @@ fd5_tile_mode(const struct pipe_resource *tmpl)
+    /* basically just has to be a format we can blit, so uploads/downloads
+     * via linear staging buffer works:
+     */
+-   if (ok_format(tmpl->format))
++   /* RB_DEPTH_BUFFER_INFO has no tile mode: in sysmem (bypass) rendering the
++    * RB writes depth/stencil in TILE5_3 layout (seen on Adreno 530: 2x2
++    * blocks).  Keep z/s tiled so that sampling, blits and GMEM resolves
++    * agree with the RB.  Only when rendering sysmem (FD_DBG(SYSMEM), default
++    * on d3dkmt): in GMEM mode tiled z/s breaks GMEM restore/resolve
++    * (dEQP fbo.invalidate), so keep upstream's linear z/s there.
++    */
++   if (FD_DBG(SYSMEM) && util_format_is_depth_or_stencil(tmpl->format))
++      return TILE5_3;
++
++   if (FD_DBG(TTILE) && ok_format(tmpl->format))
+       return TILE5_3;
+ 
+    return TILE5_LINEAR;
+diff --git a/src/gallium/drivers/freedreno/a5xx/fd5_screen.c b/src/gallium/drivers/freedreno/a5xx/fd5_screen.c
+index c47fe40..dddf15c 100644
+--- a/src/gallium/drivers/freedreno/a5xx/fd5_screen.c
++++ b/src/gallium/drivers/freedreno/a5xx/fd5_screen.c
+@@ -128,8 +128,10 @@ fd5_screen_init(struct pipe_screen *pscreen)
+    pscreen->is_format_supported = fd5_screen_is_format_supported;
+ 
+    screen->layout_resource = fd5_layout_resource;
+-   if (FD_DBG(TTILE))
+-      screen->tile_mode = fd5_tile_mode;
++   /* fd5_tile_mode() tiles depth/stencil in sysmem mode (the RB writes z/s
++    * tiled in sysmem/bypass), everything else only with FD_DBG(TTILE).
++    */
++   screen->tile_mode = fd5_tile_mode;
+ 
+    fd5_emit_init_screen(pscreen);
+    ir3_screen_init(pscreen);
+-- 
+2.35.1.windows.2
+

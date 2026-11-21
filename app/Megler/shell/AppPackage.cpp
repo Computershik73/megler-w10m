@@ -115,7 +115,7 @@ bool plainName(const std::string& name) {
 /// manifest, resources.pri, MeglerApp.ini, app\), what the packaging adds (block map, content types, signature,
 /// AppxMetadata), and what an app's package has no use for (Android's files, which are shared; the self-test's
 /// libraries; the demos; the codec samples of the auto runs; the template its resources.pri is made from; Mesa's freedreno,
-/// some 20 MB, but `withMesa`, for an app that goes by it: shell/Graphics.h).
+/// some 20 MB, and its licences, but `withMesa`, for an app that goes by it: shell/Graphics.h).
 void collect(const std::wstring& root, const std::wstring& rel, std::vector<std::pair<std::string, std::wstring>>& out,
              std::vector<std::string>& skipped, bool withMesa) {
     const std::wstring dir = rel.empty() ? root : root + L"\\" + rel;
@@ -138,7 +138,8 @@ void collect(const std::wstring& root, const std::wstring& rel, std::vector<std:
     for (const auto& name : files::listFolders(dir, L"*")) {
         if (rel.empty() && (sameName(name, L"android") || sameName(name, L"selftest") || sameName(name, L"demo") ||
                             sameName(name, L"codec") || sameName(name, L"app") || sameName(name, L"AppxMetadata") ||
-                            sameName(name, L"appx-template") || sameName(name, L"bitgapps")))
+                            sameName(name, L"appx-template") || sameName(name, L"bitgapps") ||
+                            (!withMesa && graphics::isMesaFolder(name))))
             continue;
         collect(root, rel.empty() ? name : rel + L"\\" + name, out, skipped, withMesa);
     }

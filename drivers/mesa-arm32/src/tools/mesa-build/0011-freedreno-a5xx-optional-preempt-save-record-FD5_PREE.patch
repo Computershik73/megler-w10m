@@ -1,0 +1,71 @@
+From 483148e839e5d82c20091c3d9fc9bde49b80a8e1 Mon Sep 17 00:00:00 2001
+From: anon <>
+Date: Thu, 19 Nov 2026 00:23:23 +0700
+Subject: [PATCH 11/15] freedreno/a5xx: optional preempt save-record
+ (FD5_PREEMPT_REC=1)
+
+---
+ src/gallium/drivers/freedreno/a5xx/fd5_context.c | 6 ++++++
+ src/gallium/drivers/freedreno/a5xx/fd5_context.h | 2 ++
+ src/gallium/drivers/freedreno/a5xx/fd5_emit.h    | 8 ++++++--
+ 3 files changed, 14 insertions(+), 2 deletions(-)
+
+diff --git a/src/gallium/drivers/freedreno/a5xx/fd5_context.c b/src/gallium/drivers/freedreno/a5xx/fd5_context.c
+index 3fda7cb..0de5ccc 100644
+--- a/src/gallium/drivers/freedreno/a5xx/fd5_context.c
++++ b/src/gallium/drivers/freedreno/a5xx/fd5_context.c
+@@ -33,6 +33,8 @@ fd5_context_destroy(struct pipe_context *pctx) in_dt
+ 
+    fd_bo_del(fd5_ctx->vsc_size_mem);
+    fd_bo_del(fd5_ctx->blit_mem);
++   if (fd5_ctx->preempt_mem)
++      fd_bo_del(fd5_ctx->preempt_mem);
+ 
+    fd_context_cleanup_common_vbos(&fd5_ctx->base);
+ 
+@@ -86,6 +88,10 @@ fd5_context_create(struct pipe_screen *pscreen, void *priv,
+    fd5_ctx->vsc_size_mem =
+       fd_bo_new(screen->dev, 0x1000, 0, "vsc_size");
+ 
++   if (getenv("FD5_PREEMPT_REC"))
++      fd5_ctx->preempt_mem =
++         fd_bo_new(screen->dev, 0x10000, 0, "preempt_rec");
++
+    fd5_ctx->blit_mem =
+       fd_bo_new(screen->dev, 0x1000, 0, "blit");
+ 
+diff --git a/src/gallium/drivers/freedreno/a5xx/fd5_context.h b/src/gallium/drivers/freedreno/a5xx/fd5_context.h
+index cfc32af..3a36d00 100644
+--- a/src/gallium/drivers/freedreno/a5xx/fd5_context.h
++++ b/src/gallium/drivers/freedreno/a5xx/fd5_context.h
+@@ -29,6 +29,8 @@ struct fd5_context {
+     * synchronize when the CP is running far ahead)
+     */
+    struct fd_bo *blit_mem;
++   /* W10M: buffer save-record cho CP_SET_RENDER_MODE (preempt cua KMD) */
++   struct fd_bo *preempt_mem;
+ 
+    struct u_upload_mgr *border_color_uploader;
+    struct pipe_resource *border_color_buf;
+diff --git a/src/gallium/drivers/freedreno/a5xx/fd5_emit.h b/src/gallium/drivers/freedreno/a5xx/fd5_emit.h
+index 7add21a..a224177 100644
+--- a/src/gallium/drivers/freedreno/a5xx/fd5_emit.h
++++ b/src/gallium/drivers/freedreno/a5xx/fd5_emit.h
+@@ -111,8 +111,12 @@ fd5_set_render_mode(struct fd_context *ctx, struct fd_ringbuffer *ring,
+    emit_marker5(ring, 7);
+    OUT_PKT7(ring, CP_SET_RENDER_MODE, 5);
+    OUT_RING(ring, CP_SET_RENDER_MODE_0_MODE(mode));
+-   OUT_RING(ring, 0x00000000); /* ADDR_LO */
+-   OUT_RING(ring, 0x00000000); /* ADDR_HI */
++   if (fd5_context(ctx)->preempt_mem) {
++      OUT_RELOC(ring, fd5_context(ctx)->preempt_mem, 0, 0, 0); /* ADDR_LO/HI */
++   } else {
++      OUT_RING(ring, 0x00000000); /* ADDR_LO */
++      OUT_RING(ring, 0x00000000); /* ADDR_HI */
++   }
+    OUT_RING(ring, COND(mode == GMEM, CP_SET_RENDER_MODE_3_GMEM_ENABLE) |
+                      COND(mode == BINNING, CP_SET_RENDER_MODE_3_VSC_ENABLE));
+    OUT_RING(ring, 0x00000000);
+-- 
+2.35.1.windows.2
+

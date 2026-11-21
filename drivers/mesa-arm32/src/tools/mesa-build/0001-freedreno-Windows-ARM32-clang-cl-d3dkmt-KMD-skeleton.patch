@@ -1,0 +1,2092 @@
+From 8202817cd2dfb274eb130f2be05828615c59d27d Mon Sep 17 00:00:00 2001
+From: anon <>
+Date: Thu, 19 Nov 2026 00:23:18 +0700
+Subject: [PATCH 01/15] freedreno: Windows ARM32 (clang-cl) + d3dkmt KMD
+ skeleton
+
+---
+ include/drm-uapi/drm.h                        |   7 +
+ meson.options                                 |   9 +-
+ src/compiler/isaspec/isaspec_decode_impl.c    |   2 +
+ src/freedreno/common/freedreno_dev_info.py    |   1 +
+ src/freedreno/common/freedreno_rd_output.c    |   9 ++
+ src/freedreno/common/freedreno_rd_output.h    |  19 +++
+ src/freedreno/common/redump.h                 |   5 +
+ src/freedreno/drm/d3dkmt/d3dkmt_bo.c          | 135 ++++++++++++++++++
+ src/freedreno/drm/d3dkmt/d3dkmt_device.c      |  73 ++++++++++
+ src/freedreno/drm/d3dkmt/d3dkmt_pipe.c        | 113 +++++++++++++++
+ src/freedreno/drm/d3dkmt/d3dkmt_priv.h        |  51 +++++++
+ .../drm/d3dkmt/d3dkmt_ringbuffer_sp.c         |  92 ++++++++++++
+ src/freedreno/drm/d3dkmt/fd_kmt.h             | 121 ++++++++++++++++
+ src/freedreno/drm/d3dkmt/fd_kmt_stub.c        |  88 ++++++++++++
+ src/freedreno/drm/freedreno_bo.c              |  11 ++
+ src/freedreno/drm/freedreno_bo_cache.c        |   9 +-
+ src/freedreno/drm/freedreno_device.c          |  45 +++++-
+ src/freedreno/drm/freedreno_drmif.h           |   5 +
+ src/freedreno/drm/freedreno_priv.h            |   4 +
+ src/freedreno/drm/freedreno_ringbuffer_sp.c   |   6 +
+ src/freedreno/drm/freedreno_ringbuffer_sp.h   |   2 +
+ src/freedreno/drm/freedreno_win32_compat.h    | 106 ++++++++++++++
+ src/freedreno/drm/meson.build                 |  22 ++-
+ src/freedreno/ir2/disasm-a2xx.c               |   2 +
+ src/freedreno/ir3/ir3_disk_cache.c            |  12 +-
+ src/freedreno/ir3/ir3_lexer.l                 |  35 +++++
+ src/freedreno/ir3/ir3_parser_support.c        |   7 +-
+ src/freedreno/ir3/ir3_shader.c                |  19 ++-
+ src/freedreno/ir3/meson.build                 |   2 +
+ src/freedreno/meson.build                     |   4 +-
+ src/freedreno/perfcntrs/freedreno_dt.c        |  21 +++
+ src/freedreno/tests/check_xml_includes.py     |   3 +
+ src/gallium/auxiliary/renderonly/renderonly.h |   4 +
+ src/gallium/drivers/freedreno/a6xx/fd6_vsc.cc |   4 +-
+ .../drivers/freedreno/freedreno_context.c     |   3 +-
+ .../drivers/freedreno/freedreno_fence.c       |  30 ++++
+ .../drivers/freedreno/freedreno_resource.c    |   7 +
+ .../drivers/freedreno/freedreno_screen.c      |  18 ++-
+ .../drivers/freedreno/freedreno_util.h        |  17 ++-
+ .../drivers/freedreno/ir3/ir3_gallium.c       |   3 +-
+ src/util/libsync.h                            |  15 ++
+ src/util/texcompress_astc.cpp                 |  70 ++++-----
+ src/util/u_atomic.h                           |   4 +-
+ 43 files changed, 1145 insertions(+), 70 deletions(-)
+ create mode 100644 src/freedreno/drm/d3dkmt/d3dkmt_bo.c
+ create mode 100644 src/freedreno/drm/d3dkmt/d3dkmt_device.c
+ create mode 100644 src/freedreno/drm/d3dkmt/d3dkmt_pipe.c
+ create mode 100644 src/freedreno/drm/d3dkmt/d3dkmt_priv.h
+ create mode 100644 src/freedreno/drm/d3dkmt/d3dkmt_ringbuffer_sp.c
+ create mode 100644 src/freedreno/drm/d3dkmt/fd_kmt.h
+ create mode 100644 src/freedreno/drm/d3dkmt/fd_kmt_stub.c
+ create mode 100644 src/freedreno/drm/freedreno_win32_compat.h
+
+diff --git a/include/drm-uapi/drm.h b/include/drm-uapi/drm.h
+index ceb0f9e..56f5ff2 100644
+--- a/include/drm-uapi/drm.h
++++ b/include/drm-uapi/drm.h
+@@ -47,6 +47,13 @@ typedef unsigned int drm_handle_t;
+ #include <sys/types.h>
+ #if defined(__GNU__)
+ #include <sys/ioctl.h>
++#elif defined(_WIN32)
++/* Windows: chi can kieu va hang so (drm_fourcc.h); ioctl khong dung. */
++#define _IOC(dir, group, nr, size) (0)
++#define _IO(g, n)        _IOC(0, g, n, 0)
++#define _IOR(g, n, t)    _IOC(0, g, n, sizeof(t))
++#define _IOW(g, n, t)    _IOC(0, g, n, sizeof(t))
++#define _IOWR(g, n, t)   _IOC(0, g, n, sizeof(t))
+ #else
+ #include <sys/ioccom.h>
+ #endif
+diff --git a/meson.options b/meson.options
+index 93a60e3..7d3f004 100644
+--- a/meson.options
++++ b/meson.options
+@@ -222,11 +222,18 @@ option(
+   'freedreno-kmds',
+   type : 'array',
+   value : ['msm'],
+-  choices : ['msm', 'kgsl', 'virtio', 'wsl'],
++  choices : ['msm', 'kgsl', 'virtio', 'wsl', 'd3dkmt'],
+   description : 'List of kernel-mode drivers to enable for freedreno ' +
+                 'gallium and vulkan driver',
+ )
+ 
++option(
++  'freedreno-d3dkmt-stub',
++  type : 'boolean',
++  value : true,
++  description : 'Link stub fd_kmt_* (tra ve loi) khi chua co loi D3DKMT that.',
++)
++
+ option(
+   'amdgpu-virtio',
+   type : 'boolean',
+diff --git a/src/compiler/isaspec/isaspec_decode_impl.c b/src/compiler/isaspec/isaspec_decode_impl.c
+index 77baf02..522c76a 100644
+--- a/src/compiler/isaspec/isaspec_decode_impl.c
++++ b/src/compiler/isaspec/isaspec_decode_impl.c
+@@ -34,6 +34,8 @@
+ #include <string.h>
+ 
+ #include "util/bitset.h"
++#include "util/strndup.h"
++#include "util/u_string.h"
+ #include "util/compiler.h"
+ #include "util/half_float.h"
+ #include "util/hash_table.h"
+diff --git a/src/freedreno/common/freedreno_dev_info.py b/src/freedreno/common/freedreno_dev_info.py
+index 383dd7f..de94c8e 100644
+--- a/src/freedreno/common/freedreno_dev_info.py
++++ b/src/freedreno/common/freedreno_dev_info.py
+@@ -199,6 +199,7 @@ template = """\
+ #include "freedreno_dev_info.h"
+ #include "util/u_debug.h"
+ #include "util/log.h"
++#include "util/u_string.h"
+ 
+ #include <stdlib.h>
+ 
+diff --git a/src/freedreno/common/freedreno_rd_output.c b/src/freedreno/common/freedreno_rd_output.c
+index 3a5d805..816b59d 100644
+--- a/src/freedreno/common/freedreno_rd_output.c
++++ b/src/freedreno/common/freedreno_rd_output.c
+@@ -12,13 +12,22 @@
+ #include <stdio.h>
+ #include <string.h>
+ #include <sys/stat.h>
++#ifdef _WIN32
++#include <io.h>
++#define unlink _unlink
++#define fstat _fstat
++#define stat _stat
++#define ftruncate(fd, sz) _chsize(fd, (long)(sz))
++#else
+ #include <unistd.h>
++#endif
+ 
+ #include "c11/threads.h"
+ #include "util/detect_os.h"
+ #include "util/log.h"
+ #include "util/u_atomic.h"
+ #include "util/u_debug.h"
++#include "util/u_string.h"
+ 
+ static const struct debug_control fd_rd_dump_options[] = {
+    { "enable", FD_RD_DUMP_ENABLE },
+diff --git a/src/freedreno/common/freedreno_rd_output.h b/src/freedreno/common/freedreno_rd_output.h
+index 05c86c5..91ba11d 100644
+--- a/src/freedreno/common/freedreno_rd_output.h
++++ b/src/freedreno/common/freedreno_rd_output.h
+@@ -8,9 +8,28 @@
+ 
+ #include <stdbool.h>
+ #include <stdint.h>
++#ifdef HAVE_ZLIB
+ #include <zlib.h>
++#else
++/* Khong co zlib (vd Windows ARM32): ghi .rd khong nen. */
++#include <stdio.h>
++typedef FILE *gzFile;
++#define gzopen(path, mode)      fopen(path, "wb")
++#define gzwrite(f, buf, len)    ((int)fwrite(buf, 1, len, f))
++#define gzflush(f, flush)       fflush(f)
++#define gzclose(f)              fclose(f)
++#define gzerror(f, errnum)      "write error"
++#define Z_FINISH                4
++#endif
+ 
+ #include "redump.h"
++#ifndef PATH_MAX
++#ifdef _WIN32
++#define PATH_MAX 260
++#else
++#include <limits.h>
++#endif
++#endif
+ #include "util/u_dynarray.h"
+ 
+ #ifdef __cplusplus
+diff --git a/src/freedreno/common/redump.h b/src/freedreno/common/redump.h
+index 68aa688..bc6b299 100644
+--- a/src/freedreno/common/redump.h
++++ b/src/freedreno/common/redump.h
+@@ -6,7 +6,12 @@
+ #ifndef REDUMP_H_
+ #define REDUMP_H_
+ 
++#ifdef _WIN32
++#include <io.h>
++#define write(fd, buf, n) _write(fd, buf, (unsigned)(n))
++#else
+ #include <unistd.h>
++#endif
+ 
+ enum rd_sect_type {
+    RD_NONE,
+diff --git a/src/freedreno/drm/d3dkmt/d3dkmt_bo.c b/src/freedreno/drm/d3dkmt/d3dkmt_bo.c
+new file mode 100644
+index 0000000..c4fa77d
+--- /dev/null
++++ b/src/freedreno/drm/d3dkmt/d3dkmt_bo.c
+@@ -0,0 +1,135 @@
++/*
++ * Copyright © 2026
++ * SPDX-License-Identifier: MIT
++ */
++
++#include "d3dkmt_priv.h"
++
++static int
++d3dkmt_bo_offset(struct fd_bo *bo, uint64_t *offset)
++{
++   /* Khong co mmap-offset tren Windows; map qua ->map. */
++   (void)bo;
++   *offset = 0;
++   return -ENOSYS;
++}
++
++static void *
++d3dkmt_bo_map(struct fd_bo *bo)
++{
++   void *ptr = NULL;
++   int ret = fd_kmt_bo_map(to_kmt(bo->dev), bo->handle, &ptr);
++   if (ret) {
++      ERROR_MSG("fd_kmt_bo_map failed: %d", ret);
++      return MAP_FAILED;
++   }
++   return ptr;
++}
++
++static int
++d3dkmt_bo_cpu_prep(struct fd_bo *bo, struct fd_pipe *pipe, uint32_t op)
++{
++   uint32_t kop = 0;
++   (void)pipe;
++   if (op & FD_BO_PREP_READ)
++      kop |= FD_KMT_PREP_READ;
++   if (op & FD_BO_PREP_WRITE)
++      kop |= FD_KMT_PREP_WRITE;
++   uint64_t timeout = (op & FD_BO_PREP_NOSYNC) ? 0 : UINT64_MAX;
++   return fd_kmt_bo_wait(to_kmt(bo->dev), bo->handle, kop, timeout);
++}
++
++static int
++d3dkmt_bo_madvise(struct fd_bo *bo, int willneed)
++{
++   /* Chua dung Offer/Reclaim: coi nhu BO luon con noi dung. */
++   (void)bo;
++   return willneed;
++}
++
++static uint64_t
++d3dkmt_bo_iova(struct fd_bo *bo)
++{
++   return to_d3dkmt_bo(bo)->gpu_va;
++}
++
++static void
++d3dkmt_bo_set_name(struct fd_bo *bo, const char *fmt, va_list ap)
++{
++   (void)bo; (void)fmt; (void)ap;
++}
++
++static int
++d3dkmt_bo_dmabuf(struct fd_bo *bo)
++{
++   (void)bo;
++   return -ENOSYS;
++}
++
++static const struct fd_bo_funcs funcs = {
++   .offset = d3dkmt_bo_offset,
++   .map = d3dkmt_bo_map,
++   .cpu_prep = d3dkmt_bo_cpu_prep,
++   .madvise = d3dkmt_bo_madvise,
++   .iova = d3dkmt_bo_iova,
++   .set_name = d3dkmt_bo_set_name,
++   .dmabuf = d3dkmt_bo_dmabuf,
++   .destroy = fd_bo_fini_common,
++};
++
++static uint32_t
++to_kmt_flags(uint32_t flags)
++{
++   uint32_t f = 0;
++   if (flags & FD_BO_CACHED_COHERENT)
++      f |= FD_KMT_BO_CACHED;
++   if (flags & FD_BO_GPUREADONLY)
++      f |= FD_KMT_BO_GPU_READONLY;
++   if (flags & FD_BO_NOMAP)
++      f |= FD_KMT_BO_NOMAP;
++   if (flags & FD_BO_SCANOUT)
++      f |= FD_KMT_BO_SCANOUT;
++   if (flags & FD_BO_SHARED)
++      f |= FD_KMT_BO_SHARED;
++   if (flags & FD_BO_HINT_COMMAND)
++      f |= FD_KMT_BO_RING;
++   return f;
++}
++
++struct fd_bo *
++d3dkmt_bo_new(struct fd_device *dev, uint32_t size, uint32_t flags)
++{
++   uint32_t handle = 0;
++   uint64_t iova = 0;
++   int ret;
++
++   ret = fd_kmt_bo_alloc(to_kmt(dev), size, to_kmt_flags(flags), &handle,
++                         &iova);
++   if (ret) {
++      ERROR_MSG("fd_kmt_bo_alloc(%u) failed: %d", size, ret);
++      return NULL;
++   }
++
++   struct d3dkmt_bo *kbo = calloc(1, sizeof(*kbo));
++   if (!kbo) {
++      fd_kmt_bo_free(to_kmt(dev), handle);
++      return NULL;
++   }
++
++   struct fd_bo *bo = &kbo->base;
++   kbo->gpu_va = iova;
++   bo->size = size;
++   bo->handle = handle;
++   bo->funcs = &funcs;
++
++   fd_bo_init_common(bo, dev);
++
++   return bo;
++}
++
++void
++d3dkmt_bo_close_handle(struct fd_bo *bo)
++{
++   /* Loi chiu trach nhiem Unlock2 + giai phong VA + DestroyAllocation. */
++   fd_kmt_bo_free(to_kmt(bo->dev), bo->handle);
++}
+diff --git a/src/freedreno/drm/d3dkmt/d3dkmt_device.c b/src/freedreno/drm/d3dkmt/d3dkmt_device.c
+new file mode 100644
+index 0000000..5eb9117
+--- /dev/null
++++ b/src/freedreno/drm/d3dkmt/d3dkmt_device.c
+@@ -0,0 +1,73 @@
++/*
++ * Copyright © 2026
++ * SPDX-License-Identifier: MIT
++ */
++
++#include "d3dkmt_priv.h"
++
++static struct fd_bo *
++d3dkmt_bo_from_handle(struct fd_device *dev, uint32_t size, uint32_t handle)
++{
++   /* Import allocation dung chung (shared handle): chua ho tro. */
++   (void)dev; (void)size; (void)handle;
++   return NULL;
++}
++
++static uint32_t
++d3dkmt_handle_from_dmabuf(struct fd_device *dev, int fd)
++{
++   (void)dev; (void)fd;
++   return 0;
++}
++
++static struct fd_bo *
++d3dkmt_bo_from_dmabuf(struct fd_device *dev, int fd)
++{
++   (void)dev; (void)fd;
++   return NULL;
++}
++
++static void
++d3dkmt_device_destroy(struct fd_device *dev)
++{
++   /* fd_device so huu phien kmt (fd_device_new_d3dkmt nhan quyen so huu). */
++   fd_kmt_close(to_kmt(dev));
++}
++
++static const struct fd_device_funcs funcs = {
++   .bo_new = d3dkmt_bo_new,
++   .bo_from_handle = d3dkmt_bo_from_handle,
++   .handle_from_dmabuf = d3dkmt_handle_from_dmabuf,
++   .bo_from_dmabuf = d3dkmt_bo_from_dmabuf,
++   .bo_close_handle = d3dkmt_bo_close_handle,
++   .pipe_new = d3dkmt_pipe_new,
++   .destroy = d3dkmt_device_destroy,
++};
++
++struct fd_device *
++d3dkmt_device_new(struct fd_kmt *kmt)
++{
++   struct d3dkmt_device *d;
++
++   if (!kmt)
++      return NULL;
++
++   d = calloc(1, sizeof(*d));
++   if (!d)
++      return NULL;
++
++   if (fd_kmt_get_info(kmt, &d->info)) {
++      ERROR_MSG("fd_kmt_get_info failed");
++      free(d);
++      return NULL;
++   }
++
++   d->kmt = kmt;
++   d->base.funcs = &funcs;
++   /* Hanh xu nhu drm/msm softpin hien dai: userspace fence, submit_sp. */
++   d->base.version = FD_VERSION_CACHED_COHERENT;
++   d->base.has_cached_coherent = false;
++   d->base.bo_size = sizeof(struct d3dkmt_bo);
++
++   return &d->base;
++}
+diff --git a/src/freedreno/drm/d3dkmt/d3dkmt_pipe.c b/src/freedreno/drm/d3dkmt/d3dkmt_pipe.c
+new file mode 100644
+index 0000000..41de4b5
+--- /dev/null
++++ b/src/freedreno/drm/d3dkmt/d3dkmt_pipe.c
+@@ -0,0 +1,113 @@
++/*
++ * Copyright © 2026
++ * SPDX-License-Identifier: MIT
++ */
++
++#include <inttypes.h>
++
++#include "d3dkmt_priv.h"
++#include "drm/freedreno_ringbuffer_sp.h"
++
++static int
++d3dkmt_pipe_get_param(struct fd_pipe *pipe, enum fd_param_id param,
++                      uint64_t *value)
++{
++   struct d3dkmt_device *d = to_d3dkmt_device(pipe->dev);
++
++   switch (param) {
++   case FD_DEVICE_ID:
++   case FD_GPU_ID:
++      *value = d->info.gpu_id;
++      return 0;
++   case FD_GMEM_SIZE:
++      *value = d->info.gmem_size;
++      return 0;
++   case FD_GMEM_BASE:
++      *value = d->info.gmem_base;
++      return 0;
++   case FD_CHIP_ID:
++      *value = d->info.chip_id;
++      return 0;
++   case FD_NR_PRIORITIES:
++      *value = d->info.nr_priorities ? d->info.nr_priorities : 1;
++      return 0;
++   case FD_VA_SIZE:
++      *value = d->info.va_size;
++      return 0;
++   case FD_TIMESTAMP:
++      return fd_kmt_get_timestamp(d->kmt, value);
++   case FD_CTX_FAULTS:
++   case FD_GLOBAL_FAULTS:
++   case FD_SUSPEND_COUNT:
++      *value = 0;
++      return 0;
++   default:
++      ERROR_MSG("invalid param id: %d", param);
++      return -1;
++   }
++}
++
++static int
++d3dkmt_pipe_set_param(struct fd_pipe *pipe, enum fd_param_id param,
++                      uint64_t value)
++{
++   (void)pipe; (void)param; (void)value;
++   return -1;
++}
++
++static int
++d3dkmt_pipe_wait(struct fd_pipe *pipe, const struct fd_fence *fence,
++                 uint64_t timeout)
++{
++   int ret = fd_kmt_fence_wait(to_kmt(pipe->dev), fence->kfence, timeout);
++   if (ret && ret != -ETIMEDOUT)
++      ERROR_MSG("fd_kmt_fence_wait failed: %d", ret);
++   return ret;
++}
++
++static void
++d3dkmt_pipe_destroy(struct fd_pipe *pipe)
++{
++   fd_pipe_sp_ringpool_fini(pipe);
++   free(to_d3dkmt_pipe(pipe));
++}
++
++static const struct fd_pipe_funcs funcs = {
++   .ringbuffer_new_object = fd_ringbuffer_sp_new_object,
++   .submit_new = d3dkmt_submit_sp_new,
++   .flush = fd_pipe_sp_flush,
++   .get_param = d3dkmt_pipe_get_param,
++   .set_param = d3dkmt_pipe_set_param,
++   .wait = d3dkmt_pipe_wait,
++   .destroy = d3dkmt_pipe_destroy,
++};
++
++struct fd_pipe *
++d3dkmt_pipe_new(struct fd_device *dev, enum fd_pipe_id id, uint32_t prio)
++{
++   struct d3dkmt_device *d = to_d3dkmt_device(dev);
++   (void)prio;
++
++   if (id != FD_PIPE_3D)
++      return NULL;
++
++   if (!(d->info.gpu_id || d->info.chip_id))
++      return NULL;
++
++   struct d3dkmt_pipe *p = calloc(1, sizeof(*p));
++   if (!p)
++      return NULL;
++
++   struct fd_pipe *pipe = &p->base;
++   pipe->dev = dev;
++   pipe->funcs = &funcs;
++
++   INFO_MSG("Pipe Info (d3dkmt):");
++   INFO_MSG(" GPU-id:          %u", d->info.gpu_id);
++   INFO_MSG(" Chip-id:         0x%016" PRIx64, d->info.chip_id);
++   INFO_MSG(" GMEM size:       0x%08x", d->info.gmem_size);
++
++   fd_pipe_sp_ringpool_init(pipe);
++
++   return pipe;
++}
+diff --git a/src/freedreno/drm/d3dkmt/d3dkmt_priv.h b/src/freedreno/drm/d3dkmt/d3dkmt_priv.h
+new file mode 100644
+index 0000000..25c6160
+--- /dev/null
++++ b/src/freedreno/drm/d3dkmt/d3dkmt_priv.h
+@@ -0,0 +1,51 @@
++/*
++ * Copyright © 2026
++ * SPDX-License-Identifier: MIT
++ *
++ * Backend freedreno cho Windows/WDDM: moi giao tiep kernel di qua fd_kmt_*
++ * (xem fd_kmt.h). Cau truc mo phong backend msm/ (softpin + submit_sp).
++ */
++
++#ifndef D3DKMT_PRIV_H_
++#define D3DKMT_PRIV_H_
++
++#include "freedreno_drmif.h"
++#include "freedreno_priv.h"
++
++#include "fd_kmt.h"
++
++struct d3dkmt_device {
++   struct fd_device base;
++   struct fd_kmt *kmt;
++   struct fd_kmt_info info;
++};
++FD_DEFINE_CAST(fd_device, d3dkmt_device);
++
++struct fd_device *d3dkmt_device_new(struct fd_kmt *kmt);
++
++static inline struct fd_kmt *
++to_kmt(struct fd_device *dev)
++{
++   return to_d3dkmt_device(dev)->kmt;
++}
++
++struct d3dkmt_pipe {
++   struct fd_pipe base;
++};
++FD_DEFINE_CAST(fd_pipe, d3dkmt_pipe);
++
++struct fd_pipe *d3dkmt_pipe_new(struct fd_device *dev, enum fd_pipe_id id,
++                                uint32_t prio);
++struct fd_submit *d3dkmt_submit_sp_new(struct fd_pipe *pipe);
++
++struct d3dkmt_bo {
++   struct fd_bo base;
++   uint64_t gpu_va;
++};
++FD_DEFINE_CAST(fd_bo, d3dkmt_bo);
++
++struct fd_bo *d3dkmt_bo_new(struct fd_device *dev, uint32_t size,
++                            uint32_t flags);
++void d3dkmt_bo_close_handle(struct fd_bo *bo);
++
++#endif /* D3DKMT_PRIV_H_ */
+diff --git a/src/freedreno/drm/d3dkmt/d3dkmt_ringbuffer_sp.c b/src/freedreno/drm/d3dkmt/d3dkmt_ringbuffer_sp.c
+new file mode 100644
+index 0000000..f5f906c
+--- /dev/null
++++ b/src/freedreno/drm/d3dkmt/d3dkmt_ringbuffer_sp.c
+@@ -0,0 +1,92 @@
++/*
++ * Copyright © 2026
++ * SPDX-License-Identifier: MIT
++ *
++ * Gom cac deferred submit (nhu msm_ringbuffer_sp.c) roi goi fd_kmt_submit().
++ */
++
++#include "drm/freedreno_ringbuffer_sp.h"
++#include "d3dkmt_priv.h"
++
++static int
++flush_submit_list(struct list_head *submit_list)
++{
++   struct fd_submit_sp *fd_submit = to_fd_submit_sp(last_submit(submit_list));
++   struct fd_pipe *pipe = fd_submit->base.pipe;
++   unsigned nr_cmds = 0;
++   int ret;
++
++   MESA_TRACE_FUNC();
++
++   foreach_submit (submit, submit_list)
++      nr_cmds += to_fd_ringbuffer_sp(submit->primary)->u.nr_cmds;
++
++   struct fd_kmt_cmd *cmds = calloc(MAX2(nr_cmds, 1), sizeof(*cmds));
++   if (!cmds)
++      return -ENOMEM;
++
++   unsigned cmd_idx = 0;
++
++   foreach_submit_safe (submit, submit_list) {
++      struct fd_ringbuffer_sp *primary = to_fd_ringbuffer_sp(submit->primary);
++
++      for (unsigned i = 0; i < primary->u.nr_cmds; i++) {
++         struct fd_bo *ring_bo = primary->u.cmds[i].ring_bo;
++         fd_submit_append_bo(fd_submit, ring_bo);
++         cmds[cmd_idx].iova = fd_bo_get_iova(ring_bo) + primary->offset;
++         cmds[cmd_idx].size_dw = primary->u.cmds[i].size / 4;
++         cmds[cmd_idx].handle = suballoc_bo(ring_bo) ?
++            fd_bo_heap_block(ring_bo)->handle : ring_bo->handle;
++         cmd_idx++;
++      }
++
++      if (submit == last_submit(submit_list))
++         break;
++
++      struct fd_submit_sp *deferred = to_fd_submit_sp(submit);
++      for (unsigned i = 0; i < deferred->nr_bos; i++)
++         fd_submit_append_bo(fd_submit, deferred->bos[i]);
++
++      list_del(&submit->node);
++      fd_submit_del(submit);
++   }
++
++   struct fd_kmt_bo_ref *bos =
++      calloc(MAX2(fd_submit->nr_bos, 1), sizeof(*bos));
++   if (!bos) {
++      free(cmds);
++      return -ENOMEM;
++   }
++
++   for (unsigned i = 0; i < fd_submit->nr_bos; i++) {
++      uint32_t rf = fd_submit->bos[i]->reloc_flags;
++      bos[i].handle = fd_submit->bos[i]->handle;
++      bos[i].flags = ((rf & FD_RELOC_READ) ? FD_KMT_PREP_READ : 0) |
++                     ((rf & FD_RELOC_WRITE) ? FD_KMT_PREP_WRITE : 0);
++   }
++
++   uint32_t fence = 0;
++   ret = fd_kmt_submit(to_kmt(pipe->dev), cmds, nr_cmds, bos,
++                       fd_submit->nr_bos, &fence);
++   if (ret) {
++      ERROR_MSG("fd_kmt_submit failed: %d (nr_cmds=%u nr_bos=%u)", ret,
++                nr_cmds, fd_submit->nr_bos);
++   } else {
++      fd_submit->out_fence->kfence = fence;
++      fd_submit->out_fence->fence_fd = -1;
++   }
++
++   free(bos);
++   free(cmds);
++
++   /* Chua ho tro sync-file fd tren Windows. */
++   fd_submit->in_fence_fd = -1;
++
++   return ret;
++}
++
++struct fd_submit *
++d3dkmt_submit_sp_new(struct fd_pipe *pipe)
++{
++   return fd_submit_sp_new(pipe, flush_submit_list);
++}
+diff --git a/src/freedreno/drm/d3dkmt/fd_kmt.h b/src/freedreno/drm/d3dkmt/fd_kmt.h
+new file mode 100644
+index 0000000..db9e670
+--- /dev/null
++++ b/src/freedreno/drm/d3dkmt/fd_kmt.h
+@@ -0,0 +1,121 @@
++/*
++ * Copyright © 2026
++ * SPDX-License-Identifier: MIT
++ *
++ * fd_kmt: giao dien giua backend freedreno d3dkmt (Mesa) va LOI D3DKMT
++ * (do nguoi dung tu viet, nam ngoai Mesa).
++ *
++ * Mesa chi goi cac ham fd_kmt_* duoi day; moi chi tiet WDDM (D3DKMTOpenAdapter*,
++ * CreateDevice, CreateContextVirtual, CreateAllocation2, MakeResident/paging
++ * queue, MapGpuVirtualAddress, Lock2/Unlock2, SubmitCommand, sync object /
++ * monitored fence, private driver data cho qcdxkm8996) nam o phia loi.
++ *
++ * Quy uoc:
++ *  - Ham tra ve int: 0 = thanh cong, < 0 = -errno (vd -ENOMEM, -ETIMEDOUT,
++ *    -ENOSYS khi chua cai dat).
++ *  - Thread-safety: Mesa co the goi tu nhieu thread (submit queue rieng).
++ *    Loi phai tu bao ve trang thai noi bo.
++ *  - "handle" la D3DKMT_HANDLE cua allocation (khac 0 neu hop le).
++ *  - iova la GPU VA (D3DGPU_VIRTUAL_ADDRESS) da map, on dinh suot doi BO.
++ *
++ * Mesa khong bao gio goi D3DKMT truc tiep.
++ */
++
++#ifndef FD_KMT_H_
++#define FD_KMT_H_
++
++#include <stdbool.h>
++#include <stdint.h>
++
++#ifdef __cplusplus
++extern "C" {
++#endif
++
++struct fd_kmt;
++
++/* ------------------------------------------------------------------ */
++/* Phien / adapter                                                     */
++/* ------------------------------------------------------------------ */
++
++struct fd_kmt_info {
++   uint32_t gpu_id;     /* vd 530 */
++   uint64_t chip_id;    /* dang 0xCCRRPPSS: core,major,minor,patch (vd 0x05030000 + patch) */
++   uint64_t gmem_base;  /* dia chi GMEM theo quan diem GPU */
++   uint32_t gmem_size;  /* byte; Adreno 530 = 1 MiB */
++   uint64_t va_size;    /* kich thuoc khong gian GPU VA cua process */
++   uint32_t nr_priorities;
++};
++
++/* Mo adapter Adreno, tao device + context 3D + paging queue. */
++int fd_kmt_open(struct fd_kmt **out_kmt);
++void fd_kmt_close(struct fd_kmt *kmt);
++int fd_kmt_get_info(struct fd_kmt *kmt, struct fd_kmt_info *info);
++/* Timestamp GPU (always-on counter), dung cho FD_TIMESTAMP. */
++int fd_kmt_get_timestamp(struct fd_kmt *kmt, uint64_t *ts);
++
++/* ------------------------------------------------------------------ */
++/* Allocation (BO)                                                     */
++/* ------------------------------------------------------------------ */
++
++enum fd_kmt_bo_flags {
++   FD_KMT_BO_CACHED     = 1u << 0, /* CPU cached (coherent neu co) */
++   FD_KMT_BO_GPU_READONLY = 1u << 1,
++   FD_KMT_BO_NOMAP      = 1u << 2, /* CPU khong can map */
++   FD_KMT_BO_SCANOUT    = 1u << 3,
++   FD_KMT_BO_SHARED     = 1u << 4,
++   FD_KMT_BO_RING       = 1u << 5, /* chua command stream */
++};
++
++/* Cap phat + lam resident + map GPU VA. Tra handle va iova. */
++int fd_kmt_bo_alloc(struct fd_kmt *kmt, uint64_t size, uint32_t flags,
++                    uint32_t *out_handle, uint64_t *out_iova);
++void fd_kmt_bo_free(struct fd_kmt *kmt, uint32_t handle);
++
++/* Map CPU (Lock2). Con tro on dinh toi fd_kmt_bo_free(). */
++int fd_kmt_bo_map(struct fd_kmt *kmt, uint32_t handle, void **out_ptr);
++
++/* Cho BO roi (GPU khong con doc/ghi). op = FD_KMT_PREP_*.
++ * timeout_ns = 0: chi kiem tra (tra -EBUSY neu dang ban).
++ */
++enum {
++   FD_KMT_PREP_READ  = 1u << 0,
++   FD_KMT_PREP_WRITE = 1u << 1,
++};
++int fd_kmt_bo_wait(struct fd_kmt *kmt, uint32_t handle, uint32_t op,
++                   uint64_t timeout_ns);
++
++/* ------------------------------------------------------------------ */
++/* Submit / fence                                                      */
++/* ------------------------------------------------------------------ */
++
++/* Mot IB (indirect buffer) PM4 trong mot BO. */
++struct fd_kmt_cmd {
++   uint64_t iova;      /* GPU VA bat dau IB */
++   uint32_t size_dw;   /* so dword */
++   uint32_t handle;    /* BO chua IB */
++};
++
++/* Mot BO duoc submit tham chieu. */
++struct fd_kmt_bo_ref {
++   uint32_t handle;
++   uint32_t flags;     /* FD_KMT_PREP_READ / FD_KMT_PREP_WRITE */
++};
++
++/* Gui danh sach IB len context 3D. out_fence: so fence tang dan (seqno)
++ * de dung voi fd_kmt_fence_wait().
++ */
++int fd_kmt_submit(struct fd_kmt *kmt,
++                  const struct fd_kmt_cmd *cmds, uint32_t nr_cmds,
++                  const struct fd_kmt_bo_ref *bos, uint32_t nr_bos,
++                  uint32_t *out_fence);
++
++/* Cho fence <= fence hoan tat. timeout_ns = UINT64_MAX: vo han.
++ * Tra -ETIMEDOUT khi het han.
++ */
++int fd_kmt_fence_wait(struct fd_kmt *kmt, uint32_t fence, uint64_t timeout_ns);
++
++#ifdef __cplusplus
++}
++#endif
++
++#endif /* FD_KMT_H_ */
+diff --git a/src/freedreno/drm/d3dkmt/fd_kmt_stub.c b/src/freedreno/drm/d3dkmt/fd_kmt_stub.c
+new file mode 100644
+index 0000000..62c0fd2
+--- /dev/null
++++ b/src/freedreno/drm/d3dkmt/fd_kmt_stub.c
+@@ -0,0 +1,88 @@
++/*
++ * Copyright © 2026
++ * SPDX-License-Identifier: MIT
++ *
++ * Stub fd_kmt_*: cho phep link khi chua co loi D3DKMT that.
++ * Build voi -Dfreedreno-d3dkmt-stub=false de link loi that.
++ */
++
++#include <errno.h>
++
++#include "fd_kmt.h"
++
++int
++fd_kmt_open(struct fd_kmt **out_kmt)
++{
++   *out_kmt = 0;
++   return -ENOSYS;
++}
++
++void
++fd_kmt_close(struct fd_kmt *kmt)
++{
++   (void)kmt;
++}
++
++int
++fd_kmt_get_info(struct fd_kmt *kmt, struct fd_kmt_info *info)
++{
++   (void)kmt; (void)info;
++   return -ENOSYS;
++}
++
++int
++fd_kmt_get_timestamp(struct fd_kmt *kmt, uint64_t *ts)
++{
++   (void)kmt;
++   *ts = 0;
++   return -ENOSYS;
++}
++
++int
++fd_kmt_bo_alloc(struct fd_kmt *kmt, uint64_t size, uint32_t flags,
++                uint32_t *out_handle, uint64_t *out_iova)
++{
++   (void)kmt; (void)size; (void)flags;
++   *out_handle = 0;
++   *out_iova = 0;
++   return -ENOSYS;
++}
++
++void
++fd_kmt_bo_free(struct fd_kmt *kmt, uint32_t handle)
++{
++   (void)kmt; (void)handle;
++}
++
++int
++fd_kmt_bo_map(struct fd_kmt *kmt, uint32_t handle, void **out_ptr)
++{
++   (void)kmt; (void)handle;
++   *out_ptr = 0;
++   return -ENOSYS;
++}
++
++int
++fd_kmt_bo_wait(struct fd_kmt *kmt, uint32_t handle, uint32_t op,
++               uint64_t timeout_ns)
++{
++   (void)kmt; (void)handle; (void)op; (void)timeout_ns;
++   return -ENOSYS;
++}
++
++int
++fd_kmt_submit(struct fd_kmt *kmt, const struct fd_kmt_cmd *cmds,
++              uint32_t nr_cmds, const struct fd_kmt_bo_ref *bos,
++              uint32_t nr_bos, uint32_t *out_fence)
++{
++   (void)kmt; (void)cmds; (void)nr_cmds; (void)bos; (void)nr_bos;
++   *out_fence = 0;
++   return -ENOSYS;
++}
++
++int
++fd_kmt_fence_wait(struct fd_kmt *kmt, uint32_t fence, uint64_t timeout_ns)
++{
++   (void)kmt; (void)fence; (void)timeout_ns;
++   return -ENOSYS;
++}
+diff --git a/src/freedreno/drm/freedreno_bo.c b/src/freedreno/drm/freedreno_bo.c
+index 6eda810..3e67472 100644
+--- a/src/freedreno/drm/freedreno_bo.c
++++ b/src/freedreno/drm/freedreno_bo.c
+@@ -6,7 +6,9 @@
+  *    Rob Clark <robclark@freedesktop.org>
+  */
+ 
++#ifndef _WIN32
+ #include "util/os_mman.h"
++#endif
+ 
+ #include "freedreno_drmif.h"
+ #include "freedreno_drm_perfetto.h"
+@@ -473,8 +475,11 @@ fd_bo_fini_common(struct fd_bo *bo)
+ 
+    fd_bo_fini_fences(bo);
+ 
++#ifndef _WIN32
++   /* Tren Windows backend d3dkmt Unlock2 trong bo_close_handle(). */
+    if (bo->map)
+       os_munmap(bo->map, bo->size);
++#endif
+ 
+    if (handle) {
+       simple_mtx_lock(&table_lock);
+@@ -618,8 +623,14 @@ fd_bo_map_os_mmap(struct fd_bo *bo)
+    if (ret) {
+       return NULL;
+    }
++#ifdef _WIN32
++   /* Windows khong co mmap theo fd: backend d3dkmt tu cai dat ->map (Lock2). */
++   (void)offset;
++   return MAP_FAILED;
++#else
+    return os_mmap(0, bo->size, PROT_READ | PROT_WRITE, MAP_SHARED,
+                   bo->dev->fd, offset);
++#endif
+ }
+ 
+ /* For internal use only, does not check FD_BO_NOMAP: */
+diff --git a/src/freedreno/drm/freedreno_bo_cache.c b/src/freedreno/drm/freedreno_bo_cache.c
+index fc9e35f..6019d87 100644
+--- a/src/freedreno/drm/freedreno_bo_cache.c
++++ b/src/freedreno/drm/freedreno_bo_cache.c
+@@ -8,6 +8,7 @@
+ 
+ #include "freedreno_drmif.h"
+ #include "freedreno_drm_perfetto.h"
++#include "util/os_time.h"
+ #include "freedreno_priv.h"
+ 
+ #define FD_BO_CACHE_STATS 0
+@@ -285,13 +286,11 @@ fd_bo_cache_free(struct fd_bo_cache *cache, struct fd_bo *bo)
+ 
+    /* see if we can be green and recycle: */
+    if (bucket) {
+-      struct timespec time;
+-
+       bo->funcs->madvise(bo, false);
+ 
+-      clock_gettime(CLOCK_MONOTONIC, &time);
++      time_t now = (time_t)(os_time_get_nano() / 1000000000ll);
+ 
+-      bo->free_time = time.tv_sec;
++      bo->free_time = now;
+       VG_BO_RELEASE(bo);
+ 
+       simple_mtx_lock(&cache->lock);
+@@ -300,7 +299,7 @@ fd_bo_cache_free(struct fd_bo_cache *cache, struct fd_bo *bo)
+       simple_mtx_unlock(&cache->lock);
+ 
+       fd_alloc_log(bo, FD_ALLOC_ACTIVE, FD_ALLOC_CACHE);
+-      fd_bo_cache_cleanup(cache, time.tv_sec);
++      fd_bo_cache_cleanup(cache, now);
+ 
+       return 0;
+    }
+diff --git a/src/freedreno/drm/freedreno_device.c b/src/freedreno/drm/freedreno_device.c
+index 6c64e64..70d0a24 100644
+--- a/src/freedreno/drm/freedreno_device.c
++++ b/src/freedreno/drm/freedreno_device.c
+@@ -6,9 +6,11 @@
+  *    Rob Clark <robclark@freedesktop.org>
+  */
+ 
++#ifndef _WIN32
+ #include <unistd.h>
+ #include <sys/stat.h>
+ #include <sys/types.h>
++#endif
+ 
+ #include "util/os_file.h"
+ #include "util/u_process.h"
+@@ -19,13 +21,19 @@
+ #include "freedreno_drm_perfetto.h"
+ #include "freedreno_priv.h"
+ 
++#ifdef HAVE_FREEDRENO_MSM
+ struct fd_device *msm_device_new(int fd, drmVersionPtr version);
++#endif
+ #ifdef HAVE_FREEDRENO_VIRTIO
+ struct fd_device *virtio_device_new(int fd, drmVersionPtr version);
+ #endif
+ 
+ uint64_t os_page_size = 4096;
+ 
++static struct fd_device *fd_device_init_common(struct fd_device *dev, int fd,
++                                               bool use_heap);
++
++#ifndef _WIN32
+ struct fd_device *
+ fd_device_new(int fd)
+ {
+@@ -48,6 +56,7 @@ fd_device_new(int fd)
+       dev = virtio_device_new(-1, version);
+    } else
+ #endif
++#ifdef HAVE_FREEDRENO_MSM
+    if (!strcmp(version->name, "msm")) {
+       DEBUG_MSG("msm DRM device");
+       if (version->version_major != 1) {
+@@ -57,6 +66,9 @@ fd_device_new(int fd)
+       }
+ 
+       dev = msm_device_new(fd, version);
++   } else
++#endif
++   if (0) {
+ #ifdef HAVE_FREEDRENO_VIRTIO
+    } else if (!strcmp(version->name, "virtio_gpu")) {
+       DEBUG_MSG("virtio_gpu DRM device");
+@@ -84,6 +96,14 @@ out:
+    if (!dev)
+       return NULL;
+ 
++   return fd_device_init_common(dev, fd, use_heap);
++}
++#endif /* !_WIN32 */
++
++/* Phan khoi tao chung cho moi backend (msm, virtio, d3dkmt). */
++static struct fd_device *
++fd_device_init_common(struct fd_device *dev, int fd, bool use_heap)
++{
+    fd_drm_perfetto_init();
+ 
+    fd_rd_dump_env_init();
+@@ -129,6 +149,27 @@ fail:
+    return NULL;
+ }
+ 
++#ifdef HAVE_FREEDRENO_D3DKMT
++struct fd_device *d3dkmt_device_new(struct fd_kmt *kmt);
++
++/* Windows: tao fd_device tu mot phien D3DKMT (xem d3dkmt/fd_kmt.h).
++ * dev->fd = -1; moi giao tiep kernel di qua kmt.
++ */
++struct fd_device *
++fd_device_new_d3dkmt(struct fd_kmt *kmt)
++{
++   os_get_page_size(&os_page_size);
++
++   struct fd_device *dev = d3dkmt_device_new(kmt);
++   if (!dev)
++      return NULL;
++
++   return fd_device_init_common(dev, -1, false);
++}
++#endif
++
++#ifndef _WIN32
++
+ /* like fd_device_new() but creates it's own private dup() of the fd
+  * which is close()d when the device is finalized.
+  */
+@@ -162,6 +203,8 @@ fd_device_open(void)
+    return fd_device_new(fd);
+ }
+ 
++#endif /* !_WIN32 */
++
+ struct fd_device *
+ fd_device_ref(struct fd_device *dev)
+ {
+@@ -210,7 +253,7 @@ fd_device_del(struct fd_device *dev)
+    if (fd_device_threaded_submit(dev))
+       util_queue_destroy(&dev->submit_queue);
+ 
+-   if (dev->closefd)
++   if (dev->closefd && dev->fd >= 0)
+       close(dev->fd);
+ 
+    free(dev);
+diff --git a/src/freedreno/drm/freedreno_drmif.h b/src/freedreno/drm/freedreno_drmif.h
+index ecb84aa..b56a71a 100644
+--- a/src/freedreno/drm/freedreno_drmif.h
++++ b/src/freedreno/drm/freedreno_drmif.h
+@@ -158,6 +158,11 @@ int fd_fence_wait(struct fd_fence *f);
+ 
+ struct fd_device *fd_device_new(int fd);
+ struct fd_device *fd_device_new_dup(int fd);
++#ifdef _WIN32
++struct fd_kmt;
++/* Windows/WDDM: kmt la phien D3DKMT da mo (adapter+device+context). */
++struct fd_device *fd_device_new_d3dkmt(struct fd_kmt *kmt);
++#endif
+ struct fd_device *fd_device_open(void);
+ struct fd_device *fd_device_ref(struct fd_device *dev);
+ void fd_device_purge(struct fd_device *dev);
+diff --git a/src/freedreno/drm/freedreno_priv.h b/src/freedreno/drm/freedreno_priv.h
+index 3a243b6..4ae8b8e 100644
+--- a/src/freedreno/drm/freedreno_priv.h
++++ b/src/freedreno/drm/freedreno_priv.h
+@@ -14,11 +14,15 @@
+ #include <stdio.h>
+ #include <stdlib.h>
+ #include <string.h>
++#ifdef _WIN32
++#include "freedreno_win32_compat.h"
++#else
+ #include <unistd.h>
+ #include <sys/ioctl.h>
+ #include <sys/mman.h>
+ 
+ #include <xf86drm.h>
++#endif
+ 
+ #include "util/hash_table.h"
+ #include "util/list.h"
+diff --git a/src/freedreno/drm/freedreno_ringbuffer_sp.c b/src/freedreno/drm/freedreno_ringbuffer_sp.c
+index 7f50fcc..a7a97f8 100644
+--- a/src/freedreno/drm/freedreno_ringbuffer_sp.c
++++ b/src/freedreno/drm/freedreno_ringbuffer_sp.c
+@@ -8,10 +8,14 @@
+ 
+ #include <assert.h>
+ #include <inttypes.h>
++#ifndef _WIN32
+ #include <pthread.h>
++#endif
+ 
+ #include "util/hash_table.h"
++#ifndef _WIN32
+ #include "util/libsync.h"
++#endif
+ #include "util/os_file.h"
+ #include "util/slab.h"
+ 
+@@ -278,9 +282,11 @@ flush_deferred_submits(struct fd_device *dev)
+          break;
+ 
+       if (fd_deferred_submit->in_fence_fd != -1) {
++#ifndef _WIN32
+          sync_accumulate("freedreno",
+                          &fd_submit->in_fence_fd,
+                          fd_deferred_submit->in_fence_fd);
++#endif
+          close(fd_deferred_submit->in_fence_fd);
+          fd_deferred_submit->in_fence_fd = -1;
+       }
+diff --git a/src/freedreno/drm/freedreno_ringbuffer_sp.h b/src/freedreno/drm/freedreno_ringbuffer_sp.h
+index 27d1873..83b19ae 100644
+--- a/src/freedreno/drm/freedreno_ringbuffer_sp.h
++++ b/src/freedreno/drm/freedreno_ringbuffer_sp.h
+@@ -11,7 +11,9 @@
+ 
+ #include <assert.h>
+ #include <inttypes.h>
++#ifndef _WIN32
+ #include <pthread.h>
++#endif
+ 
+ #include "util/hash_table.h"
+ #include "util/os_file.h"
+diff --git a/src/freedreno/drm/freedreno_win32_compat.h b/src/freedreno/drm/freedreno_win32_compat.h
+new file mode 100644
+index 0000000..07c19e7
+--- /dev/null
++++ b/src/freedreno/drm/freedreno_win32_compat.h
+@@ -0,0 +1,106 @@
++/*
++ * Copyright © 2026
++ * SPDX-License-Identifier: MIT
++ *
++ * Lop tuong thich cho freedreno/drm khi build tren Windows (khong co libdrm,
++ * khong co POSIX). Backend that su tren Windows la d3dkmt/; cac duong DRM
++ * (GEM open/flink/prime, dmabuf, mmap theo fd) chi con la stub tra ve loi.
++ */
++
++#ifndef FREEDRENO_WIN32_COMPAT_H_
++#define FREEDRENO_WIN32_COMPAT_H_
++
++#ifdef _WIN32
++
++#include <errno.h>
++#include <io.h>
++#include <stdint.h>
++#include <stdlib.h>
++
++#ifndef WIN32_LEAN_AND_MEAN
++#define WIN32_LEAN_AND_MEAN
++#endif
++#include <windows.h>
++
++/* ---- POSIX nho ---- */
++#define close(fd)                _close(fd)
++#define lseek(fd, off, whence)   _lseek(fd, off, whence)
++
++#define PROT_READ   0x1
++#define PROT_WRITE  0x2
++#define MAP_SHARED  0x01
++#define MAP_FAILED  ((void *)-1)
++
++/* pthread mutex/cond tinh (freedreno_ringbuffer_sp.c) -> SRWLOCK/CONDITION_VARIABLE */
++typedef SRWLOCK pthread_mutex_t;
++typedef CONDITION_VARIABLE pthread_cond_t;
++#define PTHREAD_MUTEX_INITIALIZER SRWLOCK_INIT
++#define PTHREAD_COND_INITIALIZER  CONDITION_VARIABLE_INIT
++#define pthread_mutex_lock(m)     AcquireSRWLockExclusive(m)
++#define pthread_mutex_unlock(m)   ReleaseSRWLockExclusive(m)
++#define pthread_cond_broadcast(c) WakeAllConditionVariable(c)
++#define pthread_cond_wait(c, m)   SleepConditionVariableSRW(c, m, INFINITE, 0)
++
++/* ---- libdrm stub ---- */
++struct drm_gem_close {
++   uint32_t handle;
++   uint32_t pad;
++};
++struct drm_gem_flink {
++   uint32_t handle;
++   uint32_t name;
++};
++struct drm_gem_open {
++   uint32_t name;
++   uint32_t handle;
++   uint64_t size;
++};
++
++typedef struct _drmVersion {
++   int version_major;
++   int version_minor;
++   int version_patchlevel;
++   int name_len;
++   char *name;
++} drmVersion, *drmVersionPtr;
++
++#define DRM_IOCTL_GEM_CLOSE 0
++#define DRM_IOCTL_GEM_FLINK 1
++#define DRM_IOCTL_GEM_OPEN  2
++#define DRM_CAP_SYNCOBJ     0x13
++#define DRM_CLOEXEC         0
++#define DRM_RDWR            2
++#define DRM_NODE_RENDER     2
++
++static inline int
++drmIoctl(int fd, unsigned long request, void *arg)
++{
++   (void)fd; (void)request; (void)arg;
++   errno = ENOSYS;
++   return -1;
++}
++
++static inline int
++drmPrimeFDToHandle(int fd, int prime_fd, uint32_t *handle)
++{
++   (void)fd; (void)prime_fd; (void)handle;
++   return -ENOSYS;
++}
++
++static inline int
++drmPrimeHandleToFD(int fd, uint32_t handle, uint32_t flags, int *prime_fd)
++{
++   (void)fd; (void)handle; (void)flags; (void)prime_fd;
++   return -ENOSYS;
++}
++
++static inline int
++drmGetCap(int fd, uint64_t capability, uint64_t *value)
++{
++   (void)fd; (void)capability; (void)value;
++   return -ENOSYS;
++}
++
++#endif /* _WIN32 */
++
++#endif /* FREEDRENO_WIN32_COMPAT_H_ */
+diff --git a/src/freedreno/drm/meson.build b/src/freedreno/drm/meson.build
+index d2baf58..6a12047 100644
+--- a/src/freedreno/drm/meson.build
++++ b/src/freedreno/drm/meson.build
+@@ -45,7 +45,27 @@ libfreedreno_drm_msm_files = files(
+   'msm/msm_ringbuffer.c',
+   'msm/msm_ringbuffer_sp.c',
+ )
+-libfreedreno_drm_files += libfreedreno_drm_msm_files
++if freedreno_kmds.contains('msm')
++  libfreedreno_drm_files += libfreedreno_drm_msm_files
++  libfreedreno_drm_flags += '-DHAVE_FREEDRENO_MSM'
++endif
++
++# Windows (WDDM) backend: D3DKMT toi KMD Qualcomm. Xem d3dkmt/fd_kmt.h.
++libfreedreno_drm_d3dkmt_files = files(
++  'd3dkmt/d3dkmt_bo.c',
++  'd3dkmt/d3dkmt_device.c',
++  'd3dkmt/d3dkmt_pipe.c',
++  'd3dkmt/d3dkmt_priv.h',
++  'd3dkmt/d3dkmt_ringbuffer_sp.c',
++  'd3dkmt/fd_kmt.h',
++)
++if with_freedreno_d3dkmt
++  libfreedreno_drm_files += libfreedreno_drm_d3dkmt_files
++  libfreedreno_drm_flags += '-DHAVE_FREEDRENO_D3DKMT'
++  if get_option('freedreno-d3dkmt-stub')
++    libfreedreno_drm_files += files('d3dkmt/fd_kmt_stub.c')
++  endif
++endif
+ 
+ libfreedreno_drm_virtio_files = files(
+   'virtio/virtio_bo.c',
+diff --git a/src/freedreno/ir2/disasm-a2xx.c b/src/freedreno/ir2/disasm-a2xx.c
+index ebd439a..2c34859 100644
+--- a/src/freedreno/ir2/disasm-a2xx.c
++++ b/src/freedreno/ir2/disasm-a2xx.c
+@@ -8,7 +8,9 @@
+ #include <stdio.h>
+ #include <stdlib.h>
+ #include <string.h>
++#ifndef _WIN32
+ #include <unistd.h>
++#endif
+ #include <sys/stat.h>
+ #include <sys/types.h>
+ 
+diff --git a/src/freedreno/ir3/ir3_disk_cache.c b/src/freedreno/ir3/ir3_disk_cache.c
+index 3b732d3..5e82ac7 100644
+--- a/src/freedreno/ir3/ir3_disk_cache.c
++++ b/src/freedreno/ir3/ir3_disk_cache.c
+@@ -34,6 +34,14 @@ ir3_disk_cache_init(struct ir3_compiler *compiler)
+       return;
+ 
+    const char *renderer = fd_dev_name(compiler->dev_id);
++   blake3_hasher ctx;
++   uint8_t blake3[BLAKE3_KEY_LEN];
++   _mesa_blake3_init(&ctx);
++#ifdef _WIN32
++   /* Khong co ELF build-id: dung dinh danh module (timestamp PE). */
++   if (!disk_cache_get_function_identifier(ir3_disk_cache_init, &ctx))
++      return;
++#else
+    const struct build_id_note *note =
+       build_id_find_nhdr_for_addr(ir3_disk_cache_init);
+    unsigned build_id_len = build_id_length(note);
+@@ -42,10 +50,8 @@ ir3_disk_cache_init(struct ir3_compiler *compiler)
+    const uint8_t *id_sha1 = build_id_data(note);
+    assert(id_sha1);
+ 
+-   blake3_hasher ctx;
+-   uint8_t blake3[BLAKE3_KEY_LEN];
+-   _mesa_blake3_init(&ctx);
+    _mesa_blake3_update(&ctx, id_sha1, build_id_len);
++#endif
+    _mesa_blake3_update(&ctx, &compiler->options.uche_trap_base,
+                      sizeof(compiler->options.uche_trap_base));
+    _mesa_blake3_final(&ctx, blake3);
+diff --git a/src/freedreno/ir3/ir3_lexer.l b/src/freedreno/ir3/ir3_lexer.l
+index 2aef2f5..01d61bd 100644
+--- a/src/freedreno/ir3/ir3_lexer.l
++++ b/src/freedreno/ir3/ir3_lexer.l
+@@ -27,6 +27,41 @@
+ #include "ir3/ir3.h"
+ #include "ir3_parser.h"
+ 
++#ifdef _WIN32
++#include <stdio.h>
++#include <sys/types.h>
++typedef ptrdiff_t ssize_t;
++/* MSVC CRT khong co getline(). */
++static ssize_t
++getline(char **lineptr, size_t *n, FILE *stream)
++{
++   size_t len = 0;
++   int c;
++   if (!*lineptr || !*n) {
++      *n = 128;
++      *lineptr = realloc(*lineptr, *n);
++      if (!*lineptr)
++         return -1;
++   }
++   while ((c = fgetc(stream)) != EOF) {
++      if (len + 2 > *n) {
++         *n *= 2;
++         char *p = realloc(*lineptr, *n);
++         if (!p)
++            return -1;
++         *lineptr = p;
++      }
++      (*lineptr)[len++] = (char)c;
++      if (c == 0x0a)
++         break;
++   }
++   if (len == 0)
++      return -1;
++   (*lineptr)[len] = 0;
++   return (ssize_t)len;
++}
++#endif
++
+ #define YY_NO_INPUT
+ #define YY_NO_UNPUT
+ #define TOKEN(t) (ir3_yylval.tok = t)
+diff --git a/src/freedreno/ir3/ir3_parser_support.c b/src/freedreno/ir3/ir3_parser_support.c
+index 79cc989..a218f61 100644
+--- a/src/freedreno/ir3/ir3_parser_support.c
++++ b/src/freedreno/ir3/ir3_parser_support.c
+@@ -7,6 +7,7 @@
+ 
+ #include "util/half_float.h"
+ #include "util/u_math.h"
++#include "util/simple_mtx.h"
+ 
+ #include "ir3/instr-a3xx.h"
+ #include "ir3/ir3.h"
+@@ -29,7 +30,7 @@
+ #define IR3_REG_ABS    IR3_REG_FABS
+ #define IR3_REG_NEGATE IR3_REG_FNEG
+ 
+-static pthread_mutex_t ir3_parse_mtx = PTHREAD_MUTEX_INITIALIZER;
++static simple_mtx_t ir3_parse_mtx = SIMPLE_MTX_INITIALIZER;
+ 
+ static struct ir3_kernel_info *info;
+ static struct ir3_shader_variant *variant;
+@@ -342,7 +343,7 @@ yyerror(const char *error)
+ struct ir3 *
+ ir3_parse(struct ir3_shader_variant *v, struct ir3_kernel_info *k, FILE *f)
+ {
+-   pthread_mutex_lock(&ir3_parse_mtx);
++   simple_mtx_lock(&ir3_parse_mtx);
+ 
+    ir3_yyset_lineno(1);
+    ir3_yyset_input(f);
+@@ -363,6 +364,6 @@ ir3_parse(struct ir3_shader_variant *v, struct ir3_kernel_info *k, FILE *f)
+    ralloc_free(ir3_parser_dead_ctx);
+ 
+    struct ir3 *ir = variant->ir;
+-   pthread_mutex_unlock(&ir3_parse_mtx);
++   simple_mtx_unlock(&ir3_parse_mtx);
+    return ir;
+ }
+diff --git a/src/freedreno/ir3/ir3_shader.c b/src/freedreno/ir3/ir3_shader.c
+index 7aa6284..70438c1 100644
+--- a/src/freedreno/ir3/ir3_shader.c
++++ b/src/freedreno/ir3/ir3_shader.c
+@@ -6,6 +6,7 @@
+  *    Rob Clark <robclark@freedesktop.org>
+  */
+ 
++#include "util/memstream.h"
+ #include "util/format/u_format.h"
+ #include "util/u_atomic.h"
+ #include "util/u_math.h"
+@@ -245,7 +246,9 @@ disasm_collect(struct ir3_shader_variant *v, uint8_t *mismatch_array,
+ {
+    char *stream_data = NULL;
+    size_t stream_size = 0;
+-   FILE *stream = open_memstream(&stream_data, &stream_size);
++   struct u_memstream stream_mem;
++   u_memstream_open(&stream_mem, &stream_data, &stream_size);
++   FILE *stream = u_memstream_get(&stream_mem);
+ 
+    struct disasm_context context = {
+       .stream = stream,
+@@ -263,7 +266,7 @@ disasm_collect(struct ir3_shader_variant *v, uint8_t *mismatch_array,
+ 
+    ir3_isa_disasm(binary_data, binary_size, stream, &decode_options);
+ 
+-   fclose(stream);
++   u_memstream_close(&stream_mem);
+    return stream_data;
+ }
+ 
+@@ -351,7 +354,9 @@ create_roundtrip_variant(struct ir3_shader *shader, struct ir3_shader_variant *v
+     */
+    char *disasm_data = NULL;
+    size_t disasm_size = 0;
+-   FILE *disasm_stream = open_memstream(&disasm_data, &disasm_size);
++   struct u_memstream disasm_stream_mem;
++   u_memstream_open(&disasm_stream_mem, &disasm_data, &disasm_size);
++   FILE *disasm_stream = u_memstream_get(&disasm_stream_mem);
+    ir3_shader_disasm(v, v->bin, disasm_stream);
+    fflush(disasm_stream);
+ 
+@@ -362,7 +367,7 @@ create_roundtrip_variant(struct ir3_shader *shader, struct ir3_shader_variant *v
+    fseek(disasm_stream, 0, SEEK_SET);
+    rt_v->ir = ir3_parse(rt_v, &info, disasm_stream);
+ 
+-   fclose(disasm_stream);
++   u_memstream_close(&disasm_stream_mem);
+    free(disasm_data);
+ 
+    if (!rt_v->ir) {
+@@ -411,7 +416,9 @@ assemble_variant(struct ir3_shader_variant *v, bool internal)
+       if (v->disasm_info.write_disasm || dbg_enabled || shader_overridden) {
+          char *stream_data = NULL;
+          size_t stream_size = 0;
+-         FILE *stream = open_memstream(&stream_data, &stream_size);
++         struct u_memstream stream_mem;
++   u_memstream_open(&stream_mem, &stream_data, &stream_size);
++   FILE *stream = u_memstream_get(&stream_mem);
+ 
+          fprintf(stream,
+                  "Native code%s for unnamed %s shader %s with blake3 %s:\n",
+@@ -419,7 +426,7 @@ assemble_variant(struct ir3_shader_variant *v, bool internal)
+                  v->name, v->blake3_str);
+          ir3_shader_disasm(v, v->bin, stream);
+ 
+-         fclose(stream);
++         u_memstream_close(&stream_mem);
+ 
+          if (v->disasm_info.write_disasm) {
+             v->disasm_info.disasm = ralloc_size(v, stream_size + 1);
+diff --git a/src/freedreno/ir3/meson.build b/src/freedreno/ir3/meson.build
+index c6258e5..a9106e1 100644
+--- a/src/freedreno/ir3/meson.build
++++ b/src/freedreno/ir3/meson.build
+@@ -150,6 +150,7 @@ libfreedreno_ir3 = static_library(
+   build_by_default : false,
+ )
+ 
++if with_tests
+ test('ir3_disasm',
+   executable(
+     'ir3_disasm',
+@@ -173,3 +174,4 @@ test('ir3_delay_test',
+   ),
+   suite: ['freedreno'],
+ )
++endif
+diff --git a/src/freedreno/meson.build b/src/freedreno/meson.build
+index e8f01b8..f5b6e9f 100644
+--- a/src/freedreno/meson.build
++++ b/src/freedreno/meson.build
+@@ -22,7 +22,9 @@ subdir('ir2')
+ subdir('ir3')
+ subdir('fdl')
+ 
+-if system_has_kms_drm
++with_freedreno_d3dkmt = freedreno_kmds.contains('d3dkmt')
++
++if system_has_kms_drm or with_freedreno_d3dkmt
+   subdir('drm')
+ endif
+ 
+diff --git a/src/freedreno/perfcntrs/freedreno_dt.c b/src/freedreno/perfcntrs/freedreno_dt.c
+index 7a5c162..79b6930 100644
+--- a/src/freedreno/perfcntrs/freedreno_dt.c
++++ b/src/freedreno/perfcntrs/freedreno_dt.c
+@@ -4,6 +4,26 @@
+  * SPDX-License-Identifier: MIT
+  */
+ 
++#ifdef _WIN32
++/* Windows: khong co device-tree (/proc/device-tree). */
++#include <stdbool.h>
++#include <stddef.h>
++#include <stdint.h>
++#include "freedreno_dt.h"
++
++bool
++fd_dt_find_freqs(uint32_t *min_freq, uint32_t *max_freq)
++{
++   (void)min_freq; (void)max_freq;
++   return false;
++}
++
++void *
++fd_dt_find_io(void)
++{
++   return NULL;
++}
++#else /* !_WIN32 */
+ #include <fcntl.h>
+ #include <ftw.h>
+ #include <inttypes.h>
+@@ -237,3 +257,4 @@ fd_dt_find_io(void)
+ 
+    return io;
+ }
++#endif /* !_WIN32 */
+diff --git a/src/freedreno/tests/check_xml_includes.py b/src/freedreno/tests/check_xml_includes.py
+index 7f21b84..b7e6e61 100755
+--- a/src/freedreno/tests/check_xml_includes.py
++++ b/src/freedreno/tests/check_xml_includes.py
+@@ -22,6 +22,9 @@ files = (
+     + glob.glob("src/gallium/drivers/freedreno/**/*.cc", recursive=True)
+ )
+ 
++# Windows: glob tra ve '\' -> chuan hoa de khop allowlist trong .awk
++files = [f.replace(os.sep, "/") for f in files]
++
+ result = subprocess.run(
+     ["awk", "-f", "src/freedreno/tests/check_xml_includes.awk"] + sorted(files)
+ )
+diff --git a/src/gallium/auxiliary/renderonly/renderonly.h b/src/gallium/auxiliary/renderonly/renderonly.h
+index de22b37..ae787e2 100644
+--- a/src/gallium/auxiliary/renderonly/renderonly.h
++++ b/src/gallium/auxiliary/renderonly/renderonly.h
+@@ -105,7 +105,11 @@ renderonly_get_handle(struct renderonly_scanout *scanout,
+       return false;
+ 
+    assert(handle->type == WINSYS_HANDLE_TYPE_KMS);
++#ifdef _WIN32
++   handle->handle = (HANDLE)(uintptr_t)scanout->handle;
++#else
+    handle->handle = scanout->handle;
++#endif
+    handle->stride = scanout->stride;
+ 
+    return true;
+diff --git a/src/gallium/drivers/freedreno/a6xx/fd6_vsc.cc b/src/gallium/drivers/freedreno/a6xx/fd6_vsc.cc
+index 17ed329..f23af9d 100644
+--- a/src/gallium/drivers/freedreno/a6xx/fd6_vsc.cc
++++ b/src/gallium/drivers/freedreno/a6xx/fd6_vsc.cc
+@@ -48,7 +48,7 @@ prim_count(const struct pipe_draw_info *info,
+ {
+    /* MESA_PRIM_COUNT used internally for RECTLIST blits on 3d pipe: */
+    unsigned vtx_per_prim =
+-      (info->mode == MESA_PRIM_COUNT) ? 2 : mesa_vertices_per_prim(info->mode);
++      (info->mode == MESA_PRIM_COUNT) ? 2 : mesa_vertices_per_prim((enum mesa_prim)info->mode);
+    return MAX2(1, (draw->count * info->instance_count) / vtx_per_prim);
+ }
+ 
+@@ -136,7 +136,7 @@ fd6_vsc_update_sizes(struct fd_batch *batch, const struct pipe_draw_info *info,
+              prim_strm_bits, draw_strm_bits, batch->num_bins_per_pipe,
+              info->instance_count, info->count,
+              (info->count * info->instance_count) /
+-             mesa_vertices_per_prim(info->mode),
++             mesa_vertices_per_prim((enum mesa_prim)info->mode),
+              u_prim_name(info->mode));
+ #endif
+ 
+diff --git a/src/gallium/drivers/freedreno/freedreno_context.c b/src/gallium/drivers/freedreno/freedreno_context.c
+index e642299..8c076b5 100644
+--- a/src/gallium/drivers/freedreno/freedreno_context.c
++++ b/src/gallium/drivers/freedreno/freedreno_context.c
+@@ -8,6 +8,7 @@
+ 
+ #include "freedreno_context.h"
+ #include "ir3/ir3_cache.h"
++#include "util/os_time.h"
+ #include "util/u_upload_mgr.h"
+ #include "freedreno_blitter.h"
+ #include "freedreno_draw.h"
+@@ -540,7 +541,7 @@ fd_trace_read_ts(struct u_trace_context *utctx,
+        * changes the behavior of what we are trying to measure:
+        */
+       while (fd_bo_cpu_prep(ts_bo, ctx->pipe, FD_BO_PREP_NOSYNC))
+-         usleep(10000);
++         os_time_sleep(10000);
+       int ret = fd_bo_cpu_prep(ts_bo, ctx->pipe, FD_BO_PREP_READ);
+       if (ret)
+          return U_TRACE_NO_TIMESTAMP;
+diff --git a/src/gallium/drivers/freedreno/freedreno_fence.c b/src/gallium/drivers/freedreno/freedreno_fence.c
+index effc9dd..fdeed03 100644
+--- a/src/gallium/drivers/freedreno/freedreno_fence.c
++++ b/src/gallium/drivers/freedreno/freedreno_fence.c
+@@ -14,7 +14,37 @@
+ #include "freedreno_fence.h"
+ #include "freedreno_util.h"
+ /* TODO: Use the interface drm/freedreno_drmif.h instead of calling directly */
++#ifndef _WIN32
+ #include <xf86drm.h>
++#else
++/* Windows: khong co DRM syncobj; fd_has_syncobj() luon false nen cac duong
++ * nay khong chay. Stub de bien dich.
++ */
++#include <errno.h>
++struct drm_syncobj_timeline_wait {
++   uint64_t handles;
++   uint64_t points;
++   int64_t timeout_nsec;
++   uint32_t count_handles;
++   uint32_t flags;
++   uint32_t first_signaled;
++   uint32_t pad;
++};
++#define DRM_SYNCOBJ_WAIT_FLAGS_WAIT_AVAILABLE (1 << 2)
++#define DRM_IOCTL_SYNCOBJ_TIMELINE_WAIT 0
++static inline int drmIoctl(int fd, unsigned long r, void *a)
++{ (void)fd; (void)r; (void)a; return -ENOSYS; }
++static inline int drmSyncobjDestroy(int fd, uint32_t h)
++{ (void)fd; (void)h; return -ENOSYS; }
++static inline int drmSyncobjFDToHandle(int fd, int ofd, uint32_t *h)
++{ (void)fd; (void)ofd; *h = 0; return -ENOSYS; }
++static inline int drmSyncobjExportSyncFile(int fd, uint32_t h, int *sfd)
++{ (void)fd; (void)h; *sfd = -1; return -ENOSYS; }
++static inline int drmSyncobjImportSyncFile(int fd, uint32_t h, int sfd)
++{ (void)fd; (void)h; (void)sfd; return -ENOSYS; }
++static inline int drmSyncobjReset(int fd, const uint32_t *h, uint32_t n)
++{ (void)fd; (void)h; (void)n; return -ENOSYS; }
++#endif
+ 
+ static void
+ fence_set_fd(struct pipe_fence_handle *fence, int fence_fd)
+diff --git a/src/gallium/drivers/freedreno/freedreno_resource.c b/src/gallium/drivers/freedreno/freedreno_resource.c
+index ee7b54e..2326b93 100644
+--- a/src/gallium/drivers/freedreno/freedreno_resource.c
++++ b/src/gallium/drivers/freedreno/freedreno_resource.c
+@@ -6,6 +6,9 @@
+  *    Rob Clark <robclark@freedesktop.org>
+  */
+ 
++#ifdef _WIN32
++#include <io.h>
++#endif
+ #include "util/format/u_format.h"
+ #include "util/format/u_format_rgtc.h"
+ #include "util/format/u_format_zs.h"
+@@ -1470,7 +1473,11 @@ fd_resource_create_with_modifiers(struct pipe_screen *pscreen,
+       assert(handle.type == WINSYS_HANDLE_TYPE_FD);
+       rsc = fd_resource(pscreen->resource_from_handle(
+          pscreen, tmpl, &handle, PIPE_HANDLE_USAGE_FRAMEBUFFER_WRITE));
++#ifdef _WIN32
++      _close(FD_WHANDLE_GET(&handle));
++#else
+       close(handle.handle);
++#endif
+       if (!rsc)
+          return NULL;
+ 
+diff --git a/src/gallium/drivers/freedreno/freedreno_screen.c b/src/gallium/drivers/freedreno/freedreno_screen.c
+index e33674e..4213749 100644
+--- a/src/gallium/drivers/freedreno/freedreno_screen.c
++++ b/src/gallium/drivers/freedreno/freedreno_screen.c
+@@ -766,7 +766,11 @@ fd_screen_bo_get_handle(struct pipe_screen *pscreen, struct fd_bo *bo,
+    whandle->stride = stride;
+ 
+    if (whandle->type == WINSYS_HANDLE_TYPE_SHARED) {
+-      return fd_bo_get_name(bo, &whandle->handle) == 0;
++      uint32_t name;
++      if (fd_bo_get_name(bo, &name))
++         return false;
++      FD_WHANDLE_SET(whandle, name);
++      return true;
+    } else if (whandle->type == WINSYS_HANDLE_TYPE_KMS) {
+       if (screen->ro) {
+          return renderonly_get_handle(scanout, whandle);
+@@ -774,14 +778,14 @@ fd_screen_bo_get_handle(struct pipe_screen *pscreen, struct fd_bo *bo,
+          uint32_t handle = fd_bo_handle(bo);
+          if (!handle)
+             return false;
+-         whandle->handle = handle;
++         FD_WHANDLE_SET(whandle, handle);
+          return true;
+       }
+    } else if (whandle->type == WINSYS_HANDLE_TYPE_FD) {
+       int fd = fd_bo_dmabuf(bo);
+       if (fd < 0)
+          return false;
+-      whandle->handle = fd;
++      FD_WHANDLE_SET(whandle, fd);
+       return true;
+    } else {
+       return false;
+@@ -854,18 +858,18 @@ fd_screen_bo_from_handle(struct pipe_screen *pscreen,
+    struct fd_bo *bo;
+ 
+    if (whandle->type == WINSYS_HANDLE_TYPE_SHARED) {
+-      bo = fd_bo_from_name(screen->dev, whandle->handle);
++      bo = fd_bo_from_name(screen->dev, FD_WHANDLE_GET(whandle));
+    } else if (whandle->type == WINSYS_HANDLE_TYPE_KMS) {
+-      bo = fd_bo_from_handle(screen->dev, whandle->handle, 0);
++      bo = fd_bo_from_handle(screen->dev, FD_WHANDLE_GET(whandle), 0);
+    } else if (whandle->type == WINSYS_HANDLE_TYPE_FD) {
+-      bo = fd_bo_from_dmabuf(screen->dev, whandle->handle);
++      bo = fd_bo_from_dmabuf(screen->dev, FD_WHANDLE_GET(whandle));
+    } else {
+       DBG("Attempt to import unsupported handle type %d", whandle->type);
+       return NULL;
+    }
+ 
+    if (!bo) {
+-      DBG("ref name 0x%08x failed", whandle->handle);
++      DBG("ref name 0x%08x failed", FD_WHANDLE_GET(whandle));
+       return NULL;
+    }
+ 
+diff --git a/src/gallium/drivers/freedreno/freedreno_util.h b/src/gallium/drivers/freedreno/freedreno_util.h
+index 399422e..51cbc8b 100644
+--- a/src/gallium/drivers/freedreno/freedreno_util.h
++++ b/src/gallium/drivers/freedreno/freedreno_util.h
+@@ -93,14 +93,29 @@ extern bool fd_binning_enabled;
+ 
+ #define FD_DBG(category) unlikely(fd_mesa_debug &FD_DBG_##category)
+ 
++#ifdef _WIN32
++__declspec(dllimport) unsigned long __stdcall GetCurrentThreadId(void);
++#define FD_GETTID() ((int)GetCurrentThreadId())
++#else
+ #include <unistd.h>
+ #include <sys/types.h>
+ #include <sys/syscall.h>
++#define FD_GETTID() ((pid_t)syscall(SYS_gettid))
++#endif
++
++/* winsys_handle::handle la HANDLE (void*) tren Windows, uint32 noi khac. */
++#ifdef _WIN32
++#define FD_WHANDLE_GET(wh)    ((uint32_t)(uintptr_t)(wh)->handle)
++#define FD_WHANDLE_SET(wh, v) ((wh)->handle = (HANDLE)(uintptr_t)(v))
++#else
++#define FD_WHANDLE_GET(wh)    ((wh)->handle)
++#define FD_WHANDLE_SET(wh, v) ((wh)->handle = (v))
++#endif
+ 
+ #define DBG(fmt, ...)                                                          \
+    do {                                                                        \
+       if (FD_DBG(MSGS))                                                        \
+-         mesa_logd("%5d: %s:%d: " fmt, ((pid_t)syscall(SYS_gettid)),           \
++         mesa_logd("%5d: %s:%d: " fmt, FD_GETTID(),                            \
+                                         __func__, __LINE__,                    \
+                                         ##__VA_ARGS__);                        \
+    } while (0)
+diff --git a/src/gallium/drivers/freedreno/ir3/ir3_gallium.c b/src/gallium/drivers/freedreno/ir3/ir3_gallium.c
+index 052f28e..1651cf9 100644
+--- a/src/gallium/drivers/freedreno/ir3/ir3_gallium.c
++++ b/src/gallium/drivers/freedreno/ir3/ir3_gallium.c
+@@ -9,6 +9,7 @@
+ #include "pipe/p_screen.h"
+ #include "pipe/p_state.h"
+ #include "tgsi/tgsi_dump.h"
++#include "util/u_cpu_detect.h"
+ #include "util/format/u_format.h"
+ #include "util/u_inlines.h"
+ #include "util/u_memory.h"
+@@ -538,7 +539,7 @@ ir3_screen_init(struct pipe_screen *pscreen)
+     * big cores.  OTOH if they are sitting idle, maybe it is useful to
+     * use them?
+     */
+-   unsigned num_threads = sysconf(_SC_NPROCESSORS_ONLN) / 2;
++   unsigned num_threads = util_get_cpu_caps()->nr_cpus / 2;
+ 
+    /* Create at least one thread - even on single core CPU systems. */
+    num_threads = MAX2(1, num_threads);
+diff --git a/src/util/libsync.h b/src/util/libsync.h
+index b22b75a..4bba1e1 100644
+--- a/src/util/libsync.h
++++ b/src/util/libsync.h
+@@ -28,6 +28,20 @@
+ #ifndef _LIBSYNC_H
+ #define _LIBSYNC_H
+ 
++#ifdef _WIN32
++/* Windows: khong co sync_file (dma-fence fd). Stub de code dung chung bien dich;
++ * fd luon = -1 tren Windows nen cac ham nay khong duoc goi voi fd hop le.
++ */
++#include <errno.h>
++#include <stdbool.h>
++static inline bool sync_valid_fd(int fd) { (void)fd; return false; }
++static inline int sync_wait(int fd, int timeout)
++{ (void)fd; (void)timeout; errno = ENOSYS; return -1; }
++static inline int sync_merge(const char *name, int fd1, int fd2)
++{ (void)name; (void)fd1; (void)fd2; errno = ENOSYS; return -1; }
++static inline int sync_accumulate(const char *name, int *fd1, int fd2)
++{ (void)name; (void)fd1; (void)fd2; return -ENOSYS; }
++#else /* !_WIN32 */
+ #include <assert.h>
+ #include <errno.h>
+ #include <poll.h>
+@@ -263,4 +277,5 @@ static inline int sync_accumulate(const char *name, int *fd1, int fd2)
+ }
+ #endif
+ 
++#endif /* !_WIN32 */
+ #endif
+diff --git a/src/util/texcompress_astc.cpp b/src/util/texcompress_astc.cpp
+index a413f57..2cb12ce 100644
+--- a/src/util/texcompress_astc.cpp
++++ b/src/util/texcompress_astc.cpp
+@@ -208,13 +208,13 @@ static void unpack_quint_block(int n, uint32_t in, uint8_t *out)
+ }
+ 
+ 
+-struct uint8x4_t
++struct astc_uint8x4_t
+ {
+    uint8_t v[4];
+ 
+-   uint8x4_t() { }
++   astc_uint8x4_t() { }
+ 
+-   uint8x4_t(int a, int b, int c, int d)
++   astc_uint8x4_t(int a, int b, int c, int d)
+    {
+       assert(0 <= a && a <= 255);
+       assert(0 <= b && b <= 255);
+@@ -226,9 +226,9 @@ struct uint8x4_t
+       v[3] = d;
+    }
+ 
+-   static uint8x4_t clamped(int a, int b, int c, int d)
++   static astc_uint8x4_t clamped(int a, int b, int c, int d)
+    {
+-      uint8x4_t r;
++      astc_uint8x4_t r;
+       r.v[0] = MAX2(0, MIN2(255, a));
+       r.v[1] = MAX2(0, MIN2(255, b));
+       r.v[2] = MAX2(0, MIN2(255, c));
+@@ -237,14 +237,14 @@ struct uint8x4_t
+    }
+ };
+ 
+-static uint8x4_t blue_contract(int r, int g, int b, int a)
++static astc_uint8x4_t blue_contract(int r, int g, int b, int a)
+ {
+-   return uint8x4_t((r+b) >> 1, (g+b) >> 1, b, a);
++   return astc_uint8x4_t((r+b) >> 1, (g+b) >> 1, b, a);
+ }
+ 
+-static uint8x4_t blue_contract_clamped(int r, int g, int b, int a)
++static astc_uint8x4_t blue_contract_clamped(int r, int g, int b, int a)
+ {
+-   return uint8x4_t::clamped((r+b) >> 1, (g+b) >> 1, b, a);
++   return astc_uint8x4_t::clamped((r+b) >> 1, (g+b) >> 1, b, a);
+ }
+ 
+ static void bit_transfer_signed(int &a, int &b)
+@@ -616,7 +616,7 @@ struct Block
+    uint8_t infill_weights[2][216]; /* large enough for 6x6x6 */
+ 
+    /* Calculated by decode_colour_endpoints(); */
+-   uint8x4_t endpoints_decoded[2][4];
++   astc_uint8x4_t endpoints_decoded[2][4];
+ 
+    void calculate_from_weights();
+    void calculate_remaining_bits();
+@@ -1003,43 +1003,43 @@ void Block::decode_colour_endpoints()
+       int v7 = v[7];
+       cem_values_idx += ((cems[part] >> 2) + 1) * 2;
+ 
+-      uint8x4_t e0, e1;
++      astc_uint8x4_t e0, e1;
+       int s0, s1, L0, L1;
+ 
+       switch (cems[part])
+       {
+       case 0:
+-         e0 = uint8x4_t(v0, v0, v0, 0xff);
+-         e1 = uint8x4_t(v1, v1, v1, 0xff);
++         e0 = astc_uint8x4_t(v0, v0, v0, 0xff);
++         e1 = astc_uint8x4_t(v1, v1, v1, 0xff);
+          break;
+       case 1:
+          L0 = (v0 >> 2) | (v1 & 0xc0);
+          L1 = L0 + (v1 & 0x3f);
+          if (L1 > 0xff)
+             L1 = 0xff;
+-         e0 = uint8x4_t(L0, L0, L0, 0xff);
+-         e1 = uint8x4_t(L1, L1, L1, 0xff);
++         e0 = astc_uint8x4_t(L0, L0, L0, 0xff);
++         e1 = astc_uint8x4_t(L1, L1, L1, 0xff);
+          break;
+       case 4:
+-         e0 = uint8x4_t(v0, v0, v0, v2);
+-         e1 = uint8x4_t(v1, v1, v1, v3);
++         e0 = astc_uint8x4_t(v0, v0, v0, v2);
++         e1 = astc_uint8x4_t(v1, v1, v1, v3);
+          break;
+       case 5:
+          bit_transfer_signed(v1, v0);
+          bit_transfer_signed(v3, v2);
+-         e0 = uint8x4_t(v0, v0, v0, v2);
+-         e1 = uint8x4_t::clamped(v0+v1, v0+v1, v0+v1, v2+v3);
++         e0 = astc_uint8x4_t(v0, v0, v0, v2);
++         e1 = astc_uint8x4_t::clamped(v0+v1, v0+v1, v0+v1, v2+v3);
+          break;
+       case 6:
+-         e0 = uint8x4_t(v0*v3 >> 8, v1*v3 >> 8, v2*v3 >> 8, 0xff);
+-         e1 = uint8x4_t(v0, v1, v2, 0xff);
++         e0 = astc_uint8x4_t(v0*v3 >> 8, v1*v3 >> 8, v2*v3 >> 8, 0xff);
++         e1 = astc_uint8x4_t(v0, v1, v2, 0xff);
+          break;
+       case 8:
+          s0 = v0 + v2 + v4;
+          s1 = v1 + v3 + v5;
+          if (s1 >= s0) {
+-            e0 = uint8x4_t(v0, v2, v4, 0xff);
+-            e1 = uint8x4_t(v1, v3, v5, 0xff);
++            e0 = astc_uint8x4_t(v0, v2, v4, 0xff);
++            e1 = astc_uint8x4_t(v1, v3, v5, 0xff);
+          } else {
+             e0 = blue_contract(v1, v3, v5, 0xff);
+             e1 = blue_contract(v0, v2, v4, 0xff);
+@@ -1050,23 +1050,23 @@ void Block::decode_colour_endpoints()
+          bit_transfer_signed(v3, v2);
+          bit_transfer_signed(v5, v4);
+          if (v1 + v3 + v5 >= 0) {
+-            e0 = uint8x4_t(v0, v2, v4, 0xff);
+-            e1 = uint8x4_t::clamped(v0+v1, v2+v3, v4+v5, 0xff);
++            e0 = astc_uint8x4_t(v0, v2, v4, 0xff);
++            e1 = astc_uint8x4_t::clamped(v0+v1, v2+v3, v4+v5, 0xff);
+          } else {
+             e0 = blue_contract_clamped(v0+v1, v2+v3, v4+v5, 0xff);
+             e1 = blue_contract(v0, v2, v4, 0xff);
+          }
+          break;
+       case 10:
+-         e0 = uint8x4_t(v0*v3 >> 8, v1*v3 >> 8, v2*v3 >> 8, v4);
+-         e1 = uint8x4_t(v0, v1, v2, v5);
++         e0 = astc_uint8x4_t(v0*v3 >> 8, v1*v3 >> 8, v2*v3 >> 8, v4);
++         e1 = astc_uint8x4_t(v0, v1, v2, v5);
+          break;
+       case 12:
+          s0 = v0 + v2 + v4;
+          s1 = v1 + v3 + v5;
+          if (s1 >= s0) {
+-            e0 = uint8x4_t(v0, v2, v4, v6);
+-            e1 = uint8x4_t(v1, v3, v5, v7);
++            e0 = astc_uint8x4_t(v0, v2, v4, v6);
++            e1 = astc_uint8x4_t(v1, v3, v5, v7);
+          } else {
+             e0 = blue_contract(v1, v3, v5, v7);
+             e1 = blue_contract(v0, v2, v4, v6);
+@@ -1078,8 +1078,8 @@ void Block::decode_colour_endpoints()
+          bit_transfer_signed(v5, v4);
+          bit_transfer_signed(v7, v6);
+          if (v1 + v3 + v5 >= 0) {
+-            e0 = uint8x4_t(v0, v2, v4, v6);
+-            e1 = uint8x4_t::clamped(v0+v1, v2+v3, v4+v5, v6+v7);
++            e0 = astc_uint8x4_t(v0, v2, v4, v6);
++            e1 = astc_uint8x4_t::clamped(v0+v1, v2+v3, v4+v5, v6+v7);
+          } else {
+             e0 = blue_contract_clamped(v0+v1, v2+v3, v4+v5, v6+v7);
+             e1 = blue_contract(v0, v2, v4, v6);
+@@ -1087,8 +1087,8 @@ void Block::decode_colour_endpoints()
+          break;
+       default:
+          /* HDR endpoints not supported; return error colour */
+-         e0 = uint8x4_t(255, 0, 255, 255);
+-         e1 = uint8x4_t(255, 0, 255, 255);
++         e0 = astc_uint8x4_t(255, 0, 255, 255);
++         e1 = astc_uint8x4_t(255, 0, 255, 255);
+          break;
+       }
+ 
+@@ -1644,8 +1644,8 @@ void Block::write_decoded(const Decoder &decoder, uint16_t *output)
+ 
+             /* TODO: HDR */
+ 
+-            uint8x4_t e0 = endpoints_decoded[0][partition];
+-            uint8x4_t e1 = endpoints_decoded[1][partition];
++            astc_uint8x4_t e0 = endpoints_decoded[0][partition];
++            astc_uint8x4_t e1 = endpoints_decoded[1][partition];
+             uint16_t c0[4], c1[4];
+ 
+             /* Expand to 16 bits. */
+diff --git a/src/util/u_atomic.h b/src/util/u_atomic.h
+index 9f79113..730c41c 100644
+--- a/src/util/u_atomic.h
++++ b/src/util/u_atomic.h
+@@ -22,9 +22,9 @@
+  */
+ #if defined(__sun)
+ #define PIPE_ATOMIC_OS_SOLARIS
+-#elif defined(_MSC_VER)
++#elif defined(_MSC_VER) && !defined(__clang__)
+ #define PIPE_ATOMIC_MSVC_INTRINSIC
+-#elif defined(__GNUC__)
++#elif defined(__GNUC__) || defined(__clang__)
+ #define PIPE_ATOMIC_GCC_INTRINSIC
+ #else
+ #error "Unsupported platform"
+-- 
+2.35.1.windows.2
+
