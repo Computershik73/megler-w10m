@@ -122,7 +122,10 @@ winrt::fire_and_forget installDataZip(AppShell* shell, std::string package, std:
     co_await winrt::resume_background();
     std::string error, done;
     try {
-        PickedFile picked(file, platform::localStateDirectory() + L"\\data-zip.picked");
+        // (A name of its own for each: the core finds a picked file by that name, and another install started meanwhile
+        // from the page, which Hide lets the user go back to, would have taken this one's and then let go of it.)
+        static std::atomic<int> installs{0};
+        PickedFile picked(file, platform::localStateDirectory() + L"\\data-zip-" + std::to_wstring(++installs) + L".picked");
         if (!picked.ok()) {
             error = "Windows didn't let Megler read the file where it is.";
         } else {
